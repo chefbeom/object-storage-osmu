@@ -275,15 +275,47 @@ codex/<short-name>
 
 ### 13.2 커밋 메시지
 
-Conventional Commits를 따른다.
+커밋 메시지는 한국어로 작성한다.
+
+기본 형식:
 
 ```text
-feat: add bucket management API
-fix: prevent secret key from being logged
-docs: add MVP requirements
-infra: add local MinIO compose
-refactor: split storage adapter
-test: add quota service tests
+[영역] 변경 내용
+```
+
+영역 태그:
+
+| 태그 | 영역 | 적용 대상 |
+| --- | --- | --- |
+| `[B]` | Backend | Spring Boot API, DB 연동, MinIO/S3 Adapter, 인증/권한 |
+| `[F]` | Frontend | Vue 화면, 라우터, 상태 관리, API 호출 UI |
+| `[I]` | Infra | Docker Compose, Kubernetes, Helm, CI/CD, 배포 설정 |
+| `[D]` | Docs | 기획서, 요구사항, API 문서, 설계서, Worklog |
+| `[T]` | Test | 테스트 코드, 테스트 케이스, 테스트 환경 |
+| `[S]` | Security | 인증, 권한, 키 관리, 암호화, 보안 정책 |
+| `[O]` | Operation | 모니터링, 백업, 복구, 운영 자동화 |
+
+새로운 작업 영역이 추가되면 커밋하기 전에 이 표에 `[알파벳]` 태그를 먼저 추가한다.
+
+예시:
+
+```text
+[D] 개발 문서 세트 추가
+[B] 버킷 생성 API 구현
+[F] 버킷 목록 화면 구현
+[I] MariaDB와 MinIO 로컬 환경 추가
+[T] 버킷 API 테스트 케이스 추가
+[S] Access Key 노출 방지 처리
+```
+
+여러 영역을 함께 수정한 경우, 변경의 중심이 되는 대표 태그를 앞에 쓰고 커밋 본문 또는 worklog에 나머지 영향을 기록한다.
+
+나쁜 예:
+
+```text
+update
+fix
+docs update
 ```
 
 ## 14. 문서 컨벤션
