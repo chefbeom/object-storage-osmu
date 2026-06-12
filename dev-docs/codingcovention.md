@@ -195,6 +195,9 @@ DELETE /api/buckets/{bucketName}/objects/{objectKey}
 
 ## 8. DB 컨벤션
 
+- MVP 기본 DB는 MariaDB를 사용한다.
+- 실제 파일 데이터는 DB에 저장하지 않고 MinIO에 저장한다.
+- DB에는 사용자, 조직, 버킷 메타데이터, 권한, 쿼터, 감사 로그, 설정 정보를 저장한다.
 - PK는 일관된 형식을 사용한다.
 - 생성/수정 시간 컬럼을 둔다.
   - `createdAt`

@@ -205,7 +205,7 @@ MVP는 다음을 반드시 포함한다.
 
 - MinIO 실행
 - Backend에서 MinIO 연결
-- PostgreSQL 연결
+- MariaDB 연결
 - 로그인
 - 버킷 관리
 - 파일 업로드/다운로드/삭제

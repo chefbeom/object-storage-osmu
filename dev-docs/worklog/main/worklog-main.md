@@ -1,0 +1,361 @@
+# Worklog - main
+
+이 문서는 `main` 브랜치에서 수행한 작업 기록이다.
+
+작업 로그는 브랜치별로 관리한다. 브랜치명이 바뀌면 해당 브랜치 경로에 새 파일을 만든다.
+
+## 파일명 규칙
+
+Worklog는 `dev-docs/worklog/` 아래에 둔다.
+
+브랜치명에 `/`가 있으면 실제 디렉터리로 나눈다.
+
+파일명은 `worklog-<branch-name-with-dash>.md` 형식을 사용한다.
+
+예시:
+
+```text
+main
+-> dev-docs/worklog/main/worklog-main.md
+
+codex/add-auth-api
+-> dev-docs/worklog/codex/add-auth-api/worklog-codex-add-auth-api.md
+
+feat/bucket-management
+-> dev-docs/worklog/feat/bucket-management/worklog-feat-bucket-management.md
+```
+
+## 기록 원칙
+
+- 코드 작성 또는 파일 변경 작업을 수행할 때마다 새 항목을 추가한다.
+- 작업 시작 시간과 종료 시간을 기록한다.
+- 사용자의 원 요청을 먼저 기록한다.
+- 사용자의 말을 어떤 작업 명령으로 이해했는지 기록한다.
+- 요청 분석, 실행 방식, 실제 구현 내용을 구분한다.
+- 수정된 파일과 관련 파일을 기록한다.
+- 검증한 명령, 확인한 파일, 검증 결과를 남긴다.
+- 검증하지 못한 항목이 있으면 이유를 남긴다.
+- 작업한 코드 또는 문서 변경을 스스로 리뷰한다.
+- 완성되지 않은 내용과 다음 작업 참고사항을 남긴다.
+- 사용한 skill, plugin, 외부 참고 자료가 있으면 기록한다.
+
+## 기록 양식
+
+```md
+### YYYY-MM-DD - 작업 제목
+
+- 작업 시작 시간:
+- 작업 종료 시간:
+- 사용자 명령:
+- 명령 해석:
+- 요청 분석:
+- 작업 방식:
+- 실행 내용:
+- 구현 내용:
+- 수정된 파일:
+- 관련 파일:
+- 검증 기록:
+- 코드 리뷰:
+- 결과:
+- 후속 메모:
+- 추가 개발 필요:
+- 사용한 skill/plugin:
+```
+
+## 작업 기록
+
+### 2026-06-13 - 브랜치별 Worklog 형식 준비
+
+- 작업 시작 시간: 2026-06-13 00:59:47 +09:00
+- 작업 종료 시간: 2026-06-13 00:59:56 +09:00
+- 사용자 명령: 작업할 때 `worklog.md`를 작성해야 하며, 브랜치별로 `worklog-브랜치명.md` 형식의 파일을 만들고, 기록해야 할 항목과 기존 worklog 양식을 섞어 적절한 형식을 준비하라고 요청.
+- 명령 해석: 현재 Git 브랜치를 확인하고, `main` 브랜치용 작업 로그 파일을 생성하라는 명령으로 이해.
+- 요청 분석: 사용자는 앞으로 모든 코드/파일 변경 작업의 추적성을 원함. 단순 작업 결과뿐 아니라 요청 의도, 해석, 실행 방식, 검증, 자체 리뷰, 후속 개발 사항, 사용한 skill/plugin까지 남기는 기준 문서가 필요함.
+- 작업 방식: Git 브랜치명을 확인한 뒤, `dev-docs` 문서 디렉터리에 브랜치별 worklog 파일을 생성. 사용자가 제공한 기존 양식을 확장해 OSMU 작업 방식에 맞는 기록 항목을 추가.
+- 실행 내용:
+  - `git branch --show-current`로 현재 브랜치가 `main`인지 확인.
+  - `Get-Date`로 작업 시간 확인.
+  - `dev-docs/worklog-main.md` 신규 작성.
+- 구현 내용:
+  - 브랜치별 worklog 파일명 규칙 정의.
+  - 작업 기록 원칙 정의.
+  - 재사용 가능한 기록 양식 추가.
+  - 이번 작업 자체를 첫 작업 기록으로 추가.
+- 수정된 파일:
+  - `dev-docs/worklog-main.md`
+- 관련 파일:
+  - `dev-docs/PROJECT_MEMORY.md`
+  - `dev-docs/PRODUCT_REQUIREMENTS.md`
+  - `dev-docs/codingcovention.md`
+- 검증 기록:
+  - 현재 브랜치가 `main`임을 확인.
+  - `dev-docs` 디렉터리 존재와 기존 문서 파일 확인.
+- 코드 리뷰:
+  - 코드 변경 없음.
+  - 문서 변경은 사용자가 요구한 항목을 모두 포함함.
+  - 파일명은 당시 요청 기준 `worklog-main.md`로 작성되어 브랜치별 관리 규칙에 맞음.
+- 결과: `main` 브랜치용 worklog 형식 문서 생성 완료.
+- 후속 메모: 앞으로 파일 변경 작업을 수행하면 같은 파일에 새 항목을 추가해야 함. 브랜치 변경 시 새 브랜치명 기준 worklog 파일을 만들어야 함.
+- 추가 개발 필요: 없음. 단, 실제 개발이 시작되면 각 작업 항목에 검증 명령과 결과를 더 구체적으로 기록해야 함.
+- 사용한 skill/plugin:
+  - `caveman` skill: 응답을 간결하게 유지하기 위해 활성화됨.
+
+### 2026-06-13 - Worklog 디렉터리 구조 변경
+
+- 작업 시작 시간: 2026-06-13 01:01:11 +09:00
+- 작업 종료 시간: 2026-06-13 01:01:11 +09:00
+- 사용자 명령: `worklog` 폴더를 만들고 `/`별로 디렉터리를 만들라고 요청.
+- 명령 해석: 브랜치별 worklog를 `dev-docs/worklog/` 아래에 두고, 브랜치명에 포함된 `/`를 실제 하위 디렉터리로 표현하라는 명령으로 이해.
+- 요청 분석: 기존 `dev-docs/worklog-main.md` 단일 파일 구조는 브랜치가 많아질수록 평면적으로 쌓임. 사용자는 브랜치 경로 구조를 보존해 worklog를 더 찾기 쉽게 만들고자 함.
+- 작업 방식: 기존 `main` 브랜치 worklog 내용을 새 경로 `dev-docs/worklog/main/worklog-main.md`로 이전하고, 파일명 규칙을 새 디렉터리 방식에 맞게 수정.
+- 실행 내용:
+  - 현재 브랜치가 `main`임을 확인.
+  - 현재 시각을 확인.
+  - 새 worklog 경로를 생성.
+  - 기존 worklog 파일을 제거 대상으로 정리.
+- 구현 내용:
+  - `dev-docs/worklog/main/worklog-main.md` 생성.
+  - `dev-docs/worklog-main.md` 제거.
+  - 브랜치명 `/`를 디렉터리로 표현하는 규칙 추가.
+- 수정된 파일:
+  - `dev-docs/worklog/main/worklog-main.md`
+  - `dev-docs/worklog-main.md`
+- 관련 파일:
+  - `dev-docs/codingcovention.md`
+  - `dev-docs/PROJECT_MEMORY.md`
+  - `dev-docs/PRODUCT_REQUIREMENTS.md`
+- 검증 기록:
+  - 작업 전 `git branch --show-current`로 현재 브랜치가 `main`임을 확인.
+  - 작업 전 `dev-docs` 내부 파일 목록 확인.
+- 코드 리뷰:
+  - 코드 변경 없음.
+  - 새 구조는 브랜치 경로를 그대로 보존하므로 `codex/foo`, `feat/bar` 같은 브랜치에서 충돌 가능성이 낮음.
+  - 파일명에는 전체 브랜치명을 `-`로 치환해 남겨 검색 가능성을 유지함.
+- 결과: Worklog 구조를 `dev-docs/worklog/<branch-path>/worklog-<branch-name>.md` 방식으로 변경.
+- 후속 메모: 앞으로 브랜치 변경 시 먼저 현재 브랜치명을 확인하고, `/`를 디렉터리로 반영한 worklog 파일을 사용해야 함.
+- 추가 개발 필요: 없음.
+- 사용한 skill/plugin:
+  - `caveman` skill: 응답을 간결하게 유지하기 위해 활성화됨.
+
+### 2026-06-13 - MVP 기본 DB를 MariaDB로 결정
+
+- 작업 시작 시간: 2026-06-13 01:31:01 +09:00
+- 작업 종료 시간: 2026-06-13 01:31:33 +09:00
+- 사용자 명령: PostgreSQL을 잘 모르므로 OSMU는 MariaDB로 가자고 요청.
+- 명령 해석: PRD와 코딩 컨벤션의 DB 기준을 PostgreSQL 후보에서 MariaDB 확정 기준으로 변경하라는 명령으로 이해.
+- 요청 분석: 사용자는 익숙한 DB를 사용해 개발 속도와 이해도를 높이고자 함. OSMU에서 DB는 실제 파일 저장소가 아니라 사용자, 버킷, 권한, 쿼터, 감사 로그 같은 메타데이터 저장소이므로 MariaDB 선택이 MVP에 적합함.
+- 작업 방식: `dev-docs/PRODUCT_REQUIREMENTS.md`에서 PostgreSQL 언급을 MariaDB로 바꾸고, `dev-docs/codingcovention.md`의 DB 컨벤션에 MariaDB 기준을 추가.
+- 실행 내용:
+  - `PRODUCT_REQUIREMENTS.md`에서 PostgreSQL 언급 위치 확인.
+  - `codingcovention.md`의 DB 컨벤션 위치 확인.
+  - 관련 문서 수정.
+  - PostgreSQL 잔여 언급이 없는지 확인.
+- 구현 내용:
+  - MVP 기본 RDBMS를 MariaDB로 명시.
+  - Docker Compose 구성 요소를 MariaDB 기준으로 변경.
+  - Kubernetes 운영 구성 요소를 MariaDB 기준으로 변경.
+  - Phase 1 개발 항목을 MariaDB 연결로 변경.
+  - DB에는 메타데이터만 저장하고 실제 파일은 MinIO에 저장한다는 원칙을 명시.
+- 수정된 파일:
+  - `dev-docs/PRODUCT_REQUIREMENTS.md`
+  - `dev-docs/codingcovention.md`
+  - `dev-docs/worklog/main/worklog-main.md`
+- 관련 파일:
+  - `osmu-backend/build.gradle`
+  - `osmu-backend/src/main/resources/application.yaml`
+  - 향후 생성 예정: `infra/local/docker-compose.yml`
+- 검증 기록:
+  - `Select-String -Path .\dev-docs\PRODUCT_REQUIREMENTS.md -Pattern 'PostgreSQL'` 실행 결과, 잔여 PostgreSQL 언급 없음.
+  - `Select-String -Path .\dev-docs\PRODUCT_REQUIREMENTS.md -Pattern 'MariaDB'`로 MariaDB 반영 위치 확인.
+  - `Select-String -Path .\dev-docs\codingcovention.md -Pattern 'MariaDB|MinIO'`로 DB 컨벤션 반영 확인.
+- 코드 리뷰:
+  - 코드 변경 없음.
+  - 문서 기준이 MariaDB로 통일되어 다음 Docker Compose와 Backend 설정 작업의 기준이 명확해짐.
+  - DB 역할을 메타데이터 저장소로 제한해 MinIO와 책임이 섞이지 않게 정리됨.
+- 결과: OSMU MVP 기본 DB를 MariaDB로 확정하고 관련 문서 반영 완료.
+- 후속 메모: 다음 infra 작업에서는 PostgreSQL 대신 MariaDB 컨테이너를 사용해야 함.
+- 추가 개발 필요:
+  - `infra/local/docker-compose.yml`에 MariaDB와 MinIO 추가.
+  - `osmu-backend/build.gradle`에 MariaDB JDBC driver와 Spring Data JPA 추가.
+  - `application.yaml`에 MariaDB datasource 설정 추가.
+- 사용한 skill/plugin:
+  - `caveman` skill: 응답을 간결하게 유지하기 위해 활성화됨.
+
+### 2026-06-13 - 기획 요구사항 문서 작성
+
+- 작업 시작 시간: 2026-06-13 01:38:41 +09:00
+- 작업 종료 시간: 2026-06-13 01:39:36 +09:00
+- 사용자 명령: 사용자가 알려준 내용과 목표를 기준으로 기획서 요구사항을 만들어달라고 요청.
+- 명령 해석: 기존 PRD보다 사용자의 최종 목표를 더 직접적으로 반영한 기획 요구사항 문서를 별도로 작성하라는 명령으로 이해.
+- 요청 분석: 사용자는 코드 구현 전에 서류 작업을 먼저 정리하려 함. 필요한 문서는 제품 목표, 해결 문제, 대상 고객, MVP 범위, 기능/비기능 요구사항, 우선순위, 개발 전 준비 문서, 첫 마일스톤을 포함해야 함.
+- 작업 방식: 기존 `PROJECT_MEMORY.md`, `PRODUCT_REQUIREMENTS.md`, MariaDB 결정 내용을 기준으로 `dev-docs/planning-requirements.md`를 신규 작성.
+- 실행 내용:
+  - 현재 브랜치가 `main`인지 확인.
+  - `dev-docs` 문서 목록 확인.
+  - `planning-requirements.md` 존재 여부 확인.
+  - 신규 기획 요구사항 문서 작성.
+  - 문서 섹션과 주요 키워드 확인.
+- 구현 내용:
+  - 제품 목표와 한 줄 정의 작성.
+  - 해결해야 하는 문제 정리.
+  - 대상 고객과 사용자 유형 정리.
+  - Web Portal, REST API, S3 API, FUSE, CLI 접근 요구사항 정리.
+  - MVP 필수 기능, 성공 기준, 제외 범위 정리.
+  - 기능 요구사항과 비기능 요구사항 작성.
+  - MariaDB/MinIO 데이터 저장 원칙 작성.
+  - P0~P3 우선순위 작성.
+  - 개발 전 준비 문서와 첫 개발 마일스톤 정리.
+- 수정된 파일:
+  - `dev-docs/planning-requirements.md`
+  - `dev-docs/worklog/main/worklog-main.md`
+- 관련 파일:
+  - `dev-docs/PROJECT_MEMORY.md`
+  - `dev-docs/PRODUCT_REQUIREMENTS.md`
+  - `dev-docs/codingcovention.md`
+- 검증 기록:
+  - `Get-Item .\dev-docs\planning-requirements.md`로 파일 생성 확인.
+  - `Select-String -Path .\dev-docs\planning-requirements.md -Pattern '^# |^## |^### '`로 섹션 구조 확인.
+  - `Select-String -Path .\dev-docs\planning-requirements.md -Pattern 'MariaDB|MinIO|S3|MVP'`로 핵심 키워드 반영 확인.
+- 코드 리뷰:
+  - 코드 변경 없음.
+  - 문서는 사용자의 목표인 B2B 프라이빗 오브젝트 스토리지 플랫폼 방향을 기준으로 작성됨.
+  - MariaDB와 MinIO 책임 분리가 명확함.
+  - 구현 전 필요한 후속 문서 목록이 포함되어 다음 작업으로 이어지기 쉬움.
+- 결과: OSMU 기획 요구사항 문서 생성 완료.
+- 후속 메모: 다음 문서 작업은 `api-spec.md` 또는 `database-design.md`가 적합함.
+- 추가 개발 필요:
+  - API 명세서 작성.
+  - MariaDB 기준 DB 설계서 작성.
+  - Backend 설계서 작성.
+  - 로컬 개발 환경 설계서 작성.
+- 사용한 skill/plugin:
+  - `caveman` skill: 응답을 간결하게 유지하기 위해 활성화됨.
+
+### 2026-06-13 - 최종 목표 기준 개발 문서 세트 작성
+
+- 작업 시작 시간: 2026-06-13 01:44:58 +09:00
+- 작업 종료 시간: 2026-06-13 01:48:05 +09:00
+- 사용자 명령: 최종 목표까지 필요한 서류를 모두 작성하라고 요청.
+- 명령 해석: OSMU를 MVP부터 B2B 판매 가능한 최종 제품까지 개발하기 위해 필요한 설계/운영/제품화 문서 세트를 `dev-docs`에 생성하라는 명령으로 이해.
+- 요청 분석: 사용자는 코드 구현 전에 API, DB, 아키텍처, 백엔드, 프론트, 로컬 환경, 보안, 백업, 운영, 배포, 테스트, 로드맵 문서를 갖추고 싶어 함. 기존 PRD와 기획 요구사항을 바탕으로 구현 착수 가능한 문서 체계가 필요함.
+- 작업 방식:
+  - 현재 브랜치와 문서 상태 확인.
+  - 최종 목표까지 필요한 문서 목록 선정.
+  - 각 문서를 MariaDB + MinIO + Spring Boot + Vue + Docker Compose + Kubernetes 기준으로 작성.
+  - 문서 인덱스를 만들어 읽기 순서와 문서 역할 정리.
+  - 잔여 PostgreSQL 언급 확인 후 `PROJECT_MEMORY.md`를 MariaDB 기준으로 보정.
+- 실행 내용:
+  - `git branch --show-current`로 현재 브랜치가 `main`임을 확인.
+  - `Get-ChildItem .\dev-docs`로 기존 문서 확인.
+  - 신규 문서 13개 생성.
+  - `Select-String`으로 주요 섹션, 핵심 키워드, PostgreSQL 잔여 언급 확인.
+- 구현 내용:
+  - 문서 인덱스 작성.
+  - 시스템 아키텍처 작성.
+  - REST API 명세 작성.
+  - MariaDB DB 설계 작성.
+  - Spring Boot Backend 설계 작성.
+  - Vue Frontend 설계 작성.
+  - 로컬 개발 환경 설계 작성.
+  - 보안 설계 작성.
+  - 백업/복구 전략 작성.
+  - 운영/모니터링 전략 작성.
+  - 배포 전략 작성.
+  - 테스트 전략 작성.
+  - MVP부터 B2B Ready까지 로드맵 작성.
+- 수정된 파일:
+  - `dev-docs/document-index.md`
+  - `dev-docs/system-architecture.md`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/database-design.md`
+  - `dev-docs/backend-design.md`
+  - `dev-docs/frontend-design.md`
+  - `dev-docs/local-dev-env.md`
+  - `dev-docs/security-design.md`
+  - `dev-docs/backup-recovery.md`
+  - `dev-docs/operation-monitoring.md`
+  - `dev-docs/deployment-strategy.md`
+  - `dev-docs/test-strategy.md`
+  - `dev-docs/development-roadmap.md`
+  - `dev-docs/PROJECT_MEMORY.md`
+  - `dev-docs/worklog/main/worklog-main.md`
+- 관련 파일:
+  - `dev-docs/PRODUCT_REQUIREMENTS.md`
+  - `dev-docs/planning-requirements.md`
+  - `dev-docs/codingcovention.md`
+- 검증 기록:
+  - `Get-ChildItem -Force .\dev-docs | Sort-Object Name`로 문서 목록 확인.
+  - `Select-String -Path .\dev-docs\document-index.md,.\dev-docs\api-spec.md,.\dev-docs\database-design.md,.\dev-docs\system-architecture.md,.\dev-docs\development-roadmap.md -Pattern '^# |^## '`로 핵심 문서 섹션 확인.
+  - `Select-String -Path .\dev-docs\*.md -Pattern 'PostgreSQL'`로 일반 문서 내 잔여 PostgreSQL 언급 없음 확인.
+  - `Select-String -Path .\dev-docs\PROJECT_MEMORY.md -Pattern 'MariaDB 연결'`로 기준 문서 보정 확인.
+- 코드 리뷰:
+  - 코드 변경 없음.
+  - 문서 세트가 MVP와 최종 제품 목표를 모두 다룸.
+  - API, DB, Backend, Frontend, 운영 문서가 서로 같은 기술 결정(MariaDB, MinIO, Spring Boot, Vue)을 공유함.
+  - `document-index.md`로 문서 탐색성과 다음 작업 기준을 보강함.
+- 결과: 최종 목표까지 필요한 1차 개발/운영/제품화 문서 세트 작성 완료.
+- 후속 메모: 문서는 초안이므로 실제 구현 중 API 필드, DB 컬럼, 인증 방식, 배포 방식이 확정될 때 계속 갱신해야 함.
+- 추가 개발 필요:
+  - Docker Compose 작성.
+  - Backend dependency 추가.
+  - Health API 구현.
+  - MariaDB/MinIO 연결 구현.
+  - Bucket/Object API 구현.
+- 사용한 skill/plugin:
+  - `caveman` skill: 응답을 간결하게 유지하기 위해 활성화됨.
+
+### 2026-06-13 - 테스트 케이스 문서 추가
+
+- 작업 시작 시간: 2026-06-13 01:56:46 +09:00
+- 작업 종료 시간: 2026-06-13 01:57:37 +09:00
+- 사용자 명령: 테스트 케이스도 포함해야겠다고 요청.
+- 명령 해석: 기존 테스트 전략 문서와 별도로, 기능별 구체 테스트 케이스 문서를 추가하고 문서 인덱스에 연결하라는 명령으로 이해.
+- 요청 분석: `test-strategy.md`는 테스트 방향과 우선순위 중심이라 실제 구현 완료 기준으로 쓰기에는 부족함. Health, Auth, Bucket, Object, Access Key, Quota, Audit, Frontend, Security, Backup 테스트를 구체 케이스로 정리해야 함.
+- 작업 방식:
+  - `dev-docs/test-cases.md` 신규 작성.
+  - `dev-docs/test-strategy.md`에서 구체 테스트 케이스 문서를 참조하도록 수정.
+  - `dev-docs/document-index.md`에 `test-cases.md` 추가.
+- 실행 내용:
+  - `test-cases.md` 존재 여부 확인.
+  - 기존 `test-strategy.md`, `document-index.md` 내용 확인.
+  - 테스트 케이스 문서 작성.
+  - 섹션과 링크 검증.
+- 구현 내용:
+  - 테스트 케이스 형식 정의.
+  - Health API 테스트 케이스 작성.
+  - Auth 테스트 케이스 작성.
+  - Bucket 테스트 케이스 작성.
+  - Object 테스트 케이스 작성.
+  - Access Key 테스트 케이스 작성.
+  - Quota 테스트 케이스 작성.
+  - Audit Log 테스트 케이스 작성.
+  - Frontend 테스트 케이스 작성.
+  - Security 테스트 케이스 작성.
+  - Backup/Recovery 테스트 케이스 작성.
+  - MVP 완료 기준 테스트 목록 작성.
+- 수정된 파일:
+  - `dev-docs/test-cases.md`
+  - `dev-docs/test-strategy.md`
+  - `dev-docs/document-index.md`
+  - `dev-docs/worklog/main/worklog-main.md`
+- 관련 파일:
+  - `dev-docs/api-spec.md`
+  - `dev-docs/database-design.md`
+  - `dev-docs/backend-design.md`
+  - `dev-docs/frontend-design.md`
+- 검증 기록:
+  - `Get-Item .\dev-docs\test-cases.md`로 파일 생성 확인.
+  - `Select-String -Path .\dev-docs\test-cases.md -Pattern '^# |^## |^### '`로 테스트 케이스 섹션 확인.
+  - `Select-String -Path .\dev-docs\document-index.md,.\dev-docs\test-strategy.md -Pattern 'test-cases.md'`로 문서 연결 확인.
+- 코드 리뷰:
+  - 코드 변경 없음.
+  - 테스트 전략과 테스트 케이스 역할이 분리되어 문서 구조가 명확해짐.
+  - MVP 완료 기준 테스트가 명시되어 이후 구현 완료 판단이 쉬워짐.
+- 결과: 기능별 테스트 케이스 문서 추가 완료.
+- 후속 메모: 실제 API 구현 시 테스트 케이스 ID를 커밋/작업 로그와 연결하면 추적성이 좋아짐.
+- 추가 개발 필요:
+  - 테스트 자동화 코드 작성.
+  - API 구현 후 P0 테스트 케이스부터 검증.
+  - Frontend E2E 테스트 도구 선택.
+- 사용한 skill/plugin:
+  - `caveman` skill: 응답을 간결하게 유지하기 위해 활성화됨.

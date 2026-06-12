@@ -310,7 +310,15 @@ Prometheus, Grafana, AlertManager를 사용해 스토리지 상태, 사용량, �
 
 ### 9.4 Database
 
-- PostgreSQL
+- MariaDB
+
+MVP 기준 기본 RDBMS는 MariaDB로 한다.
+
+역할:
+
+- 사용자, 조직, 버킷, 권한, Access Key, Quota, AuditLog, 시스템 설정 저장
+- 실제 파일 데이터는 저장하지 않음
+- 실제 오브젝트 데이터는 MinIO에 저장
 
 ### 9.5 Cache / Queue
 
@@ -1162,7 +1170,7 @@ Docker Compose 구성:
 
 - Backend
 - Frontend
-- PostgreSQL
+- MariaDB
 - MinIO
 - Prometheus optional
 - Grafana optional
@@ -1187,7 +1195,7 @@ Kubernetes 기반 배포를 목표로 한다.
 - MinIO Tenant
 - Backend Deployment
 - Frontend Deployment
-- PostgreSQL
+- MariaDB
 - Ingress Controller
 - Prometheus
 - Grafana
@@ -1221,7 +1229,7 @@ Kubernetes 기반 배포를 목표로 한다.
 
 - MinIO 로컬 실행
 - Backend에서 MinIO 연결
-- PostgreSQL 연결
+- MariaDB 연결
 - 로그인 구현
 - 버킷 생성/조회/삭제 구현
 - 파일 업로드/다운로드/삭제 구현
@@ -1371,7 +1379,7 @@ Kubernetes, MinIO, DB, 모니터링까지 포함하면 설치가 어려울 수 �
 - 제품 이름
 - 초기 타깃 산업
 - 온프레미스 전용인지, 하이브리드도 초기부터 고려할지
-- PostgreSQL을 직접 포함할지, 외부 DB를 사용할 수 있게 할지
+- MariaDB를 개발 환경에 직접 포함하고, 운영 환경에서는 외부 DB도 사용할 수 있게 할지
 - Kubernetes 배포를 MVP에 포함할지, Docker Compose 이후로 미룰지
 - Access Key를 MinIO 계정과 어떻게 매핑할지
 - 조직/사용자/버킷 권한 모델을 어느 수준까지 MVP에 넣을지
