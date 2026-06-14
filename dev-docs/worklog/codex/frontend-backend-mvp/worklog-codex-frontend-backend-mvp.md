@@ -1,0 +1,10900 @@
+### 2026-06-13 - S3 Lifecycle XML Import/Export 추가
+
+- 작업 시작 시간: 2026-06-13 12:11:00 +09:00
+- 작업 종료 시간: 2026-06-13 12:18:00 +09:00
+- 사용자 명령: 활성 목표인 frontend/backend 개발 계속 진행. 부족한 부분은 스스로 검증.
+- 명령 해석: OSMU가 S3 호환 object storage 제품 방향으로 가려면 lifecycle rule을 AWS S3 XML subset과 주고받을 수 있어야 하므로 import/export 기능을 추가하라는 명령으로 인식.
+- 작업 방식: XML 처리 전용 service를 추가하고 Admin API는 JSON wrapper로 XML 문자열을 주고받게 했다. Frontend에는 export/import textarea를 추가해 운영자가 XML을 복사하거나 붙여 넣을 수 있게 했다.
+- 실행 내용:
+  - `ObjectLifecycleS3XmlService` 추가.
+  - XML parser에 secure processing, DOCTYPE 차단, external entity 차단 적용.
+  - `GET /api/admin/object-lifecycle/s3-xml` 추가.
+  - `POST /api/admin/object-lifecycle/s3-xml` 추가.
+  - `ObjectLifecycleS3XmlRequest`, `ObjectLifecycleS3XmlResponse`, `ObjectLifecycleS3XmlImportResponse` 추가.
+  - export mapping: `OBJECT_VERSION` -> `NoncurrentVersionExpiration/NoncurrentDays`.
+  - export mapping: `TRASH_OBJECT` -> `Expiration/Days`.
+  - Filter mapping: Prefix, Tag, And(Prefix+Tags).
+  - import 시 rule id 자동 생성, priority는 XML 순서 기준 10/20/..., batchSize는 100.
+  - import 성공 감사 로그 `OBJECT_LIFECYCLE_S3_XML_IMPORT` 추가.
+  - frontend API `getObjectLifecycleS3Xml`, `importObjectLifecycleS3Xml` 추가.
+  - Admin lifecycle UI에 S3 Lifecycle XML import/export 영역 추가.
+  - S3 XML export/import MockMvc 테스트 추가.
+  - API/backend/frontend/security/operation/system/product/test 문서 갱신.
+- 구현 내용:
+  - S3 lifecycle XML subset만 지원한다.
+  - OSMU-only 필드인 priority, batchSize는 XML에 표현하지 않고 import 시 기본값/순서로 설정한다.
+  - import 후 rule list와 conflict report를 다시 조회한다.
+- 수정된 파일 및 관련 파일:
+  - `osmu-backend/src/main/java/com/example/osmu/admin/ObjectLifecycleS3XmlService.java`
+  - `osmu-backend/src/main/java/com/example/osmu/admin/ObjectLifecycleS3XmlRequest.java`
+  - `osmu-backend/src/main/java/com/example/osmu/admin/ObjectLifecycleS3XmlResponse.java`
+  - `osmu-backend/src/main/java/com/example/osmu/admin/ObjectLifecycleS3XmlImportResponse.java`
+  - `osmu-backend/src/main/java/com/example/osmu/admin/AdminController.java`
+  - `osmu-backend/src/test/java/com/example/osmu/admin/AdminObjectRetentionControllerTest.java`
+  - `osmu-frontend/src/services/api.js`
+  - `osmu-frontend/src/views/HomeView.vue`
+  - `osmu-frontend/src/assets/main.css`
+  - `dev-docs/PRODUCT_REQUIREMENTS.md`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/backend-design.md`
+  - `dev-docs/frontend-design.md`
+  - `dev-docs/operation-monitoring.md`
+  - `dev-docs/security-design.md`
+  - `dev-docs/system-architecture.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/worklog/codex/frontend-backend-mvp/worklog-codex-frontend-backend-mvp.md`
+- 검증 기록:
+  - `.\gradlew.bat test` 통과. `BUILD SUCCESSFUL`.
+  - `node --check .\src\services\api.js` 통과.
+  - `npm.cmd run build` 통과. Vite build 성공.
+- 코드 리뷰: S3 XML을 raw XML response로 바로 반환하지 않고 JSON wrapper로 둬 기존 frontend API client와 auth/error 처리를 재사용했다. XML parser는 XXE 방어 설정을 넣었다. 다만 full AWS lifecycle spec 전체가 아니라 Prefix/Tag/Expiration/NoncurrentVersionExpiration subset이라 문서에 명확히 남겼다.
+- 결과: S3 lifecycle XML import/export backend/admin UI/test/docs 구현 완료.
+- 후속 메모: Docker Desktop 실행 후 import한 rule이 MariaDB에 저장되고 MinIO object/version retention purge와 dry-run까지 이어지는 E2E 확인이 필요하다.
+- 추가 개발: S3 API lifecycle endpoint 직접 호환, lifecycle XML full spec 확장, frontend browser E2E.
+- 사용 skill/plugin: `caveman`; Gradle test escalation 사용.
+
+### 2026-06-13 - Bucket-scoped S3 Lifecycle API 추가
+
+- 작업 시작 시간: 2026-06-13 12:18:00 +09:00
+- 작업 종료 시간: 2026-06-13 12:29:12 +09:00
+- 사용자 명령: 활성 목표인 frontend/backend 개발 계속 진행. 현재 구현 목표인 S3 lifecycle 직접 호환 endpoint를 이어서 구현.
+- 명령 해석: 기존 Admin 전역 lifecycle XML import/export를 bucket 단위 S3 호환 API로 확장하고, bucket policy가 다른 bucket 객체를 삭제하지 않도록 저장/조회/purge 계층에 bucket scope를 추가하라는 명령으로 인식.
+- 작업 방식: `ObjectLifecycleRule`에 optional `bucketName`을 추가하되 빈 문자열은 기존 전역 rule로 유지했다. Repository candidate 조회, dry-run, purge job, conflict report, XML import를 bucket scope와 연결하고 `/api/buckets/{bucketName}/lifecycle` 전용 controller를 추가했다.
+- 실행 내용:
+  - `ObjectLifecycleRule.bucketName` 추가 및 기존 생성자 호환 overload 유지.
+  - `ObjectMetadataRepository.findDeletedBefore`, `ObjectVersionRepository.findCreatedBefore`에 optional bucket filter overload 추가.
+  - in-memory/MariaDB metadata/version repository의 lifecycle candidate 조회에 bucket predicate 추가.
+  - MariaDB lifecycle rule 저장소와 Flyway `V20__object_lifecycle_rule_bucket_scope.sql`에 `bucket_name` column/index 추가.
+  - Admin lifecycle rule request/save, dry-run, conflict report에 bucket scope 반영.
+  - `ObjectLifecycleS3XmlService.importRules(rawXml, now, bucketName)` overload 추가.
+  - `BucketLifecycleController` 추가: `GET/PUT/DELETE /api/buckets/{bucketName}/lifecycle`.
+  - frontend API client에 `getBucketLifecycleS3Xml`, `putBucketLifecycleS3Xml`, `deleteBucketLifecycleS3Xml` 추가.
+  - bucket lifecycle MockMvc test와 bucket-scoped purge unit test 추가.
+  - API/backend/database/frontend/operation/system/product/test 문서 갱신.
+- 구현 내용:
+  - bucket lifecycle PUT은 해당 bucket rule만 삭제 후 XML rule을 새로 저장한다.
+  - bucket lifecycle GET은 해당 bucket에 scope된 rule만 XML로 export한다.
+  - bucket lifecycle DELETE는 해당 bucket rule만 삭제한다.
+  - Admin global rule은 `bucketName=""`으로 동작하고 모든 bucket과 overlap될 수 있다.
+  - 서로 다른 non-empty bucketName rule은 conflict report에서 충돌로 보지 않는다.
+- 수정된 파일 및 관련 파일:
+  - `osmu-backend/src/main/java/com/example/osmu/object/ObjectLifecycleRule.java`
+  - `osmu-backend/src/main/java/com/example/osmu/bucket/BucketLifecycleController.java`
+  - `osmu-backend/src/main/java/com/example/osmu/admin/AdminController.java`
+  - `osmu-backend/src/main/java/com/example/osmu/admin/ObjectLifecycleRuleRequest.java`
+  - `osmu-backend/src/main/java/com/example/osmu/admin/ObjectLifecycleS3XmlService.java`
+  - `osmu-backend/src/main/java/com/example/osmu/object/ObjectRetentionPurgeJob.java`
+  - `osmu-backend/src/main/java/com/example/osmu/object/ObjectVersionRetentionPurgeJob.java`
+  - `osmu-backend/src/main/java/com/example/osmu/object/repository/**`
+  - `osmu-backend/src/main/resources/db/migration/V20__object_lifecycle_rule_bucket_scope.sql`
+  - `osmu-backend/src/test/java/com/example/osmu/bucket/BucketLifecycleControllerTest.java`
+  - `osmu-backend/src/test/java/com/example/osmu/object/ObjectRetentionPurgeJobTest.java`
+  - `osmu-backend/src/test/java/com/example/osmu/object/ObjectVersionRetentionPurgeJobTest.java`
+  - `osmu-frontend/src/services/api.js`
+  - `dev-docs/PRODUCT_REQUIREMENTS.md`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/backend-design.md`
+  - `dev-docs/database-design.md`
+  - `dev-docs/frontend-design.md`
+  - `dev-docs/operation-monitoring.md`
+  - `dev-docs/system-architecture.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/worklog/codex/frontend-backend-mvp/worklog-codex-frontend-backend-mvp.md`
+- 검증 기록:
+  - `.\gradlew.bat test` 통과. `BUILD SUCCESSFUL`.
+  - `node --check .\src\services\api.js` 통과.
+  - `npm.cmd run build` 통과. Vite build 성공.
+  - `git diff --check` 통과. CRLF warning만 표시.
+  - `docker compose --env-file .\infra\local\.env.example -f .\infra\local\docker-compose.yml config --quiet` 통과. `.docker/config.json` 접근 warning은 있었으나 exit code 0.
+  - `docker info` 실패: `failed to connect to the docker API at npipe:////./pipe/docker_engine ... The system cannot find the file specified.` Docker daemon 없음.
+  - `rg`로 `BucketLifecycleController`, `V20__object_lifecycle_rule_bucket_scope.sql`, bucket lifecycle API wrapper, bucket-scoped purge tests, docs 반영 확인.
+- 코드 리뷰: bucket scope를 rule metadata가 아니라 candidate 조회 계층까지 내려보내 실제 purge 안전성을 확보했다. PUT이 bucket rule 전체를 교체하는 동작은 S3 lifecycle semantics와 맞다. 단, 지원 XML 범위는 여전히 subset이며 실제 AWS S3 raw XML endpoint가 아니라 JSON wrapper 기반 REST endpoint다.
+- 결과: Bucket-scoped S3 Lifecycle API backend/frontend API/test/docs 구현 완료.
+- 후속 메모: Docker Desktop 실행 후 MariaDB+MinIO 환경에서 V20 migration, bucket lifecycle PUT/GET/DELETE, purge scope를 E2E 확인해야 한다.
+- 추가 개발: AWS S3 full lifecycle XML spec 확장, S3-style raw XML response/content-type 옵션, bucket lifecycle UI panel.
+- 사용 skill/plugin: `caveman`.
+
+### 2026-06-13 - Bucket Lifecycle XML UI 추가
+
+- 작업 시작 시간: 2026-06-13 12:29:12 +09:00
+- 작업 종료 시간: 2026-06-13 12:34:38 +09:00
+- 사용자 명령: 활성 목표인 frontend/backend 개발 계속. 직전 bucket lifecycle API의 frontend gap 보완.
+- 명령 해석: bucket-scoped lifecycle backend/API client가 있으므로 선택 bucket에서 S3 XML을 직접 load/save/delete할 수 있는 UI를 붙이라는 명령으로 인식.
+- 작업 방식: 기존 bucket detail/content-grid panel 패턴과 lifecycle XML textarea 스타일을 재사용했다. 선택 bucket 변경/삭제/session reset 시 bucket lifecycle state를 초기화하고, bucket detail load 때 권한이 있으면 XML을 자동 조회하도록 연결했다.
+- 실행 내용:
+  - `HomeView.vue`에 `Bucket Lifecycle` panel 추가.
+  - `getBucketLifecycleS3Xml`, `putBucketLifecycleS3Xml`, `deleteBucketLifecycleS3Xml` import/사용 추가.
+  - `bucketLifecycleXml` reactive state 추가.
+  - selected bucket detail load에 bucket lifecycle XML load 연결.
+  - save/delete 후 admin rule list/conflict report도 갱신.
+  - frontend/test 문서 갱신.
+- 구현 내용:
+  - 관리 가능한 selected bucket이면 XML load/save/delete 버튼과 textarea가 표시된다.
+  - save 성공 시 저장 rule 수를 표시한다.
+  - delete는 confirm dialog를 거친다.
+- 수정된 파일 및 관련 파일:
+  - `osmu-frontend/src/views/HomeView.vue`
+  - `dev-docs/frontend-design.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/worklog/codex/frontend-backend-mvp/worklog-codex-frontend-backend-mvp.md`
+- 검증 기록:
+  - `node --check .\src\services\api.js` 통과.
+  - `npm.cmd run build` 통과. Vite build 성공.
+  - `Invoke-WebRequest -UseBasicParsing http://127.0.0.1:5173/` 통과. HTTP 200.
+  - Browser plugin tool은 검색에서 직접 노출되지 않았다. `node_repl` Playwright 확인은 sandbox `CreateProcessAsUserW failed: 5`로 실패했다.
+- 코드 리뷰: UI는 backend 권한 모델과 같은 "bucket 관리 가능" 기준을 따르며, 기존 lifecycle textarea 스타일을 재사용해 화면 일관성을 유지했다. 명시적 `ADMIN` bucket permission 사용자를 위해 bucket permission 로드 후 panel 노출이 가능하게 했다.
+- 결과: Bucket-scoped lifecycle API를 실제 frontend에서 사용할 수 있는 UI 연결 완료.
+- 후속 메모: Browser E2E 도구 사용 가능 시 login -> bucket 선택 -> lifecycle load/save/delete 흐름을 화면으로 추가 검증해야 한다.
+- 추가 개발: S3 raw XML content-type 호환 endpoint, XML template/snippet 버튼, import validation preview.
+- 사용 skill/plugin: `caveman`.
+
+### 2026-06-13 - Bucket Lifecycle Raw XML 호환 추가
+
+- 작업 시작 시간: 2026-06-13 12:34:38 +09:00
+- 작업 종료 시간: 2026-06-13 12:39:46 +09:00
+- 사용자 명령: 활성 목표인 frontend/backend 개발 계속. S3 호환성 강화를 위한 다음 gap 진행.
+- 명령 해석: bucket lifecycle API가 JSON wrapper만 지원하면 S3-style XML 연동성이 약하므로 raw XML request/response도 받게 하라는 명령으로 인식.
+- 작업 방식: 기존 `/api/buckets/{bucketName}/lifecycle` 경로를 유지하고, GET은 `Accept` header를 보고 JSON/XML을 분기했다. PUT은 `Content-Type` 기준으로 JSON wrapper와 raw XML body를 분리했다.
+- 실행 내용:
+  - `GET /api/buckets/{bucketName}/lifecycle`에서 `Accept: application/xml` 또는 `text/xml`이면 raw XML 반환.
+  - `PUT /api/buckets/{bucketName}/lifecycle`에서 `Content-Type: application/xml` 또는 `text/xml`이면 raw XML body import.
+  - JSON wrapper GET/PUT 동작은 유지.
+  - raw XML MockMvc test 추가.
+  - API/backend/system/product/test 문서 갱신.
+- 구현 내용:
+  - `Accept: */*` 기본 요청은 JSON wrapper로 유지한다.
+  - raw XML PUT은 성공 시 `200 OK` empty body를 반환한다.
+  - raw XML과 JSON PUT 모두 같은 bucket rule replacement helper를 사용한다.
+- 수정된 파일 및 관련 파일:
+  - `osmu-backend/src/main/java/com/example/osmu/bucket/BucketLifecycleController.java`
+  - `osmu-backend/src/test/java/com/example/osmu/bucket/BucketLifecycleControllerTest.java`
+  - `dev-docs/PRODUCT_REQUIREMENTS.md`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/backend-design.md`
+  - `dev-docs/system-architecture.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/worklog/codex/frontend-backend-mvp/worklog-codex-frontend-backend-mvp.md`
+- 검증 기록:
+  - `.\gradlew.bat test` 통과. `BUILD SUCCESSFUL`.
+- 코드 리뷰: raw XML 처리를 추가하면서도 frontend JSON wrapper 경로를 유지했다. `Accept: */*`를 XML로 오인하지 않게 wildcard media type은 XML 판정에서 제외했다.
+- 결과: Bucket lifecycle raw XML request/response 호환 구현 완료.
+- 후속 메모: 실제 AWS SDK S3 endpoint와 동일한 `?lifecycle` path/query 호환은 아직 아님. 현재는 OSMU REST endpoint의 XML 호환 강화 단계다.
+- 추가 개발: S3 gateway/proxy 레벨 `?lifecycle` 호환, XML schema 지원 범위 확대.
+- 사용 skill/plugin: `caveman`; Gradle test escalation 사용.
+
+### 2026-06-13 - S3-style Lifecycle Query Alias 추가
+
+- 작업 시작 시간: 2026-06-13 12:39:46 +09:00
+- 작업 종료 시간: 2026-06-13 12:43:39 +09:00
+- 사용자 명령: 활성 목표인 frontend/backend 개발 계속. S3 호환성 gap 추가 보완.
+- 명령 해석: raw XML을 지원하더라도 `/api/buckets/{bucketName}/lifecycle` REST path만 있으면 S3 문법과 거리가 있으므로 `?lifecycle` query alias를 제공하라는 명령으로 인식.
+- 작업 방식: bucket lifecycle 공통 동작을 `BucketLifecycleService`로 분리하고, 기존 REST controller와 새 S3-style alias controller가 같은 service를 사용하게 했다.
+- 실행 내용:
+  - `BucketLifecycleService` 추가: bucket lifecycle export/replace/delete 공통 처리.
+  - `BucketLifecycleController`에서 중복 로직 제거.
+  - `S3BucketLifecycleController` 추가.
+  - `GET /api/s3/{bucketName}?lifecycle` raw XML export 추가.
+  - `PUT /api/s3/{bucketName}?lifecycle` raw XML import 추가.
+  - `DELETE /api/s3/{bucketName}?lifecycle` bucket lifecycle delete 추가.
+  - alias MockMvc test 추가.
+  - API/backend/system/product/test 문서 갱신.
+- 구현 내용:
+  - alias는 OSMU JWT/REST auth를 그대로 사용한다.
+  - alias는 같은 bucket-scoped lifecycle rule 저장소와 audit event를 사용한다.
+  - `?lifecycle` query param이 있을 때만 매핑된다.
+- 수정된 파일 및 관련 파일:
+  - `osmu-backend/src/main/java/com/example/osmu/bucket/BucketLifecycleService.java`
+  - `osmu-backend/src/main/java/com/example/osmu/bucket/BucketLifecycleController.java`
+  - `osmu-backend/src/main/java/com/example/osmu/bucket/S3BucketLifecycleController.java`
+  - `osmu-backend/src/test/java/com/example/osmu/bucket/BucketLifecycleControllerTest.java`
+  - `dev-docs/PRODUCT_REQUIREMENTS.md`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/backend-design.md`
+  - `dev-docs/system-architecture.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/worklog/codex/frontend-backend-mvp/worklog-codex-frontend-backend-mvp.md`
+- 검증 기록:
+  - `.\gradlew.bat test` 통과. `BUILD SUCCESSFUL`.
+- 코드 리뷰: query alias는 AWS SDK 완전 호환은 아니지만, S3 path-style lifecycle 문법에 더 가까운 API 표면을 제공한다. 공통 service 분리로 REST path와 alias path의 동작 차이를 줄였다.
+- 결과: S3-style `?lifecycle` alias backend/test/docs 구현 완료.
+- 후속 메모: AWS SigV4 인증, 실제 S3 endpoint host/path routing까지 하려면 gateway/proxy 설계가 필요하다.
+- 추가 개발: S3 gateway compatibility layer, SigV4 validation, MinIO lifecycle policy sync 여부 결정.
+- 사용 skill/plugin: `caveman`; Gradle test escalation 사용.
+
+### 2026-06-13 - S3 Lifecycle Alias Access Key 인증 추가
+
+- 작업 시작 시간: 2026-06-13 12:44:00 +09:00
+- 작업 종료 시간: 2026-06-13 12:56:08 +09:00
+- 사용자 명령: 활성 목표인 frontend/backend 개발 계속. 부족한 부분은 스스로 검증해서 확인.
+- 명령 해석: `/api/s3/{bucketName}?lifecycle` alias가 JWT만 받으면 S3 클라이언트/Access Key 흐름과 맞지 않으므로, 기존 Access Key 모델로 alias 인증을 추가하라는 명령으로 인식.
+- 작업 방식: public Access Key 응답에는 secret hash를 노출하지 않고, repository 내부 credential lookup record를 별도로 추가했다. Interceptor는 `/api/s3/**`에서 Access Key header가 있으면 controller까지 통과시키고, controller 전용 auth service가 secret hash, active/expiry, bucket scope를 검증하게 했다.
+- 실행 내용:
+  - `AccessKeyCredential` 내부 record 추가.
+  - `AccessKeyRepository`에 `findCredentialByAccessKey` 추가.
+  - in-memory/MariaDB repository에 secret hash 포함 credential lookup 구현.
+  - `AccessKeyService.authenticate` 추가: access key, secret key, expiry, owner active, bucket scope, 현재 bucket permission 재검증.
+  - Access Key permission에 `ADMIN` 추가. default 발급 권한은 기존 `READ/WRITE/DELETE` 유지.
+  - `S3AccessPolicyGenerator`가 `ADMIN` scope에서 lifecycle 관련 bucket action과 object action을 포함하도록 확장.
+  - `JwtAuthInterceptor`가 `/api/s3/**` Access Key header 요청을 controller까지 통과시키게 수정.
+  - `S3RequestAuthService` 추가: JWT 또는 `X-OSMU-Access-Key`, `X-OSMU-Secret-Key` 인증 처리. `Authorization: AWS4-HMAC-SHA256 Credential=<accessKey>/...`에서 access key id 추출도 지원하되 full SigV4 검증은 후속으로 남김.
+  - `S3BucketLifecycleController`가 lifecycle alias에서 `ADMIN` access key scope를 요구하게 변경.
+  - `GlobalExceptionHandler`가 XML Accept 요청에서도 JSON error를 안정적으로 반환하도록 `Content-Type: application/json` 고정.
+  - frontend Access Key scope builder에 `ADMIN` checkbox 추가.
+  - AWS4 `Credential=<accessKey>/...`에서 access key id를 추출하는 경로를 MockMvc test로 확인.
+  - API/backend/database/frontend/product/test 문서 갱신.
+- 구현 내용:
+  - `/api/s3/{bucketName}?lifecycle`는 Bearer JWT 또는 OSMU Access Key headers로 호출 가능.
+  - Access Key 인증은 active 상태, 만료 시간, SHA-256 secret hash, target bucket `ADMIN` scope를 확인한다.
+  - `READ` only Access Key는 lifecycle alias에서 `403`으로 거부된다.
+  - full AWS SigV4 signature validation은 아직 구현하지 않았다.
+- 수정된 파일 및 관련 파일:
+  - `osmu-backend/src/main/java/com/example/osmu/accesskey/AccessKeyCredential.java`
+  - `osmu-backend/src/main/java/com/example/osmu/accesskey/repository/AccessKeyRepository.java`
+  - `osmu-backend/src/main/java/com/example/osmu/accesskey/repository/InMemoryAccessKeyRepository.java`
+  - `osmu-backend/src/main/java/com/example/osmu/accesskey/repository/MariaDbAccessKeyRepository.java`
+  - `osmu-backend/src/main/java/com/example/osmu/accesskey/AccessKeyService.java`
+  - `osmu-backend/src/main/java/com/example/osmu/accesskey/S3AccessPolicyGenerator.java`
+  - `osmu-backend/src/main/java/com/example/osmu/auth/JwtAuthInterceptor.java`
+  - `osmu-backend/src/main/java/com/example/osmu/bucket/S3RequestAuthService.java`
+  - `osmu-backend/src/main/java/com/example/osmu/bucket/S3BucketLifecycleController.java`
+  - `osmu-backend/src/main/java/com/example/osmu/common/error/GlobalExceptionHandler.java`
+  - `osmu-backend/src/test/java/com/example/osmu/bucket/BucketLifecycleControllerTest.java`
+  - `osmu-frontend/src/views/HomeView.vue`
+  - `dev-docs/PRODUCT_REQUIREMENTS.md`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/backend-design.md`
+  - `dev-docs/database-design.md`
+  - `dev-docs/frontend-design.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/worklog/codex/frontend-backend-mvp/worklog-codex-frontend-backend-mvp.md`
+- 검증 기록:
+  - 1차 `.\gradlew.bat test` 실패: `Accept: application/xml`에서 error response를 JSON으로 쓰지 못해 `HttpMediaTypeNotAcceptableException` 발생.
+  - `GlobalExceptionHandler`에 JSON content type 고정 후 `.\gradlew.bat test` 재실행 통과. `BUILD SUCCESSFUL`.
+  - AWS4 Credential extraction test 추가 후 `.\gradlew.bat test` 재실행 통과. `BUILD SUCCESSFUL`.
+  - `node --check .\src\services\api.js` 통과.
+  - `npm.cmd run build` 통과.
+  - `git diff --check` 통과. CRLF warning만 출력.
+- 코드 리뷰: Access Key secret hash는 public DTO에 넣지 않고 credential lookup 전용 record로 분리해 노출 위험을 줄였다. `/api/s3/**` interceptor bypass는 Access Key header가 있을 때만 허용하고, 실제 권한 판단은 controller path의 `S3RequestAuthService`에서 수행한다. Lifecycle은 bucket 관리 동작이므로 `ADMIN` scope를 요구하게 해 `READ/WRITE` object 권한과 분리했다.
+- 결과: S3-style lifecycle alias가 JWT와 OSMU Access Key headers를 모두 지원한다. Access Key 기반 lifecycle 관리 성공/거부 test까지 추가 완료.
+- 후속 메모: full AWS SigV4 검증은 아직 없음. 실제 AWS SDK 완전 호환을 목표로 하면 canonical request, signed headers, HMAC signing key 검증, clock skew, payload hash 처리가 필요하다.
+- 추가 개발: S3 gateway compatibility layer, AWS SigV4 validation, Access Key `ADMIN` scope에 대한 UI help text, MinIO lifecycle policy sync 검토.
+- 사용 skill/plugin: `caveman`; Gradle test escalation 사용.
+
+### 2026-06-13 - S3-style Object API Prototype 추가
+
+- 작업 시작 시간: 2026-06-13 13:06:00 +09:00
+- 작업 종료 시간: 2026-06-13 13:17:51 +09:00
+- 사용자 명령: 현재까지 구현된 기능을 기준으로 프로토타입까지 개발.
+- 명령 해석: 현재 구현된 bucket/object/access key/lifecycle 기능을 프로토타입으로 쓸 수 있게, S3 호환성에서 가장 큰 gap인 raw object path-style API를 추가하라는 명령으로 인식.
+- 작업 방식: 새 저장 모델을 만들지 않고 기존 `ObjectService`, bucket quota, object metadata, soft delete, Access Key scope 검증을 재사용했다. `/api/s3/{bucketName}/{objectKey}` path만 얇은 adapter로 추가해 prototype surface를 넓혔다.
+- 실행 내용:
+  - `S3ObjectController` 추가.
+  - `PUT /api/s3/{bucketName}/{objectKey}` raw body upload 추가.
+  - `HEAD /api/s3/{bucketName}/{objectKey}` metadata header 응답 추가.
+  - `GET /api/s3/{bucketName}/{objectKey}` streaming download 추가.
+  - `DELETE /api/s3/{bucketName}/{objectKey}` soft delete 추가.
+  - JWT auth와 OSMU Access Key header auth 모두 지원.
+  - `PUT`은 `WRITE`, `HEAD/GET`은 `READ`, `DELETE`는 `DELETE` scope 요구.
+  - `Content-Length` 필수 검증, `Content-Type` 저장, missing content type은 `application/octet-stream`으로 처리.
+  - `x-amz-tagging`과 `X-OSMU-Tags` upload tag header 지원.
+  - upload stream에 `DigestInputStream`을 적용해 prototype `ETag`를 MD5로 반환.
+  - `S3ObjectControllerTest` 추가.
+  - API/backend/product/test 문서 갱신.
+- 구현 내용:
+  - Access Key만으로 S3-style object upload/download/delete 가능.
+  - Bearer JWT로도 같은 path 사용 가능.
+  - `READ` only key는 PUT 거부, `WRITE` only key는 GET 거부.
+  - DELETE는 기존 object soft-delete 정책을 그대로 사용한다.
+- 수정된 파일 및 관련 파일:
+  - `osmu-backend/src/main/java/com/example/osmu/object/S3ObjectController.java`
+  - `osmu-backend/src/test/java/com/example/osmu/object/S3ObjectControllerTest.java`
+  - `dev-docs/PRODUCT_REQUIREMENTS.md`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/backend-design.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/worklog/codex/frontend-backend-mvp/worklog-codex-frontend-backend-mvp.md`
+- 검증 기록:
+  - `.\gradlew.bat test` 통과. `BUILD SUCCESSFUL`.
+- 코드 리뷰: 구현은 controller adapter에만 집중되어 기존 REST object flow와 저장소 로직을 건드리지 않는다. Access Key scope 검증은 lifecycle alias와 같은 `S3RequestAuthService`를 재사용해 인증 경로가 중복되지 않는다. 단, full AWS SigV4, multipart through S3 path, ListObjects XML은 아직 없다.
+- 결과: 프로토타입용 S3-style object PUT/HEAD/GET/DELETE backend surface 구현 완료.
+- 후속 메모: AWS SDK 완전 호환 전에는 custom headers 기반 OSMU S3-style prototype으로 봐야 한다.
+- 추가 개발: full SigV4 validation, S3 ListObjectsV2 XML, multipart S3 path, Range GET, object ETag persistence.
+- 사용 skill/plugin: `caveman`; Gradle test escalation 사용.
+
+### 2026-06-13 - S3 ListObjectsV2 XML Prototype 추가
+
+- 작업 시작 시간: 2026-06-13 13:18:00 +09:00
+- 작업 종료 시간: 2026-06-13 13:20:52 +09:00
+- 사용자 명령: 현재까지 구현된 기능을 기준으로 프로토타입까지 개발 계속.
+- 명령 해석: S3-style object PUT/GET/DELETE만 있으면 기본 S3 client 탐색이 어렵기 때문에, bucket object 목록을 S3 ListObjectsV2 XML 형태로 반환하는 prototype endpoint가 필요하다는 명령으로 인식.
+- 작업 방식: 기존 `ObjectService.list`와 cursor/delimiter/prefix 로직을 재사용하고, `S3ObjectController`에 XML rendering adapter만 추가했다. XML은 JDK `XMLStreamWriter`로 생성했다.
+- 실행 내용:
+  - `GET /api/s3/{bucketName}?list-type=2` 추가.
+  - `prefix`, `delimiter`, `max-keys`, `continuation-token` query 지원.
+  - Access Key/JWT auth는 기존 `S3RequestAuthService` 재사용.
+  - Access Key scope는 `READ` 필요.
+  - XML 응답에 `ListBucketResult`, `Name`, `Prefix`, `KeyCount`, `MaxKeys`, `IsTruncated`, `NextContinuationToken`, `Contents`, `CommonPrefixes` 포함.
+  - `S3ObjectControllerTest.accessKeyCanListObjectsThroughS3ListObjectsV2Xml` 추가.
+  - API/backend/product/test 문서 갱신.
+- 구현 내용:
+  - S3-style path로 업로드한 object를 `ListObjectsV2` XML로 조회할 수 있다.
+  - delimiter `/`는 하위 prefix를 `CommonPrefixes`로 반환한다.
+  - `max-keys=1`과 `continuation-token`으로 prototype pagination을 검증했다.
+- 수정된 파일 및 관련 파일:
+  - `osmu-backend/src/main/java/com/example/osmu/object/S3ObjectController.java`
+  - `osmu-backend/src/test/java/com/example/osmu/object/S3ObjectControllerTest.java`
+  - `dev-docs/PRODUCT_REQUIREMENTS.md`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/backend-design.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/worklog/codex/frontend-backend-mvp/worklog-codex-frontend-backend-mvp.md`
+- 검증 기록:
+  - `.\gradlew.bat test` 통과. `BUILD SUCCESSFUL`.
+- 코드 리뷰: listing은 기존 object metadata repository를 거치므로 soft-deleted object 제외, prefix/delimiter 동작, cursor 정책이 REST API와 일관된다. 단, owner/checksum/url encoding/AWS error XML은 아직 없다.
+- 결과: S3 client prototype에 필요한 기본 bucket 탐색 XML endpoint 구현 완료.
+- 후속 메모: AWS SDK 호환성을 높이려면 SigV4와 AWS XML error format이 다음 우선순위다.
+- 추가 개발: full SigV4 validation, AWS-compatible error XML, Range GET, multipart through S3 path.
+- 사용 skill/plugin: `caveman`; Gradle test escalation 사용.
+
+### 2026-06-13 - S3-style Single Range GET 추가
+
+- 작업 시작 시간: 2026-06-13 13:21:00 +09:00
+- 작업 종료 시간: 2026-06-13 13:24:06 +09:00
+- 사용자 명령: 현재까지 구현된 기능을 기준으로 프로토타입까지 개발 계속.
+- 명령 해석: 영상/대용량 object prototype에서 미리보기와 다운로드 재개가 중요하므로 S3-style object GET에 HTTP Range 지원을 추가하라는 명령으로 인식.
+- 작업 방식: 기존 `S3ObjectController` streaming download를 유지하면서 `Range` header가 있으면 single byte range만 파싱해 partial stream으로 응답하게 했다. storage adapter 변경 없이 stream skip/limited transfer helper로 구현했다.
+- 실행 내용:
+  - `ApiErrorCode.RANGE_NOT_SATISFIABLE` 추가.
+  - `ApiErrorCode` status storage를 `HttpStatusCode`로 변경해 Spring deprecated `HttpStatus` enum 상수 의존을 제거.
+  - `GET /api/s3/{bucketName}/{objectKey}`에서 `Range: bytes=start-end`, `bytes=start-`, `bytes=-suffixLength` 지원.
+  - valid range는 `206 Partial Content`, `Accept-Ranges: bytes`, `Content-Range`, partial `Content-Length` 반환.
+  - invalid/multi range는 `416 RANGE_NOT_SATISFIABLE` 반환.
+  - `HEAD`와 full GET에 `Accept-Ranges: bytes` header 추가.
+  - `S3ObjectControllerTest.accessKeyCanUseSingleRangeGetThroughS3StylePath` 추가.
+  - API/backend/product/test 문서 갱신.
+- 구현 내용:
+  - 단일 range 다운로드가 가능하다.
+  - suffix range 다운로드가 가능하다.
+  - out-of-bound range는 416으로 거부된다.
+- 수정된 파일 및 관련 파일:
+  - `osmu-backend/src/main/java/com/example/osmu/common/error/ApiErrorCode.java`
+  - `osmu-backend/src/main/java/com/example/osmu/object/S3ObjectController.java`
+  - `osmu-backend/src/test/java/com/example/osmu/object/S3ObjectControllerTest.java`
+  - `dev-docs/PRODUCT_REQUIREMENTS.md`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/backend-design.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/worklog/codex/frontend-backend-mvp/worklog-codex-frontend-backend-mvp.md`
+- 검증 기록:
+  - `.\gradlew.bat test` 통과. `BUILD SUCCESSFUL`.
+  - deprecated `HttpStatus` enum 상수 의존 제거 후 `.\gradlew.bat test` 재통과. `BUILD SUCCESSFUL`.
+- 코드 리뷰: range 처리는 controller streaming layer에만 추가되어 storage adapter API를 바꾸지 않았다. prototype에는 충분하지만 큰 object에서 skip 비용이 있을 수 있으므로, 운영 단계에서는 storage adapter native range request가 필요하다.
+- 결과: S3-style object preview/resumable-download prototype 기능 구현 완료.
+- 후속 메모: native storage range read, multi-range, `If-Range`, ETag persistence는 후속 과제다.
+- 추가 개발: native range read, full SigV4 validation, AWS XML error format, multipart through S3 path.
+- 사용 skill/plugin: `caveman`; Gradle test escalation 사용.
+
+### 2026-06-13 - S3-style XML Error 응답 추가
+
+- 작업 시작 시간: 2026-06-13 13:25:00 +09:00
+- 작업 종료 시간: 2026-06-13 13:28:52 +09:00
+- 사용자 명령: 현재까지 구현된 기능을 기준으로 프로토타입까지 개발 계속.
+- 명령 해석: S3-style API surface가 object/lifecycle/list/range를 갖췄지만 error response가 JSON이면 S3 client 호환성이 낮으므로, `/api/s3/**`만 AWS-style XML error를 반환하게 하라는 명령으로 인식.
+- 작업 방식: 일반 REST API는 기존 JSON error를 유지하고, `GlobalExceptionHandler`에서 request URI가 `/api/s3/`로 시작할 때만 XML error body로 분기했다.
+- 실행 내용:
+  - `GlobalExceptionHandler`에 S3 XML error response branch 추가.
+  - S3 XML `<Error>` body에 `Code`, `Message`, `RequestId` 출력.
+  - `ApiErrorCode`를 S3 error code로 매핑.
+  - `AUTHENTICATION_REQUIRED`, `AUTHORIZATION_FAILED` -> `AccessDenied`.
+  - `NOT_FOUND` -> `NoSuchBucket` 또는 `NoSuchKey`.
+  - `RANGE_NOT_SATISFIABLE` -> `InvalidRange`.
+  - `VALIDATION_ERROR` -> `InvalidRequest`.
+  - `QUOTA_EXCEEDED` -> `EntityTooLarge`.
+  - `CONFLICT` -> `OperationAborted`.
+  - `STORAGE_ERROR`, `INTERNAL_ERROR` -> `InternalError`.
+  - S3 object/lifecycle tests의 error body 기대값을 JSON에서 XML로 변경.
+  - API/backend/product/test 문서 갱신.
+- 구현 내용:
+  - `/api/s3/**` error는 `Content-Type: application/xml`로 반환된다.
+  - 일반 `/api/**` REST error는 `Content-Type: application/json`을 유지한다.
+  - request id가 있으면 XML `RequestId`로 내려간다.
+- 수정된 파일 및 관련 파일:
+  - `osmu-backend/src/main/java/com/example/osmu/common/error/GlobalExceptionHandler.java`
+  - `osmu-backend/src/test/java/com/example/osmu/object/S3ObjectControllerTest.java`
+  - `osmu-backend/src/test/java/com/example/osmu/bucket/BucketLifecycleControllerTest.java`
+  - `dev-docs/PRODUCT_REQUIREMENTS.md`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/backend-design.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/worklog/codex/frontend-backend-mvp/worklog-codex-frontend-backend-mvp.md`
+- 검증 기록:
+  - `.\gradlew.bat test` 통과. `BUILD SUCCESSFUL`.
+- 코드 리뷰: error format 분기를 handler에 모아 controller별 중복을 피했다. 단, AWS error schema와 완전 동일한 것은 아니며 현재는 prototype용 핵심 필드 중심이다.
+- 결과: S3-style API의 실패 응답이 S3 client 친화적인 XML 형식으로 변경 완료.
+- 후속 메모: 실제 AWS SDK 호환성을 높이려면 SigV4와 함께 error code 세분화, `Resource`, `HostId` field, XML namespace 정책을 더 맞춰야 한다.
+- 추가 개발: full SigV4 validation, exact AWS error schema parity, multipart through S3 path.
+- 사용 skill/plugin: `caveman`; Gradle test escalation 사용.
+
+### 2026-06-13 - S3-style Object Tagging XML API 추가
+
+- 작업 시작 시간: 2026-06-13 13:30:00 +09:00
+- 작업 종료 시간: 2026-06-13 13:37:37 +09:00
+- 사용자 명령: 현재까지 구현된 기능을 기준으로 프로토타입까지 개발 계속.
+- 명령 해석: S3-compatible object API prototype에서 metadata/tag 관리가 빠져 있으므로, AWS S3의 `?tagging` 흐름과 유사한 object tagging XML API를 추가하라는 명령으로 인식.
+- 작업 방식: 기존 `S3ObjectController`와 `ObjectService.updateTags`를 재사용하고, S3-style path에는 XML request/response adapter만 추가했다. 일반 object `PUT/GET/HEAD/DELETE`와 `?tagging` mapping이 충돌하지 않도록 `params = "!tagging"` 조건을 분리했다.
+- 실행 내용:
+  - `GET /api/s3/{bucketName}/{objectKey}?tagging` 추가.
+  - `PUT /api/s3/{bucketName}/{objectKey}?tagging` 추가.
+  - `DELETE /api/s3/{bucketName}/{objectKey}?tagging` 추가.
+  - `GET ?tagging`은 `READ`, `PUT/DELETE ?tagging`은 `WRITE` scope를 요구하도록 연결.
+  - S3 `Tagging/TagSet/Tag/Key/Value` XML parsing/rendering 추가.
+  - XML parser에서 DOCTYPE, external entity, external DTD loading을 비활성화.
+  - invalid tagging XML은 `/api/s3/**` XML error branch를 통해 `InvalidRequest`로 반환되도록 테스트 추가.
+  - API/backend/product/test 문서에 object tagging XML API와 제한사항 반영.
+- 구현 내용:
+  - S3-style 경로에서 object tag 조회, 교체, 삭제가 가능하다.
+  - tag 저장소는 REST object API에서 쓰는 기존 metadata tag store를 공유한다.
+  - read-only access key로 tag update를 시도하면 S3 XML `AccessDenied`가 반환된다.
+- 수정된 파일 및 관련 파일:
+  - `osmu-backend/src/main/java/com/example/osmu/object/S3ObjectController.java`
+  - `osmu-backend/src/test/java/com/example/osmu/object/S3ObjectControllerTest.java`
+  - `dev-docs/PRODUCT_REQUIREMENTS.md`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/backend-design.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/worklog/codex/frontend-backend-mvp/worklog-codex-frontend-backend-mvp.md`
+- 검증 기록:
+  - 루트에서 `.\gradlew.bat test` 실행 시 wrapper가 루트에 없어 실패했고, `osmu-backend` 하위에서 재실행하는 것으로 수정.
+  - sandbox 안의 `osmu-backend\gradlew.bat test`는 Gradle distribution network 접근 권한 문제로 실패.
+  - escalation 후 `osmu-backend`에서 `.\gradlew.bat test` 통과. `BUILD SUCCESSFUL in 15s`.
+  - `git diff --check` 통과. CRLF 변환 warning만 출력됨.
+- 코드 리뷰: object tagging은 기존 object metadata 갱신 경로를 써서 권한, audit, soft-delete metadata 정책과 일관된다. 다만 AWS의 tag count/key/value length 제한, duplicate key 세부 정책, full SigV4 signing은 아직 prototype 수준이다.
+- 결과: S3-compatible prototype의 object tag 관리 API가 구현 및 문서화됨.
+- 후속 메모: AWS SDK 호환성을 높이려면 full SigV4, multipart S3 path, exact tagging limit/error parity가 다음 우선순위다.
+- 추가 개발: full SigV4 validation, multipart upload through S3 path, native storage range read, exact object tagging limit parity.
+- 사용 skill/plugin: 추가 skill/plugin 없음; Gradle test escalation 사용.
+
+### 2026-06-13 - S3-style Bucket Head/Location API 추가
+
+- 작업 시작 시간: 2026-06-13 13:38:00 +09:00
+- 작업 종료 시간: 2026-06-13 13:44:01 +09:00
+- 사용자 명령: 현재까지 구현된 기능을 기준으로 프로토타입까지 개발 계속.
+- 명령 해석: S3 client/FUSE 계열 도구가 object 작업 전에 bucket 존재 확인과 bucket location 조회를 호출할 수 있으므로, prototype S3 호환성을 높이기 위해 bucket-level S3 API를 추가하라는 명령으로 인식.
+- 작업 방식: 새 저장 모델을 만들지 않고 `BucketService`, `S3RequestAuthService`, `AuditLogService`를 재사용했다. `GetBucketLocation`은 기존 access policy generator가 `READ/WRITE/DELETE/ADMIN` 모두에 허용하는 동작이므로, Access Key 인증에 다중 권한 중 하나를 허용하는 보조 메서드를 추가했다.
+- 실행 내용:
+  - `S3BucketController` 추가.
+  - `HEAD /api/s3/{bucketName}` 추가.
+  - `GET /api/s3/{bucketName}?location` 추가.
+  - bucket-level 응답에 `x-amz-bucket-region` header 추가.
+  - MVP 기본 region은 `${osmu.storage.region:us-east-1}` 사용.
+  - `S3RequestAuthService.currentUserAny` 추가.
+  - `AccessKeyService.authenticateAny` 추가.
+  - write-only access key로 bucket head/location을 조회하는 자동 테스트 추가.
+  - API/backend/product/test 문서 갱신.
+- 구현 내용:
+  - S3-style bucket existence/access check가 가능하다.
+  - S3-style bucket location XML 조회가 가능하다.
+  - `READ`, `WRITE`, `DELETE`, `ADMIN` 중 하나라도 가진 bucket-scoped access key는 bucket location/head를 사용할 수 있다.
+- 수정된 파일 및 관련 파일:
+  - `osmu-backend/src/main/java/com/example/osmu/accesskey/AccessKeyService.java`
+  - `osmu-backend/src/main/java/com/example/osmu/bucket/S3RequestAuthService.java`
+  - `osmu-backend/src/main/java/com/example/osmu/bucket/S3BucketController.java`
+  - `osmu-backend/src/test/java/com/example/osmu/object/S3ObjectControllerTest.java`
+  - `dev-docs/PRODUCT_REQUIREMENTS.md`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/backend-design.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/worklog/codex/frontend-backend-mvp/worklog-codex-frontend-backend-mvp.md`
+- 검증 기록:
+  - 최초 `.\gradlew.bat test`에서 `HeadMapping` symbol 없음으로 compile 실패.
+  - Spring MVC에 `HeadMapping`이 없어 `@RequestMapping(method = RequestMethod.HEAD)`로 수정.
+  - escalation 후 `osmu-backend`에서 `.\gradlew.bat test` 통과. `BUILD SUCCESSFUL in 18s`.
+  - location XML declaration이 응답 맨 앞에 오도록 렌더링을 조정한 뒤 `.\gradlew.bat test` 재통과. `BUILD SUCCESSFUL in 16s`.
+  - `git diff --check` 통과. CRLF 변환 warning만 출력됨.
+- 코드 리뷰: bucket-level S3 API는 기존 bucket access check와 access key scope check를 모두 통과하므로 별도 보안 우회가 없다. 다만 현재 region XML은 MVP 기본값 중심이며, AWS의 `us-east-1` empty location 응답 같은 세부 호환성은 아직 맞추지 않았다.
+- 결과: S3 client 초기 호환성에 필요한 bucket head/location prototype API 구현 완료.
+- 후속 메모: FUSE/goofys/s3fs 호환성을 확인하려면 다음 단계에서 실제 클라이언트 smoke test 또는 SigV4 우선순위 검토가 필요하다.
+- 추가 개발: full SigV4 validation, exact bucket location parity, S3 multipart upload path, FUSE client smoke test.
+- 사용 skill/plugin: 추가 skill/plugin 없음; Gradle test escalation 사용.
+
+### 2026-06-13 - S3-style Root ListBuckets API 추가
+
+- 작업 시작 시간: 2026-06-13 13:45:00 +09:00
+- 작업 종료 시간: 2026-06-13 13:50:22 +09:00
+- 사용자 명령: 현재까지 구현된 기능을 기준으로 프로토타입까지 개발 계속.
+- 명령 해석: S3 client/FUSE 도구가 endpoint 확인 과정에서 root bucket listing을 호출할 수 있으므로, S3-style prototype에 `GET /api/s3` ListBuckets XML을 추가하라는 명령으로 인식.
+- 작업 방식: full SigV4는 현재 Access Key secret 원문을 저장하지 않는 구조라 즉시 구현하지 않고, 현재 인증 모델에서 가능한 S3 root listing을 먼저 구현했다. JWT 요청은 기존 `BucketService.list(user)` 결과를 반환하고, Access Key 요청은 key의 현재 유효한 bucket scope만 XML에 포함하게 했다.
+- 실행 내용:
+  - `JwtAuthInterceptor.isS3Path`가 `/api/s3` root path도 Access Key bypass 대상으로 인식하도록 수정.
+  - `GlobalExceptionHandler.isS3Path`가 `/api/s3` root path도 S3 XML error 대상으로 인식하도록 수정.
+  - `AccessKeyBucketList` record 추가.
+  - `S3BucketListAccess` record 추가.
+  - `AccessKeyService.authenticateBucketList` 추가.
+  - Access Key scope 기반 bucket filtering helper 추가.
+  - `S3RootController` 추가.
+  - `GET /api/s3`에서 S3 `ListAllMyBucketsResult` XML 반환.
+  - scoped access key로 root bucket list를 호출했을 때 허용 bucket만 보이는 자동 테스트 추가.
+  - API/backend/product/test 문서 갱신.
+- 구현 내용:
+  - S3-style root bucket list 조회가 가능하다.
+  - Access Key root listing은 scope에 포함되고 현재 owner가 사용할 수 있는 bucket만 반환한다.
+  - scope가 없거나 더 이상 유효한 bucket 권한이 없으면 S3 XML `AccessDenied` 흐름으로 이어진다.
+- 수정된 파일 및 관련 파일:
+  - `osmu-backend/src/main/java/com/example/osmu/auth/JwtAuthInterceptor.java`
+  - `osmu-backend/src/main/java/com/example/osmu/common/error/GlobalExceptionHandler.java`
+  - `osmu-backend/src/main/java/com/example/osmu/accesskey/AccessKeyBucketList.java`
+  - `osmu-backend/src/main/java/com/example/osmu/accesskey/AccessKeyService.java`
+  - `osmu-backend/src/main/java/com/example/osmu/bucket/S3BucketListAccess.java`
+  - `osmu-backend/src/main/java/com/example/osmu/bucket/S3RequestAuthService.java`
+  - `osmu-backend/src/main/java/com/example/osmu/bucket/S3RootController.java`
+  - `osmu-backend/src/test/java/com/example/osmu/object/S3ObjectControllerTest.java`
+  - `dev-docs/PRODUCT_REQUIREMENTS.md`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/backend-design.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/worklog/codex/frontend-backend-mvp/worklog-codex-frontend-backend-mvp.md`
+- 검증 기록:
+  - escalation 후 `osmu-backend`에서 `.\gradlew.bat test` 통과. `BUILD SUCCESSFUL in 16s`.
+  - legacy/empty scope NPE 방지를 보강한 뒤 `.\gradlew.bat test` 재통과. `BUILD SUCCESSFUL in 15s`.
+  - `git diff --check` 통과. CRLF 변환 warning만 출력됨.
+- 코드 리뷰: root listing은 Access Key의 stored scope와 현재 bucket permission을 둘 다 확인하므로 stale scope가 그대로 노출되지 않는다. 단, 실제 AWS `ListBuckets`와 달리 OSMU scope filtered 결과를 반환하므로 multi-tenant B2B prototype 정책에 맞춘 호환 동작이다.
+- 결과: S3 client 초기 탐색에 필요한 root bucket listing prototype 구현 완료.
+- 후속 메모: 실제 AWS SDK/FUSE 도구 연동에는 full SigV4와 virtual-hosted-style/path-style routing 검증이 여전히 필요하다.
+- 추가 개발: full SigV4 validation, S3 multipart upload path, FUSE/goofys/s3fs smoke test, exact ListBuckets owner field parity.
+- 사용 skill/plugin: 추가 skill/plugin 없음; Gradle test escalation 사용.
+
+### 2026-06-13 - S3-style Multi-Object Delete XML API 추가
+
+- 작업 시작 시간: 2026-06-13 13:51:00 +09:00
+- 작업 종료 시간: 2026-06-13 13:54:16 +09:00
+- 사용자 명령: 현재까지 구현된 기능을 기준으로 프로토타입까지 개발 계속.
+- 명령 해석: S3 client/FUSE 도구가 여러 object를 한 번에 삭제할 때 사용하는 `DeleteObjects` 흐름이 아직 없으므로, S3-style prototype에 `POST /api/s3/{bucketName}?delete` XML API를 추가하라는 명령으로 인식.
+- 작업 방식: 새 삭제 모델을 만들지 않고 기존 `ObjectService.delete`를 key별로 호출해 OSMU soft-delete 정책, quota, version/metadata 정책, audit 흐름을 유지했다. S3 호환성을 위해 존재하지 않는 key는 삭제 성공으로 보고 `DeleteResult/Deleted`에 포함했다.
+- 실행 내용:
+  - `POST /api/s3/{bucketName}?delete` 추가.
+  - S3 `Delete/Object/Key` XML parser 추가.
+  - 최대 1000개 key 제한 추가.
+  - `DELETE` scope 권한 검증 연결.
+  - 삭제 결과 `DeleteResult/Deleted/Key` XML rendering 추가.
+  - missing key는 S3 호환 관점에서 삭제 성공으로 처리.
+  - read-only access key의 multi-delete 거부 테스트 추가.
+  - 정상 multi-delete, missing key 성공 처리, 삭제 후 `NoSuchKey` 검증 테스트 추가.
+  - API/backend/product/test 문서 갱신.
+- 구현 내용:
+  - S3-style multi-object delete가 가능하다.
+  - multi-delete도 단일 object delete와 동일하게 soft-delete 처리된다.
+  - 없는 key 삭제 요청은 오류가 아니라 `Deleted` 항목으로 반환된다.
+- 수정된 파일 및 관련 파일:
+  - `osmu-backend/src/main/java/com/example/osmu/object/S3ObjectController.java`
+  - `osmu-backend/src/test/java/com/example/osmu/object/S3ObjectControllerTest.java`
+  - `dev-docs/PRODUCT_REQUIREMENTS.md`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/backend-design.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/worklog/codex/frontend-backend-mvp/worklog-codex-frontend-backend-mvp.md`
+- 검증 기록:
+  - escalation 후 `osmu-backend`에서 `.\gradlew.bat test` 통과. `BUILD SUCCESSFUL in 16s`.
+  - `git diff --check` 통과. CRLF 변환 warning만 출력됨.
+- 코드 리뷰: controller adapter에만 기능을 추가해 기존 storage adapter와 repository 계약을 바꾸지 않았다. XML parser는 기존 secure DOM 설정을 재사용한다. 다만 AWS의 `Quiet`, per-key `Error`, versioned delete marker parity는 아직 prototype 범위 밖이다.
+- 결과: S3-style multi-object delete prototype 구현 완료.
+- 후속 메모: S3 client 호환성을 더 높이려면 copy object, presigned/SigV4, multipart S3 path, 실제 FUSE smoke test가 남아 있다.
+- 추가 개발: S3 CopyObject, full SigV4 validation, S3 multipart upload path, exact DeleteObjects quiet/error parity.
+- 사용 skill/plugin: 추가 skill/plugin 없음; Gradle test escalation 사용.
+
+### 2026-06-13 - S3-style CopyObject API 추가
+
+- 작업 시작 시간: 2026-06-13 13:55:00 +09:00
+- 작업 종료 시간: 2026-06-13 13:58:20 +09:00
+- 사용자 명령: 현재까지 구현된 기능을 기준으로 프로토타입까지 개발 계속.
+- 명령 해석: S3 client가 object 이동/복제/동기화 과정에서 `x-amz-copy-source` 기반 CopyObject를 자주 사용하므로, 기존 S3-style object PUT에 copy branch를 추가하라는 명령으로 인식.
+- 작업 방식: 별도 storage copy API를 만들지 않고 source object stream을 열어 기존 `ObjectService.upload` 흐름으로 target object를 저장했다. 이를 통해 target bucket quota, overwrite version snapshot, metadata index 저장 정책을 그대로 재사용했다.
+- 실행 내용:
+  - `PUT /api/s3/{bucketName}/{objectKey}`에서 `x-amz-copy-source` header 감지 branch 추가.
+  - `x-amz-copy-source: /sourceBucket/sourceKey` parser 추가.
+  - target bucket `WRITE`, source bucket `READ` Access Key scope 검증 추가.
+  - source object body, content type, tags를 target object로 복사.
+  - CopyObjectResult XML response 추가.
+  - copy response와 copied object download/tag 보존 자동 테스트 추가.
+  - read-only access key copy 거부 테스트 추가.
+  - API/backend/product/test 문서 갱신.
+- 구현 내용:
+  - S3-style CopyObject가 가능하다.
+  - 복사된 object는 source body와 tag를 보존한다.
+  - target overwrite 시 기존 upload 흐름과 동일하게 version snapshot/quota 정책이 적용된다.
+- 수정된 파일 및 관련 파일:
+  - `osmu-backend/src/main/java/com/example/osmu/object/S3ObjectController.java`
+  - `osmu-backend/src/test/java/com/example/osmu/object/S3ObjectControllerTest.java`
+  - `dev-docs/PRODUCT_REQUIREMENTS.md`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/backend-design.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/worklog/codex/frontend-backend-mvp/worklog-codex-frontend-backend-mvp.md`
+- 검증 기록:
+  - escalation 후 `osmu-backend`에서 `.\gradlew.bat test` 통과. `BUILD SUCCESSFUL in 16s`.
+  - `git diff --check` 통과. CRLF 변환 warning만 출력됨.
+- 코드 리뷰: copy branch는 일반 PUT의 `Content-Length` 검증보다 먼저 실행되어 S3 CopyObject의 body 없는 요청과 충돌하지 않는다. Access Key는 target `WRITE`와 source `READ`를 모두 검사한다. 단, AWS `metadata-directive`, `tagging-directive`, source `versionId`, conditional copy header parity는 아직 없다.
+- 결과: S3-style CopyObject prototype 구현 완료.
+- 후속 메모: CopyObject 고도화 시 metadata/tagging directive와 source version parsing을 추가해야 한다.
+- 추가 개발: CopyObject metadata-directive/tagging-directive, source version support, full SigV4 validation, S3 multipart upload path.
+- 사용 skill/plugin: 추가 skill/plugin 없음; Gradle test escalation 사용.
+
+### 2026-06-13 - S3-style CopyObject Directive 지원 추가
+
+- 작업 시작 시간: 2026-06-13 13:59:00 +09:00
+- 작업 종료 시간: 2026-06-13 14:01:28 +09:00
+- 사용자 명령: 현재까지 구현된 기능을 기준으로 프로토타입까지 개발 계속.
+- 명령 해석: 바로 직전 추가한 CopyObject가 항상 source content type/tag를 복사하기 때문에, 실제 S3 client 동작에 더 가깝도록 metadata/tagging directive를 추가하라는 명령으로 인식.
+- 작업 방식: 기존 CopyObject branch 안에서 directive header만 해석하고, target 저장은 계속 `ObjectService.upload`를 사용했다. OSMU가 아직 user metadata model을 갖고 있지 않으므로 metadata directive는 MVP 범위에서 content type replacement로 한정했다.
+- 실행 내용:
+  - `x-amz-metadata-directive: COPY|REPLACE` 지원 추가.
+  - `x-amz-tagging-directive: COPY|REPLACE` 지원 추가.
+  - metadata `REPLACE` 시 request `Content-Type`을 target content type으로 적용.
+  - tagging `REPLACE` 시 `x-amz-tagging` 또는 `X-OSMU-Tags`를 target tag로 적용.
+  - invalid directive는 `400 InvalidRequest` XML error로 반환.
+  - CopyObject directive replace 자동 테스트 추가.
+  - invalid directive 자동 테스트 추가.
+  - API/backend/product/test 문서 갱신.
+- 구현 내용:
+  - CopyObject 기본 동작은 source content type/tag copy다.
+  - client가 directive를 `REPLACE`로 지정하면 content type/tag를 교체할 수 있다.
+  - unsupported directive 값은 validation error로 거부된다.
+- 수정된 파일 및 관련 파일:
+  - `osmu-backend/src/main/java/com/example/osmu/object/S3ObjectController.java`
+  - `osmu-backend/src/test/java/com/example/osmu/object/S3ObjectControllerTest.java`
+  - `dev-docs/PRODUCT_REQUIREMENTS.md`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/backend-design.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/worklog/codex/frontend-backend-mvp/worklog-codex-frontend-backend-mvp.md`
+- 검증 기록:
+  - escalation 후 `osmu-backend`에서 `.\gradlew.bat test` 통과. `BUILD SUCCESSFUL in 16s`.
+  - `git diff --check` 통과. CRLF 변환 warning만 출력됨.
+- 코드 리뷰: directive parsing은 controller adapter에 머물러 있고, 저장 정책은 기존 upload path를 계속 사용한다. OSMU에는 user metadata 모델이 없으므로 AWS의 arbitrary metadata replacement는 아직 지원하지 않는다.
+- 결과: S3-style CopyObject의 MVP content type/tag directive 지원 완료.
+- 후속 메모: user metadata 모델을 도입하면 metadata directive를 더 정확히 AWS 호환으로 확장할 수 있다.
+- 추가 개발: CopyObject user metadata support, source version support, conditional copy headers, full SigV4 validation.
+- 사용 skill/plugin: 추가 skill/plugin 없음; Gradle test escalation 사용.
+
+### 2026-06-13 - S3-style Object ETag Metadata 응답 추가
+
+- 작업 시작 시간: 2026-06-13 14:03:00 +09:00
+- 작업 종료 시간: 2026-06-13 14:07:47 +09:00
+- 사용자 명령: 현재까지 구현된 기능을 기준으로 프로토타입까지 개발 계속.
+- 명령 해석: S3 client가 object 동기화, 캐시, 변경 감지에 `ETag`를 자주 사용하므로, S3-style `HEAD`, `GET`, `ListObjectsV2` 응답에 ETag를 포함하도록 metadata 모델을 확장하라는 명령으로 인식.
+- 작업 방식: `StoredObjectRecord`에 optional `etag` 필드를 추가하고 기존 생성자 호환은 유지했다. In-memory storage는 MD5 hex를 계산하고, MinIO storage는 stat/list response의 ETag를 record에 싣도록 했다. MariaDB metadata index에는 `etag` 컬럼과 migration을 추가했다.
+- 실행 내용:
+  - `StoredObjectRecord.etag` 필드 추가.
+  - 기존 `StoredObjectRecord` 생성자 호환 유지.
+  - In-memory object 저장 시 MD5 ETag 계산.
+  - In-memory tag update 시 기존 ETag 보존.
+  - MinIO stat/list mapping에서 ETag 저장.
+  - MariaDB `object_metadata.etag` 컬럼 추가.
+  - `V19__object_metadata_etag.sql` migration 추가.
+  - `ObjectMetadataDetail`에 indexed/storage ETag 추가.
+  - S3 `HEAD` 응답에 `ETag` header 추가.
+  - S3 `GET`/Range GET 응답에 `ETag` header 추가.
+  - S3 `ListObjectsV2` XML `Contents/ETag` 추가.
+  - S3 object API 테스트에 HEAD/GET/ListObjectsV2 ETag assertion 추가.
+  - API/backend/product/test 문서 갱신.
+- 구현 내용:
+  - 새로 업로드한 object는 S3-style metadata 응답에서 ETag를 확인할 수 있다.
+  - 기존 metadata에 ETag가 비어 있어도 storage stat에서 ETag를 얻을 수 있으면 HEAD detail에 반영한다.
+  - S3 ListObjectsV2 XML에 object별 ETag가 포함된다.
+- 수정된 파일 및 관련 파일:
+  - `osmu-backend/src/main/java/com/example/osmu/object/StoredObjectRecord.java`
+  - `osmu-backend/src/main/java/com/example/osmu/object/ObjectMetadataDetail.java`
+  - `osmu-backend/src/main/java/com/example/osmu/object/S3ObjectController.java`
+  - `osmu-backend/src/main/java/com/example/osmu/storage/memory/InMemoryObjectStorageAdapter.java`
+  - `osmu-backend/src/main/java/com/example/osmu/storage/minio/MinioObjectStorageAdapter.java`
+  - `osmu-backend/src/main/java/com/example/osmu/object/repository/MariaDbObjectMetadataRepository.java`
+  - `osmu-backend/src/main/resources/db/migration/V19__object_metadata_etag.sql`
+  - `osmu-backend/src/test/java/com/example/osmu/object/S3ObjectControllerTest.java`
+  - `dev-docs/PRODUCT_REQUIREMENTS.md`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/backend-design.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/worklog/codex/frontend-backend-mvp/worklog-codex-frontend-backend-mvp.md`
+- 검증 기록:
+  - 최초 `.\gradlew.bat test`는 HEAD ETag assertion에서 실패. 원인: `HEAD` 경로가 `ObjectMetadataDetail`을 사용하지만 detail DTO에 ETag가 없었음.
+  - `ObjectMetadataDetail`에 ETag를 추가하고 HEAD builder에서 조건부 `ETag` header를 내려주도록 수정.
+  - escalation 후 `osmu-backend`에서 `.\gradlew.bat test` 통과. `BUILD SUCCESSFUL in 16s`.
+  - `git diff --check` 통과. CRLF 변환 warning만 출력됨.
+- 코드 리뷰: ETag는 storage adapter에서 record로 들어와 metadata repository에 저장되므로 S3 response layer가 storage 구현별 세부를 알 필요가 없다. 단, multipart ETag 정확도와 legacy object의 완전한 ETag backfill은 아직 제한적이다.
+- 결과: S3-style object metadata 응답의 ETag 지원 구현 완료.
+- 후속 메모: multipart ETag parity와 conditional request(`If-Match`, `If-None-Match`)는 별도 구현이 필요하다.
+- 추가 개발: multipart ETag parity, conditional GET/HEAD, ETag backfill/sync command, full SigV4 validation.
+- 사용 skill/plugin: 추가 skill/plugin 없음; Gradle test escalation 사용.
+
+### 2026-06-13 - S3-style Conditional ETag GET/HEAD 추가
+
+- 작업 시작 시간: 2026-06-13 14:09:00 +09:00
+- 작업 종료 시간: 2026-06-13 14:14:13 +09:00
+- 사용자 명령: 현재까지 진행된 작업의 총 퍼센테이지 확인 및 프로토타입 개발 계속.
+- 명령 해석: 현재 완성도를 사용자에게 설명하되, 중단된 S3 ETag 조건부 요청 작업을 이어서 MVP 프로토타입 완성도를 올리라는 명령으로 인식.
+- 작업 방식: 이미 추가되어 있던 `S3ObjectController`의 조건부 응답 구현 상태를 확인한 뒤, 자동 테스트와 문서/테스트케이스/worklog를 보강했다.
+- 실행 내용:
+  - `If-None-Match`가 현재 ETag와 일치할 때 `HEAD`/`GET`이 `304 Not Modified`를 반환하는 테스트 추가.
+  - `If-Match`가 현재 ETag와 일치하지 않을 때 `HEAD`/`GET`이 `412 Precondition Failed`를 반환하는 테스트 추가.
+  - 조건부 응답이 ETag header를 유지하는지 검증.
+  - API 명세, 백엔드 설계, 제품 요구사항, 테스트케이스 문서 갱신.
+- 구현 내용:
+  - S3-style object `HEAD`/`GET`은 기본 ETag 조건부 요청을 지원한다.
+  - 조건부 `GET`은 stream response를 시작하지 않고 즉시 304/412를 반환한다.
+  - ETag 비교는 quoted/unquoted 값, weak prefix, wildcard 후보를 처리한다.
+- 수정된 파일 및 관련 파일:
+  - `osmu-backend/src/main/java/com/example/osmu/object/S3ObjectController.java`
+  - `osmu-backend/src/test/java/com/example/osmu/object/S3ObjectControllerTest.java`
+  - `dev-docs/PRODUCT_REQUIREMENTS.md`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/backend-design.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/worklog/codex/frontend-backend-mvp/worklog-codex-frontend-backend-mvp.md`
+- 검증 기록:
+  - escalation 후 `osmu-backend`에서 `.\gradlew.bat test` 통과. `BUILD SUCCESSFUL in 17s`.
+  - `git diff --check` 통과. CRLF 변환 warning만 출력됨.
+- 코드 리뷰: 조건부 판정 로직은 controller 내부 helper로 제한해 S3 alias 계층의 HTTP semantics에만 영향을 주도록 했다. `GET` 조건부 응답에서는 열린 stream을 조용히 닫아 리소스 누수를 막는다.
+- 결과: S3-style object ETag 조건부 `HEAD`/`GET` MVP 지원 검증 완료.
+- 후속 메모: 현재는 기본 ETag 조건부 요청만 지원한다. `If-Modified-Since`, `If-Unmodified-Since`, AWS와 동일한 우선순위/에러 XML parity는 후속 과제로 남긴다.
+- 추가 개발: full conditional request parity, multipart ETag parity, conditional CopyObject, full SigV4 validation.
+- 사용 skill/plugin: 추가 skill/plugin 없음; Gradle test escalation 사용.
+
+### 2026-06-13 - S3-style Last-Modified Conditional GET/HEAD 추가
+
+- 작업 시작 시간: 2026-06-13 14:15:00 +09:00
+- 작업 종료 시간: 2026-06-13 14:18:25 +09:00
+- 사용자 명령: 현재 목표인 프로토타입 개발 계속.
+- 명령 해석: S3-style object API의 캐시/동기화 호환성을 더 높이기 위해 ETag 조건부 요청 다음 gap인 날짜 기반 조건부 요청을 구현하라는 명령으로 인식.
+- 작업 방식: 기존 `S3ObjectController`의 조건부 판정 helper를 확장해 `Last-Modified` 기준 HTTP date precondition을 추가했다. AWS 완전 parity는 아직 후속으로 두고, MVP 수준의 `304`/`412` 동작을 테스트로 고정했다.
+- 실행 내용:
+  - `If-Modified-Since` header parsing 추가.
+  - `If-Unmodified-Since` header parsing 추가.
+  - object `Last-Modified` 값을 초 단위로 반올림하지 않고 truncate해 HTTP date precision과 비교.
+  - 미래 `If-Modified-Since` 요청이 `304 Not Modified`를 반환하는 HEAD/GET 테스트 추가.
+  - 과거 `If-Unmodified-Since` 요청이 `412 Precondition Failed`를 반환하는 HEAD/GET 테스트 추가.
+  - API/backend/product/test 문서 갱신.
+- 구현 내용:
+  - S3-style object `HEAD`/`GET`은 `If-Match`, `If-None-Match`, `If-Modified-Since`, `If-Unmodified-Since` 기본 조건부 요청을 지원한다.
+  - 조건부 `GET`은 streaming을 시작하지 않고 즉시 응답한다.
+  - 잘못된 HTTP date header는 무시해 일반 요청처럼 처리한다.
+- 수정된 파일 및 관련 파일:
+  - `osmu-backend/src/main/java/com/example/osmu/object/S3ObjectController.java`
+  - `osmu-backend/src/test/java/com/example/osmu/object/S3ObjectControllerTest.java`
+  - `dev-docs/PRODUCT_REQUIREMENTS.md`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/backend-design.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/worklog/codex/frontend-backend-mvp/worklog-codex-frontend-backend-mvp.md`
+- 검증 기록:
+  - escalation 후 `osmu-backend`에서 `.\gradlew.bat test` 통과. `BUILD SUCCESSFUL in 17s`.
+- 코드 리뷰: precondition logic은 controller layer에 한정되어 storage/service 계층을 흔들지 않는다. 다만 AWS S3의 복합 precondition 우선순위와 완전한 error parity는 아직 구현하지 않았다.
+- 결과: S3-style Last-Modified 조건부 `HEAD`/`GET` MVP 지원 완료.
+- 후속 메모: ETag와 날짜 조건이 함께 오는 복합 케이스의 AWS 호환 우선순위는 별도 테스트/정책 결정이 필요하다.
+- 추가 개발: full conditional request parity, conditional CopyObject headers, multipart ETag parity, full SigV4 validation.
+- 사용 skill/plugin: 추가 skill/plugin 없음; Gradle test escalation 사용.
+
+### 2026-06-13 - S3-style Conditional CopyObject 추가
+
+- 작업 시작 시간: 2026-06-13 14:19:00 +09:00
+- 작업 종료 시간: 2026-06-13 14:22:51 +09:00
+- 사용자 명령: 현재 목표인 프로토타입 개발 계속.
+- 명령 해석: S3-style object API의 실제 클라이언트 호환성을 높이기 위해 CopyObject에도 source ETag/Last-Modified 기반 precondition header를 지원하라는 명령으로 인식.
+- 작업 방식: 기존 CopyObject가 source object를 stream으로 읽어 `ObjectService.upload`에 전달하는 구조를 유지했다. source stream은 try-with-resources로 감싸고, 저장 전에 source precondition을 검증해 실패 시 `412 PreconditionFailed` XML error를 반환하도록 했다.
+- 실행 내용:
+  - `x-amz-copy-source-if-match` 지원 추가.
+  - `x-amz-copy-source-if-none-match` 지원 추가.
+  - `x-amz-copy-source-if-modified-since` 지원 추가.
+  - `x-amz-copy-source-if-unmodified-since` 지원 추가.
+  - `ApiErrorCode.PRECONDITION_FAILED` 추가.
+  - S3 XML error mapping에 `PreconditionFailed` 추가.
+  - matching source ETag precondition 성공 테스트 추가.
+  - failing source ETag/date precondition `412 PreconditionFailed` 테스트 추가.
+  - API/backend/product/test 문서 갱신.
+- 구현 내용:
+  - CopyObject는 source ETag와 Last-Modified 조건을 검사한 뒤 복사를 진행한다.
+  - 조건 실패 시 target object를 만들지 않고 S3 XML `PreconditionFailed`를 반환한다.
+  - 조건 검사 실패 경로에서도 source stream이 닫히도록 구성했다.
+- 수정된 파일 및 관련 파일:
+  - `osmu-backend/src/main/java/com/example/osmu/common/error/ApiErrorCode.java`
+  - `osmu-backend/src/main/java/com/example/osmu/common/error/GlobalExceptionHandler.java`
+  - `osmu-backend/src/main/java/com/example/osmu/object/S3ObjectController.java`
+  - `osmu-backend/src/test/java/com/example/osmu/object/S3ObjectControllerTest.java`
+  - `dev-docs/PRODUCT_REQUIREMENTS.md`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/backend-design.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/worklog/codex/frontend-backend-mvp/worklog-codex-frontend-backend-mvp.md`
+- 검증 기록:
+  - escalation 후 `osmu-backend`에서 `.\gradlew.bat test` 통과. `BUILD SUCCESSFUL in 17s`.
+  - `git diff --check` 통과. CRLF 변환 warning만 출력됨.
+- 코드 리뷰: 기능은 S3 adapter controller에 한정되어 REST object upload/download 정책을 바꾸지 않는다. 다만 AWS S3의 복합 conditional copy header 우선순위와 versionId source copy는 아직 완전 호환이 아니다.
+- 결과: S3-style CopyObject source precondition MVP 지원 완료.
+- 후속 메모: full AWS SDK/FUSE 호환을 위해서는 SigV4 검증, S3 multipart upload path, virtual-hosted-style routing 검증이 계속 필요하다.
+- 추가 개발: full conditional CopyObject parity, CopyObject source versionId, S3 multipart upload path, full SigV4 validation.
+- 사용 skill/plugin: 추가 skill/plugin 없음; Gradle test escalation 사용.
+
+### 2026-06-13 - S3-style Multipart Upload Path MVP 추가
+
+- 작업 시작 시간: 2026-06-13 14:24:00 +09:00
+- 작업 종료 시간: 2026-06-13 14:32:55 +09:00
+- 사용자 명령: 현재 목표인 프로토타입 개발 계속.
+- 명령 해석: S3 호환 object API에서 가장 큰 남은 gap 중 하나인 multipart upload path를 MVP 수준으로 구현해 대용량 object 업로드 프로토타입 완성도를 높이라는 명령으로 인식.
+- 작업 방식: 기존 REST multipart upload/session/quota/versioning 흐름을 재사용했다. S3 initiate는 기존 session model과 맞추기 위해 expected size header를 요구하게 했고, part upload는 새 storage adapter 메서드로 MinIO `uploadPartAsync`를 호출하도록 확장했다.
+- 실행 내용:
+  - `ObjectStorageAdapter.uploadMultipartUploadPart` 추가.
+  - MinIO adapter direct multipart part upload 구현.
+  - In-memory adapter는 기존 multipart 정책처럼 명시적 미지원 오류 유지.
+  - `ObjectService.uploadMultipartPart` 추가: bucket write 권한, upload session, upload mode, part number, content length 검증.
+  - `POST /api/s3/{bucketName}/{objectKey}?uploads` S3-style initiate 추가.
+  - `PUT /api/s3/{bucketName}/{objectKey}?partNumber=&uploadId=` S3-style upload part 추가.
+  - `GET /api/s3/{bucketName}/{objectKey}?uploadId=` S3-style list parts 추가.
+  - `POST /api/s3/{bucketName}/{objectKey}?uploadId=` S3-style complete XML 추가.
+  - `DELETE /api/s3/{bucketName}/{objectKey}?uploadId=` S3-style abort 추가.
+  - S3 multipart XML render/parse helper 추가.
+  - ObjectService unit test와 S3ObjectController multipart unit test 추가.
+  - API/backend/product/test 문서 갱신.
+- 구현 내용:
+  - S3-style multipart initiate/list/complete/abort는 S3 XML 형태로 응답한다.
+  - Part upload는 backend S3 alias endpoint가 직접 body를 받아 MinIO multipart upload part로 전달한다.
+  - Complete는 S3 `CompleteMultipartUpload` XML의 `PartNumber`/`ETag`를 파싱해 기존 `ObjectService.completeMultipartUpload`로 이어진다.
+  - MVP initiate는 `X-OSMU-Multipart-Size-Bytes` 또는 `x-amz-meta-osmu-size-bytes`가 필요하다.
+- 수정된 파일 및 관련 파일:
+  - `osmu-backend/src/main/java/com/example/osmu/storage/ObjectStorageAdapter.java`
+  - `osmu-backend/src/main/java/com/example/osmu/storage/minio/MinioObjectStorageAdapter.java`
+  - `osmu-backend/src/main/java/com/example/osmu/storage/memory/InMemoryObjectStorageAdapter.java`
+  - `osmu-backend/src/main/java/com/example/osmu/object/ObjectService.java`
+  - `osmu-backend/src/main/java/com/example/osmu/object/S3ObjectController.java`
+  - `osmu-backend/src/test/java/com/example/osmu/object/ObjectServiceMultipartRefreshTest.java`
+  - `osmu-backend/src/test/java/com/example/osmu/object/S3ObjectControllerMultipartTest.java`
+  - `dev-docs/PRODUCT_REQUIREMENTS.md`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/backend-design.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/worklog/codex/frontend-backend-mvp/worklog-codex-frontend-backend-mvp.md`
+- 검증 기록:
+  - escalation 후 `osmu-backend`에서 `.\gradlew.bat test` 통과. `BUILD SUCCESSFUL in 17s`.
+  - 재검증으로 `.\gradlew.bat test` 통과. `BUILD SUCCESSFUL in 1s`, up-to-date.
+  - `git diff --check` 통과. CRLF 변환 warning만 출력됨.
+- 코드 리뷰: S3 alias는 기존 REST multipart session model을 재사용하므로 quota, overwrite version snapshot, audit 흐름과 일관된다. 다만 AWS S3처럼 size를 모르는 initiate는 아직 지원하지 않고, MinIO storage mode가 필요하다.
+- 결과: S3-style multipart upload path MVP 구현 완료.
+- 후속 메모: 실제 AWS SDK/FUSE 완전 호환을 위해서는 full SigV4, unknown-size initiate parity, virtual-hosted-style routing, real client smoke test가 필요하다.
+- 추가 개발: unknown-size S3 multipart initiate, multipart list uploads, full multipart ETag parity, FUSE/goofys/s3fs smoke test, full SigV4 validation.
+- 사용 skill/plugin: 추가 skill/plugin 없음; Gradle test escalation 사용.
+
+### 2026-06-13 - S3-style ListMultipartUploads MVP 추가
+
+- 작업 시작 시간: 2026-06-13 14:34:00 +09:00
+- 작업 종료 시간: 2026-06-13 14:40:09 +09:00
+- 사용자 명령: 현재 목표인 프로토타입 개발 계속.
+- 명령 해석: S3 multipart path MVP 다음 단계로 active multipart upload 목록 조회(`GET ?uploads`)를 추가해 S3 client 관리 흐름을 보강하라는 명령으로 인식.
+- 작업 방식: raw MinIO bucket scan 대신 OSMU multipart session repository를 authoritative source로 사용했다. ACTIVE + MULTIPART + storageUploadId 보유 session만 S3 XML로 노출했다.
+- 실행 내용:
+  - `MultipartUploadListItem`, `MultipartUploadListResponse` 추가.
+  - `PresignedUploadSessionRepository.findActiveMultipartUploads` 추가.
+  - In-memory repository prefix/marker/page query 구현.
+  - MariaDB repository active multipart upload query 구현.
+  - `ObjectService.listActiveMultipartUploads` 추가.
+  - `GET /api/s3/{bucketName}?uploads` controller 추가.
+  - `ListMultipartUploadsResult` XML render helper 추가.
+  - repository/service/controller unit test 추가.
+  - API/backend/product/test 문서 갱신.
+- 구현 내용:
+  - active multipart uploads list는 `prefix`, `key-marker`, `upload-id-marker`, `max-uploads`를 MVP 수준으로 지원한다.
+  - response는 `ListMultipartUploadsResult`, `Upload`, `NextKeyMarker`, `NextUploadIdMarker`, `IsTruncated`를 포함한다.
+  - access key는 기존 S3 multipart write 흐름과 동일하게 target bucket `WRITE` scope가 필요하다.
+- 수정된 파일 및 관련 파일:
+  - `osmu-backend/src/main/java/com/example/osmu/object/MultipartUploadListItem.java`
+  - `osmu-backend/src/main/java/com/example/osmu/object/MultipartUploadListResponse.java`
+  - `osmu-backend/src/main/java/com/example/osmu/object/repository/PresignedUploadSessionRepository.java`
+  - `osmu-backend/src/main/java/com/example/osmu/object/repository/InMemoryPresignedUploadSessionRepository.java`
+  - `osmu-backend/src/main/java/com/example/osmu/object/repository/MariaDbPresignedUploadSessionRepository.java`
+  - `osmu-backend/src/main/java/com/example/osmu/object/ObjectService.java`
+  - `osmu-backend/src/main/java/com/example/osmu/object/S3ObjectController.java`
+  - `osmu-backend/src/test/java/com/example/osmu/object/repository/InMemoryPresignedUploadSessionRepositoryTest.java`
+  - `osmu-backend/src/test/java/com/example/osmu/object/ObjectServiceMultipartRefreshTest.java`
+  - `osmu-backend/src/test/java/com/example/osmu/object/S3ObjectControllerMultipartTest.java`
+  - `dev-docs/PRODUCT_REQUIREMENTS.md`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/backend-design.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/worklog/codex/frontend-backend-mvp/worklog-codex-frontend-backend-mvp.md`
+- 검증 기록:
+  - escalation 후 `osmu-backend`에서 `.\gradlew.bat test --rerun-tasks` 통과. `BUILD SUCCESSFUL in 18s`.
+- 코드 리뷰: session repository를 기준으로 조회하므로 OSMU가 발급한 multipart upload만 보인다. 외부에서 MinIO에 직접 만든 multipart upload는 아직 목록에 나타나지 않는다.
+- 결과: S3-style active multipart upload listing MVP 구현 완료.
+- 후속 메모: exact AWS parity를 위해서는 `Delimiter`, owner/initiator fields, storage class, raw MinIO multipart listing sync 여부 검토가 필요하다.
+- 추가 개발: ListMultipartUploads exact parity, unknown-size S3 multipart initiate, full SigV4 validation, real S3 client smoke test.
+- 사용 skill/plugin: caveman skill ultra, Gradle test escalation 사용.
+
+### 2026-06-13 - S3-style Bucket Create/Delete Alias 추가
+
+- 작업 시작 시간: 2026-06-13 14:40:10 +09:00
+- 작업 종료 시간: 2026-06-13 14:46:28 +09:00
+- 사용자 명령: `/Caveman ultra` 및 현재 목표인 프로토타입 개발 계속.
+- 명령 해석: S3 client 호환 프로토타입의 다음 gap으로 bucket-level `CreateBucket`/`DeleteBucket` path-style alias를 추가하라는 명령으로 인식.
+- 작업 방식: 새 bucket domain logic을 만들지 않고 기존 `BucketService.create/delete`를 재사용했다. 생성은 아직 존재하지 않는 bucket에 access key scope를 적용할 수 없으므로 Bearer JWT로 제한했고, 삭제는 target bucket `ADMIN` scope를 가진 JWT 또는 OSMU Access Key를 허용했다.
+- 실행 내용:
+  - `PUT /api/s3/{bucketName}` 추가.
+  - `DELETE /api/s3/{bucketName}` 추가.
+  - S3 bucket create response에 `Location`과 `x-amz-bucket-region` header 추가.
+  - S3 bucket delete response에 `x-amz-bucket-region` header 추가.
+  - controller test에 create/delete alias flow 추가.
+  - API/backend/product/test 문서 갱신.
+- 구현 내용:
+  - S3-style bucket create는 기본 USER owner, 기본 quota 정책으로 bucket을 만든다.
+  - S3-style bucket delete는 기존 bucket delete 정책과 동일하게 빈 bucket만 삭제한다.
+  - Access Key는 delete에 `ADMIN` scope가 필요하다.
+- 수정된 파일 및 관련 파일:
+  - `osmu-backend/src/main/java/com/example/osmu/bucket/S3BucketController.java`
+  - `osmu-backend/src/test/java/com/example/osmu/object/S3ObjectControllerTest.java`
+  - `dev-docs/PRODUCT_REQUIREMENTS.md`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/backend-design.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/worklog/codex/frontend-backend-mvp/worklog-codex-frontend-backend-mvp.md`
+- 검증 기록:
+  - escalation 후 `osmu-backend`에서 `.\gradlew.bat test --tests com.example.osmu.object.S3ObjectControllerTest` 통과. `BUILD SUCCESSFUL in 8s`.
+  - escalation 후 `osmu-backend`에서 `.\gradlew.bat test --rerun-tasks` 통과. `BUILD SUCCESSFUL in 18s`.
+  - `git diff --check` 통과. CRLF 변환 warning만 출력됨.
+- 코드 리뷰: 기능은 S3 bucket controller 계층에 한정되어 기존 REST bucket 정책과 storage adapter 경계를 흔들지 않는다. `params = "!lifecycle"` 조건으로 lifecycle alias와 충돌을 피했다. 단, CreateBucket XML body/LocationConstraint parsing과 AWS exact error parity는 아직 구현하지 않았다.
+- 결과: S3-style bucket create/delete alias MVP 구현 완료.
+- 후속 메모: bucket 삭제 후 기존 access key scope 재조정/비활성화 정책은 REST bucket delete와 함께 별도 검토가 필요하다.
+- 추가 개발: CreateBucket XML parsing, exact DeleteBucket error parity, bucket tagging alias, full SigV4 validation, real S3 client smoke test.
+- 사용 skill/plugin: caveman skill ultra, Gradle test escalation 사용.
+
+### 2026-06-13 - S3 SigV4 Header Auth MVP 추가
+
+- 작업 시작 시간: 2026-06-13 14:46:29 +09:00
+- 작업 종료 시간: 2026-06-13 14:59:09 +09:00
+- 사용자 명령: 현재 목표인 프로토타입 개발 계속.
+- 명령 해석: S3 client/FUSE 호환성을 높이기 위해 `X-OSMU-Secret-Key` 없이 표준 `Authorization: AWS4-HMAC-SHA256 ...` header를 검증하는 SigV4 MVP를 추가하라는 명령으로 인식.
+- 작업 방식: 기존 access key는 secret hash만 저장하므로 SigV4 검증에 필요한 signing secret을 복원할 수 없었다. 새 access key부터 `secret_key_ciphertext`에 암호화된 signing material을 저장하고, S3 request layer에서 canonical request signature를 검증하도록 했다.
+- 실행 내용:
+  - `AccessKeySecretCipher` 추가.
+  - `AccessKeyEntity`, `AccessKeyCredential`, in-memory/MariaDB repository에 `secretKeyCiphertext` 추가.
+  - Flyway `V21__access_key_signature_secret.sql` 추가.
+  - `AccessKeyService.signingSecret`, `authenticateSignedAny`, `authenticateSignedBucketList` 추가.
+  - `S3SignatureV4Verifier` 추가.
+  - `S3RequestAuthService`에 SigV4 branch 연결.
+  - `JwtAuthInterceptor`가 S3 path의 AWS4 Authorization을 Bearer JWT로 오인하지 않도록 수정.
+  - SigV4 root bucket list/object PUT/GET controller test 추가.
+  - API/backend/product/database/security/local env/test 문서 갱신.
+- 구현 내용:
+  - SigV4 header auth는 `AWS4-HMAC-SHA256`, `Credential`, `SignedHeaders`, `Signature`, `x-amz-date`, `x-amz-content-sha256`를 검증한다.
+  - canonical URI/query/header와 HMAC signing key를 계산해 signature를 constant-time 비교한다.
+  - SigV4 인증 뒤에는 기존 access key bucket scope 권한 검증을 그대로 적용한다.
+  - 기존 `X-OSMU-Access-Key` + `X-OSMU-Secret-Key` 방식은 유지한다.
+- 수정된 파일 및 관련 파일:
+  - `osmu-backend/src/main/java/com/example/osmu/accesskey/AccessKeyEntity.java`
+  - `osmu-backend/src/main/java/com/example/osmu/accesskey/AccessKeyCredential.java`
+  - `osmu-backend/src/main/java/com/example/osmu/accesskey/AccessKeySecretCipher.java`
+  - `osmu-backend/src/main/java/com/example/osmu/accesskey/AccessKeyService.java`
+  - `osmu-backend/src/main/java/com/example/osmu/accesskey/repository/InMemoryAccessKeyRepository.java`
+  - `osmu-backend/src/main/java/com/example/osmu/accesskey/repository/MariaDbAccessKeyRepository.java`
+  - `osmu-backend/src/main/java/com/example/osmu/auth/JwtAuthInterceptor.java`
+  - `osmu-backend/src/main/java/com/example/osmu/bucket/S3RequestAuthService.java`
+  - `osmu-backend/src/main/java/com/example/osmu/bucket/S3SignatureV4Verifier.java`
+  - `osmu-backend/src/main/resources/application.yaml`
+  - `osmu-backend/src/main/resources/db/migration/V21__access_key_signature_secret.sql`
+  - `osmu-backend/src/test/java/com/example/osmu/object/S3ObjectControllerTest.java`
+  - `infra/local/docker-compose.yml`
+  - `infra/local/.env.example`
+  - `osmu-backend/.env.example`
+  - `dev-docs/PRODUCT_REQUIREMENTS.md`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/backend-design.md`
+  - `dev-docs/database-design.md`
+  - `dev-docs/local-dev-env.md`
+  - `dev-docs/security-design.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/worklog/codex/frontend-backend-mvp/worklog-codex-frontend-backend-mvp.md`
+- 검증 기록:
+  - escalation 후 `osmu-backend`에서 `.\gradlew.bat test --tests com.example.osmu.object.S3ObjectControllerTest` 통과. `BUILD SUCCESSFUL in 9s`.
+  - escalation 후 `osmu-backend`에서 `.\gradlew.bat test --rerun-tasks` 통과. `BUILD SUCCESSFUL in 19s`.
+- 코드 리뷰: SigV4 검증은 S3 auth boundary에 한정했고, 성공 뒤 기존 Access Key scope 검증을 재사용하므로 권한 정책 중복이 작다. 다만 현재는 header auth MVP이며 presigned URL, streaming/chunked payload signature, clock skew enforcement, full payload hash enforcement는 아직 없다.
+- 결과: S3-style alias에서 `X-OSMU-Secret-Key` 없이 AWS SigV4 header auth를 사용할 수 있는 MVP 구현 완료.
+- 후속 메모: 실제 AWS SDK/mc/s3fs smoke test를 통해 canonical path/query edge case와 endpoint 설정을 검증해야 한다.
+- 추가 개발: SigV4 presigned URL auth, chunked streaming signature, clock-skew check, real S3 client smoke test, existing key re-encryption/rotation tooling.
+- 사용 skill/plugin: caveman skill ultra, Gradle test escalation 사용.
+
+### 2026-06-13 - Docker Integration SigV4 Smoke 보강
+
+- 작업 시작 시간: 2026-06-13 14:59:10 +09:00
+- 작업 종료 시간: 2026-06-13 15:04:03 +09:00
+- 사용자 명령: 현재 목표인 프로토타입 개발 계속.
+- 명령 해석: 직전 SigV4 MVP를 실제 로컬 Docker 통합 검증 흐름에서도 확인할 수 있도록 smoke script를 확장하라는 명령으로 인식.
+- 작업 방식: 새 standalone script를 만들지 않고 기존 `verify-docker-integration.ps1`에 SigV4 root list/object PUT/GET 단계를 추가했다. 이렇게 하면 Docker Compose health, REST upload, multipart, frontend 확인과 같은 흐름에서 S3-style alias도 함께 검증된다.
+- 실행 내용:
+  - PowerShell SHA-256/HMAC-SHA256 helper 추가.
+  - `New-S3SigV4Headers` 추가.
+  - `Invoke-S3SigV4Smoke` 추가.
+  - Docker smoke flow에 access key 생성, SigV4 `GET /api/s3`, SigV4 object PUT/GET 추가.
+  - cleanup 단계에 `sigv4-smoke.txt` 삭제 추가.
+  - infra README와 test case 문서 갱신.
+- 구현 내용:
+  - script는 `X-OSMU-Secret-Key` 없이 AWS SigV4 `Authorization` header만으로 backend `/api/s3` alias를 호출한다.
+  - SigV4 smoke는 scoped access key의 bucket list와 object upload/download를 확인한다.
+- 수정된 파일 및 관련 파일:
+  - `scripts/verify-docker-integration.ps1`
+  - `infra/local/README.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/worklog/codex/frontend-backend-mvp/worklog-codex-frontend-backend-mvp.md`
+- 검증 기록:
+  - PowerShell parser로 `scripts/verify-docker-integration.ps1` parse 검증 통과.
+  - escalation 후 `osmu-backend`에서 `.\gradlew.bat test --tests com.example.osmu.object.S3ObjectControllerTest` 통과. `BUILD SUCCESSFUL in 7s`.
+  - `git diff --check` 통과. CRLF 변환 warning만 출력됨.
+  - 실제 Docker Compose smoke script 실행은 이번 턴에서 수행하지 않았다.
+- 코드 리뷰: smoke script는 backend API를 통해 access key를 생성하고 같은 key로 SigV4 canonical request를 만든다. 실제 Docker runtime에서 backend의 SigV4 verifier와 script signer가 함께 검증되므로 regression 탐지에 유용하다. 단, AWS SDK/mc/s3fs 같은 외부 client 자체 검증은 아직 별도다.
+- 결과: Docker integration smoke에 S3 SigV4 alias 검증 단계 추가 완료.
+- 후속 메모: Docker Desktop 실행 가능 환경에서 `.\scripts\verify-docker-integration.ps1` 실제 실행으로 E2E 확인이 필요하다.
+- 추가 개발: AWS SDK 또는 `mc --api S3v4` 기반 smoke, s3fs/goofys mount smoke, presigned URL SigV4.
+- 사용 skill/plugin: caveman skill ultra, Gradle test escalation 사용.
+
+### 2026-06-13 - SigV4 Presigned URL Auth MVP 추가
+
+- 작업 시작 시간: 2026-06-13 15:04:04 +09:00
+- 작업 종료 시간: 2026-06-13 15:12:25 +09:00
+- 사용자 명령: 현재 목표인 프로토타입 개발 계속.
+- 명령 해석: S3 client 호환성을 더 올리기 위해 header auth 다음 단계인 SigV4 query/presigned URL 인증을 S3-style alias에 추가하라는 명령으로 인식.
+- 작업 방식: 기존 `S3SignatureV4Verifier`를 확장해 `Authorization` header와 `X-Amz-*` query auth를 같은 signing key 검증 흐름으로 처리하게 했다. query auth는 S3 presigned URL의 일반 패턴에 맞춰 canonical query에서 `X-Amz-Signature`를 제외하고 `UNSIGNED-PAYLOAD`를 사용했다.
+- 실행 내용:
+  - `S3SignatureV4Verifier`에 `X-Amz-Algorithm`, `X-Amz-Credential`, `X-Amz-Date`, `X-Amz-Expires`, `X-Amz-SignedHeaders`, `X-Amz-Signature` parsing 추가.
+  - presigned canonical request 검증 추가.
+  - `JwtAuthInterceptor`가 S3 path의 SigV4 query auth를 JWT 미인증으로 차단하지 않도록 수정.
+  - presigned object GET controller test 추가.
+  - Docker integration smoke에 presigned-query object GET 추가.
+  - API/backend/product/test 문서 갱신.
+- 구현 내용:
+  - `GET /api/s3/{bucketName}/{objectKey}?X-Amz-*` 형태 presigned URL 인증을 지원한다.
+  - access key secret header 없이 query signature만으로 기존 access key scope 검증을 통과할 수 있다.
+  - MVP presigned payload hash는 `UNSIGNED-PAYLOAD`를 사용한다.
+- 수정된 파일 및 관련 파일:
+  - `osmu-backend/src/main/java/com/example/osmu/bucket/S3SignatureV4Verifier.java`
+  - `osmu-backend/src/main/java/com/example/osmu/auth/JwtAuthInterceptor.java`
+  - `osmu-backend/src/test/java/com/example/osmu/object/S3ObjectControllerTest.java`
+  - `scripts/verify-docker-integration.ps1`
+  - `infra/local/README.md`
+  - `dev-docs/PRODUCT_REQUIREMENTS.md`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/backend-design.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/worklog/codex/frontend-backend-mvp/worklog-codex-frontend-backend-mvp.md`
+- 검증 기록:
+  - escalation 후 `osmu-backend`에서 `.\gradlew.bat test --tests com.example.osmu.object.S3ObjectControllerTest.awsSigV4PresignedUrlCanGetObjectWithoutSecretHeader` 통과. `BUILD SUCCESSFUL in 7s`.
+  - escalation 후 `osmu-backend`에서 `.\gradlew.bat test --tests com.example.osmu.object.S3ObjectControllerTest` 통과. `BUILD SUCCESSFUL in 7s`.
+  - escalation 후 `osmu-backend`에서 `.\gradlew.bat test --rerun-tasks` 통과. `BUILD SUCCESSFUL in 17s`.
+  - PowerShell parser로 `scripts/verify-docker-integration.ps1` parse 검증 통과.
+  - `git diff --check` 통과. CRLF 변환 warning만 출력됨.
+- 코드 리뷰: presigned URL 검증은 auth boundary에만 추가되어 object service 흐름을 건드리지 않는다. `X-Amz-Signature`를 canonical query에서 제외하고, `X-Amz-Credential` decode를 보강해 encoded slash 처리도 안전해졌다. 단, `X-Amz-Expires`의 실제 만료 시간 enforcement와 clock skew check는 아직 없다.
+- 결과: S3-style alias SigV4 presigned URL auth MVP 구현 완료.
+- 후속 메모: AWS SDK, MinIO client, s3fs/goofys로 실제 presigned URL smoke를 돌려 canonical edge case를 더 확인해야 한다.
+- 추가 개발: presigned URL expiry enforcement, clock-skew check, chunked streaming signature, AWS SDK/mc/s3fs smoke.
+- 사용 skill/plugin: caveman skill ultra, Gradle test escalation 사용.
+
+### 2026-06-13 - SigV4 Presigned URL Expiry/Clock Skew 검증 추가
+
+- 작업 시작 시간: 2026-06-13 15:12:26 +09:00
+- 작업 종료 시간: 2026-06-13 15:17:32 +09:00
+- 사용자 명령: 현재 목표인 프로토타입 개발 계속.
+- 명령 해석: SigV4 presigned URL MVP에서 남아 있던 보안 gap인 `X-Amz-Expires` 만료 검증과 clock skew 검증을 추가하라는 명령으로 인식.
+- 작업 방식: `S3SignatureV4Verifier` 내부에 Clock 기반 검증을 추가하고, `osmu.s3.sigv4.clock-skew-seconds` 설정으로 허용 오차를 조절하게 했다. 테스트는 고정 날짜 대신 현재 시각 기반 SigV4 날짜를 생성하도록 바꿔 장기적으로 깨지지 않게 했다.
+- 실행 내용:
+  - SigV4 header auth request time skew 검증 추가.
+  - SigV4 presigned URL `X-Amz-Expires` 최대/최소값 검증 추가.
+  - SigV4 presigned URL 만료 시각 검증 추가.
+  - `OSMU_S3_SIGV4_CLOCK_SKEW_SECONDS` 설정 추가.
+  - expired presigned URL controller test 추가.
+  - API/backend/product/test 문서 갱신.
+- 구현 내용:
+  - Header-auth SigV4는 `x-amz-date`가 현재 시각 기준 허용 skew 밖이면 거부된다.
+  - Presigned URL은 `X-Amz-Date + X-Amz-Expires + skew`가 지나면 `AccessDenied`로 거부된다.
+  - `X-Amz-Expires`는 `1..604800` 초 범위만 허용한다.
+- 수정된 파일 및 관련 파일:
+  - `osmu-backend/src/main/java/com/example/osmu/bucket/S3SignatureV4Verifier.java`
+  - `osmu-backend/src/main/resources/application.yaml`
+  - `osmu-backend/src/test/java/com/example/osmu/object/S3ObjectControllerTest.java`
+  - `infra/local/docker-compose.yml`
+  - `infra/local/.env.example`
+  - `osmu-backend/.env.example`
+  - `dev-docs/PRODUCT_REQUIREMENTS.md`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/backend-design.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/worklog/codex/frontend-backend-mvp/worklog-codex-frontend-backend-mvp.md`
+- 검증 기록:
+  - escalation 후 `osmu-backend`에서 `.\gradlew.bat test --tests com.example.osmu.object.S3ObjectControllerTest` 통과. `BUILD SUCCESSFUL in 8s`.
+  - escalation 후 `osmu-backend`에서 `.\gradlew.bat test --rerun-tasks` 통과. `BUILD SUCCESSFUL in 16s`.
+  - PowerShell parser로 `scripts/verify-docker-integration.ps1` parse 검증 통과.
+  - `git diff --check` 통과. CRLF 변환 warning만 출력됨.
+- 코드 리뷰: 만료/clock skew 검증은 signature verifier 내부에 닫혀 있어 controller/service 변경 없이 보안 정책만 강화한다. 테스트는 현재 시각 기반으로 서명해 날짜 의존성을 줄였다. 단, chunked streaming signature와 실제 AWS SDK/mc/s3fs smoke는 아직 남아 있다.
+- 결과: SigV4 header/presigned URL 시간 검증 MVP 구현 완료.
+- 후속 메모: 실제 client smoke와 chunked streaming signature가 다음 호환성 gap이다.
+- 추가 개발: chunked streaming signature, real AWS SDK/mc/s3fs smoke, virtual-hosted-style endpoint 검증.
+- 사용 skill/plugin: caveman skill ultra, Gradle test escalation 사용.
+
+### 2026-06-13 - S3 ListObjects V1 XML 호환 추가
+
+- 작업 시작 시간: 2026-06-13 15:18:00 +09:00
+- 작업 종료 시간: 2026-06-13 15:23:08 +09:00
+- 사용자 명령: 현재 목표인 프로토타입 개발 계속 및 caveman ultra 모드 적용.
+- 명령 해석: S3 호환성 MVP에서 구형 S3 client/FUSE 계열이 사용할 수 있는 bucket object listing V1 API를 추가하라는 명령으로 인식.
+- 작업 방식: 기존 ListObjectsV2가 쓰는 `ObjectService.list`와 `StoredObjectPage`를 재사용하고, bucket-level query 라우팅 충돌을 피하는 별도 V1 handler와 XML renderer를 추가했다.
+- 실행 내용:
+  - `GET /api/s3/{bucketName}` ListObjects V1 XML API 추가.
+  - `prefix`, `delimiter`, `max-keys`, `marker` query 지원 추가.
+  - V1 XML 응답에 `Contents`, `CommonPrefixes`, `IsTruncated`, `NextMarker`, `ETag` 포함.
+  - Access Key 기반 V1 listing controller test 추가.
+  - API/backend/product/test 문서 갱신.
+- 구현 내용:
+  - V1 listing은 `READ` scope를 요구한다.
+  - `marker`는 기존 cursor 의미로 사용되어 marker 이후 key부터 조회한다.
+  - `?list-type=2`, `?uploads`, `?location`, `?lifecycle`, `?delete` bucket subresource와 라우팅 충돌하지 않도록 제외 조건을 둔다.
+- 수정된 파일 및 관련 파일:
+  - `osmu-backend/src/main/java/com/example/osmu/object/S3ObjectController.java`
+  - `osmu-backend/src/test/java/com/example/osmu/object/S3ObjectControllerTest.java`
+  - `dev-docs/PRODUCT_REQUIREMENTS.md`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/backend-design.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/worklog/codex/frontend-backend-mvp/worklog-codex-frontend-backend-mvp.md`
+- 검증 기록:
+  - escalation 후 `osmu-backend`에서 `.\gradlew.bat test --tests com.example.osmu.object.S3ObjectControllerTest` 통과. `BUILD SUCCESSFUL in 8s`.
+  - escalation 후 `osmu-backend`에서 `.\gradlew.bat test --rerun-tasks` 통과. `BUILD SUCCESSFUL in 18s`.
+- 코드 리뷰: V1 listing은 기존 V2 조회 경로와 같은 service를 쓰므로 권한, prefix/delimiter, pagination 동작이 일관된다. 새 라우트는 bucket subresource 제외 조건을 넣어 lifecycle/location/multipart/delete API를 침범하지 않는다. 단, AWS의 `encoding-type=url`, owner fields, exact XML field ordering parity는 아직 구현하지 않았다.
+- 결과: S3 ListObjects V1 XML 호환 MVP 구현 완료.
+- 후속 메모: 실제 AWS SDK v1/v2, MinIO client, s3fs/goofys에서 V1/V2 listing 호출이 어느 형태로 나오는지 smoke 확인 필요.
+- 추가 개발: `encoding-type=url`, owner fields, checksum fields, real client smoke, virtual-hosted-style endpoint 검증.
+- 사용 skill/plugin: caveman skill ultra, Gradle test escalation 사용.
+
+### 2026-06-13 - S3 ListObjects URL Encoding 지원 추가
+
+- 작업 시작 시간: 2026-06-13 15:24:00 +09:00
+- 작업 종료 시간: 2026-06-13 15:28:45 +09:00
+- 사용자 명령: 현재 목표인 프로토타입 개발 계속.
+- 명령 해석: 실제 S3 client가 특수문자 object key를 목록 응답에서 안전하게 처리할 수 있도록 `encoding-type=url` 호환성을 추가하라는 명령으로 인식.
+- 작업 방식: 조회 로직은 기존 `ObjectService.list`를 유지하고, XML render 단계에서만 S3-style percent encoding을 적용했다. ListObjects V1/V2가 같은 encoding helper를 쓰게 했다.
+- 실행 내용:
+  - ListObjects V1 `encoding-type=url` query 지원 추가.
+  - ListObjectsV2 `encoding-type=url` query 지원 추가.
+  - `Prefix`, `Delimiter`, `Key`, `CommonPrefixes`, `Marker`, `NextMarker`, `ContinuationToken`, `NextContinuationToken` XML 값 percent encoding 추가.
+  - `EncodingType` XML element 추가.
+  - 특수문자 key list encoding controller test 추가.
+  - API/backend/product/test 문서 갱신.
+- 구현 내용:
+  - `encoding-type`이 없으면 기존 응답 그대로 반환한다.
+  - `encoding-type=url`이면 UTF-8 byte 기준 RFC3986 unreserved 문자만 그대로 두고 나머지는 `%XX`로 인코딩한다.
+  - 지원하지 않는 `encoding-type` 값은 `VALIDATION_ERROR`로 거부한다.
+- 수정된 파일 및 관련 파일:
+  - `osmu-backend/src/main/java/com/example/osmu/object/S3ObjectController.java`
+  - `osmu-backend/src/test/java/com/example/osmu/object/S3ObjectControllerTest.java`
+  - `dev-docs/PRODUCT_REQUIREMENTS.md`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/backend-design.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/worklog/codex/frontend-backend-mvp/worklog-codex-frontend-backend-mvp.md`
+- 검증 기록:
+  - escalation 후 `osmu-backend`에서 `.\gradlew.bat test --tests com.example.osmu.object.S3ObjectControllerTest.accessKeyCanListObjectsWithUrlEncoding` 통과. `BUILD SUCCESSFUL in 7s`.
+  - escalation 후 `osmu-backend`에서 `.\gradlew.bat test --tests com.example.osmu.object.S3ObjectControllerTest` 통과. `BUILD SUCCESSFUL in 7s`.
+  - escalation 후 `osmu-backend`에서 `.\gradlew.bat test --rerun-tasks` 통과. `BUILD SUCCESSFUL in 18s`.
+- 코드 리뷰: encoding은 XML 출력에만 적용되어 검색/prefix/cursor 동작을 바꾸지 않는다. V1/V2가 같은 helper를 써서 특수문자 key 응답이 일관된다. 단, owner/checksum fields와 AWS XML exact ordering parity는 아직 남아 있다.
+- 결과: S3 ListObjects URL encoding MVP 구현 완료.
+- 후속 메모: 실제 AWS SDK, MinIO client, s3fs/goofys가 encoding response를 정상 decode하는지 Docker/실환경 smoke로 확인해야 한다.
+- 추가 개발: owner fields, checksum fields, real client smoke, virtual-hosted-style endpoint 검증.
+- 사용 skill/plugin: caveman skill ultra, Gradle test escalation 사용.
+
+### 2026-06-13 - S3 ListObjects Owner Field 지원 추가
+
+- 작업 시작 시간: 2026-06-13 15:29:00 +09:00
+- 작업 종료 시간: 2026-06-13 15:32:55 +09:00
+- 사용자 명령: 현재 목표인 프로토타입 개발 계속.
+- 명령 해석: 실제 S3 client 호환성을 높이기 위해 ListObjects V1/V2의 `fetch-owner` owner field gap을 줄이라는 명령으로 인식.
+- 작업 방식: object 조회/metadata 모델은 변경하지 않고, ListObjects XML render 단계에서 요청 사용자의 OSMU id/loginId를 S3 `Owner` XML로 출력하게 했다.
+- 실행 내용:
+  - ListObjects V1 `fetch-owner=true|false` query 지원 추가.
+  - ListObjectsV2 `fetch-owner=true|false` query 지원 추가.
+  - `fetch-owner=true`일 때 `Contents/Owner/ID`, `Contents/Owner/DisplayName` 출력 추가.
+  - owner field controller test 추가.
+  - API/backend/product/test 문서 갱신.
+- 구현 내용:
+  - 기본 listing은 기존처럼 `Owner`를 생략한다.
+  - `fetch-owner=true`일 때만 object별 owner를 포함한다.
+  - owner 값은 현재 인증된 OSMU user의 `id`와 `loginId`를 사용한다.
+  - 잘못된 `fetch-owner` 값은 `VALIDATION_ERROR`로 거부한다.
+- 수정된 파일 및 관련 파일:
+  - `osmu-backend/src/main/java/com/example/osmu/object/S3ObjectController.java`
+  - `osmu-backend/src/test/java/com/example/osmu/object/S3ObjectControllerTest.java`
+  - `dev-docs/PRODUCT_REQUIREMENTS.md`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/backend-design.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/worklog/codex/frontend-backend-mvp/worklog-codex-frontend-backend-mvp.md`
+- 검증 기록:
+  - escalation 후 `osmu-backend`에서 `.\gradlew.bat test --tests com.example.osmu.object.S3ObjectControllerTest.accessKeyCanListObjectsWithOwnerWhenRequested` 통과. `BUILD SUCCESSFUL in 7s`.
+  - escalation 후 `osmu-backend`에서 `.\gradlew.bat test --tests com.example.osmu.object.S3ObjectControllerTest` 통과. `BUILD SUCCESSFUL in 8s`.
+  - escalation 후 `osmu-backend`에서 `.\gradlew.bat test --rerun-tasks` 통과. `BUILD SUCCESSFUL in 17s`.
+- 코드 리뷰: Owner field는 XML 출력 계층에 한정되어 기존 object service와 repository 계약을 흔들지 않는다. Access Key 인증도 기존 current user를 쓰므로 scope 검증 흐름과 일관된다. 단, object별 실제 uploader/owner를 따로 저장하지 않기 때문에 현재는 인증 사용자 기준 owner 표시인 MVP 수준이다.
+- 결과: S3 ListObjects owner field MVP 구현 완료.
+- 후속 메모: 실제 AWS SDK/MinIO client가 `fetch-owner` 응답을 정상 파싱하는지 smoke 검증이 필요하다.
+- 추가 개발: checksum fields, real client smoke, virtual-hosted-style endpoint 검증, object별 uploader owner metadata.
+- 사용 skill/plugin: caveman skill ultra, Gradle test escalation 사용.
+
+### 2026-06-13 - S3 ListObjects max-keys 1000 호환 수정
+
+- 작업 시작 시간: 2026-06-13 15:33:00 +09:00
+- 작업 종료 시간: 2026-06-13 15:36:38 +09:00
+- 사용자 명령: 현재 목표인 프로토타입 개발 계속.
+- 명령 해석: 실제 S3 client가 기본적으로 사용하는 `max-keys=1000` 요청을 OSMU S3-style API가 거부하지 않도록 S3 호환 한도를 맞추라는 명령으로 인식.
+- 작업 방식: S3 controller의 `max-keys` 검증만 올리면 내부 `ObjectService` limit 검증에서 막히므로, object list 공통 limit도 1000으로 함께 조정했다. frontend Object Explorer page size 선택지도 backend 한도와 맞췄다.
+- 실행 내용:
+  - `S3ObjectController` ListObjects V1/V2 `max-keys` 허용 범위를 `1..1000`으로 변경.
+  - `ObjectService` object list `limit` 허용 범위를 `1..1000`으로 변경.
+  - Object Explorer page size 선택지 `999`를 `1000`으로 변경.
+  - `max-keys=1000` 성공 및 `1001` 거부 controller test 추가.
+  - API/test 문서 갱신.
+- 구현 내용:
+  - S3 ListObjects V1/V2는 `max-keys=1000` 요청에 `200 OK`와 `<MaxKeys>1000</MaxKeys>`를 반환한다.
+  - `max-keys=1001`은 S3 XML `InvalidRequest`로 거부된다.
+  - REST object list도 최대 `limit=1000`까지 허용한다.
+- 수정된 파일 및 관련 파일:
+  - `osmu-backend/src/main/java/com/example/osmu/object/ObjectService.java`
+  - `osmu-backend/src/main/java/com/example/osmu/object/S3ObjectController.java`
+  - `osmu-backend/src/test/java/com/example/osmu/object/S3ObjectControllerTest.java`
+  - `osmu-frontend/src/views/HomeView.vue`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/worklog/codex/frontend-backend-mvp/worklog-codex-frontend-backend-mvp.md`
+- 검증 기록:
+  - escalation 후 `osmu-backend`에서 `.\gradlew.bat test --tests com.example.osmu.object.S3ObjectControllerTest.accessKeyCanUseAwsMaxKeysLimit` 통과. `BUILD SUCCESSFUL in 7s`.
+  - escalation 후 `osmu-backend`에서 `.\gradlew.bat test --tests com.example.osmu.object.S3ObjectControllerTest` 통과. `BUILD SUCCESSFUL in 7s`.
+  - `osmu-frontend`에서 `npm run build`는 PowerShell execution policy 때문에 `npm.ps1` 로드가 막혀 실패.
+  - `osmu-frontend`에서 `npm.cmd run build` 통과. Vite build 성공.
+  - escalation 후 `osmu-backend`에서 `.\gradlew.bat test --rerun-tasks` 통과. `BUILD SUCCESSFUL in 17s`.
+- 코드 리뷰: S3와 REST list 한도를 같은 1000으로 맞춰 controller/service 간 불일치가 사라졌다. repository pagination은 내부적으로 `limit + 1` 후보를 조회하므로 1000개 응답과 next cursor 탐지가 가능하다. 단, 대량 object 환경에서 `limit=1000` UI 렌더링 성능은 실제 데이터로 추가 검증이 필요하다.
+- 결과: S3 `max-keys=1000` 호환 gap 수정 완료.
+- 후속 메모: 실제 AWS SDK/MinIO client 기본 list 요청이 `max-keys=1000`으로 들어오는 smoke를 Docker 환경에서 확인해야 한다.
+- 추가 개발: checksum fields, real client smoke, virtual-hosted-style endpoint 검증.
+- 사용 skill/plugin: caveman skill ultra, Gradle test escalation 사용.
+
+### 2026-06-13 - S3 Content-MD5 업로드 무결성 검증 추가
+
+- 작업 시작 시간: 2026-06-13 15:38:00 +09:00
+- 작업 종료 시간: 2026-06-13 15:44:29 +09:00
+- 사용자 명령: 현재 목표인 프로토타입 개발 계속.
+- 명령 해석: S3 호환 object upload에서 client가 보내는 `Content-MD5`를 검증해 업로드 무결성과 실제 S3 client 호환성을 높이라는 명령으로 인식.
+- 작업 방식: controller에서 request body를 모두 메모리에 올리지 않고 stream read 중 MD5를 계산한다. `Content-Length`만큼 body가 읽힌 순간 digest를 검증해 mismatch upload가 성공 경로로 넘어가지 않게 했다.
+- 실행 내용:
+  - S3 object `PUT` optional `Content-MD5` 검증 추가.
+  - invalid base64/길이 digest는 S3 XML `InvalidDigest`로 반환.
+  - body mismatch digest는 S3 XML `BadDigest`로 반환.
+  - MinIO adapter가 stream 내부 `ApiException`을 `STORAGE_ERROR`로 감싸지 않도록 unwrap 보강.
+  - Content-MD5 성공/실패/미저장 controller test 추가.
+  - API/backend/product/test 문서 갱신.
+- 구현 내용:
+  - `ContentMd5ValidatingInputStream`이 upload stream read 중 MD5를 계산한다.
+  - 검증 실패는 `ApiErrorCode.INVALID_DIGEST` 또는 `ApiErrorCode.BAD_DIGEST`로 구분한다.
+  - `GlobalExceptionHandler`는 `/api/s3/**`에서 해당 code를 `InvalidDigest`, `BadDigest` XML error로 매핑한다.
+  - mismatch upload는 object metadata/storage 성공 흐름으로 넘어가지 않아 이후 GET이 `NoSuchKey`가 된다.
+- 수정된 파일 및 관련 파일:
+  - `osmu-backend/src/main/java/com/example/osmu/common/error/ApiErrorCode.java`
+  - `osmu-backend/src/main/java/com/example/osmu/common/error/GlobalExceptionHandler.java`
+  - `osmu-backend/src/main/java/com/example/osmu/object/S3ObjectController.java`
+  - `osmu-backend/src/main/java/com/example/osmu/storage/minio/MinioObjectStorageAdapter.java`
+  - `osmu-backend/src/test/java/com/example/osmu/object/S3ObjectControllerTest.java`
+  - `dev-docs/PRODUCT_REQUIREMENTS.md`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/backend-design.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/worklog/codex/frontend-backend-mvp/worklog-codex-frontend-backend-mvp.md`
+- 검증 기록:
+  - escalation 후 `osmu-backend`에서 `.\gradlew.bat test --tests com.example.osmu.object.S3ObjectControllerTest.accessKeyCanUploadWithContentMd5AndRejectMismatch` 통과. `BUILD SUCCESSFUL in 8s`.
+  - escalation 후 `osmu-backend`에서 `.\gradlew.bat test --tests com.example.osmu.object.S3ObjectControllerTest` 통과. `BUILD SUCCESSFUL in 7s`.
+  - escalation 후 `osmu-backend`에서 `.\gradlew.bat test --rerun-tasks` 통과. `BUILD SUCCESSFUL in 16s`.
+- 코드 리뷰: 검증을 controller stream layer에 둬 storage adapter 계약을 크게 바꾸지 않았다. MinIO adapter unwrap은 S3 API에서 발생한 validation exception을 보존해 AWS-style XML error가 정확히 나가게 한다. 단, multipart upload part의 checksum header와 S3 checksum algorithm headers는 아직 남아 있다.
+- 결과: S3 single PUT `Content-MD5` 무결성 검증 MVP 구현 완료.
+- 후속 메모: 실제 AWS SDK/MinIO client가 `Content-MD5`를 보내는 upload smoke를 Docker 환경에서 확인해야 한다.
+- 추가 개발: multipart part checksum, `x-amz-checksum-*` headers, real client smoke, virtual-hosted-style endpoint 검증.
+- 사용 skill/plugin: caveman skill ultra, Gradle test escalation 사용.
+
+### 2026-06-13 - S3 Multipart Part Content-MD5 검증 추가
+
+- 작업 시작 시간: 2026-06-13 15:45:00 +09:00
+- 작업 종료 시간: 2026-06-13 15:48:58 +09:00
+- 사용자 명령: 현재 목표인 프로토타입 개발 계속.
+- 명령 해석: single PUT에 추가한 `Content-MD5` 검증을 대용량 multipart upload part에도 적용해 무결성 gap을 줄이라는 명령으로 인식.
+- 작업 방식: 새 checksum 모델을 만들지 않고 기존 `ContentMd5ValidatingInputStream`을 multipart part upload controller에서도 재사용했다. Mock unit test에서는 service mock이 stream을 실제로 읽게 만들어 digest 검증 경로를 확인했다.
+- 실행 내용:
+  - `PUT /api/s3/{bucketName}/{objectKey}?partNumber=&uploadId=` optional `Content-MD5` 검증 추가.
+  - multipart part upload mismatch digest는 `BAD_DIGEST`, invalid digest는 `INVALID_DIGEST`로 구분.
+  - multipart part Content-MD5 controller test 추가.
+  - API/backend/product/test 문서 갱신.
+- 구현 내용:
+  - multipart part body도 stream read 중 MD5를 계산한다.
+  - 정상 digest는 part upload 성공과 part ETag 반환으로 이어진다.
+  - mismatch digest는 `BadDigest`, invalid base64/길이는 `InvalidDigest` S3 XML error로 변환될 수 있다.
+- 수정된 파일 및 관련 파일:
+  - `osmu-backend/src/main/java/com/example/osmu/object/S3ObjectController.java`
+  - `osmu-backend/src/test/java/com/example/osmu/object/S3ObjectControllerMultipartTest.java`
+  - `dev-docs/PRODUCT_REQUIREMENTS.md`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/backend-design.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/worklog/codex/frontend-backend-mvp/worklog-codex-frontend-backend-mvp.md`
+- 검증 기록:
+  - escalation 후 `osmu-backend`에서 `.\gradlew.bat test --tests com.example.osmu.object.S3ObjectControllerMultipartTest.uploadMultipartPartValidatesContentMd5` 통과. `BUILD SUCCESSFUL in 4s`.
+  - escalation 후 `osmu-backend`에서 `.\gradlew.bat test --tests com.example.osmu.object.S3ObjectControllerMultipartTest` 통과. `BUILD SUCCESSFUL in 3s`.
+  - escalation 후 `osmu-backend`에서 `.\gradlew.bat test --tests com.example.osmu.object.S3ObjectControllerTest --tests com.example.osmu.object.S3ObjectControllerMultipartTest` 통과. `BUILD SUCCESSFUL in 8s`.
+  - escalation 후 `osmu-backend`에서 `.\gradlew.bat test --rerun-tasks` 통과. `BUILD SUCCESSFUL in 17s`.
+- 코드 리뷰: single PUT과 multipart part upload가 같은 validating stream을 공유하므로 checksum 처리 정책이 일관된다. Controller adapter 계층에 닫혀 있어 `ObjectService` multipart 계약 변경이 없다. 단, S3의 newer checksum headers(`x-amz-checksum-sha256` 등)와 multipart complete checksum aggregation은 아직 미구현이다.
+- 결과: S3 multipart part `Content-MD5` 검증 MVP 구현 완료.
+- 후속 메모: 실제 MinIO/AWS SDK multipart upload에서 `Content-MD5` header가 있을 때 흐름을 Docker smoke로 확인해야 한다.
+- 추가 개발: `x-amz-checksum-*` headers, multipart checksum aggregation, real client smoke, virtual-hosted-style endpoint 검증.
+- 사용 skill/plugin: caveman skill ultra, Gradle test escalation 사용.
+
+### 2026-06-13 - Real S3 Client Smoke Script 추가
+
+- 작업 시작 시간: 2026-06-13 15:50:00 +09:00
+- 작업 종료 시간: 2026-06-13 15:56:00 +09:00
+- 사용자 명령: 현재 목표인 프로토타입 개발 계속.
+- 명령 해석: S3 호환 API가 내부 mock/test뿐 아니라 실제 S3 client인 AWS CLI 또는 MinIO Client로도 검증될 수 있도록 smoke script와 문서/testcase를 추가하라는 명령으로 인식.
+- 작업 방식: backend 코드는 변경하지 않고 local stack이 떠 있는 상태에서 실행 가능한 독립 PowerShell smoke script를 추가했다. REST API로 admin login, bucket 생성, access key 생성을 준비한 뒤 실제 S3 client가 SigV4로 `/api/s3` endpoint를 호출하도록 구성했다.
+- 실행 내용:
+  - AWS CLI(`aws`)와 MinIO Client(`mc`)를 자동 감지하는 real S3 client smoke script 추가.
+  - script parser check를 `verify-local.ps1`에 추가해 새 PowerShell script 문법을 기본 검증에 포함.
+  - local infra README와 local dev env 문서에 실행법 추가.
+  - real client smoke test case `TC-S3-AUTH-003` 추가.
+- 구현 내용:
+  - `scripts/verify-s3-client-smoke.ps1`는 admin login, smoke bucket 생성, scoped access key 생성 후 `aws s3api` 또는 `mc`로 bucket list, object upload, head/stat, list, download/cat, delete, cleanup을 수행한다.
+  - `-Client auto|aws|mc|all`, `-RequireClient`, `-KeepBucket` 옵션을 지원한다.
+  - client가 없고 `-RequireClient`가 없으면 warning 후 skip한다.
+- 수정된 파일 및 관련 파일:
+  - `scripts/verify-s3-client-smoke.ps1`
+  - `scripts/verify-local.ps1`
+  - `infra/local/README.md`
+  - `dev-docs/local-dev-env.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/worklog/codex/frontend-backend-mvp/worklog-codex-frontend-backend-mvp.md`
+- 검증 기록:
+  - `[scriptblock]::Create((Get-Content -Raw -LiteralPath .\scripts\verify-s3-client-smoke.ps1)) | Out-Null` 통과.
+  - `[scriptblock]::Create((Get-Content -Raw -LiteralPath .\scripts\verify-local.ps1)) | Out-Null` 통과.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-local.ps1 -SkipDocker -SkipBackend -SkipFrontend` 통과.
+  - `Get-Command aws,mc -ErrorAction SilentlyContinue` 결과, 현재 환경에는 `aws`/`mc`가 없어 실제 client smoke 실행은 하지 못했다.
+- 코드 리뷰: script는 OSMU REST API로 테스트 데이터와 access key를 준비하고 실제 client에게는 S3 SigV4 인증만 맡기므로 현재 목표인 S3 호환성 검증과 잘 맞는다. 다만 Docker stack, `aws`/`mc` 설치 환경에서 실제 endpoint 호환은 별도 실행이 필요하다.
+- 결과: Real S3 client smoke 실행 기반 준비 완료.
+- 후속 메모: Docker Desktop 실행 후 `aws` 또는 `mc`를 설치한 환경에서 `.\scripts\verify-s3-client-smoke.ps1 -Client all -RequireClient`를 실행해야 한다.
+- 추가 개발: virtual-hosted-style endpoint 검증, AWS SDK 기반 smoke, `x-amz-checksum-*` headers, multipart checksum aggregation.
+- 사용 skill/plugin: caveman skill ultra.
+
+### 2026-06-13 - S3 x-amz-checksum Header 검증 추가
+
+- 작업 시작 시간: 2026-06-13 15:57:00 +09:00
+- 작업 종료 시간: 2026-06-13 16:03:00 +09:00
+- 사용자 명령: 현재 목표인 프로토타입 개발 계속.
+- 명령 해석: 실제 S3 SDK/client 호환성을 높이기 위해 `Content-MD5` 이후 남은 checksum header gap을 줄이라는 명령으로 인식.
+- 작업 방식: 기존 `Content-MD5` stream 검증 코드를 범용 S3 checksum validator로 확장했다. object upload와 multipart part upload가 같은 검증 stream을 쓰게 해서 checksum 정책을 일관시켰다.
+- 실행 내용:
+  - S3 single `PUT`에서 `x-amz-checksum-sha256`, `x-amz-checksum-sha1`, `x-amz-checksum-crc32`, `x-amz-checksum-crc32c` 중 하나를 검증하도록 추가.
+  - S3 multipart part `PUT`에도 같은 `x-amz-checksum-*` value header 검증 추가.
+  - invalid base64/길이 또는 여러 checksum header는 `InvalidDigest`, body mismatch는 `BadDigest`로 반환.
+  - single PUT과 multipart part checksum 테스트 추가.
+  - API/backend/PRD/testcase 문서 갱신.
+- 구현 내용:
+  - `S3ChecksumValidatingInputStream`이 body read 중 MD5와 선택 checksum을 같이 계산한다.
+  - SHA-256/SHA-1은 `MessageDigest`, CRC32/CRC32C는 JDK `Checksum` 구현을 사용한다.
+  - CRC checksum은 S3 header 형식에 맞춰 4-byte big-endian base64로 비교한다.
+- 수정된 파일 및 관련 파일:
+  - `osmu-backend/src/main/java/com/example/osmu/object/S3ObjectController.java`
+  - `osmu-backend/src/test/java/com/example/osmu/object/S3ObjectControllerTest.java`
+  - `osmu-backend/src/test/java/com/example/osmu/object/S3ObjectControllerMultipartTest.java`
+  - `dev-docs/PRODUCT_REQUIREMENTS.md`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/backend-design.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/worklog/codex/frontend-backend-mvp/worklog-codex-frontend-backend-mvp.md`
+- 검증 기록:
+  - escalation 후 `osmu-backend`에서 `.\gradlew.bat test --tests com.example.osmu.object.S3ObjectControllerTest.accessKeyCanUploadWithAwsChecksumHeadersAndRejectMismatch --tests com.example.osmu.object.S3ObjectControllerMultipartTest.uploadMultipartPartValidatesAwsChecksumHeaders` 통과. `BUILD SUCCESSFUL in 8s`.
+  - escalation 후 `osmu-backend`에서 `.\gradlew.bat test --tests com.example.osmu.object.S3ObjectControllerTest --tests com.example.osmu.object.S3ObjectControllerMultipartTest` 통과. `BUILD SUCCESSFUL in 8s`.
+  - escalation 후 `osmu-backend`에서 `.\gradlew.bat test --rerun-tasks` 통과. `BUILD SUCCESSFUL in 18s`.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-local.ps1 -SkipDocker -SkipBackend -SkipFrontend` 통과.
+- 코드 리뷰: checksum 검증은 controller stream adapter 계층에 닫혀 있어 `ObjectService`와 storage adapter 계약을 흔들지 않는다. `Content-MD5`와 `x-amz-checksum-*`를 같은 stream에서 처리하므로 body를 중복 buffering하지 않는다. 단, checksum trailer, stored checksum metadata, multipart complete checksum aggregation은 아직 남아 있다.
+- 결과: S3 `x-amz-checksum-*` value header 검증 MVP 구현 완료.
+- 후속 메모: 실제 AWS SDK/CLI가 checksum header 또는 trailer를 어떤 방식으로 보내는지 Docker smoke에서 확인해야 한다.
+- 추가 개발: checksum trailer, stored checksum metadata, multipart checksum aggregation, virtual-hosted-style endpoint 검증, AWS SDK smoke.
+- 사용 skill/plugin: caveman skill ultra, Gradle test escalation 사용.
+
+### 2026-06-13 - S3 Virtual-Hosted-Style Routing MVP 추가
+
+- 작업 시작 시간: 2026-06-13 16:04:00 +09:00
+- 작업 종료 시간: 2026-06-13 16:13:00 +09:00
+- 사용자 명령: 현재 목표인 프로토타입 개발 계속.
+- 명령 해석: 실제 S3 client/FUSE/SDK 호환성을 높이기 위해 path-style만 지원하던 `/api/s3/{bucket}/{key}` 외에 `Host: {bucket}.domain` 기반 virtual-hosted-style routing을 추가하라는 명령으로 인식.
+- 작업 방식: 기존 S3 bucket/object controller를 새로 복제하지 않고, servlet filter에서 `{bucket}` host prefix를 추출해 내부 request URI를 path-style controller가 이해하는 형태로 감싸 전달했다. SigV4는 client가 서명한 원래 virtual-hosted-style URI를 검증해야 하므로 original URI를 request attribute로 보존했다.
+- 실행 내용:
+  - `VirtualHostedStyleS3RequestFilter` 추가.
+  - `Host: {bucket}.localhost` + `/api/s3/{objectKey}` 요청을 내부적으로 `/api/s3/{bucket}/{objectKey}`로 routing.
+  - `GET /api/s3` with bucket host는 bucket list object API로 routing.
+  - `S3SignatureV4Verifier`가 virtual-hosted-style 요청의 canonical URI 계산 시 original URI를 사용하도록 수정.
+  - `OSMU_S3_VIRTUAL_HOSTED_STYLE_ENABLED`, `OSMU_S3_VIRTUAL_HOSTED_STYLE_DOMAIN_SUFFIXES` 설정 추가.
+  - Access Key header auth와 AWS SigV4 header auth virtual-hosted-style test 추가.
+  - API/backend/PRD/testcase/local infra 문서 갱신.
+- 구현 내용:
+  - 기본 suffix는 `localhost`이며 `s3-vhost-bucket.localhost` 같은 host에서 bucket을 추출한다.
+  - production suffix는 `storage.example.com`처럼 설정할 수 있고 `{bucket}.storage.example.com` host를 bucket route로 처리한다.
+  - 처음에는 `RequestDispatcher.forward` 방식으로 구현했으나 MockMvc가 실제 redispatch를 수행하지 않아 ETag header 검증이 실패했다. 이후 `HttpServletRequestWrapper` 방식으로 바꿔 runtime routing과 테스트를 모두 통과시켰다.
+- 수정된 파일 및 관련 파일:
+  - `osmu-backend/src/main/java/com/example/osmu/bucket/VirtualHostedStyleS3RequestFilter.java`
+  - `osmu-backend/src/main/java/com/example/osmu/bucket/S3SignatureV4Verifier.java`
+  - `osmu-backend/src/test/java/com/example/osmu/object/S3ObjectControllerTest.java`
+  - `osmu-backend/src/main/resources/application.yaml`
+  - `osmu-backend/.env.example`
+  - `infra/local/.env.example`
+  - `infra/local/docker-compose.yml`
+  - `infra/local/README.md`
+  - `dev-docs/PRODUCT_REQUIREMENTS.md`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/backend-design.md`
+  - `dev-docs/local-dev-env.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/worklog/codex/frontend-backend-mvp/worklog-codex-frontend-backend-mvp.md`
+- 검증 기록:
+  - 첫 실행: `.\gradlew.bat test --tests com.example.osmu.object.S3ObjectControllerTest.accessKeyCanUseVirtualHostedStyleObjectPath --tests com.example.osmu.object.S3ObjectControllerTest.awsSigV4AuthorizationCanUseVirtualHostedStyleObjectPath` 실패. 원인: filter forward가 MockMvc에서 controller redispatch까지 가지 않아 ETag header가 없었다.
+  - 수정 후 같은 선택 테스트 통과. `BUILD SUCCESSFUL in 6s`.
+  - escalation 후 `osmu-backend`에서 `.\gradlew.bat test --tests com.example.osmu.object.S3ObjectControllerTest --tests com.example.osmu.object.S3ObjectControllerMultipartTest` 통과. `BUILD SUCCESSFUL in 8s`.
+  - escalation 후 `osmu-backend`에서 `.\gradlew.bat test --rerun-tasks` 통과. `BUILD SUCCESSFUL in 17s`.
+  - `docker compose --env-file .\infra\local\.env.example -f .\infra\local\docker-compose.yml config --quiet` 통과. Docker config read warning(`C:\Users\kjs99\.docker\config.json: Access is denied`)은 있었지만 exit code는 0.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-local.ps1 -SkipDocker -SkipBackend -SkipFrontend` 통과.
+- 코드 리뷰: virtual-hosted-style은 filter adapter에 닫혀 기존 path-style controller/service 로직을 재사용한다. SigV4 canonical URI만 original path를 보존해 검증 경로와 실제 dispatch 경로가 분리된다. 단, DNS/proxy 자동 구성, wildcard TLS, real AWS SDK/mc/s3fs virtual-hosted smoke는 아직 남아 있다.
+- 결과: S3 virtual-hosted-style routing MVP 구현 완료.
+- 후속 메모: 실제 환경에서는 `{bucket}.{domain}` DNS/proxy 설정이 필요하다. local test는 Host header 기반으로 검증했다.
+- 추가 개발: real AWS SDK/mc/s3fs virtual-hosted smoke, wildcard domain/TLS guide, checksum trailer, multipart checksum aggregation.
+- 사용 skill/plugin: caveman skill ultra, Gradle test escalation 사용.
+
+### 2026-06-13 - SigV4 Payload Hash 검증 추가
+
+- 작업 시작 시간: 2026-06-13 16:14:00 +09:00
+- 작업 종료 시간: 2026-06-13 16:19:00 +09:00
+- 사용자 명령: 현재 목표인 프로토타입 개발 계속.
+- 명령 해석: SigV4 인증에서 `x-amz-content-sha256`를 canonical request 서명에만 사용하고 실제 request body와 비교하지 않는 gap을 줄이라는 명령으로 인식.
+- 작업 방식: 기존 `S3ChecksumValidatingInputStream`에 payload hash validator를 추가해 object upload와 multipart part upload가 body를 읽는 동안 SHA-256을 계산하고 signed payload hash와 비교하게 했다.
+- 실행 내용:
+  - S3 single object `PUT`에서 non-streaming `x-amz-content-sha256` hex hash를 실제 body와 비교.
+  - S3 multipart part `PUT`에도 같은 payload hash 검증 적용.
+  - `UNSIGNED-PAYLOAD`는 MVP 호환을 위해 skip.
+  - `STREAMING-*` payload signature는 aws-chunked streaming 미구현 상태라 `InvalidRequest`로 명확히 거부.
+  - SigV4 payload mismatch와 multipart payload hash unit test 추가.
+  - API/backend/PRD/testcase 문서 갱신.
+- 구현 내용:
+  - `payloadHashValidator`가 `x-amz-content-sha256` header를 해석한다.
+  - 64 hex SHA-256 값이면 `BodyChecksumValidator`로 stream read 중 검증한다.
+  - mismatch는 `BAD_DIGEST`, invalid hex/length는 `INVALID_DIGEST`, streaming payload marker는 `VALIDATION_ERROR`로 처리한다.
+- 수정된 파일 및 관련 파일:
+  - `osmu-backend/src/main/java/com/example/osmu/object/S3ObjectController.java`
+  - `osmu-backend/src/test/java/com/example/osmu/object/S3ObjectControllerTest.java`
+  - `osmu-backend/src/test/java/com/example/osmu/object/S3ObjectControllerMultipartTest.java`
+  - `dev-docs/PRODUCT_REQUIREMENTS.md`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/backend-design.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/worklog/codex/frontend-backend-mvp/worklog-codex-frontend-backend-mvp.md`
+- 검증 기록:
+  - escalation 후 `osmu-backend`에서 `.\gradlew.bat test --tests com.example.osmu.object.S3ObjectControllerTest.awsSigV4AuthorizationRejectsMismatchedPayloadHash --tests com.example.osmu.object.S3ObjectControllerMultipartTest.uploadMultipartPartValidatesPayloadHashHeader` 통과. `BUILD SUCCESSFUL in 8s`.
+  - escalation 후 `osmu-backend`에서 `.\gradlew.bat test --tests com.example.osmu.object.S3ObjectControllerTest --tests com.example.osmu.object.S3ObjectControllerMultipartTest` 통과. `BUILD SUCCESSFUL in 8s`.
+  - escalation 후 `osmu-backend`에서 `.\gradlew.bat test --rerun-tasks` 통과. `BUILD SUCCESSFUL in 17s`.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-local.ps1 -SkipDocker -SkipBackend -SkipFrontend` 통과.
+- 코드 리뷰: payload hash 검증은 기존 checksum stream에 통합되어 body buffering을 추가하지 않는다. SigV4 서명 검증과 body digest 검증이 분리되어 있어 signature canonical request 책임과 upload integrity 책임이 명확하다. 단, aws-chunked streaming signature와 trailer checksum은 아직 미구현이다.
+- 결과: Non-streaming SigV4 upload payload hash 검증 MVP 구현 완료.
+- 후속 메모: 실제 AWS SDK/CLI가 `STREAMING-AWS4-HMAC-SHA256-PAYLOAD`를 보내는 경우 현재는 명확히 실패한다. aws-chunked parser/signature chain 지원은 별도 큰 작업으로 남는다.
+- 추가 개발: aws-chunked streaming signature, checksum trailer, multipart checksum aggregation, real AWS SDK/mc/s3fs smoke.
+- 사용 skill/plugin: caveman skill ultra, Gradle test escalation 사용.
+
+### 2026-06-13 - S3 Root HEAD Service Probe 추가
+
+- 작업 시작 시간: 2026-06-13 16:20:00 +09:00
+- 작업 종료 시간: 2026-06-13 16:23:00 +09:00
+- 사용자 명령: 현재 목표인 프로토타입 개발 계속.
+- 명령 해석: S3 client가 endpoint/service probe 용도로 root path에 HEAD를 보낼 수 있으므로 `GET /api/s3` ListBuckets 외에 명시적 `HEAD /api/s3`를 고정하라는 명령으로 인식.
+- 작업 방식: `S3RootController`에 명시적 HEAD handler를 추가하고 기존 root bucket-list auth를 재사용했다. 응답은 body 없이 `200 OK`만 반환하게 했다.
+- 실행 내용:
+  - `HEAD /api/s3` service probe endpoint 추가.
+  - Access Key header auth root HEAD 테스트 추가.
+  - AWS SigV4 header auth root HEAD 테스트 추가.
+  - API/backend/PRD/testcase 문서 갱신.
+- 구현 내용:
+  - `S3RootController.headService`는 `s3RequestAuthService.bucketListAccess`로 JWT/Access Key/SigV4 인증을 통과시킨다.
+  - 성공 시 `S3_SERVICE_HEAD` audit log를 기록하고 빈 `200 OK`를 반환한다.
+- 수정된 파일 및 관련 파일:
+  - `osmu-backend/src/main/java/com/example/osmu/bucket/S3RootController.java`
+  - `osmu-backend/src/test/java/com/example/osmu/object/S3ObjectControllerTest.java`
+  - `dev-docs/PRODUCT_REQUIREMENTS.md`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/backend-design.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/worklog/codex/frontend-backend-mvp/worklog-codex-frontend-backend-mvp.md`
+- 검증 기록:
+  - escalation 후 `osmu-backend`에서 `.\gradlew.bat test --tests com.example.osmu.object.S3ObjectControllerTest.accessKeyCanHeadS3RootService --tests com.example.osmu.object.S3ObjectControllerTest.awsSigV4AuthorizationCanHeadS3RootService` 통과. `BUILD SUCCESSFUL in 7s`.
+  - escalation 후 `osmu-backend`에서 `.\gradlew.bat test --tests com.example.osmu.object.S3ObjectControllerTest --tests com.example.osmu.object.S3ObjectControllerMultipartTest` 통과. `BUILD SUCCESSFUL in 8s`.
+  - escalation 후 `osmu-backend`에서 `.\gradlew.bat test --rerun-tasks` 통과. `BUILD SUCCESSFUL in 17s`.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-local.ps1 -SkipDocker -SkipBackend -SkipFrontend` 통과.
+- 코드 리뷰: root HEAD는 기존 bucket list auth boundary를 그대로 재사용해 별도 권한 모델을 만들지 않았다. 명시적 handler라 Spring의 implicit HEAD 처리에 의존하지 않는다. 단, 실제 AWS S3의 service-level HEAD parity는 공식 operation이라기보다 client probe 호환 목적의 MVP 확장이다.
+- 결과: S3 root service HEAD probe MVP 구현 완료.
+- 후속 메모: 실제 AWS CLI/mc/s3fs가 endpoint probe에서 어떤 method를 쓰는지 smoke에서 확인해야 한다.
+- 추가 개발: real AWS CLI/mc/s3fs smoke, aws-chunked streaming signature, checksum trailer.
+- 사용 skill/plugin: caveman skill ultra, Gradle test escalation 사용.
+
+### 2026-06-13 - S3 Client Smoke Script SigV4 Probe 강화
+
+- 작업 시작 시간: 2026-06-13 16:24:00 +09:00
+- 작업 종료 시간: 2026-06-13 16:26:00 +09:00
+- 사용자 명령: 현재 목표인 프로토타입 개발 계속.
+- 명령 해석: 실제 client smoke 전에 OSMU S3 endpoint의 핵심 SigV4 호환 동작을 script 수준에서 더 넓게 검증하라는 명령으로 인식.
+- 작업 방식: `verify-s3-client-smoke.ps1`에 외부 `aws`/`mc`가 없어도 실행 가능한 built-in SigV4 probe를 추가했다. 기존 real client smoke는 유지하고, 그 전에 root HEAD, root list, object PUT/GET, payload hash mismatch, virtual-hosted-style 경로를 PowerShell HttpClient로 직접 서명해 검증하게 했다.
+- 실행 내용:
+  - `Get-Sha256Hex`, `Get-HmacSha256`, `New-S3SigV4Headers`, `Invoke-SignedHttp` helper 추가.
+  - built-in `Invoke-ManualSigV4Smoke` 추가.
+  - `HEAD /api/s3`, `GET /api/s3`, object `PUT/GET`, mismatched `x-amz-content-sha256` `BadDigest` 확인 추가.
+  - `Host: {bucket}.localhost` 기반 virtual-hosted-style object `PUT/GET` 확인 추가.
+  - `-SkipManualSigV4`, `-SkipVirtualHostedSmoke` 옵션 추가.
+  - smoke cleanup 대상에 manual smoke object 추가.
+  - local dev/infra README/testcase 문서 갱신.
+- 구현 내용:
+  - Script는 access key 생성 후 먼저 built-in SigV4 probes를 수행한다.
+  - 그 뒤 PATH에 `aws` 또는 `mc`가 있으면 기존 real client smoke를 이어서 수행한다.
+  - client가 없고 `-RequireClient`가 없으면 external client checks만 warning 후 skip한다.
+- 수정된 파일 및 관련 파일:
+  - `scripts/verify-s3-client-smoke.ps1`
+  - `infra/local/README.md`
+  - `dev-docs/local-dev-env.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/worklog/codex/frontend-backend-mvp/worklog-codex-frontend-backend-mvp.md`
+- 검증 기록:
+  - `[scriptblock]::Create((Get-Content -Raw -LiteralPath .\scripts\verify-s3-client-smoke.ps1)) | Out-Null` 통과.
+  - `Get-Command aws,mc -ErrorAction SilentlyContinue` 결과 현재 환경에는 `aws`/`mc`가 없어 external client smoke는 실행하지 못했다.
+  - Backend server가 현재 실행 중이 아니어서 `verify-s3-client-smoke.ps1` end-to-end 실행은 하지 못했다.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-local.ps1 -SkipDocker -SkipBackend -SkipFrontend` 통과.
+- 코드 리뷰: built-in probe는 실제 S3 endpoint를 HTTP로 호출하므로 unit test보다 강하고, 외부 client 설치 없이 SigV4 핵심 동작을 확인할 수 있다. 단, AWS CLI/mc/s3fs 자체 동작 검증은 여전히 client 설치와 backend 실행 환경이 필요하다.
+- 결과: S3 smoke script 검증 범위 강화 완료.
+- 후속 메모: Docker stack 실행 후 `.\scripts\verify-s3-client-smoke.ps1 -Client all -RequireClient`로 built-in probe와 external client probe를 함께 실행해야 한다.
+- 추가 개발: real AWS CLI/mc/s3fs smoke 실행, aws-chunked streaming signature, checksum trailer.
+- 사용 skill/plugin: caveman skill ultra.
+
+### 2026-06-13 - Docker Integration SigV4 Probe 강화
+
+- 작업 시작 시간: 2026-06-13 16:27:00 +09:00
+- 작업 종료 시간: 2026-06-13 16:31:00 +09:00
+- 사용자 명령: 현재 목표인 프로토타입 개발 계속, `/Caveman ultra`.
+- 명령 해석: Docker 통합 smoke에서 실제 배포형 로컬 스택 기준 S3 SigV4 호환성을 더 넓게 확인하고, 토큰 절약 모드로 짧게 진행하라는 명령으로 인식.
+- 작업 방식: 먼저 Docker 실행 가능 여부를 확인했다. Docker daemon이 꺼져 있어 실제 compose smoke는 실행하지 못했고, 대신 `verify-docker-integration.ps1`의 built-in SigV4 검증 범위를 현재 backend 구현 수준에 맞춰 확장했다.
+- 실행 내용:
+  - Docker daemon 확인 실패 기록: `failed to connect to the docker API at npipe:////./pipe/docker_engine; ... The system cannot find the file specified.`
+  - Docker integration SigV4 smoke에 root `HEAD /api/s3` 확인 추가.
+  - root `GET /api/s3` 호출을 공통 `Invoke-SignedHttp` helper 기반으로 정리.
+  - mismatched `x-amz-content-sha256` upload가 S3 XML `BadDigest`를 반환하는지 확인 추가.
+  - `Host: {bucket}.localhost` virtual-hosted-style object `PUT/GET` 확인 추가.
+  - cleanup 대상에 virtual-hosted-style smoke object 추가.
+  - local dev/infra README/testcase 문서 갱신.
+- 구현 내용:
+  - `New-S3SigV4Headers`는 optional host override와 payload hash override를 지원한다.
+  - `Invoke-SignedHttp`는 HttpClient로 SigV4 header를 붙여 임의 method/body/Host override 요청을 보낸다.
+  - `Invoke-S3SigV4Smoke`는 root service probe, bucket list, object round-trip, presigned GET, bad payload hash rejection, virtual-hosted-style round-trip을 순서대로 검증한다.
+- 수정된 파일 및 관련 파일:
+  - `scripts/verify-docker-integration.ps1`
+  - `dev-docs/test-cases.md`
+  - `infra/local/README.md`
+  - `dev-docs/local-dev-env.md`
+  - `dev-docs/worklog/codex/frontend-backend-mvp/worklog-codex-frontend-backend-mvp.md`
+- 검증 기록:
+  - `[scriptblock]::Create((Get-Content -Raw -LiteralPath .\scripts\verify-docker-integration.ps1)) | Out-Null` 통과.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-local.ps1 -SkipDocker -SkipBackend -SkipFrontend` 통과.
+  - `git diff --check` 통과. CRLF 변환 warning만 출력.
+  - `.\scripts\verify-docker-integration.ps1` 실제 실행은 Docker daemon 미기동으로 보류.
+- 코드 리뷰: Docker integration script가 unit test가 아니라 실제 HTTP endpoint를 대상으로 SigV4 canonical path, Host override, body digest mismatch까지 확인하게 되어 MVP smoke 신뢰도가 올라갔다. Bad payload 요청은 정상적으로 거부되어 object가 생기지 않으므로 cleanup 대상에서 제외했다.
+- 결과: Docker integration smoke의 SigV4 검증 범위 강화 완료. 실제 Docker stack 실행 검증은 환경 조건 때문에 미완료.
+- 후속 메모: Docker Desktop 실행 후 `.\scripts\verify-docker-integration.ps1`를 다시 실행해야 한다. 가능하면 AWS CLI 또는 MinIO Client 설치 후 `.\scripts\verify-s3-client-smoke.ps1 -Client all -RequireClient`도 같이 실행한다.
+- 추가 개발: real AWS CLI/mc/s3fs smoke 실행, aws-chunked streaming signature, checksum trailer, Docker Desktop 접근 권한 확인.
+- 사용 skill/plugin: caveman skill ultra.
+
+### 2026-06-13 - S3 Checksum Response Header 반환 추가
+
+- 작업 시작 시간: 2026-06-13 16:31:00 +09:00
+- 작업 종료 시간: 2026-06-13 16:35:00 +09:00
+- 사용자 명령: 현재 목표인 프로토타입 개발 계속.
+- 명령 해석: Docker/real client 실행 환경이 막힌 상태에서 코드로 바로 보강 가능한 S3 client 호환 gap을 줄이라는 명령으로 인식.
+- 작업 방식: 기존 S3 `x-amz-checksum-*` body 검증은 유지하고, 성공 응답에서 요청 checksum header를 AWS S3 UploadObject/UploadPart 호환 형태로 그대로 돌려주도록 controller 응답 builder에 header 적용 단계를 추가했다.
+- 실행 내용:
+  - single object `PUT /api/s3/{bucketName}/{objectKey}` 성공 시 matching `x-amz-checksum-*` response header 반환.
+  - multipart part `PUT /api/s3/{bucketName}/{objectKey}?partNumber=...&uploadId=...` 성공 시 matching `x-amz-checksum-*` response header 반환.
+  - `S3ObjectControllerTest.accessKeyCanUploadWithAwsChecksumHeadersAndRejectMismatch`에서 SHA-256/CRC32C response header 검증 추가.
+  - `S3ObjectControllerMultipartTest.uploadMultipartPartValidatesAwsChecksumHeaders`에서 part response checksum header 검증 추가.
+  - PRD/API/backend/testcase 문서 갱신.
+- 구현 내용:
+  - `ChecksumResponseHeader` record 추가.
+  - `checksumResponseHeader(request)` helper가 `x-amz-checksum-sha256`, `x-amz-checksum-sha1`, `x-amz-checksum-crc32`, `x-amz-checksum-crc32c` 중 요청에 존재한 header를 찾아 성공 응답에 적용한다.
+  - body checksum 검증은 기존 `bodyChecksums(request)`와 `S3ChecksumValidatingInputStream`을 그대로 사용한다.
+- 수정된 파일 및 관련 파일:
+  - `osmu-backend/src/main/java/com/example/osmu/object/S3ObjectController.java`
+  - `osmu-backend/src/test/java/com/example/osmu/object/S3ObjectControllerTest.java`
+  - `osmu-backend/src/test/java/com/example/osmu/object/S3ObjectControllerMultipartTest.java`
+  - `dev-docs/PRODUCT_REQUIREMENTS.md`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/backend-design.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/worklog/codex/frontend-backend-mvp/worklog-codex-frontend-backend-mvp.md`
+- 검증 기록:
+  - escalation 후 `osmu-backend`에서 `.\gradlew.bat test --tests com.example.osmu.object.S3ObjectControllerTest.accessKeyCanUploadWithAwsChecksumHeadersAndRejectMismatch --tests com.example.osmu.object.S3ObjectControllerMultipartTest.uploadMultipartPartValidatesAwsChecksumHeaders` 통과. `BUILD SUCCESSFUL in 8s`.
+  - escalation 후 `osmu-backend`에서 `.\gradlew.bat test --tests com.example.osmu.object.S3ObjectControllerTest --tests com.example.osmu.object.S3ObjectControllerMultipartTest` 통과. `BUILD SUCCESSFUL in 9s`.
+  - escalation 후 `osmu-backend`에서 `.\gradlew.bat test --rerun-tasks` 통과. `BUILD SUCCESSFUL in 18s`.
+- 코드 리뷰: response header 반환은 성공 경로에만 붙고, digest mismatch/invalid/multiple checksum 에러 흐름은 기존 validator가 그대로 차단한다. checksum을 영구 metadata로 저장하지는 않으므로 HEAD/GET/List checksum metadata parity는 아직 남아 있다.
+- 결과: S3 checksum value header 성공 응답 호환성 보강 완료.
+- 후속 메모: 실제 AWS CLI/SDK가 checksum upload 후 response header를 기대하는 케이스를 Docker/real client smoke에서 확인해야 한다.
+- 추가 개발: stored checksum metadata, HEAD/GET/List checksum field parity, checksum trailer, multipart checksum aggregation, aws-chunked streaming signature, real AWS CLI/mc/s3fs smoke.
+- 사용 skill/plugin: caveman skill ultra, Gradle test escalation 사용.
+
+### 2026-06-13 - S3 Checksum Metadata 저장 및 노출 추가
+
+- 작업 시작 시간: 2026-06-13 16:36:00 +09:00
+- 작업 종료 시간: 2026-06-13 16:44:00 +09:00
+- 사용자 명령: 현재 목표인 프로토타입 개발 계속.
+- 명령 해석: 직전 checksum response header 보강에서 남은 gap인 "업로드 이후 HEAD/GET/List에서도 checksum metadata를 확인할 수 있게 하라"는 명령으로 인식.
+- 작업 방식: 검증된 `x-amz-checksum-*` 값을 `object_metadata` index에 저장하고, S3 object metadata 응답과 list XML에서 다시 노출하도록 했다. Storage adapter 자체를 바꾸지 않고 metadata index 계층에 저장해 변경 범위를 줄였다.
+- 실행 내용:
+  - `StoredObjectRecord`에 `checksums` map 추가.
+  - `ObjectMetadataDetail`에 indexed/storage checksum map 추가.
+  - `ObjectService.upload` overload 추가: S3 controller가 checksum map을 전달하면 저장 metadata에 반영.
+  - `ObjectService.download`/`downloadStream`에서 storage metadata 위에 indexed checksum metadata를 overlay.
+  - tag update 시 기존 checksum metadata가 사라지지 않도록 보존.
+  - `S3ObjectController`가 stored checksum header를 `HEAD`/`GET`/conditional response에 반환.
+  - `ListObjects` V1/V2 XML `Contents`에 `ChecksumAlgorithm` 추가.
+  - MariaDB `object_metadata.checksums` column 추가 migration `V22__object_metadata_checksums.sql` 작성.
+  - MariaDB metadata repository create/select/upsert/mapRow runtime schema fallback 갱신.
+  - checksum test가 upload response, HEAD, GET, ListObjectsV2 metadata 노출을 검증하도록 보강.
+  - API/backend/PRD/testcase/database 문서 갱신.
+- 구현 내용:
+  - `checksums`는 JSON object 문자열로 DB에 저장된다.
+  - 저장 key는 lowercase S3 checksum header name이다.
+  - `HEAD`/`GET`은 저장된 `x-amz-checksum-*` header를 그대로 반환한다.
+  - list XML은 저장된 header name을 `SHA256`, `SHA1`, `CRC32`, `CRC32C` `ChecksumAlgorithm` 값으로 변환한다.
+- 수정된 파일 및 관련 파일:
+  - `osmu-backend/src/main/java/com/example/osmu/object/StoredObjectRecord.java`
+  - `osmu-backend/src/main/java/com/example/osmu/object/ObjectMetadataDetail.java`
+  - `osmu-backend/src/main/java/com/example/osmu/object/ObjectService.java`
+  - `osmu-backend/src/main/java/com/example/osmu/object/S3ObjectController.java`
+  - `osmu-backend/src/main/java/com/example/osmu/object/repository/MariaDbObjectMetadataRepository.java`
+  - `osmu-backend/src/main/resources/db/migration/V22__object_metadata_checksums.sql`
+  - `osmu-backend/src/test/java/com/example/osmu/object/S3ObjectControllerTest.java`
+  - `dev-docs/PRODUCT_REQUIREMENTS.md`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/backend-design.md`
+  - `dev-docs/database-design.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/worklog/codex/frontend-backend-mvp/worklog-codex-frontend-backend-mvp.md`
+- 검증 기록:
+  - escalation 후 `osmu-backend`에서 `.\gradlew.bat test --rerun-tasks --tests com.example.osmu.object.S3ObjectControllerTest.accessKeyCanUploadWithAwsChecksumHeadersAndRejectMismatch` 통과. `BUILD SUCCESSFUL in 9s`.
+  - escalation 후 `osmu-backend`에서 `.\gradlew.bat test --tests com.example.osmu.object.S3ObjectControllerTest --tests com.example.osmu.object.S3ObjectControllerMultipartTest` 통과. `BUILD SUCCESSFUL in 9s`.
+  - escalation 후 `osmu-backend`에서 `.\gradlew.bat test --rerun-tasks` 통과. `BUILD SUCCESSFUL in 17s`.
+- 코드 리뷰: checksum metadata는 검증 성공 후에만 저장되므로 잘못된 digest가 index에 남지 않는다. `downloadStream` overlay로 storage adapter가 checksum을 모르는 경우에도 S3 GET header를 복구한다. 단, presigned/multipart complete checksum aggregation과 storage-native checksum sync는 아직 미구현이다.
+- 결과: S3 single PUT checksum metadata 저장 및 HEAD/GET/ListObjects 노출 MVP 구현 완료.
+- 후속 메모: Docker/MariaDB 환경에서 V22 migration 실제 적용을 확인해야 한다. `POST /api/buckets/{bucketName}/sync`는 storage metadata 기반 재생성이므로 checksum metadata를 보존하지 않는 점도 향후 개선 대상이다.
+- 추가 개발: multipart complete checksum aggregation, checksum trailer, storage sync checksum 보존, aws-chunked streaming signature, real AWS CLI/mc/s3fs smoke.
+- 사용 skill/plugin: caveman skill ultra, Gradle test escalation 사용.
+
+### 2026-06-13 - CopyObject Checksum Metadata 보존 추가
+
+- 작업 시작 시간: 2026-06-13 16:45:00 +09:00
+- 작업 종료 시간: 2026-06-13 16:47:00 +09:00
+- 사용자 명령: 현재 목표인 프로토타입 개발 계속.
+- 명령 해석: S3 checksum metadata 저장 기능이 추가된 뒤, CopyObject가 source checksum metadata를 잃는 gap을 줄이라는 명령으로 인식.
+- 작업 방식: CopyObject는 source body를 그대로 target에 다시 업로드하므로 source checksum metadata를 target upload에도 전달하도록 했다. 응답 header와 이후 HEAD/GET metadata도 같은 값을 유지하게 했다.
+- 실행 내용:
+  - `S3ObjectController.copyObject`에서 `sourceObject.metadata().checksums()`를 `ObjectService.upload` checksum map 인자로 전달.
+  - CopyObject 성공 응답에 copied object checksum header 반환.
+  - CopyObject 테스트 source upload에 `x-amz-checksum-sha256` 추가.
+  - CopyObject 응답, copied HEAD, copied GET에서 checksum header 보존 검증 추가.
+  - API/backend/PRD/testcase 문서 갱신.
+- 구현 내용:
+  - CopyObject 기본 동작은 source body, content type, tags에 더해 stored checksum metadata도 보존한다.
+  - checksum 값은 이미 검증되어 저장된 source metadata만 사용한다.
+- 수정된 파일 및 관련 파일:
+  - `osmu-backend/src/main/java/com/example/osmu/object/S3ObjectController.java`
+  - `osmu-backend/src/test/java/com/example/osmu/object/S3ObjectControllerTest.java`
+  - `dev-docs/PRODUCT_REQUIREMENTS.md`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/backend-design.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/worklog/codex/frontend-backend-mvp/worklog-codex-frontend-backend-mvp.md`
+- 검증 기록:
+  - escalation 후 `osmu-backend`에서 `.\gradlew.bat test --rerun-tasks --tests com.example.osmu.object.S3ObjectControllerTest.accessKeyCanCopyObjectThroughS3CopySourceHeader` 통과. `BUILD SUCCESSFUL in 9s`.
+  - escalation 후 `osmu-backend`에서 `.\gradlew.bat test --tests com.example.osmu.object.S3ObjectControllerTest --tests com.example.osmu.object.S3ObjectControllerMultipartTest` 통과. `BUILD SUCCESSFUL in 9s`.
+- 코드 리뷰: checksum metadata는 source object의 검증 완료 metadata에서만 복사하므로 임의 header를 copy request에서 주입하지 않는다. 본문이 동일하게 복사되는 경로라 checksum 보존이 일관된다. 단, CopyObject의 AWS checksum algorithm override나 response XML checksum fields는 아직 미구현이다.
+- 결과: CopyObject checksum metadata 보존 MVP 구현 완료.
+- 후속 메모: AWS SDK/CLI CopyObject가 checksum response XML/header를 어떻게 소비하는지 real client smoke로 확인해야 한다.
+- 추가 개발: CopyObject checksum algorithm override, CopyObject result checksum XML fields, multipart complete checksum aggregation, real AWS CLI/mc/s3fs smoke.
+- 사용 skill/plugin: caveman skill ultra, Gradle test escalation 사용.
+
+### 2026-06-13 - CopyObject Checksum Result XML 추가
+
+- 작업 시작 시간: 2026-06-13 16:48:00 +09:00
+- 작업 종료 시간: 2026-06-13 16:50:00 +09:00
+- 사용자 명령: 현재 목표인 프로토타입 개발 계속.
+- 명령 해석: CopyObject checksum metadata 보존 후 남은 XML response parity gap을 줄이라는 명령으로 인식.
+- 작업 방식: 이미 저장된 copied object checksum metadata를 `CopyObjectResult` XML에도 기록하도록 XML renderer만 확장했다. body copy/storage 흐름은 건드리지 않았다.
+- 실행 내용:
+  - `CopyObjectResult` XML에 checksum result element 출력 추가.
+  - `x-amz-checksum-sha256` -> `ChecksumSHA256`, `x-amz-checksum-sha1` -> `ChecksumSHA1`, `x-amz-checksum-crc32` -> `ChecksumCRC32`, `x-amz-checksum-crc32c` -> `ChecksumCRC32C` 매핑 추가.
+  - CopyObject 테스트에서 `<ChecksumSHA256>...</ChecksumSHA256>` 검증 추가.
+  - API/backend/PRD/testcase 문서 갱신.
+- 구현 내용:
+  - `writeChecksumResultElements` helper가 stored checksum metadata map을 XML element로 변환한다.
+  - unknown checksum key나 blank value는 XML에 쓰지 않는다.
+- 수정된 파일 및 관련 파일:
+  - `osmu-backend/src/main/java/com/example/osmu/object/S3ObjectController.java`
+  - `osmu-backend/src/test/java/com/example/osmu/object/S3ObjectControllerTest.java`
+  - `dev-docs/PRODUCT_REQUIREMENTS.md`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/backend-design.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/worklog/codex/frontend-backend-mvp/worklog-codex-frontend-backend-mvp.md`
+- 검증 기록:
+  - escalation 후 `osmu-backend`에서 `.\gradlew.bat test --rerun-tasks --tests com.example.osmu.object.S3ObjectControllerTest.accessKeyCanCopyObjectThroughS3CopySourceHeader` 통과. `BUILD SUCCESSFUL in 9s`.
+  - escalation 후 `osmu-backend`에서 `.\gradlew.bat test --tests com.example.osmu.object.S3ObjectControllerTest --tests com.example.osmu.object.S3ObjectControllerMultipartTest` 통과. `BUILD SUCCESSFUL in 9s`.
+  - escalation 후 `osmu-backend`에서 `.\gradlew.bat test --rerun-tasks` 통과. `BUILD SUCCESSFUL in 18s`.
+- 코드 리뷰: XML 출력은 stored metadata 기반이라 copy request header를 신뢰하지 않는다. checksum 종류별 element 이름은 S3 response naming에 맞춰 분리했다. 단, checksum algorithm override나 CRC64NVME는 아직 미구현이다.
+- 결과: CopyObject checksum result XML MVP 구현 완료.
+- 후속 메모: real client smoke에서 SDK가 CopyObject checksum XML을 정상 파싱하는지 확인해야 한다.
+- 추가 개발: CopyObject checksum algorithm override, CRC64NVME, multipart complete checksum aggregation, real AWS CLI/mc/s3fs smoke.
+- 사용 skill/plugin: caveman skill ultra, Gradle test escalation 사용.
+
+### 2026-06-13 - Multipart Complete Checksum Header 검증 추가
+
+- 작업 시작 시간: 2026-06-13 16:51:00 +09:00
+- 작업 종료 시간: 2026-06-13 16:59:55 +09:00
+- 사용자 명령: `/Caveman ultra` 및 현재 목표인 프로토타입 개발 계속.
+- 명령 해석: 응답은 ultra 압축 모드로 유지하고, 직전 S3 checksum parity 작업의 다음 gap인 `CompleteMultipartUpload` 최종 checksum 검증/저장/응답을 구현하라는 명령으로 인식.
+- 작업 방식: AWS `CompleteMultipartUpload` 공식 API 문서의 final checksum request header와 response checksum XML element 구조를 기준으로, 기존 S3 checksum helper와 object metadata checksum 저장 구조를 재사용했다.
+- 실행 내용:
+  - `S3ObjectController.completeMultipartUpload`에서 `x-amz-checksum-*` header syntax를 검증하고 service에 checksum map 전달.
+  - complete 응답 header와 `CompleteMultipartUploadResult` XML에 저장 checksum 반환.
+  - `ObjectService.completeMultipartUpload` checksum overload 추가.
+  - 완료된 storage object stream을 다시 읽어 SHA-256/SHA-1/CRC32/CRC32C checksum을 검증한 뒤 metadata에 저장.
+  - checksum 불일치 시 `BadDigest` 반환, multipart session `FAILED` 처리, 완료 object는 best-effort rollback.
+  - S3 multipart controller test와 ObjectService multipart test 추가/갱신.
+  - PRD/API/backend/testcase 문서 갱신.
+- 구현 내용:
+  - `x-amz-checksum-sha256`, `x-amz-checksum-sha1`, `x-amz-checksum-crc32`, `x-amz-checksum-crc32c` 중 하나를 final object checksum으로 지원.
+  - matching checksum은 `StoredObjectRecord.checksums()`에 저장되고 이후 `HEAD`/`GET`/list checksum metadata 노출 흐름과 연결된다.
+  - complete XML은 `ChecksumSHA256`, `ChecksumSHA1`, `ChecksumCRC32`, `ChecksumCRC32C` element를 출력한다.
+- 수정된 파일 및 관련 파일:
+  - `osmu-backend/src/main/java/com/example/osmu/object/ObjectService.java`
+  - `osmu-backend/src/main/java/com/example/osmu/object/S3ObjectController.java`
+  - `osmu-backend/src/test/java/com/example/osmu/object/S3ObjectControllerMultipartTest.java`
+  - `osmu-backend/src/test/java/com/example/osmu/object/ObjectServiceMultipartRefreshTest.java`
+  - `dev-docs/PRODUCT_REQUIREMENTS.md`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/backend-design.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/worklog/codex/frontend-backend-mvp/worklog-codex-frontend-backend-mvp.md`
+- 검증 기록:
+  - escalation 후 `osmu-backend`에서 `.\gradlew.bat test --rerun-tasks --tests com.example.osmu.object.S3ObjectControllerMultipartTest.completeMultipartUploadParsesS3XmlAndReturnsResultXml --tests com.example.osmu.object.ObjectServiceMultipartRefreshTest.completeMultipartUploadStoresValidatedChecksumMetadata` 통과. `BUILD SUCCESSFUL in 6s`.
+  - escalation 후 `osmu-backend`에서 `.\gradlew.bat test --tests com.example.osmu.object.S3ObjectControllerMultipartTest --tests com.example.osmu.object.ObjectServiceMultipartRefreshTest` 통과. `BUILD SUCCESSFUL in 4s`.
+  - escalation 후 `osmu-backend`에서 `.\gradlew.bat test --rerun-tasks` 통과. `BUILD SUCCESSFUL in 17s`.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-local.ps1 -SkipDocker -SkipBackend -SkipFrontend` 통과.
+  - `git diff --check` 통과. CRLF 변환 경고만 출력.
+- 코드 리뷰: final checksum은 metadata commit 전에 실제 completed object body를 기준으로 검증하므로, part upload header만 믿고 저장하지 않는다. Service에도 checksum syntax 검증을 둬 controller 우회 호출에도 방어된다. 단, AWS의 multipart checksum aggregation 알고리즘, part-level checksum XML parsing, CRC64NVME, trailer checksum은 아직 미구현이다.
+- 결과: S3 Multipart Complete final checksum 검증/저장/응답 MVP 구현 완료.
+- 후속 메모: Docker Desktop 실행 후 real MinIO/SigV4/SDK smoke에서 complete checksum response XML/header 파싱을 확인해야 한다. 참고 문서: https://docs.aws.amazon.com/AmazonS3/latest/API/API_CompleteMultipartUpload.html
+- 추가 개발: part-level checksum XML parsing, AWS checksum aggregation parity, CRC64NVME, trailer checksum, full multipart ETag parity, real AWS CLI/mc/s3fs smoke.
+- 사용 skill/plugin: caveman skill ultra, Gradle test escalation 사용.
+
+### 2026-06-13 - Multipart Complete Checksum 실패 경로 테스트 추가
+
+- 작업 시작 시간: 2026-06-13 17:00:00 +09:00
+- 작업 종료 시간: 2026-06-13 17:02:18 +09:00
+- 사용자 명령: 현재 목표인 프로토타입 개발 계속.
+- 명령 해석: 직전 checksum 구현의 성공 경로뿐 아니라 실제 실패/rollback 동작을 테스트로 고정하라는 명령으로 인식.
+- 작업 방식: service 단위 테스트에서 completed object body와 final checksum header가 다를 때 `BadDigest`, session `FAILED`, metadata 미저장, quota 미반영, completed object 삭제 rollback을 검증했다.
+- 실행 내용:
+  - `ObjectServiceMultipartRefreshTest.completeMultipartUploadRejectsMismatchedChecksumBeforeMetadataCommit` 추가.
+  - `TC-S3-OBJECT-008C` 자동화 목록에 실패 경로 테스트 추가.
+- 구현 내용:
+  - production code 변경 없음.
+  - mismatch checksum 실패 불변식이 테스트로 고정됨.
+- 수정된 파일 및 관련 파일:
+  - `osmu-backend/src/test/java/com/example/osmu/object/ObjectServiceMultipartRefreshTest.java`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/worklog/codex/frontend-backend-mvp/worklog-codex-frontend-backend-mvp.md`
+- 검증 기록:
+  - escalation 후 `osmu-backend`에서 `.\gradlew.bat test --rerun-tasks --tests com.example.osmu.object.ObjectServiceMultipartRefreshTest.completeMultipartUploadRejectsMismatchedChecksumBeforeMetadataCommit` 통과. `BUILD SUCCESSFUL in 5s`.
+  - escalation 후 `osmu-backend`에서 `.\gradlew.bat test --tests com.example.osmu.object.S3ObjectControllerMultipartTest --tests com.example.osmu.object.ObjectServiceMultipartRefreshTest` 통과. `BUILD SUCCESSFUL in 4s`.
+  - escalation 후 `osmu-backend`에서 `.\gradlew.bat test --rerun-tasks` 통과. `BUILD SUCCESSFUL in 19s`.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-local.ps1 -SkipDocker -SkipBackend -SkipFrontend` 통과.
+  - `git diff --check` 통과. CRLF 변환 경고만 출력.
+- 코드 리뷰: 실패 검증은 metadata/usage side effect가 없다는 점까지 확인하므로 digest error가 storage commit 이후 발생하는 위험을 줄인다. 다만 MinIO/Docker 실환경 rollback 검증은 아직 별도 smoke가 필요하다.
+- 결과: multipart complete checksum mismatch 안전성 테스트 추가 완료.
+- 후속 메모: Docker Desktop 실행 후 real MinIO multipart checksum mismatch smoke를 확인해야 한다.
+- 추가 개발: real MinIO multipart checksum mismatch smoke, part-level checksum XML parsing, AWS checksum aggregation parity.
+- 사용 skill/plugin: caveman skill ultra, Gradle test escalation 사용.
+
+### 2026-06-13 - Multipart Complete Part Checksum XML 파싱 추가
+
+- 작업 시작 시간: 2026-06-13 17:03:00 +09:00
+- 작업 종료 시간: 2026-06-13 17:07:15 +09:00
+- 사용자 명령: 현재 목표인 프로토타입 개발 계속.
+- 명령 해석: S3 `CompleteMultipartUpload` 호환성을 높이기 위해 request XML 안의 per-part checksum element를 무시하지 않고 파싱/검증하라는 명령으로 인식.
+- 작업 방식: `CompletedMultipartUploadPart` DTO에 checksum map을 추가하고, `S3ObjectController` XML parser에서 `ChecksumSHA256`, `ChecksumSHA1`, `ChecksumCRC32`, `ChecksumCRC32C`를 S3 header 이름으로 변환했다. Service는 storage complete 전에 checksum syntax만 검증한다.
+- 실행 내용:
+  - `CompletedMultipartUploadPart`에 `checksums` 필드와 기존 2인자 생성자 호환 추가.
+  - `completedPartsFromXml`에서 optional per-part checksum XML element 파싱.
+  - `ObjectService.normalizeCompletedParts`에서 part checksum syntax 검증.
+  - controller test에 per-part `ChecksumSHA256` XML 파싱 검증 추가.
+  - service test에 invalid per-part checksum syntax가 storage complete 전에 `InvalidDigest`로 막히는 검증 추가.
+  - PRD/API/backend/testcase 문서 갱신.
+- 구현 내용:
+  - Complete XML part checksum은 request DTO에 보존된다.
+  - 지원 element: `ChecksumSHA256`, `ChecksumSHA1`, `ChecksumCRC32`, `ChecksumCRC32C`.
+  - invalid base64/length 또는 둘 이상 checksum은 기존 checksum validator 정책에 따라 `InvalidDigest` 처리된다.
+- 수정된 파일 및 관련 파일:
+  - `osmu-backend/src/main/java/com/example/osmu/object/CompletedMultipartUploadPart.java`
+  - `osmu-backend/src/main/java/com/example/osmu/object/S3ObjectController.java`
+  - `osmu-backend/src/main/java/com/example/osmu/object/ObjectService.java`
+  - `osmu-backend/src/test/java/com/example/osmu/object/S3ObjectControllerMultipartTest.java`
+  - `osmu-backend/src/test/java/com/example/osmu/object/ObjectServiceMultipartRefreshTest.java`
+  - `dev-docs/PRODUCT_REQUIREMENTS.md`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/backend-design.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/worklog/codex/frontend-backend-mvp/worklog-codex-frontend-backend-mvp.md`
+- 검증 기록:
+  - escalation 후 `osmu-backend`에서 `.\gradlew.bat test --rerun-tasks --tests com.example.osmu.object.S3ObjectControllerMultipartTest.completeMultipartUploadParsesS3XmlAndReturnsResultXml --tests com.example.osmu.object.ObjectServiceMultipartRefreshTest.completeMultipartUploadRejectsInvalidPartChecksumBeforeStorageComplete` 통과. `BUILD SUCCESSFUL in 6s`.
+  - escalation 후 `osmu-backend`에서 `.\gradlew.bat test --tests com.example.osmu.object.S3ObjectControllerMultipartTest --tests com.example.osmu.object.ObjectServiceMultipartRefreshTest` 통과. `BUILD SUCCESSFUL in 4s`.
+  - escalation 후 `osmu-backend`에서 `.\gradlew.bat test --rerun-tasks` 통과. `BUILD SUCCESSFUL in 19s`.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-local.ps1 -SkipDocker -SkipBackend -SkipFrontend` 통과.
+  - `git diff --check` 통과. CRLF 변환 경고만 출력.
+- 코드 리뷰: 기존 2인자 생성자를 유지해 REST/backend test call site 호환성을 보존했다. per-part checksum 값은 storage complete 전에 syntax만 검증하며, MinIO complete call은 기존처럼 part number와 ETag만 사용한다. 실제 AWS checksum aggregation 검증은 future로 명확히 남겼다.
+- 결과: `CompleteMultipartUpload` per-part checksum XML 파싱/검증 MVP 구현 완료.
+- 후속 메모: Docker Desktop 실행 후 real S3 client가 per-part checksum XML을 포함해 complete하는 흐름을 smoke로 확인해야 한다.
+- 추가 개발: AWS multipart checksum aggregation parity, CRC64NVME, trailer checksum, real AWS CLI/mc/s3fs smoke.
+- 사용 skill/plugin: caveman skill ultra, Gradle test escalation 사용.
+
+### 2026-06-13 - Docker S3 Checksum Smoke 확장
+
+- 작업 시작 시간: 2026-06-13 17:08:00 +09:00
+- 작업 종료 시간: 2026-06-13 17:12:41 +09:00
+- 사용자 명령: 현재 목표인 프로토타입 개발 계속.
+- 명령 해석: 구현된 S3 checksum/multipart checksum 기능을 실제 Docker/MinIO smoke에서 검증할 수 있게 해 prototype 검증 신뢰도를 높이라는 명령으로 인식.
+- 작업 방식: 기존 `verify-docker-integration.ps1`의 수동 SigV4 signer가 query string과 추가 `x-amz-*` header를 서명할 수 있게 확장하고, S3 checksum object PUT/HEAD/GET 및 S3 multipart checksum complete smoke를 추가했다.
+- 실행 내용:
+  - Docker integration script에 SHA-256 base64 helper, canonical query helper, response header helper 추가.
+  - SigV4 signer가 extra header를 signed headers/canonical headers에 포함하도록 확장.
+  - single object SigV4 PUT에 `x-amz-checksum-sha256` 추가하고 PUT echo, GET/HEAD stored checksum 노출 검증 추가.
+  - S3 multipart checksum smoke 추가: initiate, two part upload with part checksum headers, complete XML with per-part checksum elements, final object checksum header, complete response XML/header, HEAD checksum 검증.
+  - smoke cleanup 대상에 `sigv4-multipart-checksum.bin` 추가.
+  - local dev/testcase 문서 갱신.
+- 구현 내용:
+  - `scripts/verify-docker-integration.ps1`가 Docker 실행 가능 환경에서 S3 checksum 저장/노출 및 multipart complete checksum 경로를 end-to-end로 검증한다.
+  - query string canonicalization이 추가되어 `?uploads`, `?partNumber=...&uploadId=...` SigV4 request도 script가 서명할 수 있다.
+- 수정된 파일 및 관련 파일:
+  - `scripts/verify-docker-integration.ps1`
+  - `dev-docs/local-dev-env.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/worklog/codex/frontend-backend-mvp/worklog-codex-frontend-backend-mvp.md`
+- 검증 기록:
+  - `[scriptblock]::Create((Get-Content -Raw -LiteralPath '.\scripts\verify-docker-integration.ps1')) | Out-Null` 통과.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-local.ps1 -SkipDocker -SkipBackend -SkipFrontend` 통과.
+  - `git diff --check` 통과. CRLF 변환 경고만 출력.
+- 코드 리뷰: extra header signing을 일반화해 checksum뿐 아니라 S3 metadata header도 canonical request에 포함된다. Multipart smoke는 5 MiB first part와 작은 last part를 사용해 MinIO multipart minimum part size 조건을 만족한다. Docker daemon 미실행 환경에서는 실제 smoke 실행이 아직 필요하다.
+- 결과: Docker integration smoke가 S3 checksum/multipart checksum 경로를 검증하도록 확장 완료.
+- 후속 메모: Docker Desktop 실행 후 `.\scripts\verify-docker-integration.ps1` 실제 실행 필요.
+- 추가 개발: real AWS CLI/mc smoke에 checksum assertions 추가, CI에서 Docker smoke 실행, AWS multipart checksum aggregation parity.
+- 사용 skill/plugin: caveman skill ultra 사용.
+
+### 2026-06-13 - S3 Client Smoke Checksum 검증 확장
+
+- 작업 시작 시간: 2026-06-13 17:13:00 +09:00
+- 작업 종료 시간: 2026-06-13 17:16:06 +09:00
+- 사용자 명령: 현재 목표인 프로토타입 개발 계속.
+- 명령 해석: Docker smoke뿐 아니라 실행 중인 backend에 직접 붙는 S3 client smoke에서도 checksum/multipart checksum 흐름을 검증할 수 있게 하라는 명령으로 인식.
+- 작업 방식: `verify-s3-client-smoke.ps1`의 built-in manual SigV4 probe를 Docker smoke와 같은 checksum coverage로 확장했다. 외부 `aws`/`mc` client checks는 유지하고, 기본 내장 probe가 checksum object PUT/HEAD/GET과 S3 multipart checksum complete를 담당한다.
+- 실행 내용:
+  - SHA-256 base64 helper와 response header helper 추가.
+  - manual SigV4 signer가 extra header를 canonical signed headers에 포함하도록 확장.
+  - checksum object PUT echo, GET/HEAD stored checksum 검증 추가.
+  - S3 multipart checksum initiate/upload parts/complete/head smoke 추가.
+  - cleanup 대상에 `manual-multipart-checksum.bin` 추가.
+  - local-dev/testcase 문서 갱신.
+- 구현 내용:
+  - `.\scripts\verify-s3-client-smoke.ps1`만으로 running backend의 S3 checksum storage/response와 multipart complete checksum XML/header 흐름을 검증할 수 있다.
+  - `-SkipManualSigV4`를 쓰면 built-in checksum probes도 함께 skip된다.
+- 수정된 파일 및 관련 파일:
+  - `scripts/verify-s3-client-smoke.ps1`
+  - `dev-docs/local-dev-env.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/worklog/codex/frontend-backend-mvp/worklog-codex-frontend-backend-mvp.md`
+- 검증 기록:
+  - `[scriptblock]::Create((Get-Content -Raw -LiteralPath '.\scripts\verify-s3-client-smoke.ps1')) | Out-Null` 통과.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-local.ps1 -SkipDocker -SkipBackend -SkipFrontend` 통과.
+  - `git diff --check` 통과. CRLF 변환 경고만 출력.
+- 코드 리뷰: extra header signing이 manual SigV4 probe 전반에 재사용되므로 checksum header와 S3 metadata header 모두 canonical request에 포함된다. Multipart smoke는 MinIO multipart minimum part size를 만족하도록 5 MiB first part와 작은 last part를 사용한다. 실제 backend 실행 환경에서 script 실행은 아직 필요하다.
+- 결과: S3 client smoke checksum/multipart checksum 검증 확장 완료.
+- 후속 메모: backend 실행 후 `.\scripts\verify-s3-client-smoke.ps1 -Client auto` 실제 실행 필요.
+- 추가 개발: external AWS CLI/mc 자체 checksum option 검증, CI smoke 자동화, AWS multipart checksum aggregation parity.
+- 사용 skill/plugin: caveman skill ultra 사용.
+
+### 2026-06-13 - S3 Checksum BadDigest Smoke 추가
+
+- 작업 시작 시간: 2026-06-13 17:17:00 +09:00
+- 작업 종료 시간: 2026-06-13 17:19:13 +09:00
+- 사용자 명령: 현재 목표인 프로토타입 개발 계속.
+- 명령 해석: 정상 checksum smoke뿐 아니라 checksum mismatch 실패 경로도 실제 smoke에서 `BadDigest`로 검증하라는 명령으로 인식.
+- 작업 방식: Docker integration smoke와 S3 client smoke의 manual SigV4 probe에 잘못된 `x-amz-checksum-sha256`를 서명해서 전송하고, 응답이 S3 XML `BadDigest`인지 확인하도록 추가했다.
+- 실행 내용:
+  - `verify-docker-integration.ps1`에 `sigv4-bad-checksum.txt` PUT 실패 검증 추가.
+  - `verify-s3-client-smoke.ps1`에 `manual-bad-checksum.txt` PUT 실패 검증 추가.
+  - smoke cleanup 대상에 bad checksum object 추가.
+  - local-dev/testcase 문서 갱신.
+- 구현 내용:
+  - payload hash는 정상 body 기준으로 서명하고 checksum header만 다른 body 기준으로 넣어, payload hash 검증이 아니라 S3 checksum validator 실패를 확인한다.
+  - 기대 응답은 HTTP 400과 `<Code>BadDigest</Code>`.
+- 수정된 파일 및 관련 파일:
+  - `scripts/verify-docker-integration.ps1`
+  - `scripts/verify-s3-client-smoke.ps1`
+  - `dev-docs/local-dev-env.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/worklog/codex/frontend-backend-mvp/worklog-codex-frontend-backend-mvp.md`
+- 검증 기록:
+  - `[scriptblock]::Create((Get-Content -Raw -LiteralPath '.\scripts\verify-docker-integration.ps1')) | Out-Null` 통과.
+  - `[scriptblock]::Create((Get-Content -Raw -LiteralPath '.\scripts\verify-s3-client-smoke.ps1')) | Out-Null` 통과.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-local.ps1 -SkipDocker -SkipBackend -SkipFrontend` 통과.
+  - `git diff --check -- scripts/verify-docker-integration.ps1 scripts/verify-s3-client-smoke.ps1 dev-docs/local-dev-env.md dev-docs/test-cases.md dev-docs/worklog/codex/frontend-backend-mvp/worklog-codex-frontend-backend-mvp.md` 통과. CRLF 변환 warning만 확인.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-local.ps1 -SkipDocker -SkipBackend -SkipFrontend` 통과.
+  - `git diff --check` 통과. CRLF 변환 경고만 출력.
+- 코드 리뷰: bad checksum probe는 extra header signing 경로도 함께 검증한다. 잘못된 checksum object는 정상적으로 생성되지 않아야 하지만 cleanup은 best-effort로 유지했다.
+- 결과: checksum mismatch `BadDigest` 통합 smoke 검증 추가 완료.
+- 후속 메모: Docker/backend 실행 후 두 smoke script를 실제 실행해야 한다.
+- 추가 개발: multipart complete final checksum mismatch smoke, external AWS CLI/mc checksum option 검증, CI smoke 자동화.
+- 사용 skill/plugin: caveman skill ultra 사용.
+
+### 2026-06-13 - Object Detail ETag/Checksum 표시 추가
+
+- 작업 시작 시간: 2026-06-13 17:20:00 +09:00
+- 작업 종료 시간: 2026-06-13 17:24:44 +09:00
+- 사용자 명령: `/Caveman ultra` 및 현재 목표인 프로토타입 개발 계속.
+- 명령 해석: 답변은 ultra 압축 모드로 유지하고, 현재 구현된 checksum metadata를 Web Portal에서도 확인할 수 있게 해 프로토타입 운영 가시성을 높이라는 명령으로 인식.
+- 작업 방식: 먼저 frontend build를 실행해 Vue SFC가 실제로 깨진 것이 아니라 PowerShell 출력 인코딩 문제임을 확인했다. 이후 object metadata detail panel에 backend DTO가 이미 제공하는 `etag`, `checksums`, `storageEtag`, `storageChecksums` 표시만 추가했다.
+- 실행 내용:
+  - `HomeView.vue` object detail panel에 Index/Storage ETag 표시 추가.
+  - `HomeView.vue` object detail panel에 Index/Storage checksum 표시 추가.
+  - checksum map 표시 helper `formatChecksumMap` 추가.
+  - frontend design/test case 문서에 ETag/checksum 표시 기대값 반영.
+- 구현 내용:
+  - 관리자는 Web Portal의 Object Detail에서 DB index metadata와 storage actual metadata의 ETag/checksum을 함께 확인할 수 있다.
+  - checksum이 없으면 `-`로 표시하고, 값이 길어도 기존 `detail-grid dd`의 `overflow-wrap: anywhere` 규칙으로 줄바꿈된다.
+- 수정된 파일 및 관련 파일:
+  - `osmu-frontend/src/views/HomeView.vue`
+  - `dev-docs/frontend-design.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/worklog/codex/frontend-backend-mvp/worklog-codex-frontend-backend-mvp.md`
+- 검증 기록:
+  - `npm.cmd run build` 통과.
+  - `git diff --check` 통과. CRLF 변환 경고만 출력.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-local.ps1 -SkipDocker -SkipBackend -SkipFrontend` 통과.
+- 코드 리뷰: API 계약을 바꾸지 않고 기존 metadata response 필드를 화면에 노출하는 변경이라 blast radius가 작다. checksum 표시 형식은 `header: value`라 base64 값의 `=` 문자와 혼동이 적다. 다만 실제 브라우저에서 backend 연동 UI smoke는 아직 실행하지 않았다.
+- 결과: Web Portal object metadata 상세에서 ETag/checksum 비교 표시 완료.
+- 후속 메모: backend/Docker 실행 후 실제 object upload -> 상세 패널 열기 -> checksum 표시를 브라우저로 확인해야 한다.
+- 추가 개발: frontend E2E 테스트, checksum mismatch object metadata 상태 표시, S3 client에서 업로드한 object의 sync 후 checksum 비교 UI 자동 검증.
+- 사용 skill/plugin: caveman skill ultra 사용.
+
+### 2026-06-13 - Bucket Sync Checksum Metadata 보존 정책 추가
+
+- 작업 시작 시간: 2026-06-13 17:25:00 +09:00
+- 작업 종료 시간: 2026-06-13 17:29:36 +09:00
+- 사용자 명령: 현재 목표인 프로토타입 개발 계속.
+- 명령 해석: S3 checksum metadata가 구현된 상태에서 bucket sync가 기존 checksum index를 불필요하게 잃는 gap을 줄이라는 명령으로 인식.
+- 작업 방식: `BucketService.syncUsage`가 storage actual 목록으로 object metadata를 재생성하는 흐름을 확인하고, 기존 index object와 storage actual의 ETag가 같을 때만 checksum metadata를 보존하도록 좁게 수정했다. ETag가 달라진 경우에는 stale checksum을 버리도록 테스트로 고정했다.
+- 실행 내용:
+  - `BucketService.syncUsage`에 `reconcileSyncedObject` helper 추가.
+  - 기존 deleted marker 보존 로직 유지.
+  - storage actual checksum이 비어 있고 기존 index checksum이 있으며 ETag가 같을 때만 기존 checksum metadata 보존.
+  - storage actual ETag가 바뀌면 checksum metadata 제거.
+  - integration test로 보존/폐기 경로 검증.
+  - API/backend design/test case 문서 갱신.
+- 구현 내용:
+  - `POST /api/buckets/{bucketName}/sync` 실행 후에도 동일 object의 S3 checksum metadata가 보존된다.
+  - 직접 storage overwrite처럼 object body가 바뀐 경우, 이전 checksum metadata가 새 object metadata에 잘못 남지 않는다.
+- 수정된 파일 및 관련 파일:
+  - `osmu-backend/src/main/java/com/example/osmu/bucket/BucketService.java`
+  - `osmu-backend/src/test/java/com/example/osmu/bucket/BucketObjectFlowTest.java`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/backend-design.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/worklog/codex/frontend-backend-mvp/worklog-codex-frontend-backend-mvp.md`
+- 검증 기록:
+  - `.\gradlew.bat test --tests com.example.osmu.bucket.BucketObjectFlowTest.bucketSyncPreservesChecksumOnlyWhenStorageEtagStillMatches` 통과.
+  - `.\gradlew.bat test` 통과.
+- 코드 리뷰: checksum 보존 조건을 ETag 일치로 제한해 오래된 checksum이 새 object에 붙는 위험을 줄였다. ETag가 없는 storage adapter에서는 보존하지 않으므로 보수적으로 동작한다. 완전한 storage-native checksum sync는 아직 MinIO object stat/list metadata 확장이 필요하다.
+- 결과: bucket sync checksum metadata 보존/폐기 정책 구현 완료.
+- 후속 메모: Docker/MinIO에서 실제 S3 checksum upload 후 sync를 실행해 MariaDB metadata가 보존되는지 확인해야 한다.
+- 추가 개발: storage-native checksum metadata sync, MinIO statObject checksum/tag 확장, Docker smoke에 sync-after-checksum assertion 추가.
+- 사용 skill/plugin: caveman skill ultra 사용.
+
+### 2026-06-13 - Smoke Script Sync Checksum 검증 추가
+
+- 작업 시작 시간: 2026-06-13 17:30:00 +09:00
+- 작업 종료 시간: 2026-06-13 17:33:28 +09:00
+- 사용자 명령: 현재 목표인 프로토타입 개발 계속.
+- 명령 해석: 직전 구현한 bucket sync checksum 보존 정책을 실제 Docker/real S3 client smoke에서도 검증할 수 있게 하라는 명령으로 인식.
+- 작업 방식: 기존 manual SigV4 checksum object PUT/HEAD/GET 흐름 뒤에 REST bucket sync 호출을 넣고, 같은 object를 다시 S3 HEAD로 조회해 `x-amz-checksum-sha256` header가 유지되는지 확인했다.
+- 실행 내용:
+  - `verify-docker-integration.ps1`의 SigV4 smoke에 `POST /api/buckets/{bucketName}/sync` 이후 checksum HEAD 검증 추가.
+  - `verify-s3-client-smoke.ps1`의 built-in manual SigV4 smoke에도 같은 sync-after-checksum 검증 추가.
+  - client smoke manual 함수에 admin token parameter 전달.
+  - local-dev/testcase 문서 갱신.
+- 구현 내용:
+  - Docker 통합 smoke와 running-backend client smoke가 checksum metadata 저장뿐 아니라 bucket sync 이후 보존까지 검증한다.
+  - 실패 시 `SigV4 object HEAD did not preserve checksum after bucket sync.`로 원인을 명확히 알린다.
+- 수정된 파일 및 관련 파일:
+  - `scripts/verify-docker-integration.ps1`
+  - `scripts/verify-s3-client-smoke.ps1`
+  - `dev-docs/local-dev-env.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/worklog/codex/frontend-backend-mvp/worklog-codex-frontend-backend-mvp.md`
+- 검증 기록:
+  - `[scriptblock]::Create((Get-Content -Raw -LiteralPath '.\scripts\verify-docker-integration.ps1')) | Out-Null` 통과.
+  - `[scriptblock]::Create((Get-Content -Raw -LiteralPath '.\scripts\verify-s3-client-smoke.ps1')) | Out-Null` 통과.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-local.ps1 -SkipDocker -SkipBackend -SkipFrontend` 통과.
+  - `git diff --check` 통과. CRLF 변환 경고만 출력.
+- 코드 리뷰: sync 검증은 기존 smoke object를 재사용하므로 cleanup 대상이 늘지 않는다. REST sync에는 admin JWT를 쓰고, 검증은 S3 SigV4 HEAD로 수행해 REST/S3 경계가 함께 확인된다. 실제 Docker daemon/backend 실행 환경에서는 아직 smoke script를 실제 실행해야 한다.
+- 결과: sync-after-checksum smoke 검증 추가 완료.
+- 후속 메모: Docker Desktop 실행 후 `.\scripts\verify-docker-integration.ps1`와 running backend 기준 `.\scripts\verify-s3-client-smoke.ps1 -Client auto` 실제 실행 필요.
+- 추가 개발: sync 후 stale checksum 폐기 smoke, external AWS CLI/mc 자체 checksum option 검증, CI smoke 자동화.
+- 사용 skill/plugin: caveman skill ultra 사용.
+
+### 2026-06-13 - S3 Multi-Object Delete Quiet 모드 추가
+
+- 작업 시작 시간: 2026-06-13 17:34:00 +09:00
+- 작업 종료 시간: 2026-06-13 17:36:53 +09:00
+- 사용자 명령: 현재 목표인 프로토타입 개발 계속.
+- 명령 해석: S3 client 호환성 프로토타입에서 `POST ?delete` multi-object delete의 남은 XML parity gap을 줄이라는 명령으로 인식.
+- 작업 방식: 기존 multi-delete XML parser가 `Object/Key`만 읽고 있었으므로 같은 parser에서 optional `Quiet` 값을 함께 읽도록 확장했다. delete 수행 자체는 기존 soft-delete 흐름을 유지하고, response XML 출력만 S3 quiet semantics에 맞춰 조정했다.
+- 실행 내용:
+  - `DeleteObjectsRequest` record 추가.
+  - `Delete/Quiet` XML 값을 `true`/`false`로 파싱.
+  - `Quiet=true`이면 `DeleteResult`에서 성공 `Deleted` entry를 출력하지 않음.
+  - invalid Quiet 값은 `InvalidRequest` 계열 validation error로 차단.
+  - S3 controller test에 quiet delete 검증 추가.
+  - API/backend design/test case 문서 갱신.
+- 구현 내용:
+  - `POST /api/s3/{bucketName}?delete`가 S3 XML `<Quiet>true</Quiet>` 요청을 처리한다.
+  - 기존 missing key를 deleted로 간주하는 S3 compatibility 동작은 유지된다.
+- 수정된 파일 및 관련 파일:
+  - `osmu-backend/src/main/java/com/example/osmu/object/S3ObjectController.java`
+  - `osmu-backend/src/test/java/com/example/osmu/object/S3ObjectControllerTest.java`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/backend-design.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/worklog/codex/frontend-backend-mvp/worklog-codex-frontend-backend-mvp.md`
+- 검증 기록:
+  - `.\gradlew.bat test --tests com.example.osmu.object.S3ObjectControllerTest.accessKeyCanDeleteMultipleObjectsThroughS3XmlApi` 통과.
+- 코드 리뷰: quiet 처리는 응답 렌더링에만 영향을 주므로 delete side effect, 권한 검사, 감사 로그 흐름은 그대로 유지된다. 현재 per-object error 목록을 누적하지 않는 MVP 구조라, 실패는 기존처럼 요청 전체 error로 처리된다.
+- 결과: S3 multi-object delete Quiet mode MVP 지원 완료.
+- 후속 메모: 실제 AWS CLI `delete-objects --delete file://...` quiet payload와 XML 응답 파싱을 client smoke에 추가하면 좋다.
+- 추가 개발: multi-delete per-object Error element, Content-MD5 요구 parity, quiet mode real client smoke.
+- 사용 skill/plugin: caveman skill ultra 사용.
+
+### 2026-06-13 - S3 Multi-Object Delete Content-MD5 검증 추가
+
+- 작업 시작 시간: 2026-06-13 17:38:00 +09:00
+- 작업 종료 시간: 2026-06-13 17:40:44 +09:00
+- 사용자 명령: 현재 목표인 프로토타입 개발 계속.
+- 명령 해석: S3 `POST ?delete` XML 요청의 무결성 검증 gap을 줄여 S3 client 호환성과 안전성을 높이라는 명령으로 인식.
+- 작업 방식: XML body를 문자열로 파싱하기 전에 raw request bytes를 읽고, `Content-MD5` header가 있을 때만 body MD5를 검증하도록 추가했다. header가 없으면 기존 prototype client 흐름을 깨지 않도록 유지했다.
+- 실행 내용:
+  - `requestBody(request, validateContentMd5)` helper 추가.
+  - outer controller에 `decodeContentMd5` helper를 두어 object upload와 delete XML 검증이 같은 base64/length 정책을 사용하도록 정리.
+  - multi-object delete에서 optional `Content-MD5` 검증 적용.
+  - test에 matching/mismatched/invalid `Content-MD5` 경로 추가.
+  - API/backend design/test case 문서 갱신.
+- 구현 내용:
+  - `POST /api/s3/{bucketName}?delete` 요청에 `Content-MD5`가 있으면 XML body와 비교한다.
+  - mismatch는 S3 XML `BadDigest`, invalid base64/length는 `InvalidDigest`로 응답한다.
+- 수정된 파일 및 관련 파일:
+  - `osmu-backend/src/main/java/com/example/osmu/object/S3ObjectController.java`
+  - `osmu-backend/src/test/java/com/example/osmu/object/S3ObjectControllerTest.java`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/backend-design.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/worklog/codex/frontend-backend-mvp/worklog-codex-frontend-backend-mvp.md`
+- 검증 기록:
+  - `.\gradlew.bat test --tests com.example.osmu.object.S3ObjectControllerTest.accessKeyCanDeleteMultipleObjectsThroughS3XmlApi` 통과.
+- 코드 리뷰: MD5 검증은 delete 실행 전에 수행되므로 digest mismatch가 일부 object delete를 만든 뒤 실패하는 위험이 없다. 기존 `Content-MD5` decode 규칙을 재사용해 object PUT과 XML delete의 digest error semantics가 일관된다. 다만 AWS처럼 `Content-MD5`를 필수로 강제하지는 않는 MVP 호환 모드다.
+- 결과: S3 multi-object delete optional Content-MD5 검증 완료.
+- 후속 메모: 실제 AWS CLI/mc delete-objects 요청이 어떤 Content-MD5 header를 보내는지 smoke에서 확인해야 한다.
+- 추가 개발: Content-MD5 필수 전환 옵션, real client smoke, per-object Error element.
+- 사용 skill/plugin: caveman skill ultra 사용.
+
+### 2026-06-13 - Smoke Script Multi-Delete MD5 검증 추가
+
+- 작업 시작 시간: 2026-06-13 17:42:00 +09:00
+- 작업 종료 시간: 2026-06-13 17:45:54 +09:00
+- 사용자 명령: 현재 목표인 프로토타입 개발 계속.
+- 명령 해석: 구현된 S3 multi-object delete `Quiet`/`Content-MD5` 동작을 실제 Docker 및 running-backend smoke에서 검증할 수 있게 하라는 명령으로 인식.
+- 작업 방식: built-in manual SigV4 smoke에 multi-delete 전용 검증 함수를 추가했다. `Content-MD5`가 HTTP content header라 `Invoke-SignedHttp`가 content header에도 값을 넣도록 보강했다.
+- 실행 내용:
+  - `verify-docker-integration.ps1`에 `Get-Md5Base64`와 `Invoke-S3MultiDeleteMd5Smoke` 추가.
+  - `verify-s3-client-smoke.ps1`에 같은 multi-delete 검증 추가.
+  - SigV4 helper가 `Content-MD5`를 canonical signed header와 실제 HTTP content header에 함께 반영하도록 수정.
+  - Quiet delete 응답에 `<Deleted>`가 없는지 확인.
+  - mismatched `Content-MD5`가 `BadDigest`이며 protected object를 삭제하지 않는지 확인.
+  - smoke cleanup에 protected object 추가.
+  - local-dev/testcase 문서 갱신.
+- 구현 내용:
+  - Docker smoke와 client smoke가 S3 multi-delete Quiet/Content-MD5 성공/실패 경로를 검증한다.
+  - bad MD5 요청이 delete side effect를 만들지 않는지 smoke에서 확인한다.
+- 수정된 파일 및 관련 파일:
+  - `scripts/verify-docker-integration.ps1`
+  - `scripts/verify-s3-client-smoke.ps1`
+  - `dev-docs/local-dev-env.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/worklog/codex/frontend-backend-mvp/worklog-codex-frontend-backend-mvp.md`
+- 검증 기록:
+  - `[scriptblock]::Create((Get-Content -Raw -LiteralPath '.\scripts\verify-docker-integration.ps1')) | Out-Null` 통과.
+  - `[scriptblock]::Create((Get-Content -Raw -LiteralPath '.\scripts\verify-s3-client-smoke.ps1')) | Out-Null` 통과.
+- 코드 리뷰: smoke는 request signing, content header 전달, controller MD5 검증, Quiet response XML, no-side-effect 실패 경로를 한 번에 검증한다. 실제 Docker daemon/backend 실행 환경에서는 아직 smoke script를 실제 실행해야 한다.
+- 결과: S3 multi-delete Quiet/Content-MD5 smoke 검증 추가 완료.
+- 후속 메모: Docker Desktop 실행 후 `.\scripts\verify-docker-integration.ps1`와 running backend 기준 `.\scripts\verify-s3-client-smoke.ps1 -Client auto` 실제 실행 필요.
+- 추가 개발: external AWS CLI/mc delete-objects checksum option 검증, CI smoke 자동화, multi-delete per-object Error.
+- 사용 skill/plugin: caveman skill ultra 사용.
+
+### 2026-06-13 - S3 Multi-Object Delete Per-Key Error 추가
+
+- 작업 시작 시간: 2026-06-13 17:50:32 +09:00
+- 작업 종료 시간: 2026-06-13 17:53:23 +09:00
+- 사용자 명령: 현재까지 구현된 기능 기준으로 프로토타입 개발 계속.
+- 명령 해석: S3 multi-object delete의 남은 호환성 gap인 per-object 실패 응답을 구현해 실제 S3 client 호환성을 높이라는 명령으로 인식.
+- 작업 방식: `POST /api/s3/{bucketName}?delete` batch 처리에서 key별 결과를 분리했다. request/auth/body digest 실패는 기존처럼 전체 실패로 유지하고, 개별 object key 처리 중 발생한 오류는 `DeleteResult/Error` XML로 누적한다.
+- 실행 내용:
+  - multi-delete 결과 모델에 per-key error 목록 추가.
+  - `Quiet=true`는 성공 `Deleted`만 숨기고 `Error`는 계속 응답하도록 구현.
+  - S3-style error code mapping을 delete result용으로 추가.
+  - reserved internal key 삭제 시 per-key `InvalidRequest`를 반환하는 controller test 추가.
+  - Docker/client smoke script가 Quiet/Content-MD5 성공 경로에서 per-key reserved-key error를 함께 확인하도록 보강.
+  - API/backend/test/local-dev 문서 갱신.
+- 구현 내용:
+  - 기존 missing key는 S3 호환대로 `Deleted` 취급을 유지한다.
+  - `.osmu/versions/...` 같은 reserved key는 batch 전체 실패가 아니라 `<Error><Key>...<Code>InvalidRequest</Code>...</Error>`로 반환된다.
+  - `Quiet=true`에서도 per-key `Error`는 보존된다.
+- 수정된 파일 및 관련 파일:
+  - `osmu-backend/src/main/java/com/example/osmu/object/S3ObjectController.java`
+  - `osmu-backend/src/test/java/com/example/osmu/object/S3ObjectControllerTest.java`
+  - `scripts/verify-docker-integration.ps1`
+  - `scripts/verify-s3-client-smoke.ps1`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/backend-design.md`
+  - `dev-docs/local-dev-env.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/worklog/codex/frontend-backend-mvp/worklog-codex-frontend-backend-mvp.md`
+- 검증 기록:
+  - `.\gradlew.bat test --tests com.example.osmu.object.S3ObjectControllerTest.accessKeyCanDeleteMultipleObjectsThroughS3XmlApi` 통과.
+  - `.\gradlew.bat test` 통과.
+  - `[scriptblock]::Create((Get-Content -Raw -LiteralPath '.\scripts\verify-docker-integration.ps1')) | Out-Null` 통과.
+  - `[scriptblock]::Create((Get-Content -Raw -LiteralPath '.\scripts\verify-s3-client-smoke.ps1')) | Out-Null` 통과.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-local.ps1 -SkipDocker -SkipBackend -SkipFrontend` 통과.
+  - `git diff --check -- osmu-backend/src/main/java/com/example/osmu/object/S3ObjectController.java osmu-backend/src/test/java/com/example/osmu/object/S3ObjectControllerTest.java scripts/verify-docker-integration.ps1 scripts/verify-s3-client-smoke.ps1 dev-docs/api-spec.md dev-docs/backend-design.md dev-docs/test-cases.md dev-docs/local-dev-env.md` 통과. CRLF 변환 warning만 확인.
+- 코드 리뷰: batch-level XML 파싱, auth, `Content-MD5` 검증은 delete 실행 전에 끝나므로 invalid request가 부분 삭제를 만들지 않는다. per-key error는 object 처리 loop 안에서만 생성되어 성공 key와 실패 key를 분리한다. 다만 현재 per-key error는 controller에서 `ApiErrorCode`를 S3 code로 매핑하므로 global S3 error mapping과 중복된다.
+- 결과: S3 multi-object delete per-key Error 응답 MVP 지원 완료.
+- 후속 메모: Docker Desktop 실행 후 실제 smoke script에서 per-key Error 응답을 확인해야 한다.
+- 추가 개발: external AWS CLI/mc delete-objects response parsing 검증, global S3 error code mapper 공통화, CI smoke 자동화.
+- 사용 skill/plugin: caveman skill ultra 사용.
+
+### 2026-06-13 - S3 Error Code Mapper 공통화
+
+- 작업 시작 시간: 2026-06-13 17:55:52 +09:00
+- 작업 종료 시간: 2026-06-13 17:58:00 +09:00
+- 사용자 명령: 현재까지 구현된 기능 기준으로 프로토타입 개발 계속.
+- 명령 해석: S3 호환 API의 error mapping 중복을 제거하고 global S3 XML error와 multi-delete per-key error가 같은 규칙을 쓰도록 정리하라는 명령으로 인식.
+- 작업 방식: `GlobalExceptionHandler`와 `S3ObjectController`에 중복되어 있던 `ApiErrorCode -> S3 code` mapping을 `S3ErrorCodeMapper`로 분리했다. mapping contract를 작은 unit test로 고정했다.
+- 실행 내용:
+  - `S3ErrorCodeMapper` 추가.
+  - global `/api/s3/**` error XML이 공통 mapper를 사용하도록 변경.
+  - multi-delete per-key `DeleteResult/Error`가 공통 mapper를 사용하도록 변경.
+  - mapper unit test 추가.
+  - API/backend/testcase 문서 갱신.
+- 구현 내용:
+  - `AUTHENTICATION_REQUIRED`/`AUTHORIZATION_FAILED`는 `AccessDenied`.
+  - bucket not found message는 `NoSuchBucket`, 그 외 not found는 `NoSuchKey`.
+  - digest, range, precondition, quota, conflict, storage/internal error code mapping을 한 곳에서 관리한다.
+- 수정된 파일 및 관련 파일:
+  - `osmu-backend/src/main/java/com/example/osmu/common/error/S3ErrorCodeMapper.java`
+  - `osmu-backend/src/main/java/com/example/osmu/common/error/GlobalExceptionHandler.java`
+  - `osmu-backend/src/main/java/com/example/osmu/object/S3ObjectController.java`
+  - `osmu-backend/src/test/java/com/example/osmu/common/error/S3ErrorCodeMapperTest.java`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/backend-design.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/worklog/codex/frontend-backend-mvp/worklog-codex-frontend-backend-mvp.md`
+- 검증 기록:
+  - `.\gradlew.bat test --tests com.example.osmu.common.error.S3ErrorCodeMapperTest --tests com.example.osmu.object.S3ObjectControllerTest.accessKeyCanDeleteMultipleObjectsThroughS3XmlApi` 통과.
+  - `.\gradlew.bat test` 통과.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-local.ps1 -SkipDocker -SkipBackend -SkipFrontend` 통과.
+  - `git diff --check -- osmu-backend/src/main/java/com/example/osmu/common/error/S3ErrorCodeMapper.java osmu-backend/src/main/java/com/example/osmu/common/error/GlobalExceptionHandler.java osmu-backend/src/main/java/com/example/osmu/object/S3ObjectController.java osmu-backend/src/test/java/com/example/osmu/common/error/S3ErrorCodeMapperTest.java dev-docs/api-spec.md dev-docs/backend-design.md dev-docs/test-cases.md` 통과. CRLF 변환 warning만 확인.
+- 코드 리뷰: 공통 mapper는 protocol boundary에 가까운 `common.error`에 있어 global handler와 S3 controller가 모두 참조하기 쉽다. message 기반 bucket/object 구분은 기존 정책을 유지했기 때문에 동작 변화는 없다. 향후 exact AWS error schema를 늘릴 때 mapper test를 먼저 확장하면 된다.
+- 결과: S3 XML error code mapping 공통화 완료.
+- 후속 메모: AWS error schema를 더 맞출 때 mapper에 code-specific message/resource/request id 처리까지 확장할 수 있다.
+- 추가 개발: exact AWS error schema parity, per-error Resource element, request id host id parity.
+- 사용 skill/plugin: caveman skill ultra 사용.
+
+### 2026-06-13 - S3 Bucket Tagging MVP 추가
+
+- 작업 시작 시간: 2026-06-13 18:00:00 +09:00
+- 작업 종료 시간: 2026-06-13 18:07:54 +09:00
+- 사용자 명령: 현재까지 구현된 기능 기준으로 프로토타입 개발 계속.
+- 명령 해석: S3 호환 bucket metadata 기능 중 아직 빠진 bucket tagging을 구현해 운영/분류용 metadata와 S3 client 호환성을 높이라는 명령으로 인식.
+- 작업 방식: `BucketRecord` 구조를 흔들지 않고 별도 `bucket_tags` repository/service/controller를 추가했다. S3 XML parsing/rendering은 bucket tagging 전용 mapper로 분리하고, 기존 bucket lifecycle/object list mapping과 query param 충돌이 없도록 controller mapping을 보정했다.
+- 실행 내용:
+  - `BucketTagRepository` interface와 in-memory/MariaDB 구현 추가.
+  - `V23__bucket_tags.sql` migration 추가.
+  - `BucketTagService` 추가 및 bucket 삭제 시 tag cleanup 연결.
+  - `S3BucketTaggingController` 추가: `GET/PUT/DELETE /api/s3/{bucketName}?tagging`.
+  - `S3TaggingXmlMapper` 추가: S3 `Tagging/TagSet/Tag/Key/Value` XML parse/render 및 XXE 방어.
+  - S3 bucket create/delete/object list mapping에서 `?tagging` 충돌 방지.
+  - Access Key ADMIN policy에 `s3:GetBucketTagging`, `s3:PutBucketTagging`, `s3:DeleteBucketTagging` 추가.
+  - Docker/client smoke script에 SigV4 bucket tagging PUT/GET/DELETE 검증 추가.
+  - API/backend/database/local-dev/testcase/PRD 문서 갱신.
+- 구현 내용:
+  - bucket tag는 bucket별 최대 50개 key/value pair로 저장된다.
+  - bucket tagging API는 bucket `ADMIN` scope를 요구한다.
+  - `PUT ?tagging`은 tag set 전체를 replace하고, `DELETE ?tagging`은 전체 삭제한다.
+  - `GET ?tagging`은 현재 tag set을 S3-compatible XML로 반환한다.
+- 수정된 파일 및 관련 파일:
+  - `osmu-backend/src/main/java/com/example/osmu/bucket/BucketTagService.java`
+  - `osmu-backend/src/main/java/com/example/osmu/bucket/S3BucketTaggingController.java`
+  - `osmu-backend/src/main/java/com/example/osmu/bucket/S3TaggingXmlMapper.java`
+  - `osmu-backend/src/main/java/com/example/osmu/bucket/repository/BucketTagRepository.java`
+  - `osmu-backend/src/main/java/com/example/osmu/bucket/repository/InMemoryBucketTagRepository.java`
+  - `osmu-backend/src/main/java/com/example/osmu/bucket/repository/MariaDbBucketTagRepository.java`
+  - `osmu-backend/src/main/java/com/example/osmu/bucket/BucketService.java`
+  - `osmu-backend/src/main/java/com/example/osmu/bucket/S3BucketController.java`
+  - `osmu-backend/src/main/java/com/example/osmu/object/S3ObjectController.java`
+  - `osmu-backend/src/main/java/com/example/osmu/accesskey/S3AccessPolicyGenerator.java`
+  - `osmu-backend/src/main/resources/db/migration/V23__bucket_tags.sql`
+  - `osmu-backend/src/test/java/com/example/osmu/bucket/BucketTaggingControllerTest.java`
+  - `scripts/verify-docker-integration.ps1`
+  - `scripts/verify-s3-client-smoke.ps1`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/backend-design.md`
+  - `dev-docs/database-design.md`
+  - `dev-docs/local-dev-env.md`
+  - `dev-docs/PRODUCT_REQUIREMENTS.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/worklog/codex/frontend-backend-mvp/worklog-codex-frontend-backend-mvp.md`
+- 검증 기록:
+  - `.\gradlew.bat test --tests com.example.osmu.bucket.BucketTaggingControllerTest` 통과.
+  - `.\gradlew.bat test --tests com.example.osmu.bucket.BucketTaggingControllerTest --tests com.example.osmu.bucket.BucketLifecycleControllerTest.accessKeyWithAdminScopeCanUseS3StyleLifecycleQueryAlias` 통과.
+  - `.\gradlew.bat test` 통과.
+  - `[scriptblock]::Create((Get-Content -Raw -LiteralPath '.\scripts\verify-docker-integration.ps1')) | Out-Null` 통과.
+  - `[scriptblock]::Create((Get-Content -Raw -LiteralPath '.\scripts\verify-s3-client-smoke.ps1')) | Out-Null` 통과.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-local.ps1 -SkipDocker -SkipBackend -SkipFrontend` 통과.
+  - `git diff --check -- osmu-backend/src/main/java/com/example/osmu/accesskey/S3AccessPolicyGenerator.java osmu-backend/src/main/java/com/example/osmu/bucket osmu-backend/src/main/java/com/example/osmu/object/S3ObjectController.java osmu-backend/src/main/resources/db/migration/V23__bucket_tags.sql osmu-backend/src/test/java/com/example/osmu/bucket/BucketTaggingControllerTest.java scripts/verify-docker-integration.ps1 scripts/verify-s3-client-smoke.ps1 dev-docs/api-spec.md dev-docs/backend-design.md dev-docs/database-design.md dev-docs/local-dev-env.md dev-docs/PRODUCT_REQUIREMENTS.md dev-docs/test-cases.md` 통과. CRLF 변환 warning만 확인.
+- 코드 리뷰: bucket tag를 `BucketRecord`에 넣지 않고 별도 table/repository로 뺐기 때문에 기존 bucket list/get 응답 계약을 흔들지 않는다. Query param mapping에서 `?tagging`을 create/delete/list path에서 제외해 controller 충돌을 막았다. XML parser는 DOCTYPE/external entity loading을 막는다. 다만 REST portal용 bucket tag UI는 아직 없다.
+- 결과: S3 bucket tagging MVP 지원 완료.
+- 후속 메모: Docker Desktop 실행 후 SigV4 bucket tagging smoke를 실제로 확인해야 한다.
+- 추가 개발: frontend bucket tag 관리 UI, REST bucket tag API, real AWS CLI `get-bucket-tagging/put-bucket-tagging/delete-bucket-tagging` smoke.
+- 사용 skill/plugin: caveman skill ultra 사용.
+
+### 2026-06-13 - Frontend Bucket Tags 패널 추가
+
+- 작업 시작 시간: 2026-06-13 18:10:00 +09:00
+- 작업 종료 시간: 2026-06-13 18:17:02 +09:00
+- 사용자 명령: `/Caveman ultra` 후 현재 프로토타입 개발 계속.
+- 명령 해석: 응답은 더 짧게 유지하고, 직전 미완료 항목인 frontend bucket tag 관리 UI를 구현하라는 흐름으로 인식.
+- 작업 방식: 기존 Bucket Lifecycle 패널 구조를 재사용해 선택 bucket 상세 영역에 Bucket Tags 패널을 추가했다. Backend S3 bucket tagging API가 raw XML을 받으므로 frontend API client에 text/XML 요청 helper를 추가하고, 화면 입력은 `key=value` 형식으로 받아 S3 `Tagging` XML로 변환했다.
+- 실행 내용:
+  - `/api/s3/{bucketName}?tagging` GET/PUT/DELETE용 frontend API wrapper 추가.
+  - raw XML 응답/요청을 처리하는 `textRequest`와 S3 XML error parser 추가.
+  - Bucket Tags 패널 추가: Load, Save, Delete, tag count, saved count 표시.
+  - 선택 bucket 변경/삭제/session reset 시 bucket tag 상태 초기화.
+  - bucket tag 입력 검증 추가: 최대 50개, key 128자, value 256자, duplicate key 차단.
+  - frontend 설계 문서와 테스트 케이스 갱신.
+- 구현 내용:
+  - `project=osmu,stage=raw` 같은 입력을 S3 `Tagging/TagSet/Tag/Key/Value` XML로 변환해 저장한다.
+  - `GET ?tagging` XML은 다시 `key=value` 입력값으로 변환된다.
+  - 관리 가능한 bucket 또는 bucket `ADMIN` permission이 있는 사용자에게만 패널을 표시한다.
+- 수정된 파일 및 관련 파일:
+  - `osmu-frontend/src/services/api.js`
+  - `osmu-frontend/src/views/HomeView.vue`
+  - `dev-docs/frontend-design.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/worklog/codex/frontend-backend-mvp/worklog-codex-frontend-backend-mvp.md`
+- 검증 기록:
+  - `npm.cmd run build` 통과.
+  - `Invoke-WebRequest http://127.0.0.1:5173` 결과 `200 OK` 확인.
+  - Browser plugin 확인을 시도했으나 `CreateProcessAsUserW failed: 5` sandbox 오류로 DOM/시각 확인은 미수행.
+- 코드 리뷰: raw XML API를 기존 JSON `request()`에 억지로 넣지 않고 `textRequest()`로 분리해 lifecycle/object REST 호출 영향이 없다. UI는 기존 lifecycle panel class를 재사용해 화면 구조 변화가 작다. 단, 실제 브라우저 E2E와 Docker API smoke는 이번 항목에서 실행하지 않았다.
+- 결과: Frontend에서 bucket tag 조회/저장/삭제 가능.
+- 후속 메모: 실제 백엔드 실행 상태에서 로그인 후 Bucket Tags 패널이 XML round-trip 하는지 브라우저로 확인 필요.
+- 추가 개발: REST형 bucket tag API, browser E2E, AWS CLI `get-bucket-tagging/put-bucket-tagging/delete-bucket-tagging` 실클라이언트 검증.
+- 사용 skill/plugin: caveman skill ultra 사용.
+
+### 2026-06-13 - REST Bucket Tags API 및 UI 연결 변경
+
+- 작업 시작 시간: 2026-06-13 18:18:00 +09:00
+- 작업 종료 시간: 2026-06-13 18:24:17 +09:00
+- 사용자 명령: 활성 목표인 현재 기능 기준 프로토타입 개발 계속.
+- 명령 해석: 직전 후속 개발 항목인 REST형 bucket tag API를 추가해 포털/기업용 API 사용성을 높이라는 작업으로 인식.
+- 작업 방식: S3 XML bucket tagging 구현은 그대로 유지하고, 같은 `BucketTagService`/repository를 재사용하는 REST JSON endpoint를 `BucketController`에 추가했다. Frontend Bucket Tags 패널은 S3 XML alias 대신 REST JSON API를 사용하도록 바꿨다.
+- 실행 내용:
+  - `GET /api/buckets/{bucketName}/tags` 추가.
+  - `PUT /api/buckets/{bucketName}/tags` 추가: JSON tag map 전체 교체.
+  - `DELETE /api/buckets/{bucketName}/tags` 추가.
+  - REST request/response record 추가.
+  - `BucketTagService` audit event를 S3/REST 경로별로 분리.
+  - Frontend API wrapper와 Bucket Tags 패널 저장/조회/delete 로직을 REST API로 변경.
+  - API/backend/frontend/testcase 문서 갱신.
+- 구현 내용:
+  - REST response는 `bucketName`, `tags`, `tagCount`를 반환한다.
+  - REST tag 검증은 기존 bucket tag 규칙과 동일하다: 최대 50개, key 128자, value 256자, duplicate/invalid key 방지.
+  - S3 XML `GET/PUT/DELETE /api/s3/{bucketName}?tagging`은 유지된다.
+- 수정된 파일 및 관련 파일:
+  - `osmu-backend/src/main/java/com/example/osmu/bucket/BucketController.java`
+  - `osmu-backend/src/main/java/com/example/osmu/bucket/BucketTagService.java`
+  - `osmu-backend/src/main/java/com/example/osmu/bucket/BucketTagsRequest.java`
+  - `osmu-backend/src/main/java/com/example/osmu/bucket/BucketTagsResponse.java`
+  - `osmu-backend/src/test/java/com/example/osmu/bucket/BucketTaggingControllerTest.java`
+  - `osmu-frontend/src/services/api.js`
+  - `osmu-frontend/src/views/HomeView.vue`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/backend-design.md`
+  - `dev-docs/frontend-design.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/worklog/codex/frontend-backend-mvp/worklog-codex-frontend-backend-mvp.md`
+- 검증 기록:
+  - `npm.cmd run build` 통과.
+  - `git diff --check -- ...` 통과. CRLF 변환 warning만 확인.
+  - `.\gradlew.bat test --tests com.example.osmu.bucket.BucketTaggingControllerTest` 실행 실패. 현재 shell에서 `JAVA_HOME`이 설정되지 않았고 `java`가 PATH에 없어 Gradle wrapper가 Java를 찾지 못했다.
+- 코드 리뷰: REST API는 S3 XML API와 별도 controller entrypoint만 추가하고 service/repository/validation을 공유하므로 저장 규칙이 갈라지지 않는다. Audit event는 `BUCKET_TAGS_*`와 `S3_BUCKET_TAGGING_*`로 구분되어 운영 추적성이 좋아졌다. Backend unit/integration test는 Java 런타임 복구 후 다시 실행해야 한다.
+- 결과: 내부 REST API와 Web Portal이 bucket tags를 JSON 기반으로 관리할 수 있게 됐다.
+- 후속 메모: Java/JDK 환경 복구 후 `BucketTaggingControllerTest`와 전체 `.\gradlew.bat test` 재실행 필요.
+- 추가 개발: Browser E2E, Docker smoke, real AWS CLI/mc bucket tagging 검증, CI에서 Java/Gradle test 자동화.
+- 사용 skill/plugin: caveman skill ultra 사용.
+
+### 2026-06-13 - Frontend Tag Utility Unit Test 추가
+
+- 작업 시작 시간: 2026-06-13 18:25:00 +09:00
+- 작업 종료 시간: 2026-06-13 18:43:03 +09:00
+- 사용자 명령: 활성 목표인 현재 기능 기준 프로토타입 개발 계속.
+- 명령 해석: 구현된 포털 기능의 안정성을 높이기 위해 build 검증만 있던 frontend tag 입력 검증을 자동 테스트 가능한 단위로 분리하라는 작업으로 인식.
+- 작업 방식: HomeView 내부에 있던 tag parsing/formatting/validation 규칙을 `src/utils/tags.js`로 추출하고, Node 내장 test runner로 별도 dependency 없이 unit test를 추가했다. 추출 과정에서 깨진 template/script 문자열이 build를 막아 관련 UI 라벨과 confirm 문자열을 ASCII로 복구했다.
+- 실행 내용:
+  - `src/utils/tags.js` 추가.
+  - `src/utils/tags.test.js` 추가.
+  - `package.json`에 `test:unit` script 추가.
+  - HomeView bucket/object tag validation과 formatting이 공통 util을 사용하도록 변경.
+  - HomeView object detail/version, access key, permission, organization, user, confirm dialog template 손상 구간 복구.
+  - compile을 막던 confirm/title/status label 문자열 손상 구간 복구.
+  - frontend 설계 문서와 test case 문서 갱신.
+- 구현 내용:
+  - object tag는 최대 10쌍, bucket tag는 최대 50쌍으로 검증한다.
+  - malformed `key=value`, invalid key, duplicate key, control character value를 차단한다.
+  - bucket tag 입력은 REST JSON map으로 변환할 수 있다.
+- 수정된 파일 및 관련 파일:
+  - `osmu-frontend/package.json`
+  - `osmu-frontend/src/utils/tags.js`
+  - `osmu-frontend/src/utils/tags.test.js`
+  - `osmu-frontend/src/views/HomeView.vue`
+  - `dev-docs/frontend-design.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/worklog/codex/frontend-backend-mvp/worklog-codex-frontend-backend-mvp.md`
+- 검증 기록:
+  - `npm.cmd run test:unit` 통과. 6개 test pass.
+  - `npm.cmd run build` 통과.
+  - `Select-String -Path osmu-frontend\src\views\HomeView.vue -Pattern '[^<]/(button|span|p|h2|h3|option|li|small|strong|label|td|th|dt)>'` 결과 없음.
+  - `git diff --check -- ...` 통과. CRLF 변환 warning만 확인.
+- 코드 리뷰: tag 규칙이 화면 컴포넌트에서 분리되어 이후 object tag/bucket tag UI가 늘어나도 같은 검증을 재사용할 수 있다. 테스트는 Node 내장 runner만 사용해 dependency 증가가 없다. HomeView template/script는 build 기준으로 회복했지만, 일부 기존 mojibake 표시 문자열은 여전히 남아 있어 별도 UI 텍스트 정리가 필요하다.
+- 결과: Frontend tag 입력 검증에 자동화 테스트가 생겼다.
+- 후속 메모: Browser E2E가 가능해지면 실제 Bucket Tags panel load/save/delete 흐름까지 검증해야 한다.
+- 추가 개발: component-level E2E, backend Java test 재실행, UI 한글 문자열 인코딩 정리, CI에서 `npm run test:unit`과 frontend build 자동화.
+- 사용 skill/plugin: caveman skill ultra 사용.
+
+### 2026-06-13 - Frontend UI 깨진 문자열 정리
+
+- 작업 시작 시간: 2026-06-13 18:44:00 +09:00
+- 작업 종료 시간: 2026-06-13 18:45:42 +09:00
+- 사용자 명령: 활성 목표인 현재 기능 기준 프로토타입 개발 계속.
+- 명령 해석: 프로토타입 데모 가능성을 높이기 위해 이전 template 복구 후 남은 UI mojibake 문자열을 정리해야 한다고 인식.
+- 작업 방식: `HomeView.vue`에서 non-ASCII mojibake 문자열을 스캔하고, 버튼 라벨/confirm 메시지/error 메시지를 ASCII English 문구로 교체했다.
+- 실행 내용:
+  - bucket/object/access-key/permission/user 관련 버튼 라벨 정리.
+  - object delete/restore/purge, access key revoke, user deactivate confirm 메시지 정리.
+  - bucket 생성, object tag/update/upload, presigned URL 생성, 공통 request 실패 error 메시지 정리.
+  - metadata status label은 `Synced`, `Stale`, `Missing in storage` 유지 확인.
+- 구현 내용:
+  - 화면에 노출되던 mojibake 문자열을 제거해 프로토타입 UI가 읽히도록 개선했다.
+  - 기능 로직/API 호출 경로는 변경하지 않았다.
+- 수정된 파일 및 관련 파일:
+  - `osmu-frontend/src/views/HomeView.vue`
+  - `dev-docs/worklog/codex/frontend-backend-mvp/worklog-codex-frontend-backend-mvp.md`
+- 검증 기록:
+  - `Select-String -Path osmu-frontend\src\views\HomeView.vue -Pattern '[^\x00-\x7F]'` 결과 없음.
+  - `npm.cmd run build` 통과.
+  - `npm.cmd run test:unit` 통과. 6개 test pass.
+  - `git diff --check -- osmu-frontend/src/views/HomeView.vue dev-docs/worklog/codex/frontend-backend-mvp/worklog-codex-frontend-backend-mvp.md` 통과. CRLF 변환 warning만 확인.
+- 코드 리뷰: UI 문자열 정리만 수행해 로직 영향은 낮다. 다만 현재는 English ASCII 문구로 통일했으므로 이후 제품 톤을 정하면 한국어/영어 i18n 리소스로 분리하는 것이 좋다.
+- 결과: `HomeView.vue`에 남은 mojibake 문자열 0건.
+- 후속 메모: Browser plugin이 현재 sandbox 오류로 동작하지 않아 실제 화면 시각 확인은 아직 못 했다.
+- 추가 개발: UI 문구 i18n 분리, browser E2E, backend Java test 재실행.
+- 사용 skill/plugin: caveman skill ultra 사용.
+
+### 2026-06-13 - Local Verify Script Frontend Unit Test 포함
+
+- 작업 시작 시간: 2026-06-13 18:46:00 +09:00
+- 작업 종료 시간: 2026-06-13 18:47:38 +09:00
+- 사용자 명령: 활성 목표인 현재 기능 기준 프로토타입 개발 계속.
+- 명령 해석: 프로토타입 품질을 높이기 위해 현재 구현된 frontend unit test와 backend Java 환경 조건을 로컬 검증 스크립트에 반영해야 한다고 인식.
+- 작업 방식: 기존 `scripts/verify-local.ps1`의 흐름을 유지하면서 frontend 검증 단계에는 `npm.cmd run test:unit`을 추가하고, backend test 전에는 Java/JAVA_HOME preflight를 추가했다.
+- 실행 내용:
+  - frontend static syntax check 다음에 frontend unit test step 추가.
+  - backend test 전 `Assert-JavaAvailable` 함수로 `java` PATH와 `JAVA_HOME` 경로 확인.
+  - Java 미설정 시 Gradle wrapper의 모호한 실패 전에 JDK 17+ 필요 메시지를 출력하도록 변경.
+- 구현 내용:
+  - `verify-local.ps1 -SkipDocker -SkipBackend` 실행 시 frontend unit/build가 함께 검증된다.
+  - `verify-local.ps1 -SkipDocker -SkipFrontend` 실행 시 Java runtime 누락을 명확히 알려준다.
+- 수정된 파일 및 관련 파일:
+  - `scripts/verify-local.ps1`
+  - `dev-docs/worklog/codex/frontend-backend-mvp/worklog-codex-frontend-backend-mvp.md`
+- 검증 기록:
+  - `[scriptblock]::Create((Get-Content -Raw -LiteralPath .\scripts\verify-local.ps1)) | Out-Null` 통과.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-local.ps1 -SkipDocker -SkipBackend` 통과. Frontend unit 6 pass, frontend build 통과.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-local.ps1 -SkipDocker -SkipFrontend`는 Java preflight에서 의도대로 실패. 메시지: `Java runtime not found on PATH. Install JDK 17+ or set JAVA_HOME before running backend tests.`
+- 코드 리뷰: 기존 검증 명령의 option contract를 바꾸지 않고 단계만 보강했다. Frontend unit test가 기본 로컬 검증에 포함되어 tag validation 회귀를 더 빨리 잡을 수 있다. Backend는 Java가 없을 때 실패 위치가 명확해졌다.
+- 결과: 로컬 프로토타입 검증 스크립트가 현재 frontend unit test를 포함하고, backend test 실행 조건을 명확히 검사한다.
+- 후속 메모: 이 shell에는 Java가 없어 backend test는 아직 실행 불가하다.
+- 추가 개발: JDK 설치/경로 설정 후 `.\scripts\verify-local.ps1 -SkipDocker -SkipFrontend`와 full verify 재실행, Docker integration smoke.
+- 사용 skill/plugin: caveman skill ultra 사용.
+
+### 2026-06-13 - Backend Compile Fix 및 Local Verify 통과
+
+- 작업 시작 시간: 2026-06-13 18:48:00 +09:00
+- 작업 종료 시간: 2026-06-13 18:51:35 +09:00
+- 사용자 명령: 활성 목표인 현재 기능 기준 프로토타입 개발 계속.
+- 명령 해석: 직전 Java/JAVA_HOME blocker를 해소해 backend test까지 실제로 검증하라는 흐름으로 인식.
+- 작업 방식: 로컬에 존재하는 Temurin JDK를 찾아 `JAVA_HOME`/`PATH`를 임시 지정하고 backend Gradle test를 실행했다. Compile 실패 원인을 확인한 뒤 최소 수정으로 import 누락을 보완했다.
+- 실행 내용:
+  - `%TEMP%\temurin-jdk21`과 `%TEMP%\temurin-jdk17` 존재 확인.
+  - JDK21 실행 확인 후 Gradle test 시도.
+  - Gradle build가 Java 17 toolchain을 요구해 JDK17로 재실행.
+  - `BucketController`의 REST bucket tags `@PutMapping` import 누락 수정.
+  - Docker 제외 local verify 전체 경로 재실행.
+- 구현 내용:
+  - `BucketController`에 `org.springframework.web.bind.annotation.PutMapping` import 추가.
+  - REST bucket tags endpoint compile 오류 제거.
+- 수정된 파일 및 관련 파일:
+  - `osmu-backend/src/main/java/com/example/osmu/bucket/BucketController.java`
+  - `dev-docs/worklog/codex/frontend-backend-mvp/worklog-codex-frontend-backend-mvp.md`
+- 검증 기록:
+  - `C:\Users\kjs99\AppData\Local\Temp\temurin-jdk21\jdk-21.0.11+10\bin\java.exe -version` 통과.
+  - JDK21로 backend test 시도 실패. 원인: Gradle toolchain이 Java 17 요구.
+  - JDK17로 `.\gradlew.bat test` 1차 실패. 원인: `BucketController.java`에서 `PutMapping` import 누락.
+  - import 수정 후 JDK17로 `.\gradlew.bat test` 통과. `BUILD SUCCESSFUL in 18s`.
+  - JDK17로 `powershell -ExecutionPolicy Bypass -File .\scripts\verify-local.ps1 -SkipDocker -SkipFrontend` 통과. Backend tests `BUILD SUCCESSFUL`.
+  - JDK17로 `powershell -ExecutionPolicy Bypass -File .\scripts\verify-local.ps1 -SkipDocker` 통과. Frontend unit 6 pass, frontend build 통과, backend tests `BUILD SUCCESSFUL`.
+- 코드 리뷰: compile 오류는 REST bucket tags 추가 시 annotation import만 빠진 단순 누락이었다. 기능 로직 변경 없이 import 추가로 해결했다. `verify-local`이 frontend와 backend를 함께 통과해 Docker 제외 프로토타입 회귀 기준은 충족한다.
+- 결과: Docker 제외 local verify 전체 통과.
+- 후속 메모: sandbox 내부에서는 Gradle distribution 다운로드가 network 제한으로 막혀 backend verify는 escalation 또는 이미 준비된 Gradle cache가 필요하다.
+- 추가 개발: Docker Desktop 실행 상태에서 `.\scripts\verify-docker-integration.ps1` 실행, Browser/E2E 검증.
+- 사용 skill/plugin: caveman skill ultra 사용.
+
+### 2026-06-13 - Prototype README 및 Document Index 정리
+
+- 작업 시작 시간: 2026-06-13 18:52:00 +09:00
+- 작업 종료 시간: 2026-06-13 18:54:48 +09:00
+- 사용자 명령: 활성 목표인 현재 기능 기준 프로토타입 개발 계속.
+- 명령 해석: Docker 제외 검증은 통과했으므로, 다음 병목인 Docker integration smoke와 사용자 실행 흐름을 README/runbook 형태로 정리해야 한다고 인식.
+- 작업 방식: Docker daemon 상태를 먼저 확인하고, daemon이 꺼져 있어 smoke 실행은 진행하지 못했다. 대신 비어 있던 root README와 깨진 문서 index를 ASCII 문서로 정리해 프로토타입 실행/검증 경로를 명확히 했다.
+- 실행 내용:
+  - `docker info` 실행으로 Docker CLI와 daemon 상태 확인.
+  - `README.md`를 프로토타입 개요, 구현 기능, 검증 명령, Docker 실행 명령, 기본 로그인, smoke test 설명 중심으로 재작성.
+  - `dev-docs/document-index.md`를 읽을 수 있는 문서 index로 교체.
+  - Docker daemon 미실행 상태와 Docker integration smoke pending 상태를 README에 명시.
+- 구현 내용:
+  - 처음 보는 사용자가 `verify-local.ps1 -SkipDocker`, Docker Compose 실행, Docker smoke, S3 client smoke 순서로 따라갈 수 있게 했다.
+  - 현재 구현된 backend/frontend/S3 compatibility 기능 요약을 root README에 배치했다.
+- 수정된 파일 및 관련 파일:
+  - `README.md`
+  - `dev-docs/document-index.md`
+  - `dev-docs/worklog/codex/frontend-backend-mvp/worklog-codex-frontend-backend-mvp.md`
+- 검증 기록:
+  - `docker compose version` 통과.
+  - `docker info` 실패. 원인: Docker daemon 미실행, `open //./pipe/docker_engine: The system cannot find the file specified.`
+  - `git diff --check -- README.md dev-docs/document-index.md` 통과. CRLF 변환 warning만 확인.
+  - `Select-String -Path README.md,dev-docs\document-index.md -Pattern '[^\x00-\x7F]'` 결과 없음.
+- 코드 리뷰: 코드 로직 변경 없이 실행 문서만 정리했다. README가 비어 있던 상태였기 때문에 프로토타입 사용성 개선 폭이 크다. 단, Docker smoke는 daemon이 켜진 상태에서 아직 실제 실행해야 한다.
+- 결과: 프로토타입의 첫 실행/검증 진입점이 생겼다.
+- 후속 메모: Docker Desktop을 켠 뒤 `.\scripts\verify-docker-integration.ps1`를 실행해야 한다.
+- 추가 개발: Docker integration smoke, browser E2E, 남은 mojibake 설계 문서 정리.
+- 사용 skill/plugin: caveman skill ultra 사용.
+
+### 2026-06-13 - Frontend/Infra README 정리
+
+- 작업 시작 시간: 2026-06-13 18:55:00 +09:00
+- 작업 종료 시간: 2026-06-13 18:56:55 +09:00
+- 사용자 명령: 활성 목표인 현재 기능 기준 프로토타입 개발 계속.
+- 명령 해석: root README를 보강했지만 하위 frontend/infra README가 template 또는 mojibake 상태라 프로토타입 실행 문서 품질을 더 정리해야 한다고 인식.
+- 작업 방식: `osmu-frontend/README.md`의 Vite template 내용을 제거하고, `infra/local/README.md`의 깨진 한글 문서를 ASCII 실행 runbook으로 교체했다.
+- 실행 내용:
+  - frontend README에 portal 기능, env, dev/build/test 명령, Docker 사용 방식 추가.
+  - infra README에 Compose 서비스, URL, 기본 계정, smoke test, stop/reset 명령, CORS/virtual-hosted-style note 추가.
+  - 두 문서에서 mojibake/non-ASCII 깨짐 여부 확인.
+- 구현 내용:
+  - frontend 개발자가 `npm run dev`, `npm run test:unit`, `npm run build`를 바로 확인할 수 있다.
+  - infra 사용자가 Docker stack start, smoke test, cleanup/reset을 바로 따라갈 수 있다.
+- 수정된 파일 및 관련 파일:
+  - `osmu-frontend/README.md`
+  - `infra/local/README.md`
+  - `dev-docs/worklog/codex/frontend-backend-mvp/worklog-codex-frontend-backend-mvp.md`
+- 검증 기록:
+  - `Select-String -Path osmu-frontend\README.md,infra\local\README.md -Pattern '[^\x00-\x7F]'` 결과 없음.
+  - `git diff --check -- osmu-frontend/README.md infra/local/README.md` 통과. CRLF 변환 warning만 확인.
+  - `rg -n "template|Recommended IDE|濡|\?\?|�" osmu-frontend\README.md infra\local\README.md README.md dev-docs\document-index.md` 결과 없음.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-local.ps1 -SkipDocker -SkipBackend` 통과. Frontend unit 6 pass, frontend build 통과.
+- 코드 리뷰: 문서만 변경했고 실행 코드에는 영향이 없다. 기존 Vite template 문구와 깨진 인코딩 문서를 제거해 프로토타입 진입 비용을 줄였다.
+- 결과: root/frontend/infra README가 모두 프로토타입 실행 문서로 정리됐다.
+- 후속 메모: Docker daemon이 꺼져 있어 infra README의 Docker smoke 명령은 아직 실제 실행하지 못했다.
+- 추가 개발: Docker integration smoke, browser E2E, backend/frontend README에 스크린샷 또는 API 예제 추가.
+- 사용 skill/plugin: caveman skill ultra 사용.
+
+### 2026-06-13 - verify-local JavaHome 옵션 추가
+
+- 작업 시작 시간: 2026-06-13 18:57:00 +09:00
+- 작업 종료 시간: 2026-06-13 18:59:22 +09:00
+- 사용자 명령: 활성 목표인 현재 기능 기준 프로토타입 개발 계속.
+- 명령 해석: Docker integration은 daemon 미실행으로 막혀 있으므로, Docker 제외 프로토타입 검증을 더 쉽게 재현할 수 있게 만들어야 한다고 인식.
+- 작업 방식: `verify-local.ps1`에 `-JavaHome` 옵션을 추가해 JDK17 경로를 명령 인자로 넘기면 스크립트 내부에서 `JAVA_HOME`과 `PATH`를 설정하도록 했다. README와 문서 index의 검증 명령도 새 옵션을 사용하도록 수정했다.
+- 실행 내용:
+  - `scripts/verify-local.ps1` param에 `-JavaHome` 추가.
+  - `Use-JavaHome` 함수 추가: `bin\java.exe` 존재 확인 후 환경 변수 설정.
+  - README quick verify 명령을 수동 env 설정 방식에서 `-JavaHome` 방식으로 변경.
+  - document index prototype gate 명령 갱신.
+- 구현 내용:
+  - JDK가 PATH에 있으면 기존처럼 옵션 없이 실행 가능하다.
+  - portable/local JDK를 쓰는 경우 `-JavaHome <jdk17>`로 한번에 frontend/backend 검증 가능하다.
+- 수정된 파일 및 관련 파일:
+  - `scripts/verify-local.ps1`
+  - `README.md`
+  - `dev-docs/document-index.md`
+  - `dev-docs/worklog/codex/frontend-backend-mvp/worklog-codex-frontend-backend-mvp.md`
+- 검증 기록:
+  - `[scriptblock]::Create((Get-Content -Raw -LiteralPath .\scripts\verify-local.ps1)) | Out-Null` 통과.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-local.ps1 -SkipDocker -SkipBackend` 통과. Frontend unit 6 pass, frontend build 통과.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-local.ps1 -SkipDocker -JavaHome "C:\Users\kjs99\AppData\Local\Temp\temurin-jdk17\jdk-17.0.19+10"` 통과. Frontend unit 6 pass, frontend build 통과, backend tests `BUILD SUCCESSFUL`.
+  - `Select-String -Path README.md,dev-docs\document-index.md -Pattern '[^\x00-\x7F]'` 결과 없음.
+  - `git diff --check -- scripts/verify-local.ps1 README.md dev-docs/document-index.md ...` 통과. CRLF 변환 warning만 확인.
+- 코드 리뷰: option 추가는 기존 `-Skip*` contract를 유지하며, backend Java preflight 전에만 환경을 준비한다. 잘못된 path는 `bin\java.exe` 확인으로 빠르게 실패한다.
+- 결과: Docker 제외 local verify가 JDK 경로 인자 하나로 재현 가능해졌다.
+- 후속 메모: Docker daemon 미실행으로 Docker integration smoke는 여전히 pending.
+- 추가 개발: Docker integration smoke, browser E2E, README에 API smoke 예제 추가.
+- 사용 skill/plugin: caveman skill ultra 사용.
+
+### 2026-06-13 - Docker-Free Lightweight Prototype 실행 스크립트 추가
+
+- 작업 시작 시간: 2026-06-13 19:00:00 +09:00
+- 작업 종료 시간: 2026-06-13 19:04:36 +09:00
+- 사용자 명령: 활성 목표인 현재 기능 기준 프로토타입 개발 계속.
+- 명령 해석: Docker daemon이 꺼져 있어 full Docker smoke가 막힌 상태에서도 현재 구현된 기능을 사용자가 바로 확인할 수 있는 prototype 실행 경로를 만들어야 한다고 인식.
+- 작업 방식: 기본 `application.yaml`의 in-memory metadata/storage mode를 활용해 Docker 없이 backend를 띄우고, frontend Vite dev server와 연결하는 start/stop script를 추가했다. 실행 중인 lightweight stack을 검증하는 API smoke script도 추가했다.
+- 실행 내용:
+  - `.gitignore`에 `.osmu-run/` 추가.
+  - `scripts/start-local-prototype.ps1` 추가: JDK17 경로 설정, backend bootRun, frontend dev server, pid/log 저장, readiness wait.
+  - `scripts/stop-local-prototype.ps1` 추가: pid tree 종료.
+  - `scripts/verify-lightweight-prototype.ps1` 추가: health, login, bucket create, object upload/list/download, cleanup smoke.
+  - README와 document index에 lightweight 실행/검증 명령 추가.
+  - frontend README에 root lightweight start command 추가.
+- 구현 내용:
+  - `start-local-prototype.ps1 -JavaHome <jdk17>`로 backend `http://localhost:8080`과 frontend `http://localhost:5173`를 실행한다.
+  - in-memory mode라 MariaDB/MinIO 없이 login, bucket, small object upload/list/download, tags, permissions, lifecycle/admin UI demo가 가능하다.
+  - presigned URL과 multipart upload는 MinIO가 필요하므로 Docker mode에서 검증하도록 안내했다.
+- 수정된 파일 및 관련 파일:
+  - `.gitignore`
+  - `README.md`
+  - `dev-docs/document-index.md`
+  - `osmu-frontend/README.md`
+  - `scripts/start-local-prototype.ps1`
+  - `scripts/stop-local-prototype.ps1`
+  - `scripts/verify-lightweight-prototype.ps1`
+  - `dev-docs/worklog/codex/frontend-backend-mvp/worklog-codex-frontend-backend-mvp.md`
+- 검증 기록:
+  - `[scriptblock]::Create(...)`로 start/stop/lightweight smoke script parse 통과.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\start-local-prototype.ps1 -JavaHome "C:\Users\kjs99\AppData\Local\Temp\temurin-jdk17\jdk-17.0.19+10"` 실행 성공.
+  - Backend health `http://localhost:8080/api/health` 응답 `UP`.
+  - Frontend `http://localhost:5173` 응답 `200`.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-lightweight-prototype.ps1` 통과: health, login, bucket create, object upload/list/download, cleanup.
+  - `git diff --check -- .gitignore README.md dev-docs/document-index.md osmu-frontend/README.md scripts/start-local-prototype.ps1 scripts/stop-local-prototype.ps1 scripts/verify-lightweight-prototype.ps1` 통과. CRLF 변환 warning만 확인.
+- 코드 리뷰: lightweight mode는 Docker/MinIO 의존 기능을 대체하지 않고, Docker가 꺼져 있어도 core portal/API demo를 가능하게 하는 보조 실행 경로다. pid/log 디렉터리를 `.gitignore`에 추가해 실행 부산물이 커밋되지 않게 했다.
+- 결과: Docker 없이도 현재 prototype을 실행하고 smoke 검증할 수 있다. 현재 이 세션에서 backend pid `12176`, frontend pid `16748`로 실행 중이다.
+- 후속 메모: 종료 시 `powershell -ExecutionPolicy Bypass -File .\scripts\stop-local-prototype.ps1` 사용.
+- 추가 개발: Docker integration smoke, browser visual/E2E, lightweight smoke에 tag/lifecycle API check 추가.
+- 사용 skill/plugin: caveman skill ultra 사용.
+
+### 2026-06-13 - Lightweight Smoke Tag 검증 확대
+
+- 작업 시작 시간: 2026-06-13 19:05:00 +09:00
+- 작업 종료 시간: 2026-06-13 19:07:15 +09:00
+- 사용자 명령: 활성 목표인 현재 기능 기준 프로토타입 개발 계속.
+- 명령 해석: 실행 중인 lightweight prototype의 smoke 범위를 core upload/download에서 현재 구현된 tag 기능까지 넓혀 프로토타입 신뢰도를 높여야 한다고 인식.
+- 작업 방식: backend REST API 형태를 확인한 뒤 `verify-lightweight-prototype.ps1`에 bucket tags, object tags, metadata, tag filter 검증을 추가했다.
+- 실행 내용:
+  - `PUT/GET/DELETE /api/buckets/{bucketName}/tags` round-trip 검증 추가.
+  - `PUT /api/buckets/{bucketName}/objects/tags` object tag update 검증 추가.
+  - `GET /api/buckets/{bucketName}/objects/metadata/{objectKey}` metadata tag 검증 추가.
+  - `GET /api/buckets/{bucketName}/objects?tag=stage%3Dverified` tag filter 검증 추가.
+  - README lightweight smoke 설명 갱신.
+- 구현 내용:
+  - lightweight smoke가 health/login/bucket/object CRUD뿐 아니라 bucket/object tag 기능까지 검증한다.
+  - cleanup 전에 bucket tags를 삭제하도록 했다.
+- 수정된 파일 및 관련 파일:
+  - `scripts/verify-lightweight-prototype.ps1`
+  - `README.md`
+  - `dev-docs/worklog/codex/frontend-backend-mvp/worklog-codex-frontend-backend-mvp.md`
+- 검증 기록:
+  - `[scriptblock]::Create((Get-Content -Raw -LiteralPath .\scripts\verify-lightweight-prototype.ps1)) | Out-Null` 통과.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-lightweight-prototype.ps1` 통과.
+  - Frontend `http://localhost:5173` 응답 `200`.
+  - Backend `http://localhost:8080/api/health` 응답 `UP`.
+  - `git diff --check -- README.md scripts/verify-lightweight-prototype.ps1 ...` 통과. CRLF 변환 warning만 확인.
+- 코드 리뷰: 추가된 smoke는 in-memory mode에서 지원되는 REST 기능만 검증한다. MinIO가 필요한 presigned/multipart/SigV4는 의도적으로 Docker smoke에 남겨두었다.
+- 결과: Docker-free prototype smoke가 tag 관련 핵심 기능까지 포함한다.
+- 후속 메모: lifecycle rule REST smoke를 lightweight에 추가할 수 있다.
+- 추가 개발: lifecycle REST smoke, Docker integration smoke, browser visual/E2E.
+- 사용 skill/plugin: caveman skill ultra 사용.
+
+### 2026-06-13 - Lightweight Smoke Lifecycle 검증 확대
+
+- 작업 시작 시간: 2026-06-13 19:08:00 +09:00
+- 작업 종료 시간: 2026-06-13 19:11:20 +09:00
+- 사용자 명령: 활성 목표인 현재 기능 기준 프로토타입 개발 계속 및 `/Caveman ultra`.
+- 명령 해석: 응답은 최대한 짧게 유지하고, 실행 중인 lightweight prototype smoke에 lifecycle rule API 검증까지 포함해야 한다고 인식.
+- 작업 방식: `AdminController`와 lifecycle DTO를 확인한 뒤 `verify-lightweight-prototype.ps1`에 lifecycle rule 생성, 목록 조회, conflict report, dry-run, 삭제 검증을 추가했다.
+- 실행 내용:
+  - `POST /api/admin/object-lifecycle/rules` lifecycle rule round-trip 검증 추가.
+  - `GET /api/admin/object-lifecycle/rules` rule list 포함 여부 검증 추가.
+  - `GET /api/admin/object-lifecycle/conflicts` conflict report 응답 검증 추가.
+  - `GET /api/admin/object-lifecycle/rules/{ruleId}/dry-run?limit=5` dry-run 응답 검증 추가.
+  - `DELETE /api/admin/object-lifecycle/rules/{ruleId}` cleanup 추가.
+  - README lightweight smoke 설명 갱신.
+- 구현 내용:
+  - smoke 대상 bucket/object tag 조건을 가진 `TRASH_OBJECT` lifecycle rule을 생성한다.
+  - 성공 경로와 `finally` 경로 양쪽에서 lifecycle rule cleanup을 시도해 실패 시 stale rule이 남을 가능성을 줄였다.
+- 수정된 파일 및 관련 파일:
+  - `scripts/verify-lightweight-prototype.ps1`
+  - `README.md`
+  - `dev-docs/worklog/codex/frontend-backend-mvp/worklog-codex-frontend-backend-mvp.md`
+- 검증 기록:
+  - `[scriptblock]::Create((Get-Content -Raw -LiteralPath .\scripts\verify-lightweight-prototype.ps1)) | Out-Null` 통과.
+  - Backend `http://localhost:8080/api/health` 응답 `UP`.
+  - Frontend `http://localhost:5173` 응답 `200`.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-lightweight-prototype.ps1` 통과: health, login, bucket create, bucket tags, object upload/list, object tags/metadata/filter, lifecycle rule, object download, cleanup.
+- 코드 리뷰: lifecycle smoke는 in-memory repository에서 동작하는 admin REST API만 검증한다. 실제 MariaDB persistence와 MinIO 기반 S3 lifecycle XML 연동은 Docker smoke 범위로 남아 있다.
+- 결과: Docker-free prototype smoke가 tag와 lifecycle rule 관리 핵심 경로까지 포함한다.
+- 후속 메모: 현재 backend/frontend는 계속 실행 중이다. 종료 시 `powershell -ExecutionPolicy Bypass -File .\scripts\stop-local-prototype.ps1` 사용.
+- 추가 개발: Docker integration smoke, S3 client smoke 확장, browser visual/E2E.
+- 사용 skill/plugin: caveman skill ultra 사용.
+
+### 2026-06-13 - Lightweight Demo Seed 스크립트 추가
+
+- 작업 시작 시간: 2026-06-13 19:12:00 +09:00
+- 작업 종료 시간: 2026-06-13 19:16:30 +09:00
+- 사용자 명령: 활성 목표인 현재까지 구현된 기능 기준 prototype 개발 계속.
+- 명령 해석: Docker 없이 실행 중인 prototype이 빈 화면으로 보이지 않도록, 데모 가능한 조직/사용자/bucket/object/lifecycle/access-key 데이터를 한 번에 넣는 실행 경로가 필요하다고 인식.
+- 작업 방식: org/user/bucket/object/access-key/lifecycle API request 구조를 확인하고, 실행 중인 backend에 샘플 데이터를 생성하는 PowerShell seed script를 추가했다.
+- 실행 내용:
+  - `scripts/seed-lightweight-demo.ps1` 추가.
+  - seed 대상: demo organization, org admin, demo user, media/AI bucket 2개, bucket tags, bucket permissions, sample objects 3개, bucket lifecycle XML, admin lifecycle rule, demo user scoped access key.
+  - README와 document index에 seed command 추가.
+- 구현 내용:
+  - 기본 suffix는 timestamp + short guid라 반복 실행해도 bucket/user 충돌 가능성이 낮다.
+  - script는 생성된 demo login/password, bucket 이름, access key/secret key를 마지막에 출력한다.
+  - demo user access key는 media bucket `READ/WRITE/DELETE`, AI bucket `READ` scope를 갖는다.
+- 수정된 파일 및 관련 파일:
+  - `scripts/seed-lightweight-demo.ps1`
+  - `README.md`
+  - `dev-docs/document-index.md`
+  - `dev-docs/worklog/codex/frontend-backend-mvp/worklog-codex-frontend-backend-mvp.md`
+- 검증 기록:
+  - `[scriptblock]::Create((Get-Content -Raw -LiteralPath .\scripts\seed-lightweight-demo.ps1)) | Out-Null` 통과.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\seed-lightweight-demo.ps1` 통과.
+  - demo user login 후 API 확인: bucket 2개, media object 2개, access key 1개 조회 성공.
+  - `Get-ChildItem .\scripts -Filter *.ps1 | ForEach-Object { [scriptblock]::Create((Get-Content -Raw -LiteralPath $_.FullName)) | Out-Null }` 통과.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-lightweight-prototype.ps1` 통과.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-local.ps1 -SkipDocker -SkipBackend` 통과. Frontend unit 6 pass, frontend build 통과.
+  - `git diff --check -- README.md dev-docs/document-index.md scripts/seed-lightweight-demo.ps1` 통과. CRLF 변환 warning만 확인.
+- 코드 리뷰: seed script는 cleanup smoke가 아니라 데모 데이터 보강 도구라 생성 데이터를 남긴다. lightweight in-memory mode에서는 stop/restart로 초기화된다. secret key는 생성 직후 한 번만 출력되므로 사용자에게 노출 위치를 README에 명시했다.
+- 결과: Docker-free prototype을 실행한 뒤 포털에서 바로 볼 수 있는 샘플 데이터 생성 경로가 생겼다.
+- 후속 메모: 현재 실행 중인 lightweight backend에는 `OSMU Demo 1781345730-d028e7` 샘플 데이터가 들어 있다.
+- 추가 개발: Browser visual/E2E, Docker integration smoke, seed data를 활용한 frontend smoke 자동화.
+- 사용 skill/plugin: caveman skill ultra 사용.
+
+### 2026-06-13 - Lightweight Demo Smoke 자동화 추가
+
+- 작업 시작 시간: 2026-06-13 19:18:00 +09:00
+- 작업 종료 시간: 2026-06-13 19:23:36 +09:00
+- 사용자 명령: 활성 목표인 현재까지 구현된 기능 기준 prototype 개발 계속.
+- 명령 해석: Browser plugin 없이도 seed data를 기준으로 frontend bundle과 핵심 demo API 흐름을 자동 검증해야 한다고 인식.
+- 작업 방식: 현재 실행 중인 frontend/backend 상태를 확인한 뒤, frontend HTML/JS/CSS asset과 demo API contract를 함께 검증하는 PowerShell smoke script를 추가했다.
+- 실행 내용:
+  - `scripts/verify-lightweight-demo.ps1` 추가.
+  - frontend HTML, JS bundle/source fallback, CSS bundle/source fallback 검증 추가.
+  - seeded demo user 자동 탐색 또는 `-DemoLoginId` 지정 지원.
+  - `-SeedIfMissing` 옵션 추가.
+  - demo user login, bucket/object 조회, AI bucket read-only write rejection, bucket tags, bucket lifecycle XML, admin lifecycle rule, access key inventory 검증 추가.
+  - `seed-lightweight-demo.ps1`에서 AI bucket 소유자를 org가 아닌 demo org admin user로 변경해 demo user READ scope가 실제 read-only로 동작하게 했다.
+  - `osmu-frontend/index.html` title을 `OSMU Object Storage`로 변경했다.
+  - README와 document index에 demo smoke command 추가.
+- 구현 내용:
+  - Vite dev source URL과 built asset URL 양쪽을 지원해 dev server/build asset server 모두에서 frontend bundle 검증이 가능하다.
+  - 최신 `demo-user-*`를 자동으로 찾아 suffix 기반 bucket/access-key/lifecycle 이름을 검증한다.
+  - 조직 bucket은 기존 테스트 의도대로 조직 구성원 write가 가능하므로, read-only permission 경계 검증용 AI bucket은 org admin user 소유 bucket으로 생성한다.
+- 수정된 파일 및 관련 파일:
+  - `scripts/verify-lightweight-demo.ps1`
+  - `scripts/seed-lightweight-demo.ps1`
+  - `osmu-frontend/index.html`
+  - `README.md`
+  - `dev-docs/document-index.md`
+  - `dev-docs/worklog/codex/frontend-backend-mvp/worklog-codex-frontend-backend-mvp.md`
+- 검증 기록:
+  - `Get-ChildItem .\scripts -Filter *.ps1 | ForEach-Object { [scriptblock]::Create((Get-Content -Raw -LiteralPath $_.FullName)) | Out-Null }` 통과.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\seed-lightweight-demo.ps1` 통과. 최신 demo suffix `1781346106-d9d651`.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-lightweight-demo.ps1` 통과.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-lightweight-prototype.ps1` 통과.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-local.ps1 -SkipDocker -SkipBackend` 통과. Frontend unit 6 pass, frontend build 통과.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-local.ps1 -SkipDocker -JavaHome <jdk17>`는 sandbox network에서 Gradle distribution download가 `Permission denied: getsockopt`로 실패 후, escalation 재실행에서 exit code 0으로 통과.
+- 코드 리뷰: 새 demo smoke는 실제 브라우저 DOM 조작은 아니지만 frontend bundle이 주요 UI/API 문자열을 포함하고, seed data가 portal에서 사용하는 REST contract로 조회되는지 검증한다. Permission boundary는 기존 org bucket 공유 정책과 충돌하지 않도록 user-owned restricted bucket으로 검증한다.
+- 결과: Seed data 기반 frontend/API demo smoke 자동화가 추가됐다.
+- 후속 메모: 현재 실행 중인 lightweight backend에는 `OSMU Demo 1781346106-d9d651` 샘플 데이터가 들어 있다.
+- 추가 개발: Browser visual/E2E, Docker integration smoke, real S3 client smoke with seeded access key.
+- 사용 skill/plugin: caveman skill ultra 사용.
+
+### 2026-06-13 - Seeded S3 Access Key 및 S3 Client Smoke 보강
+
+- 작업 시작 시간: 2026-06-13 19:24:00 +09:00
+- 작업 종료 시간: 2026-06-13 19:41:14 +09:00
+- 사용자 명령: 활성 목표인 현재까지 구현된 기능 기준 prototype 개발 계속.
+- 명령 해석: seed data가 access key를 만들기만 하는 상태에서 끝나면 S3 호환 prototype 증거가 약하므로, 실제 SigV4 S3 API 호출까지 자동 검증해야 한다고 인식.
+- 작업 방식: 기존 S3 client smoke script를 확인하고, lightweight/demo 경로에서 막히는 원인을 실제 실행으로 찾은 뒤 script와 backend 로깅을 보강했다.
+- 실행 내용:
+  - `seed-lightweight-demo.ps1`이 `.osmu-run/latest-demo.json`에 최신 demo login, bucket, access key, secret key를 저장하도록 변경.
+  - `verify-lightweight-demo.ps1`에 seeded access key 기반 S3 SigV4 root list, media GET/PUT, AI GET, AI write deny 검증 추가.
+  - `verify-s3-client-smoke.ps1`의 access key permission을 `ADMIN` 단일 scope로 변경해 `@Size(max=3)` validation과 충돌하지 않게 수정.
+  - PowerShell expandable string에서 `$bucketName?tagging`, `$bucketName?delete`, `$objectKey?uploads`가 잘못 해석되는 문제를 `${bucketName}?tagging` 형식으로 수정.
+  - in-memory storage에서는 multipart checksum smoke를 자동 skip하도록 변경.
+  - S3 cleanup에서 soft delete 후 purge도 수행하고, 404 cleanup noise는 경고하지 않도록 정리.
+  - `start-local-prototype.ps1`와 `verify-local.ps1`의 `Path/PATH` 중복 환경 변수 문제를 sanitize하도록 보강.
+  - `GlobalExceptionHandler`에 unexpected exception logging을 추가해 S3 500 원인 추적 가능성을 높였다.
+  - README와 document index에 seeded credential file, demo S3 smoke, lightweight multipart skip 설명 반영.
+- 구현 내용:
+  - `.osmu-run/latest-demo.json`은 `.gitignore` 대상인 runtime credential file이다.
+  - `verify-lightweight-demo.ps1`는 secret file이 현재 demo user와 맞지 않으면 실패하도록 해 stale credential 오검증을 막는다.
+  - `verify-s3-client-smoke.ps1`는 Docker/MinIO mode에서는 multipart checksum 경로를 유지하고, lightweight in-memory mode에서만 자동 skip한다.
+- 수정된 파일 및 관련 파일:
+  - `scripts/seed-lightweight-demo.ps1`
+  - `scripts/verify-lightweight-demo.ps1`
+  - `scripts/verify-s3-client-smoke.ps1`
+  - `scripts/start-local-prototype.ps1`
+  - `scripts/verify-local.ps1`
+  - `osmu-backend/src/main/java/com/example/osmu/common/error/GlobalExceptionHandler.java`
+  - `README.md`
+  - `dev-docs/document-index.md`
+  - `dev-docs/worklog/codex/frontend-backend-mvp/worklog-codex-frontend-backend-mvp.md`
+- 검증 기록:
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\seed-lightweight-demo.ps1` 통과. 최신 demo suffix `1781346407-a718d2`, credential file 생성 확인.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-lightweight-demo.ps1` 통과: frontend bundle, demo REST data, permission boundary, lifecycle, access key inventory, seeded S3 SigV4 검증.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-s3-client-smoke.ps1 -Client auto -SkipVirtualHostedSmoke` 통과. Lightweight mode라 multipart checksum은 자동 skip, aws/mc 미설치 경고만 확인.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-lightweight-prototype.ps1` 통과.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-local.ps1 -SkipDocker -JavaHome <jdk17>`는 sandbox network에서 Gradle distribution download가 `Permission denied: getsockopt`로 실패 후, escalation 재실행에서 exit code 0으로 통과.
+  - `git diff --check -- ...` 통과. CRLF 변환 warning만 확인.
+  - Backend `http://localhost:8080/api/health` 응답 `UP`, frontend `http://localhost:5173` 응답 `200`.
+- 코드 리뷰: S3 query URL bug는 PowerShell 변수 확장 규칙 문제라 script-only 수정으로 해결했다. Multipart는 lightweight mode에서 기능적으로 불가능하므로 skip이 맞고, Docker/MinIO mode의 검증 경로는 유지했다. Unexpected exception logging은 운영/디버깅 안전성을 높이며 API 응답 schema는 변경하지 않는다.
+- 결과: Seeded access key와 일반 S3 client smoke 양쪽에서 SigV4 호환 경로가 검증된다.
+- 후속 메모: Docker Desktop 실행 후 같은 S3 client smoke에서 multipart checksum까지 포함해 재실행해야 한다.
+- 추가 개발: Browser visual/E2E, Docker integration smoke, real AWS CLI/mc 설치 환경 smoke.
+- 사용 skill/plugin: caveman skill ultra 사용.
+
+### 2026-06-13 - Prototype Gate 통합 검증 스크립트 추가
+
+- 작업 시작 시간: 2026-06-13 19:42:00 +09:00
+- 작업 종료 시간: 2026-06-13 19:44:56 +09:00
+- 사용자 명령: 활성 목표인 현재까지 구현된 기능 기준 prototype 개발 계속.
+- 명령 해석: 여러 smoke script가 분산되어 있어 prototype 준비 상태를 한 번에 확인하기 어렵다. 실행 중인 lightweight prototype 기준으로 핵심 gate를 묶어야 한다고 인식.
+- 작업 방식: 현재 backend/frontend/Docker/browser 상태를 확인했다. Docker daemon은 미실행, Browser plugin은 `CreateProcessAsUserW failed: 5`로 사용 불가였으므로, 브라우저 의존 없이 runtime/API/S3/frontend bundle 검증을 묶는 통합 gate script를 추가했다.
+- 실행 내용:
+  - `scripts/verify-prototype-gate.ps1` 추가.
+  - runtime health, lightweight API smoke, seeded demo smoke, S3 SigV4 smoke를 순서대로 실행.
+  - `.osmu-run/latest-demo.json`이 없거나 `-ReseedDemo`가 있으면 seed script 실행.
+  - `-IncludeBuildVerify`, `-IncludeBackendTests`, `-JavaHome`, `-TryDocker`, `-SkipS3ClientSmoke`, `-IncludeVirtualHostedS3Smoke` 옵션 추가.
+  - README와 document index에 one-command gate 문서화.
+- 구현 내용:
+  - 기본 실행은 빠른 runtime gate다.
+  - build/unit 검증은 `-IncludeBuildVerify`로 opt-in.
+  - backend Gradle test는 `-IncludeBuildVerify -IncludeBackendTests -JavaHome <jdk17>` 조합으로 opt-in.
+  - Docker integration은 `-TryDocker`에서 daemon이 있을 때만 실행하고, 없으면 skip warning을 출력한다.
+- 수정된 파일 및 관련 파일:
+  - `scripts/verify-prototype-gate.ps1`
+  - `README.md`
+  - `dev-docs/document-index.md`
+  - `dev-docs/worklog/codex/frontend-backend-mvp/worklog-codex-frontend-backend-mvp.md`
+- 검증 기록:
+  - `[scriptblock]::Create((Get-Content -Raw -LiteralPath .\scripts\verify-prototype-gate.ps1)) | Out-Null` 통과.
+  - `Get-ChildItem .\scripts -Filter *.ps1 | ForEach-Object { [scriptblock]::Create((Get-Content -Raw -LiteralPath $_.FullName)) | Out-Null }` 통과.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-prototype-gate.ps1` 통과.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-prototype-gate.ps1 -IncludeBuildVerify -SkipS3ClientSmoke` 통과. Frontend unit 6 pass, frontend build 통과.
+  - `git diff --check -- README.md dev-docs/document-index.md scripts/verify-prototype-gate.ps1 ...` 통과. CRLF 변환 warning만 확인.
+  - Backend `http://localhost:8080/api/health` 응답 `UP`, frontend `http://localhost:5173` 응답 `200`.
+- 코드 리뷰: 통합 script는 기존 검증 script를 재사용하므로 새 검증 로직 중복을 최소화했다. 기본 gate가 Docker와 Gradle network에 의존하지 않아 현재 환경에서도 재현 가능하고, 더 무거운 gate는 명시 옵션으로 확장된다.
+- 결과: 현재 lightweight prototype 상태를 한 명령으로 검증할 수 있다.
+- 후속 메모: Browser plugin은 현재 권한 오류로 동작하지 않는다. Docker Desktop이 켜지면 `.\scripts\verify-prototype-gate.ps1 -TryDocker`로 Docker smoke를 포함할 수 있다.
+- 추가 개발: Browser visual/E2E, Docker integration smoke, real AWS CLI/mc 설치 환경 smoke.
+- 사용 skill/plugin: caveman skill ultra, Browser plugin skill 시도.
+
+### 2026-06-13 - Prototype Gate Summary 출력 보강
+
+- 작업 시작 시간: 2026-06-13 19:45:00 +09:00
+- 작업 종료 시간: 2026-06-13 19:48:56 +09:00
+- 사용자 명령: 활성 목표인 현재까지 구현된 기능 기준 prototype 개발 계속.
+- 명령 해석: 통합 gate가 pass/fail만 보여주면 현재 prototype에서 무엇이 검증됐고 무엇이 skip됐는지 한눈에 알기 어렵다. 실행 결과 마지막에 demo 계정, bucket, backend/frontend URL, optional gate 상태를 요약해야 한다고 인식.
+- 작업 방식: 기존 `verify-prototype-gate.ps1` 흐름은 유지하고, runtime health와 `.osmu-run/latest-demo.json`을 읽어 최종 summary를 출력하도록 최소 변경했다.
+- 실행 내용:
+  - `verify-prototype-gate.ps1`에 demo snapshot read helper와 gate 상태 표시 helper 추가.
+  - runtime health 출력에 storage engine/status 정보를 추가.
+  - 마지막 summary에 runtime, lightweight API, seeded demo, S3 client smoke, build verify, backend tests, Docker smoke 상태를 출력.
+  - summary에 demo user/password, demo bucket, backend/frontend URL을 출력.
+  - README에 prototype gate가 짧은 summary를 출력한다는 설명 추가.
+- 구현 내용:
+  - `.osmu-run/latest-demo.json`이 있으면 demo 정보를 summary에 표시하고, 없으면 `not available`로 표시한다.
+  - optional gate는 포함/skip 상태를 명확히 출력한다.
+  - pass 문구를 `configured optional gates passed`로 바꿔 opt-in gate 의미를 정확히 했다.
+- 수정된 파일 및 관련 파일:
+  - `scripts/verify-prototype-gate.ps1`
+  - `README.md`
+  - `dev-docs/worklog/codex/frontend-backend-mvp/worklog-codex-frontend-backend-mvp.md`
+- 검증 기록:
+  - `[scriptblock]::Create((Get-Content -Raw -LiteralPath .\scripts\verify-prototype-gate.ps1)) | Out-Null` 통과.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-prototype-gate.ps1 -SkipS3ClientSmoke` 통과.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-prototype-gate.ps1` 통과.
+  - `git diff --check -- README.md scripts/verify-prototype-gate.ps1 dev-docs/worklog/codex/frontend-backend-mvp/worklog-codex-frontend-backend-mvp.md` 통과. CRLF 변환 warning만 확인.
+- 코드 리뷰: product 동작 변경 없이 검증 UX만 개선했다. Demo password는 local seed 전용 runtime credential이며 `.osmu-run`은 `.gitignore` 대상이라 repository에는 포함되지 않는다.
+- 결과: 한 명령으로 prototype pass/fail과 현재 사용 가능한 demo 정보를 바로 확인할 수 있다.
+- 후속 메모: Docker daemon 미실행, Browser plugin 권한 오류는 여전히 남아 있다.
+- 추가 개발: Browser visual/E2E, Docker integration smoke, real AWS CLI/mc 설치 환경 smoke.
+- 사용 skill/plugin: caveman skill ultra, Browser plugin skill 시도.
+
+### 2026-06-13 - S3 Object Compatibility Smoke 및 Conditional GET 수정
+
+- 작업 시작 시간: 2026-06-13 19:49:00 +09:00
+- 작업 종료 시간: 2026-06-13 20:07:51 +09:00
+- 사용자 명령: 활성 목표인 현재까지 구현된 기능 기준 prototype 개발 계속.
+- 명령 해석: Docker/Browser 검증은 외부 환경 제약이 있으므로, 현재 실행 가능한 lightweight prototype gate의 S3 호환 검증 범위를 넓혀 prototype 완성도를 높여야 한다고 인식.
+- 작업 방식: 기존 `verify-s3-client-smoke.ps1`의 manual SigV4 smoke를 확장하고, 확장 smoke에서 발견된 backend conditional GET 응답 문제를 수정했다. 이후 stale child process 문제를 막기 위해 start/stop script도 보강했다.
+- 실행 내용:
+  - `verify-s3-client-smoke.ps1`에 S3 object tagging, conditional HEAD/GET, byte range GET, CopyObject, CopyObject source precondition 검증 추가.
+  - `Invoke-SignedHttp`가 실패한 method/url/header와 response read 실패 정보를 출력하도록 개선.
+  - PowerShell 문자열 확장 문제인 `$objectUrl?tagging`, `$copyUrl?tagging`을 `${objectUrl}?tagging`, `${copyUrl}?tagging`으로 수정.
+  - S3 conditional GET 412 응답이 body 없이 원본 object `Content-Length`를 보내 HttpClient가 실패하는 bug 수정.
+  - `S3ObjectControllerTest`에 conditional GET 304/412가 `Content-Length`를 보내지 않는 검증 추가.
+  - `start-local-prototype.ps1`에 port preflight를 추가해 stale backend/frontend에 잘못 붙지 않도록 변경.
+  - `stop-local-prototype.ps1`에 `-ForcePorts`와 netstat 기반 listener cleanup fallback 추가.
+  - README와 document index에 새 smoke 범위와 `-ForcePorts` 사용법 반영.
+- 구현 내용:
+  - `S3ObjectController`는 conditional GET 응답에서 ETag, Last-Modified, Accept-Ranges, tags/checksum header는 유지하되 `Content-Length`는 보내지 않는다.
+  - S3 smoke는 lightweight mode에서도 multipart를 제외한 더 많은 S3 호환 edge flow를 검증한다.
+  - start script는 8080/5173 port가 이미 사용 중이면 실패하고, stop script는 pid file 기반 정리 후 남은 listener를 정리할 수 있다.
+- 수정된 파일 및 관련 파일:
+  - `scripts/verify-s3-client-smoke.ps1`
+  - `scripts/start-local-prototype.ps1`
+  - `scripts/stop-local-prototype.ps1`
+  - `osmu-backend/src/main/java/com/example/osmu/object/S3ObjectController.java`
+  - `osmu-backend/src/test/java/com/example/osmu/object/S3ObjectControllerTest.java`
+  - `README.md`
+  - `dev-docs/document-index.md`
+  - `dev-docs/worklog/codex/frontend-backend-mvp/worklog-codex-frontend-backend-mvp.md`
+- 검증 기록:
+  - `.\gradlew.bat test --tests com.example.osmu.object.S3ObjectControllerTest` 통과. Sandbox network 실패 후 승인 권한으로 재실행해 `BUILD SUCCESSFUL`.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-s3-client-smoke.ps1 -Client auto -SkipVirtualHostedSmoke` 통과. Lightweight mode라 multipart checksum은 skip, aws/mc 미설치 warning만 확인.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-prototype-gate.ps1` 통과.
+  - `Get-ChildItem .\scripts -Filter *.ps1 | ForEach-Object { [scriptblock]::Create((Get-Content -Raw -LiteralPath $_.FullName)) | Out-Null }` 통과.
+  - `git diff --check -- ...` 통과. README/document-index CRLF 변환 warning만 확인.
+  - Backend `http://localhost:8080/api/health` 응답 `UP`, frontend `http://localhost:5173` 응답 `200`.
+- 코드 리뷰: 이번 변경은 S3 호환성 검증을 넓히는 동시에 실제 HTTP client에서 깨지는 conditional response bug를 막는다. Port cleanup은 prototype 실행 부산물에만 적용되며, 기본적으로 pid file이 있던 실행에 대해서만 port fallback을 수행한다.
+- 결과: Prototype gate가 S3 object tagging, range, conditional request, CopyObject까지 검증하는 상태가 됐다.
+- 후속 메모: Docker Desktop 실행 후 `.\scripts\verify-prototype-gate.ps1 -TryDocker`로 MinIO multipart 포함 검증을 해야 한다.
+- 추가 개발: Browser visual/E2E, Docker integration smoke, real AWS CLI/mc 설치 환경 smoke.
+- 사용 skill/plugin: caveman skill ultra.
+
+### 2026-06-13 - Lightweight REST Version/Trash Smoke 확장
+
+- 작업 시작 시간: 2026-06-13 20:08:00 +09:00
+- 작업 종료 시간: 2026-06-13 20:11:47 +09:00
+- 사용자 명령: 활성 목표인 현재까지 구현된 기능 기준 prototype 개발 계속.
+- 명령 해석: Docker daemon, Browser plugin, 실제 `aws/mc` client가 현재 환경에서 사용할 수 없으므로, 현재 실행 가능한 lightweight prototype에서 REST object lifecycle 흐름을 더 넓게 검증해야 한다고 인식.
+- 작업 방식: `ObjectController`와 기존 backend test를 기준으로 REST object versioning, trash listing, restore 흐름을 `verify-lightweight-prototype.ps1`에 추가했다.
+- 실행 내용:
+  - `Upload-SmokeObject`를 key/body/tags/fileName 인자를 받을 수 있게 일반화.
+  - object overwrite 시 이전 object version이 생성되는지 검증.
+  - version metadata가 이전 object tag를 보존하는지 검증.
+  - version download, version restore, restored body, restore 시 snapshot 생성, version delete 검증 추가.
+  - object soft delete 후 `deleted=true` trash listing 확인, restore 후 download 확인 추가.
+  - README의 lightweight smoke 범위 설명 갱신.
+- 구현 내용:
+  - Lightweight smoke는 bucket/object/tag/lifecycle뿐 아니라 REST versioning과 trash restore까지 prototype gate에 포함한다.
+  - Cleanup은 기존처럼 lifecycle rule 삭제, bucket tag 삭제, object delete/purge, bucket delete 순서로 유지한다.
+- 수정된 파일 및 관련 파일:
+  - `scripts/verify-lightweight-prototype.ps1`
+  - `README.md`
+  - `dev-docs/worklog/codex/frontend-backend-mvp/worklog-codex-frontend-backend-mvp.md`
+- 검증 기록:
+  - Browser plugin bootstrap은 `CreateProcessAsUserW failed: 5`로 실패. Docker daemon은 `//./pipe/docker_engine` 미존재, `aws/mc`는 PATH에 없음.
+  - `[scriptblock]::Create((Get-Content -Raw -LiteralPath .\scripts\verify-lightweight-prototype.ps1)) | Out-Null` 통과.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-lightweight-prototype.ps1` 통과.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-prototype-gate.ps1` 통과.
+  - `Get-ChildItem .\scripts -Filter *.ps1 | ForEach-Object { [scriptblock]::Create((Get-Content -Raw -LiteralPath $_.FullName)) | Out-Null }` 통과.
+  - `git diff --check -- README.md scripts/verify-lightweight-prototype.ps1 ...` 통과. README CRLF 변환 warning만 확인.
+- 코드 리뷰: 새 smoke는 product 코드 변경 없이 현재 구현된 REST 기능의 회귀 방지 범위를 넓힌다. Multipart/presigned처럼 MinIO가 필요한 흐름은 Docker smoke에 남겨두고, lightweight에서 검증 가능한 version/trash 흐름만 추가했다.
+- 결과: Prototype gate가 REST object overwrite/version/restore/delete/trash/restore 흐름까지 검증한다.
+- 후속 메모: Docker Desktop 실행 후 `.\scripts\verify-prototype-gate.ps1 -TryDocker`로 MinIO multipart 포함 검증 필요.
+- 추가 개발: Browser visual/E2E, Docker integration smoke, real AWS CLI/mc 설치 환경 smoke.
+- 사용 skill/plugin: caveman skill ultra, Browser plugin skill 재시도.
+
+### 2026-06-13 - Lightweight Org/User Permission Smoke 확장
+
+- 작업 시작 시간: 2026-06-13 20:12:00 +09:00
+- 작업 종료 시간: 2026-06-13 20:17:18 +09:00
+- 사용자 명령: 활성 목표인 현재까지 구현된 기능 기준 prototype 개발 계속.
+- 명령 해석: 외부 Docker, Browser, 실제 `aws/mc` client 검증이 막혀 있으므로, 현재 가능한 lightweight gate 안에서 B2B 핵심인 조직, 사용자, bucket 권한, access key 권한 경계를 검증해야 한다고 인식.
+- 작업 방식: 기존 `verify-lightweight-prototype.ps1`에 admin/org/user/bucket/access-key 흐름을 추가하고, 예상 실패 HTTP status를 검증할 수 있도록 helper를 보강했다.
+- 실행 내용:
+  - 예상 실패 JSON 요청 검증용 `Invoke-JsonStatus` helper 추가.
+  - `Upload-SmokeObject` 내부 upload를 `Send-SmokeObjectUpload`로 분리해 status/body 확인 가능하게 변경.
+  - smoke 조직과 smoke 사용자를 생성하고 해당 사용자를 조직에 연결.
+  - smoke 사용자에게 bucket `read` 권한을 부여.
+  - smoke 사용자 login 후 bucket list와 object download 가능 여부 확인.
+  - smoke 사용자가 read-only 권한으로 object upload 시 `403`이 반환되는지 확인.
+  - smoke 사용자가 `read` scope access key를 만들 수 있고, key list에는 `secretKey`가 노출되지 않는지 확인.
+  - smoke 사용자가 `write` scope access key를 만들려고 하면 `403`이 반환되는지 확인.
+  - 생성한 read access key와 bucket permission cleanup 추가.
+  - README lightweight smoke 범위 설명 갱신.
+- 구현 내용:
+  - Lightweight smoke가 단순 admin flow를 넘어 실제 multi-tenant 협업 권한 흐름까지 검증한다.
+  - Access key secret은 생성 응답에서만 확인하고 list 응답에는 없는지 검증한다.
+  - 조직/user 이름은 GUID suffix를 붙여 반복 실행 충돌을 줄였다.
+- 수정된 파일 및 관련 파일:
+  - `scripts/verify-lightweight-prototype.ps1`
+  - `README.md`
+  - `dev-docs/worklog/codex/frontend-backend-mvp/worklog-codex-frontend-backend-mvp.md`
+- 검증 기록:
+  - Browser plugin bootstrap은 `CreateProcessAsUserW failed: 5`로 실패.
+  - Docker daemon은 `//./pipe/docker_engine` 미존재, `aws/mc`는 PATH에 없음.
+  - `Get-ChildItem .\scripts -Filter *.ps1 | ForEach-Object { [scriptblock]::Create((Get-Content -Raw -LiteralPath $_.FullName)) | Out-Null }` 통과.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-lightweight-prototype.ps1` 통과.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-prototype-gate.ps1` 통과.
+  - `git diff --check -- README.md scripts/verify-lightweight-prototype.ps1 dev-docs/worklog/codex/frontend-backend-mvp/worklog-codex-frontend-backend-mvp.md` 통과. README CRLF 변환 warning만 확인.
+- 코드 리뷰: Product code 변경 없이 regression smoke만 확장했다. 현재 in-memory/local prototype 기준에서는 조직/user cleanup이 영속 DB에 남지 않지만, MariaDB 전환 후에는 test cleanup 정책을 별도로 잡아야 한다.
+- 결과: Prototype gate가 조직 사용자 read 권한, read-only write 차단, access key one-time secret/list masking, 권한 초과 access key 차단까지 검증한다.
+- 후속 메모: Docker Desktop 실행 후 `.\scripts\verify-prototype-gate.ps1 -TryDocker`로 MinIO multipart 포함 검증 필요.
+- 추가 개발: Browser visual/E2E, Docker integration smoke, real AWS CLI/mc 설치 환경 smoke.
+- 사용 skill/plugin: caveman skill ultra, Browser plugin skill 재시도.
+
+### 2026-06-13 - Flyway Migration 중복 방지 Gate 추가
+
+- 작업 시작 시간: 2026-06-13 20:18:00 +09:00
+- 작업 종료 시간: 2026-06-13 20:21:32 +09:00
+- 사용자 명령: 활성 목표인 현재까지 구현된 기능 기준 prototype 개발 계속.
+- 명령 해석: MariaDB mode가 prototype 핵심 경로인데 Flyway migration version 중복이 있으면 Docker/MariaDB 실행 시 backend가 부팅 실패할 수 있다. MariaDB 전환 안정성을 높이는 작업으로 인식.
+- 작업 방식: migration 파일 목록을 점검해 중복 version을 제거하고, 동일 문제가 다시 들어오지 않도록 검증 script와 prototype/local/docker gate에 migration version check를 연결했다.
+- 실행 내용:
+  - `V19__object_metadata_etag.sql`와 `V19__object_lifecycle_rule_priority.sql`의 Flyway version 중복 확인.
+  - `V19__object_metadata_etag.sql`를 `V24__object_metadata_etag.sql`로 이동해 기존 `V20~V23` 순서는 유지.
+  - `scripts/verify-migrations.ps1` 추가. Flyway 파일명 형식, migration 존재 여부, version 중복을 검사.
+  - `verify-local.ps1`, `verify-prototype-gate.ps1`, `verify-docker-integration.ps1`에 migration check 단계 추가.
+  - README에 migration version check 설명과 파일 목록 추가.
+- 구현 내용:
+  - MariaDB/Flyway mode에서 duplicate migration version으로 인한 boot failure를 사전에 차단한다.
+  - Lightweight gate도 runtime smoke 전에 migration version을 검사하므로 Docker가 꺼져 있어도 MariaDB schema hygiene을 확인할 수 있다.
+- 수정된 파일 및 관련 파일:
+  - `osmu-backend/src/main/resources/db/migration/V19__object_metadata_etag.sql`
+  - `osmu-backend/src/main/resources/db/migration/V24__object_metadata_etag.sql`
+  - `scripts/verify-migrations.ps1`
+  - `scripts/verify-local.ps1`
+  - `scripts/verify-prototype-gate.ps1`
+  - `scripts/verify-docker-integration.ps1`
+  - `README.md`
+  - `dev-docs/worklog/codex/frontend-backend-mvp/worklog-codex-frontend-backend-mvp.md`
+- 검증 기록:
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-migrations.ps1` 통과. 24 migrations, highest V24.
+  - `Get-ChildItem .\scripts -Filter *.ps1 | ForEach-Object { [scriptblock]::Create((Get-Content -Raw -LiteralPath $_.FullName)) | Out-Null }` 통과.
+  - migration version duplicate 검색 결과 없음.
+  - `git diff --check -- README.md scripts/verify-migrations.ps1 scripts/verify-local.ps1 scripts/verify-prototype-gate.ps1 scripts/verify-docker-integration.ps1 ...` 통과. README CRLF 변환 warning만 확인.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-prototype-gate.ps1` 통과.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-local.ps1 -SkipDocker -SkipBackend -SkipFrontend` 통과.
+  - `docker compose --env-file .\infra\local\.env.example -f .\infra\local\docker-compose.yml config --quiet` 통과. Docker config 접근 권한 warning만 확인.
+- 코드 리뷰: Flyway migration rename은 아직 미출시 prototype branch의 중복 version 수정이라 위험이 낮다. 새 verifier는 중복 version만 강제하고 gap은 허용해 향후 migration 정렬 부담을 과하게 만들지 않는다.
+- 결과: MariaDB prototype 경로의 부팅 실패 요인 하나를 제거했고, 동일 regression을 local/prototype/docker 검증에서 잡을 수 있다.
+- 후속 메모: Docker daemon이 켜진 뒤 `.\scripts\verify-prototype-gate.ps1 -TryDocker` 또는 `.\scripts\verify-docker-integration.ps1`로 실제 MariaDB Flyway 적용을 검증해야 한다.
+- 추가 개발: Docker integration smoke, real AWS CLI/mc 설치 환경 smoke, Browser visual/E2E.
+- 사용 skill/plugin: caveman skill ultra.
+
+### 2026-06-13 - Lightweight Audit Trail Smoke 및 Version/Purge Audit Target 수정
+
+- 작업 시작 시간: 2026-06-13 20:22:00 +09:00
+- 작업 종료 시간: 2026-06-13 20:30:17 +09:00
+- 사용자 명령: 활성 목표인 현재까지 구현된 기능 기준 prototype 개발 계속.
+- 명령 해석: B2B storage prototype에서는 작업 추적성과 운영 감사가 핵심이므로, 기존 Audit API/UI 구현을 prototype gate에서 실제로 검증해야 한다고 인식.
+- 작업 방식: `verify-lightweight-prototype.ps1`에 audit log filter 검증 helper를 추가하고, smoke 실행 중 발견된 object version delete audit target 이중 slash bug를 backend에서 수정했다.
+- 실행 내용:
+  - `Assert-AuditLog` helper 추가. `eventType`, `actorId`, `targetType`, `targetId`, `result` filter 조합으로 audit log를 조회한다.
+  - Lightweight smoke에 bucket create, object upload, organization create, user create, bucket permission grant, access key create, object tag update, version restore/delete, lifecycle rule save, object download/delete/restore audit 검증 추가.
+  - `OBJECT_VERSION_DELETE` audit target이 `bucket//key#version`으로 기록되는 문제 발견.
+  - `ObjectController`에 `objectTargetId` helper를 추가해 path variable의 leading slash를 제거하고 `OBJECT_VERSION_DELETE`, `OBJECT_PURGE` target을 정규화.
+  - `BucketObjectFlowTest`에 version delete/purge audit target 검증 추가.
+  - README lightweight smoke 범위에 audit log filtering 검증 추가.
+- 구현 내용:
+  - Prototype gate가 기능 성공뿐 아니라 운영 감사 로그가 실제 query filter로 조회되는지도 검증한다.
+  - Version delete/purge audit target이 `bucket/key` 형식으로 일관되게 남는다.
+- 수정된 파일 및 관련 파일:
+  - `scripts/verify-lightweight-prototype.ps1`
+  - `osmu-backend/src/main/java/com/example/osmu/object/ObjectController.java`
+  - `osmu-backend/src/test/java/com/example/osmu/bucket/BucketObjectFlowTest.java`
+  - `README.md`
+  - `dev-docs/worklog/codex/frontend-backend-mvp/worklog-codex-frontend-backend-mvp.md`
+- 검증 기록:
+  - `[scriptblock]::Create((Get-Content -Raw -LiteralPath .\scripts\verify-lightweight-prototype.ps1)) | Out-Null` 통과.
+  - `git diff --check -- scripts/verify-lightweight-prototype.ps1` 통과.
+  - 첫 `powershell -ExecutionPolicy Bypass -File .\scripts\verify-lightweight-prototype.ps1`는 `OBJECT_VERSION_DELETE` audit target 이중 slash로 실패했고, 해당 실패가 backend bug를 드러냈다.
+  - `$env:JAVA_HOME='C:\Users\kjs99\AppData\Local\Temp\temurin-jdk17\jdk-17.0.19+10'; .\gradlew.bat test --tests com.example.osmu.bucket.BucketObjectFlowTest` 통과. Sandbox network 실패 후 승인 권한으로 재실행.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\stop-local-prototype.ps1 -ForcePorts`로 구 runtime 종료.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\start-local-prototype.ps1 -JavaHome 'C:\Users\kjs99\AppData\Local\Temp\temurin-jdk17\jdk-17.0.19+10'`는 sandbox network 실패 후 승인 권한으로 재실행해 backend/frontend 기동.
+  - Backend `http://localhost:8080/api/health` 응답 `UP`, frontend `http://localhost:5173` 응답 `200`.
+  - 수정 후 `powershell -ExecutionPolicy Bypass -File .\scripts\verify-lightweight-prototype.ps1` 통과.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-prototype-gate.ps1` 통과.
+- 코드 리뷰: Smoke가 product bug를 실제로 잡았고, target 정규화는 path variable audit에만 적용되어 저장 key 처리에는 영향을 주지 않는다. 다만 다른 `{*objectKey}` audit 경로가 추가되면 같은 helper를 재사용해야 한다.
+- 결과: Prototype gate가 audit trail 핵심 이벤트와 filter 동작을 검증하고, version delete/purge audit target 형식도 정상화됐다.
+- 후속 메모: Docker Desktop 실행 후 MariaDB audit log 저장/필터 index가 같은 smoke를 통과하는지 확인해야 한다.
+- 추가 개발: audit export/retention, Docker integration smoke, real AWS CLI/mc client smoke, Browser visual/E2E.
+- 사용 skill/plugin: caveman skill ultra.
+
+### 2026-06-13 - Lightweight 운영 상태 및 Usage Smoke 확장
+
+- 작업 시작 시간: 2026-06-13 20:31:00 +09:00
+- 작업 종료 시간: 2026-06-13 20:33:33 +09:00
+- 사용자 명령: 활성 목표인 현재까지 구현된 기능 기준 prototype 개발 계속.
+- 명령 해석: Docker daemon이 여전히 실행되지 않으므로, 현재 가능한 lightweight prototype에서 운영 화면의 핵심 상태값인 health, system status, usage counter 검증 범위를 넓혀야 한다고 인식.
+- 작업 방식: 기존 `verify-lightweight-prototype.ps1` 흐름에 public health, admin system status, admin usage delta 검증을 추가했다. Product code 변경 없이 smoke coverage만 확장했다.
+- 실행 내용:
+  - `/api/storage/health`, `/api/database/health` 상태가 `UP`인지 검증.
+  - Admin login 후 `/api/admin/system/status`의 backend/database/storage/accessKeyProvisioner가 모두 `UP`인지 검증.
+  - bucket/object 생성 전 `/api/admin/usage` baseline 저장.
+  - bucket 생성 및 object upload 후 bucketCount/objectCount/usedBytes/totalQuotaBytes가 baseline보다 증가했는지 검증.
+  - cleanup 후 bucketCount/objectCount/usedBytes가 baseline으로 돌아왔는지 검증.
+  - README lightweight smoke 범위에 admin status/usage 검증 추가.
+- 구현 내용:
+  - Lightweight prototype gate가 API 기능 성공뿐 아니라 운영 dashboard에 노출할 상태/사용량 지표의 기본 정합성까지 확인한다.
+  - Usage 검증은 현재 runtime에 demo data가 있어도 baseline delta로 확인해 반복 실행 가능성을 유지한다.
+- 수정된 파일 및 관련 파일:
+  - `scripts/verify-lightweight-prototype.ps1`
+  - `README.md`
+  - `dev-docs/worklog/codex/frontend-backend-mvp/worklog-codex-frontend-backend-mvp.md`
+- 검증 기록:
+  - Docker daemon 확인 실패: `//./pipe/docker_engine` 미존재.
+  - Backend `http://localhost:8080/api/health`, storage health, database health 응답 `UP`.
+  - Frontend `http://localhost:5173` 응답 `200`.
+  - `[scriptblock]::Create((Get-Content -Raw -LiteralPath .\scripts\verify-lightweight-prototype.ps1)) | Out-Null` 통과.
+  - `git diff --check -- README.md scripts/verify-lightweight-prototype.ps1` 통과. README CRLF 변환 warning만 확인.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-lightweight-prototype.ps1` 통과.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-prototype-gate.ps1` 통과.
+- 코드 리뷰: Usage counter 검증은 전역 runtime 상태에 의존할 수 있으므로 baseline/delta 방식으로 작성했다. Cleanup 후 baseline 회귀까지 확인해 smoke 자체가 usage를 더럽히지 않는지도 함께 본다.
+- 결과: Prototype gate가 운영 상태와 usage counter 정합성까지 검증한다.
+- 후속 메모: Docker Desktop 실행 후 같은 usage/status 검증이 MariaDB+MinIO mode에서도 통과하는지 확인해야 한다.
+- 추가 개발: Docker integration smoke, real AWS CLI/mc client smoke, Browser visual/E2E, audit export/retention.
+- 사용 skill/plugin: caveman skill ultra.
+
+### 2026-06-13 - Audit Log CSV Export 추가
+
+- 작업 시작 시간: 2026-06-13 20:35:00 +09:00
+- 작업 종료 시간: 2026-06-13 20:42:08 +09:00
+- 사용자 명령: 활성 목표인 현재까지 구현된 기능 기준 prototype 개발 계속.
+- 명령 해석: Docker/MariaDB/MinIO 실제 smoke는 daemon 부재로 진행할 수 없으므로, 현재 구현된 admin/audit 기능을 B2B 운영 prototype에 더 가깝게 만드는 audit CSV export를 추가해야 한다고 인식.
+- 작업 방식: 기존 audit filter contract를 재사용해 backend CSV endpoint를 추가하고, frontend Audit panel에 export button을 연결했다. Lightweight smoke에는 CSV endpoint 검증을 추가했다.
+- 실행 내용:
+  - `AuditLogService.exportCsv` 추가. 기존 `list` filter를 재사용하고 CSV header/row를 생성.
+  - CSV escaping 처리 추가. comma, quote, newline 포함 값은 quote escape.
+  - `GET /api/admin/audit-logs/export.csv` endpoint 추가.
+  - `Content-Type: text/csv`, `Content-Disposition: attachment; filename="osmu-audit-logs.csv"` 반환.
+  - Frontend API wrapper `downloadAuditLogsCsv` 추가.
+  - Audit Logs panel에 `Export CSV` button 추가.
+  - Browser download helper `saveBlob` 추가.
+  - `verify-lightweight-prototype.ps1`에 audit CSV export 검증 추가.
+  - `AdminUserControllerTest`에 filtered CSV export test 추가.
+  - README와 API spec 갱신.
+- 구현 내용:
+  - Admin은 현재 audit filter 조건 그대로 CSV를 내려받을 수 있다.
+  - Export는 현재 page limit 정책과 같은 1~500 범위를 사용해 prototype 운영 안전성을 유지한다.
+  - Frontend export는 token 포함 fetch로 blob을 받고 날짜 포함 파일명으로 저장한다.
+- 수정된 파일 및 관련 파일:
+  - `osmu-backend/src/main/java/com/example/osmu/audit/AuditLogService.java`
+  - `osmu-backend/src/main/java/com/example/osmu/admin/AdminController.java`
+  - `osmu-backend/src/test/java/com/example/osmu/user/AdminUserControllerTest.java`
+  - `osmu-frontend/src/services/api.js`
+  - `osmu-frontend/src/views/HomeView.vue`
+  - `scripts/verify-lightweight-prototype.ps1`
+  - `README.md`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/worklog/codex/frontend-backend-mvp/worklog-codex-frontend-backend-mvp.md`
+- 검증 기록:
+  - `node --check .\osmu-frontend\src\services\api.js` 통과.
+  - `Get-ChildItem .\scripts -Filter *.ps1 | ForEach-Object { [scriptblock]::Create((Get-Content -Raw -LiteralPath $_.FullName)) | Out-Null }` 통과.
+  - `git diff --check -- ...` 통과. README/api-spec/HomeView CRLF 변환 warning만 확인.
+  - `$env:JAVA_HOME='C:\Users\kjs99\AppData\Local\Temp\temurin-jdk17\jdk-17.0.19+10'; .\gradlew.bat test --tests com.example.osmu.user.AdminUserControllerTest` 통과. Sandbox network 실패 후 승인 권한으로 재실행.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\stop-local-prototype.ps1 -ForcePorts`로 구 runtime 종료.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\start-local-prototype.ps1 -JavaHome 'C:\Users\kjs99\AppData\Local\Temp\temurin-jdk17\jdk-17.0.19+10'` 승인 권한으로 재실행해 backend/frontend 기동.
+  - Backend `http://localhost:8080/api/health` 응답 `UP`, frontend `http://localhost:5173` 응답 `200`.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-lightweight-prototype.ps1` 통과.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-prototype-gate.ps1` 통과.
+  - `npm.cmd run test:unit` 통과. 6 pass.
+  - `npm.cmd run build` 통과.
+- 코드 리뷰: CSV export는 audit 조회 filter를 재사용해 REST list와 결과 범위가 갈라지지 않는다. Large export는 아직 streaming이 아니라 string 생성 방식이므로, 현재 prototype limit 500 안에서만 적합하다.
+- 결과: Admin audit log 조회/필터/CSV export까지 prototype 운영 흐름이 닫혔다.
+- 후속 메모: Production 단계에서는 CSV streaming, async export, retention/archive export 정책이 필요하다.
+- 추가 개발: Docker integration smoke, real AWS CLI/mc client smoke, Browser visual/E2E, audit retention/archive.
+- 사용 skill/plugin: caveman skill ultra.
+
+### 2026-06-13 - Audit CSV Frontend Smoke 고정
+
+- 작업 시작 시간: 2026-06-13 20:43:00 +09:00
+- 작업 종료 시간: 2026-06-13 20:44:53 +09:00
+- 사용자 명령: 활성 목표인 현재까지 구현된 기능 기준 prototype 개발 계속.
+- 명령 해석: 직전 추가한 Audit CSV export가 backend smoke만이 아니라 frontend demo smoke에서도 UI/API bundle 수준으로 빠지지 않게 고정해야 한다고 인식.
+- 작업 방식: `verify-lightweight-demo.ps1`의 frontend module/bundle 검사에 Audit CSV export 버튼과 API wrapper 문자열 검증을 추가했다.
+- 실행 내용:
+  - frontend UI bundle에 `Export CSV`가 포함되는지 검증.
+  - frontend API bundle에 `audit-logs/export.csv`와 `downloadAuditLogsCsv`가 포함되는지 검증.
+  - README의 lightweight demo smoke 설명에 audit CSV export control 확인을 추가.
+- 구현 내용:
+  - Prototype gate가 frontend dev server 또는 production bundle 양쪽에서 Audit CSV export UI/API 연결 누락을 잡을 수 있다.
+- 수정된 파일 및 관련 파일:
+  - `scripts/verify-lightweight-demo.ps1`
+  - `README.md`
+  - `dev-docs/worklog/codex/frontend-backend-mvp/worklog-codex-frontend-backend-mvp.md`
+- 검증 기록:
+  - `[scriptblock]::Create((Get-Content -Raw -LiteralPath .\scripts\verify-lightweight-demo.ps1)) | Out-Null` 통과.
+  - `git diff --check -- scripts/verify-lightweight-demo.ps1` 통과.
+  - Backend `http://localhost:8080/api/health` 응답 `UP`, frontend `http://localhost:5173` 응답 `200`.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-lightweight-demo.ps1` 통과.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-prototype-gate.ps1` 통과.
+- 코드 리뷰: 새 검증은 실제 browser click까지는 아니지만, Browser plugin이 막힌 현재 환경에서 UI text와 API wrapper 연결 regression을 잡는 가장 가벼운 안전장치다.
+- 결과: Audit CSV export frontend 연결이 prototype gate에 포함됐다.
+- 후속 메모: Browser plugin/Chrome E2E가 가능해지면 실제 버튼 클릭과 다운로드 파일명을 확인해야 한다.
+- 추가 개발: Docker integration smoke, real AWS CLI/mc client smoke, Browser visual/E2E.
+- 사용 skill/plugin: caveman skill ultra.
+
+### 2026-06-13 - Lightweight Bucket Quota Smoke 추가
+
+- 작업 시작 시간: 2026-06-13 20:45:00 +09:00
+- 작업 종료 시간: 2026-06-13 20:48:53 +09:00
+- 사용자 명령: `/Caveman ultra` 및 활성 목표인 현재까지 구현된 기능 기준 prototype 개발 계속.
+- 명령 해석: 응답은 극도로 압축하고, 진행 중이던 B2B storage 핵심 기능인 quota 초과 차단을 prototype gate에 고정하라는 명령으로 인식.
+- 작업 방식: 제품 코드 변경 없이 `verify-lightweight-prototype.ps1`에 별도 quota bucket을 생성/검증/정리하는 smoke 단계를 추가했다. 기존 main bucket 흐름과 격리해 사용량 baseline 검증에 영향을 주지 않게 했다.
+- 실행 내용:
+  - `quota-<random>` bucket을 `quotaBytes = 10`으로 생성.
+  - 10 byte object 업로드 성공 확인.
+  - 추가 object 업로드가 `413 QUOTA_EXCEEDED`로 차단되는지 확인.
+  - quota smoke object와 bucket을 즉시 삭제.
+  - 실패 시 finally에서 quota bucket 정리를 재시도.
+  - README lightweight smoke 범위에 bucket quota enforcement 검증 추가.
+- 구현 내용:
+  - Lightweight prototype gate가 bucket quota 초과 업로드 차단 regression을 잡는다.
+  - B2B storage 운영 핵심인 사용량 제한 기능이 문서와 자동 검증에 함께 반영됐다.
+- 수정된 파일 및 관련 파일:
+  - `scripts/verify-lightweight-prototype.ps1`
+  - `README.md`
+  - `dev-docs/worklog/codex/frontend-backend-mvp/worklog-codex-frontend-backend-mvp.md`
+- 검증 기록:
+  - `[scriptblock]::Create((Get-Content -Raw -LiteralPath .\scripts\verify-lightweight-prototype.ps1)) | Out-Null` 통과.
+  - `git diff --check -- README.md scripts/verify-lightweight-prototype.ps1` 통과. README CRLF 변환 warning만 확인.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-lightweight-prototype.ps1` 통과.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-prototype-gate.ps1` 통과.
+- 코드 리뷰: Quota smoke는 독립 bucket으로 실행되어 기존 object/version/lifecycle 흐름과 충돌하지 않는다. `finally` cleanup도 있어 중간 실패 시 테스트 데이터가 남을 가능성을 줄였다.
+- 결과: Prototype gate가 bucket quota enforcement까지 검증한다.
+- 후속 메모: Docker Desktop 실행 후 MariaDB+MinIO mode에서도 같은 quota 차단이 통과하는지 확인해야 한다.
+- 추가 개발: Organization quota smoke 확대, Docker integration smoke, real AWS CLI/mc client smoke, Browser visual/E2E.
+- 사용 skill/plugin: caveman skill ultra.
+
+### 2026-06-13 - Lightweight Organization Quota Smoke 추가
+
+- 작업 시작 시간: 2026-06-13 20:49:00 +09:00
+- 작업 종료 시간: 2026-06-13 20:51:35 +09:00
+- 사용자 명령: 활성 목표인 현재까지 구현된 기능 기준 prototype 개발 계속.
+- 명령 해석: bucket quota 다음으로 B2B multi-tenant storage 핵심인 organization quota와 organization usage를 prototype gate에 고정해야 한다고 인식.
+- 작업 방식: 기존 `Quota enforcement` smoke 안에 별도 organization과 org-owned bucket을 생성해 조직 단위 quota 초과 차단과 usage 집계를 검증했다. Product code 변경 없이 smoke coverage만 확장했다.
+- 실행 내용:
+  - `defaultQuotaBytes = 8`인 quota smoke organization 생성.
+  - `ownerType = ORG`, `quotaBytes = 1024`인 org-owned bucket 생성.
+  - `/api/admin/organizations/usage`에서 default quota, bucket quota, bucket count, used bytes, remaining bytes 확인.
+  - 9 byte object 업로드가 `413 QUOTA_EXCEEDED`로 차단되는지 확인.
+  - org-owned bucket 삭제 및 실패 시 finally cleanup 추가.
+  - README lightweight smoke 범위에 organization quota enforcement and usage 검증 추가.
+- 구현 내용:
+  - Prototype gate가 tenant 단위 quota 정책과 organization usage API regression을 잡는다.
+  - Bucket quota와 organization quota를 같은 smoke 단계에서 독립 bucket으로 검증해 기존 main object/version/lifecycle 흐름과 충돌하지 않는다.
+- 수정된 파일 및 관련 파일:
+  - `scripts/verify-lightweight-prototype.ps1`
+  - `README.md`
+  - `dev-docs/worklog/codex/frontend-backend-mvp/worklog-codex-frontend-backend-mvp.md`
+- 검증 기록:
+  - `[scriptblock]::Create((Get-Content -Raw -LiteralPath .\scripts\verify-lightweight-prototype.ps1)) | Out-Null` 통과.
+  - `git diff --check -- README.md scripts/verify-lightweight-prototype.ps1` 통과. README CRLF 변환 warning만 확인.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-lightweight-prototype.ps1` 통과.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-prototype-gate.ps1` 통과.
+- 코드 리뷰: Org quota smoke는 실패 업로드만 수행하므로 object cleanup 위험이 작다. 그래도 finally에서 object delete/purge와 bucket delete를 status 기반으로 재시도해 중간 실패 후 bucket 잔존 가능성을 낮췄다.
+- 결과: Prototype gate가 bucket quota, organization quota, organization usage를 모두 확인한다.
+- 후속 메모: Organization 삭제 API가 아직 없어서 smoke organization 자체는 runtime에 남는다. 현재 in-memory prototype에는 치명적이지 않지만, MariaDB smoke 전에 organization cleanup 정책/API가 필요하다.
+- 추가 개발: Organization cleanup/delete API, Docker integration smoke, real AWS CLI/mc client smoke, Browser visual/E2E.
+- 사용 skill/plugin: caveman skill ultra.
+
+### 2026-06-13 - Empty Organization Delete API 추가
+
+- 작업 시작 시간: 2026-06-13 20:52:00 +09:00
+- 작업 종료 시간: 2026-06-13 20:59:08 +09:00
+- 사용자 명령: 활성 목표인 현재까지 구현된 기능 기준 prototype 개발 계속.
+- 명령 해석: Organization quota smoke가 생성하는 임시 organization을 MariaDB 환경에서도 누적시키지 않도록, empty organization delete API와 cleanup flow가 필요하다고 인식.
+- 작업 방식: organization repository에 delete contract를 추가하고, admin controller에 empty organization만 삭제하는 보수적 API를 추가했다. user 또는 org-owned bucket이 남아 있으면 `409 CONFLICT`로 막는다.
+- 실행 내용:
+  - `OrganizationRepository.deleteById` 추가.
+  - In-memory/MariaDB organization repository delete 구현.
+  - `DELETE /api/admin/organizations/{organizationId}` 추가.
+  - `ADMIN`만 삭제 가능하게 하고, not found는 `404 NOT_FOUND` 처리.
+  - assigned user 또는 `ownerType = ORG` bucket 존재 시 `409 CONFLICT` 반환.
+  - 성공 시 `ORGANIZATION_DELETE` audit event 기록.
+  - Lightweight quota smoke에서 org-owned bucket 삭제 후 quota smoke organization도 삭제하도록 변경.
+  - API spec, test cases 갱신.
+  - Controller test에 empty delete 성공, assigned user/bucket conflict 추가.
+- 구현 내용:
+  - MariaDB/Docker smoke 전환 시 quota smoke가 organization data를 누적하지 않도록 cleanup 경로가 생겼다.
+  - Organization lifecycle의 최소 운영 기능인 안전 삭제가 backend/API/test/gate에 포함됐다.
+- 수정된 파일 및 관련 파일:
+  - `osmu-backend/src/main/java/com/example/osmu/organization/AdminOrganizationController.java`
+  - `osmu-backend/src/main/java/com/example/osmu/organization/repository/OrganizationRepository.java`
+  - `osmu-backend/src/main/java/com/example/osmu/organization/repository/InMemoryOrganizationRepository.java`
+  - `osmu-backend/src/main/java/com/example/osmu/organization/repository/MariaDbOrganizationRepository.java`
+  - `osmu-backend/src/test/java/com/example/osmu/organization/AdminOrganizationControllerTest.java`
+  - `scripts/verify-lightweight-prototype.ps1`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/worklog/codex/frontend-backend-mvp/worklog-codex-frontend-backend-mvp.md`
+- 검증 기록:
+  - `[scriptblock]::Create((Get-Content -Raw -LiteralPath .\scripts\verify-lightweight-prototype.ps1)) | Out-Null` 통과.
+  - `git diff --check -- ...` 통과. README/api-spec/test-cases CRLF 변환 warning만 확인.
+  - `$env:JAVA_HOME='C:\Users\kjs99\AppData\Local\Temp\temurin-jdk17\jdk-17.0.19+10'; .\gradlew.bat test --tests com.example.osmu.organization.AdminOrganizationControllerTest` 통과. Sandbox network 실패 후 승인 권한으로 재실행.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\stop-local-prototype.ps1 -ForcePorts`로 이전 runtime 종료.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\start-local-prototype.ps1 -JavaHome 'C:\Users\kjs99\AppData\Local\Temp\temurin-jdk17\jdk-17.0.19+10'`는 sandbox network 실패 후 승인 권한으로 재실행해 backend/frontend 기동.
+  - Backend `http://localhost:8080/api/health` 응답 `UP`, frontend `http://localhost:5173` 응답 `200`.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-lightweight-prototype.ps1` 통과.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-prototype-gate.ps1` 통과.
+- 코드 리뷰: 삭제 API는 cascade 삭제를 하지 않고 empty organization만 허용해 사용자/버킷 데이터 손실 위험을 피한다. 다만 full organization lifecycle에는 user migration/disable, bucket transfer 같은 운영 절차가 나중에 필요하다.
+- 결과: Organization quota smoke가 자체 organization cleanup까지 수행하며, admin organization 최소 삭제 API가 prototype에 추가됐다.
+- 후속 메모: UI에서 organization delete 버튼을 제공할지, 또는 운영 CLI/API 전용으로 둘지 결정해야 한다.
+- 추가 개발: Docker integration smoke, real AWS CLI/mc client smoke, Browser visual/E2E, organization transfer/archive policy.
+- 사용 skill/plugin: caveman skill ultra.
+
+### 2026-06-13 - Organization Delete UI 연결
+
+- 작업 시작 시간: 2026-06-13 21:00:00 +09:00
+- 작업 종료 시간: 2026-06-13 21:03:03 +09:00
+- 사용자 명령: 활성 목표인 현재까지 구현된 기능 기준 prototype 개발 계속.
+- 명령 해석: 직전 추가한 empty organization delete API가 frontend admin portal에서도 사용할 수 있어야 prototype workflow가 닫힌다고 인식.
+- 작업 방식: 기존 organization list UI와 confirm dialog/runAction pattern을 재사용해 Admin 전용 delete button을 추가했다. Frontend smoke는 UI/API bundle 문자열 검증으로 연결 누락을 잡도록 확장했다.
+- 실행 내용:
+  - `deleteOrganization` API wrapper 추가.
+  - Organizations list에 Admin 전용 `Delete` button 추가.
+  - `handleDeleteOrganization` confirm dialog 추가. Empty organization만 삭제 가능하다는 안내를 표시.
+  - Delete 성공 후 dashboard reload.
+  - `.list-actions` CSS 추가로 id와 button을 안정적으로 배치.
+  - Lightweight demo smoke에 `Delete organization`, `deleteOrganization`, `/admin/organizations/` 검증 추가.
+  - README와 frontend design 문서에 organization delete control 반영.
+- 구현 내용:
+  - Admin portal에서 empty organization delete를 실제로 수행할 수 있다.
+  - API-only였던 organization cleanup 기능이 prototype UI workflow로 연결됐다.
+- 수정된 파일 및 관련 파일:
+  - `osmu-frontend/src/services/api.js`
+  - `osmu-frontend/src/views/HomeView.vue`
+  - `osmu-frontend/src/assets/main.css`
+  - `scripts/verify-lightweight-demo.ps1`
+  - `README.md`
+  - `dev-docs/frontend-design.md`
+  - `dev-docs/worklog/codex/frontend-backend-mvp/worklog-codex-frontend-backend-mvp.md`
+- 검증 기록:
+  - `node --check .\osmu-frontend\src\services\api.js` 통과.
+  - `[scriptblock]::Create((Get-Content -Raw -LiteralPath .\scripts\verify-lightweight-demo.ps1)) | Out-Null` 통과.
+  - `git diff --check -- ...` 통과. README/frontend-design/main.css/HomeView CRLF 변환 warning만 확인.
+  - `npm.cmd run test:unit` 통과. 6 pass.
+  - `npm.cmd run build` 통과.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-lightweight-demo.ps1` 통과.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-prototype-gate.ps1` 통과.
+- 코드 리뷰: Delete는 Admin에게만 노출되고 confirm dialog를 거친다. API가 non-empty organization을 `409`로 막기 때문에 UI는 destructive cascade 없이 안전 삭제만 수행한다.
+- 결과: Organization delete API가 frontend prototype workflow와 smoke gate에 연결됐다.
+- 후속 메모: Browser/Chrome E2E가 가능해지면 실제 버튼 클릭과 `409 CONFLICT` 표시를 확인해야 한다.
+- 추가 개발: Docker integration smoke, real AWS CLI/mc client smoke, Browser visual/E2E, organization transfer/archive policy.
+- 사용 skill/plugin: caveman skill ultra.
+
+### 2026-06-13 - Organization Delete Runtime Smoke 강화
+
+- 작업 시작 시간: 2026-06-13 21:04:00 +09:00
+- 작업 종료 시간: 2026-06-13 21:05:31 +09:00
+- 사용자 명령: 활성 목표인 현재까지 구현된 기능 기준 prototype 개발 계속.
+- 명령 해석: Organization delete API/UI 연결을 문자열 검증뿐 아니라 실제 lightweight runtime gate에서 `409`, `204`, audit log까지 확인해야 한다고 인식.
+- 작업 방식: `verify-lightweight-prototype.ps1`의 quota/organization 흐름 직후에 독립적인 organization delete smoke를 추가했다. 실패 시 bucket/org cleanup을 finally에 추가했다.
+- 실행 내용:
+  - delete smoke organization 생성.
+  - `ownerType = ORG` bucket 생성.
+  - bucket이 남은 organization delete가 `409 CONFLICT`인지 확인.
+  - org-owned bucket 삭제.
+  - empty organization delete가 `204`인지 확인.
+  - `ORGANIZATION_DELETE` audit event 확인.
+  - organization list에서 삭제된 id가 사라졌는지 확인.
+  - README lightweight smoke 범위에 organization delete guard and audit 추가.
+- 구현 내용:
+  - Prototype gate가 organization delete 보호 조건과 성공 경로, audit trail을 실제 runtime에서 검증한다.
+  - MariaDB 전환 전에도 delete smoke data cleanup 회귀를 잡을 수 있다.
+- 수정된 파일 및 관련 파일:
+  - `scripts/verify-lightweight-prototype.ps1`
+  - `README.md`
+  - `dev-docs/worklog/codex/frontend-backend-mvp/worklog-codex-frontend-backend-mvp.md`
+- 검증 기록:
+  - `[scriptblock]::Create((Get-Content -Raw -LiteralPath .\scripts\verify-lightweight-prototype.ps1)) | Out-Null` 통과.
+  - `git diff --check -- scripts/verify-lightweight-prototype.ps1 README.md` 통과. README CRLF 변환 warning만 확인.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-lightweight-prototype.ps1` 통과.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-prototype-gate.ps1` 통과.
+- 코드 리뷰: Delete smoke는 독립 organization/bucket으로 실행되어 기존 permission/user flow와 충돌하지 않는다. Non-empty guard를 먼저 확인한 뒤 bucket을 삭제하고 empty delete를 수행해 두 경로를 한 번에 검증한다.
+- 결과: Organization delete가 API, UI, runtime smoke gate까지 연결됐다.
+- 후속 메모: Browser/Chrome E2E가 가능해지면 UI button click과 conflict error banner를 실제 DOM에서 확인해야 한다.
+- 추가 개발: Docker integration smoke, real AWS CLI/mc client smoke, Browser visual/E2E, organization transfer/archive policy.
+- 사용 skill/plugin: caveman skill ultra.
+
+### 2026-06-13 - User Status Security Smoke 강화
+
+- 작업 시작 시간: 2026-06-13 21:06:00 +09:00
+- 작업 종료 시간: 2026-06-13 21:08:44 +09:00
+- 사용자 명령: 활성 목표인 현재까지 구현된 기능 기준 prototype 개발 계속.
+- 명령 해석: Docker/Browser/aws/mc가 현재 환경에서 막혀 있으므로, 현재 구현된 보안 기능 중 runtime evidence가 약한 user status 비활성화 경계를 lightweight gate에 고정해야 한다고 인식.
+- 작업 방식: 기존 smoke user/read-only access key 흐름을 재사용해 user status update가 login, 기존 JWT, access key에 미치는 영향을 실제 API로 확인했다. 비활성화 이후 access key cleanup은 admin token으로 수행하도록 정리했다.
+- 실행 내용:
+  - Docker daemon 확인 실패: `//./pipe/docker_engine` 미존재.
+  - `aws`, `mc` PATH 미설치 확인.
+  - Browser plugin 연결 실패: `CreateProcessAsUserW failed: 5`.
+  - `verify-lightweight-prototype.ps1`에 `User status enforcement` 단계 추가.
+  - smoke user를 `INACTIVE`로 변경하고 응답 status 확인.
+  - `USER_STATUS_UPDATE` audit log 확인.
+  - smoke user의 기존 access key가 `INACTIVE`로 전환됐는지 admin access key list로 확인.
+  - inactive user login이 `401 AUTHENTICATION_REQUIRED`인지 확인.
+  - 기존 smoke user JWT로 bucket list 접근이 `401 AUTHENTICATION_REQUIRED`인지 확인.
+  - README lightweight smoke 범위에 user status enforcement와 access key deactivation 추가.
+- 구현 내용:
+  - Prototype gate가 user offboarding 핵심 경계인 login 차단, token 차단, access key 비활성화를 실제 runtime에서 검증한다.
+  - Access key cleanup은 inactive user token 대신 admin token을 사용해 smoke 실패/cleanup 안정성을 높였다.
+- 수정된 파일 및 관련 파일:
+  - `scripts/verify-lightweight-prototype.ps1`
+  - `README.md`
+  - `dev-docs/worklog/codex/frontend-backend-mvp/worklog-codex-frontend-backend-mvp.md`
+- 검증 기록:
+  - `[scriptblock]::Create((Get-Content -Raw -LiteralPath .\scripts\verify-lightweight-prototype.ps1)) | Out-Null` 통과.
+  - `git diff --check -- scripts/verify-lightweight-prototype.ps1 README.md` 통과. README CRLF 변환 warning만 확인.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-lightweight-prototype.ps1` 통과.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-prototype-gate.ps1` 통과.
+- 코드 리뷰: 비활성화 검증은 기존 permission smoke user를 재사용해 새 fixture 증가를 피했다. 비활성화 후에는 해당 user token이 더 이상 cleanup에 쓸 수 없으므로 admin token cleanup으로 바꾼 것이 핵심 안정화 지점이다.
+- 결과: User status 비활성화와 access key deactivation이 prototype runtime gate에 포함됐다.
+- 후속 메모: Browser/Chrome E2E가 가능해지면 Users panel에서 deactivate 버튼 클릭과 error banner를 확인해야 한다.
+- 추가 개발: Docker integration smoke, real AWS CLI/mc client smoke, Browser visual/E2E, refresh token revocation policy.
+- 사용 skill/plugin: caveman skill ultra, browser skill 시도.
+
+### 2026-06-13 - User Status Refresh Token Revocation 추가
+
+- 작업 시작 시간: 2026-06-13 21:09:00 +09:00
+- 작업 종료 시간: 2026-06-13 21:13:26 +09:00
+- 사용자 명령: 활성 목표인 현재까지 구현된 기능 기준 prototype 개발 계속.
+- 명령 해석: User 비활성화 시 login/JWT/access key뿐 아니라 refresh token도 즉시 폐기되어야 B2B offboarding 보안 경계가 완성된다고 인식.
+- 작업 방식: 이미 존재하는 `RefreshTokenService.revokeAll(userId)`를 `AdminUserController.updateStatus`에 연결하고, backend test와 lightweight runtime smoke에 refresh token denial을 추가했다.
+- 실행 내용:
+  - `AdminUserController`에 `RefreshTokenService` 주입.
+  - user status가 `ACTIVE`가 아닐 때 `refreshTokenService.revokeAll(user.id())` 호출.
+  - `AdminUserControllerTest.adminCanCreateListAndDisableUser`에서 user login refresh token을 저장하고 비활성화 후 `/api/auth/refresh`가 `401`인지 검증.
+  - `verify-lightweight-prototype.ps1`에서 smoke user refresh token을 저장하고 비활성화 후 refresh가 `401 AUTHENTICATION_REQUIRED`인지 검증.
+  - API spec, test cases, README에 refresh token revocation 반영.
+  - Backend 변경 반영을 위해 local prototype 재기동.
+- 구현 내용:
+  - User offboarding 시 active refresh tokens가 즉시 `REVOKED`로 전환된다.
+  - Prototype gate가 refresh token 재사용 차단을 runtime에서 확인한다.
+- 수정된 파일 및 관련 파일:
+  - `osmu-backend/src/main/java/com/example/osmu/user/AdminUserController.java`
+  - `osmu-backend/src/test/java/com/example/osmu/user/AdminUserControllerTest.java`
+  - `scripts/verify-lightweight-prototype.ps1`
+  - `README.md`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/worklog/codex/frontend-backend-mvp/worklog-codex-frontend-backend-mvp.md`
+- 검증 기록:
+  - `[scriptblock]::Create((Get-Content -Raw -LiteralPath .\scripts\verify-lightweight-prototype.ps1)) | Out-Null` 통과.
+  - `git diff --check -- ...` 통과. README/api-spec/test-cases CRLF 변환 warning만 확인.
+  - `$env:JAVA_HOME='C:\Users\kjs99\AppData\Local\Temp\temurin-jdk17\jdk-17.0.19+10'; .\gradlew.bat test --tests com.example.osmu.user.AdminUserControllerTest` 통과. Sandbox network 실패 후 승인 권한으로 재실행.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\stop-local-prototype.ps1 -ForcePorts`로 이전 runtime 종료.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\start-local-prototype.ps1 -JavaHome 'C:\Users\kjs99\AppData\Local\Temp\temurin-jdk17\jdk-17.0.19+10'` 승인 권한으로 재실행해 backend/frontend 기동.
+  - Backend `http://localhost:8080/api/health` 응답 `UP`, frontend `http://localhost:5173` 응답 `200`.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-lightweight-prototype.ps1` 통과.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-prototype-gate.ps1` 통과.
+- 코드 리뷰: refresh token repository에는 이미 bulk revoke contract가 있어 새 저장소 구조 없이 controller orchestration만 추가했다. 다시 `ACTIVE`로 바꿔도 기존 refresh/access key는 복구하지 않는 현재 정책과 일관된다.
+- 결과: User 비활성화 보안 경계가 access key, JWT, login, refresh token까지 닫혔다.
+- 후속 메모: 운영 정책상 `ACTIVE` 복구 시 새 refresh/access key 발급 절차를 UI에서 안내할지 결정해야 한다.
+- 추가 개발: Docker integration smoke, real AWS CLI/mc client smoke, Browser visual/E2E.
+- 사용 skill/plugin: caveman skill ultra.
+
+### 2026-06-13 - Full Prototype Gate 검증
+
+- 작업 시작 시간: 2026-06-13 21:14:00 +09:00
+- 작업 종료 시간: 2026-06-13 21:15:54 +09:00
+- 사용자 명령: 활성 목표인 현재까지 구현된 기능 기준 prototype 개발 계속.
+- 명령 해석: 구현 추가보다 현재 prototype의 검증 강도를 높이기 위해 optional build verify와 backend tests까지 포함한 full gate를 실행해야 한다고 인식.
+- 작업 방식: running lightweight prototype을 유지한 상태에서 `verify-prototype-gate.ps1`에 `-IncludeBuildVerify -IncludeBackendTests`를 켜고 실행했다. Sandbox network 실패는 승인 권한으로 같은 command를 재실행했다.
+- 실행 내용:
+  - Runtime health 확인.
+  - Flyway migration version check.
+  - Lightweight API smoke.
+  - Lightweight demo smoke.
+  - Built-in S3 SigV4 smoke.
+  - Build verify: git whitespace, env ignore, PowerShell parse, migration check, frontend static syntax, frontend unit tests, frontend build.
+  - Backend Gradle test 전체 실행.
+- 구현 내용:
+  - 코드 변경 없음. 검증 evidence를 강화했다.
+  - Prototype gate가 optional build/backend test까지 포함해 통과함을 확인했다.
+- 수정된 파일 및 관련 파일:
+  - `dev-docs/worklog/codex/frontend-backend-mvp/worklog-codex-frontend-backend-mvp.md`
+- 검증 기록:
+  - 최초 `powershell -ExecutionPolicy Bypass -File .\scripts\verify-prototype-gate.ps1 -IncludeBuildVerify -IncludeBackendTests -JavaHome ...`는 Gradle wrapper network sandbox 실패: `Permission denied: getsockopt`.
+  - 승인 권한으로 같은 command 재실행 통과.
+  - `npm.cmd run test:unit` 통과. 6 pass.
+  - `npm.cmd run build` 통과.
+  - Backend `.\gradlew.bat test` 통과. `BUILD SUCCESSFUL`.
+  - Full prototype gate 통과. Runtime, lightweight API, seeded demo, S3 SigV4 smoke, build verify, backend tests included.
+- 코드 리뷰: 이번 작업은 코드 변경 없이 회귀 검증을 확장했다. 단, S3 smoke는 built-in manual SigV4만 수행했고 `aws`/`mc` real client는 PATH 부재로 건너뛰었다. Docker smoke는 Docker daemon 부재로 여전히 미실행이다.
+- 결과: 현재 lightweight prototype은 optional build verify와 backend full tests까지 포함해 통과한다.
+- 후속 메모: Docker Desktop 실행 후 `-TryDocker`, AWS CLI 또는 MinIO Client 설치 후 real S3 client smoke를 추가 실행해야 한다.
+- 추가 개발: Docker integration smoke, real AWS CLI/mc client smoke, Browser visual/E2E.
+- 사용 skill/plugin: caveman skill ultra.
+
+### 2026-06-13 - Prototype Status 문서 추가
+
+- 작업 시작 시간: 2026-06-13 21:16:00 +09:00
+- 작업 종료 시간: 2026-06-13 21:19:10 +09:00
+- 사용자 명령: `/Caveman ultra` 이후 활성 목표인 현재 구현 상태 기준 prototype 개발 계속.
+- 명령 해석: 토큰을 아끼는 매우 짧은 응답 모드를 유지하면서, 현재까지 구현/검증된 prototype 범위와 남은 외부 blocker를 잊지 않도록 문서로 고정하라는 명령으로 인식.
+- 작업 방식: 요구사항 대비 현재 상태를 빠르게 다시 확인하고, 새 status 문서를 추가한 뒤 README와 document index에서 바로 찾을 수 있게 연결했다.
+- 실행 내용:
+  - `dev-docs/prototype-status.md` 신규 작성.
+  - README의 최신 검증 요약과 main files 목록에 status 문서 링크 추가.
+  - document index의 start here 목록에 status 문서 추가.
+- 구현 내용:
+  - 현재 목표, 구현된 기능 그룹, 통과한 gate, 외부 blocker, production 미준비 항목, 다음 최우선 작업을 한 문서에 정리했다.
+  - Docker/MariaDB/MinIO, real `aws`/`mc`, Browser E2E가 아직 외부 의존으로 막혀 있음을 명확히 남겼다.
+- 수정된 파일 및 관련 파일:
+  - `dev-docs/prototype-status.md`
+  - `dev-docs/document-index.md`
+  - `README.md`
+  - `dev-docs/worklog/codex/frontend-backend-mvp/worklog-codex-frontend-backend-mvp.md`
+- 검증 기록:
+  - `git diff --check -- README.md dev-docs/document-index.md dev-docs/prototype-status.md` 통과. README/document-index CRLF warning만 확인.
+  - `Get-Content -Raw .\dev-docs\prototype-status.md`로 문서 내용 확인.
+  - `Select-String`으로 README와 document-index의 `prototype-status` 링크 존재 확인.
+  - 코드 변경이 아니므로 backend/frontend runtime gate는 재실행하지 않았다.
+- 코드 리뷰: status 문서는 현재 scope와 blocker를 분리해 다음 작업 선택 기준을 명확히 한다. 단, README가 `git diff`에서 binary로 표시되는 기존 인코딩/줄끝 이슈가 있어 향후 별도 정리가 필요하다.
+- 결과: 현재 prototype 상태를 잃지 않도록 고정하는 추적 문서가 추가됐다.
+- 후속 메모: 다음 작업은 Docker Desktop 실행 후 Docker integration smoke 또는 `aws`/`mc` 설치 후 real S3 client smoke가 가장 좋다.
+- 추가 개발: Docker integration smoke, real AWS CLI/mc client smoke, Browser visual/E2E, MVP v0.1 release checklist.
+- 사용 skill/plugin: caveman skill ultra.
+
+### 2026-06-13 - Prototype Prerequisites Verifier 추가
+
+- 작업 시작 시간: 2026-06-13 21:19:10 +09:00
+- 작업 종료 시간: 2026-06-13 21:22:57 +09:00
+- 사용자 명령: 활성 목표인 현재까지 구현된 기능 기준 prototype 개발 계속.
+- 명령 해석: Docker, real S3 client, runtime 상태를 매번 수동으로 설명하지 말고, prototype 검증 전 prerequisite 상태를 자동으로 확인하는 script가 필요하다고 인식.
+- 작업 방식: 기본 실행은 optional blocker를 warning처럼 보고하고 성공 종료하게 만들고, release/integration 확인 때는 `-RequireDocker`, `-RequireS3Client`, `-RequireRuntime` 등으로 hard fail할 수 있게 설계했다.
+- 실행 내용:
+  - `scripts/verify-prototype-prerequisites.ps1` 신규 작성.
+  - Java/JDK, Node.js, npm, Docker CLI, Docker daemon, Docker Compose config, AWS CLI, MinIO Client, backend/frontend port, backend health, frontend HTTP를 확인.
+  - README, document index, prototype status 문서에 preflight script 연결.
+- 구현 내용:
+  - 현재 외부 blocker인 Docker daemon 부재와 `aws`/`mc` 부재를 재현 가능한 검증 결과로 남길 수 있게 됐다.
+  - Docker Compose config는 daemon 없이도 확인되어 infra 파일 자체는 정상임을 분리해서 볼 수 있다.
+- 수정된 파일 및 관련 파일:
+  - `scripts/verify-prototype-prerequisites.ps1`
+  - `README.md`
+  - `dev-docs/document-index.md`
+  - `dev-docs/prototype-status.md`
+  - `dev-docs/worklog/codex/frontend-backend-mvp/worklog-codex-frontend-backend-mvp.md`
+- 검증 기록:
+  - `[scriptblock]::Create((Get-Content -Raw -LiteralPath .\scripts\verify-prototype-prerequisites.ps1)) | Out-Null` 통과.
+  - `git diff --check -- README.md dev-docs/document-index.md dev-docs/prototype-status.md scripts/verify-prototype-prerequisites.ps1` 통과. README/document-index CRLF warning만 확인.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-prototype-prerequisites.ps1 -JavaHome 'C:\Users\kjs99\AppData\Local\Temp\temurin-jdk17\jdk-17.0.19+10'` 통과.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-prototype-prerequisites.ps1 -JavaHome 'C:\Users\kjs99\AppData\Local\Temp\temurin-jdk17\jdk-17.0.19+10' -RequireJava -RequireNode -RequireRuntime` 통과.
+  - `Select-String`으로 README, document-index, prototype-status의 preflight script 링크 확인.
+  - 실행 결과: Java 17+, Node.js, npm, Docker CLI, Docker Compose config, backend/frontend runtime은 PASS.
+  - 실행 결과: Docker daemon, AWS CLI, MinIO Client, real S3 client는 optional FAIL로 확인.
+- 코드 리뷰: script는 optional/required mode를 분리해 현재 개발 환경에서는 진단용으로 쓰고, 릴리즈 직전에는 hard gate로 전환할 수 있다. Docker daemon 실패와 compose config 성공을 분리한 점이 다음 원인 분석에 유용하다.
+- 결과: Prototype external prerequisite 상태 확인을 자동화했다.
+- 후속 메모: Docker Desktop 실행 후 `.\scripts\verify-prototype-prerequisites.ps1 -RequireDocker`를 먼저 통과시킨 뒤 Docker integration smoke를 돌리면 된다.
+- 추가 개발: real AWS CLI/mc client smoke, Browser visual/E2E, MVP v0.1 release checklist.
+- 사용 skill/plugin: caveman skill ultra.
+
+### 2026-06-13 - Prototype Release Gate 추가
+
+- 작업 시작 시간: 2026-06-13 21:23:00 +09:00
+- 작업 종료 시간: 2026-06-13 21:25:39 +09:00
+- 사용자 명령: 활성 목표인 현재까지 구현된 기능 기준 prototype 개발 계속.
+- 명령 해석: 현재 prototype을 MVP v0.1 후보처럼 반복 검증할 수 있도록 preflight, build verify, backend test, runtime smoke를 한 명령으로 묶는 release gate가 필요하다고 인식.
+- 작업 방식: 기존 verifier들을 새로 다시 구현하지 않고 `verify-prototype-prerequisites.ps1`와 `verify-prototype-gate.ps1`를 orchestration하는 wrapper script를 추가했다.
+- 실행 내용:
+  - `scripts/verify-prototype-release.ps1` 신규 작성.
+  - 기본 실행에서 Java/Node/runtime을 required preflight로 확인.
+  - 기본 실행에서 build verify와 backend tests를 포함.
+  - `-SkipBackendTests`, `-RequireDocker`, `-RequireS3Client`, `-RunDockerIntegration` 옵션 추가.
+  - README, document index, prototype status 문서에 release gate 연결.
+- 구현 내용:
+  - MVP release 후보 검증 명령이 `verify-prototype-release.ps1` 하나로 정리됐다.
+  - Docker integration은 Docker Desktop 실행 후 `-RunDockerIntegration`으로 포함할 수 있다.
+  - real S3 client는 `aws` 또는 `mc` 설치 후 `-RequireS3Client`로 hard gate화할 수 있다.
+- 수정된 파일 및 관련 파일:
+  - `scripts/verify-prototype-release.ps1`
+  - `README.md`
+  - `dev-docs/document-index.md`
+  - `dev-docs/prototype-status.md`
+  - `dev-docs/worklog/codex/frontend-backend-mvp/worklog-codex-frontend-backend-mvp.md`
+- 검증 기록:
+  - `[scriptblock]::Create((Get-Content -Raw -LiteralPath .\scripts\verify-prototype-release.ps1)) | Out-Null` 통과.
+  - `git diff --check -- README.md dev-docs/document-index.md dev-docs/prototype-status.md scripts/verify-prototype-release.ps1` 통과. README/document-index CRLF warning만 확인.
+  - README, document-index, prototype-status의 `verify-prototype-release` 링크 확인.
+  - 첫 `powershell -ExecutionPolicy Bypass -File .\scripts\verify-prototype-release.ps1 -JavaHome ...` 실행은 Gradle wrapper network sandbox 제한으로 실패: `Permission denied: getsockopt`.
+  - 승인 권한으로 같은 release gate 재실행 통과.
+  - 통과 범위: required preflight, runtime health, lightweight API smoke, seeded demo smoke, built-in S3 SigV4 smoke, frontend unit tests, frontend build, backend Gradle tests.
+  - optional warning: Docker daemon 미실행, `aws`/`mc` PATH 부재.
+- 코드 리뷰: release gate는 기존 검증 script를 조합해 중복 로직을 줄였고, 외부 의존 gate를 opt-in으로 분리했다. 현재 lightweight prototype을 반복 검증하기 쉬워졌다.
+- 결과: 현재 prototype은 새 MVP release gate 기준으로도 통과한다. 단 Docker/MariaDB/MinIO와 real S3 client 검증은 아직 외부 의존으로 남는다.
+- 후속 메모: Docker Desktop 실행 후 `.\scripts\verify-prototype-release.ps1 -JavaHome ... -RunDockerIntegration`을 실행해야 한다.
+- 추가 개발: Docker integration smoke, real AWS CLI/mc client smoke, Browser visual/E2E, production hardening checklist.
+- 사용 skill/plugin: caveman skill ultra.
+
+### 2026-06-13 - Release Gate Evidence Report 추가
+
+- 작업 시작 시간: 2026-06-13 21:26:00 +09:00
+- 작업 종료 시간: 2026-06-13 21:28:47 +09:00
+- 사용자 명령: 활성 목표인 현재까지 구현된 기능 기준 prototype 개발 계속.
+- 명령 해석: release gate 통과 결과가 콘솔에만 남지 않고, 다음 작업이나 세션에서 확인 가능한 evidence 파일로 남아야 한다고 인식.
+- 작업 방식: `verify-prototype-release.ps1`에 report writer를 추가하고, `.osmu-run/latest-release.json`에 현재 release gate scope와 optional blocker 상태를 저장하도록 했다.
+- 실행 내용:
+  - `-ReportPath` 옵션 추가. 기본값은 `.osmu-run/latest-release.json`.
+  - `-NoReport` 옵션 추가.
+  - release gate 통과 후 JSON report 작성.
+  - report에 generatedAt, result, api/frontend endpoint, scope, Docker/aws/mc optional gate 상태 기록.
+  - README와 prototype status 문서에 report 위치 설명 추가.
+- 구현 내용:
+  - 최신 release gate evidence를 로컬 파일로 남겨, 다음 작업자가 prototype 검증 상태를 빠르게 확인할 수 있다.
+  - `.osmu-run/`은 이미 `.gitignore`에 포함되어 있어 runtime evidence가 git에 섞이지 않는다.
+- 수정된 파일 및 관련 파일:
+  - `scripts/verify-prototype-release.ps1`
+  - `README.md`
+  - `dev-docs/prototype-status.md`
+  - `dev-docs/worklog/codex/frontend-backend-mvp/worklog-codex-frontend-backend-mvp.md`
+- 검증 기록:
+  - `[scriptblock]::Create((Get-Content -Raw -LiteralPath .\scripts\verify-prototype-release.ps1)) | Out-Null` 통과.
+  - `git diff --check -- README.md dev-docs/prototype-status.md scripts/verify-prototype-release.ps1` 통과. README CRLF warning만 확인.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-prototype-release.ps1 -JavaHome ... -SkipBackendTests` 통과.
+  - `.osmu-run/latest-release.json` 생성 확인.
+  - report 내용 확인: `result=passed`, `backendTests=skipped`, `dockerDaemon=false`, `realS3Client=false`, `reportPath=.osmu-run/latest-release.json`.
+- 코드 리뷰: report는 release gate가 성공한 경우에만 작성되어 성공 evidence로 의미가 명확하다. 실패 리포트까지 필요하면 try/catch 기반 failure report를 후속으로 추가할 수 있다.
+- 결과: Prototype release gate가 검증 결과를 재사용 가능한 로컬 evidence로 남긴다.
+- 후속 메모: full backend test 포함 report가 필요하면 `-SkipBackendTests` 없이 다시 실행하면 된다.
+- 추가 개발: failure report 저장, Docker integration report 확장, real S3 client report 확장, Browser visual/E2E.
+- 사용 skill/plugin: caveman skill ultra.
+
+### 2026-06-13 - Release Gate Failure Report 보강
+
+- 작업 시작 시간: 2026-06-13 21:29:00 +09:00
+- 작업 종료 시간: 2026-06-13 21:32:11 +09:00
+- 사용자 명령: 활성 목표인 현재까지 구현된 기능 기준 prototype 개발 계속.
+- 명령 해석: release gate가 실패할 때도 실패 원인과 외부 gate 상태를 evidence 파일로 남겨야 다음 작업에서 원인 추적이 쉽다고 인식.
+- 작업 방식: `verify-prototype-release.ps1`에 script-level trap을 추가해 terminating error 발생 시 failure report를 쓰고 원래 실패 exit는 유지하도록 했다.
+- 실행 내용:
+  - `Write-ReleaseReport`에 `Result`, `ErrorMessage` 인자 추가.
+  - report에 `errorMessage`와 `scope.dockerRequired` 추가.
+  - 실패 trap에서 `result=failed` report 작성 후 원래 error rethrow.
+  - README와 prototype status 문서에 failed required gate도 report를 남긴다고 설명 추가.
+- 구현 내용:
+  - `-RequireDocker` 같은 hard gate 실패 시 `.osmu-run/*.json`에 `result=failed`, `errorMessage`, Docker/aws/mc 상태가 남는다.
+  - 성공 report는 기존처럼 `result=passed`로 유지된다.
+- 수정된 파일 및 관련 파일:
+  - `scripts/verify-prototype-release.ps1`
+  - `README.md`
+  - `dev-docs/prototype-status.md`
+  - `dev-docs/worklog/codex/frontend-backend-mvp/worklog-codex-frontend-backend-mvp.md`
+- 검증 기록:
+  - `[scriptblock]::Create((Get-Content -Raw -LiteralPath .\scripts\verify-prototype-release.ps1)) | Out-Null` 통과.
+  - `git diff --check -- README.md dev-docs/prototype-status.md scripts/verify-prototype-release.ps1` 통과. README CRLF warning만 확인.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-prototype-release.ps1 -JavaHome ... -SkipBackendTests` 통과.
+  - `.osmu-run/latest-release.json` 확인: `result=passed`, `dockerRequired=false`, `backendTests=skipped`, `dockerDaemon=false`, `realS3Client=false`.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-prototype-release.ps1 -JavaHome ... -SkipBackendTests -RequireDocker -ReportPath .\.osmu-run\require-docker-failure.json`는 의도대로 exit 1.
+  - `.osmu-run/require-docker-failure.json` 확인: `result=failed`, `dockerRequired=true`, `dockerDaemon=false`, `realS3Client=false`.
+- 코드 리뷰: failure report는 실패를 숨기지 않고 exit code를 유지한다. report 생성 실패도 원래 error를 덮지 않게 warning 처리했다.
+- 결과: release gate 성공/실패 evidence가 모두 파일로 남는다.
+- 후속 메모: Docker Desktop 실행 후 같은 `-RequireDocker` 명령이 passed로 바뀌는지 확인하면 된다.
+- 추가 개발: real S3 client required failure report, Browser visual/E2E, Docker integration report 확장.
+- 사용 skill/plugin: caveman skill ultra.
+
+### 2026-06-13 - Browser E2E 상태 Release Report 반영
+
+- 작업 시작 시간: 2026-06-13 21:33:00 +09:00
+- 작업 종료 시간: 2026-06-13 21:34:54 +09:00
+- 사용자 명령: 활성 목표인 현재까지 구현된 기능 기준 prototype 개발 계속.
+- 명령 해석: Browser visual/E2E가 남은 gate이므로 다시 시도하고, 실패 상태를 release evidence에 명시해야 한다고 인식.
+- 작업 방식: Browser skill을 로드하고 in-app browser 연결을 재시도했다. 환경 제한으로 실패했으므로 release report에 Browser E2E 상태를 `pending`으로 기록하게 했다.
+- 실행 내용:
+  - Browser plugin skill `control-in-app-browser` 지침을 읽고 node_repl 기반 bootstrap 실행.
+  - Browser bootstrap 실패 확인: `CreateProcessAsUserW failed: 5`.
+  - `verify-prototype-release.ps1`에 `-BrowserE2EVerified`, `-BrowserE2ENote` 옵션 추가.
+  - release report scope에 `browserE2E`, `browserE2ENote` 추가.
+  - README와 prototype status 문서에 Browser E2E 상태 추적 설명 추가.
+- 구현 내용:
+  - `.osmu-run/latest-release.json`에 Browser E2E가 `pending`으로 남는다.
+  - 이후 Browser/Chrome automation이 가능해지면 `-BrowserE2EVerified`로 release report에 `verified`를 남길 수 있다.
+- 수정된 파일 및 관련 파일:
+  - `scripts/verify-prototype-release.ps1`
+  - `README.md`
+  - `dev-docs/prototype-status.md`
+  - `dev-docs/worklog/codex/frontend-backend-mvp/worklog-codex-frontend-backend-mvp.md`
+- 검증 기록:
+  - Browser bootstrap 실패 확인: `CreateProcessAsUserW failed: 5`.
+  - `[scriptblock]::Create((Get-Content -Raw -LiteralPath .\scripts\verify-prototype-release.ps1)) | Out-Null` 통과.
+  - `git diff --check -- README.md dev-docs/prototype-status.md scripts/verify-prototype-release.ps1` 통과. README CRLF warning만 확인.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-prototype-release.ps1 -JavaHome ... -SkipBackendTests` 통과.
+  - `.osmu-run/latest-release.json` 확인: `result=passed`, `browserE2E=pending`, `dockerDaemon=false`, `realS3Client=false`.
+- 코드 리뷰: Browser E2E를 통과한 것처럼 표시하지 않고 `pending`으로 고정해 release evidence의 신뢰성을 높였다. 옵션으로 수동 검증 완료 상태를 명시할 수 있게 남겼다.
+- 결과: 남은 Browser E2E gate가 release report에 빠지지 않고 추적된다.
+- 후속 메모: Browser/Chrome automation 권한 문제가 해결되면 실제 click-path E2E 후 `-BrowserE2EVerified`로 report를 갱신해야 한다.
+- 추가 개발: Browser visual/E2E 실제 수행, Docker integration smoke, real S3 client smoke.
+- 사용 skill/plugin: caveman skill ultra, Browser plugin skill 시도.
+
+### 2026-06-13 - MVP Audit Report Script 추가
+
+- 작업 시작 시간: 2026-06-13 21:35:00 +09:00
+- 작업 종료 시간: 2026-06-13 21:38:34 +09:00
+- 사용자 명령: 활성 목표인 현재까지 구현된 기능 기준 prototype 개발 계속.
+- 명령 해석: release evidence JSON만으로는 사람이 빠르게 상태를 파악하기 어려우므로, 현재 prototype의 PASS/PENDING 상태를 Markdown audit로 요약하는 도구가 필요하다고 인식.
+- 작업 방식: `.osmu-run/latest-release.json`을 읽어 lightweight MVP, backend tests, Docker/MariaDB/MinIO, real S3 client, Browser E2E 상태를 Markdown으로 출력/저장하는 script를 추가했다.
+- 실행 내용:
+  - `scripts/write-mvp-audit.ps1` 신규 작성.
+  - 기본 입력: `.osmu-run/latest-release.json`.
+  - 기본 출력: `.osmu-run/latest-mvp-audit.md`.
+  - `-FailIfExternalGatesPending` 옵션으로 Docker/S3/Browser 외부 gate pending 시 hard fail 가능하게 구성.
+  - README, document index, prototype status 문서에 audit script 연결.
+  - full release gate를 backend tests 포함으로 재실행해 latest report를 `backendTests=included` 상태로 복구.
+- 구현 내용:
+  - 최신 release evidence를 사람이 읽기 좋은 MVP audit로 변환한다.
+  - audit summary가 `PASS/PENDING`으로 핵심 상태를 보여준다.
+  - 현재 결과는 lightweight MVP와 backend tests는 PASS, Docker/MariaDB/MinIO, real S3 client, Browser E2E는 PENDING이다.
+- 수정된 파일 및 관련 파일:
+  - `scripts/write-mvp-audit.ps1`
+  - `README.md`
+  - `dev-docs/document-index.md`
+  - `dev-docs/prototype-status.md`
+  - `dev-docs/worklog/codex/frontend-backend-mvp/worklog-codex-frontend-backend-mvp.md`
+- 검증 기록:
+  - 최초 parse에서 PowerShell 문자열 `"$prefix:"` 파싱 오류 발견 후 `${prefix}`로 수정.
+  - 최초 audit 출력에서 PowerShell backtick으로 `aws`가 깨지는 문제 발견 후 `AWS CLI` 일반 문장으로 수정.
+  - `[scriptblock]::Create((Get-Content -Raw -LiteralPath .\scripts\write-mvp-audit.ps1)) | Out-Null` 통과.
+  - `git diff --check -- README.md dev-docs/document-index.md dev-docs/prototype-status.md scripts/write-mvp-audit.ps1` 통과. README/document-index CRLF warning만 확인.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-prototype-release.ps1 -JavaHome ...`는 sandbox network 제한으로 1회 실패 후 승인 권한으로 재실행 통과.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\write-mvp-audit.ps1` 통과.
+  - `.osmu-run/latest-mvp-audit.md` 생성 확인. Summary: lightweight MVP PASS, backend tests PASS, Docker/S3/Browser PENDING.
+- 코드 리뷰: audit script는 release gate의 JSON을 source of truth로 삼아 별도 상태 중복을 줄인다. 외부 gate pending을 실패로 볼지 여부를 옵션화해 개발 중/릴리즈 직전 용도를 분리했다.
+- 결과: 현재 prototype 상태를 한 명령으로 읽을 수 있는 MVP audit report가 생겼다.
+- 후속 메모: Docker/S3/Browser gate가 통과되면 release report를 갱신한 뒤 audit script를 다시 실행하면 완료 상태가 자동 반영된다.
+- 추가 개발: audit report에 test-case ID 매핑 추가, Docker integration smoke, real S3 client smoke, Browser E2E.
+- 사용 skill/plugin: caveman skill ultra.
+
+### 2026-06-13 - MVP Audit Test Case Evidence Map 추가
+
+- 작업 시작 시간: 2026-06-13 21:39:00 +09:00
+- 작업 종료 시간: 2026-06-13 21:40:40 +09:00
+- 사용자 명령: 활성 목표인 현재까지 구현된 기능 기준 prototype 개발 계속.
+- 명령 해석: MVP audit가 PASS/PENDING만 보여주는 수준에서 더 나아가, 어떤 test case ID가 어떤 evidence로 증명되는지 추적 가능해야 한다고 인식.
+- 작업 방식: `dev-docs/test-cases.md`의 MVP 완료 기준과 주요 TC ID를 확인하고, `write-mvp-audit.ps1` 출력에 Test Case Evidence Map 섹션을 추가했다.
+- 실행 내용:
+  - `write-mvp-audit.ps1`에 `Evidence-Line` helper 추가.
+  - audit report에 Health, Organization/Quota, Bucket, Object, Access Key/Audit, S3, Backend tests, Frontend, Docker, Real S3 client, Browser E2E evidence map 추가.
+  - Frontend는 unit/build/bundle smoke는 통과했지만 Browser click E2E가 남아 있으므로 `PARTIAL`로 표시.
+  - README와 prototype status 문서에 evidence map 설명 추가.
+- 구현 내용:
+  - `.osmu-run/latest-mvp-audit.md`에서 PASS/PARTIAL/PENDING 상태와 관련 test case ID를 함께 볼 수 있다.
+  - Docker, real S3 client, Browser gate는 PENDING으로 명시되어 완료 범위를 과장하지 않는다.
+- 수정된 파일 및 관련 파일:
+  - `scripts/write-mvp-audit.ps1`
+  - `README.md`
+  - `dev-docs/prototype-status.md`
+  - `dev-docs/worklog/codex/frontend-backend-mvp/worklog-codex-frontend-backend-mvp.md`
+- 검증 기록:
+  - `rg`로 `dev-docs/test-cases.md`의 TC ID와 MVP 완료 기준 목록 확인.
+  - `[scriptblock]::Create((Get-Content -Raw -LiteralPath .\scripts\write-mvp-audit.ps1)) | Out-Null` 통과.
+  - `git diff --check -- README.md dev-docs/prototype-status.md scripts/write-mvp-audit.ps1` 통과. README CRLF warning만 확인.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\write-mvp-audit.ps1` 통과.
+  - `.osmu-run/latest-mvp-audit.md` 확인: Test Case Evidence Map 생성, backend tests PASS, frontend PARTIAL, Docker/S3/Browser PENDING.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\write-mvp-audit.ps1 -NoWrite -FailIfExternalGatesPending`는 의도대로 exit 1: `MVP external gates are still pending.`
+- 코드 리뷰: evidence map은 release report를 source of truth로 유지하면서 test-case 문서와의 연결성을 높인다. Browser/Frontend 항목을 PARTIAL로 둔 점이 현재 검증 수준과 일치한다.
+- 결과: MVP audit가 테스트 케이스 기준 추적 문서로 쓸 수 있게 강화됐다.
+- 후속 메모: 외부 gate가 통과되면 audit map이 PASS로 바뀌는지 다시 실행해야 한다.
+- 추가 개발: Docker integration smoke, real S3 client smoke, Browser E2E.
+- 사용 skill/plugin: caveman skill ultra.
+
+### 2026-06-13 - Logout Refresh Token Smoke 보강
+
+- 작업 시작 시간: 2026-06-13 21:41:00 +09:00
+- 작업 종료 시간: 2026-06-13 21:46:30 +09:00
+- 사용자 명령: 활성 목표인 현재까지 구현된 기능 기준 prototype 개발 계속.
+- 명령 해석: 현재 auth 기능이 backend unit test에는 있지만 실행 중 prototype smoke에서 로그아웃 refresh token 폐기까지 검증되지 않아, MVP runtime evidence를 보강해야 한다고 인식.
+- 작업 방식: 기존 admin token은 유지하고 별도 admin session을 만들어 logout을 호출한 뒤 같은 refresh token 재사용이 401로 막히는지 확인하도록 smoke script를 확장했다.
+- 실행 내용:
+  - `verify-lightweight-prototype.ps1`에 `Auth logout refresh revoke` 단계를 추가.
+  - 로그아웃 성공 응답 `success=true`, `LOGOUT` audit log, 기존 refresh token 재사용 `AUTHENTICATION_REQUIRED`를 검증.
+  - `dev-docs/test-cases.md`에 `TC-AUTH-004` 추가.
+  - MVP audit evidence map에 Auth session workflows 행 추가.
+  - README의 lightweight smoke 범위에 logout refresh-token revocation 추가.
+- 구현 내용:
+  - lightweight runtime smoke가 로그인뿐 아니라 logout refresh-token 폐기까지 직접 검증한다.
+  - auth test case와 MVP audit가 새 검증 범위를 추적한다.
+- 수정된 파일 및 관련 파일:
+  - `scripts/verify-lightweight-prototype.ps1`
+  - `scripts/write-mvp-audit.ps1`
+  - `README.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/worklog/codex/frontend-backend-mvp/worklog-codex-frontend-backend-mvp.md`
+- 검증 기록:
+  - `[scriptblock]::Create((Get-Content -Raw -LiteralPath .\scripts\verify-lightweight-prototype.ps1)) | Out-Null` 통과.
+  - `[scriptblock]::Create((Get-Content -Raw -LiteralPath .\scripts\write-mvp-audit.ps1)) | Out-Null` 통과.
+  - `git diff --check -- README.md dev-docs/test-cases.md scripts/verify-lightweight-prototype.ps1 scripts/write-mvp-audit.ps1 dev-docs/worklog/codex/frontend-backend-mvp/worklog-codex-frontend-backend-mvp.md` 통과. README/test-cases CRLF warning만 확인.
+  - `Invoke-RestMethod -Method GET -Uri http://localhost:8080/api/health` 통과.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-lightweight-prototype.ps1` 통과. `Auth logout refresh revoke` 단계 포함.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-prototype-release.ps1 -JavaHome ... -SkipBackendTests` 통과.
+  - backend tests 포함 full release는 sandbox network 제한으로 1회 실패: `Permission denied: getsockopt`.
+  - 같은 full release 명령을 승인 권한으로 재실행해 통과. `.osmu-run/latest-release.json`은 `backendTests=included`.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\write-mvp-audit.ps1` 통과. `.osmu-run/latest-mvp-audit.md`에서 Auth session workflows PASS와 `TC-AUTH-004` 확인.
+- 코드 리뷰: 기존 admin session을 손상하지 않도록 logout 검증은 별도 session으로 분리했다. logout audit 검증은 원래 admin token으로 조회하므로 검증 흐름이 안정적이다. 동일 refresh token 재사용을 401과 `AUTHENTICATION_REQUIRED`까지 확인해 단순 성공 응답만 보는 smoke보다 강하다.
+- 결과: lightweight runtime smoke가 logout refresh-token 폐기까지 검증한다. release/audit evidence도 최신 상태로 갱신됐다.
+- 후속 메모: Docker daemon, AWS CLI 또는 MinIO Client, Browser/Chrome automation이 준비되면 남은 외부 gate를 다시 실행해야 한다.
+- 추가 개발: Docker integration smoke, real S3 client smoke, Browser E2E.
+- 사용 skill/plugin: caveman skill ultra.
+
+### 2026-06-13 - Frontend Auth Unit Coverage 보강
+
+- 작업 시작 시간: 2026-06-13 21:47:00 +09:00
+- 작업 종료 시간: 2026-06-13 21:51:40 +09:00
+- 사용자 명령: 활성 목표인 현재까지 구현된 기능 기준 prototype 개발 계속.
+- 명령 해석: Browser E2E가 외부 환경 문제로 pending인 동안, 현재 가능한 Node unit test로 frontend auth/session 흐름의 자동 검증을 넓혀야 한다고 인식.
+- 작업 방식: 패키지 추가 없이 `node:test`를 사용했다. `api.js`가 Node에서 import 가능하도록 `import.meta.env` guard를 추가하고, `auth.js`의 Vite alias import를 relative import로 바꿨다.
+- 실행 내용:
+  - `osmu-frontend/src/stores/auth.test.js` 추가.
+  - 다운로드 401 이후 refresh 성공 및 새 access token 재시도 검증.
+  - refresh 실패 시 authStore state와 sessionStorage token 정리 검증.
+  - 저장 token 기반 `restoreSession`과 `/users/me` profile 복구 검증.
+  - `npm run test:unit` 범위를 `src/**/*.test.js`로 확장.
+  - `TC-FE-006`부터 `TC-FE-009`까지 자동화 상태를 unit coverage로 갱신.
+  - MVP audit frontend evidence 문구를 auth unit coverage 포함으로 갱신.
+- 구현 내용:
+  - Frontend auth/session 핵심 회귀가 Browser 없이도 unit test로 잡힌다.
+  - Browser click/reload E2E는 여전히 pending으로 별도 추적한다.
+- 수정된 파일 및 관련 파일:
+  - `osmu-frontend/src/services/api.js`
+  - `osmu-frontend/src/stores/auth.js`
+  - `osmu-frontend/src/stores/auth.test.js`
+  - `osmu-frontend/package.json`
+  - `README.md`
+  - `dev-docs/prototype-status.md`
+  - `dev-docs/test-cases.md`
+  - `scripts/write-mvp-audit.ps1`
+  - `dev-docs/worklog/codex/frontend-backend-mvp/worklog-codex-frontend-backend-mvp.md`
+- 검증 기록:
+  - 최초 `npm.cmd run test:unit`에서 auth sync listener 미등록으로 storage refresh token assertion 실패.
+  - 실제 app lifecycle과 맞게 test에서 `auth.startAuthSync()`를 켠 뒤 재실행해 통과.
+  - `node --check .\osmu-frontend\src\services\api.js` 통과.
+  - `node --check .\osmu-frontend\src\stores\auth.js` 통과.
+  - `node --check .\osmu-frontend\src\stores\auth.test.js` 통과.
+  - `[scriptblock]::Create((Get-Content -Raw -LiteralPath .\scripts\write-mvp-audit.ps1)) | Out-Null` 통과.
+  - `npm.cmd run test:unit` 통과: 9 tests, 9 pass.
+  - `npm.cmd run build` 통과.
+  - full `verify-prototype-release.ps1 -JavaHome ...`는 sandbox network 제한으로 1회 실패: `Permission denied: getsockopt`.
+  - 같은 full release 명령을 승인 권한으로 재실행해 통과. frontend unit 9 pass, backend tests included.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\write-mvp-audit.ps1` 통과. frontend evidence에 auth session flows 반영 확인.
+- 코드 리뷰: Node unit test가 browser click을 대체하지 않는 한계를 명확히 두고, API client/authStore 경계만 검증했다. `api.js`의 env guard는 Vite 런타임 동작을 바꾸지 않고 Node import 가능성만 높인다. `auth.js` relative import는 Vite alias 의존을 줄여 testability를 높인다.
+- 결과: Frontend auth/session 주요 회귀가 자동 unit test에 포함됐다. TC-FE-006부터 TC-FE-009까지 unit automation evidence가 생겼다.
+- 후속 메모: Browser/Chrome E2E가 가능해지면 실제 다운로드 버튼 클릭, refresh 실패 화면 정리, reload 복구 UX를 DOM에서 검증해야 한다.
+- 추가 개발: Browser visual/E2E, Docker integration smoke, real S3 client smoke.
+- 사용 skill/plugin: caveman skill ultra.
+
+### 2026-06-13 - Frontend API Error RequestId Unit Coverage 보강
+
+- 작업 시작 시간: 2026-06-13 22:11:15 +09:00
+- 작업 종료 시간: 2026-06-13 22:12:41 +09:00
+- 사용자 명령: 활성 목표인 현재까지 구현된 기능 기준 prototype 개발 계속 및 `/Caveman ultra`.
+- 명령 해석: frontend API client가 backend/S3 오류의 `requestId`를 잃지 않는지 unit test로 고정하고, TC-FE-012 자동화 증거를 문서에 반영하라는 명령으로 인식.
+- 작업 방식: 기존 `node:test` frontend unit 패턴을 재사용해 JSON error body, `X-Request-Id` header fallback, S3 XML error body를 각각 mock response로 검증한다.
+- 실행 내용:
+  - `ApiClientError` field mapping unit test 추가.
+  - REST JSON 오류의 `error.requestId` 추출 test 추가.
+  - REST header `X-Request-Id` fallback test 추가.
+  - S3 XML `RequestId`와 XML entity decode test 추가.
+  - `TC-FE-012` 자동화 상태와 MVP audit frontend evidence 문구 갱신.
+- 구현 내용:
+  - frontend API error/requestId 핵심 계약이 unit test에 포함됐다.
+  - 실제 Web Portal alert 표시 click E2E는 Browser gate pending으로 유지한다.
+- 수정된 파일 및 관련 파일:
+  - `osmu-frontend/src/services/api-error.test.js`
+  - `README.md`
+  - `dev-docs/prototype-status.md`
+  - `dev-docs/test-cases.md`
+  - `scripts/write-mvp-audit.ps1`
+  - `dev-docs/worklog/codex/frontend-backend-mvp/worklog-codex-frontend-backend-mvp.md`
+- 검증 기록:
+  - `node --check .\osmu-frontend\src\services\api-error.test.js` 통과.
+  - `[scriptblock]::Create((Get-Content -Raw -LiteralPath .\scripts\write-mvp-audit.ps1)) | Out-Null` 통과.
+  - `npm.cmd run test:unit` 통과: 23 tests, 23 pass.
+  - `npm.cmd run build` 통과.
+  - `git diff --check -- README.md dev-docs/test-cases.md dev-docs/prototype-status.md scripts/write-mvp-audit.ps1 osmu-frontend/src/services/api-error.test.js dev-docs/worklog/codex/frontend-backend-mvp/worklog-codex-frontend-backend-mvp.md` 통과. README/test-cases CRLF warning만 확인.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-prototype-release.ps1 -JavaHome ...` 승인 권한 실행 통과. frontend unit 23 pass, backend tests included.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\write-mvp-audit.ps1` 통과. frontend evidence에 error/requestId handling 반영 확인.
+- 코드 리뷰: REST JSON, REST header fallback, S3 XML 세 경로를 모두 검증해 requestId 손실 위험을 낮췄다. 실제 alert UI 렌더링은 Browser automation 막힘 때문에 E2E pending으로 남기는 것이 맞다.
+- 결과: TC-FE-012 일부가 unit automation evidence로 전환됐다. Frontend unit coverage는 23개로 증가했다.
+- 후속 메모: Browser/Chrome E2E가 가능해지면 실제 alert UI에 `Request ID`가 표시되는지 확인해야 한다.
+- 추가 개발: Browser visual/E2E, Docker integration smoke, real S3 client smoke.
+- 사용 skill/plugin: caveman skill ultra.
+
+### 2026-06-13 - Frontend Multipart Resume Unit Coverage 보강
+
+- 작업 시작 시간: 2026-06-13 21:52:00 +09:00
+- 작업 종료 시간: 2026-06-13 21:54:50 +09:00
+- 사용자 명령: 활성 목표인 현재까지 구현된 기능 기준 prototype 개발 계속.
+- 명령 해석: 대용량 업로드는 OSMU의 핵심 목표이므로, Browser/MinIO gate가 막힌 동안에도 frontend multipart resume의 local session 로직을 자동 검증해야 한다고 인식.
+- 작업 방식: `node:test`로 sessionStorage 기반 helper를 직접 검증했다. 실제 part PUT/complete E2E는 MinIO/Browser gate로 남기고, pending session 표시/만료/정리/삭제 기반을 unit test로 고정했다.
+- 실행 내용:
+  - `osmu-frontend/src/services/api-multipart-session.test.js` 추가.
+  - pending multipart session bucket filter와 updatedAt 정렬 검증.
+  - 만료 session 표시, 24시간 초과 stale session prune, 깨진 JSON session 삭제 검증.
+  - `deleteStoredMultipartUploadSession` 단건 삭제 검증.
+  - `TC-FE-026` 자동화 상태를 local session helper coverage로 갱신.
+  - README, prototype status, MVP audit frontend evidence 문구를 multipart local resume 포함으로 갱신.
+- 구현 내용:
+  - tab reload 후 pending multipart session 목록과 삭제/만료 처리의 핵심 helper가 자동 test에 포함됐다.
+  - 실제 file 선택, refresh API, part skip upload는 Browser/MinIO E2E pending으로 유지한다.
+- 수정된 파일 및 관련 파일:
+  - `osmu-frontend/src/services/api-multipart-session.test.js`
+  - `README.md`
+  - `dev-docs/prototype-status.md`
+  - `dev-docs/test-cases.md`
+  - `scripts/write-mvp-audit.ps1`
+  - `dev-docs/worklog/codex/frontend-backend-mvp/worklog-codex-frontend-backend-mvp.md`
+- 검증 기록:
+  - 최초 `npm.cmd run test:unit`에서 실패: stale session 삭제 중 storage index가 당겨져 broken JSON key가 skip되는 bug 확인.
+  - `getStoredMultipartUploadSessions`를 storage key snapshot 기반 loop로 수정.
+  - `npm.cmd run test:unit` 재실행 통과: 12 tests, 12 pass.
+  - `node --check .\osmu-frontend\src\services\api.js` 통과.
+  - `node --check .\osmu-frontend\src\services\api-multipart-session.test.js` 통과.
+  - `[scriptblock]::Create((Get-Content -Raw -LiteralPath .\scripts\write-mvp-audit.ps1)) | Out-Null` 통과.
+  - `npm.cmd run build` 통과.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-prototype-release.ps1 -JavaHome ...` 승인 권한 실행 통과. frontend unit 12 pass, backend tests included.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\write-mvp-audit.ps1` 통과. frontend evidence에 multipart local resume sessions 반영 확인.
+- 코드 리뷰: 새 unit test가 단순 문서 보강이 아니라 실제 skip bug를 잡았다. key snapshot 방식은 sessionStorage를 순회하면서 stale/broken session을 삭제해도 다음 key를 누락하지 않는다. 테스트는 local resume helper 범위만 검증하므로 실제 MinIO part upload/retry/complete는 과장하지 않고 E2E pending으로 남겼다.
+- 결과: Multipart pending session list/expired/prune/delete 로직이 자동화됐다. TC-FE-026 일부가 unit evidence로 전환됐다.
+- 후속 메모: Browser/Chrome E2E가 가능해지면 pending multipart panel 표시, Resume 버튼, Delete 버튼, 실제 file fingerprint match를 DOM에서 확인해야 한다.
+- 추가 개발: Browser visual/E2E, Docker integration smoke, real S3 client smoke.
+- 사용 skill/plugin: caveman skill ultra.
+
+### 2026-06-13 - Frontend API Query Unit Coverage 보강
+
+- 작업 시작 시간: 2026-06-13 21:55:00 +09:00
+- 작업 종료 시간: 2026-06-13 21:58:15 +09:00
+- 사용자 명령: 활성 목표인 현재까지 구현된 기능 기준 prototype 개발 계속.
+- 명령 해석: Browser E2E가 막힌 동안에도 감사 로그, object list filter, object metadata/tag/presigned API wrapper의 query/body 생성 회귀를 자동화해야 한다고 인식.
+- 작업 방식: `node:test`와 fetch mock으로 API wrapper 호출 URL, query parameter, request body를 검증했다.
+- 실행 내용:
+  - `osmu-frontend/src/services/api-query.test.js` 추가.
+  - 감사 로그 filter query와 CSV export endpoint 검증.
+  - object list prefix/search/tag/cursor/limit/deleted query 검증.
+  - object metadata key encoding, object tag update body, presigned upload tags body 검증.
+  - `TC-FE-010`, `TC-FE-013`, `TC-FE-016`, `TC-FE-017`, `TC-FE-018`, `TC-FE-019` 자동화 상태를 API wrapper unit coverage로 갱신.
+  - README, prototype status, MVP audit frontend evidence 문구에 API filter wrapper coverage 추가.
+- 구현 내용:
+  - 감사/검색/태그/상세/Presigned URL 같은 frontend API 연결부가 unit test로 고정됐다.
+  - 화면 클릭, DOM 갱신, 실제 file upload/MinIO 흐름은 Browser/MinIO E2E pending으로 유지한다.
+- 수정된 파일 및 관련 파일:
+  - `osmu-frontend/src/services/api-query.test.js`
+  - `README.md`
+  - `dev-docs/prototype-status.md`
+  - `dev-docs/test-cases.md`
+  - `scripts/write-mvp-audit.ps1`
+  - `dev-docs/worklog/codex/frontend-backend-mvp/worklog-codex-frontend-backend-mvp.md`
+- 검증 기록:
+  - `npm.cmd run test:unit` 통과: 16 tests, 16 pass.
+  - `node --check .\osmu-frontend\src\services\api-query.test.js` 통과.
+  - `[scriptblock]::Create((Get-Content -Raw -LiteralPath .\scripts\write-mvp-audit.ps1)) | Out-Null` 통과.
+  - `git diff --check -- README.md dev-docs/test-cases.md dev-docs/prototype-status.md scripts/write-mvp-audit.ps1 osmu-frontend/src/services/api-query.test.js dev-docs/worklog/codex/frontend-backend-mvp/worklog-codex-frontend-backend-mvp.md` 통과. README/test-cases CRLF warning만 확인.
+  - `npm.cmd run build` 통과.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-prototype-release.ps1 -JavaHome ...` 승인 권한 실행 통과. frontend unit 16 pass, backend tests included.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\write-mvp-audit.ps1` 통과. frontend evidence에 API filter wrappers 반영 확인.
+- 코드 리뷰: API wrapper test는 화면 DOM까지 검증하지 않지만, query/body 계약을 고정해 audit/object/tag/presigned 흐름의 회귀를 빠르게 잡는다. 화면 상호작용과 실제 MinIO 업로드는 현재 환경 제한상 E2E pending으로 명확히 남겼다.
+- 결과: Frontend 감사 로그 filter/export, object list filter/page size/tag query, object metadata/tag update/presigned upload API wrapper가 unit coverage에 포함됐다.
+- 후속 메모: Browser/Chrome E2E가 가능해지면 실제 filter 입력, 다음 페이지 클릭, 상세 패널 열기, 태그 저장, presigned upload 버튼 흐름을 DOM에서 확인해야 한다.
+- 추가 개발: Browser visual/E2E, Docker integration smoke, real S3 client smoke.
+- 사용 skill/plugin: caveman skill ultra.
+
+### 2026-06-13 - Frontend Multipart Upload Flow Unit Coverage 보강
+
+- 작업 시작 시간: 2026-06-13 21:59:00 +09:00
+- 작업 종료 시간: 2026-06-13 22:01:55 +09:00
+- 사용자 명령: 활성 목표인 현재까지 구현된 기능 기준 prototype 개발 계속.
+- 명령 해석: 대용량 파일 저장은 OSMU 핵심 기능이므로, MinIO/Browser E2E가 막혀 있어도 frontend multipart create, part PUT, complete payload 흐름을 unit test로 고정해야 한다고 인식.
+- 작업 방식: fetch mock과 XMLHttpRequest mock으로 `uploadObjectMultipart`의 API 호출, presigned part upload, progress, local resume session cleanup을 검증했다.
+- 실행 내용:
+  - `osmu-frontend/src/services/api-multipart-upload.test.js` 추가.
+  - multipart create request body 검증.
+  - presigned part PUT URL과 part blob size 검증.
+  - complete request parts payload와 ETag 순서 검증.
+  - 완료 후 local resume session cleanup 검증.
+  - `TC-FE-022` 자동화 상태를 unit coverage로 갱신.
+  - README, prototype status, MVP audit frontend evidence 문구에 multipart upload flow coverage 추가.
+- 구현 내용:
+  - frontend multipart upload의 create -> part PUT -> complete 계약이 Browser/MinIO 없이도 unit test로 검증된다.
+  - 실제 MinIO CORS/ETag, browser upload UI 클릭은 E2E pending으로 유지한다.
+- 수정된 파일 및 관련 파일:
+  - `osmu-frontend/src/services/api-multipart-upload.test.js`
+  - `README.md`
+  - `dev-docs/prototype-status.md`
+  - `dev-docs/test-cases.md`
+  - `scripts/write-mvp-audit.ps1`
+  - `dev-docs/worklog/codex/frontend-backend-mvp/worklog-codex-frontend-backend-mvp.md`
+- 검증 기록:
+  - `npm.cmd run test:unit` 통과: 17 tests, 17 pass.
+  - `node --check .\osmu-frontend\src\services\api-multipart-upload.test.js` 통과.
+  - `[scriptblock]::Create((Get-Content -Raw -LiteralPath .\scripts\write-mvp-audit.ps1)) | Out-Null` 통과.
+  - `git diff --check -- README.md dev-docs/test-cases.md dev-docs/prototype-status.md scripts/write-mvp-audit.ps1 osmu-frontend/src/services/api-multipart-upload.test.js dev-docs/worklog/codex/frontend-backend-mvp/worklog-codex-frontend-backend-mvp.md` 통과. README/test-cases CRLF warning만 확인.
+  - `npm.cmd run build` 통과.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-prototype-release.ps1 -JavaHome ...` 승인 권한 실행 통과. frontend unit 17 pass, backend tests included.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\write-mvp-audit.ps1` 통과. frontend evidence에 multipart upload flow 반영 확인.
+- 코드 리뷰: XHR mock으로 part PUT ETag를 확인하고 complete payload까지 검증해 대용량 업로드 client contract가 더 단단해졌다. 단, MinIO CORS `ETag` 노출과 실제 Browser upload progress UI는 여전히 외부 gate에서 확인해야 한다.
+- 결과: Frontend multipart create, part PUT, complete, progress, local session cleanup 흐름이 unit coverage에 포함됐다. TC-FE-022 일부가 자동화됐다.
+- 후속 메모: Docker/MinIO와 Browser가 준비되면 실제 128 MiB 이상 파일로 CORS ETag, concurrency, progress UI를 E2E 확인해야 한다.
+- 추가 개발: Browser visual/E2E, Docker integration smoke, real S3 client smoke.
+- 사용 skill/plugin: caveman skill ultra.
+
+### 2026-06-13 - Frontend Multipart Retry Abort Unit Coverage 보강
+
+- 작업 시작 시간: 2026-06-13 22:02:00 +09:00
+- 작업 종료 시간: 2026-06-13 22:05:10 +09:00
+- 사용자 명령: 활성 목표인 현재까지 구현된 기능 기준 prototype 개발 계속.
+- 명령 해석: 대용량 upload 안정성을 위해 transient part failure retry와 user cancel abort/session cleanup도 unit test로 고정해야 한다고 인식.
+- 작업 방식: 기존 multipart XHR mock을 status/error 시나리오를 받을 수 있게 확장하고, retry/abort test를 추가했다.
+- 실행 내용:
+  - part PUT 500 실패 후 retry 성공, complete payload ETag 확인 test 추가.
+  - 사용자 cancel 시 `multipart-upload/abort` API 호출과 local resume session cleanup test 추가.
+  - `TC-FE-023`, `TC-FE-024` 자동화 상태를 unit coverage로 갱신.
+  - README, prototype status, MVP audit frontend evidence 문구에 multipart retry/abort coverage 추가.
+- 구현 내용:
+  - frontend multipart upload retry/abort 핵심 계약이 unit test에 포함됐다.
+  - 실제 Browser cancel button, MinIO CORS, 네트워크 실패 E2E는 pending으로 유지한다.
+- 수정된 파일 및 관련 파일:
+  - `osmu-frontend/src/services/api-multipart-upload.test.js`
+  - `README.md`
+  - `dev-docs/prototype-status.md`
+  - `dev-docs/test-cases.md`
+  - `scripts/write-mvp-audit.ps1`
+  - `dev-docs/worklog/codex/frontend-backend-mvp/worklog-codex-frontend-backend-mvp.md`
+- 검증 기록:
+  - `npm.cmd run test:unit` 통과: 19 tests, 19 pass.
+  - `node --check .\osmu-frontend\src\services\api-multipart-upload.test.js` 통과.
+  - `[scriptblock]::Create((Get-Content -Raw -LiteralPath .\scripts\write-mvp-audit.ps1)) | Out-Null` 통과.
+  - `git diff --check -- README.md dev-docs/test-cases.md dev-docs/prototype-status.md scripts/write-mvp-audit.ps1 osmu-frontend/src/services/api-multipart-upload.test.js dev-docs/worklog/codex/frontend-backend-mvp/worklog-codex-frontend-backend-mvp.md` 통과. README/test-cases CRLF warning만 확인.
+  - `npm.cmd run build` 통과.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-prototype-release.ps1 -JavaHome ...` 승인 권한 실행 통과. frontend unit 19 pass, backend tests included.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\write-mvp-audit.ps1` 통과. frontend evidence에 multipart upload/retry/abort flow 반영 확인.
+- 코드 리뷰: retry test는 5xx를 retryable로 처리하고 같은 part URL을 재시도하는 계약을 검증한다. abort test는 사용자 취소 시 remote session abort와 local session cleanup을 확인한다. 실제 button click과 네트워크 단절 복구는 Browser/MinIO gate로 남기는 것이 맞다.
+- 결과: TC-FE-023/024 일부가 unit automation evidence로 전환됐다. Frontend unit coverage는 19개로 증가했다.
+- 후속 메모: TC-FE-025 retry resume full path는 refresh/parts API와 part skip까지 추가 unit 또는 Docker/Browser E2E로 더 보강할 수 있다.
+- 추가 개발: Browser visual/E2E, Docker integration smoke, real S3 client smoke.
+- 사용 skill/plugin: caveman skill ultra.
+
+### 2026-06-13 - Frontend Multipart Retry Resume Unit Coverage 보강
+
+- 작업 시작 시간: 2026-06-13 22:06:00 +09:00
+- 작업 종료 시간: 2026-06-13 22:08:25 +09:00
+- 사용자 명령: 활성 목표인 현재까지 구현된 기능 기준 prototype 개발 계속.
+- 명령 해석: 직전 후속 메모의 TC-FE-025 retry resume full path를 unit test로 보강해 대용량 업로드 재개 신뢰성을 높이라는 명령으로 인식.
+- 작업 방식: 첫 업로드를 일부 성공 후 실패시키고, 같은 file/key/tags로 재호출해 저장 session을 읽고 refresh/parts API를 병합하는 흐름을 검증했다.
+- 실행 내용:
+  - `uploadObjectMultipart` retry resume test 추가.
+  - 첫 시도 part1 성공, part2 400 실패 후 local session에 completed part 보존 검증.
+  - 재시도 시 `multipart-upload/refresh`, `multipart-upload/parts` 호출 body 검증.
+  - local completed part와 server completed part 병합, 이미 완료된 part skip, complete payload 검증.
+  - 완료 후 local resume session cleanup 검증.
+  - `TC-FE-025` 자동화 상태를 unit coverage로 갱신.
+  - README, prototype status, MVP audit frontend evidence 문구에 multipart resume coverage 추가.
+- 구현 내용:
+  - frontend multipart retry resume 핵심 계약이 unit test에 포함됐다.
+  - 실제 Retry 버튼, file fingerprint UI, MinIO part list E2E는 pending으로 유지한다.
+- 수정된 파일 및 관련 파일:
+  - `osmu-frontend/src/services/api-multipart-upload.test.js`
+  - `README.md`
+  - `dev-docs/prototype-status.md`
+  - `dev-docs/test-cases.md`
+  - `scripts/write-mvp-audit.ps1`
+  - `dev-docs/worklog/codex/frontend-backend-mvp/worklog-codex-frontend-backend-mvp.md`
+- 검증 기록:
+  - `npm.cmd run test:unit` 통과: 20 tests, 20 pass.
+  - `node --check .\osmu-frontend\src\services\api-multipart-upload.test.js` 통과.
+  - `[scriptblock]::Create((Get-Content -Raw -LiteralPath .\scripts\write-mvp-audit.ps1)) | Out-Null` 통과.
+  - `git diff --check -- README.md dev-docs/test-cases.md dev-docs/prototype-status.md scripts/write-mvp-audit.ps1 osmu-frontend/src/services/api-multipart-upload.test.js dev-docs/worklog/codex/frontend-backend-mvp/worklog-codex-frontend-backend-mvp.md` 통과. README/test-cases CRLF warning만 확인.
+  - `npm.cmd run build` 통과.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-prototype-release.ps1 -JavaHome ...` 승인 권한 실행 통과. frontend unit 20 pass, backend tests included.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\write-mvp-audit.ps1` 통과. frontend evidence에 TC-FE-004 through TC-FE-028 전체 범위와 multipart resume 반영 확인.
+- 코드 리뷰: 재개 test는 local completed part와 server completed part 병합을 모두 검증한다. 이미 완료된 part는 추가 XHR 없이 skip되고, complete payload가 정렬된 part 목록을 사용한다. 실제 browser Retry 버튼과 file picker 재선택 UX는 E2E pending으로 유지했다.
+- 결과: TC-FE-025 일부가 unit automation evidence로 전환됐다. Frontend unit coverage는 20개로 증가했다.
+- 후속 메모: Browser/Chrome E2E가 가능해지면 실제 Retry 버튼, pending session panel, file fingerprint mismatch UX를 확인해야 한다.
+- 추가 개발: Browser visual/E2E, Docker integration smoke, real S3 client smoke.
+- 사용 skill/plugin: caveman skill ultra.
+
+### 2026-06-13 - Frontend Object Tag Preflight Validation 보강
+
+- 작업 시작 시간: 2026-06-13 22:15:37 +09:00
+- 작업 종료 시간: 2026-06-13 22:19:03 +09:00
+- 사용자 명령: 활성 목표인 현재까지 구현된 기능 기준 prototype 개발 계속.
+- 명령 해석: Browser E2E와 Docker gate가 막힌 동안, TC-FE-020의 "요청 전 tag validation 차단"을 API client와 utility unit test로 더 강하게 고정하라는 명령으로 인식.
+- 작업 방식: 기존 tag parser 규칙을 map payload에도 재사용하도록 확장하고, API wrapper가 upload/tag update/presigned/multipart/filter 요청 전에 invalid tag를 차단하는지 검증했다.
+- 실행 내용:
+  - `validateObjectTagMap`, `validateBucketTagMap` 추가.
+  - REST/S3 client wrapper에서 object tag string/map payload preflight validation 추가.
+  - invalid upload, tag update, presigned upload, multipart upload, object tag filter가 network 호출 전에 `ApiClientError(VALIDATION_ERROR)`로 차단되는 unit test 추가.
+  - `TC-FE-020` 자동화 상태와 MVP audit frontend evidence 문구 갱신.
+- 구현 내용:
+  - UI handler뿐 아니라 API client 경계에서도 invalid object tag가 차단된다.
+  - 실제 화면 오류 표시와 button click 흐름은 Browser gate pending으로 유지한다.
+- 수정된 파일 및 관련 파일:
+  - `osmu-frontend/src/services/api.js`
+  - `osmu-frontend/src/services/api-tag-validation.test.js`
+  - `osmu-frontend/src/utils/tags.js`
+  - `osmu-frontend/src/utils/tags.test.js`
+  - `README.md`
+  - `dev-docs/prototype-status.md`
+  - `dev-docs/test-cases.md`
+  - `scripts/write-mvp-audit.ps1`
+  - `dev-docs/worklog/codex/frontend-backend-mvp/worklog-codex-frontend-backend-mvp.md`
+- 검증 기록:
+  - `node --check .\osmu-frontend\src\services\api.js` 통과.
+  - `node --check .\osmu-frontend\src\utils\tags.js` 통과.
+  - `node --check .\osmu-frontend\src\services\api-tag-validation.test.js` 통과.
+  - `npm.cmd run test:unit` 통과: 25 tests, 25 pass.
+  - `[scriptblock]::Create((Get-Content -Raw -LiteralPath .\scripts\write-mvp-audit.ps1)) | Out-Null` 통과.
+  - `git diff --check -- README.md dev-docs/test-cases.md dev-docs/prototype-status.md scripts/write-mvp-audit.ps1 osmu-frontend/src/services/api.js osmu-frontend/src/services/api-tag-validation.test.js osmu-frontend/src/utils/tags.js osmu-frontend/src/utils/tags.test.js dev-docs/worklog/codex/frontend-backend-mvp/worklog-codex-frontend-backend-mvp.md` 통과. README/test-cases CRLF warning만 확인.
+  - `npm.cmd run build` 통과.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-prototype-release.ps1 -JavaHome ...` 승인 권한 실행 통과. frontend unit 25 pass, backend tests included.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\write-mvp-audit.ps1` 통과. frontend evidence에 object tag preflight validation 반영 확인.
+- 코드 리뷰: tag string과 map payload를 같은 규칙으로 검증해 UI 외부 API client 사용에서도 잘못된 tag가 서버로 전송되지 않는다. validation 실패는 `ApiClientError`로 통일되어 기존 오류 처리 흐름과 맞다. 실제 화면 오류 표시와 network panel 확인은 Browser gate가 가능해질 때 별도 E2E가 필요하다.
+- 결과: TC-FE-020 일부가 unit automation evidence로 전환됐다. Frontend unit coverage는 25개로 증가했다.
+- 후속 메모: Browser/Chrome E2E가 가능해지면 실제 invalid tag 입력 시 화면 오류 메시지와 network 미호출을 DOM/Network 수준에서 확인해야 한다.
+- 추가 개발: Browser visual/E2E, Docker integration smoke, real S3 client smoke.
+- 사용 skill/plugin: caveman skill ultra.
+
+### 2026-06-13 - Frontend Object Explorer Prefix Highlight Unit Coverage 보강
+
+- 작업 시작 시간: 2026-06-13 22:20:00 +09:00
+- 작업 종료 시간: 2026-06-13 22:22:25 +09:00
+- 사용자 명령: 활성 목표인 현재까지 구현된 기능 기준 prototype 개발 계속.
+- 명령 해석: Browser E2E가 막힌 동안, Object Explorer의 prefix breadcrumb와 검색어 highlight 로직을 순수 helper로 분리하고 unit test로 자동 검증하라는 명령으로 인식.
+- 작업 방식: HomeView 내부 helper를 `utils/objectExplorer.js`로 이동하고 기존 UI는 같은 helper를 호출하게 변경했다.
+- 실행 내용:
+  - `buildObjectPrefixBreadcrumbs`, `parentObjectPrefix`, `formatPrefixName`, `splitObjectKeyBySearch` 추가.
+  - HomeView prefix breadcrumb, Up button, folder name, key highlight 렌더링 경로가 새 helper를 사용하게 변경.
+  - prefix breadcrumb 누적 prefix, 상위 prefix 이동, folder label, case-insensitive search highlight와 원본 key 보존 unit test 추가.
+  - `TC-FE-014`, `TC-FE-015` 자동화 상태와 MVP audit frontend evidence 문구 갱신.
+- 구현 내용:
+  - Object Explorer prefix/search 표시 핵심 로직이 unit test에 포함됐다.
+  - 실제 breadcrumb button click과 DOM highlight render는 Browser gate pending으로 유지한다.
+- 수정된 파일 및 관련 파일:
+  - `osmu-frontend/src/views/HomeView.vue`
+  - `osmu-frontend/src/utils/objectExplorer.js`
+  - `osmu-frontend/src/utils/objectExplorer.test.js`
+  - `README.md`
+  - `dev-docs/prototype-status.md`
+  - `dev-docs/test-cases.md`
+  - `scripts/write-mvp-audit.ps1`
+  - `dev-docs/worklog/codex/frontend-backend-mvp/worklog-codex-frontend-backend-mvp.md`
+- 검증 기록:
+  - `node --check .\osmu-frontend\src\utils\objectExplorer.js` 통과.
+  - `node --check .\osmu-frontend\src\utils\objectExplorer.test.js` 통과.
+  - `npm.cmd run test:unit` 통과: 30 tests, 30 pass.
+  - `[scriptblock]::Create((Get-Content -Raw -LiteralPath .\scripts\write-mvp-audit.ps1)) | Out-Null` 통과.
+  - `git diff --check -- README.md dev-docs/test-cases.md dev-docs/prototype-status.md scripts/write-mvp-audit.ps1 osmu-frontend/src/views/HomeView.vue osmu-frontend/src/utils/objectExplorer.js osmu-frontend/src/utils/objectExplorer.test.js dev-docs/worklog/codex/frontend-backend-mvp/worklog-codex-frontend-backend-mvp.md` 통과. README/test-cases/HomeView CRLF warning만 확인.
+  - `npm.cmd run build` 통과.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-prototype-release.ps1 -JavaHome ...` 승인 권한 실행 통과. frontend unit 30 pass, backend tests included.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\write-mvp-audit.ps1` 통과. frontend evidence에 object explorer prefix/highlight helpers 반영 확인.
+- 코드 리뷰: UI 동작은 동일하게 유지하면서 순수 helper로 분리해 prefix breadcrumb와 highlight 로직을 빠르게 검증할 수 있게 했다. search highlight test는 case-insensitive match와 원본 key 재조립을 함께 검증한다. 실제 click/render는 Browser gate에서 확인해야 한다.
+- 결과: TC-FE-014/015 일부가 unit automation evidence로 전환됐다. Frontend unit coverage는 30개로 증가했다.
+- 후속 메모: Browser/Chrome E2E가 가능해지면 breadcrumb `/`, `docs` click과 실제 `.key-match` DOM render를 확인해야 한다.
+- 추가 개발: Browser visual/E2E, Docker integration smoke, real S3 client smoke.
+- 사용 skill/plugin: caveman skill ultra.
+
+### 2026-06-13 - Frontend Access Key Scope Revoke Unit Coverage 보강
+
+- 작업 시작 시간: 2026-06-13 22:23:28 +09:00
+- 작업 종료 시간: 2026-06-13 22:26:20 +09:00
+- 사용자 명령: 활성 목표인 현재까지 구현된 기능 기준 prototype 개발 계속.
+- 명령 해석: S3 호환 access key는 OSMU 핵심 기능이므로, Frontend access key multi bucket scope 생성과 revoke API 계약을 unit test로 고정하라는 명령으로 인식.
+- 작업 방식: HomeView 내부 access key scope merge/format 로직을 순수 helper로 분리하고, API wrapper가 `bucketScopes` payload와 revoke endpoint를 정확히 호출하는지 검증했다.
+- 실행 내용:
+  - `utils/accessKeys.js` 추가.
+  - permission canonical order, multi bucket scope append/merge, scope remove, key scope display unit test 추가.
+  - `createAccessKey`, `getAccessKeys`, `deleteAccessKey` wrapper unit test 추가.
+  - HomeView access key form이 helper를 사용하게 변경.
+  - `TC-FE-004`, `TC-FE-005` 자동화 상태와 MVP audit frontend evidence 문구 갱신.
+- 구현 내용:
+  - access key scope builder 핵심 로직과 revoke API contract가 unit test에 포함됐다.
+  - 실제 form click, confirm modal, list refresh/render는 Browser gate pending으로 유지한다.
+- 수정된 파일 및 관련 파일:
+  - `osmu-frontend/src/views/HomeView.vue`
+  - `osmu-frontend/src/utils/accessKeys.js`
+  - `osmu-frontend/src/utils/accessKeys.test.js`
+  - `osmu-frontend/src/services/api-access-key.test.js`
+  - `README.md`
+  - `dev-docs/prototype-status.md`
+  - `dev-docs/test-cases.md`
+  - `scripts/write-mvp-audit.ps1`
+  - `dev-docs/worklog/codex/frontend-backend-mvp/worklog-codex-frontend-backend-mvp.md`
+- 검증 기록:
+  - `node --check .\osmu-frontend\src\utils\accessKeys.js` 통과.
+  - `node --check .\osmu-frontend\src\utils\accessKeys.test.js` 통과.
+  - `node --check .\osmu-frontend\src\services\api-access-key.test.js` 통과.
+  - `npm.cmd run test:unit` 통과: 35 tests, 35 pass.
+  - `[scriptblock]::Create((Get-Content -Raw -LiteralPath .\scripts\write-mvp-audit.ps1)) | Out-Null` 통과.
+  - `git diff --check -- README.md dev-docs/test-cases.md dev-docs/prototype-status.md scripts/write-mvp-audit.ps1 osmu-frontend/src/views/HomeView.vue osmu-frontend/src/utils/accessKeys.js osmu-frontend/src/utils/accessKeys.test.js osmu-frontend/src/services/api-access-key.test.js dev-docs/worklog/codex/frontend-backend-mvp/worklog-codex-frontend-backend-mvp.md` 통과. README/test-cases/HomeView CRLF warning만 확인.
+  - `npm.cmd run build` 통과.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-prototype-release.ps1 -JavaHome ...` 승인 권한 실행 통과. frontend unit 35 pass, backend tests included.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\write-mvp-audit.ps1` 통과. frontend evidence에 access key scope/revoke helpers 반영 확인.
+- 코드 리뷰: access key scope merge는 permission order를 고정하고 중복을 제거한다. API test는 `bucketScopes` multi-bucket payload와 revoke endpoint를 함께 검증한다. 실제 confirm modal, secret key 표시, list refresh는 Browser gate에서 확인해야 한다.
+- 결과: TC-FE-004/005 일부가 unit automation evidence로 전환됐다. Frontend unit coverage는 35개로 증가했다.
+- 후속 메모: Browser/Chrome E2E가 가능해지면 multi-bucket scope form click, secret one-time display, revoke confirm modal, list status refresh를 확인해야 한다.
+- 추가 개발: Browser visual/E2E, Docker integration smoke, real S3 client smoke.
+- 사용 skill/plugin: caveman skill ultra.
+
+### 2026-06-13 - Frontend Single Upload Abort Retry Unit Coverage 보강
+
+- 작업 시작 시간: 2026-06-13 22:29:05 +09:00
+- 작업 종료 시간: 2026-06-13 22:30:30 +09:00
+- 사용자 명령: 활성 목표인 현재까지 구현된 기능 기준 prototype 개발 계속.
+- 명령 해석: MariaDB tag index의 정확한 검증은 Docker/MariaDB gate가 필요하므로, 현재 환경에서 가능한 TC-FE-011 upload cancel/retry API contract를 먼저 자동화하라는 명령으로 인식.
+- 작업 방식: `XMLHttpRequest` mock을 추가해 `uploadObject`의 in-flight abort와 같은 file/key 재시도 성공 경로를 검증했다.
+- 실행 내용:
+  - single object upload XHR abort unit test 추가.
+  - abort 후 같은 bucket/key/file/tags로 재시도 성공 test 추가.
+  - FormData `key`, `tags`, endpoint, progress 100% 확인.
+  - `TC-FE-011` 자동화 상태와 MVP audit frontend evidence 문구 갱신.
+- 구현 내용:
+  - single upload cancel/retry API path가 unit test에 포함됐다.
+  - 실제 Object Explorer cancel/retry button, 중복 upload disabled state, list refresh는 Browser gate pending으로 유지한다.
+- 수정된 파일 및 관련 파일:
+  - `osmu-frontend/src/services/api-upload.test.js`
+  - `README.md`
+  - `dev-docs/prototype-status.md`
+  - `dev-docs/test-cases.md`
+  - `scripts/write-mvp-audit.ps1`
+  - `dev-docs/worklog/codex/frontend-backend-mvp/worklog-codex-frontend-backend-mvp.md`
+- 검증 기록:
+  - `node --check .\osmu-frontend\src\services\api-upload.test.js` 통과.
+  - `npm.cmd run test:unit` 통과: 36 tests, 36 pass.
+  - `[scriptblock]::Create((Get-Content -Raw -LiteralPath .\scripts\write-mvp-audit.ps1)) | Out-Null` 통과.
+  - `git diff --check -- README.md dev-docs/test-cases.md dev-docs/prototype-status.md scripts/write-mvp-audit.ps1 osmu-frontend/src/services/api-upload.test.js dev-docs/worklog/codex/frontend-backend-mvp/worklog-codex-frontend-backend-mvp.md` 통과. README/test-cases CRLF warning만 확인.
+  - `npm.cmd run build` 통과.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-prototype-release.ps1 -JavaHome ...` 승인 권한 실행 통과. frontend unit 36 pass, backend tests included.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\write-mvp-audit.ps1` 통과. frontend evidence에 single upload abort/retry 반영 확인.
+- 코드 리뷰: abort test는 XHR `abort()` 호출, FormData payload, 재시도 성공, progress 100%를 함께 검증한다. UI button state와 list refresh는 DOM이 필요하므로 Browser gate pending으로 남겼다.
+- 결과: TC-FE-011 일부가 unit automation evidence로 전환됐다. Frontend unit coverage는 36개로 증가했다.
+- 후속 메모: Browser/Chrome E2E가 가능해지면 실제 Cancel/Retry button click, duplicate upload block, 성공 후 object list refresh를 확인해야 한다.
+- 추가 개발: Browser visual/E2E, Docker/MariaDB/MinIO integration smoke, real S3 client smoke, MariaDB object tag inverted index gate.
+- 사용 skill/plugin: caveman skill ultra.
+
+### 2026-06-13 - Docker MariaDB Object Tag Index Smoke 보강
+
+- 작업 시작 시간: 2026-06-13 22:32:13 +09:00
+- 작업 종료 시간: 2026-06-13 22:34:05 +09:00
+- 사용자 명령: 활성 목표인 현재까지 구현된 기능 기준 prototype 개발 계속.
+- 명령 해석: MariaDB metadata mode에서 `object_metadata_tags` inverted index가 tag upload/update 후 stale 결과를 내지 않는지 Docker integration gate에 추가하라는 명령으로 인식.
+- 작업 방식: `verify-docker-integration.ps1`에 MariaDB object tag index 단계 추가. Docker daemon이 꺼져 있어 실행은 아직 pending이지만, Docker gate가 가능해지면 자동 검증되도록 준비했다.
+- 실행 내용:
+  - `Assert-ObjectTagIndex` helper 추가.
+  - `stage=raw` object와 `stage=other` object를 업로드.
+  - `tag=stage=raw` 조회가 raw object만 반환하는지 검증.
+  - raw object tag를 `project=archive,stage=curated`로 수정.
+  - stale `stage=raw` 조회에서 빠지는지, `stage=curated` 조회에서 갱신 tags로 나오는지 검증.
+  - cleanup에 tag-index smoke object 삭제 추가.
+  - `TC-OBJECT-015`, README, prototype status, MVP audit evidence 문구 갱신.
+- 구현 내용:
+  - Docker/MariaDB integration smoke가 object tag inverted index stale update를 검증할 수 있게 됐다.
+  - 실제 실행은 Docker daemon external gate pending으로 유지한다.
+- 수정된 파일 및 관련 파일:
+  - `scripts/verify-docker-integration.ps1`
+  - `README.md`
+  - `dev-docs/prototype-status.md`
+  - `dev-docs/test-cases.md`
+  - `scripts/write-mvp-audit.ps1`
+  - `dev-docs/worklog/codex/frontend-backend-mvp/worklog-codex-frontend-backend-mvp.md`
+- 검증 기록:
+  - `[scriptblock]::Create((Get-Content -Raw -LiteralPath .\scripts\verify-docker-integration.ps1)) | Out-Null` 통과.
+  - `[scriptblock]::Create((Get-Content -Raw -LiteralPath .\scripts\write-mvp-audit.ps1)) | Out-Null` 통과.
+  - `git diff --check -- README.md dev-docs/test-cases.md dev-docs/prototype-status.md scripts/write-mvp-audit.ps1 scripts/verify-docker-integration.ps1 dev-docs/worklog/codex/frontend-backend-mvp/worklog-codex-frontend-backend-mvp.md` 통과. README/test-cases CRLF warning만 확인.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-prototype-release.ps1 -JavaHome ...` 승인 권한 실행 통과. Docker integration skipped, frontend unit 36 pass, backend tests included.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\write-mvp-audit.ps1` 통과. Docker/MariaDB/MinIO evidence에 `TC-OBJECT-015` 반영 확인.
+- 코드 리뷰: 새 smoke는 upload tag index 생성, tag update index 교체, stale tag 미조회, updated tag 조회를 모두 검사한다. Docker가 꺼져 있어 실제 MariaDB 실행 증거는 아직 없지만, `-RunDockerIntegration` gate가 켜지면 바로 실패/성공을 잡을 수 있다.
+- 결과: TC-OBJECT-015가 Docker integration automated gate에 연결됐다. 실제 gate status는 Docker daemon pending으로 유지된다.
+- 후속 메모: Docker Desktop이 켜지면 `scripts\verify-prototype-release.ps1 -RunDockerIntegration`으로 TC-OBJECT-015 실제 MariaDB evidence를 확보해야 한다.
+- 추가 개발: Docker/MariaDB/MinIO integration smoke 실행, real S3 client smoke, Browser E2E.
+- 사용 skill/plugin: caveman skill ultra.
+
+### 2026-06-13 - Frontend Confirm Dialog Unit Coverage 보강
+
+- 작업 시작 시간: 2026-06-13 22:36:37 +09:00
+- 작업 종료 시간: 2026-06-13 22:38:51 +09:00
+- 사용자 명령: 활성 목표인 현재까지 구현된 기능 기준 prototype 개발 계속.
+- 명령 해석: destructive action의 취소/확정 modal 흐름은 데이터 삭제 안전성과 연결되므로, Browser E2E가 막힌 동안 confirm dialog state contract를 unit test로 고정하라는 명령으로 인식.
+- 작업 방식: HomeView 내부 confirm dialog state 전환 로직을 `utils/confirmDialog.js`로 분리하고, HomeView는 같은 helper를 사용하게 변경했다.
+- 실행 내용:
+  - `openConfirmDialogState`, `closeConfirmDialogState`, `runConfirmDialogAction` 추가.
+  - cancel 시 action 미실행 test 추가.
+  - confirm 시 action 1회 실행 후 close test 추가.
+  - action이 `false`를 반환하면 modal 유지 test 추가.
+  - pending 중 close 방지 test 추가.
+  - `TC-FE-003` 자동화 상태와 MVP audit frontend evidence 문구 갱신.
+- 구현 내용:
+  - confirm dialog 핵심 state contract가 unit test에 포함됐다.
+  - 실제 delete/revoke button click과 modal DOM 동작은 Browser gate pending으로 유지한다.
+- 수정된 파일 및 관련 파일:
+  - `osmu-frontend/src/views/HomeView.vue`
+  - `osmu-frontend/src/utils/confirmDialog.js`
+  - `osmu-frontend/src/utils/confirmDialog.test.js`
+  - `README.md`
+  - `dev-docs/prototype-status.md`
+  - `dev-docs/test-cases.md`
+  - `scripts/write-mvp-audit.ps1`
+  - `dev-docs/worklog/codex/frontend-backend-mvp/worklog-codex-frontend-backend-mvp.md`
+- 검증 기록:
+  - `node --check .\osmu-frontend\src\utils\confirmDialog.js` 통과.
+  - `node --check .\osmu-frontend\src\utils\confirmDialog.test.js` 통과.
+  - `npm.cmd run test:unit` 통과: 40 tests, 40 pass.
+  - `[scriptblock]::Create((Get-Content -Raw -LiteralPath .\scripts\write-mvp-audit.ps1)) | Out-Null` 통과.
+  - `git diff --check -- README.md dev-docs/test-cases.md dev-docs/prototype-status.md scripts/write-mvp-audit.ps1 osmu-frontend/src/views/HomeView.vue osmu-frontend/src/utils/confirmDialog.js osmu-frontend/src/utils/confirmDialog.test.js dev-docs/worklog/codex/frontend-backend-mvp/worklog-codex-frontend-backend-mvp.md` 통과. README/test-cases/HomeView CRLF warning만 확인.
+  - `npm.cmd run build` 통과.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-prototype-release.ps1 -JavaHome ...` 승인 권한 실행 통과. frontend unit 40 pass, backend tests included.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\write-mvp-audit.ps1` 통과. frontend evidence에 confirm dialog state 반영 확인.
+- 코드 리뷰: confirm helper는 cancel/confirm/pending/action false 상태를 분리해 검증한다. `runConfirmDialogAction`은 action throw 시 pending을 false로 돌려 이전보다 안전하다. 실제 modal DOM click은 Browser gate에서 확인해야 한다.
+- 결과: TC-FE-003 일부가 unit automation evidence로 전환됐다. Frontend unit coverage는 40개로 증가했다.
+- 후속 메모: Browser/Chrome E2E가 가능해지면 bucket/object/permission/access key delete/revoke button에서 modal cancel/confirm 실제 click path를 확인해야 한다.
+- 추가 개발: Browser visual/E2E, Docker/MariaDB/MinIO integration smoke 실행, real S3 client smoke.
+- 사용 skill/plugin: caveman skill ultra.
+
+### 2026-06-13 - Kubernetes Manifest Draft 추가
+
+- 작업 시작 시간: 2026-06-13 23:35:00 +09:00
+- 작업 종료 시간: 2026-06-13 23:44:39 +09:00
+- 사용자 명령: 활성 목표인 현재까지 구현된 기능 기준 prototype 개발 계속.
+- 명령 해석: PRD의 Kubernetes Manifest 초안 포함 요구를 실제 repository 산출물과 release evidence로 고정하라는 명령으로 인식.
+- 작업 방식: Docker Compose 구성을 기준으로 Kubernetes draft manifest를 만들고, Secret 예시는 kustomize resource에서 제외했다. Manifest verifier를 추가해 파일 누락, 핵심 kind, image, probe, secret reference, ingress route, placeholder secret 격리를 확인했다.
+- 실행 내용:
+  - `infra/k8s` 디렉터리 생성.
+  - namespace/configmap/secret example/MariaDB/MinIO/backend/frontend/ingress/kustomization/README manifest draft 추가.
+  - `scripts/verify-k8s-manifests.ps1` 신규 작성.
+  - `verify-local.ps1`에 Kubernetes manifest draft check 추가.
+  - release report scope에 `kubernetesManifests=included` 추가.
+  - release decision, audit, artifact verifier, decision self-test에 Kubernetes manifest gate 반영.
+  - README, document index, deployment strategy, prototype status, MVP release checklist, test cases 문서 갱신.
+- 구현 내용:
+  - Kubernetes draft는 MariaDB StatefulSet, MinIO StatefulSet, backend Deployment, frontend Deployment, ingress path split(`/api` -> backend, `/` -> frontend)을 제공한다.
+  - `secret.example.yaml`은 placeholder secret만 담고 `kustomization.yaml`에는 포함하지 않는다.
+  - verifier는 10개 required file과 핵심 manifest contract를 검사한다.
+- 수정된 파일 및 관련 파일:
+  - `infra/k8s/README.md`
+  - `infra/k8s/namespace.yaml`
+  - `infra/k8s/configmap.yaml`
+  - `infra/k8s/secret.example.yaml`
+  - `infra/k8s/mariadb.yaml`
+  - `infra/k8s/minio.yaml`
+  - `infra/k8s/backend.yaml`
+  - `infra/k8s/frontend.yaml`
+  - `infra/k8s/ingress.yaml`
+  - `infra/k8s/kustomization.yaml`
+  - `scripts/verify-k8s-manifests.ps1`
+  - `scripts/verify-local.ps1`
+  - `scripts/verify-prototype-release.ps1`
+  - `scripts/write-mvp-release-decision.ps1`
+  - `scripts/write-mvp-audit.ps1`
+  - `scripts/verify-mvp-release-artifacts.ps1`
+  - `scripts/verify-mvp-release-decision.ps1`
+  - `README.md`
+  - `dev-docs/document-index.md`
+  - `dev-docs/deployment-strategy.md`
+  - `dev-docs/prototype-status.md`
+  - `dev-docs/mvp-release-checklist.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/worklog/codex/frontend-backend-mvp/worklog-codex-frontend-backend-mvp.md`
+- 검증 기록:
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-k8s-manifests.ps1` 통과.
+  - PowerShell scripts parse check 통과.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-mvp-release-decision.ps1` 통과.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-local.ps1 -SkipDocker -JavaHome ...` 승인 권한 실행 통과. Kubernetes manifest draft check 포함, frontend unit 52 pass, backend tests pass.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-prototype-release.ps1 -JavaHome ...` 승인 권한 실행 통과. generatedAt `2026-06-13T23:44:26.0805780+09:00`, result `passed`, `scope.kubernetesManifests=included`, frontend unit 52 pass, backend tests included, audit/decision/artifact verifier 자동 실행.
+- 코드 리뷰: manifest는 운영 완성본이 아니라 productization draft다. Secret 예시를 kustomization에서 제외해 실수로 placeholder secret을 기본 apply하지 않게 했고, verifier가 이 상태를 강제한다. Frontend image는 정적 빌드 특성상 ingress 사용 시 `VITE_API_BASE_URL=/api`로 build해야 한다는 안내를 README에 남겼다.
+- 결과: MVP 배포 산출물 gap이 줄었다. Kubernetes Manifest 초안이 실제 파일과 automated verifier, release evidence에 포함됐다. 현재 판정은 lightweight demo `GO`, durable MVP pilot `NO-GO`다.
+- 후속 메모: 다음 infra productization은 Helm chart 초안, TLS/StorageClass/resource limit, managed DB/MinIO option 분리다.
+- 추가 개발: Browser visual/E2E, Docker/MariaDB/MinIO integration smoke 실행, real S3 client smoke.
+- 사용 skill/plugin: caveman skill ultra.
+
+### 2026-06-13 - OpenAPI Release Evidence 명시화
+
+- 작업 시작 시간: 2026-06-13 23:33:00 +09:00
+- 작업 종료 시간: 2026-06-13 23:34:33 +09:00
+- 사용자 명령: 활성 목표인 현재까지 구현된 기능 기준 prototype 개발 계속.
+- 명령 해석: OpenAPI contract 검증이 `buildVerify` 내부에 묻히지 않도록 release JSON, audit, decision, artifact verifier에서 명시적으로 증명되게 만들라는 명령으로 인식.
+- 작업 방식: release report scope에 `openApiContract`를 추가하고 lightweight demo GO 판정, audit evidence map, release decision, artifact verifier, decision self-test를 같은 기준으로 맞췄다.
+- 실행 내용:
+  - `verify-prototype-release.ps1` release report에 `scope.openApiContract=included` 추가.
+  - `write-mvp-release-decision.ps1` lightweight gate에 OpenAPI contract 조건과 PASS line 추가.
+  - `write-mvp-audit.ps1` lightweight summary와 `TC-DOC-001` evidence를 `scope.openApiContract` 기준으로 분리.
+  - `verify-mvp-release-artifacts.ps1`가 audit/decision의 OpenAPI PASS line을 검증하도록 변경.
+  - `verify-mvp-release-decision.ps1` synthetic report scope에 `openApiContract` 추가.
+  - README, prototype status, MVP release checklist 최신 evidence 문구 갱신.
+- 구현 내용:
+  - 최신 release report는 OpenAPI contract를 `buildVerify` 내부 간접 근거가 아니라 별도 scope 값으로 기록한다.
+  - release decision의 lightweight demo GO 조건은 OpenAPI contract 포함을 요구한다.
+  - artifact verifier는 OpenAPI evidence line이 빠진 stale audit/decision을 실패시킨다.
+- 수정된 파일 및 관련 파일:
+  - `scripts/verify-prototype-release.ps1`
+  - `scripts/write-mvp-release-decision.ps1`
+  - `scripts/write-mvp-audit.ps1`
+  - `scripts/verify-mvp-release-artifacts.ps1`
+  - `scripts/verify-mvp-release-decision.ps1`
+  - `README.md`
+  - `dev-docs/prototype-status.md`
+  - `dev-docs/mvp-release-checklist.md`
+  - `dev-docs/worklog/codex/frontend-backend-mvp/worklog-codex-frontend-backend-mvp.md`
+- 검증 기록:
+  - PowerShell scripts parse check 통과.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-mvp-release-decision.ps1` 통과.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-openapi-contract.ps1` 통과: 77 operations, 58 frontend API functions.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-prototype-release.ps1 -JavaHome ...` 승인 권한 실행 통과. generatedAt `2026-06-13T23:34:24.4424998+09:00`, result `passed`, `scope.openApiContract=included`, frontend unit 52 pass, backend tests included, audit/decision/artifact verifier 자동 실행.
+- 코드 리뷰: OpenAPI contract가 lightweight demo GO 조건에 들어가면서 API 문서 산출물이 release evidence의 필수 구성요소가 됐다. Artifact verifier가 decision과 audit의 OpenAPI PASS line을 확인해 stale report 위험을 줄인다.
+- 결과: 최신 release evidence에서 OpenAPI MVP contract가 독립된 PASS gate로 증명된다. 현재 판정은 lightweight demo `GO`, durable MVP pilot `NO-GO`다.
+- 후속 메모: `openApiContract`를 optional로 빼지 말고 MVP 문서/API 변경 때마다 verifier를 갱신해야 한다.
+- 추가 개발: Browser visual/E2E, Docker/MariaDB/MinIO integration smoke 실행, real S3 client smoke.
+- 사용 skill/plugin: caveman skill ultra.
+
+### 2026-06-13 - Frontend Bucket List Upload State Coverage 보강
+
+- 작업 시작 시간: 2026-06-13 22:51:00 +09:00
+- 작업 종료 시간: 2026-06-13 22:57:25 +09:00
+- 사용자 명령: 활성 목표인 현재까지 구현된 기능 기준 prototype 개발 계속.
+- 명령 해석: TC-FE-001/002가 아직 `Later` 상태라 bucket list 화면과 upload 화면의 핵심 상태를 unit-testable helper로 고정하라는 명령으로 인식.
+- 작업 방식: HomeView의 bucket summary/row 계산과 upload progress/duplicate guard 상태를 pure utility로 분리하고, 기존 화면 흐름에 연결했다.
+- 실행 내용:
+  - bucket list summary/row helper 추가.
+  - upload active/progress/retry/resume/finish state helper 추가.
+  - active upload 중 programmatic duplicate submit guard 추가.
+  - `GET /api/buckets` frontend API wrapper test 추가.
+  - TC-FE-001/002 자동화 상태와 frontend evidence 문구 갱신.
+- 구현 내용:
+  - Bucket list table의 usage label과 dashboard summary가 helper 기반으로 검증된다.
+  - Upload progress bytes/percent, retryable state, multipart resume message, duplicate-start guard가 helper 기반으로 검증된다.
+  - 실제 browser list render, file input upload, completion 후 object list refresh는 Browser gate pending으로 유지한다.
+- 수정된 파일 및 관련 파일:
+  - `osmu-frontend/src/utils/buckets.js`
+  - `osmu-frontend/src/utils/buckets.test.js`
+  - `osmu-frontend/src/utils/uploads.js`
+  - `osmu-frontend/src/utils/uploads.test.js`
+  - `osmu-frontend/src/services/api-query.test.js`
+  - `osmu-frontend/src/views/HomeView.vue`
+  - `README.md`
+  - `dev-docs/prototype-status.md`
+  - `dev-docs/test-cases.md`
+  - `scripts/write-mvp-audit.ps1`
+  - `dev-docs/worklog/codex/frontend-backend-mvp/worklog-codex-frontend-backend-mvp.md`
+- 검증 기록:
+  - `node --check .\osmu-frontend\src\utils\buckets.js` 통과.
+  - `node --check .\osmu-frontend\src\utils\buckets.test.js` 통과.
+  - `node --check .\osmu-frontend\src\utils\uploads.js` 통과.
+  - `node --check .\osmu-frontend\src\utils\uploads.test.js` 통과.
+  - `npm.cmd run test:unit` 통과: 51 tests, 51 pass.
+  - `node --check .\osmu-frontend\src\services\api-query.test.js` 통과.
+  - `[scriptblock]::Create((Get-Content -Raw -LiteralPath .\scripts\write-mvp-audit.ps1)) | Out-Null` 통과.
+  - `git diff --check -- README.md dev-docs/test-cases.md dev-docs/prototype-status.md scripts/write-mvp-audit.ps1 osmu-frontend/src/utils/buckets.js osmu-frontend/src/utils/buckets.test.js osmu-frontend/src/utils/uploads.js osmu-frontend/src/utils/uploads.test.js osmu-frontend/src/services/api-query.test.js osmu-frontend/src/views/HomeView.vue dev-docs/worklog/codex/frontend-backend-mvp/worklog-codex-frontend-backend-mvp.md` 통과. README/test-cases/HomeView CRLF warning만 확인.
+  - `npm.cmd run build` 통과.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-prototype-release.ps1 -JavaHome ...` 승인 권한 실행 통과. frontend unit 51 pass, backend tests included.
+- 코드 리뷰: bucket helper는 dashboard summary와 table row label을 분리해 TC-FE-001 근거를 만든다. upload helper는 active 상태에서 duplicate start를 막고 progress/retry/resume state를 명확히 검증한다. 실제 browser render/file input/list refresh는 Browser gate가 필요하다.
+- 결과: TC-FE-001/002 일부가 unit automation evidence로 전환됐다. Frontend unit coverage는 51개로 증가했다.
+- 후속 메모: Browser/Chrome E2E가 가능해지면 bucket list render, upload button disabled state, file upload progress, 완료 후 list refresh를 확인해야 한다.
+- 추가 개발: Browser visual/E2E, Docker/MariaDB/MinIO integration smoke 실행, real S3 client smoke.
+- 사용 skill/plugin: caveman skill ultra.
+
+### 2026-06-13 - Frontend Object Metadata Drift Coverage 보강
+
+- 작업 시작 시간: 2026-06-13 22:45:00 +09:00
+- 작업 종료 시간: 2026-06-13 22:50:24 +09:00
+- 사용자 명령: 활성 목표인 현재까지 구현된 기능 기준 prototype 개발 계속.
+- 명령 해석: TC-FE-021이 `Later` 상태라 object metadata drift 표시를 unit-testable한 frontend helper로 고정하라는 명령으로 인식.
+- 작업 방식: HomeView 내부에 있던 metadata status/checksum/detail 표시 로직을 objectExplorer utility로 분리하고, detail grid가 helper row를 렌더하도록 연결했다.
+- 실행 내용:
+  - object metadata `SYNCED`, `STALE`, `MISSING_IN_STORAGE` badge label/class helper 추가.
+  - index/storage size/type/ETag/checksum/modified/tags detail row builder 추가.
+  - detail row별 `synced`, `drift`, `missing` state를 계산하고 UI class로 노출.
+  - TC-FE-021 자동화 상태와 frontend evidence 문구 갱신.
+- 구현 내용:
+  - Object Detail panel의 drift 표시 구조가 pure utility로 검증 가능해졌다.
+  - 실제 Detail 버튼 클릭과 panel render 확인은 Browser gate pending으로 유지한다.
+- 수정된 파일 및 관련 파일:
+  - `osmu-frontend/src/utils/objectExplorer.js`
+  - `osmu-frontend/src/utils/objectExplorer.test.js`
+  - `osmu-frontend/src/views/HomeView.vue`
+  - `osmu-frontend/src/assets/main.css`
+  - `README.md`
+  - `dev-docs/prototype-status.md`
+  - `dev-docs/test-cases.md`
+  - `scripts/write-mvp-audit.ps1`
+  - `dev-docs/worklog/codex/frontend-backend-mvp/worklog-codex-frontend-backend-mvp.md`
+- 검증 기록:
+  - `node --check .\osmu-frontend\src\utils\objectExplorer.js` 통과.
+  - `node --check .\osmu-frontend\src\utils\objectExplorer.test.js` 통과.
+  - `npm.cmd run test:unit` 통과: 46 tests, 46 pass.
+  - `[scriptblock]::Create((Get-Content -Raw -LiteralPath .\scripts\write-mvp-audit.ps1)) | Out-Null` 통과.
+  - `git diff --check -- README.md dev-docs/test-cases.md dev-docs/prototype-status.md scripts/write-mvp-audit.ps1 osmu-frontend/src/utils/objectExplorer.js osmu-frontend/src/utils/objectExplorer.test.js osmu-frontend/src/views/HomeView.vue osmu-frontend/src/assets/main.css dev-docs/worklog/codex/frontend-backend-mvp/worklog-codex-frontend-backend-mvp.md` 통과. README/test-cases/main.css/HomeView CRLF warning만 확인.
+  - `npm.cmd run build` 통과.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-prototype-release.ps1 -JavaHome ...` 승인 권한 실행 통과. frontend unit 46 pass, backend tests included.
+- 코드 리뷰: helper는 detail row key/label/value/state를 한 곳에서 만든다. `storage*` 값이 없으면 `missing`, 값이 다르면 `drift`, map 순서만 다른 tags는 `synced`로 판정한다. UI click/render는 Browser gate가 필요하다.
+- 결과: TC-FE-021 일부가 unit automation evidence로 전환됐다. Frontend unit coverage는 46개로 증가했다.
+- 후속 메모: Browser/Chrome E2E가 가능해지면 Detail 버튼 클릭, sync status badge 색, drift/missing cell render를 확인해야 한다.
+- 추가 개발: Browser visual/E2E, Docker/MariaDB/MinIO integration smoke 실행, real S3 client smoke.
+- 사용 skill/plugin: caveman skill ultra.
+
+### 2026-06-13 - Frontend Bucket Lifecycle Tags Wrapper Coverage 보강
+
+- 작업 시작 시간: 2026-06-13 22:40:58 +09:00
+- 작업 종료 시간: 2026-06-13 22:44:24 +09:00
+- 사용자 명령: 활성 목표인 현재까지 구현된 기능 기준 prototype 개발 계속.
+- 명령 해석: Bucket Lifecycle XML panel과 Bucket Tags panel은 build evidence만으로 약하므로, REST/S3 XML API wrapper contract를 unit test로 고정하라는 명령으로 인식.
+- 작업 방식: 기존 frontend `node:test` fetch mock 패턴으로 lifecycle REST, bucket tags REST, S3 bucket tagging XML endpoint/method/header/body를 검증했다.
+- 실행 내용:
+  - bucket lifecycle `GET/PUT/DELETE /api/buckets/{bucket}/lifecycle` wrapper test 추가.
+  - bucket tags `GET/PUT/DELETE /api/buckets/{bucket}/tags` wrapper test 추가.
+  - S3 bucket tagging `GET/PUT/DELETE /api/s3/{bucket}?tagging` text/XML wrapper test 추가.
+  - `TC-FE-027`, `TC-FE-028` 자동화 상태와 MVP audit frontend evidence 문구 갱신.
+- 구현 내용:
+  - Bucket lifecycle/tag panel의 API contract가 Browser 없이도 unit test로 검증된다.
+  - 실제 textarea edit, count render, delete 후 clear/reload는 Browser gate pending으로 유지한다.
+- 수정된 파일 및 관련 파일:
+  - `osmu-frontend/src/services/api-bucket-config.test.js`
+  - `README.md`
+  - `dev-docs/prototype-status.md`
+  - `dev-docs/test-cases.md`
+  - `scripts/write-mvp-audit.ps1`
+  - `dev-docs/worklog/codex/frontend-backend-mvp/worklog-codex-frontend-backend-mvp.md`
+- 검증 기록:
+  - `node --check .\osmu-frontend\src\services\api-bucket-config.test.js` 통과.
+  - `npm.cmd run test:unit` 통과: 43 tests, 43 pass.
+  - `[scriptblock]::Create((Get-Content -Raw -LiteralPath .\scripts\write-mvp-audit.ps1)) | Out-Null` 통과.
+  - `npm.cmd run build` 통과.
+  - `git diff --check -- README.md dev-docs/test-cases.md dev-docs/prototype-status.md scripts/write-mvp-audit.ps1 osmu-frontend/src/services/api-bucket-config.test.js dev-docs/worklog/codex/frontend-backend-mvp/worklog-codex-frontend-backend-mvp.md` 통과. README/test-cases CRLF warning만 확인.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-prototype-release.ps1 -JavaHome ...` 승인 권한 실행 통과. frontend unit 43 pass, backend tests included.
+- 코드 리뷰: Lifecycle/tag wrapper tests는 endpoint, HTTP method, JSON/XML body, `Accept`, `Content-Type` header를 고정한다. DOM textarea edit, count render, delete 후 clear/reload는 Browser gate에서 확인해야 한다.
+- 결과: TC-FE-027/028 일부가 unit automation evidence로 전환됐다. Frontend unit coverage는 43개로 증가했다.
+- 후속 메모: Browser/Chrome E2E가 가능해지면 lifecycle XML textarea load/save/delete, bucket tag count render, delete 후 clear/reload UX를 확인해야 한다.
+- 추가 개발: Browser visual/E2E, Docker/MariaDB/MinIO integration smoke 실행, real S3 client smoke.
+- 사용 skill/plugin: caveman skill ultra.
+
+### 2026-06-13 - MVP v0.1 Release Checklist 작성
+
+- 작업 시작 시간: 2026-06-13 22:58:47 +09:00
+- 작업 종료 시간: 2026-06-13 23:00:51 +09:00
+- 사용자 명령: 활성 목표인 현재까지 구현된 기능 기준 prototype 개발 계속.
+- 명령 해석: 외부 gate가 막힌 상태에서 현재 prototype evidence를 MVP v0.1 release decision에 바로 쓸 수 있게 checklist로 고정하라는 명령으로 인식.
+- 작업 방식: prototype-status의 Next Best Work #4를 처리하기 위해 lightweight demo candidate와 durable MVP pilot gate를 분리한 release checklist 문서를 추가했다.
+- 실행 내용:
+  - `dev-docs/mvp-release-checklist.md` 신규 작성.
+  - lightweight demo candidate GO 기준과 durable pilot NO-GO 기준 정리.
+  - Docker/MariaDB/MinIO, real S3 client, Browser E2E gate checklist 작성.
+  - README와 document index에 checklist 링크 추가.
+  - prototype-status Next Best Work에서 checklist 작성 완료 상태로 문구 갱신.
+- 구현 내용:
+  - 현재 prototype은 local lightweight demo candidate로 판정 가능하다.
+  - durable pilot과 production/B2B sale은 외부 gate 및 운영 hardening 완료 전까지 NO-GO로 명확히 구분된다.
+- 수정된 파일 및 관련 파일:
+  - `dev-docs/mvp-release-checklist.md`
+  - `dev-docs/document-index.md`
+  - `README.md`
+  - `dev-docs/prototype-status.md`
+  - `dev-docs/worklog/codex/frontend-backend-mvp/worklog-codex-frontend-backend-mvp.md`
+- 검증 기록:
+  - `git diff --check -- README.md dev-docs/document-index.md dev-docs/prototype-status.md dev-docs/mvp-release-checklist.md dev-docs/worklog/codex/frontend-backend-mvp/worklog-codex-frontend-backend-mvp.md` 통과. README/document-index CRLF warning만 확인.
+  - checklist 링크가 `dev-docs/document-index.md`, `README.md`, `dev-docs/prototype-status.md`에 반영됐는지 `Select-String`으로 확인.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-prototype-release.ps1 -JavaHome ...` 승인 권한 실행 통과. frontend unit 51 pass, backend tests included.
+- 코드 리뷰: checklist는 lightweight demo GO와 durable pilot NO-GO를 분리해 현재 상태를 과장하지 않는다. Docker/real S3/Browser gate를 checkbox로 남겨 다음 검증 변화가 추적 가능하다.
+- 결과: prototype evidence가 `dev-docs/mvp-release-checklist.md`로 정리됐다. 현재는 lightweight demo candidate GO, durable MVP pilot NO-GO 상태다.
+- 후속 메모: Docker/real S3/Browser gate가 통과될 때마다 checklist checkbox와 go/no-go 판정을 함께 갱신해야 한다.
+- 추가 개발: Browser visual/E2E, Docker/MariaDB/MinIO integration smoke 실행, real S3 client smoke.
+- 사용 skill/plugin: caveman skill ultra.
+
+### 2026-06-13 - MVP Release Decision Script 추가
+
+- 작업 시작 시간: 2026-06-13 23:03:35 +09:00
+- 작업 종료 시간: 2026-06-13 23:04:36 +09:00
+- 사용자 명령: 활성 목표인 현재까지 구현된 기능 기준 prototype 개발 계속.
+- 명령 해석: MVP v0.1 checklist의 GO/NO-GO 판정을 latest release JSON에서 자동 산출해 prototype evidence를 더 명확하게 만들라는 명령으로 인식.
+- 작업 방식: `latest-release.json`의 scope/optionalGates 값을 읽어 lightweight demo와 durable MVP pilot을 분리 판정하는 PowerShell script를 추가했다.
+- 실행 내용:
+  - `scripts/write-mvp-release-decision.ps1` 신규 작성.
+  - lightweight demo candidate와 durable MVP pilot gate 판정 로직 추가.
+  - `-FailIfDurablePilotNoGo` 옵션으로 durable gate 실패를 CI-style 실패로 전환 가능하게 구성.
+  - README, document index, MVP release checklist, prototype status에 decision report 연결.
+- 구현 내용:
+  - `.osmu-run/latest-release-decision.md`가 자동 생성된다.
+  - 현재 evidence 기준 lightweight demo candidate는 `GO`, durable MVP pilot은 `NO-GO`로 산출된다.
+- 수정된 파일 및 관련 파일:
+  - `scripts/write-mvp-release-decision.ps1`
+  - `README.md`
+  - `dev-docs/document-index.md`
+  - `dev-docs/mvp-release-checklist.md`
+  - `dev-docs/prototype-status.md`
+  - `dev-docs/worklog/codex/frontend-backend-mvp/worklog-codex-frontend-backend-mvp.md`
+- 검증 기록:
+  - `[scriptblock]::Create((Get-Content -Raw -LiteralPath .\scripts\write-mvp-release-decision.ps1)) | Out-Null` 통과.
+  - `git diff --check -- README.md dev-docs/document-index.md dev-docs/prototype-status.md dev-docs/mvp-release-checklist.md scripts/write-mvp-release-decision.ps1` 통과. README/document-index CRLF warning만 확인.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\write-mvp-release-decision.ps1` 통과. lightweight demo candidate `GO`, durable MVP pilot `NO-GO`.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-prototype-release.ps1 -JavaHome ...` 승인 권한 실행 통과. frontend unit 51 pass, backend tests included.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\write-mvp-audit.ps1` 통과. 최신 release report 기준 audit 재생성.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\write-mvp-release-decision.ps1` 재실행 통과. 최신 release report 기준 decision 재생성.
+- 코드 리뷰: release decision script는 release report의 `scope`와 `optionalGates`만 근거로 판정해 수동 판단을 줄인다. Durable pilot은 Docker integration included, real S3 client required+available, Browser E2E verified를 모두 요구하므로 현재 상태를 과장하지 않는다.
+- 결과: `.osmu-run/latest-release-decision.md` 산출 자동화가 추가됐다. 현재 판정은 lightweight demo candidate `GO`, durable MVP pilot `NO-GO`다.
+- 후속 메모: Docker/real S3/Browser gate가 통과되면 `write-mvp-release-decision.ps1 -FailIfDurablePilotNoGo`를 release pipeline에 포함할 수 있다.
+- 추가 개발: Browser visual/E2E, Docker/MariaDB/MinIO integration smoke 실행, real S3 client smoke.
+- 사용 skill/plugin: caveman skill ultra.
+
+### 2026-06-13 - MVP Release Decision Self-Test 추가
+
+- 작업 시작 시간: 2026-06-13 23:08:30 +09:00
+- 작업 종료 시간: 2026-06-13 23:09:33 +09:00
+- 사용자 명령: 활성 목표인 현재까지 구현된 기능 기준 prototype 개발 계속.
+- 명령 해석: release decision script가 lightweight GO/durable NO-GO를 틀리게 산출하지 않도록 자체 검증을 추가하라는 명령으로 인식.
+- 작업 방식: synthetic release report JSON을 생성해 `write-mvp-release-decision.ps1`의 lightweight-only, durable-ready, failure-switch 경로를 검증하는 self-test script를 만들고 `verify-local.ps1`에 연결했다.
+- 실행 내용:
+  - `scripts/verify-mvp-release-decision.ps1` 신규 작성.
+  - lightweight-only sample report는 lightweight `GO`, durable `NO-GO`인지 검증.
+  - durable-ready sample report는 lightweight `GO`, durable `GO`인지 검증.
+  - `-FailIfDurablePilotNoGo`가 lightweight-only report에서 실패하는지 검증.
+  - `verify-local.ps1`에 self-test step 추가.
+  - README, document index, MVP release checklist, prototype status에 self-test 설명 추가.
+- 구현 내용:
+  - release gate가 `verify-local.ps1`을 지날 때 release decision logic도 같이 검증된다.
+  - self-test output은 `.osmu-run/decision-self-test` 아래 synthetic report만 사용한다.
+- 수정된 파일 및 관련 파일:
+  - `scripts/verify-mvp-release-decision.ps1`
+  - `scripts/verify-local.ps1`
+  - `README.md`
+  - `dev-docs/document-index.md`
+  - `dev-docs/mvp-release-checklist.md`
+  - `dev-docs/prototype-status.md`
+  - `dev-docs/worklog/codex/frontend-backend-mvp/worklog-codex-frontend-backend-mvp.md`
+- 검증 기록:
+  - `[scriptblock]::Create((Get-Content -Raw -LiteralPath .\scripts\verify-mvp-release-decision.ps1)) | Out-Null` 통과.
+  - `[scriptblock]::Create((Get-Content -Raw -LiteralPath .\scripts\verify-local.ps1)) | Out-Null` 통과.
+  - `git diff --check -- README.md dev-docs/document-index.md dev-docs/prototype-status.md dev-docs/mvp-release-checklist.md scripts/verify-mvp-release-decision.ps1 scripts/verify-local.ps1` 통과. README/document-index CRLF warning만 확인.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-mvp-release-decision.ps1` 통과.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-prototype-release.ps1 -JavaHome ...` 승인 권한 실행 통과. `verify-local.ps1` 경유 decision self-test 통과, frontend unit 51 pass, backend tests included.
+- 코드 리뷰: self-test는 output capture를 별도 PowerShell process로 실행해 `Write-Host` 기반 decision output도 검증한다. durable NO-GO 실패 스위치도 nonzero exit를 기대값으로 처리해 release pipeline 검증에 맞다.
+- 결과: release decision logic self-test가 local/release gate에 포함됐다. 최신 release gate는 23:09 KST 통과했다.
+- 후속 메모: Docker/real S3/Browser gate가 통과되면 durable-ready synthetic case와 실제 release report 판정이 모두 `GO`인지 확인해야 한다.
+- 추가 개발: Browser visual/E2E, Docker/MariaDB/MinIO integration smoke 실행, real S3 client smoke.
+- 사용 skill/plugin: caveman skill ultra.
+
+### 2026-06-13 - MVP Release Artifact Verifier 추가
+
+- 작업 시작 시간: 2026-06-13 23:12:25 +09:00
+- 작업 종료 시간: 2026-06-13 23:13:29 +09:00
+- 사용자 명령: 활성 목표인 현재까지 구현된 기능 기준 prototype 개발 계속.
+- 명령 해석: latest release JSON, MVP audit, release decision 산출물이 서로 맞는지 자동 검증해 prototype evidence 신뢰도를 올리라는 명령으로 인식.
+- 작업 방식: release artifact consistency verifier를 추가하고, `verify-prototype-release.ps1` 끝에서 audit/decision 생성과 artifact 검증이 자동 실행되도록 연결했다.
+- 실행 내용:
+  - `scripts/verify-mvp-release-artifacts.ps1` 신규 작성.
+  - release JSON, audit markdown, decision markdown 존재 확인.
+  - audit/decision이 동일 release report path를 참조하는지 확인.
+  - release JSON 기준 lightweight/durable GO/NO-GO decision 문구가 맞는지 확인.
+  - `verify-prototype-release.ps1`가 release report 작성 후 audit, decision, artifact verifier를 자동 실행하도록 변경.
+  - README, document index, MVP release checklist, prototype status에 artifact verifier 설명 추가.
+- 구현 내용:
+  - release gate 한 번으로 `.osmu-run/latest-release.json`, `.osmu-run/latest-mvp-audit.md`, `.osmu-run/latest-release-decision.md`가 함께 생성/검증된다.
+  - 산출물이 stale하거나 서로 다른 release report를 가리키면 verifier가 실패한다.
+- 수정된 파일 및 관련 파일:
+  - `scripts/verify-mvp-release-artifacts.ps1`
+  - `scripts/verify-prototype-release.ps1`
+  - `README.md`
+  - `dev-docs/document-index.md`
+  - `dev-docs/mvp-release-checklist.md`
+  - `dev-docs/prototype-status.md`
+  - `dev-docs/worklog/codex/frontend-backend-mvp/worklog-codex-frontend-backend-mvp.md`
+- 검증 기록:
+  - `[scriptblock]::Create((Get-Content -Raw -LiteralPath .\scripts\verify-mvp-release-artifacts.ps1)) | Out-Null` 통과.
+  - `[scriptblock]::Create((Get-Content -Raw -LiteralPath .\scripts\verify-prototype-release.ps1)) | Out-Null` 통과.
+  - `git diff --check -- README.md dev-docs/document-index.md dev-docs/prototype-status.md dev-docs/mvp-release-checklist.md scripts/verify-mvp-release-artifacts.ps1 scripts/verify-prototype-release.ps1` 통과. README/document-index CRLF warning만 확인.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-mvp-release-artifacts.ps1` 통과.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-prototype-release.ps1 -JavaHome ...` 승인 권한 실행 통과. release artifact 자동 생성/검증 step 포함, frontend unit 51 pass, backend tests included.
+- 코드 리뷰: artifact verifier는 release report path 동기화와 decision 문자열을 모두 확인한다. lightweight `GO`/durable `NO-GO`가 release JSON 기준으로 재계산되므로 stale decision file 위험을 줄인다.
+- 결과: release gate 한 번으로 release JSON, MVP audit, release decision이 생성되고 consistency까지 검증된다. 최신 release gate는 23:13 KST 통과했다.
+- 후속 메모: Durable gate가 통과되면 artifact verifier가 PASS audit lines와 durable `GO` decision을 검증하는지 확인해야 한다.
+- 추가 개발: Browser visual/E2E, Docker/MariaDB/MinIO integration smoke 실행, real S3 client smoke.
+- 사용 skill/plugin: caveman skill ultra.
+
+### 2026-06-13 - Frontend E2E Selector Contract 보강
+
+- 작업 시작 시간: 2026-06-13 23:15:00 +09:00
+- 작업 종료 시간: 2026-06-13 23:21:24 +09:00
+- 사용자 명령: 활성 목표인 현재까지 구현된 기능 기준 prototype 개발 계속.
+- 명령 해석: Browser E2E가 환경 문제로 막혀 있으므로, 이후 E2E를 작성할 때 사용할 안정적인 UI selector contract를 먼저 구현하라는 명령으로 인식.
+- 작업 방식: Browser plugin 연결을 다시 시도했으나 `CreateProcessAsUserW failed: 5`로 실패했다. 그 대신 주요 UI flow에 `data-testid`를 추가하고, `HomeView.vue`의 selector contract를 static unit test로 검증했다.
+- 실행 내용:
+  - login/status/error/metrics 영역 selector 추가.
+  - bucket create/list/sync/delete selector 추가.
+  - object filter/upload/progress/table/detail selector 추가.
+  - bucket lifecycle/tags panel selector 추가.
+  - audit filter/list/export selector 추가.
+  - confirm dialog cancel/submit selector 추가.
+  - `HomeView.test.js` static selector contract test 추가.
+  - TC-FE-030 추가 및 frontend evidence 문구 갱신.
+- 구현 내용:
+  - Browser/Chrome E2E가 가능해지면 text/layout 의존 대신 stable `data-testid` 기반 click path를 작성할 수 있다.
+  - selector 누락은 `npm run test:unit`에서 실패한다.
+- 수정된 파일 및 관련 파일:
+  - `osmu-frontend/src/views/HomeView.vue`
+  - `osmu-frontend/src/views/HomeView.test.js`
+  - `README.md`
+  - `dev-docs/prototype-status.md`
+  - `dev-docs/mvp-release-checklist.md`
+  - `dev-docs/test-cases.md`
+  - `scripts/write-mvp-audit.ps1`
+  - `dev-docs/worklog/codex/frontend-backend-mvp/worklog-codex-frontend-backend-mvp.md`
+- 검증 기록:
+  - Browser plugin 재시도 실패: `CreateProcessAsUserW failed: 5`.
+  - `node --check .\osmu-frontend\src\views\HomeView.test.js` 통과.
+  - `npm.cmd run test:unit` 통과: 52 tests, 52 pass.
+  - `[scriptblock]::Create((Get-Content -Raw -LiteralPath .\scripts\write-mvp-audit.ps1)) | Out-Null` 통과.
+  - `git diff --check -- README.md dev-docs/prototype-status.md dev-docs/mvp-release-checklist.md dev-docs/test-cases.md scripts/write-mvp-audit.ps1 osmu-frontend/src/views/HomeView.vue osmu-frontend/src/views/HomeView.test.js` 통과. README/test-cases/HomeView CRLF warning만 확인.
+  - `npm.cmd run build` 통과.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-prototype-release.ps1 -JavaHome ...` 승인 권한 실행 통과. generatedAt `2026-06-13T23:19:57.0924604+09:00`, result `passed`, frontend unit 52 pass, backend tests included, audit/decision/artifact verifier 자동 실행.
+- 코드 리뷰: selector contract는 동작/시각 변경 없이 E2E용 안정 hook만 추가한다. static test가 selector 누락을 잡아 future Browser E2E 작성 비용을 줄인다. 실제 Browser click 검증은 환경 오류 때문에 여전히 pending이다.
+- 결과: TC-FE-030이 추가됐고 frontend unit coverage는 52 passing tests로 증가했다. 최신 release gate는 23:19 KST 통과했다.
+- 후속 메모: Browser/Chrome E2E가 가능해지면 `data-testid` 기반으로 login, bucket list, upload, confirm, object detail, lifecycle/tags, audit click path를 실제 검증해야 한다.
+- 추가 개발: Browser visual/E2E, Docker/MariaDB/MinIO integration smoke 실행, real S3 client smoke.
+- 사용 skill/plugin: caveman skill ultra, Browser plugin.
+
+### 2026-06-13 - OpenAPI MVP Contract 검증 추가
+
+- 작업 시작 시간: 2026-06-13 23:22:00 +09:00
+- 작업 종료 시간: 2026-06-13 23:30:41 +09:00
+- 사용자 명령: 활성 목표인 현재까지 구현된 기능 기준 prototype 개발 계속.
+- 명령 해석: 외부 gate(Docker, real S3 client, Browser)가 막힌 동안, prototype API 문서 요구사항을 더 강하게 증명할 수 있는 machine-readable OpenAPI 계약과 자동 검증을 추가하라는 명령으로 인식.
+- 작업 방식: backend controller mapping과 frontend API wrapper를 확인한 뒤, 현재 REST control plane과 MVP S3 alias surface를 `dev-docs/openapi-mvp.json`으로 정리했다. PowerShell verifier가 JSON parse, auth scheme, required path/method/operationId, unique operationId, frontend API wrapper 존재를 검사하게 했다.
+- 실행 내용:
+  - `dev-docs/openapi-mvp.json` 신규 작성.
+  - `scripts/verify-openapi-contract.ps1` 신규 작성.
+  - `verify-local.ps1`에 OpenAPI MVP contract check 추가.
+  - README, document index, prototype status, MVP release checklist, test case 문서 갱신.
+  - `write-mvp-audit.ps1` evidence map에 `TC-DOC-001` 추가.
+- 구현 내용:
+  - OpenAPI contract는 Health/Auth/User/Organization/Bucket/Object/Access Key/Admin/Lifecycle/S3 compatibility endpoint를 포함한다.
+  - verifier는 77개 operation과 58개 frontend API function을 확인한다.
+  - release gate의 build verify 단계에서 OpenAPI contract가 함께 검증된다.
+- 수정된 파일 및 관련 파일:
+  - `dev-docs/openapi-mvp.json`
+  - `scripts/verify-openapi-contract.ps1`
+  - `scripts/verify-local.ps1`
+  - `scripts/write-mvp-audit.ps1`
+  - `README.md`
+  - `dev-docs/document-index.md`
+  - `dev-docs/prototype-status.md`
+  - `dev-docs/mvp-release-checklist.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/worklog/codex/frontend-backend-mvp/worklog-codex-frontend-backend-mvp.md`
+- 검증 기록:
+  - `node -e "JSON.parse(require('fs').readFileSync('dev-docs/openapi-mvp.json','utf8')); console.log('json ok')"` 통과.
+  - `[scriptblock]::Create((Get-Content -Raw -LiteralPath .\scripts\verify-openapi-contract.ps1)) | Out-Null` 통과.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-openapi-contract.ps1` 통과: 77 operations, 58 frontend API functions.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-local.ps1 -SkipDocker -JavaHome ...` 최초 sandbox 실행은 Gradle wrapper network 권한 오류(`Permission denied: getsockopt`)로 backend test 단계 실패. 승인 권한 재실행 통과.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-prototype-release.ps1 -JavaHome ...` 최초 sandbox 실행은 동일 Gradle wrapper network 권한 오류로 실패 report 생성. 승인 권한 재실행 통과. generatedAt `2026-06-13T23:30:30.0115243+09:00`, result `passed`, OpenAPI contract verifier 포함, frontend unit 52 pass, backend tests included, audit/decision/artifact verifier 자동 실행.
+- 코드 리뷰: OpenAPI contract는 상세 schema를 과하게 확정하지 않고 현재 prototype의 path/method/operationId와 보안 스킴을 고정한다. verifier가 frontend wrapper 존재까지 확인하므로 문서와 portal API client drift를 줄인다. S3 alias는 query-param별 세부 operation을 하나의 method operation으로 묶어 prototype 수준의 계약으로 유지했다.
+- 결과: API 문서 요구사항이 markdown뿐 아니라 machine-readable OpenAPI와 automated verifier로 보강됐다. 최신 release gate는 23:30 KST 통과했고 현재 판정은 lightweight demo `GO`, durable MVP pilot `NO-GO`다.
+- 후속 메모: Endpoint가 추가/변경되면 `openapi-mvp.json`과 `verify-openapi-contract.ps1`의 required operation list를 같이 갱신해야 한다.
+- 추가 개발: Browser visual/E2E, Docker/MariaDB/MinIO integration smoke 실행, real S3 client smoke.
+- 사용 skill/plugin: caveman skill ultra.
+
+### 2026-06-13 - Helm Chart Draft와 Release Evidence 연결
+
+- 작업 시작 시간: 2026-06-13 23:50:00 +09:00
+- 작업 종료 시간: 2026-06-13 23:59:22 +09:00
+- 사용자 명령: `/Caveman ultra` 및 활성 목표인 현재까지 구현된 기능 기준 prototype 개발 계속.
+- 명령 해석: 토큰을 줄인 상태로, 외부 gate가 막힌 동안 배포 제품화 문서/infra evidence를 보강하라는 명령으로 인식.
+- 작업 방식: 기존 Kubernetes manifest draft와 release evidence 구조를 확인한 뒤 Helm chart draft를 같은 검증/릴리즈 scope에 연결했다.
+- 실행 내용:
+  - `infra/helm/osmu` Helm chart draft 추가.
+  - `scripts/verify-helm-chart.ps1` 추가.
+  - `verify-local.ps1`, release report, audit, decision, artifact verifier에 `scope.helmChart=included` 연결.
+  - README, document index, deployment strategy, prototype status, MVP checklist, test cases 갱신.
+- 구현 내용:
+  - Chart는 MariaDB, MinIO, backend, frontend, ingress template를 포함한다.
+  - `secrets.create=false`가 기본값이라 placeholder secret이 기본 렌더링되지 않는다.
+  - Helm chart verifier가 chart metadata, values 분리, secret guard, probe, service routing을 검사한다.
+- 수정된 파일 및 관련 파일:
+  - `infra/helm/osmu/**`
+  - `scripts/verify-helm-chart.ps1`
+  - `scripts/verify-local.ps1`
+  - `scripts/verify-prototype-release.ps1`
+  - `scripts/write-mvp-audit.ps1`
+  - `scripts/write-mvp-release-decision.ps1`
+  - `scripts/verify-mvp-release-artifacts.ps1`
+  - `scripts/verify-mvp-release-decision.ps1`
+  - `README.md`
+  - `dev-docs/document-index.md`
+  - `dev-docs/deployment-strategy.md`
+  - `dev-docs/prototype-status.md`
+  - `dev-docs/mvp-release-checklist.md`
+  - `dev-docs/test-cases.md`
+- 검증 기록:
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-helm-chart.ps1` 통과.
+  - PowerShell script parse check 통과.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-mvp-release-decision.ps1` 통과.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-local.ps1 -SkipDocker -JavaHome ...` 승인 권한 실행 통과. OpenAPI/Kubernetes/Helm verifier, frontend unit 52 pass, frontend build, backend Gradle tests 포함.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-prototype-release.ps1 -JavaHome ...` 승인 권한 실행 통과. generatedAt `2026-06-13T23:59:04.3363998+09:00`, result `passed`, `scope.helmChart=included`, lightweight demo `GO`, durable MVP pilot `NO-GO`.
+  - release artifact verifier 통과. audit/decision report가 Helm chart draft PASS를 포함함.
+- 코드 리뷰: Helm chart는 아직 production hardening이 아니라 deployment shape draft다. Secret 기본 생성 OFF와 verifier 조건으로 accidental placeholder deployment 위험을 낮췄다.
+- 결과: Helm chart draft와 verifier가 release evidence에 포함됐다. 최신 release gate는 2026-06-13 23:59 KST 통과했고 현재 판정은 lightweight demo `GO`, durable MVP pilot `NO-GO`다.
+- 후속 메모: Docker/real S3/Browser gate가 통과되면 release report와 checklist를 다시 갱신해야 한다.
+- 추가 개발: 실제 `helm template`/cluster install 검증, TLS/StorageClass/resources/network policy/HA values 보강.
+- 사용 skill/plugin: caveman skill ultra.
+
+### 2026-06-14 - Deployment Resource Profile 초안 추가
+
+- 작업 시작 시간: 2026-06-14 00:00:00 +09:00
+- 작업 종료 시간: 2026-06-14 00:05:24 +09:00
+- 사용자 명령: 활성 목표인 현재까지 구현된 기능 기준 prototype 개발 계속.
+- 명령 해석: 외부 gate가 아직 막혀 있으므로, prototype을 B2B 배포 가능한 형태에 더 가깝게 만들 수 있는 Kubernetes/Helm hardening 초안을 추가하라는 명령으로 인식.
+- 작업 방식: Kubernetes manifest와 Helm chart에 backend, frontend, MariaDB, MinIO resource requests/limits를 추가하고 verifier에 누락 감지를 연결했다.
+- 실행 내용:
+  - `infra/k8s` backend/frontend/MariaDB/MinIO manifest에 resource requests/limits 추가.
+  - `infra/helm/osmu/values.yaml`에 component별 resource profile 추가.
+  - Helm templates가 `.Values.*.resources`를 렌더링하도록 변경.
+  - `verify-k8s-manifests.ps1`, `verify-helm-chart.ps1`에 resource profile 검증 추가.
+  - README, deployment strategy, prototype status, release checklist, test cases, audit evidence map 갱신.
+- 구현 내용:
+  - runtime container가 무제한으로 배포되지 않도록 starter CPU/memory request/limit를 명시했다.
+  - `TC-INFRA-004`로 resource profile draft 검증 항목을 추가했다.
+- 수정된 파일 및 관련 파일:
+  - `infra/k8s/backend.yaml`
+  - `infra/k8s/frontend.yaml`
+  - `infra/k8s/mariadb.yaml`
+  - `infra/k8s/minio.yaml`
+  - `infra/helm/osmu/values.yaml`
+  - `infra/helm/osmu/templates/backend.yaml`
+  - `infra/helm/osmu/templates/frontend.yaml`
+  - `infra/helm/osmu/templates/mariadb.yaml`
+  - `infra/helm/osmu/templates/minio.yaml`
+  - `scripts/verify-k8s-manifests.ps1`
+  - `scripts/verify-helm-chart.ps1`
+  - `scripts/write-mvp-audit.ps1`
+  - `README.md`
+  - `dev-docs/deployment-strategy.md`
+  - `dev-docs/prototype-status.md`
+  - `dev-docs/mvp-release-checklist.md`
+  - `dev-docs/test-cases.md`
+- 검증 기록:
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-k8s-manifests.ps1` 통과. resource requests/limits 검증 포함.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-helm-chart.ps1` 통과. `.Values.*.resources` 검증 포함.
+  - PowerShell script parse check 통과.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-mvp-release-decision.ps1` 통과.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-local.ps1 -SkipDocker -JavaHome ...` 승인 권한 실행 통과. OpenAPI/Kubernetes/Helm verifier, frontend unit 52 pass, frontend build, backend Gradle tests 포함.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-prototype-release.ps1 -JavaHome ...` 승인 권한 실행 통과. generatedAt `2026-06-14T00:05:23.3514343+09:00`, result `passed`.
+  - release audit evidence map에서 `TC-INFRA-004` Deployment resource profiles PASS 확인.
+- 코드 리뷰: resource 값은 운영 산정값이 아니라 starter profile이다. 실제 고객 환경에서는 부하 테스트, StorageClass, HA 구성과 함께 재조정해야 한다.
+- 결과: Deployment resource profile draft가 Kubernetes/Helm manifest와 verifier, release audit evidence에 포함됐다. 최신 release gate는 2026-06-14 00:05 KST 통과했고 현재 판정은 lightweight demo `GO`, durable MVP pilot `NO-GO`다.
+- 후속 메모: Helm CLI가 현재 PATH에 없어 실제 `helm template` 렌더링은 아직 미검증이다. Helm 설치 후 render 검증을 추가하는 것이 다음 infra 품질 개선이다.
+- 추가 개발: TLS, network policy, secret rotation, 실제 Helm render/cluster install 검증.
+- 사용 skill/plugin: caveman skill ultra.
+
+### 2026-06-14 - NetworkPolicy Draft 추가
+
+- 작업 시작 시간: 2026-06-14 00:08:00 +09:00
+- 작업 종료 시간: 2026-06-14 00:10:54 +09:00
+- 사용자 명령: 활성 목표인 현재까지 구현된 기능 기준 prototype 개발 계속.
+- 명령 해석: Docker/real S3/Browser 외부 gate가 막힌 동안 Kubernetes 보안 hardening 초안을 추가해 B2B 배포 준비도를 높이라는 명령으로 인식.
+- 작업 방식: backend/frontend ingress는 ingress controller별 차이가 커서 건드리지 않고, 민감한 MariaDB/MinIO ingress와 backend egress를 먼저 제한하는 NetworkPolicy draft를 작성했다.
+- 실행 내용:
+  - `infra/k8s/networkpolicy.yaml` 추가.
+  - `infra/k8s/kustomization.yaml`에 network policy 포함.
+  - Helm `networkPolicy.enabled` values와 `templates/networkpolicy.yaml` 추가.
+  - Kubernetes/Helm verifier에 NetworkPolicy 필수 검증 추가.
+  - release report scope, audit, decision, artifact verifier에 `scope.networkPolicies=included` 연결.
+  - README, infra docs, deployment strategy, prototype status, release checklist, document index, test cases 갱신.
+- 구현 내용:
+  - backend egress는 MariaDB 3306, MinIO 9000, kube-dns 53으로 제한하는 초안이다.
+  - MariaDB/MinIO ingress는 backend pod에서 오는 트래픽만 허용하는 초안이다.
+  - `TC-INFRA-005`로 NetworkPolicy draft 검증 항목을 추가했다.
+- 수정된 파일 및 관련 파일:
+  - `infra/k8s/networkpolicy.yaml`
+  - `infra/k8s/kustomization.yaml`
+  - `infra/k8s/README.md`
+  - `infra/helm/osmu/values.yaml`
+  - `infra/helm/osmu/templates/networkpolicy.yaml`
+  - `infra/helm/osmu/README.md`
+  - `scripts/verify-k8s-manifests.ps1`
+  - `scripts/verify-helm-chart.ps1`
+  - `scripts/verify-prototype-release.ps1`
+  - `scripts/write-mvp-audit.ps1`
+  - `scripts/write-mvp-release-decision.ps1`
+  - `scripts/verify-mvp-release-artifacts.ps1`
+  - `scripts/verify-mvp-release-decision.ps1`
+  - `README.md`
+  - `dev-docs/deployment-strategy.md`
+  - `dev-docs/document-index.md`
+  - `dev-docs/prototype-status.md`
+  - `dev-docs/mvp-release-checklist.md`
+  - `dev-docs/test-cases.md`
+- 검증 기록:
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-k8s-manifests.ps1` 통과. NetworkPolicy manifest 포함, files checked 11.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-helm-chart.ps1` 통과. NetworkPolicy template 포함, files checked 12.
+  - PowerShell script parse check 통과.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-mvp-release-decision.ps1` 통과.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-local.ps1 -SkipDocker -JavaHome ...` 승인 권한 실행 통과. OpenAPI/Kubernetes/Helm verifier, frontend unit 52 pass, frontend build, backend Gradle tests 포함.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-prototype-release.ps1 -JavaHome ...` 승인 권한 실행 통과. generatedAt `2026-06-14T00:10:46.7899363+09:00`, result `passed`, `scope.networkPolicies=included`.
+  - release audit evidence map에서 `TC-INFRA-005` NetworkPolicy draft PASS 확인.
+  - release decision에서 `NetworkPolicy draft included` PASS 확인.
+- 코드 리뷰: NetworkPolicy는 cluster CNI와 ingress controller label에 따라 실제 운영 적용 전 조정이 필요하다. 이번 초안은 DB/storage 보호를 먼저 명시하고 backend/frontend ingress는 보수적으로 유지했다.
+- 결과: NetworkPolicy draft가 Kubernetes/Helm manifest와 verifier, release report/audit/decision evidence에 포함됐다. 최신 release gate는 2026-06-14 00:10 KST 통과했고 현재 판정은 lightweight demo `GO`, durable MVP pilot `NO-GO`다.
+- 후속 메모: 실제 cluster/CNI/ingress controller별 NetworkPolicy 동작은 cluster install 전까지 미검증이다.
+- 추가 개발: TLS, secret rotation, 실제 Helm render/cluster install 검증, cluster-specific ingress policy.
+- 사용 skill/plugin: caveman skill ultra.
+
+### 2026-06-14 - Backend Container Hardening Draft 추가
+
+- 작업 시작 시간: 2026-06-14 00:11:00 +09:00
+- 작업 종료 시간: 2026-06-14 00:16:42 +09:00
+- 사용자 명령: 활성 목표인 현재까지 구현된 기능 기준 prototype 개발 계속.
+- 명령 해석: 외부 durable gate가 막힌 동안 backend image와 배포 spec의 기본 보안 실행 조건을 개선하라는 명령으로 인식.
+- 작업 방식: frontend nginx는 non-root 전환 시 별도 nginx 설정이 필요해 제외하고, 8080 포트를 쓰는 backend부터 non-root UID 10001 실행으로 전환했다.
+- 실행 내용:
+  - `osmu-backend/Dockerfile`에 `osmu` system user/group, `HOME=/home/osmu`, `USER 10001`, jar ownership 설정 추가.
+  - K8s backend Deployment에 pod/container securityContext 추가.
+  - Helm values/template에 backend pod/container securityContext 추가.
+  - `scripts/verify-container-hardening.ps1` 추가.
+  - `verify-local.ps1`, release report scope, audit, decision, artifact verifier에 `scope.containerHardening=included` 연결.
+  - README, document index, deployment strategy, prototype status, release checklist, infra docs, test cases 갱신.
+- 구현 내용:
+  - Backend container는 root 실행에 의존하지 않는 초안으로 변경됐다.
+  - Kubernetes/Helm draft는 `runAsNonRoot`, UID/GID/fsGroup 10001, `RuntimeDefault` seccomp, privilege escalation 차단, capabilities drop을 명시한다.
+  - `TC-INFRA-006`으로 backend container hardening 검증 항목을 추가했다.
+- 수정된 파일 및 관련 파일:
+  - `osmu-backend/Dockerfile`
+  - `infra/k8s/backend.yaml`
+  - `infra/helm/osmu/values.yaml`
+  - `infra/helm/osmu/templates/backend.yaml`
+  - `scripts/verify-container-hardening.ps1`
+  - `scripts/verify-local.ps1`
+  - `scripts/verify-prototype-release.ps1`
+  - `scripts/write-mvp-audit.ps1`
+  - `scripts/write-mvp-release-decision.ps1`
+  - `scripts/verify-mvp-release-artifacts.ps1`
+  - `scripts/verify-mvp-release-decision.ps1`
+  - `README.md`
+  - `dev-docs/document-index.md`
+  - `dev-docs/deployment-strategy.md`
+  - `dev-docs/prototype-status.md`
+  - `dev-docs/mvp-release-checklist.md`
+  - `dev-docs/test-cases.md`
+  - `infra/k8s/README.md`
+  - `infra/helm/osmu/README.md`
+- 검증 기록:
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-container-hardening.ps1` 통과.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-k8s-manifests.ps1` 통과.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-helm-chart.ps1` 통과.
+  - PowerShell script parse check 통과.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-mvp-release-decision.ps1` 통과.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-local.ps1 -SkipDocker -JavaHome ...` 승인 권한 실행 통과. container hardening verifier, frontend unit 52 pass, frontend build, backend Gradle tests 포함.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-prototype-release.ps1 -JavaHome ...` 승인 권한 실행 통과. generatedAt `2026-06-14T00:16:41.4204274+09:00`, result `passed`, `scope.containerHardening=included`.
+  - release audit evidence map에서 `TC-INFRA-006` Container hardening draft PASS 확인.
+  - release decision에서 `Container hardening draft included` PASS 확인.
+- 코드 리뷰: backend는 8080 포트와 writable home만 필요해 non-root 전환 위험이 낮다. Docker daemon이 없어 실제 image build/run은 아직 외부 gate에 남는다.
+- 결과: Backend non-root image draft와 Kubernetes/Helm security context가 verifier, release report/audit/decision evidence에 포함됐다. 최신 release gate는 2026-06-14 00:16 KST 통과했고 현재 판정은 lightweight demo `GO`, durable MVP pilot `NO-GO`다.
+- 후속 메모: Docker daemon이 켜지면 backend image build와 Docker integration smoke로 non-root runtime을 실제 검증해야 한다.
+- 추가 개발: frontend/nginx non-root hardening, image vulnerability scanning, SBOM, signed images.
+- 사용 skill/plugin: caveman skill ultra.
+
+### 2026-06-14 - Frontend Container Hardening Draft 추가
+
+- 작업 시작 시간: 2026-06-14 00:18:00 +09:00
+- 작업 종료 시간: 2026-06-14 00:25:21 +09:00
+- 사용자 명령: 활성 목표인 현재까지 구현된 기능 기준 prototype 개발 계속.
+- 명령 해석: backend만 non-root로 바뀐 상태에서 frontend/nginx 컨테이너도 같은 수준의 기본 hardening을 적용해 배포 초안 완성도를 높이라는 명령으로 인식.
+- 작업 방식: nginx root 권한 의존을 없애기 위해 privileged port 80 대신 container 내부 8080을 사용하고, Service는 기존처럼 80을 노출하도록 유지했다. nginx pid/temp path를 `/tmp`로 옮겨 non-root 실행 시 쓰기 권한 문제를 줄였다.
+- 실행 내용:
+  - `osmu-frontend/Dockerfile`을 non-root nginx UID/GID 101 실행으로 변경.
+  - `osmu-frontend/nginx.conf`를 full nginx config로 바꾸고 `pid /tmp/nginx.pid`, temp path `/tmp/nginx/*`, `listen 8080` 적용.
+  - K8s frontend Deployment에 pod/container securityContext 추가, containerPort를 8080으로 변경.
+  - Helm values/template에 frontend pod/container securityContext와 containerPort 8080 반영.
+  - Kubernetes/Helm/container hardening verifier를 frontend 기준까지 확장.
+  - README, prototype status, release checklist, deployment strategy, document index, infra docs, test cases, audit 문구 갱신.
+- 구현 내용:
+  - Frontend image는 nginx UID 101로 실행하며 root 또는 port 80 bind 권한에 의존하지 않는다.
+  - Kubernetes/Helm draft는 frontend에도 `runAsNonRoot`, UID/GID 101, `RuntimeDefault` seccomp, privilege escalation 차단, capabilities drop을 명시한다.
+  - `TC-INFRA-006`은 backend/frontend container hardening 검증 항목으로 확장됐다.
+- 수정된 파일 및 관련 파일:
+  - `osmu-frontend/Dockerfile`
+  - `osmu-frontend/nginx.conf`
+  - `infra/k8s/frontend.yaml`
+  - `infra/helm/osmu/values.yaml`
+  - `infra/helm/osmu/templates/frontend.yaml`
+  - `scripts/verify-container-hardening.ps1`
+  - `scripts/verify-k8s-manifests.ps1`
+  - `scripts/verify-helm-chart.ps1`
+  - `scripts/write-mvp-audit.ps1`
+  - `README.md`
+  - `dev-docs/prototype-status.md`
+  - `dev-docs/mvp-release-checklist.md`
+  - `dev-docs/deployment-strategy.md`
+  - `dev-docs/document-index.md`
+  - `dev-docs/test-cases.md`
+  - `infra/k8s/README.md`
+  - `infra/helm/osmu/README.md`
+- 검증 기록:
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-container-hardening.ps1` 통과.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-k8s-manifests.ps1` 통과.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-helm-chart.ps1` 통과.
+  - PowerShell script parse check 통과.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-local.ps1 -SkipDocker -JavaHome ...` 일반 sandbox에서는 Gradle wrapper 다운로드가 `Permission denied: getsockopt`로 실패했으나, 승인 권한 재실행은 통과. frontend unit 52 pass, frontend build, backend Gradle tests 포함.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-prototype-release.ps1 -JavaHome ...` 일반 sandbox에서는 같은 Gradle wrapper 네트워크 제한으로 실패 report가 생성됐으나, 승인 권한 재실행은 통과. generatedAt `2026-06-14T00:25:06.5503364+09:00`, result `passed`, `scope.containerHardening=included`.
+  - release audit evidence map에서 `TC-INFRA-006` Container hardening draft PASS 확인.
+  - release decision에서 `Container hardening draft included` PASS 확인.
+- 코드 리뷰: frontend Service port 80은 유지하고 containerPort만 8080으로 바꿔 ingress/service 외부 인터페이스 변화는 없다. Docker daemon이 없어 실제 nginx image build/run은 아직 외부 gate에 남는다.
+- 결과: Backend/frontend non-root image draft와 Kubernetes/Helm security context가 verifier, release report/audit/decision evidence에 포함됐다. 최신 release gate는 2026-06-14 00:25 KST 통과했고 현재 판정은 lightweight demo `GO`, durable MVP pilot `NO-GO`다.
+- 후속 메모: Docker daemon이 켜지면 frontend image build와 Docker integration smoke로 nginx non-root runtime을 실제 검증해야 한다.
+- 추가 개발: image vulnerability scanning, SBOM, signed images, TLS/secret rotation policy.
+- 사용 skill/plugin: caveman skill ultra.
+
+### 2026-06-14 - TLS Ingress Draft 추가
+
+- 작업 시작 시간: 2026-06-14 00:26:00 +09:00
+- 작업 종료 시간: 2026-06-14 00:32:35 +09:00
+- 사용자 명령: 활성 목표인 현재까지 구현된 기능 기준 prototype 개발 계속.
+- 명령 해석: B2B 배포형 storage prototype에서 HTTP-only ingress 상태를 줄이고, Kubernetes/Helm 배포 초안에 HTTPS 진입점 계약을 추가하라는 명령으로 인식.
+- 작업 방식: 인증서 실제 발급값은 repo에 넣지 않고, ingress가 참조할 TLS Secret 이름과 HTTPS redirect annotation만 명시했다. 실제 인증서 발급/회전은 cert-manager나 고객 cluster 정책으로 남겼다.
+- 실행 내용:
+  - `infra/k8s/ingress.yaml`에 `osmu-tls` TLS Secret 참조와 NGINX SSL redirect annotation 추가.
+  - Helm `values.yaml`의 ingress 기본값에 TLS host/secret과 SSL redirect annotation 추가.
+  - `scripts/verify-tls-ingress.ps1` 추가.
+  - Kubernetes/Helm verifier에 TLS ingress 조건 추가.
+  - `verify-local.ps1`, release report scope, audit, decision, artifact verifier, decision self-test에 `scope.tlsIngress=included` 연결.
+  - README, prototype status, release checklist, deployment strategy, document index, infra docs, test cases 갱신.
+- 구현 내용:
+  - Kubernetes/Helm draft는 `osmu.local` host와 `osmu-tls` Secret을 기준으로 HTTPS 진입점을 명시한다.
+  - NGINX ingress annotation `ssl-redirect`와 `force-ssl-redirect`를 기본값으로 켰다.
+  - `TC-INFRA-007`로 TLS ingress draft 검증 항목을 추가했다.
+- 수정된 파일 및 관련 파일:
+  - `infra/k8s/ingress.yaml`
+  - `infra/helm/osmu/values.yaml`
+  - `scripts/verify-tls-ingress.ps1`
+  - `scripts/verify-k8s-manifests.ps1`
+  - `scripts/verify-helm-chart.ps1`
+  - `scripts/verify-local.ps1`
+  - `scripts/verify-prototype-release.ps1`
+  - `scripts/write-mvp-audit.ps1`
+  - `scripts/write-mvp-release-decision.ps1`
+  - `scripts/verify-mvp-release-artifacts.ps1`
+  - `scripts/verify-mvp-release-decision.ps1`
+  - `README.md`
+  - `dev-docs/prototype-status.md`
+  - `dev-docs/mvp-release-checklist.md`
+  - `dev-docs/deployment-strategy.md`
+  - `dev-docs/document-index.md`
+  - `dev-docs/test-cases.md`
+  - `infra/k8s/README.md`
+  - `infra/helm/osmu/README.md`
+- 검증 기록:
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-tls-ingress.ps1` 통과.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-k8s-manifests.ps1` 통과.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-helm-chart.ps1` 통과.
+  - PowerShell script parse check 통과.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-mvp-release-decision.ps1` 통과.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-local.ps1 -SkipDocker -JavaHome ...` 승인 권한 실행 통과. TLS ingress verifier, frontend unit 52 pass, frontend build, backend Gradle tests 포함.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-prototype-release.ps1 -JavaHome ...` 승인 권한 실행 통과. generatedAt `2026-06-14T00:32:13.0890094+09:00`, result `passed`, `scope.tlsIngress=included`.
+  - release audit evidence map에서 `TC-INFRA-007` TLS ingress draft PASS 확인.
+  - release decision에서 `TLS ingress draft included` PASS 확인.
+- 코드 리뷰: TLS Secret은 실제 값 없이 이름만 참조하므로 secret 유출 위험은 없다. 다만 ingress controller가 NGINX가 아닐 경우 redirect annotation은 cluster별로 조정이 필요하다.
+- 결과: TLS ingress draft가 Kubernetes/Helm manifest와 verifier, release report/audit/decision evidence에 포함됐다. 최신 release gate는 2026-06-14 00:32 KST 통과했고 현재 판정은 lightweight demo `GO`, durable MVP pilot `NO-GO`다.
+- 후속 메모: 실제 pilot 전에는 `osmu-tls` Secret 생성, cert-manager/issuer 선택, 인증서 회전 정책, 실제 HTTPS 접속 smoke가 필요하다.
+- 추가 개발: certificate rotation policy, secret rotation policy, image vulnerability scanning, SBOM, signed images.
+- 사용 skill/plugin: caveman skill ultra.
+
+### 2026-06-14 - Secret Rotation Policy Draft 추가
+
+- 작업 시작 시간: 2026-06-14 00:33:00 +09:00
+- 작업 종료 시간: 2026-06-14 00:40:04 +09:00
+- 사용자 명령: 활성 목표인 현재까지 구현된 기능 기준 prototype 개발 계속.
+- 명령 해석: TLS ingress까지 생긴 상태에서 B2B pilot handoff 전에 필요한 secret/certificate rotation 계약을 문서와 verifier, release evidence에 포함하라는 명령으로 인식.
+- 작업 방식: 실제 secret 값은 repo, worklog, release artifact에 남기지 않고, rotation 대상/트리거/절차/특수 케이스만 정책 문서로 고정했다.
+- 실행 내용:
+  - `dev-docs/secret-rotation-policy.md` 추가.
+  - `scripts/verify-secret-rotation-policy.ps1` 추가.
+  - `verify-local.ps1`, release report scope, audit, decision, artifact verifier, decision self-test에 `scope.secretRotationPolicy=included` 연결.
+  - README, document index, prototype status, release checklist, deployment strategy, security design, infra docs, test cases 갱신.
+- 구현 내용:
+  - Rotation policy는 admin password, JWT secret, access key encryption key, MariaDB/MinIO credentials, `osmu-tls`, user access key를 범위로 둔다.
+  - JWT secret 변경 시 active session invalidation, access key encryption key 변경 시 key 재발급/재암호화 필요성을 명시했다.
+  - `TC-INFRA-008`로 secret/certificate rotation policy 검증 항목을 추가했다.
+- 수정된 파일 및 관련 파일:
+  - `dev-docs/secret-rotation-policy.md`
+  - `scripts/verify-secret-rotation-policy.ps1`
+  - `scripts/verify-local.ps1`
+  - `scripts/verify-prototype-release.ps1`
+  - `scripts/write-mvp-audit.ps1`
+  - `scripts/write-mvp-release-decision.ps1`
+  - `scripts/verify-mvp-release-artifacts.ps1`
+  - `scripts/verify-mvp-release-decision.ps1`
+  - `README.md`
+  - `dev-docs/prototype-status.md`
+  - `dev-docs/mvp-release-checklist.md`
+  - `dev-docs/deployment-strategy.md`
+  - `dev-docs/security-design.md`
+  - `dev-docs/document-index.md`
+  - `dev-docs/test-cases.md`
+  - `infra/k8s/README.md`
+  - `infra/helm/osmu/README.md`
+- 검증 기록:
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-secret-rotation-policy.ps1` 통과.
+  - PowerShell script parse check 통과.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-local.ps1 -SkipDocker -JavaHome ...` 승인 권한 실행 통과. secret rotation verifier, TLS ingress verifier, frontend unit 52 pass, frontend build, backend Gradle tests 포함.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-prototype-release.ps1 -JavaHome ...` 승인 권한 실행 통과. generatedAt `2026-06-14T00:39:40.4572058+09:00`, result `passed`, `scope.secretRotationPolicy=included`.
+  - release audit evidence map에서 `TC-INFRA-008` Secret rotation policy draft PASS 확인.
+  - release decision에서 `Secret rotation policy draft included` PASS 확인.
+- 코드 리뷰: 정책은 실제 rotation 자동화 구현이 아니라 pilot 운영 계약이다. `OSMU_ACCESS_KEY_SECRET_ENCRYPTION_KEY`는 현재 구현상 무중단 회전이 어렵기 때문에 MVP-safe 방식으로 access key 재발급/재암호화를 명시한 점이 맞다.
+- 결과: Secret/certificate rotation policy draft가 verifier, release report/audit/decision evidence에 포함됐다. 최신 release gate는 2026-06-14 00:39 KST 통과했고 현재 판정은 lightweight demo `GO`, durable MVP pilot `NO-GO`다.
+- 후속 메모: 실제 pilot 전에는 secret manager 선택, cert-manager issuer 설정, rotation 실행 smoke, rotation event audit 모델을 확정해야 한다.
+- 추가 개발: rotation event audit API, image vulnerability scanning, SBOM, signed images, backup/restore drill.
+- 사용 skill/plugin: caveman skill ultra.
+
+### 2026-06-14 - Backup Restore Drill Draft 추가
+
+- 작업 시작 시간: 2026-06-14 00:41:00 +09:00
+- 작업 종료 시간: 2026-06-14 00:46:11 +09:00
+- 사용자 명령: 활성 목표인 현재까지 구현된 기능 기준 prototype 개발 계속.
+- 명령 해석: Durable storage prototype로 가기 위해 실제 백업/복구 실행 전 필요한 복구 drill 계약과 검증 기준을 추가하라는 명령으로 인식.
+- 작업 방식: Docker/MariaDB/MinIO가 아직 외부 gate로 막혀 있으므로 실제 restore는 실행하지 않고, pilot handoff용 runbook, acceptance criteria, release evidence를 먼저 고정했다.
+- 실행 내용:
+  - `dev-docs/backup-restore-drill.md` 추가.
+  - `scripts/verify-backup-restore-drill.ps1` 추가.
+  - `dev-docs/backup-recovery.md`와 `dev-docs/deployment-strategy.md`에서 drill 문서 참조 추가.
+  - `verify-local.ps1`, release report scope, audit, decision, artifact verifier, decision self-test에 `scope.backupRestoreDrill=included` 연결.
+  - README, document index, prototype status, release checklist, test cases 갱신.
+- 구현 내용:
+  - Drill은 MariaDB metadata restore, MinIO object restore, runtime config/Secret inventory, post-restore API/S3 smoke를 범위로 둔다.
+  - MVP pilot 목표 RPO 24h, RTO 4h와 restore acceptance criteria를 문서화했다.
+  - `TC-INFRA-009`로 backup restore drill draft 검증 항목을 추가했다.
+- 수정된 파일 및 관련 파일:
+  - `dev-docs/backup-restore-drill.md`
+  - `dev-docs/backup-recovery.md`
+  - `dev-docs/deployment-strategy.md`
+  - `scripts/verify-backup-restore-drill.ps1`
+  - `scripts/verify-local.ps1`
+  - `scripts/verify-prototype-release.ps1`
+  - `scripts/write-mvp-audit.ps1`
+  - `scripts/write-mvp-release-decision.ps1`
+  - `scripts/verify-mvp-release-artifacts.ps1`
+  - `scripts/verify-mvp-release-decision.ps1`
+  - `README.md`
+  - `dev-docs/document-index.md`
+  - `dev-docs/prototype-status.md`
+  - `dev-docs/mvp-release-checklist.md`
+  - `dev-docs/test-cases.md`
+- 검증 기록:
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-backup-restore-drill.ps1` 통과.
+  - PowerShell script parse check 통과.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-local.ps1 -SkipDocker -JavaHome ...` 승인 권한 실행 통과. backup restore verifier, secret rotation verifier, TLS ingress verifier, frontend unit 52 pass, frontend build, backend Gradle tests 포함.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-prototype-release.ps1 -JavaHome ...` 승인 권한 실행 통과. generatedAt `2026-06-14T00:45:48.0251680+09:00`, result `passed`, `scope.backupRestoreDrill=included`.
+  - release audit evidence map에서 `TC-INFRA-009` Backup restore drill draft PASS 확인.
+  - release decision에서 `Backup restore drill draft included` PASS 확인.
+- 코드 리뷰: 이번 작업은 실행 가능한 복구 자동화가 아니라 runbook과 gate다. 실제 복구 검증은 Docker daemon 또는 target Kubernetes cluster가 준비된 후에만 완료 가능하다.
+- 결과: Backup/restore drill draft가 verifier, release report/audit/decision evidence에 포함됐다. 최신 release gate는 2026-06-14 00:45 KST 통과했고 현재 판정은 lightweight demo `GO`, durable MVP pilot `NO-GO`다.
+- 후속 메모: Docker/MariaDB/MinIO gate가 풀리면 실제 MariaDB dump restore, MinIO object restore, object count/byte reconciliation smoke를 실행해야 한다.
+- 추가 개발: executable restore smoke, backup status API/UI, image vulnerability scanning, SBOM, signed images.
+- 사용 skill/plugin: caveman skill ultra.
+
+### 2026-06-14 - Backup Readiness API/UI 추가
+
+- 작업 시작 시간: 2026-06-14 00:47:00 +09:00
+- 작업 종료 시간: 2026-06-14 00:59:01 +09:00
+- 사용자 명령: 활성 목표인 현재까지 구현된 기능 기준 prototype 개발 계속.
+- 명령 해석: Docker/MariaDB/MinIO 같은 외부 durable gate가 아직 막혀 있으므로, 실제 durable backup을 완료한 것처럼 보이지 않게 하면서 운영자가 현재 백업/복구 준비 상태를 볼 수 있는 product 기능을 추가하라는 명령으로 인식.
+- 작업 방식: 실제 백업 실행 자동화 대신 admin API와 dashboard panel을 추가해 lightweight demo의 한계, RPO/RTO 목표, runbook 존재, restore drill 미실행 상태, durable mode 전환 필요사항을 명시적으로 노출했다.
+- 실행 내용:
+  - `GET /api/admin/backup/status` 추가.
+  - `BackupStatusResponse` record 추가.
+  - Admin dashboard에 `backup-status-panel` 추가.
+  - Frontend API wrapper `getBackupStatus` 추가.
+  - OpenAPI contract와 verifier에 `getBackupStatus` 추가.
+  - 운영/테스트/상태/체크리스트/README/worklog 문서 갱신.
+  - MVP audit evidence map에 `TC-BACKUP-000` 추가.
+- 구현 내용:
+  - Lightweight demo는 `DRILL_PENDING`을 반환하고, `MariaDB metadata mode is not enabled.`, `MinIO object storage mode is not enabled.`, `Restore drill has not been executed in this runtime.`를 pending gate로 노출한다.
+  - Admin portal은 backup readiness, metadata/object store mode, RPO 24h, RTO 4h, runbook/restore drill 상태를 표시한다.
+  - `TC-BACKUP-000`으로 backup readiness API/UI test case를 추가했다.
+- 수정된 파일 및 관련 파일:
+  - `osmu-backend/src/main/java/com/example/osmu/admin/AdminController.java`
+  - `osmu-backend/src/main/java/com/example/osmu/admin/BackupStatusResponse.java`
+  - `osmu-backend/src/test/java/com/example/osmu/admin/AdminBackupStatusControllerTest.java`
+  - `osmu-frontend/src/services/api.js`
+  - `osmu-frontend/src/views/HomeView.vue`
+  - `osmu-frontend/src/views/HomeView.test.js`
+  - `osmu-frontend/src/assets/main.css`
+  - `dev-docs/openapi-mvp.json`
+  - `scripts/verify-openapi-contract.ps1`
+  - `scripts/write-mvp-audit.ps1`
+  - `README.md`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/operation-monitoring.md`
+  - `dev-docs/prototype-status.md`
+  - `dev-docs/mvp-release-checklist.md`
+  - `dev-docs/document-index.md`
+  - `dev-docs/test-cases.md`
+- 검증 기록:
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-openapi-contract.ps1` 통과. Operations 78, frontend API functions 59.
+  - `npm.cmd run test:unit` 통과. 52 pass.
+  - `npm.cmd run build` 통과.
+  - `.\gradlew.bat test` 승인 권한 실행 통과. `BUILD SUCCESSFUL`.
+  - `Get-ChildItem -Recurse -Filter *.ps1 | ForEach-Object { [scriptblock]::Create(...) }` 통과.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-local.ps1 -SkipDocker -JavaHome ...` 일반 sandbox는 Gradle wrapper download가 `Permission denied: getsockopt`로 실패했으나, 승인 권한 재실행은 통과.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-prototype-release.ps1 -JavaHome ...` 승인 권한 실행 통과. generatedAt `2026-06-14T00:56:39.5257058+09:00`, result `passed`.
+  - release audit evidence map에서 `TC-BACKUP-000` Backup readiness API PASS 확인.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\stop-local-prototype.ps1`와 `start-local-prototype.ps1 -JavaHome ...`로 local runtime 재시작.
+  - 재시작 후 `GET /api/admin/backup/status` 직접 호출 통과. `status=DRILL_PENDING`, `metadataStore=in-memory`, `objectStore=in-memory`, `restoreDrillExecuted=false`.
+  - 재시작 후 `powershell -ExecutionPolicy Bypass -File .\scripts\verify-lightweight-prototype.ps1` 통과.
+- 코드 리뷰: API가 실제 backup 완료를 주장하지 않고 `DRILL_PENDING`과 pending gate를 반환하므로 MVP demo와 durable pilot 상태를 구분한다. Dashboard는 운영자가 다음 gate를 바로 볼 수 있게 하지만, 실제 backup job history/restore history persistence는 아직 없다.
+- 결과: Backup readiness API/UI가 prototype에 포함됐고 최신 release gate는 2026-06-14 00:56 KST 통과했다. 현재 판정은 lightweight demo `GO`, durable MVP pilot `NO-GO`다.
+- 후속 메모: Docker/MariaDB/MinIO gate가 풀리면 이 API가 실제 backup job history, last backup time, last restore drill time을 보여주도록 repository/table과 restore smoke를 연결해야 한다.
+- 추가 개발: executable restore smoke, backup job scheduler/status persistence, restore drill history, image vulnerability scanning, SBOM, signed images.
+- 사용 skill/plugin: caveman skill ultra.
+
+### 2026-06-14 - Prometheus Observability Draft 추가
+
+- 작업 시작 시간: 2026-06-14 01:00:00 +09:00
+- 작업 종료 시간: 2026-06-14 01:07:52 +09:00
+- 사용자 명령: 활성 목표인 현재까지 구현된 기능 기준 prototype 개발 계속.
+- 명령 해석: Docker/MariaDB/MinIO 외부 gate가 막힌 상태에서 B2B prototype 운영성에 필요한 metrics scrape 기반을 실제 runtime과 배포 초안에 추가하라는 명령으로 인식.
+- 작업 방식: 이미 포함된 Spring Boot Actuator에 Prometheus registry를 연결하고 `/actuator/prometheus`를 노출했다. Kubernetes/Helm draft에는 Prometheus scrape annotation을 추가하고 verifier/release evidence에 별도 scope를 붙였다.
+- 실행 내용:
+  - Backend Gradle에 `io.micrometer:micrometer-registry-prometheus` runtime dependency 추가.
+  - `management.endpoints.web.exposure.include`에 `prometheus` 추가.
+  - Kubernetes backend Service에 `prometheus.io/scrape`, `prometheus.io/path`, `prometheus.io/port` annotation 추가.
+  - Helm `backend.metrics` values와 backend Service annotation template 추가.
+  - `scripts/verify-prometheus-observability.ps1` 추가.
+  - `verify-local.ps1`, `verify-prototype-release.ps1`, release audit/decision/artifact/self-test에 `scope.prometheusObservability=included` 연결.
+  - README, operation-monitoring, deployment strategy, local-dev, infra docs, prototype status, release checklist, test cases 갱신.
+- 구현 내용:
+  - Local backend runtime에서 `GET /actuator/prometheus`가 HTTP 200과 Prometheus text metrics를 반환한다.
+  - `TC-INFRA-010`으로 Prometheus observability draft 검증 항목을 추가했다.
+  - Release evidence가 Prometheus observability draft를 lightweight demo gate의 일부로 기록한다.
+- 수정된 파일 및 관련 파일:
+  - `osmu-backend/build.gradle`
+  - `osmu-backend/src/main/resources/application.yaml`
+  - `infra/k8s/backend.yaml`
+  - `infra/helm/osmu/values.yaml`
+  - `infra/helm/osmu/templates/backend.yaml`
+  - `scripts/verify-prometheus-observability.ps1`
+  - `scripts/verify-k8s-manifests.ps1`
+  - `scripts/verify-helm-chart.ps1`
+  - `scripts/verify-local.ps1`
+  - `scripts/verify-prototype-release.ps1`
+  - `scripts/write-mvp-audit.ps1`
+  - `scripts/write-mvp-release-decision.ps1`
+  - `scripts/verify-mvp-release-artifacts.ps1`
+  - `scripts/verify-mvp-release-decision.ps1`
+  - `README.md`
+  - `dev-docs/document-index.md`
+  - `dev-docs/operation-monitoring.md`
+  - `dev-docs/local-dev-env.md`
+  - `dev-docs/deployment-strategy.md`
+  - `dev-docs/prototype-status.md`
+  - `dev-docs/mvp-release-checklist.md`
+  - `dev-docs/test-cases.md`
+  - `infra/k8s/README.md`
+  - `infra/helm/osmu/README.md`
+- 검증 기록:
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-prometheus-observability.ps1` 통과.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-k8s-manifests.ps1` 통과.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-helm-chart.ps1` 통과.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-mvp-release-decision.ps1` 통과.
+  - 일반 sandbox에서 `.\gradlew.bat test`와 `verify-local.ps1`은 Gradle wrapper download가 `Permission denied: getsockopt`로 실패했으나, 승인 권한 재실행은 통과.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-local.ps1 -SkipDocker -JavaHome ...` 승인 권한 실행 통과. Prometheus observability verifier, frontend unit 52 pass, frontend build, backend Gradle tests 포함.
+  - `stop-local-prototype.ps1` 후 `start-local-prototype.ps1 -JavaHome ...` 승인 권한 실행으로 runtime 재시작.
+  - `GET http://localhost:8080/actuator/prometheus` 직접 호출 통과. HTTP 200, `http_server_requests_active_seconds` metric 확인.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-prototype-release.ps1 -JavaHome ...` 승인 권한 실행 통과. generatedAt `2026-06-14T01:07:26.8414326+09:00`, result `passed`, `scope.prometheusObservability=included`.
+  - release audit evidence map에서 `TC-INFRA-010` Prometheus observability draft PASS 확인.
+- 코드 리뷰: Prometheus endpoint는 Actuator 보안 분리 없이 같은 앱 port에 노출되므로 pilot 환경에서는 ingress/network policy로 외부 노출 범위를 제한해야 한다. Kubernetes/Helm annotation은 간단한 scrape 계약이며 Prometheus Operator 환경에서는 ServiceMonitor로 전환 가능하다.
+- 결과: Prometheus metrics endpoint와 배포 scrape 계약이 prototype/release gate에 포함됐다. 최신 release gate는 2026-06-14 01:07 KST 통과했고 현재 판정은 lightweight demo `GO`, durable MVP pilot `NO-GO`다.
+- 후속 메모: Docker/MariaDB/MinIO gate가 풀리면 실제 MinIO/MariaDB metrics, Prometheus scrape, Grafana dashboard, AlertManager rule까지 target 환경에서 검증해야 한다.
+- 추가 개발: Grafana dashboard draft, AlertManager rules, ServiceMonitor template, image vulnerability scanning, SBOM, signed images.
+- 사용 skill/plugin: caveman skill ultra.
+
+### 2026-06-14 - Monitoring Artifacts Draft 추가
+
+- 작업 시작 시간: 2026-06-14 01:11:00 +09:00
+- 작업 종료 시간: 2026-06-14 01:22:21 +09:00
+- 사용자 명령: `/Caveman ultra` 이후 활성 목표인 현재까지 구현된 기능 기준 prototype 개발 계속.
+- 명령 해석: 토큰을 아끼는 응답 모드를 유지하면서, Docker/MariaDB/MinIO 외부 gate가 막힌 상태에서도 B2B pilot handoff에 필요한 monitoring alert/dashboard 산출물을 추가하라는 작업으로 인식.
+- 작업 방식: 실제 target Prometheus/Grafana 검증을 완료한 것처럼 쓰지 않고, repository 안에 초안 artifact와 verifier를 추가해 release evidence가 `scope.monitoringArtifacts=included`로 추적하게 했다.
+- 실행 내용:
+  - `infra/monitoring`에 Prometheus alert rule draft와 Grafana overview dashboard draft 추가.
+  - Monitoring artifact verifier 추가.
+  - `verify-local.ps1`, `verify-prototype-release.ps1`, audit/decision/artifact verifier에 `monitoringArtifacts` scope 연결.
+  - README, document index, operation monitoring, release checklist, prototype status, test cases, infra README 문서 갱신.
+  - `TC-INFRA-011` 추가.
+- 구현 내용:
+  - Prometheus rule draft는 backend down, high error rate, p95 latency, object/version retention purge failure, multipart cleanup failure, backup restore drill pending handoff alert를 포함한다.
+  - Grafana dashboard draft는 backend up, HTTP requests, HTTP p95 latency, JVM memory, retention purge failures, MVP durable pilot notes panel을 포함한다.
+  - Release audit evidence map과 decision gate가 monitoring artifact 포함 여부를 별도 PASS 항목으로 기록한다.
+- 수정된 파일 및 관련 파일:
+  - `infra/monitoring/README.md`
+  - `infra/monitoring/prometheus-rules.yaml`
+  - `infra/monitoring/grafana-dashboard-osmu.json`
+  - `scripts/verify-monitoring-artifacts.ps1`
+  - `scripts/verify-local.ps1`
+  - `scripts/verify-prototype-release.ps1`
+  - `scripts/write-mvp-audit.ps1`
+  - `scripts/write-mvp-release-decision.ps1`
+  - `scripts/verify-mvp-release-decision.ps1`
+  - `scripts/verify-mvp-release-artifacts.ps1`
+  - `README.md`
+  - `dev-docs/document-index.md`
+  - `dev-docs/operation-monitoring.md`
+  - `dev-docs/prototype-status.md`
+  - `dev-docs/mvp-release-checklist.md`
+  - `dev-docs/test-cases.md`
+  - `infra/k8s/README.md`
+  - `infra/helm/osmu/README.md`
+- 검증 기록:
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-monitoring-artifacts.ps1` 통과. Grafana panels 6.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-mvp-release-decision.ps1` 통과.
+  - `git diff --check` 통과. CRLF warning만 표시.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-local.ps1 -SkipDocker -JavaHome ...` 일반 sandbox 실행은 Gradle wrapper download가 `Permission denied: getsockopt`로 실패.
+  - 동일 `verify-local.ps1` 승인 권한 재실행 통과. Monitoring artifacts verifier, frontend unit 52 pass, frontend build, backend Gradle tests 포함.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-prototype-release.ps1 -JavaHome ...` 승인 권한 실행 통과. generatedAt `2026-06-14T01:20:53.8736536+09:00`, result `passed`, `scope.monitoringArtifacts=included`.
+  - Release audit evidence map에서 `TC-INFRA-011` Monitoring artifacts draft PASS 확인.
+  - Release decision은 lightweight demo `GO`, durable MVP pilot `NO-GO`.
+  - `scripts\verify-mvp-release-artifacts.ps1`가 최신 release report/audit/decision 동기화 통과.
+- 코드 리뷰: Alert/dashboard artifact는 운영 handoff 계약으로는 충분하지만, 실제 운영 품질 증거는 아니다. Target cluster에서 Prometheus scrape, Grafana import, AlertManager routing, 실제 트래픽 기반 threshold 조정이 필요하다. `OsmuBackupRestoreDrillPending`은 의도적으로 handoff reminder 성격이라 production 전에는 실제 backup metric으로 교체해야 한다.
+- 결과: Monitoring artifacts draft가 prototype/release gate에 포함됐다. 최신 release gate는 2026-06-14 01:20 KST 통과했고 현재 판정은 lightweight demo `GO`, durable MVP pilot `NO-GO`다.
+- 후속 메모: Docker/MariaDB/MinIO gate가 풀리면 target runtime metrics를 Prometheus가 실제 scrape하는지 확인하고 Grafana dashboard/alert threshold를 실제 데이터로 조정해야 한다.
+- 추가 개발: Prometheus Operator `PrometheusRule`/`ServiceMonitor` template, AlertManager route, MinIO/MariaDB metrics, image vulnerability scanning, SBOM, signed images.
+- 사용 skill/plugin: caveman skill ultra.
+
+### 2026-06-14 - Prometheus Operator Draft 추가
+
+- 작업 시작 시간: 2026-06-14 01:23:00 +09:00
+- 작업 종료 시간: 2026-06-14 01:30:34 +09:00
+- 사용자 명령: 활성 목표인 현재까지 구현된 기능 기준 prototype 개발 계속.
+- 명령 해석: Monitoring artifact 초안 다음 단계로, Kubernetes/Helm pilot 배포에서 Prometheus Operator를 쓰는 환경에 연결할 수 있는 선택형 리소스를 추가하라는 작업으로 인식.
+- 작업 방식: `monitoring.coreos.com/v1` CRD가 없는 cluster의 기본 배포가 깨지지 않도록 plain K8s `monitoring-operator.yaml`은 `kustomization.yaml`에 포함하지 않았고, Helm template은 `monitoring.operator.enabled=false` 기본값으로 조건부 렌더링하게 했다.
+- 실행 내용:
+  - Kubernetes optional `ServiceMonitor`/`PrometheusRule` draft 추가.
+  - Helm optional `ServiceMonitor`/`PrometheusRule` template과 values 추가.
+  - `scripts/verify-prometheus-operator-draft.ps1` 추가.
+  - K8s/Helm/local/release verifiers와 audit/decision/artifact evidence에 `scope.prometheusOperatorDraft=included` 연결.
+  - README, document index, operation monitoring, infra README, prototype status, release checklist, test cases, worklog 갱신.
+- 구현 내용:
+  - `infra/k8s/monitoring-operator.yaml`은 `/actuator/prometheus` scrape용 `ServiceMonitor`와 backend down/error-rate/p95 latency `PrometheusRule`을 포함한다.
+  - `infra/helm/osmu/templates/monitoring-operator.yaml`은 `monitoring.operator.enabled=true`일 때만 같은 리소스를 렌더링한다.
+  - `TC-INFRA-012`로 Prometheus Operator draft 검증 항목을 추가했다.
+- 수정된 파일 및 관련 파일:
+  - `infra/k8s/monitoring-operator.yaml`
+  - `infra/helm/osmu/values.yaml`
+  - `infra/helm/osmu/templates/monitoring-operator.yaml`
+  - `infra/monitoring/README.md`
+  - `infra/k8s/README.md`
+  - `infra/helm/osmu/README.md`
+  - `scripts/verify-prometheus-operator-draft.ps1`
+  - `scripts/verify-k8s-manifests.ps1`
+  - `scripts/verify-helm-chart.ps1`
+  - `scripts/verify-local.ps1`
+  - `scripts/verify-prototype-release.ps1`
+  - `scripts/write-mvp-audit.ps1`
+  - `scripts/write-mvp-release-decision.ps1`
+  - `scripts/verify-mvp-release-decision.ps1`
+  - `scripts/verify-mvp-release-artifacts.ps1`
+  - `README.md`
+  - `dev-docs/document-index.md`
+  - `dev-docs/operation-monitoring.md`
+  - `dev-docs/prototype-status.md`
+  - `dev-docs/mvp-release-checklist.md`
+  - `dev-docs/test-cases.md`
+- 검증 기록:
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-prometheus-operator-draft.ps1` 통과.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-k8s-manifests.ps1` 통과. Files checked 12.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-helm-chart.ps1` 통과. Files checked 13.
+  - PowerShell script parse check 통과.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-mvp-release-decision.ps1` 통과.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-monitoring-artifacts.ps1` 통과.
+  - `git diff --check` 통과. CRLF warning만 표시.
+  - `verify-local.ps1 -SkipDocker -JavaHome ...` 일반 sandbox 실행은 Gradle wrapper download가 `Permission denied: getsockopt`로 실패.
+  - 동일 `verify-local.ps1` 승인 권한 재실행 통과. Prometheus Operator draft verifier, frontend unit 52 pass, frontend build, backend Gradle tests 포함.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-prototype-release.ps1 -JavaHome ...` 승인 권한 실행 통과. generatedAt `2026-06-14T01:30:04.5818356+09:00`, result `passed`, `scope.prometheusOperatorDraft=included`.
+  - Release audit evidence map에서 `TC-INFRA-012` Prometheus Operator draft PASS 확인.
+  - Release decision은 lightweight demo `GO`, durable MVP pilot `NO-GO`.
+- 코드 리뷰: Operator 리소스는 CRD 의존성이 있으므로 기본 `kustomization.yaml`에서 제외한 선택형 구조가 안전하다. Helm도 기본 disabled라 기존 install skeleton이 깨지지 않는다. 현재 PrometheusRule은 backend 핵심 alert만 포함하며 운영 환경에서는 `infra/monitoring/prometheus-rules.yaml`의 전체 alert와 label/route 정책을 맞춰 확장해야 한다.
+- 결과: Prometheus Operator draft가 prototype/release gate에 포함됐다. 최신 release gate는 2026-06-14 01:30 KST 통과했고 현재 판정은 lightweight demo `GO`, durable MVP pilot `NO-GO`다.
+- 후속 메모: target cluster에 Prometheus Operator CRD가 설치되면 `monitoring.operator.enabled=true`로 Helm render/apply를 검증하고 실제 Prometheus target discovery를 확인해야 한다.
+- 추가 개발: AlertManager route, full PrometheusRule sync, MinIO/MariaDB metrics, image vulnerability scanning, SBOM, signed images.
+- 사용 skill/plugin: caveman skill ultra.
+
+### 2026-06-14 - Prototype CI Workflow Draft 추가
+
+- 작업 시작 시간: 2026-06-14 01:31:00 +09:00
+- 작업 종료 시간: 2026-06-14 01:37:06 +09:00
+- 사용자 명령: 활성 목표인 현재까지 구현된 기능 기준 prototype 개발 계속.
+- 명령 해석: 현재 prototype 검증 범위가 커졌으므로 로컬 실행뿐 아니라 PR/push 시 반복 가능한 lightweight CI gate 초안을 추가하라는 작업으로 인식.
+- 작업 방식: 기존 `verify-local.ps1`가 Windows 전용 명령(`npm.cmd`, `gradlew.bat`)을 사용하므로 GitHub Actions runner를 `windows-latest`로 정하고 Docker 없는 lightweight gate만 실행하게 했다.
+- 실행 내용:
+  - `.github/workflows/prototype-ci.yml` 추가.
+  - `scripts/verify-ci-workflow.ps1` 추가.
+  - `verify-local.ps1`, `verify-prototype-release.ps1`, audit/decision/artifact/self-test에 `scope.ciWorkflow=included` 연결.
+  - README, document index, prototype status, release checklist, test cases, worklog 갱신.
+  - `TC-CI-001` 추가.
+- 구현 내용:
+  - CI workflow는 push, pull request, workflow dispatch에서 실행된다.
+  - Temurin JDK 17과 Node.js 24를 설정하고 frontend `npm ci` 후 `.\scripts\verify-local.ps1 -SkipDocker`를 실행한다.
+  - Workflow는 Docker/MariaDB/MinIO, real S3 clients, Browser E2E를 요구하지 않는 lightweight prototype gate로 한정했다.
+- 수정된 파일 및 관련 파일:
+  - `.github/workflows/prototype-ci.yml`
+  - `scripts/verify-ci-workflow.ps1`
+  - `scripts/verify-local.ps1`
+  - `scripts/verify-prototype-release.ps1`
+  - `scripts/write-mvp-audit.ps1`
+  - `scripts/write-mvp-release-decision.ps1`
+  - `scripts/verify-mvp-release-decision.ps1`
+  - `scripts/verify-mvp-release-artifacts.ps1`
+  - `README.md`
+  - `dev-docs/document-index.md`
+  - `dev-docs/prototype-status.md`
+  - `dev-docs/mvp-release-checklist.md`
+  - `dev-docs/test-cases.md`
+- 검증 기록:
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-ci-workflow.ps1` 통과.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-mvp-release-decision.ps1` 통과.
+  - PowerShell script parse check 통과.
+  - `git diff --check` 통과. CRLF warning만 표시.
+  - `verify-local.ps1 -SkipDocker -JavaHome ...` 일반 sandbox 실행은 Gradle wrapper download가 `Permission denied: getsockopt`로 실패.
+  - 동일 `verify-local.ps1` 승인 권한 재실행 통과. CI workflow verifier, frontend unit 52 pass, frontend build, backend Gradle tests 포함.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-prototype-release.ps1 -JavaHome ...` 승인 권한 실행 통과. generatedAt `2026-06-14T01:36:35.8586140+09:00`, result `passed`, `scope.ciWorkflow=included`.
+  - Release audit evidence map에서 `TC-CI-001` Prototype CI workflow PASS 확인.
+  - Release decision은 lightweight demo `GO`, durable MVP pilot `NO-GO`.
+  - `verify-mvp-release-artifacts.ps1` 최신 release report/audit/decision 동기화 통과.
+- 코드 리뷰: CI workflow는 현재 scripts가 Windows 기준이어서 `windows-latest`가 맞다. Docker 없는 gate라 PR feedback은 빠르고 안정적이지만 durable pilot evidence는 아니다. Docker/real S3/Browser gate는 별도 workflow나 manual release gate로 분리해야 한다.
+- 결과: GitHub Actions lightweight prototype CI draft가 release gate에 포함됐다. 최신 release gate는 2026-06-14 01:36 KST 통과했고 현재 판정은 lightweight demo `GO`, durable MVP pilot `NO-GO`다.
+- 후속 메모: GitHub에 push 후 실제 Actions run 결과를 확인해야 CI 실행 자체의 외부 evidence가 생긴다.
+- 추가 개발: Docker integration CI/manual workflow, real S3 client CI job, Browser E2E job, image vulnerability scanning, SBOM, signed images.
+- 사용 skill/plugin: caveman skill ultra.
+
+### 2026-06-14 - Durable Docker CI Workflow Draft 추가
+
+- 작업 시작 시간: 2026-06-14 01:38:00 +09:00
+- 작업 종료 시간: 2026-06-14 01:44:08 +09:00
+- 사용자 명령: 활성 목표인 현재까지 구현된 기능 기준 prototype 개발 계속. `/Caveman ultra`로 응답 압축 유지.
+- 명령 해석: 로컬 Docker daemon이 없는 상태에서도 durable MVP gate를 외부 GitHub runner에서 반복 검증할 수 있도록 수동 실행 Docker integration workflow 초안을 추가하라는 작업으로 인식.
+- 작업 방식: 기존 PR/push lightweight CI와 분리해 durable Docker 검증은 `workflow_dispatch` 전용으로 만들었다. Ubuntu runner에서 Linux container 기반 MariaDB/MinIO smoke를 실행하도록 하고, 실패 시 compose log를 수집한 뒤 항상 cleanup하도록 했다.
+- 실행 내용:
+  - `.github/workflows/durable-docker-ci.yml` 추가.
+  - `scripts/verify-docker-integration.ps1` 경로 기본값과 PowerShell 재호출 방식을 cross-platform에 맞게 조정.
+  - `scripts/verify-ci-workflow.ps1`가 lightweight CI와 durable Docker CI를 함께 검증하도록 확장.
+  - release/audit/decision/artifact verifier에 `scope.durableDockerCiWorkflow=included` 연결.
+  - README, document index, prototype status, release checklist, test cases, worklog 갱신.
+  - `TC-CI-002` 추가.
+- 구현 내용:
+  - Durable Docker workflow는 `workflow_dispatch`만 허용해 PR/push gate를 막지 않는다.
+  - Workflow는 `ubuntu-latest`, timeout 45분, checkout, `pwsh` 기반 `scripts/verify-docker-integration.ps1` 실행, 실패 로그 출력, `docker compose down -v --remove-orphans` cleanup을 포함한다.
+  - Release gate report는 `durableDockerCiWorkflow` scope를 기록하고 audit/decision은 `TC-CI-002` evidence를 표시한다.
+- 수정된 파일 및 관련 파일:
+  - `.github/workflows/durable-docker-ci.yml`
+  - `scripts/verify-docker-integration.ps1`
+  - `scripts/verify-ci-workflow.ps1`
+  - `scripts/verify-prototype-release.ps1`
+  - `scripts/write-mvp-audit.ps1`
+  - `scripts/write-mvp-release-decision.ps1`
+  - `scripts/verify-mvp-release-decision.ps1`
+  - `scripts/verify-mvp-release-artifacts.ps1`
+  - `README.md`
+  - `dev-docs/document-index.md`
+  - `dev-docs/prototype-status.md`
+  - `dev-docs/mvp-release-checklist.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/worklog/codex/frontend-backend-mvp/worklog-codex-frontend-backend-mvp.md`
+- 검증 기록:
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-ci-workflow.ps1` 통과.
+  - PowerShell script parse check 통과.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-mvp-release-decision.ps1` 통과.
+  - `git diff --check` 통과. CRLF warning만 표시.
+  - `verify-local.ps1 -SkipDocker -JavaHome ...` 일반 sandbox 실행은 Gradle wrapper download가 `Permission denied: getsockopt`로 실패.
+  - 동일 `verify-local.ps1` 승인 권한 재실행 통과. CI workflow verifier, frontend unit 52 pass, frontend build, backend Gradle tests 포함.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-prototype-release.ps1 -JavaHome ...` 승인 권한 실행 통과. generatedAt `2026-06-14T01:42:33.0950699+09:00`, result `passed`, `scope.durableDockerCiWorkflow=included`.
+  - Release audit evidence map에서 `TC-CI-002` Durable Docker CI workflow PASS 확인.
+  - Release decision은 lightweight demo `GO`, durable MVP pilot `NO-GO`.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-mvp-release-artifacts.ps1` 통과.
+- 코드 리뷰: Durable workflow를 manual-only로 둔 점이 안전하다. Docker/MariaDB/MinIO는 runner 환경 차이가 커서 PR 필수 gate로 묶기 전에 실제 GitHub-hosted run evidence를 먼저 확보해야 한다. 현 상태는 durable pilot 준비 초안이지 durable runtime 검증 완료가 아니다.
+- 결과: Manual Durable Docker CI workflow draft가 release gate에 포함됐다. 최신 release gate는 2026-06-14 01:42 KST 통과했고 현재 판정은 lightweight demo `GO`, durable MVP pilot `NO-GO`다.
+- 후속 메모: GitHub에 push 후 Actions에서 `Durable Docker Integration` workflow를 수동 실행해 성공 run을 확보해야 한다.
+- 추가 개발: Real S3 client CI job, Browser E2E job, image vulnerability scanning, SBOM, signed images.
+- 사용 skill/plugin: caveman skill ultra.
+
+### 2026-06-14 - Real S3 Client CI Workflow Draft 추가
+
+- 작업 시작 시간: 2026-06-14 01:45:00 +09:00
+- 작업 종료 시간: 2026-06-14 01:52:58 +09:00
+- 사용자 명령: 활성 목표인 현재까지 구현된 기능 기준 prototype 개발 계속.
+- 명령 해석: Docker daemon, local `aws`, local `mc`, Browser automation이 막힌 상태에서 real S3 client compatibility를 외부 GitHub runner에서 반복 검증할 수 있는 manual workflow 초안을 추가하라는 작업으로 인식.
+- 작업 방식: PR/push lightweight CI와 durable Docker CI를 방해하지 않도록 `workflow_dispatch` 전용 workflow로 분리했다. Existing Windows-focused start script를 재사용하려고 `windows-latest` runner를 선택했고, workflow 안에서 `mc.exe`를 내려받아 `verify-s3-client-smoke.ps1 -Client mc -RequireClient`를 실행하게 했다.
+- 실행 내용:
+  - `.github/workflows/real-s3-client-ci.yml` 추가.
+  - `scripts/verify-ci-workflow.ps1`가 lightweight, durable Docker, real S3 client workflow 3개를 모두 검증하도록 확장.
+  - Release report/audit/decision/artifact verifier/self-test에 `scope.realS3ClientCiWorkflow=included` 연결.
+  - README, document index, prototype status, release checklist, test cases, worklog 갱신.
+  - `TC-CI-003` 추가.
+- 구현 내용:
+  - Real S3 client workflow는 manual-only이며 `windows-latest`, timeout 45분, Temurin JDK 17, Node.js 24, frontend `npm ci`, MinIO Client download, lightweight prototype start, real `mc` smoke, failure log print, always stop step을 포함한다.
+  - Local release evidence는 workflow draft 존재와 구조를 PASS로 기록하지만, actual real-client compatibility는 여전히 GitHub-hosted run 또는 local `aws`/`mc` 실행이 필요하도록 PENDING으로 유지한다.
+- 수정된 파일 및 관련 파일:
+  - `.github/workflows/real-s3-client-ci.yml`
+  - `scripts/verify-ci-workflow.ps1`
+  - `scripts/verify-prototype-release.ps1`
+  - `scripts/write-mvp-audit.ps1`
+  - `scripts/write-mvp-release-decision.ps1`
+  - `scripts/verify-mvp-release-decision.ps1`
+  - `scripts/verify-mvp-release-artifacts.ps1`
+  - `README.md`
+  - `dev-docs/document-index.md`
+  - `dev-docs/prototype-status.md`
+  - `dev-docs/mvp-release-checklist.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/worklog/codex/frontend-backend-mvp/worklog-codex-frontend-backend-mvp.md`
+- 검증 기록:
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-ci-workflow.ps1` 통과. 3개 workflow path 확인.
+  - PowerShell script parse check 통과.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-mvp-release-decision.ps1` 통과.
+  - `git diff --check` 통과. CRLF warning만 표시.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-prototype-release.ps1 -JavaHome ...` 일반 sandbox 실행은 Gradle wrapper download가 `Permission denied: getsockopt`로 실패.
+  - 동일 `verify-prototype-release.ps1` 승인 권한 재실행 통과. generatedAt `2026-06-14T01:52:15.1689535+09:00`, result `passed`, `scope.realS3ClientCiWorkflow=included`.
+  - Frontend unit 52 pass, frontend build 통과, backend Gradle tests `BUILD SUCCESSFUL`.
+  - Release audit evidence map에서 `TC-CI-003` Real S3 client CI workflow PASS 확인.
+  - Release decision은 lightweight demo `GO`, durable MVP pilot `NO-GO`.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-mvp-release-artifacts.ps1` 통과.
+- 코드 리뷰: Workflow draft는 actual `mc` smoke를 요구하므로 단순 static check보다 real-client evidence로 이어질 수 있다. 다만 `mc.exe` download는 network 의존이 있고, 성공 GitHub-hosted run 전까지 `Real S3 clients` gate는 PENDING으로 두는 것이 맞다.
+- 결과: Manual real S3 client CI workflow draft가 release gate에 포함됐다. 최신 release gate는 2026-06-14 01:52 KST 통과했고 현재 판정은 lightweight demo `GO`, durable MVP pilot `NO-GO`다.
+- 후속 메모: GitHub에 push 후 Actions에서 `Real S3 Client CI` workflow를 수동 실행해 `mc` 기반 S3 client 성공 run을 확보해야 한다.
+- 추가 개발: Browser E2E job, image vulnerability scanning, SBOM, signed images.
+- 사용 skill/plugin: caveman skill ultra.
+
+### 2026-06-14 - Container Security CI Workflow Draft 추가
+
+- 작업 시작 시간: 2026-06-14 01:54:00 +09:00
+- 작업 종료 시간: 2026-06-14 01:59:05 +09:00
+- 사용자 명령: 활성 목표인 현재까지 구현된 기능 기준 prototype 개발 계속.
+- 명령 해석: 외부 Docker/real S3/Browser gate가 아직 막힌 상태에서 B2B/pilot distribution 준비도를 높이기 위해 image vulnerability scanning과 SBOM artifact 생성 경로를 추가하라는 작업으로 인식.
+- 작업 방식: Actual scan success는 GitHub-hosted run이 필요하므로 local release evidence에는 workflow draft와 verifier 통과만 포함했다. PR/push를 막지 않도록 `workflow_dispatch` 전용으로 분리했다.
+- 실행 내용:
+  - `.github/workflows/container-security-ci.yml` 추가.
+  - `scripts/verify-ci-workflow.ps1`가 lightweight, durable Docker, real S3 client, container security workflow 4개를 모두 검증하도록 확장.
+  - Release report/audit/decision/artifact verifier/self-test에 `scope.containerSecurityCiWorkflow=included` 연결.
+  - README, document index, prototype status, release checklist, test cases, worklog 갱신.
+  - `TC-CI-004` 추가.
+- 구현 내용:
+  - Container security workflow는 backend/frontend Docker image를 빌드한다.
+  - `aquasec/trivy:latest`로 high/critical vulnerability scan을 `--exit-code 1 --ignore-unfixed` 기준으로 실행한다.
+  - `anchore/syft:latest`로 backend/frontend SPDX JSON SBOM을 생성하고 `actions/upload-artifact@v4`로 업로드한다.
+- 수정된 파일 및 관련 파일:
+  - `.github/workflows/container-security-ci.yml`
+  - `scripts/verify-ci-workflow.ps1`
+  - `scripts/verify-prototype-release.ps1`
+  - `scripts/write-mvp-audit.ps1`
+  - `scripts/write-mvp-release-decision.ps1`
+  - `scripts/verify-mvp-release-decision.ps1`
+  - `scripts/verify-mvp-release-artifacts.ps1`
+  - `README.md`
+  - `dev-docs/document-index.md`
+  - `dev-docs/prototype-status.md`
+  - `dev-docs/mvp-release-checklist.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/worklog/codex/frontend-backend-mvp/worklog-codex-frontend-backend-mvp.md`
+- 검증 기록:
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-ci-workflow.ps1` 통과. 4개 workflow path 확인.
+  - PowerShell script parse check 통과.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-mvp-release-decision.ps1` 통과.
+  - `git diff --check` 통과. CRLF warning만 표시.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-prototype-release.ps1 -JavaHome ...` 일반 sandbox 실행은 Gradle wrapper download가 `Permission denied: getsockopt`로 실패.
+  - 동일 `verify-prototype-release.ps1` 승인 권한 재실행 통과. generatedAt `2026-06-14T01:58:24.3636662+09:00`, result `passed`, `scope.containerSecurityCiWorkflow=included`.
+  - Frontend unit 52 pass, frontend build 통과, backend Gradle tests `BUILD SUCCESSFUL`.
+  - Release audit evidence map에서 `TC-CI-004` Container security CI workflow PASS 확인.
+  - Release decision은 lightweight demo `GO`, durable MVP pilot `NO-GO`.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-mvp-release-artifacts.ps1` 통과.
+- 코드 리뷰: Workflow는 image build, vuln scan, SBOM upload를 한 흐름으로 묶어 pilot handoff evidence를 만들 수 있다. 단, `latest` scanner image와 GitHub-hosted network에 의존하므로 실제 run 결과를 확보하기 전까지 supply-chain evidence 완료로 보면 안 된다. Image signing은 아직 별도 작업이다.
+- 결과: Manual container security/SBOM workflow draft가 release gate에 포함됐다. 최신 release gate는 2026-06-14 01:58 KST 통과했고 현재 판정은 lightweight demo `GO`, durable MVP pilot `NO-GO`다.
+- 후속 메모: GitHub에 push 후 Actions에서 `Container Security CI` workflow를 수동 실행해 Trivy scan 통과와 SBOM artifact를 확보해야 한다.
+- 추가 개발: Browser E2E job, signed images, registry/publish workflow, vulnerability exception policy.
+- 사용 skill/plugin: caveman skill ultra.
+
+### 2026-06-14 - Browser E2E CI Workflow Draft 추가
+
+- 작업 시작 시간: 2026-06-14 02:00:00 +09:00
+- 작업 종료 시간: 2026-06-14 02:08:04 +09:00
+- 사용자 명령: `/Caveman ultra` 및 활성 목표인 현재까지 구현된 기능 기준 prototype 개발 계속.
+- 명령 해석: 응답은 caveman ultra로 압축하고, 아직 local Browser/Chrome automation이 막힌 상태에서 GitHub Actions runner에서 lightweight portal click-path E2E를 반복 실행할 수 있는 manual workflow 초안을 추가하라는 작업으로 인식.
+- 작업 방식: 실제 Browser E2E 성공으로 오인되지 않도록 `scope.browserE2ECiWorkflow=included`와 `scope.browserE2E=pending`을 분리했다. Workflow는 manual-only로 두고, Playwright spec은 login, bucket, object, audit, backup readiness 핵심 경로만 얇게 통과하도록 작성했다.
+- 실행 내용:
+  - `.github/workflows/browser-e2e-ci.yml` 추가.
+  - `osmu-frontend/e2e/lightweight-demo.spec.js` 추가.
+  - `scripts/verify-ci-workflow.ps1`가 5개 CI workflow와 Browser E2E spec을 검증하도록 확장.
+  - Release report/audit/decision/artifact verifier/self-test에 `scope.browserE2ECiWorkflow=included` 연결.
+  - README, document index, prototype status, release checklist, test cases, worklog 갱신.
+  - `TC-CI-005` 추가.
+- 구현 내용:
+  - Browser E2E CI workflow는 `windows-latest`, timeout 45분, Temurin JDK 17, Node.js 24, frontend `npm ci`, Playwright Chromium 설치, lightweight prototype start, Playwright spec 실행, failure log print, always stop step을 포함한다.
+  - Playwright spec은 admin login, metrics/backup panel 확인, bucket 생성/선택, object upload/search, audit search를 `data-testid` 기반으로 검증한다.
+  - Local release evidence는 workflow/spec draft 존재와 구조를 PASS로 기록하지만, actual Browser click E2E는 계속 PENDING으로 유지한다.
+- 수정된 파일 및 관련 파일:
+  - `.github/workflows/browser-e2e-ci.yml`
+  - `osmu-frontend/e2e/lightweight-demo.spec.js`
+  - `scripts/verify-ci-workflow.ps1`
+  - `scripts/verify-prototype-release.ps1`
+  - `scripts/write-mvp-audit.ps1`
+  - `scripts/write-mvp-release-decision.ps1`
+  - `scripts/verify-mvp-release-decision.ps1`
+  - `scripts/verify-mvp-release-artifacts.ps1`
+  - `README.md`
+  - `dev-docs/document-index.md`
+  - `dev-docs/prototype-status.md`
+  - `dev-docs/mvp-release-checklist.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/worklog/codex/frontend-backend-mvp/worklog-codex-frontend-backend-mvp.md`
+- 검증 기록:
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-ci-workflow.ps1` 통과. 5개 workflow와 Browser E2E spec path 확인.
+  - PowerShell script parse check 통과. 최초 ad-hoc parse 명령은 `$parseErrors` 변수 초기화 누락으로 잡음이 났고, 수정한 명령으로 재검증 통과.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-mvp-release-decision.ps1` 통과.
+  - `git diff --check` 통과. CRLF warning만 표시.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-prototype-release.ps1 -JavaHome ...` 일반 sandbox 실행은 Gradle wrapper download가 `Permission denied: getsockopt`로 실패.
+  - 동일 `verify-prototype-release.ps1` 승인 권한 재실행 통과. generatedAt `2026-06-14T02:07:28.1038489+09:00`, result `passed`, `scope.browserE2ECiWorkflow=included`, `scope.browserE2E=pending`.
+  - Frontend unit 52 pass, frontend build 통과, backend Gradle tests `BUILD SUCCESSFUL`.
+  - Release audit evidence map에서 `TC-CI-005` Browser E2E CI workflow PASS 확인.
+  - Release decision은 lightweight demo `GO`, durable MVP pilot `NO-GO`.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-mvp-release-artifacts.ps1` 통과.
+- 코드 리뷰: Workflow/spec은 실제 UI 경로를 runner에서 검증할 수 있게 만드는 좋은 다음 단계다. 다만 local Browser automation은 여전히 `CreateProcessAsUserW failed: 5`로 막혀 있고, GitHub-hosted successful run 전까지 Browser E2E 완료로 보면 안 된다.
+- 결과: Manual Browser E2E CI workflow draft가 release gate에 포함됐다. 최신 release gate는 2026-06-14 02:07 KST 통과했고 현재 판정은 lightweight demo `GO`, durable MVP pilot `NO-GO`다.
+- 후속 메모: GitHub에 push 후 Actions에서 `Browser E2E CI` workflow를 수동 실행해 Playwright click-path 성공 run을 확보해야 한다.
+- 추가 개발: 실제 Browser/Chrome local automation 복구, durable Docker/real S3 hosted run 확보, signed images, registry/publish workflow.
+- 사용 skill/plugin: caveman skill ultra.
+
+### 2026-06-14 - Image Signing Policy와 Publish Workflow Draft 추가
+
+- 작업 시작 시간: 2026-06-14 02:09:00 +09:00
+- 작업 종료 시간: 2026-06-14 02:14:25 +09:00
+- 사용자 명령: 활성 목표인 현재까지 구현된 기능 기준 prototype 개발 계속.
+- 명령 해석: Docker daemon, real S3 client, Browser E2E actual run은 외부 상태가 필요하므로, 내부에서 계속 전진 가능한 B2B/pilot 배포 준비 항목인 image signing policy와 registry/publish workflow 초안을 추가하라는 작업으로 인식.
+- 작업 방식: 실제 signed image evidence와 policy/workflow draft를 분리했다. Local release evidence에는 `scope.imageSigningPolicy=included`만 기록하고, GitHub-hosted `publish=true` run과 Cosign 검증은 external pending evidence로 남겼다.
+- 실행 내용:
+  - `dev-docs/image-signing-policy.md` 추가.
+  - `.github/workflows/image-publish-sign-ci.yml` 추가.
+  - `scripts/verify-image-signing-policy.ps1` 추가.
+  - `scripts/verify-local.ps1`에 image signing policy verifier 연결.
+  - Release report/audit/decision/artifact verifier/self-test에 `scope.imageSigningPolicy=included` 연결.
+  - README, document index, prototype status, release checklist, test cases, worklog 갱신.
+  - `TC-CI-006` 추가.
+- 구현 내용:
+  - Registry target은 GHCR로 정의했다.
+  - Backend image는 `ghcr.io/<owner>/osmu-backend`, frontend image는 `ghcr.io/<owner>/osmu-frontend`로 정했다.
+  - Signing method는 GitHub Actions OIDC 기반 keyless Sigstore Cosign으로 정했다.
+  - Workflow는 manual-only이며 `publish=false` 기본값으로 build-only dry run을 수행한다.
+  - `publish=true`일 때 GHCR login, backend/frontend image push, Cosign sign, Cosign verify를 수행하도록 했다.
+- 수정된 파일 및 관련 파일:
+  - `dev-docs/image-signing-policy.md`
+  - `.github/workflows/image-publish-sign-ci.yml`
+  - `scripts/verify-image-signing-policy.ps1`
+  - `scripts/verify-local.ps1`
+  - `scripts/verify-prototype-release.ps1`
+  - `scripts/write-mvp-audit.ps1`
+  - `scripts/write-mvp-release-decision.ps1`
+  - `scripts/verify-mvp-release-decision.ps1`
+  - `scripts/verify-mvp-release-artifacts.ps1`
+  - `README.md`
+  - `dev-docs/document-index.md`
+  - `dev-docs/prototype-status.md`
+  - `dev-docs/mvp-release-checklist.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/worklog/codex/frontend-backend-mvp/worklog-codex-frontend-backend-mvp.md`
+- 검증 기록:
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-image-signing-policy.ps1` 통과.
+  - PowerShell script parse check 통과.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-mvp-release-decision.ps1` 통과.
+  - `git diff --check` 통과. CRLF warning만 표시.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-prototype-release.ps1 -JavaHome ...` 일반 sandbox 실행은 Gradle wrapper download가 `Permission denied: getsockopt`로 실패.
+  - 동일 `verify-prototype-release.ps1` 승인 권한 재실행 통과. generatedAt `2026-06-14T02:13:49.0986007+09:00`, result `passed`, `scope.imageSigningPolicy=included`.
+  - Frontend unit 52 pass, frontend build 통과, backend Gradle tests `BUILD SUCCESSFUL`.
+  - Release audit evidence map에서 `TC-CI-006` Image signing policy and publish workflow PASS 확인.
+  - Release decision은 lightweight demo `GO`, durable MVP pilot `NO-GO`.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-mvp-release-artifacts.ps1` 통과.
+- 코드 리뷰: Policy와 workflow는 signed-image 운영 경로를 잡아 주지만 actual image signature evidence는 생성하지 않는다. `publish=true` workflow run, digest 기록, Cosign verification output 확보 전까지 production/B2B sale 준비 완료로 보면 안 된다.
+- 결과: Image signing policy와 manual publish/sign workflow draft가 release gate에 포함됐다. 최신 release gate는 2026-06-14 02:13 KST 통과했고 현재 판정은 lightweight demo `GO`, durable MVP pilot `NO-GO`다.
+- 후속 메모: GitHub에 push 후 Actions에서 `Image Publish and Sign CI` workflow를 `publish=true`로 수동 실행해 GHCR image digest와 Cosign signing evidence를 확보해야 한다.
+- 추가 개발: 실제 signed image run evidence, registry retention policy, release note image digest 자동화, Docker/real S3/Browser external gate 통과.
+- 사용 skill/plugin: caveman skill ultra.
+
+### 2026-06-14 - MVP Release Notes 자동 생성 추가
+
+- 작업 시작 시간: 2026-06-14 02:16:00 +09:00
+- 작업 종료 시간: 2026-06-14 02:21:41 +09:00
+- 사용자 명령: 활성 목표인 현재까지 구현된 기능 기준 prototype 개발 계속.
+- 명령 해석: 외부 Docker/real S3/Browser/signed image gate가 막혀 있는 동안, 현재 검증된 lightweight prototype evidence를 demo/pilot handoff용 release notes로 자동 정리하는 기능을 추가하라는 작업으로 인식.
+- 작업 방식: `.osmu-run` evidence를 기준으로 release notes를 생성하게 했다. Runtime secret은 release notes에 직접 넣지 않고 `.osmu-run/latest-demo.json` 위치만 안내했다. Artifact verifier는 sandbox path와 actual worktree path 차이를 모두 허용하도록 보강했다.
+- 실행 내용:
+  - `scripts/write-mvp-release-notes.ps1` 추가.
+  - `scripts/verify-prototype-release.ps1`가 release notes를 자동 생성하도록 연결.
+  - `scripts/verify-mvp-release-artifacts.ps1`가 `latest-release-notes.md` 존재와 핵심 문구를 검증하도록 확장.
+  - Release report/audit/decision/self-test에 `scope.releaseNotes=included` 연결.
+  - README, document index, prototype status, release checklist, test cases, worklog 갱신.
+  - `TC-REL-001` 추가.
+- 구현 내용:
+  - Release notes는 latest release report, audit, decision path를 연결한다.
+  - Lightweight demo/durable pilot GO-NO-GO, backend/frontend URL, included evidence, external pending evidence, image target placeholders, operator notes를 출력한다.
+  - `.osmu-run/latest-demo.json`의 존재만 안내하고 demo password를 release notes에 쓰지 않는다.
+  - Artifact verifier는 `report.reportPath`와 현재 resolved path를 모두 허용해 sandbox/actual path 차이로 실패하지 않게 했다.
+- 수정된 파일 및 관련 파일:
+  - `scripts/write-mvp-release-notes.ps1`
+  - `scripts/verify-prototype-release.ps1`
+  - `scripts/write-mvp-audit.ps1`
+  - `scripts/write-mvp-release-decision.ps1`
+  - `scripts/verify-mvp-release-decision.ps1`
+  - `scripts/verify-mvp-release-artifacts.ps1`
+  - `README.md`
+  - `dev-docs/document-index.md`
+  - `dev-docs/prototype-status.md`
+  - `dev-docs/mvp-release-checklist.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/worklog/codex/frontend-backend-mvp/worklog-codex-frontend-backend-mvp.md`
+- 검증 기록:
+  - 최초 `write-mvp-release-notes.ps1` 실행은 PowerShell 문자열 parse 문제로 실패. `$label:`와 Markdown backtick 문자열을 수정했다.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\write-mvp-release-notes.ps1 -NoWrite` 통과.
+  - PowerShell script parse check 통과.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-mvp-release-decision.ps1` 통과.
+  - `git diff --check` 통과. CRLF warning만 표시.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-prototype-release.ps1 -JavaHome ...` 승인 권한 실행 통과. generatedAt `2026-06-14T02:20:27.9520600+09:00`, result `passed`, `scope.releaseNotes=included`.
+  - Frontend unit 52 pass, frontend build 통과, backend Gradle tests `BUILD SUCCESSFUL`.
+  - Release audit evidence map에서 `TC-REL-001` MVP release notes PASS 확인.
+  - Release decision은 lightweight demo `GO`, durable MVP pilot `NO-GO`.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-mvp-release-artifacts.ps1` 최초 재실행은 sandbox path와 actual report path 불일치로 실패했고, verifier를 `report.reportPath` 후보 허용 방식으로 수정한 뒤 통과.
+- 코드 리뷰: Release notes는 현재 evidence를 handoff 문서로 묶지만 durable readiness를 과장하지 않는다. External pending gate와 signed image evidence pending을 명확히 표시하고, runtime secret 값을 출력하지 않는 점이 안전하다.
+- 결과: MVP release notes generation이 release gate와 artifact verifier에 포함됐다. 최신 release gate는 2026-06-14 02:20 KST 통과했고 현재 판정은 lightweight demo `GO`, durable MVP pilot `NO-GO`다.
+- 후속 메모: GitHub-hosted workflows와 Docker/real S3/Browser evidence가 생기면 release notes를 재생성해 image digest, SBOM, signature evidence를 채워야 한다.
+- 추가 개발: signed image run evidence, registry retention policy, release note digest 자동 입력, Docker/real S3/Browser external gate 통과.
+- 사용 skill/plugin: caveman skill ultra.
+
+### 2026-06-14 - Commercial Readiness Draft 추가
+
+- 작업 시작 시간: 2026-06-14 02:23:00 +09:00
+- 작업 종료 시간: 2026-06-14 02:28:01 +09:00
+- 사용자 명령: 활성 목표인 현재까지 구현된 기능 기준 prototype 개발 계속.
+- 명령 해석: 현재 durable runtime 외부 gate는 막혀 있으므로, 사용자가 초기 목표로 말한 B2B 판매 가능성을 잊지 않도록 commercial positioning, pilot package, licensing/pricing 초안을 release evidence에 포함하라는 작업으로 인식.
+- 작업 방식: 실제 가격 확정이나 법무 승인과 구분했다. `commercialReadiness=included`는 초안이 있다는 뜻이고, final pricing/legal/support SLA approval은 계속 pending으로 남겼다.
+- 실행 내용:
+  - `dev-docs/commercial-readiness.md` 추가.
+  - `scripts/verify-commercial-readiness.ps1` 추가.
+  - `scripts/verify-local.ps1`와 release gate에 commercial readiness verifier 연결.
+  - Release report/audit/decision/artifact verifier/release notes/self-test에 `scope.commercialReadiness=included` 연결.
+  - README, document index, prototype status, release checklist, test cases, worklog 갱신.
+  - `TC-COM-001` 추가.
+- 구현 내용:
+  - Commercial draft는 private S3-compatible object storage positioning, target buyers, pilot package, annual subscription 방향, time-limited pilot license, pricing tier assumptions, paid pilot prerequisites, production sale prerequisites를 포함한다.
+  - MVP license enforcement는 runtime hard lockout 없이 문서/계약 중심으로 두도록 명시했다.
+  - Paid pilot/production sale은 Docker, real S3, Browser E2E, security/SBOM, signed image, legal/commercial approval 전까지 NO-GO로 유지했다.
+- 수정된 파일 및 관련 파일:
+  - `dev-docs/commercial-readiness.md`
+  - `scripts/verify-commercial-readiness.ps1`
+  - `scripts/verify-local.ps1`
+  - `scripts/verify-prototype-release.ps1`
+  - `scripts/write-mvp-audit.ps1`
+  - `scripts/write-mvp-release-decision.ps1`
+  - `scripts/verify-mvp-release-decision.ps1`
+  - `scripts/write-mvp-release-notes.ps1`
+  - `scripts/verify-mvp-release-artifacts.ps1`
+  - `README.md`
+  - `dev-docs/document-index.md`
+  - `dev-docs/prototype-status.md`
+  - `dev-docs/mvp-release-checklist.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/worklog/codex/frontend-backend-mvp/worklog-codex-frontend-backend-mvp.md`
+- 검증 기록:
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-commercial-readiness.ps1` 최초 실행은 `publish=true` backtick 포함 문구 mismatch로 실패했고 verifier 문자열을 수정한 뒤 통과.
+  - PowerShell script parse check 통과.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-mvp-release-decision.ps1` 통과.
+  - `git diff --check` 통과. CRLF warning만 표시.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-prototype-release.ps1 -JavaHome ...` 승인 권한 실행 통과. generatedAt `2026-06-14T02:27:26.0702701+09:00`, result `passed`, `scope.commercialReadiness=included`.
+  - Frontend unit 52 pass, frontend build 통과, backend Gradle tests `BUILD SUCCESSFUL`.
+  - Release audit evidence map에서 `TC-COM-001` Commercial readiness draft PASS 확인.
+  - Release decision은 lightweight demo `GO`, durable MVP pilot `NO-GO`.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-mvp-release-artifacts.ps1` 통과.
+- 코드 리뷰: Commercial draft는 sales 가능성을 정리하지만 prototype을 판매 가능 상태로 과장하지 않는다. Runtime license lockout을 지금 추가하지 않는 선택은 product/legal review 전까지 안전하다.
+- 결과: B2B commercial readiness draft가 release gate와 release notes에 포함됐다. 최신 release gate는 2026-06-14 02:27 KST 통과했고 현재 판정은 lightweight demo `GO`, durable MVP pilot `NO-GO`다.
+- 후속 메모: 실제 유료 pilot 전에는 가격표, 계약서, support SLA, 데이터 책임 범위, final legal/commercial approval이 필요하다.
+- 추가 개발: final pricing/legal approval, signed image run evidence, Docker/real S3/Browser external gate 통과, enterprise auth scope 결정.
+- 사용 skill/plugin: caveman skill ultra.
+
+### 2026-06-14 - User Quota Policy Prototype 추가
+
+- 작업 시작 시간: 2026-06-14 02:31:00 +09:00
+- 작업 종료 시간: 2026-06-14 02:48:47 +09:00
+- 사용자 명령: 활성 목표인 현재까지 구현된 기능 기준 prototype 개발 계속.
+- 명령 해석: Docker, real S3 client, Browser E2E는 외부 gate로 막혀 있으므로 내부에서 MVP 진척이 가능한 B2B 핵심 기능인 user/organization/bucket quota policy를 구현하라는 작업으로 인식.
+- 작업 방식: 기존 bucket/org quota 구조를 깨지 않고 `quota_policies`를 override 정책으로 추가했다. Backend API, repository, MariaDB migration, frontend admin panel, API wrapper, smoke/test/docs/release evidence를 같은 흐름으로 묶었다.
+- 실행 내용:
+  - `QuotaPolicy` record, request/response, service, in-memory/MariaDB repository 추가.
+  - `BucketService` upload quota 검증에 `USER`, `ORGANIZATION`, `BUCKET` quota policy 적용.
+  - `AdminController`에 `GET/PUT/DELETE /api/admin/quota-policies` 추가 및 감사 로그 연결.
+  - `V25__quota_policies.sql` migration 추가.
+  - Frontend API wrapper와 admin quota policy panel 추가.
+  - Backend/Frontend unit test와 lightweight smoke에 quota policy 검증 추가.
+  - OpenAPI, API spec, backend/frontend/security/operation/database/test docs, README, prototype status, release checklist, worklog 갱신.
+- 구현 내용:
+  - `USER` quota policy는 해당 user 소유 `USER` bucket 사용량 합계에 적용된다.
+  - `ORGANIZATION` quota policy가 있으면 organization `defaultQuotaBytes` 대신 적용된다.
+  - `BUCKET` quota policy가 있으면 bucket metadata `quotaBytes` 대신 적용된다.
+  - Admin quota policy API는 대상 존재 여부와 양수 quota를 검증하고, 응답에 `usedBytes`, `remainingBytes`를 포함한다.
+  - Frontend admin dashboard에서 target type/id/quota GiB로 policy 저장, 목록 표시, 삭제 confirm dialog를 제공한다.
+- 수정된 파일 및 관련 파일:
+  - `osmu-backend/src/main/java/com/example/osmu/quota/*`
+  - `osmu-backend/src/main/java/com/example/osmu/quota/repository/*`
+  - `osmu-backend/src/main/java/com/example/osmu/bucket/BucketService.java`
+  - `osmu-backend/src/main/java/com/example/osmu/admin/AdminController.java`
+  - `osmu-backend/src/main/resources/db/migration/V25__quota_policies.sql`
+  - `osmu-backend/src/test/java/com/example/osmu/admin/AdminQuotaPolicyControllerTest.java`
+  - `osmu-backend/src/test/java/com/example/osmu/bucket/BucketObjectFlowTest.java`
+  - `osmu-frontend/src/services/api.js`
+  - `osmu-frontend/src/services/api-quota-policy.test.js`
+  - `osmu-frontend/src/views/HomeView.vue`
+  - `osmu-frontend/src/views/HomeView.test.js`
+  - `scripts/verify-lightweight-prototype.ps1`
+  - `scripts/verify-openapi-contract.ps1`
+  - `scripts/write-mvp-audit.ps1`
+  - `dev-docs/openapi-mvp.json`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/backend-design.md`
+  - `dev-docs/database-design.md`
+  - `dev-docs/frontend-design.md`
+  - `dev-docs/security-design.md`
+  - `dev-docs/operation-monitoring.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/prototype-status.md`
+  - `dev-docs/mvp-release-checklist.md`
+  - `README.md`
+- 검증 기록:
+  - `.\gradlew.bat test --tests com.example.osmu.admin.AdminQuotaPolicyControllerTest --tests com.example.osmu.bucket.BucketObjectFlowTest` 승인 권한 실행 통과.
+  - `.\gradlew.bat test` 승인 권한 실행 통과.
+  - `npm.cmd run test:unit` 통과. 53 tests pass.
+  - `npm.cmd run build` 통과.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-openapi-contract.ps1` 통과. 81 operations, 62 frontend API functions checked.
+  - PowerShell script parse check 통과.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-migrations.ps1` 통과. 25 migrations, highest V25.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-local.ps1 -SkipDocker -JavaHome ...` 승인 권한 실행 통과.
+  - 최초 release gate는 01:06에 떠 있던 stale backend가 8080을 점유해 새 quota endpoint가 없어 500/NoResourceFound로 실패했다.
+  - `scripts/stop-local-prototype.ps1`로 stale backend/frontend를 중지하고 `scripts/start-local-prototype.ps1 -JavaHome ...`로 새 서버를 시작했다.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-prototype-release.ps1 -JavaHome ...` 승인 권한 재실행 통과. generatedAt `2026-06-14T02:46:38.7557471+09:00`, result `passed`.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-mvp-release-artifacts.ps1` 통과.
+- 코드 리뷰: quota policy는 bucket/org quota의 기존 behavior를 보존하면서 override만 추가한다. Upload 경로에서 owner aggregate usage를 계산하므로 user별 총량 제한을 MVP 수준으로 검증한다. S3 direct/metadata drift는 기존 bucket sync/metadata 모델의 한계가 남아 있어 durable 환경 검증 때 추가 확인이 필요하다.
+- 결과: user/organization/bucket quota policy prototype이 backend API, frontend admin panel, migration, tests, smoke, OpenAPI, release evidence에 포함됐다. 최신 release gate는 2026-06-14 02:46 KST 통과했고 현재 판정은 lightweight demo `GO`, durable MVP pilot `NO-GO`다.
+- 후속 메모: 운영 수준에서는 quota 변경 audit review, quota policy history, target name 표시, bulk assignment, org-admin 위임 범위가 필요하다.
+- 추가 개발: Docker/MariaDB/MinIO integration, real S3 client smoke, Browser click E2E, signed image evidence, quota policy UX 고도화.
+- 사용 skill/plugin: caveman skill ultra.
+
+### 2026-06-14 - Quota Policy Target 선택 UX 개선
+
+- 작업 시작 시간: 2026-06-14 02:49:00 +09:00
+- 작업 종료 시간: 2026-06-14 02:51:25 +09:00
+- 사용자 명령: 활성 목표인 현재까지 구현된 기능 기준 prototype 개발 계속.
+- 명령 해석: 앞서 추가한 quota policy 기능을 실제 데모에서 쓰기 쉽게 만들어 prototype 완성도를 올리라는 작업으로 인식.
+- 작업 방식: Backend API는 유지하고 frontend admin panel에서 target id 직접 입력을 제거했다. 이미 dashboard가 로드하는 users/organizations/buckets 목록을 재사용해 target dropdown을 구성했다.
+- 실행 내용:
+  - quota policy form target id input을 target select로 변경.
+  - target type 변경 시 첫 유효 target을 자동 선택하도록 동기화.
+  - policy 목록에서 target id만 보이지 않고 user loginId, organization name, bucket name을 함께 표시.
+  - frontend design 문서와 worklog 갱신.
+- 구현 내용:
+  - `quotaPolicyTargetOptions` computed가 `USER`, `ORGANIZATION`, `BUCKET`별 select option을 생성한다.
+  - `syncQuotaPolicyTargetSelection()`이 stale target id를 방지한다.
+  - `quotaPolicyTargetLabel()`이 policy 목록에 사람이 읽기 쉬운 target label을 출력한다.
+- 수정된 파일 및 관련 파일:
+  - `osmu-frontend/src/views/HomeView.vue`
+  - `dev-docs/frontend-design.md`
+  - `dev-docs/worklog/codex/frontend-backend-mvp/worklog-codex-frontend-backend-mvp.md`
+- 검증 기록:
+  - `node --check .\src\services\api.js` 통과.
+  - `npm.cmd run test:unit` 통과. 53 tests pass.
+  - `npm.cmd run build` 통과.
+- 코드 리뷰: 기존 API와 테스트 surface는 유지하면서 화면 입력만 안전하게 좁혔다. Demo operator가 raw id를 찾느라 흐름이 끊기는 문제가 줄어든다.
+- 결과: quota policy panel이 target 목록 기반 UX로 개선됐다.
+- 후속 메모: target 검색, current policy edit prefill, policy history는 이후 개선 후보.
+- 추가 개발: Docker/MariaDB/MinIO integration, real S3 client smoke, Browser click E2E, quota policy UX 고도화.
+- 사용 skill/plugin: caveman skill ultra.
+
+### 2026-06-14 - Quota Policy Override 검증 보강
+
+- 작업 시작 시간: 2026-06-14 02:54:51 +09:00
+- 작업 종료 시간: 2026-06-14 02:59:35 +09:00
+- 사용자 명령: 활성 목표인 현재까지 구현된 기능 기준 prototype 개발 계속, `/Caveman ultra`.
+- 명령 해석: quota policy 기능이 user 대상만 smoke로 검증되어 있으므로 `BUCKET`, `ORGANIZATION` override까지 자동 검증과 release evidence에 포함하라는 작업으로 인식.
+- 작업 방식: 기존 quota policy API/서비스 구현은 유지하고, upload path에서 target별 override가 실제로 `QUOTA_EXCEEDED`를 발생시키는지 backend test와 lightweight smoke에 추가했다. 이후 test case/evidence 문서와 prototype status timestamp를 최신 release gate 결과로 맞췄다.
+- 실행 내용:
+  - `BucketObjectFlowTest`에 bucket quota policy 초과 차단, organization quota policy 초과 차단 테스트 추가.
+  - `verify-lightweight-prototype.ps1`에 `Bucket quota policy`, `Organization quota policy` smoke step과 cleanup 추가.
+  - `TC-QUOTA-005`, `TC-QUOTA-006` 테스트 케이스 추가.
+  - MVP audit evidence map에 새 quota test case를 포함.
+  - README smoke 설명과 prototype status/checklist 최신 release gate 시간을 갱신.
+- 구현 내용:
+  - `BUCKET` quota policy가 bucket metadata quota보다 우선해 upload를 HTTP 413, `QUOTA_EXCEEDED`로 차단한다는 자동 증거를 추가했다.
+  - `ORGANIZATION` quota policy가 organization default quota보다 우선해 org bucket upload를 HTTP 413, `QUOTA_EXCEEDED`로 차단한다는 자동 증거를 추가했다.
+  - lightweight smoke가 policy save/list/delete audit 흐름까지 확인한다.
+- 수정된 파일 및 관련 파일:
+  - `osmu-backend/src/test/java/com/example/osmu/bucket/BucketObjectFlowTest.java`
+  - `scripts/verify-lightweight-prototype.ps1`
+  - `scripts/write-mvp-audit.ps1`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/prototype-status.md`
+  - `dev-docs/mvp-release-checklist.md`
+  - `README.md`
+  - `.osmu-run/latest-release.json`
+  - `.osmu-run/latest-mvp-audit.md`
+  - `.osmu-run/latest-release-decision.md`
+  - `.osmu-run/latest-release-notes.md`
+- 검증 기록:
+  - `git diff --check` 통과. CRLF 경고만 출력.
+  - PowerShell parser로 `scripts/verify-lightweight-prototype.ps1` parse 통과.
+  - `.\gradlew.bat test --tests com.example.osmu.bucket.BucketObjectFlowTest` 승인 권한 실행 통과.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-lightweight-prototype.ps1` 통과.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-prototype-release.ps1 -JavaHome ...` 승인 권한 실행 통과. generatedAt `2026-06-14T02:58:45.8743776+09:00`, result `passed`.
+- 코드 리뷰: quota service 자체를 건드리지 않고 검증 표면만 넓혔다. 새 smoke step은 실패 시 남는 bucket/policy/org cleanup을 갖고 있어 반복 실행 안정성이 유지된다. durable 환경의 MariaDB/MinIO quota consistency는 Docker gate에서 별도 확인이 필요하다.
+- 결과: quota policy override 검증이 `USER`에서 `USER/BUCKET/ORGANIZATION` 전체로 확장됐다. 최신 release gate는 2026-06-14 02:58 KST 통과했고 lightweight demo `GO`, durable MVP pilot `NO-GO` 상태다.
+- 후속 메모: quota policy history, target 검색/수정 prefill, org-admin 위임 범위, MariaDB/MinIO durable quota consistency 검증 필요.
+- 추가 개발: Docker/MariaDB/MinIO integration, real S3 client smoke, Browser click E2E, signed image evidence, quota policy UX 고도화.
+- 사용 skill/plugin: caveman skill ultra.
+
+### 2026-06-14 - Quota Policy Search/Edit UX 개선
+
+- 작업 시작 시간: 2026-06-14 03:00:00 +09:00
+- 작업 종료 시간: 2026-06-14 03:05:24 +09:00
+- 사용자 명령: 활성 목표인 현재까지 구현된 기능 기준 prototype 개발 계속.
+- 명령 해석: 외부 gate(Docker, real S3 client, Browser E2E)는 현재 환경에서 막혀 있으므로 내부에서 demo 완성도를 올릴 수 있는 admin quota policy UX를 개선하라는 작업으로 인식.
+- 작업 방식: Backend API는 유지하고 frontend admin panel만 개선했다. target 목록이 길어질 때 검색할 수 있게 하고, 기존 policy row에서 Edit를 눌러 form에 target/quota를 prefill한 뒤 quota만 빠르게 수정할 수 있게 했다.
+- 실행 내용:
+  - quota policy form에 target search input 추가.
+  - target 후보 computed를 전체 목록과 검색 필터 목록으로 분리.
+  - 기존 quota policy row에 Edit 버튼 추가.
+  - Edit mode에서 target type/id/search를 잠그고 Save 버튼을 Update로 변경, Cancel 버튼 제공.
+  - logout/session reset 시 quota policy 목록과 form 상태 초기화.
+  - frontend selector test, frontend design, test case, README, prototype status, audit writer 설명 갱신.
+- 구현 내용:
+  - `quotaPolicyAllTargetOptions`가 raw users/organizations/buckets target 목록을 만든다.
+  - `quotaPolicyTargetOptions`가 검색어로 target label을 필터링하고 selected target은 검색 결과 밖이어도 유지한다.
+  - `handleEditQuotaPolicy()`가 policy의 target type/id와 quota GiB를 form에 채운다.
+  - `resetQuotaPolicyForm()`으로 edit state를 해제한다.
+- 수정된 파일 및 관련 파일:
+  - `osmu-frontend/src/views/HomeView.vue`
+  - `osmu-frontend/src/views/HomeView.test.js`
+  - `dev-docs/frontend-design.md`
+  - `dev-docs/test-cases.md`
+  - `scripts/write-mvp-audit.ps1`
+  - `dev-docs/prototype-status.md`
+  - `dev-docs/mvp-release-checklist.md`
+  - `README.md`
+  - `.osmu-run/latest-release.json`
+  - `.osmu-run/latest-mvp-audit.md`
+  - `.osmu-run/latest-release-decision.md`
+  - `.osmu-run/latest-release-notes.md`
+- 검증 기록:
+  - `node --check .\src\services\api.js` 통과.
+  - `git diff --check` 통과. CRLF 경고만 출력.
+  - `npm.cmd run test:unit` 통과. 53 tests pass.
+  - `npm.cmd run build` 통과.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-prototype-release.ps1 -JavaHome ...` 승인 권한 실행 통과. generatedAt `2026-06-14T03:04:55.2115464+09:00`, result `passed`.
+- 코드 리뷰: API surface를 바꾸지 않고 데모 operator가 raw target id를 찾는 비용을 줄였다. Edit mode에서 target을 lock해 실수로 다른 target policy를 새로 만드는 위험을 낮췄다. 실제 브라우저 클릭 검증은 기존 환경 blocker 때문에 아직 외부 gate로 남는다.
+- 결과: quota policy panel이 검색/수정 prefill을 지원한다. 최신 release gate는 2026-06-14 03:04 KST 통과했고 lightweight demo `GO`, durable MVP pilot `NO-GO` 상태다.
+- 후속 메모: quota policy history, bulk assignment, org-admin 위임 범위, MariaDB/MinIO durable quota consistency 검증 필요.
+- 추가 개발: Docker/MariaDB/MinIO integration, real S3 client smoke, Browser click E2E, signed image evidence, quota policy history.
+- 사용 skill/plugin: caveman skill ultra.
+
+### 2026-06-14 - Quota Policy History 구현
+
+- 작업 시작 시간: 2026-06-14 03:06:00 +09:00
+- 작업 종료 시간: 2026-06-14 03:16:43 +09:00
+- 사용자 명령: 활성 목표인 현재까지 구현된 기능 기준 prototype 개발 계속.
+- 명령 해석: Docker, real S3 client, Browser E2E는 외부 환경 gate라 현재 내부에서 풀 수 없으므로 B2B 운영성에 필요한 quota policy 변경 이력을 구현하라는 작업으로 인식.
+- 작업 방식: 기존 quota policy API와 upload enforcement는 유지하고, admin이 quota 변경 내역을 별도로 검토할 수 있도록 history 저장소/API/UI를 추가했다. in-memory와 MariaDB repository를 모두 확장하고 migration을 새로 추가했다.
+- 실행 내용:
+  - quota policy history record/response 추가.
+  - `QuotaPolicyRepository`에 history 조회/저장/ID 생성 메서드 추가.
+  - in-memory와 MariaDB quota repository에 `quota_policy_history` 지원 추가.
+  - `V26__quota_policy_history.sql` migration 추가.
+  - `GET /api/admin/quota-policies/history` API 추가.
+  - save/delete 시 `CREATE`, `UPDATE`, `DELETE` history 기록.
+  - frontend API wrapper와 admin dashboard history list 추가.
+  - lightweight smoke, backend controller test, frontend selector/API wrapper test 갱신.
+  - OpenAPI, API spec, DB 설계, backend/security/operation/frontend 문서, test cases, README, release checklist/status, worklog 갱신.
+- 구현 내용:
+  - history entry는 `targetType`, `targetId`, `action`, `previousQuotaBytes`, `newQuotaBytes`, `actorId`, `createdAt`을 가진다.
+  - history API는 `limit` 1-200 범위로 최신순 조회한다.
+  - frontend quota policy panel이 최근 history를 표시해 create/update/delete와 quota delta를 확인할 수 있다.
+- 수정된 파일 및 관련 파일:
+  - `osmu-backend/src/main/java/com/example/osmu/quota/QuotaPolicyHistory.java`
+  - `osmu-backend/src/main/java/com/example/osmu/quota/QuotaPolicyHistoryResponse.java`
+  - `osmu-backend/src/main/java/com/example/osmu/quota/QuotaPolicyService.java`
+  - `osmu-backend/src/main/java/com/example/osmu/quota/repository/QuotaPolicyRepository.java`
+  - `osmu-backend/src/main/java/com/example/osmu/quota/repository/InMemoryQuotaPolicyRepository.java`
+  - `osmu-backend/src/main/java/com/example/osmu/quota/repository/MariaDbQuotaPolicyRepository.java`
+  - `osmu-backend/src/main/java/com/example/osmu/admin/AdminController.java`
+  - `osmu-backend/src/main/resources/db/migration/V26__quota_policy_history.sql`
+  - `osmu-backend/src/test/java/com/example/osmu/admin/AdminQuotaPolicyControllerTest.java`
+  - `osmu-frontend/src/services/api.js`
+  - `osmu-frontend/src/services/api-quota-policy.test.js`
+  - `osmu-frontend/src/views/HomeView.vue`
+  - `osmu-frontend/src/views/HomeView.test.js`
+  - `scripts/verify-lightweight-prototype.ps1`
+  - `scripts/verify-openapi-contract.ps1`
+  - `scripts/write-mvp-audit.ps1`
+  - `dev-docs/openapi-mvp.json`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/backend-design.md`
+  - `dev-docs/database-design.md`
+  - `dev-docs/frontend-design.md`
+  - `dev-docs/security-design.md`
+  - `dev-docs/operation-monitoring.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/prototype-status.md`
+  - `dev-docs/mvp-release-checklist.md`
+  - `README.md`
+  - `.osmu-run/latest-release.json`
+  - `.osmu-run/latest-mvp-audit.md`
+  - `.osmu-run/latest-release-decision.md`
+  - `.osmu-run/latest-release-notes.md`
+- 검증 기록:
+  - PowerShell parser로 `scripts/verify-lightweight-prototype.ps1` parse 통과.
+  - `node --check .\src\services\api.js` 통과.
+  - `git diff --check` 통과. CRLF 경고만 출력.
+  - `.\gradlew.bat test --tests com.example.osmu.admin.AdminQuotaPolicyControllerTest` 승인 권한 실행 통과.
+  - `npm.cmd run test:unit` 통과. 53 tests pass.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-openapi-contract.ps1` 통과. 82 operations, 63 frontend API functions checked.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-migrations.ps1` 통과. 26 migrations, highest V26.
+  - `npm.cmd run build` 통과.
+  - 최초 lightweight smoke는 stale backend runtime이 새 history endpoint를 반영하지 않아 500으로 실패했다.
+  - `scripts/stop-local-prototype.ps1` 후 `scripts/start-local-prototype.ps1 -JavaHome ...`로 최신 backend/frontend runtime을 재시작했다.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-lightweight-prototype.ps1` 재실행 통과.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-prototype-release.ps1 -JavaHome ...` 승인 권한 실행 통과. generatedAt `2026-06-14T03:16:03.5711000+09:00`, result `passed`.
+- 코드 리뷰: quota enforcement path는 건드리지 않고 정책 변경 추적만 추가했다. `CREATE/UPDATE/DELETE` history와 감사 로그가 함께 남아 운영 검토성이 좋아졌다. MariaDB durable 검증은 Docker gate가 열려야 실제 DB 저장까지 확인 가능하다.
+- 결과: quota policy 변경 history가 backend, frontend, migration, smoke, OpenAPI, release evidence에 포함됐다. 최신 release gate는 2026-06-14 03:16 KST 통과했고 lightweight demo `GO`, durable MVP pilot `NO-GO` 상태다.
+- 후속 메모: history 사유(reason) 입력, bulk assignment, org-admin 위임 범위, MariaDB/MinIO durable quota consistency 검증 필요.
+- 추가 개발: Docker/MariaDB/MinIO integration, real S3 client smoke, Browser click E2E, signed image evidence, quota policy change reason.
+- 사용 skill/plugin: caveman skill ultra.
+
+### 2026-06-14 - Quota Policy 변경 사유 입력 추가
+
+- 작업 시작 시간: 2026-06-14 03:17:00 +09:00
+- 작업 종료 시간: 2026-06-14 03:25:47 +09:00
+- 사용자 명령: 활성 목표인 현재까지 구현된 기능 기준 prototype 개발 계속.
+- 명령 해석: 직전 작업의 후속 메모였던 quota policy history 사유(reason) 입력을 구현해 B2B 운영 감사성을 더 올리라는 작업으로 인식.
+- 작업 방식: 기존 quota policy history 모델에 optional reason을 추가했다. save request body와 delete query에서 reason을 받아 history에 저장하고, frontend admin panel에서 입력/표시하도록 했다.
+- 실행 내용:
+  - `QuotaPolicyRequest`에 `reason` 추가.
+  - `QuotaPolicyHistory`와 response에 `reason` 추가.
+  - `QuotaPolicyService`가 reason을 trim, blank-null 처리하고 512자 초과를 validation error로 차단.
+  - delete API에 optional `reason` query parameter 추가.
+  - MariaDB history table용 `V27__quota_policy_history_reason.sql` migration 추가.
+  - MariaDB repository fallback schema에도 reason column 보장 추가.
+  - frontend API wrapper가 save/delete reason을 전달하도록 변경.
+  - quota policy form에 reason input 추가, history row에 reason 표시.
+  - smoke/test/docs/worklog/release evidence 갱신.
+- 구현 내용:
+  - save: `PUT /api/admin/quota-policies/{targetType}/{targetId}` body `{ quotaBytes, reason }`.
+  - delete: `DELETE /api/admin/quota-policies/{targetType}/{targetId}?reason=...`.
+  - history response는 `reason`을 포함한다.
+  - frontend delete는 기본 reason `Deleted from admin dashboard`를 남긴다.
+- 수정된 파일 및 관련 파일:
+  - `osmu-backend/src/main/java/com/example/osmu/quota/QuotaPolicyRequest.java`
+  - `osmu-backend/src/main/java/com/example/osmu/quota/QuotaPolicyHistory.java`
+  - `osmu-backend/src/main/java/com/example/osmu/quota/QuotaPolicyHistoryResponse.java`
+  - `osmu-backend/src/main/java/com/example/osmu/quota/QuotaPolicyService.java`
+  - `osmu-backend/src/main/java/com/example/osmu/quota/repository/MariaDbQuotaPolicyRepository.java`
+  - `osmu-backend/src/main/java/com/example/osmu/admin/AdminController.java`
+  - `osmu-backend/src/main/resources/db/migration/V27__quota_policy_history_reason.sql`
+  - `osmu-backend/src/test/java/com/example/osmu/admin/AdminQuotaPolicyControllerTest.java`
+  - `osmu-frontend/src/services/api.js`
+  - `osmu-frontend/src/services/api-quota-policy.test.js`
+  - `osmu-frontend/src/views/HomeView.vue`
+  - `osmu-frontend/src/views/HomeView.test.js`
+  - `scripts/verify-lightweight-prototype.ps1`
+  - `dev-docs/openapi-mvp.json`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/backend-design.md`
+  - `dev-docs/database-design.md`
+  - `dev-docs/frontend-design.md`
+  - `dev-docs/security-design.md`
+  - `dev-docs/operation-monitoring.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/prototype-status.md`
+  - `dev-docs/mvp-release-checklist.md`
+  - `README.md`
+  - `.osmu-run/latest-release.json`
+  - `.osmu-run/latest-mvp-audit.md`
+  - `.osmu-run/latest-release-decision.md`
+  - `.osmu-run/latest-release-notes.md`
+- 검증 기록:
+  - PowerShell parser로 `scripts/verify-lightweight-prototype.ps1` parse 통과.
+  - `node --check .\src\services\api.js` 통과.
+  - `git diff --check` 통과. CRLF 경고만 출력.
+  - `.\gradlew.bat test --tests com.example.osmu.admin.AdminQuotaPolicyControllerTest` 승인 권한 실행 통과.
+  - `npm.cmd run test:unit` 통과. 53 tests pass.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-openapi-contract.ps1` 통과. 82 operations, 63 frontend API functions checked.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-migrations.ps1` 통과. 27 migrations, highest V27.
+  - `npm.cmd run build` 통과.
+  - 최초 lightweight smoke는 PowerShell 문자열 interpolation 문제로 delete URL의 `targetId?reason`이 깨져 실패했다.
+  - `"$($createdUserQuotaPolicyTargetId)?reason=..."` 형태로 수정 후 `powershell -ExecutionPolicy Bypass -File .\scripts\verify-lightweight-prototype.ps1` 통과.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-prototype-release.ps1 -JavaHome ...` 승인 권한 실행 통과. generatedAt `2026-06-14T03:25:09.4870604+09:00`, result `passed`.
+- 코드 리뷰: reason은 optional이라 기존 API 호출 호환성을 유지한다. 512자 제한으로 DB/UI에 과도한 텍스트가 들어가지 않게 했다. 삭제 reason은 query parameter로 받아 REST delete body 호환성 문제를 피했다.
+- 결과: quota policy history가 변경 사유까지 보존한다. 최신 release gate는 2026-06-14 03:25 KST 통과했고 lightweight demo `GO`, durable MVP pilot `NO-GO` 상태다.
+- 후속 메모: reason을 required로 강제할지, predefined reason template, bulk assignment, org-admin 위임 범위는 추후 검토 필요.
+- 추가 개발: Docker/MariaDB/MinIO integration, real S3 client smoke, Browser click E2E, signed image evidence, quota policy reason template.
+- 사용 skill/plugin: caveman skill ultra.
+
+### 2026-06-14 - Object Share Link 프로토타입 추가
+
+- 작업 시작 시간: 2026-06-14 03:26:00 +09:00
+- 작업 종료 시간: 2026-06-14 03:51:51 +09:00
+- 사용자 명령: `<codex_internal_context>`의 활성 목표인 "일단 현재까지 구현된 기능을 기준으로 프로토타입까지 개발"을 계속 진행.
+- 요청 분석: Docker, real S3 client, Browser E2E는 외부 gate라 현재 환경에서 풀 수 없다. 내부에서 B2B 데모 완성도를 높이기 위해 "저장한 object를 부서/외부 이해관계자에게 임시 공유하고 재사용"하는 흐름을 구현하는 작업으로 인식.
+- 명령 해석:
+  - 로그인 사용자가 `READ` 권한으로 object share link를 발급한다.
+  - public token download는 Bearer token 없이 object를 받을 수 있어야 한다.
+  - token 원문은 저장하지 않고 hash만 저장한다.
+  - link 목록 조회와 취소, audit, smoke/release evidence까지 포함해야 한다.
+- 작업 방식:
+  - `object_share_links` metadata 모델과 in-memory/MariaDB repository를 추가했다.
+  - `ObjectShareLinkService`에서 token 생성, SHA-256 hash 저장, expiry/status validation, revoke를 처리했다.
+  - `/api/public/share-links/{token}`을 auth interceptor public path로 열고 public download stream을 구현했다.
+  - object controller에 share link create/list/revoke API를 추가했다.
+  - frontend object table에 Share/Links controls, share URL 표시, share link list/revoke panel을 추가했다.
+  - lightweight smoke, backend flow test, frontend API/selector test, OpenAPI, docs, release checklist/status를 갱신했다.
+- 구현 내용:
+  - `POST /api/buckets/{bucketName}/objects/share-links`: `{ key, expiresInSeconds, note }`로 active share link 발급.
+  - `GET /api/buckets/{bucketName}/objects/share-links?key=...&limit=...`: bucket/object share link list.
+  - `DELETE /api/buckets/{bucketName}/objects/share-links/{linkId}`: creator 또는 bucket 관리자가 revoke.
+  - `GET /api/public/share-links/{token}`: active/non-expired token이면 object stream download.
+  - audit events: `OBJECT_SHARE_LINK_CREATE`, `OBJECT_SHARE_LINK_DOWNLOAD`, `OBJECT_SHARE_LINK_REVOKE`.
+- 수정된 파일 및 관련 파일:
+  - `osmu-backend/src/main/java/com/example/osmu/object/ObjectShareLink.java`
+  - `osmu-backend/src/main/java/com/example/osmu/object/ObjectShareLinkCreateRequest.java`
+  - `osmu-backend/src/main/java/com/example/osmu/object/ObjectShareLinkIssue.java`
+  - `osmu-backend/src/main/java/com/example/osmu/object/ObjectShareLinkResponse.java`
+  - `osmu-backend/src/main/java/com/example/osmu/object/ObjectShareLinkDownload.java`
+  - `osmu-backend/src/main/java/com/example/osmu/object/ObjectShareLinkService.java`
+  - `osmu-backend/src/main/java/com/example/osmu/object/ObjectShareLinkPublicController.java`
+  - `osmu-backend/src/main/java/com/example/osmu/object/repository/ObjectShareLinkRepository.java`
+  - `osmu-backend/src/main/java/com/example/osmu/object/repository/InMemoryObjectShareLinkRepository.java`
+  - `osmu-backend/src/main/java/com/example/osmu/object/repository/MariaDbObjectShareLinkRepository.java`
+  - `osmu-backend/src/main/java/com/example/osmu/object/ObjectController.java`
+  - `osmu-backend/src/main/java/com/example/osmu/object/ObjectService.java`
+  - `osmu-backend/src/main/java/com/example/osmu/auth/JwtAuthInterceptor.java`
+  - `osmu-backend/src/main/java/com/example/osmu/admin/AdminController.java`
+  - `osmu-backend/src/main/resources/db/migration/V28__object_share_links.sql`
+  - `osmu-backend/src/test/java/com/example/osmu/bucket/BucketObjectFlowTest.java`
+  - `osmu-frontend/src/services/api.js`
+  - `osmu-frontend/src/services/api-query.test.js`
+  - `osmu-frontend/src/views/HomeView.vue`
+  - `osmu-frontend/src/views/HomeView.test.js`
+  - `scripts/verify-lightweight-prototype.ps1`
+  - `scripts/verify-openapi-contract.ps1`
+  - `scripts/write-mvp-audit.ps1`
+  - `dev-docs/openapi-mvp.json`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/PRODUCT_REQUIREMENTS.md`
+  - `dev-docs/backend-design.md`
+  - `dev-docs/database-design.md`
+  - `dev-docs/frontend-design.md`
+  - `dev-docs/security-design.md`
+  - `dev-docs/system-architecture.md`
+  - `dev-docs/operation-monitoring.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/prototype-status.md`
+  - `dev-docs/mvp-release-checklist.md`
+  - `README.md`
+  - `.osmu-run/latest-release.json`
+  - `.osmu-run/latest-mvp-audit.md`
+  - `.osmu-run/latest-release-decision.md`
+  - `.osmu-run/latest-release-notes.md`
+- 검증 기록:
+  - `.\gradlew.bat test --tests com.example.osmu.bucket.BucketObjectFlowTest` 승인 권한 실행 통과.
+  - `node --check .\src\services\api.js` 통과.
+  - `npm.cmd run test:unit` 통과. 54 tests pass.
+  - `npm.cmd run build` 통과.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-openapi-contract.ps1` 통과. 86 operations, 66 frontend API functions checked.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-migrations.ps1` 통과. 28 migrations, highest V28.
+  - PowerShell parser로 `scripts/verify-lightweight-prototype.ps1` parse 통과.
+  - `git diff --check` 통과. CRLF 경고만 출력.
+  - `.\gradlew.bat test` 승인 권한 실행 통과.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\stop-local-prototype.ps1 -ForcePorts`로 기존 runtime 정리.
+  - sandbox 실행에서는 Gradle distribution download가 막혀 start 실패했고, 승인 권한으로 `scripts/start-local-prototype.ps1 -JavaHome ...` 재실행해 backend/frontend runtime 시작.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-lightweight-prototype.ps1` 통과. `Object share link` step 포함.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-prototype-release.ps1 -JavaHome ...` 승인 권한 실행 통과. generatedAt `2026-06-14T03:50:50.4821253+09:00`, result `passed`.
+- 코드 리뷰: raw token은 저장하지 않고 create 응답에서만 노출해 유출면을 줄였다. public download는 active/non-expired token만 허용하고 revoked/expired token은 `404 NOT_FOUND`로 응답해 link 존재 추측을 줄인다. share link repository를 admin system status health에도 포함했다. revoke 권한은 creator 또는 bucket manage 권한으로 제한했다.
+- 결과: object share/reuse 흐름이 backend, frontend, migration, smoke, OpenAPI, release evidence에 포함됐다. 최신 release gate는 2026-06-14 03:50 KST 통과했고 lightweight demo `GO`, durable MVP pilot `NO-GO` 상태다.
+- 후속 메모: share link 만료 정리 job, password-protected link, download count/lastAccessedAt, per-link max downloads, organization-scoped share policy는 추후 검토 필요.
+- 추가 개발: Docker/MariaDB/MinIO integration, real S3 client smoke, Browser click E2E, signed image evidence, share link lifecycle cleanup.
+- 사용 skill/plugin: caveman skill ultra.
+
+### 2026-06-14 - Object Share Link 사용 제한/추적 추가
+
+- 작업 시작 시간: 2026-06-14 03:52:00 +09:00
+- 작업 종료 시간: 2026-06-14 04:11:08 +09:00
+- 사용자 명령: 활성 목표인 "일단 현재까지 구현된 기능을 기준으로 프로토타입까지 개발"을 계속 진행.
+- 요청 분석: Docker, real S3 client, Browser E2E는 외부 환경 gate라 현재 직접 해결할 수 없다. 대신 이미 구현된 object share link를 B2B 데모/운영 관점에서 더 완성도 있게 만들기 위해 사용 제한, 사용량 추적, 만료 정리 API를 추가하는 작업으로 해석.
+- 명령 해석:
+  - share link 발급 시 선택적으로 `maxDownloads`를 받을 수 있어야 한다.
+  - public download 성공 시 `downloadCount`와 `lastAccessedAt`이 갱신되어야 한다.
+  - max download를 넘은 link는 public download에서 `404 NOT_FOUND`로 막아야 한다.
+  - bucket 관리자는 만료된 active share link를 cleanup API로 `EXPIRED` 처리할 수 있어야 한다.
+- 작업 방식:
+  - backend share link record/request/response/repository/service를 확장했다.
+  - MariaDB migration `V29__object_share_link_usage_limits.sql`와 repository fallback schema 보강을 추가했다.
+  - frontend API wrapper와 dashboard share link panel에 usage/cleanup UI를 추가했다.
+  - smoke, backend flow test, frontend wrapper/selector test, OpenAPI verifier, docs, release checklist/status를 갱신했다.
+- 구현 내용:
+  - `maxDownloads`: optional, 1~100000.
+  - `downloadCount`: public download 성공마다 증가.
+  - `lastAccessedAt`: public download 성공 시 갱신.
+  - `LIMIT_REACHED`: max download 도달 후 추가 public access는 `404 NOT_FOUND`.
+  - `POST /api/buckets/{bucketName}/objects/share-links/cleanup`: bucket manage 권한으로 만료 active link를 `EXPIRED` 처리.
+  - audit event `OBJECT_SHARE_LINK_CLEANUP` 추가.
+- 수정된 파일 및 관련 파일:
+  - `osmu-backend/src/main/java/com/example/osmu/object/ObjectShareLink.java`
+  - `osmu-backend/src/main/java/com/example/osmu/object/ObjectShareLinkCreateRequest.java`
+  - `osmu-backend/src/main/java/com/example/osmu/object/ObjectShareLinkResponse.java`
+  - `osmu-backend/src/main/java/com/example/osmu/object/ObjectShareLinkCleanupResponse.java`
+  - `osmu-backend/src/main/java/com/example/osmu/object/ObjectShareLinkService.java`
+  - `osmu-backend/src/main/java/com/example/osmu/object/ObjectController.java`
+  - `osmu-backend/src/main/java/com/example/osmu/object/repository/ObjectShareLinkRepository.java`
+  - `osmu-backend/src/main/java/com/example/osmu/object/repository/InMemoryObjectShareLinkRepository.java`
+  - `osmu-backend/src/main/java/com/example/osmu/object/repository/MariaDbObjectShareLinkRepository.java`
+  - `osmu-backend/src/main/resources/db/migration/V29__object_share_link_usage_limits.sql`
+  - `osmu-backend/src/test/java/com/example/osmu/bucket/BucketObjectFlowTest.java`
+  - `osmu-frontend/src/services/api.js`
+  - `osmu-frontend/src/services/api-query.test.js`
+  - `osmu-frontend/src/views/HomeView.vue`
+  - `osmu-frontend/src/views/HomeView.test.js`
+  - `scripts/verify-lightweight-prototype.ps1`
+  - `scripts/verify-openapi-contract.ps1`
+  - `scripts/write-mvp-audit.ps1`
+  - `dev-docs/openapi-mvp.json`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/PRODUCT_REQUIREMENTS.md`
+  - `dev-docs/backend-design.md`
+  - `dev-docs/database-design.md`
+  - `dev-docs/frontend-design.md`
+  - `dev-docs/operation-monitoring.md`
+  - `dev-docs/system-architecture.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/prototype-status.md`
+  - `dev-docs/mvp-release-checklist.md`
+  - `README.md`
+  - `.osmu-run/latest-release.json`
+  - `.osmu-run/latest-mvp-audit.md`
+  - `.osmu-run/latest-release-decision.md`
+  - `.osmu-run/latest-release-notes.md`
+- 검증 기록:
+  - `node --check .\src\services\api.js` 통과.
+  - `npm.cmd run test:unit -- api-query.test.js HomeView.test.js` 통과. 실제 script가 `src/**/*.test.js` 전체를 실행해 54 tests pass.
+  - `npm.cmd run build` 통과.
+  - `.\gradlew.bat test --tests com.example.osmu.bucket.BucketObjectFlowTest` 승인 권한 실행 통과.
+  - `.\gradlew.bat test` 승인 권한 실행 통과.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-openapi-contract.ps1` 통과. 87 operations, 67 frontend API functions checked.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-migrations.ps1` 통과. 29 migrations, highest V29.
+  - PowerShell parser로 `scripts/verify-lightweight-prototype.ps1` parse 통과.
+  - `git diff --check` 통과. CRLF 경고만 출력.
+  - 첫 release gate는 기존 localhost runtime이 이전 코드라 `Object share link did not return active token/url.`로 실패했다.
+  - `scripts/stop-local-prototype.ps1 -ForcePorts`와 `scripts/start-local-prototype.ps1 -JavaHome ...`로 runtime 재시작 후 `powershell -ExecutionPolicy Bypass -File .\scripts\verify-lightweight-prototype.ps1` 통과.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-prototype-release.ps1 -JavaHome ...` 승인 권한 실행 통과. generatedAt `2026-06-14T04:10:26.0800026+09:00`, result `passed`.
+- 코드 리뷰: raw token 저장 금지 정책은 유지했다. max download 도달 시 `LIMIT_REACHED`로 상태를 남기지만 public 응답은 `404 NOT_FOUND`로 유지해 link 존재 추측을 줄였다. cleanup은 bucket manage 권한으로 제한했고 audit event를 남긴다. In-memory와 MariaDB repository 모두 같은 response fields를 제공하도록 맞췄다.
+- 결과: object share link가 단순 임시 URL에서 운영 가능한 공유 링크로 강화됐다. 최신 release gate는 2026-06-14 04:10 KST 통과했고 lightweight demo `GO`, durable MVP pilot `NO-GO` 상태다.
+- 후속 메모: password-protected link, organization-scoped share policy, per-link IP allowlist, share link bulk cleanup/scheduled cleanup job은 추후 검토 필요.
+- 추가 개발: Docker/MariaDB/MinIO integration, real S3 client smoke, Browser click E2E, signed image evidence, scheduled share link cleanup.
+- 사용 skill/plugin: caveman skill ultra.
+
+### 2026-06-14 - Object Share Link 자동 만료 정리 Job 추가
+
+- 작업 시작 시간: 2026-06-14 04:12:00 +09:00
+- 작업 종료 시간: 2026-06-14 04:20:45 +09:00
+- 사용자 명령: 활성 목표인 "일단 현재까지 구현된 기능을 기준으로 프로토타입까지 개발"을 계속 진행.
+- 요청 분석: Durable gate는 Docker/real S3 client/Browser 외부 환경 때문에 아직 못 닫는다. 내부적으로는 직전 작업에서 수동 share link cleanup까지 구현했으므로, 운영자가 직접 누르지 않아도 만료 link가 정리되는 scheduled cleanup과 metric/alert evidence를 추가하는 것이 prototype 완성도에 맞는 다음 작업으로 판단.
+- 명령 해석:
+  - 만료된 active object share link는 scheduler가 자동으로 `EXPIRED` 처리해야 한다.
+  - cleanup 성공/실패는 Prometheus metric과 audit evidence로 추적 가능해야 한다.
+  - backend unit test, monitoring verifier, release evidence에 반영되어야 한다.
+- 작업 방식:
+  - `ObjectShareLinkRepository`에 전역 `expireActiveBefore(now)` 메서드를 추가했다.
+  - in-memory/MariaDB repository에 전역 만료 update를 구현했다.
+  - `ObjectShareLinkCleanupJob`을 Spring scheduled component로 추가했다.
+  - Micrometer counter와 audit log를 추가하고 unit test로 성공/실패 metric을 고정했다.
+  - Prometheus alert draft와 monitoring verifier, 문서/status/worklog를 갱신했다.
+- 구현 내용:
+  - 설정: `osmu.object.share-link.cleanup.enabled`, `initial-delay-ms`, `fixed-delay-ms`.
+  - metric: `osmu.object.share.cleanup.links{result=success}`.
+  - metric: `osmu.object.share.cleanup.runs{result=failure}`.
+  - alert draft: `OsmuShareLinkCleanupFailures`.
+  - audit: scheduler cleanup 성공 시 `OBJECT_SHARE_LINK_CLEANUP`, actor `system`, target `all-buckets`.
+- 수정된 파일 및 관련 파일:
+  - `osmu-backend/src/main/java/com/example/osmu/object/ObjectShareLinkCleanupJob.java`
+  - `osmu-backend/src/main/java/com/example/osmu/object/repository/ObjectShareLinkRepository.java`
+  - `osmu-backend/src/main/java/com/example/osmu/object/repository/InMemoryObjectShareLinkRepository.java`
+  - `osmu-backend/src/main/java/com/example/osmu/object/repository/MariaDbObjectShareLinkRepository.java`
+  - `osmu-backend/src/main/resources/application.yaml`
+  - `osmu-backend/src/test/java/com/example/osmu/object/ObjectShareLinkCleanupJobTest.java`
+  - `infra/monitoring/prometheus-rules.yaml`
+  - `infra/monitoring/README.md`
+  - `scripts/verify-monitoring-artifacts.ps1`
+  - `scripts/write-mvp-audit.ps1`
+  - `README.md`
+  - `dev-docs/PRODUCT_REQUIREMENTS.md`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/backend-design.md`
+  - `dev-docs/operation-monitoring.md`
+  - `dev-docs/system-architecture.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/prototype-status.md`
+  - `dev-docs/mvp-release-checklist.md`
+  - `.osmu-run/latest-release.json`
+  - `.osmu-run/latest-mvp-audit.md`
+  - `.osmu-run/latest-release-decision.md`
+  - `.osmu-run/latest-release-notes.md`
+- 검증 기록:
+  - `.\gradlew.bat test --tests com.example.osmu.object.ObjectShareLinkCleanupJobTest --tests com.example.osmu.bucket.BucketObjectFlowTest` 승인 권한 실행 통과.
+  - `npm.cmd run test:unit` 통과. 54 tests pass.
+  - `npm.cmd run build` 통과.
+  - `.\gradlew.bat test` 승인 권한 실행 통과.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-monitoring-artifacts.ps1` 통과. `OsmuShareLinkCleanupFailures` 포함 확인.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-openapi-contract.ps1` 통과. 87 operations, 67 frontend API functions checked.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-migrations.ps1` 통과. 29 migrations, highest V29.
+  - `scripts/stop-local-prototype.ps1 -ForcePorts`와 `scripts/start-local-prototype.ps1 -JavaHome ...`로 runtime 재시작.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-prototype-release.ps1 -JavaHome ...` 승인 권한 실행 통과. generatedAt `2026-06-14T04:20:04.3801950+09:00`, result `passed`.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-mvp-release-artifacts.ps1 -ReleaseReportPath .\.osmu-run\latest-release.json` 통과.
+  - `git diff --check` 통과. CRLF 경고만 출력.
+- 코드 리뷰: 수동 cleanup API와 scheduler가 같은 repository 만료 로직을 공유해 정책 중복을 줄였다. Scheduler는 실패를 삼키고 failure counter를 증가시켜 다음 주기에 재시도 가능하게 했다. 성공 audit은 count가 있을 때만 남겨 audit noise를 줄였다. Prometheus alert는 run failure metric을 기준으로 잡아 cleanup 대상이 없는 정상 상태와 실패 상태를 구분한다.
+- 결과: share link lifecycle이 발급/사용/제한/취소/수동정리에서 자동 만료 정리와 운영 alert까지 이어졌다. 최신 release gate는 2026-06-14 04:20 KST 통과했고 lightweight demo `GO`, durable MVP pilot `NO-GO` 상태다.
+- 후속 메모: Docker/MariaDB/MinIO 환경에서 실제 scheduled cleanup metric scrape와 MariaDB update 동작을 확인해야 한다. password-protected link, org-scoped share policy, IP allowlist는 이후 보안 강화 후보.
+- 추가 개발: Docker/MariaDB/MinIO integration, real S3 client smoke, Browser click E2E, signed image evidence, share link password/IP/org policy.
+- 사용 skill/plugin: caveman skill ultra.
+
+### 2026-06-14 - Object Share Link 선택 비밀번호 보호 추가
+
+- 작업 시작 시간: 2026-06-14 04:21:00 +09:00
+- 작업 종료 시간: 2026-06-14 04:34:00 +09:00
+- 사용자 명령: 활성 목표인 "일단 현재까지 구현된 기능을 기준으로 프로토타입까지 개발"을 계속 진행.
+- 요청 분석: Durable gate는 Docker/real S3 client/Browser 외부 환경 때문에 아직 닫을 수 없다. 내부 프로토타입 완성도를 높이기 위해 public token만으로 열리는 object share link에 선택 비밀번호 보호를 추가하는 것이 보안/상용화 방향에 맞는 다음 작업으로 판단.
+- 명령 해석:
+  - share link 생성 시 선택적으로 `password`를 받을 수 있어야 한다.
+  - raw password는 저장하지 않고 hash만 저장해야 한다.
+  - password-protected link는 비밀번호가 없거나 틀리면 `404 NOT_FOUND`로 응답해야 한다.
+  - frontend, smoke, API/docs, migration, release evidence에 반영되어야 한다.
+- 작업 방식:
+  - `ObjectShareLink` record에 `passwordHash`와 `passwordProtected()`를 추가했다.
+  - `ObjectShareLinkService`에서 password 길이 검증, token hash에 묶인 SHA-256 password hash 저장, public download password 검증을 구현했다.
+  - `ObjectShareLinkPublicController`에서 `X-OSMU-Share-Password` header와 `password` query parameter를 받아 download 검증에 전달했다.
+  - MariaDB repository와 Flyway migration `V30__object_share_link_password.sql`를 추가해 `password_hash`를 저장했다.
+  - frontend share link 생성 UI에 선택 password input을 추가하고 API wrapper/smoke/unit test를 갱신했다.
+  - 문서와 prototype status/release checklist를 최신 release gate 결과로 갱신했다.
+- 구현 내용:
+  - Request: `POST /api/buckets/{bucketName}/objects/share-links`에 선택 `password` 추가.
+  - Response: share link 응답에 `passwordProtected` boolean 추가.
+  - Public download: password-protected link는 `X-OSMU-Share-Password` 또는 `?password=` 값이 맞아야 stream 반환.
+  - Security policy: missing/wrong password, expired, revoked, limit reached 모두 `404 NOT_FOUND`.
+  - DB: `object_share_links.password_hash VARCHAR(64) NULL`.
+- 수정된 파일 및 관련 파일:
+  - `osmu-backend/src/main/java/com/example/osmu/object/ObjectShareLink.java`
+  - `osmu-backend/src/main/java/com/example/osmu/object/ObjectShareLinkCreateRequest.java`
+  - `osmu-backend/src/main/java/com/example/osmu/object/ObjectShareLinkResponse.java`
+  - `osmu-backend/src/main/java/com/example/osmu/object/ObjectShareLinkService.java`
+  - `osmu-backend/src/main/java/com/example/osmu/object/ObjectShareLinkPublicController.java`
+  - `osmu-backend/src/main/java/com/example/osmu/object/repository/MariaDbObjectShareLinkRepository.java`
+  - `osmu-backend/src/main/resources/db/migration/V30__object_share_link_password.sql`
+  - `osmu-backend/src/test/java/com/example/osmu/bucket/BucketObjectFlowTest.java`
+  - `osmu-backend/src/test/java/com/example/osmu/object/ObjectShareLinkCleanupJobTest.java`
+  - `osmu-frontend/src/services/api.js`
+  - `osmu-frontend/src/services/api-query.test.js`
+  - `osmu-frontend/src/views/HomeView.vue`
+  - `osmu-frontend/src/views/HomeView.test.js`
+  - `scripts/verify-lightweight-prototype.ps1`
+  - `scripts/write-mvp-audit.ps1`
+  - `dev-docs/openapi-mvp.json`
+  - `README.md`
+  - `dev-docs/PRODUCT_REQUIREMENTS.md`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/backend-design.md`
+  - `dev-docs/database-design.md`
+  - `dev-docs/frontend-design.md`
+  - `dev-docs/operation-monitoring.md`
+  - `dev-docs/security-design.md`
+  - `dev-docs/system-architecture.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/prototype-status.md`
+  - `dev-docs/mvp-release-checklist.md`
+  - `.osmu-run/latest-release.json`
+  - `.osmu-run/latest-mvp-audit.md`
+  - `.osmu-run/latest-release-decision.md`
+  - `.osmu-run/latest-release-notes.md`
+- 검증 기록:
+  - `npm.cmd run test:unit` 통과. 54 tests pass.
+  - `npm.cmd run build` 통과.
+  - `node --check src\services\api.js` 통과.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-migrations.ps1` 통과. 30 migrations, highest V30.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-openapi-contract.ps1` 통과. 87 operations, 67 frontend API functions checked.
+  - sandbox backend test는 Gradle distribution download에서 `Permission denied: getsockopt`로 실패.
+  - `.\gradlew.bat test --tests com.example.osmu.bucket.BucketObjectFlowTest --tests com.example.osmu.object.ObjectShareLinkCleanupJobTest` 승인 권한 실행 통과.
+  - `.\gradlew.bat test` 승인 권한 실행 통과.
+  - `scripts/stop-local-prototype.ps1 -ForcePorts`와 `scripts/start-local-prototype.ps1 -JavaHome ...`로 runtime 재시작.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-lightweight-prototype.ps1` 통과.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-prototype-release.ps1 -JavaHome ...` 승인 권한 실행 통과. generatedAt `2026-06-14T04:33:18.8529233+09:00`, result `passed`.
+  - release gate 내부에서 release artifact consistency verification 통과.
+- 코드 리뷰: raw token 저장 금지 정책과 동일하게 raw password도 저장하지 않았다. password hash를 token hash에 묶어 다른 link 간 hash 재사용 의미를 줄였다. public download의 실패 응답을 `404 NOT_FOUND`로 통일해 link 존재와 password 보호 여부 추측을 줄였다. password input은 optional로 둬 기존 share link 사용성은 유지했다.
+- 결과: object share link가 expiry/revoke/usage/scheduled cleanup에 더해 optional password protection까지 갖췄다. 최신 release gate는 2026-06-14 04:33 KST 통과했고 lightweight demo `GO`, durable MVP pilot `NO-GO` 상태다.
+- 후속 메모: Docker/MariaDB/MinIO 환경에서 `password_hash` migration과 실제 MariaDB read/write를 확인해야 한다. Query parameter password는 편의용이고 운영 배포에서는 header 사용 안내가 더 안전하다.
+- 추가 개발: Docker/MariaDB/MinIO integration, real S3 client smoke, Browser click E2E, signed image evidence, org-scoped share policy, IP allowlist, share policy admin controls.
+- 사용 skill/plugin: caveman skill ultra.
+
+### 2026-06-14 - Object Share Link IP Allowlist 추가
+
+- 작업 시작 시간: 2026-06-14 04:35:00 +09:00
+- 작업 종료 시간: 2026-06-14 04:45:00 +09:00
+- 사용자 명령: 활성 목표인 "일단 현재까지 구현된 기능을 기준으로 프로토타입까지 개발"을 계속 진행.
+- 요청 분석: Docker/real S3 client/Browser E2E/signed image gate는 외부 환경 의존으로 아직 닫을 수 없다. 직전 작업에서 share link password protection을 추가했으므로, B2B 보안 요구에 맞춰 특정 사무실/망에서만 public share link를 열 수 있는 IP allowlist를 추가하는 것이 prototype 완성도에 맞는 다음 작업으로 판단.
+- 명령 해석:
+  - share link 생성 시 선택 `allowedIpCidrs`를 받을 수 있어야 한다.
+  - IPv4/IPv6 IP literal 또는 CIDR만 허용하고 hostname은 거부해야 한다.
+  - IP-restricted link는 client IP가 allowlist에 없으면 `404 NOT_FOUND`로 응답해야 한다.
+  - frontend, smoke, API/docs, migration, release evidence에 반영되어야 한다.
+- 작업 방식:
+  - `ObjectShareLink` record에 `allowedIpCidrs`와 `ipRestricted()`를 추가했다.
+  - `ObjectShareLinkService`에 IP/CIDR parser, CIDR matcher, allowlist validation, public download IP 검증을 추가했다.
+  - `ObjectShareLinkPublicController`가 `X-Forwarded-For` 첫 IP를 client IP로 쓰고 없으면 remote address를 사용하도록 연결했다.
+  - MariaDB repository와 Flyway migration `V31__object_share_link_ip_allowlist.sql`를 추가했다.
+  - frontend share link 생성 UI에 IP/CIDR allowlist input을 추가하고 API wrapper/unit selector test를 갱신했다.
+  - lightweight smoke에서 localhost allowlist 성공과 blocked IP denial을 함께 검증했다.
+- 구현 내용:
+  - Request: `POST /api/buckets/{bucketName}/objects/share-links`에 선택 `allowedIpCidrs` 추가.
+  - Response: share link 응답에 `allowedIpCidrs`, `ipRestricted` 추가.
+  - Public download: `allowedIpCidrs`가 있으면 `X-Forwarded-For` 첫 IP 또는 remote address가 CIDR 중 하나와 맞아야 stream 반환.
+  - Security policy: blocked IP, invalid client IP도 `404 NOT_FOUND`.
+  - DB: `object_share_links.allowed_ip_cidrs VARCHAR(512) NULL`.
+- 수정된 파일 및 관련 파일:
+  - `osmu-backend/src/main/java/com/example/osmu/object/ObjectShareLink.java`
+  - `osmu-backend/src/main/java/com/example/osmu/object/ObjectShareLinkCreateRequest.java`
+  - `osmu-backend/src/main/java/com/example/osmu/object/ObjectShareLinkResponse.java`
+  - `osmu-backend/src/main/java/com/example/osmu/object/ObjectShareLinkService.java`
+  - `osmu-backend/src/main/java/com/example/osmu/object/ObjectShareLinkPublicController.java`
+  - `osmu-backend/src/main/java/com/example/osmu/object/repository/MariaDbObjectShareLinkRepository.java`
+  - `osmu-backend/src/main/resources/db/migration/V31__object_share_link_ip_allowlist.sql`
+  - `osmu-backend/src/test/java/com/example/osmu/bucket/BucketObjectFlowTest.java`
+  - `osmu-backend/src/test/java/com/example/osmu/object/ObjectShareLinkCleanupJobTest.java`
+  - `osmu-frontend/src/services/api.js`
+  - `osmu-frontend/src/services/api-query.test.js`
+  - `osmu-frontend/src/views/HomeView.vue`
+  - `osmu-frontend/src/views/HomeView.test.js`
+  - `scripts/verify-lightweight-prototype.ps1`
+  - `scripts/write-mvp-audit.ps1`
+  - `dev-docs/openapi-mvp.json`
+  - `README.md`
+  - `dev-docs/PRODUCT_REQUIREMENTS.md`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/backend-design.md`
+  - `dev-docs/database-design.md`
+  - `dev-docs/frontend-design.md`
+  - `dev-docs/operation-monitoring.md`
+  - `dev-docs/security-design.md`
+  - `dev-docs/system-architecture.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/prototype-status.md`
+  - `dev-docs/mvp-release-checklist.md`
+  - `.osmu-run/latest-release.json`
+  - `.osmu-run/latest-mvp-audit.md`
+  - `.osmu-run/latest-release-decision.md`
+  - `.osmu-run/latest-release-notes.md`
+- 검증 기록:
+  - `npm.cmd run test:unit` 통과. 54 tests pass.
+  - `npm.cmd run build` 통과.
+  - `node --check src\services\api.js` 통과.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-migrations.ps1` 통과. 31 migrations, highest V31.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-openapi-contract.ps1` 통과. 87 operations, 67 frontend API functions checked.
+  - `.\gradlew.bat test --tests com.example.osmu.bucket.BucketObjectFlowTest --tests com.example.osmu.object.ObjectShareLinkCleanupJobTest` 승인 권한 실행 통과.
+  - `.\gradlew.bat test` 승인 권한 실행 통과.
+  - `scripts/stop-local-prototype.ps1 -ForcePorts`와 `scripts/start-local-prototype.ps1 -JavaHome ...`로 runtime 재시작.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-lightweight-prototype.ps1` 통과.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-prototype-release.ps1 -JavaHome ...` 승인 권한 실행 통과. generatedAt `2026-06-14T04:44:31.4441545+09:00`, result `passed`.
+  - release gate 내부에서 release artifact consistency verification 통과.
+- 코드 리뷰: hostname을 허용하지 않고 IP literal/CIDR만 허용해 allowlist 검증 중 DNS 의존을 피했다. 실패 응답은 password 보호와 동일하게 `404 NOT_FOUND`로 통일했다. `X-Forwarded-For`는 reverse proxy 뒤 배포를 위한 입력으로 사용하지만, 운영에서는 신뢰할 수 있는 proxy에서만 이 header를 전달하도록 edge 설정이 필요하다.
+- 결과: object share link가 expiry/revoke/usage/scheduled cleanup/password protection에 더해 optional IP allowlist까지 갖췄다. 최신 release gate는 2026-06-14 04:44 KST 통과했고 lightweight demo `GO`, durable MVP pilot `NO-GO` 상태다.
+- 후속 메모: Docker/MariaDB/MinIO 환경에서 `allowed_ip_cidrs` migration과 실제 MariaDB read/write를 확인해야 한다. 운영 배포 전 reverse proxy의 `X-Forwarded-For` 신뢰 경계를 명확히 해야 한다.
+- 추가 개발: Docker/MariaDB/MinIO integration, real S3 client smoke, Browser click E2E, signed image evidence, org-scoped share policy, share policy admin controls, link analytics.
+- 사용 skill/plugin: caveman skill ultra.
+
+### 2026-06-14 - Object Share Policy Admin Control 추가
+
+- 작업 시작 시간: 2026-06-14 04:46:00 +09:00
+- 작업 종료 시간: 2026-06-14 05:04:01 +09:00
+- 사용자 명령: 활성 목표인 "일단 현재까지 구현된 기능을 기준으로 프로토타입까지 개발"을 계속 진행.
+- 요청 분석: Docker/MariaDB/MinIO, real S3 client, Browser E2E, signed image evidence는 외부 gate로 아직 닫을 수 없다. 직전 작업에서 share link password/IP 제한이 구현됐으므로, B2B 보안 운영에 맞게 전체 share link에 적용되는 admin policy를 추가하는 것이 현재 prototype 완성도를 높이는 다음 작업으로 판단.
+- 명령 해석:
+  - ADMIN이 global object share policy를 조회/저장할 수 있어야 한다.
+  - policy는 share link 생성 시 password/IP allowlist 필수 여부, 만료 시간 상한, 다운로드 수 상한을 강제해야 한다.
+  - frontend admin panel, smoke, OpenAPI, 문서, release evidence에 반영해야 한다.
+- 작업 방식:
+  - `ObjectSharePolicy` record, request, service, repository interface, in-memory/MariaDB repository를 추가했다.
+  - `ObjectShareLinkService` 생성 경로에 policy 검증을 연결했다.
+  - `AdminController`에 `GET/PUT /api/admin/object-share-policy`를 추가하고 audit event를 기록했다.
+  - frontend admin dashboard에 share policy panel과 API wrapper를 추가하고, share link 생성 버튼이 required password/IP를 먼저 확인하도록 했다.
+  - lightweight smoke에서 policy save, required password/IP enforcement, max download cap enforcement, reset을 검증했다.
+  - OpenAPI, API spec, DB/backend/frontend/security/operation/system/test docs, README, release checklist/status, audit writer, worklog를 갱신했다.
+- 구현 내용:
+  - API: `GET /api/admin/object-share-policy`, `PUT /api/admin/object-share-policy`.
+  - Policy fields: `requirePassword`, `requireIpAllowlist`, `maxExpiresSeconds`, `maxDownloadsLimit`, `updatedAt`.
+  - DB: `object_share_policy` table, migration `V32__object_share_policy.sql`.
+  - Audit: `OBJECT_SHARE_POLICY_SAVE`, target `OBJECT_SHARE_POLICY/global`.
+  - Frontend selectors: `object-share-policy-panel`, `object-share-policy-form`, `object-share-policy-require-password`, `object-share-policy-require-ip`, `object-share-policy-max-expiry`, `object-share-policy-max-downloads`, `object-share-policy-save-button`.
+- 수정된 파일 및 관련 파일:
+  - `osmu-backend/src/main/java/com/example/osmu/object/ObjectSharePolicy.java`
+  - `osmu-backend/src/main/java/com/example/osmu/object/ObjectSharePolicyRequest.java`
+  - `osmu-backend/src/main/java/com/example/osmu/object/ObjectSharePolicyService.java`
+  - `osmu-backend/src/main/java/com/example/osmu/object/repository/ObjectSharePolicyRepository.java`
+  - `osmu-backend/src/main/java/com/example/osmu/object/repository/InMemoryObjectSharePolicyRepository.java`
+  - `osmu-backend/src/main/java/com/example/osmu/object/repository/MariaDbObjectSharePolicyRepository.java`
+  - `osmu-backend/src/main/java/com/example/osmu/object/ObjectShareLinkService.java`
+  - `osmu-backend/src/main/java/com/example/osmu/admin/AdminController.java`
+  - `osmu-backend/src/main/resources/db/migration/V32__object_share_policy.sql`
+  - `osmu-backend/src/test/java/com/example/osmu/admin/AdminObjectSharePolicyControllerTest.java`
+  - `osmu-frontend/src/services/api.js`
+  - `osmu-frontend/src/services/api-query.test.js`
+  - `osmu-frontend/src/views/HomeView.vue`
+  - `osmu-frontend/src/views/HomeView.test.js`
+  - `scripts/verify-lightweight-prototype.ps1`
+  - `scripts/verify-openapi-contract.ps1`
+  - `scripts/write-mvp-audit.ps1`
+  - `dev-docs/openapi-mvp.json`
+  - `README.md`
+  - `dev-docs/PRODUCT_REQUIREMENTS.md`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/backend-design.md`
+  - `dev-docs/database-design.md`
+  - `dev-docs/frontend-design.md`
+  - `dev-docs/operation-monitoring.md`
+  - `dev-docs/security-design.md`
+  - `dev-docs/system-architecture.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/prototype-status.md`
+  - `dev-docs/mvp-release-checklist.md`
+  - `.osmu-run/latest-release.json`
+  - `.osmu-run/latest-mvp-audit.md`
+  - `.osmu-run/latest-release-decision.md`
+  - `.osmu-run/latest-release-notes.md`
+- 검증 기록:
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-openapi-contract.ps1` 통과. 89 operations, 69 frontend API functions checked.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-migrations.ps1` 통과. 32 migrations, highest V32.
+  - `node --check src\services\api.js` 통과.
+  - PowerShell parser로 `scripts/verify-lightweight-prototype.ps1` parse 통과.
+  - `npm.cmd run test:unit` 통과. 55 tests pass.
+  - `npm.cmd run build` 통과.
+  - 최초 sandbox backend test는 Gradle distribution download에서 `Permission denied: getsockopt`로 실패했다.
+  - `.\gradlew.bat test --tests com.example.osmu.admin.AdminObjectSharePolicyControllerTest --tests com.example.osmu.bucket.BucketObjectFlowTest --tests com.example.osmu.object.ObjectShareLinkCleanupJobTest` 승인 권한 실행 통과.
+  - `.\gradlew.bat test` 승인 권한 실행 통과.
+  - `scripts/stop-local-prototype.ps1 -ForcePorts`와 `scripts/start-local-prototype.ps1 -JavaHome ...`로 runtime 재시작.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-lightweight-prototype.ps1` 통과. `Object share policy` step 포함.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-prototype-release.ps1 -JavaHome ...` 승인 권한 실행 통과. generatedAt `2026-06-14T05:03:12.9359086+09:00`, result `passed`.
+  - release artifact consistency verification 통과.
+- 코드 리뷰: 정책을 link 생성 시점에 강제해 기존 link의 download semantics를 갑자기 바꾸지 않는다. raw password/token 저장 금지 원칙은 유지했고, IP allowlist도 기존 literal/CIDR 검증을 재사용한다. `maxDownloadsLimit`가 설정되면 link 요청이 `maxDownloads`를 생략해도 정책값을 기본 제한으로 넣어 운영자가 의도한 상한을 우회하지 못하게 했다.
+- 결과: object share link는 optional password/IP 기능에서 admin-enforced global policy까지 확장됐다. 최신 release gate는 2026-06-14 05:03 KST 통과했고 lightweight demo `GO`, durable MVP pilot `NO-GO` 상태다.
+- 후속 메모: Docker/MariaDB/MinIO 환경에서 `object_share_policy` migration과 MariaDB read/write를 확인해야 한다. 현재 policy는 global 단위이며 organization/bucket별 override와 link analytics는 후속 후보.
+- 추가 개발: Docker/MariaDB/MinIO integration, real S3 client smoke, Browser click E2E, signed image evidence, org/bucket-scoped share policy, link analytics.
+- 사용 skill/plugin: caveman skill ultra.
+
+### 2026-06-14 - Object Share Analytics 추가
+
+- 작업 시작 시간: 2026-06-14 05:05:00 +09:00
+- 작업 종료 시간: 2026-06-14 05:14:28 +09:00
+- 사용자 명령: 활성 목표인 "일단 현재까지 구현된 기능을 기준으로 프로토타입까지 개발"을 계속 진행.
+- 요청 분석: 외부 durable gate(Docker/MariaDB/MinIO, real S3 client, Browser E2E, signed image)는 아직 환경상 닫을 수 없다. 대신 직전 share policy까지 구현된 공유 기능을 운영자가 관찰할 수 있게 admin analytics를 추가하면 B2B 데모와 운영성 완성도가 올라간다고 판단.
+- 명령 해석:
+  - ADMIN이 object share link 전체 상태, 보호 적용 수, 다운로드 수, 최근 링크를 조회할 수 있어야 한다.
+  - analytics 응답은 raw token/public URL을 노출하지 않아야 한다.
+  - backend/frontend/smoke/OpenAPI/docs/release evidence를 함께 갱신해야 한다.
+- 작업 방식:
+  - `ObjectShareLinkRepository.findAll()`을 추가하고 in-memory/MariaDB 구현을 맞췄다.
+  - `ObjectShareAnalyticsResponse`와 `GET /api/admin/object-share-analytics` endpoint를 추가했다.
+  - Frontend API wrapper, admin dashboard analytics panel, stable selector test를 추가했다.
+  - Lightweight smoke에서 protected share link download 후 analytics counters와 token/url 미노출을 검증했다.
+  - OpenAPI verifier/spec, API spec, backend/frontend/security/operation/system/test docs, README, release checklist/status, audit writer, worklog를 갱신했다.
+- 구현 내용:
+  - API: `GET /api/admin/object-share-analytics?limit=10`.
+  - Response: `totalLinks`, `activeLinks`, `expiredLinks`, `revokedLinks`, `limitReachedLinks`, `passwordProtectedLinks`, `ipRestrictedLinks`, `totalDownloads`, `lastAccessedAt`, `recentLinks`.
+  - Frontend selectors: `object-share-analytics-panel`, `object-share-analytics-refresh-button`, `object-share-analytics-metrics`, `object-share-analytics-list`.
+  - Security: `recentLinks`는 `ObjectShareLinkResponse.of(link, null, null)`로 생성해 raw token/url을 JSON에서 제외한다.
+- 수정된 파일 및 관련 파일:
+  - `osmu-backend/src/main/java/com/example/osmu/object/repository/ObjectShareLinkRepository.java`
+  - `osmu-backend/src/main/java/com/example/osmu/object/repository/InMemoryObjectShareLinkRepository.java`
+  - `osmu-backend/src/main/java/com/example/osmu/object/repository/MariaDbObjectShareLinkRepository.java`
+  - `osmu-backend/src/main/java/com/example/osmu/admin/ObjectShareAnalyticsResponse.java`
+  - `osmu-backend/src/main/java/com/example/osmu/admin/AdminController.java`
+  - `osmu-backend/src/test/java/com/example/osmu/admin/AdminObjectSharePolicyControllerTest.java`
+  - `osmu-frontend/src/services/api.js`
+  - `osmu-frontend/src/services/api-query.test.js`
+  - `osmu-frontend/src/views/HomeView.vue`
+  - `osmu-frontend/src/views/HomeView.test.js`
+  - `osmu-frontend/src/assets/main.css`
+  - `scripts/verify-lightweight-prototype.ps1`
+  - `scripts/verify-openapi-contract.ps1`
+  - `scripts/write-mvp-audit.ps1`
+  - `dev-docs/openapi-mvp.json`
+  - `README.md`
+  - `dev-docs/PRODUCT_REQUIREMENTS.md`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/backend-design.md`
+  - `dev-docs/frontend-design.md`
+  - `dev-docs/operation-monitoring.md`
+  - `dev-docs/security-design.md`
+  - `dev-docs/system-architecture.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/prototype-status.md`
+  - `dev-docs/mvp-release-checklist.md`
+  - `.osmu-run/latest-release.json`
+  - `.osmu-run/latest-mvp-audit.md`
+  - `.osmu-run/latest-release-decision.md`
+  - `.osmu-run/latest-release-notes.md`
+- 검증 기록:
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-openapi-contract.ps1` 통과. 90 operations, 70 frontend API functions checked.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-migrations.ps1` 통과. 32 migrations, highest V32.
+  - `node --check src\services\api.js` 통과.
+  - PowerShell parser로 `scripts/verify-lightweight-prototype.ps1` parse 통과.
+  - `npm.cmd run test:unit` 통과. 56 tests pass.
+  - `npm.cmd run build` 통과.
+  - `.\gradlew.bat test --tests com.example.osmu.admin.AdminObjectSharePolicyControllerTest --tests com.example.osmu.bucket.BucketObjectFlowTest --tests com.example.osmu.object.ObjectShareLinkCleanupJobTest` 승인 권한 실행 통과.
+  - `.\gradlew.bat test` 승인 권한 실행 통과.
+  - `scripts/stop-local-prototype.ps1 -ForcePorts`와 `scripts/start-local-prototype.ps1 -JavaHome ...`로 runtime 재시작.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-lightweight-prototype.ps1` 통과. share analytics assertion 포함.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-prototype-release.ps1 -JavaHome ...` 승인 권한 실행 통과. generatedAt `2026-06-14T05:14:19.0192332+09:00`, result `passed`.
+  - release artifact consistency verification 통과.
+- 코드 리뷰: prototype 규모에서는 `findAll()` 집계가 단순하고 검증하기 쉽다. durable/MariaDB pilot 전에는 대량 링크에서 별도 aggregate SQL과 paging으로 개선해야 한다. analytics recentLinks에서 token/url을 제외해 운영 화면 노출 위험을 줄였다.
+- 결과: object share 기능이 policy enforcement에 더해 운영 analytics까지 갖췄다. 최신 release gate는 2026-06-14 05:14 KST 통과했고 lightweight demo `GO`, durable MVP pilot `NO-GO` 상태다.
+- 후속 메모: 대량 링크 처리 전 `object_share_links` aggregate query, bucket/org별 analytics filter, time-window trend가 필요하다.
+- 추가 개발: Docker/MariaDB/MinIO integration, real S3 client smoke, Browser click E2E, signed image evidence, org/bucket-scoped share policy, share analytics time-series/export.
+- 사용 skill/plugin: caveman skill ultra.
+
+### 2026-06-14 - Object Share Analytics 필터 추가
+
+- 작업 시작 시간: 2026-06-14 05:15:00 +09:00
+- 작업 종료 시간: 2026-06-14 05:23:00 +09:00
+- 사용자 명령: 활성 목표인 "일단 현재까지 구현된 기능을 기준으로 프로토타입까지 개발"을 계속 진행. 이후 사용자가 "무한루프 돌지마"라고 중단 지시.
+- 요청 분석: share analytics가 전체 집계만 제공하면 운영자가 특정 bucket/status 기준으로 점검하기 어렵다. 대량/운영 데모 품질을 위해 bucket/status/limit 필터를 추가하되, 사용자 중단 지시 이후에는 release gate 반복 실행을 멈추고 기록만 남기는 것으로 정리.
+- 명령 해석:
+  - `GET /api/admin/object-share-analytics`가 `bucketName`, `status`, `limit` 필터를 받아야 한다.
+  - frontend admin analytics 패널에서 bucket/status/limit 필터를 선택할 수 있어야 한다.
+  - smoke/docs/API wrapper/test selector를 갱신해야 한다.
+  - release gate는 사용자가 중단했으므로 재시도하지 않는다.
+- 작업 방식:
+  - backend analytics endpoint에서 `bucketName` exact match와 `status` enum filter를 적용했다.
+  - frontend API wrapper가 query string에 `bucketName`, `status`, `limit`를 넣도록 변경했다.
+  - Share Analytics panel에 filter form/select controls를 추가했다.
+  - lightweight smoke analytics call을 `bucketName/status` 필터 포함으로 변경했다.
+  - OpenAPI, API spec, PRD, backend/frontend/system/test docs를 filter contract에 맞췄다.
+- 구현 내용:
+  - Query: `GET /api/admin/object-share-analytics?limit=10&bucketName={bucketName}&status=ACTIVE`.
+  - Backend validation: `status`는 `ACTIVE`, `EXPIRED`, `REVOKED`, `LIMIT_REACHED`만 허용한다.
+  - Frontend selectors: `object-share-analytics-filter-form`, `object-share-analytics-bucket-filter`, `object-share-analytics-status-filter`, `object-share-analytics-limit-filter`.
+- 수정된 파일 및 관련 파일:
+  - `osmu-backend/src/main/java/com/example/osmu/admin/AdminController.java`
+  - `osmu-backend/src/test/java/com/example/osmu/admin/AdminObjectSharePolicyControllerTest.java`
+  - `osmu-frontend/src/services/api.js`
+  - `osmu-frontend/src/services/api-query.test.js`
+  - `osmu-frontend/src/views/HomeView.vue`
+  - `osmu-frontend/src/views/HomeView.test.js`
+  - `scripts/verify-lightweight-prototype.ps1`
+  - `dev-docs/openapi-mvp.json`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/PRODUCT_REQUIREMENTS.md`
+  - `dev-docs/backend-design.md`
+  - `dev-docs/frontend-design.md`
+  - `dev-docs/system-architecture.md`
+  - `dev-docs/test-cases.md`
+- 검증 기록:
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-openapi-contract.ps1` 통과. 90 operations, 70 frontend API functions checked.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-migrations.ps1` 통과. 32 migrations, highest V32.
+  - `node --check src\services\api.js` 통과.
+  - PowerShell parser로 `scripts/verify-lightweight-prototype.ps1` parse 통과.
+  - `npm.cmd run test:unit` 통과. 56 tests pass.
+  - `npm.cmd run build` 통과.
+  - `.\gradlew.bat test --tests com.example.osmu.admin.AdminObjectSharePolicyControllerTest --tests com.example.osmu.bucket.BucketObjectFlowTest --tests com.example.osmu.object.ObjectShareLinkCleanupJobTest` 승인 권한 실행 통과.
+  - `.\gradlew.bat test` 승인 권한 실행 통과.
+  - `scripts/stop-local-prototype.ps1 -ForcePorts`와 `scripts/start-local-prototype.ps1 -JavaHome ...`로 runtime 재시작.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-lightweight-prototype.ps1` 통과. filtered analytics assertion 포함.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-prototype-release.ps1 -JavaHome ...`는 승인 review timeout으로 실행되지 않았다. 사용자가 무한 반복 중단을 요청해 재시도하지 않았다.
+- 코드 리뷰: filter는 전체 링크를 읽은 뒤 stream filter로 처리한다. prototype/in-memory에는 충분하지만 MariaDB durable pilot에서는 aggregate SQL과 paging/filter index 최적화가 필요하다. status enum validation을 추가해 임의 문자열 query가 analytics contract를 흐리지 않게 했다.
+- 결과: share analytics가 운영자가 실제로 쓸 수 있는 bucket/status scoped view로 확장됐다. 최신 전체 release gate evidence는 여전히 2026-06-14 05:14 KST이며, 이 필터 작업은 개별 test/smoke까지 검증됐다.
+- 후속 메모: release gate는 사용자가 원할 때 1회만 실행해야 한다. 자동 반복 금지.
+- 추가 개발: aggregate SQL 최적화, org/bucket-scoped policy, analytics time-series/export, Docker/MariaDB/MinIO integration, real S3 client smoke, Browser click E2E, signed image evidence.
+- 사용 skill/plugin: caveman skill ultra.
+
+### 2026-06-14 - osmu-dev Kubernetes 배포 구성 및 1차 적용
+
+- 작업 시작 시간: 2026-06-14 12:24:00 +09:00
+- 작업 종료 시간: 2026-06-14 12:44:00 +09:00
+- 사용자 명령: `192.168.35.60` 마스터 노드에 `test` 계정으로 접근해 `osmu-dev` namespace로 Kubernetes 배포를 진행하고, PV와 Ingress controller 설정까지 포함할 것.
+- 요청 분석: 기존 `infra/k8s` base manifest는 `osmu` namespace, `osmu.local` TLS Ingress, 기본 PVC만 정의되어 있어 dev cluster 전용 overlay가 필요하다. 사용자가 실제 클러스터 배포를 요청했으므로 local manifest 검증 후 SSH/sudo/kubectl로 원격 적용까지 진행해야 한다.
+- 명령 해석:
+  - `osmu-dev` namespace를 생성한다.
+  - MariaDB/MinIO용 static PV/PVC를 생성하고 바인딩한다.
+  - 이미 설치된 nginx IngressClass를 사용해 HTTP Ingress를 생성한다.
+  - cluster secret은 git에 저장하지 않고 배포 시 생성한다.
+  - backend/frontend 이미지는 현재 `osmu-*:local`이므로 registry 또는 node local image가 없으면 Pod 기동은 보류된다.
+- 작업 방식:
+  - `infra/k8s-overlays/osmu-dev` overlay를 추가해 base manifest를 dev cluster 값으로 patch했다.
+  - `StorageClass osmu-dev-local`, `PersistentVolume osmu-dev-mariadb-pv`, `PersistentVolume osmu-dev-minio-pv`를 추가했다.
+  - master node에는 control-plane `NoSchedule` taint가 있어 PV node affinity와 backend/frontend nodeSelector를 `slave01`로 설정했다.
+  - nginx Ingress controller가 `NodePort 30080`으로 노출되어 dev URL과 CORS origin에 `:30080`을 반영했다.
+  - `scripts/deploy-osmu-dev-k8s.ps1`를 추가해 local kubeconfig가 있는 환경에서도 secret 생성 후 overlay 적용이 가능하게 했다.
+  - 원격 적용은 local kubeconfig가 없어서 SSH로 YAML을 `/tmp`에 임시 업로드하고, master의 `/etc/kubernetes/admin.conf`를 sudo로 사용해 `kubectl apply -f`를 실행했다.
+- 구현 내용:
+  - Namespace: `osmu-dev`
+  - IngressClass: `nginx`
+  - Ingress host: `osmu-dev.192.168.35.60.nip.io`
+  - Dev URL: `http://osmu-dev.192.168.35.60.nip.io:30080`
+  - MariaDB PV: `/var/lib/osmu-dev/mariadb`, 10Gi, `Retain`, `slave01`
+  - MinIO PV: `/var/lib/osmu-dev/minio`, 50Gi, `Retain`, `slave01`
+  - Secret: `osmu-secret`, random generated values, git 미저장
+- 수정된 파일 및 관련 파일:
+  - `infra/k8s-overlays/osmu-dev/kustomization.yaml`
+  - `infra/k8s-overlays/osmu-dev/pv.yaml`
+  - `infra/k8s-overlays/osmu-dev/README.md`
+  - `infra/k8s/kustomization.yaml`
+  - `infra/k8s/README.md`
+  - `scripts/deploy-osmu-dev-k8s.ps1`
+  - `scripts/verify-k8s-manifests.ps1`
+  - `dev-docs/worklog/codex/frontend-backend-mvp/worklog-codex-frontend-backend-mvp.md`
+- 검증 기록:
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-k8s-manifests.ps1` 통과.
+  - `kubectl kustomize ...\infra\k8s-overlays\osmu-dev` 통과.
+  - SSH 접속 확인: `test@192.168.35.60`, hostname `master`.
+  - Cluster 확인: kubeadm Kubernetes v1.29.15, nodes `master`, `slave01`, `slave02`, `slave03`, `slave04`.
+  - Ingress 확인: `ingressclass.networking.k8s.io/nginx`, controller service `NodePort 80:30080/TCP`.
+  - 원격 적용 결과: namespace/configmap/services/PV/PVC/statefulsets/deployments/ingress/networkpolicies 생성 완료.
+  - PVC 상태: `mariadb-data-osmu-mariadb-0` Bound, `minio-data-osmu-minio-0` Bound.
+  - Pod 상태: `osmu-mariadb-0` Running, `osmu-minio-0` Running.
+  - 미완료 상태: `osmu-backend`, `osmu-frontend`는 `osmu-backend:local`, `osmu-frontend:local` 이미지가 registry/node에 없어 `ImagePullBackOff`.
+- 코드 리뷰: `commonLabels`가 NetworkPolicy의 kube-dns selector까지 오염시키는 문제가 있어 `labels.includeSelectors: false` 방식으로 수정했다. dev overlay는 static hostPath PV라 production storage 전략은 아니지만 현재 클러스터에 StorageClass가 없어 MVP 배포 확인에는 적절하다. 여러 노드 환경에서 데이터 위치가 흔들리지 않도록 `slave01` node affinity를 명시한 점은 타당하다.
+- 결과: Kubernetes namespace/PV/PVC/Ingress/MariaDB/MinIO 배포는 완료됐다. backend/frontend runtime은 이미지 공급 전까지 미완료다.
+- 후속 메모: 다음 단계는 `osmu-backend:local`, `osmu-frontend:local` 이미지를 registry에 push하거나 `slave01` containerd에 import한 뒤 deployment rollout을 재시작하는 것이다. local Docker daemon은 현재 꺼져 있고, master/slave01에는 `ctr/crictl`만 있으며 `docker/nerdctl/buildctl`은 없다.
+- 추가 개발: dev image build/import script, registry 기반 image tag values, TLS/cert-manager 적용, rollout health check, Ingress smoke test.
+- 사용 skill/plugin: 없음.
+
+### 2026-06-14 - osmu-dev Kubernetes 앱 Pod 정상화
+
+- 작업 시작 시간: 2026-06-14 12:45:00 +09:00
+- 작업 종료 시간: 2026-06-14 13:04:00 +09:00
+- 사용자 명령: 활성 목표 `k8s에 배포 문제 없이 완료할것`을 계속 진행.
+- 요청 분석: 1차 배포에서 namespace/PV/PVC/Ingress/MariaDB/MinIO는 성공했지만 backend/frontend가 `ImagePullBackOff`였다. Docker daemon, registry, node build tool이 없으므로 custom image를 만들지 않고 공개 runtime image와 hostPath artifact 방식으로 dev 배포를 완료하는 것이 가장 빠르고 안전하다.
+- 명령 해석:
+  - backend/frontend Pod가 `Running`/`Ready`가 되어야 한다.
+  - Ingress로 frontend와 backend health가 응답해야 한다.
+  - 로그인 API까지 확인해 배포가 실제 사용 가능한 상태임을 증명해야 한다.
+- 작업 방식:
+  - frontend를 `VITE_API_BASE_URL=/api`로 다시 빌드했다.
+  - backend `bootJar`를 다시 생성했다.
+  - `infra/k8s-overlays/osmu-dev`를 artifact mode로 전환했다.
+  - backend는 `eclipse-temurin:17-jre-jammy` 이미지와 `/var/lib/osmu-dev/backend/app.jar` hostPath를 사용하게 했다.
+  - frontend는 `nginx:1.27-alpine` 이미지와 `/var/lib/osmu-dev/frontend/dist` hostPath를 사용하게 했다.
+  - nginx non-root 실행을 위해 `/tmp/nginx`에 `emptyDir`를 마운트했다.
+  - MariaDB profile에서 `ObjectMapper` bean이 없어 backend가 CrashLoop하던 문제를 `JsonConfig`로 수정했다.
+  - dev artifact image에는 MinIO `mc`가 없으므로 `OSMU_ACCESS_KEY_PROVISIONING_MODE=noop`, `OSMU_STORAGE_CORS_ENABLED=false`로 낮춰 startup 안정성을 확보했다.
+  - `slave01`에 jar/dist artifact를 업로드하고 deployment rollout을 재시작했다.
+- 구현 내용:
+  - Backend runtime image: `eclipse-temurin:17-jre-jammy`
+  - Frontend runtime image: `nginx:1.27-alpine`
+  - Backend artifact: `/var/lib/osmu-dev/backend/app.jar`
+  - Frontend artifact: `/var/lib/osmu-dev/frontend/dist`
+  - Frontend nginx config: `osmu-frontend-nginx` ConfigMap
+  - Backend JSON bean: `com.example.osmu.config.JsonConfig`
+- 수정된 파일 및 관련 파일:
+  - `osmu-backend/src/main/java/com/example/osmu/config/JsonConfig.java`
+  - `infra/k8s-overlays/osmu-dev/kustomization.yaml`
+  - `infra/k8s-overlays/osmu-dev/frontend-nginx-config.yaml`
+  - `infra/k8s-overlays/osmu-dev/README.md`
+  - `scripts/verify-k8s-manifests.ps1`
+  - `dev-docs/worklog/codex/frontend-backend-mvp/worklog-codex-frontend-backend-mvp.md`
+- 검증 기록:
+  - `npm.cmd run build` 통과. `VITE_API_BASE_URL=/api` 적용.
+  - `.\gradlew.bat bootJar --no-daemon` 승인 권한 실행 통과.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-k8s-manifests.ps1` 통과.
+  - `kubectl kustomize ...\infra\k8s-overlays\osmu-dev` 통과.
+  - `slave01` artifact 업로드 확인: `/var/lib/osmu-dev/backend/app.jar`, `/var/lib/osmu-dev/frontend/dist/index.html`.
+  - `kubectl -n osmu-dev rollout status deployment/osmu-backend --timeout=240s` 통과.
+  - `kubectl -n osmu-dev rollout status deployment/osmu-frontend --timeout=240s` 통과.
+  - `Invoke-WebRequest http://osmu-dev.192.168.35.60.nip.io:30080/api/health` 통과. HTTP 200, `{"service":"osmu-backend","status":"UP"}`.
+  - `Invoke-WebRequest http://osmu-dev.192.168.35.60.nip.io:30080/` 통과. HTTP 200, frontend HTML 반환.
+  - admin login API 통과. HTTP 200, `loginId=admin`, `role=ADMIN`, accessToken 존재.
+  - MinIO readiness: `curl -fsS http://127.0.0.1:9000/minio/health/ready` 통과.
+  - MariaDB readiness: `healthcheck.sh --connect --innodb_initialized` 통과.
+  - `kubectl -n osmu-dev wait --for=condition=Ready pod --all --timeout=120s` 통과.
+  - 최종 Pod 상태: backend/frontend/MariaDB/MinIO 모두 `1/1 Running`, restart `0`.
+- 코드 리뷰: artifact mode는 registry 없이 dev cluster를 살리기 위한 현실적인 배포 방식이다. 운영/상용 형태로는 별도 registry image와 backend image 내 `mc` 포함이 필요하다. `JsonConfig`는 Boot auto-config가 ObjectMapper bean을 만들지 않는 현재 조합에서 MariaDB repository startup을 안정화한다. nginx temp directory는 non-root read-only mount 조합에서 반드시 필요했다.
+- 결과: `osmu-dev` Kubernetes 배포가 문제 없이 완료됐다. Ingress UI/API, backend login, MariaDB/MinIO readiness까지 검증됐다.
+- 후속 메모: 현재 admin password는 cluster `osmu-secret`에 저장된 랜덤 값이다. 재배포/인수인계 시 `kubectl -n osmu-dev get secret osmu-secret`로 확인하거나 dev용 password rotation 절차를 정해야 한다.
+- 추가 개발: registry 기반 정식 image build/push, backend image에 `mc` 포함 후 access-key provisioning/CORS provisioning 재활성화, TLS/cert-manager 적용, 배포 자동화 스크립트 고도화.
+- 사용 skill/plugin: 없음.
+
+### 2026-06-14 - osmu-dev MinIO 연동 smoke 및 CORS 안정화
+
+- 작업 시작 시간: 2026-06-14 13:05:00 +09:00
+- 작업 종료 시간: 2026-06-14 13:16:00 +09:00
+- 사용자 명령: 활성 목표 `k8s에 배포 문제 없이 완료할것`을 계속 진행.
+- 요청 분석: Pod/Ingress/login은 성공했지만 bucket 생성 smoke에서 MinIO CORS provisioning 경로가 실패했다. 배포 완료 기준을 더 강하게 잡으려면 MinIO bucket 생성/삭제까지 API로 검증해야 한다.
+- 명령 해석:
+  - backend Pod 안에서 `mc`가 실행되어야 한다.
+  - MinIO bucket create/delete API smoke가 성공해야 한다.
+  - 실패한 smoke bucket이 MinIO에 남아 있으면 정리해야 한다.
+- 작업 방식:
+  - `slave01`에 MinIO `mc` binary를 `/var/lib/osmu-dev/backend/bin/mc`로 다운로드했다.
+  - backend Deployment에 `/usr/local/bin/mc` hostPath file mount를 추가했다.
+  - `mc`가 non-root Pod에서 config를 만들 수 있게 `HOME=/tmp`, `MC_CONFIG_DIR=/tmp/.mc`를 추가했다.
+  - `mc cors set`이 JSON이 아닌 XML을 기대해 `MinioBucketCorsProvisioner`를 XML 생성 방식으로 수정했다.
+  - 현재 MinIO server가 bucket CORS 설정을 `NotImplemented`로 반환하는 경우가 있어 CORS provisioning 실패는 경고만 남기고 bucket 생성은 계속되도록 best-effort 처리로 바꿨다.
+  - 실패한 smoke 시도에서 생긴 `k8s-smoke-*` orphan bucket들을 `mc rb --force`로 정리했다.
+- 구현 내용:
+  - `mc` mount: `/var/lib/osmu-dev/backend/bin/mc` -> `/usr/local/bin/mc`
+  - `mc` config env: `HOME=/tmp`, `MC_CONFIG_DIR=/tmp/.mc`
+  - CORS XML generation: `<CORSConfiguration><CORSRule>...`
+  - CORS provisioning failure handling: warn and continue
+- 수정된 파일 및 관련 파일:
+  - `infra/k8s-overlays/osmu-dev/kustomization.yaml`
+  - `infra/k8s-overlays/osmu-dev/README.md`
+  - `scripts/verify-k8s-manifests.ps1`
+  - `osmu-backend/src/main/java/com/example/osmu/storage/minio/MinioBucketCorsProvisioner.java`
+  - `dev-docs/worklog/codex/frontend-backend-mvp/worklog-codex-frontend-backend-mvp.md`
+- 검증 기록:
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-k8s-manifests.ps1` 통과.
+  - `kubectl kustomize ...\infra\k8s-overlays\osmu-dev` 통과.
+  - `mc version RELEASE.2025-05-21T01-59-54Z` 확인.
+  - backend Pod 내부 `mc --version` 실행 통과.
+  - `.\gradlew.bat bootJar --no-daemon` 승인 권한 실행 통과.
+  - `.\gradlew.bat test --no-daemon` 승인 권한 실행 통과.
+  - backend rollout restart 및 `rollout status` 통과.
+  - Ingress health 재확인: `/api/health` HTTP 200.
+  - Ingress frontend 재확인: `/` HTTP 200.
+  - admin login API 재확인: HTTP 200, `role=ADMIN`, accessToken 존재.
+  - bucket smoke: `POST /api/buckets` HTTP 200, `DELETE /api/buckets/{bucketName}` HTTP 204.
+  - 실패 smoke orphan cleanup: `k8s-smoke-*` bucket 7개 삭제.
+  - 최종 `kubectl -n osmu-dev wait --for=condition=Ready pod --all --timeout=120s` 통과.
+  - 최종 Pod 상태: backend/frontend/MariaDB/MinIO 모두 `1/1 Running`, restart `0`.
+- 코드 리뷰: `mc` config 경로를 `/tmp`로 옮긴 것은 non-root runtime image에서 필수다. CORS provisioning은 외부 MinIO/S3 구현 차이로 실패할 수 있으므로 bucket 생성 자체를 실패시키지 않는 쪽이 운영 안정성에 맞다. 다만 CORS가 반드시 필요한 배포에서는 별도 conformance check와 명시적 경고/상태 노출이 필요하다.
+- 결과: `osmu-dev` Kubernetes 배포는 Pod, Ingress, auth, MariaDB, MinIO, bucket create/delete smoke까지 통과했다.
+- 후속 메모: CORS provisioning은 best-effort 경고 처리다. 정식 registry image에서는 `mc` 포함과 함께 MinIO server 버전/호환 CORS API를 별도 검증해야 한다.
+- 추가 개발: production image registry, TLS/cert-manager, 정식 배포 스크립트에 artifact upload/mc install 자동화, CORS provisioning 상태 API.
+- 사용 skill/plugin: 없음.
+
+### 2026-06-14 - osmu-dev 테스트 admin 비밀번호 변경
+
+- 작업 시작 시간: 2026-06-14 13:33:00 +09:00
+- 작업 종료 시간: 2026-06-14 13:42:00 +09:00
+- 사용자 명령: 테스트 환경이므로 admin 비밀번호를 `qwer1234@`로 사용하도록 변경.
+- 요청 분석: 사용자가 Ingress 로그인 화면에서 HTTP 403을 확인했다. 배포/Ingress 장애가 아니라 `/api/auth/login` 인증 실패로 판단했고, 테스트 환경에서 기억하기 쉬운 고정 비밀번호로 맞추는 작업이 필요했다.
+- 명령 해석:
+  - Kubernetes Secret의 `OSMU_ADMIN_PASSWORD`를 `qwer1234@`로 변경한다.
+  - 이미 생성된 MariaDB `admin` 사용자 비밀번호 해시도 같은 비밀번호 기준으로 갱신한다.
+  - 프론트엔드 로그인 폼 기본값도 테스트 비밀번호로 맞춰 사용자가 바로 확인할 수 있게 한다.
+- 작업 방식:
+  - backend의 `PasswordService` 저장 형식(`pbkdf2_sha256$iterations$salt$hash`)을 확인했다.
+  - PBKDF2-SHA256 해시를 새로 생성해 MariaDB `users` 테이블의 `admin` 계정 `password_hash`를 갱신했다.
+  - `osmu-secret`의 `OSMU_ADMIN_PASSWORD` 값을 패치했다.
+  - 프론트엔드 기본 로그인 비밀번호를 `qwer1234@`로 수정하고 다시 빌드했다.
+  - 빌드된 `dist`를 `slave01:/var/lib/osmu-dev/frontend/dist`에 업로드했다.
+- 구현 내용:
+  - admin login id: `admin`
+  - admin test password: `qwer1234@`
+  - Kubernetes Secret: `osmu-dev/osmu-secret`의 `OSMU_ADMIN_PASSWORD`
+  - MariaDB row: `users.login_id='admin'`
+  - Frontend default login form password: `qwer1234@`
+- 수정된 파일 및 관련 파일:
+  - `osmu-frontend/src/views/HomeView.vue`
+  - `dev-docs/worklog/codex/frontend-backend-mvp/worklog-codex-frontend-backend-mvp.md`
+- 검증 기록:
+  - `kubectl -n osmu-dev get secret osmu-secret` 디코딩 결과 `OSMU_ADMIN_PASSWORD=qwer1234@` 확인.
+  - `POST /api/auth/login`에 `admin` / `qwer1234@`로 요청해 HTTP 200 확인.
+  - login 응답에서 `loginId=admin`, `role=ADMIN`, accessToken 존재 확인.
+  - `Invoke-WebRequest http://osmu-dev.192.168.35.60.nip.io:30080/` HTTP 200 확인.
+  - `kubectl -n osmu-dev wait --for=condition=Ready pod --all --timeout=120s` 통과.
+  - 최종 Pod 상태: backend/frontend/MariaDB/MinIO 모두 `1/1 Running`.
+  - frontend Pod restart count가 `1`로 증가했으나, dist 교체 중 readiness/liveness probe가 일시적으로 HTTP 403을 받은 영향이며 최종 상태는 Ready로 복구됨.
+- 코드 리뷰: 테스트 환경에서는 고정 비밀번호가 편하지만, 운영 환경에서는 Secret rotation 절차와 최초 admin password bootstrap 정책이 분리되어야 한다. DB에 이미 생성된 사용자가 있으면 Secret만 바꿔서는 로그인 비밀번호가 바뀌지 않으므로, 초기화/회전 스크립트가 별도로 필요하다.
+- 결과: `admin` / `qwer1234@`로 Ingress 경유 로그인 API가 정상 동작한다.
+- 후속 메모: 브라우저에 이전 프론트엔드 asset이 남아 있으면 강력 새로고침 후 다시 시도해야 한다. 직접 입력 시 `admin`, `qwer1234@`를 사용한다.
+- 추가 개발: admin password rotation 스크립트, 초기 admin bootstrap 문서화, Secret 변경 시 DB 반영 자동화.
+- 사용 skill/plugin: 없음.
+
+### 2026-06-14 - osmu-dev 브라우저 로그인 403 CORS 수정
+
+- 작업 시작 시간: 2026-06-14 13:52:00 +09:00
+- 작업 종료 시간: 2026-06-14 14:05:00 +09:00
+- 사용자 명령: `admin` / `qwer1234@`로 입력해도 브라우저에서 `POST /api/auth/login`이 HTTP 403으로 실패한다고 보고.
+- 요청 분석: 비밀번호 변경 직후 CLI에서 로그인 API는 HTTP 200이었으나, 브라우저 콘솔에서는 403이 계속 발생했다. 같은 URL에 `Origin`/`Referer` 헤더를 붙여 재현하니 응답 본문이 `Invalid CORS request`였고, 원인은 backend `WebConfig`가 API CORS origin을 localhost 개발 서버만 허용하도록 하드코딩한 것이었다.
+- 명령 해석:
+  - 브라우저 Ingress origin `http://osmu-dev.192.168.35.60.nip.io:30080`을 API CORS에서 허용해야 한다.
+  - CORS 허용 origin은 코드 하드코딩이 아니라 환경 설정으로 관리해야 한다.
+  - 수정 jar를 Kubernetes dev 환경에 반영하고 실제 브라우저형 요청으로 재검증해야 한다.
+- 작업 방식:
+  - `WebConfig`의 `.allowedOrigins(...)`를 설정값 기반으로 변경했다.
+  - `osmu.api.cors.allowed-origins` 설정을 추가하고, 값이 없으면 기존 `OSMU_STORAGE_CORS_ALLOWED_ORIGINS`로 fallback하도록 구성했다.
+  - base ConfigMap에 `OSMU_API_CORS_ALLOWED_ORIGINS`를 추가했다.
+  - `osmu-dev` overlay에 Ingress/dev node origin 목록을 추가했다.
+  - Spring Boot `bootJar`의 main class 자동 탐지가 실패해 `build.gradle`에 `com.example.osmu.OsmuApplication`을 명시했다.
+  - 새 backend jar를 빌드해 `slave01:/var/lib/osmu-dev/backend/app.jar`에 업로드하고 backend Deployment를 재시작했다.
+  - 클러스터 ConfigMap도 `--patch-file` 방식으로 패치해 런타임 상태를 매니페스트와 맞췄다.
+- 구현 내용:
+  - API CORS 허용 origin 설정: `OSMU_API_CORS_ALLOWED_ORIGINS`
+  - fallback 설정: `OSMU_STORAGE_CORS_ALLOWED_ORIGINS`
+  - dev 허용 origin:
+    - `http://osmu-dev.192.168.35.60.nip.io:30080`
+    - `http://osmu-dev.192.168.35.60.nip.io`
+    - `http://192.168.35.60:30080`
+    - `http://192.168.35.60`
+  - Gradle boot jar main class: `com.example.osmu.OsmuApplication`
+- 수정된 파일 및 관련 파일:
+  - `osmu-backend/src/main/java/com/example/osmu/config/WebConfig.java`
+  - `osmu-backend/src/main/resources/application.yaml`
+  - `osmu-backend/src/main/resources/application-local.yaml`
+  - `osmu-backend/build.gradle`
+  - `infra/k8s/configmap.yaml`
+  - `infra/k8s-overlays/osmu-dev/kustomization.yaml`
+  - `dev-docs/worklog/codex/frontend-backend-mvp/worklog-codex-frontend-backend-mvp.md`
+- 검증 기록:
+  - 수정 전 재현: `Origin=http://osmu-dev.192.168.35.60.nip.io:30080` 헤더 포함 시 `POST /api/auth/login` HTTP 403, body `Invalid CORS request`.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-k8s-manifests.ps1` 통과.
+  - `kubectl kustomize .\infra\k8s-overlays\osmu-dev` 승인 권한 실행 통과. `OSMU_API_CORS_ALLOWED_ORIGINS` 렌더링 확인.
+  - `$env:JAVA_HOME=<temurin-jdk17>; .\gradlew.bat test --no-daemon` 승인 권한 실행 통과.
+  - 최초 `bootJar` 실패: Spring Boot main class 자동 탐지 실패. 이후 `build.gradle`에 mainClass 명시 후 `$env:JAVA_HOME=<temurin-jdk17>; .\gradlew.bat bootJar --no-daemon` 통과.
+  - jar upload 확인: `slave01:/var/lib/osmu-dev/backend/app.jar`, size 약 49M.
+  - `kubectl -n osmu-dev rollout restart deployment/osmu-backend` 및 `rollout status` 통과.
+  - ConfigMap patch-file 적용 확인: `OSMU_API_CORS_ALLOWED_ORIGINS` 값이 dev origin 목록으로 조회됨.
+  - 수정 후 브라우저형 요청 검증: `Origin`/`Referer` 포함 `POST /api/auth/login` HTTP 200, `login=admin`, `role=ADMIN`, accessToken 존재.
+  - CORS 응답 헤더 확인: `Access-Control-Allow-Origin=http://osmu-dev.192.168.35.60.nip.io:30080`.
+  - `kubectl -n osmu-dev wait --for=condition=Ready pod --all --timeout=120s` 통과.
+  - 최종 Pod 상태: backend/frontend/MariaDB/MinIO 모두 `1/1 Running`, backend restart `0`.
+- 코드 리뷰: CORS origin은 배포 환경마다 달라지는 값이라 코드 하드코딩보다 환경 설정으로 관리하는 것이 맞다. API CORS와 object storage CORS는 의미가 다르므로 새 `OSMU_API_CORS_ALLOWED_ORIGINS`를 추가했고, 기존 dev 값과의 호환을 위해 storage CORS 설정을 fallback으로 두었다. `bootJar` mainClass 명시는 Gradle/Spring Boot 버전 조합에서 자동 탐지 실패를 방지하는 안정화 조치다.
+- 결과: 브라우저 Origin이 포함된 실제 로그인 요청이 HTTP 200으로 성공한다. 사용자는 `admin` / `qwer1234@`로 로그인할 수 있다.
+- 후속 메모: 사용자의 브라우저에 이전 실패 화면이나 입력값이 남아 있으면 새로고침 후 다시 시도하면 된다. 이후 운영 환경에서는 도메인/TLS 적용 시 `OSMU_API_CORS_ALLOWED_ORIGINS`와 Ingress host를 함께 갱신해야 한다.
+- 추가 개발: 배포 스크립트에 backend jar upload, ConfigMap patch/apply, rollout wait, browser-origin smoke를 자동화해야 한다.
+- 사용 skill/plugin: 없음.
+
+### 2026-06-14 - MinIO Pod/PV pool 확장 전략 문서화
+
+- 작업 시작 시간: 2026-06-14 14:08:00 +09:00
+- 작업 종료 시간: 2026-06-14 14:14:00 +09:00
+- 사용자 명령: MinIO 용량 부족 시 기존 PV 확장보다 Pod + PV를 추가하는 방식이 좋아 보이므로 그 방향으로 진행하자고 결정.
+- 요청 분석: 사용자는 OSMU의 장기 저장소 확장 구조를 정하려는 단계다. 현재 `infra/k8s/minio.yaml`은 `replicas: 1`, `server /data`인 단일 MinIO MVP 구성이므로 바로 replica만 늘리면 운영형 확장이 아니다. 데이터 리스크가 있으므로 실제 클러스터를 즉시 변경하지 않고, pool 기반 확장 전략과 참고용 Operator Tenant 예시를 먼저 문서화하는 것이 안전하다고 판단했다.
+- 명령 해석:
+  - OSMU의 공식 저장소 확장 전략을 Pod + PV 추가 방식으로 정한다.
+  - 단순 Pod replica 증가가 아니라 MinIO server pool 단위 확장으로 정의한다.
+  - 현재 MVP 단일 MinIO와 운영형 distributed MinIO의 차이를 명확히 문서화한다.
+  - 나중에 Helm/Operator 작업으로 이어질 참고 manifest를 추가한다.
+- 작업 방식:
+  - 현재 MinIO Kubernetes manifest가 단일 StatefulSet 구조인지 확인했다.
+  - `dev-docs/minio-pool-expansion.md`를 새로 작성해 결정 사항, 권장 기본 구조, 확장 구조, 피해야 할 방식, 운영 절차, 후속 작업을 정리했다.
+  - `dev-docs/document-index.md`에 새 문서를 추가했다.
+  - `infra/k8s/README.md`에 현재 `minio.yaml`은 단일 MVP manifest이며 운영 확장은 pool 기반으로 진행한다는 안내를 추가했다.
+  - MinIO Operator Tenant 기반 pool 확장 참고 예시를 `infra/k8s/examples/minio-tenant-pool-expansion.example.yaml`로 추가했다.
+- 구현 내용:
+  - 운영 방향: MinIO capacity expansion은 server pool 단위로 진행.
+  - 권장 기본 구조: 4개 이상 MinIO server Pod + 각 Pod별 PVC/PV.
+  - 확장 방식: 기존 pool이 threshold에 도달하면 같은 형태의 새 pool 추가.
+  - 피해야 할 방식: StatefulSet replica만 증가, 기존 Pod에 임의 PV 추가, 서로 다른 크기의 PV 혼합.
+  - 제품화 후보: Storage Expansion Manager.
+- 수정된 파일 및 관련 파일:
+  - `dev-docs/minio-pool-expansion.md`
+  - `dev-docs/document-index.md`
+  - `infra/k8s/README.md`
+  - `infra/k8s/examples/minio-tenant-pool-expansion.example.yaml`
+  - `dev-docs/worklog/codex/frontend-backend-mvp/worklog-codex-frontend-backend-mvp.md`
+- 검증 기록:
+  - `infra/k8s/minio.yaml` 확인: 현재 `replicas: 1`, `args: server /data`, `volumeClaimTemplates: minio-data`.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-k8s-manifests.ps1` 통과.
+  - 기존 Kubernetes draft 적용 대상 파일 12개 검증 통과. 새 example manifest는 참고용이라 기본 `kustomization.yaml`에 포함하지 않았다.
+- 코드 리뷰: 실제 클러스터의 MinIO topology를 즉시 변경하지 않은 것은 안전한 선택이다. 현재 hostPath 단일 MinIO에서 distributed/pool MinIO로 바꾸는 작업은 migration runbook과 백업 확인이 먼저 필요하다. Operator Tenant 예시는 CRD 버전별 schema 차이가 있을 수 있으므로 reference-only로 명시했다.
+- 결과: OSMU의 저장소 확장 방향이 “Pod + PV를 server pool 단위로 추가”하는 방식으로 정리됐다.
+- 후속 메모: 다음 단계는 MinIO Operator 설치/검증, Helm values의 `minio.pools` 구조 설계, 단일 MinIO에서 distributed MinIO로 이전하는 migration runbook 작성이다.
+- 추가 개발: Storage Expansion Manager 요구사항, capacity threshold alert, pool 추가 자동화, `mc admin info` 기반 검증, real S3 client smoke 자동화.
+- 사용 skill/plugin: 없음.
+
+### 2026-06-14 - Deployment Resource Profile 초안 추가
+
+- 작업 시작 시간: 2026-06-14 00:00:00 +09:00
+- 작업 종료 시간: 진행 중
+- 사용자 명령: 활성 목표인 현재까지 구현된 기능 기준 prototype 개발 계속.
+- 명령 해석: 외부 gate가 아직 막혀 있으므로, prototype을 B2B 배포 가능한 형태에 더 가깝게 만들 수 있는 Kubernetes/Helm hardening 초안을 추가하라는 명령으로 인식.
+- 작업 방식: Kubernetes manifest와 Helm chart에 backend, frontend, MariaDB, MinIO resource requests/limits를 추가하고 verifier에 누락 감지를 연결했다.
+- 실행 내용:
+  - `infra/k8s` backend/frontend/MariaDB/MinIO manifest에 resource requests/limits 추가.
+  - `infra/helm/osmu/values.yaml`에 component별 resource profile 추가.
+  - Helm templates가 `.Values.*.resources`를 렌더링하도록 변경.
+  - `verify-k8s-manifests.ps1`, `verify-helm-chart.ps1`에 resource profile 검증 추가.
+  - README, deployment strategy, prototype status, release checklist, test cases, audit evidence map 갱신.
+- 구현 내용:
+  - runtime container가 무제한으로 배포되지 않도록 starter CPU/memory request/limit를 명시했다.
+  - `TC-INFRA-004`로 resource profile draft 검증 항목을 추가했다.
+- 수정된 파일 및 관련 파일:
+  - `infra/k8s/backend.yaml`
+  - `infra/k8s/frontend.yaml`
+  - `infra/k8s/mariadb.yaml`
+  - `infra/k8s/minio.yaml`
+  - `infra/helm/osmu/values.yaml`
+  - `infra/helm/osmu/templates/backend.yaml`
+  - `infra/helm/osmu/templates/frontend.yaml`
+  - `infra/helm/osmu/templates/mariadb.yaml`
+  - `infra/helm/osmu/templates/minio.yaml`
+  - `scripts/verify-k8s-manifests.ps1`
+  - `scripts/verify-helm-chart.ps1`
+  - `scripts/write-mvp-audit.ps1`
+  - `README.md`
+  - `dev-docs/deployment-strategy.md`
+  - `dev-docs/prototype-status.md`
+  - `dev-docs/mvp-release-checklist.md`
+  - `dev-docs/test-cases.md`
+- 검증 기록:
+  - 진행 중.
+- 코드 리뷰: resource 값은 운영 산정값이 아니라 starter profile이다. 실제 고객 환경에서는 부하 테스트, StorageClass, HA 구성과 함께 재조정해야 한다.
+- 결과: 진행 중.
+- 후속 메모: 전체 release gate 재실행 후 latest timestamp와 audit PASS evidence를 확인해야 한다.
+- 추가 개발: TLS, network policy, secret rotation, 실제 Helm render/cluster install 검증.
+- 사용 skill/plugin: caveman skill ultra.
+
+### 2026-06-13 - Helm Chart Draft와 Release Evidence 연결
+
+- 작업 시작 시간: 2026-06-13 23:50:00 +09:00
+- 작업 종료 시간: 진행 중
+- 사용자 명령: `/Caveman ultra` 및 활성 목표인 현재까지 구현된 기능 기준 prototype 개발 계속.
+- 명령 해석: 토큰을 줄인 상태로, 외부 gate가 막힌 동안 배포 제품화 문서/infra evidence를 보강하라는 명령으로 인식.
+- 작업 방식: 기존 Kubernetes manifest draft와 release evidence 구조를 확인한 뒤 Helm chart draft를 같은 검증/릴리즈 scope에 연결했다.
+- 실행 내용:
+  - `infra/helm/osmu` Helm chart draft 추가.
+  - `scripts/verify-helm-chart.ps1` 추가.
+  - `verify-local.ps1`, release report, audit, decision, artifact verifier에 `scope.helmChart=included` 연결.
+  - README, document index, deployment strategy, prototype status, MVP checklist, test cases 갱신.
+- 구현 내용:
+  - Chart는 MariaDB, MinIO, backend, frontend, ingress template를 포함한다.
+  - `secrets.create=false`가 기본값이라 placeholder secret이 기본 렌더링되지 않는다.
+  - Helm chart verifier가 chart metadata, values 분리, secret guard, probe, service routing을 검사한다.
+- 수정된 파일 및 관련 파일:
+  - `infra/helm/osmu/**`
+  - `scripts/verify-helm-chart.ps1`
+  - `scripts/verify-local.ps1`
+  - `scripts/verify-prototype-release.ps1`
+  - `scripts/write-mvp-audit.ps1`
+  - `scripts/write-mvp-release-decision.ps1`
+  - `scripts/verify-mvp-release-artifacts.ps1`
+  - `scripts/verify-mvp-release-decision.ps1`
+  - `README.md`
+  - `dev-docs/document-index.md`
+  - `dev-docs/deployment-strategy.md`
+  - `dev-docs/prototype-status.md`
+  - `dev-docs/mvp-release-checklist.md`
+  - `dev-docs/test-cases.md`
+- 검증 기록:
+  - 진행 중.
+- 코드 리뷰: Helm chart는 아직 production hardening이 아니라 deployment shape draft다. Secret 기본 생성 OFF와 verifier 조건으로 accidental placeholder deployment 위험을 낮췄다.
+- 결과: 진행 중.
+- 후속 메모: 검증 후 release gate timestamp, audit/decision output, worklog 종료 시간을 갱신해야 한다.
+- 추가 개발: 실제 `helm template`/cluster install 검증, TLS/StorageClass/resources/network policy/HA values 보강.
+- 사용 skill/plugin: caveman skill ultra.
+
+### 2026-06-13 - Docker MariaDB Object Tag Index Smoke 보강
+
+- 작업 시작 시간: 2026-06-13 22:32:13 +09:00
+- 작업 종료 시간: 진행 중
+- 사용자 명령: 활성 목표인 현재까지 구현된 기능 기준 prototype 개발 계속.
+- 명령 해석: MariaDB metadata mode에서 `object_metadata_tags` inverted index가 tag upload/update 후 stale 결과를 내지 않는지 Docker integration gate에 추가하라는 명령으로 인식.
+- 작업 방식: `verify-docker-integration.ps1`에 MariaDB object tag index 단계 추가. Docker daemon이 꺼져 있어 실행은 아직 pending이지만, Docker gate가 가능해지면 자동 검증되도록 준비했다.
+- 실행 내용:
+  - `Assert-ObjectTagIndex` helper 추가.
+  - `stage=raw` object와 `stage=other` object를 업로드.
+  - `tag=stage=raw` 조회가 raw object만 반환하는지 검증.
+  - raw object tag를 `project=archive,stage=curated`로 수정.
+  - stale `stage=raw` 조회에서 빠지는지, `stage=curated` 조회에서 갱신 tags로 나오는지 검증.
+  - cleanup에 tag-index smoke object 삭제 추가.
+  - `TC-OBJECT-015`, README, prototype status, MVP audit evidence 문구 갱신.
+- 구현 내용:
+  - Docker/MariaDB integration smoke가 object tag inverted index stale update를 검증할 수 있게 됐다.
+  - 실제 실행은 Docker daemon external gate pending으로 유지한다.
+- 수정된 파일 및 관련 파일:
+  - `scripts/verify-docker-integration.ps1`
+  - `README.md`
+  - `dev-docs/prototype-status.md`
+  - `dev-docs/test-cases.md`
+  - `scripts/write-mvp-audit.ps1`
+  - `dev-docs/worklog/codex/frontend-backend-mvp/worklog-codex-frontend-backend-mvp.md`
+- 검증 기록:
+  - 진행 중.
+- 코드 리뷰: 진행 중.
+- 결과: 진행 중.
+- 후속 메모: Docker Desktop이 켜지면 `scripts\verify-prototype-release.ps1 -RunDockerIntegration`으로 TC-OBJECT-015 실제 MariaDB evidence를 확보해야 한다.
+- 추가 개발: Docker/MariaDB/MinIO integration smoke 실행, real S3 client smoke, Browser E2E.
+- 사용 skill/plugin: caveman skill ultra.
+### 2026-06-13 - Lifecycle Rule Conflict Report 추가
+
+- 작업 시작 시간: 2026-06-13 12:06:00 +09:00
+- 작업 종료 시간: 2026-06-13 12:11:00 +09:00
+- 사용자 명령: 활성 목표인 frontend/backend 개발 계속 진행. 부족한 부분은 스스로 검증.
+- 명령 해석: lifecycle rule priority만으로는 겹치는 rule을 운영자가 인지하기 어렵기 때문에 rule scope 충돌 보고 기능을 추가하라는 명령으로 인식.
+- 작업 방식: enabled rule 목록을 분석해 같은 target type, 겹치는 prefix, 호환되는 tag 조건을 가진 rule pair를 conflict로 보고하도록 backend endpoint를 추가했다. Admin dashboard에는 conflict report 요약과 목록을 표시하고 저장/삭제 후 갱신하게 했다.
+- 실행 내용:
+  - `ObjectLifecycleRuleConflictResponse`, `ObjectLifecycleRuleConflictReportResponse` 추가.
+  - `GET /api/admin/object-lifecycle/conflicts` 추가.
+  - prefix overlap: 한 prefix가 다른 prefix로 시작하면 overlap으로 판단.
+  - tag compatibility: 같은 tag key가 서로 다른 값을 요구하면 conflict에서 제외.
+  - same priority overlap은 `SAME_PRIORITY_OVERLAP`, 그 외 overlap은 `OVERLAPPING_SCOPE`로 분류.
+  - frontend API `getObjectLifecycleConflicts` 추가.
+  - Admin lifecycle UI에 Conflict Report 요약/목록/refresh 버튼 추가.
+  - rule save/delete 후 conflict report 자동 갱신.
+  - conflict report MockMvc 테스트 추가.
+  - API/backend/frontend/operation/system/product/test 문서 갱신.
+- 구현 내용:
+  - conflict report는 enabled rule만 검사한다.
+  - 응답은 ruleCount, conflictCount, conflicts를 반환한다.
+  - conflicts는 conflictType, severity, targetType, firstRule, secondRule, reason을 포함한다.
+  - priority가 낮은 rule이 firstRule로 노출된다.
+- 수정된 파일 및 관련 파일:
+  - `osmu-backend/src/main/java/com/example/osmu/admin/ObjectLifecycleRuleConflictResponse.java`
+  - `osmu-backend/src/main/java/com/example/osmu/admin/ObjectLifecycleRuleConflictReportResponse.java`
+  - `osmu-backend/src/main/java/com/example/osmu/admin/AdminController.java`
+  - `osmu-backend/src/test/java/com/example/osmu/admin/AdminObjectRetentionControllerTest.java`
+  - `osmu-frontend/src/services/api.js`
+  - `osmu-frontend/src/views/HomeView.vue`
+  - `osmu-frontend/src/assets/main.css`
+  - `dev-docs/PRODUCT_REQUIREMENTS.md`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/backend-design.md`
+  - `dev-docs/frontend-design.md`
+  - `dev-docs/operation-monitoring.md`
+  - `dev-docs/system-architecture.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/worklog/codex/frontend-backend-mvp/worklog-codex-frontend-backend-mvp.md`
+- 검증 기록:
+  - `.\gradlew.bat test` 통과. `BUILD SUCCESSFUL`.
+  - `node --check .\src\services\api.js` 통과.
+  - `npm.cmd run build` 통과. Vite build 성공.
+- 코드 리뷰: conflict report는 실제 삭제 로직을 건드리지 않고 운영 위험을 드러내는 read-only 기능이라 blast radius가 작다. Prefix/tag overlap 판단은 의도적으로 보수적이다. 실제 object candidate까지 비교하는 정밀 분석은 dry-run과 조합하거나 추후 rule impact report로 확장하면 좋다.
+- 결과: Lifecycle rule conflict report backend/admin UI/test/docs 구현 완료.
+- 후속 메모: Docker Desktop 실행 후 MariaDB mode에서 conflict report가 priority order와 tag JSON 조건을 기대대로 보여주는지 확인해야 한다.
+- 추가 개발: S3 lifecycle XML compatibility, lifecycle rule impact report, frontend browser E2E.
+- 사용 skill/plugin: `caveman`; Gradle test escalation 사용.
+### 2026-06-13 - Lifecycle Rule Priority 추가
+
+- 작업 시작 시간: 2026-06-13 12:01:00 +09:00
+- 작업 종료 시간: 2026-06-13 12:06:00 +09:00
+- 사용자 명령: 활성 목표인 frontend/backend 개발 계속 진행. 부족한 부분은 스스로 검증.
+- 명령 해석: lifecycle rule이 여러 개 겹칠 때 실행 순서가 불명확한 gap을 줄이기 위해 deterministic priority 정책을 추가하라는 명령으로 인식.
+- 작업 방식: `ObjectLifecycleRule`에 priority를 추가하고 repository 정렬, MariaDB schema/migration, Admin API validation, frontend form/list, test/docs를 함께 갱신했다.
+- 실행 내용:
+  - `ObjectLifecycleRule.priority` 추가. 기본값은 100.
+  - 기존 생성자 호환 overload 유지.
+  - `ObjectLifecycleRuleRequest.priority` 추가.
+  - Admin API priority validation 1..10000 추가.
+  - in-memory/MariaDB lifecycle rule repository list order를 priority, createdAt, ruleId 순으로 변경.
+  - MariaDB save/select/map/DDL에 priority column 반영.
+  - `V19__object_lifecycle_rule_priority.sql` migration 추가.
+  - Admin lifecycle rule CRUD test에 priority 저장/정렬 검증 추가.
+  - frontend lifecycle rule form에 priority input 추가.
+  - lifecycle rule list에 priority 표시.
+  - API/backend/database/frontend/operation/system/product/test 문서 갱신.
+- 구현 내용:
+  - 낮은 priority 숫자가 먼저 실행된다.
+  - priority가 같으면 createdAt, ruleId 순으로 정렬한다.
+  - 겹치는 rule scope에서는 먼저 실행된 rule이 purge하면 뒤 rule은 이미 제거된 후보를 보지 못한다.
+- 수정된 파일 및 관련 파일:
+  - `osmu-backend/src/main/java/com/example/osmu/object/ObjectLifecycleRule.java`
+  - `osmu-backend/src/main/java/com/example/osmu/admin/ObjectLifecycleRuleRequest.java`
+  - `osmu-backend/src/main/java/com/example/osmu/admin/AdminController.java`
+  - `osmu-backend/src/main/java/com/example/osmu/object/repository/InMemoryObjectLifecycleRuleRepository.java`
+  - `osmu-backend/src/main/java/com/example/osmu/object/repository/MariaDbObjectLifecycleRuleRepository.java`
+  - `osmu-backend/src/main/resources/db/migration/V19__object_lifecycle_rule_priority.sql`
+  - `osmu-backend/src/test/java/com/example/osmu/admin/AdminObjectRetentionControllerTest.java`
+  - `osmu-frontend/src/views/HomeView.vue`
+  - `osmu-frontend/src/assets/main.css`
+  - `dev-docs/PRODUCT_REQUIREMENTS.md`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/backend-design.md`
+  - `dev-docs/database-design.md`
+  - `dev-docs/frontend-design.md`
+  - `dev-docs/operation-monitoring.md`
+  - `dev-docs/system-architecture.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/worklog/codex/frontend-backend-mvp/worklog-codex-frontend-backend-mvp.md`
+- 검증 기록:
+  - `.\gradlew.bat test` 통과. `BUILD SUCCESSFUL`.
+  - `node --check .\src\services\api.js` 통과.
+  - `npm.cmd run build` 통과. Vite build 성공.
+- 코드 리뷰: priority 정렬을 repository 레벨에 넣어 scheduler와 UI가 같은 순서를 본다. 기존 생성자 overload를 유지해 기존 테스트/호출부를 크게 흔들지 않았다. 실제 MariaDB migration은 Docker daemon 부재 때문에 아직 적용 검증이 필요하다.
+- 결과: Lifecycle rule priority backend/frontend/test/docs 구현 완료.
+- 후속 메모: Docker Desktop 실행 후 `V19` migration, priority sort, overlapping rule dry-run/purge를 MariaDB+MinIO로 E2E 확인해야 한다.
+- 추가 개발: S3 lifecycle XML compatibility, lifecycle rule conflict report, frontend browser E2E.
+- 사용 skill/plugin: `caveman`; Gradle test escalation 사용.
+### 2026-06-13 - Lifecycle Rule Dry Run 추가
+
+- 작업 시작 시간: 2026-06-13 11:56:00 +09:00
+- 작업 종료 시간: 2026-06-13 12:01:00 +09:00
+- 사용자 명령: 활성 목표인 frontend/backend 개발 계속 진행. 부족한 부분은 스스로 검증.
+- 명령 해석: lifecycle rule이 실제 삭제로 이어지기 전에 운영자가 영향 범위를 확인할 수 있는 안전 장치를 추가하라는 명령으로 인식.
+- 작업 방식: 기존 prefix/tag candidate 조회 경로를 재사용하되 delete/storage/quota/audit purge side effect 없이 read-only preview endpoint를 만들고, Admin dashboard에서 rule별 Dry run 버튼으로 후보를 표시하게 했다.
+- 실행 내용:
+  - `ObjectLifecycleRuleDryRunResponse`, `ObjectLifecycleRuleDryRunCandidateResponse` 추가.
+  - `GET /api/admin/object-lifecycle/rules/{ruleId}/dry-run` 추가.
+  - dry-run `limit` validation 1..500, default 50 적용.
+  - `TRASH_OBJECT` rule은 deleted object candidate를 preview한다.
+  - `OBJECT_VERSION` rule은 historical version candidate를 preview한다.
+  - frontend API `dryRunObjectLifecycleRule` 추가.
+  - Admin lifecycle rule list에 `Dry run` 버튼과 preview 결과 panel 추가.
+  - dry-run MockMvc test 2개 추가.
+  - API/backend/frontend/operation/system/product/test 문서 갱신.
+- 구현 내용:
+  - 응답은 rule, cutoff, previewLimit, purgeBatchSize, candidateCount, candidateBytes, truncated, candidates를 반환한다.
+  - candidates는 targetId, bucketName, objectKey, versionId, sizeBytes, matchedAt을 포함한다.
+  - disabled rule도 dry-run 가능하다. 삭제 전 미리 scope를 확인할 수 있게 하기 위함이다.
+  - dry-run은 storage delete, metadata delete, bucket usage update, purge audit를 호출하지 않는다.
+- 수정된 파일 및 관련 파일:
+  - `osmu-backend/src/main/java/com/example/osmu/admin/ObjectLifecycleRuleDryRunResponse.java`
+  - `osmu-backend/src/main/java/com/example/osmu/admin/ObjectLifecycleRuleDryRunCandidateResponse.java`
+  - `osmu-backend/src/main/java/com/example/osmu/admin/AdminController.java`
+  - `osmu-backend/src/test/java/com/example/osmu/admin/AdminObjectLifecycleRuleDryRunControllerTest.java`
+  - `osmu-frontend/src/services/api.js`
+  - `osmu-frontend/src/views/HomeView.vue`
+  - `osmu-frontend/src/assets/main.css`
+  - `dev-docs/PRODUCT_REQUIREMENTS.md`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/backend-design.md`
+  - `dev-docs/frontend-design.md`
+  - `dev-docs/operation-monitoring.md`
+  - `dev-docs/system-architecture.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/worklog/codex/frontend-backend-mvp/worklog-codex-frontend-backend-mvp.md`
+- 검증 기록:
+  - `.\gradlew.bat test` 통과. `BUILD SUCCESSFUL`.
+  - `node --check .\src\services\api.js` 통과.
+  - `npm.cmd run build` 통과. Vite build 성공.
+- 코드 리뷰: dry-run은 실제 purge와 같은 repository candidate 조회를 사용하므로 preview와 실행 간 조건 차이가 작다. 단, 동시 업로드/삭제가 있으면 dry-run 이후 실제 purge 후보가 변할 수 있으므로 운영 UI에서는 preview time/cutoff를 계속 보여주는 것이 맞다.
+- 결과: Lifecycle rule dry-run backend/admin UI/test/docs 구현 완료.
+- 후속 메모: Docker Desktop 실행 후 MariaDB mode에서 dry-run 후보 조회와 JSON tag 조건을 실제 DB로 확인해야 한다.
+- 추가 개발: lifecycle rule 우선순위/충돌 정책, S3 lifecycle XML compatibility, frontend browser E2E.
+- 사용 skill/plugin: `caveman`; Gradle test escalation 사용.
+### 2026-06-13 - Prefix/Tag Lifecycle Rule 다중화
+
+- 작업 시작 시간: 2026-06-13 11:42:00 +09:00
+- 작업 종료 시간: 2026-06-13 11:55:00 +09:00
+- 사용자 명령: 활성 목표인 frontend/backend 개발 계속 진행. `/caveman Ultra`로 짧게 진행.
+- 명령 해석: 기존 global retention/version retention만으로는 부서/프로젝트별 정책을 나누기 어렵기 때문에 prefix와 tag 조건을 가진 다중 lifecycle rule을 backend, frontend, 문서, 테스트까지 구현하라는 명령으로 인식.
+- 작업 방식: rule 저장소를 repository로 분리하고, trash object purge job과 object version purge job이 global policy 실행 후 enabled rule을 target type별로 추가 적용하게 했다. Admin API와 dashboard form/list를 추가해 운영자가 rule을 생성, 수정, 삭제할 수 있게 했다.
+- 실행 내용:
+  - `ObjectLifecycleRule`, `ObjectLifecycleRuleRepository`, in-memory/MariaDB repository 추가.
+  - `V18__object_lifecycle_rules.sql` migration 추가.
+  - `ObjectMetadataRepository.findDeletedBefore`, `ObjectVersionRepository.findCreatedBefore`에 prefix/tag filter overload 추가.
+  - `ObjectRetentionPurgeJob`, `ObjectVersionRetentionPurgeJob`에 lifecycle rule 적용 흐름 추가.
+  - `GET/POST/DELETE /api/admin/object-lifecycle/rules` 추가.
+  - rule save/delete audit event `OBJECT_LIFECYCLE_RULE_SAVE`, `OBJECT_LIFECYCLE_RULE_DELETE` 추가.
+  - frontend API 함수와 Admin dashboard lifecycle rule form/list/edit/delete UI 추가.
+  - prefix/tag rule CRUD 및 purge unit test 추가.
+  - API/backend/database/frontend/security/operation/system/test/product 문서 갱신.
+- 구현 내용:
+  - rule target은 `TRASH_OBJECT`, `OBJECT_VERSION` 두 가지다.
+  - prefix는 object key starts-with로 매칭하고, tags는 모든 key=value가 exact match 되어야 한다.
+  - rule별 `retentionDays`, `batchSize`를 사용해 후보를 조회한다.
+  - global policy가 먼저 실행되고, 이후 enabled rule들이 target type에 맞게 실행된다.
+- 수정된 파일 및 관련 파일:
+  - `osmu-backend/src/main/java/com/example/osmu/object/ObjectLifecycleRule.java`
+  - `osmu-backend/src/main/java/com/example/osmu/object/repository/ObjectLifecycleRuleRepository.java`
+  - `osmu-backend/src/main/java/com/example/osmu/object/repository/InMemoryObjectLifecycleRuleRepository.java`
+  - `osmu-backend/src/main/java/com/example/osmu/object/repository/MariaDbObjectLifecycleRuleRepository.java`
+  - `osmu-backend/src/main/java/com/example/osmu/admin/ObjectLifecycleRuleRequest.java`
+  - `osmu-backend/src/main/java/com/example/osmu/admin/AdminController.java`
+  - `osmu-backend/src/main/java/com/example/osmu/object/ObjectRetentionPurgeJob.java`
+  - `osmu-backend/src/main/java/com/example/osmu/object/ObjectVersionRetentionPurgeJob.java`
+  - `osmu-backend/src/main/java/com/example/osmu/object/repository/ObjectMetadataRepository.java`
+  - `osmu-backend/src/main/java/com/example/osmu/object/repository/InMemoryObjectMetadataRepository.java`
+  - `osmu-backend/src/main/java/com/example/osmu/object/repository/MariaDbObjectMetadataRepository.java`
+  - `osmu-backend/src/main/java/com/example/osmu/object/repository/ObjectVersionRepository.java`
+  - `osmu-backend/src/main/java/com/example/osmu/object/repository/InMemoryObjectVersionRepository.java`
+  - `osmu-backend/src/main/java/com/example/osmu/object/repository/MariaDbObjectVersionRepository.java`
+  - `osmu-backend/src/main/resources/db/migration/V18__object_lifecycle_rules.sql`
+  - `osmu-backend/src/test/java/com/example/osmu/admin/AdminObjectRetentionControllerTest.java`
+  - `osmu-backend/src/test/java/com/example/osmu/object/ObjectRetentionPurgeJobTest.java`
+  - `osmu-backend/src/test/java/com/example/osmu/object/ObjectVersionRetentionPurgeJobTest.java`
+  - `osmu-frontend/src/services/api.js`
+  - `osmu-frontend/src/views/HomeView.vue`
+  - `osmu-frontend/src/assets/main.css`
+  - `dev-docs/PRODUCT_REQUIREMENTS.md`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/backend-design.md`
+  - `dev-docs/database-design.md`
+  - `dev-docs/frontend-design.md`
+  - `dev-docs/operation-monitoring.md`
+  - `dev-docs/security-design.md`
+  - `dev-docs/system-architecture.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/worklog/codex/frontend-backend-mvp/worklog-codex-frontend-backend-mvp.md`
+- 검증 기록:
+  - `.\gradlew.bat test` 통과. `BUILD SUCCESSFUL`.
+  - `node --check .\src\services\api.js` 통과.
+  - `npm.cmd run build` 통과. Vite build 성공.
+  - `docker compose --env-file .\infra\local\.env.example -f .\infra\local\docker-compose.yml config --quiet` 통과. `.docker/config.json` 접근 warning은 있었으나 exit code 0.
+  - `docker info` 실패: `failed to connect to the docker API at npipe:////./pipe/docker_engine ... The system cannot find the file specified.` Docker daemon이 없어 MariaDB/MinIO lifecycle rule E2E는 실행하지 못했다.
+  - `Invoke-WebRequest -UseBasicParsing http://127.0.0.1:5173/` 통과. HTTP 200 확인.
+  - `git diff --check` 통과. CRLF warning만 표시.
+  - `rg`로 lifecycle rule backend/frontend/test/docs 반영 확인.
+- 코드 리뷰: global retention과 rule retention을 분리해 기본 정책은 단순하게 유지하면서 특정 prefix/tag에만 더 짧거나 긴 보존 기간을 줄 수 있게 했다. MariaDB version rule purge는 tag 조건 확인을 위해 후보를 over-fetch 후 Java에서 필터링하므로 대량 rule 환경에서는 version tag index 개선이 다음 최적화 포인트다.
+- 결과: Prefix/tag scoped object lifecycle rule backend/admin UI/test/docs 구현 완료.
+- 후속 메모: Docker Desktop 실행 후 `V18` migration, admin rule save/delete, trash/version rule purge, audit log, metric, bucket usage 차감을 MariaDB+MinIO로 E2E 확인해야 한다.
+- 추가 개발: lifecycle rule 우선순위/충돌 정책, rule dry-run, S3 lifecycle XML compatibility, frontend browser E2E.
+- 사용 skill/plugin: `caveman`; Gradle test escalation 사용.
+# Worklog - codex/frontend-backend-mvp
+
+이 문서는 `codex/frontend-backend-mvp` 브랜치 작업 로그입니다.
+
+## 기록 원칙
+
+- 코드 작성 또는 파일 변경 작업마다 항목을 추가합니다.
+- 사용자 원 요청, 명령 해석, 실행 방식, 구현 결과, 검증 기록을 구분합니다.
+- 검증하지 못한 항목은 이유를 함께 남깁니다.
+- 사용한 skill/plugin이 있으면 기록합니다.
+
+## 작업 기록
+
+### 2026-06-13 - Frontend/Backend MVP 1차 구현
+
+- 작업 시작 시간: 2026-06-13 02:55:00 +09:00
+- 작업 종료 시간: 2026-06-13 03:06:39 +09:00
+- 사용자 명령: 프론트, 백엔드 개발을 진행하고 부족한 부분을 스스로 검증해 확인하라는 요청.
+- 명령 해석: OSMU 요구사항을 기준으로 동작 가능한 MVP API와 관리 화면의 첫 뼈대를 만들라는 명령으로 인식.
+- 작업 방식: Spring Boot 백엔드와 Vue 프론트에서 mock/in-memory 기반 흐름을 먼저 구성.
+- 실행 내용: 브랜치 생성, 공통 응답/에러, Health/Auth/Bucket/Object/Access Key/Admin API, Vue 관리 화면, API service 작성.
+- 구현 내용: 로그인, 버킷 관리, 객체 업로드/다운로드/삭제, access key 발급/삭제, usage/audit/status 화면.
+- 수정된 파일 및 관련 파일: `osmu-backend/**`, `osmu-frontend/src/**`, `dev-docs/worklog/**`.
+- 검증 기록: `node --check osmu-frontend/src/services/api.js` 통과, `git diff --check` 통과. `gradlew test`는 Java/JAVA_HOME 없음으로 실패. `npm build`는 frontend dependency 미설치로 실패.
+- 코드 리뷰: API 표면은 MVP 흐름을 보여주지만 실제 MariaDB/MinIO/JWT 검증은 후속 구현 필요.
+- 결과: Frontend/Backend MVP 1차 코드 작성 완료.
+- 후속 메모: Java 17, npm dependencies 설치 후 backend/frontend build 재검증 필요.
+- 추가 개발: MariaDB repository, MinIO adapter, JWT guard, Docker Compose, 테스트 보강.
+- 사용 skill/plugin: `caveman`.
+
+### 2026-06-13 - Backend API 테스트 케이스 보강
+
+- 작업 시작 시간: 2026-06-13 03:06:39 +09:00
+- 작업 종료 시간: 2026-06-13 03:12:00 +09:00
+- 사용자 명령: 부족한 부분을 스스로 검증해 개발을 이어가라는 지속 목표.
+- 명령 해석: 구현된 API가 요구사항 흐름을 만족하는지 MVC 테스트로 보강하라는 명령으로 인식.
+- 작업 방식: Health, Auth, Bucket/Object, Access Key 주요 성공/실패 케이스를 MockMvc 테스트로 작성.
+- 실행 내용: 로그인 성공/실패, 인증 누락, 버킷 생성/조회/삭제, 객체 업로드/다운로드, access key secret 1회 노출 테스트 추가.
+- 구현 내용: 컨트롤러 요청 파라미터 바인딩과 에러 응답 검증 보강.
+- 수정된 파일 및 관련 파일: `osmu-backend/src/test/java/com/example/osmu/**`, 일부 backend controller/service.
+- 검증 기록: Java/JAVA_HOME 없음으로 `gradlew test` 실행 불가.
+- 코드 리뷰: 테스트 의도는 명확하나 로컬 Java 환경 전까지 compile/runtime 검증은 미완료.
+- 결과: Backend API 테스트 골격 추가 완료.
+- 후속 메모: 테스트 데이터 이름 중복 가능성은 후속 unique fixture로 개선 필요.
+- 추가 개발: 통합 테스트, Testcontainers, 실제 MinIO/MariaDB 테스트.
+- 사용 skill/plugin: `caveman`.
+
+### 2026-06-13 - StorageAdapter와 Repository 경계 분리
+
+- 작업 시작 시간: 2026-06-13 03:12:00 +09:00
+- 작업 종료 시간: 2026-06-13 03:27:00 +09:00
+- 사용자 명령: 최종 목표에 맞게 개발 계속.
+- 명령 해석: in-memory PoC를 실제 storage/metadata 구현으로 바꿀 수 있는 구조로 분리하라는 명령으로 인식.
+- 작업 방식: object storage adapter, bucket repository interface를 만들고 in-memory 구현을 기본값으로 유지.
+- 실행 내용: `ObjectStorageAdapter`, `InMemoryObjectStorageAdapter`, `BucketRepository`, `InMemoryBucketRepository` 추가.
+- 구현 내용: bucket/object service가 concrete map 저장소가 아니라 interface에 의존하도록 변경.
+- 수정된 파일 및 관련 파일: `osmu-backend/src/main/java/com/example/osmu/storage/**`, `bucket/**`, `object/**`, backend tests.
+- 검증 기록: Java/JAVA_HOME 없음으로 compile 검증 불가. 정적 검색으로 service 의존 방향 확인.
+- 코드 리뷰: 교체 가능한 구조가 생겼고 MinIO/MariaDB 전환 준비가 좋아짐.
+- 결과: 저장소 추상화 1차 완료.
+- 후속 메모: adapter/repository 실패 시 공통 에러 매핑 필요.
+- 추가 개발: MinIO SDK 구현, MariaDB 구현, migration.
+- 사용 skill/plugin: `caveman`.
+
+### 2026-06-13 - Local Infra와 Docker 통합 구성
+
+- 작업 시작 시간: 2026-06-13 03:27:00 +09:00
+- 작업 종료 시간: 2026-06-13 03:35:34 +09:00
+- 사용자 명령: MariaDB/MinIO 기반 MVP로 갈 수 있게 개발 계속.
+- 명령 해석: 로컬에서 backend, frontend, MariaDB, MinIO를 함께 띄울 수 있는 실행 기반을 만들라는 명령으로 인식.
+- 작업 방식: Dockerfile, compose, env example, local dev 문서를 추가.
+- 실행 내용: backend Dockerfile, frontend nginx Dockerfile, compose service, env sample, verify script 작성.
+- 구현 내용: MariaDB, MinIO, bucket bootstrap, backend, frontend 연결 구성을 `infra/local`에 정리.
+- 수정된 파일 및 관련 파일: `infra/local/**`, `osmu-backend/Dockerfile`, `osmu-frontend/Dockerfile`, `scripts/verify-local.ps1`, `dev-docs/local-dev-env.md`.
+- 검증 기록: `docker compose config --quiet` 통과. Docker config 접근 경고 `Access is denied` 출력. Docker daemon 미실행으로 실제 `up/build` 검증 불가.
+- 코드 리뷰: compose 구조는 MVP 실행에 충분하나 실제 이미지 build 검증 전.
+- 결과: Local infra 실행 기반 추가 완료.
+- 후속 메모: Docker Desktop 실행 후 `docker compose up -d --build` 필요.
+- 추가 개발: healthcheck 안정화, seed 자동화, 운영 compose 분리.
+- 사용 skill/plugin: `caveman`.
+
+### 2026-06-13 - MariaDB/MinIO 구현 준비
+
+- 작업 시작 시간: 2026-06-13 03:35:34 +09:00
+- 작업 종료 시간: 2026-06-13 03:41:29 +09:00
+- 사용자 명령: MariaDB로 가자는 결정과 최종 목표 기준 개발 지속.
+- 명령 해석: metadata DB는 MariaDB를 기준으로 두고, object storage는 MinIO/S3 호환 구조로 붙이라는 명령으로 인식.
+- 작업 방식: conditional repository/adapter를 추가하고 env로 mode를 선택하게 구성.
+- 실행 내용: `MariaDbBucketRepository`, `MinioObjectStorageAdapter`, MariaDB/MinIO config 추가.
+- 구현 내용: `osmu.metadata.mode=mariadb`, `osmu.storage.mode=minio` 선택 시 실제 구현체 사용 가능.
+- 수정된 파일 및 관련 파일: `build.gradle`, `application.yaml`, `application-local.yaml`, `bucket/repository/**`, `storage/minio/**`, infra env/docs.
+- 검증 기록: Java/JAVA_HOME 없음으로 compile 검증 불가. compose config와 파일 연결은 확인.
+- 코드 리뷰: 실제 SDK/API compile 확인 전이라 MinIO adapter는 우선 구현 상태.
+- 결과: MariaDB/MinIO 전환 지점 추가 완료.
+- 후속 메모: Java 환경에서 MinIO SDK 메서드 시그니처 검증 필요.
+- 추가 개발: Flyway migration, connection pool, transaction, MinIO policy sync.
+- 사용 skill/plugin: `caveman`.
+
+### 2026-06-13 - 사용자 저장소와 Admin User API 구현
+
+- 작업 시작 시간: 2026-06-13 03:35:34 +09:00
+- 작업 종료 시간: 2026-06-13 03:41:29 +09:00
+- 사용자 명령: 프론트/백엔드 개발을 요구사항에 맞게 계속.
+- 명령 해석: 고정 `admin/password` 비교를 제거하고 사용자 저장소, password hash, admin user 관리 API/UI를 만들라는 명령으로 인식.
+- 작업 방식: `UserRepository` 경계, in-memory/MariaDB 구현, PBKDF2 password service, admin user controller를 추가.
+- 실행 내용: bootstrap admin seed, login repository 검증, `/api/users/me`, `/api/admin/users` list/create/status 구현.
+- 구현 내용: PBKDF2-SHA256 password hash, user create/list/disable, frontend user management panel.
+- 수정된 파일 및 관련 파일: `auth/**`, `user/**`, `admin/**`, `system/**`, `osmu-frontend/src/services/api.js`, `HomeView.vue`, docs/env.
+- 검증 기록: `rg "DevAuthInterceptor"` 결과 없음, `rg "dev-admin-token"` 결과 없음, `node --check` 통과. Java 테스트 미실행.
+- 코드 리뷰: credential hardcode 제거. 단, refresh token 저장/폐기와 migration은 미구현.
+- 결과: 사용자 저장소와 Admin User API/UI 구현 완료.
+- 후속 메모: admin audit actor가 임시 고정값이었고 후속 작업에서 수정 필요로 남김.
+- 추가 개발: role scope, organization, refresh token persistence.
+- 사용 skill/plugin: `caveman`.
+
+### 2026-06-13 - Admin Role Guard와 Owner Guard 적용
+
+- 작업 시작 시간: 2026-06-13 03:41:29 +09:00
+- 작업 종료 시간: 2026-06-13 03:48:28 +09:00
+- 사용자 명령: 부족한 보안/권한 부분을 스스로 확인하고 개발 계속.
+- 명령 해석: 일반 사용자가 admin API와 타 사용자 bucket/object/access key에 접근하지 못하게 막으라는 명령으로 인식.
+- 작업 방식: JWT claims 기반 `AuthContext`, `AuthenticatedUser`, admin path guard, owner guard를 추가.
+- 실행 내용: `/api/admin/**` ADMIN role 필요, bucket owner 기준 list/get/delete/create, object 접근 전 bucket 권한 확인, access key owner 분리.
+- 구현 내용: 일반 USER는 본인 bucket/access key만 조회. ADMIN은 전체 접근. USER의 admin API 요청은 403.
+- 수정된 파일 및 관련 파일: `auth/**`, `bucket/**`, `object/**`, `accesskey/**`, `user/**`, `HomeView.vue`, `api-spec.md`, `security-design.md`, `system-architecture.md`, tests.
+- 검증 기록: `git diff --check` 통과, `node --check` 통과, `verify-local.ps1 -SkipBackend -SkipFrontend` 통과. `gradlew test`는 Java 없음으로 실패.
+- 코드 리뷰: private 기본 정책이 생김. 조직 공유/ORG_ADMIN/bucket permission table은 아직 없음.
+- 결과: Admin role guard와 resource owner guard 구현 완료.
+- 후속 메모: access key와 MinIO policy 동기화 필요.
+- 추가 개발: bucket permission table, ORG_ADMIN, audit context 강화.
+- 사용 skill/plugin: `caveman`.
+
+### 2026-06-13 - Local 검증 스크립트와 아키텍처 문서 보강
+
+- 작업 시작 시간: 2026-06-13 03:44:39 +09:00
+- 작업 종료 시간: 2026-06-13 03:49:30 +09:00
+- 사용자 명령: 부족한 부분을 스스로 검증하고 문서도 최신 상태로 맞추기.
+- 명령 해석: 현재 구현 구조, 실행/검증 절차, 제한사항을 문서화하라는 명령으로 인식.
+- 작업 방식: verify script, architecture/security/api/local docs를 현재 구현 기준으로 갱신.
+- 실행 내용: Control/Data/Metadata/Operation plane, JWT, repository/adapter, role/owner guard, local verification 명령 정리.
+- 구현 내용: `scripts/verify-local.ps1`와 관련 docs 보강.
+- 수정된 파일 및 관련 파일: `scripts/verify-local.ps1`, `dev-docs/system-architecture.md`, `api-spec.md`, `security-design.md`, `local-dev-env.md`.
+- 검증 기록: `verify-local.ps1 -SkipBackend -SkipFrontend` 통과. Docker config 접근 경고만 발생.
+- 코드 리뷰: 문서와 구현의 불일치를 줄임. 단, test 실행 불가 상태는 계속 남음.
+- 결과: 로컬 검증/아키텍처 문서 보강 완료.
+- 후속 메모: 실제 Java/npm/Docker 환경에서 전체 검증 필요.
+- 추가 개발: CI pipeline 문서, migration 문서, 운영 topology.
+- 사용 skill/plugin: `caveman`.
+
+### 2026-06-13 - Worklog 인코딩 복구와 Audit Actor 보강
+
+- 작업 시작 시간: 2026-06-13 03:50:30 +09:00
+- 작업 종료 시간: 2026-06-13 03:52:08 +09:00
+- 사용자 명령: 활성 목표를 계속 진행.
+- 명령 해석: 현재 코드와 문서를 실제 상태 기준으로 점검하고, 발견한 결손을 스스로 보완하라는 명령으로 인식.
+- 작업 방식: git 상태, worklog heading, TODO/hardcode 검색으로 결손을 찾고 작은 보안/감사 결함부터 수정.
+- 실행 내용: 깨진 worklog를 UTF-8 한국어 요약 로그로 복구. `AdminUserController`의 `auditLogService.record(..., "admin", ...)` 하드코딩 제거. 현재 JWT 사용자 loginId를 actor로 기록하도록 변경. audit actor 검증 테스트 추가.
+- 구현 내용: user create/status audit log actor가 요청한 ADMIN 사용자로 기록됨.
+- 수정된 파일 및 관련 파일:
+  - `dev-docs/worklog/codex/frontend-backend-mvp/worklog-codex-frontend-backend-mvp.md`
+  - `osmu-backend/src/main/java/com/example/osmu/user/AdminUserController.java`
+  - `osmu-backend/src/test/java/com/example/osmu/user/AdminUserControllerTest.java`
+- 검증 기록:
+  - `git diff --check` 통과. LF -> CRLF 경고만 출력.
+  - `node --check osmu-frontend/src/services/api.js` 통과.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-local.ps1 -SkipBackend -SkipFrontend` 통과. Docker config 접근 경고만 출력.
+  - `Select-String`으로 `AdminUserController`의 `USER_CREATE`, `USER_STATUS_UPDATE` audit actor가 `actor.loginId()`임을 확인.
+  - `.\gradlew.bat test` 실패. 원인: `JAVA_HOME` 비어 있음, `java` 명령 없음.
+  - `npm.cmd run build` 실패. 원인: `vite` dependency 미설치.
+- 코드 리뷰: 감사 로그 actor 하드코딩 제거로 운영 추적성이 개선됨. `HttpServletRequest` 의존이 controller에 남지만 기존 `AccessKeyController` 패턴과 일관됨.
+- 결과: worklog 복구와 audit actor 보강 완료.
+- 후속 메모: Java/npm 환경 준비 전까지 backend compile/test와 frontend build는 미검증.
+- 추가 개발: audit log에 ip/userAgent/requestId 추가, audit log 영속화, refresh token 저장/폐기.
+- 사용 skill/plugin: `caveman`.
+
+### 2026-06-13 - Audit Log 요청 메타데이터 추가
+
+- 작업 시작 시간: 2026-06-13 03:52:08 +09:00
+- 작업 종료 시간: 2026-06-13 03:55:55 +09:00
+- 사용자 명령: 활성 목표를 계속 진행.
+- 명령 해석: MVP의 운영/보안 추적성을 강화할 수 있는 결손을 찾아 보완하라는 명령으로 인식.
+- 작업 방식: 감사 로그 구조를 확장하고, 기존 audit event 호출부에서 `HttpServletRequest`를 전달하도록 변경.
+- 실행 내용: `AuditLogEntry`에 `ipAddress`, `userAgent`, `requestId` 필드 추가. `AuditLogService`에 request metadata 수집 overload 추가. 로그인, 로그아웃, bucket, object, access key, admin user 이벤트 호출부에 request 전달.
+- 구현 내용: `X-Forwarded-For` 첫 번째 IP, `User-Agent`, `X-Request-Id` 또는 `X-Correlation-Id`를 감사 로그에 저장한다. Frontend audit panel에서 actor/target/result/ip/requestId를 표시한다.
+- 수정된 파일 및 관련 파일:
+  - `osmu-backend/src/main/java/com/example/osmu/audit/AuditLogEntry.java`
+  - `osmu-backend/src/main/java/com/example/osmu/audit/AuditLogService.java`
+  - `osmu-backend/src/main/java/com/example/osmu/auth/AuthController.java`
+  - `osmu-backend/src/main/java/com/example/osmu/accesskey/AccessKeyController.java`
+  - `osmu-backend/src/main/java/com/example/osmu/bucket/BucketController.java`
+  - `osmu-backend/src/main/java/com/example/osmu/object/ObjectController.java`
+  - `osmu-backend/src/main/java/com/example/osmu/user/AdminUserController.java`
+  - `osmu-backend/src/test/java/com/example/osmu/auth/AuthControllerTest.java`
+  - `osmu-frontend/src/views/HomeView.vue`
+  - `osmu-frontend/src/assets/main.css`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/security-design.md`
+  - `dev-docs/system-architecture.md`
+- 검증 기록:
+  - `git diff --check` 통과. LF -> CRLF 경고만 출력.
+  - `node --check osmu-frontend/src/services/api.js` 통과.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-local.ps1 -SkipBackend -SkipFrontend` 통과. Docker config 접근 경고만 출력.
+  - `Select-String`으로 모든 controller audit event가 request를 전달함을 확인.
+  - `.\gradlew.bat test` 실패. 원인: `JAVA_HOME` 비어 있음, `java` 명령 없음.
+  - `npm.cmd run build` 실패. 원인: `vite` dependency 미설치.
+- 코드 리뷰: audit metadata가 API 응답과 UI에 노출되어 운영 추적성이 좋아짐. 단, audit log는 아직 in-memory이며 영속 저장소가 아님.
+- 결과: audit log 요청 메타데이터 구현 완료.
+- 후속 메모: Java/npm 환경 준비 후 새 테스트 compile/runtime 검증 필요.
+- 추가 개발: audit log MariaDB 저장소, request id response propagation, refresh token 저장/폐기.
+- 사용 skill/plugin: `caveman`.
+
+### 2026-06-13 - Audit Log Repository 영속화 경계 추가
+
+- 작업 시작 시간: 2026-06-13 03:55:55 +09:00
+- 작업 종료 시간: 2026-06-13 03:58:46 +09:00
+- 사용자 명령: 활성 목표를 계속 진행.
+- 명령 해석: MVP의 운영 추적성이 in-memory에만 묶이지 않도록 MariaDB 기반 audit log 저장 경계를 추가하라는 명령으로 인식.
+- 작업 방식: 기존 bucket/user repository 패턴과 맞춰 `AuditLogRepository` interface, in-memory 구현, MariaDB 구현을 추가하고 service가 repository에 의존하게 변경.
+- 실행 내용: `AuditLogService` 내부 `CopyOnWriteArrayList` 제거. `InMemoryAuditLogRepository`, `MariaDbAuditLogRepository` 추가. health/status API가 audit repository health도 확인하도록 변경. API/DB/security/architecture 문서 갱신.
+- 구현 내용: `osmu.metadata.mode=in-memory` 기본 모드는 메모리 저장, `mariadb` 모드는 `audit_logs` table 자동 생성 후 최신 200건 조회와 append 저장을 수행한다.
+- 수정된 파일 및 관련 파일:
+  - `osmu-backend/src/main/java/com/example/osmu/audit/AuditLogService.java`
+  - `osmu-backend/src/main/java/com/example/osmu/audit/repository/AuditLogRepository.java`
+  - `osmu-backend/src/main/java/com/example/osmu/audit/repository/InMemoryAuditLogRepository.java`
+  - `osmu-backend/src/main/java/com/example/osmu/audit/repository/MariaDbAuditLogRepository.java`
+  - `osmu-backend/src/main/java/com/example/osmu/admin/AdminController.java`
+  - `osmu-backend/src/main/java/com/example/osmu/system/HealthController.java`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/database-design.md`
+  - `dev-docs/security-design.md`
+  - `dev-docs/system-architecture.md`
+- 검증 기록:
+  - `git diff --check` 통과. LF -> CRLF 경고만 출력.
+  - `node --check osmu-frontend/src/services/api.js` 통과.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-local.ps1 -SkipBackend -SkipFrontend` 통과. Docker config 접근 경고만 출력.
+  - `Select-String`으로 controller audit event 호출부가 request metadata를 넘김을 확인.
+  - `rg "new AuditLogService|AuditLogService\(" osmu-backend/src`로 직접 생성 테스트가 없음을 확인.
+  - `.\gradlew.bat test` 실패. 원인: `JAVA_HOME` 비어 있음, `java` 명령 없음.
+  - `npm.cmd run build` 실패. 원인: `vite` dependency 미설치.
+- 코드 리뷰: audit log 저장 경계가 생겨 MariaDB metadata plane에 더 가까워졌다. 단, schema는 아직 Flyway가 아니라 repository 자동 생성 방식이며 Java compile 검증은 환경 문제로 미완료.
+- 결과: audit log repository 영속화 경계 구현 완료.
+- 후속 메모: Java 설치 후 `gradlew test`로 constructor injection과 SQL compile/runtime 검증 필요.
+- 추가 개발: Flyway migration 전환, audit filter query, request id response propagation, refresh token 저장/폐기.
+- 사용 skill/plugin: `caveman`.
+
+### 2026-06-13 - Refresh Token 저장/회전/폐기 구현
+
+- 작업 시작 시간: 2026-06-13 03:58:46 +09:00
+- 작업 종료 시간: 2026-06-13 04:04:24 +09:00
+- 사용자 명령: 활성 목표를 계속 진행.
+- 명령 해석: 인증 MVP에서 refresh token이 발급만 되고 저장/폐기되지 않는 결손을 보완하라는 명령으로 인식.
+- 작업 방식: JWT refresh token 원문은 저장하지 않고 SHA-256 hash만 저장하는 repository 경계를 추가하고, refresh 성공 시 token rotation을 적용.
+- 실행 내용: `RefreshTokenRecord`, `RefreshTokenRequest`, `RefreshTokenService`, `RefreshTokenRepository`, in-memory/MariaDB 구현 추가. `/api/auth/refresh` public endpoint 추가. `/api/auth/logout`에서 refresh token revoke 처리. `JwtTokenService`에 refresh 검증, token hash, `jti` claim 추가. Frontend API에 refresh token 보관, 401 자동 refresh 1회, logout 버튼 추가.
+- 구현 내용:
+  - 로그인 시 refresh token hash 저장.
+  - refresh 요청 시 저장된 ACTIVE token만 허용.
+  - refresh 성공 시 기존 refresh token 폐기 후 새 refresh token 발급.
+  - logout 시 전달된 refresh token 폐기.
+  - MariaDB mode에서 `refresh_tokens` table 자동 생성.
+  - health/status API가 refresh token repository health도 확인.
+- 수정된 파일 및 관련 파일:
+  - `osmu-backend/src/main/java/com/example/osmu/auth/AuthController.java`
+  - `osmu-backend/src/main/java/com/example/osmu/auth/JwtAuthInterceptor.java`
+  - `osmu-backend/src/main/java/com/example/osmu/auth/JwtTokenService.java`
+  - `osmu-backend/src/main/java/com/example/osmu/auth/RefreshTokenRecord.java`
+  - `osmu-backend/src/main/java/com/example/osmu/auth/RefreshTokenRequest.java`
+  - `osmu-backend/src/main/java/com/example/osmu/auth/RefreshTokenService.java`
+  - `osmu-backend/src/main/java/com/example/osmu/auth/repository/RefreshTokenRepository.java`
+  - `osmu-backend/src/main/java/com/example/osmu/auth/repository/InMemoryRefreshTokenRepository.java`
+  - `osmu-backend/src/main/java/com/example/osmu/auth/repository/MariaDbRefreshTokenRepository.java`
+  - `osmu-backend/src/main/java/com/example/osmu/admin/AdminController.java`
+  - `osmu-backend/src/main/java/com/example/osmu/system/HealthController.java`
+  - `osmu-backend/src/test/java/com/example/osmu/auth/AuthControllerTest.java`
+  - `osmu-backend/src/test/java/com/example/osmu/auth/JwtTokenServiceTest.java`
+  - `osmu-frontend/src/services/api.js`
+  - `osmu-frontend/src/views/HomeView.vue`
+  - `osmu-frontend/src/assets/main.css`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/database-design.md`
+  - `dev-docs/security-design.md`
+  - `dev-docs/system-architecture.md`
+- 검증 기록:
+  - `git diff --check` 통과. LF -> CRLF 경고만 출력.
+  - `node --check osmu-frontend/src/services/api.js` 통과.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-local.ps1 -SkipBackend -SkipFrontend` 통과. Docker config 접근 경고만 출력.
+  - `rg`로 refresh endpoint, repository, frontend token 연결, 테스트 추가 위치 확인.
+  - `.\gradlew.bat test` 실패. 원인: `JAVA_HOME` 비어 있음, `java` 명령 없음.
+  - `npm.cmd run build` 실패. 원인: `vite` dependency 미설치.
+- 코드 리뷰: refresh token 원문 저장 없이 hash 저장과 rotation/revoke가 적용되어 인증 흐름이 운영 요구에 가까워졌다. 단, Java compile/runtime 검증은 환경 문제로 미완료이고 schema는 아직 Flyway가 아니다.
+- 결과: refresh token 저장/회전/폐기 구현 완료.
+- 후속 메모: Java/npm 환경 준비 후 refresh rotation/logout 테스트 실제 실행 필요.
+- 추가 개발: Flyway migration 전환, frontend session 만료 UX 보강, refresh token cleanup job.
+- 사용 skill/plugin: `caveman`.
+
+### 2026-06-13 - Access Key Repository 영속화 경계 추가
+
+- 작업 시작 시간: 2026-06-13 04:04:24 +09:00
+- 작업 종료 시간: 2026-06-13 04:07:32 +09:00
+- 사용자 명령: 활성 목표를 계속 진행.
+- 명령 해석: S3 호환 직접 접근 목표에 필요한 access key metadata가 service 내부 memory map에만 저장되는 결손을 보완하라는 명령으로 인식.
+- 작업 방식: 기존 repository 패턴과 맞춰 access key 저장소 경계를 만들고, secret key 원문은 생성 응답에서만 반환하며 서버에는 hash만 저장하도록 변경.
+- 실행 내용: `AccessKeyEntity`, `AccessKeyRepository`, `InMemoryAccessKeyRepository`, `MariaDbAccessKeyRepository` 추가. `AccessKeyService` 내부 `ConcurrentMap` 제거. health/status API가 access key repository health도 확인하도록 변경. API/DB/security/architecture 문서 갱신. access key 목록 응답에 `secretKeyHash`가 노출되지 않는 테스트 기대값 추가.
+- 구현 내용:
+  - access key metadata는 repository를 통해 저장/조회한다.
+  - secret key는 SHA-256 hash로만 저장한다.
+  - `osmu.metadata.mode=in-memory` 기본 모드는 memory 저장, `mariadb` 모드는 `access_keys` table 자동 생성 후 저장한다.
+  - 일반 USER는 본인 access key만 조회하고, ADMIN은 전체 조회한다.
+- 수정된 파일 및 관련 파일:
+  - `osmu-backend/src/main/java/com/example/osmu/accesskey/AccessKeyEntity.java`
+  - `osmu-backend/src/main/java/com/example/osmu/accesskey/AccessKeyService.java`
+  - `osmu-backend/src/main/java/com/example/osmu/accesskey/repository/AccessKeyRepository.java`
+  - `osmu-backend/src/main/java/com/example/osmu/accesskey/repository/InMemoryAccessKeyRepository.java`
+  - `osmu-backend/src/main/java/com/example/osmu/accesskey/repository/MariaDbAccessKeyRepository.java`
+  - `osmu-backend/src/main/java/com/example/osmu/admin/AdminController.java`
+  - `osmu-backend/src/main/java/com/example/osmu/system/HealthController.java`
+  - `osmu-backend/src/test/java/com/example/osmu/accesskey/AccessKeyControllerTest.java`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/database-design.md`
+  - `dev-docs/security-design.md`
+  - `dev-docs/system-architecture.md`
+- 검증 기록:
+  - `git diff --check` 통과. LF -> CRLF 경고만 출력.
+  - `node --check osmu-frontend/src/services/api.js` 통과.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-local.ps1 -SkipBackend -SkipFrontend` 통과. Docker config 접근 경고만 출력.
+  - `rg`로 `AccessKeyRepository`, `access_keys`, `secretKeyHash` 노출 방지 테스트, 문서 연결 확인.
+  - `.\gradlew.bat test` 실패. 원인: `JAVA_HOME` 비어 있음, `java` 명령 없음.
+  - `npm.cmd run build` 실패. 원인: `vite` dependency 미설치.
+- 코드 리뷰: access key metadata가 metadata plane에 들어가고 secret 원문 저장을 피하게 되어 S3 호환 접근 준비도가 높아졌다. 아직 MinIO user/policy 동기화는 미구현이며 Java compile/runtime 검증은 환경 문제로 미완료.
+- 결과: access key repository 영속화 경계 구현 완료.
+- 후속 메모: Java 설치 후 access key controller/service 테스트 실제 실행 필요.
+- 추가 개발: MinIO user/policy sync, access key lastUsed 추적, Flyway migration 전환.
+- 사용 skill/plugin: `caveman`.
+
+### 2026-06-13 - Flyway Metadata Schema Migration 추가
+
+- 작업 시작 시간: 2026-06-13 04:07:32 +09:00
+- 작업 종료 시간: 2026-06-13 04:09:41 +09:00
+- 사용자 명령: 활성 목표를 계속 진행.
+- 명령 해석: MariaDB schema가 repository 자동 생성에만 의존하는 운영 결손을 Flyway migration으로 보완하라는 명령으로 인식.
+- 작업 방식: Spring Boot Flyway dependency와 `V1` migration을 추가하되, in-memory 개발 환경에서 DB 연결이 강제되지 않도록 Flyway는 env로 켜는 방식으로 구성.
+- 실행 내용: `flyway-core`, `flyway-mysql` dependency 추가. `spring.flyway.enabled=${OSMU_FLYWAY_ENABLED:false}` 설정 추가. compose/env example에서는 `OSMU_FLYWAY_ENABLED=true`로 활성화. `V1__init_metadata_schema.sql`에 현재 구현된 `users`, `refresh_tokens`, `buckets`, `access_keys`, `audit_logs` table 추가.
+- 구현 내용:
+  - Docker Compose MariaDB 모드에서 Flyway migration 실행 가능.
+  - 기본 in-memory 모드에서는 Flyway off로 앱 시작이 DB에 묶이지 않음.
+  - repository의 `CREATE TABLE IF NOT EXISTS`는 fallback으로 유지.
+- 수정된 파일 및 관련 파일:
+  - `osmu-backend/build.gradle`
+  - `osmu-backend/src/main/resources/application.yaml`
+  - `osmu-backend/src/main/resources/db/migration/V1__init_metadata_schema.sql`
+  - `infra/local/docker-compose.yml`
+  - `infra/local/.env.example`
+  - `osmu-backend/.env.example`
+  - `dev-docs/local-dev-env.md`
+  - `dev-docs/database-design.md`
+  - `dev-docs/system-architecture.md`
+- 검증 기록:
+  - `git diff --check` 통과. LF -> CRLF 경고만 출력.
+  - `node --check osmu-frontend/src/services/api.js` 통과.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-local.ps1 -SkipBackend -SkipFrontend` 통과. Docker config 접근 경고만 출력.
+  - `rg`로 Flyway dependency, env, migration 파일, 문서 연결 확인.
+  - `docker compose --env-file .\infra\local\.env.example -f .\infra\local\docker-compose.yml config | Select-String OSMU_FLYWAY_ENABLED`로 compose에 `OSMU_FLYWAY_ENABLED: "true"` 반영 확인.
+  - `.\gradlew.bat test` 실패. 원인: `JAVA_HOME` 비어 있음, `java` 명령 없음.
+  - `npm.cmd run build` 실패. 원인: `vite` dependency 미설치.
+- 코드 리뷰: schema source of truth가 Flyway로 이동할 준비가 됐다. 단, repository fallback DDL과 migration이 공존하므로 이후 실제 DB 검증 후 fallback 제거 또는 정리 결정 필요.
+- 결과: Flyway V1 metadata schema migration 추가 완료.
+- 후속 메모: Java/Docker 실행 가능 환경에서 Flyway migration 실제 적용 검증 필요.
+- 추가 개발: Flyway seed 분리, repository 자동 DDL 제거 검토, MinIO user/policy sync.
+- 사용 skill/plugin: `caveman`.
+
+### 2026-06-13 - MinIO Presigned URL API 추가
+
+- 작업 시작 시간: 2026-06-13 04:09:41 +09:00
+- 작업 종료 시간: 2026-06-13 04:13:00 +09:00
+- 사용자 명령: 활성 목표를 계속 진행.
+- 명령 해석: 대용량 파일 요구사항에서 Backend byte upload/download 병목을 줄이기 위해 presigned URL 흐름을 추가하라는 명령으로 인식.
+- 작업 방식: `ObjectStorageAdapter`에 presigned URL 계약을 추가하고, MinIO 구현에서는 `getPresignedObjectUrl`을 사용하며, in-memory 구현은 명확한 미지원 에러를 반환하도록 구성.
+- 실행 내용: `PresignedObjectUrl`, `PresignedObjectUrlRequest` 추가. `POST /api/buckets/{bucketName}/objects/presigned-upload`, `POST /api/buckets/{bucketName}/objects/presigned-download` API 추가. Frontend object panel에 presigned URL 발급 버튼과 URL 표시 영역 추가. API/architecture 문서 갱신.
+- 구현 내용:
+  - presigned upload는 MinIO PUT URL을 발급한다.
+  - presigned download는 object 존재 확인 후 MinIO GET URL을 발급한다.
+  - 기존 bucket owner guard를 그대로 적용한다.
+  - `in-memory` storage mode에서는 `STORAGE_ERROR`를 반환한다.
+  - presigned upload 완료 후 quota/object metadata 확정 API는 후속 구현으로 남긴다.
+- 수정된 파일 및 관련 파일:
+  - `osmu-backend/src/main/java/com/example/osmu/storage/ObjectStorageAdapter.java`
+  - `osmu-backend/src/main/java/com/example/osmu/storage/minio/MinioObjectStorageAdapter.java`
+  - `osmu-backend/src/main/java/com/example/osmu/storage/memory/InMemoryObjectStorageAdapter.java`
+  - `osmu-backend/src/main/java/com/example/osmu/object/ObjectService.java`
+  - `osmu-backend/src/main/java/com/example/osmu/object/ObjectController.java`
+  - `osmu-backend/src/main/java/com/example/osmu/object/PresignedObjectUrl.java`
+  - `osmu-backend/src/main/java/com/example/osmu/object/PresignedObjectUrlRequest.java`
+  - `osmu-backend/src/test/java/com/example/osmu/bucket/BucketObjectFlowTest.java`
+  - `osmu-frontend/src/services/api.js`
+  - `osmu-frontend/src/views/HomeView.vue`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/system-architecture.md`
+- 검증 기록:
+  - `git diff --check` 통과. LF -> CRLF 경고만 출력.
+  - `node --check osmu-frontend/src/services/api.js` 통과.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-local.ps1 -SkipBackend -SkipFrontend` 통과. Docker config 접근 경고만 출력.
+  - `rg`로 presigned backend/frontend/docs/test 연결 확인.
+  - `.\gradlew.bat test` 실패. 원인: `JAVA_HOME` 비어 있음, `java` 명령 없음.
+  - `npm.cmd run build` 실패. 원인: `vite` dependency 미설치.
+- 코드 리뷰: 대용량 파일이 Backend를 통과하지 않는 경로가 생겼다. 단, presigned upload 이후 metadata/quota 확정 단계가 아직 없어 운영 완성도는 후속 complete API가 필요하다.
+- 결과: MinIO presigned upload/download URL API 추가 완료.
+- 후속 메모: Java/MinIO 실행 환경에서 URL 발급과 실제 PUT/GET 검증 필요.
+- 추가 개발: presigned upload complete API, multipart upload session, MinIO user/policy sync.
+- 사용 skill/plugin: `caveman`.
+
+### 2026-06-13 - Presigned Upload Complete API와 세션 저장소 추가
+
+- 작업 시작 시간: 2026-06-13 04:13:00 +09:00
+- 작업 종료 시간: 2026-06-13 04:17:51 +09:00
+- 사용자 명령: 활성 목표를 계속 진행.
+- 명령 해석: presigned upload URL 발급만으로는 object metadata, quota, 사용량 집계가 확정되지 않는 결손을 보완하라는 명령으로 인식.
+- 작업 방식: presigned upload마다 session을 만들고, client가 업로드 후 complete API를 호출하면 storage stat을 기준으로 metadata/quota를 확정하도록 구성.
+- 실행 내용: upload session domain/repository를 추가하고 in-memory/MariaDB 구현을 연결. presigned upload 응답에 `uploadId`를 포함. complete API와 frontend 완료 확인 버튼을 추가. Flyway V2 migration, API/DB/architecture 문서, 테스트 기대값을 갱신.
+- 구현 내용:
+  - presigned upload 생성 시 bucket owner guard, key 정규화, overwrite 방지, session 생성, MinIO PUT URL 발급을 수행한다.
+  - complete API는 `uploadId`, `bucketName`, `key`, user, status, expiry를 검증한다.
+  - complete API는 storage stat으로 실제 object size를 확인하고 bucket quota/object count 사용량을 반영한다.
+  - quota 초과 시 신규 업로드 object를 삭제하고 session을 `FAILED`로 변경한다.
+  - expired session은 검증 중 `EXPIRED` 상태로 변경한다.
+- 수정된 파일 및 관련 파일:
+  - `osmu-backend/src/main/java/com/example/osmu/object/PresignedObjectUrl.java`
+  - `osmu-backend/src/main/java/com/example/osmu/object/PresignedUploadCompleteRequest.java`
+  - `osmu-backend/src/main/java/com/example/osmu/object/PresignedUploadSession.java`
+  - `osmu-backend/src/main/java/com/example/osmu/object/ObjectService.java`
+  - `osmu-backend/src/main/java/com/example/osmu/object/ObjectController.java`
+  - `osmu-backend/src/main/java/com/example/osmu/object/repository/PresignedUploadSessionRepository.java`
+  - `osmu-backend/src/main/java/com/example/osmu/object/repository/InMemoryPresignedUploadSessionRepository.java`
+  - `osmu-backend/src/main/java/com/example/osmu/object/repository/MariaDbPresignedUploadSessionRepository.java`
+  - `osmu-backend/src/main/java/com/example/osmu/storage/minio/MinioObjectStorageAdapter.java`
+  - `osmu-backend/src/main/java/com/example/osmu/admin/AdminController.java`
+  - `osmu-backend/src/main/java/com/example/osmu/system/HealthController.java`
+  - `osmu-backend/src/main/resources/db/migration/V2__presigned_upload_sessions.sql`
+  - `osmu-backend/src/test/java/com/example/osmu/bucket/BucketObjectFlowTest.java`
+  - `osmu-frontend/src/services/api.js`
+  - `osmu-frontend/src/views/HomeView.vue`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/database-design.md`
+  - `dev-docs/system-architecture.md`
+- 검증 기록:
+  - `git diff --check` 통과. LF -> CRLF 경고만 출력.
+  - `node --check .\osmu-frontend\src\services\api.js` 통과.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-local.ps1 -SkipBackend -SkipFrontend` 통과. Docker config 접근 경고만 출력.
+  - `.\gradlew.bat test` 실패. 원인: `JAVA_HOME` 비어 있음, `java` 명령 없음.
+  - `npm.cmd run build` 실패. 원인: `vite` dependency 미설치.
+- 코드 리뷰: presigned upload 흐름이 URL 발급에서 끝나지 않고 session 기반 완료 확인으로 metadata/quota를 확정하게 됐다. overwrite는 MVP에서 차단해 delta 계산 위험을 줄였다. 단, Java compile/runtime, 실제 MinIO PUT 후 complete 검증은 환경 문제로 미완료다.
+- 결과: presigned upload complete API와 session 저장소 구현 완료.
+- 후속 메모: Java/npm/MinIO 실행 환경 준비 후 presigned URL 발급, 실제 PUT, complete, quota 초과 rollback까지 통합 검증 필요.
+- 추가 개발: multipart upload session, expired session cleanup job, overwrite policy, MinIO bucket policy/access key 동기화.
+- 사용 skill/plugin: `caveman`.
+
+### 2026-06-13 - Access Key Bucket Scope와 Permission 추가
+
+- 작업 시작 시간: 2026-06-13 04:17:51 +09:00
+- 작업 종료 시간: 2026-06-13 04:23:30 +09:00
+- 사용자 명령: 활성 목표를 계속 진행.
+- 명령 해석: S3 직접 접근 목표에서 access key가 단순 발급만 되고 bucket/permission 정책 근거가 없는 결손을 보완하라는 명령으로 인식.
+- 작업 방식: access key metadata에 `allowedBuckets`, `permissions`를 추가하고, 생성 시 사용자가 접근 가능한 bucket만 scope로 저장되도록 backend 검증을 넣었다. Frontend는 bucket 선택과 permission 체크박스를 제공하도록 연결했다.
+- 실행 내용: access key request/response/record/entity 확장. in-memory/MariaDB repository 저장 구조 갱신. Flyway V3 migration 추가. Access key controller test에 scope 저장/조회와 타인 bucket 차단 케이스 추가. Frontend API와 HomeView 생성 폼/목록 표시 갱신. API/DB/security/frontend/architecture/test-case 문서 갱신.
+- 구현 내용:
+  - `allowedBuckets`는 bucket owner guard를 통과한 bucket만 저장된다.
+  - `permissions`는 `READ`, `WRITE`, `DELETE`만 허용한다.
+  - 요청에서 bucket scope가 없으면 현재 사용자가 접근 가능한 bucket 목록을 기본 scope로 사용하고, 접근 가능한 bucket이 없으면 validation error를 반환한다.
+  - Secret Key는 기존처럼 생성 응답에서만 노출하고 목록에는 노출하지 않는다.
+  - MariaDB는 `allowed_buckets`, `permissions`를 JSON 배열 문자열로 저장한다.
+- 수정된 파일 및 관련 파일:
+  - `osmu-backend/src/main/java/com/example/osmu/accesskey/AccessKeyEntity.java`
+  - `osmu-backend/src/main/java/com/example/osmu/accesskey/AccessKeyRecord.java`
+  - `osmu-backend/src/main/java/com/example/osmu/accesskey/CreateAccessKeyRequest.java`
+  - `osmu-backend/src/main/java/com/example/osmu/accesskey/CreateAccessKeyResponse.java`
+  - `osmu-backend/src/main/java/com/example/osmu/accesskey/AccessKeyService.java`
+  - `osmu-backend/src/main/java/com/example/osmu/accesskey/repository/InMemoryAccessKeyRepository.java`
+  - `osmu-backend/src/main/java/com/example/osmu/accesskey/repository/MariaDbAccessKeyRepository.java`
+  - `osmu-backend/src/main/resources/db/migration/V1__init_metadata_schema.sql`
+  - `osmu-backend/src/main/resources/db/migration/V3__access_key_scope.sql`
+  - `osmu-backend/src/test/java/com/example/osmu/accesskey/AccessKeyControllerTest.java`
+  - `osmu-frontend/src/services/api.js`
+  - `osmu-frontend/src/views/HomeView.vue`
+  - `osmu-frontend/src/assets/main.css`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/database-design.md`
+  - `dev-docs/frontend-design.md`
+  - `dev-docs/security-design.md`
+  - `dev-docs/system-architecture.md`
+  - `dev-docs/test-cases.md`
+- 검증 기록:
+  - `git diff --check` 통과. LF -> CRLF 경고만 출력.
+  - `node --check .\osmu-frontend\src\services\api.js` 통과.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-local.ps1 -SkipBackend -SkipFrontend` 통과. Docker config 접근 경고만 출력.
+  - `rg`로 `createAccessKey`, `allowedBuckets`, `allowed_buckets`, `V3__access_key_scope` 연결 확인.
+  - `.\gradlew.bat test` 실패. 원인: `JAVA_HOME` 비어 있음, `java` 명령 없음.
+  - `npm.cmd run build` 실패. 원인: `vite` dependency 미설치.
+- 코드 리뷰: access key가 이제 사용자와 secret hash만 가진 토큰이 아니라 bucket scope/permission을 포함하는 정책 단위가 됐다. 실제 MinIO user/policy 동기화는 아직 없지만, S3 직접 접근 기능을 안전하게 연결하기 위한 metadata plane 기반은 생겼다.
+- 결과: Access Key bucket scope/permission 구현 완료.
+- 후속 메모: Java/npm 환경 준비 후 access key scope 테스트 실제 실행 필요.
+- 추가 개발: MinIO user/policy 동기화, access key lastUsed 추적, permission별 S3 policy template 생성.
+- 사용 skill/plugin: `caveman`.
+
+### 2026-06-13 - S3 Access Policy 생성기와 Provisioner 경계 추가
+
+- 작업 시작 시간: 2026-06-13 04:23:30 +09:00
+- 작업 종료 시간: 2026-06-13 04:26:13 +09:00
+- 사용자 명령: 활성 목표를 계속 진행.
+- 명령 해석: Access Key bucket scope/permission metadata를 실제 S3 호환 접근 정책으로 변환하는 기반을 만들라는 명령으로 인식.
+- 작업 방식: MinIO admin 실제 호출은 SDK/API 확인 전까지 직접 구현하지 않고, 우선 S3 IAM 호환 policy document 생성기와 provisioner interface를 추가해 교체 가능한 경계를 만들었다.
+- 실행 내용: `S3AccessPolicyGenerator`, `S3AccessPolicyProvisioner`, no-op 구현, policy name utility, policy response record를 추가. Access Key 생성 시 policy document를 생성하고 provisioner를 호출하도록 연결. Access Key 목록에는 policy name이 포함되도록 record를 확장. Frontend 목록과 API/security/architecture/frontend/test-case 문서, controller test 기대값을 갱신.
+- 구현 내용:
+  - `READ`는 `s3:GetBucketLocation`, `s3:ListBucket`, `s3:GetObject`로 변환된다.
+  - `WRITE`는 multipart upload 관련 action과 `s3:PutObject`로 변환된다.
+  - `DELETE`는 `s3:DeleteObject`로 변환된다.
+  - bucket scope는 bucket ARN과 object ARN으로 변환된다.
+  - 생성 응답은 `policyName`, `policyDocument`를 포함하지만 secret 값은 policy에 포함하지 않는다.
+- 수정된 파일 및 관련 파일:
+  - `osmu-backend/src/main/java/com/example/osmu/accesskey/AccessKeyPolicyNames.java`
+  - `osmu-backend/src/main/java/com/example/osmu/accesskey/S3AccessPolicy.java`
+  - `osmu-backend/src/main/java/com/example/osmu/accesskey/S3AccessPolicyGenerator.java`
+  - `osmu-backend/src/main/java/com/example/osmu/accesskey/S3AccessPolicyProvisioner.java`
+  - `osmu-backend/src/main/java/com/example/osmu/accesskey/NoopS3AccessPolicyProvisioner.java`
+  - `osmu-backend/src/main/java/com/example/osmu/accesskey/AccessKeyRecord.java`
+  - `osmu-backend/src/main/java/com/example/osmu/accesskey/AccessKeyEntity.java`
+  - `osmu-backend/src/main/java/com/example/osmu/accesskey/CreateAccessKeyResponse.java`
+  - `osmu-backend/src/main/java/com/example/osmu/accesskey/AccessKeyService.java`
+  - `osmu-backend/src/main/java/com/example/osmu/accesskey/repository/MariaDbAccessKeyRepository.java`
+  - `osmu-backend/src/test/java/com/example/osmu/accesskey/AccessKeyControllerTest.java`
+  - `osmu-frontend/src/views/HomeView.vue`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/frontend-design.md`
+  - `dev-docs/security-design.md`
+  - `dev-docs/system-architecture.md`
+  - `dev-docs/test-cases.md`
+- 검증 기록:
+  - `git diff --check` 통과. LF -> CRLF 경고만 출력.
+  - `node --check .\osmu-frontend\src\services\api.js` 통과.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-local.ps1 -SkipBackend -SkipFrontend` 통과. Docker config 접근 경고만 출력.
+  - `rg`로 `S3AccessPolicyGenerator`, `S3AccessPolicyProvisioner`, `policyDocument`, `policyName`, `arn:aws:s3` 연결 확인.
+  - `.\gradlew.bat test` 실패. 원인: `JAVA_HOME` 비어 있음, `java` 명령 없음.
+  - `npm.cmd run build` 실패. 원인: `vite` dependency 미설치.
+- 코드 리뷰: Access Key가 이제 S3 action/ARN policy로 변환되는 단계까지 왔다. 실제 MinIO user/policy 적용은 no-op 경계 뒤에 남아 있으나, 후속 구현은 `S3AccessPolicyProvisioner`만 교체하면 된다.
+- 결과: S3 access policy 생성기와 provisioner 경계 구현 완료.
+- 후속 메모: Java 환경에서 Jackson policy serialization과 AccessKeyControllerTest 실제 실행 필요.
+- 추가 개발: MinIO admin provisioner 실제 구현, policy 적용 실패 보상 처리, access key lastUsed 추적.
+- 사용 skill/plugin: `caveman`.
+
+### 2026-06-13 - MinIO Access Key Provisioner 구현
+
+- 작업 시작 시간: 2026-06-13 04:26:13 +09:00
+- 작업 종료 시간: 2026-06-13 04:30:19 +09:00
+- 사용자 명령: 활성 목표를 계속 진행.
+- 명령 해석: 앞서 만든 S3 policy document를 실제 MinIO user/policy에 적용하는 구현을 추가하라는 명령으로 인식.
+- 작업 방식: MinIO Java SDK admin API source를 확인한 뒤 `S3AccessPolicyProvisioner`의 MinIO 구현을 추가했다. 기본 설정은 `noop`으로 유지하고, local Docker Compose에서는 `minio` 모드로 켜도록 구성했다.
+- 실행 내용: `MinioS3AccessPolicyProvisioner` 추가. `provision`에서 canned policy 생성, MinIO user 생성, policy 연결을 수행. `deactivate`에서 user와 policy 제거를 수행. provision 실패 시 access key 상태를 `PROVISION_FAILED`로 바꾸도록 보상 처리. health/system status에 access key provisioner 상태 추가. env/compose/docs/test 갱신.
+- 구현 내용:
+  - `OSMU_ACCESS_KEY_PROVISIONING_MODE=noop`: policy document만 생성한다.
+  - `OSMU_ACCESS_KEY_PROVISIONING_MODE=minio`: MinIO admin API로 user/policy 적용을 시도한다.
+  - 생성 실패 시 DB에 이미 저장된 access key는 `PROVISION_FAILED` 상태로 남긴다.
+  - 삭제 시 MinIO user와 per-key canned policy를 제거한다.
+  - `/api/storage/health`, `/api/admin/system/status`에 `accessKeyProvisioner` 상태가 포함된다.
+- 수정된 파일 및 관련 파일:
+  - `osmu-backend/src/main/java/com/example/osmu/accesskey/S3AccessPolicyProvisioner.java`
+  - `osmu-backend/src/main/java/com/example/osmu/accesskey/NoopS3AccessPolicyProvisioner.java`
+  - `osmu-backend/src/main/java/com/example/osmu/accesskey/MinioS3AccessPolicyProvisioner.java`
+  - `osmu-backend/src/main/java/com/example/osmu/accesskey/AccessKeyService.java`
+  - `osmu-backend/src/main/java/com/example/osmu/admin/AdminController.java`
+  - `osmu-backend/src/main/java/com/example/osmu/system/HealthController.java`
+  - `osmu-backend/src/main/resources/application.yaml`
+  - `osmu-backend/.env.example`
+  - `osmu-backend/src/test/java/com/example/osmu/system/HealthControllerTest.java`
+  - `infra/local/.env.example`
+  - `infra/local/docker-compose.yml`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/local-dev-env.md`
+  - `dev-docs/security-design.md`
+  - `dev-docs/system-architecture.md`
+- 검증 기록:
+  - MinIO Java SDK admin source에서 `addCannedPolicy`, `addUser`, `setPolicy`, `deleteUser`, `removeCannedPolicy`, `getServerInfo` API 존재 확인.
+  - `git diff --check` 통과. LF -> CRLF 경고만 출력.
+  - `node --check .\osmu-frontend\src\services\api.js` 통과.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-local.ps1 -SkipBackend -SkipFrontend` 통과. Docker config 접근 경고만 출력.
+  - `rg`로 `MinioS3AccessPolicyProvisioner`, `OSMU_ACCESS_KEY_PROVISIONING_MODE`, `accessKeyProvisioner`, MinIO admin method 연결 확인.
+  - `.\gradlew.bat test` 실패. 원인: `JAVA_HOME` 비어 있음, `java` 명령 없음.
+  - `npm.cmd run build` 실패. 원인: `vite` dependency 미설치.
+- 코드 리뷰: Access Key 발급이 이제 metadata 저장과 policy 생성에서 실제 MinIO user/policy 적용까지 이어진다. 단, 현재 환경에서는 Java compile을 못 하므로 admin API linkage는 source 확인과 정적 검색 수준이다.
+- 결과: MinIO access key provisioner 구현 완료.
+- 후속 메모: Java 환경 준비 후 `OSMU_ACCESS_KEY_PROVISIONING_MODE=minio`로 실제 user/policy 생성과 S3 client 접근 검증 필요.
+- 추가 개발: provision 실패 재시도 job, access key lastUsed 추적, 기존 key 재동기화 API.
+- 사용 skill/plugin: `caveman`.
+
+### 2026-06-13 - MinIO Provisioner를 mc CLI 기반으로 교체
+
+- 작업 시작 시간: 2026-06-13 04:30:19 +09:00
+- 작업 종료 시간: 2026-06-13 04:34:07 +09:00
+- 사용자 명령: 활성 목표를 계속 진행.
+- 명령 해석: MinIO admin SDK import가 실제 Maven dependency와 맞지 않을 수 있는 compile risk를 제거하고, 로컬 Docker 환경에서 실제 정책 적용이 가능하게 만들라는 명령으로 인식.
+- 작업 방식: `io.minio.admin.*` 직접 import를 제거하고, 공식 `mc admin user add`, `mc admin policy create`, `mc admin policy attach` syntax에 맞춰 command-line provisioner로 교체했다. Docker runtime에는 pinned `mc` binary를 설치하도록 구성했다.
+- 실행 내용: `MinioS3AccessPolicyProvisioner`를 `mc` 실행 방식으로 재작성. policy JSON을 temp file로 저장해 `mc admin policy create`에 전달. user 생성, policy attach, user/policy 제거, health check를 command로 수행. Dockerfile에 pinned `mc` 설치 추가. `OSMU_ACCESS_KEY_MC_PATH`, `OSMU_ACCESS_KEY_MINIO_ALIAS` 설정 추가. docs/env 갱신.
+- 구현 내용:
+  - `mc --json alias set`으로 MinIO alias를 보장한다.
+  - `mc admin policy create <alias> <policyName> <policyFile>`로 per-key policy를 생성/갱신한다.
+  - `mc admin user add <alias> <accessKey> <secretKey>`로 MinIO user를 만든다.
+  - `mc admin policy attach <alias> <policyName> --user <accessKey>`로 policy를 연결한다.
+  - 삭제는 `mc admin user rm`, `mc admin policy rm`으로 best-effort 처리한다.
+  - `mc admin info` 결과로 provisioner health를 판단한다.
+- 수정된 파일 및 관련 파일:
+  - `osmu-backend/src/main/java/com/example/osmu/accesskey/MinioS3AccessPolicyProvisioner.java`
+  - `osmu-backend/Dockerfile`
+  - `osmu-backend/src/main/resources/application.yaml`
+  - `osmu-backend/.env.example`
+  - `infra/local/.env.example`
+  - `infra/local/docker-compose.yml`
+  - `dev-docs/local-dev-env.md`
+  - `dev-docs/security-design.md`
+  - `dev-docs/system-architecture.md`
+- 검증 기록:
+  - 공식 MinIO docs에서 `mc admin user add`, `mc admin policy create`, `mc admin policy attach` syntax 확인.
+  - `rg "io\.minio\.admin|MinioAdminClient|Status\.ENABLED|addCannedPolicy" .\osmu-backend` 결과 없음.
+  - `git diff --check` 통과. LF -> CRLF 경고만 출력.
+  - `node --check .\osmu-frontend\src\services\api.js` 통과.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-local.ps1 -SkipBackend -SkipFrontend` 통과. Docker config 접근 경고만 출력.
+  - `docker compose --env-file .\infra\local\.env.example -f .\infra\local\docker-compose.yml config | Select-String -Pattern "OSMU_ACCESS_KEY|mc.RELEASE|mc"`로 compose env 반영 확인.
+  - `.\gradlew.bat test` 실패. 원인: `JAVA_HOME` 비어 있음, `java` 명령 없음.
+  - `npm.cmd run build` 실패. 원인: `vite` dependency 미설치.
+- 코드 리뷰: Java compile risk가 있던 admin SDK import를 제거했고, local Docker runtime에서 `mc` 기반 실제 MinIO user/policy 적용 경로를 확보했다. 다만 secret이 command argument로 잠깐 노출될 수 있어 운영용으로는 native Admin API 또는 별도 worker 교체가 필요하다.
+- 결과: MinIO provisioner compile-safe 교체 완료.
+- 후속 메모: Java/Docker 환경 준비 후 backend image build, access key 생성, `mc admin user info`, S3 client 접근까지 실제 검증 필요.
+- 추가 개발: native Admin API provisioner, provisioning retry job, 기존 access key resync API.
+- 사용 skill/plugin: `caveman`.
+
+### 2026-06-13 - Access Key Provisioning 실패 보상 흐름 수정
+
+- 작업 시작 시간: 2026-06-13 04:34:07 +09:00
+- 작업 종료 시간: 2026-06-13 04:36:06 +09:00
+- 사용자 명령: 활성 목표를 계속 진행.
+- 명령 해석: Access Key provisioning 실패 시 secret을 재발급할 수 없는 unusable metadata가 남는 문제를 제거하라는 명령으로 인식.
+- 작업 방식: access key metadata 저장 순서를 provisioning 성공 이후로 옮기고, DB 저장 실패 시 이미 생성한 MinIO user/policy를 보상 삭제하도록 변경했다.
+- 실행 내용: `AccessKeyService.create`를 synchronized로 만들고, `AccessKeyEntity`와 `AccessKeyRecord`를 먼저 구성한 뒤 policy provisioning을 수행하게 변경. provisioning 성공 후 repository 저장. repository 저장 실패 시 `cleanupProvisionedAccessKey`로 `policyProvisioner.deactivate` 호출. provisioning 실패가 metadata에 남지 않는 MockMvc 테스트 추가. API/security/architecture/test-case 문서 갱신.
+- 구현 내용:
+  - provisioning 실패 시 access key metadata를 저장하지 않는다.
+  - metadata 저장 실패 시 MinIO에 이미 만든 user/policy를 best-effort로 제거한다.
+  - cleanup 실패는 원래 DB 예외에 suppressed exception으로 붙인다.
+  - secret 원문은 여전히 생성 응답에서만 반환된다.
+- 수정된 파일 및 관련 파일:
+  - `osmu-backend/src/main/java/com/example/osmu/accesskey/AccessKeyService.java`
+  - `osmu-backend/src/test/java/com/example/osmu/accesskey/AccessKeyProvisioningFailureTest.java`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/security-design.md`
+  - `dev-docs/system-architecture.md`
+  - `dev-docs/test-cases.md`
+- 검증 기록:
+  - `git diff --check` 통과. LF -> CRLF 경고만 출력.
+  - `node --check .\osmu-frontend\src\services\api.js` 통과.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-local.ps1 -SkipBackend -SkipFrontend` 통과. Docker config 접근 경고만 출력.
+  - `rg`로 `failedProvisioningDoesNotPersistUnusableAccessKey`, `cleanupProvisionedAccessKey`, provision/save 순서 확인.
+  - `.\gradlew.bat test` 실패. 원인: `JAVA_HOME` 비어 있음, `java` 명령 없음.
+  - `npm.cmd run build` 실패. 원인: `vite` dependency 미설치.
+- 코드 리뷰: 실패한 provisioning이 회수 불가능한 secret 없는 key로 남지 않게 됐다. MinIO 성공 후 DB 실패 케이스도 cleanup을 시도하므로 data plane과 metadata plane 불일치 위험이 줄었다.
+- 결과: Access Key provisioning 실패 보상 흐름 수정 완료.
+- 후속 메모: Java 환경 준비 후 신규 `AccessKeyProvisioningFailureTest` 실제 실행 필요.
+- 추가 개발: cleanup 실패 audit, native Admin API provisioner, access key resync API.
+- 사용 skill/plugin: `caveman`.
+
+### 2026-06-13 - Bucket Usage Sync API 추가
+
+- 작업 시작 시간: 2026-06-13 04:36:06 +09:00
+- 작업 종료 시간: 2026-06-13 04:39:55 +09:00
+- 사용자 명령: 활성 목표를 계속 진행.
+- 명령 해석: S3 직접 업로드, presigned upload, 외부 S3 client 접근으로 Backend upload API를 우회할 때 bucket 사용량 metadata가 실제 storage와 달라질 수 있으므로 이를 재계산하는 API와 UI 동작을 추가하라는 명령으로 인식.
+- 작업 방식: storage adapter object list를 기준으로 bucket `usedBytes`, `objectCount`를 재계산하는 Backend API를 만들고, frontend bucket 목록에서 수동 동기화 버튼으로 호출하게 했다. 직접 storage write 이후 sync API가 값을 맞추는 테스트와 관련 문서를 갱신했다.
+- 실행 내용: `BucketService.syncUsage` 추가, `POST /api/buckets/{bucketName}/sync` controller 추가, `BUCKET_SYNC` audit 기록 추가, frontend `syncBucketUsage` API wrapper와 bucket 행 동기화 버튼 추가, object flow 테스트와 API/architecture/frontend/test docs 갱신.
+- 구현 내용:
+  - `ObjectStorageAdapter.listObjects(bucketName, "")` 결과를 기준으로 전체 object size 합과 count를 계산한다.
+  - 기존 bucket owner/admin 권한 검사를 재사용한다.
+  - sync 성공 시 최신 bucket record를 저장하고 반환한다.
+  - frontend 동기화 성공 시 dashboard와 선택 bucket object 목록을 다시 불러온다.
+  - S3 직접 쓰기 후 bucket metadata drift를 수동 보정할 수 있다.
+- 수정된 파일 및 관련 파일:
+  - `osmu-backend/src/main/java/com/example/osmu/bucket/BucketService.java`
+  - `osmu-backend/src/main/java/com/example/osmu/bucket/BucketController.java`
+  - `osmu-backend/src/test/java/com/example/osmu/bucket/BucketObjectFlowTest.java`
+  - `osmu-frontend/src/services/api.js`
+  - `osmu-frontend/src/views/HomeView.vue`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/frontend-design.md`
+  - `dev-docs/system-architecture.md`
+  - `dev-docs/test-cases.md`
+- 검증 기록:
+  - `git diff --check` 통과. LF -> CRLF 경고만 출력.
+  - `node --check .\osmu-frontend\src\services\api.js` 통과.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-local.ps1 -SkipBackend -SkipFrontend` 통과. Docker config 접근 경고만 출력.
+  - `rg -n "syncUsage|/sync|syncBucketUsage|handleSyncBucket|BUCKET_SYNC|TC-BUCKET-007|Bucket usage sync" .\osmu-backend .\osmu-frontend\src .\dev-docs`로 Backend/API/UI/docs/test 반영 확인.
+  - `.\gradlew.bat test` 실패. 원인: `JAVA_HOME` 비어 있음, `java` 명령 없음.
+  - `npm.cmd run build` 실패. 원인: `vite` dependency 미설치.
+- 코드 리뷰: S3 direct path에서 생기는 metadata drift를 사용자가 즉시 보정할 수 있게 됐다. 단, quota 초과 자체를 MinIO/S3 write 시점에 막지는 못하므로 현재 구현은 사후 동기화 수준이다.
+- 결과: Bucket usage sync API, UI 버튼, 테스트 케이스, 문서 반영 완료.
+- 후속 메모: Java와 frontend dependency 준비 후 `BucketObjectFlowTest`와 실제 UI build를 다시 실행해야 한다.
+- 추가 개발: MinIO event/webhook 기반 자동 sync, scheduled sync job, direct S3 quota enforcement, 실제 S3 E2E script.
+- 사용 skill/plugin: `caveman`.
+
+### 2026-06-13 - 사용자 비활성화 시 Access Key 자동 비활성화
+
+- 작업 시작 시간: 2026-06-13 04:39:55 +09:00
+- 작업 종료 시간: 2026-06-13 04:43:43 +09:00
+- 사용자 명령: 활성 목표를 계속 진행.
+- 명령 해석: MVP 보안 요구사항 중 "비활성 사용자 로그인 차단"만 구현되어 있고 기존 Access Key가 계속 살아 있는 gap을 줄이라는 명령으로 인식.
+- 작업 방식: 사용자 상태 변경 API에서 `INACTIVE` 또는 `LOCKED`로 바꿀 때 해당 user ownerId의 active Access Key를 찾아 metadata와 S3 provisioner 상태를 함께 비활성화하게 했다. admin MockMvc 테스트에 사용자 key 생성 후 비활성화 검증을 추가했다.
+- 실행 내용: Access Key repository owner 조회 메서드 추가, in-memory/MariaDB 구현 추가, `AccessKeyService.deactivateByOwnerId` 추가, `AdminUserController.updateStatus`에서 비활성 상태 변경 시 호출, 테스트/문서 갱신.
+- 구현 내용:
+  - `AccessKeyRepository.findRecordsByOwnerId(ownerId)`로 사용자 소유 key 목록을 조회한다.
+  - `AccessKeyService.deactivateByOwnerId`는 `ACTIVE` key만 대상으로 provisioner deactivate와 metadata status update를 수행한다.
+  - user status가 `INACTIVE` 또는 `LOCKED`이면 active key를 자동 비활성화한다.
+  - user를 다시 `ACTIVE`로 바꿔도 기존 key는 자동 복구하지 않는다.
+  - audit message에 `deactivatedAccessKeys=<count>`를 남긴다.
+- 수정된 파일 및 관련 파일:
+  - `osmu-backend/src/main/java/com/example/osmu/accesskey/repository/AccessKeyRepository.java`
+  - `osmu-backend/src/main/java/com/example/osmu/accesskey/repository/InMemoryAccessKeyRepository.java`
+  - `osmu-backend/src/main/java/com/example/osmu/accesskey/repository/MariaDbAccessKeyRepository.java`
+  - `osmu-backend/src/main/java/com/example/osmu/accesskey/AccessKeyService.java`
+  - `osmu-backend/src/main/java/com/example/osmu/user/AdminUserController.java`
+  - `osmu-backend/src/test/java/com/example/osmu/user/AdminUserControllerTest.java`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/backend-design.md`
+  - `dev-docs/security-design.md`
+  - `dev-docs/test-cases.md`
+- 검증 기록:
+  - `rg -n "implements AccessKeyRepository|findRecordsByOwnerId|deactivateByOwnerId|deactivatedAccessKeys|TC-KEY-007|사용자 비활성화" .\osmu-backend .\dev-docs`로 구현/문서 반영 확인.
+  - `git diff --check` 통과. LF -> CRLF 경고만 출력.
+  - `node --check .\osmu-frontend\src\services\api.js` 통과.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-local.ps1 -SkipBackend -SkipFrontend` 통과. Docker config 접근 경고만 출력.
+  - `.\gradlew.bat test` 실패. 원인: `JAVA_HOME` 비어 있음, `java` 명령 없음.
+  - `npm.cmd run build` 실패. 원인: `vite` dependency 미설치.
+- 코드 리뷰: 비활성 사용자 계정이 REST login은 막히지만 S3 key로 계속 접근할 수 있던 보안 gap을 줄였다. provisioner deactivate가 실패하면 status 변경도 실패하므로 S3 key가 살아 있는데 사용자가 비활성으로 표시되는 불일치를 줄인다.
+- 결과: 사용자 비활성화/잠금 시 Access Key 자동 비활성화 흐름 구현 완료.
+- 후속 메모: Java 환경 준비 후 `AdminUserControllerTest`를 실제 실행해야 한다.
+- 추가 개발: Access Key revoke 실패 audit, 재활성화 정책 화면, user별 key count/상태 요약.
+- 사용 skill/plugin: `caveman`.
+
+### 2026-06-13 - Organization API와 사용자 조직 연결 추가
+
+- 작업 시작 시간: 2026-06-13 04:43:43 +09:00
+- 작업 종료 시간: 2026-06-13 04:49:31 +09:00
+- 사용자 명령: 활성 목표를 계속 진행.
+- 명령 해석: MVP 요구사항의 조직/프로젝트 관리가 아직 코드에 없으므로 admin 조직 생성/조회와 사용자 조직 연결을 구현하라는 명령으로 인식.
+- 작업 방식: organization 도메인 모델과 repository를 추가하고, in-memory/MariaDB 양쪽 저장소를 맞췄다. 사용자 profile/request에 `organizationId`를 추가하고, admin portal에서 조직 생성과 사용자 생성 시 조직 선택을 연결했다.
+- 실행 내용: `AdminOrganizationController`, organization repository 구현, Flyway V4 migration 추가, user schema/profile에 `organizationId` 추가, admin user create 시 organization 검증, frontend organization panel/API wrapper 추가, docs/test/worklog 갱신.
+- 구현 내용:
+  - `GET /api/admin/organizations`로 조직 목록을 조회한다.
+  - `POST /api/admin/organizations`로 조직을 생성하고 중복 이름을 차단한다.
+  - 사용자 생성 시 `organizationId`가 있으면 실제 조직 존재 여부를 검증한다.
+  - `UserProfile` 응답에 `organizationId`를 포함한다.
+  - `V4__organizations.sql`에서 `organizations` table과 `users.organization_id`를 추가한다.
+  - frontend admin 화면에서 조직 생성/목록과 사용자 생성 시 조직 선택을 지원한다.
+- 수정된 파일 및 관련 파일:
+  - `osmu-backend/src/main/java/com/example/osmu/organization/OrganizationRecord.java`
+  - `osmu-backend/src/main/java/com/example/osmu/organization/CreateOrganizationRequest.java`
+  - `osmu-backend/src/main/java/com/example/osmu/organization/AdminOrganizationController.java`
+  - `osmu-backend/src/main/java/com/example/osmu/organization/repository/OrganizationRepository.java`
+  - `osmu-backend/src/main/java/com/example/osmu/organization/repository/InMemoryOrganizationRepository.java`
+  - `osmu-backend/src/main/java/com/example/osmu/organization/repository/MariaDbOrganizationRepository.java`
+  - `osmu-backend/src/main/java/com/example/osmu/user/UserAccount.java`
+  - `osmu-backend/src/main/java/com/example/osmu/user/UserProfile.java`
+  - `osmu-backend/src/main/java/com/example/osmu/user/CreateUserRequest.java`
+  - `osmu-backend/src/main/java/com/example/osmu/user/AdminUserController.java`
+  - `osmu-backend/src/main/java/com/example/osmu/user/repository/InMemoryUserRepository.java`
+  - `osmu-backend/src/main/java/com/example/osmu/user/repository/MariaDbUserRepository.java`
+  - `osmu-backend/src/main/java/com/example/osmu/admin/AdminController.java`
+  - `osmu-backend/src/main/resources/db/migration/V4__organizations.sql`
+  - `osmu-backend/src/test/java/com/example/osmu/organization/AdminOrganizationControllerTest.java`
+  - `osmu-frontend/src/services/api.js`
+  - `osmu-frontend/src/views/HomeView.vue`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/backend-design.md`
+  - `dev-docs/database-design.md`
+  - `dev-docs/frontend-design.md`
+  - `dev-docs/system-architecture.md`
+  - `dev-docs/test-cases.md`
+- 검증 기록:
+  - `rg -n "Organization|organizationId|getOrganizations|createOrganization|V4__organizations|organization_id" .\osmu-backend\src .\osmu-frontend\src`로 구현 반영 확인.
+  - `rg -n "AdminOrganizationController|AdminOrganizationControllerTest|getOrganizations|handleCreateOrganization|TC-ORG|organizationId" .\osmu-backend .\osmu-frontend\src .\dev-docs`로 API/UI/test/docs 반영 확인.
+  - `git diff --check` 통과. LF -> CRLF 경고만 출력.
+  - `node --check .\osmu-frontend\src\services\api.js` 통과.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-local.ps1 -SkipBackend -SkipFrontend` 통과. Docker config 접근 경고만 출력.
+  - `.\gradlew.bat test` 실패. 원인: `JAVA_HOME` 비어 있음, `java` 명령 없음.
+  - `npm.cmd run build` 실패. 원인: `vite` dependency 미설치.
+- 코드 리뷰: 조직 생성/조회와 사용자 조직 연결이 추가되어 B2B/부서 단위 관리 모델의 기반이 생겼다. 단, bucket ownerType `ORG` 접근 제어와 조직별 quota 집계는 아직 후속 과제로 남아 있다.
+- 결과: Organization API, MariaDB migration, frontend 조직 관리 화면, 테스트 케이스 추가 완료.
+- 후속 메모: Java 환경 준비 후 `AdminOrganizationControllerTest`를 실제 실행해야 한다.
+- 추가 개발: 조직 소유 bucket, ORG_ADMIN 권한 범위, 조직별 quota/usage dashboard, 조직 사용자 목록 API.
+- 사용 skill/plugin: `caveman`.
+
+### 2026-06-13 - 조직 소유 Bucket과 ORG_ADMIN 접근 범위 추가
+
+- 작업 시작 시간: 2026-06-13 04:49:31 +09:00
+- 작업 종료 시간: 2026-06-13 04:53:06 +09:00
+- 사용자 명령: 활성 목표를 계속 진행.
+- 명령 해석: 직전 작업에서 남은 조직 소유 bucket과 ORG_ADMIN 권한 범위를 MVP 요구사항에 맞게 구현하라는 명령으로 인식.
+- 작업 방식: `AuthenticatedUser`에 `organizationId`를 포함하고, bucket 생성 시 `ownerType/ownerId`를 처리했다. user bucket과 organization bucket 접근 규칙을 분리하고 frontend bucket 생성 폼에 owner 선택을 추가했다.
+- 실행 내용: AuthContext가 현재 사용자 저장소를 조회해 active 상태와 organizationId를 확인하도록 변경. `CreateBucketRequest`에 ownerType/ownerId 추가. `BucketService`에 owner 검증, ORG bucket 생성, 같은 조직 접근, ORG_ADMIN 관리 권한 규칙 추가. BucketObjectFlowTest에 조직 bucket 흐름 추가. API/security/backend/database/frontend/system/test docs 갱신.
+- 구현 내용:
+  - 일반 USER는 자기 USER bucket만 생성할 수 있다.
+  - ORG_ADMIN은 자기 조직 ORG bucket을 생성/삭제할 수 있다.
+  - ADMIN은 존재하는 user 또는 organization을 owner로 지정할 수 있다.
+  - 같은 조직 USER는 ORG bucket object 목록/업로드/다운로드/삭제에 접근할 수 있다.
+  - 같은 조직 일반 USER는 ORG bucket 자체 삭제 같은 관리 작업은 할 수 없다.
+  - AuthContext는 token subject 기준 user를 다시 조회해 비활성 사용자 token 사용을 차단한다.
+- 수정된 파일 및 관련 파일:
+  - `osmu-backend/src/main/java/com/example/osmu/auth/AuthenticatedUser.java`
+  - `osmu-backend/src/main/java/com/example/osmu/auth/AuthContext.java`
+  - `osmu-backend/src/main/java/com/example/osmu/bucket/CreateBucketRequest.java`
+  - `osmu-backend/src/main/java/com/example/osmu/bucket/BucketService.java`
+  - `osmu-backend/src/test/java/com/example/osmu/bucket/BucketObjectFlowTest.java`
+  - `osmu-frontend/src/views/HomeView.vue`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/backend-design.md`
+  - `dev-docs/database-design.md`
+  - `dev-docs/frontend-design.md`
+  - `dev-docs/security-design.md`
+  - `dev-docs/system-architecture.md`
+  - `dev-docs/test-cases.md`
+- 검증 기록:
+  - `rg -n "new AuthenticatedUser|AuthenticatedUser\(" .\osmu-backend\src\main\java .\osmu-backend\src\test\java`로 constructor 변경 반영 확인.
+  - `rg -n "ownerType|ownerId|canManage|resolveOwner|ORG_ADMIN|TC-BUCKET-008|TC-BUCKET-009" .\osmu-backend .\osmu-frontend\src .\dev-docs`로 구현/문서 반영 확인.
+  - `git diff --check` 통과. LF -> CRLF 경고만 출력.
+  - `node --check .\osmu-frontend\src\services\api.js` 통과.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-local.ps1 -SkipBackend -SkipFrontend` 통과. Docker config 접근 경고만 출력.
+  - `.\gradlew.bat test` 실패. 원인: `JAVA_HOME` 비어 있음, `java` 명령 없음.
+  - `npm.cmd run build` 실패. 원인: `vite` dependency 미설치.
+- 코드 리뷰: 조직 단위 공유 bucket의 기본 access model이 생겨 B2B 부서/프로젝트 단위 운영에 가까워졌다. 다만 object read/write/delete 권한은 아직 조직 단위로 동일하게 열려 있어 세부 bucket permission table은 후속 구현이 필요하다.
+- 결과: 조직 소유 bucket, ORG_ADMIN 생성/관리, 같은 조직 접근 제어, frontend owner 선택 구현 완료.
+- 후속 메모: Java 환경 준비 후 `BucketObjectFlowTest`의 신규 org bucket test를 실제 실행해야 한다.
+- 추가 개발: bucket permission table, 조직별 quota/usage dashboard, ORG_ADMIN 사용자 관리 범위 제한.
+- 사용 skill/plugin: `caveman`.
+
+### 2026-06-13 - 조직별 Usage Dashboard 추가
+
+- 작업 시작 시간: 2026-06-13 04:53:06 +09:00
+- 작업 종료 시간: 2026-06-13 04:55:21 +09:00
+- 사용자 명령: 활성 목표를 계속 진행.
+- 명령 해석: 조직 소유 bucket이 생겼으므로 조직별 사용량/쿼터를 admin이 볼 수 있는 dashboard API와 화면을 추가하라는 명령으로 인식.
+- 작업 방식: organization controller에서 `ownerType = ORG` bucket metadata를 집계해 organization usage DTO로 반환했다. frontend는 기존 조직 목록과 별도로 usage API를 호출해 조직 panel에 사용량, bucket 수, object 수를 표시하게 했다.
+- 실행 내용: `OrganizationUsageResponse` 추가, `GET /api/admin/organizations/usage` 추가, organization usage aggregation test 추가, frontend API wrapper와 dashboard 표시 추가, API/backend/frontend/system/test docs 갱신.
+- 구현 내용:
+  - 조직별 `bucketQuotaBytes`, `usedBytes`, `remainingBytes`, `bucketCount`, `objectCount`를 집계한다.
+  - `usedBytes`와 `objectCount`는 bucket metadata 기준이다.
+  - `remainingBytes`는 organization default quota 기준으로 계산한다.
+  - frontend 조직 panel에서 사용량/기본 쿼터/bucket 수/object 수를 표시한다.
+- 수정된 파일 및 관련 파일:
+  - `osmu-backend/src/main/java/com/example/osmu/organization/OrganizationUsageResponse.java`
+  - `osmu-backend/src/main/java/com/example/osmu/organization/AdminOrganizationController.java`
+  - `osmu-backend/src/test/java/com/example/osmu/organization/AdminOrganizationControllerTest.java`
+  - `osmu-frontend/src/services/api.js`
+  - `osmu-frontend/src/views/HomeView.vue`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/backend-design.md`
+  - `dev-docs/frontend-design.md`
+  - `dev-docs/system-architecture.md`
+  - `dev-docs/test-cases.md`
+- 검증 기록:
+  - `rg -n "OrganizationUsageResponse|organizations/usage|getOrganizationUsage|organizationUsages|TC-ORG-004|organization usage" .\osmu-backend .\osmu-frontend\src .\dev-docs`로 구현/문서 반영 확인.
+  - `git diff --check` 통과. LF -> CRLF 경고만 출력.
+  - `node --check .\osmu-frontend\src\services\api.js` 통과.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-local.ps1 -SkipBackend -SkipFrontend` 통과. Docker config 접근 경고만 출력.
+  - `.\gradlew.bat test` 실패. 원인: `JAVA_HOME` 비어 있음, `java` 명령 없음.
+  - `npm.cmd run build` 실패. 원인: `vite` dependency 미설치.
+- 코드 리뷰: 조직 단위 운영자가 필요한 usage 가시성이 생겼다. 다만 집계는 bucket metadata 기반이라 S3 direct upload 이후에는 bucket sync 또는 자동 sync가 선행되어야 정확하다.
+- 결과: 조직별 usage API와 frontend dashboard 표시 구현 완료.
+- 후속 메모: Java 환경 준비 후 `AdminOrganizationControllerTest.organizationUsageAggregatesOrgBuckets`를 실제 실행해야 한다.
+- 추가 개발: ORG_ADMIN 전용 organization dashboard, 자동 bucket sync, 조직 quota 초과 차단.
+- 사용 skill/plugin: `caveman`.
+
+### 2026-06-13 - Organization Quota 초과 업로드 차단
+
+- 작업 시작 시간: 2026-06-13 04:55:21 +09:00
+- 작업 종료 시간: 2026-06-13 04:57:25 +09:00
+- 사용자 명령: 활성 목표를 계속 진행.
+- 명령 해석: 조직별 usage dashboard에서 보이는 quota가 실제 object upload 경로에서도 enforce되어야 하므로 ORG bucket 업로드 quota 초과 차단을 구현하라는 명령으로 인식.
+- 작업 방식: 기존 bucket quota 검사 지점인 `BucketService.validateObjectChange`에 organization quota 검사를 추가했다. `ownerType = ORG`이고 size delta가 증가하는 경우 같은 조직 ORG bucket들의 usedBytes 합산값에 delta를 더해 organization defaultQuotaBytes를 초과하는지 확인한다.
+- 실행 내용: `validateOrganizationQuota` 추가, 조직 quota 초과 MockMvc 테스트 추가, API/backend/security/system/test docs 갱신.
+- 구현 내용:
+  - ORG bucket upload와 presigned upload complete 경로에서 organization default quota를 초과하면 `QUOTA_EXCEEDED`를 반환한다.
+  - 삭제나 size 감소는 organization quota 검사 대상에서 제외한다.
+  - S3 direct upload 후 `sync`는 실제 상태 반영 용도이므로 차단하지 않는다.
+- 수정된 파일 및 관련 파일:
+  - `osmu-backend/src/main/java/com/example/osmu/bucket/BucketService.java`
+  - `osmu-backend/src/test/java/com/example/osmu/bucket/BucketObjectFlowTest.java`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/backend-design.md`
+  - `dev-docs/security-design.md`
+  - `dev-docs/system-architecture.md`
+  - `dev-docs/test-cases.md`
+- 검증 기록:
+  - `rg -n "validateOrganizationQuota|Organization quota exceeded|orgBucketUploadRejectsOrganizationQuotaExceeded|TC-ORG-005|defaultQuotaBytes.*초과|organization quota" .\osmu-backend .\dev-docs`로 구현/문서 반영 확인.
+  - `git diff --check` 통과. LF -> CRLF 경고만 출력.
+  - `node --check .\osmu-frontend\src\services\api.js` 통과.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-local.ps1 -SkipBackend -SkipFrontend` 통과. Docker config 접근 경고만 출력.
+  - `.\gradlew.bat test` 실패. 원인: `JAVA_HOME` 비어 있음, `java` 명령 없음.
+  - `npm.cmd run build` 실패. 원인: `vite` dependency 미설치.
+- 코드 리뷰: bucket quota와 organization quota가 같은 변경 지점에서 검사되므로 REST upload와 presigned complete 양쪽에 적용된다. direct S3 write는 여전히 사후 sync/정책 기반 제한이 필요하다.
+- 결과: 조직 quota 초과 업로드 차단 구현 완료.
+- 후속 메모: Java 환경 준비 후 `BucketObjectFlowTest.orgBucketUploadRejectsOrganizationQuotaExceeded` 실제 실행 필요.
+- 추가 개발: MinIO/S3 direct write quota enforcement, org quota 사용률 경고, ORG_ADMIN dashboard.
+- 사용 skill/plugin: `caveman`.
+
+### 2026-06-13 - ORG_ADMIN Admin Scope 제한
+
+- 작업 시작 시간: 2026-06-13 04:57:25 +09:00
+- 작업 종료 시간: 2026-06-13 05:01:34 +09:00
+- 사용자 명령: 활성 목표를 계속 진행.
+- 명령 해석: ORG_ADMIN 역할이 생성되었지만 admin API가 ADMIN 중심으로 막혀 있으므로, ORG_ADMIN이 자기 조직 범위의 사용자와 조직 사용량만 관리할 수 있게 제한하라는 명령으로 인식.
+- 작업 방식: 인증 interceptor에는 허용 admin path를 좁게 추가하고, controller에는 실제 조직 범위 검사를 넣었다. frontend는 ORG_ADMIN에게 필요한 admin panel만 보여주고 global usage/audit 호출은 ADMIN만 수행하게 분리했다.
+- 실행 내용: ORG_ADMIN admin allowlist 추가, 사용자 목록/생성/상태 변경 범위 제한, 조직 목록/usage 범위 제한, frontend ORG_ADMIN dashboard 노출, controller test와 문서 갱신.
+- 구현 내용:
+  - ORG_ADMIN은 `GET /api/admin/users`, `POST /api/admin/users`, `PATCH /api/admin/users/{id}/status`, `GET /api/admin/organizations`, `GET /api/admin/organizations/usage`만 접근 가능하다.
+  - ORG_ADMIN은 자기 조직 사용자만 조회하고, 자기 조직의 일반 USER만 생성/상태 변경할 수 있다.
+  - ORG_ADMIN은 자기 자신, 다른 조직 사용자, ADMIN/ORG_ADMIN 계정을 상태 변경할 수 없다.
+  - ORG_ADMIN은 자기 조직 정보와 usage만 조회한다.
+  - audit/global usage/system 같은 global admin API는 ADMIN 전용으로 유지한다.
+  - frontend는 ORG_ADMIN에게 조직/사용자 panel을 노출하되, global usage/audit는 호출하지 않는다.
+- 수정된 파일 및 관련 파일:
+  - `osmu-backend/src/main/java/com/example/osmu/auth/JwtAuthInterceptor.java`
+  - `osmu-backend/src/main/java/com/example/osmu/user/AdminUserController.java`
+  - `osmu-backend/src/main/java/com/example/osmu/organization/AdminOrganizationController.java`
+  - `osmu-backend/src/test/java/com/example/osmu/user/AdminUserControllerTest.java`
+  - `osmu-backend/src/test/java/com/example/osmu/organization/AdminOrganizationControllerTest.java`
+  - `osmu-frontend/src/views/HomeView.vue`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/backend-design.md`
+  - `dev-docs/frontend-design.md`
+  - `dev-docs/security-design.md`
+  - `dev-docs/system-architecture.md`
+  - `dev-docs/test-cases.md`
+- 검증 기록:
+  - `rg -n "isOrgAdminPath|isAdminRequestAllowed|canView|assertCanManage|resolveCreateOrganization" .\osmu-backend\src\main .\osmu-backend\src\test`로 backend 구현 반영 확인.
+  - `rg -n "orgAdminCanManageOnlyOwnOrganizationUsers|orgAdminSeesOnlyOwnOrganizationAndUsage|canUseAdminTools|TC-ORG-006|TC-ORG-007" .\osmu-backend\src\test .\osmu-frontend\src .\dev-docs`로 test/frontend/docs 반영 확인.
+  - `git diff --check` 통과. LF -> CRLF 경고만 출력.
+  - `node --check .\osmu-frontend\src\services\api.js` 통과.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-local.ps1 -SkipBackend -SkipFrontend` 통과. Docker config 접근 경고만 출력.
+  - `.\gradlew.bat test` 실패. 원인: `JAVA_HOME` invalid/미설정, `java` 명령 없음.
+  - `npm.cmd run build` 실패. 원인: `vite` dependency 미설치.
+- 코드 리뷰: interceptor allowlist와 controller 조직 범위 검사를 같이 둬서 ORG_ADMIN 권한이 narrow path와 data scope 양쪽에서 제한된다. global admin API는 계속 ADMIN 전용이라 권한 확장이 과하지 않다.
+- 결과: ORG_ADMIN 자기 조직 admin surface 구현 완료.
+- 후속 메모: Java 환경과 frontend dependency 설치 후 `AdminUserControllerTest.orgAdminCanManageOnlyOwnOrganizationUsers`, `AdminOrganizationControllerTest.orgAdminSeesOnlyOwnOrganizationAndUsage` 실제 실행 필요.
+- 추가 개발: ORG_ADMIN용 조직 audit subset, bucket permission table, 사용자 role 변경 정책, 조직별 알림/usage threshold.
+- 사용 skill/plugin: `caveman`.
+
+### 2026-06-13 - Bucket Permission Table 및 권한별 Object Guard
+
+- 작업 시작 시간: 2026-06-13 05:01:34 +09:00
+- 작업 종료 시간: 2026-06-13 05:09:38 +09:00
+- 사용자 명령: 활성 목표를 계속 진행.
+- 명령 해석: MVP 요구사항 중 "버킷 단위 읽기/쓰기/삭제 권한 관리"가 아직 owner/org 단위 접근에 머물러 있으므로 bucket permission table, API, frontend 관리 UI, object action별 권한 검사를 구현하라는 명령으로 인식.
+- 작업 방식: 기존 repository 패턴을 유지해 in-memory/MariaDB permission repository를 추가했다. BucketService에 `READ`, `WRITE`, `DELETE`, `ADMIN` 검사 지점을 두고 ObjectService와 AccessKeyService가 이를 재사용하게 했다. UI는 선택 bucket의 권한 목록/부여/회수를 관리 가능한 bucket에서만 보여주게 했다.
+- 실행 내용: `bucket_permissions` migration 추가, permission record/request/repository 구현, bucket permission grant/list/revoke API 추가, object API action별 guard 적용, Access Key 요청 permission 초과 차단, frontend permission panel 추가, MockMvc test와 문서 갱신.
+- 구현 내용:
+  - `bucket_permissions`는 `USER` 또는 `ORGANIZATION` subject에 `READ`, `WRITE`, `DELETE`, `ADMIN`을 저장한다.
+  - `READ`는 object 목록/다운로드/presigned download, `WRITE`는 upload/presigned upload/complete, `DELETE`는 object 삭제를 허용한다.
+  - `ADMIN` bucket permission은 object 작업과 permission 관리 권한을 포함한다.
+  - bucket owner, `ADMIN`, 같은 조직 `ORG_ADMIN`은 permission을 관리할 수 있다.
+  - `ORG_ADMIN`은 자기 조직 user/organization subject에만 permission을 부여/회수할 수 있다.
+  - Access Key 생성 시 요청한 `READ`, `WRITE`, `DELETE` permission이 실제 bucket 권한을 초과하면 `AUTHORIZATION_FAILED`로 차단한다.
+  - Web Portal에서 선택 bucket의 permission 목록, subject type/id, permission checkbox, 회수 버튼을 제공한다.
+- 수정된 파일 및 관련 파일:
+  - `osmu-backend/src/main/java/com/example/osmu/accesskey/AccessKeyService.java`
+  - `osmu-backend/src/main/java/com/example/osmu/bucket/BucketController.java`
+  - `osmu-backend/src/main/java/com/example/osmu/bucket/BucketPermissionRecord.java`
+  - `osmu-backend/src/main/java/com/example/osmu/bucket/BucketService.java`
+  - `osmu-backend/src/main/java/com/example/osmu/bucket/GrantBucketPermissionRequest.java`
+  - `osmu-backend/src/main/java/com/example/osmu/bucket/repository/BucketPermissionRepository.java`
+  - `osmu-backend/src/main/java/com/example/osmu/bucket/repository/InMemoryBucketPermissionRepository.java`
+  - `osmu-backend/src/main/java/com/example/osmu/bucket/repository/MariaDbBucketPermissionRepository.java`
+  - `osmu-backend/src/main/java/com/example/osmu/object/ObjectService.java`
+  - `osmu-backend/src/main/resources/db/migration/V5__bucket_permissions.sql`
+  - `osmu-backend/src/test/java/com/example/osmu/bucket/BucketObjectFlowTest.java`
+  - `osmu-frontend/src/services/api.js`
+  - `osmu-frontend/src/views/HomeView.vue`
+  - `osmu-frontend/src/assets/main.css`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/backend-design.md`
+  - `dev-docs/database-design.md`
+  - `dev-docs/frontend-design.md`
+  - `dev-docs/security-design.md`
+  - `dev-docs/system-architecture.md`
+  - `dev-docs/test-cases.md`
+- 검증 기록:
+  - `rg -n "BucketPermission|GrantBucketPermission|assertCanRead|assertCanWrite|assertCanDeleteObject|handleGrantBucketPermissions|permission-form|getBucketPermissions" .\osmu-backend\src\main .\osmu-backend\src\test .\osmu-frontend\src`로 구현 반영 확인.
+  - `rg -n "validateRequestedScope|bucketPermissionGrantControlsObjectActions|V5__bucket_permissions|GET /api/buckets/\{bucketName\}/permissions|TC-BUCKET-010" .\osmu-backend\src .\dev-docs`로 Access Key scope guard, test, migration, docs 반영 확인.
+  - `git diff --check` 통과. LF -> CRLF 경고만 출력.
+  - `node --check .\osmu-frontend\src\services\api.js` 통과.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-local.ps1 -SkipBackend -SkipFrontend` 통과. Docker config 접근 경고만 출력.
+  - `.\gradlew.bat test` 실패. 원인: `JAVA_HOME` invalid/미설정, `java` 명령 없음.
+  - `npm.cmd run build` 실패. 원인: `vite` dependency 미설치.
+- 코드 리뷰: object action guard와 Access Key scope guard가 같은 BucketService permission 검사 함수를 쓰므로 REST API와 S3 policy 발급의 권한 모델이 어긋날 위험이 줄었다. 다만 ORG bucket은 현재 같은 조직 사용자에게 여전히 암묵적 object 접근을 제공하므로, 완전한 private-by-default org sharing 정책은 후속 결정이 필요하다.
+- 결과: bucket permission table, REST API, frontend 관리 UI, action별 권한 검사 구현 완료.
+- 후속 메모: Java 환경 준비 후 `BucketObjectFlowTest.bucketPermissionGrantControlsObjectActions`를 실제 실행해야 한다.
+- 추가 개발: permission 변경 시 기존 Access Key policy 재동기화, ORG bucket 기본 공유 정책 확정, 권한 subject 이름 표시, permission 변경 audit 상세 target 기록.
+- 사용 skill/plugin: `caveman`.
+
+### 2026-06-13 - Permission Revoke 후 Access Key Scope 재동기화
+
+- 작업 시작 시간: 2026-06-13 05:09:38 +09:00
+- 작업 종료 시간: 2026-06-13 05:13:18 +09:00
+- 사용자 명령: 활성 목표를 계속 진행.
+- 명령 해석: bucket permission 회수 후 기존 S3 Access Key policy가 stale 상태로 남아 회수된 권한이 S3 경로에서 계속 동작할 수 있는 보안 gap을 닫으라는 명령으로 인식.
+- 작업 방식: Access Key provisioner에 secret 없이 policy만 재동기화하는 경계를 추가했다. permission revoke API가 삭제된 subject를 기준으로 active key를 찾아 현재 bucket permission 범위로 scope를 축소하고, 남은 scope가 없으면 key를 비활성화하게 했다.
+- 실행 내용: `S3AccessPolicyProvisioner.syncPolicy` 추가, no-op/MinIO mc 구현 추가, access key repository scope update 추가, `AccessKeyService.reconcileActiveKeysForSubject` 구현, bucket permission revoke API 연결, MockMvc 테스트와 문서 갱신.
+- 구현 내용:
+  - `USER` permission 회수 시 해당 user의 active Access Key를 재계산한다.
+  - `ORGANIZATION` permission 회수 시 해당 조직 user들의 active Access Key를 재계산한다.
+  - 기존 key의 `allowedBuckets`와 `permissions`를 현재 사용자가 가진 권한 범위 안으로 축소한다.
+  - 전역 permission list 구조상 안전하게 표현할 수 없는 scope는 보수적으로 줄인다.
+  - 남은 bucket/permission scope가 없으면 Access Key를 `INACTIVE`로 전환하고 S3 user/policy 제거를 시도한다.
+  - MinIO mode는 기존 user secret 없이 policy JSON을 다시 만들고 user에 attach한다.
+- 수정된 파일 및 관련 파일:
+  - `osmu-backend/src/main/java/com/example/osmu/accesskey/AccessKeyService.java`
+  - `osmu-backend/src/main/java/com/example/osmu/accesskey/S3AccessPolicyProvisioner.java`
+  - `osmu-backend/src/main/java/com/example/osmu/accesskey/NoopS3AccessPolicyProvisioner.java`
+  - `osmu-backend/src/main/java/com/example/osmu/accesskey/MinioS3AccessPolicyProvisioner.java`
+  - `osmu-backend/src/main/java/com/example/osmu/accesskey/repository/AccessKeyRepository.java`
+  - `osmu-backend/src/main/java/com/example/osmu/accesskey/repository/InMemoryAccessKeyRepository.java`
+  - `osmu-backend/src/main/java/com/example/osmu/accesskey/repository/MariaDbAccessKeyRepository.java`
+  - `osmu-backend/src/main/java/com/example/osmu/bucket/BucketController.java`
+  - `osmu-backend/src/test/java/com/example/osmu/bucket/BucketObjectFlowTest.java`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/backend-design.md`
+  - `dev-docs/security-design.md`
+  - `dev-docs/system-architecture.md`
+  - `dev-docs/test-cases.md`
+- 검증 기록:
+  - `rg -n "syncPolicy|reconcileActiveKeysForSubject|updateScope|read-only-key|INACTIVE" .\osmu-backend\src\main .\osmu-backend\src\test`로 구현/test 반영 확인.
+  - `rg -n "syncPolicy|reconcileActiveKeysForSubject|updateScope|read-only Access Key|stale policy|기존 active key" .\osmu-backend\src .\dev-docs`로 구현/문서 반영 확인.
+  - `git diff --check` 통과. LF -> CRLF 경고만 출력.
+  - `node --check .\osmu-frontend\src\services\api.js` 통과.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-local.ps1 -SkipBackend -SkipFrontend` 통과. Docker config 접근 경고만 출력.
+  - `.\gradlew.bat test` 실패. 원인: `JAVA_HOME` invalid/미설정, `java` 명령 없음.
+  - `npm.cmd run build` 실패. 원인: `vite` dependency 미설치.
+- 코드 리뷰: permission revoke와 active key scope 정리가 한 흐름에 묶여 REST 권한 회수와 S3 직접 접근 권한이 분리되지 않게 했다. 다만 현재 Access Key metadata는 bucket별 permission map이 아니라 global permission list이므로, 여러 bucket에 서로 다른 permission을 가진 key는 보수적으로 축소된다.
+- 결과: permission revoke 후 기존 Access Key stale policy 보안 gap 완화 완료.
+- 후속 메모: Java/MinIO 환경 준비 후 `BucketObjectFlowTest.bucketPermissionGrantControlsObjectActions`와 실제 `mc admin policy` 재동기화 E2E 검증 필요.
+- 추가 개발: Access Key를 bucket별 permission map으로 고도화, permission revoke 실패 감사 로그, MinIO native Admin API 기반 policy update.
+- 사용 skill/plugin: `caveman`.
+
+### 2026-06-13 - Access Key Bucket별 Scope 모델 추가
+
+- 작업 시작 시간: 2026-06-13 05:13:18 +09:00
+- 작업 종료 시간: 2026-06-13 05:18:50 +09:00
+- 사용자 명령: 활성 목표를 계속 진행.
+- 명령 해석: 직전 구현에서 Access Key metadata가 전역 permission list라 여러 bucket에 서로 다른 권한을 가진 key를 정확히 표현하지 못하는 문제를 해결하라는 명령으로 인식.
+- 작업 방식: 기존 `allowedBuckets + permissions` API는 유지하면서 optional `bucketScopes`를 추가했다. 새 metadata는 bucket별 permission을 원본으로 삼고, 기존 `allowedBuckets`와 `permissions`는 호환용 파생 필드로 유지했다.
+- 실행 내용: `AccessKeyBucketScope` record 추가, request/response/record/entity에 `bucketScopes` 추가, MariaDB `bucket_scopes` column migration 추가, repository 직렬화/역직렬화 추가, S3 policy generator를 bucket별 scope 기반으로 확장, revoke 재동기화 로직을 bucket별 scope로 변경, frontend key scope 표시와 test/docs 갱신.
+- 구현 내용:
+  - `POST /api/access-keys`는 기존 `allowedBuckets + permissions`와 새 `bucketScopes`를 모두 지원한다.
+  - `bucketScopes`가 있으면 bucket별 permission을 기준으로 S3 policy document를 생성한다.
+  - `allowedBuckets`와 `permissions`는 `bucketScopes`에서 파생한 호환 필드다.
+  - 기존 DB row처럼 `bucket_scopes`가 비어 있으면 `allowed_buckets + permissions`로 fallback 변환한다.
+  - permission revoke 후 key 재동기화는 이제 남은 bucket별 scope를 정확히 유지한다.
+  - frontend Access Key 목록에서 bucket별 scope를 `bucket: READ+WRITE` 형태로 표시한다.
+- 수정된 파일 및 관련 파일:
+  - `osmu-backend/src/main/java/com/example/osmu/accesskey/AccessKeyBucketScope.java`
+  - `osmu-backend/src/main/java/com/example/osmu/accesskey/AccessKeyEntity.java`
+  - `osmu-backend/src/main/java/com/example/osmu/accesskey/AccessKeyRecord.java`
+  - `osmu-backend/src/main/java/com/example/osmu/accesskey/AccessKeyService.java`
+  - `osmu-backend/src/main/java/com/example/osmu/accesskey/CreateAccessKeyRequest.java`
+  - `osmu-backend/src/main/java/com/example/osmu/accesskey/CreateAccessKeyResponse.java`
+  - `osmu-backend/src/main/java/com/example/osmu/accesskey/S3AccessPolicyGenerator.java`
+  - `osmu-backend/src/main/java/com/example/osmu/accesskey/repository/AccessKeyRepository.java`
+  - `osmu-backend/src/main/java/com/example/osmu/accesskey/repository/InMemoryAccessKeyRepository.java`
+  - `osmu-backend/src/main/java/com/example/osmu/accesskey/repository/MariaDbAccessKeyRepository.java`
+  - `osmu-backend/src/main/resources/db/migration/V6__access_key_bucket_scopes.sql`
+  - `osmu-backend/src/test/java/com/example/osmu/bucket/BucketObjectFlowTest.java`
+  - `osmu-frontend/src/views/HomeView.vue`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/backend-design.md`
+  - `dev-docs/database-design.md`
+  - `dev-docs/frontend-design.md`
+  - `dev-docs/security-design.md`
+  - `dev-docs/system-architecture.md`
+  - `dev-docs/test-cases.md`
+- 검증 기록:
+  - `rg -n "bucketScopes|bucket_scopes|AccessKeyBucketScope|V6__access_key_bucket_scopes|generate\(long accessKeyId, List<AccessKeyBucketScope>" .\osmu-backend\src .\osmu-frontend\src .\dev-docs`로 구현/문서 반영 확인.
+  - `rg -n "AccessKeyBucketScope|bucketScopes|bucket_scopes|mixed-scope-key|formatKeyScope|V6__access_key_bucket_scopes|bucket별 scope" .\osmu-backend\src .\osmu-frontend\src .\dev-docs`로 test/frontend/docs 반영 확인.
+  - `git diff --check` 통과. LF -> CRLF 경고만 출력.
+  - `node --check .\osmu-frontend\src\services\api.js` 통과.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-local.ps1 -SkipBackend -SkipFrontend` 통과. Docker config 접근 경고만 출력.
+  - `.\gradlew.bat test` 실패. 원인: `JAVA_HOME` invalid/미설정, `java` 명령 없음.
+  - `npm.cmd run build` 실패. 원인: `vite` dependency 미설치.
+- 코드 리뷰: Access Key scope의 원본 구조가 bucket별 permission으로 바뀌어 권한 회수 후 남은 bucket 권한을 정확히 유지할 수 있다. 기존 API와 DB row는 fallback/호환 필드로 유지해 migration 리스크를 줄였다.
+- 결과: Access Key bucket별 scope 모델 구현 완료.
+- 후속 메모: Java 환경 준비 후 `BucketObjectFlowTest.bucketPermissionGrantControlsObjectActions`에서 mixed-scope key 유지/축소 흐름을 실제 실행해야 한다.
+- 추가 개발: frontend에서 여러 bucket scope를 한 번에 만드는 고급 key 생성 UI, permission revoke 실패 감사 로그, MinIO native Admin API 기반 policy update.
+- 사용 skill/plugin: `caveman`.
+
+### 2026-06-13 - Frontend Access Key Multi Scope 생성 UI
+
+- 작업 시작 시간: 2026-06-13 05:18:50 +09:00
+- 작업 종료 시간: 2026-06-13 05:21:12 +09:00
+- 사용자 명령: 활성 목표를 계속 진행.
+- 명령 해석: Backend가 `bucketScopes`를 지원하게 되었으므로 Web Portal에서도 여러 bucket별 permission scope를 하나의 Access Key로 발급할 수 있게 하라는 명령으로 인식.
+- 작업 방식: 기존 단일 bucket 선택 form을 scope builder로 바꿨다. 사용자가 bucket과 `READ`, `WRITE`, `DELETE`를 선택해 scope 목록에 추가하고, 최종 발급 시 `bucketScopes` 배열 payload를 전송하게 했다.
+- 실행 내용: Access Key form UI 변경, scope 추가/제거 함수 추가, 기존 key 목록 scope 표시 유지, responsive CSS 추가, frontend design/test docs 갱신.
+- 구현 내용:
+  - Access Key form에서 bucket과 permission을 선택한 뒤 `추가` 버튼으로 scope를 누적한다.
+  - 같은 bucket을 다시 추가하면 permission을 병합한다.
+  - `발급` 버튼은 scope가 1개 이상 있을 때만 활성화된다.
+  - 발급 payload는 `bucketScopes: [{ bucketName, permissions }]` 형식이다.
+  - bucket 목록이 변경되면 존재하지 않는 scope는 제거한다.
+  - Access Key 목록은 `bucket: READ+WRITE` 형식으로 bucket별 scope를 표시한다.
+- 수정된 파일 및 관련 파일:
+  - `osmu-frontend/src/views/HomeView.vue`
+  - `osmu-frontend/src/assets/main.css`
+  - `dev-docs/frontend-design.md`
+  - `dev-docs/test-cases.md`
+- 검증 기록:
+  - `rg -n "scope-builder|scope-list|handleAddAccessKeyScope|handleRemoveAccessKeyScope|bucketScopes: accessKeyForm\.scopes|mergePermissions|TC-FE-004|여러 bucket scope" .\osmu-frontend\src .\dev-docs`로 구현/문서 반영 확인.
+  - `git diff --check` 통과. LF -> CRLF 경고만 출력.
+  - `node --check .\osmu-frontend\src\services\api.js` 통과.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-local.ps1 -SkipBackend -SkipFrontend` 통과. Docker config 접근 경고만 출력.
+  - `.\gradlew.bat test` 실패. 원인: `JAVA_HOME` invalid/미설정, `java` 명령 없음.
+  - `npm.cmd run build` 실패. 원인: `vite` dependency 미설치.
+- 코드 리뷰: Backend의 bucket별 `bucketScopes` 모델을 UI에서도 직접 만들 수 있게 되어 Access Key 권한 모델과 화면이 맞아졌다. 다만 아직 bucket별 scope builder는 수동 추가 방식이라, 대량 bucket 환경에서는 필터/검색 UI가 후속으로 필요하다.
+- 결과: Frontend Access Key multi bucket scope 생성 UI 구현 완료.
+- 후속 메모: frontend dependency 설치 후 `npm.cmd run build`와 브라우저에서 scope 추가/제거/발급 흐름을 실제 확인해야 한다.
+- 추가 개발: bucket 검색/필터, preset permission template, Access Key 비활성화 버튼 UI.
+- 사용 skill/plugin: `caveman`.
+
+### 2026-06-13 - Frontend Access Key 비활성화 버튼 추가
+
+- 작업 시작 시간: 2026-06-13 05:21:12 +09:00
+- 작업 종료 시간: 2026-06-13 05:23:12 +09:00
+- 사용자 명령: 활성 목표를 계속 진행.
+- 명령 해석: Access Key backend 비활성화 API가 있지만 Web Portal에서 호출할 UI가 없으므로 사용자가 직접 key를 비활성화할 수 있게 하라는 명령으로 인식.
+- 작업 방식: frontend API client에 `DELETE /api/access-keys/{keyId}` wrapper를 추가하고, Access Key 목록 각 row에 ACTIVE key만 누를 수 있는 비활성화 버튼을 연결했다.
+- 실행 내용: `deleteAccessKey` API wrapper 추가, `handleDeleteAccessKey` handler 추가, Access Key row action UI 추가, 버튼 스타일 추가, frontend design/test docs 갱신.
+- 구현 내용:
+  - Access Key 목록에서 status와 비활성화 버튼을 함께 표시한다.
+  - `ACTIVE`가 아닌 key는 비활성화 버튼을 disabled 처리한다.
+  - 버튼 클릭 시 `DELETE /api/access-keys/{keyId}`를 호출하고 dashboard를 다시 로드한다.
+  - `TC-FE-005`로 frontend 비활성화 화면 테스트 케이스를 추가했다.
+- 수정된 파일 및 관련 파일:
+  - `osmu-frontend/src/services/api.js`
+  - `osmu-frontend/src/views/HomeView.vue`
+  - `osmu-frontend/src/assets/main.css`
+  - `dev-docs/frontend-design.md`
+  - `dev-docs/test-cases.md`
+- 검증 기록:
+  - `rg -n "deleteAccessKey|handleDeleteAccessKey|key-actions|TC-FE-005|Access Key 비활성화 버튼" .\osmu-frontend\src .\dev-docs`로 구현/문서 반영 확인.
+  - `git diff --check` 통과. LF -> CRLF 경고만 출력.
+  - `node --check .\osmu-frontend\src\services\api.js` 통과.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-local.ps1 -SkipBackend -SkipFrontend` 통과. Docker config 접근 경고만 출력.
+  - `.\gradlew.bat test` 실패. 원인: `JAVA_HOME` invalid/미설정, `java` 명령 없음.
+  - `npm.cmd run build` 실패. 원인: `vite` dependency 미설치.
+- 코드 리뷰: Access Key lifecycle이 생성/조회에서 비활성화까지 UI로 닫혔다. 버튼은 inactive key에 대해 비활성화되어 중복 호출을 줄인다.
+- 결과: Frontend Access Key 비활성화 버튼 구현 완료.
+- 후속 메모: frontend dependency 설치 후 실제 클릭 흐름과 상태 갱신을 브라우저에서 확인해야 한다.
+- 추가 개발: 비활성화 전 확인 모달, key filter, key status별 색상 표시.
+- 사용 skill/plugin: `caveman`.
+
+### 2026-06-13 - Frontend 위험 작업 확인 모달 추가
+
+- 작업 시작 시간: 2026-06-13 05:25:30 +09:00
+- 작업 종료 시간: 2026-06-13 05:25:46 +09:00
+- 사용자 명령: 활성 목표를 계속 진행.
+- 명령 해석: Web Portal의 삭제/비활성화 작업이 즉시 실행되고 있어 `삭제 작업은 확인 모달을 사용한다`는 frontend 설계와 test case를 만족하도록 보완하라는 명령으로 인식.
+- 작업 방식: 기존 handler 구조를 유지하면서 공통 confirmation dialog state와 action callback을 추가했다. 위험 작업 버튼은 먼저 모달을 열고, 사용자가 확정할 때만 API를 호출하도록 바꿨다.
+- 실행 내용: 확인 모달 template/state/action handler 추가, 버킷 삭제/파일 삭제/권한 회수/Access Key 비활성화/사용자 비활성화에 모달 연결, CSS overlay/modal 스타일 추가, frontend design/test docs 갱신.
+- 구현 내용:
+  - `confirmDialog` reactive state로 title/message/button/pending/action을 관리한다.
+  - `openConfirmDialog`, `closeConfirmDialog`, `handleConfirmDialogAction`으로 공통 확인 흐름을 제공한다.
+  - 버킷 삭제, 파일 삭제, 버킷 권한 회수, Access Key 비활성화, 사용자 비활성화는 확정 전 API를 호출하지 않는다.
+  - 실행 중에는 확인/취소 버튼을 비활성화해 중복 호출을 줄인다.
+  - 실패 시 modal을 유지하고 기존 `errorMessage`로 원인을 노출한다.
+- 수정된 파일 및 관련 파일:
+  - `osmu-frontend/src/views/HomeView.vue`
+  - `osmu-frontend/src/assets/main.css`
+  - `dev-docs/frontend-design.md`
+  - `dev-docs/test-cases.md`
+- 검증 기록:
+  - `rg -n "confirmDialog|openConfirmDialog|handleConfirmDialogAction|modal-backdrop|confirm-modal|TC-FE-003|TC-FE-005|확인 모달" osmu-frontend\src dev-docs\frontend-design.md dev-docs\test-cases.md`로 구현/문서 반영 확인.
+  - `git diff --check` 통과. LF -> CRLF 경고만 출력.
+  - `node --check .\osmu-frontend\src\services\api.js` 통과.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-local.ps1 -SkipBackend -SkipFrontend` 통과. Docker config 접근 경고만 출력.
+  - `npm.cmd run build` 실패. 원인: `vite` dependency 미설치.
+  - `.\gradlew.bat test` 실패. 원인: `JAVA_HOME` invalid/미설정, `java` 명령 없음.
+- 코드 리뷰: 위험 작업이 즉시 실행되지 않도록 frontend UX 안전장치를 추가했다. callback 방식이라 기존 API wrapper와 handler 재사용성이 좋지만, 추후 toast/modal 내부 error 표시를 분리하면 실패 경험이 더 명확해진다.
+- 결과: Frontend 위험 작업 확인 모달 구현 완료.
+- 후속 메모: frontend dependency 설치 후 브라우저에서 취소 시 API 미호출, 확인 시 API 호출, 실패 시 modal 유지 동작을 실제 확인해야 한다.
+- 추가 개발: object upload progress, large bucket filter/search, modal 내부 error 표시, key status 색상 표시.
+- 사용 skill/plugin: `caveman`.
+
+### 2026-06-13 - Frontend 다운로드 401 refresh retry 추가
+
+- 작업 시작 시간: 2026-06-13 05:26:10 +09:00
+- 작업 종료 시간: 2026-06-13 05:26:51 +09:00
+- 사용자 명령: 활성 목표를 계속 진행.
+- 명령 해석: API client 공통 401 처리 요구가 JSON API 요청에는 적용되어 있지만 파일 다운로드에는 빠져 있어 다운로드도 refresh token 기반 재시도를 적용하라는 명령으로 인식.
+- 작업 방식: 기존 `request` 함수의 401 retry 패턴을 `download` 함수에 맞춰 동일하게 적용했다. 무한 재시도를 막기 위해 retry flag를 유지했다.
+- 실행 내용: `download(path, options)` 시그니처 확장, 401 응답 시 `refreshSession()` 호출 후 1회 재시도 추가, frontend design/test docs 갱신.
+- 구현 내용:
+  - 다운로드 요청에서 access token 만료로 401이 발생하면 refresh token으로 session을 갱신한다.
+  - refresh 성공 시 새 access token으로 동일 다운로드를 1회 재시도한다.
+  - refresh 실패 시 기존 error 변환 로직으로 401을 반환한다.
+  - `TC-FE-006`으로 다운로드 401 refresh retry test case를 추가했다.
+- 수정된 파일 및 관련 파일:
+  - `osmu-frontend/src/services/api.js`
+  - `dev-docs/frontend-design.md`
+  - `dev-docs/test-cases.md`
+- 검증 기록:
+  - `node --check .\osmu-frontend\src\services\api.js` 통과.
+  - `git diff --check` 통과. LF -> CRLF 경고만 출력.
+  - `rg -n "async function download|refreshSession\(\)|TC-FE-006|파일 다운로드 401|JSON API와 파일 다운로드" osmu-frontend\src\services\api.js dev-docs\frontend-design.md dev-docs\test-cases.md`로 구현/문서 반영 확인.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-local.ps1 -SkipBackend -SkipFrontend` 통과. Docker config 접근 경고만 출력.
+  - `npm.cmd run build` 실패. 원인: `vite` dependency 미설치.
+  - `.\gradlew.bat test` 실패. 원인: `JAVA_HOME` invalid/미설정, `java` 명령 없음.
+- 코드 리뷰: JSON 요청과 파일 다운로드의 인증 갱신 동작이 일관되게 맞춰졌다. refresh 실패 시 token을 clear하지만 Vue session state는 즉시 비워지지 않으므로 후속으로 auth state callback 또는 store 도입이 필요하다.
+- 결과: Frontend 파일 다운로드 401 refresh retry 구현 완료.
+- 후속 메모: frontend dependency 설치 후 만료 token mock으로 다운로드 재시도 동작을 브라우저/테스트에서 확인해야 한다.
+- 추가 개발: auth store 도입, refresh 실패 시 session state 정리, upload progress 표시.
+- 사용 skill/plugin: `caveman`.
+
+### 2026-06-13 - Frontend 업로드 진행률 표시 추가
+
+- 작업 시작 시간: 2026-06-13 05:27:20 +09:00
+- 작업 종료 시간: 2026-06-13 05:28:38 +09:00
+- 사용자 명령: 활성 목표를 계속 진행.
+- 명령 해석: 기획/Frontend 설계와 `TC-FE-002`에 있는 파일 업로드 진행률 표시가 아직 UI와 API client에 없으므로 Web Portal object upload 흐름을 보완하라는 명령으로 인식.
+- 작업 방식: `fetch` 기반 multipart upload는 browser upload progress event를 제공하지 않으므로, object upload 전용 API client 경로를 `XMLHttpRequest`로 분리했다. 기존 인증/refresh retry 패턴은 유지하고, Vue 화면에는 reactive upload state를 연결했다.
+- 실행 내용: `upload`/`uploadOnce` helper 추가, `uploadObject`에 progress callback 추가, ObjectExplorer 업로드 form에 진행률/전송 bytes UI 추가, 업로드 중 중복 submit 차단, frontend design/test docs 갱신.
+- 구현 내용:
+  - 업로드 중 `loaded`, `total`, `percent`를 계산해 화면에 표시한다.
+  - 업로드 중 파일 input과 업로드 버튼을 비활성화한다.
+  - 업로드 요청이 401이면 refresh token으로 session을 갱신하고 1회 재시도한다.
+  - 업로드 실패 시 기존 `errorMessage`에 원인을 표시하고 목록 갱신은 하지 않는다.
+  - `TC-FE-002` 기대 결과를 진행률, bytes, 중복 업로드 차단 기준으로 구체화했다.
+- 수정된 파일 및 관련 파일:
+  - `osmu-frontend/src/services/api.js`
+  - `osmu-frontend/src/views/HomeView.vue`
+  - `osmu-frontend/src/assets/main.css`
+  - `dev-docs/frontend-design.md`
+  - `dev-docs/test-cases.md`
+- 검증 기록:
+  - `node --check .\osmu-frontend\src\services\api.js` 통과.
+  - `git diff --check` 통과. LF -> CRLF 경고만 출력.
+  - `rg -n "uploadState|upload-progress|updateUploadProgress|upload\(|uploadOnce|TC-FE-002|업로드 진행률/전송 bytes" osmu-frontend\src dev-docs\frontend-design.md dev-docs\test-cases.md`로 구현/문서 반영 확인.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-local.ps1 -SkipBackend -SkipFrontend` 통과. Docker config 접근 경고만 출력.
+  - `npm.cmd run build` 실패. 원인: `vite` dependency 미설치.
+  - `.\gradlew.bat test` 실패. 원인: `JAVA_HOME` invalid/미설정, `java` 명령 없음.
+- 코드 리뷰: 대용량 파일 UX에 필요한 진행률 표시가 추가되어 Web Portal object upload 흐름이 MVP 요구에 더 가까워졌다. `XMLHttpRequest` 경로는 upload 전용으로 제한해 기존 JSON API client 영향 범위를 줄였다.
+- 결과: Frontend 업로드 진행률 표시 구현 완료.
+- 후속 메모: dependency 설치 후 실제 대용량 파일로 progress event와 완료 후 목록 갱신을 브라우저에서 확인해야 한다.
+- 추가 개발: upload cancel, upload 실패 후 retry 버튼, presigned upload progress, auth store 도입.
+- 사용 skill/plugin: `caveman`.
+
+### 2026-06-13 - Frontend refresh 실패 session 정리 추가
+
+- 작업 시작 시간: 2026-06-13 05:29:10 +09:00
+- 작업 종료 시간: 2026-06-13 05:30:06 +09:00
+- 사용자 명령: 활성 목표를 계속 진행.
+- 명령 해석: API client에서 refresh 실패 시 token은 정리되지만 Vue 화면의 session/user/list 상태가 그대로 남을 수 있으므로 인증 상태 동기화를 보완하라는 명령으로 인식.
+- 작업 방식: API client에 auth state listener를 추가하고 token 변경/정리 시 화면에 알려주도록 했다. HomeView는 listener를 등록해 session token을 동기화하고, token이 사라지면 dashboard 데이터를 초기화한다.
+- 실행 내용: `setAuthStateListener`/`notifyAuthStateChange` 추가, token setter/clearer에 알림 연결, HomeView mount/unmount listener 등록, session/data reset helper 추가, frontend design/test docs 갱신.
+- 구현 내용:
+  - refresh 성공 시 새 access/refresh token이 화면 session에도 반영된다.
+  - refresh 실패 또는 logout으로 token이 정리되면 session user, bucket/object/access key/admin list, selected bucket을 모두 비운다.
+  - `TC-FE-007`로 refresh 실패 시 session state 정리 test case를 추가했다.
+- 수정된 파일 및 관련 파일:
+  - `osmu-frontend/src/services/api.js`
+  - `osmu-frontend/src/views/HomeView.vue`
+  - `dev-docs/frontend-design.md`
+  - `dev-docs/test-cases.md`
+- 검증 기록:
+  - `node --check .\osmu-frontend\src\services\api.js` 통과.
+  - `git diff --check` 통과. LF -> CRLF 경고만 출력.
+  - `rg -n "setAuthStateListener|notifyAuthStateChange|handleAuthStateChange|resetSessionData|TC-FE-007|refresh 실패" osmu-frontend\src dev-docs\frontend-design.md dev-docs\test-cases.md`로 구현/문서 반영 확인.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-local.ps1 -SkipBackend -SkipFrontend` 통과. Docker config 접근 경고만 출력.
+  - `npm.cmd run build` 실패. 원인: `vite` dependency 미설치.
+  - `.\gradlew.bat test` 실패. 원인: `JAVA_HOME` invalid/미설정, `java` 명령 없음.
+- 코드 리뷰: refresh 실패 시 UI가 로그인 상태처럼 남는 보안/UX 문제를 줄였다. 아직 Pinia 기반 `authStore`는 없지만, API client와 HomeView 사이의 최소 sync contract는 생겼다.
+- 결과: Frontend refresh 실패 session 정리 구현 완료.
+- 후속 메모: dependency 설치 후 만료 refresh token mock으로 list/session 정리 동작을 브라우저에서 확인해야 한다.
+- 추가 개발: Pinia auth store 도입, refresh 실패 toast, route guard, login persistence.
+- 사용 skill/plugin: `caveman`.
+
+### 2026-06-13 - Frontend lightweight authStore 도입
+
+- 작업 시작 시간: 2026-06-13 05:30:58 +09:00
+- 작업 종료 시간: 2026-06-13 05:31:57 +09:00
+- 사용자 명령: 활성 목표를 계속 진행.
+- 명령 해석: Frontend 설계의 상태 관리 요구와 직전 refresh/session sync 보완을 더 정리해, 인증 상태를 HomeView local state에서 store 모듈로 분리하라는 명령으로 인식.
+- 작업 방식: 현재 `pinia` dependency가 없으므로 새 패키지 추가 없이 Vue `reactive`/`computed` 기반 lightweight authStore를 만들었다. API client token change listener와 authStore를 연결하고 HomeView는 store state/computed를 사용하게 했다.
+- 실행 내용: `src/stores/auth.js` 추가, HomeView session/role computed를 authStore로 이동, login 시 `auth.applySession` 사용, auth sync lifecycle 등록, frontend design/test docs 갱신.
+- 구현 내용:
+  - `authStore`가 user/access token/refresh token state를 관리한다.
+  - `isLoggedIn`, `isAdmin`, `isOrgAdmin`, `canUseAdminTools` computed를 store에서 제공한다.
+  - API client token 변경 이벤트를 store가 수신해 refresh/logout 흐름과 화면 권한 제어를 동기화한다.
+  - HomeView는 local auth state 대신 store state를 사용한다.
+  - `TC-FE-008`로 authStore session/token 동기화 test case를 추가했다.
+- 수정된 파일 및 관련 파일:
+  - `osmu-frontend/src/stores/auth.js`
+  - `osmu-frontend/src/views/HomeView.vue`
+  - `osmu-frontend/src/services/api.js`
+  - `dev-docs/frontend-design.md`
+  - `dev-docs/test-cases.md`
+- 검증 기록:
+  - `node --check .\osmu-frontend\src\services\api.js` 통과.
+  - `node --check .\osmu-frontend\src\stores\auth.js` 통과.
+  - `git diff --check` 통과. LF -> CRLF 경고만 출력.
+  - `rg -n "useAuthStore|auth\.applySession|auth\.startAuthSync|setAuthStateListener|authStore|TC-FE-008|lightweight store" osmu-frontend\src dev-docs\frontend-design.md dev-docs\test-cases.md`로 구현/문서 반영 확인.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-local.ps1 -SkipBackend -SkipFrontend` 통과. Docker config 접근 경고만 출력.
+  - `npm.cmd run build` 실패. 원인: `vite` dependency 미설치.
+  - `.\gradlew.bat test` 실패. 원인: `JAVA_HOME` invalid/미설정, `java` 명령 없음.
+- 코드 리뷰: 인증 상태가 HomeView에서 분리되어 refresh/logout 동기화와 권한 computed 재사용성이 좋아졌다. 단, route가 아직 단일 화면이고 dependency 설치가 안 되어 실제 SFC build 검증은 못 했다.
+- 결과: Frontend lightweight authStore 구현 완료.
+- 후속 메모: dependency 설치 후 build로 SFC import/alias 해석을 확인해야 한다.
+- 추가 개발: Pinia 전환, route guard, login persistence, auth expired toast.
+- 사용 skill/plugin: `caveman`.
+
+### 2026-06-13 - Frontend sessionStorage login persistence 추가
+
+- 작업 시작 시간: 2026-06-13 05:32:40 +09:00
+- 작업 종료 시간: 2026-06-13 05:33:45 +09:00
+- 사용자 명령: 활성 목표를 계속 진행.
+- 명령 해석: Web Portal 새로고침 시 로그인 상태가 사라지는 UX/운영 문제를 줄이고, authStore 도입 후 남은 login persistence를 구현하라는 명령으로 인식.
+- 작업 방식: refresh token을 영구 저장하지 않도록 `sessionStorage` 범위에서만 token을 저장했다. 새로고침 시 저장된 token을 API client에 적용하고 `/api/users/me`로 사용자 정보를 재확인한 뒤 dashboard를 다시 로드하도록 했다.
+- 실행 내용: `getCurrentUser` API wrapper 추가, authStore token persist/restore/clear 함수 추가, HomeView mount 시 `restoreSession` 후 dashboard 자동 load, frontend design/test docs 갱신.
+- 구현 내용:
+  - 로그인 성공 또는 token refresh 성공 시 access/refresh token을 `sessionStorage`에 저장한다.
+  - 새로고침 시 저장된 token을 복구하고 `/api/users/me`로 user profile을 다시 조회한다.
+  - user profile 복구 성공 시 dashboard를 자동 로드한다.
+  - 복구 실패 또는 refresh 실패 시 저장 token과 화면 데이터를 정리한다.
+  - storage 접근은 `tokenStorage()` helper로 감싸 browser/test 환경 차이를 줄였다.
+  - `TC-FE-009`로 새로고침 후 session 복구 test case를 추가했다.
+- 수정된 파일 및 관련 파일:
+  - `osmu-frontend/src/services/api.js`
+  - `osmu-frontend/src/stores/auth.js`
+  - `osmu-frontend/src/views/HomeView.vue`
+  - `dev-docs/frontend-design.md`
+  - `dev-docs/test-cases.md`
+- 검증 기록:
+  - `node --check .\osmu-frontend\src\services\api.js` 통과.
+  - `node --check .\osmu-frontend\src\stores\auth.js` 통과.
+  - `git diff --check` 통과. LF -> CRLF 경고만 출력.
+  - `rg -n "getCurrentUser|restoreSession|sessionStorage|TOKEN_STORAGE_KEY|TC-FE-009|새로고침" osmu-frontend\src dev-docs\frontend-design.md dev-docs\test-cases.md`로 구현/문서 반영 확인.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-local.ps1 -SkipBackend -SkipFrontend` 통과. Docker config 접근 경고만 출력.
+  - `npm.cmd run build` 실패. 원인: `vite` dependency 미설치.
+  - `.\gradlew.bat test` 실패. 원인: `JAVA_HOME` invalid/미설정, `java` 명령 없음.
+- 코드 리뷰: sessionStorage 기반이라 브라우저 tab 범위를 넘는 장기 token 보관은 피했다. `/users/me` 재확인으로 저장 token만 믿지 않게 했고, 실패 시 화면 데이터를 비우도록 정리했다.
+- 결과: Frontend 새로고침 후 login persistence 구현 완료.
+- 후속 메모: dependency 설치 후 실제 브라우저에서 로그인, 새로고침, 만료 token 복구 실패 흐름을 확인해야 한다.
+- 추가 개발: route guard, auth expired toast, remember-me 정책, Pinia 전환.
+- 사용 skill/plugin: `caveman`.
+
+### 2026-06-13 - Admin 감사 로그 필터 구현
+
+- 작업 시작 시간: 2026-06-13 05:34:30 +09:00
+- 작업 종료 시간: 2026-06-13 05:37:21 +09:00
+- 사용자 명령: 활성 목표를 계속 진행.
+- 명령 해석: API spec과 frontend 설계에는 audit log filter가 있지만 Backend는 최신 200건만 반환하고 Web Portal도 필터 UI가 없어, 운영자가 감사 로그를 event/actor/기간/limit 기준으로 좁혀 볼 수 있게 하라는 명령으로 인식.
+- 작업 방식: Backend repository contract에 `AuditLogQuery` 기반 조회를 추가하고 in-memory/MariaDB 구현을 모두 맞췄다. Frontend는 기존 Admin audit panel 안에 필터 form을 추가하고 query string으로 API를 호출하게 했다.
+- 실행 내용: AuditLogQuery 추가, AuditLogRepository query method 추가, AuditLogService query 검증/정규화 추가, AdminController query param 연결, MariaDB/InMemory filter 구현, backend test 추가, frontend API/UI/CSS 추가, docs/test cases 갱신.
+- 구현 내용:
+  - `GET /api/admin/audit-logs`가 `eventType`, `actorId`, `from`, `to`, `limit` query를 받는다.
+  - `from`, `to`는 ISO-8601 offset date time으로 검증하고 `from > to`는 validation error로 차단한다.
+  - `limit`은 1~500 범위로 검증하고 기본값 200을 유지한다.
+  - MariaDB repository는 prepared statement parameter binding으로 filter query를 구성한다.
+  - Web Portal Audit panel에서 eventType, actorId, 기간, limit 입력 후 필터/초기화가 가능하다.
+  - `TC-AUDIT-004`, `TC-FE-010`을 추가했다.
+- 수정된 파일 및 관련 파일:
+  - `osmu-backend/src/main/java/com/example/osmu/audit/AuditLogQuery.java`
+  - `osmu-backend/src/main/java/com/example/osmu/audit/AuditLogService.java`
+  - `osmu-backend/src/main/java/com/example/osmu/audit/repository/AuditLogRepository.java`
+  - `osmu-backend/src/main/java/com/example/osmu/audit/repository/InMemoryAuditLogRepository.java`
+  - `osmu-backend/src/main/java/com/example/osmu/audit/repository/MariaDbAuditLogRepository.java`
+  - `osmu-backend/src/main/java/com/example/osmu/admin/AdminController.java`
+  - `osmu-backend/src/test/java/com/example/osmu/user/AdminUserControllerTest.java`
+  - `osmu-frontend/src/services/api.js`
+  - `osmu-frontend/src/views/HomeView.vue`
+  - `osmu-frontend/src/assets/main.css`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/frontend-design.md`
+  - `dev-docs/test-cases.md`
+- 검증 기록:
+  - `node --check .\osmu-frontend\src\services\api.js` 통과.
+  - `node --check .\osmu-frontend\src\stores\auth.js` 통과.
+  - `git diff --check` 통과. LF -> CRLF 경고만 출력.
+  - `rg -n "AuditLogQuery|find\(AuditLogQuery|auditLogs\(|auditFilter|auditFilterPayload|TC-AUDIT-004|TC-FE-010|eventType|actorId|limit 필터" osmu-backend\src osmu-frontend\src dev-docs\api-spec.md dev-docs\frontend-design.md dev-docs\test-cases.md`로 구현/문서 반영 확인.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-local.ps1 -SkipBackend -SkipFrontend` 통과. Docker config 접근 경고만 출력.
+  - `npm.cmd run build` 실패. 원인: `vite` dependency 미설치.
+  - `.\gradlew.bat test` 실패. 원인: `JAVA_HOME` invalid/미설정, `java` 명령 없음.
+- 코드 리뷰: 감사 로그 필터가 Backend와 Frontend 모두 연결되어 운영 화면 가치가 커졌다. Cursor pagination은 아직 구현하지 않았고, frontend 기간 입력은 browser local datetime을 UTC ISO string으로 변환한다.
+- 결과: Admin 감사 로그 필터 구현 완료.
+- 후속 메모: JDK/dependency 설치 후 backend test와 frontend build로 Java/SFC compile을 확인해야 한다.
+- 추가 개발: cursor pagination, audit result/target filter, CSV export, frontend filter validation message.
+- 사용 skill/plugin: `caveman`.
+
+### 2026-06-13 - Frontend/Backend 검증 환경 복구 및 Boot 4 test 호환성 수정
+
+- 작업 시작 시간: 2026-06-13 05:40:00 +09:00
+- 작업 종료 시간: 2026-06-13 05:47:33 +09:00
+- 사용자 명령: `/caveman Ultra` 및 활성 목표 계속 진행.
+- 명령 해석: 토큰을 줄인 응답 방식으로 전환하되, 앞선 frontend/backend MVP 구현의 미검증 상태를 해소하고 남은 test/build 실패를 직접 해결하라는 명령으로 인식.
+- 작업 방식: frontend dependency를 설치해 실제 production build를 확인했다. Backend는 portable JDK17로 Gradle test를 실행하고, Spring Boot 4 test package 변경 및 Jackson bean 구성 차이를 반영했다. 마지막으로 test class 간 bucket name 충돌을 제거했다.
+- 실행 내용:
+  - `osmu-frontend`에서 `npm.cmd install` 실행 후 lockfile 생성.
+  - `npm.cmd run build`로 Vite production build 검증.
+  - `%TEMP%` 경로에 Temurin JDK17을 준비하고 `JAVA_HOME`/`PATH`를 지정해 Gradle test 실행.
+  - Gradle/Spring Boot 4 test 의존성 및 `AutoConfigureMockMvc` import 수정.
+  - `ObjectMapper` bean 미등록 문제를 local mapper 사용으로 수정.
+  - noop access-key provisioner 조건을 명시적 property 기반으로 수정.
+  - test 간 공유 context에서 중복 bucket name으로 발생한 409 충돌 제거.
+- 구현 내용:
+  - `spring-boot-starter-webmvc-test` test dependency를 추가했다.
+  - test `AutoConfigureMockMvc` import를 Boot 4 package로 변경했다.
+  - `S3AccessPolicyGenerator`, `JwtTokenService`가 `com.fasterxml.jackson.databind.ObjectMapper` bean 주입에 의존하지 않게 했다.
+  - `NoopS3AccessPolicyProvisioner`는 기본값 `noop` provisioning mode에서 bean으로 등록되도록 했다.
+  - `AccessKeyControllerTest`의 충돌 bucket name을 `access-key-admin-private-bucket`으로 변경했다.
+- 수정된 파일 및 관련 파일:
+  - `osmu-frontend/package-lock.json`
+  - `osmu-backend/build.gradle`
+  - `osmu-backend/src/main/java/com/example/osmu/accesskey/S3AccessPolicyGenerator.java`
+  - `osmu-backend/src/main/java/com/example/osmu/accesskey/NoopS3AccessPolicyProvisioner.java`
+  - `osmu-backend/src/main/java/com/example/osmu/auth/JwtTokenService.java`
+  - `osmu-backend/src/test/java/com/example/osmu/accesskey/AccessKeyControllerTest.java`
+  - `osmu-backend/src/test/java/com/example/osmu/accesskey/AccessKeyProvisioningFailureTest.java`
+  - `osmu-backend/src/test/java/com/example/osmu/auth/AuthControllerTest.java`
+  - `osmu-backend/src/test/java/com/example/osmu/auth/JwtTokenServiceTest.java`
+  - `osmu-backend/src/test/java/com/example/osmu/bucket/BucketObjectFlowTest.java`
+  - `osmu-backend/src/test/java/com/example/osmu/organization/AdminOrganizationControllerTest.java`
+  - `osmu-backend/src/test/java/com/example/osmu/system/HealthControllerTest.java`
+  - `osmu-backend/src/test/java/com/example/osmu/user/AdminUserControllerTest.java`
+- 검증 기록:
+  - `npm.cmd install` 통과.
+  - `npm.cmd run build` 통과. Vite build 성공.
+  - `.\gradlew.bat test` 통과. `BUILD SUCCESSFUL`.
+  - `BucketObjectFlowTest.userCanAccessOnlyOwnedBucket()`의 기존 실패 원인 `Status expected:<200> but was:<409>` 확인 후 해결.
+- 코드 리뷰: 기능 로직은 유지하고 test/runtime 구성 호환성만 좁게 수정했다. Jackson 3 기반 Boot 4 환경에서 `com.fasterxml` mapper bean에 의존하지 않게 한 점은 안정적이지만, 추후 전역 JSON 설정이 필요하면 별도 mapper factory나 Spring bean 정책을 다시 정리해야 한다.
+- 결과: Frontend production build와 Backend 전체 test 모두 통과.
+- 후속 메모: JDK는 임시 경로 `%TEMP%`에 있으므로 장기 개발 환경에서는 로컬 JDK17 설치 또는 toolchain 설정 문서화가 필요하다.
+- 추가 개발: 실제 Docker 기반 MariaDB/MinIO 통합 실행, 브라우저 E2E, backend integration profile 분리.
+- 사용 skill/plugin: `caveman`; network escalation 사용(`npm install`, JDK download, Gradle dependency/download).
+
+### 2026-06-13 - Web Portal 업로드 취소/재시도 UX 추가
+
+- 작업 시작 시간: 2026-06-13 05:47:40 +09:00
+- 작업 종료 시간: 2026-06-13 05:51:27 +09:00
+- 사용자 명령: 활성 목표인 frontend/backend 개발 계속 진행.
+- 명령 해석: MVP Web Portal에서 대용량 파일 업로드 중 사용자가 제어할 수 없는 gap을 줄이고, 부족한 부분을 스스로 찾아 구현/검증하라는 명령으로 인식.
+- 작업 방식: Frontend API client의 XHR upload에 `AbortController` signal을 연결하고, ObjectExplorer 화면에 취소/재시도 상태를 추가했다. 마지막 upload request의 bucket/key/file을 보관해 실패 또는 취소 후 같은 조건으로 재시도할 수 있게 했다.
+- 실행 내용:
+  - `uploadObject`가 `options.signal`을 받을 수 있도록 API client upload 경로를 확장했다.
+  - XHR upload 중 signal abort가 발생하면 실제 `xhr.abort()`를 호출하고 listener를 정리하도록 했다.
+  - Object upload UI에 `취소`, `재시도` 버튼과 취소/실패 message 표시를 추가했다.
+  - 파일을 새로 선택하면 오래된 retry state를 초기화하도록 했다.
+  - frontend design과 test cases에 upload cancel/retry 요구사항을 반영했다.
+- 구현 내용:
+  - 업로드 중 `취소` 클릭 시 진행 중인 XHR 요청이 abort된다.
+  - 취소 또는 실패 후 `재시도` 버튼이 활성화된다.
+  - 재시도는 마지막 bucket/key/file 조합을 사용한다.
+  - 성공 시 upload state와 마지막 retry request를 정리하고 dashboard/object 목록을 다시 로드한다.
+  - `TC-FE-011`을 추가하고 MVP 완료 기준에 포함했다.
+- 수정된 파일 및 관련 파일:
+  - `osmu-frontend/src/services/api.js`
+  - `osmu-frontend/src/views/HomeView.vue`
+  - `osmu-frontend/src/assets/main.css`
+  - `dev-docs/frontend-design.md`
+  - `dev-docs/test-cases.md`
+- 검증 기록:
+  - `node --check .\osmu-frontend\src\services\api.js` 통과.
+  - `npm.cmd run build` 통과. Vite build 성공.
+  - `.\gradlew.bat test` 통과. Backend 변경은 없지만 전체 회귀 확인 목적.
+  - `git diff --check` 통과. LF -> CRLF 경고만 출력.
+  - `rg -n "canRetryUpload|handleCancelUpload|handleRetryUpload|Upload aborted|TC-FE-011|업로드 취소" osmu-frontend\src dev-docs\frontend-design.md dev-docs\test-cases.md`로 구현/문서 반영 확인.
+- 코드 리뷰: Upload abort는 XHR 경로에만 적용해 기존 JSON API client 영향 범위를 줄였다. retry는 마지막 request를 보관하는 방식이라 단순하고 예측 가능하지만, 브라우저 E2E에서 실제 대용량 파일로 progress/abort 이벤트를 확인해야 한다.
+- 결과: Web Portal 파일 업로드 취소/재시도 UX 구현 완료.
+- 후속 메모: 실제 브라우저와 local backend에서 큰 파일 업로드 중 취소, 재시도, 완료 후 목록 갱신까지 E2E 확인 필요.
+- 추가 개발: upload cancel E2E, presigned upload progress/cancel, upload 실패 후 inline error 세분화.
+- 사용 skill/plugin: `caveman`; Gradle test network escalation 사용.
+
+### 2026-06-13 - Docker 통합 Smoke Test 자동화 추가
+
+- 작업 시작 시간: 2026-06-13 05:52:00 +09:00
+- 작업 종료 시간: 2026-06-13 05:55:43 +09:00
+- 사용자 명령: 활성 목표인 frontend/backend 개발 계속 진행.
+- 명령 해석: MVP가 단위 테스트와 build만 통과하는 상태에서 끝나지 않고, MariaDB/MinIO/Backend/Frontend가 Docker Compose로 함께 실행되는지를 검증할 수 있게 만들라는 명령으로 인식.
+- 작업 방식: 현재 Docker daemon이 실행되지 않아 실제 `up` 검증은 불가능했다. 대신 Compose config를 검증하고, Docker Desktop이 실행 중인 환경에서 health/login/bucket/object/frontend까지 자동 확인하는 smoke script를 추가했다. local profile 기본 metadata 설정도 문서와 맞게 MariaDB/Flyway 중심으로 정리했다.
+- 실행 내용:
+  - `scripts/verify-docker-integration.ps1` 추가.
+  - script가 Docker daemon, Compose config, `up -d --build`, Backend health, storage/database health, admin login, bucket 생성, object multipart upload/list, Frontend HTTP 200, cleanup, optional keep-running을 수행하도록 구성.
+  - `application-local.yaml`의 local profile 기본값을 `OSMU_METADATA_MODE:mariadb`, `OSMU_FLYWAY_ENABLED:true`로 변경.
+  - `infra/local/README.md`, `dev-docs/local-dev-env.md`, `dev-docs/test-cases.md`에 smoke test 실행법과 `TC-INFRA-001` 추가.
+- 구현 내용:
+  - Docker daemon이 꺼져 있으면 명확한 실패 메시지를 출력한다.
+  - 기본 실행은 검증 후 `docker compose down`을 수행한다.
+  - `-KeepRunning` 옵션으로 통합 환경을 유지할 수 있다.
+  - smoke test bucket은 `smoke-{timestamp}` 이름으로 생성하고 object/bucket cleanup을 시도한다.
+- 수정된 파일 및 관련 파일:
+  - `scripts/verify-docker-integration.ps1`
+  - `infra/local/README.md`
+  - `dev-docs/local-dev-env.md`
+  - `dev-docs/test-cases.md`
+  - `osmu-backend/src/main/resources/application-local.yaml`
+- 검증 기록:
+  - PowerShell parser로 `scripts/verify-docker-integration.ps1` syntax 확인 통과.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-local.ps1 -SkipBackend -SkipFrontend` 통과. Docker config 접근 경고만 출력.
+  - `docker compose --env-file .\infra\local\.env.example -f .\infra\local\docker-compose.yml config --quiet` 통과. Docker config 접근 경고만 출력.
+  - `.\gradlew.bat test` 통과. `BUILD SUCCESSFUL`.
+  - `git diff --check` 통과. LF -> CRLF 경고만 출력.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-docker-integration.ps1 -NoBuild`는 Docker daemon 미실행으로 실패했고, 기대대로 `Docker daemon is not running or not reachable` 메시지를 출력했다.
+- 코드 리뷰: 통합 검증 절차가 문서가 아닌 실행 가능한 script로 생겨 MVP 완료 판단이 더 명확해졌다. 단, 현재 machine에서는 Docker daemon이 꺼져 있어 실제 MariaDB/MinIO container runtime까지는 검증하지 못했다.
+- 결과: Docker 통합 smoke test 자동화와 local profile 설정 정합성 수정 완료.
+- 후속 메모: Docker Desktop 실행 후 `.\scripts\verify-docker-integration.ps1`를 실제 실행해 MariaDB/MinIO/Backend/Frontend 통합을 끝까지 확인해야 한다.
+- 추가 개발: MinIO Access Key provisioning E2E, frontend browser E2E, CI에서 compose smoke test optional job.
+- 사용 skill/plugin: `caveman`; Gradle test network escalation 사용.
+
+### 2026-06-13 - Request ID 응답 전파와 감사 로그 연결
+
+- 작업 시작 시간: 2026-06-13 05:56:00 +09:00
+- 작업 종료 시간: 2026-06-13 05:58:46 +09:00
+- 사용자 명령: 활성 목표인 frontend/backend 개발 계속 진행.
+- 명령 해석: B2B 운영성과 장애 추적성을 높이기 위해 API 요청마다 request id를 응답과 감사 로그에서 같은 값으로 추적할 수 있게 하라는 명령으로 인식.
+- 작업 방식: Servlet filter를 추가해 모든 요청에 request id를 확정하고 response header로 전파했다. AuditLogService는 header만 보지 않고 filter가 request attribute에 저장한 값을 우선 사용하도록 변경했다.
+- 실행 내용:
+  - `RequestIdFilter` 추가.
+  - `X-Request-Id` 또는 `X-Correlation-Id`가 있으면 해당 값을 사용하고, 없으면 UUID를 생성하도록 했다.
+  - 모든 응답에 `X-Request-Id` header를 내려주도록 했다.
+  - CORS exposed header에 `X-Request-Id`를 추가해 frontend에서 읽을 수 있게 했다.
+  - Auth controller test에 header 보존/생성 및 audit log 기록 검증을 추가했다.
+  - API/security/test case 문서에 request id 전파 정책과 `TC-AUDIT-005`를 반영했다.
+- 구현 내용:
+  - 요청 id는 `osmu.requestId` request attribute로 저장된다.
+  - Audit log의 `requestId`는 request attribute, `X-Request-Id`, `X-Correlation-Id` 순서로 결정된다.
+  - 외부 입력 request id는 `[A-Za-z0-9._:-]{1,128}` 형식만 허용하고, 형식이 맞지 않으면 새 UUID를 생성한다.
+  - `X-Request-Id`가 없는 로그인 요청도 응답 header와 audit log가 같은 generated request id를 가진다.
+- 수정된 파일 및 관련 파일:
+  - `osmu-backend/src/main/java/com/example/osmu/common/web/RequestIdFilter.java`
+  - `osmu-backend/src/main/java/com/example/osmu/audit/AuditLogService.java`
+  - `osmu-backend/src/main/java/com/example/osmu/config/WebConfig.java`
+  - `osmu-backend/src/test/java/com/example/osmu/auth/AuthControllerTest.java`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/security-design.md`
+  - `dev-docs/test-cases.md`
+- 검증 기록:
+  - `rg -n "RequestIdFilter|X-Request-Id|TC-AUDIT-005|request id" osmu-backend\src dev-docs\api-spec.md dev-docs\security-design.md dev-docs\test-cases.md`로 구현/문서 반영 확인.
+  - `git diff --check` 통과. LF -> CRLF 경고만 출력.
+  - `.\gradlew.bat test` 통과. `BUILD SUCCESSFUL`.
+- 코드 리뷰: request id 생성/전파를 filter 한 곳에 모아 controller별 중복을 만들지 않았다. 감사 로그와 response header가 같은 source를 쓰므로 운영 추적성이 좋아졌다. 현재는 request id를 response body error payload에는 넣지 않으므로, 필요하면 후속으로 error response에도 포함할 수 있다.
+- 결과: Request ID 응답 전파와 감사 로그 연결 구현 완료.
+- 후속 메모: Frontend에서 error 발생 시 `X-Request-Id`를 사용자/운영자 메시지에 표시하는 UX를 추가하면 장애 문의 추적성이 더 좋아진다.
+- 추가 개발: error response requestId 포함, frontend error alert requestId 표시, access log 연동.
+- 사용 skill/plugin: `caveman`; Gradle test network escalation 사용.
+
+### 2026-06-13 - Error Response Request ID와 Frontend Alert 표시
+
+- 작업 시작 시간: 2026-06-13 05:59:00 +09:00
+- 작업 종료 시간: 2026-06-13 06:01:46 +09:00
+- 사용자 명령: 활성 목표인 frontend/backend 개발 계속 진행.
+- 명령 해석: 직전 request id 전파 작업의 후속으로, 장애 추적성을 위해 error response body와 Web Portal 사용자 오류 표시에도 request id를 연결하라는 명령으로 인식.
+- 작업 방식: Backend 공통 error response schema에 `requestId`를 추가하고, GlobalExceptionHandler가 `RequestIdFilter`에서 확정한 request id를 error body에 넣게 했다. Frontend API client는 오류 응답의 `error.requestId` 또는 `X-Request-Id`를 `ApiClientError`에 담고, HomeView alert에서 표시하도록 했다.
+- 실행 내용:
+  - `ErrorResponse.ErrorBody`에 `requestId` field 추가.
+  - `GlobalExceptionHandler`의 API/validation/unexpected error response가 request attribute의 request id를 포함하도록 수정.
+  - 인증 실패 test에서 error body requestId와 response header 일치 검증 추가.
+  - Frontend API client에 `ApiClientError` class와 request id 추출 helper 추가.
+  - JSON API, download, upload error 경로가 requestId를 보존하도록 변경.
+  - Web Portal alert에 `Request ID` 보조 텍스트 표시 추가.
+  - API/frontend/security/test docs에 error requestId와 `TC-FE-012` 반영.
+- 구현 내용:
+  - Backend error JSON은 `{ "error": { "code", "message", "requestId" } }` 형태다.
+  - `requestId`는 response header `X-Request-Id`와 같은 값이다.
+  - Frontend alert는 server error의 request id만 표시하고, local validation message는 request id 없이 표시한다.
+  - XHR upload error도 `X-Request-Id` response header를 읽어 alert까지 전달할 수 있다.
+- 수정된 파일 및 관련 파일:
+  - `osmu-backend/src/main/java/com/example/osmu/common/error/ErrorResponse.java`
+  - `osmu-backend/src/main/java/com/example/osmu/common/error/GlobalExceptionHandler.java`
+  - `osmu-backend/src/test/java/com/example/osmu/auth/AuthControllerTest.java`
+  - `osmu-frontend/src/services/api.js`
+  - `osmu-frontend/src/views/HomeView.vue`
+  - `osmu-frontend/src/assets/main.css`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/frontend-design.md`
+  - `dev-docs/security-design.md`
+  - `dev-docs/test-cases.md`
+- 검증 기록:
+  - `node --check .\osmu-frontend\src\services\api.js` 통과.
+  - `rg -n "requestId|ApiClientError|Request ID|TC-FE-012|TC-AUDIT-005" osmu-backend\src osmu-frontend\src dev-docs\api-spec.md dev-docs\frontend-design.md dev-docs\security-design.md dev-docs\test-cases.md`로 구현/문서 반영 확인.
+  - `npm.cmd run build` 통과. Vite build 성공.
+  - `.\gradlew.bat test` 통과. `BUILD SUCCESSFUL`.
+  - `git diff --check` 통과. LF -> CRLF 경고만 출력.
+- 코드 리뷰: request id는 header, error body, audit log를 잇는 운영 추적 key가 됐다. Frontend는 local validation과 server error를 구분해 local 오류에 stale request id가 남지 않도록 `clearError`/`setErrorMessage` helper를 사용했다.
+- 결과: Error response request id 포함과 Frontend alert 표시 구현 완료.
+- 후속 메모: 실제 브라우저에서 권한 없는 API를 발생시켜 alert의 Request ID와 backend audit log를 대조하면 운영 시나리오까지 확인 가능하다.
+- 추가 개발: frontend clipboard copy 버튼, structured access log, request id 기반 admin search filter.
+- 사용 skill/plugin: `caveman`; Gradle test network escalation 사용.
+
+### 2026-06-13 - Audit Log Request ID 필터 추가
+
+- 작업 시작 시간: 2026-06-13 06:02:00 +09:00
+- 작업 종료 시간: 2026-06-13 06:04:42 +09:00
+- 사용자 명령: 활성 목표인 frontend/backend 개발 계속 진행.
+- 명령 해석: 직전 error alert에 표시한 Request ID를 운영자가 Admin Audit 화면에서 바로 검색할 수 있게 Backend와 Frontend audit filter를 확장하라는 명령으로 인식.
+- 작업 방식: 기존 audit filter 구조에 `requestId`를 추가했다. Backend query record, service, controller, in-memory/MariaDB repository를 같은 contract로 맞추고, Web Portal filter form과 API query string에도 `requestId`를 추가했다.
+- 실행 내용:
+  - `AuditLogQuery`에 `requestId` 추가.
+  - `GET /api/admin/audit-logs?requestId=` query param 추가.
+  - In-memory audit repository에서 requestId exact match filter 추가.
+  - MariaDB audit repository에서 `request_id = ?` filter 추가.
+  - `V7__audit_log_request_id_index.sql` migration 추가.
+  - Web Portal audit filter form에 requestId input 추가.
+  - API/frontend/database/test docs 갱신.
+- 구현 내용:
+  - Admin Audit Log API가 `eventType`, `actorId`, `requestId`, `from`, `to`, `limit` 조합 필터를 지원한다.
+  - requestId filter는 정확 일치로 동작한다.
+  - MariaDB에는 `idx_audit_logs_request_id` index를 추가해 운영 검색 비용을 줄인다.
+  - Frontend Audit panel에서 alert에 표시된 Request ID를 복사해 검색할 수 있다.
+- 수정된 파일 및 관련 파일:
+  - `osmu-backend/src/main/java/com/example/osmu/audit/AuditLogQuery.java`
+  - `osmu-backend/src/main/java/com/example/osmu/audit/AuditLogService.java`
+  - `osmu-backend/src/main/java/com/example/osmu/admin/AdminController.java`
+  - `osmu-backend/src/main/java/com/example/osmu/audit/repository/InMemoryAuditLogRepository.java`
+  - `osmu-backend/src/main/java/com/example/osmu/audit/repository/MariaDbAuditLogRepository.java`
+  - `osmu-backend/src/main/resources/db/migration/V7__audit_log_request_id_index.sql`
+  - `osmu-backend/src/test/java/com/example/osmu/user/AdminUserControllerTest.java`
+  - `osmu-frontend/src/services/api.js`
+  - `osmu-frontend/src/views/HomeView.vue`
+  - `osmu-frontend/src/assets/main.css`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/frontend-design.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/database-design.md`
+- 검증 기록:
+  - `node --check .\osmu-frontend\src\services\api.js` 통과.
+  - `npm.cmd run build` 통과. Vite build 성공.
+  - `.\gradlew.bat test` 통과. `BUILD SUCCESSFUL`.
+  - `git diff --check` 통과. LF -> CRLF 경고만 출력.
+  - `rg -n "requestId|V7__audit_log_request_id_index|TC-FE-010|TC-AUDIT-004" osmu-backend\src\main\java\com\example\osmu\audit osmu-backend\src\main\java\com\example\osmu\admin osmu-backend\src\main\resources\db\migration osmu-backend\src\test\java\com\example\osmu\user\AdminUserControllerTest.java osmu-frontend\src dev-docs\api-spec.md dev-docs\frontend-design.md dev-docs\test-cases.md dev-docs\database-design.md`로 구현/문서 반영 확인.
+- 코드 리뷰: Request ID가 alert -> audit filter로 이어져 운영 추적 흐름이 닫혔다. requestId는 exact match만 지원해 예측 가능하고 index 활용도 쉽다. 부분 검색은 필요하면 별도 `LIKE`/prefix 정책으로 후속 도입한다.
+- 결과: Audit Log requestId filter 구현 완료.
+- 후속 메모: Docker MariaDB 환경에서 V7 migration 적용과 requestId filter SQL 실행까지 smoke test로 확인해야 한다.
+- 추가 개발: audit requestId copy button, audit result/target filter, cursor pagination.
+- 사용 skill/plugin: `caveman`; Gradle test network escalation 사용.
+
+### 2026-06-13 - Audit Log 운영 필터 확장
+
+- 작업 시작 시간: 2026-06-13 06:05:00 +09:00
+- 작업 종료 시간: 2026-06-13 06:08:16 +09:00
+- 사용자 명령: 활성 목표인 frontend/backend 개발 계속 진행.
+- 명령 해석: Audit log를 requestId뿐 아니라 운영자가 실제로 자주 찾는 target/result 조건으로도 좁혀볼 수 있게 확장하라는 명령으로 인식.
+- 작업 방식: 기존 audit filter contract에 `targetType`, `targetId`, `result`를 추가했다. Backend API, service, in-memory/MariaDB repository, frontend query/UI, test case, DB migration 문서를 같은 흐름으로 맞췄다.
+- 실행 내용:
+  - `AuditLogQuery`에 `targetType`, `targetId`, `result` 추가.
+  - `GET /api/admin/audit-logs` query param에 `targetType`, `targetId`, `result` 추가.
+  - In-memory/MariaDB audit repository에 exact match filter 추가.
+  - MariaDB fallback schema와 Flyway `V8__audit_log_operational_filter_indexes.sql`에 운영 필터 index 추가.
+  - Web Portal Audit panel에 targetType, targetId, result 필터 입력 추가.
+  - API/frontend/test/database 문서 갱신.
+- 구현 내용:
+  - Audit API가 `eventType`, `actorId`, `requestId`, `targetType`, `targetId`, `result`, `from`, `to`, `limit` 조합 필터를 지원한다.
+  - `targetId`, `result`, `requestId`는 exact match 기준이다.
+  - Frontend는 result를 `SUCCESS`, `FAIL` select로 제한한다.
+  - MariaDB에는 `target_type`, `target_id`, `result` index를 추가한다.
+- 수정된 파일 및 관련 파일:
+  - `osmu-backend/src/main/java/com/example/osmu/audit/AuditLogQuery.java`
+  - `osmu-backend/src/main/java/com/example/osmu/audit/AuditLogService.java`
+  - `osmu-backend/src/main/java/com/example/osmu/admin/AdminController.java`
+  - `osmu-backend/src/main/java/com/example/osmu/audit/repository/InMemoryAuditLogRepository.java`
+  - `osmu-backend/src/main/java/com/example/osmu/audit/repository/MariaDbAuditLogRepository.java`
+  - `osmu-backend/src/main/resources/db/migration/V8__audit_log_operational_filter_indexes.sql`
+  - `osmu-backend/src/test/java/com/example/osmu/user/AdminUserControllerTest.java`
+  - `osmu-frontend/src/services/api.js`
+  - `osmu-frontend/src/views/HomeView.vue`
+  - `osmu-frontend/src/assets/main.css`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/frontend-design.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/database-design.md`
+- 검증 기록:
+  - `node --check .\osmu-frontend\src\services\api.js` 통과.
+  - `npm.cmd run build` 통과. Vite build 성공.
+  - 1차 `.\gradlew.bat test` 실패. 원인: 테스트 fixture에서 create user requestId 추출 변수를 잘못 적용했다.
+  - 테스트 fixture 수정 후 `.\gradlew.bat test` 통과. `BUILD SUCCESSFUL`.
+  - `git diff --check` 통과. LF -> CRLF 경고만 출력.
+  - `rg -n "targetType|targetId|V8__audit_log_operational_filter_indexes|Audit operational" ...`로 구현/문서 반영 확인.
+- 코드 리뷰: Audit 필터가 운영 탐색에 필요한 핵심 축까지 확장됐다. 모든 필터를 exact match로 유지해 SQL과 in-memory 동작이 일관적이다. UI form은 필터가 많아졌으므로 후속으로 접힘/저장 preset이 있으면 더 쓰기 좋다.
+- 결과: Audit Log 운영 필터 확장 완료.
+- 후속 메모: Docker MariaDB 환경에서 V8 migration 적용과 target/result filter SQL 실행을 smoke test로 확인해야 한다.
+- 추가 개발: audit cursor pagination, filter preset, requestId copy/search shortcut.
+- 사용 skill/plugin: `caveman`; Gradle test network escalation 사용.
+
+### 2026-06-13 - Audit Log Cursor Pagination 추가
+
+- 작업 시작 시간: 2026-06-13 06:09:00 +09:00
+- 작업 종료 시간: 2026-06-13 06:11:41 +09:00
+- 사용자 명령: 활성 목표인 frontend/backend 개발 계속 진행.
+- 명령 해석: Audit log가 많아졌을 때 첫 페이지밖에 볼 수 없는 운영 gap을 줄이고, 기존 `nextCursor` 응답 필드를 실제로 동작시키라는 명령으로 인식.
+- 작업 방식: Backend는 id 기반 cursor pagination을 구현했다. `limit + 1`개를 조회해 다음 페이지 존재 여부를 판단하고, 마지막 반환 item id를 `nextCursor`로 내려준다. Frontend는 같은 filter 조건으로 다음 페이지를 불러와 목록 뒤에 붙이는 방식으로 연결했다.
+- 실행 내용:
+  - `ListResponse.of(items, nextCursor)` factory 추가.
+  - `AuditLogQuery`에 `cursor` 추가.
+  - Audit API query param `cursor` 추가.
+  - In-memory/MariaDB audit repository에 `id < cursor` 조건 추가.
+  - AuditLogService에서 cursor 검증, `limit + 1` fetch, page trim, nextCursor 산출 구현.
+  - Web Portal Audit panel에 `다음 로그` 버튼 추가.
+  - API/frontend/test 문서 갱신.
+- 구현 내용:
+  - `cursor`는 이전 응답의 `nextCursor` 값이다.
+  - 다음 페이지는 `id < cursor` 기준으로 최신순 조회한다.
+  - `cursor`가 양의 숫자가 아니면 `VALIDATION_ERROR`를 반환한다.
+  - Frontend는 첫 필터 조회 시 목록을 교체하고, 다음 로그 클릭 시 기존 목록 뒤에 append한다.
+  - `nextCursor`가 없으면 다음 로그 버튼은 비활성화된다.
+- 수정된 파일 및 관련 파일:
+  - `osmu-backend/src/main/java/com/example/osmu/common/api/ListResponse.java`
+  - `osmu-backend/src/main/java/com/example/osmu/audit/AuditLogQuery.java`
+  - `osmu-backend/src/main/java/com/example/osmu/audit/AuditLogService.java`
+  - `osmu-backend/src/main/java/com/example/osmu/admin/AdminController.java`
+  - `osmu-backend/src/main/java/com/example/osmu/audit/repository/InMemoryAuditLogRepository.java`
+  - `osmu-backend/src/main/java/com/example/osmu/audit/repository/MariaDbAuditLogRepository.java`
+  - `osmu-backend/src/test/java/com/example/osmu/user/AdminUserControllerTest.java`
+  - `osmu-frontend/src/services/api.js`
+  - `osmu-frontend/src/views/HomeView.vue`
+  - `osmu-frontend/src/assets/main.css`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/frontend-design.md`
+  - `dev-docs/test-cases.md`
+- 검증 기록:
+  - `node --check .\osmu-frontend\src\services\api.js` 통과.
+  - `npm.cmd run build` 통과. Vite build 성공.
+  - 1차 `.\gradlew.bat test` 실패. 원인: test helper signature 불일치.
+  - test fixture 수정 후 `.\gradlew.bat test` 통과. `BUILD SUCCESSFUL`.
+  - `git diff --check` 통과. LF -> CRLF 경고만 출력.
+  - `rg -n "nextCursor|cursor|auditNextCursor|auditLogsReturnNextCursorForPagination" ...`로 구현/문서 반영 확인.
+- 코드 리뷰: pagination cursor는 audit log id 기반이라 단순하고 안정적이다. 정렬 기준과 cursor 조건이 모두 id desc에 묶여 있어 중복 페이지 위험이 낮다. 단, 매우 오래된 로그 보관 정책과 archive 검색은 후속 운영 기능으로 남는다.
+- 결과: Audit Log cursor pagination 구현 완료.
+- 후속 메모: 실제 MariaDB 대량 로그 환경에서 index와 pagination 성능을 확인해야 한다.
+- 추가 개발: audit filter preset, requestId copy/search shortcut, audit CSV export.
+- 사용 skill/plugin: `caveman`; Gradle test network escalation 사용.
+
+### 2026-06-13 - Object Explorer Prefix 탐색 UI 추가
+
+- 작업 시작 시간: 2026-06-13 08:18:00 +09:00
+- 작업 종료 시간: 2026-06-13 08:27:45 +09:00
+- 사용자 명령: 활성 목표인 frontend/backend 개발 계속 진행. 부족한 부분은 스스로 검증해서 확인.
+- 명령 해석: 대용량 object 관리에 필요한 prefix 기반 탐색을 Backend/API/UI/test 문서까지 연결하라는 명령으로 인식.
+- 작업 방식: Backend는 이미 `GET /api/buckets/{bucketName}/objects?prefix=`를 지원하고 있어 API/UI gap을 먼저 좁혔다. Frontend API client에 prefix query 조립을 추가하고, Object Explorer에 prefix 검색/초기화 form을 추가했다. Backend flow test에는 서로 다른 prefix의 object를 업로드한 뒤 prefix list 결과를 검증하는 assertion을 넣었다.
+- 실행 내용:
+  - `getObjects(bucketName, prefix)` API client 확장.
+  - Object Explorer prefix 입력/검색/초기화 UI 추가.
+  - `objectPrefix` state를 session reset, bucket delete, object reload 흐름에 연결.
+  - prefix filter form CSS grid 추가.
+  - Bucket/Object flow test에 `docs/` prefix 조회 검증 추가.
+  - 테스트 케이스와 frontend 설계 문서 갱신.
+- 구현 내용:
+  - prefix가 비어 있으면 기존 object list API와 동일하게 query 없이 호출한다.
+  - prefix가 있으면 trim 후 `?prefix=<value>` query로 전달한다.
+  - 업로드/삭제/대시보드 refresh 이후 현재 prefix 조건을 유지한 채 object list를 다시 불러온다.
+  - 초기화 버튼은 prefix를 비우고 전체 목록을 다시 조회한다.
+- 수정된 파일 및 관련 파일:
+  - `osmu-frontend/src/services/api.js`
+  - `osmu-frontend/src/views/HomeView.vue`
+  - `osmu-frontend/src/assets/main.css`
+  - `osmu-backend/src/test/java/com/example/osmu/bucket/BucketObjectFlowTest.java`
+  - `dev-docs/frontend-design.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/worklog/codex/frontend-backend-mvp/worklog-codex-frontend-backend-mvp.md`
+- 검증 기록:
+  - `node --check .\src\services\api.js` 통과.
+  - `npm.cmd run build` 통과. Vite build 성공.
+  - `.\gradlew.bat test` 통과. `BUILD SUCCESSFUL`.
+  - `git diff --check` 통과. LF -> CRLF 경고만 출력.
+- 코드 리뷰: Backend 기능은 이미 있었고 Frontend만 누락된 상태라 작은 UI/API 연결로 요구사항을 만족했다. prefix 입력은 선택 버킷이 없을 때 비활성화되어 잘못된 요청을 줄인다. 현재는 문자열 prefix 탐색만 지원하며 folder-like delimiter navigation은 후속 과제로 남는다.
+- 결과: Object Explorer prefix 탐색 UI/API/test 문서 반영 완료.
+- 후속 메모: 실제 MinIO 대량 object에서 prefix list 응답 시간과 pagination 필요성을 확인해야 한다.
+- 추가 개발: delimiter 기반 폴더 탐색, object list pagination, prefix 즐겨찾기/최근 탐색.
+- 사용 skill/plugin: `caveman`; Gradle test network escalation 사용.
+
+### 2026-06-13 - Object List Cursor Pagination 추가
+
+- 작업 시작 시간: 2026-06-13 08:28:00 +09:00
+- 작업 종료 시간: 2026-06-13 08:31:53 +09:00
+- 사용자 명령: 활성 목표인 frontend/backend 개발 계속 진행. 부족한 부분은 스스로 검증해서 확인.
+- 명령 해석: 대용량 object list에서 전체 목록을 한 번에 가져오는 병목을 줄이기 위해 `limit/cursor` 기반 페이지 조회를 Backend와 Frontend에 연결하라는 명령으로 인식.
+- 작업 방식: API spec에 이미 `limit`, `cursor`가 정의되어 있어 구현 상태를 맞췄다. Cursor는 정렬된 object key 기준으로 단순화했다. Backend adapter는 `limit + 1`개를 조회해 다음 페이지 존재 여부를 판단하고, Frontend는 `nextCursor`가 있을 때 다음 페이지를 목록 뒤에 append한다.
+- 실행 내용:
+  - `StoredObjectPage` record 추가.
+  - `ObjectStorageAdapter`에 paged list method 추가.
+  - In-memory storage는 key asc 정렬 후 `key > cursor` 조건으로 page를 만든다.
+  - MinIO storage는 `startAfter(cursor)`와 `maxKeys(limit + 1)`를 사용한다.
+  - Object API에 `limit`, `cursor` query param을 연결했다.
+  - ObjectService에서 limit 기본값/상한과 cursor-prefix 일치 검증을 추가했다.
+  - Web Portal에 `다음 파일` 버튼과 `objectNextCursor` state를 추가했다.
+  - backend flow test, API spec, frontend design, test cases를 갱신했다.
+- 구현 내용:
+  - 기본 object list limit은 100이다.
+  - 최대 limit은 999다. MinIO `maxKeys` 상한 안에서 `limit + 1` 조회로 다음 페이지를 감지하기 위해 999로 제한했다.
+  - `nextCursor`는 마지막으로 반환된 object key다.
+  - 다음 페이지는 같은 prefix 조건에서 cursor key보다 뒤의 object부터 조회한다.
+  - prefix가 바뀌면 cursor는 새로 발급받아야 하며, prefix와 맞지 않는 cursor는 validation error로 차단한다.
+- 수정된 파일 및 관련 파일:
+  - `osmu-backend/src/main/java/com/example/osmu/object/StoredObjectPage.java`
+  - `osmu-backend/src/main/java/com/example/osmu/storage/ObjectStorageAdapter.java`
+  - `osmu-backend/src/main/java/com/example/osmu/storage/memory/InMemoryObjectStorageAdapter.java`
+  - `osmu-backend/src/main/java/com/example/osmu/storage/minio/MinioObjectStorageAdapter.java`
+  - `osmu-backend/src/main/java/com/example/osmu/object/ObjectController.java`
+  - `osmu-backend/src/main/java/com/example/osmu/object/ObjectService.java`
+  - `osmu-backend/src/test/java/com/example/osmu/bucket/BucketObjectFlowTest.java`
+  - `osmu-frontend/src/services/api.js`
+  - `osmu-frontend/src/views/HomeView.vue`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/frontend-design.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/worklog/codex/frontend-backend-mvp/worklog-codex-frontend-backend-mvp.md`
+- 검증 기록:
+  - `node --check .\src\services\api.js` 통과.
+  - `npm.cmd run build` 통과. Vite build 성공.
+  - `.\gradlew.bat test` 통과. `BUILD SUCCESSFUL`.
+  - `git diff --check` 통과. LF -> CRLF 경고만 출력.
+  - `rg -n "objectNextCursor|handleLoadNextObjects|StoredObjectPage|cursor must match prefix|TC-OBJECT-008" ...`로 구현/문서 반영 확인.
+- 코드 리뷰: key cursor는 구현이 단순하고 object key 정렬과 잘 맞는다. S3 continuation token만큼 불투명하지는 않지만 Web Portal과 REST API MVP에는 충분하다. 단, object key rename이 없다는 전제에서 안정적이며, 후속으로 delimiter 탐색과 진짜 S3 continuation token 호환 정책은 별도 설계가 필요하다.
+- 결과: Object list cursor pagination 구현 완료.
+- 후속 메모: 실제 MinIO에서 매우 큰 bucket 기준 latency와 `startAfter` 동작을 Docker smoke 또는 통합 테스트로 확인해야 한다.
+- 추가 개발: delimiter 기반 폴더 탐색, object 검색, page size UI 선택, S3 continuation token passthrough 검토.
+- 사용 skill/plugin: `caveman`; Gradle test network escalation 사용.
+
+### 2026-06-13 - Delimiter 기반 폴더형 Object 탐색 추가
+
+- 작업 시작 시간: 2026-06-13 08:32:00 +09:00
+- 작업 종료 시간: 2026-06-13 08:35:57 +09:00
+- 사용자 명령: 활성 목표인 frontend/backend 개발 계속 진행. 부족한 부분은 스스로 검증해서 확인.
+- 명령 해석: prefix 문자열 검색을 넘어 사용자가 object key를 폴더처럼 탐색할 수 있게 `delimiter=/` 기반 API/UI를 추가하라는 명령으로 인식.
+- 작업 방식: S3 list object의 delimiter 개념을 MVP API에 반영했다. Backend response에 하위 prefix 목록을 담는 `prefixes` 필드를 추가하고, Frontend Object Explorer는 prefix row를 열거나 상위 prefix로 이동할 수 있게 연결했다.
+- 실행 내용:
+  - `StoredObjectPage`에 `prefixes` 필드 추가.
+  - Object list API에 `delimiter` query param 추가.
+  - ObjectService에서 delimiter는 MVP 기준 `/`만 허용하도록 검증.
+  - In-memory storage는 object key를 prefix/delimiter 기준으로 group해 하위 prefix와 현재 depth object를 분리.
+  - MinIO storage는 `recursive(false)`와 `delimiter("/")`를 사용하고 `Item.isDir()`를 prefix로 매핑.
+  - Web Portal에 현재 prefix 경로, 상위 이동, prefix row 열기 UI 추가.
+  - Backend flow test, API spec, frontend design, test cases 갱신.
+- 구현 내용:
+  - `GET /api/buckets/{bucketName}/objects?prefix=docs/&delimiter=/`는 `docs/sample.txt` 같은 현재 depth object는 `items`, `docs/2026/` 같은 하위 prefix는 `prefixes`에 반환한다.
+  - Frontend는 object list 호출 시 `delimiter=/`를 사용해 folder-like 탐색을 기본으로 제공한다.
+  - 하위 prefix를 열면 `objectPrefix`가 해당 prefix로 바뀌고 목록을 새로 조회한다.
+  - 상위 버튼은 trailing slash를 제거한 뒤 부모 prefix로 이동한다.
+- 수정된 파일 및 관련 파일:
+  - `osmu-backend/src/main/java/com/example/osmu/object/StoredObjectPage.java`
+  - `osmu-backend/src/main/java/com/example/osmu/storage/ObjectStorageAdapter.java`
+  - `osmu-backend/src/main/java/com/example/osmu/storage/memory/InMemoryObjectStorageAdapter.java`
+  - `osmu-backend/src/main/java/com/example/osmu/storage/minio/MinioObjectStorageAdapter.java`
+  - `osmu-backend/src/main/java/com/example/osmu/object/ObjectController.java`
+  - `osmu-backend/src/main/java/com/example/osmu/object/ObjectService.java`
+  - `osmu-backend/src/test/java/com/example/osmu/bucket/BucketObjectFlowTest.java`
+  - `osmu-frontend/src/services/api.js`
+  - `osmu-frontend/src/views/HomeView.vue`
+  - `osmu-frontend/src/assets/main.css`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/frontend-design.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/worklog/codex/frontend-backend-mvp/worklog-codex-frontend-backend-mvp.md`
+- 검증 기록:
+  - `node --check .\src\services\api.js` 통과.
+  - `npm.cmd run build` 통과. Vite build 성공.
+  - `.\gradlew.bat test` 통과. `BUILD SUCCESSFUL`.
+  - `git diff --check` 통과. LF -> CRLF 경고만 출력.
+  - `rg -n "delimiter|prefixes|StoredObjectPage|handleOpenObjectPrefix|TC-OBJECT-009" ...`로 구현/문서 반영 확인.
+- 코드 리뷰: delimiter 탐색은 대용량 object UX에 큰 개선이다. 기존 recursive list API는 delimiter를 넣지 않으면 유지되고, Web Portal만 folder-like 기본값을 사용한다. Cursor는 object key 또는 common prefix key 기준이므로 MVP에는 충분하지만, S3 continuation token과 완전 동일한 의미는 아니다.
+- 결과: delimiter 기반 폴더형 Object 탐색 구현 완료.
+- 후속 메모: Docker MinIO smoke에서 실제 `Item.isDir()` prefix 매핑을 확인해야 한다.
+- 추가 개발: object 검색, page size UI 선택, prefix breadcrumb 버튼화, S3 continuation token passthrough 검토.
+- 사용 skill/plugin: `caveman`; Gradle test network escalation 사용.
+
+### 2026-06-13 - Object Explorer Page Size 선택 UI 추가
+
+- 작업 시작 시간: 2026-06-13 08:36:00 +09:00
+- 작업 종료 시간: 2026-06-13 08:38:04 +09:00
+- 사용자 명령: 활성 목표인 frontend/backend 개발 계속 진행. 부족한 부분은 스스로 검증해서 확인.
+- 명령 해석: Backend object list pagination은 구현됐지만 Frontend에서 page size를 조절할 수 없는 gap을 줄이라는 명령으로 인식.
+- 작업 방식: Backend API의 `limit` query를 그대로 활용했다. Object Explorer filter form에 page size select를 추가하고, limit 변경 시 cursor 없이 첫 페이지부터 다시 조회하게 했다.
+- 실행 내용:
+  - Object Explorer에 `50`, `100`, `250`, `500`, `999` page size select 추가.
+  - `objectListLimit` state를 추가하고 object list API 호출의 `limit`에 연결.
+  - session reset 시 page size를 기본값 100으로 복구.
+  - object filter grid CSS 조정.
+  - frontend design/test cases/MVP 완료 기준 갱신.
+- 구현 내용:
+  - 선택한 page size는 첫 조회와 `다음 항목` 조회에 모두 적용된다.
+  - page size 변경 시 `loadObjects()`를 cursor 없이 호출해 현재 prefix의 첫 페이지부터 다시 조회한다.
+  - 선택지는 Backend 최대값 999를 넘지 않게 제한했다.
+- 수정된 파일 및 관련 파일:
+  - `osmu-frontend/src/views/HomeView.vue`
+  - `osmu-frontend/src/assets/main.css`
+  - `dev-docs/frontend-design.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/worklog/codex/frontend-backend-mvp/worklog-codex-frontend-backend-mvp.md`
+- 검증 기록:
+  - `node --check .\src\services\api.js` 통과.
+  - `npm.cmd run build` 통과. Vite build 성공.
+  - `.\gradlew.bat test` 통과. `BUILD SUCCESSFUL`.
+  - `git diff --check` 통과. LF -> CRLF 경고만 출력.
+  - `rg -n "objectListLimit|objectListLimitOptions|TC-FE-013" ...`로 구현/문서 반영 확인.
+- 코드 리뷰: Backend limit 기능을 UI에서 실제 운영자가 조절할 수 있게 되어 대용량 bucket 탐색 UX가 나아졌다. 현재는 고정 선택지 방식이라 안전하지만, 조직/사용자별 기본값 저장은 후속 기능으로 남는다.
+- 결과: Object Explorer page size 선택 UI 구현 완료.
+- 후속 메모: 실제 대량 object 환경에서 500/999 page size의 응답 시간과 UI 렌더링 비용을 확인해야 한다.
+- 추가 개발: object 검색, prefix breadcrumb 버튼화, page size 사용자 preference 저장.
+- 사용 skill/plugin: `caveman`; Gradle test network escalation 사용.
+
+### 2026-06-13 - Object Key 검색 추가
+
+- 작업 시작 시간: 2026-06-13 08:39:00 +09:00
+- 작업 종료 시간: 2026-06-13 08:40:50 +09:00
+- 사용자 명령: 활성 목표인 frontend/backend 개발 계속 진행. 부족한 부분은 스스로 검증해서 확인.
+- 명령 해석: Object Explorer에서 대량 object 중 key를 찾는 기능이 빠져 있어 Backend search query와 Frontend 검색 UI를 추가하라는 명령으로 인식.
+- 작업 방식: S3/MinIO list는 full-text search를 제공하지 않으므로 MVP에서는 현재 prefix 아래 object key contains 검색으로 구현했다. 검색어가 있으면 delimiter grouping을 끄고 현재 prefix 아래를 재귀적으로 훑어 matching object만 반환하게 했다.
+- 실행 내용:
+  - Object list API에 `search` query param 추가.
+  - ObjectService에서 search trim 처리와 search 시 delimiter 비활성화 적용.
+  - In-memory storage에 case-insensitive key contains filter 추가.
+  - MinIO storage에 recursive list 후 case-insensitive key contains filter 추가.
+  - Object Explorer filter form에 검색 input 추가.
+  - API client가 `search` query를 전송하도록 확장.
+  - Backend flow test, API spec, frontend design, test cases 갱신.
+- 구현 내용:
+  - `GET /api/buckets/{bucketName}/objects?prefix=docs/&delimiter=/&search=report`는 `docs/2026/report.txt`만 `items`에 반환한다.
+  - search가 있으면 하위 prefix grouping은 반환하지 않고 `prefixes`는 빈 배열이 된다.
+  - Frontend 초기화 버튼은 prefix와 search를 같이 비운다.
+  - 검색은 선택한 page size와 cursor pagination 흐름을 그대로 사용한다.
+- 수정된 파일 및 관련 파일:
+  - `osmu-backend/src/main/java/com/example/osmu/storage/ObjectStorageAdapter.java`
+  - `osmu-backend/src/main/java/com/example/osmu/storage/memory/InMemoryObjectStorageAdapter.java`
+  - `osmu-backend/src/main/java/com/example/osmu/storage/minio/MinioObjectStorageAdapter.java`
+  - `osmu-backend/src/main/java/com/example/osmu/object/ObjectController.java`
+  - `osmu-backend/src/main/java/com/example/osmu/object/ObjectService.java`
+  - `osmu-backend/src/test/java/com/example/osmu/bucket/BucketObjectFlowTest.java`
+  - `osmu-frontend/src/services/api.js`
+  - `osmu-frontend/src/views/HomeView.vue`
+  - `osmu-frontend/src/assets/main.css`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/frontend-design.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/worklog/codex/frontend-backend-mvp/worklog-codex-frontend-backend-mvp.md`
+- 검증 기록:
+  - `node --check .\src\services\api.js` 통과.
+  - `npm.cmd run build` 통과. Vite build 성공.
+  - `.\gradlew.bat test` 통과. `BUILD SUCCESSFUL`.
+  - `git diff --check` 통과. LF -> CRLF 경고만 출력.
+  - `rg -n "search|objectSearch|TC-OBJECT-010" ...`로 구현/문서 반영 확인.
+- 코드 리뷰: key contains 검색은 인덱스 없는 MVP 방식이라 구현이 단순하고 기존 storage adapter 경계를 유지한다. 다만 매우 큰 bucket에서는 list scan 비용이 크므로 제품화 단계에서는 MariaDB/OpenSearch 기반 object metadata index가 필요하다.
+- 결과: Object key 검색 구현 완료.
+- 후속 메모: 실제 MinIO 대량 bucket에서 검색 latency와 timeout 정책을 확인해야 한다.
+- 추가 개발: object metadata index, tag 검색, prefix breadcrumb 버튼화, 검색어 highlight.
+- 사용 skill/plugin: `caveman`; Gradle test network escalation 사용.
+
+### 2026-06-13 - Object Prefix Breadcrumb 이동 UI 추가
+
+- 작업 시작 시간: 2026-06-13 08:41:00 +09:00
+- 작업 종료 시간: 2026-06-13 08:42:35 +09:00
+- 사용자 명령: 활성 목표인 frontend/backend 개발 계속 진행. 부족한 부분은 스스로 검증해서 확인.
+- 명령 해석: Object Explorer의 현재 prefix 표시가 단순 텍스트라 깊은 경로 이동이 불편하므로 breadcrumb 버튼 이동을 추가하라는 명령으로 인식.
+- 작업 방식: 기존 `objectPrefix` state를 기준으로 breadcrumb 배열을 computed로 만들고, 각 crumb 클릭 시 해당 prefix로 첫 페이지를 다시 조회하게 했다. Backend 변경 없이 Frontend UX만 보강했다.
+- 실행 내용:
+  - `objectPrefixBreadcrumbs` computed 추가.
+  - 기존 `prefix-path` 텍스트를 `prefix-breadcrumb` nav 버튼 목록으로 교체.
+  - `handleSelectObjectPrefix(prefix)` 추가.
+  - breadcrumb CSS 추가.
+  - frontend design/test cases/MVP 완료 기준 갱신.
+- 구현 내용:
+  - root `/`와 각 prefix segment가 버튼으로 표시된다.
+  - 현재 prefix crumb은 disabled 상태다.
+  - breadcrumb 클릭 시 `objectPrefix`를 선택한 prefix로 바꾸고 cursor 없이 `loadObjects()`를 호출한다.
+- 수정된 파일 및 관련 파일:
+  - `osmu-frontend/src/views/HomeView.vue`
+  - `osmu-frontend/src/assets/main.css`
+  - `dev-docs/frontend-design.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/worklog/codex/frontend-backend-mvp/worklog-codex-frontend-backend-mvp.md`
+- 검증 기록:
+  - `node --check .\src\services\api.js` 통과.
+  - `npm.cmd run build` 통과. Vite build 성공.
+  - `.\gradlew.bat test` 통과. `BUILD SUCCESSFUL`.
+  - `git diff --check` 통과. LF -> CRLF 경고만 출력.
+  - `rg -n "objectPrefixBreadcrumbs|prefix-breadcrumb|handleSelectObjectPrefix|TC-FE-014" ...`로 구현/문서 반영 확인.
+- 코드 리뷰: prefix 탐색이 버튼형 breadcrumb로 바뀌어 깊은 폴더 이동이 더 빠르다. Breadcrumb는 `objectPrefix` 하나만 원천 상태로 삼아 상태 불일치 위험이 낮다.
+- 결과: Object Prefix Breadcrumb 이동 UI 구현 완료.
+- 후속 메모: 실제 UI에서 긴 prefix segment가 많은 경우 wrap/overflow 시각 확인이 필요하다.
+- 추가 개발: breadcrumb segment 줄임 표시, 검색어 highlight, object metadata/tag 검색.
+- 사용 skill/plugin: `caveman`; Gradle test network escalation 사용.
+
+### 2026-06-13 - Object 검색어 Highlight 추가
+
+- 작업 시작 시간: 2026-06-13 08:43:00 +09:00
+- 작업 종료 시간: 2026-06-13 08:44:23 +09:00
+- 사용자 명령: 활성 목표인 frontend/backend 개발 계속 진행. 부족한 부분은 스스로 검증해서 확인.
+- 명령 해석: Object key 검색 결과에서 어떤 부분이 검색어와 일치하는지 표시해 탐색 UX를 개선하라는 명령으로 인식.
+- 작업 방식: 보안상 `v-html`을 쓰지 않고 key 문자열을 segment 배열로 나누어 Vue text interpolation으로 렌더링했다. Matching segment에만 class를 붙였다.
+- 실행 내용:
+  - Object key cell을 `objectKeyParts(object.key)` 기반 segment 렌더링으로 변경.
+  - 검색어와 일치하는 segment에 `key-match` class 적용.
+  - `objectKeyParts` helper 추가.
+  - highlight CSS 추가.
+  - frontend design/test cases/MVP 완료 기준 갱신.
+- 구현 내용:
+  - 검색어가 없으면 기존과 동일하게 key 전체를 한 segment로 표시한다.
+  - 검색어가 있으면 case-insensitive로 모든 match 구간을 찾아 강조한다.
+  - 원본 key 문자열은 Vue text interpolation으로 출력되어 HTML injection 위험을 피한다.
+- 수정된 파일 및 관련 파일:
+  - `osmu-frontend/src/views/HomeView.vue`
+  - `osmu-frontend/src/assets/main.css`
+  - `dev-docs/frontend-design.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/worklog/codex/frontend-backend-mvp/worklog-codex-frontend-backend-mvp.md`
+- 검증 기록:
+  - `node --check .\src\services\api.js` 통과.
+  - `npm.cmd run build` 통과. Vite build 성공.
+  - `.\gradlew.bat test` 통과. `BUILD SUCCESSFUL`.
+  - `git diff --check` 통과. LF -> CRLF 경고만 출력.
+  - `rg -n "objectKeyParts|key-match|TC-FE-015" ...`로 구현/문서 반영 확인.
+- 코드 리뷰: 검색 결과의 인지성이 좋아졌고 `v-html`을 피해서 XSS 위험도 낮다. 긴 key에서 많은 match가 생겨도 segment 수는 key 길이에 비례해 유지된다.
+- 결과: Object 검색어 highlight 구현 완료.
+- 후속 메모: 실제 UI에서 highlight 색 대비와 긴 key wrap을 시각 확인해야 한다.
+- 추가 개발: object metadata/tag 검색, metadata index 설계, Docker MinIO smoke.
+- 사용 skill/plugin: `caveman`; Gradle test network escalation 사용.
+
+### 2026-06-13 - Object Tag 저장/표시/Filter 추가
+
+- 작업 시작 시간: 2026-06-13 08:45:00 +09:00
+- 작업 종료 시간: 2026-06-13 08:49:48 +09:00
+- 사용자 명령: 활성 목표인 frontend/backend 개발 계속 진행. 부족한 부분은 스스로 검증해서 확인.
+- 명령 해석: 요구사항의 object tagging/search를 MVP 범위에서 구현하라는 명령으로 인식.
+- 작업 방식: MVP tag format은 `key=value` comma-separated 문자열로 정했다. Direct upload 시 tag를 저장하고, object list에서 `tag=key=value` exact filter를 지원하게 했다. In-memory는 record에 tags를 보관하고, MinIO는 object tags API를 사용한다.
+- 실행 내용:
+  - `StoredObjectRecord`에 `tags` map 추가.
+  - Object upload API에 optional `tags` form field 추가.
+  - Object list API에 `tag` query 추가.
+  - ObjectService에 `key=value` tag parser와 최대 10쌍 검증 추가.
+  - In-memory storage에서 tag 저장/filter 구현.
+  - MinIO storage에서 `setObjectTags`, `getObjectTags` 기반 tag 저장/조회/filter 구현.
+  - Object Explorer upload form에 tags input 추가.
+  - Object Explorer filter form에 tag filter input 추가.
+  - Object table에 tags column 추가.
+  - Backend flow test, API spec, frontend design, test cases 갱신.
+- 구현 내용:
+  - 업로드 tag 예: `project=osmu,stage=raw`.
+  - tag filter 예: `tag=project=osmu`.
+  - tag filter가 있으면 delimiter grouping은 끄고 현재 prefix 아래 object를 재귀적으로 검사한다.
+  - list 응답 object에는 `tags` map이 포함된다.
+- 수정된 파일 및 관련 파일:
+  - `osmu-backend/src/main/java/com/example/osmu/object/StoredObjectRecord.java`
+  - `osmu-backend/src/main/java/com/example/osmu/storage/ObjectStorageAdapter.java`
+  - `osmu-backend/src/main/java/com/example/osmu/storage/memory/InMemoryObjectStorageAdapter.java`
+  - `osmu-backend/src/main/java/com/example/osmu/storage/minio/MinioObjectStorageAdapter.java`
+  - `osmu-backend/src/main/java/com/example/osmu/object/ObjectController.java`
+  - `osmu-backend/src/main/java/com/example/osmu/object/ObjectService.java`
+  - `osmu-backend/src/test/java/com/example/osmu/bucket/BucketObjectFlowTest.java`
+  - `osmu-frontend/src/services/api.js`
+  - `osmu-frontend/src/views/HomeView.vue`
+  - `osmu-frontend/src/assets/main.css`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/frontend-design.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/worklog/codex/frontend-backend-mvp/worklog-codex-frontend-backend-mvp.md`
+- 검증 기록:
+  - `node --check .\src\services\api.js` 통과.
+  - `npm.cmd run build` 통과. Vite build 성공.
+  - `.\gradlew.bat test` 통과. `BUILD SUCCESSFUL`.
+  - `git diff --check` 통과. LF -> CRLF 경고만 출력.
+  - `rg -n "objectTagFilter|formatObjectTags|TC-OBJECT-011|TC-FE-016" ...`로 구현/문서 반영 확인.
+- 코드 리뷰: tag 기능이 storage adapter 경계 안에 들어가 API/UI 흐름이 단순하다. 단, MinIO tag filter는 object list scan + per-object tag 조회라 대량 bucket에서는 느릴 수 있다. 제품화 단계에는 MariaDB object metadata index가 필요하다.
+- 결과: Object Tag 저장/표시/filter 구현 완료.
+- 후속 메모: Docker MinIO smoke에서 실제 `setObjectTags/getObjectTags` 동작을 확인해야 한다.
+- 추가 개발: object metadata index table, tag edit API, presigned upload tag 연동, Docker MinIO smoke.
+- 사용 skill/plugin: `caveman`; Gradle test network escalation 사용.
+
+### 2026-06-13 - Object Tag 수정 API/UI 추가
+
+- 작업 시작 시간: 2026-06-13 08:50:00 +09:00
+- 작업 종료 시간: 2026-06-13 08:54:27 +09:00
+- 사용자 명령: 활성 목표인 frontend/backend 개발 계속 진행. 부족한 부분은 스스로 검증해서 확인.
+- 명령 해석: Object tag를 업로드 시점에만 넣을 수 있는 gap을 줄이고, 운영 중 tag 수정이 가능하게 하라는 명령으로 인식.
+- 작업 방식: 기존 `key=value` tag parser와 storage adapter tag 기능을 재사용했다. Backend에는 별도 `PUT /objects/tags` endpoint를 추가하고, Frontend에는 목록 row에서 tag edit form을 채우는 버튼과 저장 form을 추가했다.
+- 실행 내용:
+  - `ObjectTagsUpdateRequest` DTO 추가.
+  - Object tag 수정 API `PUT /api/buckets/{bucketName}/objects/tags` 추가.
+  - ObjectService `updateTags` 추가.
+  - StorageAdapter `setObjectTags` 추가.
+  - In-memory storage tag update 구현.
+  - MinIO storage tag update/delete 구현.
+  - Object Explorer tag edit form 추가.
+  - Object row `태그` 버튼으로 edit form 자동 채우기.
+  - API client `updateObjectTags` 추가.
+  - Backend flow test, API spec, frontend design, test cases 갱신.
+- 구현 내용:
+  - 요청 body는 `{ "key": "...", "tags": "project=archive,stage=curated" }` 형식이다.
+  - 빈 `tags`는 tag 제거로 처리한다.
+  - tag 수정은 `WRITE` 권한이 필요하다.
+  - tag 수정 성공 시 감사 로그 `OBJECT_TAG_UPDATE`를 기록한다.
+  - Frontend 저장 후 현재 목록을 reload해 tag filter 결과와 table tag column을 갱신한다.
+- 수정된 파일 및 관련 파일:
+  - `osmu-backend/src/main/java/com/example/osmu/object/ObjectTagsUpdateRequest.java`
+  - `osmu-backend/src/main/java/com/example/osmu/storage/ObjectStorageAdapter.java`
+  - `osmu-backend/src/main/java/com/example/osmu/storage/memory/InMemoryObjectStorageAdapter.java`
+  - `osmu-backend/src/main/java/com/example/osmu/storage/minio/MinioObjectStorageAdapter.java`
+  - `osmu-backend/src/main/java/com/example/osmu/object/ObjectController.java`
+  - `osmu-backend/src/main/java/com/example/osmu/object/ObjectService.java`
+  - `osmu-backend/src/test/java/com/example/osmu/bucket/BucketObjectFlowTest.java`
+  - `osmu-frontend/src/services/api.js`
+  - `osmu-frontend/src/views/HomeView.vue`
+  - `osmu-frontend/src/assets/main.css`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/frontend-design.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/worklog/codex/frontend-backend-mvp/worklog-codex-frontend-backend-mvp.md`
+- 검증 기록:
+  - `node --check .\src\services\api.js` 통과.
+  - `npm.cmd run build` 통과. Vite build 성공.
+  - `.\gradlew.bat test` 통과. `BUILD SUCCESSFUL`.
+  - `git diff --check` 통과. LF -> CRLF 경고만 출력.
+  - `rg -n "ObjectTagsUpdateRequest|updateObjectTags|setObjectTags|TC-OBJECT-012|TC-FE-017" ...`로 구현/문서 반영 확인.
+- 코드 리뷰: tag 수정이 upload flow와 분리되어 운영 작업에 맞게 확장됐다. Tag update는 content/quota를 건드리지 않고 metadata만 바꾼다. MinIO tag 삭제는 Docker smoke에서 실제 동작 확인이 필요하다.
+- 결과: Object Tag 수정 API/UI 구현 완료.
+- 후속 메모: Docker MinIO smoke에서 tag update/delete 동작을 확인해야 한다.
+- 추가 개발: presigned upload tag 연동, object metadata index table, tag validation 정책 세분화.
+- 사용 skill/plugin: `caveman`; Gradle test network escalation 사용.
+
+### 2026-06-13 - Presigned Upload Tag 연동
+
+- 작업 시작 시간: 2026-06-13 08:55:00 +09:00
+- 작업 종료 시간: 2026-06-13 08:59:00 +09:00
+- 사용자 명령: 활성 목표인 frontend/backend 개발 계속 진행. 부족한 부분은 스스로 검증해서 확인.
+- 명령 해석: direct upload와 tag edit은 구현됐지만 presigned upload URL 발급/완료 flow에는 tag가 빠져 있으므로, presigned upload에도 동일한 object tag 정책을 적용하라는 명령으로 인식.
+- 작업 방식: presigned URL 발급 request에서 tags를 검증하고 upload session에 저장한 뒤, complete 시점에 실제 object tag로 적용했다. MariaDB session schema에는 nullable `tags` 컬럼을 migration으로 추가했다.
+- 실행 내용:
+  - `PresignedObjectUrlRequest`에 optional `tags` 추가.
+  - `PresignedUploadSession`에 `tags` 필드와 null-safe compact constructor 추가.
+  - In-memory session repository의 status update가 tags를 보존하도록 수정.
+  - MariaDB session repository select/insert/create/mapRow에 `tags` 컬럼 반영.
+  - Flyway migration `V9__presigned_upload_session_tags.sql` 추가.
+  - ObjectService에서 presigned upload URL 발급 시 tag format을 검증하고, complete 시 `storageAdapter.setObjectTags`로 적용.
+  - ObjectExplorer presigned upload URL 생성 payload에 `objectForm.tags` 전달.
+  - API spec, frontend design, test cases 갱신.
+  - In-memory repository tag 보존 단위 테스트 추가.
+- 구현 내용:
+  - 요청 예: `{ "key": "videos/input.mp4", "contentType": "video/mp4", "expiresInSeconds": 900, "tags": "project=osmu,stage=raw" }`.
+  - `tags`는 기존 direct upload와 동일한 `key=value` comma-separated 형식이며 최대 10쌍이다.
+  - complete 시 quota 검증 후 object tag를 적용하고, 완료 응답에는 tag가 포함된 `StoredObjectRecord`를 반환한다.
+- 수정된 파일 및 관련 파일:
+  - `osmu-backend/src/main/java/com/example/osmu/object/PresignedObjectUrlRequest.java`
+  - `osmu-backend/src/main/java/com/example/osmu/object/PresignedUploadSession.java`
+  - `osmu-backend/src/main/java/com/example/osmu/object/ObjectService.java`
+  - `osmu-backend/src/main/java/com/example/osmu/object/repository/InMemoryPresignedUploadSessionRepository.java`
+  - `osmu-backend/src/main/java/com/example/osmu/object/repository/MariaDbPresignedUploadSessionRepository.java`
+  - `osmu-backend/src/main/resources/db/migration/V9__presigned_upload_session_tags.sql`
+  - `osmu-backend/src/test/java/com/example/osmu/object/repository/InMemoryPresignedUploadSessionRepositoryTest.java`
+  - `osmu-frontend/src/views/HomeView.vue`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/frontend-design.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/worklog/codex/frontend-backend-mvp/worklog-codex-frontend-backend-mvp.md`
+- 검증 기록:
+  - `node --check .\src\services\api.js` 통과.
+  - `npm.cmd run build` 통과. Vite build 성공.
+  - `.\gradlew.bat test` 통과. `BUILD SUCCESSFUL`.
+  - `git diff --check` 통과. LF -> CRLF 경고만 출력.
+  - `rg -n "normalizeTags|session\\.tags\\(|tags: objectForm\\.tags|TC-OBJECT-013|TC-FE-018" ...`로 구현/문서 반영 확인.
+- 코드 리뷰: presigned upload의 tag 검증을 URL 발급 시점에 먼저 수행해 invalid session 생성을 막았다. Session status update에서도 tags가 유지된다. 단, 실제 MinIO presigned PUT + complete end-to-end는 Docker daemon 문제로 아직 smoke 검증이 필요하다.
+- 결과: Presigned upload tag 연동 완료.
+- 후속 메모: Docker Desktop 실행 후 `TC-OBJECT-013`을 통합 smoke에 포함해 실제 MinIO tag 적용을 확인해야 한다.
+- 추가 개발: object metadata index table, tag validation 정책 세분화, presigned multipart upload.
+- 사용 skill/plugin: `caveman`; Gradle test network escalation 사용.
+
+### 2026-06-13 - Object Metadata Index MVP 추가
+
+- 작업 시작 시간: 2026-06-13 09:00:00 +09:00
+- 작업 종료 시간: 2026-06-13 09:04:34 +09:00
+- 사용자 명령: 활성 목표인 frontend/backend 개발 계속 진행. 부족한 부분은 스스로 검증해서 확인.
+- 명령 해석: object list/search/tag filter가 storage scan에 의존하는 확장성 gap을 줄이고, 대용량 object 관리 목표에 맞게 metadata index를 추가하라는 명령으로 인식.
+- 작업 방식: 기존 storage adapter는 binary/object actual data plane으로 유지하고, Backend REST list/search/tag filter는 `ObjectMetadataRepository` index를 조회하도록 분리했다. Backend write path가 index를 즉시 갱신하고, S3 직접 작업은 bucket sync로 index를 재생성하게 했다.
+- 실행 내용:
+  - `ObjectMetadataRepository` 인터페이스 추가.
+  - In-memory object metadata repository 추가.
+  - MariaDB object metadata repository 추가.
+  - Flyway migration `V10__object_metadata_index.sql` 추가.
+  - ObjectService list를 metadata index 조회로 변경.
+  - upload/delete/tag update/presigned complete 성공 시 object metadata index 갱신.
+  - BucketService `syncUsage`가 storage 실제 object 기준으로 usage와 object metadata index를 함께 재생성하게 수정.
+  - bucket 삭제 시 object metadata index 정리 추가.
+  - Health/Admin system status에 object metadata repository health 포함.
+  - MinIO `listObjects`가 sync 시 object tags를 포함하도록 조정.
+  - bucket sync test를 확장해 sync 후 object list 조회까지 확인.
+  - database/backend/API/system architecture/test cases 문서 갱신.
+- 구현 내용:
+  - MariaDB table: `object_metadata(bucket_name, object_key_hash, object_key, size_bytes, content_type, last_modified_at, tags, updated_at)`.
+  - 긴 S3 object key PK 문제를 피하기 위해 `object_key_hash = SHA-256(object_key)`를 사용한다.
+  - `tags`는 JSON object 문자열로 저장한다.
+  - 목록, prefix, delimiter, cursor, key search, tag exact filter는 metadata index 기준으로 동작한다.
+  - Backend를 거치지 않은 S3 변경은 `POST /api/buckets/{bucketName}/sync` 후 API 목록에 반영된다.
+- 수정된 파일 및 관련 파일:
+  - `osmu-backend/src/main/java/com/example/osmu/object/repository/ObjectMetadataRepository.java`
+  - `osmu-backend/src/main/java/com/example/osmu/object/repository/InMemoryObjectMetadataRepository.java`
+  - `osmu-backend/src/main/java/com/example/osmu/object/repository/MariaDbObjectMetadataRepository.java`
+  - `osmu-backend/src/main/resources/db/migration/V10__object_metadata_index.sql`
+  - `osmu-backend/src/main/java/com/example/osmu/object/ObjectService.java`
+  - `osmu-backend/src/main/java/com/example/osmu/bucket/BucketService.java`
+  - `osmu-backend/src/main/java/com/example/osmu/system/HealthController.java`
+  - `osmu-backend/src/main/java/com/example/osmu/admin/AdminController.java`
+  - `osmu-backend/src/main/java/com/example/osmu/storage/minio/MinioObjectStorageAdapter.java`
+  - `osmu-backend/src/test/java/com/example/osmu/bucket/BucketObjectFlowTest.java`
+  - `dev-docs/database-design.md`
+  - `dev-docs/backend-design.md`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/system-architecture.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/worklog/codex/frontend-backend-mvp/worklog-codex-frontend-backend-mvp.md`
+- 검증 기록:
+  - `.\gradlew.bat test` 통과. `BUILD SUCCESSFUL`.
+  - `node --check .\src\services\api.js` 통과.
+  - `npm.cmd run build` 통과. Vite build 성공.
+  - `rg -n "ObjectMetadataRepository|object_metadata|V10__object_metadata_index|TC-OBJECT-014|object metadata index" ...`로 구현/문서 반영 확인.
+- 코드 리뷰: object list/read path가 storage scan에서 metadata index로 분리되어 대량 object 관리 방향에 가까워졌다. S3 direct write/delete는 sync 전까지 stale할 수 있으나 API 문서에 명시했고 sync가 index를 재생성한다. MariaDB tag filter는 아직 JSON 전체를 읽어 Java에서 exact match하므로 후속으로 tag inverted index가 필요하다.
+- 결과: Object metadata index MVP 구현 완료.
+- 후속 메모: Docker Desktop 실행 후 MariaDB + MinIO mode에서 Flyway V10 적용, sync, tag filter를 smoke로 확인해야 한다.
+- 추가 개발: object tag inverted index, object metadata 상세 API, multipart upload, lifecycle/retention policy.
+- 사용 skill/plugin: `caveman`; Gradle test network escalation 사용.
+
+### 2026-06-13 - Object Tag Inverted Index 추가
+
+- 작업 시작 시간: 2026-06-13 09:05:00 +09:00
+- 작업 종료 시간: 2026-06-13 09:07:45 +09:00
+- 사용자 명령: 활성 목표인 frontend/backend 개발 계속 진행. 부족한 부분은 스스로 검증해서 확인.
+- 명령 해석: 이전 작업에서 남긴 `MariaDB tag filter는 JSON 전체 scan` gap을 줄이고, 대량 object tag 검색을 제품 방향에 맞게 개선하라는 명령으로 인식.
+- 작업 방식: `object_metadata.tags` JSON은 응답/최종 검증용으로 유지하고, MariaDB에는 `object_metadata_tags` inverted index table을 추가했다. Object metadata save/delete/sync transaction에서 tag row를 같이 replace/delete한다.
+- 실행 내용:
+  - Flyway migration `V11__object_metadata_tag_index.sql` 추가.
+  - `MariaDbObjectMetadataRepository` local fallback schema에 `object_metadata_tags` 생성 추가.
+  - object metadata save 시 object row upsert 후 tag row replace.
+  - object delete/bucket delete/sync 시 tag row 삭제/재생성.
+  - tag filter 후보 조회 SQL에 `EXISTS` subquery를 추가해 `bucket_name + tag_key + tag_value` index를 사용하도록 변경.
+  - transaction 실패 시 rollback을 명시.
+  - DB/backend/API/system architecture/test case 문서 갱신.
+- 구현 내용:
+  - table: `object_metadata_tags(bucket_name, object_key_hash, tag_key, tag_value)`.
+  - lookup index: `idx_object_metadata_tags_lookup(bucket_name, tag_key, tag_value, object_key_hash)`.
+  - tag filter는 inverted index로 후보를 줄인 뒤 `StoredObjectRecord.tags`로 최종 exact match를 유지한다.
+  - sync는 기존 tag index를 bucket 단위로 삭제하고 storage actual tags 기준으로 재생성한다.
+- 수정된 파일 및 관련 파일:
+  - `osmu-backend/src/main/java/com/example/osmu/object/repository/MariaDbObjectMetadataRepository.java`
+  - `osmu-backend/src/main/resources/db/migration/V11__object_metadata_tag_index.sql`
+  - `dev-docs/database-design.md`
+  - `dev-docs/backend-design.md`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/system-architecture.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/worklog/codex/frontend-backend-mvp/worklog-codex-frontend-backend-mvp.md`
+- 검증 기록:
+  - `.\gradlew.bat test` 통과. `BUILD SUCCESSFUL`.
+  - `node --check .\src\services\api.js` 통과.
+  - `npm.cmd run build` 통과. Vite build 성공.
+  - `rg -n "object_metadata_tags|V11__object_metadata_tag_index|TC-OBJECT-015|tag inverted index|idx_object_metadata_tags_lookup" ...`로 구현/문서 반영 확인.
+- 코드 리뷰: tag exact filter가 JSON scan만 하던 구조에서 DB lookup index 기반 후보 축소 구조로 이동했다. Object row와 tag row가 같은 transaction에서 갱신되어 drift 가능성을 줄였다. 단, 실제 MariaDB 실행 계획은 Docker/MariaDB smoke에서 `EXPLAIN`으로 확인해야 한다.
+- 결과: Object tag inverted index 구현 완료.
+- 후속 메모: Docker Desktop 실행 후 MariaDB mode에서 V11 migration 적용과 tag filter `EXPLAIN`을 확인해야 한다.
+- 추가 개발: object metadata 상세 API, tag key/value validation 길이 제한, multipart upload, lifecycle/retention policy.
+- 사용 skill/plugin: `caveman`; Gradle test network escalation 사용.
+
+### 2026-06-13 - Object Metadata 상세 API/UI 추가
+
+- 작업 시작 시간: 2026-06-13 09:08:00 +09:00
+- 작업 종료 시간: 2026-06-13 09:10:37 +09:00
+- 사용자 명령: 활성 목표인 frontend/backend 개발 계속 진행. 부족한 부분은 스스로 검증해서 확인.
+- 명령 해석: object list/tag index는 구현됐지만 개별 object metadata 확인 화면이 부족하므로, 운영자가 파일 단위 상태를 재확인할 수 있는 상세 조회 기능을 추가하라는 명령으로 인식.
+- 작업 방식: Backend는 `object_metadata` index 기준 상세 API를 추가하고, Frontend는 object row의 `상세` 버튼과 상세 패널을 추가했다. S3 직접 변경은 기존 정책대로 bucket sync 후 index에 반영된다.
+- 실행 내용:
+  - `ObjectService.metadata` 추가.
+  - `GET /api/buckets/{bucketName}/objects/metadata/{objectKey}` endpoint 추가.
+  - Frontend API client `getObjectMetadata` 추가.
+  - Object Explorer table row에 `상세` 버튼 추가.
+  - Object detail panel 추가.
+  - key, size, contentType, lastModifiedAt, tags 표시.
+  - bucket/filter 변경 시 상세 패널 초기화.
+  - Backend flow test에 metadata detail 조회와 tag update 이후 상세 반영 확인 추가.
+  - API spec, frontend design, test cases 갱신.
+- 구현 내용:
+  - 상세 API는 `READ` 권한이 필요하다.
+  - index에 없는 object는 `404 NOT_FOUND`를 반환하고, S3 직접 작성 object는 bucket sync 이후 조회된다.
+  - UI 상세 패널은 표 아래에 표시되며 긴 object key와 tag 문자열을 줄바꿈한다.
+- 수정된 파일 및 관련 파일:
+  - `osmu-backend/src/main/java/com/example/osmu/object/ObjectService.java`
+  - `osmu-backend/src/main/java/com/example/osmu/object/ObjectController.java`
+  - `osmu-backend/src/test/java/com/example/osmu/bucket/BucketObjectFlowTest.java`
+  - `osmu-frontend/src/services/api.js`
+  - `osmu-frontend/src/views/HomeView.vue`
+  - `osmu-frontend/src/assets/main.css`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/frontend-design.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/worklog/codex/frontend-backend-mvp/worklog-codex-frontend-backend-mvp.md`
+- 검증 기록:
+  - `node --check .\src\services\api.js` 통과.
+  - `npm.cmd run build` 통과. Vite build 성공.
+  - `.\gradlew.bat test` 통과. `BUILD SUCCESSFUL`.
+  - `rg -n "getObjectMetadata|objectMetadata|Object Detail|metadata/\\{|TC-OBJECT-016|TC-FE-019" ...`로 구현/문서 반영 확인.
+- 코드 리뷰: 상세 조회가 metadata index를 그대로 사용해 list/search/tag filter와 일관된다. Detail endpoint가 `/metadata/` namespace를 예약하므로 해당 prefix로 시작하는 object key를 REST download path로 다룰 때는 주의가 필요하다.
+- 결과: Object metadata 상세 API/UI 구현 완료.
+- 후속 메모: Docker smoke에서 실제 MariaDB index 기준 detail 조회와 sync 후 detail 조회를 확인해야 한다.
+- 추가 개발: object metadata drift indicator, tag key/value validation 길이 제한, multipart upload, lifecycle/retention policy.
+- 사용 skill/plugin: `caveman`; Gradle test network escalation 사용.
+
+### 2026-06-13 - Object Tag Validation 정책 추가
+
+- 작업 시작 시간: 2026-06-13 09:11:00 +09:00
+- 작업 종료 시간: 2026-06-13 09:13:17 +09:00
+- 사용자 명령: 활성 목표인 frontend/backend 개발 계속 진행. 부족한 부분은 스스로 검증해서 확인.
+- 명령 해석: tag inverted index의 DB column 길이 제한과 API tag parser 정책이 맞지 않는 gap을 줄이고, invalid tag를 DB 에러가 아닌 validation error로 선차단하라는 명령으로 인식.
+- 작업 방식: Backend `ObjectService.parseTags`에 tag key/value 정책을 추가하고, Frontend Object Explorer에도 같은 정책의 사전 검증을 넣었다. Upload, tag update, presigned upload, tag filter에서 동일하게 검증한다.
+- 실행 내용:
+  - Backend tag key max 128 chars 추가.
+  - Backend tag value max 256 chars 추가.
+  - Backend tag key 허용 문자 정책 추가: 영문/숫자와 `.`, `_`, `:`, `/`, `@`, `+`, `-`.
+  - Backend tag value 제어 문자 차단 추가.
+  - invalid tag key/value flow test 추가.
+  - Frontend `validateTagInput` 추가.
+  - Object upload/tag update/presigned upload/tag filter 실행 전 tag 사전 검증 추가.
+  - API spec, DB design, frontend design, test cases 갱신.
+- 구현 내용:
+  - invalid key 예: `bad key=value`는 `400 VALIDATION_ERROR`.
+  - invalid value 예: `project=` + 257자 문자열은 `400 VALIDATION_ERROR`.
+  - tag count는 기존처럼 최대 10쌍이다.
+  - Frontend는 invalid tag 입력 시 API 요청 전에 오류 메시지를 표시한다.
+- 수정된 파일 및 관련 파일:
+  - `osmu-backend/src/main/java/com/example/osmu/object/ObjectService.java`
+  - `osmu-backend/src/test/java/com/example/osmu/bucket/BucketObjectFlowTest.java`
+  - `osmu-frontend/src/views/HomeView.vue`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/database-design.md`
+  - `dev-docs/frontend-design.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/worklog/codex/frontend-backend-mvp/worklog-codex-frontend-backend-mvp.md`
+- 검증 기록:
+  - `node --check .\src\services\api.js` 통과.
+  - `npm.cmd run build` 통과. Vite build 성공.
+  - `.\gradlew.bat test` 통과. `BUILD SUCCESSFUL`.
+  - `rg -n "validateTagInput|maxTagKeyLength|TAG_KEY_PATTERN|objectTagsRejectInvalidPolicy|tag keys can|tag values can" ...`로 구현 반영 확인.
+- 코드 리뷰: tag validation이 DB column 제약, MinIO tag count 정책, UI 입력 흐름과 맞춰졌다. 단, S3 호환 tag 문자 정책은 실제 AWS/MinIO의 Unicode 허용 범위보다 보수적이므로 제품화 전에 국제 문자 지원 여부를 결정해야 한다.
+- 결과: Object tag validation 정책 구현 완료.
+- 후속 메모: Docker smoke에서 MariaDB column 제약 전 API validation이 먼저 작동하는지 확인해야 한다.
+- 추가 개발: object metadata drift indicator, multipart upload, lifecycle/retention policy.
+- 사용 skill/plugin: `caveman`; Gradle test network escalation 사용.
+
+### 2026-06-13 - Object Metadata Drift 표시 추가
+
+- 작업 시작 시간: 2026-06-13 09:14:00 +09:00
+- 작업 종료 시간: 2026-06-13 09:15:50 +09:00
+- 사용자 명령: 활성 목표인 frontend/backend 개발 계속 진행. 부족한 부분은 스스로 검증해서 확인.
+- 명령 해석: S3 직접 변경 후 `object_metadata` index가 stale할 수 있으므로, 운영자가 개별 object 상세에서 index와 storage actual 차이를 볼 수 있게 하라는 명령으로 인식.
+- 작업 방식: 기존 metadata detail endpoint 응답을 `ObjectMetadataDetail`로 확장했다. index metadata는 기존 flat fields로 유지하고, storage actual metadata와 `syncStatus`를 추가했다.
+- 실행 내용:
+  - `ObjectMetadataDetail` record 추가.
+  - `ObjectService.metadata`가 index record와 `storageAdapter.statObject` 결과를 함께 반환하도록 수정.
+  - `syncStatus` 계산 추가: `SYNCED`, `STALE`, `MISSING_IN_STORAGE`.
+  - Object detail UI에 sync status badge 추가.
+  - Object detail UI에 index/storage size, contentType, lastModifiedAt, tags 비교 표시 추가.
+  - Backend test에 direct storage overwrite 후 `STALE`, bucket sync 후 `SYNCED` 확인 추가.
+  - API spec, backend design, frontend design, system architecture, test cases 갱신.
+- 구현 내용:
+  - `SYNCED`: index와 storage actual의 size/contentType/tags가 일치.
+  - `STALE`: index와 storage actual의 size/contentType/tags가 불일치.
+  - `MISSING_IN_STORAGE`: index에는 있으나 storage object가 없음.
+  - Frontend는 status별 badge 색을 다르게 표시한다.
+- 수정된 파일 및 관련 파일:
+  - `osmu-backend/src/main/java/com/example/osmu/object/ObjectMetadataDetail.java`
+  - `osmu-backend/src/main/java/com/example/osmu/object/ObjectService.java`
+  - `osmu-backend/src/main/java/com/example/osmu/object/ObjectController.java`
+  - `osmu-backend/src/test/java/com/example/osmu/bucket/BucketObjectFlowTest.java`
+  - `osmu-frontend/src/views/HomeView.vue`
+  - `osmu-frontend/src/assets/main.css`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/backend-design.md`
+  - `dev-docs/frontend-design.md`
+  - `dev-docs/system-architecture.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/worklog/codex/frontend-backend-mvp/worklog-codex-frontend-backend-mvp.md`
+- 검증 기록:
+  - `node --check .\src\services\api.js` 통과.
+  - `npm.cmd run build` 통과. Vite build 성공.
+  - `.\gradlew.bat test` 통과. `BUILD SUCCESSFUL`.
+  - `rg -n "ObjectMetadataDetail|syncStatus|storageSizeBytes|metadataStatusLabel|objectMetadataReportsStorageDrift" ...`로 구현 반영 확인.
+- 코드 리뷰: 운영자가 stale index를 즉시 볼 수 있어 S3 직접 변경과 REST API metadata 간 차이를 설명할 수 있다. Drift 판정은 size/contentType/tags 기준이며 lastModifiedAt은 표시만 한다. 대량 탐색의 모든 row에 stat을 붙이지 않고 상세에서만 비교해 비용을 제한했다.
+- 결과: Object metadata drift 표시 구현 완료.
+- 후속 메모: Docker smoke에서 MinIO actual metadata와 MariaDB index 비교가 기대대로 동작하는지 확인해야 한다.
+- 추가 개발: multipart upload, lifecycle/retention policy, object versioning/restore.
+- 사용 skill/plugin: `caveman`; Gradle test network escalation 사용.
+
+### 2026-06-13 - Direct Upload Stream 처리 개선
+
+- 작업 시작 시간: 2026-06-13 09:16:00 +09:00
+- 작업 종료 시간: 2026-06-13 09:18:17 +09:00
+- 사용자 명령: 활성 목표인 frontend/backend 개발 계속 진행. 부족한 부분은 스스로 검증해서 확인.
+- 명령 해석: 대용량 영상/파일 저장 목표에 맞게 Backend direct upload가 `MultipartFile.getBytes()`로 파일 전체를 JVM heap에 복사하는 gap을 줄이라는 명령으로 인식.
+- 작업 방식: Controller에서 `MultipartFile.getInputStream()`과 `file.getSize()`를 service로 전달하고, storage adapter interface를 stream 기반으로 확장했다. 기존 test/helper가 쓰는 byte array overload는 default method로 유지했다.
+- 실행 내용:
+  - `ObjectStorageAdapter.putObject` stream signature 추가.
+  - byte array `putObject`는 `ByteArrayInputStream`으로 stream method에 위임.
+  - `ObjectController.uploadObject`가 `file.getInputStream()`을 사용하도록 변경.
+  - `ObjectService.upload`가 `InputStream + sizeBytes`를 받아 quota delta와 storage write에 사용하도록 변경.
+  - `MinioObjectStorageAdapter`가 `PutObjectArgs.stream(content, sizeBytes, -1)`를 사용하도록 변경.
+  - `InMemoryObjectStorageAdapter`는 개발/test용으로 stream을 byte array로 읽어 저장.
+  - API spec/backend design/system architecture/test cases 갱신.
+- 구현 내용:
+  - MinIO mode direct upload는 파일 전체를 JVM byte array로 적재하지 않는다.
+  - 기존 byte array storage 호출은 test와 S3 direct simulation용으로 유지된다.
+  - Quota check는 `MultipartFile.getSize()` 기반으로 먼저 수행한다.
+- 수정된 파일 및 관련 파일:
+  - `osmu-backend/src/main/java/com/example/osmu/storage/ObjectStorageAdapter.java`
+  - `osmu-backend/src/main/java/com/example/osmu/storage/memory/InMemoryObjectStorageAdapter.java`
+  - `osmu-backend/src/main/java/com/example/osmu/storage/minio/MinioObjectStorageAdapter.java`
+  - `osmu-backend/src/main/java/com/example/osmu/object/ObjectService.java`
+  - `osmu-backend/src/main/java/com/example/osmu/object/ObjectController.java`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/backend-design.md`
+  - `dev-docs/system-architecture.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/worklog/codex/frontend-backend-mvp/worklog-codex-frontend-backend-mvp.md`
+- 검증 기록:
+  - `.\gradlew.bat test` 통과. `BUILD SUCCESSFUL`.
+  - `node --check .\src\services\api.js` 통과.
+  - `npm.cmd run build` 통과. Vite build 성공.
+  - `rg -n "getBytes\\(|InputStream|putObject\\(.*InputStream|stream\\(content|TC-OBJECT-019|Direct upload" ...`로 direct upload main path와 문서 반영 확인. Main upload controller에서 `MultipartFile.getBytes()` 제거 확인.
+- 코드 리뷰: MinIO direct upload memory footprint가 줄어 대용량 object 방향에 가까워졌다. in-memory mode는 저장 특성상 여전히 byte array를 보유한다. Download path는 아직 `readAllBytes()`로 응답하므로 다음 성능 개선 대상으로 남는다.
+- 결과: Direct upload stream 처리 개선 완료.
+- 후속 메모: Docker MinIO smoke에서 큰 파일 업로드와 heap 사용량 관찰이 필요하다.
+- 추가 개발: download streaming, multipart upload, lifecycle/retention policy, object versioning/restore.
+- 사용 skill/plugin: `caveman`; Gradle test network escalation 사용.
+
+### 2026-06-13 - Download Stream 처리 개선
+
+- 작업 시작 시간: 2026-06-13 09:18:18 +09:00
+- 작업 종료 시간: 2026-06-13 09:21:56 +09:00
+- 사용자 명령: 활성 목표인 frontend/backend 개발 계속 진행. 부족한 부분은 스스로 검증해서 확인.
+- 명령 해석: direct upload stream 개선 다음 단계로 REST download path가 `readAllBytes()`/`ByteArrayResource` 중심이면 대용량 파일 목표에 맞지 않으므로, download도 storage stream 기반으로 바꾸라는 명령으로 인식.
+- 작업 방식: Storage adapter에 metadata와 stream을 함께 반환하는 `StoredObjectStream` 계약을 추가하고, Controller에서 `StreamingResponseBody`로 response에 복사하도록 구성했다. 기존 byte array download method는 호환용으로 유지했다.
+- 실행 내용:
+  - `StoredObjectStream` record 추가.
+  - `ObjectStorageAdapter.openObject(bucketName, objectKey)` 계약 추가.
+  - `InMemoryObjectStorageAdapter.openObject`가 저장된 byte array를 `ByteArrayInputStream`으로 열도록 구현.
+  - `MinioObjectStorageAdapter.openObject`가 `GetObjectResponse` stream을 반환하도록 구현.
+  - `ObjectService.downloadStream` 추가.
+  - `ObjectController.downloadObject`가 `StreamingResponseBody` 응답을 반환하도록 변경.
+  - API spec/backend design/system architecture/test cases 갱신.
+- 구현 내용:
+  - REST download는 `READ` 권한 확인 후 storage stream을 열고 client response로 전달한다.
+  - 응답은 기존처럼 `Content-Type`, `Content-Length`, `Content-Disposition`을 유지한다.
+  - MinIO mode REST download main path는 전체 파일을 JVM byte array로 적재하지 않는다.
+  - `MinioObjectStorageAdapter.getObject`의 byte array path는 기존 호환용으로 남아 있다.
+- 수정된 파일 및 관련 파일:
+  - `osmu-backend/src/main/java/com/example/osmu/object/StoredObjectStream.java`
+  - `osmu-backend/src/main/java/com/example/osmu/storage/ObjectStorageAdapter.java`
+  - `osmu-backend/src/main/java/com/example/osmu/storage/memory/InMemoryObjectStorageAdapter.java`
+  - `osmu-backend/src/main/java/com/example/osmu/storage/minio/MinioObjectStorageAdapter.java`
+  - `osmu-backend/src/main/java/com/example/osmu/object/ObjectService.java`
+  - `osmu-backend/src/main/java/com/example/osmu/object/ObjectController.java`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/backend-design.md`
+  - `dev-docs/system-architecture.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/worklog/codex/frontend-backend-mvp/worklog-codex-frontend-backend-mvp.md`
+- 검증 기록:
+  - `.\gradlew.bat test` 통과. `BUILD SUCCESSFUL`.
+  - `node --check .\src\services\api.js` 통과.
+  - `npm.cmd run build` 통과. Vite build 성공.
+- 코드 리뷰: 다운로드 main path가 stream 기반이 되어 대용량 object 처리 방향에 가까워졌다. Controller가 stream close를 책임지므로 MinIO response resource 누수 위험을 줄였다. 다만 download 감사 로그는 현재 별도 기록이 없고, 실제 MinIO 큰 파일 다운로드의 메모리/시간 검증은 Docker 환경에서 추가로 확인해야 한다.
+- 결과: REST download stream 처리 개선 완료.
+- 후속 메모: Docker Desktop 실행 후 MinIO mode에서 큰 파일 다운로드와 heap 사용량을 확인해야 한다. Download audit log 정책도 확정 필요하다.
+- 추가 개발: multipart upload, lifecycle/retention policy, object versioning/restore, download audit logging.
+- 사용 skill/plugin: `caveman`; Gradle test network escalation 사용.
+
+### 2026-06-13 - Download Audit Log 추가
+
+- 작업 시작 시간: 2026-06-13 09:22:00 +09:00
+- 작업 종료 시간: 2026-06-13 09:24:11 +09:00
+- 사용자 명령: 활성 목표인 frontend/backend 개발 계속 진행. 부족한 부분은 스스로 검증해서 확인.
+- 명령 해석: download stream 개선 후 남은 gap인 다운로드 감사 로그 누락을 보강하라는 명령으로 인식.
+- 작업 방식: REST download에서 인증 사용자와 storage metadata를 확보한 뒤 `OBJECT_DOWNLOAD` 감사 로그를 기록했다. MockMvc async dispatch로 실제 stream 응답과 감사 로그 조회를 함께 검증했다.
+- 실행 내용:
+  - `ObjectController.downloadObject`에서 `AuthenticatedUser`를 변수로 분리.
+  - download stream open 성공 후 `OBJECT_DOWNLOAD` 감사 로그 기록 추가.
+  - `BucketObjectFlowTest`에 stream download 응답 본문/attachment header 검증 추가.
+  - `BucketObjectFlowTest`에 `OBJECT_DOWNLOAD` audit log 조회 검증 추가.
+  - API spec/system architecture/test cases 갱신.
+- 구현 내용:
+  - eventType: `OBJECT_DOWNLOAD`
+  - targetType: `OBJECT`
+  - targetId: `{bucketName}/{objectKey}`
+  - result: `SUCCESS`
+  - message: `Object download started`
+- 수정된 파일 및 관련 파일:
+  - `osmu-backend/src/main/java/com/example/osmu/object/ObjectController.java`
+  - `osmu-backend/src/test/java/com/example/osmu/bucket/BucketObjectFlowTest.java`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/system-architecture.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/worklog/codex/frontend-backend-mvp/worklog-codex-frontend-backend-mvp.md`
+- 검증 기록:
+  - `.\gradlew.bat test` 통과. `BUILD SUCCESSFUL`.
+  - `node --check .\src\services\api.js` 통과.
+  - `npm.cmd run build` 통과. Vite build 성공.
+- 코드 리뷰: 다운로드 event가 audit trail에 남아 PRODUCT_REQUIREMENTS의 파일 작업 로그 방향에 가까워졌다. 현재 로그는 stream open 성공 시점의 시작 로그이므로 client disconnect나 전송 중 실패까지 success/fail로 구분하지는 않는다.
+- 결과: REST download 감사 로그 구현 완료.
+- 후속 메모: 다운로드 완료/실패까지 엄밀히 기록하려면 `StreamingResponseBody` 내부 try/catch와 별도 result 정책이 필요하다.
+- 추가 개발: multipart upload, lifecycle/retention policy, object versioning/restore, download completion/failure audit policy.
+- 사용 skill/plugin: `caveman`; Gradle test network escalation 사용.
+
+### 2026-06-13 - Multipart Upload MVP 추가
+
+- 작업 시작 시간: 2026-06-13 09:25:00 +09:00
+- 작업 종료 시간: 2026-06-13 09:31:46 +09:00
+- 사용자 명령: 활성 목표인 frontend/backend 개발 계속 진행. 부족한 부분은 스스로 검증해서 확인.
+- 명령 해석: 대용량 파일 저장 목표를 위해 single PUT presigned upload 다음 단계인 multipart upload를 Backend/Frontend에 추가하라는 명령으로 인식.
+- 작업 방식: MinIO Java SDK의 `MinioAsyncClient` multipart API와 presigned part URL을 조합했다. Backend는 multipart upload session을 저장하고, Frontend는 128 MiB 이상 파일을 part 단위 presigned PUT으로 순차 업로드한 뒤 ETag 목록으로 complete를 호출한다.
+- 실행 내용:
+  - multipart create/complete request/response DTO 추가.
+  - `ObjectStorageAdapter`에 multipart create/complete/abort 계약 추가.
+  - `MinioObjectStorageAdapter`에 multipart upload id 생성, part별 presigned PUT URL 발급, complete/abort 구현.
+  - `InMemoryObjectStorageAdapter`는 multipart 미지원 `STORAGE_ERROR` 반환.
+  - `PresignedUploadSession`에 `uploadMode`, `storageUploadId`, `expectedSizeBytes` 추가.
+  - MariaDB migration `V12__presigned_upload_session_multipart.sql` 추가.
+  - `ObjectService`에 multipart part size 계산, quota 선검사, session 저장, complete 후 metadata/index/quota/tag 반영 추가.
+  - `ObjectController`에 `/multipart-upload`, `/multipart-upload/complete` API 추가.
+  - Frontend API client에 multipart upload create/part PUT/complete 흐름 추가.
+  - Object upload 화면은 128 MiB 이상 파일에서 multipart upload를 자동 사용하도록 연결.
+  - Backend test, API/backend/frontend/database/test docs 갱신.
+- 구현 내용:
+  - 기본 part size: 64 MiB.
+  - 5 MiB보다 큰 object의 part size 최소값: 5 MiB.
+  - 최대 part 수: 10000.
+  - complete API는 part number 중복을 차단하고 ETag 목록을 정렬해 MinIO complete에 전달한다.
+  - Frontend는 각 part 응답의 `ETag` header를 수집한다.
+- 수정된 파일 및 관련 파일:
+  - `osmu-backend/src/main/java/com/example/osmu/object/CompletedMultipartUploadPart.java`
+  - `osmu-backend/src/main/java/com/example/osmu/object/MultipartUploadCompleteRequest.java`
+  - `osmu-backend/src/main/java/com/example/osmu/object/MultipartUploadCreateRequest.java`
+  - `osmu-backend/src/main/java/com/example/osmu/object/MultipartUploadCreateResponse.java`
+  - `osmu-backend/src/main/java/com/example/osmu/object/MultipartUploadPartUrl.java`
+  - `osmu-backend/src/main/java/com/example/osmu/object/StorageMultipartUpload.java`
+  - `osmu-backend/src/main/java/com/example/osmu/object/PresignedUploadSession.java`
+  - `osmu-backend/src/main/java/com/example/osmu/object/ObjectService.java`
+  - `osmu-backend/src/main/java/com/example/osmu/object/ObjectController.java`
+  - `osmu-backend/src/main/java/com/example/osmu/storage/ObjectStorageAdapter.java`
+  - `osmu-backend/src/main/java/com/example/osmu/storage/memory/InMemoryObjectStorageAdapter.java`
+  - `osmu-backend/src/main/java/com/example/osmu/storage/minio/MinioObjectStorageAdapter.java`
+  - `osmu-backend/src/main/java/com/example/osmu/object/repository/InMemoryPresignedUploadSessionRepository.java`
+  - `osmu-backend/src/main/java/com/example/osmu/object/repository/MariaDbPresignedUploadSessionRepository.java`
+  - `osmu-backend/src/main/resources/db/migration/V12__presigned_upload_session_multipart.sql`
+  - `osmu-backend/src/test/java/com/example/osmu/bucket/BucketObjectFlowTest.java`
+  - `osmu-backend/src/test/java/com/example/osmu/object/repository/InMemoryPresignedUploadSessionRepositoryTest.java`
+  - `osmu-frontend/src/services/api.js`
+  - `osmu-frontend/src/views/HomeView.vue`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/backend-design.md`
+  - `dev-docs/database-design.md`
+  - `dev-docs/frontend-design.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/worklog/codex/frontend-backend-mvp/worklog-codex-frontend-backend-mvp.md`
+- 검증 기록:
+  - `.\gradlew.bat test` 통과. `BUILD SUCCESSFUL`.
+  - `node --check .\src\services\api.js` 통과.
+  - `npm.cmd run build` 통과. Vite build 성공.
+- 코드 리뷰: 대용량 upload가 Backend JVM heap을 우회해 browser -> MinIO part PUT 경로로 이동했다. MinIO mode에서는 실제 multipart upload id를 사용한다. Frontend는 순차 part upload라 구현은 안정적이나 대역폭 활용은 낮다. Browser가 `ETag` header를 읽으려면 MinIO CORS expose header 설정이 필요할 수 있다.
+- 결과: Multipart upload MVP 구현 완료.
+- 후속 메모: Docker MinIO smoke에서 실제 part upload/complete와 CORS `ETag` 노출을 검증해야 한다. 이후 병렬 part upload, abort endpoint, resume 기능을 추가해야 한다.
+- 추가 개발: multipart abort/resume/parallel upload, lifecycle/retention policy, object versioning/restore.
+- 사용 skill/plugin: `caveman`; Gradle test network escalation 사용.
+
+### 2026-06-13 - Multipart Upload Abort Cleanup 추가
+
+- 작업 시작 시간: 2026-06-13 09:32:00 +09:00
+- 작업 종료 시간: 2026-06-13 09:34:06 +09:00
+- 사용자 명령: 활성 목표인 frontend/backend 개발 계속 진행. 부족한 부분은 스스로 검증해서 확인.
+- 명령 해석: multipart upload MVP에서 실패/취소 시 MinIO에 미완료 upload와 part가 남는 gap을 줄이라는 명령으로 인식.
+- 작업 방식: Backend에 multipart abort endpoint를 추가하고, Frontend multipart upload가 session 생성 후 실패/취소되면 best-effort로 abort API를 호출하도록 구성했다.
+- 실행 내용:
+  - `MultipartUploadAbortRequest` DTO 추가.
+  - `ObjectService.abortMultipartUpload` 추가.
+  - `ObjectController`에 `POST /api/buckets/{bucketName}/objects/multipart-upload/abort` 추가.
+  - abort 성공 시 upload session 상태를 `ABORTED`로 변경.
+  - abort 감사 로그 `OBJECT_MULTIPART_UPLOAD_ABORT` 기록.
+  - Frontend API client에 `abortMultipartUpload` 추가.
+  - `uploadObjectMultipart`가 part upload 실패/취소 후 abort API를 best-effort 호출하도록 변경.
+  - repository test, API/frontend/test docs 갱신.
+- 구현 내용:
+  - abort는 `WRITE` 권한과 ACTIVE multipart upload session을 검증한다.
+  - storage upload id가 있는 multipart session만 abort할 수 있다.
+  - Frontend abort 호출 실패는 원래 upload 실패/취소 흐름을 막지 않는다.
+- 수정된 파일 및 관련 파일:
+  - `osmu-backend/src/main/java/com/example/osmu/object/MultipartUploadAbortRequest.java`
+  - `osmu-backend/src/main/java/com/example/osmu/object/ObjectService.java`
+  - `osmu-backend/src/main/java/com/example/osmu/object/ObjectController.java`
+  - `osmu-backend/src/test/java/com/example/osmu/object/repository/InMemoryPresignedUploadSessionRepositoryTest.java`
+  - `osmu-frontend/src/services/api.js`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/frontend-design.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/worklog/codex/frontend-backend-mvp/worklog-codex-frontend-backend-mvp.md`
+- 검증 기록:
+  - `.\gradlew.bat test` 통과. `BUILD SUCCESSFUL`.
+  - `node --check .\src\services\api.js` 통과.
+  - `npm.cmd run build` 통과. Vite build 성공.
+- 코드 리뷰: 미완료 multipart upload 정리 경로가 생겨 storage leak 위험이 줄었다. Browser 취소/네트워크 실패 후 abort는 best-effort이므로 tab close나 네트워크 완전 단절 상황은 lifecycle cleanup job이 추가로 필요하다.
+- 결과: Multipart upload abort cleanup 구현 완료.
+- 후속 메모: MinIO 실제 환경에서 abort 호출 후 incomplete multipart upload가 사라지는지 smoke 검증해야 한다.
+- 추가 개발: multipart resume/parallel upload, stale multipart cleanup scheduler, lifecycle/retention policy.
+- 사용 skill/plugin: `caveman`; Gradle test network escalation 사용.
+
+### 2026-06-13 - MinIO Multipart CORS ETag 설정 추가
+
+- 작업 시작 시간: 2026-06-13 09:35:00 +09:00
+- 작업 종료 시간: 2026-06-13 09:40:45 +09:00
+- 사용자 명령: 활성 목표인 frontend/backend 개발 계속 진행. 부족한 부분은 스스로 검증해서 확인.
+- 명령 해석: Browser multipart upload가 part PUT 응답의 `ETag`를 읽지 못하면 complete API를 호출할 수 없으므로 MinIO CORS expose header 설정과 Docker smoke 검증을 보강하라는 명령으로 인식.
+- 작업 방식: bucket 생성 경로와 Docker 초기화 경로 양쪽에 MinIO CORS 설정을 추가하고, 통합 smoke script가 실제 browser origin 요청 조건에서 `ETag`와 `Access-Control-Expose-Headers`를 확인하도록 만들었다.
+- 실행 내용:
+  - `MinioBucketCorsProvisioner`를 추가해 MinIO bucket CORS를 `mc cors set`으로 적용.
+  - `MinioObjectStorageAdapter.createBucket`이 bucket 존재/생성 이후 CORS provisioner를 호출하도록 연결.
+  - `application.yaml`, `application-local.yaml`, Docker Compose env에 `OSMU_STORAGE_CORS_*` 설정 추가.
+  - `infra/local/minio-cors.json`을 추가하고 `create-minio-buckets`에서 기본 bucket CORS를 적용하도록 변경.
+  - Docker backend image는 `mc` binary를 포함하므로 Backend bucket 생성 시에도 CORS 적용 가능.
+  - `verify-docker-integration.ps1`에 multipart smoke upload와 CORS `ETag` expose 검증 추가.
+  - multipart smoke object size보다 bucket quota가 작던 문제를 피하려고 smoke bucket quota를 32 MiB로 조정.
+  - API/backend/frontend/system/local infra/test case 문서에 CORS `ETag` 요구사항 반영.
+- 구현 내용:
+  - CORS allowed origins 기본값은 `http://localhost:5173,http://127.0.0.1:5173`.
+  - exposed headers는 `ETag`, `x-amz-request-id`, `x-amz-id-2`, `x-amz-version-id`.
+  - CORS provisioner는 같은 runtime에서 이미 적용한 bucket을 set cache로 중복 방지한다.
+  - smoke script는 multipart part PUT에 `Origin` header를 넣고 `ETag`, `Access-Control-Expose-Headers`를 확인한 뒤 complete API를 호출한다.
+- 수정된 파일 및 관련 파일:
+  - `osmu-backend/src/main/java/com/example/osmu/storage/minio/MinioBucketCorsProvisioner.java`
+  - `osmu-backend/src/main/java/com/example/osmu/storage/minio/MinioObjectStorageAdapter.java`
+  - `osmu-backend/src/main/resources/application.yaml`
+  - `osmu-backend/src/main/resources/application-local.yaml`
+  - `infra/local/minio-cors.json`
+  - `infra/local/docker-compose.yml`
+  - `infra/local/.env.example`
+  - `infra/local/README.md`
+  - `scripts/verify-docker-integration.ps1`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/backend-design.md`
+  - `dev-docs/frontend-design.md`
+  - `dev-docs/local-dev-env.md`
+  - `dev-docs/system-architecture.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/worklog/codex/frontend-backend-mvp/worklog-codex-frontend-backend-mvp.md`
+- 검증 기록:
+  - `node --check .\src\services\api.js` 통과.
+  - `npm.cmd run build` 통과. Vite build 성공.
+  - PowerShell parser로 `scripts\verify-docker-integration.ps1` syntax 확인 통과.
+  - `docker compose --env-file .\infra\local\.env.example -f .\infra\local\docker-compose.yml config --quiet` 통과. `.docker/config.json` 접근 warning은 있었으나 config exit code는 0.
+  - `.\gradlew.bat test` 통과. `BUILD SUCCESSFUL`.
+  - `docker info` 실패: `failed to connect to the docker API ... docker_engine ... The system cannot find the file specified.` Docker daemon이 없어 전체 Docker smoke는 실행하지 못했다.
+- 코드 리뷰: Frontend multipart complete가 요구하는 `ETag` 노출 조건을 infra와 Backend bucket 생성 경로에 반영해 실제 browser upload 실패 가능성을 줄였다. CORS provisioner는 `mc` 의존성이 있으므로 Docker 외 local profile에서 CORS를 켜려면 `mc`가 PATH에 있어야 한다.
+- 결과: MinIO multipart CORS `ETag` expose 설정과 smoke 검증 로직 추가 완료.
+- 후속 메모: Docker Desktop 실행 후 `.\scripts\verify-docker-integration.ps1`로 실제 MinIO CORS 응답을 E2E 확인해야 한다.
+- 추가 개발: multipart parallel upload, resume, stale multipart cleanup scheduler, lifecycle/retention policy.
+- 사용 skill/plugin: `caveman`; Gradle test network escalation 사용.
+
+### 2026-06-13 - Stale Multipart Upload Cleanup Scheduler 추가
+
+- 작업 시작 시간: 2026-06-13 09:41:48 +09:00
+- 작업 종료 시간: 2026-06-13 09:45:57 +09:00
+- 사용자 명령: 활성 목표인 frontend/backend 개발 계속 진행. 부족한 부분은 스스로 검증해서 확인.
+- 명령 해석: multipart upload 실패/취소 cleanup 이후에도 tab close, 네트워크 완전 단절처럼 abort API가 호출되지 않는 경우가 남으므로 만료된 multipart upload를 서버가 자동 정리하도록 보강하라는 명령으로 인식.
+- 작업 방식: upload session repository에 만료 ACTIVE multipart 조회와 조건부 status update를 추가하고, Spring scheduler가 주기적으로 MinIO multipart abort를 수행하도록 구성했다.
+- 실행 내용:
+  - `PresignedUploadSessionRepository`에 `findExpiredActiveMultipartUploads`, `updateStatusIfCurrent` 추가.
+  - In-memory/MariaDB repository 구현 추가.
+  - `MultipartUploadCleanupJob` 추가.
+  - `SchedulingConfig`로 Spring scheduling 활성화.
+  - `application.yaml`, local `.env.example`, Docker Compose backend env에 cleanup 설정 추가.
+  - MinIO abort cleanup 중 이미 사라진 multipart upload를 더 안전하게 다루도록 `NoSuchUpload` 예외 무시 추가.
+  - repository/job unit test 추가.
+  - API/backend/database/frontend/system/local infra/test case 문서 갱신.
+- 구현 내용:
+  - 기본 cleanup 설정: enabled true, initial delay 60초, fixed delay 300초, batch size 100.
+  - cleanup 대상: `status = ACTIVE`, `upload_mode = MULTIPART`, `storage_upload_id` 존재, `expires_at <= now`.
+  - cleanup 성공 시 MinIO multipart upload를 abort하고 session을 `EXPIRED`로 변경.
+  - abort 실패 시 session은 `ACTIVE`로 유지되어 다음 cleanup 주기에 재시도한다.
+  - 조건부 update로 이미 `COMPLETED`/`ABORTED` 등으로 바뀐 session을 덮어쓰지 않는다.
+- 수정된 파일 및 관련 파일:
+  - `osmu-backend/src/main/java/com/example/osmu/config/SchedulingConfig.java`
+  - `osmu-backend/src/main/java/com/example/osmu/object/MultipartUploadCleanupJob.java`
+  - `osmu-backend/src/main/java/com/example/osmu/object/repository/PresignedUploadSessionRepository.java`
+  - `osmu-backend/src/main/java/com/example/osmu/object/repository/InMemoryPresignedUploadSessionRepository.java`
+  - `osmu-backend/src/main/java/com/example/osmu/object/repository/MariaDbPresignedUploadSessionRepository.java`
+  - `osmu-backend/src/main/java/com/example/osmu/storage/minio/MinioObjectStorageAdapter.java`
+  - `osmu-backend/src/main/resources/application.yaml`
+  - `osmu-backend/src/test/java/com/example/osmu/object/MultipartUploadCleanupJobTest.java`
+  - `osmu-backend/src/test/java/com/example/osmu/object/repository/InMemoryPresignedUploadSessionRepositoryTest.java`
+  - `infra/local/.env.example`
+  - `infra/local/docker-compose.yml`
+  - `infra/local/README.md`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/backend-design.md`
+  - `dev-docs/database-design.md`
+  - `dev-docs/frontend-design.md`
+  - `dev-docs/local-dev-env.md`
+  - `dev-docs/system-architecture.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/worklog/codex/frontend-backend-mvp/worklog-codex-frontend-backend-mvp.md`
+- 검증 기록:
+  - `.\gradlew.bat test` 통과. `BUILD SUCCESSFUL`.
+  - `node --check .\src\services\api.js` 통과.
+  - `npm.cmd run build` 통과. Vite build 성공.
+  - `docker compose --env-file .\infra\local\.env.example -f .\infra\local\docker-compose.yml config --quiet` 통과. `.docker/config.json` 접근 warning은 있었으나 exit code는 0.
+  - `git diff --check` 통과. CRLF warning만 표시.
+  - `docker info` 실패: `failed to connect to the docker API ... docker_engine ... The system cannot find the file specified.` Docker daemon이 없어 전체 Docker smoke는 실행하지 못했다.
+- 코드 리뷰: abort API가 호출되지 않는 edge case를 scheduler가 보완해 MinIO incomplete multipart upload 누적 위험을 줄였다. cleanup 실패 시 ACTIVE를 유지하는 정책은 retry에 유리하지만, 반복 실패 알림/운영 지표는 아직 없다.
+- 결과: Stale multipart upload cleanup scheduler 구현 완료.
+- 후속 메모: Docker Desktop 실행 후 실제 MinIO에서 만료 multipart session abort와 `EXPIRED` 전환을 E2E smoke에 포함해야 한다.
+- 추가 개발: cleanup failure metric/audit, multipart parallel upload, resume, lifecycle/retention policy.
+- 사용 skill/plugin: `caveman`; Gradle test network escalation 사용.
+
+### 2026-06-13 - Multipart Parallel Upload 추가
+
+- 작업 시작 시간: 2026-06-13 09:46:53 +09:00
+- 작업 종료 시간: 2026-06-13 09:48:43 +09:00
+- 사용자 명령: 활성 목표인 frontend/backend 개발 계속 진행. 부족한 부분은 스스로 검증해서 확인.
+- 명령 해석: 대용량 multipart upload가 순차 part PUT이라 전송 시간이 길어지는 gap을 줄이고, 진행률/취소/abort 흐름은 유지하라는 명령으로 인식.
+- 작업 방식: Frontend API client의 multipart upload loop를 제한된 worker pool로 바꾸고, part별 progress map을 사용해 전체 진행률을 정확히 계산했다.
+- 실행 내용:
+  - `uploadObjectMultipart`가 part PUT을 제한된 동시성으로 병렬 수행하도록 변경.
+  - 기본 동시성 `VITE_MULTIPART_UPLOAD_CONCURRENCY=4` 추가.
+  - client에서 동시성 값을 1~8 범위로 제한.
+  - part별 loaded bytes를 합산해 parallel upload progress를 계산.
+  - upload 실패/취소 시 local abort controller로 진행 중인 part PUT을 중단하고 기존 best-effort abort API 호출 유지.
+  - complete API 호출 전 part number 기준으로 ETag 목록 정렬.
+  - Frontend Docker build arg, local env, Compose env, 문서/test case 갱신.
+- 구현 내용:
+  - `uploadWithConcurrency` worker pool helper 추가.
+  - `combineAbortSignals` helper로 사용자 취소 signal과 내부 실패 abort signal을 결합.
+  - 기존 multipart create/complete/abort API 계약은 유지.
+  - `VITE_MULTIPART_UPLOAD_CONCURRENCY`는 build-time env라 Dockerfile과 Compose build args에 반영.
+- 수정된 파일 및 관련 파일:
+  - `osmu-frontend/src/services/api.js`
+  - `osmu-frontend/.env.example`
+  - `osmu-frontend/Dockerfile`
+  - `infra/local/.env.example`
+  - `infra/local/docker-compose.yml`
+  - `infra/local/README.md`
+  - `dev-docs/frontend-design.md`
+  - `dev-docs/local-dev-env.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/worklog/codex/frontend-backend-mvp/worklog-codex-frontend-backend-mvp.md`
+- 검증 기록:
+  - `node --check .\src\services\api.js` 통과.
+  - `npm.cmd run build` 통과. Vite build 성공.
+  - `docker compose --env-file .\infra\local\.env.example -f .\infra\local\docker-compose.yml config --quiet` 통과. `.docker/config.json` 접근 warning은 있었으나 exit code는 0.
+  - `.\gradlew.bat test` 통과. `BUILD SUCCESSFUL`.
+- 코드 리뷰: 병렬 upload로 큰 파일 전송 효율이 좋아졌고, part별 progress 합산으로 진행률 과대계산을 피했다. 실패 시 진행 중인 XHR을 내부 abort signal로 멈추지만 browser tab crash 같은 경우는 여전히 Backend cleanup scheduler에 의존한다.
+- 결과: Multipart parallel upload 구현 완료.
+- 후속 메모: 실제 MinIO E2E에서 동시성 4 기준 throughput, CORS `ETag`, abort cleanup을 함께 확인해야 한다.
+- 추가 개발: multipart resume, part retry/backoff, cleanup failure metric/audit, lifecycle/retention policy.
+- 사용 skill/plugin: `caveman`; Gradle test network escalation 사용.
+
+### 2026-06-13 - Multipart Part Retry/Backoff 추가
+
+- 작업 시작 시간: 2026-06-13 09:49:38 +09:00
+- 작업 종료 시간: 2026-06-13 09:51:31 +09:00
+- 사용자 명령: 활성 목표인 frontend/backend 개발 계속 진행. 부족한 부분은 스스로 검증해서 확인.
+- 명령 해석: 병렬 multipart upload에서 단일 part의 일시적 네트워크 실패가 전체 업로드 실패로 이어지는 안정성 gap을 줄이라는 명령으로 인식.
+- 작업 방식: Frontend multipart part PUT에 재시도 wrapper를 추가하고, retry 가능한 오류와 즉시 실패해야 하는 오류를 분리했다. retry 동안 part progress는 0으로 되돌려 전체 진행률 과대계산을 막았다.
+- 실행 내용:
+  - `uploadPresignedPartWithRetry` 추가.
+  - retry 대상: network error, HTTP 408, 429, 5xx.
+  - retry 제외: 사용자 abort, 일반 4xx, CORS `ETag` 미노출 오류.
+  - exponential backoff helper와 abort-aware sleep 추가.
+  - 기본 retry 설정 `VITE_MULTIPART_UPLOAD_PART_RETRIES=2`, `VITE_MULTIPART_UPLOAD_RETRY_BASE_DELAY_MS=500` 추가.
+  - retry count는 0~5, base delay는 100~5000 ms로 client clamp.
+  - Frontend Dockerfile, Compose build args, local env, docs/test case 갱신.
+- 구현 내용:
+  - retry 성공 시 기존 흐름대로 part ETag를 complete payload에 포함한다.
+  - retry 중 사용자가 취소하면 대기 timer와 XHR이 모두 abort되고 기존 abort API cleanup 흐름으로 이동한다.
+  - retry 전 part progress를 0으로 보고해 전체 upload progress가 실패한 attempt의 bytes를 계속 포함하지 않는다.
+- 수정된 파일 및 관련 파일:
+  - `osmu-frontend/src/services/api.js`
+  - `osmu-frontend/.env.example`
+  - `osmu-frontend/Dockerfile`
+  - `infra/local/.env.example`
+  - `infra/local/docker-compose.yml`
+  - `infra/local/README.md`
+  - `dev-docs/frontend-design.md`
+  - `dev-docs/local-dev-env.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/worklog/codex/frontend-backend-mvp/worklog-codex-frontend-backend-mvp.md`
+- 검증 기록:
+  - `node --check .\src\services\api.js` 통과.
+  - 최초 `npm.cmd run build`는 Vite/Rolldown emitted asset path 오류로 1회 실패했다.
+  - env를 명시한 재실행 `npm.cmd run build` 통과. Vite build 성공.
+  - `docker compose --env-file .\infra\local\.env.example -f .\infra\local\docker-compose.yml config --quiet` 통과. `.docker/config.json` 접근 warning은 있었으나 exit code는 0.
+  - `.\gradlew.bat test` 통과. `BUILD SUCCESSFUL`.
+  - `git diff --check` 통과. CRLF warning만 표시.
+  - `docker info` 실패: `failed to connect to the docker API ... docker_engine ... The system cannot find the file specified.` Docker daemon이 없어 전체 Docker smoke는 실행하지 못했다.
+- 코드 리뷰: retry는 transient 실패만 대상으로 제한해 잘못된 CORS/권한/validation 문제를 숨기지 않는다. Presigned URL 만료 전 retry를 끝낸다는 전제라, 긴 대기나 장시간 대용량 업로드에는 resume/list-parts 기능이 다음 보강점이다.
+- 결과: Multipart part retry/backoff 구현 완료.
+- 후속 메모: 실제 MinIO E2E에서 part PUT 5xx/429 유도 후 retry 성공, abort 중 retry timer 취소를 확인해야 한다.
+- 추가 개발: multipart resume/list-parts, part retry jitter, cleanup failure metric/audit, lifecycle/retention policy.
+- 사용 skill/plugin: `caveman`; Gradle test network escalation 사용.
+
+### 2026-06-13 - Multipart Cleanup Audit Log 추가
+
+- 작업 시작 시간: 2026-06-13 09:52:22 +09:00
+- 작업 종료 시간: 2026-06-13 09:54:30 +09:00
+- 사용자 명령: 활성 목표인 frontend/backend 개발 계속 진행. 부족한 부분은 스스로 검증해서 확인.
+- 명령 해석: stale multipart cleanup scheduler가 실제로 어떤 session을 정리했는지 운영자가 감사 로그에서 추적할 수 있게 보강하라는 명령으로 인식.
+- 작업 방식: request가 없는 scheduler 작업이므로 `AuditLogService.record`의 request 없는 overload를 사용하고, 자동 작업 actor를 `system`으로 통일했다. audit 저장 실패가 cleanup 결과를 망치지 않도록 안전 기록으로 처리했다.
+- 실행 내용:
+  - `MultipartUploadCleanupJob`에 `AuditLogService` 주입.
+  - cleanup 성공 시 `OBJECT_MULTIPART_UPLOAD_CLEANUP` / `SUCCESS` 기록.
+  - cleanup 실패 시 `OBJECT_MULTIPART_UPLOAD_CLEANUP` / `FAIL` 기록.
+  - session 상태 race로 status update가 되지 않으면 `SKIPPED` 기록.
+  - audit record 실패는 warn log만 남기고 cleanup 결과를 유지.
+  - unit test에 cleanup audit 성공/실패 검증 추가.
+  - API/backend/database/security/test 문서 갱신.
+- 구현 내용:
+  - audit actor: `system`.
+  - audit target: `OBJECT`, `{bucketName}/{objectKey}`.
+  - event type: `OBJECT_MULTIPART_UPLOAD_CLEANUP`.
+  - requestId/ip/userAgent는 scheduler 작업이므로 null.
+- 수정된 파일 및 관련 파일:
+  - `osmu-backend/src/main/java/com/example/osmu/object/MultipartUploadCleanupJob.java`
+  - `osmu-backend/src/test/java/com/example/osmu/object/MultipartUploadCleanupJobTest.java`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/backend-design.md`
+  - `dev-docs/database-design.md`
+  - `dev-docs/security-design.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/worklog/codex/frontend-backend-mvp/worklog-codex-frontend-backend-mvp.md`
+- 검증 기록:
+  - `node --check .\src\services\api.js` 통과.
+  - `npm.cmd run build` 통과. Vite build 성공.
+  - `docker compose --env-file .\infra\local\.env.example -f .\infra\local\docker-compose.yml config --quiet` 통과. `.docker/config.json` 접근 warning은 있었으나 exit code는 0.
+  - `.\gradlew.bat test` 통과. `BUILD SUCCESSFUL`.
+  - `rg`로 `OBJECT_MULTIPART_UPLOAD_CLEANUP`, `SYSTEM_ACTOR`, 문서/test 반영 확인.
+  - `git diff --check` 통과. CRLF warning만 표시.
+  - `docker info` 실패: `failed to connect to the docker API ... docker_engine ... The system cannot find the file specified.` Docker daemon이 없어 전체 Docker smoke는 실행하지 못했다.
+- 코드 리뷰: 자동 cleanup이 이제 감사 로그에 남아 운영 추적성이 좋아졌다. audit 저장 실패가 cleanup 성공 여부를 바꾸지 않게 한 점은 적절하다. 다만 반복 실패 metric/alert는 아직 없다.
+- 결과: Multipart cleanup audit logging 구현 완료.
+- 후속 메모: Docker Desktop 실행 후 만료 multipart cleanup을 실제로 유도하고 audit log filter에서 `OBJECT_MULTIPART_UPLOAD_CLEANUP`이 조회되는지 확인해야 한다.
+- 추가 개발: cleanup failure metric/alert, multipart resume/list-parts, part retry jitter, lifecycle/retention policy.
+- 사용 skill/plugin: `caveman`; Gradle test network escalation 사용.
+
+### 2026-06-13 - Multipart Upload Refresh API 추가
+
+- 작업 시작 시간: 2026-06-13 09:55:18 +09:00
+- 작업 종료 시간: 2026-06-13 10:02:43 +09:00
+- 사용자 명령: 활성 목표인 frontend/backend 개발 계속 진행. 부족한 부분은 스스로 검증해서 확인.
+- 명령 해석: 대용량 multipart upload의 다음 결손인 재개 기반을 만들기 위해, 기존 multipart session의 part URL을 재발급할 수 있는 backend/frontend API를 추가하라는 명령으로 인식.
+- 작업 방식: full list-parts 구현 전 단계로 session에 part plan을 영속화하고, 기존 storage upload id에 대해 presigned part URL을 새로 만드는 refresh endpoint를 추가했다.
+- 실행 내용:
+  - `PresignedUploadSession`에 `partSizeBytes`, `partCount` 추가.
+  - MariaDB repository select/insert/map/schema fallback 갱신.
+  - Flyway `V13__presigned_upload_session_part_plan.sql` 추가.
+  - `ObjectStorageAdapter.refreshMultipartUploadParts` 계약 추가.
+  - MinIO adapter는 새 multipart를 만들지 않고 기존 `storageUploadId`로 part PUT URL 재발급.
+  - in-memory adapter는 기존과 같이 multipart 미지원 `STORAGE_ERROR` 반환.
+  - `POST /api/buckets/{bucketName}/objects/multipart-upload/refresh` endpoint 추가.
+  - 성공 감사 로그 `OBJECT_MULTIPART_UPLOAD_REFRESH` 추가.
+  - Frontend `refreshMultipartUpload(bucketName, payload)` API wrapper 추가.
+  - service/repository unit test와 API/backend/database/frontend/system/test 문서 갱신.
+- 구현 내용:
+  - refresh 요청은 `uploadId`, `key`, `expiresInSeconds`를 받는다.
+  - session user, bucket, key, `ACTIVE`, `MULTIPART`, storage upload id를 검증한다.
+  - 응답은 기존 `MultipartUploadCreateResponse` 형식을 재사용해 `sizeBytes`, `partSizeBytes`, `partCount`, part byte range, 새 URL을 반환한다.
+- 수정된 파일 및 관련 파일:
+  - `osmu-backend/src/main/java/com/example/osmu/object/MultipartUploadRefreshRequest.java`
+  - `osmu-backend/src/main/java/com/example/osmu/object/PresignedUploadSession.java`
+  - `osmu-backend/src/main/java/com/example/osmu/object/ObjectService.java`
+  - `osmu-backend/src/main/java/com/example/osmu/object/ObjectController.java`
+  - `osmu-backend/src/main/java/com/example/osmu/object/repository/InMemoryPresignedUploadSessionRepository.java`
+  - `osmu-backend/src/main/java/com/example/osmu/object/repository/MariaDbPresignedUploadSessionRepository.java`
+  - `osmu-backend/src/main/java/com/example/osmu/storage/ObjectStorageAdapter.java`
+  - `osmu-backend/src/main/java/com/example/osmu/storage/minio/MinioObjectStorageAdapter.java`
+  - `osmu-backend/src/main/java/com/example/osmu/storage/memory/InMemoryObjectStorageAdapter.java`
+  - `osmu-backend/src/main/resources/db/migration/V13__presigned_upload_session_part_plan.sql`
+  - `osmu-backend/src/test/java/com/example/osmu/object/ObjectServiceMultipartRefreshTest.java`
+  - `osmu-backend/src/test/java/com/example/osmu/object/MultipartUploadCleanupJobTest.java`
+  - `osmu-backend/src/test/java/com/example/osmu/object/repository/InMemoryPresignedUploadSessionRepositoryTest.java`
+  - `osmu-frontend/src/services/api.js`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/backend-design.md`
+  - `dev-docs/database-design.md`
+  - `dev-docs/frontend-design.md`
+  - `dev-docs/system-architecture.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/worklog/codex/frontend-backend-mvp/worklog-codex-frontend-backend-mvp.md`
+- 검증 기록:
+  - `node --check .\src\services\api.js` 통과.
+  - `npm.cmd run build` 통과. Vite build 성공.
+  - `docker compose --env-file .\infra\local\.env.example -f .\infra\local\docker-compose.yml config --quiet` 통과. `.docker/config.json` 접근 warning은 있었으나 exit code는 0.
+  - `.\gradlew.bat test` 통과. `BUILD SUCCESSFUL`.
+  - `git diff --check` 통과. CRLF warning만 표시.
+  - `docker info` 실패: `failed to connect to the docker API ... docker_engine ... The system cannot find the file specified.` Docker daemon이 없어 전체 Docker smoke는 실행하지 못했다.
+  - `rg`로 refresh API/service/adapter/repository/docs 반영 확인.
+- 코드 리뷰: refresh endpoint는 기존 upload id를 유지하고 part URL만 재발급하므로 storage에 중복 multipart upload를 만들지 않는다. session에 part plan을 저장해 Backend 재시작 후에도 byte range를 복원할 수 있다. 아직 uploaded part list를 storage에서 조회하지 않으므로, 완전한 resume은 client가 완료된 ETag를 보존하거나 다음 단계에서 list-parts API를 추가해야 한다.
+- 결과: Multipart upload 재개 기반인 part URL refresh API 구현 완료.
+- 후속 메모: 실제 MinIO E2E에서 refresh 후 같은 upload id로 part PUT/complete가 성공하는지 확인해야 한다.
+- 추가 개발: frontend resume UI/sessionStorage, storage list-parts 연동, refresh 후 completed part skip, retry jitter, cleanup failure metric/alert.
+- 사용 skill/plugin: `caveman`; Gradle test network escalation 사용.
+
+### 2026-06-13 - Frontend Multipart Resume 추가
+
+- 작업 시작 시간: 2026-06-13 10:03:00 +09:00
+- 작업 종료 시간: 2026-06-13 10:06:16 +09:00
+- 사용자 명령: 활성 목표인 frontend/backend 개발 계속 진행. 부족한 부분은 스스로 검증해서 확인.
+- 명령 해석: 직전에 만든 multipart refresh API를 실제 frontend retry 흐름에 연결해, 실패한 대용량 업로드를 이어 올릴 수 있게 하라는 명령으로 인식.
+- 작업 방식: `uploadObjectMultipart` 내부에 sessionStorage 기반 resume state를 추가하고, 기존 Retry 버튼이 같은 File 객체로 재시도할 때 자동으로 refresh API를 사용하도록 구성했다.
+- 실행 내용:
+  - multipart session storage key 생성에 bucket/key/tags/file fingerprint/part size를 사용.
+  - upload 시작 후 `uploadId`, file fingerprint, part plan, completed part ETag를 sessionStorage에 저장.
+  - part 성공 때마다 completed part ETag를 갱신.
+  - 실패 후 retry 시 refresh API로 새 part URL을 받고 completed part는 skip.
+  - 사용자가 취소한 경우에는 기존처럼 abort API를 호출하고 resume session을 삭제.
+  - upload 완료 시 resume session 삭제.
+  - UI 진행 메시지에 resume 감지 시 `Multipart resume` 표시.
+  - frontend 설계와 test case 갱신.
+- 구현 내용:
+  - `refreshStoredMultipartUpload`, `readMultipartUploadSession`, `writeMultipartUploadSession`, `restoreCompletedParts` 등 helper 추가.
+  - refresh session이 만료/누락/상태 충돌이면 저장값을 지우고 새 multipart upload로 fallback.
+  - sessionStorage 접근 실패는 업로드 실패로 만들지 않고 resume 기능만 비활성화한다.
+- 수정된 파일 및 관련 파일:
+  - `osmu-frontend/src/services/api.js`
+  - `osmu-frontend/src/views/HomeView.vue`
+  - `dev-docs/frontend-design.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/worklog/codex/frontend-backend-mvp/worklog-codex-frontend-backend-mvp.md`
+- 검증 기록:
+  - `node --check .\src\services\api.js` 통과.
+  - `npm.cmd run build` 통과. Vite build 성공.
+  - `.\gradlew.bat test` 통과. `BUILD SUCCESSFUL`.
+  - `docker compose --env-file .\infra\local\.env.example -f .\infra\local\docker-compose.yml config --quiet` 통과. `.docker/config.json` 접근 warning은 있었으나 exit code는 0.
+  - `git diff --check` 통과. CRLF warning만 표시.
+  - `docker info` 실패: `failed to connect to the docker API ... docker_engine ... The system cannot find the file specified.` Docker daemon이 없어 전체 Docker smoke는 실행하지 못했다.
+  - `rg`로 sessionStorage resume, refresh API, `TC-FE-025` 반영 확인.
+- 코드 리뷰: 사용자가 취소한 upload는 즉시 abort/cleanup하고, 네트워크/서버 오류로 실패한 upload만 resume state를 남기도록 분기했다. 완료된 part를 ETag 기준으로 skip하므로 재시도 비용이 줄어든다. 단, browser tab sessionStorage와 같은 File 객체에 의존하므로 tab을 닫은 뒤 재개 UI는 아직 부족하다.
+- 결과: Frontend multipart retry resume 구현 완료.
+- 후속 메모: 실제 MinIO E2E에서 일부 part 성공 후 네트워크 실패를 유도하고 Retry 버튼으로 남은 part만 업로드되는지 확인해야 한다.
+- 추가 개발: tab reload 후 pending upload 목록/파일 재선택 resume UI, MinIO list-parts 기반 server-side completed part 조회, retry jitter, cleanup failure metric/alert.
+- 사용 skill/plugin: `caveman`; Gradle test network escalation 사용.
+
+### 2026-06-13 - Multipart Uploaded Parts 조회 추가
+
+- 작업 시작 시간: 2026-06-13 10:07:00 +09:00
+- 작업 종료 시간: 2026-06-13 10:10:58 +09:00
+- 사용자 명령: 활성 목표인 frontend/backend 개발 계속 진행. 부족한 부분은 스스로 검증해서 확인.
+- 명령 해석: sessionStorage만으로는 tab/reload 또는 client state 손실 시 resume 신뢰성이 약하므로, MinIO에 실제 업로드된 multipart part 목록을 조회해 server-side resume 증거를 보강하라는 명령으로 인식.
+- 작업 방식: MinIO SDK의 `S3Base.listPartsAsync` signature를 local jar의 `javap`로 확인한 뒤, storage adapter 경계에 uploaded parts 조회 계약을 추가했다. Frontend retry resume은 sessionStorage ETag와 server-side ETag를 병합하도록 바꿨다.
+- 실행 내용:
+  - `MultipartUploadPartsRequest`, `MultipartUploadUploadedPart`, `MultipartUploadPartsResponse` DTO 추가.
+  - `ObjectStorageAdapter.listMultipartUploadParts` 계약 추가.
+  - `MinioObjectStorageAdapter`에서 `listPartsAsync` pagination 구현.
+  - in-memory adapter는 multipart 미지원 `STORAGE_ERROR` 반환.
+  - `POST /api/buckets/{bucketName}/objects/multipart-upload/parts` endpoint 추가.
+  - 성공 감사 로그 `OBJECT_MULTIPART_UPLOAD_PARTS_LIST` 추가.
+  - Frontend `listMultipartUploadParts` wrapper 추가.
+  - Frontend resume에서 `refreshMultipartUpload`와 `listMultipartUploadParts`를 함께 호출해 completed part를 병합.
+  - service unit test와 API/backend/frontend/system/test 문서 갱신.
+- 구현 내용:
+  - parts request는 `uploadId`, `key`를 받는다.
+  - session user, bucket, key, `ACTIVE`, `MULTIPART`, storage upload id를 검증한다.
+  - response는 `partNumber`, `etag`, `sizeBytes`를 반환한다.
+  - Frontend는 server-side ETag를 local sessionStorage ETag보다 우선 병합하고, 완료된 part를 skip한다.
+- 수정된 파일 및 관련 파일:
+  - `osmu-backend/src/main/java/com/example/osmu/object/MultipartUploadPartsRequest.java`
+  - `osmu-backend/src/main/java/com/example/osmu/object/MultipartUploadUploadedPart.java`
+  - `osmu-backend/src/main/java/com/example/osmu/object/MultipartUploadPartsResponse.java`
+  - `osmu-backend/src/main/java/com/example/osmu/object/ObjectService.java`
+  - `osmu-backend/src/main/java/com/example/osmu/object/ObjectController.java`
+  - `osmu-backend/src/main/java/com/example/osmu/storage/ObjectStorageAdapter.java`
+  - `osmu-backend/src/main/java/com/example/osmu/storage/minio/MinioObjectStorageAdapter.java`
+  - `osmu-backend/src/main/java/com/example/osmu/storage/memory/InMemoryObjectStorageAdapter.java`
+  - `osmu-backend/src/test/java/com/example/osmu/object/ObjectServiceMultipartRefreshTest.java`
+  - `osmu-frontend/src/services/api.js`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/backend-design.md`
+  - `dev-docs/frontend-design.md`
+  - `dev-docs/system-architecture.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/worklog/codex/frontend-backend-mvp/worklog-codex-frontend-backend-mvp.md`
+- 검증 기록:
+  - `javap`로 `io.minio.S3Base.listPartsAsync(...)`, `ListPartsResponse.result()`, `ListPartsResult.partList()`, `Part.partNumber()/etag()/partSize()` 확인.
+  - `node --check .\src\services\api.js` 통과.
+  - `npm.cmd run build` 통과. Vite build 성공.
+  - `.\gradlew.bat test` 통과. `BUILD SUCCESSFUL`.
+  - `docker compose --env-file .\infra\local\.env.example -f .\infra\local\docker-compose.yml config --quiet` 통과. `.docker/config.json` 접근 warning은 있었으나 exit code는 0.
+  - `git diff --check` 통과. CRLF warning만 표시.
+  - `docker info` 실패: `failed to connect to the docker API ... docker_engine ... The system cannot find the file specified.` Docker daemon이 없어 전체 Docker smoke는 실행하지 못했다.
+  - `rg`로 list-parts API/service/adapter/frontend/docs/test 반영 확인.
+- 코드 리뷰: resume이 client state만 믿지 않고 MinIO의 실제 uploaded part 목록을 확인하게 되어 재시도 신뢰성이 올라갔다. pagination은 1000개 단위로 처리한다. 단, 아직 browser tab을 닫은 뒤 pending upload를 UI에서 다시 선택해 이어가는 흐름은 없다.
+- 결과: Multipart server-side uploaded parts 조회와 frontend resume 병합 구현 완료.
+- 후속 메모: Docker Desktop 실행 후 실제 MinIO에서 part 일부 업로드, parts API ETag 조회, refresh 후 complete 성공까지 smoke에 포함해야 한다.
+- 추가 개발: tab reload 후 pending upload 목록/파일 재선택 resume UI, multipart parts API E2E smoke, retry jitter, cleanup failure metric/alert.
+- 사용 skill/plugin: `caveman`; Gradle test network escalation 사용.
+
+### 2026-06-13 - Pending Multipart Resume UI 추가
+
+- 작업 시작 시간: 2026-06-13 10:11:00 +09:00
+- 작업 종료 시간: 2026-06-13 10:14:57 +09:00
+- 사용자 명령: 활성 목표인 frontend/backend 개발 계속 진행. 부족한 부분은 스스로 검증해서 확인.
+- 명령 해석: tab reload 후에도 남아 있는 multipart resume session을 사용자가 확인하고, 같은 파일을 다시 선택해 이어 업로드할 수 있는 frontend UI를 추가하라는 명령으로 인식.
+- 작업 방식: 기존 sessionStorage resume helper를 export하고, HomeView에서 선택 bucket 기준 pending multipart 목록을 표시하도록 연결했다. 같은 bucket/key/tags/file fingerprint가 선택되면 Resume 버튼이 활성화된다.
+- 실행 내용:
+  - `getStoredMultipartUploadSessions`, `getStoredMultipartUploadSessionForFile`, `deleteStoredMultipartUploadSession` export.
+  - HomeView에 `pendingMultipartUploads`, `matchingMultipartResumeSession` state/computed 추가.
+  - selected bucket, dashboard refresh, file change, upload success/failure 시 pending list 갱신.
+  - pending multipart list UI 추가.
+  - matching session이면 Resume 버튼으로 기존 `handleUploadObject` 흐름 실행.
+  - Delete 버튼으로 해당 resume session 삭제.
+  - mobile-safe resume list CSS 추가.
+  - frontend 설계와 test case 갱신.
+- 구현 내용:
+  - Pending row는 key, file name, file size, completed part count, updatedAt을 표시한다.
+  - Resume은 같은 browser tab sessionStorage와 같은 File fingerprint가 맞을 때만 활성화된다.
+  - Resume 실행 시 기존 `uploadObjectMultipart` 흐름이 parts list/refresh API를 사용해 완료 part를 skip한다.
+- 수정된 파일 및 관련 파일:
+  - `osmu-frontend/src/services/api.js`
+  - `osmu-frontend/src/views/HomeView.vue`
+  - `osmu-frontend/src/assets/main.css`
+  - `dev-docs/frontend-design.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/worklog/codex/frontend-backend-mvp/worklog-codex-frontend-backend-mvp.md`
+- 검증 기록:
+  - `node --check .\src\services\api.js` 통과.
+  - `npm.cmd run build` 통과. Vite build 성공.
+  - `.\gradlew.bat test` 통과. `BUILD SUCCESSFUL`.
+  - `docker compose --env-file .\infra\local\.env.example -f .\infra\local\docker-compose.yml config --quiet` 통과. `.docker/config.json` 접근 warning은 있었으나 exit code는 0.
+  - `docker info` 실패: `failed to connect to the docker API ... docker_engine ... The system cannot find the file specified.` Docker daemon이 없어 전체 Docker smoke는 실행하지 못했다.
+  - `git diff --check` 통과. CRLF warning만 표시.
+  - `rg`로 pending multipart UI/helper/docs 반영 확인.
+- 코드 리뷰: pending session list가 tab reload 이후 사용자에게 복구 가능한 upload를 드러내므로 resume UX가 좋아졌다. file input은 browser 보안상 자동 복구할 수 없어서 사용자가 같은 파일을 다시 선택해야 하며, fingerprint가 맞지 않으면 Resume을 막는다.
+- 결과: Tab reload 후 pending multipart resume UI 구현 완료.
+- 후속 메모: 실제 browser에서 reload 후 같은 file 선택, Resume 활성화, Delete 동작을 확인해야 한다.
+- 추가 개발: multipart parts API E2E smoke, pending upload 만료 표시, retry jitter, cleanup failure metric/alert.
+- 사용 skill/plugin: `caveman`; Gradle test network escalation 사용.
+
+### 2026-06-13 - Multipart Parts/Refresh Docker Smoke 보강
+
+- 작업 시작 시간: 2026-06-13 10:15:00 +09:00
+- 작업 종료 시간: 2026-06-13 10:17:22 +09:00
+- 사용자 명령: 활성 목표인 frontend/backend 개발 계속 진행. 부족한 부분은 스스로 검증해서 확인.
+- 명령 해석: 구현한 multipart parts list, refresh, resume 핵심 API가 실제 MinIO path에서 검증되도록 Docker 통합 smoke script를 보강하라는 명령으로 인식.
+- 작업 방식: 기존 multipart smoke upload를 단순 create/PUT/complete에서 create → first part PUT → parts list 확인 → refresh → remaining parts PUT → all parts list 확인 → complete 흐름으로 확장했다.
+- 실행 내용:
+  - `Upload-MultipartPart` helper 추가.
+  - first part 업로드 후 `multipart-upload/parts` API가 uploaded part ETag를 반환하는지 확인.
+  - `multipart-upload/refresh` API로 part URL을 재발급.
+  - refresh 응답의 남은 part URL로 나머지 part 업로드.
+  - complete 전 parts list가 전체 partCount와 일치하는지 확인.
+  - local dev/test 문서의 Docker smoke 범위 갱신.
+- 구현 내용:
+  - CORS `ETag` expose 검증은 helper에서 모든 part PUT마다 수행한다.
+  - complete payload는 partNumber 기준 정렬해 전달한다.
+  - smoke object는 기존과 동일하게 완료 후 list 확인과 cleanup 대상에 포함된다.
+- 수정된 파일 및 관련 파일:
+  - `scripts/verify-docker-integration.ps1`
+  - `dev-docs/local-dev-env.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/worklog/codex/frontend-backend-mvp/worklog-codex-frontend-backend-mvp.md`
+- 검증 기록:
+  - PowerShell parser로 `scripts\verify-docker-integration.ps1` syntax 확인 통과.
+  - `node --check .\src\services\api.js` 통과.
+  - `npm.cmd run build` 통과. Vite build 성공.
+  - `.\gradlew.bat test` 통과. `BUILD SUCCESSFUL`.
+  - `docker compose --env-file .\infra\local\.env.example -f .\infra\local\docker-compose.yml config --quiet` 통과. `.docker/config.json` 접근 warning은 있었으나 exit code는 0.
+  - `git diff --check` 통과. CRLF warning만 표시.
+  - `docker info` 실패: `failed to connect to the docker API ... docker_engine ... The system cannot find the file specified.` Docker daemon이 없어 전체 Docker smoke는 실행하지 못했다.
+  - `rg`로 smoke script의 parts/refresh API 호출과 문서 반영 확인.
+- 코드 리뷰: Docker smoke가 이제 multipart resume의 server-side 핵심인 parts list와 refresh URL 재발급을 같은 upload id에서 검증한다. Docker daemon 부재로 실제 MinIO 실행 검증은 남아 있지만, 스크립트 syntax와 기존 build/test는 통과했다.
+- 결과: Multipart parts/refresh Docker integration smoke 보강 완료.
+- 후속 메모: Docker Desktop 실행 후 `.\scripts\verify-docker-integration.ps1`를 실제 실행해 first part list, refresh URL, complete 성공을 확인해야 한다.
+- 추가 개발: pending upload 만료 표시, retry jitter, cleanup failure metric/alert.
+- 사용 skill/plugin: `caveman`; Gradle test network escalation 사용.
+
+### 2026-06-13 - Multipart Resume 만료 표시 추가
+
+- 작업 시작 시간: 2026-06-13 10:18:00 +09:00
+- 작업 종료 시간: 2026-06-13 10:21:16 +09:00
+- 사용자 명령: 활성 목표인 frontend/backend 개발 계속 진행. 부족한 부분은 스스로 검증해서 확인.
+- 명령 해석: pending multipart resume UI에 upload session 만료 상태를 정확히 표시하고, 만료된 session으로 resume하지 않도록 frontend/backend 응답을 맞추라는 명령으로 인식.
+- 작업 방식: backend multipart create/refresh 응답에 session `expiresAt`을 노출하고, frontend sessionStorage resume data에 보존했다. pending UI는 만료 여부를 표시하고, 만료 후 24시간이 지난 local session은 자동 정리하도록 했다.
+- 실행 내용:
+  - multipart create response에 `expiresAt` 필드 추가.
+  - multipart refresh response가 기존 session `expiresAt`을 그대로 반환하도록 변경.
+  - frontend multipart progress 저장 시 `expiresAt` 보존.
+  - resume session read 시 만료 session은 실제 업로드 resume에서 제외.
+  - pending list에서 `Expired` 상태 표시 및 Resume 버튼 비활성화.
+  - 만료 후 24시간이 지난 local resume session 자동 삭제.
+  - API 명세서, frontend 설계, test case 갱신.
+- 구현 내용:
+  - `expiresAt`은 upload session 만료 시간이며, refresh URL 만료 시간과 별개로 늘어나지 않는다.
+  - 만료된 session은 UI에서 확인/삭제 가능하지만 Resume은 막는다.
+  - 오래된 만료 session은 pending list 조회 중 sessionStorage에서 정리된다.
+- 수정된 파일 및 관련 파일:
+  - `osmu-backend/src/main/java/com/example/osmu/object/MultipartUploadCreateResponse.java`
+  - `osmu-backend/src/main/java/com/example/osmu/object/ObjectService.java`
+  - `osmu-backend/src/test/java/com/example/osmu/object/ObjectServiceMultipartRefreshTest.java`
+  - `osmu-frontend/src/services/api.js`
+  - `osmu-frontend/src/views/HomeView.vue`
+  - `osmu-frontend/src/assets/main.css`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/frontend-design.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/worklog/codex/frontend-backend-mvp/worklog-codex-frontend-backend-mvp.md`
+- 검증 기록:
+  - `node --check .\src\services\api.js` 통과.
+  - `npm.cmd run build` 통과. Vite build 성공.
+  - `.\gradlew.bat test` 통과. `BUILD SUCCESSFUL`.
+  - `docker compose --env-file .\infra\local\.env.example -f .\infra\local\docker-compose.yml config --quiet` 통과. `.docker/config.json` 접근 warning은 있었으나 exit code는 0.
+  - `docker info` 실패: `failed to connect to the docker API ... docker_engine ... The system cannot find the file specified.` Docker daemon이 없어 전체 Docker smoke는 실행하지 못했다.
+  - `rg`로 backend response, frontend 만료 helper/UI, 문서 반영 확인.
+  - `git diff --check` 통과. CRLF warning만 표시.
+- 코드 리뷰: session 만료 기준이 backend에서 내려오는 `expiresAt`으로 통일되어 frontend 임의 계산 오차가 줄었다. refresh API는 URL만 재발급하므로 session 만료를 연장하지 않는 점도 문서화했다.
+- 결과: Pending multipart resume 만료 표시와 만료 session 차단 구현 완료.
+- 후속 메모: 실제 browser에서 만료 session fixture를 sessionStorage에 넣고 Expired 표시, Resume disabled, Delete 동작을 확인해야 한다.
+- 추가 개발: retry jitter, cleanup failure metric/alert, 실제 Docker smoke 실행.
+- 사용 skill/plugin: `caveman`; Gradle test network escalation 사용.
+
+### 2026-06-13 - Multipart Retry Jitter와 Cleanup Metric 추가
+
+- 작업 시작 시간: 2026-06-13 10:22:00 +09:00
+- 작업 종료 시간: 2026-06-13 10:26:30 +09:00
+- 사용자 명령: 활성 목표인 frontend/backend 개발 계속 진행. 부족한 부분은 스스로 검증해서 확인.
+- 명령 해석: multipart upload 안정성과 운영 관측성에서 남은 후속 항목인 retry jitter와 cleanup failure metric을 구현하라는 명령으로 인식.
+- 작업 방식: frontend part upload backoff에 설정 가능한 jitter ratio를 추가하고, backend multipart cleanup job에 Micrometer counter를 연결했다. actuator metrics endpoint도 local 운영 확인용으로 노출했다.
+- 실행 내용:
+  - `VITE_MULTIPART_UPLOAD_RETRY_JITTER_RATIO` 설정 추가. 기본값 0.25, client clamp 0~0.5.
+  - multipart part retry delay를 exponential backoff ± jitter로 계산.
+  - `spring-boot-starter-actuator` 의존성 추가.
+  - `/actuator/health`, `/actuator/info`, `/actuator/metrics` 노출 설정 추가.
+  - `osmu.multipart.cleanup.sessions{result=success|skipped|failure}` counter 추가.
+  - cleanup 성공/상태변경 skip/abort 실패 시 metric 증가.
+  - cleanup metric 단위 테스트 추가.
+  - frontend/backend/local dev/test 문서 갱신.
+- 구현 내용:
+  - retry jitter는 동시 실패한 part들이 같은 시간에 재시도되는 현상을 줄인다.
+  - cleanup failure는 audit log뿐 아니라 actuator metric으로도 확인 가능하다.
+  - scheduler 전체 run 실패는 `osmu.multipart.cleanup.runs{result=failure}`로 카운트한다.
+- 수정된 파일 및 관련 파일:
+  - `osmu-frontend/src/services/api.js`
+  - `osmu-frontend/.env.example`
+  - `osmu-backend/build.gradle`
+  - `osmu-backend/src/main/resources/application.yaml`
+  - `osmu-backend/src/main/java/com/example/osmu/object/MultipartUploadCleanupJob.java`
+  - `osmu-backend/src/test/java/com/example/osmu/object/MultipartUploadCleanupJobTest.java`
+  - `dev-docs/frontend-design.md`
+  - `dev-docs/backend-design.md`
+  - `dev-docs/system-architecture.md`
+  - `dev-docs/local-dev-env.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/worklog/codex/frontend-backend-mvp/worklog-codex-frontend-backend-mvp.md`
+- 검증 기록:
+  - `node --check .\src\services\api.js` 통과.
+  - `npm.cmd run build` 통과. Vite build 성공.
+  - `.\gradlew.bat test` 통과. `BUILD SUCCESSFUL`.
+  - `docker compose --env-file .\infra\local\.env.example -f .\infra\local\docker-compose.yml config --quiet` 통과. `.docker/config.json` 접근 warning은 있었으나 exit code는 0.
+  - `docker info` 실패: `failed to connect to the docker API ... docker_engine ... The system cannot find the file specified.` Docker daemon이 없어 전체 Docker smoke는 실행하지 못했다.
+  - `rg`로 retry jitter 설정, cleanup metric, actuator 의존성, 문서 반영 확인.
+  - `git diff --check` 통과. CRLF warning만 표시.
+- 코드 리뷰: jitter ratio를 환경변수와 option 양쪽에서 조절 가능하게 해 테스트/운영 조정 폭을 남겼다. cleanup metric은 audit log와 분리되어 반복 실패 알림이나 dashboard 연결의 기반이 된다.
+- 결과: Multipart retry jitter와 cleanup metric 구현 완료.
+- 후속 메모: Docker Desktop 실행 후 실제 `/actuator/metrics/osmu.multipart.cleanup.sessions`와 multipart smoke를 확인해야 한다.
+- 추가 개발: Prometheus/Grafana compose 추가, lifecycle/retention policy, frontend browser E2E.
+- 사용 skill/plugin: `caveman`; Gradle test network escalation 사용.
+
+### 2026-06-13 - Object Soft Delete Restore Purge 추가
+
+- 작업 시작 시간: 2026-06-13 10:27:00 +09:00
+- 작업 종료 시간: 2026-06-13 10:37:03 +09:00
+- 사용자 명령: 활성 목표인 frontend/backend 개발 계속 진행. 부족한 부분은 스스로 검증해서 확인.
+- 명령 해석: 제품 목표의 lifecycle/retention 방향으로 파일 삭제를 즉시 물리 삭제하지 않고 복구 가능한 soft delete 흐름으로 확장하라는 명령으로 인식.
+- 작업 방식: object metadata에 `deletedAt/deleted_at`을 추가하고 active list/download에서는 숨기며, trash list/restore/purge API와 frontend UI를 연결했다. 기존 sync가 soft-deleted object를 다시 active로 살리지 않도록 `deletedAt`을 보존했다.
+- 실행 내용:
+  - `StoredObjectRecord`에 `deletedAt`과 `isDeleted`, `withDeletedAt` 추가.
+  - `object_metadata.deleted_at` MariaDB migration `V14__object_metadata_deleted_at.sql` 추가.
+  - in-memory/MariaDB metadata repository에 active list와 deleted list 분리 구현.
+  - `DELETE /objects/{key}`를 soft delete로 변경.
+  - `GET /objects?deleted=true` trash 목록 추가.
+  - `POST /objects/restore/{key}` 복구 API 추가.
+  - `POST /objects/purge/{key}` 영구 삭제 API 추가.
+  - deleted object의 REST/presigned download, tag update, metadata 상세 조회 차단.
+  - bucket sync 시 기존 deleted 상태 보존.
+  - Frontend Object Explorer에 `Active`/`Trash` segmented control, Restore/Purge 버튼, deletedAt 표시 추가.
+  - 204 응답 command가 확인 모달을 닫지 못하던 frontend 문제를 `runCommand` helper로 수정.
+  - API/DB/backend/frontend/system/PRD/test 문서 갱신.
+- 구현 내용:
+  - soft delete는 quota/objectCount를 유지한다.
+  - purge는 MinIO object와 metadata를 삭제하고 quota/objectCount를 감소시킨다.
+  - restore는 storage에 object가 남아 있을 때만 `deletedAt`을 제거한다.
+  - active list는 deleted object를 숨기고, trash list는 `deleted=true`로 조회한다.
+- 수정된 파일 및 관련 파일:
+  - `osmu-backend/src/main/java/com/example/osmu/object/StoredObjectRecord.java`
+  - `osmu-backend/src/main/java/com/example/osmu/object/ObjectMetadataDetail.java`
+  - `osmu-backend/src/main/java/com/example/osmu/object/ObjectService.java`
+  - `osmu-backend/src/main/java/com/example/osmu/object/ObjectController.java`
+  - `osmu-backend/src/main/java/com/example/osmu/object/repository/ObjectMetadataRepository.java`
+  - `osmu-backend/src/main/java/com/example/osmu/object/repository/InMemoryObjectMetadataRepository.java`
+  - `osmu-backend/src/main/java/com/example/osmu/object/repository/MariaDbObjectMetadataRepository.java`
+  - `osmu-backend/src/main/java/com/example/osmu/bucket/BucketService.java`
+  - `osmu-backend/src/main/resources/db/migration/V14__object_metadata_deleted_at.sql`
+  - `osmu-backend/src/test/java/com/example/osmu/bucket/BucketObjectFlowTest.java`
+  - `osmu-frontend/src/services/api.js`
+  - `osmu-frontend/src/views/HomeView.vue`
+  - `osmu-frontend/src/assets/main.css`
+  - `dev-docs/PRODUCT_REQUIREMENTS.md`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/backend-design.md`
+  - `dev-docs/database-design.md`
+  - `dev-docs/frontend-design.md`
+  - `dev-docs/system-architecture.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/worklog/codex/frontend-backend-mvp/worklog-codex-frontend-backend-mvp.md`
+- 검증 기록:
+  - `node --check .\src\services\api.js` 통과.
+  - `npm.cmd run build` 통과. Vite build 성공.
+  - `.\gradlew.bat test` 통과. `BUILD SUCCESSFUL`.
+  - `docker compose --env-file .\infra\local\.env.example -f .\infra\local\docker-compose.yml config --quiet` 통과. `.docker/config.json` 접근 warning은 있었으나 exit code는 0.
+  - `docker info` 실패: `failed to connect to the docker API ... docker_engine ... The system cannot find the file specified.` Docker daemon이 없어 전체 Docker smoke는 실행하지 못했다.
+  - `rg`로 deletedAt/deleted_at, restore/purge API, frontend Trash UI, 문서 반영 확인.
+  - `git diff --check` 통과. CRLF warning만 표시.
+- 코드 리뷰: 삭제를 복구 가능한 상태로 바꿔 retention/versioning의 토대를 만들었다. soft-deleted object가 quota를 계속 점유하는 정책은 실제 storage data 보존과 일관된다. 다만 presigned/multipart upload는 soft-deleted 같은 key를 아직 overwrite하지 못하므로 purge 또는 REST upload가 필요하다.
+- 결과: Object soft delete, trash 조회, restore, purge 구현 완료.
+- 후속 메모: Docker Desktop 실행 후 MariaDB migration, MinIO object purge, sync 후 deletedAt 보존을 실제 compose 환경에서 확인해야 한다.
+- 추가 개발: lifecycle retention 자동 purge job, object versioning, frontend browser E2E.
+- 사용 skill/plugin: `caveman`; Gradle test network escalation 사용.
+
+### 2026-06-13 - Object Retention 자동 Purge Job 추가
+
+- 작업 시작 시간: 2026-06-13 10:38:00 +09:00
+- 작업 종료 시간: 2026-06-13 10:47:47 +09:00
+- 사용자 명령: 활성 목표인 frontend/backend 개발 계속 진행. 부족한 부분은 스스로 검증해서 확인.
+- 명령 해석: 직전 soft delete/trash 기능의 후속으로 retention 기간이 지난 trash object를 자동으로 영구 삭제하는 lifecycle 정책을 구현하라는 명령으로 인식.
+- 작업 방식: object metadata repository에 deleted object 후보 조회를 추가하고, scheduler가 retention cutoff 이전 deleted object를 batch 단위로 purge하도록 구현했다. 결과는 audit log와 actuator metric으로 추적한다.
+- 실행 내용:
+  - `DeletedObjectCandidate` record 추가.
+  - `ObjectMetadataRepository.findDeletedBefore(cutoff, limit)` 계약 추가.
+  - in-memory/MariaDB repository의 deleted object 후보 조회 구현.
+  - `ObjectRetentionPurgeJob` 추가.
+  - retention 설정 추가: enabled, days, initial delay, fixed delay, batch size.
+  - `OBJECT_RETENTION_PURGE` 감사 로그 추가.
+  - `osmu.object.retention.purge.objects{result=success|failure}` metric 추가.
+  - `osmu.object.retention.purge.runs{result=failure}` metric 추가.
+  - manual purge의 metadata/delete/usage update 순서 조정.
+  - Docker Compose/backend env/frontend Docker jitter arg 누락 보강.
+  - retention purge unit test 추가.
+  - API/backend/database/local-dev/security/system/monitoring/test 문서 갱신.
+- 구현 내용:
+  - 기본 retention 기간은 30일이다.
+  - retention job은 `deletedAt <= now - retentionDays` object만 purge한다.
+  - storage object가 이미 없으면 metadata 삭제와 quota/objectCount 감소를 계속 진행한다.
+  - retention 기간이 지나지 않은 trash object는 유지한다.
+- 수정된 파일 및 관련 파일:
+  - `osmu-backend/src/main/java/com/example/osmu/object/DeletedObjectCandidate.java`
+  - `osmu-backend/src/main/java/com/example/osmu/object/ObjectRetentionPurgeJob.java`
+  - `osmu-backend/src/main/java/com/example/osmu/object/ObjectService.java`
+  - `osmu-backend/src/main/java/com/example/osmu/object/repository/ObjectMetadataRepository.java`
+  - `osmu-backend/src/main/java/com/example/osmu/object/repository/InMemoryObjectMetadataRepository.java`
+  - `osmu-backend/src/main/java/com/example/osmu/object/repository/MariaDbObjectMetadataRepository.java`
+  - `osmu-backend/src/main/resources/application.yaml`
+  - `osmu-backend/.env.example`
+  - `osmu-backend/src/test/java/com/example/osmu/object/ObjectRetentionPurgeJobTest.java`
+  - `osmu-frontend/Dockerfile`
+  - `infra/local/.env.example`
+  - `infra/local/docker-compose.yml`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/backend-design.md`
+  - `dev-docs/database-design.md`
+  - `dev-docs/local-dev-env.md`
+  - `dev-docs/operation-monitoring.md`
+  - `dev-docs/security-design.md`
+  - `dev-docs/system-architecture.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/worklog/codex/frontend-backend-mvp/worklog-codex-frontend-backend-mvp.md`
+- 검증 기록:
+  - `node --check .\src\services\api.js` 통과.
+  - `npm.cmd run build` 통과. Vite build 성공.
+  - `.\gradlew.bat test` 통과. `BUILD SUCCESSFUL`.
+  - `docker compose --env-file .\infra\local\.env.example -f .\infra\local\docker-compose.yml config --quiet` 통과. `.docker/config.json` 접근 warning은 있었으나 exit code는 0.
+  - `docker info` 실패: `failed to connect to the docker API ... docker_engine ... The system cannot find the file specified.` Docker daemon이 없어 전체 Docker smoke는 실행하지 못했다.
+  - `rg`로 retention job, config/env, metric, audit, test/docs 반영 확인.
+  - `git diff --check` 통과. CRLF warning만 표시.
+- 코드 리뷰: soft delete가 storage를 계속 점유하는 문제를 retention job으로 닫았다. audit/metric이 있어 운영자가 자동 삭제 결과를 추적할 수 있다. 다만 실제 MariaDB/MinIO compose 환경에서 migration과 purge E2E 검증은 Docker daemon 부재로 남아 있다.
+- 결과: Object retention 자동 purge job 구현 완료.
+- 후속 메모: Docker Desktop 실행 후 retention days를 짧게 두고 trash object 자동 purge, metric, audit log를 E2E로 확인해야 한다.
+- 추가 개발: object versioning, lifecycle policy UI, frontend browser E2E.
+- 사용 skill/plugin: `caveman`; Gradle test network escalation 사용.
+
+### 2026-06-13 - Object Retention Admin 운영 UI 추가
+
+- 작업 시작 시간: 2026-06-13 10:48:00 +09:00
+- 작업 종료 시간: 2026-06-13 10:52:59 +09:00
+- 사용자 명령: 활성 목표인 frontend/backend 개발 계속 진행. 부족한 부분은 스스로 검증해서 확인.
+- 명령 해석: retention purge가 자동 작업만 있으면 운영자가 상태를 확인하거나 즉시 실행하기 어려우므로 admin API와 frontend 운영 UI를 추가하라는 명령으로 인식.
+- 작업 방식: AdminController에 retention status/manual purge endpoint를 추가하고, frontend dashboard에 lifecycle strip을 표시해 metric과 수동 실행 버튼을 연결했다.
+- 실행 내용:
+  - `ObjectRetentionStatusResponse`, `ObjectRetentionRunResponse` record 추가.
+  - `GET /api/admin/object-retention/status` 추가.
+  - `POST /api/admin/object-retention/purge` 추가.
+  - `ObjectRetentionPurgeJob`에 public `runNow`, `retentionDays`, `batchSize` 추가.
+  - retention metric counter 값을 Admin API 응답에 포함.
+  - admin retention endpoint MockMvc 테스트 추가.
+  - frontend API wrapper `getObjectRetentionStatus`, `runObjectRetentionPurge` 추가.
+  - Admin dashboard lifecycle strip UI 추가.
+  - frontend mobile layout CSS 추가.
+  - API/frontend/backend/monitoring/test 문서 갱신.
+- 구현 내용:
+  - ADMIN은 retention enabled, days, batch size, purge success/failure/run failure count를 확인할 수 있다.
+  - `Run purge`는 retention cutoff를 지난 trash object만 즉시 purge한다.
+  - frontend는 수동 purge 결과의 `lastPurgedCount`를 표시한다.
+- 수정된 파일 및 관련 파일:
+  - `osmu-backend/src/main/java/com/example/osmu/admin/AdminController.java`
+  - `osmu-backend/src/main/java/com/example/osmu/admin/ObjectRetentionStatusResponse.java`
+  - `osmu-backend/src/main/java/com/example/osmu/admin/ObjectRetentionRunResponse.java`
+  - `osmu-backend/src/main/java/com/example/osmu/object/ObjectRetentionPurgeJob.java`
+  - `osmu-backend/src/test/java/com/example/osmu/admin/AdminObjectRetentionControllerTest.java`
+  - `osmu-backend/src/test/java/com/example/osmu/object/ObjectRetentionPurgeJobTest.java`
+  - `osmu-frontend/src/services/api.js`
+  - `osmu-frontend/src/views/HomeView.vue`
+  - `osmu-frontend/src/assets/main.css`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/backend-design.md`
+  - `dev-docs/frontend-design.md`
+  - `dev-docs/operation-monitoring.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/worklog/codex/frontend-backend-mvp/worklog-codex-frontend-backend-mvp.md`
+- 검증 기록:
+  - `node --check .\src\services\api.js` 통과.
+  - `npm.cmd run build` 통과. Vite build 성공.
+  - `.\gradlew.bat test` 통과. `BUILD SUCCESSFUL`.
+  - `docker compose --env-file .\infra\local\.env.example -f .\infra\local\docker-compose.yml config --quiet` 통과. `.docker/config.json` 접근 warning은 있었으나 exit code는 0.
+  - `docker info` 실패: `failed to connect to the docker API ... docker_engine ... The system cannot find the file specified.` Docker daemon이 없어 전체 Docker smoke는 실행하지 못했다.
+  - `rg`로 admin object-retention API, frontend lifecycle UI, tests/docs 반영 확인.
+  - `git diff --check` 통과. CRLF warning만 표시.
+- 코드 리뷰: retention을 설정값/자동 job에서 운영자가 관찰하고 수동 실행할 수 있는 기능으로 확장했다. metric 응답은 Actuator를 직접 보지 않아도 dashboard에 필요한 숫자를 제공한다.
+- 결과: Object retention admin status/manual purge API와 frontend 운영 UI 구현 완료.
+- 후속 메모: Docker Desktop 실행 후 admin UI에서 수동 purge 버튼, audit log, metric 증가를 E2E로 확인해야 한다.
+- 추가 개발: lifecycle policy UI에서 retention days 변경, object versioning, frontend browser E2E.
+- 사용 skill/plugin: `caveman`; Gradle test network escalation 사용.
+
+### 2026-06-13 - Object Retention Policy 런타임 변경 기능 추가
+
+- 작업 시작 시간: 2026-06-13 10:53:00 +09:00
+- 작업 종료 시간: 2026-06-13 11:03:08 +09:00
+- 사용자 명령: 활성 목표인 frontend/backend 개발 계속 진행. 부족한 부분은 스스로 검증해서 확인. `/caveman Ultra`.
+- 명령 해석: 직전 retention status/manual purge 기능의 후속으로 운영자가 retention enabled/days/batch size를 UI/API에서 바꾸고 MariaDB 모드에서 영속화할 수 있게 만들라는 명령으로 인식.
+- 작업 방식: retention policy 저장소를 분리하고 admin API, frontend lifecycle form, migration, test, 문서를 같이 갱신했다. 변경 작업은 감사 로그로 남기고, Browser PUT preflight가 막히지 않도록 Backend CORS method도 보강했다.
+- 실행 내용:
+  - `ObjectRetentionPolicy`, `ObjectRetentionPolicyRepository` 추가.
+  - in-memory/MariaDB retention policy repository 추가.
+  - `V15__object_retention_policy.sql` migration 추가.
+  - `ObjectRetentionPurgeJob`이 env 고정값 대신 repository policy를 읽도록 변경.
+  - `PUT /api/admin/object-retention/policy` 추가.
+  - policy 변경 성공 시 `OBJECT_RETENTION_POLICY_UPDATE` 감사 로그 기록.
+  - Backend CORS allowed methods에 `PUT` 추가.
+  - frontend lifecycle strip에 enabled/days/batch 입력과 `Save` 버튼 추가.
+  - retention policy update API wrapper 추가.
+  - unit/MockMvc 테스트와 문서 갱신.
+- 구현 내용:
+  - ADMIN은 운영 중 retention enabled, retentionDays, batchSize를 변경할 수 있다.
+  - `enabled=false` policy면 manual purge는 conflict, scheduler `runNow`는 purge 없이 0을 반환한다.
+  - MariaDB 모드에서는 `object_retention_policy` singleton row에 policy를 저장한다.
+  - `osmu.object.retention.enabled=false`는 global kill switch로 남겨 DB policy보다 우선한다.
+- 수정된 파일 및 관련 파일:
+  - `osmu-backend/src/main/java/com/example/osmu/object/ObjectRetentionPolicy.java`
+  - `osmu-backend/src/main/java/com/example/osmu/object/repository/ObjectRetentionPolicyRepository.java`
+  - `osmu-backend/src/main/java/com/example/osmu/object/repository/InMemoryObjectRetentionPolicyRepository.java`
+  - `osmu-backend/src/main/java/com/example/osmu/object/repository/MariaDbObjectRetentionPolicyRepository.java`
+  - `osmu-backend/src/main/java/com/example/osmu/object/ObjectRetentionPurgeJob.java`
+  - `osmu-backend/src/main/java/com/example/osmu/admin/AdminController.java`
+  - `osmu-backend/src/main/java/com/example/osmu/admin/UpdateObjectRetentionPolicyRequest.java`
+  - `osmu-backend/src/main/java/com/example/osmu/config/WebConfig.java`
+  - `osmu-backend/src/main/resources/db/migration/V15__object_retention_policy.sql`
+  - `osmu-backend/src/test/java/com/example/osmu/object/ObjectRetentionPurgeJobTest.java`
+  - `osmu-backend/src/test/java/com/example/osmu/admin/AdminObjectRetentionControllerTest.java`
+  - `osmu-frontend/src/services/api.js`
+  - `osmu-frontend/src/views/HomeView.vue`
+  - `osmu-frontend/src/assets/main.css`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/backend-design.md`
+  - `dev-docs/database-design.md`
+  - `dev-docs/frontend-design.md`
+  - `dev-docs/operation-monitoring.md`
+  - `dev-docs/security-design.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/worklog/codex/frontend-backend-mvp/worklog-codex-frontend-backend-mvp.md`
+- 검증 기록:
+  - `node --check .\src\services\api.js` 통과.
+  - `npm.cmd run build` 통과. Vite build 성공.
+  - `.\gradlew.bat test` 통과. `BUILD SUCCESSFUL`.
+  - `docker compose --env-file .\infra\local\.env.example -f .\infra\local\docker-compose.yml config --quiet` 통과. `.docker/config.json` 접근 warning은 있었으나 exit code는 0.
+  - `docker info` 실패: `failed to connect to the docker API ... docker_engine ... The system cannot find the file specified.` Docker daemon이 없어 전체 Docker smoke는 실행하지 못했다.
+  - `rg`로 retention policy API, migration, audit event, CORS PUT 반영 확인.
+  - `Invoke-WebRequest -UseBasicParsing http://127.0.0.1:5173/` 통과. build artifact static server HTTP 200 확인.
+  - Browser plugin 연결 시도 실패: `CreateProcessAsUserW failed: 5`. in-app browser 시각 검증은 수행하지 못했다.
+  - `git diff --check` 통과. CRLF warning만 표시.
+- 코드 리뷰: retention이 고정 config에서 운영 가능한 policy로 이동했다. DB 저장, audit, validation, CORS까지 묶여 실제 admin dashboard workflow가 막히지 않는다. MariaDB repository는 schema 생성 시 기본 row를 insert-only로 seed해서 기존 운영 policy를 덮어쓰지 않는다.
+- 결과: Object retention policy 런타임 변경 API/UI/DB 영속화 구현 완료.
+- 후속 메모: Docker Desktop 실행 후 MariaDB migration, policy 저장 지속성, frontend Save -> status refresh -> manual purge conflict 흐름을 E2E로 확인해야 한다.
+- 추가 개발: object versioning, lifecycle rule 다중화(prefix/tag별 retention), frontend browser E2E.
+- 사용 skill/plugin: `caveman`; Gradle test network escalation 사용.
+
+### 2026-06-13 - Object Versioning MVP 추가
+
+- 작업 시작 시간: 2026-06-13 11:04:00 +09:00
+- 작업 종료 시간: 2026-06-13 11:17:36 +09:00
+- 사용자 명령: 활성 목표인 frontend/backend 개발 계속 진행. 부족한 부분은 스스로 검증해서 확인.
+- 명령 해석: soft delete/retention 다음 단계로 데이터 재사용성과 복구성을 높이는 object versioning 기초 기능을 구현하라는 명령으로 인식.
+- 작업 방식: REST upload overwrite 전에 기존 active object를 hidden storage key로 snapshot하고, version metadata repository/API/UI를 추가했다. purge/retention purge는 active object와 version snapshot을 함께 정리하도록 연결했다.
+- 실행 내용:
+  - `ObjectVersionRecord`, `ObjectVersionStorageKeys` 추가.
+  - `ObjectVersionRepository`와 in-memory/MariaDB 구현 추가.
+  - `V16__object_versions.sql` migration 추가.
+  - REST upload overwrite 시 기존 active object를 `.osmu/versions/{hash}/{versionId}`로 snapshot.
+  - `GET /objects/versions/{objectKey}` version 목록 API 추가.
+  - `POST /objects/versions/{versionId}/restore/{objectKey}` version restore API 추가.
+  - version restore 시 현재 active object도 새 version으로 snapshot.
+  - object purge와 retention purge에서 version snapshot storage/metadata도 함께 삭제.
+  - bucket sync는 hidden version storage key를 일반 object metadata list에는 넣지 않고 quota usage에는 포함.
+  - frontend object row에 `Versions` 버튼과 version list/restore panel 추가.
+  - MockMvc flow test와 retention purge test 보강.
+  - API/backend/database/frontend/test 문서 갱신.
+- 구현 내용:
+  - REST upload overwrite는 이전 content/tags/metadata를 version으로 보존한다.
+  - version list는 최신 snapshot부터 반환한다.
+  - version restore는 선택한 version을 active key로 복구하고 `OBJECT_VERSION_RESTORE` 감사 로그를 기록한다.
+  - Presigned/multipart overwrite는 기존 정책대로 아직 차단한다.
+- 수정된 파일 및 관련 파일:
+  - `osmu-backend/src/main/java/com/example/osmu/object/ObjectVersionRecord.java`
+  - `osmu-backend/src/main/java/com/example/osmu/object/ObjectVersionStorageKeys.java`
+  - `osmu-backend/src/main/java/com/example/osmu/object/repository/ObjectVersionRepository.java`
+  - `osmu-backend/src/main/java/com/example/osmu/object/repository/InMemoryObjectVersionRepository.java`
+  - `osmu-backend/src/main/java/com/example/osmu/object/repository/MariaDbObjectVersionRepository.java`
+  - `osmu-backend/src/main/resources/db/migration/V16__object_versions.sql`
+  - `osmu-backend/src/main/java/com/example/osmu/object/ObjectService.java`
+  - `osmu-backend/src/main/java/com/example/osmu/object/ObjectController.java`
+  - `osmu-backend/src/main/java/com/example/osmu/object/ObjectRetentionPurgeJob.java`
+  - `osmu-backend/src/main/java/com/example/osmu/bucket/BucketService.java`
+  - `osmu-backend/src/main/java/com/example/osmu/admin/AdminController.java`
+  - `osmu-backend/src/test/java/com/example/osmu/bucket/BucketObjectFlowTest.java`
+  - `osmu-backend/src/test/java/com/example/osmu/object/ObjectRetentionPurgeJobTest.java`
+  - `osmu-backend/src/test/java/com/example/osmu/object/ObjectServiceMultipartRefreshTest.java`
+  - `osmu-frontend/src/services/api.js`
+  - `osmu-frontend/src/views/HomeView.vue`
+  - `osmu-frontend/src/assets/main.css`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/backend-design.md`
+  - `dev-docs/database-design.md`
+  - `dev-docs/frontend-design.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/worklog/codex/frontend-backend-mvp/worklog-codex-frontend-backend-mvp.md`
+- 검증 기록:
+  - `node --check .\src\services\api.js` 통과.
+  - `npm.cmd run build` 통과. Vite build 성공.
+  - `.\gradlew.bat test` 통과. `BUILD SUCCESSFUL`.
+  - `docker compose --env-file .\infra\local\.env.example -f .\infra\local\docker-compose.yml config --quiet` 통과. `.docker/config.json` 접근 warning은 있었으나 exit code는 0.
+  - `docker info` 실패: `failed to connect to the docker API ... docker_engine ... The system cannot find the file specified.` Docker daemon이 없어 Docker E2E는 실행하지 못했다.
+  - `Invoke-WebRequest -UseBasicParsing http://127.0.0.1:5173/` 통과. HTTP 200 확인.
+  - `git diff --check` 통과. CRLF warning만 표시.
+- 코드 리뷰: version snapshot은 object storage 안의 hidden key로 보관해 DB에 대용량 binary를 넣지 않는다. quota에는 version bytes/count를 포함해 실제 저장 비용과 맞췄다. 다만 현재는 REST upload overwrite만 versioning 대상이고, presigned/multipart overwrite는 아직 기존 MVP 정책대로 차단한다.
+- 결과: Object versioning MVP API/UI/DB 구현 완료.
+- 후속 메모: Docker Desktop 실행 후 MariaDB migration, MinIO hidden version object 생성, frontend Versions/Restore UI를 E2E로 확인해야 한다.
+- 추가 개발: presigned/multipart overwrite versioning, version download/delete API, lifecycle rule 다중화(prefix/tag별 retention), frontend browser E2E.
+- 사용 skill/plugin: `caveman`; Gradle test network escalation 사용.
+
+### 2026-06-13 - Object Version Download/Delete 추가
+
+- 작업 시작 시간: 2026-06-13 11:18:00 +09:00
+- 작업 종료 시간: 2026-06-13 11:23:39 +09:00
+- 사용자 명령: 활성 목표인 frontend/backend 개발 계속 진행. `/caveman Ultra`로 짧게 진행.
+- 명령 해석: 직전 Object Versioning MVP에서 남은 핵심 운영 기능인 과거 version 직접 다운로드와 개별 삭제를 구현하라는 명령으로 인식.
+- 작업 방식: 기존 version snapshot 구조와 audit/permission/quota 패턴을 유지하면서 REST API, service, UI, 테스트, 문서를 작게 확장했다.
+- 실행 내용:
+  - `GET /api/buckets/{bucketName}/objects/versions/{versionId}/download/{objectKey}` 추가.
+  - `DELETE /api/buckets/{bucketName}/objects/versions/{versionId}/delete/{objectKey}` 추가.
+  - version 다운로드 성공 시 `OBJECT_VERSION_DOWNLOAD` 감사 로그 기록.
+  - version 삭제 성공 시 `OBJECT_VERSION_DELETE` 감사 로그 기록.
+  - version 삭제 시 hidden storage object와 metadata를 제거하고 bucket usage를 version size/count만큼 차감.
+  - frontend version panel에 `Download`, `Restore`, `Delete` 버튼 제공.
+  - version download/delete 흐름을 MockMvc flow test에 추가.
+  - API/backend/frontend/test 문서 갱신.
+- 구현 내용:
+  - `ObjectService.downloadVersion`은 저장된 version metadata를 기준으로 hidden storage stream을 열고 원본 object filename으로 streaming response를 만든다.
+  - `ObjectService.deleteVersion`은 active object를 건드리지 않고 선택한 version만 제거한다.
+  - frontend 삭제는 confirm dialog를 거치며 완료 후 dashboard와 version list를 refresh한다.
+- 수정된 파일 및 관련 파일:
+  - `osmu-backend/src/main/java/com/example/osmu/object/ObjectService.java`
+  - `osmu-backend/src/main/java/com/example/osmu/object/ObjectController.java`
+  - `osmu-backend/src/test/java/com/example/osmu/bucket/BucketObjectFlowTest.java`
+  - `osmu-frontend/src/services/api.js`
+  - `osmu-frontend/src/views/HomeView.vue`
+  - `osmu-frontend/src/assets/main.css`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/backend-design.md`
+  - `dev-docs/frontend-design.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/worklog/codex/frontend-backend-mvp/worklog-codex-frontend-backend-mvp.md`
+- 검증 기록:
+  - `node --check .\src\services\api.js` 통과.
+  - `npm.cmd run build` 통과. Vite build 성공.
+  - `.\gradlew.bat test` 통과. `BUILD SUCCESSFUL`.
+  - `docker compose --env-file .\infra\local\.env.example -f .\infra\local\docker-compose.yml config --quiet` 통과. `.docker/config.json` 접근 warning은 있었으나 exit code는 0.
+  - `docker info` 실패: `failed to connect to the docker API ... docker_engine ... The system cannot find the file specified.` Docker daemon이 없어 Docker E2E는 실행하지 못했다.
+  - `Invoke-WebRequest -UseBasicParsing http://127.0.0.1:5173/` 통과. HTTP 200 확인.
+  - Browser plugin 연결 시도 실패: `CreateProcessAsUserW failed: 5`. in-app browser 시각 검증은 수행하지 못했다.
+  - `git diff --check` 통과. CRLF warning만 표시.
+  - `rg`로 version download/delete API, audit event, frontend wrapper/handler, 문서 반영 확인.
+- 코드 리뷰: version 다운로드는 대용량 파일을 byte array로 적재하지 않고 streaming path를 유지한다. version 삭제는 active object와 metadata를 분리해 과거 snapshot만 제거하므로 복구/재사용 흐름을 해치지 않는다. bucket usage 차감도 version snapshot이 quota에 포함되는 기존 설계와 일치한다.
+- 결과: Object version 직접 다운로드/개별 삭제 API/UI/테스트/문서 구현 완료.
+- 후속 메모: Docker Desktop 실행 후 MariaDB + MinIO에서 hidden version object 다운로드/삭제, usage 차감, audit log를 E2E로 확인해야 한다.
+- 추가 개발: presigned/multipart overwrite versioning, version retention policy, lifecycle rule 다중화(prefix/tag별 retention), frontend browser E2E.
+- 사용 skill/plugin: `caveman`, `Browser`; Gradle test network escalation 사용.
+
+### 2026-06-13 - Presigned/Multipart Overwrite Versioning 추가
+
+- 작업 시작 시간: 2026-06-13 11:24:00 +09:00
+- 작업 종료 시간: 2026-06-13 11:31:25 +09:00
+- 사용자 명령: 활성 목표인 frontend/backend 개발 계속 진행. 부족한 부분은 스스로 검증해서 확인.
+- 명령 해석: direct REST overwrite만 versioning되는 gap을 줄이고, presigned upload와 multipart upload도 같은 object version 정책으로 확장하라는 명령으로 인식.
+- 작업 방식: presigned upload는 active key 직접 PUT 대신 internal staging key를 사용하고, complete 단계에서 snapshot/copy/delete 흐름을 수행하도록 변경했다. Multipart upload는 complete 직전에 기존 active object를 snapshot하도록 변경했다.
+- 실행 내용:
+  - `.osmu/uploads/` internal staging prefix 추가.
+  - `normalizeRequiredKey`가 `.osmu/versions/`, `.osmu/uploads/` 예약 prefix를 차단하도록 강화.
+  - Bucket sync에서 staging key는 visible metadata와 quota usage에서 제외하고 version key는 기존처럼 usage에 포함.
+  - presigned upload URL 발급 시 staging key로 PUT URL을 발급하고 session에 staging key, previousExists, previousSizeBytes를 저장.
+  - presigned complete 시 staging object를 active key로 stream copy하고 staging object를 삭제.
+  - presigned overwrite complete 시 기존 active object를 version snapshot으로 저장한 뒤 active key를 교체.
+  - multipart create에서 same-key upload를 허용하고 previous object 정보를 session에 저장.
+  - multipart complete 시 quota를 먼저 확인하고, overwrite면 기존 active object를 version snapshot으로 저장한 뒤 complete 수행.
+  - quota failure 시 multipart upload를 abort하고 active object를 유지.
+  - unit test로 presigned staging/version snapshot, multipart overwrite snapshot 검증 추가.
+  - API/backend/system/test 문서 갱신.
+- 구현 내용:
+  - `ObjectService.createPresignedUploadUrl`은 active key가 아니라 `.osmu/uploads/{hash}/{uploadId}`에 대한 PUT URL을 반환한다.
+  - `ObjectService.completePresignedUpload`은 staged stream을 active key로 복사하고 `bucketService.applyObjectChange(size, 1)`을 적용한다.
+  - `ObjectService.completeMultipartUpload`은 overwrite 시 complete 전 snapshot을 만들고 새 active size와 version count를 quota에 반영한다.
+- 수정된 파일 및 관련 파일:
+  - `osmu-backend/src/main/java/com/example/osmu/object/ObjectVersionStorageKeys.java`
+  - `osmu-backend/src/main/java/com/example/osmu/bucket/BucketService.java`
+  - `osmu-backend/src/main/java/com/example/osmu/object/ObjectService.java`
+  - `osmu-backend/src/test/java/com/example/osmu/object/ObjectServiceMultipartRefreshTest.java`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/backend-design.md`
+  - `dev-docs/system-architecture.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/worklog/codex/frontend-backend-mvp/worklog-codex-frontend-backend-mvp.md`
+- 검증 기록:
+  - `.\gradlew.bat test` 통과. `BUILD SUCCESSFUL`.
+  - `node --check .\src\services\api.js` 통과.
+  - `npm.cmd run build` 통과. Vite build 성공.
+  - `docker compose --env-file .\infra\local\.env.example -f .\infra\local\docker-compose.yml config --quiet` 통과. `.docker/config.json` 접근 warning은 있었으나 exit code는 0.
+  - `docker info` 실패: `failed to connect to the docker API ... docker_engine ... The system cannot find the file specified.` Docker daemon이 없어 MinIO 실제 presigned/multipart E2E는 실행하지 못했다.
+  - `Invoke-WebRequest -UseBasicParsing http://127.0.0.1:5173/` 통과. HTTP 200 확인.
+  - `git diff --check` 통과. CRLF warning만 표시.
+  - `rg`로 staging prefix, service helper, sync filter, 테스트, 문서 반영 확인.
+- 코드 리뷰: presigned overwrite는 URL 발급 후 외부 PUT이 active object를 즉시 덮어쓰는 위험이 있었기 때문에 staging key로 우회했다. complete 전까지 active object가 유지되고, complete 시 snapshot을 만들 수 있어 versioning 일관성이 좋아졌다. Multipart는 active object가 complete 전까지 유지되므로 complete 직전 snapshot으로 충분하다.
+- 결과: Presigned/multipart overwrite versioning backend/test/docs 구현 완료.
+- 후속 메모: Docker Desktop 실행 후 MinIO에서 staging key PUT, complete copy/delete, multipart overwrite, bucket usage, hidden key sync 제외를 E2E로 확인해야 한다.
+- 추가 개발: version retention policy, lifecycle rule 다중화(prefix/tag별 retention), S3 API compatibility 확장, frontend browser E2E.
+- 사용 skill/plugin: `caveman`; Gradle test network escalation 사용.
+
+### 2026-06-13 - Object Version Retention Policy 추가
+
+- 작업 시작 시간: 2026-06-13 11:32:00 +09:00
+- 작업 종료 시간: 2026-06-13 11:41:06 +09:00
+- 사용자 명령: 활성 목표인 frontend/backend 개발 계속 진행. 부족한 부분은 스스로 검증해서 확인.
+- 명령 해석: version snapshot이 계속 쌓이는 운영 gap을 줄이기 위해 historical object version 자동 보존/삭제 정책을 구현하라는 명령으로 인식.
+- 작업 방식: 기존 object retention policy와 admin lifecycle UI를 확장해 trash retention과 version retention을 한 정책에서 관리하도록 구성했다. Soft-deleted object purge job과 별도인 `ObjectVersionRetentionPurgeJob`을 추가해 active object와 독립적으로 old version snapshot만 삭제하게 했다.
+- 실행 내용:
+  - `ObjectRetentionPolicy`에 `versionRetentionDays`, `versionBatchSize` 추가.
+  - in-memory/MariaDB retention policy repository 확장.
+  - `V17__object_version_retention_policy.sql` migration 추가.
+  - `ObjectVersionRepository.findCreatedBefore` 추가.
+  - in-memory/MariaDB object version repository에 오래된 version 후보 조회 구현.
+  - `ObjectVersionRetentionPurgeJob` 추가.
+  - version purge 감사 로그 `OBJECT_VERSION_RETENTION_PURGE` 추가.
+  - version purge metric `osmu.object.version.retention.purge.versions`, run failure metric 추가.
+  - Admin status/policy/run API에 version retention fields와 purgedVersionCount 추가.
+  - Admin lifecycle UI에 version days/batch/count 표시와 저장 form 추가.
+  - unit test `ObjectVersionRetentionPurgeJobTest` 추가.
+  - API/backend/database/frontend/operation/security/test 문서 갱신.
+- 구현 내용:
+  - version retention은 `policy.enabled()`가 false이면 실행하지 않는다.
+  - cutoff는 `now.minusDays(versionRetentionDays)`이며, `versionBatchSize`만큼 오래된 snapshot부터 삭제한다.
+  - purge 성공 시 hidden version storage와 `object_versions` metadata를 삭제하고 bucket usage를 `-version.sizeBytes`, `-1`로 차감한다.
+  - manual `POST /api/admin/object-retention/purge`는 trash object purge와 version purge를 함께 실행하고 `purgedCount`, `purgedVersionCount`를 반환한다.
+- 수정된 파일 및 관련 파일:
+  - `osmu-backend/src/main/java/com/example/osmu/object/ObjectRetentionPolicy.java`
+  - `osmu-backend/src/main/java/com/example/osmu/object/ObjectVersionRetentionPurgeJob.java`
+  - `osmu-backend/src/main/java/com/example/osmu/object/repository/ObjectVersionRepository.java`
+  - `osmu-backend/src/main/java/com/example/osmu/object/repository/InMemoryObjectVersionRepository.java`
+  - `osmu-backend/src/main/java/com/example/osmu/object/repository/MariaDbObjectVersionRepository.java`
+  - `osmu-backend/src/main/java/com/example/osmu/object/repository/InMemoryObjectRetentionPolicyRepository.java`
+  - `osmu-backend/src/main/java/com/example/osmu/object/repository/MariaDbObjectRetentionPolicyRepository.java`
+  - `osmu-backend/src/main/java/com/example/osmu/admin/AdminController.java`
+  - `osmu-backend/src/main/java/com/example/osmu/admin/ObjectRetentionStatusResponse.java`
+  - `osmu-backend/src/main/java/com/example/osmu/admin/ObjectRetentionRunResponse.java`
+  - `osmu-backend/src/main/java/com/example/osmu/admin/UpdateObjectRetentionPolicyRequest.java`
+  - `osmu-backend/src/main/resources/db/migration/V17__object_version_retention_policy.sql`
+  - `osmu-backend/src/test/java/com/example/osmu/object/ObjectVersionRetentionPurgeJobTest.java`
+  - `osmu-frontend/src/views/HomeView.vue`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/backend-design.md`
+  - `dev-docs/database-design.md`
+  - `dev-docs/frontend-design.md`
+  - `dev-docs/local-dev-env.md`
+  - `dev-docs/operation-monitoring.md`
+  - `dev-docs/security-design.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/worklog/codex/frontend-backend-mvp/worklog-codex-frontend-backend-mvp.md`
+- 검증 기록:
+  - `.\gradlew.bat test` 통과. `BUILD SUCCESSFUL`.
+  - `node --check .\src\services\api.js` 통과.
+  - `npm.cmd run build` 통과. Vite build 성공.
+  - `docker compose --env-file .\infra\local\.env.example -f .\infra\local\docker-compose.yml config --quiet` 통과. `.docker/config.json` 접근 warning은 있었으나 exit code는 0.
+  - `docker info` 실패: `failed to connect to the docker API ... docker_engine ... The system cannot find the file specified.` Docker daemon이 없어 MariaDB migration/MinIO version retention E2E는 실행하지 못했다.
+  - `Invoke-WebRequest -UseBasicParsing http://127.0.0.1:5173/` 통과. HTTP 200 확인.
+  - `git diff --check` 통과. CRLF warning만 표시.
+  - `rg`로 version retention job, API fields, migration, UI fields, audit event, metric, 문서 반영 확인.
+- 코드 리뷰: active object purge와 historical version purge를 분리해 version lifecycle을 운영자가 따로 조절할 수 있게 했다. Admin API는 기존 lifecycle endpoint를 확장해 UI/운영 모델이 복잡해지지 않는다. 단, MariaDB migration은 Docker daemon 부재로 실제 DB 적용 검증이 아직 필요하다.
+- 결과: Object version retention policy backend/admin UI/test/docs 구현 완료.
+- 후속 메모: Docker Desktop 실행 후 `V17` migration, admin policy save, manual purge, scheduler purge, metrics/audit log, bucket usage 차감을 MariaDB+MinIO로 E2E 확인해야 한다.
+- 추가 개발: lifecycle rule 다중화(prefix/tag별 retention), S3 API compatibility 확장, frontend browser E2E.
+- 사용 skill/plugin: `caveman`; Gradle test network escalation 사용.

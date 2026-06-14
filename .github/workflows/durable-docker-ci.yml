@@ -1,0 +1,35 @@
+name: Durable Docker CI
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: durable-docker-ci-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  docker-integration:
+    name: Docker integration smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Verify Docker integration smoke
+        shell: pwsh
+        run: ./scripts/verify-docker-integration.ps1 -EnvFile ./infra/local/.env.example -ComposeFile ./infra/local/docker-compose.yml
+
+      - name: Docker Compose logs
+        if: failure()
+        shell: pwsh
+        run: docker compose --env-file ./infra/local/.env.example -f ./infra/local/docker-compose.yml logs --no-color
+
+      - name: Docker Compose cleanup
+        if: always()
+        shell: pwsh
+        run: docker compose --env-file ./infra/local/.env.example -f ./infra/local/docker-compose.yml down -v --remove-orphans

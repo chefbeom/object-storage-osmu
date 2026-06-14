@@ -1,0 +1,174 @@
+import assert from 'node:assert/strict'
+import test from 'node:test'
+import { clearAuthTokens, downloadObject, getBuckets } from '../services/api.js'
+import { useAuthStore } from './auth.js'
+
+const TOKEN_STORAGE_KEY = 'osmu.auth.tokens'
+
+test('downloadObject retries once with refreshed access token', async () => {
+  const storage = installSessionStorage()
+  const fetchMock = mockFetch([
+    () => jsonResponse({ error: { code: 'AUTHENTICATION_REQUIRED', message: 'expired' } }, 401),
+    () => jsonResponse({
+      data: {
+        accessToken: 'new-access',
+        refreshToken: 'new-refresh',
+        user: { loginId: 'admin', role: 'ADMIN' },
+      },
+    }),
+    () => new Response('file-body', { status: 200 }),
+  ])
+  const auth = useAuthStore()
+  const stopSync = auth.startAuthSync()
+
+  try {
+    auth.applySession({
+      accessToken: 'old-access',
+      refreshToken: 'old-refresh',
+      user: { loginId: 'admin', role: 'ADMIN' },
+    })
+
+    const blob = await downloadObject('media', 'hello.txt')
+
+    assert.equal(await blob.text(), 'file-body')
+    assert.equal(fetchMock.calls[0].options.headers.get('Authorization'), 'Bearer old-access')
+    assert.equal(fetchMock.calls[1].url, 'http://localhost:8080/api/auth/refresh')
+    assert.deepEqual(JSON.parse(fetchMock.calls[1].options.body), { refreshToken: 'old-refresh' })
+    assert.equal(fetchMock.calls[2].options.headers.get('Authorization'), 'Bearer new-access')
+    assert.match(storage.getItem(TOKEN_STORAGE_KEY), /new-refresh/)
+  } finally {
+    stopSync()
+    cleanupAuthTest(fetchMock)
+  }
+})
+
+test('refresh failure clears authStore state and persisted tokens', async () => {
+  const storage = installSessionStorage()
+  const fetchMock = mockFetch([
+    () => jsonResponse({ error: { code: 'AUTHENTICATION_REQUIRED', message: 'expired' } }, 401),
+    () => jsonResponse({ error: { code: 'AUTHENTICATION_REQUIRED', message: 'revoked' } }, 401),
+  ])
+  const auth = useAuthStore()
+  let expiredCount = 0
+  const stopSync = auth.startAuthSync(() => {
+    expiredCount += 1
+  })
+
+  try {
+    auth.applySession({
+      accessToken: 'expired-access',
+      refreshToken: 'revoked-refresh',
+      user: { loginId: 'viewer', role: 'USER' },
+    })
+
+    await assert.rejects(() => getBuckets(), { code: 'AUTHENTICATION_REQUIRED', status: 401 })
+
+    assert.equal(auth.state.user, null)
+    assert.equal(auth.state.accessToken, null)
+    assert.equal(auth.state.refreshToken, null)
+    assert.equal(auth.isLoggedIn.value, false)
+    assert.equal(storage.getItem(TOKEN_STORAGE_KEY), null)
+    assert.equal(expiredCount, 1)
+  } finally {
+    stopSync()
+    cleanupAuthTest(fetchMock)
+  }
+})
+
+test('restoreSession loads stored tokens and current user profile', async () => {
+  const storage = installSessionStorage()
+  storage.setItem(TOKEN_STORAGE_KEY, JSON.stringify({
+    accessToken: 'stored-access',
+    refreshToken: 'stored-refresh',
+  }))
+  const fetchMock = mockFetch([
+    () => jsonResponse({
+      data: {
+        id: 7,
+        loginId: 'org-admin',
+        role: 'ORG_ADMIN',
+        organizationId: 3,
+      },
+    }),
+  ])
+  const auth = useAuthStore()
+
+  try {
+    const restored = await auth.restoreSession()
+
+    assert.equal(restored, true)
+    assert.equal(auth.state.accessToken, 'stored-access')
+    assert.equal(auth.state.refreshToken, 'stored-refresh')
+    assert.equal(auth.state.user.loginId, 'org-admin')
+    assert.equal(auth.isOrgAdmin.value, true)
+    assert.equal(auth.canUseAdminTools.value, true)
+    assert.equal(fetchMock.calls[0].url, 'http://localhost:8080/api/users/me')
+    assert.equal(fetchMock.calls[0].options.headers.get('Authorization'), 'Bearer stored-access')
+  } finally {
+    cleanupAuthTest(fetchMock)
+  }
+})
+
+function installSessionStorage() {
+  const storage = createMemoryStorage()
+  globalThis.window = {
+    sessionStorage: storage,
+    setTimeout,
+    clearTimeout,
+  }
+  return storage
+}
+
+function createMemoryStorage() {
+  const items = new Map()
+  return {
+    get length() {
+      return items.size
+    },
+    key(index) {
+      return Array.from(items.keys())[index] ?? null
+    },
+    getItem(key) {
+      return items.has(key) ? items.get(key) : null
+    },
+    setItem(key, value) {
+      items.set(key, String(value))
+    },
+    removeItem(key) {
+      items.delete(key)
+    },
+    clear() {
+      items.clear()
+    },
+  }
+}
+
+function mockFetch(handlers) {
+  const previousFetch = globalThis.fetch
+  const calls = []
+  globalThis.fetch = async (url, options = {}) => {
+    calls.push({ url: String(url), options })
+    const handler = handlers.shift()
+    assert.ok(handler, `Unexpected fetch call: ${url}`)
+    return handler(url, options)
+  }
+  return {
+    calls,
+    restore() {
+      globalThis.fetch = previousFetch
+    },
+  }
+}
+
+function jsonResponse(payload, status = 200) {
+  return new Response(JSON.stringify(payload), {
+    status,
+    headers: { 'Content-Type': 'application/json' },
+  })
+}
+
+function cleanupAuthTest(fetchMock) {
+  clearAuthTokens()
+  fetchMock.restore()
+  delete globalThis.window
+}

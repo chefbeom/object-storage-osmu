@@ -1,0 +1,51 @@
+name: Container Security CI
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: container-security-ci-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  container-security:
+    name: Image vulnerability and SBOM checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    env:
+      BACKEND_IMAGE: osmu-backend:${{ github.sha }}
+      FRONTEND_IMAGE: osmu-frontend:${{ github.sha }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build backend image
+        run: docker build -t "$BACKEND_IMAGE" ./osmu-backend
+
+      - name: Build frontend image
+        run: docker build -t "$FRONTEND_IMAGE" ./osmu-frontend
+
+      - name: Scan backend image
+        run: docker run --rm -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy:latest image --exit-code 1 --severity CRITICAL,HIGH --ignore-unfixed --format table "$BACKEND_IMAGE"
+
+      - name: Scan frontend image
+        run: docker run --rm -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy:latest image --exit-code 1 --severity CRITICAL,HIGH --ignore-unfixed --format table "$FRONTEND_IMAGE"
+
+      - name: Generate SBOM files
+        run: |
+          mkdir -p .osmu-run/sbom
+          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock -v "${{ github.workspace }}/.osmu-run/sbom:/out" anchore/syft:latest "$BACKEND_IMAGE" -o spdx-json=/out/backend.spdx.json
+          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock -v "${{ github.workspace }}/.osmu-run/sbom:/out" anchore/syft:latest "$FRONTEND_IMAGE" -o spdx-json=/out/frontend.spdx.json
+
+      - name: Upload SBOM artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: osmu-sbom-${{ github.sha }}
+          path: .osmu-run/sbom/*.spdx.json
+          if-no-files-found: error
+          retention-days: 14

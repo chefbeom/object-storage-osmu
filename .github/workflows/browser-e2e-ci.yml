@@ -1,0 +1,74 @@
+name: Browser E2E CI
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: browser-e2e-ci-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  browser-e2e:
+    name: Browser click-path E2E
+    runs-on: windows-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: gradle
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: osmu-frontend/package-lock.json
+
+      - name: Install frontend dependencies
+        working-directory: osmu-frontend
+        shell: pwsh
+        run: npm ci
+
+      - name: Install Playwright
+        working-directory: osmu-frontend
+        shell: pwsh
+        run: |
+          npm install --no-save @playwright/test@1.56.1
+          npx playwright install chromium
+
+      - name: Start lightweight prototype
+        shell: pwsh
+        run: .\scripts\start-local-prototype.ps1
+
+      - name: Run browser E2E
+        working-directory: osmu-frontend
+        shell: pwsh
+        env:
+          OSMU_FRONTEND_BASE_URL: http://localhost:5173
+          OSMU_ADMIN_LOGIN_ID: admin
+          OSMU_ADMIN_PASSWORD: password
+        run: npx playwright test .\e2e\lightweight-demo.spec.js --browser=chromium --reporter=line
+
+      - name: Print prototype logs
+        if: failure()
+        shell: pwsh
+        run: |
+          Get-ChildItem .\.osmu-run -Filter *.log -ErrorAction SilentlyContinue | ForEach-Object {
+            Write-Host "===== $($_.Name) ====="
+            Get-Content -LiteralPath $_.FullName -Tail 200
+          }
+
+      - name: Stop lightweight prototype
+        if: always()
+        shell: pwsh
+        run: .\scripts\stop-local-prototype.ps1 -ForcePorts

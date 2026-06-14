@@ -1,0 +1,72 @@
+name: Real S3 Client CI
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: real-s3-client-ci-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  s3-client:
+    name: Real S3 client smoke
+    runs-on: windows-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: gradle
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: osmu-frontend/package-lock.json
+
+      - name: Install frontend dependencies
+        working-directory: osmu-frontend
+        shell: pwsh
+        run: npm ci
+
+      - name: Install MinIO Client
+        shell: pwsh
+        run: |
+          $mcDir = Join-Path $env:RUNNER_TEMP "minio-client"
+          New-Item -ItemType Directory -Force -Path $mcDir | Out-Null
+          $mcPath = Join-Path $mcDir "mc.exe"
+          Invoke-WebRequest -Uri "https://dl.min.io/client/mc/release/windows-amd64/mc.exe" -OutFile $mcPath
+          $mcDir | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          & $mcPath --version
+
+      - name: Start lightweight prototype
+        shell: pwsh
+        run: .\scripts\start-local-prototype.ps1
+
+      - name: Verify real S3 client smoke
+        shell: pwsh
+        run: .\scripts\verify-s3-client-smoke.ps1 -Client mc -RequireClient
+
+      - name: Print prototype logs
+        if: failure()
+        shell: pwsh
+        run: |
+          Get-ChildItem .\.osmu-run -Filter *.log -ErrorAction SilentlyContinue | ForEach-Object {
+            Write-Host "===== $($_.Name) ====="
+            Get-Content -LiteralPath $_.FullName -Tail 200
+          }
+
+      - name: Stop lightweight prototype
+        if: always()
+        shell: pwsh
+        run: .\scripts\stop-local-prototype.ps1 -ForcePorts

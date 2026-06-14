@@ -87,6 +87,76 @@ infra/k8s/
 infra/helm/osmu/
 ```
 
+현재 prototype에는 `infra/k8s/` manifest 초안과 `infra/helm/osmu/` chart 초안이 포함되어 있다.
+
+포함 파일:
+
+- `namespace.yaml`
+- `configmap.yaml`
+- `secret.example.yaml`
+- `mariadb.yaml`
+- `minio.yaml`
+- `backend.yaml`
+- `frontend.yaml`
+- `ingress.yaml`
+- `kustomization.yaml`
+- `README.md`
+
+검증:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\verify-k8s-manifests.ps1
+powershell -ExecutionPolicy Bypass -File .\scripts\verify-helm-chart.ps1
+```
+
+`secret.example.yaml`은 예시이며 `kustomization.yaml`에는 포함하지 않는다. Helm chart도 `secrets.create=false`를 기본값으로 유지한다. Kubernetes/Helm 초안에는 backend, frontend, MariaDB, MinIO의 기본 resource requests/limits와 backend egress, MariaDB/MinIO ingress NetworkPolicy draft, backend/frontend non-root security context, TLS ingress draft, Prometheus scrape annotation draft가 포함되어 있다. frontend nginx는 root 권한이 필요 없는 8080 포트로 실행하고 Service는 80 포트를 유지한다. Ingress는 `osmu-tls` TLS Secret을 참조하고 NGINX SSL redirect annotation을 켠다. Backend는 `/actuator/prometheus`를 노출하며 Prometheus annotation 또는 ServiceMonitor로 scrape한다. 운영 배포에서는 Secret manager, 인증서 발급/회전, StorageClass, replica/HA 정책을 별도로 확정해야 한다.
+
+현재 prototype에는 `infra/k8s/` 초안이 포함되어 있다.
+
+포함 파일:
+
+- `namespace.yaml`
+- `configmap.yaml`
+- `secret.example.yaml`
+- `mariadb.yaml`
+- `minio.yaml`
+- `backend.yaml`
+- `frontend.yaml`
+- `ingress.yaml`
+- `kustomization.yaml`
+- `README.md`
+
+검증:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\verify-k8s-manifests.ps1
+```
+
+`secret.example.yaml`은 예시이며 `kustomization.yaml`에는 포함하지 않는다. 운영 배포에서는 Secret manager, TLS, StorageClass, resource limit, replica/HA 정책을 별도로 확정해야 한다.
+
+현재 prototype에는 `infra/k8s/` 초안이 포함되어 있다.
+
+포함 파일:
+
+- `namespace.yaml`
+- `configmap.yaml`
+- `secret.example.yaml`
+- `mariadb.yaml`
+- `minio.yaml`
+- `backend.yaml`
+- `frontend.yaml`
+- `ingress.yaml`
+- `kustomization.yaml`
+- `README.md`
+
+검증:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\verify-k8s-manifests.ps1
+```
+
+`secret.example.yaml`은 예시이며 `kustomization.yaml`에는 포함하지 않는다. 운영 배포에서는 Secret manager, TLS, StorageClass, resource limit, replica/HA 정책을 별도로 확정해야 한다.
+
 ## 5. 설정 전략
 
 설정 분리:
@@ -117,6 +187,15 @@ Kubernetes:
 
 - secret Git commit
 - credential log 출력
+
+Rotation:
+
+- Follow `secret-rotation-policy.md` before pilot handoff.
+- Follow `backup-restore-drill.md` before durable pilot handoff.
+- Rotate admin password, MariaDB password, MinIO root password, user access keys, and TLS certificate through the environment secret manager.
+- `OSMU_JWT_SECRET` rotation invalidates active sessions and must use a maintenance window.
+- `OSMU_ACCESS_KEY_SECRET_ENCRYPTION_KEY` rotation requires access key re-issue or a re-encryption migration.
+- Record rotation events without recording secret values.
 
 ## 7. 운영 배포 기준
 

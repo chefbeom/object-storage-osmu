@@ -1,3 +1,82 @@
 spring:
   application:
     name: osmu
+  servlet:
+    multipart:
+      max-file-size: 200MB
+      max-request-size: 220MB
+  flyway:
+    enabled: ${OSMU_FLYWAY_ENABLED:false}
+    locations: classpath:db/migration
+
+server:
+  port: 8080
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      probes:
+        enabled: true
+
+osmu:
+  api:
+    cors:
+      allowed-origins: ${OSMU_API_CORS_ALLOWED_ORIGINS:${OSMU_STORAGE_CORS_ALLOWED_ORIGINS:http://localhost:5173,http://127.0.0.1:5173}}
+  bootstrap:
+    admin:
+      login-id: ${OSMU_ADMIN_LOGIN_ID:admin}
+      password: ${OSMU_ADMIN_PASSWORD:password}
+      email: ${OSMU_ADMIN_EMAIL:admin@example.com}
+      name: ${OSMU_ADMIN_NAME:Admin}
+  auth:
+    jwt:
+      issuer: ${OSMU_JWT_ISSUER:osmu}
+      secret: ${OSMU_JWT_SECRET:local-dev-jwt-secret-change-me-32-chars}
+      access-token-ttl-seconds: ${OSMU_JWT_ACCESS_TOKEN_TTL_SECONDS:3600}
+      refresh-token-ttl-seconds: ${OSMU_JWT_REFRESH_TOKEN_TTL_SECONDS:604800}
+  storage:
+    mode: ${OSMU_STORAGE_MODE:in-memory}
+    endpoint: ${OSMU_STORAGE_ENDPOINT:http://localhost:9000}
+    access-key: ${OSMU_STORAGE_ACCESS_KEY:minioadmin}
+    secret-key: ${OSMU_STORAGE_SECRET_KEY:minioadmin}
+    cors:
+      enabled: ${OSMU_STORAGE_CORS_ENABLED:false}
+      allowed-origins: ${OSMU_STORAGE_CORS_ALLOWED_ORIGINS:http://localhost:5173,http://127.0.0.1:5173}
+      mc-path: ${OSMU_STORAGE_CORS_MC_PATH:${OSMU_ACCESS_KEY_MC_PATH:mc}}
+      minio-alias: ${OSMU_STORAGE_CORS_MINIO_ALIAS:${OSMU_ACCESS_KEY_MINIO_ALIAS:osmu-minio}}
+  access-key:
+    provisioning-mode: ${OSMU_ACCESS_KEY_PROVISIONING_MODE:noop}
+    secret-encryption-key: ${OSMU_ACCESS_KEY_SECRET_ENCRYPTION_KEY:local-dev-access-key-secret-encryption-key-change-me}
+    minio:
+      mc-path: ${OSMU_ACCESS_KEY_MC_PATH:mc}
+      alias: ${OSMU_ACCESS_KEY_MINIO_ALIAS:osmu-minio}
+  s3:
+    sigv4:
+      clock-skew-seconds: ${OSMU_S3_SIGV4_CLOCK_SKEW_SECONDS:900}
+    virtual-hosted-style:
+      enabled: ${OSMU_S3_VIRTUAL_HOSTED_STYLE_ENABLED:true}
+      domain-suffixes: ${OSMU_S3_VIRTUAL_HOSTED_STYLE_DOMAIN_SUFFIXES:localhost}
+  metadata:
+    mode: ${OSMU_METADATA_MODE:in-memory}
+  upload:
+    cleanup:
+      enabled: ${OSMU_UPLOAD_CLEANUP_ENABLED:true}
+      initial-delay-ms: ${OSMU_UPLOAD_CLEANUP_INITIAL_DELAY_MS:60000}
+      fixed-delay-ms: ${OSMU_UPLOAD_CLEANUP_FIXED_DELAY_MS:300000}
+      batch-size: ${OSMU_UPLOAD_CLEANUP_BATCH_SIZE:100}
+  object:
+    share-link:
+      cleanup:
+        enabled: ${OSMU_OBJECT_SHARE_LINK_CLEANUP_ENABLED:true}
+        initial-delay-ms: ${OSMU_OBJECT_SHARE_LINK_CLEANUP_INITIAL_DELAY_MS:180000}
+        fixed-delay-ms: ${OSMU_OBJECT_SHARE_LINK_CLEANUP_FIXED_DELAY_MS:3600000}
+    retention:
+      enabled: ${OSMU_OBJECT_RETENTION_ENABLED:true}
+      days: ${OSMU_OBJECT_RETENTION_DAYS:30}
+      initial-delay-ms: ${OSMU_OBJECT_RETENTION_INITIAL_DELAY_MS:120000}
+      fixed-delay-ms: ${OSMU_OBJECT_RETENTION_FIXED_DELAY_MS:3600000}
+      batch-size: ${OSMU_OBJECT_RETENTION_BATCH_SIZE:100}

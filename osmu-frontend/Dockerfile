@@ -1,0 +1,32 @@
+FROM node:22-alpine AS build
+
+WORKDIR /workspace
+
+ARG VITE_API_BASE_URL=http://localhost:8080/api
+ARG VITE_MULTIPART_UPLOAD_CONCURRENCY=4
+ARG VITE_MULTIPART_UPLOAD_PART_RETRIES=2
+ARG VITE_MULTIPART_UPLOAD_RETRY_BASE_DELAY_MS=500
+ARG VITE_MULTIPART_UPLOAD_RETRY_JITTER_RATIO=0.25
+ENV VITE_API_BASE_URL=${VITE_API_BASE_URL}
+ENV VITE_MULTIPART_UPLOAD_CONCURRENCY=${VITE_MULTIPART_UPLOAD_CONCURRENCY}
+ENV VITE_MULTIPART_UPLOAD_PART_RETRIES=${VITE_MULTIPART_UPLOAD_PART_RETRIES}
+ENV VITE_MULTIPART_UPLOAD_RETRY_BASE_DELAY_MS=${VITE_MULTIPART_UPLOAD_RETRY_BASE_DELAY_MS}
+ENV VITE_MULTIPART_UPLOAD_RETRY_JITTER_RATIO=${VITE_MULTIPART_UPLOAD_RETRY_JITTER_RATIO}
+
+COPY package*.json ./
+RUN npm install
+
+COPY . .
+RUN npm run build
+
+FROM nginx:1.27-alpine
+
+COPY nginx.conf /etc/nginx/nginx.conf
+COPY --chown=nginx:nginx --from=build /workspace/dist /usr/share/nginx/html
+
+RUN mkdir -p /tmp/nginx/client_temp /tmp/nginx/proxy_temp /tmp/nginx/fastcgi_temp /tmp/nginx/uwsgi_temp /tmp/nginx/scgi_temp \
+    && chown -R nginx:nginx /tmp/nginx /var/cache/nginx /var/run /var/log/nginx
+
+USER 101:101
+
+EXPOSE 8080

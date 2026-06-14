@@ -1,0 +1,1585 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "OSMU MVP API",
+    "version": "0.1.0-prototype",
+    "description": "Machine-readable contract snapshot for the current OSMU prototype. It covers the REST control plane and the MVP S3-compatible alias surface used by the local release gate."
+  },
+  "servers": [
+    {
+      "url": "http://localhost:8080",
+      "description": "Local prototype backend"
+    }
+  ],
+  "tags": [
+    { "name": "Health" },
+    { "name": "Auth" },
+    { "name": "Users" },
+    { "name": "Organizations" },
+    { "name": "Buckets" },
+    { "name": "Objects" },
+    { "name": "Access Keys" },
+    { "name": "Admin" },
+    { "name": "Lifecycle" },
+    { "name": "S3 Compatibility" }
+  ],
+  "security": [
+    { "bearerAuth": [] }
+  ],
+  "paths": {
+    "/api/health": {
+      "get": {
+        "tags": ["Health"],
+        "operationId": "getHealth",
+        "summary": "Check backend health",
+        "security": [],
+        "responses": {
+          "200": { "$ref": "#/components/responses/JsonOk" }
+        }
+      }
+    },
+    "/api/storage/health": {
+      "get": {
+        "tags": ["Health"],
+        "operationId": "getStorageHealth",
+        "summary": "Check object storage health",
+        "responses": {
+          "200": { "$ref": "#/components/responses/JsonOk" }
+        }
+      }
+    },
+    "/api/database/health": {
+      "get": {
+        "tags": ["Health"],
+        "operationId": "getDatabaseHealth",
+        "summary": "Check metadata database health",
+        "responses": {
+          "200": { "$ref": "#/components/responses/JsonOk" }
+        }
+      }
+    },
+    "/api/auth/login": {
+      "post": {
+        "tags": ["Auth"],
+        "operationId": "login",
+        "summary": "Create access and refresh tokens",
+        "security": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/LoginRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": { "$ref": "#/components/responses/JsonOk" },
+          "401": { "$ref": "#/components/responses/Error" }
+        }
+      }
+    },
+    "/api/auth/refresh": {
+      "post": {
+        "tags": ["Auth"],
+        "operationId": "refreshSession",
+        "summary": "Rotate refresh token and issue a new access token",
+        "security": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/RefreshTokenRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": { "$ref": "#/components/responses/JsonOk" },
+          "401": { "$ref": "#/components/responses/Error" }
+        }
+      }
+    },
+    "/api/auth/logout": {
+      "post": {
+        "tags": ["Auth"],
+        "operationId": "logout",
+        "summary": "Revoke the current refresh token",
+        "responses": {
+          "200": { "$ref": "#/components/responses/JsonOk" }
+        }
+      }
+    },
+    "/api/users/me": {
+      "get": {
+        "tags": ["Users"],
+        "operationId": "getCurrentUser",
+        "summary": "Read the authenticated user profile",
+        "responses": {
+          "200": { "$ref": "#/components/responses/JsonOk" }
+        }
+      }
+    },
+    "/api/admin/users": {
+      "get": {
+        "tags": ["Users", "Admin"],
+        "operationId": "getUsers",
+        "summary": "List users visible to the administrator",
+        "responses": {
+          "200": { "$ref": "#/components/responses/JsonList" }
+        }
+      },
+      "post": {
+        "tags": ["Users", "Admin"],
+        "operationId": "createUser",
+        "summary": "Create a user",
+        "requestBody": { "$ref": "#/components/requestBodies/JsonObject" },
+        "responses": {
+          "200": { "$ref": "#/components/responses/JsonOk" },
+          "201": { "$ref": "#/components/responses/JsonOk" }
+        }
+      }
+    },
+    "/api/admin/users/{userId}/status": {
+      "patch": {
+        "tags": ["Users", "Admin"],
+        "operationId": "updateUserStatus",
+        "summary": "Activate or deactivate a user",
+        "parameters": [
+          { "$ref": "#/components/parameters/UserId" }
+        ],
+        "requestBody": { "$ref": "#/components/requestBodies/JsonObject" },
+        "responses": {
+          "200": { "$ref": "#/components/responses/JsonOk" }
+        }
+      }
+    },
+    "/api/admin/organizations": {
+      "get": {
+        "tags": ["Organizations", "Admin"],
+        "operationId": "getOrganizations",
+        "summary": "List organizations",
+        "responses": {
+          "200": { "$ref": "#/components/responses/JsonList" }
+        }
+      },
+      "post": {
+        "tags": ["Organizations", "Admin"],
+        "operationId": "createOrganization",
+        "summary": "Create an organization",
+        "requestBody": { "$ref": "#/components/requestBodies/JsonObject" },
+        "responses": {
+          "200": { "$ref": "#/components/responses/JsonOk" },
+          "201": { "$ref": "#/components/responses/JsonOk" }
+        }
+      }
+    },
+    "/api/admin/organizations/usage": {
+      "get": {
+        "tags": ["Organizations", "Admin"],
+        "operationId": "getOrganizationUsage",
+        "summary": "List organization storage usage",
+        "responses": {
+          "200": { "$ref": "#/components/responses/JsonList" }
+        }
+      }
+    },
+    "/api/admin/organizations/{organizationId}": {
+      "delete": {
+        "tags": ["Organizations", "Admin"],
+        "operationId": "deleteOrganization",
+        "summary": "Delete an empty organization",
+        "parameters": [
+          { "$ref": "#/components/parameters/OrganizationId" }
+        ],
+        "responses": {
+          "204": { "description": "Deleted" },
+          "409": { "$ref": "#/components/responses/Error" }
+        }
+      }
+    },
+    "/api/buckets": {
+      "get": {
+        "tags": ["Buckets"],
+        "operationId": "getBuckets",
+        "summary": "List buckets accessible to the user",
+        "responses": {
+          "200": { "$ref": "#/components/responses/JsonList" }
+        }
+      },
+      "post": {
+        "tags": ["Buckets"],
+        "operationId": "createBucket",
+        "summary": "Create a bucket",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/CreateBucketRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": { "$ref": "#/components/responses/JsonOk" },
+          "201": { "$ref": "#/components/responses/JsonOk" },
+          "409": { "$ref": "#/components/responses/Error" }
+        }
+      }
+    },
+    "/api/buckets/{bucketName}": {
+      "get": {
+        "tags": ["Buckets"],
+        "operationId": "getBucket",
+        "summary": "Read bucket detail",
+        "parameters": [
+          { "$ref": "#/components/parameters/BucketName" }
+        ],
+        "responses": {
+          "200": { "$ref": "#/components/responses/JsonOk" },
+          "404": { "$ref": "#/components/responses/Error" }
+        }
+      },
+      "delete": {
+        "tags": ["Buckets"],
+        "operationId": "deleteBucket",
+        "summary": "Delete an empty bucket",
+        "parameters": [
+          { "$ref": "#/components/parameters/BucketName" }
+        ],
+        "responses": {
+          "204": { "description": "Deleted" },
+          "409": { "$ref": "#/components/responses/Error" }
+        }
+      }
+    },
+    "/api/buckets/{bucketName}/sync": {
+      "post": {
+        "tags": ["Buckets"],
+        "operationId": "syncBucketUsage",
+        "summary": "Synchronize bucket metadata from storage",
+        "parameters": [
+          { "$ref": "#/components/parameters/BucketName" }
+        ],
+        "responses": {
+          "200": { "$ref": "#/components/responses/JsonOk" }
+        }
+      }
+    },
+    "/api/buckets/{bucketName}/permissions": {
+      "get": {
+        "tags": ["Buckets"],
+        "operationId": "getBucketPermissions",
+        "summary": "List bucket permissions",
+        "parameters": [
+          { "$ref": "#/components/parameters/BucketName" }
+        ],
+        "responses": {
+          "200": { "$ref": "#/components/responses/JsonList" }
+        }
+      },
+      "post": {
+        "tags": ["Buckets"],
+        "operationId": "grantBucketPermissions",
+        "summary": "Grant bucket permissions",
+        "parameters": [
+          { "$ref": "#/components/parameters/BucketName" }
+        ],
+        "requestBody": { "$ref": "#/components/requestBodies/JsonObject" },
+        "responses": {
+          "200": { "$ref": "#/components/responses/JsonOk" }
+        }
+      }
+    },
+    "/api/buckets/{bucketName}/permissions/{permissionId}": {
+      "delete": {
+        "tags": ["Buckets"],
+        "operationId": "revokeBucketPermission",
+        "summary": "Revoke bucket permission",
+        "parameters": [
+          { "$ref": "#/components/parameters/BucketName" },
+          { "$ref": "#/components/parameters/PermissionId" }
+        ],
+        "responses": {
+          "204": { "description": "Revoked" }
+        }
+      }
+    },
+    "/api/buckets/{bucketName}/tags": {
+      "get": {
+        "tags": ["Buckets"],
+        "operationId": "getBucketTags",
+        "summary": "Read bucket tags",
+        "parameters": [
+          { "$ref": "#/components/parameters/BucketName" }
+        ],
+        "responses": {
+          "200": { "$ref": "#/components/responses/JsonOk" }
+        }
+      },
+      "put": {
+        "tags": ["Buckets"],
+        "operationId": "putBucketTags",
+        "summary": "Replace bucket tags",
+        "parameters": [
+          { "$ref": "#/components/parameters/BucketName" }
+        ],
+        "requestBody": { "$ref": "#/components/requestBodies/JsonObject" },
+        "responses": {
+          "200": { "$ref": "#/components/responses/JsonOk" }
+        }
+      },
+      "delete": {
+        "tags": ["Buckets"],
+        "operationId": "deleteBucketTags",
+        "summary": "Delete bucket tags",
+        "parameters": [
+          { "$ref": "#/components/parameters/BucketName" }
+        ],
+        "responses": {
+          "204": { "description": "Deleted" }
+        }
+      }
+    },
+    "/api/buckets/{bucketName}/lifecycle": {
+      "get": {
+        "tags": ["Lifecycle", "Buckets"],
+        "operationId": "getBucketLifecycleS3Xml",
+        "summary": "Read bucket lifecycle configuration as S3 XML",
+        "parameters": [
+          { "$ref": "#/components/parameters/BucketName" }
+        ],
+        "responses": {
+          "200": { "$ref": "#/components/responses/XmlOk" }
+        }
+      },
+      "put": {
+        "tags": ["Lifecycle", "Buckets"],
+        "operationId": "putBucketLifecycleS3Xml",
+        "summary": "Replace bucket lifecycle configuration",
+        "parameters": [
+          { "$ref": "#/components/parameters/BucketName" }
+        ],
+        "requestBody": { "$ref": "#/components/requestBodies/XmlOrJson" },
+        "responses": {
+          "200": { "$ref": "#/components/responses/JsonOk" }
+        }
+      },
+      "delete": {
+        "tags": ["Lifecycle", "Buckets"],
+        "operationId": "deleteBucketLifecycleS3Xml",
+        "summary": "Delete bucket lifecycle configuration",
+        "parameters": [
+          { "$ref": "#/components/parameters/BucketName" }
+        ],
+        "responses": {
+          "204": { "description": "Deleted" }
+        }
+      }
+    },
+    "/api/buckets/{bucketName}/objects": {
+      "get": {
+        "tags": ["Objects"],
+        "operationId": "getObjects",
+        "summary": "List, search, and filter objects",
+        "parameters": [
+          { "$ref": "#/components/parameters/BucketName" },
+          { "$ref": "#/components/parameters/PrefixQuery" },
+          { "$ref": "#/components/parameters/SearchQuery" },
+          { "$ref": "#/components/parameters/TagQuery" },
+          { "$ref": "#/components/parameters/DeletedQuery" },
+          { "$ref": "#/components/parameters/LimitQuery" },
+          { "$ref": "#/components/parameters/CursorQuery" }
+        ],
+        "responses": {
+          "200": { "$ref": "#/components/responses/JsonList" }
+        }
+      },
+      "post": {
+        "tags": ["Objects"],
+        "operationId": "uploadObject",
+        "summary": "Upload one object through the REST API",
+        "parameters": [
+          { "$ref": "#/components/parameters/BucketName" }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "required": ["key", "file"],
+                "properties": {
+                  "key": { "type": "string" },
+                  "file": { "type": "string", "format": "binary" },
+                  "tags": { "type": "string", "description": "Comma-separated key=value tags." }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "$ref": "#/components/responses/JsonOk" },
+          "201": { "$ref": "#/components/responses/JsonOk" }
+        }
+      }
+    },
+    "/api/buckets/{bucketName}/objects/{objectKey}": {
+      "get": {
+        "tags": ["Objects"],
+        "operationId": "downloadObject",
+        "summary": "Download an object",
+        "description": "The Spring route captures a slash-containing object key.",
+        "parameters": [
+          { "$ref": "#/components/parameters/BucketName" },
+          { "$ref": "#/components/parameters/ObjectKey" }
+        ],
+        "responses": {
+          "200": { "$ref": "#/components/responses/BinaryOk" },
+          "404": { "$ref": "#/components/responses/Error" }
+        }
+      },
+      "delete": {
+        "tags": ["Objects"],
+        "operationId": "deleteObject",
+        "summary": "Soft-delete an object",
+        "parameters": [
+          { "$ref": "#/components/parameters/BucketName" },
+          { "$ref": "#/components/parameters/ObjectKey" }
+        ],
+        "responses": {
+          "204": { "description": "Deleted" },
+          "404": { "$ref": "#/components/responses/Error" }
+        }
+      }
+    },
+    "/api/buckets/{bucketName}/objects/tags": {
+      "put": {
+        "tags": ["Objects"],
+        "operationId": "updateObjectTags",
+        "summary": "Replace object tags",
+        "parameters": [
+          { "$ref": "#/components/parameters/BucketName" }
+        ],
+        "requestBody": { "$ref": "#/components/requestBodies/JsonObject" },
+        "responses": {
+          "200": { "$ref": "#/components/responses/JsonOk" }
+        }
+      }
+    },
+    "/api/buckets/{bucketName}/objects/metadata/{objectKey}": {
+      "get": {
+        "tags": ["Objects"],
+        "operationId": "getObjectMetadata",
+        "summary": "Read object metadata and storage/index drift status",
+        "parameters": [
+          { "$ref": "#/components/parameters/BucketName" },
+          { "$ref": "#/components/parameters/ObjectKey" }
+        ],
+        "responses": {
+          "200": { "$ref": "#/components/responses/JsonOk" }
+        }
+      }
+    },
+    "/api/buckets/{bucketName}/objects/versions/{objectKey}": {
+      "get": {
+        "tags": ["Objects"],
+        "operationId": "listObjectVersions",
+        "summary": "List stored historical versions for an object",
+        "parameters": [
+          { "$ref": "#/components/parameters/BucketName" },
+          { "$ref": "#/components/parameters/ObjectKey" }
+        ],
+        "responses": {
+          "200": { "$ref": "#/components/responses/JsonList" }
+        }
+      }
+    },
+    "/api/buckets/{bucketName}/objects/versions/{versionId}/restore/{objectKey}": {
+      "post": {
+        "tags": ["Objects"],
+        "operationId": "restoreObjectVersion",
+        "summary": "Restore an object version",
+        "parameters": [
+          { "$ref": "#/components/parameters/BucketName" },
+          { "$ref": "#/components/parameters/VersionId" },
+          { "$ref": "#/components/parameters/ObjectKey" }
+        ],
+        "responses": {
+          "200": { "$ref": "#/components/responses/JsonOk" }
+        }
+      }
+    },
+    "/api/buckets/{bucketName}/objects/versions/{versionId}/download/{objectKey}": {
+      "get": {
+        "tags": ["Objects"],
+        "operationId": "downloadObjectVersion",
+        "summary": "Download an object version",
+        "parameters": [
+          { "$ref": "#/components/parameters/BucketName" },
+          { "$ref": "#/components/parameters/VersionId" },
+          { "$ref": "#/components/parameters/ObjectKey" }
+        ],
+        "responses": {
+          "200": { "$ref": "#/components/responses/BinaryOk" }
+        }
+      }
+    },
+    "/api/buckets/{bucketName}/objects/versions/{versionId}/delete/{objectKey}": {
+      "delete": {
+        "tags": ["Objects"],
+        "operationId": "deleteObjectVersion",
+        "summary": "Delete one object version",
+        "parameters": [
+          { "$ref": "#/components/parameters/BucketName" },
+          { "$ref": "#/components/parameters/VersionId" },
+          { "$ref": "#/components/parameters/ObjectKey" }
+        ],
+        "responses": {
+          "204": { "description": "Deleted" }
+        }
+      }
+    },
+    "/api/buckets/{bucketName}/objects/restore/{objectKey}": {
+      "post": {
+        "tags": ["Objects"],
+        "operationId": "restoreObject",
+        "summary": "Restore a soft-deleted object",
+        "parameters": [
+          { "$ref": "#/components/parameters/BucketName" },
+          { "$ref": "#/components/parameters/ObjectKey" }
+        ],
+        "responses": {
+          "200": { "$ref": "#/components/responses/JsonOk" }
+        }
+      }
+    },
+    "/api/buckets/{bucketName}/objects/purge/{objectKey}": {
+      "post": {
+        "tags": ["Objects"],
+        "operationId": "purgeObject",
+        "summary": "Permanently purge a soft-deleted object",
+        "parameters": [
+          { "$ref": "#/components/parameters/BucketName" },
+          { "$ref": "#/components/parameters/ObjectKey" }
+        ],
+        "responses": {
+          "204": { "description": "Purged" }
+        }
+      }
+    },
+    "/api/buckets/{bucketName}/objects/presigned-upload": {
+      "post": {
+        "tags": ["Objects"],
+        "operationId": "createPresignedUploadUrl",
+        "summary": "Create a presigned upload URL",
+        "parameters": [
+          { "$ref": "#/components/parameters/BucketName" }
+        ],
+        "requestBody": { "$ref": "#/components/requestBodies/JsonObject" },
+        "responses": {
+          "200": { "$ref": "#/components/responses/JsonOk" }
+        }
+      }
+    },
+    "/api/buckets/{bucketName}/objects/presigned-download": {
+      "post": {
+        "tags": ["Objects"],
+        "operationId": "createPresignedDownloadUrl",
+        "summary": "Create a presigned download URL",
+        "parameters": [
+          { "$ref": "#/components/parameters/BucketName" }
+        ],
+        "requestBody": { "$ref": "#/components/requestBodies/JsonObject" },
+        "responses": {
+          "200": { "$ref": "#/components/responses/JsonOk" }
+        }
+      }
+    },
+    "/api/buckets/{bucketName}/objects/share-links": {
+      "post": {
+        "tags": ["Objects"],
+        "operationId": "createObjectShareLink",
+        "summary": "Create a temporary object share link",
+        "parameters": [
+          { "$ref": "#/components/parameters/BucketName" }
+        ],
+        "requestBody": { "$ref": "#/components/requestBodies/JsonObject" },
+        "responses": {
+          "200": { "$ref": "#/components/responses/JsonOk" }
+        }
+      },
+      "get": {
+        "tags": ["Objects"],
+        "operationId": "getObjectShareLinks",
+        "summary": "List temporary object share links for a bucket or object key",
+        "parameters": [
+          { "$ref": "#/components/parameters/BucketName" },
+          {
+            "name": "key",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "string" }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "integer", "minimum": 1, "maximum": 200, "default": 50 }
+          }
+        ],
+        "responses": {
+          "200": { "$ref": "#/components/responses/JsonList" }
+        }
+      }
+    },
+    "/api/buckets/{bucketName}/objects/share-links/cleanup": {
+      "post": {
+        "tags": ["Objects"],
+        "operationId": "cleanupObjectShareLinks",
+        "summary": "Mark expired temporary object share links as expired",
+        "parameters": [
+          { "$ref": "#/components/parameters/BucketName" }
+        ],
+        "responses": {
+          "200": { "$ref": "#/components/responses/JsonOk" }
+        }
+      }
+    },
+    "/api/buckets/{bucketName}/objects/share-links/{linkId}": {
+      "delete": {
+        "tags": ["Objects"],
+        "operationId": "deleteObjectShareLink",
+        "summary": "Revoke a temporary object share link",
+        "parameters": [
+          { "$ref": "#/components/parameters/BucketName" },
+          {
+            "name": "linkId",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "integer", "format": "int64" }
+          }
+        ],
+        "responses": {
+          "204": { "description": "Revoked" }
+        }
+      }
+    },
+    "/api/public/share-links/{token}": {
+      "get": {
+        "tags": ["Objects"],
+        "operationId": "downloadObjectShareLink",
+        "summary": "Download an object through a temporary share token",
+        "security": [],
+        "parameters": [
+          {
+            "name": "token",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string" }
+          },
+          {
+            "name": "X-OSMU-Share-Password",
+            "in": "header",
+            "required": false,
+            "schema": { "type": "string" },
+            "description": "Optional password for password-protected share links."
+          },
+          {
+            "name": "password",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "string" },
+            "description": "Optional password for password-protected share links."
+          },
+          {
+            "name": "X-Forwarded-For",
+            "in": "header",
+            "required": false,
+            "schema": { "type": "string" },
+            "description": "Optional proxy client IP source for IP-restricted share links."
+          }
+        ],
+        "responses": {
+          "200": { "$ref": "#/components/responses/BinaryOk" }
+        }
+      }
+    },
+    "/api/buckets/{bucketName}/objects/presigned-upload/complete": {
+      "post": {
+        "tags": ["Objects"],
+        "operationId": "completePresignedUpload",
+        "summary": "Complete a presigned upload session",
+        "parameters": [
+          { "$ref": "#/components/parameters/BucketName" }
+        ],
+        "requestBody": { "$ref": "#/components/requestBodies/JsonObject" },
+        "responses": {
+          "200": { "$ref": "#/components/responses/JsonOk" }
+        }
+      }
+    },
+    "/api/buckets/{bucketName}/objects/multipart-upload": {
+      "post": {
+        "tags": ["Objects"],
+        "operationId": "createMultipartUpload",
+        "summary": "Create a REST multipart upload session",
+        "parameters": [
+          { "$ref": "#/components/parameters/BucketName" }
+        ],
+        "requestBody": { "$ref": "#/components/requestBodies/JsonObject" },
+        "responses": {
+          "200": { "$ref": "#/components/responses/JsonOk" }
+        }
+      }
+    },
+    "/api/buckets/{bucketName}/objects/multipart-upload/refresh": {
+      "post": {
+        "tags": ["Objects"],
+        "operationId": "refreshMultipartUpload",
+        "summary": "Refresh a REST multipart upload session",
+        "parameters": [
+          { "$ref": "#/components/parameters/BucketName" }
+        ],
+        "requestBody": { "$ref": "#/components/requestBodies/JsonObject" },
+        "responses": {
+          "200": { "$ref": "#/components/responses/JsonOk" }
+        }
+      }
+    },
+    "/api/buckets/{bucketName}/objects/multipart-upload/parts": {
+      "post": {
+        "tags": ["Objects"],
+        "operationId": "listMultipartUploadParts",
+        "summary": "List REST multipart uploaded parts",
+        "parameters": [
+          { "$ref": "#/components/parameters/BucketName" }
+        ],
+        "requestBody": { "$ref": "#/components/requestBodies/JsonObject" },
+        "responses": {
+          "200": { "$ref": "#/components/responses/JsonOk" }
+        }
+      }
+    },
+    "/api/buckets/{bucketName}/objects/multipart-upload/complete": {
+      "post": {
+        "tags": ["Objects"],
+        "operationId": "completeMultipartUpload",
+        "summary": "Complete a REST multipart upload session",
+        "parameters": [
+          { "$ref": "#/components/parameters/BucketName" }
+        ],
+        "requestBody": { "$ref": "#/components/requestBodies/JsonObject" },
+        "responses": {
+          "200": { "$ref": "#/components/responses/JsonOk" }
+        }
+      }
+    },
+    "/api/buckets/{bucketName}/objects/multipart-upload/abort": {
+      "post": {
+        "tags": ["Objects"],
+        "operationId": "abortMultipartUpload",
+        "summary": "Abort a REST multipart upload session",
+        "parameters": [
+          { "$ref": "#/components/parameters/BucketName" }
+        ],
+        "requestBody": { "$ref": "#/components/requestBodies/JsonObject" },
+        "responses": {
+          "200": { "$ref": "#/components/responses/JsonOk" }
+        }
+      }
+    },
+    "/api/access-keys": {
+      "get": {
+        "tags": ["Access Keys"],
+        "operationId": "getAccessKeys",
+        "summary": "List access keys",
+        "responses": {
+          "200": { "$ref": "#/components/responses/JsonList" }
+        }
+      },
+      "post": {
+        "tags": ["Access Keys"],
+        "operationId": "createAccessKey",
+        "summary": "Create an access key and one-time secret",
+        "requestBody": { "$ref": "#/components/requestBodies/JsonObject" },
+        "responses": {
+          "200": { "$ref": "#/components/responses/JsonOk" },
+          "201": { "$ref": "#/components/responses/JsonOk" }
+        }
+      }
+    },
+    "/api/access-keys/{keyId}": {
+      "delete": {
+        "tags": ["Access Keys"],
+        "operationId": "deleteAccessKey",
+        "summary": "Deactivate an access key",
+        "parameters": [
+          { "$ref": "#/components/parameters/KeyId" }
+        ],
+        "responses": {
+          "204": { "description": "Deactivated" }
+        }
+      }
+    },
+    "/api/admin/usage": {
+      "get": {
+        "tags": ["Admin"],
+        "operationId": "getUsage",
+        "summary": "Read global usage counters",
+        "responses": {
+          "200": { "$ref": "#/components/responses/JsonOk" }
+        }
+      }
+    },
+    "/api/admin/quota-policies": {
+      "get": {
+        "tags": ["Admin"],
+        "operationId": "getQuotaPolicies",
+        "summary": "List quota policies with current usage",
+        "responses": {
+          "200": { "$ref": "#/components/responses/JsonList" }
+        }
+      }
+    },
+    "/api/admin/quota-policies/history": {
+      "get": {
+        "tags": ["Admin"],
+        "operationId": "getQuotaPolicyHistory",
+        "summary": "List quota policy change history",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "integer", "minimum": 1, "maximum": 200, "default": 50 }
+          }
+        ],
+        "responses": {
+          "200": { "$ref": "#/components/responses/JsonList" }
+        }
+      }
+    },
+    "/api/admin/quota-policies/{targetType}/{targetId}": {
+      "put": {
+        "tags": ["Admin"],
+        "operationId": "saveQuotaPolicy",
+        "summary": "Create or update a user, organization, or bucket quota policy",
+        "parameters": [
+          {
+            "name": "targetType",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "enum": ["USER", "ORGANIZATION", "BUCKET"] }
+          },
+          {
+            "name": "targetId",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "integer", "minimum": 1 }
+          },
+          {
+            "name": "reason",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "string", "maxLength": 512 }
+          }
+        ],
+        "requestBody": { "$ref": "#/components/requestBodies/JsonObject" },
+        "responses": {
+          "200": { "$ref": "#/components/responses/JsonOk" },
+          "400": { "$ref": "#/components/responses/Error" }
+        }
+      },
+      "delete": {
+        "tags": ["Admin"],
+        "operationId": "deleteQuotaPolicy",
+        "summary": "Delete a quota policy",
+        "parameters": [
+          {
+            "name": "targetType",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "enum": ["USER", "ORGANIZATION", "BUCKET"] }
+          },
+          {
+            "name": "targetId",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "integer", "minimum": 1 }
+          }
+        ],
+        "responses": {
+          "204": { "description": "Deleted" },
+          "404": { "$ref": "#/components/responses/Error" }
+        }
+      }
+    },
+    "/api/admin/object-share-policy": {
+      "get": {
+        "tags": ["Admin"],
+        "operationId": "getObjectSharePolicy",
+        "summary": "Read global object share link policy",
+        "responses": {
+          "200": { "$ref": "#/components/responses/JsonOk" }
+        }
+      },
+      "put": {
+        "tags": ["Admin"],
+        "operationId": "saveObjectSharePolicy",
+        "summary": "Update global object share link policy",
+        "requestBody": { "$ref": "#/components/requestBodies/JsonObject" },
+        "responses": {
+          "200": { "$ref": "#/components/responses/JsonOk" },
+          "400": { "$ref": "#/components/responses/Error" }
+        }
+      }
+    },
+    "/api/admin/object-share-analytics": {
+      "get": {
+        "tags": ["Admin"],
+        "operationId": "getObjectShareAnalytics",
+        "summary": "Read global object share link analytics",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "integer", "minimum": 1, "maximum": 50, "default": 10 }
+          },
+          {
+            "name": "bucketName",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "string" }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "string", "enum": ["ACTIVE", "EXPIRED", "REVOKED", "LIMIT_REACHED"] }
+          }
+        ],
+        "responses": {
+          "200": { "$ref": "#/components/responses/JsonOk" },
+          "400": { "$ref": "#/components/responses/Error" }
+        }
+      }
+    },
+    "/api/admin/system/status": {
+      "get": {
+        "tags": ["Admin"],
+        "operationId": "getSystemStatus",
+        "summary": "Read system status",
+        "responses": {
+          "200": { "$ref": "#/components/responses/JsonOk" }
+        }
+      }
+    },
+    "/api/admin/backup/status": {
+      "get": {
+        "tags": ["Admin", "Operations"],
+        "operationId": "getBackupStatus",
+        "summary": "Read backup and restore readiness status",
+        "responses": {
+          "200": { "$ref": "#/components/responses/JsonOk" }
+        }
+      }
+    },
+    "/api/admin/audit-logs": {
+      "get": {
+        "tags": ["Admin"],
+        "operationId": "getAuditLogs",
+        "summary": "Search audit logs",
+        "parameters": [
+          { "$ref": "#/components/parameters/LimitQuery" },
+          { "$ref": "#/components/parameters/CursorQuery" }
+        ],
+        "responses": {
+          "200": { "$ref": "#/components/responses/JsonList" }
+        }
+      }
+    },
+    "/api/admin/audit-logs/export.csv": {
+      "get": {
+        "tags": ["Admin"],
+        "operationId": "downloadAuditLogsCsv",
+        "summary": "Export audit logs as CSV",
+        "responses": {
+          "200": {
+            "description": "CSV export",
+            "content": {
+              "text/csv": {
+                "schema": { "type": "string" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/object-retention/status": {
+      "get": {
+        "tags": ["Lifecycle", "Admin"],
+        "operationId": "getObjectRetentionStatus",
+        "summary": "Read retention status",
+        "responses": {
+          "200": { "$ref": "#/components/responses/JsonOk" }
+        }
+      }
+    },
+    "/api/admin/object-retention/policy": {
+      "put": {
+        "tags": ["Lifecycle", "Admin"],
+        "operationId": "updateObjectRetentionPolicy",
+        "summary": "Update retention policy",
+        "requestBody": { "$ref": "#/components/requestBodies/JsonObject" },
+        "responses": {
+          "200": { "$ref": "#/components/responses/JsonOk" }
+        }
+      }
+    },
+    "/api/admin/object-retention/purge": {
+      "post": {
+        "tags": ["Lifecycle", "Admin"],
+        "operationId": "runObjectRetentionPurge",
+        "summary": "Run retention purge now",
+        "responses": {
+          "200": { "$ref": "#/components/responses/JsonOk" }
+        }
+      }
+    },
+    "/api/admin/object-lifecycle/rules": {
+      "get": {
+        "tags": ["Lifecycle", "Admin"],
+        "operationId": "getObjectLifecycleRules",
+        "summary": "List object lifecycle rules",
+        "responses": {
+          "200": { "$ref": "#/components/responses/JsonList" }
+        }
+      },
+      "post": {
+        "tags": ["Lifecycle", "Admin"],
+        "operationId": "saveObjectLifecycleRule",
+        "summary": "Create or replace an object lifecycle rule",
+        "requestBody": { "$ref": "#/components/requestBodies/JsonObject" },
+        "responses": {
+          "200": { "$ref": "#/components/responses/JsonOk" },
+          "201": { "$ref": "#/components/responses/JsonOk" }
+        }
+      }
+    },
+    "/api/admin/object-lifecycle/conflicts": {
+      "get": {
+        "tags": ["Lifecycle", "Admin"],
+        "operationId": "getObjectLifecycleConflicts",
+        "summary": "Read lifecycle rule conflict report",
+        "responses": {
+          "200": { "$ref": "#/components/responses/JsonOk" }
+        }
+      }
+    },
+    "/api/admin/object-lifecycle/s3-xml": {
+      "get": {
+        "tags": ["Lifecycle", "Admin"],
+        "operationId": "getObjectLifecycleS3Xml",
+        "summary": "Export lifecycle rules as S3 XML",
+        "responses": {
+          "200": { "$ref": "#/components/responses/XmlOk" }
+        }
+      },
+      "post": {
+        "tags": ["Lifecycle", "Admin"],
+        "operationId": "importObjectLifecycleS3Xml",
+        "summary": "Import lifecycle rules from S3 XML",
+        "requestBody": { "$ref": "#/components/requestBodies/XmlOnly" },
+        "responses": {
+          "200": { "$ref": "#/components/responses/JsonOk" }
+        }
+      }
+    },
+    "/api/admin/object-lifecycle/rules/{ruleId}": {
+      "delete": {
+        "tags": ["Lifecycle", "Admin"],
+        "operationId": "deleteObjectLifecycleRule",
+        "summary": "Delete an object lifecycle rule",
+        "parameters": [
+          { "$ref": "#/components/parameters/RuleId" }
+        ],
+        "responses": {
+          "204": { "description": "Deleted" }
+        }
+      }
+    },
+    "/api/admin/object-lifecycle/rules/{ruleId}/dry-run": {
+      "get": {
+        "tags": ["Lifecycle", "Admin"],
+        "operationId": "dryRunObjectLifecycleRule",
+        "summary": "Preview lifecycle purge candidates",
+        "parameters": [
+          { "$ref": "#/components/parameters/RuleId" },
+          { "$ref": "#/components/parameters/LimitQuery" }
+        ],
+        "responses": {
+          "200": { "$ref": "#/components/responses/JsonOk" }
+        }
+      }
+    },
+    "/api/s3": {
+      "get": {
+        "tags": ["S3 Compatibility"],
+        "operationId": "s3ListBuckets",
+        "summary": "S3-compatible root bucket listing",
+        "security": [
+          { "bearerAuth": [] },
+          { "osmuAccessKey": [] },
+          { "awsSigV4": [] }
+        ],
+        "responses": {
+          "200": { "$ref": "#/components/responses/XmlOk" }
+        }
+      },
+      "head": {
+        "tags": ["S3 Compatibility"],
+        "operationId": "s3HeadService",
+        "summary": "S3-compatible service auth probe",
+        "security": [
+          { "bearerAuth": [] },
+          { "osmuAccessKey": [] },
+          { "awsSigV4": [] }
+        ],
+        "responses": {
+          "200": { "description": "Authenticated" }
+        }
+      }
+    },
+    "/api/s3/{bucketName}": {
+      "put": {
+        "tags": ["S3 Compatibility"],
+        "operationId": "s3CreateBucket",
+        "summary": "S3-style bucket create or bucket tag/lifecycle update",
+        "parameters": [
+          { "$ref": "#/components/parameters/BucketName" }
+        ],
+        "security": [
+          { "bearerAuth": [] },
+          { "osmuAccessKey": [] },
+          { "awsSigV4": [] }
+        ],
+        "responses": {
+          "200": { "description": "OK" },
+          "201": { "description": "Created" }
+        }
+      },
+      "head": {
+        "tags": ["S3 Compatibility"],
+        "operationId": "s3HeadBucket",
+        "summary": "S3-style bucket HEAD",
+        "parameters": [
+          { "$ref": "#/components/parameters/BucketName" }
+        ],
+        "security": [
+          { "bearerAuth": [] },
+          { "osmuAccessKey": [] },
+          { "awsSigV4": [] }
+        ],
+        "responses": {
+          "200": { "description": "Bucket exists" }
+        }
+      },
+      "get": {
+        "tags": ["S3 Compatibility"],
+        "operationId": "s3ListObjectsOrBucketConfig",
+        "summary": "S3-style ListObjects/ListObjectsV2, bucket location, tagging, lifecycle, or multipart upload list",
+        "parameters": [
+          { "$ref": "#/components/parameters/BucketName" }
+        ],
+        "security": [
+          { "bearerAuth": [] },
+          { "osmuAccessKey": [] },
+          { "awsSigV4": [] }
+        ],
+        "responses": {
+          "200": { "$ref": "#/components/responses/XmlOk" }
+        }
+      },
+      "post": {
+        "tags": ["S3 Compatibility"],
+        "operationId": "s3DeleteMultipleObjects",
+        "summary": "S3-style multi-object delete",
+        "parameters": [
+          { "$ref": "#/components/parameters/BucketName" }
+        ],
+        "requestBody": { "$ref": "#/components/requestBodies/XmlOnly" },
+        "security": [
+          { "bearerAuth": [] },
+          { "osmuAccessKey": [] },
+          { "awsSigV4": [] }
+        ],
+        "responses": {
+          "200": { "$ref": "#/components/responses/XmlOk" }
+        }
+      },
+      "delete": {
+        "tags": ["S3 Compatibility"],
+        "operationId": "s3DeleteBucketOrBucketConfig",
+        "summary": "S3-style bucket delete, tag delete, or lifecycle delete",
+        "parameters": [
+          { "$ref": "#/components/parameters/BucketName" }
+        ],
+        "security": [
+          { "bearerAuth": [] },
+          { "osmuAccessKey": [] },
+          { "awsSigV4": [] }
+        ],
+        "responses": {
+          "204": { "description": "Deleted" }
+        }
+      }
+    },
+    "/api/s3/{bucketName}/{objectKey}": {
+      "put": {
+        "tags": ["S3 Compatibility"],
+        "operationId": "s3PutObjectCopyObjectOrUploadPart",
+        "summary": "S3-style object PUT, CopyObject, object tagging, or multipart part upload",
+        "parameters": [
+          { "$ref": "#/components/parameters/BucketName" },
+          { "$ref": "#/components/parameters/ObjectKey" }
+        ],
+        "security": [
+          { "bearerAuth": [] },
+          { "osmuAccessKey": [] },
+          { "awsSigV4": [] }
+        ],
+        "requestBody": {
+          "content": {
+            "application/octet-stream": {
+              "schema": { "type": "string", "format": "binary" }
+            },
+            "application/xml": {
+              "schema": { "type": "string" }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "OK" },
+          "201": { "description": "Created" }
+        }
+      },
+      "head": {
+        "tags": ["S3 Compatibility"],
+        "operationId": "s3HeadObject",
+        "summary": "S3-style object HEAD",
+        "parameters": [
+          { "$ref": "#/components/parameters/BucketName" },
+          { "$ref": "#/components/parameters/ObjectKey" }
+        ],
+        "security": [
+          { "bearerAuth": [] },
+          { "osmuAccessKey": [] },
+          { "awsSigV4": [] }
+        ],
+        "responses": {
+          "200": { "description": "Object metadata" },
+          "404": { "$ref": "#/components/responses/S3Error" }
+        }
+      },
+      "get": {
+        "tags": ["S3 Compatibility"],
+        "operationId": "s3GetObjectTaggingOrListParts",
+        "summary": "S3-style object GET, object tagging GET, or multipart part listing",
+        "parameters": [
+          { "$ref": "#/components/parameters/BucketName" },
+          { "$ref": "#/components/parameters/ObjectKey" }
+        ],
+        "security": [
+          { "bearerAuth": [] },
+          { "osmuAccessKey": [] },
+          { "awsSigV4": [] }
+        ],
+        "responses": {
+          "200": {
+            "description": "Object bytes or XML metadata",
+            "content": {
+              "application/octet-stream": {
+                "schema": { "type": "string", "format": "binary" }
+              },
+              "application/xml": {
+                "schema": { "type": "string" }
+              }
+            }
+          },
+          "206": { "$ref": "#/components/responses/BinaryOk" },
+          "404": { "$ref": "#/components/responses/S3Error" }
+        }
+      },
+      "post": {
+        "tags": ["S3 Compatibility"],
+        "operationId": "s3InitiateOrCompleteMultipartUpload",
+        "summary": "S3-style multipart initiate or complete",
+        "parameters": [
+          { "$ref": "#/components/parameters/BucketName" },
+          { "$ref": "#/components/parameters/ObjectKey" }
+        ],
+        "requestBody": { "$ref": "#/components/requestBodies/XmlOnly" },
+        "security": [
+          { "bearerAuth": [] },
+          { "osmuAccessKey": [] },
+          { "awsSigV4": [] }
+        ],
+        "responses": {
+          "200": { "$ref": "#/components/responses/XmlOk" }
+        }
+      },
+      "delete": {
+        "tags": ["S3 Compatibility"],
+        "operationId": "s3DeleteObjectTaggingOrAbortMultipartUpload",
+        "summary": "S3-style object delete, object tagging delete, or multipart abort",
+        "parameters": [
+          { "$ref": "#/components/parameters/BucketName" },
+          { "$ref": "#/components/parameters/ObjectKey" }
+        ],
+        "security": [
+          { "bearerAuth": [] },
+          { "osmuAccessKey": [] },
+          { "awsSigV4": [] }
+        ],
+        "responses": {
+          "204": { "description": "Deleted" },
+          "404": { "$ref": "#/components/responses/S3Error" }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT"
+      },
+      "osmuAccessKey": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "X-OSMU-Access-Key"
+      },
+      "awsSigV4": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "Authorization",
+        "description": "AWS Signature Version 4 authorization header or equivalent presigned query parameters."
+      }
+    },
+    "parameters": {
+      "BucketName": {
+        "name": "bucketName",
+        "in": "path",
+        "required": true,
+        "schema": { "type": "string", "pattern": "^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$" }
+      },
+      "ObjectKey": {
+        "name": "objectKey",
+        "in": "path",
+        "required": true,
+        "description": "Slash-containing object keys are supported by Spring wildcard routes.",
+        "schema": { "type": "string", "minLength": 1 }
+      },
+      "UserId": {
+        "name": "userId",
+        "in": "path",
+        "required": true,
+        "schema": { "type": "string" }
+      },
+      "OrganizationId": {
+        "name": "organizationId",
+        "in": "path",
+        "required": true,
+        "schema": { "type": "string" }
+      },
+      "PermissionId": {
+        "name": "permissionId",
+        "in": "path",
+        "required": true,
+        "schema": { "type": "string" }
+      },
+      "KeyId": {
+        "name": "keyId",
+        "in": "path",
+        "required": true,
+        "schema": { "type": "string" }
+      },
+      "VersionId": {
+        "name": "versionId",
+        "in": "path",
+        "required": true,
+        "schema": { "type": "string" }
+      },
+      "RuleId": {
+        "name": "ruleId",
+        "in": "path",
+        "required": true,
+        "schema": { "type": "string" }
+      },
+      "PrefixQuery": {
+        "name": "prefix",
+        "in": "query",
+        "schema": { "type": "string" }
+      },
+      "SearchQuery": {
+        "name": "search",
+        "in": "query",
+        "schema": { "type": "string" }
+      },
+      "TagQuery": {
+        "name": "tag",
+        "in": "query",
+        "schema": { "type": "string" }
+      },
+      "DeletedQuery": {
+        "name": "deleted",
+        "in": "query",
+        "schema": { "type": "boolean" }
+      },
+      "LimitQuery": {
+        "name": "limit",
+        "in": "query",
+        "schema": { "type": "integer", "minimum": 1, "maximum": 1000 }
+      },
+      "CursorQuery": {
+        "name": "cursor",
+        "in": "query",
+        "schema": { "type": "string" }
+      }
+    },
+    "requestBodies": {
+      "JsonObject": {
+        "required": true,
+        "content": {
+          "application/json": {
+            "schema": { "type": "object", "additionalProperties": true }
+          }
+        }
+      },
+      "XmlOnly": {
+        "required": true,
+        "content": {
+          "application/xml": {
+            "schema": { "type": "string" }
+          },
+          "text/xml": {
+            "schema": { "type": "string" }
+          }
+        }
+      },
+      "XmlOrJson": {
+        "required": true,
+        "content": {
+          "application/json": {
+            "schema": { "type": "object", "additionalProperties": true }
+          },
+          "application/xml": {
+            "schema": { "type": "string" }
+          },
+          "text/xml": {
+            "schema": { "type": "string" }
+          }
+        }
+      }
+    },
+    "responses": {
+      "JsonOk": {
+        "description": "JSON response",
+        "content": {
+          "application/json": {
+            "schema": { "type": "object", "additionalProperties": true }
+          }
+        }
+      },
+      "JsonList": {
+        "description": "JSON list response",
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "#/components/schemas/ListResponse" }
+          }
+        }
+      },
+      "XmlOk": {
+        "description": "XML response",
+        "content": {
+          "application/xml": {
+            "schema": { "type": "string" }
+          },
+          "text/xml": {
+            "schema": { "type": "string" }
+          }
+        }
+      },
+      "BinaryOk": {
+        "description": "Binary response",
+        "content": {
+          "application/octet-stream": {
+            "schema": { "type": "string", "format": "binary" }
+          }
+        }
+      },
+      "Error": {
+        "description": "OSMU JSON error response",
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "#/components/schemas/ErrorResponse" }
+          }
+        }
+      },
+      "S3Error": {
+        "description": "S3 XML error response",
+        "content": {
+          "application/xml": {
+            "schema": { "type": "string" }
+          }
+        }
+      }
+    },
+    "schemas": {
+      "LoginRequest": {
+        "type": "object",
+        "required": ["loginId", "password"],
+        "properties": {
+          "loginId": { "type": "string" },
+          "password": { "type": "string", "format": "password" }
+        }
+      },
+      "RefreshTokenRequest": {
+        "type": "object",
+        "required": ["refreshToken"],
+        "properties": {
+          "refreshToken": { "type": "string" }
+        }
+      },
+      "CreateBucketRequest": {
+        "type": "object",
+        "required": ["name"],
+        "properties": {
+          "name": { "type": "string" },
+          "ownerType": { "type": "string", "enum": ["USER", "ORG"] },
+          "ownerId": { "type": "string" },
+          "quotaBytes": { "type": "integer", "format": "int64", "minimum": 0 },
+          "visibility": { "type": "string", "default": "PRIVATE" }
+        }
+      },
+      "ListResponse": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": { "type": "object", "additionalProperties": true }
+          },
+          "nextCursor": { "type": "string", "nullable": true }
+        }
+      },
+      "ErrorResponse": {
+        "type": "object",
+        "properties": {
+          "code": { "type": "string" },
+          "message": { "type": "string" },
+          "requestId": { "type": "string" }
+        }
+      }
+    }
+  }
+}

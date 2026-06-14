@@ -1,0 +1,1 @@
+ALTER TABLE access_keys ADD COLUMN IF NOT EXISTS bucket_scopes TEXT NULL;

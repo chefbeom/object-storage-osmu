@@ -1,0 +1,93 @@
+groups:
+  - name: osmu.prototype.availability
+    rules:
+      - alert: OsmuBackendDown
+        expr: up{job=~"osmu-backend.*"} == 0
+        for: 2m
+        labels:
+          severity: critical
+          service: osmu-backend
+        annotations:
+          summary: OSMU backend scrape target is down.
+          description: Prometheus cannot scrape the OSMU backend for more than 2 minutes.
+
+      - alert: OsmuBackendHighErrorRate
+        expr: |
+          (
+            sum(rate(http_server_requests_seconds_count{job=~"osmu-backend.*",status=~"5.."}[5m]))
+            /
+            clamp_min(sum(rate(http_server_requests_seconds_count{job=~"osmu-backend.*"}[5m])), 1)
+          ) > 0.05
+        for: 5m
+        labels:
+          severity: warning
+          service: osmu-backend
+        annotations:
+          summary: OSMU backend 5xx error rate is high.
+          description: Backend 5xx ratio is above 5 percent for 5 minutes.
+
+      - alert: OsmuBackendHighLatencyP95
+        expr: |
+          histogram_quantile(
+            0.95,
+            sum(rate(http_server_requests_seconds_bucket{job=~"osmu-backend.*"}[5m])) by (le)
+          ) > 2
+        for: 10m
+        labels:
+          severity: warning
+          service: osmu-backend
+        annotations:
+          summary: OSMU backend p95 latency is high.
+          description: Backend p95 latency is above 2 seconds for 10 minutes.
+
+  - name: osmu.prototype.operations
+    rules:
+      - alert: OsmuRetentionPurgeFailures
+        expr: increase(osmu_object_retention_purge_runs_total{job=~"osmu-backend.*",result="failure"}[15m]) > 0
+        for: 1m
+        labels:
+          severity: warning
+          service: osmu-backend
+        annotations:
+          summary: OSMU object retention purge failed.
+          description: At least one object retention purge run failed in the last 15 minutes.
+
+      - alert: OsmuVersionRetentionPurgeFailures
+        expr: increase(osmu_object_version_retention_purge_runs_total{job=~"osmu-backend.*",result="failure"}[15m]) > 0
+        for: 1m
+        labels:
+          severity: warning
+          service: osmu-backend
+        annotations:
+          summary: OSMU object version retention purge failed.
+          description: At least one object version retention purge run failed in the last 15 minutes.
+
+      - alert: OsmuMultipartCleanupFailures
+        expr: increase(osmu_multipart_cleanup_sessions_total{job=~"osmu-backend.*",result="failure"}[15m]) > 0
+        for: 1m
+        labels:
+          severity: warning
+          service: osmu-backend
+        annotations:
+          summary: OSMU multipart cleanup failed.
+          description: Multipart upload cleanup reported a failure in the last 15 minutes.
+
+      - alert: OsmuShareLinkCleanupFailures
+        expr: increase(osmu_object_share_cleanup_runs_total{job=~"osmu-backend.*",result="failure"}[15m]) > 0
+        for: 1m
+        labels:
+          severity: warning
+          service: osmu-backend
+        annotations:
+          summary: OSMU share link cleanup failed.
+          description: Object share link cleanup scheduler failed in the last 15 minutes.
+
+      - alert: OsmuBackupRestoreDrillPending
+        expr: vector(1)
+        for: 0m
+        labels:
+          severity: info
+          service: osmu-operations
+        annotations:
+          summary: OSMU backup restore drill must be executed before durable pilot.
+          description: This draft alert is a handoff reminder. Disable it only after a restore drill is executed and recorded for the target environment.

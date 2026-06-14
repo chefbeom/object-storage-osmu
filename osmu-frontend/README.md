@@ -1,38 +1,65 @@
-# osmu-frontend
+# OSMU Frontend
 
-This template should help get you started developing with Vue 3 in Vite.
+Vue/Vite portal for the OSMU object storage prototype.
 
-## Recommended IDE Setup
+## Features
 
-[VS Code](https://code.visualstudio.com/) + [Vue (Official)](https://marketplace.visualstudio.com/items?itemName=Vue.volar) (and disable Vetur).
+- Login/logout with JWT session refresh.
+- Dashboard metrics and system status.
+- Bucket create/list/delete/sync.
+- Object upload, search, prefix browse, download, soft delete, restore, purge.
+- Multipart upload with retry/resume state.
+- Object tags and bucket tags.
+- Bucket permissions and access keys.
+- Lifecycle/retention controls, conflict checks, dry runs, S3 XML import/export.
+- Admin users, organizations, usage, audit logs.
 
-## Recommended Browser Setup
+## Environment
 
-- Chromium-based browsers (Chrome, Edge, Brave, etc.):
-  - [Vue.js devtools](https://chromewebstore.google.com/detail/vuejs-devtools/nhdogjmejiglipccpnnnanhbledajbpd)
-  - [Turn on Custom Object Formatter in Chrome DevTools](http://bit.ly/object-formatters)
-- Firefox:
-  - [Vue.js devtools](https://addons.mozilla.org/en-US/firefox/addon/vue-js-devtools/)
-  - [Turn on Custom Object Formatter in Firefox DevTools](https://fxdx.dev/firefox-devtools-custom-object-formatters/)
+Copy `.env.example` if local overrides are needed.
 
-## Customize configuration
-
-See [Vite Configuration Reference](https://vite.dev/config/).
-
-## Project Setup
-
-```sh
-npm install
+```powershell
+Copy-Item .\.env.example .\.env -ErrorAction SilentlyContinue
 ```
 
-### Compile and Hot-Reload for Development
+Main values:
 
-```sh
+- `VITE_API_BASE_URL=http://localhost:8080/api`
+- `VITE_MULTIPART_UPLOAD_CONCURRENCY=4`
+- `VITE_MULTIPART_UPLOAD_PART_RETRIES=2`
+- `VITE_MULTIPART_UPLOAD_RETRY_BASE_DELAY_MS=500`
+- `VITE_MULTIPART_UPLOAD_RETRY_JITTER_RATIO=0.25`
+
+## Development
+
+```powershell
+npm install
 npm run dev
 ```
 
-### Compile and Minify for Production
+Default dev URL: http://localhost:5173
 
-```sh
+From repository root, you can start both the in-memory backend and frontend dev server:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\start-local-prototype.ps1 -JavaHome "C:\path\to\jdk17"
+```
+
+## Verify
+
+```powershell
+npm run test:unit
 npm run build
 ```
+
+`test:unit` currently covers shared tag parsing/formatting/validation rules used by object tags and bucket tags.
+
+## Docker
+
+The root Docker Compose stack builds this frontend image and serves it through nginx on port `5173`.
+
+```powershell
+docker compose --env-file ..\infra\local\.env -f ..\infra\local\docker-compose.yml up -d --build frontend
+```
+
+For normal local use, prefer the root command from `..\README.md` so MariaDB, MinIO, backend, and frontend start together.

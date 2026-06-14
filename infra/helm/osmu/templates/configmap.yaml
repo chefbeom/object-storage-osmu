@@ -1,0 +1,38 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "osmu.fullname" . }}-config
+  namespace: {{ include "osmu.namespace" . }}
+  labels:
+    {{- include "osmu.labels" . | nindent 4 }}
+data:
+  MARIADB_DATABASE: {{ .Values.config.mariadbDatabase | quote }}
+  SPRING_PROFILES_ACTIVE: {{ .Values.config.springProfilesActive | quote }}
+  SERVER_PORT: {{ .Values.config.serverPort | quote }}
+  OSMU_FLYWAY_ENABLED: {{ .Values.config.flywayEnabled | quote }}
+  OSMU_ADMIN_LOGIN_ID: {{ .Values.config.adminLoginId | quote }}
+  OSMU_ADMIN_EMAIL: {{ .Values.config.adminEmail | quote }}
+  OSMU_ADMIN_NAME: {{ .Values.config.adminName | quote }}
+  OSMU_JWT_ACCESS_TOKEN_TTL_SECONDS: {{ .Values.config.jwtAccessTokenTtlSeconds | quote }}
+  OSMU_JWT_REFRESH_TOKEN_TTL_SECONDS: {{ .Values.config.jwtRefreshTokenTtlSeconds | quote }}
+  OSMU_METADATA_MODE: {{ .Values.config.metadataMode | quote }}
+  OSMU_STORAGE_MODE: {{ .Values.config.storageMode | quote }}
+  OSMU_STORAGE_ENDPOINT: {{ .Values.config.storageEndpoint | quote }}
+  OSMU_STORAGE_CORS_ENABLED: {{ .Values.config.storageCorsEnabled | quote }}
+  OSMU_STORAGE_CORS_ALLOWED_ORIGINS: {{ .Values.config.storageCorsAllowedOrigins | quote }}
+  OSMU_UPLOAD_CLEANUP_ENABLED: {{ .Values.config.uploadCleanupEnabled | quote }}
+  OSMU_UPLOAD_CLEANUP_INITIAL_DELAY_MS: {{ .Values.config.uploadCleanupInitialDelayMs | quote }}
+  OSMU_UPLOAD_CLEANUP_FIXED_DELAY_MS: {{ .Values.config.uploadCleanupFixedDelayMs | quote }}
+  OSMU_UPLOAD_CLEANUP_BATCH_SIZE: {{ .Values.config.uploadCleanupBatchSize | quote }}
+  OSMU_OBJECT_RETENTION_ENABLED: {{ .Values.config.objectRetentionEnabled | quote }}
+  OSMU_OBJECT_RETENTION_DAYS: {{ .Values.config.objectRetentionDays | quote }}
+  OSMU_OBJECT_RETENTION_INITIAL_DELAY_MS: {{ .Values.config.objectRetentionInitialDelayMs | quote }}
+  OSMU_OBJECT_RETENTION_FIXED_DELAY_MS: {{ .Values.config.objectRetentionFixedDelayMs | quote }}
+  OSMU_OBJECT_RETENTION_BATCH_SIZE: {{ .Values.config.objectRetentionBatchSize | quote }}
+  OSMU_ACCESS_KEY_PROVISIONING_MODE: {{ .Values.config.accessKeyProvisioningMode | quote }}
+  OSMU_ACCESS_KEY_MC_PATH: {{ .Values.config.accessKeyMcPath | quote }}
+  OSMU_ACCESS_KEY_MINIO_ALIAS: {{ .Values.config.accessKeyMinioAlias | quote }}
+  OSMU_S3_SIGV4_CLOCK_SKEW_SECONDS: {{ .Values.config.s3SigV4ClockSkewSeconds | quote }}
+  OSMU_S3_VIRTUAL_HOSTED_STYLE_ENABLED: {{ .Values.config.s3VirtualHostedStyleEnabled | quote }}
+  OSMU_S3_VIRTUAL_HOSTED_STYLE_DOMAIN_SUFFIXES: {{ .Values.config.s3VirtualHostedStyleDomainSuffixes | quote }}
+

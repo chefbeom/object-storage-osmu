@@ -1,0 +1,70 @@
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: osmu-backend
+  namespace: osmu
+  labels:
+    app.kubernetes.io/name: osmu-backend
+    app.kubernetes.io/part-of: osmu
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: osmu-backend
+      app.kubernetes.io/part-of: osmu
+  namespaceSelector:
+    matchNames:
+      - osmu
+  endpoints:
+    - port: http
+      path: /actuator/prometheus
+      interval: 30s
+      scrapeTimeout: 10s
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: osmu-backend
+  namespace: osmu
+  labels:
+    app.kubernetes.io/name: osmu-backend
+    app.kubernetes.io/part-of: osmu
+spec:
+  groups:
+    - name: osmu.prototype.availability
+      rules:
+        - alert: OsmuBackendDown
+          expr: up{job=~"osmu-backend.*"} == 0
+          for: 2m
+          labels:
+            severity: critical
+            service: osmu-backend
+          annotations:
+            summary: OSMU backend scrape target is down.
+            description: Prometheus cannot scrape the OSMU backend for more than 2 minutes.
+        - alert: OsmuBackendHighErrorRate
+          expr: |
+            (
+              sum(rate(http_server_requests_seconds_count{job=~"osmu-backend.*",status=~"5.."}[5m]))
+              /
+              clamp_min(sum(rate(http_server_requests_seconds_count{job=~"osmu-backend.*"}[5m])), 1)
+            ) > 0.05
+          for: 5m
+          labels:
+            severity: warning
+            service: osmu-backend
+          annotations:
+            summary: OSMU backend 5xx error rate is high.
+            description: Backend 5xx ratio is above 5 percent for 5 minutes.
+        - alert: OsmuBackendHighLatencyP95
+          expr: |
+            histogram_quantile(
+              0.95,
+              sum(rate(http_server_requests_seconds_bucket{job=~"osmu-backend.*"}[5m])) by (le)
+            ) > 2
+          for: 10m
+          labels:
+            severity: warning
+            service: osmu-backend
+          annotations:
+            summary: OSMU backend p95 latency is high.
+            description: Backend p95 latency is above 2 seconds for 10 minutes.

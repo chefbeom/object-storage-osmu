@@ -1,3 +1,58 @@
+## Lifecycle Rule Requirement
+
+- Admin can define multiple lifecycle rules by target type, prefix, and tag filter.
+- Rule targets: soft-deleted trash objects and historical object versions.
+- Each rule has enabled flag, priority, retention days, and purge batch size.
+- Admin can run lifecycle rule dry-run to preview candidate count, bytes, and sample targets before deletion.
+- Admin can view lifecycle rule conflict report for overlapping enabled rule scopes.
+- Admin can export/import lifecycle rules using an AWS S3 LifecycleConfiguration XML-compatible subset.
+- Bucket owners/admins can manage bucket-scoped lifecycle XML through `GET/PUT/DELETE /api/buckets/{bucketName}/lifecycle`.
+- Bucket lifecycle API supports both JSON wrapper and raw XML request/response for stronger S3 client interoperability.
+- OSMU also provides `/api/s3/{bucketName}?lifecycle` as a path-style S3 lifecycle alias using OSMU REST authentication or OSMU access key headers.
+- Access key usage for bucket lifecycle alias requires active target bucket `ADMIN` scope.
+- Bucket-scoped lifecycle rules only purge candidates in the configured bucket; global rules use empty `bucketName`.
+- This supports B2B storage use cases where departments/projects require different retention windows.
+
+## S3-style Object API Prototype
+
+- Prototype supports root S3 bucket listing through `GET /api/s3` and service-level auth probe through `HEAD /api/s3`.
+- Prototype supports bucket-level S3 compatibility operations through `PUT /api/s3/{bucketName}`, `HEAD /api/s3/{bucketName}`, `GET /api/s3/{bucketName}?location`, and `DELETE /api/s3/{bucketName}`.
+- Prototype supports `PUT/HEAD/GET/DELETE /api/s3/{bucketName}/{objectKey}` for raw object upload, metadata read, download, and soft delete.
+- Prototype supports temporary object share links through `POST/GET/DELETE /api/buckets/{bucketName}/objects/share-links`, `POST /api/buckets/{bucketName}/objects/share-links/cleanup`, scheduled cleanup, `GET/PUT /api/admin/object-share-policy`, `GET /api/admin/object-share-analytics`, and public `GET /api/public/share-links/{token}` for controlled reuse without requiring a portal login on the download side. Share links support expiry, revoke, optional or admin-required password protection, optional or admin-required IP/CIDR allowlist, optional/admin-capped max download count, download count, last-access tracking, bucket/status-filtered admin analytics, audit, and Prometheus cleanup metrics.
+- Prototype supports S3 CopyObject through `PUT /api/s3/{bucketName}/{objectKey}` with `x-amz-copy-source`.
+- Prototype supports MVP S3 multipart upload path through active upload listing, initiate, upload part, list parts, complete, and abort operations.
+- Prototype supports basic `GET /api/s3/{bucketName}` ListObjects V1 XML with prefix, delimiter, marker, max key limit, `encoding-type=url`, and `fetch-owner=true`.
+- Prototype supports basic `GET /api/s3/{bucketName}?list-type=2` ListObjectsV2 XML with prefix, delimiter, pagination token, max key limit, `encoding-type=url`, and `fetch-owner=true`.
+- Prototype supports S3-style multi-object delete through `POST /api/s3/{bucketName}?delete`.
+- Prototype supports single HTTP byte range GET for preview and resumable download use cases.
+- Prototype supports S3-style object tagging XML through `GET/PUT/DELETE /api/s3/{bucketName}/{objectKey}?tagging`.
+- Prototype returns AWS-style XML error bodies for `/api/s3/**` requests.
+- The alias supports Bearer JWT or OSMU Access Key headers.
+- The alias supports AWS SigV4 header authorization for access keys created with encrypted signing secret material.
+- The alias supports AWS SigV4 query/presigned URL authorization with `UNSIGNED-PAYLOAD` for S3-style object reads.
+- SigV4 auth enforces clock-skew and presigned URL expiration in the MVP.
+- Non-streaming SigV4 object and multipart part uploads validate signed `x-amz-content-sha256` against the actual body. `UNSIGNED-PAYLOAD` is allowed, and `STREAMING-*` payload signatures remain future work.
+- The alias supports MVP virtual-hosted-style routing for configured host suffixes, such as `Host: {bucket}.localhost` with path `/api/s3/{objectKey}`.
+- Access Key root bucket listing only returns buckets in the key's still-valid scopes.
+- Access Key scope maps object actions to `WRITE`, `READ`, and `DELETE`.
+- Raw upload requires `Content-Length` and returns an MD5 `ETag`.
+- Raw upload validates optional S3 `Content-MD5` and rejects invalid or mismatched digests.
+- Raw upload validates one optional S3 checksum value header among `x-amz-checksum-sha256`, `x-amz-checksum-sha1`, `x-amz-checksum-crc32`, and `x-amz-checksum-crc32c`, stores matching checksum metadata, returns the matching checksum response header, and exposes it on later `HEAD`/`GET` plus list checksum algorithm XML.
+- S3 object metadata responses expose `ETag` on `HEAD`, `GET`, `ListObjects`, and `ListObjectsV2` when available.
+- S3 object `HEAD` and `GET` support basic conditional requests through `If-Match`, `If-None-Match`, `If-Modified-Since`, and `If-Unmodified-Since`.
+- CopyObject requires `READ` on the source bucket and `WRITE` on the target bucket. Copied object body, content type, tags, and stored checksum metadata are preserved by default, and copy result XML can expose stored checksum fields.
+- CopyObject supports `COPY`/`REPLACE` directives for MVP content type and tag replacement.
+- CopyObject supports basic source preconditions through ETag and Last-Modified headers and returns `412 PreconditionFailed` when they fail.
+- S3 multipart initiate requires OSMU expected-size metadata header in the MVP so quota and session planning remain deterministic.
+- S3 multipart part upload validates optional `Content-MD5`, signed `x-amz-content-sha256`, and one optional `x-amz-checksum-*` value header, and returns the matching checksum response header.
+- S3 multipart complete validates one optional final object `x-amz-checksum-*` value header against the completed object, stores matching checksum metadata, returns the matching checksum response header, and exposes it in complete-result XML.
+- S3 multipart complete request XML accepts optional per-part checksum elements and validates their syntax before storage completion.
+- Bucket-level responses include `x-amz-bucket-region`; MVP default region is `us-east-1`.
+- S3-style bucket creation currently uses Bearer JWT auth; bucket deletion supports JWT or an OSMU Access Key with target bucket `ADMIN` scope and requires an empty bucket.
+- `x-amz-tagging` and `X-OSMU-Tags` are accepted for upload tags.
+- Multi-object delete uses the same soft-delete behavior as the REST object API and treats missing keys as deleted for S3 compatibility.
+- Object tagging XML uses the same metadata tag store as the REST object API; tag read requires `READ`, tag update/delete requires `WRITE`.
+- SigV4 chunked streaming parity, unknown-size S3 multipart initiate parity, checksum trailer/CRC64NVME/full AWS checksum parity, automatic DNS/proxy provisioning for virtual-hosted-style domains, multi-range GET, full conditional request parity, exact CopyObject user-metadata/versioning/full-conditional parity, multipart ETag parity, exact CreateBucket/DeleteBucket parity, and exact AWS error schema parity remain future work.
 # Private Object Storage Platform 기획서 초안
 
 ## 1. 문서 개요
@@ -628,6 +683,7 @@ REST API 접근을 위한 토큰을 발급한다.
 
 - 삭제는 감사 로그에 기록한다.
 - 향후 soft delete 또는 versioning을 지원할 수 있다.
+- 현재 MVP는 soft delete 기반 trash/restore/purge 흐름을 제공한다.
 
 #### 11.5.4 파일 목록 조회
 

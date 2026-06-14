@@ -1,0 +1,810 @@
+package com.example.osmu.object;
+
+import static org.hamcrest.Matchers.containsString;
+import static org.hamcrest.Matchers.not;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.asyncDispatch;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.head;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.request;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+
+import com.jayway.jsonpath.JsonPath;
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.time.Instant;
+import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
+import java.time.format.DateTimeFormatter;
+import java.util.Base64;
+import java.util.HexFormat;
+import java.util.Locale;
+import java.util.Map;
+import java.util.TreeMap;
+import java.util.zip.CRC32C;
+import javax.crypto.Mac;
+import javax.crypto.spec.SecretKeySpec;
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.MvcResult;
+
+@SpringBootTest
+@AutoConfigureMockMvc
+class S3ObjectControllerTest {
+
+    @Autowired
+    private MockMvc mockMvc;
+
+    @Test
+    void accessKeyCanPutHeadGetAndDeleteObjectThroughS3StylePath() throws Exception {
+        String token = loginAndReturnAccessToken("admin", "password");
+        String bucketName = "s3-object-alias-bucket";
+        createBucket(token, bucketName);
+        AccessKeyCredentials credentials = createAccessKey(token, bucketName, "READ", "WRITE", "DELETE");
+
+        MvcResult uploadResult = mockMvc.perform(put("/api/s3/{bucketName}/docs/sample.txt", bucketName)
+                        .header("X-OSMU-Access-Key", credentials.accessKey())
+                        .header("X-OSMU-Secret-Key", credentials.secretKey())
+                        .header("x-amz-tagging", "project=osmu&stage=raw")
+                        .contentType(MediaType.TEXT_PLAIN)
+                        .content("hello s3 alias"))
+                .andExpect(status().isOk())
+                .andExpect(header().string(HttpHeaders.ETAG, containsString("\"")))
+                .andExpect(header().string("x-amz-tagging-count", "2"))
+                .andReturn();
+        String etag = uploadResult.getResponse().getHeader(HttpHeaders.ETAG);
+
+        mockMvc.perform(head("/api/s3/{bucketName}/docs/sample.txt", bucketName)
+                        .header("X-OSMU-Access-Key", credentials.accessKey())
+                        .header("X-OSMU-Secret-Key", credentials.secretKey()))
+                .andExpect(status().isOk())
+                .andExpect(header().string(HttpHeaders.ETAG, etag))
+                .andExpect(header().longValue(HttpHeaders.CONTENT_LENGTH, 14L))
+                .andExpect(header().string("x-amz-tagging-count", "2"));
+
+        MvcResult downloadResult = mockMvc.perform(get("/api/s3/{bucketName}/docs/sample.txt", bucketName)
+                        .header("X-OSMU-Access-Key", credentials.accessKey())
+                        .header("X-OSMU-Secret-Key", credentials.secretKey()))
+                .andExpect(request().asyncStarted())
+                .andReturn();
+
+        mockMvc.perform(asyncDispatch(downloadResult))
+                .andExpect(status().isOk())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.TEXT_PLAIN))
+                .andExpect(header().string(HttpHeaders.ETAG, etag))
+                .andExpect(header().string("X-OSMU-Tags", containsString("project=osmu")))
+                .andExpect(content().string("hello s3 alias"));
+
+        mockMvc.perform(head("/api/s3/{bucketName}/docs/sample.txt", bucketName)
+                        .header("X-OSMU-Access-Key", credentials.accessKey())
+                        .header("X-OSMU-Secret-Key", credentials.secretKey())
+                        .header(HttpHeaders.IF_NONE_MATCH, etag))
+                .andExpect(status().isNotModified())
+                .andExpect(header().string(HttpHeaders.ETAG, etag));
+
+        mockMvc.perform(get("/api/s3/{bucketName}/docs/sample.txt", bucketName)
+                        .header("X-OSMU-Access-Key", credentials.accessKey())
+                        .header("X-OSMU-Secret-Key", credentials.secretKey())
+                        .header(HttpHeaders.IF_NONE_MATCH, etag))
+                .andExpect(request().asyncNotStarted())
+                .andExpect(status().isNotModified())
+                .andExpect(header().string(HttpHeaders.ETAG, etag))
+                .andExpect(header().doesNotExist(HttpHeaders.CONTENT_LENGTH));
+
+        mockMvc.perform(head("/api/s3/{bucketName}/docs/sample.txt", bucketName)
+                        .header("X-OSMU-Access-Key", credentials.accessKey())
+                        .header("X-OSMU-Secret-Key", credentials.secretKey())
+                        .header(HttpHeaders.IF_MATCH, "\"different\""))
+                .andExpect(status().isPreconditionFailed())
+                .andExpect(header().string(HttpHeaders.ETAG, etag));
+
+        mockMvc.perform(get("/api/s3/{bucketName}/docs/sample.txt", bucketName)
+                        .header("X-OSMU-Access-Key", credentials.accessKey())
+                        .header("X-OSMU-Secret-Key", credentials.secretKey())
+                        .header(HttpHeaders.IF_MATCH, "\"different\""))
+                .andExpect(request().asyncNotStarted())
+                .andExpect(status().isPreconditionFailed())
+                .andExpect(header().string(HttpHeaders.ETAG, etag))
+                .andExpect(header().doesNotExist(HttpHeaders.CONTENT_LENGTH));
+
+        String futureHttpDate = DateTimeFormatter.RFC_1123_DATE_TIME.format(
+                OffsetDateTime.now(ZoneOffset.UTC).plusDays(1)
+        );
+        String pastHttpDate = DateTimeFormatter.RFC_1123_DATE_TIME.format(
+                OffsetDateTime.now(ZoneOffset.UTC).minusDays(1)
+        );
+
+        mockMvc.perform(head("/api/s3/{bucketName}/docs/sample.txt", bucketName)
+                        .header("X-OSMU-Access-Key", credentials.accessKey())
+                        .header("X-OSMU-Secret-Key", credentials.secretKey())
+                        .header(HttpHeaders.IF_MODIFIED_SINCE, futureHttpDate))
+                .andExpect(status().isNotModified())
+                .andExpect(header().string(HttpHeaders.ETAG, etag));
+
+        mockMvc.perform(get("/api/s3/{bucketName}/docs/sample.txt", bucketName)
+                        .header("X-OSMU-Access-Key", credentials.accessKey())
+                        .header("X-OSMU-Secret-Key", credentials.secretKey())
+                        .header(HttpHeaders.IF_MODIFIED_SINCE, futureHttpDate))
+                .andExpect(request().asyncNotStarted())
+                .andExpect(status().isNotModified())
+                .andExpect(header().string(HttpHeaders.ETAG, etag));
+
+        mockMvc.perform(head("/api/s3/{bucketName}/docs/sample.txt", bucketName)
+                        .header("X-OSMU-Access-Key", credentials.accessKey())
+                        .header("X-OSMU-Secret-Key", credentials.secretKey())
+                        .header(HttpHeaders.IF_UNMODIFIED_SINCE, pastHttpDate))
+                .andExpect(status().isPreconditionFailed())
+                .andExpect(header().string(HttpHeaders.ETAG, etag));
+
+        mockMvc.perform(get("/api/s3/{bucketName}/docs/sample.txt", bucketName)
+                        .header("X-OSMU-Access-Key", credentials.accessKey())
+                        .header("X-OSMU-Secret-Key", credentials.secretKey())
+                        .header(HttpHeaders.IF_UNMODIFIED_SINCE, pastHttpDate))
+                .andExpect(request().asyncNotStarted())
+                .andExpect(status().isPreconditionFailed())
+                .andExpect(header().string(HttpHeaders.ETAG, etag));
+
+        mockMvc.perform(delete("/api/s3/{bucketName}/docs/sample.txt", bucketName)
+                        .header("X-OSMU-Access-Key", credentials.accessKey())
+                        .header("X-OSMU-Secret-Key", credentials.secretKey()))
+                .andExpect(status().isNoContent());
+
+        mockMvc.perform(get("/api/s3/{bucketName}/docs/sample.txt", bucketName)
+                        .header("X-OSMU-Access-Key", credentials.accessKey())
+                        .header("X-OSMU-Secret-Key", credentials.secretKey()))
+                .andExpect(status().isNotFound())
+                .andExpect(content().string(containsString("<Code>NoSuchKey</Code>")));
+    }
+
+    @Test
+    void accessKeyCanUploadWithContentMd5AndRejectMismatch() throws Exception {
+        String token = loginAndReturnAccessToken("admin", "password");
+        String bucketName = "s3-object-content-md5-bucket";
+        createBucket(token, bucketName);
+        AccessKeyCredentials credentials = createAccessKey(token, bucketName, "READ", "WRITE");
+        String body = "checksum body";
+
+        mockMvc.perform(put("/api/s3/{bucketName}/docs/checksum.txt", bucketName)
+                        .header("X-OSMU-Access-Key", credentials.accessKey())
+                        .header("X-OSMU-Secret-Key", credentials.secretKey())
+                        .header("Content-MD5", contentMd5(body))
+                        .contentType(MediaType.TEXT_PLAIN)
+                        .content(body))
+                .andExpect(status().isOk())
+                .andExpect(header().string(HttpHeaders.ETAG, "\"%s\"".formatted(md5Hex(body))));
+
+        mockMvc.perform(put("/api/s3/{bucketName}/docs/bad-checksum.txt", bucketName)
+                        .header("X-OSMU-Access-Key", credentials.accessKey())
+                        .header("X-OSMU-Secret-Key", credentials.secretKey())
+                        .header("Content-MD5", contentMd5("different body"))
+                        .contentType(MediaType.TEXT_PLAIN)
+                        .content(body))
+                .andExpect(status().isBadRequest())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_XML))
+                .andExpect(content().string(containsString("<Code>BadDigest</Code>")));
+
+        mockMvc.perform(get("/api/s3/{bucketName}/docs/bad-checksum.txt", bucketName)
+                        .header("X-OSMU-Access-Key", credentials.accessKey())
+                        .header("X-OSMU-Secret-Key", credentials.secretKey()))
+                .andExpect(status().isNotFound())
+                .andExpect(content().string(containsString("<Code>NoSuchKey</Code>")));
+
+        mockMvc.perform(put("/api/s3/{bucketName}/docs/invalid-checksum.txt", bucketName)
+                        .header("X-OSMU-Access-Key", credentials.accessKey())
+                        .header("X-OSMU-Secret-Key", credentials.secretKey())
+                        .header("Content-MD5", "not-valid-base64")
+                        .contentType(MediaType.TEXT_PLAIN)
+                        .content(body))
+                .andExpect(status().isBadRequest())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_XML))
+                .andExpect(content().string(containsString("<Code>InvalidDigest</Code>")));
+    }
+
+    @Test
+    void accessKeyCanListObjectsThroughS3ListObjectsV2Xml() throws Exception {
+        String token = loginAndReturnAccessToken("admin", "password");
+        String bucketName = "s3-object-list-bucket";
+        createBucket(token, bucketName);
+        AccessKeyCredentials credentials = createAccessKey(token, bucketName, "READ", "WRITE");
+
+        putS3Object(bucketName, "docs/a.txt", "a", credentials);
+        putS3Object(bucketName, "docs/nested/b.txt", "b", credentials);
+        putS3Object(bucketName, "images/c.txt", "c", credentials);
+
+        mockMvc.perform(get("/api/s3/{bucketName}", bucketName)
+                        .queryParam("list-type", "2")
+                        .queryParam("prefix", "docs/")
+                        .queryParam("delimiter", "/")
+                        .header("X-OSMU-Access-Key", credentials.accessKey())
+                        .header("X-OSMU-Secret-Key", credentials.secretKey())
+                        .accept(MediaType.APPLICATION_XML))
+                .andExpect(status().isOk())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_XML))
+                .andExpect(content().string(containsString("<ListBucketResult xmlns=\"http://s3.amazonaws.com/doc/2006-03-01/\">")))
+                .andExpect(content().string(containsString("<Name>%s</Name>".formatted(bucketName))))
+                .andExpect(content().string(containsString("<Prefix>docs/</Prefix>")))
+                .andExpect(content().string(containsString("<Key>docs/a.txt</Key>")))
+                .andExpect(content().string(containsString("<ETag>\"")))
+                .andExpect(content().string(containsString("<CommonPrefixes><Prefix>docs/nested/</Prefix></CommonPrefixes>")))
+                .andExpect(content().string(not(containsString("<Key>images/c.txt</Key>"))))
+                .andExpect(content().string(not(containsString("<Key>docs/nested/b.txt</Key>"))));
+
+        mockMvc.perform(get("/api/s3/{bucketName}", bucketName)
+                        .queryParam("list-type", "2")
+                        .queryParam("max-keys", "1")
+                        .header("X-OSMU-Access-Key", credentials.accessKey())
+                        .header("X-OSMU-Secret-Key", credentials.secretKey())
+                        .accept(MediaType.APPLICATION_XML))
+                .andExpect(status().isOk())
+                .andExpect(content().string(containsString("<IsTruncated>true</IsTruncated>")))
+                .andExpect(content().string(containsString("<NextContinuationToken>docs/a.txt</NextContinuationToken>")));
+
+        mockMvc.perform(get("/api/s3/{bucketName}", bucketName)
+                        .queryParam("list-type", "2")
+                        .queryParam("max-keys", "1")
+                        .queryParam("continuation-token", "docs/a.txt")
+                        .header("X-OSMU-Access-Key", credentials.accessKey())
+                        .header("X-OSMU-Secret-Key", credentials.secretKey())
+                        .accept(MediaType.APPLICATION_XML))
+                .andExpect(status().isOk())
+                .andExpect(content().string(containsString("<ContinuationToken>docs/a.txt</ContinuationToken>")))
+                .andExpect(content().string(containsString("<Key>docs/nested/b.txt</Key>")));
+    }
+
+    @Test
+    void accessKeyCanListObjectsThroughS3ListObjectsV1Xml() throws Exception {
+        String token = loginAndReturnAccessToken("admin", "password");
+        String bucketName = "s3-object-list-v1-bucket";
+        createBucket(token, bucketName);
+        AccessKeyCredentials credentials = createAccessKey(token, bucketName, "READ", "WRITE");
+
+        putS3Object(bucketName, "docs/a.txt", "a", credentials);
+        putS3Object(bucketName, "docs/nested/b.txt", "b", credentials);
+        putS3Object(bucketName, "images/c.txt", "c", credentials);
+
+        mockMvc.perform(get("/api/s3/{bucketName}", bucketName)
+                        .queryParam("prefix", "docs/")
+                        .queryParam("delimiter", "/")
+                        .header("X-OSMU-Access-Key", credentials.accessKey())
+                        .header("X-OSMU-Secret-Key", credentials.secretKey())
+                        .accept(MediaType.APPLICATION_XML))
+                .andExpect(status().isOk())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_XML))
+                .andExpect(content().string(containsString("<ListBucketResult xmlns=\"http://s3.amazonaws.com/doc/2006-03-01/\">")))
+                .andExpect(content().string(containsString("<Name>%s</Name>".formatted(bucketName))))
+                .andExpect(content().string(containsString("<Prefix>docs/</Prefix>")))
+                .andExpect(content().string(containsString("<Marker></Marker>")))
+                .andExpect(content().string(containsString("<Key>docs/a.txt</Key>")))
+                .andExpect(content().string(containsString("<ETag>\"")))
+                .andExpect(content().string(containsString("<CommonPrefixes><Prefix>docs/nested/</Prefix></CommonPrefixes>")))
+                .andExpect(content().string(not(containsString("<Key>images/c.txt</Key>"))))
+                .andExpect(content().string(not(containsString("<Key>docs/nested/b.txt</Key>"))));
+
+        mockMvc.perform(get("/api/s3/{bucketName}", bucketName)
+                        .queryParam("max-keys", "1")
+                        .header("X-OSMU-Access-Key", credentials.accessKey())
+                        .header("X-OSMU-Secret-Key", credentials.secretKey())
+                        .accept(MediaType.APPLICATION_XML))
+                .andExpect(status().isOk())
+                .andExpect(content().string(containsString("<IsTruncated>true</IsTruncated>")))
+                .andExpect(content().string(containsString("<NextMarker>docs/a.txt</NextMarker>")));
+
+        mockMvc.perform(get("/api/s3/{bucketName}", bucketName)
+                        .queryParam("max-keys", "1")
+                        .queryParam("marker", "docs/a.txt")
+                        .header("X-OSMU-Access-Key", credentials.accessKey())
+                        .header("X-OSMU-Secret-Key", credentials.secretKey())
+                        .accept(MediaType.APPLICATION_XML))
+                .andExpect(status().isOk())
+                .andExpect(content().string(containsString("<Marker>docs/a.txt</Marker>")))
+                .andExpect(content().string(containsString("<Key>docs/nested/b.txt</Key>")));
+    }
+
+    @Test
+    void accessKeyCanListObjectsWithUrlEncoding() throws Exception {
+        String token = loginAndReturnAccessToken("admin", "password");
+        String bucketName = "s3-object-list-encoding-bucket";
+        createBucket(token, bucketName);
+        AccessKeyCredentials credentials = createAccessKey(token, bucketName, "READ", "WRITE");
+
+        putS3Object(bucketName, "docs/special file(1).txt", "body", credentials);
+
+        mockMvc.perform(get("/api/s3/{bucketName}", bucketName)
+                        .queryParam("prefix", "docs/")
+                        .queryParam("encoding-type", "url")
+                        .header("X-OSMU-Access-Key", credentials.accessKey())
+                        .header("X-OSMU-Secret-Key", credentials.secretKey())
+                        .accept(MediaType.APPLICATION_XML))
+                .andExpect(status().isOk())
+                .andExpect(content().string(containsString("<EncodingType>url</EncodingType>")))
+                .andExpect(content().string(containsString("<Prefix>docs%2F</Prefix>")))
+                .andExpect(content().string(containsString("<Key>docs%2Fspecial%20file%281%29.txt</Key>")));
+
+        mockMvc.perform(get("/api/s3/{bucketName}", bucketName)
+                        .queryParam("list-type", "2")
+                        .queryParam("prefix", "docs/")
+                        .queryParam("encoding-type", "url")
+                        .header("X-OSMU-Access-Key", credentials.accessKey())
+                        .header("X-OSMU-Secret-Key", credentials.secretKey())
+                        .accept(MediaType.APPLICATION_XML))
+                .andExpect(status().isOk())
+                .andExpect(content().string(containsString("<EncodingType>url</EncodingType>")))
+                .andExpect(content().string(containsString("<Prefix>docs%2F</Prefix>")))
+                .andExpect(content().string(containsString("<Key>docs%2Fspecial%20file%281%29.txt</Key>")));
+    }
+
+    @Test
+    void accessKeyCanListObjectsWithOwnerWhenRequested() throws Exception {
+        String token = loginAndReturnAccessToken("admin", "password");
+        String bucketName = "s3-object-list-owner-bucket";
+        createBucket(token, bucketName);
+        AccessKeyCredentials credentials = createAccessKey(token, bucketName, "READ", "WRITE");
+
+        putS3Object(bucketName, "docs/owner.txt", "body", credentials);
+
+        mockMvc.perform(get("/api/s3/{bucketName}", bucketName)
+                        .queryParam("list-type", "2")
+                        .queryParam("fetch-owner", "true")
+                        .header("X-OSMU-Access-Key", credentials.accessKey())
+                        .header("X-OSMU-Secret-Key", credentials.secretKey())
+                        .accept(MediaType.APPLICATION_XML))
+                .andExpect(status().isOk())
+                .andExpect(content().string(containsString("<Owner><ID>1</ID><DisplayName>admin</DisplayName></Owner>")));
+
+        mockMvc.perform(get("/api/s3/{bucketName}", bucketName)
+                        .queryParam("fetch-owner", "true")
+                        .header("X-OSMU-Access-Key", credentials.accessKey())
+                        .header("X-OSMU-Secret-Key", credentials.secretKey())
+                        .accept(MediaType.APPLICATION_XML))
+                .andExpect(status().isOk())
+                .andExpect(content().string(containsString("<Owner><ID>1</ID><DisplayName>admin</DisplayName></Owner>")));
+
+        mockMvc.perform(get("/api/s3/{bucketName}", bucketName)
+                        .queryParam("list-type", "2")
+                        .header("X-OSMU-Access-Key", credentials.accessKey())
+                        .header("X-OSMU-Secret-Key", credentials.secretKey())
+                        .accept(MediaType.APPLICATION_XML))
+                .andExpect(status().isOk())
+                .andExpect(content().string(not(containsString("<Owner>"))));
+    }
+
+    @Test
+    void accessKeyCanUseAwsMaxKeysLimit() throws Exception {
+        String token = loginAndReturnAccessToken("admin", "password");
+        String bucketName = "s3-object-list-max-keys-bucket";
+        createBucket(token, bucketName);
+        AccessKeyCredentials credentials = createAccessKey(token, bucketName, "READ", "WRITE");
+
+        putS3Object(bucketName, "docs/max-keys.txt", "body", credentials);
+
+        mockMvc.perform(get("/api/s3/{bucketName}", bucketName)
+                        .queryParam("max-keys", "1000")
+                        .header("X-OSMU-Access-Key", credentials.accessKey())
+                        .header("X-OSMU-Secret-Key", credentials.secretKey())
+                        .accept(MediaType.APPLICATION_XML))
+                .andExpect(status().isOk())
+                .andExpect(content().string(containsString("<MaxKeys>1000</MaxKeys>")));
+
+        mockMvc.perform(get("/api/s3/{bucketName}", bucketName)
+                        .queryParam("list-type", "2")
+                        .queryParam("max-keys", "1000")
+                        .header("X-OSMU-Access-Key", credentials.accessKey())
+                        .header("X-OSMU-Secret-Key", credentials.secretKey())
+                        .accept(MediaType.APPLICATION_XML))
+                .andExpect(status().isOk())
+                .andExpect(content().string(containsString("<MaxKeys>1000</MaxKeys>")));
+
+        mockMvc.perform(get("/api/s3/{bucketName}", bucketName)
+                        .queryParam("list-type", "2")
+                        .queryParam("max-keys", "1001")
+                        .header("X-OSMU-Access-Key", credentials.accessKey())
+                        .header("X-OSMU-Secret-Key", credentials.secretKey())
+                        .accept(MediaType.APPLICATION_XML))
+                .andExpect(status().isBadRequest())
+                .andExpect(content().string(containsString("<Code>InvalidRequest</Code>")));
+    }
+
+    @Test
+    void accessKeyCanCheckBucketAndLocationThroughS3StylePath() throws Exception {
+        String token = loginAndReturnAccessToken("admin", "password");
+        String bucketName = "s3-bucket-location-bucket";
+        createBucket(token, bucketName);
+        AccessKeyCredentials credentials = createAccessKey(token, bucketName, "WRITE");
+
+        mockMvc.perform(head("/api/s3/{bucketName}", bucketName)
+                        .header("X-OSMU-Access-Key", credentials.accessKey())
+                        .header("X-OSMU-Secret-Key", credentials.secretKey()))
+                .andExpect(status().isOk())
+                .andExpect(header().string("x-amz-bucket-region", "us-east-1"));
+
+        mockMvc.perform(get("/api/s3/{bucketName}", bucketName)
+                        .queryParam("location", "")
+                        .header("X-OSMU-Access-Key", credentials.accessKey())
+                        .header("X-OSMU-Secret-Key", credentials.secretKey())
+                        .accept(MediaType.APPLICATION_XML))
+                .andExpect(status().isOk())
+                .andExpect(header().string("x-amz-bucket-region", "us-east-1"))
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_XML))
+                .andExpect(content().string(containsString("<LocationConstraint xmlns=\"http://s3.amazonaws.com/doc/2006-03-01/\">us-east-1</LocationConstraint>")));
+    }
+
+    @Test
+    void bearerCanCreateAndAccessKeyCanDeleteBucketThroughS3StylePath() throws Exception {
+        String token = loginAndReturnAccessToken("admin", "password");
+        String bucketName = "s3-bucket-create-delete-bucket";
+
+        mockMvc.perform(put("/api/s3/{bucketName}", bucketName)
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(header().string(HttpHeaders.LOCATION, "/" + bucketName))
+                .andExpect(header().string("x-amz-bucket-region", "us-east-1"));
+
+        AccessKeyCredentials credentials = createAccessKey(token, bucketName, "ADMIN");
+
+        mockMvc.perform(head("/api/s3/{bucketName}", bucketName)
+                        .header("X-OSMU-Access-Key", credentials.accessKey())
+                        .header("X-OSMU-Secret-Key", credentials.secretKey()))
+                .andExpect(status().isOk())
+                .andExpect(header().string("x-amz-bucket-region", "us-east-1"));
+
+        mockMvc.perform(delete("/api/s3/{bucketName}", bucketName)
+                        .header("X-OSMU-Access-Key", credentials.accessKey())
+                        .header("X-OSMU-Secret-Key", credentials.secretKey()))
+                .andExpect(status().isNoContent())
+                .andExpect(header().string("x-amz-bucket-region", "us-east-1"));
+
+        mockMvc.perform(head("/api/s3/{bucketName}", bucketName)
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void accessKeyCanListScopedBucketsThroughS3Root() throws Exception {
+        String token = loginAndReturnAccessToken("admin", "password");
+        String bucketName = "s3-root-list-bucket-a";
+        String otherBucketName = "s3-root-list-bucket-b";
+        createBucket(token, bucketName);
+        createBucket(token, otherBucketName);
+        AccessKeyCredentials credentials = createAccessKey(token, bucketName, "READ");
+
+        mockMvc.perform(get("/api/s3")
+                        .header("X-OSMU-Access-Key", credentials.accessKey())
+                        .header("X-OSMU-Secret-Key", credentials.secretKey())
+                        .accept(MediaType.APPLICATION_XML))
+                .andExpect(status().isOk())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_XML))
+                .andExpect(content().string(containsString("<ListAllMyBucketsResult xmlns=\"http://s3.amazonaws.com/doc/2006-03-01/\">")))
+                .andExpect(content().string(containsString("<Name>%s</Name>".formatted(bucketName))))
+                .andExpect(content().string(not(containsString("<Name>%s</Name>".formatted(otherBucketName)))));
+    }
+
+    @Test
+    void accessKeyCanUseSingleRangeGetThroughS3StylePath() throws Exception {
+        String token = loginAndReturnAccessToken("admin", "password");
+        String bucketName = "s3-object-range-bucket";
+        createBucket(token, bucketName);
+        AccessKeyCredentials credentials = createAccessKey(token, bucketName, "READ", "WRITE");
+        putS3Object(bucketName, "video/sample.txt", "hello s3 alias", credentials);
+
+        MvcResult middleRangeResult = mockMvc.perform(get("/api/s3/{bucketName}/video/sample.txt", bucketName)
+                        .header("X-OSMU-Access-Key", credentials.accessKey())
+                        .header("X-OSMU-Secret-Key", credentials.secretKey())
+                        .header(HttpHeaders.RANGE, "bytes=6-7"))
+                .andExpect(request().asyncStarted())
+                .andReturn();
+
+        mockMvc.perform(asyncDispatch(middleRangeResult))
+                .andExpect(status().isPartialContent())
+                .andExpect(header().string(HttpHeaders.ACCEPT_RANGES, "bytes"))
+                .andExpect(header().string(HttpHeaders.CONTENT_RANGE, "bytes 6-7/14"))
+                .andExpect(header().longValue(HttpHeaders.CONTENT_LENGTH, 2L))
+                .andExpect(content().string("s3"));
+
+        MvcResult suffixRangeResult = mockMvc.perform(get("/api/s3/{bucketName}/video/sample.txt", bucketName)
+                        .header("X-OSMU-Access-Key", credentials.accessKey())
+                        .header("X-OSMU-Secret-Key", credentials.secretKey())
+                        .header(HttpHeaders.RANGE, "bytes=-5"))
+                .andExpect(request().asyncStarted())
+                .andReturn();
+
+        mockMvc.perform(asyncDispatch(suffixRangeResult))
+                .andExpect(status().isPartialContent())
+                .andExpect(header().string(HttpHeaders.CONTENT_RANGE, "bytes 9-13/14"))
+                .andExpect(content().string("alias"));
+
+        mockMvc.perform(get("/api/s3/{bucketName}/video/sample.txt", bucketName)
+                        .header("X-OSMU-Access-Key", credentials.accessKey())
+                        .header("X-OSMU-Secret-Key", credentials.secretKey())
+                        .header(HttpHeaders.RANGE, "bytes=99-100"))
+                .andExpect(status().isRequestedRangeNotSatisfiable())
+                .andExpect(content().string(containsString("<Code>InvalidRange</Code>")));
+    }
+
+    @Test
+    void accessKeyScopeControlsS3StyleObjectActions() throws Exception {
+        String token = loginAndReturnAccessToken("admin", "password");
+        String bucketName = "s3-object-scope-bucket";
+        createBucket(token, bucketName);
+        AccessKeyCredentials readOnly = createAccessKey(token, bucketName, "READ");
+
+        mockMvc.perform(put("/api/s3/{bucketName}/blocked.txt", bucketName)
+                        .header("X-OSMU-Access-Key", readOnly.accessKey())
+                        .header("X-OSMU-Secret-Key", readOnly.secretKey())
+                        .contentType(MediaType.TEXT_PLAIN)
+                        .content("blocked"))
+                .andExpect(status().isForbidden())
+                .andExpect(content().string(containsString("<Code>AccessDenied</Code>")));
+
+        AccessKeyCredentials writer = createAccessKey(token, bucketName, "WRITE");
+        mockMvc.perform(put("/api/s3/{bucketName}/write-only.txt", bucketName)
+                        .header("X-OSMU-Access-Key", writer.accessKey())
+                        .header("X-OSMU-Secret-Key", writer.secretKey())
+                        .contentType(MediaType.TEXT_PLAIN)
+                        .content("write-only"))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/s3/{bucketName}/write-only.txt", bucketName)
+                        .header("X-OSMU-Access-Key", writer.accessKey())
+                        .header("X-OSMU-Secret-Key", writer.secretKey()))
+                .andExpect(status().isForbidden())
+                .andExpect(content().string(containsString("<Code>AccessDenied</Code>")));
+    }
+
+    @Test
+    void bearerTokenCanUseS3StyleObjectPath() throws Exception {
+        String token = loginAndReturnAccessToken("admin", "password");
+        String bucketName = "s3-object-jwt-bucket";
+        createBucket(token, bucketName);
+
+        mockMvc.perform(put("/api/s3/{bucketName}/jwt-object.txt", bucketName)
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.TEXT_PLAIN)
+                        .content("jwt path"))
+                .andExpect(status().isOk());
+
+        MvcResult downloadResult = mockMvc.perform(get("/api/s3/{bucketName}/jwt-object.txt", bucketName)
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(request().asyncStarted())
+                .andReturn();
+
+        mockMvc.perform(asyncDispatch(downloadResult))
+                .andExpect(status().isOk())
+                .andExpect(content().string("jwt path"));
+    }
+
+    private void putS3Object(String bucketName, String objectKey, String body, AccessKeyCredentials credentials) throws Exception {
+        mockMvc.perform(put("/api/s3/{bucketName}/{objectKey}", bucketName, objectKey)
+                        .header("X-OSMU-Access-Key", credentials.accessKey())
+                        .header("X-OSMU-Secret-Key", credentials.secretKey())
+                        .contentType(MediaType.TEXT_PLAIN)
+                        .content(body))
+                .andExpect(status().isOk());
+    }
+
+    private void createBucket(String token, String bucketName) throws Exception {
+        mockMvc.perform(post("/api/buckets")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "name": "%s",
+                                  "quotaBytes": 1073741824
+                                }
+                                """.formatted(bucketName)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.name").value(bucketName));
+    }
+
+    private AccessKeyCredentials createAccessKey(String token, String bucketName, String... permissions) throws Exception {
+        String permissionList = java.util.Arrays.stream(permissions)
+                .map(permission -> "\"" + permission + "\"")
+                .collect(java.util.stream.Collectors.joining(", "));
+        String response = mockMvc.perform(post("/api/access-keys")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "name": "s3-object-key",
+                                  "bucketScopes": [
+                                    {
+                                      "bucketName": "%s",
+                                      "permissions": [%s]
+                                    }
+                                  ],
+                                  "expiresAt": null
+                                }
+                                """.formatted(bucketName, permissionList)))
+                .andExpect(status().isOk())
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+        return new AccessKeyCredentials(
+                JsonPath.read(response, "$.data.accessKey"),
+                JsonPath.read(response, "$.data.secretKey")
+        );
+    }
+
+    private String sigV4Authorization(
+            String method,
+            String path,
+            String query,
+            String payloadHash,
+            AccessKeyCredentials credentials,
+            String amzDate,
+            Map<String, String> headers
+    ) throws Exception {
+        String date = amzDate.substring(0, 8);
+        String signedHeaders = String.join(";", new TreeMap<>(headers).keySet());
+        String canonicalHeaders = canonicalHeaders(headers);
+        String canonicalRequest = method + "\n"
+                + path + "\n"
+                + query + "\n"
+                + canonicalHeaders + "\n"
+                + signedHeaders + "\n"
+                + payloadHash;
+        String scope = date + "/us-east-1/s3/aws4_request";
+        String stringToSign = "AWS4-HMAC-SHA256\n"
+                + amzDate + "\n"
+                + scope + "\n"
+                + sha256Hex(canonicalRequest);
+        String signature = HexFormat.of().formatHex(hmac(signingKey(credentials.secretKey(), date), stringToSign));
+        return "AWS4-HMAC-SHA256 Credential=%s/%s, SignedHeaders=%s, Signature=%s"
+                .formatted(credentials.accessKey(), scope, signedHeaders, signature);
+    }
+
+    private String sigV4PresignedQuery(
+            String method,
+            String path,
+            AccessKeyCredentials credentials,
+            String amzDate,
+            Map<String, String> headers
+    ) throws Exception {
+        return sigV4PresignedQuery(method, path, credentials, amzDate, 604800, headers);
+    }
+
+    private String sigV4PresignedQuery(
+            String method,
+            String path,
+            AccessKeyCredentials credentials,
+            String amzDate,
+            int expiresInSeconds,
+            Map<String, String> headers
+    ) throws Exception {
+        String date = amzDate.substring(0, 8);
+        String signedHeaders = String.join(";", new TreeMap<>(headers).keySet());
+        String scope = date + "/us-east-1/s3/aws4_request";
+        TreeMap<String, String> query = new TreeMap<>();
+        query.put("X-Amz-Algorithm", "AWS4-HMAC-SHA256");
+        query.put("X-Amz-Credential", credentials.accessKey() + "/" + scope);
+        query.put("X-Amz-Date", amzDate);
+        query.put("X-Amz-Expires", String.valueOf(expiresInSeconds));
+        query.put("X-Amz-SignedHeaders", signedHeaders);
+        String canonicalQuery = canonicalQuery(query);
+        String canonicalRequest = method + "\n"
+                + path + "\n"
+                + canonicalQuery + "\n"
+                + canonicalHeaders(headers) + "\n"
+                + signedHeaders + "\n"
+                + "UNSIGNED-PAYLOAD";
+        String stringToSign = "AWS4-HMAC-SHA256\n"
+                + amzDate + "\n"
+                + scope + "\n"
+                + sha256Hex(canonicalRequest);
+        String signature = HexFormat.of().formatHex(hmac(signingKey(credentials.secretKey(), date), stringToSign));
+        return canonicalQuery + "&X-Amz-Signature=" + signature;
+    }
+
+    private String sigV4AmzDateNow() {
+        return sigV4AmzDate(Instant.now());
+    }
+
+    private String sigV4AmzDate(Instant instant) {
+        return DateTimeFormatter.ofPattern("yyyyMMdd'T'HHmmss'Z'")
+                .withZone(ZoneOffset.UTC)
+                .format(instant);
+    }
+
+    private String canonicalQuery(Map<String, String> query) {
+        return query.entrySet().stream()
+                .map(entry -> uriEncode(entry.getKey()) + "=" + uriEncode(entry.getValue()))
+                .collect(java.util.stream.Collectors.joining("&"));
+    }
+
+    private String uriEncode(String value) {
+        return URLEncoder.encode(value, StandardCharsets.UTF_8)
+                .replace("+", "%20")
+                .replace("%2F", "%2F")
+                .replace("*", "%2A")
+                .replace("%7E", "~");
+    }
+
+    private String canonicalHeaders(Map<String, String> headers) {
+        StringBuilder canonical = new StringBuilder();
+        new TreeMap<>(headers).forEach((name, value) -> canonical
+                .append(name.toLowerCase(Locale.ROOT))
+                .append(':')
+                .append(value.trim().replaceAll("\\s+", " "))
+                .append('\n'));
+        return canonical.toString();
+    }
+
+    private byte[] signingKey(String secretKey, String date) throws Exception {
+        byte[] dateKey = hmac(("AWS4" + secretKey).getBytes(StandardCharsets.UTF_8), date);
+        byte[] regionKey = hmac(dateKey, "us-east-1");
+        byte[] serviceKey = hmac(regionKey, "s3");
+        return hmac(serviceKey, "aws4_request");
+    }
+
+    private byte[] hmac(byte[] key, String value) throws Exception {
+        Mac mac = Mac.getInstance("HmacSHA256");
+        mac.init(new SecretKeySpec(key, "HmacSHA256"));
+        return mac.doFinal(value.getBytes(StandardCharsets.UTF_8));
+    }
+
+    private String sha256Hex(String value) throws Exception {
+        return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(value.getBytes(StandardCharsets.UTF_8)));
+    }
+
+    private String checksumBase64(String algorithm, String value) throws Exception {
+        return Base64.getEncoder().encodeToString(MessageDigest.getInstance(algorithm).digest(value.getBytes(StandardCharsets.UTF_8)));
+    }
+
+    private String checksumCrc32cBase64(String value) {
+        byte[] bytes = value.getBytes(StandardCharsets.UTF_8);
+        CRC32C checksum = new CRC32C();
+        checksum.update(bytes, 0, bytes.length);
+        return Base64.getEncoder().encodeToString(intDigest(checksum.getValue()));
+    }
+
+    private byte[] intDigest(long value) {
+        long normalized = value & 0xffffffffL;
+        return new byte[]{
+                (byte) (normalized >>> 24),
+                (byte) (normalized >>> 16),
+                (byte) (normalized >>> 8),
+                (byte) normalized
+        };
+    }
+
+    private String contentMd5(String value) throws Exception {
+        return Base64.getEncoder().encodeToString(md5(value));
+    }
+
+    private String md5Hex(String value) throws Exception {
+        return HexFormat.of().formatHex(md5(value));
+    }
+
+    private byte[] md5(String value) throws Exception {
+        return MessageDigest.getInstance("MD5").digest(value.getBytes(StandardCharsets.UTF_8));
+    }
+
+    private String loginAndReturnAccessToken(String loginId, String password) throws Exception {
+        String response = mockMvc.perform(post("/api/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "loginId": "%s",
+                                  "password": "%s"
+                                }
+                                """.formatted(loginId, password)))
+                .andExpect(status().isOk())
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+        return JsonPath.read(response, "$.data.accessToken");
+    }
+
+    private record AccessKeyCredentials(String accessKey, String secretKey) {
+    }
+}

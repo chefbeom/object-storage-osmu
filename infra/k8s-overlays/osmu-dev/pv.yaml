@@ -1,0 +1,67 @@
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: osmu-dev-local
+  labels:
+    app.kubernetes.io/name: osmu
+    app.kubernetes.io/part-of: osmu
+provisioner: kubernetes.io/no-provisioner
+volumeBindingMode: WaitForFirstConsumer
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: osmu-dev-mariadb-pv
+  labels:
+    app.kubernetes.io/name: osmu-mariadb
+    app.kubernetes.io/part-of: osmu
+spec:
+  capacity:
+    storage: 10Gi
+  accessModes:
+    - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: osmu-dev-local
+  hostPath:
+    path: /var/lib/osmu-dev/mariadb
+    type: DirectoryOrCreate
+  nodeAffinity:
+    required:
+      nodeSelectorTerms:
+        - matchExpressions:
+            - key: kubernetes.io/hostname
+              operator: In
+              values:
+                - slave01
+  claimRef:
+    namespace: osmu-dev
+    name: mariadb-data-osmu-mariadb-0
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: osmu-dev-minio-pv
+  labels:
+    app.kubernetes.io/name: osmu-minio
+    app.kubernetes.io/part-of: osmu
+spec:
+  capacity:
+    storage: 50Gi
+  accessModes:
+    - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: osmu-dev-local
+  hostPath:
+    path: /var/lib/osmu-dev/minio
+    type: DirectoryOrCreate
+  nodeAffinity:
+    required:
+      nodeSelectorTerms:
+        - matchExpressions:
+            - key: kubernetes.io/hostname
+              operator: In
+              values:
+                - slave01
+  claimRef:
+    namespace: osmu-dev
+    name: minio-data-osmu-minio-0

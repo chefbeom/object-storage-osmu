@@ -1,5 +1,7 @@
 # OSMU Backup and Recovery
 
+MVP drill runbook: `backup-restore-drill.md`.
+
 이 문서는 OSMU 백업과 복구 전략을 정의한다.
 
 ## 1. 백업 대상

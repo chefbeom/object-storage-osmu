@@ -1,3 +1,57 @@
+## Object Lifecycle Rules
+
+- `ObjectLifecycleRuleRepository` stores admin-managed prefix/tag scoped retention rules.
+- Rule target is `TRASH_OBJECT` or `OBJECT_VERSION`.
+- Optional `bucketName` scopes a rule to one bucket. Empty `bucketName` means global rule.
+- Rules are sorted by `priority`, then `createdAt`, then `ruleId`; lower priority number runs first.
+- `ObjectRetentionPurgeJob` applies enabled `TRASH_OBJECT` rules after global policy purge.
+- `ObjectVersionRetentionPurgeJob` applies enabled `OBJECT_VERSION` rules after global version purge.
+- MariaDB mode persists rules in `object_lifecycle_rules`; in-memory mode keeps runtime rules only.
+- Save/delete writes `OBJECT_LIFECYCLE_RULE_SAVE` and `OBJECT_LIFECYCLE_RULE_DELETE` audit events.
+- `GET /api/admin/object-lifecycle/rules/{ruleId}/dry-run` previews matched candidates without deleting data.
+- `GET /api/admin/object-lifecycle/conflicts` reports enabled rules with overlapping bucket/target/prefix/tag scopes.
+- `ObjectLifecycleS3XmlService` exports/imports AWS S3 LifecycleConfiguration XML subset for lifecycle rule interoperability.
+- `BucketLifecycleController` exposes `GET/PUT/DELETE /api/buckets/{bucketName}/lifecycle`; PUT replaces only rules scoped to that bucket and stores imported XML rules with `bucketName`.
+- Bucket lifecycle GET supports JSON wrapper by default and raw XML when `Accept` is `application/xml` or `text/xml`.
+- Bucket lifecycle PUT supports JSON wrapper and raw XML bodies via `Content-Type: application/xml` or `text/xml`.
+- `S3BucketLifecycleController` exposes `/api/s3/{bucketName}?lifecycle` as a path-style S3 lifecycle alias backed by the same bucket lifecycle service.
+- `S3RequestAuthService` resolves JWT auth, OSMU access key headers (`X-OSMU-Access-Key`, `X-OSMU-Secret-Key`), or AWS SigV4 header auth for S3-style aliases.
+- `S3SignatureV4Verifier` validates `AWS4-HMAC-SHA256` Authorization headers and query/presigned URL parameters using canonical request, signed headers, `x-amz-date` or `X-Amz-Date`, `x-amz-content-sha256` or `UNSIGNED-PAYLOAD`, and encrypted access key signing secret material.
+- SigV4 verification enforces request time within configurable `osmu.s3.sigv4.clock-skew-seconds`; presigned URL auth also enforces `X-Amz-Expires`.
+- New access keys store `secret_key_hash` for OSMU header-secret checks and `secret_key_ciphertext` for SigV4 verification. Existing keys without ciphertext still work with `X-OSMU-Secret-Key` but cannot use SigV4 until re-created.
+- `VirtualHostedStyleS3RequestFilter` supports MVP virtual-hosted-style S3 routing by extracting `{bucket}` from configured host suffixes such as `{bucket}.localhost` and internally routing to the existing path-style controllers.
+- For virtual-hosted-style SigV4 requests, the filter preserves the original client URI so `S3SignatureV4Verifier` validates the canonical URI that the client signed.
+- `S3RootController` exposes `GET /api/s3` as S3 `ListAllMyBucketsResult` XML and filters Access Key requests by current bucket scopes.
+- `S3RootController` also exposes explicit `HEAD /api/s3` as a service-level auth probe for S3 clients. It reuses root bucket-list auth but returns no body.
+- `S3BucketController` exposes bucket-level S3 compatibility operations: `PUT /api/s3/{bucketName}`, `HEAD /api/s3/{bucketName}`, `GET /api/s3/{bucketName}?location`, and `DELETE /api/s3/{bucketName}`.
+- S3-style bucket create reuses `BucketService.create` and currently requires Bearer JWT auth. S3-style bucket delete reuses `BucketService.delete`, requires target bucket `ADMIN` scope through JWT or Access Key auth, and only succeeds for empty buckets.
+- `S3BucketTaggingController` exposes `GET/PUT/DELETE /api/s3/{bucketName}?tagging`, stores bucket metadata tags through `BucketTagRepository`, and requires bucket `ADMIN` scope.
+- `S3TaggingXmlMapper` parses and renders S3-compatible `Tagging/TagSet/Tag/Key/Value` XML for bucket tagging with XXE protections.
+- `BucketController` exposes REST bucket tag management through `GET/PUT/DELETE /api/buckets/{bucketName}/tags`, reusing `BucketTagService` validation and repository storage.
+- `S3ObjectController` exposes prototype path-style object operations: `PUT/HEAD/GET/DELETE /api/s3/{bucketName}/{objectKey}`.
+- S3 object `PUT` validates non-streaming signed `x-amz-content-sha256` against the actual request body. `UNSIGNED-PAYLOAD` is accepted without body hash validation, while `STREAMING-*` payload signatures are rejected until aws-chunked streaming is implemented.
+- S3 object `PUT` validates optional `Content-MD5` and one optional `x-amz-checksum-sha256`, `x-amz-checksum-sha1`, `x-amz-checksum-crc32`, or `x-amz-checksum-crc32c` header before accepting the upload, stores matching checksum metadata, echoes the matching checksum response header, and returns S3 XML `InvalidDigest` or `BadDigest` on digest failures.
+- `S3ObjectController` supports S3 CopyObject prototype via `x-amz-copy-source` on object `PUT`, reusing the existing upload/version/quota path for the target object and preserving stored checksum metadata when the source has it. Copy result XML emits stored checksum result elements such as `ChecksumSHA256`.
+- CopyObject supports `x-amz-metadata-directive` and `x-amz-tagging-directive` for MVP content type/tag replacement.
+- CopyObject supports basic source preconditions using source ETag and source Last-Modified headers; failed conditions return S3 XML `PreconditionFailed`.
+- `S3ObjectController` exposes MVP S3 multipart path operations: initiate, upload part, list parts, complete, and abort. It reuses `ObjectService` multipart sessions and adds `ObjectStorageAdapter.uploadMultipartUploadPart` for direct part body upload.
+- S3 multipart part upload validates optional `Content-MD5`, signed `x-amz-content-sha256`, and `x-amz-checksum-*` value headers with the same `InvalidDigest`/`BadDigest` S3 XML errors as single `PUT`, and echoes the matching checksum response header.
+- S3 multipart complete accepts one final object `x-amz-checksum-*` value header, validates it against the completed storage object before metadata commit, stores the checksum metadata, echoes the checksum response header, and writes matching complete-result XML checksum elements.
+- S3 multipart complete request XML parses optional per-part checksum elements into `CompletedMultipartUploadPart.checksums()` and validates their syntax before delegating to storage. The MinIO completion call still uses part number and ETag only in the MVP.
+- `S3ObjectController` exposes `GET /api/s3/{bucketName}?uploads` as an S3 ListMultipartUploads MVP backed by active `PresignedUploadSession` rows.
+- S3 multipart initiate currently requires an OSMU expected-size header so quota and session part planning remain compatible with the existing REST multipart model.
+- `S3ObjectController` exposes basic `GET /api/s3/{bucketName}` ListObjects V1 XML with prefix, delimiter, max-keys, marker, `encoding-type=url`, and `fetch-owner=true` support.
+- `S3ObjectController` also exposes basic `GET /api/s3/{bucketName}?list-type=2` ListObjectsV2 XML with prefix, delimiter, max-keys, continuation-token, `encoding-type=url`, and `fetch-owner=true` support.
+- `S3ObjectController` exposes `POST /api/s3/{bucketName}?delete` multi-object delete XML and delegates each key to the existing soft-delete object flow. The S3 `Quiet=true` flag suppresses successful `Deleted` result entries, key-specific failures are returned as `DeleteResult/Error` entries, and optional `Content-MD5` validates the XML body before delete execution.
+- `S3ObjectController` supports single HTTP byte range download for object preview/resume flows and returns `206 Partial Content`.
+- `S3ObjectController` supports S3-style object tagging XML through `GET/PUT/DELETE /api/s3/{bucketName}/{objectKey}?tagging` and delegates storage to `ObjectService.updateTags`.
+- `StoredObjectRecord` carries object `etag` and checksum metadata. S3 `HEAD`, `GET`, `ListObjects`, and `ListObjectsV2` expose `ETag`; `HEAD`/`GET` expose stored `x-amz-checksum-*` headers and list XML exposes `ChecksumAlgorithm`.
+- `BucketService.syncUsage` rebuilds the metadata index from storage actuals and preserves existing checksum metadata only when the storage ETag still matches the indexed ETag. If the object changed in storage, stale checksums are discarded.
+- S3 object `HEAD` and `GET` evaluate basic conditional headers: matching `If-None-Match` or not-modified `If-Modified-Since` returns `304`; non-matching `If-Match` or stale `If-Unmodified-Since` returns `412`.
+- S3-style object alias reuses `ObjectService`, bucket quota, object metadata, soft delete, audit log, and Access Key permission checks.
+- `S3ErrorCodeMapper` centralizes OSMU `ApiErrorCode` to S3 XML error code mapping so global `/api/s3/**` error responses and multi-delete per-key `Error` entries stay consistent.
+- `GlobalExceptionHandler` returns AWS-style XML error bodies for `/api/s3/**` while normal REST API errors stay JSON.
+- Current S3-style alias does not implement SigV4 chunked streaming parity, unknown-size S3 multipart initiate parity, checksum trailer/CRC64NVME/full AWS checksum parity, automatic DNS/proxy provisioning for virtual-hosted-style domains, multi-range GET, full conditional request parity, exact CopyObject user-metadata/versioning/full-conditional parity, exact CreateBucket/DeleteBucket parity, multipart ETag parity, or exact AWS error schema parity yet.
 # OSMU Backend Design
 
 이 문서는 Spring Boot 기반 OSMU Backend 설계를 정의한다.
@@ -85,7 +139,9 @@ Controller -> Service -> StorageAdapter
 역할:
 
 - MariaDB 접근
-- JPA Entity 조회/저장
+- metadata record 조회/저장
+- object list/search/tag index 조회
+- object tag inverted index 갱신/조회
 
 ### 4.4 StorageAdapter
 
@@ -104,6 +160,11 @@ Controller -> Service -> StorageAdapter
 
 - 버킷 이름 검증
 - 버킷 중복 확인
+- USER/ORG owner 검증
+- ADMIN/ORG_ADMIN/user bucket 생성 권한 검증
+- ORG bucket 접근/관리 권한 분리
+- bucket permission 부여/회수와 `READ`, `WRITE`, `DELETE`, `ADMIN` 검사
+- ORG bucket object 변경 시 organization default quota 초과 차단
 - MinIO 버킷 생성
 - MariaDB 버킷 메타데이터 저장
 - 버킷 삭제 전 empty 확인
@@ -113,11 +174,16 @@ Controller -> Service -> StorageAdapter
 
 책임:
 
+- object action별 `READ`, `WRITE`, `DELETE` 권한 확인
 - 파일 업로드 권한 확인
 - 쿼터 확인
-- MinIO object 업로드
-- 파일 목록 조회
+- request stream 기반 MinIO object 업로드
+- object metadata index 갱신
+- object metadata index 기반 파일 목록 조회
+- tag update/presigned complete 후 index 반영
+- object metadata detail에서 index/storage actual drift status 계산
 - 다운로드 stream 또는 presigned URL 반환
+- 만료된 multipart upload session cleanup, MinIO incomplete multipart abort, cleanup 감사 로그 기록
 - 삭제 감사 로그 기록
 
 ### 5.3 AuthService
@@ -136,16 +202,58 @@ Controller -> Service -> StorageAdapter
 - Access Key 생성
 - Secret Key 1회 반환
 - Secret Key hash 저장
+- 기존 `allowedBuckets + permissions` 요청과 bucket별 `bucketScopes` 요청 지원
+- 요청 permission이 bucket permission을 초과하지 않는지 검증
+- bucket permission 회수 후 active key scope/policy 재동기화
 - Access Key 비활성화
+- 사용자 비활성화/잠금 시 사용자 소유 Access Key 일괄 비활성화
 - MinIO 계정/정책 연동
 
-### 5.5 AuditLogService
+- Access Key authentication for S3-style aliases uses SHA-256 secret hash verification and active key scope checks.
+- Access Key permission values are `READ`, `WRITE`, `DELETE`, and `ADMIN`; bucket lifecycle alias requires `ADMIN`.
+
+### 5.5 OrganizationRepository/AdminOrganizationController
+
+책임:
+
+- 조직 생성
+- 조직 목록 조회
+- 조직별 bucket usage 집계
+- 조직 이름 중복 차단
+- 사용자 생성 시 organizationId 유효성 검증
+- ORG_ADMIN의 자기 조직 사용자 조회/생성/상태 변경 scope 제한
+- ORG_ADMIN은 USER role만 생성 가능
+- 조직 생성 감사 로그 기록
+
+### 5.6 AuditLogService
 
 책임:
 
 - 주요 이벤트 기록
 - 실패 이벤트 기록
 - 조회 API 제공
+
+### 5.7 BucketPermissionRepository
+
+책임:
+
+- `bucket_permissions` metadata 저장
+- bucket별 권한 목록 조회
+- user 또는 organization subject 권한 중복 차단
+- bucket 삭제 시 permission metadata 정리
+
+### 5.8 ObjectMetadataRepository
+
+책임:
+
+- `object_metadata` 저장/삭제/재생성
+- object list cursor pagination
+- prefix/delimiter 기반 folder-like 탐색
+- object key search
+- object tag exact filter
+- object metadata detail 조회
+- MariaDB mode에서는 긴 object key를 SHA-256 hash로 식별하고 tags를 JSON 문자열로 저장
+- MariaDB mode에서는 `object_metadata_tags` inverted index로 tag filter 후보를 먼저 줄인다.
 
 ## 6. MinIO 연동 설계
 
@@ -158,6 +266,15 @@ osmu:
     access-key: minioadmin
     secret-key: minioadmin
     region: us-east-1
+    cors:
+      enabled: true
+      allowed-origins: http://localhost:5173,http://127.0.0.1:5173
+  upload:
+    cleanup:
+      enabled: true
+      initial-delay-ms: 60000
+      fixed-delay-ms: 300000
+      batch-size: 100
 ```
 
 ### 6.2 Adapter 인터페이스
@@ -167,13 +284,43 @@ public interface ObjectStorageAdapter {
     boolean isHealthy();
     void createBucket(String bucketName);
     void deleteBucket(String bucketName);
-    boolean bucketExists(String bucketName);
-    List<StoredObject> listObjects(String bucketName, String prefix, int limit, String cursor);
-    void uploadObject(String bucketName, String objectKey, InputStream stream, long size, String contentType);
-    InputStream downloadObject(String bucketName, String objectKey);
-    void deleteObject(String bucketName, String objectKey);
+    StoredObjectPage listObjects(String bucketName, String prefix, String delimiter, String search, Map<String, String> tagFilter, String cursor, int limit);
+    Optional<StoredObjectRecord> statObject(String bucketName, String objectKey);
+    StoredObjectData getObject(String bucketName, String objectKey);
+    StoredObjectStream openObject(String bucketName, String objectKey);
+    StoredObjectRecord putObject(String bucketName, String objectKey, InputStream stream, long sizeBytes, String contentType, Map<String, String> tags);
+    StoredObjectRecord setObjectTags(String bucketName, String objectKey, Map<String, String> tags);
+    StoredObjectRecord deleteObject(String bucketName, String objectKey);
+    StorageMultipartUpload createMultipartUpload(String bucketName, String objectKey, String contentType, int expiresInSeconds, List<Integer> partNumbers);
+    StorageMultipartUpload refreshMultipartUploadParts(String bucketName, String objectKey, String storageUploadId, int expiresInSeconds, List<Integer> partNumbers);
+    List<MultipartUploadUploadedPart> listMultipartUploadParts(String bucketName, String objectKey, String storageUploadId);
+    StoredObjectRecord completeMultipartUpload(String bucketName, String objectKey, String storageUploadId, List<CompletedMultipartUploadPart> parts);
+    void abortMultipartUpload(String bucketName, String objectKey, String storageUploadId);
 }
 ```
+
+정책:
+
+- Direct upload는 `MultipartFile.getInputStream()`을 사용해 service/storage adapter에 stream을 넘긴다.
+- MinIO mode는 `PutObjectArgs.stream(inputStream, sizeBytes, -1)`로 업로드해 JVM heap에 전체 파일을 복사하지 않는다.
+- REST download는 `openObject`가 반환한 `StoredObjectStream`을 `StreamingResponseBody`로 client에 전달한다.
+- MinIO mode의 REST download main path는 `GetObjectResponse` stream을 닫기 전까지 response로 복사하며, 전체 파일을 JVM byte array로 적재하지 않는다.
+- `ObjectSharePolicyService` stores the global admin share policy. It can require password/IP allowlists and cap expiry/download limits for all new object share links.
+- `ObjectShareLinkService` issues temporary object share links after `READ` permission and storage-presence checks, then applies the global share policy before persisting optional password hashes and IP/CIDR allowlist metadata.
+- `GET /api/admin/object-share-analytics` summarizes share link status, protection, download totals, last access, and recent links without exposing raw token or public URL. Admins can filter analytics by bucket and link status.
+- Share link tokens are generated as opaque random URL-safe tokens; only SHA-256 token hashes are persisted.
+- `GET /api/public/share-links/{token}` is public, validates active/non-expired/non-limit-reached token state, optional share password, and optional IP allowlist, records download count and last-access time, then streams the object through the same storage adapter without requiring a Bearer token.
+- Share link cleanup marks expired active links as `EXPIRED` for a bucket and requires bucket manage permission.
+- `ObjectShareLinkCleanupJob` automatically marks expired active share links as `EXPIRED` and records `osmu.object.share.cleanup.links{result=success}` plus `osmu.object.share.cleanup.runs{result=failure}` metrics.
+- Share link create/download/revoke/cleanup writes `OBJECT_SHARE_LINK_CREATE`, `OBJECT_SHARE_LINK_DOWNLOAD`, `OBJECT_SHARE_LINK_REVOKE`, and `OBJECT_SHARE_LINK_CLEANUP` audit events. Global policy saves write `OBJECT_SHARE_POLICY_SAVE`.
+- Multipart upload는 MinIO multipart upload id와 part별 presigned PUT URL을 발급하고, complete 시 ETag 목록으로 object를 확정한다.
+- Multipart refresh는 저장된 `partSizeBytes`, `partCount`, storage upload id를 사용해 기존 multipart upload에 대한 part별 presigned PUT URL을 재발급한다.
+- Multipart parts list는 MinIO `listParts`를 사용해 이미 업로드된 partNumber/ETag/size를 반환하고 frontend resume이 완료된 part를 skip할 수 있게 한다.
+- Presigned upload uses `.osmu/uploads/` staging keys and copies staged content to the active key on complete.
+- Presigned/multipart overwrite snapshots the previous active object into `.osmu/versions/` before active replacement.
+- Browser multipart upload는 part PUT 응답의 `ETag`를 읽어야 하므로 `MinioBucketCorsProvisioner`와 local Compose CORS JSON이 `ExposeHeaders`에 `ETag`를 포함한다.
+- `MultipartUploadCleanupJob`은 만료된 `ACTIVE` multipart session을 주기적으로 찾아 MinIO multipart upload를 abort하고 session 상태를 `EXPIRED`로 변경한다. cleanup 성공/실패는 `OBJECT_MULTIPART_UPLOAD_CLEANUP` 감사 로그와 `osmu.multipart.cleanup.sessions{result=success|skipped|failure}` metric으로 기록한다.
+- in-memory mode는 테스트/개발 편의를 위해 stream을 byte array로 저장한다.
 
 ## 7. 에러 처리
 
@@ -218,6 +365,14 @@ MVP 보상 전략:
 
 - 버킷 생성: MinIO 생성 후 DB 저장 실패 시 MinIO 버킷 삭제 시도.
 - 파일 업로드: MinIO 업로드 성공 후 감사 로그 실패는 파일 업로드 성공으로 처리하고 로그 에러만 기록.
+- object metadata index: Backend upload/delete/tag/complete 성공 후 갱신한다. Backend를 거치지 않은 S3 직접 변경은 bucket sync로 재생성한다.
+- object tag index: object metadata와 같은 transaction에서 tag row를 replace해 JSON tag와 inverted index drift를 줄인다.
+- object delete는 soft delete로 `object_metadata.deleted_at`을 기록한다. restore는 `deleted_at`을 제거하고, purge는 MinIO object와 metadata를 영구 삭제하며 quota/objectCount를 감소시킨다.
+- object versioning MVP는 REST upload overwrite와 version restore 전에 기존 active object를 `.osmu/versions/` hidden key로 snapshot한다.
+- `ObjectVersionRepository`는 version metadata를 저장하고, purge/retention purge 시 active object와 version snapshot을 함께 정리한다.
+- `ObjectRetentionPurgeJob`은 retention 기간이 지난 soft-deleted object를 주기적으로 purge한다. 결과는 `OBJECT_RETENTION_PURGE` 감사 로그와 `osmu.object.retention.purge.objects{result=success|failure}` metric으로 기록한다.
+- `ObjectVersionRetentionPurgeJob`은 version retention 기간이 지난 historical object version을 active object와 별개로 purge한다. 결과는 `OBJECT_VERSION_RETENTION_PURGE` 감사 로그와 `osmu.object.version.retention.purge.versions{result=success|failure}` metric으로 기록한다.
+- Admin API는 object retention status 조회와 manual purge 실행 endpoint를 제공한다.
 
 ## 10. 구현 순서
 
@@ -232,4 +387,22 @@ MVP 보상 전략:
 9. AuditLog
 10. Auth/User
 11. AccessKey/Permission/Quota
+
+## Object Version Operations
+
+- `ObjectService.downloadVersion` streams hidden version content through REST without loading full file into memory.
+- `ObjectService.deleteVersion` removes one version binary/metadata and decrements bucket usage by version size/count.
+- Presigned and multipart overwrite paths reuse the same version snapshot contract as direct REST upload.
+- `.osmu/uploads/` staging keys are internal temporary storage keys and are excluded from visible object metadata sync.
+- Controller audit events: `OBJECT_VERSION_DOWNLOAD`, `OBJECT_VERSION_DELETE`, `OBJECT_VERSION_RESTORE`.
+- Active object delete/purge remains separate: version delete never changes active object bytes.
+
+## Object Retention Policy Runtime Update
+
+- `ObjectRetentionPolicyRepository`는 retention enabled/days/batch size를 저장한다.
+- in-memory 모드는 런타임 메모리에, `mariadb` 모드는 `object_retention_policy` singleton row에 저장한다.
+- policy는 trash retention days/batch와 version retention days/batch를 함께 관리한다.
+- `PUT /api/admin/object-retention/policy`로 운영 중 retention 기간과 purge batch size를 변경할 수 있다.
+- scheduler global kill switch인 `osmu.object.retention.enabled=false`는 DB policy보다 우선한다.
+- policy 변경 성공 시 `OBJECT_RETENTION_POLICY_UPDATE` 감사 로그를 기록한다.
 

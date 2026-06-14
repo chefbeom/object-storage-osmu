@@ -1,0 +1,7 @@
+apiVersion: v2
+name: osmu
+description: OSMU private object storage prototype chart
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+

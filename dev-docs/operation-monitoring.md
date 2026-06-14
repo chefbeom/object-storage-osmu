@@ -1,28 +1,32 @@
 # OSMU Operation and Monitoring
 
-이 문서는 OSMU 운영, 로그, 메트릭, 알림 기준을 정의한다.
+This document defines the current operation and monitoring baseline for the OSMU prototype.
 
-## 1. 운영 목표
+## 1. Goals
 
-- 서비스 상태를 빠르게 파악한다.
-- 장애 원인을 추적할 수 있게 한다.
-- 용량 부족을 미리 감지한다.
-- 보안 이벤트를 추적한다.
+- Detect backend, metadata, and object storage health issues quickly.
+- Trace role-based access and important storage changes.
+- Watch quota, bucket, and object growth.
+- Expose backup/restore readiness honestly to operators.
+- Detect security and authentication failure spikes.
 
-## 2. Health Check
+## 2. Health And Readiness APIs
 
-필수 API:
+Required endpoints:
 
 - `GET /api/health`
 - `GET /api/database/health`
 - `GET /api/storage/health`
 - `GET /api/admin/system/status`
+- `GET /api/admin/backup/status`
+- `GET /actuator/prometheus`
 
-## 3. 로그
+`/api/admin/backup/status` returns `DRILL_PENDING` in lightweight demo mode and lists durable pilot gaps in `pendingGates`.
+`/actuator/prometheus` is the Prometheus scrape endpoint.
 
-### 3.1 Application Log
+## 3. Logs
 
-포함:
+Application logs should include:
 
 - requestId
 - method
@@ -32,35 +36,38 @@
 - userId
 - errorCode
 
-제외:
+Application logs must not include:
 
 - password
 - secretKey
 - token
 - Authorization header
 
-### 3.2 Audit Log
+## 4. Audit Log
 
-대상:
+Audit targets:
 
-- 로그인 성공/실패
-- 사용자 생성/비활성화
-- 버킷 생성/삭제
-- 파일 업로드/다운로드/삭제
-- Access Key 생성/삭제
-- 권한 변경
-- 쿼터 변경
+- login success/failure
+- user create/status update
+- organization create/delete
+- bucket create/delete/permission/tag/lifecycle changes
+- object upload/download/delete/restore/purge
+- access key create/revoke
+- retention/lifecycle policy changes
+- major S3-compatible API operations
 
-## 4. 메트릭
+## 5. Metrics
 
 Backend:
 
 - request count
 - request latency
 - error count
-- active users
-- bucket count
-- object operation count
+- JVM memory/GC metrics
+- bucket/object operation count
+- multipart cleanup success/failure count
+- object retention purge success/failure count
+- object version retention purge success/failure count
 
 MariaDB:
 
@@ -78,61 +85,96 @@ MinIO:
 - error count
 - node health
 
-## 5. 대시보드
+## 6. Dashboard
 
-MVP:
+MVP dashboard areas:
 
-- Backend up/down
-- MariaDB up/down
-- MinIO up/down
-- 전체 사용량
-- 버킷 수
-- 사용자 수
+- backend up/down
+- MariaDB metadata up/down
+- MinIO object storage up/down
+- total quota/used/bucket/object count
+- admin quota policy list with target used/quota/remaining bytes
+- admin quota policy change history with create/update/delete actor, quota delta, and optional reason
+- password/IP-restricted object share link create/public download/revoke/manual cleanup/scheduled cleanup audit trail with global share policy save events, admin share analytics, download count, last-access visibility, and cleanup failure metric
+- object retention status
+- lifecycle policy/conflict/dry-run
+- backup readiness status
+- audit log filter/export
 
-제품화:
+Product dashboard areas:
 
-- 조직별 사용량
-- 버킷별 사용량
-- 사용자별 트래픽
+- organization usage
+- bucket usage
+- user traffic
 - API latency p95/p99
-- 에러 추세
-- 백업 상태
+- error trend
+- backup job history
+- restore drill history
+- certificate/secret rotation history
 
-## 6. 알림
+## 7. Alerts
 
-알림 조건:
+Alert conditions:
 
-- Backend down
+- backend down
 - MariaDB down
 - MinIO down
-- 디스크 사용률 80% 이상
-- 디스크 사용률 90% 이상
-- API error 급증
-- 백업 실패
-- 인증 실패 급증
+- disk usage >= 80 percent
+- disk usage >= 90 percent
+- API 5xx error spike
+- API latency p95 above threshold
+- backup failure
+- restore drill failure
+- authentication failure spike
+- certificate expiry threshold reached
 
-## 7. 도구
+## 8. Tools
 
 MVP:
 
 - Spring Boot Actuator
+- Actuator Prometheus endpoint
+- Prometheus rule draft under `infra/monitoring`
+- Grafana dashboard draft under `infra/monitoring`
+- Optional Prometheus Operator draft under `infra/k8s` and `infra/helm/osmu`
 - MinIO Console
 - Application logs
+- Admin dashboard
 
-제품화:
+Product:
 
 - Prometheus
 - Grafana
 - AlertManager
 - Loki optional
+- Secret manager audit logs
 
-## 8. 운영 문서
+## 9. Object Lifecycle Operations
 
-추후 작성:
+- Admin dashboard lists prefix/tag lifecycle rules and supports save/delete.
+- Lower priority number runs first; use distinct priorities for overlapping rule scopes.
+- Conflict Report should be checked after adding rules with broad prefixes or partial tag filters.
+- Use Dry run before enabling or tightening a rule to preview candidate count and bytes.
+- S3 Lifecycle XML import should be reviewed with Conflict Report and Dry run before enabling aggressive retention.
+- Bucket lifecycle API should be used for S3-compatible bucket-scoped policies; confirm imported rules carry the expected `bucketName`.
+- Operators should monitor purge counters after rule changes to confirm rule scope.
+- MariaDB mode requires `object_lifecycle_rules` migration before rules persist across restart.
 
-- 설치 가이드
-- 운영 가이드
-- 장애 대응 가이드
-- 백업/복구 가이드
-- 업그레이드 가이드
+## 10. Backup Restore Operations
 
+- `dev-docs/backup-restore-drill.md` is the current runbook.
+- MVP pilot targets RPO 24h and RTO 4h.
+- Lightweight demo mode does not prove durable backup/restore.
+- Durable pilot requires MariaDB dump restore, MinIO object restore, object count/byte reconciliation, API smoke, and S3 client smoke.
+- `GET /api/admin/backup/status` exposes current readiness and pending gates in the admin portal.
+
+## 11. Prometheus And Grafana
+
+- Backend exposes `/actuator/prometheus`.
+- Kubernetes backend Service includes `prometheus.io/scrape=true`, `prometheus.io/path=/actuator/prometheus`, and `prometheus.io/port=8080`.
+- Helm enables the same scrape annotations through `backend.metrics`.
+- `infra/monitoring/prometheus-rules.yaml` defines starter alerts.
+- `infra/monitoring/grafana-dashboard-osmu.json` defines a starter overview dashboard.
+- `infra/k8s/monitoring-operator.yaml` defines optional `ServiceMonitor` and `PrometheusRule` resources.
+- `infra/helm/osmu/templates/monitoring-operator.yaml` renders the same optional resources when `monitoring.operator.enabled=true`.
+- Product deployment can replace annotations with `ServiceMonitor` when Prometheus Operator is used, but only after `monitoring.coreos.com/v1` CRDs are installed.

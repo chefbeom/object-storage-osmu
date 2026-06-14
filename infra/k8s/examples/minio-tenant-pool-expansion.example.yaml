@@ -1,0 +1,60 @@
+# Reference only.
+# Requires MinIO Operator CRDs and target-version schema validation before apply.
+# This file documents the selected OSMU direction: add capacity by adding
+# MinIO server pools, not by only increasing StatefulSet replicas.
+apiVersion: minio.min.io/v2
+kind: Tenant
+metadata:
+  name: osmu-minio
+  namespace: osmu
+  labels:
+    app.kubernetes.io/name: osmu-minio
+    app.kubernetes.io/part-of: osmu
+spec:
+  requestAutoCert: false
+  image: minio/minio:RELEASE.2025-05-24T17-08-30Z
+  credsSecret:
+    name: osmu-secret
+  pools:
+    - name: pool-0
+      servers: 4
+      volumesPerServer: 1
+      volumeClaimTemplate:
+        metadata:
+          name: data
+        spec:
+          accessModes:
+            - ReadWriteOnce
+          resources:
+            requests:
+              storage: 1Ti
+          storageClassName: osmu-storage
+      resources:
+        requests:
+          cpu: "1"
+          memory: 4Gi
+        limits:
+          cpu: "4"
+          memory: 8Gi
+    # Add a new pool when Pool 0 reaches the planned expansion threshold.
+    # Keep the shape consistent unless capacity planning explicitly decides otherwise.
+    - name: pool-1
+      servers: 4
+      volumesPerServer: 1
+      volumeClaimTemplate:
+        metadata:
+          name: data
+        spec:
+          accessModes:
+            - ReadWriteOnce
+          resources:
+            requests:
+              storage: 1Ti
+          storageClassName: osmu-storage
+      resources:
+        requests:
+          cpu: "1"
+          memory: 4Gi
+        limits:
+          cpu: "4"
+          memory: 8Gi

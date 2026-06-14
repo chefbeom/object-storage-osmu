@@ -1,0 +1,13 @@
+.env
+.env.local
+.env.*.local
+
+.idea/
+.vscode/
+*.log
+*.tmp
+.osmu-run/
+
+node_modules/
+dist/
+build/

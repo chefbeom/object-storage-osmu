@@ -1,0 +1,161 @@
+nameOverride: ""
+fullnameOverride: ""
+namespaceOverride: ""
+
+config:
+  mariadbDatabase: osmu
+  springProfilesActive: local
+  serverPort: "8080"
+  flywayEnabled: "true"
+  adminLoginId: admin
+  adminEmail: admin@example.com
+  adminName: Admin
+  jwtAccessTokenTtlSeconds: "3600"
+  jwtRefreshTokenTtlSeconds: "604800"
+  metadataMode: mariadb
+  storageMode: minio
+  storageEndpoint: http://osmu-minio:9000
+  storageCorsEnabled: "true"
+  storageCorsAllowedOrigins: http://localhost:5173,http://127.0.0.1:5173
+  uploadCleanupEnabled: "true"
+  uploadCleanupInitialDelayMs: "60000"
+  uploadCleanupFixedDelayMs: "300000"
+  uploadCleanupBatchSize: "100"
+  objectRetentionEnabled: "true"
+  objectRetentionDays: "30"
+  objectRetentionInitialDelayMs: "120000"
+  objectRetentionFixedDelayMs: "3600000"
+  objectRetentionBatchSize: "100"
+  accessKeyProvisioningMode: minio
+  accessKeyMcPath: mc
+  accessKeyMinioAlias: osmu-minio
+  s3SigV4ClockSkewSeconds: "900"
+  s3VirtualHostedStyleEnabled: "true"
+  s3VirtualHostedStyleDomainSuffixes: localhost
+
+secrets:
+  create: false
+  name: osmu-secret
+  values:
+    mariadbUser: osmu
+    mariadbPassword: change-me
+    mariadbRootPassword: change-me
+    minioRootUser: osmuadmin
+    minioRootPassword: change-me
+    adminPassword: change-me
+    jwtSecret: change-me-at-least-32-bytes
+    accessKeySecretEncryptionKey: change-me-32-byte-key
+
+mariadb:
+  image:
+    repository: mariadb
+    tag: "11.4"
+    pullPolicy: IfNotPresent
+  resources:
+    requests:
+      cpu: 250m
+      memory: 512Mi
+    limits:
+      cpu: "1"
+      memory: 1Gi
+  persistence:
+    size: 10Gi
+
+minio:
+  image:
+    repository: minio/minio
+    tag: RELEASE.2025-05-24T17-08-30Z
+    pullPolicy: IfNotPresent
+  resources:
+    requests:
+      cpu: 250m
+      memory: 512Mi
+    limits:
+      cpu: "1"
+      memory: 2Gi
+  persistence:
+    size: 50Gi
+
+backend:
+  replicas: 1
+  metrics:
+    enabled: true
+    path: /actuator/prometheus
+    port: "8080"
+  image:
+    repository: osmu-backend
+    tag: local
+    pullPolicy: IfNotPresent
+  podSecurityContext:
+    runAsNonRoot: true
+    runAsUser: 10001
+    runAsGroup: 10001
+    fsGroup: 10001
+    seccompProfile:
+      type: RuntimeDefault
+  containerSecurityContext:
+    allowPrivilegeEscalation: false
+    capabilities:
+      drop:
+        - ALL
+  resources:
+    requests:
+      cpu: 250m
+      memory: 512Mi
+    limits:
+      cpu: "1"
+      memory: 1Gi
+
+frontend:
+  replicas: 1
+  image:
+    repository: osmu-frontend
+    tag: local
+    pullPolicy: IfNotPresent
+  podSecurityContext:
+    runAsNonRoot: true
+    runAsUser: 101
+    runAsGroup: 101
+    seccompProfile:
+      type: RuntimeDefault
+  containerSecurityContext:
+    allowPrivilegeEscalation: false
+    capabilities:
+      drop:
+        - ALL
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 250m
+      memory: 256Mi
+
+ingress:
+  enabled: true
+  className: ""
+  host: osmu.local
+  annotations:
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/proxy-body-size: "220m"
+  tls:
+    - hosts:
+        - osmu.local
+      secretName: osmu-tls
+
+networkPolicy:
+  enabled: true
+  dns:
+    namespaceName: kube-system
+    podLabelKey: k8s-app
+    podLabelValue: kube-dns
+
+monitoring:
+  operator:
+    enabled: false
+    interval: 30s
+    scrapeTimeout: 10s
+    releaseLabel: prometheus
+
+

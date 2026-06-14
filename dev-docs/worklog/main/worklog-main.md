@@ -398,6 +398,373 @@ feat/bucket-management
 - 사용한 skill/plugin:
   - 추가 사용 없음.
 
+### 2026-06-14 - 복구 작업트리 본 프로젝트 반영 및 검증
+
+- 작업 시작 시간: 2026-06-14 19:52:47 +09:00
+- 작업 종료 시간: 2026-06-14 20:12:02 +09:00
+- 사용자 명령: `C:\project\object-storage-osmu-recovery`의 자료와 데이터를 `C:\project\object-storage-osmu`로 전체 이동하고 커밋/푸시까지 진행하라. 현재 자료 기준 개발 상태, 문제점, 당장 수정/개발할 부분, 가장 마지막 명령도 알려달라.
+- 명령 해석: 잃어버린 포크/작업트리의 복구 산출물을 현재 `main` 작업트리에 반영하고, 빌드 가능한 최소 상태까지 복구한 뒤 원격에 남기라는 명령으로 인식.
+- 요청 분석:
+  - 복구 작업트리는 세션 로그 기반 자동 복구 결과이며 일부 patch hunk 실패가 있었으므로, 단순 복사 후 바로 커밋하지 않고 최소 빌드/테스트 검증이 필요하다고 판단.
+  - 원본 `.git`은 유지해야 하므로 `.git`과 `recovery-report.txt`는 복사 대상에서 제외.
+  - 완전한 제품 검증은 Docker/MariaDB/MinIO/Browser E2E가 필요하지만, 현재 턴에서는 로컬 빌드와 JVM/Node 테스트를 우선 확인.
+- 작업 방식:
+  - `robocopy`로 복구본 파일을 현재 프로젝트에 반영했다.
+  - 프론트 의존성이 없어서 `npm install`을 실행했고, 생성된 lockfile을 포함했다.
+  - 복구 중 누락/중복된 코드 때문에 발생한 컴파일 오류를 우선 수정했다.
+  - 백엔드에서 누락된 admin API 컨트롤러를 기존 service/repository 기반으로 복원했다.
+  - S3 multipart complete checksum 전달과 S3 XML 오류 응답 테스트 계약을 정리했다.
+  - 프론트 API wrapper가 Node 테스트 환경에서도 동작하도록 `import.meta.env` 접근과 object tag validation 경로를 정리했다.
+- 실행 내용:
+  - `C:\project\object-storage-osmu-recovery` -> `C:\project\object-storage-osmu` 복사. 제외: `.git`, `recovery-report.txt`.
+  - `osmu-frontend`: `npm install`, `npm run build`, `npm run test:unit`.
+  - `osmu-backend`: `.\gradlew.bat test`.
+  - 복구 후 `git diff --stat`, `git status --short`로 변경 범위 확인.
+- 구현 내용:
+  - `osmu-backend/src/main/java/com/example/osmu/admin/AdminQuotaPolicyController.java` 추가.
+  - `osmu-backend/src/main/java/com/example/osmu/admin/AdminObjectSharePolicyController.java` 추가.
+  - `osmu-backend/src/main/java/com/example/osmu/admin/AdminBackupStatusController.java` 추가.
+  - `osmu-backend/src/main/java/com/example/osmu/object/S3ObjectController.java`의 multipart complete checksum header 전달 복구.
+  - `osmu-backend/src/main/java/com/example/osmu/object/repository/MariaDbObjectMetadataRepository.java`, `MariaDbObjectShareLinkRepository.java`의 복구 누락 필드/메서드 보강.
+  - `osmu-backend/src/test/java/com/example/osmu/object/S3ObjectControllerTest.java`, `S3ObjectControllerTest` import 및 S3 XML 오류 응답 기대값 정리.
+  - `osmu-frontend/src/services/api.js`에서 Node 테스트 환경용 env fallback 및 object tag preflight validation 복구.
+  - `osmu-frontend/src/views/HomeView.vue`에서 복구 중복 import/function 충돌을 제거했다.
+- 수정된 파일 및 관련 파일:
+  - 루트/문서: `.github/`, `PRODUCT_REQUIREMENTS.md`, `PROJECT_MEMORY.md`, `codingcovention.md`, `dev-docs/**`, `scripts/**`.
+  - 백엔드: `osmu-backend/**`, 특히 `admin`, `auth`, `bucket`, `object`, `quota`, `storage`, `user`, `resources/db` 하위 MVP 코드와 테스트.
+  - 프론트: `osmu-frontend/**`, 특히 `src/services`, `src/stores`, `src/utils`, `src/views/HomeView.vue`, `e2e`, Docker/nginx 설정.
+  - 인프라: `infra/**` Docker Compose, Kubernetes, Helm, monitoring draft.
+- 검증 기록:
+  - `npm.cmd run build` (`osmu-frontend`) 통과.
+  - `.\gradlew.bat test` (`osmu-backend`, JAVA_HOME=`C:\Users\kjs99\AppData\Local\Temp\temurin-jdk17\jdk-17.0.19+10`) 통과. 118 tests completed.
+  - `npm.cmd run test:unit` (`osmu-frontend`) 56개 중 55개 통과, 1개 실패.
+  - 실패 테스트: `HomeView exposes stable selectors for browser E2E flows` - `data-testid="status-list"`부터 안정 selector 계약이 복구되지 않음.
+  - 추가 확인: `HomeView.vue`에 `handleRunObjectRetentionPurge`, `resetLifecycleRuleForm`, `handleSaveObjectLifecycleRule`, `handleDryRunObjectLifecycleRule`, `editLifecycleRule`, `handleDeleteObjectLifecycleRule`, `refreshLifecycleRuleConflicts`, `handleExportLifecycleXml`, `handleImportLifecycleXml`, `loadBucketLifecycleXml`, `handlePutBucketLifecycleXml`, `handleDeleteBucketLifecycleXml`, `loadBucketTags`, `handlePutBucketTags`, `handleDeleteBucketTags` 정의가 누락되어 런타임 UI 동작 문제가 예상됨.
+  - Docker/MariaDB/MinIO, 실제 S3 client smoke, Browser click E2E, Kubernetes/Helm live 검증은 수행하지 못함.
+- 코드 리뷰:
+  - 백엔드 핵심 컴파일/테스트는 통과하므로 API/service 레이어의 최소 회귀는 상당 부분 복구됐다.
+  - 자동 복구 과정에서 실패한 hunk가 있었고, 프론트 HomeView는 빌드는 되지만 Vue runtime에서 일부 핸들러 누락으로 깨질 가능성이 높다.
+  - `HomeView.vue`에는 복구 중복 흔적과 일부 깨진 한글 문자열이 남아 있어 사용자 화면 품질과 E2E 안정성이 낮다.
+  - 루트 문서와 `dev-docs` 문서가 중복되어 canonical 문서 위치를 다시 정해야 한다.
+  - 기존 Vue starter 파일 일부는 mirror delete 없이 남아 있을 수 있으므로 정리 대상이다.
+- 결과:
+  - 복구 작업트리의 자료는 현재 프로젝트에 반영됐다.
+  - 백엔드 테스트와 프론트 빌드는 통과했다.
+  - 프론트 단위 테스트는 HomeView selector 계약 1건이 실패 상태다.
+- 후속 메모:
+  - 다음 최우선 작업은 `HomeView.vue` 템플릿/핸들러를 복구해 E2E selector 계약과 실제 버튼 동작을 맞추는 것이다.
+  - 그 다음 Docker Compose로 MariaDB/MinIO 통합 검증, 실제 S3 client smoke, Browser E2E를 진행해야 한다.
+  - 복구본 자동 replay에서 실패한 571 hunk는 별도 audit가 필요하다.
+- 앞으로 추가적으로 개발해야 하는 내용:
+  - HomeView admin panels: backup readiness, object share policy/analytics, quota policy, lifecycle/bucket tags 핸들러와 selector 복구.
+  - README 및 실행 runbook 정리.
+  - 중복 문서/오래된 Vue scaffold 파일 정리.
+  - Docker/MariaDB/MinIO 기반 durable smoke, real S3 client smoke, Browser E2E.
+  - 운영형 기능: backup job history, restore drill execution evidence, image scan/SBOM/signing, secret rotation execution, monitoring alert 실제 검증.
+- 추가적으로 사용된 skill/plugin:
+  - 별도 skill/plugin 추가 사용 없음.
+  - 사용 도구: PowerShell, robocopy, npm, Gradle, git.
+
+### 2026-06-13 - Git 커밋 메시지 형식 확장
+
+- 작업 시작 시간: 2026-06-13 02:42:40 +09:00
+- 작업 종료 시간: 2026-06-13 02:43:03 +09:00
+- 사용자 명령: 커밋 메시지를 `[Feat]` 또는 `[Refactor]` 같은 작업유형 태그와 `[B]`, `[F]`, `[D]`, `[M]` 같은 영역 태그를 함께 쓰는 방식으로 바꾸고, 여러 영역이 겹치면 `[Feat][B][F]: 프론트페이지 검정색상 제거` 같은 형식을 컨벤션에 추가하라고 요청.
+- 명령 해석: 기존 `[영역] 변경 내용` 형식을 `[작업유형][영역1][영역2]: 변경 내용` 형식으로 확장하라는 명령으로 이해.
+- 요청 분석: 사용자는 커밋 메시지에서 작업 성격과 영향 범위를 동시에 보고 싶어 함. 작업유형 태그는 변경 목적을 나타내고, 영역 태그는 Backend, Frontend, Docs 등 영향 범위를 나타내야 함.
+- 작업 방식: `codingcovention.md`의 `13.2 커밋 메시지` 섹션을 수정해 작업유형 태그 표, 영역 태그 표, 다중 영역 태그 규칙, 좋은 예시와 나쁜 예시를 보강.
+- 실행 내용:
+  - 기존 Git 커밋 메시지 규칙 확인.
+  - 기본 형식을 `[작업유형][영역1][영역2]: 변경 내용`으로 변경.
+  - `[Feat]`, `[Fix]`, `[Refactor]`, `[Docs]`, `[Test]`, `[Build]`, `[CI]`, `[Chore]`, `[Style]`, `[Perf]`, `[Release]`, `[Revert]` 작업유형 태그 추가.
+  - 사용자 예시에 맞춰 다중 영역 태그 예시 추가.
+  - `[M]` Management 영역 태그 추가.
+- 구현 내용:
+  - 작업유형 태그는 1개만 사용하도록 명시.
+  - 영역 태그는 1개 이상 사용할 수 있도록 명시.
+  - 여러 영역 수정 시 관련 영역 태그를 모두 붙이는 규칙 추가.
+  - 제목이 길어지면 핵심 영역만 제목에 넣고 나머지는 커밋 본문 또는 worklog에 기록하도록 정리.
+- 수정된 파일:
+  - `dev-docs/codingcovention.md`
+  - `dev-docs/worklog/main/worklog-main.md`
+- 관련 파일:
+  - `dev-docs/document-index.md`
+  - `dev-docs/PROJECT_MEMORY.md`
+- 검증 기록:
+  - `Get-Content -Encoding UTF8 .\dev-docs\codingcovention.md`로 기존 규칙 확인.
+  - `Get-Date -Format "yyyy-MM-dd HH:mm:ss zzz"`로 작업 시간 확인.
+- 코드 리뷰:
+  - 코드 변경 없음.
+  - 새 형식은 작업유형과 영역을 분리해 커밋 이력이 더 읽기 쉬움.
+  - `[M]` 태그를 Management로 추가해 사용자가 언급한 영역 태그를 반영함.
+  - 기존 `[B]`, `[F]`, `[I]`, `[D]` 규칙은 유지하면서 확장함.
+- 결과: Git 커밋 메시지 컨벤션을 작업유형 + 다중 영역 태그 방식으로 확장 완료.
+- 후속 메모: 이번 변경을 커밋한다면 문서 변경이므로 커밋 메시지는 `[Docs][D]: Git 커밋 메시지 형식 확장`이 적합함.
+- 추가 개발 필요: 새 작업유형 또는 영역이 생기면 `codingcovention.md`의 태그 표에 먼저 추가해야 함.
+- 사용한 skill/plugin:
+  - 추가 사용 없음.
+
+### 2026-06-13 - MVP 기본 DB를 MariaDB로 결정
+
+- 작업 시작 시간: 2026-06-13 01:31:01 +09:00
+- 작업 종료 시간: 2026-06-13 01:31:33 +09:00
+- 사용자 명령: PostgreSQL을 잘 모르므로 OSMU는 MariaDB로 가자고 요청.
+- 명령 해석: PRD와 코딩 컨벤션의 DB 기준을 PostgreSQL 후보에서 MariaDB 확정 기준으로 변경하라는 명령으로 이해.
+- 요청 분석: 사용자는 익숙한 DB를 사용해 개발 속도와 이해도를 높이고자 함. OSMU에서 DB는 실제 파일 저장소가 아니라 사용자, 버킷, 권한, 쿼터, 감사 로그 같은 메타데이터 저장소이므로 MariaDB 선택이 MVP에 적합함.
+- 작업 방식: `dev-docs/PRODUCT_REQUIREMENTS.md`에서 PostgreSQL 언급을 MariaDB로 바꾸고, `dev-docs/codingcovention.md`의 DB 컨벤션에 MariaDB 기준을 추가.
+- 실행 내용:
+  - `PRODUCT_REQUIREMENTS.md`에서 PostgreSQL 언급 위치 확인.
+  - `codingcovention.md`의 DB 컨벤션 위치 확인.
+  - 관련 문서 수정.
+  - PostgreSQL 잔여 언급이 없는지 확인.
+- 구현 내용:
+  - MVP 기본 RDBMS를 MariaDB로 명시.
+  - Docker Compose 구성 요소를 MariaDB 기준으로 변경.
+  - Kubernetes 운영 구성 요소를 MariaDB 기준으로 변경.
+  - Phase 1 개발 항목을 MariaDB 연결로 변경.
+  - DB에는 메타데이터만 저장하고 실제 파일은 MinIO에 저장한다는 원칙을 명시.
+- 수정된 파일:
+  - `dev-docs/PRODUCT_REQUIREMENTS.md`
+  - `dev-docs/codingcovention.md`
+  - `dev-docs/worklog/main/worklog-main.md`
+- 관련 파일:
+  - `osmu-backend/build.gradle`
+  - `osmu-backend/src/main/resources/application.yaml`
+  - 향후 생성 예정: `infra/local/docker-compose.yml`
+- 검증 기록:
+  - `Select-String -Path .\dev-docs\PRODUCT_REQUIREMENTS.md -Pattern 'PostgreSQL'` 실행 결과, 잔여 PostgreSQL 언급 없음.
+  - `Select-String -Path .\dev-docs\PRODUCT_REQUIREMENTS.md -Pattern 'MariaDB'`로 MariaDB 반영 위치 확인.
+  - `Select-String -Path .\dev-docs\codingcovention.md -Pattern 'MariaDB|MinIO'`로 DB 컨벤션 반영 확인.
+- 코드 리뷰:
+  - 코드 변경 없음.
+  - 문서 기준이 MariaDB로 통일되어 다음 Docker Compose와 Backend 설정 작업의 기준이 명확해짐.
+  - DB 역할을 메타데이터 저장소로 제한해 MinIO와 책임이 섞이지 않게 정리됨.
+- 결과: OSMU MVP 기본 DB를 MariaDB로 확정하고 관련 문서 반영 완료.
+- 후속 메모: 다음 infra 작업에서는 PostgreSQL 대신 MariaDB 컨테이너를 사용해야 함.
+- 추가 개발 필요:
+  - `infra/local/docker-compose.yml`에 MariaDB와 MinIO 추가.
+  - `osmu-backend/build.gradle`에 MariaDB JDBC driver와 Spring Data JPA 추가.
+  - `application.yaml`에 MariaDB datasource 설정 추가.
+- 사용한 skill/plugin:
+  - `caveman` skill: 응답을 간결하게 유지하기 위해 활성화됨.
+
+### 2026-06-13 - 기획 요구사항 문서 작성
+
+- 작업 시작 시간: 2026-06-13 01:38:41 +09:00
+- 작업 종료 시간: 2026-06-13 01:39:36 +09:00
+- 사용자 명령: 사용자가 알려준 내용과 목표를 기준으로 기획서 요구사항을 만들어달라고 요청.
+- 명령 해석: 기존 PRD보다 사용자의 최종 목표를 더 직접적으로 반영한 기획 요구사항 문서를 별도로 작성하라는 명령으로 이해.
+- 요청 분석: 사용자는 코드 구현 전에 서류 작업을 먼저 정리하려 함. 필요한 문서는 제품 목표, 해결 문제, 대상 고객, MVP 범위, 기능/비기능 요구사항, 우선순위, 개발 전 준비 문서, 첫 마일스톤을 포함해야 함.
+- 작업 방식: 기존 `PROJECT_MEMORY.md`, `PRODUCT_REQUIREMENTS.md`, MariaDB 결정 내용을 기준으로 `dev-docs/planning-requirements.md`를 신규 작성.
+- 실행 내용:
+  - 현재 브랜치가 `main`인지 확인.
+  - `dev-docs` 문서 목록 확인.
+  - `planning-requirements.md` 존재 여부 확인.
+  - 신규 기획 요구사항 문서 작성.
+  - 문서 섹션과 주요 키워드 확인.
+- 구현 내용:
+  - 제품 목표와 한 줄 정의 작성.
+  - 해결해야 하는 문제 정리.
+  - 대상 고객과 사용자 유형 정리.
+  - Web Portal, REST API, S3 API, FUSE, CLI 접근 요구사항 정리.
+  - MVP 필수 기능, 성공 기준, 제외 범위 정리.
+  - 기능 요구사항과 비기능 요구사항 작성.
+  - MariaDB/MinIO 데이터 저장 원칙 작성.
+  - P0~P3 우선순위 작성.
+  - 개발 전 준비 문서와 첫 개발 마일스톤 정리.
+- 수정된 파일:
+  - `dev-docs/planning-requirements.md`
+  - `dev-docs/worklog/main/worklog-main.md`
+- 관련 파일:
+  - `dev-docs/PROJECT_MEMORY.md`
+  - `dev-docs/PRODUCT_REQUIREMENTS.md`
+  - `dev-docs/codingcovention.md`
+- 검증 기록:
+  - `Get-Item .\dev-docs\planning-requirements.md`로 파일 생성 확인.
+  - `Select-String -Path .\dev-docs\planning-requirements.md -Pattern '^# |^## |^### '`로 섹션 구조 확인.
+  - `Select-String -Path .\dev-docs\planning-requirements.md -Pattern 'MariaDB|MinIO|S3|MVP'`로 핵심 키워드 반영 확인.
+- 코드 리뷰:
+  - 코드 변경 없음.
+  - 문서는 사용자의 목표인 B2B 프라이빗 오브젝트 스토리지 플랫폼 방향을 기준으로 작성됨.
+  - MariaDB와 MinIO 책임 분리가 명확함.
+  - 구현 전 필요한 후속 문서 목록이 포함되어 다음 작업으로 이어지기 쉬움.
+- 결과: OSMU 기획 요구사항 문서 생성 완료.
+- 후속 메모: 다음 문서 작업은 `api-spec.md` 또는 `database-design.md`가 적합함.
+- 추가 개발 필요:
+  - API 명세서 작성.
+  - MariaDB 기준 DB 설계서 작성.
+  - Backend 설계서 작성.
+  - 로컬 개발 환경 설계서 작성.
+- 사용한 skill/plugin:
+  - `caveman` skill: 응답을 간결하게 유지하기 위해 활성화됨.
+
+### 2026-06-13 - 최종 목표 기준 개발 문서 세트 작성
+
+- 작업 시작 시간: 2026-06-13 01:44:58 +09:00
+- 작업 종료 시간: 2026-06-13 01:48:05 +09:00
+- 사용자 명령: 최종 목표까지 필요한 서류를 모두 작성하라고 요청.
+- 명령 해석: OSMU를 MVP부터 B2B 판매 가능한 최종 제품까지 개발하기 위해 필요한 설계/운영/제품화 문서 세트를 `dev-docs`에 생성하라는 명령으로 이해.
+- 요청 분석: 사용자는 코드 구현 전에 API, DB, 아키텍처, 백엔드, 프론트, 로컬 환경, 보안, 백업, 운영, 배포, 테스트, 로드맵 문서를 갖추고 싶어 함. 기존 PRD와 기획 요구사항을 바탕으로 구현 착수 가능한 문서 체계가 필요함.
+- 작업 방식:
+  - 현재 브랜치와 문서 상태 확인.
+  - 최종 목표까지 필요한 문서 목록 선정.
+  - 각 문서를 MariaDB + MinIO + Spring Boot + Vue + Docker Compose + Kubernetes 기준으로 작성.
+  - 문서 인덱스를 만들어 읽기 순서와 문서 역할 정리.
+  - 잔여 PostgreSQL 언급 확인 후 `PROJECT_MEMORY.md`를 MariaDB 기준으로 보정.
+- 실행 내용:
+  - `git branch --show-current`로 현재 브랜치가 `main`임을 확인.
+  - `Get-ChildItem .\dev-docs`로 기존 문서 확인.
+  - 신규 문서 13개 생성.
+  - `Select-String`으로 주요 섹션, 핵심 키워드, PostgreSQL 잔여 언급 확인.
+- 구현 내용:
+  - 문서 인덱스 작성.
+  - 시스템 아키텍처 작성.
+  - REST API 명세 작성.
+  - MariaDB DB 설계 작성.
+  - Spring Boot Backend 설계 작성.
+  - Vue Frontend 설계 작성.
+  - 로컬 개발 환경 설계 작성.
+  - 보안 설계 작성.
+  - 백업/복구 전략 작성.
+  - 운영/모니터링 전략 작성.
+  - 배포 전략 작성.
+  - 테스트 전략 작성.
+  - MVP부터 B2B Ready까지 로드맵 작성.
+- 수정된 파일:
+  - `dev-docs/document-index.md`
+  - `dev-docs/system-architecture.md`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/database-design.md`
+  - `dev-docs/backend-design.md`
+  - `dev-docs/frontend-design.md`
+  - `dev-docs/local-dev-env.md`
+  - `dev-docs/security-design.md`
+  - `dev-docs/backup-recovery.md`
+  - `dev-docs/operation-monitoring.md`
+  - `dev-docs/deployment-strategy.md`
+  - `dev-docs/test-strategy.md`
+  - `dev-docs/development-roadmap.md`
+  - `dev-docs/PROJECT_MEMORY.md`
+  - `dev-docs/worklog/main/worklog-main.md`
+- 관련 파일:
+  - `dev-docs/PRODUCT_REQUIREMENTS.md`
+  - `dev-docs/planning-requirements.md`
+  - `dev-docs/codingcovention.md`
+- 검증 기록:
+  - `Get-ChildItem -Force .\dev-docs | Sort-Object Name`로 문서 목록 확인.
+  - `Select-String -Path .\dev-docs\document-index.md,.\dev-docs\api-spec.md,.\dev-docs\database-design.md,.\dev-docs\system-architecture.md,.\dev-docs\development-roadmap.md -Pattern '^# |^## '`로 핵심 문서 섹션 확인.
+  - `Select-String -Path .\dev-docs\*.md -Pattern 'PostgreSQL'`로 일반 문서 내 잔여 PostgreSQL 언급 없음 확인.
+  - `Select-String -Path .\dev-docs\PROJECT_MEMORY.md -Pattern 'MariaDB 연결'`로 기준 문서 보정 확인.
+- 코드 리뷰:
+  - 코드 변경 없음.
+  - 문서 세트가 MVP와 최종 제품 목표를 모두 다룸.
+  - API, DB, Backend, Frontend, 운영 문서가 서로 같은 기술 결정(MariaDB, MinIO, Spring Boot, Vue)을 공유함.
+  - `document-index.md`로 문서 탐색성과 다음 작업 기준을 보강함.
+- 결과: 최종 목표까지 필요한 1차 개발/운영/제품화 문서 세트 작성 완료.
+- 후속 메모: 문서는 초안이므로 실제 구현 중 API 필드, DB 컬럼, 인증 방식, 배포 방식이 확정될 때 계속 갱신해야 함.
+- 추가 개발 필요:
+  - Docker Compose 작성.
+  - Backend dependency 추가.
+  - Health API 구현.
+  - MariaDB/MinIO 연결 구현.
+  - Bucket/Object API 구현.
+- 사용한 skill/plugin:
+  - `caveman` skill: 응답을 간결하게 유지하기 위해 활성화됨.
+
+### 2026-06-13 - 테스트 케이스 문서 추가
+
+- 작업 시작 시간: 2026-06-13 01:56:46 +09:00
+- 작업 종료 시간: 2026-06-13 01:57:37 +09:00
+- 사용자 명령: 테스트 케이스도 포함해야겠다고 요청.
+- 명령 해석: 기존 테스트 전략 문서와 별도로, 기능별 구체 테스트 케이스 문서를 추가하고 문서 인덱스에 연결하라는 명령으로 이해.
+- 요청 분석: `test-strategy.md`는 테스트 방향과 우선순위 중심이라 실제 구현 완료 기준으로 쓰기에는 부족함. Health, Auth, Bucket, Object, Access Key, Quota, Audit, Frontend, Security, Backup 테스트를 구체 케이스로 정리해야 함.
+- 작업 방식:
+  - `dev-docs/test-cases.md` 신규 작성.
+  - `dev-docs/test-strategy.md`에서 구체 테스트 케이스 문서를 참조하도록 수정.
+  - `dev-docs/document-index.md`에 `test-cases.md` 추가.
+- 실행 내용:
+  - `test-cases.md` 존재 여부 확인.
+  - 기존 `test-strategy.md`, `document-index.md` 내용 확인.
+  - 테스트 케이스 문서 작성.
+  - 섹션과 링크 검증.
+- 구현 내용:
+  - 테스트 케이스 형식 정의.
+  - Health API 테스트 케이스 작성.
+  - Auth 테스트 케이스 작성.
+  - Bucket 테스트 케이스 작성.
+  - Object 테스트 케이스 작성.
+  - Access Key 테스트 케이스 작성.
+  - Quota 테스트 케이스 작성.
+  - Audit Log 테스트 케이스 작성.
+  - Frontend 테스트 케이스 작성.
+  - Security 테스트 케이스 작성.
+  - Backup/Recovery 테스트 케이스 작성.
+  - MVP 완료 기준 테스트 목록 작성.
+- 수정된 파일:
+  - `dev-docs/test-cases.md`
+  - `dev-docs/test-strategy.md`
+  - `dev-docs/document-index.md`
+  - `dev-docs/worklog/main/worklog-main.md`
+- 관련 파일:
+  - `dev-docs/api-spec.md`
+  - `dev-docs/database-design.md`
+  - `dev-docs/backend-design.md`
+  - `dev-docs/frontend-design.md`
+- 검증 기록:
+  - `Get-Item .\dev-docs\test-cases.md`로 파일 생성 확인.
+  - `Select-String -Path .\dev-docs\test-cases.md -Pattern '^# |^## |^### '`로 테스트 케이스 섹션 확인.
+  - `Select-String -Path .\dev-docs\document-index.md,.\dev-docs\test-strategy.md -Pattern 'test-cases.md'`로 문서 연결 확인.
+- 코드 리뷰:
+  - 코드 변경 없음.
+  - 테스트 전략과 테스트 케이스 역할이 분리되어 문서 구조가 명확해짐.
+  - MVP 완료 기준 테스트가 명시되어 이후 구현 완료 판단이 쉬워짐.
+- 결과: 기능별 테스트 케이스 문서 추가 완료.
+- 후속 메모: 실제 API 구현 시 테스트 케이스 ID를 커밋/작업 로그와 연결하면 추적성이 좋아짐.
+- 추가 개발 필요:
+  - 테스트 자동화 코드 작성.
+  - API 구현 후 P0 테스트 케이스부터 검증.
+  - Frontend E2E 테스트 도구 선택.
+- 사용한 skill/plugin:
+  - `caveman` skill: 응답을 간결하게 유지하기 위해 활성화됨.
+
+### 2026-06-13 - Git 커밋 메시지 컨벤션 추가
+
+- 작업 시작 시간: 2026-06-13 02:37:22 +09:00
+- 작업 종료 시간: 2026-06-13 02:38:09 +09:00
+- 사용자 명령: Git 메시지는 한국어로 작성하고, 백엔드는 `[B]`, 프론트는 `[F]`, 인프라는 `[I]`, 서류 작성은 `[D]`를 붙이며, 그 외 영역은 각각의 `[알파벳]` 컨벤션을 추가해서 커밋하도록 컨벤션에 반영하라고 요청.
+- 명령 해석: `codingcovention.md`의 Git 커밋 메시지 규칙을 기존 영어 Conventional Commits 방식에서 한국어 영역 태그 방식으로 변경하라는 명령으로 이해.
+- 요청 분석: 앞으로 OSMU 작업은 Backend, Frontend, Infra, Docs가 섞여 진행될 가능성이 높음. 커밋 메시지 앞에 영역 태그를 붙이면 변경 범위가 즉시 보이고, 사용자가 원하는 한국어 기록 방식도 유지할 수 있음.
+- 작업 방식: 기존 Git 컨벤션의 브랜치 규칙은 유지하고, `13.2 커밋 메시지` 섹션만 한국어 영역 태그 규칙으로 교체. 사용자 지정 태그 외에도 테스트, 보안, 운영 태그를 보조 영역으로 추가.
+- 실행 내용:
+  - `dev-docs/codingcovention.md`의 Git 컨벤션 섹션 확인.
+  - 커밋 메시지 기본 형식과 영역 태그 표 추가.
+  - 좋은 예시와 나쁜 예시 추가.
+  - 새 작업 영역이 생기면 커밋 전 태그 표에 먼저 추가한다는 규칙 추가.
+- 구현 내용:
+  - 커밋 메시지를 한국어로 작성하도록 명시.
+  - `[B]`, `[F]`, `[I]`, `[D]` 필수 영역 태그 반영.
+  - `[T]`, `[S]`, `[O]` 보조 영역 태그 추가.
+  - 여러 영역 변경 시 대표 태그를 사용하고 나머지 영향은 본문 또는 worklog에 남기도록 정리.
+- 수정된 파일:
+  - `dev-docs/codingcovention.md`
+  - `dev-docs/worklog/main/worklog-main.md`
+- 관련 파일:
+  - `dev-docs/document-index.md`
+  - `dev-docs/PROJECT_MEMORY.md`
+- 검증 기록:
+  - `Get-Content -Encoding UTF8 .\dev-docs\codingcovention.md`로 기존 Git 컨벤션 확인.
+  - `Get-Date -Format "yyyy-MM-dd HH:mm:ss zzz"`로 작업 시간 확인.
+- 코드 리뷰:
+  - 코드 변경 없음.
+  - 커밋 규칙은 사용자가 지정한 네 가지 핵심 태그를 모두 포함함.
+  - 추가 태그는 개발 흐름에서 자주 분리되는 테스트, 보안, 운영만 최소로 추가함.
+  - 기존 브랜치 규칙은 유지해 불필요한 변경을 피함.
+- 결과: 한국어 영역 태그 기반 Git 커밋 메시지 컨벤션 반영 완료.
+- 후속 메모: 이번 변경을 커밋한다면 문서 변경이므로 커밋 메시지는 `[D] 깃 커밋 메시지 컨벤션 추가`가 적합함.
+- 추가 개발 필요: 새 영역이 생기면 `codingcovention.md`의 영역 태그 표에 먼저 추가한 뒤 커밋해야 함.
+- 사용한 skill/plugin:
+  - 추가 사용 없음.
+
 ### 2026-06-13 - Git 커밋 메시지 형식 확장
 
 - 작업 시작 시간: 2026-06-13 02:42:40 +09:00

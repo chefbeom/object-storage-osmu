@@ -1,0 +1,131 @@
+{
+  "uid": "osmu-mvp-overview",
+  "title": "OSMU MVP Overview",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "30s",
+  "tags": ["osmu", "object-storage", "mvp"],
+  "timezone": "browser",
+  "time": {
+    "from": "now-1h",
+    "to": "now"
+  },
+  "templating": {
+    "list": [
+      {
+        "name": "job",
+        "type": "query",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${DS_PROMETHEUS}"
+        },
+        "query": "label_values(up{job=~\"osmu-backend.*\"}, job)",
+        "refresh": 1
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "Backend Up",
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 0 },
+      "targets": [
+        {
+          "expr": "up{job=\"$job\"}",
+          "legendFormat": "up"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [
+            { "type": "value", "options": { "0": { "text": "DOWN" }, "1": { "text": "UP" } } }
+          ],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "red", "value": null },
+              { "color": "green", "value": 1 }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": 2,
+      "type": "timeseries",
+      "title": "HTTP Requests",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 4 },
+      "targets": [
+        {
+          "expr": "sum(rate(http_server_requests_seconds_count{job=\"$job\"}[5m])) by (method, status)",
+          "legendFormat": "{{method}} {{status}}"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "timeseries",
+      "title": "HTTP p95 Latency",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 4 },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(http_server_requests_seconds_bucket{job=\"$job\"}[5m])) by (le))",
+          "legendFormat": "p95"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s"
+        }
+      }
+    },
+    {
+      "id": 4,
+      "type": "timeseries",
+      "title": "JVM Memory Used",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 12 },
+      "targets": [
+        {
+          "expr": "sum(jvm_memory_used_bytes{job=\"$job\"}) by (area)",
+          "legendFormat": "{{area}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes"
+        }
+      }
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "Retention Purge Failures",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 12 },
+      "targets": [
+        {
+          "expr": "increase(osmu_object_retention_purge_runs_total{job=\"$job\",result=\"failure\"}[15m])",
+          "legendFormat": "object retention"
+        },
+        {
+          "expr": "increase(osmu_object_version_retention_purge_runs_total{job=\"$job\",result=\"failure\"}[15m])",
+          "legendFormat": "version retention"
+        },
+        {
+          "expr": "increase(osmu_multipart_cleanup_sessions_total{job=\"$job\",result=\"failure\"}[15m])",
+          "legendFormat": "multipart cleanup"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "type": "text",
+      "title": "MVP Durable Pilot Notes",
+      "gridPos": { "h": 6, "w": 24, "x": 0, "y": 20 },
+      "options": {
+        "mode": "markdown",
+        "content": "Durable pilot remains NO-GO until Docker/MariaDB/MinIO smoke, real S3 client smoke, Browser E2E, and restore drill execution all pass. Use `GET /api/admin/backup/status` for current backup readiness."
+      }
+    }
+  ]
+}

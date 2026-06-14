@@ -1,0 +1,35 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: osmu
+  namespace: osmu
+  labels:
+    app.kubernetes.io/name: osmu
+    app.kubernetes.io/part-of: osmu
+  annotations:
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/proxy-body-size: "220m"
+spec:
+  tls:
+    - hosts:
+        - osmu.local
+      secretName: osmu-tls
+  rules:
+    - host: osmu.local
+      http:
+        paths:
+          - path: /api
+            pathType: Prefix
+            backend:
+              service:
+                name: osmu-backend
+                port:
+                  name: http
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: osmu-frontend
+                port:
+                  name: http
