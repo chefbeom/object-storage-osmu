@@ -343,6 +343,16 @@
 - Priority: P1
 - Automated: `S3ObjectControllerTest.accessKeyCanUploadWithCrc64NvmeChecksum`, `S3ObjectControllerTest.accessKeyCanUploadAwsChunkedStreamingPayload`, `S3ObjectControllerMultipartTest.completeMultipartUploadParsesS3XmlAndReturnsResultXml`, `ObjectServiceMultipartRefreshTest.completeMultipartUploadStoresValidatedCrc64NvmeChecksumMetadata`
 
+### TC-S3-MULTIPART-INITIATE-001
+
+- Feature: S3 multipart initiate unknown-size parity.
+- Preconditions: Target bucket exists. Active access key has `WRITE` scope. MinIO multipart storage adapter is available for runtime use.
+- Input: `POST /api/s3/{bucketName}/{objectKey}?uploads` without `X-OSMU-Multipart-Size-Bytes` or `x-amz-meta-osmu-size-bytes`, followed by `UploadPart`, `ListParts`, and `CompleteMultipartUpload`.
+- Steps: Initiate multipart upload without expected size, upload part 1, list uploaded parts, complete with matching part ETag, then repeat completion with a quota failure.
+- Expected: Initiate returns S3 XML `InitiateMultipartUploadResult` and an upload id without requiring an expected-size header. The session stores no precomputed part plan, part numbers 1~10000 are allowed, ListParts works from storage state, complete applies bucket quota and usage using the actual completed object size, and quota failure rolls back the completed storage object before metadata commit.
+- Priority: P1
+- Automated: `S3ObjectControllerMultipartTest.createMultipartUploadAllowsS3InitiateWithoutExpectedSizeHeader`, `ObjectServiceMultipartRefreshTest.s3MultipartUploadCanStartWithoutExpectedSizeAndCompleteWithActualSize`, `ObjectServiceMultipartRefreshTest.s3MultipartUnknownSizeCompleteRollsBackCompletedObjectOnQuotaFailure`
+
 ### TC-S3-MULTIPART-COMPLETE-001
 
 - Feature: S3 multipart complete XML part list validation.

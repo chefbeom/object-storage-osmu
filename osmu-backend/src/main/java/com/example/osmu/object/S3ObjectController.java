@@ -281,12 +281,12 @@ public class S3ObjectController {
             HttpServletRequest request
     ) {
         AuthenticatedUser user = s3RequestAuthService.currentUser(request, bucketName, "WRITE");
-        MultipartUploadCreateResponse response = objectService.createMultipartUpload(
+        MultipartUploadCreateResponse response = objectService.createS3MultipartUpload(
                 bucketName,
                 new MultipartUploadCreateRequest(
                         objectKey,
                         contentType(request),
-                        requiredLongHeader(request, OSMU_MULTIPART_SIZE_HEADER, AWS_META_OSMU_SIZE_HEADER),
+                        optionalLongHeader(request, OSMU_MULTIPART_SIZE_HEADER, AWS_META_OSMU_SIZE_HEADER),
                         optionalLongHeader(request, OSMU_MULTIPART_PART_SIZE_HEADER, AWS_META_OSMU_PART_SIZE_HEADER),
                         optionalIntHeader(request, OSMU_MULTIPART_EXPIRES_HEADER),
                         tags(request)

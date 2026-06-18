@@ -482,16 +482,45 @@ public class ObjectService {
             MultipartUploadCreateRequest request,
             AuthenticatedUser user
     ) {
+        return createMultipartUpload(bucketName, request, user, true);
+    }
+
+    public MultipartUploadCreateResponse createS3MultipartUpload(
+            String bucketName,
+            MultipartUploadCreateRequest request,
+            AuthenticatedUser user
+    ) {
+        return createMultipartUpload(bucketName, request, user, false);
+    }
+
+    private MultipartUploadCreateResponse createMultipartUpload(
+            String bucketName,
+            MultipartUploadCreateRequest request,
+            AuthenticatedUser user,
+            boolean requireExpectedSize
+    ) {
         bucketService.assertCanWrite(bucketName, user);
         String normalizedBucketName = bucketService.get(bucketName, user).name();
         String normalizedKey = normalizeRequiredKey(request.key());
-        long sizeBytes = normalizeMultipartSize(request.sizeBytes());
-        long partSizeBytes = normalizeMultipartPartSize(request.partSizeBytes(), sizeBytes);
-        int partCount = multipartPartCount(sizeBytes, partSizeBytes);
+        boolean hasExpectedSize = request.sizeBytes() != null;
+        if (request.sizeBytes() != null && request.sizeBytes() <= 0) {
+            throw new ApiException(ApiErrorCode.VALIDATION_ERROR, "sizeBytes must be positive.");
+        }
+        if (requireExpectedSize && !hasExpectedSize) {
+            throw new ApiException(ApiErrorCode.VALIDATION_ERROR, "sizeBytes must be positive.");
+        }
+        if (!hasExpectedSize && request.partSizeBytes() != null && request.partSizeBytes() <= 0) {
+            throw new ApiException(ApiErrorCode.VALIDATION_ERROR, "partSizeBytes must be positive.");
+        }
+        long sizeBytes = hasExpectedSize ? normalizeMultipartSize(request.sizeBytes()) : 0L;
+        long partSizeBytes = hasExpectedSize ? normalizeMultipartPartSize(request.partSizeBytes(), sizeBytes) : 0L;
+        int partCount = hasExpectedSize ? multipartPartCount(sizeBytes, partSizeBytes) : 0;
         StoredObjectRecord previous = storageAdapter.statObject(normalizedBucketName, normalizedKey).orElse(null);
         String tags = normalizeTags(request.tags());
 
-        bucketService.assertObjectChangeAllowed(normalizedBucketName, sizeBytes, 1L);
+        if (hasExpectedSize) {
+            bucketService.assertObjectChangeAllowed(normalizedBucketName, sizeBytes, 1L);
+        }
         int expiresInSeconds = expiresInSeconds(request.expiresInSeconds());
         List<Integer> partNumbers = partNumbers(partCount);
         StorageMultipartUpload storageUpload = storageAdapter.createMultipartUpload(
@@ -589,9 +618,6 @@ public class ObjectService {
                 .orElseThrow(() -> new ApiException(ApiErrorCode.NOT_FOUND, "Upload session not found."));
         validateUploadSession(session, user, normalizedBucketName, normalizedKey);
         validateUploadMode(session, UPLOAD_MODE_MULTIPART);
-        if (session.expectedSizeBytes() <= 0 || session.partSizeBytes() <= 0 || session.partCount() <= 0) {
-            throw new ApiException(ApiErrorCode.CONFLICT, "Multipart upload session part plan is missing.");
-        }
         List<MultipartUploadUploadedPart> uploadedParts = storageAdapter.listMultipartUploadParts(
                 normalizedBucketName,
                 normalizedKey,
@@ -623,7 +649,10 @@ public class ObjectService {
                 .orElseThrow(() -> new ApiException(ApiErrorCode.NOT_FOUND, "Upload session not found."));
         validateUploadSession(session, user, normalizedBucketName, normalizedKey);
         validateUploadMode(session, UPLOAD_MODE_MULTIPART);
-        if (partNumber < 1 || partNumber > session.partCount()) {
+        if (partNumber < 1 || partNumber > MAX_MULTIPART_PART_COUNT) {
+            throw new ApiException(ApiErrorCode.VALIDATION_ERROR, "partNumber is outside the upload part plan.");
+        }
+        if (session.partCount() > 0 && partNumber > session.partCount()) {
             throw new ApiException(ApiErrorCode.VALIDATION_ERROR, "partNumber is outside the upload part plan.");
         }
         if (sizeBytes <= 0) {
@@ -778,12 +807,14 @@ public class ObjectService {
                 completedParts
         );
 
-        try {
-            bucketService.assertObjectChangeAllowed(normalizedBucketName, session.expectedSizeBytes(), 1L);
-        } catch (ApiException exception) {
-            storageAdapter.abortMultipartUpload(normalizedBucketName, normalizedKey, session.storageUploadId());
-            uploadSessionRepository.updateStatus(session.uploadId(), "FAILED", OffsetDateTime.now());
-            throw exception;
+        if (session.expectedSizeBytes() > 0) {
+            try {
+                bucketService.assertObjectChangeAllowed(normalizedBucketName, session.expectedSizeBytes(), 1L);
+            } catch (ApiException exception) {
+                storageAdapter.abortMultipartUpload(normalizedBucketName, normalizedKey, session.storageUploadId());
+                uploadSessionRepository.updateStatus(session.uploadId(), "FAILED", OffsetDateTime.now());
+                throw exception;
+            }
         }
 
         ObjectVersionRecord snapshot = null;
@@ -806,6 +837,7 @@ public class ObjectService {
             }
             try {
                 validateStoredObjectChecksums(normalizedBucketName, normalizedKey, normalizedChecksums);
+                bucketService.assertObjectChangeAllowed(normalizedBucketName, uploadedObject.sizeBytes(), 1L);
             } catch (RuntimeException exception) {
                 rollbackCompletedMultipartObject(normalizedBucketName, normalizedKey, snapshot);
                 uploadSessionRepository.updateStatus(session.uploadId(), "FAILED", OffsetDateTime.now());

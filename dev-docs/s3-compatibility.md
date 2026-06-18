@@ -42,7 +42,7 @@
 | Object tagging | Supported | S3 XML tag subset backed by OSMU object tags. |
 | ListObjects V1/V2 | Supported | Prefix, delimiter, marker/continuation token, max keys, URL encoding, owner field. |
 | Multi-object delete | MVP supported | Uses soft-delete; quiet mode and per-key errors supported. |
-| Multipart initiate/upload/list/complete/abort | MVP supported | Requires OSMU expected-size header for quota/session planning. Missing uploads return `NoSuchUpload`. ListParts supports `max-parts`/`part-number-marker` pagination. Complete XML validates non-empty ascending unique part numbers, 1~10000 range, required ETag, uploaded part existence, and ETag match before storage complete. MinIO-backed complete preserves the AWS-style multipart ETag (`md5-of-part-md5s-partCount`) and smoke scripts verify it in complete response XML/header and later `HEAD`. Unknown-size AWS initiate parity is not supported. |
+| Multipart initiate/upload/list/complete/abort | MVP supported | S3 initiate accepts AWS-style unknown-size sessions when the OSMU expected-size header is omitted; these sessions have no precomputed part URL/byte plan and quota is checked on complete using actual completed object size. Missing uploads return `NoSuchUpload`. ListParts supports `max-parts`/`part-number-marker` pagination. Complete XML validates non-empty ascending unique part numbers, 1~10000 range, required ETag, uploaded part existence, and ETag match before storage complete. MinIO-backed complete preserves the AWS-style multipart ETag (`md5-of-part-md5s-partCount`) and smoke scripts verify it in complete response XML/header and later `HEAD`. |
 
 ## Checksum Support
 

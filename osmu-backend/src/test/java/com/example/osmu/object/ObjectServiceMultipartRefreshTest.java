@@ -7,6 +7,7 @@ import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -647,6 +648,163 @@ class ObjectServiceMultipartRefreshTest {
         assertThat(response.parts()).extracting(MultipartUploadUploadedPart::etag)
                 .containsExactly("\"etag-1\"", "\"etag-2\"");
         verify(storageAdapter).listMultipartUploadParts("bucket", "videos/input.mp4", "storage-upload-1");
+    }
+
+    @Test
+    void s3MultipartUploadCanStartWithoutExpectedSizeAndCompleteWithActualSize() {
+        BucketRecord bucket = new BucketRecord(1L, "bucket", "USER", 1L, 1000000000L, 0L, 0L, OffsetDateTime.now());
+        StoredObjectRecord uploaded = new StoredObjectRecord(
+                "videos/unknown.mp4",
+                5L,
+                "video/mp4",
+                OffsetDateTime.now(),
+                Map.of()
+        );
+        when(bucketService.get("bucket", user)).thenReturn(bucket);
+        when(storageAdapter.statObject("bucket", "videos/unknown.mp4")).thenReturn(Optional.empty());
+        when(storageAdapter.createMultipartUpload(
+                eq("bucket"),
+                eq("videos/unknown.mp4"),
+                eq("video/mp4"),
+                eq(900),
+                eq(List.of())
+        )).thenReturn(storageUpload("storage-upload-unknown", List.of(), 900, "create"));
+        when(storageAdapter.uploadMultipartUploadPart(
+                eq("bucket"),
+                eq("videos/unknown.mp4"),
+                eq("storage-upload-unknown"),
+                eq(1),
+                any(InputStream.class),
+                eq(5L)
+        )).thenReturn(new MultipartUploadUploadedPart(1, "\"etag-1\"", 5L));
+        givenUploadedParts(
+                "bucket",
+                "videos/unknown.mp4",
+                "storage-upload-unknown",
+                new MultipartUploadUploadedPart(1, "\"etag-1\"", 5L)
+        );
+        when(storageAdapter.completeMultipartUpload(
+                eq("bucket"),
+                eq("videos/unknown.mp4"),
+                eq("storage-upload-unknown"),
+                anyList()
+        )).thenReturn(uploaded);
+
+        MultipartUploadCreateResponse created = objectService.createS3MultipartUpload(
+                "bucket",
+                new MultipartUploadCreateRequest(
+                        "videos/unknown.mp4",
+                        "video/mp4",
+                        null,
+                        null,
+                        900,
+                        ""
+                ),
+                user
+        );
+        MultipartUploadUploadedPart part = objectService.uploadMultipartPart(
+                "bucket",
+                "videos/unknown.mp4",
+                created.uploadId(),
+                1,
+                new ByteArrayInputStream("hello".getBytes(StandardCharsets.UTF_8)),
+                5L,
+                user
+        );
+        MultipartUploadPartsResponse parts = objectService.listMultipartUploadParts(
+                "bucket",
+                new MultipartUploadPartsRequest(created.uploadId(), "videos/unknown.mp4"),
+                user
+        );
+        StoredObjectRecord result = objectService.completeMultipartUpload(
+                "bucket",
+                new MultipartUploadCompleteRequest(
+                        created.uploadId(),
+                        "videos/unknown.mp4",
+                        List.of(new CompletedMultipartUploadPart(1, "\"etag-1\""))
+                ),
+                user
+        );
+
+        PresignedUploadSession session = uploadSessionRepository.findByUploadId(created.uploadId()).orElseThrow();
+        assertThat(created.sizeBytes()).isZero();
+        assertThat(created.partSizeBytes()).isZero();
+        assertThat(created.partCount()).isZero();
+        assertThat(created.parts()).isEmpty();
+        assertThat(session.expectedSizeBytes()).isZero();
+        assertThat(session.partCount()).isZero();
+        assertThat(part.etag()).isEqualTo("\"etag-1\"");
+        assertThat(parts.parts()).extracting(MultipartUploadUploadedPart::partNumber).containsExactly(1);
+        assertThat(result).isEqualTo(uploaded);
+        verify(bucketService).assertObjectChangeAllowed("bucket", 5L, 1L);
+        verify(bucketService).applyObjectChange("bucket", 5L, 1L);
+        verify(objectMetadataRepository).save("bucket", uploaded);
+    }
+
+    @Test
+    void s3MultipartUnknownSizeCompleteRollsBackCompletedObjectOnQuotaFailure() {
+        BucketRecord bucket = new BucketRecord(1L, "bucket", "USER", 1L, 1000000000L, 0L, 0L, OffsetDateTime.now());
+        StoredObjectRecord uploaded = new StoredObjectRecord(
+                "videos/quota.mp4",
+                7L,
+                "video/mp4",
+                OffsetDateTime.now(),
+                Map.of()
+        );
+        when(bucketService.get("bucket", user)).thenReturn(bucket);
+        when(storageAdapter.statObject("bucket", "videos/quota.mp4")).thenReturn(Optional.empty());
+        when(storageAdapter.createMultipartUpload(
+                eq("bucket"),
+                eq("videos/quota.mp4"),
+                eq("video/mp4"),
+                eq(900),
+                eq(List.of())
+        )).thenReturn(storageUpload("storage-upload-quota", List.of(), 900, "create"));
+        givenUploadedParts(
+                "bucket",
+                "videos/quota.mp4",
+                "storage-upload-quota",
+                new MultipartUploadUploadedPart(1, "\"etag-1\"", 7L)
+        );
+        when(storageAdapter.completeMultipartUpload(
+                eq("bucket"),
+                eq("videos/quota.mp4"),
+                eq("storage-upload-quota"),
+                anyList()
+        )).thenReturn(uploaded);
+        when(storageAdapter.deleteObject("bucket", "videos/quota.mp4")).thenReturn(uploaded);
+        doThrow(new ApiException(ApiErrorCode.QUOTA_EXCEEDED, "Bucket quota exceeded."))
+                .when(bucketService).assertObjectChangeAllowed("bucket", 7L, 1L);
+
+        MultipartUploadCreateResponse created = objectService.createS3MultipartUpload(
+                "bucket",
+                new MultipartUploadCreateRequest(
+                        "videos/quota.mp4",
+                        "video/mp4",
+                        null,
+                        null,
+                        900,
+                        ""
+                ),
+                user
+        );
+
+        assertThatThrownBy(() -> objectService.completeMultipartUpload(
+                "bucket",
+                new MultipartUploadCompleteRequest(
+                        created.uploadId(),
+                        "videos/quota.mp4",
+                        List.of(new CompletedMultipartUploadPart(1, "\"etag-1\""))
+                ),
+                user
+        )).isInstanceOfSatisfying(ApiException.class, exception ->
+                assertThat(exception.code()).isEqualTo(ApiErrorCode.QUOTA_EXCEEDED));
+
+        PresignedUploadSession failedSession = uploadSessionRepository.findByUploadId(created.uploadId()).orElseThrow();
+        assertThat(failedSession.status()).isEqualTo("FAILED");
+        verify(storageAdapter).deleteObject("bucket", "videos/quota.mp4");
+        verify(objectMetadataRepository, never()).save(eq("bucket"), any(StoredObjectRecord.class));
+        verify(bucketService, never()).applyObjectChange(eq("bucket"), anyLong(), anyLong());
     }
 
     @Test

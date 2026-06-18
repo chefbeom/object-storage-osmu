@@ -240,6 +240,7 @@ MVP 데모 기준 완료율은 약 90~95%입니다.
 - S3 multipart complete uploaded part existence and ETag match validation
 - S3 multipart missing upload `NoSuchUpload` error mapping
 - S3 multipart ListParts pagination (max-parts/part-number-marker)
+- S3 multipart initiate without expected-size header
 
 남은 것:
 

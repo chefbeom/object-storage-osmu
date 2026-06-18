@@ -53,7 +53,7 @@ class S3ObjectControllerMultipartTest {
         request.addHeader("X-OSMU-Multipart-Part-Size-Bytes", "5242880");
         request.addHeader("X-OSMU-Tags", "project=osmu");
         when(s3RequestAuthService.currentUser(request, "bucket", "WRITE")).thenReturn(user);
-        when(objectService.createMultipartUpload(
+        when(objectService.createS3MultipartUpload(
                 eq("bucket"),
                 argThat(body -> body.key().equals("videos/input.mp4")
                         && body.sizeBytes().equals(10485760L)
@@ -78,6 +78,35 @@ class S3ObjectControllerMultipartTest {
         assertThat(response.getBody()).contains("<Bucket>bucket</Bucket>");
         assertThat(response.getBody()).contains("<Key>videos/input.mp4</Key>");
         assertThat(response.getBody()).contains("<UploadId>upload-1</UploadId>");
+    }
+
+    @Test
+    void createMultipartUploadAllowsS3InitiateWithoutExpectedSizeHeader() {
+        MockHttpServletRequest request = request("POST");
+        request.setContentType(MediaType.APPLICATION_OCTET_STREAM_VALUE);
+        when(s3RequestAuthService.currentUser(request, "bucket", "WRITE")).thenReturn(user);
+        when(objectService.createS3MultipartUpload(
+                eq("bucket"),
+                argThat(body -> body.key().equals("videos/unknown.mp4")
+                        && body.sizeBytes() == null
+                        && body.partSizeBytes() == null),
+                eq(user)
+        )).thenReturn(new MultipartUploadCreateResponse(
+                "upload-unknown",
+                "videos/unknown.mp4",
+                0L,
+                0L,
+                0,
+                900,
+                OffsetDateTime.now().plusMinutes(15),
+                List.of()
+        ));
+
+        var response = controller.createMultipartUpload("bucket", "videos/unknown.mp4", request);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(response.getBody()).contains("<Key>videos/unknown.mp4</Key>");
+        assertThat(response.getBody()).contains("<UploadId>upload-unknown</UploadId>");
     }
 
     @Test

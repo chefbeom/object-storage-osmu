@@ -1,5 +1,40 @@
 # Worklog - main
 
+### 2026-06-18 - S3 multipart unknown-size initiate parity
+
+- Work time:
+  - End: 2026-06-18 18:41:56 +09:00
+- User command:
+  - Active goal: continue development from `dev-docs`.
+- Request analysis:
+  - `dev-docs` still listed unknown-size S3 multipart initiate parity as future work.
+  - AWS `CreateMultipartUpload` initiates a multipart upload and returns an upload id used by later UploadPart, Complete, or Abort requests; it does not require total object size at initiate time.
+- Execution:
+  - Added `ObjectService.createS3MultipartUpload` so S3 `?uploads` can omit OSMU expected-size headers while REST multipart create keeps the expected-size requirement.
+  - Plan-less S3 sessions store `sizeBytes=0`, `partSizeBytes=0`, `partCount=0`, generate no precomputed part URLs, allow UploadPart numbers 1~10000, and let ListParts read storage state.
+  - Complete now checks quota against the actual completed object size for plan-less sessions and rolls back the completed object before metadata commit on quota failure.
+  - Added controller/service regression coverage and docs.
+- Modified files:
+  - `osmu-backend/src/main/java/com/example/osmu/object/S3ObjectController.java`
+  - `osmu-backend/src/main/java/com/example/osmu/object/ObjectService.java`
+  - `osmu-backend/src/test/java/com/example/osmu/object/S3ObjectControllerMultipartTest.java`
+  - `osmu-backend/src/test/java/com/example/osmu/object/ObjectServiceMultipartRefreshTest.java`
+  - `dev-docs/PRODUCT_REQUIREMENTS.md`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/backend-design.md`
+  - `dev-docs/s3-compatibility.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/feature-inventory.md`
+  - `dev-docs/worklog/main/worklog-main.md`
+- Verification:
+  - `gradle test --tests com.example.osmu.object.S3ObjectControllerMultipartTest --tests com.example.osmu.object.ObjectServiceMultipartRefreshTest`: passed.
+  - `gradle test`: passed.
+  - `git diff --check`: passed with LF/CRLF normalization warnings only.
+- Result:
+  - S3 multipart initiate no longer requires proprietary expected-size headers.
+- Follow-up:
+  - Remaining S3 gaps still include full multipart checksum aggregation parity, full AWS versioning parity, remaining conditional edge parity, broader AWS error behavior parity.
+
 ### 2026-06-18 - S3 DeleteBucket retained version guard
 
 - Work time:

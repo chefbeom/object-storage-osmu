@@ -56,7 +56,7 @@
 - `x-amz-tagging` and `X-OSMU-Tags` are accepted for upload tags.
 - Multi-object delete uses the same soft-delete behavior as the REST object API and treats missing keys as deleted for S3 compatibility.
 - Object tagging XML uses the same metadata tag store as the REST object API; tag read requires `READ`, tag update/delete requires `WRITE`.
-- Unknown-size S3 multipart initiate parity, full AWS multipart checksum aggregation parity, automatic DNS/proxy provisioning for virtual-hosted-style domains, remaining conditional edge parity, exact CopyObject full AWS versioning/remaining conditional edge parity beyond documented source ETag/date and destination ETag guards, remaining CreateBucket/DeleteBucket edge error parity beyond name/duplicate/active-or-retained non-empty/unsupported-create-control cases, and full AWS error behavior parity remain future work. `dev-docs/s3-compatibility.md` tracks the supported/partial/unsupported matrix.
+- Full AWS multipart checksum aggregation parity, automatic DNS/proxy provisioning for virtual-hosted-style domains, remaining conditional edge parity, exact CopyObject full AWS versioning/remaining conditional edge parity beyond documented source ETag/date and destination ETag guards, remaining CreateBucket/DeleteBucket edge error parity beyond name/duplicate/active-or-retained non-empty/unsupported-create-control cases, and full AWS error behavior parity remain future work. `dev-docs/s3-compatibility.md` tracks the supported/partial/unsupported matrix.
 # Private Object Storage Platform 기획서 초안
 
 ## 1. 문서 개요

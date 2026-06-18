@@ -1318,8 +1318,8 @@ Headers:
 - `X-OSMU-Tags: key=value,stage=raw` stores tags using OSMU tag syntax.
 - `x-amz-tagging: key=value&stage=raw` is also accepted and converted to OSMU tag syntax.
 - `PUT` returns an MD5-based `ETag` for prototype compatibility.
-- S3 multipart initiate requires `X-OSMU-Multipart-Size-Bytes` or `x-amz-meta-osmu-size-bytes` because the current OSMU quota/session model needs expected size before upload.
-- S3 multipart initiate optionally accepts `X-OSMU-Multipart-Part-Size-Bytes` or `x-amz-meta-osmu-part-size-bytes`; otherwise the REST multipart default part size is used.
+- S3 multipart initiate accepts optional `X-OSMU-Multipart-Size-Bytes` or `x-amz-meta-osmu-size-bytes`. When omitted, the backend creates an AWS-style plan-less multipart session without precomputed part URLs/byte ranges and checks quota on complete against the actual completed object size.
+- S3 multipart initiate optionally accepts `X-OSMU-Multipart-Part-Size-Bytes` or `x-amz-meta-osmu-part-size-bytes` when expected size is supplied; otherwise the REST multipart default part size is used. Multipart refresh still requires a planned session with expected size and part count.
 - S3 multipart initiate optionally accepts `X-OSMU-Multipart-Expires-In-Seconds` for session expiry.
 - S3 multipart upload part requires `Content-Length`, validates optional `Content-MD5`, signed `x-amz-content-sha256`, and one optional `x-amz-checksum-*` value header, and returns part `ETag`. Matching checksum returns the same `x-amz-checksum-*` response header.
 - S3 multipart list parts returns `PartNumberMarker`, optional `NextPartNumberMarker`, `MaxParts`, `IsTruncated`, and a page of uploaded parts sorted by `PartNumber`.
