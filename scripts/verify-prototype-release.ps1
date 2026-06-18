@@ -48,6 +48,51 @@ function Invoke-Capture([string] $Executable, [string[]] $Arguments = @()) {
     }
 }
 
+function Test-PythonBoto3Available() {
+    foreach ($candidate in @("python", "python3", "py")) {
+        $python = Get-Command $candidate -ErrorAction SilentlyContinue
+        if (-not $python) {
+            continue
+        }
+        $arguments = if ($candidate -eq "py") {
+            @("-3", "-c", "import boto3, botocore")
+        } else {
+            @("-c", "import boto3, botocore")
+        }
+        $result = Invoke-Capture $python.Source $arguments
+        if ($result.ExitCode -eq 0) {
+            return $true
+        }
+    }
+    return $false
+}
+
+function Test-NodeAwsSdkS3Available() {
+    $node = Get-Command node -ErrorAction SilentlyContinue
+    if (-not $node) {
+        return $false
+    }
+
+    foreach ($moduleRoot in @($root, (Join-Path $root "osmu-frontend"))) {
+        if (-not (Test-Path -LiteralPath (Join-Path $moduleRoot "node_modules\@aws-sdk\client-s3\package.json"))) {
+            continue
+        }
+
+        Push-Location $moduleRoot
+        try {
+            $result = Invoke-Capture $node.Source @("--input-type=module", "-e", "import('@aws-sdk/client-s3').then(() => process.exit(0)).catch(() => process.exit(1));")
+            if ($result.ExitCode -eq 0) {
+                return $true
+            }
+        }
+        finally {
+            Pop-Location
+        }
+    }
+
+    return $false
+}
+
 function Get-OptionalGateStatus() {
     $docker = Get-Command docker -ErrorAction SilentlyContinue
     $dockerDaemon = $false
@@ -59,15 +104,19 @@ function Get-OptionalGateStatus() {
     }
 
     $aws = Get-Command aws -ErrorAction SilentlyContinue
+    $boto3Available = Test-PythonBoto3Available
+    $awsJsSdkAvailable = Test-NodeAwsSdkS3Available
     $mc = Get-Command mc -ErrorAction SilentlyContinue
 
     return [pscustomobject]@{
         dockerDaemonAvailable = $dockerDaemon
         dockerDetail = $dockerDetail
         awsCliAvailable = [bool]$aws
+        boto3Available = $boto3Available
+        awsJsSdkAvailable = $awsJsSdkAvailable
         mcAvailable = [bool]$mc
         dockerizedMcAvailable = $dockerDaemon
-        realS3ClientAvailable = [bool]($aws -or $mc -or $dockerDaemon)
+        realS3ClientAvailable = [bool]($aws -or $boto3Available -or $awsJsSdkAvailable -or $mc -or $dockerDaemon)
     }
 }
 

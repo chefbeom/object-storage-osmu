@@ -6,7 +6,7 @@ param(
     [string] $ExpectedObjectKey = "",
     [string] $OutputPath = ".\.osmu-run\latest-kubernetes-restore-smoke.json",
     [string] $S3Endpoint = "",
-    [ValidateSet("auto", "aws", "boto3", "mc", "docker-mc", "all")]
+    [ValidateSet("auto", "aws", "boto3", "aws-js", "mc", "docker-mc", "all")]
     [string] $S3Client = "auto",
     [switch] $RunS3ClientSmoke,
     [switch] $RequireS3Client,

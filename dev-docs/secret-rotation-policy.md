@@ -53,7 +53,7 @@ Rotate immediately when:
 5. Run the matching smoke checks:
    - `scripts\verify-prototype-prerequisites.ps1`
    - `scripts\verify-prototype-release.ps1`
-   - `scripts\verify-s3-client-smoke.ps1` when `aws`, Python+boto3, or `mc` is available
+   - `scripts\verify-s3-client-smoke.ps1` when `aws`, Python+boto3, AWS SDK JavaScript, or `mc` is available
 6. Confirm release artifacts do not expose secret values.
 7. Record only the rotation event, operator, timestamp, and affected secret name. Never record secret values.
 

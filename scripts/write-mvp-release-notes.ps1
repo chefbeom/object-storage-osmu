@@ -259,7 +259,7 @@ $notesLines = @(
     "- Kubernetes DR finalizer report: $($kubernetesDrFinalize.detail)",
     "- Security evidence finalizer report: $($securityEvidenceFinalize.detail)",
     "- Docker/MariaDB/MinIO integration: dockerIntegration=$($scope.dockerIntegration), dockerDaemon=$($optionalGates.dockerDaemonAvailable)",
-    "- Real S3 client smoke: aws=$($optionalGates.awsCliAvailable), boto3=$($optionalGates.boto3Available), mc=$($optionalGates.mcAvailable), dockerizedMc=$($optionalGates.dockerizedMcAvailable)",
+    "- Real S3 client smoke: aws=$($optionalGates.awsCliAvailable), boto3=$($optionalGates.boto3Available), awsJsSdk=$($optionalGates.awsJsSdkAvailable), mc=$($optionalGates.mcAvailable), dockerizedMc=$($optionalGates.dockerizedMcAvailable)",
     "- Browser visual/click E2E: browserE2E=$($scope.browserE2E)",
     $(if ($securityEvidenceFinalize.passed) { "- Signed image and container scan/SBOM evidence: finalized and promoted." } else { '- Signed image and container scan/SBOM evidence: pending `scripts\finalize-security-evidence.ps1` from successful GitHub Actions artifacts.' }),
     "",

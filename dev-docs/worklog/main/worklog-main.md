@@ -1,5 +1,57 @@
 # Worklog - main
 
+### 2026-06-18 - AWS SDK JavaScript S3 checksum smoke
+
+- Work time:
+  - End: 2026-06-18 KST
+- User command:
+  - Active goal: continue development from `dev-docs`.
+- Request analysis:
+  - AWS CLI and boto3 checksum option smoke existed, but AWS SDK JavaScript still remained in the external SDK checksum option gap.
+  - Higher-level demo/preflight gates needed an explicit `aws-js` client path so this evidence can be selected without requiring AWS CLI or MinIO Client.
+- Execution:
+  - Added optional `-Client aws-js` to `verify-s3-client-smoke.ps1`.
+  - The smoke discovers Node.js plus repo-local `@aws-sdk/client-s3`, then uses path-style SigV4 AWS SDK JavaScript calls for list, `PutObjectCommand` with `ChecksumAlgorithm: "SHA256"`, `HeadObjectCommand`/`GetObjectCommand` with `ChecksumMode: "ENABLED"`, list, download body check, and cleanup.
+  - Kept `auto` and `all` behavior optional: missing `@aws-sdk/client-s3` skips unless `-Client aws-js` is explicit or `-RequireClient` has no other real client.
+  - Added `aws-js` to durable demo, Kubernetes restore, MVP readiness, prototype prerequisite, and release artifact paths.
+  - Updated README/dev-docs/checklists to mark AWS SDK JavaScript checksum smoke evidence and narrow the remaining SDK checksum gap to AWS SDK Java.
+- Modified files:
+  - `scripts/verify-s3-client-smoke.ps1`
+  - `scripts/verify-durable-demo-preflight.ps1`
+  - `scripts/verify-durable-demo-gate.ps1`
+  - `scripts/finalize-durable-mvp-demo.ps1`
+  - `scripts/verify-mvp-demo-readiness.ps1`
+  - `scripts/verify-prototype-prerequisites.ps1`
+  - `scripts/verify-prototype-release.ps1`
+  - `scripts/verify-kubernetes-restore-smoke.ps1`
+  - `scripts/finalize-kubernetes-dr-drill.ps1`
+  - `scripts/write-durable-release-artifacts.ps1`
+  - `scripts/write-mvp-audit.ps1`
+  - `scripts/write-mvp-release-decision.ps1`
+  - `scripts/write-mvp-release-notes.ps1`
+  - `scripts/verify-commercial-readiness.ps1`
+  - `README.md`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/backup-restore-drill.md`
+  - `dev-docs/commercial-readiness.md`
+  - `dev-docs/document-index.md`
+  - `dev-docs/feature-inventory.md`
+  - `dev-docs/local-dev-env.md`
+  - `dev-docs/mvp-release-checklist.md`
+  - `dev-docs/s3-compatibility.md`
+  - `dev-docs/secret-rotation-policy.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/worklog/main/worklog-main.md`
+- Tests:
+  - PowerShell parser checks for modified scripts: passed.
+  - `verify-commercial-readiness.ps1`: passed.
+  - `verify-durable-demo-preflight.ps1 -S3Client aws-js -AllowNotReady -NoReport`: passed with expected pending result because Docker daemon and `@aws-sdk/client-s3` are not available.
+  - `git diff --check`: passed.
+- Review:
+  - AWS SDK JavaScript checksum option coverage is now selectable as optional host evidence.
+  - The project still has no required Node SDK dependency; install `@aws-sdk/client-s3` in repo `node_modules` only when this smoke path is needed.
+  - Remaining S3 checksum smoke gap is AWS SDK Java plus exact AWS response behavior.
+
 ### 2026-06-18 - boto3 S3 client path preflight 연결
 
 - Work time:

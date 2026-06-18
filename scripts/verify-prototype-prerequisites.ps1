@@ -184,6 +184,41 @@ if ($docker) {
     Add-Check "Docker Compose config" "FAIL" "docker not found on PATH." $RequireDocker
 }
 
+function Test-NodeAwsSdkS3Available() {
+    $node = Get-Command node -ErrorAction SilentlyContinue
+    if (-not $node) {
+        return [pscustomobject]@{
+            Available = $false
+            Detail = "node not found on PATH."
+        }
+    }
+
+    foreach ($moduleRoot in @($root, (Join-Path $root "osmu-frontend"))) {
+        if (-not (Test-Path -LiteralPath (Join-Path $moduleRoot "node_modules\@aws-sdk\client-s3\package.json"))) {
+            continue
+        }
+
+        Push-Location $moduleRoot
+        try {
+            $result = Invoke-Capture $node.Source @("--input-type=module", "-e", "import('@aws-sdk/client-s3').then(() => process.exit(0)).catch(() => process.exit(1));")
+            if ($result.ExitCode -eq 0) {
+                return [pscustomobject]@{
+                    Available = $true
+                    Detail = "$($node.Source) with @aws-sdk/client-s3 at $moduleRoot"
+                }
+            }
+        }
+        finally {
+            Pop-Location
+        }
+    }
+
+    return [pscustomobject]@{
+        Available = $false
+        Detail = "Node.js with @aws-sdk/client-s3 not found in repo node_modules."
+    }
+}
+
 Step "S3 clients"
 $aws = Get-Command aws -ErrorAction SilentlyContinue
 if ($aws) {
@@ -215,6 +250,10 @@ if (-not $boto3Available) {
     Add-Check "Python boto3" "FAIL" "Python with boto3 not found on PATH." $false
 }
 
+$awsJsStatus = Test-NodeAwsSdkS3Available
+$awsJsAvailable = [bool]$awsJsStatus.Available
+Add-Check "AWS SDK JavaScript S3" $(if ($awsJsAvailable) { "PASS" } else { "FAIL" }) $awsJsStatus.Detail $false
+
 $mc = Get-Command mc -ErrorAction SilentlyContinue
 if ($mc) {
     $mcVersion = Invoke-Capture $mc.Source @("--version")
@@ -229,10 +268,10 @@ if ($dockerDaemonAvailable) {
     Add-Check "Dockerized MinIO Client mc" "FAIL" "Docker daemon is not available for containerized mc." $false
 }
 
-if ($aws -or $boto3Available -or $mc -or $dockerDaemonAvailable) {
-    Add-Check "Real S3 client" "PASS" "at least one of aws, Python+boto3, host mc, or Dockerized mc is available." $RequireS3Client
+if ($aws -or $boto3Available -or $awsJsAvailable -or $mc -or $dockerDaemonAvailable) {
+    Add-Check "Real S3 client" "PASS" "at least one of aws, Python+boto3, AWS SDK JavaScript, host mc, or Dockerized mc is available." $RequireS3Client
 } else {
-    Add-Check "Real S3 client" "FAIL" "install AWS CLI, install Python+boto3, install MinIO Client mc, or start Docker Desktop for Dockerized MinIO Client smoke." $RequireS3Client
+    Add-Check "Real S3 client" "FAIL" "install AWS CLI, install Python+boto3, install Node.js with @aws-sdk/client-s3, install MinIO Client mc, or start Docker Desktop for Dockerized MinIO Client smoke." $RequireS3Client
 }
 
 Step "Runtime endpoints"

@@ -4,7 +4,7 @@ param(
     [string] $ComposeFile = ".\infra\local\docker-compose.yml",
     [string] $ReportPath = ".\.osmu-run\latest-durable-demo-preflight.json",
     [string] $SummaryPath = ".\.osmu-run\latest-durable-demo-preflight.md",
-    [ValidateSet("auto", "aws", "boto3", "mc", "docker-mc", "all")]
+    [ValidateSet("auto", "aws", "boto3", "aws-js", "mc", "docker-mc", "all")]
     [string] $S3Client = "docker-mc",
     [switch] $AllowNotReady,
     [switch] $NoReport
@@ -94,13 +94,49 @@ function Test-PythonBoto3Available() {
     }
 }
 
-function Get-S3SelectionReady([string] $Selection, [bool] $AwsAvailable, [bool] $Boto3Available, [bool] $McAvailable, [bool] $DockerClientAvailable) {
+function Test-NodeAwsSdkS3Available() {
+    $node = Test-Command "node"
+    if (-not $node) {
+        return [pscustomobject]@{
+            available = $false
+            detail = "node not found on PATH"
+        }
+    }
+
+    foreach ($moduleRoot in @($root, (Join-Path $root "osmu-frontend"))) {
+        if (-not (Test-Path -LiteralPath (Join-Path $moduleRoot "node_modules\@aws-sdk\client-s3\package.json"))) {
+            continue
+        }
+
+        Push-Location $moduleRoot
+        try {
+            $result = Invoke-Capture $node.Source @("--input-type=module", "-e", "import('@aws-sdk/client-s3').then(() => process.exit(0)).catch(() => process.exit(1));")
+            if ($result.exitCode -eq 0) {
+                return [pscustomobject]@{
+                    available = $true
+                    detail = "$($node.Source) with @aws-sdk/client-s3 at $moduleRoot"
+                }
+            }
+        }
+        finally {
+            Pop-Location
+        }
+    }
+
+    return [pscustomobject]@{
+        available = $false
+        detail = "Node.js with @aws-sdk/client-s3 not found in repo node_modules"
+    }
+}
+
+function Get-S3SelectionReady([string] $Selection, [bool] $AwsAvailable, [bool] $Boto3Available, [bool] $AwsJsAvailable, [bool] $McAvailable, [bool] $DockerClientAvailable) {
     switch ($Selection) {
         "aws" { return $AwsAvailable }
         "boto3" { return $Boto3Available }
+        "aws-js" { return $AwsJsAvailable }
         "mc" { return $McAvailable }
         "docker-mc" { return $DockerClientAvailable }
-        default { return ($AwsAvailable -or $Boto3Available -or $McAvailable -or $DockerClientAvailable) }
+        default { return ($AwsAvailable -or $Boto3Available -or $AwsJsAvailable -or $McAvailable -or $DockerClientAvailable) }
     }
 }
 
@@ -212,6 +248,10 @@ $boto3Status = Test-PythonBoto3Available
 $boto3Available = [bool]$boto3Status.available
 Add-Check "Python boto3" $(if ($boto3Available) { "PASS" } else { "FAIL" }) $false $boto3Status.detail
 
+$awsJsStatus = Test-NodeAwsSdkS3Available
+$awsJsAvailable = [bool]$awsJsStatus.available
+Add-Check "AWS SDK JavaScript S3" $(if ($awsJsAvailable) { "PASS" } else { "FAIL" }) $false $awsJsStatus.detail
+
 $mc = Test-Command "mc"
 $mcAvailable = $false
 if ($mc) {
@@ -230,12 +270,12 @@ else {
     Add-Check "Dockerized MinIO Client mc" "FAIL" $false "Docker daemon is unavailable for containerized mc"
 }
 
-$s3SelectionReady = Get-S3SelectionReady $S3Client $awsAvailable $boto3Available $mcAvailable $dockerDaemonAvailable
+$s3SelectionReady = Get-S3SelectionReady $S3Client $awsAvailable $boto3Available $awsJsAvailable $mcAvailable $dockerDaemonAvailable
 if ($s3SelectionReady) {
     Add-Check "Selected real S3 client path" "PASS" $true "selected S3 client path is available" "S3Client=$S3Client"
 }
 else {
-    Add-Check "Selected real S3 client path" "FAIL" $true "selected S3 client path is unavailable" "S3Client=$S3Client; choose auto/aws/boto3/mc or start Docker Desktop for docker-mc"
+    Add-Check "Selected real S3 client path" "FAIL" $true "selected S3 client path is unavailable" "S3Client=$S3Client; choose auto/aws/boto3/aws-js/mc or start Docker Desktop for docker-mc"
 }
 
 $requiredFailures = @($script:Checks | Where-Object { $_.required -and $_.status -eq "FAIL" })

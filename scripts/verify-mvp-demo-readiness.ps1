@@ -2,7 +2,7 @@ param(
     [string] $ReportPath = ".\.osmu-run\latest-demo-readiness.json",
     [string] $SummaryPath = ".\.osmu-run\latest-demo-readiness.md",
     [string] $JavaHome = "",
-    [ValidateSet("auto", "aws", "boto3", "mc", "docker-mc", "all")]
+    [ValidateSet("auto", "aws", "boto3", "aws-js", "mc", "docker-mc", "all")]
     [string] $S3Client = "docker-mc",
     [switch] $SkipBackendTests,
     [switch] $SkipDockerFullStackE2E,
@@ -206,9 +206,45 @@ function Test-PythonBoto3Available() {
     }
 }
 
+function Test-NodeAwsSdkS3Available() {
+    $node = Get-Command node -ErrorAction SilentlyContinue
+    if (-not $node) {
+        return [pscustomobject]@{
+            passed = $false
+            detail = "node not found on PATH."
+        }
+    }
+
+    foreach ($moduleRoot in @($root, (Join-Path $root "osmu-frontend"))) {
+        if (-not (Test-Path -LiteralPath (Join-Path $moduleRoot "node_modules\@aws-sdk\client-s3\package.json"))) {
+            continue
+        }
+
+        Push-Location $moduleRoot
+        try {
+            $result = Invoke-Capture $node.Source @("--input-type=module", "-e", "import('@aws-sdk/client-s3').then(() => process.exit(0)).catch(() => process.exit(1));")
+            if ($result.exitCode -eq 0) {
+                return [pscustomobject]@{
+                    passed = $true
+                    detail = "$($node.Source) with @aws-sdk/client-s3 at $moduleRoot"
+                }
+            }
+        }
+        finally {
+            Pop-Location
+        }
+    }
+
+    return [pscustomobject]@{
+        passed = $false
+        detail = "Node.js with @aws-sdk/client-s3 not found in repo node_modules."
+    }
+}
+
 function Test-RealS3ClientAvailable() {
     $aws = Get-Command aws -ErrorAction SilentlyContinue
     $boto3Status = Test-PythonBoto3Available
+    $awsJsStatus = Test-NodeAwsSdkS3Available
     $mc = Get-Command mc -ErrorAction SilentlyContinue
     $dockerStatus = Test-DockerDaemonAvailable
 
@@ -219,6 +255,9 @@ function Test-RealS3ClientAvailable() {
     if ($boto3Status.passed) {
         $details += "boto3=$($boto3Status.detail)"
     }
+    if ($awsJsStatus.passed) {
+        $details += "aws-js=$($awsJsStatus.detail)"
+    }
     if ($mc) {
         $details += "mc=$($mc.Source)"
     }
@@ -226,11 +265,11 @@ function Test-RealS3ClientAvailable() {
         $details += "docker-mc=$($dockerStatus.detail)"
     }
     if (-not $details) {
-        $details += "aws/Python+boto3/mc not found on PATH and Docker daemon is not available for dockerized mc."
+        $details += "aws/Python+boto3/Node @aws-sdk/client-s3/mc not found and Docker daemon is not available for dockerized mc."
     }
 
     return [pscustomobject]@{
-        passed = [bool]($aws -or $boto3Status.passed -or $mc -or $dockerStatus.passed)
+        passed = [bool]($aws -or $boto3Status.passed -or $awsJsStatus.passed -or $mc -or $dockerStatus.passed)
         detail = $details -join "; "
     }
 }
@@ -370,7 +409,7 @@ $s3ClientStatus = Test-RealS3ClientAvailable
 if ($s3ClientStatus.passed) {
     Add-Check "Real S3 client readiness" "READY" "At least one real S3 client is available." $s3ClientStatus.detail
 } else {
-    Add-Check "Real S3 client readiness" "PENDING" "AWS CLI, Python+boto3, host MinIO Client mc, or Dockerized MinIO Client is required for real client smoke." $s3ClientStatus.detail
+    Add-Check "Real S3 client readiness" "PENDING" "AWS CLI, Python+boto3, AWS SDK JavaScript, host MinIO Client mc, or Dockerized MinIO Client is required for real client smoke." $s3ClientStatus.detail
 }
 
 if ($javaStatus.passed) {
@@ -423,6 +462,7 @@ $nextCommands = @(
     "powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-browser-e2e-local-demo.ps1",
     "powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-docker-integration.ps1",
     "powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-s3-client-smoke.ps1 -Client auto -RequireClient",
+    "powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-s3-client-smoke.ps1 -Client aws-js -RequireClient",
     "powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-s3-client-smoke.ps1 -Client docker-mc -RequireClient",
     "cd .\osmu-frontend; npm run test:e2e"
 )

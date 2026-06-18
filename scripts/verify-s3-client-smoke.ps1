@@ -4,7 +4,7 @@ param(
     [string] $AdminLoginId = "admin",
     [string] $AdminPassword = "password",
     [string] $BucketName = "",
-    [ValidateSet("auto", "aws", "boto3", "mc", "docker-mc", "all")]
+    [ValidateSet("auto", "aws", "boto3", "aws-js", "mc", "docker-mc", "all")]
     [string] $Client = "auto",
     [string] $DockerMcImage = "minio/mc:RELEASE.2025-05-21T01-59-54Z",
     [switch] $SkipManualSigV4,
@@ -994,6 +994,148 @@ print(json.dumps({"ChecksumSHA256": expected}))
     }
 }
 
+function Get-NodeWithAwsSdkS3() {
+    $node = Get-Command node -ErrorAction SilentlyContinue
+    if (-not $node) {
+        return $null
+    }
+
+    foreach ($moduleRoot in @($root, (Join-Path $root "osmu-frontend"))) {
+        if (-not (Test-Path -LiteralPath (Join-Path $moduleRoot "node_modules\@aws-sdk\client-s3\package.json"))) {
+            continue
+        }
+
+        Push-Location $moduleRoot
+        try {
+            $previousErrorActionPreference = $ErrorActionPreference
+            $ErrorActionPreference = "Continue"
+            try {
+                & $node.Source "--input-type=module" "-e" "import('@aws-sdk/client-s3').then(() => process.exit(0)).catch(() => process.exit(1));" *> $null
+                if ($LASTEXITCODE -eq 0) {
+                    return [pscustomobject]@{
+                        Source = $node.Source
+                        ModuleRoot = $moduleRoot
+                    }
+                }
+            }
+            finally {
+                $ErrorActionPreference = $previousErrorActionPreference
+            }
+        }
+        finally {
+            Pop-Location
+        }
+    }
+
+    return $null
+}
+
+function Invoke-AwsJsSdkSmoke($apiBase, $s3Endpoint, $bucketName, $accessKey, $secretKey) {
+    $nodeSdk = Get-NodeWithAwsSdkS3
+    if (-not $nodeSdk) {
+        return $false
+    }
+
+    Step "AWS SDK JavaScript S3 smoke"
+    $tempDir = Join-Path $nodeSdk.ModuleRoot ".osmu-run\aws-js-s3-smoke-$([Guid]::NewGuid())"
+    New-Item -ItemType Directory -Force -Path $tempDir | Out-Null
+    try {
+        $scriptPath = Join-Path $tempDir "aws-js-s3-smoke.mjs"
+        Set-Content -LiteralPath $scriptPath -Encoding UTF8 -Value @'
+import crypto from "node:crypto";
+import {
+  DeleteObjectCommand,
+  GetObjectCommand,
+  HeadObjectCommand,
+  ListBucketsCommand,
+  ListObjectsV2Command,
+  PutObjectCommand,
+  S3Client,
+} from "@aws-sdk/client-s3";
+
+const [endpoint, bucket, accessKey, secretKey] = process.argv.slice(2);
+const key = "aws-js-checksum-smoke.txt";
+const body = Buffer.from("osmu aws sdk js checksum smoke", "utf8");
+const expected = crypto.createHash("sha256").update(body).digest("base64");
+
+const client = new S3Client({
+  endpoint,
+  region: "us-east-1",
+  forcePathStyle: true,
+  credentials: {
+    accessKeyId: accessKey,
+    secretAccessKey: secretKey,
+  },
+});
+
+const buckets = await client.send(new ListBucketsCommand({}));
+if (!buckets.Buckets?.some((item) => item.Name === bucket)) {
+  throw new Error(`AWS SDK JS list_buckets did not include ${bucket}.`);
+}
+
+const putResult = await client.send(new PutObjectCommand({
+  Bucket: bucket,
+  Key: key,
+  Body: body,
+  ContentType: "text/plain",
+  ChecksumAlgorithm: "SHA256",
+}));
+if (putResult.ChecksumSHA256 && putResult.ChecksumSHA256 !== expected) {
+  throw new Error("AWS SDK JS putObject returned unexpected ChecksumSHA256.");
+}
+
+const headResult = await client.send(new HeadObjectCommand({
+  Bucket: bucket,
+  Key: key,
+  ChecksumMode: "ENABLED",
+}));
+if (headResult.ChecksumSHA256 !== expected) {
+  throw new Error("AWS SDK JS headObject did not expose stored ChecksumSHA256.");
+}
+
+const listed = await client.send(new ListObjectsV2Command({
+  Bucket: bucket,
+  MaxKeys: 1000,
+  EncodingType: "url",
+}));
+if (!listed.Contents?.some((item) => item.Key === key)) {
+  throw new Error("AWS SDK JS listObjectsV2 did not include checksum object.");
+}
+
+const getResult = await client.send(new GetObjectCommand({
+  Bucket: bucket,
+  Key: key,
+  ChecksumMode: "ENABLED",
+}));
+const chunks = [];
+for await (const chunk of getResult.Body) {
+  chunks.push(Buffer.from(chunk));
+}
+if (!Buffer.concat(chunks).equals(body)) {
+  throw new Error("AWS SDK JS getObject body mismatch.");
+}
+if (getResult.ChecksumSHA256 !== expected) {
+  throw new Error("AWS SDK JS getObject did not expose stored ChecksumSHA256.");
+}
+
+await client.send(new DeleteObjectCommand({
+  Bucket: bucket,
+  Key: key,
+}));
+console.log(JSON.stringify({ ChecksumSHA256: expected }));
+'@
+        $result = Invoke-ExternalText $nodeSdk.Source @($scriptPath, $s3Endpoint, $bucketName, $accessKey, $secretKey)
+        $parsed = $result | ConvertFrom-Json
+        if (-not $parsed.ChecksumSHA256) {
+            throw "AWS SDK JavaScript checksum smoke did not return checksum evidence."
+        }
+        return $true
+    }
+    finally {
+        Remove-Item -Recurse -Force -LiteralPath $tempDir -ErrorAction SilentlyContinue
+    }
+}
+
 function Invoke-McSmoke($apiBase, $s3Endpoint, $bucketName, $accessKey, $secretKey) {
     $mc = Get-Command mc -ErrorAction SilentlyContinue
     if (-not $mc) {
@@ -1200,6 +1342,13 @@ try {
             throw "Python with boto3 is not available on PATH."
         }
     }
+    if ($Client -in @("auto", "aws-js", "all")) {
+        if (Invoke-AwsJsSdkSmoke $ApiBase $S3Endpoint $BucketName $accessKey $secretKey) {
+            $ranClients.Add("aws-js")
+        } elseif ($Client -eq "aws-js") {
+            throw "Node.js with @aws-sdk/client-s3 is not available in repo node_modules."
+        }
+    }
     if ($Client -in @("auto", "mc", "all")) {
         if (Invoke-McSmoke $ApiBase $S3Endpoint $BucketName $accessKey $secretKey) {
             $ranClients.Add("mc")
@@ -1216,7 +1365,7 @@ try {
     }
 
     if ($ranClients.Count -eq 0) {
-        $message = "No real S3 client found. Install AWS CLI (aws), install Python+boto3, install MinIO Client (mc), or start Docker Desktop for Dockerized MinIO Client smoke."
+        $message = "No real S3 client found. Install AWS CLI (aws), install Python+boto3, install Node.js with @aws-sdk/client-s3 in repo node_modules, install MinIO Client (mc), or start Docker Desktop for Dockerized MinIO Client smoke."
         if ($RequireClient) {
             throw $message
         }
@@ -1228,7 +1377,7 @@ try {
 finally {
     if ($createdBucket -and -not $KeepBucket) {
         Step "Cleanup smoke data"
-        foreach ($key in @("aws-cli-smoke.txt", "aws-cli-checksum-smoke.txt", "boto3-checksum-smoke.txt", "mc-smoke.txt", "docker-mc-smoke.txt", "manual-sigv4-smoke.txt", "manual-copy-sigv4-smoke.txt", "manual-copy-precondition-fail.txt", "manual-bad-payload.txt", "manual-bad-checksum.txt", "manual-vhost-smoke.txt", "manual-multipart-checksum.bin", "manual-multipart-sdk-checksum.bin", "manual-delete-md5-a.txt", "manual-delete-md5-b.txt", "manual-delete-md5-protected.txt")) {
+        foreach ($key in @("aws-cli-smoke.txt", "aws-cli-checksum-smoke.txt", "boto3-checksum-smoke.txt", "aws-js-checksum-smoke.txt", "mc-smoke.txt", "docker-mc-smoke.txt", "manual-sigv4-smoke.txt", "manual-copy-sigv4-smoke.txt", "manual-copy-precondition-fail.txt", "manual-bad-payload.txt", "manual-bad-checksum.txt", "manual-vhost-smoke.txt", "manual-multipart-checksum.bin", "manual-multipart-sdk-checksum.bin", "manual-delete-md5-a.txt", "manual-delete-md5-b.txt", "manual-delete-md5-protected.txt")) {
             try {
                 Invoke-Json "DELETE" "$ApiBase/buckets/$BucketName/objects/$key" $null $token | Out-Null
             } catch {

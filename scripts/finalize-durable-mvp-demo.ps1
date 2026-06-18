@@ -2,7 +2,7 @@ param(
     [string] $EnvFile = ".\infra\local\.env",
     [string] $EnvExample = ".\infra\local\.env.example",
     [string] $ComposeFile = ".\infra\local\docker-compose.yml",
-    [ValidateSet("auto", "aws", "boto3", "mc", "docker-mc", "all")]
+    [ValidateSet("auto", "aws", "boto3", "aws-js", "mc", "docker-mc", "all")]
     [string] $S3Client = "docker-mc",
     [string] $JavaHome = "",
     [string] $DurableGateReportPath = ".\.osmu-run\latest-durable-demo-gate.json",
