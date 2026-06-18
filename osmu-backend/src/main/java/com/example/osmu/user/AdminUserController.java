@@ -14,18 +14,24 @@ import com.example.osmu.organization.repository.OrganizationRepository;
 import com.example.osmu.user.repository.UserRepository;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
+import java.util.Comparator;
 import java.util.List;
+import java.util.Locale;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
 @RequestMapping("/api/admin/users")
 public class AdminUserController {
+
+    private static final int DEFAULT_LIST_LIMIT = 200;
+    private static final int MAX_LIST_LIMIT = 200;
 
     private final UserRepository userRepository;
     private final OrganizationRepository organizationRepository;
@@ -54,13 +60,29 @@ public class AdminUserController {
     }
 
     @GetMapping
-    public ListResponse<UserProfile> list(HttpServletRequest httpRequest) {
+    public ListResponse<UserProfile> list(
+            @RequestParam(value = "keyword", required = false) String keyword,
+            @RequestParam(value = "status", required = false) String status,
+            @RequestParam(value = "limit", required = false) Integer limit,
+            @RequestParam(value = "cursor", required = false) String cursor,
+            HttpServletRequest httpRequest
+    ) {
         AuthenticatedUser actor = authContext.currentUser(httpRequest);
-        List<UserProfile> users = userRepository.findAll().stream()
+        int pageSize = normalizeLimit(limit);
+        Long cursorId = cursorId(cursor);
+        List<UserProfile> matchedUsers = userRepository.findAll().stream()
                 .filter(user -> canView(actor, user))
+                .filter(user -> matchesKeyword(user, keyword))
+                .filter(user -> matchesStatus(user, status))
+                .filter(user -> cursorId == null || user.id() < cursorId)
+                .sorted(Comparator.comparingLong(UserAccount::id).reversed())
+                .limit(pageSize + 1L)
                 .map(UserAccount::toProfile)
                 .toList();
-        return ListResponse.of(users);
+        boolean hasNextPage = matchedUsers.size() > pageSize;
+        List<UserProfile> users = hasNextPage ? matchedUsers.subList(0, pageSize) : matchedUsers;
+        String nextCursor = hasNextPage ? String.valueOf(users.get(users.size() - 1).id()) : null;
+        return ListResponse.of(users, nextCursor);
     }
 
     @PostMapping
@@ -162,6 +184,51 @@ public class AdminUserController {
                 && actor.organizationId() != null
                 && user.organizationId() != null
                 && actor.organizationId().equals(user.organizationId());
+    }
+
+    private boolean matchesKeyword(UserAccount user, String keyword) {
+        if (keyword == null || keyword.isBlank()) {
+            return true;
+        }
+        String normalized = keyword.trim().toLowerCase(Locale.ROOT);
+        return containsIgnoreCase(user.loginId(), normalized)
+                || containsIgnoreCase(user.email(), normalized)
+                || containsIgnoreCase(user.name(), normalized);
+    }
+
+    private boolean matchesStatus(UserAccount user, String status) {
+        return status == null
+                || status.isBlank()
+                || user.status().equalsIgnoreCase(status.trim());
+    }
+
+    private boolean containsIgnoreCase(String value, String normalizedKeyword) {
+        return value != null && value.toLowerCase(Locale.ROOT).contains(normalizedKeyword);
+    }
+
+    private int normalizeLimit(Integer limit) {
+        if (limit == null) {
+            return DEFAULT_LIST_LIMIT;
+        }
+        if (limit < 1 || limit > MAX_LIST_LIMIT) {
+            throw new ApiException(ApiErrorCode.VALIDATION_ERROR, "User list limit must be between 1 and 200.");
+        }
+        return limit;
+    }
+
+    private Long cursorId(String cursor) {
+        if (cursor == null || cursor.isBlank()) {
+            return null;
+        }
+        try {
+            long parsed = Long.parseLong(cursor.trim());
+            if (parsed < 1) {
+                throw new NumberFormatException("cursor must be positive");
+            }
+            return parsed;
+        } catch (NumberFormatException exception) {
+            throw new ApiException(ApiErrorCode.VALIDATION_ERROR, "User list cursor is invalid.");
+        }
     }
 
     private void assertCanManage(AuthenticatedUser actor, UserAccount user) {

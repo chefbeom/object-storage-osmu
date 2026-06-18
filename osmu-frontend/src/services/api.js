@@ -1510,8 +1510,14 @@ export function downloadAuditLogsCsv(filters = {}) {
   return download(`/admin/audit-logs/export.csv${suffix}`)
 }
 
-export function getUsers() {
-  return request('/admin/users')
+export function getUsers(filters = {}) {
+  const query = new URLSearchParams()
+  appendQuery(query, 'keyword', filters.keyword)
+  appendQuery(query, 'status', filters.status)
+  appendQuery(query, 'limit', filters.limit)
+  appendQuery(query, 'cursor', filters.cursor)
+  const suffix = query.toString() ? `?${query.toString()}` : ''
+  return request(`/admin/users${suffix}`)
 }
 
 export function getOrganizations() {

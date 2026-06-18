@@ -31,6 +31,7 @@ import {
   getObjectShareLinks,
   getObjects,
   getS3ClientConfig,
+  getUsers,
   importDashboardLayoutPreset,
   importDashboardLayoutPresetBundle,
   saveDashboardLayout,
@@ -376,6 +377,30 @@ test('getAuditLogs sends all audit filters as query parameters', async () => {
     assert.equal(url.searchParams.get('from'), '2026-06-01T00:00:00Z')
     assert.equal(url.searchParams.get('to'), '2026-06-02T00:00:00Z')
     assert.equal(url.searchParams.get('limit'), '50')
+  } finally {
+    cleanupFetch(fetchMock)
+  }
+})
+
+test('getUsers sends admin user filters as query parameters', async () => {
+  const fetchMock = mockFetch([
+    () => jsonResponse({ items: [], nextCursor: '12' }),
+  ])
+
+  try {
+    await getUsers({
+      keyword: 'alpha user',
+      status: 'ACTIVE',
+      limit: 25,
+      cursor: '42',
+    })
+
+    const url = new URL(fetchMock.calls[0].url)
+    assert.equal(url.pathname, '/api/admin/users')
+    assert.equal(url.searchParams.get('keyword'), 'alpha user')
+    assert.equal(url.searchParams.get('status'), 'ACTIVE')
+    assert.equal(url.searchParams.get('limit'), '25')
+    assert.equal(url.searchParams.get('cursor'), '42')
   } finally {
     cleanupFetch(fetchMock)
   }

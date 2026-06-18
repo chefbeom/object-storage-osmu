@@ -121,6 +121,70 @@ class AdminUserControllerTest {
     }
 
     @Test
+    void adminUserListSupportsFiltersAndCursorPagination() throws Exception {
+        String adminToken = loginAndReturnAccessToken("admin", "password");
+        int alphaOne = createUser(adminToken, "filter-alpha-one", "filter-alpha-one@example.com", "USER");
+        int alphaTwo = createUser(adminToken, "filter-alpha-two", "filter-alpha-two@example.com", "USER");
+        int beta = createUser(adminToken, "filter-beta-one", "filter-beta-one@example.com", "USER");
+
+        mockMvc.perform(patch("/api/admin/users/{userId}/status", beta)
+                        .header("Authorization", "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "status": "INACTIVE"
+                                }
+                                """))
+                .andExpect(status().isOk());
+
+        String firstPage = mockMvc.perform(get("/api/admin/users")
+                        .header("Authorization", "Bearer " + adminToken)
+                        .queryParam("keyword", "ALPHA")
+                        .queryParam("status", "ACTIVE")
+                        .queryParam("limit", "1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items.length()").value(1))
+                .andExpect(jsonPath("$.items[0].id").value(alphaTwo))
+                .andExpect(jsonPath("$.items[0].loginId").value("filter-alpha-two"))
+                .andExpect(jsonPath("$.items[0].status").value("ACTIVE"))
+                .andExpect(jsonPath("$.nextCursor").value(String.valueOf(alphaTwo)))
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+        String cursor = JsonPath.read(firstPage, "$.nextCursor");
+
+        mockMvc.perform(get("/api/admin/users")
+                        .header("Authorization", "Bearer " + adminToken)
+                        .queryParam("keyword", "alpha")
+                        .queryParam("status", "ACTIVE")
+                        .queryParam("limit", "1")
+                        .queryParam("cursor", cursor))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items.length()").value(1))
+                .andExpect(jsonPath("$.items[0].id").value(alphaOne))
+                .andExpect(jsonPath("$.items[0].loginId").value("filter-alpha-one"))
+                .andExpect(jsonPath("$.nextCursor").doesNotExist());
+
+        mockMvc.perform(get("/api/admin/users")
+                        .header("Authorization", "Bearer " + adminToken)
+                        .queryParam("status", "INACTIVE"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items[*].loginId", hasItem("filter-beta-one")));
+
+        mockMvc.perform(get("/api/admin/users")
+                        .header("Authorization", "Bearer " + adminToken)
+                        .queryParam("limit", "0"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error.code").value("VALIDATION_ERROR"));
+
+        mockMvc.perform(get("/api/admin/users")
+                        .header("Authorization", "Bearer " + adminToken)
+                        .queryParam("cursor", "not-a-number"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error.code").value("VALIDATION_ERROR"));
+    }
+
+    @Test
     void inactiveAdminAccessTokenCannotUseClaimOnlyAdminEndpoint() throws Exception {
         String adminToken = loginAndReturnAccessToken("admin", "password");
 
@@ -569,6 +633,26 @@ class AdminUserControllerTest {
                                   "organizationId": %d
                                 }
                                 """.formatted(loginId, email, role, organizationId)))
+                .andExpect(status().isOk())
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+        return JsonPath.read(response, "$.data.id");
+    }
+
+    private int createUser(String adminToken, String loginId, String email, String role) throws Exception {
+        String response = mockMvc.perform(post("/api/admin/users")
+                        .header("Authorization", "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "loginId": "%s",
+                                  "email": "%s",
+                                  "name": "Filtered User",
+                                  "password": "user-password",
+                                  "role": "%s"
+                                }
+                                """.formatted(loginId, email, role)))
                 .andExpect(status().isOk())
                 .andReturn()
                 .getResponse()

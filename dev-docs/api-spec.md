@@ -752,12 +752,12 @@ custom dashboard layout preset을 삭제한다. ADMIN 전용. Built-in preset은
 
 목표 Query:
 
-- `keyword`
-- `status`
-- `limit`
-- `cursor`
+- `keyword`: case-insensitive partial match against `loginId`, `email`, or `name`.
+- `status`: exact status filter, case-insensitive. Example: `ACTIVE`, `INACTIVE`.
+- `limit`: page size from `1` to `200`. Default `200`.
+- `cursor`: previous `nextCursor`; uses descending user id pagination.
 
-현재 MVP는 최신 200건을 반환하며 query filter는 후속 구현이다.
+Response is newest-first by user id and includes `nextCursor` when another page exists.
 
 ### POST /api/admin/users
 

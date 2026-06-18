@@ -276,7 +276,7 @@ async function handleRequest(request, response) {
     return
   }
 
-  handleAdminRoute(request, response, path, jsonBody)
+  handleAdminRoute(request, response, path, jsonBody, url)
 }
 
 function handleDashboardLayout(request, response, path) {
@@ -396,7 +396,7 @@ function handleBucketRoute(request, response, bucketName, suffix, bodyBuffer, js
   sendJson(response, 200, apiData({ ok: true }))
 }
 
-function handleAdminRoute(request, response, path, jsonBody) {
+function handleAdminRoute(request, response, path, jsonBody, url) {
   if (request.method === 'GET' && path === '/admin/usage') {
     sendJson(response, 200, apiData(usageSummary()))
     return
@@ -431,7 +431,7 @@ function handleAdminRoute(request, response, path, jsonBody) {
     return
   }
   if (request.method === 'GET' && path === '/admin/users') {
-    sendJson(response, 200, apiItems([adminUser(), developerUser()]))
+    sendJson(response, 200, filteredMockUsers(url.searchParams))
     return
   }
   if (request.method === 'GET' && path === '/admin/organizations') {
@@ -601,6 +601,26 @@ function developerUser() {
     organizationId: 1,
     status: 'ACTIVE',
   }
+}
+
+function filteredMockUsers(searchParams) {
+  const keyword = (searchParams.get('keyword') || '').trim().toLowerCase()
+  const status = (searchParams.get('status') || '').trim().toUpperCase()
+  const requestedLimit = Number(searchParams.get('limit') || 200)
+  const limit = Number.isFinite(requestedLimit) ? Math.min(200, Math.max(1, Math.floor(requestedLimit))) : 200
+  const cursor = Number(searchParams.get('cursor') || 0)
+  let users = [adminUser(), developerUser()]
+    .filter((user) => !keyword
+      || user.loginId.toLowerCase().includes(keyword)
+      || user.email.toLowerCase().includes(keyword)
+      || user.name.toLowerCase().includes(keyword))
+    .filter((user) => !status || user.status === status)
+    .filter((user) => !cursor || user.id < cursor)
+    .sort((left, right) => right.id - left.id)
+
+  const page = users.slice(0, limit)
+  const nextCursor = users.length > limit ? String(page[page.length - 1].id) : null
+  return apiItems(page, nextCursor)
 }
 
 function dashboardSummary() {

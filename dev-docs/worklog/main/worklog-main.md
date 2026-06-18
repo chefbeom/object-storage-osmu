@@ -1,5 +1,42 @@
 # Worklog - main
 
+### 2026-06-18 - Admin user list filter pagination
+
+- Work time:
+  - End: 2026-06-18 17:44:47 +09:00
+- User command:
+  - Active goal: continue development from `dev-docs`.
+- Request analysis:
+  - `dev-docs/api-spec.md` still marked `GET /api/admin/users` query filters as future work.
+  - The documented target query fields were `keyword`, `status`, `limit`, and `cursor`, so this turn focused on making that API real and keeping frontend/mock wrappers aligned.
+- Execution:
+  - Added admin user list filtering by `keyword` across `loginId`, `email`, and `name`.
+  - Added exact case-insensitive `status` filtering.
+  - Added newest-first id pagination with `limit` 1-200 and `nextCursor`.
+  - Added invalid `limit`/`cursor` validation.
+  - Updated frontend `getUsers` wrapper and mock API to send/handle the same query contract.
+  - Updated API spec and test case docs.
+- Modified files:
+  - `osmu-backend/src/main/java/com/example/osmu/user/AdminUserController.java`
+  - `osmu-backend/src/test/java/com/example/osmu/user/AdminUserControllerTest.java`
+  - `osmu-frontend/src/services/api.js`
+  - `osmu-frontend/src/services/api-query.test.js`
+  - `osmu-frontend/mock-api/server.mjs`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/worklog/main/worklog-main.md`
+- Verification:
+  - `gradle test --tests com.example.osmu.user.AdminUserControllerTest.adminUserListSupportsFiltersAndCursorPagination`: passed.
+  - `node --test src/services/api-query.test.js`: passed.
+  - `node .\mock-api\server.mjs --self-test`: passed.
+  - `npm.cmd run test:unit`: passed, 74 tests.
+  - `gradle test`: passed.
+  - `git diff --check`: passed with LF/CRLF warnings only.
+- Result:
+  - Admin users list no longer has the documented query-filter gap; API, wrapper, mock, tests, and docs now share the same contract.
+- Follow-up:
+  - UI controls for user list filtering can be added if the admin identity panel needs interactive filters beyond initial load.
+
 ### 2026-06-18 - S3 bucket name error parity
 
 - Work time:

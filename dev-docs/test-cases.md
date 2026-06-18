@@ -812,6 +812,16 @@ ID:
 - 우선순위: P1
 - 자동화 여부: Automated
 
+### TC-ORG-006A
+
+- Feature: Admin user list filters and cursor pagination.
+- Preconditions: ADMIN has created active and inactive users; ORG_ADMIN scope rules still apply.
+- Input: `GET /api/admin/users?keyword={keyword}&status={status}&limit={limit}&cursor={cursor}`.
+- Steps: Create users with similar login/email/name values, deactivate one user, request the first filtered page with `keyword`, `status=ACTIVE`, and `limit=1`, then request the next page with returned `nextCursor`. Also request invalid `limit` and invalid `cursor`.
+- Expected: Results are newest-first by user id, keyword matches `loginId`/`email`/`name` case-insensitively, status filter excludes inactive users, `nextCursor` loads the next page with the same filter, invalid query returns `400 VALIDATION_ERROR`, and ORG_ADMIN only sees users in its organization.
+- Priority: P1
+- Automated: `AdminUserControllerTest.adminUserListSupportsFiltersAndCursorPagination`, `api-query.test.js`
+
 ### TC-ORG-007
 
 - 기능: ORG_ADMIN global admin API 차단
