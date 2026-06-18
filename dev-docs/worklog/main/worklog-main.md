@@ -1,5 +1,32 @@
 # Worklog - main
 
+### 2026-06-18 - S3 CompleteMultipartUpload Location response
+
+- Work time:
+  - End: 2026-06-18 KST
+- User command:
+  - Active goal: continue development from `dev-docs`.
+- Request analysis:
+  - `dev-docs` still track multipart checksum/complete response propagation as partial.
+  - AWS CompleteMultipartUpload response syntax includes `Location` in the result XML, while OSMU response only emitted `Bucket`, `Key`, `ETag`, checksum elements, and `ChecksumType`.
+- Execution:
+  - Added `Location` to `CompleteMultipartUploadResult` XML as `/api/s3/{bucket}/{key}`.
+  - Added controller regression assertions for `Location`, `Bucket`, and `Key` in the complete response body.
+  - Updated README, API spec, backend design, S3 compatibility matrix, feature inventory, and worklog.
+- Modified files:
+  - `osmu-backend/src/main/java/com/example/osmu/object/S3ObjectController.java`
+  - `osmu-backend/src/test/java/com/example/osmu/object/S3ObjectControllerMultipartTest.java`
+  - `README.md`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/backend-design.md`
+  - `dev-docs/s3-compatibility.md`
+  - `dev-docs/feature-inventory.md`
+  - `dev-docs/worklog/main/worklog-main.md`
+- Tests:
+  - `$env:JAVA_HOME='C:\jdk-17'; .\gradlew.bat test --no-daemon --tests com.example.osmu.object.S3ObjectControllerMultipartTest.completeMultipartUploadParsesS3XmlAndReturnsResultXml --tests com.example.osmu.object.S3ObjectControllerMultipartTest.completeMultipartUploadReturnsStoredCompositeChecksumHeaderAndXml --tests com.example.osmu.object.S3ObjectControllerMultipartTest.completeMultipartUploadAcceptsCrc32cCompositeChecksum`: passed.
+- Follow-up:
+  - Continue remaining multipart checksum response edge cases and non-bucket AWS error message/status nuance.
+
 ### 2026-06-18 - S3 bucket error message parity
 
 - Work time:

@@ -1498,6 +1498,7 @@ public class S3ObjectController {
             xml.writeStartDocument("UTF-8", "1.0");
             xml.writeStartElement("CompleteMultipartUploadResult");
             xml.writeDefaultNamespace("http://s3.amazonaws.com/doc/2006-03-01/");
+            writeElement(xml, "Location", "/api/s3/" + bucketName + "/" + object.key());
             writeElement(xml, "Bucket", bucketName);
             writeElement(xml, "Key", object.key());
             writeOptionalElement(xml, "ETag", etag(object));

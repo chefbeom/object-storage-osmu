@@ -593,6 +593,9 @@ class S3ObjectControllerMultipartTest {
         assertThat(response.getHeaders().getETag()).isEqualTo("\"multipart-etag\"");
         assertThat(response.getHeaders().getFirst("x-amz-checksum-crc64nvme")).isEqualTo(crc64Checksum);
         assertThat(response.getBody()).contains("<CompleteMultipartUploadResult");
+        assertThat(response.getBody()).contains("<Location>/api/s3/bucket/videos/input.mp4</Location>");
+        assertThat(response.getBody()).contains("<Bucket>bucket</Bucket>");
+        assertThat(response.getBody()).contains("<Key>videos/input.mp4</Key>");
         assertThat(response.getBody()).contains("<ETag>\"multipart-etag\"</ETag>");
         assertThat(response.getBody()).contains("<ChecksumCRC64NVME>" + crc64Checksum + "</ChecksumCRC64NVME>");
         assertThat(response.getBody()).contains("<ChecksumType>FULL_OBJECT</ChecksumType>");
