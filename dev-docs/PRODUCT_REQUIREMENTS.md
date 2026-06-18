@@ -31,7 +31,7 @@
 - The alias supports AWS SigV4 header authorization for access keys created with encrypted signing secret material.
 - The alias supports AWS SigV4 query/presigned URL authorization with `UNSIGNED-PAYLOAD` for S3-style object reads.
 - SigV4 auth enforces clock-skew and presigned URL expiration in the MVP.
-- Non-streaming SigV4 object and multipart part uploads validate signed `x-amz-content-sha256` against the actual body. `UNSIGNED-PAYLOAD` is allowed. AWS `aws-chunked` request bodies are decoded, while per-chunk `chunk-signature` chain verification remains future work.
+- Non-streaming SigV4 object and multipart part uploads validate signed `x-amz-content-sha256` against the actual body. `UNSIGNED-PAYLOAD` is allowed. AWS `aws-chunked` request bodies are decoded with exact decoded length validation, while per-chunk `chunk-signature` chain verification remains future work.
 - The alias supports MVP virtual-hosted-style routing for configured host suffixes, such as `Host: {bucket}.localhost` with path `/api/s3/{objectKey}`.
 - Access Key root bucket listing only returns buckets in the key's still-valid scopes.
 - Access Key scope maps object actions to `WRITE`, `READ`, and `DELETE`.

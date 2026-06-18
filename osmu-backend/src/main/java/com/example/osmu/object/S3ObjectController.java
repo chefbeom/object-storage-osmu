@@ -778,9 +778,10 @@ public class S3ObjectController {
 
     private RequestBodyContent requestBodyContent(HttpServletRequest request, String operation) throws IOException {
         if (isAwsChunkedPayload(request)) {
+            long decodedContentLength = requiredNonNegativeLongHeader(request, AWS_DECODED_CONTENT_LENGTH_HEADER);
             return new RequestBodyContent(
-                    new AwsChunkedInputStream(request.getInputStream()),
-                    requiredNonNegativeLongHeader(request, AWS_DECODED_CONTENT_LENGTH_HEADER)
+                    new AwsChunkedInputStream(request.getInputStream(), decodedContentLength),
+                    decodedContentLength
             );
         }
         long contentLength = request.getContentLengthLong();
@@ -1650,12 +1651,15 @@ public class S3ObjectController {
 
     private static final class AwsChunkedInputStream extends InputStream {
         private final InputStream input;
+        private final long expectedDecodedLength;
         private byte[] chunk = new byte[0];
         private int offset;
         private boolean finished;
+        private long decodedLength;
 
-        private AwsChunkedInputStream(InputStream input) {
+        private AwsChunkedInputStream(InputStream input, long expectedDecodedLength) {
             this.input = input;
+            this.expectedDecodedLength = expectedDecodedLength;
         }
 
         @Override
@@ -1717,8 +1721,14 @@ public class S3ObjectController {
             if (size < 0 || size > Integer.MAX_VALUE) {
                 throw new IOException("Unsupported aws-chunked size.");
             }
+            if (decodedLength + size > expectedDecodedLength) {
+                throw new ApiException(ApiErrorCode.VALIDATION_ERROR, "aws-chunked decoded content length exceeded.");
+            }
             if (size == 0) {
                 drainTrailers();
+                if (decodedLength != expectedDecodedLength) {
+                    throw new ApiException(ApiErrorCode.VALIDATION_ERROR, "aws-chunked decoded content length mismatch.");
+                }
                 chunk = new byte[0];
                 offset = 0;
                 finished = true;
@@ -1729,6 +1739,7 @@ public class S3ObjectController {
             if (chunk.length != size) {
                 throw new IOException("Unexpected end of aws-chunked data.");
             }
+            decodedLength += chunk.length;
             consumeCrlf();
             offset = 0;
         }
@@ -1793,9 +1804,6 @@ public class S3ObjectController {
             this.expectedDigest = decodeContentMd5(expectedContentMd5);
             this.payloadHashValidator = payloadHashValidator;
             this.checksumValidators = checksumValidators;
-            if (expectedLength == 0) {
-                finish();
-            }
         }
 
         @Override
@@ -1812,7 +1820,6 @@ public class S3ObjectController {
                 }
                 checksumValidators.forEach(validator -> validator.update(value));
                 bytesRead++;
-                finishIfComplete();
             }
             return value;
         }
@@ -1831,20 +1838,17 @@ public class S3ObjectController {
                 }
                 checksumValidators.forEach(validator -> validator.update(buffer, offset, count));
                 bytesRead += count;
-                finishIfComplete();
             }
             return count;
-        }
-
-        private void finishIfComplete() {
-            if (expectedLength >= 0 && bytesRead >= expectedLength) {
-                finish();
-            }
         }
 
         private void finish() {
             if (actualDigest != null) {
                 return;
+            }
+            assertNoUnreadBody();
+            if (expectedLength >= 0 && bytesRead != expectedLength) {
+                throw new ApiException(ApiErrorCode.VALIDATION_ERROR, "Request body length does not match expected content length.");
             }
             actualDigest = md5.digest();
             if (expectedDigest != null && !MessageDigest.isEqual(expectedDigest, actualDigest)) {
@@ -1854,6 +1858,20 @@ public class S3ObjectController {
                 payloadHashValidator.validate();
             }
             checksumValidators.forEach(BodyChecksumValidator::validate);
+        }
+
+        private void assertNoUnreadBody() {
+            if (expectedLength < 0 || bytesRead != expectedLength) {
+                return;
+            }
+            try {
+                int nextByte = super.read();
+                if (nextByte >= 0) {
+                    throw new ApiException(ApiErrorCode.VALIDATION_ERROR, "Request body length does not match expected content length.");
+                }
+            } catch (IOException exception) {
+                throw new ApiException(ApiErrorCode.VALIDATION_ERROR, exception.getMessage());
+            }
         }
 
         private String md5Hex() {

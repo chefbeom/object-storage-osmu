@@ -136,7 +136,11 @@ class S3ObjectControllerMultipartTest {
                 any(),
                 eq(5L),
                 eq(user)
-        )).thenReturn(new MultipartUploadUploadedPart(1, "\"etag-1\"", 5L));
+        )).thenAnswer(invocation -> {
+            InputStream content = invocation.getArgument(4);
+            assertThat(new String(content.readAllBytes(), StandardCharsets.UTF_8)).isEqualTo("hello");
+            return new MultipartUploadUploadedPart(1, "\"etag-1\"", 5L);
+        });
 
         var response = controller.uploadMultipartPart("bucket", "videos/input.mp4", 1, "upload-1", request);
 

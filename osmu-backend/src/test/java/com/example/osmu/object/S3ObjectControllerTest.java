@@ -241,6 +241,30 @@ class S3ObjectControllerTest {
         mockMvc.perform(asyncDispatch(downloadResult))
                 .andExpect(status().isOk())
                 .andExpect(content().string(decodedBody));
+
+        mockMvc.perform(put("/api/s3/{bucketName}/docs/chunked-too-long.txt", bucketName)
+                        .header("X-OSMU-Access-Key", credentials.accessKey())
+                        .header("X-OSMU-Secret-Key", credentials.secretKey())
+                        .header("x-amz-content-sha256", "STREAMING-AWS4-HMAC-SHA256-PAYLOAD")
+                        .header("x-amz-decoded-content-length", decodedBody.getBytes(StandardCharsets.UTF_8).length - 1)
+                        .header(HttpHeaders.CONTENT_ENCODING, "aws-chunked")
+                        .contentType(MediaType.TEXT_PLAIN)
+                        .content(encodedBody.getBytes(StandardCharsets.UTF_8)))
+                .andExpect(status().isBadRequest())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_XML))
+                .andExpect(content().string(containsString("<Code>InvalidRequest</Code>")));
+
+        mockMvc.perform(put("/api/s3/{bucketName}/docs/chunked-too-short.txt", bucketName)
+                        .header("X-OSMU-Access-Key", credentials.accessKey())
+                        .header("X-OSMU-Secret-Key", credentials.secretKey())
+                        .header("x-amz-content-sha256", "STREAMING-AWS4-HMAC-SHA256-PAYLOAD")
+                        .header("x-amz-decoded-content-length", decodedBody.getBytes(StandardCharsets.UTF_8).length + 1)
+                        .header(HttpHeaders.CONTENT_ENCODING, "aws-chunked")
+                        .contentType(MediaType.TEXT_PLAIN)
+                        .content(encodedBody.getBytes(StandardCharsets.UTF_8)))
+                .andExpect(status().isBadRequest())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_XML))
+                .andExpect(content().string(containsString("<Code>InvalidRequest</Code>")));
     }
 
     @Test
