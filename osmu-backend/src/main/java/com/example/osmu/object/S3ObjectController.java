@@ -2049,7 +2049,7 @@ public class S3ObjectController {
                 throw new ApiException(ApiErrorCode.VALIDATION_ERROR, AWS_CHECKSUM_TYPE_HEADER + " COMPOSITE requires per-part checksums, not a final object checksum header.");
             }
             if (!usesSupportedCompositeChecksum(completedParts)) {
-                throw new ApiException(ApiErrorCode.VALIDATION_ERROR, AWS_CHECKSUM_TYPE_HEADER + " COMPOSITE requires every part to use ChecksumSHA256 or ChecksumSHA1.");
+                throw new ApiException(ApiErrorCode.VALIDATION_ERROR, AWS_CHECKSUM_TYPE_HEADER + " COMPOSITE requires every part to use ChecksumSHA256, ChecksumSHA1, ChecksumCRC32, or ChecksumCRC32C.");
             }
             return checksumType;
         }
@@ -2064,7 +2064,9 @@ public class S3ObjectController {
             }
             String partChecksumHeaderName = part.checksums().keySet().iterator().next();
             if (!AWS_CHECKSUM_SHA256_HEADER.equals(partChecksumHeaderName)
-                    && !AWS_CHECKSUM_SHA1_HEADER.equals(partChecksumHeaderName)) {
+                    && !AWS_CHECKSUM_SHA1_HEADER.equals(partChecksumHeaderName)
+                    && !AWS_CHECKSUM_CRC32_HEADER.equals(partChecksumHeaderName)
+                    && !AWS_CHECKSUM_CRC32C_HEADER.equals(partChecksumHeaderName)) {
                 return false;
             }
             if (headerName == null) {

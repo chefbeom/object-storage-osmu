@@ -246,11 +246,11 @@ MVP 데모 기준 완료율은 약 90~95%입니다.
 - S3 multipart ListParts pagination (max-parts/part-number-marker)
 - S3 multipart initiate without expected-size header
 - S3 multipart complete `x-amz-checksum-type` FULL_OBJECT/COMPOSITE validation and response XML
-- S3 multipart SHA1/SHA256 composite checksum aggregation from per-part complete XML
+- S3 multipart SHA1/SHA256/CRC32/CRC32C composite checksum aggregation from per-part complete XML
 
 남은 것:
 
-- full AWS multipart checksum aggregation parity beyond SHA1/SHA256 composite checksums and explicit checksum-type validation
+- full AWS multipart checksum negotiation parity beyond SHA1/SHA256/CRC32/CRC32C composite checksums and explicit checksum-type validation
 
 ### 4.7 MariaDB metadata
 

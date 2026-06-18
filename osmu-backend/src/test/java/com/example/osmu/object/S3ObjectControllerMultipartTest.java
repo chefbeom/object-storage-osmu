@@ -27,6 +27,8 @@ import java.util.HexFormat;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.zip.CRC32C;
+import java.util.zip.Checksum;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.http.HttpHeaders;
@@ -457,6 +459,68 @@ class S3ObjectControllerMultipartTest {
     }
 
     @Test
+    void completeMultipartUploadAcceptsCrc32cCompositeChecksum() throws Exception {
+        MockHttpServletRequest request = request("POST");
+        request.setContentType(MediaType.APPLICATION_XML_VALUE);
+        String partOneChecksum = crc32cChecksumBase64("hello ");
+        String partTwoChecksum = crc32cChecksumBase64("world");
+        String compositeChecksum = compositeCrc32cChecksumBase64(partOneChecksum, partTwoChecksum);
+        request.addHeader("x-amz-checksum-type", "COMPOSITE");
+        request.setContent("""
+                <CompleteMultipartUpload>
+                  <Part>
+                    <PartNumber>1</PartNumber>
+                    <ETag>"etag-1"</ETag>
+                    <ChecksumCRC32C>%s</ChecksumCRC32C>
+                  </Part>
+                  <Part>
+                    <PartNumber>2</PartNumber>
+                    <ETag>"etag-2"</ETag>
+                    <ChecksumCRC32C>%s</ChecksumCRC32C>
+                  </Part>
+                </CompleteMultipartUpload>
+                """.formatted(partOneChecksum, partTwoChecksum).getBytes(StandardCharsets.UTF_8));
+        when(s3RequestAuthService.currentUser(request, "bucket", "WRITE")).thenReturn(user);
+        when(objectService.completeMultipartUpload(
+                eq("bucket"),
+                any(MultipartUploadCompleteRequest.class),
+                eq(user),
+                argThat(Map::isEmpty),
+                isNull()
+        ))
+                .thenReturn(new StoredObjectRecord(
+                        "videos/input.mp4",
+                        11L,
+                        "video/mp4",
+                        OffsetDateTime.now(),
+                        Map.of(),
+                        null,
+                        "multipart-etag",
+                        Map.of("x-amz-checksum-crc32c", compositeChecksum)
+                ));
+
+        var response = controller.completeMultipartUpload("bucket", "videos/input.mp4", "upload-1", request);
+
+        ArgumentCaptor<MultipartUploadCompleteRequest> captor =
+                ArgumentCaptor.forClass(MultipartUploadCompleteRequest.class);
+        verify(objectService).completeMultipartUpload(
+                eq("bucket"),
+                captor.capture(),
+                eq(user),
+                argThat(Map::isEmpty),
+                isNull()
+        );
+        assertThat(captor.getValue().parts().get(0).checksums())
+                .containsEntry("x-amz-checksum-crc32c", partOneChecksum);
+        assertThat(captor.getValue().parts().get(1).checksums())
+                .containsEntry("x-amz-checksum-crc32c", partTwoChecksum);
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(response.getHeaders().getFirst("x-amz-checksum-crc32c")).isEqualTo(compositeChecksum);
+        assertThat(response.getBody()).contains("<ChecksumCRC32C>" + compositeChecksum + "</ChecksumCRC32C>");
+        assertThat(response.getBody()).contains("<ChecksumType>COMPOSITE</ChecksumType>");
+    }
+
+    @Test
     void completeMultipartUploadRejectsInvalidChecksumType() {
         MockHttpServletRequest invalidTypeRequest = completeMultipartRequest();
         invalidTypeRequest.addHeader("x-amz-checksum-type", "SIDEWAYS");
@@ -705,6 +769,32 @@ class S3ObjectControllerMultipartTest {
             digest.update(Base64.getDecoder().decode(partChecksum));
         }
         return Base64.getEncoder().encodeToString(digest.digest());
+    }
+
+    private String crc32cChecksumBase64(String value) {
+        Checksum checksum = new CRC32C();
+        byte[] bytes = value.getBytes(StandardCharsets.UTF_8);
+        checksum.update(bytes, 0, bytes.length);
+        return Base64.getEncoder().encodeToString(intDigest(checksum.getValue()));
+    }
+
+    private String compositeCrc32cChecksumBase64(String... partChecksums) {
+        Checksum checksum = new CRC32C();
+        for (String partChecksum : partChecksums) {
+            byte[] decoded = Base64.getDecoder().decode(partChecksum);
+            checksum.update(decoded, 0, decoded.length);
+        }
+        return Base64.getEncoder().encodeToString(intDigest(checksum.getValue()));
+    }
+
+    private byte[] intDigest(long value) {
+        long normalized = value & 0xffffffffL;
+        return new byte[]{
+                (byte) (normalized >>> 24),
+                (byte) (normalized >>> 16),
+                (byte) (normalized >>> 8),
+                (byte) normalized
+        };
     }
 
     private String sha256Hex(String value) throws Exception {

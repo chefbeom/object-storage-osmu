@@ -1050,7 +1050,7 @@ public class ObjectService {
 
     private Map<String, String> compositeMultipartChecksums(List<CompletedMultipartUploadPart> completedParts) {
         String headerName = null;
-        MessageDigest digest = null;
+        CompositeChecksumAccumulator accumulator = null;
         for (CompletedMultipartUploadPart part : completedParts) {
             if (part.checksums().size() != 1) {
                 return Map.of();
@@ -1058,26 +1058,57 @@ public class ObjectService {
             Map.Entry<String, String> checksum = part.checksums().entrySet().iterator().next();
             if (headerName == null) {
                 headerName = checksum.getKey();
-                digest = compositeChecksumDigest(headerName);
-                if (digest == null) {
+                accumulator = compositeChecksumAccumulator(headerName);
+                if (accumulator == null) {
                     return Map.of();
                 }
             } else if (!headerName.equals(checksum.getKey())) {
                 return Map.of();
             }
-            digest.update(decodeChecksum(headerName, checksum.getValue(), expectedChecksumLength(headerName)));
+            accumulator.update(decodeChecksum(headerName, checksum.getValue(), expectedChecksumLength(headerName)));
         }
-        if (headerName == null || digest == null) {
+        if (headerName == null || accumulator == null) {
             return Map.of();
         }
-        return Map.of(headerName, Base64.getEncoder().encodeToString(digest.digest()));
+        return Map.of(headerName, Base64.getEncoder().encodeToString(accumulator.digest()));
     }
 
-    private MessageDigest compositeChecksumDigest(String headerName) {
+    private CompositeChecksumAccumulator compositeChecksumAccumulator(String headerName) {
         return switch (headerName) {
-            case AWS_CHECKSUM_SHA256_HEADER -> messageDigest("SHA-256");
-            case AWS_CHECKSUM_SHA1_HEADER -> messageDigest("SHA-1");
+            case AWS_CHECKSUM_SHA256_HEADER -> digestAccumulator("SHA-256");
+            case AWS_CHECKSUM_SHA1_HEADER -> digestAccumulator("SHA-1");
+            case AWS_CHECKSUM_CRC32_HEADER -> crcAccumulator(new CRC32());
+            case AWS_CHECKSUM_CRC32C_HEADER -> crcAccumulator(new CRC32C());
             default -> null;
+        };
+    }
+
+    private CompositeChecksumAccumulator digestAccumulator(String algorithm) {
+        MessageDigest digest = messageDigest(algorithm);
+        return new CompositeChecksumAccumulator() {
+            @Override
+            public void update(byte[] value) {
+                digest.update(value);
+            }
+
+            @Override
+            public byte[] digest() {
+                return digest.digest();
+            }
+        };
+    }
+
+    private CompositeChecksumAccumulator crcAccumulator(Checksum checksum) {
+        return new CompositeChecksumAccumulator() {
+            @Override
+            public void update(byte[] value) {
+                checksum.update(value, 0, value.length);
+            }
+
+            @Override
+            public byte[] digest() {
+                return intDigest(checksum.getValue());
+            }
         };
     }
 
@@ -1544,5 +1575,11 @@ public class ObjectService {
             uploadSessionRepository.updateStatus(session.uploadId(), "EXPIRED", OffsetDateTime.now());
             throw new ApiException(ApiErrorCode.AUTHENTICATION_REQUIRED, "Upload session expired.");
         }
+    }
+
+    private interface CompositeChecksumAccumulator {
+        void update(byte[] value);
+
+        byte[] digest();
     }
 }

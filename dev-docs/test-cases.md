@@ -309,7 +309,7 @@
 - Feature: S3 compatibility supported/partial/unsupported matrix.
 - Preconditions: `dev-docs/s3-compatibility.md`, `api-spec.md`, and backend S3 tests are available.
 - Steps: Review the S3 matrix and compare it with backend tests for path-style, virtual-hosted-style, SigV4, presigned auth, object PUT/GET/HEAD/DELETE, CopyObject, tagging, list, multi-delete, multipart, checksum, and aws-chunked body decoding.
-- Expected: The matrix lists supported, partial, and unsupported behavior, including aws-chunked decoded length validation, `STREAMING-AWS4-HMAC-SHA256-PAYLOAD` chunk-signature presence/format validation, SigV4 header-auth cryptographic per-chunk signature chain verification, trailing checksum validation including CRC64NVME, SHA1/SHA256 multipart composite checksum aggregation, and remaining CRC/full-object multipart checksum aggregation gap.
+- Expected: The matrix lists supported, partial, and unsupported behavior, including aws-chunked decoded length validation, `STREAMING-AWS4-HMAC-SHA256-PAYLOAD` chunk-signature presence/format validation, SigV4 header-auth cryptographic per-chunk signature chain verification, trailing checksum validation including CRC64NVME, SHA1/SHA256/CRC32/CRC32C multipart composite checksum aggregation, CRC64NVME full-object multipart checksum handling, and remaining broader checksum negotiation gap.
 - Priority: P1
 - Automated: backend S3 controller tests and `verify-s3-client-smoke.ps1`; document consistency is reviewed through `git diff --check` and code review.
 
@@ -365,13 +365,13 @@
 
 ### TC-S3-MULTIPART-COMPLETE-002
 
-- Feature: S3 multipart SHA1/SHA256 composite checksum aggregation.
+- Feature: S3 multipart SHA1/SHA256/CRC32/CRC32C composite checksum aggregation.
 - Preconditions: Target bucket exists. Active access key has `WRITE` scope. Multipart upload session exists and all requested parts were uploaded.
-- Input: `POST /api/s3/{bucketName}/{objectKey}?uploadId={uploadId}` with `CompleteMultipartUpload` XML where every `Part` includes the same `ChecksumSHA256` or `ChecksumSHA1` element and no final object checksum header is supplied. Optional header: `x-amz-checksum-type: COMPOSITE`.
-- Steps: Complete multipart upload with two ordered parts, each carrying a valid SHA256 part checksum. Then send invalid checksum type values and checksum type/header combinations.
-- Expected: OSMU calculates the AWS-style composite checksum by decoding each part checksum, digesting those bytes in part order, stores it as object checksum metadata, returns the matching `x-amz-checksum-sha256` header, and emits `ChecksumSHA256` plus `ChecksumType=COMPOSITE` in complete-result XML when requested. Invalid `x-amz-checksum-type` values, `COMPOSITE` without supported same-algorithm SHA1/SHA256 part checksums, or `FULL_OBJECT` without a final checksum header return S3 XML `InvalidRequest` before storage completion.
+- Input: `POST /api/s3/{bucketName}/{objectKey}?uploadId={uploadId}` with `CompleteMultipartUpload` XML where every `Part` includes the same `ChecksumSHA256`, `ChecksumSHA1`, `ChecksumCRC32`, or `ChecksumCRC32C` element and no final object checksum header is supplied. Optional header: `x-amz-checksum-type: COMPOSITE`.
+- Steps: Complete multipart upload with two ordered parts carrying valid SHA256 part checksums, then repeat service coverage for CRC32 and CRC32C part checksums. Then send invalid checksum type values and checksum type/header combinations.
+- Expected: OSMU calculates the AWS-style composite checksum by decoding each part checksum, digesting or checksumming those bytes in part order, stores it as object checksum metadata, returns the matching `x-amz-checksum-*` header, and emits the matching checksum XML plus `ChecksumType=COMPOSITE` in complete-result XML when requested. Invalid `x-amz-checksum-type` values, `COMPOSITE` without supported same-algorithm SHA1/SHA256/CRC32/CRC32C part checksums, or `FULL_OBJECT` without a final checksum header return S3 XML `InvalidRequest` before storage completion.
 - Priority: P1
-- Automated: `ObjectServiceMultipartRefreshTest.completeMultipartUploadAggregatesSha256CompositePartChecksums`, `S3ObjectControllerMultipartTest.completeMultipartUploadReturnsStoredCompositeChecksumHeaderAndXml`, `S3ObjectControllerMultipartTest.completeMultipartUploadRejectsInvalidChecksumType`
+- Automated: `ObjectServiceMultipartRefreshTest.completeMultipartUploadAggregatesSha256CompositePartChecksums`, `ObjectServiceMultipartRefreshTest.completeMultipartUploadAggregatesCrcCompositePartChecksums`, `S3ObjectControllerMultipartTest.completeMultipartUploadReturnsStoredCompositeChecksumHeaderAndXml`, `S3ObjectControllerMultipartTest.completeMultipartUploadAcceptsCrc32cCompositeChecksum`, `S3ObjectControllerMultipartTest.completeMultipartUploadRejectsInvalidChecksumType`
 
 ### TC-S3-MULTIPART-LISTPARTS-001
 

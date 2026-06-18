@@ -31,6 +31,9 @@ import java.util.Base64;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.zip.CRC32;
+import java.util.zip.CRC32C;
+import java.util.zip.Checksum;
 import org.junit.jupiter.api.Test;
 
 class ObjectServiceMultipartRefreshTest {
@@ -366,6 +369,12 @@ class ObjectServiceMultipartRefreshTest {
                 eq("bucket"),
                 argThat(object -> compositeChecksum.equals(object.checksums().get("x-amz-checksum-sha256")))
         );
+    }
+
+    @Test
+    void completeMultipartUploadAggregatesCrcCompositePartChecksums() throws Exception {
+        assertCrcCompositeMultipartChecksum("CRC32", "x-amz-checksum-crc32", "videos/composite-crc32.mp4");
+        assertCrcCompositeMultipartChecksum("CRC32C", "x-amz-checksum-crc32c", "videos/composite-crc32c.mp4");
     }
 
     @Test
@@ -1088,5 +1097,107 @@ class ObjectServiceMultipartRefreshTest {
             digest.update(Base64.getDecoder().decode(partChecksum));
         }
         return Base64.getEncoder().encodeToString(digest.digest());
+    }
+
+    private void assertCrcCompositeMultipartChecksum(String algorithm, String headerName, String key) throws Exception {
+        BucketRecord bucket = new BucketRecord(1L, "bucket", "USER", 1L, 1000000000L, 0L, 0L, OffsetDateTime.now());
+        StoredObjectRecord uploaded = new StoredObjectRecord(
+                key,
+                11L,
+                "video/mp4",
+                OffsetDateTime.now(),
+                Map.of()
+        );
+        String partOneChecksum = crcChecksumBase64(algorithm, "hello ");
+        String partTwoChecksum = crcChecksumBase64(algorithm, "world");
+        String compositeChecksum = compositeCrcChecksumBase64(algorithm, partOneChecksum, partTwoChecksum);
+        String storageUploadId = "storage-upload-" + algorithm.toLowerCase(java.util.Locale.ROOT);
+        when(bucketService.get("bucket", user)).thenReturn(bucket);
+        when(storageAdapter.statObject("bucket", key)).thenReturn(Optional.empty());
+        when(storageAdapter.createMultipartUpload(
+                eq("bucket"),
+                eq(key),
+                eq("video/mp4"),
+                eq(900),
+                anyList()
+        )).thenAnswer(invocation -> storageUpload(storageUploadId, invocation.getArgument(4), 900, "create"));
+        when(storageAdapter.completeMultipartUpload(
+                eq("bucket"),
+                eq(key),
+                eq(storageUploadId),
+                anyList()
+        )).thenReturn(uploaded);
+        givenUploadedParts(
+                "bucket",
+                key,
+                storageUploadId,
+                new MultipartUploadUploadedPart(1, "\"etag-1\"", 6L),
+                new MultipartUploadUploadedPart(2, "\"etag-2\"", 5L)
+        );
+
+        MultipartUploadCreateResponse created = objectService.createMultipartUpload(
+                "bucket",
+                new MultipartUploadCreateRequest(
+                        key,
+                        "video/mp4",
+                        11L,
+                        6L,
+                        900,
+                        ""
+                ),
+                user
+        );
+        StoredObjectRecord result = objectService.completeMultipartUpload(
+                "bucket",
+                new MultipartUploadCompleteRequest(
+                        created.uploadId(),
+                        key,
+                        List.of(
+                                new CompletedMultipartUploadPart(1, "\"etag-1\"", Map.of(headerName, partOneChecksum)),
+                                new CompletedMultipartUploadPart(2, "\"etag-2\"", Map.of(headerName, partTwoChecksum))
+                        )
+                ),
+                user
+        );
+
+        assertThat(result.checksums()).containsEntry(headerName, compositeChecksum);
+        verify(objectMetadataRepository).save(
+                eq("bucket"),
+                argThat(object -> compositeChecksum.equals(object.checksums().get(headerName)))
+        );
+    }
+
+    private String crcChecksumBase64(String algorithm, String value) {
+        Checksum checksum = checksum(algorithm);
+        byte[] bytes = value.getBytes(StandardCharsets.UTF_8);
+        checksum.update(bytes, 0, bytes.length);
+        return Base64.getEncoder().encodeToString(intDigest(checksum.getValue()));
+    }
+
+    private String compositeCrcChecksumBase64(String algorithm, String... partChecksums) {
+        Checksum checksum = checksum(algorithm);
+        for (String partChecksum : partChecksums) {
+            byte[] decoded = Base64.getDecoder().decode(partChecksum);
+            checksum.update(decoded, 0, decoded.length);
+        }
+        return Base64.getEncoder().encodeToString(intDigest(checksum.getValue()));
+    }
+
+    private Checksum checksum(String algorithm) {
+        return switch (algorithm) {
+            case "CRC32" -> new CRC32();
+            case "CRC32C" -> new CRC32C();
+            default -> throw new IllegalArgumentException("Unsupported CRC algorithm " + algorithm);
+        };
+    }
+
+    private byte[] intDigest(long value) {
+        long normalized = value & 0xffffffffL;
+        return new byte[]{
+                (byte) (normalized >>> 24),
+                (byte) (normalized >>> 16),
+                (byte) (normalized >>> 8),
+                (byte) normalized
+        };
     }
 }

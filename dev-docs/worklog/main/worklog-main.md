@@ -1,5 +1,38 @@
 # Worklog - main
 
+### 2026-06-18 - S3 multipart CRC composite checksum support
+
+- Work time:
+  - End: 2026-06-18 19:38:09 +09:00
+- User command:
+  - Active goal: continue development from `dev-docs`.
+- Request analysis:
+  - `dev-docs` still listed full AWS multipart checksum aggregation parity beyond SHA1/SHA256 composite checksums.
+  - AWS S3 integrity docs list CRC32 and CRC32C as supporting both full-object and composite checksum types, while CRC64NVME supports full-object only.
+- Execution:
+  - Added CRC32 and CRC32C composite checksum aggregation from ordered per-part checksum bytes in `ObjectService`.
+  - Allowed `x-amz-checksum-type: COMPOSITE` for same-algorithm `ChecksumCRC32` and `ChecksumCRC32C` complete XML parts.
+  - Kept `CRC64NVME` as full-object multipart checksum only.
+  - Added service and controller regression coverage, then updated S3 compatibility/API/backend/PRD/test docs.
+- Modified files:
+  - `osmu-backend/src/main/java/com/example/osmu/object/ObjectService.java`
+  - `osmu-backend/src/main/java/com/example/osmu/object/S3ObjectController.java`
+  - `osmu-backend/src/test/java/com/example/osmu/object/ObjectServiceMultipartRefreshTest.java`
+  - `osmu-backend/src/test/java/com/example/osmu/object/S3ObjectControllerMultipartTest.java`
+  - `dev-docs/PRODUCT_REQUIREMENTS.md`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/backend-design.md`
+  - `dev-docs/s3-compatibility.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/feature-inventory.md`
+  - `dev-docs/worklog/main/worklog-main.md`
+- Tests:
+  - `gradle test --tests com.example.osmu.object.ObjectServiceMultipartRefreshTest --tests com.example.osmu.object.S3ObjectControllerMultipartTest`: passed.
+  - `gradle test`: passed.
+- Review:
+  - Composite checksum storage now covers AWS-supported SHA1/SHA256/CRC32/CRC32C multipart composite algorithms.
+  - Remaining multipart checksum work is broader AWS checksum negotiation and exact error parity, not CRC64NVME composite because AWS documents CRC64NVME as full-object only.
+
 ### 2026-06-18 - S3 PUT Object destination preconditions
 
 - Work time:
