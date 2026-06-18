@@ -39,6 +39,11 @@
       <div class="empty-state-body">
         <strong>{{ isLoggedIn ? '일부 정책/쿼터/감사 기능은 ADMIN 권한이 필요합니다.' : '로그인 후 사용 가능한 관리 기능이 표시됩니다.' }}</strong>
         <small>일반 사용자는 S3 Access Key와 허용된 버킷 작업만 사용할 수 있습니다.</small>
+        <ul class="compact-list role-scope-list" data-testid="admin-role-restricted-panel-list">
+          <li>Share policy / analytics</li>
+          <li>Quota, lifecycle, retention</li>
+          <li>Storage expansion and runner controls</li>
+        </ul>
       </div>
     </article>
 
@@ -72,6 +77,7 @@
     />
 
     <ObjectSharePanel
+      v-if="isAdmin"
       id="admin-object-share"
       :is-admin="isAdmin"
       :object-share-policy-form="objectSharePolicyForm"
@@ -83,6 +89,7 @@
     />
 
     <QuotaPolicyPanel
+      v-if="isAdmin"
       id="admin-quota-policies"
       :is-admin="isAdmin"
       :quota-policy-form="quotaPolicyForm"
@@ -161,6 +168,7 @@
     </article>
 
     <StorageExpansionPanel
+      v-if="isAdmin"
       id="admin-storage-expansion"
       :is-admin="isAdmin"
       :storage-expansion-form="storageExpansionForm"
@@ -195,6 +203,7 @@
     />
 
     <LifecycleRulesPanel
+      v-if="isAdmin"
       id="admin-lifecycle-rules"
       :is-admin="isAdmin"
       :lifecycle-rule-form="lifecycleRuleForm"
@@ -214,6 +223,7 @@
     />
 
     <IdentityAdminPanel
+      v-if="canUseAdminTools"
       id="admin-identity"
       :can-use-admin-tools="canUseAdminTools"
       :organization-form="organizationForm"

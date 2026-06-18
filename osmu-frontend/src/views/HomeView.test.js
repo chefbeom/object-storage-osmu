@@ -295,6 +295,7 @@ test('HomeView exposes stable selectors for browser E2E flows', () => {
     'bucket-tags-panel',
     'admin-bucket-empty-state',
     'admin-role-empty-state',
+    'admin-role-restricted-panel-list',
     'quota-policy-panel',
     'quota-policy-form',
     'quota-policy-target-type',
@@ -663,6 +664,11 @@ test('HomeView exposes stable selectors for browser E2E flows', () => {
   assert.match(dashboardSource, /bulkDisableAccessKeys/)
   assert.match(dashboardSource, /roles: \['ADMIN', 'ORG_ADMIN'\]/)
   assert.match(dashboardSource, /roles: \['ADMIN'\]/)
+  assert.match(dashboardSource, /<ObjectSharePanel\s+v-if="isAdmin"/)
+  assert.match(dashboardSource, /<QuotaPolicyPanel\s+v-if="isAdmin"/)
+  assert.match(dashboardSource, /<StorageExpansionPanel\s+v-if="isAdmin"/)
+  assert.match(dashboardSource, /<LifecycleRulesPanel\s+v-if="isAdmin"/)
+  assert.match(dashboardSource, /<IdentityAdminPanel\s+v-if="canUseAdminTools"/)
   assert.match(dashboardSource, /visibleNavigationItems/)
   assert.match(dashboardSource, /canAccessNavigationItem/)
   assert.match(dashboardSource, /auth\.startAuthSync\(handleSessionExpired\)/)

@@ -70,6 +70,7 @@ Dashboard server policy:
 Frontend policy:
 
 - Sidebar navigation hides Admin/Audit pages by role.
+- AdminPage hides global operations panels at parent component level with `isAdmin`; `ORG_ADMIN` keeps only org-scoped identity controls, access keys, and bucket-scoped permission/metadata panels.
 - Dashboard palette uses backend catalog metadata.
 - Fallback catalog, localStorage recovery, and direct add events all pass through the current role-visible catalog.
 - Panel edit list displays the catalog access mode. Non-admin dashboard panels are read-only summaries; admin operation triggers stay hidden unless the user is `ADMIN`.

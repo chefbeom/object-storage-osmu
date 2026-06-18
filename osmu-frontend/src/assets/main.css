@@ -1976,6 +1976,18 @@ tbody tr.selected {
   line-height: 1.5;
 }
 
+.role-scope-list {
+  padding: 0;
+}
+
+.role-scope-list li {
+  min-height: 34px;
+  justify-content: flex-start;
+  color: var(--color-muted);
+  font-size: 13px;
+  font-weight: 800;
+}
+
 .object-empty-state {
   display: grid;
   gap: 6px;

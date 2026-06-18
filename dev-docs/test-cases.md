@@ -420,9 +420,19 @@
 - Preconditions: Node dependencies are installed.
 - Input: `npm run test:unit`
 - Steps: Run frontend unit tests that inspect `HomeView.vue` and split components for stable `data-testid` selectors covering login, status, dashboard 조회/편집 mode toggle, dashboard loading/error/retry/empty state, dashboard palette grouped catalog chips, drag/size/access-mode controls, section controls, section order/collapse controls, catalog-driven widget option controls, access key/identity/lifecycle/execution-retention/storage-expansion catalog widgets, bucket list, object upload, object detail, bucket lifecycle, bucket tags, audit, and confirm modal flows.
-- Expected: All required selectors exist so future Browser/Chrome E2E can target stable UI hooks instead of brittle text or layout selectors, including dashboard view-mode summary, edit-mode toggle, loading state, error state, retry button, empty state, widget access mode badge, widget section bands, section move/toggle buttons, category groups, catalog chip buttons, drag handles, dynamic option selects, execution log retention panel controls, Storage Expansion dashboard summary controls, operations readiness summary/filter/remediation command and workflow-command copy controls, admin action failure remediation controls, and dashboard catalog widgets.
+- Expected: All required selectors exist so future Browser/Chrome E2E can target stable UI hooks instead of brittle text or layout selectors, including dashboard view-mode summary, edit-mode toggle, loading state, error state, retry button, empty state, widget access mode badge, widget section bands, section move/toggle buttons, category groups, catalog chip buttons, drag handles, dynamic option selects, execution log retention panel controls, Storage Expansion dashboard summary controls, operations readiness summary/filter/remediation command and workflow-command copy controls, admin action failure remediation controls, admin role-restricted panel list, and dashboard catalog widgets.
 - Priority: P1
 - Automated: `npm run test:unit`
+
+### TC-FE-ADMIN-PANEL-RBAC
+
+- Feature: AdminPage role-based panel visibility.
+- Preconditions: `ADMIN`, `ORG_ADMIN`, and `USER` accounts exist.
+- Input: Open `/admin` after login with each role.
+- Steps: Compare rendered AdminPage panels against `dev-docs/iam-rbac-matrix.md`; inspect `admin-role-restricted-panel-list` for `ORG_ADMIN`.
+- Expected: `ADMIN` sees global operations panels for share policy/analytics, quota, lifecycle/retention, storage expansion, and storage profile approvals. `ORG_ADMIN` can reach `/admin` but does not render those global operations panels; it keeps org-scoped identity controls plus access key and bucket-scoped permission/metadata panels. `USER` is routed away from `/admin`.
+- Priority: P1
+- Automated: `npm run test:unit` selector/source contract. Browser role-switch E2E is pending.
 
 ### TC-FE-ADMIN-FAILURE-REMEDIATION
 
