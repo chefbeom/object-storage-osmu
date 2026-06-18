@@ -649,12 +649,14 @@ public class S3ObjectController {
 
     private void assertCopySourcePreconditions(HttpServletRequest request, StoredObjectRecord sourceObject) {
         String ifMatch = request.getHeader(AWS_COPY_SOURCE_IF_MATCH_HEADER);
-        if (ifMatch != null && !ifMatch.isBlank() && !matchesEtag(ifMatch, sourceObject.etag())) {
+        boolean ifMatchPresent = ifMatch != null && !ifMatch.isBlank();
+        boolean ifMatchSatisfied = ifMatchPresent && matchesEtag(ifMatch, sourceObject.etag());
+        if (ifMatchPresent && !ifMatchSatisfied) {
             throw copySourcePreconditionFailed();
         }
         Instant roundedLastModified = roundedLastModified(sourceObject.lastModifiedAt().toInstant());
         Instant ifUnmodifiedSince = httpDate(request.getHeader(AWS_COPY_SOURCE_IF_UNMODIFIED_SINCE_HEADER));
-        if (ifUnmodifiedSince != null && roundedLastModified.isAfter(ifUnmodifiedSince)) {
+        if (ifUnmodifiedSince != null && roundedLastModified.isAfter(ifUnmodifiedSince) && !ifMatchSatisfied) {
             throw copySourcePreconditionFailed();
         }
         String ifNoneMatch = request.getHeader(AWS_COPY_SOURCE_IF_NONE_MATCH_HEADER);

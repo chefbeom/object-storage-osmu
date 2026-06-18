@@ -204,11 +204,11 @@
 
 ### TC-S3-OBJECT-001D
 
-- Feature: S3 CopyObject source version selection.
+- Feature: S3 CopyObject source version selection and source precondition precedence.
 - Preconditions: Target bucket exists. Active access key has `READ` and `WRITE` scope. Source object has at least one retained OSMU object version.
 - Input: `PUT /api/s3/{bucketName}/{targetKey}` with `x-amz-copy-source: /{bucketName}/{sourceKey}?versionId={versionId}`.
-- Steps: Upload a source object, overwrite it to create a retained version, list versions through the REST object version API, then copy the retained version through S3 CopyObject.
-- Expected: CopyObject returns `CopyObjectResult` XML and the copied target downloads the retained version body and tags, not the current source body.
+- Steps: Upload a source object, overwrite it to create a retained version, list versions through the REST object version API, copy the retained version through S3 CopyObject, then copy the current source with combined source ETag/date preconditions.
+- Expected: CopyObject returns `CopyObjectResult` XML and the copied target downloads the retained version body and tags, not the current source body. Matching `x-amz-copy-source-if-match` plus stale `x-amz-copy-source-if-unmodified-since` returns `200 OK`; matching `x-amz-copy-source-if-none-match` plus modified `x-amz-copy-source-if-modified-since` returns `412 PreconditionFailed`.
 - Priority: P1
 - Automated: `S3ObjectControllerTest.accessKeyCanCopyObjectFromSourceVersionId`
 

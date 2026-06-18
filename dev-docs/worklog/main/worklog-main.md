@@ -1,5 +1,37 @@
 # Worklog - main
 
+### 2026-06-18 - S3 CopyObject source conditional precedence
+
+- Work time:
+  - End: 2026-06-18 17:53:59 +09:00
+- User command:
+  - Active goal: continue development from `dev-docs`.
+- Request analysis:
+  - S3 docs still listed CopyObject full conditional parity as future work.
+  - AWS CopyObject documents two important combined source precondition cases: matching source ETag dominates stale `x-amz-copy-source-if-unmodified-since`, while matching `x-amz-copy-source-if-none-match` with modified date still fails with `412`.
+- Execution:
+  - Updated `assertCopySourcePreconditions` so a satisfied `x-amz-copy-source-if-match` allows copy even when `x-amz-copy-source-if-unmodified-since` is stale.
+  - Added regression coverage for the success and failure combined source condition cases.
+  - Updated S3 compatibility/API/backend/PRD/test-case/feature inventory docs to mark documented CopyObject source ETag/date precedence as supported.
+- Modified files:
+  - `osmu-backend/src/main/java/com/example/osmu/object/S3ObjectController.java`
+  - `osmu-backend/src/test/java/com/example/osmu/object/S3ObjectControllerTest.java`
+  - `dev-docs/PRODUCT_REQUIREMENTS.md`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/backend-design.md`
+  - `dev-docs/feature-inventory.md`
+  - `dev-docs/s3-compatibility.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/worklog/main/worklog-main.md`
+- Verification:
+  - `gradle test --tests com.example.osmu.object.S3ObjectControllerTest.accessKeyCanCopyObjectFromSourceVersionId`: passed.
+  - `gradle test`: passed.
+  - `git diff --check`: passed with LF/CRLF warnings only.
+- Result:
+  - CopyObject source precondition behavior now matches the AWS-documented combined ETag/date precedence cases covered by the MVP.
+- Follow-up:
+  - Remaining CopyObject gaps are arbitrary user metadata, full AWS versioning parity, destination conditional headers, and broader AWS edge behavior.
+
 ### 2026-06-18 - Access Key expiration verification
 
 - Work time:

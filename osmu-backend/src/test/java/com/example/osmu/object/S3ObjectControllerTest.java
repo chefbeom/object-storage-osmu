@@ -245,6 +245,28 @@ class S3ObjectControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(header().string("X-OSMU-Tags", containsString("stage=archived")))
                 .andExpect(content().string("version one"));
+
+        String currentSourceEtag = "\"%s\"".formatted(md5Hex("version two"));
+        String pastHttpDate = DateTimeFormatter.RFC_1123_DATE_TIME.format(
+                Instant.now().minusSeconds(60).atZone(ZoneOffset.UTC)
+        );
+        mockMvc.perform(put("/api/s3/{bucketName}/docs/copy-if-match-date.txt", bucketName)
+                        .header("X-OSMU-Access-Key", credentials.accessKey())
+                        .header("X-OSMU-Secret-Key", credentials.secretKey())
+                        .header("x-amz-copy-source", "/" + bucketName + "/docs/source.txt")
+                        .header("x-amz-copy-source-if-match", currentSourceEtag)
+                        .header("x-amz-copy-source-if-unmodified-since", pastHttpDate))
+                .andExpect(status().isOk())
+                .andExpect(content().string(containsString("<CopyObjectResult")));
+
+        mockMvc.perform(put("/api/s3/{bucketName}/docs/copy-if-none-match-date.txt", bucketName)
+                        .header("X-OSMU-Access-Key", credentials.accessKey())
+                        .header("X-OSMU-Secret-Key", credentials.secretKey())
+                        .header("x-amz-copy-source", "/" + bucketName + "/docs/source.txt")
+                        .header("x-amz-copy-source-if-none-match", currentSourceEtag)
+                        .header("x-amz-copy-source-if-modified-since", pastHttpDate))
+                .andExpect(status().isPreconditionFailed())
+                .andExpect(content().string(containsString("<Code>PreconditionFailed</Code>")));
     }
 
     @Test
