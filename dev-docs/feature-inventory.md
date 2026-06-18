@@ -175,10 +175,10 @@ MVP 데모 기준 완료율은 약 90~95%입니다.
 - backup readiness panel의 latest restore drill evidence result/environment/recordedAt 표시
 - 기본 dashboard preset 3종: executive, storage ops, security/audit
 - dashboard 조회 mode와 편집 mode 구분
+- widget별 refresh interval option과 dashboard 자동 refresh cadence
 
 남은 것:
 
-- widget별 refresh interval
 - panel별 세부 권한 matrix와 read-only role 적용
 - 빈 상태, 오류 상태, loading 상태 polish
 

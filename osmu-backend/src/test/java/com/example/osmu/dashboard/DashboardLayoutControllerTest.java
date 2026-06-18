@@ -47,7 +47,7 @@ class DashboardLayoutControllerTest {
                         .content("""
                                 {
                                   "widgets": [
-                                    { "id": "capacity", "enabled": true, "size": "wide", "section": "overview", "options": { "tone": "focus" } },
+                                    { "id": "capacity", "enabled": true, "size": "wide", "section": "overview", "options": { "tone": "focus", "refreshInterval": "30s" } },
                                     { "id": "readiness", "enabled": false, "size": "compact" }
                                   ],
                                   "sections": [
@@ -63,11 +63,13 @@ class DashboardLayoutControllerTest {
                 .andExpect(jsonPath("$.data.widgets[0].size").value("wide"))
                 .andExpect(jsonPath("$.data.widgets[0].section").value("overview"))
                 .andExpect(jsonPath("$.data.widgets[0].options.tone").value("focus"))
+                .andExpect(jsonPath("$.data.widgets[0].options.refreshInterval").value("30s"))
                 .andExpect(jsonPath("$.data.widgets[1].id").value("readiness"))
                 .andExpect(jsonPath("$.data.widgets[1].enabled").value(false))
                 .andExpect(jsonPath("$.data.widgets[1].size").value("compact"))
                 .andExpect(jsonPath("$.data.widgets[1].section").value("overview"))
                 .andExpect(jsonPath("$.data.widgets[1].options.tone").value("default"))
+                .andExpect(jsonPath("$.data.widgets[1].options.refreshInterval").value("manual"))
                 .andExpect(jsonPath("$.data.sections[1].id").value("operations"))
                 .andExpect(jsonPath("$.data.sections[1].collapsed").value(true))
                 .andExpect(jsonPath("$.data.updatedAt").isString());
@@ -82,6 +84,7 @@ class DashboardLayoutControllerTest {
                 .andExpect(jsonPath("$.data.widgets[0].size").value("wide"))
                 .andExpect(jsonPath("$.data.widgets[0].section").value("overview"))
                 .andExpect(jsonPath("$.data.widgets[0].options.tone").value("focus"))
+                .andExpect(jsonPath("$.data.widgets[0].options.refreshInterval").value("30s"))
                 .andExpect(jsonPath("$.data.widgets[1].enabled").value(false))
                 .andExpect(jsonPath("$.data.sections[1].collapsed").value(true));
 
@@ -168,6 +171,19 @@ class DashboardLayoutControllerTest {
                                 """))
                 .andExpect(status().isBadRequest());
 
+        mockMvc.perform(put("/api/dashboard/layout")
+                        .header("Authorization", "Bearer " + token)
+                        .param("scope", scope)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "widgets": [
+                                    { "id": "capacity", "enabled": true, "size": "normal", "options": { "refreshInterval": "1s" } }
+                                  ]
+                                }
+                                """))
+                .andExpect(status().isBadRequest());
+
         mockMvc.perform(delete("/api/dashboard/layout")
                         .header("Authorization", "Bearer " + token)
                         .param("scope", scope))
@@ -219,7 +235,9 @@ class DashboardLayoutControllerTest {
                 .andExpect(jsonPath("$.data[?(@.id == 'storage-expansion')].category", hasItem("OPERATIONS")))
                 .andExpect(jsonPath("$.data[?(@.id == 'access-keys')].category", hasItem("SECURITY")))
                 .andExpect(jsonPath("$.data[?(@.id == 'access-keys')].configOptions[0].key", hasItem("tone")))
-                .andExpect(jsonPath("$.data[?(@.id == 'access-keys')].configOptions[0].defaultValue", hasItem("default")));
+                .andExpect(jsonPath("$.data[?(@.id == 'access-keys')].configOptions[0].defaultValue", hasItem("default")))
+                .andExpect(jsonPath("$.data[?(@.id == 'access-keys')].configOptions[1].key", hasItem("refreshInterval")))
+                .andExpect(jsonPath("$.data[?(@.id == 'access-keys')].configOptions[1].defaultValue", hasItem("manual")));
 
         mockMvc.perform(put("/api/dashboard/layout/presets/compact")
                         .header("Authorization", "Bearer " + token)

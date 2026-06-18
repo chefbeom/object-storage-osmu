@@ -34,11 +34,14 @@ public class DashboardLayoutService {
     private static final Set<String> ALLOWED_WIDGET_SIZES = Set.of("compact", "normal", "wide");
     private static final List<String> WIDGET_SECTION_ORDER = List.of("overview", "operations", "governance");
     private static final Set<String> ALLOWED_WIDGET_SECTIONS = Set.copyOf(WIDGET_SECTION_ORDER);
-    private static final Set<String> ALLOWED_WIDGET_OPTION_KEYS = Set.of("tone");
+    private static final Set<String> ALLOWED_WIDGET_OPTION_KEYS = Set.of("tone", "refreshInterval");
     private static final List<String> WIDGET_TONE_VALUES = List.of("default", "focus", "muted");
     private static final Set<String> ALLOWED_WIDGET_TONES = Set.copyOf(WIDGET_TONE_VALUES);
+    private static final List<String> WIDGET_REFRESH_INTERVAL_VALUES = List.of("manual", "30s", "60s", "5m", "15m");
+    private static final Set<String> ALLOWED_WIDGET_REFRESH_INTERVALS = Set.copyOf(WIDGET_REFRESH_INTERVAL_VALUES);
     private static final List<DashboardWidgetConfigOption> DEFAULT_WIDGET_CONFIG_OPTIONS = List.of(
-            new DashboardWidgetConfigOption("tone", "Tone", "select", WIDGET_TONE_VALUES, "default")
+            new DashboardWidgetConfigOption("tone", "Tone", "select", WIDGET_TONE_VALUES, "default"),
+            new DashboardWidgetConfigOption("refreshInterval", "Refresh", "select", WIDGET_REFRESH_INTERVAL_VALUES, "manual")
     );
     private static final List<DashboardWidgetCatalogItem> WIDGET_CATALOG = List.of(
             widget("capacity", "스토리지 사용률", "Used capacity against allocated storage quota.", "STORAGE", false),
@@ -739,14 +742,15 @@ public class DashboardLayoutService {
 
     private Map<String, String> sanitizeWidgetOptions(Map<String, String> options) {
         if (options == null || options.isEmpty()) {
-            return Map.of("tone", "default");
+            return Map.of("tone", "default", "refreshInterval", "manual");
         }
         if (options.size() > 10) {
             throw new ApiException(ApiErrorCode.VALIDATION_ERROR, "Dashboard widget options exceed the limit.");
         }
         Map<String, String> sanitized = new LinkedHashMap<>();
         for (Map.Entry<String, String> entry : options.entrySet()) {
-            String key = entry.getKey() == null ? "" : entry.getKey().trim().toLowerCase(Locale.ROOT);
+            String rawKey = entry.getKey() == null ? "" : entry.getKey().trim().toLowerCase(Locale.ROOT);
+            String key = rawKey.equals("refreshinterval") ? "refreshInterval" : rawKey;
             if (!ALLOWED_WIDGET_OPTION_KEYS.contains(key)) {
                 throw new ApiException(ApiErrorCode.VALIDATION_ERROR, "Dashboard widget option is invalid.");
             }
@@ -754,9 +758,13 @@ public class DashboardLayoutService {
             if (key.equals("tone") && !ALLOWED_WIDGET_TONES.contains(value)) {
                 throw new ApiException(ApiErrorCode.VALIDATION_ERROR, "Dashboard widget tone is invalid.");
             }
+            if (key.equals("refreshInterval") && !ALLOWED_WIDGET_REFRESH_INTERVALS.contains(value)) {
+                throw new ApiException(ApiErrorCode.VALIDATION_ERROR, "Dashboard widget refresh interval is invalid.");
+            }
             sanitized.put(key, value);
         }
         sanitized.putIfAbsent("tone", "default");
+        sanitized.putIfAbsent("refreshInterval", "manual");
         return Map.copyOf(sanitized);
     }
 

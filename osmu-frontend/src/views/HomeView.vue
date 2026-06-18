@@ -120,6 +120,7 @@
         :dashboard-widget-size-label="dashboardWidgetSizeLabel"
         :dashboard-widget-tone="dashboardWidgetTone"
         :dashboard-widget-tone-label="dashboardWidgetToneLabel"
+        :dashboard-widget-refresh-interval-label="dashboardWidgetRefreshIntervalLabel"
         :dashboard-widget-config-options="dashboardWidgetConfigOptions"
         :dashboard-widget-option-value="dashboardWidgetOptionValue"
         :dashboard-sections="dashboardSections"
@@ -441,7 +442,7 @@
 </template>
 
 <script setup>
-import { computed, nextTick, onMounted, onUnmounted, reactive, ref } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import AdminPage from '@/components/admin/AdminPage.vue'
 import AuditPage from '@/components/audit/AuditPage.vue'
@@ -662,8 +663,23 @@ const dashboardWidgetToneLabels = {
   focus: 'Focus',
   muted: 'Muted',
 }
+const dashboardWidgetRefreshIntervals = ['manual', '30s', '60s', '5m', '15m']
+const dashboardWidgetRefreshIntervalLabels = {
+  manual: 'Manual refresh',
+  '30s': '30s refresh',
+  '60s': '60s refresh',
+  '5m': '5m refresh',
+  '15m': '15m refresh',
+}
+const dashboardWidgetRefreshIntervalMs = {
+  '30s': 30_000,
+  '60s': 60_000,
+  '5m': 300_000,
+  '15m': 900_000,
+}
 const defaultDashboardWidgetConfigOptions = [
   { key: 'tone', label: 'Tone', type: 'select', values: dashboardWidgetTones, defaultValue: 'default' },
+  { key: 'refreshInterval', label: 'Refresh', type: 'select', values: dashboardWidgetRefreshIntervals, defaultValue: 'manual' },
 ]
 const dashboardWidgetSections = [
   { id: 'overview', label: 'Overview' },
@@ -1203,6 +1219,13 @@ const visibleDashboardWidgets = computed(() => {
   const roleVisibleIds = new Set(dashboardWidgetCatalogForRole.value.map((item) => item.id))
   return dashboardWidgets.value.filter((widget) => widget.enabled && roleVisibleIds.has(widget.id))
 })
+const dashboardAutoRefreshIntervalMs = computed(() => {
+  if (!isLoggedIn.value || activePage.value !== 'dashboard') return 0
+  const intervals = visibleDashboardWidgets.value
+    .map((widget) => dashboardWidgetRefreshIntervalMs[dashboardWidgetRefreshInterval(widget)] || 0)
+    .filter((interval) => interval > 0)
+  return intervals.length > 0 ? Math.min(...intervals) : 0
+})
 const dashboardLayoutSyncLabel = computed(() => {
   if (!isLoggedIn.value) return '이 브라우저에 저장'
   if (dashboardLayoutSync.pending) return '서버 저장 중'
@@ -1404,8 +1427,10 @@ function normalizeDashboardWidgetSection(section) {
 
 function sanitizeDashboardWidgetOptions(options) {
   const tone = options?.tone
+  const refreshInterval = options?.refreshInterval || options?.refreshinterval
   return {
     tone: dashboardWidgetTones.includes(tone) ? tone : 'default',
+    refreshInterval: dashboardWidgetRefreshIntervals.includes(refreshInterval) ? refreshInterval : 'manual',
   }
 }
 
@@ -1452,6 +1477,14 @@ function dashboardWidgetToneLabel(widget) {
   return dashboardWidgetToneLabels[dashboardWidgetTone(widget)]
 }
 
+function dashboardWidgetRefreshInterval(widget) {
+  return sanitizeDashboardWidgetOptions(widget?.options).refreshInterval
+}
+
+function dashboardWidgetRefreshIntervalLabel(widget) {
+  return dashboardWidgetRefreshIntervalLabels[dashboardWidgetRefreshInterval(widget)]
+}
+
 function dashboardWidgetConfigOptions(widgetId) {
   const options = dashboardWidgetCatalog.value.find((widget) => widget.id === widgetId)?.configOptions
   return Array.isArray(options) && options.length > 0 ? options : defaultDashboardWidgetConfigOptions
@@ -1460,6 +1493,7 @@ function dashboardWidgetConfigOptions(widgetId) {
 function dashboardWidgetOptionValue(widget, optionKey) {
   const key = String(optionKey || '')
   if (key === 'tone') return dashboardWidgetTone(widget)
+  if (key === 'refreshInterval') return dashboardWidgetRefreshInterval(widget)
   return widget?.options?.[key] ?? ''
 }
 
@@ -1472,7 +1506,7 @@ function addDashboardWidget() {
   if (!dashboardWidgetToAdd.value) return
   if (!dashboardWidgetCatalogForRole.value.some((widget) => widget.id === dashboardWidgetToAdd.value)) return
   if (dashboardWidgets.value.some((widget) => widget.id === dashboardWidgetToAdd.value)) return
-  dashboardWidgets.value = [...dashboardWidgets.value, { id: dashboardWidgetToAdd.value, enabled: true, size: 'normal', section: 'overview', options: { tone: 'default' } }]
+  dashboardWidgets.value = [...dashboardWidgets.value, { id: dashboardWidgetToAdd.value, enabled: true, size: 'normal', section: 'overview', options: { tone: 'default', refreshInterval: 'manual' } }]
   dashboardWidgetToAdd.value = ''
   persistDashboardWidgets()
 }
@@ -1500,9 +1534,12 @@ function updateDashboardWidgetSection(widgetId, section) {
 }
 
 function updateDashboardWidgetOption(widgetId, optionKey, optionValue) {
-  const key = String(optionKey || '')
+  const rawKey = String(optionKey || '')
+  const key = rawKey.toLowerCase() === 'refreshinterval' ? 'refreshInterval' : rawKey
   const value = String(optionValue || '')
-  if (key !== 'tone' || !dashboardWidgetTones.includes(value)) return
+  if (key === 'tone' && !dashboardWidgetTones.includes(value)) return
+  if (key === 'refreshInterval' && !dashboardWidgetRefreshIntervals.includes(value)) return
+  if (!['tone', 'refreshInterval'].includes(key)) return
   dashboardWidgets.value = dashboardWidgets.value.map((widget) => (
     widget.id === widgetId
       ? { ...widget, options: { ...sanitizeDashboardWidgetOptions(widget.options), [key]: value } }
@@ -1917,6 +1954,12 @@ function focusPanel(panelId) {
 
 let stopAuthSync = () => {}
 let sessionRedirectPending = false
+let dashboardAutoRefreshTimer = null
+let dashboardAutoRefreshRunning = false
+
+watch(dashboardAutoRefreshIntervalMs, (intervalMs) => {
+  restartDashboardAutoRefresh(intervalMs)
+}, { immediate: true })
 
 onMounted(async () => {
   stopAuthSync = auth.startAuthSync(handleSessionExpired)
@@ -1930,6 +1973,7 @@ onMounted(async () => {
 
 onUnmounted(() => {
   uploadController.value?.abort()
+  stopDashboardAutoRefresh()
   stopAuthSync()
 })
 
@@ -1940,6 +1984,30 @@ async function refreshAll() {
     return
   }
   await loadHealth()
+}
+
+function restartDashboardAutoRefresh(intervalMs = dashboardAutoRefreshIntervalMs.value) {
+  stopDashboardAutoRefresh()
+  if (!intervalMs || intervalMs <= 0 || typeof window === 'undefined') return
+  dashboardAutoRefreshTimer = window.setInterval(() => {
+    void refreshDashboardAutoData()
+  }, intervalMs)
+}
+
+function stopDashboardAutoRefresh() {
+  if (!dashboardAutoRefreshTimer || typeof window === 'undefined') return
+  window.clearInterval(dashboardAutoRefreshTimer)
+  dashboardAutoRefreshTimer = null
+}
+
+async function refreshDashboardAutoData() {
+  if (dashboardAutoRefreshRunning || !isLoggedIn.value || activePage.value !== 'dashboard') return
+  dashboardAutoRefreshRunning = true
+  try {
+    await loadDashboard()
+  } finally {
+    dashboardAutoRefreshRunning = false
+  }
 }
 
 async function loadHealth() {

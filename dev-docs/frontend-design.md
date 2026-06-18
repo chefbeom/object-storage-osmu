@@ -125,6 +125,7 @@ Web Portal은 관리자와 사용자가 OSMU를 브라우저에서 사용할 수
 - dashboard section은 `Show/Hide`로 접고 펼칠 수 있으며 `sections[].collapsed` 값으로 서버 layout과 preset에 보존
 - dashboard layout/preset payload는 `schemaVersion: osmu.dashboard-layout.v1`을 포함해 향후 layout schema migration 기준을 고정
 - dashboard widget별 `options.tone`을 `default`/`focus`/`muted`로 전환해 중요한 panel을 강조하거나 낮은 우선순위 panel을 차분하게 표시
+- dashboard widget별 `options.refreshInterval`은 `manual`/`30s`/`60s`/`5m`/`15m` 중 하나로 저장되며, dashboard 화면은 visible widget의 가장 짧은 자동 interval을 사용해 dashboard 데이터를 다시 조회한다.
 - dashboard widget option control은 backend catalog의 `configOptions` schema를 기반으로 동적으로 렌더링
 - Access Key dashboard widget은 active/total/provisioner 상태와 expired/expiring/unused key 요약을 표시
 - Backup readiness panel은 `latestRestoreDrillEvidence`의 result, environment, recordedAt을 표시해 Kubernetes DR finalizer 또는 restore drill evidence API 제출 결과를 대시보드에서 바로 확인할 수 있게 한다.

@@ -238,7 +238,7 @@
         <span>
           <span class="drag-grip" data-testid="dashboard-widget-drag-handle" aria-hidden="true">::</span>
           <strong>{{ dashboardWidgetTitle(widget.id) }}</strong>
-          <small>{{ widget.enabled ? '표시 중' : '숨김' }} · {{ dashboardWidgetSizeLabel(widget.size) }} · {{ dashboardWidgetToneLabel(widget) }}</small>
+          <small>{{ widget.enabled ? '표시 중' : '숨김' }} · {{ dashboardWidgetSizeLabel(widget.size) }} · {{ dashboardWidgetToneLabel(widget) }} · {{ dashboardWidgetRefreshIntervalLabel(widget) }}</small>
         </span>
         <span class="widget-actions">
           <button data-testid="dashboard-widget-move-up-button" type="button" class="ghost" :disabled="dashboardLayoutPending || index === 0" @click="$emit('move-dashboard-widget', index, -1)">위</button>
@@ -1675,6 +1675,7 @@ const props = defineProps({
   dashboardWidgetSizeLabel: { type: Function, required: true },
   dashboardWidgetTone: { type: Function, required: true },
   dashboardWidgetToneLabel: { type: Function, required: true },
+  dashboardWidgetRefreshIntervalLabel: { type: Function, required: true },
   dashboardWidgetConfigOptions: { type: Function, required: true },
   dashboardWidgetOptionValue: { type: Function, required: true },
   dashboardSections: { type: Array, required: true },
