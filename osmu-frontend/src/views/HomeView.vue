@@ -172,6 +172,7 @@
         @refresh-dashboard-readiness="handleRefreshDashboardReadiness"
         @update-data-flow-filter="updateDataFlowFilter"
         @refresh-data-flow-monitoring="loadDataFlowMonitoring"
+        @export-data-flow-csv="handleExportDataFlowCsv"
         @reset-data-flow-filter="handleResetDataFlowFilter"
       />
 
@@ -484,6 +485,7 @@ import {
   downloadStorageExpansionManifestArtifact,
   downloadObject,
   downloadObjectVersion,
+  downloadDataFlowMonitoringCsv,
   dryRunObjectLifecycleRule,
   exportDashboardLayoutPreset,
   exportDashboardLayoutPresetBundle,
@@ -2080,6 +2082,14 @@ async function loadDataFlowMonitoring() {
   const result = await safeRequest(() => getDataFlowMonitoring(dataFlowFilterPayload()), null)
   if (result?.data) {
     applyDataFlowMonitoring(result.data)
+  }
+}
+
+async function handleExportDataFlowCsv() {
+  const blob = await runAction(() => downloadDataFlowMonitoringCsv(dataFlowFilterPayload()))
+  if (blob) {
+    downloadBlob(blob, `osmu-data-flow-${new Date().toISOString().slice(0, 10)}.csv`)
+    setStatusMessage('Data flow CSV export complete.')
   }
 }
 

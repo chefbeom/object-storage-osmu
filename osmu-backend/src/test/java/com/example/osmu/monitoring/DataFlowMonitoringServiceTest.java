@@ -61,4 +61,16 @@ class DataFlowMonitoringServiceTest {
         assertThat(snapshot.recentEvents()).hasSize(1);
         assertThat(snapshot.recentEvents().get(0).source()).isEqualTo("rest");
     }
+
+    @Test
+    void exportsFilteredEventsAsCsv() {
+        service.recordFailure("download", "media", "raw,\"bad\".csv", "admin", "line one\nline two", "REST");
+        service.recordUpload("archive", "ignored.bin", 1024L, "admin", "REST");
+
+        String csv = service.exportCsv(new DataFlowEventFilter("media", "admin", "rest", "download", "FAILED", null, null), 10);
+
+        assertThat(csv).startsWith("createdAt,eventType,operation,direction,bucketName,objectKey,actorId,status,sizeBytes,source,message\n");
+        assertThat(csv).contains("\"FAILURE\",\"download\",\"CONTROL\",\"media\",\"raw,\"\"bad\"\".csv\",\"admin\",\"FAILED\",\"0\",\"rest\",\"line one line two\"");
+        assertThat(csv).doesNotContain("ignored.bin");
+    }
 }

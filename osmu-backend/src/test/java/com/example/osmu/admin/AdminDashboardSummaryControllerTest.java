@@ -4,6 +4,8 @@ import static org.hamcrest.Matchers.hasItem;
 import static org.hamcrest.Matchers.not;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -14,6 +16,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.web.servlet.MockMvc;
@@ -98,6 +101,26 @@ class AdminDashboardSummaryControllerTest {
                 .andExpect(jsonPath("$.data.topBuckets").isArray())
                 .andExpect(jsonPath("$.data.recentEvents").isArray())
                 .andExpect(jsonPath("$.data.generatedAt").exists());
+    }
+
+    @Test
+    void adminCanExportDataFlowMonitoringCsv() throws Exception {
+        String adminToken = loginAndReturnAccessToken("admin", "password");
+
+        mockMvc.perform(get("/api/admin/monitoring/data-flow/export.csv")
+                        .param("bucketName", "media")
+                        .param("actorId", "admin")
+                        .param("source", "rest")
+                        .param("operation", "upload")
+                        .param("status", "SUCCESS")
+                        .param("from", "2026-06-18T00:00:00Z")
+                        .param("to", "2026-06-19T00:00:00Z")
+                        .param("limit", "25")
+                        .header("Authorization", "Bearer " + adminToken))
+                .andExpect(status().isOk())
+                .andExpect(header().string(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"osmu-data-flow.csv\""))
+                .andExpect(content().contentTypeCompatibleWith("text/csv"))
+                .andExpect(content().string(org.hamcrest.Matchers.startsWith("createdAt,eventType,operation,direction,bucketName,objectKey,actorId,status,sizeBytes,source,message\n")));
     }
 
     @Test

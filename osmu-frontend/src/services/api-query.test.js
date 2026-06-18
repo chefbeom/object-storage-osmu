@@ -12,6 +12,7 @@ import {
   deleteDashboardLayoutPreset,
   deleteObjectShareLink,
   downloadAuditLogsCsv,
+  downloadDataFlowMonitoringCsv,
   exportDashboardLayoutPreset,
   exportDashboardLayoutPresetBundle,
   getAuditLogs,
@@ -125,6 +126,42 @@ test('getDataFlowMonitoring reads admin data flow endpoint', async () => {
     assert.equal(url.searchParams.get('limit'), '25')
     assert.equal(fetchMock.calls[0].options.method, undefined)
     assert.equal(result.data.traffic.uploadedBytes, 1024)
+  } finally {
+    cleanupFetch(fetchMock)
+  }
+})
+
+test('downloadDataFlowMonitoringCsv uses export endpoint and returns CSV blob', async () => {
+  const fetchMock = mockFetch([
+    () => new Response('createdAt,eventType\n2026-06-18T00:00:00Z,UPLOAD\n', {
+      status: 200,
+      headers: { 'Content-Type': 'text/csv' },
+    }),
+  ])
+
+  try {
+    const blob = await downloadDataFlowMonitoringCsv({
+      bucketName: 'media',
+      actorId: 'admin',
+      source: 'rest',
+      operation: 'upload',
+      status: 'SUCCESS',
+      from: '2026-06-18T00:00:00.000Z',
+      to: '2026-06-19T00:00:00.000Z',
+      limit: 25,
+    })
+
+    const url = new URL(fetchMock.calls[0].url)
+    assert.equal(url.pathname, '/api/admin/monitoring/data-flow/export.csv')
+    assert.equal(url.searchParams.get('bucketName'), 'media')
+    assert.equal(url.searchParams.get('actorId'), 'admin')
+    assert.equal(url.searchParams.get('source'), 'rest')
+    assert.equal(url.searchParams.get('operation'), 'upload')
+    assert.equal(url.searchParams.get('status'), 'SUCCESS')
+    assert.equal(url.searchParams.get('from'), '2026-06-18T00:00:00.000Z')
+    assert.equal(url.searchParams.get('to'), '2026-06-19T00:00:00.000Z')
+    assert.equal(url.searchParams.get('limit'), '25')
+    assert.equal(await blob.text(), 'createdAt,eventType\n2026-06-18T00:00:00Z,UPLOAD\n')
   } finally {
     cleanupFetch(fetchMock)
   }

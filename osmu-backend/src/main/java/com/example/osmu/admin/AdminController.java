@@ -262,7 +262,43 @@ public class AdminController {
             @RequestParam(name = "to", required = false) String to,
             @RequestParam(name = "limit", required = false) Integer limit
     ) {
-        DataFlowEventFilter filter = new DataFlowEventFilter(
+        return ApiResponse.of(dataFlowMonitoringService.snapshot(
+                dataFlowFilter(bucketName, actorId, source, operation, status, from, to),
+                normalizeDataFlowLimit(limit)
+        ));
+    }
+
+    @GetMapping(value = "/monitoring/data-flow/export.csv", produces = "text/csv")
+    public ResponseEntity<String> exportDataFlowMonitoringCsv(
+            @RequestParam(name = "bucketName", required = false) String bucketName,
+            @RequestParam(name = "actorId", required = false) String actorId,
+            @RequestParam(name = "source", required = false) String source,
+            @RequestParam(name = "operation", required = false) String operation,
+            @RequestParam(name = "status", required = false) String status,
+            @RequestParam(name = "from", required = false) String from,
+            @RequestParam(name = "to", required = false) String to,
+            @RequestParam(name = "limit", required = false) Integer limit
+    ) {
+        String csv = dataFlowMonitoringService.exportCsv(
+                dataFlowFilter(bucketName, actorId, source, operation, status, from, to),
+                normalizeDataFlowLimit(limit)
+        );
+        return ResponseEntity.ok()
+                .contentType(MediaType.parseMediaType("text/csv"))
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"osmu-data-flow.csv\"")
+                .body(csv);
+    }
+
+    private DataFlowEventFilter dataFlowFilter(
+            String bucketName,
+            String actorId,
+            String source,
+            String operation,
+            String status,
+            String from,
+            String to
+    ) {
+        return new DataFlowEventFilter(
                 bucketName,
                 actorId,
                 source,
@@ -271,7 +307,6 @@ public class AdminController {
                 parseOptionalOffsetDateTime(from, "from"),
                 parseOptionalOffsetDateTime(to, "to")
         );
-        return ApiResponse.of(dataFlowMonitoringService.snapshot(filter, normalizeDataFlowLimit(limit)));
     }
 
     @GetMapping("/usage")

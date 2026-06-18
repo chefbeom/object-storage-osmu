@@ -115,6 +115,30 @@ public class DataFlowMonitoringService {
         );
     }
 
+    public String exportCsv(DataFlowEventFilter filter, int limit) {
+        DataFlowEventFilter safeFilter = filter == null ? DataFlowEventFilter.empty() : filter;
+        int normalizedLimit = normalizeRecentLimit(limit);
+        List<DataFlowEventRecord> events = eventRepository.find(safeFilter, normalizedLimit);
+        StringBuilder csv = new StringBuilder("createdAt,eventType,operation,direction,bucketName,objectKey,actorId,status,sizeBytes,source,message\n");
+        for (DataFlowEventRecord event : events) {
+            appendCsvRow(
+                    csv,
+                    event.createdAt(),
+                    event.eventType(),
+                    event.operation(),
+                    event.direction(),
+                    event.bucketName(),
+                    event.objectKey(),
+                    event.actorId(),
+                    event.status(),
+                    event.sizeBytes(),
+                    event.source(),
+                    event.message()
+            );
+        }
+        return csv.toString();
+    }
+
     private void persistEvent(
             String eventType,
             String operation,
@@ -198,6 +222,21 @@ public class DataFlowMonitoringService {
             return "";
         }
         return message.length() <= 240 ? message : message.substring(0, 240);
+    }
+
+    private void appendCsvRow(StringBuilder csv, Object... values) {
+        for (int index = 0; index < values.length; index += 1) {
+            if (index > 0) {
+                csv.append(',');
+            }
+            csv.append(csvCell(values[index]));
+        }
+        csv.append('\n');
+    }
+
+    private String csvCell(Object value) {
+        String text = value == null ? "" : String.valueOf(value);
+        return "\"" + text.replace("\"", "\"\"").replace("\r", " ").replace("\n", " ") + "\"";
     }
 
     private static final class SummaryAccumulator {

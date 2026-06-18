@@ -246,6 +246,10 @@ async function handleRequest(request, response) {
     sendJson(response, 200, apiData(dataFlowSummary(dataFlowFilters(url))))
     return
   }
+  if (request.method === 'GET' && path === '/admin/monitoring/data-flow/export.csv') {
+    sendCsv(response, 'osmu-data-flow.csv', dataFlowCsv(dataFlowFilters(url)))
+    return
+  }
   if (path.startsWith('/dashboard/layout')) {
     handleDashboardLayout(request, response, path)
     return
@@ -698,6 +702,32 @@ function dataFlowSummary(filters = {}) {
   }
 }
 
+function dataFlowCsv(filters = {}) {
+  const rows = [
+    ['createdAt', 'eventType', 'operation', 'direction', 'bucketName', 'objectKey', 'actorId', 'status', 'sizeBytes', 'source', 'message'],
+    ...filterDataFlowEvents(state.dataFlowEvents || [], filters)
+      .slice(0, normalizeDataFlowLimit(filters.limit))
+      .map((event) => [
+        event.createdAt,
+        event.eventType,
+        event.operation,
+        event.direction,
+        event.bucketName,
+        event.objectKey,
+        event.actorId,
+        event.status,
+        event.sizeBytes,
+        event.source,
+        event.message,
+      ]),
+  ]
+  return rows.map((row) => row.map(csvCell).join(',')).join('\n') + '\n'
+}
+
+function csvCell(value) {
+  return `"${String(value ?? '').replace(/"/g, '""').replace(/\r?\n/g, ' ')}"`
+}
+
 function filterDataFlowEvents(events, filters) {
   const from = parseDataFlowTime(filters.from)
   const to = parseDataFlowTime(filters.to)
@@ -1121,6 +1151,15 @@ function sendJson(response, status, payload) {
   setCorsHeaders(response)
   response.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8' })
   response.end(JSON.stringify(payload))
+}
+
+function sendCsv(response, filename, payload) {
+  setCorsHeaders(response)
+  response.writeHead(200, {
+    'Content-Type': 'text/csv; charset=utf-8',
+    'Content-Disposition': `attachment; filename="${filename}"`,
+  })
+  response.end(payload)
 }
 
 function setCorsHeaders(response) {

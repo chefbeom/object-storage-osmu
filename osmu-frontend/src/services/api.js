@@ -1106,6 +1106,20 @@ export function getDataFlowMonitoring(filters = {}) {
   return request(`/admin/monitoring/data-flow${suffix}`)
 }
 
+export function downloadDataFlowMonitoringCsv(filters = {}) {
+  const query = new URLSearchParams()
+  appendQuery(query, 'bucketName', filters.bucketName)
+  appendQuery(query, 'actorId', filters.actorId)
+  appendQuery(query, 'source', filters.source)
+  appendQuery(query, 'operation', filters.operation)
+  appendQuery(query, 'status', filters.status)
+  appendQuery(query, 'from', filters.from)
+  appendQuery(query, 'to', filters.to)
+  appendQuery(query, 'limit', filters.limit)
+  const suffix = query.toString() ? `?${query.toString()}` : ''
+  return download(`/admin/monitoring/data-flow/export.csv${suffix}`)
+}
+
 export function getDashboardLayout(scope = 'main') {
   return request(`/dashboard/layout?scope=${encodeURIComponent(scope)}`)
 }

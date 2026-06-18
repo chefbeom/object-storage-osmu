@@ -2374,6 +2374,19 @@ Persistence:
 - The response is aggregated from persisted event rows matching the requested filters. The MVP summary scans up to the latest 10,000 matching events.
 - Micrometer counters are still emitted for Prometheus via `osmu.data.flow.operations` and `osmu.data.flow.bytes`.
 
+### GET /api/admin/monitoring/data-flow/export.csv
+
+Exports the same administrator data-flow event window as CSV. `ADMIN` role required.
+
+Query parameters are identical to `GET /api/admin/monitoring/data-flow`: `from`, `to`, `bucketName`, `actorId`, `source`, `operation`, `status`, and `limit`.
+
+Response:
+
+- `Content-Type: text/csv`
+- `Content-Disposition: attachment; filename="osmu-data-flow.csv"`
+- Columns: `createdAt,eventType,operation,direction,bucketName,objectKey,actorId,status,sizeBytes,source,message`
+- Rows are newest-first and capped by `limit` with default `50` and maximum `500`.
+
 ### GET /api/admin/object-share-policy
 
 Global object share link policy를 조회한다. `ADMIN` 권한 필요.

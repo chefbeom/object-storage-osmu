@@ -14,6 +14,11 @@
 - Tag parsing/formatting validation lives in `src/utils/tags.js` and is covered by `npm run test:unit`.
 # OSMU Frontend Design
 
+## Data Flow Export Note
+
+- Data Flow Monitoring panel provides CSV export through `data-flow-export-button`.
+- Export uses the same date, bucket, actor, source, operation, status, and limit filters as the on-screen monitoring panel.
+
 ## Multipart Refresh Note
 
 - `refreshMultipartUpload(bucketName, payload)` API wrapper를 제공한다.

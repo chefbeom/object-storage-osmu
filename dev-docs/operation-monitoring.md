@@ -122,11 +122,12 @@ MVP implementation:
 
 - `GET /api/admin/monitoring/data-flow` exposes an admin-only data flow snapshot.
 - The focused endpoint supports `from`, `to`, `bucketName`, `actorId`, `source`, `operation`, `status`, and `limit` filters.
+- `GET /api/admin/monitoring/data-flow/export.csv` exports the same filtered event window as newest-first CSV for audit handoff or offline analysis.
 - `GET /api/admin/dashboard/summary` includes the same snapshot as `dataFlow` so the dashboard can render it without extra round trips.
 - REST object APIs record list, upload, presigned/multipart completion, download, delete, and multipart abort events.
 - S3-compatible APIs record list, put, multipart complete, copy, get, delete, multi-delete, and multipart abort events.
 - MariaDB mode stores detailed events in `data_flow_events`; in-memory mode keeps events in process for local/demo execution.
-- The admin dashboard shows a compact data I/O widget plus a detailed Data Flow Monitoring panel with traffic, operations, top buckets, recent events, and filters.
+- The admin dashboard shows a compact data I/O widget plus a detailed Data Flow Monitoring panel with traffic, operations, top buckets, recent events, filters, and CSV export.
 
 MVP limitations:
 
