@@ -42,7 +42,7 @@
 - S3 object `HEAD` and `GET` support conditional requests through `If-Match`, `If-None-Match`, `If-Modified-Since`, and `If-Unmodified-Since`, including AWS-documented combined-header precedence cases; Range GET supports one range and `If-Range` fallback to full object when the validator is stale. Multi-range GET is rejected because AWS S3 does not support retrieving multiple ranges in one GET.
 - CopyObject requires `READ` on the source bucket and `WRITE` on the target bucket. Copied object body, content type, tags, and stored checksum metadata are preserved by default, copy result XML can expose stored checksum fields, and `x-amz-copy-source` can target OSMU-retained source versions with `?versionId=...`.
 - CopyObject supports `COPY`/`REPLACE` directives for MVP content type and tag replacement.
-- CopyObject supports source preconditions through ETag and Last-Modified headers, including AWS-documented combined-header precedence cases, and returns `412 PreconditionFailed` when they fail.
+- CopyObject supports source preconditions through ETag and Last-Modified headers, including AWS-documented combined-header precedence cases, plus destination `If-Match`/`If-None-Match` overwrite guards, and returns `412 PreconditionFailed` when they fail.
 - S3 multipart initiate requires OSMU expected-size metadata header in the MVP so quota and session planning remain deterministic.
 - S3 multipart part upload validates optional `Content-MD5`, signed `x-amz-content-sha256`, and one optional `x-amz-checksum-*` value header, and returns the matching checksum response header.
 - S3 multipart complete validates one optional final object `x-amz-checksum-*` value header against the completed object, stores matching checksum metadata, returns the matching checksum response header, and exposes it in complete-result XML.
@@ -56,7 +56,7 @@
 - `x-amz-tagging` and `X-OSMU-Tags` are accepted for upload tags.
 - Multi-object delete uses the same soft-delete behavior as the REST object API and treats missing keys as deleted for S3 compatibility.
 - Object tagging XML uses the same metadata tag store as the REST object API; tag read requires `READ`, tag update/delete requires `WRITE`.
-- Unknown-size S3 multipart initiate parity, full AWS multipart checksum aggregation parity, automatic DNS/proxy provisioning for virtual-hosted-style domains, remaining conditional edge parity, exact CopyObject arbitrary user-metadata/full AWS versioning/remaining conditional edge parity, multipart ETag parity, remaining CreateBucket/DeleteBucket edge error parity beyond name/duplicate/non-empty buckets, and full AWS error behavior parity remain future work. `dev-docs/s3-compatibility.md` tracks the supported/partial/unsupported matrix.
+- Unknown-size S3 multipart initiate parity, full AWS multipart checksum aggregation parity, automatic DNS/proxy provisioning for virtual-hosted-style domains, remaining conditional edge parity, exact CopyObject arbitrary user-metadata/full AWS versioning/remaining conditional edge parity beyond documented source ETag/date and destination ETag guards, multipart ETag parity, remaining CreateBucket/DeleteBucket edge error parity beyond name/duplicate/non-empty buckets, and full AWS error behavior parity remain future work. `dev-docs/s3-compatibility.md` tracks the supported/partial/unsupported matrix.
 # Private Object Storage Platform 기획서 초안
 
 ## 1. 문서 개요

@@ -452,6 +452,7 @@ public class S3ObjectController {
         CopySource copySource = copySource(copySourceHeader);
         AuthenticatedUser user = s3RequestAuthService.currentUser(request, targetBucketName, "WRITE");
         s3RequestAuthService.currentUser(request, copySource.bucketName(), "READ");
+        assertCopyTargetPreconditions(request, targetBucketName, targetObjectKey, user);
         StoredObjectStream sourceObject = copySourceObject(copySource, user);
         String metadataDirective = copyDirective(request.getHeader(AWS_METADATA_DIRECTIVE_HEADER), AWS_METADATA_DIRECTIVE_HEADER);
         String taggingDirective = copyDirective(request.getHeader(AWS_TAGGING_DIRECTIVE_HEADER), AWS_TAGGING_DIRECTIVE_HEADER);
@@ -665,6 +666,28 @@ public class S3ObjectController {
         }
         Instant ifModifiedSince = httpDate(request.getHeader(AWS_COPY_SOURCE_IF_MODIFIED_SINCE_HEADER));
         if (ifModifiedSince != null && !roundedLastModified.isAfter(ifModifiedSince)) {
+            throw copySourcePreconditionFailed();
+        }
+    }
+
+    private void assertCopyTargetPreconditions(
+            HttpServletRequest request,
+            String targetBucketName,
+            String targetObjectKey,
+            AuthenticatedUser user
+    ) {
+        String ifMatch = request.getHeader(HttpHeaders.IF_MATCH);
+        String ifNoneMatch = request.getHeader(HttpHeaders.IF_NONE_MATCH);
+        if ((ifMatch == null || ifMatch.isBlank()) && (ifNoneMatch == null || ifNoneMatch.isBlank())) {
+            return;
+        }
+        StoredObjectRecord targetObject = objectService.activeMetadataForWrite(targetBucketName, targetObjectKey, user).orElse(null);
+        if (ifMatch != null && !ifMatch.isBlank()) {
+            if (targetObject == null || !matchesEtag(ifMatch, targetObject.etag())) {
+                throw copySourcePreconditionFailed();
+            }
+        }
+        if (targetObject != null && ifNoneMatch != null && !ifNoneMatch.isBlank() && matchesEtag(ifNoneMatch, targetObject.etag())) {
             throw copySourcePreconditionFailed();
         }
     }

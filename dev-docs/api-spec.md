@@ -1313,7 +1313,7 @@ Headers:
 - `x-amz-copy-source` copies source object body, content type, tags, and stored checksum metadata into the target object and returns `CopyObjectResult` XML. Stored checksums are emitted as `ChecksumSHA256`, `ChecksumSHA1`, `ChecksumCRC32`, `ChecksumCRC32C`, or `ChecksumCRC64NVME` elements when the selected source metadata has them. `?versionId={versionId}` can copy an OSMU-retained source version body/content type/tags.
 - `x-amz-metadata-directive: COPY|REPLACE` is supported for CopyObject content type handling. `REPLACE` uses the request `Content-Type`.
 - `x-amz-tagging-directive: COPY|REPLACE` is supported for CopyObject tag handling. `REPLACE` uses `x-amz-tagging` or `X-OSMU-Tags`.
-- CopyObject supports source preconditions: `x-amz-copy-source-if-match`, `x-amz-copy-source-if-none-match`, `x-amz-copy-source-if-modified-since`, and `x-amz-copy-source-if-unmodified-since`, including AWS-documented combined-header precedence for ETag/date source conditions. Failed preconditions return `412 PreconditionFailed`.
+- CopyObject supports source preconditions: `x-amz-copy-source-if-match`, `x-amz-copy-source-if-none-match`, `x-amz-copy-source-if-modified-since`, and `x-amz-copy-source-if-unmodified-since`, including AWS-documented combined-header precedence for ETag/date source conditions. It also supports destination `If-Match` and `If-None-Match: *` target overwrite guards. Failed preconditions return `412 PreconditionFailed`.
 - `X-OSMU-Tags: key=value,stage=raw` stores tags using OSMU tag syntax.
 - `x-amz-tagging: key=value&stage=raw` is also accepted and converted to OSMU tag syntax.
 - `PUT` returns an MD5-based `ETag` for prototype compatibility.
@@ -1458,7 +1458,7 @@ Limitations:
 - S3 multipart upload path is MVP-level and currently requires OSMU expected-size headers at initiate time.
 - S3 multipart uploads listing is backed by OSMU active multipart sessions, not a raw MinIO bucket scan.
 - Virtual-hosted-style routing currently extracts the bucket from the left side of a configured domain suffix. Production deployments must configure DNS/proxy hosts such as `{bucket}.storage.example.com` and set `osmu.s3.virtual-hosted-style.domain-suffixes=storage.example.com`.
-- Remaining conditional request edge parity beyond documented `If-Match`/`If-Unmodified-Since`, `If-None-Match`/`If-Modified-Since`, and CopyObject source ETag/date combinations, CopyObject arbitrary user-metadata/full AWS versioning/remaining conditional edge parity, remaining CreateBucket/DeleteBucket edge error parity beyond name/duplicate/non-empty buckets, full AWS multipart checksum aggregation parity, full multipart ETag parity, and full AWS error behavior parity are not implemented yet. See `s3-compatibility.md` for the supported/partial/unsupported matrix.
+- Remaining conditional request edge parity beyond documented `If-Match`/`If-Unmodified-Since`, `If-None-Match`/`If-Modified-Since`, CopyObject source ETag/date combinations, and CopyObject destination ETag guards, CopyObject arbitrary user-metadata/full AWS versioning/remaining conditional edge parity, remaining CreateBucket/DeleteBucket edge error parity beyond name/duplicate/non-empty buckets, full AWS multipart checksum aggregation parity, full multipart ETag parity, and full AWS error behavior parity are not implemented yet. See `s3-compatibility.md` for the supported/partial/unsupported matrix.
 
 ### GET /api/buckets/{bucketName}/permissions
 

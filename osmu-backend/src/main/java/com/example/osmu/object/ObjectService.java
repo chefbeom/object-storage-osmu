@@ -20,6 +20,7 @@ import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.TreeMap;
 import java.util.UUID;
 import java.util.regex.Pattern;
@@ -244,6 +245,21 @@ public class ObjectService {
         }
         StoredObjectRecord actual = storageAdapter.statObject(normalizedBucketName, normalizedKey).orElse(null);
         return ObjectMetadataDetail.of(indexed, actual, metadataSyncStatus(indexed, actual));
+    }
+
+    public Optional<StoredObjectRecord> activeMetadataForWrite(String bucketName, String key, AuthenticatedUser user) {
+        bucketService.assertCanWrite(bucketName, user);
+        String normalizedBucketName = bucketService.get(bucketName, user).name();
+        String normalizedKey = normalizeRequiredKey(key);
+        StoredObjectRecord actual = storageAdapter.statObject(normalizedBucketName, normalizedKey).orElse(null);
+        if (actual == null) {
+            return Optional.empty();
+        }
+        StoredObjectRecord indexed = objectMetadataRepository.findByKey(normalizedBucketName, normalizedKey).orElse(null);
+        if (indexed != null && indexed.isDeleted()) {
+            return Optional.empty();
+        }
+        return Optional.of(indexedMetadataOrActual(normalizedBucketName, normalizedKey, actual));
     }
 
     public List<ObjectVersionRecord> listVersions(String bucketName, String key, AuthenticatedUser user) {

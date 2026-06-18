@@ -1,5 +1,39 @@
 # Worklog - main
 
+### 2026-06-18 - S3 CopyObject destination preconditions
+
+- Work time:
+  - End: 2026-06-18 17:59:51 +09:00
+- User command:
+  - Active goal: continue development from `dev-docs`.
+- Request analysis:
+  - `dev-docs` still tracked CopyObject remaining conditional edge parity.
+  - AWS CopyObject documents destination `If-Match` and `If-None-Match` guards in addition to source preconditions.
+- Execution:
+  - Added write-scope target metadata lookup for CopyObject.
+  - Added destination `If-Match` and `If-None-Match` precondition checks before opening the source stream.
+  - Added regression coverage for missing/existing target overwrite guard cases.
+  - Updated S3 docs, test case, and feature inventory.
+- Modified files:
+  - `osmu-backend/src/main/java/com/example/osmu/object/ObjectService.java`
+  - `osmu-backend/src/main/java/com/example/osmu/object/S3ObjectController.java`
+  - `osmu-backend/src/test/java/com/example/osmu/object/S3ObjectControllerTest.java`
+  - `dev-docs/PRODUCT_REQUIREMENTS.md`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/backend-design.md`
+  - `dev-docs/feature-inventory.md`
+  - `dev-docs/s3-compatibility.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/worklog/main/worklog-main.md`
+- Verification:
+  - `gradle test --tests com.example.osmu.object.S3ObjectControllerTest.accessKeyCanCopyObjectFromSourceVersionId`: passed.
+  - `gradle test`: passed.
+  - `git diff --check`: passed with LF/CRLF warnings only.
+- Result:
+  - CopyObject target overwrite guards now match documented AWS behavior for `If-Match`/`If-None-Match`.
+- Follow-up:
+  - Remaining CopyObject gaps are arbitrary user metadata, full AWS versioning parity, and broader conditional/AWS edge behavior.
+
 ### 2026-06-18 - S3 CopyObject source conditional precedence
 
 - Work time:

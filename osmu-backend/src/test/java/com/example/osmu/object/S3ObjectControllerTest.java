@@ -267,6 +267,46 @@ class S3ObjectControllerTest {
                         .header("x-amz-copy-source-if-modified-since", pastHttpDate))
                 .andExpect(status().isPreconditionFailed())
                 .andExpect(content().string(containsString("<Code>PreconditionFailed</Code>")));
+
+        mockMvc.perform(put("/api/s3/{bucketName}/docs/existing-target.txt", bucketName)
+                        .header("X-OSMU-Access-Key", credentials.accessKey())
+                        .header("X-OSMU-Secret-Key", credentials.secretKey())
+                        .contentType(MediaType.TEXT_PLAIN)
+                        .content("target old"))
+                .andExpect(status().isOk());
+        String targetEtag = "\"%s\"".formatted(md5Hex("target old"));
+
+        mockMvc.perform(put("/api/s3/{bucketName}/docs/copy-if-none-match-absent.txt", bucketName)
+                        .header("X-OSMU-Access-Key", credentials.accessKey())
+                        .header("X-OSMU-Secret-Key", credentials.secretKey())
+                        .header("x-amz-copy-source", "/" + bucketName + "/docs/source.txt")
+                        .header(HttpHeaders.IF_NONE_MATCH, "*"))
+                .andExpect(status().isOk())
+                .andExpect(content().string(containsString("<CopyObjectResult")));
+
+        mockMvc.perform(put("/api/s3/{bucketName}/docs/existing-target.txt", bucketName)
+                        .header("X-OSMU-Access-Key", credentials.accessKey())
+                        .header("X-OSMU-Secret-Key", credentials.secretKey())
+                        .header("x-amz-copy-source", "/" + bucketName + "/docs/source.txt")
+                        .header(HttpHeaders.IF_NONE_MATCH, "*"))
+                .andExpect(status().isPreconditionFailed())
+                .andExpect(content().string(containsString("<Code>PreconditionFailed</Code>")));
+
+        mockMvc.perform(put("/api/s3/{bucketName}/docs/existing-target.txt", bucketName)
+                        .header("X-OSMU-Access-Key", credentials.accessKey())
+                        .header("X-OSMU-Secret-Key", credentials.secretKey())
+                        .header("x-amz-copy-source", "/" + bucketName + "/docs/source.txt")
+                        .header(HttpHeaders.IF_MATCH, targetEtag))
+                .andExpect(status().isOk())
+                .andExpect(content().string(containsString("<CopyObjectResult")));
+
+        mockMvc.perform(put("/api/s3/{bucketName}/docs/copy-if-match-missing.txt", bucketName)
+                        .header("X-OSMU-Access-Key", credentials.accessKey())
+                        .header("X-OSMU-Secret-Key", credentials.secretKey())
+                        .header("x-amz-copy-source", "/" + bucketName + "/docs/source.txt")
+                        .header(HttpHeaders.IF_MATCH, targetEtag))
+                .andExpect(status().isPreconditionFailed())
+                .andExpect(content().string(containsString("<Code>PreconditionFailed</Code>")));
     }
 
     @Test
