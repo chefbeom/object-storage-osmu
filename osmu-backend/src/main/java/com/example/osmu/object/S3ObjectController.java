@@ -315,7 +315,9 @@ public class S3ObjectController {
                         optionalLongHeader(request, OSMU_MULTIPART_SIZE_HEADER, AWS_META_OSMU_SIZE_HEADER),
                         optionalLongHeader(request, OSMU_MULTIPART_PART_SIZE_HEADER, AWS_META_OSMU_PART_SIZE_HEADER),
                         optionalIntHeader(request, OSMU_MULTIPART_EXPIRES_HEADER),
-                        tags(request)
+                        tags(request),
+                        checksumAlgorithm,
+                        checksumType
                 ),
                 user
         );

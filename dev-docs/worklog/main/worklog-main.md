@@ -15871,3 +15871,32 @@ feat/bucket-management
   - `192.168.35.88` 대상 server-dry-run/apply 실증.
 - 추가적으로 사용된 skill이나 plugin:
   - 별도 skill/plugin 없음.
+### 2026-06-18 - S3 multipart checksum negotiation persistence
+
+- 작업 시간:
+  - 시작: 2026-06-18 KST
+  - 종료: 2026-06-18 KST
+- 사용자 명령:
+  - active goal `dev-docs` 기준으로 다음 구현 진행.
+- 요청 분석:
+  - S3 multipart initiate가 `x-amz-checksum-algorithm`/`x-amz-checksum-type`을 검증하고 echo했지만, session에 저장하지 않아 CompleteMultipartUpload 단계에서 initiate-time negotiation과 final/per-part checksum shape를 비교할 수 없었다.
+  - AWS 문서상 UploadPart checksum algorithm은 CreateMultipartUpload 요청 값과 일치해야 하고, CompleteMultipartUpload의 `x-amz-checksum-type`이 initiate 때 지정한 checksum type과 맞지 않으면 `BadDigest`가 된다.
+- 실행:
+  - `MultipartUploadCreateRequest`에 `checksumAlgorithm`, `checksumType` 필드를 추가하고 기존 6인자 생성자 호환성을 유지했다.
+  - `PresignedUploadSession`에 `checksumAlgorithm`, `checksumType` 필드를 추가하고 기존 생성자 호환성을 유지했다.
+  - S3 multipart initiate에서 검증한 checksum negotiation 값을 `ObjectService.createS3MultipartUpload` 경로로 전달해 session에 저장한다.
+  - in-memory/MariaDB upload session repository가 status 변경 때 checksum negotiation metadata를 보존하도록 수정했다.
+  - MariaDB schema와 Flyway `V45__presigned_upload_session_checksum_negotiation.sql`을 추가했다.
+  - CompleteMultipartUpload에서 저장된 `FULL_OBJECT` negotiation은 final object checksum algorithm과 비교하고, 저장된 `COMPOSITE` negotiation은 per-part checksum algorithm/type shape와 비교한다. 불일치 시 storage complete 전에 `BAD_DIGEST`를 반환한다.
+- 테스트:
+  - `ObjectServiceMultipartRefreshTest.s3MultipartChecksumNegotiationPersistsAndRequiresMatchingCompositeAlgorithm`
+  - `ObjectServiceMultipartRefreshTest.s3MultipartChecksumNegotiationRejectsMismatchedCompositeAlgorithm`
+  - `ObjectServiceMultipartRefreshTest.s3MultipartChecksumNegotiationRejectsMismatchedFullObjectAlgorithm`
+  - `S3ObjectControllerMultipartTest.createMultipartUploadEchoesChecksumAlgorithmAndType`
+- 검증:
+  - `$env:JAVA_HOME='C:\jdk-17'; .\gradlew.bat test --no-daemon --tests com.example.osmu.object.ObjectServiceMultipartRefreshTest --tests com.example.osmu.object.S3ObjectControllerMultipartTest`: 통과.
+- 문서:
+  - `PRODUCT_REQUIREMENTS.md`, `api-spec.md`, `backend-design.md`, `s3-compatibility.md`, `test-cases.md`, `feature-inventory.md`, `README.md`에 checksum negotiation persistence와 남은 UploadPart auto checksum persistence gap을 반영했다.
+- 후속:
+  - UploadPart가 initiate negotiation algorithm을 자동 계산/저장하는 AWS parity는 아직 남아 있다.
+  - CompleteMultipartUpload response의 checksum type/algorithm propagation을 AWS와 더 정확히 맞추는 작업이 남아 있다.

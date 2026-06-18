@@ -34,7 +34,7 @@ OSMU는 기업 내부에서 대용량 파일, 이미지, 영상, 로그, 비정�
 | 기획/요구사항/문서 | 70% | 목표, API, DB, 배포, 보안, 테스트 문서가 있음 |
 | 프론트엔드 콘솔 | 55% | 로그인, 페이지 분리, 대시보드 palette, data-flow monitoring 패널, operations readiness 요약/remediation/evidence plan/invocation/invocation unblock/dispatch preflight/workflow run id/artifact collection/artifact import/finalizer/evidence handoff action 표시, 관리자 작업 실패 remediation UX, admin/developer 화면 뼈대가 있음 |
 | 백엔드 REST API | 50% | auth, bucket, object, access key, admin, dashboard, data-flow monitoring, storage expansion, restore drill evidence history, operations readiness dashboard evidence/remediation/evidence plan/invocation/invocation unblock/dispatch preflight/workflow run id/artifact collection/artifact import/finalizer/evidence handoff API가 있음 |
-| MariaDB metadata | 35% | Flyway migration 44개와 repository 구현이 있음 |
+| MariaDB metadata | 35% | Flyway migration 45개와 repository 구현이 있음 |
 | MinIO/S3 호환 | 35% | S3 API 일부, SigV4, MinIO adapter, smoke script가 있음 |
 | Docker/local demo | 90% | Docker/MariaDB/MinIO/backend/frontend durable gate, Browser E2E, Docker integration smoke, Dockerized real S3 client smoke가 `docker-mc` 기준 통과 |
 | Kubernetes/Helm | 75% | Draft manifests/Helm chart, ServiceAccount hardening, storage expansion RBAC, backup CronJobs, backup drill evidence script, restore namespace preparation helper, external DR bucket bootstrap, external DR bucket immutability preflight, bounded and hardened external DR artifact transfer helper, backup artifact preflight helper, isolated restore drill helper, DR drill orchestration wrapper, restore smoke helper, DR evidence API request helper, Kubernetes DR finalization wrapper, Kubernetes DR Finalizer CI workflow, storage expansion finalization wrapper, Storage Expansion Finalizer CI workflow, dedicated Kubernetes HA/DR Readiness CI workflow, Operations Readiness Finalizer CI workflow, Operations Readiness Artifact Finalizer CI workflow, operations readiness artifact gate, PDB, topology spread, and live HA/DR evidence script exist; actual cluster verification is still needed |
@@ -66,7 +66,7 @@ MVP 데모 기준 완료율은 약 90~95%입니다.
 - Prometheus observability draft check
 - monitoring artifacts draft check
 - Prometheus Operator draft check
-- Flyway migration version check: 44 migrations
+- Flyway migration version check: 45 migrations
 - frontend unit tests: 69 passed
 - frontend production build
 - backend Gradle tests
@@ -249,16 +249,17 @@ MVP 데모 기준 완료율은 약 90~95%입니다.
 - S3 multipart initiate unsupported ACL/Object Lock/SSE/storage class/redirect/requester-pays control rejection
 - S3 multipart complete `x-amz-checksum-type` FULL_OBJECT/COMPOSITE validation and response XML
 - S3 multipart SHA1/SHA256/CRC32/CRC32C composite checksum aggregation from per-part complete XML
+- S3 multipart initiate checksum negotiation persistence plus complete-time algorithm/type mismatch `BadDigest` guards
 
 남은 것:
 
-- full AWS multipart checksum negotiation parity beyond supported initiate checksum algorithm/type echo, SHA1/SHA256/CRC32/CRC32C composite checksums, and explicit checksum-type validation
+- full AWS multipart checksum negotiation parity beyond persisted initiate algorithm/type and complete-time matching guards, especially UploadPart auto checksum persistence and exact AWS response propagation
 
 ### 4.7 MariaDB metadata
 
 구현된 것:
 
-- Flyway migration V1~V44
+- Flyway migration V1~V45
 - bucket/object/access key/audit/quota/dashboard/storage expansion/restore drill evidence repository
 - in-memory repository와 MariaDB repository 병행 구조
 - object metadata drift reconciliation을 위한 bucket 단위 metadata scan과 sync summary

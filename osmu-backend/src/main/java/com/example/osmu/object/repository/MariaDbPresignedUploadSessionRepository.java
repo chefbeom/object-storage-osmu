@@ -42,6 +42,7 @@ public class MariaDbPresignedUploadSessionRepository implements PresignedUploadS
         ensureSchema();
         String sql = """
                 SELECT upload_id, user_id, bucket_name, object_key, tags, upload_mode, storage_upload_id,
+                       checksum_algorithm, checksum_type,
                        expected_size_bytes, part_size_bytes, part_count, status, previous_size_bytes,
                        previous_exists, expires_at, created_at, completed_at
                 FROM presigned_upload_sessions
@@ -72,6 +73,7 @@ public class MariaDbPresignedUploadSessionRepository implements PresignedUploadS
         ensureSchema();
         String sql = """
                 SELECT upload_id, user_id, bucket_name, object_key, tags, upload_mode, storage_upload_id,
+                       checksum_algorithm, checksum_type,
                        expected_size_bytes, part_size_bytes, part_count, status, previous_size_bytes,
                        previous_exists, expires_at, created_at, completed_at
                 FROM presigned_upload_sessions
@@ -115,9 +117,10 @@ public class MariaDbPresignedUploadSessionRepository implements PresignedUploadS
         String sql = """
                 INSERT INTO presigned_upload_sessions
                     (upload_id, user_id, bucket_name, object_key, tags, upload_mode, storage_upload_id,
+                     checksum_algorithm, checksum_type,
                      expected_size_bytes, part_size_bytes, part_count, status, previous_size_bytes,
                      previous_exists, expires_at, created_at, completed_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """;
         try (Connection connection = connect();
              PreparedStatement statement = connection.prepareStatement(sql)) {
@@ -128,15 +131,17 @@ public class MariaDbPresignedUploadSessionRepository implements PresignedUploadS
             statement.setString(5, session.tags());
             statement.setString(6, session.uploadMode());
             statement.setString(7, session.storageUploadId());
-            statement.setLong(8, session.expectedSizeBytes());
-            statement.setLong(9, session.partSizeBytes());
-            statement.setInt(10, session.partCount());
-            statement.setString(11, session.status());
-            statement.setLong(12, session.previousSizeBytes());
-            statement.setBoolean(13, session.previousExists());
-            statement.setTimestamp(14, Timestamp.from(session.expiresAt().toInstant()));
-            statement.setTimestamp(15, Timestamp.from(session.createdAt().toInstant()));
-            statement.setTimestamp(16, timestampOrNull(session.completedAt()));
+            statement.setString(8, session.checksumAlgorithm());
+            statement.setString(9, session.checksumType());
+            statement.setLong(10, session.expectedSizeBytes());
+            statement.setLong(11, session.partSizeBytes());
+            statement.setInt(12, session.partCount());
+            statement.setString(13, session.status());
+            statement.setLong(14, session.previousSizeBytes());
+            statement.setBoolean(15, session.previousExists());
+            statement.setTimestamp(16, Timestamp.from(session.expiresAt().toInstant()));
+            statement.setTimestamp(17, Timestamp.from(session.createdAt().toInstant()));
+            statement.setTimestamp(18, timestampOrNull(session.completedAt()));
             statement.executeUpdate();
             return session;
         } catch (SQLException exception) {
@@ -193,6 +198,7 @@ public class MariaDbPresignedUploadSessionRepository implements PresignedUploadS
         ensureSchema();
         String sql = """
                 SELECT upload_id, user_id, bucket_name, object_key, tags, upload_mode, storage_upload_id,
+                       checksum_algorithm, checksum_type,
                        expected_size_bytes, part_size_bytes, part_count, status, previous_size_bytes,
                        previous_exists, expires_at, created_at, completed_at
                 FROM presigned_upload_sessions
@@ -245,6 +251,8 @@ public class MariaDbPresignedUploadSessionRepository implements PresignedUploadS
                     tags TEXT NULL,
                     upload_mode VARCHAR(32) NOT NULL DEFAULT 'PRESIGNED_PUT',
                     storage_upload_id TEXT NULL,
+                    checksum_algorithm VARCHAR(32) NOT NULL DEFAULT '',
+                    checksum_type VARCHAR(32) NOT NULL DEFAULT '',
                     expected_size_bytes BIGINT NOT NULL DEFAULT 0,
                     part_size_bytes BIGINT NOT NULL DEFAULT 0,
                     part_count INT NOT NULL DEFAULT 0,
@@ -262,6 +270,8 @@ public class MariaDbPresignedUploadSessionRepository implements PresignedUploadS
         try (Connection connection = connect();
              PreparedStatement statement = connection.prepareStatement(sql)) {
             statement.executeUpdate();
+            executeUpdate(connection, "ALTER TABLE presigned_upload_sessions ADD COLUMN IF NOT EXISTS checksum_algorithm VARCHAR(32) NOT NULL DEFAULT '' AFTER storage_upload_id");
+            executeUpdate(connection, "ALTER TABLE presigned_upload_sessions ADD COLUMN IF NOT EXISTS checksum_type VARCHAR(32) NOT NULL DEFAULT '' AFTER checksum_algorithm");
             schemaReady = true;
         } catch (SQLException exception) {
             throw databaseException(exception);
@@ -270,6 +280,12 @@ public class MariaDbPresignedUploadSessionRepository implements PresignedUploadS
 
     private Connection connect() throws SQLException {
         return DriverManager.getConnection(url, username, password);
+    }
+
+    private void executeUpdate(Connection connection, String sql) throws SQLException {
+        try (PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.executeUpdate();
+        }
     }
 
     private PresignedUploadSession mapRow(ResultSet resultSet) throws SQLException {
@@ -281,6 +297,8 @@ public class MariaDbPresignedUploadSessionRepository implements PresignedUploadS
                 resultSet.getString("tags"),
                 resultSet.getString("upload_mode"),
                 resultSet.getString("storage_upload_id"),
+                resultSet.getString("checksum_algorithm"),
+                resultSet.getString("checksum_type"),
                 resultSet.getLong("expected_size_bytes"),
                 resultSet.getLong("part_size_bytes"),
                 resultSet.getInt("part_count"),

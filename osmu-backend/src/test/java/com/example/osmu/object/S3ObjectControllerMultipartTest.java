@@ -125,7 +125,9 @@ class S3ObjectControllerMultipartTest {
                 eq("bucket"),
                 argThat(body -> body.key().equals("videos/checksum.mp4")
                         && body.sizeBytes() == null
-                        && body.partSizeBytes() == null),
+                        && body.partSizeBytes() == null
+                        && body.checksumAlgorithm().equals("CRC32C")
+                        && body.checksumType().equals("COMPOSITE")),
                 eq(user)
         )).thenReturn(new MultipartUploadCreateResponse(
                 "upload-checksum",

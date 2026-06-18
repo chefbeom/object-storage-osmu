@@ -378,6 +378,172 @@ class ObjectServiceMultipartRefreshTest {
     }
 
     @Test
+    void s3MultipartChecksumNegotiationPersistsAndRequiresMatchingCompositeAlgorithm() throws Exception {
+        BucketRecord bucket = new BucketRecord(1L, "bucket", "USER", 1L, 1000000000L, 0L, 0L, OffsetDateTime.now());
+        StoredObjectRecord uploaded = new StoredObjectRecord(
+                "videos/negotiated-crc32c.mp4",
+                11L,
+                "video/mp4",
+                OffsetDateTime.now(),
+                Map.of()
+        );
+        String partOneChecksum = crcChecksumBase64("CRC32C", "hello ");
+        String partTwoChecksum = crcChecksumBase64("CRC32C", "world");
+        String compositeChecksum = compositeCrcChecksumBase64("CRC32C", partOneChecksum, partTwoChecksum);
+        when(bucketService.get("bucket", user)).thenReturn(bucket);
+        when(storageAdapter.statObject("bucket", "videos/negotiated-crc32c.mp4")).thenReturn(Optional.empty());
+        when(storageAdapter.createMultipartUpload(
+                eq("bucket"),
+                eq("videos/negotiated-crc32c.mp4"),
+                eq("video/mp4"),
+                eq(900),
+                anyList()
+        )).thenAnswer(invocation -> storageUpload("storage-upload-negotiated-crc32c", invocation.getArgument(4), 900, "create"));
+        when(storageAdapter.completeMultipartUpload(
+                eq("bucket"),
+                eq("videos/negotiated-crc32c.mp4"),
+                eq("storage-upload-negotiated-crc32c"),
+                anyList()
+        )).thenReturn(uploaded);
+        givenUploadedParts(
+                "bucket",
+                "videos/negotiated-crc32c.mp4",
+                "storage-upload-negotiated-crc32c",
+                new MultipartUploadUploadedPart(1, "\"etag-1\"", 6L),
+                new MultipartUploadUploadedPart(2, "\"etag-2\"", 5L)
+        );
+
+        MultipartUploadCreateResponse created = objectService.createS3MultipartUpload(
+                "bucket",
+                new MultipartUploadCreateRequest(
+                        "videos/negotiated-crc32c.mp4",
+                        "video/mp4",
+                        11L,
+                        6L,
+                        900,
+                        "",
+                        "CRC32C",
+                        "COMPOSITE"
+                ),
+                user
+        );
+        StoredObjectRecord result = objectService.completeMultipartUpload(
+                "bucket",
+                new MultipartUploadCompleteRequest(
+                        created.uploadId(),
+                        "videos/negotiated-crc32c.mp4",
+                        List.of(
+                                new CompletedMultipartUploadPart(1, "\"etag-1\"", Map.of("x-amz-checksum-crc32c", partOneChecksum)),
+                                new CompletedMultipartUploadPart(2, "\"etag-2\"", Map.of("x-amz-checksum-crc32c", partTwoChecksum))
+                        )
+                ),
+                user
+        );
+
+        PresignedUploadSession session = uploadSessionRepository.findByUploadId(created.uploadId()).orElseThrow();
+        assertThat(session.checksumAlgorithm()).isEqualTo("CRC32C");
+        assertThat(session.checksumType()).isEqualTo("COMPOSITE");
+        assertThat(result.checksums()).containsEntry("x-amz-checksum-crc32c", compositeChecksum);
+    }
+
+    @Test
+    void s3MultipartChecksumNegotiationRejectsMismatchedCompositeAlgorithm() throws Exception {
+        BucketRecord bucket = new BucketRecord(1L, "bucket", "USER", 1L, 1000000000L, 0L, 0L, OffsetDateTime.now());
+        String partChecksum = checksumBase64("SHA-256", "hello");
+        when(bucketService.get("bucket", user)).thenReturn(bucket);
+        when(storageAdapter.statObject("bucket", "videos/negotiated-mismatch.mp4")).thenReturn(Optional.empty());
+        when(storageAdapter.createMultipartUpload(
+                eq("bucket"),
+                eq("videos/negotiated-mismatch.mp4"),
+                eq("video/mp4"),
+                eq(900),
+                anyList()
+        )).thenAnswer(invocation -> storageUpload("storage-upload-negotiated-mismatch", invocation.getArgument(4), 900, "create"));
+
+        MultipartUploadCreateResponse created = objectService.createS3MultipartUpload(
+                "bucket",
+                new MultipartUploadCreateRequest(
+                        "videos/negotiated-mismatch.mp4",
+                        "video/mp4",
+                        5L,
+                        5L,
+                        900,
+                        "",
+                        "CRC32C",
+                        "COMPOSITE"
+                ),
+                user
+        );
+
+        assertThatThrownBy(() -> objectService.completeMultipartUpload(
+                "bucket",
+                new MultipartUploadCompleteRequest(
+                        created.uploadId(),
+                        "videos/negotiated-mismatch.mp4",
+                        List.of(new CompletedMultipartUploadPart(1, "\"etag-1\"", Map.of("x-amz-checksum-sha256", partChecksum)))
+                ),
+                user
+        )).isInstanceOfSatisfying(ApiException.class, exception ->
+                assertThat(exception.code()).isEqualTo(ApiErrorCode.BAD_DIGEST));
+
+        verify(storageAdapter, never()).completeMultipartUpload(
+                eq("bucket"),
+                eq("videos/negotiated-mismatch.mp4"),
+                eq("storage-upload-negotiated-mismatch"),
+                anyList()
+        );
+    }
+
+    @Test
+    void s3MultipartChecksumNegotiationRejectsMismatchedFullObjectAlgorithm() throws Exception {
+        BucketRecord bucket = new BucketRecord(1L, "bucket", "USER", 1L, 1000000000L, 0L, 0L, OffsetDateTime.now());
+        String finalChecksum = checksumBase64("SHA-256", "hello");
+        when(bucketService.get("bucket", user)).thenReturn(bucket);
+        when(storageAdapter.statObject("bucket", "videos/negotiated-full-mismatch.mp4")).thenReturn(Optional.empty());
+        when(storageAdapter.createMultipartUpload(
+                eq("bucket"),
+                eq("videos/negotiated-full-mismatch.mp4"),
+                eq("video/mp4"),
+                eq(900),
+                anyList()
+        )).thenAnswer(invocation -> storageUpload("storage-upload-negotiated-full-mismatch", invocation.getArgument(4), 900, "create"));
+
+        MultipartUploadCreateResponse created = objectService.createS3MultipartUpload(
+                "bucket",
+                new MultipartUploadCreateRequest(
+                        "videos/negotiated-full-mismatch.mp4",
+                        "video/mp4",
+                        5L,
+                        5L,
+                        900,
+                        "",
+                        "CRC64NVME",
+                        "FULL_OBJECT"
+                ),
+                user
+        );
+
+        assertThatThrownBy(() -> objectService.completeMultipartUpload(
+                "bucket",
+                new MultipartUploadCompleteRequest(
+                        created.uploadId(),
+                        "videos/negotiated-full-mismatch.mp4",
+                        List.of(new CompletedMultipartUploadPart(1, "\"etag-1\""))
+                ),
+                user,
+                Map.of("x-amz-checksum-sha256", finalChecksum)
+        )).isInstanceOfSatisfying(ApiException.class, exception ->
+                assertThat(exception.code()).isEqualTo(ApiErrorCode.BAD_DIGEST));
+
+        verify(storageAdapter, never()).completeMultipartUpload(
+                eq("bucket"),
+                eq("videos/negotiated-full-mismatch.mp4"),
+                eq("storage-upload-negotiated-full-mismatch"),
+                anyList()
+        );
+    }
+
+    @Test
     void completeMultipartUploadStoresValidatedCrc64NvmeChecksumMetadata() throws Exception {
         BucketRecord bucket = new BucketRecord(1L, "bucket", "USER", 1L, 1000000000L, 0L, 0L, OffsetDateTime.now());
         StoredObjectRecord uploaded = new StoredObjectRecord(

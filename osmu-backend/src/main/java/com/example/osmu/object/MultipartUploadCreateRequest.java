@@ -11,6 +11,18 @@ public record MultipartUploadCreateRequest(
         @Positive Long sizeBytes,
         @Positive Long partSizeBytes,
         @Min(60) @Max(604800) Integer expiresInSeconds,
-        String tags
+        String tags,
+        String checksumAlgorithm,
+        String checksumType
 ) {
+    public MultipartUploadCreateRequest(
+            String key,
+            String contentType,
+            Long sizeBytes,
+            Long partSizeBytes,
+            Integer expiresInSeconds,
+            String tags
+    ) {
+        this(key, contentType, sizeBytes, partSizeBytes, expiresInSeconds, tags, "", "");
+    }
 }

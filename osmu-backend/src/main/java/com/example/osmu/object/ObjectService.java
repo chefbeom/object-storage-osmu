@@ -517,6 +517,9 @@ public class ObjectService {
         int partCount = hasExpectedSize ? multipartPartCount(sizeBytes, partSizeBytes) : 0;
         StoredObjectRecord previous = storageAdapter.statObject(normalizedBucketName, normalizedKey).orElse(null);
         String tags = normalizeTags(request.tags());
+        String checksumAlgorithm = normalizeChecksumNegotiation(request.checksumAlgorithm());
+        String checksumType = normalizeChecksumNegotiation(request.checksumType());
+        validateMultipartChecksumNegotiationRequest(checksumAlgorithm, checksumType);
 
         if (hasExpectedSize) {
             bucketService.assertObjectChangeAllowed(normalizedBucketName, sizeBytes, 1L);
@@ -543,6 +546,8 @@ public class ObjectService {
                     tags,
                     UPLOAD_MODE_MULTIPART,
                     storageUpload.storageUploadId(),
+                    checksumAlgorithm,
+                    checksumType,
                     sizeBytes,
                     partSizeBytes,
                     partCount,
@@ -810,6 +815,7 @@ public class ObjectService {
         List<CompletedMultipartUploadPart> completedParts = normalizeCompletedParts(request.parts());
         Map<String, String> requestedChecksums = normalizeChecksums(checksums);
         validateChecksumMetadata(requestedChecksums);
+        validateMultipartChecksumNegotiation(session, requestedChecksums, completedParts);
         Map<String, String> metadataChecksums = requestedChecksums.isEmpty()
                 ? compositeMultipartChecksums(completedParts)
                 : requestedChecksums;
@@ -1034,6 +1040,124 @@ public class ObjectService {
         if (!MessageDigest.isEqual(expected, actual)) {
             throw new ApiException(ApiErrorCode.BAD_DIGEST, checksum.getKey() + " does not match completed multipart object body.");
         }
+    }
+
+    private String normalizeChecksumNegotiation(String value) {
+        return value == null ? "" : value.trim().toUpperCase(java.util.Locale.ROOT);
+    }
+
+    private void validateMultipartChecksumNegotiationRequest(String checksumAlgorithm, String checksumType) {
+        if (!checksumAlgorithm.isBlank()
+                && !"SHA256".equals(checksumAlgorithm)
+                && !"SHA1".equals(checksumAlgorithm)
+                && !"CRC32".equals(checksumAlgorithm)
+                && !"CRC32C".equals(checksumAlgorithm)
+                && !"CRC64NVME".equals(checksumAlgorithm)) {
+            throw new ApiException(ApiErrorCode.VALIDATION_ERROR, "checksumAlgorithm is not supported.");
+        }
+        if (!checksumType.isBlank()
+                && !"COMPOSITE".equals(checksumType)
+                && !"FULL_OBJECT".equals(checksumType)) {
+            throw new ApiException(ApiErrorCode.VALIDATION_ERROR, "checksumType must be COMPOSITE or FULL_OBJECT.");
+        }
+        if ("COMPOSITE".equals(checksumType) && "CRC64NVME".equals(checksumAlgorithm)) {
+            throw new ApiException(ApiErrorCode.VALIDATION_ERROR, "checksumType COMPOSITE is not supported for CRC64NVME.");
+        }
+        if ("FULL_OBJECT".equals(checksumType)
+                && ("SHA1".equals(checksumAlgorithm) || "SHA256".equals(checksumAlgorithm))) {
+            throw new ApiException(ApiErrorCode.VALIDATION_ERROR, "checksumType FULL_OBJECT requires a CRC checksum algorithm.");
+        }
+    }
+
+    private void validateMultipartChecksumNegotiation(
+            PresignedUploadSession session,
+            Map<String, String> requestedChecksums,
+            List<CompletedMultipartUploadPart> completedParts
+    ) {
+        String checksumAlgorithm = normalizeChecksumNegotiation(session.checksumAlgorithm());
+        String checksumType = normalizeChecksumNegotiation(session.checksumType());
+        if (checksumAlgorithm.isBlank() && checksumType.isBlank()) {
+            return;
+        }
+        if ("FULL_OBJECT".equals(checksumType)) {
+            if (requestedChecksums.isEmpty()) {
+                throw new ApiException(ApiErrorCode.BAD_DIGEST, "Complete multipart upload must include the initiated full-object checksum.");
+            }
+            validateChecksumAlgorithmMatchesInitiate(
+                    checksumAlgorithm,
+                    requestedChecksums.keySet().iterator().next()
+            );
+            return;
+        }
+        if ("COMPOSITE".equals(checksumType)) {
+            if (!requestedChecksums.isEmpty()) {
+                throw new ApiException(ApiErrorCode.BAD_DIGEST, "Complete multipart upload checksum type does not match initiated checksum type.");
+            }
+            validateCompositeChecksumMatchesInitiate(checksumAlgorithm, completedParts, true);
+            return;
+        }
+        if (!requestedChecksums.isEmpty()) {
+            validateChecksumAlgorithmMatchesInitiate(
+                    checksumAlgorithm,
+                    requestedChecksums.keySet().iterator().next()
+            );
+        }
+        validateCompositeChecksumMatchesInitiate(checksumAlgorithm, completedParts, false);
+    }
+
+    private void validateCompositeChecksumMatchesInitiate(
+            String checksumAlgorithm,
+            List<CompletedMultipartUploadPart> completedParts,
+            boolean required
+    ) {
+        String headerName = null;
+        boolean hasChecksum = false;
+        boolean requireEveryPart = required || completedParts.stream().anyMatch(part -> !part.checksums().isEmpty());
+        for (CompletedMultipartUploadPart part : completedParts) {
+            if (part.checksums().isEmpty()) {
+                if (requireEveryPart) {
+                    throw new ApiException(ApiErrorCode.BAD_DIGEST, "Complete multipart upload must include per-part checksums.");
+                }
+                continue;
+            }
+            hasChecksum = true;
+            if (part.checksums().size() != 1) {
+                throw new ApiException(ApiErrorCode.BAD_DIGEST, "Complete multipart upload part checksum count does not match initiated checksum.");
+            }
+            String partHeaderName = part.checksums().keySet().iterator().next();
+            if (compositeChecksumAccumulator(partHeaderName) == null) {
+                throw new ApiException(ApiErrorCode.BAD_DIGEST, "Complete multipart upload checksum algorithm does not support composite checksums.");
+            }
+            validateChecksumAlgorithmMatchesInitiate(checksumAlgorithm, partHeaderName);
+            if (headerName == null) {
+                headerName = partHeaderName;
+            } else if (!headerName.equals(partHeaderName)) {
+                throw new ApiException(ApiErrorCode.BAD_DIGEST, "Complete multipart upload part checksum algorithm must be consistent.");
+            }
+        }
+        if (required && !hasChecksum) {
+            throw new ApiException(ApiErrorCode.BAD_DIGEST, "Complete multipart upload must include per-part checksums.");
+        }
+    }
+
+    private void validateChecksumAlgorithmMatchesInitiate(String checksumAlgorithm, String headerName) {
+        if (checksumAlgorithm.isBlank()) {
+            return;
+        }
+        if (!checksumAlgorithm.equals(checksumAlgorithm(headerName))) {
+            throw new ApiException(ApiErrorCode.BAD_DIGEST, "Complete multipart upload checksum algorithm does not match initiated checksum algorithm.");
+        }
+    }
+
+    private String checksumAlgorithm(String headerName) {
+        return switch (headerName == null ? "" : headerName.toLowerCase(java.util.Locale.ROOT)) {
+            case AWS_CHECKSUM_SHA256_HEADER -> "SHA256";
+            case AWS_CHECKSUM_SHA1_HEADER -> "SHA1";
+            case AWS_CHECKSUM_CRC32_HEADER -> "CRC32";
+            case AWS_CHECKSUM_CRC32C_HEADER -> "CRC32C";
+            case AWS_CHECKSUM_CRC64NVME_HEADER -> "CRC64NVME";
+            default -> "";
+        };
     }
 
     private void validateMultipartObjectSize(StoredObjectRecord uploadedObject, Long expectedObjectSize) {
