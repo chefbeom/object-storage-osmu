@@ -319,14 +319,18 @@ class S3ObjectControllerTest {
         String bucketName = "s3-copy-user-metadata-bucket";
         createBucket(token, bucketName);
         AccessKeyCredentials credentials = createAccessKey(token, bucketName, "READ", "WRITE");
+        String sourceBody = "metadata source";
+        String sourceSha1 = checksumBase64("SHA-1", sourceBody);
+        String copiedSha256 = checksumBase64("SHA-256", sourceBody);
 
         mockMvc.perform(put("/api/s3/{bucketName}/docs/source-metadata.txt", bucketName)
                         .header("X-OSMU-Access-Key", credentials.accessKey())
                         .header("X-OSMU-Secret-Key", credentials.secretKey())
                         .header("x-amz-meta-owner", "platform")
                         .header("x-amz-meta-color", "blue")
+                        .header("x-amz-checksum-sha1", sourceSha1)
                         .contentType(MediaType.TEXT_PLAIN)
-                        .content("metadata source"))
+                        .content(sourceBody))
                 .andExpect(status().isOk());
 
         mockMvc.perform(head("/api/s3/{bucketName}/docs/source-metadata.txt", bucketName)
@@ -334,21 +338,50 @@ class S3ObjectControllerTest {
                         .header("X-OSMU-Secret-Key", credentials.secretKey()))
                 .andExpect(status().isOk())
                 .andExpect(header().string("x-amz-meta-owner", "platform"))
-                .andExpect(header().string("x-amz-meta-color", "blue"));
+                .andExpect(header().string("x-amz-meta-color", "blue"))
+                .andExpect(header().string("x-amz-checksum-sha1", sourceSha1));
 
         mockMvc.perform(put("/api/s3/{bucketName}/docs/copied-metadata.txt", bucketName)
                         .header("X-OSMU-Access-Key", credentials.accessKey())
                         .header("X-OSMU-Secret-Key", credentials.secretKey())
                         .header("x-amz-copy-source", "/" + bucketName + "/docs/source-metadata.txt"))
                 .andExpect(status().isOk())
-                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_XML));
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_XML))
+                .andExpect(header().string("x-amz-checksum-sha1", sourceSha1))
+                .andExpect(content().string(containsString("<ChecksumSHA1>%s</ChecksumSHA1>".formatted(sourceSha1))));
 
         mockMvc.perform(head("/api/s3/{bucketName}/docs/copied-metadata.txt", bucketName)
                         .header("X-OSMU-Access-Key", credentials.accessKey())
                         .header("X-OSMU-Secret-Key", credentials.secretKey()))
                 .andExpect(status().isOk())
                 .andExpect(header().string("x-amz-meta-owner", "platform"))
-                .andExpect(header().string("x-amz-meta-color", "blue"));
+                .andExpect(header().string("x-amz-meta-color", "blue"))
+                .andExpect(header().string("x-amz-checksum-sha1", sourceSha1));
+
+        mockMvc.perform(put("/api/s3/{bucketName}/docs/copied-sha256.txt", bucketName)
+                        .header("X-OSMU-Access-Key", credentials.accessKey())
+                        .header("X-OSMU-Secret-Key", credentials.secretKey())
+                        .header("x-amz-copy-source", "/" + bucketName + "/docs/source-metadata.txt")
+                        .header("x-amz-checksum-algorithm", "SHA256"))
+                .andExpect(status().isOk())
+                .andExpect(header().string("x-amz-checksum-sha256", copiedSha256))
+                .andExpect(header().doesNotExist("x-amz-checksum-sha1"))
+                .andExpect(content().string(containsString("<ChecksumSHA256>%s</ChecksumSHA256>".formatted(copiedSha256))));
+
+        mockMvc.perform(head("/api/s3/{bucketName}/docs/copied-sha256.txt", bucketName)
+                        .header("X-OSMU-Access-Key", credentials.accessKey())
+                        .header("X-OSMU-Secret-Key", credentials.secretKey()))
+                .andExpect(status().isOk())
+                .andExpect(header().string("x-amz-checksum-sha256", copiedSha256))
+                .andExpect(header().doesNotExist("x-amz-checksum-sha1"));
+
+        mockMvc.perform(put("/api/s3/{bucketName}/docs/copied-sha512.txt", bucketName)
+                        .header("X-OSMU-Access-Key", credentials.accessKey())
+                        .header("X-OSMU-Secret-Key", credentials.secretKey())
+                        .header("x-amz-copy-source", "/" + bucketName + "/docs/source-metadata.txt")
+                        .header("x-amz-checksum-algorithm", "SHA512"))
+                .andExpect(status().isBadRequest())
+                .andExpect(content().string(containsString("<Code>InvalidRequest</Code>")));
 
         mockMvc.perform(put("/api/s3/{bucketName}/docs/replaced-metadata.txt", bucketName)
                         .header("X-OSMU-Access-Key", credentials.accessKey())

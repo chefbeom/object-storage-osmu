@@ -214,11 +214,11 @@
 
 ### TC-S3-OBJECT-001E
 
-- Feature: S3 object user metadata and CopyObject metadata directive handling.
+- Feature: S3 object user metadata, CopyObject metadata directive, and CopyObject checksum algorithm handling.
 - Preconditions: Target bucket exists. Active access key has `READ` and `WRITE` scope.
-- Input: `PUT /api/s3/{bucketName}/{objectKey}` with `x-amz-meta-*`, then CopyObject with default metadata directive and with `x-amz-metadata-directive: REPLACE`.
-- Steps: Upload a source object with two `x-amz-meta-*` headers, verify source `HEAD`, copy it without a metadata directive, verify copied `HEAD`, then copy with `REPLACE`, a new `Content-Type`, and a replacement `x-amz-meta-*` header.
-- Expected: Source and default-copy targets return stored user metadata on `HEAD`. CopyObject default `COPY` preserves source user metadata. `REPLACE` stores only request user metadata and the request `Content-Type`.
+- Input: `PUT /api/s3/{bucketName}/{objectKey}` with `x-amz-meta-*` and `x-amz-checksum-sha1`, then CopyObject with default metadata directive, `x-amz-checksum-algorithm: SHA256`, unsupported `SHA512`, and `x-amz-metadata-directive: REPLACE`.
+- Steps: Upload a source object with two `x-amz-meta-*` headers and SHA1 checksum, verify source `HEAD`, copy it without a metadata directive, verify copied `HEAD`, copy it with checksum algorithm override, reject an unsupported checksum algorithm, then copy with `REPLACE`, a new `Content-Type`, and a replacement `x-amz-meta-*` header.
+- Expected: Source and default-copy targets return stored user metadata/checksum on `HEAD`. CopyObject default `COPY` preserves source user metadata and checksum metadata. `x-amz-checksum-algorithm: SHA256` stores and returns the recalculated SHA256 checksum; unsupported `SHA512` returns S3 XML `InvalidRequest`. `REPLACE` stores only request user metadata and the request `Content-Type`.
 - Priority: P1
 - Automated: `S3ObjectControllerTest.copyObjectCopiesAndReplacesUserMetadata`
 

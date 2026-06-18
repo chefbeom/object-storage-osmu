@@ -82,6 +82,7 @@ public class S3ObjectController {
     private static final String AWS_CHECKSUM_CRC32_HEADER = "x-amz-checksum-crc32";
     private static final String AWS_CHECKSUM_CRC32C_HEADER = "x-amz-checksum-crc32c";
     private static final String AWS_CHECKSUM_CRC64NVME_HEADER = "x-amz-checksum-crc64nvme";
+    private static final String AWS_CHECKSUM_ALGORITHM_HEADER = "x-amz-checksum-algorithm";
     private static final String HTTP_IF_RANGE_HEADER = "If-Range";
     private static final String AWS_UNSIGNED_PAYLOAD = "UNSIGNED-PAYLOAD";
     private static final String AWS_STREAMING_PAYLOAD_PREFIX = "STREAMING-";
@@ -456,9 +457,10 @@ public class S3ObjectController {
         AuthenticatedUser user = s3RequestAuthService.currentUser(request, targetBucketName, "WRITE");
         s3RequestAuthService.currentUser(request, copySource.bucketName(), "READ");
         assertCopyTargetPreconditions(request, targetBucketName, targetObjectKey, user);
-        StoredObjectStream sourceObject = copySourceObject(copySource, user);
+        String checksumHeaderName = copyObjectChecksumHeader(request);
         String metadataDirective = copyDirective(request.getHeader(AWS_METADATA_DIRECTIVE_HEADER), AWS_METADATA_DIRECTIVE_HEADER);
         String taggingDirective = copyDirective(request.getHeader(AWS_TAGGING_DIRECTIVE_HEADER), AWS_TAGGING_DIRECTIVE_HEADER);
+        StoredObjectStream sourceObject = copySourceObject(copySource, user);
         String copyTags = "REPLACE".equals(taggingDirective) ? tags(request) : tagsHeader(sourceObject.metadata());
         String copyContentType = "REPLACE".equals(metadataDirective) ? contentType(request) : sourceObject.metadata().contentType();
         Map<String, String> copyUserMetadata = "REPLACE".equals(metadataDirective)
@@ -466,20 +468,24 @@ public class S3ObjectController {
                 : sourceObject.metadata().userMetadata();
         MessageDigest md5 = messageDigest("MD5");
         StoredObjectRecord copiedObject;
-        try (InputStream sourceContent = sourceObject.content();
-             DigestInputStream content = new DigestInputStream(sourceContent, md5)) {
+        try (InputStream sourceContent = sourceObject.content()) {
             assertCopySourcePreconditions(request, sourceObject.metadata());
-            copiedObject = objectService.upload(
-                    targetBucketName,
-                    targetObjectKey,
-                    copyTags,
-                    content,
-                    sourceObject.metadata().sizeBytes(),
-                    copyContentType,
-                    user,
-                    sourceObject.metadata().checksums(),
-                    copyUserMetadata
-            );
+            Map<String, String> copyChecksums = checksumHeaderName == null
+                    ? sourceObject.metadata().checksums()
+                    : Map.of(checksumHeaderName, copyObjectChecksum(copySource, user, checksumHeaderName));
+            try (DigestInputStream content = new DigestInputStream(sourceContent, md5)) {
+                copiedObject = objectService.upload(
+                        targetBucketName,
+                        targetObjectKey,
+                        copyTags,
+                        content,
+                        sourceObject.metadata().sizeBytes(),
+                        copyContentType,
+                        user,
+                        copyChecksums,
+                        copyUserMetadata
+                );
+            }
         }
         String etag = HexFormat.of().formatHex(md5.digest());
         auditLogService.record("S3_OBJECT_COPY", user.loginId(), "OBJECT", targetBucketName + "/" + copiedObject.key(), "SUCCESS", "S3-style object copied", request);
@@ -836,6 +842,68 @@ public class S3ObjectController {
             return objectService.downloadStream(copySource.bucketName(), copySource.objectKey(), user);
         }
         return objectService.downloadVersion(copySource.bucketName(), copySource.objectKey(), copySource.versionId(), user);
+    }
+
+    private String copyObjectChecksumHeader(HttpServletRequest request) {
+        String rawAlgorithm = request.getHeader(AWS_CHECKSUM_ALGORITHM_HEADER);
+        if (rawAlgorithm == null || rawAlgorithm.isBlank()) {
+            return null;
+        }
+        if (rawAlgorithm.contains(",")) {
+            throw new ApiException(ApiErrorCode.VALIDATION_ERROR, AWS_CHECKSUM_ALGORITHM_HEADER + " must specify one checksum algorithm.");
+        }
+        return switch (rawAlgorithm.trim().toUpperCase(Locale.ROOT)) {
+            case "SHA256" -> AWS_CHECKSUM_SHA256_HEADER;
+            case "SHA1" -> AWS_CHECKSUM_SHA1_HEADER;
+            case "CRC32" -> AWS_CHECKSUM_CRC32_HEADER;
+            case "CRC32C" -> AWS_CHECKSUM_CRC32C_HEADER;
+            case "CRC64NVME" -> AWS_CHECKSUM_CRC64NVME_HEADER;
+            default -> throw new ApiException(ApiErrorCode.VALIDATION_ERROR, AWS_CHECKSUM_ALGORITHM_HEADER + " is not supported.");
+        };
+    }
+
+    private String copyObjectChecksum(CopySource copySource, AuthenticatedUser user, String headerName) throws IOException {
+        try (InputStream content = copySourceObject(copySource, user).content()) {
+            return Base64.getEncoder().encodeToString(objectChecksum(headerName, content));
+        }
+    }
+
+    private byte[] objectChecksum(String headerName, InputStream content) throws IOException {
+        return switch (headerName) {
+            case AWS_CHECKSUM_SHA256_HEADER -> digestObject("SHA-256", content);
+            case AWS_CHECKSUM_SHA1_HEADER -> digestObject("SHA-1", content);
+            case AWS_CHECKSUM_CRC32_HEADER -> crcObject(new CRC32(), content);
+            case AWS_CHECKSUM_CRC32C_HEADER -> crcObject(new CRC32C(), content);
+            case AWS_CHECKSUM_CRC64NVME_HEADER -> crcObject(
+                    new Crc64NvmeChecksum(),
+                    Crc64NvmeChecksum.DIGEST_LENGTH_BYTES,
+                    content
+            );
+            default -> throw new ApiException(ApiErrorCode.INVALID_DIGEST, headerName + " is not supported.");
+        };
+    }
+
+    private byte[] digestObject(String algorithm, InputStream content) throws IOException {
+        MessageDigest digest = messageDigest(algorithm);
+        byte[] buffer = new byte[8192];
+        int count;
+        while ((count = content.read(buffer)) >= 0) {
+            digest.update(buffer, 0, count);
+        }
+        return digest.digest();
+    }
+
+    private byte[] crcObject(Checksum checksum, InputStream content) throws IOException {
+        return crcObject(checksum, 4, content);
+    }
+
+    private byte[] crcObject(Checksum checksum, int digestLength, InputStream content) throws IOException {
+        byte[] buffer = new byte[8192];
+        int count;
+        while ((count = content.read(buffer)) >= 0) {
+            checksum.update(buffer, 0, count);
+        }
+        return BodyChecksumValidator.checksumDigest(checksum.getValue(), digestLength);
     }
 
     private String copyDirective(String rawDirective, String headerName) {

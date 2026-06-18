@@ -220,6 +220,7 @@ MVP 데모 기준 완료율은 약 90~95%입니다.
 - conditional request
 - copy object with OSMU source `versionId` and AWS source/destination precondition guards
 - S3 object user metadata and CopyObject `x-amz-metadata-directive` COPY/REPLACE handling
+- CopyObject `x-amz-checksum-algorithm` recalculated checksum metadata/header/XML for supported algorithms
 - tagging
 - multi-delete 일부
 - S3 XML error response with `Code`/`Message`/`Resource`/`RequestId`/`HostId`

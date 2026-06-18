@@ -38,7 +38,7 @@
 | `HEAD Object` | Supported | ETag, checksum headers, content metadata, user metadata, conditional headers. |
 | `GET Object` | Supported | Single range request with `If-Range`, ETag/checksum/user-metadata headers, conditional headers, and AWS-documented combined conditional precedence. Multi-range is rejected because AWS S3 does not support multiple ranges per GET. |
 | `DELETE Object` | Supported | OSMU soft-delete semantics; purge is handled by REST/admin lifecycle paths. |
-| `CopyObject` | MVP supported | Source object copy, OSMU-retained source `versionId`, content type/user-metadata/tag directives, source preconditions with AWS-documented ETag/date precedence, and destination `If-Match`/`If-None-Match` guards. Full AWS versioning parity and remaining conditional edge parity are not implemented. |
+| `CopyObject` | MVP supported | Source object copy, OSMU-retained source `versionId`, content type/user-metadata/tag directives, stored checksum copy, `x-amz-checksum-algorithm` recalculation for supported algorithms, source preconditions with AWS-documented ETag/date precedence, and destination `If-Match`/`If-None-Match` guards. Full AWS versioning parity and remaining conditional edge parity are not implemented. |
 | Object tagging | Supported | S3 XML tag subset backed by OSMU object tags. |
 | ListObjects V1/V2 | Supported | Prefix, delimiter, marker/continuation token, max keys, URL encoding, owner field. |
 | Multi-object delete | MVP supported | Uses soft-delete; quiet mode and per-key errors supported. |
@@ -54,6 +54,7 @@
 | `x-amz-checksum-crc32` | Supported | PUT header/trailer, multipart part header/trailer, final object metadata/header/XML. |
 | `x-amz-checksum-crc32c` | Supported | PUT header/trailer, multipart part header/trailer, final object metadata/header/XML. |
 | `x-amz-checksum-crc64nvme` | Supported | PUT header/trailer, multipart part header/trailer, final object metadata/header/XML. |
+| CopyObject `x-amz-checksum-algorithm` | MVP supported | Recalculates target checksum metadata/XML/header for `SHA256`, `SHA1`, `CRC32`, `CRC32C`, and `CRC64NVME`; unsupported algorithm names return `InvalidRequest`. |
 | Multipart checksum aggregation parity | Partial | Final object checksum can be supplied and validated; AWS aggregation semantics are not fully reproduced. |
 
 ## Client Matrix

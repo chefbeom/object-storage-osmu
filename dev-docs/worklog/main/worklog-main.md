@@ -1,5 +1,36 @@
 # Worklog - main
 
+### 2026-06-18 - S3 CopyObject checksum algorithm override
+
+- Work time:
+  - End: 2026-06-18 18:53:27 +09:00
+- User command:
+  - Active goal: continue development from `dev-docs`.
+- Request analysis:
+  - `dev-docs` still listed CopyObject parity gaps, and prior worklog notes left CopyObject checksum algorithm override as future work.
+  - AWS CopyObject documents `x-amz-checksum-algorithm`; when omitted, copied checksum metadata follows the source object, and when supplied, the target can use the requested checksum algorithm.
+- Execution:
+  - Added CopyObject `x-amz-checksum-algorithm` parsing for `SHA256`, `SHA1`, `CRC32`, `CRC32C`, and `CRC64NVME`.
+  - Recalculates target checksum metadata from the source object body when the algorithm header is supplied; default copy still preserves source stored checksum metadata.
+  - Unsupported checksum algorithms now return S3 XML `InvalidRequest`.
+  - Extended CopyObject regression coverage and refreshed S3 docs.
+- Modified files:
+  - `osmu-backend/src/main/java/com/example/osmu/object/S3ObjectController.java`
+  - `osmu-backend/src/test/java/com/example/osmu/object/S3ObjectControllerTest.java`
+  - `dev-docs/PRODUCT_REQUIREMENTS.md`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/backend-design.md`
+  - `dev-docs/s3-compatibility.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/feature-inventory.md`
+  - `dev-docs/worklog/main/worklog-main.md`
+- Tests:
+  - `gradle test --tests com.example.osmu.object.S3ObjectControllerTest.copyObjectCopiesAndReplacesUserMetadata`: passed.
+  - `gradle test`: passed.
+- Review:
+  - Checksum calculation currently reopens the source stream for the requested algorithm so the existing upload/storage contract stays unchanged.
+  - Remaining S3 gaps still include full AWS multipart checksum aggregation parity, full AWS versioning parity, remaining conditional edge parity, broader AWS error behavior parity, and real client checksum smoke coverage.
+
 ### 2026-06-18 - S3 multipart unknown-size initiate parity
 
 - Work time:
