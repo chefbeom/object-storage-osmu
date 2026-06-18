@@ -9,6 +9,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.util.regex.Pattern;
 import javax.xml.parsers.DocumentBuilderFactory;
 import javax.xml.parsers.ParserConfigurationException;
 import org.springframework.beans.factory.annotation.Value;
@@ -31,6 +32,8 @@ import org.xml.sax.SAXException;
 public class S3BucketController {
 
     private static final String AWS_XML_NAMESPACE = "http://s3.amazonaws.com/doc/2006-03-01/";
+    private static final Pattern S3_BUCKET_NAME_PATTERN = Pattern.compile("^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$");
+    private static final Pattern IPV4_ADDRESS_PATTERN = Pattern.compile("^(\\d{1,3}\\.){3}\\d{1,3}$");
 
     private final BucketService bucketService;
     private final S3RequestAuthService s3RequestAuthService;
@@ -57,6 +60,7 @@ public class S3BucketController {
             @PathVariable("bucketName") String bucketName,
             HttpServletRequest request
     ) {
+        validateS3BucketName(bucketName);
         AuthenticatedUser user = authContext.currentUser(request);
         validateCreateBucketLocation(request);
         BucketRecord bucket;
@@ -77,6 +81,7 @@ public class S3BucketController {
             @PathVariable("bucketName") String bucketName,
             HttpServletRequest request
     ) {
+        validateS3BucketName(bucketName);
         AuthenticatedUser user = s3RequestAuthService.currentUserAny(request, bucketName, "READ", "WRITE", "DELETE", "ADMIN");
         BucketRecord bucket = bucketService.get(bucketName, user);
         auditLogService.record("S3_BUCKET_HEAD", user.loginId(), "BUCKET", bucket.name(), "SUCCESS", "S3-style bucket metadata read", request);
@@ -90,6 +95,7 @@ public class S3BucketController {
             @PathVariable("bucketName") String bucketName,
             HttpServletRequest request
     ) {
+        validateS3BucketName(bucketName);
         AuthenticatedUser user = s3RequestAuthService.currentUserAny(request, bucketName, "READ", "WRITE", "DELETE", "ADMIN");
         BucketRecord bucket = bucketService.get(bucketName, user);
         auditLogService.record("S3_BUCKET_LOCATION_GET", user.loginId(), "BUCKET", bucket.name(), "SUCCESS", "S3-style bucket location read", request);
@@ -104,6 +110,7 @@ public class S3BucketController {
             @PathVariable("bucketName") String bucketName,
             HttpServletRequest request
     ) {
+        validateS3BucketName(bucketName);
         AuthenticatedUser user = s3RequestAuthService.currentUserAny(request, bucketName, "ADMIN");
         BucketRecord bucket = bucketService.get(bucketName, user);
         bucketService.delete(bucketName, user);
@@ -116,6 +123,26 @@ public class S3BucketController {
     private String locationXml() {
         return "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
                 + "<LocationConstraint xmlns=\"%s\">%s</LocationConstraint>".formatted(AWS_XML_NAMESPACE, region);
+    }
+
+    private void validateS3BucketName(String bucketName) {
+        if (bucketName == null
+                || !S3_BUCKET_NAME_PATTERN.matcher(bucketName).matches()
+                || bucketName.contains("..")
+                || bucketName.contains(".-")
+                || bucketName.contains("-.")
+                || IPV4_ADDRESS_PATTERN.matcher(bucketName).matches()
+                || bucketName.startsWith("xn--")
+                || bucketName.startsWith("sthree-")
+                || bucketName.startsWith("amzn-s3-demo-")
+                || bucketName.endsWith("-s3alias")
+                || bucketName.endsWith("--ol-s3")
+                || bucketName.endsWith(".mrap")
+                || bucketName.endsWith("--x-s3")
+                || bucketName.endsWith("--table-s3")
+                || bucketName.endsWith("-an")) {
+            throw new ApiException(ApiErrorCode.VALIDATION_ERROR, "Invalid S3 bucket name.");
+        }
     }
 
     private void validateCreateBucketLocation(HttpServletRequest request) {

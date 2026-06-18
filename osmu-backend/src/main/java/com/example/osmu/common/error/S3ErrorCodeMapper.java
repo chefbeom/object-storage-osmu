@@ -15,7 +15,7 @@ public final class S3ErrorCodeMapper {
             case RANGE_NOT_SATISFIABLE -> "InvalidRange";
             case INVALID_DIGEST -> "InvalidDigest";
             case BAD_DIGEST -> "BadDigest";
-            case VALIDATION_ERROR -> "InvalidRequest";
+            case VALIDATION_ERROR -> validationCode(message);
             case QUOTA_EXCEEDED -> "EntityTooLarge";
             case CONFLICT -> conflictCode(message);
             case STORAGE_ERROR, INTERNAL_ERROR -> "InternalError";
@@ -24,6 +24,11 @@ public final class S3ErrorCodeMapper {
 
     private static boolean isBucketError(String message) {
         return message != null && message.toLowerCase(Locale.ROOT).contains("bucket");
+    }
+
+    private static String validationCode(String message) {
+        String normalized = message == null ? "" : message.toLowerCase(Locale.ROOT);
+        return normalized.contains("invalid s3 bucket name") ? "InvalidBucketName" : "InvalidRequest";
     }
 
     private static String notFoundCode(String message) {

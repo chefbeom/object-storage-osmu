@@ -24,6 +24,7 @@ import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
 import java.util.Base64;
 import java.util.HexFormat;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.TreeMap;
@@ -908,6 +909,41 @@ class S3ObjectControllerTest {
                 .andExpect(status().isConflict())
                 .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_XML))
                 .andExpect(content().string(containsString("<Code>BucketAlreadyExists</Code>")));
+    }
+
+    @Test
+    void bucketLevelRequestsRejectInvalidS3BucketNames() throws Exception {
+        String token = loginAndReturnAccessToken("admin", "password");
+        List<String> invalidBucketNames = List.of(
+                "BadBucket",
+                "ab",
+                "bucket..name",
+                "bucket-.name",
+                "192.168.5.4",
+                "xn--bucket",
+                "sthree-bucket",
+                "amzn-s3-demo-bucket",
+                "bucket-s3alias",
+                "bucket--ol-s3",
+                "bucket.mrap",
+                "bucket--x-s3",
+                "bucket--table-s3",
+                "bucket-an"
+        );
+
+        for (String invalidBucketName : invalidBucketNames) {
+            mockMvc.perform(put("/api/s3/{bucketName}", invalidBucketName)
+                            .header("Authorization", "Bearer " + token))
+                    .andExpect(status().isBadRequest())
+                    .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_XML))
+                    .andExpect(content().string(containsString("<Code>InvalidBucketName</Code>")));
+        }
+
+        mockMvc.perform(delete("/api/s3/{bucketName}", "bucket--x-s3")
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isBadRequest())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_XML))
+                .andExpect(content().string(containsString("<Code>InvalidBucketName</Code>")));
     }
 
     @Test

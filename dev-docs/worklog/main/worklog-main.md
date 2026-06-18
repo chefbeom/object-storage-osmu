@@ -1,5 +1,39 @@
 # Worklog - main
 
+### 2026-06-18 - S3 bucket name error parity
+
+- Work time:
+  - End: 2026-06-18 17:36:22 +09:00
+- User command:
+  - Active goal: continue development from `dev-docs`.
+- Request analysis:
+  - `dev-docs` still listed remaining S3 CreateBucket/DeleteBucket edge error parity beyond duplicate and non-empty bucket handling.
+  - AWS general-purpose bucket naming rules are a narrow, high-value parity gap because existing REST creation normalizes names while S3 clients expect invalid names to fail with S3 XML `InvalidBucketName`.
+- Execution:
+  - Added raw S3 bucket name validation in `S3BucketController` before create, head, location, and delete bucket auth/service calls.
+  - Mapped `ApiErrorCode.VALIDATION_ERROR` with `Invalid S3 bucket name.` to S3 XML code `InvalidBucketName`.
+  - Added controller and mapper tests for invalid length, uppercase, adjacent periods, IP-style names, reserved prefixes, and reserved suffixes.
+  - Updated S3 compatibility/API/backend/test-case/PRD docs to mark bucket-name error parity as supported.
+- Modified files:
+  - `osmu-backend/src/main/java/com/example/osmu/bucket/S3BucketController.java`
+  - `osmu-backend/src/main/java/com/example/osmu/common/error/S3ErrorCodeMapper.java`
+  - `osmu-backend/src/test/java/com/example/osmu/common/error/S3ErrorCodeMapperTest.java`
+  - `osmu-backend/src/test/java/com/example/osmu/object/S3ObjectControllerTest.java`
+  - `dev-docs/PRODUCT_REQUIREMENTS.md`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/backend-design.md`
+  - `dev-docs/s3-compatibility.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/worklog/main/worklog-main.md`
+- Verification:
+  - `gradle test --tests com.example.osmu.object.S3ObjectControllerTest.bucketLevelRequestsRejectInvalidS3BucketNames --tests com.example.osmu.common.error.S3ErrorCodeMapperTest`: passed.
+  - `gradle test`: passed.
+  - `git diff --check`: passed with LF/CRLF warnings only.
+- Result:
+  - S3 bucket-level invalid-name requests now return `400 InvalidBucketName` instead of being normalized or falling through to broader errors.
+- Follow-up:
+  - Remaining S3 bucket parity still includes exact AWS auth/order edge cases beyond name, duplicate, and non-empty-bucket paths.
+
 ### 2026-06-18 - Storage Profile MVP 구현
 
 - 작업 시간:

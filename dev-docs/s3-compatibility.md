@@ -22,10 +22,10 @@
 
 | Operation | Status | Notes |
 | --- | --- | --- |
-| `PUT Bucket` | MVP supported | Reuses `BucketService.create`; Bearer JWT path is the primary create path. Optional `CreateBucketConfiguration/LocationConstraint` XML is accepted when it matches the configured storage region. Duplicate creates return `BucketAlreadyOwnedByYou` or `BucketAlreadyExists`. |
+| `PUT Bucket` | MVP supported | Reuses `BucketService.create`; Bearer JWT path is the primary create path. AWS general-purpose bucket name rules return `InvalidBucketName`; optional `CreateBucketConfiguration/LocationConstraint` XML is accepted when it matches the configured storage region. Duplicate creates return `BucketAlreadyOwnedByYou` or `BucketAlreadyExists`. |
 | `HEAD Bucket` | Supported | Auth/readiness probe. |
 | `GET Bucket location` | Supported | Region-compatible response. |
-| `DELETE Bucket` | MVP supported | Requires empty bucket and `ADMIN` scope. Non-empty buckets return S3 XML `BucketNotEmpty`; other exact AWS error parity is not guaranteed. |
+| `DELETE Bucket` | MVP supported | Requires empty bucket and `ADMIN` scope. Invalid names return `InvalidBucketName`; non-empty buckets return S3 XML `BucketNotEmpty`; other exact AWS error parity is not guaranteed. |
 | `GET/PUT/DELETE Bucket tagging` | Supported | S3 XML `Tagging/TagSet` subset with XXE-safe parser. |
 | `GET/PUT/DELETE Bucket lifecycle` | MVP supported | S3 XML lifecycle subset mapped to OSMU lifecycle rules. |
 | Bucket policy, ACL, public access block, object lock | Not supported | OSMU uses internal RBAC, Access Key scopes, retention/lifecycle policy, and admin console instead. |

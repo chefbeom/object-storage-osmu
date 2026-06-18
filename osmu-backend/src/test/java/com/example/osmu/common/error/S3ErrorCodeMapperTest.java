@@ -18,6 +18,7 @@ class S3ErrorCodeMapperTest {
         assertThat(S3ErrorCodeMapper.codeFor(ApiErrorCode.INVALID_DIGEST, "digest")).isEqualTo("InvalidDigest");
         assertThat(S3ErrorCodeMapper.codeFor(ApiErrorCode.BAD_DIGEST, "digest")).isEqualTo("BadDigest");
         assertThat(S3ErrorCodeMapper.codeFor(ApiErrorCode.VALIDATION_ERROR, "invalid")).isEqualTo("InvalidRequest");
+        assertThat(S3ErrorCodeMapper.codeFor(ApiErrorCode.VALIDATION_ERROR, "Invalid S3 bucket name.")).isEqualTo("InvalidBucketName");
         assertThat(S3ErrorCodeMapper.codeFor(ApiErrorCode.QUOTA_EXCEEDED, "quota")).isEqualTo("EntityTooLarge");
         assertThat(S3ErrorCodeMapper.codeFor(ApiErrorCode.CONFLICT, "conflict")).isEqualTo("OperationAborted");
         assertThat(S3ErrorCodeMapper.codeFor(ApiErrorCode.CONFLICT, "Bucket is not empty.")).isEqualTo("BucketNotEmpty");
