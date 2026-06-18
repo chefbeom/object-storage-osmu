@@ -4,6 +4,8 @@ import com.example.osmu.auth.AuthenticatedUser;
 import com.example.osmu.bucket.BucketService;
 import com.example.osmu.common.error.ApiErrorCode;
 import com.example.osmu.common.error.ApiException;
+import com.example.osmu.object.repository.InMemoryMultipartUploadPartChecksumRepository;
+import com.example.osmu.object.repository.MultipartUploadPartChecksumRepository;
 import com.example.osmu.object.repository.ObjectMetadataRepository;
 import com.example.osmu.object.repository.ObjectVersionRepository;
 import com.example.osmu.object.repository.PresignedUploadSessionRepository;
@@ -27,6 +29,7 @@ import java.util.regex.Pattern;
 import java.util.zip.CRC32;
 import java.util.zip.CRC32C;
 import java.util.zip.Checksum;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 @Service
@@ -54,6 +57,7 @@ public class ObjectService {
     private final ObjectMetadataRepository objectMetadataRepository;
     private final ObjectVersionRepository objectVersionRepository;
     private final PresignedUploadSessionRepository uploadSessionRepository;
+    private final MultipartUploadPartChecksumRepository multipartPartChecksumRepository;
 
     public ObjectService(
             BucketService bucketService,
@@ -62,11 +66,31 @@ public class ObjectService {
             ObjectVersionRepository objectVersionRepository,
             PresignedUploadSessionRepository uploadSessionRepository
     ) {
+        this(
+                bucketService,
+                storageAdapter,
+                objectMetadataRepository,
+                objectVersionRepository,
+                uploadSessionRepository,
+                new InMemoryMultipartUploadPartChecksumRepository()
+        );
+    }
+
+    @Autowired
+    public ObjectService(
+            BucketService bucketService,
+            ObjectStorageAdapter storageAdapter,
+            ObjectMetadataRepository objectMetadataRepository,
+            ObjectVersionRepository objectVersionRepository,
+            PresignedUploadSessionRepository uploadSessionRepository,
+            MultipartUploadPartChecksumRepository multipartPartChecksumRepository
+    ) {
         this.bucketService = bucketService;
         this.storageAdapter = storageAdapter;
         this.objectMetadataRepository = objectMetadataRepository;
         this.objectVersionRepository = objectVersionRepository;
         this.uploadSessionRepository = uploadSessionRepository;
+        this.multipartPartChecksumRepository = multipartPartChecksumRepository;
     }
 
     public StoredObjectPage list(
@@ -628,14 +652,35 @@ public class ObjectService {
                 normalizedKey,
                 session.storageUploadId()
         );
+        Map<Integer, Map<String, String>> partChecksums =
+                multipartPartChecksumRepository.findByUploadId(session.uploadId());
+        List<MultipartUploadUploadedPart> uploadedPartsWithChecksums = uploadedParts.stream()
+                .map(part -> part.withChecksums(partChecksums.getOrDefault(part.partNumber(), Map.of())))
+                .toList();
         return new MultipartUploadPartsResponse(
                 session.uploadId(),
                 normalizedKey,
                 session.expectedSizeBytes(),
                 session.partSizeBytes(),
                 session.partCount(),
-                uploadedParts
+                uploadedPartsWithChecksums
         );
+    }
+
+    public String multipartUploadPartChecksumHeader(
+            String bucketName,
+            String key,
+            String uploadId,
+            AuthenticatedUser user
+    ) {
+        bucketService.assertCanWrite(bucketName, user);
+        String normalizedBucketName = bucketService.get(bucketName, user).name();
+        String normalizedKey = normalizeRequiredKey(key);
+        PresignedUploadSession session = uploadSessionRepository.findByUploadId(uploadId)
+                .orElseThrow(() -> new ApiException(ApiErrorCode.NOT_FOUND, "Upload session not found."));
+        validateUploadSession(session, user, normalizedBucketName, normalizedKey);
+        validateUploadMode(session, UPLOAD_MODE_MULTIPART);
+        return checksumHeaderName(session.checksumAlgorithm());
     }
 
     public MultipartUploadUploadedPart uploadMultipartPart(
@@ -671,6 +716,39 @@ public class ObjectService {
                 content,
                 sizeBytes
         );
+    }
+
+    public void recordMultipartUploadPartChecksums(
+            String bucketName,
+            String key,
+            String uploadId,
+            int partNumber,
+            Map<String, String> checksums,
+            AuthenticatedUser user
+    ) {
+        Map<String, String> normalizedChecksums = normalizeChecksums(checksums);
+        if (normalizedChecksums.isEmpty()) {
+            return;
+        }
+        bucketService.assertCanWrite(bucketName, user);
+        String normalizedBucketName = bucketService.get(bucketName, user).name();
+        String normalizedKey = normalizeRequiredKey(key);
+        PresignedUploadSession session = uploadSessionRepository.findByUploadId(uploadId)
+                .orElseThrow(() -> new ApiException(ApiErrorCode.NOT_FOUND, "Upload session not found."));
+        validateUploadSession(session, user, normalizedBucketName, normalizedKey);
+        validateUploadMode(session, UPLOAD_MODE_MULTIPART);
+        if (partNumber < 1 || partNumber > MAX_MULTIPART_PART_COUNT) {
+            throw new ApiException(ApiErrorCode.VALIDATION_ERROR, "partNumber is outside the upload part plan.");
+        }
+        if (session.partCount() > 0 && partNumber > session.partCount()) {
+            throw new ApiException(ApiErrorCode.VALIDATION_ERROR, "partNumber is outside the upload part plan.");
+        }
+        validateChecksumMetadata(normalizedChecksums);
+        validateChecksumAlgorithmMatchesInitiate(
+                normalizeChecksumNegotiation(session.checksumAlgorithm()),
+                normalizedChecksums.keySet().iterator().next()
+        );
+        multipartPartChecksumRepository.save(session.uploadId(), partNumber, normalizedChecksums);
     }
 
     public MultipartUploadListResponse listActiveMultipartUploads(
@@ -812,7 +890,8 @@ public class ObjectService {
                 .orElseThrow(() -> new ApiException(ApiErrorCode.NOT_FOUND, "Upload session not found."));
         validateUploadSession(session, user, normalizedBucketName, normalizedKey);
         validateUploadMode(session, UPLOAD_MODE_MULTIPART);
-        List<CompletedMultipartUploadPart> completedParts = normalizeCompletedParts(request.parts());
+        List<CompletedMultipartUploadPart> completedParts =
+                withStoredMultipartPartChecksums(session.uploadId(), normalizeCompletedParts(request.parts()));
         Map<String, String> requestedChecksums = normalizeChecksums(checksums);
         validateChecksumMetadata(requestedChecksums);
         validateMultipartChecksumNegotiation(session, requestedChecksums, completedParts);
@@ -867,6 +946,7 @@ public class ObjectService {
             bucketService.applyObjectChange(normalizedBucketName, uploadedObject.sizeBytes(), 1L);
             objectMetadataRepository.save(normalizedBucketName, uploadedObject);
             uploadSessionRepository.updateStatus(session.uploadId(), "COMPLETED", OffsetDateTime.now());
+            deleteMultipartPartChecksums(session.uploadId());
             return uploadedObject;
         } catch (RuntimeException exception) {
             rollbackSnapshot(normalizedBucketName, snapshot);
@@ -900,6 +980,7 @@ public class ObjectService {
         validateUploadMode(session, UPLOAD_MODE_MULTIPART);
         storageAdapter.abortMultipartUpload(normalizedBucketName, normalizedKey, session.storageUploadId());
         uploadSessionRepository.updateStatus(session.uploadId(), "ABORTED", OffsetDateTime.now());
+        deleteMultipartPartChecksums(session.uploadId());
     }
 
     private String normalizeKey(String key) {
@@ -1147,6 +1228,17 @@ public class ObjectService {
         if (!checksumAlgorithm.equals(checksumAlgorithm(headerName))) {
             throw new ApiException(ApiErrorCode.BAD_DIGEST, "Complete multipart upload checksum algorithm does not match initiated checksum algorithm.");
         }
+    }
+
+    private String checksumHeaderName(String checksumAlgorithm) {
+        return switch (normalizeChecksumNegotiation(checksumAlgorithm)) {
+            case "SHA256" -> AWS_CHECKSUM_SHA256_HEADER;
+            case "SHA1" -> AWS_CHECKSUM_SHA1_HEADER;
+            case "CRC32" -> AWS_CHECKSUM_CRC32_HEADER;
+            case "CRC32C" -> AWS_CHECKSUM_CRC32C_HEADER;
+            case "CRC64NVME" -> AWS_CHECKSUM_CRC64NVME_HEADER;
+            default -> "";
+        };
     }
 
     private String checksumAlgorithm(String headerName) {
@@ -1657,6 +1749,35 @@ public class ObjectService {
                         "Multipart upload part " + completedPart.partNumber() + " ETag does not match uploaded part."
                 );
             }
+        }
+    }
+
+    private List<CompletedMultipartUploadPart> withStoredMultipartPartChecksums(
+            String uploadId,
+            List<CompletedMultipartUploadPart> completedParts
+    ) {
+        Map<Integer, Map<String, String>> storedChecksums = multipartPartChecksumRepository.findByUploadId(uploadId);
+        if (storedChecksums.isEmpty()) {
+            return completedParts;
+        }
+        return completedParts.stream()
+                .map(part -> {
+                    if (!part.checksums().isEmpty()) {
+                        return part;
+                    }
+                    Map<String, String> partChecksums = storedChecksums.getOrDefault(part.partNumber(), Map.of());
+                    return partChecksums.isEmpty()
+                            ? part
+                            : new CompletedMultipartUploadPart(part.partNumber(), part.etag(), partChecksums);
+                })
+                .toList();
+    }
+
+    private void deleteMultipartPartChecksums(String uploadId) {
+        try {
+            multipartPartChecksumRepository.deleteByUploadId(uploadId);
+        } catch (RuntimeException ignored) {
+            // Best effort cleanup only; object commit/abort result must stay authoritative.
         }
     }
 

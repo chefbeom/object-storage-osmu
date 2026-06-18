@@ -1,5 +1,44 @@
 # Worklog - main
 
+### 2026-06-18 - S3 multipart UploadPart checksum persistence
+
+- Work time:
+  - End: 2026-06-18 KST
+- User command:
+  - Active goal: continue development from `dev-docs`.
+- Request analysis:
+  - `dev-docs` still listed UploadPart auto checksum persistence as a multipart checksum parity gap.
+  - AWS UploadPart can return checksum headers and ListParts can surface in-progress part checksum values; CompleteMultipartUpload can use part checksum metadata to validate composite checksum shape.
+- Execution:
+  - Added `MultipartUploadPartChecksumRepository` with in-memory and MariaDB implementations plus Flyway `V46__multipart_upload_part_checksums.sql`.
+  - Extended `MultipartUploadUploadedPart` with checksum metadata while preserving the old constructor.
+  - Added UploadPart checksum auto-compute for initiated checksum algorithms and `x-amz-sdk-checksum-algorithm` when no explicit checksum header/trailer is present.
+  - Persisted validated UploadPart checksum metadata by upload id and part number; abort/complete/expired cleanup removes it best-effort.
+  - Merged stored part checksums into CompleteMultipartUpload when XML omits per-part checksum elements, and emitted stored checksum XML in ListParts.
+- Modified files:
+  - `osmu-backend/src/main/java/com/example/osmu/object/ObjectService.java`
+  - `osmu-backend/src/main/java/com/example/osmu/object/S3ObjectController.java`
+  - `osmu-backend/src/main/java/com/example/osmu/object/MultipartUploadUploadedPart.java`
+  - `osmu-backend/src/main/java/com/example/osmu/object/MultipartUploadCleanupJob.java`
+  - `osmu-backend/src/main/java/com/example/osmu/object/repository/MultipartUploadPartChecksumRepository.java`
+  - `osmu-backend/src/main/java/com/example/osmu/object/repository/InMemoryMultipartUploadPartChecksumRepository.java`
+  - `osmu-backend/src/main/java/com/example/osmu/object/repository/MariaDbMultipartUploadPartChecksumRepository.java`
+  - `osmu-backend/src/main/resources/db/migration/V46__multipart_upload_part_checksums.sql`
+  - `osmu-backend/src/test/java/com/example/osmu/object/ObjectServiceMultipartRefreshTest.java`
+  - `osmu-backend/src/test/java/com/example/osmu/object/S3ObjectControllerMultipartTest.java`
+  - `dev-docs/PRODUCT_REQUIREMENTS.md`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/backend-design.md`
+  - `dev-docs/s3-compatibility.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/feature-inventory.md`
+  - `README.md`
+- Tests:
+  - `gradle test --tests com.example.osmu.object.ObjectServiceMultipartRefreshTest --tests com.example.osmu.object.S3ObjectControllerMultipartTest --tests com.example.osmu.object.MultipartUploadCleanupJobTest`: passed.
+- Review:
+  - UploadPart checksum metadata no longer depends on clients repeating per-part checksums in CompleteMultipartUpload XML.
+  - Remaining S3 checksum parity is exact AWS response/error behavior and broader real-client option coverage.
+
 ### 2026-06-18 - S3 multipart initiate unsupported controls
 
 - Work time:

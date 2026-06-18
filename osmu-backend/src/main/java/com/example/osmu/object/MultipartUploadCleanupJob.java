@@ -1,6 +1,8 @@
 package com.example.osmu.object;
 
 import com.example.osmu.audit.AuditLogService;
+import com.example.osmu.object.repository.InMemoryMultipartUploadPartChecksumRepository;
+import com.example.osmu.object.repository.MultipartUploadPartChecksumRepository;
 import com.example.osmu.object.repository.PresignedUploadSessionRepository;
 import com.example.osmu.storage.ObjectStorageAdapter;
 import io.micrometer.core.instrument.Counter;
@@ -9,6 +11,7 @@ import java.time.OffsetDateTime;
 import java.util.List;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -24,6 +27,7 @@ public class MultipartUploadCleanupJob {
     private static final String SYSTEM_ACTOR = "system";
 
     private final PresignedUploadSessionRepository uploadSessionRepository;
+    private final MultipartUploadPartChecksumRepository partChecksumRepository;
     private final ObjectStorageAdapter storageAdapter;
     private final AuditLogService auditLogService;
     private final int batchSize;
@@ -39,7 +43,27 @@ public class MultipartUploadCleanupJob {
             MeterRegistry meterRegistry,
             @Value("${osmu.upload.cleanup.batch-size:100}") int batchSize
     ) {
+        this(
+                uploadSessionRepository,
+                new InMemoryMultipartUploadPartChecksumRepository(),
+                storageAdapter,
+                auditLogService,
+                meterRegistry,
+                batchSize
+        );
+    }
+
+    @Autowired
+    public MultipartUploadCleanupJob(
+            PresignedUploadSessionRepository uploadSessionRepository,
+            MultipartUploadPartChecksumRepository partChecksumRepository,
+            ObjectStorageAdapter storageAdapter,
+            AuditLogService auditLogService,
+            MeterRegistry meterRegistry,
+            @Value("${osmu.upload.cleanup.batch-size:100}") int batchSize
+    ) {
         this.uploadSessionRepository = uploadSessionRepository;
+        this.partChecksumRepository = partChecksumRepository;
         this.storageAdapter = storageAdapter;
         this.auditLogService = auditLogService;
         this.batchSize = Math.max(1, batchSize);
@@ -91,6 +115,7 @@ public class MultipartUploadCleanupJob {
                     completedAt
             );
             if (expired) {
+                deletePartChecksums(session);
                 recordCleanupAudit(session, "SUCCESS", "Expired multipart upload aborted");
                 cleanupSuccessCounter.increment();
             } else {
@@ -103,6 +128,14 @@ public class MultipartUploadCleanupJob {
             recordCleanupAudit(session, "FAIL", "Expired multipart upload cleanup failed: " + exception.getMessage());
             cleanupFailureCounter.increment();
             return false;
+        }
+    }
+
+    private void deletePartChecksums(PresignedUploadSession session) {
+        try {
+            partChecksumRepository.deleteByUploadId(session.uploadId());
+        } catch (RuntimeException exception) {
+            log.warn("Failed to delete multipart part checksums for session {}.", session.uploadId(), exception);
         }
     }
 

@@ -410,6 +410,73 @@ class S3ObjectControllerMultipartTest {
     }
 
     @Test
+    void uploadMultipartPartComputesAndStoresInitiatedChecksum() throws Exception {
+        MockHttpServletRequest request = request("PUT");
+        request.setContent("hello".getBytes(StandardCharsets.UTF_8));
+        String expectedChecksum = crc32cChecksumBase64("hello");
+        when(s3RequestAuthService.currentUser(request, "bucket", "WRITE")).thenReturn(user);
+        when(objectService.multipartUploadPartChecksumHeader(
+                "bucket",
+                "videos/input.mp4",
+                "upload-1",
+                user
+        )).thenReturn("x-amz-checksum-crc32c");
+        when(objectService.uploadMultipartPart(
+                eq("bucket"),
+                eq("videos/input.mp4"),
+                eq("upload-1"),
+                eq(1),
+                any(),
+                eq(5L),
+                eq(user)
+        )).thenAnswer(invocation -> {
+            InputStream content = invocation.getArgument(4);
+            assertThat(new String(content.readAllBytes(), StandardCharsets.UTF_8)).isEqualTo("hello");
+            return new MultipartUploadUploadedPart(1, "\"etag-1\"", 5L);
+        });
+
+        var response = controller.uploadMultipartPart("bucket", "videos/input.mp4", 1, "upload-1", request);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(response.getHeaders().getFirst("x-amz-checksum-crc32c")).isEqualTo(expectedChecksum);
+        verify(objectService).recordMultipartUploadPartChecksums(
+                eq("bucket"),
+                eq("videos/input.mp4"),
+                eq("upload-1"),
+                eq(1),
+                argThat(values -> expectedChecksum.equals(values.get("x-amz-checksum-crc32c"))),
+                eq(user)
+        );
+    }
+
+    @Test
+    void uploadMultipartPartRejectsSdkChecksumAlgorithmMismatchWithInitiate() {
+        MockHttpServletRequest request = request("PUT");
+        request.setContent("hello".getBytes(StandardCharsets.UTF_8));
+        request.addHeader("x-amz-sdk-checksum-algorithm", "SHA256");
+        when(s3RequestAuthService.currentUser(request, "bucket", "WRITE")).thenReturn(user);
+        when(objectService.multipartUploadPartChecksumHeader(
+                "bucket",
+                "videos/input.mp4",
+                "upload-1",
+                user
+        )).thenReturn("x-amz-checksum-crc32c");
+
+        assertThatThrownBy(() -> controller.uploadMultipartPart("bucket", "videos/input.mp4", 1, "upload-1", request))
+                .isInstanceOfSatisfying(ApiException.class, exception ->
+                        assertThat(exception.code()).isEqualTo(ApiErrorCode.BAD_DIGEST));
+        verify(objectService, never()).uploadMultipartPart(
+                eq("bucket"),
+                eq("videos/input.mp4"),
+                eq("upload-1"),
+                eq(1),
+                any(),
+                eq(5L),
+                eq(user)
+        );
+    }
+
+    @Test
     void uploadMultipartPartValidatesPayloadHashHeader() throws Exception {
         MockHttpServletRequest request = request("PUT");
         request.setContent("hello".getBytes(StandardCharsets.UTF_8));
@@ -809,7 +876,12 @@ class S3ObjectControllerMultipartTest {
                 2,
                 List.of(
                         new MultipartUploadUploadedPart(1, "\"etag-1\"", 5242880L),
-                        new MultipartUploadUploadedPart(2, "\"etag-2\"", 5242880L),
+                        new MultipartUploadUploadedPart(
+                                2,
+                                "\"etag-2\"",
+                                5242880L,
+                                Map.of("x-amz-checksum-crc32c", "part-2-checksum")
+                        ),
                         new MultipartUploadUploadedPart(3, "\"etag-3\"", 5242880L)
                 )
         ));
@@ -824,6 +896,7 @@ class S3ObjectControllerMultipartTest {
         assertThat(listResponse.getBody()).contains("<IsTruncated>true</IsTruncated>");
         assertThat(listResponse.getBody()).contains("<PartNumber>2</PartNumber>");
         assertThat(listResponse.getBody()).contains("<ETag>\"etag-2\"</ETag>");
+        assertThat(listResponse.getBody()).contains("<ChecksumCRC32C>part-2-checksum</ChecksumCRC32C>");
         assertThat(listResponse.getBody()).doesNotContain("<PartNumber>1</PartNumber>");
         assertThat(listResponse.getBody()).doesNotContain("<PartNumber>3</PartNumber>");
 

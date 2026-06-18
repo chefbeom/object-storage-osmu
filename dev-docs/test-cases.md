@@ -309,7 +309,7 @@
 - Feature: S3 compatibility supported/partial/unsupported matrix.
 - Preconditions: `dev-docs/s3-compatibility.md`, `api-spec.md`, and backend S3 tests are available.
 - Steps: Review the S3 matrix and compare it with backend tests for path-style, virtual-hosted-style, SigV4, presigned auth, object PUT/GET/HEAD/DELETE, CopyObject, tagging, list, multi-delete, multipart, checksum, and aws-chunked body decoding.
-- Expected: The matrix lists supported, partial, and unsupported behavior, including aws-chunked decoded length validation, `STREAMING-AWS4-HMAC-SHA256-PAYLOAD` chunk-signature presence/format validation, SigV4 header-auth cryptographic per-chunk signature chain verification, trailing checksum validation including CRC64NVME, multipart initiate checksum algorithm/type header persistence/echo and unsupported control rejection, SHA1/SHA256/CRC32/CRC32C multipart composite checksum aggregation, CRC64NVME full-object multipart checksum handling, complete-time checksum negotiation mismatch `BadDigest`, and remaining broader checksum negotiation gap.
+- Expected: The matrix lists supported, partial, and unsupported behavior, including aws-chunked decoded length validation, `STREAMING-AWS4-HMAC-SHA256-PAYLOAD` chunk-signature presence/format validation, SigV4 header-auth cryptographic per-chunk signature chain verification, trailing checksum validation including CRC64NVME, multipart initiate checksum algorithm/type header persistence/echo and unsupported control rejection, UploadPart auto checksum persistence and ListParts checksum XML, SHA1/SHA256/CRC32/CRC32C multipart composite checksum aggregation, CRC64NVME full-object multipart checksum handling, complete-time checksum negotiation mismatch `BadDigest`, and remaining broader checksum negotiation gap.
 - Priority: P1
 - Automated: backend S3 controller tests and `verify-s3-client-smoke.ps1`; document consistency is reviewed through `git diff --check` and code review.
 
@@ -353,6 +353,16 @@
 - Priority: P1
 - Automated: `S3ObjectControllerMultipartTest.createMultipartUploadAllowsS3InitiateWithoutExpectedSizeHeader`, `S3ObjectControllerMultipartTest.createMultipartUploadEchoesChecksumAlgorithmAndType`, `S3ObjectControllerMultipartTest.createMultipartUploadRejectsUnsupportedChecksumNegotiation`, `S3ObjectControllerMultipartTest.createMultipartUploadRejectsUnsupportedControlHeaders`, `ObjectServiceMultipartRefreshTest.s3MultipartUploadCanStartWithoutExpectedSizeAndCompleteWithActualSize`, `ObjectServiceMultipartRefreshTest.s3MultipartUnknownSizeCompleteRollsBackCompletedObjectOnQuotaFailure`
 
+### TC-S3-MULTIPART-UPLOADPART-001
+
+- Feature: S3 multipart UploadPart checksum auto compute and persistence.
+- Preconditions: Target bucket exists. Active access key has `WRITE` scope. Multipart upload session exists.
+- Input: `PUT /api/s3/{bucketName}/{objectKey}?partNumber={n}&uploadId={uploadId}` after initiate with `x-amz-checksum-algorithm: CRC32C`, with no explicit part checksum header, and a second request with mismatched `x-amz-sdk-checksum-algorithm`.
+- Steps: Initiate with CRC32C/COMPOSITE, upload a part without explicit checksum so the backend computes and stores CRC32C, list parts, complete with XML that omits per-part checksum elements, then repeat with `x-amz-sdk-checksum-algorithm: SHA256` against the CRC32C session.
+- Expected: UploadPart returns `ETag` plus `x-amz-checksum-crc32c`, the checksum is persisted by upload id and part number, ListParts emits `ChecksumCRC32C`, CompleteMultipartUpload can use the stored checksum when XML omits it, and mismatched SDK/initiate algorithms return S3 XML `BadDigest` before storage part upload.
+- Priority: P1
+- Automated: `S3ObjectControllerMultipartTest.uploadMultipartPartComputesAndStoresInitiatedChecksum`, `S3ObjectControllerMultipartTest.uploadMultipartPartRejectsSdkChecksumAlgorithmMismatchWithInitiate`, `S3ObjectControllerMultipartTest.listAndAbortMultipartUploadUseS3QueryAlias`, `ObjectServiceMultipartRefreshTest.s3MultipartCompleteUsesStoredPartChecksumsWhenXmlOmitsThem`, `ObjectServiceMultipartRefreshTest.listMultipartUploadPartsReturnsStoredPartChecksums`, `ObjectServiceMultipartRefreshTest.recordMultipartUploadPartChecksumsRejectsMismatchedInitiateAlgorithm`
+
 ### TC-S3-MULTIPART-COMPLETE-001
 
 - Feature: S3 multipart complete XML part list validation.
@@ -368,8 +378,8 @@
 - Feature: S3 multipart SHA1/SHA256/CRC32/CRC32C composite checksum aggregation.
 - Preconditions: Target bucket exists. Active access key has `WRITE` scope. Multipart upload session exists and all requested parts were uploaded.
 - Input: `POST /api/s3/{bucketName}/{objectKey}?uploadId={uploadId}` with `CompleteMultipartUpload` XML where every `Part` includes the same `ChecksumSHA256`, `ChecksumSHA1`, `ChecksumCRC32`, or `ChecksumCRC32C` element and no final object checksum header is supplied. Optional header: `x-amz-checksum-type: COMPOSITE`.
-- Steps: Complete multipart upload with two ordered parts carrying valid SHA256 part checksums, then repeat service coverage for CRC32 and CRC32C part checksums. Then send invalid checksum type values, checksum type/header combinations, and complete requests whose final or per-part checksum algorithm conflicts with the algorithm/type stored at initiate time.
-- Expected: OSMU calculates the AWS-style composite checksum by decoding each part checksum, digesting or checksumming those bytes in part order, stores it as object checksum metadata, returns the matching `x-amz-checksum-*` header, and emits the matching checksum XML plus `ChecksumType=COMPOSITE` in complete-result XML when requested. Invalid `x-amz-checksum-type` values, `COMPOSITE` without supported same-algorithm SHA1/SHA256/CRC32/CRC32C part checksums, or `FULL_OBJECT` without a final checksum header return S3 XML `InvalidRequest` before storage completion. Stored initiate checksum algorithm/type conflicts return S3 XML `BadDigest` before storage completion.
+- Steps: Complete multipart upload with two ordered parts carrying valid SHA256 part checksums, then repeat service coverage for CRC32 and CRC32C part checksums, including a path where UploadPart stored per-part checksums and CompleteMultipartUpload XML omits them. Then send invalid checksum type values, checksum type/header combinations, and complete requests whose final or per-part checksum algorithm conflicts with the algorithm/type stored at initiate time.
+- Expected: OSMU calculates the AWS-style composite checksum by decoding each part checksum from CompleteMultipartUpload XML or stored UploadPart checksum metadata, digesting or checksumming those bytes in part order, stores it as object checksum metadata, returns the matching `x-amz-checksum-*` header, and emits the matching checksum XML plus `ChecksumType=COMPOSITE` in complete-result XML when requested. Invalid `x-amz-checksum-type` values, `COMPOSITE` without supported same-algorithm SHA1/SHA256/CRC32/CRC32C part checksums, or `FULL_OBJECT` without a final checksum header return S3 XML `InvalidRequest` before storage completion. Stored initiate checksum algorithm/type conflicts return S3 XML `BadDigest` before storage completion.
 - Priority: P1
 - Automated: `ObjectServiceMultipartRefreshTest.completeMultipartUploadAggregatesSha256CompositePartChecksums`, `ObjectServiceMultipartRefreshTest.completeMultipartUploadAggregatesCrcCompositePartChecksums`, `ObjectServiceMultipartRefreshTest.s3MultipartChecksumNegotiationPersistsAndRequiresMatchingCompositeAlgorithm`, `ObjectServiceMultipartRefreshTest.s3MultipartChecksumNegotiationRejectsMismatchedCompositeAlgorithm`, `ObjectServiceMultipartRefreshTest.s3MultipartChecksumNegotiationRejectsMismatchedFullObjectAlgorithm`, `S3ObjectControllerMultipartTest.completeMultipartUploadReturnsStoredCompositeChecksumHeaderAndXml`, `S3ObjectControllerMultipartTest.completeMultipartUploadAcceptsCrc32cCompositeChecksum`, `S3ObjectControllerMultipartTest.completeMultipartUploadRejectsInvalidChecksumType`
 
@@ -379,7 +389,7 @@
 - Preconditions: Target bucket exists. Active access key has `WRITE` scope. Multipart upload has multiple uploaded parts.
 - Input: `GET /api/s3/{bucketName}/{objectKey}?uploadId={uploadId}&max-parts=1&part-number-marker=1`.
 - Steps: List uploaded parts with a marker and max-parts limit, then send invalid `max-parts=1001`.
-- Expected: XML includes `PartNumberMarker`, `NextPartNumberMarker`, `MaxParts`, `IsTruncated=true`, and only the requested page of parts sorted by `PartNumber`. Invalid `max-parts` returns S3 XML `InvalidRequest`.
+- Expected: XML includes `PartNumberMarker`, `NextPartNumberMarker`, `MaxParts`, `IsTruncated=true`, stored checksum elements when available, and only the requested page of parts sorted by `PartNumber`. Invalid `max-parts` returns S3 XML `InvalidRequest`.
 - Priority: P1
 - Automated: `S3ObjectControllerMultipartTest.listAndAbortMultipartUploadUseS3QueryAlias`
 

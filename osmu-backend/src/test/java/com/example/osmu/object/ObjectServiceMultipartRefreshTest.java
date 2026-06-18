@@ -18,6 +18,7 @@ import com.example.osmu.bucket.BucketRecord;
 import com.example.osmu.bucket.BucketService;
 import com.example.osmu.common.error.ApiErrorCode;
 import com.example.osmu.common.error.ApiException;
+import com.example.osmu.object.repository.InMemoryMultipartUploadPartChecksumRepository;
 import com.example.osmu.object.repository.InMemoryPresignedUploadSessionRepository;
 import com.example.osmu.object.repository.ObjectMetadataRepository;
 import com.example.osmu.object.repository.ObjectVersionRepository;
@@ -44,12 +45,15 @@ class ObjectServiceMultipartRefreshTest {
     private final ObjectVersionRepository objectVersionRepository = mock(ObjectVersionRepository.class);
     private final InMemoryPresignedUploadSessionRepository uploadSessionRepository =
             new InMemoryPresignedUploadSessionRepository();
+    private final InMemoryMultipartUploadPartChecksumRepository partChecksumRepository =
+            new InMemoryMultipartUploadPartChecksumRepository();
     private final ObjectService objectService = new ObjectService(
             bucketService,
             storageAdapter,
             objectMetadataRepository,
             objectVersionRepository,
-            uploadSessionRepository
+            uploadSessionRepository,
+            partChecksumRepository
     );
     private final AuthenticatedUser user = new AuthenticatedUser(1L, "admin", "ADMIN", null);
 
@@ -444,6 +448,189 @@ class ObjectServiceMultipartRefreshTest {
         assertThat(session.checksumAlgorithm()).isEqualTo("CRC32C");
         assertThat(session.checksumType()).isEqualTo("COMPOSITE");
         assertThat(result.checksums()).containsEntry("x-amz-checksum-crc32c", compositeChecksum);
+    }
+
+    @Test
+    void s3MultipartCompleteUsesStoredPartChecksumsWhenXmlOmitsThem() throws Exception {
+        BucketRecord bucket = new BucketRecord(1L, "bucket", "USER", 1L, 1000000000L, 0L, 0L, OffsetDateTime.now());
+        StoredObjectRecord uploaded = new StoredObjectRecord(
+                "videos/stored-part-checksum.mp4",
+                11L,
+                "video/mp4",
+                OffsetDateTime.now(),
+                Map.of()
+        );
+        String partOneChecksum = crcChecksumBase64("CRC32C", "hello ");
+        String partTwoChecksum = crcChecksumBase64("CRC32C", "world");
+        String compositeChecksum = compositeCrcChecksumBase64("CRC32C", partOneChecksum, partTwoChecksum);
+        when(bucketService.get("bucket", user)).thenReturn(bucket);
+        when(storageAdapter.statObject("bucket", "videos/stored-part-checksum.mp4")).thenReturn(Optional.empty());
+        when(storageAdapter.createMultipartUpload(
+                eq("bucket"),
+                eq("videos/stored-part-checksum.mp4"),
+                eq("video/mp4"),
+                eq(900),
+                anyList()
+        )).thenAnswer(invocation -> storageUpload("storage-upload-stored-part-checksum", invocation.getArgument(4), 900, "create"));
+        when(storageAdapter.completeMultipartUpload(
+                eq("bucket"),
+                eq("videos/stored-part-checksum.mp4"),
+                eq("storage-upload-stored-part-checksum"),
+                anyList()
+        )).thenReturn(uploaded);
+        givenUploadedParts(
+                "bucket",
+                "videos/stored-part-checksum.mp4",
+                "storage-upload-stored-part-checksum",
+                new MultipartUploadUploadedPart(1, "\"etag-1\"", 6L),
+                new MultipartUploadUploadedPart(2, "\"etag-2\"", 5L)
+        );
+
+        MultipartUploadCreateResponse created = objectService.createS3MultipartUpload(
+                "bucket",
+                new MultipartUploadCreateRequest(
+                        "videos/stored-part-checksum.mp4",
+                        "video/mp4",
+                        11L,
+                        6L,
+                        900,
+                        "",
+                        "CRC32C",
+                        "COMPOSITE"
+                ),
+                user
+        );
+        objectService.recordMultipartUploadPartChecksums(
+                "bucket",
+                "videos/stored-part-checksum.mp4",
+                created.uploadId(),
+                1,
+                Map.of("x-amz-checksum-crc32c", partOneChecksum),
+                user
+        );
+        objectService.recordMultipartUploadPartChecksums(
+                "bucket",
+                "videos/stored-part-checksum.mp4",
+                created.uploadId(),
+                2,
+                Map.of("x-amz-checksum-crc32c", partTwoChecksum),
+                user
+        );
+
+        StoredObjectRecord result = objectService.completeMultipartUpload(
+                "bucket",
+                new MultipartUploadCompleteRequest(
+                        created.uploadId(),
+                        "videos/stored-part-checksum.mp4",
+                        List.of(
+                                new CompletedMultipartUploadPart(1, "\"etag-1\""),
+                                new CompletedMultipartUploadPart(2, "\"etag-2\"")
+                        )
+                ),
+                user
+        );
+
+        assertThat(result.checksums()).containsEntry("x-amz-checksum-crc32c", compositeChecksum);
+        assertThat(partChecksumRepository.findByUploadId(created.uploadId())).isEmpty();
+    }
+
+    @Test
+    void listMultipartUploadPartsReturnsStoredPartChecksums() throws Exception {
+        BucketRecord bucket = new BucketRecord(1L, "bucket", "USER", 1L, 1000000000L, 0L, 0L, OffsetDateTime.now());
+        String partChecksum = crcChecksumBase64("CRC32C", "hello");
+        when(bucketService.get("bucket", user)).thenReturn(bucket);
+        when(storageAdapter.statObject("bucket", "videos/list-part-checksum.mp4")).thenReturn(Optional.empty());
+        when(storageAdapter.createMultipartUpload(
+                eq("bucket"),
+                eq("videos/list-part-checksum.mp4"),
+                eq("video/mp4"),
+                eq(900),
+                anyList()
+        )).thenAnswer(invocation -> storageUpload("storage-upload-list-part-checksum", invocation.getArgument(4), 900, "create"));
+        givenUploadedParts(
+                "bucket",
+                "videos/list-part-checksum.mp4",
+                "storage-upload-list-part-checksum",
+                new MultipartUploadUploadedPart(1, "\"etag-1\"", 5L)
+        );
+
+        MultipartUploadCreateResponse created = objectService.createS3MultipartUpload(
+                "bucket",
+                new MultipartUploadCreateRequest(
+                        "videos/list-part-checksum.mp4",
+                        "video/mp4",
+                        5L,
+                        5L,
+                        900,
+                        "",
+                        "CRC32C",
+                        "COMPOSITE"
+                ),
+                user
+        );
+        objectService.recordMultipartUploadPartChecksums(
+                "bucket",
+                "videos/list-part-checksum.mp4",
+                created.uploadId(),
+                1,
+                Map.of("x-amz-checksum-crc32c", partChecksum),
+                user
+        );
+
+        MultipartUploadPartsResponse response = objectService.listMultipartUploadParts(
+                "bucket",
+                new MultipartUploadPartsRequest(created.uploadId(), "videos/list-part-checksum.mp4"),
+                user
+        );
+
+        assertThat(response.parts()).hasSize(1);
+        assertThat(response.parts().get(0).checksums()).containsEntry("x-amz-checksum-crc32c", partChecksum);
+    }
+
+    @Test
+    void recordMultipartUploadPartChecksumsRejectsMismatchedInitiateAlgorithm() throws Exception {
+        BucketRecord bucket = new BucketRecord(1L, "bucket", "USER", 1L, 1000000000L, 0L, 0L, OffsetDateTime.now());
+        String sha256Checksum = checksumBase64("SHA-256", "hello");
+        when(bucketService.get("bucket", user)).thenReturn(bucket);
+        when(storageAdapter.statObject("bucket", "videos/record-mismatch.mp4")).thenReturn(Optional.empty());
+        when(storageAdapter.createMultipartUpload(
+                eq("bucket"),
+                eq("videos/record-mismatch.mp4"),
+                eq("video/mp4"),
+                eq(900),
+                anyList()
+        )).thenAnswer(invocation -> storageUpload("storage-upload-record-mismatch", invocation.getArgument(4), 900, "create"));
+
+        MultipartUploadCreateResponse created = objectService.createS3MultipartUpload(
+                "bucket",
+                new MultipartUploadCreateRequest(
+                        "videos/record-mismatch.mp4",
+                        "video/mp4",
+                        5L,
+                        5L,
+                        900,
+                        "",
+                        "CRC32C",
+                        "COMPOSITE"
+                ),
+                user
+        );
+
+        assertThat(objectService.multipartUploadPartChecksumHeader(
+                "bucket",
+                "videos/record-mismatch.mp4",
+                created.uploadId(),
+                user
+        )).isEqualTo("x-amz-checksum-crc32c");
+        assertThatThrownBy(() -> objectService.recordMultipartUploadPartChecksums(
+                "bucket",
+                "videos/record-mismatch.mp4",
+                created.uploadId(),
+                1,
+                Map.of("x-amz-checksum-sha256", sha256Checksum),
+                user
+        )).isInstanceOfSatisfying(ApiException.class, exception ->
+                assertThat(exception.code()).isEqualTo(ApiErrorCode.BAD_DIGEST));
     }
 
     @Test

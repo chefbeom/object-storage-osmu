@@ -85,6 +85,7 @@ public class S3ObjectController {
     private static final String AWS_CHECKSUM_CRC32C_HEADER = "x-amz-checksum-crc32c";
     private static final String AWS_CHECKSUM_CRC64NVME_HEADER = "x-amz-checksum-crc64nvme";
     private static final String AWS_CHECKSUM_ALGORITHM_HEADER = "x-amz-checksum-algorithm";
+    private static final String AWS_SDK_CHECKSUM_ALGORITHM_HEADER = "x-amz-sdk-checksum-algorithm";
     private static final String AWS_ACL_HEADER = "x-amz-acl";
     private static final List<String> AWS_ACL_GRANT_HEADERS = List.of(
             "x-amz-grant-full-control",
@@ -344,7 +345,16 @@ public class S3ObjectController {
         RequestBodyContent requestContent = requestBodyContent(request, "multipart part upload");
         long contentLength = requestContent.contentLength();
         MultipartUploadUploadedPart part;
-        ChecksumValidation checksumValidation = requestBodyChecksumValidation(request, requestContent);
+        String initiatedChecksumHeader =
+                objectService.multipartUploadPartChecksumHeader(bucketName, objectKey, uploadId, user);
+        String sdkChecksumHeader = sdkChecksumHeader(request);
+        ChecksumValidation checksumValidation = requestBodyChecksumValidation(
+                request,
+                requestContent,
+                uploadPartAutoChecksumHeader(initiatedChecksumHeader, sdkChecksumHeader)
+        );
+        validateSdkChecksumHeaderMatchesPayloadHeader(sdkChecksumHeader, checksumValidation.responseHeader().name());
+        validateUploadPartChecksumHeaderMatchesInitiate(initiatedChecksumHeader, checksumValidation.responseHeader().name());
         try (S3ChecksumValidatingInputStream content = new S3ChecksumValidatingInputStream(
                 requestContent.inputStream(),
                 contentLength,
@@ -354,6 +364,14 @@ public class S3ObjectController {
         )) {
             part = objectService.uploadMultipartPart(bucketName, objectKey, uploadId, partNumber, content, contentLength, user);
             content.finish();
+            objectService.recordMultipartUploadPartChecksums(
+                    bucketName,
+                    objectKey,
+                    uploadId,
+                    partNumber,
+                    checksumValidation.values(),
+                    user
+            );
         }
         auditLogService.record("S3_OBJECT_MULTIPART_PART_PUT", user.loginId(), "OBJECT", bucketName + "/" + objectKey, "SUCCESS", "S3-style multipart part uploaded", request);
         ResponseEntity.BodyBuilder builder = ResponseEntity.ok();
@@ -1456,6 +1474,7 @@ public class S3ObjectController {
                 writeElement(xml, "PartNumber", String.valueOf(part.partNumber()));
                 writeElement(xml, "ETag", quoted(unquote(part.etag())));
                 writeElement(xml, "Size", String.valueOf(part.sizeBytes()));
+                writeChecksumElements(xml, part.checksums());
                 xml.writeEndElement();
             }
             xml.writeEndElement();
@@ -1865,7 +1884,11 @@ public class S3ObjectController {
     }
 
     private void writeChecksumResultElements(XMLStreamWriter xml, StoredObjectRecord object) throws XMLStreamException {
-        for (Map.Entry<String, String> checksum : object.checksums().entrySet()) {
+        writeChecksumElements(xml, object.checksums());
+    }
+
+    private void writeChecksumElements(XMLStreamWriter xml, Map<String, String> checksums) throws XMLStreamException {
+        for (Map.Entry<String, String> checksum : checksums.entrySet()) {
             String elementName = checksumResultElementName(checksum.getKey());
             if (!elementName.isBlank() && checksum.getValue() != null && !checksum.getValue().isBlank()) {
                 writeElement(xml, elementName, checksum.getValue());
@@ -1979,6 +2002,14 @@ public class S3ObjectController {
     }
 
     private ChecksumValidation requestBodyChecksumValidation(HttpServletRequest request, RequestBodyContent requestContent) {
+        return requestBodyChecksumValidation(request, requestContent, "");
+    }
+
+    private ChecksumValidation requestBodyChecksumValidation(
+            HttpServletRequest request,
+            RequestBodyContent requestContent,
+            String autoChecksumHeader
+    ) {
         Map<String, String> checksumValues = new LinkedHashMap<>();
         List<BodyChecksumValidator> validators = new ArrayList<>();
         addMessageDigestChecksum(validators, checksumValues, request, AWS_CHECKSUM_SHA256_HEADER, "SHA-256", 32);
@@ -1997,12 +2028,16 @@ public class S3ObjectController {
         if (trailerChecksumHeader != null) {
             addTrailerChecksum(validators, checksumValues, requestContent.chunkedInputStream(), trailerChecksumHeader);
         }
+        String normalizedAutoChecksumHeader = normalizeChecksumHeaderName(autoChecksumHeader);
+        if (validators.isEmpty() && !normalizedAutoChecksumHeader.isBlank()) {
+            addAutoChecksum(validators, checksumValues, normalizedAutoChecksumHeader);
+        }
         if (validators.size() > 1) {
             throw new ApiException(ApiErrorCode.INVALID_DIGEST, "Only one x-amz-checksum-* header is supported.");
         }
         String responseHeaderName = !checksumValues.isEmpty()
                 ? checksumValues.keySet().iterator().next()
-                : trailerChecksumHeader == null ? "" : trailerChecksumHeader;
+                : trailerChecksumHeader == null ? normalizedAutoChecksumHeader : trailerChecksumHeader;
         return new ChecksumValidation(
                 validators,
                 new ChecksumResponseHeader(responseHeaderName, checksumValues),
@@ -2093,6 +2128,46 @@ public class S3ObjectController {
                 checksum,
                 decodeChecksum(headerName, rawChecksum, expectedLength)
         ));
+    }
+
+    private void addAutoChecksum(
+            List<BodyChecksumValidator> validators,
+            Map<String, String> checksumValues,
+            String headerName
+    ) {
+        switch (headerName) {
+            case AWS_CHECKSUM_SHA256_HEADER -> validators.add(BodyChecksumValidator.autoMessageDigest(
+                    headerName,
+                    messageDigest("SHA-256"),
+                    32,
+                    checksumValues
+            ));
+            case AWS_CHECKSUM_SHA1_HEADER -> validators.add(BodyChecksumValidator.autoMessageDigest(
+                    headerName,
+                    messageDigest("SHA-1"),
+                    20,
+                    checksumValues
+            ));
+            case AWS_CHECKSUM_CRC32_HEADER -> validators.add(BodyChecksumValidator.autoCrc(
+                    headerName,
+                    new CRC32(),
+                    4,
+                    checksumValues
+            ));
+            case AWS_CHECKSUM_CRC32C_HEADER -> validators.add(BodyChecksumValidator.autoCrc(
+                    headerName,
+                    new CRC32C(),
+                    4,
+                    checksumValues
+            ));
+            case AWS_CHECKSUM_CRC64NVME_HEADER -> validators.add(BodyChecksumValidator.autoCrc(
+                    headerName,
+                    new Crc64NvmeChecksum(),
+                    Crc64NvmeChecksum.DIGEST_LENGTH_BYTES,
+                    checksumValues
+            ));
+            default -> throw new ApiException(ApiErrorCode.INVALID_DIGEST, headerName + " is not supported.");
+        }
     }
 
     private String requestedTrailerChecksumHeader(HttpServletRequest request, RequestBodyContent requestContent) {
@@ -2199,6 +2274,63 @@ public class S3ObjectController {
                 || AWS_CHECKSUM_CRC32_HEADER.equals(headerName)
                 || AWS_CHECKSUM_CRC32C_HEADER.equals(headerName)
                 || AWS_CHECKSUM_CRC64NVME_HEADER.equals(headerName);
+    }
+
+    private String sdkChecksumHeader(HttpServletRequest request) {
+        String rawAlgorithm = request.getHeader(AWS_SDK_CHECKSUM_ALGORITHM_HEADER);
+        if (rawAlgorithm == null || rawAlgorithm.isBlank()) {
+            return "";
+        }
+        if (rawAlgorithm.contains(",")) {
+            throw new ApiException(ApiErrorCode.VALIDATION_ERROR, AWS_SDK_CHECKSUM_ALGORITHM_HEADER + " must specify one checksum algorithm.");
+        }
+        return checksumHeaderForAlgorithm(rawAlgorithm.trim());
+    }
+
+    private String checksumHeaderForAlgorithm(String algorithm) {
+        return switch (algorithm == null ? "" : algorithm.trim().toUpperCase(Locale.ROOT)) {
+            case "SHA256" -> AWS_CHECKSUM_SHA256_HEADER;
+            case "SHA1" -> AWS_CHECKSUM_SHA1_HEADER;
+            case "CRC32" -> AWS_CHECKSUM_CRC32_HEADER;
+            case "CRC32C" -> AWS_CHECKSUM_CRC32C_HEADER;
+            case "CRC64NVME" -> AWS_CHECKSUM_CRC64NVME_HEADER;
+            default -> throw new ApiException(ApiErrorCode.VALIDATION_ERROR, AWS_SDK_CHECKSUM_ALGORITHM_HEADER + " is not supported.");
+        };
+    }
+
+    private String uploadPartAutoChecksumHeader(String initiatedChecksumHeader, String sdkChecksumHeader) {
+        String normalizedSdkHeader = normalizeChecksumHeaderName(sdkChecksumHeader);
+        if (!normalizedSdkHeader.isBlank()) {
+            return normalizedSdkHeader;
+        }
+        return normalizeChecksumHeaderName(initiatedChecksumHeader);
+    }
+
+    private void validateSdkChecksumHeaderMatchesPayloadHeader(String sdkChecksumHeader, String payloadChecksumHeader) {
+        String normalizedSdkHeader = normalizeChecksumHeaderName(sdkChecksumHeader);
+        if (normalizedSdkHeader.isBlank()) {
+            return;
+        }
+        if (!normalizedSdkHeader.equals(normalizeChecksumHeaderName(payloadChecksumHeader))) {
+            throw new ApiException(ApiErrorCode.BAD_DIGEST, AWS_SDK_CHECKSUM_ALGORITHM_HEADER + " does not match uploaded part checksum.");
+        }
+    }
+
+    private void validateUploadPartChecksumHeaderMatchesInitiate(
+            String initiatedChecksumHeader,
+            String payloadChecksumHeader
+    ) {
+        String normalizedInitiatedHeader = normalizeChecksumHeaderName(initiatedChecksumHeader);
+        if (normalizedInitiatedHeader.isBlank()) {
+            return;
+        }
+        if (!normalizedInitiatedHeader.equals(normalizeChecksumHeaderName(payloadChecksumHeader))) {
+            throw new ApiException(ApiErrorCode.BAD_DIGEST, "UploadPart checksum algorithm does not match initiated checksum algorithm.");
+        }
+    }
+
+    private String normalizeChecksumHeaderName(String headerName) {
+        return headerName == null ? "" : headerName.trim().toLowerCase(Locale.ROOT);
     }
 
     private void addTrailerChecksum(
@@ -2659,6 +2791,24 @@ public class S3ObjectController {
             return new BodyChecksumValidator(headerName, null, checksum, null, expectedLength, trailerSource, checksumValues);
         }
 
+        private static BodyChecksumValidator autoMessageDigest(
+                String headerName,
+                MessageDigest messageDigest,
+                int expectedLength,
+                Map<String, String> checksumValues
+        ) {
+            return new BodyChecksumValidator(headerName, messageDigest, null, null, expectedLength, null, checksumValues);
+        }
+
+        private static BodyChecksumValidator autoCrc(
+                String headerName,
+                Checksum checksum,
+                int expectedLength,
+                Map<String, String> checksumValues
+        ) {
+            return new BodyChecksumValidator(headerName, null, checksum, null, expectedLength, null, checksumValues);
+        }
+
         private void update(int value) {
             if (messageDigest != null) {
                 messageDigest.update((byte) value);
@@ -2676,10 +2826,16 @@ public class S3ObjectController {
         }
 
         private void validate() {
-            byte[] expected = expectedDigest();
             byte[] actualDigest = messageDigest != null
                     ? messageDigest.digest()
                     : checksumDigest(checksum.getValue(), expectedLength);
+            if (expectedDigest == null && trailerSource == null) {
+                if (checksumValues != null) {
+                    checksumValues.put(headerName, Base64.getEncoder().encodeToString(actualDigest));
+                }
+                return;
+            }
+            byte[] expected = expectedDigest();
             if (!MessageDigest.isEqual(expected, actualDigest)) {
                 throw new ApiException(ApiErrorCode.BAD_DIGEST, headerName + " does not match uploaded object body.");
             }
