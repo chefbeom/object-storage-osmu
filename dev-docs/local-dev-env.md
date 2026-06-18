@@ -265,7 +265,7 @@ Docker 통합 smoke test:
 .\scripts\verify-docker-integration.ps1
 ```
 
-이 명령은 Docker Compose `up -d --build`, Backend health, storage/database health, admin login, bucket 생성, object upload/list, multipart upload, MinIO CORS `ETag` expose, multipart parts list, refresh URL 재발급, S3 SigV4 root HEAD/list, bucket tagging PUT/GET/DELETE, checksum object PUT/HEAD/GET, bucket sync 후 checksum 보존, S3 multipart checksum complete, S3 multi-delete Quiet/Content-MD5/per-key Error, payload hash mismatch `BadDigest`, checksum mismatch `BadDigest`, virtual-hosted-style PUT/GET, frontend HTTP 200을 확인하고 기본값으로 `docker compose down`을 수행한다. 컨테이너를 유지하려면 `-KeepRunning`을 사용한다.
+이 명령은 Docker Compose `up -d --build`, Backend health, storage/database health, admin login, bucket 생성, object upload/list, multipart upload, MinIO CORS `ETag` expose, multipart parts list, refresh URL 재발급, S3 SigV4 root HEAD/list, bucket tagging PUT/GET/DELETE, checksum object PUT/HEAD/GET, bucket sync 후 checksum 보존, S3 multipart checksum complete와 AWS-style multipart ETag, S3 multi-delete Quiet/Content-MD5/per-key Error, payload hash mismatch `BadDigest`, checksum mismatch `BadDigest`, virtual-hosted-style PUT/GET, frontend HTTP 200을 확인하고 기본값으로 `docker compose down`을 수행한다. 컨테이너를 유지하려면 `-KeepRunning`을 사용한다.
 
 Durable MVP demo gate:
 
@@ -306,7 +306,7 @@ Real S3 client smoke test:
 .\scripts\verify-s3-client-smoke.ps1 -Client auto -SkipVirtualHostedSmoke
 ```
 
-The script always runs built-in SigV4 probes for root HEAD, root bucket list, bucket tagging PUT/GET/DELETE, checksum object PUT/HEAD/GET, checksum preservation after bucket sync, S3 multipart checksum complete, S3 multi-delete Quiet/Content-MD5/per-key Error, payload hash mismatch, checksum mismatch, and virtual-hosted-style routing unless `-SkipManualSigV4` or `-SkipVirtualHostedSmoke` is set. If `aws` or host `mc` is on PATH, this also verifies real S3 client calls for `GET /api/s3`, object upload, head/stat, list, download/cat, delete, and cleanup through `http://localhost:8080/api/s3`. If Docker daemon is available, `-Client auto`, `-Client all`, or `-Client docker-mc` can run MinIO Client from the `minio/mc` container image and connect back to localhost through `host.docker.internal`. If no client exists and `-RequireClient` is not set, the script warns and skips external client checks.
+The script always runs built-in SigV4 probes for root HEAD, root bucket list, bucket tagging PUT/GET/DELETE, checksum object PUT/HEAD/GET, checksum preservation after bucket sync, S3 multipart checksum complete plus AWS-style multipart ETag recomputation, S3 multi-delete Quiet/Content-MD5/per-key Error, payload hash mismatch, checksum mismatch, and virtual-hosted-style routing unless `-SkipManualSigV4` or `-SkipVirtualHostedSmoke` is set. If `aws` or host `mc` is on PATH, this also verifies real S3 client calls for `GET /api/s3`, object upload, head/stat, list, download/cat, delete, and cleanup through `http://localhost:8080/api/s3`. If Docker daemon is available, `-Client auto`, `-Client all`, or `-Client docker-mc` can run MinIO Client from the `minio/mc` container image and connect back to localhost through `host.docker.internal`. If no client exists and `-RequireClient` is not set, the script warns and skips external client checks.
 
 MinIO Console:
 

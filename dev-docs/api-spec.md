@@ -1322,7 +1322,7 @@ Headers:
 - S3 multipart initiate optionally accepts `X-OSMU-Multipart-Expires-In-Seconds` for session expiry.
 - S3 multipart upload part requires `Content-Length`, validates optional `Content-MD5`, signed `x-amz-content-sha256`, and one optional `x-amz-checksum-*` value header, and returns part `ETag`. Matching checksum returns the same `x-amz-checksum-*` response header.
 - S3 multipart list parts returns `PartNumberMarker`, optional `NextPartNumberMarker`, `MaxParts`, `IsTruncated`, and a page of uploaded parts sorted by `PartNumber`.
-- S3 multipart complete accepts one optional final object `x-amz-checksum-*` value header, validates it against the completed object body, stores matching checksum metadata, returns the same checksum response header, and emits matching complete-result XML checksum element.
+- S3 multipart complete accepts one optional final object `x-amz-checksum-*` value header, validates it against the completed object body, stores matching checksum metadata, returns the same checksum response header, emits matching complete-result XML checksum element, and preserves the MinIO-backed S3 multipart ETag (`md5-of-part-md5s-partCount`) in the response XML/header and later `HEAD`.
 - Missing or inactive S3 multipart upload IDs return S3 XML `NoSuchUpload`.
 - S3 multipart complete request XML requires 1~10000 `Part` entries, strictly ascending unique `PartNumber` values, and a non-blank `ETag` for every part. Invalid lists return S3 XML `InvalidRequest` before storage complete.
 - S3 multipart complete verifies every requested part was uploaded and its ETag matches the uploaded part before storage complete; missing parts or stale ETags return S3 XML `InvalidRequest` without completing the upload.
@@ -1458,7 +1458,7 @@ Limitations:
 - S3 multipart upload path is MVP-level and currently requires OSMU expected-size headers at initiate time.
 - S3 multipart uploads listing is backed by OSMU active multipart sessions, not a raw MinIO bucket scan.
 - Virtual-hosted-style routing currently extracts the bucket from the left side of a configured domain suffix. Production deployments must configure DNS/proxy hosts such as `{bucket}.storage.example.com` and set `osmu.s3.virtual-hosted-style.domain-suffixes=storage.example.com`.
-- Remaining conditional request edge parity beyond documented `If-Match`/`If-Unmodified-Since`, `If-None-Match`/`If-Modified-Since`, CopyObject source ETag/date combinations, and CopyObject destination ETag guards, CopyObject arbitrary user-metadata/full AWS versioning/remaining conditional edge parity, remaining CreateBucket/DeleteBucket edge error parity beyond name/duplicate/non-empty buckets, full AWS multipart checksum aggregation parity, full multipart ETag parity, and full AWS error behavior parity are not implemented yet. See `s3-compatibility.md` for the supported/partial/unsupported matrix.
+- Remaining conditional request edge parity beyond documented `If-Match`/`If-Unmodified-Since`, `If-None-Match`/`If-Modified-Since`, CopyObject source ETag/date combinations, and CopyObject destination ETag guards, CopyObject arbitrary user-metadata/full AWS versioning/remaining conditional edge parity, remaining CreateBucket/DeleteBucket edge error parity beyond name/duplicate/non-empty buckets, full AWS multipart checksum aggregation parity, and full AWS error behavior parity are not implemented yet. See `s3-compatibility.md` for the supported/partial/unsupported matrix.
 
 ### GET /api/buckets/{bucketName}/permissions
 

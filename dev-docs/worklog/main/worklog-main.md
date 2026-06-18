@@ -1,5 +1,37 @@
 # Worklog - main
 
+### 2026-06-18 - S3 multipart ETag smoke coverage
+
+- Work time:
+  - End: 2026-06-18 18:04:51 +09:00
+- User command:
+  - Active goal: continue development from `dev-docs`.
+- Request analysis:
+  - `dev-docs` still listed multipart ETag parity as future work.
+  - AWS documents multipart object ETags as `MD5(concat(part MD5 digests))-partCount`.
+  - The MinIO-backed adapter already returns the storage-computed multipart ETag; the missing piece was explicit smoke evidence.
+- Execution:
+  - Added multipart ETag recomputation helpers to Docker integration and S3 client smoke scripts.
+  - Extended S3 multipart checksum smoke to verify complete response `ETag`, complete XML `ETag`, and later `HEAD` `ETag`.
+  - Updated S3 compatibility/API/backend/local-dev/test docs to mark MinIO-backed multipart ETag preservation as covered while leaving checksum aggregation parity as future work.
+- Modified files:
+  - `scripts/verify-docker-integration.ps1`
+  - `scripts/verify-s3-client-smoke.ps1`
+  - `dev-docs/PRODUCT_REQUIREMENTS.md`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/backend-design.md`
+  - `dev-docs/local-dev-env.md`
+  - `dev-docs/s3-compatibility.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/worklog/main/worklog-main.md`
+- Verification:
+  - PowerShell parser check for `scripts/verify-docker-integration.ps1` and `scripts/verify-s3-client-smoke.ps1`: passed.
+  - `git diff --check`: passed with LF/CRLF warnings only.
+- Result:
+  - MinIO-backed S3 multipart complete smoke now proves AWS-style multipart ETag preservation from uploaded part ETags through complete and HEAD responses.
+- Follow-up:
+  - Remaining multipart gap is full AWS checksum aggregation parity and unknown-size initiate parity.
+
 ### 2026-06-18 - S3 CopyObject destination preconditions
 
 - Work time:

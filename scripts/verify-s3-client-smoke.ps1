@@ -108,6 +108,16 @@ function Get-Md5Base64([byte[]] $Bytes) {
     }
 }
 
+function Get-Md5Hex([byte[]] $Bytes) {
+    $md5 = [System.Security.Cryptography.MD5]::Create()
+    try {
+        return (($md5.ComputeHash($Bytes) | ForEach-Object { $_.ToString("x2") }) -join "")
+    }
+    finally {
+        $md5.Dispose()
+    }
+}
+
 function Get-Sha256Hex([byte[]] $Bytes) {
     $sha = [System.Security.Cryptography.SHA256]::Create()
     try {
@@ -136,6 +146,44 @@ function Get-HmacSha256([byte[]] $Key, [string] $Text) {
     finally {
         $hmac.Dispose()
     }
+}
+
+function Convert-HexToBytes([string] $Hex) {
+    $normalized = $Hex.Trim()
+    if ($normalized.Length % 2 -ne 0 -or $normalized -notmatch '^[0-9a-fA-F]+$') {
+        throw "Invalid hex digest: $Hex"
+    }
+    $bytes = [byte[]]::new([int]($normalized.Length / 2))
+    for ($i = 0; $i -lt $bytes.Length; $i++) {
+        $bytes[$i] = [Convert]::ToByte($normalized.Substring($i * 2, 2), 16)
+    }
+    return $bytes
+}
+
+function Normalize-Etag([string] $Etag) {
+    if (-not $Etag) {
+        return ""
+    }
+    $normalized = $Etag.Trim()
+    if ($normalized.StartsWith("`"") -and $normalized.EndsWith("`"") -and $normalized.Length -ge 2) {
+        return $normalized.Substring(1, $normalized.Length - 2)
+    }
+    return $normalized
+}
+
+function Get-S3MultipartEtag([string[]] $PartEtags) {
+    $partDigestBytes = [System.Collections.Generic.List[byte]]::new()
+    foreach ($partEtag in $PartEtags) {
+        $clean = Normalize-Etag $partEtag
+        if ($clean -notmatch '^[0-9a-fA-F]{32}$') {
+            throw "Multipart part ETag is not an MD5 digest: $partEtag"
+        }
+        foreach ($value in (Convert-HexToBytes $clean)) {
+            $partDigestBytes.Add($value)
+        }
+    }
+    $aggregateBytes = $partDigestBytes.ToArray()
+    return "$(Get-Md5Hex $aggregateBytes)-$($PartEtags.Count)"
 }
 
 function Get-S3CanonicalQuery([Uri] $Uri) {
@@ -498,6 +546,7 @@ function Invoke-S3MultipartChecksumSmoke($apiBase, $s3Endpoint, $bucketName, $ac
     if ($part2Response.StatusCode -ne 200 -or -not $part2Etag -or (Get-HeaderValue $part2Response.Headers "x-amz-checksum-sha256") -ne $part2Checksum) {
         throw "S3 multipart checksum part 2 upload failed: HTTP $($part2Response.StatusCode)."
     }
+    $expectedMultipartEtag = Get-S3MultipartEtag -PartEtags @($part1Etag, $part2Etag)
 
     $completeXml = @"
 <CompleteMultipartUpload xmlns="http://s3.amazonaws.com/doc/2006-03-01/">
@@ -523,10 +572,17 @@ function Invoke-S3MultipartChecksumSmoke($apiBase, $s3Endpoint, $bucketName, $ac
             -or -not $completeResponse.Body.Contains("<ChecksumSHA256>$objectChecksum</ChecksumSHA256>")) {
         throw "S3 multipart checksum complete failed: HTTP $($completeResponse.StatusCode) $($completeResponse.Body)"
     }
+    $completeEtag = Normalize-Etag (Get-HeaderValue $completeResponse.Headers "ETag")
+    if ($completeEtag -ne $expectedMultipartEtag -or -not $completeResponse.Body.Contains("<ETag>`"$expectedMultipartEtag`"</ETag>")) {
+        throw "S3 multipart complete ETag mismatch. expected=$expectedMultipartEtag actual=$completeEtag body=$($completeResponse.Body)"
+    }
 
     $headResponse = Invoke-SignedHttp "HEAD" "$s3Endpoint/$bucketName/$objectKey" ([byte[]]::new(0)) $accessKey $secretKey
-    if ($headResponse.StatusCode -ne 200 -or (Get-HeaderValue $headResponse.Headers "x-amz-checksum-sha256") -ne $objectChecksum) {
-        throw "S3 multipart checksum HEAD did not expose stored checksum."
+    $headEtag = Normalize-Etag (Get-HeaderValue $headResponse.Headers "ETag")
+    if ($headResponse.StatusCode -ne 200 `
+            -or (Get-HeaderValue $headResponse.Headers "x-amz-checksum-sha256") -ne $objectChecksum `
+            -or $headEtag -ne $expectedMultipartEtag) {
+        throw "S3 multipart checksum HEAD did not expose stored checksum and multipart ETag."
     }
 }
 
