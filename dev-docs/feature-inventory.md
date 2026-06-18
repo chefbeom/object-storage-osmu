@@ -230,11 +230,12 @@ MVP 데모 기준 완료율은 약 90~95%입니다.
 - aws-chunked x-amz-trailer checksum validation (SHA256/SHA1/CRC32/CRC32C/CRC64NVME)
 - CRC64NVME checksum validation/header/XML exposure
 - S3 multipart complete XML part list validation (ascending/unique/range/ETag)
+- S3 multipart complete uploaded part existence and ETag match validation
 - S3 multipart ListParts pagination (max-parts/part-number-marker)
 
 남은 것:
 
-- multipart edge case
+- full AWS multipart checksum aggregation parity
 
 ### 4.7 MariaDB metadata
 

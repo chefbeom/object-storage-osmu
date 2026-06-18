@@ -186,6 +186,12 @@ class ObjectServiceMultipartRefreshTest {
                 eq("storage-upload-1"),
                 anyList()
         )).thenReturn(uploaded);
+        givenUploadedParts(
+                "bucket",
+                "videos/input.mp4",
+                "storage-upload-1",
+                new MultipartUploadUploadedPart(1, "\"etag-1\"", 5L * 1024L * 1024L)
+        );
         when(storageAdapter.setObjectTags("bucket", "videos/input.mp4", Map.of("version", "two")))
                 .thenReturn(uploaded);
 
@@ -246,6 +252,12 @@ class ObjectServiceMultipartRefreshTest {
                 eq("storage-upload-checksum"),
                 anyList()
         )).thenReturn(uploaded);
+        givenUploadedParts(
+                "bucket",
+                "videos/checksum.mp4",
+                "storage-upload-checksum",
+                new MultipartUploadUploadedPart(1, "\"etag-1\"", 5L)
+        );
         when(storageAdapter.openObject("bucket", "videos/checksum.mp4"))
                 .thenReturn(new StoredObjectStream(uploaded, new ByteArrayInputStream("hello".getBytes(StandardCharsets.UTF_8))));
 
@@ -305,6 +317,12 @@ class ObjectServiceMultipartRefreshTest {
                 eq("storage-upload-crc64nvme"),
                 anyList()
         )).thenReturn(uploaded);
+        givenUploadedParts(
+                "bucket",
+                "videos/crc64nvme.mp4",
+                "storage-upload-crc64nvme",
+                new MultipartUploadUploadedPart(1, "\"etag-1\"", 9L)
+        );
         when(storageAdapter.openObject("bucket", "videos/crc64nvme.mp4"))
                 .thenReturn(new StoredObjectStream(uploaded, new ByteArrayInputStream("123456789".getBytes(StandardCharsets.UTF_8))));
 
@@ -363,6 +381,12 @@ class ObjectServiceMultipartRefreshTest {
                 eq("storage-upload-checksum-fail"),
                 anyList()
         )).thenReturn(uploaded);
+        givenUploadedParts(
+                "bucket",
+                "videos/checksum-fail.mp4",
+                "storage-upload-checksum-fail",
+                new MultipartUploadUploadedPart(1, "\"etag-1\"", 5L)
+        );
         when(storageAdapter.openObject("bucket", "videos/checksum-fail.mp4"))
                 .thenReturn(new StoredObjectStream(uploaded, new ByteArrayInputStream("hello".getBytes(StandardCharsets.UTF_8))));
 
@@ -445,6 +469,78 @@ class ObjectServiceMultipartRefreshTest {
                 eq("storage-upload-part-checksum"),
                 anyList()
         );
+    }
+
+    @Test
+    void completeMultipartUploadRejectsMissingOrMismatchedUploadedPartBeforeStorageComplete() {
+        BucketRecord bucket = new BucketRecord(1L, "bucket", "USER", 1L, 1000000000L, 0L, 0L, OffsetDateTime.now());
+        when(bucketService.get("bucket", user)).thenReturn(bucket);
+        when(storageAdapter.statObject("bucket", "videos/missing-part.mp4")).thenReturn(Optional.empty());
+        when(storageAdapter.createMultipartUpload(
+                eq("bucket"),
+                eq("videos/missing-part.mp4"),
+                eq("video/mp4"),
+                eq(900),
+                anyList()
+        )).thenAnswer(invocation -> storageUpload("storage-upload-missing-part", invocation.getArgument(4), 900, "create"));
+
+        MultipartUploadCreateResponse created = objectService.createMultipartUpload(
+                "bucket",
+                new MultipartUploadCreateRequest(
+                        "videos/missing-part.mp4",
+                        "video/mp4",
+                        10L,
+                        5L,
+                        900,
+                        ""
+                ),
+                user
+        );
+        givenUploadedParts(
+                "bucket",
+                "videos/missing-part.mp4",
+                "storage-upload-missing-part",
+                new MultipartUploadUploadedPart(1, "\"etag-1\"", 5L)
+        );
+
+        assertThatThrownBy(() -> objectService.completeMultipartUpload(
+                "bucket",
+                new MultipartUploadCompleteRequest(
+                        created.uploadId(),
+                        "videos/missing-part.mp4",
+                        List.of(
+                                new CompletedMultipartUploadPart(1, "\"etag-1\""),
+                                new CompletedMultipartUploadPart(2, "\"etag-2\"")
+                        )
+                ),
+                user
+        )).isInstanceOfSatisfying(ApiException.class, exception -> {
+            assertThat(exception.code()).isEqualTo(ApiErrorCode.VALIDATION_ERROR);
+            assertThat(exception.getMessage()).contains("part 2 has not been uploaded");
+        });
+
+        assertThatThrownBy(() -> objectService.completeMultipartUpload(
+                "bucket",
+                new MultipartUploadCompleteRequest(
+                        created.uploadId(),
+                        "videos/missing-part.mp4",
+                        List.of(new CompletedMultipartUploadPart(1, "\"other-etag\""))
+                ),
+                user
+        )).isInstanceOfSatisfying(ApiException.class, exception -> {
+            assertThat(exception.code()).isEqualTo(ApiErrorCode.VALIDATION_ERROR);
+            assertThat(exception.getMessage()).contains("ETag does not match");
+        });
+
+        PresignedUploadSession session = uploadSessionRepository.findByUploadId(created.uploadId()).orElseThrow();
+        assertThat(session.status()).isEqualTo("ACTIVE");
+        verify(storageAdapter, never()).completeMultipartUpload(
+                eq("bucket"),
+                eq("videos/missing-part.mp4"),
+                eq("storage-upload-missing-part"),
+                anyList()
+        );
+        verify(bucketService, never()).applyObjectChange(eq("bucket"), anyLong(), anyLong());
     }
 
     @Test
@@ -650,6 +746,16 @@ class ObjectServiceMultipartRefreshTest {
                         ))
                         .toList()
         );
+    }
+
+    private void givenUploadedParts(
+            String bucketName,
+            String objectKey,
+            String storageUploadId,
+            MultipartUploadUploadedPart... parts
+    ) {
+        when(storageAdapter.listMultipartUploadParts(bucketName, objectKey, storageUploadId))
+                .thenReturn(List.of(parts));
     }
 
     private PresignedUploadSession session(String uploadId, String key, OffsetDateTime createdAt) {

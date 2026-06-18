@@ -1324,6 +1324,7 @@ Headers:
 - S3 multipart list parts returns `PartNumberMarker`, optional `NextPartNumberMarker`, `MaxParts`, `IsTruncated`, and a page of uploaded parts sorted by `PartNumber`.
 - S3 multipart complete accepts one optional final object `x-amz-checksum-*` value header, validates it against the completed object body, stores matching checksum metadata, returns the same checksum response header, and emits matching complete-result XML checksum element.
 - S3 multipart complete request XML requires 1~10000 `Part` entries, strictly ascending unique `PartNumber` values, and a non-blank `ETag` for every part. Invalid lists return S3 XML `InvalidRequest` before storage complete.
+- S3 multipart complete verifies every requested part was uploaded and its ETag matches the uploaded part before storage complete; missing parts or stale ETags return S3 XML `InvalidRequest` without completing the upload.
 - S3 multipart complete request XML accepts optional per-part `ChecksumSHA256`, `ChecksumSHA1`, `ChecksumCRC32`, `ChecksumCRC32C`, and `ChecksumCRC64NVME` elements and validates their checksum syntax before completing storage upload. Full AWS multipart checksum aggregation parity remains future work.
 - `HEAD`, `GET`, `ListObjects`, and `ListObjectsV2` include `ETag` when object metadata has an ETag.
 - `HEAD` and `GET` return stored `x-amz-checksum-*` headers for S3 uploads that supplied checksum value headers. `ListObjects` and `ListObjectsV2` emit `ChecksumAlgorithm` entries for stored checksums.

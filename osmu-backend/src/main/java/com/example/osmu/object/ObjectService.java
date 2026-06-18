@@ -731,6 +731,12 @@ public class ObjectService {
         List<CompletedMultipartUploadPart> completedParts = normalizeCompletedParts(request.parts());
         Map<String, String> normalizedChecksums = normalizeChecksums(checksums);
         validateChecksumMetadata(normalizedChecksums);
+        validateCompletedPartsMatchUploaded(
+                normalizedBucketName,
+                normalizedKey,
+                session.storageUploadId(),
+                completedParts
+        );
 
         try {
             bucketService.assertObjectChangeAllowed(normalizedBucketName, session.expectedSizeBytes(), 1L);
@@ -1302,8 +1308,14 @@ public class ObjectService {
         }
         Map<Integer, CompletedMultipartUploadPart> uniqueParts = new TreeMap<>();
         for (CompletedMultipartUploadPart part : parts) {
+            if (part == null) {
+                throw new ApiException(ApiErrorCode.VALIDATION_ERROR, "multipart part is required.");
+            }
             if (part.partNumber() < 1 || part.partNumber() > MAX_MULTIPART_PART_COUNT) {
                 throw new ApiException(ApiErrorCode.VALIDATION_ERROR, "partNumber must be between 1 and 10000.");
+            }
+            if (part.etag() == null || part.etag().isBlank()) {
+                throw new ApiException(ApiErrorCode.VALIDATION_ERROR, "multipart part ETag is required.");
             }
             validateChecksumMetadata(part.checksums());
             if (uniqueParts.put(part.partNumber(), part) != null) {
@@ -1311,6 +1323,46 @@ public class ObjectService {
             }
         }
         return List.copyOf(uniqueParts.values());
+    }
+
+    private void validateCompletedPartsMatchUploaded(
+            String bucketName,
+            String objectKey,
+            String storageUploadId,
+            List<CompletedMultipartUploadPart> completedParts
+    ) {
+        List<MultipartUploadUploadedPart> uploadedParts =
+                storageAdapter.listMultipartUploadParts(bucketName, objectKey, storageUploadId);
+        Map<Integer, MultipartUploadUploadedPart> uploadedByPartNumber = new TreeMap<>();
+        for (MultipartUploadUploadedPart uploadedPart : uploadedParts) {
+            uploadedByPartNumber.put(uploadedPart.partNumber(), uploadedPart);
+        }
+        for (CompletedMultipartUploadPart completedPart : completedParts) {
+            MultipartUploadUploadedPart uploadedPart = uploadedByPartNumber.get(completedPart.partNumber());
+            if (uploadedPart == null) {
+                throw new ApiException(
+                        ApiErrorCode.VALIDATION_ERROR,
+                        "Multipart upload part " + completedPart.partNumber() + " has not been uploaded."
+                );
+            }
+            if (!normalizeEtag(uploadedPart.etag()).equals(normalizeEtag(completedPart.etag()))) {
+                throw new ApiException(
+                        ApiErrorCode.VALIDATION_ERROR,
+                        "Multipart upload part " + completedPart.partNumber() + " ETag does not match uploaded part."
+                );
+            }
+        }
+    }
+
+    private String normalizeEtag(String etag) {
+        if (etag == null) {
+            return "";
+        }
+        String normalized = etag.trim();
+        if (normalized.length() >= 2 && normalized.startsWith("\"") && normalized.endsWith("\"")) {
+            return normalized.substring(1, normalized.length() - 1);
+        }
+        return normalized;
     }
 
     private void validateUploadMode(PresignedUploadSession session, String expectedMode) {

@@ -328,10 +328,10 @@
 - Feature: S3 multipart complete XML part list validation.
 - Preconditions: Target bucket exists. Active access key has `WRITE` scope. Multipart upload session exists.
 - Input: `POST /api/s3/{bucketName}/{objectKey}?uploadId={uploadId}` with `CompleteMultipartUpload` XML.
-- Steps: Send valid ascending part list, then send invalid lists with empty parts, duplicate `PartNumber`, descending `PartNumber`, `PartNumber` outside 1~10000, and blank `ETag`.
-- Expected: Valid XML is parsed and passed to multipart complete. Invalid XML returns S3 XML `InvalidRequest` before storage complete.
+- Steps: Send valid ascending part list, send invalid lists with empty parts, duplicate `PartNumber`, descending `PartNumber`, `PartNumber` outside 1~10000, and blank `ETag`, then request completion with a missing uploaded part and a stale ETag.
+- Expected: Valid XML is parsed and passed to multipart complete. Invalid XML, missing uploaded part, and stale ETag return S3 XML `InvalidRequest` before storage complete.
 - Priority: P1
-- Automated: `S3ObjectControllerMultipartTest.completeMultipartUploadParsesS3XmlAndReturnsResultXml`, `S3ObjectControllerMultipartTest.completeMultipartUploadRejectsInvalidPartListXml`
+- Automated: `S3ObjectControllerMultipartTest.completeMultipartUploadParsesS3XmlAndReturnsResultXml`, `S3ObjectControllerMultipartTest.completeMultipartUploadRejectsInvalidPartListXml`, `ObjectServiceMultipartRefreshTest.completeMultipartUploadRejectsMissingOrMismatchedUploadedPartBeforeStorageComplete`
 
 ### TC-S3-MULTIPART-LISTPARTS-001
 

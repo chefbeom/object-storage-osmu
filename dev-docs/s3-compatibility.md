@@ -41,7 +41,7 @@
 | Object tagging | Supported | S3 XML tag subset backed by OSMU object tags. |
 | ListObjects V1/V2 | Supported | Prefix, delimiter, marker/continuation token, max keys, URL encoding, owner field. |
 | Multi-object delete | MVP supported | Uses soft-delete; quiet mode and per-key errors supported. |
-| Multipart initiate/upload/list/complete/abort | MVP supported | Requires OSMU expected-size header for quota/session planning. ListParts supports `max-parts`/`part-number-marker` pagination. Complete XML validates non-empty ascending unique part numbers, 1~10000 range, and required ETag. Unknown-size AWS initiate parity is not supported. |
+| Multipart initiate/upload/list/complete/abort | MVP supported | Requires OSMU expected-size header for quota/session planning. ListParts supports `max-parts`/`part-number-marker` pagination. Complete XML validates non-empty ascending unique part numbers, 1~10000 range, required ETag, uploaded part existence, and ETag match before storage complete. Unknown-size AWS initiate parity is not supported. |
 
 ## Checksum Support
 
