@@ -71,6 +71,9 @@ public class InMemoryAccessKeyRepository implements AccessKeyRepository {
                 existing.accessKey(),
                 existing.secretKeyHash(),
                 existing.secretKeyCiphertext(),
+                existing.previousSecretKeyHash(),
+                existing.previousSecretKeyCiphertext(),
+                existing.previousSecretKeyExpiresAt(),
                 allowedBuckets,
                 permissions,
                 bucketScopes,
@@ -91,6 +94,9 @@ public class InMemoryAccessKeyRepository implements AccessKeyRepository {
                 existing.accessKey(),
                 existing.secretKeyHash(),
                 existing.secretKeyCiphertext(),
+                existing.previousSecretKeyHash(),
+                existing.previousSecretKeyCiphertext(),
+                existing.previousSecretKeyExpiresAt(),
                 existing.allowedBuckets(),
                 existing.permissions(),
                 existing.bucketScopes(),
@@ -103,7 +109,14 @@ public class InMemoryAccessKeyRepository implements AccessKeyRepository {
     }
 
     @Override
-    public void updateSecret(long id, String secretKeyHash, String secretKeyCiphertext) {
+    public void updateSecret(
+            long id,
+            String secretKeyHash,
+            String secretKeyCiphertext,
+            String previousSecretKeyHash,
+            String previousSecretKeyCiphertext,
+            OffsetDateTime previousSecretKeyExpiresAt
+    ) {
         accessKeys.computeIfPresent(id, (keyId, existing) -> new AccessKeyEntity(
                 existing.id(),
                 existing.ownerId(),
@@ -111,6 +124,9 @@ public class InMemoryAccessKeyRepository implements AccessKeyRepository {
                 existing.accessKey(),
                 secretKeyHash,
                 secretKeyCiphertext,
+                previousSecretKeyHash,
+                previousSecretKeyCiphertext,
+                previousSecretKeyExpiresAt,
                 existing.allowedBuckets(),
                 existing.permissions(),
                 existing.bucketScopes(),
@@ -131,6 +147,9 @@ public class InMemoryAccessKeyRepository implements AccessKeyRepository {
                 existing.accessKey(),
                 existing.secretKeyHash(),
                 existing.secretKeyCiphertext(),
+                existing.previousSecretKeyHash(),
+                existing.previousSecretKeyCiphertext(),
+                existing.previousSecretKeyExpiresAt(),
                 existing.allowedBuckets(),
                 existing.permissions(),
                 existing.bucketScopes(),
@@ -154,6 +173,9 @@ public class InMemoryAccessKeyRepository implements AccessKeyRepository {
                 entity.accessKey(),
                 entity.secretKeyHash(),
                 entity.secretKeyCiphertext(),
+                entity.previousSecretKeyHash(),
+                entity.previousSecretKeyCiphertext(),
+                entity.previousSecretKeyExpiresAt(),
                 entity.bucketScopes(),
                 entity.status(),
                 entity.expiresAt()

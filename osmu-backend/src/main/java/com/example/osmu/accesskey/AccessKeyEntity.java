@@ -10,6 +10,9 @@ public record AccessKeyEntity(
         String accessKey,
         String secretKeyHash,
         String secretKeyCiphertext,
+        String previousSecretKeyHash,
+        String previousSecretKeyCiphertext,
+        OffsetDateTime previousSecretKeyExpiresAt,
         List<String> allowedBuckets,
         List<String> permissions,
         List<AccessKeyBucketScope> bucketScopes,
@@ -28,6 +31,9 @@ public record AccessKeyEntity(
                 + ", accessKey=" + accessKey
                 + ", secretKeyHash=<redacted>"
                 + ", secretKeyCiphertext=<redacted>"
+                + ", previousSecretKeyHash=<redacted>"
+                + ", previousSecretKeyCiphertext=<redacted>"
+                + ", previousSecretKeyExpiresAt=" + previousSecretKeyExpiresAt
                 + ", allowedBuckets=" + allowedBuckets
                 + ", permissions=" + permissions
                 + ", bucketScopes=" + bucketScopes
@@ -53,7 +59,8 @@ public record AccessKeyEntity(
                 createdAt,
                 expiresAt,
                 lastUsedAt,
-                usageCount
+                usageCount,
+                previousSecretKeyExpiresAt
         );
     }
 }

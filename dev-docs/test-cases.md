@@ -1295,10 +1295,10 @@ ID:
 - Feature: Access Key secret rotation
 - Condition: Active Access Key exists with `READ` and `WRITE` scope for a bucket.
 - Input: `POST /api/access-keys/{keyId}/rotate`.
-- Steps: Create an Access Key, rotate it, use the old secret for `PUT /api/s3/{bucketName}/{objectKey}`, then use the rotated secret for the same S3-style path.
-- Expected: Rotation response returns a one-time `secretKey` with the same `id` and `accessKey`; the old secret returns HTTP 401; the rotated secret succeeds; list responses still omit secret values.
+- Steps: Create an Access Key, rotate it, use the old secret for `PUT /api/s3/{bucketName}/{objectKey}` during the grace window, then use the rotated secret for the same S3-style path.
+- Expected: Rotation response returns a one-time `secretKey` with the same `id` and `accessKey`; the old secret succeeds only during the configured grace period; the rotated secret succeeds; list responses expose `rotationGraceExpiresAt` but still omit secret values.
 - Priority: P1
-- Automated: `AccessKeyControllerTest.rotateAccessKeyReturnsNewSecretAndInvalidatesOldSecret`, `api-access-key.test.js`, `HomeView.test.js`
+- Automated: `AccessKeyControllerTest.rotateAccessKeyKeepsOldSecretDuringGracePeriod`, `api-access-key.test.js`, `HomeView.test.js`
 
 ### TC-KEY-010
 
@@ -1306,7 +1306,7 @@ ID:
 - Condition: User is logged in and can create an Access Key for at least one bucket.
 - Input: `access-key-expires-at-input` datetime-local value.
 - Steps: Enter key name, expiration datetime, bucket scope, submit Access Key creation, then list Access Keys.
-- Expected: Frontend sends ISO `expiresAt` or `null` when blank; list displays `Expires`; backend rejects past expiration via request validation; expired keys cannot authenticate or rotate.
+- Expected: Frontend sends ISO `expiresAt` or `null` when blank; list displays `Expires` and rotation grace state; backend rejects past expiration via request validation; expired keys cannot authenticate or rotate.
 - Priority: P1
 - Automated: `HomeView.test.js`, `api-access-key.test.js`; backend validation execution pending local Java fix.
 

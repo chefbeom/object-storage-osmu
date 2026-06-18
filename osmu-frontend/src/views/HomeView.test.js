@@ -252,6 +252,7 @@ test('HomeView exposes stable selectors for browser E2E flows', () => {
     'access-key-cleanup-candidate-checkbox',
     'access-key-list',
     'access-key-expires-at',
+    'access-key-rotation-grace',
     'access-key-last-used',
     'access-key-usage-count',
     'access-key-action-hint',
@@ -639,6 +640,7 @@ test('HomeView exposes stable selectors for browser E2E flows', () => {
   assert.match(dashboardSource, /defaultLandingPathForRole/)
   assert.match(dashboardSource, /rotateAccessKey/)
   assert.match(dashboardSource, /handleRotateAccessKey/)
+  assert.match(dashboardSource, /rotation grace period/)
   assert.match(dashboardSource, /expiresAt: localDateTimeToIso\(accessKeyForm\.expiresAt\) \|\| null/)
   assert.match(dashboardSource, /filterAccessKeys/)
   assert.match(dashboardSource, /accessKeyOperationalAction/)
@@ -666,6 +668,8 @@ test('HomeView exposes stable selectors for browser E2E flows', () => {
   assert.match(dashboardSource, /s3fs .* use_path_request_style/)
   assert.match(dashboardSource, /goofys --endpoint/)
   assert.match(dashboardSource, /Last used:/)
+  assert.match(dashboardSource, /Rotation grace:/)
+  assert.match(dashboardSource, /Old secret allowed until/)
   assert.match(dashboardSource, /Total S3 uses/)
   assert.match(dashboardSource, /S3 uses:/)
   assert.match(dashboardSource, /analyzeAccessKeyUsage/)

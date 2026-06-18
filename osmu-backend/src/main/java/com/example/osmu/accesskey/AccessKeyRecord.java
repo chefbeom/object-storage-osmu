@@ -16,6 +16,7 @@ public record AccessKeyRecord(
         OffsetDateTime createdAt,
         OffsetDateTime expiresAt,
         OffsetDateTime lastUsedAt,
-        long usageCount
+        long usageCount,
+        OffsetDateTime rotationGraceExpiresAt
 ) {
 }

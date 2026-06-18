@@ -43,7 +43,7 @@ public class S3RequestAuthService {
         }
         if (signatureV4Verifier.isSignatureRequest(request) && isBlank(request.getHeader(SECRET_KEY_HEADER))) {
             String accessKey = signatureV4Verifier.accessKey(request);
-            signatureV4Verifier.verify(request, accessKeyService.signingSecret(accessKey));
+            signatureV4Verifier.verifyAny(request, accessKeyService.signingSecrets(accessKey));
             return accessKeyService.authenticateSignedAny(accessKey, bucketName, requiredPermissions);
         }
         String accessKey = accessKey(request);
@@ -58,7 +58,7 @@ public class S3RequestAuthService {
         }
         if (signatureV4Verifier.isSignatureRequest(request) && isBlank(request.getHeader(SECRET_KEY_HEADER))) {
             String accessKey = signatureV4Verifier.accessKey(request);
-            signatureV4Verifier.verify(request, accessKeyService.signingSecret(accessKey));
+            signatureV4Verifier.verifyAny(request, accessKeyService.signingSecrets(accessKey));
             AccessKeyBucketList bucketList = accessKeyService.authenticateSignedBucketList(accessKey);
             return new S3BucketListAccess(bucketList.user(), bucketList.buckets());
         }

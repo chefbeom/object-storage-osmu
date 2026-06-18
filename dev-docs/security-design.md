@@ -154,7 +154,7 @@ MVP:
 - access key 생성 시 선택 만료일 `expiresAt`을 지정할 수 있고, 과거 시각은 validation에서 거부한다.
 - 만료된 access key는 S3 호환 API 인증과 secret rotation을 허용하지 않는다.
 - access key secret rotation은 기존 key id/access key/scope를 유지하고 새 secret을 1회 반환한다.
-- rotation 이후 기존 secret은 즉시 인증 실패 처리되며, `ACCESS_KEY_ROTATE` audit log에는 새 secret 원문을 기록하지 않는다.
+- rotation 이후 기존 secret은 `osmu.access-key.rotation-grace-seconds` 동안만 OSMU S3-compatible API에서 임시 허용하고, `ACCESS_KEY_ROTATE` audit log에는 새 secret 원문을 기록하지 않는다.
 - lightweight/local demo verifier는 access key secret redaction smoke를 실행하며, `-BackendLogPath` 입력 시 실제 backend log file에서도 생성된 secret 원문을 scan한다.
 - `osmu.metadata.mode=in-memory`에서는 메모리에 저장하고, `mariadb`에서는 `access_keys` table에 저장한다.
 - `ADMIN`은 전체 access key를 볼 수 있다.

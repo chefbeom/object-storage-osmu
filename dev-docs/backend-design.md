@@ -207,6 +207,7 @@ Controller -> Service -> StorageAdapter
 - bucket permission 회수 후 active key scope/policy 재동기화
 - Access Key 비활성화
 - S3 호환 인증 성공 시 `lastUsedAt` 갱신과 `usageCount` 증가
+- Secret rotation 이후 설정된 grace period 동안 이전 secret hash/ciphertext를 임시 인증 재료로 유지
 - 사용자 비활성화/잠금 시 사용자 소유 Access Key 일괄 비활성화
 - MinIO 계정/정책 연동
 

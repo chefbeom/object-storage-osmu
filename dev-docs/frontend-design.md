@@ -252,6 +252,7 @@ Version UI:
 - S3 API 인증 성공 누적 횟수 `usageCount` 표시
 - Access Key usage analysis panel로 총 S3 사용 횟수, 사용된 key 수, 최근 사용 시각, 최다 사용 key 표시
 - 만료 시각 `expiresAt` 표시
+- Secret rotation grace 만료 시각 `rotationGraceExpiresAt` 표시
 - expired/expiring/never-used/stale 상태별 운영 조치 hint 표시
 - 생성된 policy 이름 표시
 - Secret Key 1회 표시와 재조회 불가/분실 시 rotate 필요 안내

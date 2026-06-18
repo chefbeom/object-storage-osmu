@@ -3016,7 +3016,7 @@ async function handleCreateAccessKey() {
 function handleRotateAccessKey(keyId) {
   openConfirmDialog({
     title: 'Access Key Secret Rotate',
-    message: `Access Key #${keyId} secret을 새로 발급합니다. 기존 Secret Key를 사용하는 S3 클라이언트는 즉시 실패합니다.`,
+    message: `Access Key #${keyId} secret을 새로 발급합니다. 기존 Secret Key는 rotation grace period 동안만 허용됩니다.`,
     confirmLabel: 'Rotate',
     action: async () => {
       const result = await runAction(() => rotateAccessKey(keyId))

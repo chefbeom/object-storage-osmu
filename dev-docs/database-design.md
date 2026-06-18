@@ -245,6 +245,9 @@ CREATE TABLE access_keys (
   access_key VARCHAR(128) NOT NULL,
   secret_key_hash VARCHAR(128) NOT NULL,
   secret_key_ciphertext TEXT NULL,
+  previous_secret_key_hash VARCHAR(128) NULL,
+  previous_secret_key_ciphertext TEXT NULL,
+  previous_secret_key_expires_at DATETIME(6) NULL,
   allowed_buckets TEXT NOT NULL,
   permissions TEXT NOT NULL,
   bucket_scopes TEXT NULL,
@@ -272,6 +275,7 @@ CREATE TABLE access_keys (
 - `last_used_at`은 S3 호환 API에서 Access Key 인증이 성공할 때 갱신한다.
 - `usage_count`는 S3 호환 API에서 Access Key 인증이 성공할 때마다 1 증가한다.
 - Access Key secret rotation 시 `secret_key_hash`, `secret_key_ciphertext`를 새 secret 기준으로 갱신하며 bucket scope와 `access_key` 값은 유지한다.
+- rotation grace period 동안 `previous_secret_key_hash`, `previous_secret_key_ciphertext`, `previous_secret_key_expires_at`으로 이전 secret 인증과 SigV4 검증을 임시 허용한다.
 
 - Access key `permissions` supports `READ`, `WRITE`, `DELETE`, and `ADMIN`.
 - `ADMIN` access key scope is used for bucket lifecycle alias management.

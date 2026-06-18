@@ -20,6 +20,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 @Service
@@ -34,6 +35,7 @@ public class AccessKeyService {
     private final S3AccessPolicyGenerator policyGenerator;
     private final S3AccessPolicyProvisioner policyProvisioner;
     private final AccessKeySecretCipher secretCipher;
+    private final long rotationGraceSeconds;
     private final SecureRandom random = new SecureRandom();
 
     public AccessKeyService(
@@ -42,7 +44,8 @@ public class AccessKeyService {
             UserRepository userRepository,
             S3AccessPolicyGenerator policyGenerator,
             S3AccessPolicyProvisioner policyProvisioner,
-            AccessKeySecretCipher secretCipher
+            AccessKeySecretCipher secretCipher,
+            @Value("${osmu.access-key.rotation-grace-seconds:300}") long rotationGraceSeconds
     ) {
         this.accessKeyRepository = accessKeyRepository;
         this.bucketService = bucketService;
@@ -50,6 +53,7 @@ public class AccessKeyService {
         this.policyGenerator = policyGenerator;
         this.policyProvisioner = policyProvisioner;
         this.secretCipher = secretCipher;
+        this.rotationGraceSeconds = Math.max(0L, rotationGraceSeconds);
     }
 
     public List<AccessKeyRecord> list(AuthenticatedUser user) {
@@ -72,6 +76,9 @@ public class AccessKeyService {
                 accessKey,
                 secretHash(secretKey),
                 secretCipher.encrypt(secretKey),
+                null,
+                null,
+                null,
                 allowedBuckets,
                 permissions,
                 bucketScopes,
@@ -161,13 +168,19 @@ public class AccessKeyService {
 
         String oldSecretKey = decryptStoredSecret(existing.accessKey());
         String rotatedSecretKey = token(36);
+        OffsetDateTime previousSecretKeyExpiresAt = rotationGraceSeconds > 0 && oldSecretKey != null && !oldSecretKey.isBlank()
+                ? OffsetDateTime.now().plusSeconds(rotationGraceSeconds)
+                : null;
         S3AccessPolicy policy = policyGenerator.generate(existing.id(), bucketScopes(existing));
         policyProvisioner.rotateSecret(existing, rotatedSecretKey);
         try {
             accessKeyRepository.updateSecret(
                     existing.id(),
                     secretHash(rotatedSecretKey),
-                    secretCipher.encrypt(rotatedSecretKey)
+                    secretCipher.encrypt(rotatedSecretKey),
+                    previousSecretKeyExpiresAt == null ? null : secretHash(oldSecretKey),
+                    previousSecretKeyExpiresAt == null ? null : secretCipher.encrypt(oldSecretKey),
+                    previousSecretKeyExpiresAt
             );
         } catch (RuntimeException exception) {
             rollbackSecretRotation(existing, oldSecretKey, exception);
@@ -201,7 +214,7 @@ public class AccessKeyService {
         }
         AccessKeyCredential credential = accessKeyRepository.findCredentialByAccessKey(normalizedAccessKey)
                 .orElseThrow(() -> new ApiException(ApiErrorCode.AUTHENTICATION_REQUIRED, "Invalid access key credentials."));
-        if (!"ACTIVE".equals(credential.status()) || isExpired(credential) || !secretMatches(normalizedSecretKey, credential.secretKeyHash())) {
+        if (!"ACTIVE".equals(credential.status()) || isExpired(credential) || !matchesActiveSecret(normalizedSecretKey, credential)) {
             throw new ApiException(ApiErrorCode.AUTHENTICATION_REQUIRED, "Invalid access key credentials.");
         }
         AuthenticatedUser owner = authenticatedOwner(credential.ownerId());
@@ -219,14 +232,22 @@ public class AccessKeyService {
     }
 
     public String signingSecret(String accessKey) {
+        return signingSecrets(accessKey).get(0);
+    }
+
+    public List<String> signingSecrets(String accessKey) {
         AccessKeyCredential credential = credential(accessKey);
         assertCredentialActive(credential);
         authenticatedOwnerOrThrow(credential);
-        String signingSecret = secretCipher.decrypt(credential.secretKeyCiphertext());
-        if (signingSecret == null || signingSecret.isBlank()) {
+        List<String> signingSecrets = new ArrayList<>();
+        addSigningSecret(signingSecrets, credential.secretKeyCiphertext());
+        if (previousSecretGraceActive(credential)) {
+            addSigningSecret(signingSecrets, credential.previousSecretKeyCiphertext());
+        }
+        if (signingSecrets.isEmpty()) {
             throw new ApiException(ApiErrorCode.AUTHENTICATION_REQUIRED, "Access key signing secret is unavailable.");
         }
-        return signingSecret;
+        return signingSecrets;
     }
 
     public AuthenticatedUser authenticateSignedAny(String accessKey, String bucketName, String... requiredPermissions) {
@@ -268,7 +289,7 @@ public class AccessKeyService {
         }
         AccessKeyCredential credential = accessKeyRepository.findCredentialByAccessKey(normalizedAccessKey)
                 .orElseThrow(() -> new ApiException(ApiErrorCode.AUTHENTICATION_REQUIRED, "Invalid access key credentials."));
-        if (!"ACTIVE".equals(credential.status()) || isExpired(credential) || !secretMatches(normalizedSecretKey, credential.secretKeyHash())) {
+        if (!"ACTIVE".equals(credential.status()) || isExpired(credential) || !matchesActiveSecret(normalizedSecretKey, credential)) {
             throw new ApiException(ApiErrorCode.AUTHENTICATION_REQUIRED, "Invalid access key credentials.");
         }
         AuthenticatedUser owner = authenticatedOwner(credential.ownerId());
@@ -360,7 +381,8 @@ public class AccessKeyService {
                         accessKey.createdAt(),
                         accessKey.expiresAt(),
                         accessKey.lastUsedAt(),
-                        accessKey.usageCount()
+                        accessKey.usageCount(),
+                        accessKey.rotationGraceExpiresAt()
                 );
                 try {
                     policyProvisioner.syncPolicy(scopedRecord, policyGenerator.generate(scopedRecord.id(), scope.bucketScopes()));
@@ -681,6 +703,25 @@ public class AccessKeyService {
 
     private void markUsed(AccessKeyCredential credential) {
         accessKeyRepository.markUsed(credential.id(), OffsetDateTime.now());
+    }
+
+    private void addSigningSecret(List<String> signingSecrets, String ciphertext) {
+        String signingSecret = secretCipher.decrypt(ciphertext);
+        if (signingSecret != null && !signingSecret.isBlank()) {
+            signingSecrets.add(signingSecret);
+        }
+    }
+
+    private boolean matchesActiveSecret(String secretKey, AccessKeyCredential credential) {
+        if (secretMatches(secretKey, credential.secretKeyHash())) {
+            return true;
+        }
+        return previousSecretGraceActive(credential) && secretMatches(secretKey, credential.previousSecretKeyHash());
+    }
+
+    private boolean previousSecretGraceActive(AccessKeyCredential credential) {
+        return credential.previousSecretKeyExpiresAt() != null
+                && credential.previousSecretKeyExpiresAt().isAfter(OffsetDateTime.now());
     }
 
     private boolean secretMatches(String secretKey, String expectedHash) {

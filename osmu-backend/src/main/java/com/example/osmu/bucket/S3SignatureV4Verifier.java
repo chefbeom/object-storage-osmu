@@ -111,6 +111,22 @@ public class S3SignatureV4Verifier {
         }
     }
 
+    public void verifyAny(HttpServletRequest request, List<String> secretKeys) {
+        if (secretKeys == null || secretKeys.isEmpty()) {
+            throw new ApiException(ApiErrorCode.AUTHENTICATION_REQUIRED, "Access key signing secret is unavailable.");
+        }
+        ApiException lastException = null;
+        for (String secretKey : secretKeys) {
+            try {
+                verify(request, secretKey);
+                return;
+            } catch (ApiException exception) {
+                lastException = exception;
+            }
+        }
+        throw lastException == null ? invalidSignature() : lastException;
+    }
+
     private void verifyPresigned(HttpServletRequest request, String secretKey) {
         ParsedAuthorization authorization = parsePresignedAuthorization(request);
         String requestDate = requiredParameter(request, PRESIGNED_DATE);

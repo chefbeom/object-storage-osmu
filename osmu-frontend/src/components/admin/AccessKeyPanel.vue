@@ -118,6 +118,7 @@
           <b>{{ key.name }}</b>
           <small>{{ key.policyName }} / {{ formatKeyScope(key) }}</small>
           <small data-testid="access-key-expires-at">Expires: {{ formatExpiresAt(key.expiresAt) }}</small>
+          <small data-testid="access-key-rotation-grace">Rotation grace: {{ formatRotationGrace(key.rotationGraceExpiresAt) }}</small>
           <small data-testid="access-key-last-used">Last used: {{ formatLastUsedAt(key.lastUsedAt) }}</small>
           <small data-testid="access-key-usage-count">S3 uses: {{ formatUsageCount(key.usageCount) }}</small>
           <small data-testid="access-key-action-hint" :class="['action-hint', accessKeyActionTone(key)]">
@@ -236,6 +237,14 @@ function formatLastUsedAt(value) {
 
 function formatExpiresAt(value) {
   return value ? new Date(value).toLocaleString() : '만료 없음'
+}
+
+function formatRotationGrace(value) {
+  if (!value) return '없음'
+  const expiresAt = new Date(value)
+  return expiresAt.getTime() > Date.now()
+    ? `Old secret allowed until ${expiresAt.toLocaleString()}`
+    : `Expired ${expiresAt.toLocaleString()}`
 }
 
 function formatUsageCount(value) {

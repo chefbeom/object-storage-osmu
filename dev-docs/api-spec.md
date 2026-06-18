@@ -2167,7 +2167,8 @@ soft-deleted 파일 영구 삭제.
       "createdAt": "2026-06-13T04:10:00+09:00",
       "expiresAt": null,
       "lastUsedAt": "2026-06-15T14:08:00+09:00",
-      "usageCount": 12
+      "usageCount": 12,
+      "rotationGraceExpiresAt": "2026-06-15T14:13:00+09:00"
     }
   ],
   "nextCursor": null
@@ -2243,6 +2244,7 @@ Access Key 생성.
 - 더 이상 허용 가능한 scope가 없는 key는 `INACTIVE`로 변경하고 S3 user/policy를 제거한다.
 - `osmu.metadata.mode=mariadb`에서는 `access_keys` table에 저장한다.
 - S3 호환 API에서 Access Key 인증이 성공하면 해당 key의 `lastUsedAt`을 갱신하고 `usageCount`를 1 증가시킨다.
+- Secret rotation 직후에는 `osmu.access-key.rotation-grace-seconds` 동안 이전 Secret을 OSMU S3-compatible API에서 임시 허용하고 `rotationGraceExpiresAt`으로 만료 시각을 노출한다.
 
 - Access key `permissions` supports `READ`, `WRITE`, `DELETE`, and `ADMIN`.
 - `ADMIN` access key scope is required for bucket lifecycle alias operations.
@@ -2255,7 +2257,7 @@ MVP 동작:
 
 - `accessKey`, `id`, bucket scope, policy name은 유지한다.
 - 새 `secretKey`는 응답에서 1회만 노출한다.
-- 기존 Secret Key는 즉시 인증 실패 처리된다.
+- 기존 Secret Key는 기본 300초 grace period 동안 OSMU S3-compatible API에서 계속 허용되며 grace 만료 뒤 인증 실패 처리된다.
 - `ACTIVE` 상태의 Access Key만 회전할 수 있다.
 - 일반 사용자는 본인이 소유한 Access Key만 회전할 수 있고, `ADMIN`은 전체 Access Key를 회전할 수 있다.
 - `ACCESS_KEY_ROTATE` 감사 로그를 기록하되 새 secret 원문은 기록하지 않는다.

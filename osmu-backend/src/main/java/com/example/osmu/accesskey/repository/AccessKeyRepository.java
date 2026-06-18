@@ -26,7 +26,14 @@ public interface AccessKeyRepository {
 
     void updateStatus(long id, String status);
 
-    void updateSecret(long id, String secretKeyHash, String secretKeyCiphertext);
+    void updateSecret(
+            long id,
+            String secretKeyHash,
+            String secretKeyCiphertext,
+            String previousSecretKeyHash,
+            String previousSecretKeyCiphertext,
+            OffsetDateTime previousSecretKeyExpiresAt
+    );
 
     void markUsed(long id, OffsetDateTime usedAt);
 

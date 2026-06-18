@@ -177,7 +177,7 @@ class AccessKeyControllerTest {
     }
 
     @Test
-    void rotateAccessKeyReturnsNewSecretAndInvalidatesOldSecret() throws Exception {
+    void rotateAccessKeyKeepsOldSecretDuringGracePeriod() throws Exception {
         String accessToken = loginAndReturnAccessToken("admin", "password");
         createBucket(accessToken, "key-rotation-bucket");
 
@@ -215,7 +215,7 @@ class AccessKeyControllerTest {
                         .header("X-OSMU-Secret-Key", originalSecret)
                         .contentType(MediaType.TEXT_PLAIN)
                         .content("old secret"))
-                .andExpect(status().isUnauthorized());
+                .andExpect(status().isOk());
 
         mockMvc.perform(put("/api/s3/key-rotation-bucket/new-secret.txt")
                         .header("X-OSMU-Access-Key", accessKey)
@@ -228,7 +228,8 @@ class AccessKeyControllerTest {
                         .header("Authorization", "Bearer " + accessToken))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.items[0].secretKey").doesNotExist())
-                .andExpect(jsonPath("$.items[0].secretKeyHash").doesNotExist());
+                .andExpect(jsonPath("$.items[0].secretKeyHash").doesNotExist())
+                .andExpect(jsonPath("$.items[0].rotationGraceExpiresAt", not(emptyString())));
     }
 
     @Test
@@ -311,8 +312,8 @@ class AccessKeyControllerTest {
 
         List<AccessKeyBucketScope> scopes = List.of(new AccessKeyBucketScope("key-secret-log-bucket", List.of("READ")));
         CreateAccessKeyResponse response = new CreateAccessKeyResponse(900L, "safe-key", accessKey, rawSecret, "policy-name", "policy-document", List.of("key-secret-log-bucket"), List.of("READ"), scopes);
-        AccessKeyEntity entity = new AccessKeyEntity(900L, 1L, "safe-key", accessKey, "raw-secret-hash", "raw-secret-ciphertext", List.of("key-secret-log-bucket"), List.of("READ"), scopes, "ACTIVE", OffsetDateTime.now(), null, null, 0L);
-        AccessKeyCredential credential = new AccessKeyCredential(900L, 1L, accessKey, "raw-secret-hash", "raw-secret-ciphertext", scopes, "ACTIVE", null);
+        AccessKeyEntity entity = new AccessKeyEntity(900L, 1L, "safe-key", accessKey, "raw-secret-hash", "raw-secret-ciphertext", null, null, null, List.of("key-secret-log-bucket"), List.of("READ"), scopes, "ACTIVE", OffsetDateTime.now(), null, null, 0L);
+        AccessKeyCredential credential = new AccessKeyCredential(900L, 1L, accessKey, "raw-secret-hash", "raw-secret-ciphertext", null, null, null, scopes, "ACTIVE", null);
 
         assertThat(response.toString())
                 .contains("secretKey=<redacted>")

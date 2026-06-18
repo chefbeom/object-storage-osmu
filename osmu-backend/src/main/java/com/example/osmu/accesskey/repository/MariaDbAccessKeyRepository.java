@@ -56,7 +56,7 @@ public class MariaDbAccessKeyRepository implements AccessKeyRepository {
     public List<AccessKeyRecord> findAllRecords() {
         ensureSchema();
         String sql = """
-                SELECT id, owner_id, name, access_key, allowed_buckets, permissions, bucket_scopes, status, created_at, expires_at, last_used_at, usage_count
+                SELECT id, owner_id, name, access_key, allowed_buckets, permissions, bucket_scopes, status, created_at, expires_at, last_used_at, usage_count, previous_secret_key_expires_at
                 FROM access_keys
                 ORDER BY id
                 """;
@@ -77,7 +77,7 @@ public class MariaDbAccessKeyRepository implements AccessKeyRepository {
     public List<AccessKeyRecord> findRecordsByOwnerId(long ownerId) {
         ensureSchema();
         String sql = """
-                SELECT id, owner_id, name, access_key, allowed_buckets, permissions, bucket_scopes, status, created_at, expires_at, last_used_at, usage_count
+                SELECT id, owner_id, name, access_key, allowed_buckets, permissions, bucket_scopes, status, created_at, expires_at, last_used_at, usage_count, previous_secret_key_expires_at
                 FROM access_keys
                 WHERE owner_id = ?
                 ORDER BY id
@@ -101,7 +101,7 @@ public class MariaDbAccessKeyRepository implements AccessKeyRepository {
     public Optional<AccessKeyRecord> findRecordById(long id) {
         ensureSchema();
         String sql = """
-                SELECT id, owner_id, name, access_key, allowed_buckets, permissions, bucket_scopes, status, created_at, expires_at, last_used_at, usage_count
+                SELECT id, owner_id, name, access_key, allowed_buckets, permissions, bucket_scopes, status, created_at, expires_at, last_used_at, usage_count, previous_secret_key_expires_at
                 FROM access_keys
                 WHERE id = ?
                 """;
@@ -123,7 +123,7 @@ public class MariaDbAccessKeyRepository implements AccessKeyRepository {
     public Optional<AccessKeyCredential> findCredentialByAccessKey(String accessKey) {
         ensureSchema();
         String sql = """
-                SELECT id, owner_id, access_key, secret_key_hash, secret_key_ciphertext, allowed_buckets, permissions, bucket_scopes, status, expires_at
+                SELECT id, owner_id, access_key, secret_key_hash, secret_key_ciphertext, previous_secret_key_hash, previous_secret_key_ciphertext, previous_secret_key_expires_at, allowed_buckets, permissions, bucket_scopes, status, expires_at
                 FROM access_keys
                 WHERE access_key = ?
                 """;
@@ -162,12 +162,15 @@ public class MariaDbAccessKeyRepository implements AccessKeyRepository {
         ensureSchema();
         String sql = """
                 INSERT INTO access_keys
-                    (id, owner_id, name, access_key, secret_key_hash, secret_key_ciphertext, allowed_buckets, permissions, bucket_scopes, status, created_at, expires_at, last_used_at, usage_count)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    (id, owner_id, name, access_key, secret_key_hash, secret_key_ciphertext, previous_secret_key_hash, previous_secret_key_ciphertext, previous_secret_key_expires_at, allowed_buckets, permissions, bucket_scopes, status, created_at, expires_at, last_used_at, usage_count)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON DUPLICATE KEY UPDATE
                     name = VALUES(name),
                     secret_key_hash = VALUES(secret_key_hash),
                     secret_key_ciphertext = VALUES(secret_key_ciphertext),
+                    previous_secret_key_hash = VALUES(previous_secret_key_hash),
+                    previous_secret_key_ciphertext = VALUES(previous_secret_key_ciphertext),
+                    previous_secret_key_expires_at = VALUES(previous_secret_key_expires_at),
                     allowed_buckets = VALUES(allowed_buckets),
                     permissions = VALUES(permissions),
                     bucket_scopes = VALUES(bucket_scopes),
@@ -182,14 +185,17 @@ public class MariaDbAccessKeyRepository implements AccessKeyRepository {
             statement.setString(4, accessKey.accessKey());
             statement.setString(5, accessKey.secretKeyHash());
             statement.setString(6, accessKey.secretKeyCiphertext());
-            statement.setString(7, jsonList(accessKey.allowedBuckets()));
-            statement.setString(8, jsonList(accessKey.permissions()));
-            statement.setString(9, jsonBucketScopes(accessKey.bucketScopes()));
-            statement.setString(10, accessKey.status());
-            statement.setTimestamp(11, Timestamp.from(accessKey.createdAt().toInstant()));
-            statement.setTimestamp(12, timestampOrNull(accessKey.expiresAt()));
-            statement.setTimestamp(13, timestampOrNull(accessKey.lastUsedAt()));
-            statement.setLong(14, accessKey.usageCount());
+            statement.setString(7, accessKey.previousSecretKeyHash());
+            statement.setString(8, accessKey.previousSecretKeyCiphertext());
+            statement.setTimestamp(9, timestampOrNull(accessKey.previousSecretKeyExpiresAt()));
+            statement.setString(10, jsonList(accessKey.allowedBuckets()));
+            statement.setString(11, jsonList(accessKey.permissions()));
+            statement.setString(12, jsonBucketScopes(accessKey.bucketScopes()));
+            statement.setString(13, accessKey.status());
+            statement.setTimestamp(14, Timestamp.from(accessKey.createdAt().toInstant()));
+            statement.setTimestamp(15, timestampOrNull(accessKey.expiresAt()));
+            statement.setTimestamp(16, timestampOrNull(accessKey.lastUsedAt()));
+            statement.setLong(17, accessKey.usageCount());
             statement.executeUpdate();
             return accessKey.toRecord();
         } catch (SQLException exception) {
@@ -228,14 +234,32 @@ public class MariaDbAccessKeyRepository implements AccessKeyRepository {
     }
 
     @Override
-    public void updateSecret(long id, String secretKeyHash, String secretKeyCiphertext) {
+    public void updateSecret(
+            long id,
+            String secretKeyHash,
+            String secretKeyCiphertext,
+            String previousSecretKeyHash,
+            String previousSecretKeyCiphertext,
+            OffsetDateTime previousSecretKeyExpiresAt
+    ) {
         ensureSchema();
-        String sql = "UPDATE access_keys SET secret_key_hash = ?, secret_key_ciphertext = ? WHERE id = ?";
+        String sql = """
+                UPDATE access_keys
+                SET secret_key_hash = ?,
+                    secret_key_ciphertext = ?,
+                    previous_secret_key_hash = ?,
+                    previous_secret_key_ciphertext = ?,
+                    previous_secret_key_expires_at = ?
+                WHERE id = ?
+                """;
         try (Connection connection = connect();
              PreparedStatement statement = connection.prepareStatement(sql)) {
             statement.setString(1, secretKeyHash);
             statement.setString(2, secretKeyCiphertext);
-            statement.setLong(3, id);
+            statement.setString(3, previousSecretKeyHash);
+            statement.setString(4, previousSecretKeyCiphertext);
+            statement.setTimestamp(5, timestampOrNull(previousSecretKeyExpiresAt));
+            statement.setLong(6, id);
             statement.executeUpdate();
         } catch (SQLException exception) {
             throw databaseException(exception);
@@ -280,6 +304,9 @@ public class MariaDbAccessKeyRepository implements AccessKeyRepository {
                     access_key VARCHAR(128) NOT NULL UNIQUE,
                     secret_key_hash VARCHAR(128) NOT NULL,
                     secret_key_ciphertext TEXT NULL,
+                    previous_secret_key_hash VARCHAR(128) NULL,
+                    previous_secret_key_ciphertext TEXT NULL,
+                    previous_secret_key_expires_at TIMESTAMP NULL,
                     allowed_buckets TEXT NOT NULL,
                     permissions TEXT NOT NULL,
                     bucket_scopes TEXT NULL,
@@ -309,6 +336,9 @@ public class MariaDbAccessKeyRepository implements AccessKeyRepository {
         executeUpdate(connection, "ALTER TABLE access_keys ADD COLUMN IF NOT EXISTS permissions TEXT NULL");
         executeUpdate(connection, "ALTER TABLE access_keys ADD COLUMN IF NOT EXISTS bucket_scopes TEXT NULL");
         executeUpdate(connection, "ALTER TABLE access_keys ADD COLUMN IF NOT EXISTS secret_key_ciphertext TEXT NULL");
+        executeUpdate(connection, "ALTER TABLE access_keys ADD COLUMN IF NOT EXISTS previous_secret_key_hash VARCHAR(128) NULL");
+        executeUpdate(connection, "ALTER TABLE access_keys ADD COLUMN IF NOT EXISTS previous_secret_key_ciphertext TEXT NULL");
+        executeUpdate(connection, "ALTER TABLE access_keys ADD COLUMN IF NOT EXISTS previous_secret_key_expires_at TIMESTAMP NULL");
         executeUpdate(connection, "ALTER TABLE access_keys ADD COLUMN IF NOT EXISTS last_used_at TIMESTAMP NULL");
         executeUpdate(connection, "ALTER TABLE access_keys ADD COLUMN IF NOT EXISTS usage_count BIGINT NOT NULL DEFAULT 0");
         executeUpdate(connection, "CREATE INDEX IF NOT EXISTS idx_access_keys_last_used_at ON access_keys (last_used_at)");
@@ -345,7 +375,8 @@ public class MariaDbAccessKeyRepository implements AccessKeyRepository {
                 resultSet.getTimestamp("created_at").toInstant().atOffset(ZoneOffset.UTC),
                 offsetDateTimeOrNull(resultSet.getTimestamp("expires_at")),
                 offsetDateTimeOrNull(resultSet.getTimestamp("last_used_at")),
-                resultSet.getLong("usage_count")
+                resultSet.getLong("usage_count"),
+                offsetDateTimeOrNull(resultSet.getTimestamp("previous_secret_key_expires_at"))
         );
     }
 
@@ -358,6 +389,9 @@ public class MariaDbAccessKeyRepository implements AccessKeyRepository {
                 resultSet.getString("access_key"),
                 resultSet.getString("secret_key_hash"),
                 resultSet.getString("secret_key_ciphertext"),
+                resultSet.getString("previous_secret_key_hash"),
+                resultSet.getString("previous_secret_key_ciphertext"),
+                offsetDateTimeOrNull(resultSet.getTimestamp("previous_secret_key_expires_at")),
                 readBucketScopes(resultSet.getString("bucket_scopes"), allowedBuckets, permissions),
                 resultSet.getString("status"),
                 offsetDateTimeOrNull(resultSet.getTimestamp("expires_at"))

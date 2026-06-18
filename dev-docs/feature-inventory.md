@@ -128,10 +128,10 @@ MVP 데모 기준 완료율은 약 90~95%입니다.
 - SDK 예제 자동 생성
 - 개발자 onboarding checklist
 - access key 사용량/마지막 사용 시각 분석
+- key 만료/rotation grace period
 
 남은 것:
 
-- key 만료/rotation grace period
 - real S3 client compatibility matrix
 
 ### 4.3 관리자 콘솔

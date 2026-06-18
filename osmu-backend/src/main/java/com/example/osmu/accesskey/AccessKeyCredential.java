@@ -9,6 +9,9 @@ public record AccessKeyCredential(
         String accessKey,
         String secretKeyHash,
         String secretKeyCiphertext,
+        String previousSecretKeyHash,
+        String previousSecretKeyCiphertext,
+        OffsetDateTime previousSecretKeyExpiresAt,
         List<AccessKeyBucketScope> bucketScopes,
         String status,
         OffsetDateTime expiresAt
@@ -21,6 +24,9 @@ public record AccessKeyCredential(
                 + ", accessKey=" + accessKey
                 + ", secretKeyHash=<redacted>"
                 + ", secretKeyCiphertext=<redacted>"
+                + ", previousSecretKeyHash=<redacted>"
+                + ", previousSecretKeyCiphertext=<redacted>"
+                + ", previousSecretKeyExpiresAt=" + previousSecretKeyExpiresAt
                 + ", bucketScopes=" + bucketScopes
                 + ", status=" + status
                 + ", expiresAt=" + expiresAt
