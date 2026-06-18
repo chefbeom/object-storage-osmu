@@ -46,7 +46,7 @@
 - S3 multipart initiate accepts optional OSMU expected-size metadata headers. When omitted, it creates an AWS-style unknown-size multipart session and checks quota on complete using the actual completed object size.
 - S3 multipart part upload validates optional `Content-MD5`, signed `x-amz-content-sha256`, and one optional `x-amz-checksum-*` value header, and returns the matching checksum response header.
 - S3 multipart complete validates one optional final object `x-amz-checksum-*` value header against the completed object, stores matching checksum metadata, returns the matching checksum response header, and exposes it in complete-result XML.
-- S3 multipart complete request XML accepts optional per-part checksum elements and validates their syntax before storage completion.
+- S3 multipart complete request XML accepts optional per-part checksum elements and validates their syntax before storage completion. When every completed part supplies the same `ChecksumSHA256` or `ChecksumSHA1` value and no final object checksum header is supplied, OSMU stores the AWS-style composite checksum calculated from the ordered part checksum bytes.
 - S3 multipart complete rejects missing uploaded parts or stale per-part ETags before storage completion.
 - Missing S3 multipart upload IDs return S3 XML `NoSuchUpload`.
 - S3 multipart ListParts supports `max-parts`/`part-number-marker` pagination and returns `PartNumberMarker`, `NextPartNumberMarker`, `MaxParts`, and `IsTruncated` XML fields.
@@ -56,7 +56,7 @@
 - `x-amz-tagging` and `X-OSMU-Tags` are accepted for upload tags.
 - Multi-object delete uses the same soft-delete behavior as the REST object API and treats missing keys as deleted for S3 compatibility.
 - Object tagging XML uses the same metadata tag store as the REST object API; tag read requires `READ`, tag update/delete requires `WRITE`.
-- Full AWS multipart checksum aggregation parity, automatic DNS/proxy provisioning for virtual-hosted-style domains, remaining conditional edge parity, exact CopyObject full AWS versioning/remaining conditional edge parity beyond documented source ETag/date and destination ETag guards, remaining CreateBucket/DeleteBucket edge error parity beyond name/duplicate/active-or-retained non-empty/unsupported-create-control cases, and full AWS error behavior parity remain future work. `dev-docs/s3-compatibility.md` tracks the supported/partial/unsupported matrix.
+- Full AWS multipart checksum aggregation parity beyond SHA1/SHA256 composite checksums, automatic DNS/proxy provisioning for virtual-hosted-style domains, remaining conditional edge parity, exact CopyObject full AWS versioning/remaining conditional edge parity beyond documented source ETag/date and destination ETag guards, remaining CreateBucket/DeleteBucket edge error parity beyond name/duplicate/active-or-retained non-empty/unsupported-create-control cases, and full AWS error behavior parity remain future work. `dev-docs/s3-compatibility.md` tracks the supported/partial/unsupported matrix.
 # Private Object Storage Platform 기획서 초안
 
 ## 1. 문서 개요

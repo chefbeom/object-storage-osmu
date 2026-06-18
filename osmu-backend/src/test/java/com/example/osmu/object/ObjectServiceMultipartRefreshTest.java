@@ -293,6 +293,82 @@ class ObjectServiceMultipartRefreshTest {
     }
 
     @Test
+    void completeMultipartUploadAggregatesSha256CompositePartChecksums() throws Exception {
+        BucketRecord bucket = new BucketRecord(1L, "bucket", "USER", 1L, 1000000000L, 0L, 0L, OffsetDateTime.now());
+        StoredObjectRecord uploaded = new StoredObjectRecord(
+                "videos/composite.mp4",
+                11L,
+                "video/mp4",
+                OffsetDateTime.now(),
+                Map.of()
+        );
+        String partOneChecksum = checksumBase64("SHA-256", "hello ");
+        String partTwoChecksum = checksumBase64("SHA-256", "world");
+        String compositeChecksum = compositeChecksumBase64("SHA-256", partOneChecksum, partTwoChecksum);
+        when(bucketService.get("bucket", user)).thenReturn(bucket);
+        when(storageAdapter.statObject("bucket", "videos/composite.mp4")).thenReturn(Optional.empty());
+        when(storageAdapter.createMultipartUpload(
+                eq("bucket"),
+                eq("videos/composite.mp4"),
+                eq("video/mp4"),
+                eq(900),
+                anyList()
+        )).thenAnswer(invocation -> storageUpload("storage-upload-composite", invocation.getArgument(4), 900, "create"));
+        when(storageAdapter.completeMultipartUpload(
+                eq("bucket"),
+                eq("videos/composite.mp4"),
+                eq("storage-upload-composite"),
+                anyList()
+        )).thenReturn(uploaded);
+        givenUploadedParts(
+                "bucket",
+                "videos/composite.mp4",
+                "storage-upload-composite",
+                new MultipartUploadUploadedPart(1, "\"etag-1\"", 6L),
+                new MultipartUploadUploadedPart(2, "\"etag-2\"", 5L)
+        );
+
+        MultipartUploadCreateResponse created = objectService.createMultipartUpload(
+                "bucket",
+                new MultipartUploadCreateRequest(
+                        "videos/composite.mp4",
+                        "video/mp4",
+                        11L,
+                        6L,
+                        900,
+                        ""
+                ),
+                user
+        );
+        StoredObjectRecord result = objectService.completeMultipartUpload(
+                "bucket",
+                new MultipartUploadCompleteRequest(
+                        created.uploadId(),
+                        "videos/composite.mp4",
+                        List.of(
+                                new CompletedMultipartUploadPart(
+                                        1,
+                                        "\"etag-1\"",
+                                        Map.of("x-amz-checksum-sha256", partOneChecksum)
+                                ),
+                                new CompletedMultipartUploadPart(
+                                        2,
+                                        "\"etag-2\"",
+                                        Map.of("x-amz-checksum-sha256", partTwoChecksum)
+                                )
+                        )
+                ),
+                user
+        );
+
+        assertThat(result.checksums()).containsEntry("x-amz-checksum-sha256", compositeChecksum);
+        verify(objectMetadataRepository).save(
+                eq("bucket"),
+                argThat(object -> compositeChecksum.equals(object.checksums().get("x-amz-checksum-sha256")))
+        );
+    }
+
+    @Test
     void completeMultipartUploadStoresValidatedCrc64NvmeChecksumMetadata() throws Exception {
         BucketRecord bucket = new BucketRecord(1L, "bucket", "USER", 1L, 1000000000L, 0L, 0L, OffsetDateTime.now());
         StoredObjectRecord uploaded = new StoredObjectRecord(
@@ -939,5 +1015,13 @@ class ObjectServiceMultipartRefreshTest {
 
     private String checksumBase64(String algorithm, String value) throws Exception {
         return Base64.getEncoder().encodeToString(MessageDigest.getInstance(algorithm).digest(value.getBytes(StandardCharsets.UTF_8)));
+    }
+
+    private String compositeChecksumBase64(String algorithm, String... partChecksums) throws Exception {
+        MessageDigest digest = MessageDigest.getInstance(algorithm);
+        for (String partChecksum : partChecksums) {
+            digest.update(Base64.getDecoder().decode(partChecksum));
+        }
+        return Base64.getEncoder().encodeToString(digest.digest());
     }
 }

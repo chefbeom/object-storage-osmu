@@ -309,7 +309,7 @@
 - Feature: S3 compatibility supported/partial/unsupported matrix.
 - Preconditions: `dev-docs/s3-compatibility.md`, `api-spec.md`, and backend S3 tests are available.
 - Steps: Review the S3 matrix and compare it with backend tests for path-style, virtual-hosted-style, SigV4, presigned auth, object PUT/GET/HEAD/DELETE, CopyObject, tagging, list, multi-delete, multipart, checksum, and aws-chunked body decoding.
-- Expected: The matrix lists supported, partial, and unsupported behavior, including aws-chunked decoded length validation, `STREAMING-AWS4-HMAC-SHA256-PAYLOAD` chunk-signature presence/format validation, SigV4 header-auth cryptographic per-chunk signature chain verification, trailing checksum validation including CRC64NVME, and remaining multipart checksum aggregation gap.
+- Expected: The matrix lists supported, partial, and unsupported behavior, including aws-chunked decoded length validation, `STREAMING-AWS4-HMAC-SHA256-PAYLOAD` chunk-signature presence/format validation, SigV4 header-auth cryptographic per-chunk signature chain verification, trailing checksum validation including CRC64NVME, SHA1/SHA256 multipart composite checksum aggregation, and remaining CRC/full-object multipart checksum aggregation gap.
 - Priority: P1
 - Automated: backend S3 controller tests and `verify-s3-client-smoke.ps1`; document consistency is reviewed through `git diff --check` and code review.
 
@@ -362,6 +362,16 @@
 - Expected: Valid XML is parsed and passed to multipart complete. Invalid XML, missing uploaded part, and stale ETag return S3 XML `InvalidRequest` before storage complete.
 - Priority: P1
 - Automated: `S3ObjectControllerMultipartTest.completeMultipartUploadParsesS3XmlAndReturnsResultXml`, `S3ObjectControllerMultipartTest.completeMultipartUploadRejectsInvalidPartListXml`, `ObjectServiceMultipartRefreshTest.completeMultipartUploadRejectsMissingOrMismatchedUploadedPartBeforeStorageComplete`
+
+### TC-S3-MULTIPART-COMPLETE-002
+
+- Feature: S3 multipart SHA1/SHA256 composite checksum aggregation.
+- Preconditions: Target bucket exists. Active access key has `WRITE` scope. Multipart upload session exists and all requested parts were uploaded.
+- Input: `POST /api/s3/{bucketName}/{objectKey}?uploadId={uploadId}` with `CompleteMultipartUpload` XML where every `Part` includes the same `ChecksumSHA256` or `ChecksumSHA1` element and no final object checksum header is supplied.
+- Steps: Complete multipart upload with two ordered parts, each carrying a valid SHA256 part checksum.
+- Expected: OSMU calculates the AWS-style composite checksum by decoding each part checksum, digesting those bytes in part order, stores it as object checksum metadata, returns the matching `x-amz-checksum-sha256` header, and emits `ChecksumSHA256` in complete-result XML.
+- Priority: P1
+- Automated: `ObjectServiceMultipartRefreshTest.completeMultipartUploadAggregatesSha256CompositePartChecksums`, `S3ObjectControllerMultipartTest.completeMultipartUploadReturnsStoredCompositeChecksumHeaderAndXml`
 
 ### TC-S3-MULTIPART-LISTPARTS-001
 

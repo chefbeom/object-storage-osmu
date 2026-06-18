@@ -381,7 +381,7 @@ public class S3ObjectController {
         if (!object.etag().isBlank()) {
             builder.eTag(etag(object));
         }
-        checksumResponseHeader.apply(builder);
+        object.checksums().forEach(builder::header);
         return builder.body(completeMultipartUploadResultXml(bucketName, object));
     }
 

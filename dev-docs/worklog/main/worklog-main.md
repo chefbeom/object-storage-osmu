@@ -1,5 +1,39 @@
 # Worklog - main
 
+### 2026-06-18 - S3 multipart SHA composite checksum aggregation
+
+- Work time:
+  - End: 2026-06-18 19:03:09 +09:00
+- User command:
+  - Active goal: continue development from `dev-docs`.
+- Request analysis:
+  - `dev-docs` still listed full AWS multipart checksum aggregation as a gap.
+  - AWS S3 distinguishes full-object and composite multipart checksum types; SHA1/SHA256 multipart checksums are composite and can be calculated from the ordered part checksum bytes.
+- Execution:
+  - Added SHA1/SHA256 composite checksum derivation in `ObjectService.completeMultipartUpload` when no final object checksum header is supplied and every completed part has the same checksum algorithm.
+  - Kept existing final object checksum header behavior: supplied final checksum values are still validated against the completed object body before metadata commit.
+  - Updated S3 complete response headers to reflect stored object checksum metadata so service-derived composite checksums are returned with complete-result XML.
+  - Added focused service/controller regression coverage and refreshed S3 docs.
+- Modified files:
+  - `osmu-backend/src/main/java/com/example/osmu/object/ObjectService.java`
+  - `osmu-backend/src/main/java/com/example/osmu/object/S3ObjectController.java`
+  - `osmu-backend/src/test/java/com/example/osmu/object/ObjectServiceMultipartRefreshTest.java`
+  - `osmu-backend/src/test/java/com/example/osmu/object/S3ObjectControllerMultipartTest.java`
+  - `dev-docs/PRODUCT_REQUIREMENTS.md`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/backend-design.md`
+  - `dev-docs/s3-compatibility.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/feature-inventory.md`
+  - `dev-docs/worklog/main/worklog-main.md`
+- Tests:
+  - `gradle test --tests com.example.osmu.object.ObjectServiceMultipartRefreshTest.completeMultipartUploadAggregatesSha256CompositePartChecksums --tests com.example.osmu.object.S3ObjectControllerMultipartTest.completeMultipartUploadReturnsStoredCompositeChecksumHeaderAndXml`: passed.
+  - `gradle test --tests com.example.osmu.object.ObjectServiceMultipartRefreshTest --tests com.example.osmu.object.S3ObjectControllerMultipartTest`: passed.
+  - `gradle test`: passed.
+- Review:
+  - The change narrows multipart checksum aggregation gap without changing storage adapter contracts; MinIO complete still receives part number and ETag only.
+  - Remaining checksum gaps include CRC composite/full-object aggregation, checksum-type negotiation, and broader AWS error edge behavior.
+
 ### 2026-06-18 - S3 CopyObject checksum algorithm override
 
 - Work time:

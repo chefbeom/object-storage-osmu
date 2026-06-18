@@ -798,8 +798,11 @@ public class ObjectService {
         validateUploadSession(session, user, normalizedBucketName, normalizedKey);
         validateUploadMode(session, UPLOAD_MODE_MULTIPART);
         List<CompletedMultipartUploadPart> completedParts = normalizeCompletedParts(request.parts());
-        Map<String, String> normalizedChecksums = normalizeChecksums(checksums);
-        validateChecksumMetadata(normalizedChecksums);
+        Map<String, String> requestedChecksums = normalizeChecksums(checksums);
+        validateChecksumMetadata(requestedChecksums);
+        Map<String, String> metadataChecksums = requestedChecksums.isEmpty()
+                ? compositeMultipartChecksums(completedParts)
+                : requestedChecksums;
         validateCompletedPartsMatchUploaded(
                 normalizedBucketName,
                 normalizedKey,
@@ -836,14 +839,14 @@ public class ObjectService {
                 uploadedObject = storageAdapter.setObjectTags(normalizedBucketName, normalizedKey, tags);
             }
             try {
-                validateStoredObjectChecksums(normalizedBucketName, normalizedKey, normalizedChecksums);
+                validateStoredObjectChecksums(normalizedBucketName, normalizedKey, requestedChecksums);
                 bucketService.assertObjectChangeAllowed(normalizedBucketName, uploadedObject.sizeBytes(), 1L);
             } catch (RuntimeException exception) {
                 rollbackCompletedMultipartObject(normalizedBucketName, normalizedKey, snapshot);
                 uploadSessionRepository.updateStatus(session.uploadId(), "FAILED", OffsetDateTime.now());
                 throw exception;
             }
-            uploadedObject = uploadedObject.withChecksums(normalizedChecksums);
+            uploadedObject = uploadedObject.withChecksums(metadataChecksums);
             bucketService.applyObjectChange(normalizedBucketName, uploadedObject.sizeBytes(), 1L);
             objectMetadataRepository.save(normalizedBucketName, uploadedObject);
             uploadSessionRepository.updateStatus(session.uploadId(), "COMPLETED", OffsetDateTime.now());
@@ -1020,6 +1023,39 @@ public class ObjectService {
         if (!MessageDigest.isEqual(expected, actual)) {
             throw new ApiException(ApiErrorCode.BAD_DIGEST, checksum.getKey() + " does not match completed multipart object body.");
         }
+    }
+
+    private Map<String, String> compositeMultipartChecksums(List<CompletedMultipartUploadPart> completedParts) {
+        String headerName = null;
+        MessageDigest digest = null;
+        for (CompletedMultipartUploadPart part : completedParts) {
+            if (part.checksums().size() != 1) {
+                return Map.of();
+            }
+            Map.Entry<String, String> checksum = part.checksums().entrySet().iterator().next();
+            if (headerName == null) {
+                headerName = checksum.getKey();
+                digest = compositeChecksumDigest(headerName);
+                if (digest == null) {
+                    return Map.of();
+                }
+            } else if (!headerName.equals(checksum.getKey())) {
+                return Map.of();
+            }
+            digest.update(decodeChecksum(headerName, checksum.getValue(), expectedChecksumLength(headerName)));
+        }
+        if (headerName == null || digest == null) {
+            return Map.of();
+        }
+        return Map.of(headerName, Base64.getEncoder().encodeToString(digest.digest()));
+    }
+
+    private MessageDigest compositeChecksumDigest(String headerName) {
+        return switch (headerName) {
+            case AWS_CHECKSUM_SHA256_HEADER -> messageDigest("SHA-256");
+            case AWS_CHECKSUM_SHA1_HEADER -> messageDigest("SHA-1");
+            default -> null;
+        };
     }
 
     private byte[] objectChecksum(String headerName, InputStream content) throws IOException {

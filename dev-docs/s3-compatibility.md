@@ -55,7 +55,7 @@
 | `x-amz-checksum-crc32c` | Supported | PUT header/trailer, multipart part header/trailer, final object metadata/header/XML. |
 | `x-amz-checksum-crc64nvme` | Supported | PUT header/trailer, multipart part header/trailer, final object metadata/header/XML. |
 | CopyObject `x-amz-checksum-algorithm` | MVP supported | Recalculates target checksum metadata/XML/header for `SHA256`, `SHA1`, `CRC32`, `CRC32C`, and `CRC64NVME`; unsupported algorithm names return `InvalidRequest`. |
-| Multipart checksum aggregation parity | Partial | Final object checksum can be supplied and validated; AWS aggregation semantics are not fully reproduced. |
+| Multipart checksum aggregation parity | Partial | Final object checksum can be supplied and validated. SHA1/SHA256 composite checksums are derived from ordered per-part checksum bytes when every completed part supplies the same algorithm. CRC composite/full aggregation and broader AWS checksum-type negotiation are not fully reproduced. |
 
 ## Client Matrix
 
