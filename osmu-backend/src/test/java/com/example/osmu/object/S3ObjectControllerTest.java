@@ -300,6 +300,77 @@ class S3ObjectControllerTest {
     }
 
     @Test
+    void awsSigV4HeaderAuthVerifiesAwsChunkedStreamingSignatureChain() throws Exception {
+        String token = loginAndReturnAccessToken("admin", "password");
+        String bucketName = "s3-object-sigv4-chunked-bucket";
+        createBucket(token, bucketName);
+        AccessKeyCredentials credentials = createAccessKey(token, bucketName, "READ", "WRITE");
+        String decodedBody = "sigv4 chunked body";
+        String objectPath = "/api/s3/" + bucketName + "/docs/sigv4-chunked.txt";
+        String streamPayloadHash = "STREAMING-AWS4-HMAC-SHA256-PAYLOAD";
+        String amzDate = sigV4AmzDateNow();
+        String date = amzDate.substring(0, 8);
+        String credentialScope = date + "/us-east-1/s3/aws4_request";
+        Map<String, String> signedHeaders = new TreeMap<>();
+        signedHeaders.put("content-encoding", "aws-chunked");
+        signedHeaders.put("host", "localhost");
+        signedHeaders.put("x-amz-content-sha256", streamPayloadHash);
+        signedHeaders.put("x-amz-date", amzDate);
+        signedHeaders.put("x-amz-decoded-content-length", String.valueOf(decodedBody.getBytes(StandardCharsets.UTF_8).length));
+        String authorization = sigV4Authorization(
+                "PUT",
+                objectPath,
+                "",
+                streamPayloadHash,
+                credentials,
+                amzDate,
+                signedHeaders
+        );
+        String encodedBody = signedAwsChunkedBody(
+                decodedBody,
+                signingKey(credentials.secretKey(), date),
+                amzDate,
+                credentialScope,
+                seedSignature(authorization)
+        );
+
+        mockMvc.perform(put(objectPath)
+                        .header(HttpHeaders.HOST, "localhost")
+                        .header(HttpHeaders.AUTHORIZATION, authorization)
+                        .header("x-amz-date", amzDate)
+                        .header("x-amz-content-sha256", streamPayloadHash)
+                        .header("x-amz-decoded-content-length", decodedBody.getBytes(StandardCharsets.UTF_8).length)
+                        .header(HttpHeaders.CONTENT_ENCODING, "aws-chunked")
+                        .contentType(MediaType.TEXT_PLAIN)
+                        .content(encodedBody.getBytes(StandardCharsets.UTF_8)))
+                .andExpect(status().isOk());
+
+        MvcResult downloadResult = mockMvc.perform(get("/api/s3/{bucketName}/docs/sigv4-chunked.txt", bucketName)
+                        .header("X-OSMU-Access-Key", credentials.accessKey())
+                        .header("X-OSMU-Secret-Key", credentials.secretKey()))
+                .andExpect(request().asyncStarted())
+                .andReturn();
+
+        mockMvc.perform(asyncDispatch(downloadResult))
+                .andExpect(status().isOk())
+                .andExpect(content().string(decodedBody));
+
+        String tamperedBody = encodedBody.replace(decodedBody, "sigv4 chunked bodY");
+        mockMvc.perform(put(objectPath)
+                        .header(HttpHeaders.HOST, "localhost")
+                        .header(HttpHeaders.AUTHORIZATION, authorization)
+                        .header("x-amz-date", amzDate)
+                        .header("x-amz-content-sha256", streamPayloadHash)
+                        .header("x-amz-decoded-content-length", decodedBody.getBytes(StandardCharsets.UTF_8).length)
+                        .header(HttpHeaders.CONTENT_ENCODING, "aws-chunked")
+                        .contentType(MediaType.TEXT_PLAIN)
+                        .content(tamperedBody.getBytes(StandardCharsets.UTF_8)))
+                .andExpect(status().isUnauthorized())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_XML))
+                .andExpect(content().string(containsString("<Code>AccessDenied</Code>")));
+    }
+
+    @Test
     void accessKeyCanUseMultiDeleteWithGenericContentTypeAndTrailingSlash() throws Exception {
         String token = loginAndReturnAccessToken("admin", "password");
         String bucketName = "s3-object-multi-delete-bucket";
@@ -848,6 +919,43 @@ class S3ObjectControllerTest {
                 .formatted(credentials.accessKey(), scope, signedHeaders, signature);
     }
 
+    private String signedAwsChunkedBody(
+            String decodedBody,
+            byte[] signingKey,
+            String amzDate,
+            String credentialScope,
+            String seedSignature
+    ) throws Exception {
+        byte[] chunk = decodedBody.getBytes(StandardCharsets.UTF_8);
+        String chunkSignature = awsChunkSignature(signingKey, amzDate, credentialScope, seedSignature, chunk);
+        String finalChunkSignature = awsChunkSignature(signingKey, amzDate, credentialScope, chunkSignature, new byte[0]);
+        return Integer.toHexString(chunk.length) + ";chunk-signature=" + chunkSignature + "\r\n"
+                + decodedBody
+                + "\r\n0;chunk-signature=" + finalChunkSignature + "\r\n\r\n";
+    }
+
+    private String awsChunkSignature(
+            byte[] signingKey,
+            String amzDate,
+            String credentialScope,
+            String previousSignature,
+            byte[] chunk
+    ) throws Exception {
+        String stringToSign = "AWS4-HMAC-SHA256-PAYLOAD\n"
+                + amzDate + "\n"
+                + credentialScope + "\n"
+                + previousSignature + "\n"
+                + sha256Hex(new byte[0]) + "\n"
+                + sha256Hex(chunk);
+        return HexFormat.of().formatHex(hmac(signingKey, stringToSign));
+    }
+
+    private String seedSignature(String authorization) {
+        String prefix = "Signature=";
+        int index = authorization.indexOf(prefix);
+        return authorization.substring(index + prefix.length());
+    }
+
     private String sigV4PresignedQuery(
             String method,
             String path,
@@ -939,6 +1047,10 @@ class S3ObjectControllerTest {
 
     private String sha256Hex(String value) throws Exception {
         return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(value.getBytes(StandardCharsets.UTF_8)));
+    }
+
+    private String sha256Hex(byte[] value) throws Exception {
+        return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(value));
     }
 
     private String checksumBase64(String algorithm, String value) throws Exception {

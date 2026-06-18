@@ -32,7 +32,11 @@ import org.springframework.stereotype.Component;
 @Component
 public class S3SignatureV4Verifier {
 
+    public static final String STREAMING_SIGNATURE_CONTEXT_ATTRIBUTE =
+            S3SignatureV4Verifier.class.getName() + ".streamingSignatureContext";
+
     private static final String ALGORITHM = "AWS4-HMAC-SHA256";
+    private static final String STREAMING_PAYLOAD_ALGORITHM = "AWS4-HMAC-SHA256-PAYLOAD";
     private static final String SERVICE = "s3";
     private static final String TERMINATOR = "aws4_request";
     private static final String CONTENT_SHA256_HEADER = "x-amz-content-sha256";
@@ -102,12 +106,24 @@ public class S3SignatureV4Verifier {
                 + requestDate + "\n"
                 + credentialScope + "\n"
                 + sha256Hex(canonicalRequest);
-        String expectedSignature = HEX.formatHex(hmac(signingKey(secretKey, authorization), stringToSign)).toLowerCase(Locale.ROOT);
+        byte[] signingKey = signingKey(secretKey, authorization);
+        String expectedSignature = HEX.formatHex(hmac(signingKey, stringToSign)).toLowerCase(Locale.ROOT);
         if (!MessageDigest.isEqual(
                 expectedSignature.getBytes(StandardCharsets.UTF_8),
                 authorization.signature().toLowerCase(Locale.ROOT).getBytes(StandardCharsets.UTF_8)
         )) {
             throw invalidSignature();
+        }
+        if (isStreamingPayload(request)) {
+            request.setAttribute(STREAMING_SIGNATURE_CONTEXT_ATTRIBUTE, new StreamingSignatureContext(
+                    STREAMING_PAYLOAD_ALGORITHM,
+                    requestDate,
+                    credentialScope,
+                    expectedSignature,
+                    signingKey
+            ));
+        } else {
+            request.removeAttribute(STREAMING_SIGNATURE_CONTEXT_ATTRIBUTE);
         }
     }
 
@@ -350,6 +366,11 @@ public class S3SignatureV4Verifier {
         return ALGORITHM.equals(request.getParameter(PRESIGNED_ALGORITHM));
     }
 
+    private boolean isStreamingPayload(HttpServletRequest request) {
+        String payloadHash = request.getHeader(CONTENT_SHA256_HEADER);
+        return payloadHash != null && payloadHash.trim().startsWith("STREAMING-");
+    }
+
     private void assertWithinClockSkew(String requestDate) {
         Instant signedAt = parseAmzDate(requestDate);
         Instant now = Instant.now(clock);
@@ -455,5 +476,47 @@ public class S3SignatureV4Verifier {
     }
 
     private record CanonicalHeaders(String value, String signedHeaders) {
+    }
+
+    public static final class StreamingSignatureContext {
+        private final String algorithm;
+        private final String requestDate;
+        private final String credentialScope;
+        private final String seedSignature;
+        private final byte[] signingKey;
+
+        private StreamingSignatureContext(
+                String algorithm,
+                String requestDate,
+                String credentialScope,
+                String seedSignature,
+                byte[] signingKey
+        ) {
+            this.algorithm = algorithm;
+            this.requestDate = requestDate;
+            this.credentialScope = credentialScope;
+            this.seedSignature = seedSignature;
+            this.signingKey = signingKey.clone();
+        }
+
+        public String algorithm() {
+            return algorithm;
+        }
+
+        public String requestDate() {
+            return requestDate;
+        }
+
+        public String credentialScope() {
+            return credentialScope;
+        }
+
+        public String seedSignature() {
+            return seedSignature;
+        }
+
+        public byte[] signingKey() {
+            return signingKey.clone();
+        }
     }
 }

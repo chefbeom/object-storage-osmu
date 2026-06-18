@@ -3,6 +3,7 @@ package com.example.osmu.object;
 import com.example.osmu.audit.AuditLogService;
 import com.example.osmu.auth.AuthenticatedUser;
 import com.example.osmu.bucket.S3RequestAuthService;
+import com.example.osmu.bucket.S3SignatureV4Verifier;
 import com.example.osmu.common.error.ApiErrorCode;
 import com.example.osmu.common.error.ApiException;
 import com.example.osmu.common.error.S3ErrorCodeMapper;
@@ -16,6 +17,7 @@ import java.io.StringWriter;
 import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
 import java.security.DigestInputStream;
+import java.security.GeneralSecurityException;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.Instant;
@@ -32,6 +34,8 @@ import java.util.stream.Collectors;
 import java.util.zip.CRC32;
 import java.util.zip.CRC32C;
 import java.util.zip.Checksum;
+import javax.crypto.Mac;
+import javax.crypto.spec.SecretKeySpec;
 import javax.xml.parsers.DocumentBuilderFactory;
 import javax.xml.parsers.ParserConfigurationException;
 import javax.xml.stream.XMLOutputFactory;
@@ -296,9 +300,9 @@ public class S3ObjectController {
             @RequestParam("uploadId") String uploadId,
             HttpServletRequest request
     ) throws IOException {
+        AuthenticatedUser user = s3RequestAuthService.currentUser(request, bucketName, "WRITE");
         RequestBodyContent requestContent = requestBodyContent(request, "multipart part upload");
         long contentLength = requestContent.contentLength();
-        AuthenticatedUser user = s3RequestAuthService.currentUser(request, bucketName, "WRITE");
         MultipartUploadUploadedPart part;
         List<BodyChecksumValidator> checksumValidators = bodyChecksums(request);
         ChecksumResponseHeader checksumResponseHeader = checksumResponseHeader(request);
@@ -389,9 +393,9 @@ public class S3ObjectController {
         if (copySourceHeader != null && !copySourceHeader.isBlank()) {
             return copyObject(bucketName, objectKey, copySourceHeader, request);
         }
+        AuthenticatedUser user = s3RequestAuthService.currentUser(request, bucketName, "WRITE");
         RequestBodyContent requestContent = requestBodyContent(request, "S3 object upload");
         long contentLength = requestContent.contentLength();
-        AuthenticatedUser user = s3RequestAuthService.currentUser(request, bucketName, "WRITE");
         StoredObjectRecord object;
         List<BodyChecksumValidator> checksumValidators = bodyChecksums(request);
         ChecksumResponseHeader checksumResponseHeader = checksumResponseHeader(request);
@@ -781,7 +785,12 @@ public class S3ObjectController {
         if (isAwsChunkedPayload(request)) {
             long decodedContentLength = requiredNonNegativeLongHeader(request, AWS_DECODED_CONTENT_LENGTH_HEADER);
             return new RequestBodyContent(
-                    new AwsChunkedInputStream(request.getInputStream(), decodedContentLength, isAwsStreamingPayload(request)),
+                    new AwsChunkedInputStream(
+                            request.getInputStream(),
+                            decodedContentLength,
+                            isAwsStreamingPayload(request),
+                            streamingSignatureContext(request)
+                    ),
                     decodedContentLength
             );
         }
@@ -802,6 +811,13 @@ public class S3ObjectController {
     private boolean isAwsStreamingPayload(HttpServletRequest request) {
         String payloadHash = request.getHeader(AWS_CONTENT_SHA256_HEADER);
         return payloadHash != null && payloadHash.trim().startsWith(AWS_STREAMING_PAYLOAD_PREFIX);
+    }
+
+    private S3SignatureV4Verifier.StreamingSignatureContext streamingSignatureContext(HttpServletRequest request) {
+        Object context = request.getAttribute(S3SignatureV4Verifier.STREAMING_SIGNATURE_CONTEXT_ATTRIBUTE);
+        return context instanceof S3SignatureV4Verifier.StreamingSignatureContext streamingContext
+                ? streamingContext
+                : null;
     }
 
     private long requiredLongHeader(HttpServletRequest request, String primaryName, String fallbackName) {
@@ -1560,6 +1576,20 @@ public class S3ObjectController {
         }
     }
 
+    private static String sha256Hex(byte[] value) {
+        return HexFormat.of().formatHex(messageDigest("SHA-256").digest(value));
+    }
+
+    private static byte[] hmacSha256(byte[] key, String value) {
+        try {
+            Mac mac = Mac.getInstance("HmacSHA256");
+            mac.init(new SecretKeySpec(key, "HmacSHA256"));
+            return mac.doFinal(value.getBytes(StandardCharsets.UTF_8));
+        } catch (GeneralSecurityException exception) {
+            throw new ApiException(ApiErrorCode.INTERNAL_ERROR, "HMAC-SHA256 is unavailable.");
+        }
+    }
+
     private static byte[] decodeContentMd5(String expectedContentMd5) {
         if (expectedContentMd5 == null || expectedContentMd5.isBlank()) {
             return null;
@@ -1688,15 +1718,24 @@ public class S3ObjectController {
         private final InputStream input;
         private final long expectedDecodedLength;
         private final boolean requireChunkSignature;
+        private final S3SignatureV4Verifier.StreamingSignatureContext signatureContext;
         private byte[] chunk = new byte[0];
         private int offset;
         private boolean finished;
         private long decodedLength;
+        private String previousSignature;
 
-        private AwsChunkedInputStream(InputStream input, long expectedDecodedLength, boolean requireChunkSignature) {
+        private AwsChunkedInputStream(
+                InputStream input,
+                long expectedDecodedLength,
+                boolean requireChunkSignature,
+                S3SignatureV4Verifier.StreamingSignatureContext signatureContext
+        ) {
             this.input = input;
             this.expectedDecodedLength = expectedDecodedLength;
             this.requireChunkSignature = requireChunkSignature;
+            this.signatureContext = signatureContext;
+            this.previousSignature = signatureContext == null ? null : signatureContext.seedSignature();
         }
 
         @Override
@@ -1750,8 +1789,9 @@ public class S3ObjectController {
 
             String[] headerParts = header.split(";", -1);
             String rawSize = headerParts[0].trim();
+            String declaredSignature = null;
             if (requireChunkSignature) {
-                requireValidChunkSignature(headerParts);
+                declaredSignature = requireValidChunkSignature(headerParts);
             }
             long size;
             try {
@@ -1766,6 +1806,7 @@ public class S3ObjectController {
                 throw new ApiException(ApiErrorCode.VALIDATION_ERROR, "aws-chunked decoded content length exceeded.");
             }
             if (size == 0) {
+                verifyChunkSignature(declaredSignature, new byte[0]);
                 drainTrailers();
                 if (decodedLength != expectedDecodedLength) {
                     throw new ApiException(ApiErrorCode.VALIDATION_ERROR, "aws-chunked decoded content length mismatch.");
@@ -1780,12 +1821,13 @@ public class S3ObjectController {
             if (chunk.length != size) {
                 throw new IOException("Unexpected end of aws-chunked data.");
             }
+            verifyChunkSignature(declaredSignature, chunk);
             decodedLength += chunk.length;
             consumeCrlf();
             offset = 0;
         }
 
-        private void requireValidChunkSignature(String[] headerParts) {
+        private String requireValidChunkSignature(String[] headerParts) {
             String signature = null;
             for (int i = 1; i < headerParts.length; i++) {
                 String extension = headerParts[i].trim();
@@ -1803,6 +1845,28 @@ public class S3ObjectController {
                 throw new ApiException(ApiErrorCode.VALIDATION_ERROR,
                         "aws-chunked chunk-signature must be a 64-character lowercase hex value.");
             }
+            return signature;
+        }
+
+        private void verifyChunkSignature(String declaredSignature, byte[] chunkData) {
+            if (signatureContext == null) {
+                return;
+            }
+            String stringToSign = signatureContext.algorithm() + "\n"
+                    + signatureContext.requestDate() + "\n"
+                    + signatureContext.credentialScope() + "\n"
+                    + previousSignature + "\n"
+                    + sha256Hex(new byte[0]) + "\n"
+                    + sha256Hex(chunkData);
+            String expectedSignature = HexFormat.of()
+                    .formatHex(hmacSha256(signatureContext.signingKey(), stringToSign));
+            if (!MessageDigest.isEqual(
+                    expectedSignature.getBytes(StandardCharsets.UTF_8),
+                    declaredSignature.getBytes(StandardCharsets.UTF_8)
+            )) {
+                throw new ApiException(ApiErrorCode.AUTHENTICATION_REQUIRED, "Invalid AWS SigV4 chunk signature.");
+            }
+            previousSignature = declaredSignature;
         }
 
         private boolean isLowerHex(String value) {

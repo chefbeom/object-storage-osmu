@@ -1303,7 +1303,7 @@ Headers:
 - AWS SigV4 header auth can be used without `X-OSMU-Secret-Key` for access keys created after `secret_key_ciphertext` support was added.
 - AWS SigV4 query/presigned URL auth can be used with `X-Amz-Algorithm`, `X-Amz-Credential`, `X-Amz-Date`, `X-Amz-Expires`, `X-Amz-SignedHeaders`, and `X-Amz-Signature`.
 - SigV4 verification supports `AWS4-HMAC-SHA256`, `x-amz-date`, `x-amz-content-sha256`, canonical query string, canonical signed headers, and S3 service scope.
-- For non-streaming S3 object `PUT` and multipart part `PUT`, a signed `x-amz-content-sha256` hex payload hash is validated against the actual request body. `UNSIGNED-PAYLOAD` skips body hash validation. AWS `aws-chunked` request bodies are decoded when `x-amz-decoded-content-length` is present, decoded length mismatch is rejected as S3 XML `InvalidRequest`, and `STREAMING-*` chunk headers require a 64-character lowercase hex `chunk-signature`; per-chunk cryptographic signature chaining and trailer checksum validation are not full AWS parity yet.
+- For non-streaming S3 object `PUT` and multipart part `PUT`, a signed `x-amz-content-sha256` hex payload hash is validated against the actual request body. `UNSIGNED-PAYLOAD` skips body hash validation. AWS `aws-chunked` request bodies are decoded when `x-amz-decoded-content-length` is present, decoded length mismatch is rejected as S3 XML `InvalidRequest`, and `STREAMING-AWS4-HMAC-SHA256-PAYLOAD` chunks require a 64-character lowercase hex `chunk-signature`. With SigV4 header auth, each chunk signature is cryptographically chained from the Authorization seed signature and rejected as S3 XML `AccessDenied` on mismatch; trailer checksum validation is not full AWS parity yet.
 - Virtual-hosted-style routing is supported for configured suffixes. With `osmu.s3.virtual-hosted-style.domain-suffixes=localhost`, `Host: {bucket}.localhost` and path `/api/s3/{objectKey}` are routed as `/api/s3/{bucket}/{objectKey}` while SigV4 canonical URI remains the client-signed virtual-hosted path.
 - `Content-Length` is required for non-streaming `PUT`. AWS `aws-chunked` uploads require `x-amz-decoded-content-length`.
 - `Content-Type` is stored as object content type. Missing value defaults to `application/octet-stream`.
@@ -1441,11 +1441,11 @@ Multipart complete response XML:
 Limitations:
 
 - SigV4 presigned URL authentication uses `UNSIGNED-PAYLOAD` in the MVP. Header-auth and presigned URL auth enforce request time within `osmu.s3.sigv4.clock-skew-seconds`; presigned URLs also enforce `X-Amz-Expires`.
-- AWS `aws-chunked` body decoding is implemented for object and multipart part uploads with exact decoded length validation and `STREAMING-*` chunk-signature presence/format validation. Full streaming signature parity is not implemented yet because per-chunk signature chaining and trailer checksum validation are not cryptographically verified.
+- AWS `aws-chunked` body decoding is implemented for object and multipart part uploads with exact decoded length validation, `STREAMING-AWS4-HMAC-SHA256-PAYLOAD` chunk-signature presence/format validation, and SigV4 header-auth per-chunk cryptographic signature chaining. Full trailer checksum validation is not implemented yet.
 - S3 multipart upload path is MVP-level and currently requires OSMU expected-size headers at initiate time.
 - S3 multipart uploads listing is backed by OSMU active multipart sessions, not a raw MinIO bucket scan.
 - Virtual-hosted-style routing currently extracts the bucket from the left side of a configured domain suffix. Production deployments must configure DNS/proxy hosts such as `{bucket}.storage.example.com` and set `osmu.s3.virtual-hosted-style.domain-suffixes=storage.example.com`.
-- Multi-range GET, full conditional request parity, CopyObject user-metadata/versioning/full-conditional parity, exact CreateBucket/DeleteBucket parity, full SigV4 chunked streaming parity, checksum trailer/CRC64NVME/full AWS checksum parity, full multipart ETag parity, and exact AWS error schema parity are not implemented yet. See `s3-compatibility.md` for the supported/partial/unsupported matrix.
+- Multi-range GET, full conditional request parity, CopyObject user-metadata/versioning/full-conditional parity, exact CreateBucket/DeleteBucket parity, checksum trailer/CRC64NVME/full AWS checksum parity, full multipart ETag parity, and exact AWS error schema parity are not implemented yet. See `s3-compatibility.md` for the supported/partial/unsupported matrix.
 
 ### GET /api/buckets/{bucketName}/permissions
 

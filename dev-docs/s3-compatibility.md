@@ -13,8 +13,8 @@
 | AWS SigV4 presigned query auth | Supported | `X-Amz-*` parameters and expiry validation. | `S3ObjectControllerTest` |
 | Non-streaming payload hash | Supported | Signed `x-amz-content-sha256` is validated against object and multipart-part request bodies. | `S3ObjectControllerTest`, `S3ObjectControllerMultipartTest` |
 | `UNSIGNED-PAYLOAD` | Supported | Accepted without body hash validation, matching common S3 client behavior. | `S3ObjectControllerTest` |
-| `aws-chunked` body decoding | MVP supported | Decodes AWS chunked transfer bodies and stores the decoded object. Requires `x-amz-decoded-content-length`, rejects decoded length mismatch, and requires 64-character lowercase hex `chunk-signature` on `STREAMING-*` chunks. | `S3ObjectControllerTest.accessKeyCanUploadAwsChunkedStreamingPayload` |
-| Chunk signature chain | Not fully supported | `chunk-signature` fields are required and format-validated for `STREAMING-*`, but not cryptographically chained or verified yet. Treat this as real-client compatibility, not full AWS streaming signature parity. | tracked as gap |
+| `aws-chunked` body decoding | MVP supported | Decodes AWS chunked transfer bodies and stores the decoded object. Requires `x-amz-decoded-content-length`, rejects decoded length mismatch, and requires 64-character lowercase hex `chunk-signature` on `STREAMING-AWS4-HMAC-SHA256-PAYLOAD` chunks. | `S3ObjectControllerTest.accessKeyCanUploadAwsChunkedStreamingPayload` |
+| Chunk signature chain | Supported for header auth | SigV4 header-auth `STREAMING-AWS4-HMAC-SHA256-PAYLOAD` chunks are cryptographically chained from the Authorization seed signature. Presigned streaming and trailer-signature parity are not in scope yet. | `S3ObjectControllerTest.awsSigV4HeaderAuthVerifiesAwsChunkedStreamingSignatureChain` |
 | Trailer checksum | Not supported | `x-amz-trailer`, trailing `x-amz-checksum-*`, and CRC64NVME are future work. | tracked as gap |
 
 ## Bucket API

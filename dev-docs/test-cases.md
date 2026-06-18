@@ -289,7 +289,7 @@
 - Feature: S3 compatibility supported/partial/unsupported matrix.
 - Preconditions: `dev-docs/s3-compatibility.md`, `api-spec.md`, and backend S3 tests are available.
 - Steps: Review the S3 matrix and compare it with backend tests for path-style, virtual-hosted-style, SigV4, presigned auth, object PUT/GET/HEAD/DELETE, CopyObject, tagging, list, multi-delete, multipart, checksum, and aws-chunked body decoding.
-- Expected: The matrix lists supported, partial, and unsupported behavior, including aws-chunked decoded length validation, `STREAMING-*` chunk-signature presence/format validation, and missing cryptographic per-chunk signature chain/trailer checksum parity.
+- Expected: The matrix lists supported, partial, and unsupported behavior, including aws-chunked decoded length validation, `STREAMING-AWS4-HMAC-SHA256-PAYLOAD` chunk-signature presence/format validation, SigV4 header-auth cryptographic per-chunk signature chain verification, and missing trailer checksum parity.
 - Priority: P1
 - Automated: backend S3 controller tests and `verify-s3-client-smoke.ps1`; document consistency is reviewed through `git diff --check` and code review.
 
@@ -298,10 +298,10 @@
 - Feature: S3 aws-chunked streaming chunk-signature validation.
 - Preconditions: Target bucket exists. Active access key has `WRITE` scope.
 - Input: `PUT /api/s3/{bucketName}/{objectKey}` with `x-amz-content-sha256: STREAMING-AWS4-HMAC-SHA256-PAYLOAD`, `Content-Encoding: aws-chunked`, and `x-amz-decoded-content-length`.
-- Steps: Upload valid aws-chunked body where each chunk header includes a 64-character lowercase hex `chunk-signature`, then upload bodies with missing chunk signature and invalid final chunk signature.
-- Expected: Valid body is decoded and stored. Invalid chunk signature bodies return S3 XML `InvalidRequest`.
+- Steps: Upload valid aws-chunked body where each chunk header includes a 64-character lowercase hex `chunk-signature`, upload bodies with missing chunk signature and invalid final chunk signature, then upload a SigV4 header-auth aws-chunked body with a valid chunk signature chain and a tampered body with the original chunk signature.
+- Expected: Valid bodies are decoded and stored. Missing/invalid chunk signature format returns S3 XML `InvalidRequest`. Tampered SigV4 chunk data returns S3 XML `AccessDenied`.
 - Priority: P1
-- Automated: `S3ObjectControllerTest.accessKeyCanUploadAwsChunkedStreamingPayload`
+- Automated: `S3ObjectControllerTest.accessKeyCanUploadAwsChunkedStreamingPayload`, `S3ObjectControllerTest.awsSigV4HeaderAuthVerifiesAwsChunkedStreamingSignatureChain`
 
 ### TC-S3-MULTIPART-COMPLETE-001
 
