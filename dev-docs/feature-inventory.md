@@ -256,6 +256,7 @@ MVP 데모 기준 완료율은 약 90~95%입니다.
 - S3 multipart initiate checksum negotiation persistence plus complete-time algorithm/type mismatch `BadDigest` guards
 - S3 multipart UploadPart checksum auto-compute/persistence, `x-amz-sdk-checksum-algorithm` handling, stored checksum merge on complete, and ListParts checksum XML
 - S3 multipart complete response `ChecksumType` propagation from persisted initiate negotiation when the complete request omits `x-amz-checksum-type`
+- S3 multipart complete response `ChecksumType` inference from final checksum headers or stored composite checksum metadata when request/initiate type is omitted
 - S3 built-in SigV4 smoke coverage for SDK-style UploadPart checksum auto-compute, ListParts checksum XML, stored-checksum complete, and final HEAD checksum/ETag
 - S3 single object PUT `x-amz-sdk-checksum-algorithm` auto-compute and AWS CLI `--checksum-algorithm SHA256` smoke coverage
 - S3 Content-MD5 `BadDigest`/`InvalidDigest` XML message normalization
@@ -266,7 +267,7 @@ MVP 데모 기준 완료율은 약 90~95%입니다.
 
 남은 것:
 
-- full AWS multipart checksum negotiation parity beyond stored UploadPart checksum metadata and complete-time matching guards, especially remaining exact AWS checksum/error response propagation edges
+- full AWS multipart checksum negotiation parity beyond stored UploadPart checksum metadata and complete-time matching guards, especially remaining real-client option coverage and exact AWS checksum/error edge behavior
 
 ### 4.7 MariaDB metadata
 

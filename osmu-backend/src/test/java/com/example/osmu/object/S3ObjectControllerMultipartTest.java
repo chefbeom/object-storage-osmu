@@ -703,6 +703,71 @@ class S3ObjectControllerMultipartTest {
     }
 
     @Test
+    void completeMultipartUploadInfersFullObjectChecksumTypeFromFinalChecksumHeader() throws Exception {
+        MockHttpServletRequest request = completeMultipartRequest();
+        String crc32cChecksum = crc32cChecksumBase64("hello");
+        request.addHeader("x-amz-checksum-crc32c", crc32cChecksum);
+        when(s3RequestAuthService.currentUser(request, "bucket", "WRITE")).thenReturn(user);
+        when(objectService.completeMultipartUpload(
+                eq("bucket"),
+                any(MultipartUploadCompleteRequest.class),
+                eq(user),
+                argThat(headers -> crc32cChecksum.equals(headers.get("x-amz-checksum-crc32c"))),
+                isNull(),
+                eq("")
+        ))
+                .thenReturn(new StoredObjectRecord(
+                        "videos/input.mp4",
+                        5L,
+                        "video/mp4",
+                        OffsetDateTime.now(),
+                        Map.of(),
+                        null,
+                        "multipart-etag",
+                        Map.of("x-amz-checksum-crc32c", crc32cChecksum)
+                ));
+
+        var response = controller.completeMultipartUpload("bucket", "videos/input.mp4", "upload-1", request);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(response.getHeaders().getFirst("x-amz-checksum-crc32c")).isEqualTo(crc32cChecksum);
+        assertThat(response.getBody()).contains("<ChecksumCRC32C>" + crc32cChecksum + "</ChecksumCRC32C>");
+        assertThat(response.getBody()).contains("<ChecksumType>FULL_OBJECT</ChecksumType>");
+    }
+
+    @Test
+    void completeMultipartUploadInfersCompositeChecksumTypeFromStoredChecksum() throws Exception {
+        MockHttpServletRequest request = completeMultipartRequest();
+        String compositeChecksum = checksumBase64("SHA-256", "stored-parts");
+        when(s3RequestAuthService.currentUser(request, "bucket", "WRITE")).thenReturn(user);
+        when(objectService.completeMultipartUpload(
+                eq("bucket"),
+                any(MultipartUploadCompleteRequest.class),
+                eq(user),
+                argThat(Map::isEmpty),
+                isNull(),
+                eq("")
+        ))
+                .thenReturn(new StoredObjectRecord(
+                        "videos/input.mp4",
+                        5L,
+                        "video/mp4",
+                        OffsetDateTime.now(),
+                        Map.of(),
+                        null,
+                        "multipart-etag",
+                        Map.of("x-amz-checksum-sha256", compositeChecksum)
+                ));
+
+        var response = controller.completeMultipartUpload("bucket", "videos/input.mp4", "upload-1", request);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(response.getHeaders().getFirst("x-amz-checksum-sha256")).isEqualTo(compositeChecksum);
+        assertThat(response.getBody()).contains("<ChecksumSHA256>" + compositeChecksum + "</ChecksumSHA256>");
+        assertThat(response.getBody()).contains("<ChecksumType>COMPOSITE</ChecksumType>");
+    }
+
+    @Test
     void completeMultipartUploadAcceptsCrc32cCompositeChecksum() throws Exception {
         MockHttpServletRequest request = request("POST");
         request.setContentType(MediaType.APPLICATION_XML_VALUE);

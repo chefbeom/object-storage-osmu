@@ -1,5 +1,36 @@
 # Worklog - main
 
+### 2026-06-18 - S3 CompleteMultipartUpload inferred ChecksumType response
+
+- Work time:
+  - End: 2026-06-18 KST
+- User command:
+  - Active goal: continue development from `dev-docs`.
+- Request analysis:
+  - `dev-docs` still tracked multipart checksum response parity as partial.
+  - AWS CompleteMultipartUpload response XML includes checksum elements and `ChecksumType`; AWS describes `ChecksumType` as the multipart checksum type, with `COMPOSITE` and `FULL_OBJECT` as valid values.
+  - OSMU already echoed requested or initiated `ChecksumType`, but omitted it when response checksum metadata existed and request/initiate checksum type was absent.
+- Execution:
+  - Updated S3 complete response rendering to infer `ChecksumType=FULL_OBJECT` when the completed response checksum came from a final object checksum header.
+  - Updated S3 complete response rendering to infer `ChecksumType=COMPOSITE` when response checksum metadata exists without a final checksum header, covering stored UploadPart checksum aggregation.
+  - Added controller regression tests for both inferred response shapes.
+  - Updated README and `dev-docs`.
+- Modified files:
+  - `osmu-backend/src/main/java/com/example/osmu/object/S3ObjectController.java`
+  - `osmu-backend/src/test/java/com/example/osmu/object/S3ObjectControllerMultipartTest.java`
+  - `README.md`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/backend-design.md`
+  - `dev-docs/s3-compatibility.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/feature-inventory.md`
+  - `dev-docs/worklog/main/worklog-main.md`
+- Tests:
+  - `$env:JAVA_HOME='C:\jdk-17'; .\gradlew.bat test --no-daemon --tests com.example.osmu.object.S3ObjectControllerMultipartTest.completeMultipartUploadInfersFullObjectChecksumTypeFromFinalChecksumHeader --tests com.example.osmu.object.S3ObjectControllerMultipartTest.completeMultipartUploadInfersCompositeChecksumTypeFromStoredChecksum --tests com.example.osmu.object.S3ObjectControllerMultipartTest.completeMultipartUploadReturnsStoredCompositeChecksumHeaderAndXml --tests com.example.osmu.object.S3ObjectControllerMultipartTest.completeMultipartUploadReturnsInitiatedChecksumTypeWhenRequestOmitsChecksumType`: passed.
+  - `$env:JAVA_HOME='C:\jdk-17'; .\gradlew.bat test --no-daemon --tests com.example.osmu.object.S3ObjectControllerMultipartTest`: passed.
+- Follow-up:
+  - Continue remaining real-client checksum option coverage and AWS non-bucket per-error status/message nuance.
+
 ### 2026-06-18 - S3 generic error message normalization
 
 - Work time:

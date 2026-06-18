@@ -426,7 +426,6 @@ public class S3ObjectController {
         Long expectedObjectSize = multipartObjectSize(request);
         String initiatedChecksumType =
                 objectService.multipartUploadChecksumType(bucketName, uploadId, objectKey, user);
-        String responseChecksumType = responseChecksumType(checksumType, initiatedChecksumType);
         StoredObjectRecord object = objectService.completeMultipartUpload(
                 bucketName,
                 new MultipartUploadCompleteRequest(uploadId, objectKey, completedParts),
@@ -442,6 +441,12 @@ public class S3ObjectController {
             builder.eTag(etag(object));
         }
         object.checksums().forEach(builder::header);
+        String responseChecksumType = responseChecksumType(
+                checksumType,
+                initiatedChecksumType,
+                checksumResponseHeader,
+                object
+        );
         return builder.body(completeMultipartUploadResultXml(bucketName, object, responseChecksumType));
     }
 
@@ -1518,14 +1523,24 @@ public class S3ObjectController {
         }
     }
 
-    private String responseChecksumType(String requestedChecksumType, String initiatedChecksumType) {
+    private String responseChecksumType(
+            String requestedChecksumType,
+            String initiatedChecksumType,
+            ChecksumResponseHeader finalChecksumHeader,
+            StoredObjectRecord object
+    ) {
         if (requestedChecksumType != null && !requestedChecksumType.isBlank()) {
             return requestedChecksumType;
         }
-        if (initiatedChecksumType == null || initiatedChecksumType.isBlank()) {
+        if (initiatedChecksumType != null && !initiatedChecksumType.isBlank()) {
+            return initiatedChecksumType.trim().toUpperCase(Locale.ROOT);
+        }
+        if (object == null || object.checksums().isEmpty()) {
             return "";
         }
-        return initiatedChecksumType.trim().toUpperCase(Locale.ROOT);
+        return finalChecksumHeader != null && !finalChecksumHeader.asMap().isEmpty()
+                ? "FULL_OBJECT"
+                : "COMPOSITE";
     }
 
     private String contentType(HttpServletRequest request) {
