@@ -1,5 +1,46 @@
 # Worklog - main
 
+### 2026-06-18 - boto3 S3 client path preflight 연결
+
+- Work time:
+  - End: 2026-06-18 KST
+- User command:
+  - Active goal: continue development from `dev-docs`.
+- Request analysis:
+  - `verify-s3-client-smoke.ps1` supports `-Client boto3`, but durable demo, restore smoke, finalize wrapper, readiness/preflight scripts still accepted only `auto/aws/mc/docker-mc/all`.
+  - This meant boto3 checksum smoke evidence could not be selected as the real S3 client path in higher-level gates.
+- Execution:
+  - Added `boto3` to S3 client selection sets in durable demo gate/preflight/finalize, MVP readiness, Kubernetes restore smoke, and Kubernetes DR finalize wrapper.
+  - Added Python+boto3 detection to durable preflight, prototype prerequisites, and MVP readiness.
+  - Added boto3 availability to durable release optional gates and audit/decision/notes output.
+  - Updated docs/test cases/checklists/verifier text to include Python+boto3 as a real S3 client path.
+- Modified files:
+  - `scripts/verify-durable-demo-preflight.ps1`
+  - `scripts/verify-durable-demo-gate.ps1`
+  - `scripts/finalize-durable-mvp-demo.ps1`
+  - `scripts/verify-mvp-demo-readiness.ps1`
+  - `scripts/verify-prototype-prerequisites.ps1`
+  - `scripts/verify-kubernetes-restore-smoke.ps1`
+  - `scripts/finalize-kubernetes-dr-drill.ps1`
+  - `scripts/write-durable-release-artifacts.ps1`
+  - `scripts/write-mvp-audit.ps1`
+  - `scripts/write-mvp-release-decision.ps1`
+  - `scripts/write-mvp-release-notes.ps1`
+  - `scripts/verify-commercial-readiness.ps1`
+  - `dev-docs/feature-inventory.md`
+  - `dev-docs/local-dev-env.md`
+  - `dev-docs/mvp-release-checklist.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/worklog/main/worklog-main.md`
+- Tests:
+  - PowerShell parser checks for modified scripts: passed.
+  - `verify-commercial-readiness.ps1`: passed.
+  - `verify-durable-demo-preflight.ps1 -S3Client boto3 -AllowNotReady -NoReport`: passed with expected pending result because Docker daemon and Python+boto3 are not available.
+  - `git diff --check`: passed.
+- Review:
+  - Higher-level durable and restore gates can now select boto3 without requiring AWS CLI or MinIO Client.
+  - Missing Python+boto3 remains optional unless explicitly selected or required by a gate.
+
 ### 2026-06-18 - boto3 checksum option smoke
 
 - Work time:

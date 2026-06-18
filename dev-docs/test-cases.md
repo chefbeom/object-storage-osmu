@@ -508,7 +508,7 @@
 - Feature: Durable demo prerequisite preflight.
 - Preconditions: PowerShell is available. Docker Desktop may be either running or stopped.
 - Input: `powershell -ExecutionPolicy Bypass -File .\scripts\verify-durable-demo-preflight.ps1 -AllowNotReady`.
-- Steps: Check local env source, Docker Compose file, Node/npm, Docker CLI, Docker daemon, Docker Compose config, host AWS CLI, host MinIO Client, Dockerized MinIO Client availability, and the selected real S3 client path.
+- Steps: Check local env source, Docker Compose file, Node/npm, Docker CLI, Docker daemon, Docker Compose config, host AWS CLI, Python+boto3, host MinIO Client, Dockerized MinIO Client availability, and the selected real S3 client path.
 - Expected: The script writes `.osmu-run/latest-durable-demo-preflight.json` and `.osmu-run/latest-durable-demo-preflight.md`. When Docker daemon and a selected S3 client path are available, result is `ready`; otherwise result is `pending` with required failure names such as `Docker daemon` or `Selected real S3 client path`.
 - Priority: P0
 - Automated: `scripts/verify-durable-demo-preflight.ps1`, `scripts/verify-durable-demo-gate.ps1`

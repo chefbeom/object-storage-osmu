@@ -274,7 +274,7 @@ Durable MVP demo gate:
 .\scripts\verify-durable-demo-gate.ps1
 ```
 
-The preflight command does not start containers. It checks Node/npm, Docker CLI, Docker daemon, Docker Compose config, and the selected real S3 client path, then writes `.osmu-run/latest-durable-demo-preflight.json` and `.osmu-run/latest-durable-demo-preflight.md`.
+The preflight command does not start containers. It checks Node/npm, Docker CLI, Docker daemon, Docker Compose config, AWS CLI, Python+boto3, MinIO Client, Dockerized MinIO Client, and the selected real S3 client path, then writes `.osmu-run/latest-durable-demo-preflight.json` and `.osmu-run/latest-durable-demo-preflight.md`.
 
 The gate command is the strongest single local demo verification command. It prepares `infra/local/.env` when missing, runs the durable preflight unless `-SkipPreflight` is set, checks Node/Docker/real S3 client prerequisites, starts the full Docker local demo, runs Browser E2E, runs Docker integration smoke, runs real S3 client smoke through the selected client (`docker-mc` by default), writes `.osmu-run/latest-durable-demo-gate.json` and `.osmu-run/latest-durable-demo-gate.md`, and stops the stack unless `-KeepRunning` is set.
 

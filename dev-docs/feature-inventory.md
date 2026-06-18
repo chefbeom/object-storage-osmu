@@ -366,7 +366,7 @@ MVP 데모 기준 완료율은 약 90~95%입니다.
 
 4. S3 client smoke
    - built-in SigV4 smoke
-   - AWS CLI 또는 MinIO Client `mc`
+   - AWS CLI, Python+boto3, 또는 MinIO Client `mc`
    - bucket create, object put/get, range, tag, copy, delete 검증
 
 5. 화면 polish

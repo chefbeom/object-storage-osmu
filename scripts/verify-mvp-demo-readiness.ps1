@@ -2,7 +2,7 @@ param(
     [string] $ReportPath = ".\.osmu-run\latest-demo-readiness.json",
     [string] $SummaryPath = ".\.osmu-run\latest-demo-readiness.md",
     [string] $JavaHome = "",
-    [ValidateSet("auto", "aws", "mc", "docker-mc", "all")]
+    [ValidateSet("auto", "aws", "boto3", "mc", "docker-mc", "all")]
     [string] $S3Client = "docker-mc",
     [switch] $SkipBackendTests,
     [switch] $SkipDockerFullStackE2E,
@@ -181,14 +181,43 @@ function Test-DockerDaemonAvailable() {
     }
 }
 
+function Test-PythonBoto3Available() {
+    foreach ($candidate in @("python", "python3", "py")) {
+        $python = Get-Command $candidate -ErrorAction SilentlyContinue
+        if (-not $python) {
+            continue
+        }
+        $arguments = if ($candidate -eq "py") {
+            @("-3", "-c", "import boto3, botocore")
+        } else {
+            @("-c", "import boto3, botocore")
+        }
+        $result = Invoke-Capture $python.Source $arguments
+        if ($result.exitCode -eq 0) {
+            return [pscustomobject]@{
+                passed = $true
+                detail = "$($python.Source) with boto3"
+            }
+        }
+    }
+    return [pscustomobject]@{
+        passed = $false
+        detail = "Python with boto3 not found on PATH."
+    }
+}
+
 function Test-RealS3ClientAvailable() {
     $aws = Get-Command aws -ErrorAction SilentlyContinue
+    $boto3Status = Test-PythonBoto3Available
     $mc = Get-Command mc -ErrorAction SilentlyContinue
     $dockerStatus = Test-DockerDaemonAvailable
 
     $details = @()
     if ($aws) {
         $details += "aws=$($aws.Source)"
+    }
+    if ($boto3Status.passed) {
+        $details += "boto3=$($boto3Status.detail)"
     }
     if ($mc) {
         $details += "mc=$($mc.Source)"
@@ -197,11 +226,11 @@ function Test-RealS3ClientAvailable() {
         $details += "docker-mc=$($dockerStatus.detail)"
     }
     if (-not $details) {
-        $details += "aws/mc not found on PATH and Docker daemon is not available for dockerized mc."
+        $details += "aws/Python+boto3/mc not found on PATH and Docker daemon is not available for dockerized mc."
     }
 
     return [pscustomobject]@{
-        passed = [bool]($aws -or $mc -or $dockerStatus.passed)
+        passed = [bool]($aws -or $boto3Status.passed -or $mc -or $dockerStatus.passed)
         detail = $details -join "; "
     }
 }
@@ -341,7 +370,7 @@ $s3ClientStatus = Test-RealS3ClientAvailable
 if ($s3ClientStatus.passed) {
     Add-Check "Real S3 client readiness" "READY" "At least one real S3 client is available." $s3ClientStatus.detail
 } else {
-    Add-Check "Real S3 client readiness" "PENDING" "AWS CLI, host MinIO Client mc, or Dockerized MinIO Client is required for real client smoke." $s3ClientStatus.detail
+    Add-Check "Real S3 client readiness" "PENDING" "AWS CLI, Python+boto3, host MinIO Client mc, or Dockerized MinIO Client is required for real client smoke." $s3ClientStatus.detail
 }
 
 if ($javaStatus.passed) {

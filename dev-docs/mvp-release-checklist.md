@@ -249,7 +249,7 @@ Run when Browser/Chrome automation works again:
 
 ## Real S3 Client Checklist
 
-Run with AWS CLI or host MinIO Client on `PATH`, or Dockerized MinIO Client when Docker Desktop is running:
+Run with AWS CLI, Python+boto3, or host MinIO Client on `PATH`, or Dockerized MinIO Client when Docker Desktop is running:
 
 - [ ] List buckets with real client.
 - [ ] Upload object with real client.

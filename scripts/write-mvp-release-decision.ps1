@@ -270,7 +270,7 @@ $decisionLines = @(
     "## Durable Pilot Gate",
     "",
     (Gate-Line $dockerPilotGate "Docker/MariaDB/MinIO integration" "dockerIntegration=$($scope.dockerIntegration), dockerDaemon=$($optionalGates.dockerDaemonAvailable)"),
-    (Gate-Line $realS3PilotGate "Real S3 client required and available" "realS3ClientRequired=$($scope.realS3ClientRequired), aws=$($optionalGates.awsCliAvailable), mc=$($optionalGates.mcAvailable), dockerizedMc=$($optionalGates.dockerizedMcAvailable)"),
+    (Gate-Line $realS3PilotGate "Real S3 client required and available" "realS3ClientRequired=$($scope.realS3ClientRequired), aws=$($optionalGates.awsCliAvailable), boto3=$($optionalGates.boto3Available), mc=$($optionalGates.mcAvailable), dockerizedMc=$($optionalGates.dockerizedMcAvailable)"),
     (Gate-Line $browserPilotGate "Browser E2E verified" "browserE2E=$($scope.browserE2E)"),
     (Gate-Line $durableGatePassed "Durable MVP demo gate report" "$($durableGate.detail), report=$($durableGate.path)"),
     "",

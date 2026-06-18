@@ -193,6 +193,28 @@ if ($aws) {
     Add-Check "AWS CLI" "FAIL" "aws not found on PATH." $false
 }
 
+$boto3Available = $false
+foreach ($candidate in @("python", "python3", "py")) {
+    $python = Get-Command $candidate -ErrorAction SilentlyContinue
+    if (-not $python) {
+        continue
+    }
+    $arguments = if ($candidate -eq "py") {
+        @("-3", "-c", "import boto3, botocore")
+    } else {
+        @("-c", "import boto3, botocore")
+    }
+    $boto3Check = Invoke-Capture $python.Source $arguments
+    if ($boto3Check.ExitCode -eq 0) {
+        $boto3Available = $true
+        Add-Check "Python boto3" "PASS" "$($python.Source) with boto3" $false
+        break
+    }
+}
+if (-not $boto3Available) {
+    Add-Check "Python boto3" "FAIL" "Python with boto3 not found on PATH." $false
+}
+
 $mc = Get-Command mc -ErrorAction SilentlyContinue
 if ($mc) {
     $mcVersion = Invoke-Capture $mc.Source @("--version")
@@ -207,10 +229,10 @@ if ($dockerDaemonAvailable) {
     Add-Check "Dockerized MinIO Client mc" "FAIL" "Docker daemon is not available for containerized mc." $false
 }
 
-if ($aws -or $mc -or $dockerDaemonAvailable) {
-    Add-Check "Real S3 client" "PASS" "at least one of aws, host mc, or Dockerized mc is available." $RequireS3Client
+if ($aws -or $boto3Available -or $mc -or $dockerDaemonAvailable) {
+    Add-Check "Real S3 client" "PASS" "at least one of aws, Python+boto3, host mc, or Dockerized mc is available." $RequireS3Client
 } else {
-    Add-Check "Real S3 client" "FAIL" "install AWS CLI, install MinIO Client mc, or start Docker Desktop for Dockerized MinIO Client smoke." $RequireS3Client
+    Add-Check "Real S3 client" "FAIL" "install AWS CLI, install Python+boto3, install MinIO Client mc, or start Docker Desktop for Dockerized MinIO Client smoke." $RequireS3Client
 }
 
 Step "Runtime endpoints"

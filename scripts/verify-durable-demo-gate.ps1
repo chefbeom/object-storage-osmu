@@ -4,7 +4,7 @@ param(
     [string] $ComposeFile = ".\infra\local\docker-compose.yml",
     [string] $ReportPath = ".\.osmu-run\latest-durable-demo-gate.json",
     [string] $SummaryPath = ".\.osmu-run\latest-durable-demo-gate.md",
-    [ValidateSet("auto", "aws", "mc", "docker-mc", "all")]
+    [ValidateSet("auto", "aws", "boto3", "mc", "docker-mc", "all")]
     [string] $S3Client = "docker-mc",
     [switch] $NoBuild,
     [switch] $KeepRunning,

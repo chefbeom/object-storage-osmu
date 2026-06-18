@@ -4,7 +4,7 @@ param(
     [string] $ComposeFile = ".\infra\local\docker-compose.yml",
     [string] $ReportPath = ".\.osmu-run\latest-durable-demo-preflight.json",
     [string] $SummaryPath = ".\.osmu-run\latest-durable-demo-preflight.md",
-    [ValidateSet("auto", "aws", "mc", "docker-mc", "all")]
+    [ValidateSet("auto", "aws", "boto3", "mc", "docker-mc", "all")]
     [string] $S3Client = "docker-mc",
     [switch] $AllowNotReady,
     [switch] $NoReport
@@ -69,12 +69,38 @@ function Test-Command([string] $Name) {
     return Get-Command $Name -ErrorAction SilentlyContinue
 }
 
-function Get-S3SelectionReady([string] $Selection, [bool] $AwsAvailable, [bool] $McAvailable, [bool] $DockerClientAvailable) {
+function Test-PythonBoto3Available() {
+    foreach ($candidate in @("python", "python3", "py")) {
+        $python = Test-Command $candidate
+        if (-not $python) {
+            continue
+        }
+        $arguments = if ($candidate -eq "py") {
+            @("-3", "-c", "import boto3, botocore")
+        } else {
+            @("-c", "import boto3, botocore")
+        }
+        $result = Invoke-Capture $python.Source $arguments
+        if ($result.exitCode -eq 0) {
+            return [pscustomobject]@{
+                available = $true
+                detail = "$($python.Source) with boto3"
+            }
+        }
+    }
+    return [pscustomobject]@{
+        available = $false
+        detail = "Python with boto3 not found on PATH"
+    }
+}
+
+function Get-S3SelectionReady([string] $Selection, [bool] $AwsAvailable, [bool] $Boto3Available, [bool] $McAvailable, [bool] $DockerClientAvailable) {
     switch ($Selection) {
         "aws" { return $AwsAvailable }
+        "boto3" { return $Boto3Available }
         "mc" { return $McAvailable }
         "docker-mc" { return $DockerClientAvailable }
-        default { return ($AwsAvailable -or $McAvailable -or $DockerClientAvailable) }
+        default { return ($AwsAvailable -or $Boto3Available -or $McAvailable -or $DockerClientAvailable) }
     }
 }
 
@@ -182,6 +208,10 @@ else {
     Add-Check "AWS CLI" "FAIL" $false "aws not found on PATH"
 }
 
+$boto3Status = Test-PythonBoto3Available
+$boto3Available = [bool]$boto3Status.available
+Add-Check "Python boto3" $(if ($boto3Available) { "PASS" } else { "FAIL" }) $false $boto3Status.detail
+
 $mc = Test-Command "mc"
 $mcAvailable = $false
 if ($mc) {
@@ -200,12 +230,12 @@ else {
     Add-Check "Dockerized MinIO Client mc" "FAIL" $false "Docker daemon is unavailable for containerized mc"
 }
 
-$s3SelectionReady = Get-S3SelectionReady $S3Client $awsAvailable $mcAvailable $dockerDaemonAvailable
+$s3SelectionReady = Get-S3SelectionReady $S3Client $awsAvailable $boto3Available $mcAvailable $dockerDaemonAvailable
 if ($s3SelectionReady) {
     Add-Check "Selected real S3 client path" "PASS" $true "selected S3 client path is available" "S3Client=$S3Client"
 }
 else {
-    Add-Check "Selected real S3 client path" "FAIL" $true "selected S3 client path is unavailable" "S3Client=$S3Client; choose auto/aws/mc or start Docker Desktop for docker-mc"
+    Add-Check "Selected real S3 client path" "FAIL" $true "selected S3 client path is unavailable" "S3Client=$S3Client; choose auto/aws/boto3/mc or start Docker Desktop for docker-mc"
 }
 
 $requiredFailures = @($script:Checks | Where-Object { $_.required -and $_.status -eq "FAIL" })

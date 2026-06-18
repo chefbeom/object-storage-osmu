@@ -96,6 +96,11 @@ $awsCliAvailable = if ($preflightAvailable) {
 } else {
     $selectedS3Client -eq "aws"
 }
+$boto3Available = if ($preflightAvailable) {
+    Test-ReportCheckPassed $durablePreflight "Python boto3"
+} else {
+    $selectedS3Client -eq "boto3"
+}
 $mcAvailable = if ($preflightAvailable) {
     Test-ReportCheckPassed $durablePreflight "MinIO Client mc"
 } else {
@@ -156,6 +161,7 @@ $releaseReport = [ordered]@{
         dockerDaemonAvailable = $true
         dockerDetail = "verified by durable MVP demo gate"
         awsCliAvailable = $awsCliAvailable
+        boto3Available = $boto3Available
         mcAvailable = $mcAvailable
         dockerizedMcAvailable = $dockerizedMcAvailable
         realS3ClientAvailable = $true

@@ -33,7 +33,7 @@ param(
     [string] $ExpectedBucketName = "",
     [string] $ExpectedObjectKey = "",
     [string] $S3Endpoint = "",
-    [ValidateSet("auto", "aws", "mc", "docker-mc", "all")]
+    [ValidateSet("auto", "aws", "boto3", "mc", "docker-mc", "all")]
     [string] $S3Client = "auto",
     [string] $Environment = "kubernetes-drill",
     [string] $Operator = "",
