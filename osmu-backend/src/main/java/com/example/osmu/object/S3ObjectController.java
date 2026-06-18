@@ -369,6 +369,7 @@ public class S3ObjectController {
             HttpServletRequest request
     ) throws IOException {
         AuthenticatedUser user = s3RequestAuthService.currentUser(request, bucketName, "WRITE");
+        assertCopyTargetPreconditions(request, bucketName, objectKey, user);
         ChecksumResponseHeader checksumResponseHeader = checksumResponseHeader(request);
         StoredObjectRecord object = objectService.completeMultipartUpload(
                 bucketName,

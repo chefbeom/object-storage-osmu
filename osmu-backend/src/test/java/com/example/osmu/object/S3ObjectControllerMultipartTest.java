@@ -7,6 +7,7 @@ import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -25,6 +26,7 @@ import java.util.Base64;
 import java.util.HexFormat;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.http.HttpHeaders;
@@ -451,6 +453,74 @@ class S3ObjectControllerMultipartTest {
     }
 
     @Test
+    void completeMultipartUploadHonorsTargetPreconditions() throws Exception {
+        StoredObjectRecord existingTarget = new StoredObjectRecord(
+                "videos/input.mp4",
+                5L,
+                "video/mp4",
+                OffsetDateTime.now(),
+                Map.of(),
+                null,
+                "target-etag",
+                Map.of()
+        );
+        MockHttpServletRequest matchRequest = completeMultipartRequest();
+        matchRequest.addHeader(HttpHeaders.IF_MATCH, "\"target-etag\"");
+        when(s3RequestAuthService.currentUser(matchRequest, "bucket", "WRITE")).thenReturn(user);
+        when(objectService.activeMetadataForWrite("bucket", "videos/input.mp4", user))
+                .thenReturn(Optional.of(existingTarget));
+        when(objectService.completeMultipartUpload(
+                eq("bucket"),
+                any(MultipartUploadCompleteRequest.class),
+                eq(user),
+                argThat(Map::isEmpty),
+                isNull()
+        ))
+                .thenReturn(new StoredObjectRecord(
+                        "videos/input.mp4",
+                        5L,
+                        "video/mp4",
+                        OffsetDateTime.now(),
+                        Map.of(),
+                        null,
+                        "multipart-etag",
+                        Map.of()
+                ));
+
+        var matchResponse = controller.completeMultipartUpload("bucket", "videos/input.mp4", "upload-1", matchRequest);
+
+        assertThat(matchResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+
+        MockHttpServletRequest noneMatchRequest = completeMultipartRequest();
+        noneMatchRequest.addHeader(HttpHeaders.IF_NONE_MATCH, "*");
+        when(s3RequestAuthService.currentUser(noneMatchRequest, "bucket", "WRITE")).thenReturn(user);
+        when(objectService.activeMetadataForWrite("bucket", "videos/existing.mp4", user))
+                .thenReturn(Optional.of(existingTarget));
+
+        assertThatThrownBy(() -> controller.completeMultipartUpload("bucket", "videos/existing.mp4", "upload-1", noneMatchRequest))
+                .isInstanceOfSatisfying(ApiException.class, exception ->
+                        assertThat(exception.code()).isEqualTo(ApiErrorCode.PRECONDITION_FAILED));
+
+        MockHttpServletRequest missingMatchRequest = completeMultipartRequest();
+        missingMatchRequest.addHeader(HttpHeaders.IF_MATCH, "\"target-etag\"");
+        when(s3RequestAuthService.currentUser(missingMatchRequest, "bucket", "WRITE")).thenReturn(user);
+        when(objectService.activeMetadataForWrite("bucket", "videos/missing.mp4", user))
+                .thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> controller.completeMultipartUpload("bucket", "videos/missing.mp4", "upload-1", missingMatchRequest))
+                .isInstanceOfSatisfying(ApiException.class, exception ->
+                        assertThat(exception.code()).isEqualTo(ApiErrorCode.PRECONDITION_FAILED));
+
+        verify(objectService, never()).completeMultipartUpload(
+                eq("bucket"),
+                argThat(request -> request.key().equals("videos/existing.mp4") || request.key().equals("videos/missing.mp4")),
+                eq(user),
+                any(),
+                any()
+        );
+    }
+
+    @Test
     void completeMultipartUploadRejectsInvalidMultipartObjectSizeHeader() {
         MockHttpServletRequest request = request("POST");
         request.setContentType(MediaType.APPLICATION_XML_VALUE);
@@ -573,6 +643,17 @@ class S3ObjectControllerMultipartTest {
         assertThatThrownBy(() -> controller.completeMultipartUpload("bucket", "videos/input.mp4", "upload-1", request))
                 .isInstanceOfSatisfying(ApiException.class, exception ->
                         assertThat(exception.code()).isEqualTo(ApiErrorCode.VALIDATION_ERROR));
+    }
+
+    private MockHttpServletRequest completeMultipartRequest() {
+        MockHttpServletRequest request = request("POST");
+        request.setContentType(MediaType.APPLICATION_XML_VALUE);
+        request.setContent("""
+                <CompleteMultipartUpload>
+                  <Part><PartNumber>1</PartNumber><ETag>"etag-1"</ETag></Part>
+                </CompleteMultipartUpload>
+                """.getBytes(StandardCharsets.UTF_8));
+        return request;
     }
 
     private MockHttpServletRequest request(String method) {

@@ -1,5 +1,36 @@
 # Worklog - main
 
+### 2026-06-18 - S3 multipart complete destination preconditions
+
+- Work time:
+  - End: 2026-06-18 19:16:14 +09:00
+- User command:
+  - Active goal: continue development from `dev-docs`.
+- Request analysis:
+  - `dev-docs` still tracks remaining conditional edge parity.
+  - AWS CompleteMultipartUpload documents destination `If-Match` and `If-None-Match` request headers; failed ETag preconditions return `412 Precondition Failed`.
+- Execution:
+  - Reused the S3 destination ETag precondition guard for CompleteMultipartUpload before XML parsing/storage completion.
+  - Added regression coverage for matching `If-Match`, existing-target `If-None-Match: *`, and missing-target `If-Match`.
+  - Updated S3 compatibility/API/backend/PRD/test docs.
+- Modified files:
+  - `osmu-backend/src/main/java/com/example/osmu/object/S3ObjectController.java`
+  - `osmu-backend/src/test/java/com/example/osmu/object/S3ObjectControllerMultipartTest.java`
+  - `dev-docs/PRODUCT_REQUIREMENTS.md`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/backend-design.md`
+  - `dev-docs/s3-compatibility.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/feature-inventory.md`
+  - `dev-docs/worklog/main/worklog-main.md`
+- Tests:
+  - `gradle test --tests com.example.osmu.object.S3ObjectControllerMultipartTest.completeMultipartUploadHonorsTargetPreconditions`: passed.
+  - `gradle test --tests com.example.osmu.object.S3ObjectControllerMultipartTest`: passed.
+  - `gradle test`: passed.
+- Review:
+  - Preconditions are checked before completing storage, so failed conditional completes do not create or overwrite target objects.
+  - Remaining conditional gaps include broader AWS edge behavior and conflict mapping outside the documented ETag guards now covered for GET/HEAD, CopyObject, and multipart complete.
+
 ### 2026-06-18 - S3 multipart complete object-size guard
 
 - Work time:
