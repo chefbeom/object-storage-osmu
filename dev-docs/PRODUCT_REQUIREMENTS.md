@@ -31,7 +31,7 @@
 - The alias supports AWS SigV4 header authorization for access keys created with encrypted signing secret material.
 - The alias supports AWS SigV4 query/presigned URL authorization with `UNSIGNED-PAYLOAD` for S3-style object reads.
 - SigV4 auth enforces clock-skew and presigned URL expiration in the MVP.
-- Non-streaming SigV4 object and multipart part uploads validate signed `x-amz-content-sha256` against the actual body. `UNSIGNED-PAYLOAD` is allowed, and `STREAMING-*` payload signatures remain future work.
+- Non-streaming SigV4 object and multipart part uploads validate signed `x-amz-content-sha256` against the actual body. `UNSIGNED-PAYLOAD` is allowed. AWS `aws-chunked` request bodies are decoded, while per-chunk `chunk-signature` chain verification remains future work.
 - The alias supports MVP virtual-hosted-style routing for configured host suffixes, such as `Host: {bucket}.localhost` with path `/api/s3/{objectKey}`.
 - Access Key root bucket listing only returns buckets in the key's still-valid scopes.
 - Access Key scope maps object actions to `WRITE`, `READ`, and `DELETE`.
@@ -52,7 +52,7 @@
 - `x-amz-tagging` and `X-OSMU-Tags` are accepted for upload tags.
 - Multi-object delete uses the same soft-delete behavior as the REST object API and treats missing keys as deleted for S3 compatibility.
 - Object tagging XML uses the same metadata tag store as the REST object API; tag read requires `READ`, tag update/delete requires `WRITE`.
-- SigV4 chunked streaming parity, unknown-size S3 multipart initiate parity, checksum trailer/CRC64NVME/full AWS checksum parity, automatic DNS/proxy provisioning for virtual-hosted-style domains, multi-range GET, full conditional request parity, exact CopyObject user-metadata/versioning/full-conditional parity, multipart ETag parity, exact CreateBucket/DeleteBucket parity, and exact AWS error schema parity remain future work.
+- Full SigV4 chunked streaming signature parity, unknown-size S3 multipart initiate parity, checksum trailer/CRC64NVME/full AWS checksum parity, automatic DNS/proxy provisioning for virtual-hosted-style domains, multi-range GET, full conditional request parity, exact CopyObject user-metadata/versioning/full-conditional parity, multipart ETag parity, exact CreateBucket/DeleteBucket parity, and exact AWS error schema parity remain future work. `dev-docs/s3-compatibility.md` tracks the supported/partial/unsupported matrix.
 # Private Object Storage Platform 기획서 초안
 
 ## 1. 문서 개요

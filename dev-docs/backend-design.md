@@ -29,7 +29,7 @@
 - `S3TaggingXmlMapper` parses and renders S3-compatible `Tagging/TagSet/Tag/Key/Value` XML for bucket tagging with XXE protections.
 - `BucketController` exposes REST bucket tag management through `GET/PUT/DELETE /api/buckets/{bucketName}/tags`, reusing `BucketTagService` validation and repository storage.
 - `S3ObjectController` exposes prototype path-style object operations: `PUT/HEAD/GET/DELETE /api/s3/{bucketName}/{objectKey}`.
-- S3 object `PUT` validates non-streaming signed `x-amz-content-sha256` against the actual request body. `UNSIGNED-PAYLOAD` is accepted without body hash validation, while `STREAMING-*` payload signatures are rejected until aws-chunked streaming is implemented.
+- S3 object `PUT` validates non-streaming signed `x-amz-content-sha256` against the actual request body. `UNSIGNED-PAYLOAD` is accepted without body hash validation. AWS `aws-chunked` request bodies are decoded when `x-amz-decoded-content-length` is present, but the per-chunk `chunk-signature` chain is not cryptographically verified yet.
 - S3 object `PUT` validates optional `Content-MD5` and one optional `x-amz-checksum-sha256`, `x-amz-checksum-sha1`, `x-amz-checksum-crc32`, or `x-amz-checksum-crc32c` header before accepting the upload, stores matching checksum metadata, echoes the matching checksum response header, and returns S3 XML `InvalidDigest` or `BadDigest` on digest failures.
 - `S3ObjectController` supports S3 CopyObject prototype via `x-amz-copy-source` on object `PUT`, reusing the existing upload/version/quota path for the target object and preserving stored checksum metadata when the source has it. Copy result XML emits stored checksum result elements such as `ChecksumSHA256`.
 - CopyObject supports `x-amz-metadata-directive` and `x-amz-tagging-directive` for MVP content type/tag replacement.
@@ -51,7 +51,7 @@
 - S3-style object alias reuses `ObjectService`, bucket quota, object metadata, soft delete, audit log, and Access Key permission checks.
 - `S3ErrorCodeMapper` centralizes OSMU `ApiErrorCode` to S3 XML error code mapping so global `/api/s3/**` error responses and multi-delete per-key `Error` entries stay consistent.
 - `GlobalExceptionHandler` returns AWS-style XML error bodies for `/api/s3/**` while normal REST API errors stay JSON.
-- Current S3-style alias does not implement SigV4 chunked streaming parity, unknown-size S3 multipart initiate parity, checksum trailer/CRC64NVME/full AWS checksum parity, automatic DNS/proxy provisioning for virtual-hosted-style domains, multi-range GET, full conditional request parity, exact CopyObject user-metadata/versioning/full-conditional parity, exact CreateBucket/DeleteBucket parity, multipart ETag parity, or exact AWS error schema parity yet.
+- Current S3-style alias does not implement full SigV4 chunked streaming signature parity, unknown-size S3 multipart initiate parity, checksum trailer/CRC64NVME/full AWS checksum parity, automatic DNS/proxy provisioning for virtual-hosted-style domains, multi-range GET, full conditional request parity, exact CopyObject user-metadata/versioning/full-conditional parity, exact CreateBucket/DeleteBucket parity, multipart ETag parity, or exact AWS error schema parity yet. `s3-compatibility.md` is the authoritative matrix for supported, partial, and unsupported S3 behavior.
 # OSMU Backend Design
 
 이 문서는 Spring Boot 기반 OSMU Backend 설계를 정의한다.

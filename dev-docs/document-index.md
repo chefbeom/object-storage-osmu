@@ -16,6 +16,7 @@ This index points to the useful project documents for the current prototype. The
 
 - `system-architecture.md` - high-level architecture.
 - `api-spec.md` - REST and S3-compatible API notes.
+- `s3-compatibility.md` - supported, partial, and unsupported S3-compatible API/client matrix.
 - `openapi-mvp.json` - machine-readable MVP REST/S3 API contract snapshot.
 - `database-design.md` - MariaDB schema and metadata design.
 - `backend-design.md` - Spring Boot backend design.

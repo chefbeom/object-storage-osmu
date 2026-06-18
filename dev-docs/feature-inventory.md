@@ -223,13 +223,12 @@ MVP 데모 기준 완료율은 약 90~95%입니다.
 - multi-delete 일부
 - S3 XML error response
 - AWS CLI/boto3/s3cmd/s3fs/goofys 호환 matrix
+- 지원/부분지원/미지원 S3 API와 client compatibility matrix 문서화
 
 남은 것:
 
 - streaming payload signature
 - multipart edge case
-- S3 compatibility 문서화
-- 지원/미지원 API 명확화
 
 ### 4.7 MariaDB metadata
 

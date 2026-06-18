@@ -284,6 +284,15 @@
 - Priority: P1
 - Automated: `S3ObjectControllerTest.accessKeyCanUseSingleRangeGetThroughS3StylePath`
 
+### TC-S3-COMPATIBILITY-MATRIX
+
+- Feature: S3 compatibility supported/partial/unsupported matrix.
+- Preconditions: `dev-docs/s3-compatibility.md`, `api-spec.md`, and backend S3 tests are available.
+- Steps: Review the S3 matrix and compare it with backend tests for path-style, virtual-hosted-style, SigV4, presigned auth, object PUT/GET/HEAD/DELETE, CopyObject, tagging, list, multi-delete, multipart, checksum, and aws-chunked body decoding.
+- Expected: The matrix lists supported, partial, and unsupported behavior, including the distinction between aws-chunked body decoding and missing per-chunk signature/trailer checksum parity.
+- Priority: P1
+- Automated: backend S3 controller tests and `verify-s3-client-smoke.ps1`; document consistency is reviewed through `git diff --check` and code review.
+
 ### TC-FE-024
 
 - Feature: Bucket Lifecycle XML panel.
