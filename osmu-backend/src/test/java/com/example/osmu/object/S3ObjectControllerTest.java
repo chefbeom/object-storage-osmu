@@ -279,6 +279,24 @@ class S3ObjectControllerTest {
     }
 
     @Test
+    void mismatchedS3ObjectContentLengthReturnsIncompleteBodyXml() throws Exception {
+        String token = loginAndReturnAccessToken("admin", "password");
+        String bucketName = "s3-incomplete-body-bucket";
+        createBucket(token, bucketName);
+        AccessKeyCredentials credentials = createAccessKey(token, bucketName, "WRITE");
+
+        mockMvc.perform(put("/api/s3/{bucketName}/docs/short-body.txt", bucketName)
+                        .header("X-OSMU-Access-Key", credentials.accessKey())
+                        .header("X-OSMU-Secret-Key", credentials.secretKey())
+                        .header(HttpHeaders.CONTENT_LENGTH, "10")
+                        .contentType(MediaType.TEXT_PLAIN)
+                        .content("short"))
+                .andExpect(status().isBadRequest())
+                .andExpect(content().string(containsString("<Code>IncompleteBody</Code>")))
+                .andExpect(content().string(containsString("<Message>You did not provide the number of bytes specified by the Content-Length HTTP header</Message>")));
+    }
+
+    @Test
     void accessKeyCanCopyObjectFromSourceVersionId() throws Exception {
         String token = loginAndReturnAccessToken("admin", "password");
         String bucketName = "s3-copy-version-bucket";

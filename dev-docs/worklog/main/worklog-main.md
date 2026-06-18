@@ -1,5 +1,38 @@
 # Worklog - main
 
+### 2026-06-19 - S3 IncompleteBody error parity
+
+- Work time:
+  - End: 2026-06-19 KST
+- User command:
+  - Active goal: continue development from `dev-docs`.
+- Request analysis:
+  - `dev-docs` still track remaining AWS non-bucket per-error message/status nuance.
+  - AWS S3 error docs define `IncompleteBody` as HTTP `400 Bad Request` when the request body does not provide the bytes specified by `Content-Length`.
+  - OSMU detected non-streaming request body length mismatch but returned generic S3 XML `InvalidRequest`.
+- Execution:
+  - Mapped `Request body length does not match expected content length.` validation failures to S3 XML `IncompleteBody`.
+  - Normalized the S3 XML message to the AWS-style text.
+  - Updated non-streaming content-length parsing to prefer the explicit `Content-Length` header when present, so declared-length mismatch is testable and aligned with the HTTP header contract.
+  - Added mapper and MockMvc regression tests for mismatched object upload `Content-Length`.
+  - Updated README and `dev-docs`.
+- Modified files:
+  - `osmu-backend/src/main/java/com/example/osmu/object/S3ObjectController.java`
+  - `osmu-backend/src/main/java/com/example/osmu/common/error/S3ErrorCodeMapper.java`
+  - `osmu-backend/src/test/java/com/example/osmu/common/error/S3ErrorCodeMapperTest.java`
+  - `osmu-backend/src/test/java/com/example/osmu/object/S3ObjectControllerTest.java`
+  - `README.md`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/backend-design.md`
+  - `dev-docs/s3-compatibility.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/feature-inventory.md`
+  - `dev-docs/worklog/main/worklog-main.md`
+- Tests:
+  - `$env:JAVA_HOME='C:\jdk-17'; .\gradlew.bat test --no-daemon --tests com.example.osmu.common.error.S3ErrorCodeMapperTest --tests com.example.osmu.object.S3ObjectControllerTest.mismatchedS3ObjectContentLengthReturnsIncompleteBodyXml --tests com.example.osmu.object.S3ObjectControllerTest.missingS3ObjectContentLengthReturnsMissingContentLengthXml`: passed.
+- Follow-up:
+  - Continue remaining AWS checksum real-client option coverage and non-bucket per-error status/message nuance.
+
 ### 2026-06-19 - S3 MissingContentLength error parity
 
 - Work time:

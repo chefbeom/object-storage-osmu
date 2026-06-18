@@ -1109,11 +1109,19 @@ public class S3ObjectController {
                     chunkedInputStream
             );
         }
-        long contentLength = request.getContentLengthLong();
+        long contentLength = nonStreamingContentLength(request);
         if (contentLength < 0) {
             throw new ApiException(ApiErrorCode.VALIDATION_ERROR, "Content-Length is required for " + operation + ".");
         }
         return new RequestBodyContent(request.getInputStream(), contentLength, null);
+    }
+
+    private long nonStreamingContentLength(HttpServletRequest request) {
+        String rawContentLength = request.getHeader(HttpHeaders.CONTENT_LENGTH);
+        if (rawContentLength == null || rawContentLength.isBlank()) {
+            return request.getContentLengthLong();
+        }
+        return parseNonNegativeLong(rawContentLength, HttpHeaders.CONTENT_LENGTH);
     }
 
     private boolean isAwsChunkedPayload(HttpServletRequest request) {

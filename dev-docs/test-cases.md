@@ -164,9 +164,9 @@
 
 - Feature: S3-style object path with Access Key auth.
 - Preconditions: Target bucket exists. Active access key has `READ`, `WRITE`, and `DELETE` scope.
-- Input: `PUT/HEAD/GET/DELETE /api/s3/{bucketName}/{objectKey}` with `X-OSMU-Access-Key`, `X-OSMU-Secret-Key`, optional destination `If-Match`/`If-None-Match`, and one non-streaming PUT without `Content-Length`.
-- Steps: PUT raw text object with `x-amz-tagging`, HEAD metadata, GET object body, exercise PUT destination `If-Match`/`If-None-Match` overwrite guards, send a non-streaming PUT without `Content-Length`, DELETE object, then GET again.
-- Expected: PUT returns `ETag`, tag count, `x-amz-request-id`, and `x-amz-id-2`. HEAD returns content length and `ETag`. GET streams the original body and returns tags and `ETag` headers. Existing target plus `If-None-Match: *`, missing target plus `If-Match`, and non-matching `If-Match` return `412 PreconditionFailed` with AWS-style precondition message; matching `If-Match` overwrites. Missing non-streaming `Content-Length` returns `411 MissingContentLength` with AWS-style message. DELETE returns `204`. GET after delete returns `404`.
+- Input: `PUT/HEAD/GET/DELETE /api/s3/{bucketName}/{objectKey}` with `X-OSMU-Access-Key`, `X-OSMU-Secret-Key`, optional destination `If-Match`/`If-None-Match`, one non-streaming PUT without `Content-Length`, and one PUT whose body length does not match the declared `Content-Length`.
+- Steps: PUT raw text object with `x-amz-tagging`, HEAD metadata, GET object body, exercise PUT destination `If-Match`/`If-None-Match` overwrite guards, send a non-streaming PUT without `Content-Length`, send a PUT with mismatched declared length/body bytes, DELETE object, then GET again.
+- Expected: PUT returns `ETag`, tag count, `x-amz-request-id`, and `x-amz-id-2`. HEAD returns content length and `ETag`. GET streams the original body and returns tags and `ETag` headers. Existing target plus `If-None-Match: *`, missing target plus `If-Match`, and non-matching `If-Match` return `412 PreconditionFailed` with AWS-style precondition message; matching `If-Match` overwrites. Missing non-streaming `Content-Length` returns `411 MissingContentLength` with AWS-style message. Body length mismatch returns `400 IncompleteBody` with AWS-style message. DELETE returns `204`. GET after delete returns `404`.
 - Expected error body: S3 XML with `NoSuchKey` and message `The specified key does not exist.`.
 - Priority: P1
 - Automated: `S3ObjectControllerTest.accessKeyCanPutHeadGetAndDeleteObjectThroughS3StylePath`
@@ -200,7 +200,7 @@
 - Steps: Upload an object, call HEAD and GET with a future `If-Modified-Since`, then call HEAD and GET with a past `If-Unmodified-Since`.
 - Expected: Future `If-Modified-Since` returns `304 Not Modified` with `ETag`. Past `If-Unmodified-Since` returns `412 Precondition Failed` with `ETag`.
 - Priority: P1
-- Automated: `S3ObjectControllerTest.accessKeyCanPutHeadGetAndDeleteObjectThroughS3StylePath`, `S3ObjectControllerTest.missingS3ObjectContentLengthReturnsMissingContentLengthXml`
+- Automated: `S3ObjectControllerTest.accessKeyCanPutHeadGetAndDeleteObjectThroughS3StylePath`, `S3ObjectControllerTest.missingS3ObjectContentLengthReturnsMissingContentLengthXml`, `S3ObjectControllerTest.mismatchedS3ObjectContentLengthReturnsIncompleteBodyXml`
 
 ### TC-S3-OBJECT-001D
 

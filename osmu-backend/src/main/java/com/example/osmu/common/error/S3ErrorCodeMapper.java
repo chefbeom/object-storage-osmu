@@ -86,6 +86,9 @@ public final class S3ErrorCodeMapper {
         if ("MissingContentLength".equals(s3Code)) {
             return "You must provide the Content-Length HTTP header.";
         }
+        if ("IncompleteBody".equals(s3Code)) {
+            return "You did not provide the number of bytes specified by the Content-Length HTTP header";
+        }
         return message == null || message.isBlank() ? s3Code : message;
     }
 
@@ -115,6 +118,9 @@ public final class S3ErrorCodeMapper {
         }
         if (normalized.contains("content-length is required")) {
             return "MissingContentLength";
+        }
+        if (normalized.contains("request body length does not match expected content length")) {
+            return "IncompleteBody";
         }
         return "InvalidRequest";
     }

@@ -262,6 +262,7 @@ MVP 데모 기준 완료율은 약 90~95%입니다.
 - S3 Content-MD5 `BadDigest`/`InvalidDigest` XML message normalization
 - S3 generic `EntityTooLarge`/`OperationAborted`/`InternalError` XML message normalization
 - S3 missing non-streaming `Content-Length` XML code/message/status normalization as `MissingContentLength`/HTTP `411`
+- S3 non-streaming request body length mismatch XML code/message normalization as `IncompleteBody`
 - S3 boto3 SDK checksum option smoke with `ChecksumAlgorithm=SHA256` and `ChecksumMode=ENABLED`
 - S3 AWS SDK JavaScript checksum option smoke with `ChecksumAlgorithm: "SHA256"` and `ChecksumMode: "ENABLED"`
 - S3 AWS SDK Java checksum option smoke with `ChecksumAlgorithm.SHA256` and `ChecksumMode.ENABLED` when `OSMU_AWS_SDK_JAVA_CLASSPATH` points to AWS SDK Java v2 jars
