@@ -49,7 +49,7 @@
 | Checksum | Status | Notes |
 | --- | --- | --- |
 | `Content-MD5` | Supported | Validates request body and maps failures to S3 XML digest errors. |
-| `x-amz-checksum-sha256` | Supported | PUT header/trailer, multipart part header/trailer, final object metadata/header/XML. |
+| `x-amz-checksum-sha256` | Supported | PUT header/trailer, single PUT `x-amz-sdk-checksum-algorithm` auto-compute, multipart part header/trailer, final object metadata/header/XML. |
 | `x-amz-checksum-sha1` | Supported | PUT header/trailer, multipart part header/trailer, final object metadata/header/XML. |
 | `x-amz-checksum-crc32` | Supported | PUT header/trailer, multipart part header/trailer, final object metadata/header/XML. |
 | `x-amz-checksum-crc32c` | Supported | PUT header/trailer, multipart part header/trailer, final object metadata/header/XML. |
@@ -71,6 +71,6 @@
 ## Verification Rule
 
 - Backend unit/controller tests prove API contract behavior.
-- `scripts/verify-s3-client-smoke.ps1` proves built-in SigV4 checksum, multipart, SDK-style UploadPart checksum, and optional host/Docker real-client smoke.
+- `scripts/verify-s3-client-smoke.ps1` proves built-in SigV4 checksum, multipart, SDK-style UploadPart checksum, AWS CLI `--checksum-algorithm SHA256` when host `aws` is available, and optional host/Docker real-client smoke.
 - `scripts/verify-docker-integration.ps1` is stronger because it exercises MariaDB + MinIO + backend container networking, including the SDK-style multipart checksum path.
 - Any newly claimed S3 operation must update this matrix, `api-spec.md`, `test-cases.md`, and at least one automated backend or smoke test.

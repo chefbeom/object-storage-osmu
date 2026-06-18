@@ -811,6 +811,28 @@ function Invoke-AwsCliSmoke($apiBase, $s3Endpoint, $bucketName, $accessKey, $sec
 
         Invoke-External $aws.Source @("--endpoint-url", $s3Endpoint, "s3api", "head-object", "--bucket", $bucketName, "--key", "aws-cli-smoke.txt", "--output", "json") | Out-Null
 
+        $checksumBodyPath = New-SmokeFile $tempDir "aws-cli-checksum-smoke.txt" "osmu aws cli checksum smoke"
+        $checksumValue = Get-Sha256Base64 ([System.IO.File]::ReadAllBytes($checksumBodyPath))
+        $checksumPutJson = Invoke-ExternalText $aws.Source @(
+            "--endpoint-url", $s3Endpoint,
+            "s3api", "put-object",
+            "--bucket", $bucketName,
+            "--key", "aws-cli-checksum-smoke.txt",
+            "--body", $checksumBodyPath,
+            "--checksum-algorithm", "SHA256",
+            "--content-type", "text/plain",
+            "--output", "json"
+        )
+        $checksumPut = $checksumPutJson | ConvertFrom-Json
+        if ($checksumPut.ChecksumSHA256 -and $checksumPut.ChecksumSHA256 -ne $checksumValue) {
+            throw "AWS CLI checksum put-object returned unexpected ChecksumSHA256."
+        }
+        $checksumHeadJson = Invoke-ExternalText $aws.Source @("--endpoint-url", $s3Endpoint, "s3api", "head-object", "--bucket", $bucketName, "--key", "aws-cli-checksum-smoke.txt", "--output", "json")
+        $checksumHead = $checksumHeadJson | ConvertFrom-Json
+        if ($checksumHead.ChecksumSHA256 -ne $checksumValue) {
+            throw "AWS CLI checksum head-object did not expose stored ChecksumSHA256."
+        }
+
         $objectsJson = Invoke-ExternalText $aws.Source @(
             "--endpoint-url", $s3Endpoint,
             "s3api", "list-objects-v2",
@@ -824,14 +846,27 @@ function Invoke-AwsCliSmoke($apiBase, $s3Endpoint, $bucketName, $accessKey, $sec
         if (-not ($objects.Contents | Where-Object { $_.Key -eq "aws-cli-smoke.txt" })) {
             throw "AWS CLI list-objects-v2 did not include aws-cli-smoke.txt."
         }
+        if (-not ($objects.Contents | Where-Object { $_.Key -eq "aws-cli-checksum-smoke.txt" })) {
+            throw "AWS CLI list-objects-v2 did not include aws-cli-checksum-smoke.txt."
+        }
 
         $downloadPath = Join-Path $tempDir "aws-cli-download.txt"
         Invoke-External $aws.Source @("--endpoint-url", $s3Endpoint, "s3api", "get-object", "--bucket", $bucketName, "--key", "aws-cli-smoke.txt", $downloadPath, "--output", "json") | Out-Null
         if ((Get-Content -Raw -LiteralPath $downloadPath) -ne "osmu aws cli smoke") {
             throw "AWS CLI get-object body mismatch."
         }
+        $checksumDownloadPath = Join-Path $tempDir "aws-cli-checksum-download.txt"
+        $checksumGetJson = Invoke-ExternalText $aws.Source @("--endpoint-url", $s3Endpoint, "s3api", "get-object", "--bucket", $bucketName, "--key", "aws-cli-checksum-smoke.txt", $checksumDownloadPath, "--output", "json")
+        $checksumGet = $checksumGetJson | ConvertFrom-Json
+        if ((Get-Content -Raw -LiteralPath $checksumDownloadPath) -ne "osmu aws cli checksum smoke") {
+            throw "AWS CLI checksum get-object body mismatch."
+        }
+        if ($checksumGet.ChecksumSHA256 -ne $checksumValue) {
+            throw "AWS CLI checksum get-object did not expose stored ChecksumSHA256."
+        }
 
         Invoke-External $aws.Source @("--endpoint-url", $s3Endpoint, "s3api", "delete-object", "--bucket", $bucketName, "--key", "aws-cli-smoke.txt", "--output", "json") | Out-Null
+        Invoke-External $aws.Source @("--endpoint-url", $s3Endpoint, "s3api", "delete-object", "--bucket", $bucketName, "--key", "aws-cli-checksum-smoke.txt", "--output", "json") | Out-Null
         return $true
     }
     finally {
@@ -1070,7 +1105,7 @@ try {
 finally {
     if ($createdBucket -and -not $KeepBucket) {
         Step "Cleanup smoke data"
-        foreach ($key in @("aws-cli-smoke.txt", "mc-smoke.txt", "docker-mc-smoke.txt", "manual-sigv4-smoke.txt", "manual-copy-sigv4-smoke.txt", "manual-copy-precondition-fail.txt", "manual-bad-payload.txt", "manual-bad-checksum.txt", "manual-vhost-smoke.txt", "manual-multipart-checksum.bin", "manual-multipart-sdk-checksum.bin", "manual-delete-md5-a.txt", "manual-delete-md5-b.txt", "manual-delete-md5-protected.txt")) {
+        foreach ($key in @("aws-cli-smoke.txt", "aws-cli-checksum-smoke.txt", "mc-smoke.txt", "docker-mc-smoke.txt", "manual-sigv4-smoke.txt", "manual-copy-sigv4-smoke.txt", "manual-copy-precondition-fail.txt", "manual-bad-payload.txt", "manual-bad-checksum.txt", "manual-vhost-smoke.txt", "manual-multipart-checksum.bin", "manual-multipart-sdk-checksum.bin", "manual-delete-md5-a.txt", "manual-delete-md5-b.txt", "manual-delete-md5-protected.txt")) {
             try {
                 Invoke-Json "DELETE" "$ApiBase/buckets/$BucketName/objects/$key" $null $token | Out-Null
             } catch {

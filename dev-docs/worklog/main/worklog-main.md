@@ -1,5 +1,41 @@
 # Worklog - main
 
+### 2026-06-18 - S3 object SDK checksum algorithm and AWS CLI smoke
+
+- Work time:
+  - End: 2026-06-18 KST
+- User command:
+  - Active goal: continue development from `dev-docs`.
+- Request analysis:
+  - Remaining S3 parity notes still called out external checksum option coverage.
+  - AWS CLI `s3api put-object --checksum-algorithm SHA256` may send SDK checksum negotiation instead of a direct `x-amz-checksum-sha256` value header, while single object PUT only auto-computed checksums for multipart parts.
+- Execution:
+  - Added single object PUT support for `x-amz-sdk-checksum-algorithm` auto-compute when no explicit checksum value header/trailer is present.
+  - Added controller coverage for auto SHA256 storage/list exposure, SDK/value header mismatch, and unsupported SDK algorithm.
+  - Extended AWS CLI smoke to upload an object with `--checksum-algorithm SHA256` and verify HEAD/GET checksum exposure when host `aws` is available.
+  - Updated README/dev-docs to move the remaining checksum option gap from AWS CLI/SDK to external AWS SDK coverage.
+- Modified files:
+  - `osmu-backend/src/main/java/com/example/osmu/object/S3ObjectController.java`
+  - `osmu-backend/src/test/java/com/example/osmu/object/S3ObjectControllerTest.java`
+  - `scripts/verify-s3-client-smoke.ps1`
+  - `README.md`
+  - `dev-docs/PRODUCT_REQUIREMENTS.md`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/backend-design.md`
+  - `dev-docs/document-index.md`
+  - `dev-docs/feature-inventory.md`
+  - `dev-docs/local-dev-env.md`
+  - `dev-docs/s3-compatibility.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/worklog/main/worklog-main.md`
+- Tests:
+  - `gradle test --no-daemon --tests com.example.osmu.object.S3ObjectControllerTest`: passed.
+  - PowerShell parser check for `scripts/verify-s3-client-smoke.ps1`: passed.
+  - `git diff --check`: passed.
+- Review:
+  - AWS CLI checksum-option smoke now has a backend path to pass without requiring clients to send an explicit checksum value header.
+  - Remaining parity gap is external AWS SDK checksum-option smoke and exact AWS response behavior.
+
 ### 2026-06-18 - S3 multipart SDK checksum smoke coverage
 
 - Work time:

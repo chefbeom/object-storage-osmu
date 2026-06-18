@@ -469,7 +469,9 @@ public class S3ObjectController {
         RequestBodyContent requestContent = requestBodyContent(request, "S3 object upload");
         long contentLength = requestContent.contentLength();
         StoredObjectRecord object;
-        ChecksumValidation checksumValidation = requestBodyChecksumValidation(request, requestContent);
+        String sdkChecksumHeader = sdkChecksumHeader(request);
+        ChecksumValidation checksumValidation = requestBodyChecksumValidation(request, requestContent, sdkChecksumHeader);
+        validateSdkChecksumHeaderMatchesPayloadHeader(sdkChecksumHeader, checksumValidation.responseHeader().name());
         try (S3ChecksumValidatingInputStream content = new S3ChecksumValidatingInputStream(
                 requestContent.inputStream(),
                 contentLength,
@@ -2275,7 +2277,7 @@ public class S3ObjectController {
             return;
         }
         if (!normalizedSdkHeader.equals(normalizeChecksumHeaderName(payloadChecksumHeader))) {
-            throw new ApiException(ApiErrorCode.BAD_DIGEST, AWS_SDK_CHECKSUM_ALGORITHM_HEADER + " does not match uploaded part checksum.");
+            throw new ApiException(ApiErrorCode.BAD_DIGEST, AWS_SDK_CHECKSUM_ALGORITHM_HEADER + " does not match uploaded checksum.");
         }
     }
 

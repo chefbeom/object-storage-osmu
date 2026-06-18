@@ -343,6 +343,16 @@
 - Priority: P1
 - Automated: `S3ObjectControllerTest.accessKeyCanUploadWithCrc64NvmeChecksum`, `S3ObjectControllerTest.accessKeyCanUploadAwsChunkedStreamingPayload`, `S3ObjectControllerMultipartTest.completeMultipartUploadParsesS3XmlAndReturnsResultXml`, `ObjectServiceMultipartRefreshTest.completeMultipartUploadStoresValidatedCrc64NvmeChecksumMetadata`
 
+### TC-S3-OBJECT-009
+
+- Feature: S3 object SDK checksum algorithm auto compute.
+- Preconditions: Target bucket exists. Active access key has `READ` and `WRITE` scope.
+- Input: `PUT /api/s3/{bucketName}/{objectKey}` with `x-amz-sdk-checksum-algorithm: SHA256` and no explicit `x-amz-checksum-*` value header.
+- Steps: Upload an object with SDK checksum algorithm, verify upload response/HEAD/list checksum exposure, then reject a request where the SDK checksum algorithm conflicts with an explicit checksum value header and reject an unsupported SDK checksum algorithm.
+- Expected: The backend computes and stores the SHA256 checksum while streaming the object body, returns `x-amz-checksum-sha256`, exposes `ChecksumAlgorithm=SHA256` in list XML, returns `BadDigest` for mismatched SDK/value header shape, and returns `InvalidRequest` for unsupported SDK algorithm names.
+- Priority: P1
+- Automated: `S3ObjectControllerTest.accessKeyCanUploadWithSdkChecksumAlgorithm`, `scripts/verify-s3-client-smoke.ps1` when host AWS CLI is available.
+
 ### TC-S3-MULTIPART-INITIATE-001
 
 - Feature: S3 multipart initiate unknown-size parity.
@@ -628,8 +638,8 @@
 - Feature: Real S3 client smoke.
 - Preconditions: Backend API is running and reachable. AWS CLI (`aws`) or MinIO Client (`mc`) is installed on PATH, or Docker Desktop is running for Dockerized MinIO Client. Admin login is available.
 - Input: `.\scripts\verify-s3-client-smoke.ps1 -Client auto`, `.\scripts\verify-s3-client-smoke.ps1 -Client docker-mc -RequireClient`, or `.\scripts\verify-s3-client-smoke.ps1 -Client all -RequireClient`. Optional: `-SkipManualSigV4`, `-SkipVirtualHostedSmoke`.
-- Steps: Script logs in through OSMU REST API, creates a smoke bucket and scoped access key, runs built-in SigV4 probes for root `HEAD`, root list, checksum object PUT/HEAD/GET, bucket sync plus another checksum `HEAD`, S3 multipart checksum complete with AWS-style multipart ETag recomputation, S3 multi-delete Quiet/Content-MD5 with mismatch guard, mismatched payload hash `BadDigest`, mismatched checksum `BadDigest`, and virtual-hosted-style object PUT/GET. Then it uses host or Dockerized real S3 clients against `http://localhost:8080/api/s3` to list buckets, upload, head/stat, list objects, download/cat, delete object, and cleanup bucket. Dockerized `mc` connects to the host backend through `host.docker.internal`.
-- Expected: Built-in SigV4 probes pass without `X-OSMU-Secret-Key`; checksum PUT echoes `x-amz-checksum-sha256`; object HEAD/GET expose stored checksum; bucket sync preserves the checksum header; multipart checksum complete returns checksum header/XML, returns the expected `md5-of-part-md5s-partCount` ETag, and later HEAD exposes both checksum and multipart ETag; multi-delete Quiet suppresses `Deleted` entries; mismatched multi-delete `Content-MD5` returns `BadDigest` without deleting the protected object; mismatched payload hash and mismatched checksum return `BadDigest`. Host or Dockerized clients complete all operations using S3 SigV4. If no real client path is available and `-RequireClient` is not set, the script skips external client checks with a clear warning.
+- Steps: Script logs in through OSMU REST API, creates a smoke bucket and scoped access key, runs built-in SigV4 probes for root `HEAD`, root list, checksum object PUT/HEAD/GET, bucket sync plus another checksum `HEAD`, S3 multipart checksum complete with AWS-style multipart ETag recomputation, S3 multi-delete Quiet/Content-MD5 with mismatch guard, mismatched payload hash `BadDigest`, mismatched checksum `BadDigest`, and virtual-hosted-style object PUT/GET. Then it uses host or Dockerized real S3 clients against `http://localhost:8080/api/s3` to list buckets, upload, head/stat, list objects, download/cat, delete object, and cleanup bucket. When host AWS CLI is available, it also verifies `s3api put-object --checksum-algorithm SHA256` plus HEAD/GET checksum exposure. Dockerized `mc` connects to the host backend through `host.docker.internal`.
+- Expected: Built-in SigV4 probes pass without `X-OSMU-Secret-Key`; checksum PUT echoes `x-amz-checksum-sha256`; object HEAD/GET expose stored checksum; bucket sync preserves the checksum header; multipart checksum complete returns checksum header/XML, returns the expected `md5-of-part-md5s-partCount` ETag, and later HEAD exposes both checksum and multipart ETag; multi-delete Quiet suppresses `Deleted` entries; mismatched multi-delete `Content-MD5` returns `BadDigest` without deleting the protected object; mismatched payload hash and mismatched checksum return `BadDigest`. Host AWS CLI checksum option, host MinIO Client, or Dockerized MinIO Client paths complete their supported operations using S3 SigV4. If no real client path is available and `-RequireClient` is not set, the script skips external client checks with a clear warning.
 - Priority: P1
 - Automated: `scripts/verify-s3-client-smoke.ps1`
 # OSMU Test Cases

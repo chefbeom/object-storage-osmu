@@ -37,7 +37,7 @@
 - Access Key scope maps object actions to `WRITE`, `READ`, and `DELETE`.
 - Raw upload requires `Content-Length` and returns an MD5 `ETag`.
 - Raw upload validates optional S3 `Content-MD5` and rejects invalid or mismatched digests.
-- Raw upload validates one optional S3 checksum value header among `x-amz-checksum-sha256`, `x-amz-checksum-sha1`, `x-amz-checksum-crc32`, `x-amz-checksum-crc32c`, and `x-amz-checksum-crc64nvme`, stores matching checksum metadata, returns the matching checksum response header, and exposes it on later `HEAD`/`GET` plus list checksum algorithm XML.
+- Raw upload validates one optional S3 checksum value header among `x-amz-checksum-sha256`, `x-amz-checksum-sha1`, `x-amz-checksum-crc32`, `x-amz-checksum-crc32c`, and `x-amz-checksum-crc64nvme`. If `x-amz-sdk-checksum-algorithm` is present without an explicit checksum value, it auto-computes the requested checksum, stores matching checksum metadata, returns the matching checksum response header, and exposes it on later `HEAD`/`GET` plus list checksum algorithm XML.
 - Raw upload supports destination `If-Match` and `If-None-Match: *` overwrite guards and returns `412 PreconditionFailed` before storing the request body when they fail.
 - S3 object metadata responses expose `ETag` on `HEAD`, `GET`, `ListObjects`, and `ListObjectsV2` when available.
 - S3 object `HEAD` and `GET` support conditional requests through `If-Match`, `If-None-Match`, `If-Modified-Since`, and `If-Unmodified-Since`, including AWS-documented combined-header precedence cases; Range GET supports one range and `If-Range` fallback to full object when the validator is stale. Multi-range GET is rejected because AWS S3 does not support retrieving multiple ranges in one GET.

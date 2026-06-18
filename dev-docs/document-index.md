@@ -138,7 +138,7 @@ This index points to the useful project documents for the current prototype. The
 - `../scripts/verify-durable-demo-gate.ps1` - strongest local MVP demo proof. It starts the full Docker local demo, runs Browser E2E, runs Docker integration smoke, runs real S3 client smoke through host or Dockerized clients, writes `.osmu-run/latest-durable-demo-gate.*`, and stops the stack.
 - `../scripts/verify-mvp-demo-readiness.ps1` - one-command current-machine demo readiness gate. It accepts `-JavaHome <jdk17>` and `-S3Client <auto|aws|mc|docker-mc|all>`, runs Node prerequisites, static/frontend checks, mock API self-test, frontend mock demo smoke, mock Browser E2E, durable demo preflight, backend Gradle tests when available, backend-backed prototype Browser E2E when Java is available, durable Docker/MariaDB/MinIO/Browser/S3 client gate when Docker daemon is available, and writes pending durable gates when proof is incomplete.
 - `../scripts/verify-docker-integration.ps1` - full Docker integration smoke.
-- `../scripts/verify-s3-client-smoke.ps1` - S3 client compatibility smoke, including built-in SigV4 probes for object tagging, range GET, conditional requests, CopyObject, bucket tagging, multi-delete, host AWS CLI, host MinIO Client, and Dockerized MinIO Client via `-Client docker-mc`.
+- `../scripts/verify-s3-client-smoke.ps1` - S3 client compatibility smoke, including built-in SigV4 probes for object tagging, range GET, conditional requests, CopyObject, bucket tagging, multi-delete, AWS CLI checksum option smoke when host `aws` is available, host MinIO Client, and Dockerized MinIO Client via `-Client docker-mc`.
 
 ## Worklogs
 

@@ -505,6 +505,60 @@ class S3ObjectControllerTest {
     }
 
     @Test
+    void accessKeyCanUploadWithSdkChecksumAlgorithm() throws Exception {
+        String token = loginAndReturnAccessToken("admin", "password");
+        String bucketName = "s3-object-sdk-checksum-bucket";
+        createBucket(token, bucketName);
+        AccessKeyCredentials credentials = createAccessKey(token, bucketName, "READ", "WRITE");
+        String body = "sdk checksum body";
+        String sha256 = checksumBase64("SHA-256", body);
+        String crc32c = checksumCrc32cBase64(body);
+
+        mockMvc.perform(put("/api/s3/{bucketName}/docs/sdk-checksum.txt", bucketName)
+                        .header("X-OSMU-Access-Key", credentials.accessKey())
+                        .header("X-OSMU-Secret-Key", credentials.secretKey())
+                        .header("x-amz-sdk-checksum-algorithm", "SHA256")
+                        .contentType(MediaType.TEXT_PLAIN)
+                        .content(body))
+                .andExpect(status().isOk())
+                .andExpect(header().string("x-amz-checksum-sha256", sha256));
+
+        mockMvc.perform(head("/api/s3/{bucketName}/docs/sdk-checksum.txt", bucketName)
+                        .header("X-OSMU-Access-Key", credentials.accessKey())
+                        .header("X-OSMU-Secret-Key", credentials.secretKey()))
+                .andExpect(status().isOk())
+                .andExpect(header().string("x-amz-checksum-sha256", sha256));
+
+        mockMvc.perform(get("/api/s3/{bucketName}", bucketName)
+                        .queryParam("list-type", "2")
+                        .header("X-OSMU-Access-Key", credentials.accessKey())
+                        .header("X-OSMU-Secret-Key", credentials.secretKey()))
+                .andExpect(status().isOk())
+                .andExpect(content().string(containsString("<ChecksumAlgorithm>SHA256</ChecksumAlgorithm>")));
+
+        mockMvc.perform(put("/api/s3/{bucketName}/docs/sdk-checksum-mismatch.txt", bucketName)
+                        .header("X-OSMU-Access-Key", credentials.accessKey())
+                        .header("X-OSMU-Secret-Key", credentials.secretKey())
+                        .header("x-amz-sdk-checksum-algorithm", "SHA256")
+                        .header("x-amz-checksum-crc32c", crc32c)
+                        .contentType(MediaType.TEXT_PLAIN)
+                        .content(body))
+                .andExpect(status().isBadRequest())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_XML))
+                .andExpect(content().string(containsString("<Code>BadDigest</Code>")));
+
+        mockMvc.perform(put("/api/s3/{bucketName}/docs/sdk-checksum-unsupported.txt", bucketName)
+                        .header("X-OSMU-Access-Key", credentials.accessKey())
+                        .header("X-OSMU-Secret-Key", credentials.secretKey())
+                        .header("x-amz-sdk-checksum-algorithm", "SHA512")
+                        .contentType(MediaType.TEXT_PLAIN)
+                        .content(body))
+                .andExpect(status().isBadRequest())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_XML))
+                .andExpect(content().string(containsString("<Code>InvalidRequest</Code>")));
+    }
+
+    @Test
     void accessKeyCanUploadWithCrc64NvmeChecksum() throws Exception {
         String token = loginAndReturnAccessToken("admin", "password");
         String bucketName = "s3-object-crc64nvme-bucket";
