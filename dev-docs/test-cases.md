@@ -212,6 +212,16 @@
 - Priority: P1
 - Automated: `S3ObjectControllerTest.accessKeyCanCopyObjectFromSourceVersionId`
 
+### TC-S3-OBJECT-001E
+
+- Feature: S3 object user metadata and CopyObject metadata directive handling.
+- Preconditions: Target bucket exists. Active access key has `READ` and `WRITE` scope.
+- Input: `PUT /api/s3/{bucketName}/{objectKey}` with `x-amz-meta-*`, then CopyObject with default metadata directive and with `x-amz-metadata-directive: REPLACE`.
+- Steps: Upload a source object with two `x-amz-meta-*` headers, verify source `HEAD`, copy it without a metadata directive, verify copied `HEAD`, then copy with `REPLACE`, a new `Content-Type`, and a replacement `x-amz-meta-*` header.
+- Expected: Source and default-copy targets return stored user metadata on `HEAD`. CopyObject default `COPY` preserves source user metadata. `REPLACE` stores only request user metadata and the request `Content-Type`.
+- Priority: P1
+- Automated: `S3ObjectControllerTest.copyObjectCopiesAndReplacesUserMetadata`
+
 ### TC-S3-OBJECT-002
 
 - Feature: S3-style object Access Key scope enforcement.

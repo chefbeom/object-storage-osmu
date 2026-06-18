@@ -144,11 +144,27 @@ public class ObjectService {
             AuthenticatedUser user,
             Map<String, String> checksums
     ) {
+        return upload(bucketName, key, tags, content, sizeBytes, contentType, user, checksums, Map.of());
+    }
+
+    public synchronized StoredObjectRecord upload(
+            String bucketName,
+            String key,
+            String tags,
+            InputStream content,
+            long sizeBytes,
+            String contentType,
+            AuthenticatedUser user,
+            Map<String, String> checksums,
+            Map<String, String> userMetadata
+    ) {
         bucketService.assertCanWrite(bucketName, user);
         String normalizedBucketName = bucketService.get(bucketName, user).name();
         String normalizedKey = normalizeRequiredKey(key);
 
-        StoredObjectRecord previous = storageAdapter.statObject(normalizedBucketName, normalizedKey).orElse(null);
+        StoredObjectRecord previous = storageAdapter.statObject(normalizedBucketName, normalizedKey)
+                .map(actual -> indexedMetadataOrActual(normalizedBucketName, normalizedKey, actual))
+                .orElse(null);
         ObjectVersionRecord snapshot = null;
 
         bucketService.assertObjectChangeAllowed(normalizedBucketName, sizeBytes, 1L);
@@ -165,6 +181,7 @@ public class ObjectService {
                     parseTags(tags)
             );
             storedObject = storedObject.withChecksums(normalizeChecksums(checksums));
+            storedObject = storedObject.withUserMetadata(normalizeUserMetadata(userMetadata));
             bucketService.applyObjectChange(normalizedBucketName, sizeBytes, 1L);
             objectMetadataRepository.save(normalizedBucketName, storedObject);
             return storedObject;
@@ -226,7 +243,11 @@ public class ObjectService {
                 version.sizeBytes(),
                 version.contentType(),
                 version.objectLastModifiedAt(),
-                version.tags()
+                version.tags(),
+                null,
+                "",
+                Map.of(),
+                version.userMetadata()
         );
         return new StoredObjectStream(metadata, stream.content());
     }
@@ -283,6 +304,7 @@ public class ObjectService {
         String normalizedVersionId = normalizeVersionId(versionId);
         assertObjectNotDeleted(normalizedBucketName, normalizedKey);
         StoredObjectRecord current = storageAdapter.statObject(normalizedBucketName, normalizedKey)
+                .map(actual -> indexedMetadataOrActual(normalizedBucketName, normalizedKey, actual))
                 .orElseThrow(() -> new ApiException(ApiErrorCode.NOT_FOUND, "Object not found."));
         ObjectVersionRecord version = objectVersionRepository.findByVersionId(
                         normalizedBucketName,
@@ -401,6 +423,7 @@ public class ObjectService {
         StoredObjectRecord updatedObject = storageAdapter.setObjectTags(normalizedBucketName, normalizedKey, parseTags(tags));
         if (indexed != null) {
             updatedObject = updatedObject.withChecksums(indexed.checksums());
+            updatedObject = updatedObject.withUserMetadata(indexed.userMetadata());
         }
         objectMetadataRepository.save(normalizedBucketName, updatedObject);
         return updatedObject;
@@ -703,6 +726,7 @@ public class ObjectService {
         try {
             if (session.previousExists()) {
                 StoredObjectRecord current = storageAdapter.statObject(normalizedBucketName, normalizedKey)
+                        .map(actual -> indexedMetadataOrActual(normalizedBucketName, normalizedKey, actual))
                         .orElseThrow(() -> new ApiException(ApiErrorCode.NOT_FOUND, "Previous object not found."));
                 snapshot = snapshotActiveObject(normalizedBucketName, normalizedKey, current);
             }
@@ -766,6 +790,7 @@ public class ObjectService {
         try {
             if (session.previousExists()) {
                 StoredObjectRecord current = storageAdapter.statObject(normalizedBucketName, normalizedKey)
+                        .map(actual -> indexedMetadataOrActual(normalizedBucketName, normalizedKey, actual))
                         .orElseThrow(() -> new ApiException(ApiErrorCode.NOT_FOUND, "Previous object not found."));
                 snapshot = snapshotActiveObject(normalizedBucketName, normalizedKey, current);
             }
@@ -918,6 +943,23 @@ public class ObjectService {
             normalizedChecksums.put(entry.getKey().trim().toLowerCase(java.util.Locale.ROOT), entry.getValue().trim());
         }
         return Map.copyOf(normalizedChecksums);
+    }
+
+    private Map<String, String> normalizeUserMetadata(Map<String, String> userMetadata) {
+        if (userMetadata == null || userMetadata.isEmpty()) {
+            return Map.of();
+        }
+        Map<String, String> normalizedMetadata = new LinkedHashMap<>();
+        for (Map.Entry<String, String> entry : userMetadata.entrySet()) {
+            if (entry.getKey() == null || entry.getKey().isBlank()) {
+                throw new ApiException(ApiErrorCode.VALIDATION_ERROR, "x-amz-meta-* metadata name is required.");
+            }
+            normalizedMetadata.put(
+                    entry.getKey().trim().toLowerCase(java.util.Locale.ROOT),
+                    entry.getValue() == null ? "" : entry.getValue()
+            );
+        }
+        return Map.copyOf(normalizedMetadata);
     }
 
     private void validateChecksumMetadata(Map<String, String> checksums) {
@@ -1172,7 +1214,8 @@ public class ObjectService {
                         actual.tags(),
                         actual.deletedAt(),
                         actual.etag(),
-                        indexed.checksums()
+                        indexed.checksums(),
+                        indexed.userMetadata()
                 ))
                 .orElse(actual);
     }
@@ -1213,7 +1256,8 @@ public class ObjectService {
                 current.contentType(),
                 current.lastModifiedAt(),
                 OffsetDateTime.now(),
-                current.tags()
+                current.tags(),
+                current.userMetadata()
         ));
     }
 
@@ -1239,7 +1283,7 @@ public class ObjectService {
                     version.sizeBytes(),
                     version.contentType(),
                     version.tags()
-            );
+            ).withUserMetadata(version.userMetadata());
         } catch (java.io.IOException exception) {
             throw new ApiException(ApiErrorCode.STORAGE_ERROR, "Object version restore failed: " + exception.getMessage());
         }
@@ -1264,7 +1308,7 @@ public class ObjectService {
                     appliedTags
             );
             deleteUploadStagingStorage(bucketName, storageKey);
-            return storedObject;
+            return storedObject.withUserMetadata(stagedObject.userMetadata());
         } catch (java.io.IOException exception) {
             throw new ApiException(ApiErrorCode.STORAGE_ERROR, "Presigned upload staging copy failed: " + exception.getMessage());
         }

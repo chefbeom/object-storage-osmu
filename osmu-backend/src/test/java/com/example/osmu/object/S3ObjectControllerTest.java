@@ -310,6 +310,62 @@ class S3ObjectControllerTest {
     }
 
     @Test
+    void copyObjectCopiesAndReplacesUserMetadata() throws Exception {
+        String token = loginAndReturnAccessToken("admin", "password");
+        String bucketName = "s3-copy-user-metadata-bucket";
+        createBucket(token, bucketName);
+        AccessKeyCredentials credentials = createAccessKey(token, bucketName, "READ", "WRITE");
+
+        mockMvc.perform(put("/api/s3/{bucketName}/docs/source-metadata.txt", bucketName)
+                        .header("X-OSMU-Access-Key", credentials.accessKey())
+                        .header("X-OSMU-Secret-Key", credentials.secretKey())
+                        .header("x-amz-meta-owner", "platform")
+                        .header("x-amz-meta-color", "blue")
+                        .contentType(MediaType.TEXT_PLAIN)
+                        .content("metadata source"))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(head("/api/s3/{bucketName}/docs/source-metadata.txt", bucketName)
+                        .header("X-OSMU-Access-Key", credentials.accessKey())
+                        .header("X-OSMU-Secret-Key", credentials.secretKey()))
+                .andExpect(status().isOk())
+                .andExpect(header().string("x-amz-meta-owner", "platform"))
+                .andExpect(header().string("x-amz-meta-color", "blue"));
+
+        mockMvc.perform(put("/api/s3/{bucketName}/docs/copied-metadata.txt", bucketName)
+                        .header("X-OSMU-Access-Key", credentials.accessKey())
+                        .header("X-OSMU-Secret-Key", credentials.secretKey())
+                        .header("x-amz-copy-source", "/" + bucketName + "/docs/source-metadata.txt"))
+                .andExpect(status().isOk())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_XML));
+
+        mockMvc.perform(head("/api/s3/{bucketName}/docs/copied-metadata.txt", bucketName)
+                        .header("X-OSMU-Access-Key", credentials.accessKey())
+                        .header("X-OSMU-Secret-Key", credentials.secretKey()))
+                .andExpect(status().isOk())
+                .andExpect(header().string("x-amz-meta-owner", "platform"))
+                .andExpect(header().string("x-amz-meta-color", "blue"));
+
+        mockMvc.perform(put("/api/s3/{bucketName}/docs/replaced-metadata.txt", bucketName)
+                        .header("X-OSMU-Access-Key", credentials.accessKey())
+                        .header("X-OSMU-Secret-Key", credentials.secretKey())
+                        .header("x-amz-copy-source", "/" + bucketName + "/docs/source-metadata.txt")
+                        .header("x-amz-metadata-directive", "REPLACE")
+                        .header("x-amz-meta-color", "green")
+                        .contentType(MediaType.APPLICATION_JSON))
+                .andExpect(status().isOk())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_XML));
+
+        mockMvc.perform(head("/api/s3/{bucketName}/docs/replaced-metadata.txt", bucketName)
+                        .header("X-OSMU-Access-Key", credentials.accessKey())
+                        .header("X-OSMU-Secret-Key", credentials.secretKey()))
+                .andExpect(status().isOk())
+                .andExpect(header().string(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE))
+                .andExpect(header().string("x-amz-meta-color", "green"))
+                .andExpect(header().doesNotExist("x-amz-meta-owner"));
+    }
+
+    @Test
     void accessKeyCanUploadWithContentMd5AndRejectMismatch() throws Exception {
         String token = loginAndReturnAccessToken("admin", "password");
         String bucketName = "s3-object-content-md5-bucket";

@@ -1,5 +1,50 @@
 # Worklog - main
 
+### 2026-06-18 - S3 CopyObject user metadata parity
+
+- Work time:
+  - End: 2026-06-18 18:18:43 +09:00
+- User command:
+  - Active goal: continue development from `dev-docs`.
+- Request analysis:
+  - `dev-docs/s3-compatibility.md` still listed CopyObject arbitrary user metadata as unsupported.
+  - AWS S3 documents user-defined object metadata through `x-amz-meta-*` headers and CopyObject metadata replacement through `x-amz-metadata-directive`.
+- Execution:
+  - Added `StoredObjectRecord.userMetadata` and `ObjectMetadataDetail.userMetadata` so S3 `PUT`, `HEAD`, `GET`, and CopyObject can preserve `x-amz-meta-*` headers.
+  - Added MariaDB `object_metadata.user_metadata` and `object_versions.user_metadata` persistence through Flyway `V44__object_user_metadata.sql` plus repository fallback schema updates.
+  - Updated CopyObject so default `COPY` preserves source user metadata and `REPLACE` uses request `Content-Type` plus request `x-amz-meta-*`.
+  - Preserved indexed user metadata across bucket sync when ETag still matches, tag updates, active object snapshots, and retained version-source copies.
+  - Updated S3 compatibility, API, backend, DB, feature inventory, PRD, and test-case docs.
+- Modified files:
+  - `osmu-backend/src/main/java/com/example/osmu/object/S3ObjectController.java`
+  - `osmu-backend/src/main/java/com/example/osmu/object/ObjectService.java`
+  - `osmu-backend/src/main/java/com/example/osmu/object/StoredObjectRecord.java`
+  - `osmu-backend/src/main/java/com/example/osmu/object/ObjectMetadataDetail.java`
+  - `osmu-backend/src/main/java/com/example/osmu/object/ObjectVersionRecord.java`
+  - `osmu-backend/src/main/java/com/example/osmu/object/repository/MariaDbObjectMetadataRepository.java`
+  - `osmu-backend/src/main/java/com/example/osmu/object/repository/MariaDbObjectVersionRepository.java`
+  - `osmu-backend/src/main/java/com/example/osmu/bucket/BucketService.java`
+  - `osmu-backend/src/main/java/com/example/osmu/storage/memory/InMemoryObjectStorageAdapter.java`
+  - `osmu-backend/src/main/resources/db/migration/V44__object_user_metadata.sql`
+  - `osmu-backend/src/test/java/com/example/osmu/object/S3ObjectControllerTest.java`
+  - `dev-docs/PRODUCT_REQUIREMENTS.md`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/backend-design.md`
+  - `dev-docs/database-design.md`
+  - `dev-docs/feature-inventory.md`
+  - `dev-docs/s3-compatibility.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/worklog/main/worklog-main.md`
+- Verification:
+  - `gradle test --tests com.example.osmu.object.S3ObjectControllerTest.copyObjectCopiesAndReplacesUserMetadata`: passed.
+  - `gradle test --tests com.example.osmu.object.S3ObjectControllerTest.copyObjectCopiesAndReplacesUserMetadata --tests com.example.osmu.object.S3ObjectControllerTest.accessKeyCanCopyObjectFromSourceVersionId`: passed.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-migrations.ps1`: passed. 44 migrations, highest V44.
+  - `gradle test`: passed.
+- Result:
+  - S3 object user metadata is now persisted and CopyObject metadata directive behavior is closer to AWS-compatible behavior.
+- Follow-up:
+  - Remaining S3 gaps still include full AWS versioning parity, broader conditional edge parity, unknown-size multipart initiate parity, full multipart checksum aggregation parity, and broader AWS error behavior parity.
+
 ### 2026-06-18 - S3 CreateBucket XML validation parity
 
 - Work time:

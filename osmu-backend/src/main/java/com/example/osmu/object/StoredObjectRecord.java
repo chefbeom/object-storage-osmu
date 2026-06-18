@@ -11,12 +11,27 @@ public record StoredObjectRecord(
         Map<String, String> tags,
         OffsetDateTime deletedAt,
         String etag,
-        Map<String, String> checksums
+        Map<String, String> checksums,
+        Map<String, String> userMetadata
 ) {
     public StoredObjectRecord {
         tags = tags == null ? Map.of() : Map.copyOf(tags);
         etag = etag == null ? "" : etag.trim();
         checksums = checksums == null ? Map.of() : Map.copyOf(checksums);
+        userMetadata = userMetadata == null ? Map.of() : Map.copyOf(userMetadata);
+    }
+
+    public StoredObjectRecord(
+            String key,
+            long sizeBytes,
+            String contentType,
+            OffsetDateTime lastModifiedAt,
+            Map<String, String> tags,
+            OffsetDateTime deletedAt,
+            String etag,
+            Map<String, String> checksums
+    ) {
+        this(key, sizeBytes, contentType, lastModifiedAt, tags, deletedAt, etag, checksums, Map.of());
     }
 
     public StoredObjectRecord(
@@ -61,10 +76,14 @@ public record StoredObjectRecord(
     }
 
     public StoredObjectRecord withDeletedAt(OffsetDateTime nextDeletedAt) {
-        return new StoredObjectRecord(key, sizeBytes, contentType, lastModifiedAt, tags, nextDeletedAt, etag, checksums);
+        return new StoredObjectRecord(key, sizeBytes, contentType, lastModifiedAt, tags, nextDeletedAt, etag, checksums, userMetadata);
     }
 
     public StoredObjectRecord withChecksums(Map<String, String> nextChecksums) {
-        return new StoredObjectRecord(key, sizeBytes, contentType, lastModifiedAt, tags, deletedAt, etag, nextChecksums);
+        return new StoredObjectRecord(key, sizeBytes, contentType, lastModifiedAt, tags, deletedAt, etag, nextChecksums, userMetadata);
+    }
+
+    public StoredObjectRecord withUserMetadata(Map<String, String> nextUserMetadata) {
+        return new StoredObjectRecord(key, sizeBytes, contentType, lastModifiedAt, tags, deletedAt, etag, checksums, nextUserMetadata);
     }
 }

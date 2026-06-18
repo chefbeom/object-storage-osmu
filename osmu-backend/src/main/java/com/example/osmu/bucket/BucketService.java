@@ -213,13 +213,16 @@ public class BucketService {
 
     private StoredObjectRecord reconcileSyncedObject(StoredObjectRecord actual, StoredObjectRecord existing) {
         StoredObjectRecord synced = existing.isDeleted() ? actual.withDeletedAt(existing.deletedAt()) : actual;
-        if (!actual.checksums().isEmpty()
-                || existing.checksums().isEmpty()
-                || actual.etag().isBlank()
-                || !sameEtag(actual.etag(), existing.etag())) {
+        if (actual.etag().isBlank() || !sameEtag(actual.etag(), existing.etag())) {
             return synced;
         }
-        return synced.withChecksums(existing.checksums());
+        if (actual.checksums().isEmpty() && !existing.checksums().isEmpty()) {
+            synced = synced.withChecksums(existing.checksums());
+        }
+        if (actual.userMetadata().isEmpty() && !existing.userMetadata().isEmpty()) {
+            synced = synced.withUserMetadata(existing.userMetadata());
+        }
+        return synced;
     }
 
     private boolean sameEtag(String first, String second) {
@@ -234,7 +237,8 @@ public class BucketService {
                 && Objects.equals(existing.tags(), synced.tags())
                 && Objects.equals(existing.deletedAt(), synced.deletedAt())
                 && Objects.equals(normalizeEtag(existing.etag()), normalizeEtag(synced.etag()))
-                && Objects.equals(existing.checksums(), synced.checksums());
+                && Objects.equals(existing.checksums(), synced.checksums())
+                && Objects.equals(existing.userMetadata(), synced.userMetadata());
     }
 
     private String normalizeEtag(String value) {

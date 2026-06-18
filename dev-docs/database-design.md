@@ -491,6 +491,7 @@ CREATE TABLE object_metadata (
   deleted_at DATETIME(6) NULL,
   etag VARCHAR(128) NOT NULL DEFAULT '',
   checksums TEXT NOT NULL,
+  user_metadata TEXT NOT NULL,
   updated_at DATETIME(6) NOT NULL,
   PRIMARY KEY (bucket_name, object_key_hash),
   KEY idx_object_metadata_bucket_key (bucket_name, object_key(255)),
@@ -506,6 +507,7 @@ CREATE TABLE object_metadata (
 - `etag`는 S3 호환 응답을 위한 object ETag 문자열이다.
 - `checksums`는 검증된 S3 checksum response header map을 JSON object 문자열로 저장한다.
 - `deleted_at`이 있으면 soft-deleted object이며 active list/download/presigned download에서 숨긴다.
+- `user_metadata` stores S3 `x-amz-meta-*` response header map as a JSON object string.
 - Temporary object share links are stored in `object_share_links`; only `token_hash`, optional `password_hash`, and optional `allowed_ip_cidrs` are persisted, while raw token is returned once on create. Usage policy fields include `max_downloads`, `download_count`, and `last_accessed_at`. Global admin share policy is stored in `object_share_policy`.
 - retention purge scheduler는 `deleted_at <= now - osmu.object.retention.days`인 object를 purge 후보로 조회한다.
 - Backend upload/delete/tag update/presigned complete는 index를 즉시 갱신한다.
@@ -609,6 +611,7 @@ CREATE TABLE object_versions (
   object_last_modified_at DATETIME(6) NOT NULL,
   created_at DATETIME(6) NOT NULL,
   tags TEXT NOT NULL,
+  user_metadata TEXT NOT NULL,
   PRIMARY KEY (bucket_name, object_key_hash, version_id),
   KEY idx_object_versions_object (bucket_name, object_key_hash, created_at)
 );
@@ -748,7 +751,7 @@ erDiagram
 - Flyway 또는 Liquibase 중 하나를 사용한다.
 - 마이그레이션 파일은 수정하지 않는다.
 - 변경은 새 마이그레이션으로 추가한다.
-- 현재 MVP는 `osmu-backend/src/main/resources/db/migration` 아래 `V1__init_metadata_schema.sql`부터 `V43__access_key_rotation_grace.sql`까지의 Flyway migration을 제공한다.
+- 현재 MVP는 `osmu-backend/src/main/resources/db/migration` 아래 `V1__init_metadata_schema.sql`부터 `V44__object_user_metadata.sql`까지의 Flyway migration을 제공한다.
 - repository의 `CREATE TABLE IF NOT EXISTS`는 local fallback이다.
 
 ## 17. 구현 순서

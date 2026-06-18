@@ -184,7 +184,9 @@ public class InMemoryObjectStorageAdapter implements ObjectStorageAdapter {
                 currentMetadata.lastModifiedAt(),
                 tags,
                 null,
-                currentMetadata.etag()
+                currentMetadata.etag(),
+                currentMetadata.checksums(),
+                currentMetadata.userMetadata()
         );
         bucketObjects.put(objectKey, new StoredObjectData(updatedMetadata, current.content()));
         return updatedMetadata;

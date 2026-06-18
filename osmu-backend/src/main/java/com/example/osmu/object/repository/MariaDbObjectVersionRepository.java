@@ -51,7 +51,7 @@ public class MariaDbObjectVersionRepository implements ObjectVersionRepository {
     public List<ObjectVersionRecord> findByObjectKey(String bucketName, String objectKey) {
         ensureSchema();
         String sql = """
-                SELECT version_id, object_key, storage_key, size_bytes, content_type, object_last_modified_at, created_at, tags
+                SELECT version_id, object_key, storage_key, size_bytes, content_type, object_last_modified_at, created_at, tags, user_metadata
                 FROM object_versions
                 WHERE bucket_name = ? AND object_key_hash = ?
                 ORDER BY created_at DESC, version_id DESC
@@ -101,7 +101,7 @@ public class MariaDbObjectVersionRepository implements ObjectVersionRepository {
         Map<String, String> normalizedTagFilter = tagFilter == null ? Map.of() : tagFilter;
         StringBuilder sql = new StringBuilder("""
                 SELECT bucket_name, version_id, object_key, storage_key, size_bytes, content_type,
-                       object_last_modified_at, created_at, tags
+                       object_last_modified_at, created_at, tags, user_metadata
                 FROM object_versions
                 WHERE created_at <= ? AND object_key LIKE ?
                 """);
@@ -143,7 +143,7 @@ public class MariaDbObjectVersionRepository implements ObjectVersionRepository {
     public Optional<ObjectVersionRecord> findByVersionId(String bucketName, String objectKey, String versionId) {
         ensureSchema();
         String sql = """
-                SELECT version_id, object_key, storage_key, size_bytes, content_type, object_last_modified_at, created_at, tags
+                SELECT version_id, object_key, storage_key, size_bytes, content_type, object_last_modified_at, created_at, tags, user_metadata
                 FROM object_versions
                 WHERE bucket_name = ? AND object_key_hash = ? AND version_id = ?
                 """;
@@ -169,15 +169,16 @@ public class MariaDbObjectVersionRepository implements ObjectVersionRepository {
         String sql = """
                 INSERT INTO object_versions
                     (bucket_name, object_key_hash, object_key, version_id, storage_key, size_bytes, content_type,
-                     object_last_modified_at, created_at, tags)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                     object_last_modified_at, created_at, tags, user_metadata)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON DUPLICATE KEY UPDATE
                     storage_key = VALUES(storage_key),
                     size_bytes = VALUES(size_bytes),
                     content_type = VALUES(content_type),
                     object_last_modified_at = VALUES(object_last_modified_at),
                     created_at = VALUES(created_at),
-                    tags = VALUES(tags)
+                    tags = VALUES(tags),
+                    user_metadata = VALUES(user_metadata)
                 """;
         try (Connection connection = connect();
              PreparedStatement statement = connection.prepareStatement(sql)) {
@@ -191,6 +192,7 @@ public class MariaDbObjectVersionRepository implements ObjectVersionRepository {
             statement.setTimestamp(8, Timestamp.from(version.objectLastModifiedAt().toInstant()));
             statement.setTimestamp(9, Timestamp.from(version.createdAt().toInstant()));
             statement.setString(10, tagsJson(version.tags()));
+            statement.setString(11, userMetadataJson(version.userMetadata()));
             statement.executeUpdate();
             return version;
         } catch (SQLException exception) {
@@ -266,13 +268,15 @@ public class MariaDbObjectVersionRepository implements ObjectVersionRepository {
                     object_last_modified_at TIMESTAMP NOT NULL,
                     created_at TIMESTAMP NOT NULL,
                     tags TEXT NOT NULL,
+                    user_metadata TEXT NOT NULL,
                     PRIMARY KEY (bucket_name, object_key_hash, version_id),
                     INDEX idx_object_versions_object (bucket_name, object_key_hash, created_at)
                 )
                 """;
         try (Connection connection = connect();
-             PreparedStatement statement = connection.prepareStatement(sql)) {
+            PreparedStatement statement = connection.prepareStatement(sql)) {
             statement.executeUpdate();
+            ensureUserMetadataColumn(connection);
             schemaReady = true;
         } catch (SQLException exception) {
             throw databaseException(exception);
@@ -281,6 +285,25 @@ public class MariaDbObjectVersionRepository implements ObjectVersionRepository {
 
     private Connection connect() throws SQLException {
         return DriverManager.getConnection(url, username, password);
+    }
+
+    private void ensureUserMetadataColumn(Connection connection) throws SQLException {
+        try (PreparedStatement statement = connection.prepareStatement(
+                "ALTER TABLE object_versions ADD COLUMN user_metadata TEXT NULL AFTER tags")) {
+            statement.executeUpdate();
+        } catch (SQLException exception) {
+            if (exception.getErrorCode() != 1060) {
+                throw exception;
+            }
+        }
+        try (PreparedStatement statement = connection.prepareStatement(
+                "UPDATE object_versions SET user_metadata = '{}' WHERE user_metadata IS NULL")) {
+            statement.executeUpdate();
+        }
+        try (PreparedStatement statement = connection.prepareStatement(
+                "ALTER TABLE object_versions MODIFY COLUMN user_metadata TEXT NOT NULL")) {
+            statement.executeUpdate();
+        }
     }
 
     private ObjectVersionRecord mapRow(ResultSet resultSet) throws SQLException {
@@ -292,7 +315,8 @@ public class MariaDbObjectVersionRepository implements ObjectVersionRepository {
                 resultSet.getString("content_type"),
                 resultSet.getTimestamp("object_last_modified_at").toInstant().atOffset(ZoneOffset.UTC),
                 resultSet.getTimestamp("created_at").toInstant().atOffset(ZoneOffset.UTC),
-                tagsFromJson(resultSet.getString("tags"))
+                tagsFromJson(resultSet.getString("tags")),
+                userMetadataFromJson(resultSet.getString("user_metadata"))
         );
     }
 
@@ -313,6 +337,14 @@ public class MariaDbObjectVersionRepository implements ObjectVersionRepository {
         }
     }
 
+    private String userMetadataJson(Map<String, String> userMetadata) {
+        try {
+            return OBJECT_MAPPER.writeValueAsString(userMetadata == null ? Map.of() : userMetadata);
+        } catch (Exception exception) {
+            throw new ApiException(ApiErrorCode.INTERNAL_ERROR, "Object version user metadata serialization failed.");
+        }
+    }
+
     private Map<String, String> tagsFromJson(String rawTags) {
         if (rawTags == null || rawTags.isBlank()) {
             return Map.of();
@@ -322,6 +354,18 @@ public class MariaDbObjectVersionRepository implements ObjectVersionRepository {
             return tags == null ? Map.of() : Map.copyOf(tags);
         } catch (Exception exception) {
             throw new ApiException(ApiErrorCode.INTERNAL_ERROR, "Object version tags deserialization failed.");
+        }
+    }
+
+    private Map<String, String> userMetadataFromJson(String rawUserMetadata) {
+        if (rawUserMetadata == null || rawUserMetadata.isBlank()) {
+            return Map.of();
+        }
+        try {
+            Map<String, String> userMetadata = OBJECT_MAPPER.readValue(rawUserMetadata, TAG_MAP_TYPE);
+            return userMetadata == null ? Map.of() : Map.copyOf(userMetadata);
+        } catch (Exception exception) {
+            throw new ApiException(ApiErrorCode.INTERNAL_ERROR, "Object version user metadata deserialization failed.");
         }
     }
 

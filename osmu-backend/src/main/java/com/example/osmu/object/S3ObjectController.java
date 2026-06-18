@@ -26,6 +26,7 @@ import java.time.format.DateTimeParseException;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.Base64;
+import java.util.Enumeration;
 import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -67,6 +68,7 @@ public class S3ObjectController {
     private static final String AWS_TAGGING_HEADER = "x-amz-tagging";
     private static final String AWS_METADATA_DIRECTIVE_HEADER = "x-amz-metadata-directive";
     private static final String AWS_TAGGING_DIRECTIVE_HEADER = "x-amz-tagging-directive";
+    private static final String AWS_USER_METADATA_PREFIX = "x-amz-meta-";
     private static final String AWS_COPY_SOURCE_IF_MATCH_HEADER = "x-amz-copy-source-if-match";
     private static final String AWS_COPY_SOURCE_IF_NONE_MATCH_HEADER = "x-amz-copy-source-if-none-match";
     private static final String AWS_COPY_SOURCE_IF_MODIFIED_SINCE_HEADER = "x-amz-copy-source-if-modified-since";
@@ -426,7 +428,8 @@ public class S3ObjectController {
                     contentLength,
                     contentType(request),
                     user,
-                    checksumValidation.values()
+                    checksumValidation.values(),
+                    userMetadata(request)
             );
             content.finish();
             String calculatedMd5 = content.md5Hex();
@@ -458,6 +461,9 @@ public class S3ObjectController {
         String taggingDirective = copyDirective(request.getHeader(AWS_TAGGING_DIRECTIVE_HEADER), AWS_TAGGING_DIRECTIVE_HEADER);
         String copyTags = "REPLACE".equals(taggingDirective) ? tags(request) : tagsHeader(sourceObject.metadata());
         String copyContentType = "REPLACE".equals(metadataDirective) ? contentType(request) : sourceObject.metadata().contentType();
+        Map<String, String> copyUserMetadata = "REPLACE".equals(metadataDirective)
+                ? userMetadata(request)
+                : sourceObject.metadata().userMetadata();
         MessageDigest md5 = messageDigest("MD5");
         StoredObjectRecord copiedObject;
         try (InputStream sourceContent = sourceObject.content();
@@ -471,7 +477,8 @@ public class S3ObjectController {
                     sourceObject.metadata().sizeBytes(),
                     copyContentType,
                     user,
-                    sourceObject.metadata().checksums()
+                    sourceObject.metadata().checksums(),
+                    copyUserMetadata
             );
         }
         String etag = HexFormat.of().formatHex(md5.digest());
@@ -551,6 +558,7 @@ public class S3ObjectController {
             builder.eTag(quoted(metadata.etag()));
         }
         metadata.checksums().forEach(builder::header);
+        applyUserMetadataHeaders(builder, metadata.userMetadata());
         return builder.build();
     }
 
@@ -579,6 +587,7 @@ public class S3ObjectController {
             result.eTag(etag(metadata));
         }
         metadata.checksums().forEach(result::header);
+        applyUserMetadataHeaders(result, metadata.userMetadata());
         return result;
     }
 
@@ -605,6 +614,7 @@ public class S3ObjectController {
             result.eTag(etag(metadata));
         }
         metadata.checksums().forEach(result::header);
+        applyUserMetadataHeaders(result, metadata.userMetadata());
         return result;
     }
 
@@ -621,6 +631,7 @@ public class S3ObjectController {
             builder.eTag(quoted(metadata.etag()));
         }
         metadata.checksums().forEach(builder::header);
+        applyUserMetadataHeaders(builder, metadata.userMetadata());
         return builder.build();
     }
 
@@ -842,6 +853,31 @@ public class S3ObjectController {
         return metadata.tags().entrySet().stream()
                 .map(entry -> entry.getKey() + "=" + entry.getValue())
                 .collect(Collectors.joining(","));
+    }
+
+    private Map<String, String> userMetadata(HttpServletRequest request) {
+        Map<String, String> metadata = new LinkedHashMap<>();
+        Enumeration<String> headerNames = request.getHeaderNames();
+        while (headerNames != null && headerNames.hasMoreElements()) {
+            String headerName = headerNames.nextElement();
+            String normalizedHeaderName = headerName.toLowerCase(Locale.ROOT);
+            if (!normalizedHeaderName.startsWith(AWS_USER_METADATA_PREFIX)) {
+                continue;
+            }
+            if (normalizedHeaderName.length() == AWS_USER_METADATA_PREFIX.length()) {
+                throw new ApiException(ApiErrorCode.VALIDATION_ERROR, "x-amz-meta-* metadata name is required.");
+            }
+            String value = request.getHeader(headerName);
+            metadata.put(normalizedHeaderName, value == null ? "" : value);
+        }
+        return Map.copyOf(metadata);
+    }
+
+    private void applyUserMetadataHeaders(ResponseEntity.BodyBuilder builder, Map<String, String> userMetadata) {
+        if (userMetadata == null || userMetadata.isEmpty()) {
+            return;
+        }
+        userMetadata.forEach(builder::header);
     }
 
     private String requestBody(HttpServletRequest request) throws IOException {

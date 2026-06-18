@@ -102,7 +102,7 @@ public class MariaDbObjectMetadataRepository implements ObjectMetadataRepository
     public Optional<StoredObjectRecord> findByKey(String bucketName, String objectKey) {
         ensureSchema();
         String sql = """
-                SELECT object_key, size_bytes, content_type, last_modified_at, tags, deleted_at, etag, checksums
+                SELECT object_key, size_bytes, content_type, last_modified_at, tags, deleted_at, etag, checksums, user_metadata
                 FROM object_metadata
                 WHERE bucket_name = ? AND object_key_hash = ?
                 """;
@@ -125,7 +125,7 @@ public class MariaDbObjectMetadataRepository implements ObjectMetadataRepository
     public List<StoredObjectRecord> findAllByBucketName(String bucketName) {
         ensureSchema();
         String sql = """
-                SELECT object_key, size_bytes, content_type, last_modified_at, tags, deleted_at, etag, checksums
+                SELECT object_key, size_bytes, content_type, last_modified_at, tags, deleted_at, etag, checksums, user_metadata
                 FROM object_metadata
                 WHERE bucket_name = ?
                 ORDER BY object_key
@@ -372,7 +372,7 @@ public class MariaDbObjectMetadataRepository implements ObjectMetadataRepository
     ) {
         ensureSchema();
         StringBuilder sql = new StringBuilder("""
-                SELECT m.object_key, m.size_bytes, m.content_type, m.last_modified_at, m.tags, m.deleted_at, m.etag, m.checksums
+                SELECT m.object_key, m.size_bytes, m.content_type, m.last_modified_at, m.tags, m.deleted_at, m.etag, m.checksums, m.user_metadata
                 FROM object_metadata m
                 WHERE m.bucket_name = ? AND m.object_key LIKE ? AND m.deleted_at IS NULL
                 """);
@@ -418,7 +418,7 @@ public class MariaDbObjectMetadataRepository implements ObjectMetadataRepository
     ) {
         ensureSchema();
         StringBuilder sql = new StringBuilder("""
-                SELECT m.object_key, m.size_bytes, m.content_type, m.last_modified_at, m.tags, m.deleted_at, m.etag, m.checksums
+                SELECT m.object_key, m.size_bytes, m.content_type, m.last_modified_at, m.tags, m.deleted_at, m.etag, m.checksums, m.user_metadata
                 FROM object_metadata m
                 WHERE m.bucket_name = ? AND m.object_key LIKE ? AND m.deleted_at IS NOT NULL
                 """);
@@ -479,6 +479,7 @@ public class MariaDbObjectMetadataRepository implements ObjectMetadataRepository
                     deleted_at TIMESTAMP NULL,
                     etag VARCHAR(128) NOT NULL DEFAULT '',
                     checksums TEXT NOT NULL,
+                    user_metadata TEXT NOT NULL,
                     updated_at TIMESTAMP NOT NULL,
                     PRIMARY KEY (bucket_name, object_key_hash),
                     INDEX idx_object_metadata_bucket_key (bucket_name, object_key(255)),
@@ -505,6 +506,7 @@ public class MariaDbObjectMetadataRepository implements ObjectMetadataRepository
             ensureDeletedAtColumn(connection);
             ensureEtagColumn(connection);
             ensureChecksumsColumn(connection);
+            ensureUserMetadataColumn(connection);
             schemaReady = true;
         } catch (SQLException exception) {
             throw databaseException(exception);
@@ -514,8 +516,8 @@ public class MariaDbObjectMetadataRepository implements ObjectMetadataRepository
     private String upsertSql() {
         return """
                 INSERT INTO object_metadata
-                    (bucket_name, object_key_hash, object_key, size_bytes, content_type, last_modified_at, tags, deleted_at, etag, checksums, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    (bucket_name, object_key_hash, object_key, size_bytes, content_type, last_modified_at, tags, deleted_at, etag, checksums, user_metadata, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON DUPLICATE KEY UPDATE
                     object_key = VALUES(object_key),
                     size_bytes = VALUES(size_bytes),
@@ -525,6 +527,7 @@ public class MariaDbObjectMetadataRepository implements ObjectMetadataRepository
                     deleted_at = VALUES(deleted_at),
                     etag = VALUES(etag),
                     checksums = VALUES(checksums),
+                    user_metadata = VALUES(user_metadata),
                     updated_at = VALUES(updated_at)
                 """;
     }
@@ -543,7 +546,8 @@ public class MariaDbObjectMetadataRepository implements ObjectMetadataRepository
         statement.setTimestamp(8, object.deletedAt() == null ? null : Timestamp.from(object.deletedAt().toInstant()));
         statement.setString(9, object.etag());
         statement.setString(10, checksumsJson(object.checksums()));
-        statement.setTimestamp(11, Timestamp.from(updatedAt.toInstant()));
+        statement.setString(11, userMetadataJson(object.userMetadata()));
+        statement.setTimestamp(12, Timestamp.from(updatedAt.toInstant()));
     }
 
     private void ensureDeletedAtColumn(Connection connection) throws SQLException {
@@ -591,6 +595,25 @@ public class MariaDbObjectMetadataRepository implements ObjectMetadataRepository
         }
         try (PreparedStatement statement = connection.prepareStatement(
                 "ALTER TABLE object_metadata MODIFY COLUMN checksums TEXT NOT NULL")) {
+            statement.executeUpdate();
+        }
+    }
+
+    private void ensureUserMetadataColumn(Connection connection) throws SQLException {
+        try (PreparedStatement statement = connection.prepareStatement(
+                "ALTER TABLE object_metadata ADD COLUMN user_metadata TEXT NULL AFTER checksums")) {
+            statement.executeUpdate();
+        } catch (SQLException exception) {
+            if (exception.getErrorCode() != 1060) {
+                throw exception;
+            }
+        }
+        try (PreparedStatement statement = connection.prepareStatement(
+                "UPDATE object_metadata SET user_metadata = '{}' WHERE user_metadata IS NULL")) {
+            statement.executeUpdate();
+        }
+        try (PreparedStatement statement = connection.prepareStatement(
+                "ALTER TABLE object_metadata MODIFY COLUMN user_metadata TEXT NOT NULL")) {
             statement.executeUpdate();
         }
     }
@@ -667,7 +690,8 @@ public class MariaDbObjectMetadataRepository implements ObjectMetadataRepository
                         ? null
                         : resultSet.getTimestamp("deleted_at").toInstant().atOffset(ZoneOffset.UTC),
                 resultSet.getString("etag"),
-                checksumsFromJson(resultSet.getString("checksums"))
+                checksumsFromJson(resultSet.getString("checksums")),
+                userMetadataFromJson(resultSet.getString("user_metadata"))
         );
     }
 
@@ -744,6 +768,14 @@ public class MariaDbObjectMetadataRepository implements ObjectMetadataRepository
         }
     }
 
+    private String userMetadataJson(Map<String, String> userMetadata) {
+        try {
+            return OBJECT_MAPPER.writeValueAsString(userMetadata == null ? Map.of() : userMetadata);
+        } catch (Exception exception) {
+            throw new ApiException(ApiErrorCode.INTERNAL_ERROR, "Object user metadata serialization failed.");
+        }
+    }
+
     private Map<String, String> tagsFromJson(String rawTags) {
         if (rawTags == null || rawTags.isBlank()) {
             return Map.of();
@@ -765,6 +797,18 @@ public class MariaDbObjectMetadataRepository implements ObjectMetadataRepository
             return checksums == null ? Map.of() : Map.copyOf(checksums);
         } catch (Exception exception) {
             throw new ApiException(ApiErrorCode.INTERNAL_ERROR, "Object checksums deserialization failed.");
+        }
+    }
+
+    private Map<String, String> userMetadataFromJson(String rawUserMetadata) {
+        if (rawUserMetadata == null || rawUserMetadata.isBlank()) {
+            return Map.of();
+        }
+        try {
+            Map<String, String> userMetadata = OBJECT_MAPPER.readValue(rawUserMetadata, TAG_MAP_TYPE);
+            return userMetadata == null ? Map.of() : Map.copyOf(userMetadata);
+        } catch (Exception exception) {
+            throw new ApiException(ApiErrorCode.INTERNAL_ERROR, "Object user metadata deserialization failed.");
         }
     }
 
