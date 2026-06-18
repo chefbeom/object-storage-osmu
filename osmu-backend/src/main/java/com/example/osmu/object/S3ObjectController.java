@@ -89,6 +89,7 @@ public class S3ObjectController {
     private static final String OSMU_MULTIPART_PART_SIZE_HEADER = "X-OSMU-Multipart-Part-Size-Bytes";
     private static final String AWS_META_OSMU_PART_SIZE_HEADER = "x-amz-meta-osmu-part-size-bytes";
     private static final String OSMU_MULTIPART_EXPIRES_HEADER = "X-OSMU-Multipart-Expires-In-Seconds";
+    private static final String MULTIPART_RANGE_BOUNDARY = "osmu-s3-range";
     private static final int DEFAULT_MAX_KEYS = 1000;
     private static final int DEFAULT_MAX_UPLOADS = 1000;
     private static final int DEFAULT_MAX_PARTS = 1000;
@@ -497,9 +498,19 @@ public class S3ObjectController {
             closeQuietly(object.content());
             return conditionalResponse;
         }
-        ByteRange range = byteRange(request, object.metadata());
-        long responseBytes = range == null ? object.metadata().sizeBytes() : range.length();
+        List<ByteRange> ranges = byteRanges(request, object.metadata());
+        long responseBytes = ranges == null
+                ? object.metadata().sizeBytes()
+                : ranges.stream().mapToLong(ByteRange::length).sum();
         dataFlowMonitoringService.recordDownload(bucketName, object.metadata().key(), responseBytes, user.loginId(), "S3");
+        if (ranges != null && ranges.size() > 1) {
+            closeQuietly(object.content());
+            StreamingResponseBody multipartBody = multipartRangeBody(bucketName, object.metadata(), ranges, user);
+            return objectHeadersWithoutBody(ResponseEntity.status(206), object.metadata())
+                    .contentType(MediaType.parseMediaType("multipart/byteranges; boundary=" + MULTIPART_RANGE_BOUNDARY))
+                    .body(multipartBody);
+        }
+        ByteRange range = ranges == null ? null : ranges.get(0);
         StreamingResponseBody body = outputStream -> {
             try (InputStream inputStream = object.content()) {
                 if (range == null) {
@@ -525,6 +536,43 @@ public class S3ObjectController {
                     .body(body);
         }
         return objectHeaders(ResponseEntity.ok(), object.metadata()).body(body);
+    }
+
+    private StreamingResponseBody multipartRangeBody(
+            String bucketName,
+            StoredObjectRecord metadata,
+            List<ByteRange> ranges,
+            AuthenticatedUser user
+    ) {
+        return outputStream -> {
+            try {
+                for (ByteRange range : ranges) {
+                    writeAscii(outputStream, "--" + MULTIPART_RANGE_BOUNDARY + "\r\n");
+                    writeAscii(outputStream, "Content-Type: " + metadata.contentType() + "\r\n");
+                    writeAscii(outputStream, "Content-Range: bytes %d-%d/%d\r\n\r\n".formatted(
+                            range.start(),
+                            range.end(),
+                            metadata.sizeBytes()
+                    ));
+                    try (InputStream inputStream = objectService.downloadStream(bucketName, metadata.key(), user).content()) {
+                        skipFully(inputStream, range.start());
+                        transferRange(inputStream, outputStream, range.length());
+                    }
+                    writeAscii(outputStream, "\r\n");
+                }
+                writeAscii(outputStream, "--" + MULTIPART_RANGE_BOUNDARY + "--\r\n");
+            } catch (IOException | RuntimeException exception) {
+                dataFlowMonitoringService.recordFailure(
+                        "download",
+                        bucketName,
+                        metadata.key(),
+                        user.loginId(),
+                        exception.getMessage(),
+                        "S3"
+                );
+                throw exception;
+            }
+        };
     }
 
     @RequestMapping(value = "/{*objectKey}", params = "!tagging", method = org.springframework.web.bind.annotation.RequestMethod.HEAD)
@@ -1285,7 +1333,7 @@ public class S3ObjectController {
                 : contentType;
     }
 
-    private ByteRange byteRange(HttpServletRequest request, StoredObjectRecord metadata) {
+    private List<ByteRange> byteRanges(HttpServletRequest request, StoredObjectRecord metadata) {
         String rangeHeader = request.getHeader(HttpHeaders.RANGE);
         if (rangeHeader == null || rangeHeader.isBlank()) {
             return null;
@@ -1293,7 +1341,7 @@ public class S3ObjectController {
         if (!ifRangeAllowsRange(request.getHeader(HTTP_IF_RANGE_HEADER), metadata)) {
             return null;
         }
-        return byteRange(rangeHeader, metadata.sizeBytes());
+        return byteRanges(rangeHeader, metadata.sizeBytes());
     }
 
     private boolean ifRangeAllowsRange(String ifRange, StoredObjectRecord metadata) {
@@ -1311,17 +1359,31 @@ public class S3ObjectController {
                 && !roundedLastModified(metadata.lastModifiedAt().toInstant()).isAfter(ifRangeDate);
     }
 
-    private ByteRange byteRange(String header, long sizeBytes) {
+    private List<ByteRange> byteRanges(String header, long sizeBytes) {
         if (header == null || header.isBlank()) {
             return null;
         }
-        if (!header.startsWith("bytes=") || header.contains(",")) {
-            throw new ApiException(ApiErrorCode.RANGE_NOT_SATISFIABLE, "Only single bytes range is supported.");
+        if (!header.startsWith("bytes=") || sizeBytes <= 0) {
+            throw invalidRange();
         }
-        String spec = header.substring("bytes=".length()).trim();
+        String specs = header.substring("bytes=".length()).trim();
+        if (specs.isBlank()) {
+            throw invalidRange();
+        }
+        List<ByteRange> ranges = new ArrayList<>();
+        for (String spec : specs.split(",", -1)) {
+            ranges.add(byteRange(spec.trim(), sizeBytes));
+        }
+        return ranges;
+    }
+
+    private ByteRange byteRange(String spec, long sizeBytes) {
+        if (spec.isBlank()) {
+            throw invalidRange();
+        }
         int separatorIndex = spec.indexOf('-');
         if (separatorIndex < 0) {
-            throw new ApiException(ApiErrorCode.RANGE_NOT_SATISFIABLE, "Invalid Range header.");
+            throw invalidRange();
         }
         String rawStart = spec.substring(0, separatorIndex).trim();
         String rawEnd = spec.substring(separatorIndex + 1).trim();
@@ -1371,6 +1433,10 @@ public class S3ObjectController {
             outputStream.write(buffer, 0, read);
             remaining -= read;
         }
+    }
+
+    private void writeAscii(java.io.OutputStream outputStream, String value) throws IOException {
+        outputStream.write(value.getBytes(StandardCharsets.US_ASCII));
     }
 
     private int normalizeMaxKeys(Integer maxKeys) {

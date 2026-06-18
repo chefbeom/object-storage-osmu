@@ -993,7 +993,7 @@ class S3ObjectControllerTest {
     }
 
     @Test
-    void accessKeyCanUseSingleRangeGetThroughS3StylePath() throws Exception {
+    void accessKeyCanUseRangeGetThroughS3StylePath() throws Exception {
         String token = loginAndReturnAccessToken("admin", "password");
         String bucketName = "s3-object-range-bucket";
         createBucket(token, bucketName);
@@ -1025,6 +1025,27 @@ class S3ObjectControllerTest {
                 .andExpect(status().isPartialContent())
                 .andExpect(header().string(HttpHeaders.CONTENT_RANGE, "bytes 9-13/14"))
                 .andExpect(content().string("alias"));
+
+        MvcResult multiRangeResult = mockMvc.perform(get("/api/s3/{bucketName}/video/sample.txt", bucketName)
+                        .header("X-OSMU-Access-Key", credentials.accessKey())
+                        .header("X-OSMU-Secret-Key", credentials.secretKey())
+                        .header(HttpHeaders.RANGE, "bytes=0-4,9-13"))
+                .andExpect(request().asyncStarted())
+                .andReturn();
+
+        mockMvc.perform(asyncDispatch(multiRangeResult))
+                .andExpect(status().isPartialContent())
+                .andExpect(header().string(HttpHeaders.ACCEPT_RANGES, "bytes"))
+                .andExpect(header().string(HttpHeaders.CONTENT_TYPE, containsString("multipart/byteranges")))
+                .andExpect(header().string(HttpHeaders.CONTENT_TYPE, containsString("boundary=osmu-s3-range")))
+                .andExpect(header().doesNotExist(HttpHeaders.CONTENT_RANGE))
+                .andExpect(content().string(containsString("--osmu-s3-range")))
+                .andExpect(content().string(containsString("Content-Type: text/plain")))
+                .andExpect(content().string(containsString("Content-Range: bytes 0-4/14")))
+                .andExpect(content().string(containsString("hello")))
+                .andExpect(content().string(containsString("Content-Range: bytes 9-13/14")))
+                .andExpect(content().string(containsString("alias")))
+                .andExpect(content().string(containsString("--osmu-s3-range--")));
 
         String currentEtag = "\"%s\"".formatted(md5Hex("hello s3 alias"));
         MvcResult matchingIfRangeResult = mockMvc.perform(get("/api/s3/{bucketName}/video/sample.txt", bucketName)

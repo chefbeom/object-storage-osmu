@@ -285,14 +285,14 @@
 
 ### TC-S3-OBJECT-005
 
-- Feature: S3-style single Range GET with `If-Range`.
+- Feature: S3-style Range GET with `If-Range`.
 - Preconditions: Target bucket exists. Active access key has `READ` and `WRITE` scope. Object body is `hello s3 alias`.
-- Input: `GET /api/s3/{bucketName}/video/sample.txt` with `Range: bytes=6-7`, `Range: bytes=-5`, `If-Range`, and invalid `Range: bytes=99-100`.
-- Steps: Upload object, request middle byte range, suffix byte range, matching `If-Range`, stale `If-Range`, then invalid range.
-- Expected: Valid ranges and matching `If-Range` return `206 Partial Content`, `Accept-Ranges: bytes`, correct `Content-Range`, and partial body. Stale `If-Range` returns `200 OK` with the full body. Invalid range returns `416 RANGE_NOT_SATISFIABLE`.
+- Input: `GET /api/s3/{bucketName}/video/sample.txt` with `Range: bytes=6-7`, `Range: bytes=-5`, `Range: bytes=0-4,9-13`, `If-Range`, and invalid `Range: bytes=99-100`.
+- Steps: Upload object, request middle byte range, suffix byte range, multi-range byte ranges, matching `If-Range`, stale `If-Range`, then invalid range.
+- Expected: Valid single ranges and matching `If-Range` return `206 Partial Content`, `Accept-Ranges: bytes`, correct `Content-Range`, and partial body. Multi-range returns `206 Partial Content` with `multipart/byteranges` and per-part `Content-Range`. Stale `If-Range` returns `200 OK` with the full body. Invalid range returns `416 RANGE_NOT_SATISFIABLE`.
 - Expected error body: S3 XML with `InvalidRange`.
 - Priority: P1
-- Automated: `S3ObjectControllerTest.accessKeyCanUseSingleRangeGetThroughS3StylePath`
+- Automated: `S3ObjectControllerTest.accessKeyCanUseRangeGetThroughS3StylePath`
 
 ### TC-S3-COMPATIBILITY-MATRIX
 
