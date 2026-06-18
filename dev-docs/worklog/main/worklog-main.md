@@ -1,5 +1,38 @@
 # Worklog - main
 
+### 2026-06-18 - S3 multipart checksum type validation
+
+- Work time:
+  - End: 2026-06-18 19:22:37 +09:00
+- User command:
+  - Active goal: continue development from `dev-docs`.
+- Request analysis:
+  - `dev-docs` still listed multipart checksum-type negotiation as part of remaining checksum aggregation parity.
+  - AWS CompleteMultipartUpload documents `x-amz-checksum-type` and `ChecksumType` with valid values `COMPOSITE` and `FULL_OBJECT`.
+- Execution:
+  - Added `x-amz-checksum-type` parsing for S3 CompleteMultipartUpload.
+  - `FULL_OBJECT` now requires a final object checksum header and echoes `ChecksumType` in complete-result XML.
+  - `COMPOSITE` now requires same-algorithm per-part SHA1/SHA256 checksums and no final object checksum header, then echoes `ChecksumType` in complete-result XML.
+  - Invalid checksum type values or mismatched checksum type/header shapes return S3 XML `InvalidRequest` before storage completion.
+  - Updated S3 compatibility/API/backend/PRD/test docs.
+- Modified files:
+  - `osmu-backend/src/main/java/com/example/osmu/object/S3ObjectController.java`
+  - `osmu-backend/src/test/java/com/example/osmu/object/S3ObjectControllerMultipartTest.java`
+  - `dev-docs/PRODUCT_REQUIREMENTS.md`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/backend-design.md`
+  - `dev-docs/s3-compatibility.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/feature-inventory.md`
+  - `dev-docs/worklog/main/worklog-main.md`
+- Tests:
+  - `gradle test --tests com.example.osmu.object.S3ObjectControllerMultipartTest.completeMultipartUploadParsesS3XmlAndReturnsResultXml --tests com.example.osmu.object.S3ObjectControllerMultipartTest.completeMultipartUploadReturnsStoredCompositeChecksumHeaderAndXml --tests com.example.osmu.object.S3ObjectControllerMultipartTest.completeMultipartUploadRejectsInvalidChecksumType`: passed.
+  - `gradle test --tests com.example.osmu.object.S3ObjectControllerMultipartTest`: passed.
+  - `gradle test`: passed.
+- Review:
+  - Checksum type is currently emitted in the complete response when requested; persistent checksum-type metadata for later HEAD/GET remains outside the current storage contract.
+  - Remaining checksum gaps include CRC aggregation variants, broader checksum algorithm/type negotiation, and exact AWS error parity.
+
 ### 2026-06-18 - S3 multipart complete destination preconditions
 
 - Work time:

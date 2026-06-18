@@ -350,6 +350,7 @@ class S3ObjectControllerMultipartTest {
         String crc64Checksum = "rosUhgp5mIg=";
         String partChecksum = "rosUhgp5mIg=";
         request.addHeader("x-amz-checksum-crc64nvme", crc64Checksum);
+        request.addHeader("x-amz-checksum-type", "FULL_OBJECT");
         request.addHeader("x-amz-mp-object-size", "10485760");
         request.setContent("""
                 <CompleteMultipartUpload>
@@ -403,6 +404,7 @@ class S3ObjectControllerMultipartTest {
         assertThat(response.getBody()).contains("<CompleteMultipartUploadResult");
         assertThat(response.getBody()).contains("<ETag>\"multipart-etag\"</ETag>");
         assertThat(response.getBody()).contains("<ChecksumCRC64NVME>" + crc64Checksum + "</ChecksumCRC64NVME>");
+        assertThat(response.getBody()).contains("<ChecksumType>FULL_OBJECT</ChecksumType>");
     }
 
     @Test
@@ -412,6 +414,7 @@ class S3ObjectControllerMultipartTest {
         String partOneChecksum = checksumBase64("SHA-256", "hello ");
         String partTwoChecksum = checksumBase64("SHA-256", "world");
         String compositeChecksum = compositeChecksumBase64("SHA-256", partOneChecksum, partTwoChecksum);
+        request.addHeader("x-amz-checksum-type", "COMPOSITE");
         request.setContent("""
                 <CompleteMultipartUpload>
                   <Part>
@@ -450,6 +453,36 @@ class S3ObjectControllerMultipartTest {
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(response.getHeaders().getFirst("x-amz-checksum-sha256")).isEqualTo(compositeChecksum);
         assertThat(response.getBody()).contains("<ChecksumSHA256>" + compositeChecksum + "</ChecksumSHA256>");
+        assertThat(response.getBody()).contains("<ChecksumType>COMPOSITE</ChecksumType>");
+    }
+
+    @Test
+    void completeMultipartUploadRejectsInvalidChecksumType() {
+        MockHttpServletRequest invalidTypeRequest = completeMultipartRequest();
+        invalidTypeRequest.addHeader("x-amz-checksum-type", "SIDEWAYS");
+        when(s3RequestAuthService.currentUser(invalidTypeRequest, "bucket", "WRITE")).thenReturn(user);
+
+        assertThatThrownBy(() -> controller.completeMultipartUpload("bucket", "videos/input.mp4", "upload-1", invalidTypeRequest))
+                .isInstanceOfSatisfying(ApiException.class, exception ->
+                        assertThat(exception.code()).isEqualTo(ApiErrorCode.VALIDATION_ERROR));
+
+        MockHttpServletRequest missingCompositeRequest = completeMultipartRequest();
+        missingCompositeRequest.addHeader("x-amz-checksum-type", "COMPOSITE");
+        when(s3RequestAuthService.currentUser(missingCompositeRequest, "bucket", "WRITE")).thenReturn(user);
+
+        assertThatThrownBy(() -> controller.completeMultipartUpload("bucket", "videos/input.mp4", "upload-1", missingCompositeRequest))
+                .isInstanceOfSatisfying(ApiException.class, exception ->
+                        assertThat(exception.code()).isEqualTo(ApiErrorCode.VALIDATION_ERROR));
+
+        MockHttpServletRequest missingFullObjectRequest = completeMultipartRequest();
+        missingFullObjectRequest.addHeader("x-amz-checksum-type", "FULL_OBJECT");
+        when(s3RequestAuthService.currentUser(missingFullObjectRequest, "bucket", "WRITE")).thenReturn(user);
+
+        assertThatThrownBy(() -> controller.completeMultipartUpload("bucket", "videos/input.mp4", "upload-1", missingFullObjectRequest))
+                .isInstanceOfSatisfying(ApiException.class, exception ->
+                        assertThat(exception.code()).isEqualTo(ApiErrorCode.VALIDATION_ERROR));
+
+        verifyNoInteractions(objectService);
     }
 
     @Test
