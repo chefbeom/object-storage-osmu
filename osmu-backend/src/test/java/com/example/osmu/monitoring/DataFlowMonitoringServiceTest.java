@@ -35,6 +35,14 @@ class DataFlowMonitoringServiceTest {
         assertThat(snapshot.operations().failureCount()).isEqualTo(1L);
         assertThat(snapshot.topBuckets()).hasSize(1);
         assertThat(snapshot.topBuckets().get(0).bucketName()).isEqualTo("media");
+        assertThat(snapshot.trendPoints()).extracting(DataFlowTrendPointResponse::operation)
+                .contains("upload", "download", "list", "delete");
+        assertThat(snapshot.trendPoints()).anySatisfy(point -> {
+            assertThat(point.source()).isEqualTo("rest");
+            assertThat(point.operation()).isEqualTo("upload");
+            assertThat(point.successCount()).isEqualTo(1L);
+            assertThat(point.bytes()).isEqualTo(1024L);
+        });
         assertThat(snapshot.recentEvents()).hasSize(6);
         assertThat(snapshot.recentEvents().get(0).eventType()).isEqualTo("FAILURE");
         assertThat(meterRegistry.find("osmu.data.flow.operations").tag("operation", "upload").tag("status", "success").counter().count()).isEqualTo(1.0);
@@ -59,6 +67,8 @@ class DataFlowMonitoringServiceTest {
         assertThat(snapshot.operations().uploadCount()).isEqualTo(1L);
         assertThat(snapshot.operations().totalCount()).isEqualTo(1L);
         assertThat(snapshot.topBuckets()).extracting(DataFlowBucketMetricResponse::bucketName).containsExactly("media");
+        assertThat(snapshot.trendPoints()).hasSize(1);
+        assertThat(snapshot.trendPoints().get(0).operation()).isEqualTo("upload");
         assertThat(snapshot.recentEvents()).hasSize(1);
         assertThat(snapshot.recentEvents().get(0).source()).isEqualTo("rest");
     }

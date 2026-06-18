@@ -4,6 +4,7 @@ import com.example.osmu.monitoring.repository.DataFlowEventRepository;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
 import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -18,6 +19,7 @@ public class DataFlowMonitoringService {
     private static final int MAX_RECENT_EVENT_LIMIT = 500;
     private static final int SUMMARY_EVENT_SCAN_LIMIT = 10_000;
     private static final int TOP_BUCKET_LIMIT = 5;
+    private static final int TREND_POINT_LIMIT = 24;
 
     private final MeterRegistry meterRegistry;
     private final DataFlowEventRepository eventRepository;
@@ -73,10 +75,18 @@ public class DataFlowMonitoringService {
         List<DataFlowEventRecord> events = eventRepository.find(safeFilter, SUMMARY_EVENT_SCAN_LIMIT);
         SummaryAccumulator summary = new SummaryAccumulator();
         Map<String, BucketAccumulator> buckets = new LinkedHashMap<>();
+        Map<String, TrendAccumulator> trends = new LinkedHashMap<>();
 
         for (DataFlowEventRecord event : events) {
             summary.record(event);
             buckets.computeIfAbsent(event.bucketName(), BucketAccumulator::new).record(event);
+            OffsetDateTime bucketStartAt = trendBucketStart(event.createdAt());
+            if (bucketStartAt != null) {
+                String source = tagValue(event.source());
+                String operation = normalizeOperation(event.operation());
+                String key = bucketStartAt + "|" + source + "|" + operation;
+                trends.computeIfAbsent(key, ignored -> new TrendAccumulator(bucketStartAt, source, operation)).record(event);
+            }
         }
 
         List<DataFlowBucketMetricResponse> topBuckets = buckets.values().stream()
@@ -86,6 +96,15 @@ public class DataFlowMonitoringService {
                         .thenComparing(DataFlowBucketMetricResponse::lastEventAt, Comparator.nullsLast(Comparator.naturalOrder()))
                         .reversed())
                 .limit(TOP_BUCKET_LIMIT)
+                .toList();
+        List<DataFlowTrendPointResponse> trendPoints = trends.values().stream()
+                .map(TrendAccumulator::snapshot)
+                .sorted(Comparator
+                        .comparing(DataFlowTrendPointResponse::bucketStartAt, Comparator.reverseOrder())
+                        .thenComparing(Comparator.comparingLong(DataFlowTrendPointResponse::totalCount).reversed())
+                        .thenComparing(DataFlowTrendPointResponse::source)
+                        .thenComparing(DataFlowTrendPointResponse::operation))
+                .limit(TREND_POINT_LIMIT)
                 .toList();
         List<DataFlowRecentEventResponse> recentEvents = events.stream()
                 .limit(normalizedRecentLimit)
@@ -110,6 +129,7 @@ public class DataFlowMonitoringService {
                         events.size()
                 ),
                 topBuckets,
+                trendPoints,
                 recentEvents,
                 OffsetDateTime.now()
         );
@@ -217,6 +237,16 @@ public class DataFlowMonitoringService {
 
     private String uppercase(String value) {
         return value == null || value.isBlank() ? "UNKNOWN" : value.toUpperCase(Locale.ROOT);
+    }
+
+    private OffsetDateTime trendBucketStart(OffsetDateTime createdAt) {
+        if (createdAt == null) {
+            return null;
+        }
+        return createdAt.withOffsetSameInstant(ZoneOffset.UTC)
+                .withMinute(0)
+                .withSecond(0)
+                .withNano(0);
     }
 
     private String safeMessage(String message) {
@@ -332,6 +362,50 @@ public class DataFlowMonitoringService {
                     cancelCount,
                     failureCount,
                     lastEventAt
+            );
+        }
+    }
+
+    private static final class TrendAccumulator {
+        private final OffsetDateTime bucketStartAt;
+        private final String source;
+        private final String operation;
+        private long successCount;
+        private long failureCount;
+        private long cancelCount;
+        private long totalCount;
+        private long bytes;
+
+        private TrendAccumulator(OffsetDateTime bucketStartAt, String source, String operation) {
+            this.bucketStartAt = bucketStartAt;
+            this.source = source;
+            this.operation = operation;
+        }
+
+        private void record(DataFlowEventRecord event) {
+            totalCount += 1;
+            if ("SUCCESS".equalsIgnoreCase(event.status())) {
+                successCount += 1;
+                bytes += Math.max(0L, event.sizeBytes());
+            }
+            if ("CANCEL".equalsIgnoreCase(event.eventType()) || "CANCELLED".equalsIgnoreCase(event.status())) {
+                cancelCount += 1;
+            }
+            if ("FAILURE".equalsIgnoreCase(event.eventType()) || "FAILED".equalsIgnoreCase(event.status())) {
+                failureCount += 1;
+            }
+        }
+
+        private DataFlowTrendPointResponse snapshot() {
+            return new DataFlowTrendPointResponse(
+                    bucketStartAt,
+                    source,
+                    operation,
+                    successCount,
+                    failureCount,
+                    cancelCount,
+                    totalCount,
+                    bytes
             );
         }
     }

@@ -127,7 +127,7 @@ MVP implementation:
 - REST object APIs record list, upload, presigned/multipart completion, download, delete, and multipart abort events.
 - S3-compatible APIs record list, put, multipart complete, copy, get, delete, multi-delete, and multipart abort events.
 - MariaDB mode stores detailed events in `data_flow_events`; in-memory mode keeps events in process for local/demo execution.
-- The admin dashboard shows a compact data I/O widget plus a detailed Data Flow Monitoring panel with traffic, operations, top buckets, recent events, filters, and CSV export.
+- The admin dashboard shows a compact data I/O widget plus a detailed Data Flow Monitoring panel with traffic, operations, source/operation trend chart, top buckets, recent events, filters, and CSV export.
 - Prometheus/Grafana starter artifacts include `OsmuDataFlowFailureSpike`, `OsmuDataFlowCancelSpike`, `OsmuDataFlowAbnormalEgress`, `OsmuDataFlowBucketTrafficAnomaly`, and `OsmuDataFlowRetentionFailures` backed by `osmu_data_flow_operations_total`, `osmu_data_flow_bytes_total`, and `osmu_data_flow_retention_runs_total`.
 - `DataFlowEventRetentionJob` deletes events older than the configured retention window and records `DATA_FLOW_EVENT_RETENTION` audit plus `osmu.data.flow.retention.events` and `osmu.data.flow.retention.runs` metrics.
 

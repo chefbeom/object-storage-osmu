@@ -1090,6 +1090,7 @@ const dataFlowMonitoring = reactive({
     totalCount: 0,
   },
   topBuckets: [],
+  trendPoints: [],
   recentEvents: [],
   generatedAt: '',
 })
@@ -3181,6 +3182,7 @@ function applyDataFlowMonitoring(data = {}) {
     totalCount: Number(data.operations?.totalCount || 0),
   })
   dataFlowMonitoring.topBuckets = Array.isArray(data.topBuckets) ? data.topBuckets : []
+  dataFlowMonitoring.trendPoints = Array.isArray(data.trendPoints) ? data.trendPoints : []
   dataFlowMonitoring.recentEvents = Array.isArray(data.recentEvents) ? data.recentEvents : []
   dataFlowMonitoring.generatedAt = data.generatedAt || ''
 }

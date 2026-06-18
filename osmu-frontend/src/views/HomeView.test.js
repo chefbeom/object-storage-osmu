@@ -111,6 +111,7 @@ test('HomeView exposes stable selectors for browser E2E flows', () => {
     'data-flow-reset-button',
     'data-flow-total-bytes',
     'data-flow-failed-cancelled',
+    'data-flow-trend-chart',
     'data-flow-top-buckets',
     'data-flow-recent-events',
     'backup-status-panel',

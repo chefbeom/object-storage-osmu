@@ -1677,7 +1677,7 @@
       "get": {
         "tags": ["Admin"],
         "operationId": "getDataFlowMonitoring",
-        "summary": "Read administrator data-flow traffic, operation, failure, cancel, bucket, and recent event monitoring summary",
+        "summary": "Read administrator data-flow traffic, operation, failure, cancel, bucket, trend, and recent event monitoring summary",
         "parameters": [
           {
             "name": "from",

@@ -697,9 +697,50 @@ function dataFlowSummary(filters = {}) {
       totalCount: events.length,
     },
     topBuckets: [...bucketMetrics.values()].sort((left, right) => right.totalBytes - left.totalBytes).slice(0, 5),
+    trendPoints: dataFlowTrend(events),
     recentEvents: events.slice(0, normalizeDataFlowLimit(filters.limit)),
     generatedAt: new Date().toISOString(),
   }
+}
+
+function dataFlowTrend(events) {
+  const trendBuckets = new Map()
+  for (const event of events) {
+    const createdAt = Date.parse(event.createdAt)
+    if (Number.isNaN(createdAt)) continue
+    const bucketStartAt = new Date(Math.floor(createdAt / 3600000) * 3600000).toISOString()
+    const source = String(event.source || 'unknown').toLowerCase()
+    const operation = String(event.operation || 'unknown').toLowerCase()
+    const key = `${bucketStartAt}|${source}|${operation}`
+    if (!trendBuckets.has(key)) {
+      trendBuckets.set(key, {
+        bucketStartAt,
+        source,
+        operation,
+        successCount: 0,
+        failureCount: 0,
+        cancelCount: 0,
+        totalCount: 0,
+        bytes: 0,
+      })
+    }
+    const bucket = trendBuckets.get(key)
+    bucket.totalCount += 1
+    if (event.status === 'SUCCESS') {
+      bucket.successCount += 1
+      bucket.bytes += Math.max(0, Number(event.sizeBytes || 0))
+    }
+    if (event.eventType === 'CANCEL' || event.status === 'CANCELLED') bucket.cancelCount += 1
+    if (event.eventType === 'FAILURE' || event.status === 'FAILED') bucket.failureCount += 1
+  }
+  return [...trendBuckets.values()]
+    .sort((left, right) => (
+      Date.parse(right.bucketStartAt) - Date.parse(left.bucketStartAt)
+      || right.totalCount - left.totalCount
+      || left.source.localeCompare(right.source)
+      || left.operation.localeCompare(right.operation)
+    ))
+    .slice(0, 24)
 }
 
 function dataFlowCsv(filters = {}) {

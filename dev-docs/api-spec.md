@@ -2306,6 +2306,10 @@ Query parameters:
 - `status`: event status filter, for example `SUCCESS`, `FAILED`, `CANCELLED`.
 - `limit`: recent event response limit. Default `50`, maximum `500`.
 
+Trend response:
+
+- `trendPoints`: latest 24 UTC hourly buckets grouped by `source` and `operation`.
+
 Response:
 
 ```json
@@ -2340,6 +2344,18 @@ Response:
         "cancelCount": 1,
         "failureCount": 2,
         "lastEventAt": "2026-06-18T10:20:00+09:00"
+      }
+    ],
+    "trendPoints": [
+      {
+        "bucketStartAt": "2026-06-18T01:00:00Z",
+        "source": "s3",
+        "operation": "download",
+        "successCount": 8,
+        "failureCount": 1,
+        "cancelCount": 0,
+        "totalCount": 9,
+        "bytes": 524288
       }
     ],
     "recentEvents": [

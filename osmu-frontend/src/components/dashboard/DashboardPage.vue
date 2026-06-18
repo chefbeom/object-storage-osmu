@@ -1380,6 +1380,27 @@
           <dd data-testid="data-flow-failed-cancelled">{{ formatCount(dataFlowOperations.failureCount || 0) }} / {{ formatCount(dataFlowOperations.cancelCount || 0) }}</dd>
         </div>
       </dl>
+      <div class="data-flow-trend" data-testid="data-flow-trend-chart">
+        <div v-if="dataFlowTrendPoints.length === 0" class="data-flow-trend-empty">
+          <strong>No trend data yet</strong>
+          <small>source and operation buckets will appear here</small>
+        </div>
+        <div
+          v-for="point in dataFlowTrendPoints"
+          :key="`${point.bucketStartAt}-${point.source}-${point.operation}`"
+          class="data-flow-trend-row"
+        >
+          <span class="data-flow-trend-label">
+            <strong>{{ point.operation || 'unknown' }}</strong>
+            <small>{{ point.source || 'unknown' }} / {{ formatDateTime(point.bucketStartAt) || '-' }}</small>
+          </span>
+          <span class="data-flow-trend-meter" aria-hidden="true">
+            <span :style="{ width: dataFlowTrendWidth(point) }"></span>
+          </span>
+          <b>{{ formatCount(point.totalCount || 0) }}</b>
+          <small>{{ formatCount(point.failureCount || 0) }} fail / {{ formatCount(point.cancelCount || 0) }} cancel / {{ formatBytes(point.bytes || 0) }}</small>
+        </div>
+      </div>
       <ul class="compact-list" data-testid="data-flow-top-buckets">
         <li v-if="dataFlowTopBuckets.length === 0">
           <span>
@@ -1770,9 +1791,23 @@ const dataFlowOperations = computed(() => props.dataFlowMonitoring?.operations |
 const dataFlowTopBuckets = computed(() => (
   Array.isArray(props.dataFlowMonitoring?.topBuckets) ? props.dataFlowMonitoring.topBuckets.slice(0, 5) : []
 ))
+const dataFlowTrendPoints = computed(() => (
+  Array.isArray(props.dataFlowMonitoring?.trendPoints) ? props.dataFlowMonitoring.trendPoints.slice(0, 8) : []
+))
+const dataFlowTrendMaxCount = computed(() => Math.max(
+  1,
+  ...dataFlowTrendPoints.value.map((point) => Number(point.totalCount || 0)),
+))
 const dataFlowRecentEvents = computed(() => (
   Array.isArray(props.dataFlowMonitoring?.recentEvents) ? props.dataFlowMonitoring.recentEvents.slice(0, 5) : []
 ))
+function dataFlowTrendWidth(point) {
+  const totalCount = Math.max(0, Number(point?.totalCount || 0))
+  if (totalCount === 0) {
+    return '4%'
+  }
+  return `${Math.max(4, Math.round((totalCount / dataFlowTrendMaxCount.value) * 100))}%`
+}
 const dataFlowTrafficLabel = computed(() => (
   `${props.formatBytes(dataFlowTraffic.value.uploadedBytes || 0)} up / ${props.formatBytes(dataFlowTraffic.value.downloadedBytes || 0)} down`
 ))

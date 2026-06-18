@@ -75,6 +75,7 @@ class AdminDashboardSummaryControllerTest {
                 .andExpect(jsonPath("$.data.dataFlow.operations.uploadCount").isNumber())
                 .andExpect(jsonPath("$.data.dataFlow.operations.failureCount").isNumber())
                 .andExpect(jsonPath("$.data.dataFlow.topBuckets").isArray())
+                .andExpect(jsonPath("$.data.dataFlow.trendPoints").isArray())
                 .andExpect(jsonPath("$.data.dataFlow.recentEvents").isArray())
                 .andExpect(jsonPath("$.data.recentAuditLogs.items").isArray())
                 .andExpect(jsonPath("$.data.generatedAt").exists());
@@ -99,6 +100,7 @@ class AdminDashboardSummaryControllerTest {
                 .andExpect(jsonPath("$.data.traffic.downloadedBytes").isNumber())
                 .andExpect(jsonPath("$.data.operations.totalCount").isNumber())
                 .andExpect(jsonPath("$.data.topBuckets").isArray())
+                .andExpect(jsonPath("$.data.trendPoints").isArray())
                 .andExpect(jsonPath("$.data.recentEvents").isArray())
                 .andExpect(jsonPath("$.data.generatedAt").exists());
     }

@@ -877,6 +877,62 @@ label {
   min-width: 0;
 }
 
+.data-flow-trend {
+  display: grid;
+  gap: 9px;
+  padding: 0 18px 14px;
+}
+
+.data-flow-trend-empty,
+.data-flow-trend-row {
+  display: grid;
+  grid-template-columns: minmax(140px, 1.2fr) minmax(120px, 2fr) auto;
+  gap: 8px 12px;
+  align-items: center;
+  min-width: 0;
+}
+
+.data-flow-trend-empty {
+  grid-template-columns: minmax(0, 1fr);
+  color: var(--color-muted);
+}
+
+.data-flow-trend-label,
+.data-flow-trend-empty {
+  min-width: 0;
+}
+
+.data-flow-trend-label strong,
+.data-flow-trend-empty strong {
+  display: block;
+  overflow-wrap: anywhere;
+}
+
+.data-flow-trend-label small,
+.data-flow-trend-row small,
+.data-flow-trend-empty small {
+  color: var(--color-muted);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.data-flow-trend-meter {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  height: 9px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #e5e7eb;
+}
+
+.data-flow-trend-meter span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #2563eb, #0f766e);
+}
+
 .backup-evidence {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
@@ -1980,6 +2036,10 @@ tbody tr.selected {
   .analytics-filter,
   .data-flow-filter-form,
   .audit-filter {
+    grid-template-columns: 1fr;
+  }
+
+  .data-flow-trend-row {
     grid-template-columns: 1fr;
   }
 }
