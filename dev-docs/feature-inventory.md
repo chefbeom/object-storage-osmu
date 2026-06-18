@@ -218,7 +218,7 @@ MVP 데모 기준 완료율은 약 90~95%입니다.
 - bucket/object 기본 동작
 - range GET with If-Range fallback
 - conditional request
-- copy object
+- copy object with OSMU source `versionId`
 - tagging
 - multi-delete 일부
 - S3 XML error response with `Code`/`Message`/`Resource`/`RequestId`/`HostId`

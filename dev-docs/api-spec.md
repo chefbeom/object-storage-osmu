@@ -1255,7 +1255,7 @@ Prototype path-style bucket/object API for S3 client interoperability.
 - `GET /api/s3/{bucketName}?uploads` returns active S3-style multipart upload sessions.
 - `POST /api/s3/{bucketName}?delete` deletes multiple objects from S3-compatible delete XML.
 - `PUT /api/s3/{bucketName}/{objectKey}` uploads a raw request body.
-- `PUT /api/s3/{bucketName}/{objectKey}` with `x-amz-copy-source: /sourceBucket/sourceKey` copies an existing object.
+- `PUT /api/s3/{bucketName}/{objectKey}` with `x-amz-copy-source: /sourceBucket/sourceKey` or `/sourceBucket/sourceKey?versionId={versionId}` copies an existing object or retained OSMU object version.
 - `POST /api/s3/{bucketName}/{objectKey}?uploads` initiates an S3-style multipart upload.
 - `PUT /api/s3/{bucketName}/{objectKey}?partNumber={n}&uploadId={uploadId}` uploads one multipart part through the backend.
 - `GET /api/s3/{bucketName}/{objectKey}?uploadId={uploadId}` lists uploaded multipart parts and supports `max-parts` 1~1000 plus `part-number-marker` 0~10000 pagination.
@@ -1310,7 +1310,7 @@ Headers:
 - `Content-Type` is stored as object content type. Missing value defaults to `application/octet-stream`.
 - `Content-MD5` is accepted on S3 object `PUT`; invalid base64 MD5 returns `InvalidDigest`, and mismatched body checksum returns `BadDigest`.
 - S3 object `PUT` validates one optional checksum value header among `x-amz-checksum-sha256`, `x-amz-checksum-sha1`, `x-amz-checksum-crc32`, `x-amz-checksum-crc32c`, and `x-amz-checksum-crc64nvme`. Invalid base64/length returns `InvalidDigest`; mismatched body checksum returns `BadDigest`; matching checksum is stored in object metadata and returns the same `x-amz-checksum-*` response header.
-- `x-amz-copy-source` copies source object body, content type, tags, and stored checksum metadata into the target object and returns `CopyObjectResult` XML. Stored checksums are emitted as `ChecksumSHA256`, `ChecksumSHA1`, `ChecksumCRC32`, `ChecksumCRC32C`, or `ChecksumCRC64NVME` elements.
+- `x-amz-copy-source` copies source object body, content type, tags, and stored checksum metadata into the target object and returns `CopyObjectResult` XML. Stored checksums are emitted as `ChecksumSHA256`, `ChecksumSHA1`, `ChecksumCRC32`, `ChecksumCRC32C`, or `ChecksumCRC64NVME` elements when the selected source metadata has them. `?versionId={versionId}` can copy an OSMU-retained source version body/content type/tags.
 - `x-amz-metadata-directive: COPY|REPLACE` is supported for CopyObject content type handling. `REPLACE` uses the request `Content-Type`.
 - `x-amz-tagging-directive: COPY|REPLACE` is supported for CopyObject tag handling. `REPLACE` uses `x-amz-tagging` or `X-OSMU-Tags`.
 - CopyObject supports basic source preconditions: `x-amz-copy-source-if-match`, `x-amz-copy-source-if-none-match`, `x-amz-copy-source-if-modified-since`, and `x-amz-copy-source-if-unmodified-since`. Failed preconditions return `412 PreconditionFailed`.
@@ -1458,7 +1458,7 @@ Limitations:
 - S3 multipart upload path is MVP-level and currently requires OSMU expected-size headers at initiate time.
 - S3 multipart uploads listing is backed by OSMU active multipart sessions, not a raw MinIO bucket scan.
 - Virtual-hosted-style routing currently extracts the bucket from the left side of a configured domain suffix. Production deployments must configure DNS/proxy hosts such as `{bucket}.storage.example.com` and set `osmu.s3.virtual-hosted-style.domain-suffixes=storage.example.com`.
-- Multi-range GET, full conditional request parity, CopyObject user-metadata/versioning/full-conditional parity, remaining CreateBucket/DeleteBucket edge error parity, full AWS multipart checksum aggregation parity, full multipart ETag parity, and exact AWS error schema parity are not implemented yet. See `s3-compatibility.md` for the supported/partial/unsupported matrix.
+- Multi-range GET, full conditional request parity, CopyObject arbitrary user-metadata/full AWS versioning/full-conditional parity, remaining CreateBucket/DeleteBucket edge error parity, full AWS multipart checksum aggregation parity, full multipart ETag parity, and full AWS error behavior parity are not implemented yet. See `s3-compatibility.md` for the supported/partial/unsupported matrix.
 
 ### GET /api/buckets/{bucketName}/permissions
 

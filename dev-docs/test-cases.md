@@ -202,6 +202,16 @@
 - Priority: P1
 - Automated: `S3ObjectControllerTest.accessKeyCanPutHeadGetAndDeleteObjectThroughS3StylePath`
 
+### TC-S3-OBJECT-001D
+
+- Feature: S3 CopyObject source version selection.
+- Preconditions: Target bucket exists. Active access key has `READ` and `WRITE` scope. Source object has at least one retained OSMU object version.
+- Input: `PUT /api/s3/{bucketName}/{targetKey}` with `x-amz-copy-source: /{bucketName}/{sourceKey}?versionId={versionId}`.
+- Steps: Upload a source object, overwrite it to create a retained version, list versions through the REST object version API, then copy the retained version through S3 CopyObject.
+- Expected: CopyObject returns `CopyObjectResult` XML and the copied target downloads the retained version body and tags, not the current source body.
+- Priority: P1
+- Automated: `S3ObjectControllerTest.accessKeyCanCopyObjectFromSourceVersionId`
+
 ### TC-S3-OBJECT-002
 
 - Feature: S3-style object Access Key scope enforcement.

@@ -168,6 +168,63 @@ class S3ObjectControllerTest {
     }
 
     @Test
+    void accessKeyCanCopyObjectFromSourceVersionId() throws Exception {
+        String token = loginAndReturnAccessToken("admin", "password");
+        String bucketName = "s3-copy-version-bucket";
+        createBucket(token, bucketName);
+        AccessKeyCredentials credentials = createAccessKey(token, bucketName, "READ", "WRITE");
+
+        mockMvc.perform(put("/api/s3/{bucketName}/docs/source.txt", bucketName)
+                        .header("X-OSMU-Access-Key", credentials.accessKey())
+                        .header("X-OSMU-Secret-Key", credentials.secretKey())
+                        .header("x-amz-tagging", "stage=archived")
+                        .contentType(MediaType.TEXT_PLAIN)
+                        .content("version one"))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(put("/api/s3/{bucketName}/docs/source.txt", bucketName)
+                        .header("X-OSMU-Access-Key", credentials.accessKey())
+                        .header("X-OSMU-Secret-Key", credentials.secretKey())
+                        .header("x-amz-tagging", "stage=current")
+                        .contentType(MediaType.TEXT_PLAIN)
+                        .content("version two"))
+                .andExpect(status().isOk());
+
+        String versionResponse = mockMvc.perform(get("/api/buckets/{bucketName}/objects/versions/docs/source.txt", bucketName)
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data[0].sizeBytes").value(11))
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+        String archivedVersionId = JsonPath.read(versionResponse, "$.data[0].versionId");
+        String archivedMd5 = md5Hex("version one");
+
+        mockMvc.perform(put("/api/s3/{bucketName}/docs/from-version.txt", bucketName)
+                        .header("X-OSMU-Access-Key", credentials.accessKey())
+                        .header("X-OSMU-Secret-Key", credentials.secretKey())
+                        .header(
+                                "x-amz-copy-source",
+                                "/" + bucketName + "/docs/source.txt?versionId=" + archivedVersionId
+                        ))
+                .andExpect(status().isOk())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_XML))
+                .andExpect(header().string(HttpHeaders.ETAG, "\"%s\"".formatted(archivedMd5)))
+                .andExpect(content().string(containsString("<ETag>\"%s\"</ETag>".formatted(archivedMd5))));
+
+        MvcResult copiedDownloadResult = mockMvc.perform(get("/api/s3/{bucketName}/docs/from-version.txt", bucketName)
+                        .header("X-OSMU-Access-Key", credentials.accessKey())
+                        .header("X-OSMU-Secret-Key", credentials.secretKey()))
+                .andExpect(request().asyncStarted())
+                .andReturn();
+
+        mockMvc.perform(asyncDispatch(copiedDownloadResult))
+                .andExpect(status().isOk())
+                .andExpect(header().string("X-OSMU-Tags", containsString("stage=archived")))
+                .andExpect(content().string("version one"));
+    }
+
+    @Test
     void accessKeyCanUploadWithContentMd5AndRejectMismatch() throws Exception {
         String token = loginAndReturnAccessToken("admin", "password");
         String bucketName = "s3-object-content-md5-bucket";

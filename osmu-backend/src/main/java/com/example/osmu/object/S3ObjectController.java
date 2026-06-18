@@ -452,7 +452,7 @@ public class S3ObjectController {
         CopySource copySource = copySource(copySourceHeader);
         AuthenticatedUser user = s3RequestAuthService.currentUser(request, targetBucketName, "WRITE");
         s3RequestAuthService.currentUser(request, copySource.bucketName(), "READ");
-        StoredObjectStream sourceObject = objectService.downloadStream(copySource.bucketName(), copySource.objectKey(), user);
+        StoredObjectStream sourceObject = copySourceObject(copySource, user);
         String metadataDirective = copyDirective(request.getHeader(AWS_METADATA_DIRECTIVE_HEADER), AWS_METADATA_DIRECTIVE_HEADER);
         String taggingDirective = copyDirective(request.getHeader(AWS_TAGGING_DIRECTIVE_HEADER), AWS_TAGGING_DIRECTIVE_HEADER);
         String copyTags = "REPLACE".equals(taggingDirective) ? tags(request) : tagsHeader(sourceObject.metadata());
@@ -749,8 +749,11 @@ public class S3ObjectController {
         if (source.startsWith("/")) {
             source = source.substring(1);
         }
-        if (source.contains("?")) {
-            throw new ApiException(ApiErrorCode.VALIDATION_ERROR, "Copy source version query is not supported.");
+        String versionId = null;
+        int queryIndex = source.indexOf('?');
+        if (queryIndex >= 0) {
+            versionId = copySourceVersionId(source.substring(queryIndex + 1));
+            source = source.substring(0, queryIndex);
         }
         int separatorIndex = source.indexOf('/');
         if (separatorIndex <= 0 || separatorIndex == source.length() - 1) {
@@ -761,7 +764,40 @@ public class S3ObjectController {
         if (sourceBucketName.isBlank() || sourceObjectKey.isBlank()) {
             throw new ApiException(ApiErrorCode.VALIDATION_ERROR, "x-amz-copy-source must use /bucket/key.");
         }
-        return new CopySource(sourceBucketName, sourceObjectKey);
+        return new CopySource(sourceBucketName, sourceObjectKey, versionId);
+    }
+
+    private String copySourceVersionId(String query) {
+        String versionId = null;
+        for (String pair : query.split("&")) {
+            if (pair.isBlank()) {
+                continue;
+            }
+            int separatorIndex = pair.indexOf('=');
+            String name = separatorIndex < 0 ? decode(pair) : decode(pair.substring(0, separatorIndex));
+            String value = separatorIndex < 0 ? "" : decode(pair.substring(separatorIndex + 1));
+            if (!"versionId".equals(name)) {
+                throw new ApiException(
+                        ApiErrorCode.VALIDATION_ERROR,
+                        "Only x-amz-copy-source versionId query is supported."
+                );
+            }
+            if (versionId != null) {
+                throw new ApiException(ApiErrorCode.VALIDATION_ERROR, "x-amz-copy-source versionId must be specified once.");
+            }
+            versionId = value;
+        }
+        if (versionId == null || versionId.isBlank()) {
+            throw new ApiException(ApiErrorCode.VALIDATION_ERROR, "x-amz-copy-source versionId is required.");
+        }
+        return versionId;
+    }
+
+    private StoredObjectStream copySourceObject(CopySource copySource, AuthenticatedUser user) {
+        if (copySource.versionId() == null || copySource.versionId().isBlank()) {
+            return objectService.downloadStream(copySource.bucketName(), copySource.objectKey(), user);
+        }
+        return objectService.downloadVersion(copySource.bucketName(), copySource.objectKey(), copySource.versionId(), user);
     }
 
     private String copyDirective(String rawDirective, String headerName) {
@@ -2395,7 +2431,7 @@ public class S3ObjectController {
         }
     }
 
-    private record CopySource(String bucketName, String objectKey) {
+    private record CopySource(String bucketName, String objectKey, String versionId) {
     }
 
     private record DeleteObjectsRequest(List<String> keys, boolean quiet) {
