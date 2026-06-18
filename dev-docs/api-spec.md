@@ -1243,7 +1243,7 @@ Prototype path-style bucket/object API for S3 client interoperability.
 
 - `GET /api/s3` returns S3-compatible `ListAllMyBucketsResult` XML.
 - `HEAD /api/s3` validates the same credentials as root bucket listing and returns `200 OK` with no body.
-- `PUT /api/s3/{bucketName}` creates a bucket through the S3-style path. MVP creation uses Bearer JWT auth because an access key cannot be scoped to a bucket that does not exist yet. General-purpose S3 bucket name rules are enforced; invalid names return S3 XML `InvalidBucketName`. Optional `CreateBucketConfiguration/LocationConstraint` XML is accepted when it matches the configured storage region. Duplicate creates return S3 XML `BucketAlreadyOwnedByYou` for the same owner and `BucketAlreadyExists` for another owner.
+- `PUT /api/s3/{bucketName}` creates a bucket through the S3-style path. MVP creation uses Bearer JWT auth because an access key cannot be scoped to a bucket that does not exist yet. General-purpose S3 bucket name rules are enforced; invalid names return S3 XML `InvalidBucketName`. Optional `CreateBucketConfiguration/LocationConstraint` XML is accepted when it matches the configured storage region; malformed XML, an unexpected root element, or duplicate `LocationConstraint` elements return S3 XML `InvalidRequest` and do not create the bucket. Duplicate creates return S3 XML `BucketAlreadyOwnedByYou` for the same owner and `BucketAlreadyExists` for another owner.
 - `HEAD /api/s3/{bucketName}` checks bucket existence/access and returns `x-amz-bucket-region`.
 - `GET /api/s3/{bucketName}?location` returns S3-compatible `LocationConstraint` XML.
 - `GET /api/s3/{bucketName}?tagging` returns S3-compatible bucket tagging XML.
@@ -1333,7 +1333,7 @@ Headers:
 - `If-Modified-Since` returns `304 Not Modified` when the object has not changed after the requested timestamp; `If-Unmodified-Since` returns `412 Precondition Failed` when the object changed after the requested timestamp.
 - Range GET honors `If-Range` with an ETag or HTTP date: matching validators return the requested range, while stale validators ignore `Range` and return the full object.
 - Bucket-level responses return `x-amz-bucket-region`; default MVP region is `us-east-1`.
-- Bucket create returns `200 OK`, `Location: /{bucketName}`, and `x-amz-bucket-region`. Invalid S3 bucket names return `400 InvalidBucketName`. Bucket delete returns `204 No Content`; deleting a non-empty bucket returns `409 BucketNotEmpty`.
+- Bucket create returns `200 OK`, `Location: /{bucketName}`, and `x-amz-bucket-region`. Invalid S3 bucket names return `400 InvalidBucketName`; invalid CreateBucket XML returns `400 InvalidRequest`. Bucket delete returns `204 No Content`; deleting a non-empty bucket returns `409 BucketNotEmpty`.
 - Bucket tagging uses `Tagging/TagSet/Tag/Key/Value` XML, stores up to 50 bucket metadata tags, and disables DOCTYPE/external entity loading while parsing.
 - Range GET returns `206 Partial Content`, `Accept-Ranges: bytes`, and `Content-Range` for one byte range. Multi-range requests are rejected with `416 RANGE_NOT_SATISFIABLE`, matching AWS S3's documented one-range behavior.
 - `ListObjectsV2` supports `prefix`, `delimiter`, `max-keys` from `1` to `1000`, `continuation-token`, `encoding-type=url`, and `fetch-owner=true|false`.

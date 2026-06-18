@@ -52,7 +52,7 @@
 - S3 multipart ListParts supports `max-parts`/`part-number-marker` pagination and returns `PartNumberMarker`, `NextPartNumberMarker`, `MaxParts`, and `IsTruncated` XML fields.
 - S3 XML error bodies include `Code`, `Message`, `Resource`, `RequestId`, and `HostId` for client compatibility and request tracing.
 - Bucket-level responses include `x-amz-bucket-region`; MVP default region is `us-east-1`.
-- S3-style bucket creation currently uses Bearer JWT auth, accepts S3 `CreateBucketConfiguration/LocationConstraint` XML when it matches the configured storage region, and returns S3 XML `BucketAlreadyOwnedByYou`/`BucketAlreadyExists` for duplicate creates; bucket deletion supports JWT or an OSMU Access Key with target bucket `ADMIN` scope, requires an empty bucket, and returns S3 XML `BucketNotEmpty` when the bucket still contains objects.
+- S3-style bucket creation currently uses Bearer JWT auth, accepts S3 `CreateBucketConfiguration/LocationConstraint` XML when it matches the configured storage region, rejects malformed or unexpected CreateBucket XML as `InvalidRequest`, and returns S3 XML `BucketAlreadyOwnedByYou`/`BucketAlreadyExists` for duplicate creates; bucket deletion supports JWT or an OSMU Access Key with target bucket `ADMIN` scope, requires an empty bucket, and returns S3 XML `BucketNotEmpty` when the bucket still contains objects.
 - `x-amz-tagging` and `X-OSMU-Tags` are accepted for upload tags.
 - Multi-object delete uses the same soft-delete behavior as the REST object API and treats missing keys as deleted for S3 compatibility.
 - Object tagging XML uses the same metadata tag store as the REST object API; tag read requires `READ`, tag update/delete requires `WRITE`.

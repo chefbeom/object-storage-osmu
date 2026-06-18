@@ -22,7 +22,7 @@
 
 | Operation | Status | Notes |
 | --- | --- | --- |
-| `PUT Bucket` | MVP supported | Reuses `BucketService.create`; Bearer JWT path is the primary create path. AWS general-purpose bucket name rules return `InvalidBucketName`; optional `CreateBucketConfiguration/LocationConstraint` XML is accepted when it matches the configured storage region. Duplicate creates return `BucketAlreadyOwnedByYou` or `BucketAlreadyExists`. |
+| `PUT Bucket` | MVP supported | Reuses `BucketService.create`; Bearer JWT path is the primary create path. AWS general-purpose bucket name rules return `InvalidBucketName`; optional `CreateBucketConfiguration/LocationConstraint` XML is accepted when it matches the configured storage region. Malformed XML, unexpected root XML, and duplicate `LocationConstraint` elements return `InvalidRequest` without creating the bucket. Duplicate creates return `BucketAlreadyOwnedByYou` or `BucketAlreadyExists`. |
 | `HEAD Bucket` | Supported | Auth/readiness probe. |
 | `GET Bucket location` | Supported | Region-compatible response. |
 | `DELETE Bucket` | MVP supported | Requires empty bucket and `ADMIN` scope. Invalid names return `InvalidBucketName`; non-empty buckets return S3 XML `BucketNotEmpty`; other exact AWS error parity is not guaranteed. |

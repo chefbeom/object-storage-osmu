@@ -1,5 +1,38 @@
 # Worklog - main
 
+### 2026-06-18 - S3 CreateBucket XML validation parity
+
+- Work time:
+  - End: 2026-06-18 18:07:08 +09:00
+- User command:
+  - Active goal: continue development from `dev-docs`.
+- Request analysis:
+  - `dev-docs` still listed remaining S3 CreateBucket/DeleteBucket edge error parity beyond invalid names, duplicate creates, and non-empty deletes.
+  - AWS CreateBucket documents `CreateBucketConfiguration` as the request body root, with optional `LocationConstraint`.
+- Execution:
+  - Rejected CreateBucket XML whose root is not `CreateBucketConfiguration`.
+  - Rejected duplicate `LocationConstraint` elements instead of silently accepting the first one.
+  - Added regression coverage that invalid XML returns S3 XML `InvalidRequest` and does not create the bucket.
+  - Updated S3 PRD/API/backend/matrix/test-case/feature docs.
+- Modified files:
+  - `osmu-backend/src/main/java/com/example/osmu/bucket/S3BucketController.java`
+  - `osmu-backend/src/test/java/com/example/osmu/object/S3ObjectControllerTest.java`
+  - `dev-docs/PRODUCT_REQUIREMENTS.md`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/backend-design.md`
+  - `dev-docs/feature-inventory.md`
+  - `dev-docs/s3-compatibility.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/worklog/main/worklog-main.md`
+- Verification:
+  - `gradle test --tests com.example.osmu.object.S3ObjectControllerTest.createBucketRejectsInvalidCreateBucketConfigurationXml --tests com.example.osmu.object.S3ObjectControllerTest.bearerCanCreateBucketWithS3LocationConstraintXml --tests com.example.osmu.object.S3ObjectControllerTest.bearerCanCreateAndAccessKeyCanDeleteBucketThroughS3StylePath`: passed.
+  - `gradle test`: passed.
+  - `git diff --check`: passed with LF/CRLF warnings only.
+- Result:
+  - S3 CreateBucket XML validation is closer to the documented request body contract.
+- Follow-up:
+  - Remaining bucket parity gaps include exact AWS ACL/object-ownership/public-access/Object Lock headers and broader error behavior.
+
 ### 2026-06-18 - S3 multipart ETag smoke coverage
 
 - Work time:

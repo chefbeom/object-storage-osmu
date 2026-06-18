@@ -949,6 +949,46 @@ class S3ObjectControllerTest {
     }
 
     @Test
+    void createBucketRejectsInvalidCreateBucketConfigurationXml() throws Exception {
+        String token = loginAndReturnAccessToken("admin", "password");
+        String invalidRootBucketName = "s3-bucket-invalid-root-create";
+        String duplicateLocationBucketName = "s3-bucket-duplicate-location";
+
+        mockMvc.perform(put("/api/s3/{bucketName}", invalidRootBucketName)
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_XML)
+                        .content("""
+                                <Bucket xmlns="http://s3.amazonaws.com/doc/2006-03-01/">
+                                  <LocationConstraint>us-east-1</LocationConstraint>
+                                </Bucket>
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_XML))
+                .andExpect(content().string(containsString("<Code>InvalidRequest</Code>")));
+
+        mockMvc.perform(head("/api/s3/{bucketName}", invalidRootBucketName)
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isNotFound());
+
+        mockMvc.perform(put("/api/s3/{bucketName}", duplicateLocationBucketName)
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_XML)
+                        .content("""
+                                <CreateBucketConfiguration xmlns="http://s3.amazonaws.com/doc/2006-03-01/">
+                                  <LocationConstraint>us-east-1</LocationConstraint>
+                                  <LocationConstraint>us-east-1</LocationConstraint>
+                                </CreateBucketConfiguration>
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_XML))
+                .andExpect(content().string(containsString("<Code>InvalidRequest</Code>")));
+
+        mockMvc.perform(head("/api/s3/{bucketName}", duplicateLocationBucketName)
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
     void createBucketReturnsS3DuplicateBucketCodes() throws Exception {
         String adminToken = loginAndReturnAccessToken("admin", "password");
         String ownerLoginId = "s3-create-duplicate-owner";

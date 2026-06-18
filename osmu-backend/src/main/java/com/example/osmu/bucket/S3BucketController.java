@@ -179,14 +179,26 @@ public class S3BucketController {
             Element root = factory.newDocumentBuilder()
                     .parse(new ByteArrayInputStream(rawXml.getBytes(StandardCharsets.UTF_8)))
                     .getDocumentElement();
+            if (!"CreateBucketConfiguration".equals(localName(root))) {
+                throw new ApiException(ApiErrorCode.VALIDATION_ERROR, "Invalid CreateBucketConfiguration XML.");
+            }
             NodeList constraints = root.getElementsByTagNameNS("*", "LocationConstraint");
+            if (constraints.getLength() > 1) {
+                throw new ApiException(ApiErrorCode.VALIDATION_ERROR, "Invalid CreateBucketConfiguration XML.");
+            }
             if (constraints.getLength() == 0) {
                 return "";
             }
             return constraints.item(0).getTextContent() == null ? "" : constraints.item(0).getTextContent().trim();
+        } catch (ApiException exception) {
+            throw exception;
         } catch (ParserConfigurationException | SAXException | IOException exception) {
             throw new ApiException(ApiErrorCode.VALIDATION_ERROR, "Invalid CreateBucketConfiguration XML.");
         }
+    }
+
+    private String localName(Element element) {
+        return element.getLocalName() == null ? element.getNodeName() : element.getLocalName();
     }
 
     private ApiException s3CreateBucketException(String bucketName, AuthenticatedUser user, ApiException exception) {
