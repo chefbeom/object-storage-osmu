@@ -9,6 +9,9 @@
 - `V30__object_share_link_password.sql` adds optional `password_hash` storage for password-protected share links.
 - `V31__object_share_link_ip_allowlist.sql` adds optional `allowed_ip_cidrs` storage for IP-restricted share links.
 - `V32__object_share_policy.sql` adds global object share policy storage for password/IP requirements plus expiry/download caps.
+- `V33__storage_expansion_requests.sql` adds MinIO pool expansion request plans plus applied evidence.
+- `V40__storage_profile_requests.sql` adds bucket Storage Profile assignments plus request/approval/apply history.
+- `V41__data_flow_events.sql` adds persisted admin data-flow monitoring events.
 # OSMU Database Design
 
 이 문서는 MariaDB 기준 OSMU 메타데이터 DB 설계를 정의한다.
@@ -51,11 +54,16 @@ MariaDB는 실제 파일 데이터를 저장하지 않는다.
 | `bucket_permissions` | 버킷 권한 |
 | `access_keys` | S3 접근 키 메타데이터 |
 | `quota_policies` | 쿼터 정책 |
+| `storage_expansion_requests` | MinIO pool 증설 요청/계획/적용 증거 |
+| `storage_expansion_executions` | MinIO pool 증설 dry-run/GitOps/Helm/Kubernetes 실행 이력 |
+| `bucket_storage_profile_assignments` | 버킷별 활성 Storage Profile 할당 |
+| `storage_profile_requests` | 버킷 Storage Profile 요청/승인/적용 이력 |
 | `quota_policy_history` | 쿼터 정책 변경 이력 |
 | `object_metadata` | 오브젝트 목록/검색/tag index |
 | `object_metadata_tags` | tag exact filter용 inverted index |
 | `presigned_upload_sessions` | presigned upload 완료 확정 세션 |
 | `audit_logs` | 감사 로그 |
+| `data_flow_events` | object upload/download/list/delete/cancel/failure data-flow monitoring event |
 | `system_settings` | 시스템 설정 |
 
 ## 4. organizations
@@ -242,10 +250,12 @@ CREATE TABLE access_keys (
   bucket_scopes TEXT NULL,
   status VARCHAR(32) NOT NULL DEFAULT 'ACTIVE',
   expires_at DATETIME(6) NULL,
+  last_used_at DATETIME(6) NULL,
   created_at DATETIME(6) NOT NULL,
   UNIQUE KEY uk_access_keys_access_key (access_key),
   KEY idx_access_keys_owner_id (owner_id),
-  KEY idx_access_keys_status (status)
+  KEY idx_access_keys_status (status),
+  KEY idx_access_keys_last_used_at (last_used_at)
 );
 ```
 
@@ -257,6 +267,8 @@ CREATE TABLE access_keys (
 - `bucket_scopes`는 bucket별 permission JSON 배열 문자열로 저장한다.
 - 현재 구현 권한 값은 `READ`, `WRITE`, `DELETE`다.
 - 비활성화 시 S3 접근도 막아야 함.
+- `last_used_at`은 S3 호환 API에서 Access Key 인증이 성공할 때 갱신한다.
+- Access Key secret rotation 시 `secret_key_hash`, `secret_key_ciphertext`를 새 secret 기준으로 갱신하며 bucket scope와 `access_key` 값은 유지한다.
 
 - Access key `permissions` supports `READ`, `WRITE`, `DELETE`, and `ADMIN`.
 - `ADMIN` access key scope is used for bucket lifecycle alias management.
@@ -307,7 +319,156 @@ CREATE TABLE quota_policy_history (
 - `reason`은 admin이 입력한 변경 사유이며 선택값이다.
 - 감사 로그와 함께 actor 추적 근거로 사용한다.
 
-## 12. object_metadata
+## 11.1. storage_expansion_requests
+
+MinIO server pool 증설 요청, 계획값, 승인/적용 상태, 적용 증거를 저장한다.
+
+```sql
+CREATE TABLE storage_expansion_requests (
+  id BIGINT NOT NULL PRIMARY KEY,
+  requested_capacity_bytes BIGINT NOT NULL,
+  server_count INT NOT NULL,
+  volumes_per_server INT NOT NULL,
+  volume_size_bytes BIGINT NOT NULL,
+  estimated_raw_capacity_bytes BIGINT NOT NULL,
+  estimated_usable_capacity_bytes BIGINT NOT NULL,
+  status VARCHAR(32) NOT NULL,
+  reason VARCHAR(512) NULL,
+  created_by VARCHAR(128) NOT NULL,
+  applied_by VARCHAR(128) NULL,
+  applied_at TIMESTAMP NULL,
+  applied_evidence VARCHAR(512) NULL,
+  created_at TIMESTAMP NOT NULL,
+  updated_at TIMESTAMP NOT NULL,
+  KEY idx_storage_expansion_status (status, id),
+  KEY idx_storage_expansion_summary (status, requested_capacity_bytes, estimated_usable_capacity_bytes, id)
+);
+```
+
+정책:
+
+- `status`는 `PLANNED`, `APPROVED`, `REJECTED`, `APPLIED`를 사용한다.
+- `APPLIED`는 `APPROVED` 상태에서만 가능하다.
+- `APPLIED` 상태는 `applied_evidence`를 필수로 기록한다.
+- `applied_evidence`에는 GitOps PR URL, Helm 명령, Kubernetes apply 로그, 운영 티켓 ID 등을 저장한다.
+- dashboard summary는 request status/count/capacity aggregate query와 `id DESC LIMIT 1` latest query를 사용해 전체 request row를 application memory로 가져오지 않는다.
+
+## 12. storage_expansion_executions
+
+- Server dry-run runner stores `exit_code` and `timed_out` with command output. Disabled runner `SKIPPED` records use `exit_code = NULL`, `timed_out = false`.
+
+Storage Expansion dry-run, GitOps PR, Helm diff, kubectl diff, apply, rollback 실행 이력을 저장한다.
+
+```sql
+CREATE TABLE storage_expansion_executions (
+  id BIGINT NOT NULL PRIMARY KEY,
+  request_id BIGINT NOT NULL,
+  execution_type VARCHAR(32) NOT NULL,
+  result VARCHAR(32) NOT NULL,
+  command_text VARCHAR(1024) NULL,
+  output_text MEDIUMTEXT NULL,
+  external_url VARCHAR(1024) NULL,
+  artifact_sha256 VARCHAR(128) NULL,
+  exit_code INT NULL,
+  timed_out BOOLEAN NOT NULL DEFAULT FALSE,
+  notes VARCHAR(1024) NULL,
+  created_by VARCHAR(128) NOT NULL,
+  created_at TIMESTAMP NOT NULL,
+  KEY idx_storage_expansion_execution_request (request_id, id),
+  KEY idx_storage_expansion_execution_type (execution_type, result),
+  KEY idx_storage_expansion_execution_result (result, id),
+  KEY idx_storage_expansion_execution_timeout (timed_out, id)
+);
+```
+
+정책:
+
+- `execution_type`은 `DRY_RUN`, `GITOPS_PR`, `HELM_DIFF`, `KUBECTL_DIFF`, `APPLY`, `ROLLBACK`을 사용한다.
+- `result`는 `SUCCESS`, `FAILED`, `SKIPPED`를 사용한다.
+- `request_id`는 기존 `storage_expansion_requests.id`를 가리키며, MVP repository는 request 존재 여부를 service layer에서 검증한다.
+- `external_url`에는 GitOps PR, CI pipeline, 운영 티켓, runbook URL을 저장한다.
+- `artifact_sha256`은 manifest/ZIP bundle 검증 기준으로 사용한다.
+- dashboard summary는 request aggregate와 execution의 `result`, `timed_out`, `id DESC LIMIT` 기반 aggregate/recent query를 사용하므로 request/execution 전체 row를 application memory로 가져오지 않는다.
+
+## 12.1. bucket_storage_profile_assignments / storage_profile_requests
+
+Bucket-level Storage Profile assignment and request history are stored separately.
+
+```sql
+CREATE TABLE bucket_storage_profile_assignments (
+  bucket_name VARCHAR(63) NOT NULL PRIMARY KEY,
+  profile_code VARCHAR(32) NOT NULL,
+  applied_by VARCHAR(128) NOT NULL,
+  applied_at TIMESTAMP NOT NULL,
+  updated_at TIMESTAMP NOT NULL
+);
+
+CREATE TABLE storage_profile_requests (
+  id BIGINT NOT NULL PRIMARY KEY,
+  bucket_name VARCHAR(63) NOT NULL,
+  current_profile_code VARCHAR(32) NOT NULL,
+  requested_profile_code VARCHAR(32) NOT NULL,
+  status VARCHAR(32) NOT NULL,
+  reason VARCHAR(512) NULL,
+  requested_by VARCHAR(128) NOT NULL,
+  approved_by VARCHAR(128) NULL,
+  approved_at TIMESTAMP NULL,
+  applied_by VARCHAR(128) NULL,
+  applied_at TIMESTAMP NULL,
+  admin_note VARCHAR(512) NULL,
+  created_at TIMESTAMP NOT NULL,
+  updated_at TIMESTAMP NOT NULL,
+  KEY idx_storage_profile_requests_bucket (bucket_name, id),
+  KEY idx_storage_profile_requests_status (status, id)
+);
+```
+
+Policy:
+
+- `profile_code` and `requested_profile_code` use `PERFORMANCE`, `STANDARD`, or `DURABLE`.
+- `status` uses `PENDING`, `APPROVED`, `REJECTED`, or `APPLIED`.
+- If a bucket has no assignment row, backend returns default `STANDARD`.
+- Bucket deletion removes the active assignment. Request history can remain as audit history.
+- The MVP stores the control-plane profile only. Live object movement between MinIO pools is a later runner/migration step.
+
+## 13. backup_restore_drill_evidence
+
+백업/복구 드릴 evidence 상세 이력을 저장한다. Audit log는 이벤트 추적용으로 유지하고, 이 테이블은 RPO/RTO, row/object count, manifest checksum, evidence URI, gap history를 운영 조회와 대시보드 readiness 판단에 사용한다.
+
+```sql
+CREATE TABLE backup_restore_drill_evidence (
+  audit_log_id BIGINT NOT NULL PRIMARY KEY,
+  environment VARCHAR(160) NOT NULL,
+  operator_name VARCHAR(160) NOT NULL,
+  result VARCHAR(32) NOT NULL,
+  started_at TIMESTAMP NULL,
+  completed_at TIMESTAMP NULL,
+  backup_timestamp TIMESTAMP NULL,
+  restore_duration_minutes BIGINT NOT NULL,
+  observed_rpo_hours BIGINT NOT NULL,
+  rpo_target_met BOOLEAN NOT NULL,
+  rto_target_met BOOLEAN NOT NULL,
+  metadata_row_count BIGINT NOT NULL,
+  object_count BIGINT NOT NULL,
+  object_bytes BIGINT NOT NULL,
+  backup_manifest_sha256 VARCHAR(64) NULL,
+  evidence_uri VARCHAR(255) NULL,
+  gaps_text MEDIUMTEXT NULL,
+  status_impact VARCHAR(64) NOT NULL,
+  recorded_at TIMESTAMP NOT NULL,
+  KEY idx_backup_restore_drill_result_recorded (result, recorded_at, audit_log_id),
+  KEY idx_backup_restore_drill_recorded (recorded_at, audit_log_id)
+);
+```
+
+정책:
+
+- `audit_log_id`는 같은 restore drill evidence에 대해 기록된 `BACKUP_RESTORE_DRILL_EVIDENCE` audit log id를 사용한다.
+- `result`는 `SUCCESS`, `FAILED`, `PARTIAL`을 사용한다.
+- secret 원문은 저장하지 않는다. `evidence_uri`는 보호된 artifact 위치나 운영 티켓을 가리킨다.
+- dashboard backup readiness는 최신 `SUCCESS` row를 우선 사용하고, 성공 row가 없으면 최신 row를 참고해 pending 상태와 gaps를 보여준다.
+
+## 14. object_metadata
 
 Object list/search/tag filter의 metadata index다. 실제 binary는 MinIO에 있고, Backend upload/tag/presigned complete/sync 경로가 이 table을 갱신한다.
 
@@ -514,6 +675,33 @@ CREATE TABLE audit_logs (
 );
 ```
 
+## 13.1. data_flow_events
+
+Object data-flow monitoring events are stored here in MariaDB mode. The admin monitoring API aggregates this table by period, bucket, actor, source, operation, and status. The table intentionally stores object keys as `TEXT` for long S3 keys, but does not index `object_key` in the MVP.
+
+```sql
+CREATE TABLE data_flow_events (
+  id BIGINT NOT NULL PRIMARY KEY,
+  event_type VARCHAR(32) NOT NULL,
+  operation VARCHAR(64) NOT NULL,
+  direction VARCHAR(32) NOT NULL,
+  bucket_name VARCHAR(255) NOT NULL,
+  object_key TEXT NULL,
+  actor_id VARCHAR(255) NULL,
+  status VARCHAR(32) NOT NULL,
+  size_bytes BIGINT NOT NULL DEFAULT 0,
+  message VARCHAR(512) NULL,
+  source VARCHAR(64) NOT NULL,
+  created_at TIMESTAMP NOT NULL,
+  KEY idx_data_flow_events_created_at (created_at, id),
+  KEY idx_data_flow_events_bucket (bucket_name, created_at),
+  KEY idx_data_flow_events_actor (actor_id, created_at),
+  KEY idx_data_flow_events_source (source, created_at),
+  KEY idx_data_flow_events_operation (operation, created_at),
+  KEY idx_data_flow_events_status (status, created_at)
+);
+```
+
 ## 14. system_settings
 
 ```sql
@@ -537,11 +725,15 @@ erDiagram
     users ||--o{ access_keys : owns
     buckets ||--o{ bucket_permissions : grants
     buckets ||--o{ bucket_tags : has_tags
+    buckets ||--o| bucket_storage_profile_assignments : active_profile
+    buckets ||--o{ storage_profile_requests : profile_requests
     buckets ||--o{ object_metadata : indexes
     object_metadata ||--o{ object_metadata_tags : has_tags
     object_metadata ||--o{ object_versions : has_versions
     buckets ||--o{ presigned_upload_sessions : has
     users ||--o{ audit_logs : writes
+    buckets ||--o{ data_flow_events : records
+    users ||--o{ data_flow_events : acts
 ```
 
 ## 16. 마이그레이션 원칙
@@ -549,7 +741,7 @@ erDiagram
 - Flyway 또는 Liquibase 중 하나를 사용한다.
 - 마이그레이션 파일은 수정하지 않는다.
 - 변경은 새 마이그레이션으로 추가한다.
-- 현재 MVP는 `osmu-backend/src/main/resources/db/migration` 아래 `V1__init_metadata_schema.sql`부터 `V32__object_share_policy.sql`까지의 Flyway migration을 제공한다.
+- 현재 MVP는 `osmu-backend/src/main/resources/db/migration` 아래 `V1__init_metadata_schema.sql`부터 `V41__data_flow_events.sql`까지의 Flyway migration을 제공한다.
 - repository의 `CREATE TABLE IF NOT EXISTS`는 local fallback이다.
 
 ## 17. 구현 순서
@@ -570,6 +762,9 @@ erDiagram
 14. `object_share_links`
 15. `system_settings`
 16. `object_lifecycle_rules`
+17. `bucket_storage_profile_assignments`
+18. `storage_profile_requests`
+19. `data_flow_events`
 
 ## Object Lifecycle Migrations
 

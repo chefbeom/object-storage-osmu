@@ -1,5 +1,2480 @@
 # Worklog - main
 
+### 2026-06-18 - Storage Profile MVP 구현
+
+- 작업 시간:
+  - 시작: 2026-06-18 11:12:00 +09:00
+  - 종료: 2026-06-18 11:30:14 +09:00
+- 사용자 명령:
+  - OSMU에 Storage Profile 기능을 구현한다. 버킷 단위로 Performance(RAID0-like), Standard(Erasure Coding), Durable(High Parity) 프로파일을 요청/승인/적용할 수 있게 하고, 관리자/사용자 UI, 백엔드 API, MariaDB 스키마, MinIO pool/parity 연동 설계 문서, 테스트 케이스, worklog까지 포함해 MVP 수준으로 구현한다.
+- 요청 분석:
+  - 사용자의 목표를 버킷별 저장 정책 선택/승인 workflow 구현으로 이해했다.
+  - RAID0-like는 실제 단일 디스크 RAID 구현이 아니라 MinIO pool/parity intent와 연결되는 control-plane Storage Profile로 해석했다.
+  - MVP 범위는 요청/승인/적용 metadata, UI 조작, MariaDB persistence, mock/demo 지원, 문서/테스트까지로 제한했다.
+- 실행 내용:
+  - 기존 bucket 권한, admin controller, frontend page 분리, mock API, 문서 구조를 확인했다.
+  - backend storageprofile package, repository, controller, service, migration, focused test를 추가했다.
+  - frontend API wrapper, Storage page 사용자 panel, Admin page 승인 queue, HomeView state/action 연결, mock API fixture를 추가했다.
+  - API/DB/MinIO 설계/test case/Product Requirements/OpenAPI verifier 문서를 갱신했다.
+- 구현 내용:
+  - Profile catalog: `PERFORMANCE`, `STANDARD`, `DURABLE`.
+  - User API: `GET /api/storage-profiles`, `GET /api/storage-profile-requests`, `GET /api/buckets/{bucketName}/storage-profile`, `POST /api/buckets/{bucketName}/storage-profile-requests`.
+  - Admin API: `GET /api/admin/storage-profile-requests`, `PATCH /api/admin/storage-profile-requests/{requestId}/status`, `POST /api/admin/storage-profile-requests/{requestId}/apply`.
+  - Status flow: `PENDING -> APPROVED/REJECTED`, `APPROVED -> APPLIED`.
+  - MariaDB tables: `bucket_storage_profile_assignments`, `storage_profile_requests`.
+  - UI: selected bucket active profile/request form, admin approval/reject/apply queue.
+  - Mock API: frontend-only demo에서도 Storage Profile request/apply flow가 동작하도록 in-memory state 추가.
+- 수정된 파일 및 관련 파일:
+  - `osmu-backend/src/main/java/com/example/osmu/storageprofile/**`
+  - `osmu-backend/src/main/java/com/example/osmu/bucket/BucketService.java`
+  - `osmu-backend/src/main/resources/db/migration/V40__storage_profile_requests.sql`
+  - `osmu-backend/src/test/java/com/example/osmu/storageprofile/StorageProfileControllerTest.java`
+  - `osmu-frontend/src/services/api.js`
+  - `osmu-frontend/src/services/api-storage-profile.test.js`
+  - `osmu-frontend/src/views/HomeView.vue`
+  - `osmu-frontend/src/components/storage/StoragePage.vue`
+  - `osmu-frontend/src/components/admin/AdminPage.vue`
+  - `osmu-frontend/mock-api/server.mjs`
+  - `dev-docs/storage-profile.md`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/database-design.md`
+  - `dev-docs/minio-pool-expansion.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/openapi-mvp.json`
+  - `scripts/verify-openapi-contract.ps1`
+  - `PRODUCT_REQUIREMENTS.md`
+  - `dev-docs/document-index.md`
+  - `dev-docs/worklog/main/worklog-main.md`
+- 검증 기록:
+  - `node --test src/services/api-storage-profile.test.js`: 통과.
+  - `node ./mock-api/server.mjs --self-test`: 통과.
+  - `npm.cmd run build`: 통과.
+  - `npm.cmd run test:unit`: 통과, 70 tests pass.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-openapi-contract.ps1`: 통과, Operations 139, Frontend API functions 113.
+  - `.\gradlew.bat test --tests com.example.osmu.storageprofile.StorageProfileControllerTest`: 통과. 최초 실행은 JAVA_HOME/Gradle network 제한으로 실패했고, Temurin JDK 17 경로 지정 및 승인된 Gradle 실행 후 테스트 통과.
+  - `git diff --check -- <Storage Profile touched files>`: 통과. LF/CRLF warning만 있음.
+- 결과:
+  - Storage Profile MVP control-plane 기능이 backend/frontend/mock/docs/tests에 연결됐다.
+  - 현재 적용은 bucket assignment metadata 수준이며, 실제 MinIO pool 이동, parity 변경, 기존 object rewrite는 아직 runner 단계가 아니다.
+- 다음 작업할 때 참고할 사항:
+  - 실제 MinIO Operator/AIStor CRD에서 pool selector, storage class, parity 설정 가능 범위를 확인해야 한다.
+  - `PERFORMANCE`는 고속 shard/low parity 의도이므로 고객 UI/승인 화면에서 데이터 손실 위험을 계속 명확히 보여줘야 한다.
+  - MariaDB request id는 MVP repository에서 `MAX(id)+1` 방식이므로 운영 전 auto-increment 또는 sequence 전략으로 보강하는 것이 좋다.
+- 코드 리뷰:
+  - 권한 모델은 bucket manage permission과 ADMIN 전용 apply로 분리되어 있다.
+  - 상태 전이는 단순하고 테스트 가능하다.
+  - MinIO 연동은 의도/hint만 저장하므로 과장된 "실제 RAID 구현 완료"로 설명하면 안 된다.
+  - mock API와 OpenAPI verifier를 같이 갱신해 frontend-only demo와 contract drift 위험을 낮췄다.
+- 앞으로 추가적으로 개발해야하는 내용:
+  - Storage Profile Browser E2E.
+  - MariaDB migration integration smoke.
+  - MinIO pool/parity live runner.
+  - 기존 object를 새 profile pool로 재배치하는 migration/rewrite workflow.
+  - Profile별 quota/capacity compatibility check.
+- 추가적으로 사용된 skill이나 plugin:
+  - `caveman` ultra: 응답 압축 모드.
+
+### 2026-06-18 - MVP Completion Report 추가
+
+- 작업 시간:
+  - 시작: 2026-06-18 10:39:00 +09:00
+  - 종료: 2026-06-18 10:41:43 +09:00
+- 사용자 명령:
+  - active goal: "프로젝트 MVP 완성" 계속 진행.
+- 요청 분석:
+  - local durable MVP는 ready로 판단할 수 있는 개별 evidence가 있었지만, demo readiness, durable gate, durable finalizer, release artifacts, 상태 문서가 서로 일치하는지 한 번에 보는 표준 completion report가 없었다.
+  - MVP 완료 판단과 production/B2B operations readiness pending을 분리해서 기록해야, MVP demo GO와 운영 상용화 pending이 섞이지 않는다고 판단했다.
+- 실행 내용:
+  - `scripts/verify-mvp-completion.ps1`를 추가했다.
+  - `dev-docs/document-index.md`, `dev-docs/mvp-release-checklist.md`, `dev-docs/test-cases.md`에 completion report와 `TC-DEMO-008`을 연결했다.
+  - completion report를 실행해 `.osmu-run/latest-mvp-completion.json`과 `.osmu-run/latest-mvp-completion.md`를 생성했다.
+- 구현 내용:
+  - `latest-demo-readiness.json`, `latest-durable-demo-gate.json`, `latest-durable-mvp-finalize.json`, release report, audit, decision, release notes, 상태 문서를 읽어 local durable MVP readiness를 검증한다.
+  - `docker-durable-demo-verified`, durable pending check 0개, durable MVP pilot GO, stale Browser E2E pending 문구 부재, 문서의 최신 상태 반영을 확인한다.
+  - production operations readiness는 별도 check로 표시하고 local MVP completion을 막지 않는다.
+- 수정된 파일 및 관련 파일:
+  - `scripts/verify-mvp-completion.ps1`
+  - `dev-docs/document-index.md`
+  - `dev-docs/mvp-release-checklist.md`
+  - `dev-docs/test-cases.md`
+  - `.osmu-run/latest-mvp-completion.json` (생성 산출물, git ignore 대상)
+  - `.osmu-run/latest-mvp-completion.md` (생성 산출물, git ignore 대상)
+  - `dev-docs/worklog/main/worklog-main.md`
+- 검증 기록:
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-mvp-completion.ps1 -FailIfLocalMvpNotReady`: 통과. result=`ready`, classification=`local-durable-mvp-ready`, localPendingCheckCount=`0`, production readiness=`pending (passed=36 pending=6)`.
+  - PowerShell parser check for `verify-mvp-completion.ps1`: 통과.
+  - `git diff --check -- scripts/verify-mvp-completion.ps1 dev-docs/document-index.md dev-docs/mvp-release-checklist.md dev-docs/test-cases.md`: 통과. LF/CRLF warning만 존재.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-mvp-release-artifacts.ps1 -DurableGateReportPath .\.osmu-run\latest-durable-demo-gate.json`: 통과.
+- 결과:
+  - local durable MVP completion을 단일 JSON/Markdown evidence로 확인할 수 있게 됐다.
+  - 현재 completion report 기준 local durable MVP는 ready이고, production/B2B operations readiness는 별도 pending으로 남는다.
+- 후속 메모:
+  - 이후 release candidate 직전에는 `finalize-durable-mvp-demo.ps1 -S3Client docker-mc` 재실행 후 `verify-mvp-completion.ps1 -FailIfLocalMvpNotReady`를 다시 실행하면 된다.
+- 코드 리뷰:
+  - 스크립트는 local MVP 완료 조건과 production readiness 조건을 분리해 과장된 완료 판정을 피한다.
+  - 문서 stale phrase와 audit stale Browser E2E 문구를 함께 확인해 evidence/document drift를 줄인다.
+- 앞으로 추가적으로 개발해야하는 내용:
+  - production/B2B readiness pending 6개 해소, GitHub-hosted workflow evidence 수집.
+- 추가적으로 사용된 skill이나 plugin:
+  - `caveman` ultra: 응답 압축용으로 사용.
+
+### 2026-06-18 - MVP Audit Frontend E2E 상태 보정
+
+- 작업 시간:
+  - 시작: 2026-06-18 10:38:00 +09:00
+  - 종료: 2026-06-18 10:38:42 +09:00
+- 사용자 명령:
+  - active goal: "프로젝트 MVP 완성" 계속 진행.
+- 요청 분석:
+  - 최신 durable MVP evidence는 Browser E2E와 Docker-backed demo가 통과했지만, `latest-mvp-audit.md`의 Test Case Evidence Map에는 `Frontend portal checks`가 `PARTIAL`이고 `Browser click E2E pending`이라고 남아 있었다.
+  - 같은 audit 안에서 `Browser visual/click E2E`는 PASS로 표시되어 MVP 완료 판단에 모순이 생기므로, Browser E2E pass 상태와 audit 문구를 동기화해야 한다고 판단했다.
+- 실행 내용:
+  - `write-mvp-audit.ps1`에서 `$browserE2EPassed`가 true이면 `Frontend portal checks`를 `PASS`로 쓰고 `Browser click E2E passed` 문구를 쓰도록 보정했다.
+  - `verify-mvp-release-artifacts.ps1`에 durable GO 상태에서 `Frontend portal checks` PASS, `Browser click E2E passed`, `Browser click E2E pending` 미포함 검증을 추가했다.
+  - durable gate report 기준으로 MVP audit을 재생성했다.
+- 구현 내용:
+  - audit의 frontend portal evidence status를 Browser E2E 결과에 따라 동적으로 결정한다.
+  - release artifact verifier가 audit의 stale pending 문구 재발을 차단한다.
+- 수정된 파일 및 관련 파일:
+  - `scripts/write-mvp-audit.ps1`
+  - `scripts/verify-mvp-release-artifacts.ps1`
+  - `.osmu-run/latest-mvp-audit.md` (생성 산출물, git ignore 대상)
+  - `dev-docs/worklog/main/worklog-main.md`
+- 검증 기록:
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\write-mvp-audit.ps1 -DurableGateReportPath .\.osmu-run\latest-durable-demo-gate.json`: 통과. audit 재생성.
+  - PowerShell parser check for `write-mvp-audit.ps1`, `verify-mvp-release-artifacts.ps1`: 통과.
+  - `git diff --check -- scripts/write-mvp-audit.ps1 scripts/verify-mvp-release-artifacts.ps1`: 통과. LF/CRLF warning만 존재.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-mvp-release-artifacts.ps1 -DurableGateReportPath .\.osmu-run\latest-durable-demo-gate.json`: 통과.
+  - `rg` 확인: 최신 audit에는 `Frontend portal checks`가 PASS이고 `Browser click E2E passed`가 표시된다.
+- 결과:
+  - local durable MVP audit에서 Browser E2E 통과 상태와 frontend evidence map이 일치한다.
+- 후속 메모:
+  - 남은 MVP 이후 운영 증적은 storage expansion finalizer, Kubernetes DR finalizer, security evidence finalizer다.
+- 코드 리뷰:
+  - release artifact verifier에 regression guard를 추가했으므로 다음 audit 재생성 때 stale pending 문구가 다시 들어오면 실패한다.
+  - Browser E2E가 없는 lightweight-only 상태에서는 기존처럼 PARTIAL/pending으로 남는다.
+- 앞으로 추가적으로 개발해야하는 내용:
+  - GitHub-hosted workflow evidence와 production operations readiness pending 해소.
+- 추가적으로 사용된 skill이나 plugin:
+  - `caveman` ultra: 응답 압축용으로 사용.
+
+### 2026-06-18 - MVP Durable Evidence 문서 동기화
+
+- 작업 시간:
+  - 시작: 2026-06-18 10:35:48 +09:00
+  - 종료: 2026-06-18 10:39:00 +09:00
+- 사용자 명령:
+  - active goal: "프로젝트 MVP 완성" 계속 진행.
+- 요청 분석:
+  - 최신 `.osmu-run/latest-demo-readiness.json`, `.osmu-run/latest-durable-demo-gate.json`, `.osmu-run/latest-durable-mvp-finalize.json`는 `result=ready`, `currentDemoStatus=docker-durable-demo-verified`를 기록하고 있었다.
+  - 하지만 `feature-inventory.md`, `prototype-status.md`, `mvp-release-checklist.md`는 아직 Docker/MariaDB/MinIO/Browser/real S3 client durable gate를 pending으로 설명하고 있어 MVP 상태 판단이 흔들릴 수 있었다.
+- 실행 내용:
+  - 최신 durable MVP evidence를 기준으로 문서의 MVP 완료율, current status, blocker, durable gate checklist를 갱신했다.
+  - local durable MVP demo는 ready로 표시하되, GitHub-hosted evidence와 production/B2B operations readiness는 별도 pending gate로 유지했다.
+- 구현 내용:
+  - MVP demo 추정치를 90-95%로 보정했다.
+  - `docker-durable-demo-verified` evidence 경로와 시각을 명시했다.
+  - Docker daemon/MariaDB/MinIO/full smoke/Browser E2E/Dockerized real S3 client를 local durable MVP 기준 통과 항목으로 이동했다.
+  - host `aws`/`mc`, GitHub-hosted workflow, production operations readiness는 남은 외부/운영 증적으로 분리했다.
+- 수정된 파일 및 관련 파일:
+  - `dev-docs/feature-inventory.md`
+  - `dev-docs/prototype-status.md`
+  - `dev-docs/mvp-release-checklist.md`
+  - `dev-docs/worklog/main/worklog-main.md`
+- 검증 기록:
+  - `.osmu-run/latest-demo-readiness.json`: `result=ready`, `currentDemoStatus=docker-durable-demo-verified`, `completionEstimate.mvpDemo=90-95%` 확인.
+  - `.osmu-run/latest-durable-demo-gate.json`: `result=ready`, `currentDemoStatus=docker-durable-demo-verified`, `selectedS3Client=docker-mc` 확인.
+  - `.osmu-run/latest-durable-mvp-finalize.json`: `result=ready`, durable gate/release artifact/hard readiness command chain 확인.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-mvp-release-artifacts.ps1 -DurableGateReportPath .\.osmu-run\latest-durable-demo-gate.json`: 통과.
+  - PowerShell parser check for `scripts/*.ps1`: 통과.
+  - `git diff --check -- dev-docs/feature-inventory.md dev-docs/prototype-status.md dev-docs/mvp-release-checklist.md dev-docs/worklog/main/worklog-main.md`: 통과. LF/CRLF warning만 존재.
+  - stale 문구 검색: durable gate를 pending으로 말하는 핵심 문구 없음.
+- 결과:
+  - 최신 local durable MVP evidence와 주요 상태 문서가 일치하도록 보정됐다.
+  - MVP local durable demo 상태는 ready로 정리됐고, hosted workflow/production operations readiness는 별도 pending으로 남겼다.
+- 후속 메모:
+  - 문서 보정 후 release/checklist 관련 verifier와 diff check를 실행해야 한다.
+- 코드 리뷰:
+  - 실제 evidence를 위조하지 않고 `.osmu-run/latest-*` 결과를 문서에 반영하는 변경이다.
+  - production/B2B readiness와 local durable MVP readiness를 분리해 과장된 완료 판정을 피했다.
+- 앞으로 추가적으로 개발해야하는 내용:
+  - GitHub-hosted workflow evidence, image signing/container security evidence, operations readiness pending 6개 해소.
+- 추가적으로 사용된 skill이나 plugin:
+  - `caveman` ultra: 응답 압축용으로 사용.
+
+### 2026-06-16 - Kubernetes Operations Report Backend Mount 검증 추가
+
+- 작업 시간:
+  - 시작: 2026-06-16 10:50:49 +09:00
+  - 종료: 2026-06-16 10:57:31 +09:00
+- 사용자 명령:
+  - active goal: "운영용 Kubernetes 증설 자동화, 보안 hardening, IAM/RBAC 고도화, 백업/복구, HA/DR의 기능 구현" 계속 진행.
+- 요청 분석:
+  - 직전 작업에서 ConfigMap sync와 dashboard polling은 보강됐지만, `osmu-operations-reports` ConfigMap에 들어간 파일이 실제 backend Pod의 `/app/.osmu-run` mount에서 보이는지 확인하는 별도 증거가 없었다.
+  - 운영 검증 순서는 ConfigMap key 존재 확인, backend Pod mounted file 확인, dashboard API 반영 확인으로 나뉘어야 장애 위치를 정확히 알 수 있다고 판단했다.
+- 실행 내용:
+  - read-only live verifier `verify-kubernetes-operations-report-mount.ps1`를 추가했다.
+  - fake kubectl 기반 self-test `verify-kubernetes-operations-report-mount-self-test.ps1`를 추가했다.
+  - `verify-local.ps1`에 새 self-test를 연결했다.
+  - 운영 문서, 테스트 케이스, MVP checklist, feature inventory, document index, README를 갱신했다.
+- 구현 내용:
+  - ConfigMap `latest-operations-readiness-convergence.json`, `latest-kubernetes-operations-report-sync.json` key 존재 확인.
+  - 각 JSON의 format/result/configMap metadata 검증.
+  - `app.kubernetes.io/name=osmu-backend` selector로 Ready backend Pod 선택.
+  - `kubectl exec <pod> -c backend -- cat /app/.osmu-run/<file>`로 mounted file 가시성 확인.
+  - mounted file과 ConfigMap data SHA256 비교.
+  - evidence output에는 Secret 값을 읽거나 저장하지 않는다.
+- 수정된 파일 및 관련 파일:
+  - `scripts/verify-kubernetes-operations-report-mount.ps1`
+  - `scripts/verify-kubernetes-operations-report-mount-self-test.ps1`
+  - `scripts/verify-local.ps1`
+  - `dev-docs/document-index.md`
+  - `dev-docs/operation-monitoring.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/feature-inventory.md`
+  - `dev-docs/mvp-release-checklist.md`
+  - `infra/k8s/README.md`
+  - `infra/helm/osmu/README.md`
+  - `dev-docs/worklog/main/worklog-main.md`
+- 검증 기록:
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-kubernetes-operations-report-mount-self-test.ps1`: 통과. ConfigMap data와 backend Pod mount file SHA256 일치 확인.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-kubernetes-operations-report-sync.ps1`: 통과.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-kubernetes-operations-report-sync-live-self-test.ps1`: 통과.
+  - PowerShell parser check for `scripts/*.ps1`: 통과.
+  - `git diff --check --`: 통과. LF/CRLF warning만 존재.
+  - 실제 `192.168.35.88` 서버 배포 검증은 아직 수행하지 않았다.
+- 결과:
+  - 실제 배포 후 ConfigMap data와 backend Pod mount file 사이의 가시성을 확인할 수 있는 증적 경로가 생겼다.
+- 후속 메모:
+  - 실제 서버 검증 시 순서: `sync-kubernetes-operations-reports.ps1 -Apply` -> `verify-kubernetes-operations-report-mount.ps1 -Namespace <ns>` -> `verify-kubernetes-operations-report-sync-live.ps1 -ApiBase <api>`.
+- 코드 리뷰:
+  - 스크립트는 read-only이며 Kubernetes resource를 생성/수정/삭제하지 않는다.
+  - Pod exec는 mounted JSON 파일만 읽고 Secret mount나 환경변수는 읽지 않는다.
+  - backend image에 `cat`이 없을 경우 실패할 수 있으므로, 그런 환경에서는 별도 read-only debug 방법을 추가 검토해야 한다.
+- 앞으로 추가적으로 개발해야하는 내용:
+  - 실제 `192.168.35.88` 배포 환경에서 mount verifier와 dashboard verifier를 연속 실행.
+  - mount verifier evidence를 operations readiness convergence 최종 gate에 통합할지 검토.
+- 추가적으로 사용된 skill이나 plugin:
+  - `caveman` ultra: 응답 압축용으로 사용.
+
+### 2026-06-16 - Kubernetes Report Sync Live Dashboard Polling 보강
+
+- 작업 시간:
+  - 시작: 2026-06-16 10:42:14 +09:00
+  - 종료: 2026-06-16 10:43:33 +09:00
+- 사용자 명령:
+  - active goal: "운영용 Kubernetes 증설 자동화, 보안 hardening, IAM/RBAC 고도화, 백업/복구, HA/DR의 기능 구현" 계속 진행.
+- 요청 분석:
+  - 직전 작업에서 sync evidence까지 ConfigMap에 배포되도록 보강했지만, 실제 Kubernetes에서는 ConfigMap volume refresh와 backend dashboard API 반영 사이에 지연이 있을 수 있다.
+  - live dashboard verifier가 한 번만 API를 확인하면 실제 배포 검증이 불안정할 수 있으므로, retry/polling을 추가해 운영 환경에서 더 신뢰할 수 있는 검증으로 만들 필요가 있다고 판단했다.
+- 실행 내용:
+  - `verify-kubernetes-operations-report-sync-live.ps1`의 deployed API 검증 경로에 dashboard readiness polling을 추가했다.
+  - self-test가 retry 관련 evidence 필드와 match 상태를 검증하도록 보강했다.
+  - 운영 문서와 테스트 케이스, README, feature inventory, document index를 갱신했다.
+- 구현 내용:
+  - `DashboardRetryCount` 기본값 6 추가.
+  - `DashboardRetryDelaySeconds` 기본값 10 추가.
+  - API mode에서 `GET /api/admin/dashboard/readiness`를 retry하며 expected sync state가 보일 때까지 polling.
+  - evidence에 `dashboardRetryCount`, `dashboardRetryDelaySeconds`, `dashboardAttemptCount`, `dashboardMatchedExpected`, `dashboardPollingOutput` 추가.
+  - fixture mode는 기존처럼 빠르게 1회 검증한다.
+- 수정된 파일 및 관련 파일:
+  - `scripts/verify-kubernetes-operations-report-sync-live.ps1`
+  - `scripts/verify-kubernetes-operations-report-sync-live-self-test.ps1`
+  - `infra/k8s/README.md`
+  - `infra/helm/osmu/README.md`
+  - `dev-docs/operation-monitoring.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/document-index.md`
+  - `dev-docs/feature-inventory.md`
+  - `dev-docs/worklog/main/worklog-main.md`
+- 검증 기록:
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-kubernetes-operations-report-sync-live-self-test.ps1`: 통과. retry count/delay/attempt/match evidence 확인.
+  - PowerShell parser check for `scripts/*.ps1`: 통과.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-kubernetes-operations-report-sync.ps1`: 통과.
+  - `git diff --check -- <관련 파일>`: 통과. LF/CRLF warning만 있음.
+- 결과:
+  - 실제 배포 후 ConfigMap 파일 반영 지연이 있어도 live verifier가 일정 시간 동안 dashboard readiness API를 재확인할 수 있게 됐다.
+- 후속 메모:
+  - `192.168.35.88` 실제 검증 시 `-DashboardRetryCount 12 -DashboardRetryDelaySeconds 10`처럼 더 긴 대기값을 사용할 수 있다.
+- 코드 리뷰:
+  - 비밀번호와 bearer token은 여전히 evidence에 저장하지 않는다.
+  - polling output에는 비밀값 없이 attempt별 readiness match 요약만 저장한다.
+  - server dry-run만 실행한 상태에서 dashboard check를 함께 수행하면 expected result가 맞지 않을 수 있으므로, server dry-run 검증에서는 `-SkipDashboardCheck` 또는 기존 mounted evidence 조건을 확인해야 한다.
+- 앞으로 추가적으로 개발해야하는 내용:
+  - 실제 Kubernetes cluster에서 ConfigMap volume refresh 시간과 dashboard API 반영 시간을 측정.
+  - 필요하면 backend Pod rollout/restart를 자동으로 제안하는 안전한 plan-only helper 추가.
+- 추가적으로 사용된 skill이나 plugin:
+  - 별도 skill/plugin 없음.
+
+### 2026-06-18 - 관리자 데이터 흐름 모니터링 MVP
+
+- 작업 시간:
+  - 시작: 2026-06-18 11:05:00 +09:00
+  - 종료: 2026-06-18 11:53:00 +09:00
+- 사용자 명령:
+  - "관리자 모니터링 환경도 구성, 예를들어 현재 사용량의 확인과 사용된 트래픽, 입출력 양, 데이터 전송 실패, 취소, 다운로드, 업로드 등 데이터흐름의 전체를 감시할수 있는 환경"
+- 요청 분석:
+  - 기존 usage/audit/dashboard만으로는 데이터 흐름의 byte, upload/download, 실패, 취소, 최근 이벤트를 한 화면에서 추적하기 어렵다고 해석했다.
+  - 관리자 대시보드에 데이터 흐름 감시 패널을 추가하고, REST API와 S3 호환 API 양쪽의 object 흐름을 MVP 수준으로 계측해야 한다고 판단했다.
+- 실행 내용:
+  - 백엔드에 `DataFlowMonitoringService`와 응답 record들을 추가했다.
+  - `AdminController`에 `GET /api/admin/monitoring/data-flow`를 추가하고 `/api/admin/dashboard/summary` 응답에 `dataFlow`를 포함했다.
+  - REST `ObjectController`와 S3 호환 `S3ObjectController`에서 list/upload/download/delete/multipart abort/multipart complete/copy/multi-delete 흐름을 기록하도록 연결했다.
+  - 프론트 `HomeView`와 `DashboardPage`에 data-flow state, API wrapper, IO widget summary, 상세 관리자 패널을 추가했다.
+  - frontend mock API에도 data-flow event window와 summary endpoint를 추가해 데모에서 확인 가능하게 했다.
+  - API spec, OpenAPI, operation monitoring, test cases, feature inventory, MVP checklist, OpenAPI verifier를 갱신했다.
+- 구현 내용:
+  - traffic: uploaded/downloaded/total/ingress/egress bytes.
+  - operations: upload/download/list/delete/cancel/failure/total count.
+  - topBuckets: bucket별 upload/download/list/delete/cancel/failure 및 마지막 이벤트.
+  - recentEvents: 최신 50개 data-flow event.
+  - Micrometer counter:
+    - `osmu.data.flow.operations`
+    - `osmu.data.flow.bytes`
+  - 관리자 UI:
+    - `dashboard-widget-io`
+    - `data-flow-monitoring-panel`
+    - `data-flow-total-bytes`
+    - `data-flow-failed-cancelled`
+    - `data-flow-top-buckets`
+    - `data-flow-recent-events`
+- 수정된 파일 및 관련 파일:
+  - `osmu-backend/src/main/java/com/example/osmu/monitoring/*`
+  - `osmu-backend/src/main/java/com/example/osmu/admin/AdminController.java`
+  - `osmu-backend/src/main/java/com/example/osmu/admin/DashboardSummaryResponse.java`
+  - `osmu-backend/src/main/java/com/example/osmu/object/ObjectController.java`
+  - `osmu-backend/src/main/java/com/example/osmu/object/S3ObjectController.java`
+  - `osmu-backend/src/test/java/com/example/osmu/admin/AdminDashboardSummaryControllerTest.java`
+  - `osmu-backend/src/test/java/com/example/osmu/monitoring/DataFlowMonitoringServiceTest.java`
+  - `osmu-backend/src/test/java/com/example/osmu/object/S3ObjectControllerMultipartTest.java`
+  - `osmu-frontend/src/services/api.js`
+  - `osmu-frontend/src/services/api-query.test.js`
+  - `osmu-frontend/src/views/HomeView.vue`
+  - `osmu-frontend/src/views/HomeView.test.js`
+  - `osmu-frontend/src/components/dashboard/DashboardPage.vue`
+  - `osmu-frontend/src/assets/main.css`
+  - `osmu-frontend/mock-api/server.mjs`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/openapi-mvp.json`
+  - `dev-docs/operation-monitoring.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/feature-inventory.md`
+  - `dev-docs/mvp-release-checklist.md`
+  - `scripts/verify-openapi-contract.ps1`
+- 검증 기록:
+  - `.\gradlew.bat test --tests com.example.osmu.monitoring.DataFlowMonitoringServiceTest --tests com.example.osmu.admin.AdminDashboardSummaryControllerTest --tests com.example.osmu.object.S3ObjectControllerMultipartTest`: 통과. 최초 sandbox 실행은 Gradle distribution download 네트워크 제한으로 실패했고, 승인 권한 재실행 통과.
+  - `npm.cmd run test:unit`: 통과. 71 tests passed.
+  - `npm.cmd run build`: 통과.
+  - `node .\mock-api\server.mjs --self-test`: 통과.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-openapi-contract.ps1`: 통과. Operations 140, frontend API functions checked 113.
+  - `git diff --check -- <data-flow monitoring related files>`: 통과. LF/CRLF warning만 출력.
+- 결과:
+  - 관리자 API와 dashboard summary에서 데이터 흐름 감시 정보를 조회할 수 있다.
+  - 관리자 대시보드는 전체 트래픽, 업로드/다운로드, 실패/취소, 상위 버킷, 최근 이벤트를 표시한다.
+  - REST API와 S3 호환 API 모두 주요 object data-flow를 MVP 수준으로 계측한다.
+- 후속 메모:
+  - 현재 detailed event window는 in-memory라 backend 재시작 시 초기화된다.
+  - production에서는 MariaDB event table 또는 time-series storage로 영구 저장해야 한다.
+  - streaming download byte는 response 시작 시점에 먼저 계산하고, stream 중 예외가 나면 실패 이벤트를 추가 기록한다.
+  - Prometheus/Grafana alert는 실패/취소 spike, egress 급증, bucket별 anomaly 기준으로 추가해야 한다.
+- 코드 리뷰:
+  - Micrometer tag에는 bucket/object key를 넣지 않아 high-cardinality metric 위험을 피했다.
+  - 최근 이벤트와 top bucket은 관리자 화면용 in-memory view로 제한해 구현 범위를 MVP에 맞췄다.
+  - REST/S3 양쪽 경로를 모두 연결해 S3 호환 클라이언트 사용 시에도 대시보드가 비는 문제를 줄였다.
+  - 다만 cancel/failure 구분은 아직 stream exception/message 기반이 아니고 명시적 multipart abort 위주라, client disconnect 세분화는 후속 개선이 필요하다.
+- 앞으로 추가적으로 개발해야 하는 내용:
+  - MariaDB `data_flow_events` 영구 저장 schema/repository.
+  - Prometheus alert rule과 Grafana panel에 `osmu.data.flow.*` 지표 연결.
+  - tenant/user/bucket별 chargeback 또는 quota anomaly 분석.
+  - streaming client abort와 network failure의 세부 분류.
+- 추가적으로 사용된 skill이나 plugin:
+  - 별도 skill/plugin 없음.
+
+### 2026-06-16 - Kubernetes Report Sync Evidence ConfigMap 배포 보강
+
+- 작업 시간:
+  - 시작: 2026-06-16 10:37:06 +09:00
+  - 종료: 2026-06-16 10:38:09 +09:00
+- 사용자 명령:
+  - active goal: "운영용 Kubernetes 증설 자동화, 보안 hardening, IAM/RBAC 고도화, 백업/복구, HA/DR의 기능 구현" 계속 진행.
+- 요청 분석:
+  - 직전 작업에서 live dashboard verifier를 추가했지만, 실제 Kubernetes ConfigMap sync 스크립트는 convergence report 파일만 ConfigMap에 넣고 있었다.
+  - backend는 `.osmu-run/latest-operations-readiness-convergence.json`와 `.osmu-run/latest-kubernetes-operations-report-sync.json`를 모두 읽도록 설계되어 있으므로, sync evidence 파일도 같은 ConfigMap에 배포되어야 dashboard에서 Kubernetes sync 상태를 안정적으로 확인할 수 있다고 판단했다.
+- 실행 내용:
+  - `sync-kubernetes-operations-reports.ps1`의 apply 흐름을 2단계로 보강했다.
+  - 1차 apply로 convergence report를 ConfigMap에 반영하고, 성공 시 sync evidence JSON을 생성한 뒤 2차 apply로 convergence report와 sync evidence를 함께 ConfigMap에 반영하도록 했다.
+  - self-test가 새 evidence publish command/output/check를 검증하도록 강화했다.
+  - Kubernetes/Helm 운영 README, operation monitoring, test cases, feature inventory, document index를 갱신했다.
+- 구현 내용:
+  - `scripts/sync-kubernetes-operations-reports.ps1`
+    - `EvidenceConfigMapKey` 기본값 `latest-kubernetes-operations-report-sync.json` 추가.
+    - `SkipEvidenceConfigMapPublish` 옵션 추가.
+    - apply 성공 후 `render-configmap-with-sync-evidence`, `apply-configmap-with-sync-evidence` check를 추가.
+    - report에 `evidenceConfigMapKey`, `publishEvidenceToConfigMap`, `publishEvidenceClientDryRunCommand`, `publishEvidenceApplyCommand`, `publishEvidenceApplyOutput` 추가.
+  - `scripts/verify-kubernetes-operations-report-sync.ps1`
+    - plan/apply evidence가 sync evidence publish fields와 2차 apply checks를 포함하는지 검증.
+- 수정된 파일 및 관련 파일:
+  - `scripts/sync-kubernetes-operations-reports.ps1`
+  - `scripts/verify-kubernetes-operations-report-sync.ps1`
+  - `infra/k8s/README.md`
+  - `infra/helm/osmu/README.md`
+  - `dev-docs/operation-monitoring.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/feature-inventory.md`
+  - `dev-docs/document-index.md`
+  - `dev-docs/worklog/main/worklog-main.md`
+- 검증 기록:
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-kubernetes-operations-report-sync.ps1`: 통과. apply evidence에 `render-configmap-with-sync-evidence`, `apply-configmap-with-sync-evidence`, `publishEvidenceApplyOutput` 포함 확인.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-kubernetes-operations-report-sync-live-self-test.ps1`: 통과.
+  - PowerShell parser check for `scripts/*.ps1`: 통과.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-ci-workflow.ps1`: 통과.
+  - `git diff --check -- <관련 파일>`: 통과. LF/CRLF warning만 있음.
+- 결과:
+  - apply mode에서 backend mount 대상 ConfigMap이 convergence report뿐 아니라 Kubernetes report sync evidence까지 포함하도록 개선됐다.
+- 후속 메모:
+  - 실제 서버 검증 때는 `sync-kubernetes-operations-reports.ps1 -Namespace <ns> -Apply` 후 ConfigMap volume refresh 또는 backend Pod reload 상태를 확인하고, `verify-kubernetes-operations-report-sync-live.ps1`로 dashboard API 반영을 검증해야 한다.
+- 코드 리뷰:
+  - 기본 동작은 여전히 `-Apply`가 없으면 Kubernetes에 쓰지 않는다.
+  - sync evidence publish를 별도 옵션으로 끌 수 있게 했으나, 기본은 dashboard visibility를 위해 publish한다.
+  - 2차 apply에 포함되는 evidence는 1차 apply 성공 사실과 publish command를 담는다. 2차 apply 실패 시 최종 로컬 evidence는 failed가 된다.
+- 앞으로 추가적으로 개발해야하는 내용:
+  - live cluster에서 ConfigMap-mounted file refresh latency와 dashboard API 반영 여부를 실제로 측정.
+  - 필요하면 ConfigMap refresh를 기다리는 polling 옵션을 live verifier에 추가.
+- 추가적으로 사용된 skill이나 plugin:
+  - 별도 skill/plugin 없음.
+
+### 2026-06-16 - Kubernetes Report Sync Live Dashboard 검증 추가
+
+- 작업 시간:
+  - 시작: 2026-06-16 10:28:53 +09:00
+  - 종료: 2026-06-16 10:31:39 +09:00
+- 사용자 명령:
+  - 필요하면 배포 확인 때 `192.168.35.88` 서버로 배포 검증하면 된다고 안내.
+- 요청 분석:
+  - 현재 목표인 Kubernetes 운영 자동화/HA/DR/보안 hardening 진행 중, 기존 ConfigMap sync evidence가 실제 배포된 admin dashboard readiness API에 반영되는지 확인할 수 있는 반복 가능한 검증 절차가 필요하다고 해석했다.
+  - 서버 검증은 가능하지만 우선 로컬/CI에서 재사용 가능한 live verifier와 self-test를 만든 뒤, 실제 서버 검증 시 같은 스크립트를 `-ApiBase`, `-AdminLoginId`, `-AdminPassword`로 실행하는 흐름으로 잡았다.
+- 실행 내용:
+  - 기존 인증/대시보드 API 흐름을 확인했다: `POST /api/auth/login`으로 access token을 받고 `GET /api/admin/dashboard/readiness`를 호출한다.
+  - Kubernetes operations report sync evidence와 dashboard readiness 응답을 비교하는 live verifier를 추가했다.
+  - live verifier 자체 테스트를 추가하고 `verify-local.ps1`에 연결했다.
+  - 운영 문서, 테스트 케이스, 문서 인덱스, MVP checklist, feature inventory를 갱신했다.
+- 구현 내용:
+  - `scripts/verify-kubernetes-operations-report-sync-live.ps1`
+    - 기본적으로 기존 sync evidence를 읽고, `-RunSyncServerDryRun` 또는 `-RunSyncApply`가 있을 때만 sync helper를 실행한다.
+    - `-ApiBase`가 있으면 admin login 후 dashboard readiness API를 검증한다.
+    - `-DashboardReadinessFixturePath`를 지원해 로컬 self-test에서 API 없이 검증한다.
+    - evidence output에는 admin password와 bearer token을 저장하지 않는다.
+  - `scripts/verify-kubernetes-operations-report-sync-live-self-test.ps1`
+    - applied sync fixture와 dashboard fixture로 성공 케이스 검증.
+    - stale/planned dashboard fixture로 실패 케이스 검증.
+    - plan-only mode 검증.
+  - `scripts/verify-local.ps1`
+    - Kubernetes operations report sync check 직후 live verifier self-test를 실행하도록 추가.
+- 수정된 파일 및 관련 파일:
+  - `scripts/verify-kubernetes-operations-report-sync-live.ps1`
+  - `scripts/verify-kubernetes-operations-report-sync-live-self-test.ps1`
+  - `scripts/verify-local.ps1`
+  - `dev-docs/document-index.md`
+  - `dev-docs/operation-monitoring.md`
+  - `dev-docs/mvp-release-checklist.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/feature-inventory.md`
+  - `dev-docs/worklog/main/worklog-main.md`
+- 검증 기록:
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-kubernetes-operations-report-sync-live-self-test.ps1`: 통과.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-kubernetes-operations-report-sync.ps1`: 통과.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-operations-readiness-convergence.ps1`: 통과.
+  - PowerShell parser check for `scripts/*.ps1`: 통과.
+  - `git diff --check -- <수정 파일>`: 통과. LF/CRLF warning만 있음.
+- 결과:
+  - 배포 후 `GET /api/admin/dashboard/readiness`가 Kubernetes report sync 상태를 실제로 보여주는지 확인하는 검증 경로가 생겼다.
+- 후속 메모:
+  - 실제 서버 검증 예시: `powershell -ExecutionPolicy Bypass -File .\scripts\verify-kubernetes-operations-report-sync-live.ps1 -ApiBase <api-base> -AdminLoginId <admin> -AdminPassword <secret>`.
+  - `192.168.35.88`에서 API endpoint/port가 확인되면 이 스크립트로 live dashboard 반영 여부를 검증하면 된다.
+- 코드 리뷰:
+  - secret/token은 evidence에 저장하지 않도록 분리했다.
+  - fixture mode를 넣어 live API 없이도 verifier contract를 검증할 수 있게 했다.
+  - default mode는 Kubernetes write를 하지 않으며, write는 `-RunSyncApply` 명시 시에만 발생한다.
+- 앞으로 추가적으로 개발해야하는 내용:
+  - 실제 배포 서버에서 API base URL과 admin 계정을 확인해 live verifier를 실행.
+  - 필요하면 Kubernetes ConfigMap에 sync evidence 파일 자체도 함께 mount되는지 추가 검증.
+- 추가적으로 사용된 skill이나 plugin:
+  - 별도 skill/plugin 없음.
+
+### 2026-06-16 - Docker Local Demo Operations Report Mount 연결
+
+- 작업 시간:
+  - 시작: 2026-06-16 09:14:00 +09:00
+  - 종료: 2026-06-16 09:19:29 +09:00
+- 사용자 명령:
+  - active goal: "운영용 Kubernetes 증설 자동화, 보안 hardening, IAM/RBAC 고도화, 백업/복구, HA/DR의 기능 구현" 계속 진행.
+- 요청 분석:
+  - mock/prototype E2E는 convergence dashboard를 검증하지만, Docker local demo backend container는 project `.osmu-run`을 마운트하지 않아 실제 operations readiness report를 읽지 못할 수 있었다.
+  - Docker/MariaDB/MinIO durable gate가 실제 B2B demo에 더 가까우므로, backend container에서 operations report를 읽고 Browser E2E convergence 화면까지 검증할 수 있게 연결해야 한다고 판단했다.
+- 실행 내용:
+  - `infra/local/docker-compose.yml` backend service에 project `.osmu-run` read-only mount를 추가했다.
+  - compose backend environment에 `OSMU_OPERATIONS_READINESS_CONVERGENCE_REPORT_PATH`를 추가했다.
+  - `start-local-demo.ps1`가 compose 실행 전 project `.osmu-run` directory를 보장하도록 했다.
+  - `verify-browser-e2e-local-demo.ps1`가 Docker-local convergence fixture를 `.osmu-run/docker-local-demo/` 아래에 만들고, container-relative report path를 backend env로 넘기며, Playwright convergence test를 활성화하도록 했다.
+  - local infra README, local dev env, operation monitoring, MVP checklist, test cases 문서를 갱신했다.
+- 구현 내용:
+  - Docker backend mount: `../../.osmu-run:/app/.osmu-run:ro`.
+  - 기본 report path: `.osmu-run/latest-operations-readiness-convergence.json`.
+  - Docker local E2E fixture path: `.osmu-run/docker-local-demo/latest-operations-readiness-convergence.json`.
+  - fixture가 project root 밖으로 나가면 Docker mount로 보장할 수 없으므로 script에서 차단한다.
+- 수정된 파일 및 관련 파일:
+  - `infra/local/docker-compose.yml`
+  - `infra/local/.env.example`
+  - `infra/local/README.md`
+  - `scripts/start-local-demo.ps1`
+  - `scripts/verify-browser-e2e-local-demo.ps1`
+  - `dev-docs/local-dev-env.md`
+  - `dev-docs/mvp-release-checklist.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/operation-monitoring.md`
+  - `dev-docs/worklog/main/worklog-main.md`
+- 검증 기록:
+  - PowerShell parser check for `start-local-demo.ps1`, `verify-browser-e2e-local-demo.ps1`, `verify-browser-e2e-mock-demo.ps1`, `verify-browser-e2e-prototype.ps1`: 통과.
+  - `docker compose --env-file infra\local\.env.example -f infra\local\docker-compose.yml config --quiet`: 통과. Docker config 권한 warning만 있음.
+  - `docker compose --env-file infra\local\.env.example -f infra\local\docker-compose.yml config | Select-String 'OSMU_OPERATIONS_READINESS_CONVERGENCE_REPORT_PATH|/app/.osmu-run'`: env와 mount 출력 확인.
+  - `docker info --format "{{json .ServerVersion}}"`: 실패. Docker daemon이 실행 중이 아니어서 실제 Docker local demo E2E는 미수행.
+  - `git diff --check -- <관련 파일>`: 통과. LF/CRLF 변환 warning만 있음.
+- 결과:
+  - Docker local demo backend가 project `.osmu-run` operations report를 읽을 수 있는 경로를 갖게 되었다.
+  - Docker daemon이 켜진 환경에서는 `verify-browser-e2e-local-demo.ps1`가 convergence fixture를 생성하고 dashboard convergence E2E까지 활성화한다.
+  - 이번 작업에서는 Docker daemon 부재로 full Docker E2E와 `192.168.35.88` 배포 검증은 수행하지 않았다.
+- 후속 메모:
+  - Docker Desktop 또는 `192.168.35.88` 서버에서 `verify-browser-e2e-local-demo.ps1` 또는 durable gate를 실행해 실제 MariaDB/MinIO stack에서 convergence dashboard가 통과하는지 확인해야 한다.
+  - 운영 배포에서는 read-only report mount를 Kubernetes ConfigMap/PVC/artifact sync 방식 중 무엇으로 제공할지 결정해야 한다.
+- 코드 리뷰:
+  - backend image를 다시 빌드하지 않고 report를 주입할 수 있도록 bind mount를 사용했다.
+  - mount는 read-only라 dashboard API가 evidence report를 실수로 수정하지 않는다.
+  - script는 fixture를 project root 아래로 제한해 compose mount 범위를 벗어나는 경로 오작동을 막는다.
+- 앞으로 추가적으로 개발해야 하는 내용:
+  - Kubernetes 배포에서도 operations report artifact를 backend dashboard가 읽을 수 있는 volume/secret/config path로 제공하는 설계.
+  - Docker-ready machine 또는 서버에서 durable gate 실행 증거 확보.
+- 추가적으로 사용된 skill이나 plugin:
+  - 별도 skill/plugin 사용 없음.
+
+### 2026-06-16 - Backend-backed Convergence Browser E2E 연결
+
+- 작업 시간:
+  - 시작: 2026-06-16 09:08:00 +09:00
+  - 종료: 2026-06-16 09:13:14 +09:00
+- 사용자 명령:
+  - active goal: "운영용 Kubernetes 증설 자동화, 보안 hardening, IAM/RBAC 고도화, 백업/복구, HA/DR의 기능 구현" 계속 진행.
+- 요청 분석:
+  - 직전 작업에서 Playwright spec에 operations convergence 화면 검증을 추가했지만, 같은 spec은 mock뿐 아니라 backend-backed prototype과 Docker local demo에서도 사용된다.
+  - convergence fixture가 없는 backend 대상에서는 새 E2E가 실패할 수 있으므로, spec은 fixture 기대 환경에서만 해당 테스트를 실행하고 backend prototype verifier는 실제 Spring Boot readiness API가 읽을 fixture를 제공해야 한다고 판단했다.
+- 실행 내용:
+  - Playwright spec에 `OSMU_EXPECT_OPERATIONS_CONVERGENCE=true` 조건을 추가했다.
+  - mock Browser E2E wrapper가 해당 환경 변수를 설정하도록 했다.
+  - backend prototype Browser E2E wrapper가 local convergence fixture JSON을 작성하고 `OSMU_OPERATIONS_READINESS_CONVERGENCE_REPORT_PATH`로 Spring Boot에 전달하도록 했다.
+  - test cases, MVP checklist, operation monitoring 문서에 backend-backed convergence E2E 증거를 추가했다.
+- 구현 내용:
+  - backend prototype fixture는 `action-required`, bottleneck `resolve-invocation-blockers`, stage readiness `1/7`, finalizer gap `1`, recommended command `write-operations-invocation-unblock-plan.ps1`을 포함한다.
+  - fixture path 기본값은 `.osmu-run\browser-e2e-prototype\latest-operations-readiness-convergence.json`이다.
+  - Docker local demo처럼 아직 fixture를 명시하지 않는 대상에서는 convergence E2E가 skip되어 기존 durable gate를 깨지 않도록 했다.
+- 수정된 파일 및 관련 파일:
+  - `osmu-frontend/e2e/lightweight-demo.spec.js`
+  - `scripts/verify-browser-e2e-mock-demo.ps1`
+  - `scripts/verify-browser-e2e-prototype.ps1`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/mvp-release-checklist.md`
+  - `dev-docs/operation-monitoring.md`
+  - `dev-docs/worklog/main/worklog-main.md`
+- 검증 기록:
+  - `node --check osmu-frontend\e2e\lightweight-demo.spec.js`: 통과.
+  - PowerShell parser check for `verify-browser-e2e-mock-demo.ps1`, `verify-browser-e2e-prototype.ps1`: 통과.
+  - `node .\mock-api\server.mjs --self-test`: 통과.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-browser-e2e-mock-demo.ps1`: 통과, Playwright 4 tests.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-browser-e2e-prototype.ps1 -JavaHome C:\Users\kjs99\AppData\Local\Temp\temurin-jdk17\jdk-17.0.19+10`: 통과, backend API smoke 통과 및 Playwright 4 tests.
+  - `git diff --check -- <관련 파일>`: 통과. LF/CRLF 변환 warning만 있음.
+- 결과:
+  - operations convergence dashboard 표시가 mock API뿐 아니라 실제 Spring Boot prototype readiness API 경로에서도 검증된다.
+  - backend-backed Browser E2E가 convergence summary와 recommended command rows를 포함한 4개 시나리오를 통과한다.
+  - 이번 작업에서는 `192.168.35.88` 배포 검증은 수행하지 않았다.
+- 후속 메모:
+  - Docker local demo도 실제 report volume 또는 fixture path를 명시하면 convergence E2E를 skip하지 않고 검증하도록 확장할 수 있다.
+  - 운영 배포에서는 fixture가 아니라 실제 `.osmu-run/latest-operations-readiness-convergence.json` 산출물을 backend가 읽는지 확인해야 한다.
+- 코드 리뷰:
+  - 공용 Playwright spec에 무조건적인 convergence 기대를 두면 Docker/local 대상이 불필요하게 깨질 수 있어 환경 변수로 명시적인 fixture 기대를 분리했다.
+  - backend prototype은 Spring Boot의 실제 `OSMU_OPERATIONS_READINESS_CONVERGENCE_REPORT_PATH` 설정 경로를 사용하므로 mock API보다 강한 증거를 제공한다.
+- 앞으로 추가적으로 개발해야 하는 내용:
+  - Docker Compose backend 컨테이너에도 operations readiness report volume/fixture 또는 실제 산출물 마운트 경로를 설계.
+  - `192.168.35.88` 서버 배포 후 실제 report 기반 convergence dashboard 검증.
+- 추가적으로 사용된 skill이나 plugin:
+  - 별도 skill/plugin 사용 없음.
+
+### 2026-06-16 - Operations Readiness Convergence Mock Browser E2E 보강
+
+- 작업 시간:
+  - 시작: 2026-06-16 09:01:00 +09:00
+  - 종료: 2026-06-16 09:07:56 +09:00
+- 사용자 명령:
+  - active goal: "운영용 Kubernetes 증설 자동화, 보안 hardening, IAM/RBAC 고도화, 백업/복구, HA/DR의 기능 구현" 계속 진행.
+- 요청 분석:
+  - 직전 작업에서 convergence report를 backend API와 frontend dashboard에 연결했지만, 실제 브라우저 화면에서 operations convergence summary와 recommended command rows가 보이는지 검증하는 E2E 증거가 부족했다.
+  - Java/Docker 없이도 재현 가능한 frontend mock demo에 convergence fixture를 추가해 dashboard visibility를 빠르게 검증하는 것이 다음 단계라고 판단했다.
+- 실행 내용:
+  - frontend mock API의 readiness response에 `OPERATIONS_READINESS_CONVERGENCE` item과 `operationsReadinessConvergence` 구조체를 추가했다.
+  - mock API self-test가 readiness convergence result와 item code를 확인하도록 보강했다.
+  - Playwright lightweight demo spec에 admin dashboard convergence 화면 확인 시나리오를 추가했다.
+  - test cases와 MVP release checklist에 mock Browser E2E convergence 검증 근거를 추가했다.
+- 구현 내용:
+  - mock fixture는 `action-required`, bottleneck `resolve-invocation-blockers`, stage readiness `1/7`, finalizer gap `1`, recommended command `write-operations-invocation-unblock-plan.ps1`을 노출한다.
+  - E2E는 `/login?mode=admin` 로그인 후 사이드바 Dashboard 링크로 이동해 `readiness-convergence-*` testid들을 검증한다.
+  - 첫 E2E 시도는 테스트 내부 `page.goto('/dashboard')`가 `addInitScript`를 다시 실행해 sessionStorage token을 지우면서 실패했고, 리로드 대신 Dashboard 링크 클릭으로 수정했다.
+- 수정된 파일 및 관련 파일:
+  - `osmu-frontend/mock-api/server.mjs`
+  - `osmu-frontend/e2e/lightweight-demo.spec.js`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/mvp-release-checklist.md`
+  - `dev-docs/worklog/main/worklog-main.md`
+- 검증 기록:
+  - `node .\mock-api\server.mjs --self-test`: 통과.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-browser-e2e-mock-demo.ps1`: 1차 실패 후 테스트 이동 방식 수정, 2차 통과. Playwright 4 tests 통과.
+  - `node --check osmu-frontend\e2e\lightweight-demo.spec.js`: 통과.
+  - `node --check osmu-frontend\mock-api\server.mjs`: 통과.
+  - `git diff --check -- <관련 파일>`: 통과. LF/CRLF 변환 warning만 있음.
+- 결과:
+  - mock Browser E2E가 stale session, developer console, operations convergence dashboard, admin storage portal click path 총 4개 시나리오를 검증한다.
+  - dashboard convergence summary와 command row가 실제 브라우저 렌더링 기준으로 확인된다.
+  - 이번 작업에서는 `192.168.35.88` 배포 검증은 수행하지 않았다.
+- 후속 메모:
+  - 같은 convergence 화면 검증을 backend-backed Browser E2E나 Docker full-stack demo에도 연결하면 실제 Spring Boot API/파일 기반 report까지 더 강하게 증명할 수 있다.
+  - 운영 환경에서는 mock fixture가 아니라 `.osmu-run/latest-operations-readiness-convergence.json` 실제 산출물 기준으로 확인해야 한다.
+- 코드 리뷰:
+  - E2E에서 reload 기반 이동은 init script가 세션을 지울 수 있으므로, 로그인 후 라우터 링크 이동을 사용한 것이 더 안정적이다.
+  - mock readiness count, severity summary, category summary가 item 수와 맞도록 같이 갱신했다.
+- 앞으로 추가적으로 개발해야 하는 내용:
+  - backend-backed Browser E2E convergence fixture 또는 실제 report file seed 추가.
+  - `192.168.35.88` 배포 후 실제 dashboard에서 convergence report 표시 검증.
+- 추가적으로 사용된 skill이나 plugin:
+  - 별도 skill/plugin 사용 없음.
+
+### 2026-06-16 - Operations Readiness Convergence Dashboard/API 노출
+
+- 작업 시간:
+  - 시작: 2026-06-16 08:48:00 +09:00
+  - 종료: 2026-06-16 09:00:38 +09:00
+- 사용자 명령:
+  - active goal: "운영용 Kubernetes 증설 자동화, 보안 hardening, IAM/RBAC 고도화, 백업/복구, HA/DR의 기능 구현" 계속 진행.
+  - 필요하면 `192.168.35.88` 서버로 배포 검증 가능하다고 안내받음.
+- 요청 분석:
+  - 직전 작업에서 만든 `.osmu-run/latest-operations-readiness-convergence.json` 보고서가 CLI 산출물로만 존재하면 운영자가 dashboard에서 최종 ready/action-required 판정과 current bottleneck을 바로 볼 수 없다고 판단했다.
+  - backend readiness API와 frontend readiness panel에 convergence report를 구조화 노출하고, 기존 operations readiness visibility 문서/테스트 케이스에 포함해야 한다고 인식했다.
+- 실행 내용:
+  - backend `GET /api/admin/dashboard/readiness` 응답에 `operationsReadinessConvergence` 구조체를 추가했다.
+  - non-ready convergence report가 있으면 `OPERATIONS_READINESS_CONVERGENCE` warning item을 생성하도록 했다.
+  - frontend dashboard readiness panel에 convergence summary, bottleneck command copy button, recommended command rows를 추가했다.
+  - API spec, operation monitoring, MVP checklist, frontend design, test cases, feature inventory 문서에 convergence dashboard visibility를 반영했다.
+- 구현 내용:
+  - 새 response record: `DashboardOperationsReadinessConvergenceResponse`, `DashboardOperationsReadinessConvergenceBottleneckResponse`, `DashboardOperationsReadinessConvergenceCommandResponse`.
+  - API field: `operationsReadinessConvergence.result`, `currentBottleneck`, `recommendedCommands`, readiness/finalizer/handoff result, stage count, finalizer gap count, safety policy.
+  - UI selector: `readiness-convergence-item-summary`, `readiness-convergence-summary`, `readiness-convergence-command-copy-button`, `readiness-convergence-commands`, `readiness-convergence-command-list-copy-button`.
+- 수정된 파일 및 관련 파일:
+  - `osmu-backend/src/main/java/com/example/osmu/admin/AdminController.java`
+  - `osmu-backend/src/main/java/com/example/osmu/admin/DashboardReadinessResponse.java`
+  - `osmu-backend/src/main/java/com/example/osmu/admin/DashboardOperationsReadinessConvergenceResponse.java`
+  - `osmu-backend/src/main/java/com/example/osmu/admin/DashboardOperationsReadinessConvergenceBottleneckResponse.java`
+  - `osmu-backend/src/main/java/com/example/osmu/admin/DashboardOperationsReadinessConvergenceCommandResponse.java`
+  - `osmu-backend/src/test/java/com/example/osmu/admin/AdminDashboardSummaryControllerTest.java`
+  - `osmu-frontend/src/views/HomeView.vue`
+  - `osmu-frontend/src/components/dashboard/DashboardPage.vue`
+  - `osmu-frontend/src/views/HomeView.test.js`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/operation-monitoring.md`
+  - `dev-docs/mvp-release-checklist.md`
+  - `dev-docs/frontend-design.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/feature-inventory.md`
+  - `dev-docs/worklog/main/worklog-main.md`
+- 검증 기록:
+  - `npm.cmd run test:unit -- HomeView.test.js`: 통과, 69 tests.
+  - `npm.cmd run build`: 통과.
+  - `.\\gradlew.bat test --tests com.example.osmu.admin.AdminDashboardSummaryControllerTest`: 통과. 최초 sandbox 실행은 Gradle distribution download network 제한으로 실패했고, 승인된 실행에서 성공.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-operations-readiness-convergence.ps1`: 통과.
+  - `git diff --check -- <관련 파일>`: 통과. LF/CRLF 변환 warning만 있음.
+  - 신규 convergence response record trailing whitespace 확인: 문제 없음.
+- 결과:
+  - 운영자는 dashboard readiness API와 frontend에서 operations workflow의 최종 convergence 상태, 현재 bottleneck, stage readiness, finalizer 상태, 추천 command chain을 볼 수 있다.
+  - convergence result가 `ready`가 아니면 readiness warning으로 노출되어 다음 조치가 dashboard에서 사라지지 않는다.
+  - 이번 작업에서는 `192.168.35.88` 배포 검증은 수행하지 않았다.
+- 후속 메모:
+  - 실제 운영 보고서가 있는 상태에서 `192.168.35.88`에 배포 후 dashboard가 convergence report를 읽는지 확인하면 된다.
+  - action-required 상태에서 recommended command 실행, handoff/convergence 재생성, ready 수렴까지 end-to-end 검증이 필요하다.
+- 코드 리뷰:
+  - API parser는 optional local report가 없으면 empty response를 반환해 기존 dashboard 동작을 깨지 않도록 했다.
+  - `ready` convergence는 warning item을 만들지 않고, `action-required` 같은 non-ready 상태만 warning으로 노출한다.
+  - frontend는 default/normalize 값을 둬 backend field가 없거나 report가 비어도 렌더링 오류가 나지 않도록 했다.
+- 앞으로 추가적으로 개발해야 하는 내용:
+  - 실제 GitHub Actions run id/artifact/finalizer evidence를 채운 뒤 convergence `ready`까지 운영 환경에서 검증.
+  - 가능하면 Browser E2E에 convergence fixture 화면 확인을 추가.
+- 추가적으로 사용된 skill이나 plugin:
+  - 별도 skill/plugin 사용 없음.
+
+### 2026-06-16 - Operations Readiness Convergence Plan 추가
+
+- 작업 시간:
+  - 시작: 2026-06-16 08:42:00 +09:00
+  - 종료: 2026-06-16 08:47:20 +09:00
+- 사용자 명령:
+  - active goal: "운영용 Kubernetes 증설 자동화, 보안 hardening, IAM/RBAC 고도화, 백업/복구, HA/DR의 기능 구현" 계속 진행.
+- 요청 분석:
+  - handoff는 다음 한 단계의 bottleneck을 알려주지만, 운영자가 readiness/finalizer/handoff가 최종 ready로 수렴했는지 한 장으로 확인하는 no-execute 산출물은 없었다.
+  - live workflow나 kubectl을 실행하지 않고 현재 local evidence report만 읽어서 ready/action-required 판정과 추천 명령 체인을 남기는 convergence plan이 필요하다고 판단했다.
+- 실행 내용:
+  - `write-operations-readiness-convergence.ps1`를 추가해 handoff, readiness, operations readiness finalizer report를 읽고 convergence JSON/Markdown을 생성하도록 했다.
+  - `verify-operations-readiness-convergence.ps1`를 추가해 missing handoff, operations finalizer required, fully ready fixture를 검증하도록 했다.
+  - `verify-local.ps1`에 Operations readiness convergence check를 추가했다.
+  - document index, operation monitoring, MVP checklist, test cases, feature inventory를 갱신했다.
+- 구현 내용:
+  - convergence report format은 `osmu.operations-readiness-convergence.v1`이다.
+  - report는 `currentBottleneck`, `recommendedCommands`, readiness/finalizer/handoff result, stage count, blocked/missing count, finalizer gap count, decision rule, safety policy를 포함한다.
+  - ready 판정은 handoff result가 ready/none이고, readiness report가 ready이며, finalizer report가 있으면 `result=ready`와 `readinessResult=ready`를 모두 만족해야 한다.
+  - writer는 `kubectl`, `gh`, workflow dispatch, finalizer command를 실행하지 않고 local report를 읽어 guidance만 작성한다.
+- 수정된 파일 및 관련된 파일들:
+  - `scripts/write-operations-readiness-convergence.ps1`
+  - `scripts/verify-operations-readiness-convergence.ps1`
+  - `scripts/verify-local.ps1`
+  - `dev-docs/document-index.md`
+  - `dev-docs/operation-monitoring.md`
+  - `dev-docs/mvp-release-checklist.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/feature-inventory.md`
+  - `dev-docs/worklog/main/worklog-main.md`
+- 검증 기록:
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-operations-readiness-convergence.ps1`: 통과.
+  - PowerShell parser check for `write-operations-readiness-convergence.ps1`, `verify-operations-readiness-convergence.ps1`, `verify-local.ps1`: 통과.
+  - `git diff --check -- <operations convergence related tracked files>`: 통과. LF/CRLF 변환 warning만 있음.
+  - 신규 convergence script와 `dev-docs/feature-inventory.md` trailing whitespace 별도 확인: 문제 없음.
+- 결과:
+  - 운영자는 `.osmu-run/latest-operations-readiness-convergence.json` 또는 `.md`에서 현재 bottleneck, ready 여부, 다음 추천 명령 체인을 확인할 수 있다.
+  - local verification gate가 convergence verifier까지 포함한다.
+  - operations evidence handoff 이후 readiness/finalizer가 ready로 수렴했는지 확인하는 no-execute 검증 계층이 추가되었다.
+- 후속 메모:
+  - 실제 운영 환경에서는 convergence report가 `action-required`일 때 recommended command를 실행하고, handoff와 convergence를 다시 생성해 `ready`로 수렴하는지 확인해야 한다.
+  - `192.168.35.88` 서버 배포 검증은 이번 항목에서는 수행하지 않았다.
+- 코드 리뷰:
+  - writer는 외부 명령을 실행하지 않아 kubeconfig, GitHub token, registry secret 등 민감정보를 다루지 않는다.
+  - finalizer report가 존재할 경우 finalizer 자체 결과와 readiness 재생성 결과를 모두 확인해 부분 성공을 ready로 오판하지 않게 했다.
+  - recommended command는 중복 command를 제거해 Markdown runbook이 불필요하게 길어지지 않게 했다.
+- 앞으로 추가적으로 개발해야하는 내용:
+  - dashboard readiness API/frontend에 convergence report를 구조화 노출할지 결정.
+  - 실제 GitHub Actions artifact finalizer run id 입력부터 convergence `ready`까지 end-to-end 검증.
+  - 필요 시 `192.168.35.88` 서버에 배포해 운영 dashboard와 local report 산출물을 함께 검증.
+- 추가적으로 사용된 skill이나 plugin:
+  - 별도 skill/plugin 없음.
+
+### 2026-06-16 - Kubernetes Report Sync Artifact Collection/Import 연결
+
+- 작업 시간:
+  - 시작: 2026-06-16 10:10:00 +09:00
+  - 종료: 2026-06-16 10:20:00 +09:00
+- 사용자 명령:
+  - active goal: "운영용 Kubernetes 증설 자동화, 보안 hardening, IAM/RBAC 고도화, 백업/복구, HA/DR의 기능 구현" 계속 진행.
+- 요청 분석:
+  - 직전 작업에서 operations readiness convergence가 Kubernetes operations report sync evidence까지 요구하게 되었으므로, 이번에는 해당 sync evidence가 workflow run id plan, artifact collection plan, artifact import, artifact finalizer workflow에서도 빠지지 않게 연결해야 한다고 판단했다.
+  - 목표는 운영자가 `kubernetes-operations-report-sync-ci.yml` 실행 결과를 다른 운영 evidence와 같은 방식으로 수집/검증/승격할 수 있게 하는 것이다.
+- 실행 내용:
+  - workflow run id plan metadata에 `kubernetes-operations-report-sync-ci.yml` mapping을 추가했다.
+  - artifact collection plan에 `-KubernetesOperationsReportSyncRunId` 입력과 `kubernetes_operations_report_sync_*` artifact input을 추가했다.
+  - artifact importer가 `latest-kubernetes-operations-report-sync.json`을 `result=applied`일 때만 표준 `.osmu-run/latest-*` 경로로 승격하도록 했다.
+  - Operations Readiness Artifact Finalizer CI가 Kubernetes operations report sync artifact를 선택적으로 다운로드하고 importer에 전달하도록 했다.
+  - backend dashboard readiness 테스트 fixture와 문서/테스트 케이스를 새 7 workflow / 5 required artifact 흐름에 맞췄다.
+- 구현 내용:
+  - 새 artifact group: `kubernetes-operations-report-sync`
+  - workflow: `kubernetes-operations-report-sync-ci.yml`
+  - artifact name template: `kubernetes-operations-report-sync-{runId}`
+  - collection run id parameter: `KubernetesOperationsReportSyncRunId`
+  - artifact finalizer inputs:
+    - `kubernetes_operations_report_sync_run_id`
+    - `kubernetes_operations_report_sync_artifact_name`
+  - importer parameter:
+    - `-KubernetesOperationsReportSyncArtifactPath`
+  - required evidence:
+    - `latest-kubernetes-operations-report-sync.json` with `result=applied`
+  - optional imported evidence:
+    - `latest-kubernetes-operations-report-sync-plan.json`
+    - `latest-kubernetes-operations-report-sync-server-dry-run.json`
+- 수정된 파일 및 관련된 파일들:
+  - `.github/workflows/operations-readiness-artifact-finalizer-ci.yml`
+  - `scripts/write-operations-workflow-run-id-plan.ps1`
+  - `scripts/write-operations-artifact-collection-plan.ps1`
+  - `scripts/import-operations-readiness-artifacts.ps1`
+  - `scripts/verify-operations-workflow-run-id-plan.ps1`
+  - `scripts/verify-operations-artifact-collection-plan.ps1`
+  - `scripts/verify-operations-readiness-artifact-import.ps1`
+  - `scripts/verify-ci-workflow.ps1`
+  - `osmu-backend/src/test/java/com/example/osmu/admin/AdminDashboardSummaryControllerTest.java`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/operation-monitoring.md`
+  - `dev-docs/mvp-release-checklist.md`
+  - `dev-docs/document-index.md`
+  - `dev-docs/frontend-design.md`
+  - `dev-docs/feature-inventory.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/worklog/main/worklog-main.md`
+- 검증 기록:
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-operations-workflow-run-id-plan.ps1`: 통과.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-operations-artifact-collection-plan.ps1`: 통과. 7 artifacts, 5 required artifacts fixture 확인.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-operations-readiness-artifact-import.ps1`: 통과. sync evidence `result=applied` 승격 확인.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-ci-workflow.ps1`: 통과.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-operations-evidence-handoff.ps1`: 통과.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-operations-readiness-convergence.ps1`: 통과.
+  - PowerShell script parse check: 통과.
+  - `.\gradlew.bat test --tests com.example.osmu.admin.AdminDashboardSummaryControllerTest`: 통과. Gradle 배포판 다운로드를 위해 네트워크 권한을 한 번 사용했다.
+  - `npm.cmd run test:unit`: 통과, 69 tests.
+  - `git diff --check`: 통과. LF/CRLF 변환 warning만 있음.
+- 결과:
+  - Kubernetes operations report sync evidence가 이제 별도 CI artifact로 끝나지 않고 operations artifact collection/import/finalizer 흐름에 포함될 수 있다.
+  - 최종 convergence가 요구하는 `.osmu-run/latest-kubernetes-operations-report-sync.json`도 artifact finalizer 또는 local import로 표준 경로에 승격할 수 있다.
+  - 실제 `192.168.35.88` live 배포 검증은 이번 작업에서는 수행하지 않았다.
+- 후속 메모:
+  - live에서는 `kubernetes-operations-report-sync-ci.yml`을 `run_live=true`, `apply=true`로 실행한 뒤 run id/artifact name을 artifact collection/finalizer에 넣어야 한다.
+  - plan-only 또는 server-dry-run artifact만 가져오면 importer가 `result=applied` 조건에서 실패하는 것이 정상이다.
+  - 다음 큰 단계는 `192.168.35.88`에서 실제 sync apply와 dashboard/API 반영까지 확인하는 live validation이다.
+- 코드 리뷰:
+  - sync artifact는 convergence-level evidence라서 base operations readiness check에는 넣지 않았다. 그렇지 않으면 readiness와 convergence/sync 사이에 순환 의존성이 생길 수 있다.
+  - importer가 `result=applied`를 요구하므로 plan-only 증거가 실수로 최종 sync 완료처럼 승격되지 않는다.
+  - artifact collection plan의 `requiredForReadiness` 명칭은 기존 schema를 재사용했지만, 실제 의미는 "readiness/convergence bundle에 required"에 가깝다. 이후 schema v2에서는 이름을 더 명확히 분리할 수 있다.
+- 앞으로 추가적으로 개발해야하는 내용:
+  - `192.168.35.88` 대상 live sync apply와 backend/dashboard 반영 검증.
+  - Operations handoff/convergence에서 artifact-imported sync evidence와 live ConfigMap freshness를 더 직접 비교하는 검증.
+  - GitHub Actions 실제 run artifact를 통한 end-to-end artifact finalizer 검증.
+- 추가적으로 사용된 skill이나 plugin:
+  - 별도 skill/plugin 없음.
+
+### 2026-06-16 - Operations Readiness Convergence Kubernetes Sync Gate 연동
+
+- 작업 시간:
+  - 시작: 2026-06-16 10:00:00 +09:00
+  - 종료: 2026-06-16 10:10:00 +09:00
+- 사용자 명령:
+  - "`192.168.35.88` 서버로 배포 검증이 필요하면 사용해도 된다."
+  - active goal: "운영용 Kubernetes 증설 자동화, 보안 hardening, IAM/RBAC 고도화, 백업/복구, HA/DR의 기능 구현" 계속 진행.
+- 요청 분석:
+  - 배포 검증 서버 사용 가능성을 열어두되, 우선 로컬 구현/문서/검증을 정리해 live 배포 전 readiness 흐름이 깨지지 않게 만드는 작업으로 인식했다.
+  - 직전 작업에서 Kubernetes operations report sync evidence가 API/dashboard에 보이기 시작했으므로, 이번에는 최종 operations readiness convergence가 해당 sync evidence까지 반영해야 한다고 판단했다.
+- 실행 내용:
+  - `write-operations-readiness-convergence.ps1`가 `.osmu-run/latest-kubernetes-operations-report-sync.json`을 읽고, sync evidence가 `result=applied` 및 `failedCount=0`일 때만 최종 `ready`가 되도록 변경했다.
+  - sync evidence가 없거나 plan/server-dry-run 단계이면 current bottleneck을 `sync-kubernetes-operations-report`로 설정하고 다음 명령으로 `sync-kubernetes-operations-reports.ps1` 실행 경로를 제안하도록 했다.
+  - convergence self-test에 sync-required fixture를 추가하고 ready fixture에는 applied sync evidence를 추가했다.
+  - backend dashboard readiness API 응답 record/parser에 Kubernetes sync 관련 convergence 필드를 추가했다.
+  - frontend dashboard readiness panel에서 convergence summary에 `k8s sync` 상태와 ConfigMap sync 적용 여부를 표시하도록 했다.
+  - API 명세, 운영 모니터링, MVP 체크리스트, 테스트 케이스, 기능 인벤토리에 convergence-level Kubernetes sync gate를 반영했다.
+- 구현 내용:
+  - convergence JSON 필드 추가:
+    - `kubernetesOperationsReportSyncReportPath`
+    - `kubernetesReportSyncExists`
+    - `kubernetesReportSyncResult`
+    - `kubernetesReportSyncFailedCount`
+    - `kubernetesReportSyncConfigMapName`
+    - `kubernetesReportSyncConfigMapKey`
+    - `kubernetesReportSyncSourceReportResult`
+    - `kubernetesReportSyncReady`
+  - decision rule을 "handoff ready, readiness ready, finalizer ready, Kubernetes sync applied/zero failed" 조건으로 확장했다.
+  - safety policy에 ConfigMap sync command를 직접 실행하지 않는다는 문구를 추가했다.
+- 수정된 파일 및 관련된 파일들:
+  - `scripts/write-operations-readiness-convergence.ps1`
+  - `scripts/verify-operations-readiness-convergence.ps1`
+  - `osmu-backend/src/main/java/com/example/osmu/admin/AdminController.java`
+  - `osmu-backend/src/main/java/com/example/osmu/admin/DashboardOperationsReadinessConvergenceResponse.java`
+  - `osmu-backend/src/test/java/com/example/osmu/admin/AdminDashboardSummaryControllerTest.java`
+  - `osmu-frontend/src/views/HomeView.vue`
+  - `osmu-frontend/src/components/dashboard/DashboardPage.vue`
+  - `osmu-frontend/src/views/HomeView.test.js`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/operation-monitoring.md`
+  - `dev-docs/mvp-release-checklist.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/feature-inventory.md`
+  - `dev-docs/worklog/main/worklog-main.md`
+- 검증 기록:
+  - `npm.cmd run test:unit` in `osmu-frontend`: 통과, 69 tests.
+  - `.\gradlew.bat test --tests com.example.osmu.admin.AdminDashboardSummaryControllerTest` in `osmu-backend`: 통과. Gradle 배포판 다운로드를 위해 네트워크 권한을 한 번 사용했다.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-operations-readiness-convergence.ps1`: 통과. missing/action/sync-required/ready fixture 확인.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-ci-workflow.ps1`: 통과.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-kubernetes-operations-report-sync.ps1`: 통과.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-k8s-manifests.ps1`: 통과.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-helm-chart.ps1`: 통과.
+  - PowerShell script parse check: 통과.
+  - `git diff --check`: 통과. LF/CRLF 변환 warning만 있음.
+- 결과:
+  - operations readiness convergence가 이제 로컬 보고서 생성 완료만으로 `ready`가 되지 않고, 배포된 Kubernetes operations report ConfigMap sync evidence까지 요구한다.
+  - dashboard/API에서는 convergence 자체에서 sync readiness/result/ConfigMap target을 확인할 수 있고, 별도의 Kubernetes report sync evidence도 계속 노출된다.
+  - `192.168.35.88` live 배포 검증은 이번 작업에서는 수행하지 않았다.
+- 후속 메모:
+  - 실제 배포 검증 시 `192.168.35.88`에서 `sync-kubernetes-operations-reports.ps1 -ServerDryRunOnly` 후 `-Apply`를 실행하고 backend readiness API/dashboard에서 sync-applied convergence 상태를 확인해야 한다.
+  - ConfigMap 볼륨 반영 지연이 있을 수 있으므로 live 검증에는 backend Pod 재시작 또는 projected volume refresh 대기 시간이 필요할 수 있다.
+  - artifact collection/import 흐름에 sync workflow run evidence까지 포함하면 최종 운영 handoff가 더 닫힌 루프가 된다.
+- 코드 리뷰:
+  - convergence writer는 여전히 no-execute 방식이라 안전하고, 다음 명령만 제안한다.
+  - ready 조건이 더 엄격해져 operator가 "로컬에서는 ready지만 배포 dashboard는 갱신되지 않은" 상태를 놓칠 가능성이 줄었다.
+  - backend/frontend는 새 필드를 optional/default 처리하므로 기존 report가 없을 때도 화면과 API가 깨지지 않는다.
+- 앞으로 추가적으로 개발해야하는 내용:
+  - `192.168.35.88` 실제 배포에서 sync server-dry-run/apply와 dashboard 반영 확인.
+  - operations artifact collection/finalizer가 Kubernetes operations report sync evidence를 선택적으로 수집하도록 확장.
+  - live cluster의 ConfigMap/PVC operations report delivery 전략을 운영 규모별로 선택할 수 있게 문서와 Helm 값을 보강.
+- 추가적으로 사용된 skill이나 plugin:
+  - 별도 skill/plugin 없음.
+
+### 2026-06-16 - Kubernetes Operations Report Sync Dashboard/API Visibility
+
+- 작업 시간:
+  - 시작: 2026-06-16 09:40:00 +09:00
+  - 종료: 2026-06-16 09:55:00 +09:00
+- 사용자 명령:
+  - `192.168.35.88` 서버는 필요하면 배포 검증 대상으로 사용해도 된다고 안내함.
+  - active goal인 운영용 Kubernetes 증설 자동화, 보안 hardening, IAM/RBAC 고도화, 백업/복구, HA/DR 기능 구현 흐름을 계속 진행.
+- 요청 분석:
+  - 직전 작업에서 Kubernetes operations report sync helper와 CI workflow가 생겼으므로, 이제 운영자가 CLI/Actions artifact를 직접 열지 않아도 관리자 dashboard/API에서 plan/server-dry-run/apply 상태를 볼 수 있어야 한다고 판단함.
+  - 배포 환경에서도 backend가 sync evidence JSON을 읽을 수 있도록 Helm/Kubernetes config env를 맞춰야 한다고 해석함.
+- 실행 내용:
+  - `AdminController`의 dashboard readiness snapshot에 `.osmu-run/latest-kubernetes-operations-report-sync.json` reader를 추가함.
+  - sync evidence result가 `planned`이면 server dry-run command를, `server-dry-run-passed`이면 apply command를 다음 remediation command로 노출하도록 구성함.
+  - frontend dashboard readiness 기본 state, normalize 함수, summary/detail 표시, copy button, check row 표시를 추가함.
+  - Helm chart와 plain Kubernetes manifest config에 `OSMU_OPERATIONS_READINESS_KUBERNETES_REPORT_SYNC_REPORT_PATH`를 추가함.
+  - API spec, operation monitoring, MVP checklist, test cases, feature inventory, Helm/Kubernetes README를 갱신함.
+- 구현 내용:
+  - 새 backend response record: `DashboardKubernetesOperationsReportSyncResponse`, `DashboardKubernetesOperationsReportSyncCheckResponse`.
+  - 새 readiness item code: `KUBERNETES_OPERATIONS_REPORT_SYNC`.
+  - 새 structured response field: `kubernetesOperationsReportSync`.
+  - dashboard 표시 항목: K8s sync compact warning summary, namespace, ConfigMap name/key, source result/hash, check/failed count, server dry-run/apply command copy buttons, sync check list.
+- 수정된 파일 및 관련 파일:
+  - `osmu-backend/src/main/java/com/example/osmu/admin/AdminController.java`
+  - `osmu-backend/src/main/java/com/example/osmu/admin/DashboardReadinessResponse.java`
+  - `osmu-backend/src/main/java/com/example/osmu/admin/DashboardKubernetesOperationsReportSyncResponse.java`
+  - `osmu-backend/src/main/java/com/example/osmu/admin/DashboardKubernetesOperationsReportSyncCheckResponse.java`
+  - `osmu-backend/src/test/java/com/example/osmu/admin/AdminDashboardSummaryControllerTest.java`
+  - `osmu-frontend/src/views/HomeView.vue`
+  - `osmu-frontend/src/components/dashboard/DashboardPage.vue`
+  - `osmu-frontend/src/views/HomeView.test.js`
+  - `infra/helm/osmu/values.yaml`
+  - `infra/helm/osmu/templates/configmap.yaml`
+  - `infra/k8s/configmap.yaml`
+  - `scripts/verify-helm-chart.ps1`
+  - `scripts/verify-k8s-manifests.ps1`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/operation-monitoring.md`
+  - `dev-docs/mvp-release-checklist.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/feature-inventory.md`
+  - `infra/helm/osmu/README.md`
+  - `infra/k8s/README.md`
+  - `dev-docs/worklog/main/worklog-main.md`
+- 검증 기록:
+  - `npm.cmd run test:unit`: 통과, 69 tests passed.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-k8s-manifests.ps1`: 통과.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-helm-chart.ps1`: 통과.
+  - `$env:JAVA_HOME='C:\jdk-17'; .\gradlew.bat test --tests com.example.osmu.admin.AdminDashboardSummaryControllerTest`: 통과. 최초 실행은 `JAVA_HOME` invalid로 실패했고, `C:\jdk-17` 지정 후 Gradle distribution download가 sandbox network 제한에 막혀 승인 후 재실행함.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-ci-workflow.ps1`: 통과.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-kubernetes-operations-report-sync.ps1`: 통과.
+  - PowerShell script parse check: 통과. 최초 일회성 parse 명령은 `[ref]` 변수 초기화 누락으로 검사 명령 자체가 실패했고, `$tokens/$parseErrors` 초기화 후 재실행해 통과함.
+  - `git diff --check`: 통과. LF/CRLF 변환 warning만 있었고 whitespace error는 없었음.
+- 결과:
+  - 관리자 readiness API와 frontend dashboard에서 Kubernetes operations report sync evidence를 볼 수 있게 됨.
+  - cluster 배포 시 backend는 기본적으로 `.osmu-run/latest-kubernetes-operations-report-sync.json`을 읽도록 설정됨.
+  - sync evidence가 `applied`이고 failedCount가 0이면 warning item은 숨기고, planned/server-dry-run/failed 상태는 dashboard warning으로 남김.
+- 후속 메모:
+  - 실제 `192.168.35.88` 배포 검증은 아직 수행하지 않았음.
+  - ConfigMap mount 방식에서는 sync evidence JSON이 mounted report directory에 존재해야 dashboard에 표시됨. CI artifact만 있고 cluster mount에 없으면 backend는 읽지 못한다.
+  - 더 자주 갱신되는 운영 evidence는 Helm `backend.operationsReports.type=persistentVolumeClaim` 기반 delivery를 검토하는 편이 좋음.
+- 코드 리뷰:
+  - `AdminController`에 기존 operations readiness report snapshot 패턴을 그대로 따랐기 때문에 구조 일관성은 좋음.
+  - `jsonLong` helper를 추가해 byte count가 int overflow에 걸리지 않게 함.
+  - frontend는 기존 readiness panel의 summary/detail/copy button 패턴을 재사용했음.
+  - `remediationWorkflowCommand`에 apply command를 넣었지만, 실제 운영에서는 workflow dispatch command와 kubectl apply command를 더 명확히 분리할 schema가 필요할 수 있음.
+- 앞으로 추가적으로 개발해야하는 내용:
+  - `192.168.35.88`에서 live server dry-run 후 필요 시 apply까지 검증.
+  - sync evidence를 operations artifact import/handoff/convergence 흐름에 완전히 연결.
+  - dashboard에서 sync evidence artifact download/import 안내를 더 명확히 표시.
+- 추가적으로 사용된 skill이나 plugin:
+  - 별도 skill/plugin 없음.
+
+### 2026-06-16 - Operations Evidence Handoff Finalizer 단계 연결
+
+- 작업 시간:
+  - 시작: 2026-06-16 08:33:00 +09:00
+  - 종료: 2026-06-16 08:41:43 +09:00
+- 사용자 명령:
+  - active goal: "운영용 Kubernetes 증설 자동화, 보안 hardening, IAM/RBAC 고도화, 백업/복구, HA/DR의 기능 구현" 계속 진행.
+- 요청 분석:
+  - 직전 작업에서 operations readiness finalizer report는 dashboard/API에 노출됐지만, top-level handoff script는 artifact import 이후 곧장 readiness 재생성만 안내했다.
+  - 운영자가 artifact import 이후 combined finalizer wrapper를 실행해야 하는 시점을 놓치지 않도록 handoff 산출물 자체가 finalizer missing/pending 상태를 다음 작업으로 선택해야 한다고 판단했다.
+- 실행 내용:
+  - `write-operations-evidence-handoff.ps1`에 operations readiness finalizer report 입력과 `operations-finalizer` stage를 추가했다.
+  - artifact import가 통과했지만 finalizer report가 없으면 `run-operations-finalizer`, finalizer가 pending/failed이면 `fix-operations-finalizer`를 nextStep으로 선택하도록 했다.
+  - handoff JSON에 `finalizerFailedCount`, `finalizerGapCount`를 추가하고 backend/frontend dashboard API/UI까지 연결했다.
+  - handoff verifier에 artifact-finalizer-ready, operations-finalizer-missing, operations-finalizer-pending fixture를 추가했다.
+  - API spec, operation monitoring, MVP checklist, test cases, document index, feature inventory를 갱신했다.
+- 구현 내용:
+  - `scripts/write-operations-evidence-handoff.ps1`가 `.osmu-run/latest-operations-readiness-finalize.json`을 읽고 7단계 stage summary를 생성한다.
+  - `scripts/verify-operations-evidence-handoff.ps1`가 stage count 7, `run-operations-finalizer`, `fix-operations-finalizer`, finalizer gap count를 검증한다.
+  - `DashboardOperationsEvidenceHandoffResponse`에 finalizer count 필드를 추가하고 `AdminController` parser/warning message에 반영했다.
+  - `HomeView.vue` normalize/default state와 `DashboardPage.vue` handoff summary에 finalizer gap count를 추가했다.
+  - `AdminDashboardSummaryControllerTest`, `HomeView.test.js`가 새 field와 message를 확인하도록 확장했다.
+- 수정된 파일 및 관련된 파일들:
+  - `scripts/write-operations-evidence-handoff.ps1`
+  - `scripts/verify-operations-evidence-handoff.ps1`
+  - `osmu-backend/src/main/java/com/example/osmu/admin/AdminController.java`
+  - `osmu-backend/src/main/java/com/example/osmu/admin/DashboardOperationsEvidenceHandoffResponse.java`
+  - `osmu-backend/src/test/java/com/example/osmu/admin/AdminDashboardSummaryControllerTest.java`
+  - `osmu-frontend/src/views/HomeView.vue`
+  - `osmu-frontend/src/components/dashboard/DashboardPage.vue`
+  - `osmu-frontend/src/views/HomeView.test.js`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/operation-monitoring.md`
+  - `dev-docs/mvp-release-checklist.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/document-index.md`
+  - `dev-docs/feature-inventory.md`
+  - `dev-docs/worklog/main/worklog-main.md`
+- 검증 기록:
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-operations-evidence-handoff.ps1`: 통과.
+  - PowerShell parser check for `write-operations-evidence-handoff.ps1` and `verify-operations-evidence-handoff.ps1`: 통과.
+  - `npm.cmd run test:unit -- HomeView.test.js`: 통과. Node test runner 기준 69개 테스트 통과.
+  - `npm.cmd run build`: 통과.
+  - `.\gradlew.bat test --tests com.example.osmu.admin.AdminDashboardSummaryControllerTest`: 최초 sandbox 실행은 Gradle distribution 다운로드 네트워크 제한으로 실패, 승인 후 JDK 17 경로 지정 재실행 통과.
+  - `git diff --check -- <operations handoff finalizer related files>`: 통과. LF/CRLF 변환 warning만 있음.
+- 결과:
+  - operations evidence handoff가 readiness, evidence plan, invocation, workflow run id, artifact collection, artifact import, operations finalizer까지 7단계로 추적한다.
+  - artifact import 이후 finalizer report가 없거나 pending이면 handoff nextStep이 `finalize-operations-readiness.ps1`로 안내된다.
+  - dashboard readiness API와 frontend handoff summary에서 finalizer gap count를 확인할 수 있다.
+- 후속 메모:
+  - 실제 운영 환경에서는 handoff가 `run-operations-finalizer`를 가리킨 상태에서 finalizer CI 또는 local wrapper를 실행하고, 이후 readiness `ready`까지 이어지는지 확인해야 한다.
+  - `192.168.35.88` 서버 배포 검증은 이번 항목에서는 수행하지 않았다.
+- 코드 리뷰:
+  - handoff script는 secret value를 읽지 않고 report metadata와 gap count만 합산한다.
+  - finalizer report의 `result`와 `readinessResult`를 둘 다 ready로 확인해야 stage가 ready가 되도록 해 stale 또는 부분 성공 상태를 분리했다.
+  - dashboard warning message는 finalizer gap이 있을 때만 추가 문구를 붙여 일반 blocked invocation 메시지를 과하게 늘리지 않는다.
+- 앞으로 추가적으로 개발해야하는 내용:
+  - 실제 GitHub Actions artifact finalizer run id 입력부터 operations finalizer 실행, readiness ready 전환까지 end-to-end 검증.
+  - live Kubernetes/security evidence 수집 후 handoff가 `none`으로 수렴하는지 확인.
+  - 필요 시 `192.168.35.88` 서버에 배포해 dashboard readiness API와 UI 표시를 실서버에서 검증.
+- 추가적으로 사용된 skill이나 plugin:
+  - 별도 skill/plugin 없음.
+
+### 2026-06-16 - Operations Readiness Finalizer Dashboard/API 노출
+
+- 작업 시간:
+  - 시작: 2026-06-16 08:23:00 +09:00
+  - 종료: 2026-06-16 08:32:07 +09:00
+- 사용자 명령:
+  - active goal: "운영용 Kubernetes 증설 자동화, 보안 hardening, IAM/RBAC 고도화, 백업/복구, HA/DR의 기능 구현" 계속 진행.
+  - 필요 시 `192.168.35.88` 서버로 배포 검증 가능하다고 안내.
+- 요청 분석:
+  - 직전 artifact import 단계 이후 combined operations readiness finalizer report가 생성되지만, dashboard/API/frontend 문서 흐름에서 finalizer report 자체가 별도 구조로 보이지 않았다.
+  - 운영자가 artifact import 이후 최종 wrapper가 어떤 하위 finalizer를 선택했고, readiness 재생성 결과가 무엇인지 확인할 수 있도록 `latest-operations-readiness-finalize.json`을 dashboard readiness에 연결하는 작업으로 인식했다.
+- 실행 내용:
+  - backend readiness API가 `operationsReadinessFinalize` 구조화 응답을 반환하도록 record와 parser를 추가했다.
+  - finalizer result가 ready가 아니면 `OPERATIONS_READINESS_FINALIZER` warning item으로 evidence path, local command, GitHub workflow, secret masking policy를 노출하도록 했다.
+  - frontend readiness panel에 operations finalizer summary, command rows, step rows를 추가했다.
+  - API spec, operation monitoring, MVP checklist, frontend design, test cases, feature inventory를 finalizer visibility 기준으로 갱신했다.
+- 구현 내용:
+  - `DashboardOperationsReadinessFinalizeResponse`, `DashboardOperationsReadinessFinalizeCommandResponse`, `DashboardOperationsReadinessFinalizeStepResponse` record를 추가했다.
+  - `AdminController`에 `operationsReadinessFinalizeSnapshot`과 `addOperationsReadinessFinalizeItem`을 추가했다.
+  - `DashboardReadinessResponse`에 `operationsReadinessFinalize` 필드를 추가했다.
+  - `HomeView.vue`에 기본 상태와 `normalizeOperationsReadinessFinalize`를 추가했다.
+  - `DashboardPage.vue`에 finalizer item summary, finalizer summary block, command/step list, formatter/computed helper를 추가했다.
+  - `AdminDashboardSummaryControllerTest`, `HomeView.test.js`가 finalizer structured response, selector, formatter, remediation metadata를 확인하도록 확장했다.
+- 수정된 파일 및 관련된 파일들:
+  - `osmu-backend/src/main/java/com/example/osmu/admin/AdminController.java`
+  - `osmu-backend/src/main/java/com/example/osmu/admin/DashboardReadinessResponse.java`
+  - `osmu-backend/src/main/java/com/example/osmu/admin/DashboardOperationsReadinessFinalizeResponse.java`
+  - `osmu-backend/src/main/java/com/example/osmu/admin/DashboardOperationsReadinessFinalizeCommandResponse.java`
+  - `osmu-backend/src/main/java/com/example/osmu/admin/DashboardOperationsReadinessFinalizeStepResponse.java`
+  - `osmu-backend/src/test/java/com/example/osmu/admin/AdminDashboardSummaryControllerTest.java`
+  - `osmu-frontend/src/views/HomeView.vue`
+  - `osmu-frontend/src/components/dashboard/DashboardPage.vue`
+  - `osmu-frontend/src/views/HomeView.test.js`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/operation-monitoring.md`
+  - `dev-docs/mvp-release-checklist.md`
+  - `dev-docs/frontend-design.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/feature-inventory.md`
+  - `dev-docs/worklog/main/worklog-main.md`
+- 검증 기록:
+  - `npm.cmd run test:unit -- HomeView.test.js`: 통과. Node test runner 기준 69개 테스트 통과.
+  - `npm.cmd run build`: 통과.
+  - `.\gradlew.bat test --tests com.example.osmu.admin.AdminDashboardSummaryControllerTest`: 최초 sandbox 실행은 Gradle distribution 다운로드 네트워크 제한으로 실패, 승인 후 JDK 17 경로 지정 재실행 통과.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-operations-readiness-finalizer.ps1`: 통과.
+  - `git diff --check -- <finalizer dashboard/API related tracked files>`: 통과. LF/CRLF 변환 warning만 있음.
+  - finalizer 신규 Java record 파일 trailing whitespace 확인: 문제 없음.
+- 결과:
+  - admin dashboard readiness API가 operations readiness finalizer의 result/status/readiness result/selected steps/paths/commands/steps/gaps/secret policy를 반환한다.
+  - frontend readiness panel에서 finalizer pending 상태, gap count, command preview, step result를 확인할 수 있다.
+  - artifact import 이후 final readiness regeneration 확인 단계가 dashboard에서 끊기지 않게 되었다.
+- 후속 메모:
+  - 실제 운영 환경에서는 artifact import 성공 이후 `finalize-operations-readiness.ps1` 또는 finalizer CI를 실행하고, final readiness가 `ready`가 되는지 확인해야 한다.
+  - `192.168.35.88` 서버 배포 검증은 이번 항목에서는 수행하지 않았다.
+- 코드 리뷰:
+  - backend는 finalizer report의 command/step metadata와 secret masking policy만 노출하며 kubeconfig, registry token, bearer token 값을 조회하지 않는다.
+  - ready 상태가 아닌 finalizer report만 warning item으로 올려 dashboard noise를 줄이고, structured response는 항상 API에서 확인 가능하게 했다.
+  - frontend command/step list는 상위 3개만 표시해 readiness panel 길이를 통제했다.
+- 앞으로 추가적으로 개발해야하는 내용:
+  - 실제 GitHub Actions run id 기반 artifact collection/import/finalizer end-to-end 운영 검증.
+  - live Kubernetes/security evidence 수집 후 operations readiness `ready` 전환 검증.
+  - 필요 시 `192.168.35.88` 서버에 배포해 dashboard readiness API와 UI 표시를 실서버에서 검증.
+- 추가적으로 사용된 skill이나 plugin:
+  - 별도 skill/plugin 없음.
+
+### 2026-06-16 - Operations Readiness Artifact Import Dashboard/API 노출
+
+- 작업 시간:
+  - 시작: 2026-06-16 08:14:00 +09:00
+  - 종료: 2026-06-16 08:21:36 +09:00
+- 사용자 명령:
+  - active goal: "운영용 Kubernetes 증설 자동화, 보안 hardening, IAM/RBAC 고도화, 백업/복구, HA/DR의 기능 구현" 계속 진행.
+- 요청 분석:
+  - 직전 단계까지 evidence plan, invocation, unblock, dispatch preflight, workflow run id, artifact collection, handoff는 dashboard/API에 구조화 노출됐지만, `latest-operations-readiness-artifact-import.json`은 warning item 수준으로만 보였다.
+  - 운영자가 artifact finalizer 이후 어떤 evidence file이 promote됐고 어떤 항목이 실패했는지 dashboard에서 확인할 수 있도록 artifact import report를 구조화 응답과 frontend panel에 연결하는 작업으로 인식했다.
+- 실행 내용:
+  - backend readiness API가 `operationsReadinessArtifactImport` 구조화 응답을 반환하도록 record와 parser를 추가했다.
+  - `OPERATIONS_READINESS_ARTIFACT_IMPORT` warning item에 evidence path, import script remediation command, artifact finalizer workflow path, secret policy note를 추가했다.
+  - frontend readiness panel에 artifact import summary와 entry list를 추가했다.
+  - API spec, operation monitoring, MVP checklist, frontend design, test cases, feature inventory를 갱신했다.
+- 구현 내용:
+  - `DashboardOperationsReadinessArtifactImportResponse`, `DashboardOperationsReadinessArtifactImportEntryResponse` record를 추가했다.
+  - `AdminController`에 `operationsReadinessArtifactImportSnapshot`과 `addOperationsReadinessArtifactImportItem`을 추가했다.
+  - `DashboardReadinessResponse`에 `operationsReadinessArtifactImport` 필드를 추가했다.
+  - `HomeView.vue`에 기본 상태와 `normalizeOperationsReadinessArtifactImport`를 추가했다.
+  - `DashboardPage.vue`에 artifact import summary/list/computed/formatter를 추가했다.
+  - `AdminDashboardSummaryControllerTest`, `HomeView.test.js`가 새 structured response, remediation metadata, selector/formatter를 확인하도록 확장했다.
+- 수정된 파일 및 관련된 파일들:
+  - `osmu-backend/src/main/java/com/example/osmu/admin/AdminController.java`
+  - `osmu-backend/src/main/java/com/example/osmu/admin/DashboardReadinessResponse.java`
+  - `osmu-backend/src/main/java/com/example/osmu/admin/DashboardOperationsReadinessArtifactImportResponse.java`
+  - `osmu-backend/src/main/java/com/example/osmu/admin/DashboardOperationsReadinessArtifactImportEntryResponse.java`
+  - `osmu-backend/src/test/java/com/example/osmu/admin/AdminDashboardSummaryControllerTest.java`
+  - `osmu-frontend/src/views/HomeView.vue`
+  - `osmu-frontend/src/components/dashboard/DashboardPage.vue`
+  - `osmu-frontend/src/views/HomeView.test.js`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/operation-monitoring.md`
+  - `dev-docs/mvp-release-checklist.md`
+  - `dev-docs/frontend-design.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/feature-inventory.md`
+  - `dev-docs/worklog/main/worklog-main.md`
+- 검증 기록:
+  - `npm.cmd run test:unit -- HomeView.test.js`: 통과. Node test runner 기준 69개 테스트 통과.
+  - `npm.cmd run build`: 통과.
+  - `.\gradlew.bat test --tests com.example.osmu.admin.AdminDashboardSummaryControllerTest`: 최초 sandbox 실행은 Gradle distribution 다운로드 네트워크 제한으로 실패, 승인 후 JDK 17 경로 지정 재실행 통과.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-operations-readiness-artifact-import.ps1`: 통과.
+  - `git diff --check -- <artifact import dashboard/API related files>`: 통과. LF/CRLF 변환 warning만 있음.
+- 결과:
+  - admin dashboard readiness API가 artifact import 결과의 result/status/count/entry/source/destination/secret policy를 반환한다.
+  - frontend readiness panel에서 imported/failed count, selected group count, secret policy, entry별 실패 detail과 promote destination을 확인할 수 있다.
+  - operations evidence 흐름에서 artifact collection 이후 artifact import 단계까지 dashboard에서 끊기지 않게 되었다.
+- 후속 메모:
+  - 실제 운영 환경에서는 artifact finalizer workflow 또는 local import command를 실행한 뒤 import report를 확인하고, 통과한 evidence를 기준으로 operations readiness를 다시 생성해야 한다.
+  - `192.168.35.88` 서버 검증은 이번 항목에서는 수행하지 않았다.
+- 코드 리뷰:
+  - backend는 import report의 JSON/Markdown evidence 경로와 상태만 노출하며 kubeconfig, token, secret value를 조회하지 않는다.
+  - failed import는 warning item으로 남기고, passed import는 structured response만 유지해 noisy warning을 줄인다.
+  - frontend는 entry list를 상위 4개로 제한해 readiness panel 길이를 통제했다.
+- 앞으로 추가적으로 개발해야하는 내용:
+  - artifact import 성공 이후 operations readiness regeneration과 final ready 상태 검증.
+  - 실제 GitHub Actions artifact finalizer run id 입력부터 import 완료까지 end-to-end 운영 절차 검증.
+  - live Kubernetes/security evidence 수집으로 operations readiness pending 해소.
+- 추가적으로 사용된 skill이나 plugin:
+  - 별도 skill/plugin 없음.
+
+### 2026-06-16 - Operations Dispatch Preflight Gate 추가
+
+- 작업 시간:
+  - 시작: 2026-06-16 07:52:00 +09:00
+  - 종료: 2026-06-16 08:01:19 +09:00
+- 사용자 명령:
+  - active goal: "운영용 Kubernetes 증설 자동화, 보안 hardening, IAM/RBAC 고도화, 백업/복구, HA/DR의 기능 구현" 계속 진행.
+- 요청 분석:
+  - 직전 단계에서 invocation unblock plan이 CLI/API/frontend에 노출됐지만, 실제 live workflow dispatch 직전에 모든 입력값과 확인 조건이 충족됐는지 별도 산출물로 판정하는 단계는 없었다.
+  - `-Execute`를 붙이기 전에 no-execute preflight로 kubeconfig secret 확인, operator 승인, placeholder 값, workflow file 존재, GitHub secret 참조, 선택 action order를 검증하는 자동 gate가 필요하다고 판단했다.
+- 실행 내용:
+  - `scripts/write-operations-dispatch-preflight.ps1`를 추가해 unblock plan을 읽고 dispatch readiness JSON/Markdown을 생성하도록 했다.
+  - `scripts/verify-operations-dispatch-preflight.ps1`를 추가해 missing-input fixture와 ready fixture를 검증하도록 했다.
+  - `scripts/verify-local.ps1`에 Operations dispatch preflight check 단계를 추가했다.
+  - 실제 최신 unblock plan 기준으로 `.osmu-run/latest-operations-dispatch-preflight.json` 및 `.md`를 생성했다.
+  - 문서 인덱스, operation monitoring, MVP checklist, test cases, feature inventory를 갱신했다.
+- 구현 내용:
+  - `scripts/write-operations-dispatch-preflight.ps1`
+  - `scripts/verify-operations-dispatch-preflight.ps1`
+  - `scripts/verify-local.ps1`
+  - `dev-docs/document-index.md`
+  - `dev-docs/operation-monitoring.md`
+  - `dev-docs/mvp-release-checklist.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/feature-inventory.md`
+  - `dev-docs/worklog/main/worklog-main.md`
+- 검증 기록:
+  - PowerShell parse check: `write-operations-dispatch-preflight.ps1`, `verify-operations-dispatch-preflight.ps1` 통과.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-operations-dispatch-preflight.ps1`: 통과.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\write-operations-dispatch-preflight.ps1`: 통과. 최신 실제 preflight 생성.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-local.ps1 -SkipDocker -SkipBackend -SkipFrontend`: 새 dispatch preflight 단계 통과. 기존 synthetic security evidence 실패 4건은 그대로 남아 있음.
+  - `git diff --check -- <operations dispatch preflight 관련 파일>`: 통과. LF/CRLF warning만 있음.
+- 결과:
+  - 최신 실제 dispatch preflight 결과는 `action-required`.
+  - 선택 action 6개, missing input 6개, failed check 3개, warning check 2개.
+  - required GitHub secrets는 `OSMU_KUBECONFIG_BASE64`, `OSMU_ADMIN_PASSWORD`, `GITHUB_TOKEN`로 식별됐다.
+  - workflow file 존재 검사는 모두 통과했지만, kubeconfig secret 확인, operator 승인, placeholder 입력값이 아직 필요하므로 execute command는 비워진다.
+- 후속 메모:
+  - 실제 live dispatch 전에는 `write-operations-dispatch-preflight.ps1`에 `-KubeconfigSecretConfirmed`, `-ConfirmOperatorApproval`, `-BackupTimestamp`, `-RestoreApiBase`, `-AdminLoginId`, `-ExpectedObjectCount`, 필요한 `-Placeholder` 값을 채워 `ready`를 만들어야 한다.
+  - `-CheckGitHubCli` 옵션으로 `gh` CLI 존재까지 확인한 뒤 ready plan command를 먼저 실행하고, 이후 execute command를 사용해야 한다.
+  - 배포 검증 서버 `192.168.35.88`은 이번 작업에서는 사용하지 않았다.
+- 코드 리뷰:
+  - preflight는 workflow를 실행하지 않고 산출물만 생성하므로 안전한 운영 gate다.
+  - requiredInputs의 secret성 값은 `AdminPassword`인 경우 preview/command에서 redaction 처리한다.
+  - workflow 파일에서 `secrets.X` 참조를 추출해 필요한 secret 이름을 보여주지만, secret 값 자체는 조회하거나 저장하지 않는다.
+- 앞으로 추가적으로 개발해야하는 내용:
+  - dispatch preflight 결과를 dashboard/API에 노출.
+  - 실제 값과 승인 조건을 채운 ready preflight 생성.
+  - live workflow dispatch, run id 수집, artifact collection/finalizer/import로 readiness pending 해소.
+- 추가적으로 사용된 skill이나 plugin:
+  - 별도 skill/plugin 없음.
+
+### 2026-06-16 - Operations Dispatch Preflight Dashboard/API 노출
+
+- 작업 시간:
+  - 시작: 2026-06-16 08:02:00 +09:00
+  - 종료: 2026-06-16 08:12:51 +09:00
+- 사용자 명령:
+  - active goal: "운영용 Kubernetes 증설 자동화, 보안 hardening, IAM/RBAC 고도화, 백업/복구, HA/DR의 기능 구현" 계속 진행.
+- 요청 분석:
+  - 직전 단계에서 `write-operations-dispatch-preflight.ps1`가 live workflow dispatch 직전 no-execute gate를 만들 수 있게 되었지만, dashboard/API에서는 아직 확인할 수 없었다.
+  - 운영자가 CLI Markdown을 열지 않아도 failed checks, missing inputs, required GitHub secrets, workflow file 상태, ready/execute command preview를 dashboard에서 볼 수 있게 하는 작업으로 인식했다.
+- 실행 내용:
+  - backend readiness API가 `.osmu-run/latest-operations-dispatch-preflight.json`을 읽도록 확장했다.
+  - `OPERATIONS_DISPATCH_PREFLIGHT` readiness item과 structured `operationsDispatchPreflight` 응답을 추가했다.
+  - frontend readiness panel에 dispatch preflight summary, check/input/workflow rows, plan/execute command copy controls를 추가했다.
+  - API spec, operation monitoring, MVP checklist, frontend design, test cases, feature inventory를 갱신했다.
+- 구현 내용:
+  - `DashboardOperationsDispatchPreflightResponse`, `DashboardOperationsDispatchPreflightCheckResponse`, `DashboardOperationsDispatchPreflightInputResponse`, `DashboardOperationsDispatchPreflightWorkflowFileResponse` record를 추가했다.
+  - `AdminController`에 dispatch preflight report path 설정, snapshot parser, readiness warning item 생성을 추가했다.
+  - `DashboardReadinessResponse`에 `operationsDispatchPreflight` 필드를 추가했다.
+  - `HomeView.vue`에 기본 상태와 `normalizeOperationsDispatchPreflight`를 추가했다.
+  - `DashboardPage.vue`에 dispatch preflight 요약/목록/formatter/copy UI를 추가했다.
+  - `AdminDashboardSummaryControllerTest`, `HomeView.test.js`가 새 readiness item, 구조화 응답, selector/formatter 존재를 확인하도록 확장했다.
+- 수정된 파일 및 관련된 파일들:
+  - `osmu-backend/src/main/java/com/example/osmu/admin/AdminController.java`
+  - `osmu-backend/src/main/java/com/example/osmu/admin/DashboardReadinessResponse.java`
+  - `osmu-backend/src/main/java/com/example/osmu/admin/DashboardOperationsDispatchPreflightResponse.java`
+  - `osmu-backend/src/main/java/com/example/osmu/admin/DashboardOperationsDispatchPreflightCheckResponse.java`
+  - `osmu-backend/src/main/java/com/example/osmu/admin/DashboardOperationsDispatchPreflightInputResponse.java`
+  - `osmu-backend/src/main/java/com/example/osmu/admin/DashboardOperationsDispatchPreflightWorkflowFileResponse.java`
+  - `osmu-backend/src/test/java/com/example/osmu/admin/AdminDashboardSummaryControllerTest.java`
+  - `osmu-frontend/src/views/HomeView.vue`
+  - `osmu-frontend/src/components/dashboard/DashboardPage.vue`
+  - `osmu-frontend/src/views/HomeView.test.js`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/operation-monitoring.md`
+  - `dev-docs/mvp-release-checklist.md`
+  - `dev-docs/frontend-design.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/feature-inventory.md`
+  - `dev-docs/worklog/main/worklog-main.md`
+- 검증 기록:
+  - `npm.cmd run test:unit -- HomeView.test.js`: 통과. Node test runner 기준 69개 테스트 통과.
+  - `npm.cmd run build`: 통과.
+  - `.\gradlew.bat test --tests com.example.osmu.admin.AdminDashboardSummaryControllerTest`: 최초 sandbox 실행은 Gradle distribution 다운로드 네트워크 제한으로 실패, 승인 후 JDK 17 경로 지정 재실행 통과.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-operations-dispatch-preflight.ps1`: 통과.
+  - `git diff --check -- <dispatch preflight dashboard/API related files>`: 통과. LF/CRLF 변환 warning만 있음.
+  - 새 dispatch preflight response record 파일 trailing whitespace 확인: 문제 없음.
+- 결과:
+  - admin dashboard readiness API가 dispatch preflight gate까지 반환한다.
+  - frontend readiness panel에서 live workflow dispatch 직전 confirmation/input/workflow/secret readiness 상태를 확인하고 plan/execute command를 복사할 수 있다.
+  - operations evidence 흐름이 `readiness -> evidence plan -> guarded invocation -> invocation unblock -> dispatch preflight -> workflow run id -> artifact collection -> handoff`로 dashboard에서 더 연속적으로 보이게 되었다.
+- 후속 메모:
+  - 실제 GitHub Actions dispatch 전에는 `operationsDispatchPreflight.result=ready`와 operator approval, kubeconfig secret 준비, GitHub CLI/auth 상태를 별도로 확인해야 한다.
+  - `action-required` 상태에서는 execute command가 비어 있어야 하며, UI도 plan/execute command가 있을 때만 copy button을 표시한다.
+  - `192.168.35.88` 서버 검증은 이번 항목에서는 수행하지 않았다.
+- 코드 리뷰:
+  - backend는 report file을 읽어 dashboard에 노출만 하며, secret 값이나 GitHub credential을 조회하지 않는다.
+  - dispatch preflight item은 `ready`가 아닌 경우에만 warning으로 올라와 기존 readiness 경고 모델과 맞는다.
+  - frontend는 list를 상위 몇 개로 제한해 readiness panel 길이를 통제하고, copy control은 command가 있을 때만 렌더링한다.
+- 앞으로 추가적으로 개발해야하는 내용:
+  - 실제 live dispatch 전 `-CheckGitHubCli` 포함 preflight와 GitHub Actions run verification.
+  - dispatch preflight ready 상태에서 workflow dispatch/run-id collection/artifact collection까지 이어지는 UI action flow.
+  - operations readiness pending을 실제 Kubernetes/security evidence 수집으로 해소.
+- 추가적으로 사용된 skill이나 plugin:
+  - 별도 skill/plugin 없음.
+
+### 2026-06-16 - Operations Invocation Unblock Plan Dashboard/API 노출
+
+- 작업 시간:
+  - 시작: 2026-06-16 07:41:00 +09:00
+  - 종료: 2026-06-16 07:51:21 +09:00
+- 사용자 명령:
+  - active goal: "운영용 Kubernetes 증설 자동화, 보안 hardening, IAM/RBAC 고도화, 백업/복구, HA/DR의 기능 구현" 계속 진행.
+  - 배포 검증이 필요하면 `192.168.35.88` 서버를 사용할 수 있다고 안내.
+- 요청 분석:
+  - 직전 작업에서 `write-operations-invocation-unblock-plan.ps1`와 verifier는 생겼지만, 운영자가 대시보드/API에서 blocker 해소 입력값과 다음 plan command를 볼 수 있는 상태는 아니었다.
+  - 운영용 증거 수집 흐름을 실제로 이어가기 쉽게 하려면 CLI 산출물을 admin dashboard readiness API와 frontend readiness panel에 노출해야 한다고 판단했다.
+- 실행 내용:
+  - backend readiness API가 `.osmu-run/latest-operations-invocation-unblock-plan.json`을 읽도록 설정/파서/response record를 추가했다.
+  - non-ready unblock plan을 `OPERATIONS_INVOCATION_UNBLOCK_PLAN` readiness item으로 표시하도록 했다.
+  - frontend dashboard readiness panel에 unblock summary, confirmation 요구사항, action별 required input, copyable plan command를 추가했다.
+  - API spec, frontend design, operations monitoring, MVP checklist, test cases, feature inventory를 갱신했다.
+- 구현 내용:
+  - `osmu-backend/src/main/java/com/example/osmu/admin/AdminController.java`
+  - `osmu-backend/src/main/java/com/example/osmu/admin/DashboardReadinessResponse.java`
+  - `osmu-backend/src/main/java/com/example/osmu/admin/DashboardOperationsInvocationUnblockPlanResponse.java`
+  - `osmu-backend/src/main/java/com/example/osmu/admin/DashboardOperationsInvocationUnblockActionResponse.java`
+  - `osmu-backend/src/main/java/com/example/osmu/admin/DashboardOperationsInvocationUnblockInputResponse.java`
+  - `osmu-backend/src/test/java/com/example/osmu/admin/AdminDashboardSummaryControllerTest.java`
+  - `osmu-frontend/src/views/HomeView.vue`
+  - `osmu-frontend/src/components/dashboard/DashboardPage.vue`
+  - `osmu-frontend/src/views/HomeView.test.js`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/frontend-design.md`
+  - `dev-docs/operation-monitoring.md`
+  - `dev-docs/mvp-release-checklist.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/feature-inventory.md`
+  - `dev-docs/worklog/main/worklog-main.md`
+- 검증 기록:
+  - `.\gradlew.bat test --tests com.example.osmu.admin.AdminDashboardSummaryControllerTest`: 통과. 최초 sandbox 실행은 Gradle distribution 다운로드 네트워크 제한으로 실패했고, 승인된 재실행에서 통과.
+  - `npm.cmd run test:unit -- HomeView.test.js`: 통과. Node test runner 기준 69개 테스트 통과.
+  - `npm.cmd run build`: 통과.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-operations-invocation-unblock-plan.ps1`: 통과.
+  - `git diff --check -- <operations invocation unblock dashboard/API 관련 파일>`: 통과. LF/CRLF warning만 있음.
+  - touched file trailing whitespace 검사: 통과.
+- 결과:
+  - `GET /api/admin/dashboard/readiness` 응답에 `operationsInvocationUnblockPlan`이 추가됐다.
+  - readiness item `OPERATIONS_INVOCATION_UNBLOCK_PLAN`이 evidence path, unblock plan writer command, confirmed plan command, decision rule을 노출한다.
+  - frontend readiness panel에서 unblock plan result, blocked/placeholder/ambiguous count, kubeconfig/operator confirmation 필요 여부, action별 required input과 plan command를 확인하고 복사할 수 있다.
+- 후속 메모:
+  - 실제 운영 증거 수집은 아직 live dispatch 전 상태다. 다음 단계는 unblock plan placeholder와 승인 조건을 실제 값으로 채우고 `invoke-operations-evidence-plan.ps1` plan-only 재확인 후 `-Execute`를 실행하는 것이다.
+  - 이후 workflow run id 수집, artifact collection plan ready 검증, operations artifact finalizer/import 순서로 이어가야 한다.
+  - `192.168.35.88` 서버 배포 검증은 이번 작업에서는 수행하지 않았다.
+- 코드 리뷰:
+  - backend는 기존 `.osmu-run` optional JSON snapshot 패턴을 그대로 따르므로 파일이 없어도 빈 객체를 반환한다.
+  - unblock plan은 실행 명령을 직접 수행하지 않고 복사 가능한 plan command만 노출하므로 운영자가 승인/secret/placeholder를 확인한 뒤 다음 단계로 넘어갈 수 있다.
+  - frontend는 기존 readiness operations panel 안에 summary/list를 추가해 다른 운영 evidence 단계와 같은 UX를 유지했다.
+- 앞으로 추가적으로 개발해야하는 내용:
+  - live GitHub Actions dispatch 및 Kubernetes/security evidence 수집.
+  - workflow run id plan을 실제 run id로 ready 상태까지 검증.
+  - artifact collection/finalizer/import로 operations readiness pending 해소.
+- 추가적으로 사용된 skill이나 plugin:
+  - 별도 skill/plugin 없음.
+
+### 2026-06-16 - Operations Invocation Unblock Plan Helper 추가
+
+- 작업 시간:
+  - 시작: 2026-06-16 07:30:00 +09:00
+  - 종료: 2026-06-16 07:40:40 +09:00
+- 사용자 명령:
+  - active goal: "운영용 Kubernetes 증설 자동화, 보안 hardening, IAM/RBAC 고도화, 백업/복구, HA/DR의 기능 구현" 계속 진행.
+  - 배포 검증이 필요하면 `192.168.35.88` 서버를 사용해도 된다고 안내.
+- 요청 분석:
+  - 직전 단계에서 operations evidence handoff가 `resolve-invocation-blockers` 상태로 멈춰 있었고, 실제 workflow dispatch 전에 kubeconfig secret 확인, operator 승인, placeholder 입력값 정리가 필요했다.
+  - live secret이나 승인 없이도 다음 사람이 무엇을 채워야 하는지 바로 알 수 있도록 unblock plan 산출물과 검증기를 추가하는 작업으로 인식했다.
+- 실행 내용:
+  - operations evidence plan invocation 결과를 읽어 blocked/planned action별 필요한 입력값과 확인 조건을 정리하는 writer를 추가했다.
+  - handoff의 다음 명령을 직접 invocation 실행이 아니라 unblock plan 생성 명령으로 바꿨다.
+  - `verify-local.ps1`에 unblock plan 검증 단계를 추가했다.
+  - API/운영 문서/체크리스트/테스트 케이스/기능 인벤토리를 갱신했다.
+- 구현 내용:
+  - `scripts/write-operations-invocation-unblock-plan.ps1`
+  - `scripts/verify-operations-invocation-unblock-plan.ps1`
+  - `scripts/write-operations-evidence-handoff.ps1`
+  - `scripts/verify-local.ps1`
+  - `dev-docs/document-index.md`
+  - `dev-docs/operation-monitoring.md`
+  - `dev-docs/mvp-release-checklist.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/feature-inventory.md`
+  - `dev-docs/api-spec.md`
+  - `osmu-backend/src/test/java/com/example/osmu/admin/AdminDashboardSummaryControllerTest.java`
+- 검증 기록:
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-operations-invocation-unblock-plan.ps1`: 통과.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-operations-evidence-handoff.ps1`: 통과.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-operations-evidence-plan-invocation.ps1`: 통과.
+  - `.\gradlew.bat test --tests com.example.osmu.admin.AdminDashboardSummaryControllerTest`: 통과. 최초 sandbox 실행은 Gradle distribution 다운로드 네트워크 제한으로 실패했고, 승인된 재실행에서 통과.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-local.ps1 -SkipDocker -SkipBackend -SkipFrontend`: 새 unblock plan 단계와 handoff 단계는 통과. 기존 synthetic security evidence 실패 4건은 그대로 남아 있음.
+  - `git diff --check -- <operations unblock plan 관련 파일>`: 통과. LF/CRLF warning만 있음.
+- 결과:
+  - 최신 unblock plan 산출물은 `.osmu-run/latest-operations-invocation-unblock-plan.json` 및 `.osmu-run/latest-operations-invocation-unblock-plan.md`에 생성된다.
+  - 현재 결과는 `action-required`이며, 선택 action 6개 중 planned 1개, blocked 5개, failed 0개다.
+  - 필요한 확인은 `OSMU_KUBECONFIG_BASE64` secret 준비 확인, operator 승인 확인, placeholder 6개 입력, 반복 placeholder 모호성 2건 해소다.
+  - handoff next step은 `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\write-operations-invocation-unblock-plan.ps1`로 정리됐다.
+- 후속 메모:
+  - 실제 live evidence 수집 전에는 unblock plan의 `confirmedPlanCommand` placeholder를 실제 값으로 채우고, kubeconfig secret 및 operator approval을 확인해야 한다.
+  - 이후 `invoke-operations-evidence-plan.ps1` plan-only 재확인 후 `-Execute` 실행, workflow run id 수집, artifact collection/finalizer/import 순서로 이어가야 한다.
+  - `192.168.35.88` 서버는 배포 검증이 필요한 단계에서 사용할 수 있지만 이번 작업에서는 배포하지 않았다.
+- 코드 리뷰:
+  - writer는 기본적으로 plan 산출물만 만들고 외부 workflow를 실행하지 않으므로 안전하다.
+  - verifier는 blocked/ready self-test fixture를 사용해 네트워크 없이 반복 검증 가능하다.
+  - handoff가 곧장 실행 명령을 안내하지 않고 unblock plan을 먼저 만들게 되어 운영자가 승인/secret/placeholder 누락을 확인하기 쉬워졌다.
+- 앞으로 추가적으로 개발해야하는 내용:
+  - live GitHub Actions dispatch 및 실제 Kubernetes/security evidence 수집.
+  - workflow run id 조회 후 artifact collection plan ready 상태 검증.
+  - operations artifact finalizer/import로 live readiness pending 해소.
+- 추가적으로 사용된 skill이나 plugin:
+  - 별도 skill/plugin 없음.
+
+### 2026-06-16 - Kubernetes DR Transfer Job Resource Boundary 추가
+
+- 작업 시간:
+  - 시작: 2026-06-16 01:53:00 +09:00
+  - 종료: 2026-06-16 01:58:47 +09:00
+- 사용자 명령:
+  - active goal: "운영용 Kubernetes 증설 자동화, 보안 hardening, IAM/RBAC 고도화, 백업/복구, HA/DR의 기능 구현" 계속 진행.
+- 요청 분석:
+  - 이전 단계에서 DR artifact transfer Job의 read-only root filesystem과 PVC mount 권한을 보강했다.
+  - 운영용 Job으로 보려면 CPU/memory resource boundary, 실행 시간 제한, 완료 후 TTL cleanup이 필요하다.
+  - DR drill wrapper에서 transfer helper를 호출하므로 helper만 수정하면 wrapper 경로에서 조정할 수 없는 문제가 생긴다.
+- 실행 내용:
+  - `scripts/transfer-kubernetes-backup-artifacts.ps1`에 resource requests/limits, `activeDeadlineSeconds`, `ttlSecondsAfterFinished` 파라미터와 Job manifest 필드를 추가했다.
+  - `scripts/run-kubernetes-dr-drill.ps1`에 transfer Job resource/deadline/TTL pass-through 파라미터를 추가했다.
+  - `scripts/verify-backup-restore-drill.ps1`에 새 Job boundary 계약 검증을 추가했다.
+  - backup/restore, operation monitoring, Kubernetes README, Helm README, feature inventory 문서를 갱신했다.
+- 구현 내용:
+  - transfer helper 기본값:
+    - `CpuRequest=100m`
+    - `MemoryRequest=256Mi`
+    - `CpuLimit=500m`
+    - `MemoryLimit=512Mi`
+    - `ActiveDeadlineSeconds=960`
+    - `TtlSecondsAfterFinished=3600`
+  - transfer Job template에 `resources.requests`, `resources.limits`, `activeDeadlineSeconds`, `ttlSecondsAfterFinished`를 렌더링한다.
+  - resource quantity 입력은 `100m`, `1`, `256Mi`, `1Gi` 같은 Kubernetes quantity 형식만 허용하도록 검증한다.
+  - DR wrapper의 `-TransferArtifacts` 경로에서 동일한 값을 transfer helper로 전달한다.
+  - evidence JSON에 transfer Job resource/deadline/TTL 정책을 기록하도록 했다.
+- 수정된 파일 및 관련 파일:
+  - `scripts/transfer-kubernetes-backup-artifacts.ps1`
+  - `scripts/run-kubernetes-dr-drill.ps1`
+  - `scripts/verify-backup-restore-drill.ps1`
+  - `dev-docs/backup-restore-drill.md`
+  - `dev-docs/backup-recovery.md`
+  - `dev-docs/operation-monitoring.md`
+  - `dev-docs/feature-inventory.md`
+  - `infra/k8s/README.md`
+  - `infra/helm/osmu/README.md`
+- 검증 기록:
+  - `powershell -NoProfile -Command "[scriptblock]::Create((Get-Content -Raw -LiteralPath '.\scripts\transfer-kubernetes-backup-artifacts.ps1')) | Out-Null; [scriptblock]::Create((Get-Content -Raw -LiteralPath '.\scripts\run-kubernetes-dr-drill.ps1')) | Out-Null; Write-Host 'parse ok'"`
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\transfer-kubernetes-backup-artifacts.ps1 -PlanOnly`
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run-kubernetes-dr-drill.ps1 -PlanOnly -TransferArtifacts -BackupTimestamp 20260615T010203Z -DrEgressCidr 203.0.113.10/32 -CleanupJobs`
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-backup-restore-drill.ps1`
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-local.ps1 -SkipDocker -SkipBackend -SkipFrontend`
+  - `git diff --check`
+- 결과:
+  - parse, PlanOnly, backup restore drill verifier, local static verifier, whitespace check가 모두 통과했다.
+  - CRLF 경고는 계속 출력되지만 exit code는 0이며 기존 작업트리 줄바꿈 경고로 판단했다.
+  - 실제 Kubernetes API server dry-run과 live transfer Job 실행은 아직 수행하지 않았다.
+- 코드 리뷰:
+  - Job resource boundary를 추가해 DR transfer가 cluster 자원을 무제한으로 점유하는 위험을 낮췄다.
+  - `activeDeadlineSeconds`와 kubectl wait timeout을 분리해 Job 자체의 runaway도 Kubernetes가 중단할 수 있게 했다.
+  - TTL cleanup은 evidence 수집 전에 너무 빨리 삭제되지 않도록 기본 3600초로 두었다. 운영 환경에서 log retention 정책에 맞춰 조정해야 한다.
+- 후속 메모:
+  - 실제 cluster에서 `-ServerDryRunOnly`로 Job spec admission을 확인하고, 큰 백업 샘플로 resource 기본값을 재조정해야 한다.
+  - 다음 hardening 후보는 DR bucket object lock/immutability, transfer Job retry/backoff 정책, egress endpoint 검증 강화다.
+- 추가 사용 skill/plugin:
+  - 없음.
+
+### 2026-06-16 - Kubernetes DR Artifact Transfer Job Hardening
+
+- 작업 시간:
+  - 시작: 2026-06-16 01:48:00 +09:00
+  - 종료: 2026-06-16 01:52:42 +09:00
+- 사용자 명령:
+  - active goal: "운영용 Kubernetes 증설 자동화, 보안 hardening, IAM/RBAC 고도화, 백업/복구, HA/DR의 기능 구현" 계속 진행.
+- 요청 분석:
+  - 직전 단계에서 외부 S3-compatible DR bucket 기반 artifact export/import helper가 추가되었지만, 운영 Job 보안 계약을 더 명확히 고정할 필요가 있었다.
+  - `minio/mc`는 설정 디렉터리에 쓰기 권한이 필요하므로 read-only root filesystem을 적용하려면 별도 writable `/tmp` mount와 `MC_CONFIG_DIR`가 필요하다.
+  - export Job은 source backup PVC를 읽기만 해야 하며, import Job만 restore backup PVC에 써야 한다.
+- 실행 내용:
+  - `scripts/transfer-kubernetes-backup-artifacts.ps1`의 Job template 생성부를 수정했다.
+  - `scripts/verify-backup-restore-drill.ps1`에 transfer Job hardening 계약 검증을 추가했다.
+  - backup/restore, Kubernetes, Helm, 운영 모니터링 문서에 export/import mount 정책과 read-only root filesystem 정책을 반영했다.
+  - `dev-docs/feature-inventory.md`의 Kubernetes/Helm 세부 완료율을 64%에서 65%로 보정했다. 전체 B2B 완료율은 29%로 유지했다.
+- 구현 내용:
+  - transfer Job container에 `readOnlyRootFilesystem: true`를 추가했다.
+  - `MC_CONFIG_DIR=/tmp/.mc` 환경 변수를 추가했다.
+  - `/tmp`를 `emptyDir`로 마운트해 `mc` config write 경로를 root filesystem 밖으로 분리했다.
+  - `osmu-backup-data` PVC mount에 direction별 `readOnly` 값을 적용했다.
+    - export: `readOnly: true`
+    - import: `readOnly: false`
+  - 기존 `automountServiceAccountToken: false`, `allowPrivilegeEscalation: false`, capabilities drop 계약이 verifier에서 빠지지 않도록 검사 항목을 보강했다.
+- 수정된 파일 및 관련 파일:
+  - `scripts/transfer-kubernetes-backup-artifacts.ps1`
+  - `scripts/verify-backup-restore-drill.ps1`
+  - `dev-docs/backup-restore-drill.md`
+  - `dev-docs/backup-recovery.md`
+  - `dev-docs/operation-monitoring.md`
+  - `dev-docs/feature-inventory.md`
+  - `infra/k8s/README.md`
+  - `infra/helm/osmu/README.md`
+- 검증 기록:
+  - `powershell -NoProfile -Command "[scriptblock]::Create((Get-Content -Raw -LiteralPath '.\scripts\transfer-kubernetes-backup-artifacts.ps1')) | Out-Null; Write-Host 'transfer parse ok'"`
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\transfer-kubernetes-backup-artifacts.ps1 -PlanOnly`
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run-kubernetes-dr-drill.ps1 -PlanOnly -TransferArtifacts -BackupTimestamp 20260615T010203Z -DrEgressCidr 203.0.113.10/32 -CleanupJobs`
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-backup-restore-drill.ps1`
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-local.ps1 -SkipDocker -SkipBackend -SkipFrontend`
+  - `git diff --check`
+- 결과:
+  - parse, PlanOnly, backup restore drill verifier, local static verifier, whitespace check가 모두 통과했다.
+  - `verify-local.ps1`과 `git diff --check`에서 CRLF 경고가 출력되었지만 exit code는 0이며 기존 작업트리 줄바꿈 경고로 판단했다.
+  - 실제 Kubernetes cluster, 실제 DR bucket, 실제 export/import Job 실행 검증은 아직 수행하지 않았다.
+- 코드 리뷰:
+  - export/import별 PVC mount 권한을 분리해 source backup data가 transfer 중 수정될 위험을 낮췄다.
+  - read-only root filesystem을 추가하면서 `mc`의 쓰기 경로를 `/tmp/.mc`로 분리해 보안 설정과 런타임 동작을 같이 만족하도록 했다.
+  - Secret 값은 계속 Kubernetes Secret reference로만 주입되고 evidence/document에는 복사하지 않는다.
+- 후속 메모:
+  - 실제 cluster에서 `osmu-dr-transfer-secret` 생성 후 `-ServerDryRunOnly`, live export/import, artifact preflight, restore smoke, evidence API submit 순서로 운영 증거를 확보해야 한다.
+  - 다음 hardening 후보는 DR bucket immutability/object lock 정책, transfer Job resource limits, NetworkPolicy egress DNS/DR endpoint 검증 강화다.
+- 추가 사용 skill/plugin:
+  - 없음.
+
+### 2026-06-16 - Kubernetes Backup Artifact External DR Transfer Helper 추가
+
+- 작업 시간:
+  - 시작: 2026-06-16 01:39:00 +09:00
+  - 종료: 2026-06-16 01:47:20 +09:00
+- 사용자 명령:
+  - active goal: "운영용 Kubernetes 증설 자동화, 보안 hardening, IAM/RBAC 고도화, 백업/복구, HA/DR의 기능 구현" 계속 진행.
+- 요청 분석:
+  - 기존 Kubernetes DR wrapper는 restore namespace PVC에 backup artifact가 이미 있어야 했다.
+  - 운영 DR 기준에서는 source namespace의 `osmu-backup-data` PVC에서 restore namespace PVC로 artifact를 옮기는 절차가 수동으로 남아 있으면 복구 자동화가 불완전하다.
+  - PVC를 namespace 간 직접 mount할 수 없으므로, 외부/offsite S3-compatible DR bucket을 경유해 export/import Job을 실행하는 helper가 필요하다고 판단했다.
+- 실행 내용:
+  - `scripts/transfer-kubernetes-backup-artifacts.ps1`를 추가했다.
+  - `scripts/run-kubernetes-dr-drill.ps1`에 `-TransferArtifacts` 옵션을 추가해 wrapper sequence 안에서 export/import를 선택적으로 실행할 수 있게 했다.
+  - `scripts/verify-local.ps1`와 `scripts/verify-backup-restore-drill.ps1`에 transfer helper 검증을 연결했다.
+  - backup/restore runbook, backup recovery, operation monitoring, document index, MVP checklist, deployment strategy, Kubernetes README, Helm README, feature inventory 문서에 외부 DR artifact transfer 절차를 반영했다.
+- 구현 내용:
+  - `transfer-kubernetes-backup-artifacts.ps1`
+    - `Mode`: `Export`, `Import`, `ExportImport`.
+    - 기본 DR secret: `osmu-dr-transfer-secret`.
+    - secret key 계약: `DR_S3_ENDPOINT`, `DR_S3_ACCESS_KEY`, `DR_S3_SECRET_KEY`, `DR_S3_BUCKET`.
+    - source namespace export Job: `/backup/mariadb/<timestamp>`와 `/backup/minio/<timestamp>`를 외부 S3-compatible DR bucket으로 mirror.
+    - restore namespace import Job: 외부 DR bucket의 동일 timestamp를 restore namespace `osmu-backup-data` PVC로 mirror.
+    - `-DrEgressCidr`가 있으면 transfer Pod용 `osmu-dr-transfer-egress` NetworkPolicy를 함께 렌더링.
+    - `.osmu-run/latest-kubernetes-backup-artifact-transfer.json` evidence 생성.
+  - `run-kubernetes-dr-drill.ps1`
+    - `-TransferArtifacts` 사용 시 sequence가 `backup drill optional -> restore namespace -> artifact transfer -> artifact preflight -> restore drill`이 된다.
+    - transfer child evidence path를 wrapper evidence에 포함.
+- 수정된 파일 및 관련 파일:
+  - `scripts/transfer-kubernetes-backup-artifacts.ps1`
+  - `scripts/run-kubernetes-dr-drill.ps1`
+  - `scripts/verify-local.ps1`
+  - `scripts/verify-backup-restore-drill.ps1`
+  - `dev-docs/backup-restore-drill.md`
+  - `dev-docs/backup-recovery.md`
+  - `dev-docs/operation-monitoring.md`
+  - `dev-docs/document-index.md`
+  - `dev-docs/mvp-release-checklist.md`
+  - `dev-docs/deployment-strategy.md`
+  - `dev-docs/feature-inventory.md`
+  - `infra/k8s/README.md`
+  - `infra/helm/osmu/README.md`
+- 검증 기록:
+  - `powershell -NoProfile -Command "[scriptblock]::Create((Get-Content -Raw -LiteralPath '.\scripts\transfer-kubernetes-backup-artifacts.ps1')) | Out-Null; [scriptblock]::Create((Get-Content -Raw -LiteralPath '.\scripts\run-kubernetes-dr-drill.ps1')) | Out-Null; Write-Host 'parse ok'"`
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\transfer-kubernetes-backup-artifacts.ps1 -PlanOnly`
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run-kubernetes-dr-drill.ps1 -PlanOnly -TransferArtifacts -BackupTimestamp 20260615T010203Z -DrEgressCidr 203.0.113.10/32 -CleanupJobs`
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-backup-restore-drill.ps1`
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-local.ps1 -SkipDocker -SkipBackend -SkipFrontend`
+- 결과:
+  - Kubernetes DR flow에서 수동 artifact copy/snapshot gap을 줄이는 외부 S3-compatible transfer 경로가 생겼다.
+  - 전체 B2B 제품 추정 완료율은 약 29%, Kubernetes/Helm 영역은 약 64%로 갱신했다.
+  - 실제 Kubernetes cluster, 실제 DR bucket, 실제 transfer Job 실행은 수행하지 않았다.
+- 코드 리뷰:
+  - transfer Job은 `osmu-backup` ServiceAccount와 `automountServiceAccountToken: false`를 사용해 Kubernetes API token 노출을 피한다.
+  - DR credential 값은 Kubernetes Secret 참조로만 주입되고 evidence에는 복사하지 않는다.
+  - `mc mb`로 bucket을 생성하지 않고 기존 DR bucket을 `mc ls`로 확인하도록 하여 운영 least-privilege와 더 잘 맞췄다.
+  - 기존 `osmu-backup-egress` NetworkPolicy가 외부 egress를 막을 수 있으므로 `-DrEgressCidr` 기반 추가 egress policy를 제공했다.
+- 후속 메모:
+  - 실제 cluster에서 `osmu-dr-transfer-secret` 생성, `-ServerDryRunOnly`, live export/import, artifact preflight 순서로 evidence를 확보해야 한다.
+  - S3-compatible DR bucket retention/object lock/immutability 정책은 아직 별도 구현/문서화가 필요하다.
+  - backup manifest 기반 timestamp/sample 자동 선택은 다음 단계로 남아 있다.
+- 추가 사용 skill/plugin:
+  - 없음.
+
+### 2026-06-16 - Kubernetes Restore Smoke Evidence Helper 추가
+
+- 작업 시간:
+  - 시작: 2026-06-16 01:32:00 +09:00
+  - 종료: 2026-06-16 01:38:03 +09:00
+- 사용자 명령:
+  - active goal: "운영용 Kubernetes 증설 자동화, 보안 hardening, IAM/RBAC 고도화, 백업/복구, HA/DR의 기능 구현" 계속 진행.
+- 요청 분석:
+  - 직전 단계에서 Kubernetes DR wrapper evidence를 admin restore evidence API request로 변환할 수 있게 되었지만, `PostRestoreSmokeVerified`가 수동 플래그에 의존했다.
+  - 운영 복구 증거의 신뢰도를 높이려면 복구된 API health/login/bucket/object 확인과 실제 S3 client smoke를 별도 evidence JSON으로 남기고, API evidence request helper가 이를 자동으로 인정해야 한다고 판단했다.
+- 실행 내용:
+  - `scripts/verify-kubernetes-restore-smoke.ps1`를 추가했다.
+  - `scripts/write-kubernetes-dr-evidence-request.ps1`가 `.osmu-run/latest-kubernetes-restore-smoke.json`을 읽어 API+S3 smoke 성공을 자동 반영하도록 확장했다.
+  - `scripts/verify-local.ps1`, `scripts/verify-backup-restore-drill.ps1`에 restore smoke plan/static check를 추가했다.
+  - backup/restore runbook, backup recovery, operation monitoring, document index, MVP checklist, deployment strategy, Kubernetes README, Helm README, feature inventory 문서에 새 restore smoke 절차를 반영했다.
+- 구현 내용:
+  - `verify-kubernetes-restore-smoke.ps1`
+    - `-PlanOnly`로 실행 계획만 출력.
+    - restored target `GET /health`, `GET /storage/health`, `GET /database/health`, admin login, `GET /admin/backup/status`, bucket list를 확인.
+    - `-ExpectedBucketName`, `-ExpectedObjectKey`가 있으면 복구된 bucket/object 접근을 확인.
+    - `-RunS3ClientSmoke` 사용 시 기존 `verify-s3-client-smoke.ps1`를 호출해 real S3 client smoke를 수행.
+    - `.osmu-run/latest-kubernetes-restore-smoke.json`에 `apiSmokePassed`, `s3ClientSmoke.status`, check list를 기록하고 secret value는 저장하지 않는다.
+  - `write-kubernetes-dr-evidence-request.ps1`
+    - `-SmokeEvidencePath`를 추가.
+    - `AUTO`/`SUCCESS` 판정에서 `-PostRestoreSmokeVerified` 수동 플래그뿐 아니라 passed restore smoke evidence도 인정.
+    - 단, 자동 성공은 API smoke와 S3 client smoke가 모두 통과한 경우에만 인정.
+- 수정된 파일 및 관련 파일:
+  - `scripts/verify-kubernetes-restore-smoke.ps1`
+  - `scripts/write-kubernetes-dr-evidence-request.ps1`
+  - `scripts/verify-local.ps1`
+  - `scripts/verify-backup-restore-drill.ps1`
+  - `dev-docs/backup-restore-drill.md`
+  - `dev-docs/backup-recovery.md`
+  - `dev-docs/operation-monitoring.md`
+  - `dev-docs/document-index.md`
+  - `dev-docs/mvp-release-checklist.md`
+  - `dev-docs/deployment-strategy.md`
+  - `dev-docs/feature-inventory.md`
+  - `infra/k8s/README.md`
+  - `infra/helm/osmu/README.md`
+- 검증 기록:
+  - `powershell -NoProfile -Command "[scriptblock]::Create((Get-Content -Raw -LiteralPath '.\scripts\verify-kubernetes-restore-smoke.ps1')) | Out-Null; [scriptblock]::Create((Get-Content -Raw -LiteralPath '.\scripts\write-kubernetes-dr-evidence-request.ps1')) | Out-Null; Write-Host 'parse ok'"`
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-kubernetes-restore-smoke.ps1 -PlanOnly`
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\write-kubernetes-dr-evidence-request.ps1 -PlanOnly`
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-backup-restore-drill.ps1`
+  - synthetic DR/artifact/smoke evidence 기반 `write-kubernetes-dr-evidence-request.ps1` 실행: `-PostRestoreSmokeVerified` 없이도 API+S3 smoke evidence로 `SUCCESS`, gaps 0 request JSON 생성 확인.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-local.ps1 -SkipDocker -SkipBackend -SkipFrontend`
+- 결과:
+  - Kubernetes restore drill 이후 backend API에 기록할 evidence가 실제 post-restore smoke evidence와 연결되었다.
+  - 전체 B2B 제품 추정 완료율은 약 28%, Kubernetes/Helm 영역은 약 62%로 갱신했다.
+  - 실제 restored Kubernetes endpoint나 real S3 client smoke는 이번 로컬 정적 작업에서는 수행하지 않았다.
+- 코드 리뷰:
+  - restore smoke evidence가 없거나 S3 smoke가 빠진 경우에는 `write-kubernetes-dr-evidence-request.ps1`가 자동 `SUCCESS`로 올리지 않으므로 증거 과장이 줄었다.
+  - `verify-kubernetes-restore-smoke.ps1`는 admin password를 evidence JSON에 저장하지 않지만, 운영 실행 시 명령줄 secret 노출을 줄이기 위해 CI secret/env 주입 개선이 필요하다.
+  - restored object 검증은 특정 bucket/object를 인자로 받는 방식이므로, 추후 backup manifest와 연결해 기대 bucket/object를 자동 선택하는 편이 좋다.
+- 후속 메모:
+  - 실제 cluster restore namespace endpoint를 만든 뒤 `verify-kubernetes-restore-smoke.ps1 -RunS3ClientSmoke -RequireS3Client`를 수행해야 한다.
+  - backup manifest에서 metadata row count와 대표 object sample을 자동 추출해 evidence request까지 완전 자동 연결하는 작업이 남아 있다.
+  - offsite snapshot/copy 자동화와 live Kubernetes dry-run/apply evidence 수집은 계속 필요하다.
+- 추가 사용 skill/plugin:
+  - 없음.
+
+### 2026-06-16 - Kubernetes DR Evidence API Request Script 연결
+
+- 작업 시간:
+  - 시작: 2026-06-16 01:23:00 +09:00
+  - 종료: 2026-06-16 01:31:50 +09:00
+- 사용자 명령:
+  - active goal: "운영용 Kubernetes 증설 자동화, 보안 hardening, IAM/RBAC 고도화, 백업/복구, HA/DR의 기능 구현" 계속 진행.
+- 요청 분석:
+  - 직전 작업에서 Kubernetes DR drill wrapper가 `.osmu-run/latest-kubernetes-dr-drill.json`을 만들 수 있게 되었지만, 그 증거를 backend의 `POST /api/admin/backup/restore-drill-evidence` API 요청 형태로 연결하는 절차가 아직 검증 체계와 문서에 묶이지 않았다.
+  - 운영 HA/DR 증거는 단순 스크립트 산출물이 아니라 admin backup status에 기록 가능한 형태여야 하므로, Kubernetes wrapper/artifact evidence를 API request JSON으로 변환하고 선택적으로 제출하는 helper를 공식 절차에 포함해야 한다고 해석했다.
+- 실행 내용:
+  - `scripts/write-kubernetes-dr-evidence-request.ps1`의 현재 구현을 확인했다.
+  - `scripts/verify-local.ps1`에 Kubernetes DR evidence API request plan check를 추가했다.
+  - `scripts/verify-backup-restore-drill.ps1`에 새 evidence request helper, output path, `AUTO`/`SUCCESS` 판정 기준, artifact log parsing, API submit 연결 검증을 추가했다.
+  - backup/restore, backup recovery, operation monitoring, document index, MVP checklist, deployment strategy, Kubernetes README, Helm README, feature inventory 문서에 새 절차를 반영했다.
+- 구현 내용:
+  - `write-kubernetes-dr-evidence-request.ps1`는 DR wrapper evidence와 artifact preflight evidence를 읽어 `.osmu-run/latest-kubernetes-dr-evidence-request.json`을 생성한다.
+  - `AUTO` result는 wrapper 실패 시 `FAILED`, live restore/metadata/object/smoke 증거가 충분할 때만 `SUCCESS`, 그 외에는 `PARTIAL`로 기록한다.
+  - `-Submit` 사용 시 admin login 후 `POST /api/admin/backup/restore-drill-evidence`로 제출할 수 있게 한다.
+  - secret-looking 값은 evidence 파일에 넣지 않고, credentials는 제출 시점 인자로만 사용하도록 문서화했다.
+- 수정된 파일 및 관련 파일:
+  - `scripts/verify-local.ps1`
+  - `scripts/verify-backup-restore-drill.ps1`
+  - `scripts/write-kubernetes-dr-evidence-request.ps1`
+  - `dev-docs/backup-restore-drill.md`
+  - `dev-docs/backup-recovery.md`
+  - `dev-docs/operation-monitoring.md`
+  - `dev-docs/document-index.md`
+  - `dev-docs/mvp-release-checklist.md`
+  - `dev-docs/deployment-strategy.md`
+  - `dev-docs/feature-inventory.md`
+  - `infra/k8s/README.md`
+  - `infra/helm/osmu/README.md`
+- 검증 기록:
+  - `powershell -NoProfile -Command "[scriptblock]::Create((Get-Content -Raw -LiteralPath '.\scripts\write-kubernetes-dr-evidence-request.ps1')) | Out-Null; Write-Host 'parse ok'"`
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\write-kubernetes-dr-evidence-request.ps1 -PlanOnly`
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-backup-restore-drill.ps1`
+  - synthetic evidence 기반 `write-kubernetes-dr-evidence-request.ps1` 실행: `SUCCESS`, metadata row count 7, object count 2, object bytes 128, gaps 0 request JSON 생성 확인.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-local.ps1 -SkipDocker -SkipBackend -SkipFrontend`
+- 결과:
+  - Kubernetes DR drill evidence가 backend admin backup status에 기록 가능한 API request 형식까지 이어지게 되었다.
+  - 전체 B2B 제품 추정 완료율은 약 27%, Kubernetes/Helm 영역은 약 60%로 갱신했다.
+  - 실제 Kubernetes cluster API 제출이나 live restore는 수행하지 않았다.
+- 코드 리뷰:
+  - `SUCCESS` 판정이 명시적인 restore 확인, post-restore smoke 확인, live confirmed restore, metadata row count, object evidence를 모두 요구하므로 운영 증거를 과장하지 않는다.
+  - `backupManifestSha256`는 artifact metadata SHA와 의미가 다르므로 자동으로 채우지 않고 `null`로 두는 현재 판단이 안전하다.
+  - `-Submit` 경로는 admin password를 파일에 저장하지 않지만, 명령줄 인자 사용 자체는 운영 환경에서 secret manager/CI secret injection 방식으로 대체하는 것이 좋다.
+- 후속 메모:
+  - 실제 cluster에서 `run-kubernetes-dr-drill.ps1 -ServerDryRunOnly`와 `write-kubernetes-dr-evidence-request.ps1`를 연결해 운영 evidence를 수집해야 한다.
+  - live restore 후에는 API/S3 smoke 결과를 자동으로 수집해 `-PostRestoreSmokeVerified`를 사람이 찍지 않아도 되도록 확장하는 것이 다음 단계다.
+  - offsite backup snapshot/copy 자동화가 아직 남아 있다.
+- 추가 사용 skill/plugin:
+  - 없음.
+
+### 2026-06-16 - Kubernetes DR Drill Orchestration Wrapper 추가
+
+- 작업 시간:
+  - 시작: 2026-06-16 01:18:00 +09:00
+  - 종료: 2026-06-16 01:22:14 +09:00
+- 사용자 명령:
+  - active goal: "운영용 Kubernetes 증설 자동화, 보안 hardening, IAM/RBAC 고도화, 백업/복구, HA/DR의 기능 구현" 계속 진행.
+- 요청 분석:
+  - 직전 단계까지 Kubernetes 백업 Job, restore namespace 준비, backup artifact preflight, restore Job helper가 각각 분리되어 있었다.
+  - 운영자가 순서를 놓치지 않고 같은 RunId와 timestamp 흐름으로 실행하려면 wrapper가 필요하다고 판단했다.
+  - artifact copy/snapshot은 StorageClass와 운영 정책에 따라 달라지므로 wrapper가 자동 복사하지 않고, restore namespace PVC에 artifact가 이미 준비되어 있어야 한다는 정책을 유지했다.
+- 실행 내용:
+  - Kubernetes DR drill orchestration wrapper를 추가했다.
+  - 로컬 검증 게이트와 backup/restore verifier에 wrapper 계약을 연결했다.
+  - backup/restore runbook, backup recovery, Kubernetes/Helm README, operation monitoring, document index, MVP release checklist, deployment strategy, feature inventory 문서에 wrapper 명령과 evidence 경로를 반영했다.
+- 구현 내용:
+  - `scripts/run-kubernetes-dr-drill.ps1`
+    - 기본 sequence: optional source backup drill -> restore namespace preparation -> backup artifact preflight -> restore drill.
+    - `-PlanOnly`: 전체 순서를 출력하고 아무 Kubernetes resource도 변경하지 않음.
+    - `-ServerDryRunOnly`: restore namespace, artifact preflight Job, restore Job의 API server validation 경로를 순서대로 실행.
+    - `-ConfirmRestore`: 명시적 확인 후 restore namespace apply, artifact preflight, restore Job 실행 순서로 진행.
+    - `-RunBackupDrill`: 선택 시 source namespace에서 backup CronJob 기반 one-off backup Job 실행.
+    - `-CleanupJobs`: child backup/artifact/restore Job cleanup flag 전달.
+    - `-IncludeAppWorkloads`, `-AllowEmptyMinio` 전달 지원.
+    - wrapper evidence 파일: `.osmu-run/latest-kubernetes-dr-drill.json`.
+  - `scripts/verify-local.ps1`
+    - `Kubernetes DR drill orchestration plan check` 추가.
+  - `scripts/verify-backup-restore-drill.ps1`
+    - wrapper 스크립트, child script 연결, evidence path, 안전 플래그, artifact copy 정책 검증 추가.
+- 수정된 파일 및 관련 파일:
+  - `scripts/run-kubernetes-dr-drill.ps1`
+  - `scripts/verify-local.ps1`
+  - `scripts/verify-backup-restore-drill.ps1`
+  - `dev-docs/backup-restore-drill.md`
+  - `dev-docs/backup-recovery.md`
+  - `dev-docs/operation-monitoring.md`
+  - `dev-docs/document-index.md`
+  - `dev-docs/mvp-release-checklist.md`
+  - `dev-docs/deployment-strategy.md`
+  - `dev-docs/feature-inventory.md`
+  - `infra/k8s/README.md`
+  - `infra/helm/osmu/README.md`
+- 검증 기록:
+  - `powershell -NoProfile -Command "[scriptblock]::Create((Get-Content -Raw -LiteralPath '.\scripts\run-kubernetes-dr-drill.ps1')) | Out-Null; Write-Host 'parse ok'"`
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run-kubernetes-dr-drill.ps1 -PlanOnly`
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run-kubernetes-dr-drill.ps1 -PlanOnly -RunBackupDrill -BackupTimestamp 20260615T010203Z -CleanupJobs`
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run-kubernetes-dr-drill.ps1 -PlanOnly -BackupTimestamp 20260615T010203Z`
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-backup-restore-drill.ps1`
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-local.ps1 -SkipDocker -SkipBackend -SkipFrontend`
+- 결과:
+  - Kubernetes DR flow가 개별 helper 모음에서 wrapper 기반 운영 sequence로 정리되었다.
+  - 실제 Kubernetes live backup/restore Job은 실행하지 않았다.
+  - 기능 인벤토리의 전체 B2B 제품 추정 완료율을 약 26%, Kubernetes/Helm 영역을 58%로 갱신했다.
+- 코드 리뷰:
+  - wrapper는 `-PlanOnly`, `-ServerDryRunOnly`, `-ConfirmRestore` 모드를 분리해 실수 실행 위험을 줄였다.
+  - source namespace와 restore namespace가 같으면 중단하도록 하여 운영 데이터 overwrite 위험을 낮췄다.
+  - `-RunBackupDrill`을 선택해도 artifact copy/snapshot은 자동 수행하지 않는다고 evidence와 문서에 명시했다.
+- 후속 메모:
+  - 다음 단계는 실제 cluster에서 `-ServerDryRunOnly` wrapper evidence를 확보하고, 이후 disposable restore namespace에서 `-ConfirmRestore` live drill을 수행하는 것이다.
+  - artifact copy/snapshot 자동화는 StorageClass/CSI snapshot 정책 확정 후 별도 구현해야 한다.
+- 추가 사용 skill/plugin:
+  - 없음.
+
+### 2026-06-16 - Kubernetes Backup Artifact Preflight Job Script 추가
+
+- 작업 시간:
+  - 시작: 2026-06-16 01:11:00 +09:00
+  - 종료: 2026-06-16 01:16:10 +09:00
+- 사용자 명령:
+  - active goal: "운영용 Kubernetes 증설 자동화, 보안 hardening, IAM/RBAC 고도화, 백업/복구, HA/DR의 기능 구현" 계속 진행.
+- 요청 분석:
+  - 직전 단계에서 disposable restore namespace 준비와 restore Job 실행 helper는 생겼지만, restore Job 실행 전에 백업 PVC 안에 실제 선택 timestamp의 artifact가 있는지 검증하는 단계가 없었다.
+  - 복구 안정성을 높이려면 `metadata.sql`, 선택적 checksum, MinIO mirror object count/bytes를 restore namespace에서 읽기 전용으로 검증하는 preflight Job이 필요하다고 판단했다.
+- 실행 내용:
+  - Kubernetes backup artifact preflight 스크립트를 추가했다.
+  - 로컬 검증 게이트와 backup/restore verifier에 artifact preflight 계약을 연결했다.
+  - backup/restore runbook, backup recovery, Kubernetes/Helm README, operation monitoring, document index, MVP release checklist, deployment strategy, feature inventory 문서에 preflight 단계와 evidence 경로를 반영했다.
+- 구현 내용:
+  - `scripts/verify-kubernetes-backup-artifacts.ps1`
+    - 기본 restore namespace: `osmu-restore-drill`.
+    - `-PlanOnly`: kubectl 계획만 출력.
+    - `-ServerDryRunOnly`: API server dry-run evidence만 기록.
+    - live mode: `osmu-backup-artifact-preflight-<RunId>` Job 생성, completion 대기, Job/Pod/log evidence 수집.
+    - `-CleanupJob`: evidence 수집 후 Job 삭제.
+    - `-AllowEmptyMinio`: 의도적으로 빈 MinIO mirror를 허용하는 테스트용 옵션.
+    - Job은 `osmu-backup-data` PVC를 read-only로 마운트하고 `osmu-backup` ServiceAccount와 `automountServiceAccountToken: false`를 사용.
+    - 확인 대상:
+      - `/backup/mariadb/<BACKUP_TIMESTAMP>/metadata.sql`
+      - `/backup/mariadb/<BACKUP_TIMESTAMP>/metadata.sql.sha256`가 있으면 checksum 비교
+      - `/backup/minio/<BACKUP_TIMESTAMP>` file count/bytes
+    - Pod log pass marker: `OSMU_BACKUP_ARTIFACT_PREFLIGHT_RESULT=passed`.
+    - evidence 파일: `.osmu-run/latest-kubernetes-backup-artifacts.json`.
+  - `scripts/verify-local.ps1`
+    - `Kubernetes backup artifact preflight plan check` 추가.
+  - `scripts/verify-backup-restore-drill.ps1`
+    - artifact preflight 스크립트, 문서, evidence, checksum, read-only mount, pass marker 검증 추가.
+- 수정된 파일 및 관련 파일:
+  - `scripts/verify-kubernetes-backup-artifacts.ps1`
+  - `scripts/verify-local.ps1`
+  - `scripts/verify-backup-restore-drill.ps1`
+  - `dev-docs/backup-restore-drill.md`
+  - `dev-docs/backup-recovery.md`
+  - `dev-docs/operation-monitoring.md`
+  - `dev-docs/document-index.md`
+  - `dev-docs/mvp-release-checklist.md`
+  - `dev-docs/deployment-strategy.md`
+  - `dev-docs/feature-inventory.md`
+  - `infra/k8s/README.md`
+  - `infra/helm/osmu/README.md`
+- 검증 기록:
+  - `powershell -NoProfile -Command "[scriptblock]::Create((Get-Content -Raw -LiteralPath '.\scripts\verify-kubernetes-backup-artifacts.ps1')) | Out-Null; Write-Host 'parse ok'"`
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-kubernetes-backup-artifacts.ps1 -PlanOnly`
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-kubernetes-backup-artifacts.ps1 -PlanOnly -ServerDryRunOnly -BackupTimestamp 20260615T010203Z`
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-backup-restore-drill.ps1`
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-local.ps1 -SkipDocker -SkipBackend -SkipFrontend`
+- 결과:
+  - Kubernetes restore flow가 `backup drill -> restore namespace 준비 -> backup artifact preflight -> restore Job dry-run/live` 순서로 더 명확해졌다.
+  - 실제 Kubernetes live artifact preflight Job은 실행하지 않았다.
+  - 기능 인벤토리의 전체 B2B 제품 추정 완료율을 약 25%, Kubernetes/Helm 영역을 56%로 갱신했다.
+- 코드 리뷰:
+  - Job이 PVC를 read-only로 마운트하므로 restore 전 검증이 데이터 변경 없이 수행된다.
+  - checksum 파일이 있으면 비교하고, 없으면 missing으로 로그에 남겨 운영자가 backup CronJob 산출물 품질을 볼 수 있다.
+  - Pod log marker를 확인하므로 단순 Job completion보다 evidence 신뢰도가 높다.
+- 후속 메모:
+  - 실제 클러스터에서 restore namespace와 backup artifact가 준비되면 `-ServerDryRunOnly`, 이후 live preflight를 실행해 evidence를 확보해야 한다.
+  - 다음 단계는 이 artifact evidence와 restore drill evidence를 `POST /api/admin/backup/restore-drill-evidence` 또는 별도 운영 API에 자동 연결하는 것이다.
+- 추가 사용 skill/plugin:
+  - 없음.
+
+### 2026-06-16 - Kubernetes Restore Namespace Preparation Script 추가
+
+- 작업 시간:
+  - 시작: 2026-06-16 01:04:00 +09:00
+  - 종료: 2026-06-16 01:09:50 +09:00
+- 사용자 명령:
+  - active goal: "운영용 Kubernetes 증설 자동화, 보안 hardening, IAM/RBAC 고도화, 백업/복구, HA/DR의 기능 구현" 계속 진행.
+- 요청 분석:
+  - 직전 단계에서 isolated restore Job 실행 helper는 생겼지만, 그 Job을 실행할 disposable restore namespace를 준비하는 절차가 문서 수준에 가까웠다.
+  - 운영 네임스페이스를 건드리지 않고 복구 대상 core stack을 준비하려면 namespace, ServiceAccount, ConfigMap, MariaDB, MinIO, backup PVC, NetworkPolicy, PDB를 restore namespace로 렌더/검증/적용하는 별도 경로가 필요하다고 판단했다.
+  - Secret 값 복사 기능은 보안상 위험하므로 자동화하지 않고, restore namespace에 `osmu-secret`이 존재하는지만 확인하도록 설계했다.
+- 실행 내용:
+  - disposable restore namespace 준비 스크립트를 추가했다.
+  - 로컬 검증 게이트와 backup/restore drill verifier에 새 준비 스크립트를 연결했다.
+  - backup/restore runbook, backup recovery, Kubernetes/Helm README, operation monitoring, document index, MVP release checklist, deployment strategy, feature inventory 문서에 준비 절차와 evidence 경로를 반영했다.
+- 구현 내용:
+  - `scripts/prepare-kubernetes-restore-namespace.ps1`
+    - 기본 restore namespace는 `osmu-restore-drill`.
+    - `-PlanOnly`: overlay 경로와 kubectl 명령 계획만 출력.
+    - `-ServerDryRunOnly`: restore target core stack overlay를 생성하고 API server dry-run evidence 기록.
+    - `-Apply`: restore target core stack을 적용.
+    - `-Wait`: MariaDB/MinIO StatefulSet rollout 대기.
+    - `-IncludeAppWorkloads`: 필요 시 backend/frontend/ingress까지 포함.
+    - restore namespace와 source namespace가 같으면 중단.
+    - restore target backup CronJob은 `spec.suspend: true`로 렌더하여 disposable target이 자체 scheduled backup을 만들지 않도록 처리.
+    - evidence 파일: `.osmu-run/latest-kubernetes-restore-namespace.json`.
+  - `scripts/verify-local.ps1`
+    - `Kubernetes restore namespace preparation plan check` 추가.
+  - `scripts/verify-backup-restore-drill.ps1`
+    - 준비 스크립트, 문서, evidence 경로, secret policy, CronJob suspend 계약 검증 추가.
+- 수정된 파일 및 관련 파일:
+  - `scripts/prepare-kubernetes-restore-namespace.ps1`
+  - `scripts/verify-local.ps1`
+  - `scripts/verify-backup-restore-drill.ps1`
+  - `dev-docs/backup-restore-drill.md`
+  - `dev-docs/backup-recovery.md`
+  - `dev-docs/operation-monitoring.md`
+  - `dev-docs/document-index.md`
+  - `dev-docs/mvp-release-checklist.md`
+  - `dev-docs/deployment-strategy.md`
+  - `dev-docs/feature-inventory.md`
+  - `infra/k8s/README.md`
+  - `infra/helm/osmu/README.md`
+- 검증 기록:
+  - `powershell -NoProfile -Command "[scriptblock]::Create((Get-Content -Raw -LiteralPath '.\scripts\prepare-kubernetes-restore-namespace.ps1')) | Out-Null; Write-Host 'parse ok'"`
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\prepare-kubernetes-restore-namespace.ps1 -PlanOnly`
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\prepare-kubernetes-restore-namespace.ps1 -PlanOnly -Apply -Wait`
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\prepare-kubernetes-restore-namespace.ps1 -PlanOnly -ServerDryRunOnly`
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-backup-restore-drill.ps1`
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-local.ps1 -SkipDocker -SkipBackend -SkipFrontend`
+- 결과:
+  - Kubernetes restore drill은 이제 restore target namespace 준비, restore Job 검증, 실제 restore Job 실행 단계로 분리되었다.
+  - 실제 cluster apply 또는 live restore는 수행하지 않았다.
+  - 기능 인벤토리의 전체 B2B 제품 추정 완료율을 약 24%, Kubernetes/Helm 영역을 54%로 갱신했다.
+- 코드 리뷰:
+  - Secret 값은 생성/복사/조회하지 않고 이름 존재만 확인해 evidence에 비밀이 남을 위험을 낮췄다.
+  - restore target CronJob을 suspend 처리해 disposable namespace에서 불필요한 scheduled backup이 도는 위험을 줄였다.
+  - 현재 스크립트는 backup PVC 안의 실제 artifact 존재 여부까지는 확인하지 않는다. 이는 후속 artifact verification Job으로 분리하는 것이 좋다.
+- 후속 메모:
+  - 다음 단계는 restore namespace의 backup PVC 안에 `/backup/mariadb/<timestamp>/metadata.sql`, `/backup/minio/<timestamp>`가 실제 존재하는지 확인하는 artifact preflight Job을 추가하는 것이 적절하다.
+  - 실제 클러스터에서 `-ServerDryRunOnly`, 이후 `-Apply -Wait` evidence를 수집해야 한다.
+- 추가 사용 skill/plugin:
+  - 없음.
+
+### 2026-06-16 - Kubernetes Isolated Restore Drill Script 추가
+
+- 작업 시간:
+  - 시작: 2026-06-16 00:55:00 +09:00
+  - 종료: 2026-06-16 01:02:39 +09:00
+- 사용자 명령:
+  - active goal: "운영용 Kubernetes 증설 자동화, 보안 hardening, IAM/RBAC 고도화, 백업/복구, HA/DR의 기능 구현" 계속 진행.
+- 요청 분석:
+  - 직전 단계에서 Kubernetes 백업 Job evidence 수집 경로는 생겼지만, 복구 Job은 예제 manifest와 HA/DR dry-run 수준에 머물러 있었다.
+  - 운영 네임스페이스에 복구 Job을 바로 적용하면 MariaDB/MinIO 데이터를 덮어쓸 위험이 있으므로, 기본 restore namespace를 `osmu-restore-drill`로 두고 명시적 확인 없이는 실제 Job을 만들지 않는 안전한 실행 경로가 필요하다고 판단했다.
+- 실행 내용:
+  - 격리형 Kubernetes restore drill 스크립트를 추가했다.
+  - 로컬 검증 게이트와 backup/restore drill verifier에 새 스크립트 계약을 연결했다.
+  - 백업/복구 runbook, Kubernetes/Helm README, 운영 모니터링 문서, 문서 인덱스, MVP 체크리스트, 기능 인벤토리에 사용 방법과 evidence 경로를 반영했다.
+- 구현 내용:
+  - `scripts/run-kubernetes-restore-drill.ps1`
+    - `-PlanOnly`: kubectl 명령 계획만 출력하고 Job/evidence를 만들지 않음.
+    - `-ServerDryRunOnly`: restore Job manifest를 생성하고 API server dry-run evidence만 기록.
+    - `-ConfirmRestore`: 격리된 restore namespace에 실제 restore Job 생성.
+    - `-AllowSourceNamespaceRestore`: source namespace와 restore namespace가 같은 경우를 명시적으로 허용하는 위험 플래그.
+    - restore namespace 사전 조건 확인: namespace, `osmu-backup-data` PVC, `osmu-config`, `osmu-secret`, `osmu-backup` ServiceAccount, `osmu-mariadb`, `osmu-minio`.
+    - evidence 파일: `.osmu-run/latest-kubernetes-restore-drill.json`.
+    - secret 값은 evidence에 복사하지 않도록 `secret -o name` 방식으로 존재 여부만 확인.
+  - 실제 Job 생성은 사전 조건과 server dry-run이 모두 통과한 경우에만 진행되도록 안전장치를 추가했다.
+- 수정된 파일 및 관련 파일:
+  - `scripts/run-kubernetes-restore-drill.ps1`
+  - `scripts/verify-local.ps1`
+  - `scripts/verify-backup-restore-drill.ps1`
+  - `dev-docs/backup-restore-drill.md`
+  - `dev-docs/backup-recovery.md`
+  - `dev-docs/operation-monitoring.md`
+  - `dev-docs/document-index.md`
+  - `dev-docs/mvp-release-checklist.md`
+  - `dev-docs/feature-inventory.md`
+  - `infra/k8s/README.md`
+  - `infra/helm/osmu/README.md`
+- 검증 기록:
+  - `powershell -NoProfile -Command "[scriptblock]::Create((Get-Content -Raw -LiteralPath '.\scripts\run-kubernetes-restore-drill.ps1')) | Out-Null; Write-Host 'parse ok'"`
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run-kubernetes-restore-drill.ps1 -PlanOnly`
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run-kubernetes-restore-drill.ps1 -PlanOnly -ServerDryRunOnly`
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-backup-restore-drill.ps1`
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-local.ps1 -SkipDocker -SkipBackend -SkipFrontend`
+- 결과:
+  - Kubernetes 복구 드릴이 예제 manifest 수준에서 실행 계획, API server dry-run evidence, 실제 격리 namespace Job 실행 경로까지 확장되었다.
+  - 실제 live restore Job은 실행하지 않았다. 실행 전에는 `osmu-restore-drill` 같은 격리 namespace에 깨끗한 OSMU 스택과 백업 PVC 산출물을 준비해야 한다.
+  - 기능 인벤토리의 전체 B2B 제품 추정 완료율을 약 23%, Kubernetes/Helm 영역을 52%로 갱신했다.
+- 코드 리뷰:
+  - `-ConfirmRestore` 없이 실제 restore Job을 만들 수 없게 하여 실수 실행 위험을 줄였다.
+  - `SourceNamespace`와 `RestoreNamespace`가 같으면 기본적으로 중단되므로 운영 데이터 덮어쓰기 위험을 낮춘다.
+  - PVC는 namespace를 넘어서 마운트할 수 없으므로, restore namespace에 백업 산출물을 복제/스냅샷으로 준비하는 운영 절차가 여전히 필요하다.
+- 후속 메모:
+  - 다음 단계는 `osmu-restore-drill` namespace 자동 준비 절차 또는 백업 PVC snapshot/복제 절차를 추가하는 것이 좋다.
+  - 실제 클러스터에서 `-ServerDryRunOnly` evidence를 수집하고, 이후 disposable restore namespace에서 `-ConfirmRestore` live drill을 수행해야 한다.
+- 추가 사용 skill/plugin:
+  - 없음.
+
+### 2026-06-16 - Kubernetes Backup Drill Evidence Script 추가
+
+- 작업 시간:
+  - 시작: 2026-06-16 00:49:00 +09:00
+  - 종료: 2026-06-16 00:53:30 +09:00
+- 사용자 명령:
+  - active goal: "운영용 Kubernetes 증설 자동화, 보안 hardening, IAM/RBAC 고도화, 백업/복구, HA/DR의 기능 구현" 계속 진행.
+- 요청 분석:
+  - 이전 단계에서 백업 CronJob, 복구 예시 manifest, HA/DR readiness evidence는 준비되었지만, 운영 클러스터에서 백업 CronJob을 일회성 Job으로 실행하고 결과 evidence를 남기는 경로가 부족하다고 판단했다.
+  - 복구까지 자동 실행하면 데이터 파괴 위험이 있으므로, 이번 단계는 비파괴 백업 드릴 evidence 수집에 한정했다.
+- 실행 내용:
+  - Kubernetes CronJob 기반 백업 드릴 스크립트를 추가했다.
+  - MariaDB/MinIO 백업 CronJob을 대상으로 `kubectl create job --from=cronjob/...` 실행 계획과 live evidence 수집 경로를 만들었다.
+  - 로컬 검증 게이트에 plan-only 검증을 연결했다.
+  - 백업/복구 문서, Kubernetes/Helm README, 운영/릴리즈 문서에 사용 방법과 evidence 파일 경로를 반영했다.
+- 구현 내용:
+  - `scripts/run-kubernetes-backup-drill.ps1`
+    - `-PlanOnly` 모드에서 실제 Job 생성 없이 실행 계획을 출력.
+    - live 모드에서 `osmu-mariadb-backup`, `osmu-minio-backup` CronJob으로부터 일회성 Job 생성.
+    - Job 완료 대기, Job JSON, Pod 목록, Pod 로그를 수집.
+    - evidence를 `.osmu-run/latest-kubernetes-backup-drill.json`에 저장.
+    - `-CleanupJobs` 선택 시 드릴 Job 정리 지원.
+  - `scripts/verify-local.ps1`
+    - `Kubernetes backup drill plan check` 단계 추가.
+  - `scripts/verify-backup-restore-drill.ps1`
+    - 신규 백업 드릴 스크립트와 문서 반영 여부 검증 추가.
+- 수정된 파일 및 관련 파일:
+  - `scripts/run-kubernetes-backup-drill.ps1`
+  - `scripts/verify-local.ps1`
+  - `scripts/verify-backup-restore-drill.ps1`
+  - `dev-docs/backup-restore-drill.md`
+  - `dev-docs/backup-recovery.md`
+  - `dev-docs/operation-monitoring.md`
+  - `dev-docs/document-index.md`
+  - `dev-docs/mvp-release-checklist.md`
+  - `dev-docs/feature-inventory.md`
+  - `infra/k8s/README.md`
+  - `infra/helm/osmu/README.md`
+- 검증 기록:
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run-kubernetes-backup-drill.ps1 -PlanOnly`
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run-kubernetes-backup-drill.ps1 -PlanOnly -Namespace osmu-dev -CleanupJobs -TimeoutSeconds 1200`
+  - `powershell -NoProfile -Command "[scriptblock]::Create((Get-Content -Raw -LiteralPath '.\scripts\run-kubernetes-backup-drill.ps1')) | Out-Null; Write-Host 'parse ok'"`
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-backup-restore-drill.ps1`
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-local.ps1 -SkipDocker -SkipBackend -SkipFrontend`
+  - `git diff --check -- scripts\run-kubernetes-backup-drill.ps1 scripts\verify-local.ps1 scripts\verify-backup-restore-drill.ps1 dev-docs\backup-restore-drill.md infra\k8s\README.md infra\helm\osmu\README.md dev-docs\backup-recovery.md dev-docs\operation-monitoring.md dev-docs\document-index.md dev-docs\mvp-release-checklist.md dev-docs\feature-inventory.md`
+- 결과:
+  - plan-only/static/local gate 기준으로 백업 드릴 자동화 경로가 검증되었다.
+  - 실제 Kubernetes 클러스터에 백업 Job을 생성하는 live 실행은 아직 수행하지 않았다.
+  - `verify-backup-restore-drill.ps1`는 처음에 스크립트 문자열을 `create job`으로 기대해 실패했으나, PowerShell 배열 표현에 맞춰 `"create", "job"` 검증으로 수정한 뒤 통과했다.
+  - `dev-docs/feature-inventory.md` 안에 남아 있던 구버전 완료율 표기를 최신 추정치와 일치하도록 정리했다.
+- 코드 리뷰:
+  - 복구 실행까지 자동화하지 않아 운영 데이터 파괴 위험을 줄였다.
+  - live 모드는 Job/Pod/log evidence를 남기므로 운영 리허설 결과 추적에 쓸 수 있다.
+  - 향후에는 백업 산출물 무결성 확인과 격리된 네임스페이스 복구 리허설까지 분리 구현하는 것이 좋다.
+- 후속 메모:
+  - 운영 클러스터에서 `scripts\run-kubernetes-backup-drill.ps1 -Namespace osmu`를 실행해 실제 evidence를 확보해야 한다.
+  - 이후 restore drill은 샌드박스/격리 네임스페이스에서만 live 실행하도록 별도 안전장치를 추가해야 한다.
+- 추가 사용 skill/plugin:
+  - 없음.
+
+### 2026-06-16 - Kubernetes HA/DR Readiness Evidence Script 추가
+
+- 작업 시간:
+  - 시작: 2026-06-16 00:41:00 +09:00
+  - 종료: 2026-06-16 00:47:39 +09:00
+- 사용자 명령:
+  - active goal: "운영용 Kubernetes 증설 자동화, 보안 hardening, IAM/RBAC 고도화, 백업/복구, HA/DR의 기능 구현" 계속 진행.
+- 요청 분석:
+  - 직전 작업으로 PDB, backup CronJob, restore example manifest는 생겼지만 target cluster에서 실제 HA/DR 준비 상태를 evidence JSON으로 수집하는 경로가 없었다.
+  - 운영형 HA/DR로 가려면 manifest 존재 여부뿐 아니라 live Deployment/StatefulSet/PDB/PVC/CronJob 상태와 restore Job server-side dry-run 결과를 남길 수 있어야 한다고 판단했다.
+- 실행 내용:
+  - `verify-kubernetes-ha-dr-readiness.ps1`를 추가해 live cluster HA/DR readiness evidence를 수집하도록 했다.
+  - cluster 없는 로컬 검증을 위해 `-PlanOnly` 모드를 추가했다.
+  - `verify-local.ps1`에 plan-only 검증 단계를 연결했다.
+  - Kubernetes/Helm README, deployment, backup/recovery, monitoring, release checklist, document index, feature inventory 문서에 live evidence 경로를 반영했다.
+- 구현 내용:
+  - `scripts/verify-kubernetes-ha-dr-readiness.ps1`
+    - backend/frontend Deployment replicas, ready/available replicas, topology spread 확인.
+    - MariaDB/MinIO StatefulSet ready 상태 확인.
+    - backend/frontend/MariaDB/MinIO PDB의 `minAvailable`, `currentHealthy`, `disruptionsAllowed` 확인.
+    - `osmu-backup-data` PVC Bound 상태 확인.
+    - `osmu-mariadb-backup`, `osmu-minio-backup` CronJob schedule, suspend, concurrencyPolicy 확인.
+    - restore Job example에 대해 `kubectl apply --server-side --dry-run=server` 실행.
+    - live mode evidence는 `.osmu-run/latest-kubernetes-ha-dr-readiness.json`에 저장.
+  - `scripts/verify-local.ps1`
+    - `Kubernetes HA/DR readiness plan check` 추가.
+- 수정된 파일 및 관련 파일:
+  - `scripts/verify-kubernetes-ha-dr-readiness.ps1`
+  - `scripts/verify-local.ps1`
+  - `infra/k8s/README.md`
+  - `infra/helm/osmu/README.md`
+  - `dev-docs/deployment-strategy.md`
+  - `dev-docs/backup-recovery.md`
+  - `dev-docs/operation-monitoring.md`
+  - `dev-docs/document-index.md`
+  - `dev-docs/mvp-release-checklist.md`
+  - `dev-docs/feature-inventory.md`
+- 검증 기록:
+  - `powershell -NoProfile -Command "[scriptblock]::Create((Get-Content -Raw -LiteralPath '.\scripts\verify-kubernetes-ha-dr-readiness.ps1')) | Out-Null; Write-Host 'parse ok'"`: 통과.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-kubernetes-ha-dr-readiness.ps1 -PlanOnly`: 통과.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-kubernetes-ha-dr-readiness.ps1 -PlanOnly -Namespace osmu-dev`: 통과.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-local.ps1 -SkipDocker -SkipBackend -SkipFrontend`: 통과. `Kubernetes HA/DR readiness plan check` 포함.
+  - `git diff --check -- <changed files>`: 통과. CRLF warning만 출력.
+  - 실제 target cluster live HA/DR readiness evidence는 아직 수집하지 않았다. manifests/Helm release가 적용된 cluster에서 별도 실행해야 한다.
+- 결과:
+  - HA/DR이 문서/manifest 초안에 머무르지 않고, 운영 cluster에서 readiness evidence를 남길 수 있는 경로가 생겼다.
+  - release/durable pilot 판단 때 PDB, backup CronJob, restore dry-run 상태를 JSON 증거로 연결할 수 있게 됐다.
+- 후속 메모:
+  - `osmu` 또는 `osmu-dev` namespace에 실제 배포 후 `scripts/verify-kubernetes-ha-dr-readiness.ps1 -Namespace <namespace>`를 실행해야 한다.
+  - backup CronJob의 `lastSuccessfulTime`을 hard gate로 승격하려면 첫 backup run 이후 기준을 정해야 한다.
+  - restore Job dry-run은 API server validation 증거일 뿐 실제 복구 성공 증거가 아니다. 별도 isolated restore drill이 여전히 필요하다.
+- 코드 리뷰:
+  - script는 live evidence와 plan-only review를 분리해 로컬 검증과 운영 검증 모두에 쓸 수 있다.
+  - backend/frontend는 `disruptionsAllowed >= 1`, MariaDB/MinIO는 single pod 보호 목적이라 `disruptionsAllowed >= 0`으로 판단한 점이 현재 topology와 맞다.
+  - restore manifest namespace 치환을 지원해 `osmu-dev` 같은 overlay namespace에도 적용 가능하다.
+- 앞으로 추가적으로 개발해야하는 내용:
+  - live cluster evidence를 release/audit artifact에 자동 포함.
+  - 실제 backup 실행 및 restore drill 증거 수집 자동화.
+  - MariaDB HA/managed DB, MinIO Operator Tenant pool HA 실검증.
+- 추가적으로 사용된 skill이나 plugin:
+  - 별도 skill 없음.
+  - PowerShell verifier와 `kubectl` plan/live command를 사용.
+
+### 2026-06-16 - Storage Expansion Server-Side Dry-Run Evidence Script 추가
+
+- 작업 시간:
+  - 시작: 2026-06-16 00:28:00 +09:00
+  - 종료: 2026-06-16 00:31:00 +09:00
+- 사용자 명령:
+  - active goal: "운영용 Kubernetes 증설 자동화, 보안 hardening, IAM/RBAC 고도화, 백업/복구, HA/DR의 기능 구현" 계속 진행.
+- 요청 분석:
+  - Storage Expansion runner RBAC와 `kubectl auth can-i` 증거만으로는 실제 MinIO Tenant 증설 manifest가 API server schema/CRD 기준으로 받아들여지는지 증명할 수 없다.
+  - 운영 증설 자동화에 필요한 다음 증거는 `kubectl apply --server-side --dry-run=server` 기반의 server-side dry-run evidence라고 판단했다.
+- 실행 내용:
+  - MinIO Operator Tenant CRD 존재, 기존 Tenant 존재, 증설 manifest server-side dry-run을 순서대로 확인하는 PowerShell 스크립트를 추가했다.
+  - cluster 없는 로컬 검토를 위해 `-PlanOnly` 모드를 제공했다.
+  - `-ImpersonateRunner` 옵션으로 storage expansion runner ServiceAccount 기준 dry-run 명령을 계획/실행할 수 있게 했다.
+  - `verify-local.ps1`와 Kubernetes RBAC matrix verifier에 plan-only 검증을 연결했다.
+- 구현 내용:
+  - `scripts/verify-storage-expansion-server-dry-run.ps1` 추가.
+  - 기본 manifest는 `infra/k8s/examples/minio-tenant-pool-expansion.example.yaml`이다.
+  - live mode evidence는 `.osmu-run/latest-storage-expansion-server-dry-run.json`에 기록한다.
+  - 검증 대상은 `tenants.minio.min.io` CRD, `Tenant/osmu-minio`, `kubectl apply --server-side --dry-run=server`이다.
+- 수정된 파일 및 관련 파일:
+  - `scripts/verify-storage-expansion-server-dry-run.ps1`
+  - `scripts/verify-local.ps1`
+  - `scripts/verify-kubernetes-rbac-matrix.ps1`
+  - `dev-docs/kubernetes-rbac-matrix.md`
+  - `dev-docs/document-index.md`
+  - `infra/k8s/README.md`
+  - `infra/helm/osmu/README.md`
+  - `dev-docs/deployment-strategy.md`
+  - `dev-docs/security-design.md`
+  - `dev-docs/minio-pool-expansion.md`
+  - `dev-docs/feature-inventory.md`
+- 검증 기록:
+  - `powershell -NoProfile -Command "[scriptblock]::Create((Get-Content -Raw -LiteralPath '.\scripts\verify-storage-expansion-server-dry-run.ps1')) | Out-Null; Write-Host 'parse ok'"`: 통과.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-storage-expansion-server-dry-run.ps1 -PlanOnly`: 통과.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-storage-expansion-server-dry-run.ps1 -PlanOnly -Namespace osmu-dev -ImpersonateRunner`: 통과.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-kubernetes-rbac-matrix.ps1`: 통과.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-local.ps1 -SkipDocker -SkipBackend -SkipFrontend`: 통과.
+  - 실제 cluster live server-side dry-run은 아직 수행하지 않았다.
+- 결과:
+  - 운영 증설 자동화가 단순 manifest 생성에서 멈추지 않고 API server 기준 dry-run evidence를 남길 수 있는 구조가 생겼다.
+- 후속 메모:
+  - target cluster에 MinIO Operator와 `Tenant/osmu-minio`를 설치한 뒤 live evidence를 수집해야 한다.
+  - evidence JSON을 release/audit artifact에 자동 포함하는 후속 작업이 필요하다.
+- 코드 리뷰:
+  - `-PlanOnly`와 live mode를 분리해 cluster 없는 로컬 검증과 실제 운영 증거 수집을 모두 지원한다.
+  - manifest namespace를 parameter로 치환하는 방식이라 환경별 namespace 증거 수집에 맞다.
+- 앞으로 추가적으로 개발해야하는 내용:
+  - 실제 cluster `kubectl apply --server-side --dry-run=server` evidence 수집.
+  - 증설 apply/rollback 이후 `mc admin info`, OSMU health, real S3 smoke 증거 연결.
+- 추가적으로 사용된 skill이나 plugin:
+  - 별도 skill 없음.
+  - PowerShell verifier와 `kubectl` dry-run 계획을 사용.
+
+### 2026-06-16 - Kubernetes HA Disruption Safety Rails 추가
+
+- 작업 시간:
+  - 시작: 2026-06-16 00:32:00 +09:00
+  - 종료: 2026-06-16 00:39:35 +09:00
+- 사용자 명령:
+  - active goal: "운영용 Kubernetes 증설 자동화, 보안 hardening, IAM/RBAC 고도화, 백업/복구, HA/DR의 기능 구현" 계속 진행.
+- 요청 분석:
+  - 현재 Kubernetes/Helm 초안에는 backup/RBAC/NetworkPolicy는 있으나, 운영 중 node drain이나 voluntary disruption을 제어하는 HA 기본 안전장치가 부족했다.
+  - 완전한 HA/DR은 MariaDB HA, MinIO Operator pool, offsite backup, restore drill이 필요하지만, 우선 manifest 수준에서 PDB와 replica/topology 기본값을 넣어 운영 위험을 줄이는 작업으로 인식했다.
+- 실행 내용:
+  - Kubernetes base backend/frontend replicas를 2로 조정했다.
+  - backend/frontend Pod에 hostname 기반 `topologySpreadConstraints`를 추가했다.
+  - backend, frontend, MariaDB, legacy MinIO용 `PodDisruptionBudget` manifest를 추가했다.
+  - Helm chart에도 동일한 HA 값을 `values.yaml`과 `templates/ha.yaml`로 추가했다.
+  - K8s/Helm verifier가 PDB, replica, topology spread를 확인하도록 강화했다.
+  - Kubernetes/Helm README, deployment, backup/recovery, release checklist, feature inventory 문서를 갱신했다.
+- 구현 내용:
+  - `infra/k8s/ha.yaml`에 `policy/v1` PDB 4개 추가: `osmu-backend`, `osmu-frontend`, `osmu-mariadb`, `osmu-minio`.
+  - `infra/k8s/backend.yaml`, `infra/k8s/frontend.yaml`에 `replicas: 2`와 `topologySpreadConstraints` 추가.
+  - `infra/helm/osmu/values.yaml`에 `ha.podDisruptionBudgets`, `ha.topologySpread`, backend/frontend replicas 2 기본값 추가.
+  - `infra/helm/osmu/templates/ha.yaml`에 Helm PDB 템플릿 추가.
+- 수정된 파일 및 관련 파일:
+  - `infra/k8s/ha.yaml`
+  - `infra/k8s/backend.yaml`
+  - `infra/k8s/frontend.yaml`
+  - `infra/k8s/kustomization.yaml`
+  - `infra/helm/osmu/templates/ha.yaml`
+  - `infra/helm/osmu/templates/backend.yaml`
+  - `infra/helm/osmu/templates/frontend.yaml`
+  - `infra/helm/osmu/values.yaml`
+  - `scripts/verify-k8s-manifests.ps1`
+  - `scripts/verify-helm-chart.ps1`
+  - `infra/k8s/README.md`
+  - `infra/helm/osmu/README.md`
+  - `dev-docs/deployment-strategy.md`
+  - `dev-docs/backup-recovery.md`
+  - `dev-docs/document-index.md`
+  - `dev-docs/mvp-release-checklist.md`
+  - `dev-docs/feature-inventory.md`
+- 검증 기록:
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-k8s-manifests.ps1`: 통과, 16 files checked.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-helm-chart.ps1`: 통과, 17 files checked.
+  - `kubectl kustomize .\infra\k8s`: 통과.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-local.ps1 -SkipDocker -SkipBackend -SkipFrontend`: 통과.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-kubernetes-rbac-matrix.ps1`: 통과.
+  - `git diff --check -- <changed files>`: 통과. CRLF warning만 출력.
+- 결과:
+  - Kubernetes/Helm 초안에 운영 중 voluntary disruption을 제어하는 기본 HA 안전장치가 들어갔다.
+  - Kubernetes/Helm static gate가 PDB와 topology spread를 강제하므로 이후 drift 가능성이 줄었다.
+- 후속 메모:
+  - MariaDB와 legacy MinIO는 여전히 단일 StatefulSet이므로 PDB는 eviction 방지일 뿐 완전한 HA가 아니다.
+  - 운영형 HA는 MariaDB Galera/managed DB, MinIO Operator Tenant pool, multi-zone StorageClass, offsite backup/snapshot, restore drill evidence가 필요하다.
+- 코드 리뷰:
+  - backend/frontend replicas 2와 topology spread는 API/portal 가용성을 즉시 높인다.
+  - `ScheduleAnyway`는 단일 노드 dev cluster를 막지 않는 보수적 선택이다.
+  - MinIO Operator Tenant에는 무리하게 PDB를 붙이지 않고 legacy StatefulSet에만 적용한 점이 안전하다.
+- 앞으로 추가적으로 개발해야하는 내용:
+  - 실제 cluster에서 PDB behavior, rollout, node drain 시나리오 검증.
+  - MariaDB HA/managed DB 설계 및 migration.
+  - MinIO Operator Tenant pool HA 및 증설 apply/rollback 실검증.
+  - backup PVC offsite mirror/snapshot, restore drill 자동 evidence 수집.
+- 추가적으로 사용된 skill이나 plugin:
+  - 별도 skill 없음.
+  - PowerShell verifier와 `kubectl kustomize`를 검증 도구로 사용.
+
+### 2026-06-16 - Dashboard Restore Evidence Visibility 연결
+
+- 작업 시간:
+  - 시작: 2026-06-16 02:32:00 +09:00
+  - 종료: 2026-06-16 02:40:28 +09:00
+- 사용자 명령:
+  - active goal: "운영용 Kubernetes 증설 자동화, 보안 hardening, IAM/RBAC 고도화, 백업/복구, HA/DR의 기능 구현" 계속 진행.
+- 요청 분석:
+  - 직전 Kubernetes DR finalizer는 evidence API 제출까지 만들었지만, 운영자가 보는 dashboard summary/readiness와 backup panel이 같은 evidence를 확실히 반영해야 운영 흐름이 닫힌다고 판단했다.
+  - 이번 작업은 HA/DR 자체 완성은 아니지만, 복구 드릴 증거가 백엔드 readiness와 프론트 대시보드까지 이어지게 하는 운영 가시성 개선으로 해석했다.
+- 실행 내용:
+  - `AdminController`의 dashboard backup snapshot이 `BACKUP_RESTORE_DRILL_EVIDENCE` audit log를 조회하도록 수정했다.
+  - `POST /api/admin/backup/restore-drill-evidence` 성공 기록 후 `/api/admin/dashboard/summary`와 `/api/admin/dashboard/readiness`가 restore drill warning을 계속 띄우지 않도록 맞췄다.
+  - 프론트 dashboard backup panel에 `latestRestoreDrillEvidence` result/environment/recordedAt 표시 영역을 추가했다.
+  - mock API도 partial restore evidence를 내려주도록 맞춰 프론트 단독 데모에서 상태를 볼 수 있게 했다.
+- 구현 내용:
+  - `osmu-backend/src/main/java/com/example/osmu/admin/AdminController.java`
+    - dashboard summary 내부 `backupStatusSnapshot()`에서 최신 성공 restore drill evidence를 audit log에서 읽도록 변경.
+    - `latestRestoreDrillEvidence()` helper 추가.
+  - `osmu-backend/src/test/java/com/example/osmu/admin/AdminDashboardSummaryControllerTest.java`
+    - evidence API 기록 후 dashboard summary/readiness가 같은 evidence를 반영하는 테스트 추가.
+  - `osmu-frontend/src/components/dashboard/DashboardPage.vue`
+    - `backup-restore-evidence` 영역 추가.
+  - `osmu-frontend/src/views/HomeView.vue`
+    - `latestRestoreDrillEvidence` 상태 반영과 `SUCCESS/RECORDED/PARTIAL/MISSING` status class 처리 추가.
+  - `osmu-frontend/mock-api/server.mjs`
+    - mock backup status에 partial latest restore evidence 추가.
+  - `osmu-frontend/src/assets/main.css`
+    - backup evidence 표시 스타일 추가.
+  - `osmu-frontend/src/views/HomeView.test.js`
+    - `backup-restore-evidence` stable selector 확인 추가.
+  - `dev-docs/backup-restore-drill.md`, `operation-monitoring.md`, `frontend-design.md`, `feature-inventory.md`
+    - dashboard evidence visibility 반영.
+- 수정된 파일 및 관련된 파일들:
+  - `osmu-backend/src/main/java/com/example/osmu/admin/AdminController.java`
+  - `osmu-backend/src/test/java/com/example/osmu/admin/AdminDashboardSummaryControllerTest.java`
+  - `osmu-frontend/src/components/dashboard/DashboardPage.vue`
+  - `osmu-frontend/src/views/HomeView.vue`
+  - `osmu-frontend/mock-api/server.mjs`
+  - `osmu-frontend/src/assets/main.css`
+  - `osmu-frontend/src/views/HomeView.test.js`
+  - `dev-docs/backup-restore-drill.md`
+  - `dev-docs/operation-monitoring.md`
+  - `dev-docs/frontend-design.md`
+  - `dev-docs/feature-inventory.md`
+- 검증 기록:
+  - `node --test .\src\views\HomeView.test.js`: 통과.
+  - `node --test .\src\services\api-query.test.js .\src\views\HomeView.test.js`: 통과, 14개 테스트 성공.
+  - `powershell.exe -NoProfile -ExecutionPolicy Bypass -Command ". '..\scripts\java-toolchain.ps1'; Use-OsmuJavaHome | Out-Null; .\gradlew.bat test --tests com.example.osmu.admin.AdminDashboardSummaryControllerTest --tests com.example.osmu.admin.AdminBackupStatusControllerTest"`: 승인 실행 통과.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-backup-restore-drill.ps1`: 통과.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-local.ps1 -SkipDocker -SkipBackend -SkipFrontend`: 통과.
+  - `git diff --check`: 통과. Windows LF/CRLF 변환 warning만 출력됨.
+- 결과:
+  - Kubernetes DR finalizer나 restore drill evidence API로 성공 증거가 기록되면 dashboard summary/readiness가 그 증거를 즉시 반영한다.
+  - 운영자는 backup panel에서 최신 restore drill evidence의 결과, 환경, 기록 시각을 확인할 수 있다.
+  - 전체 B2B 완료율은 여전히 약 31%로 유지한다. 작은 연결 작업이지만 운영 증거 흐름은 한 단계 좋아졌다.
+- 후속 메모:
+  - 현재 latest evidence 상세는 audit log 요약 기반이다. 제품급 이력 조회를 위해서는 `backup_restore_drills` 같은 별도 영속 테이블이 필요하다.
+  - 실제 Kubernetes cluster에서 `finalize-kubernetes-dr-drill.ps1 -SubmitEvidence`를 실행해 dashboard 반영까지 live로 확인해야 한다.
+  - DR evidence result가 `PARTIAL/FAILED`일 때 dashboard에서 gap 목록을 펼쳐 보여주는 UX가 다음 개선 후보이다.
+- 코드 리뷰:
+  - `/api/admin/backup/status`와 `/api/admin/dashboard/summary`가 서로 다른 기준을 보던 문제를 줄였다.
+  - audit log에서 재구성하는 latest evidence는 최소 가시성에는 충분하지만, RPO/RTO와 object count 상세는 손실되므로 장기 구조로는 부족하다.
+  - 프론트 상태 클래스에 `SUCCESS`, `RECORDED`, `PARTIAL`, `MISSING`을 명시한 점은 운영자가 상태 색상을 오해하지 않게 한다.
+- 앞으로 추가적으로 개발해야하는 내용:
+  - restore drill evidence 전용 DB 테이블 및 목록/상세 API.
+  - dashboard backup panel의 gap/detail drawer.
+  - live Kubernetes finalizer 실행 후 evidence API 제출, dashboard 반영, audit export까지 하나의 release gate로 묶기.
+- 추가적으로 사용된 skill이나 plugin:
+  - 별도 skill 없음.
+  - PowerShell, Gradle, Node test runner, `rg`, `git diff --check`를 검증 도구로 사용.
+
+### 2026-06-16 - Kubernetes DR Finalize Wrapper 추가
+
+- 작업 시간:
+  - 시작: 2026-06-16 02:23:00 +09:00
+  - 종료: 2026-06-16 02:31:19 +09:00
+- 사용자 명령:
+  - active goal: "운영용 Kubernetes 증설 자동화, 보안 hardening, IAM/RBAC 고도화, 백업/복구, HA/DR의 기능 구현" 계속 진행.
+  - 추가 질문: "전체 완료 퍼센테이지가 어떻게 돼?"
+- 요청 분석:
+  - 직전까지 DR bucket bootstrap, immutability preflight, artifact transfer, restore smoke, evidence API helper가 따로 존재했으므로 운영자가 한 번에 실행할 수 있는 최종 wrapper가 필요하다고 해석했다.
+  - 완료율은 제품 전체 기준과 Kubernetes/Helm 운영 자동화 기준을 분리해서 추적해야 한다고 판단했다.
+- 실행 내용:
+  - `run-kubernetes-dr-drill.ps1`, `verify-kubernetes-restore-smoke.ps1`, `write-kubernetes-dr-evidence-request.ps1`를 순서대로 묶는 최종 실행 wrapper를 추가했다.
+  - `-PlanOnly`, restore 확인 gate, server dry-run 충돌 방지, 증거 제출 gate, admin password 마스킹을 포함했다.
+  - DR evidence request 결과가 `SUCCESS`가 아니면 finalize 결과가 ready가 되지 않도록 후처리 확인을 추가했다.
+  - 관련 문서와 verifier가 새 wrapper를 인식하도록 갱신했다.
+- 구현 내용:
+  - `scripts/finalize-kubernetes-dr-drill.ps1` 신규 추가.
+  - `scripts/verify-local.ps1`에 Kubernetes DR finalize plan check 추가.
+  - `scripts/verify-backup-restore-drill.ps1`에 finalizer 문서/스크립트 계약 검증 추가.
+  - `dev-docs/backup-restore-drill.md`, `backup-recovery.md`, `operation-monitoring.md`, `document-index.md`, `deployment-strategy.md`, `mvp-release-checklist.md`, `feature-inventory.md` 갱신.
+  - `infra/k8s/README.md`, `infra/helm/osmu/README.md`에 finalizer 사용 절차 추가.
+- 수정된 파일 및 관련된 파일들:
+  - `scripts/finalize-kubernetes-dr-drill.ps1`
+  - `scripts/verify-local.ps1`
+  - `scripts/verify-backup-restore-drill.ps1`
+  - `dev-docs/backup-restore-drill.md`
+  - `dev-docs/backup-recovery.md`
+  - `dev-docs/operation-monitoring.md`
+  - `dev-docs/document-index.md`
+  - `dev-docs/deployment-strategy.md`
+  - `dev-docs/mvp-release-checklist.md`
+  - `dev-docs/feature-inventory.md`
+  - `infra/k8s/README.md`
+  - `infra/helm/osmu/README.md`
+- 검증 기록:
+  - PowerShell parse check for `scripts/finalize-kubernetes-dr-drill.ps1`: 통과.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\finalize-kubernetes-dr-drill.ps1 -PlanOnly -BackupTimestamp 20260615T010203Z -BootstrapDrBucket -VerifyDrBucketImmutability -TransferArtifacts -RunS3ClientSmoke -AdminPassword secret123 -MetadataRowCount 42 -DrEgressCidr 203.0.113.10/32`: 통과.
+  - `rg -n "secret123" .osmu-run\latest-kubernetes-dr-finalize.json .osmu-run\latest-kubernetes-dr-finalize.md`: match 없음. 비밀번호가 산출물에 남지 않음을 확인.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-backup-restore-drill.ps1`: 통과.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-local.ps1 -SkipDocker -SkipBackend -SkipFrontend`: 통과.
+  - `git diff --check`: 통과. Windows LF/CRLF 변환 warning만 출력됨.
+- 결과:
+  - Kubernetes DR 절차를 plan-only부터 실제 복구 확인, smoke 검증, evidence API 제출까지 한 파일에서 조율할 수 있게 되었다.
+  - `dev-docs/feature-inventory.md` 기준 전체 B2B 제품 완료율은 약 31%, Kubernetes/Helm 영역은 약 69%로 정리했다.
+  - 실제 Kubernetes cluster apply, restore smoke, API submit은 아직 실행하지 않았다.
+- 후속 메모:
+  - 운영 cluster에서 DR secret, remote bucket, restore namespace, backup artifact를 준비한 뒤 `-ConfirmRestore`로 live drill을 실행해야 한다.
+  - live 실행 후 `.osmu-run/latest-kubernetes-dr-finalize.json`과 evidence request 결과를 release/audit 산출물에 포함해야 한다.
+  - finalizer 실행 결과를 관리자 대시보드 readiness panel에 연결하는 작업이 필요하다.
+- 코드 리뷰:
+  - destructive restore 흐름은 `-ConfirmRestore` 없이는 막히므로 기본 안전성은 괜찮다.
+  - admin password는 명령 출력과 report에서 `<secret>`로 마스킹되고, 산출물에는 제공 여부만 남기므로 현재 설계가 안전하다.
+  - evidence request가 partial이면 finalize도 partial이 되도록 보정한 점이 운영 판단에 중요하다.
+- 앞으로 추가적으로 개발해야하는 내용:
+  - 실제 cluster 기반 DR finalizer live evidence 수집.
+  - finalizer 결과를 백엔드 DB와 관리자 대시보드에 저장/표시.
+  - 증설 자동화 runner와 DR rollback gate를 하나의 운영 승인 흐름으로 통합.
+- 추가적으로 사용된 skill이나 plugin:
+  - 별도 skill 없음.
+  - PowerShell verifier, `rg`, `git diff --check`를 검증 도구로 사용.
+
+### 2026-06-16 - Kubernetes External DR Bucket Immutability Preflight 추가
+
+- 작업 시간:
+  - 시작: 2026-06-16 02:00:00 +09:00
+  - 종료: 2026-06-16 02:11:35 +09:00
+- 사용자 명령:
+  - active goal: "운영용 Kubernetes 증설 자동화, 보안 hardening, IAM/RBAC 고도화, 백업/복구, HA/DR의 기능 구현" 계속 진행.
+  - 직전 흐름상 Kubernetes DR drill과 외부 DR artifact transfer의 운영 신뢰도를 높이는 작업으로 진행.
+- 요청 분석:
+  - 외부 DR 저장소로 backup artifact를 전송할 수는 있지만, 대상 bucket이 versioning/object-lock retention을 갖췄는지 검증하지 않으면 DR 증거가 제품급으로 부족하다고 판단.
+  - transfer helper 실행 전에 외부 DR bucket의 접근 가능성, versioning, 기본 retention mode를 검증하는 preflight Job과 evidence JSON이 필요하다고 해석.
+- 실행 내용:
+  - `verify-kubernetes-dr-bucket-immutability.ps1`를 신규 작성해 MinIO Client 기반 Kubernetes Job manifest와 evidence를 생성하도록 구현.
+  - `run-kubernetes-dr-drill.ps1`에 `-VerifyDrBucketImmutability`, `-DrBucketRequiredRetentionMode` 옵션을 추가해 DR drill wrapper가 immutability preflight를 transfer 전에 실행할 수 있게 연결.
+  - `write-kubernetes-dr-evidence-request.ps1`가 external transfer 또는 immutability 검증 옵션 사용 시 `.osmu-run/latest-kubernetes-dr-bucket-immutability.json` 증거를 요구하도록 강화.
+  - `verify-local.ps1`, `verify-backup-restore-drill.ps1`, DR/백업/배포/운영 문서를 최신 흐름에 맞게 갱신.
+- 구현 내용:
+  - 신규 script는 `osmu-dr-transfer-secret`의 `DR_S3_ENDPOINT`, `DR_S3_ACCESS_KEY`, `DR_S3_SECRET_KEY`, `DR_S3_BUCKET` 값을 사용하되 secret 값은 evidence에 기록하지 않음.
+  - Job은 `mc alias set`, `mc ls`, `mc version info --json`, `mc retention info --json`을 실행하고, versioning enabled 및 `GOVERNANCE_OR_COMPLIANCE` 또는 `COMPLIANCE` retention mode를 검사.
+  - Job 보안 기준으로 non-root user/group, token automount false, privilege escalation 차단, capability drop all, read-only root filesystem, `/tmp` emptyDir, CPU/memory limit, active deadline, TTL을 적용.
+  - 선택적으로 `-DrEgressCidr` 입력 시 외부 DR endpoint egress NetworkPolicy manifest를 함께 렌더링.
+- 수정된 파일 및 관련된 파일들:
+  - `scripts/verify-kubernetes-dr-bucket-immutability.ps1`
+  - `scripts/run-kubernetes-dr-drill.ps1`
+  - `scripts/write-kubernetes-dr-evidence-request.ps1`
+  - `scripts/verify-backup-restore-drill.ps1`
+  - `scripts/verify-local.ps1`
+  - `dev-docs/backup-restore-drill.md`
+  - `dev-docs/backup-recovery.md`
+  - `dev-docs/operation-monitoring.md`
+  - `dev-docs/document-index.md`
+  - `dev-docs/mvp-release-checklist.md`
+  - `dev-docs/deployment-strategy.md`
+  - `dev-docs/feature-inventory.md`
+  - `infra/k8s/README.md`
+  - `infra/helm/osmu/README.md`
+- 검증 기록:
+  - PowerShell parse check for `verify-kubernetes-dr-bucket-immutability.ps1`, `run-kubernetes-dr-drill.ps1`, `write-kubernetes-dr-evidence-request.ps1`: 통과.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-kubernetes-dr-bucket-immutability.ps1 -PlanOnly`: 통과.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-kubernetes-dr-bucket-immutability.ps1 -PlanOnly -RequiredRetentionMode COMPLIANCE -DrEgressCidr 203.0.113.10/32`: 통과.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run-kubernetes-dr-drill.ps1 -PlanOnly -VerifyDrBucketImmutability -TransferArtifacts -BackupTimestamp 20260615T010203Z -DrEgressCidr 203.0.113.10/32 -CleanupJobs`: 통과.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\write-kubernetes-dr-evidence-request.ps1 -PlanOnly`: 통과.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-backup-restore-drill.ps1`: 통과.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-local.ps1 -SkipDocker -SkipBackend -SkipFrontend`: 통과.
+  - `git diff --check`: 통과. 기존 CRLF 경고만 출력.
+- 결과:
+  - 외부 DR artifact transfer 전에 대상 bucket의 immutability/versioning 조건을 evidence로 남기는 흐름이 생겼다.
+  - Kubernetes/Helm 영역 추정 완료율은 67%, 전체 B2B 제품 추정 완료율은 29%로 정리했다.
+- 다음 작업할 때 참고할 사항들:
+  - 실제 Kubernetes cluster와 실제 DR bucket에 대해 `verify-kubernetes-dr-bucket-immutability.ps1`를 live 실행해야 한다.
+  - `mc retention info --json` 출력 형식은 대상 S3 호환 스토리지에 따라 차이가 있을 수 있으므로 첫 live test에서 JSON field parsing을 확인해야 한다.
+  - object-lock은 bucket 생성 시점 옵션이 중요한 경우가 많으므로, 신규 bucket bootstrap 문서와 secret/bootstrap automation을 추가해야 한다.
+- 코드 리뷰:
+  - secret 값은 evidence에 포함하지 않고 secret key 이름과 policy만 남긴 점은 적절하다.
+  - PlanOnly/server-dry-run 경로가 있어 cluster가 없는 개발 환경에서도 정적 검증이 가능하다.
+  - live 실행 전에는 실제 S3 호환 backend별 retention command 호환성을 확정할 수 없으므로, 첫 운영 검증 시 보정이 필요하다.
+- 앞으로 추가적으로 개발해야하는 내용:
+  - 실제 DR bucket 생성/bootstrap script.
+  - immutability preflight live evidence를 release/audit report에 자동 포함.
+  - DR drill 성공 후 복구된 서비스에 대한 S3 smoke와 metadata consistency check 자동화.
+- 추가적으로 사용된 skill이나 plugin:
+  - 별도 skill 없음.
+  - PowerShell verifier와 Kubernetes Job manifest generation을 사용.
+
+### 2026-06-16 - Kubernetes External DR Bucket Bootstrap 추가
+
+- 작업 시간:
+  - 시작: 2026-06-16 02:12:00 +09:00
+  - 종료: 2026-06-16 02:22:38 +09:00
+- 사용자 명령:
+  - active goal: "운영용 Kubernetes 증설 자동화, 보안 hardening, IAM/RBAC 고도화, 백업/복구, HA/DR의 기능 구현" 계속 진행.
+- 요청 분석:
+  - 직전 작업에서 external DR bucket immutability preflight는 생겼지만, versioning/object-lock/default retention이 적용된 bucket을 준비하는 자동화가 없었다.
+  - 운영자가 DR transfer 전에 bucket 생성, versioning 활성화, default retention 설정, 검증 evidence를 한 흐름으로 남길 수 있어야 제품급 HA/DR 절차에 가까워진다고 해석했다.
+- 실행 내용:
+  - MinIO 공식 문서 기준 `mc mb --with-lock`, `mc version enable`, `mc retention set --default` 흐름을 확인했다.
+  - Kubernetes Job 기반 `bootstrap-kubernetes-dr-bucket.ps1`를 추가했다.
+  - `run-kubernetes-dr-drill.ps1`에 `-BootstrapDrBucket`, `-SkipDrBucketCreate`, bootstrap retention/region 옵션을 연결했다.
+  - `write-kubernetes-dr-evidence-request.ps1`가 wrapper에서 bootstrap을 수행한 경우 `.osmu-run/latest-kubernetes-dr-bucket-bootstrap.json` 증거를 요구하도록 강화했다.
+  - `verify-local.ps1`, `verify-backup-restore-drill.ps1`, backup/DR/운영/배포 문서와 feature inventory를 갱신했다.
+- 구현 내용:
+  - `scripts/bootstrap-kubernetes-dr-bucket.ps1`:
+    - `osmu-dr-transfer-secret`의 `DR_S3_ENDPOINT`, `DR_S3_ACCESS_KEY`, `DR_S3_SECRET_KEY`, `DR_S3_BUCKET`를 Kubernetes Secret reference로만 사용.
+    - live Job에서 `mc alias set`, `mc mb --ignore-existing --with-lock`, `mc version enable`, `mc retention set --default`, `mc version info`, `mc retention info`를 실행.
+    - `-SkipBucketCreate`로 기존 bucket policy reconcile만 수행 가능.
+    - `-RetentionMode GOVERNANCE|COMPLIANCE`, `-RetentionDuration 30d|1y`, `-Region us-east-1` 지원.
+    - non-root, token automount false, capability drop, read-only root filesystem, `/tmp` emptyDir, CPU/memory limits, active deadline, TTL 적용.
+    - `.osmu-run/latest-kubernetes-dr-bucket-bootstrap.json` evidence 작성. secret 값은 기록하지 않음.
+  - `scripts/run-kubernetes-dr-drill.ps1`:
+    - sequence를 `backup drill optional -> DR bucket bootstrap optional -> restore namespace -> DR bucket immutability optional -> artifact transfer optional -> artifact preflight -> restore drill`로 확장.
+    - wrapper evidence에 bootstrap 정책과 child evidence path 추가.
+  - `scripts/write-kubernetes-dr-evidence-request.ps1`:
+    - `DrBucketBootstrapEvidencePath` 추가.
+    - wrapper evidence의 `bootstrapDrBucket=true`이면 bootstrap evidence가 없거나 실패한 경우 SUCCESS 불가.
+- 수정된 파일 및 관련된 파일들:
+  - `scripts/bootstrap-kubernetes-dr-bucket.ps1`
+  - `scripts/run-kubernetes-dr-drill.ps1`
+  - `scripts/write-kubernetes-dr-evidence-request.ps1`
+  - `scripts/verify-local.ps1`
+  - `scripts/verify-backup-restore-drill.ps1`
+  - `dev-docs/backup-restore-drill.md`
+  - `dev-docs/backup-recovery.md`
+  - `dev-docs/operation-monitoring.md`
+  - `dev-docs/document-index.md`
+  - `dev-docs/mvp-release-checklist.md`
+  - `dev-docs/deployment-strategy.md`
+  - `dev-docs/feature-inventory.md`
+  - `infra/k8s/README.md`
+  - `infra/helm/osmu/README.md`
+- 검증 기록:
+  - PowerShell parse check for `bootstrap-kubernetes-dr-bucket.ps1`: 통과.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\bootstrap-kubernetes-dr-bucket.ps1 -PlanOnly`: 통과.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\bootstrap-kubernetes-dr-bucket.ps1 -PlanOnly -RetentionMode COMPLIANCE -RetentionDuration 1y -DrEgressCidr 203.0.113.10/32 -SkipBucketCreate`: 통과.
+  - PowerShell parse check for `run-kubernetes-dr-drill.ps1`: 통과.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run-kubernetes-dr-drill.ps1 -PlanOnly -BootstrapDrBucket -VerifyDrBucketImmutability -TransferArtifacts -BackupTimestamp 20260615T010203Z -DrEgressCidr 203.0.113.10/32 -CleanupJobs`: 통과.
+  - PowerShell parse check for `write-kubernetes-dr-evidence-request.ps1`: 통과.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\write-kubernetes-dr-evidence-request.ps1 -PlanOnly`: 통과.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-backup-restore-drill.ps1`: 통과.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-local.ps1 -SkipDocker -SkipBackend -SkipFrontend`: 통과.
+- 결과:
+  - 외부 DR bucket을 수동 전제만 두지 않고, Kubernetes Job으로 생성/정책 설정/검증/evidence까지 남길 수 있는 bootstrap 경로가 생겼다.
+  - DR wrapper와 evidence request helper가 bootstrap evidence를 인식하게 되어, 운영 증거가 더 덜 흩어진다.
+  - feature inventory 기준 전체 B2B 제품 추정 완료율은 약 30%, Kubernetes/Helm 영역 추정 완료율은 68%로 갱신했다.
+- 다음 작업할 때 참고할 사항들:
+  - 실제 cluster와 실제 S3-compatible DR bucket에서 `-ServerDryRunOnly` 다음 live bootstrap Job을 실행해야 한다.
+  - MinIO/AIStor 최신 버전은 기존 bucket에도 default object-lock retention 설정을 허용하지만, 다른 S3-compatible 서비스나 구버전 MinIO는 bucket 생성 시 object lock이 필요할 수 있다.
+  - 첫 live test에서 `mc retention info --json` 출력 형태와 grep 조건을 반드시 확인해야 한다.
+- 코드 리뷰:
+  - secret 값은 manifest/evidence에 쓰지 않고 Secret reference만 사용하는 점이 적절하다.
+  - bootstrap과 immutability preflight를 분리해, 일회성 bucket 준비와 매 drill 전 검증을 독립적으로 운용할 수 있다.
+  - `-SkipBucketCreate`를 두어 기존 enterprise bucket을 운영자가 삭제/재생성하지 않고도 정책 reconcile을 시도할 수 있게 한 점은 안전하다.
+  - 다만 live 환경 전에는 S3-compatible 구현별 `mc` 명령 호환성을 완전히 보증할 수 없다.
+- 앞으로 추가적으로 개발해야하는 내용:
+  - bootstrap live evidence를 release/audit artifact에 자동 첨부.
+  - DR bucket secret bootstrap 또는 secret manager 연동 문서.
+  - DR restore 이후 metadata/object consistency reconciliation 자동화.
+  - actual Kubernetes cluster에서 bootstrap -> immutability preflight -> transfer -> artifact preflight -> restore -> smoke -> evidence API submit 전체 live drill 수행.
+- 추가적으로 사용된 skill이나 plugin:
+  - 별도 skill 없음.
+  - 공식 MinIO 문서를 참고해 `mc mb --with-lock`, `mc version enable`, `mc retention set --default` 구문을 확인.
+
 이 문서는 `main` 브랜치에서 수행한 작업 기록이다.
 
 작업 로그는 브랜치별로 관리한다. 브랜치명이 바뀌면 해당 브랜치 경로에 새 파일을 만든다.
@@ -398,6 +2873,1844 @@ feat/bucket-management
 - 사용한 skill/plugin:
   - 추가 사용 없음.
 
+### 2026-06-15 - 전역 요청 진행 상태 UX 추가
+
+- 작업 시작 시간: 2026-06-15 01:09:00 +09:00
+- 작업 종료 시간: 2026-06-15 01:12:36 +09:00
+- 사용자 명령: 프론트/백엔드 기능 개발을 계속 진행하고, 프론트 페이지를 완성도 있게 개선하라는 진행 중 목표.
+- 명령 해석: 데모 페이지에서 API 요청이 오래 걸릴 때 사용자가 상태를 알 수 있도록 전역 진행 상태 표시를 추가하라는 작업으로 이해.
+- 요청 분석: 기존에는 성공/실패 알림은 있으나 요청 처리 중 상태가 화면에 명확히 드러나지 않았다. 삭제, 공유, 업로드, 관리 작업처럼 시간이 걸릴 수 있는 액션에 대해 공통 pending 상태가 필요했다.
+- 작업 방식:
+  - `HomeView.vue`의 공통 `runAction` 흐름에 요청 카운터를 추가.
+  - 요청 시작 시 성공 메시지를 지우고 pending 카운터를 증가.
+  - 요청 종료 시 `finally`에서 pending 카운터를 감소.
+  - 동시에 여러 요청이 겹쳐도 하나라도 진행 중이면 busy 상태가 유지되도록 computed 값으로 처리.
+  - CSS와 테스트 셀렉터를 함께 반영.
+- 실행 내용:
+  - `actionPendingCount`와 `isActionPending` 추가.
+  - 공통 액션 실행 함수 `runAction`에 pending 처리 추가.
+  - 화면 상단에 `data-testid="busy-alert"` 상태 메시지 추가.
+  - `.busy-alert` 스타일 추가.
+  - `HomeView.test.js` 정적 UI 셀렉터 검증 목록에 `busy-alert` 추가.
+- 구현 내용:
+  - 요청 처리 중에는 "요청 처리 중..." 메시지가 표시된다.
+  - 요청이 성공 또는 실패하면 pending 상태가 정리된다.
+  - 중첩/동시 요청에서도 카운터가 0 미만으로 내려가지 않도록 방어했다.
+- 수정된 파일:
+  - `osmu-frontend/src/views/HomeView.vue`
+  - `osmu-frontend/src/assets/main.css`
+  - `osmu-frontend/src/views/HomeView.test.js`
+  - `dev-docs/worklog/main/worklog-main.md`
+- 관련 파일:
+  - `osmu-frontend/src/components/dashboard/DashboardPage.vue`
+  - `osmu-frontend/src/components/storage/StoragePage.vue`
+  - `osmu-frontend/src/components/objects/ObjectPage.vue`
+  - `osmu-frontend/src/components/admin/AdminPage.vue`
+  - `osmu-frontend/src/components/audit/AuditPage.vue`
+- 검증 기록:
+  - `npm.cmd run test:unit`: 통과.
+  - `node --check .\osmu-frontend\e2e\lightweight-demo.spec.js`: 통과.
+  - `git diff --check`: 통과. CRLF 변환 경고만 확인.
+  - `npm.cmd run build`: 통과.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-local.ps1 -SkipDocker -SkipBackend -JavaHome C:\jdk-17`: 통과.
+- 코드 리뷰:
+  - 공통 `runAction`에만 pending 상태를 넣어 각 기능별 중복 처리를 줄였다.
+  - `finally`에서 카운터를 정리하므로 성공/실패 모두 상태 누수가 적다.
+  - 백그라운드성 조회 `safeRequest`에는 busy 표시를 넣지 않아 초기/보조 조회가 과도하게 사용자 흐름을 막지 않는다.
+  - 실제 브라우저 상호작용 검증은 현재 로컬 브라우저 실행 제한으로 수행하지 못했다.
+- 결과: 프론트 전역 요청 진행 상태 UX 추가 완료.
+- 후속 메모:
+  - 실제 Docker + MariaDB + MinIO 실행 환경에서 대시보드, 버킷, 오브젝트, 관리자 페이지 흐름을 브라우저로 재검증해야 한다.
+  - 배포 서버 `192.168.35.88`에 올리기 전 Docker daemon, 원격 접속, 포트 정책 확인이 필요하다.
+- 추가 개발 필요:
+  - 긴 작업에는 진행률 또는 작업 큐 상태를 API에서 내려주는 방식 검토.
+  - 버튼 단위 disable/loading 상태 추가.
+  - 실패한 요청 재시도 UX 추가.
+- 사용한 skill/plugin:
+  - `caveman` skill: 응답 압축 유지.
+
+### 2026-06-15 - Custom dashboard preset update 추가
+
+- 작업 시간:
+  - 시작: 2026-06-15 02:44:00 +09:00
+  - 종료: 2026-06-15 02:50:32 +09:00
+- 사용자 명령:
+  - `[$caveman](C:\Users\kjs99\.codex\skills\caveman\SKILL.md) ultra`
+  - 이전 active goal 기준으로 프론트/백엔드 기능 개발을 계속 진행.
+- 명령 인식:
+  - 응답을 ultra 압축 모드로 유지하면서, 직전 dashboard preset CRUD의 미완성 항목인 custom preset 수정/update를 구현하라는 계속 작업으로 인식.
+- 요청 분석:
+  - ADMIN이 저장한 dashboard preset은 저장/삭제뿐 아니라 이름, 설명, widget layout을 갱신할 수 있어야 운영자가 실제 dashboard palette를 계속 다듬을 수 있다.
+  - built-in preset은 제품 기본값이므로 수정 불가 정책을 유지해야 한다.
+  - API, frontend wrapper, UI event, 테스트, OpenAPI 문서가 같이 갱신되어야 한다.
+- 실행 내용:
+  - backend에 custom dashboard preset update service/controller path 추가.
+  - frontend에 update API wrapper와 UI 버튼/handler 추가.
+  - 테스트에서 custom preset 생성 후 PATCH update, built-in PATCH conflict를 검증.
+  - API 명세, OpenAPI, frontend design, test case 문서 갱신.
+  - 전체 local verify와 backend full test 재검증.
+- 구현 내용:
+  - `PATCH /api/dashboard/layout/presets/{presetId}` 추가.
+  - ADMIN만 custom preset을 수정 가능.
+  - built-in preset update는 `409 CONFLICT`로 거부.
+  - custom preset update 시 id, createdBy, createdAt은 유지하고 name, description, widgets, updatedAt만 갱신.
+  - dashboard page에 `선택 preset 갱신` 버튼 추가.
+  - update 성공 시 preset 목록을 갱신하고 선택 값을 갱신된 preset으로 유지.
+- 수정된 파일:
+  - `osmu-backend/src/main/java/com/example/osmu/dashboard/DashboardLayoutController.java`
+  - `osmu-backend/src/main/java/com/example/osmu/dashboard/DashboardLayoutService.java`
+  - `osmu-backend/src/test/java/com/example/osmu/dashboard/DashboardLayoutControllerTest.java`
+  - `osmu-frontend/src/services/api.js`
+  - `osmu-frontend/src/services/api-query.test.js`
+  - `osmu-frontend/src/views/HomeView.vue`
+  - `osmu-frontend/src/views/HomeView.test.js`
+  - `osmu-frontend/src/components/dashboard/DashboardPage.vue`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/openapi-mvp.json`
+  - `dev-docs/frontend-design.md`
+  - `dev-docs/test-cases.md`
+  - `scripts/verify-openapi-contract.ps1`
+  - `dev-docs/worklog/main/worklog-main.md`
+- 검증 기록:
+  - `node --check .\osmu-frontend\e2e\lightweight-demo.spec.js`: 성공.
+  - `npm.cmd run test:unit`: 성공, 59개 통과.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-openapi-contract.ps1`: 성공, operations 98 / frontend API functions 78.
+  - escalated `.\gradlew.bat --no-daemon test --tests com.example.osmu.dashboard.DashboardLayoutControllerTest`: 성공.
+  - `npm.cmd run build`: 성공.
+  - `git diff --check`: 성공. LF/CRLF 변환 warning만 출력.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-local.ps1 -SkipDocker -SkipBackend -JavaHome C:\jdk-17`: 성공.
+  - root에서 잘못 실행한 escalated `.\gradlew.bat --no-daemon test`: 실패, root에 wrapper 없음.
+  - `osmu-backend`에서 escalated `.\gradlew.bat --no-daemon test`: 성공.
+- 코드 리뷰:
+  - update 정책은 service에 모아 built-in/custom preset 권한 경계가 명확하다.
+  - frontend event는 preset 선택 이벤트와 custom preset update 이벤트를 분리해 의도 충돌을 피했다.
+  - OpenAPI verifier에 PATCH operation과 frontend wrapper를 추가해 명세 누락을 방지했다.
+  - 현재 update는 전체 widgets 교체 방식이라 MVP에는 단순하고, 향후 section/breakpoint schema가 붙어도 payload 확장 가능하다.
+- 결과:
+  - custom dashboard preset 생성/조회/적용/수정/삭제 흐름이 MVP 수준으로 닫힘.
+  - 운영자가 OCI처럼 dashboard panel 구성을 저장하고 계속 갱신하는 기본 흐름이 생김.
+- 후속 메모:
+  - 실제 MariaDB + MinIO 연결 환경에서 custom preset create/update/delete smoke test 필요.
+  - Browser/Chrome 권한 확보 후 dashboard preset UI 클릭 E2E 검증 필요.
+- 추가 개발 필요:
+  - 조직/역할별 기본 preset 할당.
+  - preset export/import.
+  - section/breakpoint별 layout schema.
+  - dashboard panel catalog 확장 및 drag/drop 편집 UX.
+- 사용한 skill/plugin:
+  - `caveman` skill: ultra 응답 압축 유지.
+
+### 2026-06-15 - Dashboard section order control
+
+- 작업 시간:
+  - 시작: 2026-06-15 04:45:45 +09:00
+  - 종료: 2026-06-15 04:48:39 +09:00
+- 사용자 명령:
+  - active goal 기준으로 프론트/백엔드 기능 개발 계속 진행.
+  - dashboard panel/palette customization 기능을 계속 강화.
+  - `$caveman ultra` 응답 압축 유지.
+- 명령 인식:
+  - 직전 widget section layout 저장 다음 단계로, section band 자체의 표시 순서를 바꾸고 저장 흐름에 반영하는 작업으로 인식.
+- 요청 분석:
+  - widget은 section에 배치할 수 있게 되었지만 section 표시 순서가 고정이면 사용자가 운영 화면의 우선순위를 바꾸기 어렵다.
+  - 별도 DB schema를 늘리지 않고 기존 widget order를 section order의 저장 근거로 쓰면 MVP 범위 안에서 section 순서 보존이 가능하다.
+- 실행 내용:
+  - dashboard section header에 위/아래 이동 버튼 추가.
+  - section order는 visible widget 순서의 첫 등장 section 순서로 계산하도록 변경.
+  - section 이동 시 같은 section의 widget group 전체를 재배열하고 기존 dashboard layout 저장 API를 재사용.
+  - frontend selector test와 design/test case 문서 갱신.
+  - frontend dist를 빌드해 원격 demo 서버에 배포.
+- 구현 내용:
+  - `DashboardPage.vue`
+    - `dashboard-widget-section-move-up-button`, `dashboard-widget-section-move-down-button` 추가.
+    - `visibleDashboardWidgetSections`가 fixed section order 대신 `visibleDashboardWidgets`의 실제 order를 기준으로 section order를 계산.
+    - section move event `move-dashboard-widget-section` 추가.
+  - `HomeView.vue`
+    - `moveDashboardWidgetSection(sectionId, direction)` 추가.
+    - section별 widget group을 통째로 이동하고 `persistDashboardWidgets()`를 호출해 local/server layout 저장.
+  - `main.css`
+    - section header/action button layout style 추가.
+- 수정된 파일:
+  - `osmu-frontend/src/views/HomeView.vue`
+  - `osmu-frontend/src/components/dashboard/DashboardPage.vue`
+  - `osmu-frontend/src/assets/main.css`
+  - `osmu-frontend/src/views/HomeView.test.js`
+  - `dev-docs/frontend-design.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/worklog/main/worklog-main.md`
+- 관련 파일:
+  - `scripts/verify-lightweight-demo.ps1`
+  - `scripts/verify-local-demo.ps1`
+- 검증 기록:
+  - `npm.cmd run test:unit`: 성공, 60개 통과.
+  - `npm.cmd run build`: 성공.
+  - `git diff --check`: 성공. LF/CRLF warning만 출력.
+  - `tar -czf .\.osmu-run\frontend-dist.tgz -C .\osmu-frontend\dist .`: 성공.
+  - `node .\.osmu-run\remote-artifact-deploy.js`: 성공. remote backend pid `11136`, frontend pid `11137`.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-local-demo.ps1 -FrontendBase http://192.168.35.88:5173 -ApiBase http://192.168.35.88:8080/api -AdminLoginId admin -AdminPassword password -DemoCredentialPath .\.osmu-run\latest-remote-demo.json -SeedIfMissing`: 성공.
+- 코드 리뷰:
+  - section order를 별도 table/field로 만들지 않고 widget order에 귀속해 schema churn을 줄였다.
+  - hidden widget까지 포함해 section group을 재정렬하므로, 숨김 상태였다가 다시 표시한 widget도 같은 section group 안에서 유지된다.
+  - visible section 계산은 실제 widget order 기반이라 저장/렌더링 순서가 일치한다.
+  - section move는 group 단위 조작이고 기존 drag reorder는 widget 단위 조작이므로 두 UX가 상호 보완된다.
+- 결과:
+  - dashboard section band 순서를 위/아래 버튼으로 변경하고 저장할 수 있다.
+  - OCI형 dashboard처럼 사용자가 전체 운영 화면 우선순위를 더 직접 구성할 수 있다.
+  - 원격 demo `http://192.168.35.88:5173`에 최신 frontend 배포 및 smoke 검증 완료.
+- 후속 메모:
+  - 다음 후보는 section 접기/펼치기 저장, section별 column density, breakpoint별 span.
+- 추가 개발 필요:
+  - Browser/Chrome 권한 확보 후 section order click E2E.
+  - section collapse state persistence.
+- 사용한 skill/plugin:
+  - `caveman` skill: ultra 응답 압축 유지.
+
+### 2026-06-15 - Dashboard widget section layout 저장과 렌더링
+
+- 작업 시간:
+  - 시작: 2026-06-15 04:38:40 +09:00
+  - 종료: 2026-06-15 04:45:31 +09:00
+- 사용자 명령:
+  - active goal 기준으로 프론트/백엔드 기능 개발 계속 진행.
+  - dashboard panel/palette 기능을 목표한 B2B 운영 dashboard 방향으로 확장.
+  - `$caveman ultra` 응답 압축 유지.
+- 명령 인식:
+  - widget별 option schema 다음 단계로, dashboard panel을 단일 grid에만 나열하지 않고 section별로 배치 저장/렌더링하는 layout schema 확장 작업으로 인식.
+- 요청 분석:
+  - 기존 dashboard layout은 순서, 표시 여부, 크기, tone만 저장하므로 운영자가 overview/operations/governance 같은 의미 단위로 panel을 나눌 수 없었다.
+  - OCI형 dashboard에 가까워지려면 panel을 section band로 나누고, 이 section 배치가 preset/export/import/default layout에도 보존되어야 한다.
+- 실행 내용:
+  - backend `DashboardWidgetLayout`에 `section` 필드 추가.
+  - backend 저장 검증에서 `overview`, `operations`, `governance` section만 허용.
+  - frontend dashboard config row에 section select 추가.
+  - metric card rendering을 section별 band로 그룹화.
+  - default dashboard widget section 배치를 설정.
+  - unit/controller/smoke test와 API/frontend/test case 문서 갱신.
+  - backend jar와 frontend dist를 재빌드해 원격 demo 서버에 배포.
+- 구현 내용:
+  - `DashboardWidgetLayout`
+    - `section` 필드 추가.
+    - 기존 3-argument, options constructor 유지로 built-in preset과 기존 JSON 호환.
+  - `DashboardLayoutService`
+    - `ALLOWED_WIDGET_SECTIONS` 추가.
+    - section 누락 시 `overview`, invalid section은 HTTP 400.
+  - `HomeView.vue`
+    - `dashboardWidgetSections`, `normalizeDashboardWidgetSection`, `dashboardWidgetSection`, `dashboardWidgetSectionLabel`, `updateDashboardWidgetSection` 추가.
+    - layout sanitize/localStorage/server payload에서 `section` 보존.
+  - `DashboardPage.vue`
+    - `dashboard-widget-section-control`, `dashboard-widget-section-select` 추가.
+    - visible widgets를 section별 `dashboard-widget-section-{section}` band로 렌더링.
+  - `main.css`
+    - section band와 heading style 추가.
+- 수정된 파일:
+  - `osmu-backend/src/main/java/com/example/osmu/dashboard/DashboardWidgetLayout.java`
+  - `osmu-backend/src/main/java/com/example/osmu/dashboard/DashboardLayoutService.java`
+  - `osmu-backend/src/test/java/com/example/osmu/dashboard/DashboardLayoutControllerTest.java`
+  - `osmu-frontend/src/views/HomeView.vue`
+  - `osmu-frontend/src/components/dashboard/DashboardPage.vue`
+  - `osmu-frontend/src/assets/main.css`
+  - `osmu-frontend/src/services/api-query.test.js`
+  - `osmu-frontend/src/views/HomeView.test.js`
+  - `scripts/verify-lightweight-demo.ps1`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/frontend-design.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/worklog/main/worklog-main.md`
+- 관련 파일:
+  - `dev-docs/openapi-mvp.json`
+  - `scripts/verify-local-demo.ps1`
+- 검증 기록:
+  - `npm.cmd run test:unit`: 성공, 60개 통과.
+  - sandbox `.\gradlew.bat --no-daemon test --tests com.example.osmu.dashboard.DashboardLayoutControllerTest`: Gradle distribution download permission denied로 실패.
+  - escalated `.\gradlew.bat --no-daemon test --tests com.example.osmu.dashboard.DashboardLayoutControllerTest`: 성공.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-openapi-contract.ps1`: 성공, operations 104 / frontend API functions 84.
+  - `npm.cmd run build`: 성공.
+  - escalated `.\gradlew.bat --no-daemon test bootJar`: 성공.
+  - `git diff --check`: 성공. LF/CRLF warning만 출력.
+  - `tar -czf .\.osmu-run\frontend-dist.tgz -C .\osmu-frontend\dist .`: 성공.
+  - `node .\.osmu-run\remote-artifact-deploy.js`: 성공. remote backend pid `10825`, frontend pid `10826`.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-local-demo.ps1 -FrontendBase http://192.168.35.88:5173 -ApiBase http://192.168.35.88:8080/api -AdminLoginId admin -AdminPassword password -DemoCredentialPath .\.osmu-run\latest-remote-demo.json -SeedIfMissing`: 성공.
+- 코드 리뷰:
+  - 기존 constructor와 null/default 보정을 유지해 기존 saved layout JSON이 깨지지 않는다.
+  - section 허용값을 backend에서 제한해 layout schema가 임의 문자열로 확산되지 않는다.
+  - frontend section rendering은 기존 widget order를 section 내부에서 유지하므로 drag reorder와 충돌이 작다.
+  - section select는 기존 config row에 배치해 크기/tone/표시/삭제 흐름과 같은 UX 면에 머문다.
+- 결과:
+  - dashboard widget을 `overview`, `operations`, `governance` section에 배치하고 저장할 수 있다.
+  - metric grid가 section별 band로 나뉘어 B2B 운영 dashboard의 정보 구조가 더 명확해졌다.
+  - preset/export/import/default preset과 remote MariaDB smoke에서 section 값이 보존된다.
+- 후속 메모:
+  - 다음 후보는 section별 접기/순서 변경, breakpoint별 column span, catalog option schema 기반 number/toggle input.
+- 추가 개발 필요:
+  - section order 저장.
+  - per-breakpoint layout span.
+  - Browser/Chrome 권한 확보 후 section select 클릭 E2E.
+- 사용한 skill/plugin:
+  - `caveman` skill: ultra 응답 압축 유지.
+
+### 2026-06-15 - Dashboard widget catalog category palette UI
+
+- 작업 시간:
+  - 시작: 2026-06-15 04:23:10 +09:00
+  - 종료: 2026-06-15 04:26:58 +09:00
+- 사용자 명령:
+  - active goal 기준으로 프론트/백엔드 기능 개발 계속 진행.
+  - `dev-docs`에 정리된 목표 중 대시보드 panel/palette 기능을 계속 개선.
+  - `$caveman ultra` 응답 압축 유지.
+- 명령 인식:
+  - 직전 server-driven widget catalog API 다음 단계로, catalog metadata의 `category`를 실제 dashboard 추가 UI에 반영하는 작업으로 인식.
+- 요청 분석:
+  - catalog API는 생겼지만 frontend palette 선택 UI가 flat list라 패널 수가 늘수록 운영자가 필요한 widget을 찾기 어렵다.
+  - B2B/OCI형 dashboard를 목표로 하려면 category 기준 grouping과 빠른 추가 동작이 필요하다.
+- 실행 내용:
+  - dashboard widget 추가 select를 category별 `optgroup`으로 변경.
+  - 같은 catalog를 category별 chip palette로 표시하고 chip 클릭 시 즉시 widget을 추가하도록 연결.
+  - HomeView에 direct add handler를 추가해 catalog role filter를 통과한 widget만 추가되게 했다.
+  - selector unit test와 frontend design/test case 문서를 갱신.
+  - frontend dist를 재빌드하고 원격 demo에 재배포했다.
+- 구현 내용:
+  - `DashboardPage.vue`
+    - `availableDashboardWidgetGroups` computed 추가.
+    - category 정렬 순서와 label helper 추가.
+    - `dashboard-widget-catalog`, `dashboard-widget-catalog-button`, `dashboard-widget-category-{category}` selector 추가.
+    - `add-dashboard-widget-by-id` event 추가.
+  - `HomeView.vue`
+    - `addDashboardWidgetById(widgetId)` 추가.
+    - role-visible catalog에 포함된 widget만 direct add 허용.
+  - `main.css`
+    - category heading과 chip palette 스타일 추가.
+- 수정된 파일:
+  - `osmu-frontend/src/components/dashboard/DashboardPage.vue`
+  - `osmu-frontend/src/views/HomeView.vue`
+  - `osmu-frontend/src/views/HomeView.test.js`
+  - `osmu-frontend/src/assets/main.css`
+  - `dev-docs/frontend-design.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/worklog/main/worklog-main.md`
+- 관련 파일:
+  - `osmu-frontend/src/services/api.js`
+  - `osmu-backend/src/main/java/com/example/osmu/dashboard/DashboardWidgetCatalogItem.java`
+- 검증 기록:
+  - `npm.cmd run test:unit`: 성공, 60개 통과.
+  - `npm.cmd run build`: 성공.
+  - `git diff --check`: 성공. LF/CRLF warning만 출력.
+  - `tar -czf .\.osmu-run\frontend-dist.tgz -C .\osmu-frontend\dist .`: 성공.
+  - `node .\.osmu-run\remote-artifact-deploy.js`: 성공. remote backend pid `8598`, frontend pid `8599`.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-local-demo.ps1 -FrontendBase http://192.168.35.88:5173 -ApiBase http://192.168.35.88:8080/api -AdminLoginId admin -AdminPassword password -DemoCredentialPath .\.osmu-run\latest-remote-demo.json -SeedIfMissing`: 성공.
+  - Browser in-app 확인 시도: 실패. 환경 권한 오류 `CreateProcessAsUserW failed: 5`.
+- 코드 리뷰:
+  - grouping은 backend catalog의 `category` metadata를 그대로 사용해 frontend 하드코딩 drift를 줄였다.
+  - select와 chip palette가 같은 computed source를 사용하므로 선택지 불일치가 생기기 어렵다.
+  - direct add handler는 role-visible catalog를 한번 더 확인해 adminOnly widget 노출/추가 경계를 유지한다.
+  - chip UI는 기존 panel 내부에서 작게 동작하며 layout card 중첩을 만들지 않는다.
+- 결과:
+  - dashboard panel 추가 UI가 category별 grouped select와 chip palette로 개선되었다.
+  - 운영자가 storage/operations/security/governance 등 category 기준으로 필요한 dashboard panel을 빠르게 추가할 수 있다.
+  - 원격 demo `http://192.168.35.88:5173`에 최신 frontend 배포 및 smoke 검증 완료.
+- 후속 메모:
+  - 다음 후보는 widget별 configurable options schema, category별 접기/필터, customer preset bundle sample.
+- 추가 개발 필요:
+  - widget별 세부 설정 저장 API.
+  - section/breakpoint 기반 layout schema.
+  - Browser/Chrome 권한 확보 후 실제 클릭 E2E.
+- 사용한 skill/plugin:
+  - `caveman` skill: ultra 응답 압축 유지.
+  - `browser:control-in-app-browser` skill: frontend visual 검증 시도, 환경 권한 오류로 실패.
+
+### 2026-06-15 - Dashboard catalog-driven option control UI
+
+- 작업 시간:
+  - 시작: 2026-06-15 04:35:20 +09:00
+  - 종료: 2026-06-15 04:38:23 +09:00
+- 사용자 명령:
+  - active goal 기준으로 프론트/백엔드 기능 개발 계속 진행.
+  - dashboard panel/palette 기능을 제품 목표에 맞게 계속 확장.
+  - `$caveman ultra` 응답 압축 유지.
+- 명령 인식:
+  - 직전 backend `configOptions` schema 추가 후, frontend가 아직 `tone` 전용 버튼을 하드코딩하고 있어 catalog schema 기반 동적 option UI로 전환하는 작업으로 인식.
+- 요청 분석:
+  - backend catalog가 option schema를 내려주는데 frontend가 이를 사용하지 않으면 schema-driven dashboard 확장의 가치가 반감된다.
+  - 향후 `tone` 외 refresh interval, section, compact metric mode가 추가될 때 UI를 매번 하드코딩하지 않으려면 옵션 렌더링 흐름이 필요하다.
+- 실행 내용:
+  - Dashboard widget config row에서 hardcoded `톤` 버튼을 제거.
+  - backend catalog의 `configOptions`를 기준으로 option select를 동적 렌더링.
+  - HomeView에 widget id별 config option 조회와 option value 조회/update handler를 추가.
+  - selector unit test와 frontend design/test case 문서를 갱신.
+  - frontend dist를 재빌드하고 원격 demo 서버에 재배포.
+- 구현 내용:
+  - `DashboardPage.vue`
+    - `dashboardWidgetConfigOptions(widget.id)`를 순회해 option control 렌더링.
+    - `dashboard-widget-option-control`, `dashboard-widget-option-select` selector 추가.
+    - option 변경 시 `update-dashboard-widget-option` event emit.
+  - `HomeView.vue`
+    - `dashboardWidgetConfigOptions`, `dashboardWidgetOptionValue`, `updateDashboardWidgetOption` 추가.
+    - `updateDashboardWidgetOption`은 현재 `tone` schema를 검증하고 layout 저장 흐름을 재사용.
+  - `main.css`
+    - widget option select control 스타일 추가.
+- 수정된 파일:
+  - `osmu-frontend/src/views/HomeView.vue`
+  - `osmu-frontend/src/components/dashboard/DashboardPage.vue`
+  - `osmu-frontend/src/assets/main.css`
+  - `osmu-frontend/src/views/HomeView.test.js`
+  - `dev-docs/frontend-design.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/worklog/main/worklog-main.md`
+- 관련 파일:
+  - `osmu-backend/src/main/java/com/example/osmu/dashboard/DashboardWidgetCatalogItem.java`
+  - `osmu-backend/src/main/java/com/example/osmu/dashboard/DashboardWidgetConfigOption.java`
+- 검증 기록:
+  - `npm.cmd run test:unit`: 성공, 60개 통과.
+  - `npm.cmd run build`: 성공.
+  - `git diff --check`: 성공. LF/CRLF warning만 출력.
+  - `tar -czf .\.osmu-run\frontend-dist.tgz -C .\osmu-frontend\dist .`: 성공.
+  - `node .\.osmu-run\remote-artifact-deploy.js`: 성공. remote backend pid `10501`, frontend pid `10502`.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-local-demo.ps1 -FrontendBase http://192.168.35.88:5173 -ApiBase http://192.168.35.88:8080/api -AdminLoginId admin -AdminPassword password -DemoCredentialPath .\.osmu-run\latest-remote-demo.json -SeedIfMissing`: 성공.
+  - Browser visual 확인은 동일 환경 권한 문제(`CreateProcessAsUserW failed: 5`)가 반복되어 CLI/unit/smoke로 대체.
+- 코드 리뷰:
+  - frontend option UI가 backend catalog schema를 직접 사용해 future option 확장 비용을 줄였다.
+  - 현재는 `select` type만 렌더링하지만 event/prop 구조는 다른 option type 확장에 열려 있다.
+  - `updateDashboardWidgetOption`은 `tone` 허용값을 한번 더 검증해 잘못된 UI/event 입력을 저장하지 않는다.
+  - 기존 size/toggle/remove controls와 같은 row에 배치해 dashboard config 조작 흐름을 유지했다.
+- 결과:
+  - dashboard widget option UI가 catalog-driven으로 전환되었다.
+  - 향후 backend catalog에 option을 늘릴 때 frontend 하드코딩 없이 확장할 기반이 생겼다.
+  - 원격 demo `http://192.168.35.88:5173`에 최신 frontend 배포 및 smoke 검증 완료.
+- 후속 메모:
+  - 다음 후보는 `configOptions.type`별 renderer 확장(number, boolean), section/breakpoint layout schema, customer preset bundle sample.
+- 추가 개발 필요:
+  - catalog option schema 기반 number/toggle input.
+  - Browser/Chrome 권한 확보 후 actual option select click E2E.
+- 사용한 skill/plugin:
+  - `caveman` skill: ultra 응답 압축 유지.
+
+### 2026-06-15 - Dashboard widget option schema와 tone 설정 저장
+
+- 작업 시간:
+  - 시작: 2026-06-15 04:27:10 +09:00
+  - 종료: 2026-06-15 04:35:08 +09:00
+- 사용자 명령:
+  - active goal 기준으로 프론트/백엔드 기능 개발 계속 진행.
+  - `dev-docs`에 정리된 목표 중 dashboard panel/palette 기능을 제품형으로 확장.
+  - `$caveman ultra` 응답 압축 유지.
+- 명령 인식:
+  - 직전 category palette UI 다음 단계로, widget별 configurable option schema와 저장/검증 흐름을 추가하라는 계속 작업으로 인식.
+- 요청 분석:
+  - 기존 dashboard layout은 `id`, `enabled`, `size`만 저장해 panel별 세부 표현 옵션을 저장할 수 없었다.
+  - OCI형 운영 dashboard에 가까워지려면 중요한 panel은 강조하고 낮은 우선순위 panel은 muted로 낮추는 per-widget option이 필요하다.
+  - backend가 option schema를 catalog로 제공하고 layout 저장 시 검증해야 frontend/backend drift를 줄일 수 있다.
+- 실행 내용:
+  - backend `DashboardWidgetLayout`에 `options` map 추가.
+  - backend widget catalog에 `configOptions` schema 추가.
+  - `options.tone` 검증을 `default`, `focus`, `muted`로 제한.
+  - frontend dashboard config list에 tone toggle 버튼 추가.
+  - metric card에 `dashboard-widget-tone-*` class를 적용해 focus/muted 시각 상태를 표시.
+  - API spec, frontend design, test case, smoke verifier, unit/controller test 갱신.
+  - backend jar와 frontend dist를 재빌드해 원격 demo 서버에 배포.
+- 구현 내용:
+  - `DashboardWidgetLayout`
+    - `options: Map<String, String>` 필드 추가.
+    - 기존 3-argument constructor 유지로 built-in preset 코드 호환.
+  - `DashboardWidgetConfigOption`
+    - catalog option schema record 추가.
+  - `DashboardWidgetCatalogItem`
+    - `configOptions` 필드 추가.
+  - `DashboardLayoutService`
+    - `tone` option schema를 catalog에 포함.
+    - layout/preset 저장 시 option key/value validation.
+    - option 누락 시 `tone=default` 보정.
+  - `HomeView.vue`
+    - `sanitizeDashboardWidgetOptions`, `dashboardWidgetTone`, `toggleDashboardWidgetTone` 추가.
+    - layout localStorage/server payload에 `options.tone` 보존.
+  - `DashboardPage.vue`
+    - `dashboard-widget-tone-button` 추가.
+    - widget row에 tone label 표시.
+    - metric card class에 tone 반영.
+- 수정된 파일:
+  - `osmu-backend/src/main/java/com/example/osmu/dashboard/DashboardWidgetLayout.java`
+  - `osmu-backend/src/main/java/com/example/osmu/dashboard/DashboardWidgetConfigOption.java`
+  - `osmu-backend/src/main/java/com/example/osmu/dashboard/DashboardWidgetCatalogItem.java`
+  - `osmu-backend/src/main/java/com/example/osmu/dashboard/DashboardLayoutService.java`
+  - `osmu-backend/src/test/java/com/example/osmu/dashboard/DashboardLayoutControllerTest.java`
+  - `osmu-frontend/src/views/HomeView.vue`
+  - `osmu-frontend/src/components/dashboard/DashboardPage.vue`
+  - `osmu-frontend/src/assets/main.css`
+  - `osmu-frontend/src/services/api-query.test.js`
+  - `osmu-frontend/src/views/HomeView.test.js`
+  - `scripts/verify-lightweight-demo.ps1`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/frontend-design.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/worklog/main/worklog-main.md`
+- 관련 파일:
+  - `scripts/verify-local-demo.ps1`
+  - `dev-docs/openapi-mvp.json`
+- 검증 기록:
+  - `npm.cmd run test:unit`: 성공, 60개 통과.
+  - sandbox `.\gradlew.bat --no-daemon test --tests com.example.osmu.dashboard.DashboardLayoutControllerTest`: Gradle distribution download permission denied로 실패.
+  - escalated `.\gradlew.bat --no-daemon test --tests com.example.osmu.dashboard.DashboardLayoutControllerTest`: 성공.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-openapi-contract.ps1`: 성공, operations 104 / frontend API functions 84.
+  - `npm.cmd run build`: 성공.
+  - escalated `.\gradlew.bat --no-daemon test bootJar`: 성공.
+  - `git diff --check`: 성공. LF/CRLF warning만 출력.
+  - `tar -czf .\.osmu-run\frontend-dist.tgz -C .\osmu-frontend\dist .`: 성공.
+  - `node .\.osmu-run\remote-artifact-deploy.js`: 성공. remote backend pid `10175`, frontend pid `10176`.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-local-demo.ps1 -FrontendBase http://192.168.35.88:5173 -ApiBase http://192.168.35.88:8080/api -AdminLoginId admin -AdminPassword password -DemoCredentialPath .\.osmu-run\latest-remote-demo.json -SeedIfMissing`: 성공.
+  - Browser in-app 확인 시도: 실패. 환경 권한 오류 `CreateProcessAsUserW failed: 5`.
+- 코드 리뷰:
+  - 기존 constructor를 유지해 built-in preset 코드와 기존 JSON 저장 데이터 호환성을 지켰다.
+  - option key를 generic하게 무제한 허용하지 않고 `tone`으로 제한해 저장 JSON이 임의 설정 저장소로 변질되는 것을 막았다.
+  - catalog `configOptions`와 save validation이 같은 service 상수에서 나오므로 frontend 선택지와 backend 허용값 drift 위험이 낮다.
+  - frontend는 localStorage와 server payload 모두에서 `options.tone`을 sanitize해 오래된 layout 데이터도 안전하게 렌더링한다.
+- 결과:
+  - dashboard widget별 tone 설정을 저장/프리셋/export/import/default preset 흐름에서 보존할 수 있다.
+  - 사용자는 panel별로 `Standard`, `Focus`, `Muted` 표시 상태를 전환할 수 있다.
+  - 원격 demo `http://192.168.35.88:5173`에 최신 backend/frontend 배포 및 smoke 검증 완료.
+- 후속 메모:
+  - 다음 후보는 widget별 option schema를 `tone` 외에 refresh interval, compact metric mode, section/breakpoint로 확장.
+  - Browser/Chrome 권한 확보 후 실제 tone toggle 클릭 E2E 필요.
+- 추가 개발 필요:
+  - section/breakpoint 기반 layout schema.
+  - customer preset bundle sample.
+  - catalog option schema 기반 동적 form rendering.
+- 사용한 skill/plugin:
+  - `caveman` skill: ultra 응답 압축 유지.
+  - `browser:control-in-app-browser` skill: frontend visual 검증 시도, 환경 권한 오류로 실패.
+
+### 2026-06-15 - Dashboard widget catalog API 서버 연동
+
+- 작업 시간:
+  - 시작: 2026-06-15 04:12:20 +09:00
+  - 종료: 2026-06-15 04:23:00 +09:00
+- 사용자 명령:
+  - active goal 기준으로 대시보드 panel/palette 기능 개발을 계속 진행.
+  - `$caveman ultra` 응답 압축 유지.
+- 명령 인식:
+  - 직전 dashboard palette 확장 후, widget catalog를 frontend 하드코딩에만 두지 않고 backend API 계약으로 승격하는 작업으로 인식.
+- 요청 분석:
+  - OCI처럼 dashboard panel을 교체/추가/설정하려면 frontend 선택지와 backend 저장 검증 기준이 같은 catalog를 바라봐야 한다.
+  - custom layout/preset 저장 시 존재하지 않는 widget id가 저장되면 운영 panel 계약이 깨질 수 있으므로 서버 검증이 필요하다.
+- 실행 내용:
+  - backend dashboard layout service에 widget catalog metadata 목록과 허용 widget id set을 추가.
+  - `GET /api/dashboard/layout/widgets` endpoint를 추가해 catalog metadata를 제공.
+  - `PUT /api/dashboard/layout` 저장 검증에서 catalog에 없는 widget id를 HTTP 400으로 거부.
+  - frontend는 로그인 dashboard load 시 catalog endpoint를 먼저 조회하고, 실패 시 fallback catalog를 사용하도록 연결.
+  - API query unit test, backend controller test, OpenAPI 문서/검증 스크립트, demo smoke를 갱신.
+  - frontend dist와 backend jar를 빌드해 원격 demo 서버에 재배포.
+- 구현 내용:
+  - `DashboardWidgetCatalogItem` record 추가: `id`, `title`, `description`, `category`, `adminOnly`.
+  - backend catalog id: `capacity`, `remaining`, `buckets`, `objects`, `health`, `runtime`, `readiness`, `backup`, `io`, `requests`, `sharing`, `quota`, `access-keys`, `identity`, `lifecycle`, `selected`, `retention`.
+  - frontend `getDashboardWidgetCatalog()` 추가 및 `HomeView.vue` catalog sanitize/fallback 처리.
+  - smoke에서 `access-keys` SECURITY metadata, `identity` adminOnly metadata, unknown widget 400 응답을 확인.
+- 수정된 파일:
+  - `osmu-backend/src/main/java/com/example/osmu/dashboard/DashboardWidgetCatalogItem.java`
+  - `osmu-backend/src/main/java/com/example/osmu/dashboard/DashboardLayoutController.java`
+  - `osmu-backend/src/main/java/com/example/osmu/dashboard/DashboardLayoutService.java`
+  - `osmu-backend/src/test/java/com/example/osmu/dashboard/DashboardLayoutControllerTest.java`
+  - `osmu-frontend/src/services/api.js`
+  - `osmu-frontend/src/services/api-query.test.js`
+  - `osmu-frontend/src/views/HomeView.vue`
+  - `scripts/verify-lightweight-demo.ps1`
+  - `scripts/verify-openapi-contract.ps1`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/openapi-mvp.json`
+  - `dev-docs/frontend-design.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/worklog/main/worklog-main.md`
+- 관련 파일:
+  - `osmu-frontend/src/components/dashboard/DashboardPage.vue`
+  - `scripts/verify-local-demo.ps1`
+- 검증 기록:
+  - `npm.cmd run test:unit`: 성공, 60개 통과.
+  - `.\gradlew.bat --no-daemon test --tests com.example.osmu.dashboard.DashboardLayoutControllerTest`: 성공.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-openapi-contract.ps1`: 성공, operations 104 / frontend API functions 84.
+  - `npm.cmd run build`: 성공.
+  - `.\gradlew.bat --no-daemon test bootJar`: 성공.
+  - `git diff --check`: 성공. LF/CRLF warning만 출력.
+  - `tar -czf .\.osmu-run\frontend-dist.tgz -C .\osmu-frontend\dist .`: 성공.
+  - `node .\.osmu-run\remote-artifact-deploy.js`: 성공. remote backend pid `8282`, frontend pid `8283`.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-local-demo.ps1 -FrontendBase http://192.168.35.88:5173 -ApiBase http://192.168.35.88:8080/api -AdminLoginId admin -AdminPassword password -DemoCredentialPath .\.osmu-run\latest-remote-demo.json -SeedIfMissing`: 성공.
+- 코드 리뷰:
+  - 서버 catalog와 저장 검증이 같은 `ALLOWED_WIDGET_IDS`를 사용해 frontend/backend drift 위험을 줄였다.
+  - frontend는 backend catalog 장애 시 fallback을 유지하므로 demo 접근성이 깨지지 않는다.
+  - `adminOnly`는 UI 필터링용 metadata로 제공되고, 실제 admin data API는 기존 auth guard가 계속 보호한다.
+  - unknown widget 400 smoke를 추가해 향후 catalog 계약 회귀를 잡을 수 있다.
+- 결과:
+  - dashboard palette 선택지가 server-driven catalog API로 전환되었다.
+  - 원격 demo `http://192.168.35.88:5173`에 최신 backend/frontend 배포 및 smoke 검증 완료.
+- 후속 메모:
+  - 다음 후보는 widget catalog category별 grouping UI, widget 상세 설정 schema, role별 추천 panel preset seed.
+  - Browser in-app 검증은 이전과 동일하게 로컬 권한 문제(`CreateProcessAsUserW failed: 5`)가 있어 CLI smoke로 대체.
+- 추가 개발 필요:
+  - widget별 configurable options schema와 저장 API.
+  - customer/tenant별 dashboard preset bundle import/export 샘플.
+- 사용한 skill/plugin:
+  - `caveman` skill: ultra 응답 압축 유지.
+
+### 2026-06-15 - 비활성 사용자 기존 access token 차단
+- 작업 시간:
+  - 시작: 2026-06-15 03:47:00 +09:00
+  - 종료: 2026-06-15 03:51:17 +09:00
+- 사용자 명령:
+  - active goal에 따라 `dev-docs` 기준 목표 기능 개발을 계속 진행.
+- 명령 인식:
+  - user lifecycle 점검 중, 비활성화 후 access key/refresh token은 차단하지만 기존 bearer access token의 DB 상태 재검증이 모든 endpoint에 일관 적용되는지 확인하고 보강하는 작업으로 인식.
+- 요청 분석:
+  - `AuthContext.currentUser`는 DB user status를 확인하지만, 일부 admin read endpoint는 controller에서 `AuthContext`를 호출하지 않고 interceptor의 JWT claim role check만 통과한다.
+  - 따라서 비활성 admin의 기존 access token이 claim-only admin endpoint에 접근할 가능성이 있었다.
+  - interceptor 계층에서 access token subject를 DB user로 재조회하고 `ACTIVE`인지 확인해야 한다.
+- 실행 내용:
+  - `JwtAuthInterceptor`에 `UserRepository`를 주입.
+  - access token 검증 후 subject user id를 DB에서 조회하고 status가 `ACTIVE`가 아니면 `401 AUTHENTICATION_REQUIRED` 반환.
+  - admin path role check도 JWT claim role이 아니라 현재 DB user role 기준으로 수행.
+  - `AdminUserControllerTest`에 비활성 user old token `/api/users/me` 차단 검증 추가.
+  - 비활성 admin old token이 claim-only admin endpoint `/api/admin/quota-policies`에 접근하지 못하는 검증 추가.
+  - remote smoke verifier에 user/admin old access token 차단 smoke 추가.
+  - API/security/test case 문서 갱신.
+- 구현 내용:
+  - stale access token 차단 조건:
+    - token subject user가 없을 때
+    - user status가 `ACTIVE`가 아닐 때
+  - admin path 권한 판단 기준:
+    - JWT claim role -> DB current user role로 변경.
+- 수정된 파일:
+  - `osmu-backend/src/main/java/com/example/osmu/auth/JwtAuthInterceptor.java`
+  - `osmu-backend/src/test/java/com/example/osmu/user/AdminUserControllerTest.java`
+  - `scripts/verify-lightweight-demo.ps1`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/security-design.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/worklog/main/worklog-main.md`
+- 검증 기록:
+  - escalated `.\gradlew.bat --no-daemon test --tests com.example.osmu.user.AdminUserControllerTest --tests com.example.osmu.auth.AuthControllerTest --tests com.example.osmu.admin.AdminQuotaPolicyControllerTest`: 성공.
+  - PowerShell parse check for `scripts/verify-lightweight-demo.ps1`: 성공.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-openapi-contract.ps1`: 성공, operations 103 / frontend API functions 83.
+  - `git diff --check`: 성공. LF/CRLF warning만 출력.
+  - escalated `.\gradlew.bat --no-daemon test bootJar`: 성공.
+  - remote artifact deploy: 성공. backend pid `7279`, frontend pid `7280`.
+  - remote `verify-local-demo.ps1 -SeedIfMissing`: 성공. user status token invalidation smoke 포함.
+- 코드 리뷰:
+  - interceptor에서 한 번 더 DB를 조회하므로 모든 bearer-protected endpoint에 동일한 active-user gate가 적용된다.
+  - `AuthContext`의 기존 active-user check는 방어층으로 유지된다.
+  - role 변경/비활성화 후에도 JWT claim이 오래된 권한을 유지하지 않도록 DB role을 기준으로 admin path를 판정한다.
+- 결과:
+  - user/admin 비활성화 직후 기존 access token도 즉시 차단된다.
+  - remote demo URL `http://192.168.35.88:5173`에 재배포 완료.
+- 후속 메모:
+  - 매 요청 DB 조회 비용이 생겼다. 추후 cache/short TTL/revocation version 정책을 도입할 수 있다.
+- 추가 개발 필요:
+  - user role 변경 API가 생기면 role-change token invalidation test 추가.
+- 사용한 skill/plugin:
+  - `caveman` skill: ultra 응답 압축 유지.
+
+### 2026-06-15 - Quota policy 감사 로그 기록 보강
+- 작업 시간:
+  - 시작: 2026-06-15 03:42:00 +09:00
+  - 종료: 2026-06-15 03:46:35 +09:00
+- 사용자 명령:
+  - active goal에 따라 `dev-docs` 기준 목표 기능 개발을 계속 진행.
+- 명령 인식:
+  - user lifecycle 점검 중, `api-spec.md`가 quota policy 저장/삭제 시 감사 로그 기록을 요구하지만 실제 controller가 quota history만 남기는 불일치를 닫는 작업으로 인식.
+- 요청 분석:
+  - `PUT /api/admin/quota-policies/{targetType}/{targetId}` 성공 시 `QUOTA_POLICY_SAVE` audit event가 필요하다.
+  - `DELETE /api/admin/quota-policies/{targetType}/{targetId}` 성공 시 `QUOTA_POLICY_DELETE` audit event가 필요하다.
+  - 기존 quota policy history는 유지해야 한다.
+- 실행 내용:
+  - `AdminQuotaPolicyController`에 `AuditLogService`를 주입.
+  - quota policy save 성공 후 `targetType=QUOTA_POLICY`, `targetId={TARGET_TYPE}:{targetId}`로 `QUOTA_POLICY_SAVE` 기록.
+  - quota policy delete 성공 후 같은 target id로 `QUOTA_POLICY_DELETE` 기록.
+  - `AdminQuotaPolicyControllerTest`에 audit log 조회 검증 추가.
+  - lightweight remote smoke에 quota policy save/delete audit 검증 추가.
+  - test case 문서에 audit/history 기대값 추가.
+- 구현 내용:
+  - audit target id 예: `USER:42`, `ORGANIZATION:3`, `BUCKET:7`.
+  - delete path의 target type은 `Locale.ROOT` 기반 uppercase로 정규화해서 audit target id 표기 안정화.
+- 수정된 파일:
+  - `osmu-backend/src/main/java/com/example/osmu/admin/AdminQuotaPolicyController.java`
+  - `osmu-backend/src/test/java/com/example/osmu/admin/AdminQuotaPolicyControllerTest.java`
+  - `scripts/verify-lightweight-demo.ps1`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/worklog/main/worklog-main.md`
+- 검증 기록:
+  - escalated `.\gradlew.bat --no-daemon test --tests com.example.osmu.admin.AdminQuotaPolicyControllerTest --tests com.example.osmu.user.AdminUserControllerTest`: 성공.
+  - PowerShell parse check for `scripts/verify-lightweight-demo.ps1`: 성공.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-openapi-contract.ps1`: 성공, operations 103 / frontend API functions 83.
+  - `node --check .\osmu-frontend\src\services\api.js`: 성공.
+  - `git diff --check`: 성공. LF/CRLF warning만 출력.
+  - escalated `.\gradlew.bat --no-daemon test bootJar`: 성공.
+  - remote artifact deploy: 성공. backend pid `7048`, frontend pid `7049`.
+  - remote `verify-local-demo.ps1 -SeedIfMissing`: 성공. quota policy save/delete audit smoke 포함.
+- 코드 리뷰:
+  - history와 audit의 역할을 분리했다. quota history는 정책 변경 이력이고 audit log는 관리자 행위 추적이다.
+  - service 내부가 아니라 controller에서 audit을 기록해 HTTP actor/request context를 유지했다.
+  - 실패한 save/delete는 기존 exception 흐름 그대로라 성공 audit만 남는다.
+- 결과:
+  - API 문서의 quota policy audit 요구사항과 실제 구현이 일치한다.
+  - remote demo URL `http://192.168.35.88:5173`에 재배포 완료.
+- 후속 메모:
+  - organization delete cleanup에서 service를 직접 호출하는 quota policy cleanup은 history를 남기지만 controller audit event는 남기지 않는다. 해당 cleanup은 `ORGANIZATION_DELETE`/cleanup audit와 함께 추적된다.
+- 추가 개발 필요:
+  - user-scoped 설정 cleanup inventory 계속.
+- 사용한 skill/plugin:
+  - `caveman` skill: ultra 응답 압축 유지.
+
+### 2026-06-15 - Organization 삭제 시 bucket permission subject 정리
+- 작업 시간:
+  - 시작: 2026-06-15 03:38:00 +09:00
+  - 종료: 2026-06-15 03:41:49 +09:00
+- 사용자 명령:
+  - active goal에 따라 `dev-docs` 기준 목표 기능 개발을 계속 진행.
+- 명령 인식:
+  - organization-scoped 설정 cleanup inventory의 다음 항목인 bucket permission `subjectType=ORGANIZATION` 고아 참조 제거 작업으로 인식.
+- 요청 분석:
+  - bucket permission은 `subjectType=ORGANIZATION`, `subjectId=organizationId`를 가질 수 있다.
+  - MariaDB organization id는 `MAX(id)+1` 방식이라 max id 조직을 삭제하면 id 재사용 가능성이 있다.
+  - stale bucket permission이 남으면 나중에 같은 id로 생성된 새 조직이 기존 bucket 권한을 물려받을 수 있다.
+  - 조직 삭제가 users/ORG buckets 때문에 막히는 경우에는 cleanup이 실행되면 안 된다.
+- 실행 내용:
+  - `BucketPermissionRepository`에 `deleteBySubject(subjectType, subjectId)`를 추가.
+  - in-memory/MariaDB 구현체에 subject 기준 delete 구현.
+  - `AdminOrganizationController`에서 조직 삭제 성공 후 `ORGANIZATION:{id}` bucket permission subject를 삭제.
+  - 삭제된 permission 수가 1개 이상이면 `BUCKET_PERMISSION_SUBJECT_CLEANUP` audit event 기록.
+  - organization delete test에 user-owned bucket에 organization subject permission을 부여한 뒤 조직 삭제 시 permission이 사라지는 검증 추가.
+  - remote smoke verifier에도 organization bucket permission cleanup 검증 추가.
+  - API 문서와 test case 갱신.
+- 구현 내용:
+  - cleanup 대상:
+    - `bucket_permissions.subject_type = ORGANIZATION`
+    - `bucket_permissions.subject_id = organizationId`
+  - cleanup 순서:
+    1. organization 삭제
+    2. dashboard default cleanup
+    3. organization quota policy cleanup
+    4. organization bucket permission subject cleanup
+    5. organization delete audit
+- 수정된 파일:
+  - `osmu-backend/src/main/java/com/example/osmu/bucket/repository/BucketPermissionRepository.java`
+  - `osmu-backend/src/main/java/com/example/osmu/bucket/repository/InMemoryBucketPermissionRepository.java`
+  - `osmu-backend/src/main/java/com/example/osmu/bucket/repository/MariaDbBucketPermissionRepository.java`
+  - `osmu-backend/src/main/java/com/example/osmu/organization/AdminOrganizationController.java`
+  - `osmu-backend/src/test/java/com/example/osmu/organization/AdminOrganizationControllerTest.java`
+  - `scripts/verify-lightweight-demo.ps1`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/worklog/main/worklog-main.md`
+- 검증 기록:
+  - escalated `.\gradlew.bat --no-daemon test --tests com.example.osmu.organization.AdminOrganizationControllerTest --tests com.example.osmu.bucket.BucketObjectFlowTest`: 성공.
+  - PowerShell parse check for `scripts/verify-lightweight-demo.ps1`: 성공.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-openapi-contract.ps1`: 성공, operations 103 / frontend API functions 83.
+  - `git diff --check`: 성공. LF/CRLF warning만 출력.
+  - escalated `.\gradlew.bat --no-daemon test bootJar`: 성공.
+  - remote artifact deploy: 성공. backend pid `6818`, frontend pid `6819`.
+  - remote `verify-local-demo.ps1 -SeedIfMissing`: 성공. organization bucket permission cleanup smoke 포함.
+- 코드 리뷰:
+  - subject index가 이미 MariaDB schema에 있어 cleanup query 비용이 낮다.
+  - repository API를 subject 단위로 좁혀 organization controller가 bucket별 permission 내부 구조를 직접 순회하지 않는다.
+  - users가 없는 empty organization에서 실행되므로 access key owner reconcile 대상은 없지만, id 재사용으로 인한 권한 승계를 막는 효과가 크다.
+- 결과:
+  - 삭제된 조직 id를 참조하는 bucket permission subject 고아 데이터가 남지 않는다.
+  - remote demo URL `http://192.168.35.88:5173`에 재배포 완료.
+- 후속 메모:
+  - user 삭제 시 USER subject permission cleanup도 같은 관점에서 점검 필요.
+- 추가 개발 필요:
+  - user-scoped 설정 cleanup inventory.
+- 사용한 skill/plugin:
+  - `caveman` skill: ultra 응답 압축 유지.
+
+### 2026-06-15 - Organization 삭제 시 quota policy 정리
+- 작업 시간:
+  - 시작: 2026-06-15 03:34:00 +09:00
+  - 종료: 2026-06-15 03:37:17 +09:00
+- 사용자 명령:
+  - active goal에 따라 `dev-docs` 기준 목표 기능 개발을 계속 진행.
+- 명령 인식:
+  - 이전 organization dashboard default cleanup에 이어, organization-scoped 설정 중 `ORGANIZATION` quota policy가 조직 삭제 후 고아 데이터로 남는 문제를 정리하는 작업으로 인식.
+- 요청 분석:
+  - `QuotaPolicy targetType=ORGANIZATION`은 조직 id를 참조한다.
+  - 조직 삭제는 assigned users/ORG buckets가 없을 때만 허용된다.
+  - 삭제 가능한 빈 조직이라도 quota policy가 남으면 운영 화면/집계에서 삭제된 조직 id가 계속 보일 수 있다.
+  - quota policy cleanup은 기존 `QuotaPolicyService.delete`를 사용해 DELETE history를 남겨야 한다.
+- 실행 내용:
+  - `AdminOrganizationController`에 `QuotaPolicyService`를 주입.
+  - 조직 삭제 성공 후 `quotaPolicyService.delete("ORGANIZATION", organization.id(), actor.loginId(), "Organization deleted")`를 호출.
+  - quota policy가 없으면 `NOT_FOUND`만 무시하고, 다른 오류는 그대로 전파.
+  - organization delete test에 `ORGANIZATION` quota policy 생성/삭제 확인/history 확인을 추가.
+  - remote smoke verifier에도 organization quota policy cleanup 검증을 추가.
+  - API 문서와 테스트 케이스를 갱신.
+- 구현 내용:
+  - 삭제 flow: organization 삭제 성공 -> dashboard default cleanup -> organization quota policy cleanup -> organization audit.
+  - quota policy cleanup은 quota policy history에 `DELETE` 이력을 남긴다.
+- 수정된 파일:
+  - `osmu-backend/src/main/java/com/example/osmu/organization/AdminOrganizationController.java`
+  - `osmu-backend/src/test/java/com/example/osmu/organization/AdminOrganizationControllerTest.java`
+  - `scripts/verify-lightweight-demo.ps1`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/worklog/main/worklog-main.md`
+- 검증 기록:
+  - escalated `.\gradlew.bat --no-daemon test --tests com.example.osmu.organization.AdminOrganizationControllerTest --tests com.example.osmu.admin.AdminQuotaPolicyControllerTest`: 성공.
+  - PowerShell parse check for `scripts/verify-lightweight-demo.ps1`: 성공.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-openapi-contract.ps1`: 성공, operations 103 / frontend API functions 83.
+  - `git diff --check`: 성공. LF/CRLF warning만 출력.
+  - escalated `.\gradlew.bat --no-daemon test bootJar`: 성공.
+  - remote artifact deploy: 성공. backend pid `6600`, frontend pid `6601`.
+  - remote `verify-local-demo.ps1 -SeedIfMissing`: 성공. organization quota policy cleanup smoke 포함.
+- 코드 리뷰:
+  - cleanup은 조직 삭제 성공 후에만 실행되어 삭제 거부 case에는 quota policy가 유지된다.
+  - `QuotaPolicyService.delete` 재사용으로 history 작성 규칙과 validation을 새로 만들지 않았다.
+  - `NOT_FOUND`만 무시해 cleanup idempotency를 확보했고, DB 오류 등은 숨기지 않는다.
+- 결과:
+  - 삭제된 조직 id를 참조하는 organization quota policy 고아 데이터가 남지 않는다.
+  - remote demo URL `http://192.168.35.88:5173`에 재배포 완료.
+- 후속 메모:
+  - bucket permission subjectType `ORGANIZATION`도 삭제된 조직을 참조할 수 있는지 inventory 필요.
+- 추가 개발 필요:
+  - organization-scoped 설정 전체 cleanup inventory 계속 진행.
+- 사용한 skill/plugin:
+  - `caveman` skill: ultra 응답 압축 유지.
+
+### 2026-06-15 - Organization 삭제 시 dashboard 기본 preset 정리
+- 작업 시간:
+  - 시작: 2026-06-15 03:29:00 +09:00
+  - 종료: 2026-06-15 03:33:02 +09:00
+- 사용자 명령:
+  - active goal에 따라 `dev-docs` 기준 목표 기능 개발을 계속 진행.
+- 명령 인식:
+  - 직전 dashboard 기본 preset 기능의 남은 데이터 정합성 gap인 "조직 삭제 시 ORGANIZATION dashboard default assignment cleanup"을 후속 개발로 인식.
+- 요청 분석:
+  - 빈 조직은 삭제 가능하지만, 해당 조직에 dashboard 기본 preset이 남으면 삭제된 조직 id를 참조하는 고아 설정이 생긴다.
+  - 조직 삭제가 성공한 경우에만 default assignment를 정리해야 하며, 사용자나 bucket 때문에 삭제가 거부되는 경우에는 기존 설정을 유지해야 한다.
+- 실행 내용:
+  - `AdminOrganizationController`에 `DashboardLayoutDefaultRepository`를 주입.
+  - 조직 삭제 성공 직후 `ORGANIZATION:{organizationId}` dashboard default assignment를 삭제.
+  - cleanup이 발생하면 `DASHBOARD_LAYOUT_DEFAULT_DELETE` audit event도 함께 기록.
+  - organization delete test에 default assignment 생성/삭제 확인을 추가.
+  - remote smoke verifier에도 조직 default 생성 후 조직 삭제 시 default가 사라지는 검증을 추가.
+  - API 문서와 테스트 케이스를 갱신.
+- 구현 내용:
+  - `DELETE /api/admin/organizations/{organizationId}` 성공 flow:
+    1. ADMIN 권한 확인
+    2. 조직 존재 확인
+    3. ORG bucket/user 존재 시 conflict
+    4. organization 삭제
+    5. `dashboard_layout_defaults`의 `targetType=ORGANIZATION`, `targetId=organizationId` row 삭제
+    6. audit 기록
+- 수정된 파일:
+  - `osmu-backend/src/main/java/com/example/osmu/organization/AdminOrganizationController.java`
+  - `osmu-backend/src/test/java/com/example/osmu/organization/AdminOrganizationControllerTest.java`
+  - `scripts/verify-lightweight-demo.ps1`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/worklog/main/worklog-main.md`
+- 검증 기록:
+  - escalated `.\gradlew.bat --no-daemon test --tests com.example.osmu.organization.AdminOrganizationControllerTest --tests com.example.osmu.dashboard.DashboardLayoutControllerTest`: 성공.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-openapi-contract.ps1`: 성공, operations 103 / frontend API functions 83.
+  - PowerShell parse check for `scripts/verify-lightweight-demo.ps1`: 성공.
+  - `git diff --check`: 성공. LF/CRLF warning만 출력.
+  - escalated `.\gradlew.bat --no-daemon test bootJar`: 성공.
+  - remote artifact deploy: 성공. backend pid `6389`, frontend pid `6390`.
+  - remote `verify-local-demo.ps1 -SeedIfMissing`: 성공. 조직 default cleanup smoke 포함.
+- 코드 리뷰:
+  - cleanup은 조직 삭제 성공 이후에만 실행되어 conflict 실패 시 side effect가 없다.
+  - repository method 재사용으로 새 SQL/API surface를 늘리지 않았다.
+  - audit event를 남겨 운영자가 조직 삭제로 default assignment가 함께 사라진 사실을 추적할 수 있다.
+- 결과:
+  - 삭제된 조직 id를 참조하는 dashboard 기본 preset 고아 데이터가 남지 않는다.
+  - remote demo URL `http://192.168.35.88:5173`에 재배포 완료.
+- 후속 메모:
+  - quota policy 등 다른 organization-scoped 설정도 조직 삭제 시 함께 정리할지 별도 점검 필요.
+- 추가 개발 필요:
+  - organization-scoped 설정 전체 cleanup inventory 작성.
+- 사용한 skill/plugin:
+  - `caveman` skill: ultra 응답 압축 유지.
+
+### 2026-06-15 - Dashboard ROLE/ORGANIZATION 기본 preset 할당
+- 작업 시간:
+  - 시작: 2026-06-15 03:14:00 +09:00
+  - 종료: 2026-06-15 03:28:57 +09:00
+- 사용자 명령:
+  - 한 페이지에 몰린 기능을 dashboard/page로 나누고 DB/MinIO 연결까지 올려 기능 데모 테스트가 가능하게 하며, OCI처럼 dashboard panel/palette를 교체·변경·추가 설정할 수 있게 하라는 기존 명령의 후속 개발.
+  - `$caveman ultra` 응답 압축 지시.
+- 명령 인식:
+  - 이전 dashboard custom preset/export/import 구현 다음 단계로, B2B 운영자가 조직/역할별 기본 dashboard preset을 지정해 신규 사용자나 저장 layout이 없는 사용자에게 자동 적용하는 기능으로 인식.
+- 요청 분석:
+  - 개인 dashboard layout이 있으면 개인 설정이 우선해야 한다.
+  - 개인 layout이 없으면 ORGANIZATION 기본값을 먼저 찾고, 없으면 ROLE 기본값을 fallback으로 적용해야 한다.
+  - ADMIN만 기본 preset 목록 조회/저장/삭제를 할 수 있어야 한다.
+  - remote demo smoke에 DB 저장과 default fallback 적용 검증이 포함되어야 한다.
+- 실행 내용:
+  - backend에 dashboard default assignment record/request/response/repository를 추가.
+  - in-memory/MariaDB 저장소를 모두 구현하고 `dashboard_layout_defaults` table을 lazy create하도록 구성.
+  - `GET/PUT/DELETE /api/dashboard/layout/defaults` API를 추가하고 audit event를 기록.
+  - `GET /api/dashboard/layout`이 saved layout 없을 때 ROLE/ORGANIZATION 기본 preset을 `DEFAULT_PRESET` source로 반환하도록 수정.
+  - frontend dashboard 설정 패널에 ADMIN 전용 기본 preset 지정 UI를 추가.
+  - API wrapper/unit selector/e2e/verifier/OpenAPI/API 문서/test case 문서를 갱신.
+  - remote server `192.168.35.88`에 backend jar/frontend dist를 재배포하고 smoke 검증.
+- 구현 내용:
+  - 기본 preset target type: `ROLE`, `ORGANIZATION`.
+  - ROLE target: `ADMIN`, `ORG_ADMIN`, `USER`.
+  - fallback 우선순위: saved user layout > organization default preset > role default preset > empty default.
+  - OpenAPI operation 수: 103.
+  - frontend API wrapper 검증 함수 수: 83.
+- 수정된 파일:
+  - `osmu-backend/src/main/java/com/example/osmu/dashboard/DashboardLayoutController.java`
+  - `osmu-backend/src/main/java/com/example/osmu/dashboard/DashboardLayoutService.java`
+  - `osmu-backend/src/main/java/com/example/osmu/dashboard/DashboardLayoutDefaultRecord.java`
+  - `osmu-backend/src/main/java/com/example/osmu/dashboard/DashboardLayoutDefaultRequest.java`
+  - `osmu-backend/src/main/java/com/example/osmu/dashboard/DashboardLayoutDefaultResponse.java`
+  - `osmu-backend/src/main/java/com/example/osmu/dashboard/repository/DashboardLayoutDefaultRepository.java`
+  - `osmu-backend/src/main/java/com/example/osmu/dashboard/repository/InMemoryDashboardLayoutDefaultRepository.java`
+  - `osmu-backend/src/main/java/com/example/osmu/dashboard/repository/MariaDbDashboardLayoutDefaultRepository.java`
+  - `osmu-backend/src/test/java/com/example/osmu/dashboard/DashboardLayoutControllerTest.java`
+  - `osmu-frontend/src/services/api.js`
+  - `osmu-frontend/src/services/api-query.test.js`
+  - `osmu-frontend/src/views/HomeView.vue`
+  - `osmu-frontend/src/views/HomeView.test.js`
+  - `osmu-frontend/src/components/dashboard/DashboardPage.vue`
+  - `osmu-frontend/src/assets/main.css`
+  - `osmu-frontend/e2e/lightweight-demo.spec.js`
+  - `scripts/verify-lightweight-demo.ps1`
+  - `scripts/verify-openapi-contract.ps1`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/openapi-mvp.json`
+  - `dev-docs/frontend-design.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/worklog/main/worklog-main.md`
+- 관련 파일:
+  - `.osmu-run/remote-artifact-deploy.js` ignored helper.
+  - `.osmu-run/frontend-dist.tgz` ignored artifact.
+  - `.osmu-run/latest-remote-demo.json` ignored demo credential output.
+- 검증 기록:
+  - `node --check .\osmu-frontend\src\services\api.js`: 성공.
+  - `node --check .\osmu-frontend\e2e\lightweight-demo.spec.js`: 성공.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-openapi-contract.ps1`: 성공, operations 103 / frontend API functions 83.
+  - `npm.cmd run test:unit`: 성공, 59개 통과.
+  - `npm.cmd run build`: 성공.
+  - escalated `.\gradlew.bat --no-daemon test`: 성공.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-local.ps1 -SkipDocker -SkipBackend -JavaHome C:\jdk-17`: 성공.
+  - `git diff --check`: 성공. LF/CRLF warning만 출력.
+  - escalated `.\gradlew.bat --no-daemon bootJar`: 성공.
+  - remote artifact deploy: 성공. backend pid `6171`, frontend pid `6172`.
+  - remote `verify-local-demo.ps1 -SeedIfMissing`: 성공. Dashboard preset CRUD/default smoke, seeded demo S3 smoke 통과.
+- 코드 리뷰:
+  - default assignment 저장소를 preset/layout 저장소와 분리해 책임 경계를 유지했다.
+  - deleted/missing preset을 default로 참조하는 경우 `DEFAULT` fallback으로 동작하게 해 깨진 기본값이 dashboard를 막지 않게 했다.
+  - 개인 layout을 우선하도록 해 관리자 기본값이 사용자의 저장 설정을 덮지 않는다.
+  - ROLE target은 허용 enum으로 좁혔고 ORGANIZATION target은 numeric id 형태만 허용한다.
+  - 현재 organization id 존재 여부 자체는 별도 조회하지 않는다. 조직 삭제 후 남은 default는 나중에 정리 API나 FK 정책이 필요하다.
+- 결과:
+  - ADMIN이 dashboard에서 ROLE/ORGANIZATION별 기본 preset을 지정/해제할 수 있다.
+  - 저장 layout이 없는 사용자는 조직/역할 기본 preset을 `DEFAULT_PRESET` source로 받는다.
+  - remote demo URL `http://192.168.35.88:5173`에 배포 완료.
+- 후속 메모:
+  - 조직 삭제 시 `dashboard_layout_defaults` 정리 정책 추가 필요.
+  - role/organization default assignment를 별도 Admin 페이지에도 노출할지 검토 필요.
+  - Browser/Chrome UI click E2E는 아직 직접 실행하지 않았고, selector/unit/API smoke 중심으로 검증했다.
+- 추가 개발 필요:
+  - section/breakpoint별 layout schema.
+  - dashboard panel catalog 확장.
+  - 조직별 기본 preset 권한 위임(ORG_ADMIN scope 제한).
+- 사용한 skill/plugin:
+  - `caveman` skill: ultra 응답 압축 유지.
+
+### 2026-06-15 - Dashboard preset export/import 추가
+
+- 작업 시간:
+  - 시작: 2026-06-15 03:03:00 +09:00
+  - 종료: 2026-06-15 03:12:34 +09:00
+- 사용자 명령:
+  - active goal 기준으로 프론트/백엔드 기능 개발을 계속 진행.
+  - `$caveman ultra` 응답 압축 유지.
+- 명령 인식:
+  - OCI형 dashboard palette/preset 운영 흐름을 더 완성하기 위해 custom preset 수정 다음 단계인 preset export/import를 구현하는 작업으로 인식.
+- 요청 분석:
+  - B2B 운영자는 한 환경에서 만든 dashboard preset을 다른 고객/조직/환경으로 옮길 수 있어야 한다.
+  - Export는 로그인 사용자가 읽을 수 있는 preset을 JSON으로 받을 수 있으면 충분하다.
+  - Import는 catalog를 바꾸는 작업이므로 ADMIN 전용이어야 한다.
+  - UI, API wrapper, OpenAPI, smoke test, remote demo까지 같이 맞춰야 한다.
+- 실행 내용:
+  - backend export/import response/request record 추가.
+  - dashboard layout service/controller에 export/import API 추가.
+  - backend controller test에 export/import flow 추가.
+  - frontend API wrapper와 dashboard UI 버튼/파일 import handler 추가.
+  - frontend selector/unit test, lightweight smoke, OpenAPI, API 문서, test case 문서 갱신.
+  - local 전체 검증 후 remote 서버에 jar/dist 재배포.
+- 구현 내용:
+  - `GET /api/dashboard/layout/presets/{presetId}/export`: preset을 `osmu.dashboard-preset.v1` JSON payload로 export.
+  - `POST /api/dashboard/layout/presets/import`: export payload 또는 preset payload를 새 custom preset으로 import.
+  - Import는 ADMIN만 가능.
+  - Export payload는 built-in/custom preset 모두 지원.
+  - Frontend dashboard preset control에 `Preset 내보내기`, `Preset 가져오기` 추가.
+  - 가져오기 성공 시 새 custom preset을 목록에 추가하고 선택값을 해당 preset으로 변경.
+  - Remote smoke에 create/update/export/import/built-in update conflict/delete 검증 포함.
+- 수정된 파일:
+  - `osmu-backend/src/main/java/com/example/osmu/dashboard/DashboardLayoutController.java`
+  - `osmu-backend/src/main/java/com/example/osmu/dashboard/DashboardLayoutService.java`
+  - `osmu-backend/src/main/java/com/example/osmu/dashboard/DashboardLayoutPresetExportResponse.java`
+  - `osmu-backend/src/main/java/com/example/osmu/dashboard/DashboardLayoutPresetImportRequest.java`
+  - `osmu-backend/src/test/java/com/example/osmu/dashboard/DashboardLayoutControllerTest.java`
+  - `osmu-frontend/src/services/api.js`
+  - `osmu-frontend/src/services/api-query.test.js`
+  - `osmu-frontend/src/views/HomeView.vue`
+  - `osmu-frontend/src/views/HomeView.test.js`
+  - `osmu-frontend/src/components/dashboard/DashboardPage.vue`
+  - `osmu-frontend/src/assets/main.css`
+  - `osmu-frontend/e2e/lightweight-demo.spec.js`
+  - `scripts/verify-lightweight-demo.ps1`
+  - `scripts/verify-openapi-contract.ps1`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/openapi-mvp.json`
+  - `dev-docs/frontend-design.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/worklog/main/worklog-main.md`
+- 관련 파일:
+  - `.osmu-run/remote-artifact-deploy.js` ignored helper로 remote artifact 배포 수행.
+  - `osmu-backend/build/libs/osmu-0.0.1-SNAPSHOT.jar` ignored build artifact.
+  - `osmu-frontend/dist` ignored build artifact.
+- 검증 기록:
+  - escalated `.\gradlew.bat --no-daemon test --tests com.example.osmu.dashboard.DashboardLayoutControllerTest`: 성공.
+  - `node --check .\osmu-frontend\src\services\api.js`: 성공.
+  - `node --check .\osmu-frontend\e2e\lightweight-demo.spec.js`: 성공.
+  - `npm.cmd run test:unit`: 성공, 59개 통과.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-openapi-contract.ps1`: 성공, operations 100 / frontend API functions 80.
+  - `npm.cmd run build`: 성공.
+  - escalated `.\gradlew.bat --no-daemon test`: 성공.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-local.ps1 -SkipDocker -SkipBackend -JavaHome C:\jdk-17`: 성공.
+  - remote deploy: backend pid `5928`, frontend pid `5929`, health/database/storage/frontend 통과.
+  - remote `verify-local-demo.ps1 -SeedIfMissing`: 성공, dashboard preset CRUD/export/import/S3 smoke 통과.
+- 코드 리뷰:
+  - Import는 기존 `createPreset` 경로를 재사용해 name/widget validation과 id 충돌 처리를 한 곳에 유지했다.
+  - Export payload는 `formatVersion`을 포함해 향후 schema versioning 여지를 둔다.
+  - Frontend import는 API response wrapper와 raw export payload 모두 허용해 사용자가 저장한 JSON 형태가 조금 달라도 처리 가능하다.
+  - Smoke는 import한 preset까지 삭제해 demo 환경 오염을 줄인다.
+- 결과:
+  - Dashboard preset 저장/수정/삭제에 더해 export/import까지 가능해짐.
+  - 원격 데모 서버 `http://192.168.35.88:5173`에 새 기능 배포됨.
+  - API/문서/OpenAPI/frontend test/smoke 모두 export/import 기준으로 갱신됨.
+- 후속 메모:
+  - Browser/Chrome 기반 실제 file picker import 클릭 검증은 아직 못 함.
+  - 다음 dashboard 확장 후보는 조직/역할별 기본 preset 할당 또는 section/breakpoint layout schema.
+- 추가 개발 필요:
+  - 조직/역할별 기본 preset 할당.
+  - section/breakpoint별 layout schema.
+  - dashboard panel catalog 확장.
+  - remote 직접-runtime 배포 스크립트 정식화.
+- 사용한 skill/plugin:
+  - `caveman` skill: ultra 응답 압축 유지.
+
+### 2026-06-15 - Dashboard widget size layout 저장 추가
+
+- 작업 시작 시간: 2026-06-15 02:12:00 +09:00
+- 작업 종료 시간: 2026-06-15 02:19:03 +09:00
+- 대상 브랜치: `main`
+- 사용자 명령:
+  - 프론트/백엔드 기능 개발을 계속 진행하고, OCI처럼 대시보드 패널을 추가 설정/교체/변경할 수 있게 하라는 기존 목표.
+  - 추가로 `$caveman ultra` 응답 압축 유지.
+- 명령 인식:
+  - 이전에 구현한 dashboard layout 저장 기능을 확장해 패널 표시/순서뿐 아니라 패널 크기까지 사용자별 설정으로 저장하는 작업으로 인식.
+  - MVP demo에서 위젯 카드 크기 변경을 직접 눌러 확인할 수 있어야 한다고 해석.
+- 요청 분석:
+  - 현재 layout schema는 widget `id`, `enabled`만 저장해 OCI형 팔레트 구성에는 부족함.
+  - `compact`, `normal`, `wide` 크기 옵션을 추가하면 고급 layout schema로 가는 중간 단계가 됨.
+  - 기존 저장 데이터에는 `size`가 없을 수 있으므로 backend/frontend 모두 기본값 `normal`이 필요.
+- 실행 내용:
+  - backend dashboard widget layout record에 `size` 필드 추가.
+  - backend layout 저장 시 widget size 허용값 검증 추가.
+  - frontend dashboard config panel에 크기 변경 버튼과 크기 라벨 추가.
+  - frontend widget 렌더링 class에 `dashboard-widget-{size}` 적용.
+  - CSS grid span을 통해 `wide` widget은 2칸, 모바일에서는 1칸으로 반응형 처리.
+  - API 문서와 frontend/backend 테스트를 크기 필드 기준으로 갱신.
+- 구현 내용:
+  - `DashboardWidgetLayout`이 `id`, `enabled`, `size`를 담도록 변경.
+  - `DashboardLayoutService`에서 `compact`, `normal`, `wide`만 허용하고 누락값은 `normal`로 보정.
+  - `HomeView.vue`에서 `toggleDashboardWidgetSize`, `nextDashboardWidgetSize`, `dashboardWidgetSizeLabel` 추가.
+  - `DashboardPage.vue`에서 widget config row별 `크기` 버튼 추가.
+  - lightweight E2E spec에서 크기 버튼 클릭 후 `dashboard-widget-wide` class 확인 추가.
+- 수정된 파일:
+  - `osmu-backend/src/main/java/com/example/osmu/dashboard/DashboardWidgetLayout.java`
+  - `osmu-backend/src/main/java/com/example/osmu/dashboard/DashboardLayoutService.java`
+  - `osmu-backend/src/test/java/com/example/osmu/dashboard/DashboardLayoutControllerTest.java`
+  - `osmu-frontend/src/components/dashboard/DashboardPage.vue`
+  - `osmu-frontend/src/views/HomeView.vue`
+  - `osmu-frontend/src/views/HomeView.test.js`
+  - `osmu-frontend/src/services/api-query.test.js`
+  - `osmu-frontend/e2e/lightweight-demo.spec.js`
+  - `osmu-frontend/src/assets/main.css`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/worklog/main/worklog-main.md`
+- 관련 파일:
+  - `osmu-frontend/package.json`
+  - `osmu-backend/gradlew.bat`
+  - `scripts/verify-local.ps1`
+  - `scripts/verify-openapi-contract.ps1`
+- 검증 기록:
+  - 최초 `npm.cmd run test:unit`: `HomeView.test.js`가 `dashboard-widget-wide`를 Vue 소스에서만 찾아 실패.
+  - `HomeView.test.js` 소스 목록에 `../assets/main.css`를 포함하도록 수정 후 `npm.cmd run test:unit`: 성공, 59개 통과.
+  - `node --check .\osmu-frontend\e2e\lightweight-demo.spec.js`: 성공.
+  - sandbox backend targeted/full test: Gradle distribution download가 `Permission denied`로 실패.
+  - escalated `.\gradlew.bat --no-daemon test --tests com.example.osmu.dashboard.DashboardLayoutControllerTest`: 성공.
+  - escalated `.\gradlew.bat --no-daemon test`: 성공.
+  - `npm.cmd run build`: 성공.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-openapi-contract.ps1`: 성공, operations 93 / frontend API functions 73.
+  - `git diff --check`: 성공. LF/CRLF 변환 warning만 출력.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-local.ps1 -SkipDocker -SkipBackend -JavaHome C:\jdk-17`: 성공.
+- 코드 리뷰:
+  - `size`는 선택적 확장 필드처럼 동작해 기존 저장 layout과 호환됨.
+  - backend가 허용 size를 검증하므로 API로 이상한 grid class가 저장되는 것을 차단함.
+  - frontend는 저장/복원 시 누락 또는 알 수 없는 size를 `normal`로 보정해 화면 깨짐 위험을 낮춤.
+  - 테스트가 CSS class 존재와 API 저장 payload를 같이 확인해 회귀 방어가 생김.
+  - 아직 drag-and-drop이나 breakpoint별 size 저장은 없음.
+- 결과:
+  - 사용자별 dashboard layout이 패널 표시/순서뿐 아니라 크기까지 저장할 수 있게 됨.
+  - OCI형 dashboard palette customization 목표에 한 단계 더 가까워짐.
+- 후속 메모:
+  - Browser UI 클릭 검증은 현재 Codex desktop browser 권한 문제로 직접 실행하지 못함.
+  - 실제 MariaDB mode 저장 확인은 Docker 또는 배포 서버에서 backend/frontend 연동 실행 필요.
+- 추가 개발 필요:
+  - Drag-and-drop widget reorder.
+  - 조직/역할별 dashboard preset.
+  - widget별 `span`, `section`, breakpoint별 layout 저장.
+  - 대시보드 panel marketplace/catalog와 사용자별 즐겨찾기.
+- 사용한 skill/plugin:
+  - `caveman` skill: ultra 응답 압축.
+
+### 2026-06-15 - Readiness category summary 및 필터 추가
+
+- 작업 시작 시간: 2026-06-15 01:45:00 +09:00
+- 작업 종료 시간: 2026-06-15 01:49:16 +09:00
+- 사용자 명령: 프론트, 백엔드 기능 개발을 계속 진행하라는 진행 중 목표.
+- 명령 해석: readiness item에 category가 생겼으므로 backend에서 category별 집계를 제공하고 frontend에서 category별 필터로 item을 볼 수 있게 개선하는 작업으로 이해.
+- 요청 분석:
+  - category pill만 있으면 item 수가 늘어날 때 여전히 전체 목록을 스크롤해야 한다.
+  - backend에서 category별 count를 내려주면 frontend가 안정적인 filter option을 만들 수 있다.
+  - 운영자는 RUNTIME, BACKUP, STORAGE, QUOTA 같은 영역을 빠르게 골라 볼 수 있어야 한다.
+- 작업 방식:
+  - backend에 `DashboardReadinessCategoryResponse` record 추가.
+  - readiness response에 `categorySummaries` 필드 추가.
+  - readiness item list를 category별로 group by 해서 total/blocker/warning count 계산.
+  - frontend는 category summary로 select option을 만들고 선택된 category의 item만 표시.
+- 실행 내용:
+  - `DashboardReadinessCategoryResponse` 추가.
+  - `DashboardReadinessResponse`에 `categorySummaries` 추가.
+  - `AdminController.readinessCategorySummaries()` 추가.
+  - backend test에 category summary 검증 추가.
+  - `HomeView.vue`에 `readinessCategoryFilter`, `readinessCategoryOptions`, `visibleReadinessItems` 추가.
+  - `DashboardPage.vue`에 `readiness-category-filter` select 추가.
+  - frontend API/query/static/E2E 테스트 갱신.
+- 구현 내용:
+  - `categorySummaries`는 category, totalCount, blockerCount, warningCount를 포함한다.
+  - frontend filter에는 `ALL` + backend category summary 목록이 표시된다.
+  - 선택한 category가 refresh 후 사라지면 자동으로 `ALL`로 복귀한다.
+  - readiness item 렌더링은 `visibleReadinessItems` 기준으로 동작한다.
+- 수정된 파일:
+  - `osmu-backend/src/main/java/com/example/osmu/admin/AdminController.java`
+  - `osmu-backend/src/main/java/com/example/osmu/admin/DashboardReadinessCategoryResponse.java`
+  - `osmu-backend/src/main/java/com/example/osmu/admin/DashboardReadinessResponse.java`
+  - `osmu-backend/src/test/java/com/example/osmu/admin/AdminDashboardSummaryControllerTest.java`
+  - `osmu-frontend/src/views/HomeView.vue`
+  - `osmu-frontend/src/components/dashboard/DashboardPage.vue`
+  - `osmu-frontend/src/assets/main.css`
+  - `osmu-frontend/src/services/api-query.test.js`
+  - `osmu-frontend/src/views/HomeView.test.js`
+  - `osmu-frontend/e2e/lightweight-demo.spec.js`
+  - `dev-docs/worklog/main/worklog-main.md`
+- 관련 파일:
+  - `osmu-backend/src/main/java/com/example/osmu/admin/DashboardReadinessItemResponse.java`
+- 검증 기록:
+  - `npm.cmd run test:unit`: 통과.
+  - `node --check .\osmu-frontend\e2e\lightweight-demo.spec.js`: 통과.
+  - `git diff --check`: 통과. CRLF 변환 경고만 확인.
+  - `npm.cmd run build`: 통과.
+  - `.\gradlew.bat --no-daemon test --tests com.example.osmu.admin.AdminDashboardSummaryControllerTest`: 통과. Gradle distribution 다운로드 때문에 sandbox 밖 실행 승인 필요.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-local.ps1 -SkipDocker -SkipBackend -JavaHome C:\jdk-17`: 통과.
+- 코드 리뷰:
+  - backend category summary는 item list에서 파생되므로 count 불일치 위험이 낮다.
+  - frontend는 backend category summary를 신뢰하되 legacy 응답에는 `ALL`만 표시될 수 있다.
+  - 현재 필터는 단일 category만 지원한다. 다중 category 또는 severity 조합 필터는 아직 없다.
+- 결과: readiness category별 집계와 frontend 필터 기능 추가 완료.
+- 후속 메모:
+  - 실제 브라우저에서 category filter 선택/복귀 확인 필요.
+  - API 문서에 `categorySummaries` 추가 필요.
+- 추가 개발 필요:
+  - severity 필터 추가.
+  - category별 접기/펼치기.
+  - category별 점수/상태 표시.
+- 사용한 skill/plugin:
+  - `caveman` skill: 응답 압축 유지.
+
+### 2026-06-15 - Readiness 항목 category 추가
+
+- 작업 시작 시간: 2026-06-15 01:41:00 +09:00
+- 작업 종료 시간: 2026-06-15 01:44:38 +09:00
+- 사용자 명령: 프론트, 백엔드 기능 개발을 계속 진행하라는 진행 중 목표.
+- 명령 해석: readiness item이 늘어났을 때 운영자가 문제 영역을 빠르게 구분할 수 있도록 backend item schema와 frontend 표시를 개선하는 작업으로 이해.
+- 요청 분석:
+  - readiness item에는 severity/code/message/targetPage/targetPanel/actionLabel이 있었지만, 문제 영역을 나타내는 category가 없었다.
+  - category가 있으면 SYSTEM, RUNTIME, BACKUP, STORAGE, QUOTA, SHARING 같은 영역으로 빠르게 스캔 가능하다.
+  - 추후 필터, 그룹핑, 문서화, 자동 조치에도 category가 유용하다.
+- 작업 방식:
+  - `DashboardReadinessItemResponse`에 `category` 필드 추가.
+  - backend readiness item 생성부에 category 매핑.
+  - frontend readiness item에 category pill 표시.
+  - backend/frontend 테스트에 category 필드 검증 추가.
+- 실행 내용:
+  - `DashboardReadinessItemResponse` record에 `category` 추가.
+  - `AdminController` helper와 호출부에 category 인자 추가.
+  - `METADATA_ENGINE`, `STORAGE_ENGINE`은 `RUNTIME`.
+  - `NO_BUCKET`은 `STORAGE`.
+  - quota 관련 항목은 `QUOTA`.
+  - share link 관련 항목은 `SHARING`.
+  - system health blocker는 `SYSTEM`, access key provisioner blocker는 `SECURITY`.
+  - `DashboardPage.vue`에서 category pill 표시.
+  - `main.css`에 `.readiness-category` 스타일 추가.
+- 구현 내용:
+  - readiness item마다 category가 포함된다.
+  - frontend panel은 category를 작은 pill로 표시한다.
+  - category가 없는 legacy item은 `GENERAL`로 fallback 표시한다.
+- 수정된 파일:
+  - `osmu-backend/src/main/java/com/example/osmu/admin/DashboardReadinessItemResponse.java`
+  - `osmu-backend/src/main/java/com/example/osmu/admin/AdminController.java`
+  - `osmu-backend/src/test/java/com/example/osmu/admin/AdminDashboardSummaryControllerTest.java`
+  - `osmu-frontend/src/components/dashboard/DashboardPage.vue`
+  - `osmu-frontend/src/assets/main.css`
+  - `osmu-frontend/src/services/api-query.test.js`
+  - `osmu-frontend/src/views/HomeView.test.js`
+  - `dev-docs/worklog/main/worklog-main.md`
+- 관련 파일:
+  - `osmu-backend/src/main/java/com/example/osmu/admin/DashboardReadinessResponse.java`
+- 검증 기록:
+  - `npm.cmd run test:unit`: 통과.
+  - `node --check .\osmu-frontend\e2e\lightweight-demo.spec.js`: 통과.
+  - `git diff --check`: 통과. CRLF 변환 경고만 확인.
+  - `npm.cmd run build`: 통과.
+  - `.\gradlew.bat --no-daemon test --tests com.example.osmu.admin.AdminDashboardSummaryControllerTest`: 통과. Gradle distribution 다운로드 때문에 sandbox 밖 실행 승인 필요.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-local.ps1 -SkipDocker -SkipBackend -JavaHome C:\jdk-17`: 통과.
+- 코드 리뷰:
+  - category는 item metadata라 기존 message, targetPage, targetPanel 동작을 바꾸지 않는다.
+  - frontend fallback을 둬 이전 응답을 받아도 화면이 깨지지 않는다.
+  - category 값이 문자열 literal이므로 추후 enum 문서화 또는 Java enum 전환을 검토할 수 있다.
+- 결과: readiness item 영역 구분 표시 완료.
+- 후속 메모:
+  - API 문서에 category field와 허용 값 목록 추가 필요.
+  - 실제 화면에서 category pill 가독성 확인 필요.
+- 추가 개발 필요:
+  - category별 필터/접기 기능.
+  - category별 readiness score.
+  - smoke 결과 category 추가.
+- 사용한 skill/plugin:
+  - `caveman` skill: 응답 압축 유지.
+
+### 2026-06-15 - Readiness 마지막 점검 시각 표시
+
+- 작업 시작 시간: 2026-06-15 01:37:00 +09:00
+- 작업 종료 시간: 2026-06-15 01:40:23 +09:00
+- 사용자 명령: 프론트, 백엔드 기능 개발을 계속 진행하라는 진행 중 목표.
+- 명령 해석: readiness 재점검 결과가 언제 계산된 것인지 화면에서 확인할 수 있게 만들어 운영자가 상태 최신성을 판단하도록 개선하는 작업으로 이해.
+- 요청 분석:
+  - readiness 전용 새로고침 API와 버튼은 추가됐지만, 새로고침 후 사용자는 마지막 점검 시각을 직접 볼 수 없었다.
+  - backend response에 계산 시각을 포함하고 frontend panel에 표시하면 데이터 최신성이 명확해진다.
+- 작업 방식:
+  - `DashboardReadinessResponse`에 `generatedAt` 필드 추가.
+  - `readinessSnapshot()`에서 `OffsetDateTime.now()`로 계산 시각 부여.
+  - frontend readiness state에 `generatedAt` 저장.
+  - Dashboard readiness panel에 `Last Check` 표시 추가.
+- 실행 내용:
+  - `DashboardReadinessResponse`에 `OffsetDateTime generatedAt` 추가.
+  - `AdminController.readinessSnapshot()` 응답 생성부에 timestamp 추가.
+  - backend summary/readiness endpoint 테스트에 `generatedAt` 검증 추가.
+  - `HomeView.vue` readiness state/apply 로직에 `generatedAt` 추가.
+  - `DashboardPage.vue` readiness panel에 `Last Check` 추가.
+  - frontend API wrapper test에 `generatedAt` 보존 검증 추가.
+- 구현 내용:
+  - `/api/admin/dashboard/summary` 내부 readiness와 `/api/admin/dashboard/readiness` 단독 응답 모두 `generatedAt`을 제공한다.
+  - frontend는 `formatDateTime()`으로 마지막 점검 시각을 표시한다.
+  - readiness refresh 후 새 timestamp가 state에 반영된다.
+- 수정된 파일:
+  - `osmu-backend/src/main/java/com/example/osmu/admin/DashboardReadinessResponse.java`
+  - `osmu-backend/src/main/java/com/example/osmu/admin/AdminController.java`
+  - `osmu-backend/src/test/java/com/example/osmu/admin/AdminDashboardSummaryControllerTest.java`
+  - `osmu-frontend/src/views/HomeView.vue`
+  - `osmu-frontend/src/components/dashboard/DashboardPage.vue`
+  - `osmu-frontend/src/services/api-query.test.js`
+  - `osmu-frontend/src/views/HomeView.test.js`
+  - `dev-docs/worklog/main/worklog-main.md`
+- 관련 파일:
+  - `osmu-frontend/src/services/api.js`
+- 검증 기록:
+  - `npm.cmd run test:unit`: 통과.
+  - `node --check .\osmu-frontend\e2e\lightweight-demo.spec.js`: 통과.
+  - `git diff --check`: 통과. CRLF 변환 경고만 확인.
+  - `npm.cmd run build`: 통과.
+  - `.\gradlew.bat --no-daemon test --tests com.example.osmu.admin.AdminDashboardSummaryControllerTest`: 통과. Gradle distribution 다운로드 때문에 sandbox 밖 실행 승인 필요.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-local.ps1 -SkipDocker -SkipBackend -JavaHome C:\jdk-17`: 통과.
+- 코드 리뷰:
+  - readiness 자체 timestamp라 summary 전체 timestamp와 구분 가능하다.
+  - persistence 없이 계산 시점만 표시하므로 구현이 단순하다.
+  - 여러 backend node 환경에서는 각 node local clock에 의존하므로 운영에서는 NTP 동기화가 필요하다.
+- 결과: readiness panel에서 마지막 점검 시각 표시 완료.
+- 후속 메모:
+  - API 문서에 `generatedAt` 필드 추가 필요.
+  - 실제 브라우저에서 재점검 클릭 후 timestamp 변화 확인 필요.
+- 추가 개발 필요:
+  - readiness history 저장.
+  - smoke run 결과 시각과 readiness generatedAt 연계.
+- 사용한 skill/plugin:
+  - `caveman` skill: 응답 압축 유지.
+
+### 2026-06-15 - Readiness 단독 새로고침 API 및 UX 추가
+
+- 작업 시작 시간: 2026-06-15 01:33:00 +09:00
+- 작업 종료 시간: 2026-06-15 01:36:56 +09:00
+- 사용자 명령: 프론트, 백엔드 기능 개발을 계속 진행하라는 진행 중 목표.
+- 명령 해석: readiness 패널을 사용자가 조치 후 즉시 다시 점검할 수 있도록, 전체 대시보드 새로고침이 아닌 readiness 전용 refresh 기능을 추가하는 작업으로 이해.
+- 요청 분석:
+  - 기존에는 dashboard summary 조회 때 readiness가 함께 갱신됐다.
+  - 사용자가 readiness item을 보고 조치한 뒤 해당 패널만 다시 확인하려면 전체 dashboard refresh에 의존해야 했다.
+  - backend에 readiness 전용 endpoint를 만들고 frontend panel에 재점검 버튼을 두면 운영 흐름이 빨라진다.
+- 작업 방식:
+  - backend는 기존 `readinessSnapshot()` 계산 함수를 재사용해 `/api/admin/dashboard/readiness` endpoint 추가.
+  - frontend API wrapper `getDashboardReadiness()` 추가.
+  - Dashboard readiness panel에 `재점검` 버튼 추가.
+  - 버튼 클릭 시 `runAction()`으로 pending UX와 error handling을 재사용하고 readiness state만 갱신.
+- 실행 내용:
+  - `AdminController`에 `GET /api/admin/dashboard/readiness` 추가.
+  - `AdminDashboardSummaryControllerTest`에 readiness endpoint 검증 추가.
+  - `api.js`에 `getDashboardReadiness()` 추가.
+  - `api-query.test.js`에 endpoint URL 검증 추가.
+  - `DashboardPage.vue`에 `dashboard-readiness-refresh-button` 추가.
+  - `HomeView.vue`에 `handleRefreshDashboardReadiness()` 추가.
+  - lightweight E2E 스크립트에 readiness refresh 클릭/성공 메시지 확인 추가.
+- 구현 내용:
+  - readiness panel에서 `재점검` 클릭 시 `/api/admin/dashboard/readiness`를 호출한다.
+  - 성공하면 `dashboardReadiness` state만 교체한다.
+  - 성공 메시지로 `Readiness 새로고침 완료`가 표시된다.
+  - 요청 중 전역 busy 상태가 함께 표시된다.
+- 수정된 파일:
+  - `osmu-backend/src/main/java/com/example/osmu/admin/AdminController.java`
+  - `osmu-backend/src/test/java/com/example/osmu/admin/AdminDashboardSummaryControllerTest.java`
+  - `osmu-frontend/src/services/api.js`
+  - `osmu-frontend/src/services/api-query.test.js`
+  - `osmu-frontend/src/components/dashboard/DashboardPage.vue`
+  - `osmu-frontend/src/views/HomeView.vue`
+  - `osmu-frontend/src/views/HomeView.test.js`
+  - `osmu-frontend/e2e/lightweight-demo.spec.js`
+  - `osmu-frontend/src/assets/main.css`
+  - `dev-docs/worklog/main/worklog-main.md`
+- 관련 파일:
+  - `osmu-backend/src/main/java/com/example/osmu/admin/DashboardReadinessResponse.java`
+  - `osmu-backend/src/main/java/com/example/osmu/admin/DashboardReadinessItemResponse.java`
+- 검증 기록:
+  - `npm.cmd run test:unit`: 통과.
+  - `node --check .\osmu-frontend\e2e\lightweight-demo.spec.js`: 통과.
+  - `git diff --check`: 통과. CRLF 변환 경고만 확인.
+  - `npm.cmd run build`: 통과.
+  - `.\gradlew.bat --no-daemon test --tests com.example.osmu.admin.AdminDashboardSummaryControllerTest`: 통과. Gradle distribution 다운로드 때문에 sandbox 밖 실행 승인 필요.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-local.ps1 -SkipDocker -SkipBackend -JavaHome C:\jdk-17`: 통과.
+- 코드 리뷰:
+  - readiness endpoint는 기존 summary 계산 로직을 재사용하므로 응답 일관성이 좋다.
+  - frontend는 전체 dashboard reload 대신 readiness state만 갱신해 사용자가 보고 있는 맥락을 덜 흔든다.
+  - E2E 스크립트에는 클릭 흐름을 추가했지만, 실제 브라우저 실행은 현재 환경 제한으로 수행하지 못했다.
+- 결과: readiness 패널에서 단독 재점검 가능.
+- 후속 메모:
+  - 실제 브라우저에서 `재점검` 클릭 후 busy/success/readiness update를 확인해야 한다.
+  - API 문서에 `/api/admin/dashboard/readiness` 추가 필요.
+- 추가 개발 필요:
+  - readiness item별 조치 완료 여부 추적.
+  - Docker/MariaDB/MinIO smoke 결과 readiness endpoint 통합.
+  - frontend panel별 anchor deep-link 문서화.
+- 사용한 skill/plugin:
+  - `caveman` skill: 응답 압축 유지.
+
+### 2026-06-15 - Readiness 대상 패널 이동 지원
+
+- 작업 시작 시간: 2026-06-15 01:28:00 +09:00
+- 작업 종료 시간: 2026-06-15 01:32:22 +09:00
+- 사용자 명령: 프론트, 백엔드 기능 개발을 계속 진행하라는 진행 중 목표.
+- 명령 해석: readiness item이 관련 페이지까지만 이동하는 상태를 개선해, 실제 사용자가 조치해야 하는 구체 패널까지 이동하도록 완성도를 높이는 작업으로 이해.
+- 요청 분석:
+  - 이전 readiness item에는 `targetPage`만 있어 Admin 페이지 내부의 Access Key, Quota, Share 같은 정확한 패널로 이동할 수 없었다.
+  - 운영 콘솔에서는 문제 항목을 누르면 바로 관련 패널이 보여야 사용성이 좋다.
+  - 백엔드 item schema에 `targetPanel`을 추가하고 프론트 DOM anchor와 연결하는 방식이 적합하다.
+- 작업 방식:
+  - `DashboardReadinessItemResponse`에 `targetPanel` 필드 추가.
+  - readiness item 생성부에 stable panel id를 매핑.
+  - 프론트 주요 패널에 id를 추가.
+  - readiness action 버튼 클릭 시 route 이동 후 해당 panel을 `scrollIntoView`/`focus` 처리.
+  - focus outline style을 추가해 이동 결과가 보이게 처리.
+- 실행 내용:
+  - backend readiness item 생성 helper와 호출부에 `targetPanel` 추가.
+  - `AdminDashboardSummaryControllerTest`에 `targetPanel` 검증 추가.
+  - Dashboard widget article에 `id="dashboard-widget-{id}"` 추가.
+  - Storage bucket panel에 `id="storage-buckets"` 추가.
+  - Admin sub panel에 `admin-access-keys`, `admin-quota-policies`, `admin-object-share` 등 id 추가.
+  - `HomeView.vue`에 `nextTick`, `useRouter`, `focusPanel` 기반 이동 로직 추가.
+  - `main.css`에 focus outline 추가.
+- 구현 내용:
+  - readiness item의 action 버튼은 `targetPage`로 이동한 뒤 `targetPanel` id를 찾아 스크롤/포커스한다.
+  - backend blocker/warning item은 구체 target panel을 포함한다.
+  - 예: `METADATA_ENGINE` -> `dashboard-widget-runtime`, `NO_BUCKET` -> `storage-buckets`, `QUOTA_WARNING` -> `admin-quota-policies`.
+- 수정된 파일:
+  - `osmu-backend/src/main/java/com/example/osmu/admin/AdminController.java`
+  - `osmu-backend/src/main/java/com/example/osmu/admin/DashboardReadinessItemResponse.java`
+  - `osmu-backend/src/test/java/com/example/osmu/admin/AdminDashboardSummaryControllerTest.java`
+  - `osmu-frontend/src/components/dashboard/DashboardPage.vue`
+  - `osmu-frontend/src/components/storage/StoragePage.vue`
+  - `osmu-frontend/src/components/admin/AdminPage.vue`
+  - `osmu-frontend/src/views/HomeView.vue`
+  - `osmu-frontend/src/views/HomeView.test.js`
+  - `osmu-frontend/src/assets/main.css`
+  - `dev-docs/worklog/main/worklog-main.md`
+- 관련 파일:
+  - `osmu-backend/src/main/java/com/example/osmu/admin/DashboardReadinessResponse.java`
+- 검증 기록:
+  - `npm.cmd run test:unit`: 통과.
+  - `node --check .\osmu-frontend\e2e\lightweight-demo.spec.js`: 통과.
+  - `git diff --check`: 통과. CRLF 변환 경고만 확인.
+  - `npm.cmd run build`: 통과.
+  - `.\gradlew.bat --no-daemon test --tests com.example.osmu.admin.AdminDashboardSummaryControllerTest`: 통과. Gradle distribution 다운로드 때문에 sandbox 밖 실행 승인 필요.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-local.ps1 -SkipDocker -SkipBackend -JavaHome C:\jdk-17`: 통과.
+- 코드 리뷰:
+  - route 이동 후 `nextTick`으로 DOM 생성 이후 panel을 찾게 해 페이지 전환 race를 줄였다.
+  - id 기반 anchor라 단순하고 테스트하기 쉽지만, panel id 변경 시 backend targetPanel도 함께 바꿔야 한다.
+  - 실제 브라우저 클릭 검증은 현재 Browser 런타임 제한 때문에 수행하지 못했다.
+- 결과: readiness item에서 조치 대상 패널까지 이동할 수 있는 프론트/백엔드 연결 완료.
+- 후속 메모:
+  - Browser/Chrome 실행 가능 환경에서 readiness item 버튼 클릭 후 scroll/focus 동작을 실제 확인해야 한다.
+  - targetPanel 값은 API 계약 일부가 되었으므로 문서화가 필요하다.
+- 추가 개발 필요:
+  - targetPanel enum 또는 문서 추가.
+  - item별 자동 조치 버튼.
+  - Docker/MariaDB/MinIO smoke 결과 item화.
+- 사용한 skill/plugin:
+  - `caveman` skill: 응답 압축 유지.
+
+### 2026-06-15 - Readiness 항목 구조화 및 화면 이동 연결
+
+- 작업 시작 시간: 2026-06-15 01:23:00 +09:00
+- 작업 종료 시간: 2026-06-15 01:27:05 +09:00
+- 사용자 명령: 프론트, 백엔드 기능 개발을 계속 진행하라는 진행 중 목표.
+- 명령 해석: 이미 추가한 readiness 상태를 단순 문자열 목록이 아니라 사용자가 바로 조치할 수 있는 구조화된 항목과 화면 이동으로 발전시키는 작업으로 이해.
+- 요청 분석:
+  - 기존 readiness 응답은 `blockers`, `warnings` 문자열 목록만 제공했다.
+  - 프론트에서는 경고를 보여줄 수는 있지만 어떤 영역으로 이동해 해결해야 하는지 알기 어렵다.
+  - 운영/데모 콘솔에서는 문제 항목별 코드, 심각도, 조치명, 이동 대상이 있어야 기능이 실제로 쓰기 좋아진다.
+- 작업 방식:
+  - 기존 `blockers`, `warnings` 필드는 유지해 호환성을 보존.
+  - 새 `items` 필드만 추가해 severity/code/message/targetPage/actionLabel을 내려주도록 확장.
+  - 프론트 readiness panel은 `items`를 우선 렌더링하고 버튼 클릭 시 관련 페이지로 이동하게 연결.
+- 실행 내용:
+  - `DashboardReadinessItemResponse` record 추가.
+  - `DashboardReadinessResponse`에 `items` 필드 추가.
+  - `AdminController.readinessSnapshot()`을 structured item 기반으로 변경.
+  - blocker/warning helper 추가.
+  - `AdminDashboardSummaryControllerTest`에 readiness item 필드 검증 추가.
+  - `DashboardPage.vue`에 `readiness-item-{code}` 행과 이동 버튼 추가.
+  - `HomeView.vue`에 `useRouter`, `openReadinessTarget`, readiness `items` state 추가.
+  - `main.css`에 readiness task list 레이아웃 추가.
+  - `HomeView.test.js`에 dynamic readiness item selector와 이동 helper 검증 추가.
+- 구현 내용:
+  - readiness item은 `BLOCKER` 또는 `WARNING` severity를 가진다.
+  - code 예시는 `METADATA_ENGINE`, `STORAGE_ENGINE`, `NO_BUCKET`, `QUOTA_WARNING`, `EXPIRED_SHARE_LINKS` 등이다.
+  - 각 item은 `dashboard`, `storage`, `admin` 같은 target page와 action label을 포함한다.
+  - readiness panel의 버튼을 누르면 관련 페이지로 이동한다.
+- 수정된 파일:
+  - `osmu-backend/src/main/java/com/example/osmu/admin/AdminController.java`
+  - `osmu-backend/src/main/java/com/example/osmu/admin/DashboardReadinessItemResponse.java`
+  - `osmu-backend/src/main/java/com/example/osmu/admin/DashboardReadinessResponse.java`
+  - `osmu-backend/src/test/java/com/example/osmu/admin/AdminDashboardSummaryControllerTest.java`
+  - `osmu-frontend/src/components/dashboard/DashboardPage.vue`
+  - `osmu-frontend/src/views/HomeView.vue`
+  - `osmu-frontend/src/views/HomeView.test.js`
+  - `osmu-frontend/src/assets/main.css`
+  - `dev-docs/worklog/main/worklog-main.md`
+- 관련 파일:
+  - `osmu-backend/src/main/java/com/example/osmu/admin/DashboardSummaryResponse.java`
+  - `osmu-frontend/e2e/lightweight-demo.spec.js`
+- 검증 기록:
+  - `npm.cmd run test:unit`: 통과.
+  - `node --check .\osmu-frontend\e2e\lightweight-demo.spec.js`: 통과.
+  - `git diff --check`: 통과. CRLF 변환 경고만 확인.
+  - `npm.cmd run build`: 통과.
+  - `.\gradlew.bat --no-daemon test --tests com.example.osmu.admin.AdminDashboardSummaryControllerTest`: 통과. Gradle distribution 다운로드 때문에 sandbox 밖 실행 승인 필요.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-local.ps1 -SkipDocker -SkipBackend -JavaHome C:\jdk-17`: 통과.
+- 코드 리뷰:
+  - 기존 문자열 필드를 제거하지 않아 프론트/외부 소비자 호환성이 좋다.
+  - item code가 안정적이므로 추후 필터링, 문서화, 자동 조치 연결에 사용할 수 있다.
+  - 현재 targetPage는 페이지 수준 이동만 지원한다. 특정 패널 anchor 이동은 아직 없다.
+- 결과: readiness가 단순 상태 표시에서 조치 가능한 운영 항목 목록으로 확장됨.
+- 후속 메모:
+  - 실제 브라우저에서 readiness item 버튼 클릭 후 페이지 이동을 확인해야 한다.
+  - targetPage 외에 targetPanel 또는 anchor를 추가하면 관리자 페이지 내부 특정 패널로 이동할 수 있다.
+- 추가 개발 필요:
+  - readiness item별 해결 자동화 버튼 추가.
+  - Docker/MariaDB/MinIO smoke 결과를 item으로 통합.
+  - readiness item code 문서화.
+- 사용한 skill/plugin:
+  - `caveman` skill: 응답 압축 유지.
+
+### 2026-06-15 - 데모/배포 준비도 대시보드 추가
+
+- 작업 시작 시간: 2026-06-15 01:18:00 +09:00
+- 작업 종료 시간: 2026-06-15 01:22:35 +09:00
+- 사용자 명령: 프론트, 백엔드 기능 개발을 계속 진행하라는 진행 중 목표.
+- 명령 해석: 운영자/데모 사용자가 현재 OSMU 런타임이 실제 데모 또는 배포 검증에 얼마나 준비되어 있는지 한눈에 볼 수 있는 기능을 추가하는 작업으로 이해.
+- 요청 분석:
+  - 기존 dashboard summary API는 usage/system/backup/retention/share/quota/recent audit 정보를 제공한다.
+  - 하지만 이 정보를 사람이 직접 조합해야 MariaDB/MinIO 미사용, restore drill 미수행, health down, quota 위험 같은 준비도 문제를 판단할 수 있었다.
+  - B2B 판매/데모 지향 제품에서는 "현재 상태에서 무엇이 막혔고 무엇을 확인해야 하는지"가 대시보드에 바로 보여야 한다.
+- 작업 방식:
+  - 백엔드에 `DashboardReadinessResponse` record를 추가.
+  - `AdminController.dashboardSummary()`에서 기존 summary snapshot을 조합해 readiness를 계산.
+  - blocker는 실제 unhealthy 상태로, warning은 local demo/runtime 준비 부족 또는 운영 정리 필요 상태로 분리.
+  - 프론트에는 기본 대시보드 widget과 상세 panel을 함께 추가.
+  - 기존 E2E selector/test에 readiness 항목을 반영.
+- 실행 내용:
+  - `DashboardReadinessResponse` 추가.
+  - `DashboardSummaryResponse`에 `readiness` 필드 추가.
+  - `AdminController`에 `readinessSnapshot`, `addBlockerIfNotUp`, `runtimeProfile` helper 추가.
+  - `AdminDashboardSummaryControllerTest`에 readiness 응답 검증 추가.
+  - `HomeView.vue`에 readiness reactive state, summary apply/reset, 기본 dashboard widget 추가.
+  - `DashboardPage.vue`에 readiness widget과 `dashboard-readiness-panel` 추가.
+  - `HomeView.test.js`, `lightweight-demo.spec.js`에 readiness selector/표시 검증 추가.
+- 구현 내용:
+  - readiness status는 `READY`, `REVIEW`, `ACTION_REQUIRED`로 표시된다.
+  - runtime profile은 `MariaDB + MinIO`, `Local demo runtime`, 기타 engine 조합으로 표시된다.
+  - blocker에는 backend/database/storage/access key provisioner down 상태가 들어간다.
+  - warning에는 MariaDB/MinIO 미사용, restore drill 미수행, bucket 없음, quota 위험, 만료 share link 정리 필요 항목이 들어간다.
+- 수정된 파일:
+  - `osmu-backend/src/main/java/com/example/osmu/admin/AdminController.java`
+  - `osmu-backend/src/main/java/com/example/osmu/admin/DashboardReadinessResponse.java`
+  - `osmu-backend/src/main/java/com/example/osmu/admin/DashboardSummaryResponse.java`
+  - `osmu-backend/src/test/java/com/example/osmu/admin/AdminDashboardSummaryControllerTest.java`
+  - `osmu-frontend/src/views/HomeView.vue`
+  - `osmu-frontend/src/components/dashboard/DashboardPage.vue`
+  - `osmu-frontend/src/views/HomeView.test.js`
+  - `osmu-frontend/e2e/lightweight-demo.spec.js`
+  - `dev-docs/worklog/main/worklog-main.md`
+- 관련 파일:
+  - `osmu-backend/src/main/java/com/example/osmu/admin/BackupStatusResponse.java`
+  - `osmu-backend/src/main/java/com/example/osmu/admin/DashboardSystemStatusResponse.java`
+  - `osmu-backend/src/main/java/com/example/osmu/admin/DashboardQuotaSummaryResponse.java`
+- 검증 기록:
+  - `npm.cmd run test:unit`: 통과.
+  - `node --check .\osmu-frontend\e2e\lightweight-demo.spec.js`: 통과.
+  - `git diff --check`: 통과. CRLF 변환 경고만 확인.
+  - `npm.cmd run build`: 통과.
+  - `.\gradlew.bat --no-daemon test --tests com.example.osmu.admin.AdminDashboardSummaryControllerTest`: 통과. Gradle distribution 다운로드 때문에 sandbox 밖 실행 승인 필요.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-local.ps1 -SkipDocker -SkipBackend -JavaHome C:\jdk-17`: 통과.
+- 코드 리뷰:
+  - 새 readiness 계산은 기존 summary 값만 재사용하므로 repository나 storage adapter에 추가 부하가 거의 없다.
+  - blocker/warning 분리로 local demo 상태를 실패로 오해하지 않으면서도 production 준비 부족을 명확히 드러낸다.
+  - `DashboardSummaryResponse` 계약이 확장됐으므로 외부 소비자가 있다면 새 필드를 optional로 받아야 한다.
+  - 실제 Docker/MariaDB/MinIO runtime 검증 결과를 직접 읽는 기능은 아직 아니다.
+- 결과: 백엔드 summary API와 프론트 대시보드에 데모/배포 준비도 표시 추가 완료.
+- 후속 메모:
+  - 실제 MariaDB+MinIO 실행 후 readiness가 `MariaDB + MinIO` 및 적절한 status로 바뀌는지 검증해야 한다.
+  - readiness 결과를 배포 smoke script 산출물과 연결하면 운영 판단력이 더 좋아진다.
+- 추가 개발 필요:
+  - Docker/MariaDB/MinIO smoke 결과를 readiness API에 반영.
+  - readiness 항목별 해결 버튼 또는 관련 페이지 이동 추가.
+  - 조직/버킷/권한별 readiness 세분화.
+- 사용한 skill/plugin:
+  - `caveman` skill: 응답 압축 유지.
+
+### 2026-06-15 - 런타임 엔진 대시보드 패널 추가
+
+- 작업 시작 시간: 2026-06-15 01:13:00 +09:00
+- 작업 종료 시간: 2026-06-15 01:17:04 +09:00
+- 사용자 명령: 프론트/백엔드 기능 개발을 계속 진행하고, 프론트 페이지를 완성도 있게 개선하라는 진행 중 목표.
+- 명령 해석: MariaDB/MinIO 연결 상태를 데모 운영자가 즉시 판단할 수 있도록 대시보드에 런타임 엔진 상태를 노출하는 작업으로 이해.
+- 요청 분석:
+  - 기존 dashboard summary API는 `metadataEngine`, `storageEngine`, `accessKeyProvisioner` 값을 제공한다.
+  - 프론트 기본 대시보드에는 서비스 UP/DOWN만 보여 실제 in-memory demo인지 MariaDB+MinIO 구성인지 즉시 구분하기 어렵다.
+  - 배포/데모 목표에는 DB와 MinIO 연결 상태 확인이 중요하므로 기본 팔레트에 런타임 엔진 패널이 필요하다.
+- 작업 방식:
+  - 새 API를 만들지 않고 기존 `/api/admin/dashboard/summary`의 system 필드를 프론트에서 활용.
+  - dashboard widget catalog와 기본 widget 목록에 `runtime`을 추가.
+  - `health` 상태 모델에 access key provisioner, metadata engine, storage engine 필드를 추가.
+  - 런타임 상태를 `MariaDB + MinIO`, `Local demo runtime`, 기타 engine 조합으로 요약하는 computed 값을 추가.
+  - DashboardPage에서 runtime widget branch를 렌더링.
+  - 정적 selector 테스트와 lightweight E2E 스크립트 기대값을 갱신.
+- 실행 내용:
+  - `osmu-frontend/src/views/HomeView.vue`에 `runtime` widget catalog/default, `runtimeReadinessLabel`, 확장 health state 반영.
+  - `osmu-frontend/src/components/dashboard/DashboardPage.vue`에 런타임 엔진 표시 추가.
+  - `osmu-frontend/src/views/HomeView.test.js`에 runtime widget 존재 검증 추가.
+  - `osmu-frontend/e2e/lightweight-demo.spec.js`에 기본 runtime widget 표시 검증 추가.
+- 구현 내용:
+  - 기본 대시보드에 "런타임 엔진" 패널이 표시된다.
+  - MariaDB+MinIO 조합이면 `MariaDB + MinIO`로 표시된다.
+  - in-memory 구성이 포함되면 `Local demo runtime`으로 표시된다.
+  - 세부 정보로 metadata engine, object storage engine, access key provisioner 상태를 함께 보여준다.
+- 수정된 파일:
+  - `osmu-frontend/src/views/HomeView.vue`
+  - `osmu-frontend/src/components/dashboard/DashboardPage.vue`
+  - `osmu-frontend/src/views/HomeView.test.js`
+  - `osmu-frontend/e2e/lightweight-demo.spec.js`
+  - `dev-docs/worklog/main/worklog-main.md`
+- 관련 파일:
+  - `osmu-backend/src/main/java/com/example/osmu/admin/AdminController.java`
+  - `osmu-backend/src/main/java/com/example/osmu/admin/DashboardSystemStatusResponse.java`
+  - `osmu-backend/src/test/java/com/example/osmu/admin/AdminDashboardSummaryControllerTest.java`
+- 검증 기록:
+  - `npm.cmd run test:unit`: 통과.
+  - `node --check .\osmu-frontend\e2e\lightweight-demo.spec.js`: 통과.
+  - `git diff --check`: 통과. CRLF 변환 경고만 확인.
+  - `npm.cmd run build`: 통과.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-local.ps1 -SkipDocker -SkipBackend -JavaHome C:\jdk-17`: 통과.
+  - `.\gradlew.bat --no-daemon test --tests com.example.osmu.admin.AdminDashboardSummaryControllerTest`: 통과. Gradle distribution 다운로드 때문에 sandbox 밖 실행 승인 필요.
+- 코드 리뷰:
+  - 기존 dashboard summary 계약을 재사용해 백엔드 변경 없이 운영 가시성만 높였다.
+  - 기본 widget에 포함했지만 기존 localStorage 사용자 설정은 그대로 존중된다. 기존 설정 사용자는 추가 목록에서 runtime 패널을 넣을 수 있다.
+  - 런타임 판정은 문자열 기반 요약이므로 실제 readiness gate가 아니라 운영 표시용이다. 배포 성공 판단은 Docker/MariaDB/MinIO 실제 smoke 결과가 필요하다.
+- 결과: 대시보드에서 현재 런타임이 local demo인지 MariaDB+MinIO 구성인지 바로 볼 수 있게 됨.
+- 후속 메모:
+  - 실제 MariaDB+MinIO 환경에서 summary API가 `MariaDB + MinIO`로 표시되는지 브라우저로 확인해야 한다.
+  - Docker daemon 또는 원격 서버 런타임이 준비되면 full demo smoke를 다시 실행해야 한다.
+- 추가 개발 필요:
+  - runtime readiness를 단순 표시가 아니라 배포 gate 결과와 연결.
+  - MinIO bucket/user/policy sync 상태를 별도 경보로 분리.
+  - dashboard widget layout 크기/열 수 설정 추가.
+- 사용한 skill/plugin:
+  - `caveman` skill: 응답 압축 유지.
+
+### 2026-06-14 - 프론트 대시보드 정보 구조 및 디자인 개편
+
+- 작업 시작 시간: 2026-06-14 20:42:00 +09:00
+- 작업 종료 시간: 2026-06-14 21:10:00 +09:00
+- 사용자 명령: 프론트 화면의 가독성이 나쁘고, 대시보드 화면이 무엇을 하려는지 목적이 잘 보이지 않으니 디자인을 보기 좋게 개편해달라고 요청.
+- 명령 해석: 기존 기능은 유지하면서 첫 화면이 "스토리지 운영 대시보드"라는 목적을 즉시 보여주도록 정보 구조, 레이아웃, 반응형 CSS를 개편하라는 명령으로 이해.
+- 요청 분석: OSMU는 단순 파일 업로드 화면이 아니라 자체 오브젝트 스토리지 운영 콘솔을 지향하므로, 용량/상태/백업/버킷/오브젝트/관리/감사를 한 화면에서 단계적으로 읽히게 해야 함. 또한 기존 테스트가 기대하는 `data-testid`는 유지해야 회귀 테스트와 E2E 흐름이 깨지지 않음.
+- 작업 방식: `HomeView.vue`는 운영 콘솔 흐름에 맞춰 큰 구조를 다시 잡고, `main.css`는 사이드바 + 작업 영역 + 관리 패널 중심의 조용한 B2B 운영 UI로 재작성. 데스크톱과 모바일 모두에서 패널 폭, 폼, 버튼, 텍스트 줄바꿈이 깨지지 않도록 검증하며 보정.
+- 실행 내용:
+  - `osmu-frontend/src/views/HomeView.vue`, `osmu-frontend/src/assets/main.css`, 프론트 테스트 구조 확인.
+  - 대시보드 첫 화면에 운영 목적을 설명하는 hero 영역과 핵심 지표 카드를 배치.
+  - 서비스 상태, 백업 준비도, 선택 버킷, 보존 정책, 버킷/오브젝트 작업 영역, 관리자 기능, 감사 로그를 영역별로 재배치.
+  - 기존 API 호출 함수와 상태 처리 흐름을 유지하면서 누락된 핸들러와 import를 정리.
+  - 모바일 폭에서 가로 잘림이 없도록 `max-width`, `min-width`, form grid, button wrapping, 한국어 줄바꿈을 보정.
+- 구현 내용:
+  - `HomeView.vue`를 운영 대시보드 중심 구조로 개편.
+  - 상태/지표/작업/관리/감사 영역의 목적이 화면에서 바로 드러나도록 제목과 배치를 정리.
+  - 테스트 안정성을 위해 기존 E2E용 `data-testid`를 유지.
+  - `main.css`를 새 레이아웃 기준으로 재작성하고, 1500px/1280px/860px/560px 반응형 분기 추가.
+  - 작은 화면에서 `390px` 기준 `scrollWidth`가 뷰포트를 넘지 않도록 폭 제한을 강화.
+- 수정된 파일:
+  - `osmu-frontend/src/views/HomeView.vue`
+  - `osmu-frontend/src/assets/main.css`
+  - `dev-docs/worklog/main/worklog-main.md`
+- 관련 파일:
+  - `osmu-frontend/src/views/HomeView.test.js`
+  - `osmu-frontend/src/services/api.js`
+  - `osmu-frontend/src/utils/dashboard.js`
+  - `osmu-frontend/src/utils/objectExplorer.js`
+  - `osmu-frontend/src/utils/objectTags.js`
+- 검증 기록:
+  - `npm.cmd run build`: 성공.
+  - `npm.cmd run test:unit`: 성공, 56개 테스트 통과.
+  - Chrome headless 1440px 캡처로 데스크톱 레이아웃 확인.
+  - Chrome headless 500px 캡처로 작은 화면 레이아웃 확인.
+  - Chrome DevTools Protocol에서 390px 뷰포트 강제 후 `scrollWidth` 측정: `innerWidth 390`, `scrollWidth 375`, hero/login 영역 overflow 없음.
+- 코드 리뷰:
+  - 기존 기능 범위는 유지하면서 첫 화면의 목적과 작업 우선순위가 더 명확해짐.
+  - 관리 기능이 한 화면에 많아질 수 있으므로 반복 패널은 compact한 스타일로 정리했고, 카드 중첩은 만들지 않음.
+  - 반응형 CSS에서 폼과 버튼의 최소 폭을 보정해 모바일 가로 스크롤 위험을 줄임.
+  - 테스트 셀렉터를 유지해 기존 자동화 흐름과의 호환성을 확보함.
+- 결과: OSMU 프론트 대시보드를 운영 콘솔 형태로 개편 완료.
+- 후속 메모: 실제 백엔드/MinIO 연동 상태에서 데이터가 채워진 화면을 한 번 더 보고, 긴 버킷명/오브젝트명/정책명에 대한 시각 회귀를 추가로 확인하면 좋음.
+- 추가 개발 필요:
+  - 로그인 후 실제 데이터가 있는 상태의 E2E 시나리오 추가.
+  - 백업 준비도와 용량 증설 상태를 실제 API와 연결.
+  - 관리자 기능이 더 늘어나면 탭 또는 세부 라우팅으로 분리 검토.
+- 사용한 skill/plugin:
+  - 추가 skill/plugin 사용 없음.
+  - 검증 보조로 Chrome headless와 Chrome DevTools Protocol을 사용.
+
+### 2026-06-14 - 192.168.35.88 배포 시도 및 차단 원인 확인
+
+- 작업 시작 시간: 2026-06-14 21:31:00 +09:00
+- 작업 종료 시간: 2026-06-14 21:45:00 +09:00
+- 사용자 명령: 화면을 볼 수 있도록 `192.168.35.88`에 배포하라고 요청하고 접속 계정 정보를 제공.
+- 명령 해석: 현재 작업트리의 OSMU 프론트/백엔드 변경사항을 지정 서버에 올리고 사용자가 브라우저로 확인할 수 있는 상태로 만들라는 명령으로 이해.
+- 요청 분석: 배포에는 원격 접속 채널 또는 Kubernetes context가 필요함. 제공된 계정 정보만으로는 SSH, WinRM, SMB, Docker API, Kubernetes API 중 하나가 열려 있어야 실제 파일 업로드와 서비스 실행이 가능함.
+- 작업 방식: 먼저 서버 접근 가능성과 기존 배포 문서를 확인하고, 접속 채널이 없을 경우 배포 산출물 생성 가능 여부를 확인하는 순서로 진행.
+- 실행 내용:
+  - `scripts/deploy-osmu-dev-k8s.ps1`와 `infra/k8s-overlays/osmu-dev/README.md` 확인.
+  - 기존 dev overlay가 `192.168.35.60` Kubernetes 클러스터와 artifact mode 기준임을 확인.
+  - `192.168.35.88`의 주요 배포/관리 포트 상태 확인.
+  - 로컬 Kubernetes context 존재 여부 확인.
+  - 프론트엔드 production build 실행.
+  - 백엔드 jar build 가능 여부 확인.
+  - Docker daemon 사용 가능 여부 확인.
+- 구현 내용:
+  - 원격 서버에는 배포하지 못함.
+  - 프론트엔드 산출물 생성은 성공.
+  - 백엔드 jar 생성은 로컬 Java 17+ 미설치로 실패.
+  - Docker daemon은 실행 중이 아니어서 컨테이너 기반 우회 빌드도 불가.
+- 수정된 파일:
+  - `dev-docs/worklog/main/worklog-main.md`
+- 관련 파일:
+  - `scripts/deploy-osmu-dev-k8s.ps1`
+  - `infra/k8s-overlays/osmu-dev/README.md`
+  - `infra/k8s-overlays/osmu-dev/kustomization.yaml`
+  - `osmu-frontend/dist`
+  - `osmu-backend/build.gradle`
+- 검증 기록:
+  - `Test-NetConnection 192.168.35.88 -Port 22`: ping 성공, TCP 22 실패.
+  - `Test-NetConnection`으로 21, 22, 80, 443, 135, 139, 445, 873, 2222, 3000, 5173, 5985, 5986, 6443, 8080, 8081, 8443, 9000, 9001, 30080 등 확인: 모두 TCP 연결 실패.
+  - `ipconfig`: 현재 작업 머신은 `192.168.35.20`, 대상 `192.168.35.88`은 별도 장비임을 확인.
+  - `kubectl config current-context`: current-context 없음.
+  - `kubectl config get-contexts`: 사용 가능한 context 없음.
+  - `npm.cmd run build`: 성공.
+  - `.\gradlew.bat clean bootJar -x test`: Java/JAVA_HOME 부재로 실패.
+  - `docker info`: Docker CLI는 있으나 daemon 미실행으로 실패.
+- 코드 리뷰:
+  - 코드 변경 없음.
+  - 배포 차단 원인은 애플리케이션 코드가 아니라 원격 접속 채널 부재와 로컬 런타임 준비 부족임.
+  - 제공된 계정 정보는 접속 가능한 프로토콜이 없어 사용하지 못함.
+- 결과: `192.168.35.88` 배포는 차단됨. 서버는 ping만 가능하고, 배포에 필요한 TCP 접속 포트가 열려 있지 않음.
+- 후속 메모: 다음 시도 전 `192.168.35.88`에 SSH 22, WinRM 5985/5986, SMB 445, Kubernetes API/kubeconfig, Docker remote API 중 하나를 사용할 수 있게 해야 함.
+- 추가 개발 필요:
+  - 로컬 또는 CI 빌드 환경에 Java 17+ 설치 또는 `-JavaHome` 경로 제공.
+  - Docker Desktop daemon 실행 또는 백엔드 jar를 만들 수 있는 별도 빌드 환경 준비.
+  - 실제 배포 대상이 Kubernetes라면 `192.168.35.88`용 overlay 또는 kubeconfig 작성.
+- 사용한 skill/plugin:
+  - 추가 사용 없음.
+
+### 2026-06-14 - 192.168.35.88 SSH 홈 디렉터리 배포 완료
+
+- 작업 시작 시간: 2026-06-14 21:46:00 +09:00
+- 작업 종료 시간: 2026-06-14 21:55:34 +09:00
+- 사용자 명령: `ssh test@192.168.35.88` 접속이 실제로 된다고 알려주며 다시 배포하라고 요청.
+- 명령 해석: 앞선 포트 확인 실패를 재검토하고, SSH 비밀번호 인증 경로로 원격 서버에 OSMU를 직접 배포하라는 명령으로 이해.
+- 요청 분석: 원격 서버에는 Kubernetes나 Docker가 준비되어 있지 않을 수 있으므로, 먼저 SSH로 서버 런타임을 확인한 뒤 sudo 없이 홈 디렉터리에서 실행 가능한 배포 방식을 선택해야 함. 사용자가 바로 화면을 볼 수 있어야 하므로 production frontend와 in-memory backend를 우선 띄우는 것이 적절함.
+- 작업 방식: OpenSSH의 askpass 경로를 사용해 비대화형 SSH/SCP를 수행하되, 비밀번호를 파일에 저장하지 않는 임시 helper를 사용하고 작업 후 삭제. 원격 서버에는 `~/osmu-app`, `~/osmu-runtime`, `~/osmu-run`만 사용하여 시스템 영역을 변경하지 않음.
+- 실행 내용:
+  - SSH 접속 성공 여부 확인.
+  - 원격 서버가 Ubuntu Linux이며 `test` 사용자가 sudo 그룹인 것 확인.
+  - 원격 서버에 Java, Node, Docker가 없고 Python 3만 있는 것을 확인.
+  - 원격 인터넷 접근 가능성을 확인하고, sudo 없이 `~/osmu-runtime/jdk17`에 JDK 17을 다운로드.
+  - 프론트엔드를 `VITE_API_BASE_URL=http://192.168.35.88:8080/api`로 다시 production build.
+  - `osmu-backend`와 `osmu-frontend/dist`를 `osmu-deploy.tar.gz`로 묶어 SCP 전송.
+  - 원격에서 Gradle wrapper로 backend bootJar 생성.
+  - backend는 `8080`, frontend는 Python static server로 `5173`에 실행.
+- 구현 내용:
+  - 원격 경로 `~/osmu-app/current`에 현재 배포본 압축 해제.
+  - 원격 경로 `~/osmu-runtime/jdk17`에 Temurin JDK 17 설치.
+  - 원격 경로 `~/osmu-run/backend.pid`, `frontend.pid`, 로그 파일 생성.
+  - backend 실행 모드는 `OSMU_METADATA_MODE=in-memory`, `OSMU_STORAGE_MODE=in-memory`, `OSMU_FLYWAY_ENABLED=false`.
+  - frontend는 `~/osmu-app/current/osmu-frontend/dist`에서 `python3 -m http.server 5173 --bind 0.0.0.0`로 제공.
+- 수정된 파일:
+  - `dev-docs/worklog/main/worklog-main.md`
+- 관련 파일:
+  - `osmu-frontend/src/views/HomeView.vue`
+  - `osmu-frontend/src/assets/main.css`
+  - `osmu-frontend/dist`
+  - `osmu-backend/build.gradle`
+  - `osmu-backend/src/main/resources/application.yaml`
+- 검증 기록:
+  - 원격 SSH: `hostname`, `uname -a`, `id` 확인 성공.
+  - 원격 JDK 다운로드 및 `java -version`: Temurin OpenJDK 17.0.19 확인.
+  - 원격 backend build: `./gradlew --no-daemon clean bootJar -x test` 성공, `osmu-0.0.1-SNAPSHOT.jar` 생성.
+  - 원격 서비스 시작: backend pid `2774`, frontend pid `2775`.
+  - 원격 내부 health: `http://127.0.0.1:8080/api/health` 성공.
+  - 원격 내부 frontend: `http://127.0.0.1:5173` 성공.
+  - 외부 접근 frontend: `http://192.168.35.88:5173` HTTP 200 확인.
+  - 외부 접근 backend health: `http://192.168.35.88:8080/api/health` `UP` 확인.
+  - 외부 로그인 API: `admin / password`로 `ADMIN`, `ACTIVE` 사용자 반환 확인.
+- 코드 리뷰:
+  - 코드 변경 없이 현재 프론트 개편 결과를 원격에서 볼 수 있게 배포함.
+  - 이번 배포는 데모/확인용 in-memory 모드이므로 서버 재시작 시 데이터가 유지되지 않음.
+  - MinIO/MariaDB/Docker/Kubernetes 없이 구동했으므로 실제 S3 저장소, presigned URL, multipart upload의 운영 검증은 아님.
+  - Python static server는 SPA fallback이 없으므로 루트 URL 확인용으로는 충분하지만, 새로고침이 필요한 깊은 route가 생기면 nginx 또는 작은 fallback 서버로 교체해야 함.
+- 결과: `192.168.35.88` 배포 완료. 사용자는 `http://192.168.35.88:5173`에서 화면 확인 가능.
+- 후속 메모:
+  - 앱 로그인은 현재 데모 기본 계정 `admin / password`.
+  - 원격 프로세스 로그는 `~/osmu-run/backend.out.log`, `backend.err.log`, `frontend.out.log`, `frontend.err.log`.
+  - 중지할 때는 `~/osmu-run/backend.pid`, `~/osmu-run/frontend.pid`의 pid를 종료하면 됨.
+- 추가 개발 필요:
+  - 장기 배포는 systemd 서비스, nginx reverse proxy, HTTPS, MariaDB/MinIO 영속 구성이 필요함.
+  - 실제 운영형 검증은 Docker Compose 또는 Kubernetes overlay로 MariaDB/MinIO 포함 배포 후 수행해야 함.
+- 사용한 skill/plugin:
+  - 추가 skill/plugin 사용 없음.
+  - 검증 보조로 OpenSSH, SCP, 원격 curl, 원격 Gradle wrapper 사용.
+
+### 2026-06-14 - 페이지 분리 대시보드와 MariaDB/MinIO 데모 배포
+
+- 작업 시작 시간: 2026-06-14 22:39:00 +09:00
+- 작업 종료 시간: 2026-06-14 23:06:20 +09:00
+- 사용자 명령: 한 페이지에 모든 기능과 정보가 몰려 있으니 대시보드를 만들고 기능을 페이지별로 나누며, DB와 MinIO까지 연결해서 데모 테스트할 수 있게 배포하라고 요청. 추가로 OCI처럼 필요한 대시보드 패널을 교체/변경/추가 설정할 수 있는 기능을 요구.
+- 명령 해석: 프론트는 단일 대형 콘솔에서 `Dashboard`, `Storage`, `Objects`, `Admin`, `Audit` 페이지로 분리하고, 대시보드는 사용자가 팔레트/패널을 추가·숨김·순서 변경할 수 있게 만들라는 명령으로 이해. 배포는 기존 in-memory 모드가 아니라 MariaDB metadata + MinIO object storage 모드로 전환해야 함.
+- 요청 분석:
+  - 기존 `HomeView.vue`는 기능이 모두 한 화면에 있어 목적과 작업 흐름이 불명확했음.
+  - 기능별 페이지 분리는 라우터와 조건부 렌더링으로 먼저 안정적으로 적용하는 것이 적절함.
+  - 대시보드 패널 구성은 제품 기능으로는 서버 저장이 필요하지만, 데모 단계에서는 `localStorage` 기반 사용자 설정으로 빠르게 검증 가능함.
+  - 원격 서버에는 Docker/Kubernetes/Node/Java가 기본 설치되어 있지 않아 홈 디렉터리 기반 런타임 배포가 필요함.
+- 작업 방식:
+  - Vue Router를 hash history 기반 다중 경로로 변경해 Python 정적 서버에서도 새로고침이 깨지지 않도록 처리.
+  - 기존 API 상태와 핸들러는 유지하고, 페이지별로 필요한 섹션만 렌더링하도록 `activePage`를 추가.
+  - 대시보드 패널 카탈로그와 `localStorage` 저장/복원 로직을 추가.
+  - 원격 서버에는 시스템 영역을 건드리지 않고 `~/osmu-runtime`, `~/osmu-data`, `~/osmu-run`, `~/osmu-app/current`만 사용.
+- 실행 내용:
+  - `osmu-frontend/src/router/index.js`를 `/dashboard`, `/storage`, `/objects`, `/admin`, `/audit` 경로로 확장.
+  - `HomeView.vue` 사이드바를 `RouterLink` 기반 페이지 네비게이션으로 변경.
+  - 대시보드에 패널 구성 UI 추가: 패널 추가, 숨김/표시, 위/아래 이동, 제거, 초기화.
+  - 대시보드 기본 패널 추가: 스토리지 사용률, 서비스 상태, 백업 준비도, 데이터 입출력, 요청/감사 현황, 선택 워크스페이스.
+  - Storage 페이지에는 버킷 관리, Objects 페이지에는 파일 탐색기, Admin 페이지에는 접근 키/정책/조직/사용자 관리, Audit 페이지에는 감사 로그만 보이도록 분리.
+  - 백엔드 `HealthController`가 실제 `osmu.storage.mode`, `osmu.metadata.mode`를 health 응답의 `engine`으로 반환하도록 수정.
+  - 원격 서버에 MinIO server/client와 MariaDB generic binary를 홈 디렉터리에 설치.
+  - MariaDB는 CLI 라이브러리 문제를 피하기 위해 `mariadbd --init-file`로 DB와 사용자를 초기화.
+  - 백엔드를 `SPRING_PROFILES_ACTIVE=local`, `OSMU_METADATA_MODE=mariadb`, `OSMU_STORAGE_MODE=minio`로 재배포.
+- 구현 내용:
+  - 프론트 페이지 분리와 해시 라우팅 적용.
+  - OCI 스타일 대시보드 팔레트 설정 기능 추가.
+  - 대시보드 패널 구성은 `osmu.dashboard.widgets.v1` localStorage 키에 저장.
+  - 백엔드 health 응답에서 storage engine은 `minio`, database engine은 `mariadb`처럼 실제 런타임 모드를 표시.
+  - 원격 MariaDB는 `127.0.0.1:3306`, MinIO API는 `0.0.0.0:9000`, MinIO Console은 `0.0.0.0:9001`, backend는 `8080`, frontend는 `5173`으로 실행.
+- 수정된 파일:
+  - `osmu-frontend/src/router/index.js`
+  - `osmu-frontend/src/views/HomeView.vue`
+  - `osmu-frontend/src/assets/main.css`
+  - `osmu-backend/src/main/java/com/example/osmu/system/HealthController.java`
+  - `osmu-backend/src/test/java/com/example/osmu/system/HealthControllerTest.java`
+  - `dev-docs/worklog/main/worklog-main.md`
+- 관련 파일:
+  - `osmu-backend/src/main/resources/application-local.yaml`
+  - `osmu-backend/src/main/resources/db/migration/*`
+  - `osmu-frontend/src/services/api.js`
+  - 원격 경로: `~/osmu-app/current`, `~/osmu-runtime`, `~/osmu-data`, `~/osmu-run`
+- 검증 기록:
+  - `npm.cmd run build`: 성공.
+  - `npm.cmd run test:unit`: 성공, 56개 테스트 통과.
+  - 원격 `./gradlew --no-daemon test`: 성공, 118개 테스트 통과.
+  - 원격 `./gradlew --no-daemon clean bootJar -x test`: 성공.
+  - 외부 frontend: `http://192.168.35.88:5173` HTTP 200.
+  - 외부 backend health: `http://192.168.35.88:8080/api/health` 정상.
+  - 외부 storage health: status `UP`, engine `minio`.
+  - 외부 database health: status `UP`, engine `mariadb`.
+  - backup status: `READY`, metadataStore `mariadb`, objectStore `minio`.
+  - 실제 데모 API 검증: `demo-20260614230005` 버킷에 `demo/hello.txt` 업로드 후 목록 조회 성공.
+  - MinIO API health: `http://192.168.35.88:9000/minio/health/ready` HTTP 200.
+  - MinIO Console: `http://192.168.35.88:9001` HTTP 200.
+  - Chrome headless 캡처로 `#/dashboard`, `#/storage` 화면 렌더링 확인.
+- 코드 리뷰:
+  - 기능별 페이지 분리는 기존 거대한 상태/핸들러를 유지하면서 렌더링 범위를 나누는 보수적 접근으로 적용했으므로 회귀 위험을 낮춤.
+  - 대시보드 팔레트는 서버 저장 전 단계이지만 사용자가 즉시 구성 변경을 체험할 수 있음.
+  - hash history는 현재 Python static server 데모 배포와 호환성이 좋음. 운영 배포에서 nginx fallback이 확정되면 web history로 되돌릴 수 있음.
+  - HealthController의 engine 응답이 실제 런타임 모드를 보여줘 데모 검증과 운영 진단에 더 적합해짐.
+  - MariaDB/MinIO는 홈 디렉터리 프로세스로 띄운 데모 구성이라 systemd/백업/로그 회전/보안 설정은 아직 부족함.
+- 결과: 페이지 분리, 대시보드 팔레트 설정, MariaDB/MinIO 연결 데모 배포 완료.
+- 후속 메모:
+  - 사용 URL: `http://192.168.35.88:5173/#/dashboard`
+  - 앱 로그인: `admin / password`
+  - MinIO Console: `http://192.168.35.88:9001` (`minioadmin / minioadmin`)
+  - 원격 로그: `~/osmu-run/backend.out.log`, `backend.err.log`, `frontend.out.log`, `frontend.err.log`, `mariadb.err.log`, `minio.out.log`
+- 추가 개발 필요:
+  - 대시보드 팔레트 구성을 사용자 계정별 DB 저장으로 승격.
+  - 각 페이지를 별도 Vue component/composable로 더 잘게 분리.
+  - 운영 배포용 systemd 서비스, nginx reverse proxy, HTTPS, MariaDB/MinIO 백업 정책 추가.
+  - MinIO access key provisioning과 bucket CORS의 실제 브라우저 presigned upload E2E 추가 검증.
+- 사용한 skill/plugin:
+  - 추가 skill/plugin 사용 없음.
+  - 검증 보조로 OpenSSH, SCP, 원격 curl, 원격 Gradle wrapper, Chrome headless 사용.
+
 ### 2026-06-14 - 복구 작업트리 본 프로젝트 반영 및 검증
 
 - 작업 시작 시간: 2026-06-14 19:52:47 +09:00
@@ -501,6 +4814,997 @@ feat/bucket-management
 - 결과: Git 커밋 메시지 컨벤션을 작업유형 + 다중 영역 태그 방식으로 확장 완료.
 - 후속 메모: 이번 변경을 커밋한다면 문서 변경이므로 커밋 메시지는 `[Docs][D]: Git 커밋 메시지 형식 확장`이 적합함.
 - 추가 개발 필요: 새 작업유형 또는 영역이 생기면 `codingcovention.md`의 태그 표에 먼저 추가해야 함.
+- 사용한 skill/plugin:
+  - 추가 사용 없음.
+
+### 2026-06-15 - Admin 하위 패널 컴포넌트 분리
+
+- 작업 시작 시간: 2026-06-15 00:44:00 +09:00
+- 작업 종료 시간: 2026-06-15 00:52:06 +09:00
+- 사용자 명령: `caveman ultra` 모드로 계속 작업하며, 현재 대형 Admin 화면을 더 나누고 프론트 페이지 완성도를 높이라는 흐름의 후속 작업.
+- 명령 해석: 이전에 분리한 `AdminPage.vue`가 여전히 여러 관리 기능을 한 파일에 담고 있으므로, 기능별 하위 패널 컴포넌트로 분리해 유지보수성과 화면 구조를 개선하라는 명령으로 이해.
+- 요청 분석: Admin 화면은 Access Key, 버킷 권한, 버킷 lifecycle/tag XML, 공유 링크 정책/현황, 쿼터, 오브젝트 lifecycle, 조직/사용자 관리 기능이 섞여 있음. 각 기능을 패널 컴포넌트로 분리하면 이후 DB/MinIO 연동 검증, UI 수정, E2E 보정이 쉬워짐.
+- 작업 방식: 상태와 API 핸들러는 기존 `HomeView.vue`에 유지하고, `AdminPage.vue`는 하위 패널을 조립하는 역할만 맡도록 변경. 기존 `data-testid`와 emit 이름은 유지해 테스트와 E2E 계약을 보존.
+- 실행 내용:
+  - `AdminPage.vue`의 article 구조와 props/event 목록 확인.
+  - `AccessKeyPanel`, `BucketPermissionsPanel`, `BucketMetadataPanel`, `ObjectSharePanel`, `QuotaPolicyPanel`, `LifecycleRulesPanel`, `IdentityAdminPanel` 추가.
+  - `AdminPage.vue`에서 inline Admin markup을 하위 컴포넌트 호출로 교체.
+  - `HomeView.test.js`의 sourceFiles 목록에 신규 Admin 하위 컴포넌트를 추가해 안정 selector 검증 범위를 갱신.
+- 구현 내용:
+  - Access Key 발급/스코프/비활성화 패널 분리.
+  - 버킷 권한 부여/회수 패널 분리.
+  - 버킷 lifecycle XML과 bucket tag XML 패널 분리.
+  - 공유 링크 정책/분석 패널 분리.
+  - 쿼터 정책/변경 이력 패널 분리.
+  - 오브젝트 lifecycle rule/XML/preview 패널 분리.
+  - 조직/사용자 관리 패널 분리.
+- 수정된 파일:
+  - `osmu-frontend/src/components/admin/AdminPage.vue`
+  - `osmu-frontend/src/views/HomeView.test.js`
+  - `dev-docs/worklog/main/worklog-main.md`
+- 추가된 파일:
+  - `osmu-frontend/src/components/admin/AccessKeyPanel.vue`
+  - `osmu-frontend/src/components/admin/BucketPermissionsPanel.vue`
+  - `osmu-frontend/src/components/admin/BucketMetadataPanel.vue`
+  - `osmu-frontend/src/components/admin/ObjectSharePanel.vue`
+  - `osmu-frontend/src/components/admin/QuotaPolicyPanel.vue`
+  - `osmu-frontend/src/components/admin/LifecycleRulesPanel.vue`
+  - `osmu-frontend/src/components/admin/IdentityAdminPanel.vue`
+- 관련 파일:
+  - `osmu-frontend/src/views/HomeView.vue`
+  - `osmu-frontend/e2e/lightweight-demo.spec.js`
+- 검증 기록:
+  - `npm.cmd run test:unit`: 통과, 57개 테스트 성공.
+  - `npm.cmd run build`: 통과, Vite production build 성공.
+  - `git diff --check`: 통과, CRLF 변환 경고만 표시.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-local.ps1 -SkipDocker -SkipBackend -JavaHome C:\jdk-17`: 통과.
+- 코드 리뷰:
+  - 기존 `data-testid`를 하위 컴포넌트로 이동했지만 테스트 스캔 목록을 갱신해 selector 계약을 유지함.
+  - 이벤트 이름과 payload는 기존 부모 흐름과 동일하게 전달되어 기능 동작 범위를 바꾸지 않음.
+  - `AdminPage.vue`는 355줄에서 183줄로 줄어들어 화면 조립자 역할에 가까워짐.
+  - 각 패널은 현재 object prop의 nested field를 기존 방식 그대로 `v-model`로 사용함. 동작 보존 목적이지만, 장기적으로는 `update:*` 이벤트 기반으로 더 명확히 나눌 수 있음.
+- 결과: Admin 화면 하위 패널 컴포넌트 분리와 프론트 검증 완료.
+- 후속 메모: Docker daemon이 꺼져 있어 실제 MariaDB/MinIO 전체 런타임 브라우저 검증은 아직 필요함.
+- 추가 개발 필요:
+  - Docker Desktop 또는 원격 배포 환경에서 `scripts/start-local-demo.ps1 -SeedDemo -VerifyDemo` 실행.
+  - 실제 DB/MinIO 연결 상태에서 Admin 패널별 CRUD/E2E 수동 확인.
+  - 필요 시 패널별 단위 테스트를 추가해 emit 계약을 더 직접 검증.
+- 사용한 skill/plugin:
+  - `caveman` skill: ultra 수준으로 응답을 짧게 유지하기 위해 사용.
+
+### 2026-06-15 - 프론트 빈/잠금 상태 UX 보강
+
+- 작업 시작 시간: 2026-06-15 00:53:00 +09:00
+- 작업 종료 시간: 2026-06-15 00:57:09 +09:00
+- 사용자 명령: 활성 목표인 프론트/백엔드 기능 개발과 프론트 페이지 완성을 계속 진행.
+- 명령 해석: 현재 화면 분리는 됐지만 권한이 없거나 버킷이 선택되지 않은 상황에서 일부 페이지가 비어 보이므로, 실제 데모 사용자가 다음 행동을 알 수 있게 UX 상태를 보강하라는 후속 작업으로 이해.
+- 요청 분석: Audit 페이지는 비관리자 또는 비로그인 상태에서 빈 섹션만 렌더링되고, Object 페이지는 버킷 미선택 상태에서도 일부 입력이 활성처럼 보임. Admin 페이지도 선택 버킷이 없으면 버킷 권한/lifecycle/tag 설정 패널이 사라져 이유를 알기 어려움.
+- 작업 방식: 기존 API 흐름과 이벤트 계약은 유지하고, 안내용 empty/locked panel과 입력 disabled 조건만 추가. 안정적인 E2E 계약을 위해 새 상태 panel에도 `data-testid`를 부여하고 selector 테스트 목록을 갱신.
+- 실행 내용:
+  - `AuditPage.vue`, `AdminPage.vue`, `ObjectPage.vue`, `main.css`, `HomeView.test.js` 확인.
+  - Audit 권한 없음 상태 panel 추가.
+  - Admin 버킷 미선택 안내와 관리자 기능 제한 안내 panel 추가.
+  - Object 버킷 미선택 안내 panel 추가.
+  - 버킷 미선택 시 object key/tags/file/tag edit 입력 비활성화.
+  - 공통 empty-state 스타일 추가.
+- 구현 내용:
+  - `data-testid="audit-empty-state"` 추가.
+  - `data-testid="admin-bucket-empty-state"` 추가.
+  - `data-testid="admin-role-empty-state"` 추가.
+  - `data-testid="object-empty-state"` 추가.
+  - `AuditPage`가 `isLoggedIn` prop을 받아 로그인 여부에 맞는 안내 문구를 표시.
+- 수정된 파일:
+  - `osmu-frontend/src/components/audit/AuditPage.vue`
+  - `osmu-frontend/src/components/admin/AdminPage.vue`
+  - `osmu-frontend/src/components/objects/ObjectPage.vue`
+  - `osmu-frontend/src/assets/main.css`
+  - `osmu-frontend/src/views/HomeView.vue`
+  - `osmu-frontend/src/views/HomeView.test.js`
+  - `dev-docs/worklog/main/worklog-main.md`
+- 관련 파일:
+  - `osmu-frontend/src/components/storage/StoragePage.vue`
+  - `osmu-frontend/e2e/lightweight-demo.spec.js`
+- 검증 기록:
+  - `npm.cmd run test:unit`: 통과, 57개 테스트 성공.
+  - `npm.cmd run build`: 통과, Vite production build 성공.
+  - `git diff --check`: 통과, CRLF 변환 경고만 표시.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-local.ps1 -SkipDocker -SkipBackend -JavaHome C:\jdk-17`: 통과.
+  - 브라우저 렌더 확인 시도: `npm` dev server 지속 실행과 Node 정적 서버 실행이 현재 Windows sandbox 제한으로 실패. 오류 요지는 `CreateProcessAsUserW failed: 5`.
+- 코드 리뷰:
+  - 비로그인/비관리자 상태에서도 페이지가 비어 보이지 않도록 안내 panel을 추가해 데모 UX가 개선됨.
+  - Object 입력 disabled 조건은 서버 권한 검증을 대체하지 않고, 프론트에서 잘못된 조작만 줄임.
+  - 새 `data-testid`를 selector 계약 테스트에 추가해 이후 E2E에서 안정적으로 확인 가능함.
+  - 스타일은 기존 색상 토큰과 8px 이하 radius 흐름을 유지함.
+- 결과: 프론트 빈/잠금 상태 UX 보강 및 로컬 정적 검증 완료.
+- 후속 메모: 실제 브라우저 화면 확인은 sandbox 외부에서 dev server 또는 Docker demo를 실행한 뒤 수행해야 함.
+- 추가 개발 필요:
+  - Docker daemon available 환경에서 `scripts/start-local-demo.ps1 -SeedDemo -VerifyDemo` 실행.
+  - Browser E2E 실제 클릭 검증.
+  - 필요 시 Audit/Admin locked state를 Playwright spec에 추가.
+- 사용한 skill/plugin:
+  - `caveman` skill: ultra 수준으로 응답을 짧게 유지.
+  - `Browser` skill: 로컬 렌더 확인을 위해 지시를 읽었으나 node runtime sandbox 제한으로 실제 browser 검증은 수행하지 못함.
+
+### 2026-06-15 - 대시보드 팔레트 E2E 계약 보강
+
+- 작업 시작 시간: 2026-06-15 00:58:00 +09:00
+- 작업 종료 시간: 2026-06-15 00:59:50 +09:00
+- 사용자 명령: 활성 목표인 프론트/백엔드 기능 개발과 프론트 페이지 완성을 계속 진행.
+- 명령 해석: 대시보드 패널 추가/숨김/순서 변경 기능은 이미 있으나, 실제 브라우저 E2E에서 안정적으로 조작·검증할 selector가 부족하므로 프론트 완성도를 높이라는 명령으로 이해.
+- 요청 분석: 사용자가 요구한 OCI처럼 대시보드 패널을 추가/교체/설정하는 기능은 UX뿐 아니라 검증 가능한 계약이 필요함. 현재 `DashboardPage`는 버튼과 select는 있지만 `data-testid`가 부족해 E2E가 기능을 직접 확인하기 어려움.
+- 작업 방식: 기존 대시보드 팔레트 동작은 유지하고, selector만 보강. E2E spec은 localStorage를 초기화한 뒤 `remaining` 패널 추가, 숨김, 재표시를 클릭 경로로 검증하도록 확장.
+- 실행 내용:
+  - `DashboardPage.vue`의 dashboard config panel과 widget metric markup 확인.
+  - 대시보드 팔레트 config/select/add/reset/list/button에 `data-testid` 추가.
+  - widget config row와 metric card에 widget id 기반 동적 `data-testid` 추가.
+  - `HomeView.test.js` selector 계약 목록과 동적 selector 정규식 검증 추가.
+  - `lightweight-demo.spec.js`에서 대시보드 팔레트 add/toggle flow 추가.
+- 구현 내용:
+  - `dashboard-config-panel`
+  - `dashboard-widget-reset-button`
+  - `dashboard-widget-select`
+  - `dashboard-widget-add-button`
+  - `dashboard-widget-list`
+  - `dashboard-widget-move-up-button`
+  - `dashboard-widget-move-down-button`
+  - `dashboard-widget-toggle-button`
+  - `dashboard-widget-remove-button`
+  - `dashboard-widget-${widget.id}`
+  - `dashboard-widget-config-${widget.id}`
+- 수정된 파일:
+  - `osmu-frontend/src/components/dashboard/DashboardPage.vue`
+  - `osmu-frontend/src/views/HomeView.test.js`
+  - `osmu-frontend/e2e/lightweight-demo.spec.js`
+  - `dev-docs/worklog/main/worklog-main.md`
+- 관련 파일:
+  - `osmu-frontend/src/views/HomeView.vue`
+  - `osmu-frontend/src/assets/main.css`
+- 검증 기록:
+  - `npm.cmd run test:unit`: 통과, 57개 테스트 성공.
+  - `node --check .\osmu-frontend\e2e\lightweight-demo.spec.js`: 통과.
+  - `git diff --check`: 통과, CRLF 변환 경고만 표시.
+  - `npm.cmd run build`: 통과, Vite production build 성공.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-local.ps1 -SkipDocker -SkipBackend -JavaHome C:\jdk-17`: 통과.
+- 코드 리뷰:
+  - 기존 대시보드 팔레트 상태 관리 로직은 변경하지 않아 회귀 위험을 낮춤.
+  - E2E가 `localStorage`의 dashboard 설정을 초기화하므로 이전 수동 설정에 영향받지 않음.
+  - 반복 버튼은 row scope 안에서 조회하도록 E2E를 작성해 동일 `data-testid` 반복 문제를 피함.
+- 결과: 대시보드 팔레트 기능을 브라우저 E2E로 검증할 수 있는 selector 계약과 spec 경로 보강 완료.
+- 후속 메모: 실제 Playwright 실행은 Docker/런타임 서버가 떠 있는 환경에서 수행 필요.
+- 추가 개발 필요:
+  - Browser E2E workflow에서 dashboard palette add/toggle 경로 실행 확인.
+  - 사용자가 원하는 추가 dashboard panel 종류가 생기면 `dashboardWidgetCatalog`와 metric renderer 확장.
+- 사용한 skill/plugin:
+  - `caveman` skill: ultra 수준으로 응답을 짧게 유지.
+
+### 2026-06-15 - 위험 액션 확인 모달 보강
+
+- 작업 시작 시간: 2026-06-15 01:00:00 +09:00
+- 작업 종료 시간: 2026-06-15 01:02:40 +09:00
+- 사용자 명령: 활성 목표인 프론트/백엔드 기능 개발과 프론트 페이지 완성을 계속 진행.
+- 명령 해석: 이미 존재하는 confirm modal을 더 넓게 적용해 운영 콘솔에서 위험 변경이 즉시 실행되지 않도록 UX 안전성을 높이라는 후속 작업으로 이해.
+- 요청 분석: bucket/object 삭제 같은 일부 위험 작업은 confirm modal을 사용하지만, multipart resume 삭제, object share link 해제/정리, bucket lifecycle XML 삭제, bucket tag 삭제는 즉시 실행되고 있었음. 운영 콘솔 관점에서 데이터/정책 상태를 바꾸는 작업은 명확한 확인 흐름이 필요함.
+- 작업 방식: 기존 confirm modal 인프라를 재사용하고 API wrapper는 변경하지 않음. confirm을 여는 시점에 bucket/key 값을 snapshot으로 잡아 사용자가 화면을 이동해도 다른 대상에 명령이 적용되지 않게 함.
+- 실행 내용:
+  - `HomeView.vue`의 위험 action handler와 confirm modal 흐름 확인.
+  - `handleDiscardMultipartResume`에 confirm modal 적용.
+  - `handleRevokeObjectShareLink`에 confirm modal 적용.
+  - `handleCleanupObjectShareLinks`에 confirm modal 적용.
+  - `handleDeleteBucketLifecycleXml`에 confirm modal 적용.
+  - `handleDeleteBucketTags`에 confirm modal 적용.
+  - `HomeView.test.js`에 새 confirm title static assertion 추가.
+- 구현 내용:
+  - Multipart resume local session 삭제 전 확인.
+  - 공유 링크 revoke 전 확인.
+  - 만료 공유 링크 cleanup 전 확인.
+  - Bucket lifecycle XML delete 전 확인.
+  - Bucket tags delete 전 확인.
+  - Confirm action에서 실패 시 modal이 닫히지 않도록 `false` 반환 유지.
+- 수정된 파일:
+  - `osmu-frontend/src/views/HomeView.vue`
+  - `osmu-frontend/src/views/HomeView.test.js`
+  - `dev-docs/worklog/main/worklog-main.md`
+- 관련 파일:
+  - `osmu-frontend/src/components/objects/ObjectPage.vue`
+  - `osmu-frontend/src/components/admin/BucketMetadataPanel.vue`
+- 검증 기록:
+  - `npm.cmd run test:unit`: 통과, 57개 테스트 성공.
+  - `node --check .\osmu-frontend\e2e\lightweight-demo.spec.js`: 통과.
+  - `git diff --check`: 통과, CRLF 변환 경고만 표시.
+  - `npm.cmd run build`: 통과, Vite production build 성공.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-local.ps1 -SkipDocker -SkipBackend -JavaHome C:\jdk-17`: 통과.
+- 코드 리뷰:
+  - UI 안전장치만 추가했으므로 backend API 계약은 변하지 않음.
+  - confirm action 내부에서 target bucket/key를 snapshot으로 사용해 confirm 후 대상이 바뀌는 위험을 줄임.
+  - pending 상태는 기존처럼 action 실행 중에만 설정하며 실패 시 modal 유지 흐름을 따름.
+- 결과: 위험 액션 confirm modal 적용 완료.
+- 후속 메모: 실제 browser click E2E가 가능해지면 confirm modal 표시/취소/확인 경로를 추가로 검증해야 함.
+- 추가 개발 필요:
+  - Playwright spec에 confirm cancel/submit flow 추가.
+  - Dashboard widget remove도 운영 정책상 필요하면 confirm 대상에 포함할 수 있음.
+- 사용한 skill/plugin:
+  - `caveman` skill: ultra 수준으로 응답을 짧게 유지.
+
+### 2026-06-15 - Browser E2E confirm cancel/submit 경로 추가
+
+- 작업 시작 시간: 2026-06-15 01:03:00 +09:00
+- 작업 종료 시간: 2026-06-15 01:04:37 +09:00
+- 사용자 명령: 활성 목표인 프론트/백엔드 기능 개발과 프론트 페이지 완성을 계속 진행.
+- 명령 해석: 직전 작업에서 위험 액션 confirm modal을 확장했으므로, 실제 브라우저 E2E에서도 confirm cancel/submit 경로를 검증 가능하게 만들라는 후속 작업으로 이해.
+- 요청 분석: static selector 검증만으로는 confirm modal이 실제 클릭 flow에서 열리고 취소/확인이 동작하는지 확인하기 부족함. 빈 버킷 삭제는 별도 데이터 손실 없이 cancel과 submit 모두 검증할 수 있는 안전한 E2E 대상임.
+- 작업 방식: 기존 lightweight browser E2E의 admin click path 초반에 임시 삭제용 버킷을 하나 만들고, 삭제 cancel 후 row 유지, 삭제 submit 후 row 제거를 검증. 이후 기존 메인 bucket/object/upload/audit flow는 그대로 이어감.
+- 실행 내용:
+  - `lightweight-demo.spec.js` 확인.
+  - `deleteBucketName` 임시 버킷 추가.
+  - Storage 페이지에서 삭제용 버킷 생성.
+  - bucket row 안의 `bucket-delete-button` 클릭.
+  - confirm dialog가 bucket 이름을 포함하는지 확인.
+  - cancel 클릭 후 dialog 닫힘과 row 유지 확인.
+  - 다시 delete 클릭 후 submit 클릭.
+  - dialog 닫힘과 row 제거 확인.
+- 구현 내용:
+  - E2E에서 `confirm-dialog`, `confirm-cancel-button`, `confirm-submit-button` 실제 click path 검증 추가.
+  - 삭제용 버킷과 이후 업로드용 버킷을 분리해 main demo flow 영향 최소화.
+- 수정된 파일:
+  - `osmu-frontend/e2e/lightweight-demo.spec.js`
+  - `dev-docs/worklog/main/worklog-main.md`
+- 관련 파일:
+  - `osmu-frontend/src/views/HomeView.vue`
+  - `osmu-frontend/src/components/storage/StoragePage.vue`
+- 검증 기록:
+  - `node --check .\osmu-frontend\e2e\lightweight-demo.spec.js`: 통과.
+  - `npm.cmd run test:unit`: 통과, 57개 테스트 성공.
+  - `git diff --check`: 통과, CRLF 변환 경고만 표시.
+  - `npm.cmd run build`: 통과, Vite production build 성공.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-local.ps1 -SkipDocker -SkipBackend -JavaHome C:\jdk-17`: 통과.
+- 코드 리뷰:
+  - 삭제용 버킷은 비어 있는 상태로 삭제하므로 backend delete 정책과 맞음.
+  - cancel 검증 후 동일 row에서 다시 submit을 수행해 confirm modal 재진입도 함께 검증됨.
+  - 실제 Playwright 실행은 runtime이 필요하지만 spec 문법과 selector 계약은 현재 검증 완료.
+- 결과: Browser E2E에 confirm cancel/submit 경로 추가 완료.
+- 후속 메모: Docker/서버 실행 가능 환경에서 실제 Playwright를 실행해야 최종 클릭 증거가 생김.
+- 추가 개발 필요:
+  - `scripts/start-local-demo.ps1 -SeedDemo -VerifyDemo` 후 Browser E2E 실행.
+  - object/share/lifecycle confirm 경로도 필요 시 별도 E2E로 확장.
+- 사용한 skill/plugin:
+  - `caveman` skill: ultra 수준으로 응답을 짧게 유지.
+
+### 2026-06-15 - 작업 성공 피드백 UX 추가
+
+- 작업 시작 시간: 2026-06-15 01:05:00 +09:00
+- 작업 종료 시간: 2026-06-15 01:08:30 +09:00
+- 사용자 명령: 활성 목표인 프론트/백엔드 기능 개발과 프론트 페이지 완성을 계속 진행.
+- 명령 해석: 현재 콘솔은 오류 alert만 있고 성공/완료 피드백이 부족하므로, 사용자가 데모 중 각 작업 결과를 즉시 알 수 있게 성공 상태 메시지를 추가하라는 후속 작업으로 이해.
+- 요청 분석: 운영 콘솔에서 버킷 생성, 업로드, 정책 저장, 공유 링크 생성 같은 작업이 완료되어도 화면상 명확한 완료 메시지가 없으면 실제 데모 사용성이 낮음. 성공 alert는 프론트 완성도와 E2E 검증 가능성을 동시에 올림.
+- 작업 방식: 기존 error alert와 동일한 상단 workspace 영역에 `status-alert`를 추가. `runAction` 시작 시 기존 성공 메시지를 지우고, 오류 발생 시 성공 메시지를 함께 지우도록 해 stale success가 남지 않게 함.
+- 실행 내용:
+  - `HomeView.vue`의 error alert, `runAction`, 주요 action handler 확인.
+  - `statusMessage` ref 추가.
+  - `setStatusMessage`, `clearStatusMessage` helper 추가.
+  - 상단 workspace에 `data-testid="status-alert"` 성공 alert 추가.
+  - 주요 action 성공 시 완료 메시지 연결.
+  - `main.css`에 success alert 스타일 추가.
+  - selector 테스트와 E2E bucket create/delete path에 `status-alert` 확인 추가.
+- 구현 내용:
+  - 로그인/로그아웃 완료 메시지.
+  - 버킷 생성/삭제/동기화 완료 메시지.
+  - object upload/download/tag/share/version/trash/restore/purge 완료 메시지.
+  - access key, bucket permission, bucket lifecycle/tags, object share policy, quota, lifecycle rule, retention, org/user 생성 및 상태 변경 완료 메시지.
+  - 오류 발생 시 status message 자동 제거.
+- 수정된 파일:
+  - `osmu-frontend/src/views/HomeView.vue`
+  - `osmu-frontend/src/assets/main.css`
+  - `osmu-frontend/src/views/HomeView.test.js`
+  - `osmu-frontend/e2e/lightweight-demo.spec.js`
+  - `dev-docs/worklog/main/worklog-main.md`
+- 관련 파일:
+  - `osmu-frontend/src/components/dashboard/DashboardPage.vue`
+  - `osmu-frontend/src/components/storage/StoragePage.vue`
+  - `osmu-frontend/src/components/objects/ObjectPage.vue`
+  - `osmu-frontend/src/components/admin/AdminPage.vue`
+- 검증 기록:
+  - `npm.cmd run test:unit`: 통과, 57개 테스트 성공.
+  - `node --check .\osmu-frontend\e2e\lightweight-demo.spec.js`: 통과.
+  - `git diff --check`: 통과, CRLF 변환 경고만 표시.
+  - `npm.cmd run build`: 통과, Vite production build 성공.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-local.ps1 -SkipDocker -SkipBackend -JavaHome C:\jdk-17`: 통과.
+- 코드 리뷰:
+  - 성공 메시지는 API 계약을 바꾸지 않는 UI layer 변경이라 backend 영향 없음.
+  - `runAction` 시작 시 status를 지워 오래된 완료 메시지가 다음 작업 중 남는 문제를 방지함.
+  - `setStatusMessage`가 error 상태를 정리해 success/error alert가 동시에 떠서 혼란스러운 상태를 줄임.
+  - 메시지 payload는 없을 수 있는 `result.data`에 fallback을 둬 런타임 안전성을 확보함.
+- 결과: 주요 작업 성공 피드백 UX 추가 완료.
+- 후속 메모: 실제 브라우저 환경에서 status alert 표시 타이밍과 위치를 시각 확인해야 함.
+- 추가 개발 필요:
+  - Playwright 실제 실행으로 `status-alert` 표시 확인.
+  - 필요 시 자동 dismiss 또는 close 버튼 추가.
+- 사용한 skill/plugin:
+  - `caveman` skill: ultra 수준으로 응답을 짧게 유지.
+
+### 2026-06-14 - Admin dashboard summary API와 최근 활동 패널 추가
+
+- 작업 시작 시간: 2026-06-14 23:43:00 +09:00
+- 작업 종료 시간: 2026-06-14 23:52:08 +09:00
+- 사용자 명령: 프론트, 백엔드 기능 개발을 진행하고 추가적으로 프론트 페이지를 완성하라는 목표를 이어서 수행.
+- 명령 해석: 기존 페이지 분리/대시보드 팔레트 작업 다음 단계로, 프론트 대시보드가 더 완성된 운영 화면처럼 보이도록 backend 집계 API와 dashboard 활동 패널을 추가하라는 작업으로 인식.
+- 요청 분석: 현재 프론트는 사용량, 상태, 보존 정책, 감사 로그를 여러 API에서 개별 조회하고 있었음. B2B 운영 콘솔 관점에서는 대시보드 첫 화면에 필요한 핵심 상태를 한 번에 가져오는 summary API와 최근 활동 표시가 필요함.
+- 작업 방식: 기존 `AdminController`에 이미 usage/system/audit/retention 의존성이 모여 있어 새 컨트롤러를 만들지 않고 `/api/admin/dashboard/summary`를 추가함. 프론트는 summary API를 우선 사용하되 실패하면 기존 개별 API fallback을 유지하도록 작성함.
+- 실행 내용:
+  - 현재 git 상태, frontend/backend 구조, `HomeView.vue`, `api.js`, admin controller/test 파일 확인.
+  - `DashboardSummaryResponse`, `DashboardSystemStatusResponse` record 추가.
+  - `AdminController`에 dashboard summary endpoint, usage/system snapshot helper 추가.
+  - Frontend API client에 `getDashboardSummary()` 추가.
+  - `HomeView.vue`에서 admin dashboard summary를 먼저 읽고 usage/health/retention/recent audit log 상태에 반영.
+  - Dashboard에 `Recent Activity` 패널 추가.
+  - Frontend selector/API wrapper test와 backend MockMvc test 추가.
+- 구현 내용:
+  - `GET /api/admin/dashboard/summary`는 usage, system status, retention status, recent audit log page, generatedAt을 반환.
+  - `GET /api/admin/system/status` 응답에 `metadataEngine`, `storageEngine`도 포함.
+  - Dashboard 최근 활동 패널은 최근 감사 로그 5개를 보여주고 Audit 페이지 이동 링크를 제공.
+  - Summary API가 실패해도 기존 `getUsage`, `getObjectRetentionStatus`, `getAuditLogs` 흐름으로 fallback 가능.
+  - `DRILL_PENDING` 상태를 warning/mock badge로 보이도록 status class 보정.
+- 수정된 파일:
+  - `osmu-backend/src/main/java/com/example/osmu/admin/AdminController.java`
+  - `osmu-backend/src/main/java/com/example/osmu/admin/DashboardSummaryResponse.java`
+  - `osmu-backend/src/main/java/com/example/osmu/admin/DashboardSystemStatusResponse.java`
+  - `osmu-backend/src/test/java/com/example/osmu/admin/AdminDashboardSummaryControllerTest.java`
+  - `osmu-frontend/src/services/api.js`
+  - `osmu-frontend/src/services/api-query.test.js`
+  - `osmu-frontend/src/views/HomeView.vue`
+  - `osmu-frontend/src/views/HomeView.test.js`
+  - `osmu-frontend/src/assets/main.css`
+  - `dev-docs/worklog/main/worklog-main.md`
+- 관련 파일:
+  - `osmu-backend/src/main/java/com/example/osmu/admin/UsageResponse.java`
+  - `osmu-backend/src/main/java/com/example/osmu/admin/ObjectRetentionStatusResponse.java`
+  - `osmu-backend/src/main/java/com/example/osmu/audit/AuditLogService.java`
+- 검증 기록:
+  - `npm.cmd run test:unit`: 통과, 57개 테스트 PASS.
+  - `.\gradlew.bat --no-daemon test`: 최초 실행은 `JAVA_HOME` 오류와 Gradle distribution 네트워크 제한으로 실패. `JAVA_HOME=C:\jdk-17` 지정 및 네트워크 승인 후 재실행 통과.
+  - `npm.cmd run build`: 통과.
+  - `git diff --check`: 오류 없음. CRLF 변환 warning만 있음.
+- 코드 리뷰:
+  - Summary API가 기존 로직을 재사용해 중복 비즈니스 규칙을 크게 만들지 않음.
+  - Audit log는 `ListResponse`로 반환해 next cursor를 보존하므로 Audit 페이지에서 추가 로드 흐름이 끊기지 않음.
+  - Frontend는 summary 실패 시 fallback을 유지하므로 배포 중 backend/frontend 버전 차이가 나도 대시보드가 완전히 깨질 가능성이 낮음.
+  - 아직 Backup readiness는 기존 API를 별도로 호출하므로 dashboard summary의 완전한 단일 호출화는 다음 단계로 남음.
+- 결과: Admin dashboard summary API와 프론트 최근 활동 패널 구현 및 검증 완료.
+- 후속 메모:
+  - 다음 단계에서는 Backup readiness까지 summary service로 묶거나 별도 `DashboardService`로 controller 책임을 줄이는 것이 좋음.
+  - 대시보드 팔레트별 데이터 refresh 주기와 panel drag/drop 저장 기능은 아직 없음.
+  - 실제 원격 배포는 이번 작업에서 수행하지 않음.
+- 추가 개발 필요:
+  - Dashboard summary에 backup readiness, object share analytics, quota alert 요약 포함.
+  - 페이지별 컴포넌트 분리로 `HomeView.vue` 비대화 해소.
+  - Browser/E2E로 dashboard/activity panel 렌더링 확인.
+- 사용한 skill/plugin:
+  - `Workspace Dependencies`: 로컬 runtime/JDK 확인 과정에서 사용.
+
+### 2026-06-14 - Dashboard summary 확장과 공유/쿼터 운영 패널 추가
+
+- 작업 시작 시간: 2026-06-14 23:53:00 +09:00
+- 작업 종료 시간: 2026-06-14 23:57:56 +09:00
+- 사용자 명령: 프론트, 백엔드 기능 개발을 계속 진행하고 프론트 페이지 완성도를 높이라는 지속 목표를 수행.
+- 명령 해석: 직전 작업에서 만든 dashboard summary API를 더 실전형으로 확장하고, 프론트 대시보드에 운영자가 바로 볼 수 있는 공유 링크/쿼터 상태 패널을 추가하라는 작업으로 인식.
+- 요청 분석: 기존 summary는 usage/system/retention/audit 중심이라 B2B 운영 대시보드에서 중요한 backup readiness, share link 상태, quota alert를 한눈에 보기 부족했음. 기존 별도 API 기능을 summary에 묶으면 대시보드 초기 상태 로딩과 화면 완성도가 좋아짐.
+- 작업 방식: 새로운 도메인 로직을 만들지 않고 기존 backup/share/quota 데이터를 요약해 dashboard summary 응답에 추가. 프론트는 summary 응답을 기존 상태 객체에 반영하고, 실패 시 기존 API fallback을 유지.
+- 실행 내용:
+  - `AdminBackupStatusController`, `AdminObjectSharePolicyController`, `AdminQuotaPolicyController`, 관련 response/service 확인.
+  - `DashboardQuotaSummaryResponse` 추가.
+  - `DashboardSummaryResponse`에 backup, shareAnalytics, quota 필드 추가.
+  - `AdminController`에서 backup status, share analytics, quota summary snapshot helper 구현.
+  - Frontend dashboard widget catalog에 `sharing`, `quota` 팔레트 추가.
+  - Dashboard에 `공유 링크 운영 상태`, `쿼터 정책 경보` 운영 패널 추가.
+  - Summary 응답 적용 함수와 quota percent formatter 추가.
+  - Frontend selector test와 backend summary test 기대값 갱신.
+- 구현 내용:
+  - `GET /api/admin/dashboard/summary`가 backup readiness, share analytics, quota alert summary까지 반환.
+  - 공유 링크 패널은 active/total/download/protection/recent link 상태를 표시.
+  - 쿼터 패널은 policy count, warning count, exhausted count, used/quota, top policy 사용률을 표시.
+  - 대시보드 팔레트에서 공유/쿼터 카드를 켜고 끌 수 있음.
+  - Summary 성공 시 `loadBackupStatus`, `refreshObjectShareAnalytics`, `loadRetentionStatus`, `handleLoadAuditLogs` 중복 호출을 줄임.
+- 수정된 파일:
+  - `osmu-backend/src/main/java/com/example/osmu/admin/AdminController.java`
+  - `osmu-backend/src/main/java/com/example/osmu/admin/DashboardSummaryResponse.java`
+  - `osmu-backend/src/main/java/com/example/osmu/admin/DashboardQuotaSummaryResponse.java`
+  - `osmu-backend/src/test/java/com/example/osmu/admin/AdminDashboardSummaryControllerTest.java`
+  - `osmu-frontend/src/views/HomeView.vue`
+  - `osmu-frontend/src/views/HomeView.test.js`
+  - `osmu-frontend/src/assets/main.css`
+  - `dev-docs/worklog/main/worklog-main.md`
+- 관련 파일:
+  - `osmu-backend/src/main/java/com/example/osmu/admin/AdminBackupStatusController.java`
+  - `osmu-backend/src/main/java/com/example/osmu/admin/AdminObjectSharePolicyController.java`
+  - `osmu-backend/src/main/java/com/example/osmu/admin/AdminQuotaPolicyController.java`
+  - `osmu-backend/src/main/java/com/example/osmu/quota/QuotaPolicyService.java`
+- 검증 기록:
+  - `npm.cmd run test:unit`: 통과, 57개 테스트 PASS.
+  - `.\gradlew.bat --no-daemon test`: sandbox 네트워크 차단으로 최초 실패 후, Gradle distribution 다운로드 승인 실행에서 통과.
+  - `npm.cmd run build`: 통과.
+  - `git diff --check`: 오류 없음. CRLF 변환 warning만 있음.
+- 코드 리뷰:
+  - Controller에 summary helper가 늘어나 기능은 빨리 붙었지만, 다음에는 `DashboardSummaryService`로 분리하는 편이 유지보수에 좋음.
+  - Share/quota summary는 기존 repository/service를 재사용해 계산 기준이 기존 admin API와 어긋날 가능성을 낮춤.
+  - Frontend summary fallback을 유지해서 backend API 버전 차이에도 dashboard가 완전히 깨지지 않음.
+  - 대시보드의 visual/UX 완성도는 상승했지만 `HomeView.vue`는 더 커져서 컴포넌트 분리가 필요함.
+- 결과: Dashboard summary와 프론트 대시보드가 backup/share/quota 운영 정보를 포함하도록 확장 완료.
+- 후속 메모:
+  - 다음 작업은 `HomeView.vue`를 `DashboardPage`, `StoragePage`, `ObjectsPage`, `AdminPage`, `AuditPage` 또는 하위 panel 컴포넌트로 나누는 것이 적절함.
+  - dashboard panel drag/drop, refresh interval, 사용자별 server-side layout 저장은 아직 없음.
+  - 이번 작업은 로컬 검증만 수행했고 원격 재배포는 하지 않음.
+- 추가 개발 필요:
+  - Dashboard summary service 분리.
+  - Frontend 페이지/패널 컴포넌트 분리.
+  - Browser/E2E로 dashboard share/quota panel 실제 렌더링 확인.
+- 사용한 skill/plugin:
+  - 추가 사용 없음.
+
+### 2026-06-15 - Dashboard 운영 패널 컴포넌트 분리
+
+- 작업 시작 시간: 2026-06-14 23:58:30 +09:00
+- 작업 종료 시간: 2026-06-15 00:01:28 +09:00
+- 사용자 명령: 프론트, 백엔드 기능 개발을 계속 진행하고 프론트 페이지 완성도를 높이라는 지속 목표를 수행.
+- 명령 해석: 직전 작업으로 추가된 dashboard share/quota/activity 패널을 `HomeView.vue` 내부에 계속 쌓지 말고 컴포넌트로 분리해 프론트 구조를 개선하라는 작업으로 인식.
+- 요청 분석: `HomeView.vue`가 dashboard, storage, object, admin, audit 화면을 모두 포함해 비대해지고 있음. 전체 분리는 큰 작업이므로, 먼저 신규 운영 패널 3개를 표시 전용 컴포넌트로 분리해 위험을 낮추면서 구조 개선을 시작함.
+- 작업 방식: 상태/비즈니스 로직은 `HomeView.vue`에 유지하고, 마크업 중심인 `Recent Activity`, `Share Links`, `Quota Alerts` 패널만 `src/components/dashboard` 하위 컴포넌트로 이동. selector 테스트는 HomeView와 dashboard 컴포넌트 소스를 함께 검사하도록 변경.
+- 실행 내용:
+  - 현재 git 상태와 `HomeView.vue` 대시보드 구조 확인.
+  - `DashboardSharePanel.vue` 추가.
+  - `DashboardQuotaPanel.vue` 추가.
+  - `DashboardActivityPanel.vue` 추가.
+  - `HomeView.vue`에서 세 패널 마크업 제거 후 컴포넌트 연결.
+  - `HomeView.test.js` selector source aggregation 방식으로 수정.
+- 구현 내용:
+  - 공유 링크 패널은 `analytics`, `formatDateTime` props로 렌더링.
+  - 쿼터 패널은 `quota`, `formatBytes`, `quotaPolicyPercent` props로 렌더링.
+  - 최근 활동 패널은 `logs`, `formatDateTime` props로 렌더링.
+  - 기존 `data-testid`는 새 컴포넌트 안에 유지해 E2E selector 계약을 보존.
+- 수정된 파일:
+  - `osmu-frontend/src/components/dashboard/DashboardSharePanel.vue`
+  - `osmu-frontend/src/components/dashboard/DashboardQuotaPanel.vue`
+  - `osmu-frontend/src/components/dashboard/DashboardActivityPanel.vue`
+  - `osmu-frontend/src/views/HomeView.vue`
+  - `osmu-frontend/src/views/HomeView.test.js`
+  - `dev-docs/worklog/main/worklog-main.md`
+- 관련 파일:
+  - `osmu-frontend/src/assets/main.css`
+  - `osmu-frontend/src/services/api.js`
+- 검증 기록:
+  - `npm.cmd run test:unit`: 통과, 57개 테스트 PASS.
+  - `npm.cmd run build`: 통과.
+  - `.\gradlew.bat --no-daemon test`: sandbox 네트워크 차단으로 최초 실패 후, Gradle distribution 다운로드 승인 실행에서 통과.
+  - `git diff --check`: 오류 없음. CRLF 변환 warning만 있음.
+- 코드 리뷰:
+  - 표시 전용 패널만 분리해 상태 동기화 리스크가 낮음.
+  - `HomeView.vue`에 props 전달이 남아 있지만, dashboard 화면을 컴포넌트화하는 첫 단위가 생겼음.
+  - 테스트가 여러 SFC source를 함께 확인해 selector 계약을 계속 감시함.
+  - 아직 storage/object/admin/audit 영역은 `HomeView.vue` 안에 있어 다음 분리 대상임.
+- 결과: Dashboard 신규 운영 패널 3개 컴포넌트 분리 완료.
+- 후속 메모:
+  - 다음 작업은 dashboard config/metrics/backup/retention 패널도 묶어 `DashboardPage.vue`로 분리하는 것이 적절함.
+  - 이후 storage/object/admin/audit 섹션도 page component로 나눠야 유지보수가 쉬워짐.
+- 추가 개발 필요:
+  - Dashboard page 전체 컴포넌트화.
+  - Storage/Object/Admin/Audit page component 분리.
+  - Browser/E2E로 분리 후 렌더링 확인.
+- 사용한 skill/plugin:
+  - 추가 사용 없음.
+
+### 2026-06-15 - DashboardPage 컴포넌트 분리
+
+- 작업 시작 시간: 2026-06-15 00:02:00 +09:00
+- 작업 종료 시간: 2026-06-15 00:06:02 +09:00
+- 사용자 명령: 프론트, 백엔드 기능 개발을 계속 진행하고 프론트 페이지 완성도를 높이라는 지속 목표를 수행.
+- 명령 해석: 직전 작업에서 개별 운영 패널만 분리했으므로, 다음 단계로 dashboard 화면 전체를 `HomeView.vue`에서 분리해 프론트 구조를 더 정돈하라는 작업으로 인식.
+- 요청 분석: `HomeView.vue`에 dashboard config, metrics, ops grid가 남아 있어 여전히 페이지 조립자 역할보다 화면 전체 구현 파일에 가까웠음. Dashboard 화면 전체를 컴포넌트로 묶으면 이후 Storage/Object/Admin/Audit도 같은 방식으로 분리할 기반이 생김.
+- 작업 방식: `DashboardPage.vue`를 새로 만들고 dashboard config, metrics grid, backup/selected/retention ops grid를 이동. 기존 하위 `DashboardSharePanel`, `DashboardQuotaPanel`, `DashboardActivityPanel`은 `DashboardPage` 내부에서 사용. 상태와 API 호출 로직은 아직 `HomeView.vue`에 유지해 리스크를 낮춤.
+- 실행 내용:
+  - `HomeView.vue` dashboard section과 기존 dashboard components 확인.
+  - `osmu-frontend/src/components/dashboard/DashboardPage.vue` 추가.
+  - `HomeView.vue`의 dashboard config/metrics/ops section 제거 후 `DashboardPage`로 대체.
+  - `DashboardPage`에 필요한 props와 emits 연결.
+  - `HomeView.test.js` selector source 목록에 `DashboardPage.vue` 추가.
+- 구현 내용:
+  - Dashboard widget 설정, metrics grid, backup/selected workspace/retention ops panel이 `DashboardPage.vue`로 이동.
+  - `DashboardPage`는 `update-widget-to-add`, `reset-dashboard-widgets`, `add-dashboard-widget`, `move-dashboard-widget`, `toggle-dashboard-widget`, `remove-dashboard-widget`, `load-selected-bucket-details`, `run-object-retention-purge` 이벤트를 부모로 전달.
+  - `HomeView.vue`는 dashboard route에서 `DashboardPage`를 렌더링하고 기존 상태/함수를 props/events로 연결.
+  - 기존 `data-testid` 계약은 유지.
+- 수정된 파일:
+  - `osmu-frontend/src/components/dashboard/DashboardPage.vue`
+  - `osmu-frontend/src/views/HomeView.vue`
+  - `osmu-frontend/src/views/HomeView.test.js`
+  - `dev-docs/worklog/main/worklog-main.md`
+- 관련 파일:
+  - `osmu-frontend/src/components/dashboard/DashboardSharePanel.vue`
+  - `osmu-frontend/src/components/dashboard/DashboardQuotaPanel.vue`
+  - `osmu-frontend/src/components/dashboard/DashboardActivityPanel.vue`
+- 검증 기록:
+  - `npm.cmd run test:unit`: 통과, 57개 테스트 PASS.
+  - `npm.cmd run build`: 통과.
+  - `git diff --check`: 오류 없음. CRLF 변환 warning만 있음.
+  - `.\gradlew.bat --no-daemon test`: 통과. 이번 변경은 frontend 중심이지만 전체 작업트리 backend 검증 유지 목적으로 실행.
+- 코드 리뷰:
+  - Dashboard 화면이 독립 컴포넌트가 되어 `HomeView.vue`의 dashboard 책임이 줄어듦.
+  - props가 많아 아직 이상적인 구조는 아니며, 다음 단계에서 dashboard state/actions를 composable 또는 store로 분리하면 더 좋아짐.
+  - 기능 동작은 기존 부모 상태를 그대로 써서 regression 위험을 낮춤.
+  - Fragment root를 쓰는 Vue 3 SFC라 route 화면에 여러 dashboard section을 그대로 렌더링할 수 있음.
+- 결과: Dashboard 화면 전체 컴포넌트 분리 완료.
+- 후속 메모:
+  - 다음 작업은 Storage/Object/Admin/Audit 화면도 page component로 분리.
+  - Dashboard props 수를 줄이기 위해 `useDashboardState` 또는 page-specific store 도입 검토.
+- 추가 개발 필요:
+  - StoragePage/ObjectPage/AdminPage/AuditPage 분리.
+  - Dashboard 상태/action composable 분리.
+  - Browser/E2E로 분리 후 실제 화면 클릭 검증.
+- 사용한 skill/plugin:
+  - 추가 사용 없음.
+
+### 2026-06-15 - StoragePage 컴포넌트 분리
+
+- 작업 시작 시간: 2026-06-15 00:07:00 +09:00
+- 작업 종료 시간: 2026-06-15 00:11:10 +09:00
+- 사용자 명령: 프론트, 백엔드 기능 개발을 계속 진행하고 프론트 페이지 완성도를 높이라는 지속 목표를 수행.
+- 명령 해석: DashboardPage 분리 다음 단계로, Storage 화면의 버킷 관리 UI를 `HomeView.vue`에서 독립 page component로 분리하라는 작업으로 인식.
+- 요청 분석: Dashboard는 이미 `DashboardPage.vue`로 분리됐지만 Storage/Object 섹션은 아직 `HomeView.vue`에 남아 있었음. StoragePage를 먼저 분리하면 page별 구조가 더 명확해지고 ObjectPage 분리도 쉬워짐.
+- 작업 방식: 버킷 생성/목록/동기화/삭제 UI만 `StoragePage.vue`로 이동. 상태 객체와 API action은 부모인 `HomeView.vue`에 유지하고, page component는 props와 emits로 표시 및 이벤트 전달만 담당하도록 구성.
+- 실행 내용:
+  - `HomeView.vue`의 Storage/Object 섹션 구조 확인.
+  - `osmu-frontend/src/components/storage/StoragePage.vue` 추가.
+  - `HomeView.vue`에서 storage route일 때 `StoragePage`를 렌더링하도록 변경.
+  - 기존 objects route section은 object panel만 남기도록 정리.
+  - `HomeView.test.js` selector source 목록에 `StoragePage.vue` 추가.
+- 구현 내용:
+  - `StoragePage`는 `buckets`, `bucketRows`, `bucketForm`, `canCreateOrgBucket`, `isAdmin`, `organizations`, `isLoggedIn`, `selectedBucket` props를 받음.
+  - `create-bucket`, `select-bucket`, `sync-bucket`, `delete-bucket` 이벤트를 부모로 전달.
+  - 기존 bucket 관련 `data-testid` 계약 유지.
+- 수정된 파일:
+  - `osmu-frontend/src/components/storage/StoragePage.vue`
+  - `osmu-frontend/src/views/HomeView.vue`
+  - `osmu-frontend/src/views/HomeView.test.js`
+  - `dev-docs/worklog/main/worklog-main.md`
+- 관련 파일:
+  - `osmu-frontend/src/components/dashboard/DashboardPage.vue`
+  - `osmu-frontend/src/assets/main.css`
+- 검증 기록:
+  - `npm.cmd run test:unit`: 통과, 57개 테스트 PASS.
+  - `npm.cmd run build`: 최초 1회 Vite/Rolldown Windows 경로 산출 오류로 실패했으나 즉시 단독 재실행 통과.
+  - `git diff --check`: 오류 없음. CRLF 변환 warning만 있음.
+  - `.\gradlew.bat --no-daemon test`: 통과. 이번 변경은 frontend 중심이지만 전체 작업트리 backend 검증 유지 목적으로 실행.
+  - `npm.cmd run dev -- --host 127.0.0.1 --port 5174`와 병렬 `Invoke-WebRequest http://127.0.0.1:5174/`: HTTP 200 확인. 명령은 검증용 timeout으로 종료됨.
+  - Browser plugin 연결은 `CreateProcessAsUserW failed: 5` 권한 오류로 실패해 실제 화면 스크린샷 검증은 미수행.
+- 코드 리뷰:
+  - Storage UI가 page component로 분리되어 `HomeView.vue`의 책임이 한 단계 줄어듦.
+  - `bucketForm` 객체를 props로 전달해 nested v-model을 유지했으므로 기능 변경 위험은 낮지만, 장기적으로는 form state를 StoragePage 내부 또는 store/composable로 옮기는 편이 더 좋음.
+  - ObjectPage가 아직 남아 있어 storage/object 경계는 완전히 정리되지 않음.
+- 결과: StoragePage 컴포넌트 분리 완료.
+- 후속 메모:
+  - 다음 작업은 ObjectPage 분리.
+  - Browser plugin 권한 문제가 해결되면 실제 dashboard/storage 화면 스크린샷 확인 필요.
+- 추가 개발 필요:
+  - ObjectPage/AdminPage/AuditPage 분리.
+  - Storage form state emit 기반 정리 또는 composable 분리.
+  - Browser/E2E 시각 검증 재시도.
+- 사용한 skill/plugin:
+  - `browser:control-in-app-browser`: 로컬 화면 검증을 시도했으나 Windows 권한 오류로 연결 실패.
+
+### 2026-06-15 - ObjectPage 컴포넌트 분리
+
+- 작업 시작 시간: 2026-06-15 00:13:00 +09:00
+- 작업 종료 시간: 2026-06-15 00:18:06 +09:00
+- 사용자 명령: 한 페이지에 모든 기능과 정보가 나오지 않게 대시보드를 만들고, 페이지별로 기능을 나누며, DB/MinIO 연결 데모와 대시보드 패널 교체 기능까지 진행하라는 요청의 후속 작업.
+- 명령 해석: 기존 `HomeView.vue`에 남아 있던 Object 기능 영역을 독립 페이지 컴포넌트로 분리해 Storage/Dashboard와 같은 페이지 단위 구조로 정리하라는 작업으로 이해.
+- 요청 분석: Dashboard와 Storage는 이미 분리되어 있으나 Object 탐색/업로드/공유/버전 UI가 여전히 `HomeView.vue`에 커서 유지보수가 어려움. 상태와 API 로직은 부모에 유지하고 화면만 child 컴포넌트로 빼면 기능 안정성을 유지하면서 페이지 구조를 정리할 수 있음.
+- 작업 방식:
+  - 객체 UI 범위와 관련 상태/핸들러 확인.
+  - `ObjectPage.vue` 신규 생성.
+  - `HomeView.vue`에서 Object 섹션을 props/event 기반 컴포넌트 호출로 대체.
+  - 테스트 selector 스캔 대상에 신규 컴포넌트 추가.
+- 실행 내용:
+  - `rg`와 `Get-Content`로 Object 섹션, 관련 함수, 테스트 스캔 파일 확인.
+  - `osmu-frontend/src/components/objects` 디렉터리 생성.
+  - 객체 필터, 업로드, multipart resume, 태그, 테이블, 메타데이터, 공유 링크, 버전 UI를 `ObjectPage.vue`로 이동.
+  - primitive 상태는 update event로 부모에 반영하고, form 객체는 기존 `StoragePage.vue`와 같은 nested prop 방식 유지.
+  - `HomeView.vue`는 `ObjectPage` import 및 props/event wiring만 담당하도록 정리.
+- 구현 내용:
+  - Object 페이지가 독립 컴포넌트로 분리됨.
+  - 객체 목록 검색/필터/페이지 크기 변경 이벤트 유지.
+  - 업로드/취소/재시도/multipart resume 이벤트 유지.
+  - 오브젝트 다운로드, URL 생성, 태그 수정, 삭제/복구/purge 이벤트 유지.
+  - 메타데이터 상세 닫기와 버전 닫기 이벤트 추가.
+  - 공유 링크 password/IP 입력은 child에서 update event로 부모 ref에 반영.
+- 수정된 파일:
+  - `osmu-frontend/src/components/objects/ObjectPage.vue`
+  - `osmu-frontend/src/views/HomeView.vue`
+  - `osmu-frontend/src/views/HomeView.test.js`
+  - `dev-docs/worklog/main/worklog-main.md`
+- 관련 파일:
+  - `osmu-frontend/src/components/storage/StoragePage.vue`
+  - `osmu-frontend/src/components/dashboard/DashboardPage.vue`
+  - `osmu-frontend/src/assets/main.css`
+- 검증 기록:
+  - `npm.cmd run test:unit` 실행, 57개 테스트 통과.
+  - `npm.cmd run build` 실행, Vite production build 통과.
+  - `git diff --check` 실행, 공백 오류 없음. CRLF 변환 경고만 확인.
+  - `rg -n "ObjectPage|activePage === 'objects'|object-panel|close-object-metadata"`로 연결 및 selector 위치 확인.
+- 코드 리뷰:
+  - `HomeView.vue`의 Object UI 책임이 줄어 페이지 분리 방향과 맞음.
+  - Object 기능 로직은 부모에 남겨 API/상태 변경 리스크를 줄임.
+  - props/event 수가 많아졌으므로 다음 단계에서 Object 상태를 composable 또는 페이지 단위 controller로 추가 정리할 여지가 있음.
+  - `v-model` nested prop 방식은 기존 `StoragePage.vue`와 일관되지만, 장기적으로는 update event 또는 store 기반으로 정리 가능.
+- 결과: Object 기능 페이지 분리 완료. 프론트 테스트와 빌드 통과.
+- 후속 메모: 다음 분리 대상은 `AdminPage.vue`와 `AuditPage.vue`. 이후 실제 DB/MinIO 연결 데모 검증을 위한 실행 환경 정리가 필요함.
+- 추가 개발 필요:
+  - Admin 기능 페이지 분리.
+  - Audit 기능 페이지 분리.
+  - DB/MariaDB, MinIO 연결 데모 실행 경로 정리.
+  - 대시보드 패널 구성 저장 위치와 사용자별 설정 범위 확정.
+- 사용한 skill/plugin:
+  - `caveman` skill: 사용자 요청에 따라 ultra 압축 응답 유지.
+
+### 2026-06-15 - AuditPage 컴포넌트 분리
+
+- 작업 시작 시간: 2026-06-15 00:20:00 +09:00
+- 작업 종료 시간: 2026-06-15 00:21:22 +09:00
+- 사용자 명령: 페이지별로 기능을 나눠 표시하고 프론트 페이지 완성도를 높이라는 지속 목표의 후속 작업.
+- 명령 해석: `HomeView.vue`에 남아 있는 Audit 화면을 독립 page component로 분리하라는 작업으로 이해.
+- 요청 분석: Dashboard, Storage, Object가 분리된 상태에서 Audit만 inline으로 남아 있었음. Audit 화면은 상태 의존성이 작으므로 빠르게 분리해 페이지 구조를 더 일관되게 만들 수 있음.
+- 작업 방식:
+  - `AuditPage.vue` 신규 생성.
+  - 감사 로그 필터 form, 목록, 다음 로그 버튼을 child 컴포넌트로 이동.
+  - `auditFilter` 객체는 기존 패턴대로 nested `v-model` 유지.
+  - 조회/export/reset/next 동작은 event로 부모에 위임.
+- 실행 내용:
+  - `osmu-frontend/src/components/audit` 디렉터리 생성.
+  - `AuditPage.vue` 추가.
+  - `HomeView.vue`의 audit section을 `AuditPage` 호출로 대체.
+  - `HomeView.test.js` selector 스캔 대상에 `AuditPage.vue` 추가.
+- 구현 내용:
+  - Audit 페이지가 독립 컴포넌트로 분리됨.
+  - 기존 `data-testid` 계약 유지.
+  - 감사 로그 필터/CSV/reset/pagination 동작 wiring 유지.
+- 수정된 파일:
+  - `osmu-frontend/src/components/audit/AuditPage.vue`
+  - `osmu-frontend/src/views/HomeView.vue`
+  - `osmu-frontend/src/views/HomeView.test.js`
+  - `dev-docs/worklog/main/worklog-main.md`
+- 관련 파일:
+  - `osmu-frontend/src/components/objects/ObjectPage.vue`
+  - `osmu-frontend/src/components/storage/StoragePage.vue`
+  - `osmu-frontend/src/components/dashboard/DashboardPage.vue`
+- 검증 기록:
+  - `npm.cmd run test:unit` 실행, 57개 테스트 통과.
+  - `npm.cmd run build` 실행, Vite production build 통과.
+- 코드 리뷰:
+  - Audit 화면은 표시 책임만 child에 두고 데이터 로딩 로직은 부모에 유지해 변경 리스크가 낮음.
+  - `auditFilter`를 prop nested mutation으로 쓰는 구조는 기존 Storage/Object와 일관됨.
+  - 다음 단계에서 AdminPage까지 분리하면 `HomeView.vue`는 layout/router shell 역할에 가까워짐.
+- 결과: AuditPage 컴포넌트 분리 완료.
+- 후속 메모: 다음 대상은 AdminPage 분리. Admin은 props/event 수가 많으므로 기능 묶음별 하위 컴포넌트 분리가 더 적합할 수 있음.
+- 추가 개발 필요:
+  - AdminPage 분리.
+  - Admin 하위 패널 AccessKey/Permissions/Lifecycle/Policy/User 분리 검토.
+  - Browser/E2E 시각 검증 재시도.
+- 사용한 skill/plugin:
+  - `caveman` skill: 사용자 요청에 따라 ultra 압축 응답 유지.
+
+### 2026-06-15 - AdminPage 컴포넌트 분리
+
+- 작업 시작 시간: 2026-06-15 00:22:00 +09:00
+- 작업 종료 시간: 2026-06-15 00:28:05 +09:00
+- 사용자 명령: 프론트, 백엔드 기능 개발을 계속 진행하고 프론트 페이지 완성도를 높이라는 지속 목표를 수행.
+- 명령 해석: `HomeView.vue`에 마지막으로 크게 남아 있던 Admin 화면을 독립 page component로 분리해 라우트별 화면 구조를 완성하라는 작업으로 이해.
+- 요청 분석: Dashboard, Storage, Object, Audit는 분리됐지만 Admin은 access key, bucket permission, lifecycle, share policy, quota, organization, user 관리까지 모두 inline으로 남아 있었음. AdminPage 분리는 화면 구조 완성에 직접 연결됨.
+- 작업 방식:
+  - 기존 Admin 섹션과 사용하는 상태/핸들러 확인.
+  - `AdminPage.vue` 신규 생성.
+  - Admin 화면의 UI markup은 child로 이동하고, 상태/비즈니스 로직은 `HomeView.vue`에 유지.
+  - `HomeView.vue`는 props/event wiring만 담당하도록 변경.
+  - selector 테스트 스캔 대상에 신규 컴포넌트 추가.
+- 실행 내용:
+  - `git status`, `rg`, `Get-Content`로 Admin 섹션 범위와 의존성 확인.
+  - `osmu-frontend/src/components/admin` 디렉터리 생성.
+  - `AdminPage.vue` 추가.
+  - `HomeView.vue`의 admin inline section을 `AdminPage` 호출로 대체.
+  - `HomeView.test.js` sourceFiles에 `AdminPage.vue` 추가.
+- 구현 내용:
+  - Access Key 발급/스코프/비활성화 UI 분리.
+  - Bucket Permission 부여/회수 UI 분리.
+  - Bucket Lifecycle XML, Bucket Tags UI 분리.
+  - Share Policy, Share Analytics UI 분리.
+  - Quota Policy, Lifecycle Rule, Organization, User 관리 UI 분리.
+  - 기존 `data-testid`와 이벤트 흐름 유지.
+- 수정된 파일:
+  - `osmu-frontend/src/components/admin/AdminPage.vue`
+  - `osmu-frontend/src/views/HomeView.vue`
+  - `osmu-frontend/src/views/HomeView.test.js`
+  - `dev-docs/worklog/main/worklog-main.md`
+- 관련 파일:
+  - `osmu-frontend/src/components/dashboard/DashboardPage.vue`
+  - `osmu-frontend/src/components/storage/StoragePage.vue`
+  - `osmu-frontend/src/components/objects/ObjectPage.vue`
+  - `osmu-frontend/src/components/audit/AuditPage.vue`
+- 검증 기록:
+  - `npm.cmd run test:unit` 실행, 57개 테스트 통과.
+  - `npm.cmd run build` 실행, Vite production build 통과.
+  - `git diff --check` 실행, 공백 오류 없음. CRLF 변환 경고만 확인.
+  - `.\gradlew.bat --no-daemon test` 실행, sandbox 네트워크 차단으로 Gradle 배포본 다운로드 실패.
+  - 동일 Gradle 테스트를 escalated로 재실행, backend test 통과.
+- 코드 리뷰:
+  - `HomeView.vue`가 layout/router shell에 가까워져 프론트 페이지 구조가 훨씬 명확해짐.
+  - AdminPage는 props/event 수가 많아졌으므로 다음 단계에서 AccessKey/Permission/Policy 같은 하위 패널 컴포넌트로 나누면 더 좋음.
+  - form 객체는 기존 page component들과 동일하게 nested `v-model`을 유지해 기능 변경 리스크를 낮춤.
+  - backend 테스트까지 통과해 누적 backend 변경에도 현재 테스트 기준 회귀가 없음.
+- 결과: AdminPage 컴포넌트 분리 완료. 프론트/백엔드 테스트와 프론트 빌드 통과.
+- 후속 메모: 다음 단계는 page별 내부 패널 정리 또는 실제 MariaDB/MinIO 데모 환경 실행 검증.
+- 추가 개발 필요:
+  - Admin 하위 패널 컴포넌트 분리.
+  - page state/action composable 분리.
+  - MariaDB/MinIO 데모 환경 실행 및 UI 클릭 검증.
+  - Browser plugin 권한 문제 해결 후 시각 검증 재시도.
+- 사용한 skill/plugin:
+  - `caveman` skill: 사용자 요청에 따라 ultra 압축 응답 유지.
+
+### 2026-06-15 - Local Docker Demo 실행 스크립트 추가
+
+- 작업 시작 시간: 2026-06-15 00:29:00 +09:00
+- 작업 종료 시간: 2026-06-15 00:34:55 +09:00
+- 사용자 명령: 프론트, 백엔드 기능 개발을 계속 진행하고 프론트 페이지 완성도를 높이라는 지속 목표를 수행.
+- 명령 해석: 페이지 분리 이후 실제 MariaDB/MinIO 기반 데모를 쉽게 실행하고 검증할 수 있는 로컬 실행 경로를 보강하라는 작업으로 이해.
+- 요청 분석: `infra/local/docker-compose.yml`과 통합 smoke script는 이미 있으나, 사용자가 기능 데모를 보기 위해 컨테이너를 계속 띄워두는 start/stop 진입점이 부족했음. 빠른 실행 스크립트와 문서 연결이 필요함.
+- 작업 방식:
+  - 기존 local compose, env, local dev 문서, verify script 확인.
+  - full Docker demo stack start/stop script 추가.
+  - Docker daemon이 꺼져 있을 때 명확한 메시지를 출력하도록 처리.
+  - Docker config 권한 경고를 줄이기 위해 `.osmu-run/docker-config`를 `DOCKER_CONFIG`로 사용.
+  - README와 local infra 문서에 빠른 실행 명령 추가.
+- 실행 내용:
+  - `infra/local/docker-compose.yml`, `.env.example`, `application-local.yaml`, `dev-docs/local-dev-env.md`, `infra/local/README.md` 확인.
+  - `scripts/start-local-demo.ps1` 추가.
+  - `scripts/stop-local-demo.ps1` 추가.
+  - `README.md`가 UTF-16LE라 apply_patch가 읽지 못해 UTF-8로 기계 변환 후 apply_patch로 내용 교체.
+  - `infra/local/README.md`, `dev-docs/local-dev-env.md`, `dev-docs/document-index.md`에 start/stop 스크립트 문서화.
+- 구현 내용:
+  - `start-local-demo.ps1`은 `.env` 자동 생성, compose config 검증, Docker daemon 확인, `up -d --build`, service health wait, URL/계정 출력 수행.
+  - `stop-local-demo.ps1`은 compose down 수행, `-ResetData` 사용 시 volume 삭제 수행.
+  - Docker daemon이 꺼진 상태의 stop은 안전하게 no-op 메시지 출력.
+  - Docker daemon이 꺼진 상태의 start는 config 검증 후 명확한 오류로 중단.
+- 수정된 파일:
+  - `scripts/start-local-demo.ps1`
+  - `scripts/stop-local-demo.ps1`
+  - `README.md`
+  - `infra/local/README.md`
+  - `dev-docs/local-dev-env.md`
+  - `dev-docs/document-index.md`
+  - `dev-docs/worklog/main/worklog-main.md`
+- 관련 파일:
+  - `infra/local/docker-compose.yml`
+  - `infra/local/.env.example`
+  - `infra/local/minio-cors.json`
+  - `scripts/verify-docker-integration.ps1`
+  - `scripts/verify-local.ps1`
+- 검증 기록:
+  - PowerShell script parse check 통과.
+  - `docker compose --env-file .\infra\local\.env.example -f .\infra\local\docker-compose.yml config --quiet` 통과.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\stop-local-demo.ps1` 실행, Docker daemon off 상태에서 no-op 메시지로 정상 종료.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\start-local-demo.ps1 -EnvFile .\infra\local\.env.example -NoBuild -SkipWait -WaitTimeoutSeconds 1` 실행, compose config 검증 후 Docker daemon off 오류를 명확히 출력.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-local.ps1 -SkipDocker -JavaHome C:\jdk-17` 최초 실행은 Gradle distribution network 차단으로 실패.
+  - 동일 verify-local 명령을 escalated로 재실행, 통과.
+  - `git diff --check` 실행, 공백 오류 없음. CRLF 변환 경고만 확인.
+- 코드 리뷰:
+  - 데모 실행 경로가 `verify-docker-integration.ps1 -KeepRunning`보다 명확해짐.
+  - `start-local-demo.ps1`은 실제 health endpoint까지 기다려 사용자가 바로 브라우저로 확인할 수 있음.
+  - Docker daemon이 없는 현재 환경에서는 full stack 기동까지 검증하지 못했지만, compose config와 failure path는 확인함.
+  - README 인코딩이 UTF-16LE에서 UTF-8로 정리되어 이후 apply_patch 기반 유지보수가 가능해짐.
+- 결과: MariaDB/MinIO 기반 로컬 데모 start/stop 경로 추가 완료.
+- 후속 메모: Docker Desktop 실행 상태에서 `start-local-demo.ps1`로 실제 stack up과 UI 브라우저 검증을 진행해야 함.
+- 추가 개발 필요:
+  - Docker daemon available 환경에서 full demo up 검증.
+  - 실제 UI 로그인/버킷 생성/업로드 클릭 검증.
+  - 필요 시 seeded demo data script와 full Docker demo script 연결.
+- 사용한 skill/plugin:
+  - `caveman` skill: 사용자 요청에 따라 ultra 압축 응답 유지.
+
+### 2026-06-15 - Local Docker Demo Seed 경로 추가
+
+- 작업 시작 시간: 2026-06-15 00:35:00 +09:00
+- 작업 종료 시간: 2026-06-15 00:37:59 +09:00
+- 사용자 명령: 프론트, 백엔드 기능 개발을 계속 진행하고 프론트 페이지 완성도를 높이라는 지속 목표를 수행.
+- 명령 해석: Docker 기반 데모가 실제로 뜨면 사용자가 바로 기능을 볼 수 있도록 샘플 데이터 생성 경로를 추가하라는 작업으로 이해.
+- 요청 분석: `seed-lightweight-demo.ps1`는 이름은 lightweight지만 API 기반 seed라 Docker 데모에도 재사용 가능함. 별도 wrapper와 `start-local-demo.ps1 -SeedDemo` 옵션을 제공하면 MariaDB/MinIO stack 기동 후 포털에서 바로 확인할 데이터가 생김.
+- 작업 방식:
+  - 기존 seed/smoke script 확인.
+  - Docker local env에서 backend URL/admin 계정을 읽는 wrapper 추가.
+  - start script에서 선택적으로 seed를 호출하도록 연결.
+  - README/local infra/local dev 문서/문서 인덱스 갱신.
+- 실행 내용:
+  - `scripts/seed-lightweight-demo.ps1`, `scripts/verify-lightweight-demo.ps1`, `scripts/verify-docker-integration.ps1` 확인.
+  - `scripts/seed-local-demo.ps1` 추가.
+  - `scripts/start-local-demo.ps1`에 `-SeedDemo`, `-DemoPassword`, `-DemoOutputPath` 옵션 추가.
+  - `README.md`, `infra/local/README.md`, `dev-docs/local-dev-env.md`, `dev-docs/document-index.md`에 seed 명령 반영.
+- 구현 내용:
+  - `seed-local-demo.ps1`는 `infra/local/.env` 또는 `.env.example`에서 `BACKEND_PORT`, `OSMU_ADMIN_LOGIN_ID`, `OSMU_ADMIN_PASSWORD`를 읽음.
+  - running backend에 샘플 조직, org admin, 일반 사용자, media/AI bucket, bucket tag, permission, sample object, lifecycle rule, access key를 생성함.
+  - seed 결과는 기본값으로 `.osmu-run/latest-demo.json`에 저장됨.
+  - `start-local-demo.ps1 -SeedDemo`로 stack start 후 자동 seed 가능.
+- 수정된 파일:
+  - `scripts/seed-local-demo.ps1`
+  - `scripts/start-local-demo.ps1`
+  - `README.md`
+  - `infra/local/README.md`
+  - `dev-docs/local-dev-env.md`
+  - `dev-docs/document-index.md`
+  - `dev-docs/worklog/main/worklog-main.md`
+- 관련 파일:
+  - `scripts/seed-lightweight-demo.ps1`
+  - `scripts/verify-lightweight-demo.ps1`
+  - `scripts/verify-docker-integration.ps1`
+  - `infra/local/.env.example`
+- 검증 기록:
+  - PowerShell script parse check 통과.
+  - `docker compose --env-file .\infra\local\.env.example -f .\infra\local\docker-compose.yml config --quiet` 통과.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-local.ps1 -SkipDocker -SkipBackend -JavaHome C:\jdk-17` 통과.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\start-local-demo.ps1 -EnvFile .\infra\local\.env.example -NoBuild -SkipWait -SeedDemo -WaitTimeoutSeconds 1` 실행, Docker daemon off 상태에서 compose config 검증 후 명확한 daemon 오류로 중단.
+  - `git diff --check` 실행, 공백 오류 없음. CRLF 변환 경고만 확인.
+- 코드 리뷰:
+  - 기존 seed 로직을 재사용해 중복 구현을 피함.
+  - Docker demo start와 demo data seed가 하나의 명령으로 연결되어 사용자 체험성이 좋아짐.
+  - Docker daemon off 환경이라 실제 seed 성공은 검증하지 못했지만, script parse와 compose config, daemon failure path는 확인함.
+- 결과: Docker local demo seed 경로 추가 완료.
+- 후속 메모: Docker Desktop 실행 상태에서 `start-local-demo.ps1 -SeedDemo`로 실제 seed 성공 및 UI 데이터 노출 검증 필요.
+- 추가 개발 필요:
+  - `verify-lightweight-demo.ps1`와 유사한 `verify-local-demo.ps1` 추가 검토.
+  - seeded data 기반 브라우저 E2E 검증.
+- 사용한 skill/plugin:
+  - `caveman` skill: 사용자 요청에 따라 ultra 압축 응답 유지.
+
+### 2026-06-15 - Local Docker Demo 검증 래퍼 추가
+
+- 작업 시작 시간: 2026-06-15 00:38:00 +09:00
+- 작업 종료 시간: 2026-06-15 00:40:56 +09:00
+- 사용자 명령: 프론트, 백엔드 기능 개발을 계속 진행하고 프론트 페이지 완성도를 높이라는 지속 목표를 수행.
+- 명령 해석: Docker local demo가 seed된 뒤 실제 포털/API/S3 데이터가 보이는지 확인하는 검증 경로를 추가하라는 작업으로 이해.
+- 요청 분석: `seed-local-demo.ps1`로 샘플 데이터를 만들 수 있게 되었지만, 사용자가 데모를 켰을 때 샘플 버킷/오브젝트/권한/lifecycle/S3 access key가 정상인지 한 번에 확인하는 wrapper가 필요함. 기존 `verify-lightweight-demo.ps1`는 API 기반이라 local Docker demo에도 재사용할 수 있으나 UI 문자열 기대값이 이전 화면 구조에 일부 묶여 있었음.
+- 작업 방식:
+  - `verify-lightweight-demo.ps1` 파라미터와 UI bundle assertion 확인.
+  - 현재 분리된 Vue 화면 문구 기준으로 assertion 갱신.
+  - local env를 읽어 verifier를 호출하는 wrapper 추가.
+  - start script에 `-VerifyDemo` 옵션 추가.
+  - README/local infra/local dev 문서/문서 인덱스 갱신.
+- 실행 내용:
+  - `scripts/verify-lightweight-demo.ps1`, `scripts/seed-lightweight-demo.ps1`, `scripts/start-local-demo.ps1` 확인.
+  - `scripts/verify-local-demo.ps1` 추가.
+  - `scripts/start-local-demo.ps1`에 `-VerifyDemo`, `-SkipS3AccessKeySmoke` 옵션 추가.
+  - `verify-lightweight-demo.ps1`의 frontend UI bundle 기대 문구를 현재 UI 구조로 갱신.
+  - `README.md`, `infra/local/README.md`, `dev-docs/local-dev-env.md`, `dev-docs/document-index.md` 갱신.
+- 구현 내용:
+  - `verify-local-demo.ps1`는 `infra/local/.env` 또는 `.env.example`에서 `BACKEND_PORT`, `FRONTEND_PORT`, admin 계정을 읽고 `verify-lightweight-demo.ps1`를 호출함.
+  - `start-local-demo.ps1 -SeedDemo -VerifyDemo`로 stack start, seed, 검증을 한 번에 실행할 수 있음.
+  - 현재 UI 기준 assertion은 `Operations Dashboard`, `Dashboard Palettes`, `파일 탐색기`, `Lifecycle Rules`, `Bucket Tags`, `Organizations`, `조직 관리`, `감사 로그`, `CSV`를 확인함.
+- 수정된 파일:
+  - `scripts/verify-local-demo.ps1`
+  - `scripts/start-local-demo.ps1`
+  - `scripts/verify-lightweight-demo.ps1`
+  - `README.md`
+  - `infra/local/README.md`
+  - `dev-docs/local-dev-env.md`
+  - `dev-docs/document-index.md`
+  - `dev-docs/worklog/main/worklog-main.md`
+- 관련 파일:
+  - `scripts/seed-local-demo.ps1`
+  - `scripts/seed-lightweight-demo.ps1`
+  - `infra/local/.env.example`
+  - `osmu-frontend/src/components/admin/AdminPage.vue`
+  - `osmu-frontend/src/components/audit/AuditPage.vue`
+  - `osmu-frontend/src/components/dashboard/DashboardPage.vue`
+  - `osmu-frontend/src/components/objects/ObjectPage.vue`
+- 검증 기록:
+  - PowerShell script parse check 통과.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-local.ps1 -SkipDocker -SkipBackend -JavaHome C:\jdk-17` 통과.
+  - `git diff --check` 실행, 공백 오류 없음. CRLF 변환 경고만 확인.
+  - `rg -n "VerifyDemo|verify-local-demo|Operations Dashboard|Dashboard Palettes"`로 문서/script 연결 확인.
+- 코드 리뷰:
+  - local demo 검증 wrapper가 생겨 Docker demo와 lightweight verifier가 같은 검증 로직을 공유함.
+  - UI 문구 assertion이 현재 page component 구조와 맞게 갱신되어 frontend 분리 후 stale check 가능성이 줄어듦.
+  - Docker daemon off 환경이라 실제 running seeded local demo 검증은 아직 수행하지 못함.
+- 결과: Local Docker demo seed 검증 경로 추가 완료.
+- 후속 메모: Docker Desktop 실행 상태에서 `start-local-demo.ps1 -SeedDemo -VerifyDemo`를 실행해 full stack + seeded data + S3 access key smoke까지 확인해야 함.
+- 추가 개발 필요:
+  - Browser plugin 또는 Playwright로 seeded portal 페이지 클릭 검증.
+  - Docker daemon available 환경에서 full demo verification evidence 생성.
+- 사용한 skill/plugin:
+  - `caveman` skill: 사용자 요청에 따라 ultra 압축 응답 유지.
+
+### 2026-06-15 - Browser E2E page navigation 보정
+
+- 작업 시작 시간: 2026-06-15 00:41:00 +09:00
+- 작업 종료 시간: 2026-06-15 00:43:02 +09:00
+- 사용자 명령: 프론트, 백엔드 기능 개발을 계속 진행하고 프론트 페이지 완성도를 높이라는 지속 목표를 수행.
+- 명령 해석: 최근 Dashboard/Storage/Object/Admin/Audit page component 분리 이후 기존 브라우저 E2E click path가 현재 화면 구조와 맞는지 점검하고 보정하라는 작업으로 이해.
+- 요청 분석: 기존 `lightweight-demo.spec.js`는 단일 화면에 bucket/object/admin/audit 패널이 같이 있다는 전제에 가까웠음. 이제 route/page가 분리됐으므로 E2E가 `Storage`, `Objects`, `Admin`, `Audit` nav를 실제로 클릭해야 함.
+- 작업 방식:
+  - 기존 Playwright E2E spec과 browser E2E workflow 확인.
+  - Vue router 구조 확인.
+  - E2E click path에 page navigation을 명시적으로 추가.
+  - syntax, CI workflow verifier, unit/build 검증 실행.
+- 실행 내용:
+  - `osmu-frontend/e2e/lightweight-demo.spec.js` 확인.
+  - `osmu-frontend/src/router/index.js` 확인.
+  - login 후 dashboard 확인, Storage 이동 후 bucket 생성, Objects 이동 후 object upload/search, Admin 이동 후 lifecycle/tags panel 확인, Audit 이동 후 audit filter 검증 흐름으로 수정.
+- 구현 내용:
+  - E2E에서 `page.getByRole('link', { name: 'Storage' })`, `Objects`, `Admin`, `Audit` nav 클릭을 수행.
+  - 분리된 page structure에 맞춰 `bucket-panel`, `object-panel`, `bucket-lifecycle-panel`, `bucket-tags-panel`, `audit-list` 검증 순서를 보정.
+- 수정된 파일:
+  - `osmu-frontend/e2e/lightweight-demo.spec.js`
+  - `dev-docs/worklog/main/worklog-main.md`
+- 관련 파일:
+  - `.github/workflows/browser-e2e-ci.yml`
+  - `scripts/verify-ci-workflow.ps1`
+  - `osmu-frontend/src/router/index.js`
+  - `osmu-frontend/src/views/HomeView.vue`
+- 검증 기록:
+  - `node --check .\osmu-frontend\e2e\lightweight-demo.spec.js` 통과.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-local.ps1 -SkipDocker -SkipBackend -JavaHome C:\jdk-17` 통과.
+  - `git diff --check` 실행, 공백 오류 없음. CRLF 변환 경고만 확인.
+  - `rg -n "getByRole\('link'|bucket-panel|object-panel|bucket-lifecycle-panel|audit-search-button"`로 E2E navigation/assertion 확인.
+- 코드 리뷰:
+  - E2E가 현재 route 기반 UI 구조와 맞게 조정되어 page 분리 후 stale click path 위험이 줄어듦.
+  - 실제 Playwright browser 실행은 현재 local runtime이 떠 있지 않아 수행하지 못했지만, CI workflow의 self-check와 frontend unit/build는 통과함.
+- 결과: Browser E2E click path를 현재 page 구조 기준으로 보정 완료.
+- 후속 메모: Docker 또는 lightweight prototype running 상태에서 실제 Playwright E2E 실행 필요.
+- 추가 개발 필요:
+  - `start-local-demo.ps1 -SeedDemo -VerifyDemo`와 Playwright E2E를 연결한 full demo browser 검증.
+  - in-app Browser 권한 문제 해결 후 시각 스크린샷 검증.
+- 사용한 skill/plugin:
+  - `caveman` skill: 사용자 요청에 따라 ultra 압축 응답 유지.
+
+### 2026-06-14 - MinIO pool 기반 용량 증설 전략 문서화
+
+- 작업 시작 시간: 2026-06-14 20:29:20 +09:00
+- 작업 종료 시간: 2026-06-14 20:31:13 +09:00
+- 사용자 명령: 앞서 설명한 MinIO Pod/PV 증설 내용을 문서에 추가하고 최종 정리를 해달라고 요청.
+- 명령 해석: 사용자가 제안한 `기본 4개 MinIO Pod + PV`, 증설 시 `MinIO Pod + PV` 추가 아이디어를 OSMU 제품 문서에 반영하되, 운영형 기준으로는 MinIO server pool 단위 증설 전략으로 정리하라는 명령으로 이해.
+- 요청 분석: 사용자는 향후 목표를 잊지 않도록 제품 방향을 문서화하고 싶어 함. 단순히 Pod 수를 늘리는 설명만 남기면 운영형 MinIO 확장과 어긋날 수 있으므로, `server pool`, `servers`, `volumesPerServer`, raw/usable capacity, 증설 요청 흐름, 검증 절차를 함께 정리해야 함.
+- 작업 방식: 기존 `dev-docs/minio-pool-expansion.md`를 중심 문서로 삼고, `deployment-strategy.md`와 `document-index.md`에는 해당 문서로 연결되는 요약 기준을 추가. Kubernetes 예시 manifest는 제품 기본값인 `4 servers x 4 volumesPerServer` 방향으로 갱신.
+- 실행 내용:
+  - `dev-docs/minio-pool-expansion.md`의 기존 pool 확장 초안 확인.
+  - MVP/데모용 `4 pods x 1 PV`와 제품 기본 `4 pods x 4 PV`를 분리해서 문서화.
+  - 증설 요청 처리 흐름을 Storage Expansion Manager 관점으로 정리.
+  - `infra/k8s/examples/minio-tenant-pool-expansion.example.yaml`의 `volumesPerServer`를 4로 조정.
+  - `dev-docs/deployment-strategy.md`에 MinIO 용량 증설 전략 섹션 추가.
+  - `dev-docs/document-index.md`의 MinIO 증설 문서 설명 보강.
+- 구현 내용:
+  - 운영형 증설은 MinIO Operator Tenant의 `pools`에 새 server pool을 추가하는 방식으로 명시.
+  - raw capacity 계산식을 `servers * volumesPerServer * pvcSize`로 명시.
+  - usable capacity는 erasure coding parity와 운영 여유분을 제외해야 한다고 명시.
+  - 증설 전 backup/restore readiness gate, 증설 후 `mc admin info`, OSMU health, real S3 client smoke 검증을 명시.
+  - 장기 제품 기능으로 Storage Expansion Manager 상태값과 목표 기능을 추가.
+- 수정된 파일:
+  - `dev-docs/minio-pool-expansion.md`
+  - `dev-docs/deployment-strategy.md`
+  - `dev-docs/document-index.md`
+  - `infra/k8s/examples/minio-tenant-pool-expansion.example.yaml`
+  - `dev-docs/worklog/main/worklog-main.md`
+- 관련 파일:
+  - `infra/k8s/minio.yaml`
+  - `infra/helm/osmu/values.yaml`
+  - `infra/helm/osmu/templates/minio.yaml`
+- 검증 기록:
+  - `Select-String -Path dev-docs\minio-pool-expansion.md -Pattern "4 servers x 4|Storage Expansion Manager|raw capacity|server pool"`로 핵심 문구 반영 확인.
+  - `Select-String -Path dev-docs\deployment-strategy.md -Pattern "MinIO 용량 증설|4 servers x 4|mc admin info"`로 배포 전략 연결 확인.
+  - `Select-String -Path infra\k8s\examples\minio-tenant-pool-expansion.example.yaml -Pattern "volumesPerServer|4 servers"`로 예시 manifest 변경 확인.
+  - `git diff --stat`로 변경 파일과 규모 확인.
+- 코드 리뷰:
+  - 코드 변경 없음.
+  - 문서는 사용자의 아이디어를 유지하면서 운영형 MinIO의 실제 확장 단위인 server pool 관점으로 보정함.
+  - `4 pods x 1 PV`를 완전히 버리지 않고 MVP/데모용으로 남겨 사용자의 초기 구상을 추적 가능하게 함.
+  - 제품 기본값은 `4 servers x 4 volumesPerServer`로 높여 CRD 제약, erasure coding 안정성, 운영 여유를 고려함.
+- 결과: OSMU의 MinIO 용량 증설 방향을 문서화 완료.
+- 후속 메모: 다음 구현 단계에서는 Helm values에 `minio.pools` 구조를 추가하고, Storage Expansion Request API/관리자 화면 요구사항을 구체화해야 함.
+- 추가 개발 필요:
+  - MinIO Operator Tenant 기반 운영 manifest 작성.
+  - Helm chart의 MinIO topology 값을 pool 배열로 확장.
+  - Storage Expansion Manager API, DB 테이블, 관리자 UI 설계.
+  - `osmu-dev`에서 `4 servers x 4 volumesPerServer` 실증 테스트.
 - 사용한 skill/plugin:
   - 추가 사용 없음.
 
@@ -803,3 +6107,9106 @@ feat/bucket-management
 - 추가 개발 필요: 새 작업유형 또는 영역이 생기면 `codingcovention.md`의 태그 표에 먼저 추가해야 함.
 - 사용한 skill/plugin:
   - 추가 사용 없음.
+
+### 2026-06-15 - Readiness severity summary 및 필터 추가
+
+- 작업 시작 시간: 2026-06-15 01:50:00 +09:00
+- 작업 종료 시간: 2026-06-15 01:55:29 +09:00
+- 사용자 명령:
+  - 대시보드를 페이지별로 나누고 DB/MinIO 연동 데모가 가능하게 만들며, OCI처럼 필요한 대시보드 패널을 교체/추가 설정할 수 있게 하라는 기존 명령의 연장 작업.
+  - `$caveman ultra`로 응답을 더 짧게 유지하라는 명령.
+- 명령 인식:
+  - 구현된 dashboard readiness 영역에서 문제 항목을 category뿐 아니라 severity 기준으로도 요약/필터링할 수 있게 만드는 작업으로 인식.
+  - API 응답, Vue 상태, dashboard UI, 테스트를 같은 계약으로 맞춰야 하는 작업으로 판단.
+- 요청 분석:
+  - readiness item에는 이미 `severity`가 있으므로 backend에서 `severitySummaries`만 추가하면 frontend filter option을 API 기준으로 만들 수 있음.
+  - 사용자는 데모 테스트를 직접 봐야 하므로 필터 control에 `data-testid`를 추가하고 unit/e2e 정적 검증 대상에 포함해야 함.
+- 실행 내용:
+  - backend readiness 응답 record에 severity summary 목록 추가.
+  - `AdminController`에 severity별 count 집계 helper 추가.
+  - dashboard page에 severity select 추가.
+  - `HomeView`에서 severity filter 상태, option, visible item filtering, API 적용 로직 추가.
+  - 모바일에서 readiness filter 2열이 좁아지면 1열로 접히도록 CSS 보강.
+  - unit/e2e/API query 테스트 fixture와 assertion 업데이트.
+- 구현 내용:
+  - `DashboardReadinessSeverityResponse` record 추가.
+  - `/api/admin/dashboard/summary`, `/api/admin/dashboard/readiness` 응답에 `severitySummaries` 포함.
+  - dashboard readiness filter가 category + severity 조건을 동시에 적용.
+  - 사라진 severity filter 값은 다음 API 적용 시 `ALL`로 자동 복귀.
+- 수정된 파일:
+  - `osmu-backend/src/main/java/com/example/osmu/admin/AdminController.java`
+  - `osmu-backend/src/main/java/com/example/osmu/admin/DashboardReadinessResponse.java`
+  - `osmu-backend/src/main/java/com/example/osmu/admin/DashboardReadinessSeverityResponse.java`
+  - `osmu-backend/src/test/java/com/example/osmu/admin/AdminDashboardSummaryControllerTest.java`
+  - `osmu-frontend/src/views/HomeView.vue`
+  - `osmu-frontend/src/components/dashboard/DashboardPage.vue`
+  - `osmu-frontend/src/assets/main.css`
+  - `osmu-frontend/src/services/api-query.test.js`
+  - `osmu-frontend/src/views/HomeView.test.js`
+  - `osmu-frontend/e2e/lightweight-demo.spec.js`
+  - `dev-docs/worklog/main/worklog-main.md`
+- 관련 파일:
+  - `scripts/verify-local.ps1`
+  - `osmu-frontend/package.json`
+  - `osmu-backend/gradlew.bat`
+- 검증 기록:
+  - `npm.cmd run test:unit`: 성공.
+  - `node --check .\osmu-frontend\e2e\lightweight-demo.spec.js`: 성공.
+  - `git diff --check`: 성공. LF/CRLF 변환 warning만 출력.
+  - `npm.cmd run build`: 성공.
+  - sandbox `.\gradlew.bat --no-daemon test --tests com.example.osmu.admin.AdminDashboardSummaryControllerTest`: Gradle distribution download가 `Permission denied`로 실패.
+  - escalated `.\gradlew.bat --no-daemon test --tests com.example.osmu.admin.AdminDashboardSummaryControllerTest`: 성공.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-local.ps1 -SkipDocker -SkipBackend -JavaHome C:\jdk-17`: 성공.
+- 코드 리뷰:
+  - severity summary는 기존 item의 `severity` 값을 그대로 집계하므로 중복 상태 계산 없음.
+  - null/blank severity는 `UNKNOWN`으로 방어 처리.
+  - frontend filter는 category와 severity를 AND 조건으로 처리해 사용자가 문제 항목을 좁혀 볼 수 있음.
+  - 모바일 CSS는 기존 breakpoint 안에만 추가해 layout 영향 범위를 제한함.
+- 결과:
+  - readiness 영역에서 severity별 요약과 필터링 가능.
+  - backend/frontend/test 계약 반영 완료.
+- 후속 메모:
+  - 실제 Docker 기반 MariaDB/MinIO 실행 검증은 Docker daemon 환경 필요.
+  - Browser 기반 화면 검증은 현재 Codex desktop browser 실행 권한 문제 때문에 별도 환경에서 확인 필요.
+- 추가 개발 필요:
+  - readiness item severity를 `INFO`, `WARNING`, `BLOCKER` 등으로 확장할 경우 표시 색상과 정렬 우선순위도 같이 정의 필요.
+  - 배포 서버에서 실제 DB/MinIO 연결 후 readiness가 `READY`로 바뀌는 end-to-end 시나리오 검증 필요.
+- 사용한 skill/plugin:
+  - `caveman` skill: 응답 압축 유지.
+
+### 2026-06-15 - Dashboard layout server persistence 추가
+
+- 작업 시작 시간: 2026-06-15 01:58:00 +09:00
+- 작업 종료 시간: 2026-06-15 02:09:43 +09:00
+- 사용자 명령:
+  - 프론트, 백엔드 기능 개발을 계속 진행하라는 활성 목표.
+  - 대시보드를 OCI처럼 필요한 패널을 추가/교체/변경할 수 있게 하라는 기존 요구의 연장 작업.
+- 명령 인식:
+  - 기존 dashboard widget 구성은 localStorage 기반이라 B2B/로그인 사용자 환경에서는 부족함.
+  - 사용자별 dashboard layout을 backend metadata 저장소에 저장하고 frontend가 로그인 후 이를 복원하도록 보강하는 작업으로 인식.
+- 요청 분석:
+  - 패널 추가/숨김/순서 변경은 이미 존재하지만 브라우저가 바뀌면 유지되지 않음.
+  - MariaDB 전환 목표와 맞추려면 layout도 in-memory/MariaDB repository 양쪽에서 저장 가능해야 함.
+  - API 계약과 frontend wrapper, 테스트, 문서가 같이 갱신되어야 함.
+- 실행 내용:
+  - `/api/dashboard/layout` GET/PUT/DELETE 추가.
+  - `DashboardLayoutRepository`를 in-memory/MariaDB 구현으로 분리.
+  - MariaDB mode에서 `dashboard_layouts` table 자동 생성.
+  - widget id 중복, 개수, scope, id 형식 검증 추가.
+  - dashboard layout repository health를 database health와 admin summary database status에 포함.
+  - frontend dashboard widget 설정을 로그인 후 server layout 기준으로 load/save/reset 하도록 연결.
+  - dashboard config panel에 server sync 상태 표시 추가.
+  - OpenAPI 계약과 API 문서 갱신.
+- 구현 내용:
+  - 저장된 layout이 없으면 backend는 `source: DEFAULT`, `widgets: []`를 반환.
+  - frontend는 `DEFAULT` 응답이면 기본 widget catalog를 적용.
+  - 로그인 상태에서 widget 추가/이동/숨김/제거 시 localStorage와 server를 함께 갱신.
+  - reset은 local 기본값 적용 후 server 저장 layout을 삭제한다.
+- 수정된 파일:
+  - `osmu-backend/src/main/java/com/example/osmu/dashboard/DashboardLayoutController.java`
+  - `osmu-backend/src/main/java/com/example/osmu/dashboard/DashboardLayoutService.java`
+  - `osmu-backend/src/main/java/com/example/osmu/dashboard/DashboardLayoutRequest.java`
+  - `osmu-backend/src/main/java/com/example/osmu/dashboard/DashboardLayoutResponse.java`
+  - `osmu-backend/src/main/java/com/example/osmu/dashboard/DashboardLayoutRecord.java`
+  - `osmu-backend/src/main/java/com/example/osmu/dashboard/DashboardWidgetLayout.java`
+  - `osmu-backend/src/main/java/com/example/osmu/dashboard/repository/DashboardLayoutRepository.java`
+  - `osmu-backend/src/main/java/com/example/osmu/dashboard/repository/InMemoryDashboardLayoutRepository.java`
+  - `osmu-backend/src/main/java/com/example/osmu/dashboard/repository/MariaDbDashboardLayoutRepository.java`
+  - `osmu-backend/src/main/java/com/example/osmu/admin/AdminController.java`
+  - `osmu-backend/src/main/java/com/example/osmu/system/HealthController.java`
+  - `osmu-backend/src/test/java/com/example/osmu/dashboard/DashboardLayoutControllerTest.java`
+  - `osmu-frontend/src/services/api.js`
+  - `osmu-frontend/src/services/api-query.test.js`
+  - `osmu-frontend/src/views/HomeView.vue`
+  - `osmu-frontend/src/views/HomeView.test.js`
+  - `osmu-frontend/src/components/dashboard/DashboardPage.vue`
+  - `osmu-frontend/e2e/lightweight-demo.spec.js`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/openapi-mvp.json`
+  - `scripts/verify-openapi-contract.ps1`
+  - `dev-docs/worklog/main/worklog-main.md`
+- 관련 파일:
+  - `scripts/verify-local.ps1`
+  - `osmu-backend/gradlew.bat`
+  - `osmu-frontend/package.json`
+- 검증 기록:
+  - `npm.cmd run test:unit`: 성공.
+  - `node --check .\osmu-frontend\e2e\lightweight-demo.spec.js`: 성공.
+  - sandbox backend targeted test: Gradle distribution download가 `Permission denied`로 실패.
+  - escalated `.\gradlew.bat --no-daemon test --tests com.example.osmu.dashboard.DashboardLayoutControllerTest --tests com.example.osmu.admin.AdminDashboardSummaryControllerTest --tests com.example.osmu.system.HealthControllerTest`: 성공.
+  - `npm.cmd run build`: 성공.
+  - `git diff --check`: 성공. LF/CRLF 변환 warning만 출력.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-local.ps1 -SkipDocker -SkipBackend -JavaHome C:\jdk-17`: 성공.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-openapi-contract.ps1`: 성공.
+- 코드 리뷰:
+  - dashboard layout은 일반 로그인 사용자 endpoint로 두어 ADMIN이 아니어도 본인 콘솔 구성을 저장할 수 있음.
+  - backend는 widget catalog를 강하게 알지 않고 안전한 id 형식/중복/개수만 검증해 frontend catalog 확장에 유연함.
+  - MariaDB 저장은 JSON 문자열로 단순화해 schema 변경 없이 widget 목록 확장 가능.
+  - health check에 repository를 포함해 metadata 저장소 문제를 status에서 놓치지 않게 함.
+  - frontend는 server 저장 실패 시 localStorage fallback을 유지해 데모 흐름이 끊기지 않음.
+- 결과:
+  - 대시보드 패널 구성 추가/숨김/순서 변경이 사용자별 server metadata로 저장 가능해짐.
+  - localStorage-only 상태보다 B2B/다중 브라우저 사용에 가까운 구조로 진전.
+- 후속 메모:
+  - 실제 MariaDB mode에서 `dashboard_layouts` table 생성/저장 확인은 Docker 또는 배포 서버 실행 환경 필요.
+  - Browser 기반 화면 검증은 현재 Codex desktop browser 실행 권한 문제 때문에 별도 환경에서 확인 필요.
+- 추가 개발 필요:
+  - 대시보드 layout preset 공유, 조직 단위 기본 layout, role별 기본 layout.
+  - dashboard panel 크기/열 span/섹션 배치까지 저장하는 고급 layout schema.
+- 사용한 skill/plugin:
+  - `caveman` skill: 응답 압축 유지.
+
+### 2026-06-15 - Dashboard palette drag reorder 추가
+
+- 작업 시작 시간: 2026-06-15 02:19:30 +09:00
+- 작업 종료 시간: 2026-06-15 02:23:26 +09:00
+- 대상 브랜치: `main`
+- 사용자 명령:
+  - 프론트/백엔드 기능 개발을 계속 진행하고, dev-docs 기준 최종 목표 기능을 구현하라는 active goal.
+- 명령 인식:
+  - OCI처럼 dashboard palette를 사용자가 직접 바꿀 수 있어야 하므로, 기존 버튼 기반 순서 변경에 drag-and-drop reorder를 추가하는 작업으로 인식.
+- 요청 분석:
+  - 기존 dashboard layout은 서버 저장, 표시/숨김, 크기 변경까지 가능하지만 마우스 기반 재배치 UX는 부족함.
+  - drag reorder는 기존 `dashboardWidgets` 배열과 `saveDashboardLayout` API를 그대로 재사용하면 backend schema 변경 없이 구현 가능.
+- 실행 내용:
+  - dashboard config list item을 HTML draggable로 변경.
+  - drag 시작/hover/drop/end 이벤트를 `DashboardPage.vue`에서 emit.
+  - `HomeView.vue`에 drag index/drop index 상태와 reorder handler 추가.
+  - 기존 move up/down 버튼도 같은 `reorderDashboardWidget` 함수를 사용하도록 정리.
+  - drag 중인 item과 drop target을 CSS로 시각화.
+  - lightweight E2E spec에 drag-to reorder 기대 흐름 추가.
+  - frontend design/test case 문서에 dashboard palette drag reorder 명시.
+- 구현 내용:
+  - `DashboardPage.vue`는 `dashboardWidgetDragIndex`, `dashboardWidgetDropIndex` prop을 받고 config row에 `draggable`, `aria-grabbed`, drag 이벤트, drag handle selector를 제공.
+  - `HomeView.vue`는 `startDashboardWidgetDrag`, `hoverDashboardWidgetDrag`, `dropDashboardWidget`, `endDashboardWidgetDrag`, `reorderDashboardWidget` 함수를 추가.
+  - drop 성공 시 기존 `persistDashboardWidgets()`를 호출해 localStorage와 서버 layout 저장 흐름을 유지.
+  - `.is-dragging`, `.is-drop-target`, `.drag-grip` 스타일 추가.
+- 수정된 파일:
+  - `osmu-frontend/src/components/dashboard/DashboardPage.vue`
+  - `osmu-frontend/src/views/HomeView.vue`
+  - `osmu-frontend/src/assets/main.css`
+  - `osmu-frontend/src/views/HomeView.test.js`
+  - `osmu-frontend/e2e/lightweight-demo.spec.js`
+  - `dev-docs/frontend-design.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/worklog/main/worklog-main.md`
+- 관련 파일:
+  - `osmu-frontend/package.json`
+  - `scripts/verify-local.ps1`
+- 검증 기록:
+  - `node --check .\osmu-frontend\e2e\lightweight-demo.spec.js`: 성공.
+  - `npm.cmd run test:unit`: 성공, 59개 통과.
+  - `npm.cmd run build`: 성공.
+  - `git diff --check`: 성공. LF/CRLF 변환 warning만 출력.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-local.ps1 -SkipDocker -SkipBackend -JavaHome C:\jdk-17`: 성공.
+- 코드 리뷰:
+  - drag reorder는 기존 server layout 저장 API를 그대로 타므로 별도 persistence code가 늘지 않음.
+  - 버튼 이동 기능도 같은 reorder 함수로 통합해 순서 변경 로직 중복을 줄임.
+  - `draggable`이 꺼지는 조건은 server 저장 pending 상태와 맞춰 중복 저장/충돌 가능성을 줄임.
+  - keyboard 접근성은 기존 위/아래 버튼으로 유지됨.
+  - 실제 브라우저 drag 동작은 Browser 권한 문제 때문에 직접 실행하지 못했고, Playwright spec syntax와 selector contract로 방어함.
+- 결과:
+  - dashboard palette의 순서 변경 UX가 버튼뿐 아니라 drag-and-drop까지 확장됨.
+  - 사용자가 다수 dashboard panel을 더 자연스럽게 재배치할 수 있게 됨.
+- 후속 메모:
+  - 실제 Browser/Chrome 또는 CI 환경에서 `dragTo` 동작 E2E 실행 필요.
+  - drag drop target 위치를 before/after로 세분화하는 고급 UX는 후속 개선 가능.
+- 추가 개발 필요:
+  - dashboard layout preset 공유.
+  - 조직/역할별 기본 dashboard.
+  - section 기반 배치, breakpoint별 layout 저장.
+- 사용한 skill/plugin:
+  - `caveman` skill: 응답 압축 유지.
+
+### 2026-06-15 - Dashboard layout preset list/apply 추가
+
+- 작업 시작 시간: 2026-06-15 02:24:00 +09:00
+- 작업 종료 시간: 2026-06-15 02:32:49 +09:00
+- 대상 브랜치: `main`
+- 사용자 명령:
+  - 프론트/백엔드 기능 개발을 계속 진행하고, `dev-docs`에 정리된 목표 기능을 구현하라는 active goal.
+- 명령 인식:
+  - 대시보드 palette customization의 다음 단계로, 사용자가 매번 수동 배치하지 않고 기본 layout preset을 선택/적용할 수 있게 만드는 작업으로 인식.
+- 요청 분석:
+  - 개인별 layout 저장, 크기 변경, drag reorder는 구현되었지만 B2B 제품에서는 운영/소형 화면/admin 중심 preset이 필요함.
+  - 조직/역할별 preset 공유 전 단계로 서버 제공 built-in preset API를 만들면 frontend와 API 계약을 먼저 안정화할 수 있음.
+- 실행 내용:
+  - backend에 built-in dashboard layout preset catalog 추가.
+  - `GET /api/dashboard/layout/presets`로 preset 목록 조회 API 추가.
+  - `PUT /api/dashboard/layout/presets/{presetId}`로 preset 적용/저장 API 추가.
+  - frontend API wrapper와 dashboard UI에 preset select/apply control 추가.
+  - dashboard load 시 preset 목록을 같이 조회하도록 연결.
+  - OpenAPI/API 문서/test case/frontend design/worklog 갱신.
+- 구현 내용:
+  - built-in preset: `operations`, `compact`, `admin`.
+  - preset apply는 기존 dashboard layout 저장 흐름을 재사용해 `source = SAVED` layout으로 저장.
+  - frontend는 preset 적용 성공 시 widget 배열, sync source, updatedAt, localStorage를 갱신.
+  - 로그인 해제/세션 reset 시 preset state도 정리.
+- 수정된 파일:
+  - `osmu-backend/src/main/java/com/example/osmu/dashboard/DashboardLayoutController.java`
+  - `osmu-backend/src/main/java/com/example/osmu/dashboard/DashboardLayoutService.java`
+  - `osmu-backend/src/main/java/com/example/osmu/dashboard/DashboardLayoutPresetResponse.java`
+  - `osmu-backend/src/test/java/com/example/osmu/dashboard/DashboardLayoutControllerTest.java`
+  - `osmu-frontend/src/services/api.js`
+  - `osmu-frontend/src/services/api-query.test.js`
+  - `osmu-frontend/src/views/HomeView.vue`
+  - `osmu-frontend/src/views/HomeView.test.js`
+  - `osmu-frontend/src/components/dashboard/DashboardPage.vue`
+  - `osmu-frontend/src/assets/main.css`
+  - `osmu-frontend/e2e/lightweight-demo.spec.js`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/openapi-mvp.json`
+  - `dev-docs/frontend-design.md`
+  - `dev-docs/test-cases.md`
+  - `scripts/verify-openapi-contract.ps1`
+  - `dev-docs/worklog/main/worklog-main.md`
+- 관련 파일:
+  - `osmu-backend/gradlew.bat`
+  - `osmu-frontend/package.json`
+  - `scripts/verify-local.ps1`
+- 검증 기록:
+  - `node --check .\osmu-frontend\e2e\lightweight-demo.spec.js`: 성공.
+  - `npm.cmd run test:unit`: 성공, 59개 통과.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-openapi-contract.ps1`: 성공, operations 95 / frontend API functions 75.
+  - sandbox `.\gradlew.bat --no-daemon test --tests com.example.osmu.dashboard.DashboardLayoutControllerTest`: Gradle distribution download `Permission denied`로 실패.
+  - escalated `.\gradlew.bat --no-daemon test --tests com.example.osmu.dashboard.DashboardLayoutControllerTest`: 성공.
+  - `npm.cmd run build`: 성공.
+  - `git diff --check`: 성공. LF/CRLF 변환 warning만 출력.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-local.ps1 -SkipDocker -SkipBackend -JavaHome C:\jdk-17`: 성공.
+  - escalated `.\gradlew.bat --no-daemon test`: 성공.
+- 코드 리뷰:
+  - preset apply는 별도 저장 로직을 만들지 않고 기존 `save` 경로를 재사용해 validation과 persistence 정책이 동일함.
+  - built-in preset은 schema 변경 없이 `DashboardWidgetLayout` 배열만 사용하므로 MariaDB 저장 구조와 호환됨.
+  - frontend는 preset 목록 조회 실패 시 빈 목록으로 유지해 dashboard 전체 로딩을 막지 않음.
+  - 아직 admin이 preset을 생성/공유하는 기능은 없고, 서버 내장 preset만 제공함.
+- 결과:
+  - 사용자가 dashboard palette를 직접 구성하는 것뿐 아니라 운영/소형/admin 중심 preset을 한 번에 적용할 수 있게 됨.
+  - 향후 조직/역할별 기본 dashboard preset 공유 기능의 API/UI 기반이 생김.
+- 후속 메모:
+  - 실제 Browser/Chrome 또는 CI에서 preset apply 버튼 클릭 E2E 실행 필요.
+  - 조직/role별 default preset과 admin custom preset 저장소가 다음 단계.
+- 추가 개발 필요:
+  - Admin custom preset CRUD.
+  - 조직/역할별 기본 preset 할당.
+  - preset export/import.
+  - section/breakpoint별 layout schema.
+- 사용한 skill/plugin:
+  - `caveman` skill: 응답 압축 유지.
+
+### 2026-06-15 - Admin custom dashboard preset CRUD 추가
+
+- 작업 시작 시간: 2026-06-15 02:33:00 +09:00
+- 작업 종료 시간: 2026-06-15 02:43:23 +09:00
+- 대상 브랜치: `main`
+- 사용자 명령:
+  - 프론트/백엔드 기능 개발을 계속 진행하고, `dev-docs`에 정리된 최종 목표 기능을 구현하라는 active goal.
+- 명령 인식:
+  - built-in dashboard preset 다음 단계로, B2B 운영자가 직접 대시보드 preset을 저장/삭제하고 사용자들이 적용할 수 있는 custom preset CRUD를 구현하라는 작업으로 인식.
+- 요청 분석:
+  - built-in preset만 있으면 고객사/조직별 운영 화면을 반영하기 어렵다.
+  - ADMIN이 현재 widget layout을 custom preset으로 저장하고 전체 사용자가 조회/적용할 수 있으면 OCI형 dashboard palette 운영에 더 가까워진다.
+  - Built-in preset은 삭제하면 안 되고, custom preset만 삭제 가능해야 한다.
+- 실행 내용:
+  - backend custom preset record/request/repository 추가.
+  - in-memory/MariaDB custom preset repository 구현.
+  - `POST /api/dashboard/layout/presets` custom preset 생성 API 추가.
+  - `DELETE /api/dashboard/layout/presets/{presetId}` custom preset 삭제 API 추가.
+  - built-in/custom preset을 함께 조회하고 apply 가능하도록 service 확장.
+  - frontend dashboard에 preset 이름/설명 입력, 현재 구성 저장, custom preset 삭제 버튼 추가.
+  - API wrapper, selector test, lightweight spec, OpenAPI/API 문서, test case 갱신.
+- 구현 내용:
+  - ADMIN만 custom preset 생성/삭제 가능.
+  - 모든 로그인 사용자는 built-in/custom preset 조회 및 적용 가능.
+  - custom preset id는 `custom-{name-slug}` 기반으로 생성하고 충돌 시 timestamp suffix를 붙인다.
+  - MariaDB mode에서는 `dashboard_layout_presets` table에 widgets JSON을 저장한다.
+  - built-in preset delete는 `409 CONFLICT`로 거부한다.
+  - frontend는 custom preset 생성 후 select 값을 새 preset으로 바꾸고, 삭제 후 첫 preset으로 되돌린다.
+- 수정된 파일:
+  - `osmu-backend/src/main/java/com/example/osmu/dashboard/DashboardLayoutController.java`
+  - `osmu-backend/src/main/java/com/example/osmu/dashboard/DashboardLayoutService.java`
+  - `osmu-backend/src/main/java/com/example/osmu/dashboard/DashboardLayoutPresetRecord.java`
+  - `osmu-backend/src/main/java/com/example/osmu/dashboard/DashboardLayoutPresetRequest.java`
+  - `osmu-backend/src/main/java/com/example/osmu/dashboard/DashboardLayoutPresetResponse.java`
+  - `osmu-backend/src/main/java/com/example/osmu/dashboard/repository/DashboardLayoutPresetRepository.java`
+  - `osmu-backend/src/main/java/com/example/osmu/dashboard/repository/InMemoryDashboardLayoutPresetRepository.java`
+  - `osmu-backend/src/main/java/com/example/osmu/dashboard/repository/MariaDbDashboardLayoutPresetRepository.java`
+  - `osmu-backend/src/test/java/com/example/osmu/dashboard/DashboardLayoutControllerTest.java`
+  - `osmu-frontend/src/services/api.js`
+  - `osmu-frontend/src/services/api-query.test.js`
+  - `osmu-frontend/src/views/HomeView.vue`
+  - `osmu-frontend/src/views/HomeView.test.js`
+  - `osmu-frontend/src/components/dashboard/DashboardPage.vue`
+  - `osmu-frontend/src/assets/main.css`
+  - `osmu-frontend/e2e/lightweight-demo.spec.js`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/openapi-mvp.json`
+  - `dev-docs/frontend-design.md`
+  - `dev-docs/test-cases.md`
+  - `scripts/verify-openapi-contract.ps1`
+  - `dev-docs/worklog/main/worklog-main.md`
+- 관련 파일:
+  - `osmu-backend/gradlew.bat`
+  - `osmu-frontend/package.json`
+  - `scripts/verify-local.ps1`
+- 검증 기록:
+  - `node --check .\osmu-frontend\e2e\lightweight-demo.spec.js`: 성공.
+  - 최초 `npm.cmd run test:unit`: mock fetch 응답 수 부족으로 실패.
+  - mock 204 응답 1개 추가 후 `npm.cmd run test:unit`: 성공, 59개 통과.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-openapi-contract.ps1`: 성공, operations 97 / frontend API functions 77.
+  - sandbox backend targeted test: Gradle distribution download `Permission denied`로 실패.
+  - escalated `.\gradlew.bat --no-daemon test --tests com.example.osmu.dashboard.DashboardLayoutControllerTest`: 성공.
+  - `npm.cmd run build`: 성공.
+  - `git diff --check`: 성공. LF/CRLF 변환 warning만 출력.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-local.ps1 -SkipDocker -SkipBackend -JavaHome C:\jdk-17`: 성공.
+  - escalated `.\gradlew.bat --no-daemon test`: 성공.
+- 코드 리뷰:
+  - custom preset 저장소를 layout 저장소와 분리해 개인 dashboard layout과 전역 preset catalog 책임을 나눴다.
+  - built-in/custom preset 모두 기존 `DashboardWidgetLayout` schema를 사용해 크기/순서/표시 상태 호환성을 유지한다.
+  - ADMIN 권한과 built-in delete 거부를 service에서 처리해 API surface가 늘어도 정책이 한 곳에 모인다.
+  - MariaDB table은 JSON widgets 저장이라 향후 `section`, `span`, breakpoint field 추가에도 schema 영향이 적다.
+  - 아직 조직/역할별 기본 preset 자동 적용은 없음.
+- 결과:
+  - ADMIN이 현재 dashboard 구성을 custom preset으로 저장/삭제할 수 있게 됨.
+  - 사용자는 built-in/custom preset을 조회하고 자기 dashboard layout으로 적용할 수 있게 됨.
+  - dashboard customization이 개인 설정에서 운영자가 제공하는 재사용 preset 단계로 확장됨.
+- 후속 메모:
+  - 실제 MariaDB mode에서 `dashboard_layout_presets` table 생성/저장/삭제 검증 필요.
+  - Browser/Chrome에서 custom preset save/delete 클릭 E2E 검증 필요.
+- 추가 개발 필요:
+  - 조직/역할별 기본 preset 할당.
+  - preset export/import.
+  - custom preset 수정/update.
+  - section/breakpoint별 layout schema.
+- 사용한 skill/plugin:
+  - `caveman` skill: 응답 압축 유지.
+
+### 2026-06-15 - 원격 데모 배포 및 smoke 검증
+
+- 작업 시간:
+  - 시작: 2026-06-15 02:51:00 +09:00
+  - 종료: 2026-06-15 03:01:51 +09:00
+- 사용자 명령:
+  - `192.168.35.88`에 배포하고 MariaDB/MinIO 연결 상태로 기능 데모 테스트 가능하게 하라는 기존 명령.
+  - `$caveman ultra` 응답 압축 유지.
+- 명령 인식:
+  - 현재 구현된 dashboard/page 분리/custom preset 기능을 remote demo 서버에 올리고, 실제 MariaDB + MinIO runtime에서 smoke 검증하라는 작업으로 인식.
+- 요청 분석:
+  - remote 서버에는 Docker가 없고, 이미 `/home/test/osmu-runtime` 기반 MariaDB, MinIO, backend jar, frontend static server가 실행 중이었다.
+  - Docker Compose 배포 대신 현재 서버 구조를 존중해 local에서 backend `bootJar`와 frontend `dist`를 만들고 artifact만 교체하는 방식이 가장 적합했다.
+  - production bundle은 Korean 문자열 decoding 검증이 불안정해 smoke test를 ASCII selector/API path 중심으로 조정해야 했다.
+- 실행 내용:
+  - 임시 SSH/SFTP helper를 `.osmu-run` 아래 생성하고 `ssh2` npm package를 ignored runtime에 설치했다.
+  - remote 환경 확인: Docker 없음, 기존 MariaDB/MinIO/backend/frontend 프로세스 실행 중.
+  - frontend를 `VITE_API_BASE_URL=http://192.168.35.88:8080/api`로 빌드.
+  - backend `bootJar` 생성 후 jar 업로드.
+  - frontend `dist` tar 업로드.
+  - remote backend/frontend pid를 중지하고 새 artifact로 재시작.
+  - remote health, database health, storage health, frontend HTTP 200 확인.
+  - demo seed/smoke 검증 실행.
+- 구현 내용:
+  - `scripts/verify-lightweight-demo.ps1`의 frontend bundle 기대 문자열을 production-friendly selector/path 기반으로 갱신.
+  - 같은 smoke script에 dashboard layout preset create/update/built-in conflict/delete API 검증 추가.
+  - remote에서 custom dashboard preset CRUD가 MariaDB mode에서도 동작함을 확인.
+- 수정된 파일:
+  - `scripts/verify-lightweight-demo.ps1`
+  - `dev-docs/worklog/main/worklog-main.md`
+- 관련 파일:
+  - `.osmu-run/remote-deploy.js` ignored helper.
+  - `.osmu-run/remote-exec.js` ignored helper.
+  - `.osmu-run/remote-artifact-deploy.js` ignored helper.
+  - `.osmu-run/latest-remote-demo.json` ignored demo credential output.
+  - `osmu-backend/build/libs/osmu-0.0.1-SNAPSHOT.jar` ignored build artifact.
+  - `osmu-frontend/dist` ignored build artifact.
+- 검증 기록:
+  - `ssh -o BatchMode=yes test@192.168.35.88 "uname -a"`: 실패, password 인증 필요.
+  - temporary `ssh2` 기반 접속: 성공.
+  - Docker Compose remote 배포 시도: 실패, remote에 Docker 없음.
+  - remote 직접 runtime 확인: MariaDB 3306, MinIO 9000/9001, backend 8080, frontend 5173 실행 중.
+  - local `.\gradlew.bat --no-daemon bootJar`: 성공.
+  - remote artifact deploy: 성공. backend pid `5539`, frontend pid `5540`.
+  - remote health: `/api/health`, `/api/database/health`, `/api/storage/health`, frontend `/` 모두 성공.
+  - 최초 remote `verify-local-demo.ps1`: 실패, production bundle Korean 문자열 검증 문제.
+  - verifier selector/path 기준 수정 후 remote `verify-local-demo.ps1 -SeedIfMissing`: 성공.
+  - dashboard preset CRUD 포함 후 remote `verify-local-demo.ps1 -SeedIfMissing`: 성공.
+  - local `powershell -ExecutionPolicy Bypass -File .\scripts\verify-local.ps1 -SkipDocker -SkipBackend -JavaHome C:\jdk-17`: 성공, frontend unit 59개 통과.
+- 코드 리뷰:
+  - remote 서버의 기존 runtime을 보존하고 jar/dist만 교체해 데이터 손실과 불필요한 인프라 변경을 피했다.
+  - verifier가 production bundle minification과 encoding 차이에 덜 흔들리도록 test-id/API path를 기준으로 바뀌었다.
+  - dashboard preset CRUD smoke는 생성한 custom preset을 삭제해 remote demo 데이터 오염을 줄인다.
+  - `.osmu-run` helper는 ignored라 repository에는 포함되지 않는다.
+- 결과:
+  - 원격 데모 URL: `http://192.168.35.88:5173`
+  - Backend API: `http://192.168.35.88:8080/api`
+  - MinIO Console: `http://192.168.35.88:9001`
+  - 기본 OSMU login: `admin / password`
+  - Seed demo user: `demo-user-1781460042-5f5318 / DemoPassword!23`
+  - Seed buckets: `osmu-demo-media-1781460042-5f5318`, `osmu-demo-ai-1781460042-5f5318`
+- 후속 메모:
+  - remote 서버에는 Docker가 없어 `infra/local/docker-compose.yml` 기반 배포는 불가. 현재는 직접 runtime 방식.
+  - remote 프로세스 제어는 `/home/test/osmu-run/*.pid` 기준.
+  - Browser/Chrome UI 클릭 검증은 아직 못 함. API smoke와 HTTP smoke는 통과.
+- 추가 개발 필요:
+  - remote 직접-runtime 배포 스크립트 정식화.
+  - dashboard panel catalog 확장.
+  - 조직/역할별 기본 preset 할당.
+  - preset export/import.
+  - section/breakpoint별 layout schema.
+- 사용한 skill/plugin:
+  - `caveman` skill: ultra 응답 압축 유지.
+
+### 2026-06-15 - Access Key secret redaction 보강
+
+- 작업 시간:
+  - 시작: 2026-06-15 03:48:00 +09:00
+  - 종료: 2026-06-15 03:59:14 +09:00
+- 사용자 명령:
+  - `$caveman ultra` 응답 압축 모드 활성화.
+  - 이전 목표 기준으로 `dev-docs`에 적힌 기능 gap을 계속 구현.
+- 명령 인식:
+  - 대시보드/DB/MinIO 연결 이후 남은 보안/테스트 gap 중 작은 P1 항목을 찾아 구현하고, 문서와 worklog에 반영하는 작업으로 인식.
+- 요청 분석:
+  - `dev-docs/test-cases.md`의 `TC-SEC-003 Secret 로그 노출 방지`가 Manual로 남아 있었다.
+  - access key 생성 응답은 secret을 1회 반환해야 하지만, audit log/export와 record `toString()`에는 원문 secret/hash/ciphertext가 남으면 안 된다.
+- 실행 내용:
+  - `dev-docs/test-cases.md`, `dev-docs/security-design.md`, access key controller/service/record/test를 확인.
+  - `CreateAccessKeyResponse`, `AccessKeyEntity`, `AccessKeyCredential`의 `toString()`을 민감값 redaction 형태로 override.
+  - access key 생성 후 audit list/export에 secret이 포함되지 않는지 검증하는 backend 테스트 추가.
+  - TC-SEC-003 자동화 상태와 보안 설계 구현 내역 갱신.
+  - backend 전체 테스트와 bootJar 실행 후 원격 데모 서버에 재배포 및 smoke 검증.
+- 구현 내용:
+  - access key 생성 응답 JSON은 기존처럼 `secretKey`를 1회 반환한다.
+  - 서버 내부 record 문자열화 시 `secretKey`, `secretKeyHash`, `secretKeyCiphertext`는 `<redacted>`로 표시한다.
+  - audit list/export에는 access key 생성 secret 원문이 기록되지 않음을 테스트한다.
+- 수정된 파일:
+  - `osmu-backend/src/main/java/com/example/osmu/accesskey/CreateAccessKeyResponse.java`
+  - `osmu-backend/src/main/java/com/example/osmu/accesskey/AccessKeyEntity.java`
+  - `osmu-backend/src/main/java/com/example/osmu/accesskey/AccessKeyCredential.java`
+  - `osmu-backend/src/test/java/com/example/osmu/accesskey/AccessKeyControllerTest.java`
+  - `dev-docs/security-design.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/worklog/main/worklog-main.md`
+- 관련 파일:
+  - `osmu-backend/src/main/java/com/example/osmu/accesskey/AccessKeyController.java`
+  - `osmu-backend/src/main/java/com/example/osmu/audit/AuditLogService.java`
+- 검증 기록:
+  - `.\gradlew.bat --no-daemon test --tests com.example.osmu.accesskey.AccessKeyControllerTest`: 성공.
+  - `.\gradlew.bat --no-daemon test bootJar`: 성공.
+  - `git diff --check`: 성공. LF/CRLF 경고만 있음.
+  - `node .\.osmu-run\remote-artifact-deploy.js`: 성공. remote backend pid `7555`, frontend pid `7556`.
+  - `.\scripts\verify-local-demo.ps1 -FrontendBase http://192.168.35.88:5173 -ApiBase http://192.168.35.88:8080/api -SeedIfMissing`: 성공.
+- 코드 리뷰:
+  - 생성 응답의 API 계약은 유지하고, 로그/문자열화 경로만 redaction해 호환성 영향이 작다.
+  - audit message/target은 secret 대신 access key id/string과 고정 메시지만 쓰므로 secret 유출 위험이 낮다.
+  - 실제 application log sink 파일을 직접 grep하는 검증은 아직 별도 release-audit/manual check로 남겼다.
+- 결과:
+  - TC-SEC-003의 핵심 자동화가 backend 테스트에 포함됐다.
+  - 원격 데모 `http://192.168.35.88:5173`는 최신 backend jar 기준 smoke 통과.
+- 후속 메모:
+  - 다음 gap 후보는 실제 로그 파일 sink redaction audit, Browser click E2E, real S3 client gate, dashboard panel catalog 확장.
+- 추가 개발 필요:
+  - 운영 로그 수집기/파일 로그에서 secret pattern scan을 release script로 자동화하면 TC-SEC-003 manual 잔여분을 더 줄일 수 있다.
+- 사용한 skill/plugin:
+  - `caveman` skill: ultra 응답 압축 유지.
+
+### 2026-06-15 - Secret redaction demo smoke 자동화 보강
+
+- 작업 시간:
+  - 시작: 2026-06-15 03:59:30 +09:00
+  - 종료: 2026-06-15 04:02:46 +09:00
+- 사용자 명령:
+  - active goal 기준으로 `dev-docs`에 정리된 목표 기능 개발을 계속 진행.
+  - `$caveman ultra` 응답 압축 유지.
+- 명령 인식:
+  - 직전 Access Key secret redaction 구현 후 남은 release/demo 검증 gap을 줄이는 작업으로 인식.
+- 요청 분석:
+  - TC-SEC-003은 backend unit test만으로는 실제 demo smoke 경로와 운영 로그 파일 scan까지 충분히 덮지 못했다.
+  - 기존 `verify-local-demo.ps1`/`verify-lightweight-demo.ps1`는 원격 demo smoke의 공통 진입점이므로 여기에 redaction smoke를 넣는 것이 반복 검증에 가장 효과적이다.
+- 실행 내용:
+  - `verify-lightweight-demo.ps1`에 `Access key secret redaction` 단계 추가.
+  - smoke bucket과 access key를 생성해 one-time secret을 받은 뒤 access key 목록, audit list, audit CSV export에서 secret 원문이 노출되지 않는지 확인.
+  - `-BackendLogPath` 옵션을 추가해 지정된 backend log file에서 생성된 secret 원문을 scan할 수 있게 했다.
+  - `verify-local-demo.ps1` wrapper가 `-BackendLogPath`를 하위 verifier로 전달하도록 수정.
+  - TC-SEC-003과 보안 설계 문서에 demo verifier 자동화 범위를 반영.
+- 구현 내용:
+  - `scripts/verify-lightweight-demo.ps1`
+    - `BackendLogPath` string array parameter 추가.
+    - `Assert-SecretAbsent`, `Assert-SecretAbsentFromLogs` helper 추가.
+    - admin login 직후 secret redaction smoke 추가.
+    - smoke key와 smoke bucket은 `finally`에서 정리.
+  - `scripts/verify-local-demo.ps1`
+    - `BackendLogPath` parameter와 forwarding 추가.
+- 수정된 파일:
+  - `scripts/verify-lightweight-demo.ps1`
+  - `scripts/verify-local-demo.ps1`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/security-design.md`
+  - `dev-docs/worklog/main/worklog-main.md`
+- 관련 파일:
+  - `osmu-backend/src/main/java/com/example/osmu/accesskey/AccessKeyController.java`
+  - `osmu-backend/src/main/java/com/example/osmu/audit/AuditLogService.java`
+- 검증 기록:
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-local-demo.ps1 -FrontendBase http://192.168.35.88:5173 -ApiBase http://192.168.35.88:8080/api -AdminLoginId admin -AdminPassword password -DemoCredentialPath .\.osmu-run\latest-remote-demo.json -SeedIfMissing`: 성공.
+  - 출력에 `==> Access key secret redaction` 단계가 포함되고 전체 lightweight demo smoke 통과.
+- 코드 리뷰:
+  - secret 값은 verifier 내부 변수로만 사용하고 출력하지 않는다.
+  - audit list/export와 optional log scan을 같은 smoke에서 검증해 TC-SEC-003의 반복 검증성이 좋아졌다.
+  - backend log path는 환경별 위치가 다르므로 optional로 둔 판단이 적절하다.
+- 결과:
+  - demo smoke에서 Access Key secret redaction regression을 잡을 수 있다.
+  - 실제 backend log file을 사용할 수 있는 환경에서는 `-BackendLogPath`로 secret leak scan을 추가할 수 있다.
+- 후속 메모:
+  - remote SSH helper와 결합하면 `/home/test/osmu-run/backend.out.log`, `/home/test/osmu-run/backend.err.log` scan까지 자동화할 수 있다.
+  - 다음 후보는 Browser click E2E 또는 dashboard panel catalog 확장.
+- 추가 개발 필요:
+  - GitHub Actions 또는 release gate에서 `-BackendLogPath`를 실제 runtime log artifact 경로와 연결.
+- 사용한 skill/plugin:
+  - `caveman` skill: ultra 응답 압축 유지.
+
+### 2026-06-15 - Dashboard palette catalog 운영 패널 확장
+
+- 작업 시간:
+  - 시작: 2026-06-15 04:03:00 +09:00
+  - 종료: 2026-06-15 04:12:07 +09:00
+- 사용자 명령:
+  - active goal 기준으로 프론트/백엔드 기능 개발을 계속 진행.
+  - `dev-docs`에 정리된 목표 중 대시보드 panel/palette 확장 요구를 구현.
+- 명령 인식:
+  - OCI처럼 dashboard에서 필요한 운영 panel을 선택/교체할 수 있게 catalog를 더 풍부하게 만드는 작업으로 인식.
+- 요청 분석:
+  - 기존 dashboard widget catalog는 capacity, health, runtime, readiness, backup, I/O, request, sharing, quota, selected workspace 중심이었다.
+  - 운영자가 실제로 보고 싶은 access key 운영 상태, 사용자/조직 현황, lifecycle rule 충돌 상태가 palette card에 직접 들어가면 B2B demo/운영성이 좋아진다.
+  - backend built-in preset에도 새 widget id가 포함되어야 서버 저장/적용 흐름과 UI catalog가 일관된다.
+- 실행 내용:
+  - backend built-in dashboard layout preset에 `access-keys`, `identity`, `lifecycle` widget 추가.
+  - frontend dashboard widget catalog에 `Access Key 운영`, `사용자/조직 현황`, `Lifecycle 규칙` 추가.
+  - default dashboard widgets에 `access-keys`, `lifecycle` 추가.
+  - `DashboardPage` metric grid에 access key active/total, user/org count, lifecycle conflict/rule count render 추가.
+  - frontend selector/unit test와 lightweight demo smoke 문자열 검증 보강.
+  - API/frontend/test case 문서 갱신.
+  - frontend dist 재빌드 후 원격 demo에 jar/dist 재배포.
+- 구현 내용:
+  - `access-keys` widget: active key 수, 전체 key 수, access key provisioner 상태 표시.
+  - `identity` widget: 사용자 수와 조직 수 표시.
+  - `lifecycle` widget: lifecycle conflict count, rule count/check count 표시.
+  - built-in preset:
+    - `operations`: `access-keys`, `lifecycle` 포함.
+    - `compact`: `access-keys` 포함.
+    - `admin`: `access-keys`, `identity`, `lifecycle` 포함.
+- 수정된 파일:
+  - `osmu-backend/src/main/java/com/example/osmu/dashboard/DashboardLayoutService.java`
+  - `osmu-backend/src/test/java/com/example/osmu/dashboard/DashboardLayoutControllerTest.java`
+  - `osmu-frontend/src/views/HomeView.vue`
+  - `osmu-frontend/src/components/dashboard/DashboardPage.vue`
+  - `osmu-frontend/src/views/HomeView.test.js`
+  - `scripts/verify-lightweight-demo.ps1`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/frontend-design.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/worklog/main/worklog-main.md`
+- 검증 기록:
+  - `npm.cmd run test:unit`: 성공, 59개 통과.
+  - `.\gradlew.bat --no-daemon test --tests com.example.osmu.dashboard.DashboardLayoutControllerTest`: 성공.
+  - `npm.cmd run build`: 성공.
+  - `.\gradlew.bat --no-daemon test bootJar`: 성공.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-openapi-contract.ps1`: 성공, operations 103 / frontend API functions 83.
+  - `tar -czf .\.osmu-run\frontend-dist.tgz -C .\osmu-frontend\dist .`: 성공.
+  - `node .\.osmu-run\remote-artifact-deploy.js`: 성공. remote backend pid `7945`, frontend pid `7946`.
+  - 최초 remote `verify-local-demo.ps1 -SeedIfMissing`: 실패. PowerShell Korean literal encoding 때문에 `"Access Key 운영"` assert가 mojibake됨.
+  - smoke assert를 ASCII widget id(`access-keys`, `identity`, `lifecycle`) 기준으로 변경.
+  - remote `verify-local-demo.ps1 -SeedIfMissing`: 성공. Dashboard catalog string check, secret redaction smoke, preset CRUD smoke, S3 access key smoke 포함.
+  - `git diff --check`: 성공. LF/CRLF warning만 출력.
+- 코드 리뷰:
+  - backend preset과 frontend catalog를 같이 확장해 서버 저장 layout과 UI 선택지가 어긋나지 않는다.
+  - 새 widget은 이미 로딩 중인 `accessKeys`, `users`, `organizations`, `lifecycleRules`, `lifecycleRuleConflicts` 상태를 재사용하므로 API 추가 없이 기능성을 올렸다.
+  - non-admin에서는 admin-only 데이터가 비어 있을 수 있으나, 기본 widget은 access key/lifecycle 중심이고 identity는 optional catalog로 둬 노출 부담을 줄였다.
+  - smoke는 production bundle에서 Korean literal encoding에 흔들리지 않도록 ASCII widget id를 기준으로 확인한다.
+- 결과:
+  - dashboard palette에서 access key, identity, lifecycle 운영 panel을 추가/저장/프리셋화할 수 있다.
+  - 원격 데모 `http://192.168.35.88:5173`에 최신 jar/dist 배포 및 smoke 검증 완료.
+- 후속 메모:
+  - 다음 dashboard 확장 후보는 widget별 상세 panel toggle, role별 기본 preset seed, panel catalog 설명/권장 사용처 metadata.
+  - Browser/Chrome click E2E는 여전히 별도 환경 권한 필요.
+- 추가 개발 필요:
+  - customer용 dashboard preset bundle과 import/export 샘플 제공.
+  - metric widget을 card 수준에서 더 세밀하게 편집하는 section/breakpoint schema.
+- 사용한 skill/plugin:
+  - `caveman` skill: ultra 응답 압축 유지.
+### 2026-06-15 - Dashboard section collapse 상태 저장
+
+- 작업 시간:
+  - 시작: 2026-06-15 04:48:00 +09:00
+  - 종료: 2026-06-15 05:06:00 +09:00
+- 사용자 명령:
+  - `[$caveman] ultra`
+  - active goal 기준으로 `dev-docs`에 정리된 dashboard/palette 기능 개발을 계속 진행.
+- 명령 인식:
+  - 응답은 `caveman` ultra 압축 모드로 유지하고, 직전 dashboard section/order 작업 다음 단계로 section 접기/펼치기 상태를 서버 layout과 preset에 저장하는 작업으로 인식.
+- 요청 분석:
+  - dashboard panel을 OCI처럼 필요한 부분만 보이게 하려면 widget 추가/순서/크기/section뿐 아니라 section 단위 접힘 상태도 사용자 layout에 보존되어야 한다.
+  - custom preset export/import/default preset 적용 시에도 동일한 `sections[].collapsed` 상태가 유지되어야 B2B 운영자가 표준 dashboard 묶음을 배포할 수 있다.
+- 실행 내용:
+  - backend layout/preset DTO에 `sections` 필드를 추가하고 `DashboardSectionLayout` record를 신설.
+  - service validation에서 section id를 `overview`, `operations`, `governance`로 제한하고 누락 section은 `collapsed=false`로 보정.
+  - MariaDB `dashboard_layouts`, `dashboard_layout_presets`에 `sections_json` 컬럼을 lazy ALTER로 보강하고 기존 row의 null/blank sections는 기본값으로 처리.
+  - frontend dashboard state에 `dashboardSections`를 추가하고 `Show/Hide` section toggle 버튼을 연결.
+  - layout save/load/reset, preset create/update/apply/export/import 흐름에 `sections` payload를 포함.
+  - smoke script와 frontend/backend tests, API/frontend/test 문서를 section collapse 기준으로 갱신.
+  - 로컬 Java가 없어 backend 테스트는 원격 서버 JDK로 source upload 후 `DashboardLayoutControllerTest`와 `bootJar`를 실행.
+- 구현 내용:
+  - `GET/PUT /api/dashboard/layout` 응답/요청에 `sections` 배열 포함.
+  - `GET/POST/PATCH/PUT/EXPORT/IMPORT /api/dashboard/layout/presets` 흐름에 `sections` 배열 포함.
+  - frontend `DashboardPage`는 section header에서 `Show/Hide` 버튼을 제공하고 collapsed 상태일 때 metric grid를 숨김.
+  - 비로그인/local fallback도 `osmu.dashboard.sections.v1` localStorage key로 section collapse 상태 저장.
+- 수정된 파일:
+  - `osmu-backend/src/main/java/com/example/osmu/dashboard/DashboardSectionLayout.java`
+  - `osmu-backend/src/main/java/com/example/osmu/dashboard/DashboardLayoutRequest.java`
+  - `osmu-backend/src/main/java/com/example/osmu/dashboard/DashboardLayoutResponse.java`
+  - `osmu-backend/src/main/java/com/example/osmu/dashboard/DashboardLayoutRecord.java`
+  - `osmu-backend/src/main/java/com/example/osmu/dashboard/DashboardLayoutPresetRequest.java`
+  - `osmu-backend/src/main/java/com/example/osmu/dashboard/DashboardLayoutPresetResponse.java`
+  - `osmu-backend/src/main/java/com/example/osmu/dashboard/DashboardLayoutPresetRecord.java`
+  - `osmu-backend/src/main/java/com/example/osmu/dashboard/DashboardLayoutPresetImportRequest.java`
+  - `osmu-backend/src/main/java/com/example/osmu/dashboard/DashboardLayoutService.java`
+  - `osmu-backend/src/main/java/com/example/osmu/dashboard/repository/MariaDbDashboardLayoutRepository.java`
+  - `osmu-backend/src/main/java/com/example/osmu/dashboard/repository/MariaDbDashboardLayoutPresetRepository.java`
+  - `osmu-backend/src/test/java/com/example/osmu/dashboard/DashboardLayoutControllerTest.java`
+  - `osmu-frontend/src/views/HomeView.vue`
+  - `osmu-frontend/src/components/dashboard/DashboardPage.vue`
+  - `osmu-frontend/src/assets/main.css`
+  - `osmu-frontend/src/services/api.js`
+  - `osmu-frontend/src/services/api-query.test.js`
+  - `osmu-frontend/src/views/HomeView.test.js`
+  - `scripts/verify-lightweight-demo.ps1`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/frontend-design.md`
+  - `dev-docs/test-cases.md`
+  - `.osmu-run/remote-source-build-deploy.js`
+- 검증 기록:
+  - `npm.cmd run test:unit`: 성공, 60개 통과.
+  - `npm.cmd run build`: 성공.
+  - 로컬 `.\gradlew.bat --no-daemon test --tests com.example.osmu.dashboard.DashboardLayoutControllerTest`: 실패. 로컬 환경에 Java/JAVA_HOME 없음.
+  - remote source build: 성공. `/home/test/osmu-runtime/jdk17`로 `./gradlew --no-daemon test --tests com.example.osmu.dashboard.DashboardLayoutControllerTest bootJar` 성공.
+  - remote deploy: 성공. backend pid `11751`, frontend pid `11752`.
+  - remote health check: `8080 /api/health`, database, storage, `5173` 모두 PASS.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-local-demo.ps1 -FrontendBase http://192.168.35.88:5173 -ApiBase http://192.168.35.88:8080/api -SeedIfMissing`: 성공.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-openapi-contract.ps1`: 성공, operations 104 / frontend API functions 84.
+  - `git diff --check`: 성공. LF/CRLF warning만 출력.
+- 코드 리뷰:
+  - section collapse는 widget layout과 분리된 `sections` 배열로 둬 widget id 목록과 UI section 상태가 섞이지 않는다.
+  - MariaDB migration은 앱 시작 시 lazy ALTER 방식이라 기존 demo DB도 자동 보정된다.
+  - built-in/old preset처럼 sections가 없는 payload도 기본 section 3개로 보정되어 backward compatibility가 유지된다.
+  - frontend collapsed state는 `dashboardSectionCollapsed` 함수와 `dashboardSections` prop을 모두 통해 component가 읽으므로 테스트/확장 지점이 명확하다.
+- 결과:
+  - dashboard section별 `Show/Hide` 상태가 개인 layout, custom preset, export/import, default preset 적용 흐름에 저장된다.
+  - 원격 demo `http://192.168.35.88:5173`에 최신 backend/frontend가 배포되었고 smoke 검증까지 통과했다.
+- 후속 메모:
+  - Browser/Chrome click E2E는 현재 로컬 Browser plugin 권한 문제로 미실행. remote smoke로 기능 검증 대체.
+  - 다음 단계 후보: dashboard section drag reorder UI 고도화, widget별 상세 설정 schema 추가, role/organization별 preset seed bundle 제공.
+- 추가 개발 필요:
+  - dashboard layout schema versioning.
+  - customer preset bundle 샘플과 import/export 문서화.
+- 사용된 skill/plugin:
+  - `caveman` skill: ultra 응답 압축 유지.
+### 2026-06-15 - Dashboard layout schema version 고정
+
+- 작업 시간:
+  - 시작: 2026-06-15 05:08:00 +09:00
+  - 종료: 2026-06-15 05:17:00 +09:00
+- 사용자 명령:
+  - active goal 기준으로 `dev-docs`에 정리된 목표 기능 개발을 계속 진행.
+- 명령 인식:
+  - 직전 dashboard section collapse 저장 이후 후속 안정화 작업으로, layout/preset payload에 schema version을 추가해 향후 dashboard layout migration 기준을 만드는 작업으로 인식.
+- 요청 분석:
+  - dashboard widget/section/options가 계속 확장되고 있어 payload version이 없으면 export/import, preset 공유, DB row migration 기준이 모호해질 수 있다.
+  - B2B 제품에서는 고객사별 dashboard preset bundle을 장기간 이동해야 하므로 schema version을 명시해야 한다.
+- 실행 내용:
+  - backend layout/preset request/response/record에 `schemaVersion` 필드 추가.
+  - `osmu.dashboard-layout.v1`만 허용하고 생략 시 v1로 보정하는 validation 추가.
+  - MariaDB `dashboard_layouts`, `dashboard_layout_presets`에 `schema_version` lazy ALTER 추가.
+  - frontend layout save와 custom preset create/update payload에 `schemaVersion` 포함.
+  - smoke, unit test, controller test, API/frontend/test 문서 갱신.
+- 구현 내용:
+  - `GET/PUT /api/dashboard/layout`은 `schemaVersion`을 응답/저장한다.
+  - `GET/POST/PATCH/PUT/EXPORT/IMPORT /api/dashboard/layout/presets`는 `schemaVersion`을 보존한다.
+  - 잘못된 schema version은 HTTP 400 validation error로 거부한다.
+- 수정된 파일:
+  - `osmu-backend/src/main/java/com/example/osmu/dashboard/DashboardLayoutRequest.java`
+  - `osmu-backend/src/main/java/com/example/osmu/dashboard/DashboardLayoutResponse.java`
+  - `osmu-backend/src/main/java/com/example/osmu/dashboard/DashboardLayoutRecord.java`
+  - `osmu-backend/src/main/java/com/example/osmu/dashboard/DashboardLayoutPresetRequest.java`
+  - `osmu-backend/src/main/java/com/example/osmu/dashboard/DashboardLayoutPresetResponse.java`
+  - `osmu-backend/src/main/java/com/example/osmu/dashboard/DashboardLayoutPresetRecord.java`
+  - `osmu-backend/src/main/java/com/example/osmu/dashboard/DashboardLayoutPresetImportRequest.java`
+  - `osmu-backend/src/main/java/com/example/osmu/dashboard/DashboardLayoutService.java`
+  - `osmu-backend/src/main/java/com/example/osmu/dashboard/repository/MariaDbDashboardLayoutRepository.java`
+  - `osmu-backend/src/main/java/com/example/osmu/dashboard/repository/MariaDbDashboardLayoutPresetRepository.java`
+  - `osmu-backend/src/test/java/com/example/osmu/dashboard/DashboardLayoutControllerTest.java`
+  - `osmu-frontend/src/views/HomeView.vue`
+  - `osmu-frontend/src/services/api.js`
+  - `osmu-frontend/src/services/api-query.test.js`
+  - `osmu-frontend/src/views/HomeView.test.js`
+  - `scripts/verify-lightweight-demo.ps1`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/frontend-design.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/worklog/main/worklog-main.md`
+- 검증 기록:
+  - `npm.cmd run test:unit`: 성공, 60개 통과.
+  - `npm.cmd run build`: 성공.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-openapi-contract.ps1`: 성공, operations 104 / frontend API functions 84.
+  - `git diff --check`: 성공. LF/CRLF warning만 출력.
+  - remote source build: 성공. `/home/test/osmu-runtime/jdk17`로 `./gradlew --no-daemon test --tests com.example.osmu.dashboard.DashboardLayoutControllerTest bootJar` 성공.
+  - remote deploy: 성공. backend pid `12249`, frontend pid `12250`.
+  - remote smoke `verify-local-demo.ps1 -SeedIfMissing`: 성공.
+- 코드 리뷰:
+  - v1만 허용해 현재 MVP payload 계약을 단순하게 고정했다.
+  - DB column은 nullable + service default 보정이라 기존 saved layout/custom preset row와 호환된다.
+  - frontend constant를 통해 save/preset payload의 version 문자열 중복을 줄였다.
+- 결과:
+  - dashboard layout/preset/export/import가 `schemaVersion = osmu.dashboard-layout.v1`을 명시적으로 보존한다.
+  - 원격 demo에 최신 변경 배포 및 smoke 검증 완료.
+- 후속 메모:
+  - v2 이상으로 확장할 때는 `normalizeSchemaVersion`에 migration path를 추가하고 export/import 변환 정책을 문서화해야 한다.
+- 추가 개발 필요:
+  - dashboard preset bundle 샘플.
+  - layout schema migration test fixture.
+- 사용된 skill/plugin:
+  - `caveman` skill: ultra 응답 압축 유지.
+### 2026-06-15 - Dashboard preset bundle export/import
+
+- 작업 시간:
+  - 시작: 2026-06-15 05:18:00 +09:00
+  - 종료: 2026-06-15 05:28:00 +09:00
+- 사용자 명령:
+  - active goal 기준으로 `dev-docs`에 정리된 목표 기능 개발을 계속 진행.
+  - 직전 요청으로 `caveman ultra` 응답 방식을 유지.
+- 명령 인식:
+  - dashboard layout/preset 기능의 다음 미완성 항목인 고객사/환경 이동용 preset bundle export/import를 구현하는 작업으로 인식.
+  - B2B 판매/구축 상황에서 custom dashboard 구성을 한 번에 옮길 수 있어야 하므로 단일 preset export/import와 별도 bundle API/UI가 필요하다고 판단.
+- 요청 분석:
+  - 기존 `/api/dashboard/layout/presets/{presetId}/export`와 충돌하지 않도록 bundle endpoint는 `/api/dashboard/layout/preset-bundle/export`, `/api/dashboard/layout/preset-bundle/import`로 분리.
+  - built-in preset은 대상 서버에도 기본 제공되므로 bundle export 대상은 custom preset만으로 제한.
+  - bundle import는 저장 전에 전체 payload를 먼저 검증해 일부만 저장되는 위험을 줄임.
+- 실행 내용:
+  - backend bundle request/response record 3개 추가.
+  - `DashboardLayoutService`에 `osmu.dashboard-preset-bundle.v1` format validation, custom preset bundle export, multi preset import 추가.
+  - `DashboardLayoutController`에 bundle export/import endpoint와 audit event 추가.
+  - frontend API wrapper, DashboardPage 버튼/input, HomeView handler/파일 import 흐름 추가.
+  - smoke script, OpenAPI JSON, API spec, frontend design, test cases 갱신.
+- 구현 내용:
+  - `GET /api/dashboard/layout/preset-bundle/export`: ADMIN custom preset 전체를 `formatVersion`, `exportedAt`, `presets`로 반환.
+  - `POST /api/dashboard/layout/preset-bundle/import`: ADMIN이 bundle JSON의 `presets[]`를 새 custom preset들로 저장하고 `importedCount`, `presets` 반환.
+  - UI: `Bundle Export`, `Bundle Import` control 추가. import 성공 시 dashboard preset 목록에 merge하고 첫 imported preset 선택.
+- 수정된 파일:
+  - `osmu-backend/src/main/java/com/example/osmu/dashboard/DashboardLayoutPresetBundleExportResponse.java`
+  - `osmu-backend/src/main/java/com/example/osmu/dashboard/DashboardLayoutPresetBundleImportRequest.java`
+  - `osmu-backend/src/main/java/com/example/osmu/dashboard/DashboardLayoutPresetBundleImportResponse.java`
+  - `osmu-backend/src/main/java/com/example/osmu/dashboard/DashboardLayoutService.java`
+  - `osmu-backend/src/main/java/com/example/osmu/dashboard/DashboardLayoutController.java`
+  - `osmu-backend/src/test/java/com/example/osmu/dashboard/DashboardLayoutControllerTest.java`
+  - `osmu-frontend/src/services/api.js`
+  - `osmu-frontend/src/services/api-query.test.js`
+  - `osmu-frontend/src/components/dashboard/DashboardPage.vue`
+  - `osmu-frontend/src/views/HomeView.vue`
+  - `osmu-frontend/src/views/HomeView.test.js`
+  - `scripts/verify-lightweight-demo.ps1`
+  - `scripts/verify-openapi-contract.ps1`
+  - `dev-docs/openapi-mvp.json`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/frontend-design.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/worklog/main/worklog-main.md`
+- 검증 기록:
+  - `npm.cmd run test:unit`: 성공, 60개 통과.
+  - `npm.cmd run build`: 성공.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-openapi-contract.ps1`: 성공, operations 106 / frontend API functions 84.
+  - `git diff --check`: 성공. LF/CRLF warning만 출력.
+  - remote source build: 성공. `/home/test/osmu-runtime/jdk17`로 `./gradlew --no-daemon test --tests com.example.osmu.dashboard.DashboardLayoutControllerTest bootJar` 성공.
+  - remote deploy: 성공. backend pid `12752`, frontend pid `12753`.
+  - remote smoke `verify-local-demo.ps1 -SeedIfMissing`: 성공. Dashboard layout preset CRUD 단계에서 bundle export/import도 통과.
+- 코드 리뷰:
+  - endpoint path를 `/preset-bundle/*`로 분리해 기존 `/presets/{presetId}/export` path variable 충돌을 피했다.
+  - bundle import는 `formatVersion`, preset 수, 각 preset name/widgets/sections/schemaVersion을 선검증한 뒤 저장한다.
+  - export 대상이 custom preset만이라 built-in 중복 import와 삭제 불가 preset 문제를 피한다.
+  - frontend import는 응답의 imported presets만 merge하므로 기존 목록 중 같은 id가 있으면 교체되고, 새 id면 append된다.
+- 결과:
+  - dashboard custom preset bundle을 JSON으로 export/import할 수 있게 됨.
+  - 원격 demo `http://192.168.35.88:5173`에 최신 backend/frontend 배포 완료.
+- 후속 메모:
+  - 고객사별 기본 bundle sample 파일과 preset seed command를 추가하면 B2B 납품/초기 구축 흐름이 더 좋아진다.
+  - bundle import rollback을 더 엄격히 하려면 service method에 transaction 경계를 추가하는 방안을 검토.
+- 추가 개발 필요:
+  - dashboard preset bundle sample/seed.
+  - bundle 미리보기 UI, 선택 import UI.
+  - dashboard layout schema migration fixture.
+- 추가 사용 skill/plugin:
+  - `caveman` skill: ultra 응답 압축 유지.
+
+### 2026-06-15 - Storage Expansion summary aggregate query optimization
+
+- 작업 시간:
+  - 시작: 2026-06-15 09:17:00 +09:00
+  - 종료: 2026-06-15 09:29:46 +09:00
+- 사용자 명령:
+  - active goal 기준으로 프론트/백엔드 기능 개발 계속 진행.
+- 명령 인식:
+  - 직전 summary API 구현 후 남은 후속 항목인 execution 규모 증가 대비 aggregate query 최적화를 진행하는 작업으로 인식.
+  - B2B 운영 환경에서는 Storage Expansion execution history가 늘어나므로 dashboard summary가 전체 execution row를 application memory로 가져오면 안 된다고 해석.
+- 작업 방식:
+  - `StorageExpansionExecutionRepository`에 count/recent/latest 전용 메서드를 추가.
+  - in-memory 구현은 기존 stream 기반으로 동일 동작을 유지.
+  - MariaDB 구현은 `COUNT`, `WHERE result = ?`, `WHERE timed_out = TRUE`, `ORDER BY id DESC LIMIT ?` 전용 query로 변경.
+  - `StorageExpansionService.summary()`에서 execution `findAll()` 의존을 제거하고 repository aggregate 메서드를 사용.
+  - MariaDB migration V36을 추가해 `result, id`와 `timed_out, id` index를 생성.
+  - 문서와 worklog를 갱신하고 원격 MariaDB 환경에 배포해 migration/index를 확인.
+- 구현 내용:
+  - `countAll()`, `countByResult(String)`, `countTimedOut()`, `findLatest()`, `findRecent(int)` repository contract 추가.
+  - summary API의 execution count/result/timedOut/latest/recent 계산을 DB query 기반으로 전환.
+  - `V36__storage_expansion_execution_summary_indexes.sql` 추가.
+  - MariaDB fallback schema initializer도 같은 index를 생성하도록 보강.
+- 수정된 파일 및 관련 파일:
+  - `osmu-backend/src/main/java/com/example/osmu/storageexpansion/StorageExpansionService.java`
+  - `osmu-backend/src/main/java/com/example/osmu/storageexpansion/repository/StorageExpansionExecutionRepository.java`
+  - `osmu-backend/src/main/java/com/example/osmu/storageexpansion/repository/InMemoryStorageExpansionExecutionRepository.java`
+  - `osmu-backend/src/main/java/com/example/osmu/storageexpansion/repository/MariaDbStorageExpansionExecutionRepository.java`
+  - `osmu-backend/src/main/resources/db/migration/V36__storage_expansion_execution_summary_indexes.sql`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/database-design.md`
+  - `dev-docs/minio-pool-expansion.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/worklog/main/worklog-main.md`
+- 검증 기록:
+  - local backend targeted test: 실패. 로컬 `JAVA_HOME`이 잘못 설정되어 Java 실행 불가.
+  - `npm.cmd run test:unit`: 성공, 61개 통과.
+  - `npm.cmd run build`: 성공.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-openapi-contract.ps1`: 성공, operations 127 / frontend API functions 102.
+  - `git diff --check`: 성공. LF/CRLF warning만 출력.
+  - remote source build/deploy: 성공. 원격 JDK 17로 `DashboardLayoutControllerTest`, `AdminStorageExpansionControllerTest`, Storage Expansion verifier/sanitizer/retention tests, `bootJar` 통과.
+  - remote deploy: 성공. backend pid `25966`, frontend pid `25967`.
+  - remote health checks: `/api/health`, `/api/database/health`, `/api/storage/health`, frontend HTTP 200 통과.
+  - remote smoke `verify-local-demo.ps1 -SeedIfMissing`: 성공. lightweight demo 전체 통과.
+  - remote direct API: `GET /api/admin/storage-expansion/summary` 성공. 예시 응답 `requestCount=28`, `executionCount=113`, `latestExecution.id=113`, `recentExecutions=5`.
+  - remote MariaDB index check: JDBC로 `idx_storage_expansion_execution_result(result,id)`, `idx_storage_expansion_execution_timeout(timed_out,id)` 존재 확인.
+  - remote 확인 중 `jshell` 방식은 timeout되어 방금 생성한 임시 프로세스/파일을 정리했고, 이후 작은 Java program 방식으로 재검증 성공.
+- 결과:
+  - Storage Expansion dashboard summary가 execution 전체 목록 조회 없이 count/recent/latest를 계산한다.
+  - 현재 원격 데모 URL: `http://192.168.35.88:5173`.
+- 코드 리뷰:
+  - API 응답 shape은 그대로 유지해 frontend 변경 없이 성능 병목만 줄였다.
+  - MariaDB query는 summary 화면에서 필요한 수치만 가져오므로 execution output `MEDIUMTEXT` 대량 로딩을 피한다.
+  - `findAll()`은 기존 이력 조회/호환용으로 남겼지만 summary path에서는 사용하지 않는다.
+- 다음 작업 참고:
+  - request aggregate도 규모가 커지면 status/capacity aggregate SQL로 분리할 수 있다.
+  - GitOps PR runner enabled staging에서는 remote 권한/branch protection 실패 케이스 검증이 필요하다.
+- 앞으로 추가 개발 필요:
+  - 실제 MinIO Operator/Helm staging end-to-end apply 검증.
+  - GitOps PR runner enabled 환경의 remote 권한/branch protection 검증.
+  - request aggregate SQL 최적화.
+- 추가 사용 skill/plugin:
+  - `caveman` skill: ultra 응답 압축 유지.
+
+### 2026-06-15 - Storage Expansion GitOps preflight hardening
+
+- 작업 시간:
+  - 시작: 2026-06-15 09:05:00 +09:00
+  - 종료: 2026-06-15 09:16:27 +09:00
+- 사용자 명령:
+  - active goal 기준으로 프론트/백엔드 기능 개발 계속 진행.
+  - `$caveman ultra` 응답 모드 유지.
+- 명령 인식:
+  - 직전 runner preflight 이후 GitOps PR runner enabled 환경에서 repository path 존재만 확인하는 약점을 보강하는 작업으로 인식.
+  - 실제 운영 전 GitOps working tree와 GitHub CLI 인증 상태를 preflight에서 먼저 확인해야 한다고 해석.
+- 작업 방식:
+  - `StorageExpansionRunnerPreflightService`의 probe 구조를 `COMMAND`, `PATH`, `GIT_REPOSITORY` 타입으로 분리.
+  - GitOps PR runner enabled check에 repository `.git` metadata 확인, `git -C {repositoryPath} status --short`, `gh auth status`를 추가.
+  - command/path 미설정 시 명확한 실패 detail을 반환하게 보강.
+  - fake `git`/`gh` command를 쓰는 단위테스트를 추가해 enabled GitOps preflight 성공/실패를 검증.
+  - API/보안/test/minio expansion 문서 갱신 후 원격 데모 서버에 배포.
+- 구현 내용:
+  - GitOps preflight가 `git --version`, repository `.git` metadata, `git -C ... status --short`, `gh --version`, `gh auth status`를 모두 확인.
+  - repository path가 디렉터리가 아니거나 `.git` metadata가 없으면 GitOps PR runner check를 `FAILED`로 반환.
+  - enabled GitOps PR runner preflight success/failure 단위테스트 추가.
+- 수정된 파일 및 관련 파일:
+  - `osmu-backend/src/main/java/com/example/osmu/storageexpansion/StorageExpansionRunnerPreflightService.java`
+  - `osmu-backend/src/test/java/com/example/osmu/storageexpansion/StorageExpansionRunnerPreflightServiceTest.java`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/minio-pool-expansion.md`
+  - `dev-docs/security-design.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/worklog/main/worklog-main.md`
+- 검증 기록:
+  - local backend targeted test: 실패. 로컬 `JAVA_HOME`이 잘못 설정되어 Java 실행 불가.
+  - `npm.cmd run test:unit`: 성공, 61개 통과.
+  - `npm.cmd run build`: 성공.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-openapi-contract.ps1`: 성공, operations 127 / frontend API functions 102.
+  - `git diff --check`: 성공. LF/CRLF warning만 출력.
+  - remote source build/deploy: 성공. 원격 JDK 17로 기존 배포 test set과 `bootJar` 통과.
+  - remote targeted backend test: `StorageExpansionRunnerPreflightServiceTest` 성공.
+  - remote deploy: 성공. backend pid `25244`, frontend pid `25245`.
+  - remote health checks: `/api/health`, `/api/database/health`, `/api/storage/health`, frontend HTTP 200 통과.
+  - remote smoke `verify-local-demo.ps1 -SeedIfMissing`: 성공. lightweight demo 전체 통과.
+  - remote direct API: `GET /api/admin/storage-expansion/runner-preflight` 성공. 기본 설정에서 `status=DISABLED`, `ready=false`, `enabledRunnerCount=0`, `failedCheckCount=0`, check 4개.
+- 결과:
+  - GitOps PR runner를 활성화하기 전 repository와 GitHub CLI auth 준비 상태를 API/UI에서 더 정확히 확인할 수 있게 됨.
+  - 현재 원격 데모 URL: `http://192.168.35.88:5173`.
+- 코드 리뷰:
+  - probe type 분리로 path probe와 command probe가 섞이는 위험을 줄임.
+  - `.git` metadata 확인은 worktree/submodule의 `.git` 파일도 허용하므로 일반 clone과 linked worktree 모두 대응 가능하다.
+  - `gh auth status`는 네트워크/인증 상태에 영향을 받을 수 있으므로 timeout 기반 실패 detail을 운영자가 확인해야 한다.
+- 다음 작업 참고:
+  - GitOps PR runner enabled staging에서 실제 branch push, `gh pr create`, branch protection 실패 케이스를 검증해야 함.
+  - `gh auth status` 실패 detail을 UI에서 더 눈에 띄게 표시하는 개선 가능.
+- 앞으로 추가 개발 필요:
+  - 실제 MinIO Operator/Helm staging end-to-end apply 검증.
+  - GitOps PR runner enabled 환경의 remote 권한/branch protection 검증.
+  - execution 규모 증가 대비 aggregate query 최적화.
+- 추가 사용 skill/plugin:
+  - `caveman` skill: ultra 응답 압축 유지.
+
+### 2026-06-15 - Storage Expansion runner preflight
+
+- 작업 시간:
+  - 시작: 2026-06-15 08:58:00 +09:00
+  - 종료: 2026-06-15 09:07:58 +09:00
+- 사용자 명령:
+  - active goal 기준으로 프론트/백엔드 기능 개발 계속 진행.
+- 명령 인식:
+  - 실제 MinIO Operator/Helm apply와 GitOps PR runner 활성화 전에 서버 실행 환경이 준비되었는지 확인할 수 있는 preflight 기능이 필요하다고 인식.
+  - 운영자가 runner를 누르기 전에 disabled/enabled 상태, `kubectl`, `helm`, `helm diff`, `git`, `gh`, GitOps repository 설정 여부를 볼 수 있어야 한다고 해석.
+- 작업 방식:
+  - backend에 runner preflight response/check record와 service를 추가.
+  - 기본 disabled 상태에서는 실제 CLI probe를 실행하지 않고 `DISABLED`를 반환하게 설계.
+  - runner가 enabled인 경우에만 짧은 timeout으로 tool/version/path probe를 실행하도록 구현.
+  - frontend API wrapper, HomeView state/load/reset, Admin Storage Expansion panel UI를 연결.
+  - OpenAPI/docs/test/worklog 갱신 후 원격 demo에 배포.
+- 구현 내용:
+  - `GET /api/admin/storage-expansion/runner-preflight`
+  - response: `status`, `ready`, `enabledRunnerCount`, `failedCheckCount`, `checks[]`.
+  - checks: `dry-run`, `apply`, `rollback`, `gitops-pr`.
+  - frontend selector: `storage-expansion-runner-preflight-panel`, `storage-expansion-runner-preflight-refresh-button`, `storage-expansion-runner-preflight-list`.
+  - local/dev env: `OSMU_STORAGE_EXPANSION_RUNNER_PREFLIGHT_TIMEOUT_SECONDS`.
+- 수정된 파일 및 관련 파일:
+  - `osmu-backend/src/main/java/com/example/osmu/storageexpansion/StorageExpansionRunnerPreflightCheck.java`
+  - `osmu-backend/src/main/java/com/example/osmu/storageexpansion/StorageExpansionRunnerPreflightResponse.java`
+  - `osmu-backend/src/main/java/com/example/osmu/storageexpansion/StorageExpansionRunnerPreflightService.java`
+  - `osmu-backend/src/main/java/com/example/osmu/storageexpansion/StorageExpansionService.java`
+  - `osmu-backend/src/main/java/com/example/osmu/storageexpansion/AdminStorageExpansionController.java`
+  - `osmu-backend/src/main/resources/application.yaml`
+  - `osmu-backend/src/test/java/com/example/osmu/storageexpansion/AdminStorageExpansionControllerTest.java`
+  - `osmu-frontend/src/services/api.js`
+  - `osmu-frontend/src/services/api-quota-policy.test.js`
+  - `osmu-frontend/src/views/HomeView.vue`
+  - `osmu-frontend/src/views/HomeView.test.js`
+  - `osmu-frontend/src/components/admin/AdminPage.vue`
+  - `osmu-frontend/src/components/admin/StorageExpansionPanel.vue`
+  - `scripts/verify-openapi-contract.ps1`
+  - `dev-docs/openapi-mvp.json`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/frontend-design.md`
+  - `dev-docs/local-dev-env.md`
+  - `dev-docs/minio-pool-expansion.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/worklog/main/worklog-main.md`
+- 검증 기록:
+  - `npm.cmd run test:unit`: 성공, 61개 통과.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-openapi-contract.ps1`: 성공, operations 127.
+  - `npm.cmd run build`: 첫 병렬 실행에서 Vite/Rolldown path 오류가 발생했으나 같은 명령 단독 재실행 성공.
+  - local backend targeted test: 실패. 로컬 `JAVA_HOME`이 잘못 설정되어 Java 실행 불가.
+  - `git diff --check`: 성공. LF/CRLF warning만 출력.
+  - remote source build/deploy: 성공. 원격 JDK 17로 `DashboardLayoutControllerTest`, `AdminStorageExpansionControllerTest`, Storage Expansion verifier/sanitizer/retention tests, `bootJar` 통과.
+  - remote deploy: 성공. backend pid `24737`, frontend pid `24738`.
+  - remote health checks: `/api/health`, `/api/database/health`, `/api/storage/health`, frontend HTTP 200 통과.
+  - remote smoke `verify-local-demo.ps1 -SeedIfMissing`: 성공. lightweight demo 전체 통과.
+  - remote direct API: `GET /api/admin/storage-expansion/runner-preflight` 성공. `status=DISABLED`, `ready=false`, `enabledRunnerCount=0`, `failedCheckCount=0`, `checks=4`.
+- 결과:
+  - Storage Expansion runner 활성 전 운영 준비 상태를 API/UI에서 확인할 수 있게 됨.
+  - 현재 원격 데모 URL: `http://192.168.35.88:5173`.
+- 코드 리뷰:
+  - disabled 상태에서는 CLI를 실행하지 않아 로컬/데모 환경에서 불필요한 command failure를 만들지 않는다.
+  - enabled 상태에서만 version/path probe를 실행하므로 실제 apply 환경 검증으로 자연스럽게 이어진다.
+  - path probe는 현재 존재 여부만 확인하므로 GitOps repository가 실제 git repository인지까지 확인하려면 후속 보강이 필요하다.
+- 다음 작업 참고:
+  - GitOps repository path에 `.git` existence 또는 `git status --short` probe를 추가하면 더 정확하다.
+  - staging 환경에서는 runner enabled + fake/sandbox repository로 preflight READY/FAILED 시나리오 테스트를 추가할 수 있다.
+- 앞으로 추가 개발 필요:
+  - 실제 MinIO Operator/Helm staging end-to-end apply 검증.
+  - GitOps PR runner 활성 환경의 인증/권한 검증.
+  - runner preflight enabled-mode 자동화 테스트.
+- 추가 사용 skill/plugin:
+  - `caveman` skill: ultra 응답 압축 유지.
+
+### 2026-06-15 - Storage Expansion recent execution dashboard
+
+- 작업 시간:
+  - 시작: 2026-06-15 08:52:00 +09:00
+  - 종료: 2026-06-15 08:56:31 +09:00
+- 사용자 명령:
+  - active goal 기준으로 프론트/백엔드 기능 개발 계속 진행.
+- 명령 인식:
+  - 직전 aggregate summary API 다음 단계로, 운영자가 dashboard에서 최근 실행 이력과 실패/timeout 상태를 바로 확인할 수 있게 하는 작업으로 인식.
+- 작업 방식:
+  - `StorageExpansionSummaryResponse`에 `recentExecutions`를 추가.
+  - service summary 계산에서 전체 execution을 id desc로 정렬해 최근 5개를 반환.
+  - backend controller test에 초기 empty recent list와 최종 recent execution 검증을 추가.
+  - dashboard panel에 실패/timeout count와 최근 execution list를 표시.
+  - frontend selector/source test와 docs를 갱신하고 원격 데모에 배포.
+- 구현 내용:
+  - `GET /api/admin/storage-expansion/summary` 응답에 `recentExecutions` 추가.
+  - dashboard `storage-expansion` panel에 `Failed/Timed out` count와 최근 실행 5개 표시.
+  - 최근 실행이 없을 때 empty state 표시.
+  - status pill은 실패/timeout이 있으면 `CHECK`, open request가 있으면 `OPEN`, 모두 정상이면 `CLEAR`로 표시.
+- 수정된 파일 및 관련 파일:
+  - `osmu-backend/src/main/java/com/example/osmu/storageexpansion/StorageExpansionSummaryResponse.java`
+  - `osmu-backend/src/main/java/com/example/osmu/storageexpansion/StorageExpansionService.java`
+  - `osmu-backend/src/test/java/com/example/osmu/storageexpansion/AdminStorageExpansionControllerTest.java`
+  - `osmu-frontend/src/views/HomeView.vue`
+  - `osmu-frontend/src/views/HomeView.test.js`
+  - `osmu-frontend/src/services/api-quota-policy.test.js`
+  - `osmu-frontend/src/components/dashboard/DashboardPage.vue`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/frontend-design.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/minio-pool-expansion.md`
+  - `dev-docs/worklog/main/worklog-main.md`
+- 검증 기록:
+  - `npm.cmd run test:unit`: 성공, 61개 통과.
+  - `npm.cmd run build`: 성공.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-openapi-contract.ps1`: 성공, operations 126.
+  - local backend targeted test: 실패. 로컬 `JAVA_HOME`이 잘못 설정되어 Java 실행 불가.
+  - `git diff --check`: 성공. LF/CRLF warning만 출력.
+  - remote source build/deploy: 성공. 원격 JDK 17로 `DashboardLayoutControllerTest`, `AdminStorageExpansionControllerTest`, Storage Expansion verifier/sanitizer/retention tests, `bootJar` 통과.
+  - remote deploy: 성공. backend pid `24170`, frontend pid `24171`.
+  - remote health checks: `/api/health`, `/api/database/health`, `/api/storage/health`, frontend HTTP 200 통과.
+  - remote smoke `verify-local-demo.ps1 -SeedIfMissing`: 성공. lightweight demo 전체 통과.
+  - remote direct API: `GET /api/admin/storage-expansion/summary` 성공. 예시 응답 `requestCount=25`, `openRequestCount=5`, `executionCount=89`, `recentExecutions=5`, 최신 실행 `ROLLBACK`.
+- 결과:
+  - Storage Expansion dashboard에서 전체 실행 수뿐 아니라 최근 실행과 실패/timeout 위험도 바로 확인 가능.
+  - 현재 원격 데모 URL: `http://192.168.35.88:5173`.
+- 코드 리뷰:
+  - 최근 실행은 summary API에 포함해 frontend가 추가 N+1 request를 만들지 않도록 했다.
+  - 현재는 전체 execution 조회 후 stream 정렬이므로 MVP에는 충분하지만, 운영 규모가 커지면 DB `ORDER BY id DESC LIMIT 5` 전용 repository 메서드가 필요하다.
+- 다음 작업 참고:
+  - summary에 최근 실패 실행만 별도 제공하면 운영 대응성이 더 좋아진다.
+  - Browser click E2E로 dashboard panel 표시와 selector를 실제 브라우저에서 검증할 수 있다.
+- 앞으로 추가 개발 필요:
+  - 실제 MinIO Operator/Helm staging end-to-end apply 검증.
+  - GitOps PR runner 활성 환경의 인증/권한 검증.
+  - execution aggregate SQL 최적화.
+- 추가 사용 skill/plugin:
+  - `caveman` skill: ultra 응답 압축 유지.
+
+### 2026-06-15 - Storage expansion execution retention dashboard
+
+- 작업 시작 시간: 2026-06-15 08:05:00 +09:00
+- 작업 종료 시간: 2026-06-15 08:17:24 +09:00
+- 사용자 명령:
+  - 현재까지 정리한 목표 기준으로 기능 개발을 계속 진행.
+  - `$caveman ultra` 응답 형식 유지.
+- 요청 분석:
+  - 직전 Storage Expansion execution output retention job은 API/스케줄러까지 구현되었으나 dashboard panel 노출이 후속 과제로 남아 있었다.
+  - 사용자가 원한 OCI식 dashboard palette/패널 교체 기능 흐름에 맞춰 retention status/run 기능을 dashboard widget catalog와 admin panel에 연결하는 작업으로 인식.
+- 실행 내용:
+  - frontend `HomeView.vue`에 execution log retention 상태 reactive object, status load, run handler, reset 로직 추가.
+  - `DashboardPage.vue`에 `execution-retention` widget 표시, standalone admin panel, stable selector, run emit 추가.
+  - backend dashboard catalog/preset에 `execution-retention` widget 추가.
+  - frontend/backend 정적/컨트롤러 테스트 기대값 갱신.
+  - API/Frontend/Test/Storage Expansion 문서 갱신.
+  - 원격 서버 `192.168.35.88`에 재배포하고 smoke/API 검증 수행.
+- 구현 내용:
+  - `GET /api/admin/storage-expansion/execution-log-retention/status` 응답을 dashboard에서 `enabled`, `retentionDays`, `batchSize`, `pendingOutputCount`, `redactedOutputCount`, `failedRunCount`로 표시.
+  - ADMIN dashboard panel의 `Run retention` 버튼으로 `POST /api/admin/storage-expansion/execution-log-retention/run` 수동 실행.
+  - dashboard palette catalog id `execution-retention` 추가.
+  - operations/admin built-in preset에 `execution-retention` 포함.
+- 수정된 파일 및 관련 파일:
+  - `osmu-frontend/src/views/HomeView.vue`
+  - `osmu-frontend/src/components/dashboard/DashboardPage.vue`
+  - `osmu-frontend/src/views/HomeView.test.js`
+  - `osmu-backend/src/main/java/com/example/osmu/dashboard/DashboardLayoutService.java`
+  - `osmu-backend/src/test/java/com/example/osmu/dashboard/DashboardLayoutControllerTest.java`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/frontend-design.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/minio-pool-expansion.md`
+  - `dev-docs/worklog/main/worklog-main.md`
+- 검증 기록:
+  - `npm.cmd run test:unit`: 성공, 61 pass.
+  - `npm.cmd run build`: 성공.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-openapi-contract.ps1`: 성공, operations 124 / frontend API functions 102.
+  - `git diff --check`: 성공. LF/CRLF warning만 출력.
+  - local backend targeted test: 실패. 로컬 `JAVA_HOME`가 invalid라 Java 실행 불가.
+  - remote source build/deploy: 성공. 원격 JDK 17로 `DashboardLayoutControllerTest`, `AdminStorageExpansionControllerTest`, `StorageExpansionPostRunVerifierTest`, `StorageExpansionExecutionLogSanitizerTest`, `StorageExpansionExecutionLogRetentionJobTest`, `bootJar` 통과.
+  - remote deploy: 성공. backend pid `21918`, frontend pid `21919`.
+  - remote smoke `verify-local-demo.ps1 -SeedIfMissing`: 성공.
+  - remote direct API: execution log retention status/run 성공. `enabled=true`, `retentionDays=90`, `batchSize=100`, `pendingOutputCount=0`, `redactedOutputCount=0`.
+- 결과:
+  - Storage Expansion execution output retention 상태가 admin dashboard에서 확인 가능해졌고, 운영자가 dashboard에서 직접 수동 redaction job을 실행할 수 있다.
+  - 원격 데모 URL: `http://192.168.35.88:5173`
+- 코드 리뷰:
+  - dashboard widget은 catalog/preset/frontend fallback/visible widget template을 모두 맞춰 unknown widget 저장 실패나 blank widget 위험을 낮췄다.
+  - retention job 자체 API는 기존 구현을 재사용해 backend 변경 범위를 dashboard catalog로 제한했다.
+  - `data-testid`를 panel/pending/run button에 붙여 이후 Browser/Chrome E2E가 안정적으로 접근 가능하다.
+- 다음 작업할 때 참고할 사항:
+  - 현재 local backend test는 `JAVA_HOME` 문제로 실행 불가. backend 검증은 원격 JDK 17에서 통과했다.
+  - worktree에는 이전 작업분이 대량으로 dirty/untracked 상태로 남아 있으므로 파일 되돌리기 금지.
+  - 원격 배포 재실행 시 현재 pid는 backend `21918`, frontend `21919`.
+- 앞으로 추가적으로 개발해야 하는 내용:
+  - dashboard panel drag/drop을 실제 브라우저 E2E로 검증.
+  - Storage Expansion GitOps PR 자동 생성/연결.
+  - 실제 Kubernetes/MinIO Operator staging에서 apply/rollback end-to-end 검증.
+- 추가 사용 skill/plugin:
+  - `caveman` skill: ultra 응답 형식 유지.
+
+### 2026-06-15 - Storage expansion GitOps PR runner
+
+- 작업 시작 시간: 2026-06-15 08:18:00 +09:00
+- 작업 종료 시간: 2026-06-15 08:29:22 +09:00
+- 사용자 명령:
+  - 활성 목표에 따라 `dev-docs`에 정리된 기능과 최종 목표를 계속 개발.
+  - `$caveman ultra` 응답 형식 유지.
+- 요청 분석:
+  - 직전 작업 후 남은 큰 후속 항목은 `Storage Expansion GitOps PR 자동 생성/연결`이었다.
+  - 실제 Git provider 권한이 없는 기본 데모 환경에서도 기능 흐름을 검증할 수 있도록, 기존 runner 패턴과 동일하게 기본 비활성(`SKIPPED`) execution record를 남기고 enabled 환경에서는 git/gh 명령을 실행하는 형태로 구현하는 것이 적절하다고 판단.
+- 실행 내용:
+  - backend에 `StorageExpansionGitOpsPrRunner` component 추가.
+  - `StorageExpansionService`에 `runGitOpsPrExecution` 추가.
+  - ADMIN API `POST /api/admin/storage-expansion/requests/{requestId}/gitops-pr-runner` 추가.
+  - frontend API wrapper, Admin UI `Run PR` 버튼, HomeView handler 연결.
+  - OpenAPI, local env, security, frontend design, test cases, storage expansion 문서 갱신.
+  - smoke verifier가 새 UI selector/API wrapper/disabled runner API를 확인하도록 보강.
+- 구현 내용:
+  - 기본 비활성 상태:
+    - 실제 git/gh 명령 미실행.
+    - `GITOPS_PR / SKIPPED` execution history 저장.
+    - command에는 `git checkout -B ... && git add ... && git commit ... && gh pr create ...` 형태의 실행 계획 저장.
+  - enabled 상태:
+    - configured repository path에 GitOps artifact 파일 작성.
+    - `git checkout -B`, `git add`, `git commit`, `gh pr create`를 shell 없이 `ProcessBuilder`로 순차 실행.
+    - `gh pr create` output의 첫 HTTP(S) URL을 execution `externalUrl`로 저장.
+  - UI:
+    - GitOps PR Draft panel에 `Run PR` 버튼 추가.
+    - runner 결과가 PR URL을 반환하면 `GitOps PR URL` input에 자동 채움.
+- 수정된 파일 및 관련 파일:
+  - `osmu-backend/src/main/java/com/example/osmu/storageexpansion/StorageExpansionGitOpsPrRunner.java`
+  - `osmu-backend/src/main/java/com/example/osmu/storageexpansion/StorageExpansionService.java`
+  - `osmu-backend/src/main/java/com/example/osmu/storageexpansion/AdminStorageExpansionController.java`
+  - `osmu-backend/src/main/resources/application.yaml`
+  - `osmu-backend/src/test/java/com/example/osmu/storageexpansion/AdminStorageExpansionControllerTest.java`
+  - `osmu-frontend/src/services/api.js`
+  - `osmu-frontend/src/services/api-quota-policy.test.js`
+  - `osmu-frontend/src/views/HomeView.vue`
+  - `osmu-frontend/src/views/HomeView.test.js`
+  - `osmu-frontend/src/components/admin/AdminPage.vue`
+  - `osmu-frontend/src/components/admin/StorageExpansionPanel.vue`
+  - `scripts/verify-lightweight-demo.ps1`
+  - `scripts/verify-openapi-contract.ps1`
+  - `dev-docs/openapi-mvp.json`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/local-dev-env.md`
+  - `dev-docs/security-design.md`
+  - `dev-docs/frontend-design.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/minio-pool-expansion.md`
+  - `dev-docs/worklog/main/worklog-main.md`
+- 검증 기록:
+  - `npm.cmd run test:unit`: 성공, 61 pass.
+  - `npm.cmd run build`: 성공.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-openapi-contract.ps1`: 성공, operations 125.
+  - `git diff --check`: 성공. LF/CRLF warning만 출력.
+  - local backend targeted test: 실패. 로컬 `JAVA_HOME` invalid.
+  - remote source build/deploy 1차: 실패. `normalizeOptionalUrl` helper명 오류 compile fail.
+  - compile 오류 수정 후 remote source build/deploy 2차: 성공. 원격 JDK 17로 `DashboardLayoutControllerTest`, `AdminStorageExpansionControllerTest`, `StorageExpansionPostRunVerifierTest`, `StorageExpansionExecutionLogSanitizerTest`, `StorageExpansionExecutionLogRetentionJobTest`, `bootJar` 통과.
+  - remote deploy: 성공. backend pid `22644`, frontend pid `22645`.
+  - remote smoke `verify-local-demo.ps1 -SeedIfMissing`: 성공. GitOps PR runner disabled smoke 포함.
+  - remote direct API: `POST /api/admin/storage-expansion/requests/{id}/gitops-pr-runner` 성공. `GITOPS_PR / SKIPPED`, `commandHasGh=true`, `disabled=true`, `timedOut=false`.
+- 결과:
+  - Storage Expansion 흐름이 `GitOps draft -> artifact write/branch/commit/PR runner -> execution history`까지 확장됨.
+  - 기본 데모/운영 안전값은 disabled라 실수로 git/gh를 실행하지 않는다.
+  - 원격 데모 URL: `http://192.168.35.88:5173`
+- 코드 리뷰:
+  - shell 문자열 실행 대신 `ProcessBuilder` argv 방식으로 command injection 위험을 줄였다.
+  - repository target path를 normalize 후 repository 하위인지 검사해 artifact path escape를 막았다.
+  - runner output은 기존 sanitizer/output retention pipeline을 그대로 탄다.
+  - enabled 환경의 실제 GitHub/GitLab 인증/권한은 아직 외부 환경 검증이 필요하다.
+- 다음 작업할 때 참고할 사항:
+  - 현재 remote pid는 backend `22644`, frontend `22645`.
+  - GitOps PR runner enabled 검증 시 `OSMU_STORAGE_EXPANSION_GITOPS_REPOSITORY_PATH`, `git`, `gh`, base branch, GitHub auth가 필요하다.
+  - local Java 설정이 깨져 있으므로 backend 검증은 remote JDK 17을 사용했다.
+- 앞으로 추가적으로 개발해야 하는 내용:
+  - GitOps PR runner enabled 환경에서 실제 PR 생성/URL 반환 검증.
+  - Helm diff runner와 GitOps PR runner 결과를 release gate에 묶는 운영 승인 단계.
+  - Kubernetes/MinIO Operator staging에서 apply/rollback e2e 검증.
+- 추가 사용 skill/plugin:
+  - `caveman` skill: ultra 응답 형식 유지.
+### 2026-06-15 - Storage expansion post-run verifier gate
+
+- 작업 시간:
+  - 시작: 2026-06-15 07:42:00 +09:00
+  - 종료: 2026-06-15 07:49:37 +09:00
+- 사용자 명령:
+  - active goal 기준으로 OSMU 목표 기능 개발을 계속 진행.
+  - 직전 rollback runner 다음 단계인 post-apply/post-rollback health gate와 S3 smoke 자동 검증을 구현.
+- 요청 분석:
+  - Storage Expansion apply/rollback command가 성공해도 DB, object storage, S3 put/get/list가 깨져 있으면 운영상 성공으로 보면 안 된다고 해석.
+  - apply runner는 verifier 실패 시 request를 `APPLIED`로 전환하지 않는 gate가 필요하고, rollback runner는 실행 결과 evidence에 verifier 결과를 남겨야 한다고 판단.
+- 실행 내용:
+  - backend post-run verifier component와 verification record 추가.
+  - apply/rollback runner 성공 후 verifier를 자동 호출하도록 service flow 연결.
+  - verifier 결과를 execution output/notes에 append하고 실패 시 execution result를 `FAILED`로 변경.
+  - verifier env 설정, backend unit test, API/local/test docs 갱신.
+  - 원격 서버 `192.168.35.88`에 source build/deploy 후 smoke test 실행.
+- 구현 내용:
+  - `StorageExpansionPostRunVerifier`가 database health, object storage health, S3 put/get/list smoke를 실행.
+  - smoke bucket은 `OSMU_STORAGE_EXPANSION_POST_RUN_BUCKET_PREFIX` 기반으로 만들고, S3 bucket 길이 제한에 맞게 prefix/phase를 trim.
+  - verifier disabled 시 `postRun=DISABLED`를 기록하고 runner 성공 결과는 유지.
+  - verifier failure 시 `postRun=FAILED`와 각 check 상태를 남기며 apply request의 `APPLIED` 자동 전환을 막음.
+- 수정된 파일 및 관련 파일:
+  - `osmu-backend/src/main/java/com/example/osmu/storageexpansion/StorageExpansionPostRunVerification.java`
+  - `osmu-backend/src/main/java/com/example/osmu/storageexpansion/StorageExpansionPostRunVerifier.java`
+  - `osmu-backend/src/main/java/com/example/osmu/storageexpansion/StorageExpansionService.java`
+  - `osmu-backend/src/main/resources/application.yaml`
+  - `osmu-backend/src/test/java/com/example/osmu/storageexpansion/StorageExpansionPostRunVerifierTest.java`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/local-dev-env.md`
+  - `dev-docs/minio-pool-expansion.md`
+  - `dev-docs/test-cases.md`
+  - `.osmu-run/remote-source-build-deploy.js` (ignored helper, 원격 테스트 대상에 verifier test 추가)
+- 검증 기록:
+  - local backend targeted test: 실패. 로컬 `JAVA_HOME`이 잘못 설정되어 Java 실행 불가.
+  - `npm.cmd run test:unit`: 성공, 61개 통과.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-openapi-contract.ps1`: 성공, operations 122 / frontend API functions 100.
+  - `npm.cmd run build`: 성공.
+  - `git diff --check`: 성공. LF/CRLF warning만 출력.
+  - remote source build/deploy: 성공. 원격 JDK 17로 `DashboardLayoutControllerTest`, `AdminStorageExpansionControllerTest`, `StorageExpansionPostRunVerifierTest`, `bootJar` 통과.
+  - remote deploy: 성공. backend pid `20398`, frontend pid `20399`.
+  - remote health checks: `/api/health`, `/api/database/health`, `/api/storage/health`, frontend HTTP 200 통과.
+  - remote smoke `verify-local-demo.ps1 -SeedIfMissing`: 성공. lightweight demo 전체 통과.
+- 결과:
+  - Storage Expansion 흐름이 `apply/rollback command success -> DB/storage health -> S3 put/get/list smoke -> execution result/request status gate`까지 확장됨.
+  - 현재 원격 데모 URL: `http://192.168.35.88:5173`.
+- 코드 리뷰:
+  - verifier는 command result가 `SUCCESS`일 때만 실행되므로 disabled/skipped runner 흐름과 충돌하지 않음.
+  - smoke object cleanup 실패가 verifier 결과를 덮어쓰지 않도록 분리됨.
+  - apply request 자동 `APPLIED` 전환 기준이 execution 최종 result로 유지되어 실패 시 운영 상태가 과대 표시되지 않음.
+- 다음 작업 참고:
+  - 실제 운영 적용 전 runner output masking/retention 정책이 필요.
+  - post-run verifier가 사용하는 bucket prefix는 고객 환경 bucket naming 정책과 충돌하지 않게 설정 필요.
+- 앞으로 추가 개발 필요:
+  - runner output masking/retention 정책.
+  - GitOps PR 자동 생성.
+  - 실제 MinIO Operator/Helm apply 권한을 사용한 end-to-end staging 검증.
+- 추가 사용 skill/plugin:
+  - `caveman` skill: ultra 응답 압축 유지.
+
+### 2026-06-15 - Storage expansion execution history
+
+- 작업 시간:
+  - 시작: 2026-06-15 06:31:00 +09:00
+  - 종료: 2026-06-15 06:40:47 +09:00
+- 사용자 명령:
+  - active goal 기준으로 `dev-docs`에 정리된 목표 기능 개발을 계속 진행.
+  - `caveman ultra` 응답 압축 유지.
+- 명령 인식:
+  - GitOps ZIP bundle 이후 실제 PR/Helm/Kubernetes executor로 가기 전에 dry-run, GitOps PR, Helm diff, kubectl diff, apply, rollback 결과를 저장할 실행 이력 기반이 필요하다고 판단.
+  - 실제 cluster 명령을 바로 실행하지 않고, 운영자가 수행한 결과와 외부 URL/checksum/output을 먼저 DB/UI에 기록하는 안전한 전 단계로 인식.
+- 실행 내용:
+  - `storage_expansion_executions` record/payload/response/repository 추가.
+  - in-memory/MariaDB execution repository 추가.
+  - Flyway `V34__storage_expansion_executions.sql` 추가.
+  - ADMIN API `GET/POST /api/admin/storage-expansion/requests/{requestId}/executions` 추가.
+  - frontend Storage Expansion panel에 execution history 버튼, 기록 form, 이력 list 추가.
+  - API wrapper, backend/frontend tests, OpenAPI, smoke, 문서 갱신.
+  - 원격 서버 `192.168.35.88`에 backend/frontend 재배포 후 smoke 실행.
+- 구현 내용:
+  - `APPROVED` 또는 `APPLIED` 요청만 execution history를 기록할 수 있다.
+  - 허용 execution type: `DRY_RUN`, `GITOPS_PR`, `HELM_DIFF`, `KUBECTL_DIFF`, `APPLY`, `ROLLBACK`.
+  - 허용 result: `SUCCESS`, `FAILED`, `SKIPPED`.
+  - 저장 필드: command, output, externalUrl, artifactSha256, notes, createdBy, createdAt.
+  - `artifactSha256`는 있으면 64자 SHA-256 hex만 허용한다.
+  - audit event `STORAGE_EXPANSION_EXECUTION_RECORD_CREATE` 기록.
+- 수정된 파일 및 관련 파일:
+  - `osmu-backend/src/main/java/com/example/osmu/storageexpansion/StorageExpansionExecutionPayload.java`
+  - `osmu-backend/src/main/java/com/example/osmu/storageexpansion/StorageExpansionExecutionRecord.java`
+  - `osmu-backend/src/main/java/com/example/osmu/storageexpansion/StorageExpansionExecutionResponse.java`
+  - `osmu-backend/src/main/java/com/example/osmu/storageexpansion/repository/StorageExpansionExecutionRepository.java`
+  - `osmu-backend/src/main/java/com/example/osmu/storageexpansion/repository/InMemoryStorageExpansionExecutionRepository.java`
+  - `osmu-backend/src/main/java/com/example/osmu/storageexpansion/repository/MariaDbStorageExpansionExecutionRepository.java`
+  - `osmu-backend/src/main/resources/db/migration/V34__storage_expansion_executions.sql`
+  - `osmu-backend/src/main/java/com/example/osmu/storageexpansion/StorageExpansionService.java`
+  - `osmu-backend/src/main/java/com/example/osmu/storageexpansion/AdminStorageExpansionController.java`
+  - `osmu-backend/src/test/java/com/example/osmu/storageexpansion/AdminStorageExpansionControllerTest.java`
+  - `osmu-frontend/src/services/api.js`
+  - `osmu-frontend/src/services/api-quota-policy.test.js`
+  - `osmu-frontend/src/components/admin/StorageExpansionPanel.vue`
+  - `osmu-frontend/src/components/admin/AdminPage.vue`
+  - `osmu-frontend/src/views/HomeView.vue`
+  - `osmu-frontend/src/views/HomeView.test.js`
+  - `scripts/verify-lightweight-demo.ps1`
+  - `scripts/verify-openapi-contract.ps1`
+  - `dev-docs/openapi-mvp.json`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/database-design.md`
+  - `dev-docs/frontend-design.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/minio-pool-expansion.md`
+  - `dev-docs/worklog/main/worklog-main.md`
+- 검증 기록:
+  - `npm.cmd run test:unit`: 성공, 61개 통과.
+  - `npm.cmd run build`: 성공.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-openapi-contract.ps1`: 성공, operations 116 / frontend API functions 94.
+  - `git diff --check`: 성공. LF/CRLF warning만 출력.
+  - remote source build: 성공. 원격 JDK 17로 `DashboardLayoutControllerTest`, `AdminStorageExpansionControllerTest`, `bootJar` 통과.
+  - remote deploy: 성공. backend pid `16799`, frontend pid `16800`.
+  - remote smoke `verify-local-demo.ps1 -SeedIfMissing`: 성공. execution history record/list 검증 포함 전체 lightweight demo smoke 통과.
+- 코드 리뷰:
+  - live executor 전 단계로 수동/외부 실행 결과를 구조화해 저장하게 되어 적용 증거 추적성이 좋아졌다.
+  - request 존재와 status gate를 service에서 검증해 orphan execution 기록을 막았다.
+  - MariaDB repository도 lazy schema를 지원해 기존 demo DB에서 자동 생성 가능하다.
+  - 아직 executor가 직접 Helm/kubectl을 실행하지는 않으므로 command/output은 운영자 또는 후속 executor가 채우는 구조다.
+- 결과:
+  - Storage Expansion 흐름이 `request -> approve -> dry-run -> GitOps draft -> GitOps ZIP export -> execution history -> applied evidence -> APPLIED` 단계까지 확장됨.
+  - 원격 demo `http://192.168.35.88:5173`에 최신 backend/frontend 배포 완료.
+- 다음 작업 참고:
+  - 다음 단계는 execution history를 자동으로 채우는 GitOps PR executor 또는 Helm/kubectl dry-run executor.
+  - execution type/result별 dashboard widget이나 readiness gate와 연결 가능.
+- 앞으로 추가 개발 필요:
+  - GitOps repository connector와 PR 생성 상태 추적.
+  - Helm diff / kubectl dry-run 자동 실행.
+  - live apply executor와 rollback/runbook 연결.
+  - APPLIED evidence를 execution record와 자동 연결.
+- 추가 사용 skill/plugin:
+  - `caveman` skill: ultra 응답 압축 유지.
+
+### 2026-06-15 - Storage expansion GitOps draft plan
+
+- 작업 시간:
+  - 시작: 2026-06-15 06:03:00 +09:00
+  - 종료: 2026-06-15 06:22:24 +09:00
+- 사용자 명령:
+  - active goal 기준으로 `dev-docs`에 정리된 목표 기능 개발을 계속 진행.
+  - 응답은 `$caveman ultra` 스타일 유지.
+- 명령 인식:
+  - Storage Expansion dry-run 다음 단계로, 승인된 MinIO pool 증설 요청을 실제 GitOps 적용 전에 검토 가능한 PR 초안 패키지로 만드는 기능으로 인식.
+  - 실제 GitHub push/PR 생성은 아직 하지 않고, 브랜치명/커밋 메시지/PR 제목/본문/변경 파일 경로/review checklist/checksum을 API와 UI로 제공하는 MVP 단계로 판단.
+- 실행 내용:
+  - backend storage expansion service에 `gitOpsPlan` 생성 로직 추가.
+  - ADMIN API `POST /api/admin/storage-expansion/requests/{requestId}/gitops-plan` 추가.
+  - controller test에 승인 전 400, 승인 후 응답 필드, audit event 검증 추가.
+  - frontend API wrapper, Admin page state, Storage Expansion panel 버튼/결과 패널 추가.
+  - OpenAPI, API spec, frontend design, test cases, MinIO expansion 문서, smoke script 갱신.
+  - 원격 서버 `192.168.35.88`에 backend/frontend 재배포 후 demo smoke 실행.
+- 구현 내용:
+  - `APPROVED` 요청만 GitOps draft 생성 가능.
+  - 응답 필드: `branchName`, `commitMessage`, `pullRequestTitle`, `pullRequestBody`, `manifestPath`, `valuesPath`, `artifactSha256`, `changedFiles`, `reviewChecklist`.
+  - commit convention은 `[Feat][I] : storage expansion pool-N GitOps manifest draft` 형식으로 생성.
+  - UI는 `GitOps` 버튼과 `storage-expansion-gitops-plan-panel`에서 branch, commit, changed files, review checklist, PR body를 표시.
+  - audit event `STORAGE_EXPANSION_REQUEST_GITOPS_PLAN` 기록.
+- 수정된 파일 및 관련 파일:
+  - `osmu-backend/src/main/java/com/example/osmu/storageexpansion/StorageExpansionGitOpsPlanResponse.java`
+  - `osmu-backend/src/main/java/com/example/osmu/storageexpansion/StorageExpansionService.java`
+  - `osmu-backend/src/main/java/com/example/osmu/storageexpansion/AdminStorageExpansionController.java`
+  - `osmu-backend/src/test/java/com/example/osmu/storageexpansion/AdminStorageExpansionControllerTest.java`
+  - `osmu-frontend/src/services/api.js`
+  - `osmu-frontend/src/services/api-quota-policy.test.js`
+  - `osmu-frontend/src/components/admin/StorageExpansionPanel.vue`
+  - `osmu-frontend/src/components/admin/AdminPage.vue`
+  - `osmu-frontend/src/views/HomeView.vue`
+  - `osmu-frontend/src/views/HomeView.test.js`
+  - `scripts/verify-lightweight-demo.ps1`
+  - `scripts/verify-openapi-contract.ps1`
+  - `dev-docs/openapi-mvp.json`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/frontend-design.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/minio-pool-expansion.md`
+  - `dev-docs/worklog/main/worklog-main.md`
+- 검증 기록:
+  - `npm.cmd run test:unit`: 성공, 61개 통과.
+  - `npm.cmd run build`: 성공.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-openapi-contract.ps1`: 성공, operations 113 / frontend API functions 91.
+  - `git diff --check`: 성공. LF/CRLF warning만 출력.
+  - remote source build: 성공. 원격 JDK 17로 `DashboardLayoutControllerTest`, `AdminStorageExpansionControllerTest`, `bootJar` 통과.
+  - remote deploy: 성공. backend pid `15805`, frontend pid `15806`.
+  - remote smoke `verify-local-demo.ps1 -SeedIfMissing`: 성공. `Storage expansion request planning` 포함 전체 lightweight demo smoke 통과.
+- 코드 리뷰:
+  - GitOps draft는 실제 cluster/repository 변경을 수행하지 않고 `referenceOnly` 성격의 계획만 반환해 운영 위험을 낮춤.
+  - `APPROVED` 상태 gate를 dry-run과 동일하게 적용해 미승인 요청의 PR 초안 생성을 차단함.
+  - APPLIED evidence gate와 연결되도록 PR URL/merge SHA/pipeline log를 checklist와 PR body에 포함할 수 있는 구조를 마련함.
+  - 현재는 README artifact 내용을 실제 파일로 내려주지 않고 changed file path로만 제시하므로, 실제 GitOps executor 구현 시 artifact content 모델 확장이 필요.
+- 결과:
+  - Storage Expansion 흐름이 `request -> approve -> dry-run -> GitOps draft -> applied evidence -> APPLIED` 데모 단계까지 연결됨.
+  - 원격 demo `http://192.168.35.88:5173`에 최신 backend/frontend 배포 완료.
+- 다음 작업 참고:
+  - 다음 단계는 실제 repository branch/commit/PR 생성 executor 또는 Helm/Kubernetes apply executor 중 하나를 선택.
+  - GitOps draft 응답을 실제 artifact content map으로 확장하면 PR 자동 생성과 다운로드를 같은 모델로 처리하기 쉬움.
+  - 실 cluster 적용 전 StorageClass, PVC quota, MinIO Operator CRD schema, helm diff/kubectl diff 결과 저장 모델 필요.
+- 앞으로 추가 개발 필요:
+  - GitOps repository connector.
+  - PR 생성/상태 추적/merge SHA 저장.
+  - Helm diff 및 Kubernetes server-side dry-run 결과 저장.
+  - live apply executor와 rollback/runbook 연결.
+  - APPLIED evidence를 URL/commit/pipeline log 타입별로 구조화.
+- 추가 사용 skill/plugin:
+  - `caveman` skill: ultra 응답 압축 유지.
+
+### 2026-06-15 - Storage expansion dry-run execution plan
+
+- 작업 시간:
+  - 시작: 2026-06-15 21:07:00 +09:00
+  - 종료: 2026-06-15 21:12:00 +09:00
+- 사용자 명령:
+  - active goal 기준으로 프론트/백엔드 기능 개발을 계속 진행.
+- 명령 인식:
+  - manifest download 다음 단계로 실제 GitOps/Helm/Kubernetes executor 전에 승인 요청의 적용 가능성을 확인하는 dry-run 실행 계획이 필요하다고 인식.
+- 요청 분석:
+  - 실제 cluster apply는 아직 위험하므로, 승인된 요청만 대상으로 preflight checklist, artifact checksum, suggested commands, evidence template을 생성하는 단계가 적절하다.
+  - 이 기능은 이후 GitOps PR 생성 또는 Helm/Kubernetes executor의 입력 검증 단계가 된다.
+- 실행 내용:
+  - backend dry-run execution plan DTO/API/service 추가.
+  - frontend Storage Expansion panel에 Dry Run 버튼과 execution plan panel 추가.
+  - API wrapper, backend/frontend tests, smoke script, OpenAPI, API spec, frontend design, test cases, MinIO expansion doc 갱신.
+- 구현 내용:
+  - `POST /api/admin/storage-expansion/requests/{requestId}/execution-plan` 추가.
+  - `APPROVED` 요청만 dry-run 가능.
+  - bundle YAML SHA-256, evidence template, preflight checklist, kubectl/helm dry-run 명령 반환.
+  - UI에서 Dry Run 실행 후 evidence input을 template으로 자동 채움.
+- 수정된 파일:
+  - `osmu-backend/src/main/java/com/example/osmu/storageexpansion/StorageExpansionExecutionPlanResponse.java`
+  - `osmu-backend/src/main/java/com/example/osmu/storageexpansion/StorageExpansionService.java`
+  - `osmu-backend/src/main/java/com/example/osmu/storageexpansion/AdminStorageExpansionController.java`
+  - `osmu-backend/src/test/java/com/example/osmu/storageexpansion/AdminStorageExpansionControllerTest.java`
+  - `osmu-frontend/src/components/admin/StorageExpansionPanel.vue`
+  - `osmu-frontend/src/components/admin/AdminPage.vue`
+  - `osmu-frontend/src/views/HomeView.vue`
+  - `osmu-frontend/src/services/api.js`
+  - `osmu-frontend/src/services/api-quota-policy.test.js`
+  - `osmu-frontend/src/views/HomeView.test.js`
+  - `scripts/verify-lightweight-demo.ps1`
+  - `scripts/verify-openapi-contract.ps1`
+  - `dev-docs/openapi-mvp.json`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/frontend-design.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/minio-pool-expansion.md`
+  - `dev-docs/worklog/main/worklog-main.md`
+- 검증 기록:
+  - `npm.cmd run test:unit`: 성공, 61개 통과.
+  - `npm.cmd run build`: 성공.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-openapi-contract.ps1`: 성공, operations 112 / frontend API functions 90.
+  - `git diff --check`: 성공. LF/CRLF warning만 출력.
+  - remote source build: 성공. `DashboardLayoutControllerTest`, `AdminStorageExpansionControllerTest`, `bootJar` 성공.
+  - remote deploy: 성공. backend pid `15306`, frontend pid `15307`.
+  - remote smoke `verify-local-demo.ps1 -SeedIfMissing`: 성공. Storage expansion dry-run execution plan 검증 포함.
+- 코드 리뷰:
+  - 실제 apply 대신 dry-run 산출물을 반환해 운영 리스크를 낮췄다.
+  - `APPROVED` status gate를 둬 미승인 요청이 실행 경로로 들어가지 못하게 했다.
+  - evidence template 자동 채움으로 `APPLIED` 처리 시 checksum 근거를 남기기 쉬워졌다.
+- 결과:
+  - Storage Expansion 흐름이 요청 -> preview/download -> approve -> dry-run plan -> evidence apply까지 연결됨.
+  - 원격 demo `http://192.168.35.88:5173`에 최신 backend/frontend 배포 완료.
+- 후속 메모:
+  - 다음 단계는 dry-run plan을 기반으로 GitOps PR 생성 또는 Helm/Kubernetes live executor 구현.
+- 추가 개발 필요:
+  - GitOps PR 생성 API/UI.
+  - Helm diff/live apply executor.
+  - Kubernetes API server-side dry-run/live apply.
+  - executor 실행 이력 테이블과 rollback link.
+- 추가 사용 skill/plugin:
+  - `caveman` skill: ultra 응답 압축 유지.
+
+### 2026-06-15 - Storage expansion manifest artifact download
+
+- 작업 시간:
+  - 시작: 2026-06-15 20:58:00 +09:00
+  - 종료: 2026-06-15 21:06:00 +09:00
+- 사용자 명령:
+  - active goal 기준으로 프론트/백엔드 기능 개발을 계속 진행.
+- 명령 인식:
+  - 직전 manifest preview/applied evidence 다음 단계로, 운영자가 GitOps PR, Helm values patch, 운영 티켓 첨부에 쓸 YAML 파일을 직접 내려받는 기능이 필요하다고 인식.
+- 요청 분석:
+  - 실제 Kubernetes executor 전이라도 manifest 산출물을 파일로 export할 수 있어야 운영 적용 흐름으로 이동 가능하다.
+  - `tenant`, `helm`, `bundle` 단위 artifact가 있으면 MinIO Operator 검토, Helm values 검토, 티켓 첨부 모두 대응 가능하다.
+- 실행 내용:
+  - backend manifest artifact DTO와 YAML download endpoint 추가.
+  - frontend manifest preview 영역에 Tenant/Helm/Bundle 다운로드 버튼 추가.
+  - API wrapper, backend/frontend tests, smoke script, OpenAPI, API spec, frontend design, test cases, MinIO expansion doc 갱신.
+- 구현 내용:
+  - `GET /api/admin/storage-expansion/requests/{requestId}/manifest/{artifact}` 추가.
+  - `artifact`는 `tenant`, `helm`, `bundle` 허용.
+  - 응답은 `application/x-yaml`과 attachment filename을 반환.
+  - Admin UI에서 preview 후 tenant/helm/bundle YAML을 다운로드.
+- 수정된 파일:
+  - `osmu-backend/src/main/java/com/example/osmu/storageexpansion/StorageExpansionManifestArtifact.java`
+  - `osmu-backend/src/main/java/com/example/osmu/storageexpansion/StorageExpansionService.java`
+  - `osmu-backend/src/main/java/com/example/osmu/storageexpansion/AdminStorageExpansionController.java`
+  - `osmu-backend/src/test/java/com/example/osmu/storageexpansion/AdminStorageExpansionControllerTest.java`
+  - `osmu-frontend/src/components/admin/StorageExpansionPanel.vue`
+  - `osmu-frontend/src/components/admin/AdminPage.vue`
+  - `osmu-frontend/src/views/HomeView.vue`
+  - `osmu-frontend/src/services/api.js`
+  - `osmu-frontend/src/services/api-quota-policy.test.js`
+  - `osmu-frontend/src/views/HomeView.test.js`
+  - `scripts/verify-lightweight-demo.ps1`
+  - `scripts/verify-openapi-contract.ps1`
+  - `dev-docs/openapi-mvp.json`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/frontend-design.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/minio-pool-expansion.md`
+  - `dev-docs/worklog/main/worklog-main.md`
+- 검증 기록:
+  - `npm.cmd run test:unit`: 성공, 61개 통과.
+  - `npm.cmd run build`: 성공.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-openapi-contract.ps1`: 성공, operations 111 / frontend API functions 89.
+  - `git diff --check`: 성공. LF/CRLF warning만 출력.
+  - remote source build: 성공. `DashboardLayoutControllerTest`, `AdminStorageExpansionControllerTest`, `bootJar` 성공.
+  - remote deploy: 성공. backend pid `14751`, frontend pid `14752`.
+  - remote smoke `verify-local-demo.ps1 -SeedIfMissing`: 첫 실행은 minified function name 정적 검사와 `Invoke-WebRequest` byte[] 처리 때문에 실패. script를 `/manifest/` URL 조각 검사와 UTF-8 변환으로 수정 후 재실행 성공.
+- 코드 리뷰:
+  - YAML download는 `referenceOnly` preview 내용을 그대로 export해 실제 적용 전 검토 흐름을 유지한다.
+  - invalid artifact는 backend에서 400으로 막는다.
+  - download audit event를 남겨 운영자가 어떤 manifest artifact를 내려받았는지 추적 가능하다.
+- 결과:
+  - Storage Expansion manifest preview에서 tenant/helm/bundle YAML 파일을 내려받을 수 있음.
+  - 원격 demo `http://192.168.35.88:5173`에 최신 backend/frontend 배포 완료.
+- 후속 메모:
+  - 다음 단계는 GitOps PR 생성 또는 Helm/Kubernetes executor.
+- 추가 개발 필요:
+  - GitOps PR 생성 API/UI.
+  - Helm apply executor dry-run/live-run 분리.
+  - artifact checksum/evidence 자동 연결.
+  - rollback/runbook 링크.
+- 추가 사용 skill/plugin:
+  - `caveman` skill: ultra 응답 압축 유지.
+
+### 2026-06-15 - Storage expansion applied evidence gate
+
+- 작업 시간:
+  - 시작: 2026-06-15 20:50:00 +09:00
+  - 종료: 2026-06-15 20:57:00 +09:00
+- 사용자 명령:
+  - active goal 기준으로 프론트/백엔드 기능 개발을 계속 진행.
+- 명령 인식:
+  - 직전 Storage Expansion manifest preview 이후 다음 gap인 `APPLIED` 처리 안정화 작업으로 인식.
+  - `Apply`가 단순 status 변경이면 운영 증거 없이 적용 완료 처리될 수 있으므로, 승인 상태와 적용 증거를 강제해야 한다고 판단.
+- 요청 분석:
+  - 실제 Kubernetes executor 전 단계라도 `APPROVED -> APPLIED` 흐름은 운영 증거를 남겨야 한다.
+  - `PLANNED -> APPLIED` 직접 전이는 금지해야 하고, `APPLIED`는 `appliedEvidence`가 있어야 한다.
+- 실행 내용:
+  - storage expansion record/response에 `appliedBy`, `appliedAt`, `appliedEvidence` 추가.
+  - status transition validation 추가.
+  - MariaDB lazy schema와 Flyway V33 migration 추가.
+  - Admin UI에 apply evidence input 추가.
+  - Apply/Approve/Reject 버튼 disabled 조건을 backend transition rule과 맞춤.
+  - API wrapper, backend/frontend tests, smoke script, API spec, DB design, frontend design, test cases, MinIO expansion doc 갱신.
+- 구현 내용:
+  - `APPLIED`는 `APPROVED` 상태에서만 가능.
+  - `APPLIED` 요청에는 `appliedEvidence` 필수.
+  - 적용 성공 시 `appliedBy`, `appliedAt`, `appliedEvidence`를 저장하고 UI 목록에 표시.
+  - `APPLIED` 성공 후 stale manifest preview와 evidence input을 초기화.
+- 수정된 파일:
+  - `osmu-backend/src/main/java/com/example/osmu/storageexpansion/StorageExpansionRequestRecord.java`
+  - `osmu-backend/src/main/java/com/example/osmu/storageexpansion/StorageExpansionRequestResponse.java`
+  - `osmu-backend/src/main/java/com/example/osmu/storageexpansion/StorageExpansionStatusRequest.java`
+  - `osmu-backend/src/main/java/com/example/osmu/storageexpansion/StorageExpansionService.java`
+  - `osmu-backend/src/main/java/com/example/osmu/storageexpansion/repository/MariaDbStorageExpansionRequestRepository.java`
+  - `osmu-backend/src/main/resources/db/migration/V33__storage_expansion_requests.sql`
+  - `osmu-backend/src/test/java/com/example/osmu/storageexpansion/AdminStorageExpansionControllerTest.java`
+  - `osmu-frontend/src/components/admin/StorageExpansionPanel.vue`
+  - `osmu-frontend/src/components/admin/AdminPage.vue`
+  - `osmu-frontend/src/views/HomeView.vue`
+  - `osmu-frontend/src/assets/main.css`
+  - `osmu-frontend/src/services/api.js`
+  - `osmu-frontend/src/services/api-quota-policy.test.js`
+  - `osmu-frontend/src/views/HomeView.test.js`
+  - `scripts/verify-lightweight-demo.ps1`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/database-design.md`
+  - `dev-docs/frontend-design.md`
+  - `dev-docs/minio-pool-expansion.md`
+  - `dev-docs/openapi-mvp.json`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/worklog/main/worklog-main.md`
+- 검증 기록:
+  - `npm.cmd run test:unit`: 성공, 61개 통과.
+  - `npm.cmd run build`: 성공.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-openapi-contract.ps1`: 성공, operations 110 / frontend API functions 88.
+  - `git diff --check`: 성공. LF/CRLF warning만 출력.
+  - remote source build: 성공. `DashboardLayoutControllerTest`, `AdminStorageExpansionControllerTest`, `bootJar` 성공.
+  - remote deploy: 성공. backend pid `14252`, frontend pid `14253`.
+  - remote smoke `verify-local-demo.ps1 -SeedIfMissing`: 성공. Storage expansion applied evidence 검증 포함.
+- 코드 리뷰:
+  - UI와 backend 양쪽에서 transition rule을 맞춰 사용자가 불가능한 작업을 덜 보게 했다.
+  - backend가 최종 권한/상태 검증을 담당하므로 API 직접 호출에도 동일하게 보호된다.
+  - Flyway V33과 repository lazy schema 보정을 함께 두어 신규 DB와 기존 demo DB 모두 대응한다.
+- 결과:
+  - Storage Expansion demo가 `PLANNED -> APPROVED -> APPLIED with evidence` 흐름으로 운영 증거를 남김.
+  - 원격 demo `http://192.168.35.88:5173`에 최신 backend/frontend 배포 완료.
+- 후속 메모:
+  - 다음 단계는 preview YAML download/export 또는 GitOps/Helm/Kubernetes executor 중 하나.
+- 추가 개발 필요:
+  - manifest download/copy 버튼.
+  - GitOps PR 생성 또는 Helm apply executor.
+  - applied evidence URL 형식 검증과 운영 티켓 링크화.
+  - rollback/runbook 연결.
+- 추가 사용 skill/plugin:
+  - `caveman` skill: ultra 응답 압축 유지.
+
+### 2026-06-15 - Storage expansion manifest preview
+
+- 작업 시간:
+  - 시작: 2026-06-15 20:34:00 +09:00
+  - 종료: 2026-06-15 20:49:00 +09:00
+- 사용자 명령:
+  - active goal 기준으로 Storage Expansion 기능 개발을 계속 진행.
+  - `caveman ultra` 응답 압축 유지.
+- 명령 인식:
+  - 이전에 만든 증설 요청 MVP의 다음 단계로, APPROVED 요청을 실제 MinIO Operator/Helm 적용으로 연결하기 전 preview/export 가능한 YAML 산출물이 필요하다고 인식.
+- 요청 분석:
+  - 실제 Kubernetes 적용은 아직 위험하므로, 먼저 ADMIN이 요청별 Tenant patch와 Helm values patch를 검토할 수 있는 read-only preview API/UI를 구현하는 것이 적절하다고 판단.
+- 실행 내용:
+  - backend manifest preview DTO/API/service 생성.
+  - frontend Admin Storage Expansion panel에 Preview 버튼과 Tenant/Helm YAML textarea 추가.
+  - HomeView 상태, API wrapper, static/unit test 연결.
+  - OpenAPI, API spec, frontend design, test cases, MinIO expansion doc, smoke script 갱신.
+- 구현 내용:
+  - `GET /api/admin/storage-expansion/requests/{requestId}/manifest`: 요청별 `referenceOnly` YAML preview 반환.
+  - 응답에는 `requestId`, `poolName`, `status`, `tenantPatchYaml`, `helmValuesPatchYaml` 포함.
+  - Tenant YAML은 `apiVersion: minio.min.io/v2`, `kind: Tenant`, `spec.pools`, `servers`, `volumesPerServer`, PVC `storage`를 포함.
+  - Helm values YAML은 미래 product chart의 `minio.pools` 병합 초안으로 작성.
+- 수정된 파일:
+  - `osmu-backend/src/main/java/com/example/osmu/storageexpansion/StorageExpansionManifestResponse.java`
+  - `osmu-backend/src/main/java/com/example/osmu/storageexpansion/StorageExpansionService.java`
+  - `osmu-backend/src/main/java/com/example/osmu/storageexpansion/AdminStorageExpansionController.java`
+  - `osmu-backend/src/test/java/com/example/osmu/storageexpansion/AdminStorageExpansionControllerTest.java`
+  - `osmu-frontend/src/components/admin/StorageExpansionPanel.vue`
+  - `osmu-frontend/src/components/admin/AdminPage.vue`
+  - `osmu-frontend/src/views/HomeView.vue`
+  - `osmu-frontend/src/assets/main.css`
+  - `osmu-frontend/src/services/api.js`
+  - `osmu-frontend/src/services/api-quota-policy.test.js`
+  - `osmu-frontend/src/views/HomeView.test.js`
+  - `scripts/verify-lightweight-demo.ps1`
+  - `scripts/verify-openapi-contract.ps1`
+  - `dev-docs/openapi-mvp.json`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/frontend-design.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/minio-pool-expansion.md`
+  - `dev-docs/worklog/main/worklog-main.md`
+- 검증 기록:
+  - `npm.cmd run test:unit`: 성공, 61개 통과.
+  - `npm.cmd run build`: 성공.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-openapi-contract.ps1`: 성공, operations 110 / frontend API functions 88.
+  - `git diff --check`: 성공. LF/CRLF warning만 출력.
+  - remote source build: 성공. `/home/test/osmu-runtime/jdk17`로 `DashboardLayoutControllerTest`, `AdminStorageExpansionControllerTest`, `bootJar` 성공.
+  - remote deploy: 성공. backend pid `13753`, frontend pid `13754`.
+  - remote smoke `verify-local-demo.ps1 -SeedIfMissing`: 성공. Storage expansion manifest preview 검증 포함.
+- 코드 리뷰:
+  - 실제 cluster 변경은 실행하지 않고 `referenceOnly`로 명확히 표시해 운영 리스크를 줄였다.
+  - UI는 요청 행에서 preview를 눌러 YAML을 읽는 단순 흐름으로 구현해 MVP 범위를 유지했다.
+  - status 변경 뒤 기존 preview는 비워 stale YAML 오해를 줄였다.
+- 결과:
+  - 증설 요청 -> 승인/상태 변경 -> MinIO Tenant/Helm YAML preview까지 demo 흐름이 연결됨.
+  - 원격 demo `http://192.168.35.88:5173`에 최신 backend/frontend 배포 완료.
+- 후속 메모:
+  - 다음 단계는 preview YAML 다운로드, GitOps PR 생성, Helm values patch 적용, Kubernetes apply executor 중 하나를 선택해 실제 실행 파이프라인을 붙이는 것.
+- 추가 개발 필요:
+  - manifest download/copy 버튼.
+  - `APPROVED` 요청만 실행 가능한 executor.
+  - StorageClass/PVC quota/MinIO erasure set 사전 검증.
+  - 적용 결과 evidence URL과 rollback/runbook 연결.
+- 추가 사용 skill/plugin:
+  - `caveman` skill: ultra 응답 압축 유지.
+### 2026-06-15 - Storage expansion request MVP
+
+- 작업 시간:
+  - 시작: 2026-06-15 05:29:00 +09:00
+  - 종료: 2026-06-15 05:40:00 +09:00
+- 사용자 명령:
+  - active goal 기준으로 `dev-docs`에 정리된 목표 기능 개발을 계속 진행.
+- 명령 인식:
+  - 사용자가 이전에 말한 MinIO pod + PV 증설/서버 pool 증설 방향을 실제 demo 기능으로 전진시키는 작업으로 인식.
+  - 현재 단계에서는 실제 Kubernetes patch 실행보다 증설 요청, 계획 계산, 상태 관리, UI 확인이 먼저 필요하다고 판단.
+- 요청 분석:
+  - 운영형 MinIO 증설은 단순 pod/PV 추가가 아니라 server pool 단위로 계획해야 한다.
+  - MVP 기능은 `4 servers x PV/server` 기본 구조를 기준으로 requested usable capacity를 만족하는 PV size/raw/usable capacity를 계산하고 `PLANNED -> APPROVED/REJECTED/APPLIED` 상태를 기록하는 형태가 적절하다.
+- 실행 내용:
+  - backend `storageexpansion` package 추가.
+  - in-memory/MariaDB storage expansion request repository 추가.
+  - ADMIN 전용 storage expansion request API 추가.
+  - frontend Admin page에 Storage Expansion panel 추가.
+  - API wrapper, unit test, backend controller test, smoke script, OpenAPI, API spec, frontend design, test cases, MinIO expansion doc 갱신.
+- 구현 내용:
+  - `GET /api/admin/storage-expansion/requests`: 증설 요청/계획 목록 조회.
+  - `POST /api/admin/storage-expansion/requests`: requested capacity, server count, PV/server, reason 기반 증설 계획 생성.
+  - `PATCH /api/admin/storage-expansion/requests/{requestId}/status`: `PLANNED`, `APPROVED`, `REJECTED`, `APPLIED` 상태 변경.
+  - UI: Admin page `Storage Expansion` panel에서 capacity GB, server count, PV/server, reason 입력 및 Approve/Apply/Reject 실행.
+- 수정된 파일:
+  - `osmu-backend/src/main/java/com/example/osmu/storageexpansion/AdminStorageExpansionController.java`
+  - `osmu-backend/src/main/java/com/example/osmu/storageexpansion/StorageExpansionService.java`
+  - `osmu-backend/src/main/java/com/example/osmu/storageexpansion/StorageExpansionRequestPayload.java`
+  - `osmu-backend/src/main/java/com/example/osmu/storageexpansion/StorageExpansionRequestRecord.java`
+  - `osmu-backend/src/main/java/com/example/osmu/storageexpansion/StorageExpansionRequestResponse.java`
+  - `osmu-backend/src/main/java/com/example/osmu/storageexpansion/StorageExpansionStatusRequest.java`
+  - `osmu-backend/src/main/java/com/example/osmu/storageexpansion/repository/StorageExpansionRequestRepository.java`
+  - `osmu-backend/src/main/java/com/example/osmu/storageexpansion/repository/InMemoryStorageExpansionRequestRepository.java`
+  - `osmu-backend/src/main/java/com/example/osmu/storageexpansion/repository/MariaDbStorageExpansionRequestRepository.java`
+  - `osmu-backend/src/test/java/com/example/osmu/storageexpansion/AdminStorageExpansionControllerTest.java`
+  - `osmu-frontend/src/components/admin/StorageExpansionPanel.vue`
+  - `osmu-frontend/src/components/admin/AdminPage.vue`
+  - `osmu-frontend/src/views/HomeView.vue`
+  - `osmu-frontend/src/views/HomeView.test.js`
+  - `osmu-frontend/src/services/api.js`
+  - `osmu-frontend/src/services/api-quota-policy.test.js`
+  - `scripts/verify-lightweight-demo.ps1`
+  - `scripts/verify-openapi-contract.ps1`
+  - `dev-docs/openapi-mvp.json`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/frontend-design.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/minio-pool-expansion.md`
+  - `dev-docs/worklog/main/worklog-main.md`
+- 검증 기록:
+  - `npm.cmd run test:unit`: 성공, 61개 통과.
+  - `npm.cmd run build`: 성공.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-openapi-contract.ps1`: 성공, operations 109 / frontend API functions 84.
+  - `git diff --check`: 성공. LF/CRLF warning만 출력.
+  - remote source build: 성공. `/home/test/osmu-runtime/jdk17`로 `./gradlew --no-daemon test --tests com.example.osmu.dashboard.DashboardLayoutControllerTest --tests com.example.osmu.storageexpansion.AdminStorageExpansionControllerTest bootJar` 성공.
+  - remote deploy: 성공. backend pid `13256`, frontend pid `13257`.
+  - remote smoke `verify-local-demo.ps1 -SeedIfMissing`: 성공. `Storage expansion request planning` 단계 통과.
+- 코드 리뷰:
+  - 실제 MinIO Operator patch는 아직 하지 않고, request/plan/status를 먼저 분리해 운영자가 검토할 수 있게 했다.
+  - MariaDB repository는 lazy schema 생성으로 기존 demo DB를 자동 보정한다.
+  - capacity plan은 raw 대비 usable 50%로 계산해 erasure coding overhead를 MVP 수준으로 반영했다.
+  - API와 UI 모두 ADMIN path/role 아래 두어 일반 사용자 노출을 막았다.
+- 결과:
+  - 증설 요청을 만들고 계획값을 확인하고 상태를 변경하는 운영 demo 기능이 추가됨.
+  - 원격 demo `http://192.168.35.88:5173`에 최신 backend/frontend 배포 완료.
+- 후속 메모:
+  - 다음 단계는 APPROVED request를 기반으로 MinIO Operator Tenant pool patch 또는 Helm values 변경을 생성하는 실행기.
+  - 실제 cluster에서는 StorageClass, PVC quota, MinIO erasure set 조건을 더 엄격히 검증해야 한다.
+- 추가 개발 필요:
+  - Storage Expansion Manager executor.
+  - Helm/Operator patch preview YAML export.
+  - expansion request delete/cancel, approval note, applied evidence URL.
+- 추가 사용 skill/plugin:
+  - `caveman` skill: ultra 응답 압축 유지.
+
+### 2026-06-15 - Storage expansion GitOps ZIP artifact bundle
+
+- 작업 시간:
+  - 시작: 2026-06-15 06:23:00 +09:00
+  - 종료: 2026-06-15 06:30:41 +09:00
+- 사용자 명령:
+  - active goal 기준으로 `dev-docs`에 정리된 목표 기능 개발을 계속 진행.
+  - `caveman ultra` 응답 압축 유지.
+- 명령 인식:
+  - 직전 GitOps draft plan은 PR 초안 메타데이터만 있고 실제 repository에 넣을 파일 내용이 부족하므로, 실제 PR/executor 전 단계로 GitOps artifact bundle export가 필요하다고 판단.
+  - 실제 GitHub PR 생성 전, 운영자가 tenant patch, Helm values, README를 ZIP으로 내려받아 검토/첨부/수동 GitOps 적용할 수 있게 만드는 작업으로 인식.
+- 실행 내용:
+  - backend에 GitOps artifact bundle record와 ZIP 생성 로직 추가.
+  - ADMIN API `GET /api/admin/storage-expansion/requests/{requestId}/gitops-artifacts/bundle` 추가.
+  - controller test에서 승인 전 400, 승인 후 ZIP content type/header/entry 목록/audit event 검증 추가.
+  - frontend API wrapper와 Storage Expansion GitOps panel ZIP 다운로드 버튼 추가.
+  - OpenAPI, API spec, frontend design, test cases, MinIO expansion 문서, smoke script 갱신.
+  - 원격 서버 `192.168.35.88`에 backend/frontend 재배포 후 smoke 실행.
+- 구현 내용:
+  - `APPROVED` 요청만 GitOps artifact ZIP을 생성할 수 있다.
+  - ZIP 파일명: `osmu-storage-expansion-{poolName}-gitops.zip`.
+  - ZIP entry:
+    - `infra/gitops/storage-expansion/{poolName}/tenant-patch.yaml`
+    - `infra/gitops/storage-expansion/{poolName}/helm-values.yaml`
+    - `infra/gitops/storage-expansion/{poolName}/README.md`
+  - README에는 request id, capacity, topology, bundle sha256, review checklist, dry-run 명령, appliedEvidence 안내를 포함한다.
+  - UI selector: `storage-expansion-gitops-bundle-download-button`.
+  - audit event: `STORAGE_EXPANSION_REQUEST_GITOPS_ARTIFACT_DOWNLOAD`.
+- 수정된 파일 및 관련 파일:
+  - `osmu-backend/src/main/java/com/example/osmu/storageexpansion/StorageExpansionGitOpsArtifactBundle.java`
+  - `osmu-backend/src/main/java/com/example/osmu/storageexpansion/StorageExpansionService.java`
+  - `osmu-backend/src/main/java/com/example/osmu/storageexpansion/AdminStorageExpansionController.java`
+  - `osmu-backend/src/test/java/com/example/osmu/storageexpansion/AdminStorageExpansionControllerTest.java`
+  - `osmu-frontend/src/services/api.js`
+  - `osmu-frontend/src/services/api-quota-policy.test.js`
+  - `osmu-frontend/src/components/admin/StorageExpansionPanel.vue`
+  - `osmu-frontend/src/components/admin/AdminPage.vue`
+  - `osmu-frontend/src/views/HomeView.vue`
+  - `osmu-frontend/src/views/HomeView.test.js`
+  - `scripts/verify-lightweight-demo.ps1`
+  - `scripts/verify-openapi-contract.ps1`
+  - `dev-docs/openapi-mvp.json`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/frontend-design.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/minio-pool-expansion.md`
+  - `dev-docs/worklog/main/worklog-main.md`
+- 검증 기록:
+  - `npm.cmd run test:unit`: 성공, 61개 통과.
+  - `npm.cmd run build`: 성공.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-openapi-contract.ps1`: 성공, operations 114 / frontend API functions 92.
+  - `git diff --check`: 성공. LF/CRLF warning만 출력.
+  - remote source build: 성공. 원격 JDK 17로 `DashboardLayoutControllerTest`, `AdminStorageExpansionControllerTest`, `bootJar` 통과.
+  - remote deploy: 성공. backend pid `16301`, frontend pid `16302`.
+  - remote smoke `verify-local-demo.ps1 -SeedIfMissing`: 성공. GitOps ZIP bundle entry 검증 포함 전체 lightweight demo smoke 통과.
+- 코드 리뷰:
+  - 실제 GitHub/cluster 변경 없이 ZIP export만 제공해 운영 위험을 낮췄다.
+  - ZIP entry path를 `changedFiles`와 맞춰 PR 생성 executor로 확장하기 쉽다.
+  - ZIP entry time을 고정해 artifact 생성 결과가 안정적이다.
+  - 다음 단계에서 artifact content를 DB 이력으로 보존하거나 PR 생성 결과와 연결할 수 있다.
+- 결과:
+  - Storage Expansion 흐름이 `request -> approve -> dry-run -> GitOps draft -> GitOps ZIP export -> applied evidence -> APPLIED` 단계까지 확장됨.
+  - 원격 demo `http://192.168.35.88:5173`에 최신 backend/frontend 배포 완료.
+- 다음 작업 참고:
+  - 다음 단계는 ZIP artifact를 실제 Git repository branch/commit/PR로 생성하는 executor.
+  - 또는 Helm diff/kubectl server-side dry-run 결과 저장 기능을 먼저 붙일 수 있다.
+- 앞으로 추가 개발 필요:
+  - GitOps repository connector와 PR 생성 상태 추적.
+  - Helm diff / kubectl dry-run 결과 저장.
+  - live apply executor와 rollback/runbook 연결.
+  - APPLIED evidence를 URL/commit/pipeline log 타입별로 구조화.
+- 추가 사용 skill/plugin:
+  - `caveman` skill: ultra 응답 압축 유지.
+
+### 2026-06-15 - Storage expansion execution apply linkage
+
+- 작업 시간:
+  - 시작: 2026-06-15 06:40:00 +09:00
+  - 종료: 2026-06-15 06:51:26 +09:00
+- 사용자 명령:
+  - active goal 기준으로 `dev-docs`에 정리한 OSMU 목표 기능 개발을 계속 진행.
+  - `caveman ultra` 응답 압축 유지.
+- 명령 인식:
+  - Storage Expansion이 `request -> approve -> dry-run/GitOps -> execution history`까지 연결되었으므로, 다음 병목인 `APPLIED` 증거 연결을 수동 입력에서 실행 기록 기반으로 전환하는 작업으로 해석.
+  - 실제 apply executor 전 단계에서 성공한 `APPLY` 또는 `GITOPS_PR` record를 근거로 요청 상태를 `APPLIED`로 전환하는 API/UI/검증을 추가.
+- 실행 내용:
+  - backend execution repository에 `findById` 조회 추가.
+  - ADMIN API `POST /api/admin/storage-expansion/requests/{requestId}/executions/{executionId}/apply` 추가.
+  - service에서 request 상태, execution 소유 request, execution result/type 검증 후 `appliedEvidence` 자동 생성.
+  - frontend API wrapper, Admin Storage Expansion history row의 Apply 버튼, HomeView handler 연결.
+  - OpenAPI, API spec, frontend design, test cases, MinIO expansion 문서, smoke script 갱신.
+  - 원격 서버 `192.168.35.88`에 backend/frontend 재배포 후 smoke 실행.
+- 구현 내용:
+  - `APPROVED` request만 execution apply 가능.
+  - execution은 같은 request에 속해야 함.
+  - execution `result`는 `SUCCESS`여야 함.
+  - execution `executionType`은 `APPLY` 또는 `GITOPS_PR`만 허용.
+  - `appliedEvidence` 형식: `execution {type} #{id}: {externalUrl|command|artifactSha256|notes|execution-id}`.
+  - `HELM_DIFF` 같은 검증용 기록은 apply 버튼 비활성/서버 400 처리.
+- 수정된 파일 및 관련 파일:
+  - `osmu-backend/src/main/java/com/example/osmu/storageexpansion/StorageExpansionService.java`
+  - `osmu-backend/src/main/java/com/example/osmu/storageexpansion/AdminStorageExpansionController.java`
+  - `osmu-backend/src/main/java/com/example/osmu/storageexpansion/repository/StorageExpansionExecutionRepository.java`
+  - `osmu-backend/src/main/java/com/example/osmu/storageexpansion/repository/InMemoryStorageExpansionExecutionRepository.java`
+  - `osmu-backend/src/main/java/com/example/osmu/storageexpansion/repository/MariaDbStorageExpansionExecutionRepository.java`
+  - `osmu-backend/src/test/java/com/example/osmu/storageexpansion/AdminStorageExpansionControllerTest.java`
+  - `osmu-frontend/src/services/api.js`
+  - `osmu-frontend/src/services/api-quota-policy.test.js`
+  - `osmu-frontend/src/components/admin/StorageExpansionPanel.vue`
+  - `osmu-frontend/src/components/admin/AdminPage.vue`
+  - `osmu-frontend/src/views/HomeView.vue`
+  - `osmu-frontend/src/views/HomeView.test.js`
+  - `scripts/verify-lightweight-demo.ps1`
+  - `scripts/verify-openapi-contract.ps1`
+  - `dev-docs/openapi-mvp.json`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/frontend-design.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/minio-pool-expansion.md`
+  - `dev-docs/worklog/main/worklog-main.md`
+- 검증 기록:
+  - `npm.cmd run test:unit`: 성공, 61개 통과.
+  - `npm.cmd run build`: 성공.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-openapi-contract.ps1`: 성공, operations 117 / frontend API functions 95.
+  - `git diff --check`: 성공. LF/CRLF warning만 출력.
+  - remote source build: 성공. 원격 JDK 17로 `DashboardLayoutControllerTest`, `AdminStorageExpansionControllerTest`, `bootJar` 통과.
+  - remote deploy: 성공. backend pid `17305`, frontend pid `17306`.
+  - remote smoke `verify-local-demo.ps1 -SeedIfMissing`: 성공. storage expansion apply-from-execution smoke 포함 전체 lightweight demo 통과.
+- 코드 리뷰:
+  - 상태 전환 검증을 service에 집중시켜 UI 우회 호출도 400으로 막는다.
+  - evidence는 실행 기록의 외부 URL을 우선 사용해 CI/PR/배포 로그 추적성이 좋다.
+  - `HELM_DIFF`는 성공이어도 검증 단계이므로 apply 근거로 허용하지 않은 판단이 맞다.
+  - 현재는 실제 Helm/Kubernetes apply 실행이 아니라 실행 기록 기반 승인 연결이다.
+- 결과:
+  - Storage Expansion 흐름이 `request -> approve -> dry-run -> GitOps draft -> GitOps ZIP -> execution history -> execution evidence apply -> APPLIED`까지 이어짐.
+  - 원격 demo `http://192.168.35.88:5173` 최신 배포 완료.
+- 다음 작업 참고:
+  - 다음 단계는 실제 executor: Git repository branch/commit/PR 생성, Helm diff 실행, Kubernetes apply/rollback 실행 결과를 execution history에 자동 기록.
+  - execution record에 artifact bundle path/PR number/pipeline run id 같은 구조화된 evidence 필드를 추가하면 추적성이 더 좋아짐.
+- 앞으로 추가 개발 필요:
+  - GitOps repository connector.
+  - Helm diff/kubectl dry-run runner.
+  - live apply executor와 rollback/runbook 연결.
+  - execution 상태 polling/실시간 로그 UI.
+- 추가 사용 skill/plugin:
+  - `caveman` skill: ultra 응답 압축 유지.
+
+### 2026-06-15 - Storage expansion GitOps PR evidence record
+
+- 작업 시간:
+  - 시작: 2026-06-15 06:52:00 +09:00
+  - 종료: 2026-06-15 07:03:02 +09:00
+- 사용자 명령:
+  - active goal 기준으로 `dev-docs`에 정리한 OSMU 목표 기능 개발을 계속 진행.
+  - `caveman ultra` 응답 압축 유지.
+- 명령 인식:
+  - 직전 단계에서 execution apply linkage가 생겼으므로, 다음 단계는 GitOps PR을 무작정 성공 처리하는 것이 아니라 외부에서 만든 PR URL/merge/pipeline evidence를 검증해 표준 `GITOPS_PR` 실행 이력으로 남기는 기능으로 인식.
+  - 실제 GitHub/GitLab API connector 전 단계의 안전한 MVP로 `GitOps PR evidence record`를 구현.
+- 실행 내용:
+  - backend에 `StorageExpansionGitOpsPrExecutionPayload` 추가.
+  - ADMIN API `POST /api/admin/storage-expansion/requests/{requestId}/gitops-pr-execution` 추가.
+  - service에서 `APPROVED` 상태, HTTP(S) PR URL, optional merge SHA/pipeline URL을 검증하고 `GITOPS_PR / SUCCESS` execution record를 생성.
+  - frontend GitOps draft panel에 PR URL, merge SHA, pipeline URL, notes 입력과 `Record PR` 버튼 추가.
+  - OpenAPI, API spec, frontend design, test cases, MinIO expansion 문서, smoke script 갱신.
+  - 원격 서버 `192.168.35.88`에 backend/frontend 재배포 후 smoke 실행.
+- 구현 내용:
+  - PR URL은 필수이며 `http://` 또는 `https://`만 허용.
+  - merge SHA는 선택이며 7~64자 Git SHA 형식만 허용.
+  - 저장되는 execution:
+    - `executionType = GITOPS_PR`
+    - `result = SUCCESS`
+    - `externalUrl = PR URL`
+    - `artifactSha256 = 현재 GitOps artifact SHA-256`
+    - `command = git checkout/git add/git commit/gh pr create` 초안
+    - `output = changed files, checklist, branch, commit summary`
+  - 생성된 `GITOPS_PR` record는 기존 apply-from-execution endpoint의 APPLIED evidence로 사용할 수 있다.
+- 수정된 파일 및 관련 파일:
+  - `osmu-backend/src/main/java/com/example/osmu/storageexpansion/StorageExpansionGitOpsPrExecutionPayload.java`
+  - `osmu-backend/src/main/java/com/example/osmu/storageexpansion/StorageExpansionService.java`
+  - `osmu-backend/src/main/java/com/example/osmu/storageexpansion/AdminStorageExpansionController.java`
+  - `osmu-backend/src/test/java/com/example/osmu/storageexpansion/AdminStorageExpansionControllerTest.java`
+  - `osmu-frontend/src/services/api.js`
+  - `osmu-frontend/src/services/api-quota-policy.test.js`
+  - `osmu-frontend/src/components/admin/StorageExpansionPanel.vue`
+  - `osmu-frontend/src/components/admin/AdminPage.vue`
+  - `osmu-frontend/src/views/HomeView.vue`
+  - `osmu-frontend/src/views/HomeView.test.js`
+  - `scripts/verify-lightweight-demo.ps1`
+  - `scripts/verify-openapi-contract.ps1`
+  - `dev-docs/openapi-mvp.json`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/frontend-design.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/minio-pool-expansion.md`
+  - `dev-docs/worklog/main/worklog-main.md`
+- 검증 기록:
+  - `npm.cmd run test:unit`: 성공, 61개 통과.
+  - `npm.cmd run build`: 성공.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-openapi-contract.ps1`: 성공, operations 118 / frontend API functions 96.
+  - `git diff --check`: 성공. LF/CRLF warning만 출력.
+  - remote source build: 성공. 원격 JDK 17로 `DashboardLayoutControllerTest`, `AdminStorageExpansionControllerTest`, `bootJar` 통과.
+  - remote deploy: 성공. backend pid `17811`, frontend pid `17812`.
+  - remote smoke `verify-local-demo.ps1 -SeedIfMissing`: 성공. GitOps PR evidence record smoke 포함 전체 lightweight demo 통과.
+- 코드 리뷰:
+  - 실제 외부 repository에 쓰지 않으므로 운영 위험은 낮고, PR URL 없이는 성공 record를 만들 수 없게 해 가짜 evidence를 줄였다.
+  - `GITOPS_PR` record 생성 시 artifact SHA-256을 다시 계산해 현재 manifest draft와 evidence를 묶는다.
+  - 아직 실제 `gh pr create` 실행은 하지 않는다. connector 설정/인증/대상 repository 정책이 필요하다.
+- 결과:
+  - Storage Expansion 흐름이 `request -> approve -> dry-run -> GitOps draft -> GitOps PR evidence record -> execution history -> APPLIED linkage`로 한 단계 더 제품형에 가까워짐.
+  - 원격 demo `http://192.168.35.88:5173` 최신 배포 완료.
+- 다음 작업 참고:
+  - 다음 단계는 Helm diff/kubectl dry-run runner 또는 실제 Git provider connector.
+  - Git provider connector를 붙이면 현재 `gitops-pr-execution` endpoint를 실제 PR 생성 결과 저장 endpoint로 확장 가능.
+- 앞으로 추가 개발 필요:
+  - GitHub/GitLab repository connector.
+  - Helm diff/kubectl dry-run 자동 실행 및 로그 저장.
+  - Kubernetes apply/rollback executor.
+  - execution 상태 polling/실시간 로그 UI.
+- 추가 사용 skill/plugin:
+  - `caveman` skill: ultra 응답 압축 유지.
+
+### 2026-06-15 - Storage expansion dry-run evidence record
+
+- 작업 시간:
+  - 시작: 2026-06-15 07:04:00 +09:00
+  - 종료: 2026-06-15 07:10:33 +09:00
+- 사용자 명령:
+  - active goal 기준으로 `dev-docs`에 정리한 OSMU 목표 기능 개발을 계속 진행.
+  - `caveman ultra` 응답 압축 유지.
+- 명령 인식:
+  - 직전 GitOps PR evidence 다음 단계로 Helm/kubectl dry-run 결과를 표준 execution history에 더 안전하게 연결하는 기능이 필요하다고 판단.
+  - 일반 execution record보다 서버가 현재 artifact SHA-256과 추천 명령을 다시 계산해 저장하는 dry-run evidence record MVP로 구현.
+- 실행 내용:
+  - backend에 `StorageExpansionDryRunExecutionPayload` 추가.
+  - ADMIN API `POST /api/admin/storage-expansion/requests/{requestId}/dry-run-execution` 추가.
+  - service에서 `APPROVED` 상태, `KUBECTL_DIFF`/`HELM_DIFF`, result, output 조건, optional log URL을 검증하고 execution record를 생성.
+  - execution plan suggested command에 `helm diff upgrade ...`를 추가.
+  - frontend dry-run panel에 type/result/log URL/notes/output 입력과 `Record Dry Run` 버튼 추가.
+  - OpenAPI, API spec, frontend design, test cases, MinIO expansion 문서, smoke script 갱신.
+  - 원격 서버 `192.168.35.88`에 backend/frontend 재배포 후 smoke 실행.
+- 구현 내용:
+  - `executionType`은 `KUBECTL_DIFF`, `HELM_DIFF`만 허용.
+  - `SUCCESS`/`FAILED` 결과는 `output` 필수.
+  - `SKIPPED` 결과는 output 없이 저장 가능.
+  - 저장되는 execution:
+    - `executionType = KUBECTL_DIFF` 또는 `HELM_DIFF`
+    - `result = SUCCESS/FAILED/SKIPPED`
+    - `command = 서버가 생성한 kubectl diff 또는 helm diff 명령`
+    - `artifactSha256 = 현재 dry-run bundle SHA-256`
+    - `output = dry-run evidence wrapper + operator output`
+  - execution history에서 GitOps PR/apply linkage와 같은 흐름으로 확인 가능.
+- 수정된 파일 및 관련 파일:
+  - `osmu-backend/src/main/java/com/example/osmu/storageexpansion/StorageExpansionDryRunExecutionPayload.java`
+  - `osmu-backend/src/main/java/com/example/osmu/storageexpansion/StorageExpansionService.java`
+  - `osmu-backend/src/main/java/com/example/osmu/storageexpansion/AdminStorageExpansionController.java`
+  - `osmu-backend/src/test/java/com/example/osmu/storageexpansion/AdminStorageExpansionControllerTest.java`
+  - `osmu-frontend/src/services/api.js`
+  - `osmu-frontend/src/services/api-quota-policy.test.js`
+  - `osmu-frontend/src/components/admin/StorageExpansionPanel.vue`
+  - `osmu-frontend/src/components/admin/AdminPage.vue`
+  - `osmu-frontend/src/views/HomeView.vue`
+  - `osmu-frontend/src/views/HomeView.test.js`
+  - `scripts/verify-lightweight-demo.ps1`
+  - `scripts/verify-openapi-contract.ps1`
+  - `dev-docs/openapi-mvp.json`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/frontend-design.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/minio-pool-expansion.md`
+  - `dev-docs/worklog/main/worklog-main.md`
+- 검증 기록:
+  - `npm.cmd run test:unit`: 성공, 61개 통과.
+  - `npm.cmd run build`: 성공.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-openapi-contract.ps1`: 성공, operations 119 / frontend API functions 97.
+  - `git diff --check`: 성공. LF/CRLF warning만 출력.
+  - remote source build: 성공. 원격 JDK 17로 `DashboardLayoutControllerTest`, `AdminStorageExpansionControllerTest`, `bootJar` 통과.
+  - remote deploy: 성공. backend pid `18323`, frontend pid `18324`.
+  - remote smoke `verify-local-demo.ps1 -SeedIfMissing`: 성공. dry-run evidence record smoke 포함 전체 lightweight demo 통과.
+- 코드 리뷰:
+  - 실제 kubectl/helm을 서버에서 실행하지는 않지만, 현재 artifact SHA와 명령을 서버가 고정해 운영자가 남긴 evidence의 추적성이 좋아졌다.
+  - output 필수 조건으로 빈 성공 기록을 막았다.
+  - 다음 단계에서 이 endpoint 내부를 실제 runner 호출로 바꾸면 API/UI 흐름은 그대로 유지할 수 있다.
+- 결과:
+  - Storage Expansion 흐름이 `execution plan -> dry-run evidence record -> GitOps PR evidence -> execution history -> APPLIED linkage`까지 연결됨.
+  - 원격 demo `http://192.168.35.88:5173` 최신 배포 완료.
+- 다음 작업 참고:
+  - 다음 단계는 실제 kubectl/helm runner 실행, timeout/log capture, failed result 저장.
+  - 이후 Kubernetes apply/rollback executor와 post-apply smoke gate를 붙이면 제품 운영 흐름이 더 닫힌다.
+- 앞으로 추가 개발 필요:
+  - Helm/kubectl 실행 환경 설정 및 runner sandbox.
+  - command timeout, log tail, exit code 저장.
+  - Kubernetes apply/rollback executor.
+  - post-apply health/S3 smoke 자동 검증.
+- 추가 사용 skill/plugin:
+  - `caveman` skill: ultra 응답 압축 유지.
+### 2026-06-15 - Storage expansion server dry-run runner
+
+- 작업 시간:
+  - 시작: 2026-06-15 07:12:00 +09:00
+  - 종료: 2026-06-15 07:23:56 +09:00
+- 사용자 명령:
+  - active goal 기준으로 `dev-docs`에 정리된 OSMU 목표 기능 개발을 계속 진행.
+  - 직전 단계의 다음 작업인 실제 `kubectl/helm runner 실행 + timeout/log/exit code 저장`을 구현.
+  - `caveman ultra` 응답 형식 유지.
+- 요청 분석:
+  - 수동 dry-run evidence record 다음 단계로, 서버가 현재 Storage Expansion manifest bundle을 생성하고 `kubectl diff` 또는 `helm diff` 명령을 실행할 수 있어야 한다고 해석.
+  - 운영 안전성을 위해 기본값은 runner disabled로 두고, disabled 상태에서도 UI/API/smoke가 동작하도록 `SKIPPED` execution record를 저장하는 MVP로 구현.
+- 실행 내용:
+  - backend runner config와 endpoint를 추가.
+  - execution record DB/response에 `exitCode`, `timedOut`을 추가.
+  - frontend Admin Storage Expansion dry-run panel에 server runner 버튼과 API 호출을 연결.
+  - OpenAPI, API spec, frontend design, DB design, local dev env, MinIO expansion 문서, test cases, smoke script를 갱신.
+  - 원격 서버 `192.168.35.88`에 backend/frontend를 재배포하고 smoke test를 실행.
+- 구현 내용:
+  - `POST /api/admin/storage-expansion/requests/{requestId}/dry-run-runner` 추가.
+  - `StorageExpansionDryRunRunner` 추가: 임시 bundle/values 파일 생성, `kubectl diff` 또는 `helm diff upgrade` command 구성, timeout 처리, output 최대 길이 제한, exit code/timedOut 저장.
+  - runner env 추가: `OSMU_STORAGE_EXPANSION_RUNNER_ENABLED`, `OSMU_STORAGE_EXPANSION_KUBECTL_PATH`, `OSMU_STORAGE_EXPANSION_HELM_PATH`, `OSMU_STORAGE_EXPANSION_HELM_CHART_PATH`, `OSMU_STORAGE_EXPANSION_NAMESPACE`, `OSMU_STORAGE_EXPANSION_RUNNER_TIMEOUT_SECONDS`.
+  - 기본 disabled 상태는 실제 command를 실행하지 않고 `result=SKIPPED`, `exitCode=null`, `timedOut=false`로 기록.
+  - MariaDB migration `V35__storage_expansion_execution_runner_fields.sql` 추가 및 repository `ensureSchema` 보강.
+  - frontend API `runStorageExpansionDryRunExecution`와 `storage-expansion-dry-run-runner-button` 추가.
+- 수정된 파일 및 관련 파일:
+  - `osmu-backend/src/main/java/com/example/osmu/storageexpansion/StorageExpansionDryRunRunner.java`
+  - `osmu-backend/src/main/java/com/example/osmu/storageexpansion/StorageExpansionDryRunRunPayload.java`
+  - `osmu-backend/src/main/java/com/example/osmu/storageexpansion/StorageExpansionService.java`
+  - `osmu-backend/src/main/java/com/example/osmu/storageexpansion/AdminStorageExpansionController.java`
+  - `osmu-backend/src/main/java/com/example/osmu/storageexpansion/StorageExpansionExecutionRecord.java`
+  - `osmu-backend/src/main/java/com/example/osmu/storageexpansion/StorageExpansionExecutionResponse.java`
+  - `osmu-backend/src/main/java/com/example/osmu/storageexpansion/repository/MariaDbStorageExpansionExecutionRepository.java`
+  - `osmu-backend/src/main/resources/application.yaml`
+  - `osmu-backend/src/main/resources/db/migration/V35__storage_expansion_execution_runner_fields.sql`
+  - `osmu-backend/src/test/java/com/example/osmu/storageexpansion/AdminStorageExpansionControllerTest.java`
+  - `osmu-frontend/src/services/api.js`
+  - `osmu-frontend/src/services/api-quota-policy.test.js`
+  - `osmu-frontend/src/components/admin/StorageExpansionPanel.vue`
+  - `osmu-frontend/src/components/admin/AdminPage.vue`
+  - `osmu-frontend/src/views/HomeView.vue`
+  - `osmu-frontend/src/views/HomeView.test.js`
+  - `scripts/verify-lightweight-demo.ps1`
+  - `scripts/verify-openapi-contract.ps1`
+  - `dev-docs/openapi-mvp.json`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/frontend-design.md`
+  - `dev-docs/database-design.md`
+  - `dev-docs/local-dev-env.md`
+  - `dev-docs/minio-pool-expansion.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/worklog/main/worklog-main.md`
+- 검증 기록:
+  - `npm.cmd run test:unit`: 성공, 61개 통과.
+  - `npm.cmd run build`: 성공.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-openapi-contract.ps1`: 성공, operations 120 / frontend API functions 98.
+  - `git diff --check`: 성공. LF/CRLF warning만 출력.
+  - remote source build/deploy: 성공. 원격 JDK 17로 `DashboardLayoutControllerTest`, `AdminStorageExpansionControllerTest`, `bootJar` 통과.
+  - remote deploy: 성공. backend pid `18874`, frontend pid `18875`.
+  - remote smoke `verify-local-demo.ps1 -SeedIfMissing`: 성공. Storage Expansion dry-run runner `SKIPPED` smoke 포함 전체 lightweight demo 통과.
+- 결과:
+  - Storage Expansion 흐름이 `execution plan -> server dry-run runner -> execution history`까지 연결됨.
+  - 현재 원격 데모 URL: `http://192.168.35.88:5173`.
+- 코드 리뷰:
+  - runner는 `ProcessBuilder` list args를 사용해 shell injection 위험을 줄임.
+  - default disabled 정책으로 개발/데모 환경에서 kubectl/helm 미설치로 인한 smoke 실패를 막음.
+  - timeout/output/exit code가 execution record에 남아 다음 apply gate 판단 근거로 활용 가능.
+  - 임시 파일 정리는 try-with-resources로 보강함.
+- 다음 작업 참고:
+  - 실제 운영 runner 활성 시 서버에 `kubectl`, `helm`, `helm diff` plugin, kubeconfig/권한, chart path가 준비되어야 한다.
+  - `HELM_DIFF`는 `helm diff` plugin 유무를 사전 점검하는 preflight가 추가되면 좋다.
+  - runner 활성 환경에서는 command output에 민감 정보가 섞이지 않도록 masking 정책이 필요하다.
+- 앞으로 추가 개발 필요:
+  - 실제 `helm upgrade`/`kubectl apply` executor.
+  - apply/rollback 실행 이력과 post-apply S3 smoke gate.
+  - 실시간 runner log tail 또는 polling UI.
+  - GitOps PR 생성 자동화.
+- 추가 사용 skill/plugin:
+  - `caveman` skill: ultra 응답 압축 유지.
+### 2026-06-15 - Storage expansion server apply runner
+
+- 작업 시간:
+  - 시작: 2026-06-15 07:24:00 +09:00
+  - 종료: 2026-06-15 07:34:37 +09:00
+- 사용자 명령:
+  - active goal 기준으로 OSMU 목표 기능 개발을 계속 진행.
+  - 직전 단계 다음 작업인 실제 apply executor 흐름을 구현.
+- 요청 분석:
+  - dry-run runner 다음 단계는 실제 `kubectl apply` 또는 `helm upgrade` 실행 결과를 execution history에 남기고, 성공 시 request를 `APPLIED`로 연결하는 것이라고 해석.
+  - 운영 안전을 위해 apply runner는 dry-run runner보다 더 강한 별도 gate인 `OSMU_STORAGE_EXPANSION_APPLY_RUNNER_ENABLED=false` 기본값을 사용.
+- 실행 내용:
+  - backend apply runner, payload, response, API endpoint 추가.
+  - frontend Admin Storage Expansion panel에 apply type select와 server apply button 추가.
+  - API wrapper, OpenAPI contract, smoke script, docs, test cases 갱신.
+  - 원격 서버 `192.168.35.88`에 재배포하고 smoke test 실행.
+- 구현 내용:
+  - `POST /api/admin/storage-expansion/requests/{requestId}/apply-runner` 추가.
+  - `KUBECTL_APPLY`는 `kubectl -n {namespace} apply --server-side -f {bundle}`을 구성.
+  - `HELM_UPGRADE`는 `helm upgrade osmu-minio {chartPath} -f {values}`를 구성.
+  - disabled 상태는 실제 command 실행 없이 `APPLY / SKIPPED`, `exitCode=null`, `timedOut=false`로 기록하고 request는 `APPROVED` 유지.
+  - enabled 상태에서 command가 `SUCCESS`이면 `APPLY` execution record를 근거로 request를 `APPLIED`로 자동 전환.
+  - UI selector: `storage-expansion-apply-run-type-select`, `storage-expansion-apply-runner-button`.
+- 수정된 파일 및 관련 파일:
+  - `osmu-backend/src/main/java/com/example/osmu/storageexpansion/StorageExpansionApplyRunner.java`
+  - `osmu-backend/src/main/java/com/example/osmu/storageexpansion/StorageExpansionApplyRunPayload.java`
+  - `osmu-backend/src/main/java/com/example/osmu/storageexpansion/StorageExpansionApplyRunResponse.java`
+  - `osmu-backend/src/main/java/com/example/osmu/storageexpansion/StorageExpansionService.java`
+  - `osmu-backend/src/main/java/com/example/osmu/storageexpansion/AdminStorageExpansionController.java`
+  - `osmu-backend/src/main/resources/application.yaml`
+  - `osmu-backend/src/test/java/com/example/osmu/storageexpansion/AdminStorageExpansionControllerTest.java`
+  - `osmu-frontend/src/services/api.js`
+  - `osmu-frontend/src/services/api-quota-policy.test.js`
+  - `osmu-frontend/src/components/admin/StorageExpansionPanel.vue`
+  - `osmu-frontend/src/components/admin/AdminPage.vue`
+  - `osmu-frontend/src/views/HomeView.vue`
+  - `osmu-frontend/src/views/HomeView.test.js`
+  - `scripts/verify-lightweight-demo.ps1`
+  - `scripts/verify-openapi-contract.ps1`
+  - `dev-docs/openapi-mvp.json`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/frontend-design.md`
+  - `dev-docs/local-dev-env.md`
+  - `dev-docs/minio-pool-expansion.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/worklog/main/worklog-main.md`
+- 검증 기록:
+  - `npm.cmd run test:unit`: 성공, 61개 통과.
+  - `npm.cmd run build`: 성공.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-openapi-contract.ps1`: 성공, operations 121 / frontend API functions 99.
+  - `git diff --check`: 성공. LF/CRLF warning만 출력.
+  - remote source build/deploy: 성공. 원격 JDK 17로 `DashboardLayoutControllerTest`, `AdminStorageExpansionControllerTest`, `bootJar` 통과.
+  - remote deploy: 성공. backend pid `19385`, frontend pid `19386`.
+  - remote smoke `verify-local-demo.ps1 -SeedIfMissing`: 성공. apply runner disabled `SKIPPED` smoke 포함 전체 lightweight demo 통과.
+- 결과:
+  - Storage Expansion 흐름이 `execution plan -> dry-run runner -> apply runner -> execution history -> APPLIED 자동 전환(성공 시)`까지 확장됨.
+  - 현재 원격 데모 URL: `http://192.168.35.88:5173`.
+- 코드 리뷰:
+  - apply runner는 별도 enable flag를 사용해 실수로 실제 Kubernetes/Helm apply가 실행되지 않도록 함.
+  - command는 `ProcessBuilder` list args로 구성해 shell injection 위험을 줄임.
+  - disabled/failed/success 모두 execution history에 남아 운영 evidence 추적성이 유지됨.
+  - 성공 시만 request status를 바꾸므로 failed/skipped 상태는 운영자가 재시도 가능.
+- 다음 작업 참고:
+  - 활성 환경에서는 kubeconfig, RBAC, Helm chart path, helm release namespace, rollback 정책을 명확히 설정해야 한다.
+  - 다음 단계는 rollback runner와 post-apply health/S3 smoke gate.
+- 앞으로 추가 개발 필요:
+  - `ROLLBACK` runner.
+  - apply 후 `/health`, MinIO health, S3 put/get/list smoke 자동 실행.
+  - runner output masking/retention 정책.
+  - GitOps PR 자동 생성.
+- 추가 사용 skill/plugin:
+  - `caveman` skill: ultra 응답 압축 유지.
+### 2026-06-15 - Storage expansion server rollback runner
+
+- 작업 시간:
+  - 시작: 2026-06-15 07:35:00 +09:00
+  - 종료: 2026-06-15 07:41:20 +09:00
+- 사용자 명령:
+  - active goal 기준으로 OSMU 목표 기능 개발을 계속 진행.
+  - 직전 apply runner 다음 단계인 rollback runner 구현을 진행.
+- 요청 분석:
+  - Storage Expansion은 운영 기능이므로 apply 성공 후 rollback evidence와 command 실행 결과를 남길 수 있어야 한다고 해석.
+  - 실제 rollback은 위험하므로 `OSMU_STORAGE_EXPANSION_ROLLBACK_RUNNER_ENABLED=false` 기본 gate로 보호하고, disabled 상태에서도 UI/API/smoke 흐름은 검증 가능하게 구현.
+- 실행 내용:
+  - backend rollback runner, payload, response, API endpoint 추가.
+  - frontend execution history 영역에 rollback type/revision/target 입력과 runner button 추가.
+  - API wrapper, OpenAPI contract, smoke script, docs, test cases 갱신.
+  - 원격 서버 `192.168.35.88`에 재배포하고 smoke test 실행.
+- 구현 내용:
+  - `POST /api/admin/storage-expansion/requests/{requestId}/rollback-runner` 추가.
+  - `HELM_ROLLBACK`은 `helm rollback osmu-minio [revision]` command를 구성.
+  - `KUBECTL_ROLLOUT_UNDO`는 `kubectl -n {namespace} rollout undo {target}` command를 구성.
+  - endpoint는 `APPLIED` request에서만 허용.
+  - disabled 상태는 실제 command 실행 없이 `ROLLBACK / SKIPPED`, `exitCode=null`, `timedOut=false`로 기록하고 request는 `APPLIED` 유지.
+  - UI selector: `storage-expansion-rollback-type-select`, `storage-expansion-rollback-revision-input`, `storage-expansion-rollback-target-input`, `storage-expansion-rollback-runner-button`.
+- 수정된 파일 및 관련 파일:
+  - `osmu-backend/src/main/java/com/example/osmu/storageexpansion/StorageExpansionRollbackRunner.java`
+  - `osmu-backend/src/main/java/com/example/osmu/storageexpansion/StorageExpansionRollbackRunPayload.java`
+  - `osmu-backend/src/main/java/com/example/osmu/storageexpansion/StorageExpansionRollbackRunResponse.java`
+  - `osmu-backend/src/main/java/com/example/osmu/storageexpansion/StorageExpansionService.java`
+  - `osmu-backend/src/main/java/com/example/osmu/storageexpansion/AdminStorageExpansionController.java`
+  - `osmu-backend/src/main/resources/application.yaml`
+  - `osmu-backend/src/test/java/com/example/osmu/storageexpansion/AdminStorageExpansionControllerTest.java`
+  - `osmu-frontend/src/services/api.js`
+  - `osmu-frontend/src/services/api-quota-policy.test.js`
+  - `osmu-frontend/src/components/admin/StorageExpansionPanel.vue`
+  - `osmu-frontend/src/components/admin/AdminPage.vue`
+  - `osmu-frontend/src/views/HomeView.vue`
+  - `osmu-frontend/src/views/HomeView.test.js`
+  - `scripts/verify-lightweight-demo.ps1`
+  - `scripts/verify-openapi-contract.ps1`
+  - `dev-docs/openapi-mvp.json`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/frontend-design.md`
+  - `dev-docs/local-dev-env.md`
+  - `dev-docs/minio-pool-expansion.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/worklog/main/worklog-main.md`
+- 검증 기록:
+  - `npm.cmd run test:unit`: 성공, 61개 통과.
+  - `npm.cmd run build`: 성공.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-openapi-contract.ps1`: 성공, operations 122 / frontend API functions 100.
+  - `git diff --check`: 성공. LF/CRLF warning만 출력.
+  - remote source build/deploy: 성공. 원격 JDK 17로 `DashboardLayoutControllerTest`, `AdminStorageExpansionControllerTest`, `bootJar` 통과.
+  - remote deploy: 성공. backend pid `19891`, frontend pid `19892`.
+  - remote smoke `verify-local-demo.ps1 -SeedIfMissing`: 성공. rollback runner disabled `SKIPPED` smoke 포함 전체 lightweight demo 통과.
+- 결과:
+  - Storage Expansion 흐름이 `execution plan -> dry-run runner -> apply runner -> APPLIED -> rollback runner -> execution history`까지 확장됨.
+  - 현재 원격 데모 URL: `http://192.168.35.88:5173`.
+- 코드 리뷰:
+  - rollback은 `APPLIED` request만 허용해 apply 전 오작동 가능성을 줄임.
+  - `helmRevision` 범위와 `kubectlTarget` 문자셋을 검증해 command args 안전성을 높임.
+  - request status를 자동으로 되돌리지 않고 rollback evidence만 저장해 상태 모델 단순성을 유지함.
+- 다음 작업 참고:
+  - 실제 rollback 활성 시 Helm release revision 정책과 Kubernetes target이 환경별로 달라질 수 있다.
+  - 다음 단계는 apply 후 health/S3 smoke gate와 runner output masking/retention.
+- 앞으로 추가 개발 필요:
+  - post-apply/post-rollback health gate.
+  - S3 put/get/list smoke 자동 실행.
+  - runner output masking/retention 정책.
+  - GitOps PR 자동 생성.
+- 추가 사용 skill/plugin:
+  - `caveman` skill: ultra 응답 압축 유지.
+### 2026-06-15 - Storage expansion execution log masking
+
+- 작업 시간:
+  - 시작: 2026-06-15 07:50:00 +09:00
+  - 종료: 2026-06-15 07:55:21 +09:00
+- 사용자 명령:
+  - active goal 기준으로 OSMU 목표 기능 개발을 계속 진행.
+  - 직전 post-run verifier 다음 단계인 runner output masking/retention 정책 구현을 진행.
+- 요청 분석:
+  - Storage Expansion runner와 수동 execution output은 운영 명령 결과를 저장하므로 password, token, access key, authorization header, S3 signature가 섞일 수 있다고 판단.
+  - B2B/운영형 object storage 관리 제품이 되려면 execution evidence는 남기되 secret은 저장/노출하지 않아야 한다고 해석.
+- 실행 내용:
+  - backend execution log sanitizer component 추가.
+  - Storage Expansion service의 runner/manual/GitOps execution 저장 경로에 sanitizer 연결.
+  - masking/retention 환경 변수 추가.
+  - unit test와 controller integration test 추가.
+  - API/security/local/test docs와 worklog 갱신.
+  - 원격 서버 `192.168.35.88`에 재배포하고 smoke test 실행.
+- 구현 내용:
+  - `command`, `output`, `notes` 저장 전 secret masking 적용.
+  - masking 대상: password/passwd/secret/token/credential/access key/secret key key-value, `Authorization: Bearer|Basic`, S3 query signature/credential/security token, URL userinfo password.
+  - output retention limit 기본값 `16384` chars 적용.
+  - env: `OSMU_STORAGE_EXPANSION_EXECUTION_LOG_MASKING_ENABLED`, `OSMU_STORAGE_EXPANSION_EXECUTION_LOG_MAX_OUTPUT_CHARS`.
+- 수정된 파일 및 관련 파일:
+  - `osmu-backend/src/main/java/com/example/osmu/storageexpansion/StorageExpansionExecutionLogSanitizer.java`
+  - `osmu-backend/src/main/java/com/example/osmu/storageexpansion/StorageExpansionService.java`
+  - `osmu-backend/src/main/resources/application.yaml`
+  - `osmu-backend/src/test/java/com/example/osmu/storageexpansion/StorageExpansionExecutionLogSanitizerTest.java`
+  - `osmu-backend/src/test/java/com/example/osmu/storageexpansion/AdminStorageExpansionControllerTest.java`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/local-dev-env.md`
+  - `dev-docs/minio-pool-expansion.md`
+  - `dev-docs/security-design.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/worklog/main/worklog-main.md`
+  - `.osmu-run/remote-source-build-deploy.js` (ignored helper, 원격 테스트 대상에 sanitizer test 추가)
+- 검증 기록:
+  - local backend targeted test: 실패. 로컬 `JAVA_HOME`이 잘못 설정되어 Java 실행 불가.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-openapi-contract.ps1`: 성공, operations 122 / frontend API functions 100.
+  - `npm.cmd run test:unit`: 성공, 61개 통과.
+  - `npm.cmd run build`: 성공.
+  - `git diff --check`: 성공. LF/CRLF warning만 출력.
+  - remote source build/deploy: 성공. 원격 JDK 17로 `DashboardLayoutControllerTest`, `AdminStorageExpansionControllerTest`, `StorageExpansionPostRunVerifierTest`, `StorageExpansionExecutionLogSanitizerTest`, `bootJar` 통과.
+  - remote deploy: 성공. backend pid `20903`, frontend pid `20904`.
+  - remote health checks: `/api/health`, `/api/database/health`, `/api/storage/health`, frontend HTTP 200 통과.
+  - remote smoke `verify-local-demo.ps1 -SeedIfMissing`: 성공. lightweight demo 전체 통과.
+- 결과:
+  - Storage Expansion execution evidence 저장 시 raw secret 노출 위험이 줄어듦.
+  - 현재 원격 데모 URL: `http://192.168.35.88:5173`.
+- 코드 리뷰:
+  - sanitizer를 service 저장 직전에 적용해 runner, manual, GitOps 경로를 한 곳에서 보호함.
+  - 외부 URL 필드는 링크 의미를 유지하기 위해 직접 masking하지 않고, output/notes에 복제되는 URL만 masking 대상에 포함함.
+  - API 입력 길이 검증은 유지하면서 runner output은 저장 전 retention limit으로 다시 제한함.
+- 다음 작업 참고:
+  - 실제 운영에서는 masking enabled를 끄지 않는 정책 필요.
+  - S3 presigned URL query 전체를 외부 URL로 저장하는 입력 정책은 별도 강화 가능.
+- 앞으로 추가 개발 필요:
+  - GitOps PR 자동 생성.
+  - 실제 MinIO Operator/Helm apply 권한을 사용한 end-to-end staging 검증.
+  - execution log 보존 기간/삭제 job.
+- 추가 사용 skill/plugin:
+  - `caveman` skill: ultra 응답 압축 유지.
+### 2026-06-15 - Storage expansion execution output retention job
+
+- 작업 시간:
+  - 시작: 2026-06-15 07:56:00 +09:00
+  - 종료: 2026-06-15 08:04:35 +09:00
+- 사용자 명령:
+  - active goal 기준으로 OSMU 목표 기능 개발을 계속 진행.
+  - 직전 masking 다음 단계인 execution log 보존 기간/삭제 job 구현을 진행.
+- 요청 분석:
+  - Storage Expansion execution record는 운영 evidence로 필요하지만 오래된 raw output은 보안/용량 리스크가 있으므로 record 자체 삭제보다 output redaction이 적절하다고 판단.
+  - B2B 운영 제품 관점에서 자동 scheduler와 수동 실행 API, status API가 필요하다고 해석.
+- 실행 내용:
+  - execution repository에 오래된 output count/redaction 메서드 추가.
+  - scheduler 기반 execution output retention job 추가.
+  - admin status/run endpoint와 frontend API wrapper 추가.
+  - OpenAPI contract, docs, test cases, worklog 갱신.
+  - 원격 서버 `192.168.35.88`에 재배포하고 smoke/API 확인 실행.
+- 구현 내용:
+  - `GET /api/admin/storage-expansion/execution-log-retention/status`
+  - `POST /api/admin/storage-expansion/execution-log-retention/run`
+  - 기본 retention: enabled true, 90 days, batch 100, fixed delay 1 hour.
+  - retention cutoff보다 오래된 execution `output`만 `[redacted by execution log retention policy]` marker로 교체.
+  - execution record, result, command, artifact SHA-256, external URL, notes, audit trail은 유지.
+  - metrics: `osmu.storage.expansion.execution.log.retention.outputs`, `osmu.storage.expansion.execution.log.retention.runs`.
+- 수정된 파일 및 관련 파일:
+  - `osmu-backend/src/main/java/com/example/osmu/storageexpansion/StorageExpansionExecutionLogRetentionJob.java`
+  - `osmu-backend/src/main/java/com/example/osmu/storageexpansion/StorageExpansionExecutionLogRetentionRunResponse.java`
+  - `osmu-backend/src/main/java/com/example/osmu/storageexpansion/StorageExpansionExecutionLogRetentionStatusResponse.java`
+  - `osmu-backend/src/main/java/com/example/osmu/storageexpansion/StorageExpansionService.java`
+  - `osmu-backend/src/main/java/com/example/osmu/storageexpansion/AdminStorageExpansionController.java`
+  - `osmu-backend/src/main/java/com/example/osmu/storageexpansion/repository/StorageExpansionExecutionRepository.java`
+  - `osmu-backend/src/main/java/com/example/osmu/storageexpansion/repository/InMemoryStorageExpansionExecutionRepository.java`
+  - `osmu-backend/src/main/java/com/example/osmu/storageexpansion/repository/MariaDbStorageExpansionExecutionRepository.java`
+  - `osmu-backend/src/main/resources/application.yaml`
+  - `osmu-backend/src/test/java/com/example/osmu/storageexpansion/StorageExpansionExecutionLogRetentionJobTest.java`
+  - `osmu-backend/src/test/java/com/example/osmu/storageexpansion/AdminStorageExpansionControllerTest.java`
+  - `osmu-frontend/src/services/api.js`
+  - `osmu-frontend/src/services/api-quota-policy.test.js`
+  - `scripts/verify-openapi-contract.ps1`
+  - `dev-docs/openapi-mvp.json`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/local-dev-env.md`
+  - `dev-docs/minio-pool-expansion.md`
+  - `dev-docs/security-design.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/worklog/main/worklog-main.md`
+  - `.osmu-run/remote-source-build-deploy.js` (ignored helper, 원격 테스트 대상에 retention job test 추가)
+- 검증 기록:
+  - local backend targeted test: 실패. 로컬 `JAVA_HOME`이 잘못 설정되어 Java 실행 불가.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-openapi-contract.ps1`: 성공, operations 124 / frontend API functions 102.
+  - `npm.cmd run test:unit`: 성공, 61개 통과.
+  - `npm.cmd run build`: 성공.
+  - `git diff --check`: 성공. LF/CRLF warning만 출력.
+  - remote source build/deploy: 성공. 원격 JDK 17로 `DashboardLayoutControllerTest`, `AdminStorageExpansionControllerTest`, `StorageExpansionPostRunVerifierTest`, `StorageExpansionExecutionLogSanitizerTest`, `StorageExpansionExecutionLogRetentionJobTest`, `bootJar` 통과.
+  - remote deploy: 성공. backend pid `21410`, frontend pid `21411`.
+  - remote health checks: `/api/health`, `/api/database/health`, `/api/storage/health`, frontend HTTP 200 통과.
+  - remote smoke `verify-local-demo.ps1 -SeedIfMissing`: 성공. lightweight demo 전체 통과.
+  - remote direct API: retention status/run 성공. `enabled=true`, `retentionDays=90`, `batchSize=100`, `redactedOutputCount=0`.
+- 결과:
+  - Storage Expansion execution evidence는 유지하면서 오래된 output만 자동/수동 redaction할 수 있게 됨.
+  - 현재 원격 데모 URL: `http://192.168.35.88:5173`.
+- 코드 리뷰:
+  - 전체 record 삭제 대신 output redaction을 선택해 운영 추적성과 보안 요구를 함께 만족함.
+  - 이미 redacted output은 다시 처리하지 않아 반복 scheduler가 불필요한 update를 만들지 않음.
+  - batch size와 retention days를 clamp해 과도한 실행을 방지함.
+- 다음 작업 참고:
+  - MariaDB에서는 `UPDATE ... ORDER BY ... LIMIT`로 batch redaction을 수행한다.
+  - 운영 환경에서 retention days는 고객 규정에 맞춰 조정 필요.
+- 앞으로 추가 개발 필요:
+  - GitOps PR 자동 생성.
+  - 실제 MinIO Operator/Helm apply 권한을 사용한 end-to-end staging 검증.
+  - retention 상태를 admin dashboard panel에 노출.
+- 추가 사용 skill/plugin:
+  - `caveman` skill: ultra 응답 압축 유지.
+
+### 2026-06-15 - Storage Expansion dashboard summary panel
+
+- 작업 시간:
+  - 시작: 2026-06-15 08:32:00 +09:00
+  - 종료: 2026-06-15 08:36:38 +09:00
+- 사용자 명령:
+  - active goal 기준으로 프론트/백엔드 기능 개발을 계속 진행.
+  - `caveman ultra` 응답 모드 유지.
+- 명령 인식:
+  - 직전 GitOps PR runner 이후 남은 dashboard gap 중 Storage Expansion 요청/실행 상태를 OCI식 dashboard palette와 standalone panel로 노출하는 작업으로 인식.
+  - 운영자가 Admin page로 들어가기 전 dashboard에서 증설 요청 open 상태와 최근 요청을 볼 수 있어야 한다고 해석.
+- 작업 방식:
+  - 기존 `HomeView.vue`에서 Storage Expansion 요청/실행 state가 이미 `DashboardPage`로 전달되는지 확인.
+  - frontend fallback widget catalog, default layout, dashboard widget rendering, admin dashboard panel을 같은 id(`storage-expansion`)로 연결.
+  - backend dashboard catalog/preset의 allowed widget id에도 같은 id를 추가해 저장 검증과 server-driven palette가 어긋나지 않게 맞춤.
+  - selector/source 기반 frontend test와 backend catalog test expectation을 갱신.
+  - API/Frontend/Test/MinIO expansion 문서를 갱신하고 remote demo에 배포.
+- 구현 내용:
+  - ADMIN dashboard palette에 `storage-expansion` widget 추가.
+  - dashboard widget은 open request 수, 총 request 수, 현재 로드된 execution 수를 표시.
+  - standalone admin dashboard panel은 open/applied/rejected request 수, execution count, 최근 요청 3개를 표시.
+  - backend built-in `operations`, `admin` preset에 `storage-expansion` widget 포함.
+- 수정된 파일 및 관련 파일:
+  - `osmu-frontend/src/views/HomeView.vue`
+  - `osmu-frontend/src/components/dashboard/DashboardPage.vue`
+  - `osmu-frontend/src/views/HomeView.test.js`
+  - `osmu-backend/src/main/java/com/example/osmu/dashboard/DashboardLayoutService.java`
+  - `osmu-backend/src/test/java/com/example/osmu/dashboard/DashboardLayoutControllerTest.java`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/frontend-design.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/minio-pool-expansion.md`
+  - `dev-docs/worklog/main/worklog-main.md`
+- 검증 기록:
+  - `npm.cmd run test:unit`: 성공, 61개 통과.
+  - `npm.cmd run build`: 성공.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-openapi-contract.ps1`: 성공, operations 125 / frontend API functions 102.
+  - local backend targeted test: 실패. 로컬 `JAVA_HOME`이 잘못 설정되어 Java 실행 불가.
+  - `git diff --check`: 성공. LF/CRLF warning만 출력.
+  - remote source build/deploy: 성공. 원격 JDK 17로 `DashboardLayoutControllerTest`, Storage Expansion runner/verifier/sanitizer/retention tests, `bootJar` 통과.
+  - remote deploy: 성공. backend pid `23152`, frontend pid `23153`.
+  - remote health checks: `/api/health`, `/api/database/health`, `/api/storage/health`, frontend HTTP 200 통과.
+  - remote smoke `verify-local-demo.ps1 -SeedIfMissing`: 성공. lightweight demo 전체 통과.
+  - remote direct API: `GET /api/dashboard/layout/widgets`에서 `storage-expansion` catalog 확인. `adminOnly=true`, `category=OPERATIONS`.
+- 결과:
+  - Storage Expansion 요청 현황이 dashboard palette와 admin dashboard panel에 표시됨.
+  - 현재 원격 데모 URL: `http://192.168.35.88:5173`.
+- 코드 리뷰:
+  - frontend fallback catalog와 backend server-driven catalog를 같은 id로 맞춰 unknown widget 저장 실패/blank widget 위험을 낮춤.
+  - standalone panel은 기존 `status-dl`, `compact-list`, `status-pill` 패턴을 재사용해 UI 범위를 작게 유지.
+  - execution count는 현재 frontend state에 로드된 execution 기준이라, 전체 요청별 execution aggregate가 필요한 경우 backend summary endpoint가 추가로 필요함.
+- 다음 작업 참고:
+  - 전체 Storage Expansion execution count/최근 실행을 정확히 보려면 request별 history state 대신 backend aggregate endpoint를 추가해야 함.
+  - Browser click E2E를 추가하면 dashboard palette에서 `storage-expansion` 추가/이동/삭제 흐름을 실제 UI로 검증할 수 있음.
+- 앞으로 추가 개발 필요:
+  - Storage Expansion aggregate API.
+  - 실제 MinIO Operator/Helm staging end-to-end apply 검증.
+  - GitOps PR runner 활성 환경에서 GitHub/GitLab 인증/권한 검증.
+- 추가 사용 skill/plugin:
+  - `caveman` skill: ultra 응답 압축 유지.
+
+### 2026-06-15 - Storage Expansion aggregate summary API
+
+- 작업 시간:
+  - 시작: 2026-06-15 08:41:00 +09:00
+  - 종료: 2026-06-15 08:51:23 +09:00
+- 사용자 명령:
+  - active goal 기준으로 프론트/백엔드 기능 개발 계속 진행.
+- 명령 인식:
+  - 직전 dashboard panel은 request별 execution history가 로드된 경우에만 execution count가 정확했으므로, 제품형 dashboard에 필요한 전체 Storage Expansion aggregate API를 구현하는 작업으로 인식.
+  - ADMIN dashboard가 request list와 request별 history를 모두 순회하지 않고도 open/applied/rejected 요청 수, open capacity, execution count를 표시해야 한다고 해석.
+- 작업 방식:
+  - backend execution repository에 `findAll()`을 추가하고 in-memory/MariaDB 구현을 맞춤.
+  - `GET /api/admin/storage-expansion/summary` endpoint와 response record를 추가.
+  - service에서 request status별 count, capacity 합계, execution result별 count, timeout count, latest request/execution을 계산.
+  - frontend API wrapper/state를 추가하고 dashboard panel이 summary aggregate를 우선 사용하도록 변경.
+  - Storage Expansion 관련 mutation 후 summary를 다시 로드해 dashboard 숫자가 stale 상태로 남지 않게 함.
+  - OpenAPI/docs/tests/worklog 갱신 후 원격 데모 서버에 배포.
+- 구현 내용:
+  - `StorageExpansionSummaryResponse` 추가.
+  - `StorageExpansionExecutionRepository.findAll()` 추가.
+  - `AdminStorageExpansionController.summary()` 추가.
+  - frontend `getStorageExpansionSummary()` wrapper와 `storageExpansionSummary` reactive state 추가.
+  - Dashboard `storage-expansion` widget/panel은 `openRequestCount`, `requestCount`, `executionCount`, `openRequestedCapacityBytes`를 summary 기준으로 표시.
+  - 기존 dashboard 용량 표시 버그 수정: `requestedCapacityGb` 대신 API 실제 필드 `requestedCapacityBytes` 사용.
+- 수정된 파일 및 관련 파일:
+  - `osmu-backend/src/main/java/com/example/osmu/storageexpansion/StorageExpansionSummaryResponse.java`
+  - `osmu-backend/src/main/java/com/example/osmu/storageexpansion/StorageExpansionService.java`
+  - `osmu-backend/src/main/java/com/example/osmu/storageexpansion/AdminStorageExpansionController.java`
+  - `osmu-backend/src/main/java/com/example/osmu/storageexpansion/repository/StorageExpansionExecutionRepository.java`
+  - `osmu-backend/src/main/java/com/example/osmu/storageexpansion/repository/InMemoryStorageExpansionExecutionRepository.java`
+  - `osmu-backend/src/main/java/com/example/osmu/storageexpansion/repository/MariaDbStorageExpansionExecutionRepository.java`
+  - `osmu-backend/src/test/java/com/example/osmu/storageexpansion/AdminStorageExpansionControllerTest.java`
+  - `osmu-frontend/src/services/api.js`
+  - `osmu-frontend/src/services/api-quota-policy.test.js`
+  - `osmu-frontend/src/views/HomeView.vue`
+  - `osmu-frontend/src/views/HomeView.test.js`
+  - `osmu-frontend/src/components/dashboard/DashboardPage.vue`
+  - `scripts/verify-openapi-contract.ps1`
+  - `dev-docs/openapi-mvp.json`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/frontend-design.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/minio-pool-expansion.md`
+  - `dev-docs/worklog/main/worklog-main.md`
+- 검증 기록:
+  - `npm.cmd run test:unit`: 성공, 61개 통과.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-openapi-contract.ps1`: 성공, operations 126.
+  - `npm.cmd run build`: 첫 병렬 실행에서 Vite/Rolldown path 오류가 발생했으나 같은 명령 단독 재실행 성공.
+  - local backend targeted test: 실패. 로컬 `JAVA_HOME`이 잘못 설정되어 Java 실행 불가.
+  - `git diff --check`: 성공. LF/CRLF warning만 출력.
+  - remote source build/deploy: 성공. 원격 JDK 17로 `DashboardLayoutControllerTest`, `AdminStorageExpansionControllerTest`, Storage Expansion verifier/sanitizer/retention tests, `bootJar` 통과.
+  - remote deploy: 성공. backend pid `23664`, frontend pid `23665`.
+  - remote health checks: `/api/health`, `/api/database/health`, `/api/storage/health`, frontend HTTP 200 통과.
+  - remote smoke `verify-local-demo.ps1 -SeedIfMissing`: 성공. lightweight demo 전체 통과.
+  - remote direct API: `GET /api/admin/storage-expansion/summary` 성공. 예시 응답 `requestCount=24`, `openRequestCount=5`, `executionCount=81`, `latestRequest=pool-24`.
+- 결과:
+  - Storage Expansion dashboard가 전체 요청/실행 aggregate를 정확히 표시할 수 있게 됨.
+  - 현재 원격 데모 URL: `http://192.168.35.88:5173`.
+- 코드 리뷰:
+  - summary 계산은 repository 전체 조회 기반이라 MVP 규모에서는 단순하고 안전하다.
+  - 실행 이력 규모가 커지면 MariaDB 전용 aggregate SQL/count query로 최적화해야 한다.
+  - frontend는 summary 실패 시 기존 `storageExpansionRequests`/`storageExpansionExecutions` fallback을 사용해 UI blank 위험을 낮춤.
+- 다음 작업 참고:
+  - Browser click E2E로 dashboard palette에서 `storage-expansion` panel 표시와 open capacity 렌더링을 검증할 수 있음.
+  - summary API에 최근 실행 N개 또는 최근 실패 실행을 추가하면 운영 dashboard 가치가 더 커짐.
+- 앞으로 추가 개발 필요:
+  - 실제 MinIO Operator/Helm staging end-to-end apply 검증.
+  - GitOps PR runner 활성 환경의 인증/권한 검증.
+  - execution 규모 증가 대비 aggregate query 최적화.
+- 추가 사용 skill/plugin:
+  - `caveman` skill: ultra 응답 압축 유지.
+
+### 2026-06-15 - Storage Expansion request aggregate query optimization
+
+- 작업 시간:
+  - 시작: 2026-06-15 09:30:00 +09:00
+  - 종료: 2026-06-15 09:37:01 +09:00
+- 사용자 명령:
+  - active goal 기준으로 프론트/백엔드 기능 개발 계속 진행.
+- 명령 인식:
+  - 직전 execution summary 최적화 다음 단계로, request status/count/capacity aggregate도 전체 request list를 memory로 가져오지 않게 개선하는 작업으로 인식.
+  - B2B 운영 환경에서 Storage Expansion request가 누적되어도 dashboard summary가 가볍게 동작해야 한다고 해석.
+- 작업 방식:
+  - request repository에 aggregate/latest 전용 contract를 추가.
+  - in-memory repository는 기존 records stream 계산으로 같은 결과를 유지.
+  - MariaDB repository는 status/count/capacity conditional aggregate SQL과 latest `ORDER BY id DESC LIMIT 1` query를 사용하도록 구현.
+  - `StorageExpansionService.summary()`에서 request `findAll()` 의존을 제거.
+  - request summary covering index migration V37을 추가.
+  - API/database/minio/test 문서를 갱신하고 원격 MariaDB 환경에 배포해 index 존재와 summary 응답을 확인.
+- 구현 내용:
+  - `StorageExpansionRequestAggregate` record 추가.
+  - `StorageExpansionRequestRepository.aggregate()`와 `findLatest()` 추가.
+  - `GET /api/admin/storage-expansion/summary` request 집계가 DB aggregate query 기반으로 동작.
+  - `V37__storage_expansion_request_summary_index.sql` 추가.
+- 수정된 파일 및 관련 파일:
+  - `osmu-backend/src/main/java/com/example/osmu/storageexpansion/StorageExpansionRequestAggregate.java`
+  - `osmu-backend/src/main/java/com/example/osmu/storageexpansion/StorageExpansionService.java`
+  - `osmu-backend/src/main/java/com/example/osmu/storageexpansion/repository/StorageExpansionRequestRepository.java`
+  - `osmu-backend/src/main/java/com/example/osmu/storageexpansion/repository/InMemoryStorageExpansionRequestRepository.java`
+  - `osmu-backend/src/main/java/com/example/osmu/storageexpansion/repository/MariaDbStorageExpansionRequestRepository.java`
+  - `osmu-backend/src/main/resources/db/migration/V37__storage_expansion_request_summary_index.sql`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/database-design.md`
+  - `dev-docs/minio-pool-expansion.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/worklog/main/worklog-main.md`
+- 검증 기록:
+  - local backend targeted test: 실패. 로컬 `JAVA_HOME`이 잘못 설정되어 Java 실행 불가.
+  - `npm.cmd run test:unit`: 성공, 61개 통과.
+  - `npm.cmd run build`: 성공.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-openapi-contract.ps1`: 성공, operations 127 / frontend API functions 102.
+  - `git diff --check`: 성공. LF/CRLF warning만 출력.
+  - remote source build/deploy: 성공. 원격 JDK 17로 `DashboardLayoutControllerTest`, `AdminStorageExpansionControllerTest`, Storage Expansion verifier/sanitizer/retention tests, `bootJar` 통과.
+  - remote deploy: 성공. backend pid `27224`, frontend pid `27225`.
+  - remote health checks: `/api/health`, `/api/database/health`, `/api/storage/health`, frontend HTTP 200 통과.
+  - remote smoke `verify-local-demo.ps1 -SeedIfMissing`: 성공. lightweight demo 전체 통과.
+  - remote direct API: `GET /api/admin/storage-expansion/summary` 성공. 예시 응답 `requestCount=29`, `openRequestCount=5`, `executionCount=121`, `latestRequest.id=29`.
+  - remote MariaDB index check: JDBC로 `idx_storage_expansion_summary(status, requested_capacity_bytes, estimated_usable_capacity_bytes, id)` 존재 확인.
+- 결과:
+  - Storage Expansion dashboard summary가 request/execution 모두 전체 row 목록 조회 없이 필요한 aggregate와 recent/latest만 가져온다.
+  - 현재 원격 데모 URL: `http://192.168.35.88:5173`.
+- 코드 리뷰:
+  - API 응답 shape은 그대로 유지해 frontend 변경 없이 backend 성능 병목을 줄였다.
+  - request aggregate SQL은 conditional `SUM(CASE...)`로 한번에 status/count/capacity를 계산한다.
+  - `findAll()`은 목록 API용으로 남겼고 summary path에서는 사용하지 않는다.
+- 다음 작업 참고:
+  - 실제 운영 규모에서는 request aggregate materialized metric 또는 dashboard cache를 추가할 수 있다.
+  - GitOps PR runner enabled staging에서 remote 권한/branch protection 실패 케이스 검증 필요.
+- 앞으로 추가 개발 필요:
+  - 실제 MinIO Operator/Helm staging end-to-end apply 검증.
+  - GitOps PR runner enabled 환경의 remote 권한/branch protection 검증.
+  - dashboard summary cache/metric table 검토.
+- 추가 사용 skill/plugin:
+  - `caveman` skill: ultra 응답 압축 유지.
+
+### 2026-06-15 - Storage Expansion GitOps PR runner enabled test
+
+- 작업 시간:
+  - 시작: 2026-06-15 09:38:00 +09:00
+  - 종료: 2026-06-15 09:42:37 +09:00
+- 사용자 명령:
+  - active goal 기준으로 프론트/백엔드 기능 개발 계속 진행.
+- 명령 인식:
+  - 직전 후속 항목인 GitOps PR runner enabled 경로 검증을 실제 외부 GitHub 권한 없이도 안전하게 자동화하는 작업으로 인식.
+  - 기본 demo는 disabled runner smoke만 확인하므로, enabled runner의 artifact write, git/gh command sequence, PR URL capture, repository path escape 방어를 단위테스트로 고정해야 한다고 해석.
+- 작업 방식:
+  - `StorageExpansionGitOpsPrRunner` 실행 순서를 `git checkout -B` 성공 후 artifact write로 변경해 checkout 실패 시 repository에 파일을 남기지 않게 함.
+  - runner 실패 메시지를 command 시작 전용 문구에서 repository 준비 실패 문구로 조정.
+  - fake `git`/`gh` executable을 만드는 단위테스트를 추가해 enabled runner 성공 흐름을 검증.
+  - `../outside.yaml` artifact path가 repository 밖으로 탈출하는 경우 실패하고 외부 파일을 만들지 않는지 검증.
+  - API/security/minio/test 문서 갱신 후 원격 데모 서버에 배포.
+- 구현 내용:
+  - enabled GitOps PR runner는 checkout 실패 시 artifact write를 수행하지 않는다.
+  - enabled runner test는 artifact 파일 내용, `git checkout -B`, `git add`, `git commit`, `gh pr create`, externalUrl 파싱을 검증한다.
+  - repository escape artifact path 차단 test 추가.
+- 수정된 파일 및 관련 파일:
+  - `osmu-backend/src/main/java/com/example/osmu/storageexpansion/StorageExpansionGitOpsPrRunner.java`
+  - `osmu-backend/src/test/java/com/example/osmu/storageexpansion/StorageExpansionGitOpsPrRunnerTest.java`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/minio-pool-expansion.md`
+  - `dev-docs/security-design.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/worklog/main/worklog-main.md`
+- 검증 기록:
+  - local backend targeted test: 실패. 로컬 `JAVA_HOME`이 잘못 설정되어 Java 실행 불가.
+  - `npm.cmd run test:unit`: 성공, 61개 통과.
+  - `npm.cmd run build`: 성공.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-openapi-contract.ps1`: 성공, operations 127 / frontend API functions 102.
+  - `git diff --check`: 성공. LF/CRLF warning만 출력.
+  - remote source build/deploy: 성공. 원격 JDK 17로 `DashboardLayoutControllerTest`, `AdminStorageExpansionControllerTest`, Storage Expansion verifier/sanitizer/retention tests, `bootJar` 통과.
+  - remote targeted backend test: `StorageExpansionGitOpsPrRunnerTest` 성공.
+  - remote deploy: 성공. backend pid `27892`, frontend pid `27893`.
+  - remote health checks: `/api/health`, `/api/database/health`, `/api/storage/health`, frontend HTTP 200 통과.
+  - remote smoke `verify-local-demo.ps1 -SeedIfMissing`: 성공. lightweight demo 전체 통과.
+- 결과:
+  - GitOps PR runner enabled 경로가 외부 GitHub 연결 없이도 테스트로 검증된다.
+  - 현재 원격 데모 URL: `http://192.168.35.88:5173`.
+- 코드 리뷰:
+  - checkout을 먼저 실행해 실패 시 artifact write side effect를 줄인 점이 운영 안전성에 유리하다.
+  - `ProcessBuilder`를 계속 사용해 shell injection 위험을 낮춘다.
+  - path normalize와 repository prefix check는 artifact path escape를 막는다.
+- 다음 작업 참고:
+  - 실제 GitHub/GitLab remote 권한과 branch protection은 별도 staging credential이 있어야 검증 가능하다.
+  - PR 생성 실패 output classification을 추가하면 운영자가 인증 실패와 branch protection 실패를 더 쉽게 구분할 수 있다.
+- 앞으로 추가 개발 필요:
+  - GitOps PR runner enabled staging에서 remote 권한/branch protection 실패 케이스 검증.
+  - 실제 MinIO Operator/Helm staging end-to-end apply 검증.
+  - GitOps PR 실패 원인 분류와 UI 표시.
+- 추가 사용 skill/plugin:
+  - `caveman` skill: ultra 응답 압축 유지.
+
+### 2026-06-15 - Storage Expansion GitOps PR push and failure classification
+
+- 작업 시간:
+  - 시작: 2026-06-15 09:43:00 +09:00
+  - 종료: 2026-06-15 09:51:31 +09:00
+- 사용자 명령:
+  - active goal 기준으로 프론트/백엔드 기능 개발 계속 진행.
+- 명령 인식:
+  - 직전 GitOps PR runner enabled test 이후 실제 PR 생성 흐름에 필요한 push 단계와 실패 원인 분류가 부족한 점을 보강하는 작업으로 인식.
+  - 운영자가 GitOps PR runner 실패를 봤을 때 인증 문제, 권한 문제, branch protection, dirty worktree 등을 빠르게 구분해야 한다고 해석.
+- 작업 방식:
+  - GitOps PR runner command sequence에 `git push -u origin {branch}`를 추가.
+  - 각 command 실행 후 실패를 즉시 반환하는 fail-fast 흐름으로 변경.
+  - runner result에 `failureReason`을 추가하고 service notes에 저장.
+  - branch protection, auth/authz, no changes, dirty worktree, tool missing, repository config, timeout, unknown 분류를 추가.
+  - fake `git`/`gh` 단위테스트를 확장해 push 성공, branch protection 실패 분류, 실패 후 `gh pr create` 미실행을 검증.
+  - API/security/minio/test 문서를 갱신하고 원격 데모 서버에 배포.
+- 구현 내용:
+  - enabled GitOps PR runner가 `checkout -> write artifacts -> add -> commit -> push -> gh pr create` 순서로 동작.
+  - 실패 발생 시 후속 command를 실행하지 않고 execution notes에 `failureReason=...` 기록.
+  - `GH006`/protected branch output은 `BRANCH_PROTECTION`으로 분류.
+  - 기본 disabled 흐름도 notes에 `failureReason=-`를 포함.
+- 수정된 파일 및 관련 파일:
+  - `osmu-backend/src/main/java/com/example/osmu/storageexpansion/StorageExpansionGitOpsPrRunner.java`
+  - `osmu-backend/src/main/java/com/example/osmu/storageexpansion/StorageExpansionService.java`
+  - `osmu-backend/src/test/java/com/example/osmu/storageexpansion/StorageExpansionGitOpsPrRunnerTest.java`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/minio-pool-expansion.md`
+  - `dev-docs/security-design.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/worklog/main/worklog-main.md`
+- 검증 기록:
+  - local backend targeted test: 실패. 로컬 `JAVA_HOME`이 잘못 설정되어 Java 실행 불가.
+  - `npm.cmd run test:unit`: 성공, 61개 통과.
+  - `npm.cmd run build`: 성공.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-openapi-contract.ps1`: 성공, operations 127 / frontend API functions 102.
+  - `git diff --check`: 성공. LF/CRLF warning만 출력.
+  - remote source build/deploy: 성공. 원격 JDK 17로 `DashboardLayoutControllerTest`, `AdminStorageExpansionControllerTest`, Storage Expansion verifier/sanitizer/retention tests, `bootJar` 통과.
+  - remote targeted backend test: `StorageExpansionGitOpsPrRunnerTest` 성공.
+  - remote deploy: 성공. backend pid `29164`, frontend pid `29165`.
+  - remote health checks: `/api/health`, `/api/database/health`, `/api/storage/health`, frontend HTTP 200 통과.
+  - remote smoke `verify-local-demo.ps1 -SeedIfMissing`: 성공. lightweight demo 전체 통과.
+- 결과:
+  - GitOps PR runner enabled 경로가 실제 PR 생성에 필요한 push 단계를 포함하고, 실패 원인을 notes로 드러낸다.
+  - 현재 원격 데모 URL: `http://192.168.35.88:5173`.
+- 코드 리뷰:
+  - fail-fast 처리로 push 실패 뒤 `gh pr create`가 실행되는 잘못된 흐름을 막았다.
+  - failureReason은 API shape 변경 없이 기존 notes 필드에 들어가므로 frontend 호환성이 유지된다.
+  - 실제 remote 인증/branch protection은 staging credential로 추가 검증이 필요하다.
+- 다음 작업 참고:
+  - UI에서 `failureReason`을 badge로 분리 표시하면 운영자가 더 빨리 볼 수 있다.
+  - GitOps runner enabled staging credential이 준비되면 실제 `git push`/`gh pr create` E2E를 실행해야 한다.
+- 앞으로 추가 개발 필요:
+  - GitOps PR failureReason UI badge.
+  - GitOps PR runner enabled staging에서 remote 권한/branch protection 실패 케이스 검증.
+  - 실제 MinIO Operator/Helm staging end-to-end apply 검증.
+- 추가 사용 skill/plugin:
+  - `caveman` skill: ultra 응답 압축 유지.
+
+### 2026-06-15 - Storage Expansion GitOps failure reason UI badge
+
+- 작업 시간:
+  - 시작: 2026-06-15 09:55:00 +09:00
+  - 종료: 2026-06-15 10:03:16 +09:00
+- 사용자 명령:
+  - active goal 기준으로 프론트/백엔드 기능 개발 계속 진행.
+- 명령 인식:
+  - 직전 작업에서 GitOps PR runner가 notes에 `failureReason`을 기록하게 되었으므로, 운영자가 실행 이력 목록에서 실패 원인을 바로 확인할 수 있는 UI가 필요하다고 인식.
+- 작업 방식:
+  - 기존 API shape를 바꾸지 않고 execution `notes`의 `failureReason=...` 값을 frontend에서 파싱.
+  - `failureReason` 직접 필드가 생겨도 사용할 수 있도록 helper를 작성.
+  - 실행 이력 row에 stable selector가 있는 badge와 짧은 원인 힌트를 추가.
+  - frontend selector test와 문서를 갱신.
+- 구현 내용:
+  - Storage Expansion execution history에 `storage-expansion-execution-failure-reason` badge 추가.
+  - `AUTHENTICATION`, `AUTHORIZATION`, `BRANCH_PROTECTION`, `DIRTY_WORKTREE`, `NO_CHANGES`, `REPOSITORY_CONFIG`, `TIMEOUT`, `TOOL_MISSING`, `UNKNOWN` label/hint 표시.
+  - `failureReason=-`, 빈 값, null 값은 badge를 숨김.
+- 수정된 파일 및 관련 파일:
+  - `osmu-frontend/src/components/admin/StorageExpansionPanel.vue`
+  - `osmu-frontend/src/assets/main.css`
+  - `osmu-frontend/src/views/HomeView.test.js`
+  - `dev-docs/frontend-design.md`
+  - `dev-docs/minio-pool-expansion.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/worklog/main/worklog-main.md`
+- 검증 기록:
+  - `npm.cmd run test:unit`: 성공, 61개 통과.
+  - `npm.cmd run build`: 성공.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-openapi-contract.ps1`: 성공, operations 127 / frontend API functions 102.
+  - remote source build/deploy: 성공. 원격 JDK 17로 dashboard/storage expansion backend test subset과 `bootJar` 통과.
+  - remote deploy: 성공. backend pid `29884`, frontend pid `29885`.
+  - remote health checks: `/api/health`, `/api/database/health`, `/api/storage/health`, frontend HTTP 200 통과.
+  - remote smoke `verify-local-demo.ps1 -SeedIfMissing`: 성공. lightweight demo 전체 통과.
+- 결과:
+  - GitOps PR runner 실패 원인이 notes 문자열 안에만 묻히지 않고 실행 이력 UI에서 badge로 표시된다.
+  - 현재 원격 데모 URL: `http://192.168.35.88:5173`.
+- 코드 리뷰:
+  - API 변경 없이 UI 파싱만 추가해 기존 backend/frontend 호환성을 유지했다.
+  - 반복 호출되는 helper는 작은 execution list 범위에서만 쓰이므로 현재 성능 부담은 낮다.
+  - 향후 backend response에 `failureReason` 전용 필드를 추가하면 같은 helper가 우선 사용하도록 되어 있다.
+- 다음 작업 참고:
+  - 원격 데모 배포 후 실제 disabled GitOps PR runner 이력에는 `failureReason=-`라 badge가 숨겨지는지 확인한다.
+  - branch protection 실패 샘플 execution seed가 생기면 badge 렌더링을 Browser E2E로 검증할 수 있다.
+- 앞으로 추가 개발 필요:
+  - GitOps PR runner enabled staging에서 remote 권한/branch protection 실패 케이스 검증.
+  - 실제 MinIO Operator/Helm staging end-to-end apply 검증.
+- 추가 사용 skill/plugin:
+  - 없음.
+
+### 2026-06-15 - Backend Browser E2E와 Readiness Backend Test 증거 보강
+
+- 작업 시간:
+  - 시작: 2026-06-15 19:45:00 +09:00
+  - 종료: 2026-06-15 19:53:00 +09:00
+- 사용자 명령:
+  - active goal 기준 `MVP 데모 가능한 웹/백엔드 완성 할것`을 계속 진행.
+- 요청 분석:
+  - Docker daemon이 없어 durable gate는 아직 닫을 수 없지만, Docker 이전 단계의 웹/백엔드 데모 증거는 더 강하게 만들 수 있다고 판단.
+  - readiness script가 JDK 존재만 확인하고 backend Gradle tests 자체를 PASS/PENDING 증거로 기록하지 않는 점을 보강 대상으로 인식.
+- 실행 내용:
+  - backend 포함 `verify-local.ps1 -SkipDocker`를 실행해 frontend/static/backend 전체 로컬 게이트를 확인.
+  - sandbox 네트워크 권한 때문에 Gradle distribution 다운로드가 실패해 승인 권한으로 재실행했고 통과.
+  - `verify-browser-e2e-prototype.ps1`를 실행해 Java in-memory backend, API smoke, Vite frontend, Playwright Browser E2E를 검증.
+  - `verify-mvp-demo-readiness.ps1 -SkipDockerFullStackE2E`를 실행해 current-machine readiness report를 생성.
+  - readiness script가 backend Gradle tests를 직접 실행하고 PASS/PENDING으로 기록하도록 보강.
+- 구현 내용:
+  - `verify-mvp-demo-readiness.ps1`에 `-SkipBackendTests` 옵션과 backend Gradle test 실행 단계를 추가.
+  - backend tests와 backend-backed Browser E2E가 모두 통과하면 MVP demo completion estimate를 `80-85%`로 산정하도록 조정.
+  - README, feature inventory, prototype status, MVP release checklist에 backend-backed Browser E2E 통과 상태와 남은 Docker durable blockers를 반영.
+- 수정된 파일 및 관련 파일:
+  - `scripts/verify-mvp-demo-readiness.ps1`
+  - `README.md`
+  - `dev-docs/feature-inventory.md`
+  - `dev-docs/prototype-status.md`
+  - `dev-docs/mvp-release-checklist.md`
+  - `dev-docs/worklog/main/worklog-main.md`
+- 검증 기록:
+  - 최초 `powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-local.ps1 -SkipDocker`: Gradle distribution network permission 문제로 실패.
+  - 승인 권한 재실행 `powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-local.ps1 -SkipDocker`: 통과. backend Gradle tests 포함.
+  - `powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-browser-e2e-prototype.ps1`: 통과. Playwright 3 scenarios passed.
+  - `powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-mvp-demo-readiness.ps1 -SkipDockerFullStackE2E`: 통과. `currentDemoStatus=backend-prototype-browser-demo-verified`.
+  - readiness script 보강 후 sandbox 실행에서는 Gradle network permission 때문에 backend tests가 PENDING으로 기록됐고, 승인 권한 재실행에서 backend Gradle tests PASS, backend-backed Browser E2E PASS, MVP demo `80-85%`로 기록됨.
+- 결과:
+  - Docker 없이도 Spring Boot backend + frontend click path를 보여줄 수 있는 MVP demo evidence가 확보됐다.
+  - 현재 추정치는 MVP demo `80-85%`, 전체 제품 `15-20%`로 상향 가능하다.
+  - durable MVP pilot은 여전히 Docker/MariaDB/MinIO, Docker-backed Browser E2E, real S3 client smoke가 통과되어야 한다.
+- 후속 메모:
+  - Docker Desktop 또는 GitHub Actions runner에서 `verify-durable-demo-gate.ps1`를 통과시키는 것이 다음 가장 큰 진척이다.
+  - durable gate 통과 후 `write-durable-release-artifacts.ps1 -BackendTestsIncluded`로 release/audit/decision/notes를 재생성해야 한다.
+- 코드 리뷰:
+  - readiness script가 backend tests를 단순 환경 준비 상태가 아니라 실제 테스트 결과로 기록하게 되어 MVP 증거의 신뢰도가 올라갔다.
+  - `-SkipBackendTests` 옵션을 둬 Java/Gradle이 느린 환경에서도 의도적으로 생략할 수 있게 했다.
+- 앞으로 추가적으로 개발해야 하는 내용:
+  - Docker daemon 환경에서 full stack durable gate 실통과.
+  - host AWS CLI 또는 MinIO Client 기반 real S3 client smoke 실통과.
+  - GitHub Actions durable workflow 성공 artifact 확보.
+- 추가 사용 skill/plugin:
+  - 없음.
+
+### 2026-06-15 - Demo Readiness 실행 안정화
+
+- 작업 시간:
+  - 시작: 2026-06-15 18:55:00 +09:00
+  - 종료: 2026-06-15 19:15:00 +09:00
+- 사용자 명령:
+  - active goal 기준 `MVP 데모 가능한 웹/백엔드 완성 할것`을 계속 진행.
+  - 직전 질문인 "전체 완료 퍼센테이지"에 답한 뒤, 실제 MVP demo readiness를 더 안정적으로 만드는 방향으로 계속 작업.
+- 요청 분석:
+  - 현재 MVP demo는 Docker/MariaDB/MinIO durable gate가 남아 있지만, Docker 없이도 확인 가능한 mock web demo, Browser E2E, Java backend prototype E2E는 반복 실행이 안정적이어야 한다고 판단.
+  - Windows 환경에서 Vite/Node/PowerShell wrapper 프로세스가 늦게 listener를 남겨 다음 검증의 5173 포트 시작을 막는 문제가 있어, 종료 스크립트와 시작 스크립트를 강화하는 작업으로 인식.
+- 실행 내용:
+  - Java 17 자동 탐색 경로를 보강하고, `start-local-prototype.ps1`가 repo-local Gradle cache를 쓰도록 구성.
+  - prototype Browser E2E 시작 전 pre-clean에서 mock/prototype 포트를 강제로 정리하도록 보강.
+  - mock demo 시작 시 wrapper PID뿐 아니라 실제 8080/5173 listener PID도 기록하도록 개선.
+  - mock/prototype 종료 스크립트가 process tree 종료 후 프로세스 종료와 포트 해제를 짧게 기다리고, 포트가 일정 시간 조용한 상태인지 확인하도록 개선.
+  - mock/prototype 검증 스크립트에서 start/stop 하위 스크립트 실패가 조용히 무시되지 않도록 exit code 확인 경로를 정리.
+- 구현 내용:
+  - `scripts/java-toolchain.ps1`: `OSMU_JAVA_HOME`, `C:\jdk-17`, `C:\jdk-21`, Temp JDK 경로 등 자동 탐색 후보 추가.
+  - `scripts/start-local-prototype.ps1`: `GradleUserHome` 파라미터와 repo-local `.osmu-run/gradle-home` 사용 추가.
+  - `scripts/verify-browser-e2e-prototype.ps1`: 빈 `JavaHome` 인자 전달 방지, pre-clean 옵션 추가.
+  - `scripts/verify-frontend-mock-demo.ps1`, `scripts/verify-browser-e2e-mock-demo.ps1`: pre-clean과 하위 스크립트 exit code 확인 강화.
+  - `scripts/start-frontend-mock-demo.ps1`: `mock-api.listener.pid`, `frontend.listener.pid` 기록 추가.
+  - `scripts/stop-frontend-mock-demo.ps1`: listener pid file 정리, process exit wait, quiet-period 기반 port release wait 추가.
+  - `scripts/stop-local-prototype.ps1`: process tree 종료 후 wait, ForcePorts 경로의 port release wait 추가.
+- 수정된 파일 및 관련 파일:
+  - `scripts/java-toolchain.ps1`
+  - `scripts/start-local-prototype.ps1`
+  - `scripts/stop-local-prototype.ps1`
+  - `scripts/start-frontend-mock-demo.ps1`
+  - `scripts/stop-frontend-mock-demo.ps1`
+  - `scripts/verify-browser-e2e-prototype.ps1`
+  - `scripts/verify-browser-e2e-mock-demo.ps1`
+  - `scripts/verify-frontend-mock-demo.ps1`
+  - `dev-docs/worklog/main/worklog-main.md`
+- 검증 기록:
+  - PowerShell parse check for `start-frontend-mock-demo.ps1`, `stop-frontend-mock-demo.ps1`, `stop-local-prototype.ps1`: 성공.
+  - `powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-browser-e2e-mock-demo.ps1`: 성공. Playwright 3개 테스트 통과.
+  - `powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-mvp-demo-readiness.ps1 -NoWrite -SkipDockerFullStackE2E`: 성공. static/frontend/mock API gate, mock web demo smoke, Browser mock E2E, backend-backed Browser E2E 모두 PASS.
+  - `netstat -ano | Select-String ':8080|:5173'`: 최종 LISTENING 없음, TIME_WAIT만 존재.
+- 결과:
+  - 이전 readiness에서 PENDING으로 남던 `Browser mock E2E smoke`가 PASS로 전환됨.
+  - 현 demo status는 계속 `backend-prototype-browser-demo-verified`.
+  - Docker daemon이 꺼져 있어 MariaDB/MinIO full-stack, Docker-backed Browser E2E, durable MVP demo gate, real S3 client smoke는 PENDING.
+  - 현재 기준 MVP demo 완료율은 `70-75%`, 전체 제품 완료율은 `15-20%`.
+- 후속 메모:
+  - Docker Desktop 실행 후 `verify-durable-demo-gate.ps1`를 통과시키는 것이 다음 MVP 완료율 상승의 핵심.
+  - Docker 없이 가능한 검증 경로는 반복 실행 안정성이 올라갔으므로, 다음 작업은 Docker/MariaDB/MinIO durable path로 넘어가면 좋다.
+- 코드 리뷰:
+  - wrapper PID만 의존하지 않고 실제 listener PID를 기록하므로 Windows에서 npm/Vite child process가 남는 문제에 더 강해졌다.
+  - stop 스크립트가 포트 quiet-period를 확인하므로 연속 실행 시 race condition 가능성이 줄었다.
+  - 다만 port kill은 지정된 8080/5173 listener를 강제 종료하므로, 같은 포트를 다른 작업에 쓰는 경우에는 주의가 필요하다.
+- 앞으로 추가적으로 개발해야 하는 내용:
+  - Docker daemon 환경에서 durable MVP demo gate 실통과.
+  - MariaDB/MinIO 실제 연동 상태에서 login, dashboard, bucket/object, access key, S3 client smoke 검증.
+  - Docker-backed Browser E2E와 real S3 client smoke를 release artifact와 CI에 완전 연결.
+- 추가 사용 skill/plugin:
+  - 없음.
+
+### 2026-06-15 - Docker Full-Stack Browser E2E Gate 추가
+
+- 작업 시간:
+  - 시작: 2026-06-15 18:10:00 +09:00
+  - 종료: 2026-06-15 18:23:00 +09:00
+- 사용자 명령:
+  - active goal 기준 `MVP 데모 가능한 웹/백엔드 완성 할것`을 계속 진행.
+- 요청 분석:
+  - 현재 mock/browser prototype 검증은 있으나 MariaDB + MinIO + Docker Compose 기반 실제 데모를 브라우저까지 한 번에 증명하는 게이트가 부족하다고 판단.
+  - Docker daemon이 없는 현재 환경에서는 실제 full-stack 실행은 pending으로 남기되, Docker Desktop이 켜진 환경에서 바로 검증 가능한 명령을 추가하는 작업으로 인식.
+- 실행 내용:
+  - 기존 `start-local-demo.ps1`, `verify-local-demo.ps1`, Playwright E2E를 묶는 full Docker local demo Browser E2E wrapper를 추가.
+  - MVP readiness script가 Docker daemon 사용 가능 시 새 full-stack Browser E2E gate를 시도하고, 현재처럼 Docker daemon이 없으면 pending으로 명확히 표시하도록 수정.
+  - README, document index, local dev env, test cases에 새 검증 명령과 TC-DEMO-003을 반영.
+- 구현 내용:
+  - `scripts/verify-browser-e2e-local-demo.ps1` 추가.
+    - Docker local demo start, demo seed, REST/S3 smoke, Playwright Browser E2E, automatic stop 흐름을 제공.
+    - `-KeepRunning`, `-NoBuild`, `-SkipDemoSmoke`, `-SkipS3AccessKeySmoke`, `-BrowserChannel` 옵션 제공.
+  - `scripts/verify-mvp-demo-readiness.ps1` 수정.
+    - `-SkipDockerFullStackE2E` 옵션 추가.
+    - `Docker-backed Browser E2E readiness` check 추가.
+    - Docker full-stack E2E 통과 시 current demo status를 `docker-full-stack-browser-demo-verified`, MVP demo 추정치를 `85-90%`로 올리도록 구성.
+  - `README.md`, `dev-docs/document-index.md`, `dev-docs/local-dev-env.md`, `dev-docs/test-cases.md`에 새 검증 경로 문서화.
+- 수정된 파일 및 관련 파일:
+  - `scripts/verify-browser-e2e-local-demo.ps1`
+  - `scripts/verify-mvp-demo-readiness.ps1`
+  - `README.md`
+  - `dev-docs/document-index.md`
+  - `dev-docs/local-dev-env.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/worklog/main/worklog-main.md`
+- 검증 기록:
+  - PowerShell script parse check: 성공.
+  - `powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-migrations.ps1`: 성공. 38 migrations, highest V38.
+  - Docker Compose config check with repo-local Docker config: 성공.
+  - `git diff --check -- README.md dev-docs/document-index.md dev-docs/test-cases.md dev-docs/local-dev-env.md scripts/verify-browser-e2e-local-demo.ps1 scripts/verify-mvp-demo-readiness.ps1`: 성공. CRLF warning만 존재.
+  - `powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-mvp-demo-readiness.ps1 -NoWrite -SkipDockerFullStackE2E -JavaHome ...`: 일반 sandbox에서는 Gradle distribution download가 `Permission denied: getsockopt`로 막혀 backend prototype이 pending 처리됨.
+  - 같은 readiness 명령을 승인 권한으로 재실행: 성공. static/frontend/mock API gate, mock Browser E2E, backend-backed Browser E2E prototype 통과. Docker/MariaDB/MinIO 및 real S3 client는 환경 부재로 pending.
+  - `netstat -ano | Select-String ':8080|:5173'`: 최종 LISTENING 없음, TIME_WAIT만 존재.
+  - Playwright 생성물 `osmu-frontend/test-results`는 워크스페이스 내부 경로 확인 후 제거.
+- 결과:
+  - 현재 환경 기준 MVP demo status는 다시 `backend-prototype-browser-demo-verified`.
+  - 현재 MVP demo 추정치는 `70-75%`, 제품 전체 추정치는 `15-20%`.
+  - Docker Desktop이 켜진 환경에서는 `verify-browser-e2e-local-demo.ps1`로 full Docker local demo + Browser E2E를 한 번에 검증할 수 있게 됨.
+- 후속 메모:
+  - Docker daemon이 필요하므로 현재 환경에서는 `docker-full-stack-browser-demo-verified`까지는 아직 증명하지 못함.
+  - AWS CLI 또는 MinIO Client `mc`가 host PATH에 없어 real S3 client smoke도 pending.
+  - 다음 작업은 Docker Desktop 실행 후 `verify-browser-e2e-local-demo.ps1`, `verify-docker-integration.ps1`, `verify-s3-client-smoke.ps1 -Client auto -RequireClient` 순서로 durable MVP evidence를 확보하는 것.
+- 코드 리뷰:
+  - 새 wrapper는 기존 start/verify/stop 스크립트를 재사용하므로 중복 구현은 제한적이다.
+  - `verify-mvp-demo-readiness.ps1`는 Docker daemon availability와 full-stack Browser E2E result를 분리해서, daemon 존재만으로 durable demo가 완료된 것처럼 보이지 않게 했다.
+  - Docker full-stack Browser E2E는 아직 현 환경에서 직접 실행되지 않았으므로 실제 Docker Desktop 환경에서 첫 실행 결과를 반드시 확인해야 한다.
+- 앞으로 추가적으로 개발해야 하는 내용:
+  - Docker full-stack Browser E2E 실제 통과 확인.
+  - MariaDB/MinIO 기반 데이터 지속성 확인.
+  - 실제 AWS CLI 또는 MinIO Client 기반 S3 compatibility smoke 통과.
+  - Docker full-stack Browser E2E를 CI durable workflow에 연결.
+- 추가 사용 skill/plugin:
+  - 없음.
+
+### 2026-06-15 - Login Direct URL Smoke 보강
+
+- 작업 시간:
+  - 시작: 2026-06-15 15:24:28 +09:00
+  - 종료: 2026-06-15 15:30:12 +09:00
+- 사용자 명령:
+  - active goal 기준으로 `MVP 데모 가능한 웹/백엔드 완성`을 계속 진행.
+- 명령 인식:
+  - MVP 데모 첫 진입 요구사항인 `/login` 페이지가 실제 배포/preview 환경에서 직접 접근 가능한지 검증하는 자동화가 부족하다고 보고, JDK/Docker 없이 줄일 수 있는 데모 검증 간극을 보강하는 작업으로 인식.
+- 작업 방식:
+  - frontend router, `LoginView`, auth store, local demo/verification scripts를 확인.
+  - `verify-lightweight-demo.ps1`의 frontend smoke 범위에 `/login` direct URL 확인과 login UI selector/copy 확인을 추가.
+  - test case 문서의 TC-AUTH-005 자동화 범위를 실제 스모크 기준과 맞춤.
+- 구현 내용:
+  - `verify-lightweight-demo.ps1`가 `GET /login`에 대해 HTTP 200과 SPA app root를 확인하도록 변경.
+  - dev server와 production bundle 양쪽을 고려해 `LoginView.vue` source module 또는 built JS bundle에서 login form, 자동 로그인, 아이디 저장, 비밀번호 보기, 관리자/개발자 mode, RAID/JBOD/IAM/API Key 안내 문구를 검증.
+  - `dev-docs/test-cases.md`의 `/login` 테스트 케이스 자동화 설명에 `verify-lightweight-demo.ps1` direct URL smoke를 추가.
+- 수정된 파일 및 관련 파일:
+  - `scripts/verify-lightweight-demo.ps1`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/worklog/main/worklog-main.md`
+- 검증 기록:
+  - `npm.cmd run test:unit`: 성공, 67개 통과.
+  - `npm.cmd run build`: 단독 재실행 성공. 최초 병렬 실행 중 1회 Vite/Rolldown emitted asset path 오류가 있었으나 순차 실행과 `verify-local.ps1`에서는 재현되지 않음.
+  - production preview smoke: PowerShell Job으로 `npm.cmd run preview -- --host 127.0.0.1 --port 4179`를 임시 실행하고 `GET http://127.0.0.1:4179/login`이 HTTP 200 및 `<div id="app"></div>`를 반환하는지 확인, 성공 후 포트 리스너 정리.
+  - `powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-local.ps1 -SkipDocker -SkipBackend`: 성공. OpenAPI 130 operations / frontend API functions 105, frontend unit 67개, frontend build, static verifiers 통과.
+  - `git diff --check -- ...`: CRLF 변환 경고 외 문제 없음.
+- 결과:
+  - MVP 데모 첫 진입점인 `/login` 직접 접근이 smoke gate에 포함됐다.
+  - 로그인 화면 요구사항이 unit selector contract뿐 아니라 lightweight demo 검증 흐름에서도 빠지지 않게 됐다.
+- 코드 리뷰:
+  - `/login` 확인은 backend 데이터 없이도 frontend 배포 설정의 치명적인 SPA fallback 문제를 잡을 수 있는 낮은 비용의 검증이다.
+  - 로그인 UI 문자열과 selector 검증은 dev server source module과 production JS bundle을 모두 지원하도록 기존 `uiText` 병합 방식에 맞춰 추가했다.
+  - 실제 브라우저 조작 E2E는 아직 pending이므로, route guard 클릭/입력 흐름은 추후 Browser E2E로 보강해야 한다.
+- 다음 작업 참고:
+  - JDK 17+ 설치 후 backend Gradle test를 실행해야 한다.
+  - Docker daemon 접근 문제를 해결한 뒤 MariaDB/MinIO 포함 `start-local-demo.ps1 -SeedDemo -VerifyDemo` 또는 durable smoke를 실행해야 한다.
+- 앞으로 추가적으로 개발해야 하는 내용:
+  - `/login` 실제 입력/체크박스/role redirect Browser E2E.
+  - backend full test gate.
+  - Docker 기반 MariaDB/MinIO/S3 access key smoke.
+  - real S3 client smoke와 배포 서버 runtime 검증.
+- 추가 사용 skill/plugin:
+  - 없음.
+
+### 2026-06-15 - MVP 데모 Java Toolchain 진단 개선
+
+- 작업 시간:
+  - 시작: 2026-06-15 15:12:00 +09:00
+  - 종료: 2026-06-15 15:24:28 +09:00
+- 사용자 명령:
+  - active goal 기준으로 `MVP 데모 가능한 웹/백엔드 완성`을 계속 진행.
+- 명령 인식:
+  - 현재 MVP 데모를 막는 직접 장애가 기능 코드보다 로컬 Java/JDK 검증 환경에 있다고 보고, backend test gate를 명확히 실행하거나 실패 이유를 빠르게 알 수 있게 하는 작업으로 인식.
+- 작업 방식:
+  - 로컬 Java, Docker, Node, frontend/static 검증 상태를 먼저 확인.
+  - Java 탐색/설정 로직을 별도 PowerShell helper로 분리.
+  - `verify-local.ps1`, `verify-prototype-prerequisites.ps1`가 `-JavaHome`, `JAVA_HOME`, `PATH`, 흔한 Windows JDK 경로를 순서대로 확인하도록 보강.
+  - README와 local dev 문서, MVP release checklist, feature inventory에 현재 검증 기준과 남은 blocker를 반영.
+- 구현 내용:
+  - `scripts/java-toolchain.ps1` 신규 추가.
+  - `scripts/verify-local.ps1` backend test 실행 전에 Java 17+ preflight와 `-JavaHome` 적용 로직 추가.
+  - `scripts/verify-prototype-prerequisites.ps1` Java 자동 탐색 및 진단 메시지 개선.
+  - README verification 문서에 JDK 17+, `-JavaHome`, frontend/static-only 검증 경로를 추가.
+  - local dev 문서에 prerequisite 점검, Java 자동 탐색 순서, backend test 실행 조건을 추가.
+  - MVP release checklist의 OpenAPI/frontend/backend 검증 기준을 최신 값으로 갱신.
+  - feature inventory에 Java helper 보강 완료와 남은 JDK 설치 필요 항목을 반영.
+- 수정된 파일 및 관련 파일:
+  - `README.md`
+  - `dev-docs/local-dev-env.md`
+  - `dev-docs/mvp-release-checklist.md`
+  - `dev-docs/feature-inventory.md`
+  - `scripts/java-toolchain.ps1`
+  - `scripts/verify-local.ps1`
+  - `scripts/verify-prototype-prerequisites.ps1`
+  - `dev-docs/worklog/main/worklog-main.md`
+- 검증 기록:
+  - `powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-prototype-prerequisites.ps1 -RequireNode`: 성공. required failure 0, optional warning 9. Java 17+, Docker daemon, real S3 client, runtime 실행 상태는 optional warning으로 보고됨.
+  - `Get-ChildItem .\scripts -Filter *.ps1 | ForEach-Object { $null = [System.Management.Automation.PSParser]::Tokenize((Get-Content -Raw $_.FullName), [ref]$errors); if ($errors.Count -gt 0) { throw ... } }`: 성공. PowerShell parse error 없음.
+  - `powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-openapi-contract.ps1`: 성공. OpenAPI operations 130, frontend API functions 105 확인.
+  - `powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-local.ps1 -SkipDocker -SkipBackend`: 성공. frontend unit 67개 통과, frontend build 통과, static verifier 통과.
+- 결과:
+  - MVP 데모 검증 흐름에서 Java 미설치 문제가 더 일찍, 더 명확하게 드러나도록 개선.
+  - 현재 로컬에서는 JDK 17+가 없어 backend Gradle test는 아직 실행하지 못했다.
+  - frontend/static 기준의 데모 검증은 통과 상태.
+- 코드 리뷰:
+  - Java 탐색 로직을 helper로 분리해 검증 스크립트 간 중복을 줄였다.
+  - Docker/real S3/runtime은 아직 optional warning으로 남아 있어, 실제 pilot 전에는 required gate로 승격할 필요가 있다.
+  - Backend 검증은 환경 의존성이므로 문서와 스크립트가 같은 실행 경로를 안내하도록 맞췄다.
+- 다음 작업 참고:
+  - 로컬 또는 CI에 JDK 17+ 설치 후 `.\scripts\verify-local.ps1 -SkipDocker` 또는 backend Gradle test를 실행.
+  - Docker Desktop daemon 접근 문제 해결 후 MariaDB/MinIO 포함 smoke test 실행.
+  - lightweight demo를 실제 브라우저 E2E와 real S3 client smoke로 확인.
+- 앞으로 추가적으로 개발해야 하는 내용:
+  - Backend full test gate 복구.
+  - Docker 기반 MariaDB/MinIO 통합 smoke.
+  - Browser E2E와 real S3 client 검증 자동화.
+  - RBAC, quota, Access Key 승인 기록, Storage Expansion 실 GitOps/K8s 적용 경로 마감.
+- 추가 사용 skill/plugin:
+  - 없음.
+
+### 2026-06-15 - Storage Expansion execution failureReason response field
+
+- 작업 시간:
+  - 시작: 2026-06-15 10:04:00 +09:00
+  - 종료: 2026-06-15 10:10:34 +09:00
+- 사용자 명령:
+  - active goal 기준으로 프론트/백엔드 기능 개발 계속 진행.
+- 명령 인식:
+  - UI badge가 notes parsing fallback만 사용하면 장기적으로 API 의미가 약하므로, backend execution response에 `failureReason` 전용 필드를 추가해야 한다고 인식.
+- 작업 방식:
+  - DB schema는 변경하지 않고 저장된 execution notes의 `failureReason=...` 값을 response DTO에서 파싱.
+  - `failureReason=-`, 미존재, null 계열 값은 `null`로 내려주도록 처리.
+  - frontend는 이미 direct `failureReason` 필드를 우선 사용하도록 작성되어 있어 추가 frontend 변경 없이 연결.
+  - controller/response unit test와 API/설계/테스트 문서를 갱신.
+- 구현 내용:
+  - `StorageExpansionExecutionResponse`에 nullable `failureReason` 필드 추가.
+  - `StorageExpansionExecutionResponseTest` 추가: `BRANCH_PROTECTION` 추출과 missing/disabled null 처리 검증.
+  - `AdminStorageExpansionControllerTest`에서 disabled GitOps PR runner 응답의 `failureReason=null` 검증.
+- 수정된 파일 및 관련 파일:
+  - `osmu-backend/src/main/java/com/example/osmu/storageexpansion/StorageExpansionExecutionResponse.java`
+  - `osmu-backend/src/test/java/com/example/osmu/storageexpansion/StorageExpansionExecutionResponseTest.java`
+  - `osmu-backend/src/test/java/com/example/osmu/storageexpansion/AdminStorageExpansionControllerTest.java`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/frontend-design.md`
+  - `dev-docs/minio-pool-expansion.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/worklog/main/worklog-main.md`
+- 검증 기록:
+  - `npm.cmd run test:unit`: 성공, 61개 통과.
+  - `npm.cmd run build`: 성공.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-openapi-contract.ps1`: 성공, operations 127 / frontend API functions 102.
+  - remote source build/deploy: 성공. 원격 JDK 17로 dashboard/storage expansion backend test subset과 `bootJar` 통과.
+  - remote targeted backend test: `StorageExpansionExecutionResponseTest`, `AdminStorageExpansionControllerTest` 성공.
+  - remote deploy: 성공. backend pid `30400`, frontend pid `30401`.
+  - remote health checks: `/api/health`, `/api/database/health`, `/api/storage/health`, frontend HTTP 200 통과.
+  - remote smoke `verify-local-demo.ps1 -SeedIfMissing`: 성공. lightweight demo 전체 통과.
+- 결과:
+  - GitOps PR runner 실패 원인이 API 응답의 전용 `failureReason` 필드와 UI badge로 이어진다.
+  - 현재 원격 데모 URL: `http://192.168.35.88:5173`.
+- 코드 리뷰:
+  - DB migration 없이 response DTO에서 파생 필드를 만드는 방식이라 기존 저장 데이터와 호환된다.
+  - notes 원문은 evidence로 유지하고, client는 `failureReason` 필드만 우선 읽을 수 있어 UI 의존성이 낮아졌다.
+  - failureReason 값 목록이 늘어나면 label/hint mapping과 API 문서를 함께 갱신해야 한다.
+- 다음 작업 참고:
+  - 실제 GitOps runner enabled staging credential로 인증/권한/branch protection 결과를 end-to-end 검증해야 한다.
+  - branch protection 샘플 execution seed가 생기면 Browser E2E로 badge 렌더링을 직접 검증할 수 있다.
+- 앞으로 추가 개발 필요:
+  - GitOps PR runner enabled staging에서 remote 권한/branch protection 실패 케이스 검증.
+  - 실제 MinIO Operator/Helm staging end-to-end apply 검증.
+- 추가 사용 skill/plugin:
+  - 없음.
+
+### 2026-06-15 - Storage Expansion runner preflight remediation
+
+- 작업 시간:
+  - 시작: 2026-06-15 10:11:00 +09:00
+  - 종료: 2026-06-15 10:16:51 +09:00
+- 사용자 명령:
+  - active goal 기준으로 프론트/백엔드 기능 개발 계속 진행.
+- 명령 인식:
+  - 실제 GitOps runner enabled staging 검증 전, 운영자가 runner preflight 실패 원인을 보고 바로 설정/도구/권한을 고칠 수 있어야 한다고 인식.
+- 작업 방식:
+  - Runner preflight check response에 `remediation` 필드를 추가.
+  - disabled/ready/failed 상태별 조치 문구를 backend에서 생성.
+  - frontend preflight list에 remediation 줄을 표시하고 stable selector를 추가.
+  - controller/unit/frontend selector test와 API/Frontend/MinIO/Test 문서를 갱신.
+- 구현 내용:
+  - `StorageExpansionRunnerPreflightCheck`에 `remediation` 추가.
+  - path 미설정, path 없음, `.git` metadata 없음, `gh auth`, CLI 미설치/실패, runner 종류별 fallback remediation 추가.
+  - `storage-expansion-runner-preflight-remediation` UI selector 추가.
+- 수정된 파일 및 관련 파일:
+  - `osmu-backend/src/main/java/com/example/osmu/storageexpansion/StorageExpansionRunnerPreflightCheck.java`
+  - `osmu-backend/src/main/java/com/example/osmu/storageexpansion/StorageExpansionRunnerPreflightService.java`
+  - `osmu-backend/src/test/java/com/example/osmu/storageexpansion/StorageExpansionRunnerPreflightServiceTest.java`
+  - `osmu-backend/src/test/java/com/example/osmu/storageexpansion/AdminStorageExpansionControllerTest.java`
+  - `osmu-frontend/src/components/admin/StorageExpansionPanel.vue`
+  - `osmu-frontend/src/views/HomeView.test.js`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/frontend-design.md`
+  - `dev-docs/minio-pool-expansion.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/worklog/main/worklog-main.md`
+- 검증 기록:
+  - `npm.cmd run test:unit`: 성공, 61개 통과.
+  - `npm.cmd run build`: 성공.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-openapi-contract.ps1`: 성공, operations 127 / frontend API functions 102.
+  - remote source build/deploy: 성공. 원격 JDK 17로 dashboard/storage expansion backend test subset과 `bootJar` 통과.
+  - remote targeted backend test: `StorageExpansionRunnerPreflightServiceTest`, `AdminStorageExpansionControllerTest` 성공.
+  - remote deploy: 성공. backend pid `31131`, frontend pid `31132`.
+  - remote health checks: `/api/health`, `/api/database/health`, `/api/storage/health`, frontend HTTP 200 통과.
+  - remote smoke `verify-local-demo.ps1 -SeedIfMissing`: 성공. lightweight demo 전체 통과.
+- 결과:
+  - Storage Expansion runner preflight가 상태/상세뿐 아니라 다음 조치까지 API와 UI에 표시한다.
+  - 현재 원격 데모 URL: `http://192.168.35.88:5173`.
+- 코드 리뷰:
+  - remediation은 backend가 runner 설정 문맥을 알고 생성하므로 UI 문구 분기가 늘어나지 않는다.
+  - 기존 response에 필드가 추가되는 형태라 기존 클라이언트 호환성은 유지된다.
+  - 향후 실제 staging GitOps/Helm runner 실패 로그를 바탕으로 remediation mapping을 더 세분화할 수 있다.
+- 다음 작업 참고:
+  - 실제 GitOps runner enabled staging credential로 인증/권한/branch protection 결과를 end-to-end 검증해야 한다.
+  - 실제 MinIO Operator/Helm staging apply와 rollback을 cluster에서 검증해야 한다.
+- 앞으로 추가 개발 필요:
+  - GitOps PR runner enabled staging에서 remote 권한/branch protection 실패 케이스 검증.
+  - 실제 MinIO Operator/Helm staging end-to-end apply 검증.
+- 추가 사용 skill/plugin:
+  - 없음.
+
+### 2026-06-15 - Helm MinIO Tenant pool values support
+
+- 작업 시간:
+  - 시작: 2026-06-15 10:18:00 +09:00
+  - 종료: 2026-06-15 10:25:46 +09:00
+- 사용자 명령:
+  - active goal 기준으로 프론트/백엔드 기능 개발 계속 진행.
+- 명령 인식:
+  - Storage Expansion의 다음 큰 목표인 실제 MinIO Operator/Helm apply 검증에 앞서, Helm chart가 `minio.pools` 기반 server pool topology를 받을 수 있어야 한다고 인식.
+- 작업 방식:
+  - 기존 MVP 단일 MinIO StatefulSet 기본 동작은 유지.
+  - `minio.tenant.enabled=true`일 때만 MinIO Operator Tenant CRD를 렌더링하도록 chart를 확장.
+  - backend Storage Expansion helm-values artifact가 chart에 실제로 먹히도록 `minio.tenant.enabled=true`와 pool `size` 필드를 포함.
+  - smoke/test 문서와 검증 스크립트를 새 values 구조에 맞춰 갱신.
+- 구현 내용:
+  - Helm `values.yaml`에 `minio.tenant`와 `minio.pools` 구조 추가.
+  - Helm `templates/minio.yaml`에 조건부 `kind: Tenant` 렌더링 추가.
+  - Tenant pool은 `servers`, `volumesPerServer`, `volumeClaimTemplate`, `storageClassName`, resources를 렌더링.
+  - `volumeSize` 기존 입력도 fallback으로 읽어 backward compatibility 유지.
+  - Storage Expansion `helmValuesPatchYaml`은 `minio.tenant.enabled=true`와 `minio.pools[].size`를 생성.
+- 수정된 파일 및 관련 파일:
+  - `infra/helm/osmu/values.yaml`
+  - `infra/helm/osmu/templates/minio.yaml`
+  - `infra/helm/osmu/README.md`
+  - `scripts/verify-helm-chart.ps1`
+  - `scripts/verify-lightweight-demo.ps1`
+  - `osmu-backend/src/main/java/com/example/osmu/storageexpansion/StorageExpansionService.java`
+  - `osmu-backend/src/test/java/com/example/osmu/storageexpansion/AdminStorageExpansionControllerTest.java`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/minio-pool-expansion.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/worklog/main/worklog-main.md`
+- 검증 기록:
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-helm-chart.ps1`: 성공.
+  - `helm template ...`: 실패. 로컬 환경에 `helm` CLI가 설치되어 있지 않음.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-openapi-contract.ps1`: 성공, operations 127 / frontend API functions 102.
+  - `npm.cmd run test:unit`: 성공, 61개 통과.
+  - `npm.cmd run build`: 성공.
+  - remote source build/deploy: 성공. 원격 JDK 17로 dashboard/storage expansion backend test subset과 `bootJar` 통과.
+  - remote deploy: 성공. backend pid `31877`, frontend pid `31878`.
+  - remote health checks: `/api/health`, `/api/database/health`, `/api/storage/health`, frontend HTTP 200 통과.
+  - remote smoke 1차: 실패. 기존 smoke가 `volumeSize: 50Gi`를 기대함.
+  - `scripts/verify-lightweight-demo.ps1`를 `enabled: true`, `size: 50Gi` 기준으로 갱신.
+  - remote smoke 2차 `verify-local-demo.ps1 -SeedIfMissing`: 성공. lightweight demo 전체 통과.
+- 결과:
+  - Helm chart가 기본 MVP StatefulSet mode와 제품형 MinIO Operator Tenant pool mode를 모두 표현할 수 있게 됨.
+  - Storage Expansion helm-values artifact가 chart의 `minio.pools` 구조와 연결됨.
+  - 현재 원격 데모 URL: `http://192.168.35.88:5173`.
+- 코드 리뷰:
+  - 기본값은 기존 StatefulSet이라 현재 데모 배포 동작을 깨지 않는다.
+  - Tenant mode는 명시적으로 켜야 하며, chart README와 문서에 Operator CRD schema 검증 필요를 남겼다.
+  - 실제 `helm template`은 로컬 Helm CLI 미설치로 검증하지 못했으므로, Helm CLI 설치 환경에서 한 번 더 렌더링 검증이 필요하다.
+- 다음 작업 참고:
+  - Helm CLI가 있는 환경에서 `helm template --set minio.tenant.enabled=true` 렌더링을 확인해야 한다.
+  - 실제 MinIO Operator 설치 cluster에서 Tenant CRD schema validation과 dry-run apply를 수행해야 한다.
+- 앞으로 추가 개발 필요:
+  - 실제 MinIO Operator/Helm staging end-to-end apply 검증.
+  - GitOps PR runner enabled staging에서 remote 권한/branch protection 실패 케이스 검증.
+- 추가 사용 skill/plugin:
+  - 없음.
+
+### 2026-06-15 - Feature inventory 기능 지도 문서 추가
+
+- 작업 시간:
+  - 시작: 2026-06-15 11:13:00 +09:00
+  - 종료: 2026-06-15 11:14:50 +09:00
+- 사용자 명령:
+  - 현재 프로젝트 기능이 헷갈리므로 앞으로 개발 방향, 현재까지 개발한 내용, 수정할 내용을 하나씩 다시 추가 정리하자고 요청.
+- 명령 인식:
+  - 코드 기준이 아니라 사용자/운영자 관점의 기능 지도를 먼저 만들고, 각 기능별 현재 구현/부족/수정/다음 개발을 한 문서에 모으라는 명령으로 인식.
+- 작업 방식:
+  - 기존 `dev-docs` 구조와 `document-index.md`를 확인.
+  - 새 정리 문서 `feature-inventory.md`를 추가.
+  - 문서 인덱스의 Start Here에 기능 지도 문서를 연결.
+  - `document-index.md`에 있던 Kubernetes draft 중복 항목을 정리.
+  - 직전 worklog tail의 Helm 항목 순서를 시간순으로 보정.
+- 구현 내용:
+  - 현재 제품 정의, 기능 상태 기준, REST/S3/MinIO/MariaDB/Storage Expansion 경계 정리.
+  - 인증/사용자/조직, 버킷/오브젝트, S3 호환 API, Access Key, Quota, Dashboard, Readiness, Storage Expansion, MinIO/Helm/Kubernetes, Audit/Security, Demo/Deployment/Test, 문서/Worklog를 기능별로 정리.
+  - 당장 수정할 항목과 다음 개발 우선순위를 별도 섹션으로 정리.
+- 수정된 파일 및 관련 파일:
+  - `dev-docs/feature-inventory.md`
+  - `dev-docs/document-index.md`
+  - `dev-docs/worklog/main/worklog-main.md`
+- 검증 기록:
+  - `rg -n "feature-inventory|Feature inventory|Helm MinIO Tenant pool values support" .\dev-docs`: 문서 연결과 worklog 제목 확인.
+  - `git diff --check -- .\dev-docs\feature-inventory.md .\dev-docs\document-index.md .\dev-docs\worklog\main\worklog-main.md`: CRLF 경고 외 문제 없음.
+- 결과:
+  - 앞으로 기능 하나씩 다시 정리할 기준 문서가 생겼다.
+  - 문서 진입점에서 기능 지도를 바로 찾을 수 있다.
+- 코드 리뷰:
+  - 구현 코드는 변경하지 않고 문서 구조만 정리했다.
+  - 기능별 세부 API/화면 목록은 다음 작업에서 각 기능 문서로 더 쪼개는 것이 좋다.
+- 다음 작업 참고:
+  - 다음 정리 대상은 `인증/사용자/조직` 또는 `버킷/오브젝트` 중 하나를 선택해 세부 API/화면/DB 기준으로 쪼개면 된다.
+- 앞으로 추가 개발 필요:
+  - S3 compatibility matrix 작성.
+  - 화면별 기능 현황표 작성.
+  - Storage Expansion 상태/실패/조치 UX 정리.
+- 추가 사용 skill/plugin:
+  - `caveman` skill ultra.
+
+### 2026-06-15 - Access Key Secret Rotation 구현
+
+- 작업 시간:
+  - 시작: 2026-06-15 14:06:00 +09:00
+  - 종료: 2026-06-15 14:21:18 +09:00
+- 사용자 명령:
+  - active goal 기준으로 `dev-docs`에 작성해 놓은 기능과 목표 구현을 계속 진행.
+- 명령 인식:
+  - `dev-docs/feature-inventory.md`의 Access Key 미완료 항목 중 `lastUsedAt`은 직전 작업에서 반영됐으므로, 다음으로 제품 가치가 높은 `Access Key rotation`을 구현하라는 목표로 인식.
+  - MVP rotation은 기존 Access Key id/accessKey/scope/policy를 유지하고 Secret Key만 새로 발급하는 방식으로 해석.
+- 작업 방식:
+  - Backend에 `POST /api/access-keys/{keyId}/rotate` API를 추가.
+  - repository 계층에 secret hash/ciphertext 갱신 메서드를 추가하고 in-memory/MariaDB 구현을 맞춤.
+  - S3 provisioner interface에 secret rotation hook을 추가하고 noop/minio 구현을 보강.
+  - Frontend 공통 `AccessKeyPanel`에 rotate 버튼을 추가하고 Admin/Developer 화면에서 함께 사용하도록 이벤트를 연결.
+  - API wrapper, static selector test, OpenAPI contract, 설계/보안/테스트 문서를 함께 갱신.
+- 구현 내용:
+  - Active Access Key만 rotation 가능.
+  - 일반 사용자는 본인 key만 rotation 가능, ADMIN은 전체 key rotation 가능.
+  - rotation 응답은 새 `secretKey`를 1회 반환하고 기존 `accessKey` 값은 유지.
+  - 기존 Secret Key는 rotation 직후 인증 실패 처리.
+  - `ACCESS_KEY_ROTATE` audit log를 남기되 secret 원문은 기록하지 않음.
+  - MinIO provisioning mode에서는 `mc admin user add`로 기존 user secret 갱신을 시도.
+  - metadata 저장 실패 시 기존 secret ciphertext가 있으면 provisioner rollback을 시도.
+- 수정된 파일 및 관련 파일:
+  - `osmu-backend/src/main/java/com/example/osmu/accesskey/AccessKeyController.java`
+  - `osmu-backend/src/main/java/com/example/osmu/accesskey/AccessKeyService.java`
+  - `osmu-backend/src/main/java/com/example/osmu/accesskey/S3AccessPolicyProvisioner.java`
+  - `osmu-backend/src/main/java/com/example/osmu/accesskey/NoopS3AccessPolicyProvisioner.java`
+  - `osmu-backend/src/main/java/com/example/osmu/accesskey/MinioS3AccessPolicyProvisioner.java`
+  - `osmu-backend/src/main/java/com/example/osmu/accesskey/repository/AccessKeyRepository.java`
+  - `osmu-backend/src/main/java/com/example/osmu/accesskey/repository/InMemoryAccessKeyRepository.java`
+  - `osmu-backend/src/main/java/com/example/osmu/accesskey/repository/MariaDbAccessKeyRepository.java`
+  - `osmu-backend/src/test/java/com/example/osmu/accesskey/AccessKeyControllerTest.java`
+  - `osmu-frontend/src/components/admin/AccessKeyPanel.vue`
+  - `osmu-frontend/src/components/admin/AdminPage.vue`
+  - `osmu-frontend/src/components/developer/DeveloperPage.vue`
+  - `osmu-frontend/src/views/HomeView.vue`
+  - `osmu-frontend/src/views/HomeView.test.js`
+  - `osmu-frontend/src/services/api.js`
+  - `osmu-frontend/src/services/api-access-key.test.js`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/security-design.md`
+  - `dev-docs/frontend-design.md`
+  - `dev-docs/database-design.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/feature-inventory.md`
+  - `dev-docs/openapi-mvp.json`
+  - `scripts/verify-openapi-contract.ps1`
+  - `dev-docs/worklog/main/worklog-main.md`
+- 검증 기록:
+  - `rg -n "rotateAccessKey|rotate-access-key|ACCESS_KEY_ROTATE|rotateSecret|updateSecret|TC-KEY-009|/api/access-keys/\{keyId\}/rotate" ...`: 관련 backend/frontend/docs 연결 확인.
+  - `git diff --check -- ...`: CRLF 경고 외 whitespace 문제 없음.
+  - `npm.cmd run test:unit`: 성공, 63개 통과.
+  - `npm.cmd run build`: 성공.
+  - `powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-openapi-contract.ps1`: 성공, operations 129, frontend API functions 104.
+  - `.\gradlew.bat --no-daemon test --tests com.example.osmu.accesskey.AccessKeyControllerTest`: 실패. 로컬 `JAVA_HOME`이 깨져 있고 PATH에 `java`가 없어 테스트 JVM 실행 전 종료됨.
+- 결과:
+  - Access Key 생성/목록/비활성화/lastUsedAt 흐름에 이어 Secret Key rotation이 API/UI/문서/test case까지 연결됐다.
+  - 개발자와 관리자는 같은 Access Key 목록에서 active key의 Secret을 재발급할 수 있다.
+- 코드 리뷰:
+  - Secret 원문은 create/rotate 응답에서만 반환하고 list/audit/toString에는 남기지 않는 기존 보안 방향을 유지했다.
+  - 같은 key id와 scope를 유지하는 MVP rotation이라 client 교체 작업이 단순하지만, 무중단 전환을 원하면 dual-key 또는 grace period가 추가로 필요하다.
+  - MinIO CLI 기반 rotation은 command argument에 secret이 노출될 수 있으므로 운영 환경에서는 native Admin API 또는 별도 provisioning worker로 교체해야 한다.
+- 다음 작업 참고:
+  - 로컬 Java/JAVA_HOME을 고친 뒤 `AccessKeyControllerTest`를 실제 실행해 backend rotation 테스트를 확인해야 한다.
+  - MinIO provisioning mode에서 실제 `mc admin user add`가 기존 user secret 갱신으로 동작하는지 통합 환경에서 검증해야 한다.
+  - rotation 후 old/new secret S3 request 흐름을 Docker/local demo smoke에 포함할 수 있다.
+- 앞으로 추가 개발 필요:
+  - rotation grace period 또는 dual-key 전환 workflow.
+  - Access Key 만료일 관리 UX.
+  - client별 usage analytics와 장기 미사용 key 정리 정책.
+- 추가 사용 skill/plugin:
+  - 없음.
+
+### 2026-06-15 - Access Key 만료일 관리 UX 추가
+
+- 작업 시간:
+  - 시작: 2026-06-15 14:22:00 +09:00
+  - 종료: 2026-06-15 14:25:47 +09:00
+- 사용자 명령:
+  - active goal 기준으로 `dev-docs`에 작성해 놓은 기능과 목표 구현을 계속 진행.
+- 명령 인식:
+  - 직전 Access Key rotation 구현 이후 남은 Access Key 보강 항목 중 `만료일 관리 UX`를 다음 구현 대상으로 인식.
+  - Backend는 이미 `expiresAt` field와 만료 인증 차단 로직을 갖고 있으나 Frontend가 항상 `null`만 보내므로 실제 제품 UX로 연결되지 않은 상태라고 판단.
+- 작업 방식:
+  - Access Key 생성 form에 `datetime-local` 만료일 입력을 추가.
+  - Frontend payload에서 입력값을 ISO 문자열로 변환해 `expiresAt`에 전달하고, 비어 있으면 `null`로 유지.
+  - Access Key 목록에 만료 시각 표시를 추가.
+  - Backend request validation에 `@Future`를 붙여 과거 만료일 발급을 막음.
+  - `ADMIN` permission까지 선택 가능한 현재 UI와 맞게 `permissions` validation 최대 개수를 4로 조정.
+  - 테스트 selector/API wrapper와 관련 문서를 갱신.
+- 구현 내용:
+  - `access-key-expires-at-input` 입력 추가.
+  - `access-key-expires-at` 목록 표시 추가.
+  - `expiresAt: localDateTimeToIso(accessKeyForm.expiresAt) || null` payload 연결.
+  - `CreateAccessKeyRequest.expiresAt`에 `@Future` validation 추가.
+  - `CreateAccessKeyRequest.permissions`, `AccessKeyBucketScope.permissions`의 `@Size(max = 4)` 조정.
+- 수정된 파일 및 관련 파일:
+  - `osmu-backend/src/main/java/com/example/osmu/accesskey/CreateAccessKeyRequest.java`
+  - `osmu-backend/src/main/java/com/example/osmu/accesskey/AccessKeyBucketScope.java`
+  - `osmu-frontend/src/components/admin/AccessKeyPanel.vue`
+  - `osmu-frontend/src/assets/main.css`
+  - `osmu-frontend/src/views/HomeView.vue`
+  - `osmu-frontend/src/views/HomeView.test.js`
+  - `osmu-frontend/src/services/api-access-key.test.js`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/security-design.md`
+  - `dev-docs/frontend-design.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/feature-inventory.md`
+  - `dev-docs/worklog/main/worklog-main.md`
+- 검증 기록:
+  - `rg -n "@Future|Size\(max = 4\)|access-key-expires-at|TC-KEY-010|expiresAt: localDateTimeToIso" ...`: backend/frontend/docs 연결 확인.
+  - `git diff --check -- ...`: CRLF 경고 외 whitespace 문제 없음.
+  - `npm.cmd run test:unit`: 성공, 63개 통과.
+  - `npm.cmd run build`: 성공.
+  - `powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-openapi-contract.ps1`: 성공, operations 129, frontend API functions 104.
+  - `.\gradlew.bat --no-daemon test --tests com.example.osmu.accesskey.AccessKeyControllerTest`: 실패. 로컬 `JAVA_HOME`이 깨져 있고 PATH에 `java`가 없어 테스트 JVM 실행 전 종료됨.
+- 결과:
+  - 사용자가 Access Key 발급 시 만료일을 지정할 수 있고, 목록에서 만료 시각을 확인할 수 있게 됐다.
+  - Backend validation은 과거 만료일을 거부하며, 기존 만료 인증 차단/rotation 차단 흐름과 연결된다.
+- 코드 리뷰:
+  - Frontend는 빈 값을 `null`로 보내 기존 무기한 key 흐름을 유지한다.
+  - `datetime-local`은 브라우저 local time 기준이므로 ISO 변환 시 UTC로 전송된다. 운영 문서나 UI에서 timezone 표시를 더 분명히 할 수 있다.
+  - Backend unit/integration 검증은 Java 환경이 복구된 뒤 필요하다.
+- 다음 작업 참고:
+  - Java/JAVA_HOME 복구 후 과거 `expiresAt` validation과 expired key 인증 차단 테스트를 실행해야 한다.
+  - 만료 임박/만료 key badge 또는 dashboard alert를 추가하면 운영성이 좋아진다.
+- 앞으로 추가 개발 필요:
+  - Access Key client별 usage analytics.
+  - 만료 임박 alert와 장기 미사용 key cleanup 정책.
+  - rotation grace period 또는 dual-key workflow.
+- 추가 사용 skill/plugin:
+  - 없음.
+
+### 2026-06-15 - Access Key 운영 요약 Dashboard widget 보강
+
+- 작업 시간:
+  - 시작: 2026-06-15 14:26:00 +09:00
+  - 종료: 2026-06-15 14:29:09 +09:00
+- 사용자 명령:
+  - active goal 기준으로 `dev-docs`에 작성해 놓은 기능과 목표 구현을 계속 진행.
+- 명령 인식:
+  - Access Key `lastUsedAt`, `expiresAt`, rotation, 만료일 UX가 구현되었으므로 운영자가 대시보드에서 위험 key를 빠르게 확인할 수 있는 요약이 다음 제품성 보강이라고 판단.
+  - 새 DB 없이 기존 Access Key list의 `status`, `expiresAt`, `lastUsedAt`으로 expired/expiring/unused 상태를 계산하는 작업으로 인식.
+- 작업 방식:
+  - `summarizeAccessKeys` utility를 추가해 active/total/inactive/expired/expiring/never-used/stale/unused count를 계산.
+  - Dashboard `access-keys` widget에 active/total/provisioner health 외 expired/expiring/unused 요약을 표시.
+  - utility unit test와 Dashboard stable selector test를 추가.
+  - frontend/test case/feature inventory 문서를 갱신.
+- 구현 내용:
+  - `expiredCount`: ACTIVE key 중 `expiresAt <= now`.
+  - `expiringSoonCount`: ACTIVE key 중 7일 이내 만료 예정.
+  - `unusedCount`: ACTIVE key 중 `lastUsedAt` 없음 또는 30일 초과 장기 미사용.
+  - `dashboard-access-key-total`, `dashboard-access-key-risk` stable selector 추가.
+- 수정된 파일 및 관련 파일:
+  - `osmu-frontend/src/utils/accessKeys.js`
+  - `osmu-frontend/src/utils/accessKeys.test.js`
+  - `osmu-frontend/src/components/dashboard/DashboardPage.vue`
+  - `osmu-frontend/src/views/HomeView.test.js`
+  - `dev-docs/frontend-design.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/feature-inventory.md`
+  - `dev-docs/worklog/main/worklog-main.md`
+- 검증 기록:
+  - `rg -n "summarizeAccessKeys|dashboard-access-key-risk|dashboard-access-key-total|TC-KEY-011|expired/expiring/unused" ...`: 관련 frontend/docs 반영 확인.
+  - `git diff --check -- ...`: CRLF 경고 외 whitespace 문제 없음.
+  - `npm.cmd run test:unit`: 성공, 64개 통과.
+  - `npm.cmd run build`: 성공.
+  - `powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-openapi-contract.ps1`: 성공, operations 129, frontend API functions 104.
+- 결과:
+  - Dashboard Access Key widget에서 active/total/provisioner 상태뿐 아니라 expired/expiring/unused 운영 리스크를 볼 수 있게 됐다.
+  - Access Key 만료/미사용 데이터를 운영 판단에 활용하는 첫 요약 UI가 생겼다.
+- 코드 리뷰:
+  - 계산 기준을 utility로 분리해 test에서 고정 시각으로 검증할 수 있게 했다.
+  - DashboardPage는 기존 Access Key list를 사용하므로 추가 API 호출이 없다.
+  - unused 기준은 MVP 기본값으로 never used 또는 30일 초과 미사용이며, 제품화 단계에서는 조직별 정책값으로 빼는 것이 좋다.
+- 다음 작업 참고:
+  - expired/expiring/unused count를 클릭해 Access Key 목록 필터로 이동하는 UX를 추가할 수 있다.
+  - 만료 임박 alert, 장기 미사용 cleanup workflow와 연결할 수 있다.
+- 앞으로 추가 개발 필요:
+  - Access Key client별 usage analytics.
+  - 만료 임박/장기 미사용 key alert workflow.
+  - scope/provisioning sync 실패 retry/evidence.
+- 추가 사용 skill/plugin:
+  - 없음.
+
+### 2026-06-15 - 로그인 기준 정렬 및 Access Key 운영 필터 UI 마무리
+
+- 작업 시간:
+  - 시작: 2026-06-15 14:30:00 +09:00
+  - 종료: 2026-06-15 14:36:15 +09:00
+- 사용자 명령:
+  - 프론트 페이지 기준을 다시 정리하며 `/login` 진입, 자동 로그인, 비밀번호 보기, 아이디 저장, 관리자/개발자 로그인 분리, 관리자 IAM/RAID/증설 작업, 개발자 API Key 기반 S3 저장 흐름을 기준으로 수정 요청.
+- 명령 인식:
+  - 이미 구현된 `/login`, `/developer`, `/admin` 흐름을 사용자의 최신 기준에 맞게 재검토하고, 관리자 mode와 개발자 mode의 실제 landing route 및 화면 문구를 명확히 고정하라는 명령으로 인식.
+  - 직전 Access Key 운영 필터 UI가 테스트 안정화 전 상태였으므로, 프론트 검증을 막지 않도록 함께 마무리해야 한다고 판단.
+- 작업 방식:
+  - `LoginView`와 router guard를 확인해 로그인 mode, role fallback, 자동 로그인/아이디 저장/token 저장 방식을 점검.
+  - 관리자 mode 로그인은 `/admin`, 개발자 mode 로그인은 `/developer`로 향하도록 route landing을 정렬.
+  - 이미 로그인한 사용자가 `/login?mode=developer` 또는 `/login?mode=admin`으로 접근할 때 role에 맞는 landing으로 보내도록 router guard를 보강.
+  - Access Key 목록 필터 버튼을 stable selector가 잡히는 명시 버튼 형태로 정리하고 utility/test/docs 상태를 검증.
+  - frontend 설계 문서와 test case에 관리자도 Developer navigation으로 API Key 작업을 수행할 수 있다는 기준을 추가.
+- 구현 내용:
+  - 로그인 소개 문구를 관리자 운영/개발자 S3 API Key 작업 기준으로 수정.
+  - 관리자 카드에 RAID 0-9, JBOD, IAM User, 권한 부여, 개발자 작업 가능성을 표시.
+  - `nextPath`에서 `ADMIN`, `ORG_ADMIN`의 관리자 mode landing을 `/admin`으로 변경.
+  - router에 `canAccessPath`, `adminLandingPathForRole`, `defaultLandingPathForRole`를 추가해 session 복원 후 `/login` 접근도 role/mode 기준으로 처리.
+  - Access Key 운영 필터는 All/Active/Expired/Expiring/Unused/Inactive 버튼과 count, empty state를 제공.
+- 수정된 파일 및 관련 파일:
+  - `osmu-frontend/src/views/LoginView.vue`
+  - `osmu-frontend/src/router/index.js`
+  - `osmu-frontend/src/views/HomeView.test.js`
+  - `osmu-frontend/src/components/admin/AccessKeyPanel.vue`
+  - `osmu-frontend/src/utils/accessKeys.js`
+  - `osmu-frontend/src/utils/accessKeys.test.js`
+  - `osmu-frontend/src/assets/main.css`
+  - `dev-docs/frontend-design.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/feature-inventory.md`
+  - `dev-docs/worklog/main/worklog-main.md`
+- 검증 기록:
+  - `npm.cmd run test:unit`: 성공, 65개 통과.
+  - `npm.cmd run build`: 성공.
+  - `powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-openapi-contract.ps1`: 성공, operations 129, frontend API functions 104.
+  - `git diff --check -- ...`: CRLF 경고 외 whitespace 문제 없음.
+- 결과:
+  - 사용자가 말한 로그인 기준이 화면 문구, 라우팅, 테스트 계약, 문서에 반영됐다.
+  - 관리자 계정은 `/admin`에서 운영 작업을 시작하고, Developer 메뉴를 통해 API Key/S3 작업도 수행할 수 있다.
+  - 개발자/일반 사용자는 `/developer` 중심으로 Access Key와 S3 호환 접속 정보를 사용한다.
+- 코드 리뷰:
+  - backend 권한 정책은 변경하지 않고 frontend landing과 navigation 기준만 정렬했다.
+  - redirect가 있는 경우 접근 가능한 redirect를 우선하므로 직접 URL 진입 의도는 유지된다.
+  - Access Key 필터는 기존 list data만 사용하므로 추가 API 호출이 없다.
+- 다음 작업 참고:
+  - 실제 브라우저 E2E로 `/login` 관리자/개발자 mode, 자동 로그인, 아이디 저장, 비밀번호 보기, role별 navigation을 검증해야 한다.
+  - 관리자 첫 화면(`/admin`)의 용량 증설/RAID/JBOD 문구와 실제 Storage Expansion 기능 연결을 더 선명하게 다듬을 수 있다.
+- 앞으로 추가 개발 필요:
+  - 로그인 화면 시각 디자인 재정리.
+  - 개발자 API Key/S3 사용 가이드 화면 고도화.
+  - role별 dashboard/admin/developer 기본 landing preset.
+- 추가 사용 skill/plugin:
+  - 없음.
+
+### 2026-06-15 - Access Key Secret/Scope 안내 UX 보강
+
+- 작업 시간:
+  - 시작: 2026-06-15 14:36:30 +09:00
+  - 종료: 2026-06-15 14:39:04 +09:00
+- 사용자 명령:
+  - active goal 기준으로 `dev-docs`에 작성해 놓은 기능과 목표 구현을 계속 진행.
+- 명령 인식:
+  - `feature-inventory.md`의 Access Key 수정 필요 항목 중 "secret 보관 책임과 재조회 불가 표시", "scope 없는 key 처리 규칙 UI/문서 통일"을 구현하라는 다음 제품성 보강 작업으로 인식.
+- 작업 방식:
+  - 기존 Access Key form의 발급 버튼 비활성화 조건은 유지.
+  - 사용자가 왜 발급할 수 없는지 알 수 있도록 scope 필수 안내를 form 아래에 추가.
+  - Secret Key가 생성/Rotate 직후 1회만 표시되고 분실 시 rotate가 필요하다는 보안 안내를 Secret 표시 영역 앞에 추가.
+  - stable selector test와 frontend/test case/feature inventory 문서를 갱신.
+- 구현 내용:
+  - `access-key-scope-rule` selector 추가.
+  - `access-key-secret-warning` selector 추가.
+  - 공통 `.form-help`, `.form-help.warning` 스타일 추가.
+  - Access Key test case에 secret 재조회 불가 안내와 scope 필수 안내 기대 결과 반영.
+  - `feature-inventory.md`에서 해당 수정 필요 항목을 현재 구현으로 이동.
+- 수정된 파일 및 관련 파일:
+  - `osmu-frontend/src/components/admin/AccessKeyPanel.vue`
+  - `osmu-frontend/src/assets/main.css`
+  - `osmu-frontend/src/views/HomeView.test.js`
+  - `dev-docs/frontend-design.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/feature-inventory.md`
+  - `dev-docs/worklog/main/worklog-main.md`
+- 검증 기록:
+  - `npm.cmd run test:unit`: 성공, 65개 통과.
+  - `npm.cmd run build`: 성공.
+  - `powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-openapi-contract.ps1`: 성공, operations 129, frontend API functions 104.
+  - `git diff --check -- ...`: CRLF 경고 외 whitespace 문제 없음.
+  - `rg -n "access-key-secret-warning|access-key-scope-rule|재조회 불가|최소 1개 bucket scope" ...`: UI selector와 문서 반영 확인.
+- 결과:
+  - Access Key 발급 화면에서 scope가 필요한 이유와 Secret Key 보관 책임이 바로 보인다.
+  - secret 원문은 여전히 생성/rotate 응답에서만 노출되고, 목록/API 문서는 재조회 불가 원칙을 유지한다.
+- 코드 리뷰:
+  - API 동작은 변경하지 않고 UX 안내와 테스트 계약만 추가했다.
+  - 안내문은 공통 `form-help` 스타일을 사용해 기존 폼 레이아웃을 흔들지 않는다.
+  - 다음에는 warning 문구를 도움말/tooltip 또는 보안 가이드 패널로 모아도 좋다.
+- 다음 작업 참고:
+  - Browser E2E에서 scope 추가 전 발급 버튼 비활성화와 warning 표시를 확인할 수 있다.
+  - Rotation 직후 새 Secret 복사 버튼/다운로드 금지 안내를 더 구체화할 수 있다.
+- 앞으로 추가 개발 필요:
+  - Access Key rotation grace period 또는 dual-key workflow.
+  - 만료 임박/장기 미사용 key cleanup workflow.
+  - client별 usage analytics.
+- 추가 사용 skill/plugin:
+  - 없음.
+
+### 2026-06-15 - Access Key 운영 조치 Hint 추가
+
+- 작업 시간:
+  - 시작: 2026-06-15 14:39:20 +09:00
+  - 종료: 2026-06-15 14:42:21 +09:00
+- 사용자 명령:
+  - active goal 기준으로 `dev-docs`에 작성해 놓은 기능과 목표 구현을 계속 진행.
+- 명령 인식:
+  - `feature-inventory.md`의 Access Key 후속 항목인 만료 임박/장기 미사용 key cleanup workflow를 바로 완전한 bulk cleanup API로 확장하기 전, 기존 rotate/delete 기능과 연결되는 운영 조치 안내를 먼저 제공하라는 작업으로 인식.
+- 작업 방식:
+  - 새 backend API를 만들지 않고 현재 목록 데이터의 `status`, `expiresAt`, `lastUsedAt`으로 row별 권장 조치를 계산.
+  - 계산 로직을 `accessKeys.js` utility로 분리해 고정 시각 unit test로 검증.
+  - Access Key 목록 row에 action hint badge를 표시하고 기존 Rotate/비활성화 버튼과 함께 운영자가 바로 판단할 수 있게 구성.
+  - frontend 설계/test case/feature inventory 문서를 갱신.
+- 구현 내용:
+  - `accessKeyOperationalAction` utility 추가.
+  - 만료된 active key: `Disable expired` hint.
+  - 7일 이내 만료 예정 key: `Rotate soon` hint.
+  - never-used key: `Review unused` hint.
+  - 30일 초과 미사용 key: `Review stale` hint.
+  - healthy active key와 inactive key는 immediate action 없음으로 표시.
+  - `access-key-action-hint` stable selector 추가.
+- 수정된 파일 및 관련 파일:
+  - `osmu-frontend/src/utils/accessKeys.js`
+  - `osmu-frontend/src/utils/accessKeys.test.js`
+  - `osmu-frontend/src/components/admin/AccessKeyPanel.vue`
+  - `osmu-frontend/src/assets/main.css`
+  - `osmu-frontend/src/views/HomeView.test.js`
+  - `dev-docs/frontend-design.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/feature-inventory.md`
+  - `dev-docs/worklog/main/worklog-main.md`
+- 검증 기록:
+  - `npm.cmd run test:unit`: 첫 실행은 `HomeView.test.js`가 `utils/accessKeys.js`를 sourceFiles에 포함하지 않아 `Disable expired` 문구 검증에서 실패.
+  - `HomeView.test.js` sourceFiles에 `../utils/accessKeys.js`를 추가해 action hint utility까지 static contract 검증 범위에 포함.
+  - `npm.cmd run test:unit`: 성공, 66개 통과.
+  - `npm.cmd run build`: 성공.
+  - `powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-openapi-contract.ps1`: 성공, operations 129, frontend API functions 104.
+  - `git diff --check -- ...`: CRLF 경고 외 whitespace 문제 없음.
+  - `rg -n "accessKeyOperationalAction|access-key-action-hint|TC-KEY-013|운영 조치 hint|Disable expired|Review stale" ...`: UI/test/docs 반영 확인.
+- 결과:
+  - Access Key 목록에서 expired/expiring/unused/stale key를 단순 필터링하는 수준을 넘어 운영자가 어떤 조치를 해야 하는지 바로 볼 수 있게 됐다.
+  - 기존 Rotate/비활성화 버튼과 자연스럽게 이어지는 cleanup workflow 초안이 생겼다.
+- 코드 리뷰:
+  - 계산 기준은 dashboard summary/filter와 같은 7일/30일 기본값을 사용해 의미가 일관된다.
+  - backend 변경 없이 frontend 운영성만 개선했으므로 API 호환성 영향은 없다.
+  - 같은 key에 여러 조건이 겹치면 expired, expiring, never-used, stale 순으로 가장 우선 조치를 보여준다.
+- 다음 작업 참고:
+  - 다음 단계는 expired/unused key bulk disable, 또는 owner 확인/예외 처리 workflow를 추가하는 것이다.
+  - warning 기준 7일/30일은 조직 정책 설정으로 빼면 제품성이 좋아진다.
+- 앞으로 추가 개발 필요:
+  - Access Key bulk cleanup workflow.
+  - client별 usage analytics.
+  - warning threshold policy화.
+- 추가 사용 skill/plugin:
+  - 없음.
+
+### 2026-06-15 - Access Key Bulk Cleanup UI 추가
+
+- 작업 시간:
+  - 시작: 2026-06-15 14:42:40 +09:00
+  - 종료: 2026-06-15 14:46:06 +09:00
+- 사용자 명령:
+  - active goal 기준으로 `dev-docs`에 작성해 놓은 기능과 목표 구현을 계속 진행.
+- 명령 인식:
+  - 직전 Access Key 운영 조치 hint가 실제 조치까지 이어지도록, 만료/미사용 후보를 기존 Access Key 비활성화 API로 한 번에 처리하는 cleanup workflow를 구현하라는 다음 단계로 인식.
+- 작업 방식:
+  - 새 backend bulk API를 만들지 않고 기존 `DELETE /api/access-keys/{keyId}`를 순차 호출해 API surface를 유지.
+  - cleanup 후보 계산은 `accessKeys.js` utility로 분리해 unit test로 검증.
+  - `AccessKeyPanel`에 후보 count와 `Bulk disable` 버튼을 추가.
+  - Admin/Developer page를 통해 `bulk-disable-access-keys` 이벤트를 `HomeView`까지 전달.
+  - `HomeView`에서 confirm dialog 후 후보 id를 순차 비활성화하고 dashboard/access key 목록을 refresh하도록 연결.
+- 구현 내용:
+  - `accessKeyCleanupCandidateIds` utility 추가.
+  - 후보 기준: `DISABLE_EXPIRED`, `REVIEW_NEVER_USED`, `REVIEW_STALE`.
+  - 만료 임박이지만 최근 사용된 key, healthy active key, inactive key는 bulk cleanup 후보에서 제외.
+  - `access-key-cleanup-row`, `access-key-cleanup-summary`, `access-key-cleanup-button` stable selector 추가.
+  - `handleBulkDisableAccessKeys` 추가.
+  - `TC-KEY-014` test case 추가.
+- 수정된 파일 및 관련 파일:
+  - `osmu-frontend/src/utils/accessKeys.js`
+  - `osmu-frontend/src/utils/accessKeys.test.js`
+  - `osmu-frontend/src/components/admin/AccessKeyPanel.vue`
+  - `osmu-frontend/src/assets/main.css`
+  - `osmu-frontend/src/components/admin/AdminPage.vue`
+  - `osmu-frontend/src/components/developer/DeveloperPage.vue`
+  - `osmu-frontend/src/views/HomeView.vue`
+  - `osmu-frontend/src/views/HomeView.test.js`
+  - `dev-docs/frontend-design.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/feature-inventory.md`
+  - `dev-docs/worklog/main/worklog-main.md`
+- 검증 기록:
+  - `npm.cmd run test:unit`: 성공, 67개 통과.
+  - `npm.cmd run build`: 성공.
+  - `powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-openapi-contract.ps1`: 성공, operations 129, frontend API functions 104.
+  - `git diff --check -- ...`: CRLF 경고 외 whitespace 문제 없음.
+  - `rg -n "accessKeyCleanupCandidateIds|access-key-cleanup|handleBulkDisableAccessKeys|bulk-disable-access-keys|TC-KEY-014|Bulk disable|bulk cleanup" ...`: UI/event/test/docs 반영 확인.
+- 결과:
+  - Access Key 운영자가 expired/never-used/stale key 후보 수를 보고 한 번에 비활성화할 수 있게 됐다.
+  - 기존 delete API와 confirm dialog를 재사용해 제품 동작 위험을 줄이면서 cleanup workflow 초안을 구현했다.
+- 코드 리뷰:
+  - 후보 계산과 UI 이벤트가 분리되어 테스트 가능성이 좋다.
+  - bulk 실행 중 일부 key 삭제가 실패하면 `runAction`이 오류를 표시하고 confirm dialog를 유지한다.
+  - 대량 key가 많을 경우 순차 API 호출은 느릴 수 있으므로 후속으로 backend bulk endpoint가 필요하다.
+- 다음 작업 참고:
+  - bulk cleanup 정책 승인/예외 workflow가 필요하다.
+  - cleanup 후보 threshold를 조직 정책으로 분리해야 한다.
+  - Browser E2E에서 confirm dialog 후 순차 DELETE 호출을 검증할 수 있다.
+- 앞으로 추가 개발 필요:
+  - Backend bulk cleanup API와 audit summary.
+  - cleanup preview/export.
+  - client별 usage analytics.
+- 추가 사용 skill/plugin:
+  - 없음.
+
+### 2026-06-15 - Access Key Bulk Disable API 추가
+
+- 작업 시간:
+  - 시작: 2026-06-15 14:46:20 +09:00
+  - 종료: 2026-06-15 14:50:28 +09:00
+- 사용자 명령:
+  - active goal 기준으로 `dev-docs`에 작성해 놓은 기능과 목표 구현을 계속 진행.
+- 명령 인식:
+  - 직전 bulk cleanup UI가 frontend에서 단건 DELETE를 순차 호출하는 초안이었으므로, 이를 제품형 API인 `POST /api/access-keys/bulk-disable`로 승격하고 audit summary와 API contract까지 연결하라는 다음 구현 단계로 인식.
+- 작업 방식:
+  - Backend에 bulk disable request/response record를 추가.
+  - `AccessKeyService.bulkDisable`에서 id dedupe, 소유권/ADMIN 권한 확인, ACTIVE key 비활성화, INACTIVE key skip 처리를 구현.
+  - Controller에 `POST /api/access-keys/bulk-disable` endpoint를 추가하고 `ACCESS_KEY_BULK_DISABLE` audit log를 기록.
+  - Frontend API wrapper와 `HomeView` bulk cleanup handler를 새 endpoint로 교체.
+  - OpenAPI, verifier, API spec, frontend/test case/feature inventory 문서를 갱신.
+- 구현 내용:
+  - `BulkDisableAccessKeysRequest.keyIds`: 1~100개 id를 받는다.
+  - `BulkDisableAccessKeysResponse`: `requestedCount`, `disabledCount`, `skippedCount`, `disabledKeyIds`, `skippedKeyIds`.
+  - 이미 inactive인 key는 실패가 아니라 skip으로 응답한다.
+  - 존재하지 않는 key 또는 접근 권한이 없는 key가 포함되면 요청은 실패한다.
+  - Frontend bulk cleanup 완료 메시지는 disabled/skipped count를 표시한다.
+- 수정된 파일 및 관련 파일:
+  - `osmu-backend/src/main/java/com/example/osmu/accesskey/BulkDisableAccessKeysRequest.java`
+  - `osmu-backend/src/main/java/com/example/osmu/accesskey/BulkDisableAccessKeysResponse.java`
+  - `osmu-backend/src/main/java/com/example/osmu/accesskey/AccessKeyService.java`
+  - `osmu-backend/src/main/java/com/example/osmu/accesskey/AccessKeyController.java`
+  - `osmu-backend/src/test/java/com/example/osmu/accesskey/AccessKeyControllerTest.java`
+  - `osmu-frontend/src/services/api.js`
+  - `osmu-frontend/src/services/api-access-key.test.js`
+  - `osmu-frontend/src/views/HomeView.vue`
+  - `osmu-frontend/src/views/HomeView.test.js`
+  - `scripts/verify-openapi-contract.ps1`
+  - `dev-docs/openapi-mvp.json`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/frontend-design.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/feature-inventory.md`
+  - `dev-docs/worklog/main/worklog-main.md`
+- 검증 기록:
+  - `npm.cmd run test:unit`: 성공, 67개 통과.
+  - `powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-openapi-contract.ps1`: 성공, operations 130, frontend API functions 105.
+  - `npm.cmd run build`: 성공.
+  - `git diff --check -- ...`: CRLF 경고 외 whitespace 문제 없음.
+  - `.\gradlew.bat --no-daemon test --tests com.example.osmu.accesskey.AccessKeyControllerTest`: 실패. 로컬 `JAVA_HOME`이 깨져 있고 PATH에 `java`가 없어 Gradle/JVM 실행 전 종료됨.
+  - `rg -n "BulkDisableAccessKeys|bulkDisableAccessKeys|bulk-disable|ACCESS_KEY_BULK_DISABLE|TC-KEY-014|requestedCount" ...`: backend/frontend/docs/verifier 연결 확인.
+- 결과:
+  - Access Key bulk cleanup이 frontend-only 순차 DELETE에서 backend API + audit summary를 가진 기능으로 승격됐다.
+  - OpenAPI contract와 frontend wrapper 검증 범위도 새 endpoint를 포함한다.
+- 코드 리뷰:
+  - 권한 모델은 단건 delete와 동일하게 유지했다.
+  - inactive key skip을 명시해 cleanup 재시도/중복 실행이 운영 오류로 보이지 않게 했다.
+  - 현재 bulk 작업은 service loop 기반이며, 더 큰 규모에서는 repository bulk update와 per-key provisioner 실패 상세가 필요하다.
+- 다음 작업 참고:
+  - Java/JAVA_HOME 복구 후 `AccessKeyControllerTest.bulkDisableAccessKeysDisablesActiveKeysAndSkipsInactiveKeys`를 실제 실행해야 한다.
+  - bulk disable 중 일부 provisioner 실패가 발생했을 때 실패 id와 성공 id를 나누는 응답 모델을 검토할 수 있다.
+- 앞으로 추가 개발 필요:
+  - cleanup preview/export.
+  - cleanup approval/exception policy.
+  - client별 usage analytics.
+- 추가 사용 skill/plugin:
+  - 없음.
+
+### 2026-06-15 - Access Key lastUsedAt 추적
+
+- 작업 시간:
+  - 시작: 2026-06-15 14:02:00 +09:00
+  - 종료: 2026-06-15 14:10:21 +09:00
+- 사용자 명령:
+  - active goal 기준으로 `dev-docs`에 작성해 놓은 기능과 목표 구현을 계속 진행.
+- 명령 인식:
+  - Developer/S3 client 흐름을 실제 운영 기능으로 만들기 위해 Access Key가 마지막으로 사용된 시각을 추적해야 한다고 인식.
+  - `PRODUCT_REQUIREMENTS.md`에 존재하는 `lastUsedAt` 요구사항과 기존 worklog의 "access key lastUsed 추적" 후속 메모를 구현 대상으로 인식.
+- 작업 방식:
+  - `AccessKeyRecord`와 `AccessKeyEntity`에 `lastUsedAt`을 추가.
+  - Access Key 인증 성공 지점에서 repository `markUsed`를 호출하도록 연결.
+  - in-memory repository와 MariaDB repository에 사용 시각 갱신 구현.
+  - Flyway migration `V38__access_key_last_used_at.sql` 추가.
+  - Access Key 목록 UI에 마지막 사용 시각 표시.
+  - API/DB/frontend/security/test case 문서를 갱신.
+- 구현 내용:
+  - `GET /api/access-keys` 응답에 `lastUsedAt` 포함.
+  - `X-OSMU-Access-Key`/`X-OSMU-Secret-Key` 인증 성공, SigV4 인증 성공, bucket list 인증 성공 시 `lastUsedAt` 갱신.
+  - MariaDB `access_keys.last_used_at` 컬럼과 `idx_access_keys_last_used_at` 인덱스 추가.
+  - Frontend Access Key 목록에 `Last used` 표시. 값이 없으면 `사용 없음`.
+  - `AccessKeyControllerTest.accessKeyListShowsLastUsedAtAfterS3Request` 테스트 추가.
+- 수정된 파일 및 관련 파일:
+  - `osmu-backend/src/main/java/com/example/osmu/accesskey/AccessKeyEntity.java`
+  - `osmu-backend/src/main/java/com/example/osmu/accesskey/AccessKeyRecord.java`
+  - `osmu-backend/src/main/java/com/example/osmu/accesskey/AccessKeyService.java`
+  - `osmu-backend/src/main/java/com/example/osmu/accesskey/repository/AccessKeyRepository.java`
+  - `osmu-backend/src/main/java/com/example/osmu/accesskey/repository/InMemoryAccessKeyRepository.java`
+  - `osmu-backend/src/main/java/com/example/osmu/accesskey/repository/MariaDbAccessKeyRepository.java`
+  - `osmu-backend/src/main/resources/db/migration/V38__access_key_last_used_at.sql`
+  - `osmu-backend/src/test/java/com/example/osmu/accesskey/AccessKeyControllerTest.java`
+  - `osmu-frontend/src/components/admin/AccessKeyPanel.vue`
+  - `osmu-frontend/src/views/HomeView.test.js`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/database-design.md`
+  - `dev-docs/frontend-design.md`
+  - `dev-docs/security-design.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/worklog/main/worklog-main.md`
+- 검증 기록:
+  - `npm.cmd run test:unit`: 성공, 63개 통과.
+  - `npm.cmd run build`: 성공.
+  - `powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-openapi-contract.ps1`: 성공.
+  - `git diff --check -- ...`: CRLF 경고 외 whitespace error 없음.
+  - `.\gradlew.bat --no-daemon test --tests com.example.osmu.accesskey.AccessKeyControllerTest`: 실패. 로컬 `JAVA_HOME`이 깨져 있고 PATH에 `java`가 없어 실행 불가.
+- 결과:
+  - Access Key 사용 여부를 운영자가 확인할 수 있는 최소 추적 필드가 추가됐다.
+  - 장기 미사용 key 정리, rotation 알림, 보안 감사 기능의 기반이 생겼다.
+- 코드 리뷰:
+  - Secret 원문/hash/ciphertext는 여전히 list 응답과 로그에 노출하지 않는다.
+  - `signingSecret` 단계에서는 아직 permission 검증 전이므로 사용 시각을 갱신하지 않고, 최종 인증 성공 경로에서만 갱신한다.
+  - `markUsed`는 인증 성공 후 동작하므로 DB 장애가 있으면 S3 요청에도 영향을 줄 수 있다. 운영적으로는 metadata DB 장애 시 다른 제어면도 어렵지만, 향후 best-effort 비동기 기록으로 바꿀 수 있다.
+- 다음 작업 참고:
+  - JDK 17/JAVA_HOME 복구 후 `AccessKeyControllerTest`를 반드시 실행해야 한다.
+  - `lastUsedAt` 기반 장기 미사용 key alert/cleanup 정책을 추가할 수 있다.
+- 앞으로 추가 개발 필요:
+  - Access Key rotation API.
+  - last used 기반 inactive recommendation.
+  - Access Key 사용 감사 이벤트/metric.
+- 추가 사용 skill/plugin:
+  - 없음.
+
+### 2026-06-15 - Developer S3 client snippets 및 배포 endpoint 설정
+
+- 작업 시간:
+  - 시작: 2026-06-15 13:58:00 +09:00
+  - 종료: 2026-06-15 14:01:41 +09:00
+- 사용자 명령:
+  - active goal 기준으로 `dev-docs`에 작성해 놓은 기능과 목표 구현을 계속 진행.
+- 명령 인식:
+  - 직전 `/api/developer/s3-client-config` 구현 이후, 개발자가 실제 AWS CLI/s3fs-fuse/goofys 같은 S3 호환 client를 붙일 때 필요한 화면 정보와 배포 설정 연결을 보강해야 한다고 인식.
+  - 초기 기획의 "S3 API 호환 클라이언트 프로그램", "FUSE와 goofys, s3fs-fuse를 이용한 파일시스템 마운트" 요구를 DeveloperPage에 반영하는 작업으로 인식.
+- 작업 방식:
+  - DeveloperPage에 client setup panel을 추가하고 기존 endpoint/region/selected bucket state를 이용해 snippet을 계산.
+  - placeholder credential을 사용해 Secret Key를 화면이나 문서에 저장하지 않는 방향으로 구성.
+  - Helm/Kubernetes ConfigMap에 `OSMU_S3_PUBLIC_ENDPOINT`, `OSMU_S3_REGION`을 연결.
+  - `osmu-dev` overlay는 개발 ingress 주소에 맞는 S3 public endpoint로 덮어쓰게 설정.
+  - frontend/design/test/deployment 문서와 검증 스크립트를 함께 갱신.
+- 구현 내용:
+  - DeveloperPage에 AWS CLI, s3fs-fuse, goofys snippet 표시.
+  - snippet은 endpoint, region, 선택 bucket을 반영하고 credential은 `<ACCESS_KEY>`, `<SECRET_KEY>` placeholder로 유지.
+  - snippet panel은 desktop 3열, mobile 1열로 표시.
+  - Helm values `config.s3PublicEndpoint`, `config.s3Region` 추가.
+  - Helm/K8s ConfigMap에 `OSMU_S3_PUBLIC_ENDPOINT`, `OSMU_S3_REGION` 추가.
+  - `osmu-dev` overlay endpoint를 `http://osmu-dev.192.168.35.60.nip.io:30080/api/s3`로 설정.
+- 수정된 파일 및 관련 파일:
+  - `osmu-frontend/src/components/developer/DeveloperPage.vue`
+  - `osmu-frontend/src/assets/main.css`
+  - `osmu-frontend/src/views/HomeView.test.js`
+  - `infra/helm/osmu/values.yaml`
+  - `infra/helm/osmu/templates/configmap.yaml`
+  - `infra/k8s/configmap.yaml`
+  - `infra/k8s-overlays/osmu-dev/kustomization.yaml`
+  - `scripts/verify-helm-chart.ps1`
+  - `scripts/verify-k8s-manifests.ps1`
+  - `dev-docs/frontend-design.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/deployment-strategy.md`
+  - `infra/helm/osmu/README.md`
+  - `infra/k8s/README.md`
+  - `dev-docs/worklog/main/worklog-main.md`
+- 검증 기록:
+  - `npm.cmd run test:unit`: 성공, 63개 통과.
+  - `npm.cmd run build`: 성공.
+  - `powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-helm-chart.ps1`: 성공.
+  - `powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-k8s-manifests.ps1`: 성공.
+  - `git diff --check -- ...`: CRLF 경고 외 whitespace error 없음.
+  - `rg -n "developer-client-snippets-panel|developer-client-aws-cli|s3PublicEndpoint|OSMU_S3_PUBLIC_ENDPOINT|S3 Client Endpoint|TC-DEVELOPER-001" ...`: 관련 UI/infra/docs 반영 확인.
+- 결과:
+  - 개발자 화면에서 S3 endpoint 확인 후 곧바로 AWS CLI/s3fs-fuse/goofys 설정 예시를 확인할 수 있게 됐다.
+  - 운영/개발 배포 manifest에서 Developer S3 config API가 반환할 public endpoint/region 값을 명시적으로 설정할 수 있게 됐다.
+- 코드 리뷰:
+  - snippet은 credential placeholder만 사용해 secret 노출 가능성을 줄였다.
+  - infra env와 Developer API가 같은 `OSMU_S3_PUBLIC_ENDPOINT`, `OSMU_S3_REGION`을 사용하므로 배포 환경별 표시값이 일관된다.
+  - k8s base manifest는 `osmu.local` TLS 가정, `osmu-dev` overlay는 HTTP/NodePort ingress 가정으로 분리했다.
+- 다음 작업 참고:
+  - 실제 배포 환경마다 DNS, TLS, wildcard host, virtual-hosted-style suffix를 함께 설정해야 한다.
+  - Browser E2E 또는 Playwright로 DeveloperPage snippet panel overflow와 `/login` history route 직접 접근을 확인해야 한다.
+- 앞으로 추가 개발 필요:
+  - snippet copy button 및 Access Key 선택 기반 자동 채움.
+  - AWS SDK(JavaScript/Python/Java) 예시.
+  - 실제 s3fs/goofys smoke test 자동화.
+- 추가 사용 skill/plugin:
+  - `caveman` skill ultra.
+
+### 2026-06-15 - Login URL 및 Developer S3 client config 연동
+
+- 작업 시간:
+  - 시작: 2026-06-15 13:49:00 +09:00
+  - 종료: 2026-06-15 13:57:46 +09:00
+- 사용자 명령:
+  - "맨 처음에는 로그인 페이지가 있어야 한다. `/login`으로 접근하고 자동로그인, 비밀번호 보이기, 아이디 저장을 넣어라. 로그인은 관리자/개발자로 나뉘며 관리자는 용량 증설, RAID/JBOD, IAM user 발급/권한 부여를 하고 개발자는 API Key로 S3 bucket처럼 데이터를 저장한다."
+- 명령 인식:
+  - 직전 로그인/개발자 페이지 구현을 기준으로, 실제 URL `/login` 접근성과 개발자 S3 client 접속 정보 표시를 보강하라는 명령으로 인식.
+  - DeveloperPage의 `/api/s3` 고정 표시를 배포 환경별 endpoint/region 설정을 읽는 API 기반으로 바꾸는 작업으로 인식.
+- 작업 방식:
+  - Vue Router를 hash history에서 history mode로 변경해 URL이 `/#/login`이 아니라 `/login` 형태가 되게 했다.
+  - Backend에 `GET /api/developer/s3-client-config` endpoint를 추가해 공개 S3 endpoint, region, SigV4, path-style, virtual-hosted-style 정보를 반환하도록 했다.
+  - Frontend API wrapper와 HomeView state를 추가하고 DeveloperPage가 backend 응답을 표시하도록 연결했다.
+  - API 명세, OpenAPI snapshot, test case, frontend design 문서, OpenAPI 검증 스크립트를 함께 갱신했다.
+- 구현 내용:
+  - `/login`, `/developer` route는 그대로 유지하되 history mode 기반 직접 URL 접근으로 전환.
+  - `OSMU_S3_PUBLIC_ENDPOINT`가 있으면 해당 값을 S3 endpoint로 표시하고, 없으면 현재 요청 기준 `/api/s3` endpoint를 계산.
+  - `OSMU_S3_REGION` 기본값은 `us-east-1`.
+  - DeveloperPage는 endpoint, region, signature version, virtual-hosted-style suffix를 표시.
+  - Secret Key나 내부 MinIO credential은 config API에서 반환하지 않음.
+- 수정된 파일 및 관련 파일:
+  - `osmu-frontend/src/router/index.js`
+  - `osmu-frontend/src/views/HomeView.vue`
+  - `osmu-frontend/src/components/developer/DeveloperPage.vue`
+  - `osmu-frontend/src/services/api.js`
+  - `osmu-frontend/src/services/api-query.test.js`
+  - `osmu-frontend/src/views/HomeView.test.js`
+  - `osmu-backend/src/main/java/com/example/osmu/developer/DeveloperController.java`
+  - `osmu-backend/src/main/java/com/example/osmu/developer/S3ClientConfigResponse.java`
+  - `osmu-backend/src/test/java/com/example/osmu/developer/DeveloperControllerTest.java`
+  - `osmu-backend/src/main/resources/application.yaml`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/frontend-design.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/openapi-mvp.json`
+  - `scripts/verify-openapi-contract.ps1`
+  - `dev-docs/worklog/main/worklog-main.md`
+- 검증 기록:
+  - `npm.cmd run test:unit`: 성공, 63개 통과.
+  - `npm.cmd run build`: 성공.
+  - `powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-openapi-contract.ps1`: 성공, Operations 128 / Frontend API functions 103.
+  - `git diff --check -- ...`: CRLF 경고 외 whitespace error 없음.
+  - `.\gradlew.bat --no-daemon test --tests com.example.osmu.developer.DeveloperControllerTest`: 실패. 로컬 환경의 `JAVA_HOME`이 깨져 있고 PATH에 `java`가 없어 실행 불가.
+- 결과:
+  - 로그인 첫 진입 URL 요구사항은 `/login` history route 기준으로 맞춤.
+  - 개발자 페이지는 S3 호환 client 설정 정보를 backend/env 기반으로 표시.
+  - API 문서와 OpenAPI 계약에 `GET /api/developer/s3-client-config`를 추가.
+- 코드 리뷰:
+  - config API는 공개 접속 정보만 반환해 credential 노출 위험을 낮췄다.
+  - endpoint fallback은 현재 요청 URL에서 `/api/s3`로 계산하므로 dev/proxy 환경에서도 최소 동작한다.
+  - history mode는 nginx fallback이 있어 컨테이너 운영에는 적합하지만, 단순 Python static server 배포에서는 deep link 새로고침 fallback 서버가 필요하다.
+- 다음 작업 참고:
+  - backend 테스트는 JDK 17 설치 또는 `JAVA_HOME` 복구 후 다시 실행해야 한다.
+  - 실제 브라우저 E2E에서 `/login` 직접 접근, 로그인 후 role별 `/developer`, `/admin`, `/audit` 이동을 확인해야 한다.
+  - 운영 배포 시 `OSMU_S3_PUBLIC_ENDPOINT`, `OSMU_S3_REGION`, virtual-hosted-style suffix 값을 Helm/K8s 설정에 연결해야 한다.
+- 앞으로 추가 개발 필요:
+  - DeveloperPage에 AWS CLI, s3fs-fuse, goofys 예시 command 표시.
+  - Access Key rotation/last-used/audit 표시.
+  - role별 dashboard 기본 preset과 개발자 전용 간편 onboarding.
+- 추가 사용 skill/plugin:
+  - `caveman` skill ultra.
+  - `Workspace Dependencies` 조회 도구: 로컬 Java runtime 존재 여부 확인.
+
+### 2026-06-15 - Frontend LoginView 분리와 로그인 옵션 추가
+
+- 작업 시간:
+  - 시작: 2026-06-15 12:52:00 +09:00
+  - 종료: 2026-06-15 13:23:09 +09:00
+- 사용자 명령:
+  - 프론트 첫 화면에 `/login` 로그인 페이지를 두고, 자동 로그인, 비밀번호 보이기, 아이디 저장을 넣으며, 관리자/개발자 로그인 흐름을 나누라는 요청.
+- 명령 인식:
+  - 기존 sidebar 내장 login form을 제거하고 전용 LoginView와 route guard를 추가해야 한다고 인식.
+  - 관리자 mode는 운영 콘솔, 개발자 mode는 API Key/S3 사용 흐름으로 이동하는 UX로 해석.
+- 작업 방식:
+  - Vue Router에 `/login` route와 인증 guard를 추가.
+  - `auth` store의 token 저장 위치를 자동 로그인 여부에 따라 `localStorage`/`sessionStorage`로 분리.
+  - LoginView를 새로 만들고 관리자/개발자 mode, password visibility toggle, 자동 로그인, 아이디 저장을 구현.
+  - HomeView의 sidebar login form을 제거하고 session card만 남김.
+  - E2E selector/test 문서와 frontend 설계 문서를 갱신.
+- 구현 내용:
+  - 인증 없는 `/dashboard`, `/storage`, `/objects`, `/admin`, `/audit` 접근은 `/login?redirect=...`로 이동.
+  - 로그인 성공 후 관리자 mode는 `/dashboard`, 개발자 mode는 `/objects`로 이동.
+  - 자동 로그인 선택 시 token을 `localStorage`에 저장하고, 일반 로그인은 `sessionStorage`에 저장.
+  - 아이디 저장은 `osmu.login.rememberedId`에 loginId만 저장.
+  - 비밀번호 보이기/숨김 버튼 추가.
+  - 기존 Browser E2E가 남은 auth token 때문에 login 화면을 건너뛰지 않도록 local/session auth token 초기화 추가.
+- 수정된 파일 및 관련 파일:
+  - `osmu-frontend/src/views/LoginView.vue`
+  - `osmu-frontend/src/router/index.js`
+  - `osmu-frontend/src/stores/auth.js`
+  - `osmu-frontend/src/views/HomeView.vue`
+  - `osmu-frontend/src/assets/main.css`
+  - `osmu-frontend/src/stores/auth.test.js`
+  - `osmu-frontend/src/views/HomeView.test.js`
+  - `osmu-frontend/e2e/lightweight-demo.spec.js`
+  - `dev-docs/frontend-design.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/worklog/main/worklog-main.md`
+- 검증 기록:
+  - `npm.cmd run test:unit`: 성공, 62개 통과.
+  - `npm.cmd run build`: 성공.
+  - `git diff --check -- ...`: CRLF 경고 외 문제 없음.
+  - `rg -n 'login-box|handleLogin|loginForm' HomeView.vue main.css`: 결과 없음.
+  - Browser plugin 실렌더 검증은 시도했으나 `node_repl` kernel이 `CreateProcessAsUserW failed: 5`로 시작 실패.
+- 결과:
+  - 앱 첫 진입은 `/login` 기준으로 정리됨.
+  - 관리자/개발자 login mode와 자동 로그인/아이디 저장/비밀번호 보기 UX가 추가됨.
+- 코드 리뷰:
+  - backend auth API는 그대로 두고 frontend session 저장 정책만 확장해 blast radius를 줄였다.
+  - 자동 로그인은 refresh/access token을 localStorage에 저장하므로 운영 보안 정책 확정 시 만료/rotation/기기 관리 UX가 추가로 필요하다.
+  - 관리자/개발자 mode는 현재 redirect와 설명 중심이며, 실제 권한은 기존 role 기반 guard/API가 계속 결정한다.
+- 다음 작업 참고:
+  - 로그인 화면을 실제 브라우저로 확인하려면 Browser plugin 권한 문제 또는 별도 Playwright 환경을 해결해야 한다.
+  - 개발자 mode에서 Access Key 발급/사용 가이드를 별도 화면 또는 Admin 하위 panel로 더 잘 노출해야 한다.
+- 앞으로 추가 개발 필요:
+  - route별 role guard 세분화.
+  - 개발자 전용 Access Key/API 문서 화면.
+  - 자동 로그인 보안 정책, token 만료/rotation UX.
+- 추가 사용 skill/plugin:
+  - `caveman` skill ultra.
+  - `browser:control-in-app-browser` skill 시도, node_repl 실행 권한 문제로 실사용 실패.
+
+### 2026-06-15 - Frontend 관리자/개발자 route 권한 분리
+
+- 작업 시간:
+  - 시작: 2026-06-15 13:34:00 +09:00
+  - 종료: 2026-06-15 13:43:43 +09:00
+- 사용자 명령:
+  - active goal 기준으로 `dev-docs`에 작성한 기능과 목표 구현을 계속 진행.
+- 명령 인식:
+  - 직전 `/login` 구현은 화면과 저장 옵션까지 완료됐지만, 관리자/개발자 분리가 route/nav 권한까지 충분히 반영되지 않았으므로 이를 이어서 구현하라는 목표로 인식.
+- 작업 방식:
+  - Vue Router route meta에 role 제한을 추가.
+  - `/admin`, `/audit` 직접 접근을 role별로 제한.
+  - sidebar navigation도 현재 사용자 role 기준으로 필터링.
+  - LoginView redirect도 선택 mode보다 실제 로그인 계정 role을 우선하도록 보정.
+  - frontend 설계/test case/worklog를 갱신.
+- 구현 내용:
+  - `/admin`: `ADMIN`, `ORG_ADMIN`만 접근 가능.
+  - `/audit`: `ADMIN`만 접근 가능.
+  - `USER`가 `/admin` 또는 `/audit`에 접근하면 `/objects`로 이동.
+  - `ORG_ADMIN`이 `/audit`에 접근하면 `/admin`으로 이동.
+  - 개발자 사용자는 sidebar에서 Admin/Audit 메뉴를 보지 않음.
+  - 로그인 mode가 관리자여도 실제 role이 `USER`면 `/objects`로 이동.
+- 수정된 파일 및 관련 파일:
+  - `osmu-frontend/src/router/index.js`
+  - `osmu-frontend/src/views/HomeView.vue`
+  - `osmu-frontend/src/views/LoginView.vue`
+  - `osmu-frontend/src/views/HomeView.test.js`
+  - `dev-docs/frontend-design.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/worklog/main/worklog-main.md`
+- 검증 기록:
+  - `npm.cmd run test:unit`: 성공, 62개 통과.
+  - `npm.cmd run build`: 성공.
+- 결과:
+  - 관리자/개발자 login 분리가 실제 route guard와 navigation 표시까지 연결됐다.
+- 코드 리뷰:
+  - Backend 권한 정책은 그대로 유지하고 frontend 접근성을 정리한 변경이다.
+  - Router guard와 navigation filter가 같은 role 기준을 사용하므로 사용자가 보이는 메뉴와 직접 URL 접근 결과가 일치한다.
+  - Browser E2E는 아직 권한 문제로 실행하지 못했으므로 실제 브라우저 확인은 남아 있다.
+- 다음 작업 참고:
+  - 개발자 전용 landing/object 화면에서 Access Key 발급/사용 가이드를 더 잘 노출해야 한다.
+  - Browser/Playwright E2E로 USER/ORG_ADMIN/ADMIN route guard를 확인해야 한다.
+- 앞으로 추가 개발 필요:
+  - 개발자 전용 Access Key/API 문서 화면.
+  - route guard Browser E2E.
+  - role별 dashboard preset 기본값 조정.
+- 추가 사용 skill/plugin:
+  - `caveman` skill ultra.
+
+### 2026-06-15 - Developer Access Key page 추가
+
+- 작업 시간:
+  - 시작: 2026-06-15 13:44:00 +09:00
+  - 종료: 2026-06-15 13:48:08 +09:00
+- 사용자 명령:
+  - active goal 기준으로 `dev-docs`에 작성한 기능과 목표 구현을 계속 진행.
+- 명령 인식:
+  - 관리자 route를 제한하면서 일반 개발자 사용자가 Access Key 발급 UI를 잃었으므로, 개발자에게 별도 API Key/S3 접속 작업 화면을 제공해야 한다고 인식.
+- 작업 방식:
+  - 기존 `AccessKeyPanel`을 재사용하되 stable selector를 보강.
+  - 신규 `DeveloperPage`를 추가해 Access Key 발급/목록과 S3 endpoint context를 표시.
+  - `/developer` route와 sidebar navigation을 추가.
+  - 로그인 개발자 mode와 USER fallback을 `/developer`로 연결.
+  - frontend 설계/test case/static selector test를 갱신.
+- 구현 내용:
+  - `/developer` route 추가.
+  - sidebar에 `Developer` 메뉴 추가.
+  - `DeveloperPage`에서 Access Key 발급 form, scope 선택, Secret Key 1회 표시, 기존 key 목록, S3 endpoint summary 표시.
+  - `USER`가 `/admin` 또는 `/audit`에 접근하면 `/developer`로 이동.
+  - 로그인 mode가 developer이거나 실제 role이 `USER`이면 `/developer`로 이동.
+  - `AccessKeyPanel`에 `access-key-*` data-testid 추가.
+- 수정된 파일 및 관련 파일:
+  - `osmu-frontend/src/components/admin/AccessKeyPanel.vue`
+  - `osmu-frontend/src/components/developer/DeveloperPage.vue`
+  - `osmu-frontend/src/router/index.js`
+  - `osmu-frontend/src/views/LoginView.vue`
+  - `osmu-frontend/src/views/HomeView.vue`
+  - `osmu-frontend/src/views/HomeView.test.js`
+  - `dev-docs/frontend-design.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/worklog/main/worklog-main.md`
+- 검증 기록:
+  - `npm.cmd run test:unit`: 성공, 62개 통과.
+  - `npm.cmd run build`: 성공.
+  - `git diff --check -- ...`: CRLF 경고 외 문제 없음.
+  - `rg -n "developer-page|developer-access-keys|path: '/developer'|return '/developer'|DeveloperPage|TC-AUTH-007" ...`: 관련 route/UI/docs 반영 확인.
+- 결과:
+  - 개발자 사용자가 관리자 메뉴 없이도 자기 Access Key/API Key 작업 화면에 접근할 수 있게 됐다.
+- 코드 리뷰:
+  - Access Key form은 기존 AdminPage와 같은 component를 재사용해 권한/발급 흐름을 중복 구현하지 않았다.
+  - route fallback과 login redirect가 `/developer`로 모여 개발자 경험이 더 명확해졌다.
+  - S3 endpoint summary는 현재 `/api/s3` 고정 표시이며, 실제 배포 base URL/virtual-hosted-style 정보는 후속 설정 기반으로 확장해야 한다.
+- 다음 작업 참고:
+  - DeveloperPage에서 실제 S3 client 설정값(endpoint, region, path-style 여부)을 backend/env에서 받아 표시하는 기능이 필요하다.
+  - Browser E2E로 USER login → `/developer` → Access Key 발급 흐름을 검증해야 한다.
+- 앞으로 추가 개발 필요:
+  - S3 client compatibility matrix 화면/문서.
+  - Access Key rotation/last used.
+  - DeveloperPage Browser E2E.
+- 추가 사용 skill/plugin:
+  - `caveman` skill ultra.
+
+### 2026-06-15 - Access Key Cleanup Preview Export UI 추가
+
+- 작업 시간:
+  - 시작: 2026-06-15 14:50:00 +09:00
+  - 종료: 2026-06-15 15:03:26 +09:00
+- 사용자 명령:
+  - 프론트 페이지는 `/login`을 기준으로 관리자/개발자 흐름을 나누고, active goal 기준으로 `dev-docs`에 작성한 기능과 목표 구현을 계속 진행.
+- 명령 인식:
+  - `/login` 전용 화면, 관리자/개발자 mode, 자동 로그인, 비밀번호 보기, 아이디 저장, role별 route guard는 이미 구현되어 있음을 확인.
+  - 이어서 Access Key 운영 흐름에서 bulk disable 실행 전 후보와 사유를 미리 보고, 검토/승인 기록용 JSON으로 export할 수 있도록 보강하라는 목표로 인식.
+- 작업 방식:
+  - 기존 `accessKeyCleanupCandidateIds` 계산을 후보 상세 객체 utility로 확장.
+  - export payload builder를 utility로 분리해 schema version, 생성 시각, 후보 수, 후보 id, 사유를 고정.
+  - `AccessKeyPanel`에 cleanup preview list와 `Export preview` 버튼을 추가.
+  - selector/static unit test와 frontend 설계/test case/feature inventory 문서를 갱신.
+  - 앞선 preview worklog가 파일 중간에 들어간 것을 제거하고 최신 항목으로 다시 기록.
+- 구현 내용:
+  - `accessKeyCleanupCandidates` utility 추가.
+  - `buildAccessKeyCleanupExport` utility 추가.
+  - `accessKeyCleanupCandidateIds`는 preview candidate utility를 재사용하도록 변경.
+  - `access-key-cleanup-preview`, `access-key-cleanup-candidate`, `access-key-cleanup-export-button` stable selector 추가.
+  - `Bulk disable` 실행 전 expired/never-used/stale 후보의 이름과 사유 표시.
+  - export JSON은 `schemaVersion = osmu.access-key-cleanup-preview.v1`로 생성하고 secret 값을 포함하지 않음.
+- 수정된 파일 및 관련 파일:
+  - `osmu-frontend/src/utils/accessKeys.js`
+  - `osmu-frontend/src/utils/accessKeys.test.js`
+  - `osmu-frontend/src/components/admin/AccessKeyPanel.vue`
+  - `osmu-frontend/src/assets/main.css`
+  - `osmu-frontend/src/views/HomeView.test.js`
+  - `dev-docs/frontend-design.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/feature-inventory.md`
+  - `dev-docs/worklog/main/worklog-main.md`
+- 검증 기록:
+  - `npm.cmd run test:unit`: 최초 1회는 export detail 기대 문자열 불일치로 실패, 기대값을 실제 action hint 문구와 맞춘 뒤 재실행 성공, 67개 통과.
+  - `npm.cmd run build`: 성공.
+  - `powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-openapi-contract.ps1`: 성공. Operations 130, frontend API functions 105 확인.
+  - `git diff --check -- ...`: CRLF 변환 경고 외 문제 없음.
+  - `rg -n "Access Key Cleanup Preview UI 추가|Access Key Cleanup Preview Export UI 추가|access-key-cleanup-export-button|buildAccessKeyCleanupExport|osmu.access-key-cleanup-preview.v1" ...`: preview/export 항목, selector, schema 반영 확인.
+- 결과:
+  - Access Key bulk disable 전 후보 key와 cleanup 사유를 preview로 확인하고 JSON으로 내려받을 수 있게 됐다.
+  - 로그인 기준 요구사항은 기존 구현이 유지되고, 관리자/개발자 Access Key 운영 화면의 위험 작업 UX가 보강됐다.
+- 코드 리뷰:
+  - 후보 기준은 기존 `accessKeyOperationalAction`의 action type을 재사용해 UI와 cleanup 대상 판정이 분리되지 않도록 했다.
+  - export payload는 secret 없이 운영 판단에 필요한 metadata만 담아 보안 부담을 낮췄다.
+  - frontend-only export라 backend schema migration 없이 승인/검토용 산출물을 먼저 제공한다.
+- 다음 작업 참고:
+  - cleanup preview export를 backend에 저장하거나 approval workflow에 연결하면 운영 승인 흐름으로 확장할 수 있다.
+- 앞으로 추가 개발 필요:
+  - cleanup approval/exception policy.
+  - cleanup threshold를 조직 정책으로 분리.
+  - Browser E2E에서 preview export 후 bulk disable confirm 흐름 검증.
+- 추가 사용 skill/plugin:
+  - 없음.
+
+### 2026-06-15 - Access Key Cleanup 후보 선택/예외 처리 UI 추가
+
+- 작업 시간:
+  - 시작: 2026-06-15 15:04:00 +09:00
+  - 종료: 2026-06-15 15:08:07 +09:00
+- 사용자 명령:
+  - active goal 기준으로 `dev-docs`에 작성한 기능과 목표 구현을 계속 진행.
+- 명령 인식:
+  - 직전 cleanup preview/export 기능 다음 단계로, bulk disable 후보를 전부 강제 처리하지 않고 운영자가 후보별 포함/제외를 선택할 수 있게 하는 approval/exception workflow의 첫 구현으로 인식.
+- 작업 방식:
+  - `AccessKeyPanel`에 후보별 checkbox selection state를 추가.
+  - bulk disable 실행 id를 전체 후보가 아니라 선택된 후보 id로 변경.
+  - export payload에 selected/excluded count와 id, candidate별 selected flag를 추가.
+  - utility/static selector test와 frontend/test case/feature inventory 문서를 갱신.
+- 구현 내용:
+  - cleanup 후보는 기본 선택 상태로 초기화.
+  - 후보가 목록에서 사라지면 selection state도 정리.
+  - operator가 checkbox를 끄면 bulk disable 대상에서 제외.
+  - export JSON에 `selectedCount`, `selectedCandidateIds`, `excludedCount`, `excludedCandidateIds`, candidate별 `selected`를 기록.
+- 수정된 파일 및 관련 파일:
+  - `osmu-frontend/src/utils/accessKeys.js`
+  - `osmu-frontend/src/utils/accessKeys.test.js`
+  - `osmu-frontend/src/components/admin/AccessKeyPanel.vue`
+  - `osmu-frontend/src/assets/main.css`
+  - `osmu-frontend/src/views/HomeView.test.js`
+  - `dev-docs/frontend-design.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/feature-inventory.md`
+  - `dev-docs/worklog/main/worklog-main.md`
+- 검증 기록:
+  - `npm.cmd run test:unit`: 성공, 67개 통과.
+  - `npm.cmd run build`: 성공.
+  - `powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-openapi-contract.ps1`: 성공. Operations 130, frontend API functions 105 확인.
+  - `git diff --check -- ...`: CRLF 변환 경고 외 문제 없음.
+  - `rg -n "selectedCleanupCandidateIds|cleanupSelection|access-key-cleanup-candidate-checkbox|selectedCandidateIds|excludedCandidateIds|cleanup 후보 선택" ...`: UI/test/docs/worklog 반영 확인.
+- 결과:
+  - Access Key cleanup 후보를 checkbox로 포함/제외할 수 있게 됐다.
+  - Bulk disable은 선택된 후보 id만 서버 API에 전달한다.
+  - export JSON은 selected/excluded 후보를 구분해 승인/검토 기록으로 사용할 수 있게 됐다.
+- 코드 리뷰:
+  - 실행 대상 id와 export 대상 후보를 분리해 예외 처리가 실제 bulk disable 동작에도 반영되도록 했다.
+  - backend API는 id 목록만 받으므로 서버 변경 없이 예외 선택을 적용할 수 있다.
+- 다음 작업 참고:
+  - 다음 단계는 excluded 후보에 예외 사유/만료일을 입력하고 서버에 approval record로 저장하는 것이다.
+- 앞으로 추가 개발 필요:
+  - cleanup approval record API.
+  - exception reason/expiry policy.
+  - Browser E2E에서 checkbox 제외 후 selected id만 bulk disable되는지 검증.
+- 추가 사용 skill/plugin:
+  - 없음.
+
+### 2026-06-15 - Docker Config 진단 경로 공통화
+
+- 작업 시간:
+  - 시작: 2026-06-15 15:31:00 +09:00
+  - 종료: 2026-06-15 15:38:00 +09:00
+- 사용자 명령:
+  - active goal 기준으로 `MVP 데모 가능한 웹/백엔드 완성`을 계속 진행.
+- 명령 인식:
+  - MVP 데모의 다음 blocker가 Docker/MariaDB/MinIO full smoke인데, 현재 Docker daemon 미실행과 Windows 사용자 홈 `.docker\config.json` 권한 문제가 섞여 진단되는 상태를 먼저 정리해야 한다고 인식.
+- 작업 방식:
+  - prerequisite, local verify, prototype gate, docker integration, local demo start/stop script의 Docker 사용 경로를 확인.
+  - Java helper와 같은 패턴으로 repo-local Docker config helper를 추가.
+  - Docker 관련 검증/실행 스크립트가 `.osmu-run\docker-config`를 `DOCKER_CONFIG`로 사용하도록 연결.
+  - prerequisite 출력에서 Docker `--format` 실패 때 나오는 빈 JSON 문자열을 제거해 진단 메시지를 정리.
+- 구현 내용:
+  - `scripts/docker-toolchain.ps1` 신규 추가.
+  - `Use-OsmuDockerConfig` helper가 `.osmu-run\docker-config`를 생성하고 process `DOCKER_CONFIG`로 지정.
+  - `verify-prototype-prerequisites.ps1`, `verify-local.ps1`, `verify-prototype-gate.ps1`, `verify-docker-integration.ps1`, `start-local-demo.ps1`, `stop-local-demo.ps1`에 helper 적용.
+  - `README.md`, `dev-docs/local-dev-env.md`에 repo-local Docker config 동작과 Docker Desktop 재실행 안내 추가.
+- 수정된 파일 및 관련 파일:
+  - `scripts/docker-toolchain.ps1`
+  - `scripts/verify-prototype-prerequisites.ps1`
+  - `scripts/verify-local.ps1`
+  - `scripts/verify-prototype-gate.ps1`
+  - `scripts/verify-docker-integration.ps1`
+  - `scripts/start-local-demo.ps1`
+  - `scripts/stop-local-demo.ps1`
+  - `README.md`
+  - `dev-docs/local-dev-env.md`
+  - `dev-docs/worklog/main/worklog-main.md`
+- 검증 기록:
+  - `powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\stop-local-demo.ps1`: 성공. Docker daemon 미실행 상태에서 권한 경고 없이 `No running containers were stopped`로 종료.
+  - `powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-prototype-prerequisites.ps1 -RequireNode`: 성공. required failure 0. Docker CLI/Compose config PASS, Docker daemon optional FAIL은 사용자 홈 config 권한 경고 없이 daemon 미실행만 표시.
+  - `Get-ChildItem .\scripts -Filter *.ps1 | ForEach-Object { ... PSParser ... }`: 성공. PowerShell parse error 없음.
+  - `powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-local.ps1 -SkipDocker -SkipBackend`: 성공. OpenAPI 130 operations / frontend API functions 105, frontend unit 67개, frontend build, static verifiers 통과.
+- 결과:
+  - Docker daemon 미실행과 사용자 홈 Docker config 권한 문제가 분리되어 보인다.
+  - Docker Desktop을 켠 뒤 full local demo smoke로 넘어가기 쉬운 상태가 됐다.
+- 코드 리뷰:
+  - Docker config 경로를 helper로 묶어 start/stop/verify 스크립트 간 동작 차이를 줄였다.
+  - helper는 repo-local `.osmu-run` 하위만 사용하므로 사용자 홈 파일을 수정하지 않는다.
+  - 실제 Docker daemon이 없는 상태는 해결하지 않고 정확히 남겨 두었다.
+- 다음 작업 참고:
+  - Docker Desktop 실행 후 `.\scripts\start-local-demo.ps1 -SeedDemo -VerifyDemo`를 실행한다.
+  - 또는 `.\scripts\verify-docker-integration.ps1`로 MariaDB/MinIO/S3 통합 smoke를 실행한다.
+- 앞으로 추가적으로 개발해야 하는 내용:
+  - Docker daemon 가동 환경에서 full demo smoke 통과 증거 확보.
+  - JDK 17+ 설치 또는 CI/remote JDK로 backend Gradle test 통과 증거 확보.
+  - Browser E2E와 real S3 client smoke 증거 확보.
+- 추가 사용 skill/plugin:
+  - 없음.
+
+### 2026-06-15 - Local Prototype Java Preflight 공통화
+
+- 작업 시간:
+  - 시작: 2026-06-15 15:38:00 +09:00
+  - 종료: 2026-06-15 15:39:39 +09:00
+- 사용자 명령:
+  - active goal 기준으로 `MVP 데모 가능한 웹/백엔드 완성`을 계속 진행.
+- 명령 인식:
+  - Docker full demo가 아직 외부 daemon에 막혀 있으므로, Docker-free in-memory prototype 실행 경로라도 JDK 문제를 명확히 진단하도록 개선하는 작업으로 인식.
+- 작업 방식:
+  - `start-local-prototype.ps1`, Browser E2E workflow, prototype CI workflow를 확인.
+  - `start-local-prototype.ps1`의 자체 Java 처리 로직을 기존 `java-toolchain.ps1` helper로 공통화.
+  - backend를 띄우는 경우에만 JDK 17+ preflight를 실행하도록 변경.
+  - `-SkipBackend -SkipFrontend`일 때 실제로 아무 서비스도 띄우지 않았는데 ready라고 출력하던 메시지를 정정.
+- 구현 내용:
+  - `start-local-prototype.ps1`가 `java-toolchain.ps1`를 dot-source하도록 변경.
+  - `Use-OsmuJavaHome`, `Normalize-OsmuProcessPath`, `Assert-OsmuJavaAvailable`를 사용해 local prototype backend startup의 Java 진단을 통일.
+  - backend Java가 없으면 port open이나 Gradle timeout 전에 `Java runtime not found` 메시지로 즉시 실패.
+  - backend/frontend를 모두 skip한 경우 `No OSMU local prototype services were started`를 출력하고 종료.
+  - README, local dev guide, document index에 Docker-free prototype mode도 JDK 17+가 필요하다는 안내 추가.
+- 수정된 파일 및 관련 파일:
+  - `scripts/start-local-prototype.ps1`
+  - `README.md`
+  - `dev-docs/local-dev-env.md`
+  - `dev-docs/document-index.md`
+  - `dev-docs/worklog/main/worklog-main.md`
+- 검증 기록:
+  - `powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\start-local-prototype.ps1 -SkipFrontend`를 의도된 실패로 실행: 성공적으로 `Java runtime not found` preflight 메시지를 확인.
+  - `powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\start-local-prototype.ps1 -SkipBackend -SkipFrontend`: 성공. no-services 메시지 확인, 잘못된 ready 메시지 없음.
+  - `Get-ChildItem .\scripts -Filter *.ps1 | ForEach-Object { ... PSParser ... }`: 성공. PowerShell parse error 없음.
+  - `powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-local.ps1 -SkipDocker -SkipBackend`: 성공. OpenAPI 130 operations / frontend API functions 105, frontend unit 67개, frontend build, static verifiers 통과.
+  - `git diff --check -- scripts/start-local-prototype.ps1 README.md dev-docs/local-dev-env.md dev-docs/document-index.md`: CRLF 변환 경고 외 문제 없음.
+- 결과:
+  - in-memory prototype 실행 경로도 backend Java blocker를 빠르고 명확하게 보고한다.
+  - Browser E2E/CI에서 쓰는 start script가 공통 Java helper 기준으로 정리됐다.
+- 코드 리뷰:
+  - Java helper 재사용으로 `verify-local`, `verify-prototype-prerequisites`, `start-local-prototype`의 Java 탐색 순서가 맞춰졌다.
+  - `-SkipBackend` 경로는 Java preflight를 건너뛰므로 frontend-only 확인은 여전히 가능하다.
+  - 실제 backend runtime 검증은 JDK 17+ 확보 후 다시 실행해야 한다.
+- 다음 작업 참고:
+  - JDK 17+ 설치 후 `.\scripts\start-local-prototype.ps1 -JavaHome C:\jdk-17` 또는 release gate를 실행한다.
+  - Docker Desktop 실행 후 durable local demo smoke를 실행한다.
+- 앞으로 추가적으로 개발해야 하는 내용:
+  - backend Gradle test 통과 증거 확보.
+  - Browser E2E 실제 실행 증거 확보.
+  - Docker/MariaDB/MinIO full smoke 증거 확보.
+- 추가 사용 skill/plugin:
+  - 없음.
+
+### 2026-06-15 - MVP Release Artifact Notes 검증 보강
+
+- 작업 시간:
+  - 시작: 2026-06-15 15:44:00 +09:00
+  - 종료: 2026-06-15 15:47:00 +09:00
+- 사용자 명령:
+  - active goal 기준으로 `MVP 데모 가능한 웹/백엔드 완성`을 계속 진행.
+- 명령 인식:
+  - JDK/Docker 실구동 blocker가 남아 있는 동안, 로컬에서 보강 가능한 MVP release evidence 체인의 결손을 줄이는 작업으로 인식.
+- 작업 방식:
+  - `write-mvp-audit.ps1`, `write-mvp-release-decision.ps1`, `write-mvp-release-notes.ps1`, `verify-mvp-release-artifacts.ps1`를 확인.
+  - release report에는 `releaseNotes=included`가 들어가지만 artifact verifier가 release notes 파일을 확인하지 않는 gap을 발견.
+  - synthetic lightweight release report로 audit/decision/notes/verifier 체인을 실행해 실제 consistency 실패를 재현하고 수정.
+- 구현 내용:
+  - `verify-mvp-release-artifacts.ps1`에 `ReleaseNotesPath` parameter 추가.
+  - release notes 파일 존재 여부, release report/audit/decision path 참조, lightweight/durable decision 일치, 핵심 included evidence 문구를 검증.
+  - `write-mvp-audit.ps1` summary가 release gate draft/evidence 항목을 더 넓게 표시하도록 보강.
+  - audit의 중복 Helm chart line과 artifact verifier의 중복 Secret rotation assertion 정리.
+  - `dev-docs/document-index.md`에 artifact verifier가 release notes까지 동기화 확인한다고 갱신.
+- 수정된 파일 및 관련 파일:
+  - `scripts/verify-mvp-release-artifacts.ps1`
+  - `scripts/write-mvp-audit.ps1`
+  - `dev-docs/document-index.md`
+  - `dev-docs/worklog/main/worklog-main.md`
+- 검증 기록:
+  - `powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-mvp-release-decision.ps1`: 성공. synthetic lightweight/durable decision self-test 통과.
+  - synthetic lightweight report 기준 `write-mvp-audit.ps1`, `write-mvp-release-decision.ps1`, `write-mvp-release-notes.ps1`, `verify-mvp-release-artifacts.ps1 -ReleaseNotesPath ...`: 최초 audit에 `Prototype CI workflow` summary가 없어 실패, audit summary 보강 후 재실행 성공.
+  - `Get-ChildItem .\scripts -Filter *.ps1 | ForEach-Object { ... PSParser ... }`: 성공. PowerShell parse error 없음.
+  - `powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-local.ps1 -SkipDocker -SkipBackend`: 성공. OpenAPI 130 operations / frontend API functions 105, frontend unit 67개, frontend build, static verifiers 통과.
+  - `git diff --check -- scripts/write-mvp-audit.ps1 scripts/verify-mvp-release-artifacts.ps1`: CRLF 변환 경고 외 문제 없음.
+- 결과:
+  - MVP release artifact consistency check가 release notes까지 포함한다.
+  - audit report가 CI workflow, image signing, commercial readiness, OpenAPI/K8s/Helm, NetworkPolicy, hardening, TLS, secret rotation, backup, observability, monitoring evidence를 summary에서 직접 보여준다.
+- 코드 리뷰:
+  - release notes를 실제 파일로 검증하게 되어 `scope.releaseNotes=included`와 산출물 존재 여부가 분리되지 않는다.
+  - artifact verifier가 sample report로 end-to-end 검증되어, runtime blocker와 무관한 evidence chain 신뢰도가 올라갔다.
+- 다음 작업 참고:
+  - JDK 17+와 Docker daemon이 준비되면 `verify-prototype-release.ps1`가 생성한 실제 `.osmu-run/latest-*` 산출물에 대해 같은 verifier가 notes까지 확인한다.
+- 앞으로 추가적으로 개발해야 하는 내용:
+  - 실제 runtime release report 생성.
+  - Docker/MariaDB/MinIO full smoke.
+  - Browser E2E와 real S3 client smoke.
+- 추가 사용 skill/plugin:
+  - 없음.
+
+### 2026-06-15 - Runtime Prerequisite Health 검증 보강
+
+- 작업 시간:
+  - 시작: 2026-06-15 15:47:00 +09:00
+  - 종료: 2026-06-15 15:55:00 +09:00
+- 사용자 명령:
+  - active goal 기준으로 `MVP 데모 가능한 웹/백엔드 완성`을 계속 진행.
+- 명령 인식:
+  - MVP demo가 실제로 실행 가능한지 판단하려면 backend port만 보는 것이 아니라 database와 storage health까지 prerequisite 단계에서 확인해야 한다고 인식.
+- 작업 방식:
+  - 기존 `verify-prototype-prerequisites.ps1`의 runtime endpoint check를 확인.
+  - backend health, frontend HTTP에 더해 database health와 storage health를 직접 호출하도록 보강.
+  - document index에 prerequisite script의 검증 범위를 현재 기준으로 정리.
+- 구현 내용:
+  - `GET /api/database/health` 확인 추가.
+  - `GET /api/storage/health` 확인 추가.
+  - `-RequireRuntime`을 사용할 경우 backend/frontend/database/storage endpoint 실패가 required failure로 잡히도록 유지.
+  - Docker daemon이 꺼져 있어도 Docker config 권한 경고가 섞이지 않도록 repo-local Docker config helper를 사용하는 구조를 유지.
+- 수정된 파일 및 관련 파일:
+  - `scripts/verify-prototype-prerequisites.ps1`
+  - `dev-docs/document-index.md`
+  - `dev-docs/worklog/main/worklog-main.md`
+- 검증 기록:
+  - `powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-prototype-prerequisites.ps1 -RequireNode`: 성공. required failure 0, optional warning 11. Docker daemon과 runtime endpoint는 실행 중이 아니어서 optional failure로 표시됨.
+  - `Get-ChildItem .\scripts -Filter *.ps1 | ForEach-Object { [scriptblock]::Create((Get-Content -Raw -LiteralPath $_.FullName)) | Out-Null }`: 성공. PowerShell parse error 없음.
+  - `git diff --check -- scripts/verify-prototype-prerequisites.ps1 dev-docs/document-index.md scripts/verify-mvp-release-artifacts.ps1 scripts/write-mvp-audit.ps1`: CRLF 변환 경고 외 문제 없음.
+  - `powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-local.ps1 -SkipDocker -SkipBackend`: 성공. frontend unit test 67개, frontend build, OpenAPI/K8s/Helm/security/release draft verifiers 통과.
+- 결과:
+  - MVP prerequisite check가 backend/frontend뿐 아니라 MariaDB metadata와 MinIO storage 연결 상태까지 드러낼 수 있게 됐다.
+  - Docker/JDK가 없는 로컬에서도 "무엇이 아직 실행되지 않았는지"를 더 정확히 구분한다.
+- 코드 리뷰:
+  - health endpoint를 optional/required 모드에 그대로 연결해서 기존 script 사용법을 깨지 않았다.
+  - runtime이 꺼져 있는 현재 상태에서는 실패가 정상적으로 warning으로 남고, `-RequireRuntime`에서는 release gate blocker로 승격된다.
+- 다음 작업 참고:
+  - Docker Desktop 실행 후 `.\scripts\start-local-demo.ps1 -SeedDemo -VerifyDemo`로 database/storage health를 실제 PASS로 만들어야 한다.
+  - JDK 17+ 확보 후 backend tests와 runtime release gate를 다시 실행해야 한다.
+- 앞으로 추가적으로 개발해야 하는 내용:
+  - 실제 MariaDB/MinIO 연결 상태에서 database/storage health PASS 증거 확보.
+  - health 응답의 세부 원인과 remediation message 보강.
+- 추가 사용 skill/plugin:
+  - 없음.
+
+### 2026-06-15 - Feature Inventory와 MVP 완료율 정리
+
+- 작업 시간:
+  - 시작: 2026-06-15 15:52:00 +09:00
+  - 종료: 2026-06-15 15:55:00 +09:00
+- 사용자 명령:
+  - "전체 완료 퍼센테이지가 어떻게 돼?"라는 질문 이후 active goal 기준으로 계속 진행.
+- 명령 인식:
+  - 현재 프로젝트 기능이 많아져 사용자가 목표와 구현 상태를 헷갈리고 있으므로, 완료율과 미구현 목표를 한 문서에서 다시 확인할 수 있게 정리해야 한다고 인식.
+- 작업 방식:
+  - 기존 `dev-docs/feature-inventory.md`가 콘솔에서 한글이 깨져 읽기 어려운 상태임을 확인.
+  - 현재 코드와 검증 결과를 기준으로 기능 인벤토리를 간결한 한국어 상태판으로 재작성.
+  - 전체 제품 기준과 MVP 데모 기준 완료율을 분리해서 표시.
+- 구현 내용:
+  - 제품 정의와 최종 목표 정리.
+  - 영역별 추정 완료율 표 추가.
+  - 최근 통과한 검증 목록과 아직 검증하지 못한 blocker 목록 추가.
+  - 로그인/권한, 개발자 콘솔, 관리자 콘솔, 대시보드, bucket/object, S3 API, MariaDB, MinIO, 용량 증설, 배포/운영 상태를 기능별로 분리.
+  - 당장 필요한 개발 순서를 JDK/Docker/full demo/backend test/S3 smoke/UI polish/release gate 순서로 정리.
+- 수정된 파일 및 관련 파일:
+  - `dev-docs/feature-inventory.md`
+  - `dev-docs/worklog/main/worklog-main.md`
+- 검증 기록:
+  - `Get-Content -Encoding UTF8 -TotalCount 80 .\dev-docs\feature-inventory.md`: 성공. 한글 문서가 정상적으로 읽힘.
+  - `git diff --check -- .\dev-docs\feature-inventory.md`: 성공. whitespace 문제 없음.
+  - `rg -n "전체 제품 기준 완료율|MVP 데모 기준 완료율|당장 필요한 개발 순서|MVP 데모 가능한 웹/백엔드" .\dev-docs\feature-inventory.md`: 성공. 핵심 기준 문구 확인.
+  - `powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-local.ps1 -SkipDocker -SkipBackend`: 성공. frontend unit test 67개와 frontend build 포함 static gate 통과.
+- 결과:
+  - 현재 전체 제품 완료율은 약 15~20%, MVP 데모 기준 완료율은 약 45~55%로 문서화했다.
+  - 다음 개발자가 봐도 "무엇이 구현됐고, 무엇이 아직 검증되지 않았는지"를 한 파일에서 확인할 수 있다.
+- 코드 리뷰:
+  - 새 기능을 과장하지 않고, 검증된 것과 미검증 blocker를 분리해 적었다.
+  - 문서 수를 늘리지 않고 기존 feature inventory를 정리해 진입점을 줄였다.
+- 다음 작업 참고:
+  - 다음 우선순위는 JDK 17+와 Docker daemon을 확보해 backend/full demo gate를 실제 PASS로 만드는 것이다.
+  - UI 작업을 이어간다면 dashboard 조회/편집 mode 분리와 관리자/개발자 workflow polish가 가장 가깝다.
+- 앞으로 추가적으로 개발해야 하는 내용:
+  - backend Gradle test 증거 확보.
+  - Docker/MariaDB/MinIO full demo smoke 증거 확보.
+  - Browser E2E와 real S3 client smoke 증거 확보.
+- 추가 사용 skill/plugin:
+  - 없음.
+
+### 2026-06-15 - Login Session Stale Token 복구 보강
+
+- 작업 시간:
+  - 시작: 2026-06-15 15:55:00 +09:00
+  - 종료: 2026-06-15 15:58:00 +09:00
+- 사용자 명령:
+  - active goal 기준으로 `MVP 데모 가능한 웹/백엔드 완성`을 계속 진행.
+- 명령 인식:
+  - `/login`과 자동 로그인 기능이 MVP 첫 진입점이므로, 저장된 토큰이 만료/폐기됐을 때 화면이 로그인 상태처럼 남지 않아야 한다고 인식.
+- 작업 방식:
+  - `auth.js`의 `restoreSession`, auth state listener, token storage 동작을 점검.
+  - profile 복구 요청 실패 시 API token은 지워져도 store state가 명시적으로 초기화되지 않을 수 있는 버그 후보를 발견.
+  - store 상태와 session/local storage를 함께 지우는 공통 초기화 함수를 추가하고 테스트로 고정.
+- 구현 내용:
+  - `resetSessionState()` 추가: user, accessToken, refreshToken, rememberSession, stored token을 함께 초기화.
+  - `clearSession()` 추가: store state와 API module auth token을 함께 정리.
+  - `restoreSession()` 실패 경로에서 store state를 먼저 초기화하도록 보강.
+  - auth sync에서 accessToken이 사라지는 경우에도 동일한 초기화 경로를 사용.
+  - stale stored token profile 요청 실패 시 session/local storage가 모두 지워지고 `isLoggedIn=false`가 되는 테스트 추가.
+- 수정된 파일 및 관련 파일:
+  - `osmu-frontend/src/stores/auth.js`
+  - `osmu-frontend/src/stores/auth.test.js`
+  - `dev-docs/worklog/main/worklog-main.md`
+- 검증 기록:
+  - `node --check .\osmu-frontend\src\stores\auth.js`: 성공.
+  - `node --check .\osmu-frontend\src\stores\auth.test.js`: 성공.
+  - `npm.cmd run test:unit`: 성공. frontend unit test 68개 통과.
+  - `powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-local.ps1 -SkipDocker -SkipBackend`: 성공. frontend unit test 68개, frontend build, OpenAPI/K8s/Helm/security/release draft verifiers 통과.
+- 결과:
+  - 저장된 자동 로그인 토큰이 만료/폐기된 경우에도 auth store와 storage가 확실히 정리된다.
+  - 로그인 guard와 첫 화면 진입에서 stale session이 남는 위험을 줄였다.
+- 코드 리뷰:
+  - sessionStorage와 localStorage를 모두 정리하므로 자동 로그인과 일반 세션 모두 같은 복구 정책을 따른다.
+  - public `clearSession()`은 테스트 cleanup과 향후 logout/session 만료 UI에서 재사용 가능하다.
+  - 기존 token refresh 성공 경로와 rememberSession 저장 정책은 유지했다.
+- 다음 작업 참고:
+  - 실제 브라우저 E2E에서 만료 token localStorage를 주입한 뒤 `/dashboard` 접근 시 `/login`으로 돌아가는지 확인하면 좋다.
+  - backend refresh token revoke/expiry 응답과 프론트 메시지를 더 세밀하게 연결해야 한다.
+- 앞으로 추가적으로 개발해야 하는 내용:
+  - Browser E2E 기반 stale token redirect test.
+  - session 만료 toast 또는 login redirect reason 표시.
+- 추가 사용 skill/plugin:
+  - 없음.
+
+### 2026-06-15 - Protected Route Session Expiry Redirect 보강
+
+- 작업 시간:
+  - 시작: 2026-06-15 15:58:00 +09:00
+  - 종료: 2026-06-15 16:00:00 +09:00
+- 사용자 명령:
+  - active goal 기준으로 `MVP 데모 가능한 웹/백엔드 완성`을 계속 진행.
+- 명령 인식:
+  - 저장 토큰 정리만으로는 실행 중 세션 만료 시 사용자가 protected 화면에 남을 수 있으므로, MVP 로그인 흐름에서 세션 만료 후 `/login` 복귀를 보장해야 한다고 인식.
+- 작업 방식:
+  - `HomeView.vue`의 `auth.startAuthSync(resetSessionData)` 흐름을 확인.
+  - auth token이 사라졌을 때 데이터만 초기화하던 callback을 별도 session expiry handler로 분리.
+  - protected route에서만 login redirect가 일어나도록 라우터 metadata를 사용.
+- 구현 내용:
+  - `handleSessionExpired()` 추가.
+  - 세션 만료 시 dashboard/object/access key 등 화면 state를 초기화.
+  - 현재 route가 `requiresAuth`이면 `/login`으로 `replace` 이동.
+  - redirect query에 기존 path와 `reason=session-expired`를 포함.
+  - 중복 redirect를 막기 위한 `sessionRedirectPending` guard 추가.
+  - `HomeView.test.js`에 auth sync와 redirect source check 추가.
+- 수정된 파일 및 관련 파일:
+  - `osmu-frontend/src/views/HomeView.vue`
+  - `osmu-frontend/src/views/HomeView.test.js`
+  - `dev-docs/worklog/main/worklog-main.md`
+- 검증 기록:
+  - `node --check .\osmu-frontend\src\views\HomeView.test.js`: 성공.
+  - `npm.cmd run test:unit`: 성공. frontend unit test 68개 통과.
+  - `powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-local.ps1 -SkipDocker -SkipBackend`: 성공. frontend unit test 68개, frontend build, OpenAPI/K8s/Helm/security/release draft verifiers 통과.
+- 결과:
+  - refresh token 만료/폐기 등으로 auth state가 사라질 때 protected 콘솔 화면에서 `/login`으로 복귀하는 흐름이 추가됐다.
+  - login 화면은 기존 redirect 값을 받아 재로그인 후 원래 화면으로 돌아갈 수 있다.
+- 코드 리뷰:
+  - `router.replace`를 사용해 만료된 protected page가 history에 남아 뒤로가기 혼선을 만들 가능성을 줄였다.
+  - route meta 기반이라 public page에서는 불필요한 redirect가 발생하지 않는다.
+  - 실제 브라우저 기반 만료 token E2E는 아직 남아 있다.
+- 다음 작업 참고:
+  - Browser E2E에서 localStorage/sessionStorage에 stale token을 넣고 `/dashboard` 접근 후 `/login?redirect=/dashboard` 이동을 검증하면 좋다.
+  - login page에서 `reason=session-expired` query를 읽어 안내 문구를 표시하는 UX도 추가 가능하다.
+- 앞으로 추가적으로 개발해야 하는 내용:
+  - Browser E2E stale session redirect 검증.
+  - backend refresh token expiry/revoke scenario와 연결된 통합 테스트.
+- 추가 사용 skill/plugin:
+  - 없음.
+
+### 2026-06-15 - Login Session Expired 안내 UI 연결
+
+- 작업 시간:
+  - 시작: 2026-06-15 16:00:00 +09:00
+  - 종료: 2026-06-15 16:02:00 +09:00
+- 사용자 명령:
+  - active goal 기준으로 `MVP 데모 가능한 웹/백엔드 완성`을 계속 진행.
+- 명령 인식:
+  - protected route에서 `/login?reason=session-expired`로 돌아가는 흐름을 추가했으므로, 로그인 화면이 그 이유를 사용자에게 설명해야 한다고 인식.
+- 작업 방식:
+  - `LoginView.vue`가 이미 `route.query`를 사용하고 있어 별도 store 없이 query 기반 안내 문구를 computed로 추가.
+  - 기존 error alert와 분리된 notice 스타일을 추가.
+  - source 기반 E2E selector test와 lightweight demo smoke script가 안내 UI를 검증하도록 보강.
+- 구현 내용:
+  - `LoginView.vue`에 `sessionNotice` computed 추가.
+  - `reason=session-expired` query일 때 "세션이 만료되었습니다. 다시 로그인해주세요." 안내 표시.
+  - `data-testid="login-info-alert"` 추가.
+  - `.notice` CSS 추가.
+  - `HomeView.test.js`와 `verify-lightweight-demo.ps1`에 selector/text 검증 추가.
+- 수정된 파일 및 관련 파일:
+  - `osmu-frontend/src/views/LoginView.vue`
+  - `osmu-frontend/src/assets/main.css`
+  - `osmu-frontend/src/views/HomeView.test.js`
+  - `scripts/verify-lightweight-demo.ps1`
+  - `dev-docs/worklog/main/worklog-main.md`
+- 검증 기록:
+  - `node --check .\osmu-frontend\src\views\HomeView.test.js`: 성공.
+  - `Get-ChildItem .\scripts -Filter *.ps1 | ForEach-Object { [scriptblock]::Create((Get-Content -Raw -LiteralPath $_.FullName)) | Out-Null }`: 성공. PowerShell parse error 없음.
+  - `npm.cmd run test:unit`: 성공. frontend unit test 68개 통과.
+  - `powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-local.ps1 -SkipDocker -SkipBackend`: 성공. frontend unit test 68개, frontend build, OpenAPI/K8s/Helm/security/release draft verifiers 통과.
+- 결과:
+  - 세션 만료로 로그인 화면에 돌아온 사용자가 이유를 즉시 알 수 있다.
+  - lightweight demo smoke가 로그인 만료 안내 UI까지 확인한다.
+- 코드 리뷰:
+  - query 기반 안내라 refresh나 직접 URL 접근에서도 동일하게 동작한다.
+  - error alert와 notice를 분리해 로그인 실패와 세션 만료 안내가 섞이지 않는다.
+  - 실제 브라우저 redirect 검증은 아직 남아 있다.
+- 다음 작업 참고:
+  - Browser E2E에서 stale token 상태로 `/dashboard` 접근 후 `login-info-alert` 노출까지 확인하면 좋다.
+- 앞으로 추가적으로 개발해야 하는 내용:
+  - 실제 browser E2E 세션 만료 시나리오.
+  - backend refresh token expiry/revoke scenario와 연결된 통합 테스트.
+- 추가 사용 skill/plugin:
+  - 없음.
+
+### 2026-06-15 - Browser E2E Stale Session 시나리오 추가
+
+- 작업 시간:
+  - 시작: 2026-06-15 16:03:00 +09:00
+  - 종료: 2026-06-15 16:05:00 +09:00
+- 사용자 명령:
+  - active goal 기준으로 `MVP 데모 가능한 웹/백엔드 완성`을 계속 진행.
+- 명령 인식:
+  - 로그인/세션 만료 UX를 코드와 정적 테스트에 넣었으므로, Browser E2E spec에도 같은 사용자 흐름을 추가해 데모 검증 체인에 포함해야 한다고 인식.
+- 작업 방식:
+  - `osmu-frontend/e2e/lightweight-demo.spec.js`와 `.github/workflows/browser-e2e-ci.yml`, `scripts/verify-ci-workflow.ps1`를 확인.
+  - 기존 E2E는 실제 lightweight prototype을 대상으로 긴 admin click path를 실행하므로, stale session 시나리오는 Playwright route stub 기반의 독립 테스트로 추가.
+  - CI verifier가 E2E spec의 핵심 coverage 문자열을 확인하도록 보강.
+- 구현 내용:
+  - `stale saved session returns to login with session expiry notice` Playwright test 추가.
+  - localStorage에 stale access/refresh token을 주입.
+  - `/api/users/me`는 ADMIN profile로 stub해 protected route 진입을 통과.
+  - `/api/dashboard/layout/widgets`와 `/api/auth/refresh`는 401로 stub해 runtime session expiry를 발생.
+  - `/login?reason=session-expired` 이동과 `login-info-alert` 안내 문구 노출을 검증.
+  - `verify-ci-workflow.ps1`가 stale session test name, `reason=session-expired`, `login-info-alert`를 확인하도록 추가.
+- 수정된 파일 및 관련 파일:
+  - `osmu-frontend/e2e/lightweight-demo.spec.js`
+  - `scripts/verify-ci-workflow.ps1`
+  - `dev-docs/worklog/main/worklog-main.md`
+- 검증 기록:
+  - `node --check .\osmu-frontend\e2e\lightweight-demo.spec.js`: 성공.
+  - `powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-ci-workflow.ps1`: 성공.
+  - `Get-ChildItem .\scripts -Filter *.ps1 | ForEach-Object { [scriptblock]::Create((Get-Content -Raw -LiteralPath $_.FullName)) | Out-Null }`: 성공. PowerShell parse error 없음.
+  - `powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-local.ps1 -SkipDocker -SkipBackend`: 성공. frontend unit test 68개, frontend build, OpenAPI/K8s/Helm/security/release draft verifiers 통과.
+- 결과:
+  - Browser E2E CI가 실행될 때 세션 만료 안내 UX까지 검증할 수 있는 spec이 준비됐다.
+  - 로컬 JDK/Browser 실행 환경이 없어 실제 Playwright run은 이번 턴에서 수행하지 못했다.
+- 코드 리뷰:
+  - route stub 기반이라 backend 데이터 seed 상태에 의존하지 않고 session expiry UI만 검증한다.
+  - 기존 긴 admin click path와 독립되어 실패 원인 분리가 쉽다.
+  - 실제 CI 또는 JDK/Playwright 환경에서 `npx playwright test .\e2e\lightweight-demo.spec.js --browser=chromium --reporter=line` 실행 증거가 아직 필요하다.
+- 다음 작업 참고:
+  - JDK 17+와 Playwright browser가 준비된 환경에서 Browser E2E workflow를 실제 실행해야 한다.
+  - 실행 후 `.osmu-run` 로그와 E2E 결과를 release evidence에 묶어야 한다.
+- 앞으로 추가적으로 개발해야 하는 내용:
+  - 실제 Browser E2E run 증거 확보.
+  - backend refresh token expiry/revoke scenario와 통합 smoke 연결.
+- 추가 사용 skill/plugin:
+  - 없음.
+
+### 2026-06-15 - Browser E2E 실행 명령 표준화
+
+- 작업 시간:
+  - 시작: 2026-06-15 16:06:00 +09:00
+  - 종료: 2026-06-15 16:09:00 +09:00
+- 사용자 명령:
+  - active goal 기준으로 `MVP 데모 가능한 웹/백엔드 완성`을 계속 진행.
+- 명령 인식:
+  - Java/Docker/runtime blocker가 남아 실제 Browser E2E 실행은 불가하지만, 실행 가능한 환경에서 같은 명령으로 E2E를 돌릴 수 있도록 package script, CI, 문서, verifier를 정렬해야 한다고 인식.
+- 작업 방식:
+  - 현재 prerequisite 상태를 재확인.
+  - `osmu-frontend/package.json`, `.github/workflows/browser-e2e-ci.yml`, `scripts/verify-ci-workflow.ps1`, README, document index를 연결.
+  - CI가 직접 `npx playwright ...`를 호출하던 구조를 package script 기반으로 정리.
+- 구현 내용:
+  - `osmu-frontend/package.json`에 `test:e2e` script 추가.
+  - Browser E2E CI workflow가 `npm run test:e2e`를 실행하도록 변경.
+  - `verify-ci-workflow.ps1`가 frontend package manifest의 `test:e2e` script와 workflow command를 함께 검증하도록 보강.
+  - README에 Playwright 설치와 `npm run test:e2e` 실행 절차 추가.
+  - `dev-docs/document-index.md`에 Browser E2E spec과 실행 명령 안내 추가.
+- 수정된 파일 및 관련 파일:
+  - `osmu-frontend/package.json`
+  - `.github/workflows/browser-e2e-ci.yml`
+  - `scripts/verify-ci-workflow.ps1`
+  - `README.md`
+  - `dev-docs/document-index.md`
+  - `dev-docs/worklog/main/worklog-main.md`
+- 검증 기록:
+  - `powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-prototype-prerequisites.ps1 -RequireNode`: 성공. Node/npm required PASS, Java/Docker/runtime/S3 client는 optional warning.
+  - `node -e "JSON.parse(require('node:fs').readFileSync('osmu-frontend/package.json','utf8')); console.log('package json ok')"`: 성공.
+  - `node --check .\osmu-frontend\e2e\lightweight-demo.spec.js`: 성공.
+  - `powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-ci-workflow.ps1`: 성공.
+  - `Get-ChildItem .\scripts -Filter *.ps1 | ForEach-Object { [scriptblock]::Create((Get-Content -Raw -LiteralPath $_.FullName)) | Out-Null }`: 성공. PowerShell parse error 없음.
+  - `powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-local.ps1 -SkipDocker -SkipBackend`: 성공. frontend unit test 68개, frontend build, OpenAPI/K8s/Helm/security/release draft verifiers 통과.
+- 결과:
+  - Browser E2E 실행 명령이 `npm run test:e2e`로 표준화됐다.
+  - CI workflow와 verifier가 같은 package script contract를 확인한다.
+  - 실제 실행 환경이 준비되면 README 절차대로 바로 E2E를 돌릴 수 있다.
+- 코드 리뷰:
+  - Playwright를 devDependency에 고정하지 않고 CI의 기존 `npm install --no-save @playwright/test@1.56.1` 흐름을 유지해 lockfile churn을 피했다.
+  - package script는 CI와 로컬에서 같은 명령을 제공하므로, 나중에 spec path가 바뀌어도 한 곳만 고치면 된다.
+  - 실제 `npm run test:e2e`는 Playwright browser와 running prototype이 필요해 이번 로컬 환경에서는 실행하지 못했다.
+- 다음 작업 참고:
+  - JDK 17+ 준비 후 `.\scripts\start-local-prototype.ps1 -JavaHome <path>`로 runtime을 띄우고 `npm run test:e2e`를 실행해야 한다.
+  - Docker Desktop 준비 후 full local demo와 durable smoke로 넘어가야 한다.
+- 앞으로 추가적으로 개발해야 하는 내용:
+  - 실제 Browser E2E 실행 증거 확보.
+  - Docker/MariaDB/MinIO full demo smoke 증거 확보.
+  - backend Gradle test 증거 확보.
+- 추가 사용 skill/plugin:
+  - 없음.
+
+### 2026-06-15 - Java-free Frontend Mock Demo 경로 추가
+
+- 작업 시간:
+  - 시작: 2026-06-15 16:10:00 +09:00
+  - 종료: 2026-06-15 16:21:00 +09:00
+- 사용자 명령:
+  - active goal 기준으로 `MVP 데모 가능한 웹/백엔드 완성`을 계속 진행.
+- 명령 인식:
+  - 현재 환경에서 Java 17+, Docker daemon, real S3 client가 없어 실제 Spring Boot/MariaDB/MinIO gate는 막혀 있으므로, 이를 대체하지 않는 범위에서 UI 데모와 프론트 smoke를 실행 가능한 mock API 경로로 보강해야 한다고 인식.
+- 작업 방식:
+  - prerequisite 상태를 재확인해 Node/npm은 가능하고 Java/Docker/runtime은 불가함을 확인.
+  - 프론트가 사용하는 주요 API 표면을 확인.
+  - Node 기본 `http` 모듈만 사용하는 mock API 서버를 추가해 dependency/network 없이 실행 가능하게 구성.
+  - start/stop/verify PowerShell script를 추가해 mock API + Vite frontend를 한 번에 실행/검증/종료하도록 구성.
+- 구현 내용:
+  - `osmu-frontend/mock-api/server.mjs` 추가.
+  - mock API가 `/api/health`, `/api/storage/health`, `/api/database/health`, `/api/auth/login`, `/api/users/me`, dashboard summary/readiness, dashboard layout, bucket CRUD, object upload/list, access key, admin read endpoints를 메모리 상태로 제공.
+  - `scripts/start-frontend-mock-demo.ps1` 추가: mock API와 Vite frontend를 실행하고 health 확인.
+  - `scripts/stop-frontend-mock-demo.ps1` 추가: mock demo pid를 종료하고 필요 시 port listener 정리.
+  - `scripts/verify-frontend-mock-demo.ps1` 추가: start → frontend shell 확인 → mock health/login → bucket create → multipart object upload/list → dashboard summary 확인 → stop.
+  - Windows `Path/PATH` 중복 환경변수 문제를 start script에서 정규화.
+  - README와 document index에 Java/Docker 없이 보는 frontend mock demo 경로 추가.
+- 수정된 파일 및 관련 파일:
+  - `osmu-frontend/mock-api/server.mjs`
+  - `scripts/start-frontend-mock-demo.ps1`
+  - `scripts/stop-frontend-mock-demo.ps1`
+  - `scripts/verify-frontend-mock-demo.ps1`
+  - `README.md`
+  - `dev-docs/document-index.md`
+  - `dev-docs/worklog/main/worklog-main.md`
+- 검증 기록:
+  - `powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-prototype-prerequisites.ps1 -RequireNode`: 성공. Node/npm required PASS, Java/Docker/runtime/S3 client는 optional warning.
+  - `node --check .\osmu-frontend\mock-api\server.mjs`: 성공.
+  - `node .\osmu-frontend\mock-api\server.mjs --self-test`: 성공.
+  - `Get-ChildItem .\scripts -Filter *.ps1 | ForEach-Object { [scriptblock]::Create((Get-Content -Raw -LiteralPath $_.FullName)) | Out-Null }`: 성공. PowerShell parse error 없음.
+  - `powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-frontend-mock-demo.ps1`: 성공. mock API + frontend start, frontend document, mock health, login, bucket/object flow, dashboard summary, stop까지 통과.
+  - `powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-local.ps1 -SkipDocker -SkipBackend`: 성공. frontend unit test 68개, frontend build, OpenAPI/K8s/Helm/security/release draft verifiers 통과.
+  - `git diff --check -- osmu-frontend/mock-api/server.mjs scripts/start-frontend-mock-demo.ps1 scripts/stop-frontend-mock-demo.ps1 scripts/verify-frontend-mock-demo.ps1 README.md dev-docs/document-index.md`: CRLF 변환 경고 외 문제 없음.
+  - `netstat -ano | Select-String -Pattern ':8080|:5173'`: 검증 후 LISTENING 없음, TIME_WAIT만 확인.
+- 결과:
+  - Java/Docker가 없는 로컬에서도 `.\scripts\verify-frontend-mock-demo.ps1`로 UI 데모 smoke를 실행할 수 있게 됐다.
+  - `.\scripts\start-frontend-mock-demo.ps1` 실행 후 `http://localhost:5173`에서 `admin / password`로 로그인 가능한 mock demo를 볼 수 있다.
+  - 이 경로는 frontend/demo smoke이며 실제 backend, MariaDB, MinIO, Docker, real S3 client gate를 대체하지 않는다고 명시했다.
+- 코드 리뷰:
+  - mock API는 dependency 없이 Node 기본 모듈만 사용해 네트워크 설치가 필요 없다.
+  - 메모리 상태 기반 bucket/object flow가 있어 단순 화면 시연에는 충분하다.
+  - multipart parser는 browser와 .NET HttpClient의 quoted/unquoted field name 차이를 모두 처리하도록 보강했다.
+  - mock runtime은 의도적으로 `MOCK` 상태를 반환해 실제 production readiness와 혼동되지 않게 했다.
+- 다음 작업 참고:
+  - 실제 Browser tool 또는 Playwright가 가능한 환경에서 `start-frontend-mock-demo.ps1` 후 UI 스크린샷 검증을 추가할 수 있다.
+  - JDK 17+ 준비 후 Spring Boot in-memory prototype gate로 넘어가야 한다.
+  - Docker Desktop 준비 후 MariaDB/MinIO full demo smoke를 수행해야 한다.
+- 앞으로 추가적으로 개발해야 하는 내용:
+  - 실제 Spring Boot backend Gradle test 증거 확보.
+  - Docker/MariaDB/MinIO full demo smoke 증거 확보.
+  - Playwright Browser E2E 실제 실행 증거 확보.
+- 추가 사용 skill/plugin:
+  - 없음.
+
+### 2026-06-15 - Frontend Mock Demo 검증 게이트 보강
+
+- 작업 시간:
+  - 시작: 2026-06-15 16:22:00 +09:00
+  - 종료: 2026-06-15 16:27:00 +09:00
+- 사용자 명령:
+  - active goal 기준으로 `MVP 데모 가능한 웹/백엔드 완성`을 계속 진행.
+- 요청 분석:
+  - 현재 로컬 환경에서는 Java/Docker/real S3 client 검증이 제한되어 있으므로, 이미 추가된 Java/Docker-free frontend mock demo 경로를 반복 가능한 표준 검증 게이트에 포함해야 한다고 해석.
+  - Browser plugin 검증도 시도했지만 Windows sandbox 프로세스 생성 권한 오류로 실제 화면 검증은 수행하지 못함.
+- 실행 내용:
+  - frontend package script에 mock API 실행/self-test 명령을 추가.
+  - `verify-local.ps1 -SkipDocker -SkipBackend` 실행 시 mock API 문법 검사와 self-test도 함께 수행하도록 보강.
+  - README, document index, test cases에 mock demo smoke와 한계를 명시.
+- 구현 내용:
+  - `osmu-frontend/package.json`: `mock:api`, `mock:api:self-test` script 추가.
+  - `scripts/verify-local.ps1`: `mock-api/server.mjs` syntax check 및 `npm.cmd run mock:api:self-test` 추가.
+  - `README.md`: mock API self-test 실행 명령 추가.
+  - `dev-docs/document-index.md`: mock API 파일과 self-test 설명 추가.
+  - `dev-docs/test-cases.md`: `TC-FE-033` Java/Docker-free frontend mock demo smoke 추가 및 MVP 완료 기준 목록에 반영.
+- 검증 기록:
+  - `npm.cmd run mock:api:self-test`: 성공. `OSMU frontend mock API self-test passed.`
+  - `git diff --check -- osmu-frontend/package.json scripts/verify-local.ps1 README.md dev-docs/document-index.md dev-docs/test-cases.md dev-docs/worklog/main/worklog-main.md`: CRLF 변환 경고 외 문제 없음.
+  - `powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-local.ps1 -SkipDocker -SkipBackend`: 성공. mock API syntax/self-test, frontend unit test 68개, frontend build, OpenAPI/K8s/Helm/security/release draft verifiers 통과.
+  - `powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-frontend-mock-demo.ps1`: 성공. mock API + frontend start, frontend shell, mock health, login, bucket/object flow, dashboard summary, stop까지 통과.
+  - `netstat -ano | Select-String -Pattern ':8080|:5173'`: 검증 후 LISTENING 없음, `TIME_WAIT`만 확인.
+- 결과:
+  - mock demo 경로가 단발성 스크립트가 아니라 로컬 표준 검증 루프에도 포함되도록 정리됨.
+- 후속 메모:
+  - 실제 Browser/Playwright 화면 검증, Spring Boot backend Gradle test, Docker/MariaDB/MinIO full smoke는 여전히 별도 환경 준비 후 수행해야 한다.
+- 코드 리뷰:
+  - 추가 script는 새 dependency 없이 기존 Node mock API만 호출하므로 lockfile 변경이 필요 없다.
+  - `verify-local.ps1`의 mock self-test는 포트를 열지 않는 self-test라 기존 로컬 게이트의 안정성을 크게 해치지 않는다.
+- 앞으로 추가적으로 개발해야 하는 내용:
+  - Browser plugin 또는 Playwright 실행 가능 환경에서 `/login`부터 dashboard/admin/developer 화면까지 실제 화면 E2E 증거 확보.
+  - Java 17+와 Docker daemon 준비 후 backend/full demo gate 통과 증거 확보.
+- 추가 사용 skill/plugin:
+  - Browser plugin: in-app Browser skill을 읽고 연결을 시도했으나 sandbox 권한 오류로 화면 검증 미수행.
+
+### 2026-06-15 - MVP Demo Readiness 단일 게이트 추가
+
+- 작업 시간:
+  - 시작: 2026-06-15 16:29:00 +09:00
+  - 종료: 2026-06-15 16:36:00 +09:00
+- 사용자 명령:
+  - active goal 기준으로 `MVP 데모 가능한 웹/백엔드 완성`을 계속 진행.
+- 요청 분석:
+  - full release gate는 실제 Spring Boot runtime, JDK, Docker, S3 client, Browser E2E까지 필요하므로 현재 로컬에서 바로 통과시키기 어렵다.
+  - 대신 현재 머신에서 가능한 데모 증거를 한 번에 만들고, backend/full-stack/browser 등 durable gate는 `PENDING`으로 명시하는 readiness gate가 필요하다고 판단.
+- 실행 내용:
+  - 기존 `verify-prototype-gate.ps1`, `verify-prototype-release.ps1`, `verify-prototype-prerequisites.ps1`, release audit writer 흐름을 확인.
+  - `verify-mvp-demo-readiness.ps1`를 새로 추가해 Node prerequisite, static/frontend gate, mock demo smoke, durable gate availability를 한 번에 실행하도록 구성.
+  - README, document index, test cases에 새 readiness gate를 연결.
+- 구현 내용:
+  - `scripts/verify-mvp-demo-readiness.ps1` 추가.
+  - 스크립트는 `verify-prototype-prerequisites.ps1 -RequireNode`, `verify-local.ps1 -SkipDocker -SkipBackend`, `verify-frontend-mock-demo.ps1`를 순서대로 실행한다.
+  - 스크립트는 `.osmu-run/latest-demo-readiness.json`과 `.osmu-run/latest-demo-readiness.md`를 생성한다.
+  - durable gate availability로 Java 17+, Docker daemon, AWS CLI/mc, Browser visual E2E 필요성을 `READY`/`PENDING`으로 표시한다.
+  - `README.md`, `dev-docs/document-index.md`, `dev-docs/test-cases.md`에 `TC-DEMO-001`과 실행 명령을 추가했다.
+- 수정된 파일 및 관련 파일:
+  - `scripts/verify-mvp-demo-readiness.ps1`
+  - `README.md`
+  - `dev-docs/document-index.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/worklog/main/worklog-main.md`
+- 검증 기록:
+  - `[scriptblock]::Create((Get-Content -Raw -LiteralPath .\scripts\verify-mvp-demo-readiness.ps1)) | Out-Null`: 성공.
+  - `powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-mvp-demo-readiness.ps1`: 성공.
+  - readiness 실행 중 `verify-prototype-prerequisites.ps1 -RequireNode`: 성공. required failure 0, optional warning 11.
+  - readiness 실행 중 `verify-local.ps1 -SkipDocker -SkipBackend`: 성공. mock API self-test, frontend unit test 68개, frontend build, 문서/CI/OpenAPI/K8s/Helm/security draft verifiers 통과.
+  - readiness 실행 중 `verify-frontend-mock-demo.ps1`: 성공. mock API + frontend start, frontend shell, mock health, login, bucket/object flow, dashboard summary, stop까지 통과.
+- 결과:
+  - 현재 머신 기준 MVP demo readiness report가 `partial`로 생성된다.
+  - 현재 데모 상태는 `mock-demo-verified`로 증명되며, MVP demo 추정치는 50~60%, product 추정치는 15~20%로 기록된다.
+  - backend Gradle test, Docker/MariaDB/MinIO full-stack smoke, real S3 client smoke, Browser visual E2E는 PENDING으로 명확히 남는다.
+- 후속 메모:
+  - Java 17+ 설치 또는 `-JavaHome` 경로 확보 후 `verify-local.ps1 -SkipDocker`로 backend test 포함 검증을 이어가야 한다.
+  - Docker Desktop 실행 후 `verify-docker-integration.ps1`로 MariaDB/MinIO durable demo smoke를 확보해야 한다.
+  - AWS CLI 또는 MinIO Client `mc` 준비 후 real S3 client smoke를 확보해야 한다.
+- 코드 리뷰:
+  - 새 readiness gate는 mock demo를 full-stack 완료로 오인하지 않도록 durable gate를 별도 `PENDING`으로 표시한다.
+  - report와 summary를 함께 생성해 자동화와 사람이 읽는 상태 확인을 둘 다 지원한다.
+  - Docker 상태 확인은 repo-local Docker config helper를 사용해 Windows user profile `.docker` 권한 문제를 피하도록 보강했다.
+- 앞으로 추가적으로 개발해야 하는 내용:
+  - readiness report를 release/audit 문서와 연결하거나 CI artifact로 업로드하는 흐름.
+  - Java/Docker 준비 후 durable gates를 실제 PASS로 바꾸는 작업.
+- 추가 사용 skill/plugin:
+  - 없음.
+
+### 2026-06-15 - Mock Demo 관리자/개발자 역할 흐름 보강
+
+- 작업 시간:
+  - 시작: 2026-06-15 16:38:00 +09:00
+  - 종료: 2026-06-15 16:45:00 +09:00
+- 사용자 명령:
+  - active goal 기준으로 `MVP 데모 가능한 웹/백엔드 완성`을 계속 진행.
+- 요청 분석:
+  - 사용자가 요구했던 로그인 구분은 관리자와 개발자로 나뉘며, 관리자와 개발자의 콘솔/권한/API Key 사용 흐름이 데모에서 드러나야 한다.
+  - 기존 frontend mock demo는 관리자 로그인 중심이라, Java/Docker가 없는 환경에서도 개발자 S3 config와 Access Key 발급 흐름을 검증할 필요가 있다고 판단.
+- 실행 내용:
+  - mock API의 login/session 처리 방식을 확인.
+  - `developer/password` 로그인 시 USER 역할을 반환하고 `/users/me`가 bearer token에 맞는 사용자 profile을 반환하도록 세션 map을 추가.
+  - frontend mock demo smoke에 developer login, S3 client config, scoped access key 발급/목록 redaction 검증을 추가.
+  - README, document index, test cases에 관리자/개발자 mock demo 계정과 검증 범위를 반영.
+- 구현 내용:
+  - `osmu-frontend/mock-api/server.mjs`: admin/developer user model, token session map, refresh token session lookup, role-aware `/users/me`, admin user list에 developer 포함, mock API self-test의 developer login/profile 검증 추가.
+  - `scripts/verify-frontend-mock-demo.ps1`: developer login/profile/S3 config/access key create/list redaction smoke 추가.
+  - `scripts/start-frontend-mock-demo.ps1`: admin/developer mock login 안내 출력.
+  - `scripts/verify-mvp-demo-readiness.ps1`: mock web demo smoke 설명을 admin/developer/access key 범위로 갱신.
+  - `README.md`, `dev-docs/document-index.md`, `dev-docs/test-cases.md`: mock demo login과 `TC-FE-033` 기대 결과 갱신.
+- 수정된 파일 및 관련 파일:
+  - `osmu-frontend/mock-api/server.mjs`
+  - `scripts/verify-frontend-mock-demo.ps1`
+  - `scripts/start-frontend-mock-demo.ps1`
+  - `scripts/verify-mvp-demo-readiness.ps1`
+  - `README.md`
+  - `dev-docs/document-index.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/worklog/main/worklog-main.md`
+- 검증 기록:
+  - `node --check .\osmu-frontend\mock-api\server.mjs`: 성공.
+  - PowerShell parse check for `verify-frontend-mock-demo.ps1`, `start-frontend-mock-demo.ps1`: 성공.
+  - `npm.cmd run mock:api:self-test`: 성공. admin/developer login/profile self-test 통과.
+  - `powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-frontend-mock-demo.ps1`: 성공. admin login, developer login/S3 config/access key, bucket/object, dashboard summary 통과.
+  - `powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-mvp-demo-readiness.ps1`: 성공. frontend unit test 68개, build, mock demo smoke 통과. durable gate는 Java/Docker/S3 client/Browser E2E pending.
+- 결과:
+  - mock demo가 관리자 전용이 아니라 개발자 USER 역할과 S3 API Key 사용 흐름까지 검증한다.
+  - readiness report의 mock web demo smoke 증거가 admin/developer/access key 범위를 포함하도록 갱신됐다.
+- 후속 메모:
+  - 실제 Browser E2E에서는 `/login?mode=developer`로 진입해 개발자 콘솔 화면과 snippet 표시까지 시각 검증해야 한다.
+  - 실제 backend에서도 USER 계정의 `/admin` 접근 차단과 `/developer` 접근 허용을 통합 테스트/브라우저 E2E로 이어가야 한다.
+- 코드 리뷰:
+  - mock session map은 access/refresh token 모두 같은 user profile에 매핑하므로 `/users/me`와 refresh 흐름의 역할 일관성이 좋아졌다.
+  - access key list에서는 secretKey를 제거해 1회성 secret 노출 원칙을 mock demo에서도 유지한다.
+  - 이 변경은 mock/runtime demo 보강이며 실제 Spring Boot/MariaDB/MinIO gate를 대체하지 않는다.
+- 앞으로 추가적으로 개발해야 하는 내용:
+  - Browser/Playwright 기반 developer login 화면 검증.
+  - Docker/MariaDB/MinIO 환경에서 실제 access key provisioning smoke.
+- 추가 사용 skill/plugin:
+  - 없음.
+
+### 2026-06-15 - Login/Developer Demo Copy 정상화
+
+- 작업 시간:
+  - 시작: 2026-06-15 16:48:00 +09:00
+  - 종료: 2026-06-15 16:53:00 +09:00
+- 사용자 명령:
+  - active goal 기준으로 `MVP 데모 가능한 웹/백엔드 완성`을 계속 진행.
+- 요청 분석:
+  - `/login`과 developer S3 안내 화면은 MVP 데모 첫인상에 직접 영향을 주므로, 보이는 한국어 문구가 깨지면 기능이 동작해도 데모 품질이 낮아진다고 판단.
+  - 관리자/개발자 로그인 흐름과 API 접속 정보 화면의 핵심 문구를 테스트 계약으로 고정해야 한다고 인식.
+- 실행 내용:
+  - 로그인 화면의 visible copy, role card, form label, session expired 안내, password visibility 버튼 문구를 정상 한국어로 정리.
+  - developer page의 S3/API 안내 제목을 정상 한국어로 정리.
+  - frontend unit test에 login/developer 핵심 문구 assertion을 추가.
+- 구현 내용:
+  - `osmu-frontend/src/views/LoginView.vue`: `/login` 화면의 관리자/개발자 로그인 안내 문구와 form 문구 정상화.
+  - `osmu-frontend/src/components/developer/DeveloperPage.vue`: `API 접속 정보`, `S3 클라이언트 예시` heading 정상화.
+  - `osmu-frontend/src/views/HomeView.test.js`: 로그인/개발자 페이지 핵심 문구 검증 추가.
+- 수정된 파일 및 관련 파일:
+  - `osmu-frontend/src/views/LoginView.vue`
+  - `osmu-frontend/src/components/developer/DeveloperPage.vue`
+  - `osmu-frontend/src/views/HomeView.test.js`
+  - `dev-docs/worklog/main/worklog-main.md`
+- 검증 기록:
+  - `npm.cmd run test:unit`: 성공. frontend unit test 68개 통과.
+  - Node visible Korean demo copy marker check: 성공. 주요 demo copy 파일에서 대표 mojibake marker 미검출.
+  - `powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-mvp-demo-readiness.ps1`: 성공. static/frontend/mock API gate와 mock web demo smoke 통과, durable gate는 pending으로 유지.
+- 결과:
+  - `/login`과 developer S3 panel에서 데모 사용자에게 보이는 핵심 한국어 문구가 정상화됐다.
+  - 최신 readiness 기준 현재 데모 상태는 `mock-demo-verified`, MVP demo 추정치는 50~60%, product 추정치는 15~20%다.
+- 후속 메모:
+  - Browser/Playwright 시각 E2E는 여전히 별도 환경 권한 또는 browser runtime 준비가 필요하다.
+  - Java 17+, Docker daemon, AWS CLI 또는 MinIO Client 준비 후 durable gate를 PASS로 끌어올려야 한다.
+- 코드 리뷰:
+  - copy 변경은 기능 로직 변경이 아니라 데모 신뢰도와 테스트 계약 보강에 집중했다.
+  - 문구 검증은 화면 구조 전체를 과하게 고정하지 않고 MVP 핵심 흐름 문구만 확인한다.
+- 앞으로 추가적으로 개발해야 하는 내용:
+  - 실제 Browser E2E에서 `/login` 진입, 관리자/개발자 로그인, dashboard/developer 화면 전환 검증.
+  - Docker/MariaDB/MinIO full-stack smoke와 real S3 client smoke 통과.
+- 추가 사용 skill/plugin:
+  - 없음.
+
+### 2026-06-15 - Browser E2E Developer Login Contract 보강
+
+- 작업 시간:
+  - 시작: 2026-06-15 16:57:00 +09:00
+  - 종료: 2026-06-15 17:03:00 +09:00
+- 사용자 명령:
+  - active goal 기준으로 `MVP 데모 가능한 웹/백엔드 완성`을 계속 진행.
+- 요청 분석:
+  - 현재 readiness에서 Browser visual E2E가 pending이며, 기존 Playwright spec은 관리자 storage click path 중심이라 사용자가 요구한 개발자 로그인/USER 역할/S3 API Key 화면 계약이 브라우저 레벨에 충분히 고정되지 않았다고 판단.
+  - Java/Docker 없이도 줄일 수 있는 간극은 Browser E2E spec 자체에 developer mode login과 `/developer` 화면 검증을 추가하는 것이라고 인식.
+- 실행 내용:
+  - Playwright spec의 현재 관리자/stale session 테스트와 login/developer component selector를 확인.
+  - developer 전용 API mock route를 spec 내부에 추가해 백엔드 seed 계정에 의존하지 않고 USER 역할 브라우저 흐름을 검증하도록 구성.
+  - CI workflow verifier와 테스트 케이스 문서, MVP release checklist에 새 Browser E2E 계약을 반영.
+- 구현 내용:
+  - `osmu-frontend/e2e/lightweight-demo.spec.js`: `developer login lands on S3 API console with access key controls` 테스트 추가. `/login?mode=developer` 진입, developer mode 선택, USER `/developer` landing, Admin nav 숨김, S3 endpoint/signature/snippet 표시, Access Key scope 추가/발급/secret 표시를 검증.
+  - `scripts/verify-ci-workflow.ps1`: Browser E2E spec에 developer login/access key selector 계약이 포함되는지 확인하도록 assertion 추가.
+  - `dev-docs/test-cases.md`: TC-AUTH-005, TC-AUTH-007 자동화 범위에 developer Browser E2E spec 보강을 반영.
+  - `dev-docs/mvp-release-checklist.md`: Browser E2E checklist에 developer mode login/access key UI spec 포함 항목 추가.
+- 수정된 파일 및 관련 파일:
+  - `osmu-frontend/e2e/lightweight-demo.spec.js`
+  - `scripts/verify-ci-workflow.ps1`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/mvp-release-checklist.md`
+  - `dev-docs/worklog/main/worklog-main.md`
+- 검증 기록:
+  - `node --check .\osmu-frontend\e2e\lightweight-demo.spec.js`: 성공.
+  - `powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-ci-workflow.ps1`: 성공.
+  - `git diff --check -- osmu-frontend/e2e/lightweight-demo.spec.js scripts/verify-ci-workflow.ps1 dev-docs/test-cases.md dev-docs/mvp-release-checklist.md`: CRLF 변환 경고 외 문제 없음.
+  - `powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-mvp-demo-readiness.ps1`: 성공. frontend unit test 68개, build, mock demo smoke 통과. durable gate는 Java/Docker/S3 client/Browser runtime pending.
+  - `npm.cmd run test:e2e` in `osmu-frontend`: 실패. `playwright` CLI가 로컬 `node_modules/.bin`에 없어 실제 Browser E2E는 실행되지 않음.
+- 결과:
+  - Browser E2E spec이 관리자 click path뿐 아니라 개발자 USER 역할과 S3 API Key 콘솔 흐름도 검증하도록 보강됐다.
+  - 최신 readiness report는 `partial`, 현재 demo status는 `mock-demo-verified`, MVP demo 추정치는 50~60%, product 추정치는 15~20%를 유지한다.
+- 후속 메모:
+  - `@playwright/test`와 browser runtime이 준비된 환경에서 `cd .\osmu-frontend; npm run test:e2e`를 실제 실행해야 Browser visual E2E pending을 PASS로 바꿀 수 있다. 현재 로컬은 Playwright CLI가 없어 실행 불가.
+  - Java 17+와 Docker daemon이 준비되면 backend Gradle test, full Docker smoke, real S3 client smoke를 이어서 실행해야 한다.
+- 코드 리뷰:
+  - developer Browser E2E는 실제 backend seed 데이터에 의존하지 않고 API route mock을 사용하므로, role-based navigation과 UI 계약을 빠르게 검증할 수 있다.
+  - 이 테스트는 Browser UI 계약을 보강하지만 Spring Boot/MariaDB/MinIO durable gate를 대체하지 않는다.
+- 앞으로 추가적으로 개발해야 하는 내용:
+  - Playwright runtime에서 실제 `npm run test:e2e` 실행 증거 확보.
+  - full-stack 환경에서 USER access key 발급이 MinIO policy/provisioning까지 연결되는지 검증.
+- 추가 사용 skill/plugin:
+  - 없음.
+
+### 2026-06-15 - Mock Browser E2E 실행 가능화
+
+- 작업 시간:
+  - 시작: 2026-06-15 17:04:00 +09:00
+  - 종료: 2026-06-15 17:45:00 +09:00
+- 사용자 명령:
+  - active goal 기준으로 `MVP 데모 가능한 웹/백엔드 완성`을 계속 진행.
+- 요청 분석:
+  - 직전 readiness에서 Browser visual E2E가 pending이었고, 로컬 `npm run test:e2e`는 `playwright` CLI 미설치로 실행되지 않았다.
+  - Java/Docker가 없는 현재 환경에서도 mock API + Vite frontend를 대상으로 실제 브라우저 클릭 경로를 검증하면 MVP 데모 증거를 한 단계 강화할 수 있다고 판단.
+- 실행 내용:
+  - `@playwright/test@1.56.1`를 frontend devDependency로 설치.
+  - Playwright bundled Chromium download는 장시간 timeout/lock 문제로 실패했으므로, 로컬에 설치된 Chrome을 `OSMU_PLAYWRIGHT_CHANNEL=chrome`으로 사용하는 경로를 추가.
+  - `verify-browser-e2e-mock-demo.ps1`를 추가해 frontend mock demo start → Playwright E2E → stop을 한 스크립트 안에서 수행하도록 구성.
+  - 기존 Playwright spec을 현재 `/login` 전용 화면과 관리자 `/admin` landing 구조에 맞게 수정.
+  - Browser E2E CI, verifier, README, document index, readiness report를 새 구조와 맞춤.
+- 구현 내용:
+  - `osmu-frontend/playwright.config.js`: `OSMU_PLAYWRIGHT_CHANNEL`을 읽어 installed Chrome/Edge channel을 사용할 수 있게 설정.
+  - `scripts/verify-browser-e2e-mock-demo.ps1`: Playwright CLI 확인, Chrome/Edge channel auto-detect, mock demo start/stop, `npm run test:e2e` 실행.
+  - `osmu-frontend/e2e/lightweight-demo.spec.js`: stale session redirect, developer S3/API Key console, admin storage/object/audit click path를 현재 routing 기준으로 보정.
+  - `scripts/verify-mvp-demo-readiness.ps1`: mock Browser E2E smoke를 readiness check에 포함하고, 통과 시 current demo status를 `mock-browser-demo-verified`, MVP demo 추정치를 60~65%로 기록.
+  - `.github/workflows/browser-e2e-ci.yml`: Playwright가 package devDependency가 되었으므로 `npm install --no-save @playwright/test` 단계를 제거하고 browser install만 수행.
+  - `scripts/verify-ci-workflow.ps1`: Playwright config, `@playwright/test` devDependency, Browser E2E spec selector 계약 검증 보강.
+- 수정된 파일 및 관련 파일:
+  - `osmu-frontend/package.json`
+  - `osmu-frontend/package-lock.json`
+  - `osmu-frontend/playwright.config.js`
+  - `osmu-frontend/e2e/lightweight-demo.spec.js`
+  - `scripts/verify-browser-e2e-mock-demo.ps1`
+  - `scripts/verify-mvp-demo-readiness.ps1`
+  - `scripts/verify-ci-workflow.ps1`
+  - `.github/workflows/browser-e2e-ci.yml`
+  - `README.md`
+  - `dev-docs/document-index.md`
+  - `dev-docs/worklog/main/worklog-main.md`
+- 검증 기록:
+  - `npm.cmd install --save-dev @playwright/test@1.56.1`: 성공.
+  - `npx.cmd playwright install chromium --only-shell`: timeout. 이후 stale `ms-playwright\__dirlock`만 경로 검증 후 제거.
+  - `node --check .\osmu-frontend\playwright.config.js`: 성공.
+  - `node --check .\osmu-frontend\e2e\lightweight-demo.spec.js`: 성공.
+  - PowerShell parse check for `verify-browser-e2e-mock-demo.ps1`, `verify-mvp-demo-readiness.ps1`, `verify-ci-workflow.ps1`: 성공.
+  - `powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-ci-workflow.ps1`: 성공.
+  - `powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-browser-e2e-mock-demo.ps1`: 성공. Chrome channel로 Playwright 3개 테스트 통과.
+  - `powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-mvp-demo-readiness.ps1`: 성공. frontend unit test 68개, build, mock web demo, mock Browser E2E 통과. Java/Docker/S3 client/backend-backed Browser E2E는 pending.
+- 결과:
+  - 현재 머신 기준 demo status가 `mock-browser-demo-verified`로 상승했다.
+  - MVP demo 완료 추정치는 60~65%, product 완료 추정치는 15~20%로 갱신됐다.
+  - Browser E2E가 mock API 기준으로 실제 Chrome에서 통과했으므로 UI 데모 신뢰도가 올라갔다.
+- 후속 메모:
+  - backend-backed Browser E2E는 Java 17+ 준비 후 `start-local-prototype.ps1` 또는 full Docker demo 위에서 다시 실행해야 한다.
+  - Docker daemon, AWS CLI 또는 MinIO Client 준비 후 MariaDB/MinIO full-stack smoke와 real S3 client smoke를 통과시켜야 한다.
+- 코드 리뷰:
+  - Playwright browser download가 막힌 환경에서도 installed Chrome/Edge channel로 우회할 수 있게 해 로컬 검증 가능성을 높였다.
+  - mock Browser E2E는 UI/role/navigation/access key 화면 계약을 검증하지만, Spring Boot/MariaDB/MinIO 통합 검증을 대체하지 않는다.
+- 앞으로 추가적으로 개발해야 하는 내용:
+  - Java 17+ 설치 또는 `-JavaHome` 경로 확보 후 backend test와 backend-backed Browser E2E 실행.
+  - Docker Desktop daemon 실행 후 full local demo smoke 실행.
+  - AWS CLI 또는 MinIO Client 설치 후 real S3 client smoke 실행.
+- 추가 사용 skill/plugin:
+  - 없음.
+
+### 2026-06-15 - Backend Prototype Browser E2E 게이트 통과
+
+- 작업 시간:
+  - 시작: 2026-06-15 17:47:00 +09:00
+  - 종료: 2026-06-15 18:09:00 +09:00
+- 사용자 명령:
+  - active goal 기준 `MVP 데모 가능한 웹/백엔드 완성 할것`을 계속 진행.
+- 요청 분석:
+  - 직전 상태는 mock Browser E2E까지 통과했지만 Java backend, backend-backed Browser E2E, Docker/MariaDB/MinIO, real S3 client gate가 남아 있었다.
+  - 로컬 Temp 경로에 JDK 17이 존재하므로 `-JavaHome` 기반으로 backend test와 Java in-memory prototype 검증을 실제로 진행할 수 있다고 판단.
+- 실행 내용:
+  - `verify-mvp-demo-readiness.ps1`에 `-JavaHome` 옵션과 Java helper 연동을 추가.
+  - `verify-browser-e2e-prototype.ps1`를 추가해 `start-local-prototype.ps1` -> `verify-lightweight-prototype.ps1` -> Playwright E2E -> stop 흐름을 자동화.
+  - `java-toolchain.ps1`의 `java -version` stderr 처리 문제를 수정해 PowerShell `Stop` 모드에서도 Java version check가 실패하지 않게 했다.
+  - `StorageExpansionGitOpsPrRunnerTest`가 Windows `.cmd` quoting 차이로 실패하던 부분을 quote-normalized assertion으로 수정.
+  - `AdminController`의 object lifecycle rule 저장 로직이 `bucketName`을 누락하던 문제를 수정하고 controller test에 bucket scope 기대값을 추가.
+  - 실제 backend 연결 화면에서는 admin 첫 진입 시 bucket이 선택되지 않는 것이 정상이라, Browser E2E spec의 초기 admin 기대값을 `admin-bucket-empty-state`로 조정.
+  - `stop-frontend-mock-demo.ps1`의 `$PID` 내장 변수 충돌과 자식 Node process 잔류 문제를 수정하고, mock Browser E2E wrapper가 stop 때 `-ForcePorts`를 사용하도록 보강.
+- 구현 내용:
+  - `scripts/verify-browser-e2e-prototype.ps1` 신규 추가.
+  - `scripts/verify-mvp-demo-readiness.ps1`가 Java 사용 가능 시 backend-backed Browser E2E를 자동 시도하고, 통과 시 `backend-prototype-browser-demo-verified`, MVP demo `70-75%`로 기록.
+  - `scripts/java-toolchain.ps1`가 Java version stderr를 안전하게 capture.
+  - `scripts/stop-frontend-mock-demo.ps1`가 process tree와 port listener를 안정적으로 정리.
+  - `osmu-backend/src/main/java/com/example/osmu/admin/AdminController.java`의 lifecycle rule 저장이 `bucketName`을 유지.
+  - `osmu-frontend/e2e/lightweight-demo.spec.js`가 mock/real backend 양쪽 admin 초기 상태를 견딜 수 있게 조정.
+- 수정된 파일 및 관련 파일:
+  - `scripts/verify-mvp-demo-readiness.ps1`
+  - `scripts/verify-browser-e2e-prototype.ps1`
+  - `scripts/java-toolchain.ps1`
+  - `scripts/stop-frontend-mock-demo.ps1`
+  - `scripts/verify-browser-e2e-mock-demo.ps1`
+  - `README.md`
+  - `dev-docs/document-index.md`
+  - `dev-docs/test-cases.md`
+  - `osmu-backend/src/main/java/com/example/osmu/admin/AdminController.java`
+  - `osmu-backend/src/test/java/com/example/osmu/admin/AdminObjectRetentionControllerTest.java`
+  - `osmu-backend/src/test/java/com/example/osmu/storageexpansion/StorageExpansionGitOpsPrRunnerTest.java`
+  - `osmu-frontend/e2e/lightweight-demo.spec.js`
+  - `dev-docs/worklog/main/worklog-main.md`
+- 검증 기록:
+  - PowerShell parse check for `java-toolchain.ps1`, `verify-mvp-demo-readiness.ps1`, `verify-browser-e2e-prototype.ps1`, `stop-frontend-mock-demo.ps1`, `verify-browser-e2e-mock-demo.ps1`: 성공.
+  - `node --check .\osmu-frontend\e2e\lightweight-demo.spec.js`: 성공.
+  - `.\gradlew.bat test --tests com.example.osmu.storageexpansion.StorageExpansionGitOpsPrRunnerTest`: 승인 권한 실행 성공.
+  - `.\gradlew.bat test --tests com.example.osmu.admin.AdminObjectRetentionControllerTest --tests com.example.osmu.storageexpansion.StorageExpansionGitOpsPrRunnerTest`: 승인 권한 실행 성공.
+  - `powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-browser-e2e-prototype.ps1 -JavaHome ...`: 승인 권한 실행 성공. API smoke와 Playwright 3개 테스트 통과.
+  - `powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-browser-e2e-mock-demo.ps1`: 성공. Playwright 3개 테스트 통과 및 mock demo stop 성공.
+  - `powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-mvp-demo-readiness.ps1 -JavaHome ...`: 승인 권한 실행 성공. `backend-prototype-browser-demo-verified`, MVP demo `70-75%`, product `15-20%`.
+  - `powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-local.ps1 -SkipDocker -JavaHome ...`: 승인 권한 실행 성공. frontend unit 68개, frontend build, backend Gradle test 통과.
+  - `netstat -ano | Select-String ':8080|:5173'`: 최종 LISTENING 없음, TIME_WAIT만 확인.
+- 결과:
+  - MVP demo 상태가 `mock-browser-demo-verified`에서 `backend-prototype-browser-demo-verified`로 상승.
+  - 현재 MVP demo 추정치는 70~75%, product 추정치는 15~20%.
+  - Java in-memory backend, REST API smoke, Vue frontend, Browser E2E가 한 명령으로 검증 가능해졌다.
+- 후속 메모:
+  - Docker daemon이 아직 없어 MariaDB/MinIO full-stack readiness는 pending.
+  - AWS CLI 또는 MinIO Client `mc`가 없어 real S3 client smoke는 pending.
+  - 다음 큰 축은 Docker Desktop 실행 후 `verify-docker-integration.ps1`, 그 다음 real S3 client 설치/검증이다.
+- 코드 리뷰:
+  - Java helper의 stderr capture 수정은 Windows/PowerShell 환경에서 반복 실패를 줄이는 안정화 작업이다.
+  - lifecycle rule `bucketName` 누락은 실제 기능 결함이었고, smoke가 이를 잘 잡았다. controller test에도 bucket scope assertion을 추가해 회귀 방지했다.
+  - frontend mock stop 누락은 후속 prototype gate를 방해하는 테스트 인프라 결함이었고, process tree/ForcePorts 조합으로 안정성을 높였다.
+  - Browser E2E의 admin 초기 기대값은 실제 backend 상태와 mock 상태의 차이를 반영하도록 더 현실적으로 바뀌었다.
+- 앞으로 추가적으로 개발해야하는 내용:
+  - Docker/MariaDB/MinIO full-stack smoke 통과.
+  - 실제 AWS CLI 또는 MinIO Client 기반 S3 compatibility smoke 통과.
+  - Docker full-stack Browser E2E와 seeded demo 검증을 readiness에 단계적으로 포함.
+- 추가 사용 skill/plugin:
+  - 없음.
+
+### 2026-06-15 - Dockerized MinIO Client Smoke 경로 추가
+
+- 작업 시간:
+  - 시작: 2026-06-15 18:25:00 +09:00
+  - 종료: 2026-06-15 18:33:00 +09:00
+- 사용자 명령:
+  - active goal 기준 `MVP 데모 가능한 웹/백엔드 완성 할것`을 계속 진행.
+- 요청 분석:
+  - 현재 real S3 client gate가 host `aws` 또는 `mc` 설치에 의존해 pending으로 남아 있으므로, Docker Desktop만 준비되면 MinIO Client 컨테이너로 검증할 수 있게 만들어 MVP durable evidence 확보 장벽을 낮추는 작업으로 인식.
+- 실행 내용:
+  - `verify-s3-client-smoke.ps1`에 `-Client docker-mc` 옵션과 `auto/all` fallback을 추가.
+  - localhost S3 endpoint를 컨테이너 내부에서 접근 가능한 `host.docker.internal`로 변환하도록 구현.
+  - readiness, prerequisite, release report, audit/decision/notes 문서와 self-test가 Dockerized MinIO Client를 real S3 client 후보로 인식하도록 갱신.
+  - README, local dev env, test cases, commercial readiness, MVP checklist 문서에 새 검증 경로를 반영.
+- 구현 내용:
+  - Docker daemon이 있으면 `minio/mc:RELEASE.2025-05-21T01-59-54Z` 컨테이너로 bucket list, object cp/stat/cat/rm smoke를 수행.
+  - `-Client auto`는 host `aws`, host `mc`, Dockerized `mc`를 순서대로 시도.
+  - `-Client docker-mc -RequireClient`로 Dockerized client만 명시 검증 가능.
+- 수정된 파일 및 관련 파일:
+  - `scripts/verify-s3-client-smoke.ps1`
+  - `scripts/verify-mvp-demo-readiness.ps1`
+  - `scripts/verify-prototype-prerequisites.ps1`
+  - `scripts/verify-prototype-release.ps1`
+  - `scripts/write-mvp-audit.ps1`
+  - `scripts/write-mvp-release-decision.ps1`
+  - `scripts/write-mvp-release-notes.ps1`
+  - `scripts/verify-mvp-release-decision.ps1`
+  - `scripts/verify-commercial-readiness.ps1`
+  - `README.md`
+  - `dev-docs/document-index.md`
+  - `dev-docs/local-dev-env.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/commercial-readiness.md`
+  - `dev-docs/mvp-release-checklist.md`
+  - `dev-docs/worklog/main/worklog-main.md`
+- 검증 기록:
+  - PowerShell script parse check: 성공.
+  - `powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-commercial-readiness.ps1`: 성공.
+  - `powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-mvp-release-decision.ps1`: 성공.
+  - `powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-prototype-prerequisites.ps1 -RequireNode`: 성공. 필수 실패 0, Docker daemon 부재와 Dockerized mc 부재는 optional warning으로 표시.
+  - `git diff --check -- ...`: 성공. CRLF warning만 존재.
+  - `powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-mvp-demo-readiness.ps1 -NoWrite -SkipDockerFullStackE2E -JavaHome ...`: 승인 권한 실행 성공. mock Browser E2E와 backend-backed Browser E2E prototype 통과, Docker/MariaDB/MinIO 및 Dockerized real S3 client는 Docker daemon 부재로 pending.
+  - `netstat -ano | Select-String ':8080|:5173'`: 최종 LISTENING 없음, TIME_WAIT만 존재.
+  - Playwright 생성물 `osmu-frontend/test-results`는 워크스페이스 내부 경로 확인 후 제거.
+- 결과:
+  - Docker Desktop 실행 후 host에 `aws`/`mc`를 설치하지 않아도 `verify-s3-client-smoke.ps1 -Client docker-mc -RequireClient`로 real S3 client smoke를 시도할 수 있게 됨.
+  - 현재 환경 기준 MVP demo status는 `backend-prototype-browser-demo-verified`, MVP demo 추정치는 `70-75%`, 제품 전체 추정치는 `15-20%`.
+- 후속 메모:
+  - Docker daemon이 현재 꺼져 있어 Dockerized `mc` 실제 실행은 아직 통과 증거가 없음.
+  - 다음 durable gate는 Docker Desktop 실행 후 `verify-browser-e2e-local-demo.ps1`, `verify-docker-integration.ps1`, `verify-s3-client-smoke.ps1 -Client docker-mc -RequireClient`.
+- 코드 리뷰:
+  - host tool 설치 의존도를 줄여 데모 재현성이 올라갔다.
+  - Dockerized `mc`는 localhost를 `host.docker.internal`로 변환하므로 Windows Docker Desktop 경로에 맞다.
+  - 실제 Docker daemon 환경에서 첫 실행 시 이미지 pull, volume mount, host gateway 접근을 반드시 확인해야 한다.
+- 앞으로 추가적으로 개발해야 하는 내용:
+  - Docker daemon 환경에서 Dockerized MinIO Client smoke 실제 통과 확인.
+  - real S3 client smoke 결과를 durable release artifact에 자동 첨부.
+  - Docker full-stack Browser E2E와 Dockerized S3 client smoke를 CI/manual workflow로 연결.
+- 추가 사용 skill/plugin:
+  - 없음.
+
+### 2026-06-15 - Durable MVP Demo Gate 추가
+
+- 작업 시간:
+  - 시작: 2026-06-15 18:40:00 +09:00
+  - 종료: 2026-06-15 18:55:00 +09:00
+- 사용자 명령:
+  - active goal 기준 `MVP 데모 가능한 웹/백엔드 완성 할것`을 계속 진행.
+- 요청 분석:
+  - 기존에는 Docker local demo Browser E2E, Docker integration smoke, real S3 client smoke가 각각 분리되어 있어 MVP demo 완료 증거를 한 번에 만들기 어려운 상태로 판단.
+  - Docker Desktop이 준비되었을 때 하나의 명령으로 MariaDB/MinIO/Backend/Frontend, Browser E2E, S3 client compatibility를 묶어 검증하는 durable gate가 필요하다고 인식.
+- 실행 내용:
+  - `scripts/verify-durable-demo-gate.ps1`를 추가해 기존 검증 스크립트들을 순서대로 오케스트레이션.
+  - `verify-mvp-demo-readiness.ps1`가 Docker daemon 사용 가능 시 새 durable gate를 시도하고, 통과 시 `docker-durable-demo-verified`와 MVP demo `90-95%`를 기록하도록 연결.
+  - README, document index, local dev env, MVP checklist, test cases, feature inventory에 새 gate와 완료율 기준을 반영.
+- 구현 내용:
+  - 새 gate는 `.env`가 없으면 `.env.example`에서 준비하고, Node/Docker/S3 client 필수 prerequisite을 확인한다.
+  - full Docker local demo Browser E2E를 `-KeepRunning`으로 실행한 뒤 Docker integration smoke와 real S3 client smoke를 이어서 실행한다.
+  - 기본 S3 client는 Dockerized MinIO Client인 `docker-mc`이며, 실행 결과를 `.osmu-run/latest-durable-demo-gate.json`과 `.md`로 남긴다.
+  - 실패해도 실패 check와 message를 report에 남긴 뒤 최종적으로 non-ready 상태를 throw하도록 구성했다.
+- 수정된 파일 및 관련 파일:
+  - `scripts/verify-durable-demo-gate.ps1`
+  - `scripts/verify-mvp-demo-readiness.ps1`
+  - `README.md`
+  - `dev-docs/document-index.md`
+  - `dev-docs/local-dev-env.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/mvp-release-checklist.md`
+  - `dev-docs/feature-inventory.md`
+  - `dev-docs/worklog/main/worklog-main.md`
+- 검증 기록:
+  - PowerShell parse check for `verify-durable-demo-gate.ps1`, `verify-mvp-demo-readiness.ps1`: 성공.
+  - `powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-openapi-contract.ps1`: 성공.
+  - `powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-commercial-readiness.ps1`: 성공.
+  - `git diff --check -- ...`: 성공. CRLF warning만 존재.
+- 결과:
+  - Docker Desktop 실행 후 `powershell -ExecutionPolicy Bypass -File .\scripts\verify-durable-demo-gate.ps1` 한 번으로 durable MVP demo proof를 만들 수 있는 경로가 생김.
+  - 현재 Docker daemon 실제 실행 증거는 아직 없으므로 현 machine 기준 MVP demo는 계속 `70-75%`, 전체 제품은 `15-20%`로 보는 것이 맞다.
+- 후속 메모:
+  - Docker Desktop 실행 환경에서 `verify-durable-demo-gate.ps1`를 실제로 끝까지 통과시켜야 MVP demo `90-95%` 근거가 생긴다.
+  - durable gate가 통과하면 release/audit/decision artifact에 해당 결과를 반영하는 자동 연결을 추가하면 좋다.
+- 코드 리뷰:
+  - 새 스크립트는 기존 검증 로직을 중복 구현하지 않고 wrapper로 묶어 유지보수 위험을 낮췄다.
+  - 실패 시 report를 남기도록 구성해 다음 작업자가 어느 단계에서 막혔는지 추적하기 쉽다.
+  - 단, Docker daemon이 없는 현재 환경에서는 실제 container pull, compose runtime, Dockerized `mc` network 접근까지는 검증하지 못했다.
+- 앞으로 추가적으로 개발해야 하는 내용:
+  - Docker daemon 환경에서 durable gate 실통과 확인.
+  - durable gate report를 MVP release artifact 생성 흐름에 자동 포함.
+  - GitHub Actions durable workflow가 새 gate를 실행하도록 CI 경로를 정리.
+- 추가 사용 skill/plugin:
+  - 없음.
+
+### 2026-06-15 - Durable Gate Report와 Release Artifact 연결
+
+- 작업 시간:
+  - 시작: 2026-06-15 19:16:00 +09:00
+  - 종료: 2026-06-15 19:25:00 +09:00
+- 사용자 명령:
+  - active goal 기준 `MVP 데모 가능한 웹/백엔드 완성 할것`을 계속 진행.
+- 요청 분석:
+  - Docker Desktop이 켜졌을 때 `verify-durable-demo-gate.ps1`가 `.osmu-run/latest-durable-demo-gate.json`을 만들 수 있게 되었지만, audit/decision/release notes 산출물이 이 durable proof를 직접 읽지 않으면 MVP demo 완료 증거가 흩어진다고 판단.
+  - durable gate 통과 후 audit, release decision, release notes, artifact verifier까지 한 번에 durable proof를 반영하도록 연결하는 작업으로 인식.
+- 실행 내용:
+  - `write-mvp-audit.ps1`, `write-mvp-release-decision.ps1`, `write-mvp-release-notes.ps1`, `verify-mvp-release-artifacts.ps1`에 `-DurableGateReportPath` 옵션을 추가.
+  - durable gate report가 없으면 PENDING으로 남기고, `result=ready` 및 `currentDemoStatus=docker-durable-demo-verified`이면 durable MVP demo proof로 반영하도록 구현.
+  - `verify-prototype-release.ps1`가 산출물 생성 시 durable gate report path를 자동 전달하도록 연결.
+  - release decision self-test에 durable gate report 단독으로 durable pilot GO가 되는 synthetic case를 추가.
+  - README, document index, MVP checklist에 새 산출물 흐름을 반영.
+- 구현 내용:
+  - durable gate report가 ready이면 audit에서 `Durable MVP demo gate`, Docker/MariaDB/MinIO, real S3 client, Browser E2E 증거를 PASS로 표시.
+  - release decision은 기존 legacy release report flags 또는 durable gate report ready 둘 중 하나로 durable pilot GO를 판단.
+  - release notes는 durable gate report path와 상태를 포함하고, durable proof가 있으면 local durable MVP demo evidence로 사용할 수 있음을 표시.
+  - artifact verifier는 release notes까지 포함해 durable gate 상태와 lightweight/durable decision 일치 여부를 검증.
+- 수정된 파일 및 관련 파일:
+  - `scripts/write-mvp-audit.ps1`
+  - `scripts/write-mvp-release-decision.ps1`
+  - `scripts/write-mvp-release-notes.ps1`
+  - `scripts/verify-mvp-release-artifacts.ps1`
+  - `scripts/verify-mvp-release-decision.ps1`
+  - `scripts/verify-prototype-release.ps1`
+  - `README.md`
+  - `dev-docs/document-index.md`
+  - `dev-docs/mvp-release-checklist.md`
+  - `dev-docs/worklog/main/worklog-main.md`
+- 검증 기록:
+  - PowerShell parse check for changed release artifact scripts: 성공.
+  - `powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-mvp-release-decision.ps1`: 성공. lightweight, legacy durable, durable gate report, no-go failure switch self-test 통과.
+  - Synthetic release artifact flow: 성공. durable report missing 상태와 durable report ready 상태 모두에서 audit, decision, notes, artifact verifier 통과.
+  - `powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-local.ps1 -SkipDocker -SkipBackend`: 성공. frontend unit test 68개, build, mock API self-test, 문서/CI/manifest/check scripts 통과.
+- 결과:
+  - Docker Desktop 실행 후 durable gate가 통과하면 `.osmu-run/latest-durable-demo-gate.json` 하나로 audit/decision/release notes가 durable proof를 반영할 수 있게 됨.
+  - 현재 Docker daemon은 여전히 꺼져 있으므로 실제 durable gate 통과 증거는 아직 없음.
+  - 현재 완료율 평가는 MVP demo `70-75%`, 전체 제품 `15-20%` 유지. Docker durable gate 실통과 후 MVP demo는 `90-95%` 근거를 갖게 됨.
+- 후속 메모:
+  - Docker Desktop 실행 후 `verify-durable-demo-gate.ps1` 실행.
+  - gate 통과 후 `write-mvp-audit.ps1`, `write-mvp-release-decision.ps1`, `write-mvp-release-notes.ps1`, `verify-mvp-release-artifacts.ps1`를 durable report path와 함께 재실행.
+  - GitHub Actions durable workflow가 새 durable gate와 산출물 검증을 실행하도록 CI 연결을 마무리해야 함.
+- 코드 리뷰:
+  - durable report가 없을 때 기존 lightweight release artifact 흐름을 깨지 않고 PENDING으로 표현하도록 후방 호환성을 유지했다.
+  - durable gate report를 combined proof로 인정하되, report 상태가 `ready/docker-durable-demo-verified`일 때만 PASS 처리해 과도한 완료 판정을 막았다.
+  - 동일한 durable report 판독 helper가 여러 스크립트에 중복되어 있으므로, 스크립트 수가 더 늘어나면 공통 helper 분리를 검토할 수 있다.
+- 앞으로 추가적으로 개발해야 하는 내용:
+  - Docker daemon 환경에서 durable gate 실통과.
+  - durable workflow CI에서 `verify-durable-demo-gate.ps1`와 release artifact verification 연결.
+  - 실제 pilot 배포용 signed image, SBOM, vulnerability scan evidence를 release notes에 연결.
+- 추가 사용 skill/plugin:
+  - 없음.
+
+### 2026-06-15 - Durable Docker CI Gate 연결
+
+- 작업 시간:
+  - 시작: 2026-06-15 19:26:00 +09:00
+  - 종료: 2026-06-15 19:40:00 +09:00
+- 사용자 명령:
+  - active goal 기준 `MVP 데모 가능한 웹/백엔드 완성 할것`을 계속 진행.
+- 요청 분석:
+  - 이전 단계에서 durable gate와 release artifact 연결은 로컬 스크립트 기준으로 준비되었지만, GitHub Actions durable workflow는 아직 Docker integration smoke만 실행하고 있어 실제 MVP durable proof와 일치하지 않는다고 판단.
+  - Docker/MariaDB/MinIO/Backend/Frontend, Browser E2E, Docker integration smoke, Dockerized S3 client smoke를 하나의 manual CI workflow에서 실행하고, 결과 report를 artifact로 남기는 작업으로 인식.
+- 실행 내용:
+  - `.github/workflows/durable-docker-ci.yml`을 `verify-durable-demo-gate.ps1` 중심의 manual workflow로 변경.
+  - Ubuntu runner에서 Java 17, Node 24, frontend dependencies, Playwright Chromium with deps를 준비하도록 추가.
+  - durable gate 결과인 `.osmu-run/latest-durable-demo-gate.json`, `.md`, demo credential snapshot, Playwright test results를 workflow artifact로 업로드하도록 추가.
+  - Ubuntu/Windows 양쪽에서 durable gate 하위 스크립트가 동작하도록 `runtime-toolchain.ps1`를 추가하고 `powershell.exe`, `npm.cmd`, `npx.cmd` 직접 호출을 durable 경로에서 제거.
+  - Linux 경로에서 `.\.osmu-run\...` 기본값이 깨지지 않도록 path separator normalization을 durable 경로에 적용.
+  - `verify-ci-workflow.ps1`가 새 durable workflow 계약을 검증하도록 갱신.
+- 구현 내용:
+  - `scripts/runtime-toolchain.ps1`: OS 감지, PowerShell/npm/npx 실행 파일 탐색, PowerShell script invoke helper, non-Windows path separator normalization 추가.
+  - `scripts/verify-durable-demo-gate.ps1`: child script 실행 시 runtime helper 사용.
+  - `scripts/verify-browser-e2e-local-demo.ps1`: PowerShell/npm/npx cross-platform 실행, Linux에서는 bundled Playwright browser 사용.
+  - `scripts/start-local-demo.ps1`, `scripts/seed-local-demo.ps1`, `scripts/verify-local-demo.ps1`, `scripts/verify-lightweight-demo.ps1`: 하위 PowerShell script 실행과 demo credential path를 portable하게 정리.
+  - `scripts/verify-prototype-prerequisites.ps1`: Linux에서도 `npm`을 감지하고 Docker Compose file path를 OS 독립적으로 구성.
+  - `scripts/docker-toolchain.ps1`: Docker config 경로를 `Join-Path` 조합으로 구성.
+- 수정된 파일 및 관련 파일:
+  - `.github/workflows/durable-docker-ci.yml`
+  - `scripts/runtime-toolchain.ps1`
+  - `scripts/docker-toolchain.ps1`
+  - `scripts/verify-durable-demo-gate.ps1`
+  - `scripts/verify-browser-e2e-local-demo.ps1`
+  - `scripts/start-local-demo.ps1`
+  - `scripts/seed-local-demo.ps1`
+  - `scripts/verify-local-demo.ps1`
+  - `scripts/verify-lightweight-demo.ps1`
+  - `scripts/verify-prototype-prerequisites.ps1`
+  - `scripts/verify-ci-workflow.ps1`
+  - `dev-docs/document-index.md`
+  - `dev-docs/mvp-release-checklist.md`
+  - `dev-docs/worklog/main/worklog-main.md`
+- 검증 기록:
+  - PowerShell parse check for changed runtime/durable scripts: 성공.
+  - `powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-ci-workflow.ps1`: 성공. durable workflow가 Java/Node/Playwright setup, `verify-durable-demo-gate.ps1`, report artifact upload, cleanup을 포함하는지 확인.
+  - `powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-prototype-prerequisites.ps1 -RequireNode`: 성공. Node/npm 필수 통과, Docker daemon과 real S3 client는 optional warning.
+  - `powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-local.ps1 -SkipDocker -SkipBackend`: 성공. frontend unit test 68개, build, mock API self-test, CI workflow verifier 포함 통과.
+  - `git diff --check -- ...`: 성공. CRLF warning만 존재.
+- 결과:
+  - GitHub Actions manual durable workflow가 실제 durable MVP demo gate를 실행하는 구조로 정리됨.
+  - Docker Desktop이 꺼진 현재 로컬 환경에서는 durable gate 실통과 증거는 아직 없음.
+  - 현재 완료율 평가는 MVP demo `70-75%`, 전체 제품 `15-20%` 유지. GitHub Actions 또는 Docker Desktop 환경에서 durable gate가 통과하면 MVP demo `90-95%` 근거를 확보할 수 있음.
+- 후속 메모:
+  - GitHub Actions `Durable Docker CI` workflow를 manual로 실행해 실제 Ubuntu runner에서 Docker/Playwright/Dockerized mc 경로를 확인해야 함.
+  - CI durable report가 통과하면 release artifact regeneration까지 workflow에 추가하는 작업을 검토.
+  - 더 많은 script가 Linux runner를 지원해야 하면 `runtime-toolchain.ps1` helper를 `verify-local.ps1`, `verify-prototype-gate.ps1`, `verify-prototype-release.ps1`에도 확대 적용.
+- 코드 리뷰:
+  - workflow가 더 이상 단일 Docker smoke만 검증하지 않고 durable MVP demo gate를 직접 실행하므로 목표 증거와 CI 계약이 더 잘 맞는다.
+  - runtime helper는 Windows 우선 동작을 유지하면서 Linux runner의 `pwsh`, `npm`, `npx` 경로를 지원한다.
+  - 일부 legacy script에는 아직 Windows 전용 호출이 남아 있으므로, durable CI 경로 외의 Linux 지원은 별도 작업으로 남겨두는 것이 안전하다.
+- 앞으로 추가적으로 개발해야 하는 내용:
+  - Docker daemon 또는 GitHub Actions runner에서 durable gate 실통과 확인.
+  - durable gate report를 release/audit/decision/notes 생성까지 CI에서 자동 연결.
+  - signed image, SBOM, vulnerability scan 결과를 durable release evidence에 포함.
+- 추가 사용 skill/plugin:
+  - 없음.
+
+### 2026-06-15 - Durable Release Artifact 자동 생성 검증
+
+- 작업 시간:
+  - 시작: 2026-06-15 19:41:00 +09:00
+  - 종료: 2026-06-15 19:44:00 +09:00
+- 사용자 명령:
+  - active goal 기준 `MVP 데모 가능한 웹/백엔드 완성 할것`을 계속 진행.
+- 요청 분석:
+  - durable gate가 통과된 뒤에도 release report, audit, decision, release notes를 사람이 따로 생성하면 MVP 데모 증거가 흩어진다.
+  - GitHub Actions durable workflow에서 backend tests와 durable gate를 통과한 뒤 곧바로 durable release artifact를 생성하고 검증하도록 자동화해야 한다고 판단.
+- 실행 내용:
+  - `runtime-toolchain.ps1`의 PowerShell child script 실행 helper가 자식 출력까지 반환하지 않고 exit code만 반환하는지 확인.
+  - `write-durable-release-artifacts.ps1`의 합성 durable gate report 기반 실행을 검증.
+  - durable artifact 생성 스크립트를 문서 인덱스와 MVP release checklist에 추가.
+- 구현 내용:
+  - `write-durable-release-artifacts.ps1`는 ready durable gate report와 `-BackendTestsIncluded` 증거를 요구하고, durable release JSON, MVP audit, release decision, release notes, artifact verifier를 한 번에 실행한다.
+  - durable checklist 명령을 `verify-durable-demo-gate.ps1` -> backend tests -> `write-durable-release-artifacts.ps1 -BackendTestsIncluded` 흐름으로 정리했다.
+- 수정된 파일 및 관련 파일:
+  - `dev-docs/document-index.md`
+  - `dev-docs/mvp-release-checklist.md`
+  - `dev-docs/worklog/main/worklog-main.md`
+  - 관련: `scripts/runtime-toolchain.ps1`
+  - 관련: `scripts/write-durable-release-artifacts.ps1`
+  - 관련: `.github/workflows/durable-docker-ci.yml`
+- 검증 기록:
+  - PowerShell parse check: `runtime-toolchain.ps1`, `write-durable-release-artifacts.ps1`, `verify-ci-workflow.ps1` 통과.
+  - `powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-ci-workflow.ps1` 통과.
+  - Synthetic durable release artifact test 통과. `.osmu-run/durable-release-artifact-self-test/` 아래 release JSON, audit, decision, notes 생성 및 `verify-mvp-release-artifacts.ps1` 통과.
+  - `powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-local.ps1 -SkipDocker -SkipBackend` 통과. frontend unit test 68개, frontend build, mock API self-test, 문서/CI/manifest/check scripts 통과.
+  - `git diff --check -- ...` 통과. CRLF 변환 warning만 존재.
+  - `docker info --format '{{json .ServerVersion}}'` 실패. Docker daemon pipe가 없어 durable full stack gate는 로컬에서 아직 실행 불가.
+- 결과:
+  - durable gate가 실제로 통과되면, 그 증거를 MVP durable release artifact 세트로 자동 변환하는 경로가 준비됐다.
+  - 로컬 Docker daemon 부재 때문에 실제 Docker/MariaDB/MinIO durable gate 통과 증거는 아직 없다.
+- 후속 메모:
+  - Docker Desktop 또는 GitHub-hosted runner에서 `verify-durable-demo-gate.ps1` 실통과를 확보해야 한다.
+  - durable workflow 성공 후 `.osmu-run/latest-release.json`, audit, decision, release notes artifact를 확인해야 한다.
+- 코드 리뷰:
+  - `write-durable-release-artifacts.ps1`가 `-BackendTestsIncluded` 없이는 실패하도록 되어 있어, durable proof를 과장하는 위험을 줄인다.
+  - `Invoke-OsmuPowerShellScript`가 exit code만 반환하도록 고정되어 child script 출력 때문에 성공이 실패로 오판되는 문제가 사라졌다.
+- 앞으로 추가적으로 개발해야 하는 내용:
+  - 실제 Docker daemon 환경에서 durable full stack gate 실행.
+  - 성공한 durable report를 기준으로 GitHub Actions artifact와 release decision이 GO로 기록되는지 확인.
+  - signed image, SBOM, vulnerability scan evidence까지 release notes에 자동 연결.
+- 추가 사용 skill/plugin:
+  - 없음.
+
+### 2026-06-15 - Demo Readiness 최종 재검증
+
+- 작업 시간:
+  - 시작: 2026-06-15 19:53:00 +09:00
+  - 종료: 2026-06-15 19:58:00 +09:00
+- 사용자 명령:
+  - active goal 기준 `MVP 데모 가능한 웹/백엔드 완성 할것`을 계속 진행.
+- 요청 분석:
+  - 직전 readiness 보강 후 실제 report가 backend Gradle tests PASS와 backend-backed Browser E2E PASS를 모두 반영하는지 확인해야 했다.
+- 실행 내용:
+  - 수정된 `verify-mvp-demo-readiness.ps1`를 parse check.
+  - sandbox 실행에서 Gradle network permission 때문에 backend tests가 PENDING으로 남는 것을 확인.
+  - 승인 권한으로 동일 readiness를 재실행해 backend tests와 backend-backed Browser E2E를 통과시킴.
+  - `.osmu-run/latest-demo-readiness.json` 요약을 확인.
+- 구현 내용:
+  - 추가 구현 없음. 직전 script/docs 변경의 최종 검증.
+- 수정된 파일 및 관련 파일:
+  - `scripts/verify-mvp-demo-readiness.ps1`
+  - `README.md`
+  - `dev-docs/feature-inventory.md`
+  - `dev-docs/prototype-status.md`
+  - `dev-docs/mvp-release-checklist.md`
+  - `dev-docs/worklog/main/worklog-main.md`
+- 검증 기록:
+  - PowerShell parse check for `verify-mvp-demo-readiness.ps1`: 통과.
+  - `powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-mvp-demo-readiness.ps1 -SkipDockerFullStackE2E`: sandbox에서는 backend Gradle tests PENDING.
+  - 승인 권한 재실행 `powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-mvp-demo-readiness.ps1 -SkipDockerFullStackE2E`: 통과. backend Gradle tests PASS, mock Browser E2E PASS, backend-backed Browser E2E PASS.
+  - `.osmu-run/latest-demo-readiness.json`: `result=partial`, `currentDemoStatus=backend-prototype-browser-demo-verified`, `mvpDemo=80-85%`, `product=15-20%`.
+  - `git diff --check -- ...`: 통과. CRLF 변환 warning만 존재.
+  - port 확인: 8080/5173 LISTEN 없음, TIME_WAIT만 존재.
+- 결과:
+  - 현재 머신 기준 Docker 없는 MVP web/backend demo evidence는 `80-85%`로 정리됐다.
+  - Docker/MariaDB/MinIO durable gate와 real S3 client smoke는 여전히 pending이다.
+- 후속 메모:
+  - 다음 큰 진척은 Docker Desktop 또는 GitHub Actions runner에서 `verify-durable-demo-gate.ps1` 실통과를 확보하는 것이다.
+- 코드 리뷰:
+  - readiness report가 backend tests를 PASS/PENDING으로 직접 기록하므로, 앞으로 완료율 판단이 더 덜 흔들린다.
+- 앞으로 추가적으로 개발해야 하는 내용:
+  - Docker full stack durable gate 실통과.
+  - real S3 client smoke 실통과.
+  - durable release artifact를 실제 gate report로 재생성.
+- 추가 사용 skill/plugin:
+  - 없음.
+
+### 2026-06-15 - Best Available MVP Demo Wrapper 추가
+
+- 작업 시간:
+  - 시작: 2026-06-15 19:59:00 +09:00
+  - 종료: 2026-06-15 20:08:00 +09:00
+- 사용자 명령:
+  - active goal 기준 `MVP 데모 가능한 웹/백엔드 완성 할것`을 계속 진행.
+- 요청 분석:
+  - Docker durable gate가 아직 외부 상태에 막혀 있으므로, 현재 머신에서 가능한 데모를 한 명령으로 켜고 끄는 실행성이 필요하다고 판단.
+  - 기존 `start-local-demo`, `start-local-prototype`, `start-frontend-mock-demo`를 유지하면서 그 위에 best-available wrapper를 얹는 작업으로 인식.
+- 실행 내용:
+  - `start-mvp-demo.ps1`와 `stop-mvp-demo.ps1`를 추가.
+  - `start-mvp-demo.ps1`는 auto/docker/prototype/mock 모드를 지원하고, auto에서는 Docker daemon -> JDK 17 prototype -> mock 순서로 선택.
+  - `-Verify` 옵션으로 선택된 모드의 smoke를 실행하고, `.osmu-run/mvp-demo/latest-mvp-demo.json`에 선택된 mode와 URL을 기록.
+  - README, document index, local dev 문서, test cases에 새 명령을 추가.
+- 구현 내용:
+  - Docker mode: `start-local-demo.ps1 -SeedDemo` 및 선택적 `-VerifyDemo`.
+  - Prototype mode: `start-local-prototype.ps1` 후 `verify-lightweight-prototype.ps1`.
+  - Mock mode: `start-frontend-mock-demo.ps1` 후 `verify-frontend-mock-demo.ps1 -NoStart`.
+  - Stop wrapper는 metadata의 selected mode를 읽어 해당 stop script를 호출.
+- 수정된 파일 및 관련 파일:
+  - `scripts/start-mvp-demo.ps1`
+  - `scripts/stop-mvp-demo.ps1`
+  - `README.md`
+  - `dev-docs/document-index.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/local-dev-env.md`
+  - `dev-docs/worklog/main/worklog-main.md`
+- 검증 기록:
+  - PowerShell parse check for `start-mvp-demo.ps1`, `stop-mvp-demo.ps1`: 통과.
+  - `git diff --check -- scripts/start-mvp-demo.ps1 scripts/stop-mvp-demo.ps1`: 통과.
+  - 최초 mock wrapper 실행은 child script에 absolute `LogDir`를 넘겨 실패. child script가 project-relative `LogDir`를 해석한다는 점을 확인하고 wrapper를 수정.
+  - `powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\start-mvp-demo.ps1 -Mode mock -Verify -ForcePorts`: 통과.
+  - `powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\stop-mvp-demo.ps1 -ForcePorts`: mock mode stop 통과.
+  - `powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\start-mvp-demo.ps1 -Mode prototype -Verify -ForcePorts`: 통과. Spring Boot in-memory backend, Vite frontend, lightweight API smoke 통과.
+  - `powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\stop-mvp-demo.ps1 -ForcePorts`: prototype mode stop 통과.
+  - `powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\start-mvp-demo.ps1 -Mode auto -Verify -ForcePorts`: 통과. 현재 머신에서는 Docker daemon 부재를 감지하고 prototype mode를 선택.
+  - `powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\stop-mvp-demo.ps1 -ForcePorts`: auto-selected prototype stop 통과.
+  - `powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-local.ps1 -SkipDocker -SkipBackend`: 통과. frontend unit test 68개, build, mock API self-test, 문서/CI/manifest/static checks 통과.
+  - `git diff --check -- scripts/start-mvp-demo.ps1 scripts/stop-mvp-demo.ps1 README.md dev-docs/document-index.md dev-docs/test-cases.md dev-docs/local-dev-env.md dev-docs/worklog/main/worklog-main.md`: 통과. CRLF 변환 warning만 존재.
+  - port 확인: 8080/5173 LISTEN 없음. auto 검증 직후 8080 TIME_WAIT만 존재.
+- 결과:
+  - 사용자가 Docker 상태를 몰라도 `start-mvp-demo.ps1 -Verify -ForcePorts`로 현재 가능한 MVP demo를 바로 실행할 수 있게 됐다.
+  - 현재 환경에서는 prototype mode가 가장 강한 non-Docker demo 경로로 확인됐다.
+- 후속 메모:
+  - Docker Desktop이 켜진 환경에서는 auto mode가 Docker full stack을 선택하는지 추가 확인해야 한다.
+  - Docker mode 통과 후 durable gate와 release artifact 생성까지 연결해야 한다.
+- 코드 리뷰:
+  - wrapper가 기존 스크립트를 감싸는 구조라 기존 검증 경로를 깨지 않는다.
+  - selected mode metadata를 남기기 때문에 stop wrapper가 사용자가 선택한 실행 경로를 기억할 수 있다.
+- 앞으로 추가적으로 개발해야 하는 내용:
+  - Docker mode auto selection 실검증.
+  - durable gate 통과 후 `write-durable-release-artifacts.ps1 -BackendTestsIncluded`까지 실제 report 생성.
+- 추가 사용 skill/plugin:
+  - 없음.
+
+### 2026-06-15 - Durable Demo Preflight와 Gate 진단 보강
+
+- 작업 시간:
+  - 시작: 2026-06-15 20:09:00 +09:00
+  - 종료: 2026-06-15 20:19:00 +09:00
+- 사용자 명령:
+  - active goal 기준 `MVP 데모 가능한 웹/백엔드 완성 할것`을 계속 진행.
+- 요청 분석:
+  - Docker daemon이 꺼져 있어 full MariaDB/MinIO durable gate를 현 머신에서 통과시킬 수는 없지만, 실제 gate 실행 직전의 전제조건 진단을 더 명확히 남기면 다음 실행자가 바로 남은 문제를 닫을 수 있다고 판단.
+  - Docker 관련 스크립트가 repo-local `DOCKER_CONFIG`를 일관되게 쓰도록 맞추고, durable gate가 실패해도 구조화된 preflight 증거를 남기는 작업으로 인식.
+- 실행 내용:
+  - `verify-durable-demo-preflight.ps1`를 추가.
+  - `verify-durable-demo-gate.ps1`가 durable preflight를 먼저 실행하도록 연결하고 `-SkipPreflight` 옵션을 추가.
+  - `verify-s3-client-smoke.ps1`에 repo-local Docker config 격리 적용.
+  - Durable Docker CI에 preflight step과 preflight artifact 업로드 경로를 추가.
+  - README, document index, local dev 문서, test cases에 preflight 명령과 기대 결과를 추가.
+- 구현 내용:
+  - Preflight는 env source, compose file, Node/npm, Docker CLI, Docker daemon, Docker Compose config, AWS CLI, host `mc`, Dockerized `mc`, selected S3 client path를 검사한다.
+  - 기본값은 required failure가 있으면 non-zero exit이고, `-AllowNotReady`를 주면 pending report를 남기고 0으로 종료한다.
+  - `.osmu-run/latest-durable-demo-preflight.json`과 `.osmu-run/latest-durable-demo-preflight.md`를 생성한다.
+  - Durable gate는 preflight 실패를 gate report의 `Durable demo preflight` 실패로 기록한다.
+- 수정된 파일 및 관련 파일:
+  - `scripts/verify-durable-demo-preflight.ps1`
+  - `scripts/verify-durable-demo-gate.ps1`
+  - `scripts/verify-s3-client-smoke.ps1`
+  - `scripts/verify-ci-workflow.ps1`
+  - `.github/workflows/durable-docker-ci.yml`
+  - `README.md`
+  - `dev-docs/document-index.md`
+  - `dev-docs/local-dev-env.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/worklog/main/worklog-main.md`
+- 검증 기록:
+  - PowerShell parse check for `verify-durable-demo-preflight.ps1`, `verify-durable-demo-gate.ps1`, `verify-s3-client-smoke.ps1`, `verify-ci-workflow.ps1`: 통과.
+  - `git diff --check -- ...`: 통과. CRLF 변환 warning만 존재.
+  - `powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-durable-demo-preflight.ps1 -AllowNotReady`: 통과. `result=pending`, required failures는 `Docker daemon`, `Selected real S3 client path`.
+  - `powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-durable-demo-gate.ps1`: 예상 실패. preflight pending report와 durable gate failed report를 생성하고 Docker local demo stop 경로까지 실행.
+  - `powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-ci-workflow.ps1`: 통과.
+  - `powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-local.ps1 -SkipDocker -SkipBackend`: 통과. frontend unit test 68개, build, mock API self-test, 문서/CI/manifest/static checks 통과.
+- 결과:
+  - Docker가 꺼진 현 환경에서도 durable gate의 남은 blocker가 `Docker daemon`과 selected S3 client path로 명확히 기록된다.
+  - Docker Desktop을 켠 뒤에는 preflight -> durable gate -> durable release artifact 생성 순서로 바로 이어갈 수 있다.
+- 후속 메모:
+  - Docker Desktop 또는 GitHub Actions runner에서 `verify-durable-demo-preflight.ps1`가 `ready`가 되는지 확인한 뒤 `verify-durable-demo-gate.ps1`를 실행해야 한다.
+  - durable gate 통과 후 `write-durable-release-artifacts.ps1 -BackendTestsIncluded`로 release/audit/decision/notes를 재생성해야 한다.
+- 코드 리뷰:
+  - preflight가 container를 시작하지 않아 빠르고 안전하게 prerequisites만 확인한다.
+  - `-AllowNotReady`와 기본 non-zero 동작을 분리해 CI/gate에서는 실패를 강하게 잡고, 로컬 진단에서는 pending report를 남길 수 있다.
+  - S3 client smoke도 repo-local Docker config를 쓰므로 Windows 사용자 홈 `.docker` 권한 문제에 덜 민감하다.
+- 앞으로 추가적으로 개발해야 하는 내용:
+  - Docker daemon available 환경에서 preflight `ready` 실검증.
+  - full durable gate 실통과 및 실제 S3 client smoke 통과.
+  - durable release artifact 재생성 후 MVP demo completion estimate 상향 여부 재판정.
+- 추가 사용 skill/plugin:
+  - 없음.
+
+### 2026-06-15 - MVP Readiness에 Durable Preflight 증거 연결
+
+- 작업 시간:
+  - 시작: 2026-06-15 20:20:00 +09:00
+  - 종료: 2026-06-15 20:27:00 +09:00
+- 사용자 명령:
+  - active goal 기준 `MVP 데모 가능한 웹/백엔드 완성 할것`을 계속 진행.
+- 요청 분석:
+  - 직전 작업으로 durable preflight가 생겼지만, 전체 MVP demo readiness report가 이 preflight 결과를 직접 반영하지 않아 completion 판단 근거가 분산되어 있었다.
+  - `verify-mvp-demo-readiness.ps1`에 durable preflight를 연결해 Docker/S3 client pending 사유를 최신 readiness report에 직접 남기는 작업으로 인식.
+- 실행 내용:
+  - `verify-mvp-demo-readiness.ps1`에 `-S3Client <auto|aws|mc|docker-mc|all>` 옵션을 추가.
+  - readiness 실행 중 `verify-durable-demo-preflight.ps1 -AllowNotReady`를 호출하고, 생성된 preflight JSON의 `result`와 `requiredFailures`를 읽어 `Durable demo preflight` check로 기록.
+  - durable gate를 실제로 호출할 때도 선택된 `-S3Client` 값을 넘기도록 수정.
+  - README, document index, test cases의 readiness 설명을 preflight 포함 흐름으로 갱신.
+- 구현 내용:
+  - Preflight가 `ready`이면 readiness check에 `READY`로 기록.
+  - Preflight가 `pending`이면 required failure 목록을 `PENDING` 상세에 포함.
+  - `pendingDurableChecks`에 `Durable demo preflight`를 추가해 Docker/MariaDB/MinIO gate 이전의 prerequisite gap도 완료율 판단에 반영.
+  - `nextCommands`에 `verify-durable-demo-preflight.ps1 -S3Client docker-mc`를 durable gate보다 앞에 추가.
+- 수정된 파일 및 관련 파일:
+  - `scripts/verify-mvp-demo-readiness.ps1`
+  - `README.md`
+  - `dev-docs/document-index.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/worklog/main/worklog-main.md`
+- 검증 기록:
+  - PowerShell parse check for `verify-mvp-demo-readiness.ps1`, `verify-durable-demo-preflight.ps1`, `verify-durable-demo-gate.ps1`: 통과.
+  - `git diff --check -- scripts/verify-mvp-demo-readiness.ps1 README.md dev-docs/document-index.md dev-docs/test-cases.md`: 통과. CRLF 변환 warning만 존재.
+  - sandbox 실행 `powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-mvp-demo-readiness.ps1 -SkipDockerFullStackE2E -S3Client docker-mc`: 통과했으나 Gradle distribution network permission 때문에 backend tests는 PENDING으로 기록.
+  - 승인 권한 재실행 `powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-mvp-demo-readiness.ps1 -SkipDockerFullStackE2E -S3Client docker-mc`: 통과. backend Gradle tests PASS, mock Browser E2E PASS, backend-backed Browser E2E PASS.
+  - `.osmu-run/latest-demo-readiness.json`: `result=partial`, `currentDemoStatus=backend-prototype-browser-demo-verified`, `mvpDemo=80-85%`, `product=15-20%`, pending durable checks에 `Durable demo preflight` 포함.
+  - port 확인: 8080/5173/9000/9001 LISTEN 없음. TIME_WAIT만 존재.
+- 결과:
+  - 최신 readiness report 하나만 봐도 Docker daemon과 selected S3 client path가 durable preflight blocker임을 알 수 있게 됐다.
+  - MVP demo completion estimate는 backend tests PASS와 backend-backed Browser E2E PASS 기준으로 `80-85%`를 유지한다.
+- 후속 메모:
+  - Docker Desktop을 켠 뒤 `verify-durable-demo-preflight.ps1 -S3Client docker-mc`가 `ready`로 바뀌는지 먼저 확인해야 한다.
+  - preflight ready 후 durable gate를 통과시키면 `.osmu-run/latest-demo-readiness.json`에서 `docker-durable-demo-verified`까지 올릴 수 있다.
+- 코드 리뷰:
+  - readiness script가 preflight JSON을 읽어 evidence를 남기므로 Docker pending 사유가 추상적인 문장에 머물지 않는다.
+  - `-S3Client`를 readiness, preflight, durable gate 사이에서 같은 값으로 전달해 선택된 client path 기준이 흔들리지 않는다.
+- 앞으로 추가적으로 개발해야 하는 내용:
+  - Docker daemon available 환경에서 preflight ready 및 durable gate 실통과.
+  - real S3 client smoke 통과 후 durable release artifact 재생성.
+- 추가 사용 skill/plugin:
+  - 없음.
+
+### 2026-06-15 - Durable Gate Report S3 Client 추적성 보강
+
+- 작업 시간:
+  - 시작: 2026-06-15 20:27:00 +09:00
+  - 종료: 2026-06-15 20:30:00 +09:00
+- 사용자 명령:
+  - active goal 기준 `MVP 데모 가능한 웹/백엔드 완성 할것`을 계속 진행.
+- 요청 분석:
+  - readiness/preflight/gate 사이에서 `-S3Client` 기준은 연결됐지만, durable gate report 자체의 next commands와 필드에는 선택된 S3 client 추적 정보가 부족했다.
+  - Docker가 켜진 환경에서 report만 보고 동일 기준으로 preflight -> gate -> readiness -> release artifacts를 이어갈 수 있도록 보강하는 작업으로 인식.
+- 실행 내용:
+  - `verify-durable-demo-gate.ps1` report에 `selectedS3Client`와 `durablePreflightReportPath`를 추가.
+  - gate summary에 selected S3 client와 durable preflight report 경로를 표시.
+  - gate report의 `nextCommands`를 preflight, gate, readiness, durable release artifact 순서로 정리하고 `-S3Client` 값을 유지.
+  - `verify-durable-demo-preflight.ps1`의 readiness next command에도 `-S3Client` 값을 포함.
+- 구현 내용:
+  - durable gate가 preflight 호출 시 명시적으로 `-ReportPath .\.osmu-run\latest-durable-demo-preflight.json`를 넘긴다.
+  - 실패 report에서도 어떤 S3 client 기준으로 preflight/gate가 실행됐는지 JSON과 Markdown summary에서 확인할 수 있다.
+- 수정된 파일 및 관련 파일:
+  - `scripts/verify-durable-demo-gate.ps1`
+  - `scripts/verify-durable-demo-preflight.ps1`
+  - `dev-docs/worklog/main/worklog-main.md`
+- 검증 기록:
+  - PowerShell parse check for `verify-durable-demo-gate.ps1`, `verify-durable-demo-preflight.ps1`, `verify-mvp-demo-readiness.ps1`: 통과.
+  - `git diff --check -- scripts/verify-durable-demo-gate.ps1 scripts/verify-durable-demo-preflight.ps1`: 통과.
+  - `powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-durable-demo-preflight.ps1 -S3Client docker-mc -AllowNotReady`: 통과. pending report 생성.
+  - `powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-durable-demo-gate.ps1 -S3Client docker-mc`: 예상 실패. report에 `selectedS3Client=docker-mc`, `durablePreflightReportPath=.osmu-run\latest-durable-demo-preflight.json`, S3 client가 포함된 next commands 기록.
+  - `powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-ci-workflow.ps1`: 통과.
+- 결과:
+  - durable gate report 하나만 봐도 preflight report 위치와 S3 client 선택 기준을 추적할 수 있게 됐다.
+  - Docker daemon이 켜진 뒤 동일한 `docker-mc` 기준으로 gate와 readiness를 이어서 실행할 수 있다.
+- 후속 메모:
+  - Docker Desktop이 켜진 환경에서 `verify-durable-demo-gate.ps1 -S3Client docker-mc`를 실통과시켜야 한다.
+  - gate ready 후 `write-durable-release-artifacts.ps1 -BackendTestsIncluded`를 실행해 release/audit/decision/notes를 갱신해야 한다.
+- 코드 리뷰:
+  - 실행 자체의 동작은 바꾸지 않고 report/next command 추적성만 보강해 기존 gate 흐름의 위험을 낮게 유지했다.
+  - preflight/gate/readiness의 S3 client 선택값이 같은 문자열로 이어져 사람이 수동으로 명령을 따라 실행할 때 혼선이 줄었다.
+- 앞으로 추가적으로 개발해야 하는 내용:
+  - Docker daemon available 환경에서 full durable gate 실검증.
+  - durable release artifact 재생성 및 latest readiness 재판정.
+- 추가 사용 skill/plugin:
+  - 없음.
+
+### 2026-06-15 - Durable Release Artifact S3 Client 증거 전파
+
+- 작업 시간:
+  - 시작: 2026-06-15 20:30:00 +09:00
+  - 종료: 2026-06-15 20:34:00 +09:00
+- 사용자 명령:
+  - active goal 기준 `MVP 데모 가능한 웹/백엔드 완성 할것`을 계속 진행.
+- 요청 분석:
+  - durable gate report에는 `selectedS3Client`와 `durablePreflightReportPath`가 추가됐지만, `write-durable-release-artifacts.ps1`가 release report 생성 시 여전히 Dockerized `mc` 기준을 고정값으로 기록하고 있었다.
+  - gate가 어떤 S3 client로 통과했는지와 preflight 증거를 audit/decision/release notes가 참조하는 release report까지 전파해야 MVP durable proof가 일관된다고 판단.
+- 실행 내용:
+  - `write-durable-release-artifacts.ps1`가 durable gate report의 `selectedS3Client`, `durablePreflightReportPath`를 읽도록 수정.
+  - durable preflight report가 존재하면 `AWS CLI`, `MinIO Client mc`, `Dockerized MinIO Client mc` check status를 기준으로 release report `optionalGates`를 생성.
+  - preflight report가 없는 legacy gate report에는 기존 동작과 호환되는 fallback을 적용.
+  - `verify-mvp-release-artifacts.ps1`가 durable gate report와 release report의 selected S3 client/preflight path mismatch를 검출하도록 보강.
+  - README, document index, MVP release checklist에 durable release artifact가 selected S3 client/preflight evidence를 보존한다고 문서화.
+- 구현 내용:
+  - `selectedS3Client`, `durablePreflightReportPath`를 release report top-level 필드로 기록.
+  - `optionalGates.awsCliAvailable`, `mcAvailable`, `dockerizedMcAvailable`를 preflight checks에서 파생.
+  - `realS3ClientAvailable`은 ready durable gate의 실제 client smoke 통과 증거로 true 유지.
+- 수정된 파일 및 관련 파일:
+  - `scripts/write-durable-release-artifacts.ps1`
+  - `scripts/verify-mvp-release-artifacts.ps1`
+  - `README.md`
+  - `dev-docs/document-index.md`
+  - `dev-docs/mvp-release-checklist.md`
+  - `dev-docs/worklog/main/worklog-main.md`
+- 검증 기록:
+  - PowerShell parse check for `write-durable-release-artifacts.ps1`, `verify-mvp-release-artifacts.ps1`: 통과.
+  - `git diff --check -- scripts/write-durable-release-artifacts.ps1 scripts/verify-mvp-release-artifacts.ps1 README.md dev-docs/document-index.md dev-docs/mvp-release-checklist.md`: 통과. CRLF 변환 warning만 존재.
+  - Synthetic durable release artifact propagation test 통과. `.osmu-run/durable-release-s3-client-propagation-test/` 아래 synthetic ready gate/preflight report를 만들고 `write-durable-release-artifacts.ps1 -BackendTestsIncluded` 실행.
+  - 생성된 release report 확인: `selectedS3Client=aws`, `durablePreflightReportPath=<synthetic preflight>`, `awsCliAvailable=true`, `mcAvailable=false`, `dockerizedMcAvailable=true`, `realS3ClientAvailable=true`.
+  - `verify-mvp-release-artifacts.ps1`가 synthetic artifact set을 통과.
+- 결과:
+  - durable gate가 실제로 통과되면 release/audit/decision/notes가 같은 S3 client/preflight evidence basis를 공유하게 됐다.
+  - Dockerized `mc`가 아닌 host AWS CLI 또는 host `mc` 기준으로 gate가 통과해도 release report가 그 기준을 보존할 수 있다.
+- 후속 메모:
+  - Docker daemon available 환경에서 실제 gate 통과 후 이 release artifact propagation을 real report로 확인해야 한다.
+- 코드 리뷰:
+  - legacy durable gate report에는 fallback이 있어 기존 synthetic/self-test 흐름을 깨지 않는다.
+  - verifier가 gate와 release report 사이의 selected S3 client mismatch를 잡기 때문에 evidence drift 위험이 줄었다.
+- 앞으로 추가적으로 개발해야 하는 내용:
+  - 실제 Docker/MariaDB/MinIO durable gate 통과.
+  - 실제 durable release artifact 재생성 및 latest readiness 재판정.
+- 추가 사용 skill/plugin:
+  - 없음.
+
+### 2026-06-15 - Durable MVP Finalize 단일 명령 추가
+
+- 작업 시간:
+  - 시작: 2026-06-15 20:34:00 +09:00
+  - 종료: 2026-06-15 20:43:00 +09:00
+- 사용자 명령:
+  - active goal 기준 `MVP 데모 가능한 웹/백엔드 완성 할것`을 계속 진행.
+- 요청 분석:
+  - durable preflight, backend test, durable gate, release artifact 생성, readiness hard gate가 각각 분리되어 있어 Docker가 준비된 환경에서도 MVP 데모 완료 증거를 사람이 순서대로 조립해야 했다.
+  - 목표 상태에 더 가까워지려면 Docker-ready 환경에서 실행할 단일 finalization 명령과 그 명령의 문서/테스트 기준이 필요하다고 판단.
+- 실행 내용:
+  - `finalize-durable-mvp-demo.ps1`의 현재 구현을 확인하고 README, document index, local dev guide, test cases, MVP release checklist에 사용법과 기대 결과를 연결.
+  - `-PlanOnly` 모드가 Docker daemon 없이도 명령 순서를 JSON/Markdown으로 남기는 검증용 경로임을 문서화.
+- 구현 내용:
+  - `scripts/finalize-durable-mvp-demo.ps1`는 durable preflight -> backend Gradle tests -> durable demo gate -> durable release artifacts -> `verify-mvp-demo-readiness.ps1 -FailIfDurablePending` 순서의 wrapper로 정리.
+  - `README.md`에 Docker-ready full finalize 명령과 plan-only 명령을 추가.
+  - `dev-docs/document-index.md`에 finalize wrapper 설명을 추가.
+  - `dev-docs/local-dev-env.md`에 local durable finalize 사용법을 추가.
+  - `dev-docs/test-cases.md`에 `TC-DEMO-007` durable MVP finalize orchestration 테스트 케이스를 추가.
+  - `dev-docs/mvp-release-checklist.md`에 finalize wrapper 통과 항목과 명령을 추가.
+- 수정된 파일 및 관련 파일:
+  - `scripts/finalize-durable-mvp-demo.ps1`
+  - `README.md`
+  - `dev-docs/document-index.md`
+  - `dev-docs/local-dev-env.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/mvp-release-checklist.md`
+  - `dev-docs/worklog/main/worklog-main.md`
+- 검증 기록:
+  - PowerShell parse check for `scripts/finalize-durable-mvp-demo.ps1`: 통과.
+  - `git diff --check -- scripts/finalize-durable-mvp-demo.ps1 README.md dev-docs/document-index.md dev-docs/local-dev-env.md dev-docs/test-cases.md dev-docs/mvp-release-checklist.md dev-docs/worklog/main/worklog-main.md`: 통과. CRLF 변환 warning만 존재.
+  - `rg -n "finalize-durable-mvp-demo|TC-DEMO-007|Durable MVP Finalize" README.md dev-docs scripts`: 문서/스크립트 연결 확인.
+  - `powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\finalize-durable-mvp-demo.ps1 -S3Client docker-mc -PlanOnly`: 통과. `.osmu-run/latest-durable-mvp-finalize.json`과 `.md` 생성.
+- 결과:
+  - Docker가 켜진 환경에서 MVP durable demo 후보를 한 번에 닫는 실행 경로가 생겼다.
+  - 현재 머신은 Docker daemon이 꺼져 있어 full finalize 실통과는 아직 증명되지 않았다.
+- 다음 작업할 때 참고할 사항:
+  - Docker Desktop을 켠 뒤 `finalize-durable-mvp-demo.ps1 -S3Client docker-mc`를 실행하면 durable gate, release artifact, readiness hard gate를 한 번에 확인할 수 있다.
+  - full finalize가 통과하면 `.osmu-run/latest-demo-readiness.json`의 MVP demo estimate를 재판정해야 한다.
+- 코드 리뷰:
+  - 기존 개별 검증 스크립트를 재사용하고 wrapper는 orchestration/report 역할만 담당하므로 검증 책임이 중복되지 않는다.
+  - `-PlanOnly`를 둔 덕분에 Docker가 없는 환경에서도 명령 순서와 산출물 경로를 검토할 수 있다.
+- 앞으로 추가적으로 개발해야 하는 내용:
+  - Docker daemon available 환경에서 full finalize 실통과 증거 확보.
+  - durable finalize report를 CI artifact로 업로드하는 workflow 보강.
+- 추가 사용 skill/plugin:
+  - 없음.
+
+### 2026-06-15 - Durable Docker CI Finalize Wrapper 연결
+
+- 작업 시간:
+  - 시작: 2026-06-15 20:43:00 +09:00
+  - 종료: 2026-06-15 20:48:00 +09:00
+- 사용자 명령:
+  - active goal 기준 `MVP 데모 가능한 웹/백엔드 완성 할것`을 계속 진행.
+- 요청 분석:
+  - 로컬용 durable finalize wrapper가 생겼지만 durable Docker CI workflow는 여전히 backend test, preflight, durable gate, release artifact 생성을 개별 step으로 실행하고 있었다.
+  - CI에서도 같은 finalization wrapper를 사용해야 로컬과 CI의 MVP durable proof 계약이 맞고, release candidate 증거가 한 경로로 수렴한다고 판단.
+- 실행 내용:
+  - durable Docker CI workflow를 `finalize-durable-mvp-demo.ps1` 중심으로 정리.
+  - CI artifact에 durable finalize report와 latest readiness report를 포함.
+  - CI workflow verifier가 새 계약을 검사하도록 갱신.
+  - finalize wrapper의 command report가 OS에 맞는 PowerShell/Gradle 표시 명령을 만들도록 보강.
+- 구현 내용:
+  - `.github/workflows/durable-docker-ci.yml`에서 개별 backend/preflight/gate/artifact step을 `Finalize durable MVP demo` step으로 통합.
+  - upload artifact 목록에 `.osmu-run/latest-durable-mvp-finalize.json`, `.osmu-run/latest-durable-mvp-finalize.md`, `.osmu-run/latest-demo-readiness.json`을 추가.
+  - `scripts/verify-ci-workflow.ps1`가 finalize wrapper step과 새 artifact 목록을 검증하도록 수정.
+  - `scripts/finalize-durable-mvp-demo.ps1`에 `New-BackendCommandEntry`를 추가해 Windows에서는 `gradlew.bat`, 비Windows에서는 `./gradlew` 표시 명령을 사용하도록 정리.
+  - `dev-docs/mvp-release-checklist.md`의 durable Docker CI 설명을 finalize wrapper 기준으로 갱신.
+- 수정된 파일 및 관련 파일:
+  - `.github/workflows/durable-docker-ci.yml`
+  - `scripts/finalize-durable-mvp-demo.ps1`
+  - `scripts/verify-ci-workflow.ps1`
+  - `dev-docs/mvp-release-checklist.md`
+  - `dev-docs/worklog/main/worklog-main.md`
+- 검증 기록:
+  - PowerShell parse check for `scripts/finalize-durable-mvp-demo.ps1`, `scripts/verify-ci-workflow.ps1`: 통과.
+  - `powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-ci-workflow.ps1`: 통과.
+  - `git diff --check -- .github/workflows/durable-docker-ci.yml scripts/finalize-durable-mvp-demo.ps1 scripts/verify-ci-workflow.ps1 dev-docs/mvp-release-checklist.md`: 통과. CRLF 변환 warning만 존재.
+  - `powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\finalize-durable-mvp-demo.ps1 -S3Client docker-mc -PlanOnly`: 통과.
+- 결과:
+  - durable Docker CI가 개별 검증 조각 대신 finalization wrapper를 실행하는 구조로 정리됐다.
+  - CI artifact에서 durable gate, preflight, release artifacts, finalize report, readiness report를 함께 확인할 수 있게 됐다.
+- 다음 작업할 때 참고할 사항:
+  - GitHub Actions 또는 Docker-ready 로컬 환경에서 durable Docker CI/finalize full run을 실행해 실제 Docker/MariaDB/MinIO/Browser/S3 client 통과 증거를 확보해야 한다.
+- 코드 리뷰:
+  - workflow가 wrapper를 직접 실행하므로 로컬 문서와 CI 계약 사이의 drift 위험이 줄었다.
+  - `finalize-durable-mvp-demo.ps1`는 실행 로직은 기존 script 재사용을 유지하고 report command display만 OS별로 맞췄다.
+- 앞으로 추가적으로 개발해야 하는 내용:
+  - full durable CI run 성공 증거 확보.
+  - Docker daemon available 환경에서 latest readiness를 `FailIfDurablePending`으로 통과시키기.
+- 추가 사용 skill/plugin:
+  - 없음.
+
+### 2026-06-15 - Readiness Next Command에 Durable Finalize 연결
+
+- 작업 시간:
+  - 시작: 2026-06-15 20:49:00 +09:00
+  - 종료: 2026-06-15 20:56:00 +09:00
+- 사용자 명령:
+  - active goal 기준 `MVP 데모 가능한 웹/백엔드 완성 할것`을 계속 진행.
+- 요청 분석:
+  - Docker daemon이 아직 꺼져 있어 full durable gate는 실행할 수 없었다.
+  - 대신 preflight/readiness/gate 리포트가 실패 또는 partial 상태일 때 사용자를 새 finalization wrapper로 직접 안내해야 Docker-ready 환경에서 MVP demo proof를 빠르게 닫을 수 있다고 판단.
+- 실행 내용:
+  - Docker durable preflight를 다시 실행해 현재 외부 상태를 확인.
+  - `verify-durable-demo-preflight.ps1`, `verify-durable-demo-gate.ps1`, `verify-mvp-demo-readiness.ps1`의 `nextCommands`에 `finalize-durable-mvp-demo.ps1` 실행 명령을 추가.
+  - readiness를 재실행해 최신 report가 `backend-prototype-browser-demo-verified`, MVP demo `80-85%` 상태와 finalize next command를 함께 기록하는지 확인.
+- 구현 내용:
+  - durable preflight report의 next commands에 `finalize-durable-mvp-demo.ps1 -S3Client <value>` 추가.
+  - durable gate report의 next commands에 `finalize-durable-mvp-demo.ps1 -S3Client <value>` 추가.
+  - MVP readiness report의 next commands에 `finalize-durable-mvp-demo.ps1 -S3Client <value> -JavaHome <jdk17>` 추가.
+- 수정된 파일 및 관련 파일:
+  - `scripts/verify-durable-demo-preflight.ps1`
+  - `scripts/verify-durable-demo-gate.ps1`
+  - `scripts/verify-mvp-demo-readiness.ps1`
+  - `dev-docs/worklog/main/worklog-main.md`
+- 검증 기록:
+  - `powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-durable-demo-preflight.ps1 -S3Client docker-mc -AllowNotReady`: 통과. Docker daemon과 selected real S3 client path는 pending으로 기록되고 next commands에 finalize wrapper가 포함됨.
+  - PowerShell parse check for `verify-durable-demo-preflight.ps1`, `verify-durable-demo-gate.ps1`, `verify-mvp-demo-readiness.ps1`: 통과.
+  - `git diff --check -- scripts/verify-durable-demo-preflight.ps1 scripts/verify-durable-demo-gate.ps1 scripts/verify-mvp-demo-readiness.ps1`: 통과.
+  - `verify-mvp-demo-readiness.ps1 -S3Client docker-mc -SkipDockerFullStackE2E` 1차 sandbox 실행: mock Browser E2E 일시 실패와 Gradle wrapper network permission 문제로 backend tests pending 기록.
+  - 동일 readiness 명령을 승인된 실행으로 재실행: 통과. frontend unit tests 68개 통과, mock Browser E2E 3개 통과, backend Gradle tests 통과, backend prototype Browser E2E 3개 통과, 최신 readiness는 MVP demo `80-85%`.
+- 결과:
+  - partial/failure 리포트를 보는 사용자가 바로 durable finalize 명령을 따라갈 수 있게 됐다.
+  - 최신 `.osmu-run/latest-demo-readiness.json`은 다시 `backend-prototype-browser-demo-verified`, `mvpDemo=80-85%`를 기록한다.
+- 다음 작업할 때 참고할 사항:
+  - Docker Desktop 실행 후 `finalize-durable-mvp-demo.ps1 -S3Client docker-mc`를 실행하면 durable proof를 한 번에 닫을 수 있다.
+  - Docker daemon이 꺼진 현재 환경에서는 durable preflight, MariaDB/MinIO full-stack, Docker-backed Browser E2E, real S3 client가 계속 pending이다.
+- 코드 리뷰:
+  - 실행 순서를 바꾸지 않고 report guidance만 추가했으므로 기존 검증 플로우의 안정성을 해치지 않는다.
+  - readiness report가 finalization wrapper를 직접 안내하므로 문서와 자동 산출물 사이의 안내 불일치가 줄었다.
+- 앞으로 추가적으로 개발해야 하는 내용:
+  - Docker daemon available 환경에서 full durable finalize 통과.
+  - mock Browser E2E의 admin empty-state 일시 실패 원인을 추가 조사해 flaky 가능성 제거.
+- 추가 사용 skill/plugin:
+  - 없음.
+
+### 2026-06-15 - Mock Browser E2E Admin Bucket Context Flake 완화
+
+- 작업 시간:
+  - 시작: 2026-06-15 20:57:00 +09:00
+  - 종료: 2026-06-15 21:03:00 +09:00
+- 사용자 명령:
+  - active goal 기준 `MVP 데모 가능한 웹/백엔드 완성 할것`을 계속 진행.
+- 요청 분석:
+  - 직전 readiness 실행 중 mock Browser E2E의 admin storage click path가 `admin-bucket-empty-state`를 찾지 못해 1회 실패했다.
+  - mock API는 기본 demo bucket을 제공하고, 앱이 첫 bucket을 자동 선택하면 `admin-bucket-empty-state` 대신 bucket metadata panel이 표시될 수 있으므로 테스트가 “선택 없음” 상태에 과도하게 의존한다고 판단.
+- 실행 내용:
+  - `lightweight-demo.spec.js`의 admin test 초기 bucket context 검증을 확인.
+  - admin 진입 직후 `admin-bucket-empty-state` 또는 `bucket-lifecycle-panel` 중 하나가 보이면 정상으로 인정하는 helper를 추가.
+  - mock Browser E2E를 반복 실행해 admin path 안정성을 확인.
+- 구현 내용:
+  - `expectAdminBucketContextReady(page)` helper 추가.
+  - admin test에서 `admin-bucket-empty-state` 단일 기대를 helper 호출로 대체.
+- 수정된 파일 및 관련 파일:
+  - `osmu-frontend/e2e/lightweight-demo.spec.js`
+  - `dev-docs/worklog/main/worklog-main.md`
+- 검증 기록:
+  - `node --check .\osmu-frontend\e2e\lightweight-demo.spec.js`: 통과.
+  - `git diff --check -- osmu-frontend/e2e/lightweight-demo.spec.js`: 통과. CRLF 변환 warning만 존재.
+  - `powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-browser-e2e-mock-demo.ps1`: 1차 통과, Playwright 3개 테스트 통과.
+  - `powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-browser-e2e-mock-demo.ps1`: 2차 통과, Playwright 3개 테스트 통과.
+- 결과:
+  - mock API에 기본 demo bucket이 있거나 앱이 첫 bucket을 자동 선택해도 admin E2E가 정상 상태로 판정된다.
+  - Java/Docker-free mock Browser E2E 증거가 더 안정적이 됐다.
+- 다음 작업할 때 참고할 사항:
+  - Docker-backed Browser E2E에서도 유사하게 fixture가 있는 상태와 없는 상태를 모두 허용해야 한다.
+  - full durable gate 통과 전까지 mock/prototype E2E는 데모 안정성을 보조하는 증거이며 Docker/MariaDB/MinIO 증거를 대체하지 않는다.
+- 코드 리뷰:
+  - 테스트 기대값을 실제 UI 상태 두 가지로 제한했으므로 지나치게 느슨하지 않다.
+  - helper가 admin 초기 bucket context만 담당해 기존 storage/object/audit click path 검증은 그대로 유지된다.
+- 앞으로 추가적으로 개발해야 하는 내용:
+  - Docker daemon available 환경에서 Docker-backed Browser E2E와 durable finalize 통과.
+  - 필요하면 mock API reset endpoint를 추가해 더 강한 테스트 격리를 제공.
+- 추가 사용 skill/plugin:
+  - 없음.
+
+### 2026-06-15 - Mock API Reset Endpoint와 E2E 상태 격리 보강
+
+- 작업 시간:
+  - 시작: 2026-06-15 21:04:00 +09:00
+  - 종료: 2026-06-15 21:12:00 +09:00
+- 사용자 명령:
+  - active goal 기준 `MVP 데모 가능한 웹/백엔드 완성 할것`을 계속 진행.
+- 요청 분석:
+  - mock Browser E2E와 frontend mock smoke는 같은 mock API 상태를 변형하므로, 같은 프로세스에 다시 붙거나 검증을 연달아 실행할 때 fixture 오염 가능성이 있다.
+  - Docker full gate 전 단계라도 mock/prototype 데모가 반복 가능해야 MVP 시연 안정성이 올라간다고 판단.
+- 실행 내용:
+  - mock API의 초기 fixture 생성을 `createInitialState()`로 분리.
+  - mock 전용 `POST /api/mock/reset` endpoint를 추가.
+  - frontend mock smoke와 mock Browser E2E 스크립트가 서버 시작 직후 reset endpoint를 호출하도록 보강.
+  - README와 document index에 mock reset 동작을 문서화.
+- 구현 내용:
+  - `osmu-frontend/mock-api/server.mjs`: `let state = createInitialState()`, `resetMockState()`, `POST /api/mock/reset` 추가.
+  - mock API self-test에서 bucket 생성 후 reset을 호출하고 demo fixture가 복원되는지 확인.
+  - `scripts/verify-frontend-mock-demo.ps1`: `Reset mock API state` 단계 추가.
+  - `scripts/verify-browser-e2e-mock-demo.ps1`: Browser E2E 실행 전 reset 단계 추가.
+  - `README.md`, `dev-docs/document-index.md`: mock reset endpoint와 검증 스크립트 reset 호출 설명 추가.
+- 수정된 파일 및 관련 파일:
+  - `osmu-frontend/mock-api/server.mjs`
+  - `scripts/verify-frontend-mock-demo.ps1`
+  - `scripts/verify-browser-e2e-mock-demo.ps1`
+  - `README.md`
+  - `dev-docs/document-index.md`
+  - `dev-docs/worklog/main/worklog-main.md`
+- 검증 기록:
+  - `node --check .\osmu-frontend\mock-api\server.mjs`: 통과.
+  - PowerShell parse check for `verify-frontend-mock-demo.ps1`, `verify-browser-e2e-mock-demo.ps1`: 통과.
+  - `git diff --check -- osmu-frontend/mock-api/server.mjs scripts/verify-frontend-mock-demo.ps1 scripts/verify-browser-e2e-mock-demo.ps1`: 통과.
+  - `npm.cmd run mock:api:self-test`: 통과. reset self-test 포함.
+  - `verify-frontend-mock-demo.ps1`와 `verify-browser-e2e-mock-demo.ps1`를 같은 포트로 병렬 실행했을 때 서로 start/stop을 방해해 실패. 실행 방식 문제로 판단하고 포트 정리 후 순차 재실행.
+  - `powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-frontend-mock-demo.ps1`: 순차 실행 통과. reset, admin/developer login, S3 config, access key, bucket/object, dashboard summary 통과.
+  - `powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-browser-e2e-mock-demo.ps1`: 순차 실행 통과. Playwright 3개 테스트 통과.
+- 결과:
+  - mock demo 검증이 시작 직후 항상 같은 fixture 상태에서 출발한다.
+  - 반복 데모와 반복 E2E의 상태 오염 위험이 줄었다.
+- 다음 작업할 때 참고할 사항:
+  - 같은 port/logdir을 사용하는 mock verification 스크립트는 병렬 실행하면 서로를 정리할 수 있으므로 순차 실행해야 한다.
+  - Docker-ready 환경에서는 mock reset이 아니라 durable finalize로 실제 MariaDB/MinIO 상태를 검증해야 한다.
+- 코드 리뷰:
+  - reset endpoint는 mock server 내부에만 존재하므로 production API surface를 넓히지 않는다.
+  - self-test가 reset 복원 여부까지 확인하므로 fixture 변경 시 회귀를 빠르게 잡을 수 있다.
+- 앞으로 추가적으로 개발해야 하는 내용:
+  - Docker local demo에도 seed/reset 전략을 더 명확히 적용.
+  - Docker daemon available 환경에서 full durable finalize 통과.
+- 추가 사용 skill/plugin:
+  - 없음.
+### 2026-06-15 - Real S3 Client 호환성 보강 및 Durable MVP Finalize 완료
+
+- 작업 시간:
+  - 시작: 2026-06-15 21:35:00 +09:00
+  - 종료: 2026-06-15 22:13:00 +09:00
+- 사용자 명령:
+  - "전체 완료 퍼센테이지가 어떻게 돼?"
+  - active goal 기준 `MVP 데모 가능한 웹/백엔드 완성 할것`을 계속 진행.
+- 요청 분석:
+  - 사용자에게 현재 완료율을 알려주되, 직전 durable finalize 실패 원인이 real S3 client smoke였으므로 MVP demo complete 판정을 위해 남은 S3 클라이언트 호환 문제를 해결해야 한다고 해석.
+  - 완료율 기준은 "Docker/MariaDB/MinIO/backend/frontend + Browser E2E + dockerized MinIO Client real S3 smoke + release/readiness artifacts"가 모두 통과하면 MVP demo 90~95%, 최종 제품은 20~25%로 판단.
+- 실행 내용:
+  - 기존 `/api/s3` S3 호환 endpoint를 유지하면서 실제 S3 클라이언트가 요구하는 루트 endpoint `http://host:port/{bucket}/{key}`도 지원하도록 S3 컨트롤러 매핑 확장.
+  - `mc`가 보내는 trailing slash bucket 요청(`/bucket/`)과 multi-delete 요청(`POST /bucket/?delete`)을 처리하도록 bucket-level mapping과 consumes 조건 보강.
+  - virtual-hosted-style 필터가 루트 endpoint에서도 bucket host를 내부 path-style 라우팅으로 변환하도록 확장.
+  - root S3 요청도 XML S3 error response를 받을 수 있도록 예외 핸들러 S3 경로 판별 보강.
+  - `mc cp`가 사용하는 AWS SigV4 streaming payload의 `aws-chunked` body를 decoded object body로 저장하도록 입력 스트림 처리 추가.
+  - `verify-s3-client-smoke.ps1`의 기본 endpoint를 `/api/s3`에서 origin root로 변경하고 dockerized `mc` 검증이 upload/stat/cat/rm까지 수행되도록 정리.
+  - MinIO access key provisioning에 짧은 재시도를 추가해 데모 시작 직후 `mc admin` 호출의 간헐 실패 가능성을 낮춤.
+  - release decision self-test가 최신 durable gate report에 오염되지 않도록 격리된 missing durable gate fixture를 사용하게 수정.
+- 구현 내용:
+  - `osmu-backend/src/main/java/com/example/osmu/bucket/S3RootController.java`: `/` root service mapping 및 trailing slash 지원.
+  - `osmu-backend/src/main/java/com/example/osmu/bucket/S3BucketController.java`: root path-style bucket mapping 및 `/bucket/` 지원.
+  - `osmu-backend/src/main/java/com/example/osmu/bucket/S3BucketTaggingController.java`: root path-style bucket tagging 지원.
+  - `osmu-backend/src/main/java/com/example/osmu/bucket/S3BucketLifecycleController.java`: root path-style lifecycle 지원.
+  - `osmu-backend/src/main/java/com/example/osmu/bucket/VirtualHostedStyleS3RequestFilter.java`: `/api/s3`뿐 아니라 root virtual-hosted-style request도 내부 S3 path로 rewrite.
+  - `osmu-backend/src/main/java/com/example/osmu/common/error/GlobalExceptionHandler.java`: SigV4/access-key root S3 요청 XML error 처리.
+  - `osmu-backend/src/main/java/com/example/osmu/object/S3ObjectController.java`: bucket-level trailing slash, generic content-type multi-delete, AWS `aws-chunked` streaming body decoding.
+  - `osmu-backend/src/test/java/com/example/osmu/object/S3ObjectControllerTest.java`: root path-style, root virtual-hosted-style, aws-chunked upload, generic content-type multi-delete 회귀 테스트 추가.
+  - `osmu-backend/src/main/java/com/example/osmu/accesskey/MinioS3AccessPolicyProvisioner.java`: MinIO `mc` command retry 추가.
+  - `scripts/verify-s3-client-smoke.ps1`: 기본 S3 endpoint root화, virtual-hosted URL 조립 보정, cleanup/real client smoke 안정화.
+  - `scripts/verify-mvp-release-decision.ps1`: self-test durable gate fixture 격리.
+  - `infra/local/docker-compose.yml`: local developer S3 public endpoint 기본값을 `http://localhost:8080`으로 설정.
+- 검증 기록:
+  - `osmu-backend/.\\gradlew.bat test`: 통과.
+  - `powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\verify-s3-client-smoke.ps1 -Client docker-mc -RequireClient`: 통과. Dockerized MinIO Client가 root endpoint에서 `ls`, `cp`, `stat`, `cat`, `rm` 수행.
+  - `powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\verify-mvp-release-decision.ps1`: 통과.
+  - `powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\finalize-durable-mvp-demo.ps1 -S3Client docker-mc`: 통과.
+  - `.osmu-run/latest-durable-mvp-finalize.json`: `result=ready`, `currentDemoStatus=docker-durable-demo-verified`, `completionEstimate.mvpDemo=90-95%`, `product=20-25%`.
+  - `.osmu-run/latest-demo-readiness.json`: `result=ready`, pending durable checks 없음.
+  - `docker ps --format ...`: 실행 중인 demo container 없음.
+- 결과:
+  - MVP demo 기준 전체 완료율은 90~95%로 상향 가능.
+  - 최종 제품/B2B 상용 목표 기준 완료율은 20~25%로 판단.
+  - Docker 기반 local demo, backend tests, Browser E2E, Docker integration, dockerized MinIO Client real S3 smoke, release/readiness hard gate가 모두 통과했다.
+- 후속 메모:
+  - AWS CLI와 host `mc`는 현재 PATH에 없어 optional fail로 기록되며, dockerized `mc`가 real S3 client evidence를 대체했다.
+  - AWS chunked payload는 decoded body 저장을 지원하지만 per-chunk signature의 완전한 암호학적 검증은 아직 hardening 과제로 남는다.
+  - 최종 제품화를 위해서는 멀티테넌시 강화, 운영 RBAC/IAM 세분화, 실제 Kubernetes 증설 자동화, HA/DR, 백업 복구 드릴, 관측성/알림, 보안 감사, 성능/부하 테스트가 계속 필요하다.
+- 코드 리뷰:
+  - root S3 mapping은 기존 `/api/s3`를 보존하는 additive 변경이라 기존 UI/API 호환성을 깨지 않는다.
+  - trailing slash와 content-type 완화는 real S3 client 관용성을 높이는 변경이며, 테스트로 회귀 방지했다.
+  - `aws-chunked` decoder는 MVP real-client smoke를 통과시키는 최소 구현이다. 대용량 chunk memory, trailer checksum, per-chunk signature 검증은 다음 hardening에서 더 다듬어야 한다.
+  - MinIO provisioning retry는 startup 직후 외부 CLI 호출의 일시 실패를 줄이지만, 장기적으로는 MinIO admin API 직접 연동 또는 job queue 기반 재시도 구조가 더 안전하다.
+- 앞으로 추가적으로 개발해야하는 내용:
+  - 실제 AWS CLI/boto3/s3fs/goofys 호환 smoke 확대.
+  - root endpoint 기준 OpenAPI/문서/개발자 가이드 정리.
+  - S3 chunked trailer checksum 및 per-chunk signature 검증.
+  - 운영 배포용 Kubernetes/Helm 증설 workflow 실환경 검증.
+- 추가적으로 사용된 skill/plugin:
+  - 별도 skill 없음.
+  - Docker, Gradle, Playwright, MinIO Client docker image를 검증 도구로 사용.
+
+### 2026-06-15 - Backup Restore Drill Evidence API 구현
+
+- 작업 시간:
+  - 시작: 2026-06-15 22:55:00 +09:00
+  - 종료: 2026-06-15 23:22:00 +09:00
+- 사용자 명령:
+  - active goal: "운영용 Kubernetes 증설 자동화, 보안 hardening, IAM/RBAC 고도화, 백업/복구, HA/DR의 기능 구현" 계속 진행.
+  - 직전 사용자 질문의 맥락: 전체 완료 퍼센트를 확인한 뒤, 최종 운영 목표를 계속 실제 구현으로 밀고 가야 함.
+- 요청 분석:
+  - 현재 증설 자동화는 storage expansion runner, GitOps plan, apply/rollback runner, execution history가 이미 존재한다.
+  - 백업/복구는 `GET /api/admin/backup/status`와 문서 runbook 중심이라, 실제 restore drill evidence를 운영 API로 남기고 readiness gate에 반영하는 기능이 부족하다고 판단했다.
+  - 이번 작업은 전체 HA/DR 완성은 아니지만, 운영 복구 드릴을 "문서"에서 "감사 로그가 남는 API 증거"로 한 단계 올리는 구현으로 해석했다.
+- 실행 내용:
+  - 백업 상태 컨트롤러, 응답 record, 기존 dashboard admin snapshot, 테스트, API 문서, OpenAPI 초안, backup drill 검증 스크립트를 확인했다.
+  - `POST /api/admin/backup/restore-drill-evidence` API를 추가했다.
+  - 성공 restore drill evidence가 audit log에 기록되면 `GET /api/admin/backup/status`의 `restoreDrillExecuted`, `lastRestoreDrillAt`, `latestRestoreDrillEvidence`에 반영되도록 수정했다.
+  - evidence 요청에 비밀번호, token, access key, secret, private key처럼 보이는 값이 들어오면 거부하도록 검증을 추가했다.
+- 구현 내용:
+  - `osmu-backend/src/main/java/com/example/osmu/admin/BackupRestoreDrillEvidenceRequest.java` 추가.
+  - `osmu-backend/src/main/java/com/example/osmu/admin/BackupRestoreDrillEvidenceResponse.java` 추가.
+  - `osmu-backend/src/main/java/com/example/osmu/admin/AdminBackupStatusController.java`: restore drill evidence 기록 API, RPO/RTO 계산, audit event 기록, 최근 성공 evidence 기준 readiness gate, secret-looking value validation 추가.
+  - `osmu-backend/src/main/java/com/example/osmu/admin/BackupStatusResponse.java`: `latestRestoreDrillEvidence` 필드 추가.
+  - `osmu-backend/src/main/java/com/example/osmu/admin/AdminController.java`: shared `BackupStatusResponse` 변경에 맞춰 dashboard snapshot 생성자 보정 및 pending gate 문구 정리.
+  - `osmu-backend/src/test/java/com/example/osmu/admin/AdminBackupStatusControllerTest.java`: 초기 status, evidence 기록 후 status 반영, secret-looking evidence value 거부 테스트 추가.
+  - `dev-docs/api-spec.md`, `dev-docs/openapi-mvp.json`, `dev-docs/backup-restore-drill.md`: 새 evidence API와 status 응답 필드 문서화.
+  - `scripts/verify-backup-restore-drill.ps1`: Evidence API 문서 계약 검증 추가.
+- 검증 기록:
+  - `powershell -NoProfile -ExecutionPolicy Bypass -Command '& { $ErrorActionPreference = ''Stop''; . ..\scripts\java-toolchain.ps1; $javaHome = Use-OsmuJavaHome; Write-Host "JAVA_HOME=$javaHome"; .\gradlew.bat test --tests com.example.osmu.admin.AdminBackupStatusControllerTest }'`: 통과.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -Command '& { $ErrorActionPreference = ''Stop''; . ..\scripts\java-toolchain.ps1; $javaHome = Use-OsmuJavaHome; Write-Host "JAVA_HOME=$javaHome"; .\gradlew.bat test }'`: 통과.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-backup-restore-drill.ps1`: 통과.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-openapi-contract.ps1`: 통과.
+  - `git diff --check`: 오류 없음. 기존 Windows line-ending 경고만 출력됨.
+- 결과:
+  - 백업/복구 드릴 완료 여부가 단순 환경 변수 플래그에만 의존하지 않고, 관리자 API를 통해 기록된 성공 evidence를 기준으로 상태 API에 반영된다.
+  - 운영 readiness에서 "restore drill evidence 미기록" 상태를 명확히 표시하게 되었다.
+  - 백업/복구는 문서 단계에서 운영 증거 기록 단계로 일부 전진했다.
+- 후속 메모:
+  - 현재 evidence 상세는 audit log 기반으로 남기며, status에는 최근 evidence 요약만 노출한다. 제품 수준에서는 별도 `backup_restore_drills` 테이블로 상세 evidence, manifest checksum, row/object count, gap history를 영속 조회하는 구조가 필요하다.
+  - 실제 MariaDB dump 생성, MinIO mirror/restore 실행, 깨끗한 target 환경에 restore 후 자동 smoke까지 수행하는 end-to-end script는 아직 필요하다.
+  - Kubernetes/Helm 환경에서는 Velero, MariaDB backup job, MinIO replication 또는 `mc mirror` job, restore namespace drill을 연결해야 한다.
+- 코드 리뷰:
+  - API는 additive change라 기존 `GET /api/admin/backup/status` 호출과 호환된다. 단 `BackupStatusResponse` record 생성자는 필드가 늘어 기존 직접 생성 지점을 함께 보정했다.
+  - evidence API는 secret-looking value를 방어하지만 완전한 DLP가 아니다. 운영에서는 secret manager reference allowlist와 evidence artifact scanner가 추가되어야 한다.
+  - audit log message는 500자 제한을 고려해 요약 중심으로 저장한다. 상세 drill evidence 영속화가 필요하면 별도 테이블이 더 적합하다.
+- 앞으로 추가적으로 개발해야하는 내용:
+  - backup/restore 실행 job 또는 스크립트 자동화.
+  - backup manifest schema와 checksum verification.
+  - K8s CronJob 기반 MariaDB dump, MinIO mirror, offsite backup.
+  - restore drill 결과 전용 MariaDB table과 dashboard panel.
+  - HA/DR: MariaDB replication/backup, MinIO multi-site/erasure healing, frontend/backend replica, ingress failover.
+  - 보안 hardening: secret rotation evidence, image signing gate, network policy runtime 검증.
+  - IAM/RBAC: role별 API permission matrix와 access key scope policy audit 강화.
+- 추가적으로 사용된 skill이나 plugin:
+  - 별도 skill 없음.
+  - Gradle wrapper 다운로드 및 백엔드 테스트 실행을 위해 PowerShell/Java toolchain 사용.
+
+### 2026-06-15 - Local Backup/Restore Drill 자동화 스크립트 추가
+
+- 작업 시간:
+  - 시작: 2026-06-15 23:22:00 +09:00
+  - 종료: 2026-06-15 23:30:00 +09:00
+- 사용자 명령:
+  - active goal: "운영용 Kubernetes 증설 자동화, 보안 hardening, IAM/RBAC 고도화, 백업/복구, HA/DR의 기능 구현" 계속 진행.
+- 요청 분석:
+  - 직전 작업에서 복구 드릴 evidence API는 구현되었지만, 실제 로컬 MariaDB/MinIO 백업 파일을 만들고 복구 드릴 evidence를 생성하는 실행 자동화는 부족했다.
+  - 이번 작업은 제품급 HA/DR의 최종 구현은 아니지만, 로컬 Docker demo 환경에서 MariaDB dump, MinIO mirror, restore, evidence API 기록까지 이어지는 실행 경로를 만드는 것으로 해석했다.
+- 실행 내용:
+  - `infra/local/docker-compose.yml`, `start-local-demo.ps1`, `seed-local-demo.ps1`, `verify-local-demo.ps1`, docker/runtime toolchain을 확인했다.
+  - local demo의 container/service 이름과 환경변수 구조에 맞춰 backup/restore/drill 스크립트 3개를 추가했다.
+  - restore와 통합 drill은 데이터 overwrite 위험이 있으므로 `-ConfirmRestore`가 없으면 즉시 중단되도록 안전장치를 넣었다.
+  - backup/restore drill 문서와 verifier를 새 스크립트 계약에 맞춰 갱신했다.
+- 구현 내용:
+  - `scripts/backup-local-demo.ps1` 추가:
+    - `osmu-mariadb`에서 `mariadb-dump`로 `metadata.sql` 생성.
+    - `minio/mc` compose run으로 MinIO 전체 bucket/object를 `objects/minio` 아래 mirror.
+    - `backup-manifest.json`에 secret-free metadata row count, object count, byte totals, checksum 기록.
+  - `scripts/restore-local-demo.ps1` 추가:
+    - `-ConfirmRestore` 필수.
+    - `metadata.sql`을 MariaDB에 restore.
+    - `objects/minio`를 MinIO로 mirror restore.
+    - 선택적으로 backend restart, local demo verification, `POST /api/admin/backup/restore-drill-evidence` 기록 수행.
+    - restore evidence JSON을 `.osmu-run\restore-drills\` 아래 생성.
+  - `scripts/run-local-backup-restore-drill.ps1` 추가:
+    - backup script와 restore script를 연결하는 단일 로컬 드릴 명령.
+  - `dev-docs/backup-restore-drill.md`:
+    - Local Demo Automation 섹션 추가.
+  - `scripts/verify-backup-restore-drill.ps1`:
+    - 새 스크립트 존재, 핵심 명령, `-ConfirmRestore`, evidence API 연결 검증 추가.
+- 검증 기록:
+  - `powershell -NoProfile -ExecutionPolicy Bypass -Command '& { Get-ChildItem .\scripts -Filter *.ps1 | ForEach-Object { [scriptblock]::Create((Get-Content -Raw -LiteralPath $_.FullName)) | Out-Null } }'`: 통과.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-backup-restore-drill.ps1`: 통과.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-local.ps1 -SkipDocker -SkipBackend -SkipFrontend`: 통과.
+  - `restore-local-demo.ps1`를 `-ConfirmRestore` 없이 실행하면 overwrite 보호장치로 중단됨을 확인.
+  - `run-local-backup-restore-drill.ps1`를 `-ConfirmRestore` 없이 실행하면 overwrite 보호장치로 중단됨을 확인.
+- 결과:
+  - 로컬 Docker demo 기준으로 백업/복구 드릴을 실행할 수 있는 스크립트 경로가 생겼다.
+  - 복구 완료 후 evidence JSON 생성과 관리자 API evidence 기록까지 연결할 수 있게 되었다.
+  - 백업/복구는 "상태 API + 문서"에서 "실행 가능한 로컬 드릴 자동화" 단계로 진전했다.
+- 후속 메모:
+  - 이번 검증에서는 실제 Docker demo 데이터 overwrite를 피하기 위해 full restore 실행은 하지 않았다.
+  - 실제 실행 명령 예시는 `powershell -ExecutionPolicy Bypass -File .\scripts\run-local-backup-restore-drill.ps1 -ConfirmRestore -RestartBackend -RecordEvidence`이다.
+  - 제품급 구현에서는 이 로컬 스크립트를 Kubernetes CronJob/Job, external backup storage, immutable backup retention, restore namespace drill로 확장해야 한다.
+- 코드 리뷰:
+  - restore 계열 스크립트는 `-ConfirmRestore`를 요구하므로 실수 실행 위험을 줄였다.
+  - backup manifest와 restore evidence에는 secret 값을 쓰지 않는 문구와 구조를 둔다. 다만 실제 artifact scanner는 아직 없다.
+  - MinIO restore는 기본적으로 `mc mirror --overwrite`이며, extra object 삭제는 `-RemoveExtraObjects`를 명시해야만 수행한다.
+- 앞으로 추가적으로 개발해야하는 내용:
+  - Docker 환경에서 full local backup/restore drill 실제 실행 및 evidence API 기록 확인.
+  - backup manifest schema를 서버 API나 DB table로 영속화.
+  - Kubernetes CronJob 기반 MariaDB dump와 MinIO mirror backup.
+  - restore target namespace 자동 생성, restore 후 smoke, evidence 자동 제출.
+  - HA/DR 운영 문서와 Prometheus alert를 실제 drill 결과와 연결.
+- 추가적으로 사용된 skill이나 plugin:
+  - 별도 skill 없음.
+  - PowerShell, Docker/Compose 명령 계약, local runtime scripts를 기준으로 구현.
+
+### 2026-06-15 - Kubernetes/Helm Backup CronJob 및 Restore Job 예제 추가
+
+- 작업 시간:
+  - 시작: 2026-06-15 23:30:00 +09:00
+  - 종료: 2026-06-15 23:37:00 +09:00
+- 사용자 명령:
+  - active goal: "운영용 Kubernetes 증설 자동화, 보안 hardening, IAM/RBAC 고도화, 백업/복구, HA/DR의 기능 구현" 계속 진행.
+- 요청 분석:
+  - 직전 작업에서 local Docker demo 백업/복구 스크립트는 생겼지만, 운영 Kubernetes 배포에서는 아직 정기 백업 리소스가 없었다.
+  - 운영 목표의 백업/복구/HA-DR 방향으로 가려면 Kubernetes CronJob 기반 MariaDB dump, MinIO mirror, restore Job 예제, NetworkPolicy 허용이 필요하다고 판단했다.
+  - restore는 데이터 overwrite 위험이 있으므로 기본 kustomization에는 포함하지 않고 `examples/`에 reference-only Job으로 분리했다.
+- 실행 내용:
+  - `infra/k8s`, `infra/k8s-overlays/osmu-dev`, `infra/helm/osmu` 구조와 secret/config/service 이름을 확인했다.
+  - base K8s manifest에 backup PVC와 MariaDB/MinIO backup CronJob을 추가했다.
+  - NetworkPolicy에서 `osmu-backup` pod가 MariaDB/MinIO에 접근할 수 있도록 ingress 허용을 추가했다.
+  - `osmu-dev` overlay에 backup PVC storageClass patch와 local PV를 추가했다.
+  - Helm chart values와 backup template을 추가하고 Helm NetworkPolicy도 동일하게 보정했다.
+  - K8s/Helm verifier와 README/runbook 문서를 갱신했다.
+- 구현 내용:
+  - `infra/k8s/backup.yaml` 추가:
+    - `osmu-backup-data` PVC.
+    - `osmu-mariadb-backup` CronJob: `mariadb-dump --single-transaction` 기반 metadata backup.
+    - `osmu-minio-backup` CronJob: `mc mirror --overwrite` 기반 object backup.
+    - non-root securityContext, capability drop, retention cleanup 추가.
+  - `infra/k8s/examples/restore-from-backup.example.yaml` 추가:
+    - `BACKUP_TIMESTAMP`를 명시적으로 바꿔야 실행되는 restore Job 예제.
+    - MariaDB restore initContainer와 MinIO restore container 구성.
+  - `infra/k8s/kustomization.yaml`: `backup.yaml` 리소스 포함.
+  - `infra/k8s/networkpolicy.yaml`: `osmu-backup` pod의 MariaDB 3306, MinIO 9000 ingress 허용.
+  - `infra/k8s-overlays/osmu-dev/kustomization.yaml`, `infra/k8s-overlays/osmu-dev/pv.yaml`:
+    - `osmu-backup-data` PVC에 `osmu-dev-local` storageClass patch.
+    - `/var/lib/osmu-dev/backup` hostPath PV 추가.
+  - `infra/helm/osmu/values.yaml`, `infra/helm/osmu/templates/backup.yaml`, `infra/helm/osmu/templates/networkpolicy.yaml`:
+    - Helm 기반 backup PVC/CronJob과 NetworkPolicy 허용 추가.
+  - `scripts/verify-k8s-manifests.ps1`, `scripts/verify-helm-chart.ps1`:
+    - backup resources, restore example, overlay PV, NetworkPolicy 계약 검증 추가.
+  - `infra/k8s/README.md`, `infra/helm/osmu/README.md`, `dev-docs/backup-restore-drill.md`:
+    - K8s/Helm backup automation 및 restore 주의사항 문서화.
+- 검증 기록:
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-k8s-manifests.ps1`: 통과.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-helm-chart.ps1`: 통과.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-backup-restore-drill.ps1`: 통과.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -Command '& { Get-ChildItem .\scripts -Filter *.ps1 | ForEach-Object { [scriptblock]::Create((Get-Content -Raw -LiteralPath $_.FullName)) | Out-Null } }'`: 통과.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-local.ps1 -SkipDocker -SkipBackend -SkipFrontend`: 통과.
+  - `kubectl kustomize .\infra\k8s`: 통과. 출력에 `osmu-backup-data`, `osmu-mariadb-backup`, `osmu-minio-backup`, backup NetworkPolicy 허용이 포함됨.
+  - `kubectl kustomize .\infra\k8s-overlays\osmu-dev | Select-String ...`: 통과. overlay backup PV/PVC/CronJob 렌더 확인.
+  - Helm CLI는 PATH에 없어 `helm template` 실제 렌더는 수행하지 못했고, 정적 chart verifier로 확인했다.
+- 결과:
+  - 운영 Kubernetes 배포 기준으로 정기 MariaDB/MinIO 백업 CronJob 골격이 생겼다.
+  - restore Job은 안전하게 예제 파일로 분리되어 수동 검토 후 restore target에 적용할 수 있다.
+  - 백업/복구는 local script 단계에서 Kubernetes 운영 리소스 단계로 진전했다.
+- 후속 메모:
+  - 현재 backup PVC는 in-cluster PVC이므로 장애 도메인이 같은 저장소에 묶일 수 있다. 제품급 DR은 이 backup PVC를 외부 S3/원격 MinIO/NAS/snapshot repository로 복제해야 한다.
+  - CronJob 성공/실패 metric과 alert, backup manifest checksum, restore drill 자동 제출 API 연결은 추가 개발이 필요하다.
+  - restore Job은 실제 cluster에서 target namespace를 별도로 만들어 검증해야 한다.
+- 코드 리뷰:
+  - 기본 kustomization에 destructive restore Job을 넣지 않은 것은 안전한 선택이다.
+  - NetworkPolicy에 backup pod 허용을 함께 추가해 CronJob이 MariaDB/MinIO에 접근하지 못하는 문제를 미리 줄였다.
+  - Helm과 raw K8s manifest의 구조를 맞췄지만, Helm actual render는 Helm CLI 부재로 아직 미검증이다.
+- 앞으로 추가적으로 개발해야하는 내용:
+  - backup CronJob을 실제 cluster에 적용하고 Job 성공/실패 event 확인.
+  - backup artifact를 offsite storage로 복제하는 Job 추가.
+  - restore namespace 자동 생성, restore Job 실행, backend smoke, evidence API 제출까지 연결.
+  - PrometheusRule에 backup CronJob failure/last success age alert 추가.
+  - HA/DR: MariaDB HA, MinIO multi-node/multi-site, ingress failover, runbook 기반 장애 전환 검증.
+- 추가적으로 사용된 skill이나 plugin:
+  - 별도 skill 없음.
+  - `kubectl kustomize`로 Kustomize render 검증.
+
+### 2026-06-15 - Backup CronJob Security Hardening 및 Prometheus Alert 추가
+
+- 작업 시간:
+  - 시작: 2026-06-15 23:37:00 +09:00
+  - 종료: 2026-06-15 23:42:00 +09:00
+- 사용자 명령:
+  - active goal: "운영용 Kubernetes 증설 자동화, 보안 hardening, IAM/RBAC 고도화, 백업/복구, HA/DR의 기능 구현" 계속 진행.
+- 요청 분석:
+  - 직전 작업에서 Kubernetes/Helm 백업 CronJob은 생겼지만, 운영 관점에서는 기본 ServiceAccount token 노출, backup pod egress 범위, backup 실패/지연 알림이 부족했다.
+  - 이번 작업은 백업/복구 기능을 운영 보안 hardening과 모니터링 알림까지 연결하는 것으로 해석했다.
+- 실행 내용:
+  - `infra/monitoring/prometheus-rules.yaml`, K8s/Helm Prometheus Operator draft, monitoring verifier, backup CronJob manifest를 확인했다.
+  - backup CronJob과 restore example에 전용 ServiceAccount와 `automountServiceAccountToken: false`를 적용했다.
+  - backup pod 전용 egress NetworkPolicy를 추가해 MariaDB, MinIO, DNS만 허용했다.
+  - backup CronJob 실패와 마지막 성공 시각 지연을 감지하는 Prometheus alert를 raw rules, K8s PrometheusRule, Helm PrometheusRule에 추가했다.
+  - 관련 문서와 verifier를 업데이트했다.
+- 구현 내용:
+  - `infra/k8s/backup.yaml`:
+    - `osmu-backup` ServiceAccount 추가.
+    - backup CronJob Pod에 `serviceAccountName: osmu-backup`, `automountServiceAccountToken: false` 추가.
+  - `infra/k8s/examples/restore-from-backup.example.yaml`:
+    - restore Job에도 동일한 ServiceAccount와 token automount 차단 추가.
+  - `infra/k8s/networkpolicy.yaml`:
+    - `osmu-backup-egress` 추가. backup pod egress를 MariaDB 3306, MinIO 9000, kube-dns 53으로 제한.
+  - `infra/helm/osmu/templates/backup.yaml`, `infra/helm/osmu/templates/networkpolicy.yaml`:
+    - Helm chart에도 동일한 ServiceAccount hardening과 backup egress policy 추가.
+  - `infra/monitoring/prometheus-rules.yaml`, `infra/k8s/monitoring-operator.yaml`, `infra/helm/osmu/templates/monitoring-operator.yaml`:
+    - `OsmuBackupCronJobFailed`.
+    - `OsmuBackupCronJobStale`.
+  - `scripts/verify-k8s-manifests.ps1`, `scripts/verify-helm-chart.ps1`, `scripts/verify-monitoring-artifacts.ps1`, `scripts/verify-prometheus-operator-draft.ps1`:
+    - 신규 ServiceAccount hardening, NetworkPolicy, backup alert 계약 검증 추가.
+  - `infra/k8s/README.md`, `infra/helm/osmu/README.md`, `dev-docs/backup-restore-drill.md`, `infra/monitoring/README.md`, `dev-docs/operation-monitoring.md`:
+    - backup pod hardening, restricted NetworkPolicy, kube-state-metrics 기반 backup alert 설명 추가.
+- 검증 기록:
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-k8s-manifests.ps1`: 통과.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-helm-chart.ps1`: 통과.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-monitoring-artifacts.ps1`: 통과.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-prometheus-operator-draft.ps1`: 통과.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -Command '& { Get-ChildItem .\scripts -Filter *.ps1 | ForEach-Object { [scriptblock]::Create((Get-Content -Raw -LiteralPath $_.FullName)) | Out-Null } }'`: 통과.
+  - `kubectl kustomize infra/k8s | Select-String -Pattern "kind: ServiceAccount|automountServiceAccountToken: false|osmu-backup-egress|osmu-mariadb-backup|osmu-minio-backup"`: 통과.
+  - `kubectl kustomize .\infra\k8s-overlays\osmu-dev | Select-String -Pattern "osmu-backup-egress|automountServiceAccountToken: false|osmu-dev-backup-pv|OsmuBackupCronJobFailed|OsmuBackupCronJobStale"`: backup hardening/egress/PV 확인. Prometheus Operator manifest는 overlay 기본 kustomization에 포함하지 않으므로 alert는 별도 optional manifest에서 검증.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-local.ps1 -SkipDocker -SkipBackend -SkipFrontend`: 통과.
+- 결과:
+  - backup/restore 운영 리소스가 기본 ServiceAccount token을 노출하지 않게 되었다.
+  - backup pod network path가 MariaDB/MinIO/DNS로 제한되었다.
+  - backup CronJob 실패와 stale success를 Prometheus 기반으로 감지할 수 있는 rule 초안이 생겼다.
+- 후속 메모:
+  - `OsmuBackupCronJobStale`는 kube-state-metrics의 `kube_cronjob_status_last_successful_time` metric이 필요하다.
+  - 실제 cluster에서 Prometheus Operator와 kube-state-metrics label이 다르면 job/cronjob selector를 환경에 맞게 조정해야 한다.
+  - Helm CLI가 PATH에 없어 Helm 실제 render는 아직 수행하지 못했다.
+- 코드 리뷰:
+  - ServiceAccount token automount 차단은 Kubernetes API가 필요 없는 backup/restore Job에 적절하다.
+  - backup egress NetworkPolicy를 추가하면서 MariaDB/MinIO ingress 허용도 유지되어 CronJob 연결 경로가 막히지 않는다.
+  - stale alert는 metric 부재 상황 자체는 완전히 검출하지 못하므로 kube-state-metrics down alert도 추후 필요하다.
+- 앞으로 추가적으로 개발해야하는 내용:
+  - kube-state-metrics/Prometheus 실제 연결 환경에서 backup alert 발화 검증.
+  - backup artifact offsite replication Job 추가.
+  - restore drill 자동 실행 후 evidence API 제출.
+  - Kubernetes RBAC/IAM matrix 문서와 backend role permission matrix 강화.
+- 추가적으로 사용된 skill이나 plugin:
+  - 별도 skill 없음.
+  - `kubectl kustomize`와 PowerShell verifier를 검증 도구로 사용.
+
+### 2026-06-15 - Admin RBAC 정책 분리 및 운영 API 차단 테스트 추가
+
+- 작업 시간:
+  - 시작: 2026-06-15 23:43:00 +09:00
+  - 종료: 2026-06-15 23:52:00 +09:00
+- 사용자 명령:
+  - active goal: "운영용 Kubernetes 증설 자동화, 보안 hardening, IAM/RBAC 고도화, 백업/복구, HA/DR의 기능 구현" 계속 진행.
+- 요청 분석:
+  - 전체 목표 중 IAM/RBAC 고도화에 해당하는 작업으로 해석했다.
+  - 기존 `JwtAuthInterceptor` 내부 private 메서드에 숨어 있던 `/api/admin/**` role 허용 정책을 운영자가 검토하고 테스트하기 쉬운 단일 정책 클래스로 분리할 필요가 있었다.
+  - 특히 `ORG_ADMIN`이 조직 스코프 사용자/조직 API만 접근하고, backup/restore drill, storage expansion, audit, quota 같은 global admin API는 차단되는지 명시적 증거가 필요했다.
+- 실행 내용:
+  - `JwtAuthInterceptor`, `AdminUserController`, `AdminOrganizationController`, dashboard default 권한 처리, 기존 MockMvc 테스트를 확인했다.
+  - `ORG_ADMIN`이 이미 사용자/조직 조회와 자기 조직 사용자 관리로 제한되는 것을 확인했다.
+  - 관리자 API allowlist를 `AdminRbacPolicy`로 분리하고 인터셉터가 DB에서 active user 상태와 현재 role을 다시 확인한 뒤 정책을 적용하도록 유지했다.
+  - RBAC unit test와 HTTP 차단 테스트를 추가했다.
+  - 보안 설계/API 명세/기능 인벤토리 문서를 현재 정책에 맞게 갱신했다.
+- 구현 내용:
+  - `osmu-backend/src/main/java/com/example/osmu/auth/AdminRbacPolicy.java`:
+    - `ADMIN`은 모든 `/api/admin/**` API 허용.
+    - `ORG_ADMIN`은 `GET/POST /api/admin/users`, `PATCH /api/admin/users/{userId}/status`, `GET /api/admin/organizations`, `GET /api/admin/organizations/usage`만 허용.
+    - `USER`, 알 수 없는 role, null role은 관리자 API 차단.
+  - `osmu-backend/src/main/java/com/example/osmu/auth/JwtAuthInterceptor.java`:
+    - 기존 private RBAC 조건을 `AdminRbacPolicy` 호출로 교체.
+  - `osmu-backend/src/test/java/com/example/osmu/auth/AdminRbacPolicyTest.java`:
+    - role별 관리자 API 허용/차단 정책 unit test 추가.
+  - `osmu-backend/src/test/java/com/example/osmu/user/AdminUserControllerTest.java`:
+    - 일반 `USER`의 backup/storage expansion 관리자 API 차단 검증 추가.
+    - `ORG_ADMIN`의 backup restore drill evidence와 storage expansion request 차단 검증 추가.
+  - `dev-docs/security-design.md`, `dev-docs/api-spec.md`, `dev-docs/feature-inventory.md`:
+    - `/api/admin/**` 기본 ADMIN 정책과 `ORG_ADMIN` 예외 allowlist 문서화.
+- 검증 기록:
+  - 첫 Gradle wrapper 실행은 샌드박스 네트워크 제한으로 Gradle/Spring plugin resolution에서 실패했다.
+  - 캐시된 Gradle 실행 파일을 직접 호출하고, 필요한 dependency resolution은 승인된 네트워크 실행으로 처리했다.
+  - `gradle test --tests com.example.osmu.auth.AdminRbacPolicyTest --tests com.example.osmu.user.AdminUserControllerTest`: 통과.
+  - `gradle test`: 통과.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-local.ps1 -SkipDocker -SkipBackend -SkipFrontend`: 통과.
+- 결과:
+  - 관리자 API role policy가 테스트 가능한 코드 단위로 분리되었다.
+  - `ORG_ADMIN`이 조직 스코프 API만 접근하고 global 운영 API를 호출하지 못한다는 unit/MockMvc 증거가 생겼다.
+  - 보안 문서와 API 명세가 실제 구현의 `ORG_ADMIN` 예외 정책과 맞춰졌다.
+- 후속 메모:
+  - 다음 RBAC 작업은 bucket permission, access key scope, dashboard panel visibility를 하나의 권한 matrix로 묶는 것이 좋다.
+  - `ORG_ADMIN`에게 storage expansion 요청을 "생성만 가능, 적용은 ADMIN만 가능"하게 열지 여부는 제품 정책 결정이 필요하다.
+  - read-only `AUDITOR` role을 추가하려면 audit/system/backup status read-only route와 export 제한을 별도 정책으로 설계해야 한다.
+- 코드 리뷰:
+  - RBAC allowlist를 분리해 신규 관리자 API가 추가될 때 `ORG_ADMIN`에 자동 노출되지 않는 기본 차단 구조를 유지했다.
+  - 인터셉터가 JWT claim role만 믿지 않고 active user를 다시 조회하는 흐름은 비활성/role 변경 직후 차단에 유리하다.
+  - 현재 정책은 route 문자열 기반이므로 API가 많아지면 annotation 기반 권한 선언 또는 route registry verifier로 확장하는 것이 좋다.
+- 앞으로 추가적으로 개발해야하는 내용:
+  - IAM/RBAC matrix 문서: role, endpoint, resource scope, audit event, frontend panel visibility를 한 표로 정리.
+  - frontend에서 role별 panel 표시/숨김을 backend policy와 맞추는 테스트 추가.
+  - SSO/OIDC/LDAP 연동 전 role mapping 정책 설계.
+  - Access Key 만료/rotation grace period와 장기 미사용 key disable 자동화.
+- 추가적으로 사용된 skill이나 plugin:
+  - 별도 skill 없음.
+  - Gradle 테스트와 PowerShell verifier를 검증 도구로 사용.
+
+### 2026-06-16 - Dashboard Panel Role Filtering 강화
+
+- 작업 시간:
+  - 시작: 2026-06-15 23:53:00 +09:00
+  - 종료: 2026-06-16 00:00:00 +09:00
+- 사용자 명령:
+  - active goal: "운영용 Kubernetes 증설 자동화, 보안 hardening, IAM/RBAC 고도화, 백업/복구, HA/DR의 기능 구현" 계속 진행.
+- 요청 분석:
+  - 직전 RBAC 작업에서 관리자 API 접근 정책은 분리했지만, dashboard palette의 `adminOnly` panel은 서버 catalog/layout/preset 저장 흐름에서 완전히 강제되지 않았다.
+  - 이번 작업은 IAM/RBAC 고도화의 연장으로, dashboard panel visibility를 backend policy와 frontend UI 양쪽에서 role 기준으로 일치시키는 것으로 해석했다.
+- 실행 내용:
+  - `DashboardLayoutService`, `DashboardLayoutController`, `DashboardLayoutControllerTest`, `HomeView.vue`, frontend source contract test를 확인했다.
+  - backend에서 widget catalog, preset, saved layout 응답을 현재 사용자 role로 필터링하도록 수정했다.
+  - `USER`/`ORG_ADMIN`이 직접 `adminOnly` widget을 저장 요청에 넣으면 `AUTHORIZATION_FAILED`로 거부하도록 했다.
+  - frontend에서는 fallback/localStorage/직접 add 이벤트도 현재 role이 볼 수 있는 catalog 기준으로만 widget을 보존/추가하도록 했다.
+  - API, 보안, frontend 설계, feature inventory 문서를 갱신했다.
+- 구현 내용:
+  - `osmu-backend/src/main/java/com/example/osmu/dashboard/DashboardLayoutController.java`:
+    - `/widgets`, `/presets`, preset export가 현재 `AuthenticatedUser`를 service에 전달하도록 변경.
+  - `osmu-backend/src/main/java/com/example/osmu/dashboard/DashboardLayoutService.java`:
+    - role별 widget catalog 필터링 추가.
+    - saved layout/default preset/custom preset 응답에서 현재 role이 볼 수 없는 widget 제거.
+    - layout 저장 시 `adminOnly` widget을 비관리자가 넣으면 `AUTHORIZATION_FAILED` 반환.
+  - `osmu-backend/src/test/java/com/example/osmu/dashboard/DashboardLayoutControllerTest.java`:
+    - 일반 `USER`가 admin-only widget catalog/preset을 받지 않는지 검증.
+    - 일반 `USER`가 `identity` widget 직접 저장을 시도하면 403으로 차단되는지 검증.
+    - 일반 `USER`가 admin preset을 적용해도 admin-only widget이 제거되는지 검증.
+  - `osmu-frontend/src/views/HomeView.vue`:
+    - `dashboardWidgetCatalogForCurrentRole()` helper 추가.
+    - localStorage/fallback sanitize와 add widget 경로가 role-visible catalog만 사용하도록 변경.
+  - `osmu-frontend/src/views/HomeView.test.js`:
+    - role-aware dashboard widget filtering source contract 추가.
+  - `dev-docs/api-spec.md`, `dev-docs/security-design.md`, `dev-docs/frontend-design.md`, `dev-docs/feature-inventory.md`:
+    - dashboard `adminOnly` panel의 role filtering 및 직접 저장 차단 정책 문서화.
+- 검증 기록:
+  - `gradle test --tests com.example.osmu.dashboard.DashboardLayoutControllerTest`: 통과.
+  - `gradle test`: 통과.
+  - `npm.cmd run test:unit`: 통과, 68 tests passed.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-local.ps1 -SkipDocker -SkipBackend -SkipFrontend`: 통과.
+  - `npm run test:unit` 최초 실행은 Windows PowerShell execution policy가 `npm.ps1`을 막아 실패했고, 동일 명령을 `npm.cmd`로 재실행해 통과했다.
+- 결과:
+  - dashboard palette/preset/layout이 backend와 frontend 모두에서 role 기준으로 일관되게 제한된다.
+  - 비관리자가 admin-only 운영 panel을 UI 이벤트나 직접 API 저장 요청으로 추가하는 경로가 막혔다.
+  - 관리자 API RBAC와 dashboard panel visibility 사이의 권한 불일치가 줄었다.
+- 후속 메모:
+  - 현재 `adminOnly`는 `ADMIN` 전용 boolean이다. 향후 `AUDITOR`, `STORAGE_ADMIN`, `ORG_ADMIN_READONLY` 같은 세분화 role이 생기면 widget별 required roles 배열로 확장하는 것이 좋다.
+  - dashboard panel의 데이터 API 호출 자체도 panel visibility와 같은 matrix로 정리해야 한다.
+  - ORG_ADMIN에게 일부 identity/organization panel을 scoped view로 제공할지 제품 정책 결정이 필요하다.
+- 코드 리뷰:
+  - backend에서 응답 필터링과 저장 차단을 모두 넣어 UI 우회에 대한 방어가 생겼다.
+  - frontend도 localStorage 복구와 직접 add 이벤트를 같은 helper로 통일해 클라이언트 상태가 서버 정책과 덜 어긋난다.
+  - saved layout에서 권한 없는 widget은 오류 대신 응답에서 제거하도록 해 role 변경/권한 축소 시 사용자가 dashboard를 열 수 없게 되는 문제를 피했다.
+- 앞으로 추가적으로 개발해야하는 내용:
+  - IAM/RBAC matrix 문서를 별도 파일로 작성하고 endpoint, widget, role, resource scope를 한 표로 연결.
+  - backend data API와 frontend panel visibility의 matrix verifier 추가.
+  - read-only auditor role과 scoped ORG_ADMIN dashboard panel 정책 설계.
+  - Kubernetes 운영 API와 GitOps runner 권한을 role matrix에 통합.
+- 추가적으로 사용된 skill이나 plugin:
+  - 별도 skill 없음.
+  - Gradle, npm unit test, PowerShell verifier를 검증 도구로 사용.
+
+### 2026-06-16 - IAM/RBAC Matrix 문서와 검증 게이트 추가
+
+- 작업 시간:
+  - 시작: 2026-06-16 00:01:00 +09:00
+  - 종료: 2026-06-16 00:04:00 +09:00
+- 사용자 명령:
+  - active goal: "운영용 Kubernetes 증설 자동화, 보안 hardening, IAM/RBAC 고도화, 백업/복구, HA/DR의 기능 구현" 계속 진행.
+- 요청 분석:
+  - 직전 작업에서 backend admin route RBAC와 dashboard panel filtering은 구현되었지만, role/endpoint/resource/panel 정책을 한눈에 검토할 수 있는 matrix와 검증 게이트가 없었다.
+  - 이번 작업은 IAM/RBAC 고도화의 운영 문서화 및 회귀 방지 장치 추가로 해석했다.
+- 실행 내용:
+  - 기존 `verify-local.ps1`, 문서 verifier 패턴, `document-index.md` 구조를 확인했다.
+  - role, admin endpoint, resource scope, dashboard panel, Kubernetes/backup/restore 운영 권한을 하나의 matrix 문서로 정리했다.
+  - matrix와 핵심 backend/frontend 정책 문자열이 같이 유지되는지 확인하는 PowerShell verifier를 추가했다.
+  - `verify-local.ps1`에 IAM/RBAC matrix check 단계를 연결했다.
+  - 문서 인덱스, 보안 설계, 기능 인벤토리를 갱신했다.
+- 구현 내용:
+  - `dev-docs/iam-rbac-matrix.md` 추가:
+    - `ADMIN`, `ORG_ADMIN`, `USER` role 정의.
+    - `/api/admin/**` endpoint별 allow/deny matrix.
+    - bucket/object/access key resource scope matrix.
+    - dashboard widget `adminOnly` panel matrix.
+    - Kubernetes storage expansion, backup/restore drill, secret rotation, HA/DR 운영 권한 기준.
+    - 변경 시 갱신해야 하는 required update rule과 verification evidence.
+  - `scripts/verify-iam-rbac-matrix.ps1` 추가:
+    - matrix 문서 필수 항목 검증.
+    - `security-design.md`, `api-spec.md`, `frontend-design.md`의 RBAC 관련 문구 검증.
+    - `AdminRbacPolicy.java`, `DashboardLayoutService.java`, `HomeView.vue`의 핵심 policy contract 검증.
+  - `scripts/verify-local.ps1`:
+    - `Secret rotation policy draft check` 이후 `IAM/RBAC matrix check` 단계 추가.
+  - `dev-docs/document-index.md`:
+    - `iam-rbac-matrix.md`와 `verify-iam-rbac-matrix.ps1` 항목 추가.
+  - `dev-docs/security-design.md`, `dev-docs/feature-inventory.md`:
+    - IAM/RBAC matrix 기준 문서와 verifier 존재 반영.
+- 검증 기록:
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-iam-rbac-matrix.ps1`: 통과.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-local.ps1 -SkipDocker -SkipBackend -SkipFrontend`: 통과.
+- 결과:
+  - RBAC 구현이 코드에만 흩어져 있지 않고, 운영/보안 리뷰용 matrix 문서로 고정되었다.
+  - 신규 admin API, dashboard widget, storage expansion/backup/HA 운영 기능이 추가될 때 갱신해야 할 권한 기준이 명확해졌다.
+  - `verify-local`이 IAM/RBAC matrix drift를 기본 정적 게이트에서 잡을 수 있게 되었다.
+- 후속 메모:
+  - 현재 verifier는 핵심 문자열 기반 계약 검증이다. 추후 endpoint registry나 OpenAPI metadata 기반으로 더 구조화할 수 있다.
+  - 실제 운영 전에는 matrix에 `AUDITOR`, `STORAGE_ADMIN`, `SECURITY_ADMIN` 같은 세분화 role을 추가할지 결정해야 한다.
+  - Kubernetes RBAC(ServiceAccount/ClusterRole)와 애플리케이션 RBAC를 별도 표로 분리할 필요가 있다.
+- 코드 리뷰:
+  - matrix가 backend route policy, dashboard panel policy, 운영 기능 정책을 한 문서에 묶어 보안 리뷰 가시성을 높인다.
+  - verifier를 `verify-local`에 연결해 문서만 만들고 잊어버리는 상태를 줄였다.
+  - 문자열 기반 검증은 가볍고 현재 repo 패턴과 맞지만, endpoint가 늘어나면 구조화된 manifest 방식이 더 안전하다.
+- 앞으로 추가적으로 개발해야하는 내용:
+  - RBAC matrix를 OpenAPI 또는 annotation 기반 endpoint inventory와 자동 대조.
+  - Kubernetes ServiceAccount/RBAC matrix 추가.
+  - read-only auditor role 설계 및 API/dashboard 적용.
+  - HA/DR 운영 runbook과 role 분리.
+- 추가적으로 사용된 skill이나 plugin:
+  - 별도 skill 없음.
+  - PowerShell verifier와 `verify-local` 정적 게이트를 검증 도구로 사용.
+### 2026-06-16 - Kubernetes ServiceAccount RBAC Hardening 추가
+
+- 작업 시간:
+  - 시작: 2026-06-16 00:05:00 +09:00
+  - 종료: 2026-06-16 00:11:00 +09:00
+- 사용자 명령:
+  - active goal: "운영용 Kubernetes 증설 자동화, 보안 hardening, IAM/RBAC 고도화, 백업/복구, HA/DR의 기능 구현" 계속 진행.
+- 요청 분석:
+  - 직전 IAM/RBAC matrix는 애플리케이션 권한을 정리했지만, Kubernetes workload가 기본 ServiceAccount를 쓰거나 token을 자동 mount하면 운영 보안 hardening이 부족하다.
+  - 이번 작업은 backend, frontend, MariaDB, MinIO, backup/restore workload의 Kubernetes ServiceAccount와 cluster RBAC 경계를 명확히 하고, 기본적으로 Kubernetes API 권한을 주지 않는 보안 기준을 검증 가능하게 만드는 것으로 해석했다.
+- 실행 내용:
+  - raw Kubernetes manifest와 Helm template의 ServiceAccount/Pod spec 상태를 확인했다.
+  - 앱 workload별 전용 ServiceAccount를 추가하고, Pod와 ServiceAccount 모두 `automountServiceAccountToken: false`를 적용했다.
+  - Kubernetes RBAC matrix 문서와 verifier를 추가하고, `verify-local.ps1` 기본 정적 게이트에 연결했다.
+  - Kubernetes/Helm manifest verifier와 `kubectl kustomize` 렌더를 실행해 보안 계약이 실제 manifest에 반영되는지 확인했다.
+- 구현 내용:
+  - `infra/k8s/serviceaccount.yaml`: 앱/data ServiceAccount와 token automount 차단 추가.
+  - `infra/k8s/backend.yaml`, `frontend.yaml`, `mariadb.yaml`, `minio.yaml`: workload별 `serviceAccountName`과 Pod token automount 차단 적용.
+  - `infra/k8s/kustomization.yaml`: `serviceaccount.yaml` 리소스 포함.
+  - `infra/helm/osmu/templates/serviceaccount.yaml`: Helm chart용 앱/data ServiceAccount template 추가.
+  - `infra/helm/osmu/templates/backend.yaml`, `frontend.yaml`, `mariadb.yaml`, `minio.yaml`: workload별 ServiceAccount와 token automount 차단 적용.
+  - `dev-docs/kubernetes-rbac-matrix.md`: workload별 ServiceAccount, token automount, Kubernetes Role/Binding 부여 여부, GitOps/runner 권한 경계 문서화.
+  - `scripts/verify-kubernetes-rbac-matrix.ps1`: matrix 문서, raw manifest, Helm template, backup/restore hardening, 앱 manifest의 Role/RoleBinding 미부여 상태 검증.
+  - `scripts/verify-k8s-manifests.ps1`, `scripts/verify-helm-chart.ps1`, `scripts/verify-local.ps1`: ServiceAccount hardening 검증 게이트 연결.
+  - 관련 문서: `dev-docs/document-index.md`, `security-design.md`, `deployment-strategy.md`, `feature-inventory.md`, `iam-rbac-matrix.md`, `infra/k8s/README.md`, `infra/helm/osmu/README.md`에 Kubernetes RBAC 기준 반영.
+- 수정된 파일 및 관련 파일:
+  - `infra/k8s/serviceaccount.yaml`
+  - `infra/k8s/backend.yaml`
+  - `infra/k8s/frontend.yaml`
+  - `infra/k8s/mariadb.yaml`
+  - `infra/k8s/minio.yaml`
+  - `infra/k8s/kustomization.yaml`
+  - `infra/helm/osmu/templates/serviceaccount.yaml`
+  - `infra/helm/osmu/templates/backend.yaml`
+  - `infra/helm/osmu/templates/frontend.yaml`
+  - `infra/helm/osmu/templates/mariadb.yaml`
+  - `infra/helm/osmu/templates/minio.yaml`
+  - `dev-docs/kubernetes-rbac-matrix.md`
+  - `scripts/verify-kubernetes-rbac-matrix.ps1`
+  - `scripts/verify-k8s-manifests.ps1`
+  - `scripts/verify-helm-chart.ps1`
+  - `scripts/verify-local.ps1`
+- 검증 기록:
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-kubernetes-rbac-matrix.ps1`: 통과.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-k8s-manifests.ps1`: 통과, 14 files checked.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-helm-chart.ps1`: 통과, 15 files checked.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-local.ps1 -SkipDocker -SkipBackend -SkipFrontend`: 통과.
+  - `kubectl kustomize .\infra\k8s`: 통과, rendered manifest에서 전용 ServiceAccount와 Pod `automountServiceAccountToken: false` 확인.
+  - `helm template osmu .\infra\helm\osmu`: 실패. 현재 PC에 `helm` 실행 파일이 없어 CommandNotFoundException 발생. Helm chart 자체 계약은 `verify-helm-chart.ps1`로 정적 검증 완료.
+- 결과:
+  - 앱/data/backup workload가 기본 ServiceAccount에 의존하지 않고 Kubernetes API token을 기본 mount하지 않도록 보안 기준이 강화되었다.
+  - 현재 draft manifest에는 앱 workload에 Kubernetes `Role`, `ClusterRole`, `RoleBinding`, `ClusterRoleBinding`을 부여하지 않는다는 경계가 문서와 verifier로 고정되었다.
+  - future storage expansion runner가 Kubernetes API를 직접 호출해야 할 때 별도 least-privilege ServiceAccount/Role/RoleBinding을 추가해야 한다는 운영 기준이 명확해졌다.
+- 후속 메모:
+  - 실제 cluster 적용 전에는 `helm` CLI 설치 후 `helm template`과 `helm lint`를 실행해야 한다.
+  - storage expansion runner가 GitOps PR 방식이 아니라 in-cluster apply 방식으로 전환되면, runner 전용 ServiceAccount와 namespace-scoped 최소 권한 Role/RoleBinding, audit log, rollback runbook을 추가해야 한다.
+  - NetworkPolicy는 backend/backup 중심으로 시작되어 있으므로 frontend, MariaDB, MinIO의 ingress/egress 정책을 운영 환경 기준으로 더 세분화할 필요가 있다.
+- 코드 리뷰:
+  - token automount 차단은 workload와 ServiceAccount 양쪽에 적용되어 실수로 기본 token이 주입될 위험을 낮춘다.
+  - cluster RBAC를 현재 앱 manifest에 부여하지 않는 검증은 좋은 기본값이다. 단, 추후 runner가 Kubernetes API를 호출하는 순간 별도 verifier와 matrix 행을 반드시 갱신해야 한다.
+  - Helm ServiceAccount 이름은 현재 chart의 서비스명 패턴과 맞춰 고정 이름을 사용한다. 멀티 릴리스 설치를 강하게 지원하려면 release fullname prefix 적용 여부를 별도 설계해야 한다.
+- 앞으로 추가적으로 개발해야하는 내용:
+  - Helm CLI 기반 render/lint 검증.
+  - storage expansion runner 전용 least-privilege Kubernetes RBAC 구현.
+  - NetworkPolicy 세분화와 default deny 정책 검증.
+  - 실제 cluster dry-run/apply 및 rollback evidence 수집.
+- 추가적으로 사용된 skill이나 plugin:
+  - 별도 skill 없음.
+  - PowerShell verifier, `kubectl kustomize`를 검증 도구로 사용.
+### 2026-06-16 - Storage Expansion Runner Least-Privilege RBAC 추가
+
+- 작업 시간:
+  - 시작: 2026-06-16 00:12:00 +09:00
+  - 종료: 2026-06-16 00:20:00 +09:00
+- 사용자 명령:
+  - active goal: "운영용 Kubernetes 증설 자동화, 보안 hardening, IAM/RBAC 고도화, 백업/복구, HA/DR의 기능 구현" 계속 진행.
+- 요청 분석:
+  - 직전 작업에서 일반 workload의 ServiceAccount token automount 차단과 Kubernetes RBAC matrix를 추가했다.
+  - 다음 단계는 Storage Expansion runner가 실제 Kubernetes API를 사용해야 할 때 cluster-admin이나 backend 기본 ServiceAccount를 쓰지 않도록, 별도 최소 권한 ServiceAccount/Role/RoleBinding을 제공하는 것으로 해석했다.
+- 실행 내용:
+  - 기존 storage expansion runner가 backend 안에서 `kubectl`, `helm`, `git`, `gh`를 실행하는 disabled-by-default 구조임을 확인했다.
+  - 일반 backend/frontend/MariaDB/MinIO/backup workload는 계속 Kubernetes API 권한 없이 유지했다.
+  - `osmu-storage-expansion-runner` 전용 ServiceAccount/Role/RoleBinding을 raw Kubernetes manifest에 추가했다.
+  - Helm chart에는 `storageExpansion.runner.rbac.enabled=false` 기본값과 optional RBAC template을 추가했다.
+  - verifier를 "Role/RoleBinding 전체 금지"에서 "storage expansion runner 전용 namespace Role/RoleBinding만 허용"으로 정밀화했다.
+- 구현 내용:
+  - `infra/k8s/storage-expansion-rbac.yaml`:
+    - `osmu-storage-expansion-runner` ServiceAccount 추가.
+    - ServiceAccount 기본 `automountServiceAccountToken: false` 적용.
+    - `Tenant/osmu-minio`에 대한 `get`, `patch`, `update` 권한 추가.
+    - legacy `StatefulSet/osmu-minio`와 `statefulsets/status`에 대한 rollback/status 최소 권한 추가.
+    - Secret read, Pod exec, create/delete, ClusterRole/ClusterRoleBinding은 부여하지 않음.
+  - `infra/k8s/kustomization.yaml`:
+    - `storage-expansion-rbac.yaml` 포함.
+  - `infra/helm/osmu/values.yaml`:
+    - `storageExpansion.runner.rbac.enabled=false` 기본값과 runner RBAC 이름/대상 설정 추가.
+  - `infra/helm/osmu/templates/storage-expansion-rbac.yaml`:
+    - optional ServiceAccount/Role/RoleBinding template 추가.
+  - `scripts/verify-kubernetes-rbac-matrix.ps1`:
+    - runner RBAC 문서/manifest/template 검증 추가.
+    - cluster-scoped RBAC 금지 검증.
+    - `storage-expansion-rbac.yaml` 외 Role/RoleBinding 금지 검증.
+    - Secret, Pod exec, create/delete 권한 금지 검증.
+  - `scripts/verify-k8s-manifests.ps1`, `scripts/verify-helm-chart.ps1`:
+    - runner RBAC manifest/template와 forbidden permission 검증 추가.
+  - `dev-docs/kubernetes-rbac-matrix.md`:
+    - 파일을 ASCII 중심 matrix로 재정리하고 runner 권한 경계를 명확화.
+  - 관련 문서:
+    - `infra/k8s/README.md`, `infra/helm/osmu/README.md`, `dev-docs/security-design.md`, `dev-docs/deployment-strategy.md`, `dev-docs/minio-pool-expansion.md`, `dev-docs/api-spec.md`, `dev-docs/document-index.md`, `dev-docs/feature-inventory.md`에 runner RBAC 기준 반영.
+- 수정된 파일 및 관련 파일:
+  - `infra/k8s/storage-expansion-rbac.yaml`
+  - `infra/k8s/kustomization.yaml`
+  - `infra/helm/osmu/templates/storage-expansion-rbac.yaml`
+  - `infra/helm/osmu/values.yaml`
+  - `scripts/verify-kubernetes-rbac-matrix.ps1`
+  - `scripts/verify-k8s-manifests.ps1`
+  - `scripts/verify-helm-chart.ps1`
+  - `dev-docs/kubernetes-rbac-matrix.md`
+  - `dev-docs/security-design.md`
+  - `dev-docs/deployment-strategy.md`
+  - `dev-docs/minio-pool-expansion.md`
+  - `dev-docs/api-spec.md`
+  - `infra/k8s/README.md`
+  - `infra/helm/osmu/README.md`
+- 검증 기록:
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-kubernetes-rbac-matrix.ps1`: 최초 1회는 matrix 문구 대소문자 차이로 실패 후 verifier 수정, 재실행 통과.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-k8s-manifests.ps1`: 통과, 15 files checked.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-helm-chart.ps1`: 통과, 16 files checked.
+  - `kubectl kustomize .\infra\k8s`: 통과. rendered manifest에서 `osmu-storage-expansion-runner` ServiceAccount/Role/RoleBinding 확인.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-local.ps1 -SkipDocker -SkipBackend -SkipFrontend`: 통과.
+- 결과:
+  - Storage Expansion runner를 위해 무작정 backend ServiceAccount를 권한 상승시키지 않고, 별도 runner identity를 만들었다.
+  - runner 권한은 `Tenant/osmu-minio` patch/update와 legacy `StatefulSet/osmu-minio` rollback/status에 필요한 최소 namespace 권한으로 제한된다.
+  - Helm/GitOps 경로는 더 넓은 권한이 필요하므로 기본적으로 외부 GitOps/CI identity를 사용해야 한다는 경계를 문서화했다.
+- 후속 메모:
+  - 현재 RBAC는 in-cluster kubectl runner의 최소 권한 초안이다. 실제 backend Pod에서 runner를 켤 때는 token mount를 명시적으로 opt-in하는 별도 배포 패치나 runner Job 분리가 필요하다.
+  - Helm upgrade/rollback을 in-cluster에서 직접 실행하려면 release Secret/ConfigMap 및 chart-managed resource 권한이 필요하므로 별도 chart-admin role 설계와 검증이 필요하다.
+  - 실제 cluster에서는 `kubectl auth can-i --as=system:serviceaccount:osmu:osmu-storage-expansion-runner ...` evidence를 수집해야 한다.
+- 코드 리뷰:
+  - 일반 workload ServiceAccount와 runner ServiceAccount를 분리한 점은 적절하다.
+  - `create`를 의도적으로 제외했기 때문에 신규 Tenant 생성은 불가능하고, 기존 `Tenant/osmu-minio` patch 중심으로만 동작한다. 이는 증설 작업의 기본 방향과 맞다.
+  - 권한이 너무 좁아 Helm direct runner에는 맞지 않는다. 하지만 이 제한은 의도된 보안 경계이며, Helm은 GitOps/CI identity로 분리하는 것이 현재 설계상 안전하다.
+- 앞으로 추가적으로 개발해야하는 내용:
+  - runner-enabled backend patch 또는 별도 Kubernetes Job runner 설계.
+  - `kubectl auth can-i` 기반 권한 증거 스크립트 추가.
+  - 실제 MinIO Operator Tenant CRD가 설치된 cluster에서 `kubectl diff/apply --server-side --dry-run=server` 검증.
+  - Helm chart-admin role을 도입할지, GitOps-only 운영 모델로 고정할지 결정.
+- 추가적으로 사용된 skill이나 plugin:
+  - 별도 skill 없음.
+  - PowerShell verifier와 `kubectl kustomize`를 검증 도구로 사용.
+
+### 2026-06-16 - Storage Expansion RBAC Auth Evidence Script 추가
+
+- 작업 시간:
+  - 시작: 2026-06-16 00:21:00 +09:00
+  - 종료: 2026-06-16 00:27:00 +09:00
+- 사용자 명령:
+  - active goal: "운영용 Kubernetes 증설 자동화, 보안 hardening, IAM/RBAC 고도화, 백업/복구, HA/DR의 기능 구현" 계속 진행.
+- 요청 분석:
+  - 직전 작업에서 `osmu-storage-expansion-runner` 전용 ServiceAccount/Role/RoleBinding을 만들었지만, 실제 cluster에서 해당 권한이 허용/거부되는지 확인하는 evidence 수집 경로가 없었다.
+  - 이번 작업은 운영용 hardening의 다음 단계로, `kubectl auth can-i` 기반 live authorization evidence 스크립트를 추가하는 것으로 해석했다.
+- 실행 내용:
+  - 기존 `verify-local.ps1`, Kubernetes RBAC matrix verifier, deployment 문서 구조를 확인했다.
+  - `verify-storage-expansion-rbac-auth.ps1`를 추가해 허용되어야 하는 권한과 거부되어야 하는 권한을 같은 evidence에 남기도록 했다.
+  - 실제 cluster 접근 없이도 검증 가능한 `-PlanOnly` 모드를 추가했다.
+  - `verify-local.ps1`에 plan-only 검증 단계를 연결했다.
+  - 문서와 `verify-kubernetes-rbac-matrix.ps1`에 새 evidence 스크립트 계약을 추가했다.
+- 구현 내용:
+  - `scripts/verify-storage-expansion-rbac-auth.ps1` 추가:
+    - 기본 subject: `system:serviceaccount:osmu:osmu-storage-expansion-runner`.
+    - 허용 기대 권한:
+      - `get/patch/update tenants.minio.min.io/osmu-minio`
+      - `get/patch/update statefulsets.apps/osmu-minio`
+      - `get statefulsets.apps/osmu-minio --subresource=status`
+    - 거부 기대 권한:
+      - Tenant create/delete
+      - Secret get/list
+      - Pod exec/log
+      - Job create
+      - ClusterRole/ClusterRoleBinding create
+    - 실제 실행 시 `.osmu-run/latest-storage-expansion-rbac-auth.json` evidence 생성.
+    - `-PlanOnly` 실행 시 cluster 접속 없이 권한 체크 명령 목록 출력.
+  - `scripts/verify-local.ps1`:
+    - `Storage Expansion RBAC auth plan check` 단계 추가.
+  - `scripts/verify-kubernetes-rbac-matrix.ps1`:
+    - evidence script 존재, 필수 권한 목록, `verify-local` 연결 검증 추가.
+  - 문서:
+    - `dev-docs/kubernetes-rbac-matrix.md`, `document-index.md`, `deployment-strategy.md`, `security-design.md`, `minio-pool-expansion.md`, `feature-inventory.md`, `infra/k8s/README.md`, `infra/helm/osmu/README.md`에 live evidence 수집 절차 반영.
+- 수정된 파일 및 관련 파일:
+  - `scripts/verify-storage-expansion-rbac-auth.ps1`
+  - `scripts/verify-local.ps1`
+  - `scripts/verify-kubernetes-rbac-matrix.ps1`
+  - `dev-docs/kubernetes-rbac-matrix.md`
+  - `dev-docs/document-index.md`
+  - `dev-docs/deployment-strategy.md`
+  - `dev-docs/security-design.md`
+  - `dev-docs/minio-pool-expansion.md`
+  - `dev-docs/feature-inventory.md`
+  - `infra/k8s/README.md`
+  - `infra/helm/osmu/README.md`
+- 검증 기록:
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-storage-expansion-rbac-auth.ps1 -PlanOnly`: 통과. 허용 7개, 거부 9개 auth check 계획 출력.
+  - PowerShell script parse check for `verify-storage-expansion-rbac-auth.ps1`: 통과.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-kubernetes-rbac-matrix.ps1`: 통과.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-k8s-manifests.ps1`: 통과.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-helm-chart.ps1`: 통과.
+  - `kubectl kustomize .\infra\k8s`: 통과.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-local.ps1 -SkipDocker -SkipBackend -SkipFrontend`: 통과. 새 `Storage Expansion RBAC auth plan check` 포함.
+  - 실제 cluster 대상 `kubectl auth can-i` evidence는 아직 실행하지 않았다. RBAC manifest가 적용된 cluster에서 별도 실행해야 한다.
+- 결과:
+  - Storage Expansion runner RBAC가 문서/manifest 정적 계약에 그치지 않고, 실제 cluster 권한 결과를 evidence JSON으로 남길 수 있게 되었다.
+  - 로컬 기본 검증에서는 `-PlanOnly`로 auth check 목록을 매번 확인하므로 스크립트 drift를 줄일 수 있다.
+  - 운영 적용 시 허용 권한과 금지 권한을 같은 증거 파일로 남길 수 있어 보안 리뷰와 장애 대응에 유리하다.
+- 후속 메모:
+  - 실제 `osmu` 또는 `osmu-dev` namespace에 RBAC를 적용한 뒤 `scripts/verify-storage-expansion-rbac-auth.ps1 -Namespace <namespace>`를 실행해야 한다.
+  - MinIO Operator Tenant CRD가 없는 cluster에서는 Tenant 관련 `auth can-i`가 API resource 인식 문제를 낼 수 있으므로 Operator/CRD 설치 후 실행해야 한다.
+  - evidence JSON을 release/audit artifact에 자동 포함하는 후속 작업이 필요하다.
+- 코드 리뷰:
+  - 허용과 거부 권한을 같은 스크립트에 둔 점은 좋다. 권한이 부족한 경우뿐 아니라 과도하게 넓어진 경우도 잡는다.
+  - `-PlanOnly`를 `verify-local`에 넣어 cluster 없는 환경에서도 스크립트 구조를 검증할 수 있다.
+  - 실제 실행 모드는 클러스터 상태와 CRD 설치 여부에 의존하므로, 운영 gate에서는 prerequisite check와 함께 묶는 것이 좋다.
+- 앞으로 추가적으로 개발해야하는 내용:
+  - live `kubectl auth can-i` evidence를 release/audit report에 수집.
+  - runner-enabled backend patch 또는 별도 Kubernetes Job runner 설계.
+  - MinIO Operator Tenant CRD 존재 여부와 server-side dry-run evidence 수집 스크립트 추가.
+  - HA/DR 관점에서 증설 전/후 health, S3 smoke, rollback evidence를 하나의 운영 gate로 묶기.
+- 추가적으로 사용된 skill이나 plugin:
+  - 별도 skill 없음.
+  - PowerShell verifier와 `kubectl kustomize`를 검증 도구로 사용.
+
+### 2026-06-16 - Restore Drill Evidence 영속 저장소 및 완료율 재산정
+
+- 작업 시간:
+  - 시작: 2026-06-16 02:41:00 +09:00
+  - 종료: 2026-06-16 02:53:58 +09:00
+- 사용자 명령:
+  - "전체 완료 퍼센테이지가 어떻게 돼?"
+  - active goal: "운영용 Kubernetes 증설 자동화, 보안 hardening, IAM/RBAC 고도화, 백업/복구, HA/DR의 기능 구현" 계속 진행.
+- 요청 분석:
+  - 사용자가 전체 제품 관점의 현재 완료율을 확인하고 싶어 한다고 인식했다.
+  - 단일 숫자로 답하면 MVP 데모 완성도와 B2B 상용 제품 완성도가 섞이므로, `MVP demo`, `Kubernetes/Helm 운영 영역`, `최종 B2B 제품`으로 나눠 산정해야 한다고 판단했다.
+  - 직전 작업에서 restore drill evidence가 audit log 재구성에 의존하던 상태를 전용 저장소와 조회 API로 영속화했으므로, 해당 진행분을 완료율 판단에 반영했다.
+- 실행 내용:
+  - `dev-docs/feature-inventory.md`, `PRODUCT_REQUIREMENTS.md`, worklog의 최근 완료율 기록을 확인했다.
+  - restore drill evidence 영속 저장소, MariaDB migration, admin API, frontend API client, RBAC 테스트, 문서 반영 상태를 검증했다.
+  - Docker/full Kubernetes live 실행 없이 가능한 정적/단위 검증을 실행했다.
+- 구현 내용:
+  - `backup_restore_drill_evidence` MariaDB table과 repository를 추가했다.
+  - restore drill evidence 등록 시 audit log와 전용 evidence repository에 함께 저장되도록 했다.
+  - `GET /api/admin/backup/restore-drill-evidence` 조회 API를 추가했다.
+  - admin backup status와 dashboard summary/readiness가 전용 저장소의 최신 성공 evidence를 사용하도록 정리했다.
+  - frontend API client와 OpenAPI/API 문서에 evidence history 조회 계약을 반영했다.
+- 수정된 파일 및 관련 파일:
+  - `osmu-backend/src/main/java/com/example/osmu/admin/AdminBackupStatusController.java`
+  - `osmu-backend/src/main/java/com/example/osmu/admin/AdminController.java`
+  - `osmu-backend/src/main/java/com/example/osmu/admin/repository/BackupRestoreDrillEvidenceRepository.java`
+  - `osmu-backend/src/main/java/com/example/osmu/admin/repository/InMemoryBackupRestoreDrillEvidenceRepository.java`
+  - `osmu-backend/src/main/java/com/example/osmu/admin/repository/MariaDbBackupRestoreDrillEvidenceRepository.java`
+  - `osmu-backend/src/main/resources/db/migration/V39__backup_restore_drill_evidence.sql`
+  - `osmu-backend/src/test/java/com/example/osmu/admin/AdminBackupStatusControllerTest.java`
+  - `osmu-backend/src/test/java/com/example/osmu/auth/AdminRbacPolicyTest.java`
+  - `osmu-backend/src/test/java/com/example/osmu/user/AdminUserControllerTest.java`
+  - `osmu-frontend/src/services/api.js`
+  - `osmu-frontend/src/services/api-query.test.js`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/database-design.md`
+  - `dev-docs/backup-restore-drill.md`
+  - `dev-docs/operation-monitoring.md`
+  - `dev-docs/feature-inventory.md`
+  - `dev-docs/openapi-mvp.json`
+  - `scripts/verify-openapi-contract.ps1`
+- 검증 기록:
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-migrations.ps1`: 통과. 39 migrations, highest V39.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-openapi-contract.ps1`: 통과. operations 132, frontend functions 106.
+  - `node --test .\src\services\api-query.test.js .\src\views\HomeView.test.js`: 통과. frontend service/view tests 15개 통과.
+  - backend targeted Gradle tests: 최초 sandbox 실행은 Gradle distribution network 제한으로 실패, 승인 권한 재실행은 통과. `AdminBackupStatusControllerTest`, `AdminDashboardSummaryControllerTest`, `AdminRbacPolicyTest`, `AdminUserControllerTest`.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-backup-restore-drill.ps1`: 통과.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-local.ps1 -SkipDocker -SkipBackend -SkipFrontend`: 통과.
+  - `git diff --check --`: 통과. Windows LF/CRLF warning만 출력.
+- 결과:
+  - 최종 B2B 제품 기준 현재 완료율은 약 31%로 판단한다.
+  - MVP 데모 기준 현재 완료율은 약 90~95%로 볼 수 있다. 단, 이는 직전 durable MVP finalize evidence가 ready였다는 기준이며, 새 변경분의 전체 Docker full-stack 재검증은 이번 턴에서 다시 돌리지 않았다.
+  - Kubernetes/Helm 운영 자동화 영역은 약 69%로 판단한다. 많은 manifest/script/evidence path는 준비됐지만 실제 cluster dry-run/apply/live restore 증거가 아직 부족하다.
+- 후속 메모:
+  - 실제 Kubernetes cluster에서 MinIO Operator Tenant CRD, storage expansion dry-run/apply, restore namespace drill, DR bucket transfer, restore smoke까지 live evidence를 수집해야 한다.
+  - restore drill evidence history를 dashboard UI에서 목록/필터로 직접 보여주는 화면 고도화가 필요하다.
+  - Docker full-stack 기준으로 새 V39 migration 포함 durable finalize를 다시 실행하면 MVP demo 완료율 근거가 더 단단해진다.
+- 코드 리뷰:
+  - audit log에만 의존하던 restore evidence를 전용 table로 분리한 것은 운영 조회와 dashboard 판단에 적절하다.
+  - repository health를 backup/system status의 database health에 포함한 점은 좋다.
+  - 아직 live Kubernetes/Docker 검증이 빠져 있으므로, 운영 완료율을 올리려면 script 존재보다 실제 evidence 파일 생성과 API 제출 성공이 필요하다.
+- 앞으로 추가적으로 개발해야하는 내용:
+  - Kubernetes live 증설 runner 설계 및 실행 증거 저장.
+  - backup/restore drill history UI.
+  - DR finalize 결과를 release/audit artifact에 자동 포함.
+  - 성능/부하 테스트, 장애 주입 테스트, 보안 스캔/SBOM/signing 실증.
+- 추가적으로 사용된 skill이나 plugin:
+  - 별도 skill 없음.
+  - PowerShell verifier, Gradle test, Node test, Git whitespace check 사용.
+
+### 2026-06-16 - Storage Expansion Finalizer 추가
+
+- 작업 시간:
+  - 시작: 2026-06-16 02:55:00 +09:00
+  - 종료: 2026-06-16 03:04:42 +09:00
+- 사용자 명령:
+  - active goal: "운영용 Kubernetes 증설 자동화, 보안 hardening, IAM/RBAC 고도화, 백업/복구, HA/DR의 기능 구현" 계속 진행.
+  - 추가 메모: "필요하면 배포 확인 할때 192.168.35.88 이 서버로 배포 검증하면 돼"
+- 요청 분석:
+  - storage expansion backend에는 dry-run/apply/rollback runner, preflight, post-run verifier, log sanitizer가 이미 있어 다음 빈칸은 운영자가 증설 전/후 증거를 한 번에 묶는 finalization gate라고 판단했다.
+  - 실제 배포 검증 서버는 추후 live apply/cluster 검증 단계에서 사용할 수 있는 대상으로 기록하고, 이번 작업은 로컬에서 안전하게 검증 가능한 plan/finalizer 경로를 추가하는 것으로 해석했다.
+- 실행 내용:
+  - 기존 storage expansion controller, runner scripts, 운영 문서, `verify-local.ps1` 정적 게이트를 확인했다.
+  - `finalize-storage-expansion.ps1`를 추가해 RBAC auth evidence, server-side dry-run evidence, optional backend dry-run runner, optional backend apply runner를 하나의 report로 묶었다.
+  - 실제 apply는 `-RunBackendApply -ConfirmApply`가 있어야 하고, 같은 실행에서 RBAC/server-side dry-run evidence를 스킵하면 apply 전에 실패하도록 guard를 추가했다.
+  - `verify-local.ps1`에 finalizer plan check를 연결했다.
+  - 운영 문서, 릴리스 체크리스트, feature inventory, Kubernetes/Helm README에 finalizer 사용법과 guard 조건을 반영했다.
+- 구현 내용:
+  - `scripts/finalize-storage-expansion.ps1`:
+    - 기본 plan-only와 live 실행 모드 제공.
+    - RBAC auth evidence: `verify-storage-expansion-rbac-auth.ps1` 호출.
+    - server-side dry-run evidence: `verify-storage-expansion-server-dry-run.ps1` 호출.
+    - optional backend runner: admin login 후 `/admin/storage-expansion/runner-preflight`, `dry-run-runner`, `apply-runner` 호출.
+    - admin password와 bearer token은 report/evidence에 기록하지 않음.
+    - `.osmu-run/latest-storage-expansion-finalize.json`과 `.md` summary 작성.
+  - `scripts/verify-local.ps1`:
+    - `Storage Expansion finalize plan check` 추가.
+  - 문서:
+    - storage expansion finalizer를 document index, operation monitoring, MVP checklist, MinIO pool expansion, feature inventory, raw Kubernetes README, Helm README에 연결.
+    - feature inventory의 Kubernetes/Helm 영역을 70%, 전체 B2B 추정치를 32%로 보정.
+- 수정된 파일 및 관련 파일:
+  - `scripts/finalize-storage-expansion.ps1`
+  - `scripts/verify-local.ps1`
+  - `dev-docs/document-index.md`
+  - `dev-docs/operation-monitoring.md`
+  - `dev-docs/mvp-release-checklist.md`
+  - `dev-docs/minio-pool-expansion.md`
+  - `dev-docs/feature-inventory.md`
+  - `infra/k8s/README.md`
+  - `infra/helm/osmu/README.md`
+- 검증 기록:
+  - PowerShell parse check for `scripts/finalize-storage-expansion.ps1`: 통과.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\finalize-storage-expansion.ps1 -PlanOnly`: 통과.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\finalize-storage-expansion.ps1 -PlanOnly -RunBackendApply`: 통과. plan-only에서 apply guard 안내 출력.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -Command "try { & '.\scripts\finalize-storage-expansion.ps1' -RunBackendApply -ConfirmApply -SkipServerDryRun -NoReport; throw 'Apply guard did not fail.' } catch { if ($_.Exception.Message -like '*requires RBAC auth and server-side dry-run evidence*') { Write-Host 'Apply guard check passed.' } else { throw } }"`: 통과. apply guard가 의도대로 동작.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-local.ps1 -SkipDocker -SkipBackend -SkipFrontend`: 통과. 새 finalizer plan check 포함.
+  - `git diff --check -- <changed files>`: 통과. LF/CRLF warning만 출력.
+- 결과:
+  - storage expansion 운영 적용 경로가 개별 스크립트 나열에서 finalizer evidence report로 한 단계 묶였다.
+  - 실제 apply는 여전히 명시 확인과 사전 evidence를 요구하므로 기본 실행 경로는 안전하다.
+  - Kubernetes/Helm 운영 자동화 추정치는 약 70%, 전체 B2B 추정치는 약 32%로 보정했다.
+- 후속 메모:
+  - 실제 Kubernetes cluster와 MinIO Operator Tenant CRD가 있는 환경에서 `finalize-storage-expansion.ps1 -Namespace <namespace> -ImpersonateRunner`를 실행해 live evidence를 수집해야 한다.
+  - 필요 시 사용자가 제공한 `192.168.35.88` 서버를 배포/검증 대상으로 사용한다.
+  - backend apply runner까지 닫으려면 승인된 request id, backend admin credential, runner enablement 환경변수가 필요하다.
+- 코드 리뷰:
+  - finalizer가 기본적으로 destructive action을 하지 않고, apply에는 `ConfirmApply`와 사전 evidence를 강제하는 점은 적절하다.
+  - report에 password/token을 쓰지 않는 정책은 기존 DR finalizer와 같은 방향이다.
+  - 아직 live cluster 실행은 하지 않았으므로 상용 완료 증거가 아니라 운영 gate 준비 단계로 보는 것이 맞다.
+- 앞으로 추가적으로 개발해야하는 내용:
+  - `192.168.35.88` 또는 실제 target cluster에서 finalizer live run.
+  - storage expansion finalizer report를 release/audit artifact에 자동 포함.
+  - backend runner enablement 배포 패치 또는 별도 runner Job 설계.
+  - 증설 후 capacity/health/S3 smoke/rollback evidence를 더 강한 운영 gate로 확장.
+- 추가적으로 사용된 skill이나 plugin:
+  - 별도 skill 없음.
+  - PowerShell verifier와 정적 gate 사용.
+
+### 2026-06-16 - Storage Expansion Finalizer Release Artifact 연결
+
+- 작업 시간:
+  - 시작: 2026-06-16 03:05:00 +09:00
+  - 종료: 2026-06-16 03:08:51 +09:00
+- 사용자 명령:
+  - active goal: "운영용 Kubernetes 증설 자동화, 보안 hardening, IAM/RBAC 고도화, 백업/복구, HA/DR의 기능 구현" 계속 진행.
+- 요청 분석:
+  - 직전 작업에서 `finalize-storage-expansion.ps1`를 만들었지만, release/audit artifact에는 아직 storage expansion finalizer evidence 상태가 표시되지 않았다.
+  - 운영용 Kubernetes 증설 자동화는 스크립트 존재만으로 끝나는 것이 아니라, 릴리스 판단과 감사 문서에서 PASS/PENDING으로 추적되어야 한다고 판단했다.
+- 실행 내용:
+  - `write-mvp-audit.ps1`, `write-mvp-release-decision.ps1`, `write-mvp-release-notes.ps1`, `verify-mvp-release-artifacts.ps1`의 durable gate 읽기 패턴을 확인했다.
+  - 동일한 방식으로 `.osmu-run/latest-storage-expansion-finalize.json`을 읽는 helper를 추가했다.
+  - report가 없으면 PENDING, `result=passed`면 PASS로 표시하도록 구성했다.
+  - 기존 `.osmu-run` release artifact를 재생성해 storage expansion finalizer가 PENDING으로 표시되는지 확인했다.
+- 구현 내용:
+  - `scripts/write-mvp-audit.ps1`:
+    - `-StorageExpansionFinalizeReportPath` parameter 추가.
+    - Summary와 Test Case Evidence Map에 `Storage expansion finalizer` PASS/PENDING 표시 추가.
+    - Next Required Evidence에 finalizer report 경로 추가.
+  - `scripts/write-mvp-release-decision.ps1`:
+    - `Operations Evidence Gate` 섹션 추가.
+    - storage expansion finalizer evidence를 PASS/PENDING으로 표시.
+  - `scripts/write-mvp-release-notes.ps1`:
+    - finalizer report path와 detail을 release notes에 표시.
+    - operator notes에 finalizer proof pending/pass 안내 추가.
+  - `scripts/verify-mvp-release-artifacts.ps1`:
+    - audit/decision/notes가 storage expansion finalizer 상태를 포함하는지 검증.
+  - `dev-docs/mvp-release-checklist.md`:
+    - latest storage expansion finalizer report와 release artifact 반영 정책 추가.
+- 수정된 파일 및 관련 파일:
+  - `scripts/write-mvp-audit.ps1`
+  - `scripts/write-mvp-release-decision.ps1`
+  - `scripts/write-mvp-release-notes.ps1`
+  - `scripts/verify-mvp-release-artifacts.ps1`
+  - `dev-docs/mvp-release-checklist.md`
+  - `.osmu-run/latest-mvp-audit.md` ignored runtime artifact 재생성
+  - `.osmu-run/latest-release-decision.md` ignored runtime artifact 재생성
+  - `.osmu-run/latest-release-notes.md` ignored runtime artifact 재생성
+- 검증 기록:
+  - PowerShell parse check for `write-mvp-audit.ps1`, `write-mvp-release-decision.ps1`, `write-mvp-release-notes.ps1`, `verify-mvp-release-artifacts.ps1`: 통과.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\write-mvp-audit.ps1`: 통과. storage expansion finalizer evidence가 PENDING으로 표시됨.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\write-mvp-release-decision.ps1`: 통과. `Operations Evidence Gate`에 PENDING 표시.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\write-mvp-release-notes.ps1`: 통과. release notes에 finalizer report path와 pending note 표시.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-mvp-release-artifacts.ps1`: 통과.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-local.ps1 -SkipDocker -SkipBackend -SkipFrontend`: 통과.
+  - `git diff --check -- <changed scripts>`: 통과. LF/CRLF warning만 출력.
+- 결과:
+  - storage expansion finalizer evidence가 release/audit/notes에 자동 반영된다.
+  - 현재 live finalizer report가 없기 때문에 artifact는 PENDING으로 표시된다.
+  - MVP durable demo GO와 별개로 운영용 storage expansion evidence 부족이 명시적으로 드러난다.
+- 후속 메모:
+  - 실제 target cluster나 `192.168.35.88` 배포 환경에서 `finalize-storage-expansion.ps1`를 실행하면 release artifact가 PASS로 바뀔 수 있다.
+  - finalizer report를 durable release generation wrapper에 별도 명시 parameter로 전달할지 검토할 수 있다. 현재는 default path를 읽는다.
+- 코드 리뷰:
+  - durable gate와 같은 read/report 패턴을 재사용한 점은 유지보수성이 좋다.
+  - MVP demo GO/NO-GO와 운영 증설 evidence를 분리했기 때문에 현재 데모 상태를 과도하게 낮추지 않으면서 상용 운영 gap을 숨기지 않는다.
+  - report detail에 namespace/tenant/runDryRunRunner/runApply가 포함되어 운영자가 증거 수준을 빠르게 판단할 수 있다.
+- 앞으로 추가적으로 개발해야하는 내용:
+  - live finalizer report 생성 및 release artifact 재생성.
+  - storage expansion finalizer report를 GitHub Actions artifact나 release bundle에 업로드.
+  - backend runner apply 이후 capacity/health/S3 smoke 결과를 finalizer report에 더 직접적으로 요약.
+- 추가적으로 사용된 skill이나 plugin:
+  - 별도 skill 없음.
+  - PowerShell release artifact scripts와 verifier 사용.
+
+### 2026-06-16 - Operations Readiness Gate 추가
+
+- 작업 시간:
+  - 시작: 2026-06-16 03:25:00 +09:00
+  - 종료: 2026-06-16 03:30:02 +09:00
+- 사용자 명령:
+  - active goal: "운영용 Kubernetes 증설 자동화, 보안 hardening, IAM/RBAC 고도화, 백업/복구, HA/DR의 기능 구현" 계속 진행.
+- 요청 분석:
+  - MVP/demo release 산출물은 durable demo GO/NO-GO 판단에 가깝고, 운영용 Kubernetes 증설/보안/RBAC/백업/HA-DR readiness를 별도로 판단하는 gate가 부족했다.
+  - 운영 목표에서는 demo가 GO여도 live Kubernetes evidence, signed image, container scan/SBOM evidence가 없으면 production/B2B operations readiness는 pending으로 보여야 한다고 판단했다.
+- 실행 내용:
+  - operations readiness 전용 JSON/Markdown 산출물 생성 스크립트를 추가했다.
+  - 산출물 형태와 필수 check 목록을 검증하는 verifier를 추가했다.
+  - `verify-local.ps1`에 operations readiness artifact check를 연결했다.
+  - 문서 인덱스, 운영 문서, MVP release checklist, feature inventory에 새 gate를 반영했다.
+- 구현 내용:
+  - `scripts/write-operations-readiness.ps1`:
+    - `.osmu-run/latest-operations-readiness.json` 및 `.md` 생성.
+    - release report scope, IAM/RBAC matrix, Kubernetes RBAC matrix, storage expansion finalizer workflow, Kubernetes DR finalizer workflow, live storage expansion finalizer report, live HA/DR readiness report, live DR finalizer report, image signing evidence, container scan/SBOM evidence를 하나의 check list로 집계.
+    - 모든 check가 PASS일 때만 `result=ready`, 하나라도 부족하면 `result=pending`.
+    - `-FailIfNotReady`를 지원해 운영 배포 전 hard gate로 사용할 수 있게 함.
+  - `scripts/verify-operations-readiness.ps1`:
+    - operations readiness 산출물을 재생성하고 formatVersion, result, 핵심 check 이름/카테고리, Markdown 필수 문구를 검증.
+  - `scripts/verify-local.ps1`:
+    - `Kubernetes DR finalize plan check` 이후 `Operations readiness artifact check` 단계 추가.
+  - 문서:
+    - `dev-docs/document-index.md`에 새 스크립트 색인 추가.
+    - `dev-docs/operation-monitoring.md`에 Operations Readiness Gate 섹션 추가.
+    - `dev-docs/mvp-release-checklist.md`에 latest operations readiness report와 gate 설명 추가.
+    - `dev-docs/feature-inventory.md`에 operations readiness artifact gate 반영 및 추정 완료율을 B2B 35%, Kubernetes/Helm 73%로 보정.
+- 수정된 파일 및 관련된 파일:
+  - `scripts/write-operations-readiness.ps1`
+  - `scripts/verify-operations-readiness.ps1`
+  - `scripts/verify-local.ps1`
+  - `dev-docs/document-index.md`
+  - `dev-docs/operation-monitoring.md`
+  - `dev-docs/mvp-release-checklist.md`
+  - `dev-docs/feature-inventory.md`
+  - `dev-docs/worklog/main/worklog-main.md`
+  - `.osmu-run/latest-operations-readiness.json` ignored runtime artifact 생성
+  - `.osmu-run/latest-operations-readiness.md` ignored runtime artifact 생성
+- 검증 기록:
+  - PowerShell parse check for `write-operations-readiness.ps1`, `verify-operations-readiness.ps1`: 통과.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\write-operations-readiness.ps1`: 통과. `result=pending`, passed=19, pending=5.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-operations-readiness.ps1`: 통과.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-local.ps1 -SkipDocker -SkipBackend -SkipFrontend`: 통과. 새 operations readiness artifact check 포함.
+  - `git diff --check -- <changed operations readiness files and docs>`: 통과. LF/CRLF warning만 출력.
+- 결과:
+  - 운영용 readiness를 demo release GO/NO-GO와 분리해서 볼 수 있게 되었다.
+  - 현재 operations readiness는 `pending`이며, 부족한 항목은 storage expansion live evidence, Kubernetes HA/DR readiness live evidence, Kubernetes DR finalizer ready evidence, signed image evidence, container scan/SBOM evidence다.
+  - `verify-local`이 operations readiness artifact 형태와 필수 check 목록을 기본 검증에 포함한다.
+- 후속 메모:
+  - `192.168.35.88` 또는 실제 target cluster에서 live storage expansion finalizer, HA/DR readiness, DR finalizer를 실행해야 operations readiness의 Kubernetes 관련 pending이 줄어든다.
+  - image publish/sign workflow와 container security workflow의 실제 GitHub-hosted evidence를 `.osmu-run/latest-image-signing-evidence.json`, `.osmu-run/latest-container-security-evidence.json` 형태로 연결할 수 있다.
+- 코드 리뷰:
+  - `ready` 기준을 모든 check PASS로 둔 것은 보수적이지만 production/B2B operations gate에는 맞다.
+  - 운영 readiness를 release decision과 분리했기 때문에 durable demo GO와 production readiness pending 상태가 섞이지 않는다.
+  - 현재 image/container evidence JSON 형식은 future placeholder이므로 다음 단계에서 실제 workflow artifact schema를 고정해야 한다.
+- 앞으로 추가적으로 개발해야하는 내용:
+  - live Kubernetes target에서 `write-operations-readiness.ps1 -FailIfNotReady`가 PASS하도록 evidence 수집.
+  - image signing/scan/SBOM workflow 결과를 operations readiness evidence JSON으로 변환하는 스크립트 추가.
+  - operations readiness 결과를 admin dashboard readiness panel 또는 release decision의 production section에 연결.
+- 추가적으로 사용된 skill이나 plugin:
+  - 별도 skill 없음.
+  - PowerShell operations readiness scripts와 verifier 사용.
+
+### 2026-06-16 - Storage Expansion Finalizer CI Workflow 추가
+
+- 작업 시간:
+  - 시작: 2026-06-16 03:09:00 +09:00
+  - 종료: 2026-06-16 03:14:36 +09:00
+- 사용자 명령:
+  - active goal: "운영용 Kubernetes 증설 자동화, 보안 hardening, IAM/RBAC 고도화, 백업/복구, HA/DR의 기능 구현" 계속 진행.
+- 요청 분석:
+  - 직전 단계에서 storage expansion finalizer 스크립트와 release artifact 연결은 준비되었지만, 반복 가능한 CI/운영 실행 경로가 부족했다.
+  - GitHub Actions에서 기본은 plan-only로 안전하게 검증하고, 실 Kubernetes 적용은 명시 입력과 secret이 있을 때만 수행하는 수동 workflow가 필요하다고 판단했다.
+- 실행 내용:
+  - storage expansion finalizer 전용 수동 GitHub Actions workflow를 추가했다.
+  - workflow 검증 스크립트에 새 workflow의 안전장치와 필수 step 검증을 추가했다.
+  - 운영/릴리스/문서 인덱스/기능 인벤토리에 새 CI 증거 경로를 반영했다.
+- 구현 내용:
+  - `.github/workflows/storage-expansion-finalizer-ci.yml`:
+    - `workflow_dispatch` 기반 수동 실행 workflow 추가.
+    - 기본 실행은 `finalize-storage-expansion.ps1 -PlanOnly`로 제한.
+    - live 실행은 `run_live=true`와 `OSMU_KUBECONFIG_BASE64` secret이 있을 때만 kubeconfig를 준비하도록 구성.
+    - backend apply는 `run_backend_apply=true`와 `confirm_apply=true`가 모두 있어야만 `-ConfirmApply`가 전달되도록 guard를 추가.
+    - finalizer/RBAC/server dry-run evidence 파일을 GitHub Actions artifact로 업로드.
+  - `scripts/verify-ci-workflow.ps1`:
+    - storage expansion finalizer workflow path parameter 추가.
+    - manual dispatch only, secret 사용, plan-only step, live step, apply confirm guard, artifact upload 검증 추가.
+  - 문서:
+    - `dev-docs/mvp-release-checklist.md`에 finalizer CI evidence snapshot과 artifact upload 항목 추가.
+    - `dev-docs/operation-monitoring.md`에 finalizer CI 운영 실행 절차 추가.
+    - `dev-docs/document-index.md`에 workflow 파일 색인 추가.
+    - `dev-docs/feature-inventory.md`에 finalizer CI 항목 추가 및 추정 완료율을 B2B 33%, Kubernetes/Helm 71%로 보정.
+- 수정된 파일 및 관련된 파일:
+  - `.github/workflows/storage-expansion-finalizer-ci.yml`
+  - `scripts/verify-ci-workflow.ps1`
+  - `dev-docs/mvp-release-checklist.md`
+  - `dev-docs/operation-monitoring.md`
+  - `dev-docs/document-index.md`
+  - `dev-docs/feature-inventory.md`
+  - `dev-docs/worklog/main/worklog-main.md`
+- 검증 기록:
+  - PowerShell parse check for `scripts/verify-ci-workflow.ps1`: 통과.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-ci-workflow.ps1`: 통과.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-local.ps1 -SkipDocker -SkipBackend -SkipFrontend`: 통과.
+  - `git diff --check -- .github\workflows\storage-expansion-finalizer-ci.yml scripts\verify-ci-workflow.ps1 dev-docs\mvp-release-checklist.md dev-docs\operation-monitoring.md dev-docs\document-index.md dev-docs\feature-inventory.md`: 통과. LF/CRLF warning만 출력.
+- 결과:
+  - storage expansion finalizer를 로컬 스크립트가 아니라 GitHub Actions에서 반복 실행하고 artifact로 남길 수 있는 경로가 생겼다.
+  - 기본값은 plan-only라서 실수로 Kubernetes 리소스가 변경되지 않는다.
+  - 실제 cluster 또는 `192.168.35.88` 배포 검증은 아직 수행하지 않았다.
+- 후속 메모:
+  - GitHub repository secret `OSMU_KUBECONFIG_BASE64`, `OSMU_ADMIN_PASSWORD`를 등록해야 live evidence 수집이 가능하다.
+  - `run_live=true`로 실행하기 전 target namespace/tenant/manifest path를 운영 환경 기준으로 확인해야 한다.
+  - `192.168.35.88`에서 live 실행할 경우 workflow보다 먼저 서버의 kubeconfig/cluster 접근 상태를 확인해야 한다.
+- 코드 리뷰:
+  - `confirm_apply` guard로 backend apply 오작동 위험을 낮춘 점은 적절하다.
+  - kubeconfig를 temp file로 쓰고 GitHub secret에서만 주입하도록 한 구조는 문서화 단계의 운영 경로로 무난하다.
+  - 아직 workflow 자체를 GitHub 원격에서 실행하지 않았기 때문에 실제 runner, secret, cluster 연동은 별도 검증이 필요하다.
+- 앞으로 추가적으로 개발해야하는 내용:
+  - GitHub Actions 원격 실행 검증 및 artifact 다운로드 확인.
+  - live finalizer report 생성 후 MVP release artifact PASS 반영.
+  - 증설 이후 capacity/health/S3 smoke까지 묶는 운영 gate 확장.
+- 추가적으로 사용된 skill이나 plugin:
+  - 별도 skill 없음.
+  - PowerShell verifier와 GitHub Actions workflow draft 사용.
+
+### 2026-06-16 - Security Evidence Finalizer CI Workflow 추가
+
+- 작업 시간:
+  - 시작: 2026-06-16 04:22:00 +09:00
+  - 종료: 2026-06-16 04:26:22 +09:00
+- 사용자 명령:
+  - active goal: "운영용 Kubernetes 증설 자동화, 보안 hardening, IAM/RBAC 고도화, 백업/복구, HA/DR의 기능 구현" 계속 진행.
+- 요청 분석:
+  - image publish/sign workflow와 container security workflow는 각각 evidence artifact를 만들지만, 두 artifact를 모아서 security finalizer로 승격하는 전용 GitHub Actions 경로가 없었다.
+  - 보안 hardening readiness pending을 줄이려면 운영자가 수동으로 artifact를 내려받는 방식보다, run id와 artifact name을 입력해 자동으로 다운로드/검증/승격하는 workflow가 필요하다고 판단했다.
+- 실행 내용:
+  - `.github/workflows/security-evidence-finalizer-ci.yml`를 추가했다.
+  - `scripts/verify-ci-workflow.ps1`에 Security Evidence Finalizer CI 검증을 추가했다.
+  - `scripts/write-operations-readiness.ps1`와 `scripts/verify-operations-readiness.ps1`에 Security evidence finalizer workflow static gate를 추가했다.
+  - `dev-docs/image-signing-policy.md`, `dev-docs/document-index.md`, `dev-docs/operation-monitoring.md`, `dev-docs/mvp-release-checklist.md`, `dev-docs/commercial-readiness.md`, `dev-docs/feature-inventory.md`를 갱신했다.
+  - `scripts/verify-image-signing-policy.ps1`, `scripts/verify-commercial-readiness.ps1`를 새 문서 내용에 맞게 갱신했다.
+- 구현 내용:
+  - Security Evidence Finalizer CI는 manual `workflow_dispatch` 전용이다.
+  - 입력값으로 image signing workflow run id/artifact name, container security workflow run id/artifact name을 받는다.
+  - `actions/download-artifact@v4`와 `actions: read` 권한으로 이전 workflow run artifact를 내려받는다.
+  - 내려받은 `.osmu-run/latest-image-signing-evidence.json`, `.osmu-run/latest-container-security-evidence.json`의 존재를 확인한 뒤 `scripts/finalize-security-evidence.ps1`를 실행한다.
+  - finalizer output, promoted image/container evidence, source evidence bundle을 `security-evidence-finalizer-<run_id>` artifact로 업로드한다.
+- 수정된 파일 및 관련 파일:
+  - `.github/workflows/security-evidence-finalizer-ci.yml`
+  - `scripts/verify-ci-workflow.ps1`
+  - `scripts/write-operations-readiness.ps1`
+  - `scripts/verify-operations-readiness.ps1`
+  - `scripts/verify-image-signing-policy.ps1`
+  - `scripts/verify-commercial-readiness.ps1`
+  - `dev-docs/image-signing-policy.md`
+  - `dev-docs/document-index.md`
+  - `dev-docs/operation-monitoring.md`
+  - `dev-docs/mvp-release-checklist.md`
+  - `dev-docs/commercial-readiness.md`
+  - `dev-docs/feature-inventory.md`
+  - `dev-docs/worklog/main/worklog-main.md`
+- 검증 기록:
+  - PowerShell script parse check: 통과.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-ci-workflow.ps1`: 통과.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-image-signing-policy.ps1`: 통과.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-commercial-readiness.ps1`: 통과.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-operations-readiness.ps1`: 통과. 결과는 `pending`, 요약은 `passed=32 pending=6`.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-local.ps1 -SkipDocker -SkipBackend -SkipFrontend`: 통과.
+- 결과:
+  - 보안 hardening 증적을 실제 GitHub Actions artifact 기반으로 승격하는 전용 CI 경로가 생겼다.
+  - Operations Readiness Gate에서 Security evidence finalizer workflow 존재를 PASS로 판단한다.
+  - 전체 B2B 추정치는 약 42%, test/validation automation은 58%로 문서에 반영했다.
+- 다음 작업할 때 참고할 사항:
+  - Container Security CI와 Image Publish and Sign CI(`publish=true`)를 실제로 성공시킨 뒤 run id와 artifact name을 Security Evidence Finalizer CI에 넣어야 한다.
+  - Security Evidence Finalizer CI가 성공하면 security evidence finalizer report, signed image evidence, container scan/SBOM evidence pending이 PASS로 전환될 수 있다.
+  - `192.168.35.88` 또는 실제 target cluster에서 storage expansion, HA/DR, DR live evidence를 별도로 생성해야 한다.
+- 코드 리뷰:
+  - workflow는 artifact download에 필요한 최소 `actions: read`, `contents: read` 권한만 사용한다.
+  - synthetic evidence 허용 옵션은 노출하지 않아 production/pilot finalization에서 self-test evidence가 통과하지 못하게 유지했다.
+  - evidence path를 명시적으로 검증해 잘못된 artifact name/run id가 들어오면 finalizer 전에 실패한다.
+- 앞으로 추가적으로 개발해야하는 내용:
+  - 성공한 Security Evidence Finalizer CI artifact를 release artifact 또는 operations readiness 입력으로 자동 승격하는 경로.
+  - GH Actions run id/artifact name을 사람이 찾지 않도록 upstream workflow output이나 release checklist에 자동 기록하는 방식.
+- 추가적으로 사용된 skill이나 plugin:
+  - 별도 skill 없음.
+  - PowerShell verifier와 GitHub Actions workflow draft 사용.
+
+### 2026-06-16 - IAM/RBAC Readiness Finalizer 추가
+
+- 작업 시간:
+  - 시작: 2026-06-16 04:05:00 +09:00
+  - 종료: 2026-06-16 04:14:32 +09:00
+- 사용자 명령:
+  - active goal: "운영용 Kubernetes 증설 자동화, 보안 hardening, IAM/RBAC 고도화, 백업/복구, HA/DR의 기능 구현" 계속 진행.
+- 요청 분석:
+  - 운영 readiness에서 storage expansion, HA/DR, DR, security evidence는 finalizer 흐름이 생겼지만 IAM/RBAC는 matrix verifier 중심이라 운영 증적 묶음이 약했다.
+  - role 모델을 즉시 크게 바꾸기보다, 현재 구현된 application IAM/RBAC와 Kubernetes RBAC 경계를 하나의 finalizer report로 고정하고 operations readiness에 연결하는 작업으로 인식했다.
+- 실행 내용:
+  - `scripts/finalize-iam-rbac-readiness.ps1`를 추가했다.
+  - `scripts/verify-iam-rbac-finalizer.ps1` self-test를 추가했다.
+  - `scripts/finalize-operations-readiness.ps1`에 `-RunIamRbacFinalizer`, `-RunIamBackendPolicyTests`, `-RunIamKubernetesLiveAuth` 선택 단계를 연결했다.
+  - `.github/workflows/operations-readiness-finalizer-ci.yml`에 IAM/RBAC finalizer 입력과 artifact 업로드 경로를 추가했다.
+  - `scripts/write-operations-readiness.ps1`와 `scripts/verify-operations-readiness.ps1`가 IAM/RBAC finalizer 파일/증적을 readiness check로 확인하도록 갱신했다.
+  - `scripts/verify-local.ps1`, `scripts/verify-ci-workflow.ps1`, `scripts/verify-commercial-readiness.ps1`를 새 검증 흐름에 맞게 갱신했다.
+  - `dev-docs/document-index.md`, `dev-docs/operation-monitoring.md`, `dev-docs/commercial-readiness.md`, `dev-docs/mvp-release-checklist.md`, `dev-docs/feature-inventory.md`에 새 IAM/RBAC finalizer와 operations readiness 연결을 반영했다.
+- 구현 내용:
+  - IAM/RBAC finalizer 기본 실행은 application IAM/RBAC matrix verifier와 Kubernetes RBAC matrix verifier를 실행하고 `.osmu-run/latest-iam-rbac-finalize.json`, `.md`를 생성한다.
+  - `-RunBackendPolicyTests`를 주면 RBAC 관련 backend focused JUnit test 계획/실행 경로가 포함된다.
+  - `-RunKubernetesLiveAuth`를 주면 storage expansion runner ServiceAccount 대상 live `kubectl auth can-i` 증적 수집 경로가 포함된다.
+  - Operations Readiness Finalizer는 IAM/RBAC finalizer를 선택 실행할 수 있고, workflow artifact에도 `latest-iam-rbac-finalize.*`를 포함한다.
+- 수정된 파일 및 관련 파일:
+  - `.github/workflows/operations-readiness-finalizer-ci.yml`
+  - `scripts/finalize-iam-rbac-readiness.ps1`
+  - `scripts/verify-iam-rbac-finalizer.ps1`
+  - `scripts/finalize-operations-readiness.ps1`
+  - `scripts/write-operations-readiness.ps1`
+  - `scripts/verify-operations-readiness.ps1`
+  - `scripts/verify-operations-readiness-finalizer.ps1`
+  - `scripts/verify-ci-workflow.ps1`
+  - `scripts/verify-commercial-readiness.ps1`
+  - `scripts/verify-local.ps1`
+  - `dev-docs/document-index.md`
+  - `dev-docs/operation-monitoring.md`
+  - `dev-docs/commercial-readiness.md`
+  - `dev-docs/mvp-release-checklist.md`
+  - `dev-docs/feature-inventory.md`
+  - `dev-docs/worklog/main/worklog-main.md`
+- 검증 기록:
+  - PowerShell script parse check: 통과.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-iam-rbac-finalizer.ps1`: 통과.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\finalize-iam-rbac-readiness.ps1 -FailIfNotPassed`: 통과.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-operations-readiness.ps1`: 통과. 결과는 `pending`, 요약은 `passed=30 pending=6`.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-ci-workflow.ps1`: 통과.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-commercial-readiness.ps1`: 통과.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-operations-readiness-finalizer.ps1`: 통과.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-local.ps1 -SkipDocker -SkipBackend -SkipFrontend`: 통과.
+- 결과:
+  - IAM/RBAC 고도화 축에 독립 finalizer evidence가 추가되었고, operations readiness에서 해당 report를 PASS/PENDING으로 판단할 수 있게 됐다.
+  - 전체 B2B 추정치는 약 40%, test/validation automation은 56%로 문서에 반영했다.
+  - 실제 production readiness는 아직 `pending`이다. live Kubernetes/storage/HA/DR/security artifact 증적이 남아 있다.
+- 다음 작업할 때 참고할 사항:
+  - 192.168.35.88 또는 실제 target cluster에서 `-RunIamKubernetesLiveAuth`를 포함한 operations readiness finalizer live run을 수행해야 한다.
+  - backend JDK가 준비된 환경에서는 `-RunBackendPolicyTests`를 포함해 focused RBAC test evidence를 남기는 것이 좋다.
+  - 운영 readiness 남은 pending은 storage expansion live evidence, Kubernetes HA/DR live evidence, Kubernetes DR finalizer ready evidence, security evidence finalizer, signed image evidence, container scan/SBOM evidence다.
+- 코드 리뷰:
+  - IAM/RBAC finalizer는 secret을 입력받지 않고, kubeconfig/token/password를 report에 쓰지 않는 정책을 명시했다.
+  - static verifier, optional backend tests, optional live auth evidence를 분리해 로컬 검증과 운영 검증의 강도를 다르게 선택할 수 있다.
+  - Operations Readiness workflow에는 `run_iam_kubernetes_live_auth=true`일 때 `run_iam_rbac_finalizer=true`를 요구하는 guard를 추가했다.
+- 앞으로 추가적으로 개발해야하는 내용:
+  - `AUDITOR`, `SECURITY_ADMIN`, `STORAGE_ADMIN` 같은 세분화 role이 필요하면 `AdminRbacPolicy`, dashboard widget visibility, API spec, frontend navigation, tests를 한 번에 확장해야 한다.
+  - IAM/RBAC finalizer의 backend focused test를 GitHub Actions에서 실제로 돌리려면 Java setup step이 있는 별도 workflow 또는 operations workflow 확장이 필요하다.
+- 추가적으로 사용된 skill이나 plugin:
+  - 별도 skill 없음.
+  - PowerShell verifier와 GitHub Actions workflow draft 사용.
+
+### 2026-06-16 - Operations Readiness Finalizer 및 통합 Workflow 추가
+
+- 작업 시간:
+  - 시작: 2026-06-16 03:54:02 +09:00
+  - 종료: 2026-06-16 04:03:37 +09:00
+- 사용자 명령:
+  - active goal: "운영용 Kubernetes 증설 자동화, 보안 hardening, IAM/RBAC 고도화, 백업/복구, HA/DR의 기능 구현" 계속 진행.
+- 요청 분석:
+  - storage expansion, HA/DR readiness, Kubernetes DR finalizer, security evidence finalizer가 각각 따로 존재하므로 운영자가 최종 readiness를 만들 때 여러 명령과 artifact를 직접 조합해야 했다.
+  - 운영/B2B readiness 목표에 맞추려면 개별 증적 수집 경로 위에 하나의 안전한 orchestration finalizer와 manual CI workflow가 필요하다고 판단했다.
+  - live 실행은 위험할 수 있으므로 기본은 plan-only이고, 실제 Kubernetes/restore/apply 계열은 기존 개별 finalizer의 guard를 그대로 통과해야 하도록 설계했다.
+- 실행 내용:
+  - `scripts/finalize-operations-readiness.ps1`를 추가했다.
+  - `scripts/verify-operations-readiness-finalizer.ps1` self-test를 추가하고 `verify-local.ps1`에 연결했다.
+  - `.github/workflows/operations-readiness-finalizer-ci.yml` 수동 workflow를 추가했다.
+  - Operations Readiness Gate가 operations readiness finalizer script, self-test, workflow 존재를 확인하도록 확장했다.
+  - CI workflow verifier와 상용화/운영/릴리스 체크리스트 문서를 갱신했다.
+- 구현 내용:
+  - `scripts/finalize-operations-readiness.ps1`:
+    - 선택된 단계에 따라 storage expansion finalizer, Kubernetes HA/DR readiness, Kubernetes DR finalizer, security evidence finalizer, operations readiness report를 순차 실행한다.
+    - `-PlanOnly`에서는 실행하지 않고 명령 목록과 `.osmu-run/latest-operations-readiness-finalize.json/.md` 계획 리포트를 생성한다.
+    - `-AdminPassword`는 명령/리포트에서 `<secret>`으로 마스킹한다.
+    - 실행 후 `.osmu-run/latest-operations-readiness.json`을 읽어 최종 result를 `ready`, `pending`, `failed`로 요약한다.
+  - `scripts/verify-operations-readiness-finalizer.ps1`:
+    - 모든 주요 단계가 포함된 plan-only 리포트 생성 확인.
+    - storage backend dry-run runner 인자를 포함해 secret masking이 적용되는지 검증.
+  - `.github/workflows/operations-readiness-finalizer-ci.yml`:
+    - `workflow_dispatch` 전용.
+    - plan step은 항상 실행.
+    - `run_live=true`일 때 `OSMU_KUBECONFIG_BASE64`를 준비하고 선택된 evidence finalizer를 실행.
+    - combined readiness, storage expansion, HA/DR, DR, security evidence artifact를 업로드.
+  - `scripts/write-operations-readiness.ps1` / `scripts/verify-operations-readiness.ps1`:
+    - Operations Readiness Finalizer workflow/script/self-test checks 추가.
+  - `scripts/verify-ci-workflow.ps1`:
+    - Operations Readiness Finalizer CI workflow의 manual dispatch, guard, artifact 업로드 경로 검증 추가.
+  - 문서:
+    - `dev-docs/document-index.md`, `dev-docs/operation-monitoring.md`, `dev-docs/commercial-readiness.md`, `dev-docs/mvp-release-checklist.md`, `dev-docs/feature-inventory.md`에 통합 finalizer 흐름을 반영.
+    - B2B 완성 추정치는 39%, Kubernetes/Helm 74%, test/validation automation 55%로 갱신했다.
+- 수정된 파일 및 관련 파일들:
+  - `.github/workflows/operations-readiness-finalizer-ci.yml`
+  - `scripts/finalize-operations-readiness.ps1`
+  - `scripts/verify-operations-readiness-finalizer.ps1`
+  - `scripts/verify-local.ps1`
+  - `scripts/verify-ci-workflow.ps1`
+  - `scripts/write-operations-readiness.ps1`
+  - `scripts/verify-operations-readiness.ps1`
+  - `scripts/verify-commercial-readiness.ps1`
+  - `dev-docs/document-index.md`
+  - `dev-docs/operation-monitoring.md`
+  - `dev-docs/commercial-readiness.md`
+  - `dev-docs/mvp-release-checklist.md`
+  - `dev-docs/feature-inventory.md`
+  - `dev-docs/worklog/main/worklog-main.md`
+- 검증 기록:
+  - PowerShell parse check for changed scripts: 통과.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-operations-readiness-finalizer.ps1`: 통과.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-ci-workflow.ps1`: 통과.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-commercial-readiness.ps1`: 통과.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-operations-readiness.ps1`: 통과. 결과는 `pending`, 요약은 `passed=27 pending=6`.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-local.ps1 -SkipDocker -SkipBackend -SkipFrontend`: 통과.
+  - `git diff --check -- <changed operations readiness finalizer files and docs>`: 통과. LF/CRLF warning만 출력.
+- 결과:
+  - 운영자가 한 명령 또는 한 manual workflow로 운영 readiness 관련 증적 수집/판정을 오케스트레이션할 수 있는 경로가 생겼다.
+  - plan-only self-test와 secret masking 검증이 로컬 검증 체인에 포함되었다.
+  - 실제 target cluster와 GitHub Actions artifact가 아직 없으므로 operations readiness 자체는 계속 `pending`이다.
+- 다음 작업할 때 참고할 사항:
+  - GitHub Actions에서 `Operations Readiness Finalizer CI`를 plan-only로 먼저 실행해 artifact 모양을 확인한다.
+  - 이후 `run_live=true`와 필요한 단계만 선택해서 192.168.35.88 또는 실제 target cluster의 live evidence를 수집한다.
+  - security evidence finalizer는 image signing/container security artifact가 workspace에 있어야 PASS가 가능하다.
+  - Kubernetes DR finalizer live 실행은 실제 backup timestamp가 필요하다.
+- 코드 리뷰:
+  - 실행용 인자와 기록용 인자를 분리해 secret masking이 실제 실행을 방해하지 않도록 했다.
+  - `-RunStorageBackendApply`는 `-ConfirmStorageApply` 없이는 실패하도록 guard를 두었다.
+  - `-RunKubernetesDrFinalizer`는 plan-only가 아닌 경우 real backup timestamp와 `-ServerDryRunOnly` 또는 `-ConfirmRestore` 선택을 요구한다.
+  - workflow는 `run_live=false`가 기본이라 저장소 체크아웃만으로도 계획 리포트와 artifact를 만들 수 있다.
+- 앞으로 추가적으로 개발해야하는 내용:
+  - 192.168.35.88에서 operations readiness finalizer live server-side dry-run 실행.
+  - GitHub Actions artifact 다운로드/주입 경로를 보강해 security evidence finalizer를 workflow 안에서 더 자동화.
+  - Operations Readiness 결과를 admin dashboard readiness panel에 직접 표시.
+- 추가적으로 사용된 skill이나 plugin:
+  - 별도 skill 없음.
+  - PowerShell verifier와 GitHub Actions workflow draft 사용.
+
+### 2026-06-16 - Image Digest 및 SBOM SHA256 증적 강화
+
+- 작업 시간:
+  - 시작: 2026-06-16 03:48:01 +09:00
+  - 종료: 2026-06-16 03:54:02 +09:00
+- 사용자 명령:
+  - active goal: "운영용 Kubernetes 증설 자동화, 보안 hardening, IAM/RBAC 고도화, 백업/복구, HA/DR의 기능 구현" 계속 진행.
+- 요청 분석:
+  - 직전 작업에서 보안 증적 writer/finalizer는 생겼지만, image signing evidence의 digest가 선택값이라 tag 이동이나 artifact 추적성 측면에서 운영 증거로 약했다.
+  - container security evidence도 SBOM 파일의 SHA256 hash가 없어, 업로드된 SBOM 파일 자체를 추적하기 어렵다고 판단했다.
+  - 따라서 image digest와 SBOM SHA256을 필수 증거로 강화하는 작업으로 인식했다.
+- 실행 내용:
+  - Image Publish and Sign CI에 backend/frontend image manifest digest capture 단계를 추가했다.
+  - `write-image-signing-evidence.ps1`가 backend/frontend `sha256:` digest를 필수 PASS 조건으로 확인하게 했다.
+  - `write-container-security-evidence.ps1`가 backend/frontend SBOM byte size와 SHA256 hash를 evidence에 기록하게 했다.
+  - `finalize-security-evidence.ps1`가 image digest와 SBOM hash를 검증하고 all-zero digest/hash를 거부하게 했다.
+  - 관련 verifier와 문서를 갱신했다.
+- 구현 내용:
+  - `.github/workflows/image-publish-sign-ci.yml`:
+    - `Capture image digests` step 추가.
+    - `docker buildx imagetools inspect ... --raw | sha256sum`으로 backend/frontend manifest digest를 산출하고 `BACKEND_DIGEST`, `FRONTEND_DIGEST`로 전달.
+    - image signing evidence writer 호출에 `-BackendDigest`, `-FrontendDigest` 추가.
+  - `scripts/write-image-signing-evidence.ps1`:
+    - `backend-digest-provided`, `frontend-digest-provided` check 추가.
+    - `sha256:<64 hex>` 형식이 아니거나 all-zero digest면 실패.
+  - `scripts/write-container-security-evidence.ps1`:
+    - SBOM 파일의 `byteSize`, `sha256` 기록 추가.
+    - `backend-spdx-sbom-sha256`, `frontend-spdx-sbom-sha256` check 추가.
+  - `scripts/finalize-security-evidence.ps1`:
+    - image digest, SBOM hash 검증 추가.
+    - all-zero commit SHA, all-zero digest, all-zero SBOM hash를 운영 증거로 인정하지 않음.
+  - 문서:
+    - `dev-docs/image-signing-policy.md`, `dev-docs/operation-monitoring.md`, `dev-docs/document-index.md`, `dev-docs/commercial-readiness.md`, `dev-docs/mvp-release-checklist.md`, `dev-docs/feature-inventory.md`에 digest/hash 증적 기준 반영.
+    - B2B 완성 추정치는 38%, test/validation automation은 54%로 갱신했다.
+- 수정된 파일 및 관련 파일들:
+  - `.github/workflows/image-publish-sign-ci.yml`
+  - `scripts/write-image-signing-evidence.ps1`
+  - `scripts/write-container-security-evidence.ps1`
+  - `scripts/finalize-security-evidence.ps1`
+  - `scripts/verify-security-evidence-writers.ps1`
+  - `scripts/verify-security-evidence-finalizer.ps1`
+  - `scripts/verify-image-signing-policy.ps1`
+  - `scripts/verify-ci-workflow.ps1`
+  - `scripts/verify-commercial-readiness.ps1`
+  - `dev-docs/image-signing-policy.md`
+  - `dev-docs/operation-monitoring.md`
+  - `dev-docs/document-index.md`
+  - `dev-docs/commercial-readiness.md`
+  - `dev-docs/mvp-release-checklist.md`
+  - `dev-docs/feature-inventory.md`
+  - `dev-docs/worklog/main/worklog-main.md`
+- 검증 기록:
+  - PowerShell parse check for changed scripts: 통과.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-security-evidence-writers.ps1`: 통과.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-security-evidence-finalizer.ps1`: 통과.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-ci-workflow.ps1`: 통과.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-image-signing-policy.ps1`: 통과.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-commercial-readiness.ps1`: 통과.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-operations-readiness.ps1`: 통과. 결과는 `pending`, 요약은 `passed=24 pending=6`.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-local.ps1 -SkipDocker -SkipBackend -SkipFrontend`: 통과.
+  - `git diff --check -- <changed digest/hash evidence files and docs>`: 통과. LF/CRLF warning만 출력.
+- 결과:
+  - 보안 증적은 이제 단순 tag/ref가 아니라 image digest와 SBOM SHA256 hash를 포함한다.
+  - 운영 finalizer는 digest/hash가 없거나 all-zero인 증거를 통과시키지 않는다.
+  - 실제 GitHub-hosted workflow와 registry 실행은 아직 수행하지 않았으므로 운영 readiness는 계속 `pending`이다.
+- 다음 작업할 때 참고할 사항:
+  - GitHub Actions에서 Image Publish and Sign CI를 `publish=true`로 실행해 실제 digest가 기록되는지 확인해야 한다.
+  - Container Security CI를 실행해 실제 SBOM hash가 evidence에 기록되는지 확인해야 한다.
+  - 두 artifact를 내려받아 `scripts/finalize-security-evidence.ps1`를 실행하면 security evidence pending을 줄일 수 있다.
+  - Kubernetes storage expansion/HA/DR pending은 별도 target cluster live evidence가 필요하다.
+- 코드 리뷰:
+  - digest/hash 검증은 공개 메타데이터만 다루며 secret을 읽거나 출력하지 않는다.
+  - all-zero 값 거부를 추가해 placeholder 값이 운영 증거로 통과할 위험을 낮췄다.
+  - `docker buildx imagetools inspect --raw | sha256sum` 방식은 GitHub Ubuntu runner에서 registry manifest 원문 기준 digest를 산출하도록 설계했다. 실제 첫 workflow 실행에서 GHCR 결과와 Cosign 검증 결과를 함께 확인해야 한다.
+- 앞으로 추가적으로 개발해야하는 내용:
+  - 실제 GitHub Actions artifact 기반 보안 증적 finalizer 실행.
+  - release notes에 실제 image digest와 SBOM hash 링크를 자동 삽입.
+  - 192.168.35.88 또는 실제 target cluster에서 storage expansion/HA/DR live evidence 생성.
+- 추가적으로 사용된 skill이나 plugin:
+  - 별도 skill 없음.
+  - PowerShell verifier와 GitHub Actions workflow draft 사용.
+
+### 2026-06-16 - Kubernetes DR Finalizer Release Artifact 연결
+
+- 작업 시간:
+  - 시작: 2026-06-16 03:21:00 +09:00
+  - 종료: 2026-06-16 03:24:32 +09:00
+- 사용자 명령:
+  - active goal: "운영용 Kubernetes 증설 자동화, 보안 hardening, IAM/RBAC 고도화, 백업/복구, HA/DR의 기능 구현" 계속 진행.
+- 요청 분석:
+  - 직전 단계에서 Kubernetes DR finalizer workflow는 추가되었지만, MVP audit/release decision/release notes는 storage expansion finalizer만 읽고 있었다.
+  - 운영용 HA/DR 목표에서는 "스크립트가 있음"만으로 충분하지 않고, 릴리스 산출물에서 실제 DR finalizer evidence가 PASS/PENDING으로 드러나야 한다고 판단했다.
+- 실행 내용:
+  - MVP audit, release decision, release notes, release artifact verifier에 `.osmu-run/latest-kubernetes-dr-finalize.json` 읽기 로직을 추가했다.
+  - DR finalizer report가 `result=ready`일 때만 PASS로 처리하고, missing/planned/partial/failed/unreadable은 PENDING으로 유지하도록 했다.
+  - 현재 plan-only report를 기준으로 release artifact를 재생성해 Kubernetes DR finalizer evidence가 PENDING으로 표시되는지 확인했다.
+- 구현 내용:
+  - `scripts/write-mvp-audit.ps1`:
+    - `-KubernetesDrFinalizeReportPath` parameter 추가.
+    - `Read-KubernetesDrFinalizeReport` helper 추가.
+    - Summary, Test Case Evidence Map, Next Required Evidence에 Kubernetes DR finalizer PASS/PENDING 표시 추가.
+  - `scripts/write-mvp-release-decision.ps1`:
+    - `-KubernetesDrFinalizeReportPath` parameter와 helper 추가.
+    - `Operations Evidence Gate`에 Kubernetes DR finalizer evidence 항목 추가.
+  - `scripts/write-mvp-release-notes.ps1`:
+    - DR finalizer report path/detail과 operator note 추가.
+    - HA/DR을 operationally proven으로 취급하기 전 target cluster에서 finalizer를 실행해야 한다는 문구 추가.
+  - `scripts/verify-mvp-release-artifacts.ps1`:
+    - audit/decision/notes가 Kubernetes DR finalizer evidence를 포함하는지 검증.
+  - `dev-docs/mvp-release-checklist.md`:
+    - MVP audit/release decision/release notes가 storage expansion finalizer와 Kubernetes DR finalizer를 모두 PASS/PENDING으로 표시한다고 정리.
+- 수정된 파일 및 관련된 파일:
+  - `scripts/write-mvp-audit.ps1`
+  - `scripts/write-mvp-release-decision.ps1`
+  - `scripts/write-mvp-release-notes.ps1`
+  - `scripts/verify-mvp-release-artifacts.ps1`
+  - `dev-docs/mvp-release-checklist.md`
+  - `dev-docs/worklog/main/worklog-main.md`
+  - `.osmu-run/latest-mvp-audit.md` ignored runtime artifact 재생성
+  - `.osmu-run/latest-release-decision.md` ignored runtime artifact 재생성
+  - `.osmu-run/latest-release-notes.md` ignored runtime artifact 재생성
+- 검증 기록:
+  - PowerShell parse check for `write-mvp-audit.ps1`, `write-mvp-release-decision.ps1`, `write-mvp-release-notes.ps1`, `verify-mvp-release-artifacts.ps1`: 통과.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\write-mvp-audit.ps1`: 통과. Kubernetes DR finalizer evidence가 PENDING으로 표시됨.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\write-mvp-release-decision.ps1`: 통과. `Operations Evidence Gate`에 Kubernetes DR finalizer PENDING 표시.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\write-mvp-release-notes.ps1`: 통과. release notes에 DR finalizer report path와 pending note 표시.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-mvp-release-artifacts.ps1`: 통과.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-local.ps1 -SkipDocker -SkipBackend -SkipFrontend`: 통과.
+  - `git diff --check -- <changed release artifact scripts and checklist>`: 통과. LF/CRLF warning만 출력.
+- 결과:
+  - Kubernetes DR finalizer evidence가 MVP audit, release decision, release notes에 자동 반영된다.
+  - 현재 `.osmu-run/latest-kubernetes-dr-finalize.json`은 plan-only 결과라서 PENDING으로 표시된다.
+  - HA/DR 운영 증거 부족이 durable MVP demo GO와 분리되어 명시적으로 보인다.
+- 후속 메모:
+  - `192.168.35.88` 또는 실제 target cluster에서 live server-side dry-run/confirmed restore evidence를 생성해야 PASS로 바뀔 수 있다.
+  - GitHub Actions `kubernetes-dr-finalizer-ci.yml`에서 artifact를 내려받아 release artifact 재생성까지 이어지는 운영 절차를 검증해야 한다.
+- 코드 리뷰:
+  - `result=ready`만 PASS로 인정하는 기준은 보수적이며 HA/DR 운영 증거의 성격에 맞다.
+  - lightweight/durable MVP demo decision을 바꾸지 않고 Operations Evidence Gate로 분리한 점은 현재 데모 상태와 운영 준비도를 혼동하지 않게 한다.
+  - storage expansion finalizer helper와 거의 같은 패턴이라 반복이 있지만, 스크립트별 독립성이 높아 현재 구조에서는 이해하기 쉽다.
+- 앞으로 추가적으로 개발해야하는 내용:
+  - live Kubernetes DR finalizer report 생성 및 release artifact PASS 반영.
+  - storage expansion finalizer report도 live evidence로 생성.
+  - 실제 cluster에서 backup timestamp, restore namespace, DR bucket secret, restored API/S3 smoke까지 포함한 end-to-end DR drill 수행.
+- 추가적으로 사용된 skill이나 plugin:
+  - 별도 skill 없음.
+  - PowerShell release artifact scripts와 verifier 사용.
+
+### 2026-06-16 - Kubernetes DR Finalizer CI Workflow 추가
+
+- 작업 시간:
+  - 시작: 2026-06-16 03:15:00 +09:00
+  - 종료: 2026-06-16 03:20:35 +09:00
+- 사용자 명령:
+  - active goal: "운영용 Kubernetes 증설 자동화, 보안 hardening, IAM/RBAC 고도화, 백업/복구, HA/DR의 기능 구현" 계속 진행.
+- 요청 분석:
+  - storage expansion finalizer는 수동 CI workflow까지 연결되었지만, Kubernetes DR finalizer는 로컬 스크립트와 문서 중심이었다.
+  - HA/DR 목표를 향해 다음으로 필요한 것은 운영자가 GitHub Actions에서 동일한 입력과 동일한 artifact 정책으로 DR finalizer를 반복 실행할 수 있는 경로라고 판단했다.
+- 실행 내용:
+  - Kubernetes DR finalizer 전용 수동 GitHub Actions workflow를 추가했다.
+  - 기존 CI workflow verifier에 새 workflow의 안전장치와 artifact 계약 검증을 추가했다.
+  - 릴리스 체크리스트, 운영 문서, 백업/복구 runbook, 문서 인덱스, 기능 인벤토리에 새 DR finalizer CI 경로를 반영했다.
+- 구현 내용:
+  - `.github/workflows/kubernetes-dr-finalizer-ci.yml`:
+    - `workflow_dispatch` 기반 수동 실행 workflow 추가.
+    - 기본 실행은 `finalize-kubernetes-dr-drill.ps1 -PlanOnly`로 제한.
+    - live 실행은 `run_live=true`와 `OSMU_KUBECONFIG_BASE64` secret이 있을 때만 kubeconfig를 준비하도록 구성.
+    - live 실행 기본값은 `server_dry_run_only=true`이며, 실제 restore는 `confirm_restore=true`가 있을 때만 가능하도록 guard 추가.
+    - `submit_evidence=true`는 `confirm_restore=true`가 없으면 실패하도록 guard 추가.
+    - confirmed restore smoke가 필요한 경우 `OSMU_ADMIN_PASSWORD` secret을 요구하도록 guard 추가.
+    - DR finalizer, DR drill, restore smoke, evidence request, backup drill, restore namespace, artifact preflight, restore drill, DR bucket bootstrap/immutability, artifact transfer evidence를 artifact로 업로드.
+  - `scripts/verify-ci-workflow.ps1`:
+    - `KubernetesDrFinalizerWorkflowPath` parameter 추가.
+    - workflow 이름, manual dispatch only, secret 사용, plan/live step, confirm guard, artifact 업로드 경로 검증 추가.
+  - 문서:
+    - `dev-docs/mvp-release-checklist.md`에 DR finalizer report, workflow draft, artifact upload, verifier pass 항목 추가.
+    - `dev-docs/operation-monitoring.md`에 DR finalizer CI 운영 경로 추가.
+    - `dev-docs/document-index.md`에 workflow 파일 색인 추가.
+    - `dev-docs/backup-recovery.md`, `dev-docs/backup-restore-drill.md`에 manual CI workflow 사용 경로 추가.
+    - `dev-docs/feature-inventory.md`에 Kubernetes DR Finalizer CI workflow 반영 및 추정 완료율을 B2B 34%, Kubernetes/Helm 72%로 보정.
+- 수정된 파일 및 관련된 파일:
+  - `.github/workflows/kubernetes-dr-finalizer-ci.yml`
+  - `scripts/verify-ci-workflow.ps1`
+  - `dev-docs/mvp-release-checklist.md`
+  - `dev-docs/operation-monitoring.md`
+  - `dev-docs/document-index.md`
+  - `dev-docs/backup-recovery.md`
+  - `dev-docs/backup-restore-drill.md`
+  - `dev-docs/feature-inventory.md`
+  - `dev-docs/worklog/main/worklog-main.md`
+- 검증 기록:
+  - PowerShell parse check for `scripts/verify-ci-workflow.ps1`: 통과.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-ci-workflow.ps1`: 통과. `Kubernetes DR Finalizer workflow` 출력 확인.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\finalize-kubernetes-dr-drill.ps1 -PlanOnly`: 통과. `.osmu-run/latest-kubernetes-dr-finalize.json` 및 `.md` plan artifact 생성.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-local.ps1 -SkipDocker -SkipBackend -SkipFrontend`: 통과. 새 CI workflow 검증 포함.
+  - `git diff --check -- .github\workflows\kubernetes-dr-finalizer-ci.yml scripts\verify-ci-workflow.ps1 dev-docs\mvp-release-checklist.md dev-docs\operation-monitoring.md dev-docs\document-index.md dev-docs\backup-recovery.md dev-docs\backup-restore-drill.md dev-docs\feature-inventory.md`: 통과. LF/CRLF warning만 출력.
+- 결과:
+  - Kubernetes DR finalizer를 로컬 스크립트가 아니라 GitHub Actions에서 반복 실행하고 artifact로 남길 수 있는 경로가 생겼다.
+  - 기본값은 plan-only이며, live에서도 `server_dry_run_only`가 기본이라 실수로 restore가 실행되지 않는다.
+  - 실제 cluster 또는 `192.168.35.88` 배포 검증은 아직 수행하지 않았다.
+- 후속 메모:
+  - GitHub repository secret `OSMU_KUBECONFIG_BASE64`, `OSMU_ADMIN_PASSWORD` 등록 후 live server-side dry-run workflow를 먼저 실행해야 한다.
+  - confirmed restore는 실제 backup timestamp, restore namespace, DR bucket secret, API base, metadata row count를 운영자가 확인한 뒤 `confirm_restore=true`로 실행해야 한다.
+  - `192.168.35.88`에서 검증할 경우 먼저 kubeconfig와 target cluster 접근 상태를 확인해야 한다.
+- 코드 리뷰:
+  - confirmed restore와 evidence submit에 별도 guard를 둔 점은 운영 사고 방지에 필요하다.
+  - PlanOnly artifact도 업로드 대상에 포함되어 runbook 검토와 실제 실행 전 리뷰에 유용하다.
+  - 아직 GitHub-hosted runner와 실제 Kubernetes cluster에서 workflow를 실행하지 않았으므로 운영 완료 증거로 보기는 이르다.
+- 앞으로 추가적으로 개발해야하는 내용:
+  - GitHub Actions 원격 실행 검증 및 artifact 다운로드 확인.
+  - live `server_dry_run_only` 실행 후 DR finalizer evidence를 release/audit artifact에 연결.
+  - 실제 restore drill 성공 evidence를 dashboard/readiness/release artifact에 더 직접적으로 연결.
+- 추가적으로 사용된 skill이나 plugin:
+  - 별도 skill 없음.
+  - PowerShell verifier와 GitHub Actions workflow draft 사용.
+  - PowerShell verifier? GitHub Actions workflow draft ?ъ슜.
+
+### 2026-06-16 - Kubernetes HA/DR Readiness CI Workflow 추가
+
+- 작업 시간:
+  - 시작: 2026-06-16 04:29:00 +09:00
+  - 종료: 2026-06-16 04:35:40 +09:00
+- 사용자 명령:
+  - active goal: "운영용 Kubernetes 증설 자동화, 보안 hardening, IAM/RBAC 고도화, 백업/복구, HA/DR의 기능 구현" 계속 진행.
+- 요청 분석:
+  - 직전 작업에서 Security Evidence Finalizer CI까지 추가되었고, 운영 준비도는 `passed=32 pending=6`이었다.
+  - 남은 pending 중 Kubernetes HA/DR readiness는 live evidence script는 있지만 전용 GitHub Actions 실행 경로가 약하다고 판단했다.
+  - 실제 target cluster에서 반복 가능한 HA/DR 증적을 만들 수 있도록 전용 manual workflow를 추가하는 작업으로 인식했다.
+- 실행 내용:
+  - `.github/workflows/kubernetes-ha-dr-readiness-ci.yml`를 추가했다.
+  - `scripts/verify-ci-workflow.ps1`가 새 HA/DR readiness workflow 계약을 검증하도록 확장했다.
+  - `scripts/write-operations-readiness.ps1`와 `scripts/verify-operations-readiness.ps1`에 HA/DR readiness workflow static gate를 추가했다.
+  - 운영/릴리스/상업 준비도/백업 복구 문서와 기능 인벤토리를 갱신했다.
+- 구현 내용:
+  - Kubernetes HA/DR Readiness CI는 `workflow_dispatch` 전용이다.
+  - 기본은 plan-only 실행이며, `run_live=true`일 때만 `OSMU_KUBECONFIG_BASE64` secret으로 kubeconfig를 준비한다.
+  - live mode에서는 `scripts/verify-kubernetes-ha-dr-readiness.ps1`를 실행해 `.osmu-run/latest-kubernetes-ha-dr-readiness.json`를 만들고 artifact `kubernetes-ha-dr-readiness-<run_id>`로 업로드한다.
+  - Operations Readiness Gate가 전용 workflow 존재를 PASS로 확인하도록 했고, 현재 요약은 `passed=33 pending=6`으로 갱신됐다.
+  - 기능 인벤토리의 전체 B2B 추정치는 약 43%, Kubernetes/Helm 75%, test/validation automation 59%로 갱신했다.
+- 수정된 파일 및 관련 파일:
+  - `.github/workflows/kubernetes-ha-dr-readiness-ci.yml`
+  - `scripts/verify-ci-workflow.ps1`
+  - `scripts/write-operations-readiness.ps1`
+  - `scripts/verify-operations-readiness.ps1`
+  - `scripts/verify-commercial-readiness.ps1`
+  - `dev-docs/document-index.md`
+  - `dev-docs/operation-monitoring.md`
+  - `dev-docs/mvp-release-checklist.md`
+  - `dev-docs/commercial-readiness.md`
+  - `dev-docs/backup-restore-drill.md`
+  - `dev-docs/feature-inventory.md`
+  - `dev-docs/worklog/main/worklog-main.md`
+- 검증 기록:
+  - PowerShell script parse check: 통과.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-ci-workflow.ps1`: 통과.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-commercial-readiness.ps1`: 통과.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-operations-readiness.ps1`: 통과. 결과는 `pending`, 요약은 `passed=33 pending=6`.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-backup-restore-drill.ps1`: 통과.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-local.ps1 -SkipDocker -SkipBackend -SkipFrontend`: 통과.
+  - `git diff --check -- <changed HA/DR readiness CI files and docs>`: 통과. LF/CRLF warning만 출력.
+- 결과:
+  - HA/DR live readiness evidence를 GitHub Actions에서 반복 수집할 수 있는 전용 workflow가 생겼다.
+  - 운영 준비도 static gate가 HA/DR readiness workflow 존재를 확인한다.
+  - 실제 target cluster evidence가 아직 없으므로 operations readiness 자체는 계속 `pending`이다.
+- 다음 작업할 때 참고할 사항:
+  - `192.168.35.88` 또는 실제 target cluster에서 `kubernetes-ha-dr-readiness-ci.yml`를 `run_live=true`로 실행해 `.osmu-run/latest-kubernetes-ha-dr-readiness.json`를 확보해야 한다.
+  - 남은 pending은 storage expansion finalizer live evidence, Kubernetes HA/DR readiness live evidence, Kubernetes DR finalizer ready evidence, security evidence finalizer report, signed image evidence, container scan/SBOM evidence다.
+- 코드 리뷰:
+  - workflow는 `workflow_dispatch` 전용이고 push/pull_request 자동 실행을 열지 않았다.
+  - kubeconfig는 `OSMU_KUBECONFIG_BASE64` secret이 있을 때만 runner temp 경로에 복원한다.
+  - plan-only step을 항상 먼저 실행해, live 실행 전 operator가 검사 범위를 로그로 확인할 수 있다.
+  - artifact는 증적 JSON만 업로드하고 secret 값은 포함하지 않는다.
+- 앞으로 추가적으로 개발해야하는 내용:
+  - 같은 방식으로 storage expansion/DR/security evidence를 실제 CI artifact로 모아 operations readiness finalizer를 `ready`까지 올려야 한다.
+  - HA/DR readiness 결과를 admin dashboard readiness panel에 더 직접적으로 노출하는 것도 다음 제품화 후보이다.
+- 추가적으로 사용된 skill이나 plugin:
+  - 별도 skill 없음.
+  - PowerShell verifier와 GitHub Actions workflow draft 사용.
+
+### 2026-06-16 - Security Evidence Finalizer 및 Release/Readiness 연결
+
+- 작업 시간:
+  - 시작: 2026-06-16 03:38:07 +09:00
+  - 종료: 2026-06-16 03:48:01 +09:00
+- 사용자 명령:
+  - active goal: "운영용 Kubernetes 증설 자동화, 보안 hardening, IAM/RBAC 고도화, 백업/복구, HA/DR의 기능 구현" 계속 진행.
+- 요청 분석:
+  - 직전 작업에서 image signing evidence와 container scan/SBOM evidence writer 및 CI artifact 생성 경로는 생겼다.
+  - 다음 병목은 GitHub Actions에서 내려받은 증적 JSON을 운영 readiness와 release artifact가 신뢰할 수 있는 표준 위치로 승격하는 수집/검증 단계였다.
+  - synthetic self-test 증적이 실수로 운영 PASS 증적으로 쓰이면 위험하므로, 기본 모드에서 self-test marker와 zero commit SHA를 거부하는 finalizer가 필요하다고 판단했다.
+- 실행 내용:
+  - 보안 증적 finalizer를 추가했다.
+  - finalizer self-test를 추가하고 `verify-local.ps1`에 연결했다.
+  - Operations Readiness Gate가 security evidence finalizer script, self-test, finalizer report를 확인하도록 확장했다.
+  - MVP audit, release decision, release notes가 security evidence finalizer 상태를 PASS/PENDING으로 표시하도록 연결했다.
+  - 관련 운영/상용화/이미지 서명 문서와 기능 완료율 문서를 갱신했다.
+- 구현 내용:
+  - `scripts/finalize-security-evidence.ps1`:
+    - image signing evidence와 container security evidence를 읽어 formatVersion, result, failureCount, sourceRunUrl, secretPolicy, image refs, SBOM metadata를 검증한다.
+    - 기본 모드에서는 `example.invalid`, `self-test`, all-zero commit SHA가 포함된 synthetic evidence를 거부한다.
+    - `-AllowSyntheticEvidence`는 self-test 전용 허용 경로로 사용한다.
+    - 검증 통과 시 증적 JSON을 `.osmu-run/latest-image-signing-evidence.json`, `.osmu-run/latest-container-security-evidence.json`로 승격하고 `.osmu-run/latest-security-evidence-finalize.json/.md`를 생성한다.
+  - `scripts/verify-security-evidence-finalizer.ps1`:
+    - synthetic evidence writer 결과로 finalizer 통과 경로를 확인한다.
+    - 같은 synthetic evidence를 기본 모드로 실행하면 `result=failed`가 되는지 확인한다.
+  - `scripts/write-operations-readiness.ps1` / `scripts/verify-operations-readiness.ps1`:
+    - security evidence finalizer static check, self-test check, finalizer report check를 추가했다.
+  - `scripts/write-mvp-audit.ps1`, `scripts/write-mvp-release-decision.ps1`, `scripts/write-mvp-release-notes.ps1`, `scripts/verify-mvp-release-artifacts.ps1`:
+    - security evidence finalizer 상태를 release artifact에 포함했다.
+  - 문서:
+    - `dev-docs/document-index.md`, `dev-docs/operation-monitoring.md`, `dev-docs/image-signing-policy.md`, `dev-docs/commercial-readiness.md`, `dev-docs/mvp-release-checklist.md`, `dev-docs/feature-inventory.md`에 보안 증적 finalizer 흐름을 반영했다.
+    - B2B 완성 추정치는 37%, test/validation automation은 53%로 갱신했다.
+- 수정된 파일 및 관련 파일들:
+  - `scripts/finalize-security-evidence.ps1`
+  - `scripts/verify-security-evidence-finalizer.ps1`
+  - `scripts/verify-local.ps1`
+  - `scripts/write-operations-readiness.ps1`
+  - `scripts/verify-operations-readiness.ps1`
+  - `scripts/write-mvp-audit.ps1`
+  - `scripts/write-mvp-release-decision.ps1`
+  - `scripts/write-mvp-release-notes.ps1`
+  - `scripts/verify-mvp-release-artifacts.ps1`
+  - `scripts/verify-image-signing-policy.ps1`
+  - `scripts/verify-commercial-readiness.ps1`
+  - `dev-docs/document-index.md`
+  - `dev-docs/operation-monitoring.md`
+  - `dev-docs/image-signing-policy.md`
+  - `dev-docs/commercial-readiness.md`
+  - `dev-docs/mvp-release-checklist.md`
+  - `dev-docs/feature-inventory.md`
+  - `dev-docs/worklog/main/worklog-main.md`
+- 검증 기록:
+  - PowerShell parse check for changed scripts: 통과.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-security-evidence-finalizer.ps1`: 통과.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-image-signing-policy.ps1`: 통과.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-commercial-readiness.ps1`: 통과.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-operations-readiness.ps1`: 통과. 결과는 `pending`, 요약은 `passed=24 pending=6`.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-mvp-release-decision.ps1`: 통과.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-mvp-release-artifacts.ps1`: 통과.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-local.ps1 -SkipDocker -SkipBackend -SkipFrontend`: 통과.
+  - `git diff --check -- <changed security finalizer files and docs>`: 통과. LF/CRLF warning만 출력.
+- 결과:
+  - CI에서 생성된 보안 증적을 운영 표준 위치로 승격하고 release/readiness 산출물에 연결하는 계층이 생겼다.
+  - self-test 증적은 `-AllowSyntheticEvidence` 없이는 finalizer에서 실패하므로 운영 증적으로 잘못 승격될 위험을 줄였다.
+  - 실제 GitHub-hosted image signing/container security workflow artifact가 아직 없으므로 Operations Readiness는 여전히 `pending`이다.
+- 다음 작업할 때 참고할 사항:
+  - GitHub Actions에서 Image Publish and Sign CI(`publish=true`)와 Container Security CI를 실제 실행한 뒤 artifact를 내려받아 `scripts/finalize-security-evidence.ps1`로 승격해야 한다.
+  - 그 다음 `scripts/write-operations-readiness.ps1`를 다시 실행하면 security evidence finalizer, signed image evidence, container scan/SBOM evidence pending이 PASS로 바뀔 수 있다.
+  - Kubernetes 관련 pending은 별도 live evidence가 필요하다. 대상은 storage expansion finalizer, HA/DR readiness, Kubernetes DR finalizer다.
+  - `192.168.35.88` 서버 배포/클러스터 검증은 이번 작업에서 수행하지 않았다.
+- 코드 리뷰:
+  - finalizer는 secret 값을 읽거나 쓰지 않고 evidence JSON의 공개 메타데이터만 검증한다.
+  - 운영 모드에서 synthetic marker와 all-zero commit SHA를 막아 self-test 결과가 운영 release/readiness에 섞일 가능성을 낮췄다.
+  - release decision 자체의 lightweight/durable GO/NO-GO 판정은 바꾸지 않고 operations evidence gate에만 보안 finalizer 상태를 추가했다.
+  - 현재 digest 필드는 여전히 선택값이므로, 다음에는 workflow에서 image digest를 추출해 image signing evidence에 채우는 개선이 가능하다.
+- 앞으로 추가적으로 개발해야하는 내용:
+  - 실제 GitHub Actions artifact 기반 보안 증적 finalizer 실행.
+  - image digest 자동 추출 및 evidence 강화.
+  - 192.168.35.88 또는 실제 target cluster에서 storage expansion/HA/DR live evidence 생성.
+  - Operations Readiness 결과를 admin dashboard readiness panel에 직접 연결.
+- 추가적으로 사용된 skill이나 plugin:
+  - 별도 skill 없음.
+  - PowerShell verifier, release artifact script, operations readiness script 사용.
+
+### 2026-06-16 - Security Evidence Writer 및 Workflow 연결
+
+- 작업 시간:
+  - 시작: 2026-06-16 03:20:35 +09:00
+  - 종료: 2026-06-16 03:38:07 +09:00
+- 사용자 명령:
+  - active goal: "운영용 Kubernetes 증설 자동화, 보안 hardening, IAM/RBAC 고도화, 백업/복구, HA/DR의 기능 구현" 계속 진행.
+- 요청 분석:
+  - Operations Readiness Gate에서 signed image evidence와 container scan/SBOM evidence가 아직 pending이었다.
+  - GitHub Actions에서 Trivy/SBOM, Cosign 검증 결과를 사람이 읽는 로그로만 남기면 이후 release gate와 readiness gate가 재사용하기 어렵다.
+  - 따라서 보안 검증 결과를 고정된 JSON 증적 파일로 생성하고, workflow artifact로 업로드하는 경로를 만드는 작업으로 인식했다.
+- 실행 내용:
+  - Container Security CI가 SBOM과 scan 결과를 `.osmu-run/latest-container-security-evidence.json`으로 기록하도록 연결했다.
+  - Image Publish and Sign CI가 backend/frontend의 version tag와 commit SHA tag 서명을 모두 검증하고 `.osmu-run/latest-image-signing-evidence.json`으로 기록하도록 연결했다.
+  - 보안 증적 writer의 self-test를 추가하고 `verify-local.ps1`에 포함했다.
+  - Operations Readiness Gate와 상용화 준비 문서가 새 evidence writer와 self-test를 확인하도록 갱신했다.
+- 구현 내용:
+  - `scripts/write-container-security-evidence.ps1`:
+    - backend/frontend image, SBOM path, Trivy scan pass 여부, source run URL, artifact name을 받아 machine-readable JSON evidence를 생성한다.
+    - SPDX SBOM 형식과 package 개수를 확인하고 scan pass 여부와 함께 `passed` 또는 `failed`를 판단한다.
+  - `scripts/write-image-signing-evidence.ps1`:
+    - backend/frontend의 version ref와 SHA ref, 서명 검증 flag를 받아 image signing evidence JSON을 생성한다.
+    - 네 개의 서명 검증 항목이 모두 true일 때만 `passed`로 판단한다.
+  - `scripts/verify-security-evidence-writers.ps1`:
+    - synthetic SPDX SBOM으로 두 writer가 정상 JSON evidence를 생성하는지 검증한다.
+  - `.github/workflows/container-security-ci.yml`:
+    - SBOM과 container security evidence를 `osmu-container-security-${{ github.sha }}` artifact로 업로드한다.
+  - `.github/workflows/image-publish-sign-ci.yml`:
+    - version tag와 SHA tag를 모두 Cosign으로 검증하고 image signing evidence artifact를 업로드한다.
+  - 검증/문서:
+    - `scripts/verify-ci-workflow.ps1`, `scripts/verify-image-signing-policy.ps1`, `scripts/verify-commercial-readiness.ps1`, `scripts/verify-local.ps1`, `scripts/write-operations-readiness.ps1`, `scripts/verify-operations-readiness.ps1`를 갱신했다.
+    - `dev-docs/image-signing-policy.md`, `dev-docs/operation-monitoring.md`, `dev-docs/document-index.md`, `dev-docs/mvp-release-checklist.md`, `dev-docs/commercial-readiness.md`, `dev-docs/feature-inventory.md`에 새 증적 경로를 반영했다.
+    - B2B 완성 추정치는 36%, test/validation automation은 52%로 갱신했다.
+- 수정된 파일 및 관련 파일들:
+  - `.github/workflows/container-security-ci.yml`
+  - `.github/workflows/image-publish-sign-ci.yml`
+  - `scripts/write-container-security-evidence.ps1`
+  - `scripts/write-image-signing-evidence.ps1`
+  - `scripts/verify-security-evidence-writers.ps1`
+  - `scripts/verify-ci-workflow.ps1`
+  - `scripts/verify-image-signing-policy.ps1`
+  - `scripts/verify-commercial-readiness.ps1`
+  - `scripts/verify-local.ps1`
+  - `scripts/write-operations-readiness.ps1`
+  - `scripts/verify-operations-readiness.ps1`
+  - `dev-docs/image-signing-policy.md`
+  - `dev-docs/operation-monitoring.md`
+  - `dev-docs/document-index.md`
+  - `dev-docs/mvp-release-checklist.md`
+  - `dev-docs/commercial-readiness.md`
+  - `dev-docs/feature-inventory.md`
+  - `dev-docs/worklog/main/worklog-main.md`
+- 검증 기록:
+  - PowerShell parse check for `scripts/write-container-security-evidence.ps1`, `scripts/write-image-signing-evidence.ps1`, `scripts/verify-security-evidence-writers.ps1`: 통과.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-security-evidence-writers.ps1`: 통과.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-ci-workflow.ps1`: 통과.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-image-signing-policy.ps1`: 통과.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-commercial-readiness.ps1`: 통과.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-operations-readiness.ps1`: 통과. 결과는 `pending`, 요약은 `passed=22 pending=5`.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-local.ps1 -SkipDocker -SkipBackend -SkipFrontend`: 통과.
+  - `git diff --check -- ...`: 통과. LF/CRLF warning만 출력.
+- 결과:
+  - 보안 hardening 항목 중 image signing과 container scan/SBOM 증적을 CI artifact로 남기는 경로가 생겼다.
+  - Operations Readiness Gate가 이 writer와 self-test의 존재를 확인할 수 있게 되었다.
+  - 실제 GitHub-hosted workflow 실행 artifact와 live Kubernetes 증적은 아직 없으므로 전체 readiness는 여전히 `pending`이다.
+- 다음 작업할 때 참고할 사항:
+  - GitHub Actions에서 Container Security CI와 Image Publish and Sign CI를 실제 실행하고 artifact를 내려받아 release/readiness evidence로 연결해야 한다.
+  - Image signing evidence는 현재 tag ref 검증 중심이며 digest 값은 선택 입력이다. 운영 품질을 높이려면 build 후 digest 추출까지 workflow에 추가하는 것이 좋다.
+  - `192.168.35.88` 배포 검증은 이번 작업에서 수행하지 않았다. 필요하면 다음 단계에서 해당 서버의 Kubernetes/배포 상태를 기준으로 live evidence를 생성한다.
+- 코드 리뷰:
+  - writer script는 secret 값을 입력받거나 출력하지 않고, evidence에는 ref, source URL, SBOM metadata, pass/fail만 기록하도록 구성했다.
+  - CI verifier가 workflow 문자열을 확인하므로 accidental workflow drift를 어느 정도 막을 수 있다.
+  - self-test는 synthetic SBOM 기반이라 외부 registry/network 없이 로컬에서 빠르게 검증된다.
+  - 아직 실제 Trivy/Cosign runner 결과를 로컬에서 검증한 것은 아니므로 GitHub Actions 첫 실행 결과를 반드시 확인해야 한다.
+- 앞으로 추가적으로 개발해야하는 내용:
+  - signed image evidence와 container security evidence를 GitHub Actions artifact에서 release gate로 자동 수집하는 단계.
+  - Kubernetes HA/DR readiness, storage expansion finalizer, DR finalizer의 live evidence 생성.
+  - 192.168.35.88 또는 실제 운영 후보 클러스터에서 server-side dry-run 이후 제한된 live drill 실행.
+- 추가적으로 사용된 skill이나 plugin:
+  - 별도 skill 없음.
+  - PowerShell verifier와 GitHub Actions workflow draft 사용.
+
+### 2026-06-16 - IAM/RBAC Finalizer CI Workflow 추가
+
+- 작업 시간:
+  - 시작: 2026-06-16 04:15:00 +09:00
+  - 종료: 2026-06-16 04:21:54 +09:00
+- 사용자 명령:
+  - active goal: "운영용 Kubernetes 증설 자동화, 보안 hardening, IAM/RBAC 고도화, 백업/복구, HA/DR의 기능 구현" 계속 진행.
+- 요청 분석:
+  - 직전 단계에서 IAM/RBAC finalizer는 생겼지만, backend focused RBAC test와 live `kubectl auth can-i`를 운영 증적으로 수집하는 전용 CI workflow가 없었다.
+  - Linux GitHub runner에서 실행하려면 기존 Windows 고정 `gradlew.bat`, `powershell` 호출을 OS별로 선택할 수 있어야 한다고 판단했다.
+- 실행 내용:
+  - `.github/workflows/iam-rbac-finalizer-ci.yml`를 추가했다.
+  - `scripts/finalize-iam-rbac-readiness.ps1`에 `-PowerShellCommand`, `-GradleCommand` 옵션과 OS별 기본 실행 파일 선택을 추가했다.
+  - `scripts/verify-ci-workflow.ps1`에 IAM/RBAC Finalizer CI workflow 검증을 추가했다.
+  - `scripts/write-operations-readiness.ps1`와 `scripts/verify-operations-readiness.ps1`에 IAM/RBAC finalizer workflow static gate를 추가했다.
+  - `dev-docs/document-index.md`, `dev-docs/operation-monitoring.md`, `dev-docs/mvp-release-checklist.md`, `dev-docs/commercial-readiness.md`, `dev-docs/feature-inventory.md`를 갱신했다.
+- 구현 내용:
+  - IAM/RBAC Finalizer CI는 manual `workflow_dispatch` 전용이다.
+  - 기본으로 plan step을 실행하고, backend RBAC test 선택 시 Java 17을 설정하고 Gradle wrapper 실행 권한을 부여한다.
+  - live Kubernetes RBAC auth evidence는 `run_live=true`와 `OSMU_KUBECONFIG_BASE64`가 있을 때만 실행되며, `run_kubernetes_live_auth=true` 단독 실행은 guard로 차단한다.
+  - artifact에는 `latest-iam-rbac-finalize.*`, optional `latest-storage-expansion-rbac-auth.json`, backend test report를 포함한다.
+- 수정된 파일 및 관련 파일:
+  - `.github/workflows/iam-rbac-finalizer-ci.yml`
+  - `scripts/finalize-iam-rbac-readiness.ps1`
+  - `scripts/verify-ci-workflow.ps1`
+  - `scripts/write-operations-readiness.ps1`
+  - `scripts/verify-operations-readiness.ps1`
+  - `scripts/verify-commercial-readiness.ps1`
+  - `dev-docs/document-index.md`
+  - `dev-docs/operation-monitoring.md`
+  - `dev-docs/mvp-release-checklist.md`
+  - `dev-docs/commercial-readiness.md`
+  - `dev-docs/feature-inventory.md`
+  - `dev-docs/worklog/main/worklog-main.md`
+- 검증 기록:
+  - PowerShell script parse check: 통과.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-iam-rbac-finalizer.ps1`: 통과.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\finalize-iam-rbac-readiness.ps1 -FailIfNotPassed`: 통과.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-ci-workflow.ps1`: 통과.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-commercial-readiness.ps1`: 통과.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-operations-readiness.ps1`: 통과. 결과는 `pending`, 요약은 `passed=31 pending=6`.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-local.ps1 -SkipDocker -SkipBackend -SkipFrontend`: 통과.
+- 결과:
+  - IAM/RBAC finalizer evidence를 GitHub Actions에서 수집할 수 있는 전용 수동 workflow가 생겼다.
+  - Operations Readiness Gate에서 IAM/RBAC finalizer workflow 존재를 PASS로 판단한다.
+  - 전체 B2B 추정치는 약 41%, test/validation automation은 57%로 문서에 반영했다.
+- 다음 작업할 때 참고할 사항:
+  - GitHub Actions에서 IAM/RBAC Finalizer CI를 실제로 실행해 backend RBAC test artifact를 받아야 한다.
+  - `192.168.35.88` 또는 실제 target cluster에서 `run_live=true`, `run_kubernetes_live_auth=true`로 live `kubectl auth can-i` 증적을 수집해야 한다.
+  - production readiness의 남은 pending은 storage expansion live evidence, Kubernetes HA/DR live evidence, Kubernetes DR finalizer ready evidence, security evidence finalizer, signed image evidence, container scan/SBOM evidence다.
+- 코드 리뷰:
+  - Linux runner compatibility를 위해 PowerShell/Gradle 실행 파일을 명시적으로 주입할 수 있게 했다.
+  - workflow는 live auth를 명시적 kubeconfig secret이 있을 때만 수행하도록 guard를 둔다.
+  - IAM/RBAC finalizer 자체는 여전히 secret 값을 읽지 않고 report에도 쓰지 않는다.
+- 앞으로 추가적으로 개발해야하는 내용:
+  - Operations Readiness Finalizer CI에 backend IAM/RBAC focused test까지 통합할지, 전용 workflow artifact를 operations readiness 입력으로 승격할지 결정해야 한다.
+  - 세분화 role을 추가할 경우 API/backend/frontend/dashboard matrix를 함께 확장해야 한다.
+- 추가적으로 사용된 skill이나 plugin:
+  - 별도 skill 없음.
+  - PowerShell verifier와 GitHub Actions workflow draft 사용.
+
+### 2026-06-16 - Operations Readiness Artifact Finalizer 추가
+
+- 작업 시간:
+  - 시작: 2026-06-16 04:36:00 +09:00
+  - 종료: 2026-06-16 04:44:10 +09:00
+- 사용자 명령:
+  - active goal: "운영용 Kubernetes 증설 자동화, 보안 hardening, IAM/RBAC 고도화, 백업/복구, HA/DR의 기능 구현" 계속 진행.
+- 요청 분석:
+  - 현재 남은 operations readiness pending은 대부분 실제 workflow/cluster 증적이 표준 `.osmu-run/latest-*` 위치에 없어서 발생한다.
+  - storage expansion, HA/DR readiness, Kubernetes DR, IAM/RBAC, security evidence가 각각 별도 workflow artifact로 생성될 수 있지만, 이것들을 모아 최종 operations readiness report로 승격하는 전용 경로가 부족하다고 판단했다.
+- 실행 내용:
+  - `scripts/import-operations-readiness-artifacts.ps1`를 추가했다.
+  - `scripts/verify-operations-readiness-artifact-import.ps1` self-test를 추가했다.
+  - `.github/workflows/operations-readiness-artifact-finalizer-ci.yml`를 추가했다.
+  - `scripts/verify-ci-workflow.ps1`, `scripts/write-operations-readiness.ps1`, `scripts/verify-operations-readiness.ps1`, `scripts/verify-local.ps1`, `scripts/verify-commercial-readiness.ps1`를 갱신했다.
+  - 문서 인덱스, 운영 모니터링, MVP release checklist, commercial readiness, feature inventory를 갱신했다.
+- 구현 내용:
+  - importer는 선택된 artifact directory에서 필요한 evidence file을 찾고, JSON의 `result` 값이 기대값과 일치할 때만 표준 `.osmu-run/latest-*` 경로로 복사한다.
+  - 기대값은 storage expansion `passed`, HA/DR readiness `passed`, Kubernetes DR finalizer `ready`, IAM/RBAC `passed`, security finalizer/image signing/container security `passed`이다.
+  - importer는 `.osmu-run/latest-operations-readiness-artifact-import.json`과 `.md`를 기록한다.
+  - Artifact Finalizer CI는 이전 workflow run id와 artifact name을 입력받아 `actions/download-artifact@v4`로 artifact를 내려받고, importer 실행 후 `write-operations-readiness.ps1`로 최종 readiness report를 다시 쓴다.
+  - Operations Readiness Gate가 artifact importer script, self-test, artifact finalizer workflow 존재를 PASS로 확인하도록 했다.
+  - 기능 인벤토리의 전체 B2B 추정치는 약 44%, test/validation automation은 60%로 갱신했다.
+- 수정된 파일 및 관련 파일:
+  - `.github/workflows/operations-readiness-artifact-finalizer-ci.yml`
+  - `scripts/import-operations-readiness-artifacts.ps1`
+  - `scripts/verify-operations-readiness-artifact-import.ps1`
+  - `scripts/verify-ci-workflow.ps1`
+  - `scripts/write-operations-readiness.ps1`
+  - `scripts/verify-operations-readiness.ps1`
+  - `scripts/verify-local.ps1`
+  - `scripts/verify-commercial-readiness.ps1`
+  - `dev-docs/document-index.md`
+  - `dev-docs/operation-monitoring.md`
+  - `dev-docs/mvp-release-checklist.md`
+  - `dev-docs/commercial-readiness.md`
+  - `dev-docs/feature-inventory.md`
+  - `dev-docs/worklog/main/worklog-main.md`
+- 검증 기록:
+  - PowerShell script parse check: 통과.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-operations-readiness-artifact-import.ps1`: 통과.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-ci-workflow.ps1`: 통과.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-commercial-readiness.ps1`: 통과.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-operations-readiness.ps1`: 통과. 결과는 `pending`, 요약은 `passed=36 pending=6`.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-local.ps1 -SkipDocker -SkipBackend -SkipFrontend`: 통과.
+  - `git diff --check -- <changed operations readiness artifact files and docs>`: 통과. LF/CRLF warning만 출력.
+- 결과:
+  - 별도 workflow에서 만든 증적 artifact들을 operations readiness의 표준 입력 위치로 검증 후 승격하는 경로가 생겼다.
+  - invalid evidence는 importer self-test에서 promotion되지 않는 것을 확인했다.
+  - 실제 artifact가 아직 없으므로 operations readiness 자체는 계속 `pending`이다.
+- 다음 작업할 때 참고할 사항:
+  - 실제 GitHub Actions에서 Storage Expansion Finalizer, Kubernetes HA/DR Readiness, Kubernetes DR Finalizer, IAM/RBAC Finalizer, Security Evidence Finalizer를 실행한 뒤 run id와 artifact name을 `operations-readiness-artifact-finalizer-ci.yml`에 넣어야 한다.
+  - 그 결과 `.osmu-run/latest-operations-readiness.json`의 남은 pending이 실제 evidence 기반으로 줄어든다.
+  - `192.168.35.88` 서버나 실제 target cluster에서 live evidence를 만들기 전에는 readiness를 ready로 볼 수 없다.
+- 코드 리뷰:
+  - importer는 실패한 evidence를 표준 latest path로 복사하지 않도록 result 검증을 먼저 수행한다.
+  - workflow는 `workflow_dispatch` 전용이며 `actions: read`와 `contents: read`만 사용한다.
+  - artifact import는 JSON/Markdown evidence file만 복사하고 kubeconfig, token, secret 값을 읽거나 기록하지 않는다.
+- 앞으로 추가적으로 개발해야하는 내용:
+  - 실제 live cluster/server에서 storage expansion, HA/DR, DR finalizer evidence를 수집해야 한다.
+  - GitHub-hosted image publish/sign 및 container security workflow를 실제로 실행하고 Security Evidence Finalizer artifact까지 생성해야 한다.
+  - 장기적으로는 operations readiness artifact finalizer 결과를 admin dashboard의 readiness panel에도 노출할 수 있다.
+- 추가적으로 사용된 skill이나 plugin:
+  - 별도 skill 없음.
+  - PowerShell verifier와 GitHub Actions workflow draft 사용.
+
+### 2026-06-16 - Operations Readiness Dashboard API 가시성 연결
+
+- 작업 시간:
+  - 시작: 2026-06-16 04:45:00 +09:00
+  - 종료: 2026-06-16 04:58:12 +09:00
+- 사용자 명령:
+  - active goal: "운영용 Kubernetes 증설 자동화, 보안 hardening, IAM/RBAC 고도화, 백업/복구, HA/DR의 기능 구현" 계속 진행.
+  - 배포 검증이 필요하면 `192.168.35.88` 서버를 사용할 수 있다고 안내함.
+- 요청 분석:
+  - 직전 단계에서 operations readiness 증적을 CI/artifact로 모으는 경로는 생겼지만, 운영자가 관리자 대시보드에서 pending 사유를 바로 확인하는 API 연결이 부족하다고 판단했다.
+  - 기존 dashboard readiness 응답 구조와 프론트 패널을 재사용해, `.osmu-run/latest-operations-readiness.json` 및 artifact import report가 존재할 때만 `OPERATIONS` readiness item으로 노출하는 방향으로 해석했다.
+- 실행 내용:
+  - `AdminController`가 operations readiness report와 artifact import report JSON을 선택적으로 읽도록 연결했다.
+  - `application.yaml`에 operations readiness report 경로 환경변수 설정을 추가했다.
+  - dashboard readiness API 테스트에 operations evidence JSON을 생성한 뒤 `OPERATIONS_READINESS_PENDING`, `OPERATIONS_READINESS_CHECK`, `OPERATIONS_READINESS_ARTIFACT_IMPORT` 응답을 검증하는 케이스를 추가했다.
+  - API 명세, 운영 모니터링 문서, MVP release checklist, feature inventory를 갱신했다.
+- 구현 내용:
+  - `GET /api/admin/dashboard/readiness`는 report result가 `ready`가 아니면 `OPERATIONS_READINESS_PENDING` warning을 반환한다.
+  - readiness report의 실패 check는 최대 8개까지 `OPERATIONS_READINESS_CHECK` warning으로 반환한다.
+  - artifact import report result가 `passed`가 아니면 `OPERATIONS_READINESS_ARTIFACT_IMPORT` warning을 반환한다.
+  - 관련 item은 `targetPage=dashboard`, `targetPanel=dashboard-readiness-panel`로 내려가도록 했다.
+- 수정된 파일 및 관련 파일:
+  - `osmu-backend/src/main/java/com/example/osmu/admin/AdminController.java`
+  - `osmu-backend/src/main/resources/application.yaml`
+  - `osmu-backend/src/test/java/com/example/osmu/admin/AdminDashboardSummaryControllerTest.java`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/operation-monitoring.md`
+  - `dev-docs/mvp-release-checklist.md`
+  - `dev-docs/feature-inventory.md`
+  - `dev-docs/worklog/main/worklog-main.md`
+- 검증 기록:
+  - `C:\jdk-17`을 `JAVA_HOME`으로 지정하고 `.\gradlew.bat test --tests com.example.osmu.admin.AdminDashboardSummaryControllerTest`: 통과. 최초 시도는 `JAVA_HOME` 미설정/Gradle distribution 다운로드 네트워크 제한으로 실패했고, Gradle test 명령에 네트워크 권한을 승인받아 재실행했다.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-openapi-contract.ps1`: 통과. Operations 132, frontend API functions 106.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-local.ps1 -SkipDocker -SkipBackend -SkipFrontend`: 통과.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-commercial-readiness.ps1`: 통과.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-operations-readiness.ps1`: 통과. 결과는 `pending`, 요약은 `passed=36 pending=6`.
+  - `git diff --check -- <changed files>`: 통과.
+  - changed files trailing whitespace check: 통과.
+- 결과:
+  - operations readiness CLI/CI 증적이 관리자 dashboard readiness API까지 이어졌다.
+  - feature inventory 기준 전체 B2B 제품 완료율은 약 45%, 백엔드 REST API는 41%, 테스트/검증 자동화는 61%로 갱신했다.
+  - `192.168.35.88` 원격 배포 검증은 이번 작업에서는 필요하지 않아 사용하지 않았다.
+- 후속 메모:
+  - 실제 운영 readiness를 `ready`로 만들려면 target cluster/server에서 storage expansion finalizer, Kubernetes HA/DR readiness, Kubernetes DR finalizer, security evidence finalizer, signed image, container scan/SBOM evidence를 실제로 수집해야 한다.
+  - dashboard 프론트에서 `OPERATIONS` category를 별도 badge/filter로 강조하면 운영자가 pending 사유를 더 빨리 찾을 수 있다.
+- 코드 리뷰:
+  - JSON report 읽기는 optional path 기반이라 파일이 없거나 파싱 실패해도 기존 대시보드 동작을 막지 않는다.
+  - pending check는 최대 8개로 제한해 readiness 응답이 과도하게 커지는 것을 막았다.
+  - 현재는 파일 기반 report를 직접 읽으므로, 장기적으로는 evidence repository 또는 운영 상태 저장소로 이동하는 것이 더 좋다.
+- 앞으로 추가적으로 개발해야하는 내용:
+  - operations readiness artifact finalizer를 실제 GitHub Actions run artifact와 연결해 standard latest evidence를 채우기.
+  - `192.168.35.88` 또는 실제 Kubernetes target에서 live evidence 수집 후 dashboard readiness API에 반영되는지 원격 검증하기.
+  - 프론트 readiness panel에서 operations category grouping과 action navigation을 더 명확히 표시하기.
+- 추가적으로 사용된 skill이나 plugin:
+  - 별도 skill 없음.
+  - Gradle wrapper distribution 다운로드를 위해 backend test 명령을 네트워크 허용으로 1회 실행.
+
+### 2026-06-16 - Operations Readiness 프론트 요약 가시성 추가
+
+- 작업 시간:
+  - 시작: 2026-06-16 04:59:00 +09:00
+  - 종료: 2026-06-16 05:04:24 +09:00
+- 사용자 명령:
+  - active goal: "운영용 Kubernetes 증설 자동화, 보안 hardening, IAM/RBAC 고도화, 백업/복구, HA/DR의 기능 구현" 계속 진행.
+- 요청 분석:
+  - 직전 작업에서 operations readiness 증적이 `/api/admin/dashboard/readiness`까지 연결됐지만, 프론트 readiness panel에서는 다른 warning과 섞여 운영 증적 pending이 묻힐 수 있었다.
+  - 운영자가 B2B/production readiness gap을 빠르게 확인할 수 있도록 `OPERATIONS` category 항목을 별도 요약으로 드러내는 작업으로 해석했다.
+- 실행 내용:
+  - `DashboardPage.vue`에서 `dashboardReadiness.items` 중 `category=OPERATIONS`인 항목을 파생하는 computed 값을 추가했다.
+  - readiness panel 상단에 operations evidence gaps 요약과 `Operations` 빠른 필터 버튼을 추가했다.
+  - 모바일 화면에서 요약 영역과 버튼이 겹치지 않도록 CSS를 추가했다.
+  - 프론트 selector 계약 테스트와 관련 문서를 갱신했다.
+- 구현 내용:
+  - operations readiness item이 하나 이상 있으면 `readiness-operations-summary`가 표시된다.
+  - 첫 번째 operations readiness message를 요약에 보여준다.
+  - `readiness-operations-filter-button`을 누르면 기존 readiness category filter가 `OPERATIONS`로 바뀐다.
+- 수정된 파일 및 관련 파일:
+  - `osmu-frontend/src/components/dashboard/DashboardPage.vue`
+  - `osmu-frontend/src/assets/main.css`
+  - `osmu-frontend/src/views/HomeView.test.js`
+  - `dev-docs/frontend-design.md`
+  - `dev-docs/operation-monitoring.md`
+  - `dev-docs/mvp-release-checklist.md`
+  - `dev-docs/feature-inventory.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/worklog/main/worklog-main.md`
+- 검증 기록:
+  - `npm.cmd run test:unit -- HomeView.test.js api-query.test.js`: 통과. 전체 node test runner 기준 69개 테스트 통과.
+  - `npm.cmd run build`: 통과.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-local.ps1 -SkipDocker -SkipBackend`: 통과. frontend unit 69개와 production build 포함.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-commercial-readiness.ps1`: 통과.
+  - `git diff --check -- <changed frontend readiness files and docs>`: 통과. LF/CRLF warning만 출력.
+  - changed files trailing whitespace check: 통과.
+- 결과:
+  - operations readiness API item이 프론트 readiness panel에서 별도 요약으로 노출된다.
+  - 운영자는 runtime/backup/quota warning이 같이 있어도 `Operations` 버튼으로 production/B2B readiness gap만 빠르게 볼 수 있다.
+  - `192.168.35.88` 원격 배포 검증은 이번 UI/문서 변경에는 필요하지 않아 사용하지 않았다.
+- 후속 메모:
+  - 실제 target cluster/server에서 live evidence를 수집하면 이 요약이 storage expansion, HA/DR, DR, security evidence pending 감소를 보여주는 운영 화면이 된다.
+  - 다음 단계는 실제 GitHub Actions artifact 또는 192.168.35.88 대상 live evidence를 표준 `.osmu-run/latest-*`로 채우는 검증이다.
+- 코드 리뷰:
+  - backend 응답 계약을 바꾸지 않고 기존 `items` 배열에서 파생해 UI를 구성했기 때문에 API 호환성이 유지된다.
+  - operations item이 없으면 요약이 렌더링되지 않아 lightweight demo의 기존 화면 밀도는 유지된다.
+  - 버튼은 기존 category filter 이벤트를 재사용하므로 별도 상태 관리가 늘어나지 않았다.
+- 앞으로 추가적으로 개발해야하는 내용:
+  - Browser/Playwright E2E에서 실제 operations readiness mock 응답을 넣고 요약/필터 클릭 경로를 검증하기.
+  - 운영 readiness pending 항목별로 storage expansion, HA/DR, DR, security 화면의 구체 패널로 이동하는 target mapping을 더 세분화하기.
+  - 원격 환경에서 live evidence 수집 후 dashboard readiness UI에 반영되는지 확인하기.
+- 추가적으로 사용된 skill이나 plugin:
+  - 별도 skill 없음.
+  - `npm.cmd`, Vite build, 기존 PowerShell verifier 사용.
+
+### 2026-06-16 - Finalizer CI pwsh 실행 호환성 보강
+
+- 작업 시간:
+  - 시작: 2026-06-16 05:07:00 +09:00
+  - 종료: 2026-06-16 05:14:29 +09:00
+- 사용자 명령:
+  - active goal: "운영용 Kubernetes 증설 자동화, 보안 hardening, IAM/RBAC 고도화, 백업/복구, HA/DR의 기능 구현" 계속 진행.
+  - 필요하면 `192.168.35.88` 서버로 배포 검증 가능.
+- 요청 분석:
+  - 현재 operations readiness가 아직 pending인 이유를 다시 확인하고, 실제 live evidence 수집 전 로컬/CI 자동화에서 먼저 제거할 수 있는 운영 리스크를 줄이는 작업으로 해석했다.
+  - GitHub Actions는 `ubuntu-latest`와 `shell: pwsh`를 사용하므로 finalizer 내부에서 child PowerShell script를 hardcoded `powershell`로 호출하면 Linux runner에서 실패할 수 있다고 판단했다.
+- 실행 내용:
+  - `scripts/verify-operations-readiness.ps1`로 현재 production/B2B readiness 상태를 재확인했다.
+  - `192.168.35.88` SSH 비대화형 접속을 확인했지만 `Permission denied (publickey,password)`로 실패했다. 현재 로컬에는 `sshpass`, `plink`, `Posh-SSH`가 없어 패스워드 자동 입력 기반 live evidence 수집은 진행하지 않았다.
+  - finalizer wrapper에 `-PowerShellCommand` 옵션을 추가/전파하고, GitHub Actions workflow에서는 `pwsh`를 명시하도록 보강했다.
+  - CI workflow verifier와 문서/runbook/checklist/index/feature inventory를 갱신했다.
+- 구현 내용:
+  - `scripts/finalize-operations-readiness.ps1`: OS별 PowerShell 실행 파일 선택 함수와 `-PowerShellCommand` override를 추가하고 storage expansion, Kubernetes DR, IAM/RBAC child finalizer에 전파.
+  - `scripts/finalize-storage-expansion.ps1`: `-PowerShellCommand` override, plan/report 기록, child verifier command 생성에 선택된 실행 파일 사용.
+  - `scripts/finalize-kubernetes-dr-drill.ps1`: `-PowerShellCommand` override, plan/report 기록, child DR/smoke/evidence script 호출에 선택된 실행 파일 사용.
+  - `.github/workflows/storage-expansion-finalizer-ci.yml`, `.github/workflows/kubernetes-dr-finalizer-ci.yml`, `.github/workflows/operations-readiness-finalizer-ci.yml`: plan/live finalizer 호출에 `-PowerShellCommand "pwsh"` 추가.
+  - `scripts/verify-operations-readiness-finalizer.ps1`: `pwsh` override가 report/Markdown에 보존되는지 검증.
+  - `scripts/verify-ci-workflow.ps1`: finalizer workflow의 `shell: pwsh` 및 `-PowerShellCommand` 계약 검증 추가.
+  - `dev-docs/operation-monitoring.md`, `dev-docs/mvp-release-checklist.md`, `dev-docs/document-index.md`, `dev-docs/feature-inventory.md`: finalizer PowerShell command propagation 및 CI 호환성 기록. 테스트/검증 자동화 추정치를 61%에서 62%로 보수적으로 갱신.
+- 수정된 파일 및 관련 파일:
+  - `.github/workflows/storage-expansion-finalizer-ci.yml`
+  - `.github/workflows/kubernetes-dr-finalizer-ci.yml`
+  - `.github/workflows/operations-readiness-finalizer-ci.yml`
+  - `scripts/finalize-operations-readiness.ps1`
+  - `scripts/finalize-storage-expansion.ps1`
+  - `scripts/finalize-kubernetes-dr-drill.ps1`
+  - `scripts/verify-operations-readiness-finalizer.ps1`
+  - `scripts/verify-ci-workflow.ps1`
+  - `dev-docs/operation-monitoring.md`
+  - `dev-docs/mvp-release-checklist.md`
+  - `dev-docs/document-index.md`
+  - `dev-docs/feature-inventory.md`
+  - `dev-docs/worklog/main/worklog-main.md`
+- 검증 기록:
+  - PowerShell script parse check 전체: 통과.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-operations-readiness-finalizer.ps1`: 통과. Markdown command가 `pwsh -NoProfile -ExecutionPolicy Bypass`를 포함.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\finalize-storage-expansion.ps1 -PlanOnly -PowerShellCommand pwsh`: 통과.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\finalize-kubernetes-dr-drill.ps1 -PlanOnly -PowerShellCommand pwsh`: 통과.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-ci-workflow.ps1`: 통과.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-operations-readiness.ps1`: 통과. 결과는 `pending`, 요약은 `passed=36 pending=6`.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-local.ps1 -SkipDocker -SkipBackend -SkipFrontend`: 통과.
+  - `git diff --check -- <tracked changed files>`: 통과. LF/CRLF warning만 출력.
+  - changed/untracked target files trailing whitespace check: 통과.
+- 결과:
+  - finalizer workflow가 GitHub Actions Linux runner에서 Windows-only `powershell` 명령 이름에 의존하지 않도록 보강됐다.
+  - operations readiness의 남은 pending 6개는 여전히 실제 cluster/security CI evidence가 없어서 남아 있다.
+- 후속 메모:
+  - `192.168.35.88`에서 live evidence를 수집하려면 비대화형 SSH 인증 수단 또는 사용자가 직접 세션을 열어주는 방식이 필요하다.
+  - 다음 실작업은 target cluster에서 storage expansion finalizer, HA/DR readiness, Kubernetes DR finalizer, security evidence finalizer를 실제로 실행하고 `.osmu-run/latest-*` 증거를 채우는 것이다.
+- 코드 리뷰:
+  - `-PowerShellCommand`는 기본값을 비워 두고 OS별 자동 선택을 하므로 Windows 로컬 사용자는 기존 명령 습관을 유지할 수 있다.
+  - workflow에는 `pwsh`를 명시해 CI 계약이 문서/검증/실행 파일에서 동시에 드러난다.
+  - report에 selected PowerShell command가 기록되므로 나중에 evidence artifact만 봐도 어떤 실행 파일로 child script를 호출했는지 추적할 수 있다.
+- 앞으로 추가적으로 개발해야하는 내용:
+  - actual GitHub Actions live run artifact를 Operations Readiness Artifact Finalizer로 import하는 경로 검증.
+  - 원격/클러스터 인증 방식을 정리해 `192.168.35.88` 또는 target cluster에서 자동 live evidence 수집 가능하게 만들기.
+- 추가적으로 사용된 skill이나 plugin:
+  - 별도 skill 없음.
+  - PowerShell verifier와 GitHub Actions workflow draft verifier 사용.
+
+### 2026-06-16 - Operations Readiness Pending Evidence Remediation 메타데이터 추가
+
+- 작업 시간:
+  - 시작: 2026-06-16 05:16:00 +09:00
+  - 종료: 2026-06-16 05:21:08 +09:00
+- 사용자 명령:
+  - active goal: "운영용 Kubernetes 증설 자동화, 보안 hardening, IAM/RBAC 고도화, 백업/복구, HA/DR의 기능 구현" 계속 진행.
+- 요청 분석:
+  - 현재 operations readiness는 `passed=36 pending=6` 상태이며, 남은 항목은 실제 target cluster 또는 CI artifact evidence가 필요하다.
+  - 실제 서버 인증 없이도 운영자가 다음에 무엇을 실행해야 하는지 기계가 읽을 수 있게 만들면 production/B2B 운영 전환성이 좋아진다고 판단했다.
+- 실행 내용:
+  - `scripts/write-operations-readiness.ps1`에서 pending live/security evidence check에 `remediation` metadata를 추가했다.
+  - Markdown의 `Required Next Evidence` 섹션에 remediation command, workflow, note를 함께 출력하도록 했다.
+  - verifier가 6개 pending evidence 항목의 remediation command/workflow를 검증하도록 확장했다.
+  - 운영 문서, release checklist, document index, feature inventory, test case 문서를 갱신했다.
+- 구현 내용:
+  - `Storage expansion finalizer live evidence`: `finalize-storage-expansion.ps1` 명령과 Storage Expansion Finalizer CI workflow를 remediation으로 기록.
+  - `Kubernetes HA/DR readiness live evidence`: `verify-kubernetes-ha-dr-readiness.ps1` 명령과 Kubernetes HA/DR Readiness CI workflow를 remediation으로 기록.
+  - `Kubernetes DR finalizer live evidence`: `finalize-kubernetes-dr-drill.ps1 -ConfirmRestore` 계열 명령과 Kubernetes DR Finalizer CI workflow를 remediation으로 기록.
+  - `Security evidence finalizer report`: `finalize-security-evidence.ps1` 명령과 Security Evidence Finalizer CI workflow를 remediation으로 기록.
+  - `Signed image evidence`: Image Publish/Sign CI workflow dispatch 안내를 remediation으로 기록.
+  - `Container scan/SBOM evidence`: Container Security CI workflow dispatch 안내를 remediation으로 기록.
+- 수정된 파일 및 관련 파일:
+  - `scripts/write-operations-readiness.ps1`
+  - `scripts/verify-operations-readiness.ps1`
+  - `dev-docs/operation-monitoring.md`
+  - `dev-docs/mvp-release-checklist.md`
+  - `dev-docs/document-index.md`
+  - `dev-docs/feature-inventory.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/worklog/main/worklog-main.md`
+- 검증 기록:
+  - PowerShell script parse check 전체: 통과.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-operations-readiness.ps1`: 통과. 결과는 여전히 `pending`, 요약은 `passed=36 pending=6`, 6개 pending 항목별 remediation command/workflow 검증 포함.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-local.ps1 -SkipDocker -SkipBackend -SkipFrontend`: 통과.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-commercial-readiness.ps1`: 통과.
+- 결과:
+  - operations readiness report가 남은 운영 증거 gap을 단순 나열하지 않고, 각 gap별 실행 명령과 GitHub Actions workflow를 제공한다.
+  - 실제 live/CI evidence가 아직 없으므로 readiness 자체는 정직하게 `pending`으로 유지된다.
+  - 테스트/검증 자동화 추정치를 62%에서 63%로 보수적으로 갱신했다.
+- 후속 메모:
+  - 다음 단계는 이 `remediation` metadata를 `/api/admin/dashboard/readiness` 응답이나 프론트 readiness panel에 노출해 운영자가 UI에서도 바로 다음 명령을 볼 수 있게 하는 것이다.
+  - 이후 실제 target cluster 또는 GitHub Actions artifact로 remediation을 실행해 `.osmu-run/latest-*` 증거를 채우면 pending 6개를 줄일 수 있다.
+- 코드 리뷰:
+  - remediation metadata는 기존 check schema에 optional field로 추가되어 기존 consumer가 깨지지 않는다.
+  - verifier가 command fragment와 workflow path를 함께 확인하므로 문서와 실제 자동화 경로가 어긋나는 회귀를 잡을 수 있다.
+  - DR finalizer remediation은 confirmed restore가 필요하다는 note를 포함해 server dry-run과 ready evidence를 혼동하지 않도록 했다.
+- 앞으로 추가적으로 개발해야하는 내용:
+  - Dashboard API/Frontend에서 remediation command/workflow를 접어서 표시하는 운영 패널 추가.
+  - 실제 `192.168.35.88` 또는 target cluster에서 remediation 명령을 실행해 live evidence를 생성.
+  - GitHub Actions artifact finalizer를 실제 run id와 연결해 image signing/container security evidence를 승격.
+- 추가적으로 사용된 skill이나 plugin:
+  - 별도 skill 없음.
+  - PowerShell operations readiness verifier와 기존 local/commercial verifier 사용.
+
+### 2026-06-16 - Dashboard Operations Readiness Remediation 표시 연결
+
+- 작업 시간:
+  - 시작: 2026-06-16 05:22:00 +09:00
+  - 종료: 2026-06-16 05:27:48 +09:00
+- 사용자 명령:
+  - active goal: "운영용 Kubernetes 증설 자동화, 보안 hardening, IAM/RBAC 고도화, 백업/복구, HA/DR의 기능 구현" 계속 진행.
+- 요청 분석:
+  - 직전 작업에서 operations readiness report에는 pending 항목별 remediation command/workflow가 들어갔지만, 관리자 dashboard API/UI에서는 아직 보이지 않았다.
+  - 운영자가 CLI Markdown을 따로 열지 않아도 다음 evidence run 명령을 볼 수 있어야 B2B 운영 콘솔 목표에 더 가까워진다고 판단했다.
+- 실행 내용:
+  - dashboard readiness item 응답에 optional evidence/remediation 필드를 추가했다.
+  - operations readiness pending check를 dashboard item으로 변환할 때 `evidencePath`, `remediation.command`, `remediation.workflow`, `remediation.note`를 함께 전달하도록 했다.
+  - frontend readiness panel에서 remediation metadata가 있는 item에 한해 command/workflow/evidence/note를 작은 보조 블록으로 표시하도록 했다.
+  - API/프론트/운영 문서를 갱신하고 테스트 계약을 추가했다.
+- 구현 내용:
+  - `DashboardReadinessItemResponse`에 `evidencePath`, `remediationCommand`, `remediationWorkflow`, `remediationNote` optional 필드를 추가하고 빈 값은 JSON에서 생략되도록 했다.
+  - `AdminController.addPendingOperationsReadinessChecks`가 operations readiness JSON의 `remediation` object를 읽어 API 응답으로 노출한다.
+  - `DashboardPage.vue`가 `hasReadinessRemediation(item)`로 command/workflow/evidence/note 블록을 조건부 표시한다.
+  - CSS는 긴 PowerShell 명령이 panel 밖으로 넘치지 않도록 `overflow-wrap:anywhere`와 작은 code block 스타일을 적용했다.
+- 수정된 파일 및 관련 파일:
+  - `osmu-backend/src/main/java/com/example/osmu/admin/DashboardReadinessItemResponse.java`
+  - `osmu-backend/src/main/java/com/example/osmu/admin/AdminController.java`
+  - `osmu-backend/src/test/java/com/example/osmu/admin/AdminDashboardSummaryControllerTest.java`
+  - `osmu-frontend/src/components/dashboard/DashboardPage.vue`
+  - `osmu-frontend/src/assets/main.css`
+  - `osmu-frontend/src/views/HomeView.test.js`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/operation-monitoring.md`
+  - `dev-docs/mvp-release-checklist.md`
+  - `dev-docs/frontend-design.md`
+  - `dev-docs/feature-inventory.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/worklog/main/worklog-main.md`
+- 검증 기록:
+  - `npm.cmd run test:unit -- HomeView.test.js`: 통과. 전체 node test runner 기준 69개 테스트 통과.
+  - `npm.cmd run build`: 통과.
+  - PowerShell script parse check 전체: 통과.
+  - `.\gradlew.bat test --tests com.example.osmu.admin.AdminDashboardSummaryControllerTest`: 최초 sandbox 실행은 Gradle distribution download 네트워크 제한으로 실패. 네트워크 허용 재시도 후 통과.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-local.ps1 -SkipDocker -SkipBackend`: 통과. frontend unit/build 포함.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-openapi-contract.ps1`: 통과.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-operations-readiness.ps1`: 통과. 결과는 `pending`, 요약은 `passed=36 pending=6`.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-commercial-readiness.ps1`: 통과.
+- 결과:
+  - 운영 readiness pending 항목이 API와 UI에서 다음 evidence 수집 명령/workflow를 직접 보여준다.
+  - non-operations readiness item은 optional field가 비어 있으면 JSON에서 생략되어 기존 응답 표면이 과도하게 커지지 않는다.
+  - 전체 B2B 추정치는 45%로 유지하고, 프론트엔드 콘솔은 47%, 백엔드 REST API는 42%로 보수적으로 갱신했다.
+- 후속 메모:
+  - 다음 단계는 실제 target cluster 또는 GitHub Actions artifact로 remediation을 실행해 `.osmu-run/latest-*` evidence를 채우는 것이다.
+  - dashboard remediation block에 copy button이나 workflow dispatch link를 추가하면 운영 UX가 더 좋아진다.
+- 코드 리뷰:
+  - record overload로 기존 Java 호출부 호환성을 유지했다.
+  - remediation은 operations report에 있는 경우만 노출하므로 runtime/backup/quota warning이 불필요한 command block을 갖지 않는다.
+  - 긴 command는 code block으로 감싸고 wrapping 처리해 모바일 폭에서도 레이아웃이 깨질 위험을 줄였다.
+- 앞으로 추가적으로 개발해야하는 내용:
+  - remediation command copy 버튼과 workflow/runbook link화.
+  - 실제 `192.168.35.88` 또는 target Kubernetes cluster에서 live evidence 수집.
+  - operations readiness `ready` 달성을 위한 storage expansion/HA-DR/DR/security evidence 생성.
+- 추가적으로 사용된 skill이나 plugin:
+  - 별도 skill 없음.
+  - PowerShell verifier, Gradle wrapper, npm/Vite 사용.
+
+### 2026-06-16 - Operations Readiness Remediation Command Copy UX 추가
+
+- 작업 시간:
+  - 시작: 2026-06-16 05:28:00 +09:00
+  - 종료: 2026-06-16 05:30:37 +09:00
+- 사용자 명령:
+  - active goal: "운영용 Kubernetes 증설 자동화, 보안 hardening, IAM/RBAC 고도화, 백업/복구, HA/DR의 기능 구현" 계속 진행.
+- 요청 분석:
+  - 직전 작업에서 dashboard readiness panel에 remediation command/workflow/evidence/note가 표시되지만, 운영자가 명령을 직접 드래그해 복사해야 했다.
+  - 실제 live evidence 수집 행동으로 이어지는 마찰을 줄이기 위해 command copy control을 추가하는 작업으로 판단했다.
+- 실행 내용:
+  - `DashboardPage.vue`의 remediation command block에 `Copy` 버튼을 추가했다.
+  - Clipboard API와 fallback textarea copy를 모두 지원하도록 했다.
+  - 긴 PowerShell 명령과 버튼이 좁은 화면에서 충돌하지 않도록 CSS grid와 mobile layout을 추가했다.
+  - 프론트 소스 계약 테스트와 문서를 갱신했다.
+- 구현 내용:
+  - `copyReadinessRemediationCommand(command)`는 `navigator.clipboard.writeText`를 우선 사용하고 실패 또는 미지원 시 `fallbackCopyText`를 사용한다.
+  - `readiness-remediation-copy-button` selector를 추가해 향후 Browser/Chrome E2E에서 안정적으로 클릭 검증할 수 있게 했다.
+  - mobile viewport에서는 command와 copy button이 1열로 쌓이도록 했다.
+- 수정된 파일 및 관련 파일:
+  - `osmu-frontend/src/components/dashboard/DashboardPage.vue`
+  - `osmu-frontend/src/assets/main.css`
+  - `osmu-frontend/src/views/HomeView.test.js`
+  - `dev-docs/frontend-design.md`
+  - `dev-docs/mvp-release-checklist.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/worklog/main/worklog-main.md`
+- 검증 기록:
+  - `npm.cmd run test:unit -- HomeView.test.js`: 통과. 전체 node test runner 기준 69개 테스트 통과.
+  - `npm.cmd run build`: 통과.
+- 결과:
+  - 운영자는 dashboard readiness panel에서 operations remediation command를 바로 복사할 수 있다.
+  - 실제 readiness 상태는 여전히 live/security evidence가 없어 `pending`이지만, 다음 evidence run 실행성은 더 좋아졌다.
+- 후속 메모:
+  - 다음 단계는 copy 버튼의 실제 clipboard 동작을 Browser/Playwright E2E로 검증하거나, workflow dispatch link/gh workflow run 명령을 함께 제공하는 것이다.
+- 코드 리뷰:
+  - Clipboard API 실패 시 fallback을 사용해 HTTPS/권한 이슈가 있어도 복사 시도를 유지한다.
+  - 버튼은 remediation command가 있는 경우에만 표시되어 workflow-only/note-only 항목에는 불필요한 액션이 생기지 않는다.
+- 앞으로 추가적으로 개발해야하는 내용:
+  - 실제 target cluster 또는 GitHub Actions에서 remediation command를 실행해 `.osmu-run/latest-*` evidence 생성.
+  - remediation workflow를 직접 실행할 수 있는 `gh workflow run` command 또는 dashboard deep link 제공.
+- 추가적으로 사용된 skill이나 plugin:
+  - 별도 skill 없음.
+  - npm test/build 사용.
+### 2026-06-16 - Operations Readiness Workflow Command Metadata 추가
+
+- 작업 시간:
+  - 시작: 2026-06-16 05:31:00 +09:00
+  - 종료: 2026-06-16 05:37:27 +09:00
+- 사용자 명령:
+  - `192.168.35.88` 서버는 배포 검증이 필요할 때 사용해도 된다는 안내와 함께, active goal의 운영용 Kubernetes 증설 자동화/보안/IAM/RBAC/백업/HA-DR 구현을 계속 진행.
+- 요청 분석:
+  - 직전 작업에서 dashboard readiness는 remediation command를 보여주고 복사할 수 있게 되었지만, GitHub Actions 수동 workflow를 바로 실행할 수 있는 `gh workflow run` 템플릿은 데이터에 없었다.
+  - 운영자가 로컬 PowerShell 명령과 CI workflow 실행 경로 중 하나를 선택할 수 있도록 readiness report, API, UI, 문서, 테스트를 함께 갱신하는 작업으로 인식했다.
+- 실행 내용:
+  - 각 evidence workflow의 `workflow_dispatch` 입력값을 확인했다.
+  - operations readiness report의 `remediation` 객체에 `workflowCommand` 필드를 추가했다.
+  - Markdown report의 Required Next Evidence 섹션에도 workflow command 줄을 출력하게 했다.
+  - dashboard readiness API가 `remediation.workflowCommand`를 `remediationWorkflowCommand`로 응답하도록 연결했다.
+  - frontend readiness panel에서 workflow command를 별도 code block과 copy button으로 표시하도록 수정했다.
+- 구현 내용:
+  - `scripts/write-operations-readiness.ps1`: storage expansion, HA/DR readiness, Kubernetes DR finalizer, security evidence finalizer, image signing, container security pending check에 `gh workflow run ...` 템플릿 추가.
+  - `scripts/verify-operations-readiness.ps1`: remediation command, workflow path, workflow command를 모두 검증하도록 확장.
+  - `DashboardReadinessItemResponse.java`, `AdminController.java`: optional `remediationWorkflowCommand` 응답 필드 추가.
+  - `DashboardPage.vue`, `HomeView.test.js`: workflow command 표시와 `readiness-remediation-workflow-copy-button` selector 추가.
+  - API 명세, 운영 모니터링 문서, frontend design, MVP checklist, test cases 갱신.
+- 수정된 파일 및 관련 파일:
+  - `scripts/write-operations-readiness.ps1`
+  - `scripts/verify-operations-readiness.ps1`
+  - `osmu-backend/src/main/java/com/example/osmu/admin/DashboardReadinessItemResponse.java`
+  - `osmu-backend/src/main/java/com/example/osmu/admin/AdminController.java`
+  - `osmu-backend/src/test/java/com/example/osmu/admin/AdminDashboardSummaryControllerTest.java`
+  - `osmu-frontend/src/components/dashboard/DashboardPage.vue`
+  - `osmu-frontend/src/views/HomeView.test.js`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/operation-monitoring.md`
+  - `dev-docs/frontend-design.md`
+  - `dev-docs/mvp-release-checklist.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/worklog/main/worklog-main.md`
+- 검증 기록:
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-operations-readiness.ps1`: 통과. 결과는 `pending`, 요약은 `passed=36 pending=6`, 6개 pending check 모두 `Workflow command` 라인을 포함.
+  - `.\gradlew.bat test --tests com.example.osmu.admin.AdminDashboardSummaryControllerTest` (`osmu-backend` 기준): 최초 sandbox 실행은 Gradle distribution download 네트워크 제한으로 실패, 네트워크 허용 재실행은 통과.
+  - `npm.cmd run test:unit -- HomeView.test.js`: 통과. Node test runner 기준 69개 테스트 통과.
+  - `npm.cmd run build`: 통과.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-openapi-contract.ps1`: 통과. 132 operations, 106 frontend API functions checked.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-commercial-readiness.ps1`: 통과.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-local.ps1 -SkipDocker -SkipBackend`: 통과. 내부 `git diff --check`, script parse, CI workflow draft, frontend unit/build 포함.
+- 결과:
+  - dashboard readiness pending item은 이제 로컬 remediation command와 GitHub Actions workflow command를 모두 표시할 수 있다.
+  - 운영자는 `.md` report를 직접 열지 않아도 대시보드에서 다음 evidence 수집 명령을 복사할 수 있다.
+- 후속 메모:
+  - 실제 `192.168.35.88` 또는 target Kubernetes cluster에서는 `OSMU_KUBECONFIG_BASE64`, GitHub Actions 권한, 실제 backup timestamp, restore API base 등이 준비되어야 live evidence를 채울 수 있다.
+  - workflow command는 운영값을 치환하는 템플릿이므로 DR finalizer의 `<YYYYMMDDTHHMMSSZ>`, `<restore-api-base>`, `<count>`는 실제 실행 전 반드시 교체해야 한다.
+- 코드 리뷰:
+  - optional field로 추가해 기존 non-operations readiness 응답은 빈 값 생략 정책을 유지한다.
+  - frontend copy 함수는 기존 remediation command 복사 함수를 재사용해 중복 로직을 피했다.
+  - workflow path와 workflow command를 분리해 문서/대시보드에서 “어떤 workflow인지”와 “어떻게 실행하는지”를 따로 볼 수 있게 했다.
+- 앞으로 추가적으로 개발해야하는 내용:
+  - readiness panel의 workflow command를 실제 GitHub Actions deep link나 dispatch helper로 발전.
+  - 배포 서버 또는 GitHub-hosted Actions에서 workflow command로 live evidence를 채우고 operations readiness `ready` 전환 검증.
+- 추가적으로 사용된 skill이나 plugin:
+  - 별도 skill 없음.
+  - PowerShell, Java/Spring test, npm/Vite 검증 예정.
+### 2026-06-16 - Operations Evidence Plan Helper 추가
+
+- 작업 시간:
+  - 시작: 2026-06-16 05:39:00 +09:00
+  - 종료: 2026-06-16 05:46:36 +09:00
+- 사용자 명령:
+  - active goal: "운영용 Kubernetes 증설 자동화, 보안 hardening, IAM/RBAC 고도화, 백업/복구, HA/DR의 기능 구현" 계속 진행.
+- 요청 분석:
+  - 현재 operations readiness는 `passed=36 pending=6` 상태이며, 남은 항목은 실제 Kubernetes/CI evidence가 필요하다.
+  - 이번 단계에서는 live evidence 자체를 위조하지 않고, pending gap을 실행 가능한 운영 계획으로 변환해 실제 `192.168.35.88` 또는 GitHub Actions 실행 전 준비도를 높이는 작업으로 인식했다.
+- 실행 내용:
+  - `scripts/write-operations-evidence-plan.ps1`를 추가해 readiness report의 pending remediation을 ordered action plan으로 변환했다.
+  - `scripts/verify-operations-evidence-plan.ps1`를 추가해 fixture 기반으로 schema, workflow command, placeholder, operator approval, kubeconfig secret flag, unplanned check 처리를 검증했다.
+  - `scripts/verify-local.ps1`에 Operations evidence plan check를 포함했다.
+  - 운영 모니터링 문서, MVP checklist, test cases, feature inventory를 갱신했다.
+- 구현 내용:
+  - evidence plan JSON format은 `osmu.operations-evidence-plan.v1`이며 `.osmu-run/latest-operations-evidence-plan.json`과 `.md`를 생성한다.
+  - 각 action은 `localCommand`, `workflow`, `workflowCommand`, `recommendedCommand`, `operatorInputs`, `requiresOperatorApproval`, `requiresKubeconfigSecret`을 포함한다.
+  - remediation metadata가 없는 pending check는 숨기지 않고 `unplannedChecks`로 분리한다.
+- 수정된 파일 및 관련 파일:
+  - `scripts/write-operations-evidence-plan.ps1`
+  - `scripts/verify-operations-evidence-plan.ps1`
+  - `scripts/verify-local.ps1`
+  - `dev-docs/operation-monitoring.md`
+  - `dev-docs/mvp-release-checklist.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/feature-inventory.md`
+  - `dev-docs/worklog/main/worklog-main.md`
+- 검증 기록:
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-operations-evidence-plan.ps1`: 1차 실행은 PowerShell ordered hashtable 함수 호출/Generic.List 배열화 문제로 실패, 수정 후 통과.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\write-operations-evidence-plan.ps1`: 실제 latest readiness report 기준 plan 생성 통과. 결과는 `action-required`, source summary는 `passed=36 pending=6`, action count는 6.
+  - PowerShell 전체 script parse check: 통과.
+  - `git diff --check -- scripts/write-operations-evidence-plan.ps1 scripts/verify-operations-evidence-plan.ps1 scripts/verify-local.ps1 dev-docs/operation-monitoring.md dev-docs/mvp-release-checklist.md dev-docs/test-cases.md dev-docs/feature-inventory.md dev-docs/worklog/main/worklog-main.md`: 통과. CRLF 변환 warning만 있음.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-local.ps1 -SkipDocker -SkipBackend -SkipFrontend`: 통과. 새 Operations evidence plan check가 로컬 게이트에 포함되어 실행됨.
+- 결과:
+  - 남은 operations readiness evidence gap 6개가 실행 순서, 로컬 명령, GitHub Actions 명령, 필요한 입력값, 승인 필요 여부, kubeconfig secret 필요 여부로 정리된다.
+  - 운영자는 readiness report를 읽는 것에서 한 단계 더 나아가 실제 evidence 수집 실행 계획을 바로 확인할 수 있다.
+- 후속 메모:
+  - 실제 ready 전환은 target Kubernetes cluster 또는 GitHub Actions에서 storage expansion, HA/DR, DR, image signing, container security evidence를 생성해야 가능하다.
+  - DR finalizer action의 `<YYYYMMDDTHHMMSSZ>`, `<restore-api-base>`, `<admin>`, `<secret>`, `<count>`는 운영 실행 전 실제 값으로 치환해야 한다.
+- 코드 리뷰:
+  - self-test는 fixture 기반이라 현재 live evidence 상태가 바뀌어도 안정적으로 실행된다.
+  - `unplannedChecks`를 별도 출력해 remediation metadata 누락이 조용히 사라지지 않도록 했다.
+  - operator approval과 kubeconfig secret 판정은 보수적 문자열 기반이므로, 나중에 remediation metadata에 명시 필드를 추가하면 더 정확하게 만들 수 있다.
+- 앞으로 추가적으로 개발해야하는 내용:
+  - evidence plan을 dashboard에서 다운로드/표시하거나 workflow dispatch helper와 연결.
+  - 실제 cluster/GitHub Actions evidence 실행 후 artifact importer와 operations readiness finalizer로 `ready` 상태 검증.
+- 추가적으로 사용된 skill이나 plugin:
+  - 별도 skill 없음.
+  - PowerShell verifier 사용.
+### 2026-06-16 - Dashboard Operations Evidence Plan Visibility 추가
+
+- 작업 시간:
+  - 시작: 2026-06-16 05:49:00 +09:00
+  - 종료: 2026-06-16 05:51:47 +09:00
+- 사용자 명령:
+  - active goal: "운영용 Kubernetes 증설 자동화, 보안 hardening, IAM/RBAC 고도화, 백업/복구, HA/DR의 기능 구현" 계속 진행.
+- 요청 분석:
+  - 직전 단계에서 operations evidence plan 파일을 생성했지만, 운영자가 dashboard에서 바로 보기에는 아직 연결이 부족했다.
+  - readiness API/UI에 plan 상태를 노출해 남은 live/security evidence 실행 순서를 운영 화면에서 찾을 수 있게 하는 작업으로 인식했다.
+- 실행 내용:
+  - `AdminController`가 `.osmu-run/latest-operations-evidence-plan.json`을 읽도록 `osmu.operations.readiness.evidence-plan-report-path` 설정값을 추가했다.
+  - plan result가 `ready`가 아니면 `OPERATIONS_EVIDENCE_PLAN` readiness item을 추가하고, plan path와 plan 재생성 명령을 remediation metadata로 노출했다.
+  - frontend readiness operations summary에 `readiness-evidence-plan-summary` 한 줄을 추가했다.
+  - backend/frontend selector tests와 API/운영/프론트/체크리스트/테스트케이스/feature inventory 문서를 갱신했다.
+- 구현 내용:
+  - `OPERATIONS_EVIDENCE_PLAN` message 예: `Operations evidence plan is action-required: actionCount=6, unplannedCount=0.`
+  - item의 `evidencePath`는 `.osmu-run/latest-operations-evidence-plan.json`, `remediationCommand`는 `write-operations-evidence-plan.ps1` 재생성 명령이다.
+  - frontend는 기존 `OPERATIONS` category summary 안에서 evidence plan item의 message를 별도 summary line으로 보여준다.
+- 수정된 파일 및 관련 파일:
+  - `osmu-backend/src/main/java/com/example/osmu/admin/AdminController.java`
+  - `osmu-backend/src/test/java/com/example/osmu/admin/AdminDashboardSummaryControllerTest.java`
+  - `osmu-frontend/src/components/dashboard/DashboardPage.vue`
+  - `osmu-frontend/src/views/HomeView.test.js`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/frontend-design.md`
+  - `dev-docs/operation-monitoring.md`
+  - `dev-docs/mvp-release-checklist.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/feature-inventory.md`
+  - `dev-docs/worklog/main/worklog-main.md`
+- 검증 기록:
+  - `.\gradlew.bat test --tests com.example.osmu.admin.AdminDashboardSummaryControllerTest` (`osmu-backend` 기준): 최초 sandbox 실행은 Gradle distribution download 네트워크 제한으로 실패, 네트워크 허용 재실행은 통과.
+  - `npm.cmd run test:unit -- HomeView.test.js`: 통과. Node test runner 기준 69개 테스트 통과.
+  - `npm.cmd run build`: 통과.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-openapi-contract.ps1`: 통과. 132 operations, 106 frontend API functions checked.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-operations-evidence-plan.ps1`: 통과.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-local.ps1 -SkipDocker -SkipBackend -SkipFrontend`: 통과.
+  - `git diff --check -- ...`: 통과. CRLF 변환 warning만 있음.
+- 결과:
+  - operations readiness dashboard에서 pending evidence check뿐 아니라 ordered evidence plan 자체도 찾을 수 있게 되었다.
+  - 운영자는 live Kubernetes/security evidence 실행 전 dashboard에서 action count와 plan 재생성 명령을 확인할 수 있다.
+- 후속 메모:
+  - 다음 단계에서는 plan item에서 `.md` 다운로드 또는 dashboard modal 상세 표시로 발전시키면 운영 UX가 더 좋아진다.
+  - 실제 `ready` 전환은 여전히 target cluster/GitHub Actions evidence 수집이 필요하다.
+- 코드 리뷰:
+  - 기존 readiness item model을 재사용해 API 응답 구조 변경 폭을 줄였다.
+  - plan file이 없으면 item을 추가하지 않아 기존 배포 환경과 호환된다.
+  - plan result가 `ready`면 warning으로 노출하지 않도록 했다.
+- 앞으로 추가적으로 개발해야하는 내용:
+  - evidence plan 상세 action list를 dashboard에서 펼쳐보기.
+  - `192.168.35.88` 또는 GitHub Actions에서 plan 순서대로 live evidence 수집.
+- 추가적으로 사용된 skill이나 plugin:
+  - 별도 skill 없음.
+### 2026-06-16 - Dashboard Operations Evidence Plan Action List 추가
+
+- 작업 시간:
+  - 시작: 2026-06-16 05:54:00 +09:00
+  - 종료: 2026-06-16 05:58:35 +09:00
+- 사용자 명령:
+  - active goal: "운영용 Kubernetes 증설 자동화, 보안 hardening, IAM/RBAC 고도화, 백업/복구, HA/DR의 기능 구현" 계속 진행.
+- 요청 분석:
+  - 직전 단계에서 evidence plan summary item은 dashboard에 노출되었지만, action list 상세는 API/UI에서 구조적으로 사용할 수 없었다.
+  - 운영자가 live Kubernetes/security evidence 실행 순서와 명령을 dashboard에서 직접 볼 수 있도록 readiness 응답과 panel UI를 확장하는 작업으로 인식했다.
+- 실행 내용:
+  - `DashboardOperationsEvidencePlanResponse`, `DashboardOperationsEvidenceActionResponse` DTO를 추가했다.
+  - `AdminController`가 `.osmu-run/latest-operations-evidence-plan.json`의 `actions` 배열을 파싱해 `operationsEvidencePlan.actions`로 응답하게 했다.
+  - frontend `dashboardReadiness.operationsEvidencePlan` 기본값과 정규화 함수를 추가했다.
+  - readiness panel에 `readiness-evidence-plan-actions` list를 추가해 상위 action의 실행 순서, meta, recommended command, copy button을 표시했다.
+  - Chrome headless smoke 중 `/dashboard`에서 `DashboardPage` required prop인 `storageExpansionRequests`, `storageExpansionExecutions`가 누락되어 렌더링이 깨지는 문제를 발견했고 `HomeView` dashboard binding에 두 prop을 추가했다.
+  - API 명세, frontend design, operations monitoring, MVP checklist, test cases, feature inventory를 action list 기준으로 갱신했다.
+- 구현 내용:
+  - action DTO에는 `order`, `name`, `category`, `actionType`, `evidencePath`, `requiredEvidence`, `localCommand`, `workflow`, `workflowCommand`, `recommendedCommand`, `operatorInputs`, `hasPlaceholders`, `requiresOperatorApproval`, `requiresKubeconfigSecret`, `note`가 포함된다.
+  - UI는 `recommendedCommand || workflowCommand || localCommand` 순으로 복사 가능한 명령을 선택한다.
+  - action meta는 category, operator input, approval flag, kubeconfig flag를 한 줄로 표시한다.
+  - dashboard route는 storage expansion summary fallback 계산을 위해 request/execution 배열을 항상 전달한다.
+- 수정된 파일 및 관련 파일:
+  - `osmu-backend/src/main/java/com/example/osmu/admin/DashboardOperationsEvidencePlanResponse.java`
+  - `osmu-backend/src/main/java/com/example/osmu/admin/DashboardOperationsEvidenceActionResponse.java`
+  - `osmu-backend/src/main/java/com/example/osmu/admin/DashboardReadinessResponse.java`
+  - `osmu-backend/src/main/java/com/example/osmu/admin/AdminController.java`
+  - `osmu-backend/src/test/java/com/example/osmu/admin/AdminDashboardSummaryControllerTest.java`
+  - `osmu-frontend/src/views/HomeView.vue`
+  - `osmu-frontend/src/components/dashboard/DashboardPage.vue`
+  - `osmu-frontend/src/assets/main.css`
+  - `osmu-frontend/src/views/HomeView.test.js`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/frontend-design.md`
+  - `dev-docs/operation-monitoring.md`
+  - `dev-docs/mvp-release-checklist.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/feature-inventory.md`
+  - `dev-docs/worklog/main/worklog-main.md`
+- 검증 기록:
+  - `.\gradlew.bat test --tests com.example.osmu.admin.AdminDashboardSummaryControllerTest` (`osmu-backend` 기준): 최초 sandbox 실행은 Gradle distribution download 네트워크 제한으로 실패, 네트워크 허용 재실행은 통과.
+  - `npm.cmd run test:unit -- HomeView.test.js`: 통과. Node test runner 기준 69개 테스트 통과.
+  - `npm.cmd run build`: 통과.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-openapi-contract.ps1`: 통과. 132 operations, 106 frontend API functions checked.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-operations-evidence-plan.ps1`: 통과.
+  - `git diff --check -- <changed evidence plan dashboard files and docs>`: 통과. LF/CRLF 변환 warning만 있음.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-local.ps1 -SkipDocker -SkipBackend -SkipFrontend`: `.osmu-run/verify-local-latest.log` 기준 `==> Done`까지 도달했으나, 현재 worktree의 CRLF warning이 PowerShell `NativeCommandError`로 기록되고 security evidence rejected self-test가 기존 live evidence 미확보 상태를 `failed`로 출력해 shell exit code는 1로 확인했다. 이번 action list 변경 자체의 focused verifier 실패는 발견하지 못했다.
+  - Browser plugin 연결은 `CreateProcessAsUserW failed: 5`로 실패해 직접 Playwright/Chrome channel fallback을 사용했다.
+  - Chrome headless smoke: `/login?mode=admin` 로그인 화면 렌더링 확인, mock admin login 후 `/dashboard` 이동, `재점검` 클릭 뒤 `dashboard-readiness-panel`, `readiness-evidence-plan-actions`, `readiness-evidence-plan-command-copy-button`가 각각 1개 렌더링됨을 확인했다.
+  - prop 누락 수정 후 `npm.cmd run test:unit -- HomeView.test.js` 재실행 통과. Node test runner 기준 69개 테스트 통과.
+  - prop 누락 수정 후 `npm.cmd run build` 재실행 통과.
+- 결과:
+  - dashboard readiness 응답은 operations evidence plan의 ordered actions를 구조적으로 포함한다.
+  - 관리자 화면은 evidence plan action 상위 항목과 복사 가능한 실행 명령을 보여줄 수 있다.
+- 후속 메모:
+  - 다음 단계에서는 action list 전체 펼쳐보기, `.md` 다운로드, 또는 GitHub workflow dispatch helper로 연결할 수 있다.
+  - 실제 readiness `ready` 전환은 여전히 live evidence 수집이 필요하다.
+- 코드 리뷰:
+  - 기존 readiness item summary와 새 structured plan field를 병행해 기존 UI/테스트 호환성을 유지했다.
+  - plan file이 없는 환경은 `DashboardOperationsEvidencePlanResponse.empty()`로 안전하게 처리한다.
+  - action list는 상위 3개만 표시해 panel이 과도하게 길어지지 않도록 했다.
+  - 브라우저 smoke로 unit/source test가 놓친 required prop 누락을 잡았으므로 dashboard prop contract는 앞으로 E2E나 component render test로 보강하는 편이 좋다.
+- 앞으로 추가적으로 개발해야하는 내용:
+  - `192.168.35.88` 또는 GitHub Actions에서 plan action 순서대로 live evidence 실행.
+  - action별 실행 결과와 artifact import 상태를 dashboard에서 연결 표시.
+- 추가적으로 사용된 skill이나 plugin:
+  - `browser:control-in-app-browser` 지침을 읽고 in-app Browser 연결을 시도했으나 권한 문제로 실패.
+  - fallback으로 local Playwright + installed Chrome channel을 사용.
+
+### 2026-06-16 - Operations Evidence Plan Invocation Helper 추가
+
+- 작업 시간:
+  - 시작: 2026-06-16 06:16:00 +09:00
+  - 종료: 2026-06-16 06:24:00 +09:00
+- 사용자 명령:
+  - active goal: "운영용 Kubernetes 증설 자동화, 보안 hardening, IAM/RBAC 고도화, 백업/복구, HA/DR의 기능 구현" 계속 진행.
+- 요청 분석:
+  - 직전 단계에서 operations evidence plan과 dashboard action list는 만들어졌지만, 운영자가 그 명령을 안전하게 실행 가능한 상태인지 판정하는 helper는 없었다.
+  - 남은 live/security evidence gap을 실제 GitHub Actions workflow dispatch 또는 local command 실행 직전 단계까지 연결하되, placeholder/승인/kubeconfig 확인 누락으로 인한 실수 실행은 막아야 하는 작업으로 인식했다.
+- 실행 내용:
+  - `scripts/invoke-operations-evidence-plan.ps1`를 추가해 `.osmu-run/latest-operations-evidence-plan.json`을 plan-only 또는 명시적 `-Execute` invocation report로 변환하게 했다.
+  - command mode는 `Workflow`, `Local`, `Recommended`를 지원하며 기본값은 workflow dispatch 명령이다.
+  - `-BackupTimestamp`, `-RestoreApiBase`, `-AdminLoginId`, `-AdminPassword`, `-ExpectedObjectCount`, `-Placeholder`로 operator placeholder를 치환하게 했다.
+  - `-ConfirmOperatorApproval`, `-KubeconfigSecretConfirmed`, command allowlist를 만족하지 않으면 action을 `blocked`로 분류하게 했다.
+  - `scripts/verify-operations-evidence-plan-invocation.ps1`를 추가해 blocked/confirmed/selected-action plan-only 흐름을 검증하게 했다.
+  - `scripts/verify-local.ps1`에 Operations evidence plan invocation check를 추가했다.
+  - operation monitoring, MVP checklist, test cases, document index, feature inventory를 새 helper 기준으로 갱신했다.
+- 구현 내용:
+  - invocation report format은 `osmu.operations-evidence-plan-invocation.v1`이다.
+  - 기본 실행은 side effect 없는 plan-only이며, 실제 dispatch는 `-Execute`가 있어야 한다.
+  - 허용 command는 기본적으로 `gh workflow run`, repo scripts를 호출하는 `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\...`, `pwsh -NoProfile -ExecutionPolicy Bypass -File .\scripts\...`로 제한했다.
+  - 최신 actual plan 기준 invocation 결과는 `blocked`, selected actions 6, planned 1, blocked 5, executed 0, failed 0이다.
+- 수정된 파일 및 관련 파일:
+  - `scripts/invoke-operations-evidence-plan.ps1`
+  - `scripts/verify-operations-evidence-plan-invocation.ps1`
+  - `scripts/verify-local.ps1`
+  - `dev-docs/operation-monitoring.md`
+  - `dev-docs/mvp-release-checklist.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/feature-inventory.md`
+  - `dev-docs/document-index.md`
+  - `dev-docs/worklog/main/worklog-main.md`
+- 검증 기록:
+  - PowerShell parse check: `invoke-operations-evidence-plan.ps1`, `verify-operations-evidence-plan-invocation.ps1` 통과.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-operations-evidence-plan-invocation.ps1`: 통과. blocked report, confirmed planned report, selected action report 생성 확인.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-operations-evidence-plan.ps1`: 통과.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\write-operations-evidence-plan.ps1`: 실제 latest readiness 기준 plan 생성 통과. 결과는 `action-required`, source summary는 `passed=36 pending=6`.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\invoke-operations-evidence-plan.ps1`: 실제 latest plan 기준 invocation 생성 통과. 결과는 `blocked`, 6개 action 중 1개 planned, 5개 blocked.
+  - `git diff --check -- <changed invocation files and docs>`: 통과. LF/CRLF 변환 warning만 있음.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-local.ps1 -SkipDocker -SkipBackend -SkipFrontend`: `.osmu-run/verify-local-latest.log` 기준 새 Operations evidence plan invocation check는 통과하고 `==> Done`까지 도달했다. 기존 CRLF warning이 PowerShell `NativeCommandError`로 기록되고 security evidence rejected self-test가 synthetic/non-real evidence를 `failed`로 출력해 shell exit code는 1로 확인했다.
+- 결과:
+  - operations readiness gap은 이제 `readiness report -> evidence plan -> guarded invocation report` 흐름으로 이어진다.
+  - 운영자는 어떤 workflow가 바로 dispatch 가능한지, 어떤 workflow가 timestamp/API base/run id/승인/kubeconfig 확인 때문에 막히는지 실행 전에 JSON/Markdown으로 확인할 수 있다.
+  - 테스트/검증 자동화 추정치를 64%에서 65%로 보수적으로 갱신했다.
+- 후속 메모:
+  - 다음 단계는 `192.168.35.88` 또는 GitHub Actions에서 `KubeconfigSecretConfirmed`, 실제 backup timestamp, restore API base, artifact run id를 채워 `-Execute` 실행하거나, 실행 결과 artifact import까지 이어붙이는 것이다.
+  - dashboard에서 invocation report를 읽어 action별 blocked/planned 상태를 보여주면 운영자가 더 쉽게 live evidence를 닫을 수 있다.
+- 코드 리뷰:
+  - `-Execute` 없는 기본값이 plan-only라 실수로 live workflow를 dispatch하지 않는다.
+  - placeholder, operator approval, kubeconfig confirmation, allowlist를 모두 분리해 block reason으로 남기므로 운영자가 누락 조건을 빠르게 볼 수 있다.
+  - command string 실행은 여전히 민감한 영역이므로 allowlist는 좁게 유지했고, `-AllowUnsafeCommand`는 운영자가 의도적으로 override할 때만 사용하도록 남겼다.
+- 앞으로 추가적으로 개발해야하는 내용:
+  - 실제 GitHub Actions workflow dispatch 실행과 artifact import까지 연결.
+  - operations dashboard에서 latest invocation report summary와 block reason 표시.
+  - live Kubernetes cluster에서 storage expansion, HA/DR, DR restore evidence 수집.
+- 추가적으로 사용된 skill이나 plugin:
+  - 별도 skill/plugin 없음.
+
+### 2026-06-16 - Operations Evidence Handoff Helper 추가
+
+- 작업 시간:
+  - 시작: 2026-06-16 07:10:00 +09:00
+  - 종료: 2026-06-16 07:16:37 +09:00
+- 사용자 명령:
+  - active goal: "운영용 Kubernetes 증설 자동화, 보안 hardening, IAM/RBAC 고도화, 백업/복구, HA/DR의 기능 구현" 계속 진행.
+  - 추가 메모: 배포 검증이 필요하면 `192.168.35.88` 서버를 사용 가능.
+- 요청 분석:
+  - 운영 증적 흐름이 `readiness -> evidence plan -> invocation -> workflow run id -> artifact collection -> artifact import`까지 길어졌기 때문에, 다음 작업자가 현재 병목과 다음 명령을 바로 볼 수 있는 top-level handoff 리포트가 필요하다고 판단했다.
+  - 현재 최신 증적 기준으로는 invocation report가 `blocked`, workflow run id plan이 `query-required`, artifact collection plan이 `action-required` 상태이므로 실제 live/CI 증적 수집 전 차단 조건을 먼저 해소해야 한다.
+- 실행 내용:
+  - 기존에 추가되던 `write-operations-evidence-handoff.ps1` 파일이 실제로 생성되었는지 확인하고 PowerShell parse를 검증했다.
+  - handoff writer를 실행해 최신 `.osmu-run/latest-*` 운영 증적 파일들을 합친 `.osmu-run/latest-operations-evidence-handoff.json/.md`를 생성했다.
+  - missing report, blocked invocation, artifact-finalizer-ready fixture를 사용하는 self-test를 추가했다.
+  - `verify-local.ps1`에 `Operations evidence handoff check` 단계를 연결했다.
+  - 운영 문서, MVP 체크리스트, 테스트 케이스, 문서 인덱스, 기능 인벤토리를 갱신했다.
+- 구현 내용:
+  - `scripts/write-operations-evidence-handoff.ps1`
+    - readiness, evidence plan, invocation, workflow run id, artifact collection, artifact import report를 읽는다.
+    - 각 stage의 존재 여부, result, summary, command, ready 여부를 기록한다.
+    - 현재 병목에 따라 `nextStep.code`를 선택한다.
+    - 주요 next step은 `write-readiness`, `write-evidence-plan`, `write-invocation`, `resolve-invocation-blockers`, `execute-invocation`, `collect-run-ids`, `complete-artifact-collection-plan`, `run-artifact-finalizer`, `fix-artifact-import`, `regenerate-readiness`, `none`이다.
+    - JSON formatVersion은 `osmu.operations-evidence-handoff.v1`이다.
+  - `scripts/verify-operations-evidence-handoff.ps1`
+    - report가 모두 없을 때 `write-readiness`를 선택하는지 검증한다.
+    - invocation이 blocked일 때 `resolve-invocation-blockers`와 blocked/missing count를 검증한다.
+    - run id와 artifact collection이 ready이고 import가 없을 때 `run-artifact-finalizer`를 선택하는지 검증한다.
+- 수정된 파일 및 관련된 파일들:
+  - `scripts/write-operations-evidence-handoff.ps1`
+  - `scripts/verify-operations-evidence-handoff.ps1`
+  - `scripts/verify-local.ps1`
+  - `dev-docs/document-index.md`
+  - `dev-docs/operation-monitoring.md`
+  - `dev-docs/mvp-release-checklist.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/feature-inventory.md`
+  - `dev-docs/worklog/main/worklog-main.md`
+- 검증 기록:
+  - `powershell -NoProfile -Command "[scriptblock]::Create((Get-Content -Raw -LiteralPath '.\scripts\write-operations-evidence-handoff.ps1')) | Out-Null; Write-Host 'write parse ok'"`: 통과.
+  - `powershell -NoProfile -Command "[scriptblock]::Create((Get-Content -Raw -LiteralPath '.\scripts\verify-operations-evidence-handoff.ps1')) | Out-Null; Write-Host 'verify parse ok'"`: 통과.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-operations-evidence-handoff.ps1`: 통과.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\write-operations-evidence-handoff.ps1`: 통과. 최신 실제 결과는 `result=blocked`, `nextStep.code=resolve-invocation-blockers`, `blockedActionCount=5`, `missingWorkflowRunCount=6`, `missingRequiredArtifactCount=4`.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-operations-workflow-run-id-plan.ps1`: 통과.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-operations-artifact-collection-plan.ps1`: 통과.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-operations-evidence-plan-invocation.ps1`: 통과.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-local.ps1 -SkipDocker -SkipBackend -SkipFrontend *> .\.osmu-run\verify-local-latest.log`: 종료 코드 1. 새 `Operations evidence handoff check`는 통과했고 `==> Done`까지 진행했다. 종료 코드 1은 기존 security evidence self-test가 synthetic evidence와 zero commit SHA를 운영 증적으로 인정하지 않아서 발생한 기존 실패 패턴이다.
+- 결과:
+  - 운영 증적 파일이 많아져도 `.osmu-run/latest-operations-evidence-handoff.json/.md`만 열면 현재 병목과 다음 명령을 확인할 수 있게 되었다.
+  - 현재 실제 다음 작업은 invocation blocker 해소이다.
+- 후속 메모:
+  - 다음 실제 진행은 `invoke-operations-evidence-plan.ps1`의 blocked action 5개를 해소하는 것이다. 필요한 값은 operator approval, kubeconfig secret confirmation, backup timestamp/restore 관련 placeholder 등이다.
+  - 이후 GitHub Actions 또는 `192.168.35.88` 배포 검증 흐름에서 live evidence를 수집하고, `write-operations-workflow-run-id-plan.ps1 -Execute` 또는 `gh run list` fixture로 run id를 채워야 한다.
+  - run id가 채워지면 artifact collection plan을 ready로 만들고 Operations Readiness Artifact Finalizer 또는 local import로 이어가야 한다.
+- 코드 리뷰:
+  - handoff writer는 파일을 읽어 판단만 수행하며 live workflow dispatch나 외부 네트워크 호출은 하지 않는다.
+  - self-test는 `.osmu-run` 아래에서만 출력 디렉터리를 정리하도록 safe root 검사를 둬서 위험한 삭제 범위를 피했다.
+  - 현재 dashboard/API에는 handoff 자체를 노출하지 않았다. 필요하면 다음 단계에서 `operationsEvidenceHandoff` 응답 필드와 frontend summary를 추가할 수 있다.
+- 앞으로 추가적으로 개발해야하는 내용:
+  - handoff report를 dashboard/API에 표시.
+  - 실제 live GitHub Actions run id 수집과 artifact finalizer/import 완료.
+  - synthetic이 아닌 image signing/container security evidence 확보.
+  - `192.168.35.88` 배포 검증은 live evidence 수집 단계에서 필요 시 진행.
+- 추가적으로 사용된 skill이나 plugin:
+  - 별도 skill/plugin 없음.
+
+### 2026-06-16 - Operations Evidence Handoff Dashboard/API 노출
+
+- 작업 시간:
+  - 시작: 2026-06-16 07:18:00 +09:00
+  - 종료: 2026-06-16 07:27:18 +09:00
+- 사용자 명령:
+  - active goal: "운영용 Kubernetes 증설 자동화, 보안 hardening, IAM/RBAC 고도화, 백업/복구, HA/DR의 기능 구현" 계속 진행.
+- 요청 분석:
+  - 직전 작업에서 `.osmu-run/latest-operations-evidence-handoff.json/.md`를 만들었지만 dashboard/API에는 노출되지 않았다.
+  - 운영자가 CLI Markdown을 열지 않고도 현재 bottleneck과 다음 명령을 볼 수 있게 `GET /api/admin/dashboard/readiness`와 frontend readiness panel에 handoff를 연결하는 작업으로 인식했다.
+- 실행 내용:
+  - backend readiness response에 `operationsEvidenceHandoff` structured object를 추가했다.
+  - `.osmu-run/latest-operations-evidence-handoff.json`을 읽어 next step, stage summary, blocked/missing count를 파싱하도록 했다.
+  - readiness item `OPERATIONS_EVIDENCE_HANDOFF`를 추가하고 next command를 remediation command로 노출했다.
+  - frontend dashboard readiness panel에 handoff summary, next command copy button, stage list를 추가했다.
+  - API spec, frontend design, operation monitoring, MVP checklist, test cases, feature inventory를 갱신했다.
+- 구현 내용:
+  - `DashboardOperationsEvidenceHandoffResponse`
+    - result, generatedAt, nextStep, stageCount, readyStageCount, blockedActionCount, missingWorkflowRunCount, missingRequiredArtifactCount, failedImportCount, stages를 반환한다.
+  - `DashboardOperationsEvidenceHandoffNextStepResponse`
+    - code, title, command, reason, note를 반환한다.
+  - `DashboardOperationsEvidenceHandoffStageResponse`
+    - name, reportPath, exists, result, summary, ready, command, note를 반환한다.
+  - `AdminController`
+    - `osmu.operations.readiness.evidence-handoff-report-path` 기본값을 `.osmu-run/latest-operations-evidence-handoff.json`로 추가했다.
+    - `OPERATIONS_EVIDENCE_HANDOFF` warning item을 추가했다.
+  - `DashboardPage.vue`
+    - `readiness-evidence-handoff-summary`, `readiness-evidence-handoff-command-copy-button`, `readiness-evidence-handoff-stages` selector를 추가했다.
+- 수정된 파일 및 관련된 파일들:
+  - `osmu-backend/src/main/java/com/example/osmu/admin/AdminController.java`
+  - `osmu-backend/src/main/java/com/example/osmu/admin/DashboardReadinessResponse.java`
+  - `osmu-backend/src/main/java/com/example/osmu/admin/DashboardOperationsEvidenceHandoffResponse.java`
+  - `osmu-backend/src/main/java/com/example/osmu/admin/DashboardOperationsEvidenceHandoffNextStepResponse.java`
+  - `osmu-backend/src/main/java/com/example/osmu/admin/DashboardOperationsEvidenceHandoffStageResponse.java`
+  - `osmu-backend/src/test/java/com/example/osmu/admin/AdminDashboardSummaryControllerTest.java`
+  - `osmu-frontend/src/views/HomeView.vue`
+  - `osmu-frontend/src/components/dashboard/DashboardPage.vue`
+  - `osmu-frontend/src/views/HomeView.test.js`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/frontend-design.md`
+  - `dev-docs/operation-monitoring.md`
+  - `dev-docs/mvp-release-checklist.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/feature-inventory.md`
+  - `dev-docs/worklog/main/worklog-main.md`
+- 검증 기록:
+  - `npm.cmd run test:unit -- HomeView.test.js`: 통과. Node test runner 기준 69개 테스트 통과.
+  - `.\gradlew.bat test --tests com.example.osmu.admin.AdminDashboardSummaryControllerTest`: 최초 sandbox 실행은 Gradle distribution download 네트워크 제한으로 실패, 네트워크 허용 재실행 통과.
+  - `npm.cmd run build`: 통과.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-openapi-contract.ps1`: 통과. 132 operations, 106 frontend API functions checked.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-operations-evidence-handoff.ps1`: 통과.
+  - `git diff --check -- <handoff dashboard/API related files>`: 통과. LF/CRLF 변환 warning만 있음.
+- 결과:
+  - 관리자 dashboard readiness API가 operations evidence handoff까지 반환한다.
+  - frontend readiness panel에서 현재 병목, next step, blocked/missing count, next command, stage 상태를 확인하고 복사할 수 있게 되었다.
+- 후속 메모:
+  - 현재 최신 실제 handoff는 여전히 `blocked`, `nextStep.code=resolve-invocation-blockers`이다.
+  - 다음 실제 운영 진전은 invocation blocker 해소 후 live workflow/run id/artifact 수집 단계로 넘어가는 것이다.
+  - 필요하면 `192.168.35.88` 배포 검증 환경에서 live evidence 흐름을 검증한다.
+- 코드 리뷰:
+  - backend는 handoff JSON을 읽고 표시만 하며 live workflow나 외부 명령을 자동 실행하지 않는다.
+  - frontend는 command copy UI만 제공하므로 실수로 운영 명령이 실행되지 않는다.
+  - stage list는 상위 3개만 표시해 readiness panel 길이를 제한했다.
+- 앞으로 추가적으로 개발해야하는 내용:
+  - invocation blocker 해소를 위한 guided command UX 또는 runner preflight 연결.
+  - 실제 GitHub Actions run id 수집과 Operations Readiness Artifact Finalizer/import 완료.
+  - non-synthetic image signing/container security evidence 확보.
+- 추가적으로 사용된 skill이나 plugin:
+  - 별도 skill/plugin 없음.
+
+### 2026-06-16 - Operations Artifact Collection Plan Dashboard/API 표시
+
+- 작업 시간:
+  - 시작: 2026-06-16 06:42:00 +09:00
+  - 종료: 2026-06-16 06:51:07 +09:00
+- 사용자 명령:
+  - active goal: "운영용 Kubernetes 증설 자동화, 보안 hardening, IAM/RBAC 고도화, 백업/복구, HA/DR의 기능 구현" 계속 진행.
+  - 필요 시 `192.168.35.88` 서버로 배포 검증 가능.
+- 요청 분석:
+  - 직전 작업에서 workflow artifact collection plan helper가 생겼지만, 운영자가 dashboard에서 해당 산출물과 다음 artifact import 명령을 바로 볼 수는 없었다.
+  - 운영용 기능 완성도 관점에서 `readiness report -> evidence plan -> invocation -> artifact collection -> artifact import` 흐름이 UI/API에 이어져야 하므로 artifact collection plan을 dashboard readiness 응답과 frontend readiness panel에 연결하는 작업으로 인식했다.
+- 실행 내용:
+  - backend readiness API가 `.osmu-run/latest-operations-artifact-collection-plan.json`을 읽도록 확장했다.
+  - `OPERATIONS_ARTIFACT_COLLECTION_PLAN` readiness item과 structured `operationsArtifactCollectionPlan` 응답을 추가했다.
+  - frontend readiness panel에 artifact collection summary, finalizer/import command copy button, artifact download command list를 추가했다.
+  - backend/frontend 테스트와 API/운영 문서를 갱신했다.
+- 구현 내용:
+  - `DashboardOperationsArtifactCollectionPlanResponse`, `DashboardOperationsArtifactCollectionArtifactResponse` record를 추가했다.
+  - `AdminController`에 `osmu.operations.readiness.artifact-collection-plan-report-path` 설정과 snapshot parser를 추가했다.
+  - `DashboardReadinessResponse`에 `operationsArtifactCollectionPlan` 필드를 추가했다.
+  - `HomeView.vue`에 `normalizeOperationsArtifactCollectionPlan`과 기본 reactive state를 추가했다.
+  - `DashboardPage.vue`에 artifact collection summary/list/copy controls와 formatter를 추가했다.
+  - `HomeView.test.js`와 `AdminDashboardSummaryControllerTest`가 새 selector/API field를 확인하도록 확장했다.
+- 수정된 파일 및 관련된 파일들:
+  - `osmu-backend/src/main/java/com/example/osmu/admin/AdminController.java`
+  - `osmu-backend/src/main/java/com/example/osmu/admin/DashboardReadinessResponse.java`
+  - `osmu-backend/src/main/java/com/example/osmu/admin/DashboardOperationsArtifactCollectionPlanResponse.java`
+  - `osmu-backend/src/main/java/com/example/osmu/admin/DashboardOperationsArtifactCollectionArtifactResponse.java`
+  - `osmu-backend/src/test/java/com/example/osmu/admin/AdminDashboardSummaryControllerTest.java`
+  - `osmu-frontend/src/views/HomeView.vue`
+  - `osmu-frontend/src/components/dashboard/DashboardPage.vue`
+  - `osmu-frontend/src/assets/main.css`
+  - `osmu-frontend/src/views/HomeView.test.js`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/frontend-design.md`
+  - `dev-docs/operation-monitoring.md`
+  - `dev-docs/mvp-release-checklist.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/feature-inventory.md`
+  - `dev-docs/worklog/main/worklog-main.md`
+- 검증 기록:
+  - `npm.cmd run test:unit -- HomeView.test.js`: 통과. Node test runner 기준 69개 테스트 통과.
+  - `.\gradlew.bat test --tests com.example.osmu.admin.AdminDashboardSummaryControllerTest`: 최초 실행은 셸의 `JAVA_HOME` 오류로 실패, JDK 17 경로 `C:\Users\kjs99\AppData\Local\Temp\temurin-jdk17\jdk-17.0.19+10` 지정 후 Gradle distribution 다운로드가 sandbox network 제한으로 실패, 승인된 네트워크 실행으로 재시도 후 통과.
+  - `npm.cmd run build`: 통과.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-operations-artifact-collection-plan.ps1`: 통과.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-operations-evidence-plan-invocation.ps1`: 통과.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-openapi-contract.ps1`: 통과. 132 operations, 106 frontend API functions checked.
+  - `git diff --check -- <artifact collection dashboard/API related files>`: 통과. LF/CRLF 변환 warning만 있음.
+  - `node --check <.vue files>`는 Node가 `.vue` 확장자를 직접 syntax check 대상으로 처리하지 못해 실패했으며, Vite build와 unit test로 대체 검증했다.
+- 결과:
+  - admin dashboard readiness API가 artifact collection plan까지 반환한다.
+  - frontend readiness panel에서 artifact collection result, ready/missing artifact count, operations artifact finalizer command, local import command, artifact별 `gh run download` command를 확인하고 복사할 수 있다.
+  - 운영자가 live workflow dispatch 이후 run id를 채우고 artifact import로 넘어가는 단계를 dashboard에서 추적할 수 있게 되었다.
+- 후속 메모:
+  - 실제 `192.168.35.88` 또는 GitHub Actions에서 live workflow를 실행해 run id를 얻어야 artifact collection plan을 `ready` 상태로 만들 수 있다.
+  - 다음 단계는 run id 수집 자동화 또는 artifact collection plan에서 finalizer workflow dispatch까지 이어지는 운영 버튼/명령 실행 UX이다.
+  - operations readiness pending은 live Kubernetes/security evidence가 실제로 수집되어야 해소된다.
+- 코드 리뷰:
+  - backend는 artifact collection JSON의 명령/상태만 읽고 GitHub API나 secret/log 본문을 조회하지 않는다.
+  - frontend는 artifact 목록을 상위 3개로 제한해 readiness panel이 지나치게 길어지는 것을 막았다.
+  - artifact naming convention에 의존하므로 workflow artifact 이름 변경 시 helper, verifier, dashboard fixture를 같이 수정해야 한다.
+- 앞으로 추가적으로 개발해야하는 내용:
+  - 실제 workflow dispatch/run id 수집 자동화.
+  - artifact collection plan의 ready 상태에서 finalizer workflow 실행 또는 local import 실행 UX.
+  - live cluster 기반 storage expansion, HA/DR, DR restore, IAM/RBAC, signed image, container scan/SBOM evidence 수집.
+- 추가적으로 사용된 skill이나 plugin:
+  - 별도 skill/plugin 없음.
+
+### 2026-06-16 - Operations Artifact Collection Plan Helper 추가
+
+- 작업 시간:
+  - 시작: 2026-06-16 06:34:00 +09:00
+  - 종료: 2026-06-16 06:41:52 +09:00
+- 사용자 명령:
+  - active goal: "운영용 Kubernetes 증설 자동화, 보안 hardening, IAM/RBAC 고도화, 백업/복구, HA/DR의 기능 구현" 계속 진행.
+  - 필요하면 `192.168.35.88` 서버로 배포 검증 가능하다는 운영 검증 대상 정보를 받음.
+- 요청 분석:
+  - 직전 단계에서 operations evidence plan과 guarded invocation report까지 연결되었지만, workflow 실행 후 어떤 artifact 이름을 받아서 어떤 import/finalizer 명령으로 이어가야 하는지는 수동 계산이 필요했다.
+  - 따라서 live workflow dispatch 이후 readiness evidence closure로 넘어가기 위한 "artifact 수집 계획" 자동화가 다음 병목이라고 판단했다.
+- 실행 내용:
+  - invocation report의 workflow command를 읽어 storage expansion, Kubernetes HA/DR, Kubernetes DR, image signing, container security, security evidence finalizer artifact 후보를 자동 도출하는 스크립트를 추가했다.
+  - run id가 없는 경우에는 placeholder artifact name과 누락 run id를 명확히 표시하고, run id가 주어지면 `gh run download`, security evidence finalizer, operations artifact finalizer, local import 명령을 concrete command로 생성하게 했다.
+  - helper self-test를 추가하고 `verify-local.ps1`에 포함했다.
+  - 운영 문서, MVP checklist, test case, document index, feature inventory를 artifact collection plan 기준으로 갱신했다.
+- 구현 내용:
+  - `scripts/write-operations-artifact-collection-plan.ps1`
+    - `osmu.operations-evidence-plan-invocation.v1` 입력을 읽고 `osmu.operations-artifact-collection-plan.v1` JSON/Markdown을 생성한다.
+    - `storage-expansion-finalizer-ci.yml`, `kubernetes-ha-dr-readiness-ci.yml`, `kubernetes-dr-finalizer-ci.yml`, `iam-rbac-finalizer-ci.yml`, `image-publish-sign-ci.yml`, `container-security-ci.yml`, `security-evidence-finalizer-ci.yml` workflow command를 인식한다.
+    - `StorageExpansionRunId`, `HaDrReadinessRunId`, `KubernetesDrRunId`, `IamRbacRunId`, `ImageSigningRunId`, `ContainerSecurityRunId`, `SecurityEvidenceRunId`, `ImageSigningVersion`, `CommitSha` 입력을 받아 artifact name과 import command를 확정한다.
+  - `scripts/verify-operations-artifact-collection-plan.ps1`
+    - run id가 없는 상태는 `action-required`로 검증한다.
+    - run id, version, commit SHA가 있는 상태는 `ready`로 검증한다.
+    - Markdown command에 `OrderedDictionary.downloadPath` 같은 PowerShell 객체 문자열이 새지 않는지도 검증한다.
+  - `scripts/verify-local.ps1`
+    - `Operations artifact collection plan check` 단계를 추가했다.
+- 수정된 파일 및 관련된 파일들:
+  - `scripts/write-operations-artifact-collection-plan.ps1`
+  - `scripts/verify-operations-artifact-collection-plan.ps1`
+  - `scripts/verify-local.ps1`
+  - `dev-docs/operation-monitoring.md`
+  - `dev-docs/mvp-release-checklist.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/document-index.md`
+  - `dev-docs/feature-inventory.md`
+  - `dev-docs/worklog/main/worklog-main.md`
+- 검증 기록:
+  - `powershell -NoProfile -Command "[scriptblock]::Create((Get-Content -Raw -LiteralPath '.\scripts\write-operations-artifact-collection-plan.ps1')) | Out-Null; [scriptblock]::Create((Get-Content -Raw -LiteralPath '.\scripts\verify-operations-artifact-collection-plan.ps1')) | Out-Null; Write-Host 'parse ok'"`: 통과.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\write-operations-artifact-collection-plan.ps1`: 통과. 최신 invocation report 기준 result=`action-required`, artifacts=6, required=4, ready=0, missing=4.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-operations-artifact-collection-plan.ps1`: 통과.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-operations-evidence-plan-invocation.ps1`: 통과.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-local.ps1 -SkipDocker -SkipBackend -SkipFrontend *> .\.osmu-run\verify-local-latest.log`: 종료 코드 1. 단, 새 `Operations artifact collection plan check`는 통과했고 `==> Done`까지 도달했다. 실패 표시는 기존 보안 self-test가 합성 증거와 더미 commit SHA를 운영 증거로 인정하지 않기 때문에 의도적으로 출력하는 `Result: failed` 패턴이다.
+  - `git diff --check -- scripts/write-operations-artifact-collection-plan.ps1 scripts/verify-operations-artifact-collection-plan.ps1 scripts/verify-local.ps1 dev-docs/operation-monitoring.md dev-docs/mvp-release-checklist.md dev-docs/test-cases.md dev-docs/document-index.md dev-docs/feature-inventory.md dev-docs/worklog/main/worklog-main.md`: 통과. LF/CRLF 변환 warning만 있음.
+- 결과:
+  - operations evidence 흐름이 `readiness report -> evidence plan -> guarded invocation report -> artifact collection plan`까지 연결되었다.
+  - 운영자는 workflow dispatch 이후 run id만 채우면 artifact download, security evidence finalizer, operations artifact finalizer, local import 명령을 한 번에 확인할 수 있다.
+  - 실제 live workflow가 아직 실행되지 않았기 때문에 최신 실제 artifact collection report는 `action-required` 상태로 남아 있다.
+- 후속 메모:
+  - `192.168.35.88` 또는 GitHub Actions에서 workflow를 실제 실행한 뒤 run id를 helper에 넣어 artifact 수집 계획을 `ready` 상태로 만들어야 한다.
+  - 이후 `import-operations-readiness-artifacts.ps1` 또는 `operations-readiness-artifact-finalizer-ci.yml`로 readiness evidence를 표준 latest path에 반영해야 한다.
+  - dashboard에서 artifact collection plan까지 보여주면 운영자가 CLI Markdown을 열지 않고도 다음 수집 단계를 확인할 수 있다.
+- 코드 리뷰:
+  - GitHub API나 secret을 직접 조회하지 않고 invocation report와 명시 입력값만 사용하므로 로컬 계획 생성 단계의 권한 범위가 작다.
+  - run id 미입력 상태를 실패처럼 숨기지 않고 `action-required`와 placeholder로 드러내어 운영자가 무엇을 채워야 하는지 알 수 있다.
+  - artifact naming convention 의존도가 있으므로 workflow artifact 이름이 바뀌면 이 helper와 verifier를 같이 수정해야 한다.
+- 앞으로 추가적으로 개발해야하는 내용:
+  - 실제 workflow dispatch 및 run id 수집 자동화.
+  - artifact collection plan의 dashboard/API 노출.
+  - live Kubernetes cluster/storage/security evidence 수집과 operations readiness pending 해소.
+- 추가적으로 사용된 skill이나 plugin:
+  - 별도 skill/plugin 없음.
+
+### 2026-06-16 - Operations Evidence Invocation Dashboard Visibility 추가
+
+- 작업 시간:
+  - 시작: 2026-06-16 06:25:00 +09:00
+  - 종료: 2026-06-16 06:33:00 +09:00
+- 사용자 명령:
+  - active goal: "운영용 Kubernetes 증설 자동화, 보안 hardening, IAM/RBAC 고도화, 백업/복구, HA/DR의 기능 구현" 계속 진행.
+- 요청 분석:
+  - 직전 단계에서 guarded invocation report는 CLI 산출물로 생성되었지만 dashboard readiness API/UI에서 직접 볼 수 없었다.
+  - 운영자가 live Kubernetes/security workflow dispatch 전 어떤 action이 planned/blocked인지, 무엇이 막고 있는지 dashboard에서 판단할 수 있게 만드는 작업으로 인식했다.
+- 실행 내용:
+  - backend readiness 응답에 `operationsEvidenceInvocation` 구조를 추가했다.
+  - `.osmu-run/latest-operations-evidence-plan-invocation.json`을 읽어 invocation result, source plan, command mode, execution mode, planned/blocked/executed/failed count, action별 command/status/block reason을 응답하게 했다.
+  - readiness item `OPERATIONS_EVIDENCE_PLAN_INVOCATION`을 추가해 invocation report path와 재생성 명령을 dashboard warning으로 노출했다.
+  - frontend readiness panel에 invocation summary, invocation action list, block reason, unresolved placeholder, dispatch command copy button을 추가했다.
+  - API spec, frontend design, operation monitoring, MVP checklist, test cases, feature inventory를 invocation dashboard visibility 기준으로 갱신했다.
+- 구현 내용:
+  - `DashboardOperationsEvidenceInvocationResponse`, `DashboardOperationsEvidenceInvocationActionResponse` DTO를 추가했다.
+  - invocation action은 `order`, `name`, `category`, `actionType`, `evidencePath`, `commandMode`, `command`, `status`, `blockReasons`, `unresolvedPlaceholders`, `requiresOperatorApproval`, `requiresKubeconfigSecret`, `exitCode`를 포함한다.
+  - frontend는 `operationsEvidenceInvocation.actions` 상위 3개를 표시하고, command가 있을 때만 copy button을 보여준다.
+  - feature inventory 기준 프론트엔드 콘솔은 48%, 백엔드 REST API는 43%로 보수적으로 갱신했다. 전체 B2B 제품 추정치는 live evidence 미확보 때문에 45%로 유지했다.
+- 수정된 파일 및 관련 파일:
+  - `osmu-backend/src/main/java/com/example/osmu/admin/DashboardOperationsEvidenceInvocationActionResponse.java`
+  - `osmu-backend/src/main/java/com/example/osmu/admin/DashboardOperationsEvidenceInvocationResponse.java`
+  - `osmu-backend/src/main/java/com/example/osmu/admin/DashboardReadinessResponse.java`
+  - `osmu-backend/src/main/java/com/example/osmu/admin/AdminController.java`
+  - `osmu-backend/src/test/java/com/example/osmu/admin/AdminDashboardSummaryControllerTest.java`
+  - `osmu-frontend/src/views/HomeView.vue`
+  - `osmu-frontend/src/components/dashboard/DashboardPage.vue`
+  - `osmu-frontend/src/assets/main.css`
+  - `osmu-frontend/src/views/HomeView.test.js`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/frontend-design.md`
+  - `dev-docs/operation-monitoring.md`
+  - `dev-docs/mvp-release-checklist.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/feature-inventory.md`
+  - `dev-docs/worklog/main/worklog-main.md`
+- 검증 기록:
+  - `npm.cmd run test:unit -- HomeView.test.js`: 통과. Node test runner 기준 69개 테스트 통과.
+  - `npm.cmd run build`: 통과.
+  - `.\gradlew.bat test --tests com.example.osmu.admin.AdminDashboardSummaryControllerTest` (`osmu-backend` 기준): 최초 sandbox 실행은 Gradle distribution download 네트워크 제한으로 실패, 네트워크 허용 재실행은 통과.
+  - Chrome headless smoke: mock admin login 후 `/dashboard` 이동, `재점검` 클릭 뒤 `readiness-evidence-invocation-summary`, `readiness-evidence-invocation-actions`, `readiness-evidence-invocation-command-copy-button`가 각각 1개 렌더링됨을 확인했다.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-openapi-contract.ps1`: 통과. 132 operations, 106 frontend API functions checked.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-operations-evidence-plan-invocation.ps1`: 통과.
+  - `git diff --check -- <changed invocation dashboard files and docs>`: 통과. LF/CRLF 변환 warning만 있음.
+- 결과:
+  - operations readiness dashboard는 이제 evidence plan뿐 아니라 invocation 상태까지 보여준다.
+  - 운영자는 UI에서 planned/blocked count, block reason, unresolved placeholder, kubeconfig/approval 필요 여부, dispatch command를 확인하고 복사할 수 있다.
+  - CLI 산출물 `.osmu-run/latest-operations-evidence-plan-invocation.json`이 dashboard API/UI와 연결되어 live evidence 실행 전 판단 근거가 더 가까워졌다.
+- 후속 메모:
+  - 다음 단계는 실제 `192.168.35.88` 또는 GitHub Actions에서 invocation action을 `-Execute`로 dispatch하고, 결과 artifact를 `import-operations-readiness-artifacts.ps1`로 가져오는 end-to-end evidence closure이다.
+  - UI에서 action별 전체 펼쳐보기 또는 artifact import 상태와의 연결을 추가하면 운영 UX가 더 좋아진다.
+- 코드 리뷰:
+  - backend는 invocation `output`을 dashboard 응답에 노출하지 않아 workflow log나 secret이 UI로 새는 위험을 줄였다.
+  - `exitCode`는 nullable로 둬 plan-only action에서 의미 없는 0이 표시되지 않도록 했다.
+  - frontend는 action list를 상위 3개로 제한해 readiness panel이 과도하게 길어지지 않게 했다.
+- 앞으로 추가적으로 개발해야하는 내용:
+  - 실제 workflow dispatch 실행 및 GitHub artifact import 자동화.
+  - dashboard에서 invocation report 전체 상세/modal 또는 artifact import result 연결.
+  - live Kubernetes cluster/storage/security evidence 수집으로 operations readiness pending 6개 해소.
+- 추가적으로 사용된 skill이나 plugin:
+  - 별도 skill/plugin 없음.
+
+### 2026-06-16 - Operations Workflow Run ID Plan Helper 추가
+
+- 작업 시간:
+  - 시작: 2026-06-16 06:52:00 +09:00
+  - 종료: 2026-06-16 06:59:50 +09:00
+- 사용자 명령:
+  - active goal: "운영용 Kubernetes 증설 자동화, 보안 hardening, IAM/RBAC 고도화, 백업/복구, HA/DR의 기능 구현" 계속 진행.
+  - 필요 시 `192.168.35.88` 서버로 배포 검증 가능.
+- 요청 분석:
+  - 직전 단계에서 artifact collection plan은 workflow run id를 받으면 download/finalizer/import 명령을 만들 수 있었다.
+  - 하지만 운영자가 GitHub Actions 실행 후 어떤 `gh run list` 명령으로 run id를 찾고, 어떤 최신 성공 run을 artifact collection에 넘겨야 하는지는 여전히 수동이었다.
+  - 따라서 live workflow dispatch와 artifact collection plan 사이의 run id 수집 단계를 자동화하는 작업으로 인식했다.
+- 실행 내용:
+  - invocation report에서 workflow 이름을 추출해 workflow별 `gh run list --workflow ... --json ...` query command를 생성하는 helper를 추가했다.
+  - fixture JSON 또는 `-Execute` 모드에서 최신 성공 workflow run id를 추천하고, image/container security artifact 이름을 run `headSha` 기준으로 계산하도록 했다.
+  - 추천 run id를 사용해 `security-evidence-finalizer-ci.yml` dispatch command와 `write-operations-artifact-collection-plan.ps1` follow-up command를 생성하게 했다.
+  - self-test를 추가하고 `verify-local.ps1`에 포함했다.
+  - 운영 문서, MVP checklist, test cases, document index, feature inventory를 갱신했다.
+- 구현 내용:
+  - `scripts/write-operations-workflow-run-id-plan.ps1`
+    - 입력: `.osmu-run/latest-operations-evidence-plan-invocation.json`
+    - 출력: `.osmu-run/latest-operations-workflow-run-ids.json`, `.md`
+    - 기본 plan-only 결과는 `query-required`이며 workflow별 `gh run list` 명령을 제공한다.
+    - `-RunListJsonDirectory` 또는 `-Execute`로 run list 결과가 들어오면 최신 성공 run id를 추천한다.
+    - 결과가 충분하면 artifact collection plan helper에 넘길 `-StorageExpansionRunId`, `-HaDrReadinessRunId`, `-KubernetesDrRunId`, `-ImageSigningRunId`, `-ContainerSecurityRunId`, `-SecurityEvidenceRunId` 명령을 만든다.
+  - `scripts/verify-operations-workflow-run-id-plan.ps1`
+    - plan-only mode에서 `query-required`, workflowCount=6, missingWorkflowCount=6, query command, `<run-id>` artifact placeholder를 검증한다.
+    - fixture-backed ready mode에서 run id 101~106, commit SHA, security finalizer command, artifact collection plan command를 검증한다.
+  - `scripts/verify-local.ps1`
+    - `Operations workflow run id plan check` 단계를 artifact collection plan check 앞에 추가했다.
+- 수정된 파일 및 관련된 파일들:
+  - `scripts/write-operations-workflow-run-id-plan.ps1`
+  - `scripts/verify-operations-workflow-run-id-plan.ps1`
+  - `scripts/verify-local.ps1`
+  - `dev-docs/document-index.md`
+  - `dev-docs/operation-monitoring.md`
+  - `dev-docs/mvp-release-checklist.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/feature-inventory.md`
+  - `dev-docs/worklog/main/worklog-main.md`
+- 검증 기록:
+  - `powershell -NoProfile -Command "[scriptblock]::Create((Get-Content -Raw -LiteralPath '.\scripts\write-operations-workflow-run-id-plan.ps1')) | Out-Null; [scriptblock]::Create((Get-Content -Raw -LiteralPath '.\scripts\verify-operations-workflow-run-id-plan.ps1')) | Out-Null; Write-Host 'parse ok'"`: 통과.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\write-operations-workflow-run-id-plan.ps1 -NoWrite`: 통과. 최신 invocation 기준 result=`query-required`, workflowCount=6, missingWorkflowCount=6.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\write-operations-workflow-run-id-plan.ps1`: 통과. `.osmu-run/latest-operations-workflow-run-ids.json/.md` 생성.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-operations-workflow-run-id-plan.ps1`: 통과.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-operations-artifact-collection-plan.ps1`: 통과.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-operations-evidence-plan-invocation.ps1`: 통과.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-local.ps1 -SkipDocker -SkipBackend -SkipFrontend *> .\.osmu-run\verify-local-latest.log`: 종료 코드 1. 새 `Operations workflow run id plan check`는 통과했고 `==> Done`까지 도달했다. 실패 표시는 기존 보안 self-test가 합성 증거와 더미 commit SHA를 운영 증거로 인정하지 않기 때문에 의도적으로 출력하는 `Result: failed` 패턴이다.
+  - `git diff --check -- <workflow run id plan related files>`: 통과. LF/CRLF 변환 warning만 있음.
+- 결과:
+  - operations evidence 흐름이 `readiness report -> evidence plan -> guarded invocation -> workflow run id plan -> artifact collection plan`까지 이어졌다.
+  - 운영자는 workflow dispatch 이후 어떤 `gh run list` 명령으로 run id를 찾아야 하는지와, 최신 성공 run id를 artifact collection plan에 어떻게 넘겨야 하는지 보고서로 확인할 수 있다.
+  - 현재 최신 실제 run id plan은 GitHub 조회를 실행하지 않았기 때문에 `query-required` 상태다.
+- 후속 메모:
+  - 실제 GitHub Actions 또는 `192.168.35.88` 검증 흐름에서는 먼저 guarded invocation을 승인 조건과 함께 실행하고, 이후 `write-operations-workflow-run-id-plan.ps1 -Execute` 또는 `gh run list` JSON fixture로 run id를 수집해야 한다.
+  - security evidence finalizer를 실행한 뒤 다시 run id plan과 artifact collection plan을 갱신하면 operations artifact finalizer/import로 이어갈 수 있다.
+  - dashboard에 workflow run id plan까지 노출하면 CLI 문서를 열지 않고도 run id 수집 상태를 볼 수 있다.
+- 코드 리뷰:
+  - 기본값은 plan-only라 GitHub 네트워크 호출이나 workflow 실행을 자동으로 하지 않는다.
+  - `-Execute`를 사용할 때만 `gh run list`를 실행하며, self-test는 fixture JSON만 사용해 재현 가능하게 유지했다.
+  - artifact 이름은 workflow의 현재 upload-artifact naming convention에 의존하므로 workflow artifact name 변경 시 helper와 verifier를 같이 수정해야 한다.
+- 앞으로 추가적으로 개발해야하는 내용:
+  - run id plan의 dashboard/API 표시.
+  - 실제 GitHub Actions run id 조회와 artifact collection plan ready 상태 검증.
+  - operations artifact finalizer/import 실행과 live readiness pending 해소.
+- 추가적으로 사용된 skill이나 plugin:
+  - 별도 skill/plugin 없음.
+
+### 2026-06-16 - Operations Workflow Run ID Plan Dashboard/API 표시
+
+- 작업 시간:
+  - 시작: 2026-06-16 07:00:00 +09:00
+  - 종료: 2026-06-16 07:07:58 +09:00
+- 사용자 명령:
+  - active goal: "운영용 Kubernetes 증설 자동화, 보안 hardening, IAM/RBAC 고도화, 백업/복구, HA/DR의 기능 구현" 계속 진행.
+- 요청 분석:
+  - 직전 단계에서 `write-operations-workflow-run-id-plan.ps1`가 workflow run id query/follow-up plan을 만들 수 있게 되었지만 dashboard/API에서는 볼 수 없었다.
+  - 운영자가 `readiness -> evidence plan -> invocation -> workflow run id query -> artifact collection` 흐름을 한 화면에서 따라가야 하므로 workflow run id plan을 readiness API와 frontend panel에 연결하는 작업으로 인식했다.
+- 실행 내용:
+  - backend readiness API가 `.osmu-run/latest-operations-workflow-run-ids.json`을 읽도록 확장했다.
+  - `OPERATIONS_WORKFLOW_RUN_ID_PLAN` readiness item과 structured `operationsWorkflowRunIdPlan` 응답을 추가했다.
+  - frontend readiness panel에 workflow run id summary, artifact collection follow-up command, security evidence finalizer command, workflow별 `gh run list` query command copy UI를 추가했다.
+  - API spec, frontend design, operation monitoring, MVP checklist, test cases, feature inventory를 갱신했다.
+- 구현 내용:
+  - `DashboardOperationsWorkflowRunIdPlanResponse`, `DashboardOperationsWorkflowRunResponse` record를 추가했다.
+  - `AdminController`에 `osmu.operations.readiness.workflow-run-id-plan-report-path` 설정과 snapshot parser를 추가했다.
+  - `DashboardReadinessResponse`에 `operationsWorkflowRunIdPlan` 필드를 추가했다.
+  - `HomeView.vue`에 `normalizeOperationsWorkflowRunIdPlan`과 기본 reactive state를 추가했다.
+  - `DashboardPage.vue`에 workflow run id summary/list/copy controls와 formatter를 추가했다.
+  - `AdminDashboardSummaryControllerTest`, `HomeView.test.js`가 새 readiness item, response field, selector를 확인하도록 확장했다.
+- 수정된 파일 및 관련된 파일들:
+  - `osmu-backend/src/main/java/com/example/osmu/admin/AdminController.java`
+  - `osmu-backend/src/main/java/com/example/osmu/admin/DashboardReadinessResponse.java`
+  - `osmu-backend/src/main/java/com/example/osmu/admin/DashboardOperationsWorkflowRunIdPlanResponse.java`
+  - `osmu-backend/src/main/java/com/example/osmu/admin/DashboardOperationsWorkflowRunResponse.java`
+  - `osmu-backend/src/test/java/com/example/osmu/admin/AdminDashboardSummaryControllerTest.java`
+  - `osmu-frontend/src/views/HomeView.vue`
+  - `osmu-frontend/src/components/dashboard/DashboardPage.vue`
+  - `osmu-frontend/src/views/HomeView.test.js`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/frontend-design.md`
+  - `dev-docs/operation-monitoring.md`
+  - `dev-docs/mvp-release-checklist.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/feature-inventory.md`
+  - `dev-docs/worklog/main/worklog-main.md`
+- 검증 기록:
+  - `npm.cmd run test:unit -- HomeView.test.js`: 통과. Node test runner 기준 69개 테스트 통과.
+  - `.\gradlew.bat test --tests com.example.osmu.admin.AdminDashboardSummaryControllerTest`: 최초 sandbox 실행은 Gradle distribution download 네트워크 제한으로 실패, JDK 17 경로 지정 후 네트워크 허용 재실행은 통과.
+  - `npm.cmd run build`: 통과.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-openapi-contract.ps1`: 통과. 132 operations, 106 frontend API functions checked.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-operations-workflow-run-id-plan.ps1`: 통과.
+  - `git diff --check -- <workflow run id dashboard/API related files>`: 통과. LF/CRLF 변환 warning만 있음.
+- 결과:
+  - admin dashboard readiness API가 workflow run id plan까지 반환한다.
+  - frontend readiness panel에서 run id query-required/ready 상태, missing workflow count, artifact collection follow-up command, security finalizer command, workflow별 `gh run list` query command를 확인하고 복사할 수 있다.
+  - 운영자가 live workflow dispatch 후 run id 수집 상태를 dashboard에서 추적할 수 있게 되었다.
+- 후속 메모:
+  - 실제 GitHub Actions 또는 `192.168.35.88` 검증 흐름에서 workflow를 실행한 뒤 `write-operations-workflow-run-id-plan.ps1 -Execute`로 run id를 채워야 한다.
+  - 이후 artifact collection plan을 `ready`로 만들고 operations artifact finalizer/import를 실행해야 live readiness pending이 줄어든다.
+- 코드 리뷰:
+  - backend는 run id plan JSON의 command/status/metadata만 노출하고 GitHub API나 secret 값을 직접 조회하지 않는다.
+  - frontend는 workflow list를 상위 3개로 제한해 readiness panel 길이를 통제했다.
+  - query command와 artifact naming convention은 workflow 파일과 helper가 공유하는 계약이므로 workflow 변경 시 같이 업데이트해야 한다.
+- 앞으로 추가적으로 개발해야하는 내용:
+  - 실제 `-Execute` run id 조회와 artifact collection plan ready 검증.
+  - workflow run id plan ready 상태에서 artifact collection/finalizer 실행 UX.
+  - live Kubernetes/security evidence 수집으로 operations readiness pending 해소.
+- 추가적으로 사용된 skill이나 plugin:
+  - 별도 skill/plugin 없음.
+### 2026-06-16 - Kubernetes/Helm Operations Report Mount 연결
+
+- 작업 시간:
+  - 시작: 2026-06-16 09:20:00 +09:00
+  - 종료: 2026-06-16 09:25:57 +09:00
+- 사용자 명령:
+  - active goal: "운영용 Kubernetes 증설 자동화, 보안 hardening, IAM/RBAC 고도화, 백업/복구, HA/DR의 기능 구현" 계속 진행.
+  - 추가 메모: 배포 검증이 필요하면 `192.168.35.88` 서버를 사용할 수 있다고 안내함.
+- 요청 분석:
+  - 직전 Docker local demo report mount 작업 이후, 실제 Kubernetes/Helm 배포에서도 backend가 `.osmu-run/latest-operations-readiness-convergence.json` 리포트를 읽을 수 있어야 한다고 판단했다.
+  - 배포 초기에 리포트가 없어도 Pod가 기동되어야 하므로 기본값은 optional read-only ConfigMap mount로 두고, Helm에서는 PVC mount로 전환 가능한 값을 제공하는 작업으로 인식했다.
+- 실행 내용:
+  - Helm chart values/configmap/backend template에 operations report path와 backend volume mount 설정을 추가했다.
+  - 기본 Kubernetes manifest의 ConfigMap/backend Deployment에 같은 env와 optional ConfigMap volume mount를 추가했다.
+  - Helm/Kubernetes verifier가 해당 env, mount path, ConfigMap name, optional flag, Helm PVC fallback contract를 검사하도록 확장했다.
+  - Helm/Kubernetes README, 운영 모니터링 문서, MVP checklist, test case 문서를 갱신했다.
+- 구현 내용:
+  - Helm 기본값:
+    - `config.operationsReadinessConvergenceReportPath=.osmu-run/latest-operations-readiness-convergence.json`
+    - `backend.operationsReports.enabled=true`
+    - `backend.operationsReports.type=configMap`
+    - `backend.operationsReports.configMapName=osmu-operations-reports`
+    - `backend.operationsReports.mountPath=/app/.osmu-run`
+  - Helm backend template:
+    - operations report volume을 `/app/.osmu-run`에 read-only로 mount.
+    - `type=persistentVolumeClaim`이면 PVC, 그 외에는 optional ConfigMap을 사용.
+  - Kubernetes base manifest:
+    - `OSMU_OPERATIONS_READINESS_CONVERGENCE_REPORT_PATH`를 ConfigMap에 추가.
+    - backend Pod에 `osmu-operations-reports` optional ConfigMap mount 추가.
+  - 문서:
+    - `kubectl create configmap osmu-operations-reports --from-file=latest-operations-readiness-convergence.json=... --dry-run=client -o yaml | kubectl apply -f -` 갱신 흐름을 README에 추가.
+- 수정된 파일 및 관련 파일:
+  - `infra/helm/osmu/values.yaml`
+  - `infra/helm/osmu/templates/configmap.yaml`
+  - `infra/helm/osmu/templates/backend.yaml`
+  - `infra/helm/osmu/README.md`
+  - `infra/k8s/configmap.yaml`
+  - `infra/k8s/backend.yaml`
+  - `infra/k8s/README.md`
+  - `scripts/verify-helm-chart.ps1`
+  - `scripts/verify-k8s-manifests.ps1`
+  - `dev-docs/operation-monitoring.md`
+  - `dev-docs/mvp-release-checklist.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/worklog/main/worklog-main.md`
+- 검증 기록:
+  - `powershell -NoProfile -Command "[scriptblock]::Create((Get-Content -Raw -LiteralPath '.\scripts\verify-helm-chart.ps1')) | Out-Null; [scriptblock]::Create((Get-Content -Raw -LiteralPath '.\scripts\verify-k8s-manifests.ps1')) | Out-Null; Write-Host 'parse ok'"`: 통과.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-helm-chart.ps1`: 통과.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-k8s-manifests.ps1`: 통과.
+  - `helm template osmu .\infra\helm\osmu --namespace osmu`: 미실행. 현재 로컬 환경에 `helm` 명령이 설치되어 있지 않아 `CommandNotFoundException` 발생.
+  - `git diff --check -- <operations report mount related files>`: 통과. LF/CRLF 변환 warning만 있음.
+- 결과:
+  - Kubernetes/Helm 배포에서도 backend dashboard readiness API가 operator-provided operations convergence report를 읽을 수 있는 경로가 생겼다.
+  - 기본 배포는 리포트 ConfigMap이 없어도 시작 가능하고, 리포트를 생성한 뒤 ConfigMap을 apply하면 dashboard가 동일한 evidence flow를 표시할 수 있다.
+- 후속 메모:
+  - 실제 배포 검증 시에는 `scripts/write-operations-readiness-convergence.ps1` 실행 후 target namespace에 `osmu-operations-reports` ConfigMap을 생성/갱신하고 backend Pod 재시작 또는 volume refresh 동작을 확인해야 한다.
+  - `192.168.35.88` 서버를 사용할 경우 Helm/kubectl 설치 여부와 kubeconfig context를 먼저 확인해야 한다.
+  - ConfigMap 크기 제한을 넘는 report set이 필요하면 Helm `backend.operationsReports.type=persistentVolumeClaim` 경로로 전환해야 한다.
+- 코드 리뷰:
+  - ConfigMap mount는 optional/read-only라 초기 설치 안전성이 있다.
+  - Helm 값으로 PVC fallback을 열어 두어 운영 환경별 evidence 전달 방식을 바꿀 수 있다.
+  - 현재 verifier는 정적 문자열 검증 중심이며, 실제 rendered YAML 검증은 Helm CLI 설치 후 추가로 수행해야 한다.
+- 앞으로 추가적으로 개발해야하는 내용:
+  - target cluster에서 ConfigMap 갱신 후 backend readiness API가 `OPERATIONS_READINESS_CONVERGENCE`를 실제 표시하는지 배포 검증.
+  - GitOps/CI에서 `.osmu-run/latest-operations-readiness-convergence.json`을 ConfigMap 또는 PVC에 자동 반영하는 운영 자동화.
+  - 리포트 파일이 많아질 경우 PVC 기반 evidence volume과 reload 정책 확정.
+- 추가적으로 사용된 skill이나 plugin:
+  - 별도 skill/plugin 없음.
+### 2026-06-16 - Kubernetes Operations Report Sync 자동화
+
+- 작업 시간:
+  - 시작: 2026-06-16 09:28:00 +09:00
+  - 종료: 2026-06-16 09:35:25 +09:00
+- 사용자 명령:
+  - active goal: "운영용 Kubernetes 증설 자동화, 보안 hardening, IAM/RBAC 고도화, 백업/복구, HA/DR의 기능 구현" 계속 진행.
+  - 추가 메모: 배포 검증이 필요하면 `192.168.35.88` 서버를 사용할 수 있다고 안내함.
+- 요청 분석:
+  - 직전 작업에서 Kubernetes/Helm backend Pod가 operations convergence report를 mount할 수 있게 되었으므로, 이번에는 operator가 최신 `.osmu-run/latest-operations-readiness-convergence.json`을 `osmu-operations-reports` ConfigMap으로 안전하게 갱신하는 자동화가 필요하다고 판단했다.
+  - 실수로 live cluster에 바로 쓰지 않도록 기본은 plan-only로 두고, API server 검증은 `-ServerDryRunOnly`, 실제 갱신은 명시적인 `-Apply`에서만 수행하는 명령으로 인식했다.
+- 실행 내용:
+  - `sync-kubernetes-operations-reports.ps1`를 추가해 convergence report JSON 검증, source byte/SHA256 기록, ConfigMap create/apply 명령 생성, server dry-run, explicit apply를 지원했다.
+  - `verify-kubernetes-operations-report-sync.ps1`를 추가해 fixture report와 fake kubectl로 plan/server-dry-run/apply 경로를 검증했다.
+  - `-PlanOnly`, `-ServerDryRunOnly`, `-Apply`를 동시에 지정하면 실패하도록 mode guard를 추가하고 self-test로 확인했다.
+  - `verify-local.ps1`, Helm/Kubernetes README, operation monitoring, document index, MVP checklist, test cases, feature inventory를 갱신했다.
+- 구현 내용:
+  - 기본 evidence path: `.osmu-run/latest-kubernetes-operations-report-sync.json`
+  - 기본 ConfigMap: `osmu-operations-reports`
+  - 기본 key: `latest-operations-readiness-convergence.json`
+  - 기본 source report: `.osmu-run/latest-operations-readiness-convergence.json`
+  - 기본/`-PlanOnly`: `kubectl` 미실행, 계획과 source hash만 기록.
+  - `-ServerDryRunOnly`: `kubectl create configmap ... --dry-run=server -o yaml` 실행.
+  - `-Apply`: client dry-run YAML을 temp manifest로 만든 뒤 `kubectl apply -f <temp>` 실행.
+- 수정된 파일 및 관련 파일:
+  - `scripts/sync-kubernetes-operations-reports.ps1`
+  - `scripts/verify-kubernetes-operations-report-sync.ps1`
+  - `scripts/verify-local.ps1`
+  - `infra/helm/osmu/README.md`
+  - `infra/k8s/README.md`
+  - `dev-docs/operation-monitoring.md`
+  - `dev-docs/document-index.md`
+  - `dev-docs/mvp-release-checklist.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/feature-inventory.md`
+  - `dev-docs/worklog/main/worklog-main.md`
+- 검증 기록:
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-kubernetes-operations-report-sync.ps1`: 통과. plan, fake server dry-run, fake apply, conflicting mode guard 확인.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\write-operations-readiness-convergence.ps1`: 통과. 최신 convergence report 생성. 현재 result=`action-required`, bottleneck=`resolve-invocation-blockers`.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\sync-kubernetes-operations-reports.ps1 -PlanOnly`: 최초에는 source report가 없어 실패했고, convergence report 생성 후 재실행하여 통과. 최신 evidence result=`planned`.
+  - `powershell -NoProfile -Command "... all scripts parse ..."`: 통과. 최초 명령은 `$_.FullName` 이스케이프 누락으로 잡음이 발생했으나 corrected command로 재실행해 통과.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-k8s-manifests.ps1`: 통과.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-helm-chart.ps1`: 통과.
+  - `git diff --check -- <operations report sync related files>`: 통과. LF/CRLF 변환 warning만 있음.
+- 결과:
+  - 운영자는 최신 convergence report를 배포된 backend가 읽는 ConfigMap으로 갱신하기 전에 plan/server-dry-run/apply 증거를 남길 수 있다.
+  - 실제 cluster write는 `-Apply` 없이는 수행되지 않는다.
+  - 현재 최신 sync evidence는 `planned`이며 live cluster에는 적용하지 않았다.
+- 후속 메모:
+  - `192.168.35.88`에서 배포 검증을 진행할 때는 `write-operations-readiness-convergence.ps1` 이후 `sync-kubernetes-operations-reports.ps1 -Namespace <ns> -ServerDryRunOnly`, 그 다음 승인된 경우 `-Apply` 순서로 실행하면 된다.
+  - live 적용 후 backend readiness API 또는 dashboard에서 `OPERATIONS_READINESS_CONVERGENCE`가 표시되는지 확인해야 한다.
+  - ConfigMap 크기 제한을 넘기 시작하면 Helm PVC mount 전환과 sync script의 PVC delivery mode가 필요하다.
+- 코드 리뷰:
+  - mode guard가 있어 plan과 apply를 동시에 지정해도 live write가 실행되지 않는다.
+  - source report formatVersion, byte count, SHA256을 기록하므로 어떤 evidence가 배포에 반영됐는지 추적 가능하다.
+  - 현재 self-test는 fake kubectl 기반이므로 실제 API server 권한/namespace/ConfigMap 갱신 검증은 별도 live run이 필요하다.
+- 앞으로 추가적으로 개발해야하는 내용:
+  - sync evidence를 operations readiness/handoff/dashboard에 추가로 노출.
+  - GitHub Actions 또는 배포 finalizer에서 convergence report 생성 후 ConfigMap server-dry-run/apply를 선택적으로 수행하는 workflow.
+  - live cluster에서 ConfigMap volume refresh 지연과 backend dashboard 반영 지연 측정.
+- 추가적으로 사용된 skill이나 plugin:
+  - 별도 skill/plugin 없음.
+### 2026-06-18 - Data Flow Monitoring MariaDB 영구 저장 및 필터 고도화
+
+- 작업 시간:
+  - 시작: 2026-06-18 13:54:00 +09:00
+  - 종료: 2026-06-18 14:18:00 +09:00
+- 사용자 명령:
+  - "다음으로 구현해야할 내용"
+  - 활성 goal: "OSMU Data Flow Monitoring을 MariaDB 영구 저장 기반으로 고도화한다. data_flow_events 테이블, repository, service 저장/조회, 관리자 기간/버킷/사용자/source 필터 API, 대시보드 필터 UI, mock API, 문서, 테스트, worklog까지 포함해 MVP 운영 수준으로 구현한다."
+- 요청 분석:
+  - 다음 개발 우선순위를 묻는 말로 받되, 활성 goal 기준으로 지금 가장 필요한 구현은 인메모리 Data Flow Monitoring을 MariaDB 영구 저장과 필터 조회 가능한 운영형 MVP로 고도화하는 작업이라고 판단했다.
+  - 기존 패턴은 in-memory repository와 MariaDB repository를 나누고 MariaDB 구현에 fallback DDL을 두는 방식이므로 같은 구조로 구현하기로 했다.
+- 실행 내용:
+  - `data_flow_events` Flyway migration과 monitoring repository interface/in-memory/MariaDB 구현을 추가했다.
+  - `DataFlowMonitoringService`가 이벤트를 repository에 저장하고, snapshot은 repository 조회 결과를 집계하도록 변경했다.
+  - 관리자 API `GET /api/admin/monitoring/data-flow`에 `from`, `to`, `bucketName`, `actorId`, `source`, `operation`, `status`, `limit` query filter를 추가했다.
+  - 프론트 Dashboard Data Flow Monitoring panel에 기간/버킷/actor/source/operation/status/limit filter form과 refresh/reset 동작을 추가했다.
+  - frontend mock API도 같은 query filter를 처리하도록 변경했다.
+  - API/운영 모니터링/DB 설계/OpenAPI/test case/MVP checklist 문서를 갱신했다.
+- 구현 내용:
+  - MariaDB table: `data_flow_events`
+  - Repository: `DataFlowEventRepository`, `InMemoryDataFlowEventRepository`, `MariaDbDataFlowEventRepository`
+  - Query filter: `DataFlowEventFilter`
+  - UI selectors: `data-flow-filter-form`, `data-flow-filter-from`, `data-flow-filter-to`, `data-flow-filter-bucket`, `data-flow-filter-actor`, `data-flow-filter-source`, `data-flow-filter-operation`, `data-flow-filter-status`, `data-flow-filter-limit`, `data-flow-refresh-button`, `data-flow-reset-button`
+- 수정된 파일 및 관련 파일:
+  - `osmu-backend/src/main/java/com/example/osmu/monitoring/DataFlowEventFilter.java`
+  - `osmu-backend/src/main/java/com/example/osmu/monitoring/DataFlowEventRecord.java`
+  - `osmu-backend/src/main/java/com/example/osmu/monitoring/DataFlowMonitoringService.java`
+  - `osmu-backend/src/main/java/com/example/osmu/monitoring/repository/DataFlowEventRepository.java`
+  - `osmu-backend/src/main/java/com/example/osmu/monitoring/repository/InMemoryDataFlowEventRepository.java`
+  - `osmu-backend/src/main/java/com/example/osmu/monitoring/repository/MariaDbDataFlowEventRepository.java`
+  - `osmu-backend/src/main/java/com/example/osmu/admin/AdminController.java`
+  - `osmu-backend/src/main/resources/db/migration/V41__data_flow_events.sql`
+  - `osmu-backend/src/test/java/com/example/osmu/monitoring/DataFlowMonitoringServiceTest.java`
+  - `osmu-backend/src/test/java/com/example/osmu/admin/AdminDashboardSummaryControllerTest.java`
+  - `osmu-frontend/src/services/api.js`
+  - `osmu-frontend/src/services/api-query.test.js`
+  - `osmu-frontend/src/views/HomeView.vue`
+  - `osmu-frontend/src/views/HomeView.test.js`
+  - `osmu-frontend/src/components/dashboard/DashboardPage.vue`
+  - `osmu-frontend/src/assets/main.css`
+  - `osmu-frontend/mock-api/server.mjs`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/operation-monitoring.md`
+  - `dev-docs/openapi-mvp.json`
+  - `dev-docs/database-design.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/mvp-release-checklist.md`
+  - `dev-docs/worklog/main/worklog-main.md`
+- 검증 기록:
+  - `npm.cmd run test:unit`: 통과. 71개 테스트 통과.
+  - `npm.cmd run build`: 통과.
+  - `node .\mock-api\server.mjs --self-test`: 통과.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-openapi-contract.ps1`: 통과. Operations 140, frontend API functions checked 113.
+  - `git diff --check -- <data-flow related files>`: 통과. LF/CRLF warning만 출력.
+  - `.\gradlew.bat test --tests com.example.osmu.monitoring.DataFlowMonitoringServiceTest --tests com.example.osmu.admin.AdminDashboardSummaryControllerTest --tests com.example.osmu.object.S3ObjectControllerMultipartTest`: 미실행/실패. 현재 세션에서 `JAVA_HOME`이 깨져 있고 PATH에 `java`가 없어 Gradle이 시작되지 못했다.
+- 결과:
+  - Data Flow Monitoring은 MariaDB mode에서 `data_flow_events`에 이벤트를 남기고, 관리자 API/UI에서 기간/버킷/사용자/source/operation/status 기준으로 조회할 수 있는 MVP 구조가 되었다.
+  - dashboard summary는 기존처럼 unfiltered snapshot을 제공하고, focused monitoring endpoint는 filter snapshot을 제공한다.
+- 다음 작업할 때 참고할 사항:
+  - Java/JDK 환경을 복구한 뒤 backend focused test를 반드시 재실행해야 한다.
+  - Docker MariaDB/MinIO 환경에서 `V41__data_flow_events.sql` migration 적용과 실제 REST/S3 object event 저장/조회 smoke를 확인해야 한다.
+  - 장기 운영에서는 `data_flow_events` retention/partitioning 또는 time-series 저장소 이전 정책이 필요하다.
+- 코드 리뷰:
+  - repository 기반으로 집계 기준을 단일화해 API filter와 dashboard recent event가 같은 데이터에서 나온다.
+  - MariaDB repository는 prepared statement parameter binding으로 filter query를 구성해 문자열 조합 위험을 피했다.
+  - MVP summary는 최신 matching event 10,000개 scan 방식이라 대량 운영에서는 aggregate query, rollup table, partitioning이 필요하다.
+  - monitoring save 실패가 primary object operation에 미치는 영향은 운영 정책으로 확정해야 한다. 현재 구조에서는 MariaDB repository 오류가 호출 경로로 전파될 수 있다.
+- 앞으로 추가적으로 개발해야하는 내용:
+  - backend test 재실행 및 MariaDB integration smoke.
+  - data-flow alert rule: failure spike, cancel spike, abnormal egress, bucket anomaly.
+  - data-flow event retention cleanup job 또는 partition rotation.
+  - 관리자 dashboard에서 source/operation별 trend chart와 export 기능.
+- 추가적으로 사용된 skill이나 plug:
+  - 별도 skill/plugin 없음.
+
+### 2026-06-18 - Data Flow Monitoring backend verification addendum
+
+- User command:
+  - Continue active Data Flow Monitoring goal.
+- Request analysis:
+  - Previous implementation was present, but backend verification was incomplete because Java was not visible in PATH.
+- Execution:
+  - Found IntelliJ JBR Java 25, but Gradle requires Java 17 toolchain.
+  - Downloaded temporary JDK 17 to ignored `.osmu-run/tools/jdk17`.
+  - Re-ran focused backend tests with `JAVA_HOME=.osmu-run/tools/jdk17/jdk-17.0.19+10`.
+- Verification:
+  - `.\gradlew.bat test --tests com.example.osmu.monitoring.DataFlowMonitoringServiceTest --tests com.example.osmu.admin.AdminDashboardSummaryControllerTest --tests com.example.osmu.object.S3ObjectControllerMultipartTest`: passed.
+- Result:
+  - Backend focused verification for the Data Flow Monitoring MariaDB persistence/filter implementation is complete.
+- Follow-up:
+  - `.osmu-run/` is ignored and contains the temporary JDK/test helper artifacts used only for local verification.
+
+### 2026-06-16 - Kubernetes Operations Report Sync CI Workflow 추가
+
+- 작업 시간:
+  - 시작: 2026-06-16 09:36:00 +09:00
+  - 종료: 2026-06-16 09:39:55 +09:00
+- 사용자 명령:
+  - active goal: "운영용 Kubernetes 증설 자동화, 보안 hardening, IAM/RBAC 고도화, 백업/복구, HA/DR의 기능 구현" 계속 진행.
+- 요청 분석:
+  - 직전 작업에서 `sync-kubernetes-operations-reports.ps1` 로컬/수동 자동화가 생겼으므로, 운영자가 GitHub Actions에서도 동일한 plan/server-dry-run/apply evidence를 반복 수집할 수 있어야 한다고 판단했다.
+  - live cluster write는 위험하므로 workflow 기본값은 no-cluster plan으로 두고, kubeconfig secret이 있을 때만 server dry-run, 추가로 `apply=true`일 때만 ConfigMap update를 수행하는 CI 경로로 인식했다.
+- 실행 내용:
+  - `.github/workflows/kubernetes-operations-report-sync-ci.yml`를 추가했다.
+  - workflow가 `write-operations-readiness-convergence.ps1`로 convergence report를 먼저 생성한 뒤 `sync-kubernetes-operations-reports.ps1 -PlanOnly`를 실행하도록 했다.
+  - `run_live=true`일 때만 `OSMU_KUBECONFIG_BASE64`를 kubeconfig로 준비하고 server dry-run을 실행하도록 했다.
+  - `apply=true`이면 `run_live=true`가 필요하다는 dispatch input guard를 추가했고, server dry-run 이후에만 `-Apply` 단계가 실행되도록 했다.
+  - `verify-ci-workflow.ps1`에 새 workflow 계약 검증을 추가했다.
+  - Helm/Kubernetes README, operation monitoring, document index, MVP checklist, test cases, feature inventory를 갱신했다.
+- 구현 내용:
+  - workflow inputs:
+    - `namespace`
+    - `report_path`
+    - `run_live`
+    - `apply`
+  - artifacts:
+    - `.osmu-run/latest-operations-readiness-convergence.json`
+    - `.osmu-run/latest-operations-readiness-convergence.md`
+    - `.osmu-run/latest-kubernetes-operations-report-sync-plan.json`
+    - `.osmu-run/latest-kubernetes-operations-report-sync-server-dry-run.json`
+    - `.osmu-run/latest-kubernetes-operations-report-sync.json`
+  - safety:
+    - `run_live=false` 기본값에서는 `kubectl`를 실행하지 않는다.
+    - `apply=true`는 `run_live=true` 없이는 실패한다.
+    - live apply 전 server dry-run step이 먼저 실행된다.
+- 수정된 파일 및 관련 파일:
+  - `.github/workflows/kubernetes-operations-report-sync-ci.yml`
+  - `scripts/verify-ci-workflow.ps1`
+  - `infra/helm/osmu/README.md`
+  - `infra/k8s/README.md`
+  - `dev-docs/operation-monitoring.md`
+  - `dev-docs/document-index.md`
+  - `dev-docs/mvp-release-checklist.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/feature-inventory.md`
+  - `dev-docs/worklog/main/worklog-main.md`
+- 검증 기록:
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-ci-workflow.ps1`: 통과. 새 `Kubernetes Operations Report Sync workflow` 경로 포함.
+  - `powershell -NoProfile -Command "... all scripts parse ..."`: 통과.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-kubernetes-operations-report-sync.ps1`: 통과.
+  - `git diff --check -- <kubernetes operations report sync workflow related files>`: 통과. LF/CRLF 변환 warning만 있음.
+- 결과:
+  - operations convergence report를 Kubernetes `osmu-operations-reports` ConfigMap으로 동기화하는 경로가 로컬 스크립트뿐 아니라 GitHub Actions manual workflow로도 반복 가능해졌다.
+  - CI 기본 실행은 no-cluster plan evidence만 생성하고, live server dry-run/apply는 명시 입력과 kubeconfig secret이 있을 때만 가능하다.
+- 후속 메모:
+  - 실제 GitHub Actions에서는 `OSMU_KUBECONFIG_BASE64` secret 등록 후 `run_live=true`로 server dry-run evidence를 먼저 확인해야 한다.
+  - `apply=true` 실행 후에는 target backend/dashboard에서 `OPERATIONS_READINESS_CONVERGENCE` 표시 여부를 확인해야 한다.
+  - artifact collection/import 흐름에 이 sync workflow evidence를 포함할지 결정하면 operations handoff/dashboard에서 ConfigMap sync 상태까지 한 화면에 표시할 수 있다.
+- 코드 리뷰:
+  - workflow가 convergence report 생성과 ConfigMap sync plan을 한 실행에 묶으므로 operator가 source report 누락으로 막힐 가능성이 줄었다.
+  - apply guard가 명확해 accidental live write 가능성을 낮췄다.
+  - 현재 verifier는 문자열 기반 workflow contract 검증이며, 실제 GitHub Actions 실행은 아직 수행하지 않았다.
+- 앞으로 추가적으로 개발해야하는 내용:
+  - live workflow run id/artifact collection plan에 `kubernetes-operations-report-sync-ci.yml` 증거를 선택적으로 포함.
+  - dashboard/API에서 `.osmu-run/latest-kubernetes-operations-report-sync*.json` 상태 노출.
+  - `192.168.35.88` 대상 server-dry-run/apply 실증.
+- 추가적으로 사용된 skill이나 plugin:
+  - 별도 skill/plugin 없음.

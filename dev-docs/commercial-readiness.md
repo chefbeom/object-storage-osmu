@@ -40,20 +40,29 @@ This draft keeps B2B sales, licensing, and pilot packaging decisions visible whi
 ## Required Before Paid Pilot
 
 - Docker/MariaDB/MinIO integration gate passes.
-- Real S3 client gate passes with AWS CLI or MinIO Client.
+- Real S3 client gate passes with AWS CLI, host MinIO Client, or Dockerized MinIO Client.
 - Browser E2E gate passes.
 - Container security/SBOM workflow has a successful GitHub-hosted run.
+- Container security evidence JSON is generated as `.osmu-run/latest-container-security-evidence.json`.
+- Container security evidence records backend/frontend SBOM SHA256 hashes.
 - Image publish/sign workflow has a successful GitHub-hosted run with `publish=true`.
+- Image signing evidence JSON is generated as `.osmu-run/latest-image-signing-evidence.json`.
+- Image signing evidence records backend/frontend `sha256:` image digests.
+- Security evidence finalizer report is generated as `.osmu-run/latest-security-evidence-finalize.json` from non-synthetic CI artifacts through `.github/workflows/security-evidence-finalizer-ci.yml`.
+- IAM/RBAC finalizer report is generated as `.osmu-run/latest-iam-rbac-finalize.json`; backend focused RBAC tests and live `kubectl auth can-i` evidence from `.github/workflows/iam-rbac-finalizer-ci.yml` are attached for production pilots.
 - Pilot contract states data durability limits, support scope, backup/restore responsibility, and license term.
 
 ## Required Before Production/B2B Sale
 
 - Durable pilot GO decision.
 - Restore drill executed in the target environment.
+- Kubernetes HA/DR readiness report is generated as `.osmu-run/latest-kubernetes-ha-dr-readiness.json` from the target namespace through `.github/workflows/kubernetes-ha-dr-readiness-ci.yml` or the operations readiness finalizer.
 - Secret/certificate rotation executed in the target environment.
 - Monitoring alerts connected to a real Prometheus/Alertmanager/Grafana stack.
 - SSO/LDAP or enterprise auth plan implemented or explicitly scoped out.
 - Security review, dependency/vulnerability review, and signed image evidence complete.
+- Operations readiness artifact import report is generated as `.osmu-run/latest-operations-readiness-artifact-import.json` when evidence is assembled from prior workflow artifacts.
+- Operations readiness finalizer report is generated as `.osmu-run/latest-operations-readiness-finalize.json` and the underlying operations readiness result is `ready`.
 - Pricing, terms, support SLA, and license agreement approved.
 
 ## Current Status

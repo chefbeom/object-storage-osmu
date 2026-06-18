@@ -2,6 +2,32 @@
 
 MVP drill runbook: `backup-restore-drill.md`.
 
+## Current Kubernetes DR Baseline
+
+- `infra/k8s/backup.yaml` and the Helm backup template schedule MariaDB dumps and MinIO mirrors into a backup PVC.
+- `infra/k8s/examples/restore-from-backup.example.yaml` is a destructive restore example that must be copied and edited for an isolated restore target.
+- `infra/k8s/ha.yaml` and the Helm `ha` template add PodDisruptionBudgets so voluntary node maintenance does not silently evict the only MariaDB or legacy MinIO Pod.
+- Backend/frontend default to two replicas with topology spread, improving portal/API availability during voluntary disruptions.
+- `scripts/verify-kubernetes-ha-dr-readiness.ps1 -Namespace <namespace>` records live Deployment/StatefulSet/PDB/PVC/CronJob status plus restore Job server-side dry-run evidence.
+- `scripts/run-kubernetes-backup-drill.ps1 -Namespace <namespace>` creates one-off backup Jobs from the MariaDB/MinIO backup CronJobs and records Job/Pod/log evidence.
+- `scripts/prepare-kubernetes-restore-namespace.ps1 -RestoreNamespace osmu-restore-drill -ServerDryRunOnly` validates a disposable restore-target namespace manifest set before creating resources.
+- `scripts/prepare-kubernetes-restore-namespace.ps1 -RestoreNamespace osmu-restore-drill -Apply -Wait` creates the restore-target core stack and checks that the backup PVC, services, ServiceAccount, and secret inventory are present.
+- `scripts/verify-kubernetes-backup-artifacts.ps1 -RestoreNamespace osmu-restore-drill -BackupTimestamp <timestamp> -ServerDryRunOnly` validates the read-only artifact preflight Job against the API server.
+- `scripts/verify-kubernetes-backup-artifacts.ps1 -RestoreNamespace osmu-restore-drill -BackupTimestamp <timestamp> -CleanupJob` checks `metadata.sql`, optional `metadata.sql.sha256`, and MinIO mirror object count/bytes before restore.
+- `scripts/run-kubernetes-restore-drill.ps1 -RestoreNamespace osmu-restore-drill -BackupTimestamp <timestamp> -ServerDryRunOnly` validates the isolated restore Job against the API server without creating it.
+- `scripts/run-kubernetes-restore-drill.ps1 -RestoreNamespace osmu-restore-drill -BackupTimestamp <timestamp> -ConfirmRestore` creates the restore Job only after an explicit confirmation flag and refuses source-namespace restore unless explicitly overridden.
+- `scripts/run-kubernetes-dr-drill.ps1 -BackupTimestamp <timestamp> -ServerDryRunOnly` runs the ordered non-destructive DR drill validation sequence.
+- `scripts/run-kubernetes-dr-drill.ps1 -BackupTimestamp <timestamp> -ConfirmRestore` runs the ordered restore sequence after explicit operator confirmation. It does not copy backup artifacts between namespaces.
+- `scripts/bootstrap-kubernetes-dr-bucket.ps1 -DrEgressCidr <cidr>` creates or reuses the external S3-compatible DR bucket through `osmu-dr-transfer-secret`, enables bucket versioning, sets default object-lock retention, verifies the result, and writes `.osmu-run/latest-kubernetes-dr-bucket-bootstrap.json`.
+- `scripts/verify-kubernetes-dr-bucket-immutability.ps1 -DrEgressCidr <cidr>` checks the external S3-compatible DR bucket through `osmu-dr-transfer-secret` and writes `.osmu-run/latest-kubernetes-dr-bucket-immutability.json`. Live success requires bucket reachability, versioning enabled, and default object-lock retention mode matching `GOVERNANCE_OR_COMPLIANCE` or `COMPLIANCE`.
+- `scripts/transfer-kubernetes-backup-artifacts.ps1 -BackupTimestamp <timestamp> -DrEgressCidr <cidr>` exports the selected timestamp from the source `osmu-backup-data` PVC to an external S3-compatible DR bucket and imports it into the restore namespace PVC. It requires `osmu-dr-transfer-secret` in each active namespace and writes `.osmu-run/latest-kubernetes-backup-artifact-transfer.json`. Export mounts source backup data read-only; import mounts restore backup data read-write; both transfer Jobs use a read-only root filesystem and `MC_CONFIG_DIR=/tmp/.mc` on an `emptyDir` mount. The helper also sets bounded CPU/memory requests/limits, `activeDeadlineSeconds`, and `ttlSecondsAfterFinished`.
+- `scripts/run-kubernetes-dr-drill.ps1 -BackupTimestamp <timestamp> -BootstrapDrBucket -VerifyDrBucketImmutability -TransferArtifacts -DrEgressCidr <cidr> -ConfirmRestore` includes the external DR bucket bootstrap, immutability preflight, and export/import step before artifact preflight.
+- `scripts/verify-kubernetes-restore-smoke.ps1 -ApiBase <restore-api> -RunS3ClientSmoke` records post-restore API health, admin login, optional restored bucket/object download, and real S3 client smoke evidence into `.osmu-run/latest-kubernetes-restore-smoke.json`.
+- `scripts/write-kubernetes-dr-evidence-request.ps1 -MetadataRowCount <count>` converts the Kubernetes DR wrapper evidence, backup artifact preflight logs, optional DR bucket bootstrap/immutability evidence, and restore smoke evidence into `.osmu-run/latest-kubernetes-dr-evidence-request.json` for `POST /api/admin/backup/restore-drill-evidence`. External artifact transfer success requires passed DR bucket immutability evidence, and wrapper-driven bootstrap success requires passed bootstrap evidence. Add `-Submit` only when the target admin API is reachable and an admin operator intentionally records the evidence.
+- `scripts/finalize-kubernetes-dr-drill.ps1 -BackupTimestamp <timestamp> -BootstrapDrBucket -VerifyDrBucketImmutability -TransferArtifacts -ConfirmRestore -RunS3ClientSmoke -MetadataRowCount <count>` runs the DR wrapper, post-restore smoke, and evidence request generation in one operator sequence and writes `.osmu-run/latest-kubernetes-dr-finalize.json` plus `.osmu-run/latest-kubernetes-dr-finalize.md`. Use `-SubmitEvidence` only when the admin API evidence should be recorded.
+- `.github/workflows/kubernetes-dr-finalizer-ci.yml` exposes the same finalizer as a manual GitHub Actions workflow. Default runs are plan-only, live runs require `OSMU_KUBECONFIG_BASE64`, and confirmed restore/evidence submit paths require `confirm_restore=true`.
+- This is still a pilot DR baseline only. Production DR needs offsite backup or snapshots, restore drill evidence, MinIO replication or pool recovery testing, MariaDB HA/managed DB, and RPO/RTO proof.
+
 이 문서는 OSMU 백업과 복구 전략을 정의한다.
 
 ## 1. 백업 대상

@@ -23,7 +23,9 @@ This policy defines the prototype image registry target, signing method, and evi
 - Workflow: `.github/workflows/image-publish-sign-ci.yml`.
 - Trigger: `workflow_dispatch` only.
 - Default behavior: build-only dry run when `publish=false`.
-- Publish behavior: when `publish=true`, login to GHCR with `GITHUB_TOKEN`, push backend/frontend images, sign pushed tags with Cosign, then verify signatures.
+- Publish behavior: when `publish=true`, login to GHCR with `GITHUB_TOKEN`, push backend/frontend images, capture backend/frontend manifest digests, sign pushed tags with Cosign, then verify signatures.
+- Evidence behavior: when `publish=true`, the workflow writes `.osmu-run/latest-image-signing-evidence.json` through `scripts/write-image-signing-evidence.ps1` and uploads it as an artifact. The evidence is PASS only when backend/frontend version tags and commit SHA tags have all been verified by Cosign and backend/frontend `sha256:` digests are present.
+- Finalization behavior: after downloading the image signing artifact and the container security/SBOM artifact, run `scripts/finalize-security-evidence.ps1` or `.github/workflows/security-evidence-finalizer-ci.yml` to reject synthetic evidence, promote the passing JSON files to `.osmu-run/latest-image-signing-evidence.json` and `.osmu-run/latest-container-security-evidence.json`, and write `.osmu-run/latest-security-evidence-finalize.json`.
 
 ## Verification Requirements
 
@@ -32,12 +34,14 @@ Before durable pilot distribution:
 - Container vulnerability scan and SBOM workflow has a successful GitHub-hosted run.
 - Image publish/sign workflow has a successful GitHub-hosted run with `publish=true`.
 - Cosign verification passes for backend and frontend version tags.
-- Release notes include image references, digest, SBOM artifact link, and signing evidence link.
+- Release notes include image references, image digests, SBOM artifact link, SBOM SHA256 hashes, and signing evidence link.
 
 ## Verification Commands
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\scripts\verify-image-signing-policy.ps1
+powershell -ExecutionPolicy Bypass -File .\scripts\verify-security-evidence-writers.ps1
+powershell -ExecutionPolicy Bypass -File .\scripts\verify-security-evidence-finalizer.ps1
 ```
 
 Example post-publish operator checks:
@@ -52,4 +56,7 @@ cosign verify ghcr.io/<owner>/osmu-frontend:<version> --certificate-oidc-issuer 
 - Policy: drafted.
 - Registry target: GHCR selected.
 - Workflow draft: included.
+- Evidence writer: included.
+- Evidence finalizer: included.
+- Digest evidence: required by the publish/sign workflow and finalizer.
 - Actual signed image evidence: pending successful GitHub-hosted workflow run.

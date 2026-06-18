@@ -19,8 +19,10 @@
     { "name": "Buckets" },
     { "name": "Objects" },
     { "name": "Access Keys" },
+    { "name": "Developer" },
     { "name": "Admin" },
     { "name": "Lifecycle" },
+    { "name": "Storage Profile" },
     { "name": "S3 Compatibility" }
   ],
   "security": [
@@ -118,6 +120,279 @@
         }
       }
     },
+    "/api/developer/s3-client-config": {
+      "get": {
+        "tags": ["Developer"],
+        "operationId": "getS3ClientConfig",
+        "summary": "Read S3-compatible client configuration for the authenticated user",
+        "responses": {
+          "200": {
+            "description": "S3 client configuration",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": { "$ref": "#/components/schemas/S3ClientConfigResponse" }
+                  }
+                }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Error" }
+        }
+      }
+    },
+    "/api/dashboard/layout": {
+      "get": {
+        "tags": ["Dashboard"],
+        "operationId": "getDashboardLayout",
+        "summary": "Read the authenticated user's dashboard widget layout",
+        "parameters": [
+          { "$ref": "#/components/parameters/ScopeQuery" }
+        ],
+        "responses": {
+          "200": { "$ref": "#/components/responses/JsonOk" },
+          "401": { "$ref": "#/components/responses/Error" }
+        }
+      },
+      "put": {
+        "tags": ["Dashboard"],
+        "operationId": "saveDashboardLayout",
+        "summary": "Persist the authenticated user's dashboard widget layout",
+        "parameters": [
+          { "$ref": "#/components/parameters/ScopeQuery" }
+        ],
+        "requestBody": { "$ref": "#/components/requestBodies/JsonObject" },
+        "responses": {
+          "200": { "$ref": "#/components/responses/JsonOk" },
+          "400": { "$ref": "#/components/responses/Error" },
+          "401": { "$ref": "#/components/responses/Error" }
+        }
+      },
+      "delete": {
+        "tags": ["Dashboard"],
+        "operationId": "deleteDashboardLayout",
+        "summary": "Reset the authenticated user's saved dashboard widget layout",
+        "parameters": [
+          { "$ref": "#/components/parameters/ScopeQuery" }
+        ],
+        "responses": {
+          "204": { "description": "Dashboard layout reset" },
+          "401": { "$ref": "#/components/responses/Error" }
+        }
+      }
+    },
+    "/api/dashboard/layout/widgets": {
+      "get": {
+        "tags": ["Dashboard"],
+        "operationId": "getDashboardWidgetCatalog",
+        "summary": "List dashboard widget catalog metadata",
+        "responses": {
+          "200": { "$ref": "#/components/responses/JsonList" },
+          "401": { "$ref": "#/components/responses/Error" }
+        }
+      }
+    },
+    "/api/dashboard/layout/defaults": {
+      "get": {
+        "tags": ["Dashboard"],
+        "operationId": "getDashboardLayoutDefaults",
+        "summary": "List admin-managed dashboard default preset assignments",
+        "responses": {
+          "200": { "$ref": "#/components/responses/JsonList" },
+          "401": { "$ref": "#/components/responses/Error" },
+          "403": { "$ref": "#/components/responses/Error" }
+        }
+      },
+      "put": {
+        "tags": ["Dashboard"],
+        "operationId": "saveDashboardLayoutDefault",
+        "summary": "Assign a dashboard layout preset as the default for a role or organization",
+        "requestBody": { "$ref": "#/components/requestBodies/JsonObject" },
+        "responses": {
+          "200": { "$ref": "#/components/responses/JsonOk" },
+          "400": { "$ref": "#/components/responses/Error" },
+          "401": { "$ref": "#/components/responses/Error" },
+          "403": { "$ref": "#/components/responses/Error" },
+          "404": { "$ref": "#/components/responses/Error" }
+        }
+      }
+    },
+    "/api/dashboard/layout/defaults/{targetType}/{targetId}": {
+      "delete": {
+        "tags": ["Dashboard"],
+        "operationId": "deleteDashboardLayoutDefault",
+        "summary": "Remove a role or organization dashboard default preset assignment",
+        "parameters": [
+          {
+            "name": "targetType",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "enum": ["ROLE", "ORGANIZATION"] }
+          },
+          {
+            "name": "targetId",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "204": { "description": "Dashboard default preset assignment deleted" },
+          "401": { "$ref": "#/components/responses/Error" },
+          "403": { "$ref": "#/components/responses/Error" },
+          "404": { "$ref": "#/components/responses/Error" }
+        }
+      }
+    },
+    "/api/dashboard/layout/presets": {
+      "get": {
+        "tags": ["Dashboard"],
+        "operationId": "getDashboardLayoutPresets",
+        "summary": "List built-in dashboard layout presets",
+        "responses": {
+          "200": { "$ref": "#/components/responses/JsonList" },
+          "401": { "$ref": "#/components/responses/Error" }
+        }
+      },
+      "post": {
+        "tags": ["Dashboard"],
+        "operationId": "createDashboardLayoutPreset",
+        "summary": "Create an admin-managed custom dashboard layout preset",
+        "requestBody": { "$ref": "#/components/requestBodies/JsonObject" },
+        "responses": {
+          "200": { "$ref": "#/components/responses/JsonOk" },
+          "400": { "$ref": "#/components/responses/Error" },
+          "401": { "$ref": "#/components/responses/Error" },
+          "403": { "$ref": "#/components/responses/Error" }
+        }
+      }
+    },
+    "/api/dashboard/layout/presets/import": {
+      "post": {
+        "tags": ["Dashboard"],
+        "operationId": "importDashboardLayoutPreset",
+        "summary": "Import an admin-managed custom dashboard layout preset",
+        "requestBody": { "$ref": "#/components/requestBodies/JsonObject" },
+        "responses": {
+          "200": { "$ref": "#/components/responses/JsonOk" },
+          "400": { "$ref": "#/components/responses/Error" },
+          "401": { "$ref": "#/components/responses/Error" },
+          "403": { "$ref": "#/components/responses/Error" }
+        }
+      }
+    },
+    "/api/dashboard/layout/preset-bundle/export": {
+      "get": {
+        "tags": ["Dashboard"],
+        "operationId": "exportDashboardLayoutPresetBundle",
+        "summary": "Export admin-managed custom dashboard layout presets as a portable bundle",
+        "responses": {
+          "200": { "$ref": "#/components/responses/JsonOk" },
+          "401": { "$ref": "#/components/responses/Error" },
+          "403": { "$ref": "#/components/responses/Error" }
+        }
+      }
+    },
+    "/api/dashboard/layout/preset-bundle/import": {
+      "post": {
+        "tags": ["Dashboard"],
+        "operationId": "importDashboardLayoutPresetBundle",
+        "summary": "Import admin-managed custom dashboard layout presets from a portable bundle",
+        "requestBody": { "$ref": "#/components/requestBodies/JsonObject" },
+        "responses": {
+          "200": { "$ref": "#/components/responses/JsonOk" },
+          "400": { "$ref": "#/components/responses/Error" },
+          "401": { "$ref": "#/components/responses/Error" },
+          "403": { "$ref": "#/components/responses/Error" }
+        }
+      }
+    },
+    "/api/dashboard/layout/presets/{presetId}": {
+      "put": {
+        "tags": ["Dashboard"],
+        "operationId": "applyDashboardLayoutPreset",
+        "summary": "Apply a built-in dashboard layout preset to the authenticated user",
+        "parameters": [
+          {
+            "name": "presetId",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "enum": ["operations", "compact", "admin"] }
+          },
+          { "$ref": "#/components/parameters/ScopeQuery" }
+        ],
+        "responses": {
+          "200": { "$ref": "#/components/responses/JsonOk" },
+          "401": { "$ref": "#/components/responses/Error" },
+          "404": { "$ref": "#/components/responses/Error" }
+        }
+      },
+      "patch": {
+        "tags": ["Dashboard"],
+        "operationId": "updateDashboardLayoutPreset",
+        "summary": "Update an admin-managed custom dashboard layout preset",
+        "parameters": [
+          {
+            "name": "presetId",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string" }
+          }
+        ],
+        "requestBody": { "$ref": "#/components/requestBodies/JsonObject" },
+        "responses": {
+          "200": { "$ref": "#/components/responses/JsonOk" },
+          "400": { "$ref": "#/components/responses/Error" },
+          "401": { "$ref": "#/components/responses/Error" },
+          "403": { "$ref": "#/components/responses/Error" },
+          "404": { "$ref": "#/components/responses/Error" },
+          "409": { "$ref": "#/components/responses/Error" }
+        }
+      },
+      "delete": {
+        "tags": ["Dashboard"],
+        "operationId": "deleteDashboardLayoutPreset",
+        "summary": "Delete an admin-managed custom dashboard layout preset",
+        "parameters": [
+          {
+            "name": "presetId",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "204": { "description": "Dashboard layout preset deleted" },
+          "401": { "$ref": "#/components/responses/Error" },
+          "403": { "$ref": "#/components/responses/Error" },
+          "404": { "$ref": "#/components/responses/Error" },
+          "409": { "$ref": "#/components/responses/Error" }
+        }
+      }
+    },
+    "/api/dashboard/layout/presets/{presetId}/export": {
+      "get": {
+        "tags": ["Dashboard"],
+        "operationId": "exportDashboardLayoutPreset",
+        "summary": "Export a dashboard layout preset as a portable JSON payload",
+        "parameters": [
+          {
+            "name": "presetId",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": { "$ref": "#/components/responses/JsonOk" },
+          "400": { "$ref": "#/components/responses/Error" },
+          "401": { "$ref": "#/components/responses/Error" },
+          "404": { "$ref": "#/components/responses/Error" }
+        }
+      }
+    },
     "/api/admin/users": {
       "get": {
         "tags": ["Users", "Admin"],
@@ -193,6 +468,551 @@
         "responses": {
           "204": { "description": "Deleted" },
           "409": { "$ref": "#/components/responses/Error" }
+        }
+      }
+    },
+    "/api/admin/storage-expansion/requests": {
+      "get": {
+        "tags": ["Storage Expansion", "Admin"],
+        "operationId": "getStorageExpansionRequests",
+        "summary": "List MinIO pool storage expansion requests and plans",
+        "responses": {
+          "200": { "$ref": "#/components/responses/JsonList" },
+          "401": { "$ref": "#/components/responses/Error" },
+          "403": { "$ref": "#/components/responses/Error" }
+        }
+      },
+      "post": {
+        "tags": ["Storage Expansion", "Admin"],
+        "operationId": "createStorageExpansionRequest",
+        "summary": "Create a planned MinIO pool storage expansion request",
+        "requestBody": { "$ref": "#/components/requestBodies/JsonObject" },
+        "responses": {
+          "200": { "$ref": "#/components/responses/JsonOk" },
+          "400": { "$ref": "#/components/responses/Error" },
+          "401": { "$ref": "#/components/responses/Error" },
+          "403": { "$ref": "#/components/responses/Error" }
+        }
+      }
+    },
+    "/api/admin/storage-expansion/summary": {
+      "get": {
+        "tags": ["Storage Expansion", "Admin"],
+        "operationId": "getStorageExpansionSummary",
+        "summary": "Read aggregate request and execution counts for dashboard storage expansion panels",
+        "responses": {
+          "200": { "$ref": "#/components/responses/JsonOk" },
+          "401": { "$ref": "#/components/responses/Error" },
+          "403": { "$ref": "#/components/responses/Error" }
+        }
+      }
+    },
+    "/api/admin/storage-expansion/runner-preflight": {
+      "get": {
+        "tags": ["Storage Expansion", "Admin"],
+        "operationId": "getStorageExpansionRunnerPreflight",
+        "summary": "Read server-side runner enablement and tool readiness for storage expansion commands",
+        "responses": {
+          "200": { "$ref": "#/components/responses/JsonOk" },
+          "401": { "$ref": "#/components/responses/Error" },
+          "403": { "$ref": "#/components/responses/Error" }
+        }
+      }
+    },
+    "/api/admin/storage-expansion/requests/{requestId}/manifest": {
+      "get": {
+        "tags": ["Storage Expansion", "Admin"],
+        "operationId": "getStorageExpansionRequestManifest",
+        "summary": "Preview reference MinIO Tenant and Helm values YAML for a storage expansion request",
+        "parameters": [
+          {
+            "name": "requestId",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "integer", "format": "int64" }
+          }
+        ],
+        "responses": {
+          "200": { "$ref": "#/components/responses/JsonOk" },
+          "401": { "$ref": "#/components/responses/Error" },
+          "403": { "$ref": "#/components/responses/Error" },
+          "404": { "$ref": "#/components/responses/Error" }
+        }
+      }
+    },
+    "/api/admin/storage-expansion/requests/{requestId}/manifest/{artifact}": {
+      "get": {
+        "tags": ["Storage Expansion", "Admin"],
+        "operationId": "downloadStorageExpansionManifestArtifact",
+        "summary": "Download a storage expansion manifest artifact as YAML",
+        "parameters": [
+          {
+            "name": "requestId",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "integer", "format": "int64" }
+          },
+          {
+            "name": "artifact",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "enum": ["tenant", "helm", "bundle"] }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "YAML artifact",
+            "content": {
+              "application/x-yaml": {
+                "schema": { "type": "string" }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/Error" },
+          "401": { "$ref": "#/components/responses/Error" },
+          "403": { "$ref": "#/components/responses/Error" },
+          "404": { "$ref": "#/components/responses/Error" }
+        }
+      }
+    },
+    "/api/admin/storage-expansion/requests/{requestId}/execution-plan": {
+      "post": {
+        "tags": ["Storage Expansion", "Admin"],
+        "operationId": "createStorageExpansionExecutionPlan",
+        "summary": "Create a dry-run execution plan for an approved storage expansion request",
+        "parameters": [
+          {
+            "name": "requestId",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "integer", "format": "int64" }
+          }
+        ],
+        "responses": {
+          "200": { "$ref": "#/components/responses/JsonOk" },
+          "400": { "$ref": "#/components/responses/Error" },
+          "401": { "$ref": "#/components/responses/Error" },
+          "403": { "$ref": "#/components/responses/Error" },
+          "404": { "$ref": "#/components/responses/Error" }
+        }
+      }
+    },
+    "/api/admin/storage-expansion/requests/{requestId}/gitops-plan": {
+      "post": {
+        "tags": ["Storage Expansion", "Admin"],
+        "operationId": "createStorageExpansionGitOpsPlan",
+        "summary": "Create a GitOps PR draft plan for an approved storage expansion request",
+        "parameters": [
+          {
+            "name": "requestId",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "integer", "format": "int64" }
+          }
+        ],
+        "responses": {
+          "200": { "$ref": "#/components/responses/JsonOk" },
+          "400": { "$ref": "#/components/responses/Error" },
+          "401": { "$ref": "#/components/responses/Error" },
+          "403": { "$ref": "#/components/responses/Error" },
+          "404": { "$ref": "#/components/responses/Error" }
+        }
+      }
+    },
+    "/api/admin/storage-expansion/requests/{requestId}/gitops-artifacts/bundle": {
+      "get": {
+        "tags": ["Storage Expansion", "Admin"],
+        "operationId": "downloadStorageExpansionGitOpsArtifactBundle",
+        "summary": "Download a GitOps-ready ZIP bundle for an approved storage expansion request",
+        "parameters": [
+          {
+            "name": "requestId",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "integer", "format": "int64" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "GitOps ZIP artifact bundle",
+            "content": {
+              "application/zip": {
+                "schema": { "type": "string", "format": "binary" }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/Error" },
+          "401": { "$ref": "#/components/responses/Error" },
+          "403": { "$ref": "#/components/responses/Error" },
+          "404": { "$ref": "#/components/responses/Error" }
+        }
+      }
+    },
+    "/api/admin/storage-expansion/requests/{requestId}/dry-run-execution": {
+      "post": {
+        "tags": ["Storage Expansion", "Admin"],
+        "operationId": "recordStorageExpansionDryRunExecution",
+        "summary": "Record a kubectl diff or Helm diff dry-run evidence item for an approved storage expansion request",
+        "parameters": [
+          {
+            "name": "requestId",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "integer", "format": "int64" }
+          }
+        ],
+        "requestBody": { "$ref": "#/components/requestBodies/JsonObject" },
+        "responses": {
+          "200": { "$ref": "#/components/responses/JsonOk" },
+          "400": { "$ref": "#/components/responses/Error" },
+          "401": { "$ref": "#/components/responses/Error" },
+          "403": { "$ref": "#/components/responses/Error" },
+          "404": { "$ref": "#/components/responses/Error" }
+        }
+      }
+    },
+    "/api/admin/storage-expansion/requests/{requestId}/dry-run-runner": {
+      "post": {
+        "tags": ["Storage Expansion", "Admin"],
+        "operationId": "runStorageExpansionDryRunExecution",
+        "summary": "Run a server-side kubectl diff or Helm diff dry-run for an approved storage expansion request",
+        "parameters": [
+          {
+            "name": "requestId",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "integer", "format": "int64" }
+          }
+        ],
+        "requestBody": { "$ref": "#/components/requestBodies/JsonObject" },
+        "responses": {
+          "200": { "$ref": "#/components/responses/JsonOk" },
+          "400": { "$ref": "#/components/responses/Error" },
+          "401": { "$ref": "#/components/responses/Error" },
+          "403": { "$ref": "#/components/responses/Error" },
+          "404": { "$ref": "#/components/responses/Error" }
+        }
+      }
+    },
+    "/api/admin/storage-expansion/requests/{requestId}/apply-runner": {
+      "post": {
+        "tags": ["Storage Expansion", "Admin"],
+        "operationId": "runStorageExpansionApplyExecution",
+        "summary": "Run a server-side kubectl apply or Helm upgrade for an approved storage expansion request",
+        "parameters": [
+          {
+            "name": "requestId",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "integer", "format": "int64" }
+          }
+        ],
+        "requestBody": { "$ref": "#/components/requestBodies/JsonObject" },
+        "responses": {
+          "200": { "$ref": "#/components/responses/JsonOk" },
+          "400": { "$ref": "#/components/responses/Error" },
+          "401": { "$ref": "#/components/responses/Error" },
+          "403": { "$ref": "#/components/responses/Error" },
+          "404": { "$ref": "#/components/responses/Error" }
+        }
+      }
+    },
+    "/api/admin/storage-expansion/requests/{requestId}/rollback-runner": {
+      "post": {
+        "tags": ["Storage Expansion", "Admin"],
+        "operationId": "runStorageExpansionRollbackExecution",
+        "summary": "Run a server-side Helm rollback or kubectl rollout undo for an applied storage expansion request",
+        "parameters": [
+          {
+            "name": "requestId",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "integer", "format": "int64" }
+          }
+        ],
+        "requestBody": { "$ref": "#/components/requestBodies/JsonObject" },
+        "responses": {
+          "200": { "$ref": "#/components/responses/JsonOk" },
+          "400": { "$ref": "#/components/responses/Error" },
+          "401": { "$ref": "#/components/responses/Error" },
+          "403": { "$ref": "#/components/responses/Error" },
+          "404": { "$ref": "#/components/responses/Error" }
+        }
+      }
+    },
+    "/api/admin/storage-expansion/requests/{requestId}/gitops-pr-runner": {
+      "post": {
+        "tags": ["Storage Expansion", "Admin"],
+        "operationId": "runStorageExpansionGitOpsPrExecution",
+        "summary": "Run a server-side GitOps branch, commit, and pull request creation flow for an approved storage expansion request",
+        "parameters": [
+          {
+            "name": "requestId",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "integer", "format": "int64" }
+          }
+        ],
+        "responses": {
+          "200": { "$ref": "#/components/responses/JsonOk" },
+          "400": { "$ref": "#/components/responses/Error" },
+          "401": { "$ref": "#/components/responses/Error" },
+          "403": { "$ref": "#/components/responses/Error" },
+          "404": { "$ref": "#/components/responses/Error" }
+        }
+      }
+    },
+    "/api/admin/storage-expansion/requests/{requestId}/gitops-pr-execution": {
+      "post": {
+        "tags": ["Storage Expansion", "Admin"],
+        "operationId": "recordStorageExpansionGitOpsPrExecution",
+        "summary": "Record a successful GitOps pull request evidence item for an approved storage expansion request",
+        "parameters": [
+          {
+            "name": "requestId",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "integer", "format": "int64" }
+          }
+        ],
+        "requestBody": { "$ref": "#/components/requestBodies/JsonObject" },
+        "responses": {
+          "200": { "$ref": "#/components/responses/JsonOk" },
+          "400": { "$ref": "#/components/responses/Error" },
+          "401": { "$ref": "#/components/responses/Error" },
+          "403": { "$ref": "#/components/responses/Error" },
+          "404": { "$ref": "#/components/responses/Error" }
+        }
+      }
+    },
+    "/api/admin/storage-expansion/requests/{requestId}/executions": {
+      "get": {
+        "tags": ["Storage Expansion", "Admin"],
+        "operationId": "getStorageExpansionExecutions",
+        "summary": "List dry-run, GitOps, Helm, Kubernetes, and apply execution history for a storage expansion request",
+        "parameters": [
+          {
+            "name": "requestId",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "integer", "format": "int64" }
+          }
+        ],
+        "responses": {
+          "200": { "$ref": "#/components/responses/JsonList" },
+          "401": { "$ref": "#/components/responses/Error" },
+          "403": { "$ref": "#/components/responses/Error" },
+          "404": { "$ref": "#/components/responses/Error" }
+        }
+      },
+      "post": {
+        "tags": ["Storage Expansion", "Admin"],
+        "operationId": "createStorageExpansionExecutionRecord",
+        "summary": "Record a dry-run, GitOps, Helm, Kubernetes, apply, or rollback execution result",
+        "parameters": [
+          {
+            "name": "requestId",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "integer", "format": "int64" }
+          }
+        ],
+        "requestBody": { "$ref": "#/components/requestBodies/JsonObject" },
+        "responses": {
+          "200": { "$ref": "#/components/responses/JsonOk" },
+          "400": { "$ref": "#/components/responses/Error" },
+          "401": { "$ref": "#/components/responses/Error" },
+          "403": { "$ref": "#/components/responses/Error" },
+          "404": { "$ref": "#/components/responses/Error" }
+        }
+      }
+    },
+    "/api/admin/storage-expansion/requests/{requestId}/executions/{executionId}/apply": {
+      "post": {
+        "tags": ["Storage Expansion", "Admin"],
+        "operationId": "applyStorageExpansionExecutionRecord",
+        "summary": "Apply an approved storage expansion request from a successful APPLY or GITOPS_PR execution record",
+        "parameters": [
+          {
+            "name": "requestId",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "integer", "format": "int64" }
+          },
+          {
+            "name": "executionId",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "integer", "format": "int64" }
+          }
+        ],
+        "responses": {
+          "200": { "$ref": "#/components/responses/JsonOk" },
+          "400": { "$ref": "#/components/responses/Error" },
+          "401": { "$ref": "#/components/responses/Error" },
+          "403": { "$ref": "#/components/responses/Error" },
+          "404": { "$ref": "#/components/responses/Error" }
+        }
+      }
+    },
+    "/api/admin/storage-expansion/requests/{requestId}/status": {
+      "patch": {
+        "tags": ["Storage Expansion", "Admin"],
+        "operationId": "updateStorageExpansionRequestStatus",
+        "summary": "Update a storage expansion request status and applied evidence",
+        "parameters": [
+          {
+            "name": "requestId",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "integer", "format": "int64" }
+          }
+        ],
+        "requestBody": { "$ref": "#/components/requestBodies/JsonObject" },
+        "responses": {
+          "200": { "$ref": "#/components/responses/JsonOk" },
+          "400": { "$ref": "#/components/responses/Error" },
+          "401": { "$ref": "#/components/responses/Error" },
+          "403": { "$ref": "#/components/responses/Error" },
+          "404": { "$ref": "#/components/responses/Error" }
+        }
+      }
+    },
+    "/api/admin/storage-expansion/execution-log-retention/status": {
+      "get": {
+        "tags": ["Storage Expansion", "Admin"],
+        "operationId": "getStorageExpansionExecutionLogRetentionStatus",
+        "summary": "Read storage expansion execution log retention status",
+        "responses": {
+          "200": { "$ref": "#/components/responses/JsonOk" },
+          "401": { "$ref": "#/components/responses/Error" },
+          "403": { "$ref": "#/components/responses/Error" }
+        }
+      }
+    },
+    "/api/admin/storage-expansion/execution-log-retention/run": {
+      "post": {
+        "tags": ["Storage Expansion", "Admin"],
+        "operationId": "runStorageExpansionExecutionLogRetention",
+        "summary": "Run storage expansion execution log retention now",
+        "responses": {
+          "200": { "$ref": "#/components/responses/JsonOk" },
+          "401": { "$ref": "#/components/responses/Error" },
+          "403": { "$ref": "#/components/responses/Error" },
+          "409": { "$ref": "#/components/responses/Error" }
+        }
+      }
+    },
+    "/api/storage-profiles": {
+      "get": {
+        "tags": ["Storage Profile"],
+        "operationId": "getStorageProfiles",
+        "summary": "List built-in bucket Storage Profile options",
+        "responses": {
+          "200": { "$ref": "#/components/responses/JsonList" },
+          "401": { "$ref": "#/components/responses/Error" }
+        }
+      }
+    },
+    "/api/storage-profile-requests": {
+      "get": {
+        "tags": ["Storage Profile"],
+        "operationId": "getStorageProfileRequests",
+        "summary": "List Storage Profile requests visible to the current user",
+        "responses": {
+          "200": { "$ref": "#/components/responses/JsonList" },
+          "401": { "$ref": "#/components/responses/Error" }
+        }
+      }
+    },
+    "/api/buckets/{bucketName}/storage-profile": {
+      "get": {
+        "tags": ["Storage Profile", "Buckets"],
+        "operationId": "getBucketStorageProfile",
+        "summary": "Read active Storage Profile assignment and latest request for a bucket",
+        "parameters": [
+          { "$ref": "#/components/parameters/BucketName" }
+        ],
+        "responses": {
+          "200": { "$ref": "#/components/responses/JsonOk" },
+          "401": { "$ref": "#/components/responses/Error" },
+          "403": { "$ref": "#/components/responses/Error" },
+          "404": { "$ref": "#/components/responses/Error" }
+        }
+      }
+    },
+    "/api/buckets/{bucketName}/storage-profile-requests": {
+      "post": {
+        "tags": ["Storage Profile", "Buckets"],
+        "operationId": "createStorageProfileRequest",
+        "summary": "Create a bucket Storage Profile request",
+        "parameters": [
+          { "$ref": "#/components/parameters/BucketName" }
+        ],
+        "requestBody": { "$ref": "#/components/requestBodies/JsonObject" },
+        "responses": {
+          "200": { "$ref": "#/components/responses/JsonOk" },
+          "400": { "$ref": "#/components/responses/Error" },
+          "401": { "$ref": "#/components/responses/Error" },
+          "403": { "$ref": "#/components/responses/Error" },
+          "404": { "$ref": "#/components/responses/Error" }
+        }
+      }
+    },
+    "/api/admin/storage-profile-requests": {
+      "get": {
+        "tags": ["Storage Profile", "Admin"],
+        "operationId": "getAdminStorageProfileRequests",
+        "summary": "List all Storage Profile requests",
+        "responses": {
+          "200": { "$ref": "#/components/responses/JsonList" },
+          "401": { "$ref": "#/components/responses/Error" },
+          "403": { "$ref": "#/components/responses/Error" }
+        }
+      }
+    },
+    "/api/admin/storage-profile-requests/{requestId}/status": {
+      "patch": {
+        "tags": ["Storage Profile", "Admin"],
+        "operationId": "updateStorageProfileRequestStatus",
+        "summary": "Approve or reject a Storage Profile request",
+        "parameters": [
+          {
+            "name": "requestId",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "integer", "format": "int64" }
+          }
+        ],
+        "requestBody": { "$ref": "#/components/requestBodies/JsonObject" },
+        "responses": {
+          "200": { "$ref": "#/components/responses/JsonOk" },
+          "400": { "$ref": "#/components/responses/Error" },
+          "401": { "$ref": "#/components/responses/Error" },
+          "403": { "$ref": "#/components/responses/Error" },
+          "404": { "$ref": "#/components/responses/Error" }
+        }
+      }
+    },
+    "/api/admin/storage-profile-requests/{requestId}/apply": {
+      "post": {
+        "tags": ["Storage Profile", "Admin"],
+        "operationId": "applyStorageProfileRequest",
+        "summary": "Apply an approved Storage Profile request to its bucket",
+        "parameters": [
+          {
+            "name": "requestId",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "integer", "format": "int64" }
+          }
+        ],
+        "responses": {
+          "200": { "$ref": "#/components/responses/JsonOk" },
+          "400": { "$ref": "#/components/responses/Error" },
+          "401": { "$ref": "#/components/responses/Error" },
+          "403": { "$ref": "#/components/responses/Error" },
+          "404": { "$ref": "#/components/responses/Error" }
         }
       }
     },
@@ -819,11 +1639,95 @@
         }
       }
     },
+    "/api/access-keys/bulk-disable": {
+      "post": {
+        "tags": ["Access Keys"],
+        "operationId": "bulkDisableAccessKeys",
+        "summary": "Bulk deactivate access keys",
+        "requestBody": { "$ref": "#/components/requestBodies/JsonObject" },
+        "responses": {
+          "200": { "$ref": "#/components/responses/JsonOk" }
+        }
+      }
+    },
+    "/api/access-keys/{keyId}/rotate": {
+      "post": {
+        "tags": ["Access Keys"],
+        "operationId": "rotateAccessKey",
+        "summary": "Rotate an access key secret and return the new secret once",
+        "parameters": [
+          { "$ref": "#/components/parameters/KeyId" }
+        ],
+        "responses": {
+          "200": { "$ref": "#/components/responses/JsonOk" }
+        }
+      }
+    },
     "/api/admin/usage": {
       "get": {
         "tags": ["Admin"],
         "operationId": "getUsage",
         "summary": "Read global usage counters",
+        "responses": {
+          "200": { "$ref": "#/components/responses/JsonOk" }
+        }
+      }
+    },
+    "/api/admin/monitoring/data-flow": {
+      "get": {
+        "tags": ["Admin"],
+        "operationId": "getDataFlowMonitoring",
+        "summary": "Read administrator data-flow traffic, operation, failure, cancel, bucket, and recent event monitoring summary",
+        "parameters": [
+          {
+            "name": "from",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "string", "format": "date-time" }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "string", "format": "date-time" }
+          },
+          {
+            "name": "bucketName",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "string" }
+          },
+          {
+            "name": "actorId",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "string" }
+          },
+          {
+            "name": "source",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "string", "enum": ["rest", "s3", "s3-copy"] }
+          },
+          {
+            "name": "operation",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "string", "enum": ["upload", "download", "list", "delete"] }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "string", "enum": ["SUCCESS", "FAILED", "CANCELLED"] }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "integer", "minimum": 1, "maximum": 500, "default": 50 }
+          }
+        ],
         "responses": {
           "200": { "$ref": "#/components/responses/JsonOk" }
         }
@@ -978,6 +1882,37 @@
         "tags": ["Admin", "Operations"],
         "operationId": "getBackupStatus",
         "summary": "Read backup and restore readiness status",
+        "responses": {
+          "200": { "$ref": "#/components/responses/JsonOk" }
+        }
+      }
+    },
+    "/api/admin/backup/restore-drill-evidence": {
+      "get": {
+        "tags": ["Admin", "Operations"],
+        "operationId": "getBackupRestoreDrillEvidence",
+        "summary": "List recent backup and restore drill evidence",
+        "parameters": [
+          {
+            "name": "result",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": ["SUCCESS", "FAILED", "PARTIAL"]
+            }
+          },
+          { "$ref": "#/components/parameters/LimitQuery" }
+        ],
+        "responses": {
+          "200": { "$ref": "#/components/responses/JsonList" }
+        }
+      },
+      "post": {
+        "tags": ["Admin", "Operations"],
+        "operationId": "recordBackupRestoreDrillEvidence",
+        "summary": "Record backup and restore drill evidence",
+        "requestBody": { "$ref": "#/components/requestBodies/JsonObject" },
         "responses": {
           "200": { "$ref": "#/components/responses/JsonOk" }
         }
@@ -1445,6 +2380,11 @@
         "name": "cursor",
         "in": "query",
         "schema": { "type": "string" }
+      },
+      "ScopeQuery": {
+        "name": "scope",
+        "in": "query",
+        "schema": { "type": "string", "default": "main", "maxLength": 64 }
       }
     },
     "requestBodies": {
@@ -1549,6 +2489,30 @@
         "required": ["refreshToken"],
         "properties": {
           "refreshToken": { "type": "string" }
+        }
+      },
+      "S3ClientConfigResponse": {
+        "type": "object",
+        "required": [
+          "endpoint",
+          "region",
+          "signatureVersion",
+          "service",
+          "pathStyleSupported",
+          "virtualHostedStyleEnabled",
+          "virtualHostedStyleDomainSuffixes"
+        ],
+        "properties": {
+          "endpoint": { "type": "string", "format": "uri" },
+          "region": { "type": "string" },
+          "signatureVersion": { "type": "string", "example": "AWS4-HMAC-SHA256" },
+          "service": { "type": "string", "example": "s3" },
+          "pathStyleSupported": { "type": "boolean" },
+          "virtualHostedStyleEnabled": { "type": "boolean" },
+          "virtualHostedStyleDomainSuffixes": {
+            "type": "array",
+            "items": { "type": "string" }
+          }
         }
       },
       "CreateBucketRequest": {

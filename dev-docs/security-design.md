@@ -30,6 +30,8 @@
 
 이 문서는 OSMU 보안 설계를 정의한다.
 
+상세 role, endpoint, dashboard panel 권한 표는 `iam-rbac-matrix.md`를 기준으로 한다. Kubernetes ServiceAccount와 cluster RBAC 권한 경계는 `kubernetes-rbac-matrix.md`를 기준으로 한다.
+
 ## 1. 보안 목표
 
 - 기본 private 정책
@@ -53,7 +55,8 @@ MVP:
 - access token과 refresh token은 HMAC SHA-256 서명 JWT로 발급한다.
 - Health, Login, Refresh 외 `/api/**`는 Bearer access token을 검증한다.
 - refresh token은 SHA-256 hash로 저장하고, refresh 성공 시 회전하며, logout 시 폐기한다.
-- `/api/admin/**`는 `ADMIN` role만 접근할 수 있다.
+- `/api/admin/**`는 기본적으로 `ADMIN` role만 접근할 수 있다.
+- 예외적으로 `ORG_ADMIN`은 `AdminRbacPolicy`에 명시된 조직 스코프 API만 접근할 수 있다.
 - `GET /api/users/me`는 JWT subject 기준 사용자 저장소를 조회한다.
 - 일반 사용자는 본인이 소유한 bucket/object/access key만 조회하거나 변경할 수 있다.
 
@@ -85,9 +88,14 @@ MVP:
 
 현재 구현:
 
+- 관리자 API RBAC는 `AdminRbacPolicy`에서 중앙 관리한다.
+- `ADMIN`은 모든 `/api/admin/**` API에 접근할 수 있다.
+- `USER` 또는 알 수 없는 role은 모든 `/api/admin/**` API에서 차단된다.
 - `ORG_ADMIN`은 자기 조직 사용자와 조직 usage만 볼 수 있다.
 - `ORG_ADMIN`은 자기 조직 일반 `USER` 생성/비활성화만 가능하다.
-- `ORG_ADMIN`은 감사 로그, 전체 시스템 usage, system status 같은 global admin API에는 접근할 수 없다.
+- `ORG_ADMIN` 허용 route는 `GET/POST /api/admin/users`, `PATCH /api/admin/users/{userId}/status`, `GET /api/admin/organizations`, `GET /api/admin/organizations/usage`로 제한한다.
+- `ORG_ADMIN`은 감사 로그, 전체 시스템 usage, system status, storage expansion, backup/restore drill, quota policy 같은 global admin API에는 접근할 수 없다.
+- Dashboard widget catalog/layout/preset 응답은 role 기준으로 필터링한다. `adminOnly` dashboard panel은 `ADMIN`에게만 노출되며, `USER`와 `ORG_ADMIN`이 직접 저장 요청에 넣으면 `AUTHORIZATION_FAILED`로 차단한다.
 
 ## 4. 버킷 보안
 
@@ -135,11 +143,19 @@ MVP:
 - 키는 사용자와 연결된다.
 - 키는 접근 가능한 bucket scope와 `READ`, `WRITE`, `DELETE` permission을 가진다.
 - 사용자를 `INACTIVE` 또는 `LOCKED` 상태로 바꾸면 해당 사용자의 활성 Access Key도 비활성화한다.
+- Bearer access token은 매 요청마다 DB 사용자 상태를 재확인하므로 비활성/잠금 사용자의 기존 access token도 즉시 거부한다.
 
 현재 구현:
 
 - access key는 생성한 user id와 연결된다.
 - secret key 원문은 생성 응답에서만 반환하고, 서버에는 SHA-256 hash만 저장한다.
+- secret key 원문, hash, ciphertext를 포함하는 access key record `toString()`은 민감값을 redaction한다.
+- access key 생성 audit list/export에는 secret key 원문을 기록하지 않는다.
+- access key 생성 시 선택 만료일 `expiresAt`을 지정할 수 있고, 과거 시각은 validation에서 거부한다.
+- 만료된 access key는 S3 호환 API 인증과 secret rotation을 허용하지 않는다.
+- access key secret rotation은 기존 key id/access key/scope를 유지하고 새 secret을 1회 반환한다.
+- rotation 이후 기존 secret은 즉시 인증 실패 처리되며, `ACCESS_KEY_ROTATE` audit log에는 새 secret 원문을 기록하지 않는다.
+- lightweight/local demo verifier는 access key secret redaction smoke를 실행하며, `-BackendLogPath` 입력 시 실제 backend log file에서도 생성된 secret 원문을 scan한다.
 - `osmu.metadata.mode=in-memory`에서는 메모리에 저장하고, `mariadb`에서는 `access_keys` table에 저장한다.
 - `ADMIN`은 전체 access key를 볼 수 있다.
 - 일반 `USER`는 본인이 생성한 access key만 볼 수 있다.
@@ -149,12 +165,14 @@ MVP:
 - access key 생성 시 Backend가 S3 IAM 호환 policy document를 생성한다.
 - bucket permission 회수 시 영향을 받는 active access key의 bucket별 scope와 S3 policy를 재동기화한다.
 - 재동기화 후 남은 scope가 없으면 access key를 `INACTIVE`로 바꾸고 S3 user/policy를 제거한다.
+- S3 호환 API에서 Access Key 인증이 성공하면 `lastUsedAt`을 갱신해 미사용/장기 미사용 key 정리 근거로 사용한다.
 - 생성된 policy document는 secret 값을 포함하지 않고 bucket ARN과 S3 action만 포함한다.
 - `OSMU_ACCESS_KEY_PROVISIONING_MODE=minio`에서는 MinIO user/policy 적용을 시도한다.
 - 현재 MinIO provisioner는 `mc admin user add`, `mc admin policy create`, `mc admin policy attach`를 호출한다.
 - 사용자 비활성화/잠금 시 `AccessKeyService.deactivateByOwnerId`가 active key를 찾아 metadata status와 S3 provisioner 상태를 함께 비활성화한다.
 - MinIO provisioning 성공 후에만 metadata 저장을 완료한다.
 - metadata 저장 실패 시 이미 만든 MinIO user/policy를 제거한다.
+- MinIO secret rotation 후 metadata 저장 실패 시, 기존 secret ciphertext가 있으면 provisioner secret rollback을 시도한다.
 - 기본 `noop` 모드는 개발/테스트용이며 policy document만 생성한다.
 - 운영 환경에서는 secret이 process argument에 노출되지 않는 native Admin API 또는 별도 provisioning worker로 교체하는 것이 목표다.
 
@@ -214,6 +232,16 @@ MVP:
 - MariaDB 외부 직접 노출 금지
 - MinIO Console 관리자 접근 제한
 
+## 9.1 Kubernetes RBAC Hardening
+
+현재 Kubernetes/Helm draft는 backend, frontend, MariaDB, MinIO, backup workload에 전용 ServiceAccount를 사용하고 `automountServiceAccountToken: false`를 적용한다. 일반 애플리케이션 workload에는 Kubernetes `Role`, `ClusterRole`, `RoleBinding`, `ClusterRoleBinding`을 부여하지 않는다.
+
+Storage Expansion in-cluster kubectl runner에는 별도 `osmu-storage-expansion-runner` ServiceAccount와 namespace-scoped Role/RoleBinding을 사용한다. 이 Role은 `Tenant/osmu-minio` patch/update와 legacy `StatefulSet/osmu-minio` rollback에 필요한 `get/patch/update` 중심 권한만 허용하며 Secret read, Pod exec, create/delete, cluster-scoped RBAC를 허용하지 않는다. Helm upgrade/rollback과 GitOps PR runner는 기본적으로 외부 GitOps/CI identity를 사용해야 하며, 더 넓은 chart-admin 권한이 필요하면 별도 리뷰와 verifier가 필요하다. 현재 권한 기준은 `kubernetes-rbac-matrix.md`와 `scripts/verify-kubernetes-rbac-matrix.ps1`로 검증한다.
+
+운영 cluster에 RBAC를 적용한 뒤에는 `scripts/verify-storage-expansion-rbac-auth.ps1 -Namespace <namespace>`를 실행해 `kubectl auth can-i` evidence를 `.osmu-run/latest-storage-expansion-rbac-auth.json`에 남긴다. 이 evidence는 허용되어야 하는 Tenant/StatefulSet patch/update 권한과 거부되어야 하는 Secret read, Pod exec, create/delete, cluster-scoped RBAC 권한을 함께 확인한다.
+
+MinIO Operator CRD와 대상 Tenant가 준비된 cluster에서는 `scripts/verify-storage-expansion-server-dry-run.ps1 -Namespace <namespace> -ImpersonateRunner`를 실행해 `.osmu-run/latest-storage-expansion-server-dry-run.json`에 server-side dry-run evidence를 남긴다. 이 evidence는 `tenants.minio.min.io` CRD 존재, 기존 `Tenant/osmu-minio` 존재, `kubectl apply --server-side --dry-run=server` 결과를 포함한다.
+
 ## 10. 보안 구현 순서
 
 1. password hashing
@@ -225,6 +253,18 @@ MVP:
 7. Audit log
 8. TLS guide
 9. SSO/LDAP
+
+## Storage Expansion Execution Log Masking
+
+- Storage Expansion runner/manual/GitOps execution 저장 전 `command`, `output`, `notes`에 secret masking을 적용한다.
+- masking 대상: password/passwd/secret/token/credential/access key/secret key key-value, `Authorization: Bearer|Basic`, S3 query signature/credential/security token, URL userinfo password.
+- output retention limit 기본값은 `OSMU_STORAGE_EXPANSION_EXECUTION_LOG_MAX_OUTPUT_CHARS=16384`이다.
+- masking은 `OSMU_STORAGE_EXPANSION_EXECUTION_LOG_MASKING_ENABLED=true`가 기본값이다. 운영 환경에서는 끄지 않는다.
+- execution output retention은 `OSMU_STORAGE_EXPANSION_EXECUTION_LOG_RETENTION_ENABLED=true`가 기본값이며, 기본 90일이 지난 output만 redaction marker로 교체한다.
+- GitOps PR runner는 기본 비활성(`OSMU_STORAGE_EXPANSION_GITOPS_PR_RUNNER_ENABLED=false`)이며 활성화 시 shell을 거치지 않고 `git`/`gh` executable을 직접 실행한다. runner preflight는 repository path의 `.git` metadata, `git -C {repositoryPath} status --short`, `gh auth status`를 확인한다. repository path는 운영자가 신뢰한 GitOps working tree로 제한해야 하며, 실행 결과는 sanitizer와 output retention 정책을 거친 execution history로 저장한다.
+- GitOps PR runner artifact path는 repository root 내부로 normalize된 경우에만 쓸 수 있다. `../` 등으로 repository 밖을 가리키는 경로는 runner 실패로 처리한다.
+- GitOps PR runner 실패 notes에는 `failureReason`을 남긴다. 인증 실패, 권한 부족, branch protection, dirty worktree, tool missing 등 운영자가 조치해야 하는 실패를 구분하는 데 사용한다.
+- execution record, result, command, artifact SHA-256, audit trail은 유지해 운영 추적성을 보존한다.
 
 ## Object Retention Policy Audit
 
