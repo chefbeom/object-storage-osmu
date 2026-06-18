@@ -1360,6 +1360,7 @@ Headers:
 - S3 XML `InvalidRange` responses use HTTP `416` and message `The requested range cannot be satisfied.` for AWS client compatibility.
 - S3 XML `NoSuchBucket`, `NoSuchKey`, and `NoSuchUpload` responses use AWS-style messages for bucket, object key, and multipart upload misses.
 - S3 XML `PreconditionFailed` responses use HTTP `412` and message `At least one of the pre-conditions you specified did not hold`.
+- S3 XML `InvalidBucketName`, `BucketAlreadyOwnedByYou`, `BucketAlreadyExists`, and `BucketNotEmpty` responses use AWS-style bucket error messages instead of internal validation/conflict text.
 - The same S3 error code mapping is used for global `/api/s3/**` error XML and multi-object delete `DeleteResult/Error` entries.
 
 Object tagging XML:

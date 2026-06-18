@@ -61,6 +61,7 @@
 - S3 XML `InvalidRange` responses are normalized to HTTP `416` and message `The requested range cannot be satisfied.`.
 - S3 XML `NoSuchBucket`, `NoSuchKey`, and `NoSuchUpload` messages are normalized to AWS-style not-found text instead of leaking internal repository/storage messages.
 - S3 XML `PreconditionFailed` responses are normalized to HTTP `412` and AWS-style precondition failure text across object, CopyObject, and multipart destination guards.
+- S3 XML `InvalidBucketName`, `BucketAlreadyOwnedByYou`, `BucketAlreadyExists`, and `BucketNotEmpty` responses are normalized to AWS-style bucket error messages.
 - Current S3-style alias does not implement presigned streaming/trailer-signature parity, full AWS multipart checksum negotiation parity beyond stored UploadPart checksum metadata and complete-time matching guards, automatic DNS/proxy provisioning for virtual-hosted-style domains, remaining conditional edge parity beyond documented object `PUT`/`HEAD`/`GET`, CopyObject source/destination, and multipart complete ETag guards, exact CopyObject full AWS versioning/remaining conditional edge parity beyond documented source ETag/date and destination ETag guards, remaining CreateBucket/DeleteBucket/CreateMultipartUpload edge error parity beyond covered control headers/name/duplicate/active-or-retained non-empty/unsupported-create-control cases, or full AWS error behavior parity yet. `s3-compatibility.md` is the authoritative matrix for supported, partial, and unsupported S3 behavior.
 # OSMU Backend Design
 

@@ -41,6 +41,20 @@ public final class S3ErrorCodeMapper {
         if ("PreconditionFailed".equals(s3Code)) {
             return "At least one of the pre-conditions you specified did not hold";
         }
+        if ("InvalidBucketName".equals(s3Code)) {
+            return "The specified bucket is not valid.";
+        }
+        if ("BucketAlreadyOwnedByYou".equals(s3Code)) {
+            return "Your previous request to create the named bucket succeeded and you already own it.";
+        }
+        if ("BucketAlreadyExists".equals(s3Code)) {
+            return "The requested bucket name is not available. "
+                    + "The bucket namespace is shared by all users of the system. "
+                    + "Please select a different name and try again.";
+        }
+        if ("BucketNotEmpty".equals(s3Code)) {
+            return "The bucket you tried to delete is not empty.";
+        }
         return message == null || message.isBlank() ? s3Code : message;
     }
 

@@ -1,5 +1,34 @@
 # Worklog - main
 
+### 2026-06-18 - S3 bucket error message parity
+
+- Work time:
+  - End: 2026-06-18 KST
+- User command:
+  - Active goal: continue development from `dev-docs`.
+- Request analysis:
+  - README/dev-docs still track remaining AWS per-error message/status nuance.
+  - Bucket-level S3 XML codes were mapped correctly, but XML `Message` still used internal validation/conflict text.
+- Execution:
+  - Normalized `InvalidBucketName`, `BucketAlreadyOwnedByYou`, `BucketAlreadyExists`, and `BucketNotEmpty` messages in `S3ErrorCodeMapper`.
+  - Added mapper assertions and bucket create/delete controller regression assertions.
+  - Updated README, API spec, backend design, compatibility matrix, feature inventory, test cases, and worklog.
+- Modified files:
+  - `osmu-backend/src/main/java/com/example/osmu/common/error/S3ErrorCodeMapper.java`
+  - `osmu-backend/src/test/java/com/example/osmu/common/error/S3ErrorCodeMapperTest.java`
+  - `osmu-backend/src/test/java/com/example/osmu/object/S3ObjectControllerTest.java`
+  - `README.md`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/backend-design.md`
+  - `dev-docs/s3-compatibility.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/feature-inventory.md`
+  - `dev-docs/worklog/main/worklog-main.md`
+- Tests:
+  - `$env:JAVA_HOME='C:\jdk-17'; .\gradlew.bat test --no-daemon --tests com.example.osmu.common.error.S3ErrorCodeMapperTest --tests com.example.osmu.object.S3ObjectControllerTest.createBucketReturnsS3DuplicateBucketCodes --tests com.example.osmu.object.S3ObjectControllerTest.bucketLevelRequestsRejectInvalidS3BucketNames --tests com.example.osmu.object.S3ObjectControllerTest.deleteBucketReturnsBucketNotEmptyForNonEmptyBucket --tests com.example.osmu.object.S3ObjectControllerTest.deleteBucketReturnsBucketNotEmptyWhenRetainedVersionsExist`: passed.
+- Follow-up:
+  - Continue non-bucket S3 error message/status nuance and multipart checksum response propagation.
+
 ### 2026-06-18 - AWS SDK Java S3 checksum smoke path
 
 - Work time:

@@ -38,6 +38,16 @@ class S3ErrorCodeMapperTest {
                 .isEqualTo("The specified multipart upload does not exist. The upload ID might be invalid, or the multipart upload might have been aborted or completed.");
         assertThat(S3ErrorCodeMapper.messageFor("PreconditionFailed", "Object precondition failed."))
                 .isEqualTo("At least one of the pre-conditions you specified did not hold");
+        assertThat(S3ErrorCodeMapper.messageFor("InvalidBucketName", "Invalid S3 bucket name."))
+                .isEqualTo("The specified bucket is not valid.");
+        assertThat(S3ErrorCodeMapper.messageFor("BucketAlreadyOwnedByYou", "Bucket already owned by you."))
+                .isEqualTo("Your previous request to create the named bucket succeeded and you already own it.");
+        assertThat(S3ErrorCodeMapper.messageFor("BucketAlreadyExists", "Bucket already exists."))
+                .isEqualTo("The requested bucket name is not available. "
+                        + "The bucket namespace is shared by all users of the system. "
+                        + "Please select a different name and try again.");
+        assertThat(S3ErrorCodeMapper.messageFor("BucketNotEmpty", "Bucket is not empty."))
+                .isEqualTo("The bucket you tried to delete is not empty.");
         assertThat(S3ErrorCodeMapper.messageFor("InternalError", "")).isEqualTo("InternalError");
     }
 }

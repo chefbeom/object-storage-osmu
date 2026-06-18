@@ -1259,13 +1259,17 @@ class S3ObjectControllerTest {
                         .header("Authorization", "Bearer " + ownerToken))
                 .andExpect(status().isConflict())
                 .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_XML))
-                .andExpect(content().string(containsString("<Code>BucketAlreadyOwnedByYou</Code>")));
+                .andExpect(content().string(containsString("<Code>BucketAlreadyOwnedByYou</Code>")))
+                .andExpect(content().string(containsString("<Message>Your previous request to create the named bucket succeeded and you already own it.</Message>")));
 
         mockMvc.perform(put("/api/s3/{bucketName}", bucketName)
                         .header("Authorization", "Bearer " + adminToken))
                 .andExpect(status().isConflict())
                 .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_XML))
-                .andExpect(content().string(containsString("<Code>BucketAlreadyExists</Code>")));
+                .andExpect(content().string(containsString("<Code>BucketAlreadyExists</Code>")))
+                .andExpect(content().string(containsString("<Message>The requested bucket name is not available. "
+                        + "The bucket namespace is shared by all users of the system. "
+                        + "Please select a different name and try again.</Message>")));
     }
 
     @Test
@@ -1293,14 +1297,16 @@ class S3ObjectControllerTest {
                             .header("Authorization", "Bearer " + token))
                     .andExpect(status().isBadRequest())
                     .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_XML))
-                    .andExpect(content().string(containsString("<Code>InvalidBucketName</Code>")));
+                    .andExpect(content().string(containsString("<Code>InvalidBucketName</Code>")))
+                    .andExpect(content().string(containsString("<Message>The specified bucket is not valid.</Message>")));
         }
 
         mockMvc.perform(delete("/api/s3/{bucketName}", "bucket--x-s3")
                         .header("Authorization", "Bearer " + token))
                 .andExpect(status().isBadRequest())
                 .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_XML))
-                .andExpect(content().string(containsString("<Code>InvalidBucketName</Code>")));
+                .andExpect(content().string(containsString("<Code>InvalidBucketName</Code>")))
+                .andExpect(content().string(containsString("<Message>The specified bucket is not valid.</Message>")));
     }
 
     @Test
@@ -1316,7 +1322,8 @@ class S3ObjectControllerTest {
                         .header("X-OSMU-Secret-Key", credentials.secretKey()))
                 .andExpect(status().isConflict())
                 .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_XML))
-                .andExpect(content().string(containsString("<Code>BucketNotEmpty</Code>")));
+                .andExpect(content().string(containsString("<Code>BucketNotEmpty</Code>")))
+                .andExpect(content().string(containsString("<Message>The bucket you tried to delete is not empty.</Message>")));
     }
 
     @Test
@@ -1343,7 +1350,8 @@ class S3ObjectControllerTest {
                         .header("X-OSMU-Secret-Key", credentials.secretKey()))
                 .andExpect(status().isConflict())
                 .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_XML))
-                .andExpect(content().string(containsString("<Code>BucketNotEmpty</Code>")));
+                .andExpect(content().string(containsString("<Code>BucketNotEmpty</Code>")))
+                .andExpect(content().string(containsString("<Message>The bucket you tried to delete is not empty.</Message>")));
 
         mockMvc.perform(head("/api/s3/{bucketName}", bucketName)
                         .header("Authorization", "Bearer " + token))

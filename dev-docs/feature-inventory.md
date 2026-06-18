@@ -231,6 +231,7 @@ MVP 데모 기준 완료율은 약 90~95%입니다.
 - S3 CreateBucket duplicate `BucketAlreadyOwnedByYou`/`BucketAlreadyExists` error mapping
 - S3 DeleteBucket non-empty `BucketNotEmpty` error mapping
 - S3 DeleteBucket retained object version `BucketNotEmpty` guard
+- S3 bucket XML error message normalization for `InvalidBucketName`, `BucketAlreadyOwnedByYou`, `BucketAlreadyExists`, and `BucketNotEmpty`
 - AWS CLI/boto3/s3cmd/s3fs/goofys 호환 matrix
 - 지원/부분지원/미지원 S3 API와 client compatibility matrix 문서화
 - aws-chunked body decode와 decoded content length 검증
