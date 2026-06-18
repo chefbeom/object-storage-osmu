@@ -1,5 +1,38 @@
 # Worklog - main
 
+### 2026-06-18 - boto3 checksum option smoke
+
+- Work time:
+  - End: 2026-06-18 KST
+- User command:
+  - Active goal: continue development from `dev-docs`.
+- Request analysis:
+  - AWS CLI checksum option smoke was covered, but `dev-docs` still tracked external AWS SDK checksum option coverage.
+  - boto3 is already listed in the client matrix and can prove one AWS SDK path without adding required project dependencies.
+- Execution:
+  - Added optional `-Client boto3` to `verify-s3-client-smoke.ps1`.
+  - The smoke discovers host Python with boto3, then uses path-style SigV4 boto3 calls for list, `put_object(ChecksumAlgorithm="SHA256")`, `head_object(ChecksumMode="ENABLED")`, list, `get_object(ChecksumMode="ENABLED")`, and cleanup.
+  - Kept `auto` and `all` behavior optional: missing Python+boto3 skips unless `-Client boto3` is explicit or `-RequireClient` has no other real client.
+  - Updated README/dev-docs to mark boto3 checksum smoke evidence and narrow the remaining SDK checksum gap to JavaScript/Java.
+- Modified files:
+  - `scripts/verify-s3-client-smoke.ps1`
+  - `README.md`
+  - `dev-docs/backup-restore-drill.md`
+  - `dev-docs/commercial-readiness.md`
+  - `dev-docs/document-index.md`
+  - `dev-docs/feature-inventory.md`
+  - `dev-docs/local-dev-env.md`
+  - `dev-docs/s3-compatibility.md`
+  - `dev-docs/secret-rotation-policy.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/worklog/main/worklog-main.md`
+- Tests:
+  - PowerShell parser check for `scripts/verify-s3-client-smoke.ps1`: passed.
+  - `git diff --check`: passed.
+- Review:
+  - boto3 smoke is optional host evidence and does not make Python/boto3 a required repo dependency.
+  - Remaining S3 checksum smoke gap is AWS SDK JavaScript/Java plus exact AWS response behavior.
+
 ### 2026-06-18 - S3 object SDK checksum algorithm and AWS CLI smoke
 
 - Work time:

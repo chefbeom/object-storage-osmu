@@ -40,7 +40,7 @@ This draft keeps B2B sales, licensing, and pilot packaging decisions visible whi
 ## Required Before Paid Pilot
 
 - Docker/MariaDB/MinIO integration gate passes.
-- Real S3 client gate passes with AWS CLI, host MinIO Client, or Dockerized MinIO Client.
+- Real S3 client gate passes with AWS CLI, boto3, host MinIO Client, or Dockerized MinIO Client.
 - Browser E2E gate passes.
 - Container security/SBOM workflow has a successful GitHub-hosted run.
 - Container security evidence JSON is generated as `.osmu-run/latest-container-security-evidence.json`.

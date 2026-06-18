@@ -63,7 +63,7 @@
 | --- | --- | --- | --- |
 | AWS CLI | Supported smoke target | `--endpoint-url`, path-style when needed, OSMU Access Key | Host CLI smoke remains optional when CLI is absent. |
 | MinIO Client `mc` | Supported smoke target | Alias to OSMU endpoint and OSMU Access Key | Dockerized `mc` is the strongest current local evidence. |
-| boto3 | Supported config target | endpoint URL, region, SigV4, path-style | Matrix/snippet exposed in developer console. |
+| boto3 | Supported smoke target | endpoint URL, region, SigV4, path-style | Optional `verify-s3-client-smoke.ps1 -Client boto3` covers `ChecksumAlgorithm=SHA256` plus HEAD/GET `ChecksumMode=ENABLED` when Python+boto3 is available. |
 | AWS SDK JavaScript/Java | Supported config target | endpoint URL, region, SigV4, path-style | Matrix/snippet exposed in developer console. |
 | s3cmd | Supported config target | endpoint URL, access/secret key, path-style | Real smoke may depend on local client availability. |
 | s3fs/goofys | Partial target | endpoint URL, path-style, credentials | Mount behavior is not part of default local gate yet. |
@@ -71,6 +71,6 @@
 ## Verification Rule
 
 - Backend unit/controller tests prove API contract behavior.
-- `scripts/verify-s3-client-smoke.ps1` proves built-in SigV4 checksum, multipart, SDK-style UploadPart checksum, AWS CLI `--checksum-algorithm SHA256` when host `aws` is available, and optional host/Docker real-client smoke.
+- `scripts/verify-s3-client-smoke.ps1` proves built-in SigV4 checksum, multipart, SDK-style UploadPart checksum, AWS CLI `--checksum-algorithm SHA256` when host `aws` is available, boto3 `ChecksumAlgorithm=SHA256` when Python+boto3 is available, and optional host/Docker real-client smoke.
 - `scripts/verify-docker-integration.ps1` is stronger because it exercises MariaDB + MinIO + backend container networking, including the SDK-style multipart checksum path.
 - Any newly claimed S3 operation must update this matrix, `api-spec.md`, `test-cases.md`, and at least one automated backend or smoke test.

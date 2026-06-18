@@ -4,7 +4,7 @@ param(
     [string] $AdminLoginId = "admin",
     [string] $AdminPassword = "password",
     [string] $BucketName = "",
-    [ValidateSet("auto", "aws", "mc", "docker-mc", "all")]
+    [ValidateSet("auto", "aws", "boto3", "mc", "docker-mc", "all")]
     [string] $Client = "auto",
     [string] $DockerMcImage = "minio/mc:RELEASE.2025-05-21T01-59-54Z",
     [switch] $SkipManualSigV4,
@@ -878,6 +878,122 @@ function Invoke-AwsCliSmoke($apiBase, $s3Endpoint, $bucketName, $accessKey, $sec
     }
 }
 
+function Get-PythonWithBoto3() {
+    foreach ($candidate in @("python", "python3", "py")) {
+        $python = Get-Command $candidate -ErrorAction SilentlyContinue
+        if (-not $python) {
+            continue
+        }
+        $arguments = if ($candidate -eq "py") {
+            @("-3", "-c", "import boto3, botocore")
+        } else {
+            @("-c", "import boto3, botocore")
+        }
+        $previousErrorActionPreference = $ErrorActionPreference
+        $ErrorActionPreference = "Continue"
+        try {
+            & $python.Source @arguments *> $null
+            if ($LASTEXITCODE -eq 0) {
+                $prefix = if ($candidate -eq "py") { @("-3") } else { @() }
+                return [pscustomobject]@{
+                    Source = $python.Source
+                    Prefix = $prefix
+                }
+            }
+        }
+        finally {
+            $ErrorActionPreference = $previousErrorActionPreference
+        }
+    }
+    return $null
+}
+
+function Invoke-Boto3Smoke($apiBase, $s3Endpoint, $bucketName, $accessKey, $secretKey) {
+    $python = Get-PythonWithBoto3
+    if (-not $python) {
+        return $false
+    }
+
+    Step "boto3 S3 SDK smoke"
+    $tempDir = Join-Path ([System.IO.Path]::GetTempPath()) "osmu-boto3-smoke-$([Guid]::NewGuid())"
+    New-Item -ItemType Directory -Force -Path $tempDir | Out-Null
+    try {
+        $scriptPath = Join-Path $tempDir "boto3-smoke.py"
+        Set-Content -LiteralPath $scriptPath -Encoding UTF8 -Value @'
+import base64
+import hashlib
+import json
+import sys
+
+import boto3
+from botocore.config import Config
+
+endpoint, bucket, access_key, secret_key = sys.argv[1:5]
+key = "boto3-checksum-smoke.txt"
+body = b"osmu boto3 checksum smoke"
+expected = base64.b64encode(hashlib.sha256(body).digest()).decode("ascii")
+
+s3 = boto3.client(
+    "s3",
+    endpoint_url=endpoint,
+    aws_access_key_id=access_key,
+    aws_secret_access_key=secret_key,
+    region_name="us-east-1",
+    config=Config(signature_version="s3v4", s3={"addressing_style": "path"}),
+)
+
+buckets = s3.list_buckets().get("Buckets", [])
+if not any(item.get("Name") == bucket for item in buckets):
+    raise SystemExit(f"boto3 list_buckets did not include {bucket}.")
+
+put_result = s3.put_object(
+    Bucket=bucket,
+    Key=key,
+    Body=body,
+    ContentType="text/plain",
+    ChecksumAlgorithm="SHA256",
+)
+put_checksum = put_result.get("ChecksumSHA256")
+if put_checksum and put_checksum != expected:
+    raise SystemExit("boto3 put_object returned unexpected ChecksumSHA256.")
+
+head_result = s3.head_object(Bucket=bucket, Key=key, ChecksumMode="ENABLED")
+if head_result.get("ChecksumSHA256") != expected:
+    raise SystemExit("boto3 head_object did not expose stored ChecksumSHA256.")
+
+listed = s3.list_objects_v2(Bucket=bucket, MaxKeys=1000, EncodingType="url")
+if not any(item.get("Key") == key for item in listed.get("Contents", [])):
+    raise SystemExit("boto3 list_objects_v2 did not include checksum object.")
+
+get_result = s3.get_object(Bucket=bucket, Key=key, ChecksumMode="ENABLED")
+try:
+    if get_result["Body"].read() != body:
+        raise SystemExit("boto3 get_object body mismatch.")
+finally:
+    get_result["Body"].close()
+if get_result.get("ChecksumSHA256") != expected:
+    raise SystemExit("boto3 get_object did not expose stored ChecksumSHA256.")
+
+s3.delete_object(Bucket=bucket, Key=key)
+print(json.dumps({"ChecksumSHA256": expected}))
+'@
+        $arguments = @()
+        if ($python.Prefix) {
+            $arguments += $python.Prefix
+        }
+        $arguments += @($scriptPath, $s3Endpoint, $bucketName, $accessKey, $secretKey)
+        $result = Invoke-ExternalText $python.Source $arguments
+        $parsed = $result | ConvertFrom-Json
+        if (-not $parsed.ChecksumSHA256) {
+            throw "boto3 checksum smoke did not return checksum evidence."
+        }
+        return $true
+    }
+    finally {
+        Remove-Item -Recurse -Force -LiteralPath $tempDir -ErrorAction SilentlyContinue
+    }
+}
+
 function Invoke-McSmoke($apiBase, $s3Endpoint, $bucketName, $accessKey, $secretKey) {
     $mc = Get-Command mc -ErrorAction SilentlyContinue
     if (-not $mc) {
@@ -1077,6 +1193,13 @@ try {
             throw "AWS CLI not found on PATH."
         }
     }
+    if ($Client -in @("auto", "boto3", "all")) {
+        if (Invoke-Boto3Smoke $ApiBase $S3Endpoint $BucketName $accessKey $secretKey) {
+            $ranClients.Add("boto3")
+        } elseif ($Client -eq "boto3") {
+            throw "Python with boto3 is not available on PATH."
+        }
+    }
     if ($Client -in @("auto", "mc", "all")) {
         if (Invoke-McSmoke $ApiBase $S3Endpoint $BucketName $accessKey $secretKey) {
             $ranClients.Add("mc")
@@ -1093,7 +1216,7 @@ try {
     }
 
     if ($ranClients.Count -eq 0) {
-        $message = "No real S3 client found. Install AWS CLI (aws), install MinIO Client (mc), or start Docker Desktop for Dockerized MinIO Client smoke."
+        $message = "No real S3 client found. Install AWS CLI (aws), install Python+boto3, install MinIO Client (mc), or start Docker Desktop for Dockerized MinIO Client smoke."
         if ($RequireClient) {
             throw $message
         }
@@ -1105,7 +1228,7 @@ try {
 finally {
     if ($createdBucket -and -not $KeepBucket) {
         Step "Cleanup smoke data"
-        foreach ($key in @("aws-cli-smoke.txt", "aws-cli-checksum-smoke.txt", "mc-smoke.txt", "docker-mc-smoke.txt", "manual-sigv4-smoke.txt", "manual-copy-sigv4-smoke.txt", "manual-copy-precondition-fail.txt", "manual-bad-payload.txt", "manual-bad-checksum.txt", "manual-vhost-smoke.txt", "manual-multipart-checksum.bin", "manual-multipart-sdk-checksum.bin", "manual-delete-md5-a.txt", "manual-delete-md5-b.txt", "manual-delete-md5-protected.txt")) {
+        foreach ($key in @("aws-cli-smoke.txt", "aws-cli-checksum-smoke.txt", "boto3-checksum-smoke.txt", "mc-smoke.txt", "docker-mc-smoke.txt", "manual-sigv4-smoke.txt", "manual-copy-sigv4-smoke.txt", "manual-copy-precondition-fail.txt", "manual-bad-payload.txt", "manual-bad-checksum.txt", "manual-vhost-smoke.txt", "manual-multipart-checksum.bin", "manual-multipart-sdk-checksum.bin", "manual-delete-md5-a.txt", "manual-delete-md5-b.txt", "manual-delete-md5-protected.txt")) {
             try {
                 Invoke-Json "DELETE" "$ApiBase/buckets/$BucketName/objects/$key" $null $token | Out-Null
             } catch {
