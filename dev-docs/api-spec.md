@@ -1258,7 +1258,7 @@ Prototype path-style bucket/object API for S3 client interoperability.
 - `PUT /api/s3/{bucketName}/{objectKey}` with `x-amz-copy-source: /sourceBucket/sourceKey` copies an existing object.
 - `POST /api/s3/{bucketName}/{objectKey}?uploads` initiates an S3-style multipart upload.
 - `PUT /api/s3/{bucketName}/{objectKey}?partNumber={n}&uploadId={uploadId}` uploads one multipart part through the backend.
-- `GET /api/s3/{bucketName}/{objectKey}?uploadId={uploadId}` lists uploaded multipart parts.
+- `GET /api/s3/{bucketName}/{objectKey}?uploadId={uploadId}` lists uploaded multipart parts and supports `max-parts` 1~1000 plus `part-number-marker` 0~10000 pagination.
 - `POST /api/s3/{bucketName}/{objectKey}?uploadId={uploadId}` completes multipart upload from S3 `CompleteMultipartUpload` XML.
 - `DELETE /api/s3/{bucketName}/{objectKey}?uploadId={uploadId}` aborts multipart upload.
 - `HEAD /api/s3/{bucketName}/{objectKey}` returns object metadata headers.
@@ -1321,6 +1321,7 @@ Headers:
 - S3 multipart initiate optionally accepts `X-OSMU-Multipart-Part-Size-Bytes` or `x-amz-meta-osmu-part-size-bytes`; otherwise the REST multipart default part size is used.
 - S3 multipart initiate optionally accepts `X-OSMU-Multipart-Expires-In-Seconds` for session expiry.
 - S3 multipart upload part requires `Content-Length`, validates optional `Content-MD5`, signed `x-amz-content-sha256`, and one optional `x-amz-checksum-*` value header, and returns part `ETag`. Matching checksum returns the same `x-amz-checksum-*` response header.
+- S3 multipart list parts returns `PartNumberMarker`, optional `NextPartNumberMarker`, `MaxParts`, `IsTruncated`, and a page of uploaded parts sorted by `PartNumber`.
 - S3 multipart complete accepts one optional final object `x-amz-checksum-*` value header, validates it against the completed object body, stores matching checksum metadata, returns the same checksum response header, and emits matching complete-result XML checksum element.
 - S3 multipart complete request XML requires 1~10000 `Part` entries, strictly ascending unique `PartNumber` values, and a non-blank `ETag` for every part. Invalid lists return S3 XML `InvalidRequest` before storage complete.
 - S3 multipart complete request XML accepts optional per-part `ChecksumSHA256`, `ChecksumSHA1`, `ChecksumCRC32`, and `ChecksumCRC32C` elements and validates their checksum syntax before completing storage upload. Full AWS multipart checksum aggregation parity remains future work.

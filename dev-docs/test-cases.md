@@ -323,6 +323,16 @@
 - Priority: P1
 - Automated: `S3ObjectControllerMultipartTest.completeMultipartUploadParsesS3XmlAndReturnsResultXml`, `S3ObjectControllerMultipartTest.completeMultipartUploadRejectsInvalidPartListXml`
 
+### TC-S3-MULTIPART-LISTPARTS-001
+
+- Feature: S3 multipart ListParts pagination.
+- Preconditions: Target bucket exists. Active access key has `WRITE` scope. Multipart upload has multiple uploaded parts.
+- Input: `GET /api/s3/{bucketName}/{objectKey}?uploadId={uploadId}&max-parts=1&part-number-marker=1`.
+- Steps: List uploaded parts with a marker and max-parts limit, then send invalid `max-parts=1001`.
+- Expected: XML includes `PartNumberMarker`, `NextPartNumberMarker`, `MaxParts`, `IsTruncated=true`, and only the requested page of parts sorted by `PartNumber`. Invalid `max-parts` returns S3 XML `InvalidRequest`.
+- Priority: P1
+- Automated: `S3ObjectControllerMultipartTest.listAndAbortMultipartUploadUseS3QueryAlias`
+
 ### TC-FE-024
 
 - Feature: Bucket Lifecycle XML panel.

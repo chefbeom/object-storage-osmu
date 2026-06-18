@@ -229,6 +229,7 @@ MVP 데모 기준 완료율은 약 90~95%입니다.
 - SigV4 aws-chunked streaming payload signature cryptographic chain verification
 - aws-chunked x-amz-trailer checksum validation (SHA256/SHA1/CRC32/CRC32C)
 - S3 multipart complete XML part list validation (ascending/unique/range/ETag)
+- S3 multipart ListParts pagination (max-parts/part-number-marker)
 
 남은 것:
 

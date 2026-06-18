@@ -89,6 +89,7 @@ public class S3ObjectController {
     private static final String OSMU_MULTIPART_EXPIRES_HEADER = "X-OSMU-Multipart-Expires-In-Seconds";
     private static final int DEFAULT_MAX_KEYS = 1000;
     private static final int DEFAULT_MAX_UPLOADS = 1000;
+    private static final int DEFAULT_MAX_PARTS = 1000;
     private static final int MAX_MULTIPART_PART_NUMBER = 10_000;
 
     private final ObjectService objectService;
@@ -331,18 +332,27 @@ public class S3ObjectController {
             @PathVariable("bucketName") String bucketName,
             @PathVariable("objectKey") String objectKey,
             @RequestParam("uploadId") String uploadId,
+            @RequestParam(name = "max-parts", required = false) Integer maxParts,
+            @RequestParam(name = "part-number-marker", required = false) Integer partNumberMarker,
             HttpServletRequest request
     ) {
         AuthenticatedUser user = s3RequestAuthService.currentUser(request, bucketName, "WRITE");
+        int normalizedMaxParts = normalizeMaxParts(maxParts);
+        int normalizedPartNumberMarker = normalizePartNumberMarker(partNumberMarker);
         MultipartUploadPartsResponse response = objectService.listMultipartUploadParts(
                 bucketName,
                 new MultipartUploadPartsRequest(uploadId, objectKey),
                 user
         );
+        MultipartUploadPartsPage page = multipartUploadPartsPage(
+                response,
+                normalizedMaxParts,
+                normalizedPartNumberMarker
+        );
         auditLogService.record("S3_OBJECT_MULTIPART_PARTS_LIST", user.loginId(), "OBJECT", bucketName + "/" + response.key(), "SUCCESS", "S3-style multipart parts listed", request);
         return ResponseEntity.ok()
                 .contentType(MediaType.APPLICATION_XML)
-                .body(listMultipartUploadPartsXml(bucketName, response));
+                .body(listMultipartUploadPartsXml(bucketName, response, page));
     }
 
     @PostMapping(value = "/{*objectKey}", params = "uploadId", consumes = {MediaType.APPLICATION_XML_VALUE, MediaType.TEXT_XML_VALUE}, produces = MediaType.APPLICATION_XML_VALUE)
@@ -1150,7 +1160,11 @@ public class S3ObjectController {
         }
     }
 
-    private String listMultipartUploadPartsXml(String bucketName, MultipartUploadPartsResponse response) {
+    private String listMultipartUploadPartsXml(
+            String bucketName,
+            MultipartUploadPartsResponse response,
+            MultipartUploadPartsPage page
+    ) {
         try {
             StringWriter output = new StringWriter();
             XMLStreamWriter xml = XMLOutputFactory.newFactory().createXMLStreamWriter(output);
@@ -1160,7 +1174,11 @@ public class S3ObjectController {
             writeElement(xml, "Bucket", bucketName);
             writeElement(xml, "Key", response.key());
             writeElement(xml, "UploadId", response.uploadId());
-            for (MultipartUploadUploadedPart part : response.parts()) {
+            writeElement(xml, "PartNumberMarker", String.valueOf(page.partNumberMarker()));
+            writeOptionalElement(xml, "NextPartNumberMarker", page.nextPartNumberMarkerValue());
+            writeElement(xml, "MaxParts", String.valueOf(page.maxParts()));
+            writeElement(xml, "IsTruncated", String.valueOf(page.isTruncated()));
+            for (MultipartUploadUploadedPart part : page.parts()) {
                 xml.writeStartElement("Part");
                 writeElement(xml, "PartNumber", String.valueOf(part.partNumber()));
                 writeElement(xml, "ETag", quoted(unquote(part.etag())));
@@ -1300,6 +1318,45 @@ public class S3ObjectController {
             throw new ApiException(ApiErrorCode.VALIDATION_ERROR, "max-uploads must be between 1 and 1000.");
         }
         return maxUploads;
+    }
+
+    private int normalizeMaxParts(Integer maxParts) {
+        if (maxParts == null) {
+            return DEFAULT_MAX_PARTS;
+        }
+        if (maxParts < 1 || maxParts > DEFAULT_MAX_PARTS) {
+            throw new ApiException(ApiErrorCode.VALIDATION_ERROR, "max-parts must be between 1 and 1000.");
+        }
+        return maxParts;
+    }
+
+    private int normalizePartNumberMarker(Integer partNumberMarker) {
+        if (partNumberMarker == null) {
+            return 0;
+        }
+        if (partNumberMarker < 0 || partNumberMarker > MAX_MULTIPART_PART_NUMBER) {
+            throw new ApiException(ApiErrorCode.VALIDATION_ERROR, "part-number-marker must be between 0 and 10000.");
+        }
+        return partNumberMarker;
+    }
+
+    private MultipartUploadPartsPage multipartUploadPartsPage(
+            MultipartUploadPartsResponse response,
+            int maxParts,
+            int partNumberMarker
+    ) {
+        List<MultipartUploadUploadedPart> afterMarker = response.parts().stream()
+                .filter(part -> part.partNumber() > partNumberMarker)
+                .sorted(java.util.Comparator.comparingInt(MultipartUploadUploadedPart::partNumber))
+                .toList();
+        boolean isTruncated = afterMarker.size() > maxParts;
+        List<MultipartUploadUploadedPart> pageParts = afterMarker.stream()
+                .limit(maxParts)
+                .toList();
+        Integer nextPartNumberMarker = isTruncated && !pageParts.isEmpty()
+                ? pageParts.get(pageParts.size() - 1).partNumber()
+                : null;
+        return new MultipartUploadPartsPage(partNumberMarker, maxParts, isTruncated, nextPartNumberMarker, pageParts);
     }
 
     private boolean useUrlEncoding(String encodingType) {
@@ -2265,6 +2322,18 @@ public class S3ObjectController {
             ChecksumResponseHeader responseHeader,
             Map<String, String> values
     ) {
+    }
+
+    private record MultipartUploadPartsPage(
+            int partNumberMarker,
+            int maxParts,
+            boolean isTruncated,
+            Integer nextPartNumberMarker,
+            List<MultipartUploadUploadedPart> parts
+    ) {
+        private String nextPartNumberMarkerValue() {
+            return nextPartNumberMarker == null ? "" : String.valueOf(nextPartNumberMarker);
+        }
     }
 
     private record ChecksumResponseHeader(String name, Map<String, String> values) {

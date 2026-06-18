@@ -421,15 +421,35 @@ class S3ObjectControllerMultipartTest {
                 10485760L,
                 5242880L,
                 2,
-                List.of(new MultipartUploadUploadedPart(1, "\"etag-1\"", 5242880L))
+                List.of(
+                        new MultipartUploadUploadedPart(1, "\"etag-1\"", 5242880L),
+                        new MultipartUploadUploadedPart(2, "\"etag-2\"", 5242880L),
+                        new MultipartUploadUploadedPart(3, "\"etag-3\"", 5242880L)
+                )
         ));
 
-        var listResponse = controller.listMultipartUploadParts("bucket", "videos/input.mp4", "upload-1", listRequest);
+        var listResponse = controller.listMultipartUploadParts("bucket", "videos/input.mp4", "upload-1", 1, 1, listRequest);
 
         assertThat(listResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(listResponse.getBody()).contains("<ListPartsResult");
-        assertThat(listResponse.getBody()).contains("<PartNumber>1</PartNumber>");
-        assertThat(listResponse.getBody()).contains("<ETag>\"etag-1\"</ETag>");
+        assertThat(listResponse.getBody()).contains("<PartNumberMarker>1</PartNumberMarker>");
+        assertThat(listResponse.getBody()).contains("<NextPartNumberMarker>2</NextPartNumberMarker>");
+        assertThat(listResponse.getBody()).contains("<MaxParts>1</MaxParts>");
+        assertThat(listResponse.getBody()).contains("<IsTruncated>true</IsTruncated>");
+        assertThat(listResponse.getBody()).contains("<PartNumber>2</PartNumber>");
+        assertThat(listResponse.getBody()).contains("<ETag>\"etag-2\"</ETag>");
+        assertThat(listResponse.getBody()).doesNotContain("<PartNumber>1</PartNumber>");
+        assertThat(listResponse.getBody()).doesNotContain("<PartNumber>3</PartNumber>");
+
+        assertThatThrownBy(() -> controller.listMultipartUploadParts(
+                "bucket",
+                "videos/input.mp4",
+                "upload-1",
+                1001,
+                0,
+                listRequest
+        )).isInstanceOfSatisfying(ApiException.class, exception ->
+                assertThat(exception.code()).isEqualTo(ApiErrorCode.VALIDATION_ERROR));
 
         MockHttpServletRequest abortRequest = request("DELETE");
         when(s3RequestAuthService.currentUser(abortRequest, "bucket", "WRITE")).thenReturn(user);

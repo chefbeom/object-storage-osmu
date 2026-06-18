@@ -31,7 +31,7 @@
 - The alias supports AWS SigV4 header authorization for access keys created with encrypted signing secret material.
 - The alias supports AWS SigV4 query/presigned URL authorization with `UNSIGNED-PAYLOAD` for S3-style object reads.
 - SigV4 auth enforces clock-skew and presigned URL expiration in the MVP.
-- Non-streaming SigV4 object and multipart part uploads validate signed `x-amz-content-sha256` against the actual body. `UNSIGNED-PAYLOAD` is allowed. AWS `aws-chunked` request bodies are decoded with exact decoded length validation, while per-chunk `chunk-signature` chain verification remains future work.
+- Non-streaming SigV4 object and multipart part uploads validate signed `x-amz-content-sha256` against the actual body. `UNSIGNED-PAYLOAD` is allowed. AWS `aws-chunked` request bodies are decoded with exact decoded length validation, per-chunk `chunk-signature` chain verification, and trailing checksum validation for SHA256/SHA1/CRC32/CRC32C.
 - The alias supports MVP virtual-hosted-style routing for configured host suffixes, such as `Host: {bucket}.localhost` with path `/api/s3/{objectKey}`.
 - Access Key root bucket listing only returns buckets in the key's still-valid scopes.
 - Access Key scope maps object actions to `WRITE`, `READ`, and `DELETE`.
@@ -47,12 +47,13 @@
 - S3 multipart part upload validates optional `Content-MD5`, signed `x-amz-content-sha256`, and one optional `x-amz-checksum-*` value header, and returns the matching checksum response header.
 - S3 multipart complete validates one optional final object `x-amz-checksum-*` value header against the completed object, stores matching checksum metadata, returns the matching checksum response header, and exposes it in complete-result XML.
 - S3 multipart complete request XML accepts optional per-part checksum elements and validates their syntax before storage completion.
+- S3 multipart ListParts supports `max-parts`/`part-number-marker` pagination and returns `PartNumberMarker`, `NextPartNumberMarker`, `MaxParts`, and `IsTruncated` XML fields.
 - Bucket-level responses include `x-amz-bucket-region`; MVP default region is `us-east-1`.
 - S3-style bucket creation currently uses Bearer JWT auth; bucket deletion supports JWT or an OSMU Access Key with target bucket `ADMIN` scope and requires an empty bucket.
 - `x-amz-tagging` and `X-OSMU-Tags` are accepted for upload tags.
 - Multi-object delete uses the same soft-delete behavior as the REST object API and treats missing keys as deleted for S3 compatibility.
 - Object tagging XML uses the same metadata tag store as the REST object API; tag read requires `READ`, tag update/delete requires `WRITE`.
-- Full SigV4 chunked streaming signature parity, unknown-size S3 multipart initiate parity, checksum trailer/CRC64NVME/full AWS checksum parity, automatic DNS/proxy provisioning for virtual-hosted-style domains, multi-range GET, full conditional request parity, exact CopyObject user-metadata/versioning/full-conditional parity, multipart ETag parity, exact CreateBucket/DeleteBucket parity, and exact AWS error schema parity remain future work. `dev-docs/s3-compatibility.md` tracks the supported/partial/unsupported matrix.
+- Unknown-size S3 multipart initiate parity, CRC64NVME/full AWS checksum parity, automatic DNS/proxy provisioning for virtual-hosted-style domains, multi-range GET, full conditional request parity, exact CopyObject user-metadata/versioning/full-conditional parity, multipart ETag parity, exact CreateBucket/DeleteBucket parity, and exact AWS error schema parity remain future work. `dev-docs/s3-compatibility.md` tracks the supported/partial/unsupported matrix.
 # Private Object Storage Platform 기획서 초안
 
 ## 1. 문서 개요
