@@ -30,37 +30,37 @@ public class DataFlowMonitoringService {
     public void recordUpload(String bucketName, String objectKey, long sizeBytes, String actorId, String source) {
         long normalizedBytes = positiveBytes(sizeBytes);
         persistEvent("UPLOAD", "upload", "INGRESS", bucketName, objectKey, actorId, "SUCCESS", normalizedBytes, "Upload completed", source);
-        incrementOperation("upload", "success", source);
-        incrementBytes("ingress", normalizedBytes, source);
+        incrementOperation("upload", "success", source, bucketName);
+        incrementBytes("ingress", normalizedBytes, source, bucketName);
     }
 
     public void recordDownload(String bucketName, String objectKey, long sizeBytes, String actorId, String source) {
         long normalizedBytes = positiveBytes(sizeBytes);
         persistEvent("DOWNLOAD", "download", "EGRESS", bucketName, objectKey, actorId, "SUCCESS", normalizedBytes, "Download started", source);
-        incrementOperation("download", "success", source);
-        incrementBytes("egress", normalizedBytes, source);
+        incrementOperation("download", "success", source, bucketName);
+        incrementBytes("egress", normalizedBytes, source, bucketName);
     }
 
     public void recordList(String bucketName, String actorId, String source) {
         persistEvent("LIST", "list", "METADATA", bucketName, "", actorId, "SUCCESS", 0L, "Object list read", source);
-        incrementOperation("list", "success", source);
+        incrementOperation("list", "success", source, bucketName);
     }
 
     public void recordDelete(String bucketName, String objectKey, String actorId, String source) {
         persistEvent("DELETE", "delete", "METADATA", bucketName, objectKey, actorId, "SUCCESS", 0L, "Object delete requested", source);
-        incrementOperation("delete", "success", source);
+        incrementOperation("delete", "success", source, bucketName);
     }
 
     public void recordCancel(String operation, String bucketName, String objectKey, String actorId, String source) {
         String normalizedOperation = normalizeOperation(operation);
         persistEvent("CANCEL", normalizedOperation, "CONTROL", bucketName, objectKey, actorId, "CANCELLED", 0L, "Transfer cancelled", source);
-        incrementOperation(normalizedOperation, "cancelled", source);
+        incrementOperation(normalizedOperation, "cancelled", source, bucketName);
     }
 
     public void recordFailure(String operation, String bucketName, String objectKey, String actorId, String message, String source) {
         String normalizedOperation = normalizeOperation(operation);
         persistEvent("FAILURE", normalizedOperation, "CONTROL", bucketName, objectKey, actorId, "FAILED", 0L, safeMessage(message), source);
-        incrementOperation(normalizedOperation, "failure", source);
+        incrementOperation(normalizedOperation, "failure", source, bucketName);
     }
 
     public DataFlowMonitoringResponse snapshot() {
@@ -167,17 +167,18 @@ public class DataFlowMonitoringService {
         ));
     }
 
-    private void incrementOperation(String operation, String status, String source) {
+    private void incrementOperation(String operation, String status, String source, String bucketName) {
         Counter.builder("osmu.data.flow.operations")
                 .description("OSMU data flow operations")
                 .tag("operation", normalizeOperation(operation))
                 .tag("status", tagValue(status))
                 .tag("source", tagValue(source))
+                .tag("bucket", tagValue(bucketName))
                 .register(meterRegistry)
                 .increment();
     }
 
-    private void incrementBytes(String direction, long bytes, String source) {
+    private void incrementBytes(String direction, long bytes, String source, String bucketName) {
         if (bytes <= 0) {
             return;
         }
@@ -186,6 +187,7 @@ public class DataFlowMonitoringService {
                 .baseUnit("bytes")
                 .tag("direction", tagValue(direction))
                 .tag("source", tagValue(source))
+                .tag("bucket", tagValue(bucketName))
                 .register(meterRegistry)
                 .increment(bytes);
     }

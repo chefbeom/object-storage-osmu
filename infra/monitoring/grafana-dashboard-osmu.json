@@ -118,10 +118,39 @@
       ]
     },
     {
+      "id": 7,
+      "type": "timeseries",
+      "title": "Data Flow Operations",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 20 },
+      "targets": [
+        {
+          "expr": "sum(rate(osmu_data_flow_operations_total{job=\"$job\"}[5m])) by (operation, status, source)",
+          "legendFormat": "{{operation}} {{status}} {{source}}"
+        }
+      ]
+    },
+    {
+      "id": 8,
+      "type": "timeseries",
+      "title": "Data Flow Bytes By Bucket",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 20 },
+      "targets": [
+        {
+          "expr": "sum(rate(osmu_data_flow_bytes_total{job=\"$job\"}[5m])) by (direction, bucket)",
+          "legendFormat": "{{direction}} {{bucket}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "Bps"
+        }
+      }
+    },
+    {
       "id": 6,
       "type": "text",
       "title": "MVP Durable Pilot Notes",
-      "gridPos": { "h": 6, "w": 24, "x": 0, "y": 20 },
+      "gridPos": { "h": 6, "w": 24, "x": 0, "y": 28 },
       "options": {
         "mode": "markdown",
         "content": "Durable pilot remains NO-GO until Docker/MariaDB/MinIO smoke, real S3 client smoke, Browser E2E, and restore drill execution all pass. Use `GET /api/admin/backup/status` for current backup readiness."

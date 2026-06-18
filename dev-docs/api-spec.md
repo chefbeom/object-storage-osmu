@@ -2372,7 +2372,7 @@ Persistence:
 
 - MariaDB mode persists events in `data_flow_events`; in-memory mode keeps runtime events only for local/demo execution.
 - The response is aggregated from persisted event rows matching the requested filters. The MVP summary scans up to the latest 10,000 matching events.
-- Micrometer counters are still emitted for Prometheus via `osmu.data.flow.operations` and `osmu.data.flow.bytes`.
+- Micrometer counters are still emitted for Prometheus via `osmu.data.flow.operations` and `osmu.data.flow.bytes` with source/status/direction/bucket labels for starter alerting.
 
 ### GET /api/admin/monitoring/data-flow/export.csv
 

@@ -38,7 +38,8 @@ class DataFlowMonitoringServiceTest {
         assertThat(snapshot.recentEvents()).hasSize(6);
         assertThat(snapshot.recentEvents().get(0).eventType()).isEqualTo("FAILURE");
         assertThat(meterRegistry.find("osmu.data.flow.operations").tag("operation", "upload").tag("status", "success").counter().count()).isEqualTo(1.0);
-        assertThat(meterRegistry.find("osmu.data.flow.bytes").tag("direction", "ingress").counter().count()).isEqualTo(1024.0);
+        assertThat(meterRegistry.find("osmu.data.flow.operations").tag("operation", "upload").tag("bucket", "media").counter().count()).isEqualTo(1.0);
+        assertThat(meterRegistry.find("osmu.data.flow.bytes").tag("direction", "ingress").tag("bucket", "media").counter().count()).isEqualTo(1024.0);
     }
 
     @Test

@@ -82,6 +82,42 @@ spec:
           annotations:
             summary: OSMU backup restore drill must be executed before durable pilot.
             description: This draft alert is a handoff reminder. Disable it only after a restore drill is executed and recorded for the target environment.
+        - alert: OsmuDataFlowFailureSpike
+          expr: sum(increase(osmu_data_flow_operations_total{job=~"osmu-backend.*",status="failure"}[15m])) > 5
+          for: 5m
+          labels:
+            severity: warning
+            service: osmu-data-flow
+          annotations:
+            summary: OSMU data-flow failure spike detected.
+            description: More than 5 failed upload/download/list/delete operations were recorded in the last 15 minutes.
+        - alert: OsmuDataFlowCancelSpike
+          expr: sum(increase(osmu_data_flow_operations_total{job=~"osmu-backend.*",status="cancelled"}[15m])) > 10
+          for: 5m
+          labels:
+            severity: warning
+            service: osmu-data-flow
+          annotations:
+            summary: OSMU data-flow cancel spike detected.
+            description: More than 10 cancelled transfer operations were recorded in the last 15 minutes.
+        - alert: OsmuDataFlowAbnormalEgress
+          expr: sum(rate(osmu_data_flow_bytes_total{job=~"osmu-backend.*",direction="egress"}[15m])) > 10485760
+          for: 10m
+          labels:
+            severity: warning
+            service: osmu-data-flow
+          annotations:
+            summary: OSMU data-flow egress rate is above the pilot threshold.
+            description: Total egress is above 10 MiB/s for 10 minutes. Tune this threshold for the target tenant and workload.
+        - alert: OsmuDataFlowBucketTrafficAnomaly
+          expr: max by (bucket) (rate(osmu_data_flow_bytes_total{job=~"osmu-backend.*",direction=~"ingress|egress"}[15m])) > 5242880
+          for: 10m
+          labels:
+            severity: warning
+            service: osmu-data-flow
+          annotations:
+            summary: OSMU bucket-level data-flow rate is above the pilot threshold.
+            description: Bucket {{ "{{" }} $labels.bucket {{ "}}" }} is above 5 MiB/s for 10 minutes. Tune this threshold or replace it with a tenant baseline before production.
         - alert: OsmuBackupCronJobFailed
           expr: kube_job_status_failed{namespace=~"osmu.*",job_name=~"osmu-(mariadb|minio)-backup.*"} > 0
           for: 5m

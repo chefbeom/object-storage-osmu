@@ -1959,8 +1959,8 @@ TC-FE-023 보강: 사용자가 취소한 경우에는 abort API를 호출한다.
 - Feature: Monitoring artifacts draft verification.
 - Preconditions: PowerShell is available.
 - Input: `powershell -ExecutionPolicy Bypass -File .\scripts\verify-monitoring-artifacts.ps1`
-- Steps: Verify `infra/monitoring` contains the Prometheus alert rule draft and Grafana dashboard draft, validate key alert names, parse the dashboard JSON, check required metric expressions, and ensure the operation monitoring document references the artifacts.
-- Expected: Pilot operators have a starter alert/dashboard contract for backend availability, error rate, latency, retention purge failures, multipart cleanup failures, and backup readiness handoff.
+- Steps: Verify `infra/monitoring` contains the Prometheus alert rule draft and Grafana dashboard draft, validate key alert names including data-flow failure/cancel/egress/bucket anomaly alerts, parse the dashboard JSON, check required metric expressions, and ensure the operation monitoring document references the artifacts.
+- Expected: Pilot operators have a starter alert/dashboard contract for backend availability, error rate, latency, retention purge failures, multipart cleanup failures, data-flow operations/bytes anomalies, and backup readiness handoff.
 - Priority: P2
 - Automated: `scripts/verify-monitoring-artifacts.ps1`
 
@@ -1969,7 +1969,7 @@ TC-FE-023 보강: 사용자가 취소한 경우에는 abort API를 호출한다.
 - Feature: Prometheus Operator draft verification.
 - Preconditions: PowerShell is available.
 - Input: `powershell -ExecutionPolicy Bypass -File .\scripts\verify-prometheus-operator-draft.ps1`
-- Steps: Verify the optional Kubernetes `monitoring-operator.yaml` and Helm `monitoring-operator.yaml` template define `ServiceMonitor` and `PrometheusRule` resources, check scrape path/interval labels, confirm starter backend alerts exist, and ensure the plain kustomization does not apply CRD resources by default.
+- Steps: Verify the optional Kubernetes `monitoring-operator.yaml` and Helm `monitoring-operator.yaml` template define `ServiceMonitor` and `PrometheusRule` resources, check scrape path/interval labels, confirm starter backend and data-flow alerts exist, and ensure the plain kustomization does not apply CRD resources by default.
 - Expected: Pilot operators can enable Prometheus Operator integration in clusters with `monitoring.coreos.com/v1` CRDs, while default Kubernetes apply remains safe in clusters without those CRDs.
 - Priority: P2
 - Automated: `scripts/verify-prometheus-operator-draft.ps1`
