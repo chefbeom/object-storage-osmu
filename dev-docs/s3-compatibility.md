@@ -34,7 +34,7 @@
 
 | Operation | Status | Notes |
 | --- | --- | --- |
-| `PUT Object` | Supported | Tags, content type, user metadata, ETag, checksum headers, quota, version snapshot on overwrite. |
+| `PUT Object` | Supported | Tags, content type, user metadata, ETag, checksum headers, destination `If-Match`/`If-None-Match` overwrite guards, quota, version snapshot on overwrite. |
 | `HEAD Object` | Supported | ETag, checksum headers, content metadata, user metadata, conditional headers. |
 | `GET Object` | Supported | Single range request with `If-Range`, ETag/checksum/user-metadata headers, conditional headers, and AWS-documented combined conditional precedence. Multi-range is rejected because AWS S3 does not support multiple ranges per GET. |
 | `DELETE Object` | Supported | OSMU soft-delete semantics; purge is handled by REST/admin lifecycle paths. |

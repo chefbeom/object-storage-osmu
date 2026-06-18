@@ -182,6 +182,64 @@ class S3ObjectControllerTest {
                 .andExpect(status().isNotModified())
                 .andExpect(header().string(HttpHeaders.ETAG, etag));
 
+        mockMvc.perform(put("/api/s3/{bucketName}/docs/sample.txt", bucketName)
+                        .header("X-OSMU-Access-Key", credentials.accessKey())
+                        .header("X-OSMU-Secret-Key", credentials.secretKey())
+                        .header(HttpHeaders.IF_NONE_MATCH, "*")
+                        .contentType(MediaType.TEXT_PLAIN)
+                        .content("blocked overwrite"))
+                .andExpect(status().isPreconditionFailed())
+                .andExpect(content().string(containsString("<Code>PreconditionFailed</Code>")));
+
+        mockMvc.perform(put("/api/s3/{bucketName}/docs/sample.txt", bucketName)
+                        .header("X-OSMU-Access-Key", credentials.accessKey())
+                        .header("X-OSMU-Secret-Key", credentials.secretKey())
+                        .header(HttpHeaders.IF_MATCH, "\"different\"")
+                        .contentType(MediaType.TEXT_PLAIN)
+                        .content("blocked mismatch"))
+                .andExpect(status().isPreconditionFailed())
+                .andExpect(content().string(containsString("<Code>PreconditionFailed</Code>")));
+
+        mockMvc.perform(put("/api/s3/{bucketName}/docs/put-if-match-missing.txt", bucketName)
+                        .header("X-OSMU-Access-Key", credentials.accessKey())
+                        .header("X-OSMU-Secret-Key", credentials.secretKey())
+                        .header(HttpHeaders.IF_MATCH, etag)
+                        .contentType(MediaType.TEXT_PLAIN)
+                        .content("blocked missing"))
+                .andExpect(status().isPreconditionFailed())
+                .andExpect(content().string(containsString("<Code>PreconditionFailed</Code>")));
+
+        mockMvc.perform(put("/api/s3/{bucketName}/docs/put-if-none-match.txt", bucketName)
+                        .header("X-OSMU-Access-Key", credentials.accessKey())
+                        .header("X-OSMU-Secret-Key", credentials.secretKey())
+                        .header(HttpHeaders.IF_NONE_MATCH, "*")
+                        .contentType(MediaType.TEXT_PLAIN)
+                        .content("created with guard"))
+                .andExpect(status().isOk())
+                .andExpect(header().string(HttpHeaders.ETAG, containsString("\"")));
+
+        MvcResult guardedOverwriteResult = mockMvc.perform(put("/api/s3/{bucketName}/docs/sample.txt", bucketName)
+                        .header("X-OSMU-Access-Key", credentials.accessKey())
+                        .header("X-OSMU-Secret-Key", credentials.secretKey())
+                        .header(HttpHeaders.IF_MATCH, etag)
+                        .contentType(MediaType.TEXT_PLAIN)
+                        .content("hello s3 overwrite"))
+                .andExpect(status().isOk())
+                .andExpect(header().string(HttpHeaders.ETAG, containsString("\"")))
+                .andReturn();
+        String overwrittenEtag = guardedOverwriteResult.getResponse().getHeader(HttpHeaders.ETAG);
+
+        MvcResult overwrittenDownloadResult = mockMvc.perform(get("/api/s3/{bucketName}/docs/sample.txt", bucketName)
+                        .header("X-OSMU-Access-Key", credentials.accessKey())
+                        .header("X-OSMU-Secret-Key", credentials.secretKey()))
+                .andExpect(request().asyncStarted())
+                .andReturn();
+
+        mockMvc.perform(asyncDispatch(overwrittenDownloadResult))
+                .andExpect(status().isOk())
+                .andExpect(header().string(HttpHeaders.ETAG, overwrittenEtag))
+                .andExpect(content().string("hello s3 overwrite"));
+
         mockMvc.perform(delete("/api/s3/{bucketName}/docs/sample.txt", bucketName)
                         .header("X-OSMU-Access-Key", credentials.accessKey())
                         .header("X-OSMU-Secret-Key", credentials.secretKey()))

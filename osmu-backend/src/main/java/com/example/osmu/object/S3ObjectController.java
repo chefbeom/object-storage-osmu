@@ -416,6 +416,7 @@ public class S3ObjectController {
             return copyObject(bucketName, objectKey, copySourceHeader, request);
         }
         AuthenticatedUser user = s3RequestAuthService.currentUser(request, bucketName, "WRITE");
+        assertCopyTargetPreconditions(request, bucketName, objectKey, user);
         RequestBodyContent requestContent = requestBodyContent(request, "S3 object upload");
         long contentLength = requestContent.contentLength();
         StoredObjectRecord object;
