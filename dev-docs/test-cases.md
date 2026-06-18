@@ -123,11 +123,11 @@
 
 - Feature: S3-style bucket create/delete alias.
 - Preconditions: Admin can authenticate with Bearer JWT. Empty target bucket can receive an access key with `ADMIN` scope after creation.
-- Input: `PUT /api/s3/{bucketName}` with `Authorization: Bearer <token>`, then `DELETE /api/s3/{bucketName}` with `X-OSMU-Access-Key` and `X-OSMU-Secret-Key`.
-- Steps: Create a bucket through the S3-style path, create an access key with `ADMIN` scope for the bucket, HEAD the bucket through the access key, delete the empty bucket through the S3-style path, then HEAD the bucket again.
-- Expected: Create returns `200`, `Location: /{bucketName}`, and `x-amz-bucket-region`. Access key HEAD returns `200`. Delete returns `204`. HEAD after delete returns `404 NoSuchBucket`.
+- Input: `PUT /api/s3/{bucketName}` with `Authorization: Bearer <token>`, optional `CreateBucketConfiguration/LocationConstraint` XML, then `DELETE /api/s3/{bucketName}` with `X-OSMU-Access-Key` and `X-OSMU-Secret-Key`.
+- Steps: Create a bucket through the S3-style path, create a bucket with matching `LocationConstraint`, reject a mismatched `LocationConstraint`, create an access key with `ADMIN` scope for the bucket, HEAD the bucket through the access key, delete the empty bucket through the S3-style path, then HEAD the bucket again.
+- Expected: Create returns `200`, `Location: /{bucketName}`, and `x-amz-bucket-region`. Matching `LocationConstraint` succeeds. Mismatched `LocationConstraint` returns S3 XML `InvalidRequest` and does not create the bucket. Access key HEAD returns `200`. Delete returns `204`. HEAD after delete returns `404 NoSuchBucket`.
 - Priority: P1
-- Automated: `S3ObjectControllerTest.bearerCanCreateAndAccessKeyCanDeleteBucketThroughS3StylePath`
+- Automated: `S3ObjectControllerTest.bearerCanCreateAndAccessKeyCanDeleteBucketThroughS3StylePath`, `S3ObjectControllerTest.bearerCanCreateBucketWithS3LocationConstraintXml`
 
 ### TC-S3-AUTH-001
 

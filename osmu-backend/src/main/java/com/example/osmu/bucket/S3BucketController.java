@@ -3,7 +3,14 @@ package com.example.osmu.bucket;
 import com.example.osmu.audit.AuditLogService;
 import com.example.osmu.auth.AuthContext;
 import com.example.osmu.auth.AuthenticatedUser;
+import com.example.osmu.common.error.ApiErrorCode;
+import com.example.osmu.common.error.ApiException;
 import jakarta.servlet.http.HttpServletRequest;
+import java.io.ByteArrayInputStream;
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import javax.xml.parsers.DocumentBuilderFactory;
+import javax.xml.parsers.ParserConfigurationException;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
@@ -15,6 +22,9 @@ import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestMethod;
 import org.springframework.web.bind.annotation.RestController;
+import org.w3c.dom.Element;
+import org.w3c.dom.NodeList;
+import org.xml.sax.SAXException;
 
 @RestController
 @RequestMapping({"/api/s3/{bucketName}", "/{bucketName}"})
@@ -48,6 +58,7 @@ public class S3BucketController {
             HttpServletRequest request
     ) {
         AuthenticatedUser user = authContext.currentUser(request);
+        validateCreateBucketLocation(request);
         BucketRecord bucket = bucketService.create(new CreateBucketRequest(bucketName, null, null, null), user);
         auditLogService.record("S3_BUCKET_CREATE", user.loginId(), "BUCKET", bucket.name(), "SUCCESS", "S3-style bucket created", request);
         return ResponseEntity.ok()
@@ -100,5 +111,49 @@ public class S3BucketController {
     private String locationXml() {
         return "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
                 + "<LocationConstraint xmlns=\"%s\">%s</LocationConstraint>".formatted(AWS_XML_NAMESPACE, region);
+    }
+
+    private void validateCreateBucketLocation(HttpServletRequest request) {
+        String body;
+        try {
+            body = new String(request.getInputStream().readAllBytes(), StandardCharsets.UTF_8).trim();
+        } catch (IOException exception) {
+            throw new ApiException(ApiErrorCode.VALIDATION_ERROR, "CreateBucketConfiguration XML could not be read.");
+        }
+        if (body.isBlank()) {
+            return;
+        }
+        String requestedRegion = createBucketLocationConstraint(body);
+        if (requestedRegion.isBlank()) {
+            return;
+        }
+        if (!requestedRegion.equals(region)) {
+            throw new ApiException(
+                    ApiErrorCode.VALIDATION_ERROR,
+                    "CreateBucket LocationConstraint must match storage region " + region + "."
+            );
+        }
+    }
+
+    private String createBucketLocationConstraint(String rawXml) {
+        try {
+            DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
+            factory.setNamespaceAware(true);
+            factory.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true);
+            factory.setFeature("http://xml.org/sax/features/external-general-entities", false);
+            factory.setFeature("http://xml.org/sax/features/external-parameter-entities", false);
+            factory.setXIncludeAware(false);
+            factory.setExpandEntityReferences(false);
+            Element root = factory.newDocumentBuilder()
+                    .parse(new ByteArrayInputStream(rawXml.getBytes(StandardCharsets.UTF_8)))
+                    .getDocumentElement();
+            NodeList constraints = root.getElementsByTagNameNS("*", "LocationConstraint");
+            if (constraints.getLength() == 0) {
+                return "";
+            }
+            return constraints.item(0).getTextContent() == null ? "" : constraints.item(0).getTextContent().trim();
+        } catch (ParserConfigurationException | SAXException | IOException exception) {
+            throw new ApiException(ApiErrorCode.VALIDATION_ERROR, "Invalid CreateBucketConfiguration XML.");
+        }
     }
 }

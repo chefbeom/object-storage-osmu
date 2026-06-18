@@ -1243,7 +1243,7 @@ Prototype path-style bucket/object API for S3 client interoperability.
 
 - `GET /api/s3` returns S3-compatible `ListAllMyBucketsResult` XML.
 - `HEAD /api/s3` validates the same credentials as root bucket listing and returns `200 OK` with no body.
-- `PUT /api/s3/{bucketName}` creates a bucket through the S3-style path. MVP creation uses Bearer JWT auth because an access key cannot be scoped to a bucket that does not exist yet.
+- `PUT /api/s3/{bucketName}` creates a bucket through the S3-style path. MVP creation uses Bearer JWT auth because an access key cannot be scoped to a bucket that does not exist yet. Optional `CreateBucketConfiguration/LocationConstraint` XML is accepted when it matches the configured storage region.
 - `HEAD /api/s3/{bucketName}` checks bucket existence/access and returns `x-amz-bucket-region`.
 - `GET /api/s3/{bucketName}?location` returns S3-compatible `LocationConstraint` XML.
 - `GET /api/s3/{bucketName}?tagging` returns S3-compatible bucket tagging XML.
@@ -1370,6 +1370,14 @@ Bucket location XML:
 <LocationConstraint xmlns="http://s3.amazonaws.com/doc/2006-03-01/">us-east-1</LocationConstraint>
 ```
 
+CreateBucket XML:
+
+```xml
+<CreateBucketConfiguration xmlns="http://s3.amazonaws.com/doc/2006-03-01/">
+  <LocationConstraint>us-east-1</LocationConstraint>
+</CreateBucketConfiguration>
+```
+
 Multi-object delete XML:
 
 ```xml
@@ -1449,7 +1457,7 @@ Limitations:
 - S3 multipart upload path is MVP-level and currently requires OSMU expected-size headers at initiate time.
 - S3 multipart uploads listing is backed by OSMU active multipart sessions, not a raw MinIO bucket scan.
 - Virtual-hosted-style routing currently extracts the bucket from the left side of a configured domain suffix. Production deployments must configure DNS/proxy hosts such as `{bucket}.storage.example.com` and set `osmu.s3.virtual-hosted-style.domain-suffixes=storage.example.com`.
-- Multi-range GET, full conditional request parity, CopyObject user-metadata/versioning/full-conditional parity, exact CreateBucket/DeleteBucket parity, full AWS multipart checksum aggregation parity, full multipart ETag parity, and exact AWS error schema parity are not implemented yet. See `s3-compatibility.md` for the supported/partial/unsupported matrix.
+- Multi-range GET, full conditional request parity, CopyObject user-metadata/versioning/full-conditional parity, exact CreateBucket/DeleteBucket error parity, full AWS multipart checksum aggregation parity, full multipart ETag parity, and exact AWS error schema parity are not implemented yet. See `s3-compatibility.md` for the supported/partial/unsupported matrix.
 
 ### GET /api/buckets/{bucketName}/permissions
 

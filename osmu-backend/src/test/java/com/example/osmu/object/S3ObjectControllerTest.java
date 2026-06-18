@@ -767,6 +767,46 @@ class S3ObjectControllerTest {
     }
 
     @Test
+    void bearerCanCreateBucketWithS3LocationConstraintXml() throws Exception {
+        String token = loginAndReturnAccessToken("admin", "password");
+        String bucketName = "s3-bucket-location-create-bucket";
+        String invalidBucketName = "s3-bucket-location-invalid-bucket";
+
+        mockMvc.perform(put("/api/s3/{bucketName}", bucketName)
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_XML)
+                        .content("""
+                                <CreateBucketConfiguration xmlns="http://s3.amazonaws.com/doc/2006-03-01/">
+                                  <LocationConstraint>us-east-1</LocationConstraint>
+                                </CreateBucketConfiguration>
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(header().string(HttpHeaders.LOCATION, "/" + bucketName))
+                .andExpect(header().string("x-amz-bucket-region", "us-east-1"));
+
+        mockMvc.perform(head("/api/s3/{bucketName}", bucketName)
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(header().string("x-amz-bucket-region", "us-east-1"));
+
+        mockMvc.perform(put("/api/s3/{bucketName}", invalidBucketName)
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_XML)
+                        .content("""
+                                <CreateBucketConfiguration xmlns="http://s3.amazonaws.com/doc/2006-03-01/">
+                                  <LocationConstraint>eu-west-1</LocationConstraint>
+                                </CreateBucketConfiguration>
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_XML))
+                .andExpect(content().string(containsString("<Code>InvalidRequest</Code>")));
+
+        mockMvc.perform(head("/api/s3/{bucketName}", invalidBucketName)
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
     void accessKeyCanListScopedBucketsThroughS3Root() throws Exception {
         String token = loginAndReturnAccessToken("admin", "password");
         String bucketName = "s3-root-list-bucket-a";

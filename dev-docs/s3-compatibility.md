@@ -21,7 +21,7 @@
 
 | Operation | Status | Notes |
 | --- | --- | --- |
-| `PUT Bucket` | MVP supported | Reuses `BucketService.create`; Bearer JWT path is the primary create path. |
+| `PUT Bucket` | MVP supported | Reuses `BucketService.create`; Bearer JWT path is the primary create path. Optional `CreateBucketConfiguration/LocationConstraint` XML is accepted when it matches the configured storage region. |
 | `HEAD Bucket` | Supported | Auth/readiness probe. |
 | `GET Bucket location` | Supported | Region-compatible response. |
 | `DELETE Bucket` | MVP supported | Requires empty bucket and `ADMIN` scope. Exact AWS error parity is not guaranteed. |
