@@ -89,6 +89,9 @@ public final class S3ErrorCodeMapper {
         if ("IncompleteBody".equals(s3Code)) {
             return "You did not provide the number of bytes specified by the Content-Length HTTP header";
         }
+        if ("MalformedXML".equals(s3Code)) {
+            return "The XML you provided was not well-formed or did not validate against our published schema.";
+        }
         return message == null || message.isBlank() ? s3Code : message;
     }
 
@@ -121,6 +124,9 @@ public final class S3ErrorCodeMapper {
         }
         if (normalized.contains("request body length does not match expected content length")) {
             return "IncompleteBody";
+        }
+        if (normalized.contains("invalid ") && normalized.contains(" xml")) {
+            return "MalformedXML";
         }
         return "InvalidRequest";
     }

@@ -31,6 +31,8 @@ class S3ErrorCodeMapperTest {
                 "Content-Length is required for S3 object upload.")).isEqualTo("MissingContentLength");
         assertThat(S3ErrorCodeMapper.codeFor(ApiErrorCode.VALIDATION_ERROR,
                 "Request body length does not match expected content length.")).isEqualTo("IncompleteBody");
+        assertThat(S3ErrorCodeMapper.codeFor(ApiErrorCode.VALIDATION_ERROR,
+                "Invalid CreateBucketConfiguration XML.")).isEqualTo("MalformedXML");
         assertThat(S3ErrorCodeMapper.codeFor(ApiErrorCode.QUOTA_EXCEEDED, "quota")).isEqualTo("EntityTooLarge");
         assertThat(S3ErrorCodeMapper.codeFor(ApiErrorCode.CONFLICT, "conflict")).isEqualTo("OperationAborted");
         assertThat(S3ErrorCodeMapper.codeFor(ApiErrorCode.CONFLICT, "Bucket is not empty.")).isEqualTo("BucketNotEmpty");
@@ -86,5 +88,7 @@ class S3ErrorCodeMapperTest {
                 .isEqualTo("You must provide the Content-Length HTTP header.");
         assertThat(S3ErrorCodeMapper.messageFor("IncompleteBody", "Request body length does not match expected content length."))
                 .isEqualTo("You did not provide the number of bytes specified by the Content-Length HTTP header");
+        assertThat(S3ErrorCodeMapper.messageFor("MalformedXML", "Invalid CreateBucketConfiguration XML."))
+                .isEqualTo("The XML you provided was not well-formed or did not validate against our published schema.");
     }
 }

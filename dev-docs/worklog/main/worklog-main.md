@@ -1,5 +1,37 @@
 # Worklog - main
 
+### 2026-06-19 - S3 MalformedXML error parity
+
+- Work time:
+  - End: 2026-06-19 KST
+- User command:
+  - Active goal: continue development from `dev-docs`.
+- Request analysis:
+  - `dev-docs` still track remaining AWS non-bucket per-error message/status nuance.
+  - AWS S3 error docs define `MalformedXML` as HTTP `400 Bad Request` with the message that the XML was not well-formed or did not validate against the published schema.
+  - OSMU rejected malformed CreateBucketConfiguration/tagging XML, but S3 XML errors still surfaced generic `InvalidRequest`.
+- Execution:
+  - Mapped validation failures with `Invalid ... XML.` messages to S3 XML `MalformedXML`.
+  - Normalized the S3 XML message to AWS-style text.
+  - Updated CreateBucket invalid-root/duplicate-LocationConstraint assertions to expect `MalformedXML`.
+  - Added bucket tagging malformed XML regression coverage while keeping schema-specific missing tag value errors as `InvalidRequest`.
+  - Updated README and `dev-docs`.
+- Modified files:
+  - `osmu-backend/src/main/java/com/example/osmu/common/error/S3ErrorCodeMapper.java`
+  - `osmu-backend/src/test/java/com/example/osmu/common/error/S3ErrorCodeMapperTest.java`
+  - `osmu-backend/src/test/java/com/example/osmu/object/S3ObjectControllerTest.java`
+  - `osmu-backend/src/test/java/com/example/osmu/bucket/BucketTaggingControllerTest.java`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/backend-design.md`
+  - `dev-docs/s3-compatibility.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/feature-inventory.md`
+  - `dev-docs/worklog/main/worklog-main.md`
+- Tests:
+  - `$env:JAVA_HOME='C:\jdk-17'; .\gradlew.bat test --no-daemon --tests com.example.osmu.common.error.S3ErrorCodeMapperTest --tests com.example.osmu.object.S3ObjectControllerTest.createBucketRejectsInvalidCreateBucketConfigurationXml --tests com.example.osmu.bucket.BucketTaggingControllerTest.malformedS3BucketTaggingXmlReturnsMalformedXml --tests com.example.osmu.bucket.BucketTaggingControllerTest.invalidS3BucketTaggingXmlReturnsInvalidRequest`: passed.
+- Follow-up:
+  - Continue remaining AWS checksum real-client option coverage and non-bucket per-error status/message nuance.
+
 ### 2026-06-19 - S3 IncompleteBody error parity
 
 - Work time:

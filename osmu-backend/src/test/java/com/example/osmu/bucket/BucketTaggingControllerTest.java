@@ -202,6 +202,23 @@ class BucketTaggingControllerTest {
                 .andExpect(content().string(containsString("<Code>InvalidRequest</Code>")));
     }
 
+    @Test
+    void malformedS3BucketTaggingXmlReturnsMalformedXml() throws Exception {
+        String token = loginAndReturnAccessToken("admin", "password");
+        String bucketName = "s3-bucket-tagging-malformed-bucket";
+        createBucket(token, bucketName);
+
+        mockMvc.perform(put("/api/s3/{bucketName}", bucketName)
+                        .queryParam("tagging", "")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_XML)
+                        .content("<Tagging><TagSet>"))
+                .andExpect(status().isBadRequest())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_XML))
+                .andExpect(content().string(containsString("<Code>MalformedXML</Code>")))
+                .andExpect(content().string(containsString("<Message>The XML you provided was not well-formed or did not validate against our published schema.</Message>")));
+    }
+
     private void createBucket(String token, String bucketName) throws Exception {
         mockMvc.perform(post("/api/buckets")
                         .header("Authorization", "Bearer " + token)

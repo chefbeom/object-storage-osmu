@@ -1218,7 +1218,8 @@ class S3ObjectControllerTest {
                                 """))
                 .andExpect(status().isBadRequest())
                 .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_XML))
-                .andExpect(content().string(containsString("<Code>InvalidRequest</Code>")));
+                .andExpect(content().string(containsString("<Code>MalformedXML</Code>")))
+                .andExpect(content().string(containsString("<Message>The XML you provided was not well-formed or did not validate against our published schema.</Message>")));
 
         mockMvc.perform(head("/api/s3/{bucketName}", invalidRootBucketName)
                         .header("Authorization", "Bearer " + token))
@@ -1235,7 +1236,8 @@ class S3ObjectControllerTest {
                                 """))
                 .andExpect(status().isBadRequest())
                 .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_XML))
-                .andExpect(content().string(containsString("<Code>InvalidRequest</Code>")));
+                .andExpect(content().string(containsString("<Code>MalformedXML</Code>")))
+                .andExpect(content().string(containsString("<Message>The XML you provided was not well-formed or did not validate against our published schema.</Message>")));
 
         mockMvc.perform(head("/api/s3/{bucketName}", duplicateLocationBucketName)
                         .header("Authorization", "Bearer " + token))
