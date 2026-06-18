@@ -79,6 +79,7 @@ public class S3ObjectController {
     private static final String AWS_CHECKSUM_SHA1_HEADER = "x-amz-checksum-sha1";
     private static final String AWS_CHECKSUM_CRC32_HEADER = "x-amz-checksum-crc32";
     private static final String AWS_CHECKSUM_CRC32C_HEADER = "x-amz-checksum-crc32c";
+    private static final String AWS_CHECKSUM_CRC64NVME_HEADER = "x-amz-checksum-crc64nvme";
     private static final String AWS_UNSIGNED_PAYLOAD = "UNSIGNED-PAYLOAD";
     private static final String AWS_STREAMING_PAYLOAD_PREFIX = "STREAMING-";
     private static final String AWS_CHUNKED_CONTENT_ENCODING = "aws-chunked";
@@ -963,6 +964,7 @@ public class S3ObjectController {
                 addOptionalChecksum(checksums, part, "ChecksumSHA1", AWS_CHECKSUM_SHA1_HEADER);
                 addOptionalChecksum(checksums, part, "ChecksumCRC32", AWS_CHECKSUM_CRC32_HEADER);
                 addOptionalChecksum(checksums, part, "ChecksumCRC32C", AWS_CHECKSUM_CRC32C_HEADER);
+                addOptionalChecksum(checksums, part, "ChecksumCRC64NVME", AWS_CHECKSUM_CRC64NVME_HEADER);
                 parts.add(new CompletedMultipartUploadPart(partNumber, etag, checksums));
             }
             return parts;
@@ -1548,6 +1550,7 @@ public class S3ObjectController {
             case AWS_CHECKSUM_SHA1_HEADER -> "SHA1";
             case AWS_CHECKSUM_CRC32_HEADER -> "CRC32";
             case AWS_CHECKSUM_CRC32C_HEADER -> "CRC32C";
+            case AWS_CHECKSUM_CRC64NVME_HEADER -> "CRC64NVME";
             default -> "";
         };
     }
@@ -1567,6 +1570,7 @@ public class S3ObjectController {
             case AWS_CHECKSUM_SHA1_HEADER -> "ChecksumSHA1";
             case AWS_CHECKSUM_CRC32_HEADER -> "ChecksumCRC32";
             case AWS_CHECKSUM_CRC32C_HEADER -> "ChecksumCRC32C";
+            case AWS_CHECKSUM_CRC64NVME_HEADER -> "ChecksumCRC64NVME";
             default -> "";
         };
     }
@@ -1672,6 +1676,14 @@ public class S3ObjectController {
         addMessageDigestChecksum(validators, checksumValues, request, AWS_CHECKSUM_SHA1_HEADER, "SHA-1", 20);
         addCrcChecksum(validators, checksumValues, request, AWS_CHECKSUM_CRC32_HEADER, new CRC32());
         addCrcChecksum(validators, checksumValues, request, AWS_CHECKSUM_CRC32C_HEADER, new CRC32C());
+        addCrcChecksum(
+                validators,
+                checksumValues,
+                request,
+                AWS_CHECKSUM_CRC64NVME_HEADER,
+                new Crc64NvmeChecksum(),
+                Crc64NvmeChecksum.DIGEST_LENGTH_BYTES
+        );
         String trailerChecksumHeader = requestedTrailerChecksumHeader(request, requestContent);
         if (trailerChecksumHeader != null) {
             addTrailerChecksum(validators, checksumValues, requestContent.chunkedInputStream(), trailerChecksumHeader);
@@ -1694,7 +1706,8 @@ public class S3ObjectController {
                 AWS_CHECKSUM_SHA256_HEADER,
                 AWS_CHECKSUM_SHA1_HEADER,
                 AWS_CHECKSUM_CRC32_HEADER,
-                AWS_CHECKSUM_CRC32C_HEADER
+                AWS_CHECKSUM_CRC32C_HEADER,
+                AWS_CHECKSUM_CRC64NVME_HEADER
         )) {
             String value = request.getHeader(headerName);
             if (value != null && !value.isBlank()) {
@@ -1750,6 +1763,17 @@ public class S3ObjectController {
             String headerName,
             Checksum checksum
     ) {
+        addCrcChecksum(validators, checksumValues, request, headerName, checksum, 4);
+    }
+
+    private void addCrcChecksum(
+            List<BodyChecksumValidator> validators,
+            Map<String, String> checksumValues,
+            HttpServletRequest request,
+            String headerName,
+            Checksum checksum,
+            int expectedLength
+    ) {
         String rawChecksum = request.getHeader(headerName);
         if (rawChecksum == null || rawChecksum.isBlank()) {
             return;
@@ -1758,7 +1782,7 @@ public class S3ObjectController {
         validators.add(BodyChecksumValidator.crc(
                 headerName,
                 checksum,
-                decodeChecksum(headerName, rawChecksum, 4)
+                decodeChecksum(headerName, rawChecksum, expectedLength)
         ));
     }
 
@@ -1792,7 +1816,8 @@ public class S3ObjectController {
         return AWS_CHECKSUM_SHA256_HEADER.equals(headerName)
                 || AWS_CHECKSUM_SHA1_HEADER.equals(headerName)
                 || AWS_CHECKSUM_CRC32_HEADER.equals(headerName)
-                || AWS_CHECKSUM_CRC32C_HEADER.equals(headerName);
+                || AWS_CHECKSUM_CRC32C_HEADER.equals(headerName)
+                || AWS_CHECKSUM_CRC64NVME_HEADER.equals(headerName);
     }
 
     private void addTrailerChecksum(
@@ -1819,12 +1844,21 @@ public class S3ObjectController {
             case AWS_CHECKSUM_CRC32_HEADER -> validators.add(BodyChecksumValidator.trailerCrc(
                     headerName,
                     new CRC32(),
+                    4,
                     chunkedInputStream,
                     checksumValues
             ));
             case AWS_CHECKSUM_CRC32C_HEADER -> validators.add(BodyChecksumValidator.trailerCrc(
                     headerName,
                     new CRC32C(),
+                    4,
+                    chunkedInputStream,
+                    checksumValues
+            ));
+            case AWS_CHECKSUM_CRC64NVME_HEADER -> validators.add(BodyChecksumValidator.trailerCrc(
+                    headerName,
+                    new Crc64NvmeChecksum(),
+                    Crc64NvmeChecksum.DIGEST_LENGTH_BYTES,
                     chunkedInputStream,
                     checksumValues
             ));
@@ -2237,10 +2271,11 @@ public class S3ObjectController {
         private static BodyChecksumValidator trailerCrc(
                 String headerName,
                 Checksum checksum,
+                int expectedLength,
                 AwsChunkedInputStream trailerSource,
                 Map<String, String> checksumValues
         ) {
-            return new BodyChecksumValidator(headerName, null, checksum, null, 4, trailerSource, checksumValues);
+            return new BodyChecksumValidator(headerName, null, checksum, null, expectedLength, trailerSource, checksumValues);
         }
 
         private void update(int value) {
@@ -2263,7 +2298,7 @@ public class S3ObjectController {
             byte[] expected = expectedDigest();
             byte[] actualDigest = messageDigest != null
                     ? messageDigest.digest()
-                    : intDigest(checksum.getValue());
+                    : checksumDigest(checksum.getValue(), expectedLength);
             if (!MessageDigest.isEqual(expected, actualDigest)) {
                 throw new ApiException(ApiErrorCode.BAD_DIGEST, headerName + " does not match uploaded object body.");
             }
@@ -2290,6 +2325,10 @@ public class S3ObjectController {
             return decodeChecksum(headerName, rawChecksum, expectedLength);
         }
 
+        private static byte[] checksumDigest(long value, int length) {
+            return length == 8 ? longDigest(value) : intDigest(value);
+        }
+
         private static byte[] intDigest(long value) {
             long normalized = value & 0xffffffffL;
             return new byte[]{
@@ -2297,6 +2336,19 @@ public class S3ObjectController {
                     (byte) (normalized >>> 16),
                     (byte) (normalized >>> 8),
                     (byte) normalized
+            };
+        }
+
+        private static byte[] longDigest(long value) {
+            return new byte[]{
+                    (byte) (value >>> 56),
+                    (byte) (value >>> 48),
+                    (byte) (value >>> 40),
+                    (byte) (value >>> 32),
+                    (byte) (value >>> 24),
+                    (byte) (value >>> 16),
+                    (byte) (value >>> 8),
+                    (byte) value
             };
         }
     }

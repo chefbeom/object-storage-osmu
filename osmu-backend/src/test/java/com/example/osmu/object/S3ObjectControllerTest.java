@@ -212,6 +212,59 @@ class S3ObjectControllerTest {
     }
 
     @Test
+    void accessKeyCanUploadWithCrc64NvmeChecksum() throws Exception {
+        String token = loginAndReturnAccessToken("admin", "password");
+        String bucketName = "s3-object-crc64nvme-bucket";
+        createBucket(token, bucketName);
+        AccessKeyCredentials credentials = createAccessKey(token, bucketName, "READ", "WRITE");
+        String body = "123456789";
+        String checksum = "rosUhgp5mIg=";
+
+        mockMvc.perform(put("/api/s3/{bucketName}/docs/crc64nvme.txt", bucketName)
+                        .header("X-OSMU-Access-Key", credentials.accessKey())
+                        .header("X-OSMU-Secret-Key", credentials.secretKey())
+                        .header("x-amz-checksum-crc64nvme", checksum)
+                        .contentType(MediaType.TEXT_PLAIN)
+                        .content(body))
+                .andExpect(status().isOk())
+                .andExpect(header().string("x-amz-checksum-crc64nvme", checksum));
+
+        mockMvc.perform(head("/api/s3/{bucketName}/docs/crc64nvme.txt", bucketName)
+                        .header("X-OSMU-Access-Key", credentials.accessKey())
+                        .header("X-OSMU-Secret-Key", credentials.secretKey()))
+                .andExpect(status().isOk())
+                .andExpect(header().string("x-amz-checksum-crc64nvme", checksum));
+
+        MvcResult downloadResult = mockMvc.perform(get("/api/s3/{bucketName}/docs/crc64nvme.txt", bucketName)
+                        .header("X-OSMU-Access-Key", credentials.accessKey())
+                        .header("X-OSMU-Secret-Key", credentials.secretKey()))
+                .andExpect(request().asyncStarted())
+                .andReturn();
+
+        mockMvc.perform(asyncDispatch(downloadResult))
+                .andExpect(status().isOk())
+                .andExpect(header().string("x-amz-checksum-crc64nvme", checksum))
+                .andExpect(content().string(body));
+
+        mockMvc.perform(get("/api/s3/{bucketName}", bucketName)
+                        .queryParam("list-type", "2")
+                        .header("X-OSMU-Access-Key", credentials.accessKey())
+                        .header("X-OSMU-Secret-Key", credentials.secretKey()))
+                .andExpect(status().isOk())
+                .andExpect(content().string(containsString("<ChecksumAlgorithm>CRC64NVME</ChecksumAlgorithm>")));
+
+        mockMvc.perform(put("/api/s3/{bucketName}/docs/bad-crc64nvme.txt", bucketName)
+                        .header("X-OSMU-Access-Key", credentials.accessKey())
+                        .header("X-OSMU-Secret-Key", credentials.secretKey())
+                        .header("x-amz-checksum-crc64nvme", checksum)
+                        .contentType(MediaType.TEXT_PLAIN)
+                        .content("different"))
+                .andExpect(status().isBadRequest())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_XML))
+                .andExpect(content().string(containsString("<Code>BadDigest</Code>")));
+    }
+
+    @Test
     void accessKeyCanUploadAwsChunkedStreamingPayload() throws Exception {
         String token = loginAndReturnAccessToken("admin", "password");
         String bucketName = "s3-object-aws-chunked-bucket";
@@ -337,6 +390,22 @@ class S3ObjectControllerTest {
                 .andExpect(status().isBadRequest())
                 .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_XML))
                 .andExpect(content().string(containsString("<Code>BadDigest</Code>")));
+
+        String crc64Body = "9;chunk-signature=" + chunkSignature + "\r\n"
+                + "123456789"
+                + "\r\n0;chunk-signature=" + finalChunkSignature + "\r\n"
+                + "x-amz-checksum-crc64nvme:rosUhgp5mIg=\r\n\r\n";
+        mockMvc.perform(put("/api/s3/{bucketName}/docs/chunked-trailer-crc64nvme.txt", bucketName)
+                        .header("X-OSMU-Access-Key", credentials.accessKey())
+                        .header("X-OSMU-Secret-Key", credentials.secretKey())
+                        .header("x-amz-content-sha256", "STREAMING-AWS4-HMAC-SHA256-PAYLOAD")
+                        .header("x-amz-decoded-content-length", "123456789".getBytes(StandardCharsets.UTF_8).length)
+                        .header("x-amz-trailer", "x-amz-checksum-crc64nvme")
+                        .header(HttpHeaders.CONTENT_ENCODING, "aws-chunked")
+                        .contentType(MediaType.TEXT_PLAIN)
+                        .content(crc64Body.getBytes(StandardCharsets.UTF_8)))
+                .andExpect(status().isOk())
+                .andExpect(header().string("x-amz-checksum-crc64nvme", "rosUhgp5mIg="));
     }
 
     @Test

@@ -289,7 +289,7 @@
 - Feature: S3 compatibility supported/partial/unsupported matrix.
 - Preconditions: `dev-docs/s3-compatibility.md`, `api-spec.md`, and backend S3 tests are available.
 - Steps: Review the S3 matrix and compare it with backend tests for path-style, virtual-hosted-style, SigV4, presigned auth, object PUT/GET/HEAD/DELETE, CopyObject, tagging, list, multi-delete, multipart, checksum, and aws-chunked body decoding.
-- Expected: The matrix lists supported, partial, and unsupported behavior, including aws-chunked decoded length validation, `STREAMING-AWS4-HMAC-SHA256-PAYLOAD` chunk-signature presence/format validation, SigV4 header-auth cryptographic per-chunk signature chain verification, trailing checksum validation, and remaining CRC64NVME gap.
+- Expected: The matrix lists supported, partial, and unsupported behavior, including aws-chunked decoded length validation, `STREAMING-AWS4-HMAC-SHA256-PAYLOAD` chunk-signature presence/format validation, SigV4 header-auth cryptographic per-chunk signature chain verification, trailing checksum validation including CRC64NVME, and remaining multipart checksum aggregation gap.
 - Priority: P1
 - Automated: backend S3 controller tests and `verify-s3-client-smoke.ps1`; document consistency is reviewed through `git diff --check` and code review.
 
@@ -312,6 +312,16 @@
 - Expected: Valid checksum is stored in object metadata and echoed as `x-amz-checksum-sha256`. Mismatched checksum returns S3 XML `BadDigest`.
 - Priority: P1
 - Automated: `S3ObjectControllerTest.accessKeyCanUploadAwsChunkedStreamingPayload`
+
+### TC-S3-OBJECT-008
+
+- Feature: S3 CRC64NVME checksum validation.
+- Preconditions: Target bucket exists. Active access key has `READ` and `WRITE` scope.
+- Input: `PUT /api/s3/{bucketName}/{objectKey}` with `x-amz-checksum-crc64nvme: rosUhgp5mIg=` for body `123456789`, plus aws-chunked `x-amz-trailer: x-amz-checksum-crc64nvme`.
+- Steps: Upload a valid CRC64NVME object, verify upload/HEAD/GET/list checksum exposure, upload a mismatched CRC64NVME object, and upload a valid aws-chunked CRC64NVME trailer.
+- Expected: Valid checksum is stored in object metadata, echoed as `x-amz-checksum-crc64nvme`, and listed as `ChecksumAlgorithm=CRC64NVME`. Mismatched checksum returns S3 XML `BadDigest`.
+- Priority: P1
+- Automated: `S3ObjectControllerTest.accessKeyCanUploadWithCrc64NvmeChecksum`, `S3ObjectControllerTest.accessKeyCanUploadAwsChunkedStreamingPayload`, `S3ObjectControllerMultipartTest.completeMultipartUploadParsesS3XmlAndReturnsResultXml`, `ObjectServiceMultipartRefreshTest.completeMultipartUploadStoresValidatedCrc64NvmeChecksumMetadata`
 
 ### TC-S3-MULTIPART-COMPLETE-001
 

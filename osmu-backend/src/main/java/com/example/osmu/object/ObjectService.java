@@ -46,6 +46,7 @@ public class ObjectService {
     private static final String AWS_CHECKSUM_SHA1_HEADER = "x-amz-checksum-sha1";
     private static final String AWS_CHECKSUM_CRC32_HEADER = "x-amz-checksum-crc32";
     private static final String AWS_CHECKSUM_CRC32C_HEADER = "x-amz-checksum-crc32c";
+    private static final String AWS_CHECKSUM_CRC64NVME_HEADER = "x-amz-checksum-crc64nvme";
     private static final Pattern TAG_KEY_PATTERN = Pattern.compile("^[A-Za-z0-9_.:/@+-]+$");
     private final BucketService bucketService;
     private final ObjectStorageAdapter storageAdapter;
@@ -931,6 +932,11 @@ public class ObjectService {
             case AWS_CHECKSUM_SHA1_HEADER -> digestObject("SHA-1", content);
             case AWS_CHECKSUM_CRC32_HEADER -> crcObject(new CRC32(), content);
             case AWS_CHECKSUM_CRC32C_HEADER -> crcObject(new CRC32C(), content);
+            case AWS_CHECKSUM_CRC64NVME_HEADER -> crcObject(
+                    new Crc64NvmeChecksum(),
+                    Crc64NvmeChecksum.DIGEST_LENGTH_BYTES,
+                    content
+            );
             default -> throw new ApiException(ApiErrorCode.INVALID_DIGEST, headerName + " is not supported.");
         };
     }
@@ -940,6 +946,7 @@ public class ObjectService {
             case AWS_CHECKSUM_SHA256_HEADER -> 32;
             case AWS_CHECKSUM_SHA1_HEADER -> 20;
             case AWS_CHECKSUM_CRC32_HEADER, AWS_CHECKSUM_CRC32C_HEADER -> 4;
+            case AWS_CHECKSUM_CRC64NVME_HEADER -> Crc64NvmeChecksum.DIGEST_LENGTH_BYTES;
             default -> throw new ApiException(ApiErrorCode.INVALID_DIGEST, headerName + " is not supported.");
         };
     }
@@ -955,12 +962,18 @@ public class ObjectService {
     }
 
     private byte[] crcObject(Checksum checksum, InputStream content) throws IOException {
+        return crcObject(checksum, 4, content);
+    }
+
+    private byte[] crcObject(Checksum checksum, int digestLength, InputStream content) throws IOException {
         byte[] buffer = new byte[8192];
         int count;
         while ((count = content.read(buffer)) >= 0) {
             checksum.update(buffer, 0, count);
         }
-        return intDigest(checksum.getValue());
+        return digestLength == Crc64NvmeChecksum.DIGEST_LENGTH_BYTES
+                ? longDigest(checksum.getValue())
+                : intDigest(checksum.getValue());
     }
 
     private byte[] decodeChecksum(String headerName, String rawChecksum, int expectedLength) {
@@ -983,6 +996,19 @@ public class ObjectService {
                 (byte) (normalized >>> 16),
                 (byte) (normalized >>> 8),
                 (byte) normalized
+        };
+    }
+
+    private byte[] longDigest(long value) {
+        return new byte[]{
+                (byte) (value >>> 56),
+                (byte) (value >>> 48),
+                (byte) (value >>> 40),
+                (byte) (value >>> 32),
+                (byte) (value >>> 24),
+                (byte) (value >>> 16),
+                (byte) (value >>> 8),
+                (byte) value
         };
     }
 

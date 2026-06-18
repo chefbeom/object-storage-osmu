@@ -15,7 +15,7 @@
 | `UNSIGNED-PAYLOAD` | Supported | Accepted without body hash validation, matching common S3 client behavior. | `S3ObjectControllerTest` |
 | `aws-chunked` body decoding | MVP supported | Decodes AWS chunked transfer bodies and stores the decoded object. Requires `x-amz-decoded-content-length`, rejects decoded length mismatch, and requires 64-character lowercase hex `chunk-signature` on `STREAMING-AWS4-HMAC-SHA256-PAYLOAD` chunks. | `S3ObjectControllerTest.accessKeyCanUploadAwsChunkedStreamingPayload` |
 | Chunk signature chain | Supported for header auth | SigV4 header-auth `STREAMING-AWS4-HMAC-SHA256-PAYLOAD` chunks are cryptographically chained from the Authorization seed signature. Presigned streaming and trailer-signature parity are not in scope yet. | `S3ObjectControllerTest.awsSigV4HeaderAuthVerifiesAwsChunkedStreamingSignatureChain` |
-| Trailer checksum | MVP supported | `x-amz-trailer` supports one trailing SHA256, SHA1, CRC32, or CRC32C checksum on aws-chunked uploads. CRC64NVME remains future work. | `S3ObjectControllerTest.accessKeyCanUploadAwsChunkedStreamingPayload` |
+| Trailer checksum | MVP supported | `x-amz-trailer` supports one trailing SHA256, SHA1, CRC32, CRC32C, or CRC64NVME checksum on aws-chunked uploads. | `S3ObjectControllerTest.accessKeyCanUploadAwsChunkedStreamingPayload` |
 
 ## Bucket API
 
@@ -52,7 +52,7 @@
 | `x-amz-checksum-sha1` | Supported | PUT header/trailer, multipart part header/trailer, final object metadata/header/XML. |
 | `x-amz-checksum-crc32` | Supported | PUT header/trailer, multipart part header/trailer, final object metadata/header/XML. |
 | `x-amz-checksum-crc32c` | Supported | PUT header/trailer, multipart part header/trailer, final object metadata/header/XML. |
-| CRC64NVME | Not supported | Future AWS parity item. |
+| `x-amz-checksum-crc64nvme` | Supported | PUT header/trailer, multipart part header/trailer, final object metadata/header/XML. |
 | Multipart checksum aggregation parity | Partial | Final object checksum can be supplied and validated; AWS aggregation semantics are not fully reproduced. |
 
 ## Client Matrix

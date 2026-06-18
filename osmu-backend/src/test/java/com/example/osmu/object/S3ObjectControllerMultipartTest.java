@@ -315,15 +315,15 @@ class S3ObjectControllerMultipartTest {
     void completeMultipartUploadParsesS3XmlAndReturnsResultXml() throws Exception {
         MockHttpServletRequest request = request("POST");
         request.setContentType(MediaType.APPLICATION_XML_VALUE);
-        String sha256Checksum = checksumBase64("SHA-256", "complete");
-        String partChecksum = checksumBase64("SHA-256", "part-1");
-        request.addHeader("x-amz-checksum-sha256", sha256Checksum);
+        String crc64Checksum = "rosUhgp5mIg=";
+        String partChecksum = "rosUhgp5mIg=";
+        request.addHeader("x-amz-checksum-crc64nvme", crc64Checksum);
         request.setContent("""
                 <CompleteMultipartUpload>
                   <Part>
                     <PartNumber>1</PartNumber>
                     <ETag>"etag-1"</ETag>
-                    <ChecksumSHA256>%s</ChecksumSHA256>
+                    <ChecksumCRC64NVME>%s</ChecksumCRC64NVME>
                   </Part>
                   <Part><PartNumber>2</PartNumber><ETag>"etag-2"</ETag></Part>
                 </CompleteMultipartUpload>
@@ -333,7 +333,7 @@ class S3ObjectControllerMultipartTest {
                 eq("bucket"),
                 any(MultipartUploadCompleteRequest.class),
                 eq(user),
-                argThat(headers -> sha256Checksum.equals(headers.get("x-amz-checksum-sha256")))
+                argThat(headers -> crc64Checksum.equals(headers.get("x-amz-checksum-crc64nvme")))
         ))
                 .thenReturn(new StoredObjectRecord(
                         "videos/input.mp4",
@@ -343,7 +343,7 @@ class S3ObjectControllerMultipartTest {
                         Map.of(),
                         null,
                         "multipart-etag",
-                        Map.of("x-amz-checksum-sha256", sha256Checksum)
+                        Map.of("x-amz-checksum-crc64nvme", crc64Checksum)
                 ));
 
         var response = controller.completeMultipartUpload("bucket", "videos/input.mp4", "upload-1", request);
@@ -354,20 +354,20 @@ class S3ObjectControllerMultipartTest {
                 eq("bucket"),
                 captor.capture(),
                 eq(user),
-                argThat(headers -> sha256Checksum.equals(headers.get("x-amz-checksum-sha256")))
+                argThat(headers -> crc64Checksum.equals(headers.get("x-amz-checksum-crc64nvme")))
         );
         assertThat(captor.getValue().uploadId()).isEqualTo("upload-1");
         assertThat(captor.getValue().parts()).extracting(CompletedMultipartUploadPart::partNumber)
                 .containsExactly(1, 2);
         assertThat(captor.getValue().parts().get(0).checksums())
-                .containsEntry("x-amz-checksum-sha256", partChecksum);
+                .containsEntry("x-amz-checksum-crc64nvme", partChecksum);
         assertThat(captor.getValue().parts().get(1).checksums()).isEmpty();
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(response.getHeaders().getETag()).isEqualTo("\"multipart-etag\"");
-        assertThat(response.getHeaders().getFirst("x-amz-checksum-sha256")).isEqualTo(sha256Checksum);
+        assertThat(response.getHeaders().getFirst("x-amz-checksum-crc64nvme")).isEqualTo(crc64Checksum);
         assertThat(response.getBody()).contains("<CompleteMultipartUploadResult");
         assertThat(response.getBody()).contains("<ETag>\"multipart-etag\"</ETag>");
-        assertThat(response.getBody()).contains("<ChecksumSHA256>" + sha256Checksum + "</ChecksumSHA256>");
+        assertThat(response.getBody()).contains("<ChecksumCRC64NVME>" + crc64Checksum + "</ChecksumCRC64NVME>");
     }
 
     @Test

@@ -280,6 +280,65 @@ class ObjectServiceMultipartRefreshTest {
     }
 
     @Test
+    void completeMultipartUploadStoresValidatedCrc64NvmeChecksumMetadata() throws Exception {
+        BucketRecord bucket = new BucketRecord(1L, "bucket", "USER", 1L, 1000000000L, 0L, 0L, OffsetDateTime.now());
+        StoredObjectRecord uploaded = new StoredObjectRecord(
+                "videos/crc64nvme.mp4",
+                9L,
+                "video/mp4",
+                OffsetDateTime.now(),
+                Map.of()
+        );
+        String checksum = "rosUhgp5mIg=";
+        when(bucketService.get("bucket", user)).thenReturn(bucket);
+        when(storageAdapter.statObject("bucket", "videos/crc64nvme.mp4")).thenReturn(Optional.empty());
+        when(storageAdapter.createMultipartUpload(
+                eq("bucket"),
+                eq("videos/crc64nvme.mp4"),
+                eq("video/mp4"),
+                eq(900),
+                anyList()
+        )).thenAnswer(invocation -> storageUpload("storage-upload-crc64nvme", invocation.getArgument(4), 900, "create"));
+        when(storageAdapter.completeMultipartUpload(
+                eq("bucket"),
+                eq("videos/crc64nvme.mp4"),
+                eq("storage-upload-crc64nvme"),
+                anyList()
+        )).thenReturn(uploaded);
+        when(storageAdapter.openObject("bucket", "videos/crc64nvme.mp4"))
+                .thenReturn(new StoredObjectStream(uploaded, new ByteArrayInputStream("123456789".getBytes(StandardCharsets.UTF_8))));
+
+        MultipartUploadCreateResponse created = objectService.createMultipartUpload(
+                "bucket",
+                new MultipartUploadCreateRequest(
+                        "videos/crc64nvme.mp4",
+                        "video/mp4",
+                        9L,
+                        5L,
+                        900,
+                        ""
+                ),
+                user
+        );
+        StoredObjectRecord result = objectService.completeMultipartUpload(
+                "bucket",
+                new MultipartUploadCompleteRequest(
+                        created.uploadId(),
+                        "videos/crc64nvme.mp4",
+                        List.of(new CompletedMultipartUploadPart(1, "\"etag-1\""))
+                ),
+                user,
+                Map.of("x-amz-checksum-crc64nvme", checksum)
+        );
+
+        assertThat(result.checksums()).containsEntry("x-amz-checksum-crc64nvme", checksum);
+        verify(objectMetadataRepository).save(
+                eq("bucket"),
+                argThat(object -> checksum.equals(object.checksums().get("x-amz-checksum-crc64nvme")))
+        );
+    }
+
+    @Test
     void completeMultipartUploadRejectsMismatchedChecksumBeforeMetadataCommit() throws Exception {
         BucketRecord bucket = new BucketRecord(1L, "bucket", "USER", 1L, 1000000000L, 0L, 0L, OffsetDateTime.now());
         StoredObjectRecord uploaded = new StoredObjectRecord(

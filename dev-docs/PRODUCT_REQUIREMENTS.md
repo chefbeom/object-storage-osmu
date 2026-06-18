@@ -31,13 +31,13 @@
 - The alias supports AWS SigV4 header authorization for access keys created with encrypted signing secret material.
 - The alias supports AWS SigV4 query/presigned URL authorization with `UNSIGNED-PAYLOAD` for S3-style object reads.
 - SigV4 auth enforces clock-skew and presigned URL expiration in the MVP.
-- Non-streaming SigV4 object and multipart part uploads validate signed `x-amz-content-sha256` against the actual body. `UNSIGNED-PAYLOAD` is allowed. AWS `aws-chunked` request bodies are decoded with exact decoded length validation, per-chunk `chunk-signature` chain verification, and trailing checksum validation for SHA256/SHA1/CRC32/CRC32C.
+- Non-streaming SigV4 object and multipart part uploads validate signed `x-amz-content-sha256` against the actual body. `UNSIGNED-PAYLOAD` is allowed. AWS `aws-chunked` request bodies are decoded with exact decoded length validation, per-chunk `chunk-signature` chain verification, and trailing checksum validation for SHA256/SHA1/CRC32/CRC32C/CRC64NVME.
 - The alias supports MVP virtual-hosted-style routing for configured host suffixes, such as `Host: {bucket}.localhost` with path `/api/s3/{objectKey}`.
 - Access Key root bucket listing only returns buckets in the key's still-valid scopes.
 - Access Key scope maps object actions to `WRITE`, `READ`, and `DELETE`.
 - Raw upload requires `Content-Length` and returns an MD5 `ETag`.
 - Raw upload validates optional S3 `Content-MD5` and rejects invalid or mismatched digests.
-- Raw upload validates one optional S3 checksum value header among `x-amz-checksum-sha256`, `x-amz-checksum-sha1`, `x-amz-checksum-crc32`, and `x-amz-checksum-crc32c`, stores matching checksum metadata, returns the matching checksum response header, and exposes it on later `HEAD`/`GET` plus list checksum algorithm XML.
+- Raw upload validates one optional S3 checksum value header among `x-amz-checksum-sha256`, `x-amz-checksum-sha1`, `x-amz-checksum-crc32`, `x-amz-checksum-crc32c`, and `x-amz-checksum-crc64nvme`, stores matching checksum metadata, returns the matching checksum response header, and exposes it on later `HEAD`/`GET` plus list checksum algorithm XML.
 - S3 object metadata responses expose `ETag` on `HEAD`, `GET`, `ListObjects`, and `ListObjectsV2` when available.
 - S3 object `HEAD` and `GET` support basic conditional requests through `If-Match`, `If-None-Match`, `If-Modified-Since`, and `If-Unmodified-Since`.
 - CopyObject requires `READ` on the source bucket and `WRITE` on the target bucket. Copied object body, content type, tags, and stored checksum metadata are preserved by default, and copy result XML can expose stored checksum fields.
@@ -53,7 +53,7 @@
 - `x-amz-tagging` and `X-OSMU-Tags` are accepted for upload tags.
 - Multi-object delete uses the same soft-delete behavior as the REST object API and treats missing keys as deleted for S3 compatibility.
 - Object tagging XML uses the same metadata tag store as the REST object API; tag read requires `READ`, tag update/delete requires `WRITE`.
-- Unknown-size S3 multipart initiate parity, CRC64NVME/full AWS checksum parity, automatic DNS/proxy provisioning for virtual-hosted-style domains, multi-range GET, full conditional request parity, exact CopyObject user-metadata/versioning/full-conditional parity, multipart ETag parity, exact CreateBucket/DeleteBucket parity, and exact AWS error schema parity remain future work. `dev-docs/s3-compatibility.md` tracks the supported/partial/unsupported matrix.
+- Unknown-size S3 multipart initiate parity, full AWS multipart checksum aggregation parity, automatic DNS/proxy provisioning for virtual-hosted-style domains, multi-range GET, full conditional request parity, exact CopyObject user-metadata/versioning/full-conditional parity, multipart ETag parity, exact CreateBucket/DeleteBucket parity, and exact AWS error schema parity remain future work. `dev-docs/s3-compatibility.md` tracks the supported/partial/unsupported matrix.
 # Private Object Storage Platform 기획서 초안
 
 ## 1. 문서 개요

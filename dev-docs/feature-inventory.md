@@ -227,13 +227,13 @@ MVP 데모 기준 완료율은 약 90~95%입니다.
 - aws-chunked body decode와 decoded content length 검증
 - aws-chunked STREAMING chunk-signature presence/format validation
 - SigV4 aws-chunked streaming payload signature cryptographic chain verification
-- aws-chunked x-amz-trailer checksum validation (SHA256/SHA1/CRC32/CRC32C)
+- aws-chunked x-amz-trailer checksum validation (SHA256/SHA1/CRC32/CRC32C/CRC64NVME)
+- CRC64NVME checksum validation/header/XML exposure
 - S3 multipart complete XML part list validation (ascending/unique/range/ETag)
 - S3 multipart ListParts pagination (max-parts/part-number-marker)
 
 남은 것:
 
-- CRC64NVME checksum parity
 - multipart edge case
 
 ### 4.7 MariaDB metadata
