@@ -150,12 +150,12 @@ MVP 데모 기준 완료율은 약 90~95%입니다.
 - runner preflight
 - 관리자 작업 실패 시 remediation UX
 - 권한별 panel 표시 제한
+- 운영자용 기본 preset
 
 남은 것:
 
 - 승인 workflow
 - 감사/보안 정책 화면 정리
-- 운영자용 기본 preset
 
 ### 4.4 대시보드와 panel palette
 
@@ -174,7 +174,7 @@ MVP 데모 기준 완료율은 약 90~95%입니다.
 - role/organization default preset
 - adminOnly dashboard panel role filtering
 - backup readiness panel의 latest restore drill evidence result/environment/recordedAt 표시
-- 기본 dashboard preset 3종: executive, storage ops, security/audit
+- 기본 dashboard preset 4종: operator, executive, storage ops, security/audit
 - dashboard 조회 mode와 편집 mode 구분
 - widget별 refresh interval option과 dashboard 자동 refresh cadence
 - panel별 allowedRoles/accessMode matrix와 read-only panel 표시

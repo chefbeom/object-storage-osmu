@@ -370,7 +370,7 @@ Query:
 
 ### GET /api/dashboard/layout/presets
 
-Built-in preset ids: `operations`, `compact`, `admin`, `executive`, `storage-ops`, `security-audit`.
+Built-in preset ids: `operations`, `compact`, `admin`, `operator`, `executive`, `storage-ops`, `security-audit`.
 
 현재 로그인 사용자가 적용할 수 있는 내장 대시보드 layout preset 목록을 조회한다. 응답의 `widgets`는 현재 role 기준으로 필터링된다.
 
@@ -545,7 +545,7 @@ Path:
 
 | 이름 | 필수 | 설명 |
 | --- | --- | --- |
-| `presetId` | Y | 내장 preset id. 현재 `operations`, `compact`, `admin`, `executive`, `storage-ops`, `security-audit` 지원 |
+| `presetId` | Y | 내장 preset id. 현재 `operations`, `compact`, `admin`, `operator`, `executive`, `storage-ops`, `security-audit` 지원 |
 
 Query:
 

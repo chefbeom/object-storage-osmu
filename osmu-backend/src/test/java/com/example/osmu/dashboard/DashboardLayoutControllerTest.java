@@ -214,9 +214,14 @@ class DashboardLayoutControllerTest {
                 .andExpect(jsonPath("$.data[0].widgets[*].id", hasItem("execution-retention")))
                 .andExpect(jsonPath("$.data[0].widgets[*].id", hasItem("storage-expansion")))
                 .andExpect(jsonPath("$.data[*].id", hasItem("executive")))
+                .andExpect(jsonPath("$.data[*].id", hasItem("operator")))
                 .andExpect(jsonPath("$.data[*].id", hasItem("storage-ops")))
                 .andExpect(jsonPath("$.data[*].id", hasItem("security-audit")))
                 .andExpect(jsonPath("$.data[?(@.id == 'executive')].widgets[0].id", hasItem("capacity")))
+                .andExpect(jsonPath("$.data[?(@.id == 'operator')].widgets[0].id", hasItem("readiness")))
+                .andExpect(jsonPath("$.data[?(@.id == 'operator')].widgets[0].options.tone", hasItem("focus")))
+                .andExpect(jsonPath("$.data[?(@.id == 'operator')].widgets[0].options.refreshInterval", hasItem("60s")))
+                .andExpect(jsonPath("$.data[?(@.id == 'operator')].widgets[*].id", hasItem("storage-expansion")))
                 .andExpect(jsonPath("$.data[?(@.id == 'storage-ops')].widgets[*].id", hasItem("storage-expansion")))
                 .andExpect(jsonPath("$.data[?(@.id == 'security-audit')].widgets[*].id", hasItem("access-keys")));
 
@@ -270,6 +275,16 @@ class DashboardLayoutControllerTest {
                 .andExpect(jsonPath("$.data.widgets[*].id", hasItem("storage-expansion")))
                 .andExpect(jsonPath("$.data.widgets[?(@.id == 'io')].section", hasItem("operations")))
                 .andExpect(jsonPath("$.data.widgets[?(@.id == 'io')].options.tone", hasItem("focus")));
+
+        mockMvc.perform(put("/api/dashboard/layout/presets/operator")
+                        .header("Authorization", "Bearer " + token)
+                        .param("scope", scope))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.source").value("SAVED"))
+                .andExpect(jsonPath("$.data.widgets[0].id").value("readiness"))
+                .andExpect(jsonPath("$.data.widgets[?(@.id == 'readiness')].options.tone", hasItem("focus")))
+                .andExpect(jsonPath("$.data.widgets[?(@.id == 'readiness')].options.refreshInterval", hasItem("60s")))
+                .andExpect(jsonPath("$.data.widgets[?(@.id == 'storage-expansion')].section", hasItem("operations")));
 
         mockMvc.perform(put("/api/dashboard/layout/presets/missing")
                         .header("Authorization", "Bearer " + token)

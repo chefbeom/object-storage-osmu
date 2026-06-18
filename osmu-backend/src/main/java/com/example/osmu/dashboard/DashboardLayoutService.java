@@ -133,6 +133,30 @@ public class DashboardLayoutService {
                     false
             ),
             new DashboardLayoutPresetResponse(
+                    "operator",
+                    "Operator",
+                    "Day-two operator view for readiness convergence, backup evidence, storage expansion, execution retention, and live I/O.",
+                    List.of(
+                            new DashboardWidgetLayout("readiness", true, "wide", "operations", Map.of("tone", "focus", "refreshInterval", "60s")),
+                            new DashboardWidgetLayout("backup", true, "normal", "operations", Map.of("tone", "focus", "refreshInterval", "5m")),
+                            new DashboardWidgetLayout("storage-expansion", true, "normal", "operations", Map.of("refreshInterval", "60s")),
+                            new DashboardWidgetLayout("execution-retention", true, "normal", "governance"),
+                            new DashboardWidgetLayout("io", true, "normal", "overview", Map.of("refreshInterval", "30s")),
+                            new DashboardWidgetLayout("health", true, "normal", "overview", Map.of("refreshInterval", "30s")),
+                            new DashboardWidgetLayout("runtime", true, "normal", "overview"),
+                            new DashboardWidgetLayout("access-keys", true, "normal", "governance"),
+                            new DashboardWidgetLayout("quota", true, "normal", "governance"),
+                            new DashboardWidgetLayout("lifecycle", true, "normal", "governance"),
+                            new DashboardWidgetLayout("selected", true, "normal", "overview")
+                    ),
+                    List.of(
+                            new DashboardSectionLayout("overview", false),
+                            new DashboardSectionLayout("operations", false),
+                            new DashboardSectionLayout("governance", false)
+                    ),
+                    false
+            ),
+            new DashboardLayoutPresetResponse(
                     "executive",
                     "Executive",
                     "High-level capacity, readiness, backup, sharing, and quota view for leadership reviews.",
