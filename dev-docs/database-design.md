@@ -748,7 +748,7 @@ erDiagram
 - Flyway 또는 Liquibase 중 하나를 사용한다.
 - 마이그레이션 파일은 수정하지 않는다.
 - 변경은 새 마이그레이션으로 추가한다.
-- 현재 MVP는 `osmu-backend/src/main/resources/db/migration` 아래 `V1__init_metadata_schema.sql`부터 `V41__data_flow_events.sql`까지의 Flyway migration을 제공한다.
+- 현재 MVP는 `osmu-backend/src/main/resources/db/migration` 아래 `V1__init_metadata_schema.sql`부터 `V43__access_key_rotation_grace.sql`까지의 Flyway migration을 제공한다.
 - repository의 `CREATE TABLE IF NOT EXISTS`는 local fallback이다.
 
 ## 17. 구현 순서
