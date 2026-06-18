@@ -49,6 +49,12 @@ test('HomeView exposes stable selectors for browser E2E flows', () => {
     'refresh-button',
     'logout-button',
     'error-alert',
+    'admin-action-remediation-panel',
+    'admin-action-remediation-title',
+    'admin-action-remediation-detail',
+    'admin-action-remediation-code',
+    'admin-action-remediation-steps',
+    'admin-action-remediation-primary',
     'busy-alert',
     'status-alert',
     'metrics-grid',
@@ -726,6 +732,12 @@ test('HomeView exposes stable selectors for browser E2E flows', () => {
   assert.match(dashboardSource, /handleCreateStorageExpansionExecutionRecord/)
   assert.match(dashboardSource, /handleApplyStorageExpansionFromExecution/)
   assert.match(dashboardSource, /handleUpdateStorageExpansionStatus/)
+  assert.match(dashboardSource, /adminActionRemediation/)
+  assert.match(dashboardSource, /handleAdminRemediationPrimary/)
+  assert.match(dashboardSource, /AUTHENTICATION_REQUIRED/)
+  assert.match(dashboardSource, /AUTHORIZATION_FAILED/)
+  assert.match(dashboardSource, /VALIDATION_ERROR/)
+  assert.match(dashboardSource, /CONFLICT/)
   assert.match(dashboardSource, /loadStorageExpansionRequests/)
   assert.match(dashboardSource, /id="storage-buckets"/)
   assert.match(dashboardSource, /:data-testid="`readiness-item-\$\{item\.code\}`"/)

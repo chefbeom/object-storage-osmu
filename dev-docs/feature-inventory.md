@@ -32,7 +32,7 @@ OSMU는 기업 내부에서 대용량 파일, 이미지, 영상, 로그, 비정�
 | 영역 | 추정 완료율 | 상태 |
 | --- | ---: | --- |
 | 기획/요구사항/문서 | 70% | 목표, API, DB, 배포, 보안, 테스트 문서가 있음 |
-| 프론트엔드 콘솔 | 55% | 로그인, 페이지 분리, 대시보드 palette, data-flow monitoring 패널, operations readiness 요약/remediation/evidence plan/invocation/invocation unblock/dispatch preflight/workflow run id/artifact collection/artifact import/finalizer/evidence handoff action 표시, admin/developer 화면 뼈대가 있음 |
+| 프론트엔드 콘솔 | 55% | 로그인, 페이지 분리, 대시보드 palette, data-flow monitoring 패널, operations readiness 요약/remediation/evidence plan/invocation/invocation unblock/dispatch preflight/workflow run id/artifact collection/artifact import/finalizer/evidence handoff action 표시, 관리자 작업 실패 remediation UX, admin/developer 화면 뼈대가 있음 |
 | 백엔드 REST API | 50% | auth, bucket, object, access key, admin, dashboard, data-flow monitoring, storage expansion, restore drill evidence history, operations readiness dashboard evidence/remediation/evidence plan/invocation/invocation unblock/dispatch preflight/workflow run id/artifact collection/artifact import/finalizer/evidence handoff API가 있음 |
 | MariaDB metadata | 35% | Flyway migration 43개와 repository 구현이 있음 |
 | MinIO/S3 호환 | 35% | S3 API 일부, SigV4, MinIO adapter, smoke script가 있음 |
@@ -148,10 +148,10 @@ MVP 데모 기준 완료율은 약 90~95%입니다.
 - lifecycle/retention
 - storage expansion request
 - runner preflight
+- 관리자 작업 실패 시 remediation UX
 
 남은 것:
 
-- 관리자 작업 실패 시 remediation UX
 - 승인 workflow
 - 감사/보안 정책 화면 정리
 - 운영자용 기본 preset

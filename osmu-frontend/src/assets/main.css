@@ -2013,6 +2013,57 @@ tbody tr.selected {
   overflow-wrap: anywhere;
 }
 
+.admin-remediation-panel {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(220px, 0.9fr) auto;
+  align-items: center;
+  gap: 14px;
+  padding: 14px;
+  border: 1px solid #fed7aa;
+  border-radius: 8px;
+  background: #fff7ed;
+  color: #7c2d12;
+}
+
+.admin-remediation-copy {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.admin-remediation-copy h3,
+.admin-remediation-copy p {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.admin-remediation-copy h3 {
+  color: #7c2d12;
+  font-size: 18px;
+}
+
+.admin-remediation-copy p:not(.eyebrow),
+.admin-remediation-copy small {
+  color: #9a3412;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.admin-remediation-panel ol {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding-left: 18px;
+  color: #7c2d12;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.admin-remediation-panel button {
+  justify-self: end;
+  white-space: nowrap;
+}
+
 .busy-alert {
   padding: 12px 14px;
   border: 1px solid #bfdbfe;
@@ -2143,6 +2194,15 @@ tbody tr.selected {
   }
 
   .readiness-remediation button {
+    justify-self: start;
+  }
+
+  .admin-remediation-panel {
+    grid-template-columns: 1fr;
+    align-items: stretch;
+  }
+
+  .admin-remediation-panel button {
     justify-self: start;
   }
 

@@ -174,6 +174,7 @@ Web Portal은 관리자와 사용자가 OSMU를 브라우저에서 사용할 수
 - `/admin`, `/audit` 접근 권한이 없는 사용자는 `/developer` 또는 role fallback route로 이동한다.
 
 - ADMIN custom dashboard preset bundle export/import UI를 제공해 고객사별 대시보드 구성을 JSON 묶음으로 옮길 수 있음
+- `/admin`에서 API 작업이 실패하면 전역 오류 아래 `admin-action-remediation-panel`을 표시한다. 패널은 `ApiClientError.status`, `code`, `requestId`를 보존하고 `AUTHENTICATION_REQUIRED`, `AUTHORIZATION_FAILED`, `VALIDATION_ERROR`, `NOT_FOUND`, `CONFLICT`, 기타 실패별로 세션 재로그인, 권한/scope 확인, 입력값 수정, 목록 새로고침, 감사 로그 확인 같은 다음 조치를 안내한다.
 - ADMIN Storage Expansion panel은 요청 capacity, server count, PV/server, reason을 입력해 MinIO pool 증설 계획을 만들고 `PLANNED/APPROVED/REJECTED/APPLIED` 상태를 관리함
 
 ### 5.4 BucketListView

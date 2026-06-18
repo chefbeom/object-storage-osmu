@@ -51,6 +51,32 @@
         <span>{{ errorMessage }}</span>
         <small v-if="errorRequestId">Request ID {{ errorRequestId }}</small>
       </p>
+      <section
+        v-if="adminActionRemediation"
+        class="admin-remediation-panel"
+        data-testid="admin-action-remediation-panel"
+        role="alert"
+        aria-live="polite"
+      >
+        <div class="admin-remediation-copy">
+          <p class="eyebrow">Admin remediation</p>
+          <h3 data-testid="admin-action-remediation-title">{{ adminActionRemediation.title }}</h3>
+          <p data-testid="admin-action-remediation-detail">{{ adminActionRemediation.detail }}</p>
+          <small v-if="adminActionErrorLabel" data-testid="admin-action-remediation-code">{{ adminActionErrorLabel }}</small>
+        </div>
+        <ol data-testid="admin-action-remediation-steps">
+          <li v-for="step in adminActionRemediation.steps" :key="step">{{ step }}</li>
+        </ol>
+        <button
+          v-if="adminActionRemediation.action !== 'none'"
+          data-testid="admin-action-remediation-primary"
+          type="button"
+          class="ghost"
+          @click="handleAdminRemediationPrimary"
+        >
+          {{ adminActionRemediation.primaryAction }}
+        </button>
+      </section>
       <p v-if="isActionPending" class="busy-alert" data-testid="busy-alert" role="status" aria-live="polite">
         요청 처리 중...
       </p>
@@ -1183,6 +1209,8 @@ const auditNextCursor = ref('')
 const selectedBucket = ref('')
 const errorMessage = ref('')
 const errorRequestId = ref('')
+const errorCode = ref('')
+const errorStatus = ref(0)
 const statusMessage = ref('')
 const actionPendingCount = ref(0)
 const newSecretKey = ref('')
@@ -1213,6 +1241,99 @@ const activePage = computed(() => {
   return navigationItems.find((item) => item.to === path)?.page ?? 'dashboard'
 })
 const activePageMeta = computed(() => pageMeta[activePage.value] ?? pageMeta.dashboard)
+const adminActionErrorLabel = computed(() => {
+  if (!errorCode.value && !errorStatus.value) return ''
+  if (errorCode.value && errorStatus.value) return `${errorCode.value} / HTTP ${errorStatus.value}`
+  return errorCode.value || `HTTP ${errorStatus.value}`
+})
+const adminActionRemediation = computed(() => {
+  if (activePage.value !== 'admin' || !errorMessage.value) return null
+
+  const code = String(errorCode.value || '').toUpperCase()
+  const status = Number(errorStatus.value || 0)
+
+  if (status === 401 || code === 'AUTHENTICATION_REQUIRED') {
+    return {
+      title: '세션 확인 필요',
+      detail: '관리자 세션이 만료되어 작업이 중단됐습니다.',
+      primaryAction: '다시 로그인',
+      action: 'login',
+      steps: [
+        '현재 입력값을 확인합니다.',
+        '다시 로그인한 뒤 같은 관리자 작업을 재시도합니다.',
+        '반복되면 Request ID로 인증/감사 로그를 조회합니다.',
+      ],
+    }
+  }
+
+  if (status === 403 || code === 'AUTHORIZATION_FAILED') {
+    return {
+      title: '권한 확인 필요',
+      detail: '현재 role 또는 조직 scope로 이 관리자 작업을 실행할 수 없습니다.',
+      primaryAction: '상태 새로고침',
+      action: 'refresh',
+      steps: [
+        '관리자 role과 조직 scope를 확인합니다.',
+        'AdminRbacPolicy allowlist와 bucket permission을 함께 점검합니다.',
+        '권한 변경 후 최신 상태를 다시 불러옵니다.',
+      ],
+    }
+  }
+
+  if (status === 400 || code === 'VALIDATION_ERROR') {
+    return {
+      title: '입력값 확인 필요',
+      detail: '요청값이 API contract나 현재 상태 전이 조건과 맞지 않습니다.',
+      primaryAction: '입력값 수정',
+      action: 'none',
+      steps: [
+        '필수 입력값과 숫자 범위를 확인합니다.',
+        '대상 상태가 실행 가능한 단계인지 확인합니다.',
+        'Request ID로 validation 실패 원인을 감사 로그와 대조합니다.',
+      ],
+    }
+  }
+
+  if (status === 404 || code === 'NOT_FOUND') {
+    return {
+      title: '대상 확인 필요',
+      detail: '선택한 리소스가 삭제됐거나 현재 scope 밖에 있습니다.',
+      primaryAction: '목록 새로고침',
+      action: 'refresh',
+      steps: [
+        '관리자 목록을 다시 불러옵니다.',
+        '선택한 bucket, 사용자, 조직, 요청 ID가 아직 존재하는지 확인합니다.',
+        '조직 scope가 바뀐 경우 올바른 계정으로 다시 시도합니다.',
+      ],
+    }
+  }
+
+  if (status === 409 || code.includes('CONFLICT')) {
+    return {
+      title: '상태 충돌 확인 필요',
+      detail: '다른 작업이 먼저 반영됐거나 현재 상태에서 실행할 수 없는 요청입니다.',
+      primaryAction: '최신 상태 새로고침',
+      action: 'refresh',
+      steps: [
+        '최신 상태를 다시 불러옵니다.',
+        '승인, 적용, 비활성화 같은 선행 작업이 이미 끝났는지 확인합니다.',
+        '같은 대상을 여러 탭에서 처리 중인지 점검합니다.',
+      ],
+    }
+  }
+
+  return {
+    title: '관리자 작업 실패',
+    detail: '요청이 완료되지 않았습니다. 상태를 다시 불러온 뒤 같은 작업을 재시도합니다.',
+    primaryAction: '상태 새로고침',
+    action: 'refresh',
+    steps: [
+      '최신 서버 상태를 확인합니다.',
+      'Request ID로 backend 로그와 감사 로그를 찾습니다.',
+      '반복 실패 시 입력값, 권한, 대상 상태를 함께 점검합니다.',
+    ],
+  }
+})
 const visibleNavigationItems = computed(() => navigationItems.filter(canAccessNavigationItem))
 const statusItems = computed(() => [
   { label: 'Backend', value: health.backend },
@@ -4343,18 +4464,35 @@ async function runCommand(command) {
 function setError(error) {
   errorMessage.value = error?.message || '요청 처리 중 오류가 발생했습니다.'
   errorRequestId.value = error?.requestId || ''
+  errorCode.value = error?.code || ''
+  errorStatus.value = Number(error?.status || 0)
   clearStatusMessage()
 }
 
 function setErrorMessage(message) {
   errorMessage.value = message
   errorRequestId.value = ''
+  errorCode.value = ''
+  errorStatus.value = 0
   clearStatusMessage()
 }
 
 function clearError() {
   errorMessage.value = ''
   errorRequestId.value = ''
+  errorCode.value = ''
+  errorStatus.value = 0
+}
+
+async function handleAdminRemediationPrimary() {
+  const action = adminActionRemediation.value?.action
+  if (action === 'login') {
+    handleSessionExpired()
+    return
+  }
+  if (action === 'refresh') {
+    await refreshAll()
+  }
 }
 
 function setStatusMessage(message) {

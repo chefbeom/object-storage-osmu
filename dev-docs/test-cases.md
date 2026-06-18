@@ -420,9 +420,19 @@
 - Preconditions: Node dependencies are installed.
 - Input: `npm run test:unit`
 - Steps: Run frontend unit tests that inspect `HomeView.vue` and split components for stable `data-testid` selectors covering login, status, dashboard 조회/편집 mode toggle, dashboard loading/error/retry/empty state, dashboard palette grouped catalog chips, drag/size/access-mode controls, section controls, section order/collapse controls, catalog-driven widget option controls, access key/identity/lifecycle/execution-retention/storage-expansion catalog widgets, bucket list, object upload, object detail, bucket lifecycle, bucket tags, audit, and confirm modal flows.
-- Expected: All required selectors exist so future Browser/Chrome E2E can target stable UI hooks instead of brittle text or layout selectors, including dashboard view-mode summary, edit-mode toggle, loading state, error state, retry button, empty state, widget access mode badge, widget section bands, section move/toggle buttons, category groups, catalog chip buttons, drag handles, dynamic option selects, execution log retention panel controls, Storage Expansion dashboard summary controls, operations readiness summary/filter/remediation command and workflow-command copy controls, and dashboard catalog widgets.
+- Expected: All required selectors exist so future Browser/Chrome E2E can target stable UI hooks instead of brittle text or layout selectors, including dashboard view-mode summary, edit-mode toggle, loading state, error state, retry button, empty state, widget access mode badge, widget section bands, section move/toggle buttons, category groups, catalog chip buttons, drag handles, dynamic option selects, execution log retention panel controls, Storage Expansion dashboard summary controls, operations readiness summary/filter/remediation command and workflow-command copy controls, admin action failure remediation controls, and dashboard catalog widgets.
 - Priority: P1
 - Automated: `npm run test:unit`
+
+### TC-FE-ADMIN-FAILURE-REMEDIATION
+
+- Feature: Admin action failure remediation UX.
+- Preconditions: Admin or org-admin user is on `/admin`.
+- Input: Admin API action returns `ApiClientError` with `status`, `code`, optional `requestId`.
+- Steps: Trigger representative `401 AUTHENTICATION_REQUIRED`, `403 AUTHORIZATION_FAILED`, `400 VALIDATION_ERROR`, `404 NOT_FOUND`, and `409 CONFLICT` failures from admin actions.
+- Expected: The global error remains visible, `admin-action-remediation-panel` appears only on `/admin`, error code/status/request id context is preserved, and the panel shows next actions for session renewal, role/scope review, input correction, list refresh, conflict refresh, and audit-log lookup.
+- Priority: P1
+- Automated: `npm run test:unit` selector/source contract. Browser failure-injection E2E is pending.
 
 ### TC-FE-031
 
