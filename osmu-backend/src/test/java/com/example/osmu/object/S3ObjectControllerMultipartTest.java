@@ -115,6 +115,77 @@ class S3ObjectControllerMultipartTest {
     }
 
     @Test
+    void createMultipartUploadEchoesChecksumAlgorithmAndType() {
+        MockHttpServletRequest request = request("POST");
+        request.setContentType(MediaType.APPLICATION_OCTET_STREAM_VALUE);
+        request.addHeader("x-amz-checksum-algorithm", "CRC32C");
+        request.addHeader("x-amz-checksum-type", "COMPOSITE");
+        when(s3RequestAuthService.currentUser(request, "bucket", "WRITE")).thenReturn(user);
+        when(objectService.createS3MultipartUpload(
+                eq("bucket"),
+                argThat(body -> body.key().equals("videos/checksum.mp4")
+                        && body.sizeBytes() == null
+                        && body.partSizeBytes() == null),
+                eq(user)
+        )).thenReturn(new MultipartUploadCreateResponse(
+                "upload-checksum",
+                "videos/checksum.mp4",
+                0L,
+                0L,
+                0,
+                900,
+                OffsetDateTime.now().plusMinutes(15),
+                List.of()
+        ));
+
+        var response = controller.createMultipartUpload("bucket", "videos/checksum.mp4", request);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(response.getHeaders().getFirst("x-amz-checksum-algorithm")).isEqualTo("CRC32C");
+        assertThat(response.getHeaders().getFirst("x-amz-checksum-type")).isEqualTo("COMPOSITE");
+        assertThat(response.getBody()).contains("<UploadId>upload-checksum</UploadId>");
+    }
+
+    @Test
+    void createMultipartUploadRejectsUnsupportedChecksumNegotiation() {
+        MockHttpServletRequest unsupportedAlgorithmRequest = request("POST");
+        unsupportedAlgorithmRequest.addHeader("x-amz-checksum-algorithm", "SHA512");
+        when(s3RequestAuthService.currentUser(unsupportedAlgorithmRequest, "bucket", "WRITE")).thenReturn(user);
+
+        assertThatThrownBy(() -> controller.createMultipartUpload("bucket", "videos/input.mp4", unsupportedAlgorithmRequest))
+                .isInstanceOfSatisfying(ApiException.class, exception ->
+                        assertThat(exception.code()).isEqualTo(ApiErrorCode.VALIDATION_ERROR));
+
+        MockHttpServletRequest invalidTypeRequest = request("POST");
+        invalidTypeRequest.addHeader("x-amz-checksum-type", "SIDEWAYS");
+        when(s3RequestAuthService.currentUser(invalidTypeRequest, "bucket", "WRITE")).thenReturn(user);
+
+        assertThatThrownBy(() -> controller.createMultipartUpload("bucket", "videos/input.mp4", invalidTypeRequest))
+                .isInstanceOfSatisfying(ApiException.class, exception ->
+                        assertThat(exception.code()).isEqualTo(ApiErrorCode.VALIDATION_ERROR));
+
+        MockHttpServletRequest invalidCompositeRequest = request("POST");
+        invalidCompositeRequest.addHeader("x-amz-checksum-algorithm", "CRC64NVME");
+        invalidCompositeRequest.addHeader("x-amz-checksum-type", "COMPOSITE");
+        when(s3RequestAuthService.currentUser(invalidCompositeRequest, "bucket", "WRITE")).thenReturn(user);
+
+        assertThatThrownBy(() -> controller.createMultipartUpload("bucket", "videos/input.mp4", invalidCompositeRequest))
+                .isInstanceOfSatisfying(ApiException.class, exception ->
+                        assertThat(exception.code()).isEqualTo(ApiErrorCode.VALIDATION_ERROR));
+
+        MockHttpServletRequest invalidFullObjectRequest = request("POST");
+        invalidFullObjectRequest.addHeader("x-amz-checksum-algorithm", "SHA256");
+        invalidFullObjectRequest.addHeader("x-amz-checksum-type", "FULL_OBJECT");
+        when(s3RequestAuthService.currentUser(invalidFullObjectRequest, "bucket", "WRITE")).thenReturn(user);
+
+        assertThatThrownBy(() -> controller.createMultipartUpload("bucket", "videos/input.mp4", invalidFullObjectRequest))
+                .isInstanceOfSatisfying(ApiException.class, exception ->
+                        assertThat(exception.code()).isEqualTo(ApiErrorCode.VALIDATION_ERROR));
+
+        verifyNoInteractions(objectService);
+    }
+
+    @Test
     void listMultipartUploadsReturnsS3Xml() {
         MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/s3/bucket");
         when(s3RequestAuthService.currentUser(request, "bucket", "WRITE")).thenReturn(user);

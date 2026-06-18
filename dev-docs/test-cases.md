@@ -309,7 +309,7 @@
 - Feature: S3 compatibility supported/partial/unsupported matrix.
 - Preconditions: `dev-docs/s3-compatibility.md`, `api-spec.md`, and backend S3 tests are available.
 - Steps: Review the S3 matrix and compare it with backend tests for path-style, virtual-hosted-style, SigV4, presigned auth, object PUT/GET/HEAD/DELETE, CopyObject, tagging, list, multi-delete, multipart, checksum, and aws-chunked body decoding.
-- Expected: The matrix lists supported, partial, and unsupported behavior, including aws-chunked decoded length validation, `STREAMING-AWS4-HMAC-SHA256-PAYLOAD` chunk-signature presence/format validation, SigV4 header-auth cryptographic per-chunk signature chain verification, trailing checksum validation including CRC64NVME, SHA1/SHA256/CRC32/CRC32C multipart composite checksum aggregation, CRC64NVME full-object multipart checksum handling, and remaining broader checksum negotiation gap.
+- Expected: The matrix lists supported, partial, and unsupported behavior, including aws-chunked decoded length validation, `STREAMING-AWS4-HMAC-SHA256-PAYLOAD` chunk-signature presence/format validation, SigV4 header-auth cryptographic per-chunk signature chain verification, trailing checksum validation including CRC64NVME, multipart initiate checksum algorithm/type header echo, SHA1/SHA256/CRC32/CRC32C multipart composite checksum aggregation, CRC64NVME full-object multipart checksum handling, and remaining broader checksum negotiation gap.
 - Priority: P1
 - Automated: backend S3 controller tests and `verify-s3-client-smoke.ps1`; document consistency is reviewed through `git diff --check` and code review.
 
@@ -347,11 +347,11 @@
 
 - Feature: S3 multipart initiate unknown-size parity.
 - Preconditions: Target bucket exists. Active access key has `WRITE` scope. MinIO multipart storage adapter is available for runtime use.
-- Input: `POST /api/s3/{bucketName}/{objectKey}?uploads` without `X-OSMU-Multipart-Size-Bytes` or `x-amz-meta-osmu-size-bytes`, followed by `UploadPart`, `ListParts`, and `CompleteMultipartUpload`.
-- Steps: Initiate multipart upload without expected size, upload part 1, list uploaded parts, complete with matching part ETag, then repeat completion with a quota failure.
-- Expected: Initiate returns S3 XML `InitiateMultipartUploadResult` and an upload id without requiring an expected-size header. The session stores no precomputed part plan, part numbers 1~10000 are allowed, ListParts works from storage state, complete applies bucket quota and usage using the actual completed object size, and quota failure rolls back the completed storage object before metadata commit.
+- Input: `POST /api/s3/{bucketName}/{objectKey}?uploads` without `X-OSMU-Multipart-Size-Bytes` or `x-amz-meta-osmu-size-bytes`, optionally with `x-amz-checksum-algorithm` and `x-amz-checksum-type`, followed by `UploadPart`, `ListParts`, and `CompleteMultipartUpload`.
+- Steps: Initiate multipart upload without expected size, initiate with supported checksum algorithm/type headers, reject unsupported checksum negotiation, upload part 1, list uploaded parts, complete with matching part ETag, then repeat completion with a quota failure.
+- Expected: Initiate returns S3 XML `InitiateMultipartUploadResult` and an upload id without requiring an expected-size header. Supported checksum negotiation headers are echoed; unsupported algorithm/type combinations return S3 XML `InvalidRequest` before session creation. The session stores no precomputed part plan, part numbers 1~10000 are allowed, ListParts works from storage state, complete applies bucket quota and usage using the actual completed object size, and quota failure rolls back the completed storage object before metadata commit.
 - Priority: P1
-- Automated: `S3ObjectControllerMultipartTest.createMultipartUploadAllowsS3InitiateWithoutExpectedSizeHeader`, `ObjectServiceMultipartRefreshTest.s3MultipartUploadCanStartWithoutExpectedSizeAndCompleteWithActualSize`, `ObjectServiceMultipartRefreshTest.s3MultipartUnknownSizeCompleteRollsBackCompletedObjectOnQuotaFailure`
+- Automated: `S3ObjectControllerMultipartTest.createMultipartUploadAllowsS3InitiateWithoutExpectedSizeHeader`, `S3ObjectControllerMultipartTest.createMultipartUploadEchoesChecksumAlgorithmAndType`, `S3ObjectControllerMultipartTest.createMultipartUploadRejectsUnsupportedChecksumNegotiation`, `ObjectServiceMultipartRefreshTest.s3MultipartUploadCanStartWithoutExpectedSizeAndCompleteWithActualSize`, `ObjectServiceMultipartRefreshTest.s3MultipartUnknownSizeCompleteRollsBackCompletedObjectOnQuotaFailure`
 
 ### TC-S3-MULTIPART-COMPLETE-001
 

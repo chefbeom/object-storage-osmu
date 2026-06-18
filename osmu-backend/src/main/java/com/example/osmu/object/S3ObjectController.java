@@ -284,6 +284,8 @@ public class S3ObjectController {
             HttpServletRequest request
     ) {
         AuthenticatedUser user = s3RequestAuthService.currentUser(request, bucketName, "WRITE");
+        String checksumAlgorithm = multipartInitiateChecksumAlgorithm(request);
+        String checksumType = multipartInitiateChecksumType(request, checksumAlgorithm);
         MultipartUploadCreateResponse response = objectService.createS3MultipartUpload(
                 bucketName,
                 new MultipartUploadCreateRequest(
@@ -297,9 +299,14 @@ public class S3ObjectController {
                 user
         );
         auditLogService.record("S3_OBJECT_MULTIPART_CREATE", user.loginId(), "OBJECT", bucketName + "/" + response.key(), "SUCCESS", "S3-style multipart upload created", request);
-        return ResponseEntity.ok()
-                .contentType(MediaType.APPLICATION_XML)
-                .body(initiateMultipartUploadResultXml(bucketName, response.key(), response.uploadId()));
+        ResponseEntity.BodyBuilder builder = ResponseEntity.ok().contentType(MediaType.APPLICATION_XML);
+        if (!checksumAlgorithm.isBlank()) {
+            builder.header(AWS_CHECKSUM_ALGORITHM_HEADER, checksumAlgorithm);
+        }
+        if (!checksumType.isBlank()) {
+            builder.header(AWS_CHECKSUM_TYPE_HEADER, checksumType);
+        }
+        return builder.body(initiateMultipartUploadResultXml(bucketName, response.key(), response.uploadId()));
     }
 
     @PutMapping(value = "/{*objectKey}", params = {"partNumber", "uploadId"}, consumes = MediaType.ALL_VALUE)
@@ -867,6 +874,34 @@ public class S3ObjectController {
             case "CRC64NVME" -> AWS_CHECKSUM_CRC64NVME_HEADER;
             default -> throw new ApiException(ApiErrorCode.VALIDATION_ERROR, AWS_CHECKSUM_ALGORITHM_HEADER + " is not supported.");
         };
+    }
+
+    private String multipartInitiateChecksumAlgorithm(HttpServletRequest request) {
+        String checksumHeader = copyObjectChecksumHeader(request);
+        return checksumHeader == null ? "" : checksumAlgorithm(checksumHeader);
+    }
+
+    private String multipartInitiateChecksumType(HttpServletRequest request, String checksumAlgorithm) {
+        String rawChecksumType = request.getHeader(AWS_CHECKSUM_TYPE_HEADER);
+        if (rawChecksumType == null || rawChecksumType.isBlank()) {
+            return "";
+        }
+        if (rawChecksumType.contains(",")) {
+            throw new ApiException(ApiErrorCode.VALIDATION_ERROR, AWS_CHECKSUM_TYPE_HEADER + " must specify one checksum type.");
+        }
+        String checksumType = rawChecksumType.trim().toUpperCase(Locale.ROOT);
+        if (!"COMPOSITE".equals(checksumType) && !"FULL_OBJECT".equals(checksumType)) {
+            throw new ApiException(ApiErrorCode.VALIDATION_ERROR, AWS_CHECKSUM_TYPE_HEADER + " must be COMPOSITE or FULL_OBJECT.");
+        }
+        if ("COMPOSITE".equals(checksumType)
+                && "CRC64NVME".equals(checksumAlgorithm)) {
+            throw new ApiException(ApiErrorCode.VALIDATION_ERROR, AWS_CHECKSUM_TYPE_HEADER + " COMPOSITE is not supported for CRC64NVME.");
+        }
+        if ("FULL_OBJECT".equals(checksumType)
+                && ("SHA1".equals(checksumAlgorithm) || "SHA256".equals(checksumAlgorithm))) {
+            throw new ApiException(ApiErrorCode.VALIDATION_ERROR, AWS_CHECKSUM_TYPE_HEADER + " FULL_OBJECT requires a CRC checksum algorithm.");
+        }
+        return checksumType;
     }
 
     private String copyObjectChecksum(CopySource copySource, AuthenticatedUser user, String headerName) throws IOException {

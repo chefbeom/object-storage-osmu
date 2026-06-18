@@ -1,5 +1,37 @@
 # Worklog - main
 
+### 2026-06-18 - S3 multipart initiate checksum negotiation headers
+
+- Work time:
+  - End: 2026-06-18 19:44:53 +09:00
+- User command:
+  - Active goal: continue development from `dev-docs`.
+- Request analysis:
+  - `dev-docs` still listed broader AWS multipart checksum negotiation parity.
+  - AWS CreateMultipartUpload documents `x-amz-checksum-algorithm` and `x-amz-checksum-type` request headers and the same response headers.
+- Execution:
+  - Added S3 multipart initiate parsing for supported `x-amz-checksum-algorithm` values: `SHA256`, `SHA1`, `CRC32`, `CRC32C`, and `CRC64NVME`.
+  - Added `x-amz-checksum-type` validation for `COMPOSITE` and `FULL_OBJECT`, including known unsupported combinations such as `CRC64NVME` composite and SHA full-object.
+  - Echoed accepted checksum algorithm/type headers in the initiate response.
+  - Updated stale API limitation text that still said S3 multipart initiate required OSMU expected-size headers.
+  - Updated S3 compatibility/API/backend/PRD/test docs.
+- Modified files:
+  - `osmu-backend/src/main/java/com/example/osmu/object/S3ObjectController.java`
+  - `osmu-backend/src/test/java/com/example/osmu/object/S3ObjectControllerMultipartTest.java`
+  - `dev-docs/PRODUCT_REQUIREMENTS.md`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/backend-design.md`
+  - `dev-docs/s3-compatibility.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/feature-inventory.md`
+  - `dev-docs/worklog/main/worklog-main.md`
+- Tests:
+  - `gradle test --tests com.example.osmu.object.S3ObjectControllerMultipartTest`: passed.
+  - `gradle test`: passed.
+- Review:
+  - This is still not full AWS checksum negotiation because upload sessions do not persist the requested algorithm/type across UploadPart and CompleteMultipartUpload.
+  - The response now matches the documented CreateMultipartUpload checksum header surface for the supported OSMU checksum subset.
+
 ### 2026-06-18 - S3 multipart CRC composite checksum support
 
 - Work time:
