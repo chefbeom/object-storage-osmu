@@ -683,6 +683,22 @@ public class ObjectService {
         return checksumHeaderName(session.checksumAlgorithm());
     }
 
+    public String multipartUploadChecksumType(
+            String bucketName,
+            String uploadId,
+            String key,
+            AuthenticatedUser user
+    ) {
+        bucketService.assertCanWrite(bucketName, user);
+        String normalizedBucketName = bucketService.get(bucketName, user).name();
+        String normalizedKey = normalizeRequiredKey(key);
+        PresignedUploadSession session = uploadSessionRepository.findByUploadId(uploadId)
+                .orElseThrow(() -> new ApiException(ApiErrorCode.NOT_FOUND, "Upload session not found."));
+        validateUploadSession(session, user, normalizedBucketName, normalizedKey);
+        validateUploadMode(session, UPLOAD_MODE_MULTIPART);
+        return normalizeChecksumNegotiation(session.checksumType());
+    }
+
     public MultipartUploadUploadedPart uploadMultipartPart(
             String bucketName,
             String key,

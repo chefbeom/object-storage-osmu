@@ -597,6 +597,42 @@ class ObjectServiceMultipartRefreshTest {
     }
 
     @Test
+    void multipartUploadChecksumTypeReturnsInitiatedChecksumType() {
+        BucketRecord bucket = new BucketRecord(1L, "bucket", "USER", 1L, 1000000000L, 0L, 0L, OffsetDateTime.now());
+        when(bucketService.get("bucket", user)).thenReturn(bucket);
+        when(storageAdapter.statObject("bucket", "videos/initiated-checksum-type.mp4")).thenReturn(Optional.empty());
+        when(storageAdapter.createMultipartUpload(
+                eq("bucket"),
+                eq("videos/initiated-checksum-type.mp4"),
+                eq("video/mp4"),
+                eq(900),
+                anyList()
+        )).thenAnswer(invocation -> storageUpload("storage-upload-initiated-checksum-type", invocation.getArgument(4), 900, "create"));
+
+        MultipartUploadCreateResponse created = objectService.createS3MultipartUpload(
+                "bucket",
+                new MultipartUploadCreateRequest(
+                        "videos/initiated-checksum-type.mp4",
+                        "video/mp4",
+                        5L,
+                        5L,
+                        900,
+                        "",
+                        "CRC32C",
+                        "COMPOSITE"
+                ),
+                user
+        );
+
+        assertThat(objectService.multipartUploadChecksumType(
+                "bucket",
+                created.uploadId(),
+                "videos/initiated-checksum-type.mp4",
+                user
+        )).isEqualTo("COMPOSITE");
+    }
+
+    @Test
     void listMultipartUploadPartsReturnsStoredPartChecksums() throws Exception {
         BucketRecord bucket = new BucketRecord(1L, "bucket", "USER", 1L, 1000000000L, 0L, 0L, OffsetDateTime.now());
         String partChecksum = crcChecksumBase64("CRC32C", "hello");

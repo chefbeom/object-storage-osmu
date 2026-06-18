@@ -423,12 +423,16 @@ public class S3ObjectController {
         ChecksumResponseHeader checksumResponseHeader = checksumResponseHeader(request);
         List<CompletedMultipartUploadPart> completedParts = completedPartsFromXml(requestBody(request));
         String checksumType = multipartChecksumType(request);
+        Long expectedObjectSize = multipartObjectSize(request);
+        String initiatedChecksumType =
+                objectService.multipartUploadChecksumType(bucketName, uploadId, objectKey, user);
+        String responseChecksumType = responseChecksumType(checksumType, initiatedChecksumType);
         StoredObjectRecord object = objectService.completeMultipartUpload(
                 bucketName,
                 new MultipartUploadCompleteRequest(uploadId, objectKey, completedParts),
                 user,
                 checksumResponseHeader.asMap(),
-                multipartObjectSize(request),
+                expectedObjectSize,
                 checksumType
         );
         auditLogService.record("S3_OBJECT_MULTIPART_COMPLETE", user.loginId(), "OBJECT", bucketName + "/" + object.key(), "SUCCESS", "S3-style multipart upload completed", request);
@@ -438,7 +442,7 @@ public class S3ObjectController {
             builder.eTag(etag(object));
         }
         object.checksums().forEach(builder::header);
-        return builder.body(completeMultipartUploadResultXml(bucketName, object, checksumType));
+        return builder.body(completeMultipartUploadResultXml(bucketName, object, responseChecksumType));
     }
 
     @DeleteMapping(value = "/{*objectKey}", params = "uploadId")
@@ -1512,6 +1516,16 @@ public class S3ObjectController {
         } catch (XMLStreamException exception) {
             throw new ApiException(ApiErrorCode.INTERNAL_ERROR, "Failed to render S3 multipart complete XML.");
         }
+    }
+
+    private String responseChecksumType(String requestedChecksumType, String initiatedChecksumType) {
+        if (requestedChecksumType != null && !requestedChecksumType.isBlank()) {
+            return requestedChecksumType;
+        }
+        if (initiatedChecksumType == null || initiatedChecksumType.isBlank()) {
+            return "";
+        }
+        return initiatedChecksumType.trim().toUpperCase(Locale.ROOT);
     }
 
     private String contentType(HttpServletRequest request) {

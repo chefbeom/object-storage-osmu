@@ -1,5 +1,38 @@
 # Worklog - main
 
+### 2026-06-18 - S3 CompleteMultipartUpload initiated ChecksumType response
+
+- Work time:
+  - End: 2026-06-18 KST
+- User command:
+  - Active goal: continue development from `dev-docs`.
+- Request analysis:
+  - `dev-docs` still track remaining multipart checksum response parity.
+  - AWS CompleteMultipartUpload response XML includes `ChecksumType`, and AWS describes it as the checksum type specified during `CreateMultipartUpload`.
+  - OSMU returned `ChecksumType` only when the complete request itself sent `x-amz-checksum-type`, so a persisted initiate checksum type could be validated but not echoed.
+- Execution:
+  - Added `ObjectService.multipartUploadChecksumType(...)` to validate the active multipart session and expose the persisted initiate checksum type without mutating upload state.
+  - Updated S3 complete response rendering to prefer the request `x-amz-checksum-type`, then fall back to the initiated/persisted checksum type.
+  - Kept invalid `x-amz-mp-object-size` validation before service lookup so bad local request shape still avoids object-service interaction.
+  - Added controller and service regression tests for initiated `ChecksumType` response propagation.
+  - Updated README and `dev-docs`.
+- Modified files:
+  - `osmu-backend/src/main/java/com/example/osmu/object/S3ObjectController.java`
+  - `osmu-backend/src/main/java/com/example/osmu/object/ObjectService.java`
+  - `osmu-backend/src/test/java/com/example/osmu/object/S3ObjectControllerMultipartTest.java`
+  - `osmu-backend/src/test/java/com/example/osmu/object/ObjectServiceMultipartRefreshTest.java`
+  - `README.md`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/backend-design.md`
+  - `dev-docs/s3-compatibility.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/feature-inventory.md`
+  - `dev-docs/worklog/main/worklog-main.md`
+- Tests:
+  - `$env:JAVA_HOME='C:\jdk-17'; .\gradlew.bat test --no-daemon --tests com.example.osmu.object.S3ObjectControllerMultipartTest --tests com.example.osmu.object.ObjectServiceMultipartRefreshTest`: passed.
+- Follow-up:
+  - Continue remaining AWS checksum/error response propagation edges and non-bucket per-error message/status nuance.
+
 ### 2026-06-18 - S3 CompleteMultipartUpload special errors
 
 - Work time:
