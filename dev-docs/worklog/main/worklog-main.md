@@ -1,5 +1,29 @@
 # Worklog - main
 
+### 2026-06-18 - Access Key expiration verification
+
+- Work time:
+  - End: 2026-06-18 17:48:25 +09:00
+- User command:
+  - Active goal: continue development from `dev-docs`.
+- Request analysis:
+  - `dev-docs/test-cases.md` still marked Access Key expiration backend validation as pending local Java verification.
+  - The implementation already had `@Future expiresAt`, expired authentication blocking, and expired rotate blocking, but the named backend evidence was missing.
+- Execution:
+  - Added backend regression coverage for past `expiresAt` create rejection.
+  - Added backend regression coverage that an expired active Access Key cannot authenticate through S3-style requests and cannot rotate.
+  - Updated TC-KEY-010 automation references to include the backend tests.
+- Modified files:
+  - `osmu-backend/src/test/java/com/example/osmu/accesskey/AccessKeyControllerTest.java`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/worklog/main/worklog-main.md`
+- Verification:
+  - `gradle test --tests com.example.osmu.accesskey.AccessKeyControllerTest.createAccessKeyRejectsPastExpiration --tests com.example.osmu.accesskey.AccessKeyControllerTest.expiredAccessKeyCannotAuthenticateOrRotate`: passed.
+- Result:
+  - Access Key expiration behavior now has backend test evidence and the stale pending note is removed.
+- Follow-up:
+  - Browser click E2E for Access Key expiration UI remains a separate runtime/browser verification item.
+
 ### 2026-06-18 - Admin user list filter pagination
 
 - Work time:

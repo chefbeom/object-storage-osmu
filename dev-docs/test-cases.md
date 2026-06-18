@@ -1437,7 +1437,7 @@ ID:
 - Steps: Enter key name, expiration datetime, bucket scope, submit Access Key creation, then list Access Keys.
 - Expected: Frontend sends ISO `expiresAt` or `null` when blank; list displays `Expires` and rotation grace state; backend rejects past expiration via request validation; expired keys cannot authenticate or rotate.
 - Priority: P1
-- Automated: `HomeView.test.js`, `api-access-key.test.js`; backend validation execution pending local Java fix.
+- Automated: `AccessKeyControllerTest.createAccessKeyRejectsPastExpiration`, `AccessKeyControllerTest.expiredAccessKeyCannotAuthenticateOrRotate`, `HomeView.test.js`, `api-access-key.test.js`.
 
 ### TC-KEY-011
 

@@ -11,6 +11,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.jayway.jsonpath.JsonPath;
+import com.example.osmu.accesskey.repository.AccessKeyRepository;
 import java.time.OffsetDateTime;
 import java.util.List;
 import org.junit.jupiter.api.Test;
@@ -27,6 +28,9 @@ class AccessKeyControllerTest {
 
     @Autowired
     private MockMvc mockMvc;
+
+    @Autowired
+    private AccessKeyRepository accessKeyRepository;
 
     @Test
     void createAccessKeyShowsSecretOnlyInCreateResponse() throws Exception {
@@ -233,6 +237,62 @@ class AccessKeyControllerTest {
     }
 
     @Test
+    void createAccessKeyRejectsPastExpiration() throws Exception {
+        String accessToken = loginAndReturnAccessToken("admin", "password");
+        createBucket(accessToken, "key-past-expiration-bucket");
+
+        mockMvc.perform(post("/api/access-keys")
+                        .header("Authorization", "Bearer " + accessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "name": "past-expiration-key",
+                                  "allowedBuckets": ["key-past-expiration-bucket"],
+                                  "permissions": ["READ"],
+                                  "expiresAt": "%s"
+                                }
+                                """.formatted(OffsetDateTime.now().minusDays(1))))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void expiredAccessKeyCannotAuthenticateOrRotate() throws Exception {
+        String accessToken = loginAndReturnAccessToken("admin", "password");
+        createBucket(accessToken, "key-expired-runtime-bucket");
+
+        MvcResult createResult = mockMvc.perform(post("/api/access-keys")
+                        .header("Authorization", "Bearer " + accessToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "name": "expired-runtime-key",
+                                  "allowedBuckets": ["key-expired-runtime-bucket"],
+                                  "permissions": ["READ", "WRITE"],
+                                  "expiresAt": null
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andReturn();
+        String createBody = createResult.getResponse().getContentAsString();
+        Number keyId = JsonPath.read(createBody, "$.data.id");
+        String accessKey = JsonPath.read(createBody, "$.data.accessKey");
+        String secretKey = JsonPath.read(createBody, "$.data.secretKey");
+        expireAccessKey(keyId.longValue(), accessKey);
+
+        mockMvc.perform(put("/api/s3/key-expired-runtime-bucket/expired.txt")
+                        .header("X-OSMU-Access-Key", accessKey)
+                        .header("X-OSMU-Secret-Key", secretKey)
+                        .contentType(MediaType.TEXT_PLAIN)
+                        .content("expired"))
+                .andExpect(status().isUnauthorized());
+
+        mockMvc.perform(post("/api/access-keys/%d/rotate".formatted(keyId.longValue()))
+                        .header("Authorization", "Bearer " + accessToken))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error.code").value("VALIDATION_ERROR"));
+    }
+
+    @Test
     void bulkDisableAccessKeysDisablesActiveKeysAndSkipsInactiveKeys() throws Exception {
         String accessToken = loginAndReturnAccessToken("admin", "password");
         createBucket(accessToken, "key-bulk-cleanup-bucket");
@@ -372,6 +432,30 @@ class AccessKeyControllerTest {
                 .getResponse()
                 .getContentAsString();
         return JsonPath.read(response, "$.data.id");
+    }
+
+    private void expireAccessKey(long keyId, String accessKey) {
+        AccessKeyRecord record = accessKeyRepository.findRecordById(keyId).orElseThrow();
+        AccessKeyCredential credential = accessKeyRepository.findCredentialByAccessKey(accessKey).orElseThrow();
+        accessKeyRepository.save(new AccessKeyEntity(
+                record.id(),
+                record.ownerId(),
+                record.name(),
+                record.accessKey(),
+                credential.secretKeyHash(),
+                credential.secretKeyCiphertext(),
+                credential.previousSecretKeyHash(),
+                credential.previousSecretKeyCiphertext(),
+                credential.previousSecretKeyExpiresAt(),
+                record.allowedBuckets(),
+                record.permissions(),
+                record.bucketScopes(),
+                record.status(),
+                record.createdAt(),
+                OffsetDateTime.now().minusMinutes(1),
+                record.lastUsedAt(),
+                record.usageCount()
+        ));
     }
 
     private String loginAndReturnAccessToken(String loginId, String password) throws Exception {
