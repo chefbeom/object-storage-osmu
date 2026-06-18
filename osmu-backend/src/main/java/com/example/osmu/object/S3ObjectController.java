@@ -83,6 +83,7 @@ public class S3ObjectController {
     private static final String OSMU_MULTIPART_EXPIRES_HEADER = "X-OSMU-Multipart-Expires-In-Seconds";
     private static final int DEFAULT_MAX_KEYS = 1000;
     private static final int DEFAULT_MAX_UPLOADS = 1000;
+    private static final int MAX_MULTIPART_PART_NUMBER = 10_000;
 
     private final ObjectService objectService;
     private final S3RequestAuthService s3RequestAuthService;
@@ -907,11 +908,23 @@ public class S3ObjectController {
             if (partNodes.getLength() == 0) {
                 throw new ApiException(ApiErrorCode.VALIDATION_ERROR, "CompleteMultipartUpload requires at least one Part.");
             }
+            if (partNodes.getLength() > MAX_MULTIPART_PART_NUMBER) {
+                throw new ApiException(ApiErrorCode.VALIDATION_ERROR, "CompleteMultipartUpload can contain at most 10000 parts.");
+            }
             List<CompletedMultipartUploadPart> parts = new ArrayList<>();
+            int lastPartNumber = 0;
             for (int i = 0; i < partNodes.getLength(); i++) {
                 Element part = (Element) partNodes.item(i);
-                int partNumber = (int) parsePositiveLong(requiredTagText(part, "PartNumber"), "PartNumber");
-                String etag = unquote(requiredTagText(part, "ETag"));
+                int partNumber = parseMultipartPartNumber(requiredMultipartTagText(part, "PartNumber"));
+                if (partNumber <= lastPartNumber) {
+                    throw new ApiException(ApiErrorCode.VALIDATION_ERROR,
+                            "CompleteMultipartUpload parts must be in ascending PartNumber order without duplicates.");
+                }
+                lastPartNumber = partNumber;
+                String etag = unquote(requiredMultipartTagText(part, "ETag"));
+                if (etag.isBlank()) {
+                    throw new ApiException(ApiErrorCode.VALIDATION_ERROR, "CompleteMultipartUpload Part ETag is required.");
+                }
                 Map<String, String> checksums = new LinkedHashMap<>();
                 addOptionalChecksum(checksums, part, "ChecksumSHA256", AWS_CHECKSUM_SHA256_HEADER);
                 addOptionalChecksum(checksums, part, "ChecksumSHA1", AWS_CHECKSUM_SHA1_HEADER);
@@ -923,6 +936,23 @@ public class S3ObjectController {
         } catch (ParserConfigurationException | IOException | SAXException exception) {
             throw new ApiException(ApiErrorCode.VALIDATION_ERROR, "Invalid CompleteMultipartUpload XML.");
         }
+    }
+
+    private int parseMultipartPartNumber(String rawValue) {
+        long partNumber = parsePositiveLong(rawValue, "PartNumber");
+        if (partNumber > MAX_MULTIPART_PART_NUMBER) {
+            throw new ApiException(ApiErrorCode.VALIDATION_ERROR, "PartNumber must be between 1 and 10000.");
+        }
+        return (int) partNumber;
+    }
+
+    private String requiredMultipartTagText(Element parent, String localName) {
+        NodeList nodes = parent.getElementsByTagNameNS("*", localName);
+        if (nodes.getLength() == 0) {
+            throw new ApiException(ApiErrorCode.VALIDATION_ERROR,
+                    "CompleteMultipartUpload Part requires PartNumber and ETag.");
+        }
+        return nodes.item(0).getTextContent();
     }
 
     private void addOptionalChecksum(Map<String, String> checksums, Element part, String xmlName, String headerName) {

@@ -7,6 +7,7 @@ import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import com.example.osmu.audit.AuditLogService;
@@ -370,6 +371,42 @@ class S3ObjectControllerMultipartTest {
     }
 
     @Test
+    void completeMultipartUploadRejectsInvalidPartListXml() {
+        assertInvalidCompleteMultipartXml("""
+                <CompleteMultipartUpload></CompleteMultipartUpload>
+                """);
+        assertInvalidCompleteMultipartXml("""
+                <CompleteMultipartUpload>
+                  <Part><PartNumber>2</PartNumber><ETag>"etag-2"</ETag></Part>
+                  <Part><PartNumber>1</PartNumber><ETag>"etag-1"</ETag></Part>
+                </CompleteMultipartUpload>
+                """);
+        assertInvalidCompleteMultipartXml("""
+                <CompleteMultipartUpload>
+                  <Part><PartNumber>1</PartNumber><ETag>"etag-1"</ETag></Part>
+                  <Part><PartNumber>1</PartNumber><ETag>"etag-1b"</ETag></Part>
+                </CompleteMultipartUpload>
+                """);
+        assertInvalidCompleteMultipartXml("""
+                <CompleteMultipartUpload>
+                  <Part><PartNumber>0</PartNumber><ETag>"etag-0"</ETag></Part>
+                </CompleteMultipartUpload>
+                """);
+        assertInvalidCompleteMultipartXml("""
+                <CompleteMultipartUpload>
+                  <Part><PartNumber>10001</PartNumber><ETag>"etag-10001"</ETag></Part>
+                </CompleteMultipartUpload>
+                """);
+        assertInvalidCompleteMultipartXml("""
+                <CompleteMultipartUpload>
+                  <Part><PartNumber>1</PartNumber><ETag> </ETag></Part>
+                </CompleteMultipartUpload>
+                """);
+
+        verifyNoInteractions(objectService);
+    }
+
+    @Test
     void listAndAbortMultipartUploadUseS3QueryAlias() {
         MockHttpServletRequest listRequest = request("GET");
         when(s3RequestAuthService.currentUser(listRequest, "bucket", "WRITE")).thenReturn(user);
@@ -406,6 +443,17 @@ class S3ObjectControllerMultipartTest {
                         && body.key().equals("videos/input.mp4")),
                 eq(user)
         );
+    }
+
+    private void assertInvalidCompleteMultipartXml(String rawXml) {
+        MockHttpServletRequest request = request("POST");
+        request.setContentType(MediaType.APPLICATION_XML_VALUE);
+        request.setContent(rawXml.getBytes(StandardCharsets.UTF_8));
+        when(s3RequestAuthService.currentUser(request, "bucket", "WRITE")).thenReturn(user);
+
+        assertThatThrownBy(() -> controller.completeMultipartUpload("bucket", "videos/input.mp4", "upload-1", request))
+                .isInstanceOfSatisfying(ApiException.class, exception ->
+                        assertThat(exception.code()).isEqualTo(ApiErrorCode.VALIDATION_ERROR));
     }
 
     private MockHttpServletRequest request(String method) {

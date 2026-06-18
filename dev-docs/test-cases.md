@@ -293,6 +293,16 @@
 - Priority: P1
 - Automated: backend S3 controller tests and `verify-s3-client-smoke.ps1`; document consistency is reviewed through `git diff --check` and code review.
 
+### TC-S3-MULTIPART-COMPLETE-001
+
+- Feature: S3 multipart complete XML part list validation.
+- Preconditions: Target bucket exists. Active access key has `WRITE` scope. Multipart upload session exists.
+- Input: `POST /api/s3/{bucketName}/{objectKey}?uploadId={uploadId}` with `CompleteMultipartUpload` XML.
+- Steps: Send valid ascending part list, then send invalid lists with empty parts, duplicate `PartNumber`, descending `PartNumber`, `PartNumber` outside 1~10000, and blank `ETag`.
+- Expected: Valid XML is parsed and passed to multipart complete. Invalid XML returns S3 XML `InvalidRequest` before storage complete.
+- Priority: P1
+- Automated: `S3ObjectControllerMultipartTest.completeMultipartUploadParsesS3XmlAndReturnsResultXml`, `S3ObjectControllerMultipartTest.completeMultipartUploadRejectsInvalidPartListXml`
+
 ### TC-FE-024
 
 - Feature: Bucket Lifecycle XML panel.
