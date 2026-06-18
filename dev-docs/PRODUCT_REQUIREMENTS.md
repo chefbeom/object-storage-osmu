@@ -39,7 +39,7 @@
 - Raw upload validates optional S3 `Content-MD5` and rejects invalid or mismatched digests.
 - Raw upload validates one optional S3 checksum value header among `x-amz-checksum-sha256`, `x-amz-checksum-sha1`, `x-amz-checksum-crc32`, `x-amz-checksum-crc32c`, and `x-amz-checksum-crc64nvme`, stores matching checksum metadata, returns the matching checksum response header, and exposes it on later `HEAD`/`GET` plus list checksum algorithm XML.
 - S3 object metadata responses expose `ETag` on `HEAD`, `GET`, `ListObjects`, and `ListObjectsV2` when available.
-- S3 object `HEAD` and `GET` support basic conditional requests through `If-Match`, `If-None-Match`, `If-Modified-Since`, and `If-Unmodified-Since`.
+- S3 object `HEAD` and `GET` support basic conditional requests through `If-Match`, `If-None-Match`, `If-Modified-Since`, and `If-Unmodified-Since`; Range GET supports `If-Range` fallback to full object when the validator is stale.
 - CopyObject requires `READ` on the source bucket and `WRITE` on the target bucket. Copied object body, content type, tags, and stored checksum metadata are preserved by default, and copy result XML can expose stored checksum fields.
 - CopyObject supports `COPY`/`REPLACE` directives for MVP content type and tag replacement.
 - CopyObject supports basic source preconditions through ETag and Last-Modified headers and returns `412 PreconditionFailed` when they fail.

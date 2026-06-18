@@ -44,11 +44,11 @@
 - `S3ObjectController` exposes basic `GET /api/s3/{bucketName}` ListObjects V1 XML with prefix, delimiter, max-keys, marker, `encoding-type=url`, and `fetch-owner=true` support.
 - `S3ObjectController` also exposes basic `GET /api/s3/{bucketName}?list-type=2` ListObjectsV2 XML with prefix, delimiter, max-keys, continuation-token, `encoding-type=url`, and `fetch-owner=true` support.
 - `S3ObjectController` exposes `POST /api/s3/{bucketName}?delete` multi-object delete XML and delegates each key to the existing soft-delete object flow. The S3 `Quiet=true` flag suppresses successful `Deleted` result entries, key-specific failures are returned as `DeleteResult/Error` entries, and optional `Content-MD5` validates the XML body before delete execution.
-- `S3ObjectController` supports single HTTP byte range download for object preview/resume flows and returns `206 Partial Content`.
+- `S3ObjectController` supports single HTTP byte range download for object preview/resume flows, returns `206 Partial Content`, and honors `If-Range` by falling back to a full-object `200` response when the validator is stale.
 - `S3ObjectController` supports S3-style object tagging XML through `GET/PUT/DELETE /api/s3/{bucketName}/{objectKey}?tagging` and delegates storage to `ObjectService.updateTags`.
 - `StoredObjectRecord` carries object `etag` and checksum metadata. S3 `HEAD`, `GET`, `ListObjects`, and `ListObjectsV2` expose `ETag`; `HEAD`/`GET` expose stored `x-amz-checksum-*` headers and list XML exposes `ChecksumAlgorithm`.
 - `BucketService.syncUsage` rebuilds the metadata index from storage actuals and preserves existing checksum metadata only when the storage ETag still matches the indexed ETag. If the object changed in storage, stale checksums are discarded.
-- S3 object `HEAD` and `GET` evaluate basic conditional headers: matching `If-None-Match` or not-modified `If-Modified-Since` returns `304`; non-matching `If-Match` or stale `If-Unmodified-Since` returns `412`.
+- S3 object `HEAD` and `GET` evaluate basic conditional headers: matching `If-None-Match` or not-modified `If-Modified-Since` returns `304`; non-matching `If-Match` or stale `If-Unmodified-Since` returns `412`; GET range requests use `If-Range` to decide whether to serve the range or full object.
 - S3-style object alias reuses `ObjectService`, bucket quota, object metadata, soft delete, audit log, and Access Key permission checks.
 - `S3ErrorCodeMapper` centralizes OSMU `ApiErrorCode` to S3 XML error code mapping so global `/api/s3/**` error responses and multi-delete per-key `Error` entries stay consistent.
 - `GlobalExceptionHandler` returns AWS-style XML error bodies for `/api/s3/**` while normal REST API errors stay JSON.

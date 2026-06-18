@@ -80,6 +80,7 @@ public class S3ObjectController {
     private static final String AWS_CHECKSUM_CRC32_HEADER = "x-amz-checksum-crc32";
     private static final String AWS_CHECKSUM_CRC32C_HEADER = "x-amz-checksum-crc32c";
     private static final String AWS_CHECKSUM_CRC64NVME_HEADER = "x-amz-checksum-crc64nvme";
+    private static final String HTTP_IF_RANGE_HEADER = "If-Range";
     private static final String AWS_UNSIGNED_PAYLOAD = "UNSIGNED-PAYLOAD";
     private static final String AWS_STREAMING_PAYLOAD_PREFIX = "STREAMING-";
     private static final String AWS_CHUNKED_CONTENT_ENCODING = "aws-chunked";
@@ -496,7 +497,7 @@ public class S3ObjectController {
             closeQuietly(object.content());
             return conditionalResponse;
         }
-        ByteRange range = byteRange(request.getHeader(HttpHeaders.RANGE), object.metadata().sizeBytes());
+        ByteRange range = byteRange(request, object.metadata());
         long responseBytes = range == null ? object.metadata().sizeBytes() : range.length();
         dataFlowMonitoringService.recordDownload(bucketName, object.metadata().key(), responseBytes, user.loginId(), "S3");
         StreamingResponseBody body = outputStream -> {
@@ -1238,6 +1239,32 @@ public class S3ObjectController {
         return contentType == null || contentType.isBlank()
                 ? MediaType.APPLICATION_OCTET_STREAM_VALUE
                 : contentType;
+    }
+
+    private ByteRange byteRange(HttpServletRequest request, StoredObjectRecord metadata) {
+        String rangeHeader = request.getHeader(HttpHeaders.RANGE);
+        if (rangeHeader == null || rangeHeader.isBlank()) {
+            return null;
+        }
+        if (!ifRangeAllowsRange(request.getHeader(HTTP_IF_RANGE_HEADER), metadata)) {
+            return null;
+        }
+        return byteRange(rangeHeader, metadata.sizeBytes());
+    }
+
+    private boolean ifRangeAllowsRange(String ifRange, StoredObjectRecord metadata) {
+        if (ifRange == null || ifRange.isBlank()) {
+            return true;
+        }
+        String normalized = ifRange.trim();
+        if (normalized.startsWith("\"") || normalized.startsWith("W/")) {
+            return metadata.etag() != null
+                    && !metadata.etag().isBlank()
+                    && matchesEtag(normalized, metadata.etag());
+        }
+        Instant ifRangeDate = httpDate(normalized);
+        return ifRangeDate != null
+                && !roundedLastModified(metadata.lastModifiedAt().toInstant()).isAfter(ifRangeDate);
     }
 
     private ByteRange byteRange(String header, long sizeBytes) {

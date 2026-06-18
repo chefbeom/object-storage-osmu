@@ -1330,6 +1330,7 @@ Headers:
 - `HEAD` and `GET` return stored `x-amz-checksum-*` headers for S3 uploads that supplied checksum value headers. `ListObjects` and `ListObjectsV2` emit `ChecksumAlgorithm` entries for stored checksums.
 - `If-None-Match` returns `304 Not Modified` when it matches the current ETag; `If-Match` returns `412 Precondition Failed` when it does not match.
 - `If-Modified-Since` returns `304 Not Modified` when the object has not changed after the requested timestamp; `If-Unmodified-Since` returns `412 Precondition Failed` when the object changed after the requested timestamp.
+- Range GET honors `If-Range` with an ETag or HTTP date: matching validators return the requested range, while stale validators ignore `Range` and return the full object.
 - Bucket-level responses return `x-amz-bucket-region`; default MVP region is `us-east-1`.
 - Bucket create returns `200 OK`, `Location: /{bucketName}`, and `x-amz-bucket-region`. Bucket delete returns `204 No Content`.
 - Bucket tagging uses `Tagging/TagSet/Tag/Key/Value` XML, stores up to 50 bucket metadata tags, and disables DOCTYPE/external entity loading while parsing.

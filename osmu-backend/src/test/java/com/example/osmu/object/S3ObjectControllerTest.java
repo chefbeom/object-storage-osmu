@@ -888,6 +888,33 @@ class S3ObjectControllerTest {
                 .andExpect(header().string(HttpHeaders.CONTENT_RANGE, "bytes 9-13/14"))
                 .andExpect(content().string("alias"));
 
+        String currentEtag = "\"%s\"".formatted(md5Hex("hello s3 alias"));
+        MvcResult matchingIfRangeResult = mockMvc.perform(get("/api/s3/{bucketName}/video/sample.txt", bucketName)
+                        .header("X-OSMU-Access-Key", credentials.accessKey())
+                        .header("X-OSMU-Secret-Key", credentials.secretKey())
+                        .header(HttpHeaders.RANGE, "bytes=0-4")
+                        .header("If-Range", currentEtag))
+                .andExpect(request().asyncStarted())
+                .andReturn();
+
+        mockMvc.perform(asyncDispatch(matchingIfRangeResult))
+                .andExpect(status().isPartialContent())
+                .andExpect(header().string(HttpHeaders.CONTENT_RANGE, "bytes 0-4/14"))
+                .andExpect(content().string("hello"));
+
+        MvcResult staleIfRangeResult = mockMvc.perform(get("/api/s3/{bucketName}/video/sample.txt", bucketName)
+                        .header("X-OSMU-Access-Key", credentials.accessKey())
+                        .header("X-OSMU-Secret-Key", credentials.secretKey())
+                        .header(HttpHeaders.RANGE, "bytes=0-4")
+                        .header("If-Range", "\"stale-etag\""))
+                .andExpect(request().asyncStarted())
+                .andReturn();
+
+        mockMvc.perform(asyncDispatch(staleIfRangeResult))
+                .andExpect(status().isOk())
+                .andExpect(header().doesNotExist(HttpHeaders.CONTENT_RANGE))
+                .andExpect(content().string("hello s3 alias"));
+
         mockMvc.perform(get("/api/s3/{bucketName}/video/sample.txt", bucketName)
                         .header("X-OSMU-Access-Key", credentials.accessKey())
                         .header("X-OSMU-Secret-Key", credentials.secretKey())

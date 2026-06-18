@@ -35,7 +35,7 @@
 | --- | --- | --- |
 | `PUT Object` | Supported | Tags, content type, ETag, checksum headers, quota, version snapshot on overwrite. |
 | `HEAD Object` | Supported | ETag, checksum headers, content metadata, conditional headers. |
-| `GET Object` | Supported | Single range request, ETag/checksum headers, conditional headers. Multi-range is not supported. |
+| `GET Object` | Supported | Single range request with `If-Range`, ETag/checksum headers, conditional headers. Multi-range is not supported. |
 | `DELETE Object` | Supported | OSMU soft-delete semantics; purge is handled by REST/admin lifecycle paths. |
 | `CopyObject` | MVP supported | Source object copy, content type/tag directives, source preconditions. Arbitrary user metadata parity is not implemented. |
 | Object tagging | Supported | S3 XML tag subset backed by OSMU object tags. |
