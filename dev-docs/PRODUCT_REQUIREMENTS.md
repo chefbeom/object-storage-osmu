@@ -48,6 +48,7 @@
 - S3 multipart complete validates one optional final object `x-amz-checksum-*` value header against the completed object, stores matching checksum metadata, returns the matching checksum response header, and exposes it in complete-result XML.
 - S3 multipart complete request XML accepts optional per-part checksum elements and validates their syntax before storage completion.
 - S3 multipart complete rejects missing uploaded parts or stale per-part ETags before storage completion.
+- Missing S3 multipart upload IDs return S3 XML `NoSuchUpload`.
 - S3 multipart ListParts supports `max-parts`/`part-number-marker` pagination and returns `PartNumberMarker`, `NextPartNumberMarker`, `MaxParts`, and `IsTruncated` XML fields.
 - Bucket-level responses include `x-amz-bucket-region`; MVP default region is `us-east-1`.
 - S3-style bucket creation currently uses Bearer JWT auth and accepts S3 `CreateBucketConfiguration/LocationConstraint` XML when it matches the configured storage region; bucket deletion supports JWT or an OSMU Access Key with target bucket `ADMIN` scope, requires an empty bucket, and returns S3 XML `BucketNotEmpty` when the bucket still contains objects.

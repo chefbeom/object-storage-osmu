@@ -1323,6 +1323,7 @@ Headers:
 - S3 multipart upload part requires `Content-Length`, validates optional `Content-MD5`, signed `x-amz-content-sha256`, and one optional `x-amz-checksum-*` value header, and returns part `ETag`. Matching checksum returns the same `x-amz-checksum-*` response header.
 - S3 multipart list parts returns `PartNumberMarker`, optional `NextPartNumberMarker`, `MaxParts`, `IsTruncated`, and a page of uploaded parts sorted by `PartNumber`.
 - S3 multipart complete accepts one optional final object `x-amz-checksum-*` value header, validates it against the completed object body, stores matching checksum metadata, returns the same checksum response header, and emits matching complete-result XML checksum element.
+- Missing or inactive S3 multipart upload IDs return S3 XML `NoSuchUpload`.
 - S3 multipart complete request XML requires 1~10000 `Part` entries, strictly ascending unique `PartNumber` values, and a non-blank `ETag` for every part. Invalid lists return S3 XML `InvalidRequest` before storage complete.
 - S3 multipart complete verifies every requested part was uploaded and its ETag matches the uploaded part before storage complete; missing parts or stale ETags return S3 XML `InvalidRequest` without completing the upload.
 - S3 multipart complete request XML accepts optional per-part `ChecksumSHA256`, `ChecksumSHA1`, `ChecksumCRC32`, `ChecksumCRC32C`, and `ChecksumCRC64NVME` elements and validates their checksum syntax before completing storage upload. Full AWS multipart checksum aggregation parity remains future work.
@@ -1348,7 +1349,7 @@ Headers:
 - Object tagging uses `Tagging/TagSet/Tag/Key/Value` XML and reuses the same tag metadata used by the REST object API.
 - `PUT ?tagging` rejects blank or invalid XML and the parser disables DOCTYPE/external entity loading.
 - Errors under `/api/s3/**` return AWS-style XML `<Error><Code>...</Code><Message>...</Message><RequestId>...</RequestId></Error>`.
-- S3 XML error code mapping includes `AccessDenied`, `NoSuchBucket`, `NoSuchKey`, `BucketNotEmpty`, `InvalidRange`, `InvalidRequest`, `InvalidDigest`, `BadDigest`, `PreconditionFailed`, `EntityTooLarge`, `OperationAborted`, and `InternalError`.
+- S3 XML error code mapping includes `AccessDenied`, `NoSuchBucket`, `NoSuchKey`, `NoSuchUpload`, `BucketNotEmpty`, `InvalidRange`, `InvalidRequest`, `InvalidDigest`, `BadDigest`, `PreconditionFailed`, `EntityTooLarge`, `OperationAborted`, and `InternalError`.
 - The same S3 error code mapping is used for global `/api/s3/**` error XML and multi-object delete `DeleteResult/Error` entries.
 
 Object tagging XML:

@@ -980,6 +980,23 @@ class S3ObjectControllerTest {
     }
 
     @Test
+    void missingS3MultipartUploadReturnsNoSuchUploadXml() throws Exception {
+        String token = loginAndReturnAccessToken("admin", "password");
+        String bucketName = "s3-multipart-missing-upload-bucket";
+        createBucket(token, bucketName);
+        AccessKeyCredentials credentials = createAccessKey(token, bucketName, "WRITE");
+
+        mockMvc.perform(get("/api/s3/{bucketName}/video/missing.mp4", bucketName)
+                        .queryParam("uploadId", "missing-upload")
+                        .header("X-OSMU-Access-Key", credentials.accessKey())
+                        .header("X-OSMU-Secret-Key", credentials.secretKey())
+                        .accept(MediaType.APPLICATION_XML))
+                .andExpect(status().isNotFound())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_XML))
+                .andExpect(content().string(containsString("<Code>NoSuchUpload</Code>")));
+    }
+
+    @Test
     void accessKeyScopeControlsS3StyleObjectActions() throws Exception {
         String token = loginAndReturnAccessToken("admin", "password");
         String bucketName = "s3-object-scope-bucket";

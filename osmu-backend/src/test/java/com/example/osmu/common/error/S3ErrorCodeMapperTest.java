@@ -12,6 +12,7 @@ class S3ErrorCodeMapperTest {
         assertThat(S3ErrorCodeMapper.codeFor(ApiErrorCode.AUTHORIZATION_FAILED, "denied")).isEqualTo("AccessDenied");
         assertThat(S3ErrorCodeMapper.codeFor(ApiErrorCode.NOT_FOUND, "Bucket not found.")).isEqualTo("NoSuchBucket");
         assertThat(S3ErrorCodeMapper.codeFor(ApiErrorCode.NOT_FOUND, "Object not found.")).isEqualTo("NoSuchKey");
+        assertThat(S3ErrorCodeMapper.codeFor(ApiErrorCode.NOT_FOUND, "Upload session not found.")).isEqualTo("NoSuchUpload");
         assertThat(S3ErrorCodeMapper.codeFor(ApiErrorCode.PRECONDITION_FAILED, "failed")).isEqualTo("PreconditionFailed");
         assertThat(S3ErrorCodeMapper.codeFor(ApiErrorCode.RANGE_NOT_SATISFIABLE, "range")).isEqualTo("InvalidRange");
         assertThat(S3ErrorCodeMapper.codeFor(ApiErrorCode.INVALID_DIGEST, "digest")).isEqualTo("InvalidDigest");

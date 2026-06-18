@@ -1222,7 +1222,12 @@ public class S3ObjectController {
     private String s3DeleteErrorCode(ApiErrorCode code, String message) {
         return switch (code) {
             case AUTHENTICATION_REQUIRED, AUTHORIZATION_FAILED -> "AccessDenied";
-            case NOT_FOUND -> message != null && message.toLowerCase(java.util.Locale.ROOT).contains("bucket") ? "NoSuchBucket" : "NoSuchKey";
+            case NOT_FOUND -> message != null && (
+                    message.toLowerCase(java.util.Locale.ROOT).contains("upload session")
+                            || message.toLowerCase(java.util.Locale.ROOT).contains("multipart upload")
+            )
+                    ? "NoSuchUpload"
+                    : message != null && message.toLowerCase(java.util.Locale.ROOT).contains("bucket") ? "NoSuchBucket" : "NoSuchKey";
             case PRECONDITION_FAILED -> "PreconditionFailed";
             case RANGE_NOT_SATISFIABLE -> "InvalidRange";
             case INVALID_DIGEST -> "InvalidDigest";

@@ -41,6 +41,7 @@
 - `S3ObjectController` exposes `GET /api/s3/{bucketName}?uploads` as an S3 ListMultipartUploads MVP backed by active `PresignedUploadSession` rows.
 - S3 multipart initiate currently requires an OSMU expected-size header so quota and session part planning remain compatible with the existing REST multipart model.
 - S3 multipart ListParts supports `max-parts` and `part-number-marker`, returns S3-style `PartNumberMarker`, `NextPartNumberMarker`, `MaxParts`, and `IsTruncated`, and pages the uploaded parts returned by storage by ascending part number.
+- Missing multipart upload sessions map to S3 XML `NoSuchUpload` instead of object-style `NoSuchKey`.
 - `S3ObjectController` exposes basic `GET /api/s3/{bucketName}` ListObjects V1 XML with prefix, delimiter, max-keys, marker, `encoding-type=url`, and `fetch-owner=true` support.
 - `S3ObjectController` also exposes basic `GET /api/s3/{bucketName}?list-type=2` ListObjectsV2 XML with prefix, delimiter, max-keys, continuation-token, `encoding-type=url`, and `fetch-owner=true` support.
 - `S3ObjectController` exposes `POST /api/s3/{bucketName}?delete` multi-object delete XML and delegates each key to the existing soft-delete object flow. The S3 `Quiet=true` flag suppresses successful `Deleted` result entries, key-specific failures are returned as `DeleteResult/Error` entries, and optional `Content-MD5` validates the XML body before delete execution.
@@ -50,7 +51,7 @@
 - `BucketService.syncUsage` rebuilds the metadata index from storage actuals and preserves existing checksum metadata only when the storage ETag still matches the indexed ETag. If the object changed in storage, stale checksums are discarded.
 - S3 object `HEAD` and `GET` evaluate basic conditional headers: matching `If-None-Match` or not-modified `If-Modified-Since` returns `304`; non-matching `If-Match` or stale `If-Unmodified-Since` returns `412`; GET range requests use `If-Range` to decide whether to serve the range or full object.
 - S3-style object alias reuses `ObjectService`, bucket quota, object metadata, soft delete, audit log, and Access Key permission checks.
-- `S3ErrorCodeMapper` centralizes OSMU `ApiErrorCode` to S3 XML error code mapping so global `/api/s3/**` error responses and multi-delete per-key `Error` entries stay consistent.
+- `S3ErrorCodeMapper` centralizes OSMU `ApiErrorCode` to S3 XML error code mapping so global `/api/s3/**` error responses and multi-delete per-key `Error` entries stay consistent, including multipart `NoSuchUpload` and non-empty bucket `BucketNotEmpty`.
 - `GlobalExceptionHandler` returns AWS-style XML error bodies for `/api/s3/**` while normal REST API errors stay JSON.
 - Current S3-style alias does not implement presigned streaming/trailer-signature parity, unknown-size S3 multipart initiate parity, full AWS multipart checksum aggregation parity, automatic DNS/proxy provisioning for virtual-hosted-style domains, multi-range GET, full conditional request parity, exact CopyObject user-metadata/versioning/full-conditional parity, remaining CreateBucket/DeleteBucket edge error parity, multipart ETag parity, or exact AWS error schema parity yet. `s3-compatibility.md` is the authoritative matrix for supported, partial, and unsupported S3 behavior.
 # OSMU Backend Design
