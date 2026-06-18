@@ -1,5 +1,34 @@
 # Worklog - main
 
+### 2026-06-18 - S3 PreconditionFailed message parity
+
+- Work time:
+  - End: 2026-06-18 KST
+- User command:
+  - Active goal: continue development from `dev-docs`.
+- Request analysis:
+  - `dev-docs` still tracks full AWS error behavior parity as future work.
+  - S3 object, CopyObject, and multipart overwrite guards mapped to `PreconditionFailed`, but XML `Message` still came from internal guard text.
+- Execution:
+  - Extended `S3ErrorCodeMapper.messageFor` to normalize `PreconditionFailed` to AWS-style precondition text.
+  - Added mapper assertion and object overwrite guard regression assertion.
+  - Updated API/backend/S3 compatibility docs, product requirements, and test cases.
+- Modified files:
+  - `osmu-backend/src/main/java/com/example/osmu/common/error/S3ErrorCodeMapper.java`
+  - `osmu-backend/src/test/java/com/example/osmu/common/error/S3ErrorCodeMapperTest.java`
+  - `osmu-backend/src/test/java/com/example/osmu/object/S3ObjectControllerTest.java`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/backend-design.md`
+  - `dev-docs/s3-compatibility.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/PRODUCT_REQUIREMENTS.md`
+  - `dev-docs/worklog/main/worklog-main.md`
+- Tests:
+  - `./gradlew.bat test --no-daemon --tests com.example.osmu.common.error.S3ErrorCodeMapperTest --tests com.example.osmu.object.S3ObjectControllerTest.accessKeyCanPutHeadGetAndDeleteObjectThroughS3StylePath`: passed.
+  - `git diff --check`: passed.
+- Review:
+  - S3 precondition failures now keep HTTP `412` while using the normalized AWS-style message across shared XML error rendering.
+
 ### 2026-06-18 - S3 not-found message parity
 
 - Work time:

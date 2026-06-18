@@ -1359,6 +1359,7 @@ Headers:
 - S3 XML `AccessDenied` responses use HTTP `403` and message `Access Denied` for AWS client compatibility even when the underlying REST auth failure category is `AUTHENTICATION_REQUIRED`; normal REST JSON auth failures still use HTTP `401` and retain detailed JSON messages.
 - S3 XML `InvalidRange` responses use HTTP `416` and message `The requested range cannot be satisfied.` for AWS client compatibility.
 - S3 XML `NoSuchBucket`, `NoSuchKey`, and `NoSuchUpload` responses use AWS-style messages for bucket, object key, and multipart upload misses.
+- S3 XML `PreconditionFailed` responses use HTTP `412` and message `At least one of the pre-conditions you specified did not hold`.
 - The same S3 error code mapping is used for global `/api/s3/**` error XML and multi-object delete `DeleteResult/Error` entries.
 
 Object tagging XML:

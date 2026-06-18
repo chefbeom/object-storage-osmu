@@ -36,6 +36,8 @@ class S3ErrorCodeMapperTest {
         assertThat(S3ErrorCodeMapper.messageFor("NoSuchKey", "Object not found.")).isEqualTo("The specified key does not exist.");
         assertThat(S3ErrorCodeMapper.messageFor("NoSuchUpload", "Upload session not found."))
                 .isEqualTo("The specified multipart upload does not exist. The upload ID might be invalid, or the multipart upload might have been aborted or completed.");
+        assertThat(S3ErrorCodeMapper.messageFor("PreconditionFailed", "Object precondition failed."))
+                .isEqualTo("At least one of the pre-conditions you specified did not hold");
         assertThat(S3ErrorCodeMapper.messageFor("InternalError", "")).isEqualTo("InternalError");
     }
 }

@@ -194,7 +194,8 @@ class S3ObjectControllerTest {
                         .contentType(MediaType.TEXT_PLAIN)
                         .content("blocked overwrite"))
                 .andExpect(status().isPreconditionFailed())
-                .andExpect(content().string(containsString("<Code>PreconditionFailed</Code>")));
+                .andExpect(content().string(containsString("<Code>PreconditionFailed</Code>")))
+                .andExpect(content().string(containsString("<Message>At least one of the pre-conditions you specified did not hold</Message>")));
 
         mockMvc.perform(put("/api/s3/{bucketName}/docs/sample.txt", bucketName)
                         .header("X-OSMU-Access-Key", credentials.accessKey())

@@ -38,6 +38,9 @@ public final class S3ErrorCodeMapper {
         if ("NoSuchUpload".equals(s3Code)) {
             return "The specified multipart upload does not exist. The upload ID might be invalid, or the multipart upload might have been aborted or completed.";
         }
+        if ("PreconditionFailed".equals(s3Code)) {
+            return "At least one of the pre-conditions you specified did not hold";
+        }
         return message == null || message.isBlank() ? s3Code : message;
     }
 
