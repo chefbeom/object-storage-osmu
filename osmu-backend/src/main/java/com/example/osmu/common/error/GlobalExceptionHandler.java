@@ -10,6 +10,7 @@ import java.security.NoSuchAlgorithmException;
 import java.util.Base64;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import org.springframework.http.HttpStatusCode;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.MethodArgumentNotValidException;
@@ -105,9 +106,16 @@ public class GlobalExceptionHandler {
             ApiErrorCode statusCode
     ) {
         return ResponseEntity
-                .status(statusCode.status())
+                .status(s3Status(code, statusCode))
                 .contentType(MediaType.APPLICATION_XML)
                 .body(s3ErrorXml(code, message, requestResource(request), requestId(request), s3ErrorDetails(code, request)));
+    }
+
+    private HttpStatusCode s3Status(String code, ApiErrorCode fallback) {
+        if ("AccessDenied".equals(code)) {
+            return HttpStatusCode.valueOf(403);
+        }
+        return fallback.status();
     }
 
     private String requestResource(HttpServletRequest request) {

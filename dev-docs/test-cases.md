@@ -319,7 +319,7 @@
 - Preconditions: Target bucket exists. Active access key has `WRITE` scope.
 - Input: `PUT /api/s3/{bucketName}/{objectKey}` with `x-amz-content-sha256: STREAMING-AWS4-HMAC-SHA256-PAYLOAD`, `Content-Encoding: aws-chunked`, and `x-amz-decoded-content-length`.
 - Steps: Upload valid aws-chunked body where each chunk header includes a 64-character lowercase hex `chunk-signature`, upload bodies with missing chunk signature and invalid final chunk signature, then upload a SigV4 header-auth aws-chunked body with a valid chunk signature chain and a tampered body with the original chunk signature.
-- Expected: Valid bodies are decoded and stored. Missing/invalid chunk signature format returns S3 XML `InvalidRequest`. Tampered SigV4 chunk data returns S3 XML `AccessDenied`.
+- Expected: Valid bodies are decoded and stored. Missing/invalid chunk signature format returns S3 XML `InvalidRequest`. Tampered SigV4 chunk data returns HTTP `403` with S3 XML `AccessDenied`.
 - Priority: P1
 - Automated: `S3ObjectControllerTest.accessKeyCanUploadAwsChunkedStreamingPayload`, `S3ObjectControllerTest.awsSigV4HeaderAuthVerifiesAwsChunkedStreamingSignatureChain`
 

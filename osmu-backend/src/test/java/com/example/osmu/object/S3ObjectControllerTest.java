@@ -824,7 +824,7 @@ class S3ObjectControllerTest {
                         .header(HttpHeaders.CONTENT_ENCODING, "aws-chunked")
                         .contentType(MediaType.TEXT_PLAIN)
                         .content(tamperedBody.getBytes(StandardCharsets.UTF_8)))
-                .andExpect(status().isUnauthorized())
+                .andExpect(status().isForbidden())
                 .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_XML))
                 .andExpect(content().string(containsString("<Code>AccessDenied</Code>")));
     }

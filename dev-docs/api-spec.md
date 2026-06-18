@@ -1355,6 +1355,7 @@ Headers:
 - `PUT ?tagging` rejects blank or invalid XML and the parser disables DOCTYPE/external entity loading.
 - Errors under `/api/s3/**` return AWS-style XML `<Error><Code>...</Code><Message>...</Message><Resource>...</Resource><RequestId>...</RequestId><HostId>...</HostId></Error>`; when derivable, per-error details such as `BucketName`, `Key`, and `UploadId` are emitted between `Message` and `Resource`. `HostId` is an opaque deterministic value derived from request id plus resource.
 - S3 XML error code mapping includes `AccessDenied`, `NoSuchBucket`, `NoSuchKey`, `NoSuchUpload`, `BucketAlreadyOwnedByYou`, `BucketAlreadyExists`, `BucketNotEmpty`, `InvalidBucketName`, `InvalidRange`, `InvalidRequest`, `InvalidDigest`, `BadDigest`, `PreconditionFailed`, `EntityTooLarge`, `OperationAborted`, and `InternalError`.
+- S3 XML `AccessDenied` responses use HTTP `403` for AWS client compatibility even when the underlying REST auth failure category is `AUTHENTICATION_REQUIRED`; normal REST JSON auth failures still use HTTP `401`.
 - The same S3 error code mapping is used for global `/api/s3/**` error XML and multi-object delete `DeleteResult/Error` entries.
 
 Object tagging XML:

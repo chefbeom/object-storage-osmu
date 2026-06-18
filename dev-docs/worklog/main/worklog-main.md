@@ -1,5 +1,34 @@
 # Worklog - main
 
+### 2026-06-18 - S3 AccessDenied status parity
+
+- Work time:
+  - End: 2026-06-18 KST
+- User command:
+  - Active goal: continue development from `dev-docs`.
+- Request analysis:
+  - S3 XML `AccessDenied` mapped from `AUTHENTICATION_REQUIRED` could still inherit REST HTTP `401`.
+  - AWS S3 clients generally expect `AccessDenied` as HTTP `403`, while non-S3 REST JSON auth failures should remain `401`.
+- Execution:
+  - Added S3-specific status normalization in `GlobalExceptionHandler`.
+  - S3 XML `AccessDenied` now returns HTTP `403` regardless of whether the internal source code is `AUTHENTICATION_REQUIRED` or `AUTHORIZATION_FAILED`.
+  - Updated the tampered SigV4 chunk regression test from `401` to `403`.
+  - Updated API/backend/S3 compatibility docs and test cases.
+- Modified files:
+  - `osmu-backend/src/main/java/com/example/osmu/common/error/GlobalExceptionHandler.java`
+  - `osmu-backend/src/test/java/com/example/osmu/object/S3ObjectControllerTest.java`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/backend-design.md`
+  - `dev-docs/s3-compatibility.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/worklog/main/worklog-main.md`
+- Tests:
+  - `./gradlew.bat test --no-daemon --tests com.example.osmu.object.S3ObjectControllerTest.accessKeyCanUploadAwsChunkedStreamingPayload --tests com.example.osmu.object.S3ObjectControllerTest.accessKeyCanPutHeadGetAndDeleteObjectThroughS3StylePath --tests com.example.osmu.object.S3ObjectControllerTest.missingS3MultipartUploadReturnsNoSuchUploadXml`: passed.
+  - `git diff --check`: passed.
+- Review:
+  - REST JSON authentication behavior is unchanged because the override is only in the S3 XML response path.
+  - Remaining error exactness work is smaller per-error message/header/status nuances outside `AccessDenied`.
+
 ### 2026-06-18 - S3 per-error XML detail fields
 
 - Work time:
