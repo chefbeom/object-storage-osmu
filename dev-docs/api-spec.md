@@ -1335,7 +1335,7 @@ Headers:
 - Bucket-level responses return `x-amz-bucket-region`; default MVP region is `us-east-1`.
 - Bucket create returns `200 OK`, `Location: /{bucketName}`, and `x-amz-bucket-region`. Bucket delete returns `204 No Content`; deleting a non-empty bucket returns `409 BucketNotEmpty`.
 - Bucket tagging uses `Tagging/TagSet/Tag/Key/Value` XML, stores up to 50 bucket metadata tags, and disables DOCTYPE/external entity loading while parsing.
-- Range GET returns `206 Partial Content`, `Accept-Ranges: bytes`, and `Content-Range` for single ranges. Multi-range GET returns `206 Partial Content` as `multipart/byteranges` with per-part `Content-Range`. Invalid ranges return `416 RANGE_NOT_SATISFIABLE`.
+- Range GET returns `206 Partial Content`, `Accept-Ranges: bytes`, and `Content-Range` for one byte range. Multi-range requests are rejected with `416 RANGE_NOT_SATISFIABLE`, matching AWS S3's documented one-range behavior.
 - `ListObjectsV2` supports `prefix`, `delimiter`, `max-keys` from `1` to `1000`, `continuation-token`, `encoding-type=url`, and `fetch-owner=true|false`.
 - `ListObjectsV2` returns `Contents`, `CommonPrefixes`, `IsTruncated`, `NextContinuationToken`, and optional `Owner`.
 - `ListObjects` V1 supports `prefix`, `delimiter`, `max-keys` from `1` to `1000`, `marker`, `encoding-type=url`, and `fetch-owner=true|false`.
@@ -1458,7 +1458,7 @@ Limitations:
 - S3 multipart upload path is MVP-level and currently requires OSMU expected-size headers at initiate time.
 - S3 multipart uploads listing is backed by OSMU active multipart sessions, not a raw MinIO bucket scan.
 - Virtual-hosted-style routing currently extracts the bucket from the left side of a configured domain suffix. Production deployments must configure DNS/proxy hosts such as `{bucket}.storage.example.com` and set `osmu.s3.virtual-hosted-style.domain-suffixes=storage.example.com`.
-- Full conditional request parity, CopyObject arbitrary user-metadata/full AWS versioning/full-conditional parity, remaining CreateBucket/DeleteBucket edge error parity beyond duplicate/non-empty buckets, full AWS multipart checksum aggregation parity, full multipart ETag parity, and full AWS error behavior parity are not implemented yet. See `s3-compatibility.md` for the supported/partial/unsupported matrix.
+- Remaining conditional request edge parity beyond documented `If-Match`/`If-Unmodified-Since` and `If-None-Match`/`If-Modified-Since` combinations, CopyObject arbitrary user-metadata/full AWS versioning/full-conditional parity, remaining CreateBucket/DeleteBucket edge error parity beyond duplicate/non-empty buckets, full AWS multipart checksum aggregation parity, full multipart ETag parity, and full AWS error behavior parity are not implemented yet. See `s3-compatibility.md` for the supported/partial/unsupported matrix.
 
 ### GET /api/buckets/{bucketName}/permissions
 

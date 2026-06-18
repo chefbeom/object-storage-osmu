@@ -216,7 +216,7 @@ MVP 데모 기준 완료율은 약 90~95%입니다.
 - SigV4 header auth
 - presigned auth
 - bucket/object 기본 동작
-- single/multi range GET with If-Range fallback
+- single range GET with If-Range fallback and AWS conditional precedence
 - conditional request
 - copy object with OSMU source `versionId`
 - tagging

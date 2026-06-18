@@ -186,9 +186,9 @@
 
 - Feature: S3-style ETag conditional HEAD/GET.
 - Preconditions: Target bucket exists. Active access key has `READ` and `WRITE` scope. Object exists and has an `ETag`.
-- Input: `HEAD/GET /api/s3/{bucketName}/{objectKey}` with `If-None-Match` or `If-Match`.
-- Steps: Upload an object, capture the returned `ETag`, call HEAD and GET with matching `If-None-Match`, then call HEAD and GET with non-matching `If-Match`.
-- Expected: Matching `If-None-Match` returns `304 Not Modified` with `ETag`. Non-matching `If-Match` returns `412 Precondition Failed` with `ETag`.
+- Input: `HEAD/GET /api/s3/{bucketName}/{objectKey}` with `If-None-Match`, `If-Match`, and combined ETag/date conditionals.
+- Steps: Upload an object, capture the returned `ETag`, call HEAD and GET with matching `If-None-Match`, call HEAD and GET with non-matching `If-Match`, then call GET with matching `If-Match` plus stale `If-Unmodified-Since` and matching `If-None-Match` plus modified `If-Modified-Since`.
+- Expected: Matching `If-None-Match` returns `304 Not Modified` with `ETag`. Non-matching `If-Match` returns `412 Precondition Failed` with `ETag`. Matching `If-Match` plus stale `If-Unmodified-Since` returns `200 OK`; matching `If-None-Match` plus modified `If-Modified-Since` returns `304 Not Modified`.
 - Priority: P1
 - Automated: `S3ObjectControllerTest.accessKeyCanPutHeadGetAndDeleteObjectThroughS3StylePath`
 
@@ -287,9 +287,9 @@
 
 - Feature: S3-style Range GET with `If-Range`.
 - Preconditions: Target bucket exists. Active access key has `READ` and `WRITE` scope. Object body is `hello s3 alias`.
-- Input: `GET /api/s3/{bucketName}/video/sample.txt` with `Range: bytes=6-7`, `Range: bytes=-5`, `Range: bytes=0-4,9-13`, `If-Range`, and invalid `Range: bytes=99-100`.
-- Steps: Upload object, request middle byte range, suffix byte range, multi-range byte ranges, matching `If-Range`, stale `If-Range`, then invalid range.
-- Expected: Valid single ranges and matching `If-Range` return `206 Partial Content`, `Accept-Ranges: bytes`, correct `Content-Range`, and partial body. Multi-range returns `206 Partial Content` with `multipart/byteranges` and per-part `Content-Range`. Stale `If-Range` returns `200 OK` with the full body. Invalid range returns `416 RANGE_NOT_SATISFIABLE`.
+- Input: `GET /api/s3/{bucketName}/video/sample.txt` with `Range: bytes=6-7`, `Range: bytes=-5`, unsupported multi-range `Range: bytes=0-4,9-13`, `If-Range`, and invalid `Range: bytes=99-100`.
+- Steps: Upload object, request middle byte range, suffix byte range, unsupported multi-range byte ranges, matching `If-Range`, stale `If-Range`, then invalid range.
+- Expected: Valid single ranges and matching `If-Range` return `206 Partial Content`, `Accept-Ranges: bytes`, correct `Content-Range`, and partial body. Multi-range and invalid ranges return `416 RANGE_NOT_SATISFIABLE`. Stale `If-Range` returns `200 OK` with the full body.
 - Expected error body: S3 XML with `InvalidRange`.
 - Priority: P1
 - Automated: `S3ObjectControllerTest.accessKeyCanUseRangeGetThroughS3StylePath`
