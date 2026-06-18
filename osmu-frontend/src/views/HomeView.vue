@@ -82,6 +82,7 @@
         :dashboard-widget-drop-index="dashboardWidgetDropIndex"
         :dashboard-layout-sync-label="dashboardLayoutSyncLabel"
         :dashboard-layout-pending="dashboardLayoutSync.pending"
+        :dashboard-edit-mode="dashboardEditMode"
         :usage-percent="usagePercent"
         :usage="usage"
         :selected-bucket="selectedBucket"
@@ -138,6 +139,7 @@
         @update-dashboard-layout-default-target-type="updateDashboardLayoutDefaultTargetType"
         @update-dashboard-layout-default-target-id="dashboardLayoutDefaultForm.targetId = $event"
         @update-dashboard-layout-default-preset-id="dashboardLayoutDefaultForm.presetId = $event"
+        @toggle-dashboard-edit-mode="toggleDashboardEditMode"
         @reset-dashboard-widgets="resetDashboardWidgets"
         @add-dashboard-widget="addDashboardWidget"
         @add-dashboard-widget-by-id="addDashboardWidgetById"
@@ -1174,6 +1176,7 @@ const pendingMultipartUploads = ref([])
 const dashboardWidgets = ref(loadDashboardWidgets())
 const dashboardSections = ref(loadDashboardSections())
 const dashboardWidgetToAdd = ref('')
+const dashboardEditMode = ref(false)
 const dashboardLayoutPresets = ref([])
 const dashboardLayoutPresetToApply = ref('')
 const dashboardLayoutPresetForm = reactive({ name: '', description: '' })
@@ -1606,6 +1609,10 @@ function resetDashboardWidgets() {
     dashboardLayoutSync.source = 'LOCAL'
     dashboardLayoutSync.updatedAt = ''
   }
+}
+
+function toggleDashboardEditMode() {
+  dashboardEditMode.value = !dashboardEditMode.value
 }
 
 async function loadDashboardWidgetCatalog() {
@@ -2197,6 +2204,7 @@ function resetSessionData() {
   dashboardLayoutSync.source = 'LOCAL'
   dashboardLayoutSync.updatedAt = ''
   dashboardLayoutSync.pending = false
+  dashboardEditMode.value = false
   resetObjectVersions()
   resetObjectShareLinks()
   resetS3ClientConfig()

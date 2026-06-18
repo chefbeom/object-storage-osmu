@@ -6,8 +6,17 @@
         <h3>대시보드 패널 구성</h3>
         <small data-testid="dashboard-layout-sync">{{ dashboardLayoutSyncLabel }}</small>
       </div>
-      <button data-testid="dashboard-widget-reset-button" type="button" class="ghost" :disabled="dashboardLayoutPending" @click="$emit('reset-dashboard-widgets')">초기화</button>
+      <span class="panel-head-actions">
+        <button data-testid="dashboard-edit-mode-toggle" type="button" class="ghost" :disabled="dashboardLayoutPending" @click="$emit('toggle-dashboard-edit-mode')">
+          {{ dashboardEditMode ? '조회 mode' : '편집 mode' }}
+        </button>
+        <button v-if="dashboardEditMode" data-testid="dashboard-widget-reset-button" type="button" class="ghost" :disabled="dashboardLayoutPending" @click="$emit('reset-dashboard-widgets')">초기화</button>
+      </span>
     </div>
+    <p v-if="!dashboardEditMode" class="dashboard-view-mode-summary" data-testid="dashboard-view-mode-summary">
+      조회 mode / {{ visibleDashboardWidgets.length }} visible panels / {{ dashboardLayoutSyncLabel }}
+    </p>
+    <template v-if="dashboardEditMode">
     <div class="inline-form dashboard-add-form">
       <select data-testid="dashboard-widget-select" :value="dashboardWidgetToAdd" @change="$emit('update-widget-to-add', $event.target.value)">
         <option value="">추가할 패널 선택</option>
@@ -275,6 +284,7 @@
         </span>
       </li>
     </ul>
+    </template>
   </section>
 
   <section class="dashboard-widget-sections" data-testid="dashboard-widget-sections">
@@ -286,7 +296,7 @@
     >
       <div class="dashboard-widget-section-head">
         <h3>{{ dashboardWidgetSectionLabel(section.id) }}</h3>
-        <span class="section-actions">
+        <span v-if="dashboardEditMode" class="section-actions">
           <button
             data-testid="dashboard-widget-section-toggle-button"
             type="button"
@@ -1605,6 +1615,7 @@ import DashboardSharePanel from './DashboardSharePanel.vue'
 import { summarizeAccessKeys } from '../../utils/accessKeys.js'
 
 const props = defineProps({
+  dashboardEditMode: { type: Boolean, required: true },
   dashboardWidgetToAdd: { type: String, required: true },
   availableDashboardWidgetOptions: { type: Array, required: true },
   dashboardLayoutPresets: { type: Array, required: true },
@@ -1679,6 +1690,7 @@ const props = defineProps({
 })
 
 defineEmits([
+  'toggle-dashboard-edit-mode',
   'update-widget-to-add',
   'update-dashboard-layout-preset',
   'update-dashboard-layout-preset-name',

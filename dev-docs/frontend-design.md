@@ -118,6 +118,7 @@ Web Portal은 관리자와 사용자가 OSMU를 브라우저에서 사용할 수
 - dashboard palette catalog는 capacity, health, runtime, readiness, backup, I/O, audit request, sharing, quota, access key, identity, lifecycle, selected workspace, retention panel, execution-retention panel, storage-expansion panel을 제공
 - dashboard palette catalog metadata는 `GET /api/dashboard/layout/widgets`에서 조회하고, 실패 시 frontend fallback catalog를 사용
 - dashboard palette catalog와 저장 layout은 role 기준으로 필터링한다. `adminOnly` panel은 `ADMIN`에게만 노출하고, 직접 add 이벤트나 localStorage 복구에서도 현재 role이 볼 수 없는 panel은 제외한다.
+- dashboard는 기본 조회 mode에서 widget metric만 보여주고, 편집 mode toggle을 켰을 때만 widget 추가/삭제/순서/section/preset/default assignment control을 노출한다.
 - dashboard palette 추가 UI는 catalog `category` 기준으로 grouped select와 chip palette를 제공
 - dashboard widget은 `overview`, `operations`, `governance` section에 배치할 수 있고 section별 metric band로 표시
 - dashboard section은 위/아래 이동 버튼으로 순서를 바꿀 수 있고, widget order를 통해 서버 layout 저장 흐름에 보존
