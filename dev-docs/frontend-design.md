@@ -135,7 +135,7 @@ Web Portal은 관리자와 사용자가 OSMU를 브라우저에서 사용할 수
 - Operations finalizer visibility: `operationsReadinessFinalize`가 있으면 readiness panel은 finalizer result, readiness result, failed/gap count, secret masking policy, 상위 command, 상위 step result를 표시한다. 이로써 운영자는 artifact import 이후 combined operations readiness finalizer가 어떤 하위 finalizer를 선택했고 마지막 readiness 재생성 결과가 무엇인지 dashboard에서 확인할 수 있다.
 - Operations convergence visibility: `operationsReadinessConvergence`가 있으면 readiness panel은 ready/action-required result, current bottleneck, readiness/finalizer result, stage readiness, no-execute safety policy, 상위 recommended command rows를 표시한다. 이로써 운영자는 handoff, readiness, finalizer report를 따로 열기 전에 지금 전체 operations workflow가 ready로 수렴했는지 또는 어떤 command chain이 남았는지 dashboard에서 확인할 수 있다.
 - Access Key 목록은 All/Active/Expired/Expiring/Unused/Inactive 필터를 제공
-- 내장 layout preset 조회/선택/적용
+- 내장 layout preset 조회/선택/적용. Built-in presets: `operations`, `compact`, `admin`, `executive`, `storage-ops`, `security-audit`.
 - ADMIN custom layout preset 저장/수정/삭제/내보내기/가져오기
 - ADMIN ROLE/ORGANIZATION별 dashboard 기본 preset 지정/해제
 - 로그인 사용자는 dashboard layout을 서버에 저장하고, 비로그인 상태에서는 localStorage fallback을 사용

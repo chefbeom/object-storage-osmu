@@ -128,6 +128,73 @@ public class DashboardLayoutService {
                             new DashboardWidgetLayout("runtime", true, "normal")
                     ),
                     false
+            ),
+            new DashboardLayoutPresetResponse(
+                    "executive",
+                    "Executive",
+                    "High-level capacity, readiness, backup, sharing, and quota view for leadership reviews.",
+                    List.of(
+                            new DashboardWidgetLayout("capacity", true, "wide", "overview", Map.of("tone", "focus")),
+                            new DashboardWidgetLayout("remaining", true, "normal", "overview"),
+                            new DashboardWidgetLayout("buckets", true, "normal", "overview"),
+                            new DashboardWidgetLayout("readiness", true, "wide", "operations"),
+                            new DashboardWidgetLayout("backup", true, "normal", "operations"),
+                            new DashboardWidgetLayout("sharing", true, "normal", "governance"),
+                            new DashboardWidgetLayout("quota", true, "normal", "governance")
+                    ),
+                    List.of(
+                            new DashboardSectionLayout("overview", false),
+                            new DashboardSectionLayout("operations", false),
+                            new DashboardSectionLayout("governance", false)
+                    ),
+                    false
+            ),
+            new DashboardLayoutPresetResponse(
+                    "storage-ops",
+                    "Storage Ops",
+                    "Operational storage view for runtime health, data flow, retention, lifecycle, and expansion work.",
+                    List.of(
+                            new DashboardWidgetLayout("capacity", true, "wide", "overview"),
+                            new DashboardWidgetLayout("objects", true, "normal", "overview"),
+                            new DashboardWidgetLayout("io", true, "normal", "operations", Map.of("tone", "focus")),
+                            new DashboardWidgetLayout("health", true, "normal", "operations"),
+                            new DashboardWidgetLayout("runtime", true, "normal", "operations"),
+                            new DashboardWidgetLayout("readiness", true, "wide", "operations"),
+                            new DashboardWidgetLayout("backup", true, "normal", "operations"),
+                            new DashboardWidgetLayout("lifecycle", true, "normal", "governance"),
+                            new DashboardWidgetLayout("retention", true, "normal", "governance"),
+                            new DashboardWidgetLayout("execution-retention", true, "normal", "governance"),
+                            new DashboardWidgetLayout("storage-expansion", true, "normal", "operations"),
+                            new DashboardWidgetLayout("selected", true, "normal", "overview")
+                    ),
+                    List.of(
+                            new DashboardSectionLayout("overview", false),
+                            new DashboardSectionLayout("operations", false),
+                            new DashboardSectionLayout("governance", false)
+                    ),
+                    false
+            ),
+            new DashboardLayoutPresetResponse(
+                    "security-audit",
+                    "Security / Audit",
+                    "Security and audit view for access keys, identity, request activity, lifecycle, and readiness controls.",
+                    List.of(
+                            new DashboardWidgetLayout("access-keys", true, "wide", "governance", Map.of("tone", "focus")),
+                            new DashboardWidgetLayout("identity", true, "normal", "governance"),
+                            new DashboardWidgetLayout("requests", true, "normal", "governance"),
+                            new DashboardWidgetLayout("readiness", true, "wide", "operations"),
+                            new DashboardWidgetLayout("backup", true, "normal", "operations"),
+                            new DashboardWidgetLayout("quota", true, "normal", "governance"),
+                            new DashboardWidgetLayout("sharing", true, "normal", "governance"),
+                            new DashboardWidgetLayout("lifecycle", true, "normal", "governance"),
+                            new DashboardWidgetLayout("health", true, "normal", "operations")
+                    ),
+                    List.of(
+                            new DashboardSectionLayout("overview", true),
+                            new DashboardSectionLayout("operations", false),
+                            new DashboardSectionLayout("governance", false)
+                    ),
+                    false
             )
     );
 
