@@ -147,6 +147,42 @@
       </ul>
     </article>
 
+    <article v-if="isAdmin" class="panel security-audit-policy-panel" data-testid="admin-security-audit-policy-panel">
+      <div class="panel-head">
+        <div>
+          <p class="eyebrow">Security & Audit</p>
+          <h3>감사/보안 정책</h3>
+        </div>
+        <RouterLink data-testid="admin-security-audit-open-audit-link" class="ghost" to="/audit">Audit</RouterLink>
+      </div>
+      <div class="compact-metrics security-policy-metrics" data-testid="admin-security-policy-metrics">
+        <div>
+          <span>Key review</span>
+          <b>{{ securityPolicyMetrics.accessKeyReviewCount }}</b>
+        </div>
+        <div>
+          <span>Share controls</span>
+          <b>{{ securityPolicyMetrics.shareControlCount }}/2</b>
+        </div>
+        <div>
+          <span>Audit failures</span>
+          <b>{{ securityPolicyMetrics.auditFailureCount }}</b>
+        </div>
+      </div>
+      <ul class="compact-list security-policy-list" data-testid="admin-security-policy-list">
+        <li v-for="row in securityPolicyRows" :key="row.key" data-testid="admin-security-policy-row">
+          <span class="list-main">
+            <b data-testid="admin-security-policy-row-title">{{ row.title }}</b>
+            <small>{{ row.detail }}</small>
+            <small>{{ row.evidence }}</small>
+          </span>
+          <strong :class="['status-pill', statusClass(row.status)]" data-testid="admin-security-policy-row-status">
+            {{ row.status }}
+          </strong>
+        </li>
+      </ul>
+    </article>
+
     <BucketPermissionsPanel
       id="admin-bucket-permissions"
       :is-logged-in="isLoggedIn"
@@ -359,6 +395,7 @@ const props = defineProps({
   isLoggedIn: { type: Boolean, required: true },
   newSecretKey: { type: String, required: true },
   accessKeys: { type: Array, required: true },
+  auditLogs: { type: Array, required: true },
   selectedBucket: { type: String, required: true },
   canShowBucketPermissions: { type: Boolean, required: true },
   bucketPermissionForm: { type: Object, required: true },
@@ -446,6 +483,78 @@ const approvalWorkflowCounts = computed(() => {
     total: approvalWorkflowItems.value.length,
   }
 })
+
+const accessKeyReviewCount = computed(() => props.accessKeys.filter(accessKeyNeedsReview).length)
+const shareControlCount = computed(() => Number(Boolean(props.objectSharePolicyForm.requirePassword))
+  + Number(Boolean(props.objectSharePolicyForm.requireIpAllowlist)))
+const auditFailureCount = computed(() => props.auditLogs.filter((entry) => String(entry.result || '').toUpperCase() !== 'SUCCESS').length)
+const securityPolicyMetrics = computed(() => ({
+  accessKeyReviewCount: accessKeyReviewCount.value,
+  shareControlCount: shareControlCount.value,
+  auditFailureCount: auditFailureCount.value,
+}))
+const securityPolicyRows = computed(() => [
+  {
+    key: 'access-keys',
+    title: 'Access key hygiene',
+    status: accessKeyReviewCount.value > 0 ? 'REVIEW' : 'SUCCESS',
+    detail: `${activeAccessKeyCount()} active keys / ${accessKeyReviewCount.value} needing cleanup or rotation review`,
+    evidence: 'Expires, last-used, rotation grace, usage count, and bulk cleanup preview are visible.',
+  },
+  {
+    key: 'share-policy',
+    title: 'Share link protection',
+    status: shareControlCount.value === 2 ? 'SUCCESS' : 'REVIEW',
+    detail: `password=${policyFlag(props.objectSharePolicyForm.requirePassword)} / ip=${policyFlag(props.objectSharePolicyForm.requireIpAllowlist)} / max expiry=${props.objectSharePolicyForm.maxExpiresSeconds || '-'}`,
+    evidence: 'Object share policy and analytics panels enforce password, IP, expiry, and download limits.',
+  },
+  {
+    key: 'quota-policy',
+    title: 'Quota policy coverage',
+    status: props.quotaPolicies.length > 0 ? 'SUCCESS' : 'REVIEW',
+    detail: `${props.quotaPolicies.length} active policies / ${props.quotaPolicyHistory.length} policy history entries`,
+    evidence: 'Quota policy panel keeps target search, edit/delete, and change history together.',
+  },
+  {
+    key: 'lifecycle-conflicts',
+    title: 'Lifecycle conflict review',
+    status: Number(props.lifecycleRuleConflicts.conflictCount || 0) > 0 ? 'REVIEW' : 'SUCCESS',
+    detail: `${props.lifecycleRuleConflicts.ruleCount || 0} enabled rules checked / ${props.lifecycleRuleConflicts.conflictCount || 0} overlaps`,
+    evidence: 'Lifecycle conflict check is exposed before retention or lifecycle XML changes.',
+  },
+  {
+    key: 'audit-trail',
+    title: 'Audit trail',
+    status: props.auditLogs.length === 0 ? 'MISSING' : (auditFailureCount.value > 0 ? 'REVIEW' : 'SUCCESS'),
+    detail: `${props.auditLogs.length} recent audit events / ${auditFailureCount.value} non-success results`,
+    evidence: 'Audit page supports event, actor, request id, target, result, time, pagination, and CSV export.',
+  },
+])
+
+function accessKeyNeedsReview(key) {
+  if (String(key.status || '').toUpperCase() !== 'ACTIVE') return false
+  if (isPast(key.expiresAt)) return true
+  return isStaleOrUnused(key.lastUsedAt)
+}
+
+function activeAccessKeyCount() {
+  return props.accessKeys.filter((key) => String(key.status || '').toUpperCase() === 'ACTIVE').length
+}
+
+function isPast(value) {
+  if (!value) return false
+  return new Date(value).getTime() <= Date.now()
+}
+
+function isStaleOrUnused(value) {
+  if (!value) return true
+  const staleBefore = Date.now() - (30 * 24 * 60 * 60 * 1000)
+  return new Date(value).getTime() < staleBefore
+}
+
+function policyFlag(value) {
+  return value ? 'on' : 'off'
+}
 
 defineEmits([
   'create-access-key',

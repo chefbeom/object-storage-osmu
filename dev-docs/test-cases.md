@@ -420,9 +420,19 @@
 - Preconditions: Node dependencies are installed.
 - Input: `npm run test:unit`
 - Steps: Run frontend unit tests that inspect `HomeView.vue` and split components for stable `data-testid` selectors covering login, status, dashboard 조회/편집 mode toggle, dashboard loading/error/retry/empty state, dashboard palette grouped catalog chips, drag/size/access-mode controls, section controls, section order/collapse controls, catalog-driven widget option controls, access key/identity/lifecycle/execution-retention/storage-expansion catalog widgets, bucket list, object upload, object detail, bucket lifecycle, bucket tags, audit, and confirm modal flows.
-- Expected: All required selectors exist so future Browser/Chrome E2E can target stable UI hooks instead of brittle text or layout selectors, including dashboard view-mode summary, edit-mode toggle, loading state, error state, retry button, empty state, widget access mode badge, widget section bands, section move/toggle buttons, category groups, catalog chip buttons, drag handles, dynamic option selects, execution log retention panel controls, Storage Expansion dashboard summary controls, operations readiness summary/filter/remediation command and workflow-command copy controls, admin action failure remediation controls, admin approval workflow controls, admin role-restricted panel list, and dashboard catalog widgets.
+- Expected: All required selectors exist so future Browser/Chrome E2E can target stable UI hooks instead of brittle text or layout selectors, including dashboard view-mode summary, edit-mode toggle, loading state, error state, retry button, empty state, widget access mode badge, widget section bands, section move/toggle buttons, category groups, catalog chip buttons, drag handles, dynamic option selects, execution log retention panel controls, Storage Expansion dashboard summary controls, operations readiness summary/filter/remediation command and workflow-command copy controls, admin action failure remediation controls, admin approval workflow controls, admin security/audit policy controls, admin role-restricted panel list, and dashboard catalog widgets.
 - Priority: P1
 - Automated: `npm run test:unit`
+
+### TC-FE-ADMIN-SECURITY-AUDIT-POLICY
+
+- Feature: Admin security and audit policy overview.
+- Preconditions: ADMIN is logged in and `/admin` data has loaded.
+- Input: Access key list, object share policy, quota policy list/history, lifecycle conflict report, and recent audit logs.
+- Steps: Open `/admin`, inspect `admin-security-audit-policy-panel`, then follow `admin-security-audit-open-audit-link` to `/audit`.
+- Expected: The panel summarizes access key cleanup/rotation review count, share password/IP controls, audit failure count, quota policy coverage, lifecycle overlap count, and audit evidence rows with stable `admin-security-policy-*` selectors. `/audit` remains the detailed filter/export view.
+- Priority: P1
+- Automated: `npm run test:unit` selector/source contract. Browser navigation E2E is pending.
 
 ### TC-FE-ADMIN-APPROVAL-WORKFLOW
 

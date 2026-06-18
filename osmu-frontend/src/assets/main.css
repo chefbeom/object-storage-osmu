@@ -1923,6 +1923,14 @@ tbody tr.selected {
   min-width: 140px;
 }
 
+.security-policy-list li {
+  align-items: flex-start;
+}
+
+.security-policy-list .status-pill {
+  flex: 0 0 auto;
+}
+
 .history-list {
   border-top: 1px solid var(--color-border);
 }

@@ -315,6 +315,7 @@
         :is-logged-in="isLoggedIn"
         :new-secret-key="newSecretKey"
         :access-keys="accessKeys"
+        :audit-logs="auditLogs"
         :selected-bucket="selectedBucket"
         :s3-client-config="s3ClientConfig"
         :format-key-scope="formatKeyScope"

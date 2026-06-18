@@ -307,6 +307,13 @@ test('HomeView exposes stable selectors for browser E2E flows', () => {
     'admin-approval-expansion-plan-button',
     'admin-approval-expansion-apply-button',
     'admin-approval-expansion-reject-button',
+    'admin-security-audit-policy-panel',
+    'admin-security-audit-open-audit-link',
+    'admin-security-policy-metrics',
+    'admin-security-policy-list',
+    'admin-security-policy-row',
+    'admin-security-policy-row-title',
+    'admin-security-policy-row-status',
     'quota-policy-panel',
     'quota-policy-form',
     'quota-policy-target-type',
@@ -684,6 +691,11 @@ test('HomeView exposes stable selectors for browser E2E flows', () => {
   assert.match(dashboardSource, /approvalWorkflowCounts/)
   assert.match(dashboardSource, /storageProfileRequests[\s\S]*PENDING/)
   assert.match(dashboardSource, /storageExpansionRequests[\s\S]*PLANNED/)
+  assert.match(dashboardSource, /:audit-logs="auditLogs"/)
+  assert.match(dashboardSource, /securityPolicyRows/)
+  assert.match(dashboardSource, /accessKeyReviewCount/)
+  assert.match(dashboardSource, /Share link protection/)
+  assert.match(dashboardSource, /Audit page supports event/)
   assert.match(dashboardSource, /visibleNavigationItems/)
   assert.match(dashboardSource, /canAccessNavigationItem/)
   assert.match(dashboardSource, /auth\.startAuthSync\(handleSessionExpired\)/)
