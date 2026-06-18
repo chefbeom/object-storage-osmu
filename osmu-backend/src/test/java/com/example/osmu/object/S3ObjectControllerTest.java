@@ -1045,6 +1045,45 @@ class S3ObjectControllerTest {
     }
 
     @Test
+    void createBucketRejectsUnsupportedAclObjectLockAndOwnershipControls() throws Exception {
+        String token = loginAndReturnAccessToken("admin", "password");
+
+        expectUnsupportedCreateBucketHeader(token, "s3-bucket-public-acl", "x-amz-acl", "public-read");
+        expectUnsupportedCreateBucketHeader(token, "s3-bucket-grant-acl", "x-amz-grant-read", "id=\"abc\"");
+        expectUnsupportedCreateBucketHeader(token, "s3-bucket-object-lock", "x-amz-bucket-object-lock-enabled", "true");
+        expectUnsupportedCreateBucketHeader(token, "s3-bucket-object-owner", "x-amz-object-ownership", "ObjectWriter");
+        expectUnsupportedCreateBucketHeader(token, "s3-bucket-account-ns", "x-amz-bucket-namespace", "account-regional");
+
+        String safeNoopBucketName = "s3-bucket-safe-noop-controls";
+        mockMvc.perform(put("/api/s3/{bucketName}", safeNoopBucketName)
+                        .header("Authorization", "Bearer " + token)
+                        .header("x-amz-acl", "private")
+                        .header("x-amz-bucket-object-lock-enabled", "false")
+                        .header("x-amz-object-ownership", "BucketOwnerEnforced")
+                        .header("x-amz-bucket-namespace", "global"))
+                .andExpect(status().isOk())
+                .andExpect(header().string("x-amz-bucket-region", "us-east-1"));
+    }
+
+    private void expectUnsupportedCreateBucketHeader(
+            String token,
+            String bucketName,
+            String headerName,
+            String headerValue
+    ) throws Exception {
+        mockMvc.perform(put("/api/s3/{bucketName}", bucketName)
+                        .header("Authorization", "Bearer " + token)
+                        .header(headerName, headerValue))
+                .andExpect(status().isBadRequest())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_XML))
+                .andExpect(content().string(containsString("<Code>InvalidRequest</Code>")));
+
+        mockMvc.perform(head("/api/s3/{bucketName}", bucketName)
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
     void createBucketReturnsS3DuplicateBucketCodes() throws Exception {
         String adminToken = loginAndReturnAccessToken("admin", "password");
         String ownerLoginId = "s3-create-duplicate-owner";

@@ -1,5 +1,36 @@
 # Worklog - main
 
+### 2026-06-18 - S3 CreateBucket unsupported control headers
+
+- Work time:
+  - End: 2026-06-18 18:27:00 +09:00
+- User command:
+  - Active goal: continue development from `dev-docs`.
+- Request analysis:
+  - `dev-docs` still listed remaining CreateBucket/DeleteBucket edge error parity.
+  - AWS CreateBucket documents ACL grant, object lock, object ownership, and bucket namespace request headers as feature/permission-dependent controls.
+- Execution:
+  - Rejected non-private `x-amz-acl`, any `x-amz-grant-*`, `x-amz-bucket-object-lock-enabled: true`, non-`BucketOwnerEnforced` `x-amz-object-ownership`, and non-`global` `x-amz-bucket-namespace` before bucket creation.
+  - Kept safe no-op defaults accepted: private ACL, object lock false, `BucketOwnerEnforced`, and global namespace.
+  - Added regression coverage and docs.
+- Modified files:
+  - `osmu-backend/src/main/java/com/example/osmu/bucket/S3BucketController.java`
+  - `osmu-backend/src/test/java/com/example/osmu/object/S3ObjectControllerTest.java`
+  - `dev-docs/PRODUCT_REQUIREMENTS.md`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/backend-design.md`
+  - `dev-docs/s3-compatibility.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/feature-inventory.md`
+  - `dev-docs/worklog/main/worklog-main.md`
+- Verification:
+  - `gradle test`: passed.
+  - `git diff --check`: passed with LF/CRLF normalization warnings only.
+- Result:
+  - CreateBucket no longer silently ignores unsupported security/ownership controls.
+- Follow-up:
+  - Remaining S3 gaps still include DeleteBucket broader edge errors, full AWS versioning parity, remaining conditional edge parity, unknown-size multipart initiate parity, multipart checksum aggregation parity, broader AWS error behavior parity.
+
 ### 2026-06-18 - S3 CopyObject user metadata parity
 
 - Work time:

@@ -32,8 +32,19 @@ import org.xml.sax.SAXException;
 public class S3BucketController {
 
     private static final String AWS_XML_NAMESPACE = "http://s3.amazonaws.com/doc/2006-03-01/";
+    private static final String AWS_ACL_HEADER = "x-amz-acl";
+    private static final String AWS_OBJECT_LOCK_HEADER = "x-amz-bucket-object-lock-enabled";
+    private static final String AWS_OBJECT_OWNERSHIP_HEADER = "x-amz-object-ownership";
+    private static final String AWS_BUCKET_NAMESPACE_HEADER = "x-amz-bucket-namespace";
     private static final Pattern S3_BUCKET_NAME_PATTERN = Pattern.compile("^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$");
     private static final Pattern IPV4_ADDRESS_PATTERN = Pattern.compile("^(\\d{1,3}\\.){3}\\d{1,3}$");
+    private static final String[] AWS_ACL_GRANT_HEADERS = {
+            "x-amz-grant-full-control",
+            "x-amz-grant-read",
+            "x-amz-grant-read-acp",
+            "x-amz-grant-write",
+            "x-amz-grant-write-acp"
+    };
 
     private final BucketService bucketService;
     private final S3RequestAuthService s3RequestAuthService;
@@ -62,6 +73,7 @@ public class S3BucketController {
     ) {
         validateS3BucketName(bucketName);
         AuthenticatedUser user = authContext.currentUser(request);
+        validateCreateBucketUnsupportedControls(request);
         validateCreateBucketLocation(request);
         BucketRecord bucket;
         try {
@@ -164,6 +176,33 @@ public class S3BucketController {
                     ApiErrorCode.VALIDATION_ERROR,
                     "CreateBucket LocationConstraint must match storage region " + region + "."
             );
+        }
+    }
+
+    private void validateCreateBucketUnsupportedControls(HttpServletRequest request) {
+        String acl = request.getHeader(AWS_ACL_HEADER);
+        if (acl != null && !acl.isBlank() && !"private".equalsIgnoreCase(acl.trim())) {
+            throw new ApiException(ApiErrorCode.VALIDATION_ERROR, AWS_ACL_HEADER + " is not supported for S3 CreateBucket.");
+        }
+        for (String headerName : AWS_ACL_GRANT_HEADERS) {
+            String grant = request.getHeader(headerName);
+            if (grant != null && !grant.isBlank()) {
+                throw new ApiException(ApiErrorCode.VALIDATION_ERROR, headerName + " is not supported for S3 CreateBucket.");
+            }
+        }
+        String objectLock = request.getHeader(AWS_OBJECT_LOCK_HEADER);
+        if (objectLock != null && "true".equalsIgnoreCase(objectLock.trim())) {
+            throw new ApiException(ApiErrorCode.VALIDATION_ERROR, AWS_OBJECT_LOCK_HEADER + " is not supported for S3 CreateBucket.");
+        }
+        String objectOwnership = request.getHeader(AWS_OBJECT_OWNERSHIP_HEADER);
+        if (objectOwnership != null
+                && !objectOwnership.isBlank()
+                && !"BucketOwnerEnforced".equalsIgnoreCase(objectOwnership.trim())) {
+            throw new ApiException(ApiErrorCode.VALIDATION_ERROR, AWS_OBJECT_OWNERSHIP_HEADER + " is not supported for S3 CreateBucket.");
+        }
+        String namespace = request.getHeader(AWS_BUCKET_NAMESPACE_HEADER);
+        if (namespace != null && !namespace.isBlank() && !"global".equalsIgnoreCase(namespace.trim())) {
+            throw new ApiException(ApiErrorCode.VALIDATION_ERROR, AWS_BUCKET_NAMESPACE_HEADER + " is not supported for S3 CreateBucket.");
         }
     }
 
