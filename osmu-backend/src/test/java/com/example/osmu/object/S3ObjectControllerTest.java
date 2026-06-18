@@ -1561,6 +1561,32 @@ class S3ObjectControllerTest {
     }
 
     @Test
+    void completeMultipartUploadInvalidPartOrderReturnsInvalidPartOrderXml() throws Exception {
+        String token = loginAndReturnAccessToken("admin", "password");
+        String bucketName = "s3-multipart-invalid-order-bucket";
+        createBucket(token, bucketName);
+        AccessKeyCredentials credentials = createAccessKey(token, bucketName, "WRITE");
+
+        mockMvc.perform(post("/api/s3/{bucketName}/video/input.mp4", bucketName)
+                        .queryParam("uploadId", "upload-1")
+                        .header("X-OSMU-Access-Key", credentials.accessKey())
+                        .header("X-OSMU-Secret-Key", credentials.secretKey())
+                        .contentType(MediaType.APPLICATION_XML)
+                        .accept(MediaType.APPLICATION_XML)
+                        .content("""
+                                <CompleteMultipartUpload>
+                                  <Part><PartNumber>2</PartNumber><ETag>"etag-2"</ETag></Part>
+                                  <Part><PartNumber>1</PartNumber><ETag>"etag-1"</ETag></Part>
+                                </CompleteMultipartUpload>
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_XML))
+                .andExpect(content().string(containsString("<Code>InvalidPartOrder</Code>")))
+                .andExpect(content().string(containsString("<Message>The list of parts was not in ascending order. "
+                        + "The parts list must be specified in order by part number.</Message>")));
+    }
+
+    @Test
     void accessKeyScopeControlsS3StyleObjectActions() throws Exception {
         String token = loginAndReturnAccessToken("admin", "password");
         String bucketName = "s3-object-scope-bucket";

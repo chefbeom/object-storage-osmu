@@ -19,6 +19,12 @@ class S3ErrorCodeMapperTest {
         assertThat(S3ErrorCodeMapper.codeFor(ApiErrorCode.BAD_DIGEST, "digest")).isEqualTo("BadDigest");
         assertThat(S3ErrorCodeMapper.codeFor(ApiErrorCode.VALIDATION_ERROR, "invalid")).isEqualTo("InvalidRequest");
         assertThat(S3ErrorCodeMapper.codeFor(ApiErrorCode.VALIDATION_ERROR, "Invalid S3 bucket name.")).isEqualTo("InvalidBucketName");
+        assertThat(S3ErrorCodeMapper.codeFor(ApiErrorCode.VALIDATION_ERROR,
+                "Multipart upload part 1 has not been uploaded.")).isEqualTo("InvalidPart");
+        assertThat(S3ErrorCodeMapper.codeFor(ApiErrorCode.VALIDATION_ERROR,
+                "Multipart upload part 2 ETag does not match uploaded part.")).isEqualTo("InvalidPart");
+        assertThat(S3ErrorCodeMapper.codeFor(ApiErrorCode.VALIDATION_ERROR,
+                "CompleteMultipartUpload parts must be in ascending PartNumber order without duplicates.")).isEqualTo("InvalidPartOrder");
         assertThat(S3ErrorCodeMapper.codeFor(ApiErrorCode.QUOTA_EXCEEDED, "quota")).isEqualTo("EntityTooLarge");
         assertThat(S3ErrorCodeMapper.codeFor(ApiErrorCode.CONFLICT, "conflict")).isEqualTo("OperationAborted");
         assertThat(S3ErrorCodeMapper.codeFor(ApiErrorCode.CONFLICT, "Bucket is not empty.")).isEqualTo("BucketNotEmpty");
@@ -48,6 +54,13 @@ class S3ErrorCodeMapperTest {
                         + "Please select a different name and try again.");
         assertThat(S3ErrorCodeMapper.messageFor("BucketNotEmpty", "Bucket is not empty."))
                 .isEqualTo("The bucket you tried to delete is not empty.");
+        assertThat(S3ErrorCodeMapper.messageFor("InvalidPart", "Multipart upload part 1 has not been uploaded."))
+                .isEqualTo("One or more of the specified parts could not be found. "
+                        + "The part might not have been uploaded, "
+                        + "or the specified ETag might not have matched the uploaded part's ETag.");
+        assertThat(S3ErrorCodeMapper.messageFor("InvalidPartOrder", "part order"))
+                .isEqualTo("The list of parts was not in ascending order. "
+                        + "The parts list must be specified in order by part number.");
         assertThat(S3ErrorCodeMapper.messageFor("InternalError", "")).isEqualTo("InternalError");
     }
 }

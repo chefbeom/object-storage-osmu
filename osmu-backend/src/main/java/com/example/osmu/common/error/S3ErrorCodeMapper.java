@@ -55,6 +55,15 @@ public final class S3ErrorCodeMapper {
         if ("BucketNotEmpty".equals(s3Code)) {
             return "The bucket you tried to delete is not empty.";
         }
+        if ("InvalidPart".equals(s3Code)) {
+            return "One or more of the specified parts could not be found. "
+                    + "The part might not have been uploaded, "
+                    + "or the specified ETag might not have matched the uploaded part's ETag.";
+        }
+        if ("InvalidPartOrder".equals(s3Code)) {
+            return "The list of parts was not in ascending order. "
+                    + "The parts list must be specified in order by part number.";
+        }
         return message == null || message.isBlank() ? s3Code : message;
     }
 
@@ -64,7 +73,18 @@ public final class S3ErrorCodeMapper {
 
     private static String validationCode(String message) {
         String normalized = message == null ? "" : message.toLowerCase(Locale.ROOT);
-        return normalized.contains("invalid s3 bucket name") ? "InvalidBucketName" : "InvalidRequest";
+        if (normalized.contains("invalid s3 bucket name")) {
+            return "InvalidBucketName";
+        }
+        if (normalized.contains("multipart upload part")
+                && (normalized.contains("has not been uploaded")
+                        || normalized.contains("etag does not match uploaded part"))) {
+            return "InvalidPart";
+        }
+        if (normalized.contains("completemultipartupload parts must be in ascending partnumber order")) {
+            return "InvalidPartOrder";
+        }
+        return "InvalidRequest";
     }
 
     private static String notFoundCode(String message) {

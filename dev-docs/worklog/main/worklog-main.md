@@ -1,5 +1,37 @@
 # Worklog - main
 
+### 2026-06-18 - S3 CompleteMultipartUpload special errors
+
+- Work time:
+  - End: 2026-06-18 KST
+- User command:
+  - Active goal: continue development from `dev-docs`.
+- Request analysis:
+  - `dev-docs` still track remaining multipart response/special-error parity.
+  - AWS CompleteMultipartUpload documents special errors `InvalidPart`, `InvalidPartOrder`, and `NoSuchUpload`; OSMU already had `NoSuchUpload` but still mapped part order/missing part cases to generic `InvalidRequest`.
+- Execution:
+  - Mapped out-of-order/duplicate complete part lists to S3 XML `InvalidPartOrder`.
+  - Mapped missing uploaded parts and stale part ETags to S3 XML `InvalidPart`.
+  - Normalized `InvalidPart`/`InvalidPartOrder` messages to AWS-style text.
+  - Added mapper assertions for `InvalidPart`/`InvalidPartOrder`, MockMvc S3 XML regression for `InvalidPartOrder`, and existing service coverage for missing/stale part validation.
+  - Updated README and `dev-docs`.
+- Modified files:
+  - `osmu-backend/src/main/java/com/example/osmu/common/error/S3ErrorCodeMapper.java`
+  - `osmu-backend/src/test/java/com/example/osmu/common/error/S3ErrorCodeMapperTest.java`
+  - `osmu-backend/src/test/java/com/example/osmu/object/S3ObjectControllerTest.java`
+  - `README.md`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/backend-design.md`
+  - `dev-docs/s3-compatibility.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/feature-inventory.md`
+  - `dev-docs/worklog/main/worklog-main.md`
+- Tests:
+  - First focused run failed because `S3ObjectControllerTest` in-memory storage cannot complete a real S3 multipart initiate path (`502` on initiate). The missing uploaded-part XML assertion was moved to mapper/service coverage.
+  - `$env:JAVA_HOME='C:\jdk-17'; .\gradlew.bat test --no-daemon --tests com.example.osmu.common.error.S3ErrorCodeMapperTest --tests com.example.osmu.object.S3ObjectControllerTest.completeMultipartUploadInvalidPartOrderReturnsInvalidPartOrderXml --tests com.example.osmu.object.S3ObjectControllerMultipartTest.completeMultipartUploadRejectsInvalidPartListXml --tests com.example.osmu.object.ObjectServiceMultipartRefreshTest.completeMultipartUploadRejectsMissingOrMismatchedUploadedPartBeforeStorageComplete`: passed.
+- Follow-up:
+  - Continue remaining multipart checksum response edge cases and non-bucket AWS error message/status nuance.
+
 ### 2026-06-18 - S3 CompleteMultipartUpload Location response
 
 - Work time:
