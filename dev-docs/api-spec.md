@@ -1332,7 +1332,7 @@ Headers:
 - `If-Modified-Since` returns `304 Not Modified` when the object has not changed after the requested timestamp; `If-Unmodified-Since` returns `412 Precondition Failed` when the object changed after the requested timestamp.
 - Range GET honors `If-Range` with an ETag or HTTP date: matching validators return the requested range, while stale validators ignore `Range` and return the full object.
 - Bucket-level responses return `x-amz-bucket-region`; default MVP region is `us-east-1`.
-- Bucket create returns `200 OK`, `Location: /{bucketName}`, and `x-amz-bucket-region`. Bucket delete returns `204 No Content`.
+- Bucket create returns `200 OK`, `Location: /{bucketName}`, and `x-amz-bucket-region`. Bucket delete returns `204 No Content`; deleting a non-empty bucket returns `409 BucketNotEmpty`.
 - Bucket tagging uses `Tagging/TagSet/Tag/Key/Value` XML, stores up to 50 bucket metadata tags, and disables DOCTYPE/external entity loading while parsing.
 - Range GET returns `206 Partial Content`, `Accept-Ranges: bytes`, and `Content-Range`. Invalid ranges return `416 RANGE_NOT_SATISFIABLE`.
 - `ListObjectsV2` supports `prefix`, `delimiter`, `max-keys` from `1` to `1000`, `continuation-token`, `encoding-type=url`, and `fetch-owner=true|false`.
@@ -1348,7 +1348,7 @@ Headers:
 - Object tagging uses `Tagging/TagSet/Tag/Key/Value` XML and reuses the same tag metadata used by the REST object API.
 - `PUT ?tagging` rejects blank or invalid XML and the parser disables DOCTYPE/external entity loading.
 - Errors under `/api/s3/**` return AWS-style XML `<Error><Code>...</Code><Message>...</Message><RequestId>...</RequestId></Error>`.
-- S3 XML error code mapping includes `AccessDenied`, `NoSuchBucket`, `NoSuchKey`, `InvalidRange`, `InvalidRequest`, `InvalidDigest`, `BadDigest`, `PreconditionFailed`, `EntityTooLarge`, `OperationAborted`, and `InternalError`.
+- S3 XML error code mapping includes `AccessDenied`, `NoSuchBucket`, `NoSuchKey`, `BucketNotEmpty`, `InvalidRange`, `InvalidRequest`, `InvalidDigest`, `BadDigest`, `PreconditionFailed`, `EntityTooLarge`, `OperationAborted`, and `InternalError`.
 - The same S3 error code mapping is used for global `/api/s3/**` error XML and multi-object delete `DeleteResult/Error` entries.
 
 Object tagging XML:
@@ -1457,7 +1457,7 @@ Limitations:
 - S3 multipart upload path is MVP-level and currently requires OSMU expected-size headers at initiate time.
 - S3 multipart uploads listing is backed by OSMU active multipart sessions, not a raw MinIO bucket scan.
 - Virtual-hosted-style routing currently extracts the bucket from the left side of a configured domain suffix. Production deployments must configure DNS/proxy hosts such as `{bucket}.storage.example.com` and set `osmu.s3.virtual-hosted-style.domain-suffixes=storage.example.com`.
-- Multi-range GET, full conditional request parity, CopyObject user-metadata/versioning/full-conditional parity, exact CreateBucket/DeleteBucket error parity, full AWS multipart checksum aggregation parity, full multipart ETag parity, and exact AWS error schema parity are not implemented yet. See `s3-compatibility.md` for the supported/partial/unsupported matrix.
+- Multi-range GET, full conditional request parity, CopyObject user-metadata/versioning/full-conditional parity, remaining CreateBucket/DeleteBucket edge error parity, full AWS multipart checksum aggregation parity, full multipart ETag parity, and exact AWS error schema parity are not implemented yet. See `s3-compatibility.md` for the supported/partial/unsupported matrix.
 
 ### GET /api/buckets/{bucketName}/permissions
 

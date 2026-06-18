@@ -17,12 +17,17 @@ public final class S3ErrorCodeMapper {
             case BAD_DIGEST -> "BadDigest";
             case VALIDATION_ERROR -> "InvalidRequest";
             case QUOTA_EXCEEDED -> "EntityTooLarge";
-            case CONFLICT -> "OperationAborted";
+            case CONFLICT -> isBucketNotEmpty(message) ? "BucketNotEmpty" : "OperationAborted";
             case STORAGE_ERROR, INTERNAL_ERROR -> "InternalError";
         };
     }
 
     private static boolean isBucketError(String message) {
         return message != null && message.toLowerCase(Locale.ROOT).contains("bucket");
+    }
+
+    private static boolean isBucketNotEmpty(String message) {
+        String normalized = message == null ? "" : message.toLowerCase(Locale.ROOT);
+        return normalized.contains("bucket") && normalized.contains("not empty");
     }
 }

@@ -24,7 +24,7 @@
 - `S3RootController` exposes `GET /api/s3` as S3 `ListAllMyBucketsResult` XML and filters Access Key requests by current bucket scopes.
 - `S3RootController` also exposes explicit `HEAD /api/s3` as a service-level auth probe for S3 clients. It reuses root bucket-list auth but returns no body.
 - `S3BucketController` exposes bucket-level S3 compatibility operations: `PUT /api/s3/{bucketName}`, `HEAD /api/s3/{bucketName}`, `GET /api/s3/{bucketName}?location`, and `DELETE /api/s3/{bucketName}`.
-- S3-style bucket create reuses `BucketService.create`, currently requires Bearer JWT auth, and accepts S3 `CreateBucketConfiguration/LocationConstraint` XML when it matches the configured storage region. S3-style bucket delete reuses `BucketService.delete`, requires target bucket `ADMIN` scope through JWT or Access Key auth, and only succeeds for empty buckets.
+- S3-style bucket create reuses `BucketService.create`, currently requires Bearer JWT auth, and accepts S3 `CreateBucketConfiguration/LocationConstraint` XML when it matches the configured storage region. S3-style bucket delete reuses `BucketService.delete`, requires target bucket `ADMIN` scope through JWT or Access Key auth, only succeeds for empty buckets, and maps non-empty bucket conflicts to S3 XML `BucketNotEmpty`.
 - `S3BucketTaggingController` exposes `GET/PUT/DELETE /api/s3/{bucketName}?tagging`, stores bucket metadata tags through `BucketTagRepository`, and requires bucket `ADMIN` scope.
 - `S3TaggingXmlMapper` parses and renders S3-compatible `Tagging/TagSet/Tag/Key/Value` XML for bucket tagging with XXE protections.
 - `BucketController` exposes REST bucket tag management through `GET/PUT/DELETE /api/buckets/{bucketName}/tags`, reusing `BucketTagService` validation and repository storage.
@@ -52,7 +52,7 @@
 - S3-style object alias reuses `ObjectService`, bucket quota, object metadata, soft delete, audit log, and Access Key permission checks.
 - `S3ErrorCodeMapper` centralizes OSMU `ApiErrorCode` to S3 XML error code mapping so global `/api/s3/**` error responses and multi-delete per-key `Error` entries stay consistent.
 - `GlobalExceptionHandler` returns AWS-style XML error bodies for `/api/s3/**` while normal REST API errors stay JSON.
-- Current S3-style alias does not implement presigned streaming/trailer-signature parity, unknown-size S3 multipart initiate parity, full AWS multipart checksum aggregation parity, automatic DNS/proxy provisioning for virtual-hosted-style domains, multi-range GET, full conditional request parity, exact CopyObject user-metadata/versioning/full-conditional parity, exact CreateBucket/DeleteBucket error parity, multipart ETag parity, or exact AWS error schema parity yet. `s3-compatibility.md` is the authoritative matrix for supported, partial, and unsupported S3 behavior.
+- Current S3-style alias does not implement presigned streaming/trailer-signature parity, unknown-size S3 multipart initiate parity, full AWS multipart checksum aggregation parity, automatic DNS/proxy provisioning for virtual-hosted-style domains, multi-range GET, full conditional request parity, exact CopyObject user-metadata/versioning/full-conditional parity, remaining CreateBucket/DeleteBucket edge error parity, multipart ETag parity, or exact AWS error schema parity yet. `s3-compatibility.md` is the authoritative matrix for supported, partial, and unsupported S3 behavior.
 # OSMU Backend Design
 
 이 문서는 Spring Boot 기반 OSMU Backend 설계를 정의한다.

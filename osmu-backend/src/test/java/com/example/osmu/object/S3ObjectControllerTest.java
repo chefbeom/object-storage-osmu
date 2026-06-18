@@ -807,6 +807,22 @@ class S3ObjectControllerTest {
     }
 
     @Test
+    void deleteBucketReturnsBucketNotEmptyForNonEmptyBucket() throws Exception {
+        String token = loginAndReturnAccessToken("admin", "password");
+        String bucketName = "s3-bucket-not-empty-bucket";
+        createBucket(token, bucketName);
+        AccessKeyCredentials credentials = createAccessKey(token, bucketName, "ADMIN", "WRITE");
+        putS3Object(bucketName, "docs/object.txt", "not empty", credentials);
+
+        mockMvc.perform(delete("/api/s3/{bucketName}", bucketName)
+                        .header("X-OSMU-Access-Key", credentials.accessKey())
+                        .header("X-OSMU-Secret-Key", credentials.secretKey()))
+                .andExpect(status().isConflict())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_XML))
+                .andExpect(content().string(containsString("<Code>BucketNotEmpty</Code>")));
+    }
+
+    @Test
     void accessKeyCanListScopedBucketsThroughS3Root() throws Exception {
         String token = loginAndReturnAccessToken("admin", "password");
         String bucketName = "s3-root-list-bucket-a";

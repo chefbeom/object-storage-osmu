@@ -19,6 +19,7 @@ class S3ErrorCodeMapperTest {
         assertThat(S3ErrorCodeMapper.codeFor(ApiErrorCode.VALIDATION_ERROR, "invalid")).isEqualTo("InvalidRequest");
         assertThat(S3ErrorCodeMapper.codeFor(ApiErrorCode.QUOTA_EXCEEDED, "quota")).isEqualTo("EntityTooLarge");
         assertThat(S3ErrorCodeMapper.codeFor(ApiErrorCode.CONFLICT, "conflict")).isEqualTo("OperationAborted");
+        assertThat(S3ErrorCodeMapper.codeFor(ApiErrorCode.CONFLICT, "Bucket is not empty.")).isEqualTo("BucketNotEmpty");
         assertThat(S3ErrorCodeMapper.codeFor(ApiErrorCode.STORAGE_ERROR, "storage")).isEqualTo("InternalError");
         assertThat(S3ErrorCodeMapper.codeFor(ApiErrorCode.INTERNAL_ERROR, "server")).isEqualTo("InternalError");
     }
