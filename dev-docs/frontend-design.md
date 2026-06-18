@@ -164,6 +164,7 @@ Web Portal은 관리자와 사용자가 OSMU를 브라우저에서 사용할 수
 - S3 compatible endpoint summary.
 - S3 compatible endpoint summary는 `GET /api/developer/s3-client-config` 응답을 사용해 endpoint, region, signature version, virtual-hosted-style domain suffix를 표시한다.
 - AWS CLI, s3fs-fuse, goofys, AWS SDK JavaScript, boto3 Python, AWS SDK Java snippets are generated from endpoint, region, and selected bucket.
+- Real S3 client compatibility matrix는 AWS CLI, MinIO Client, boto3, AWS SDK JavaScript/Java, s3fs-fuse/goofys, s3cmd별 지원 상태, 인증 방식, 검증 operation, 필수 option을 표시한다.
 - 선택 bucket context.
 
 접근:

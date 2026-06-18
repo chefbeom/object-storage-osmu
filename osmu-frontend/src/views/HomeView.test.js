@@ -214,6 +214,10 @@ test('HomeView exposes stable selectors for browser E2E flows', () => {
     'developer-sdk-javascript',
     'developer-sdk-python',
     'developer-sdk-java',
+    'developer-client-compatibility-panel',
+    'developer-client-compatibility-region',
+    'developer-client-compatibility-row',
+    'developer-client-compatibility-status',
     'access-key-panel',
     'access-key-form',
     'access-key-name-input',
@@ -689,6 +693,10 @@ test('HomeView exposes stable selectors for browser E2E flows', () => {
   assert.match(dashboardSource, /developerOnboardingSteps/)
   assert.match(dashboardSource, /developerOnboardingProgress/)
   assert.match(dashboardSource, /S3 클라이언트 예시/)
+  assert.match(dashboardSource, /Real S3 client matrix/)
+  assert.match(dashboardSource, /clientCompatibilityRows/)
+  assert.match(dashboardSource, /MinIO Client/)
+  assert.match(dashboardSource, /s3cmd/)
   assert.match(dashboardSource, /Secret Key는 생성 또는 Rotate 직후 1회만 표시/)
   assert.match(dashboardSource, /최소 1개 bucket scope와 permission/)
   assert.match(dashboardSource, /Disable expired/)

@@ -120,6 +120,37 @@
         </section>
       </div>
     </article>
+
+    <article class="panel developer-compatibility-panel" data-testid="developer-client-compatibility-panel">
+      <div class="panel-head">
+        <div>
+          <p class="eyebrow">Compatibility</p>
+          <h3>Real S3 client matrix</h3>
+        </div>
+        <span class="status-pill up" data-testid="developer-client-compatibility-region">{{ snippetRegion }}</span>
+      </div>
+      <div class="developer-compatibility-table">
+        <div class="developer-compatibility-row header" aria-hidden="true">
+          <span>Client</span>
+          <span>Status</span>
+          <span>Auth</span>
+          <span>Operations</span>
+          <span>Required option</span>
+        </div>
+        <div
+          v-for="client in clientCompatibilityRows"
+          :key="client.name"
+          class="developer-compatibility-row"
+          data-testid="developer-client-compatibility-row"
+        >
+          <strong>{{ client.name }}</strong>
+          <span class="status-pill" :class="client.tone" data-testid="developer-client-compatibility-status">{{ client.status }}</span>
+          <span>{{ client.auth }}</span>
+          <span>{{ client.operations }}</span>
+          <small>{{ client.option }}</small>
+        </div>
+      </div>
+    </article>
   </section>
 </template>
 
@@ -182,6 +213,68 @@ const developerOnboardingProgress = computed(() => {
   const ready = developerOnboardingSteps.value.filter((step) => step.done).length
   return { ready, total }
 })
+const pathStyleOption = computed(() => (
+  props.s3ClientConfig.pathStyleSupported === false ? 'virtual-hosted-style endpoint 필요' : 'path-style / forcePathStyle 사용'
+))
+const sigV4Label = computed(() => props.s3ClientConfig.signatureVersion || 'AWS4-HMAC-SHA256')
+const clientCompatibilityRows = computed(() => [
+  {
+    name: 'AWS CLI',
+    status: 'Supported',
+    tone: 'up',
+    auth: sigV4Label.value,
+    operations: 'ls, cp, stat/head, rm',
+    option: `--endpoint-url, ${pathStyleOption.value}`,
+  },
+  {
+    name: 'MinIO Client',
+    status: 'Smoke',
+    tone: 'up',
+    auth: sigV4Label.value,
+    operations: 'alias, ls, cp, stat, rm',
+    option: `mc alias set, ${pathStyleOption.value}`,
+  },
+  {
+    name: 'boto3 Python',
+    status: 'Supported',
+    tone: 'up',
+    auth: sigV4Label.value,
+    operations: 'list_objects_v2, put/get object',
+    option: 'endpoint_url, region_name',
+  },
+  {
+    name: 'AWS SDK JavaScript',
+    status: 'Supported',
+    tone: 'up',
+    auth: sigV4Label.value,
+    operations: 'ListObjectsV2, PutObject, GetObject',
+    option: 'endpoint, region, forcePathStyle',
+  },
+  {
+    name: 'AWS SDK Java',
+    status: 'Supported',
+    tone: 'up',
+    auth: sigV4Label.value,
+    operations: 'listObjectsV2, put/get object',
+    option: 'endpointOverride, forcePathStyle',
+  },
+  {
+    name: 's3fs-fuse / goofys',
+    status: 'Mount',
+    tone: 'mock',
+    auth: 'Access Key file/env',
+    operations: 'mount, read, write, list',
+    option: `url/endpoint, ${pathStyleOption.value}`,
+  },
+  {
+    name: 's3cmd',
+    status: 'Manual',
+    tone: 'mock',
+    auth: sigV4Label.value,
+    operations: 'ls, put, get, del',
+    option: 'host_base, host_bucket, signature_v2 = False',
+  },
+])
 const awsCliSnippet = computed(() => [
   'aws configure set aws_access_key_id <ACCESS_KEY>',
   'aws configure set aws_secret_access_key <SECRET_KEY>',

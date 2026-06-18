@@ -94,8 +94,8 @@
 - Feature: Developer S3 client config.
 - Preconditions: User is logged in. Backend has `OSMU_S3_PUBLIC_ENDPOINT`, `OSMU_S3_REGION`, and virtual-hosted-style suffix settings.
 - Input: `GET /api/developer/s3-client-config`.
-- Steps: Login, call the config endpoint, then open DeveloperPage and verify the onboarding checklist, endpoint summary, and client snippets.
-- Expected: API returns endpoint, region, signature version, service name, path-style support, and virtual-hosted-style suffixes without exposing secret values. DeveloperPage displays onboarding readiness for endpoint, selected bucket, access key, and SDK snippet setup, then renders AWS CLI, s3fs-fuse, goofys, AWS SDK JavaScript, boto3 Python, and AWS SDK Java snippets with placeholder credentials.
+- Steps: Login, call the config endpoint, then open DeveloperPage and verify the onboarding checklist, endpoint summary, client snippets, and compatibility matrix.
+- Expected: API returns endpoint, region, signature version, service name, path-style support, and virtual-hosted-style suffixes without exposing secret values. DeveloperPage displays onboarding readiness for endpoint, selected bucket, access key, and SDK snippet setup, then renders AWS CLI, s3fs-fuse, goofys, AWS SDK JavaScript, boto3 Python, and AWS SDK Java snippets with placeholder credentials. The compatibility matrix shows AWS CLI, MinIO Client, boto3, AWS SDK JavaScript/Java, s3fs-fuse/goofys, and s3cmd support status with required options.
 - Priority: P1
 - Automated: `DeveloperControllerTest.s3ClientConfigReturnsPublicEndpointAndRegion`, `api-query.test.js getS3ClientConfig reads developer S3 client settings endpoint`, `HomeView.test.js stable selectors`
 

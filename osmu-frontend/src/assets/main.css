@@ -1087,6 +1087,48 @@ label {
   grid-column: 1 / -1;
 }
 
+.developer-compatibility-panel {
+  grid-column: 1 / -1;
+}
+
+.developer-compatibility-table {
+  display: grid;
+  padding: 0 18px 18px;
+}
+
+.developer-compatibility-row {
+  display: grid;
+  grid-template-columns: minmax(110px, 0.9fr) 100px minmax(120px, 1fr) minmax(150px, 1.25fr) minmax(150px, 1.35fr);
+  gap: 10px;
+  align-items: center;
+  min-width: 0;
+  padding: 10px 0;
+  border-top: 1px solid var(--color-border);
+}
+
+.developer-compatibility-row.header {
+  padding-top: 0;
+  color: var(--color-muted);
+  font-size: 12px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.developer-compatibility-row strong,
+.developer-compatibility-row span,
+.developer-compatibility-row small {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.developer-compatibility-row strong {
+  color: var(--color-heading);
+}
+
+.developer-compatibility-row small {
+  color: var(--color-muted);
+}
+
 .client-snippet-list {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -2124,6 +2166,7 @@ tbody tr.selected {
   .status-dl,
   .status-dl.compact,
   .developer-onboarding-list,
+  .developer-compatibility-row,
   .client-snippet-list,
   .compact-metrics,
   .detail-grid {
