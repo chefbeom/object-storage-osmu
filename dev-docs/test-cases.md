@@ -167,7 +167,7 @@
 - Input: `PUT/HEAD/GET/DELETE /api/s3/{bucketName}/{objectKey}` with `X-OSMU-Access-Key`, `X-OSMU-Secret-Key`, and optional destination `If-Match`/`If-None-Match`.
 - Steps: PUT raw text object with `x-amz-tagging`, HEAD metadata, GET object body, exercise PUT destination `If-Match`/`If-None-Match` overwrite guards, DELETE object, then GET again.
 - Expected: PUT returns `ETag`, tag count, `x-amz-request-id`, and `x-amz-id-2`. HEAD returns content length and `ETag`. GET streams the original body and returns tags and `ETag` headers. Existing target plus `If-None-Match: *`, missing target plus `If-Match`, and non-matching `If-Match` return `412 PreconditionFailed`; matching `If-Match` overwrites. DELETE returns `204`. GET after delete returns `404`.
-- Expected error body: S3 XML with `NoSuchKey`.
+- Expected error body: S3 XML with `NoSuchKey` and message `The specified key does not exist.`.
 - Priority: P1
 - Automated: `S3ObjectControllerTest.accessKeyCanPutHeadGetAndDeleteObjectThroughS3StylePath`
 
@@ -409,7 +409,7 @@
 - Preconditions: Target bucket exists. Active access key has `WRITE` scope.
 - Input: `GET /api/s3/{bucketName}/{objectKey}?uploadId=missing-upload`.
 - Steps: Request uploaded parts for a nonexistent multipart upload id.
-- Expected: Response is S3 XML `NoSuchUpload` with `BucketName`, `Key`, `UploadId`, `Resource`, `RequestId`, and an opaque `HostId` that does not mirror the request id. Response headers include `x-amz-request-id` matching XML `RequestId` and `x-amz-id-2` matching XML `HostId`.
+- Expected: Response is S3 XML `NoSuchUpload` with message `The specified multipart upload does not exist. The upload ID might be invalid, or the multipart upload might have been aborted or completed.`, plus `BucketName`, `Key`, `UploadId`, `Resource`, `RequestId`, and an opaque `HostId` that does not mirror the request id. Response headers include `x-amz-request-id` matching XML `RequestId` and `x-amz-id-2` matching XML `HostId`.
 - Priority: P1
 - Automated: `S3ObjectControllerTest.missingS3MultipartUploadReturnsNoSuchUploadXml`, `S3ErrorCodeMapperTest.mapsApiErrorsToS3XmlErrorCodes`
 

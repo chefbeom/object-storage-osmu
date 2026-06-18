@@ -32,7 +32,10 @@ class S3ErrorCodeMapperTest {
     void normalizesS3ErrorMessages() {
         assertThat(S3ErrorCodeMapper.messageFor("AccessDenied", "Missing access key credentials.")).isEqualTo("Access Denied");
         assertThat(S3ErrorCodeMapper.messageFor("InvalidRange", "Invalid Range header.")).isEqualTo("The requested range cannot be satisfied.");
-        assertThat(S3ErrorCodeMapper.messageFor("NoSuchKey", "Object not found.")).isEqualTo("Object not found.");
+        assertThat(S3ErrorCodeMapper.messageFor("NoSuchBucket", "Bucket not found.")).isEqualTo("The specified bucket does not exist");
+        assertThat(S3ErrorCodeMapper.messageFor("NoSuchKey", "Object not found.")).isEqualTo("The specified key does not exist.");
+        assertThat(S3ErrorCodeMapper.messageFor("NoSuchUpload", "Upload session not found."))
+                .isEqualTo("The specified multipart upload does not exist. The upload ID might be invalid, or the multipart upload might have been aborted or completed.");
         assertThat(S3ErrorCodeMapper.messageFor("InternalError", "")).isEqualTo("InternalError");
     }
 }

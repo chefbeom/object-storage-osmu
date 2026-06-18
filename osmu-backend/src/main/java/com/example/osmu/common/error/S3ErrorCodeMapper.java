@@ -29,6 +29,15 @@ public final class S3ErrorCodeMapper {
         if ("InvalidRange".equals(s3Code)) {
             return "The requested range cannot be satisfied.";
         }
+        if ("NoSuchBucket".equals(s3Code)) {
+            return "The specified bucket does not exist";
+        }
+        if ("NoSuchKey".equals(s3Code)) {
+            return "The specified key does not exist.";
+        }
+        if ("NoSuchUpload".equals(s3Code)) {
+            return "The specified multipart upload does not exist. The upload ID might be invalid, or the multipart upload might have been aborted or completed.";
+        }
         return message == null || message.isBlank() ? s3Code : message;
     }
 

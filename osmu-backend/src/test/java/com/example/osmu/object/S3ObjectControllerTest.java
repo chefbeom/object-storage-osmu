@@ -256,6 +256,7 @@ class S3ObjectControllerTest {
                 .andExpect(status().isNotFound())
                 .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_XML))
                 .andExpect(content().string(containsString("<Code>NoSuchKey</Code>")))
+                .andExpect(content().string(containsString("<Message>The specified key does not exist.</Message>")))
                 .andExpect(content().string(containsString("<BucketName>" + bucketName + "</BucketName>")))
                 .andExpect(content().string(containsString("<Key>docs/sample.txt</Key>")));
     }
@@ -1540,6 +1541,7 @@ class S3ObjectControllerTest {
                 .andExpect(header().string("x-amz-id-2", hostId))
                 .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_XML))
                 .andExpect(content().string(containsString("<Code>NoSuchUpload</Code>")))
+                .andExpect(content().string(containsString("<Message>The specified multipart upload does not exist. The upload ID might be invalid, or the multipart upload might have been aborted or completed.</Message>")))
                 .andExpect(content().string(containsString("<BucketName>" + bucketName + "</BucketName>")))
                 .andExpect(content().string(containsString("<Key>video/missing.mp4</Key>")))
                 .andExpect(content().string(containsString("<UploadId>missing-upload</UploadId>")))
