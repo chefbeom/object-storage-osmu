@@ -300,7 +300,7 @@
 - Input: `GET /api/s3/{bucketName}/video/sample.txt` with `Range: bytes=6-7`, `Range: bytes=-5`, unsupported multi-range `Range: bytes=0-4,9-13`, `If-Range`, and invalid `Range: bytes=99-100`.
 - Steps: Upload object, request middle byte range, suffix byte range, unsupported multi-range byte ranges, matching `If-Range`, stale `If-Range`, then invalid range.
 - Expected: Valid single ranges and matching `If-Range` return `206 Partial Content`, `Accept-Ranges: bytes`, correct `Content-Range`, and partial body. Multi-range and invalid ranges return `416 RANGE_NOT_SATISFIABLE`. Stale `If-Range` returns `200 OK` with the full body.
-- Expected error body: S3 XML with `InvalidRange`.
+- Expected error body: S3 XML with `InvalidRange` and message `The requested range cannot be satisfied.`.
 - Priority: P1
 - Automated: `S3ObjectControllerTest.accessKeyCanUseRangeGetThroughS3StylePath`
 

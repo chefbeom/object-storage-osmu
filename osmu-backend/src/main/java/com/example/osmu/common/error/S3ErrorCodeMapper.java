@@ -26,6 +26,9 @@ public final class S3ErrorCodeMapper {
         if ("AccessDenied".equals(s3Code)) {
             return "Access Denied";
         }
+        if ("InvalidRange".equals(s3Code)) {
+            return "The requested range cannot be satisfied.";
+        }
         return message == null || message.isBlank() ? s3Code : message;
     }
 

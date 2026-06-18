@@ -31,6 +31,7 @@ class S3ErrorCodeMapperTest {
     @Test
     void normalizesS3ErrorMessages() {
         assertThat(S3ErrorCodeMapper.messageFor("AccessDenied", "Missing access key credentials.")).isEqualTo("Access Denied");
+        assertThat(S3ErrorCodeMapper.messageFor("InvalidRange", "Invalid Range header.")).isEqualTo("The requested range cannot be satisfied.");
         assertThat(S3ErrorCodeMapper.messageFor("NoSuchKey", "Object not found.")).isEqualTo("Object not found.");
         assertThat(S3ErrorCodeMapper.messageFor("InternalError", "")).isEqualTo("InternalError");
     }

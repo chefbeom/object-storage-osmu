@@ -1481,7 +1481,8 @@ class S3ObjectControllerTest {
                         .header("X-OSMU-Secret-Key", credentials.secretKey())
                         .header(HttpHeaders.RANGE, "bytes=0-4,9-13"))
                 .andExpect(status().isRequestedRangeNotSatisfiable())
-                .andExpect(content().string(containsString("<Code>InvalidRange</Code>")));
+                .andExpect(content().string(containsString("<Code>InvalidRange</Code>")))
+                .andExpect(content().string(containsString("<Message>The requested range cannot be satisfied.</Message>")));
 
         String currentEtag = "\"%s\"".formatted(md5Hex("hello s3 alias"));
         MvcResult matchingIfRangeResult = mockMvc.perform(get("/api/s3/{bucketName}/video/sample.txt", bucketName)
@@ -1515,7 +1516,8 @@ class S3ObjectControllerTest {
                         .header("X-OSMU-Secret-Key", credentials.secretKey())
                         .header(HttpHeaders.RANGE, "bytes=99-100"))
                 .andExpect(status().isRequestedRangeNotSatisfiable())
-                .andExpect(content().string(containsString("<Code>InvalidRange</Code>")));
+                .andExpect(content().string(containsString("<Code>InvalidRange</Code>")))
+                .andExpect(content().string(containsString("<Message>The requested range cannot be satisfied.</Message>")));
     }
 
     @Test
