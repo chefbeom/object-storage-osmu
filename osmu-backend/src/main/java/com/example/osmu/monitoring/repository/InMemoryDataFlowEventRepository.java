@@ -49,6 +49,22 @@ public class InMemoryDataFlowEventRepository implements DataFlowEventRepository 
     }
 
     @Override
+    public int deleteBefore(OffsetDateTime cutoff, int limit) {
+        if (cutoff == null || limit <= 0) {
+            return 0;
+        }
+        List<DataFlowEventRecord> candidates = events.stream()
+                .filter(event -> event.createdAt() != null && event.createdAt().isBefore(cutoff))
+                .sorted(Comparator
+                        .comparing(DataFlowEventRecord::createdAt)
+                        .thenComparing(event -> event.id() == null ? 0L : event.id()))
+                .limit(limit)
+                .toList();
+        events.removeAll(candidates);
+        return candidates.size();
+    }
+
+    @Override
     public boolean isHealthy() {
         return true;
     }

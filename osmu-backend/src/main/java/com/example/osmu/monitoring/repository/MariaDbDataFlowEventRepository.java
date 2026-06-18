@@ -136,6 +136,28 @@ public class MariaDbDataFlowEventRepository implements DataFlowEventRepository {
     }
 
     @Override
+    public int deleteBefore(OffsetDateTime cutoff, int limit) {
+        ensureSchema();
+        if (cutoff == null || limit <= 0) {
+            return 0;
+        }
+        String sql = """
+                DELETE FROM data_flow_events
+                WHERE created_at < ?
+                ORDER BY created_at ASC, id ASC
+                LIMIT ?
+                """;
+        try (Connection connection = connect();
+             PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setTimestamp(1, timestamp(cutoff));
+            statement.setInt(2, limit);
+            return statement.executeUpdate();
+        } catch (SQLException exception) {
+            throw databaseException(exception);
+        }
+    }
+
+    @Override
     public boolean isHealthy() {
         try (Connection connection = connect();
              PreparedStatement statement = connection.prepareStatement("SELECT 1");

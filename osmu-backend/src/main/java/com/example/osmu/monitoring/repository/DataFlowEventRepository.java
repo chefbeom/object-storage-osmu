@@ -2,6 +2,7 @@ package com.example.osmu.monitoring.repository;
 
 import com.example.osmu.monitoring.DataFlowEventFilter;
 import com.example.osmu.monitoring.DataFlowEventRecord;
+import java.time.OffsetDateTime;
 import java.util.List;
 
 public interface DataFlowEventRepository {
@@ -11,6 +12,8 @@ public interface DataFlowEventRepository {
     long nextId();
 
     DataFlowEventRecord save(DataFlowEventRecord event);
+
+    int deleteBefore(OffsetDateTime cutoff, int limit);
 
     boolean isHealthy();
 }

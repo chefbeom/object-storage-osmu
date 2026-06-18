@@ -677,7 +677,7 @@ CREATE TABLE audit_logs (
 
 ## 13.1. data_flow_events
 
-Object data-flow monitoring events are stored here in MariaDB mode. The admin monitoring API aggregates this table by period, bucket, actor, source, operation, and status. The table intentionally stores object keys as `TEXT` for long S3 keys, but does not index `object_key` in the MVP.
+Object data-flow monitoring events are stored here in MariaDB mode. The admin monitoring API aggregates this table by period, bucket, actor, source, operation, and status. The table intentionally stores object keys as `TEXT` for long S3 keys, but does not index `object_key` in the MVP. `DataFlowEventRetentionJob` periodically deletes rows older than the configured retention window in bounded batches.
 
 ```sql
 CREATE TABLE data_flow_events (

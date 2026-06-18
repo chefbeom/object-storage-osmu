@@ -2373,6 +2373,7 @@ Persistence:
 - MariaDB mode persists events in `data_flow_events`; in-memory mode keeps runtime events only for local/demo execution.
 - The response is aggregated from persisted event rows matching the requested filters. The MVP summary scans up to the latest 10,000 matching events.
 - Micrometer counters are still emitted for Prometheus via `osmu.data.flow.operations` and `osmu.data.flow.bytes` with source/status/direction/bucket labels for starter alerting.
+- Scheduled retention deletes old data-flow event rows with `DATA_FLOW_EVENT_RETENTION` audit and `osmu.data.flow.retention.*` metrics. Defaults: enabled, 90 days, batch size 1000, fixed delay 6 hours.
 
 ### GET /api/admin/monitoring/data-flow/export.csv
 

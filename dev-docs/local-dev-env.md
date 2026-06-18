@@ -120,6 +120,11 @@ OSMU_STORAGE_EXPANSION_EXECUTION_LOG_RETENTION_DAYS=90
 OSMU_STORAGE_EXPANSION_EXECUTION_LOG_RETENTION_BATCH_SIZE=100
 OSMU_STORAGE_EXPANSION_EXECUTION_LOG_RETENTION_INITIAL_DELAY_MS=180000
 OSMU_STORAGE_EXPANSION_EXECUTION_LOG_RETENTION_FIXED_DELAY_MS=3600000
+OSMU_DATA_FLOW_RETENTION_ENABLED=true
+OSMU_DATA_FLOW_RETENTION_DAYS=90
+OSMU_DATA_FLOW_RETENTION_BATCH_SIZE=1000
+OSMU_DATA_FLOW_RETENTION_INITIAL_DELAY_MS=300000
+OSMU_DATA_FLOW_RETENTION_FIXED_DELAY_MS=21600000
 OSMU_STORAGE_EXPANSION_KUBECTL_PATH=kubectl
 OSMU_STORAGE_EXPANSION_HELM_PATH=helm
 OSMU_STORAGE_EXPANSION_HELM_CHART_PATH=./infra/helm/osmu
@@ -142,7 +147,7 @@ VITE_MULTIPART_UPLOAD_RETRY_BASE_DELAY_MS=500
 VITE_MULTIPART_UPLOAD_RETRY_JITTER_RATIO=0.25
 ```
 
-Backend actuator는 `/actuator/health`, `/actuator/info`, `/actuator/metrics`, `/actuator/prometheus`를 노출한다. multipart cleanup metric은 `/actuator/metrics/osmu.multipart.cleanup.sessions`, retention purge metric은 `/actuator/metrics/osmu.object.retention.purge.objects`, version retention purge metric은 `/actuator/metrics/osmu.object.version.retention.purge.versions`에서 확인한다.
+Backend actuator는 `/actuator/health`, `/actuator/info`, `/actuator/metrics`, `/actuator/prometheus`를 노출한다. multipart cleanup metric은 `/actuator/metrics/osmu.multipart.cleanup.sessions`, retention purge metric은 `/actuator/metrics/osmu.object.retention.purge.objects`, version retention purge metric은 `/actuator/metrics/osmu.object.version.retention.purge.versions`, data-flow retention metric은 `/actuator/metrics/osmu.data.flow.retention.events`와 `/actuator/metrics/osmu.data.flow.retention.runs`에서 확인한다.
 
 ## 5. 실행 순서
 

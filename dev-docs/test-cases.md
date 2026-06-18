@@ -1960,7 +1960,7 @@ TC-FE-023 보강: 사용자가 취소한 경우에는 abort API를 호출한다.
 - Preconditions: PowerShell is available.
 - Input: `powershell -ExecutionPolicy Bypass -File .\scripts\verify-monitoring-artifacts.ps1`
 - Steps: Verify `infra/monitoring` contains the Prometheus alert rule draft and Grafana dashboard draft, validate key alert names including data-flow failure/cancel/egress/bucket anomaly alerts, parse the dashboard JSON, check required metric expressions, and ensure the operation monitoring document references the artifacts.
-- Expected: Pilot operators have a starter alert/dashboard contract for backend availability, error rate, latency, retention purge failures, multipart cleanup failures, data-flow operations/bytes anomalies, and backup readiness handoff.
+- Expected: Pilot operators have a starter alert/dashboard contract for backend availability, error rate, latency, retention purge failures, multipart cleanup failures, data-flow operations/bytes anomalies, data-flow retention failures, and backup readiness handoff.
 - Priority: P2
 - Automated: `scripts/verify-monitoring-artifacts.ps1`
 
@@ -1980,9 +1980,9 @@ TC-FE-023 보강: 사용자가 취소한 경우에는 abort API를 호출한다.
 - Preconditions: Admin user is authenticated. Backend object APIs are reachable.
 - Input: `GET /api/admin/monitoring/data-flow?from=...&to=...&bucketName=...&actorId=...&source=...&operation=...&status=...&limit=50`, `GET /api/admin/monitoring/data-flow/export.csv?...`, `GET /api/admin/dashboard/summary`, then render the admin dashboard.
 - Steps: Upload or seed at least one object, list objects, download an object, optionally abort a multipart upload or trigger a failed download. Verify the focused monitoring endpoint returns `traffic`, `operations`, `topBuckets`, `recentEvents`, and `generatedAt`, and that bucket/actor/source/operation/status/time filters narrow the result. Verify CSV export returns `text/csv`, `osmu-data-flow.csv`, and the same filtered newest-first event window. Verify dashboard summary includes the same unfiltered `dataFlow` object. Verify the admin dashboard renders `dashboard-widget-io`, `data-flow-monitoring-panel`, `data-flow-filter-form`, `data-flow-export-button`, `data-flow-total-bytes`, `data-flow-failed-cancelled`, `data-flow-top-buckets`, and `data-flow-recent-events`.
-- Expected: Operators can see, filter, and export total upload/download traffic, I/O operation counts, failed/cancelled transfer counts, top bucket flow, and recent data-flow events from both focused API and dashboard summary. MariaDB mode persists the event history in `data_flow_events`.
+- Expected: Operators can see, filter, and export total upload/download traffic, I/O operation counts, failed/cancelled transfer counts, top bucket flow, and recent data-flow events from both focused API and dashboard summary. MariaDB mode persists the event history in `data_flow_events`; scheduled retention deletes old rows in bounded batches and records audit/metrics.
 - Priority: P1
-- Automated: Backend `AdminDashboardSummaryControllerTest`, backend `DataFlowMonitoringServiceTest`, frontend unit/build, and mock API self-test cover the MVP contract.
+- Automated: Backend `AdminDashboardSummaryControllerTest`, backend `DataFlowMonitoringServiceTest`, backend `DataFlowEventRetentionJobTest`, frontend unit/build, and mock API self-test cover the MVP contract.
 
 ### TC-INFRA-005
 

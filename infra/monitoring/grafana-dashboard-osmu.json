@@ -114,6 +114,10 @@
         {
           "expr": "increase(osmu_multipart_cleanup_sessions_total{job=\"$job\",result=\"failure\"}[15m])",
           "legendFormat": "multipart cleanup"
+        },
+        {
+          "expr": "increase(osmu_data_flow_retention_runs_total{job=\"$job\",result=\"failure\"}[15m])",
+          "legendFormat": "data-flow retention"
         }
       ]
     },

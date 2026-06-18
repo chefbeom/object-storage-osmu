@@ -128,7 +128,8 @@ MVP implementation:
 - S3-compatible APIs record list, put, multipart complete, copy, get, delete, multi-delete, and multipart abort events.
 - MariaDB mode stores detailed events in `data_flow_events`; in-memory mode keeps events in process for local/demo execution.
 - The admin dashboard shows a compact data I/O widget plus a detailed Data Flow Monitoring panel with traffic, operations, top buckets, recent events, filters, and CSV export.
-- Prometheus/Grafana starter artifacts include `OsmuDataFlowFailureSpike`, `OsmuDataFlowCancelSpike`, `OsmuDataFlowAbnormalEgress`, and `OsmuDataFlowBucketTrafficAnomaly` backed by `osmu_data_flow_operations_total` and `osmu_data_flow_bytes_total`.
+- Prometheus/Grafana starter artifacts include `OsmuDataFlowFailureSpike`, `OsmuDataFlowCancelSpike`, `OsmuDataFlowAbnormalEgress`, `OsmuDataFlowBucketTrafficAnomaly`, and `OsmuDataFlowRetentionFailures` backed by `osmu_data_flow_operations_total`, `osmu_data_flow_bytes_total`, and `osmu_data_flow_retention_runs_total`.
+- `DataFlowEventRetentionJob` deletes events older than the configured retention window and records `DATA_FLOW_EVENT_RETENTION` audit plus `osmu.data.flow.retention.events` and `osmu.data.flow.retention.runs` metrics.
 
 MVP limitations:
 
@@ -137,9 +138,17 @@ MVP limitations:
 - Micrometer counters are exposed for Prometheus and stay independent from the API event repository.
 - Streaming download failure is recorded when the response body throws, but bytes are counted when the download response starts.
 
+Retention configuration:
+
+- `OSMU_DATA_FLOW_RETENTION_ENABLED=true`
+- `OSMU_DATA_FLOW_RETENTION_DAYS=90`
+- `OSMU_DATA_FLOW_RETENTION_BATCH_SIZE=1000`
+- `OSMU_DATA_FLOW_RETENTION_INITIAL_DELAY_MS=300000`
+- `OSMU_DATA_FLOW_RETENTION_FIXED_DELAY_MS=21600000`
+
 Production follow-up:
 
-- Add retention/partitioning policy for high-volume `data_flow_events` rows or move long-term analytics to a time-series store.
+- Add table partitioning or move long-term analytics to a time-series store when the cleanup batch job is not enough for target volume.
 - Tune data-flow alert thresholds and Alertmanager routes against target tenant baselines.
 - Split internal copy traffic from external ingress/egress when billing or tenant chargeback is introduced.
 
@@ -161,6 +170,7 @@ Alert conditions:
 - data-flow cancel spike
 - data-flow abnormal egress
 - data-flow bucket traffic anomaly
+- data-flow retention cleanup failure
 - authentication failure spike
 - certificate expiry threshold reached
 
@@ -274,7 +284,7 @@ Product:
 - Backend exposes `/actuator/prometheus`.
 - Kubernetes backend Service includes `prometheus.io/scrape=true`, `prometheus.io/path=/actuator/prometheus`, and `prometheus.io/port=8080`.
 - Helm enables the same scrape annotations through `backend.metrics`.
-- `infra/monitoring/prometheus-rules.yaml` defines starter alerts, including data-flow failure/cancel/egress/bucket anomaly alerts.
+- `infra/monitoring/prometheus-rules.yaml` defines starter alerts, including data-flow failure/cancel/egress/bucket anomaly and retention cleanup failure alerts.
 - Backup CronJob alerts require kube-state-metrics metrics such as `kube_job_status_failed` and `kube_cronjob_status_last_successful_time`.
 - `infra/monitoring/grafana-dashboard-osmu.json` defines a starter overview dashboard.
 - `infra/k8s/monitoring-operator.yaml` defines optional `ServiceMonitor` and `PrometheusRule` resources.

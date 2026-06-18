@@ -118,6 +118,15 @@ spec:
           annotations:
             summary: OSMU bucket-level data-flow rate is above the pilot threshold.
             description: Bucket {{ "{{" }} $labels.bucket {{ "}}" }} is above 5 MiB/s for 10 minutes. Tune this threshold or replace it with a tenant baseline before production.
+        - alert: OsmuDataFlowRetentionFailures
+          expr: increase(osmu_data_flow_retention_runs_total{job=~"osmu-backend.*",result="failure"}[15m]) > 0
+          for: 1m
+          labels:
+            severity: warning
+            service: osmu-data-flow
+          annotations:
+            summary: OSMU data-flow event retention cleanup failed.
+            description: Data-flow event retention cleanup failed in the last 15 minutes. Inspect backend logs and the data_flow_events repository.
         - alert: OsmuBackupCronJobFailed
           expr: kube_job_status_failed{namespace=~"osmu.*",job_name=~"osmu-(mariadb|minio)-backup.*"} > 0
           for: 5m

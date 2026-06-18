@@ -4,8 +4,8 @@ This directory contains productization-ready monitoring starter artifacts for th
 
 ## Files
 
-- `prometheus-rules.yaml` - Prometheus alert rule draft for backend availability, error rate, latency, retention failures, share link cleanup failures, data-flow failure/cancel/egress/bucket anomaly signals, backup readiness gaps, and backup CronJob failures or stale successful runs.
-- `grafana-dashboard-osmu.json` - Grafana dashboard draft for backend traffic, latency, JVM memory, storage operations, retention, data-flow operations/bytes, and backup readiness notes.
+- `prometheus-rules.yaml` - Prometheus alert rule draft for backend availability, error rate, latency, retention failures, share link cleanup failures, data-flow failure/cancel/egress/bucket anomaly and retention failure signals, backup readiness gaps, and backup CronJob failures or stale successful runs.
+- `grafana-dashboard-osmu.json` - Grafana dashboard draft for backend traffic, latency, JVM memory, storage operations, retention, data-flow operations/bytes, data-flow retention failures, and backup readiness notes.
 - `../k8s/monitoring-operator.yaml` - optional Prometheus Operator `ServiceMonitor` and `PrometheusRule` draft.
 - `../helm/osmu/templates/monitoring-operator.yaml` - optional Helm template for Prometheus Operator resources.
 

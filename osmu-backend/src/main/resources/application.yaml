@@ -97,6 +97,14 @@ osmu:
       domain-suffixes: ${OSMU_S3_VIRTUAL_HOSTED_STYLE_DOMAIN_SUFFIXES:localhost}
   metadata:
     mode: ${OSMU_METADATA_MODE:in-memory}
+  monitoring:
+    data-flow:
+      retention:
+        enabled: ${OSMU_DATA_FLOW_RETENTION_ENABLED:true}
+        retention-days: ${OSMU_DATA_FLOW_RETENTION_DAYS:90}
+        batch-size: ${OSMU_DATA_FLOW_RETENTION_BATCH_SIZE:1000}
+        initial-delay-ms: ${OSMU_DATA_FLOW_RETENTION_INITIAL_DELAY_MS:300000}
+        fixed-delay-ms: ${OSMU_DATA_FLOW_RETENTION_FIXED_DELAY_MS:21600000}
   operations:
     readiness:
       report-path: ${OSMU_OPERATIONS_READINESS_REPORT_PATH:.osmu-run/latest-operations-readiness.json}
