@@ -53,15 +53,16 @@
 
 ## 4. Dashboard Panel Matrix
 
-| Widget group | Widget ids | `ADMIN` | `ORG_ADMIN` | `USER` | Enforcement |
-| --- | --- | --- | --- | --- | --- |
-| Common storage | `capacity`, `remaining`, `buckets`, `objects`, `health`, `runtime`, `readiness`, `backup`, `io`, `selected` | Show | Show | Show | `DashboardLayoutService.widgetCatalog`, `HomeView.dashboardWidgetCatalogForCurrentRole` |
-| Access key operations | `access-keys` | Show | Show | Show | data API scope still applies |
-| Audit/global operations | `requests`, `sharing`, `quota`, `identity`, `lifecycle`, `retention`, `execution-retention`, `storage-expansion` | Show | Hide | Hide | `DashboardLayoutService.isWidgetAllowedForUser`, frontend role filter |
+| Widget group | Widget ids | `ADMIN` | `ORG_ADMIN` | `USER` | Catalog access | Enforcement |
+| --- | --- | --- | --- | --- | --- | --- |
+| Common storage | `capacity`, `remaining`, `buckets`, `objects`, `health`, `runtime`, `readiness`, `backup`, `io`, `selected` | Show | Show | Show | `allowedRoles=["ADMIN","ORG_ADMIN","USER"]`, `accessMode=read-only` | `DashboardLayoutService.widgetCatalog`, `HomeView.dashboardWidgetCatalogForCurrentRole` |
+| Access key operations | `access-keys` | Show | Show | Show | `allowedRoles=["ADMIN","ORG_ADMIN","USER"]`, `accessMode=read-only`; data API scope still applies | `AccessKeyService`, dashboard summary scope |
+| Audit/global operations | `requests`, `sharing`, `quota`, `identity`, `lifecycle`, `retention`, `execution-retention`, `storage-expansion` | Show | Hide | Hide | `allowedRoles=["ADMIN"]`, `accessMode=admin-only` | `DashboardLayoutService.isWidgetAllowedForUser`, frontend role filter |
 
 Dashboard server policy:
 
 - `GET /api/dashboard/layout/widgets` returns only widgets visible to the current role.
+- Catalog items include `allowedRoles` and `accessMode` so frontend/test verifiers can compare panel visibility with this matrix.
 - `GET /api/dashboard/layout/presets` filters preset widgets by current role.
 - `GET /api/dashboard/layout` removes widgets no longer visible to the current role.
 - `PUT /api/dashboard/layout` rejects `adminOnly` widgets from non-`ADMIN` users with `AUTHORIZATION_FAILED`.
@@ -71,6 +72,7 @@ Frontend policy:
 - Sidebar navigation hides Admin/Audit pages by role.
 - Dashboard palette uses backend catalog metadata.
 - Fallback catalog, localStorage recovery, and direct add events all pass through the current role-visible catalog.
+- Panel edit list displays the catalog access mode. Non-admin dashboard panels are read-only summaries; admin operation triggers stay hidden unless the user is `ADMIN`.
 
 ## 5. Kubernetes And Operations Matrix
 

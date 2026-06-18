@@ -93,6 +93,7 @@ test('HomeView exposes stable selectors for browser E2E flows', () => {
     'dashboard-widget-section-toggle-button',
     'dashboard-widget-section-move-up-button',
     'dashboard-widget-section-move-down-button',
+    'dashboard-widget-access-mode',
     'dashboard-widget-option-control',
     'dashboard-widget-option-select',
     'dashboard-widget-toggle-button',
@@ -439,6 +440,9 @@ test('HomeView exposes stable selectors for browser E2E flows', () => {
   assert.match(dashboardSource, /dashboardWidgetToneLabel/)
   assert.match(dashboardSource, /dashboardWidgetRefreshIntervals/)
   assert.match(dashboardSource, /dashboardWidgetRefreshIntervalLabel/)
+  assert.match(dashboardSource, /dashboardWidgetAllowedRoles/)
+  assert.match(dashboardSource, /dashboardWidgetAccessMode/)
+  assert.match(dashboardSource, /dashboardWidgetAccessLabel/)
   assert.match(dashboardSource, /dashboardWidgetConfigOptions/)
   assert.match(dashboardSource, /dashboardWidgetOptionValue/)
   assert.match(dashboardSource, /dashboardAutoRefreshIntervalMs/)

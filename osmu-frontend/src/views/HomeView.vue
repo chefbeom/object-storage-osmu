@@ -121,6 +121,7 @@
         :dashboard-widget-tone="dashboardWidgetTone"
         :dashboard-widget-tone-label="dashboardWidgetToneLabel"
         :dashboard-widget-refresh-interval-label="dashboardWidgetRefreshIntervalLabel"
+        :dashboard-widget-access-label="dashboardWidgetAccessLabel"
         :dashboard-widget-config-options="dashboardWidgetConfigOptions"
         :dashboard-widget-option-value="dashboardWidgetOptionValue"
         :dashboard-sections="dashboardSections"
@@ -1412,6 +1413,8 @@ function sanitizeDashboardWidgetCatalog(items) {
       description: String(item.description || ''),
       category: String(item.category || 'CUSTOM'),
       adminOnly: item.adminOnly === true,
+      allowedRoles: Array.isArray(item.allowedRoles) ? item.allowedRoles.map(String) : dashboardWidgetAllowedRoles(item),
+      accessMode: String(item.accessMode || dashboardWidgetAccessMode(item)),
       configOptions: Array.isArray(item.configOptions) ? item.configOptions : [],
     }))
   return sanitized.length > 0 ? sanitized : [...defaultDashboardWidgetCatalog]
@@ -1449,6 +1452,28 @@ function persistDashboardWidgets() {
 
 function dashboardWidgetTitle(widgetId) {
   return dashboardWidgetCatalog.value.find((widget) => widget.id === widgetId)?.title ?? widgetId
+}
+
+function dashboardWidgetCatalogItem(widgetOrId) {
+  const id = typeof widgetOrId === 'string' ? widgetOrId : widgetOrId?.id
+  return dashboardWidgetCatalog.value.find((widget) => widget.id === id)
+}
+
+function dashboardWidgetAllowedRoles(widgetOrId) {
+  const item = typeof widgetOrId === 'string' ? dashboardWidgetCatalogItem(widgetOrId) : widgetOrId
+  if (Array.isArray(item?.allowedRoles) && item.allowedRoles.length > 0) return item.allowedRoles
+  return item?.adminOnly ? ['ADMIN'] : ['ADMIN', 'ORG_ADMIN', 'USER']
+}
+
+function dashboardWidgetAccessMode(widgetOrId) {
+  const item = typeof widgetOrId === 'string' ? dashboardWidgetCatalogItem(widgetOrId) : widgetOrId
+  return item?.accessMode || (item?.adminOnly ? 'admin-only' : 'read-only')
+}
+
+function dashboardWidgetAccessLabel(widgetOrId) {
+  const mode = dashboardWidgetAccessMode(widgetOrId)
+  if (mode === 'admin-only') return 'ADMIN only'
+  return 'Read-only'
 }
 
 function dashboardWidgetSizeLabel(size) {

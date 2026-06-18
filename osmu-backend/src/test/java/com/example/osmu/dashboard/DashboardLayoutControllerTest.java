@@ -229,11 +229,17 @@ class DashboardLayoutControllerTest {
                 .andExpect(jsonPath("$.data[*].id", hasItem("execution-retention")))
                 .andExpect(jsonPath("$.data[*].id", hasItem("storage-expansion")))
                 .andExpect(jsonPath("$.data[?(@.id == 'identity')].adminOnly", hasItem(true)))
+                .andExpect(jsonPath("$.data[?(@.id == 'identity')].allowedRoles[0]", hasItem("ADMIN")))
+                .andExpect(jsonPath("$.data[?(@.id == 'identity')].accessMode", hasItem("admin-only")))
                 .andExpect(jsonPath("$.data[?(@.id == 'execution-retention')].adminOnly", hasItem(true)))
                 .andExpect(jsonPath("$.data[?(@.id == 'execution-retention')].category", hasItem("GOVERNANCE")))
                 .andExpect(jsonPath("$.data[?(@.id == 'storage-expansion')].adminOnly", hasItem(true)))
                 .andExpect(jsonPath("$.data[?(@.id == 'storage-expansion')].category", hasItem("OPERATIONS")))
                 .andExpect(jsonPath("$.data[?(@.id == 'access-keys')].category", hasItem("SECURITY")))
+                .andExpect(jsonPath("$.data[?(@.id == 'access-keys')].allowedRoles[0]", hasItem("ADMIN")))
+                .andExpect(jsonPath("$.data[?(@.id == 'access-keys')].allowedRoles[1]", hasItem("ORG_ADMIN")))
+                .andExpect(jsonPath("$.data[?(@.id == 'access-keys')].allowedRoles[2]", hasItem("USER")))
+                .andExpect(jsonPath("$.data[?(@.id == 'access-keys')].accessMode", hasItem("read-only")))
                 .andExpect(jsonPath("$.data[?(@.id == 'access-keys')].configOptions[0].key", hasItem("tone")))
                 .andExpect(jsonPath("$.data[?(@.id == 'access-keys')].configOptions[0].defaultValue", hasItem("default")))
                 .andExpect(jsonPath("$.data[?(@.id == 'access-keys')].configOptions[1].key", hasItem("refreshInterval")))
@@ -299,7 +305,9 @@ class DashboardLayoutControllerTest {
                 .andExpect(jsonPath("$.data[*].id", hasItem("access-keys")))
                 .andExpect(jsonPath("$.data[*].id", org.hamcrest.Matchers.not(hasItem("identity"))))
                 .andExpect(jsonPath("$.data[*].id", org.hamcrest.Matchers.not(hasItem("storage-expansion"))))
-                .andExpect(jsonPath("$.data[*].adminOnly", org.hamcrest.Matchers.not(hasItem(true))));
+                .andExpect(jsonPath("$.data[*].adminOnly", org.hamcrest.Matchers.not(hasItem(true))))
+                .andExpect(jsonPath("$.data[?(@.id == 'access-keys')].accessMode", hasItem("read-only")))
+                .andExpect(jsonPath("$.data[?(@.id == 'access-keys')].allowedRoles[2]", hasItem("USER")));
 
         mockMvc.perform(get("/api/dashboard/layout/presets")
                         .header("Authorization", "Bearer " + userToken))

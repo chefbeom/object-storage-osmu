@@ -737,7 +737,9 @@ public class DashboardLayoutService {
             String category,
             boolean adminOnly
     ) {
-        return new DashboardWidgetCatalogItem(id, title, description, category, adminOnly, DEFAULT_WIDGET_CONFIG_OPTIONS);
+        List<String> allowedRoles = adminOnly ? List.of("ADMIN") : List.of("ADMIN", "ORG_ADMIN", "USER");
+        String accessMode = adminOnly ? "admin-only" : "read-only";
+        return new DashboardWidgetCatalogItem(id, title, description, category, adminOnly, allowedRoles, accessMode, DEFAULT_WIDGET_CONFIG_OPTIONS);
     }
 
     private Map<String, String> sanitizeWidgetOptions(Map<String, String> options) {

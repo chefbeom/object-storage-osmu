@@ -176,10 +176,10 @@ MVP 데모 기준 완료율은 약 90~95%입니다.
 - 기본 dashboard preset 3종: executive, storage ops, security/audit
 - dashboard 조회 mode와 편집 mode 구분
 - widget별 refresh interval option과 dashboard 자동 refresh cadence
+- panel별 allowedRoles/accessMode matrix와 read-only panel 표시
 
 남은 것:
 
-- panel별 세부 권한 matrix와 read-only role 적용
 - 빈 상태, 오류 상태, loading 상태 polish
 
 ### 4.5 bucket/object 저장

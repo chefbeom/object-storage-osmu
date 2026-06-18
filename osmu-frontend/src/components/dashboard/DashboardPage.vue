@@ -239,6 +239,7 @@
           <span class="drag-grip" data-testid="dashboard-widget-drag-handle" aria-hidden="true">::</span>
           <strong>{{ dashboardWidgetTitle(widget.id) }}</strong>
           <small>{{ widget.enabled ? '표시 중' : '숨김' }} · {{ dashboardWidgetSizeLabel(widget.size) }} · {{ dashboardWidgetToneLabel(widget) }} · {{ dashboardWidgetRefreshIntervalLabel(widget) }}</small>
+          <small data-testid="dashboard-widget-access-mode">{{ dashboardWidgetAccessLabel(widget.id) }}</small>
         </span>
         <span class="widget-actions">
           <button data-testid="dashboard-widget-move-up-button" type="button" class="ghost" :disabled="dashboardLayoutPending || index === 0" @click="$emit('move-dashboard-widget', index, -1)">위</button>
@@ -434,6 +435,7 @@
         </div>
         <div class="panel-head-actions">
           <button
+            v-if="isAdmin"
             data-testid="dashboard-readiness-refresh-button"
             type="button"
             class="ghost"
@@ -1676,6 +1678,7 @@ const props = defineProps({
   dashboardWidgetTone: { type: Function, required: true },
   dashboardWidgetToneLabel: { type: Function, required: true },
   dashboardWidgetRefreshIntervalLabel: { type: Function, required: true },
+  dashboardWidgetAccessLabel: { type: Function, required: true },
   dashboardWidgetConfigOptions: { type: Function, required: true },
   dashboardWidgetOptionValue: { type: Function, required: true },
   dashboardSections: { type: Array, required: true },

@@ -315,6 +315,8 @@ Query:
       "description": "Active S3-compatible access key inventory and provisioner state.",
       "category": "SECURITY",
       "adminOnly": false,
+      "allowedRoles": ["ADMIN", "ORG_ADMIN", "USER"],
+      "accessMode": "read-only",
       "configOptions": [
         {
           "key": "tone",
@@ -322,6 +324,13 @@ Query:
           "type": "select",
           "values": ["default", "focus", "muted"],
           "defaultValue": "default"
+        },
+        {
+          "key": "refreshInterval",
+          "label": "Refresh",
+          "type": "select",
+          "values": ["manual", "30s", "60s", "5m", "15m"],
+          "defaultValue": "manual"
         }
       ]
     },
@@ -331,6 +340,8 @@ Query:
       "description": "User and organization inventory for operators.",
       "category": "IDENTITY",
       "adminOnly": true,
+      "allowedRoles": ["ADMIN"],
+      "accessMode": "admin-only",
       "configOptions": [
         {
           "key": "tone",
@@ -338,6 +349,13 @@ Query:
           "type": "select",
           "values": ["default", "focus", "muted"],
           "defaultValue": "default"
+        },
+        {
+          "key": "refreshInterval",
+          "label": "Refresh",
+          "type": "select",
+          "values": ["manual", "30s", "60s", "5m", "15m"],
+          "defaultValue": "manual"
         }
       ]
     }
@@ -346,7 +364,8 @@ Query:
 ```
 
 현재 dashboard widget catalog id는 `capacity`, `remaining`, `buckets`, `objects`, `health`, `runtime`, `readiness`, `backup`, `io`, `requests`, `sharing`, `quota`, `access-keys`, `identity`, `lifecycle`, `selected`, `retention`, `execution-retention`, `storage-expansion`이다.
-현재 widget option schema는 `tone`만 제공하며 값은 `default`, `focus`, `muted` 중 하나다.
+현재 widget option schema는 `tone`(`default`, `focus`, `muted`)과 `refreshInterval`(`manual`, `30s`, `60s`, `5m`, `15m`)을 제공한다.
+`allowedRoles`는 panel별 허용 role matrix를 나타내고 `accessMode=read-only` panel은 dashboard에서 요약 조회 중심으로 표시한다. `accessMode=admin-only` panel은 `ADMIN`에게만 노출된다.
 `ADMIN`은 전체 catalog를 받는다. `USER`와 `ORG_ADMIN`은 `adminOnly=true` widget을 응답에서 받지 않으며, 저장된 layout이나 preset에 해당 widget이 남아 있어도 조회/적용 응답에서 제거된다.
 
 ### GET /api/dashboard/layout/presets
