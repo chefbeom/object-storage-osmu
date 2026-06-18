@@ -17,7 +17,7 @@ public final class S3ErrorCodeMapper {
             case BAD_DIGEST -> "BadDigest";
             case VALIDATION_ERROR -> "InvalidRequest";
             case QUOTA_EXCEEDED -> "EntityTooLarge";
-            case CONFLICT -> isBucketNotEmpty(message) ? "BucketNotEmpty" : "OperationAborted";
+            case CONFLICT -> conflictCode(message);
             case STORAGE_ERROR, INTERNAL_ERROR -> "InternalError";
         };
     }
@@ -41,5 +41,19 @@ public final class S3ErrorCodeMapper {
     private static boolean isBucketNotEmpty(String message) {
         String normalized = message == null ? "" : message.toLowerCase(Locale.ROOT);
         return normalized.contains("bucket") && normalized.contains("not empty");
+    }
+
+    private static String conflictCode(String message) {
+        String normalized = message == null ? "" : message.toLowerCase(Locale.ROOT);
+        if (isBucketNotEmpty(message)) {
+            return "BucketNotEmpty";
+        }
+        if (normalized.contains("bucket") && normalized.contains("already owned by you")) {
+            return "BucketAlreadyOwnedByYou";
+        }
+        if (normalized.contains("bucket") && normalized.contains("already exists")) {
+            return "BucketAlreadyExists";
+        }
+        return "OperationAborted";
     }
 }

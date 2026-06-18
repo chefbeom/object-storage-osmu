@@ -21,6 +21,8 @@ class S3ErrorCodeMapperTest {
         assertThat(S3ErrorCodeMapper.codeFor(ApiErrorCode.QUOTA_EXCEEDED, "quota")).isEqualTo("EntityTooLarge");
         assertThat(S3ErrorCodeMapper.codeFor(ApiErrorCode.CONFLICT, "conflict")).isEqualTo("OperationAborted");
         assertThat(S3ErrorCodeMapper.codeFor(ApiErrorCode.CONFLICT, "Bucket is not empty.")).isEqualTo("BucketNotEmpty");
+        assertThat(S3ErrorCodeMapper.codeFor(ApiErrorCode.CONFLICT, "Bucket already owned by you.")).isEqualTo("BucketAlreadyOwnedByYou");
+        assertThat(S3ErrorCodeMapper.codeFor(ApiErrorCode.CONFLICT, "Bucket already exists.")).isEqualTo("BucketAlreadyExists");
         assertThat(S3ErrorCodeMapper.codeFor(ApiErrorCode.STORAGE_ERROR, "storage")).isEqualTo("InternalError");
         assertThat(S3ErrorCodeMapper.codeFor(ApiErrorCode.INTERNAL_ERROR, "server")).isEqualTo("InternalError");
     }

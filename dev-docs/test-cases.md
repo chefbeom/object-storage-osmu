@@ -125,9 +125,9 @@
 - Preconditions: Admin can authenticate with Bearer JWT. Empty target bucket can receive an access key with `ADMIN` scope after creation.
 - Input: `PUT /api/s3/{bucketName}` with `Authorization: Bearer <token>`, optional `CreateBucketConfiguration/LocationConstraint` XML, then `DELETE /api/s3/{bucketName}` with `X-OSMU-Access-Key` and `X-OSMU-Secret-Key`.
 - Steps: Create a bucket through the S3-style path, create a bucket with matching `LocationConstraint`, reject a mismatched `LocationConstraint`, create an access key with `ADMIN` scope for the bucket, verify deleting a non-empty bucket returns `BucketNotEmpty`, delete an empty bucket through the S3-style path, then HEAD the bucket again.
-- Expected: Create returns `200`, `Location: /{bucketName}`, and `x-amz-bucket-region`. Matching `LocationConstraint` succeeds. Mismatched `LocationConstraint` returns S3 XML `InvalidRequest` and does not create the bucket. Access key HEAD returns `200`. Non-empty delete returns `409 BucketNotEmpty`. Empty delete returns `204`. HEAD after delete returns `404 NoSuchBucket`.
+- Expected: Create returns `200`, `Location: /{bucketName}`, and `x-amz-bucket-region`. Matching `LocationConstraint` succeeds. Mismatched `LocationConstraint` returns S3 XML `InvalidRequest` and does not create the bucket. Duplicate create by the owner returns `409 BucketAlreadyOwnedByYou`; duplicate create by another owner returns `409 BucketAlreadyExists`. Access key HEAD returns `200`. Non-empty delete returns `409 BucketNotEmpty`. Empty delete returns `204`. HEAD after delete returns `404 NoSuchBucket`.
 - Priority: P1
-- Automated: `S3ObjectControllerTest.bearerCanCreateAndAccessKeyCanDeleteBucketThroughS3StylePath`, `S3ObjectControllerTest.bearerCanCreateBucketWithS3LocationConstraintXml`, `S3ObjectControllerTest.deleteBucketReturnsBucketNotEmptyForNonEmptyBucket`
+- Automated: `S3ObjectControllerTest.bearerCanCreateAndAccessKeyCanDeleteBucketThroughS3StylePath`, `S3ObjectControllerTest.bearerCanCreateBucketWithS3LocationConstraintXml`, `S3ObjectControllerTest.createBucketReturnsS3DuplicateBucketCodes`, `S3ObjectControllerTest.deleteBucketReturnsBucketNotEmptyForNonEmptyBucket`
 
 ### TC-S3-AUTH-001
 

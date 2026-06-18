@@ -864,6 +864,31 @@ class S3ObjectControllerTest {
     }
 
     @Test
+    void createBucketReturnsS3DuplicateBucketCodes() throws Exception {
+        String adminToken = loginAndReturnAccessToken("admin", "password");
+        String ownerLoginId = "s3-create-duplicate-owner";
+        String bucketName = "s3-bucket-duplicate-create-bucket";
+        createUser(adminToken, ownerLoginId, ownerLoginId + "@example.com");
+        String ownerToken = loginAndReturnAccessToken(ownerLoginId, "user-password");
+
+        mockMvc.perform(put("/api/s3/{bucketName}", bucketName)
+                        .header("Authorization", "Bearer " + ownerToken))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(put("/api/s3/{bucketName}", bucketName)
+                        .header("Authorization", "Bearer " + ownerToken))
+                .andExpect(status().isConflict())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_XML))
+                .andExpect(content().string(containsString("<Code>BucketAlreadyOwnedByYou</Code>")));
+
+        mockMvc.perform(put("/api/s3/{bucketName}", bucketName)
+                        .header("Authorization", "Bearer " + adminToken))
+                .andExpect(status().isConflict())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_XML))
+                .andExpect(content().string(containsString("<Code>BucketAlreadyExists</Code>")));
+    }
+
+    @Test
     void deleteBucketReturnsBucketNotEmptyForNonEmptyBucket() throws Exception {
         String token = loginAndReturnAccessToken("admin", "password");
         String bucketName = "s3-bucket-not-empty-bucket";
@@ -1131,6 +1156,23 @@ class S3ObjectControllerTest {
                                 """.formatted(bucketName)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.name").value(bucketName));
+    }
+
+    private void createUser(String adminToken, String loginId, String email) throws Exception {
+        mockMvc.perform(post("/api/admin/users")
+                        .header("Authorization", "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "loginId": "%s",
+                                  "email": "%s",
+                                  "name": "%s",
+                                  "role": "USER",
+                                  "password": "user-password"
+                                }
+                                """.formatted(loginId, email, loginId)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.loginId").value(loginId));
     }
 
     private AccessKeyCredentials createAccessKey(String token, String bucketName, String... permissions) throws Exception {

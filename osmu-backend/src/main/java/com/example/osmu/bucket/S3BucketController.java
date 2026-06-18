@@ -59,7 +59,12 @@ public class S3BucketController {
     ) {
         AuthenticatedUser user = authContext.currentUser(request);
         validateCreateBucketLocation(request);
-        BucketRecord bucket = bucketService.create(new CreateBucketRequest(bucketName, null, null, null), user);
+        BucketRecord bucket;
+        try {
+            bucket = bucketService.create(new CreateBucketRequest(bucketName, null, null, null), user);
+        } catch (ApiException exception) {
+            throw s3CreateBucketException(bucketName, user, exception);
+        }
         auditLogService.record("S3_BUCKET_CREATE", user.loginId(), "BUCKET", bucket.name(), "SUCCESS", "S3-style bucket created", request);
         return ResponseEntity.ok()
                 .header(HttpHeaders.LOCATION, "/" + bucket.name())
@@ -155,5 +160,23 @@ public class S3BucketController {
         } catch (ParserConfigurationException | SAXException | IOException exception) {
             throw new ApiException(ApiErrorCode.VALIDATION_ERROR, "Invalid CreateBucketConfiguration XML.");
         }
+    }
+
+    private ApiException s3CreateBucketException(String bucketName, AuthenticatedUser user, ApiException exception) {
+        if (exception.code() != ApiErrorCode.CONFLICT || !"Bucket already exists.".equals(exception.getMessage())) {
+            return exception;
+        }
+        BucketRecord existingBucket = bucketService.get(bucketName);
+        String message = isOwnedBy(existingBucket, user)
+                ? "Bucket already owned by you."
+                : "Bucket already exists.";
+        return new ApiException(ApiErrorCode.CONFLICT, message);
+    }
+
+    private boolean isOwnedBy(BucketRecord bucket, AuthenticatedUser user) {
+        return ("USER".equals(bucket.ownerType()) && bucket.ownerId() == user.id())
+                || ("ORG".equals(bucket.ownerType())
+                && user.organizationId() != null
+                && bucket.ownerId() == user.organizationId());
     }
 }

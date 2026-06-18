@@ -223,6 +223,7 @@ MVP 데모 기준 완료율은 약 90~95%입니다.
 - multi-delete 일부
 - S3 XML error response with `Code`/`Message`/`Resource`/`RequestId`/`HostId`
 - S3 CreateBucket LocationConstraint XML validation
+- S3 CreateBucket duplicate `BucketAlreadyOwnedByYou`/`BucketAlreadyExists` error mapping
 - S3 DeleteBucket non-empty `BucketNotEmpty` error mapping
 - AWS CLI/boto3/s3cmd/s3fs/goofys 호환 matrix
 - 지원/부분지원/미지원 S3 API와 client compatibility matrix 문서화
