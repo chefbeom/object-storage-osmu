@@ -1334,7 +1334,7 @@ Headers:
 - `If-Modified-Since` returns `304 Not Modified` when the object has not changed after the requested timestamp; `If-Unmodified-Since` returns `412 Precondition Failed` when the object changed after the requested timestamp.
 - Range GET honors `If-Range` with an ETag or HTTP date: matching validators return the requested range, while stale validators ignore `Range` and return the full object.
 - Bucket-level responses return `x-amz-bucket-region`; default MVP region is `us-east-1`.
-- Bucket create returns `200 OK`, `Location: /{bucketName}`, and `x-amz-bucket-region`. Invalid S3 bucket names return `400 InvalidBucketName`; invalid CreateBucket XML or unsupported CreateBucket control headers return `400 InvalidRequest`. Bucket delete returns `204 No Content`; deleting a non-empty bucket returns `409 BucketNotEmpty`.
+- Bucket create returns `200 OK`, `Location: /{bucketName}`, and `x-amz-bucket-region`. Invalid S3 bucket names return `400 InvalidBucketName`; invalid CreateBucket XML or unsupported CreateBucket control headers return `400 InvalidRequest`. Bucket delete returns `204 No Content`; deleting a bucket that still has active objects or retained object versions returns `409 BucketNotEmpty`.
 - Bucket tagging uses `Tagging/TagSet/Tag/Key/Value` XML, stores up to 50 bucket metadata tags, and disables DOCTYPE/external entity loading while parsing.
 - Range GET returns `206 Partial Content`, `Accept-Ranges: bytes`, and `Content-Range` for one byte range. Multi-range requests are rejected with `416 RANGE_NOT_SATISFIABLE`, matching AWS S3's documented one-range behavior.
 - `ListObjectsV2` supports `prefix`, `delimiter`, `max-keys` from `1` to `1000`, `continuation-token`, `encoding-type=url`, and `fetch-owner=true|false`.
@@ -1459,7 +1459,7 @@ Limitations:
 - S3 multipart upload path is MVP-level and currently requires OSMU expected-size headers at initiate time.
 - S3 multipart uploads listing is backed by OSMU active multipart sessions, not a raw MinIO bucket scan.
 - Virtual-hosted-style routing currently extracts the bucket from the left side of a configured domain suffix. Production deployments must configure DNS/proxy hosts such as `{bucket}.storage.example.com` and set `osmu.s3.virtual-hosted-style.domain-suffixes=storage.example.com`.
-- Remaining conditional request edge parity beyond documented `If-Match`/`If-Unmodified-Since`, `If-None-Match`/`If-Modified-Since`, CopyObject source ETag/date combinations, and CopyObject destination ETag guards, CopyObject full AWS versioning/remaining conditional edge parity, remaining CreateBucket/DeleteBucket edge error parity beyond name/duplicate/non-empty/unsupported-create-control cases, full AWS multipart checksum aggregation parity, and full AWS error behavior parity are not implemented yet. See `s3-compatibility.md` for the supported/partial/unsupported matrix.
+- Remaining conditional request edge parity beyond documented `If-Match`/`If-Unmodified-Since`, `If-None-Match`/`If-Modified-Since`, CopyObject source ETag/date combinations, and CopyObject destination ETag guards, CopyObject full AWS versioning/remaining conditional edge parity, remaining CreateBucket/DeleteBucket edge error parity beyond name/duplicate/active-or-retained non-empty/unsupported-create-control cases, full AWS multipart checksum aggregation parity, and full AWS error behavior parity are not implemented yet. See `s3-compatibility.md` for the supported/partial/unsupported matrix.
 
 ### GET /api/buckets/{bucketName}/permissions
 

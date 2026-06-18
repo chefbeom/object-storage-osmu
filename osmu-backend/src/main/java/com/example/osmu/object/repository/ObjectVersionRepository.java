@@ -33,6 +33,8 @@ public interface ObjectVersionRepository {
 
     Optional<ObjectVersionRecord> findByVersionId(String bucketName, String objectKey, String versionId);
 
+    boolean existsByBucketName(String bucketName);
+
     ObjectVersionRecord save(String bucketName, ObjectVersionRecord version);
 
     void delete(String bucketName, String objectKey, String versionId);

@@ -164,6 +164,21 @@ public class MariaDbObjectVersionRepository implements ObjectVersionRepository {
     }
 
     @Override
+    public boolean existsByBucketName(String bucketName) {
+        ensureSchema();
+        String sql = "SELECT 1 FROM object_versions WHERE bucket_name = ? LIMIT 1";
+        try (Connection connection = connect();
+             PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setString(1, bucketName);
+            try (ResultSet resultSet = statement.executeQuery()) {
+                return resultSet.next();
+            }
+        } catch (SQLException exception) {
+            throw databaseException(exception);
+        }
+    }
+
+    @Override
     public ObjectVersionRecord save(String bucketName, ObjectVersionRecord version) {
         ensureSchema();
         String sql = """

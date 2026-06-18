@@ -129,6 +129,9 @@ public class BucketService {
         if (bucket.objectCount() > 0) {
             throw new ApiException(ApiErrorCode.CONFLICT, "Bucket is not empty.");
         }
+        if (objectVersionRepository.existsByBucketName(bucket.name())) {
+            throw new ApiException(ApiErrorCode.CONFLICT, "Bucket is not empty.");
+        }
         storageAdapter.deleteBucket(bucket.name());
         objectMetadataRepository.deleteByBucketName(bucket.name());
         objectVersionRepository.deleteByBucketName(bucket.name());

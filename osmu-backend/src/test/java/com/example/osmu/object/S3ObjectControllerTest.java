@@ -14,6 +14,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.request;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.example.osmu.object.repository.ObjectVersionRepository;
 import com.jayway.jsonpath.JsonPath;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
@@ -46,6 +47,9 @@ class S3ObjectControllerTest {
 
     @Autowired
     private MockMvc mockMvc;
+
+    @Autowired
+    private ObjectVersionRepository objectVersionRepository;
 
     @Test
     void accessKeyCanPutHeadGetAndDeleteObjectThroughS3StylePath() throws Exception {
@@ -1157,6 +1161,43 @@ class S3ObjectControllerTest {
                 .andExpect(status().isConflict())
                 .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_XML))
                 .andExpect(content().string(containsString("<Code>BucketNotEmpty</Code>")));
+    }
+
+    @Test
+    void deleteBucketReturnsBucketNotEmptyWhenRetainedVersionsExist() throws Exception {
+        String token = loginAndReturnAccessToken("admin", "password");
+        String bucketName = "s3-bucket-retained-version-bucket";
+        createBucket(token, bucketName);
+        AccessKeyCredentials credentials = createAccessKey(token, bucketName, "ADMIN");
+        OffsetDateTime now = OffsetDateTime.now(ZoneOffset.UTC);
+        objectVersionRepository.save(bucketName, new ObjectVersionRecord(
+                "retained-version-id",
+                "docs/retained.txt",
+                ".osmu/versions/retained-version-id",
+                12L,
+                MediaType.TEXT_PLAIN_VALUE,
+                now,
+                now,
+                Map.of(),
+                Map.of()
+        ));
+
+        mockMvc.perform(delete("/api/s3/{bucketName}", bucketName)
+                        .header("X-OSMU-Access-Key", credentials.accessKey())
+                        .header("X-OSMU-Secret-Key", credentials.secretKey()))
+                .andExpect(status().isConflict())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_XML))
+                .andExpect(content().string(containsString("<Code>BucketNotEmpty</Code>")));
+
+        mockMvc.perform(head("/api/s3/{bucketName}", bucketName)
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk());
+
+        objectVersionRepository.deleteByBucketName(bucketName);
+        mockMvc.perform(delete("/api/s3/{bucketName}", bucketName)
+                        .header("X-OSMU-Access-Key", credentials.accessKey())
+                        .header("X-OSMU-Secret-Key", credentials.secretKey()))
+                .andExpect(status().isNoContent());
     }
 
     @Test

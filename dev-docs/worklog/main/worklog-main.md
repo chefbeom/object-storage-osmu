@@ -1,5 +1,40 @@
 # Worklog - main
 
+### 2026-06-18 - S3 DeleteBucket retained version guard
+
+- Work time:
+  - End: 2026-06-18 18:32:42 +09:00
+- User command:
+  - Active goal: continue development from `dev-docs`.
+- Request analysis:
+  - `dev-docs` still listed remaining DeleteBucket edge error parity.
+  - AWS DeleteBucket documents that a bucket must have all objects, including versions and delete markers, removed before deleting the bucket.
+- Execution:
+  - Added bucket-level retained-version existence checks to `ObjectVersionRepository`.
+  - Made `BucketService.delete` reject bucket deletion as `BucketNotEmpty` when retained object versions still exist even if active object counts drift to zero.
+  - Added S3 XML regression coverage and docs.
+- Modified files:
+  - `osmu-backend/src/main/java/com/example/osmu/bucket/BucketService.java`
+  - `osmu-backend/src/main/java/com/example/osmu/object/repository/ObjectVersionRepository.java`
+  - `osmu-backend/src/main/java/com/example/osmu/object/repository/InMemoryObjectVersionRepository.java`
+  - `osmu-backend/src/main/java/com/example/osmu/object/repository/MariaDbObjectVersionRepository.java`
+  - `osmu-backend/src/test/java/com/example/osmu/object/S3ObjectControllerTest.java`
+  - `dev-docs/PRODUCT_REQUIREMENTS.md`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/backend-design.md`
+  - `dev-docs/s3-compatibility.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/feature-inventory.md`
+  - `dev-docs/worklog/main/worklog-main.md`
+- Verification:
+  - Focused Gradle test for retained-version and active-object DeleteBucket `BucketNotEmpty`: passed.
+  - `gradle test`: passed.
+  - `git diff --check`: passed with LF/CRLF normalization warnings only.
+- Result:
+  - DeleteBucket no longer removes buckets that still have retained version data.
+- Follow-up:
+  - Remaining S3 gaps still include full AWS versioning parity, remaining conditional edge parity, unknown-size multipart initiate parity, multipart checksum aggregation parity, broader AWS error behavior parity.
+
 ### 2026-06-18 - S3 CreateBucket unsupported control headers
 
 - Work time:

@@ -73,6 +73,12 @@ public class InMemoryObjectVersionRepository implements ObjectVersionRepository 
     }
 
     @Override
+    public boolean existsByBucketName(String bucketName) {
+        ConcurrentMap<String, ConcurrentMap<String, ObjectVersionRecord>> bucketVersions = versionsByBucket.get(bucketName);
+        return bucketVersions != null && bucketVersions.values().stream().anyMatch(versions -> !versions.isEmpty());
+    }
+
+    @Override
     public ObjectVersionRecord save(String bucketName, ObjectVersionRecord version) {
         objectVersions(bucketName, version.key()).put(version.versionId(), version);
         return version;
