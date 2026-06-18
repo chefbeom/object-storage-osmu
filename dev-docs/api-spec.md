@@ -1348,7 +1348,7 @@ Headers:
 - Multi-object delete validates optional `Content-MD5`; invalid base64 MD5 returns `InvalidDigest`, and mismatched body checksum returns `BadDigest`.
 - Object tagging uses `Tagging/TagSet/Tag/Key/Value` XML and reuses the same tag metadata used by the REST object API.
 - `PUT ?tagging` rejects blank or invalid XML and the parser disables DOCTYPE/external entity loading.
-- Errors under `/api/s3/**` return AWS-style XML `<Error><Code>...</Code><Message>...</Message><RequestId>...</RequestId></Error>`.
+- Errors under `/api/s3/**` return AWS-style XML `<Error><Code>...</Code><Message>...</Message><Resource>...</Resource><RequestId>...</RequestId><HostId>...</HostId></Error>`.
 - S3 XML error code mapping includes `AccessDenied`, `NoSuchBucket`, `NoSuchKey`, `NoSuchUpload`, `BucketNotEmpty`, `InvalidRange`, `InvalidRequest`, `InvalidDigest`, `BadDigest`, `PreconditionFailed`, `EntityTooLarge`, `OperationAborted`, and `InternalError`.
 - The same S3 error code mapping is used for global `/api/s3/**` error XML and multi-object delete `DeleteResult/Error` entries.
 

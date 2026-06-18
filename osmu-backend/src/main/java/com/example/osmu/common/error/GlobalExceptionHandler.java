@@ -101,10 +101,20 @@ public class GlobalExceptionHandler {
         return ResponseEntity
                 .status(statusCode.status())
                 .contentType(MediaType.APPLICATION_XML)
-                .body(s3ErrorXml(code, message, requestId(request)));
+                .body(s3ErrorXml(code, message, requestResource(request), requestId(request)));
     }
 
-    private String s3ErrorXml(String code, String message, String requestId) {
+    private String requestResource(HttpServletRequest request) {
+        if (request == null || request.getRequestURI() == null) {
+            return "";
+        }
+        String query = request.getQueryString();
+        return query == null || query.isBlank()
+                ? request.getRequestURI()
+                : request.getRequestURI() + "?" + query;
+    }
+
+    private String s3ErrorXml(String code, String message, String resource, String requestId) {
         try {
             StringWriter output = new StringWriter();
             XMLStreamWriter xml = XMLOutputFactory.newFactory().createXMLStreamWriter(output);
@@ -112,8 +122,12 @@ public class GlobalExceptionHandler {
             xml.writeStartElement("Error");
             writeElement(xml, "Code", code);
             writeElement(xml, "Message", message == null || message.isBlank() ? code : message);
+            if (resource != null && !resource.isBlank()) {
+                writeElement(xml, "Resource", resource);
+            }
             if (requestId != null && !requestId.isBlank()) {
                 writeElement(xml, "RequestId", requestId);
+                writeElement(xml, "HostId", requestId);
             }
             xml.writeEndElement();
             xml.writeEndDocument();

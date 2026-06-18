@@ -985,15 +985,20 @@ class S3ObjectControllerTest {
         String bucketName = "s3-multipart-missing-upload-bucket";
         createBucket(token, bucketName);
         AccessKeyCredentials credentials = createAccessKey(token, bucketName, "WRITE");
+        String missingUploadResource = "/api/s3/" + bucketName + "/video/missing.mp4?uploadId=missing-upload";
 
         mockMvc.perform(get("/api/s3/{bucketName}/video/missing.mp4", bucketName)
                         .queryParam("uploadId", "missing-upload")
                         .header("X-OSMU-Access-Key", credentials.accessKey())
                         .header("X-OSMU-Secret-Key", credentials.secretKey())
+                        .header("X-Request-Id", "req-nosuchupload")
                         .accept(MediaType.APPLICATION_XML))
                 .andExpect(status().isNotFound())
                 .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_XML))
-                .andExpect(content().string(containsString("<Code>NoSuchUpload</Code>")));
+                .andExpect(content().string(containsString("<Code>NoSuchUpload</Code>")))
+                .andExpect(content().string(containsString("<Resource>" + missingUploadResource + "</Resource>")))
+                .andExpect(content().string(containsString("<RequestId>req-nosuchupload</RequestId>")))
+                .andExpect(content().string(containsString("<HostId>req-nosuchupload</HostId>")));
     }
 
     @Test

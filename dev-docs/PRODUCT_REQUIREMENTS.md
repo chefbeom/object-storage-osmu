@@ -50,12 +50,13 @@
 - S3 multipart complete rejects missing uploaded parts or stale per-part ETags before storage completion.
 - Missing S3 multipart upload IDs return S3 XML `NoSuchUpload`.
 - S3 multipart ListParts supports `max-parts`/`part-number-marker` pagination and returns `PartNumberMarker`, `NextPartNumberMarker`, `MaxParts`, and `IsTruncated` XML fields.
+- S3 XML error bodies include `Code`, `Message`, `Resource`, `RequestId`, and `HostId` for client compatibility and request tracing.
 - Bucket-level responses include `x-amz-bucket-region`; MVP default region is `us-east-1`.
 - S3-style bucket creation currently uses Bearer JWT auth and accepts S3 `CreateBucketConfiguration/LocationConstraint` XML when it matches the configured storage region; bucket deletion supports JWT or an OSMU Access Key with target bucket `ADMIN` scope, requires an empty bucket, and returns S3 XML `BucketNotEmpty` when the bucket still contains objects.
 - `x-amz-tagging` and `X-OSMU-Tags` are accepted for upload tags.
 - Multi-object delete uses the same soft-delete behavior as the REST object API and treats missing keys as deleted for S3 compatibility.
 - Object tagging XML uses the same metadata tag store as the REST object API; tag read requires `READ`, tag update/delete requires `WRITE`.
-- Unknown-size S3 multipart initiate parity, full AWS multipart checksum aggregation parity, automatic DNS/proxy provisioning for virtual-hosted-style domains, multi-range GET, full conditional request parity, exact CopyObject user-metadata/versioning/full-conditional parity, multipart ETag parity, remaining CreateBucket/DeleteBucket edge error parity, and exact AWS error schema parity remain future work. `dev-docs/s3-compatibility.md` tracks the supported/partial/unsupported matrix.
+- Unknown-size S3 multipart initiate parity, full AWS multipart checksum aggregation parity, automatic DNS/proxy provisioning for virtual-hosted-style domains, multi-range GET, full conditional request parity, exact CopyObject user-metadata/versioning/full-conditional parity, multipart ETag parity, remaining CreateBucket/DeleteBucket edge error parity, and full AWS error behavior parity remain future work. `dev-docs/s3-compatibility.md` tracks the supported/partial/unsupported matrix.
 # Private Object Storage Platform 기획서 초안
 
 ## 1. 문서 개요

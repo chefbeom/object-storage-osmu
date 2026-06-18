@@ -221,7 +221,7 @@ MVP 데모 기준 완료율은 약 90~95%입니다.
 - copy object
 - tagging
 - multi-delete 일부
-- S3 XML error response
+- S3 XML error response with `Code`/`Message`/`Resource`/`RequestId`/`HostId`
 - S3 CreateBucket LocationConstraint XML validation
 - S3 DeleteBucket non-empty `BucketNotEmpty` error mapping
 - AWS CLI/boto3/s3cmd/s3fs/goofys 호환 matrix

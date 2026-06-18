@@ -349,7 +349,7 @@
 - Preconditions: Target bucket exists. Active access key has `WRITE` scope.
 - Input: `GET /api/s3/{bucketName}/{objectKey}?uploadId=missing-upload`.
 - Steps: Request uploaded parts for a nonexistent multipart upload id.
-- Expected: Response is S3 XML `NoSuchUpload`.
+- Expected: Response is S3 XML `NoSuchUpload` with `Resource`, `RequestId`, and `HostId`.
 - Priority: P1
 - Automated: `S3ObjectControllerTest.missingS3MultipartUploadReturnsNoSuchUploadXml`, `S3ErrorCodeMapperTest.mapsApiErrorsToS3XmlErrorCodes`
 
