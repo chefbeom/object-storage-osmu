@@ -1,0 +1,1215 @@
+import { createServer } from 'node:http'
+import { randomUUID } from 'node:crypto'
+
+const DEFAULT_HOST = '127.0.0.1'
+const DEFAULT_PORT = 8080
+const BYTES_PER_GIB = 1024 ** 3
+
+let state = createInitialState()
+
+function createInitialState() {
+  const initialState = {
+    sessions: new Map(),
+    buckets: [
+      bucketRecord('osmu-demo-media', 10 * BYTES_PER_GIB),
+      bucketRecord('osmu-demo-ai', 5 * BYTES_PER_GIB),
+    ],
+    objects: new Map(),
+    accessKeys: [
+      {
+        id: 'mock-sdk-key',
+        name: 'mock-sdk-key',
+        accessKey: 'OSMUDEMOACCESS',
+        status: 'ACTIVE',
+        allowedBuckets: ['osmu-demo-media', 'osmu-demo-ai'],
+        permissions: ['READ', 'WRITE'],
+        bucketScopes: [
+          { bucketName: 'osmu-demo-media', permissions: ['READ', 'WRITE'] },
+          { bucketName: 'osmu-demo-ai', permissions: ['READ'] },
+        ],
+        createdAt: new Date().toISOString(),
+        expiresAt: null,
+        lastUsedAt: null,
+      },
+    ],
+    auditLogs: [
+      auditLog('LOGIN_SUCCESS', 'AUTH', 'admin', 'SUCCESS'),
+      auditLog('DEMO_BOOTSTRAP', 'SYSTEM', 'mock-api', 'SUCCESS'),
+    ],
+    dataFlowEvents: [],
+    storageProfileAssignments: new Map(),
+    storageProfileRequests: [],
+    storageProfileRequestSequence: 1,
+  }
+
+  initialState.objects.set('osmu-demo-media', [
+    objectRecord('videos/raw/sample-video-manifest.txt', 'sampleId=video-001', { project: 'osmu', workload: 'streaming' }),
+    objectRecord('videos/encoded/sample-rendition.txt', 'rendition=1080p', { project: 'osmu', stage: 'encoded' }),
+  ])
+  initialState.objects.set('osmu-demo-ai', [
+    objectRecord('datasets/images/sample-dataset.json', '{"name":"sample-images"}', { project: 'osmu', workload: 'ai' }),
+  ])
+  for (const [bucketName, objects] of initialState.objects.entries()) {
+    for (const object of objects) {
+      initialState.dataFlowEvents.unshift(dataFlowEvent(
+        'UPLOAD',
+        'upload',
+        'INGRESS',
+        bucketName,
+        object.key,
+        'mock-api',
+        'SUCCESS',
+        object.sizeBytes,
+        'Seed object loaded',
+        'MOCK'
+      ))
+    }
+  }
+
+  return initialState
+}
+
+function resetMockState() {
+  state = createInitialState()
+  refreshBucketUsage()
+  return {
+    reset: true,
+    bucketCount: state.buckets.length,
+    objectCount: Array.from(state.objects.values()).reduce((sum, items) => sum + items.length, 0),
+    accessKeyCount: state.accessKeys.length,
+  }
+}
+
+function bucketRecord(name, quotaBytes = BYTES_PER_GIB) {
+  return {
+    name,
+    quotaBytes,
+    usedBytes: 0,
+    objectCount: 0,
+    ownerType: 'USER',
+    ownerId: 1,
+    createdAt: new Date().toISOString(),
+  }
+}
+
+function objectRecord(key, content = '', tags = {}) {
+  return {
+    key,
+    sizeBytes: Buffer.byteLength(content),
+    contentType: 'text/plain',
+    tags,
+    checksums: {},
+    status: 'SYNCED',
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  }
+}
+
+function auditLog(eventType, targetType, targetId, result = 'SUCCESS', actorId = 'admin') {
+  return {
+    id: randomUUID(),
+    eventType,
+    actorId,
+    targetType,
+    targetId,
+    result,
+    requestId: randomUUID(),
+    createdAt: new Date().toISOString(),
+  }
+}
+
+function dataFlowEvent(eventType, operation, direction, bucketName, objectKey, actorId, status, sizeBytes, message, source) {
+  return {
+    eventType,
+    operation,
+    direction,
+    bucketName,
+    objectKey,
+    actorId,
+    status,
+    sizeBytes: Math.max(0, Number(sizeBytes || 0)),
+    message,
+    source,
+    createdAt: new Date().toISOString(),
+  }
+}
+
+function recordDataFlow(eventType, operation, direction, bucketName, objectKey, actorId, status, sizeBytes, message, source) {
+  state.dataFlowEvents.unshift(dataFlowEvent(eventType, operation, direction, bucketName, objectKey, actorId, status, sizeBytes, message, source))
+  state.dataFlowEvents = state.dataFlowEvents.slice(0, 50)
+}
+
+function createMockApiServer() {
+  return createServer(async (request, response) => {
+    try {
+      await handleRequest(request, response)
+    } catch (error) {
+      sendJson(response, 500, {
+        error: {
+          code: 'MOCK_API_ERROR',
+          message: error.message,
+          requestId: randomUUID(),
+        },
+      })
+    }
+  })
+}
+
+async function handleRequest(request, response) {
+  setCorsHeaders(response)
+  if (request.method === 'OPTIONS') {
+    response.writeHead(204)
+    response.end()
+    return
+  }
+
+  const url = new URL(request.url, `http://${request.headers.host || `${DEFAULT_HOST}:${DEFAULT_PORT}`}`)
+  if (!url.pathname.startsWith('/api')) {
+    sendJson(response, 404, { error: { code: 'NOT_FOUND', message: 'Mock API only serves /api.' } })
+    return
+  }
+
+  const path = url.pathname.slice('/api'.length) || '/'
+  const bodyBuffer = await readBody(request)
+  const jsonBody = parseJsonBody(bodyBuffer)
+
+  if (request.method === 'POST' && path === '/mock/reset') {
+    sendJson(response, 200, apiData(resetMockState()))
+    return
+  }
+  if (request.method === 'GET' && path === '/health') {
+    sendJson(response, 200, apiData(systemStatus()))
+    return
+  }
+  if (request.method === 'GET' && path === '/storage/health') {
+    sendJson(response, 200, apiData({ status: 'UP', engine: 'mock-memory' }))
+    return
+  }
+  if (request.method === 'GET' && path === '/database/health') {
+    sendJson(response, 200, apiData({ status: 'UP', engine: 'mock-memory' }))
+    return
+  }
+  if (request.method === 'POST' && path === '/auth/login') {
+    const loginId = jsonBody.loginId || 'admin'
+    const user = userForLogin(loginId)
+    state.auditLogs.unshift(auditLog('LOGIN_SUCCESS', 'AUTH', loginId, 'SUCCESS', user.loginId))
+    sendJson(response, 200, apiData(authPayload(user)))
+    return
+  }
+  if (request.method === 'POST' && path === '/auth/refresh') {
+    const session = sessionFromRefreshToken(jsonBody.refreshToken) || userForLogin('admin')
+    sendJson(response, 200, apiData(authPayload(session)))
+    return
+  }
+  if (request.method === 'POST' && path === '/auth/logout') {
+    sendJson(response, 200, apiData({ loggedOut: true }))
+    return
+  }
+  if (request.method === 'GET' && path === '/users/me') {
+    sendJson(response, 200, apiData(currentUser(request)))
+    return
+  }
+  if (request.method === 'GET' && path === '/developer/s3-client-config') {
+    sendJson(response, 200, apiData({
+      endpoint: 'http://localhost:8080/api/s3',
+      region: 'us-east-1',
+      signatureVersion: 'AWS4-HMAC-SHA256',
+      service: 's3',
+      pathStyleSupported: true,
+      virtualHostedStyleEnabled: false,
+      virtualHostedStyleDomainSuffixes: [],
+    }))
+    return
+  }
+  if (request.method === 'GET' && path === '/storage-profiles') {
+    sendJson(response, 200, apiItems(storageProfiles()))
+    return
+  }
+  if (request.method === 'GET' && path === '/storage-profile-requests') {
+    const user = currentUser(request)
+    const items = user.role === 'ADMIN'
+      ? state.storageProfileRequests
+      : state.storageProfileRequests.filter((item) => findBucket(item.bucketName)?.ownerId === user.id)
+    sendJson(response, 200, apiItems(items))
+    return
+  }
+
+  if (request.method === 'GET' && path === '/admin/dashboard/summary') {
+    sendJson(response, 200, apiData(dashboardSummary()))
+    return
+  }
+  if (request.method === 'GET' && path === '/admin/dashboard/readiness') {
+    sendJson(response, 200, apiData(readinessSummary()))
+    return
+  }
+  if (request.method === 'GET' && path === '/admin/monitoring/data-flow') {
+    sendJson(response, 200, apiData(dataFlowSummary(dataFlowFilters(url))))
+    return
+  }
+  if (path.startsWith('/dashboard/layout')) {
+    handleDashboardLayout(request, response, path)
+    return
+  }
+
+  if (request.method === 'GET' && path === '/buckets') {
+    refreshBucketUsage()
+    sendJson(response, 200, apiItems(state.buckets))
+    return
+  }
+  if (request.method === 'POST' && path === '/buckets') {
+    const bucket = bucketRecord(jsonBody.name, Number(jsonBody.quotaBytes || BYTES_PER_GIB))
+    state.buckets = state.buckets.filter((item) => item.name !== bucket.name)
+    state.buckets.push(bucket)
+    state.objects.set(bucket.name, [])
+    state.auditLogs.unshift(auditLog('BUCKET_CREATE', 'BUCKET', bucket.name))
+    sendJson(response, 200, apiData(bucket))
+    return
+  }
+
+  const bucketMatch = /^\/buckets\/([^/]+)(.*)$/.exec(path)
+  if (bucketMatch) {
+    handleBucketRoute(request, response, decodeURIComponent(bucketMatch[1]), bucketMatch[2], bodyBuffer, jsonBody, url)
+    return
+  }
+
+  handleAdminRoute(request, response, path, jsonBody)
+}
+
+function handleDashboardLayout(request, response, path) {
+  if (request.method === 'GET' && path === '/dashboard/layout/widgets') {
+    sendJson(response, 200, apiData(defaultWidgetCatalog()))
+    return
+  }
+  if (request.method === 'GET' && path === '/dashboard/layout/presets') {
+    sendJson(response, 200, apiData(defaultPresets()))
+    return
+  }
+  if (request.method === 'GET' && path === '/dashboard/layout/defaults') {
+    sendJson(response, 200, apiData([]))
+    return
+  }
+  if (request.method === 'GET' && path === '/dashboard/layout') {
+    sendJson(response, 200, apiData(defaultLayout()))
+    return
+  }
+  if (request.method === 'PUT' && path === '/dashboard/layout') {
+    sendJson(response, 200, apiData({ ...defaultLayout(), source: 'USER' }))
+    return
+  }
+  sendJson(response, 200, apiData({ ok: true }))
+}
+
+function handleBucketRoute(request, response, bucketName, suffix, bodyBuffer, jsonBody, url) {
+  if (request.method === 'DELETE' && suffix === '') {
+    state.buckets = state.buckets.filter((bucket) => bucket.name !== bucketName)
+    state.objects.delete(bucketName)
+    state.storageProfileAssignments.delete(bucketName)
+    state.auditLogs.unshift(auditLog('BUCKET_DELETE', 'BUCKET', bucketName))
+    sendJson(response, 200, apiData({ deleted: true }))
+    return
+  }
+  if (request.method === 'GET' && suffix === '/storage-profile') {
+    sendJson(response, 200, apiData({
+      bucketName,
+      assignment: storageProfileAssignmentFor(bucketName),
+      latestRequest: latestStorageProfileRequest(bucketName),
+    }))
+    return
+  }
+  if (request.method === 'POST' && suffix === '/storage-profile-requests') {
+    const bucket = findBucket(bucketName)
+    if (!bucket) {
+      sendJson(response, 404, { error: { code: 'NOT_FOUND', message: 'Bucket not found.' } })
+      return
+    }
+    const requestRecord = createStorageProfileRequest(bucketName, jsonBody)
+    state.storageProfileRequests.unshift(requestRecord)
+    state.auditLogs.unshift(auditLog('STORAGE_PROFILE_REQUEST_CREATE', 'STORAGE_PROFILE_REQUEST', String(requestRecord.id), 'SUCCESS', requestRecord.requestedBy))
+    sendJson(response, 200, apiData(requestRecord))
+    return
+  }
+  if (request.method === 'POST' && suffix === '/sync') {
+    refreshBucketUsage()
+    sendJson(response, 200, apiData(findBucket(bucketName)))
+    return
+  }
+  if (request.method === 'GET' && suffix === '/permissions') {
+    sendJson(response, 200, apiItems([]))
+    return
+  }
+  if (request.method === 'GET' && suffix === '/lifecycle') {
+    sendJson(response, 200, apiData({ xml: '<LifecycleConfiguration />', ruleCount: 0 }))
+    return
+  }
+  if (request.method === 'GET' && suffix === '/tags') {
+    sendJson(response, 200, apiData({ tags: { project: 'osmu', runtime: 'mock' } }))
+    return
+  }
+  if (request.method === 'GET' && suffix === '/objects') {
+    const search = url.searchParams.get('search') || ''
+    const items = objectsFor(bucketName).filter((item) => !search || item.key.includes(search))
+    recordDataFlow('LIST', 'list', 'METADATA', bucketName, '', currentUser(request).loginId, 'SUCCESS', 0, 'Object list read', 'REST')
+    sendJson(response, 200, { items, prefixes: [], nextCursor: '' })
+    return
+  }
+  if (request.method === 'POST' && suffix === '/objects') {
+    const upload = parseMultipartUpload(bodyBuffer, request.headers['content-type'] || '')
+    const record = objectRecord(upload.key || upload.fileName || 'upload.bin', upload.content || '', parseTags(upload.tags))
+    const objects = objectsFor(bucketName)
+    state.objects.set(bucketName, [...objects.filter((item) => item.key !== record.key), record])
+    refreshBucketUsage()
+    state.auditLogs.unshift(auditLog('OBJECT_UPLOAD', 'OBJECT', `${bucketName}/${record.key}`))
+    recordDataFlow('UPLOAD', 'upload', 'INGRESS', bucketName, record.key, currentUser(request).loginId, 'SUCCESS', record.sizeBytes, 'Object uploaded', 'REST')
+    sendJson(response, 200, apiData(record))
+    return
+  }
+  if (request.method === 'GET' && isObjectDataPath(suffix)) {
+    const objectKey = decodeURIComponent(suffix.slice('/objects/'.length))
+    const object = objectsFor(bucketName).find((item) => item.key === objectKey)
+    if (!object) {
+      recordDataFlow('FAILURE', 'download', 'CONTROL', bucketName, objectKey, currentUser(request).loginId, 'FAILED', 0, 'Object not found', 'REST')
+      sendJson(response, 404, { error: { code: 'NOT_FOUND', message: 'Object not found.' } })
+      return
+    }
+    recordDataFlow('DOWNLOAD', 'download', 'EGRESS', bucketName, object.key, currentUser(request).loginId, 'SUCCESS', object.sizeBytes, 'Object downloaded', 'REST')
+    response.writeHead(200, {
+      'Content-Type': object.contentType || 'application/octet-stream',
+      'Content-Disposition': `attachment; filename="${object.key.split('/').pop() || 'download'}"`,
+    })
+    response.end(`mock object: ${object.key}`)
+    return
+  }
+  if (request.method === 'DELETE' && isObjectDataPath(suffix)) {
+    const objectKey = decodeURIComponent(suffix.slice('/objects/'.length))
+    state.objects.set(bucketName, objectsFor(bucketName).filter((item) => item.key !== objectKey))
+    refreshBucketUsage()
+    state.auditLogs.unshift(auditLog('OBJECT_DELETE', 'OBJECT', `${bucketName}/${objectKey}`))
+    recordDataFlow('DELETE', 'delete', 'METADATA', bucketName, objectKey, currentUser(request).loginId, 'SUCCESS', 0, 'Object deleted', 'REST')
+    response.writeHead(204)
+    response.end()
+    return
+  }
+  sendJson(response, 200, apiData({ ok: true }))
+}
+
+function handleAdminRoute(request, response, path, jsonBody) {
+  if (request.method === 'GET' && path === '/admin/usage') {
+    sendJson(response, 200, apiData(usageSummary()))
+    return
+  }
+  if (request.method === 'GET' && path === '/admin/backup/status') {
+    sendJson(response, 200, apiData(backupStatus()))
+    return
+  }
+  if (request.method === 'GET' && path === '/admin/audit-logs') {
+    sendJson(response, 200, { items: state.auditLogs, nextCursor: '' })
+    return
+  }
+  if (request.method === 'GET' && path === '/access-keys') {
+    sendJson(response, 200, apiItems(state.accessKeys))
+    return
+  }
+  if (request.method === 'POST' && path === '/access-keys') {
+    const key = {
+      id: randomUUID(),
+      name: jsonBody.name || 'mock-access-key',
+      accessKey: `OSMU${randomUUID().slice(0, 8).toUpperCase()}`,
+      secretKey: randomUUID().replaceAll('-', ''),
+      status: 'ACTIVE',
+      bucketScopes: jsonBody.bucketScopes || [],
+      permissions: ['READ', 'WRITE'],
+      createdAt: new Date().toISOString(),
+      expiresAt: jsonBody.expiresAt || null,
+      lastUsedAt: null,
+    }
+    state.accessKeys.unshift({ ...key, secretKey: undefined })
+    sendJson(response, 200, apiData(key))
+    return
+  }
+  if (request.method === 'GET' && path === '/admin/users') {
+    sendJson(response, 200, apiItems([adminUser(), developerUser()]))
+    return
+  }
+  if (request.method === 'GET' && path === '/admin/organizations') {
+    sendJson(response, 200, apiItems([{ id: 1, name: 'Mock Organization', defaultQuotaBytes: 10 * BYTES_PER_GIB }]))
+    return
+  }
+  if (request.method === 'GET' && path === '/admin/organizations/usage') {
+    sendJson(response, 200, apiItems([]))
+    return
+  }
+  if (request.method === 'GET' && path === '/admin/quota-policies') {
+    sendJson(response, 200, apiItems([]))
+    return
+  }
+  if (request.method === 'GET' && path === '/admin/quota-policies/history') {
+    sendJson(response, 200, apiItems([]))
+    return
+  }
+  if (request.method === 'GET' && path === '/admin/storage-expansion/requests') {
+    sendJson(response, 200, apiItems([]))
+    return
+  }
+  if (request.method === 'GET' && path === '/admin/storage-expansion/summary') {
+    sendJson(response, 200, apiData(storageExpansionSummary()))
+    return
+  }
+  if (request.method === 'GET' && path === '/admin/storage-expansion/runner-preflight') {
+    sendJson(response, 200, apiData({ status: 'MOCK', ready: false, enabledRunnerCount: 0, failedCheckCount: 0, checks: [] }))
+    return
+  }
+  if (request.method === 'GET' && path === '/admin/storage-profile-requests') {
+    sendJson(response, 200, apiItems(state.storageProfileRequests))
+    return
+  }
+  const profileStatusMatch = /^\/admin\/storage-profile-requests\/(\d+)\/status$/.exec(path)
+  if (profileStatusMatch && request.method === 'PATCH') {
+    const requestRecord = findStorageProfileRequest(Number(profileStatusMatch[1]))
+    if (!requestRecord) {
+      sendJson(response, 404, { error: { code: 'NOT_FOUND', message: 'Storage profile request not found.' } })
+      return
+    }
+    const status = String(jsonBody.status || '').trim().toUpperCase()
+    if (!['APPROVED', 'REJECTED'].includes(status) || requestRecord.status !== 'PENDING') {
+      sendJson(response, 400, { error: { code: 'VALIDATION_ERROR', message: 'Invalid storage profile status transition.' } })
+      return
+    }
+    Object.assign(requestRecord, {
+      status,
+      approvedBy: 'admin',
+      approvedAt: new Date().toISOString(),
+      adminNote: jsonBody.adminNote || '',
+      updatedAt: new Date().toISOString(),
+    })
+    state.auditLogs.unshift(auditLog('STORAGE_PROFILE_REQUEST_STATUS', 'STORAGE_PROFILE_REQUEST', String(requestRecord.id)))
+    sendJson(response, 200, apiData(requestRecord))
+    return
+  }
+  const profileApplyMatch = /^\/admin\/storage-profile-requests\/(\d+)\/apply$/.exec(path)
+  if (profileApplyMatch && request.method === 'POST') {
+    const requestRecord = findStorageProfileRequest(Number(profileApplyMatch[1]))
+    if (!requestRecord) {
+      sendJson(response, 404, { error: { code: 'NOT_FOUND', message: 'Storage profile request not found.' } })
+      return
+    }
+    if (requestRecord.status !== 'APPROVED') {
+      sendJson(response, 400, { error: { code: 'VALIDATION_ERROR', message: 'Storage profile request must be APPROVED before apply.' } })
+      return
+    }
+    const now = new Date().toISOString()
+    state.storageProfileAssignments.set(requestRecord.bucketName, {
+      bucketName: requestRecord.bucketName,
+      profile: requestRecord.requestedProfile,
+      appliedBy: 'admin',
+      appliedAt: now,
+      updatedAt: now,
+      defaultProfile: false,
+    })
+    Object.assign(requestRecord, {
+      status: 'APPLIED',
+      appliedBy: 'admin',
+      appliedAt: now,
+      updatedAt: now,
+    })
+    state.auditLogs.unshift(auditLog('STORAGE_PROFILE_REQUEST_APPLY', 'STORAGE_PROFILE_REQUEST', String(requestRecord.id)))
+    sendJson(response, 200, apiData(requestRecord))
+    return
+  }
+  if (request.method === 'GET' && path === '/admin/object-lifecycle/rules') {
+    sendJson(response, 200, apiData([]))
+    return
+  }
+  if (request.method === 'GET' && path === '/admin/object-lifecycle/conflicts') {
+    sendJson(response, 200, apiData({ ruleCount: 0, conflictCount: 0, conflicts: [] }))
+    return
+  }
+  if (request.method === 'GET' && path === '/admin/object-share-policy') {
+    sendJson(response, 200, apiData({ requirePassword: false, requireIpAllowlist: false, maxExpiryHours: 168, maxDownloads: 100 }))
+    return
+  }
+  if (request.method === 'GET' && path === '/admin/object-share-analytics') {
+    sendJson(response, 200, apiData(shareAnalytics()))
+    return
+  }
+  if (request.method === 'GET' && path === '/admin/object-retention/status') {
+    sendJson(response, 200, apiData({ enabled: true, retentionDays: 30, batchSize: 100, purgedObjectCount: 0, failedObjectCount: 0, failedRunCount: 0 }))
+    return
+  }
+  sendJson(response, 200, apiData({ ok: true }))
+}
+
+function authPayload(user) {
+  const accessToken = `mock-access-${user.loginId}-${Date.now()}-${randomUUID()}`
+  const refreshToken = `mock-refresh-${user.loginId}-${Date.now()}-${randomUUID()}`
+  state.sessions.set(accessToken, user)
+  state.sessions.set(refreshToken, user)
+  return {
+    accessToken,
+    refreshToken,
+    user,
+  }
+}
+
+function currentUser(request) {
+  const token = bearerToken(request)
+  if (token && state.sessions.has(token)) {
+    return state.sessions.get(token)
+  }
+  return adminUser()
+}
+
+function sessionFromRefreshToken(refreshToken) {
+  if (refreshToken && state.sessions.has(refreshToken)) {
+    return state.sessions.get(refreshToken)
+  }
+  return null
+}
+
+function bearerToken(request) {
+  const authorization = request?.headers?.authorization || ''
+  const match = /^Bearer\s+(.+)$/i.exec(authorization)
+  return match?.[1] || ''
+}
+
+function userForLogin(loginId = 'admin') {
+  return loginId.toLowerCase().includes('dev') ? developerUser() : adminUser()
+}
+
+function adminUser() {
+  return {
+    id: 1,
+    loginId: 'admin',
+    email: 'admin@osmu.local',
+    name: 'OSMU Admin',
+    role: 'ADMIN',
+    organizationId: 1,
+    status: 'ACTIVE',
+  }
+}
+
+function developerUser() {
+  return {
+    id: 2,
+    loginId: 'developer',
+    email: 'developer@osmu.local',
+    name: 'OSMU Developer',
+    role: 'USER',
+    organizationId: 1,
+    status: 'ACTIVE',
+  }
+}
+
+function dashboardSummary() {
+  return {
+    usage: usageSummary(),
+    system: systemStatus(),
+    backup: backupStatus(),
+    retention: { enabled: true, retentionDays: 30, batchSize: 100, purgedObjectCount: 0, failedObjectCount: 0, failedRunCount: 0 },
+    shareAnalytics: shareAnalytics(),
+    quota: {
+      policyCount: 0,
+      warningPolicyCount: 0,
+      exhaustedPolicyCount: 0,
+      totalQuotaBytes: state.buckets.reduce((sum, bucket) => sum + bucket.quotaBytes, 0),
+      totalUsedBytes: state.buckets.reduce((sum, bucket) => sum + bucket.usedBytes, 0),
+      totalRemainingBytes: state.buckets.reduce((sum, bucket) => sum + Math.max(0, bucket.quotaBytes - bucket.usedBytes), 0),
+      topPolicies: [],
+    },
+    readiness: readinessSummary(),
+    dataFlow: dataFlowSummary(),
+    recentAuditLogs: state.auditLogs,
+  }
+}
+
+function dataFlowFilters(url) {
+  return {
+    bucketName: url.searchParams.get('bucketName') || '',
+    actorId: url.searchParams.get('actorId') || '',
+    source: url.searchParams.get('source') || '',
+    operation: url.searchParams.get('operation') || '',
+    status: url.searchParams.get('status') || '',
+    from: url.searchParams.get('from') || '',
+    to: url.searchParams.get('to') || '',
+    limit: Number(url.searchParams.get('limit') || 50),
+  }
+}
+
+function dataFlowSummary(filters = {}) {
+  const events = filterDataFlowEvents(state.dataFlowEvents || [], filters)
+  const successUploads = events.filter((event) => event.eventType === 'UPLOAD' && event.status === 'SUCCESS')
+  const successDownloads = events.filter((event) => event.eventType === 'DOWNLOAD' && event.status === 'SUCCESS')
+  const uploadedBytes = successUploads.reduce((sum, event) => sum + Number(event.sizeBytes || 0), 0)
+  const downloadedBytes = successDownloads.reduce((sum, event) => sum + Number(event.sizeBytes || 0), 0)
+  const operationCount = (operation) => events.filter((event) => event.operation === operation && event.status === 'SUCCESS').length
+  const bucketMetrics = new Map()
+  for (const event of events) {
+    if (!event.bucketName) continue
+    if (!bucketMetrics.has(event.bucketName)) {
+      bucketMetrics.set(event.bucketName, {
+        bucketName: event.bucketName,
+        uploadedBytes: 0,
+        downloadedBytes: 0,
+        totalBytes: 0,
+        uploadCount: 0,
+        downloadCount: 0,
+        listCount: 0,
+        deleteCount: 0,
+        cancelCount: 0,
+        failureCount: 0,
+        lastEventAt: event.createdAt,
+      })
+    }
+    const bucket = bucketMetrics.get(event.bucketName)
+    if (event.eventType === 'UPLOAD' && event.status === 'SUCCESS') {
+      bucket.uploadedBytes += Number(event.sizeBytes || 0)
+      bucket.uploadCount += 1
+    }
+    if (event.eventType === 'DOWNLOAD' && event.status === 'SUCCESS') {
+      bucket.downloadedBytes += Number(event.sizeBytes || 0)
+      bucket.downloadCount += 1
+    }
+    if (event.eventType === 'LIST' && event.status === 'SUCCESS') bucket.listCount += 1
+    if (event.eventType === 'DELETE' && event.status === 'SUCCESS') bucket.deleteCount += 1
+    if (event.eventType === 'CANCEL') bucket.cancelCount += 1
+    if (event.eventType === 'FAILURE' || event.status === 'FAILED') bucket.failureCount += 1
+    bucket.totalBytes = bucket.uploadedBytes + bucket.downloadedBytes
+    if (new Date(event.createdAt) > new Date(bucket.lastEventAt)) bucket.lastEventAt = event.createdAt
+  }
+  return {
+    traffic: {
+      uploadedBytes,
+      downloadedBytes,
+      totalBytes: uploadedBytes + downloadedBytes,
+      ingressBytes: uploadedBytes,
+      egressBytes: downloadedBytes,
+    },
+    operations: {
+      uploadCount: operationCount('upload'),
+      downloadCount: operationCount('download'),
+      listCount: operationCount('list'),
+      deleteCount: operationCount('delete'),
+      cancelCount: events.filter((event) => event.eventType === 'CANCEL').length,
+      failureCount: events.filter((event) => event.eventType === 'FAILURE' || event.status === 'FAILED').length,
+      totalCount: events.length,
+    },
+    topBuckets: [...bucketMetrics.values()].sort((left, right) => right.totalBytes - left.totalBytes).slice(0, 5),
+    recentEvents: events.slice(0, normalizeDataFlowLimit(filters.limit)),
+    generatedAt: new Date().toISOString(),
+  }
+}
+
+function filterDataFlowEvents(events, filters) {
+  const from = parseDataFlowTime(filters.from)
+  const to = parseDataFlowTime(filters.to)
+  return events.filter((event) => {
+    if (filters.bucketName && event.bucketName !== filters.bucketName) return false
+    if (filters.actorId && event.actorId !== filters.actorId) return false
+    if (filters.source && String(event.source || '').toLowerCase() !== String(filters.source).toLowerCase()) return false
+    if (filters.operation && String(event.operation || '').toLowerCase() !== String(filters.operation).toLowerCase()) return false
+    if (filters.status && String(event.status || '').toUpperCase() !== String(filters.status).toUpperCase()) return false
+    const createdAt = Date.parse(event.createdAt)
+    if (from !== null && createdAt < from) return false
+    if (to !== null && createdAt > to) return false
+    return true
+  })
+}
+
+function parseDataFlowTime(value) {
+  if (!value) return null
+  const timestamp = Date.parse(value)
+  return Number.isNaN(timestamp) ? null : timestamp
+}
+
+function normalizeDataFlowLimit(limit) {
+  if (!Number.isFinite(limit) || limit <= 0) return 50
+  return Math.min(500, Math.floor(limit))
+}
+
+function usageSummary() {
+  refreshBucketUsage()
+  return {
+    bucketCount: state.buckets.length,
+    objectCount: Array.from(state.objects.values()).reduce((sum, items) => sum + items.length, 0),
+    totalBytes: state.buckets.reduce((sum, bucket) => sum + bucket.quotaBytes, 0),
+    usedBytes: state.buckets.reduce((sum, bucket) => sum + bucket.usedBytes, 0),
+  }
+}
+
+function systemStatus() {
+  return {
+    status: 'UP',
+    backend: 'UP',
+    storage: 'MOCK',
+    database: 'MOCK',
+    accessKeyProvisioner: 'MOCK',
+    metadataEngine: 'mock-memory',
+    storageEngine: 'mock-memory',
+  }
+}
+
+function backupStatus() {
+  return {
+    status: 'DRILL_PENDING',
+    metadataStore: 'mock-memory',
+    objectStore: 'mock-memory',
+    databaseHealthy: true,
+    storageHealthy: true,
+    rpoTarget: '24h',
+    rtoTarget: '4h',
+    runbookAvailable: true,
+    restoreDrillExecuted: false,
+    lastRestoreDrillAt: '2026-06-15T10:30:00+09:00',
+    latestRestoreDrillEvidence: {
+      id: 1,
+      environment: 'frontend-mock',
+      operator: 'mock-admin',
+      result: 'PARTIAL',
+      recordedAt: '2026-06-15T10:30:00+09:00',
+      statusImpact: 'REVIEW_REQUIRED',
+      gaps: ['Run Kubernetes DR finalizer against a real cluster.'],
+    },
+    pendingGates: ['real MariaDB/MinIO backup drill required'],
+  }
+}
+
+function readinessSummary() {
+  return {
+    status: 'REVIEW',
+    runtimeProfile: 'Frontend mock API demo',
+    blockerCount: 0,
+    warningCount: 3,
+    blockers: [],
+    warnings: [
+      'Java backend tests pending',
+      'Docker MariaDB/MinIO smoke pending',
+      'Operations readiness convergence action required',
+    ],
+    severitySummaries: [
+      { severity: 'WARNING', count: 3 },
+    ],
+    categorySummaries: [
+      { category: 'RUNTIME', count: 1 },
+      { category: 'STORAGE', count: 1 },
+      { category: 'OPERATIONS', count: 1 },
+    ],
+    items: [
+      { code: 'METADATA_ENGINE', category: 'RUNTIME', severity: 'WARNING', title: 'Mock metadata engine', message: 'Java/MariaDB gate is pending.', targetPage: 'dashboard', targetPanel: 'overview' },
+      { code: 'OBJECT_STORAGE', category: 'STORAGE', severity: 'WARNING', title: 'Mock object store', message: 'Docker/MinIO gate is pending.', targetPage: 'storage', targetPanel: 'storage-buckets' },
+      {
+        code: 'OPERATIONS_READINESS_CONVERGENCE',
+        category: 'OPERATIONS',
+        severity: 'WARNING',
+        title: 'Convergence',
+        message: 'Operations readiness convergence is action-required: bottleneck=resolve-invocation-blockers, stages=1/7, finalizerGaps=1.',
+        targetPage: 'dashboard',
+        targetPanel: 'dashboard-readiness-panel',
+        evidencePath: '.osmu-run/latest-operations-readiness-convergence.json',
+        remediationCommand: 'powershell -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\write-operations-invocation-unblock-plan.ps1',
+        remediationNote: 'The invocation report still has blocked actions. This mock report does not execute kubectl, gh, workflow dispatch, or finalizer commands.',
+      },
+    ],
+    operationsReadinessConvergence: {
+      result: 'action-required',
+      generatedAt: '2026-06-16T09:00:00+09:00',
+      handoffReportPath: '.osmu-run/latest-operations-evidence-handoff.json',
+      readinessReportPath: '.osmu-run/latest-operations-readiness.json',
+      operationsReadinessFinalizeReportPath: '.osmu-run/latest-operations-readiness-finalize.json',
+      handoffExists: true,
+      handoffResult: 'blocked',
+      readinessExists: true,
+      readinessResult: 'pending',
+      readinessSummary: 'passed=36 pending=6',
+      finalizerExists: true,
+      finalizerResult: 'pending',
+      finalizerReadinessResult: 'pending',
+      finalizerFailedCount: 0,
+      finalizerGapCount: 1,
+      stageCount: 7,
+      readyStageCount: 1,
+      blockedActionCount: 5,
+      missingWorkflowRunCount: 6,
+      missingRequiredArtifactCount: 4,
+      failedImportCount: 0,
+      currentBottleneck: {
+        code: 'resolve-invocation-blockers',
+        title: 'Resolve invocation blockers',
+        reason: 'The invocation report still has blocked actions.',
+        command: 'powershell -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\write-operations-invocation-unblock-plan.ps1',
+      },
+      recommendedCommands: [
+        {
+          order: 1,
+          name: 'Resolve invocation blockers',
+          command: 'powershell -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\write-operations-invocation-unblock-plan.ps1',
+          reason: 'The invocation report still has blocked actions.',
+        },
+      ],
+      decisionRule: 'Operations readiness convergence is ready only when handoff, readiness, and finalizer reports are ready.',
+      safetyPolicy: 'This convergence writer does not execute kubectl, gh, workflow dispatch, or finalizer commands; it only reads local reports and writes JSON/Markdown guidance.',
+    },
+    generatedAt: new Date().toISOString(),
+  }
+}
+
+function storageExpansionSummary() {
+  return {
+    requestCount: 0,
+    openRequestCount: 0,
+    plannedRequestCount: 0,
+    approvedRequestCount: 0,
+    appliedRequestCount: 0,
+    rejectedRequestCount: 0,
+    totalRequestedCapacityBytes: 0,
+    openRequestedCapacityBytes: 0,
+    totalEstimatedUsableCapacityBytes: 0,
+    openEstimatedUsableCapacityBytes: 0,
+    executionCount: 0,
+    successExecutionCount: 0,
+    failedExecutionCount: 0,
+    skippedExecutionCount: 0,
+    timedOutExecutionCount: 0,
+    recentExecutions: [],
+  }
+}
+
+function storageProfiles() {
+  return [
+    {
+      code: 'PERFORMANCE',
+      name: 'Performance',
+      alias: 'RAID0-like',
+      strategy: 'Speed first, shard across performance pool',
+      riskLevel: 'HIGH',
+      minioStorageClassHint: 'PERFORMANCE',
+      parityHint: 'Lowest allowed parity or dedicated low-parity pool',
+      poolSelector: 'osmu.storage-profile=performance',
+      description: 'Large sequential writes and temporary media processing.',
+      useCase: 'Video ingest, render cache, temporary processing',
+    },
+    {
+      code: 'STANDARD',
+      name: 'Standard',
+      alias: 'Erasure Coding',
+      strategy: 'Balanced throughput and durability',
+      riskLevel: 'MEDIUM',
+      minioStorageClassHint: 'STANDARD',
+      parityHint: 'Default erasure coding parity',
+      poolSelector: 'osmu.storage-profile=standard',
+      description: 'General object storage profile.',
+      useCase: 'Team files, service assets, normal app data',
+    },
+    {
+      code: 'DURABLE',
+      name: 'Durable',
+      alias: 'High Parity',
+      strategy: 'Durability first, higher parity and stricter pool',
+      riskLevel: 'LOW',
+      minioStorageClassHint: 'DURABLE',
+      parityHint: 'Higher parity or dedicated high-durability pool',
+      poolSelector: 'osmu.storage-profile=durable',
+      description: 'Important originals and backup objects.',
+      useCase: 'Backups, source media, legal/archive data',
+    },
+  ]
+}
+
+function storageProfileByCode(code) {
+  return storageProfiles().find((profile) => profile.code === String(code || '').toUpperCase()) || storageProfiles()[1]
+}
+
+function storageProfileAssignmentFor(bucketName) {
+  return state.storageProfileAssignments.get(bucketName) || {
+    bucketName,
+    profile: storageProfileByCode('STANDARD'),
+    appliedBy: 'system',
+    appliedAt: null,
+    updatedAt: null,
+    defaultProfile: true,
+  }
+}
+
+function latestStorageProfileRequest(bucketName) {
+  return state.storageProfileRequests.find((request) => request.bucketName === bucketName) || null
+}
+
+function createStorageProfileRequest(bucketName, payload = {}) {
+  const requestedProfile = storageProfileByCode(payload.requestedProfile)
+  const currentProfile = storageProfileAssignmentFor(bucketName).profile
+  const now = new Date().toISOString()
+  return {
+    id: state.storageProfileRequestSequence++,
+    bucketName,
+    currentProfile,
+    requestedProfile,
+    status: 'PENDING',
+    reason: payload.reason || '',
+    requestedBy: 'mock-user',
+    approvedBy: null,
+    approvedAt: null,
+    appliedBy: null,
+    appliedAt: null,
+    adminNote: null,
+    createdAt: now,
+    updatedAt: now,
+  }
+}
+
+function findStorageProfileRequest(id) {
+  return state.storageProfileRequests.find((request) => request.id === id) || null
+}
+
+function shareAnalytics() {
+  return {
+    activeLinks: 0,
+    expiredLinks: 0,
+    revokedLinks: 0,
+    limitReachedLinks: 0,
+    passwordProtectedLinks: 0,
+    ipRestrictedLinks: 0,
+    totalDownloads: 0,
+    recentLinks: [],
+  }
+}
+
+function defaultWidgetCatalog() {
+  return [
+    'capacity', 'remaining', 'buckets', 'objects', 'health', 'runtime', 'readiness', 'backup', 'io',
+    'requests', 'sharing', 'quota', 'access-keys', 'identity', 'lifecycle', 'selected', 'retention',
+    'execution-retention', 'storage-expansion',
+  ].map((id) => ({
+    id,
+    title: id,
+    description: `Mock ${id} widget`,
+    category: id === 'requests' ? 'AUDIT' : 'OPERATIONS',
+    adminOnly: ['requests', 'sharing', 'quota', 'identity', 'lifecycle', 'retention', 'execution-retention', 'storage-expansion'].includes(id),
+    configOptions: [{ key: 'tone', label: 'Tone', type: 'select', values: ['default', 'focus', 'muted'], defaultValue: 'default' }],
+  }))
+}
+
+function defaultLayout() {
+  return {
+    schemaVersion: 'osmu.dashboard-layout.v1',
+    source: 'DEFAULT',
+    widgets: [
+      { id: 'capacity', enabled: true, size: 'normal', section: 'overview' },
+      { id: 'health', enabled: true, size: 'normal', section: 'overview' },
+      { id: 'runtime', enabled: true, size: 'normal', section: 'overview' },
+      { id: 'readiness', enabled: true, size: 'normal', section: 'overview' },
+      { id: 'storage-expansion', enabled: true, size: 'normal', section: 'operations' },
+      { id: 'selected', enabled: true, size: 'normal', section: 'overview' },
+    ],
+    sections: [
+      { id: 'overview', collapsed: false },
+      { id: 'operations', collapsed: false },
+      { id: 'governance', collapsed: false },
+    ],
+  }
+}
+
+function defaultPresets() {
+  return [
+    { id: 'mock-ops', name: 'Mock Operations', description: 'Mock demo preset', custom: false, ...defaultLayout() },
+  ]
+}
+
+function findBucket(bucketName) {
+  return state.buckets.find((bucket) => bucket.name === bucketName) || null
+}
+
+function objectsFor(bucketName) {
+  if (!state.objects.has(bucketName)) {
+    state.objects.set(bucketName, [])
+  }
+  return state.objects.get(bucketName)
+}
+
+function isObjectDataPath(suffix) {
+  if (!suffix.startsWith('/objects/')) {
+    return false
+  }
+  return ![
+    '/objects/metadata/',
+    '/objects/versions/',
+    '/objects/share-links',
+    '/objects/presigned-',
+    '/objects/multipart-upload',
+    '/objects/tags',
+  ].some((prefix) => suffix.startsWith(prefix))
+}
+
+function refreshBucketUsage() {
+  for (const bucket of state.buckets) {
+    const objects = objectsFor(bucket.name)
+    bucket.objectCount = objects.length
+    bucket.usedBytes = objects.reduce((sum, item) => sum + Number(item.sizeBytes || 0), 0)
+  }
+}
+
+function parseMultipartUpload(buffer, contentType) {
+  const boundaryMatch = /boundary=(?:"([^"]+)"|([^;]+))/i.exec(contentType)
+  if (!boundaryMatch) {
+    return {}
+  }
+  const text = buffer.toString('utf8')
+  const bodyBoundary = /^--([^\r\n]+)/.exec(text)?.[1]
+  const boundary = bodyBoundary || boundaryMatch[1] || boundaryMatch[2]
+  const parts = multipartParts(text, boundary)
+  return {
+    key: parts.key?.body || '',
+    tags: parts.tags?.body || '',
+    fileName: parts.file?.fileName || '',
+    content: parts.file?.body || '',
+  }
+}
+
+function multipartParts(text, boundary) {
+  const parts = {}
+  for (const rawPart of text.split(`--${boundary}`)) {
+    const trimmed = rawPart.replace(/^\r?\n/, '').replace(/\r?\n$/, '')
+    if (!trimmed || trimmed === '--') {
+      continue
+    }
+    const separator = trimmed.search(/\r?\n\r?\n/)
+    if (separator < 0) {
+      continue
+    }
+    const separatorMatch = /\r?\n\r?\n/.exec(trimmed)
+    if (!separatorMatch) {
+      continue
+    }
+    const headerText = trimmed.slice(0, separator)
+    const bodyStart = separatorMatch.index + separatorMatch[0].length
+    const body = trimmed.slice(bodyStart).replace(/\r?\n--$/, '')
+    const name = /name="?([^";\r\n]+)"?/i.exec(headerText)?.[1]
+    if (!name) {
+      continue
+    }
+    parts[name] = {
+      body: body.replace(/\r?\n$/, ''),
+      fileName: /filename="?([^";\r\n]+)"?/i.exec(headerText)?.[1] || '',
+    }
+  }
+  return parts
+}
+
+function parseTags(value = '') {
+  return Object.fromEntries(value.split(',').map((pair) => pair.trim()).filter(Boolean).map((pair) => {
+    const [key, ...rest] = pair.split('=')
+    return [key.trim(), rest.join('=').trim()]
+  }).filter(([key]) => key))
+}
+
+function readBody(request) {
+  return new Promise((resolve, reject) => {
+    const chunks = []
+    request.on('data', (chunk) => chunks.push(chunk))
+    request.on('end', () => resolve(Buffer.concat(chunks)))
+    request.on('error', reject)
+  })
+}
+
+function parseJsonBody(buffer) {
+  if (!buffer.length) return {}
+  try {
+    return JSON.parse(buffer.toString('utf8'))
+  } catch {
+    return {}
+  }
+}
+
+function sendJson(response, status, payload) {
+  setCorsHeaders(response)
+  response.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8' })
+  response.end(JSON.stringify(payload))
+}
+
+function setCorsHeaders(response) {
+  response.setHeader('Access-Control-Allow-Origin', '*')
+  response.setHeader('Access-Control-Allow-Headers', 'Authorization, Content-Type, X-Amz-Date, X-Amz-Content-Sha256')
+  response.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS')
+  response.setHeader('Access-Control-Expose-Headers', 'ETag, X-Request-Id')
+}
+
+function apiData(data) {
+  return { data }
+}
+
+function apiItems(items) {
+  return { items }
+}
+
+function escapeRegExp(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
+async function runSelfTest() {
+  const server = createMockApiServer()
+  await new Promise((resolve) => server.listen(0, DEFAULT_HOST, resolve))
+  const port = server.address().port
+  const base = `http://${DEFAULT_HOST}:${port}/api`
+  try {
+    const health = await (await fetch(`${base}/health`)).json()
+    if (health.data.status !== 'UP') throw new Error('health self-test failed')
+    const login = await (await fetch(`${base}/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ loginId: 'admin', password: 'password' }),
+    })).json()
+    if (!login.data.accessToken || login.data.user.role !== 'ADMIN') throw new Error('admin login self-test failed')
+    const developerLogin = await (await fetch(`${base}/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ loginId: 'developer', password: 'password' }),
+    })).json()
+    if (!developerLogin.data.accessToken || developerLogin.data.user.role !== 'USER') throw new Error('developer login self-test failed')
+    const developerProfile = await (await fetch(`${base}/users/me`, {
+      headers: { Authorization: `Bearer ${developerLogin.data.accessToken}` },
+    })).json()
+    if (developerProfile.data.loginId !== 'developer') throw new Error('developer profile self-test failed')
+    const readiness = await (await fetch(`${base}/admin/dashboard/readiness`, {
+      headers: { Authorization: `Bearer ${login.data.accessToken}` },
+    })).json()
+    if (readiness.data.operationsReadinessConvergence?.result !== 'action-required') {
+      throw new Error('readiness convergence self-test failed')
+    }
+    if (!readiness.data.items.some((item) => item.code === 'OPERATIONS_READINESS_CONVERGENCE')) {
+      throw new Error('readiness convergence item self-test failed')
+    }
+    const bucket = await (await fetch(`${base}/buckets`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${login.data.accessToken}` },
+      body: JSON.stringify({ name: 'self-test', quotaBytes: BYTES_PER_GIB }),
+    })).json()
+    if (bucket.data.name !== 'self-test') throw new Error('bucket self-test failed')
+    const reset = await (await fetch(`${base}/mock/reset`, { method: 'POST' })).json()
+    if (!reset.data.reset || reset.data.bucketCount !== 2 || reset.data.objectCount !== 3) throw new Error('mock reset self-test failed')
+    const bucketsAfterReset = await (await fetch(`${base}/buckets`)).json()
+    if (bucketsAfterReset.items.some((item) => item.name === 'self-test')) throw new Error('mock reset did not remove self-test bucket')
+    console.log('OSMU frontend mock API self-test passed.')
+  } finally {
+    server.close()
+  }
+}
+
+function parseArgs(argv) {
+  const args = { host: DEFAULT_HOST, port: DEFAULT_PORT, selfTest: false }
+  for (let index = 0; index < argv.length; index += 1) {
+    const arg = argv[index]
+    if (arg === '--self-test') args.selfTest = true
+    if (arg === '--host') args.host = argv[++index] || args.host
+    if (arg === '--port') args.port = Number(argv[++index] || args.port)
+  }
+  return args
+}
+
+const args = parseArgs(process.argv.slice(2))
+if (args.selfTest) {
+  await runSelfTest()
+} else {
+  const server = createMockApiServer()
+  server.listen(args.port, args.host, () => {
+    console.log(`OSMU frontend mock API listening on http://${args.host}:${args.port}/api`)
+    console.log('Mock admin login: admin / password')
+    console.log('Mock developer login: developer / password')
+  })
+}

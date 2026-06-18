@@ -1,0 +1,351 @@
+<template>
+  <section id="admin-workbench" class="management-grid lower">
+    <AccessKeyPanel
+      id="admin-access-keys"
+      :access-key-form="accessKeyForm"
+      :buckets="buckets"
+      :is-logged-in="isLoggedIn"
+      :new-secret-key="newSecretKey"
+      :access-keys="accessKeys"
+      :format-key-scope="formatKeyScope"
+      @create-access-key="$emit('create-access-key')"
+      @add-access-key-scope="$emit('add-access-key-scope')"
+      @remove-access-key-scope="$emit('remove-access-key-scope', $event)"
+      @rotate-access-key="$emit('rotate-access-key', $event)"
+      @delete-access-key="$emit('delete-access-key', $event)"
+      @bulk-disable-access-keys="$emit('bulk-disable-access-keys', $event)"
+    />
+
+    <article v-if="isLoggedIn && !selectedBucket" class="panel empty-state-panel" data-testid="admin-bucket-empty-state">
+      <div class="panel-head">
+        <div>
+          <p class="eyebrow">Bucket Context</p>
+          <h3>버킷 선택 필요</h3>
+        </div>
+      </div>
+      <div class="empty-state-body">
+        <strong>버킷 권한, lifecycle XML, tag 설정은 선택된 버킷 기준으로 동작합니다.</strong>
+        <small>Storage 페이지에서 버킷을 선택한 뒤 Admin 페이지로 돌아오세요.</small>
+      </div>
+    </article>
+
+    <article v-if="!isAdmin" class="panel empty-state-panel" data-testid="admin-role-empty-state">
+      <div class="panel-head">
+        <div>
+          <p class="eyebrow">Admin Controls</p>
+          <h3>관리자 기능 제한</h3>
+        </div>
+      </div>
+      <div class="empty-state-body">
+        <strong>{{ isLoggedIn ? '일부 정책/쿼터/감사 기능은 ADMIN 권한이 필요합니다.' : '로그인 후 사용 가능한 관리 기능이 표시됩니다.' }}</strong>
+        <small>일반 사용자는 S3 Access Key와 허용된 버킷 작업만 사용할 수 있습니다.</small>
+      </div>
+    </article>
+
+    <BucketPermissionsPanel
+      id="admin-bucket-permissions"
+      :is-logged-in="isLoggedIn"
+      :selected-bucket="selectedBucket"
+      :can-show-bucket-permissions="canShowBucketPermissions"
+      :bucket-permission-form="bucketPermissionForm"
+      :users="users"
+      :organizations="organizations"
+      :bucket-permissions="bucketPermissions"
+      @grant-bucket-permissions="$emit('grant-bucket-permissions')"
+      @revoke-bucket-permission="$emit('revoke-bucket-permission', $event)"
+    />
+
+    <BucketMetadataPanel
+      id="admin-bucket-metadata"
+      :is-logged-in="isLoggedIn"
+      :selected-bucket="selectedBucket"
+      :can-use-bucket-lifecycle="canUseBucketLifecycle"
+      :bucket-lifecycle-xml="bucketLifecycleXml"
+      :can-use-bucket-tags="canUseBucketTags"
+      :bucket-tags="bucketTags"
+      @load-bucket-lifecycle-xml="$emit('load-bucket-lifecycle-xml')"
+      @put-bucket-lifecycle-xml="$emit('put-bucket-lifecycle-xml')"
+      @delete-bucket-lifecycle-xml="$emit('delete-bucket-lifecycle-xml')"
+      @load-bucket-tags="$emit('load-bucket-tags')"
+      @put-bucket-tags="$emit('put-bucket-tags')"
+      @delete-bucket-tags="$emit('delete-bucket-tags')"
+    />
+
+    <ObjectSharePanel
+      id="admin-object-share"
+      :is-admin="isAdmin"
+      :object-share-policy-form="objectSharePolicyForm"
+      :object-share-analytics="objectShareAnalytics"
+      :object-share-analytics-filter="objectShareAnalyticsFilter"
+      :format-date-time="formatDateTime"
+      @save-object-share-policy="$emit('save-object-share-policy')"
+      @refresh-object-share-analytics="$emit('refresh-object-share-analytics')"
+    />
+
+    <QuotaPolicyPanel
+      id="admin-quota-policies"
+      :is-admin="isAdmin"
+      :quota-policy-form="quotaPolicyForm"
+      :quota-policy-target-options="quotaPolicyTargetOptions"
+      :quota-policies="quotaPolicies"
+      :quota-policy-history="quotaPolicyHistory"
+      :format-bytes="formatBytes"
+      @save-quota-policy="$emit('save-quota-policy')"
+      @reset-quota-policy-target="$emit('reset-quota-policy-target')"
+      @reset-quota-policy-form="$emit('reset-quota-policy-form')"
+      @edit-quota-policy="$emit('edit-quota-policy', $event)"
+      @delete-quota-policy="$emit('delete-quota-policy', $event)"
+    />
+
+    <article v-if="isAdmin" id="admin-storage-profiles" class="panel" data-testid="admin-storage-profile-panel">
+      <div class="panel-head">
+        <div>
+          <p class="eyebrow">Storage Profiles</p>
+          <h3>Profile approval queue</h3>
+        </div>
+        <span class="bucket-label">{{ storageProfileRequests.length }} requests</span>
+      </div>
+
+      <form class="inline-form" @submit.prevent>
+        <input
+          data-testid="storage-profile-admin-note-input"
+          :value="storageProfileAdminNote"
+          placeholder="Admin note"
+          @input="$emit('update-storage-profile-admin-note', $event.target.value)"
+        />
+      </form>
+
+      <div class="table-wrap">
+        <table data-testid="admin-storage-profile-request-table">
+          <thead>
+            <tr>
+              <th>Bucket</th>
+              <th>Current</th>
+              <th>Requested</th>
+              <th>Status</th>
+              <th>Actor</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="request in storageProfileRequests" :key="request.id">
+              <td>
+                <strong>{{ request.bucketName }}</strong>
+                <small>{{ request.reason || '-' }}</small>
+              </td>
+              <td>{{ request.currentProfile?.name || request.currentProfile?.code }}</td>
+              <td>
+                <strong>{{ request.requestedProfile?.name || request.requestedProfile?.code }}</strong>
+                <small>{{ request.requestedProfile?.alias }} / {{ request.requestedProfile?.riskLevel }}</small>
+              </td>
+              <td><strong :class="['status-pill', statusClass(request.status)]">{{ request.status }}</strong></td>
+              <td>{{ request.requestedBy }}</td>
+              <td class="actions">
+                <button type="button" class="ghost" :disabled="request.status !== 'PENDING'" @click="$emit('update-storage-profile-request-status', { request, status: 'APPROVED' })">
+                  Approve
+                </button>
+                <button type="button" class="danger" :disabled="request.status !== 'PENDING'" @click="$emit('update-storage-profile-request-status', { request, status: 'REJECTED' })">
+                  Reject
+                </button>
+                <button type="button" :disabled="request.status !== 'APPROVED'" @click="$emit('apply-storage-profile-request', request)">
+                  Apply
+                </button>
+              </td>
+            </tr>
+            <tr v-if="storageProfileRequests.length === 0">
+              <td colspan="6" class="empty">No storage profile requests.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </article>
+
+    <StorageExpansionPanel
+      id="admin-storage-expansion"
+      :is-admin="isAdmin"
+      :storage-expansion-form="storageExpansionForm"
+      :storage-expansion-requests="storageExpansionRequests"
+      :storage-expansion-manifest="storageExpansionManifest"
+      :storage-expansion-execution-plan="storageExpansionExecutionPlan"
+      :storage-expansion-git-ops-plan="storageExpansionGitOpsPlan"
+      :storage-expansion-executions="storageExpansionExecutions"
+      :storage-expansion-execution-form="storageExpansionExecutionForm"
+      :storage-expansion-apply-evidence="storageExpansionApplyEvidence"
+      :storage-expansion-runner-preflight="storageExpansionRunnerPreflight"
+      :format-bytes="formatBytes"
+      :format-date-time="formatDateTime"
+      @create-storage-expansion-request="$emit('create-storage-expansion-request')"
+      @preview-storage-expansion-manifest="$emit('preview-storage-expansion-manifest', $event)"
+      @download-storage-expansion-manifest="$emit('download-storage-expansion-manifest', $event)"
+      @download-storage-expansion-gitops-bundle="$emit('download-storage-expansion-gitops-bundle')"
+      @create-storage-expansion-execution-plan="$emit('create-storage-expansion-execution-plan', $event)"
+      @record-storage-expansion-dry-run-execution="$emit('record-storage-expansion-dry-run-execution')"
+      @run-storage-expansion-dry-run-execution="$emit('run-storage-expansion-dry-run-execution')"
+      @run-storage-expansion-apply-execution="$emit('run-storage-expansion-apply-execution')"
+      @run-storage-expansion-rollback-execution="$emit('run-storage-expansion-rollback-execution')"
+      @create-storage-expansion-gitops-plan="$emit('create-storage-expansion-gitops-plan', $event)"
+      @run-storage-expansion-gitops-pr-execution="$emit('run-storage-expansion-gitops-pr-execution')"
+      @record-storage-expansion-gitops-pr-execution="$emit('record-storage-expansion-gitops-pr-execution')"
+      @load-storage-expansion-executions="$emit('load-storage-expansion-executions', $event)"
+      @create-storage-expansion-execution-record="$emit('create-storage-expansion-execution-record')"
+      @apply-storage-expansion-from-execution="$emit('apply-storage-expansion-from-execution', $event)"
+      @update-storage-expansion-apply-evidence="$emit('update-storage-expansion-apply-evidence', $event)"
+      @refresh-storage-expansion-runner-preflight="$emit('refresh-storage-expansion-runner-preflight')"
+      @update-storage-expansion-status="$emit('update-storage-expansion-status', $event)"
+    />
+
+    <LifecycleRulesPanel
+      id="admin-lifecycle-rules"
+      :is-admin="isAdmin"
+      :lifecycle-rule-form="lifecycleRuleForm"
+      :lifecycle-rules="lifecycleRules"
+      :lifecycle-rule-preview="lifecycleRulePreview"
+      :lifecycle-rule-conflicts="lifecycleRuleConflicts"
+      :lifecycle-xml="lifecycleXml"
+      :format-bytes="formatBytes"
+      @reset-lifecycle-rule-form="$emit('reset-lifecycle-rule-form')"
+      @save-object-lifecycle-rule="$emit('save-object-lifecycle-rule')"
+      @dry-run-object-lifecycle-rule="$emit('dry-run-object-lifecycle-rule', $event)"
+      @edit-lifecycle-rule="$emit('edit-lifecycle-rule', $event)"
+      @delete-object-lifecycle-rule="$emit('delete-object-lifecycle-rule', $event)"
+      @refresh-lifecycle-rule-conflicts="$emit('refresh-lifecycle-rule-conflicts')"
+      @export-lifecycle-xml="$emit('export-lifecycle-xml')"
+      @import-lifecycle-xml="$emit('import-lifecycle-xml')"
+    />
+
+    <IdentityAdminPanel
+      id="admin-identity"
+      :can-use-admin-tools="canUseAdminTools"
+      :organization-form="organizationForm"
+      :organization-usages="organizationUsages"
+      :user-form="userForm"
+      :users="users"
+      :organizations="organizations"
+      :is-logged-in="isLoggedIn"
+      :is-admin="isAdmin"
+      :session="session"
+      :format-bytes="formatBytes"
+      @create-organization="$emit('create-organization')"
+      @create-user="$emit('create-user')"
+      @toggle-user-status="$emit('toggle-user-status', $event)"
+    />
+  </section>
+</template>
+
+<script setup>
+import AccessKeyPanel from './AccessKeyPanel.vue'
+import BucketMetadataPanel from './BucketMetadataPanel.vue'
+import BucketPermissionsPanel from './BucketPermissionsPanel.vue'
+import IdentityAdminPanel from './IdentityAdminPanel.vue'
+import LifecycleRulesPanel from './LifecycleRulesPanel.vue'
+import ObjectSharePanel from './ObjectSharePanel.vue'
+import QuotaPolicyPanel from './QuotaPolicyPanel.vue'
+import StorageExpansionPanel from './StorageExpansionPanel.vue'
+
+defineProps({
+  accessKeyForm: { type: Object, required: true },
+  buckets: { type: Array, required: true },
+  isLoggedIn: { type: Boolean, required: true },
+  newSecretKey: { type: String, required: true },
+  accessKeys: { type: Array, required: true },
+  selectedBucket: { type: String, required: true },
+  canShowBucketPermissions: { type: Boolean, required: true },
+  bucketPermissionForm: { type: Object, required: true },
+  users: { type: Array, required: true },
+  organizations: { type: Array, required: true },
+  bucketPermissions: { type: Array, required: true },
+  canUseBucketLifecycle: { type: Boolean, required: true },
+  bucketLifecycleXml: { type: Object, required: true },
+  canUseBucketTags: { type: Boolean, required: true },
+  bucketTags: { type: Object, required: true },
+  isAdmin: { type: Boolean, required: true },
+  objectSharePolicyForm: { type: Object, required: true },
+  objectShareAnalytics: { type: Object, required: true },
+  objectShareAnalyticsFilter: { type: Object, required: true },
+  quotaPolicyForm: { type: Object, required: true },
+  quotaPolicyTargetOptions: { type: Array, required: true },
+  quotaPolicies: { type: Array, required: true },
+  quotaPolicyHistory: { type: Array, required: true },
+  storageExpansionForm: { type: Object, required: true },
+  storageExpansionRequests: { type: Array, required: true },
+  storageExpansionManifest: { type: Object, default: null },
+  storageExpansionExecutionPlan: { type: Object, default: null },
+  storageExpansionGitOpsPlan: { type: Object, default: null },
+  storageExpansionExecutions: { type: Array, required: true },
+  storageExpansionExecutionForm: { type: Object, required: true },
+  storageExpansionApplyEvidence: { type: String, required: true },
+  storageExpansionRunnerPreflight: { type: Object, required: true },
+  storageProfileRequests: { type: Array, required: true },
+  storageProfileAdminNote: { type: String, required: true },
+  lifecycleRuleForm: { type: Object, required: true },
+  lifecycleRules: { type: Array, required: true },
+  lifecycleRulePreview: { type: Object, required: true },
+  lifecycleRuleConflicts: { type: Object, required: true },
+  lifecycleXml: { type: Object, required: true },
+  canUseAdminTools: { type: Boolean, required: true },
+  organizationForm: { type: Object, required: true },
+  organizationUsages: { type: Array, required: true },
+  userForm: { type: Object, required: true },
+  session: { type: Object, required: true },
+  formatKeyScope: { type: Function, required: true },
+  formatDateTime: { type: Function, required: true },
+  formatBytes: { type: Function, required: true },
+  statusClass: { type: Function, required: true },
+})
+
+defineEmits([
+  'create-access-key',
+  'add-access-key-scope',
+  'remove-access-key-scope',
+  'rotate-access-key',
+  'delete-access-key',
+  'bulk-disable-access-keys',
+  'grant-bucket-permissions',
+  'revoke-bucket-permission',
+  'load-bucket-lifecycle-xml',
+  'put-bucket-lifecycle-xml',
+  'delete-bucket-lifecycle-xml',
+  'load-bucket-tags',
+  'put-bucket-tags',
+  'delete-bucket-tags',
+  'save-object-share-policy',
+  'refresh-object-share-analytics',
+  'save-quota-policy',
+  'reset-quota-policy-target',
+  'reset-quota-policy-form',
+  'edit-quota-policy',
+  'delete-quota-policy',
+  'create-storage-expansion-request',
+  'preview-storage-expansion-manifest',
+  'download-storage-expansion-manifest',
+  'download-storage-expansion-gitops-bundle',
+  'create-storage-expansion-execution-plan',
+  'record-storage-expansion-dry-run-execution',
+  'run-storage-expansion-dry-run-execution',
+  'run-storage-expansion-apply-execution',
+  'run-storage-expansion-rollback-execution',
+  'create-storage-expansion-gitops-plan',
+  'run-storage-expansion-gitops-pr-execution',
+  'record-storage-expansion-gitops-pr-execution',
+  'load-storage-expansion-executions',
+  'create-storage-expansion-execution-record',
+  'apply-storage-expansion-from-execution',
+  'update-storage-expansion-apply-evidence',
+  'refresh-storage-expansion-runner-preflight',
+  'update-storage-expansion-status',
+  'update-storage-profile-admin-note',
+  'update-storage-profile-request-status',
+  'apply-storage-profile-request',
+  'reset-lifecycle-rule-form',
+  'save-object-lifecycle-rule',
+  'dry-run-object-lifecycle-rule',
+  'edit-lifecycle-rule',
+  'delete-object-lifecycle-rule',
+  'refresh-lifecycle-rule-conflicts',
+  'export-lifecycle-xml',
+  'import-lifecycle-xml',
+  'create-organization',
+  'create-user',
+  'toggle-user-status',
+])
+</script>

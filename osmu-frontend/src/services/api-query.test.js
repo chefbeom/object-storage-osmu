@@ -3,20 +3,307 @@ import test from 'node:test'
 import {
   clearAuthTokens,
   cleanupObjectShareLinks,
+  applyDashboardLayoutPreset,
   createObjectShareLink,
+  createDashboardLayoutPreset,
   createPresignedUploadUrl,
+  deleteDashboardLayout,
+  deleteDashboardLayoutDefault,
+  deleteDashboardLayoutPreset,
   deleteObjectShareLink,
   downloadAuditLogsCsv,
+  exportDashboardLayoutPreset,
+  exportDashboardLayoutPresetBundle,
   getAuditLogs,
+  getBackupRestoreDrillEvidence,
   getBuckets,
+  getDashboardLayout,
+  getDashboardLayoutDefaults,
+  getDashboardLayoutPresets,
+  getDashboardReadiness,
+  getDashboardSummary,
+  getDashboardWidgetCatalog,
+  getDataFlowMonitoring,
   getObjectMetadata,
   getObjectShareAnalytics,
   getObjectSharePolicy,
   getObjectShareLinks,
   getObjects,
+  getS3ClientConfig,
+  importDashboardLayoutPreset,
+  importDashboardLayoutPresetBundle,
+  saveDashboardLayout,
+  saveDashboardLayoutDefault,
   saveObjectSharePolicy,
+  updateDashboardLayoutPreset,
   updateObjectTags,
 } from './api.js'
+
+test('getDashboardSummary reads admin dashboard aggregate endpoint', async () => {
+  const fetchMock = mockFetch([
+    () => jsonResponse({
+      data: {
+        usage: { totalQuotaBytes: 1024, usedBytes: 256 },
+        system: { backend: 'UP', storage: 'UP', database: 'UP' },
+        recentAuditLogs: { items: [], nextCursor: null },
+      },
+    }),
+  ])
+
+  try {
+    const result = await getDashboardSummary()
+
+    assert.equal(fetchMock.calls[0].url, 'http://localhost:8080/api/admin/dashboard/summary')
+    assert.equal(fetchMock.calls[0].options.method, undefined)
+    assert.equal(result.data.usage.usedBytes, 256)
+  } finally {
+    cleanupFetch(fetchMock)
+  }
+})
+
+test('getDashboardReadiness reads focused readiness endpoint', async () => {
+  const fetchMock = mockFetch([
+    () => jsonResponse({
+      data: {
+        status: 'REVIEW',
+        generatedAt: '2026-06-15T01:00:00Z',
+        severitySummaries: [{ severity: 'WARNING', totalCount: 1 }],
+        categorySummaries: [{ category: 'STORAGE', totalCount: 1, blockerCount: 0, warningCount: 1 }],
+        items: [{ category: 'STORAGE', code: 'NO_BUCKET', targetPanel: 'storage-buckets' }],
+      },
+    }),
+  ])
+
+  try {
+    const result = await getDashboardReadiness()
+
+    assert.equal(fetchMock.calls[0].url, 'http://localhost:8080/api/admin/dashboard/readiness')
+    assert.equal(fetchMock.calls[0].options.method, undefined)
+    assert.equal(result.data.generatedAt, '2026-06-15T01:00:00Z')
+    assert.equal(result.data.severitySummaries[0].severity, 'WARNING')
+    assert.equal(result.data.categorySummaries[0].category, 'STORAGE')
+    assert.equal(result.data.items[0].category, 'STORAGE')
+    assert.equal(result.data.items[0].targetPanel, 'storage-buckets')
+  } finally {
+    cleanupFetch(fetchMock)
+  }
+})
+
+test('getDataFlowMonitoring reads admin data flow endpoint', async () => {
+  const fetchMock = mockFetch([
+    () => jsonResponse({
+      data: {
+        traffic: { uploadedBytes: 1024, downloadedBytes: 256 },
+        operations: { uploadCount: 1, downloadCount: 1, failureCount: 0 },
+        topBuckets: [],
+        recentEvents: [],
+      },
+    }),
+  ])
+
+  try {
+    const result = await getDataFlowMonitoring({
+      bucketName: 'media',
+      actorId: 'admin',
+      source: 'rest',
+      operation: 'upload',
+      status: 'SUCCESS',
+      from: '2026-06-18T00:00:00.000Z',
+      to: '2026-06-19T00:00:00.000Z',
+      limit: 25,
+    })
+
+    const url = new URL(fetchMock.calls[0].url)
+    assert.equal(url.origin + url.pathname, 'http://localhost:8080/api/admin/monitoring/data-flow')
+    assert.equal(url.searchParams.get('bucketName'), 'media')
+    assert.equal(url.searchParams.get('actorId'), 'admin')
+    assert.equal(url.searchParams.get('source'), 'rest')
+    assert.equal(url.searchParams.get('operation'), 'upload')
+    assert.equal(url.searchParams.get('status'), 'SUCCESS')
+    assert.equal(url.searchParams.get('from'), '2026-06-18T00:00:00.000Z')
+    assert.equal(url.searchParams.get('to'), '2026-06-19T00:00:00.000Z')
+    assert.equal(url.searchParams.get('limit'), '25')
+    assert.equal(fetchMock.calls[0].options.method, undefined)
+    assert.equal(result.data.traffic.uploadedBytes, 1024)
+  } finally {
+    cleanupFetch(fetchMock)
+  }
+})
+
+test('getBackupRestoreDrillEvidence reads filtered restore drill evidence history', async () => {
+  const fetchMock = mockFetch([
+    () => jsonResponse({
+      items: [
+        {
+          auditLogId: 7,
+          environment: 'kubernetes-drill',
+          result: 'SUCCESS',
+          recordedAt: '2026-06-15T01:00:00Z',
+        },
+      ],
+      nextCursor: null,
+    }),
+  ])
+
+  try {
+    const result = await getBackupRestoreDrillEvidence({ result: 'SUCCESS', limit: 5 })
+
+    assert.equal(fetchMock.calls[0].url, 'http://localhost:8080/api/admin/backup/restore-drill-evidence?result=SUCCESS&limit=5')
+    assert.equal(fetchMock.calls[0].options.method, undefined)
+    assert.equal(result.items[0].environment, 'kubernetes-drill')
+  } finally {
+    cleanupFetch(fetchMock)
+  }
+})
+
+test('dashboard layout wrappers read save and reset current user layout', async () => {
+  const fetchMock = mockFetch([
+    () => jsonResponse({ data: { scope: 'main', source: 'DEFAULT', schemaVersion: 'osmu.dashboard-layout.v1', widgets: [], sections: [{ id: 'overview', collapsed: false }] } }),
+    () => jsonResponse({ data: [{ id: 'compact', name: 'Compact', schemaVersion: 'osmu.dashboard-layout.v1', widgets: [{ id: 'capacity', enabled: true, size: 'normal' }], sections: [{ id: 'overview', collapsed: false }] }] }),
+    () => jsonResponse({ data: [{ targetType: 'ROLE', targetId: 'USER', presetId: 'compact', presetName: 'Compact' }] }),
+    () => jsonResponse({ data: { targetType: 'ROLE', targetId: 'ADMIN', presetId: 'operations', presetName: 'Operations' } }),
+    () => jsonResponse({ data: { id: 'custom-ops', name: 'Ops', custom: true, schemaVersion: 'osmu.dashboard-layout.v1', widgets: [{ id: 'capacity', enabled: true, size: 'wide' }], sections: [{ id: 'operations', collapsed: true }] } }),
+    () => jsonResponse({ data: { id: 'custom-ops', name: 'Ops Updated', custom: true, schemaVersion: 'osmu.dashboard-layout.v1', widgets: [{ id: 'quota', enabled: true, size: 'compact' }], sections: [{ id: 'governance', collapsed: true }] } }),
+    () => jsonResponse({ data: { formatVersion: 'osmu.dashboard-preset.v1', preset: { id: 'custom-ops', name: 'Ops Updated', schemaVersion: 'osmu.dashboard-layout.v1', widgets: [{ id: 'quota', enabled: true, size: 'compact' }], sections: [{ id: 'governance', collapsed: true }] } } }),
+    () => jsonResponse({ data: { id: 'custom-imported', name: 'Ops Imported', custom: true, schemaVersion: 'osmu.dashboard-layout.v1', widgets: [{ id: 'readiness', enabled: true, size: 'wide' }], sections: [{ id: 'operations', collapsed: true }] } }),
+    () => jsonResponse({ data: { formatVersion: 'osmu.dashboard-preset-bundle.v1', presets: [{ id: 'custom-ops', name: 'Ops Updated', custom: true, schemaVersion: 'osmu.dashboard-layout.v1', widgets: [{ id: 'quota', enabled: true, size: 'compact' }], sections: [{ id: 'governance', collapsed: true }] }] } }),
+    () => jsonResponse({ data: { importedCount: 1, presets: [{ id: 'custom-bundle-imported', name: 'Ops Bundle Imported', custom: true, schemaVersion: 'osmu.dashboard-layout.v1', widgets: [{ id: 'health', enabled: true, size: 'normal' }], sections: [{ id: 'overview', collapsed: false }] }] } }),
+    () => jsonResponse({ data: { scope: 'main', source: 'SAVED', schemaVersion: 'osmu.dashboard-layout.v1', widgets: [{ id: 'capacity', enabled: true, size: 'wide' }], sections: [{ id: 'operations', collapsed: true }] } }),
+    () => jsonResponse({ data: { scope: 'main', source: 'SAVED', schemaVersion: 'osmu.dashboard-layout.v1', widgets: [{ id: 'health', enabled: true, size: 'compact' }], sections: [{ id: 'overview', collapsed: false }] } }),
+    () => new Response(null, { status: 204 }),
+    () => new Response(null, { status: 204 }),
+    () => new Response(null, { status: 204 }),
+  ])
+
+  try {
+    const initial = await getDashboardLayout()
+    const presets = await getDashboardLayoutPresets()
+    const defaults = await getDashboardLayoutDefaults()
+    const savedDefault = await saveDashboardLayoutDefault({ targetType: 'ROLE', targetId: 'ADMIN', presetId: 'operations' })
+    const createdPreset = await createDashboardLayoutPreset({ schemaVersion: 'osmu.dashboard-layout.v1', name: 'Ops', description: 'custom', widgets: [{ id: 'capacity', enabled: true, size: 'wide' }], sections: [{ id: 'operations', collapsed: true }] })
+    const updatedPreset = await updateDashboardLayoutPreset('custom-ops', { schemaVersion: 'osmu.dashboard-layout.v1', name: 'Ops Updated', description: 'custom', widgets: [{ id: 'quota', enabled: true, size: 'compact' }], sections: [{ id: 'governance', collapsed: true }] })
+    const exportedPreset = await exportDashboardLayoutPreset('custom-ops')
+    const importedPreset = await importDashboardLayoutPreset({ preset: { name: 'Ops Imported', widgets: [{ id: 'readiness', enabled: true, size: 'wide' }], sections: [{ id: 'operations', collapsed: true }] } })
+    const exportedPresetBundle = await exportDashboardLayoutPresetBundle()
+    const importedPresetBundle = await importDashboardLayoutPresetBundle({ formatVersion: 'osmu.dashboard-preset-bundle.v1', presets: [{ name: 'Ops Bundle Imported', widgets: [{ id: 'health', enabled: true, size: 'normal' }] }] })
+    const saved = await saveDashboardLayout(
+      [{ id: 'capacity', enabled: true, size: 'wide', section: 'overview', options: { tone: 'focus' } }],
+      'main',
+      [{ id: 'operations', collapsed: true }],
+    )
+    const applied = await applyDashboardLayoutPreset('compact')
+    const deletedPreset = await deleteDashboardLayoutPreset('custom-ops')
+    const reset = await deleteDashboardLayout()
+    const deletedDefault = await deleteDashboardLayoutDefault('ROLE', 'ADMIN')
+
+    assert.equal(fetchMock.calls[0].url, 'http://localhost:8080/api/dashboard/layout?scope=main')
+    assert.equal(fetchMock.calls[0].options.method, undefined)
+    assert.equal(initial.data.source, 'DEFAULT')
+    assert.equal(fetchMock.calls[1].url, 'http://localhost:8080/api/dashboard/layout/presets')
+    assert.equal(presets.data[0].id, 'compact')
+    assert.equal(fetchMock.calls[2].url, 'http://localhost:8080/api/dashboard/layout/defaults')
+    assert.equal(fetchMock.calls[2].options.method, undefined)
+    assert.equal(defaults.data[0].targetId, 'USER')
+    assert.equal(fetchMock.calls[3].url, 'http://localhost:8080/api/dashboard/layout/defaults')
+    assert.equal(fetchMock.calls[3].options.method, 'PUT')
+    assert.equal(JSON.parse(fetchMock.calls[3].options.body).presetId, 'operations')
+    assert.equal(savedDefault.data.targetId, 'ADMIN')
+    assert.equal(fetchMock.calls[4].url, 'http://localhost:8080/api/dashboard/layout/presets')
+    assert.equal(fetchMock.calls[4].options.method, 'POST')
+    assert.equal(JSON.parse(fetchMock.calls[4].options.body).name, 'Ops')
+    assert.equal(JSON.parse(fetchMock.calls[4].options.body).schemaVersion, 'osmu.dashboard-layout.v1')
+    assert.equal(JSON.parse(fetchMock.calls[4].options.body).sections[0].id, 'operations')
+    assert.equal(createdPreset.data.custom, true)
+    assert.equal(fetchMock.calls[5].url, 'http://localhost:8080/api/dashboard/layout/presets/custom-ops')
+    assert.equal(fetchMock.calls[5].options.method, 'PATCH')
+    assert.equal(JSON.parse(fetchMock.calls[5].options.body).name, 'Ops Updated')
+    assert.equal(JSON.parse(fetchMock.calls[5].options.body).schemaVersion, 'osmu.dashboard-layout.v1')
+    assert.equal(JSON.parse(fetchMock.calls[5].options.body).sections[0].collapsed, true)
+    assert.equal(updatedPreset.data.widgets[0].id, 'quota')
+    assert.equal(fetchMock.calls[6].url, 'http://localhost:8080/api/dashboard/layout/presets/custom-ops/export')
+    assert.equal(fetchMock.calls[6].options.method, undefined)
+    assert.equal(exportedPreset.data.formatVersion, 'osmu.dashboard-preset.v1')
+    assert.equal(fetchMock.calls[7].url, 'http://localhost:8080/api/dashboard/layout/presets/import')
+    assert.equal(fetchMock.calls[7].options.method, 'POST')
+    assert.equal(JSON.parse(fetchMock.calls[7].options.body).preset.name, 'Ops Imported')
+    assert.equal(JSON.parse(fetchMock.calls[7].options.body).preset.sections[0].id, 'operations')
+    assert.equal(importedPreset.data.id, 'custom-imported')
+    assert.equal(fetchMock.calls[8].url, 'http://localhost:8080/api/dashboard/layout/preset-bundle/export')
+    assert.equal(fetchMock.calls[8].options.method, undefined)
+    assert.equal(exportedPresetBundle.data.formatVersion, 'osmu.dashboard-preset-bundle.v1')
+    assert.equal(fetchMock.calls[9].url, 'http://localhost:8080/api/dashboard/layout/preset-bundle/import')
+    assert.equal(fetchMock.calls[9].options.method, 'POST')
+    assert.equal(JSON.parse(fetchMock.calls[9].options.body).formatVersion, 'osmu.dashboard-preset-bundle.v1')
+    assert.equal(JSON.parse(fetchMock.calls[9].options.body).presets[0].name, 'Ops Bundle Imported')
+    assert.equal(importedPresetBundle.data.importedCount, 1)
+    assert.equal(fetchMock.calls[10].url, 'http://localhost:8080/api/dashboard/layout?scope=main')
+    assert.equal(fetchMock.calls[10].options.method, 'PUT')
+    assert.deepEqual(JSON.parse(fetchMock.calls[10].options.body), {
+      widgets: [{ id: 'capacity', enabled: true, size: 'wide', section: 'overview', options: { tone: 'focus' } }],
+      sections: [{ id: 'operations', collapsed: true }],
+      schemaVersion: 'osmu.dashboard-layout.v1',
+    })
+    assert.equal(saved.data.widgets[0].id, 'capacity')
+    assert.equal(saved.data.widgets[0].size, 'wide')
+    assert.equal(fetchMock.calls[11].url, 'http://localhost:8080/api/dashboard/layout/presets/compact?scope=main')
+    assert.equal(fetchMock.calls[11].options.method, 'PUT')
+    assert.equal(applied.data.widgets[0].id, 'health')
+    assert.equal(fetchMock.calls[12].url, 'http://localhost:8080/api/dashboard/layout/presets/custom-ops')
+    assert.equal(fetchMock.calls[12].options.method, 'DELETE')
+    assert.equal(deletedPreset, null)
+    assert.equal(fetchMock.calls[13].options.method, 'DELETE')
+    assert.equal(reset, null)
+    assert.equal(fetchMock.calls[14].url, 'http://localhost:8080/api/dashboard/layout/defaults/ROLE/ADMIN')
+    assert.equal(fetchMock.calls[14].options.method, 'DELETE')
+    assert.equal(deletedDefault, null)
+  } finally {
+    cleanupFetch(fetchMock)
+  }
+})
+
+test('getDashboardWidgetCatalog reads dashboard palette metadata endpoint', async () => {
+  const fetchMock = mockFetch([
+    () => jsonResponse({
+      data: [
+        { id: 'access-keys', title: 'Access Key 운영', category: 'SECURITY', adminOnly: false },
+      ],
+    }),
+  ])
+
+  try {
+    const result = await getDashboardWidgetCatalog()
+
+    assert.equal(fetchMock.calls[0].url, 'http://localhost:8080/api/dashboard/layout/widgets')
+    assert.equal(fetchMock.calls[0].options.method, undefined)
+    assert.equal(result.data[0].id, 'access-keys')
+  } finally {
+    cleanupFetch(fetchMock)
+  }
+})
+
+test('getS3ClientConfig reads developer S3 client settings endpoint', async () => {
+  const fetchMock = mockFetch([
+    () => jsonResponse({
+      data: {
+        endpoint: 'https://storage.example.com/api/s3',
+        region: 'ap-northeast-2',
+        signatureVersion: 'AWS4-HMAC-SHA256',
+        service: 's3',
+      },
+    }),
+  ])
+
+  try {
+    const result = await getS3ClientConfig()
+
+    assert.equal(fetchMock.calls[0].url, 'http://localhost:8080/api/developer/s3-client-config')
+    assert.equal(fetchMock.calls[0].options.method, undefined)
+    assert.equal(result.data.endpoint, 'https://storage.example.com/api/s3')
+    assert.equal(result.data.region, 'ap-northeast-2')
+  } finally {
+    cleanupFetch(fetchMock)
+  }
+})
 
 test('getAuditLogs sends all audit filters as query parameters', async () => {
   const fetchMock = mockFetch([

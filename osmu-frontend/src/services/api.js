@@ -334,6 +334,10 @@ export function getCurrentUser() {
   return request('/users/me')
 }
 
+export function getS3ClientConfig() {
+  return request('/developer/s3-client-config')
+}
+
 export function getBuckets() {
   return request('/buckets')
 }
@@ -425,6 +429,25 @@ export function grantBucketPermissions(bucketName, payload) {
 export function revokeBucketPermission(bucketName, permissionId) {
   return request(`/buckets/${encodeURIComponent(bucketName)}/permissions/${encodeURIComponent(permissionId)}`, {
     method: 'DELETE',
+  })
+}
+
+export function getStorageProfiles() {
+  return request('/storage-profiles')
+}
+
+export function getStorageProfileRequests() {
+  return request('/storage-profile-requests')
+}
+
+export function getBucketStorageProfile(bucketName) {
+  return request(`/buckets/${encodeURIComponent(bucketName)}/storage-profile`)
+}
+
+export function createStorageProfileRequest(bucketName, payload) {
+  return request(`/buckets/${encodeURIComponent(bucketName)}/storage-profile-requests`, {
+    method: 'POST',
+    body: payload,
   })
 }
 
@@ -1048,6 +1071,131 @@ export function deleteAccessKey(keyId) {
   })
 }
 
+export function bulkDisableAccessKeys(keyIds) {
+  return request('/access-keys/bulk-disable', {
+    method: 'POST',
+    body: { keyIds },
+  })
+}
+
+export function rotateAccessKey(keyId) {
+  return request(`/access-keys/${encodeURIComponent(keyId)}/rotate`, {
+    method: 'POST',
+  })
+}
+
+export function getDashboardSummary() {
+  return request('/admin/dashboard/summary')
+}
+
+export function getDashboardReadiness() {
+  return request('/admin/dashboard/readiness')
+}
+
+export function getDataFlowMonitoring(filters = {}) {
+  const query = new URLSearchParams()
+  appendQuery(query, 'bucketName', filters.bucketName)
+  appendQuery(query, 'actorId', filters.actorId)
+  appendQuery(query, 'source', filters.source)
+  appendQuery(query, 'operation', filters.operation)
+  appendQuery(query, 'status', filters.status)
+  appendQuery(query, 'from', filters.from)
+  appendQuery(query, 'to', filters.to)
+  appendQuery(query, 'limit', filters.limit)
+  const suffix = query.toString() ? `?${query.toString()}` : ''
+  return request(`/admin/monitoring/data-flow${suffix}`)
+}
+
+export function getDashboardLayout(scope = 'main') {
+  return request(`/dashboard/layout?scope=${encodeURIComponent(scope)}`)
+}
+
+export function getDashboardLayoutPresets() {
+  return request('/dashboard/layout/presets')
+}
+
+export function getDashboardWidgetCatalog() {
+  return request('/dashboard/layout/widgets')
+}
+
+export function getDashboardLayoutDefaults() {
+  return request('/dashboard/layout/defaults')
+}
+
+export function saveDashboardLayoutDefault(payload) {
+  return request('/dashboard/layout/defaults', {
+    method: 'PUT',
+    body: payload,
+  })
+}
+
+export function deleteDashboardLayoutDefault(targetType, targetId) {
+  return request(`/dashboard/layout/defaults/${encodeURIComponent(targetType)}/${encodeURIComponent(targetId)}`, {
+    method: 'DELETE',
+  })
+}
+
+export function createDashboardLayoutPreset(payload) {
+  return request('/dashboard/layout/presets', {
+    method: 'POST',
+    body: payload,
+  })
+}
+
+export function updateDashboardLayoutPreset(presetId, payload) {
+  return request(`/dashboard/layout/presets/${encodeURIComponent(presetId)}`, {
+    method: 'PATCH',
+    body: payload,
+  })
+}
+
+export function exportDashboardLayoutPreset(presetId) {
+  return request(`/dashboard/layout/presets/${encodeURIComponent(presetId)}/export`)
+}
+
+export function exportDashboardLayoutPresetBundle() {
+  return request('/dashboard/layout/preset-bundle/export')
+}
+
+export function importDashboardLayoutPreset(payload) {
+  return request('/dashboard/layout/presets/import', {
+    method: 'POST',
+    body: payload,
+  })
+}
+
+export function importDashboardLayoutPresetBundle(payload) {
+  return request('/dashboard/layout/preset-bundle/import', {
+    method: 'POST',
+    body: payload,
+  })
+}
+
+export function saveDashboardLayout(widgets, scope = 'main', sections = [], schemaVersion = 'osmu.dashboard-layout.v1') {
+  return request(`/dashboard/layout?scope=${encodeURIComponent(scope)}`, {
+    method: 'PUT',
+    body: { widgets, sections, schemaVersion },
+  })
+}
+
+export function applyDashboardLayoutPreset(presetId, scope = 'main') {
+  return request(`/dashboard/layout/presets/${encodeURIComponent(presetId)}?scope=${encodeURIComponent(scope)}`, {
+    method: 'PUT',
+  })
+}
+
+export function deleteDashboardLayoutPreset(presetId) {
+  return request(`/dashboard/layout/presets/${encodeURIComponent(presetId)}`, {
+    method: 'DELETE',
+  })
+}
+
+export function deleteDashboardLayout(scope = 'main') {
+  return request(`/dashboard/layout?scope=${encodeURIComponent(scope)}`, {
+    method: 'DELETE',
+  })
+}
+
 export function getUsage() {
   return request('/admin/usage')
 }
@@ -1075,6 +1223,149 @@ export function deleteQuotaPolicy(targetType, targetId, reason = '') {
   const query = reason ? `?reason=${encodeURIComponent(reason)}` : ''
   return request(`/admin/quota-policies/${encodeURIComponent(targetType)}/${encodeURIComponent(targetId)}${query}`, {
     method: 'DELETE',
+  })
+}
+
+export function getStorageExpansionRequests() {
+  return request('/admin/storage-expansion/requests')
+}
+
+export function getAdminStorageProfileRequests() {
+  return request('/admin/storage-profile-requests')
+}
+
+export function updateStorageProfileRequestStatus(requestId, status, adminNote = '') {
+  const body = { status }
+  if (adminNote) {
+    body.adminNote = adminNote
+  }
+  return request(`/admin/storage-profile-requests/${encodeURIComponent(requestId)}/status`, {
+    method: 'PATCH',
+    body,
+  })
+}
+
+export function applyStorageProfileRequest(requestId) {
+  return request(`/admin/storage-profile-requests/${encodeURIComponent(requestId)}/apply`, {
+    method: 'POST',
+  })
+}
+
+export function getStorageExpansionSummary() {
+  return request('/admin/storage-expansion/summary')
+}
+
+export function getStorageExpansionRunnerPreflight() {
+  return request('/admin/storage-expansion/runner-preflight')
+}
+
+export function createStorageExpansionRequest(payload) {
+  return request('/admin/storage-expansion/requests', {
+    method: 'POST',
+    body: payload,
+  })
+}
+
+export function getStorageExpansionRequestManifest(requestId) {
+  return request(`/admin/storage-expansion/requests/${encodeURIComponent(requestId)}/manifest`)
+}
+
+export function downloadStorageExpansionManifestArtifact(requestId, artifact) {
+  return textRequest(`/admin/storage-expansion/requests/${encodeURIComponent(requestId)}/manifest/${encodeURIComponent(artifact)}`)
+}
+
+export function createStorageExpansionExecutionPlan(requestId) {
+  return request(`/admin/storage-expansion/requests/${encodeURIComponent(requestId)}/execution-plan`, {
+    method: 'POST',
+  })
+}
+
+export function createStorageExpansionGitOpsPlan(requestId) {
+  return request(`/admin/storage-expansion/requests/${encodeURIComponent(requestId)}/gitops-plan`, {
+    method: 'POST',
+  })
+}
+
+export function downloadStorageExpansionGitOpsArtifactBundle(requestId) {
+  return download(`/admin/storage-expansion/requests/${encodeURIComponent(requestId)}/gitops-artifacts/bundle`)
+}
+
+export function recordStorageExpansionDryRunExecution(requestId, payload) {
+  return request(`/admin/storage-expansion/requests/${encodeURIComponent(requestId)}/dry-run-execution`, {
+    method: 'POST',
+    body: payload,
+  })
+}
+
+export function runStorageExpansionDryRunExecution(requestId, payload) {
+  return request(`/admin/storage-expansion/requests/${encodeURIComponent(requestId)}/dry-run-runner`, {
+    method: 'POST',
+    body: payload,
+  })
+}
+
+export function runStorageExpansionApplyExecution(requestId, payload) {
+  return request(`/admin/storage-expansion/requests/${encodeURIComponent(requestId)}/apply-runner`, {
+    method: 'POST',
+    body: payload,
+  })
+}
+
+export function runStorageExpansionRollbackExecution(requestId, payload) {
+  return request(`/admin/storage-expansion/requests/${encodeURIComponent(requestId)}/rollback-runner`, {
+    method: 'POST',
+    body: payload,
+  })
+}
+
+export function runStorageExpansionGitOpsPrExecution(requestId) {
+  return request(`/admin/storage-expansion/requests/${encodeURIComponent(requestId)}/gitops-pr-runner`, {
+    method: 'POST',
+  })
+}
+
+export function recordStorageExpansionGitOpsPrExecution(requestId, payload) {
+  return request(`/admin/storage-expansion/requests/${encodeURIComponent(requestId)}/gitops-pr-execution`, {
+    method: 'POST',
+    body: payload,
+  })
+}
+
+export function getStorageExpansionExecutions(requestId) {
+  return request(`/admin/storage-expansion/requests/${encodeURIComponent(requestId)}/executions`)
+}
+
+export function createStorageExpansionExecutionRecord(requestId, payload) {
+  return request(`/admin/storage-expansion/requests/${encodeURIComponent(requestId)}/executions`, {
+    method: 'POST',
+    body: payload,
+  })
+}
+
+export function applyStorageExpansionExecutionRecord(requestId, executionId) {
+  return request(`/admin/storage-expansion/requests/${encodeURIComponent(requestId)}/executions/${encodeURIComponent(executionId)}/apply`, {
+    method: 'POST',
+  })
+}
+
+export function updateStorageExpansionRequestStatus(requestId, status, appliedEvidence = '') {
+  const body = { status }
+  if (appliedEvidence) {
+    body.appliedEvidence = appliedEvidence
+  }
+  return request(`/admin/storage-expansion/requests/${encodeURIComponent(requestId)}/status`, {
+    method: 'PATCH',
+    body,
+  })
+}
+
+export function getStorageExpansionExecutionLogRetentionStatus() {
+  return request('/admin/storage-expansion/execution-log-retention/status')
+}
+
+export function runStorageExpansionExecutionLogRetention() {
+  return request('/admin/storage-expansion/execution-log-retention/run', {
+    method: 'POST',
   })
 }
 
@@ -1107,6 +1398,18 @@ export function getObjectRetentionStatus() {
 
 export function getBackupStatus() {
   return request('/admin/backup/status')
+}
+
+export function getBackupRestoreDrillEvidence(filters = {}) {
+  const params = new URLSearchParams()
+  if (filters.result) {
+    params.set('result', filters.result)
+  }
+  if (filters.limit) {
+    params.set('limit', String(filters.limit))
+  }
+  const query = params.toString()
+  return request(`/admin/backup/restore-drill-evidence${query ? `?${query}` : ''}`)
 }
 
 export function updateObjectRetentionPolicy(payload) {

@@ -3,7 +3,33 @@ import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import test from 'node:test'
 
-const homeViewSource = readFileSync(fileURLToPath(new URL('./HomeView.vue', import.meta.url)), 'utf8')
+const sourceFiles = [
+  './HomeView.vue',
+  './LoginView.vue',
+  '../components/admin/AccessKeyPanel.vue',
+  '../components/admin/AdminPage.vue',
+  '../components/admin/BucketMetadataPanel.vue',
+  '../components/admin/BucketPermissionsPanel.vue',
+  '../components/admin/IdentityAdminPanel.vue',
+  '../components/admin/LifecycleRulesPanel.vue',
+  '../components/admin/ObjectSharePanel.vue',
+  '../components/admin/QuotaPolicyPanel.vue',
+  '../components/admin/StorageExpansionPanel.vue',
+  '../components/audit/AuditPage.vue',
+  '../components/dashboard/DashboardPage.vue',
+  '../components/dashboard/DashboardActivityPanel.vue',
+  '../components/dashboard/DashboardQuotaPanel.vue',
+  '../components/dashboard/DashboardSharePanel.vue',
+  '../components/developer/DeveloperPage.vue',
+  '../components/objects/ObjectPage.vue',
+  '../components/storage/StoragePage.vue',
+  '../assets/main.css',
+  '../router/index.js',
+  '../utils/accessKeys.js',
+]
+const dashboardSource = sourceFiles
+  .map((path) => readFileSync(fileURLToPath(new URL(path, import.meta.url)), 'utf8'))
+  .join('\n')
 
 test('HomeView exposes stable selectors for browser E2E flows', () => {
   const requiredTestIds = [
@@ -11,12 +37,131 @@ test('HomeView exposes stable selectors for browser E2E flows', () => {
     'login-form',
     'login-id-input',
     'login-password-input',
+    'login-password-toggle',
+    'login-auto-login-checkbox',
+    'login-remember-id-checkbox',
+    'login-role-admin',
+    'login-role-developer',
+    'login-mode-admin',
+    'login-mode-developer',
+    'login-info-alert',
     'login-submit-button',
     'refresh-button',
     'logout-button',
     'error-alert',
+    'busy-alert',
+    'status-alert',
     'metrics-grid',
+    'dashboard-config-panel',
+    'dashboard-widget-reset-button',
+    'dashboard-layout-sync',
+    'dashboard-layout-preset-select',
+    'dashboard-layout-preset-apply-button',
+    'dashboard-layout-preset-delete-button',
+    'dashboard-layout-preset-name-input',
+    'dashboard-layout-preset-description-input',
+    'dashboard-layout-preset-save-button',
+    'dashboard-layout-preset-update-button',
+    'dashboard-layout-preset-export-button',
+    'dashboard-layout-preset-import-label',
+    'dashboard-layout-preset-import-input',
+    'dashboard-layout-preset-bundle-export-button',
+    'dashboard-layout-preset-bundle-import-label',
+    'dashboard-layout-preset-bundle-import-input',
+    'dashboard-layout-default-panel',
+    'dashboard-layout-default-form',
+    'dashboard-layout-default-target-type',
+    'dashboard-layout-default-target-id',
+    'dashboard-layout-default-preset-id',
+    'dashboard-layout-default-save-button',
+    'dashboard-layout-default-list',
+    'dashboard-layout-default-delete-button',
+    'dashboard-widget-select',
+    'dashboard-widget-add-button',
+    'dashboard-widget-catalog',
+    'dashboard-widget-catalog-button',
+    'dashboard-widget-sections',
+    'dashboard-widget-list',
+    'dashboard-widget-drag-handle',
+    'dashboard-widget-move-up-button',
+    'dashboard-widget-move-down-button',
+    'dashboard-widget-size-button',
+    'dashboard-widget-section-control',
+    'dashboard-widget-section-select',
+    'dashboard-widget-section-toggle-button',
+    'dashboard-widget-section-move-up-button',
+    'dashboard-widget-section-move-down-button',
+    'dashboard-widget-option-control',
+    'dashboard-widget-option-select',
+    'dashboard-widget-toggle-button',
+    'dashboard-widget-remove-button',
+    'dashboard-data-flow-ops',
+    'data-flow-monitoring-panel',
+    'data-flow-filter-form',
+    'data-flow-filter-from',
+    'data-flow-filter-to',
+    'data-flow-filter-bucket',
+    'data-flow-filter-actor',
+    'data-flow-filter-source',
+    'data-flow-filter-operation',
+    'data-flow-filter-status',
+    'data-flow-filter-limit',
+    'data-flow-refresh-button',
+    'data-flow-reset-button',
+    'data-flow-total-bytes',
+    'data-flow-failed-cancelled',
+    'data-flow-top-buckets',
+    'data-flow-recent-events',
     'backup-status-panel',
+    'backup-restore-evidence',
+    'dashboard-activity-panel',
+    'dashboard-share-panel',
+    'dashboard-quota-panel',
+    'dashboard-readiness-panel',
+    'dashboard-readiness-refresh-button',
+    'readiness-operations-summary',
+    'readiness-evidence-plan-summary',
+    'readiness-evidence-plan-actions',
+    'readiness-evidence-plan-command-copy-button',
+    'readiness-evidence-invocation-item-summary',
+    'readiness-evidence-invocation-summary',
+    'readiness-evidence-invocation-actions',
+    'readiness-evidence-invocation-command-copy-button',
+    'readiness-workflow-run-id-item-summary',
+    'readiness-workflow-run-id-summary',
+    'readiness-workflow-run-id-actions',
+    'readiness-workflow-run-id-query-copy-button',
+    'readiness-workflow-run-id-artifact-plan-command-copy-button',
+    'readiness-workflow-run-id-security-command-copy-button',
+    'readiness-artifact-collection-item-summary',
+    'readiness-artifact-collection-summary',
+    'readiness-artifact-collection-actions',
+    'readiness-artifact-finalizer-command-copy-button',
+    'readiness-artifact-local-import-command-copy-button',
+    'readiness-artifact-download-command-copy-button',
+    'readiness-evidence-handoff-item-summary',
+    'readiness-evidence-handoff-summary',
+    'readiness-evidence-handoff-command-copy-button',
+    'readiness-evidence-handoff-stages',
+    'readiness-evidence-handoff-stage-command-copy-button',
+    'readiness-convergence-item-summary',
+    'readiness-convergence-summary',
+    'readiness-convergence-command-copy-button',
+    'readiness-convergence-commands',
+    'readiness-convergence-command-list-copy-button',
+    'readiness-operations-filter-button',
+    'dashboard-access-key-total',
+    'dashboard-access-key-risk',
+    'execution-log-retention-panel',
+    'execution-log-retention-pending',
+    'execution-log-retention-run-button',
+    'storage-expansion-dashboard-panel',
+    'storage-expansion-dashboard-open',
+    'storage-expansion-dashboard-issues',
+    'storage-expansion-dashboard-list',
+    'storage-expansion-dashboard-executions',
+    'readiness-category-filter',
+    'readiness-severity-filter',
     'bucket-panel',
     'bucket-create-form',
     'bucket-name-input',
@@ -27,6 +172,7 @@ test('HomeView exposes stable selectors for browser E2E flows', () => {
     'bucket-sync-button',
     'bucket-delete-button',
     'object-panel',
+    'object-empty-state',
     'object-filter-form',
     'object-prefix-input',
     'object-search-input',
@@ -42,6 +188,54 @@ test('HomeView exposes stable selectors for browser E2E flows', () => {
     'object-upload-retry-button',
     'object-upload-progress',
     'object-table',
+    'developer-page',
+    'developer-s3-endpoint-panel',
+    'developer-s3-endpoint',
+    'developer-s3-region',
+    'developer-s3-signature',
+    'developer-s3-virtual-host',
+    'developer-selected-bucket',
+    'developer-client-snippets-panel',
+    'developer-client-aws-cli',
+    'developer-client-s3fs',
+    'developer-client-goofys',
+    'access-key-panel',
+    'access-key-form',
+    'access-key-name-input',
+    'access-key-expires-at-input',
+    'access-key-bucket-select',
+    'access-key-permission-read',
+    'access-key-permission-write',
+    'access-key-permission-delete',
+    'access-key-permission-admin',
+    'access-key-scope-add-button',
+    'access-key-create-button',
+    'access-key-scope-rule',
+    'access-key-scope-list',
+    'access-key-scope-remove-button',
+    'access-key-secret-warning',
+    'access-key-secret-box',
+    'access-key-filter-row',
+    'access-key-filter-all',
+    'access-key-filter-active',
+    'access-key-filter-expired',
+    'access-key-filter-expiring',
+    'access-key-filter-unused',
+    'access-key-filter-inactive',
+    'access-key-filter-empty',
+    'access-key-cleanup-row',
+    'access-key-cleanup-summary',
+    'access-key-cleanup-export-button',
+    'access-key-cleanup-button',
+    'access-key-cleanup-preview',
+    'access-key-cleanup-candidate',
+    'access-key-cleanup-candidate-checkbox',
+    'access-key-list',
+    'access-key-expires-at',
+    'access-key-last-used',
+    'access-key-action-hint',
+    'access-key-rotate-button',
+    'access-key-delete-button',
     'object-detail-button',
     'object-detail-panel',
     'object-share-link-button',
@@ -67,6 +261,8 @@ test('HomeView exposes stable selectors for browser E2E flows', () => {
     'object-share-analytics-list',
     'bucket-lifecycle-panel',
     'bucket-tags-panel',
+    'admin-bucket-empty-state',
+    'admin-role-empty-state',
     'quota-policy-panel',
     'quota-policy-form',
     'quota-policy-target-type',
@@ -78,7 +274,78 @@ test('HomeView exposes stable selectors for browser E2E flows', () => {
     'quota-policy-cancel-edit-button',
     'quota-policy-edit-button',
     'quota-policy-history-list',
+    'storage-expansion-panel',
+    'storage-expansion-form',
+    'storage-expansion-capacity-input',
+    'storage-expansion-server-count-input',
+    'storage-expansion-volumes-input',
+    'storage-expansion-reason-input',
+    'storage-expansion-create-button',
+    'storage-expansion-runner-preflight-panel',
+    'storage-expansion-runner-preflight-refresh-button',
+    'storage-expansion-runner-preflight-list',
+    'storage-expansion-runner-preflight-remediation',
+    'storage-expansion-list',
+    'storage-expansion-apply-evidence-input',
+    'storage-expansion-preview-button',
+    'storage-expansion-execution-plan-button',
+    'storage-expansion-gitops-plan-button',
+    'storage-expansion-execution-history-button',
+    'storage-expansion-preview-panel',
+    'storage-expansion-tenant-yaml',
+    'storage-expansion-helm-yaml',
+    'storage-expansion-download-tenant-button',
+    'storage-expansion-download-helm-button',
+    'storage-expansion-download-bundle-button',
+    'storage-expansion-execution-plan-panel',
+    'storage-expansion-execution-digest',
+    'storage-expansion-preflight-list',
+    'storage-expansion-execution-commands',
+    'storage-expansion-dry-run-type-select',
+    'storage-expansion-dry-run-result-select',
+    'storage-expansion-dry-run-url-input',
+    'storage-expansion-dry-run-notes-input',
+    'storage-expansion-dry-run-record-button',
+    'storage-expansion-dry-run-runner-button',
+    'storage-expansion-apply-run-type-select',
+    'storage-expansion-apply-runner-button',
+    'storage-expansion-dry-run-output-input',
+    'storage-expansion-gitops-plan-panel',
+    'storage-expansion-gitops-branch',
+    'storage-expansion-gitops-commit',
+    'storage-expansion-gitops-files',
+    'storage-expansion-gitops-review-list',
+    'storage-expansion-gitops-pr-body',
+    'storage-expansion-gitops-pr-url-input',
+    'storage-expansion-gitops-merge-sha-input',
+    'storage-expansion-gitops-pipeline-url-input',
+    'storage-expansion-gitops-notes-input',
+    'storage-expansion-gitops-pr-record-button',
+    'storage-expansion-gitops-pr-runner-button',
+    'storage-expansion-gitops-bundle-download-button',
+    'storage-expansion-execution-history-panel',
+    'storage-expansion-execution-record-form',
+    'storage-expansion-execution-request-id-input',
+    'storage-expansion-execution-type-select',
+    'storage-expansion-execution-result-select',
+    'storage-expansion-execution-command-input',
+    'storage-expansion-execution-artifact-input',
+    'storage-expansion-execution-url-input',
+    'storage-expansion-execution-notes-input',
+    'storage-expansion-rollback-type-select',
+    'storage-expansion-rollback-revision-input',
+    'storage-expansion-rollback-target-input',
+    'storage-expansion-rollback-runner-button',
+    'storage-expansion-execution-output-input',
+    'storage-expansion-execution-record-button',
+    'storage-expansion-execution-history-list',
+    'storage-expansion-execution-failure-reason',
+    'storage-expansion-execution-apply-button',
+    'storage-expansion-approve-button',
+    'storage-expansion-apply-button',
+    'storage-expansion-reject-button',
     'audit-panel',
+    'audit-empty-state',
     'audit-filter-form',
     'audit-event-type-input',
     'audit-actor-id-input',
@@ -97,8 +364,324 @@ test('HomeView exposes stable selectors for browser E2E flows', () => {
   ]
 
   for (const testId of requiredTestIds) {
-    assert.match(homeViewSource, new RegExp(`data-testid="${testId}"`), `Missing data-testid="${testId}"`)
+    assert.match(dashboardSource, new RegExp(`data-testid="${testId}"`), `Missing data-testid="${testId}"`)
   }
 
-  assert.match(homeViewSource, /:data-testid="`bucket-row-\$\{bucket\.name\}`"/)
+  assert.match(dashboardSource, /:data-testid="`bucket-row-\$\{bucket\.name\}`"/)
+  assert.match(dashboardSource, /:data-testid="`dashboard-widget-\$\{widget\.id\}`"/)
+  assert.match(dashboardSource, /:data-testid="`dashboard-widget-config-\$\{widget\.id\}`"/)
+  assert.match(dashboardSource, /:data-testid="`dashboard-widget-section-\$\{section\.id\}`"/)
+  assert.match(dashboardSource, /:data-testid="`dashboard-widget-category-\$\{categoryTestId\(group\.category\)\}`"/)
+  assert.match(dashboardSource, /availableDashboardWidgetGroups/)
+  assert.match(dashboardSource, /visibleDashboardWidgetSections/)
+  assert.match(dashboardSource, /addDashboardWidgetById/)
+  assert.match(dashboardSource, /id: 'runtime', title: '런타임 엔진'/)
+  assert.match(dashboardSource, /id: 'readiness', title: '데모 준비도'/)
+  assert.match(dashboardSource, /id: 'access-keys', title: 'Access Key 운영'/)
+  assert.match(dashboardSource, /id: 'identity', title: '사용자\/조직 현황'/)
+  assert.match(dashboardSource, /id: 'lifecycle', title: 'Lifecycle 규칙'/)
+  assert.match(dashboardSource, /widget\.id === 'access-keys'/)
+  assert.match(dashboardSource, /summarizeAccessKeys/)
+  assert.match(dashboardSource, /widget\.id === 'identity'/)
+  assert.match(dashboardSource, /widget\.id === 'lifecycle'/)
+  assert.match(dashboardSource, /id: 'execution-retention', title: 'Execution Log Retention'/)
+  assert.match(dashboardSource, /widget\.id === 'execution-retention'/)
+  assert.match(dashboardSource, /id: 'storage-expansion', title: 'Storage Expansion'/)
+  assert.match(dashboardSource, /widget\.id === 'storage-expansion'/)
+  assert.match(dashboardSource, /getDashboardLayout/)
+  assert.match(dashboardSource, /getDashboardLayoutPresets/)
+  assert.match(dashboardSource, /saveDashboardLayout/)
+  assert.match(dashboardSource, /applyDashboardLayoutPreset/)
+  assert.match(dashboardSource, /createDashboardLayoutPreset/)
+  assert.match(dashboardSource, /updateDashboardLayoutPreset/)
+  assert.match(dashboardSource, /exportDashboardLayoutPreset/)
+  assert.match(dashboardSource, /importDashboardLayoutPreset/)
+  assert.match(dashboardSource, /exportDashboardLayoutPresetBundle/)
+  assert.match(dashboardSource, /importDashboardLayoutPresetBundle/)
+  assert.match(dashboardSource, /deleteDashboardLayoutPreset/)
+  assert.match(dashboardSource, /getDashboardLayoutDefaults/)
+  assert.match(dashboardSource, /saveDashboardLayoutDefault/)
+  assert.match(dashboardSource, /deleteDashboardLayoutDefault/)
+  assert.match(dashboardSource, /deleteDashboardLayout/)
+  assert.match(dashboardSource, /dashboardLayoutSyncLabel/)
+  assert.match(dashboardSource, /DASHBOARD_LAYOUT_SCHEMA_VERSION/)
+  assert.match(dashboardSource, /dashboardLayoutPresets/)
+  assert.match(dashboardSource, /dashboardLayoutDefaults/)
+  assert.match(dashboardSource, /dashboardLayoutDefaultForm/)
+  assert.match(dashboardSource, /handleApplyDashboardLayoutPreset/)
+  assert.match(dashboardSource, /handleCreateDashboardLayoutPreset/)
+  assert.match(dashboardSource, /handleUpdateDashboardLayoutPreset/)
+  assert.match(dashboardSource, /handleExportDashboardLayoutPreset/)
+  assert.match(dashboardSource, /handleImportDashboardLayoutPreset/)
+  assert.match(dashboardSource, /handleExportDashboardLayoutPresetBundle/)
+  assert.match(dashboardSource, /handleImportDashboardLayoutPresetBundle/)
+  assert.match(dashboardSource, /handleDeleteDashboardLayoutPreset/)
+  assert.match(dashboardSource, /handleSaveDashboardLayoutDefault/)
+  assert.match(dashboardSource, /handleDeleteDashboardLayoutDefault/)
+  assert.match(dashboardSource, /DEFAULT_PRESET/)
+  assert.match(dashboardSource, /normalizeDashboardPresetImportPayload/)
+  assert.match(dashboardSource, /normalizeDashboardPresetBundleImportPayload/)
+  assert.match(dashboardSource, /sanitizeDashboardWidgets/)
+  assert.match(dashboardSource, /dashboardWidgetCatalogForCurrentRole/)
+  assert.match(dashboardSource, /!widget\.adminOnly \|\| isAdmin\.value/)
+  assert.match(dashboardSource, /!dashboardWidgetCatalogForRole\.value\.some\(\(widget\) => widget\.id === dashboardWidgetToAdd\.value\)/)
+  assert.match(dashboardSource, /sanitizeDashboardWidgetOptions/)
+  assert.match(dashboardSource, /dashboardWidgetSizeLabel/)
+  assert.match(dashboardSource, /dashboardWidgetToneLabel/)
+  assert.match(dashboardSource, /dashboardWidgetConfigOptions/)
+  assert.match(dashboardSource, /dashboardWidgetOptionValue/)
+  assert.match(dashboardSource, /dashboardWidgetSectionLabel/)
+  assert.match(dashboardSource, /sanitizeDashboardSections/)
+  assert.match(dashboardSource, /dashboardSectionCollapsed/)
+  assert.match(dashboardSource, /toggleDashboardSection/)
+  assert.match(dashboardSource, /updateDashboardWidgetSection/)
+  assert.match(dashboardSource, /moveDashboardWidgetSection/)
+  assert.match(dashboardSource, /updateDashboardWidgetOption/)
+  assert.match(dashboardSource, /toggleDashboardWidgetSize/)
+  assert.match(dashboardSource, /startDashboardWidgetDrag/)
+  assert.match(dashboardSource, /dropDashboardWidget/)
+  assert.match(dashboardSource, /reorderDashboardWidget/)
+  assert.match(dashboardSource, /is-drop-target/)
+  assert.match(dashboardSource, /draggable/)
+  assert.match(dashboardSource, /dashboard-widget-wide/)
+  assert.match(dashboardSource, /dashboard-widget-tone-focus/)
+  assert.match(dashboardSource, /dashboard-widget-tone-muted/)
+  assert.match(dashboardSource, /runtimeReadinessLabel/)
+  assert.match(dashboardSource, /dashboardReadiness/)
+  assert.match(dashboardSource, /targetPanel/)
+  assert.match(dashboardSource, /generatedAt/)
+  assert.match(dashboardSource, /Last Check/)
+  assert.match(dashboardSource, /readiness-category/)
+  assert.match(dashboardSource, /readinessCategoryFilter/)
+  assert.match(dashboardSource, /readinessCategoryOptions/)
+  assert.match(dashboardSource, /readinessSeverityFilter/)
+  assert.match(dashboardSource, /readinessSeverityOptions/)
+  assert.match(dashboardSource, /visibleReadinessItems/)
+  assert.match(dashboardSource, /operationsReadinessItems/)
+  assert.match(dashboardSource, /operationsReadinessPrimaryMessage/)
+  assert.match(dashboardSource, /operationsEvidencePlanItem/)
+  assert.match(dashboardSource, /operationsEvidenceInvocationItem/)
+  assert.match(dashboardSource, /operationsInvocationUnblockPlanItem/)
+  assert.match(dashboardSource, /operationsDispatchPreflightItem/)
+  assert.match(dashboardSource, /operationsWorkflowRunIdPlanItem/)
+  assert.match(dashboardSource, /operationsArtifactCollectionPlanItem/)
+  assert.match(dashboardSource, /operationsReadinessArtifactImportItem/)
+  assert.match(dashboardSource, /operationsReadinessFinalizeItem/)
+  assert.match(dashboardSource, /operationsEvidenceHandoffItem/)
+  assert.match(dashboardSource, /operationsReadinessConvergenceItem/)
+  assert.match(dashboardSource, /kubernetesOperationsReportSyncItem/)
+  assert.match(dashboardSource, /operationsEvidencePlanActions/)
+  assert.match(dashboardSource, /operationsEvidenceInvocation/)
+  assert.match(dashboardSource, /operationsEvidenceInvocationActions/)
+  assert.match(dashboardSource, /operationsInvocationUnblockPlan/)
+  assert.match(dashboardSource, /operationsInvocationUnblockActions/)
+  assert.match(dashboardSource, /operationsDispatchPreflight/)
+  assert.match(dashboardSource, /operationsDispatchPreflightChecks/)
+  assert.match(dashboardSource, /operationsDispatchPreflightInputs/)
+  assert.match(dashboardSource, /operationsDispatchPreflightWorkflowFiles/)
+  assert.match(dashboardSource, /operationsWorkflowRunIdPlan/)
+  assert.match(dashboardSource, /operationsWorkflowRunIdPlanWorkflows/)
+  assert.match(dashboardSource, /operationsArtifactCollectionPlan/)
+  assert.match(dashboardSource, /operationsArtifactCollectionArtifacts/)
+  assert.match(dashboardSource, /operationsReadinessArtifactImport/)
+  assert.match(dashboardSource, /operationsReadinessArtifactImportEntries/)
+  assert.match(dashboardSource, /operationsReadinessFinalize/)
+  assert.match(dashboardSource, /operationsReadinessFinalizeCommands/)
+  assert.match(dashboardSource, /operationsReadinessFinalizeSteps/)
+  assert.match(dashboardSource, /operationsReadinessFinalizeGaps/)
+  assert.match(dashboardSource, /operationsEvidenceHandoff/)
+  assert.match(dashboardSource, /operationsEvidenceHandoffNextStep/)
+  assert.match(dashboardSource, /operationsEvidenceHandoffStages/)
+  assert.match(dashboardSource, /finalizerGapCount/)
+  assert.match(dashboardSource, /operationsReadinessConvergence/)
+  assert.match(dashboardSource, /operationsReadinessConvergenceBottleneck/)
+  assert.match(dashboardSource, /operationsReadinessConvergenceCommands/)
+  assert.match(dashboardSource, /kubernetesReportSyncReady/)
+  assert.match(dashboardSource, /kubernetesOperationsReportSync/)
+  assert.match(dashboardSource, /kubernetesOperationsReportSyncChecks/)
+  assert.match(dashboardSource, /evidencePlanActionCommand/)
+  assert.match(dashboardSource, /formatEvidencePlanActionMeta/)
+  assert.match(dashboardSource, /formatEvidenceInvocationActionMeta/)
+  assert.match(dashboardSource, /formatInvocationBlockReasons/)
+  assert.match(dashboardSource, /formatInvocationUnblockConfirmationMeta/)
+  assert.match(dashboardSource, /formatInvocationUnblockActionMeta/)
+  assert.match(dashboardSource, /formatInvocationUnblockInputs/)
+  assert.match(dashboardSource, /formatDispatchPreflightSecrets/)
+  assert.match(dashboardSource, /formatDispatchPreflightInputMeta/)
+  assert.match(dashboardSource, /formatDispatchPreflightWorkflowMeta/)
+  assert.match(dashboardSource, /formatWorkflowRunIdMeta/)
+  assert.match(dashboardSource, /formatArtifactCollectionMeta/)
+  assert.match(dashboardSource, /formatArtifactImportEntryMeta/)
+  assert.match(dashboardSource, /formatReadinessFinalizeCommandMeta/)
+  assert.match(dashboardSource, /formatReadinessFinalizeStepMeta/)
+  assert.match(dashboardSource, /formatEvidenceHandoffStageMeta/)
+  assert.match(dashboardSource, /dashboardReadiness\.operationsEvidencePlan/)
+  assert.match(dashboardSource, /dashboardReadiness\.operationsEvidenceInvocation/)
+  assert.match(dashboardSource, /dashboardReadiness\.operationsInvocationUnblockPlan/)
+  assert.match(dashboardSource, /dashboardReadiness\.operationsDispatchPreflight/)
+  assert.match(dashboardSource, /dashboardReadiness\.operationsWorkflowRunIdPlan/)
+  assert.match(dashboardSource, /dashboardReadiness\.operationsArtifactCollectionPlan/)
+  assert.match(dashboardSource, /dashboardReadiness\.operationsReadinessArtifactImport/)
+  assert.match(dashboardSource, /dashboardReadiness\.operationsReadinessFinalize/)
+  assert.match(dashboardSource, /dashboardReadiness\.operationsEvidenceHandoff/)
+  assert.match(dashboardSource, /dashboardReadiness\.operationsReadinessConvergence/)
+  assert.match(dashboardSource, /dashboardReadiness\.kubernetesOperationsReportSync/)
+  assert.match(dashboardSource, /finalizerFailedCount/)
+  assert.match(dashboardSource, /normalizeOperationsEvidencePlan/)
+  assert.match(dashboardSource, /normalizeOperationsEvidenceInvocation/)
+  assert.match(dashboardSource, /normalizeOperationsInvocationUnblockPlan/)
+  assert.match(dashboardSource, /normalizeOperationsDispatchPreflight/)
+  assert.match(dashboardSource, /normalizeOperationsWorkflowRunIdPlan/)
+  assert.match(dashboardSource, /normalizeOperationsArtifactCollectionPlan/)
+  assert.match(dashboardSource, /normalizeOperationsReadinessArtifactImport/)
+  assert.match(dashboardSource, /normalizeOperationsReadinessFinalize/)
+  assert.match(dashboardSource, /normalizeOperationsEvidenceHandoff/)
+  assert.match(dashboardSource, /normalizeOperationsReadinessConvergence/)
+  assert.match(dashboardSource, /normalizeKubernetesOperationsReportSync/)
+  assert.match(dashboardSource, /OPERATIONS_EVIDENCE_PLAN/)
+  assert.match(dashboardSource, /OPERATIONS_EVIDENCE_PLAN_INVOCATION/)
+  assert.match(dashboardSource, /OPERATIONS_INVOCATION_UNBLOCK_PLAN/)
+  assert.match(dashboardSource, /OPERATIONS_DISPATCH_PREFLIGHT/)
+  assert.match(dashboardSource, /OPERATIONS_WORKFLOW_RUN_ID_PLAN/)
+  assert.match(dashboardSource, /OPERATIONS_ARTIFACT_COLLECTION_PLAN/)
+  assert.match(dashboardSource, /OPERATIONS_READINESS_ARTIFACT_IMPORT/)
+  assert.match(dashboardSource, /OPERATIONS_READINESS_FINALIZER/)
+  assert.match(dashboardSource, /OPERATIONS_EVIDENCE_HANDOFF/)
+  assert.match(dashboardSource, /OPERATIONS_READINESS_CONVERGENCE/)
+  assert.match(dashboardSource, /KUBERNETES_OPERATIONS_REPORT_SYNC/)
+  assert.match(dashboardSource, /hasReadinessRemediation/)
+  assert.match(dashboardSource, /copyReadinessRemediationCommand/)
+  assert.match(dashboardSource, /fallbackCopyText/)
+  assert.match(dashboardSource, /readiness-remediation/)
+  assert.match(dashboardSource, /readiness-remediation-copy-button/)
+  assert.match(dashboardSource, /readiness-remediation-workflow-copy-button/)
+  assert.match(dashboardSource, /item\.remediationCommand/)
+  assert.match(dashboardSource, /item\.remediationWorkflow/)
+  assert.match(dashboardSource, /item\.remediationWorkflowCommand/)
+  assert.match(dashboardSource, /item\.evidencePath/)
+  assert.match(dashboardSource, /update-readiness-category-filter', 'OPERATIONS'/)
+  assert.match(dashboardSource, /item\.category/)
+  assert.match(dashboardSource, /focusPanel/)
+  assert.match(dashboardSource, /handleRefreshDashboardReadiness/)
+  assert.match(dashboardSource, /getDashboardReadiness/)
+  assert.match(dashboardSource, /id="admin-access-keys"/)
+  assert.match(dashboardSource, /id="admin-quota-policies"/)
+  assert.match(dashboardSource, /id="admin-storage-expansion"/)
+  assert.match(dashboardSource, /getStorageExpansionRequests/)
+  assert.match(dashboardSource, /createStorageExpansionRequest/)
+  assert.match(dashboardSource, /getStorageExpansionRequestManifest/)
+  assert.match(dashboardSource, /downloadStorageExpansionManifestArtifact/)
+  assert.match(dashboardSource, /createStorageExpansionExecutionPlan/)
+  assert.match(dashboardSource, /recordStorageExpansionDryRunExecution/)
+  assert.match(dashboardSource, /runStorageExpansionDryRunExecution/)
+  assert.match(dashboardSource, /runStorageExpansionApplyExecution/)
+  assert.match(dashboardSource, /runStorageExpansionRollbackExecution/)
+  assert.match(dashboardSource, /getStorageExpansionExecutionLogRetentionStatus/)
+  assert.match(dashboardSource, /runStorageExpansionExecutionLogRetention/)
+  assert.match(dashboardSource, /runStorageExpansionGitOpsPrExecution/)
+  assert.match(dashboardSource, /createStorageExpansionGitOpsPlan/)
+  assert.match(dashboardSource, /recordStorageExpansionGitOpsPrExecution/)
+  assert.match(dashboardSource, /downloadStorageExpansionGitOpsArtifactBundle/)
+  assert.match(dashboardSource, /getStorageExpansionExecutions/)
+  assert.match(dashboardSource, /createStorageExpansionExecutionRecord/)
+  assert.match(dashboardSource, /applyStorageExpansionExecutionRecord/)
+  assert.match(dashboardSource, /updateStorageExpansionRequestStatus/)
+  assert.match(dashboardSource, /storageExpansionApplyEvidence/)
+  assert.match(dashboardSource, /storageExpansionExecutionPlan/)
+  assert.match(dashboardSource, /storageExpansionGitOpsPlan/)
+  assert.match(dashboardSource, /storageExpansionExecutionForm/)
+  assert.match(dashboardSource, /storageExpansionExecutions/)
+  assert.match(dashboardSource, /storageExpansionSummary/)
+  assert.match(dashboardSource, /:storage-expansion-requests="storageExpansionRequests"/)
+  assert.match(dashboardSource, /:storage-expansion-executions="storageExpansionExecutions"/)
+  assert.match(dashboardSource, /getStorageExpansionSummary/)
+  assert.match(dashboardSource, /storageExpansionRunnerPreflight/)
+  assert.match(dashboardSource, /getStorageExpansionRunnerPreflight/)
+  assert.match(dashboardSource, /check\.remediation/)
+  assert.match(dashboardSource, /path: '\/login'/)
+  assert.match(dashboardSource, /path: '\/developer'/)
+  assert.match(dashboardSource, /createWebHistory/)
+  assert.match(dashboardSource, /return '\/admin'/)
+  assert.match(dashboardSource, /adminLandingPathForRole/)
+  assert.match(dashboardSource, /defaultLandingPathForRole/)
+  assert.match(dashboardSource, /rotateAccessKey/)
+  assert.match(dashboardSource, /handleRotateAccessKey/)
+  assert.match(dashboardSource, /expiresAt: localDateTimeToIso\(accessKeyForm\.expiresAt\) \|\| null/)
+  assert.match(dashboardSource, /filterAccessKeys/)
+  assert.match(dashboardSource, /accessKeyOperationalAction/)
+  assert.match(dashboardSource, /accessKeyCleanupCandidates/)
+  assert.match(dashboardSource, /accessKeyCleanupCandidateIds/)
+  assert.match(dashboardSource, /buildAccessKeyCleanupExport/)
+  assert.match(dashboardSource, /selectedCleanupCandidateIds/)
+  assert.match(dashboardSource, /cleanupSelection/)
+  assert.match(dashboardSource, /handleBulkDisableAccessKeys/)
+  assert.match(dashboardSource, /bulkDisableAccessKeys/)
+  assert.match(dashboardSource, /roles: \['ADMIN', 'ORG_ADMIN'\]/)
+  assert.match(dashboardSource, /roles: \['ADMIN'\]/)
+  assert.match(dashboardSource, /visibleNavigationItems/)
+  assert.match(dashboardSource, /canAccessNavigationItem/)
+  assert.match(dashboardSource, /auth\.startAuthSync\(handleSessionExpired\)/)
+  assert.match(dashboardSource, /function handleSessionExpired\(\)/)
+  assert.match(dashboardSource, /router\.replace\(\{/)
+  assert.match(dashboardSource, /redirect: currentRoute\.fullPath \|\| '\/dashboard'/)
+  assert.match(dashboardSource, /reason: 'session-expired'/)
+  assert.match(dashboardSource, /loginForm\.mode === 'developer' \|\| role === 'USER'/)
+  assert.match(dashboardSource, /return '\/developer'/)
+  assert.match(dashboardSource, /getS3ClientConfig/)
+  assert.match(dashboardSource, /s3ClientConfig/)
+  assert.match(dashboardSource, /aws --endpoint-url/)
+  assert.match(dashboardSource, /s3fs .* use_path_request_style/)
+  assert.match(dashboardSource, /goofys --endpoint/)
+  assert.match(dashboardSource, /Last used:/)
+  assert.match(dashboardSource, /login-auto-login-checkbox/)
+  assert.match(dashboardSource, /login-remember-id-checkbox/)
+  assert.match(dashboardSource, /login-password-toggle/)
+  assert.match(dashboardSource, /계정으로 로그인/)
+  assert.match(dashboardSource, /관리자 콘솔로 로그인/)
+  assert.match(dashboardSource, /개발자 콘솔로 로그인/)
+  assert.match(dashboardSource, /세션이 만료되었습니다\. 다시 로그인해주세요\./)
+  assert.match(dashboardSource, /RAID 0-9/)
+  assert.match(dashboardSource, /JBOD/)
+  assert.match(dashboardSource, /IAM User/)
+  assert.match(dashboardSource, /API Key로 AWS S3 bucket처럼 데이터 저장과 조회/)
+  assert.match(dashboardSource, /API 접속 정보/)
+  assert.match(dashboardSource, /S3 클라이언트 예시/)
+  assert.match(dashboardSource, /Secret Key는 생성 또는 Rotate 직후 1회만 표시/)
+  assert.match(dashboardSource, /최소 1개 bucket scope와 permission/)
+  assert.match(dashboardSource, /Disable expired/)
+  assert.match(dashboardSource, /Review stale/)
+  assert.match(dashboardSource, /Bulk disable/)
+  assert.match(dashboardSource, /Export preview/)
+  assert.match(dashboardSource, /cleanup candidates/)
+  assert.match(dashboardSource, /recentStorageExpansionExecutions/)
+  assert.match(dashboardSource, /executionFailureReason/)
+  assert.match(dashboardSource, /gitOpsFailureReasonLabels/)
+  assert.match(dashboardSource, /BRANCH_PROTECTION/)
+  assert.match(dashboardSource, /appliedEvidence/)
+  assert.match(dashboardSource, /handleCreateStorageExpansionRequest/)
+  assert.match(dashboardSource, /handlePreviewStorageExpansionManifest/)
+  assert.match(dashboardSource, /handleDownloadStorageExpansionManifest/)
+  assert.match(dashboardSource, /handleCreateStorageExpansionExecutionPlan/)
+  assert.match(dashboardSource, /handleRecordStorageExpansionDryRunExecution/)
+  assert.match(dashboardSource, /handleRunStorageExpansionDryRunExecution/)
+  assert.match(dashboardSource, /handleRunStorageExpansionApplyExecution/)
+  assert.match(dashboardSource, /handleRunStorageExpansionRollbackExecution/)
+  assert.match(dashboardSource, /handleRunStorageExpansionExecutionLogRetention/)
+  assert.match(dashboardSource, /handleRunStorageExpansionGitOpsPrExecution/)
+  assert.match(dashboardSource, /handleCreateStorageExpansionGitOpsPlan/)
+  assert.match(dashboardSource, /handleRecordStorageExpansionGitOpsPrExecution/)
+  assert.match(dashboardSource, /handleDownloadStorageExpansionGitOpsBundle/)
+  assert.match(dashboardSource, /handleLoadStorageExpansionExecutions/)
+  assert.match(dashboardSource, /handleCreateStorageExpansionExecutionRecord/)
+  assert.match(dashboardSource, /handleApplyStorageExpansionFromExecution/)
+  assert.match(dashboardSource, /handleUpdateStorageExpansionStatus/)
+  assert.match(dashboardSource, /loadStorageExpansionRequests/)
+  assert.match(dashboardSource, /id="storage-buckets"/)
+  assert.match(dashboardSource, /:data-testid="`readiness-item-\$\{item\.code\}`"/)
+  assert.match(dashboardSource, /openReadinessTarget/)
+  assert.match(dashboardSource, /title: 'Multipart resume 삭제'/)
+  assert.match(dashboardSource, /title: '공유 링크 해제'/)
+  assert.match(dashboardSource, /title: '만료 공유 링크 정리'/)
+  assert.match(dashboardSource, /title: 'Bucket lifecycle 삭제'/)
+  assert.match(dashboardSource, /title: 'Bucket tags 삭제'/)
 })

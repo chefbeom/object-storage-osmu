@@ -1,12 +1,12 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { clearAuthTokens, downloadObject, getBuckets } from '../services/api.js'
+import { downloadObject, getBuckets } from '../services/api.js'
 import { useAuthStore } from './auth.js'
 
 const TOKEN_STORAGE_KEY = 'osmu.auth.tokens'
 
 test('downloadObject retries once with refreshed access token', async () => {
-  const storage = installSessionStorage()
+  const { sessionStorage } = installBrowserStorage()
   const fetchMock = mockFetch([
     () => jsonResponse({ error: { code: 'AUTHENTICATION_REQUIRED', message: 'expired' } }, 401),
     () => jsonResponse({
@@ -35,7 +35,7 @@ test('downloadObject retries once with refreshed access token', async () => {
     assert.equal(fetchMock.calls[1].url, 'http://localhost:8080/api/auth/refresh')
     assert.deepEqual(JSON.parse(fetchMock.calls[1].options.body), { refreshToken: 'old-refresh' })
     assert.equal(fetchMock.calls[2].options.headers.get('Authorization'), 'Bearer new-access')
-    assert.match(storage.getItem(TOKEN_STORAGE_KEY), /new-refresh/)
+    assert.match(sessionStorage.getItem(TOKEN_STORAGE_KEY), /new-refresh/)
   } finally {
     stopSync()
     cleanupAuthTest(fetchMock)
@@ -43,7 +43,7 @@ test('downloadObject retries once with refreshed access token', async () => {
 })
 
 test('refresh failure clears authStore state and persisted tokens', async () => {
-  const storage = installSessionStorage()
+  const { sessionStorage, localStorage } = installBrowserStorage()
   const fetchMock = mockFetch([
     () => jsonResponse({ error: { code: 'AUTHENTICATION_REQUIRED', message: 'expired' } }, 401),
     () => jsonResponse({ error: { code: 'AUTHENTICATION_REQUIRED', message: 'revoked' } }, 401),
@@ -67,7 +67,8 @@ test('refresh failure clears authStore state and persisted tokens', async () => 
     assert.equal(auth.state.accessToken, null)
     assert.equal(auth.state.refreshToken, null)
     assert.equal(auth.isLoggedIn.value, false)
-    assert.equal(storage.getItem(TOKEN_STORAGE_KEY), null)
+    assert.equal(sessionStorage.getItem(TOKEN_STORAGE_KEY), null)
+    assert.equal(localStorage.getItem(TOKEN_STORAGE_KEY), null)
     assert.equal(expiredCount, 1)
   } finally {
     stopSync()
@@ -76,8 +77,10 @@ test('refresh failure clears authStore state and persisted tokens', async () => 
 })
 
 test('restoreSession loads stored tokens and current user profile', async () => {
-  const storage = installSessionStorage()
-  storage.setItem(TOKEN_STORAGE_KEY, JSON.stringify({
+  const { sessionStorage } = installBrowserStorage()
+  const auth = useAuthStore()
+  auth.clearSession()
+  sessionStorage.setItem(TOKEN_STORAGE_KEY, JSON.stringify({
     accessToken: 'stored-access',
     refreshToken: 'stored-refresh',
   }))
@@ -91,7 +94,6 @@ test('restoreSession loads stored tokens and current user profile', async () => 
       },
     }),
   ])
-  const auth = useAuthStore()
 
   try {
     const restored = await auth.restoreSession()
@@ -109,14 +111,71 @@ test('restoreSession loads stored tokens and current user profile', async () => 
   }
 })
 
-function installSessionStorage() {
-  const storage = createMemoryStorage()
+test('restoreSession clears stale stored tokens and auth state when profile request fails', async () => {
+  const { sessionStorage, localStorage } = installBrowserStorage()
+  const auth = useAuthStore()
+  auth.clearSession()
+  sessionStorage.setItem(TOKEN_STORAGE_KEY, JSON.stringify({
+    accessToken: 'stale-access',
+    refreshToken: 'stale-refresh',
+  }))
+  localStorage.setItem(TOKEN_STORAGE_KEY, JSON.stringify({
+    accessToken: 'auto-stale-access',
+    refreshToken: 'auto-stale-refresh',
+  }))
+  const fetchMock = mockFetch([
+    () => jsonResponse({ error: { code: 'AUTHENTICATION_REQUIRED', message: 'revoked' } }, 401),
+  ])
+
+  try {
+    const restored = await auth.restoreSession()
+
+    assert.equal(restored, false)
+    assert.equal(auth.state.user, null)
+    assert.equal(auth.state.accessToken, null)
+    assert.equal(auth.state.refreshToken, null)
+    assert.equal(auth.state.rememberSession, false)
+    assert.equal(auth.isLoggedIn.value, false)
+    assert.equal(sessionStorage.getItem(TOKEN_STORAGE_KEY), null)
+    assert.equal(localStorage.getItem(TOKEN_STORAGE_KEY), null)
+    assert.equal(fetchMock.calls[0].options.headers.get('Authorization'), 'Bearer auto-stale-access')
+  } finally {
+    cleanupAuthTest(fetchMock)
+  }
+})
+
+test('applySession stores auto-login tokens in localStorage', () => {
+  const { sessionStorage, localStorage } = installBrowserStorage()
+  const auth = useAuthStore()
+  const stopSync = auth.startAuthSync()
+
+  try {
+    auth.applySession({
+      accessToken: 'auto-access',
+      refreshToken: 'auto-refresh',
+      user: { loginId: 'admin', role: 'ADMIN' },
+    }, { rememberSession: true })
+
+    assert.equal(sessionStorage.getItem(TOKEN_STORAGE_KEY), null)
+    assert.match(localStorage.getItem(TOKEN_STORAGE_KEY), /auto-refresh/)
+    assert.equal(auth.state.rememberSession, true)
+  } finally {
+    auth.clearSession()
+    stopSync()
+    delete globalThis.window
+  }
+})
+
+function installBrowserStorage() {
+  const sessionStorage = createMemoryStorage()
+  const localStorage = createMemoryStorage()
   globalThis.window = {
-    sessionStorage: storage,
+    sessionStorage,
+    localStorage,
     setTimeout,
     clearTimeout,
   }
-  return storage
+  return { sessionStorage, localStorage }
 }
 
 function createMemoryStorage() {
@@ -168,7 +227,7 @@ function jsonResponse(payload, status = 200) {
 }
 
 function cleanupAuthTest(fetchMock) {
-  clearAuthTokens()
+  useAuthStore().clearSession()
   fetchMock.restore()
   delete globalThis.window
 }
