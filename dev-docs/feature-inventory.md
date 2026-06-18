@@ -258,6 +258,7 @@ MVP 데모 기준 완료율은 약 90~95%입니다.
 - S3 multipart complete response `ChecksumType` propagation from persisted initiate negotiation when the complete request omits `x-amz-checksum-type`
 - S3 built-in SigV4 smoke coverage for SDK-style UploadPart checksum auto-compute, ListParts checksum XML, stored-checksum complete, and final HEAD checksum/ETag
 - S3 single object PUT `x-amz-sdk-checksum-algorithm` auto-compute and AWS CLI `--checksum-algorithm SHA256` smoke coverage
+- S3 Content-MD5 `BadDigest`/`InvalidDigest` XML message normalization
 - S3 boto3 SDK checksum option smoke with `ChecksumAlgorithm=SHA256` and `ChecksumMode=ENABLED`
 - S3 AWS SDK JavaScript checksum option smoke with `ChecksumAlgorithm: "SHA256"` and `ChecksumMode: "ENABLED"`
 - S3 AWS SDK Java checksum option smoke with `ChecksumAlgorithm.SHA256` and `ChecksumMode.ENABLED` when `OSMU_AWS_SDK_JAVA_CLASSPATH` points to AWS SDK Java v2 jars

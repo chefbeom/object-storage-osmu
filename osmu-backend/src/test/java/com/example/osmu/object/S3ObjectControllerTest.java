@@ -495,7 +495,9 @@ class S3ObjectControllerTest {
                         .content(body))
                 .andExpect(status().isBadRequest())
                 .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_XML))
-                .andExpect(content().string(containsString("<Code>BadDigest</Code>")));
+                .andExpect(content().string(containsString("<Code>BadDigest</Code>")))
+                .andExpect(content().string(containsString(
+                        "<Message>The Content-MD5 you specified did not match what we received.</Message>")));
 
         mockMvc.perform(get("/api/s3/{bucketName}/docs/bad-checksum.txt", bucketName)
                         .header("X-OSMU-Access-Key", credentials.accessKey())
@@ -511,7 +513,9 @@ class S3ObjectControllerTest {
                         .content(body))
                 .andExpect(status().isBadRequest())
                 .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_XML))
-                .andExpect(content().string(containsString("<Code>InvalidDigest</Code>")));
+                .andExpect(content().string(containsString("<Code>InvalidDigest</Code>")))
+                .andExpect(content().string(containsString(
+                        "<Message>The Content-MD5 you specified is not valid.</Message>")));
     }
 
     @Test

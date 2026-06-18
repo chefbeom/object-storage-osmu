@@ -29,6 +29,12 @@ public final class S3ErrorCodeMapper {
         if ("InvalidRange".equals(s3Code)) {
             return "The requested range cannot be satisfied.";
         }
+        if ("InvalidDigest".equals(s3Code) && isContentMd5Error(message)) {
+            return "The Content-MD5 you specified is not valid.";
+        }
+        if ("BadDigest".equals(s3Code) && isContentMd5Error(message)) {
+            return "The Content-MD5 you specified did not match what we received.";
+        }
         if ("NoSuchBucket".equals(s3Code)) {
             return "The specified bucket does not exist";
         }
@@ -73,6 +79,10 @@ public final class S3ErrorCodeMapper {
 
     private static boolean isBucketError(String message) {
         return message != null && message.toLowerCase(Locale.ROOT).contains("bucket");
+    }
+
+    private static boolean isContentMd5Error(String message) {
+        return message != null && message.toLowerCase(Locale.ROOT).contains("content-md5");
     }
 
     private static String validationCode(String message) {

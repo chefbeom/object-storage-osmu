@@ -40,6 +40,12 @@ class S3ErrorCodeMapperTest {
     void normalizesS3ErrorMessages() {
         assertThat(S3ErrorCodeMapper.messageFor("AccessDenied", "Missing access key credentials.")).isEqualTo("Access Denied");
         assertThat(S3ErrorCodeMapper.messageFor("InvalidRange", "Invalid Range header.")).isEqualTo("The requested range cannot be satisfied.");
+        assertThat(S3ErrorCodeMapper.messageFor("BadDigest", "Content-MD5 does not match request body."))
+                .isEqualTo("The Content-MD5 you specified did not match what we received.");
+        assertThat(S3ErrorCodeMapper.messageFor("InvalidDigest", "Content-MD5 must be a valid base64 MD5 digest."))
+                .isEqualTo("The Content-MD5 you specified is not valid.");
+        assertThat(S3ErrorCodeMapper.messageFor("BadDigest", "x-amz-checksum-sha256 does not match uploaded object body."))
+                .isEqualTo("x-amz-checksum-sha256 does not match uploaded object body.");
         assertThat(S3ErrorCodeMapper.messageFor("NoSuchBucket", "Bucket not found.")).isEqualTo("The specified bucket does not exist");
         assertThat(S3ErrorCodeMapper.messageFor("NoSuchKey", "Object not found.")).isEqualTo("The specified key does not exist.");
         assertThat(S3ErrorCodeMapper.messageFor("NoSuchUpload", "Upload session not found."))

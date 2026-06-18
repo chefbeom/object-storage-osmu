@@ -177,8 +177,8 @@
 - Preconditions: Target bucket exists. Active access key has `READ` and `WRITE` scope.
 - Input: `PUT /api/s3/{bucketName}/{objectKey}` with valid `Content-MD5`, mismatched `Content-MD5`, and invalid base64 `Content-MD5`.
 - Steps: Upload one object with matching MD5, upload another object with mismatched MD5, verify the failed object was not stored, then upload with invalid digest syntax.
-- Expected: Matching digest succeeds and returns the MD5 `ETag`. Mismatched digest returns `400 BadDigest`. Invalid digest syntax returns `400 InvalidDigest`. Failed checksum upload does not create the object.
-- Expected error body: S3 XML with `BadDigest` or `InvalidDigest`.
+- Expected: Matching digest succeeds and returns the MD5 `ETag`. Mismatched digest returns `400 BadDigest` with AWS-style Content-MD5 mismatch message. Invalid digest syntax returns `400 InvalidDigest` with AWS-style invalid Content-MD5 message. Failed checksum upload does not create the object.
+- Expected error body: S3 XML with `BadDigest` or `InvalidDigest`, including normalized Content-MD5 messages.
 - Priority: P1
 - Automated: `S3ObjectControllerTest.accessKeyCanUploadWithContentMd5AndRejectMismatch`
 

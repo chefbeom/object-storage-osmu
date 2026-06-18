@@ -49,7 +49,7 @@
 
 | Checksum | Status | Notes |
 | --- | --- | --- |
-| `Content-MD5` | Supported | Validates request body and maps failures to S3 XML digest errors. |
+| `Content-MD5` | Supported | Validates request body and maps invalid/mismatched digest failures to S3 XML `InvalidDigest`/`BadDigest` with AWS-style messages. |
 | `x-amz-checksum-sha256` | Supported | PUT header/trailer, single PUT `x-amz-sdk-checksum-algorithm` auto-compute, multipart part header/trailer, final object metadata/header/XML. |
 | `x-amz-checksum-sha1` | Supported | PUT header/trailer, multipart part header/trailer, final object metadata/header/XML. |
 | `x-amz-checksum-crc32` | Supported | PUT header/trailer, multipart part header/trailer, final object metadata/header/XML. |

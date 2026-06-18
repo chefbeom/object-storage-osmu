@@ -1,5 +1,36 @@
 # Worklog - main
 
+### 2026-06-18 - S3 Content-MD5 digest error messages
+
+- Work time:
+  - End: 2026-06-18 KST
+- User command:
+  - Active goal: continue development from `dev-docs`.
+- Request analysis:
+  - `dev-docs` still track remaining AWS per-error message nuance.
+  - AWS S3 error docs list `BadDigest` as Content-MD5 mismatch and `InvalidDigest` as invalid Content-MD5.
+  - OSMU already returned the right digest error codes, but Content-MD5 XML messages still exposed internal validation text.
+- Execution:
+  - Normalized Content-MD5 `BadDigest` and `InvalidDigest` S3 XML messages to AWS-style text in `S3ErrorCodeMapper`.
+  - Kept non-MD5 `x-amz-checksum-*` digest failure messages specific to the failing checksum header.
+  - Added mapper assertions and MockMvc Content-MD5 message assertions.
+  - Updated README and `dev-docs`.
+- Modified files:
+  - `osmu-backend/src/main/java/com/example/osmu/common/error/S3ErrorCodeMapper.java`
+  - `osmu-backend/src/test/java/com/example/osmu/common/error/S3ErrorCodeMapperTest.java`
+  - `osmu-backend/src/test/java/com/example/osmu/object/S3ObjectControllerTest.java`
+  - `README.md`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/backend-design.md`
+  - `dev-docs/s3-compatibility.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/feature-inventory.md`
+  - `dev-docs/worklog/main/worklog-main.md`
+- Tests:
+  - `$env:JAVA_HOME='C:\jdk-17'; .\gradlew.bat test --no-daemon --rerun-tasks --tests com.example.osmu.common.error.S3ErrorCodeMapperTest --tests com.example.osmu.object.S3ObjectControllerTest.accessKeyCanUploadWithContentMd5AndRejectMismatch --tests com.example.osmu.object.S3ObjectControllerTest.accessKeyCanUploadWithSdkChecksumAlgorithm`: passed.
+- Follow-up:
+  - Continue remaining AWS checksum/error response propagation edges.
+
 ### 2026-06-18 - S3 CompleteMultipartUpload EntityTooSmall guard
 
 - Work time:
