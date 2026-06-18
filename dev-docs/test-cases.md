@@ -95,7 +95,7 @@
 - Preconditions: User is logged in. Backend has `OSMU_S3_PUBLIC_ENDPOINT`, `OSMU_S3_REGION`, and virtual-hosted-style suffix settings.
 - Input: `GET /api/developer/s3-client-config`.
 - Steps: Login, call the config endpoint, then open DeveloperPage and verify the endpoint summary and client snippets.
-- Expected: API returns endpoint, region, signature version, service name, path-style support, and virtual-hosted-style suffixes without exposing secret values. DeveloperPage displays the returned values and renders AWS CLI, s3fs-fuse, and goofys snippets with placeholder credentials.
+- Expected: API returns endpoint, region, signature version, service name, path-style support, and virtual-hosted-style suffixes without exposing secret values. DeveloperPage displays the returned values and renders AWS CLI, s3fs-fuse, goofys, AWS SDK JavaScript, boto3 Python, and AWS SDK Java snippets with placeholder credentials.
 - Priority: P1
 - Automated: `DeveloperControllerTest.s3ClientConfigReturnsPublicEndpointAndRegion`, `api-query.test.js getS3ClientConfig reads developer S3 client settings endpoint`, `HomeView.test.js stable selectors`
 

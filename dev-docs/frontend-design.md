@@ -158,7 +158,7 @@ Web Portal은 관리자와 사용자가 OSMU를 브라우저에서 사용할 수
 - 기존 Access Key 목록과 비활성화 action.
 - S3 compatible endpoint summary.
 - S3 compatible endpoint summary는 `GET /api/developer/s3-client-config` 응답을 사용해 endpoint, region, signature version, virtual-hosted-style domain suffix를 표시한다.
-- AWS CLI, s3fs-fuse, goofys client snippet을 endpoint/region/선택 bucket 기준으로 표시한다.
+- AWS CLI, s3fs-fuse, goofys, AWS SDK JavaScript, boto3 Python, AWS SDK Java snippets are generated from endpoint, region, and selected bucket.
 - 선택 bucket context.
 
 접근:

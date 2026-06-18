@@ -260,6 +260,8 @@ refresh token으로 access token을 재발급한다. 사용된 refresh token은 
 - 설정이 없으면 현재 요청 URL 기준으로 `/api/s3` endpoint를 계산한다.
 - `region`은 `OSMU_S3_REGION`을 사용하며 기본값은 `us-east-1`이다.
 
+- DeveloperPage uses this response to generate AWS CLI, s3fs-fuse, goofys, AWS SDK JavaScript, boto3 Python, and AWS SDK Java examples without embedding secrets.
+
 ## 5. Dashboard API
 
 ### GET /api/dashboard/layout

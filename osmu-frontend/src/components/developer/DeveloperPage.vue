@@ -77,6 +77,18 @@
           <h4>goofys</h4>
           <pre data-testid="developer-client-goofys"><code>{{ goofysSnippet }}</code></pre>
         </section>
+        <section>
+          <h4>AWS SDK JavaScript</h4>
+          <pre data-testid="developer-sdk-javascript"><code>{{ javascriptSdkSnippet }}</code></pre>
+        </section>
+        <section>
+          <h4>boto3 Python</h4>
+          <pre data-testid="developer-sdk-python"><code>{{ pythonSdkSnippet }}</code></pre>
+        </section>
+        <section>
+          <h4>AWS SDK Java</h4>
+          <pre data-testid="developer-sdk-java"><code>{{ javaSdkSnippet }}</code></pre>
+        </section>
       </div>
     </article>
   </section>
@@ -124,4 +136,46 @@ const s3fsSnippet = computed(() => [
 const goofysSnippet = computed(() => (
   `AWS_ACCESS_KEY_ID=<ACCESS_KEY> AWS_SECRET_ACCESS_KEY=<SECRET_KEY> goofys --endpoint ${snippetEndpoint.value} --region ${snippetRegion.value} ${snippetBucket.value} /mnt/osmu`
 ))
+const javascriptSdkSnippet = computed(() => [
+  'import { S3Client, ListObjectsV2Command } from "@aws-sdk/client-s3"',
+  '',
+  'const client = new S3Client({',
+  `  endpoint: "${snippetEndpoint.value}",`,
+  `  region: "${snippetRegion.value}",`,
+  '  forcePathStyle: true,',
+  '  credentials: {',
+  '    accessKeyId: "<ACCESS_KEY>",',
+  '    secretAccessKey: "<SECRET_KEY>",',
+  '  },',
+  '})',
+  '',
+  `const result = await client.send(new ListObjectsV2Command({ Bucket: "${snippetBucket.value}" }))`,
+  'console.log(result.Contents ?? [])',
+].join('\n'))
+const pythonSdkSnippet = computed(() => [
+  'import boto3',
+  '',
+  'client = boto3.client(',
+  '    "s3",',
+  `    endpoint_url="${snippetEndpoint.value}",`,
+  `    region_name="${snippetRegion.value}",`,
+  '    aws_access_key_id="<ACCESS_KEY>",',
+  '    aws_secret_access_key="<SECRET_KEY>",',
+  ')',
+  '',
+  `print(client.list_objects_v2(Bucket="${snippetBucket.value}").get("Contents", []))`,
+].join('\n'))
+const javaSdkSnippet = computed(() => [
+  'S3Client client = S3Client.builder()',
+  `    .endpointOverride(URI.create("${snippetEndpoint.value}"))`,
+  `    .region(Region.of("${snippetRegion.value}"))`,
+  '    .forcePathStyle(true)',
+  '    .credentialsProvider(StaticCredentialsProvider.create(',
+  '        AwsBasicCredentials.create("<ACCESS_KEY>", "<SECRET_KEY>")))',
+  '    .build();',
+  '',
+  `client.listObjectsV2(ListObjectsV2Request.builder().bucket("${snippetBucket.value}").build())`,
+  '    .contents()',
+  '    .forEach(object -> System.out.println(object.key()));',
+].join('\n'))
 </script>
