@@ -16,7 +16,8 @@ public record AccessKeyEntity(
         String status,
         OffsetDateTime createdAt,
         OffsetDateTime expiresAt,
-        OffsetDateTime lastUsedAt
+        OffsetDateTime lastUsedAt,
+        long usageCount
 ) {
     @Override
     public String toString() {
@@ -34,6 +35,7 @@ public record AccessKeyEntity(
                 + ", createdAt=" + createdAt
                 + ", expiresAt=" + expiresAt
                 + ", lastUsedAt=" + lastUsedAt
+                + ", usageCount=" + usageCount
                 + "]";
     }
 
@@ -50,7 +52,8 @@ public record AccessKeyEntity(
                 status,
                 createdAt,
                 expiresAt,
-                lastUsedAt
+                lastUsedAt,
+                usageCount
         );
     }
 }

@@ -249,6 +249,8 @@ Version UI:
 - 여러 bucket scope를 누적해 하나의 Access Key 발급
 - bucket별 scope/permission 표시
 - 마지막 사용 시각 `lastUsedAt` 표시
+- S3 API 인증 성공 누적 횟수 `usageCount` 표시
+- Access Key usage analysis panel로 총 S3 사용 횟수, 사용된 key 수, 최근 사용 시각, 최다 사용 key 표시
 - 만료 시각 `expiresAt` 표시
 - expired/expiring/never-used/stale 상태별 운영 조치 hint 표시
 - 생성된 policy 이름 표시

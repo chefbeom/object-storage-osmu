@@ -2166,7 +2166,8 @@ soft-deleted 파일 영구 삭제.
       "status": "ACTIVE",
       "createdAt": "2026-06-13T04:10:00+09:00",
       "expiresAt": null,
-      "lastUsedAt": "2026-06-15T14:08:00+09:00"
+      "lastUsedAt": "2026-06-15T14:08:00+09:00",
+      "usageCount": 12
     }
   ],
   "nextCursor": null
@@ -2241,7 +2242,7 @@ Access Key 생성.
 - `allowedBuckets`와 `permissions`는 `bucketScopes`에서 파생한 호환 필드다.
 - 더 이상 허용 가능한 scope가 없는 key는 `INACTIVE`로 변경하고 S3 user/policy를 제거한다.
 - `osmu.metadata.mode=mariadb`에서는 `access_keys` table에 저장한다.
-- S3 호환 API에서 Access Key 인증이 성공하면 해당 key의 `lastUsedAt`을 갱신한다.
+- S3 호환 API에서 Access Key 인증이 성공하면 해당 key의 `lastUsedAt`을 갱신하고 `usageCount`를 1 증가시킨다.
 
 - Access key `permissions` supports `READ`, `WRITE`, `DELETE`, and `ADMIN`.
 - `ADMIN` access key scope is required for bucket lifecycle alias operations.

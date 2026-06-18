@@ -5,6 +5,7 @@ import {
   accessKeyCleanupCandidateIds,
   accessKeyMatchesFilter,
   accessKeyOperationalAction,
+  analyzeAccessKeyUsage,
   buildAccessKeyCleanupExport,
   filterAccessKeys,
   formatKeyScope,
@@ -70,6 +71,24 @@ test('summarizeAccessKeys counts active, expiring, expired, and unused keys', ()
     neverUsedCount: 1,
     staleCount: 1,
     unusedCount: 2,
+  })
+})
+
+test('analyzeAccessKeyUsage summarizes usage count and last used recency', () => {
+  const analysis = analyzeAccessKeyUsage([
+    { id: 1, name: 'media-app', usageCount: 8, lastUsedAt: '2026-06-14T12:00:00.000Z' },
+    { id: 2, name: 'backup-job', usageCount: 12, lastUsedAt: '2026-06-15T03:00:00.000Z' },
+    { id: 3, name: 'unused-key', usageCount: 0, lastUsedAt: null },
+    { id: 4, name: 'legacy-key', lastUsedAt: '2026-06-01T00:00:00.000Z' },
+  ])
+
+  assert.deepEqual(analysis, {
+    totalUsageCount: 20,
+    usedKeyCount: 3,
+    neverUsedCount: 1,
+    latestUsedAt: '2026-06-15T03:00:00.000Z',
+    mostUsedKeyName: 'backup-job',
+    mostUsedKeyUsageCount: 12,
   })
 })
 

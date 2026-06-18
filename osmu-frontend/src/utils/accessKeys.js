@@ -74,6 +74,42 @@ export function summarizeAccessKeys(keys, now = Date.now(), options = {}) {
   return summary
 }
 
+export function analyzeAccessKeyUsage(keys) {
+  const items = Array.isArray(keys) ? keys : []
+  let totalUsageCount = 0
+  let mostUsedKey = null
+  let latestUsedAt = null
+  let usedKeyCount = 0
+  let neverUsedCount = 0
+
+  for (const key of items) {
+    const usageCount = accessKeyUsageCount(key)
+    const lastUsedAt = timestampValue(key?.lastUsedAt)
+    totalUsageCount += usageCount
+    if (usageCount > 0 || lastUsedAt !== null) {
+      usedKeyCount += 1
+    } else {
+      neverUsedCount += 1
+    }
+    if (!mostUsedKey || usageCount > accessKeyUsageCount(mostUsedKey)) {
+      mostUsedKey = key
+    }
+    if (lastUsedAt !== null && (latestUsedAt === null || lastUsedAt > latestUsedAt)) {
+      latestUsedAt = lastUsedAt
+    }
+  }
+
+  const topKey = totalUsageCount > 0 ? mostUsedKey : null
+  return {
+    totalUsageCount,
+    usedKeyCount,
+    neverUsedCount,
+    latestUsedAt: latestUsedAt === null ? null : new Date(latestUsedAt).toISOString(),
+    mostUsedKeyName: topKey?.name || (topKey?.id === undefined ? '-' : `#${topKey.id}`),
+    mostUsedKeyUsageCount: topKey ? accessKeyUsageCount(topKey) : 0,
+  }
+}
+
 export function filterAccessKeys(keys, filter = 'ALL', now = Date.now(), options = {}) {
   const selectedFilter = ACCESS_KEY_FILTERS.includes(filter) ? filter : 'ALL'
   const items = Array.isArray(keys) ? keys : []
@@ -210,6 +246,10 @@ export function buildAccessKeyCleanupExport(keys, now = Date.now(), options = {}
 
 function daysToMs(days) {
   return Math.max(0, Number(days) || 0) * 24 * 60 * 60 * 1000
+}
+
+function accessKeyUsageCount(key) {
+  return Math.max(0, Number(key?.usageCount || 0))
 }
 
 function timestampValue(value) {

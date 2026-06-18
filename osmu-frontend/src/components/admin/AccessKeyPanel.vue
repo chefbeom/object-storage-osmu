@@ -47,6 +47,24 @@
     <p v-if="newSecretKey" class="secret-box" data-testid="access-key-secret-box">
       Secret Key: {{ newSecretKey }}
     </p>
+    <div class="compact-metrics access-key-usage-metrics" data-testid="access-key-usage-analysis">
+      <span data-testid="access-key-usage-total">
+        Total S3 uses
+        <b>{{ formatUsageCount(accessKeyUsageAnalysis.totalUsageCount) }}</b>
+      </span>
+      <span data-testid="access-key-usage-used-keys">
+        Used keys
+        <b>{{ accessKeyUsageAnalysis.usedKeyCount }}/{{ accessKeySummary.totalCount }}</b>
+      </span>
+      <span data-testid="access-key-usage-latest">
+        Latest use
+        <b>{{ formatLastUsedAt(accessKeyUsageAnalysis.latestUsedAt) }}</b>
+      </span>
+      <span data-testid="access-key-usage-top-key">
+        Top key
+        <b>{{ accessKeyUsageAnalysis.mostUsedKeyName }} / {{ formatUsageCount(accessKeyUsageAnalysis.mostUsedKeyUsageCount) }}</b>
+      </span>
+    </div>
     <div class="access-key-filter-row" data-testid="access-key-filter-row" role="toolbar" aria-label="Access key filters">
       <button data-testid="access-key-filter-all" type="button" :class="filterButtonClass('ALL')" @click="setAccessKeyFilter('ALL')">All {{ filterCount('ALL') }}</button>
       <button data-testid="access-key-filter-active" type="button" :class="filterButtonClass('ACTIVE')" @click="setAccessKeyFilter('ACTIVE')">Active {{ filterCount('ACTIVE') }}</button>
@@ -101,6 +119,7 @@
           <small>{{ key.policyName }} / {{ formatKeyScope(key) }}</small>
           <small data-testid="access-key-expires-at">Expires: {{ formatExpiresAt(key.expiresAt) }}</small>
           <small data-testid="access-key-last-used">Last used: {{ formatLastUsedAt(key.lastUsedAt) }}</small>
+          <small data-testid="access-key-usage-count">S3 uses: {{ formatUsageCount(key.usageCount) }}</small>
           <small data-testid="access-key-action-hint" :class="['action-hint', accessKeyActionTone(key)]">
             {{ accessKeyActionLabel(key) }}
           </small>
@@ -121,6 +140,7 @@ import { computed, reactive, ref, watch } from 'vue'
 import {
   accessKeyCleanupCandidates,
   accessKeyOperationalAction,
+  analyzeAccessKeyUsage,
   buildAccessKeyCleanupExport,
   filterAccessKeys,
   summarizeAccessKeys,
@@ -139,6 +159,7 @@ const accessKeyFilter = ref('ALL')
 const cleanupSelection = reactive({})
 const filteredAccessKeys = computed(() => filterAccessKeys(props.accessKeys, accessKeyFilter.value))
 const accessKeySummary = computed(() => summarizeAccessKeys(props.accessKeys))
+const accessKeyUsageAnalysis = computed(() => analyzeAccessKeyUsage(props.accessKeys))
 const cleanupCandidates = computed(() => accessKeyCleanupCandidates(props.accessKeys))
 const cleanupCandidateIds = computed(() => cleanupCandidates.value.map((candidate) => candidate.id))
 const selectedCleanupCandidates = computed(() => cleanupCandidates.value.filter((candidate) => cleanupCandidateSelected(candidate.id)))
@@ -215,6 +236,10 @@ function formatLastUsedAt(value) {
 
 function formatExpiresAt(value) {
   return value ? new Date(value).toLocaleString() : '만료 없음'
+}
+
+function formatUsageCount(value) {
+  return Math.max(0, Number(value || 0)).toLocaleString()
 }
 
 function downloadJsonFile(filename, payload) {

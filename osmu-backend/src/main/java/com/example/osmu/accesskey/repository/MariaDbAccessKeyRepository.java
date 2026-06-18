@@ -56,7 +56,7 @@ public class MariaDbAccessKeyRepository implements AccessKeyRepository {
     public List<AccessKeyRecord> findAllRecords() {
         ensureSchema();
         String sql = """
-                SELECT id, owner_id, name, access_key, allowed_buckets, permissions, bucket_scopes, status, created_at, expires_at, last_used_at
+                SELECT id, owner_id, name, access_key, allowed_buckets, permissions, bucket_scopes, status, created_at, expires_at, last_used_at, usage_count
                 FROM access_keys
                 ORDER BY id
                 """;
@@ -77,7 +77,7 @@ public class MariaDbAccessKeyRepository implements AccessKeyRepository {
     public List<AccessKeyRecord> findRecordsByOwnerId(long ownerId) {
         ensureSchema();
         String sql = """
-                SELECT id, owner_id, name, access_key, allowed_buckets, permissions, bucket_scopes, status, created_at, expires_at, last_used_at
+                SELECT id, owner_id, name, access_key, allowed_buckets, permissions, bucket_scopes, status, created_at, expires_at, last_used_at, usage_count
                 FROM access_keys
                 WHERE owner_id = ?
                 ORDER BY id
@@ -101,7 +101,7 @@ public class MariaDbAccessKeyRepository implements AccessKeyRepository {
     public Optional<AccessKeyRecord> findRecordById(long id) {
         ensureSchema();
         String sql = """
-                SELECT id, owner_id, name, access_key, allowed_buckets, permissions, bucket_scopes, status, created_at, expires_at, last_used_at
+                SELECT id, owner_id, name, access_key, allowed_buckets, permissions, bucket_scopes, status, created_at, expires_at, last_used_at, usage_count
                 FROM access_keys
                 WHERE id = ?
                 """;
@@ -162,8 +162,8 @@ public class MariaDbAccessKeyRepository implements AccessKeyRepository {
         ensureSchema();
         String sql = """
                 INSERT INTO access_keys
-                    (id, owner_id, name, access_key, secret_key_hash, secret_key_ciphertext, allowed_buckets, permissions, bucket_scopes, status, created_at, expires_at, last_used_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    (id, owner_id, name, access_key, secret_key_hash, secret_key_ciphertext, allowed_buckets, permissions, bucket_scopes, status, created_at, expires_at, last_used_at, usage_count)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON DUPLICATE KEY UPDATE
                     name = VALUES(name),
                     secret_key_hash = VALUES(secret_key_hash),
@@ -189,6 +189,7 @@ public class MariaDbAccessKeyRepository implements AccessKeyRepository {
             statement.setTimestamp(11, Timestamp.from(accessKey.createdAt().toInstant()));
             statement.setTimestamp(12, timestampOrNull(accessKey.expiresAt()));
             statement.setTimestamp(13, timestampOrNull(accessKey.lastUsedAt()));
+            statement.setLong(14, accessKey.usageCount());
             statement.executeUpdate();
             return accessKey.toRecord();
         } catch (SQLException exception) {
@@ -244,7 +245,7 @@ public class MariaDbAccessKeyRepository implements AccessKeyRepository {
     @Override
     public void markUsed(long id, OffsetDateTime usedAt) {
         ensureSchema();
-        String sql = "UPDATE access_keys SET last_used_at = ? WHERE id = ?";
+        String sql = "UPDATE access_keys SET last_used_at = ?, usage_count = usage_count + 1 WHERE id = ?";
         try (Connection connection = connect();
              PreparedStatement statement = connection.prepareStatement(sql)) {
             statement.setTimestamp(1, timestampOrNull(usedAt));
@@ -286,9 +287,11 @@ public class MariaDbAccessKeyRepository implements AccessKeyRepository {
                     created_at TIMESTAMP NOT NULL,
                     expires_at TIMESTAMP NULL,
                     last_used_at TIMESTAMP NULL,
+                    usage_count BIGINT NOT NULL DEFAULT 0,
                     INDEX idx_access_keys_owner_id (owner_id),
                     INDEX idx_access_keys_status (status),
-                    INDEX idx_access_keys_last_used_at (last_used_at)
+                    INDEX idx_access_keys_last_used_at (last_used_at),
+                    INDEX idx_access_keys_usage_count (usage_count)
                 )
                 """;
         try (Connection connection = connect();
@@ -307,7 +310,9 @@ public class MariaDbAccessKeyRepository implements AccessKeyRepository {
         executeUpdate(connection, "ALTER TABLE access_keys ADD COLUMN IF NOT EXISTS bucket_scopes TEXT NULL");
         executeUpdate(connection, "ALTER TABLE access_keys ADD COLUMN IF NOT EXISTS secret_key_ciphertext TEXT NULL");
         executeUpdate(connection, "ALTER TABLE access_keys ADD COLUMN IF NOT EXISTS last_used_at TIMESTAMP NULL");
+        executeUpdate(connection, "ALTER TABLE access_keys ADD COLUMN IF NOT EXISTS usage_count BIGINT NOT NULL DEFAULT 0");
         executeUpdate(connection, "CREATE INDEX IF NOT EXISTS idx_access_keys_last_used_at ON access_keys (last_used_at)");
+        executeUpdate(connection, "CREATE INDEX IF NOT EXISTS idx_access_keys_usage_count ON access_keys (usage_count)");
         executeUpdate(connection, "UPDATE access_keys SET allowed_buckets = '[\"*\"]' WHERE allowed_buckets IS NULL");
         executeUpdate(connection, "UPDATE access_keys SET permissions = '[\"READ\",\"WRITE\",\"DELETE\"]' WHERE permissions IS NULL");
         executeUpdate(connection, "ALTER TABLE access_keys MODIFY COLUMN allowed_buckets TEXT NOT NULL");
@@ -339,7 +344,8 @@ public class MariaDbAccessKeyRepository implements AccessKeyRepository {
                 resultSet.getString("status"),
                 resultSet.getTimestamp("created_at").toInstant().atOffset(ZoneOffset.UTC),
                 offsetDateTimeOrNull(resultSet.getTimestamp("expires_at")),
-                offsetDateTimeOrNull(resultSet.getTimestamp("last_used_at"))
+                offsetDateTimeOrNull(resultSet.getTimestamp("last_used_at")),
+                resultSet.getLong("usage_count")
         );
     }
 

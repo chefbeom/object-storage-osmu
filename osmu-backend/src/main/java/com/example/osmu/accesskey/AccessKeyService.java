@@ -78,7 +78,8 @@ public class AccessKeyService {
                 "ACTIVE",
                 OffsetDateTime.now(),
                 request.expiresAt(),
-                null
+                null,
+                0L
         );
         AccessKeyRecord record = entity.toRecord();
         S3AccessPolicy policy = policyGenerator.generate(id, bucketScopes);
@@ -358,7 +359,8 @@ public class AccessKeyService {
                         accessKey.status(),
                         accessKey.createdAt(),
                         accessKey.expiresAt(),
-                        accessKey.lastUsedAt()
+                        accessKey.lastUsedAt(),
+                        accessKey.usageCount()
                 );
                 try {
                     policyProvisioner.syncPolicy(scopedRecord, policyGenerator.generate(scopedRecord.id(), scope.bucketScopes()));

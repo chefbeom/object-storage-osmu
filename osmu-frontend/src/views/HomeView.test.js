@@ -231,6 +231,11 @@ test('HomeView exposes stable selectors for browser E2E flows', () => {
     'access-key-secret-warning',
     'access-key-secret-box',
     'access-key-filter-row',
+    'access-key-usage-analysis',
+    'access-key-usage-total',
+    'access-key-usage-used-keys',
+    'access-key-usage-latest',
+    'access-key-usage-top-key',
     'access-key-filter-all',
     'access-key-filter-active',
     'access-key-filter-expired',
@@ -248,6 +253,7 @@ test('HomeView exposes stable selectors for browser E2E flows', () => {
     'access-key-list',
     'access-key-expires-at',
     'access-key-last-used',
+    'access-key-usage-count',
     'access-key-action-hint',
     'access-key-rotate-button',
     'access-key-delete-button',
@@ -660,6 +666,9 @@ test('HomeView exposes stable selectors for browser E2E flows', () => {
   assert.match(dashboardSource, /s3fs .* use_path_request_style/)
   assert.match(dashboardSource, /goofys --endpoint/)
   assert.match(dashboardSource, /Last used:/)
+  assert.match(dashboardSource, /Total S3 uses/)
+  assert.match(dashboardSource, /S3 uses:/)
+  assert.match(dashboardSource, /analyzeAccessKeyUsage/)
   assert.match(dashboardSource, /login-auto-login-checkbox/)
   assert.match(dashboardSource, /login-remember-id-checkbox/)
   assert.match(dashboardSource, /login-password-toggle/)

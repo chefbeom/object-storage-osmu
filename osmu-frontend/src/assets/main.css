@@ -1433,6 +1433,11 @@ label {
   padding: 12px 18px 0;
 }
 
+.access-key-usage-metrics {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  border-bottom: 1px solid var(--color-border);
+}
+
 .access-key-filter-row button.active {
   border-color: #2563eb;
   background: #eff6ff;

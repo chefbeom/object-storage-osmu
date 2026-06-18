@@ -251,11 +251,13 @@ CREATE TABLE access_keys (
   status VARCHAR(32) NOT NULL DEFAULT 'ACTIVE',
   expires_at DATETIME(6) NULL,
   last_used_at DATETIME(6) NULL,
+  usage_count BIGINT NOT NULL DEFAULT 0,
   created_at DATETIME(6) NOT NULL,
   UNIQUE KEY uk_access_keys_access_key (access_key),
   KEY idx_access_keys_owner_id (owner_id),
   KEY idx_access_keys_status (status),
-  KEY idx_access_keys_last_used_at (last_used_at)
+  KEY idx_access_keys_last_used_at (last_used_at),
+  KEY idx_access_keys_usage_count (usage_count)
 );
 ```
 
@@ -268,6 +270,7 @@ CREATE TABLE access_keys (
 - 현재 구현 권한 값은 `READ`, `WRITE`, `DELETE`다.
 - 비활성화 시 S3 접근도 막아야 함.
 - `last_used_at`은 S3 호환 API에서 Access Key 인증이 성공할 때 갱신한다.
+- `usage_count`는 S3 호환 API에서 Access Key 인증이 성공할 때마다 1 증가한다.
 - Access Key secret rotation 시 `secret_key_hash`, `secret_key_ciphertext`를 새 secret 기준으로 갱신하며 bucket scope와 `access_key` 값은 유지한다.
 
 - Access key `permissions` supports `READ`, `WRITE`, `DELETE`, and `ADMIN`.

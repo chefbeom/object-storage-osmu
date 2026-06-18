@@ -15,6 +15,7 @@ public record AccessKeyRecord(
         String status,
         OffsetDateTime createdAt,
         OffsetDateTime expiresAt,
-        OffsetDateTime lastUsedAt
+        OffsetDateTime lastUsedAt,
+        long usageCount
 ) {
 }

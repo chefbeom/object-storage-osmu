@@ -206,6 +206,7 @@ Controller -> Service -> StorageAdapter
 - 요청 permission이 bucket permission을 초과하지 않는지 검증
 - bucket permission 회수 후 active key scope/policy 재동기화
 - Access Key 비활성화
+- S3 호환 인증 성공 시 `lastUsedAt` 갱신과 `usageCount` 증가
 - 사용자 비활성화/잠금 시 사용자 소유 Access Key 일괄 비활성화
 - MinIO 계정/정책 연동
 

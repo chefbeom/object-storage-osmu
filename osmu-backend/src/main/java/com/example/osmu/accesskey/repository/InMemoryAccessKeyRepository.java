@@ -77,7 +77,8 @@ public class InMemoryAccessKeyRepository implements AccessKeyRepository {
                 existing.status(),
                 existing.createdAt(),
                 existing.expiresAt(),
-                existing.lastUsedAt()
+                existing.lastUsedAt(),
+                existing.usageCount()
         ));
     }
 
@@ -96,7 +97,8 @@ public class InMemoryAccessKeyRepository implements AccessKeyRepository {
                 status,
                 existing.createdAt(),
                 existing.expiresAt(),
-                existing.lastUsedAt()
+                existing.lastUsedAt(),
+                existing.usageCount()
         ));
     }
 
@@ -115,7 +117,8 @@ public class InMemoryAccessKeyRepository implements AccessKeyRepository {
                 existing.status(),
                 existing.createdAt(),
                 existing.expiresAt(),
-                existing.lastUsedAt()
+                existing.lastUsedAt(),
+                existing.usageCount()
         ));
     }
 
@@ -134,7 +137,8 @@ public class InMemoryAccessKeyRepository implements AccessKeyRepository {
                 existing.status(),
                 existing.createdAt(),
                 existing.expiresAt(),
-                usedAt
+                usedAt,
+                existing.usageCount() + 1
         ));
     }
 

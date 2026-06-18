@@ -127,7 +127,7 @@ class AccessKeyControllerTest {
     }
 
     @Test
-    void accessKeyListShowsLastUsedAtAfterS3Request() throws Exception {
+    void accessKeyListShowsUsageCountAndLastUsedAtAfterS3Request() throws Exception {
         String accessToken = loginAndReturnAccessToken("admin", "password");
         createBucket(accessToken, "key-last-used-bucket");
 
@@ -155,6 +155,13 @@ class AccessKeyControllerTest {
                         .content("last used"))
                 .andExpect(status().isOk());
 
+        mockMvc.perform(put("/api/s3/key-last-used-bucket/last-used-again.txt")
+                        .header("X-OSMU-Access-Key", accessKey)
+                        .header("X-OSMU-Secret-Key", secretKey)
+                        .contentType(MediaType.TEXT_PLAIN)
+                        .content("last used again"))
+                .andExpect(status().isOk());
+
         String listBody = mockMvc.perform(get("/api/access-keys")
                         .header("Authorization", "Bearer " + accessToken))
                 .andExpect(status().isOk())
@@ -162,9 +169,11 @@ class AccessKeyControllerTest {
                 .getResponse()
                 .getContentAsString();
         List<String> lastUsedAt = JsonPath.read(listBody, "$.items[?(@.accessKey == '%s')].lastUsedAt".formatted(accessKey));
+        List<Integer> usageCount = JsonPath.read(listBody, "$.items[?(@.accessKey == '%s')].usageCount".formatted(accessKey));
 
         assertThat(lastUsedAt).hasSize(1);
         assertThat(lastUsedAt.get(0)).isNotBlank();
+        assertThat(usageCount).containsExactly(2);
     }
 
     @Test
@@ -302,7 +311,7 @@ class AccessKeyControllerTest {
 
         List<AccessKeyBucketScope> scopes = List.of(new AccessKeyBucketScope("key-secret-log-bucket", List.of("READ")));
         CreateAccessKeyResponse response = new CreateAccessKeyResponse(900L, "safe-key", accessKey, rawSecret, "policy-name", "policy-document", List.of("key-secret-log-bucket"), List.of("READ"), scopes);
-        AccessKeyEntity entity = new AccessKeyEntity(900L, 1L, "safe-key", accessKey, "raw-secret-hash", "raw-secret-ciphertext", List.of("key-secret-log-bucket"), List.of("READ"), scopes, "ACTIVE", OffsetDateTime.now(), null, null);
+        AccessKeyEntity entity = new AccessKeyEntity(900L, 1L, "safe-key", accessKey, "raw-secret-hash", "raw-secret-ciphertext", List.of("key-secret-log-bucket"), List.of("READ"), scopes, "ACTIVE", OffsetDateTime.now(), null, null, 0L);
         AccessKeyCredential credential = new AccessKeyCredential(900L, 1L, accessKey, "raw-secret-hash", "raw-secret-ciphertext", scopes, "ACTIVE", null);
 
         assertThat(response.toString())

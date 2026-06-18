@@ -1282,13 +1282,13 @@ ID:
 
 ### TC-KEY-008
 
-- Feature: Access Key last used tracking
+- Feature: Access Key usage count and last used tracking
 - Condition: Active Access Key exists with `READ` or `WRITE` scope for a bucket.
 - Input: S3-style request with `X-OSMU-Access-Key` and `X-OSMU-Secret-Key`.
 - Steps: Create an Access Key, use it for `PUT /api/s3/{bucketName}/{objectKey}` or `GET /api/s3`, then call `GET /api/access-keys`.
-- Expected: The matching Access Key record has non-empty `lastUsedAt`; secret values are still omitted from the list response.
+- Expected: The matching Access Key record has non-empty `lastUsedAt`, increments `usageCount` once per successful S3-compatible authentication, and still omits secret values from the list response.
 - Priority: P1
-- Automated: `AccessKeyControllerTest.accessKeyListShowsLastUsedAtAfterS3Request`
+- Automated: `AccessKeyControllerTest.accessKeyListShowsUsageCountAndLastUsedAtAfterS3Request`
 
 ### TC-KEY-009
 
@@ -1314,9 +1314,9 @@ ID:
 
 - Feature: Access Key operational dashboard summary
 - Condition: Dashboard has Access Key widget enabled and Access Key list contains active, inactive, expired, expiring, never-used, and stale-used keys.
-- Input: Access Key list with `status`, `expiresAt`, and `lastUsedAt`.
+- Input: Access Key list with `status`, `expiresAt`, `lastUsedAt`, and `usageCount`.
 - Steps: Load Dashboard and inspect the `access-keys` widget.
-- Expected: Widget shows active count, total count, provisioner health, expired active key count, keys expiring within 7 days, and unused count where unused means never used or last used more than 30 days ago.
+- Expected: Widget shows active count, total count, provisioner health, expired active key count, keys expiring within 7 days, and unused count where unused means never used or last used more than 30 days ago. Admin/Developer Access Key panel shows total S3 usage count, used key count, latest use, top key, and per-row S3 use count.
 - Priority: P1
 - Automated: `accessKeys.test.js`, `HomeView.test.js`
 
