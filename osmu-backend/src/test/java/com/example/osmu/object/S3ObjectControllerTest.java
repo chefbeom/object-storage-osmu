@@ -218,9 +218,11 @@ class S3ObjectControllerTest {
         createBucket(token, bucketName);
         AccessKeyCredentials credentials = createAccessKey(token, bucketName, "READ", "WRITE");
         String decodedBody = "chunked body!";
-        String encodedBody = "d;chunk-signature=abc\r\n"
+        String chunkSignature = "0".repeat(64);
+        String finalChunkSignature = "1".repeat(64);
+        String encodedBody = "d;chunk-signature=" + chunkSignature + "\r\n"
                 + decodedBody
-                + "\r\n0;chunk-signature=def\r\n\r\n";
+                + "\r\n0;chunk-signature=" + finalChunkSignature + "\r\n\r\n";
 
         mockMvc.perform(put("/api/s3/{bucketName}/docs/chunked.txt", bucketName)
                         .header("X-OSMU-Access-Key", credentials.accessKey())
@@ -262,6 +264,36 @@ class S3ObjectControllerTest {
                         .header(HttpHeaders.CONTENT_ENCODING, "aws-chunked")
                         .contentType(MediaType.TEXT_PLAIN)
                         .content(encodedBody.getBytes(StandardCharsets.UTF_8)))
+                .andExpect(status().isBadRequest())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_XML))
+                .andExpect(content().string(containsString("<Code>InvalidRequest</Code>")));
+
+        String missingSignatureBody = "d\r\n"
+                + decodedBody
+                + "\r\n0;chunk-signature=" + finalChunkSignature + "\r\n\r\n";
+        mockMvc.perform(put("/api/s3/{bucketName}/docs/chunked-missing-signature.txt", bucketName)
+                        .header("X-OSMU-Access-Key", credentials.accessKey())
+                        .header("X-OSMU-Secret-Key", credentials.secretKey())
+                        .header("x-amz-content-sha256", "STREAMING-AWS4-HMAC-SHA256-PAYLOAD")
+                        .header("x-amz-decoded-content-length", decodedBody.getBytes(StandardCharsets.UTF_8).length)
+                        .header(HttpHeaders.CONTENT_ENCODING, "aws-chunked")
+                        .contentType(MediaType.TEXT_PLAIN)
+                        .content(missingSignatureBody.getBytes(StandardCharsets.UTF_8)))
+                .andExpect(status().isBadRequest())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_XML))
+                .andExpect(content().string(containsString("<Code>InvalidRequest</Code>")));
+
+        String invalidFinalSignatureBody = "d;chunk-signature=" + chunkSignature + "\r\n"
+                + decodedBody
+                + "\r\n0;chunk-signature=nothex\r\n\r\n";
+        mockMvc.perform(put("/api/s3/{bucketName}/docs/chunked-invalid-final-signature.txt", bucketName)
+                        .header("X-OSMU-Access-Key", credentials.accessKey())
+                        .header("X-OSMU-Secret-Key", credentials.secretKey())
+                        .header("x-amz-content-sha256", "STREAMING-AWS4-HMAC-SHA256-PAYLOAD")
+                        .header("x-amz-decoded-content-length", decodedBody.getBytes(StandardCharsets.UTF_8).length)
+                        .header(HttpHeaders.CONTENT_ENCODING, "aws-chunked")
+                        .contentType(MediaType.TEXT_PLAIN)
+                        .content(invalidFinalSignatureBody.getBytes(StandardCharsets.UTF_8)))
                 .andExpect(status().isBadRequest())
                 .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_XML))
                 .andExpect(content().string(containsString("<Code>InvalidRequest</Code>")));

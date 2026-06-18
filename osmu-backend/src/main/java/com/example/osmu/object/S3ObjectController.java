@@ -781,7 +781,7 @@ public class S3ObjectController {
         if (isAwsChunkedPayload(request)) {
             long decodedContentLength = requiredNonNegativeLongHeader(request, AWS_DECODED_CONTENT_LENGTH_HEADER);
             return new RequestBodyContent(
-                    new AwsChunkedInputStream(request.getInputStream(), decodedContentLength),
+                    new AwsChunkedInputStream(request.getInputStream(), decodedContentLength, isAwsStreamingPayload(request)),
                     decodedContentLength
             );
         }
@@ -797,6 +797,11 @@ public class S3ObjectController {
         String contentEncoding = request.getHeader(HttpHeaders.CONTENT_ENCODING);
         return payloadHash != null && payloadHash.trim().startsWith(AWS_STREAMING_PAYLOAD_PREFIX)
                 || contentEncoding != null && contentEncoding.toLowerCase(java.util.Locale.ROOT).contains(AWS_CHUNKED_CONTENT_ENCODING);
+    }
+
+    private boolean isAwsStreamingPayload(HttpServletRequest request) {
+        String payloadHash = request.getHeader(AWS_CONTENT_SHA256_HEADER);
+        return payloadHash != null && payloadHash.trim().startsWith(AWS_STREAMING_PAYLOAD_PREFIX);
     }
 
     private long requiredLongHeader(HttpServletRequest request, String primaryName, String fallbackName) {
@@ -1682,14 +1687,16 @@ public class S3ObjectController {
     private static final class AwsChunkedInputStream extends InputStream {
         private final InputStream input;
         private final long expectedDecodedLength;
+        private final boolean requireChunkSignature;
         private byte[] chunk = new byte[0];
         private int offset;
         private boolean finished;
         private long decodedLength;
 
-        private AwsChunkedInputStream(InputStream input, long expectedDecodedLength) {
+        private AwsChunkedInputStream(InputStream input, long expectedDecodedLength, boolean requireChunkSignature) {
             this.input = input;
             this.expectedDecodedLength = expectedDecodedLength;
+            this.requireChunkSignature = requireChunkSignature;
         }
 
         @Override
@@ -1741,7 +1748,11 @@ public class S3ObjectController {
                 throw new IOException("Unexpected end of aws-chunked stream.");
             }
 
-            String rawSize = header.split(";", 2)[0].trim();
+            String[] headerParts = header.split(";", -1);
+            String rawSize = headerParts[0].trim();
+            if (requireChunkSignature) {
+                requireValidChunkSignature(headerParts);
+            }
             long size;
             try {
                 size = Long.parseLong(rawSize, 16);
@@ -1772,6 +1783,39 @@ public class S3ObjectController {
             decodedLength += chunk.length;
             consumeCrlf();
             offset = 0;
+        }
+
+        private void requireValidChunkSignature(String[] headerParts) {
+            String signature = null;
+            for (int i = 1; i < headerParts.length; i++) {
+                String extension = headerParts[i].trim();
+                int separator = extension.indexOf('=');
+                if (separator <= 0) {
+                    continue;
+                }
+                String name = extension.substring(0, separator).trim();
+                if ("chunk-signature".equalsIgnoreCase(name)) {
+                    signature = extension.substring(separator + 1).trim();
+                    break;
+                }
+            }
+            if (signature == null || !isLowerHex(signature)) {
+                throw new ApiException(ApiErrorCode.VALIDATION_ERROR,
+                        "aws-chunked chunk-signature must be a 64-character lowercase hex value.");
+            }
+        }
+
+        private boolean isLowerHex(String value) {
+            if (value.length() != 64) {
+                return false;
+            }
+            for (int i = 0; i < value.length(); i++) {
+                char current = value.charAt(i);
+                if (!((current >= '0' && current <= '9') || (current >= 'a' && current <= 'f'))) {
+                    return false;
+                }
+            }
+            return true;
         }
 
         private void drainTrailers() throws IOException {
