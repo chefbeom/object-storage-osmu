@@ -1,5 +1,34 @@
 <template>
   <section id="developer-workbench" class="management-grid lower" data-testid="developer-page">
+    <article class="panel developer-onboarding-panel" data-testid="developer-onboarding-panel">
+      <div class="panel-head">
+        <div>
+          <p class="eyebrow">Onboarding</p>
+          <h3>개발자 시작 checklist</h3>
+        </div>
+        <span class="status-pill up" data-testid="developer-onboarding-progress">
+          {{ developerOnboardingProgress.ready }}/{{ developerOnboardingProgress.total }} Ready
+        </span>
+      </div>
+      <ol class="developer-onboarding-list">
+        <li
+          v-for="step in developerOnboardingSteps"
+          :key="step.id"
+          :class="{ complete: step.done }"
+          :data-step="step.id"
+          data-testid="developer-onboarding-step"
+        >
+          <span class="status-pill" :class="step.done ? 'up' : 'mock'">
+            {{ step.done ? 'Ready' : 'Todo' }}
+          </span>
+          <span>
+            <strong>{{ step.label }}</strong>
+            <small>{{ step.detail }}</small>
+          </span>
+        </li>
+      </ol>
+    </article>
+
     <AccessKeyPanel
       id="developer-access-keys"
       :access-key-form="accessKeyForm"
@@ -122,6 +151,37 @@ const virtualHostedLabel = computed(() => props.s3ClientConfig.virtualHostedStyl
 const snippetEndpoint = computed(() => props.s3ClientConfig.endpoint || '<S3_ENDPOINT>')
 const snippetRegion = computed(() => props.s3ClientConfig.region || 'us-east-1')
 const snippetBucket = computed(() => props.selectedBucket || '<BUCKET_NAME>')
+const developerOnboardingSteps = computed(() => [
+  {
+    id: 'endpoint',
+    label: 'Endpoint 확인',
+    detail: props.s3ClientConfig.endpoint || 'S3 endpoint 설정 대기',
+    done: Boolean(props.s3ClientConfig.endpoint),
+  },
+  {
+    id: 'bucket',
+    label: 'Bucket 선택',
+    detail: props.selectedBucket || 'Storage 화면에서 bucket 선택',
+    done: Boolean(props.selectedBucket),
+  },
+  {
+    id: 'access-key',
+    label: 'Access Key 준비',
+    detail: props.accessKeys.length > 0 ? `${props.accessKeys.length} keys available` : 'Access Key 생성 필요',
+    done: props.accessKeys.length > 0,
+  },
+  {
+    id: 'sdk-snippet',
+    label: 'SDK 예제 선택',
+    detail: 'AWS CLI, s3fs-fuse, goofys, JavaScript, Python, Java',
+    done: Boolean(props.s3ClientConfig.endpoint && props.s3ClientConfig.region),
+  },
+])
+const developerOnboardingProgress = computed(() => {
+  const total = developerOnboardingSteps.value.length
+  const ready = developerOnboardingSteps.value.filter((step) => step.done).length
+  return { ready, total }
+})
 const awsCliSnippet = computed(() => [
   'aws configure set aws_access_key_id <ACCESS_KEY>',
   'aws configure set aws_secret_access_key <SECRET_KEY>',

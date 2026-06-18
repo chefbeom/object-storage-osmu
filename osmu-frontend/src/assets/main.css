@@ -1036,6 +1036,53 @@ label {
   overflow-wrap: anywhere;
 }
 
+.developer-onboarding-panel {
+  grid-column: 1 / -1;
+}
+
+.developer-onboarding-list {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  margin: 0;
+  padding: 0 18px 18px;
+  list-style: none;
+}
+
+.developer-onboarding-list li {
+  min-width: 0;
+  display: grid;
+  gap: 8px;
+  align-content: start;
+  padding: 12px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-background-soft);
+}
+
+.developer-onboarding-list li.complete {
+  border-color: rgba(14, 165, 132, 0.35);
+  background: rgba(14, 165, 132, 0.08);
+}
+
+.developer-onboarding-list strong,
+.developer-onboarding-list small {
+  display: block;
+}
+
+.developer-onboarding-list strong {
+  color: var(--color-heading);
+  font-size: 13px;
+}
+
+.developer-onboarding-list small {
+  margin-top: 4px;
+  color: var(--color-muted);
+  font-size: 12px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
 .developer-client-snippets-panel {
   grid-column: 1 / -1;
 }
@@ -2071,6 +2118,7 @@ tbody tr.selected {
 
   .status-dl,
   .status-dl.compact,
+  .developer-onboarding-list,
   .client-snippet-list,
   .compact-metrics,
   .detail-grid {

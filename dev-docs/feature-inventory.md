@@ -126,10 +126,10 @@ MVP 데모 기준 완료율은 약 90~95%입니다.
 - secret key 1회 표시 방향
 - API Key 기반 S3 사용 흐름 초안
 - SDK 예제 자동 생성
+- 개발자 onboarding checklist
 
 남은 것:
 
-- 개발자용 onboarding flow
 - access key 사용량/마지막 사용 시각 분석
 - key 만료/rotation grace period
 - real S3 client compatibility matrix

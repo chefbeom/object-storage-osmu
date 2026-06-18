@@ -198,6 +198,9 @@ test('HomeView exposes stable selectors for browser E2E flows', () => {
     'object-upload-progress',
     'object-table',
     'developer-page',
+    'developer-onboarding-panel',
+    'developer-onboarding-progress',
+    'developer-onboarding-step',
     'developer-s3-endpoint-panel',
     'developer-s3-endpoint',
     'developer-s3-region',
@@ -669,6 +672,9 @@ test('HomeView exposes stable selectors for browser E2E flows', () => {
   assert.match(dashboardSource, /IAM User/)
   assert.match(dashboardSource, /API Key로 AWS S3 bucket처럼 데이터 저장과 조회/)
   assert.match(dashboardSource, /API 접속 정보/)
+  assert.match(dashboardSource, /개발자 시작 checklist/)
+  assert.match(dashboardSource, /developerOnboardingSteps/)
+  assert.match(dashboardSource, /developerOnboardingProgress/)
   assert.match(dashboardSource, /S3 클라이언트 예시/)
   assert.match(dashboardSource, /Secret Key는 생성 또는 Rotate 직후 1회만 표시/)
   assert.match(dashboardSource, /최소 1개 bucket scope와 permission/)
