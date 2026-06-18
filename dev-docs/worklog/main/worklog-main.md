@@ -1,5 +1,33 @@
 # Worklog - main
 
+### 2026-06-18 - S3 multipart checksum type validation after stored part merge
+
+- Work time:
+  - End: 2026-06-18 KST
+- User command:
+  - Active goal: continue development from `dev-docs`.
+- Request analysis:
+  - UploadPart checksum metadata was stored, but S3 controller checksum-type validation still judged `x-amz-checksum-type: COMPOSITE` only from CompleteMultipartUpload XML.
+  - This could reject a valid path before `ObjectService` had a chance to merge stored UploadPart checksum metadata.
+- Execution:
+  - Moved FULL_OBJECT/COMPOSITE request checksum-type shape validation into `ObjectService` after stored part checksum merge.
+  - Kept controller validation for invalid checksum-type token syntax and passed normalized checksum type to service.
+  - Added controller coverage for `COMPOSITE` with XML checksums omitted and service coverage for stored-checksum success plus missing-shape validation errors.
+- Modified files:
+  - `osmu-backend/src/main/java/com/example/osmu/object/ObjectService.java`
+  - `osmu-backend/src/main/java/com/example/osmu/object/S3ObjectController.java`
+  - `osmu-backend/src/test/java/com/example/osmu/object/ObjectServiceMultipartRefreshTest.java`
+  - `osmu-backend/src/test/java/com/example/osmu/object/S3ObjectControllerMultipartTest.java`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/backend-design.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/worklog/main/worklog-main.md`
+- Tests:
+  - `gradle test --tests com.example.osmu.object.ObjectServiceMultipartRefreshTest --tests com.example.osmu.object.S3ObjectControllerMultipartTest`: passed.
+- Review:
+  - Requested `COMPOSITE` now aligns with stored UploadPart checksum metadata instead of requiring duplicate checksum XML.
+  - Missing per-part checksum evidence still returns `VALIDATION_ERROR` before storage completion.
+
 ### 2026-06-18 - S3 multipart UploadPart checksum persistence
 
 - Work time:

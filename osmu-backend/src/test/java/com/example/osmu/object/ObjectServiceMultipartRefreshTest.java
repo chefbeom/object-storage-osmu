@@ -527,11 +527,73 @@ class ObjectServiceMultipartRefreshTest {
                                 new CompletedMultipartUploadPart(2, "\"etag-2\"")
                         )
                 ),
-                user
+                user,
+                Map.of(),
+                null,
+                "COMPOSITE"
         );
 
         assertThat(result.checksums()).containsEntry("x-amz-checksum-crc32c", compositeChecksum);
         assertThat(partChecksumRepository.findByUploadId(created.uploadId())).isEmpty();
+    }
+
+    @Test
+    void completeMultipartUploadRejectsRequestedChecksumTypeWhenShapeMissing() {
+        BucketRecord bucket = new BucketRecord(1L, "bucket", "USER", 1L, 1000000000L, 0L, 0L, OffsetDateTime.now());
+        when(bucketService.get("bucket", user)).thenReturn(bucket);
+        when(storageAdapter.statObject("bucket", "videos/requested-checksum-type.mp4")).thenReturn(Optional.empty());
+        when(storageAdapter.createMultipartUpload(
+                eq("bucket"),
+                eq("videos/requested-checksum-type.mp4"),
+                eq("video/mp4"),
+                eq(900),
+                anyList()
+        )).thenAnswer(invocation -> storageUpload("storage-upload-requested-checksum-type", invocation.getArgument(4), 900, "create"));
+
+        MultipartUploadCreateResponse created = objectService.createS3MultipartUpload(
+                "bucket",
+                new MultipartUploadCreateRequest(
+                        "videos/requested-checksum-type.mp4",
+                        "video/mp4",
+                        5L,
+                        5L,
+                        900,
+                        "",
+                        "",
+                        ""
+                ),
+                user
+        );
+        MultipartUploadCompleteRequest completeRequest = new MultipartUploadCompleteRequest(
+                created.uploadId(),
+                "videos/requested-checksum-type.mp4",
+                List.of(new CompletedMultipartUploadPart(1, "\"etag-1\""))
+        );
+
+        assertThatThrownBy(() -> objectService.completeMultipartUpload(
+                "bucket",
+                completeRequest,
+                user,
+                Map.of(),
+                null,
+                "COMPOSITE"
+        )).isInstanceOfSatisfying(ApiException.class, exception ->
+                assertThat(exception.code()).isEqualTo(ApiErrorCode.VALIDATION_ERROR));
+        assertThatThrownBy(() -> objectService.completeMultipartUpload(
+                "bucket",
+                completeRequest,
+                user,
+                Map.of(),
+                null,
+                "FULL_OBJECT"
+        )).isInstanceOfSatisfying(ApiException.class, exception ->
+                assertThat(exception.code()).isEqualTo(ApiErrorCode.VALIDATION_ERROR));
+        verify(storageAdapter, never()).completeMultipartUpload(
+                eq("bucket"),
+                eq("videos/requested-checksum-type.mp4"),
+                eq("storage-upload-requested-checksum-type"),
+                anyList()
+        );
     }
 
     @Test

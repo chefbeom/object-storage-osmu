@@ -421,13 +421,14 @@ public class S3ObjectController {
         assertCopyTargetPreconditions(request, bucketName, objectKey, user);
         ChecksumResponseHeader checksumResponseHeader = checksumResponseHeader(request);
         List<CompletedMultipartUploadPart> completedParts = completedPartsFromXml(requestBody(request));
-        String checksumType = multipartChecksumType(request, checksumResponseHeader, completedParts);
+        String checksumType = multipartChecksumType(request);
         StoredObjectRecord object = objectService.completeMultipartUpload(
                 bucketName,
                 new MultipartUploadCompleteRequest(uploadId, objectKey, completedParts),
                 user,
                 checksumResponseHeader.asMap(),
-                multipartObjectSize(request)
+                multipartObjectSize(request),
+                checksumType
         );
         auditLogService.record("S3_OBJECT_MULTIPART_COMPLETE", user.loginId(), "OBJECT", bucketName + "/" + object.key(), "SUCCESS", "S3-style multipart upload completed", request);
         dataFlowMonitoringService.recordUpload(bucketName, object.key(), object.sizeBytes(), user.loginId(), "S3");
@@ -2196,11 +2197,7 @@ public class S3ObjectController {
         return checksumTrailers.isEmpty() ? null : checksumTrailers.get(0);
     }
 
-    private String multipartChecksumType(
-            HttpServletRequest request,
-            ChecksumResponseHeader checksumResponseHeader,
-            List<CompletedMultipartUploadPart> completedParts
-    ) {
+    private String multipartChecksumType(HttpServletRequest request) {
         String rawChecksumType = request.getHeader(AWS_CHECKSUM_TYPE_HEADER);
         if (rawChecksumType == null || rawChecksumType.isBlank()) {
             return "";
@@ -2209,44 +2206,10 @@ public class S3ObjectController {
             throw new ApiException(ApiErrorCode.VALIDATION_ERROR, AWS_CHECKSUM_TYPE_HEADER + " must specify one checksum type.");
         }
         String checksumType = rawChecksumType.trim().toUpperCase(Locale.ROOT);
-        if ("FULL_OBJECT".equals(checksumType)) {
-            if (checksumResponseHeader.name() == null || checksumResponseHeader.name().isBlank()) {
-                throw new ApiException(ApiErrorCode.VALIDATION_ERROR, AWS_CHECKSUM_TYPE_HEADER + " FULL_OBJECT requires a final object checksum header.");
-            }
-            return checksumType;
-        }
-        if ("COMPOSITE".equals(checksumType)) {
-            if (checksumResponseHeader.name() != null && !checksumResponseHeader.name().isBlank()) {
-                throw new ApiException(ApiErrorCode.VALIDATION_ERROR, AWS_CHECKSUM_TYPE_HEADER + " COMPOSITE requires per-part checksums, not a final object checksum header.");
-            }
-            if (!usesSupportedCompositeChecksum(completedParts)) {
-                throw new ApiException(ApiErrorCode.VALIDATION_ERROR, AWS_CHECKSUM_TYPE_HEADER + " COMPOSITE requires every part to use ChecksumSHA256, ChecksumSHA1, ChecksumCRC32, or ChecksumCRC32C.");
-            }
+        if ("FULL_OBJECT".equals(checksumType) || "COMPOSITE".equals(checksumType)) {
             return checksumType;
         }
         throw new ApiException(ApiErrorCode.VALIDATION_ERROR, AWS_CHECKSUM_TYPE_HEADER + " must be COMPOSITE or FULL_OBJECT.");
-    }
-
-    private boolean usesSupportedCompositeChecksum(List<CompletedMultipartUploadPart> completedParts) {
-        String headerName = null;
-        for (CompletedMultipartUploadPart part : completedParts) {
-            if (part.checksums().size() != 1) {
-                return false;
-            }
-            String partChecksumHeaderName = part.checksums().keySet().iterator().next();
-            if (!AWS_CHECKSUM_SHA256_HEADER.equals(partChecksumHeaderName)
-                    && !AWS_CHECKSUM_SHA1_HEADER.equals(partChecksumHeaderName)
-                    && !AWS_CHECKSUM_CRC32_HEADER.equals(partChecksumHeaderName)
-                    && !AWS_CHECKSUM_CRC32C_HEADER.equals(partChecksumHeaderName)) {
-                return false;
-            }
-            if (headerName == null) {
-                headerName = partChecksumHeaderName;
-            } else if (!headerName.equals(partChecksumHeaderName)) {
-                return false;
-            }
-        }
-        return headerName != null;
     }
 
     private Long multipartObjectSize(HttpServletRequest request) {

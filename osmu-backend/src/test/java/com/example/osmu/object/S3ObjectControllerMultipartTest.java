@@ -557,7 +557,8 @@ class S3ObjectControllerMultipartTest {
                 any(MultipartUploadCompleteRequest.class),
                 eq(user),
                 argThat(headers -> crc64Checksum.equals(headers.get("x-amz-checksum-crc64nvme"))),
-                eq(10485760L)
+                eq(10485760L),
+                eq("FULL_OBJECT")
         ))
                 .thenReturn(new StoredObjectRecord(
                         "videos/input.mp4",
@@ -579,7 +580,8 @@ class S3ObjectControllerMultipartTest {
                 captor.capture(),
                 eq(user),
                 argThat(headers -> crc64Checksum.equals(headers.get("x-amz-checksum-crc64nvme"))),
-                eq(10485760L)
+                eq(10485760L),
+                eq("FULL_OBJECT")
         );
         assertThat(captor.getValue().uploadId()).isEqualTo("upload-1");
         assertThat(captor.getValue().parts()).extracting(CompletedMultipartUploadPart::partNumber)
@@ -624,7 +626,8 @@ class S3ObjectControllerMultipartTest {
                 any(MultipartUploadCompleteRequest.class),
                 eq(user),
                 argThat(Map::isEmpty),
-                isNull()
+                isNull(),
+                eq("COMPOSITE")
         ))
                 .thenReturn(new StoredObjectRecord(
                         "videos/input.mp4",
@@ -673,7 +676,8 @@ class S3ObjectControllerMultipartTest {
                 any(MultipartUploadCompleteRequest.class),
                 eq(user),
                 argThat(Map::isEmpty),
-                isNull()
+                isNull(),
+                eq("COMPOSITE")
         ))
                 .thenReturn(new StoredObjectRecord(
                         "videos/input.mp4",
@@ -695,7 +699,8 @@ class S3ObjectControllerMultipartTest {
                 captor.capture(),
                 eq(user),
                 argThat(Map::isEmpty),
-                isNull()
+                isNull(),
+                eq("COMPOSITE")
         );
         assertThat(captor.getValue().parts().get(0).checksums())
                 .containsEntry("x-amz-checksum-crc32c", partOneChecksum);
@@ -708,28 +713,54 @@ class S3ObjectControllerMultipartTest {
     }
 
     @Test
+    void completeMultipartUploadAllowsCompositeHeaderWithoutXmlPartChecksums() throws Exception {
+        MockHttpServletRequest request = completeMultipartRequest();
+        request.addHeader("x-amz-checksum-type", "COMPOSITE");
+        String compositeChecksum = crc32cChecksumBase64("hello");
+        when(s3RequestAuthService.currentUser(request, "bucket", "WRITE")).thenReturn(user);
+        when(objectService.completeMultipartUpload(
+                eq("bucket"),
+                any(MultipartUploadCompleteRequest.class),
+                eq(user),
+                argThat(Map::isEmpty),
+                isNull(),
+                eq("COMPOSITE")
+        ))
+                .thenReturn(new StoredObjectRecord(
+                        "videos/input.mp4",
+                        5L,
+                        "video/mp4",
+                        OffsetDateTime.now(),
+                        Map.of(),
+                        null,
+                        "multipart-etag",
+                        Map.of("x-amz-checksum-crc32c", compositeChecksum)
+                ));
+
+        var response = controller.completeMultipartUpload("bucket", "videos/input.mp4", "upload-1", request);
+
+        ArgumentCaptor<MultipartUploadCompleteRequest> captor =
+                ArgumentCaptor.forClass(MultipartUploadCompleteRequest.class);
+        verify(objectService).completeMultipartUpload(
+                eq("bucket"),
+                captor.capture(),
+                eq(user),
+                argThat(Map::isEmpty),
+                isNull(),
+                eq("COMPOSITE")
+        );
+        assertThat(captor.getValue().parts().get(0).checksums()).isEmpty();
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(response.getBody()).contains("<ChecksumType>COMPOSITE</ChecksumType>");
+    }
+
+    @Test
     void completeMultipartUploadRejectsInvalidChecksumType() {
         MockHttpServletRequest invalidTypeRequest = completeMultipartRequest();
         invalidTypeRequest.addHeader("x-amz-checksum-type", "SIDEWAYS");
         when(s3RequestAuthService.currentUser(invalidTypeRequest, "bucket", "WRITE")).thenReturn(user);
 
         assertThatThrownBy(() -> controller.completeMultipartUpload("bucket", "videos/input.mp4", "upload-1", invalidTypeRequest))
-                .isInstanceOfSatisfying(ApiException.class, exception ->
-                        assertThat(exception.code()).isEqualTo(ApiErrorCode.VALIDATION_ERROR));
-
-        MockHttpServletRequest missingCompositeRequest = completeMultipartRequest();
-        missingCompositeRequest.addHeader("x-amz-checksum-type", "COMPOSITE");
-        when(s3RequestAuthService.currentUser(missingCompositeRequest, "bucket", "WRITE")).thenReturn(user);
-
-        assertThatThrownBy(() -> controller.completeMultipartUpload("bucket", "videos/input.mp4", "upload-1", missingCompositeRequest))
-                .isInstanceOfSatisfying(ApiException.class, exception ->
-                        assertThat(exception.code()).isEqualTo(ApiErrorCode.VALIDATION_ERROR));
-
-        MockHttpServletRequest missingFullObjectRequest = completeMultipartRequest();
-        missingFullObjectRequest.addHeader("x-amz-checksum-type", "FULL_OBJECT");
-        when(s3RequestAuthService.currentUser(missingFullObjectRequest, "bucket", "WRITE")).thenReturn(user);
-
-        assertThatThrownBy(() -> controller.completeMultipartUpload("bucket", "videos/input.mp4", "upload-1", missingFullObjectRequest))
                 .isInstanceOfSatisfying(ApiException.class, exception ->
                         assertThat(exception.code()).isEqualTo(ApiErrorCode.VALIDATION_ERROR));
 
@@ -758,7 +789,8 @@ class S3ObjectControllerMultipartTest {
                 any(MultipartUploadCompleteRequest.class),
                 eq(user),
                 argThat(Map::isEmpty),
-                isNull()
+                isNull(),
+                eq("")
         ))
                 .thenReturn(new StoredObjectRecord(
                         "videos/input.mp4",
@@ -799,6 +831,7 @@ class S3ObjectControllerMultipartTest {
                 eq("bucket"),
                 argThat(request -> request.key().equals("videos/existing.mp4") || request.key().equals("videos/missing.mp4")),
                 eq(user),
+                any(),
                 any(),
                 any()
         );

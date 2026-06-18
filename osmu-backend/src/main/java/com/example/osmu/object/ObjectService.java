@@ -883,6 +883,17 @@ public class ObjectService {
             Map<String, String> checksums,
             Long expectedObjectSize
     ) {
+        return completeMultipartUpload(bucketName, request, user, checksums, expectedObjectSize, "");
+    }
+
+    public synchronized StoredObjectRecord completeMultipartUpload(
+            String bucketName,
+            MultipartUploadCompleteRequest request,
+            AuthenticatedUser user,
+            Map<String, String> checksums,
+            Long expectedObjectSize,
+            String requestedChecksumType
+    ) {
         bucketService.assertCanWrite(bucketName, user);
         String normalizedBucketName = bucketService.get(bucketName, user).name();
         String normalizedKey = normalizeRequiredKey(request.key());
@@ -894,6 +905,7 @@ public class ObjectService {
                 withStoredMultipartPartChecksums(session.uploadId(), normalizeCompletedParts(request.parts()));
         Map<String, String> requestedChecksums = normalizeChecksums(checksums);
         validateChecksumMetadata(requestedChecksums);
+        validateRequestedMultipartChecksumType(requestedChecksumType, requestedChecksums, completedParts);
         validateMultipartChecksumNegotiation(session, requestedChecksums, completedParts);
         Map<String, String> metadataChecksums = requestedChecksums.isEmpty()
                 ? compositeMultipartChecksums(completedParts)
@@ -1148,6 +1160,52 @@ public class ObjectService {
                 && ("SHA1".equals(checksumAlgorithm) || "SHA256".equals(checksumAlgorithm))) {
             throw new ApiException(ApiErrorCode.VALIDATION_ERROR, "checksumType FULL_OBJECT requires a CRC checksum algorithm.");
         }
+    }
+
+    private void validateRequestedMultipartChecksumType(
+            String requestedChecksumType,
+            Map<String, String> requestedChecksums,
+            List<CompletedMultipartUploadPart> completedParts
+    ) {
+        String checksumType = normalizeChecksumNegotiation(requestedChecksumType);
+        if (checksumType.isBlank()) {
+            return;
+        }
+        if ("FULL_OBJECT".equals(checksumType)) {
+            if (requestedChecksums.isEmpty()) {
+                throw new ApiException(ApiErrorCode.VALIDATION_ERROR, "x-amz-checksum-type FULL_OBJECT requires a final object checksum header.");
+            }
+            return;
+        }
+        if ("COMPOSITE".equals(checksumType)) {
+            if (!requestedChecksums.isEmpty()) {
+                throw new ApiException(ApiErrorCode.VALIDATION_ERROR, "x-amz-checksum-type COMPOSITE requires per-part checksums, not a final object checksum header.");
+            }
+            if (!usesSupportedCompositeChecksum(completedParts)) {
+                throw new ApiException(ApiErrorCode.VALIDATION_ERROR, "x-amz-checksum-type COMPOSITE requires every part to use ChecksumSHA256, ChecksumSHA1, ChecksumCRC32, or ChecksumCRC32C.");
+            }
+            return;
+        }
+        throw new ApiException(ApiErrorCode.VALIDATION_ERROR, "x-amz-checksum-type must be COMPOSITE or FULL_OBJECT.");
+    }
+
+    private boolean usesSupportedCompositeChecksum(List<CompletedMultipartUploadPart> completedParts) {
+        String headerName = null;
+        for (CompletedMultipartUploadPart part : completedParts) {
+            if (part.checksums().size() != 1) {
+                return false;
+            }
+            String partHeaderName = part.checksums().keySet().iterator().next();
+            if (compositeChecksumAccumulator(partHeaderName) == null) {
+                return false;
+            }
+            if (headerName == null) {
+                headerName = partHeaderName;
+            } else if (!headerName.equals(partHeaderName)) {
+                return false;
+            }
+        }
+        return headerName != null;
     }
 
     private void validateMultipartChecksumNegotiation(
