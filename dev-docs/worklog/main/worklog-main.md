@@ -1,5 +1,35 @@
 # Worklog - main
 
+### 2026-06-18 - S3 per-error XML detail fields
+
+- Work time:
+  - End: 2026-06-18 KST
+- User command:
+  - Active goal: continue development from `dev-docs`.
+- Request analysis:
+  - After opaque `HostId`, the next local error parity gap was per-error XML detail fields.
+  - `NoSuchBucket`/`NoSuchKey`/`NoSuchUpload` style responses could derive bucket, key, and upload id from the S3 request path/query.
+- Execution:
+  - Added S3 error detail extraction to `GlobalExceptionHandler`.
+  - S3 XML errors now include `BucketName` for bucket/key/upload errors, `Key` for key/upload errors, and `UploadId` for missing multipart uploads when available.
+  - Added regression assertions for `NoSuchKey` and `NoSuchUpload` XML detail fields.
+  - Updated README/dev-docs to narrow remaining error work to AWS per-error detail/status nuance.
+- Modified files:
+  - `osmu-backend/src/main/java/com/example/osmu/common/error/GlobalExceptionHandler.java`
+  - `osmu-backend/src/test/java/com/example/osmu/object/S3ObjectControllerTest.java`
+  - `README.md`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/backend-design.md`
+  - `dev-docs/s3-compatibility.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/worklog/main/worklog-main.md`
+- Tests:
+  - `./gradlew.bat test --no-daemon --tests com.example.osmu.object.S3ObjectControllerTest.accessKeyCanPutHeadGetAndDeleteObjectThroughS3StylePath --tests com.example.osmu.object.S3ObjectControllerTest.missingS3MultipartUploadReturnsNoSuchUploadXml`: passed.
+  - `git diff --check`: passed.
+- Review:
+  - Detail fields are derived from request path/query and do not alter REST JSON error responses.
+  - Remaining exactness work is per-error AWS message/status/header nuance and broader edge cases.
+
 ### 2026-06-18 - S3 error HostId parity
 
 - Work time:

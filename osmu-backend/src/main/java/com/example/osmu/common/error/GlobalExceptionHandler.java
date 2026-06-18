@@ -8,6 +8,8 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.Base64;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.MethodArgumentNotValidException;
@@ -105,7 +107,7 @@ public class GlobalExceptionHandler {
         return ResponseEntity
                 .status(statusCode.status())
                 .contentType(MediaType.APPLICATION_XML)
-                .body(s3ErrorXml(code, message, requestResource(request), requestId(request)));
+                .body(s3ErrorXml(code, message, requestResource(request), requestId(request), s3ErrorDetails(code, request)));
     }
 
     private String requestResource(HttpServletRequest request) {
@@ -118,7 +120,7 @@ public class GlobalExceptionHandler {
                 : request.getRequestURI() + "?" + query;
     }
 
-    private String s3ErrorXml(String code, String message, String resource, String requestId) {
+    private String s3ErrorXml(String code, String message, String resource, String requestId, Map<String, String> details) {
         try {
             StringWriter output = new StringWriter();
             XMLStreamWriter xml = XMLOutputFactory.newFactory().createXMLStreamWriter(output);
@@ -126,6 +128,9 @@ public class GlobalExceptionHandler {
             xml.writeStartElement("Error");
             writeElement(xml, "Code", code);
             writeElement(xml, "Message", message == null || message.isBlank() ? code : message);
+            for (Map.Entry<String, String> detail : details.entrySet()) {
+                writeElement(xml, detail.getKey(), detail.getValue());
+            }
             if (resource != null && !resource.isBlank()) {
                 writeElement(xml, "Resource", resource);
             }
@@ -143,6 +148,48 @@ public class GlobalExceptionHandler {
         }
     }
 
+    private Map<String, String> s3ErrorDetails(String code, HttpServletRequest request) {
+        S3ResourceParts resource = s3ResourceParts(request);
+        Map<String, String> details = new LinkedHashMap<>();
+        if (resource.bucketName() != null && switch (code) {
+            case "NoSuchBucket", "InvalidBucketName", "BucketNotEmpty", "BucketAlreadyOwnedByYou", "BucketAlreadyExists",
+                    "NoSuchKey", "NoSuchUpload" -> true;
+            default -> false;
+        }) {
+            details.put("BucketName", resource.bucketName());
+        }
+        if (resource.key() != null && ("NoSuchKey".equals(code) || "NoSuchUpload".equals(code))) {
+            details.put("Key", resource.key());
+        }
+        if ("NoSuchUpload".equals(code) && request != null && hasText(request.getParameter("uploadId"))) {
+            details.put("UploadId", request.getParameter("uploadId"));
+        }
+        return details;
+    }
+
+    private S3ResourceParts s3ResourceParts(HttpServletRequest request) {
+        if (request == null || request.getRequestURI() == null) {
+            return new S3ResourceParts(null, null);
+        }
+        String path = request.getRequestURI();
+        if ("/api/s3".equals(path)) {
+            return new S3ResourceParts(null, null);
+        }
+        String resourcePath = path.startsWith("/api/s3/")
+                ? path.substring("/api/s3/".length())
+                : path.startsWith("/") ? path.substring(1) : path;
+        if (resourcePath.isBlank()) {
+            return new S3ResourceParts(null, null);
+        }
+        int separator = resourcePath.indexOf('/');
+        if (separator < 0) {
+            return new S3ResourceParts(resourcePath, null);
+        }
+        String bucketName = resourcePath.substring(0, separator);
+        String key = resourcePath.substring(separator + 1);
+        return new S3ResourceParts(bucketName.isBlank() ? null : bucketName, key.isBlank() ? null : key);
+    }
+
     private String s3HostId(String requestId, String resource) {
         try {
             String seed = requestId + ":" + (resource == null ? "" : resource);
@@ -157,5 +204,8 @@ public class GlobalExceptionHandler {
         xml.writeStartElement(name);
         xml.writeCharacters(value);
         xml.writeEndElement();
+    }
+
+    private record S3ResourceParts(String bucketName, String key) {
     }
 }

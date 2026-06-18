@@ -249,7 +249,10 @@ class S3ObjectControllerTest {
                         .header("X-OSMU-Access-Key", credentials.accessKey())
                         .header("X-OSMU-Secret-Key", credentials.secretKey()))
                 .andExpect(status().isNotFound())
-                .andExpect(content().string(containsString("<Code>NoSuchKey</Code>")));
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_XML))
+                .andExpect(content().string(containsString("<Code>NoSuchKey</Code>")))
+                .andExpect(content().string(containsString("<BucketName>" + bucketName + "</BucketName>")))
+                .andExpect(content().string(containsString("<Key>docs/sample.txt</Key>")));
     }
 
     @Test
@@ -1527,6 +1530,9 @@ class S3ObjectControllerTest {
                 .andExpect(status().isNotFound())
                 .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_XML))
                 .andExpect(content().string(containsString("<Code>NoSuchUpload</Code>")))
+                .andExpect(content().string(containsString("<BucketName>" + bucketName + "</BucketName>")))
+                .andExpect(content().string(containsString("<Key>video/missing.mp4</Key>")))
+                .andExpect(content().string(containsString("<UploadId>missing-upload</UploadId>")))
                 .andExpect(content().string(containsString("<Resource>" + missingUploadResource + "</Resource>")))
                 .andExpect(content().string(containsString("<RequestId>req-nosuchupload</RequestId>")))
                 .andExpect(content().string(containsString("<HostId>" + hostId + "</HostId>")))
