@@ -420,9 +420,19 @@
 - Preconditions: Node dependencies are installed.
 - Input: `npm run test:unit`
 - Steps: Run frontend unit tests that inspect `HomeView.vue` and split components for stable `data-testid` selectors covering login, status, dashboard 조회/편집 mode toggle, dashboard loading/error/retry/empty state, dashboard palette grouped catalog chips, drag/size/access-mode controls, section controls, section order/collapse controls, catalog-driven widget option controls, access key/identity/lifecycle/execution-retention/storage-expansion catalog widgets, bucket list, object upload, object detail, bucket lifecycle, bucket tags, audit, and confirm modal flows.
-- Expected: All required selectors exist so future Browser/Chrome E2E can target stable UI hooks instead of brittle text or layout selectors, including dashboard view-mode summary, edit-mode toggle, loading state, error state, retry button, empty state, widget access mode badge, widget section bands, section move/toggle buttons, category groups, catalog chip buttons, drag handles, dynamic option selects, execution log retention panel controls, Storage Expansion dashboard summary controls, operations readiness summary/filter/remediation command and workflow-command copy controls, admin action failure remediation controls, admin role-restricted panel list, and dashboard catalog widgets.
+- Expected: All required selectors exist so future Browser/Chrome E2E can target stable UI hooks instead of brittle text or layout selectors, including dashboard view-mode summary, edit-mode toggle, loading state, error state, retry button, empty state, widget access mode badge, widget section bands, section move/toggle buttons, category groups, catalog chip buttons, drag handles, dynamic option selects, execution log retention panel controls, Storage Expansion dashboard summary controls, operations readiness summary/filter/remediation command and workflow-command copy controls, admin action failure remediation controls, admin approval workflow controls, admin role-restricted panel list, and dashboard catalog widgets.
 - Priority: P1
 - Automated: `npm run test:unit`
+
+### TC-FE-ADMIN-APPROVAL-WORKFLOW
+
+- Feature: Admin approval workflow queue.
+- Preconditions: Admin user is logged in, at least one Storage Profile request and one Storage Expansion request exist.
+- Input: `GET /api/admin/storage-profile-requests`, `PATCH /api/admin/storage-profile-requests/{requestId}/status`, `POST /api/admin/storage-profile-requests/{requestId}/apply`, `GET /api/admin/storage-expansion/requests`, `POST /api/admin/storage-expansion/requests/{requestId}/execution-plan`, `PATCH /api/admin/storage-expansion/requests/{requestId}/status`.
+- Steps: Open `/admin`, inspect `admin-approval-workflow-panel`, approve/reject pending profile requests, apply approved profile requests, approve planned expansion requests, create dry-run plan for approved expansion requests, and apply/reject approved expansion requests with evidence.
+- Expected: The panel shows profile pending count, expansion planned count, expansion approved count, a unified queue of `PENDING/APPROVED/PLANNED` approvals, and stable buttons `admin-approval-profile-*` and `admin-approval-expansion-*` that reuse the existing admin APIs without exposing the workflow to non-ADMIN roles.
+- Priority: P1
+- Automated: `npm run test:unit` selector/source contract. Browser role/action E2E is pending.
 
 ### TC-FE-ADMIN-PANEL-RBAC
 

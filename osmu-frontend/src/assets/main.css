@@ -1910,6 +1910,19 @@ tbody tr.selected {
   font-weight: 900;
 }
 
+.approval-workflow-list li {
+  align-items: flex-start;
+}
+
+.approval-workflow-list .status-pill {
+  flex: 0 0 auto;
+}
+
+.approval-workflow-list .key-actions {
+  justify-content: flex-end;
+  min-width: 140px;
+}
+
 .history-list {
   border-top: 1px solid var(--color-border);
 }

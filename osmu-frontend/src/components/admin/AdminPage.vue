@@ -47,6 +47,106 @@
       </div>
     </article>
 
+    <article v-if="isAdmin" class="panel approval-workflow-panel" data-testid="admin-approval-workflow-panel">
+      <div class="panel-head">
+        <div>
+          <p class="eyebrow">Approval Workflow</p>
+          <h3>운영 승인 큐</h3>
+        </div>
+        <span class="bucket-label">{{ approvalWorkflowCounts.total }} actions</span>
+      </div>
+      <div class="compact-metrics approval-workflow-metrics" data-testid="admin-approval-workflow-metrics">
+        <div>
+          <span>Profiles</span>
+          <b>{{ approvalWorkflowCounts.profilePending }}</b>
+        </div>
+        <div>
+          <span>Expansion planned</span>
+          <b>{{ approvalWorkflowCounts.expansionPlanned }}</b>
+        </div>
+        <div>
+          <span>Expansion approved</span>
+          <b>{{ approvalWorkflowCounts.expansionApproved }}</b>
+        </div>
+      </div>
+      <ul class="compact-list approval-workflow-list" data-testid="admin-approval-workflow-list">
+        <li v-for="item in approvalWorkflowItems" :key="item.key">
+          <span class="list-main">
+            <b data-testid="admin-approval-workflow-item-title">{{ item.title }}</b>
+            <small>{{ item.detail }}</small>
+            <small>{{ item.nextStep }}</small>
+          </span>
+          <strong :class="['status-pill', statusClass(item.status)]">{{ item.status }}</strong>
+          <span v-if="item.type === 'storage-profile'" class="key-actions">
+            <button
+              v-if="item.status === 'PENDING'"
+              data-testid="admin-approval-profile-approve-button"
+              type="button"
+              class="ghost"
+              @click="$emit('update-storage-profile-request-status', { request: item.source, status: 'APPROVED' })"
+            >
+              Approve
+            </button>
+            <button
+              v-if="item.status === 'PENDING'"
+              data-testid="admin-approval-profile-reject-button"
+              type="button"
+              class="danger"
+              @click="$emit('update-storage-profile-request-status', { request: item.source, status: 'REJECTED' })"
+            >
+              Reject
+            </button>
+            <button
+              v-if="item.status === 'APPROVED'"
+              data-testid="admin-approval-profile-apply-button"
+              type="button"
+              @click="$emit('apply-storage-profile-request', item.source)"
+            >
+              Apply
+            </button>
+          </span>
+          <span v-if="item.type === 'storage-expansion'" class="key-actions">
+            <button
+              v-if="item.status === 'PLANNED'"
+              data-testid="admin-approval-expansion-approve-button"
+              type="button"
+              class="ghost"
+              @click="$emit('update-storage-expansion-status', { request: item.source, status: 'APPROVED' })"
+            >
+              Approve
+            </button>
+            <button
+              v-if="item.status === 'APPROVED'"
+              data-testid="admin-approval-expansion-plan-button"
+              type="button"
+              class="ghost"
+              @click="$emit('create-storage-expansion-execution-plan', item.source)"
+            >
+              Dry Run
+            </button>
+            <button
+              v-if="item.status === 'APPROVED'"
+              data-testid="admin-approval-expansion-apply-button"
+              type="button"
+              :disabled="!storageExpansionApplyEvidence.trim()"
+              @click="$emit('update-storage-expansion-status', { request: item.source, status: 'APPLIED', appliedEvidence: storageExpansionApplyEvidence })"
+            >
+              Apply
+            </button>
+            <button
+              data-testid="admin-approval-expansion-reject-button"
+              type="button"
+              class="danger"
+              @click="$emit('update-storage-expansion-status', { request: item.source, status: 'REJECTED' })"
+            >
+              Reject
+            </button>
+          </span>
+        </li>
+        <li v-if="approvalWorkflowItems.length === 0" class="empty">승인 대기 항목 없음</li>
+      </ul>
+    </article>
+
     <BucketPermissionsPanel
       id="admin-bucket-permissions"
       :is-logged-in="isLoggedIn"
@@ -243,6 +343,7 @@
 </template>
 
 <script setup>
+import { computed } from 'vue'
 import AccessKeyPanel from './AccessKeyPanel.vue'
 import BucketMetadataPanel from './BucketMetadataPanel.vue'
 import BucketPermissionsPanel from './BucketPermissionsPanel.vue'
@@ -252,7 +353,7 @@ import ObjectSharePanel from './ObjectSharePanel.vue'
 import QuotaPolicyPanel from './QuotaPolicyPanel.vue'
 import StorageExpansionPanel from './StorageExpansionPanel.vue'
 
-defineProps({
+const props = defineProps({
   accessKeyForm: { type: Object, required: true },
   buckets: { type: Array, required: true },
   isLoggedIn: { type: Boolean, required: true },
@@ -301,6 +402,49 @@ defineProps({
   formatDateTime: { type: Function, required: true },
   formatBytes: { type: Function, required: true },
   statusClass: { type: Function, required: true },
+})
+
+const approvalWorkflowProfileItems = computed(() => props.storageProfileRequests
+  .filter((request) => ['PENDING', 'APPROVED'].includes(request.status))
+  .map((request) => ({
+    key: `storage-profile-${request.id}`,
+    type: 'storage-profile',
+    status: request.status,
+    title: `Storage profile / ${request.bucketName}`,
+    detail: `${request.currentProfile?.code || '-'} -> ${request.requestedProfile?.code || '-'}`,
+    nextStep: request.status === 'PENDING' ? 'Approve or reject requested bucket profile.' : 'Apply approved profile to bucket.',
+    source: request,
+  })))
+
+const approvalWorkflowExpansionItems = computed(() => props.storageExpansionRequests
+  .filter((request) => ['PLANNED', 'APPROVED'].includes(request.status))
+  .map((request) => ({
+    key: `storage-expansion-${request.id}`,
+    type: 'storage-expansion',
+    status: request.status,
+    title: `Storage expansion / ${request.poolName}`,
+    detail: `usable ${props.formatBytes(request.estimatedUsableCapacityBytes)} / ${request.serverCount} servers x ${request.volumesPerServer} PV`,
+    nextStep: request.status === 'PLANNED'
+      ? 'Approve before manifest, dry-run, GitOps, or apply work.'
+      : 'Run dry-run/GitOps and attach apply evidence before apply.',
+    source: request,
+  })))
+
+const approvalWorkflowItems = computed(() => [
+  ...approvalWorkflowProfileItems.value,
+  ...approvalWorkflowExpansionItems.value,
+])
+
+const approvalWorkflowCounts = computed(() => {
+  const profilePending = props.storageProfileRequests.filter((request) => request.status === 'PENDING').length
+  const expansionPlanned = props.storageExpansionRequests.filter((request) => request.status === 'PLANNED').length
+  const expansionApproved = props.storageExpansionRequests.filter((request) => request.status === 'APPROVED').length
+  return {
+    profilePending,
+    expansionPlanned,
+    expansionApproved,
+    total: approvalWorkflowItems.value.length,
+  }
 })
 
 defineEmits([

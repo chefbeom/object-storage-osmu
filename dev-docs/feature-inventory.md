@@ -151,10 +151,10 @@ MVP 데모 기준 완료율은 약 90~95%입니다.
 - 관리자 작업 실패 시 remediation UX
 - 권한별 panel 표시 제한
 - 운영자용 기본 preset
+- 승인 workflow
 
 남은 것:
 
-- 승인 workflow
 - 감사/보안 정책 화면 정리
 
 ### 4.4 대시보드와 panel palette

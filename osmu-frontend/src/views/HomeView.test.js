@@ -296,6 +296,17 @@ test('HomeView exposes stable selectors for browser E2E flows', () => {
     'admin-bucket-empty-state',
     'admin-role-empty-state',
     'admin-role-restricted-panel-list',
+    'admin-approval-workflow-panel',
+    'admin-approval-workflow-metrics',
+    'admin-approval-workflow-list',
+    'admin-approval-workflow-item-title',
+    'admin-approval-profile-approve-button',
+    'admin-approval-profile-reject-button',
+    'admin-approval-profile-apply-button',
+    'admin-approval-expansion-approve-button',
+    'admin-approval-expansion-plan-button',
+    'admin-approval-expansion-apply-button',
+    'admin-approval-expansion-reject-button',
     'quota-policy-panel',
     'quota-policy-form',
     'quota-policy-target-type',
@@ -669,6 +680,10 @@ test('HomeView exposes stable selectors for browser E2E flows', () => {
   assert.match(dashboardSource, /<StorageExpansionPanel\s+v-if="isAdmin"/)
   assert.match(dashboardSource, /<LifecycleRulesPanel\s+v-if="isAdmin"/)
   assert.match(dashboardSource, /<IdentityAdminPanel\s+v-if="canUseAdminTools"/)
+  assert.match(dashboardSource, /approvalWorkflowItems/)
+  assert.match(dashboardSource, /approvalWorkflowCounts/)
+  assert.match(dashboardSource, /storageProfileRequests[\s\S]*PENDING/)
+  assert.match(dashboardSource, /storageExpansionRequests[\s\S]*PLANNED/)
   assert.match(dashboardSource, /visibleNavigationItems/)
   assert.match(dashboardSource, /canAccessNavigationItem/)
   assert.match(dashboardSource, /auth\.startAuthSync\(handleSessionExpired\)/)
