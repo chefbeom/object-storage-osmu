@@ -3,9 +3,13 @@ kind: Kustomization
 namespace: osmu
 resources:
   - namespace.yaml
+  - serviceaccount.yaml
+  - storage-expansion-rbac.yaml
   - configmap.yaml
   - mariadb.yaml
   - minio.yaml
+  - backup.yaml
+  - ha.yaml
   - backend.yaml
   - frontend.yaml
   - ingress.yaml

@@ -1,5 +1,9 @@
 param(
     [string] $ReleaseReportPath = ".\.osmu-run\latest-release.json",
+    [string] $DurableGateReportPath = ".\.osmu-run\latest-durable-demo-gate.json",
+    [string] $StorageExpansionFinalizeReportPath = ".\.osmu-run\latest-storage-expansion-finalize.json",
+    [string] $KubernetesDrFinalizeReportPath = ".\.osmu-run\latest-kubernetes-dr-finalize.json",
+    [string] $SecurityEvidenceFinalizeReportPath = ".\.osmu-run\latest-security-evidence-finalize.json",
     [string] $OutputPath = ".\.osmu-run\latest-mvp-audit.md",
     [switch] $FailIfExternalGatesPending,
     [switch] $NoWrite
@@ -27,6 +31,146 @@ function Evidence-Line([string] $status, [string] $label, [string] $testCases, [
     return "- ${status}: $label - $testCases - $evidence"
 }
 
+function Read-DurableGateReport([string] $path) {
+    $resolvedPath = Resolve-ProjectPath $path
+    if (-not (Test-Path -LiteralPath $resolvedPath)) {
+        return [pscustomobject]@{
+            path = $resolvedPath
+            exists = $false
+            passed = $false
+            result = "missing"
+            currentDemoStatus = "missing"
+            detail = "report not found"
+        }
+    }
+
+    try {
+        $gateReport = Get-Content -Raw -LiteralPath $resolvedPath | ConvertFrom-Json
+        $passed = $gateReport.result -eq "ready" -and $gateReport.currentDemoStatus -eq "docker-durable-demo-verified"
+        return [pscustomobject]@{
+            path = $resolvedPath
+            exists = $true
+            passed = $passed
+            result = [string]$gateReport.result
+            currentDemoStatus = [string]$gateReport.currentDemoStatus
+            detail = "result=$($gateReport.result), currentDemoStatus=$($gateReport.currentDemoStatus)"
+        }
+    }
+    catch {
+        return [pscustomobject]@{
+            path = $resolvedPath
+            exists = $true
+            passed = $false
+            result = "unreadable"
+            currentDemoStatus = "unreadable"
+            detail = $_.Exception.Message
+        }
+    }
+}
+
+function Read-StorageExpansionFinalizeReport([string] $path) {
+    $resolvedPath = Resolve-ProjectPath $path
+    if (-not (Test-Path -LiteralPath $resolvedPath)) {
+        return [pscustomobject]@{
+            path = $resolvedPath
+            exists = $false
+            passed = $false
+            result = "missing"
+            detail = "report not found"
+        }
+    }
+
+    try {
+        $finalizeReport = Get-Content -Raw -LiteralPath $resolvedPath | ConvertFrom-Json
+        $passed = $finalizeReport.result -eq "passed"
+        $backend = $finalizeReport.backend
+        return [pscustomobject]@{
+            path = $resolvedPath
+            exists = $true
+            passed = $passed
+            result = [string]$finalizeReport.result
+            detail = "result=$($finalizeReport.result), namespace=$($finalizeReport.namespace), tenant=$($finalizeReport.tenantName), runDryRunRunner=$($backend.runDryRunRunner), runApply=$($backend.runApply)"
+        }
+    }
+    catch {
+        return [pscustomobject]@{
+            path = $resolvedPath
+            exists = $true
+            passed = $false
+            result = "unreadable"
+            detail = $_.Exception.Message
+        }
+    }
+}
+
+function Read-KubernetesDrFinalizeReport([string] $path) {
+    $resolvedPath = Resolve-ProjectPath $path
+    if (-not (Test-Path -LiteralPath $resolvedPath)) {
+        return [pscustomobject]@{
+            path = $resolvedPath
+            exists = $false
+            passed = $false
+            result = "missing"
+            detail = "report not found"
+        }
+    }
+
+    try {
+        $finalizeReport = Get-Content -Raw -LiteralPath $resolvedPath | ConvertFrom-Json
+        $passed = $finalizeReport.result -eq "ready"
+        return [pscustomobject]@{
+            path = $resolvedPath
+            exists = $true
+            passed = $passed
+            result = [string]$finalizeReport.result
+            detail = "result=$($finalizeReport.result), status=$($finalizeReport.status), sourceNamespace=$($finalizeReport.sourceNamespace), restoreNamespace=$($finalizeReport.restoreNamespace), backupTimestamp=$($finalizeReport.backupTimestamp), serverDryRunOnly=$($finalizeReport.serverDryRunOnly), confirmRestore=$($finalizeReport.confirmRestore), submitEvidence=$($finalizeReport.submitEvidence)"
+        }
+    }
+    catch {
+        return [pscustomobject]@{
+            path = $resolvedPath
+            exists = $true
+            passed = $false
+            result = "unreadable"
+            detail = $_.Exception.Message
+        }
+    }
+}
+
+function Read-SecurityEvidenceFinalizeReport([string] $path) {
+    $resolvedPath = Resolve-ProjectPath $path
+    if (-not (Test-Path -LiteralPath $resolvedPath)) {
+        return [pscustomobject]@{
+            path = $resolvedPath
+            exists = $false
+            passed = $false
+            result = "missing"
+            detail = "report not found"
+        }
+    }
+
+    try {
+        $finalizeReport = Get-Content -Raw -LiteralPath $resolvedPath | ConvertFrom-Json
+        $passed = $finalizeReport.result -eq "passed"
+        return [pscustomobject]@{
+            path = $resolvedPath
+            exists = $true
+            passed = $passed
+            result = [string]$finalizeReport.result
+            detail = "result=$($finalizeReport.result), failureCount=$($finalizeReport.failureCount), imageSigningRunUrl=$($finalizeReport.source.imageSigningRunUrl), containerSecurityRunUrl=$($finalizeReport.source.containerSecurityRunUrl)"
+        }
+    }
+    catch {
+        return [pscustomobject]@{
+            path = $resolvedPath
+            exists = $true
+            passed = $false
+            result = "unreadable"
+            detail = $_.Exception.Message
+        }
+    }
+}
+
 $resolvedReleaseReportPath = Resolve-ProjectPath $ReleaseReportPath
 if (-not (Test-Path -LiteralPath $resolvedReleaseReportPath)) {
     throw "Release report not found: $resolvedReleaseReportPath. Run scripts\verify-prototype-release.ps1 first."
@@ -51,7 +195,27 @@ $backendTestsPassedOrSkipped = $scope.backendTests -eq "included"
 $dockerPassed = [bool]$optionalGates.dockerDaemonAvailable -and $scope.dockerIntegration -eq "included"
 $realS3ClientPassed = [bool]$optionalGates.realS3ClientAvailable
 $browserE2EPassed = $scope.browserE2E -eq "verified"
-$externalGatesPending = -not ($dockerPassed -and $realS3ClientPassed -and $browserE2EPassed)
+$durableGate = Read-DurableGateReport $DurableGateReportPath
+$durableGatePassed = [bool]$durableGate.passed
+$storageExpansionFinalize = Read-StorageExpansionFinalizeReport $StorageExpansionFinalizeReportPath
+$storageExpansionFinalizePassed = [bool]$storageExpansionFinalize.passed
+$kubernetesDrFinalize = Read-KubernetesDrFinalizeReport $KubernetesDrFinalizeReportPath
+$kubernetesDrFinalizePassed = [bool]$kubernetesDrFinalize.passed
+$securityEvidenceFinalize = Read-SecurityEvidenceFinalizeReport $SecurityEvidenceFinalizeReportPath
+$securityEvidenceFinalizePassed = [bool]$securityEvidenceFinalize.passed
+if ($durableGatePassed) {
+    $dockerPassed = $true
+    $realS3ClientPassed = $true
+    $browserE2EPassed = $true
+}
+$externalGatesPending = -not (($dockerPassed -and $realS3ClientPassed -and $browserE2EPassed) -or $durableGatePassed)
+$frontendPortalStatus = if ($browserE2EPassed) { "PASS" } else { "PARTIAL" }
+$frontendPortalEvidence = if ($browserE2EPassed) {
+    "frontend unit/build covers stable E2E selector contract, bucket list summaries, upload state/progress guards, confirm dialog state, access key scope/revoke helpers, bucket lifecycle/tag wrappers, tags, object explorer prefix/highlight helpers, object metadata drift helpers, object tag preflight validation, auth session flows, API filter wrappers, error/requestId handling, single upload abort/retry, multipart upload/retry/abort/resume flow, and multipart local resume sessions; lightweight demo bundle checks pass; Browser click E2E passed"
+}
+else {
+    "frontend unit/build covers stable E2E selector contract, bucket list summaries, upload state/progress guards, confirm dialog state, access key scope/revoke helpers, bucket lifecycle/tag wrappers, tags, object explorer prefix/highlight helpers, object metadata drift helpers, object tag preflight validation, auth session flows, API filter wrappers, error/requestId handling, single upload abort/retry, multipart upload/retry/abort/resume flow, and multipart local resume sessions; lightweight demo bundle checks pass; Browser click E2E pending"
+}
 
 $auditLines = @(
     "# OSMU MVP Audit",
@@ -63,8 +227,31 @@ $auditLines = @(
     "",
     (Status-Line $corePrototypePassed "Lightweight MVP prototype" "runtime, API smoke, seeded demo, S3 smoke, build verify, OpenAPI contract, Kubernetes manifest draft, Helm chart draft"),
     (Status-Line $backendTestsPassedOrSkipped "Backend tests in latest report" "scope.backendTests=$($scope.backendTests)"),
+    (Status-Line ($scope.ciWorkflow -eq "included") "Prototype CI workflow" "scope.ciWorkflow=$($scope.ciWorkflow)"),
+    (Status-Line ($scope.durableDockerCiWorkflow -eq "included") "Durable Docker CI workflow draft" "scope.durableDockerCiWorkflow=$($scope.durableDockerCiWorkflow)"),
+    (Status-Line ($scope.realS3ClientCiWorkflow -eq "included") "Real S3 client CI workflow draft" "scope.realS3ClientCiWorkflow=$($scope.realS3ClientCiWorkflow)"),
+    (Status-Line ($scope.containerSecurityCiWorkflow -eq "included") "Container security CI workflow draft" "scope.containerSecurityCiWorkflow=$($scope.containerSecurityCiWorkflow)"),
+    (Status-Line ($scope.browserE2ECiWorkflow -eq "included") "Browser E2E CI workflow draft" "scope.browserE2ECiWorkflow=$($scope.browserE2ECiWorkflow)"),
+    (Status-Line ($scope.imageSigningPolicy -eq "included") "Image signing policy draft" "scope.imageSigningPolicy=$($scope.imageSigningPolicy)"),
+    (Status-Line ($scope.releaseNotes -eq "included") "Release notes generation" "scope.releaseNotes=$($scope.releaseNotes)"),
+    (Status-Line ($scope.commercialReadiness -eq "included") "Commercial readiness draft" "scope.commercialReadiness=$($scope.commercialReadiness)"),
+    (Status-Line ($scope.openApiContract -eq "included") "MVP API contract" "scope.openApiContract=$($scope.openApiContract)"),
+    (Status-Line ($scope.kubernetesManifests -eq "included") "Kubernetes manifest draft" "scope.kubernetesManifests=$($scope.kubernetesManifests)"),
+    (Status-Line ($scope.helmChart -eq "included") "Helm chart draft" "scope.helmChart=$($scope.helmChart)"),
+    (Status-Line ($scope.networkPolicies -eq "included") "NetworkPolicy draft" "scope.networkPolicies=$($scope.networkPolicies)"),
+    (Status-Line ($scope.containerHardening -eq "included") "Container hardening draft" "scope.containerHardening=$($scope.containerHardening)"),
+    (Status-Line ($scope.tlsIngress -eq "included") "TLS ingress draft" "scope.tlsIngress=$($scope.tlsIngress)"),
+    (Status-Line ($scope.secretRotationPolicy -eq "included") "Secret rotation policy draft" "scope.secretRotationPolicy=$($scope.secretRotationPolicy)"),
+    (Status-Line ($scope.backupRestoreDrill -eq "included") "Backup restore drill draft" "scope.backupRestoreDrill=$($scope.backupRestoreDrill)"),
+    (Status-Line ($scope.prometheusObservability -eq "included") "Prometheus observability draft" "scope.prometheusObservability=$($scope.prometheusObservability)"),
+    (Status-Line ($scope.monitoringArtifacts -eq "included") "Monitoring artifacts draft" "scope.monitoringArtifacts=$($scope.monitoringArtifacts)"),
+    (Status-Line ($scope.prometheusOperatorDraft -eq "included") "Prometheus Operator draft" "scope.prometheusOperatorDraft=$($scope.prometheusOperatorDraft)"),
+    (Status-Line $storageExpansionFinalizePassed "Storage expansion finalizer evidence" "$($storageExpansionFinalize.detail), report=$($storageExpansionFinalize.path)"),
+    (Status-Line $kubernetesDrFinalizePassed "Kubernetes DR finalizer evidence" "$($kubernetesDrFinalize.detail), report=$($kubernetesDrFinalize.path)"),
+    (Status-Line $securityEvidenceFinalizePassed "Security evidence finalizer" "$($securityEvidenceFinalize.detail), report=$($securityEvidenceFinalize.path)"),
+    (Status-Line $durableGatePassed "Durable MVP demo gate" "$($durableGate.detail), report=$($durableGate.path)"),
     (Status-Line $dockerPassed "Docker/MariaDB/MinIO integration" "dockerIntegration=$($scope.dockerIntegration), dockerDaemon=$($optionalGates.dockerDaemonAvailable)"),
-    (Status-Line $realS3ClientPassed "Real S3 client smoke" "aws=$($optionalGates.awsCliAvailable), mc=$($optionalGates.mcAvailable)"),
+    (Status-Line $realS3ClientPassed "Real S3 client smoke" "aws=$($optionalGates.awsCliAvailable), mc=$($optionalGates.mcAvailable), dockerizedMc=$($optionalGates.dockerizedMcAvailable)"),
     (Status-Line $browserE2EPassed "Browser visual/click E2E" "browserE2E=$($scope.browserE2E)"),
     "",
     "## Implemented Prototype Scope",
@@ -80,7 +267,6 @@ $auditLines = @(
     "- Machine-readable MVP OpenAPI contract and verifier.",
     "- Kubernetes deployment draft manifests and verifier.",
     "- Helm chart draft and verifier.",
-    "- Helm chart draft and verifier.",
     "",
     "## Test Case Evidence Map",
     "",
@@ -95,17 +281,23 @@ $auditLines = @(
     (Evidence-Line $(if ($scope.openApiContract -eq "included") { "PASS" } else { "PENDING" }) "MVP API contract" "TC-DOC-001" "scope.openApiContract=$($scope.openApiContract); verify-local.ps1 runs verify-openapi-contract.ps1"),
     (Evidence-Line $(if ($scope.kubernetesManifests -eq "included") { "PASS" } else { "PENDING" }) "Kubernetes manifest draft" "TC-INFRA-002" "scope.kubernetesManifests=$($scope.kubernetesManifests); verify-local.ps1 runs verify-k8s-manifests.ps1"),
     (Evidence-Line $(if ($scope.helmChart -eq "included") { "PASS" } else { "PENDING" }) "Helm chart draft" "TC-INFRA-003" "scope.helmChart=$($scope.helmChart); verify-local.ps1 runs verify-helm-chart.ps1"),
-    (Evidence-Line $(if ($scope.helmChart -eq "included") { "PASS" } else { "PENDING" }) "Helm chart draft" "TC-INFRA-003" "scope.helmChart=$($scope.helmChart); verify-local.ps1 runs verify-helm-chart.ps1"),
-    (Evidence-Line "PARTIAL" "Frontend portal checks" "TC-FE-001 through TC-FE-030" "frontend unit/build covers stable E2E selector contract, bucket list summaries, upload state/progress guards, confirm dialog state, access key scope/revoke helpers, bucket lifecycle/tag wrappers, tags, object explorer prefix/highlight helpers, object metadata drift helpers, object tag preflight validation, auth session flows, API filter wrappers, error/requestId handling, single upload abort/retry, multipart upload/retry/abort/resume flow, and multipart local resume sessions; lightweight demo bundle checks pass; Browser click E2E pending"),
+    (Evidence-Line $(if ($storageExpansionFinalizePassed) { "PASS" } else { "PENDING" }) "Storage expansion finalizer" "TC-INFRA-STORAGE-EXPANSION-FINALIZE" "$($storageExpansionFinalize.detail); report=$($storageExpansionFinalize.path)"),
+    (Evidence-Line $(if ($kubernetesDrFinalizePassed) { "PASS" } else { "PENDING" }) "Kubernetes DR finalizer" "TC-INFRA-KUBERNETES-DR-FINALIZE" "$($kubernetesDrFinalize.detail); report=$($kubernetesDrFinalize.path)"),
+    (Evidence-Line $(if ($securityEvidenceFinalizePassed) { "PASS" } else { "PENDING" }) "Security evidence finalizer" "TC-SECURITY-EVIDENCE-FINALIZE" "$($securityEvidenceFinalize.detail); report=$($securityEvidenceFinalize.path)"),
+    (Evidence-Line $(if ($durableGatePassed) { "PASS" } else { "PENDING" }) "Durable MVP demo gate" "TC-DEMO-002" "$($durableGate.detail); report=$($durableGate.path)"),
+    (Evidence-Line $frontendPortalStatus "Frontend portal checks" "TC-FE-001 through TC-FE-030" $frontendPortalEvidence),
     (Evidence-Line $(if ($dockerPassed) { "PASS" } else { "PENDING" }) "Docker/MariaDB/MinIO integration" "TC-INFRA-001, TC-OBJECT-015, TC-S3-AUTH-002" "requires Docker daemon and -RunDockerIntegration"),
-    (Evidence-Line $(if ($realS3ClientPassed) { "PASS" } else { "PENDING" }) "Real S3 clients" "TC-S3-AUTH-003" "requires aws or mc on PATH and -RequireS3Client"),
+    (Evidence-Line $(if ($realS3ClientPassed) { "PASS" } else { "PENDING" }) "Real S3 clients" "TC-S3-AUTH-003" "requires aws, host mc, or Dockerized mc and -RequireS3Client"),
     (Evidence-Line $(if ($browserE2EPassed) { "PASS" } else { "PENDING" }) "Browser visual/click E2E" "TC-FE browser acceptance paths" "requires Browser/Chrome automation and -BrowserE2EVerified"),
     "",
     "## Next Required Evidence",
     "",
-    "- Docker Desktop running plus scripts\verify-prototype-release.ps1 -RunDockerIntegration, including MariaDB object tag index smoke.",
-    "- AWS CLI or MinIO Client mc on PATH plus scripts\verify-prototype-release.ps1 -RequireS3Client.",
-    "- Browser/Chrome automation fixed plus real UI click-path E2E, then release report with -BrowserE2EVerified.",
+    "- Durable MVP demo gate report: $($durableGate.detail); path=$($durableGate.path).",
+    "- Storage expansion finalizer report: $($storageExpansionFinalize.detail); path=$($storageExpansionFinalize.path).",
+    "- Kubernetes DR finalizer report: $($kubernetesDrFinalize.detail); path=$($kubernetesDrFinalize.path).",
+    "- Security evidence finalizer report: $($securityEvidenceFinalize.detail); path=$($securityEvidenceFinalize.path).",
+    "- If the durable gate report is not ready, run Docker Desktop plus scripts\verify-durable-demo-gate.ps1.",
+    "- If using the legacy release report path instead of durable gate evidence, run scripts\verify-prototype-release.ps1 with -RunDockerIntegration, -RequireS3Client, and -BrowserE2EVerified after the corresponding evidence passes.",
     "- Full release report with backend tests included by omitting -SkipBackendTests."
 )
 

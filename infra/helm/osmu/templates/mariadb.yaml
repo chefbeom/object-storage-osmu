@@ -37,6 +37,8 @@ spec:
         app.kubernetes.io/instance: {{ .Release.Name }}
         app.kubernetes.io/part-of: osmu
     spec:
+      serviceAccountName: osmu-mariadb
+      automountServiceAccountToken: false
       containers:
         - name: mariadb
           image: "{{ .Values.mariadb.image.repository }}:{{ .Values.mariadb.image.tag }}"

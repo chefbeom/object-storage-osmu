@@ -12,6 +12,7 @@ param(
     [switch] $BrowserE2EVerified,
     [string] $BrowserE2ENote = "Browser E2E pending; in-app browser automation failed in this environment.",
     [string] $ReportPath = ".\.osmu-run\latest-release.json",
+    [string] $DurableGateReportPath = ".\.osmu-run\latest-durable-demo-gate.json",
     [switch] $NoReport
 )
 
@@ -65,7 +66,8 @@ function Get-OptionalGateStatus() {
         dockerDetail = $dockerDetail
         awsCliAvailable = [bool]$aws
         mcAvailable = [bool]$mc
-        realS3ClientAvailable = [bool]($aws -or $mc)
+        dockerizedMcAvailable = $dockerDaemon
+        realS3ClientAvailable = [bool]($aws -or $mc -or $dockerDaemon)
     }
 }
 
@@ -220,9 +222,9 @@ Write-ReleaseReport
 
 if (-not $NoReport) {
     Step "Prototype release artifacts"
-    Invoke-ProjectScript "write-mvp-audit.ps1" @("-ReleaseReportPath", $ReportPath)
-    Invoke-ProjectScript "write-mvp-release-decision.ps1" @("-ReleaseReportPath", $ReportPath)
-    Invoke-ProjectScript "write-mvp-release-notes.ps1" @("-ReleaseReportPath", $ReportPath)
-    Invoke-ProjectScript "verify-mvp-release-artifacts.ps1" @("-ReleaseReportPath", $ReportPath)
+    Invoke-ProjectScript "write-mvp-audit.ps1" @("-ReleaseReportPath", $ReportPath, "-DurableGateReportPath", $DurableGateReportPath)
+    Invoke-ProjectScript "write-mvp-release-decision.ps1" @("-ReleaseReportPath", $ReportPath, "-DurableGateReportPath", $DurableGateReportPath)
+    Invoke-ProjectScript "write-mvp-release-notes.ps1" @("-ReleaseReportPath", $ReportPath, "-DurableGateReportPath", $DurableGateReportPath)
+    Invoke-ProjectScript "verify-mvp-release-artifacts.ps1" @("-ReleaseReportPath", $ReportPath, "-DurableGateReportPath", $DurableGateReportPath)
 }
 

@@ -27,7 +27,7 @@ metadata:
     app.kubernetes.io/name: osmu-backend
     app.kubernetes.io/part-of: osmu
 spec:
-  replicas: 1
+  replicas: 2
   selector:
     matchLabels:
       app.kubernetes.io/name: osmu-backend
@@ -37,6 +37,15 @@ spec:
         app.kubernetes.io/name: osmu-backend
         app.kubernetes.io/part-of: osmu
     spec:
+      serviceAccountName: osmu-backend
+      automountServiceAccountToken: false
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              app.kubernetes.io/name: osmu-backend
       securityContext:
         runAsNonRoot: true
         runAsUser: 10001
@@ -97,6 +106,10 @@ spec:
                 secretKeyRef:
                   name: osmu-secret
                   key: OSMU_ACCESS_KEY_SECRET_ENCRYPTION_KEY
+          volumeMounts:
+            - name: operations-reports
+              mountPath: /app/.osmu-run
+              readOnly: true
           readinessProbe:
             httpGet:
               path: /api/health
@@ -118,3 +131,8 @@ spec:
             limits:
               cpu: "1"
               memory: 1Gi
+      volumes:
+        - name: operations-reports
+          configMap:
+            name: osmu-operations-reports
+            optional: true

@@ -57,7 +57,8 @@ function New-OptionalGates([bool] $Docker, [bool] $Aws, [bool] $Mc) {
         dockerDetail = if ($Docker) { '"24.0.0"' } else { "docker daemon unavailable" }
         awsCliAvailable = $Aws
         mcAvailable = $Mc
-        realS3ClientAvailable = $Aws -or $Mc
+        dockerizedMcAvailable = $Docker
+        realS3ClientAvailable = $Aws -or $Mc -or $Docker
     }
 }
 
@@ -72,6 +73,21 @@ function Write-SampleReport([string] $Path, [object] $Scope, [object] $OptionalG
         scope = $Scope
         optionalGates = $OptionalGates
         reportPath = $Path
+    }
+    $report | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $Path -Encoding UTF8
+}
+
+function Write-SampleDurableGateReport([string] $Path, [string] $Result = "ready") {
+    $report = [ordered]@{
+        generatedAt = [DateTimeOffset]::Now.ToString("o")
+        result = $Result
+        currentDemoStatus = if ($Result -eq "ready") { "docker-durable-demo-verified" } else { "docker-durable-demo-partial" }
+        failureMessage = ""
+        completionEstimate = [ordered]@{
+            mvpDemo = if ($Result -eq "ready") { "90-95%" } else { "70-85%" }
+            product = if ($Result -eq "ready") { "20-25%" } else { "15-20%" }
+        }
+        checks = @()
     }
     $report | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $Path -Encoding UTF8
 }
@@ -99,6 +115,8 @@ function Invoke-DecisionScript([string[]] $Arguments) {
 }
 
 New-Item -ItemType Directory -Force -Path $selfTestDir | Out-Null
+$missingDurableGateReport = Join-Path $selfTestDir "missing-durable-gate-report.json"
+Remove-Item -LiteralPath $missingDurableGateReport -Force -ErrorAction SilentlyContinue
 
 Step "Lightweight demo decision"
 $lightweightReport = Join-Path $selfTestDir "lightweight-report.json"
@@ -106,7 +124,7 @@ Write-SampleReport `
     -Path $lightweightReport `
     -Scope (New-Scope -DockerIntegration "skipped" -RealS3ClientRequired $false -BrowserE2E "pending") `
     -OptionalGates (New-OptionalGates -Docker $false -Aws $false -Mc $false)
-$lightweightResult = Invoke-DecisionScript @("-ReleaseReportPath", $lightweightReport, "-NoWrite")
+$lightweightResult = Invoke-DecisionScript @("-ReleaseReportPath", $lightweightReport, "-DurableGateReportPath", $missingDurableGateReport, "-NoWrite")
 if ($lightweightResult.ExitCode -ne 0) {
     throw "Lightweight decision script failed: $($lightweightResult.Output)"
 }
@@ -119,15 +137,31 @@ Write-SampleReport `
     -Path $durableReport `
     -Scope (New-Scope -DockerIntegration "included" -RealS3ClientRequired $true -BrowserE2E "verified") `
     -OptionalGates (New-OptionalGates -Docker $true -Aws $true -Mc $false)
-$durableResult = Invoke-DecisionScript @("-ReleaseReportPath", $durableReport, "-NoWrite")
+$durableResult = Invoke-DecisionScript @("-ReleaseReportPath", $durableReport, "-DurableGateReportPath", $missingDurableGateReport, "-NoWrite")
 if ($durableResult.ExitCode -ne 0) {
     throw "Durable decision script failed: $($durableResult.Output)"
 }
 Assert-Contains $durableResult.Output "- Lightweight demo candidate: GO"
 Assert-Contains $durableResult.Output "- Durable MVP pilot: GO"
 
+Step "Durable gate report decision"
+$durableGateOnlyReport = Join-Path $selfTestDir "durable-gate-only-release-report.json"
+$durableGateReport = Join-Path $selfTestDir "durable-gate-report.json"
+Write-SampleReport `
+    -Path $durableGateOnlyReport `
+    -Scope (New-Scope -DockerIntegration "skipped" -RealS3ClientRequired $false -BrowserE2E "pending") `
+    -OptionalGates (New-OptionalGates -Docker $false -Aws $false -Mc $false)
+Write-SampleDurableGateReport -Path $durableGateReport -Result "ready"
+$durableGateResult = Invoke-DecisionScript @("-ReleaseReportPath", $durableGateOnlyReport, "-DurableGateReportPath", $durableGateReport, "-NoWrite")
+if ($durableGateResult.ExitCode -ne 0) {
+    throw "Durable gate report decision script failed: $($durableGateResult.Output)"
+}
+Assert-Contains $durableGateResult.Output "- Lightweight demo candidate: GO"
+Assert-Contains $durableGateResult.Output "- Durable MVP pilot: GO"
+Assert-Contains $durableGateResult.Output "- [PASS] Durable MVP demo gate report"
+
 Step "Durable no-go failure switch"
-$failureResult = Invoke-DecisionScript @("-ReleaseReportPath", $lightweightReport, "-NoWrite", "-FailIfDurablePilotNoGo")
+$failureResult = Invoke-DecisionScript @("-ReleaseReportPath", $lightweightReport, "-DurableGateReportPath", $missingDurableGateReport, "-NoWrite", "-FailIfDurablePilotNoGo")
 if ($failureResult.ExitCode -eq 0 -or -not $failureResult.Output.Contains("Durable MVP pilot decision is NO-GO")) {
     throw "-FailIfDurablePilotNoGo did not fail for lightweight-only report."
 }

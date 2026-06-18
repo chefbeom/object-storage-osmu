@@ -53,6 +53,10 @@ Assert-Contains $rules.Content "OsmuVersionRetentionPurgeFailures" "Prometheus r
 Assert-Contains $rules.Content "OsmuMultipartCleanupFailures" "Prometheus rules"
 Assert-Contains $rules.Content "OsmuShareLinkCleanupFailures" "Prometheus rules"
 Assert-Contains $rules.Content "OsmuBackupRestoreDrillPending" "Prometheus rules"
+Assert-Contains $rules.Content "OsmuBackupCronJobFailed" "Prometheus rules"
+Assert-Contains $rules.Content "OsmuBackupCronJobStale" "Prometheus rules"
+Assert-Contains $rules.Content "kube_job_status_failed" "Prometheus rules"
+Assert-Contains $rules.Content "kube_cronjob_status_last_successful_time" "Prometheus rules"
 Assert-Contains $rules.Content "severity:" "Prometheus rules"
 Assert-Contains $rules.Content "summary:" "Prometheus rules"
 
@@ -71,6 +75,7 @@ Assert-Contains $dashboard.Content "GET /api/admin/backup/status" "Grafana dashb
 
 Assert-Contains $operationMonitoring.Content "infra/monitoring/prometheus-rules.yaml" "Operation monitoring doc"
 Assert-Contains $operationMonitoring.Content "infra/monitoring/grafana-dashboard-osmu.json" "Operation monitoring doc"
+Assert-Contains $operationMonitoring.Content "kube_cronjob_status_last_successful_time" "Operation monitoring doc"
 
 Write-Host "Monitoring artifacts verified."
 Write-Host "Monitoring directory: $resolvedMonitoringDirectory"

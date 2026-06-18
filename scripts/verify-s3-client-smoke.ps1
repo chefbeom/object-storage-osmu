@@ -4,8 +4,9 @@ param(
     [string] $AdminLoginId = "admin",
     [string] $AdminPassword = "password",
     [string] $BucketName = "",
-    [ValidateSet("auto", "aws", "mc", "all")]
+    [ValidateSet("auto", "aws", "mc", "docker-mc", "all")]
     [string] $Client = "auto",
+    [string] $DockerMcImage = "minio/mc:RELEASE.2025-05-21T01-59-54Z",
     [switch] $SkipManualSigV4,
     [switch] $SkipMultipartChecksumSmoke,
     [switch] $SkipVirtualHostedSmoke,
@@ -14,9 +15,21 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+$root = Resolve-Path (Join-Path $PSScriptRoot "..")
+. (Join-Path $PSScriptRoot "docker-toolchain.ps1")
+Use-OsmuDockerConfig $root | Out-Null
+
+function Get-OriginEndpoint([string] $Url) {
+    $uri = [Uri] $Url
+    $builder = [System.UriBuilder]::new($uri)
+    $builder.Path = ""
+    $builder.Query = ""
+    $builder.Fragment = ""
+    return $builder.Uri.AbsoluteUri.TrimEnd("/")
+}
 
 if (-not $S3Endpoint) {
-    $S3Endpoint = "$ApiBase/s3"
+    $S3Endpoint = Get-OriginEndpoint $ApiBase
 }
 if (-not $BucketName) {
     $BucketName = "client-smoke-$([DateTimeOffset]::UtcNow.ToUnixTimeSeconds())"
@@ -594,7 +607,8 @@ function Invoke-ManualSigV4Smoke($apiBase, $s3Endpoint, $bucketName, $accessKey,
     if ($includeVirtualHosted) {
         $endpoint = [Uri] $s3Endpoint
         $hostOverride = if ($endpoint.IsDefaultPort) { "$bucketName.localhost" } else { "$bucketName.localhost:$($endpoint.Port)" }
-        $vhostUrl = "$($endpoint.Scheme)://$($endpoint.Authority)$($endpoint.AbsolutePath)/manual-vhost-smoke.txt"
+        $vhostPathPrefix = if ($endpoint.AbsolutePath -eq "/") { "" } else { $endpoint.AbsolutePath.TrimEnd("/") }
+        $vhostUrl = "$($endpoint.Scheme)://$($endpoint.Authority)$vhostPathPrefix/manual-vhost-smoke.txt"
         $vhostBytes = [System.Text.Encoding]::UTF8.GetBytes("osmu virtual hosted smoke")
         $vhostPut = Invoke-SignedHttp "PUT" $vhostUrl $vhostBytes $accessKey $secretKey $hostOverride $null "text/plain"
         if ($vhostPut.StatusCode -ne 200) {
@@ -725,6 +739,112 @@ function Invoke-McSmoke($apiBase, $s3Endpoint, $bucketName, $accessKey, $secretK
     }
 }
 
+function Test-DockerDaemonForClient() {
+    $docker = Get-Command docker -ErrorAction SilentlyContinue
+    if (-not $docker) {
+        return $false
+    }
+
+    $previousErrorActionPreference = $ErrorActionPreference
+    $ErrorActionPreference = "Continue"
+    try {
+        & $docker.Source info --format "{{json .ServerVersion}}" *> $null
+        return $LASTEXITCODE -eq 0
+    }
+    finally {
+        $ErrorActionPreference = $previousErrorActionPreference
+    }
+}
+
+function Convert-S3EndpointForDockerClient([string] $Endpoint) {
+    $uri = [Uri] $Endpoint
+    if ($uri.Host -in @("localhost", "127.0.0.1", "::1")) {
+        $builder = [System.UriBuilder]::new($uri)
+        $builder.Host = "host.docker.internal"
+        return $builder.Uri.AbsoluteUri.TrimEnd("/")
+    }
+    return $Endpoint.TrimEnd("/")
+}
+
+function Invoke-DockerCommand([string[]] $Arguments, [switch] $ReturnText) {
+    $docker = Get-Command docker -ErrorAction SilentlyContinue
+    if (-not $docker) {
+        throw "Docker CLI not found on PATH."
+    }
+
+    $previousErrorActionPreference = $ErrorActionPreference
+    $ErrorActionPreference = "Continue"
+    try {
+        $output = & $docker.Source @Arguments 2>&1
+        $exitCode = $LASTEXITCODE
+        if ($output -and -not $ReturnText) {
+            $output | ForEach-Object { Write-Host $_ }
+        }
+        if ($exitCode -ne 0) {
+            if ($output) {
+                $output | ForEach-Object { Write-Host $_ }
+            }
+            throw "Command failed ($exitCode): docker $($Arguments -join ' ')"
+        }
+        if ($ReturnText) {
+            return ($output -join [Environment]::NewLine)
+        }
+        return $output
+    }
+    finally {
+        $ErrorActionPreference = $previousErrorActionPreference
+    }
+}
+
+function Invoke-DockerMc($tempDir, [string[]] $McArguments, [switch] $ReturnText) {
+    $volume = "$($tempDir):/work"
+    $arguments = @(
+        "run",
+        "--rm",
+        "-e", "MC_CONFIG_DIR=/work/.mc",
+        "-v", $volume,
+        $DockerMcImage
+    ) + $McArguments
+
+    return Invoke-DockerCommand $arguments -ReturnText:$ReturnText
+}
+
+function Invoke-DockerizedMcSmoke($apiBase, $s3Endpoint, $bucketName, $accessKey, $secretKey) {
+    if (-not (Test-DockerDaemonForClient)) {
+        return $false
+    }
+
+    Step "Dockerized MinIO Client smoke"
+    $tempDir = Join-Path ([System.IO.Path]::GetTempPath()) "osmu-docker-mc-smoke-$([Guid]::NewGuid())"
+    New-Item -ItemType Directory -Force -Path $tempDir | Out-Null
+
+    try {
+        $alias = "osmu-smoke"
+        $dockerS3Endpoint = Convert-S3EndpointForDockerClient $s3Endpoint
+        try {
+            Invoke-DockerMc $tempDir @("alias", "set", $alias, $dockerS3Endpoint, $accessKey, $secretKey, "--api", "S3v4", "--path", "on") | Out-Null
+        }
+        catch {
+            Invoke-DockerMc $tempDir @("alias", "set", $alias, $dockerS3Endpoint, $accessKey, $secretKey, "--api", "S3v4") | Out-Null
+        }
+
+        Invoke-DockerMc $tempDir @("ls", "$alias/$bucketName") | Out-Null
+
+        $bodyPath = New-SmokeFile $tempDir "docker-mc-smoke.txt" "osmu docker mc smoke"
+        Invoke-DockerMc $tempDir @("cp", "/work/$(Split-Path -Leaf $bodyPath)", "$alias/$bucketName/docker-mc-smoke.txt") | Out-Null
+        Invoke-DockerMc $tempDir @("stat", "$alias/$bucketName/docker-mc-smoke.txt") | Out-Null
+        $body = Invoke-DockerMc $tempDir @("cat", "$alias/$bucketName/docker-mc-smoke.txt") -ReturnText
+        if ($body -ne "osmu docker mc smoke") {
+            throw "dockerized mc cat body mismatch."
+        }
+        Invoke-DockerMc $tempDir @("rm", "$alias/$bucketName/docker-mc-smoke.txt") | Out-Null
+        return $true
+    }
+    finally {
+        Remove-Item -Recurse -Force -LiteralPath $tempDir -ErrorAction SilentlyContinue
+    }
+}
+
 Step "Backend health"
 Invoke-Json "GET" "$ApiBase/health" | Out-Null
 $storageHealth = Invoke-Json "GET" "$ApiBase/storage/health"
@@ -786,9 +906,16 @@ try {
             throw "MinIO Client mc not found on PATH."
         }
     }
+    if ($Client -in @("auto", "docker-mc", "all")) {
+        if (Invoke-DockerizedMcSmoke $ApiBase $S3Endpoint $BucketName $accessKey $secretKey) {
+            $ranClients.Add("docker-mc")
+        } elseif ($Client -eq "docker-mc") {
+            throw "Docker daemon is not available for Dockerized MinIO Client smoke."
+        }
+    }
 
     if ($ranClients.Count -eq 0) {
-        $message = "No real S3 client found. Install AWS CLI (aws) or MinIO Client (mc) and rerun this script."
+        $message = "No real S3 client found. Install AWS CLI (aws), install MinIO Client (mc), or start Docker Desktop for Dockerized MinIO Client smoke."
         if ($RequireClient) {
             throw $message
         }
@@ -800,7 +927,7 @@ try {
 finally {
     if ($createdBucket -and -not $KeepBucket) {
         Step "Cleanup smoke data"
-        foreach ($key in @("aws-cli-smoke.txt", "mc-smoke.txt", "manual-sigv4-smoke.txt", "manual-copy-sigv4-smoke.txt", "manual-copy-precondition-fail.txt", "manual-bad-payload.txt", "manual-bad-checksum.txt", "manual-vhost-smoke.txt", "manual-multipart-checksum.bin", "manual-delete-md5-a.txt", "manual-delete-md5-b.txt", "manual-delete-md5-protected.txt")) {
+        foreach ($key in @("aws-cli-smoke.txt", "mc-smoke.txt", "docker-mc-smoke.txt", "manual-sigv4-smoke.txt", "manual-copy-sigv4-smoke.txt", "manual-copy-precondition-fail.txt", "manual-bad-payload.txt", "manual-bad-checksum.txt", "manual-vhost-smoke.txt", "manual-multipart-checksum.bin", "manual-delete-md5-a.txt", "manual-delete-md5-b.txt", "manual-delete-md5-protected.txt")) {
             try {
                 Invoke-Json "DELETE" "$ApiBase/buckets/$BucketName/objects/$key" $null $token | Out-Null
             } catch {

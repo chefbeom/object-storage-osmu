@@ -13,6 +13,7 @@ param(
 $ErrorActionPreference = "Stop"
 $root = Resolve-Path (Join-Path $PSScriptRoot "..")
 $demoCredentialPath = Join-Path $root ".osmu-run\latest-demo.json"
+. (Join-Path $PSScriptRoot "docker-toolchain.ps1")
 
 function Step($message) {
     Write-Host ""
@@ -47,6 +48,7 @@ function Invoke-ProjectScript($scriptName, [string[]] $arguments = @()) {
 }
 
 function Docker-Available() {
+    Use-OsmuDockerConfig $root | Out-Null
     $previousErrorActionPreference = $ErrorActionPreference
     $ErrorActionPreference = "Continue"
     $output = docker info --format "{{json .ServerVersion}}" 2>&1

@@ -1,0 +1,338 @@
+name: Kubernetes DR Finalizer CI
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_namespace:
+        description: Source Kubernetes namespace that contains the production OSMU stack
+        required: true
+        default: osmu
+      restore_namespace:
+        description: Disposable restore-drill namespace
+        required: true
+        default: osmu-restore-drill
+      backup_timestamp:
+        description: Backup timestamp to restore, formatted as YYYYMMDDTHHMMSSZ
+        required: true
+        default: YYYYMMDDTHHMMSSZ
+      run_live:
+        description: Run live kubectl/HTTP evidence using OSMU_KUBECONFIG_BASE64
+        required: true
+        type: boolean
+        default: false
+      server_dry_run_only:
+        description: Run Kubernetes server-side dry-run validation instead of confirmed restore
+        required: true
+        type: boolean
+        default: true
+      confirm_restore:
+        description: Explicitly run the confirmed restore sequence
+        required: true
+        type: boolean
+        default: false
+      run_backup_drill:
+        description: Create one-off backup Jobs before the restore sequence
+        required: true
+        type: boolean
+        default: false
+      bootstrap_dr_bucket:
+        description: Bootstrap or reuse the external DR bucket
+        required: true
+        type: boolean
+        default: false
+      skip_dr_bucket_create:
+        description: Skip DR bucket create and only configure/verify existing bucket
+        required: true
+        type: boolean
+        default: false
+      verify_dr_bucket_immutability:
+        description: Verify external DR bucket versioning and default object-lock retention
+        required: true
+        type: boolean
+        default: false
+      transfer_artifacts:
+        description: Export/import backup artifacts through external DR storage
+        required: true
+        type: boolean
+        default: false
+      include_app_workloads:
+        description: Include backend/frontend workloads in restore namespace preparation
+        required: true
+        type: boolean
+        default: false
+      allow_empty_minio:
+        description: Allow empty MinIO mirror artifact checks
+        required: true
+        type: boolean
+        default: false
+      cleanup_jobs:
+        description: Delete temporary drill Jobs after evidence collection
+        required: true
+        type: boolean
+        default: false
+      run_s3_client_smoke:
+        description: Run real S3 client smoke against the restored endpoint
+        required: true
+        type: boolean
+        default: false
+      require_s3_client:
+        description: Fail restore smoke when the requested S3 client is unavailable
+        required: true
+        type: boolean
+        default: false
+      skip_restore_smoke:
+        description: Skip restored API/S3 smoke checks
+        required: true
+        type: boolean
+        default: false
+      skip_evidence_request:
+        description: Skip restore evidence request generation
+        required: true
+        type: boolean
+        default: false
+      submit_evidence:
+        description: Submit restore evidence to the admin API
+        required: true
+        type: boolean
+        default: false
+      dr_egress_cidr:
+        description: Optional external DR endpoint CIDR for generated NetworkPolicy
+        required: false
+        default: ""
+      api_base:
+        description: Restored backend API base URL
+        required: false
+        default: http://localhost:8080/api
+      admin_login_id:
+        description: Admin login id for restore smoke and evidence submit
+        required: false
+        default: admin
+      metadata_row_count:
+        description: Restored metadata row count, or -1 when unknown
+        required: false
+        default: "-1"
+      expected_bucket_name:
+        description: Optional restored bucket name for object smoke
+        required: false
+        default: ""
+      expected_object_key:
+        description: Optional restored object key for download smoke
+        required: false
+        default: ""
+      s3_endpoint:
+        description: Optional restored S3 endpoint for real client smoke
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+concurrency:
+  group: kubernetes-dr-finalizer-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  kubernetes-dr-finalizer:
+    name: Kubernetes DR finalizer
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Plan Kubernetes DR finalizer
+        shell: pwsh
+        run: |
+          $planArgs = @(
+            "-PlanOnly",
+            "-SourceNamespace", "${{ inputs.source_namespace }}",
+            "-RestoreNamespace", "${{ inputs.restore_namespace }}",
+            "-BackupTimestamp", "${{ inputs.backup_timestamp }}",
+            "-ApiBase", "${{ inputs.api_base }}",
+            "-AdminLoginId", "${{ inputs.admin_login_id }}",
+            "-MetadataRowCount", "${{ inputs.metadata_row_count }}",
+            "-PowerShellCommand", "pwsh"
+          )
+          if ("${{ inputs.dr_egress_cidr }}") {
+            $planArgs += @("-DrEgressCidr", "${{ inputs.dr_egress_cidr }}")
+          }
+          if ("${{ inputs.run_backup_drill }}" -eq "true") {
+            $planArgs += "-RunBackupDrill"
+          }
+          if ("${{ inputs.bootstrap_dr_bucket }}" -eq "true") {
+            $planArgs += "-BootstrapDrBucket"
+          }
+          if ("${{ inputs.skip_dr_bucket_create }}" -eq "true") {
+            $planArgs += "-SkipDrBucketCreate"
+          }
+          if ("${{ inputs.verify_dr_bucket_immutability }}" -eq "true") {
+            $planArgs += "-VerifyDrBucketImmutability"
+          }
+          if ("${{ inputs.transfer_artifacts }}" -eq "true") {
+            $planArgs += "-TransferArtifacts"
+          }
+          if ("${{ inputs.include_app_workloads }}" -eq "true") {
+            $planArgs += "-IncludeAppWorkloads"
+          }
+          if ("${{ inputs.allow_empty_minio }}" -eq "true") {
+            $planArgs += "-AllowEmptyMinio"
+          }
+          if ("${{ inputs.cleanup_jobs }}" -eq "true") {
+            $planArgs += "-CleanupJobs"
+          }
+          if ("${{ inputs.run_s3_client_smoke }}" -eq "true") {
+            $planArgs += "-RunS3ClientSmoke"
+          }
+          if ("${{ inputs.require_s3_client }}" -eq "true") {
+            $planArgs += "-RequireS3Client"
+          }
+          if ("${{ inputs.skip_restore_smoke }}" -eq "true") {
+            $planArgs += "-SkipRestoreSmoke"
+          }
+          if ("${{ inputs.skip_evidence_request }}" -eq "true") {
+            $planArgs += "-SkipEvidenceRequest"
+          }
+          if ("${{ inputs.submit_evidence }}" -eq "true") {
+            $planArgs += "-SubmitEvidence"
+          }
+          if ("${{ inputs.expected_bucket_name }}") {
+            $planArgs += @("-ExpectedBucketName", "${{ inputs.expected_bucket_name }}")
+          }
+          if ("${{ inputs.expected_object_key }}") {
+            $planArgs += @("-ExpectedObjectKey", "${{ inputs.expected_object_key }}")
+          }
+          if ("${{ inputs.s3_endpoint }}") {
+            $planArgs += @("-S3Endpoint", "${{ inputs.s3_endpoint }}")
+          }
+
+          ./scripts/finalize-kubernetes-dr-drill.ps1 @planArgs
+
+      - name: Prepare kubeconfig
+        if: ${{ inputs.run_live }}
+        shell: pwsh
+        env:
+          OSMU_KUBECONFIG_BASE64: ${{ secrets.OSMU_KUBECONFIG_BASE64 }}
+        run: |
+          if (-not $env:OSMU_KUBECONFIG_BASE64) {
+            throw "OSMU_KUBECONFIG_BASE64 secret is required when run_live=true."
+          }
+          $kubeDir = Join-Path $env:RUNNER_TEMP "osmu-kube"
+          New-Item -ItemType Directory -Force -Path $kubeDir | Out-Null
+          $kubeConfigPath = Join-Path $kubeDir "config"
+          [IO.File]::WriteAllBytes($kubeConfigPath, [Convert]::FromBase64String($env:OSMU_KUBECONFIG_BASE64))
+          "KUBECONFIG=$kubeConfigPath" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+      - name: Run Kubernetes DR finalizer
+        if: ${{ inputs.run_live }}
+        shell: pwsh
+        env:
+          OSMU_ADMIN_PASSWORD: ${{ secrets.OSMU_ADMIN_PASSWORD }}
+        run: |
+          if ("${{ inputs.backup_timestamp }}" -eq "YYYYMMDDTHHMMSSZ") {
+            throw "backup_timestamp must be set to a real timestamp when run_live=true."
+          }
+          if ("${{ inputs.server_dry_run_only }}" -eq "true" -and "${{ inputs.confirm_restore }}" -eq "true") {
+            throw "Use either server_dry_run_only=true or confirm_restore=true, not both."
+          }
+          if ("${{ inputs.server_dry_run_only }}" -ne "true" -and "${{ inputs.confirm_restore }}" -ne "true") {
+            throw "Use server_dry_run_only=true or confirm_restore=true when run_live=true."
+          }
+          if ("${{ inputs.submit_evidence }}" -eq "true" -and "${{ inputs.confirm_restore }}" -ne "true") {
+            throw "confirm_restore=true is required when submit_evidence=true."
+          }
+          if ("${{ inputs.confirm_restore }}" -eq "true" -and "${{ inputs.skip_restore_smoke }}" -ne "true" -and -not $env:OSMU_ADMIN_PASSWORD) {
+            throw "OSMU_ADMIN_PASSWORD secret is required for confirmed restore smoke."
+          }
+
+          $finalizerArgs = @(
+            "-SourceNamespace", "${{ inputs.source_namespace }}",
+            "-RestoreNamespace", "${{ inputs.restore_namespace }}",
+            "-BackupTimestamp", "${{ inputs.backup_timestamp }}",
+            "-ApiBase", "${{ inputs.api_base }}",
+            "-AdminLoginId", "${{ inputs.admin_login_id }}",
+            "-MetadataRowCount", "${{ inputs.metadata_row_count }}",
+            "-PowerShellCommand", "pwsh"
+          )
+          if ($env:OSMU_ADMIN_PASSWORD) {
+            $finalizerArgs += @("-AdminPassword", $env:OSMU_ADMIN_PASSWORD)
+          }
+          if ("${{ inputs.dr_egress_cidr }}") {
+            $finalizerArgs += @("-DrEgressCidr", "${{ inputs.dr_egress_cidr }}")
+          }
+          if ("${{ inputs.run_backup_drill }}" -eq "true") {
+            $finalizerArgs += "-RunBackupDrill"
+          }
+          if ("${{ inputs.bootstrap_dr_bucket }}" -eq "true") {
+            $finalizerArgs += "-BootstrapDrBucket"
+          }
+          if ("${{ inputs.skip_dr_bucket_create }}" -eq "true") {
+            $finalizerArgs += "-SkipDrBucketCreate"
+          }
+          if ("${{ inputs.verify_dr_bucket_immutability }}" -eq "true") {
+            $finalizerArgs += "-VerifyDrBucketImmutability"
+          }
+          if ("${{ inputs.transfer_artifacts }}" -eq "true") {
+            $finalizerArgs += "-TransferArtifacts"
+          }
+          if ("${{ inputs.include_app_workloads }}" -eq "true") {
+            $finalizerArgs += "-IncludeAppWorkloads"
+          }
+          if ("${{ inputs.allow_empty_minio }}" -eq "true") {
+            $finalizerArgs += "-AllowEmptyMinio"
+          }
+          if ("${{ inputs.cleanup_jobs }}" -eq "true") {
+            $finalizerArgs += "-CleanupJobs"
+          }
+          if ("${{ inputs.run_s3_client_smoke }}" -eq "true") {
+            $finalizerArgs += "-RunS3ClientSmoke"
+          }
+          if ("${{ inputs.require_s3_client }}" -eq "true") {
+            $finalizerArgs += "-RequireS3Client"
+          }
+          if ("${{ inputs.skip_restore_smoke }}" -eq "true") {
+            $finalizerArgs += "-SkipRestoreSmoke"
+          }
+          if ("${{ inputs.skip_evidence_request }}" -eq "true") {
+            $finalizerArgs += "-SkipEvidenceRequest"
+          }
+          if ("${{ inputs.submit_evidence }}" -eq "true") {
+            $finalizerArgs += "-SubmitEvidence"
+          }
+          if ("${{ inputs.expected_bucket_name }}") {
+            $finalizerArgs += @("-ExpectedBucketName", "${{ inputs.expected_bucket_name }}")
+          }
+          if ("${{ inputs.expected_object_key }}") {
+            $finalizerArgs += @("-ExpectedObjectKey", "${{ inputs.expected_object_key }}")
+          }
+          if ("${{ inputs.s3_endpoint }}") {
+            $finalizerArgs += @("-S3Endpoint", "${{ inputs.s3_endpoint }}")
+          }
+          if ("${{ inputs.server_dry_run_only }}" -eq "true") {
+            $finalizerArgs += "-ServerDryRunOnly"
+          } else {
+            $finalizerArgs += "-ConfirmRestore"
+          }
+
+          ./scripts/finalize-kubernetes-dr-drill.ps1 @finalizerArgs
+
+      - name: Upload Kubernetes DR evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: kubernetes-dr-finalizer-${{ github.run_id }}
+          path: |
+            .osmu-run/latest-kubernetes-dr-finalize.json
+            .osmu-run/latest-kubernetes-dr-finalize.md
+            .osmu-run/latest-kubernetes-dr-drill.json
+            .osmu-run/latest-kubernetes-restore-smoke.json
+            .osmu-run/latest-kubernetes-dr-evidence-request.json
+            .osmu-run/latest-kubernetes-backup-drill.json
+            .osmu-run/latest-kubernetes-restore-namespace.json
+            .osmu-run/latest-kubernetes-backup-artifacts.json
+            .osmu-run/latest-kubernetes-restore-drill.json
+            .osmu-run/latest-kubernetes-dr-bucket-bootstrap.json
+            .osmu-run/latest-kubernetes-dr-bucket-immutability.json
+            .osmu-run/latest-kubernetes-backup-artifact-transfer.json
+          if-no-files-found: warn
+          retention-days: 14

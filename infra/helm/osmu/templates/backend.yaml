@@ -42,6 +42,18 @@ spec:
         app.kubernetes.io/instance: {{ .Release.Name }}
         app.kubernetes.io/part-of: osmu
     spec:
+      serviceAccountName: osmu-backend
+      automountServiceAccountToken: false
+{{- if .Values.ha.topologySpread.enabled }}
+      topologySpreadConstraints:
+        - maxSkew: {{ .Values.ha.topologySpread.maxSkew }}
+          topologyKey: {{ .Values.ha.topologySpread.topologyKey | quote }}
+          whenUnsatisfiable: {{ .Values.ha.topologySpread.whenUnsatisfiable }}
+          labelSelector:
+            matchLabels:
+              app.kubernetes.io/name: osmu-backend
+              app.kubernetes.io/instance: {{ .Release.Name }}
+{{- end }}
       securityContext:
 {{ toYaml .Values.backend.podSecurityContext | indent 8 }}
       containers:
@@ -94,6 +106,12 @@ spec:
                 secretKeyRef:
                   name: {{ include "osmu.secretName" . }}
                   key: OSMU_ACCESS_KEY_SECRET_ENCRYPTION_KEY
+{{- if .Values.backend.operationsReports.enabled }}
+          volumeMounts:
+            - name: operations-reports
+              mountPath: {{ .Values.backend.operationsReports.mountPath | quote }}
+              readOnly: true
+{{- end }}
           readinessProbe:
             httpGet:
               path: /api/health
@@ -110,4 +128,15 @@ spec:
             timeoutSeconds: 5
           resources:
 {{ toYaml .Values.backend.resources | indent 12 }}
-
+{{- if .Values.backend.operationsReports.enabled }}
+      volumes:
+        - name: operations-reports
+{{- if eq .Values.backend.operationsReports.type "persistentVolumeClaim" }}
+          persistentVolumeClaim:
+            claimName: {{ .Values.backend.operationsReports.claimName | quote }}
+{{- else }}
+          configMap:
+            name: {{ .Values.backend.operationsReports.configMapName | quote }}
+            optional: {{ .Values.backend.operationsReports.optional }}
+{{- end }}
+{{- end }}

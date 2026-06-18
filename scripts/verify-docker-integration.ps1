@@ -7,6 +7,8 @@ param(
 
 $ErrorActionPreference = "Stop"
 $root = Resolve-Path (Join-Path $PSScriptRoot "..")
+. (Join-Path $PSScriptRoot "docker-toolchain.ps1")
+Use-OsmuDockerConfig $root | Out-Null
 
 function Step($message) {
     Write-Host ""
@@ -180,6 +182,22 @@ function Invoke-Json($method, $url, $body = $null, $token = $null) {
         -Headers $headers `
         -ContentType "application/json" `
         -Body ($body | ConvertTo-Json -Depth 10)
+}
+
+function Object-Path($key) {
+    return (($key -split "/") | ForEach-Object { [System.Uri]::EscapeDataString($_) }) -join "/"
+}
+
+function Remove-SmokeObject($apiBase, $bucketName, $key, $token) {
+    $objectPath = Object-Path $key
+    try {
+        Invoke-Json "DELETE" "$apiBase/buckets/$bucketName/objects/$objectPath" $null $token | Out-Null
+    } catch {
+    }
+    try {
+        Invoke-Json "POST" "$apiBase/buckets/$bucketName/objects/purge/$objectPath" $null $token | Out-Null
+    } catch {
+    }
 }
 
 function Get-Sha256Hex([byte[]] $Bytes) {
@@ -406,7 +424,7 @@ function Invoke-S3MultiDeleteMd5Smoke($apiBase, $bucketName, $accessKey, $secret
 </Delete>
 "@
     $deleteBytes = [System.Text.Encoding]::UTF8.GetBytes($deleteXml)
-    $deleteResponse = Invoke-SignedHttp "POST" "$apiBase/s3/$bucketName?delete" $deleteBytes $accessKey $secretKey $null $null "application/xml" @{
+    $deleteResponse = Invoke-SignedHttp "POST" "${apiBase}/s3/${bucketName}?delete" $deleteBytes $accessKey $secretKey $null $null "application/xml" @{
         "Content-MD5" = Get-Md5Base64 $deleteBytes
     }
     if ($deleteResponse.StatusCode -ne 200 `
@@ -428,7 +446,7 @@ function Invoke-S3MultiDeleteMd5Smoke($apiBase, $bucketName, $accessKey, $secret
 </Delete>
 "@
     $badDeleteBytes = [System.Text.Encoding]::UTF8.GetBytes($badDeleteXml)
-    $badDeleteResponse = Invoke-SignedHttp "POST" "$apiBase/s3/$bucketName?delete" $badDeleteBytes $accessKey $secretKey $null $null "application/xml" @{
+    $badDeleteResponse = Invoke-SignedHttp "POST" "${apiBase}/s3/${bucketName}?delete" $badDeleteBytes $accessKey $secretKey $null $null "application/xml" @{
         "Content-MD5" = Get-Md5Base64 ([System.Text.Encoding]::UTF8.GetBytes("different body"))
     }
     if ($badDeleteResponse.StatusCode -ne 400 -or -not $badDeleteResponse.Body.Contains("<Code>BadDigest</Code>")) {
@@ -451,7 +469,7 @@ function Invoke-S3BucketTaggingSmoke($apiBase, $bucketName, $accessKey, $secretK
 </Tagging>
 "@
     $taggingBytes = [System.Text.Encoding]::UTF8.GetBytes($taggingXml)
-    $taggingUrl = "$apiBase/s3/$bucketName?tagging"
+    $taggingUrl = "${apiBase}/s3/${bucketName}?tagging"
     $putResponse = Invoke-SignedHttp "PUT" $taggingUrl $taggingBytes $accessKey $secretKey $null $null "application/xml"
     if ($putResponse.StatusCode -ne 200) {
         throw "S3 bucket tagging PUT failed: HTTP $($putResponse.StatusCode) $($putResponse.Body)"
@@ -481,7 +499,7 @@ function Invoke-S3MultipartChecksumSmoke($apiBase, $bucketName, $accessKey, $sec
     $part2Checksum = Get-Sha256Base64 $part2
     $objectChecksum = Get-Sha256Base64 $allBytes
 
-    $initiateUrl = "$apiBase/s3/$bucketName/$objectKey?uploads"
+    $initiateUrl = "${apiBase}/s3/${bucketName}/${objectKey}?uploads"
     $initiateHeaders = @{
         "x-amz-meta-osmu-size-bytes" = [string]$allBytes.Length
         "x-amz-meta-osmu-part-size-bytes" = [string]$part1.Length
@@ -492,7 +510,7 @@ function Invoke-S3MultipartChecksumSmoke($apiBase, $bucketName, $accessKey, $sec
     }
     $uploadId = $Matches[1]
 
-    $part1Url = "$apiBase/s3/$bucketName/$objectKey?partNumber=1&uploadId=$([System.Uri]::EscapeDataString($uploadId))"
+    $part1Url = "${apiBase}/s3/${bucketName}/${objectKey}?partNumber=1&uploadId=$([System.Uri]::EscapeDataString($uploadId))"
     $part1Response = Invoke-SignedHttp "PUT" $part1Url $part1 $accessKey $secretKey $null $null "application/octet-stream" @{
         "x-amz-checksum-sha256" = $part1Checksum
     }
@@ -501,7 +519,7 @@ function Invoke-S3MultipartChecksumSmoke($apiBase, $bucketName, $accessKey, $sec
         throw "S3 multipart checksum part 1 upload failed: HTTP $($part1Response.StatusCode)."
     }
 
-    $part2Url = "$apiBase/s3/$bucketName/$objectKey?partNumber=2&uploadId=$([System.Uri]::EscapeDataString($uploadId))"
+    $part2Url = "${apiBase}/s3/${bucketName}/${objectKey}?partNumber=2&uploadId=$([System.Uri]::EscapeDataString($uploadId))"
     $part2Response = Invoke-SignedHttp "PUT" $part2Url $part2 $accessKey $secretKey $null $null "application/octet-stream" @{
         "x-amz-checksum-sha256" = $part2Checksum
     }
@@ -525,7 +543,7 @@ function Invoke-S3MultipartChecksumSmoke($apiBase, $bucketName, $accessKey, $sec
 </CompleteMultipartUpload>
 "@
     $completeBytes = [System.Text.Encoding]::UTF8.GetBytes($completeXml)
-    $completeUrl = "$apiBase/s3/$bucketName/$objectKey?uploadId=$([System.Uri]::EscapeDataString($uploadId))"
+    $completeUrl = "${apiBase}/s3/${bucketName}/${objectKey}?uploadId=$([System.Uri]::EscapeDataString($uploadId))"
     $completeResponse = Invoke-SignedHttp "POST" $completeUrl $completeBytes $accessKey $secretKey $null $null "application/xml" @{
         "x-amz-checksum-sha256" = $objectChecksum
     }
@@ -613,7 +631,7 @@ function Invoke-S3SigV4Smoke($apiBase, $bucketName, $token) {
         throw "SigV4 object HEAD did not preserve checksum after bucket sync."
     }
 
-    $presignedUrl = "$objectUrl?$(New-S3SigV4PresignedQuery "GET" $objectUrl $accessKey $secretKey)"
+    $presignedUrl = "${objectUrl}?$(New-S3SigV4PresignedQuery "GET" $objectUrl $accessKey $secretKey)"
     $presignedResponse = Invoke-WebRequest -Method GET -Uri $presignedUrl -UseBasicParsing
     if ($presignedResponse.StatusCode -ne 200 -or $presignedResponse.Content -ne "osmu sigv4 docker smoke") {
         throw "SigV4 presigned object GET did not return the uploaded body."
@@ -685,7 +703,15 @@ function Wait-Json($url, $timeoutSeconds = 120) {
     throw "Timed out waiting for $url"
 }
 
-function Upload-SmokeObject($apiBase, $bucketName, $token) {
+function Upload-SmokeObject(
+    $apiBase,
+    $bucketName,
+    $token,
+    [string] $key = "smoke.txt",
+    [string] $body = "osmu docker smoke",
+    [string] $tags = "",
+    [string] $fileName = "smoke.txt"
+) {
     Add-Type -AssemblyName System.Net.Http
 
     $client = [System.Net.Http.HttpClient]::new()
@@ -694,13 +720,16 @@ function Upload-SmokeObject($apiBase, $bucketName, $token) {
             [System.Net.Http.Headers.AuthenticationHeaderValue]::new("Bearer", $token)
 
         $content = [System.Net.Http.MultipartFormDataContent]::new()
-        $content.Add([System.Net.Http.StringContent]::new("smoke.txt"), "key")
+        $content.Add([System.Net.Http.StringContent]::new($key), "key")
+        if ($tags) {
+            $content.Add([System.Net.Http.StringContent]::new($tags), "tags")
+        }
 
-        $bytes = [System.Text.Encoding]::UTF8.GetBytes("osmu docker smoke")
+        $bytes = [System.Text.Encoding]::UTF8.GetBytes($body)
         $fileContent = [System.Net.Http.ByteArrayContent]::new($bytes)
         $fileContent.Headers.ContentType =
             [System.Net.Http.Headers.MediaTypeHeaderValue]::Parse("text/plain")
-        $content.Add($fileContent, "file", "smoke.txt")
+        $content.Add($fileContent, "file", $fileName)
 
         $response = $client.PostAsync("$apiBase/buckets/$bucketName/objects", $content).GetAwaiter().GetResult()
         $responseBody = $response.Content.ReadAsStringAsync().GetAwaiter().GetResult()
@@ -802,17 +831,21 @@ try {
     }
 
     Step "Cleanup smoke data"
-    Invoke-Json "DELETE" "$apiBase/buckets/$bucketName/objects/smoke.txt" $null $token | Out-Null
-    Invoke-Json "DELETE" "$apiBase/buckets/$bucketName/objects/tag-index/raw.txt" $null $token | Out-Null
-    Invoke-Json "DELETE" "$apiBase/buckets/$bucketName/objects/tag-index/other.txt" $null $token | Out-Null
-    Invoke-Json "DELETE" "$apiBase/buckets/$bucketName/objects/multipart-smoke.bin" $null $token | Out-Null
-    Invoke-Json "DELETE" "$apiBase/buckets/$bucketName/objects/sigv4-smoke.txt" $null $token | Out-Null
-    Invoke-Json "DELETE" "$apiBase/buckets/$bucketName/objects/sigv4-multipart-checksum.bin" $null $token | Out-Null
-    Invoke-Json "DELETE" "$apiBase/buckets/$bucketName/objects/sigv4-delete-md5-protected.txt" $null $token | Out-Null
-    Invoke-Json "DELETE" "$apiBase/buckets/$bucketName/objects/sigv4-vhost-smoke.txt" $null $token | Out-Null
-    try {
-        Invoke-Json "DELETE" "$apiBase/buckets/$bucketName/objects/sigv4-bad-checksum.txt" $null $token | Out-Null
-    } catch {
+    foreach ($key in @(
+            "smoke.txt",
+            "tag-index/raw.txt",
+            "tag-index/other.txt",
+            "multipart-smoke.bin",
+            "sigv4-smoke.txt",
+            "sigv4-multipart-checksum.bin",
+            "sigv4-delete-md5-a.txt",
+            "sigv4-delete-md5-b.txt",
+            "sigv4-delete-md5-protected.txt",
+            "sigv4-vhost-smoke.txt",
+            "sigv4-bad-payload.txt",
+            "sigv4-bad-checksum.txt"
+        )) {
+        Remove-SmokeObject $apiBase $bucketName $key $token
     }
     Invoke-Json "DELETE" "$apiBase/buckets/$bucketName" $null $token | Out-Null
 

@@ -65,3 +65,32 @@ spec:
   claimRef:
     namespace: osmu-dev
     name: minio-data-osmu-minio-0
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: osmu-dev-backup-pv
+  labels:
+    app.kubernetes.io/name: osmu-backup
+    app.kubernetes.io/part-of: osmu
+spec:
+  capacity:
+    storage: 50Gi
+  accessModes:
+    - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: osmu-dev-local
+  hostPath:
+    path: /var/lib/osmu-dev/backup
+    type: DirectoryOrCreate
+  nodeAffinity:
+    required:
+      nodeSelectorTerms:
+        - matchExpressions:
+            - key: kubernetes.io/hostname
+              operator: In
+              values:
+                - slave01
+  claimRef:
+    namespace: osmu-dev
+    name: osmu-backup-data

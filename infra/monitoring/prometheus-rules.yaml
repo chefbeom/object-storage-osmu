@@ -91,3 +91,30 @@ groups:
         annotations:
           summary: OSMU backup restore drill must be executed before durable pilot.
           description: This draft alert is a handoff reminder. Disable it only after a restore drill is executed and recorded for the target environment.
+
+      - alert: OsmuBackupCronJobFailed
+        expr: kube_job_status_failed{namespace=~"osmu.*",job_name=~"osmu-(mariadb|minio)-backup.*"} > 0
+        for: 5m
+        labels:
+          severity: warning
+          service: osmu-backup
+        annotations:
+          summary: OSMU backup CronJob failed.
+          description: A MariaDB or MinIO backup Job has failed in the target namespace. Inspect the Job logs and backup PVC.
+
+      - alert: OsmuBackupCronJobStale
+        expr: |
+          (
+            time()
+            -
+            max by (namespace, cronjob) (
+              kube_cronjob_status_last_successful_time{namespace=~"osmu.*",cronjob=~"osmu-(mariadb|minio)-backup"}
+            )
+          ) > 93600
+        for: 15m
+        labels:
+          severity: warning
+          service: osmu-backup
+        annotations:
+          summary: OSMU backup CronJob has no recent successful run.
+          description: A MariaDB or MinIO backup CronJob has not reported a successful run within 26 hours. Verify kube-state-metrics, CronJob status, and backup artifacts.

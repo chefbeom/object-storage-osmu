@@ -1,0 +1,81 @@
+name: Kubernetes HA DR Readiness CI
+
+on:
+  workflow_dispatch:
+    inputs:
+      namespace:
+        description: Kubernetes namespace that contains the OSMU stack
+        required: true
+        default: osmu
+      restore_manifest_path:
+        description: Restore Job manifest path in the repository
+        required: true
+        default: ./infra/k8s/examples/restore-from-backup.example.yaml
+      run_live:
+        description: Run live kubectl evidence using OSMU_KUBECONFIG_BASE64
+        required: true
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: kubernetes-ha-dr-readiness-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  kubernetes-ha-dr-readiness:
+    name: Kubernetes HA DR readiness
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Plan Kubernetes HA DR readiness
+        shell: pwsh
+        run: |
+          ./scripts/verify-kubernetes-ha-dr-readiness.ps1 `
+            -PlanOnly `
+            -Namespace "${{ inputs.namespace }}" `
+            -RestoreManifestPath "${{ inputs.restore_manifest_path }}"
+
+      - name: Prepare kubeconfig
+        if: ${{ inputs.run_live }}
+        shell: pwsh
+        env:
+          OSMU_KUBECONFIG_BASE64: ${{ secrets.OSMU_KUBECONFIG_BASE64 }}
+        run: |
+          if (-not $env:OSMU_KUBECONFIG_BASE64) {
+            throw "OSMU_KUBECONFIG_BASE64 secret is required when run_live=true."
+          }
+          $kubeDir = Join-Path $env:RUNNER_TEMP "osmu-kube"
+          New-Item -ItemType Directory -Force -Path $kubeDir | Out-Null
+          $kubeConfigPath = Join-Path $kubeDir "config"
+          [IO.File]::WriteAllBytes($kubeConfigPath, [Convert]::FromBase64String($env:OSMU_KUBECONFIG_BASE64))
+          "KUBECONFIG=$kubeConfigPath" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+      - name: Check kubectl client
+        if: ${{ inputs.run_live }}
+        shell: pwsh
+        run: kubectl version --client
+
+      - name: Run Kubernetes HA DR readiness
+        if: ${{ inputs.run_live }}
+        shell: pwsh
+        run: |
+          ./scripts/verify-kubernetes-ha-dr-readiness.ps1 `
+            -Namespace "${{ inputs.namespace }}" `
+            -RestoreManifestPath "${{ inputs.restore_manifest_path }}"
+
+      - name: Upload Kubernetes HA DR readiness evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: kubernetes-ha-dr-readiness-${{ github.run_id }}
+          path: |
+            .osmu-run/latest-kubernetes-ha-dr-readiness.json
+          if-no-files-found: warn
+          retention-days: 14

@@ -1,3 +1,39 @@
+{{- if .Values.minio.tenant.enabled }}
+# Reference only. Install MinIO Operator and validate the target Tenant CRD schema before apply.
+apiVersion: minio.min.io/v2
+kind: Tenant
+metadata:
+  name: {{ .Values.minio.tenant.name | quote }}
+  namespace: {{ include "osmu.namespace" . }}
+  labels:
+    app.kubernetes.io/name: osmu-minio
+    {{- include "osmu.labels" . | nindent 4 }}
+spec:
+  requestAutoCert: {{ .Values.minio.tenant.requestAutoCert }}
+  image: "{{ .Values.minio.image.repository }}:{{ .Values.minio.image.tag }}"
+  credsSecret:
+    name: {{ include "osmu.secretName" . }}
+  pools:
+{{- range .Values.minio.pools }}
+    - name: {{ .name | quote }}
+      servers: {{ .servers }}
+      volumesPerServer: {{ .volumesPerServer }}
+      volumeClaimTemplate:
+        metadata:
+          name: {{ default "data" .volumeClaimName | quote }}
+        spec:
+          accessModes:
+            - ReadWriteOnce
+          resources:
+            requests:
+              storage: {{ default $.Values.minio.persistence.size (default .volumeSize .size) | quote }}
+{{- if .storageClassName }}
+          storageClassName: {{ .storageClassName | quote }}
+{{- end }}
+      resources:
+{{ toYaml (default $.Values.minio.resources .resources) | indent 8 }}
+{{- end }}
+{{- else }}
 apiVersion: v1
 kind: Service
 metadata:
@@ -40,6 +76,8 @@ spec:
         app.kubernetes.io/instance: {{ .Release.Name }}
         app.kubernetes.io/part-of: osmu
     spec:
+      serviceAccountName: osmu-minio
+      automountServiceAccountToken: false
       containers:
         - name: minio
           image: "{{ .Values.minio.image.repository }}:{{ .Values.minio.image.tag }}"
@@ -94,3 +132,4 @@ spec:
           requests:
             storage: {{ .Values.minio.persistence.size | quote }}
 
+{{- end }}

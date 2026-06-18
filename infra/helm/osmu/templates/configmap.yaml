@@ -32,7 +32,10 @@ data:
   OSMU_ACCESS_KEY_PROVISIONING_MODE: {{ .Values.config.accessKeyProvisioningMode | quote }}
   OSMU_ACCESS_KEY_MC_PATH: {{ .Values.config.accessKeyMcPath | quote }}
   OSMU_ACCESS_KEY_MINIO_ALIAS: {{ .Values.config.accessKeyMinioAlias | quote }}
+  OSMU_S3_PUBLIC_ENDPOINT: {{ .Values.config.s3PublicEndpoint | quote }}
+  OSMU_S3_REGION: {{ .Values.config.s3Region | quote }}
   OSMU_S3_SIGV4_CLOCK_SKEW_SECONDS: {{ .Values.config.s3SigV4ClockSkewSeconds | quote }}
   OSMU_S3_VIRTUAL_HOSTED_STYLE_ENABLED: {{ .Values.config.s3VirtualHostedStyleEnabled | quote }}
   OSMU_S3_VIRTUAL_HOSTED_STYLE_DOMAIN_SUFFIXES: {{ .Values.config.s3VirtualHostedStyleDomainSuffixes | quote }}
-
+  OSMU_OPERATIONS_READINESS_CONVERGENCE_REPORT_PATH: {{ .Values.config.operationsReadinessConvergenceReportPath | quote }}
+  OSMU_OPERATIONS_READINESS_KUBERNETES_REPORT_SYNC_REPORT_PATH: {{ .Values.config.kubernetesOperationsReportSyncReportPath | quote }}

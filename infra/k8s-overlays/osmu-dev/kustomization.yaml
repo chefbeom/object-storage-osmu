@@ -32,6 +32,9 @@ patches:
       - op: replace
         path: /data/OSMU_S3_VIRTUAL_HOSTED_STYLE_DOMAIN_SUFFIXES
         value: osmu-dev.192.168.35.60.nip.io,192.168.35.60
+      - op: replace
+        path: /data/OSMU_S3_PUBLIC_ENDPOINT
+        value: http://osmu-dev.192.168.35.60.nip.io:30080/api/s3
   - target:
       kind: StatefulSet
       name: osmu-mariadb
@@ -45,6 +48,13 @@ patches:
     patch: |-
       - op: add
         path: /spec/volumeClaimTemplates/0/spec/storageClassName
+        value: osmu-dev-local
+  - target:
+      kind: PersistentVolumeClaim
+      name: osmu-backup-data
+    patch: |-
+      - op: add
+        path: /spec/storageClassName
         value: osmu-dev-local
   - target:
       kind: Deployment

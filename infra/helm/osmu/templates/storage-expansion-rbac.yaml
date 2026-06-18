@@ -1,0 +1,66 @@
+{{- if .Values.storageExpansion.runner.rbac.enabled }}
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ .Values.storageExpansion.runner.rbac.serviceAccountName }}
+  namespace: {{ include "osmu.namespace" . }}
+  labels:
+    app.kubernetes.io/name: osmu-storage-expansion-runner
+    {{- include "osmu.labels" . | nindent 4 }}
+automountServiceAccountToken: false
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ .Values.storageExpansion.runner.rbac.serviceAccountName }}
+  namespace: {{ include "osmu.namespace" . }}
+  labels:
+    app.kubernetes.io/name: osmu-storage-expansion-runner
+    {{- include "osmu.labels" . | nindent 4 }}
+rules:
+  - apiGroups:
+      - minio.min.io
+    resources:
+      - tenants
+    resourceNames:
+      - {{ .Values.storageExpansion.runner.rbac.tenantName }}
+    verbs:
+      - get
+      - patch
+      - update
+  - apiGroups:
+      - apps
+    resources:
+      - statefulsets
+    resourceNames:
+      - {{ .Values.storageExpansion.runner.rbac.legacyStatefulSetName }}
+    verbs:
+      - get
+      - patch
+      - update
+  - apiGroups:
+      - apps
+    resources:
+      - statefulsets/status
+    resourceNames:
+      - {{ .Values.storageExpansion.runner.rbac.legacyStatefulSetName }}
+    verbs:
+      - get
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ .Values.storageExpansion.runner.rbac.serviceAccountName }}
+  namespace: {{ include "osmu.namespace" . }}
+  labels:
+    app.kubernetes.io/name: osmu-storage-expansion-runner
+    {{- include "osmu.labels" . | nindent 4 }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ .Values.storageExpansion.runner.rbac.serviceAccountName }}
+    namespace: {{ include "osmu.namespace" . }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ .Values.storageExpansion.runner.rbac.serviceAccountName }}
+{{- end }}

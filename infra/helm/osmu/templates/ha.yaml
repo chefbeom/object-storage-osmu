@@ -1,0 +1,63 @@
+{{- if .Values.ha.podDisruptionBudgets.enabled }}
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: osmu-backend
+  namespace: {{ include "osmu.namespace" . }}
+  labels:
+    app.kubernetes.io/name: osmu-backend
+    {{- include "osmu.labels" . | nindent 4 }}
+spec:
+  minAvailable: {{ .Values.ha.podDisruptionBudgets.backend.minAvailable }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: osmu-backend
+      app.kubernetes.io/instance: {{ .Release.Name }}
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: osmu-frontend
+  namespace: {{ include "osmu.namespace" . }}
+  labels:
+    app.kubernetes.io/name: osmu-frontend
+    {{- include "osmu.labels" . | nindent 4 }}
+spec:
+  minAvailable: {{ .Values.ha.podDisruptionBudgets.frontend.minAvailable }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: osmu-frontend
+      app.kubernetes.io/instance: {{ .Release.Name }}
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: osmu-mariadb
+  namespace: {{ include "osmu.namespace" . }}
+  labels:
+    app.kubernetes.io/name: osmu-mariadb
+    {{- include "osmu.labels" . | nindent 4 }}
+spec:
+  minAvailable: {{ .Values.ha.podDisruptionBudgets.mariadb.minAvailable }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: osmu-mariadb
+      app.kubernetes.io/instance: {{ .Release.Name }}
+{{- if not .Values.minio.tenant.enabled }}
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: osmu-minio
+  namespace: {{ include "osmu.namespace" . }}
+  labels:
+    app.kubernetes.io/name: osmu-minio
+    {{- include "osmu.labels" . | nindent 4 }}
+spec:
+  minAvailable: {{ .Values.ha.podDisruptionBudgets.minio.minAvailable }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: osmu-minio
+      app.kubernetes.io/instance: {{ .Release.Name }}
+{{- end }}
+{{- end }}

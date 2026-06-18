@@ -1,5 +1,9 @@
 param(
     [string] $ReleaseReportPath = ".\.osmu-run\latest-release.json",
+    [string] $DurableGateReportPath = ".\.osmu-run\latest-durable-demo-gate.json",
+    [string] $StorageExpansionFinalizeReportPath = ".\.osmu-run\latest-storage-expansion-finalize.json",
+    [string] $KubernetesDrFinalizeReportPath = ".\.osmu-run\latest-kubernetes-dr-finalize.json",
+    [string] $SecurityEvidenceFinalizeReportPath = ".\.osmu-run\latest-security-evidence-finalize.json",
     [string] $OutputPath = ".\.osmu-run\latest-release-decision.md",
     [switch] $FailIfDurablePilotNoGo,
     [switch] $NoWrite
@@ -21,6 +25,146 @@ function Gate-Line([bool] $passed, [string] $label, [string] $detail = "") {
         return "- [$status] $label - $detail"
     }
     return "- [$status] $label"
+}
+
+function Read-DurableGateReport([string] $path) {
+    $resolvedPath = Resolve-ProjectPath $path
+    if (-not (Test-Path -LiteralPath $resolvedPath)) {
+        return [pscustomobject]@{
+            path = $resolvedPath
+            exists = $false
+            passed = $false
+            result = "missing"
+            currentDemoStatus = "missing"
+            detail = "report not found"
+        }
+    }
+
+    try {
+        $gateReport = Get-Content -Raw -LiteralPath $resolvedPath | ConvertFrom-Json
+        $passed = $gateReport.result -eq "ready" -and $gateReport.currentDemoStatus -eq "docker-durable-demo-verified"
+        return [pscustomobject]@{
+            path = $resolvedPath
+            exists = $true
+            passed = $passed
+            result = [string]$gateReport.result
+            currentDemoStatus = [string]$gateReport.currentDemoStatus
+            detail = "result=$($gateReport.result), currentDemoStatus=$($gateReport.currentDemoStatus)"
+        }
+    }
+    catch {
+        return [pscustomobject]@{
+            path = $resolvedPath
+            exists = $true
+            passed = $false
+            result = "unreadable"
+            currentDemoStatus = "unreadable"
+            detail = $_.Exception.Message
+        }
+    }
+}
+
+function Read-StorageExpansionFinalizeReport([string] $path) {
+    $resolvedPath = Resolve-ProjectPath $path
+    if (-not (Test-Path -LiteralPath $resolvedPath)) {
+        return [pscustomobject]@{
+            path = $resolvedPath
+            exists = $false
+            passed = $false
+            result = "missing"
+            detail = "report not found"
+        }
+    }
+
+    try {
+        $finalizeReport = Get-Content -Raw -LiteralPath $resolvedPath | ConvertFrom-Json
+        $passed = $finalizeReport.result -eq "passed"
+        $backend = $finalizeReport.backend
+        return [pscustomobject]@{
+            path = $resolvedPath
+            exists = $true
+            passed = $passed
+            result = [string]$finalizeReport.result
+            detail = "result=$($finalizeReport.result), namespace=$($finalizeReport.namespace), tenant=$($finalizeReport.tenantName), runDryRunRunner=$($backend.runDryRunRunner), runApply=$($backend.runApply)"
+        }
+    }
+    catch {
+        return [pscustomobject]@{
+            path = $resolvedPath
+            exists = $true
+            passed = $false
+            result = "unreadable"
+            detail = $_.Exception.Message
+        }
+    }
+}
+
+function Read-KubernetesDrFinalizeReport([string] $path) {
+    $resolvedPath = Resolve-ProjectPath $path
+    if (-not (Test-Path -LiteralPath $resolvedPath)) {
+        return [pscustomobject]@{
+            path = $resolvedPath
+            exists = $false
+            passed = $false
+            result = "missing"
+            detail = "report not found"
+        }
+    }
+
+    try {
+        $finalizeReport = Get-Content -Raw -LiteralPath $resolvedPath | ConvertFrom-Json
+        $passed = $finalizeReport.result -eq "ready"
+        return [pscustomobject]@{
+            path = $resolvedPath
+            exists = $true
+            passed = $passed
+            result = [string]$finalizeReport.result
+            detail = "result=$($finalizeReport.result), status=$($finalizeReport.status), sourceNamespace=$($finalizeReport.sourceNamespace), restoreNamespace=$($finalizeReport.restoreNamespace), backupTimestamp=$($finalizeReport.backupTimestamp), serverDryRunOnly=$($finalizeReport.serverDryRunOnly), confirmRestore=$($finalizeReport.confirmRestore), submitEvidence=$($finalizeReport.submitEvidence)"
+        }
+    }
+    catch {
+        return [pscustomobject]@{
+            path = $resolvedPath
+            exists = $true
+            passed = $false
+            result = "unreadable"
+            detail = $_.Exception.Message
+        }
+    }
+}
+
+function Read-SecurityEvidenceFinalizeReport([string] $path) {
+    $resolvedPath = Resolve-ProjectPath $path
+    if (-not (Test-Path -LiteralPath $resolvedPath)) {
+        return [pscustomobject]@{
+            path = $resolvedPath
+            exists = $false
+            passed = $false
+            result = "missing"
+            detail = "report not found"
+        }
+    }
+
+    try {
+        $finalizeReport = Get-Content -Raw -LiteralPath $resolvedPath | ConvertFrom-Json
+        $passed = $finalizeReport.result -eq "passed"
+        return [pscustomobject]@{
+            path = $resolvedPath
+            exists = $true
+            passed = $passed
+            result = [string]$finalizeReport.result
+            detail = "result=$($finalizeReport.result), failureCount=$($finalizeReport.failureCount)"
+        }
+    }
+    catch {
+        return [pscustomobject]@{
+            path = $resolvedPath
+            exists = $true
+            passed = $false
+            result = "unreadable"
+            detail = $_.Exception.Message
+        }
+    }
 }
 
 $resolvedReleaseReportPath = Resolve-ProjectPath $ReleaseReportPath
@@ -63,7 +207,15 @@ $lightweightDemoGo = $report.result -eq "passed" `
 $dockerPilotGate = [bool]$optionalGates.dockerDaemonAvailable -and $scope.dockerIntegration -eq "included"
 $realS3PilotGate = [bool]$optionalGates.realS3ClientAvailable -and [bool]$scope.realS3ClientRequired
 $browserPilotGate = $scope.browserE2E -eq "verified"
-$durablePilotGo = $lightweightDemoGo -and $dockerPilotGate -and $realS3PilotGate -and $browserPilotGate
+$durableGate = Read-DurableGateReport $DurableGateReportPath
+$durableGatePassed = [bool]$durableGate.passed
+$storageExpansionFinalize = Read-StorageExpansionFinalizeReport $StorageExpansionFinalizeReportPath
+$storageExpansionFinalizePassed = [bool]$storageExpansionFinalize.passed
+$kubernetesDrFinalize = Read-KubernetesDrFinalizeReport $KubernetesDrFinalizeReportPath
+$kubernetesDrFinalizePassed = [bool]$kubernetesDrFinalize.passed
+$securityEvidenceFinalize = Read-SecurityEvidenceFinalizeReport $SecurityEvidenceFinalizeReportPath
+$securityEvidenceFinalizePassed = [bool]$securityEvidenceFinalize.passed
+$durablePilotGo = $lightweightDemoGo -and (($dockerPilotGate -and $realS3PilotGate -and $browserPilotGate) -or $durableGatePassed)
 
 $lightweightDecision = if ($lightweightDemoGo) { "GO" } else { "NO-GO" }
 $durableDecision = if ($durablePilotGo) { "GO" } else { "NO-GO" }
@@ -109,11 +261,18 @@ $decisionLines = @(
     (Gate-Line ($scope.prometheusOperatorDraft -eq "included") "Prometheus Operator draft included" "scope.prometheusOperatorDraft=$($scope.prometheusOperatorDraft)"),
     (Gate-Line ($scope.backendTests -eq "included") "Backend tests included" "scope.backendTests=$($scope.backendTests)"),
     "",
+    "## Operations Evidence Gate",
+    "",
+    (Gate-Line $storageExpansionFinalizePassed "Storage expansion finalizer evidence" "$($storageExpansionFinalize.detail), report=$($storageExpansionFinalize.path)"),
+    (Gate-Line $kubernetesDrFinalizePassed "Kubernetes DR finalizer evidence" "$($kubernetesDrFinalize.detail), report=$($kubernetesDrFinalize.path)"),
+    (Gate-Line $securityEvidenceFinalizePassed "Security evidence finalizer" "$($securityEvidenceFinalize.detail), report=$($securityEvidenceFinalize.path)"),
+    "",
     "## Durable Pilot Gate",
     "",
     (Gate-Line $dockerPilotGate "Docker/MariaDB/MinIO integration" "dockerIntegration=$($scope.dockerIntegration), dockerDaemon=$($optionalGates.dockerDaemonAvailable)"),
-    (Gate-Line $realS3PilotGate "Real S3 client required and available" "realS3ClientRequired=$($scope.realS3ClientRequired), aws=$($optionalGates.awsCliAvailable), mc=$($optionalGates.mcAvailable)"),
+    (Gate-Line $realS3PilotGate "Real S3 client required and available" "realS3ClientRequired=$($scope.realS3ClientRequired), aws=$($optionalGates.awsCliAvailable), mc=$($optionalGates.mcAvailable), dockerizedMc=$($optionalGates.dockerizedMcAvailable)"),
     (Gate-Line $browserPilotGate "Browser E2E verified" "browserE2E=$($scope.browserE2E)"),
+    (Gate-Line $durableGatePassed "Durable MVP demo gate report" "$($durableGate.detail), report=$($durableGate.path)"),
     "",
     "## Next Action",
     ""

@@ -39,12 +39,10 @@ jobs:
         shell: pwsh
         run: npm ci
 
-      - name: Install Playwright
+      - name: Install Playwright browsers
         working-directory: osmu-frontend
         shell: pwsh
-        run: |
-          npm install --no-save @playwright/test@1.56.1
-          npx playwright install chromium
+        run: npx playwright install chromium
 
       - name: Start lightweight prototype
         shell: pwsh
@@ -57,7 +55,7 @@ jobs:
           OSMU_FRONTEND_BASE_URL: http://localhost:5173
           OSMU_ADMIN_LOGIN_ID: admin
           OSMU_ADMIN_PASSWORD: password
-        run: npx playwright test .\e2e\lightweight-demo.spec.js --browser=chromium --reporter=line
+        run: npm run test:e2e
 
       - name: Print prototype logs
         if: failure()

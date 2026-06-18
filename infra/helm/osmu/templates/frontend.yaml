@@ -36,6 +36,18 @@ spec:
         app.kubernetes.io/instance: {{ .Release.Name }}
         app.kubernetes.io/part-of: osmu
     spec:
+      serviceAccountName: osmu-frontend
+      automountServiceAccountToken: false
+{{- if .Values.ha.topologySpread.enabled }}
+      topologySpreadConstraints:
+        - maxSkew: {{ .Values.ha.topologySpread.maxSkew }}
+          topologyKey: {{ .Values.ha.topologySpread.topologyKey | quote }}
+          whenUnsatisfiable: {{ .Values.ha.topologySpread.whenUnsatisfiable }}
+          labelSelector:
+            matchLabels:
+              app.kubernetes.io/name: osmu-frontend
+              app.kubernetes.io/instance: {{ .Release.Name }}
+{{- end }}
       securityContext:
 {{ toYaml .Values.frontend.podSecurityContext | indent 8 }}
       containers:

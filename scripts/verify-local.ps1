@@ -7,6 +7,8 @@ param(
 
 $ErrorActionPreference = "Stop"
 $root = Resolve-Path (Join-Path $PSScriptRoot "..")
+. (Join-Path $PSScriptRoot "java-toolchain.ps1")
+. (Join-Path $PSScriptRoot "docker-toolchain.ps1")
 
 function Step($message) {
     Write-Host ""
@@ -39,36 +41,16 @@ function Normalize-ProcessPath() {
 }
 
 function Use-JavaHome($path) {
-    Normalize-ProcessPath
-    if (-not $path) {
-        return
-    }
-
-    $resolved = Resolve-Path -LiteralPath $path -ErrorAction Stop
-    $javaBin = Join-Path $resolved.Path "bin"
-    $javaExe = Join-Path $javaBin "java.exe"
-    if (-not (Test-Path -LiteralPath $javaExe)) {
-        throw "JavaHome does not contain bin\java.exe: $($resolved.Path)"
-    }
-
-    $env:JAVA_HOME = $resolved.Path
-    [Environment]::SetEnvironmentVariable("Path", "$javaBin;$([Environment]::GetEnvironmentVariable("Path", "Process"))", "Process")
+    Use-OsmuJavaHome $path | Out-Null
 }
 
 function Assert-JavaAvailable() {
-    $javaCommand = Get-Command java -ErrorAction SilentlyContinue
-    if (-not $javaCommand) {
-        throw "Java runtime not found on PATH. Install JDK 17+ or set JAVA_HOME before running backend tests."
-    }
-
-    $javaHome = [Environment]::GetEnvironmentVariable("JAVA_HOME")
-    if ($javaHome -and -not (Test-Path -LiteralPath $javaHome)) {
-        throw "JAVA_HOME points to a missing path: $javaHome"
-    }
+    Assert-OsmuJavaAvailable -RequiredVersion 17 | Out-Null
 }
 
 Use-JavaHome $JavaHome
 Normalize-ProcessPath
+Use-OsmuDockerConfig $root | Out-Null
 
 Step "Git whitespace check"
 Run "git diff --check"
@@ -87,6 +69,12 @@ Run "powershell -ExecutionPolicy Bypass -File .\scripts\verify-ci-workflow.ps1"
 
 Step "Image signing policy draft check"
 Run "powershell -ExecutionPolicy Bypass -File .\scripts\verify-image-signing-policy.ps1"
+
+Step "Security evidence writer check"
+Run "powershell -ExecutionPolicy Bypass -File .\scripts\verify-security-evidence-writers.ps1"
+
+Step "Security evidence finalizer check"
+Run "powershell -ExecutionPolicy Bypass -File .\scripts\verify-security-evidence-finalizer.ps1"
 
 Step "Commercial readiness draft check"
 Run "powershell -ExecutionPolicy Bypass -File .\scripts\verify-commercial-readiness.ps1"
@@ -108,6 +96,105 @@ Run "powershell -ExecutionPolicy Bypass -File .\scripts\verify-tls-ingress.ps1"
 
 Step "Secret rotation policy draft check"
 Run "powershell -ExecutionPolicy Bypass -File .\scripts\verify-secret-rotation-policy.ps1"
+
+Step "IAM/RBAC matrix check"
+Run "powershell -ExecutionPolicy Bypass -File .\scripts\verify-iam-rbac-matrix.ps1"
+
+Step "IAM/RBAC finalizer check"
+Run "powershell -ExecutionPolicy Bypass -File .\scripts\finalize-iam-rbac-readiness.ps1 -FailIfNotPassed"
+
+Step "IAM/RBAC finalizer self-test"
+Run "powershell -ExecutionPolicy Bypass -File .\scripts\verify-iam-rbac-finalizer.ps1"
+
+Step "Kubernetes RBAC matrix check"
+Run "powershell -ExecutionPolicy Bypass -File .\scripts\verify-kubernetes-rbac-matrix.ps1"
+
+Step "Storage Expansion RBAC auth plan check"
+Run "powershell -ExecutionPolicy Bypass -File .\scripts\verify-storage-expansion-rbac-auth.ps1 -PlanOnly"
+
+Step "Storage Expansion server dry-run plan check"
+Run "powershell -ExecutionPolicy Bypass -File .\scripts\verify-storage-expansion-server-dry-run.ps1 -PlanOnly"
+
+Step "Storage Expansion finalize plan check"
+Run "powershell -ExecutionPolicy Bypass -File .\scripts\finalize-storage-expansion.ps1 -PlanOnly"
+
+Step "Kubernetes HA/DR readiness plan check"
+Run "powershell -ExecutionPolicy Bypass -File .\scripts\verify-kubernetes-ha-dr-readiness.ps1 -PlanOnly"
+
+Step "Kubernetes backup drill plan check"
+Run "powershell -ExecutionPolicy Bypass -File .\scripts\run-kubernetes-backup-drill.ps1 -PlanOnly"
+
+Step "Kubernetes restore namespace preparation plan check"
+Run "powershell -ExecutionPolicy Bypass -File .\scripts\prepare-kubernetes-restore-namespace.ps1 -PlanOnly"
+
+Step "Kubernetes backup artifact preflight plan check"
+Run "powershell -ExecutionPolicy Bypass -File .\scripts\verify-kubernetes-backup-artifacts.ps1 -PlanOnly"
+
+Step "Kubernetes restore drill plan check"
+Run "powershell -ExecutionPolicy Bypass -File .\scripts\run-kubernetes-restore-drill.ps1 -PlanOnly"
+
+Step "Kubernetes DR drill orchestration plan check"
+Run "powershell -ExecutionPolicy Bypass -File .\scripts\run-kubernetes-dr-drill.ps1 -PlanOnly"
+
+Step "Kubernetes DR bucket bootstrap plan check"
+Run "powershell -ExecutionPolicy Bypass -File .\scripts\bootstrap-kubernetes-dr-bucket.ps1 -PlanOnly"
+
+Step "Kubernetes DR bucket immutability plan check"
+Run "powershell -ExecutionPolicy Bypass -File .\scripts\verify-kubernetes-dr-bucket-immutability.ps1 -PlanOnly"
+
+Step "Kubernetes backup artifact transfer plan check"
+Run "powershell -ExecutionPolicy Bypass -File .\scripts\transfer-kubernetes-backup-artifacts.ps1 -PlanOnly"
+
+Step "Kubernetes restore smoke plan check"
+Run "powershell -ExecutionPolicy Bypass -File .\scripts\verify-kubernetes-restore-smoke.ps1 -PlanOnly"
+
+Step "Kubernetes DR evidence API request plan check"
+Run "powershell -ExecutionPolicy Bypass -File .\scripts\write-kubernetes-dr-evidence-request.ps1 -PlanOnly"
+
+Step "Kubernetes DR finalize plan check"
+Run "powershell -ExecutionPolicy Bypass -File .\scripts\finalize-kubernetes-dr-drill.ps1 -PlanOnly"
+
+Step "Operations readiness artifact check"
+Run "powershell -ExecutionPolicy Bypass -File .\scripts\verify-operations-readiness.ps1"
+
+Step "Operations evidence plan check"
+Run "powershell -ExecutionPolicy Bypass -File .\scripts\verify-operations-evidence-plan.ps1"
+
+Step "Operations evidence plan invocation check"
+Run "powershell -ExecutionPolicy Bypass -File .\scripts\verify-operations-evidence-plan-invocation.ps1"
+
+Step "Operations invocation unblock plan check"
+Run "powershell -ExecutionPolicy Bypass -File .\scripts\verify-operations-invocation-unblock-plan.ps1"
+
+Step "Operations dispatch preflight check"
+Run "powershell -ExecutionPolicy Bypass -File .\scripts\verify-operations-dispatch-preflight.ps1"
+
+Step "Operations workflow run id plan check"
+Run "powershell -ExecutionPolicy Bypass -File .\scripts\verify-operations-workflow-run-id-plan.ps1"
+
+Step "Operations artifact collection plan check"
+Run "powershell -ExecutionPolicy Bypass -File .\scripts\verify-operations-artifact-collection-plan.ps1"
+
+Step "Operations readiness finalizer plan check"
+Run "powershell -ExecutionPolicy Bypass -File .\scripts\verify-operations-readiness-finalizer.ps1"
+
+Step "Operations readiness artifact import check"
+Run "powershell -ExecutionPolicy Bypass -File .\scripts\verify-operations-readiness-artifact-import.ps1"
+
+Step "Operations evidence handoff check"
+Run "powershell -ExecutionPolicy Bypass -File .\scripts\verify-operations-evidence-handoff.ps1"
+
+Step "Operations readiness convergence check"
+Run "powershell -ExecutionPolicy Bypass -File .\scripts\verify-operations-readiness-convergence.ps1"
+
+Step "Kubernetes operations report sync check"
+Run "powershell -ExecutionPolicy Bypass -File .\scripts\verify-kubernetes-operations-report-sync.ps1"
+
+Step "Kubernetes operations report sync live verifier check"
+Run "powershell -ExecutionPolicy Bypass -File .\scripts\verify-kubernetes-operations-report-sync-live-self-test.ps1"
+
+Step "Kubernetes operations report mount verifier check"
+Run "powershell -ExecutionPolicy Bypass -File .\scripts\verify-kubernetes-operations-report-mount-self-test.ps1"
 
 Step "Backup restore drill draft check"
 Run "powershell -ExecutionPolicy Bypass -File .\scripts\verify-backup-restore-drill.ps1"
@@ -133,6 +220,10 @@ if (-not $SkipFrontend) {
     Step "Frontend static syntax check"
     Run "node --check .\osmu-frontend\src\services\api.js"
     Run "node --check .\osmu-frontend\vite.config.js"
+    Run "node --check .\osmu-frontend\mock-api\server.mjs"
+
+    Step "Frontend mock API self-test"
+    Run "npm.cmd run mock:api:self-test" (Join-Path $root "osmu-frontend")
 
     Step "Frontend unit tests"
     Run "npm.cmd run test:unit" (Join-Path $root "osmu-frontend")

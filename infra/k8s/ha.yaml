@@ -1,0 +1,55 @@
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: osmu-backend
+  namespace: osmu
+  labels:
+    app.kubernetes.io/name: osmu-backend
+    app.kubernetes.io/part-of: osmu
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: osmu-backend
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: osmu-frontend
+  namespace: osmu
+  labels:
+    app.kubernetes.io/name: osmu-frontend
+    app.kubernetes.io/part-of: osmu
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: osmu-frontend
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: osmu-mariadb
+  namespace: osmu
+  labels:
+    app.kubernetes.io/name: osmu-mariadb
+    app.kubernetes.io/part-of: osmu
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: osmu-mariadb
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: osmu-minio
+  namespace: osmu
+  labels:
+    app.kubernetes.io/name: osmu-minio
+    app.kubernetes.io/part-of: osmu
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: osmu-minio

@@ -1,0 +1,104 @@
+name: Security Evidence Finalizer CI
+
+on:
+  workflow_dispatch:
+    inputs:
+      image_signing_run_id:
+        description: GitHub Actions run id from Image Publish and Sign CI
+        required: true
+        type: string
+      image_signing_artifact_name:
+        description: Image signing artifact name, for example osmu-image-signing-v0.1.0-rc.1-<sha>
+        required: true
+        type: string
+      container_security_run_id:
+        description: GitHub Actions run id from Container Security CI
+        required: true
+        type: string
+      container_security_artifact_name:
+        description: Container security artifact name, usually osmu-container-security-<sha>
+        required: true
+        type: string
+      fail_if_not_passed:
+        description: Fail workflow when security evidence finalizer does not pass
+        required: true
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: security-evidence-finalizer-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  security-evidence-finalizer:
+    name: Security evidence finalizer
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download image signing evidence
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ inputs.image_signing_artifact_name }}
+          run-id: ${{ inputs.image_signing_run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: .osmu-run/security-evidence-finalizer/source/image-signing
+
+      - name: Download container security evidence
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ inputs.container_security_artifact_name }}
+          run-id: ${{ inputs.container_security_run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: .osmu-run/security-evidence-finalizer/source/container-security
+
+      - name: Validate downloaded evidence paths
+        shell: pwsh
+        run: |
+          $imageEvidence = ".osmu-run/security-evidence-finalizer/source/image-signing/latest-image-signing-evidence.json"
+          $containerEvidence = ".osmu-run/security-evidence-finalizer/source/container-security/latest-container-security-evidence.json"
+          if (-not (Test-Path -LiteralPath $imageEvidence)) {
+            throw "Downloaded image signing artifact does not contain $imageEvidence."
+          }
+          if (-not (Test-Path -LiteralPath $containerEvidence)) {
+            throw "Downloaded container security artifact does not contain $containerEvidence."
+          }
+
+      - name: Finalize security evidence
+        shell: pwsh
+        run: |
+          $finalizerArgs = @(
+            "-ImageSigningEvidencePath", ".osmu-run/security-evidence-finalizer/source/image-signing/latest-image-signing-evidence.json",
+            "-ContainerSecurityEvidencePath", ".osmu-run/security-evidence-finalizer/source/container-security/latest-container-security-evidence.json",
+            "-PromotedImageSigningEvidencePath", ".osmu-run/latest-image-signing-evidence.json",
+            "-PromotedContainerSecurityEvidencePath", ".osmu-run/latest-container-security-evidence.json",
+            "-JsonOutputPath", ".osmu-run/latest-security-evidence-finalize.json",
+            "-MarkdownOutputPath", ".osmu-run/latest-security-evidence-finalize.md"
+          )
+          if ("${{ inputs.fail_if_not_passed }}" -eq "true") {
+            $finalizerArgs += "-FailIfNotPassed"
+          }
+
+          ./scripts/finalize-security-evidence.ps1 @finalizerArgs
+
+      - name: Upload security evidence finalizer artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: security-evidence-finalizer-${{ github.run_id }}
+          path: |
+            .osmu-run/latest-security-evidence-finalize.json
+            .osmu-run/latest-security-evidence-finalize.md
+            .osmu-run/latest-image-signing-evidence.json
+            .osmu-run/latest-container-security-evidence.json
+            .osmu-run/security-evidence-finalizer/source/image-signing/**
+            .osmu-run/security-evidence-finalizer/source/container-security/**
+          if-no-files-found: warn
+          retention-days: 14

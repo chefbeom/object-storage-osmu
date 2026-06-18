@@ -11,18 +11,42 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  docker-integration:
-    name: Docker integration smoke
+  durable-demo:
+    name: Durable MVP demo gate
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 75
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Verify Docker integration smoke
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: gradle
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: osmu-frontend/package-lock.json
+
+      - name: Install frontend dependencies
+        working-directory: osmu-frontend
         shell: pwsh
-        run: ./scripts/verify-docker-integration.ps1 -EnvFile ./infra/local/.env.example -ComposeFile ./infra/local/docker-compose.yml
+        run: npm ci
+
+      - name: Install Playwright browser
+        working-directory: osmu-frontend
+        shell: pwsh
+        run: npx playwright install --with-deps chromium
+
+      - name: Finalize durable MVP demo
+        shell: pwsh
+        run: ./scripts/finalize-durable-mvp-demo.ps1 -EnvFile ./infra/local/.env -EnvExample ./infra/local/.env.example -ComposeFile ./infra/local/docker-compose.yml -S3Client docker-mc
 
       - name: Docker Compose logs
         if: failure()
@@ -33,3 +57,24 @@ jobs:
         if: always()
         shell: pwsh
         run: docker compose --env-file ./infra/local/.env.example -f ./infra/local/docker-compose.yml down -v --remove-orphans
+
+      - name: Upload durable demo reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: durable-demo-reports
+          path: |
+            .osmu-run/latest-durable-demo-gate.json
+            .osmu-run/latest-durable-demo-gate.md
+            .osmu-run/latest-durable-demo-preflight.json
+            .osmu-run/latest-durable-demo-preflight.md
+            .osmu-run/latest-durable-mvp-finalize.json
+            .osmu-run/latest-durable-mvp-finalize.md
+            .osmu-run/latest-demo-readiness.json
+            .osmu-run/latest-release.json
+            .osmu-run/latest-mvp-audit.md
+            .osmu-run/latest-release-decision.md
+            .osmu-run/latest-release-notes.md
+            .osmu-run/latest-demo.json
+            osmu-frontend/test-results/**
+          if-no-files-found: warn

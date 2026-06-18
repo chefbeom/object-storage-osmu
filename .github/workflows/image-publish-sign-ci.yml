@@ -82,6 +82,24 @@ jobs:
           docker push "$FRONTEND_IMAGE:${{ inputs.version }}"
           docker push "$FRONTEND_IMAGE:${{ github.sha }}"
 
+      - name: Capture image digests
+        if: inputs.publish == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          backend_digest="sha256:$(docker buildx imagetools inspect "$BACKEND_IMAGE:${{ inputs.version }}" --raw | sha256sum | awk '{print $1}')"
+          frontend_digest="sha256:$(docker buildx imagetools inspect "$FRONTEND_IMAGE:${{ inputs.version }}" --raw | sha256sum | awk '{print $1}')"
+          if [[ ! "$backend_digest" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+            echo "Invalid backend digest: $backend_digest" >&2
+            exit 1
+          fi
+          if [[ ! "$frontend_digest" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+            echo "Invalid frontend digest: $frontend_digest" >&2
+            exit 1
+          fi
+          echo "BACKEND_DIGEST=$backend_digest" >> "$GITHUB_ENV"
+          echo "FRONTEND_DIGEST=$frontend_digest" >> "$GITHUB_ENV"
+
       - name: Sign images
         if: inputs.publish == 'true'
         run: |
@@ -94,4 +112,35 @@ jobs:
         if: inputs.publish == 'true'
         run: |
           cosign verify "$BACKEND_IMAGE:${{ inputs.version }}" --certificate-oidc-issuer "https://token.actions.githubusercontent.com"
+          cosign verify "$BACKEND_IMAGE:${{ github.sha }}" --certificate-oidc-issuer "https://token.actions.githubusercontent.com"
           cosign verify "$FRONTEND_IMAGE:${{ inputs.version }}" --certificate-oidc-issuer "https://token.actions.githubusercontent.com"
+          cosign verify "$FRONTEND_IMAGE:${{ github.sha }}" --certificate-oidc-issuer "https://token.actions.githubusercontent.com"
+
+      - name: Write image signing evidence
+        if: inputs.publish == 'true'
+        shell: pwsh
+        run: |
+          ./scripts/write-image-signing-evidence.ps1 `
+            -Version "${{ inputs.version }}" `
+            -CommitSha "${{ github.sha }}" `
+            -BackendVersionRef "$($env:BACKEND_IMAGE):${{ inputs.version }}" `
+            -BackendShaRef "$($env:BACKEND_IMAGE):${{ github.sha }}" `
+            -FrontendVersionRef "$($env:FRONTEND_IMAGE):${{ inputs.version }}" `
+            -FrontendShaRef "$($env:FRONTEND_IMAGE):${{ github.sha }}" `
+            -BackendDigest "$env:BACKEND_DIGEST" `
+            -FrontendDigest "$env:FRONTEND_DIGEST" `
+            -SourceRunUrl "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" `
+            -BackendVersionSignatureVerified `
+            -BackendShaSignatureVerified `
+            -FrontendVersionSignatureVerified `
+            -FrontendShaSignatureVerified `
+            -FailIfNotPassed
+
+      - name: Upload image signing evidence
+        if: inputs.publish == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: osmu-image-signing-${{ inputs.version }}-${{ github.sha }}
+          path: .osmu-run/latest-image-signing-evidence.json
+          if-no-files-found: error
+          retention-days: 14

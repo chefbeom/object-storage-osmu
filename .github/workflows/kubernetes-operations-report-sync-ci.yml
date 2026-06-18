@@ -1,0 +1,116 @@
+name: Kubernetes Operations Report Sync CI
+
+on:
+  workflow_dispatch:
+    inputs:
+      namespace:
+        description: Kubernetes namespace that contains the OSMU stack
+        required: true
+        default: osmu
+      report_path:
+        description: Operations readiness convergence report path to sync
+        required: true
+        default: ./.osmu-run/latest-operations-readiness-convergence.json
+      run_live:
+        description: Run live kubectl evidence using OSMU_KUBECONFIG_BASE64
+        required: true
+        type: boolean
+        default: false
+      apply:
+        description: Apply the osmu-operations-reports ConfigMap after server dry-run
+        required: true
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: kubernetes-operations-report-sync-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  kubernetes-operations-report-sync:
+    name: Kubernetes operations report sync
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate dispatch inputs
+        shell: pwsh
+        run: |
+          if ("${{ inputs.apply }}" -eq "true" -and "${{ inputs.run_live }}" -ne "true") {
+            throw "run_live=true is required when apply=true."
+          }
+
+      - name: Write operations readiness convergence report
+        shell: pwsh
+        run: |
+          ./scripts/write-operations-readiness-convergence.ps1 `
+            -JsonOutputPath "${{ inputs.report_path }}" `
+            -MarkdownOutputPath ./.osmu-run/latest-operations-readiness-convergence.md
+
+      - name: Plan Kubernetes operations report sync
+        shell: pwsh
+        run: |
+          ./scripts/sync-kubernetes-operations-reports.ps1 `
+            -PlanOnly `
+            -Namespace "${{ inputs.namespace }}" `
+            -ReportPath "${{ inputs.report_path }}" `
+            -EvidencePath ./.osmu-run/latest-kubernetes-operations-report-sync-plan.json
+
+      - name: Prepare kubeconfig
+        if: ${{ inputs.run_live }}
+        shell: pwsh
+        env:
+          OSMU_KUBECONFIG_BASE64: ${{ secrets.OSMU_KUBECONFIG_BASE64 }}
+        run: |
+          if (-not $env:OSMU_KUBECONFIG_BASE64) {
+            throw "OSMU_KUBECONFIG_BASE64 secret is required when run_live=true."
+          }
+          $kubeDir = Join-Path $env:RUNNER_TEMP "osmu-kube"
+          New-Item -ItemType Directory -Force -Path $kubeDir | Out-Null
+          $kubeConfigPath = Join-Path $kubeDir "config"
+          [IO.File]::WriteAllBytes($kubeConfigPath, [Convert]::FromBase64String($env:OSMU_KUBECONFIG_BASE64))
+          "KUBECONFIG=$kubeConfigPath" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+      - name: Check kubectl client
+        if: ${{ inputs.run_live }}
+        shell: pwsh
+        run: kubectl version --client
+
+      - name: Server dry-run Kubernetes operations report sync
+        if: ${{ inputs.run_live }}
+        shell: pwsh
+        run: |
+          ./scripts/sync-kubernetes-operations-reports.ps1 `
+            -ServerDryRunOnly `
+            -Namespace "${{ inputs.namespace }}" `
+            -ReportPath "${{ inputs.report_path }}" `
+            -EvidencePath ./.osmu-run/latest-kubernetes-operations-report-sync-server-dry-run.json
+
+      - name: Apply Kubernetes operations report sync
+        if: ${{ inputs.run_live && inputs.apply }}
+        shell: pwsh
+        run: |
+          ./scripts/sync-kubernetes-operations-reports.ps1 `
+            -Apply `
+            -Namespace "${{ inputs.namespace }}" `
+            -ReportPath "${{ inputs.report_path }}"
+
+      - name: Upload Kubernetes operations report sync evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: kubernetes-operations-report-sync-${{ github.run_id }}
+          path: |
+            .osmu-run/latest-operations-readiness-convergence.json
+            .osmu-run/latest-operations-readiness-convergence.md
+            .osmu-run/latest-kubernetes-operations-report-sync-plan.json
+            .osmu-run/latest-kubernetes-operations-report-sync-server-dry-run.json
+            .osmu-run/latest-kubernetes-operations-report-sync.json
+          if-no-files-found: warn
+          retention-days: 14

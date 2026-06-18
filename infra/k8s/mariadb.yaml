@@ -34,6 +34,8 @@ spec:
         app.kubernetes.io/name: osmu-mariadb
         app.kubernetes.io/part-of: osmu
     spec:
+      serviceAccountName: osmu-mariadb
+      automountServiceAccountToken: false
       containers:
         - name: mariadb
           image: mariadb:11.4

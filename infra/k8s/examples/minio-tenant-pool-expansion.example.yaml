@@ -2,6 +2,8 @@
 # Requires MinIO Operator CRDs and target-version schema validation before apply.
 # This file documents the selected OSMU direction: add capacity by adding
 # MinIO server pools, not by only increasing StatefulSet replicas.
+# Product default target: 4 servers x 4 volumesPerServer per pool.
+# The smaller 4 servers x 1 volumePerServer shape is demo-only.
 apiVersion: minio.min.io/v2
 kind: Tenant
 metadata:
@@ -18,7 +20,7 @@ spec:
   pools:
     - name: pool-0
       servers: 4
-      volumesPerServer: 1
+      volumesPerServer: 4
       volumeClaimTemplate:
         metadata:
           name: data
@@ -38,9 +40,11 @@ spec:
           memory: 8Gi
     # Add a new pool when Pool 0 reaches the planned expansion threshold.
     # Keep the shape consistent unless capacity planning explicitly decides otherwise.
+    # Raw capacity per pool in this example: 4 servers * 4 volumes * 1Ti = 16Ti.
+    # Usable capacity is lower because erasure coding parity and operational reserve apply.
     - name: pool-1
       servers: 4
-      volumesPerServer: 1
+      volumesPerServer: 4
       volumeClaimTemplate:
         metadata:
           name: data

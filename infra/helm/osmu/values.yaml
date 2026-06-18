@@ -29,9 +29,13 @@ config:
   accessKeyProvisioningMode: minio
   accessKeyMcPath: mc
   accessKeyMinioAlias: osmu-minio
+  s3PublicEndpoint: https://osmu.local/api/s3
+  s3Region: us-east-1
   s3SigV4ClockSkewSeconds: "900"
   s3VirtualHostedStyleEnabled: "true"
   s3VirtualHostedStyleDomainSuffixes: localhost
+  operationsReadinessConvergenceReportPath: .osmu-run/latest-operations-readiness-convergence.json
+  kubernetesOperationsReportSyncReportPath: .osmu-run/latest-kubernetes-operations-report-sync.json
 
 secrets:
   create: false
@@ -62,6 +66,21 @@ mariadb:
     size: 10Gi
 
 minio:
+  # Default chart mode keeps the lightweight single StatefulSet used by the MVP.
+  # Set tenant.enabled=true after installing MinIO Operator and validating the
+  # target Tenant CRD version.
+  tenant:
+    enabled: false
+    name: osmu-minio
+    requestAutoCert: false
+  pools:
+    - name: pool-0
+      servers: 4
+      volumesPerServer: 4
+      size: 1Ti
+      storageClassName: ""
+      volumeClaimName: data
+      resources: {}
   image:
     repository: minio/minio
     tag: RELEASE.2025-05-24T17-08-30Z
@@ -76,8 +95,69 @@ minio:
   persistence:
     size: 50Gi
 
+storageExpansion:
+  runner:
+    rbac:
+      # Disabled by default because normal OSMU backend pods do not need
+      # Kubernetes API credentials. Enable only for an explicitly approved
+      # in-cluster kubectl runner path.
+      enabled: false
+      serviceAccountName: osmu-storage-expansion-runner
+      tenantName: osmu-minio
+      legacyStatefulSetName: osmu-minio
+
+backup:
+  enabled: true
+  retentionDays: "7"
+  persistence:
+    size: 50Gi
+  mariadb:
+    schedule: "0 18 * * *"
+  minio:
+    schedule: "30 18 * * *"
+    mcImage:
+      repository: minio/mc
+      tag: RELEASE.2025-05-21T01-59-54Z
+      pullPolicy: IfNotPresent
+  podSecurityContext:
+    runAsNonRoot: true
+    runAsUser: 10001
+    runAsGroup: 10001
+    fsGroup: 10001
+    seccompProfile:
+      type: RuntimeDefault
+  containerSecurityContext:
+    allowPrivilegeEscalation: false
+    capabilities:
+      drop:
+        - ALL
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+ha:
+  podDisruptionBudgets:
+    enabled: true
+    backend:
+      minAvailable: 1
+    frontend:
+      minAvailable: 1
+    mariadb:
+      minAvailable: 1
+    minio:
+      minAvailable: 1
+  topologySpread:
+    enabled: true
+    maxSkew: 1
+    topologyKey: kubernetes.io/hostname
+    whenUnsatisfiable: ScheduleAnyway
+
 backend:
-  replicas: 1
+  replicas: 2
   metrics:
     enabled: true
     path: /actuator/prometheus
@@ -86,6 +166,13 @@ backend:
     repository: osmu-backend
     tag: local
     pullPolicy: IfNotPresent
+  operationsReports:
+    enabled: true
+    type: configMap
+    configMapName: osmu-operations-reports
+    claimName: ""
+    optional: true
+    mountPath: /app/.osmu-run
   podSecurityContext:
     runAsNonRoot: true
     runAsUser: 10001
@@ -107,7 +194,7 @@ backend:
       memory: 1Gi
 
 frontend:
-  replicas: 1
+  replicas: 2
   image:
     repository: osmu-frontend
     tag: local

@@ -95,6 +95,7 @@ services:
       OSMU_METADATA_MODE: mariadb
       OSMU_STORAGE_MODE: minio
       OSMU_STORAGE_ENDPOINT: http://minio:9000
+      OSMU_STORAGE_PRESIGNED_ENDPOINT: ${OSMU_STORAGE_PRESIGNED_ENDPOINT:-http://localhost:9000}
       OSMU_STORAGE_ACCESS_KEY: ${MINIO_ROOT_USER:-minioadmin}
       OSMU_STORAGE_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-minioadmin}
       OSMU_STORAGE_CORS_ENABLED: ${OSMU_STORAGE_CORS_ENABLED:-true}
@@ -112,11 +113,15 @@ services:
       OSMU_ACCESS_KEY_SECRET_ENCRYPTION_KEY: ${OSMU_ACCESS_KEY_SECRET_ENCRYPTION_KEY:-local-dev-access-key-secret-encryption-key-change-me}
       OSMU_ACCESS_KEY_MC_PATH: ${OSMU_ACCESS_KEY_MC_PATH:-mc}
       OSMU_ACCESS_KEY_MINIO_ALIAS: ${OSMU_ACCESS_KEY_MINIO_ALIAS:-osmu-minio}
+      OSMU_S3_PUBLIC_ENDPOINT: ${OSMU_S3_PUBLIC_ENDPOINT:-http://localhost:8080}
       OSMU_S3_SIGV4_CLOCK_SKEW_SECONDS: ${OSMU_S3_SIGV4_CLOCK_SKEW_SECONDS:-900}
       OSMU_S3_VIRTUAL_HOSTED_STYLE_ENABLED: ${OSMU_S3_VIRTUAL_HOSTED_STYLE_ENABLED:-true}
       OSMU_S3_VIRTUAL_HOSTED_STYLE_DOMAIN_SUFFIXES: ${OSMU_S3_VIRTUAL_HOSTED_STYLE_DOMAIN_SUFFIXES:-localhost}
+      OSMU_OPERATIONS_READINESS_CONVERGENCE_REPORT_PATH: ${OSMU_OPERATIONS_READINESS_CONVERGENCE_REPORT_PATH:-.osmu-run/latest-operations-readiness-convergence.json}
     ports:
       - "${BACKEND_PORT:-8080}:8080"
+    volumes:
+      - ../../.osmu-run:/app/.osmu-run:ro
     healthcheck:
       test:
         [
@@ -143,7 +148,7 @@ services:
       backend:
         condition: service_healthy
     ports:
-      - "${FRONTEND_PORT:-5173}:80"
+      - "${FRONTEND_PORT:-5173}:8080"
 
 volumes:
   osmu_mariadb_data:

@@ -1,0 +1,268 @@
+name: Operations Readiness Finalizer CI
+
+on:
+  workflow_dispatch:
+    inputs:
+      namespace:
+        description: Kubernetes namespace that contains the OSMU stack
+        required: true
+        default: osmu
+      tenant_name:
+        description: MinIO Operator Tenant name
+        required: true
+        default: osmu-minio
+      storage_manifest_path:
+        description: Storage expansion manifest path in the repository
+        required: true
+        default: ./infra/k8s/examples/minio-tenant-pool-expansion.example.yaml
+      source_namespace:
+        description: Source namespace for Kubernetes DR evidence
+        required: true
+        default: osmu
+      restore_namespace:
+        description: Disposable restore-drill namespace
+        required: true
+        default: osmu-restore-drill
+      backup_timestamp:
+        description: Backup timestamp for DR restore evidence, formatted as YYYYMMDDTHHMMSSZ
+        required: true
+        default: YYYYMMDDTHHMMSSZ
+      run_live:
+        description: Run selected evidence steps using OSMU_KUBECONFIG_BASE64
+        required: true
+        type: boolean
+        default: false
+      run_storage_expansion_finalizer:
+        description: Collect storage expansion finalizer evidence
+        required: true
+        type: boolean
+        default: false
+      run_ha_dr_readiness:
+        description: Collect Kubernetes HA/DR readiness evidence
+        required: true
+        type: boolean
+        default: false
+      run_kubernetes_dr_finalizer:
+        description: Collect Kubernetes DR finalizer evidence
+        required: true
+        type: boolean
+        default: false
+      run_iam_rbac_finalizer:
+        description: Finalize IAM/RBAC matrix and optional live kubectl auth evidence
+        required: true
+        type: boolean
+        default: false
+      run_iam_kubernetes_live_auth:
+        description: Include live kubectl auth can-i checks in the IAM/RBAC finalizer
+        required: true
+        type: boolean
+        default: false
+      run_security_evidence_finalizer:
+        description: Finalize image signing and container scan/SBOM evidence already present in the workspace
+        required: true
+        type: boolean
+        default: false
+      impersonate_runner:
+        description: Use the storage expansion runner ServiceAccount for server-side dry-run
+        required: true
+        type: boolean
+        default: true
+      server_dry_run_only:
+        description: Run Kubernetes DR finalizer in server-side dry-run mode
+        required: true
+        type: boolean
+        default: true
+      confirm_restore:
+        description: Explicitly run confirmed Kubernetes restore finalizer
+        required: true
+        type: boolean
+        default: false
+      api_base:
+        description: Backend API base URL for confirmed restore or backend runner calls
+        required: false
+        default: http://localhost:8080/api
+      admin_login_id:
+        description: Admin login id for confirmed restore or backend runner calls
+        required: false
+        default: admin
+      fail_if_not_ready:
+        description: Fail workflow when operations readiness remains pending
+        required: true
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: operations-readiness-finalizer-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  operations-readiness-finalizer:
+    name: Operations readiness finalizer
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Plan operations readiness finalizer
+        shell: pwsh
+        run: |
+          if ("${{ inputs.run_iam_kubernetes_live_auth }}" -eq "true" -and "${{ inputs.run_iam_rbac_finalizer }}" -ne "true") {
+            throw "run_iam_rbac_finalizer=true is required when run_iam_kubernetes_live_auth=true."
+          }
+
+          $planArgs = @(
+            "-PlanOnly",
+            "-Namespace", "${{ inputs.namespace }}",
+            "-TenantName", "${{ inputs.tenant_name }}",
+            "-StorageExpansionManifestPath", "${{ inputs.storage_manifest_path }}",
+            "-SourceNamespace", "${{ inputs.source_namespace }}",
+            "-RestoreNamespace", "${{ inputs.restore_namespace }}",
+            "-BackupTimestamp", "${{ inputs.backup_timestamp }}",
+            "-ApiBase", "${{ inputs.api_base }}",
+            "-AdminLoginId", "${{ inputs.admin_login_id }}",
+            "-PowerShellCommand", "pwsh"
+          )
+          if ("${{ inputs.run_storage_expansion_finalizer }}" -eq "true") {
+            $planArgs += "-RunStorageExpansionFinalizer"
+          }
+          if ("${{ inputs.run_ha_dr_readiness }}" -eq "true") {
+            $planArgs += "-RunHaDrReadiness"
+          }
+          if ("${{ inputs.run_kubernetes_dr_finalizer }}" -eq "true") {
+            $planArgs += "-RunKubernetesDrFinalizer"
+          }
+          if ("${{ inputs.run_iam_rbac_finalizer }}" -eq "true") {
+            $planArgs += "-RunIamRbacFinalizer"
+          }
+          if ("${{ inputs.run_iam_kubernetes_live_auth }}" -eq "true") {
+            $planArgs += "-RunIamKubernetesLiveAuth"
+          }
+          if ("${{ inputs.run_security_evidence_finalizer }}" -eq "true") {
+            $planArgs += "-RunSecurityEvidenceFinalizer"
+          }
+          if ("${{ inputs.impersonate_runner }}" -eq "true") {
+            $planArgs += "-ImpersonateRunner"
+          }
+          if ("${{ inputs.server_dry_run_only }}" -eq "true") {
+            $planArgs += "-ServerDryRunOnly"
+          }
+          if ("${{ inputs.confirm_restore }}" -eq "true") {
+            $planArgs += "-ConfirmRestore"
+          }
+          if ("${{ inputs.fail_if_not_ready }}" -eq "true") {
+            $planArgs += "-FailIfNotReady"
+          }
+
+          ./scripts/finalize-operations-readiness.ps1 @planArgs
+
+      - name: Prepare kubeconfig
+        if: ${{ inputs.run_live }}
+        shell: pwsh
+        env:
+          OSMU_KUBECONFIG_BASE64: ${{ secrets.OSMU_KUBECONFIG_BASE64 }}
+        run: |
+          if (-not $env:OSMU_KUBECONFIG_BASE64) {
+            throw "OSMU_KUBECONFIG_BASE64 secret is required when run_live=true."
+          }
+          $kubeDir = Join-Path $env:RUNNER_TEMP "osmu-kube"
+          New-Item -ItemType Directory -Force -Path $kubeDir | Out-Null
+          $kubeConfigPath = Join-Path $kubeDir "config"
+          [IO.File]::WriteAllBytes($kubeConfigPath, [Convert]::FromBase64String($env:OSMU_KUBECONFIG_BASE64))
+          "KUBECONFIG=$kubeConfigPath" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+      - name: Run operations readiness finalizer
+        if: ${{ inputs.run_live }}
+        shell: pwsh
+        env:
+          OSMU_ADMIN_PASSWORD: ${{ secrets.OSMU_ADMIN_PASSWORD }}
+        run: |
+          if ("${{ inputs.run_iam_kubernetes_live_auth }}" -eq "true" -and "${{ inputs.run_iam_rbac_finalizer }}" -ne "true") {
+            throw "run_iam_rbac_finalizer=true is required when run_iam_kubernetes_live_auth=true."
+          }
+          if ("${{ inputs.run_kubernetes_dr_finalizer }}" -eq "true" -and "${{ inputs.backup_timestamp }}" -eq "YYYYMMDDTHHMMSSZ") {
+            throw "backup_timestamp must be set to a real timestamp when run_kubernetes_dr_finalizer=true."
+          }
+          if ("${{ inputs.server_dry_run_only }}" -eq "true" -and "${{ inputs.confirm_restore }}" -eq "true") {
+            throw "Use either server_dry_run_only=true or confirm_restore=true, not both."
+          }
+          if ("${{ inputs.confirm_restore }}" -eq "true" -and -not $env:OSMU_ADMIN_PASSWORD) {
+            throw "OSMU_ADMIN_PASSWORD secret is required when confirm_restore=true."
+          }
+
+          $finalizerArgs = @(
+            "-Namespace", "${{ inputs.namespace }}",
+            "-TenantName", "${{ inputs.tenant_name }}",
+            "-StorageExpansionManifestPath", "${{ inputs.storage_manifest_path }}",
+            "-SourceNamespace", "${{ inputs.source_namespace }}",
+            "-RestoreNamespace", "${{ inputs.restore_namespace }}",
+            "-BackupTimestamp", "${{ inputs.backup_timestamp }}",
+            "-ApiBase", "${{ inputs.api_base }}",
+            "-AdminLoginId", "${{ inputs.admin_login_id }}",
+            "-PowerShellCommand", "pwsh"
+          )
+          if ($env:OSMU_ADMIN_PASSWORD) {
+            $finalizerArgs += @("-AdminPassword", $env:OSMU_ADMIN_PASSWORD)
+          }
+          if ("${{ inputs.run_storage_expansion_finalizer }}" -eq "true") {
+            $finalizerArgs += "-RunStorageExpansionFinalizer"
+          }
+          if ("${{ inputs.run_ha_dr_readiness }}" -eq "true") {
+            $finalizerArgs += "-RunHaDrReadiness"
+          }
+          if ("${{ inputs.run_kubernetes_dr_finalizer }}" -eq "true") {
+            $finalizerArgs += "-RunKubernetesDrFinalizer"
+          }
+          if ("${{ inputs.run_iam_rbac_finalizer }}" -eq "true") {
+            $finalizerArgs += "-RunIamRbacFinalizer"
+          }
+          if ("${{ inputs.run_iam_kubernetes_live_auth }}" -eq "true") {
+            $finalizerArgs += "-RunIamKubernetesLiveAuth"
+          }
+          if ("${{ inputs.run_security_evidence_finalizer }}" -eq "true") {
+            $finalizerArgs += "-RunSecurityEvidenceFinalizer"
+          }
+          if ("${{ inputs.impersonate_runner }}" -eq "true") {
+            $finalizerArgs += "-ImpersonateRunner"
+          }
+          if ("${{ inputs.server_dry_run_only }}" -eq "true") {
+            $finalizerArgs += "-ServerDryRunOnly"
+          }
+          if ("${{ inputs.confirm_restore }}" -eq "true") {
+            $finalizerArgs += "-ConfirmRestore"
+          }
+          if ("${{ inputs.fail_if_not_ready }}" -eq "true") {
+            $finalizerArgs += "-FailIfNotReady"
+          }
+
+          ./scripts/finalize-operations-readiness.ps1 @finalizerArgs
+
+      - name: Upload operations readiness evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: operations-readiness-finalizer-${{ github.run_id }}
+          path: |
+            .osmu-run/latest-operations-readiness-finalize.json
+            .osmu-run/latest-operations-readiness-finalize.md
+            .osmu-run/latest-operations-readiness.json
+            .osmu-run/latest-operations-readiness.md
+            .osmu-run/latest-storage-expansion-finalize.json
+            .osmu-run/latest-storage-expansion-finalize.md
+            .osmu-run/latest-storage-expansion-rbac-auth.json
+            .osmu-run/latest-storage-expansion-server-dry-run.json
+            .osmu-run/latest-kubernetes-ha-dr-readiness.json
+            .osmu-run/latest-kubernetes-dr-finalize.json
+            .osmu-run/latest-kubernetes-dr-finalize.md
+            .osmu-run/latest-iam-rbac-finalize.json
+            .osmu-run/latest-iam-rbac-finalize.md
+            .osmu-run/latest-security-evidence-finalize.json
+            .osmu-run/latest-security-evidence-finalize.md
+            .osmu-run/latest-image-signing-evidence.json
+            .osmu-run/latest-container-security-evidence.json
+          if-no-files-found: warn
+          retention-days: 14

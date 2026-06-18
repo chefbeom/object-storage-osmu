@@ -42,10 +42,27 @@ jobs:
           docker run --rm -v /var/run/docker.sock:/var/run/docker.sock -v "${{ github.workspace }}/.osmu-run/sbom:/out" anchore/syft:latest "$BACKEND_IMAGE" -o spdx-json=/out/backend.spdx.json
           docker run --rm -v /var/run/docker.sock:/var/run/docker.sock -v "${{ github.workspace }}/.osmu-run/sbom:/out" anchore/syft:latest "$FRONTEND_IMAGE" -o spdx-json=/out/frontend.spdx.json
 
+      - name: Write container security evidence
+        shell: pwsh
+        run: |
+          ./scripts/write-container-security-evidence.ps1 `
+            -BackendImage "$env:BACKEND_IMAGE" `
+            -FrontendImage "$env:FRONTEND_IMAGE" `
+            -BackendSbomPath ".osmu-run/sbom/backend.spdx.json" `
+            -FrontendSbomPath ".osmu-run/sbom/frontend.spdx.json" `
+            -SourceRunUrl "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" `
+            -CommitSha "${{ github.sha }}" `
+            -ArtifactName "osmu-container-security-${{ github.sha }}" `
+            -BackendScanPassed `
+            -FrontendScanPassed `
+            -FailIfNotPassed
+
       - name: Upload SBOM artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: osmu-sbom-${{ github.sha }}
-          path: .osmu-run/sbom/*.spdx.json
+          name: osmu-container-security-${{ github.sha }}
+          path: |
+            .osmu-run/sbom/*.spdx.json
+            .osmu-run/latest-container-security-evidence.json
           if-no-files-found: error
           retention-days: 14

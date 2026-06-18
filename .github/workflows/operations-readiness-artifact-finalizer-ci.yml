@@ -1,0 +1,195 @@
+name: Operations Readiness Artifact Finalizer CI
+
+on:
+  workflow_dispatch:
+    inputs:
+      storage_expansion_run_id:
+        description: Optional Storage Expansion Finalizer CI run id
+        required: false
+        default: ""
+      storage_expansion_artifact_name:
+        description: Optional Storage Expansion Finalizer CI artifact name
+        required: false
+        default: ""
+      ha_dr_readiness_run_id:
+        description: Optional Kubernetes HA/DR Readiness CI run id
+        required: false
+        default: ""
+      ha_dr_readiness_artifact_name:
+        description: Optional Kubernetes HA/DR Readiness CI artifact name
+        required: false
+        default: ""
+      kubernetes_dr_run_id:
+        description: Optional Kubernetes DR Finalizer CI run id
+        required: false
+        default: ""
+      kubernetes_dr_artifact_name:
+        description: Optional Kubernetes DR Finalizer CI artifact name
+        required: false
+        default: ""
+      iam_rbac_run_id:
+        description: Optional IAM/RBAC Finalizer CI run id
+        required: false
+        default: ""
+      iam_rbac_artifact_name:
+        description: Optional IAM/RBAC Finalizer CI artifact name
+        required: false
+        default: ""
+      security_evidence_run_id:
+        description: Optional Security Evidence Finalizer CI run id
+        required: false
+        default: ""
+      security_evidence_artifact_name:
+        description: Optional Security Evidence Finalizer CI artifact name
+        required: false
+        default: ""
+      kubernetes_operations_report_sync_run_id:
+        description: Optional Kubernetes Operations Report Sync CI run id
+        required: false
+        default: ""
+      kubernetes_operations_report_sync_artifact_name:
+        description: Optional Kubernetes Operations Report Sync CI artifact name
+        required: false
+        default: ""
+      fail_if_not_ready:
+        description: Fail workflow when operations readiness remains pending
+        required: true
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: operations-readiness-artifact-finalizer-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  operations-readiness-artifact-finalizer:
+    name: Operations readiness artifact finalizer
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download storage expansion evidence
+        if: ${{ inputs.storage_expansion_run_id != '' && inputs.storage_expansion_artifact_name != '' }}
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ inputs.storage_expansion_artifact_name }}
+          run-id: ${{ inputs.storage_expansion_run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: .osmu-run/operations-readiness-artifacts/storage-expansion
+
+      - name: Download Kubernetes HA DR readiness evidence
+        if: ${{ inputs.ha_dr_readiness_run_id != '' && inputs.ha_dr_readiness_artifact_name != '' }}
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ inputs.ha_dr_readiness_artifact_name }}
+          run-id: ${{ inputs.ha_dr_readiness_run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: .osmu-run/operations-readiness-artifacts/ha-dr-readiness
+
+      - name: Download Kubernetes DR finalizer evidence
+        if: ${{ inputs.kubernetes_dr_run_id != '' && inputs.kubernetes_dr_artifact_name != '' }}
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ inputs.kubernetes_dr_artifact_name }}
+          run-id: ${{ inputs.kubernetes_dr_run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: .osmu-run/operations-readiness-artifacts/kubernetes-dr
+
+      - name: Download IAM RBAC finalizer evidence
+        if: ${{ inputs.iam_rbac_run_id != '' && inputs.iam_rbac_artifact_name != '' }}
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ inputs.iam_rbac_artifact_name }}
+          run-id: ${{ inputs.iam_rbac_run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: .osmu-run/operations-readiness-artifacts/iam-rbac
+
+      - name: Download security evidence finalizer artifact
+        if: ${{ inputs.security_evidence_run_id != '' && inputs.security_evidence_artifact_name != '' }}
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ inputs.security_evidence_artifact_name }}
+          run-id: ${{ inputs.security_evidence_run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: .osmu-run/operations-readiness-artifacts/security-evidence
+
+      - name: Download Kubernetes operations report sync evidence
+        if: ${{ inputs.kubernetes_operations_report_sync_run_id != '' && inputs.kubernetes_operations_report_sync_artifact_name != '' }}
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ inputs.kubernetes_operations_report_sync_artifact_name }}
+          run-id: ${{ inputs.kubernetes_operations_report_sync_run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: .osmu-run/operations-readiness-artifacts/kubernetes-operations-report-sync
+
+      - name: Import downloaded evidence artifacts
+        shell: pwsh
+        run: |
+          $importArgs = @(
+            "-OutputDirectory", ".osmu-run",
+            "-JsonOutputPath", ".osmu-run/latest-operations-readiness-artifact-import.json",
+            "-MarkdownOutputPath", ".osmu-run/latest-operations-readiness-artifact-import.md"
+          )
+          $artifactRoots = @(
+            @("StorageExpansionArtifactPath", ".osmu-run/operations-readiness-artifacts/storage-expansion"),
+            @("HaDrReadinessArtifactPath", ".osmu-run/operations-readiness-artifacts/ha-dr-readiness"),
+            @("KubernetesDrArtifactPath", ".osmu-run/operations-readiness-artifacts/kubernetes-dr"),
+            @("IamRbacArtifactPath", ".osmu-run/operations-readiness-artifacts/iam-rbac"),
+            @("SecurityEvidenceArtifactPath", ".osmu-run/operations-readiness-artifacts/security-evidence"),
+            @("KubernetesOperationsReportSyncArtifactPath", ".osmu-run/operations-readiness-artifacts/kubernetes-operations-report-sync")
+          )
+          foreach ($artifactRoot in $artifactRoots) {
+            if (Test-Path -LiteralPath $artifactRoot[1]) {
+              $importArgs += @("-$($artifactRoot[0])", $artifactRoot[1])
+            }
+          }
+          ./scripts/import-operations-readiness-artifacts.ps1 @importArgs
+
+      - name: Write operations readiness report
+        shell: pwsh
+        run: |
+          $readinessArgs = @()
+          if ("${{ inputs.fail_if_not_ready }}" -eq "true") {
+            $readinessArgs += "-FailIfNotReady"
+          }
+          ./scripts/write-operations-readiness.ps1 @readinessArgs
+
+      - name: Upload operations readiness artifact set
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: operations-readiness-artifacts-${{ github.run_id }}
+          path: |
+            .osmu-run/latest-operations-readiness-artifact-import.json
+            .osmu-run/latest-operations-readiness-artifact-import.md
+            .osmu-run/latest-operations-readiness.json
+            .osmu-run/latest-operations-readiness.md
+            .osmu-run/latest-storage-expansion-finalize.json
+            .osmu-run/latest-storage-expansion-finalize.md
+            .osmu-run/latest-storage-expansion-rbac-auth.json
+            .osmu-run/latest-storage-expansion-server-dry-run.json
+            .osmu-run/latest-kubernetes-ha-dr-readiness.json
+            .osmu-run/latest-kubernetes-dr-finalize.json
+            .osmu-run/latest-kubernetes-dr-finalize.md
+            .osmu-run/latest-kubernetes-dr-drill.json
+            .osmu-run/latest-kubernetes-restore-smoke.json
+            .osmu-run/latest-kubernetes-dr-evidence-request.json
+            .osmu-run/latest-iam-rbac-finalize.json
+            .osmu-run/latest-iam-rbac-finalize.md
+            .osmu-run/latest-security-evidence-finalize.json
+            .osmu-run/latest-security-evidence-finalize.md
+            .osmu-run/latest-image-signing-evidence.json
+            .osmu-run/latest-container-security-evidence.json
+            .osmu-run/latest-kubernetes-operations-report-sync.json
+            .osmu-run/latest-kubernetes-operations-report-sync-plan.json
+            .osmu-run/latest-kubernetes-operations-report-sync-server-dry-run.json
+            .osmu-run/operations-readiness-artifacts/**
+          if-no-files-found: warn
+          retention-days: 14

@@ -1,0 +1,150 @@
+name: Storage Expansion Finalizer CI
+
+on:
+  workflow_dispatch:
+    inputs:
+      namespace:
+        description: Kubernetes namespace that contains the OSMU MinIO Tenant
+        required: true
+        default: osmu
+      tenant_name:
+        description: MinIO Operator Tenant name
+        required: true
+        default: osmu-minio
+      manifest_path:
+        description: Storage expansion manifest path in the repository
+        required: true
+        default: ./infra/k8s/examples/minio-tenant-pool-expansion.example.yaml
+      run_live:
+        description: Run live kubectl evidence using OSMU_KUBECONFIG_BASE64
+        required: true
+        type: boolean
+        default: false
+      impersonate_runner:
+        description: Use the storage expansion runner ServiceAccount for server-side dry-run
+        required: true
+        type: boolean
+        default: true
+      run_backend_dry_run_runner:
+        description: Call backend dry-run runner after Kubernetes evidence
+        required: true
+        type: boolean
+        default: false
+      run_backend_apply:
+        description: Call backend apply runner after Kubernetes evidence
+        required: true
+        type: boolean
+        default: false
+      confirm_apply:
+        description: Required together with run_backend_apply
+        required: true
+        type: boolean
+        default: false
+      api_base:
+        description: Backend API base URL when backend runner calls are enabled
+        required: false
+        default: ""
+      admin_login_id:
+        description: Backend admin login id when backend runner calls are enabled
+        required: false
+        default: admin
+      request_id:
+        description: Approved storage expansion request id when backend runner calls are enabled
+        required: false
+        default: "0"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: storage-expansion-finalizer-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  storage-expansion-finalizer:
+    name: Storage expansion finalizer
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Plan storage expansion finalizer
+        shell: pwsh
+        run: |
+          ./scripts/finalize-storage-expansion.ps1 `
+            -PlanOnly `
+            -Namespace "${{ inputs.namespace }}" `
+            -TenantName "${{ inputs.tenant_name }}" `
+            -ManifestPath "${{ inputs.manifest_path }}" `
+            -PowerShellCommand "pwsh"
+
+      - name: Prepare kubeconfig
+        if: ${{ inputs.run_live }}
+        shell: pwsh
+        env:
+          OSMU_KUBECONFIG_BASE64: ${{ secrets.OSMU_KUBECONFIG_BASE64 }}
+        run: |
+          if (-not $env:OSMU_KUBECONFIG_BASE64) {
+            throw "OSMU_KUBECONFIG_BASE64 secret is required when run_live=true."
+          }
+          $kubeDir = Join-Path $env:RUNNER_TEMP "osmu-kube"
+          New-Item -ItemType Directory -Force -Path $kubeDir | Out-Null
+          $kubeConfigPath = Join-Path $kubeDir "config"
+          [IO.File]::WriteAllBytes($kubeConfigPath, [Convert]::FromBase64String($env:OSMU_KUBECONFIG_BASE64))
+          "KUBECONFIG=$kubeConfigPath" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+      - name: Run storage expansion finalizer
+        if: ${{ inputs.run_live }}
+        shell: pwsh
+        env:
+          OSMU_ADMIN_PASSWORD: ${{ secrets.OSMU_ADMIN_PASSWORD }}
+        run: |
+          $finalizerArgs = @(
+            "-Namespace", "${{ inputs.namespace }}",
+            "-TenantName", "${{ inputs.tenant_name }}",
+            "-ManifestPath", "${{ inputs.manifest_path }}",
+            "-PowerShellCommand", "pwsh"
+          )
+
+          if ("${{ inputs.impersonate_runner }}" -eq "true") {
+            $finalizerArgs += "-ImpersonateRunner"
+          }
+          if ("${{ inputs.run_backend_dry_run_runner }}" -eq "true") {
+            $finalizerArgs += @(
+              "-RunBackendDryRunRunner",
+              "-ApiBase", "${{ inputs.api_base }}",
+              "-AdminLoginId", "${{ inputs.admin_login_id }}",
+              "-AdminPassword", $env:OSMU_ADMIN_PASSWORD,
+              "-RequestId", "${{ inputs.request_id }}"
+            )
+          }
+          if ("${{ inputs.run_backend_apply }}" -eq "true") {
+            if ("${{ inputs.confirm_apply }}" -ne "true") {
+              throw "confirm_apply=true is required when run_backend_apply=true."
+            }
+            $finalizerArgs += @(
+              "-RunBackendApply",
+              "-ConfirmApply",
+              "-ApiBase", "${{ inputs.api_base }}",
+              "-AdminLoginId", "${{ inputs.admin_login_id }}",
+              "-AdminPassword", $env:OSMU_ADMIN_PASSWORD,
+              "-RequestId", "${{ inputs.request_id }}"
+            )
+          }
+
+          ./scripts/finalize-storage-expansion.ps1 @finalizerArgs
+
+      - name: Upload storage expansion evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: storage-expansion-finalizer-${{ github.run_id }}
+          path: |
+            .osmu-run/latest-storage-expansion-finalize.json
+            .osmu-run/latest-storage-expansion-finalize.md
+            .osmu-run/latest-storage-expansion-rbac-auth.json
+            .osmu-run/latest-storage-expansion-server-dry-run.json
+          if-no-files-found: warn
+          retention-days: 14

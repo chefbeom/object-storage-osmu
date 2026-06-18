@@ -52,6 +52,8 @@ Assert-Contains $kubernetesManifest.Content "path: /actuator/prometheus" "Kubern
 Assert-Contains $kubernetesManifest.Content "OsmuBackendDown" "Kubernetes Prometheus Operator draft"
 Assert-Contains $kubernetesManifest.Content "OsmuBackendHighErrorRate" "Kubernetes Prometheus Operator draft"
 Assert-Contains $kubernetesManifest.Content "OsmuBackendHighLatencyP95" "Kubernetes Prometheus Operator draft"
+Assert-Contains $kubernetesManifest.Content "OsmuBackupCronJobFailed" "Kubernetes Prometheus Operator draft"
+Assert-Contains $kubernetesManifest.Content "OsmuBackupCronJobStale" "Kubernetes Prometheus Operator draft"
 Assert-NotContains $kustomization.Content "monitoring-operator.yaml" "kustomization.yaml"
 
 Assert-Contains $helmValues.Content "monitoring:" "Helm values"
@@ -70,6 +72,8 @@ Assert-Contains $helmTemplate.Content ".Values.monitoring.operator.releaseLabel"
 Assert-Contains $helmTemplate.Content "OsmuBackendDown" "Helm Prometheus Operator template"
 Assert-Contains $helmTemplate.Content "OsmuBackendHighErrorRate" "Helm Prometheus Operator template"
 Assert-Contains $helmTemplate.Content "OsmuBackendHighLatencyP95" "Helm Prometheus Operator template"
+Assert-Contains $helmTemplate.Content "OsmuBackupCronJobFailed" "Helm Prometheus Operator template"
+Assert-Contains $helmTemplate.Content "OsmuBackupCronJobStale" "Helm Prometheus Operator template"
 
 Assert-Contains $monitoringReadme.Content "ServiceMonitor" "Monitoring README"
 Assert-Contains $monitoringReadme.Content "PrometheusRule" "Monitoring README"

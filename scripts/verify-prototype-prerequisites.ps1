@@ -12,6 +12,9 @@ param(
 $ErrorActionPreference = "Stop"
 $root = Resolve-Path (Join-Path $PSScriptRoot "..")
 $script:Results = New-Object System.Collections.Generic.List[object]
+. (Join-Path $PSScriptRoot "java-toolchain.ps1")
+. (Join-Path $PSScriptRoot "docker-toolchain.ps1")
+. (Join-Path $PSScriptRoot "runtime-toolchain.ps1")
 
 function Step($message) {
     Write-Host ""
@@ -42,21 +45,7 @@ function Normalize-ProcessPath() {
 }
 
 function Use-JavaHome($path) {
-    Normalize-ProcessPath
-    if (-not $path) {
-        return $null
-    }
-
-    $resolved = Resolve-Path -LiteralPath $path -ErrorAction Stop
-    $javaBin = Join-Path $resolved.Path "bin"
-    $javaExe = Join-Path $javaBin "java.exe"
-    if (-not (Test-Path -LiteralPath $javaExe)) {
-        throw "JavaHome does not contain bin\java.exe: $($resolved.Path)"
-    }
-
-    $env:JAVA_HOME = $resolved.Path
-    [Environment]::SetEnvironmentVariable("Path", "$javaBin;$([Environment]::GetEnvironmentVariable("Path", "Process"))", "Process")
-    return $resolved.Path
+    return Use-OsmuJavaHome $path
 }
 
 function Invoke-Capture([string] $Executable, [string[]] $Arguments = @()) {
@@ -64,9 +53,13 @@ function Invoke-Capture([string] $Executable, [string[]] $Arguments = @()) {
     $ErrorActionPreference = "Continue"
     try {
         $output = & $Executable @Arguments 2>&1
+        $filteredOutput = @($output | Where-Object {
+            $line = [string]$_
+            $line.Trim() -and $line.Trim() -ne '""'
+        })
         return [pscustomobject]@{
             ExitCode = $LASTEXITCODE
-            Output = ($output -join " ")
+            Output = ($filteredOutput -join " ")
         }
     }
     finally {
@@ -103,6 +96,7 @@ function Test-TcpPort([string] $HostName, [int] $Port) {
 }
 
 Normalize-ProcessPath
+Use-OsmuDockerConfig $root | Out-Null
 
 if ($JavaHome) {
     try {
@@ -112,6 +106,9 @@ if ($JavaHome) {
     catch {
         Add-Check "JAVA_HOME override" "FAIL" $_.Exception.Message $RequireJava
     }
+}
+else {
+    Use-JavaHome "" | Out-Null
 }
 
 Step "Core toolchain"
@@ -142,27 +139,35 @@ if ($node) {
     Add-Check "Node.js" "FAIL" "node not found on PATH." $RequireNode
 }
 
-$npm = Get-Command npm.cmd -ErrorAction SilentlyContinue
-if ($npm) {
-    $npmVersion = Invoke-Capture $npm.Source @("--version")
+$npmSource = ""
+try {
+    $npmSource = Get-OsmuNpmExecutable
+}
+catch {
+}
+if ($npmSource) {
+    $npmVersion = Invoke-Capture $npmSource @("--version")
     Add-Check "npm" "PASS" $npmVersion.Output $RequireNode
 } else {
-    Add-Check "npm" "FAIL" "npm.cmd not found on PATH." $RequireNode
+    Add-Check "npm" "FAIL" "npm not found on PATH." $RequireNode
 }
 
 Step "Docker"
+$dockerDaemonAvailable = $false
 $docker = Get-Command docker -ErrorAction SilentlyContinue
 if ($docker) {
     Add-Check "Docker CLI" "PASS" $docker.Source $RequireDocker
     $dockerInfo = Invoke-Capture $docker.Source @("info", "--format", "{{json .ServerVersion}}")
     if ($dockerInfo.ExitCode -eq 0) {
+        $dockerDaemonAvailable = $true
         Add-Check "Docker daemon" "PASS" $dockerInfo.Output $RequireDocker
     } else {
         Add-Check "Docker daemon" "FAIL" $dockerInfo.Output $RequireDocker
     }
 
-    $composeFile = Join-Path $root "infra\local\docker-compose.yml"
-    $envFile = Join-Path $root "infra\local\.env.example"
+    $localInfra = Join-Path (Join-Path $root "infra") "local"
+    $composeFile = Join-Path $localInfra "docker-compose.yml"
+    $envFile = Join-Path $localInfra ".env.example"
     if (Test-Path -LiteralPath $composeFile) {
         $compose = Invoke-Capture $docker.Source @("compose", "--env-file", $envFile, "-f", $composeFile, "config", "--quiet")
         if ($compose.ExitCode -eq 0) {
@@ -196,10 +201,16 @@ if ($mc) {
     Add-Check "MinIO Client mc" "FAIL" "mc not found on PATH." $false
 }
 
-if ($aws -or $mc) {
-    Add-Check "Real S3 client" "PASS" "at least one of aws or mc is available." $RequireS3Client
+if ($dockerDaemonAvailable) {
+    Add-Check "Dockerized MinIO Client mc" "PASS" "Docker daemon is available; verify-s3-client-smoke.ps1 can run minio/mc in a container." $false
 } else {
-    Add-Check "Real S3 client" "FAIL" "install AWS CLI or MinIO Client mc to run real client smoke." $RequireS3Client
+    Add-Check "Dockerized MinIO Client mc" "FAIL" "Docker daemon is not available for containerized mc." $false
+}
+
+if ($aws -or $mc -or $dockerDaemonAvailable) {
+    Add-Check "Real S3 client" "PASS" "at least one of aws, host mc, or Dockerized mc is available." $RequireS3Client
+} else {
+    Add-Check "Real S3 client" "FAIL" "install AWS CLI, install MinIO Client mc, or start Docker Desktop for Dockerized MinIO Client smoke." $RequireS3Client
 }
 
 Step "Runtime endpoints"
@@ -215,6 +226,20 @@ if ($healthStatus -eq 200) {
     Add-Check "Backend health" "PASS" "$ApiBase/health HTTP 200" $RequireRuntime
 } else {
     Add-Check "Backend health" "FAIL" "$ApiBase/health not reachable." $RequireRuntime
+}
+
+$databaseHealthStatus = Get-HttpStatus "$ApiBase/database/health"
+if ($databaseHealthStatus -eq 200) {
+    Add-Check "Database health" "PASS" "$ApiBase/database/health HTTP 200" $RequireRuntime
+} else {
+    Add-Check "Database health" "FAIL" "$ApiBase/database/health not reachable." $RequireRuntime
+}
+
+$storageHealthStatus = Get-HttpStatus "$ApiBase/storage/health"
+if ($storageHealthStatus -eq 200) {
+    Add-Check "Storage health" "PASS" "$ApiBase/storage/health HTTP 200" $RequireRuntime
+} else {
+    Add-Check "Storage health" "FAIL" "$ApiBase/storage/health not reachable." $RequireRuntime
 }
 
 $frontendStatus = Get-HttpStatus $FrontendBase

@@ -1,0 +1,442 @@
+param(
+    [string] $UnblockPlanPath = ".\.osmu-run\latest-operations-invocation-unblock-plan.json",
+    [string] $JsonOutputPath = ".\.osmu-run\latest-operations-dispatch-preflight.json",
+    [string] $MarkdownOutputPath = ".\.osmu-run\latest-operations-dispatch-preflight.md",
+    [int[]] $ActionOrder = @(),
+    [string[]] $Placeholder = @(),
+    [string] $BackupTimestamp = "",
+    [string] $RestoreApiBase = "",
+    [string] $AdminLoginId = "",
+    [string] $AdminPassword = "",
+    [string] $ExpectedObjectCount = "",
+    [switch] $ConfirmOperatorApproval,
+    [switch] $KubeconfigSecretConfirmed,
+    [switch] $CheckGitHubCli,
+    [switch] $NoWrite
+)
+
+$ErrorActionPreference = "Stop"
+$root = Resolve-Path (Join-Path $PSScriptRoot "..")
+
+function Resolve-ProjectPath([string] $PathValue) {
+    if ([System.IO.Path]::IsPathRooted($PathValue)) {
+        return [System.IO.Path]::GetFullPath($PathValue)
+    }
+    return [System.IO.Path]::GetFullPath((Join-Path $root $PathValue))
+}
+
+function Get-JsonProperty([object] $Object, [string] $Name) {
+    if ($null -eq $Object) {
+        return $null
+    }
+    $property = $Object.PSObject.Properties[$Name]
+    if ($null -eq $property) {
+        return $null
+    }
+    return $property.Value
+}
+
+function Get-Text([object] $Object, [string] $Name) {
+    $value = Get-JsonProperty $Object $Name
+    if ($null -eq $value) {
+        return ""
+    }
+    return [string] $value
+}
+
+function Get-Int([object] $Object, [string] $Name) {
+    $value = Get-JsonProperty $Object $Name
+    if ($null -eq $value) {
+        return 0
+    }
+    try {
+        return [int] $value
+    }
+    catch {
+        return 0
+    }
+}
+
+function Get-Bool([object] $Object, [string] $Name) {
+    $value = Get-JsonProperty $Object $Name
+    if ($null -eq $value) {
+        return $false
+    }
+    return [System.Convert]::ToBoolean($value)
+}
+
+function Get-Array([object] $Object, [string] $Name) {
+    $value = Get-JsonProperty $Object $Name
+    if ($null -eq $value) {
+        return @()
+    }
+    if ($value -is [System.Array]) {
+        return @($value)
+    }
+    if ($value -is [System.Collections.IEnumerable] -and $value -isnot [string]) {
+        return @($value)
+    }
+    return @($value)
+}
+
+function Add-UniqueString([System.Collections.Generic.List[string]] $List, [string] $Value) {
+    if ([string]::IsNullOrWhiteSpace($Value)) {
+        return
+    }
+    if (-not $List.Contains($Value)) {
+        $List.Add($Value)
+    }
+}
+
+function Add-Check([System.Collections.ArrayList] $Checks, [string] $Code, [string] $Status, [string] $Message) {
+    $Checks.Add([ordered]@{
+        code = $Code
+        status = $Status
+        message = $Message
+    }) | Out-Null
+}
+
+function New-PlaceholderMap {
+    $map = @{}
+    foreach ($entry in $Placeholder) {
+        if ([string]::IsNullOrWhiteSpace($entry)) {
+            continue
+        }
+        $separatorIndex = $entry.IndexOf("=")
+        if ($separatorIndex -le 0) {
+            throw "Placeholder entries must use '<placeholder>=value' format. Invalid entry: $entry"
+        }
+        $name = $entry.Substring(0, $separatorIndex).Trim()
+        $value = $entry.Substring($separatorIndex + 1)
+        if (-not [string]::IsNullOrWhiteSpace($name)) {
+            $map[$name] = $value
+        }
+    }
+    return $map
+}
+
+function Get-InputValue([string] $Parameter, [string] $PlaceholderName, [hashtable] $PlaceholderMap) {
+    switch ($Parameter) {
+        "BackupTimestamp" { return $BackupTimestamp }
+        "RestoreApiBase" { return $RestoreApiBase }
+        "AdminLoginId" { return $AdminLoginId }
+        "AdminPassword" { return $AdminPassword }
+        "ExpectedObjectCount" { return $ExpectedObjectCount }
+        "Placeholder" {
+            if ($PlaceholderMap.ContainsKey($PlaceholderName)) {
+                return [string] $PlaceholderMap[$PlaceholderName]
+            }
+            return ""
+        }
+        default {
+            if ($PlaceholderMap.ContainsKey($PlaceholderName)) {
+                return [string] $PlaceholderMap[$PlaceholderName]
+            }
+            return ""
+        }
+    }
+}
+
+function Get-InputValuePreview([string] $Parameter, [string] $Value) {
+    if ([string]::IsNullOrWhiteSpace($Value)) {
+        return ""
+    }
+    if ($Parameter -eq "AdminPassword") {
+        return "<redacted>"
+    }
+    return $Value
+}
+
+function Get-InputCommandPart([string] $Parameter, [string] $PlaceholderName, [string] $Value) {
+    $valueForCommand = if ($Parameter -eq "AdminPassword") { "<redacted>" } else { $Value }
+    if ($Parameter -eq "Placeholder") {
+        return "-Placeholder '$PlaceholderName=$valueForCommand'"
+    }
+    return "-$Parameter $valueForCommand"
+}
+
+function Join-ActionOrders([int[]] $Orders) {
+    if ($null -eq $Orders -or $Orders.Count -eq 0) {
+        return ""
+    }
+    return ($Orders | ForEach-Object { [string] $_ }) -join ","
+}
+
+function Get-WorkflowName([string] $Command) {
+    if ([string]::IsNullOrWhiteSpace($Command)) {
+        return ""
+    }
+    $match = [regex]::Match($Command.Trim(), "^gh\s+workflow\s+run\s+([^\s]+)")
+    if (-not $match.Success) {
+        return ""
+    }
+    $workflow = $match.Groups[1].Value
+    if ($workflow.Contains("/") -or $workflow.Contains("\")) {
+        return [System.IO.Path]::GetFileName($workflow)
+    }
+    return $workflow
+}
+
+function Get-WorkflowSecrets([string] $WorkflowPath) {
+    if (-not (Test-Path -LiteralPath $WorkflowPath)) {
+        return @()
+    }
+    $content = Get-Content -Raw -LiteralPath $WorkflowPath
+    $secrets = New-Object System.Collections.Generic.List[string]
+    foreach ($match in [regex]::Matches($content, "secrets\.([A-Za-z_][A-Za-z0-9_]*)")) {
+        Add-UniqueString $secrets $match.Groups[1].Value
+    }
+    return @($secrets)
+}
+
+$resolvedUnblockPlanPath = Resolve-ProjectPath $UnblockPlanPath
+if (-not (Test-Path -LiteralPath $resolvedUnblockPlanPath)) {
+    throw "Operations invocation unblock plan not found: $resolvedUnblockPlanPath"
+}
+
+$unblockPlan = Get-Content -Raw -LiteralPath $resolvedUnblockPlanPath | ConvertFrom-Json
+if ($unblockPlan.formatVersion -ne "osmu.operations-invocation-unblock-plan.v1") {
+    throw "Unexpected operations invocation unblock plan formatVersion: $($unblockPlan.formatVersion)"
+}
+
+$checks = New-Object System.Collections.ArrayList
+$selectedActions = New-Object System.Collections.ArrayList
+$requiredInputs = New-Object System.Collections.ArrayList
+$workflowFiles = New-Object System.Collections.ArrayList
+$requiredSecrets = New-Object System.Collections.Generic.List[string]
+$placeholderMap = New-PlaceholderMap
+$hasActionOrderFilter = $ActionOrder -and $ActionOrder.Count -gt 0
+
+foreach ($action in @(Get-Array $unblockPlan "actions")) {
+    $order = Get-Int $action "order"
+    if ($hasActionOrderFilter -and -not ($ActionOrder -contains $order)) {
+        continue
+    }
+    $selectedActions.Add($action) | Out-Null
+}
+
+if ($selectedActions.Count -eq 0) {
+    Add-Check $checks "ACTION_SELECTION" "fail" "No actions were selected for dispatch preflight."
+}
+else {
+    Add-Check $checks "ACTION_SELECTION" "pass" "$($selectedActions.Count) action(s) selected for dispatch preflight."
+}
+
+$needsKubeconfig = $false
+$needsApproval = $false
+$missingInputCount = 0
+$ambiguousInputCount = 0
+$selectedOrders = New-Object System.Collections.Generic.List[int]
+$commandParts = New-Object System.Collections.Generic.List[string]
+$commandParts.Add("powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\invoke-operations-evidence-plan.ps1")
+
+foreach ($action in @($selectedActions)) {
+    $order = Get-Int $action "order"
+    if ($order -gt 0) {
+        $selectedOrders.Add($order)
+    }
+    if (Get-Bool $action "needsKubeconfigSecretConfirmation") {
+        $needsKubeconfig = $true
+    }
+    if (Get-Bool $action "needsOperatorApprovalConfirmation") {
+        $needsApproval = $true
+    }
+
+    $workflowName = Get-WorkflowName (Get-Text $action "command")
+    if (-not [string]::IsNullOrWhiteSpace($workflowName)) {
+        $workflowPath = Resolve-ProjectPath ".\.github\workflows\$workflowName"
+        $workflowExists = Test-Path -LiteralPath $workflowPath
+        $secrets = @(Get-WorkflowSecrets $workflowPath)
+        foreach ($secret in $secrets) {
+            Add-UniqueString $requiredSecrets $secret
+        }
+        $workflowFiles.Add([ordered]@{
+            actionOrder = $order
+            workflow = $workflowName
+            path = $workflowPath
+            exists = $workflowExists
+            requiredSecrets = $secrets
+        }) | Out-Null
+    }
+
+    foreach ($input in @(Get-Array $action "requiredInputs")) {
+        $parameter = Get-Text $input "parameter"
+        $placeholderName = Get-Text $input "placeholder"
+        $value = Get-InputValue $parameter $placeholderName $placeholderMap
+        $supplied = -not [string]::IsNullOrWhiteSpace($value)
+        if (-not $supplied) {
+            $missingInputCount++
+        }
+        if (Get-Bool $input "ambiguousRepeatedPlaceholder") {
+            $ambiguousInputCount++
+        }
+        $requiredInputs.Add([ordered]@{
+            actionOrder = $order
+            placeholder = $placeholderName
+            parameter = $parameter
+            supplied = $supplied
+            valuePreview = Get-InputValuePreview $parameter $value
+            ambiguousRepeatedPlaceholder = Get-Bool $input "ambiguousRepeatedPlaceholder"
+            note = Get-Text $input "note"
+        }) | Out-Null
+    }
+}
+
+if ($selectedOrders.Count -gt 0) {
+    $commandParts.Add("-ActionOrder $(Join-ActionOrders @($selectedOrders))")
+}
+if ($needsKubeconfig) {
+    if ($KubeconfigSecretConfirmed) {
+        Add-Check $checks "KUBECONFIG_SECRET_CONFIRMED" "pass" "Kubeconfig secret readiness was operator-confirmed."
+        $commandParts.Add("-KubeconfigSecretConfirmed")
+    }
+    else {
+        Add-Check $checks "KUBECONFIG_SECRET_CONFIRMED" "fail" "Selected actions require OSMU_KUBECONFIG_BASE64 readiness confirmation."
+    }
+}
+else {
+    Add-Check $checks "KUBECONFIG_SECRET_CONFIRMED" "pass" "Selected actions do not require kubeconfig secret confirmation."
+}
+
+if ($needsApproval) {
+    if ($ConfirmOperatorApproval) {
+        Add-Check $checks "OPERATOR_APPROVAL_CONFIRMED" "pass" "Operator approval was confirmed."
+        $commandParts.Add("-ConfirmOperatorApproval")
+    }
+    else {
+        Add-Check $checks "OPERATOR_APPROVAL_CONFIRMED" "fail" "Selected actions require explicit operator approval confirmation."
+    }
+}
+else {
+    Add-Check $checks "OPERATOR_APPROVAL_CONFIRMED" "pass" "Selected actions do not require operator approval confirmation."
+}
+
+if ($missingInputCount -eq 0) {
+    Add-Check $checks "REQUIRED_INPUTS_SUPPLIED" "pass" "All required placeholder values were supplied."
+}
+else {
+    Add-Check $checks "REQUIRED_INPUTS_SUPPLIED" "fail" "$missingInputCount required placeholder value(s) are missing."
+}
+
+foreach ($input in @($requiredInputs)) {
+    if (-not $input.supplied) {
+        continue
+    }
+    $commandParts.Add((Get-InputCommandPart $input.parameter $input.placeholder $input.valuePreview))
+}
+
+$missingWorkflowFiles = @($workflowFiles | Where-Object { -not $_.exists })
+if ($missingWorkflowFiles.Count -eq 0) {
+    Add-Check $checks "WORKFLOW_FILES_PRESENT" "pass" "All selected workflow files exist locally."
+}
+else {
+    Add-Check $checks "WORKFLOW_FILES_PRESENT" "fail" "$($missingWorkflowFiles.Count) selected workflow file(s) are missing."
+}
+
+if ($CheckGitHubCli) {
+    $ghCommand = Get-Command gh -ErrorAction SilentlyContinue
+    if ($null -eq $ghCommand) {
+        Add-Check $checks "GITHUB_CLI_AVAILABLE" "fail" "GitHub CLI was not found on PATH."
+    }
+    else {
+        Add-Check $checks "GITHUB_CLI_AVAILABLE" "pass" "GitHub CLI found at $($ghCommand.Source)."
+    }
+}
+else {
+    Add-Check $checks "GITHUB_CLI_AVAILABLE" "warn" "GitHub CLI availability check skipped. Run with -CheckGitHubCli before live dispatch."
+}
+
+if ($ambiguousInputCount -gt 0) {
+    Add-Check $checks "AMBIGUOUS_PLACEHOLDERS" "warn" "$ambiguousInputCount repeated generic placeholder input(s) need operator review."
+}
+else {
+    Add-Check $checks "AMBIGUOUS_PLACEHOLDERS" "pass" "No repeated generic placeholder inputs detected."
+}
+
+$failedCheckCount = @($checks | Where-Object { $_.status -eq "fail" }).Count
+$warningCheckCount = @($checks | Where-Object { $_.status -eq "warn" }).Count
+$result = if ($failedCheckCount -gt 0) { "action-required" } else { "ready" }
+$readyPlanCommand = if ($failedCheckCount -eq 0) { $commandParts -join " " } else { "" }
+$executeCommand = if ($failedCheckCount -eq 0) { "$readyPlanCommand -Execute" } else { "" }
+$generatedAt = [DateTimeOffset]::Now.ToString("o")
+
+$report = [ordered]@{
+    formatVersion = "osmu.operations-dispatch-preflight.v1"
+    generatedAt = $generatedAt
+    result = $result
+    sourceUnblockPlan = $resolvedUnblockPlanPath
+    sourceResult = Get-Text $unblockPlan "result"
+    selectedActionCount = $selectedActions.Count
+    selectedActionOrders = @($selectedOrders | ForEach-Object { [int] $_ })
+    needsKubeconfigSecretConfirmation = $needsKubeconfig
+    needsOperatorApprovalConfirmation = $needsApproval
+    requiredInputCount = $requiredInputs.Count
+    missingInputCount = $missingInputCount
+    ambiguousInputCount = $ambiguousInputCount
+    requiredGitHubSecrets = @($requiredSecrets)
+    workflowFiles = @($workflowFiles)
+    checks = @($checks)
+    failedCheckCount = $failedCheckCount
+    warningCheckCount = $warningCheckCount
+    readyPlanCommand = $readyPlanCommand
+    executeCommand = $executeCommand
+    requiredInputs = @($requiredInputs)
+    decisionRule = "Run the ready plan command first without -Execute. Use the execute command only after this preflight is ready, GitHub CLI/auth is verified, and operator-approved live dispatch is intended."
+}
+
+$markdownLines = @(
+    "# OSMU Operations Dispatch Preflight",
+    "",
+    "Generated at: $generatedAt",
+    "Result: $result",
+    "Source unblock plan: $resolvedUnblockPlanPath",
+    "",
+    "## Summary",
+    "",
+    "- Selected actions: $($report.selectedActionCount)",
+    "- Missing inputs: $missingInputCount",
+    "- Failed checks: $failedCheckCount",
+    "- Warning checks: $warningCheckCount",
+    "- Required GitHub secrets: $(if ($requiredSecrets.Count -gt 0) { @($requiredSecrets) -join ', ' } else { 'none detected' })",
+    ""
+)
+if (-not [string]::IsNullOrWhiteSpace($readyPlanCommand)) {
+    $markdownLines += "- Ready plan command: ``$readyPlanCommand``"
+}
+if (-not [string]::IsNullOrWhiteSpace($executeCommand)) {
+    $markdownLines += "- Execute command: ``$executeCommand``"
+}
+$markdownLines += @(
+    "",
+    "## Checks",
+    ""
+)
+foreach ($check in $checks) {
+    $markdownLines += "- [$($check.status)] $($check.code): $($check.message)"
+}
+$markdownLines += @(
+    "",
+    "## Required Inputs",
+    ""
+)
+if ($requiredInputs.Count -eq 0) {
+    $markdownLines += "- none"
+}
+else {
+    foreach ($input in $requiredInputs) {
+        $markdownLines += "- action $($input.actionOrder): $($input.parameter) for $($input.placeholder) supplied=$($input.supplied)"
+    }
+}
+
+if (-not $NoWrite) {
+    $resolvedJsonOutputPath = Resolve-ProjectPath $JsonOutputPath
+    $resolvedMarkdownOutputPath = Resolve-ProjectPath $MarkdownOutputPath
+    New-Item -ItemType Directory -Force -Path (Split-Path -Parent $resolvedJsonOutputPath) | Out-Null
+    New-Item -ItemType Directory -Force -Path (Split-Path -Parent $resolvedMarkdownOutputPath) | Out-Null
+    $report | ConvertTo-Json -Depth 18 | Set-Content -LiteralPath $resolvedJsonOutputPath -Encoding UTF8
+    $markdownLines | Set-Content -LiteralPath $resolvedMarkdownOutputPath -Encoding UTF8
+    Write-Host "Operations dispatch preflight JSON: $resolvedJsonOutputPath"
+    Write-Host "Operations dispatch preflight markdown: $resolvedMarkdownOutputPath"
+}
+
+$report | ConvertTo-Json -Depth 18

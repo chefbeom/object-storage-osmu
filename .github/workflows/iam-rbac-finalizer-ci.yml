@@ -1,0 +1,139 @@
+name: IAM RBAC Finalizer CI
+
+on:
+  workflow_dispatch:
+    inputs:
+      namespace:
+        description: Kubernetes namespace that contains the OSMU stack
+        required: true
+        default: osmu
+      service_account:
+        description: Storage expansion runner ServiceAccount to verify with kubectl auth can-i
+        required: true
+        default: osmu-storage-expansion-runner
+      run_backend_policy_tests:
+        description: Run focused backend RBAC JUnit tests
+        required: true
+        type: boolean
+        default: true
+      run_live:
+        description: Enable live Kubernetes RBAC auth evidence using OSMU_KUBECONFIG_BASE64
+        required: true
+        type: boolean
+        default: false
+      run_kubernetes_live_auth:
+        description: Run live kubectl auth can-i evidence for the storage expansion runner
+        required: true
+        type: boolean
+        default: false
+      fail_if_not_passed:
+        description: Fail workflow when IAM/RBAC finalizer does not pass
+        required: true
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: iam-rbac-finalizer-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  iam-rbac-finalizer:
+    name: IAM/RBAC finalizer
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Plan IAM/RBAC finalizer
+        shell: pwsh
+        run: |
+          if ("${{ inputs.run_kubernetes_live_auth }}" -eq "true" -and "${{ inputs.run_live }}" -ne "true") {
+            throw "run_live=true is required when run_kubernetes_live_auth=true."
+          }
+
+          $planArgs = @(
+            "-PlanOnly",
+            "-Namespace", "${{ inputs.namespace }}",
+            "-ServiceAccount", "${{ inputs.service_account }}",
+            "-PowerShellCommand", "pwsh",
+            "-GradleCommand", "./gradlew"
+          )
+          if ("${{ inputs.run_backend_policy_tests }}" -eq "true") {
+            $planArgs += "-RunBackendPolicyTests"
+          }
+          if ("${{ inputs.run_kubernetes_live_auth }}" -eq "true") {
+            $planArgs += "-RunKubernetesLiveAuth"
+          }
+
+          ./scripts/finalize-iam-rbac-readiness.ps1 @planArgs
+
+      - name: Set up Java
+        if: ${{ inputs.run_backend_policy_tests }}
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Make Gradle wrapper executable
+        if: ${{ inputs.run_backend_policy_tests }}
+        shell: bash
+        run: chmod +x ./osmu-backend/gradlew
+
+      - name: Prepare kubeconfig
+        if: ${{ inputs.run_live }}
+        shell: pwsh
+        env:
+          OSMU_KUBECONFIG_BASE64: ${{ secrets.OSMU_KUBECONFIG_BASE64 }}
+        run: |
+          if (-not $env:OSMU_KUBECONFIG_BASE64) {
+            throw "OSMU_KUBECONFIG_BASE64 secret is required when run_live=true."
+          }
+          $kubeDir = Join-Path $env:RUNNER_TEMP "osmu-kube"
+          New-Item -ItemType Directory -Force -Path $kubeDir | Out-Null
+          $kubeConfigPath = Join-Path $kubeDir "config"
+          [IO.File]::WriteAllBytes($kubeConfigPath, [Convert]::FromBase64String($env:OSMU_KUBECONFIG_BASE64))
+          "KUBECONFIG=$kubeConfigPath" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+      - name: Run IAM/RBAC finalizer
+        shell: pwsh
+        run: |
+          if ("${{ inputs.run_kubernetes_live_auth }}" -eq "true" -and "${{ inputs.run_live }}" -ne "true") {
+            throw "run_live=true is required when run_kubernetes_live_auth=true."
+          }
+
+          $finalizerArgs = @(
+            "-Namespace", "${{ inputs.namespace }}",
+            "-ServiceAccount", "${{ inputs.service_account }}",
+            "-PowerShellCommand", "pwsh",
+            "-GradleCommand", "./gradlew"
+          )
+          if ("${{ inputs.run_backend_policy_tests }}" -eq "true") {
+            $finalizerArgs += "-RunBackendPolicyTests"
+          }
+          if ("${{ inputs.run_kubernetes_live_auth }}" -eq "true") {
+            $finalizerArgs += "-RunKubernetesLiveAuth"
+          }
+          if ("${{ inputs.fail_if_not_passed }}" -eq "true") {
+            $finalizerArgs += "-FailIfNotPassed"
+          }
+
+          ./scripts/finalize-iam-rbac-readiness.ps1 @finalizerArgs
+
+      - name: Upload IAM/RBAC evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: iam-rbac-finalizer-${{ github.run_id }}
+          path: |
+            .osmu-run/latest-iam-rbac-finalize.json
+            .osmu-run/latest-iam-rbac-finalize.md
+            .osmu-run/latest-storage-expansion-rbac-auth.json
+            osmu-backend/build/reports/tests/test/**
+            osmu-backend/build/test-results/test/**
+          if-no-files-found: warn
+          retention-days: 14

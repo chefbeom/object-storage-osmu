@@ -4,6 +4,30 @@
 
 ## 실행
 
+가장 쉬운 데모 실행:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\start-local-demo.ps1
+```
+
+이 스크립트는 `infra/local/.env`가 없으면 `.env.example`에서 자동 생성하고, Docker Compose config 검증, `up -d --build`, Backend/DB/Storage/Frontend health 대기를 수행한 뒤 접속 URL과 기본 계정을 출력한다.
+
+샘플 조직, 사용자, 버킷, 오브젝트, lifecycle rule, S3 access key까지 같이 생성하려면:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\start-local-demo.ps1 -SeedDemo
+```
+
+seed 결과는 `.osmu-run/latest-demo.json`에 저장된다.
+
+seed 후 포털/API/S3 access key smoke까지 확인하려면:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\start-local-demo.ps1 -SeedDemo -VerifyDemo
+```
+
+수동 실행:
+
 ```powershell
 Copy-Item .\infra\local\.env.example .\infra\local\.env
 docker compose --env-file .\infra\local\.env -f .\infra\local\docker-compose.yml up -d
@@ -24,6 +48,12 @@ docker compose --env-file .\infra\local\.env -f .\infra\local\docker-compose.yml
 - MinIO root user: `minioadmin`
 - MinIO root password: `minioadmin`
 
+## Operations Report Mount
+
+- The backend container mounts project `.osmu-run` at `/app/.osmu-run` read-only.
+- Dashboard readiness can surface local operations reports such as `.osmu-run/latest-operations-readiness-convergence.json` without rebuilding the backend image.
+- Override `OSMU_OPERATIONS_READINESS_CONVERGENCE_REPORT_PATH` in `infra/local/.env` when a fixture or collected report lives under a subdirectory such as `.osmu-run/docker-local-demo/latest-operations-readiness-convergence.json`.
+
 ## MinIO CORS
 
 `minio-cors.json`은 browser multipart upload가 part PUT 응답의 `ETag`를 읽을 수 있게 `ExposeHeaders`에 `ETag`를 포함한다.
@@ -43,10 +73,22 @@ Part PUT 일시 실패 retry 기본값은 `VITE_MULTIPART_UPLOAD_PART_RETRIES=2`
 ## 중지
 
 ```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\stop-local-demo.ps1
+```
+
+수동 중지:
+
+```powershell
 docker compose --env-file .\infra\local\.env -f .\infra\local\docker-compose.yml down
 ```
 
 ## 데이터 초기화
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\stop-local-demo.ps1 -ResetData
+```
+
+수동 초기화:
 
 ```powershell
 docker compose --env-file .\infra\local\.env -f .\infra\local\docker-compose.yml down -v
@@ -106,3 +148,13 @@ powershell -ExecutionPolicy Bypass -File .\scripts\verify-s3-client-smoke.ps1 -C
 - Use `-RequireClient` to fail when neither client is installed.
 - Use `-SkipManualSigV4` to skip built-in root HEAD/object/payload-hash/virtual-hosted probes.
 - Use `-SkipVirtualHostedSmoke` when local DNS/proxy setup cannot route `{bucket}.localhost` style hosts.
+
+## Seeded Demo Verification
+
+이미 실행 중인 seeded demo를 확인하려면:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\verify-local-demo.ps1
+```
+
+이 검증은 frontend bundle, backend health, admin/demo user login, 샘플 버킷/오브젝트, readonly 권한 경계, bucket tags, lifecycle rule, access key inventory, seeded S3 access key smoke를 확인한다.

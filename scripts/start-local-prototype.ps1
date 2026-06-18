@@ -3,6 +3,7 @@ param(
     [int] $BackendPort = 8080,
     [int] $FrontendPort = 5173,
     [string] $LogDir = ".\.osmu-run",
+    [string] $GradleUserHome = ".\.osmu-run\gradle-home",
     [switch] $SkipBackend,
     [switch] $SkipFrontend
 )
@@ -10,34 +11,22 @@ param(
 $ErrorActionPreference = "Stop"
 $root = Resolve-Path (Join-Path $PSScriptRoot "..")
 $runDir = Join-Path $root $LogDir
+. (Join-Path $PSScriptRoot "java-toolchain.ps1")
 New-Item -ItemType Directory -Force -Path $runDir | Out-Null
 
 function Normalize-ProcessPath() {
-    $processPath = [Environment]::GetEnvironmentVariable("Path", "Process")
-    if (-not $processPath) {
-        $processPath = (([Environment]::GetEnvironmentVariable("Path", "Machine")),
-            ([Environment]::GetEnvironmentVariable("Path", "User")) |
-            Where-Object { $_ }) -join ";"
-    }
-    [Environment]::SetEnvironmentVariable("PATH", $null, "Process")
-    [Environment]::SetEnvironmentVariable("Path", $processPath, "Process")
+    Normalize-OsmuProcessPath
 }
 
 function Use-JavaHome($path) {
-    Normalize-ProcessPath
-    if (-not $path) {
-        return
-    }
+    Use-OsmuJavaHome $path | Out-Null
+}
 
-    $resolved = Resolve-Path -LiteralPath $path -ErrorAction Stop
-    $javaBin = Join-Path $resolved.Path "bin"
-    $javaExe = Join-Path $javaBin "java.exe"
-    if (-not (Test-Path -LiteralPath $javaExe)) {
-        throw "JavaHome does not contain bin\java.exe: $($resolved.Path)"
+function Resolve-ProjectPath($path) {
+    if ([System.IO.Path]::IsPathRooted($path)) {
+        return [System.IO.Path]::GetFullPath($path)
     }
-
-    $env:JAVA_HOME = $resolved.Path
-    [Environment]::SetEnvironmentVariable("Path", "$javaBin;$([Environment]::GetEnvironmentVariable("Path", "Process"))", "Process")
+    return [System.IO.Path]::GetFullPath((Join-Path $root $path))
 }
 
 function Wait-Http($url, $name, $timeoutSeconds = 90) {
@@ -92,8 +81,13 @@ function Start-LoggedProcess($name, $workingDirectory, [string[]] $arguments, $p
 
 Use-JavaHome $JavaHome
 Normalize-ProcessPath
+$resolvedGradleUserHome = Resolve-ProjectPath $GradleUserHome
+New-Item -ItemType Directory -Force -Path $resolvedGradleUserHome | Out-Null
+$env:GRADLE_USER_HOME = $resolvedGradleUserHome
 
 if (-not $SkipBackend) {
+    Assert-OsmuJavaAvailable -RequiredVersion 17 | Out-Null
+
     $backendPid = Join-Path $runDir "backend.pid"
     if (Test-Path -LiteralPath $backendPid) {
         throw "Backend pid file already exists: $backendPid. Run .\scripts\stop-local-prototype.ps1 first."
@@ -128,10 +122,19 @@ if (-not $SkipFrontend) {
 }
 
 Write-Host ""
+if ($SkipBackend -and $SkipFrontend) {
+    Write-Host "No OSMU local prototype services were started because -SkipBackend and -SkipFrontend were both set."
+    return
+}
+
 Write-Host "OSMU local prototype ready."
-Write-Host "Frontend: http://localhost:$FrontendPort"
-Write-Host "Backend:  http://localhost:$BackendPort/api/health"
-Write-Host "Login:    admin / password"
-Write-Host ""
-Write-Host "Note: this mode uses in-memory metadata/storage. Presigned URL and multipart upload require Docker/MinIO mode."
+if (-not $SkipFrontend) {
+    Write-Host "Frontend: http://localhost:$FrontendPort"
+}
+if (-not $SkipBackend) {
+    Write-Host "Backend:  http://localhost:$BackendPort/api/health"
+    Write-Host "Login:    admin / password"
+    Write-Host ""
+    Write-Host "Note: this mode uses in-memory metadata/storage. Presigned URL and multipart upload require Docker/MinIO mode."
+}
 Write-Host "Stop: .\scripts\stop-local-prototype.ps1"

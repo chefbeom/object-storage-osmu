@@ -23,7 +23,7 @@ metadata:
     app.kubernetes.io/name: osmu-frontend
     app.kubernetes.io/part-of: osmu
 spec:
-  replicas: 1
+  replicas: 2
   selector:
     matchLabels:
       app.kubernetes.io/name: osmu-frontend
@@ -33,6 +33,15 @@ spec:
         app.kubernetes.io/name: osmu-frontend
         app.kubernetes.io/part-of: osmu
     spec:
+      serviceAccountName: osmu-frontend
+      automountServiceAccountToken: false
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              app.kubernetes.io/name: osmu-frontend
       securityContext:
         runAsNonRoot: true
         runAsUser: 101

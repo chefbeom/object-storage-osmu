@@ -1,5 +1,9 @@
 param(
     [string] $ReleaseReportPath = ".\.osmu-run\latest-release.json",
+    [string] $DurableGateReportPath = ".\.osmu-run\latest-durable-demo-gate.json",
+    [string] $StorageExpansionFinalizeReportPath = ".\.osmu-run\latest-storage-expansion-finalize.json",
+    [string] $KubernetesDrFinalizeReportPath = ".\.osmu-run\latest-kubernetes-dr-finalize.json",
+    [string] $SecurityEvidenceFinalizeReportPath = ".\.osmu-run\latest-security-evidence-finalize.json",
     [string] $AuditPath = ".\.osmu-run\latest-mvp-audit.md",
     [string] $DecisionPath = ".\.osmu-run\latest-release-decision.md",
     [string] $OutputPath = ".\.osmu-run\latest-release-notes.md",
@@ -31,7 +35,151 @@ function Scope-Line([object] $scope, [string] $name, [string] $label) {
     return "- ${label}: $value"
 }
 
+function Read-DurableGateReport([string] $path) {
+    $resolvedPath = Resolve-ProjectPath $path
+    if (-not (Test-Path -LiteralPath $resolvedPath)) {
+        return [pscustomobject]@{
+            path = $resolvedPath
+            exists = $false
+            passed = $false
+            result = "missing"
+            currentDemoStatus = "missing"
+            detail = "report not found"
+        }
+    }
+
+    try {
+        $gateReport = Get-Content -Raw -LiteralPath $resolvedPath | ConvertFrom-Json
+        $passed = $gateReport.result -eq "ready" -and $gateReport.currentDemoStatus -eq "docker-durable-demo-verified"
+        return [pscustomobject]@{
+            path = $resolvedPath
+            exists = $true
+            passed = $passed
+            result = [string]$gateReport.result
+            currentDemoStatus = [string]$gateReport.currentDemoStatus
+            detail = "result=$($gateReport.result), currentDemoStatus=$($gateReport.currentDemoStatus)"
+        }
+    }
+    catch {
+        return [pscustomobject]@{
+            path = $resolvedPath
+            exists = $true
+            passed = $false
+            result = "unreadable"
+            currentDemoStatus = "unreadable"
+            detail = $_.Exception.Message
+        }
+    }
+}
+
+function Read-StorageExpansionFinalizeReport([string] $path) {
+    $resolvedPath = Resolve-ProjectPath $path
+    if (-not (Test-Path -LiteralPath $resolvedPath)) {
+        return [pscustomobject]@{
+            path = $resolvedPath
+            exists = $false
+            passed = $false
+            result = "missing"
+            detail = "report not found"
+        }
+    }
+
+    try {
+        $finalizeReport = Get-Content -Raw -LiteralPath $resolvedPath | ConvertFrom-Json
+        $passed = $finalizeReport.result -eq "passed"
+        $backend = $finalizeReport.backend
+        return [pscustomobject]@{
+            path = $resolvedPath
+            exists = $true
+            passed = $passed
+            result = [string]$finalizeReport.result
+            detail = "result=$($finalizeReport.result), namespace=$($finalizeReport.namespace), tenant=$($finalizeReport.tenantName), runDryRunRunner=$($backend.runDryRunRunner), runApply=$($backend.runApply)"
+        }
+    }
+    catch {
+        return [pscustomobject]@{
+            path = $resolvedPath
+            exists = $true
+            passed = $false
+            result = "unreadable"
+            detail = $_.Exception.Message
+        }
+    }
+}
+
+function Read-KubernetesDrFinalizeReport([string] $path) {
+    $resolvedPath = Resolve-ProjectPath $path
+    if (-not (Test-Path -LiteralPath $resolvedPath)) {
+        return [pscustomobject]@{
+            path = $resolvedPath
+            exists = $false
+            passed = $false
+            result = "missing"
+            detail = "report not found"
+        }
+    }
+
+    try {
+        $finalizeReport = Get-Content -Raw -LiteralPath $resolvedPath | ConvertFrom-Json
+        $passed = $finalizeReport.result -eq "ready"
+        return [pscustomobject]@{
+            path = $resolvedPath
+            exists = $true
+            passed = $passed
+            result = [string]$finalizeReport.result
+            detail = "result=$($finalizeReport.result), status=$($finalizeReport.status), sourceNamespace=$($finalizeReport.sourceNamespace), restoreNamespace=$($finalizeReport.restoreNamespace), backupTimestamp=$($finalizeReport.backupTimestamp), serverDryRunOnly=$($finalizeReport.serverDryRunOnly), confirmRestore=$($finalizeReport.confirmRestore), submitEvidence=$($finalizeReport.submitEvidence)"
+        }
+    }
+    catch {
+        return [pscustomobject]@{
+            path = $resolvedPath
+            exists = $true
+            passed = $false
+            result = "unreadable"
+            detail = $_.Exception.Message
+        }
+    }
+}
+
+function Read-SecurityEvidenceFinalizeReport([string] $path) {
+    $resolvedPath = Resolve-ProjectPath $path
+    if (-not (Test-Path -LiteralPath $resolvedPath)) {
+        return [pscustomobject]@{
+            path = $resolvedPath
+            exists = $false
+            passed = $false
+            result = "missing"
+            detail = "report not found"
+        }
+    }
+
+    try {
+        $finalizeReport = Get-Content -Raw -LiteralPath $resolvedPath | ConvertFrom-Json
+        $passed = $finalizeReport.result -eq "passed"
+        return [pscustomobject]@{
+            path = $resolvedPath
+            exists = $true
+            passed = $passed
+            result = [string]$finalizeReport.result
+            detail = "result=$($finalizeReport.result), failureCount=$($finalizeReport.failureCount)"
+        }
+    }
+    catch {
+        return [pscustomobject]@{
+            path = $resolvedPath
+            exists = $true
+            passed = $false
+            result = "unreadable"
+            detail = $_.Exception.Message
+        }
+    }
+}
+
 $resolvedReleaseReportPath = Resolve-ProjectPath $ReleaseReportPath
+$durableGate = Read-DurableGateReport $DurableGateReportPath
+$storageExpansionFinalize = Read-StorageExpansionFinalizeReport $StorageExpansionFinalizeReportPath
+$kubernetesDrFinalize = Read-KubernetesDrFinalizeReport $KubernetesDrFinalizeReportPath
+$securityEvidenceFinalize = Read-SecurityEvidenceFinalizeReport $SecurityEvidenceFinalizeReportPath
 $resolvedAuditPath = Resolve-ProjectPath $AuditPath
 $resolvedDecisionPath = Resolve-ProjectPath $DecisionPath
 
@@ -46,12 +194,17 @@ $optionalGates = $report.optionalGates
 
 $lightweightDecision = if ($decision.Contains("- Lightweight demo candidate: GO")) { "GO" } else { "NO-GO" }
 $durableDecision = if ($decision.Contains("- Durable MVP pilot: GO")) { "GO" } else { "NO-GO" }
+$durableGatePassed = [bool]$durableGate.passed
 
 $notesLines = @(
     "# OSMU $Version Release Notes",
     "",
     "Generated at: $([DateTimeOffset]::Now.ToString("o"))",
     "Release report: $resolvedReleaseReportPath",
+    "Durable gate report: $($durableGate.path)",
+    "Storage expansion finalizer report: $($storageExpansionFinalize.path)",
+    "Kubernetes DR finalizer report: $($kubernetesDrFinalize.path)",
+    "Security evidence finalizer report: $($securityEvidenceFinalize.path)",
     "MVP audit: $resolvedAuditPath",
     "MVP release decision: $resolvedDecisionPath",
     "",
@@ -94,13 +247,21 @@ $notesLines = @(
     (Scope-Line $scope "prometheusObservability" "Prometheus observability draft"),
     (Scope-Line $scope "monitoringArtifacts" "Monitoring artifacts draft"),
     (Scope-Line $scope "prometheusOperatorDraft" "Prometheus Operator draft"),
+    "- Durable MVP demo gate report: $($durableGate.detail)",
+    "- Storage expansion finalizer report: $($storageExpansionFinalize.detail)",
+    "- Kubernetes DR finalizer report: $($kubernetesDrFinalize.detail)",
+    "- Security evidence finalizer report: $($securityEvidenceFinalize.detail)",
     "",
-    "## External Pending Evidence",
+    "## External and Durable Evidence",
     "",
+    "- Durable MVP demo gate report: $($durableGate.detail)",
+    "- Storage expansion finalizer report: $($storageExpansionFinalize.detail)",
+    "- Kubernetes DR finalizer report: $($kubernetesDrFinalize.detail)",
+    "- Security evidence finalizer report: $($securityEvidenceFinalize.detail)",
     "- Docker/MariaDB/MinIO integration: dockerIntegration=$($scope.dockerIntegration), dockerDaemon=$($optionalGates.dockerDaemonAvailable)",
-    "- Real S3 client smoke: aws=$($optionalGates.awsCliAvailable), mc=$($optionalGates.mcAvailable)",
+    "- Real S3 client smoke: aws=$($optionalGates.awsCliAvailable), mc=$($optionalGates.mcAvailable), dockerizedMc=$($optionalGates.dockerizedMcAvailable)",
     "- Browser visual/click E2E: browserE2E=$($scope.browserE2E)",
-    '- Signed image evidence: pending GitHub Actions `Image Publish and Sign CI` run with `publish=true`.',
+    $(if ($securityEvidenceFinalize.passed) { "- Signed image and container scan/SBOM evidence: finalized and promoted." } else { '- Signed image and container scan/SBOM evidence: pending `scripts\finalize-security-evidence.ps1` from successful GitHub Actions artifacts.' }),
     "",
     "## Image References",
     "",
@@ -112,8 +273,11 @@ $notesLines = @(
     "",
     "## Operator Notes",
     "",
-    "- Use this release as local lightweight demo evidence only.",
-    "- Do not present it as durable pilot-ready until Docker, real S3 client, Browser E2E, and signed-image evidence gates pass.",
+    $(if ($durableGatePassed) { "- Durable gate proof is present; this release can be used as local durable MVP demo evidence." } else { "- Use this release as local lightweight demo evidence only." }),
+    $(if ($storageExpansionFinalize.passed) { "- Storage expansion finalizer proof is present; attach its JSON/Markdown report to Kubernetes expansion change review." } else { "- Storage expansion finalizer proof is pending; run scripts\finalize-storage-expansion.ps1 against the target cluster before treating expansion automation as operationally proven." }),
+    $(if ($kubernetesDrFinalize.passed) { "- Kubernetes DR finalizer proof is present; attach its JSON/Markdown report to backup/restore change review." } else { "- Kubernetes DR finalizer proof is pending; run scripts\finalize-kubernetes-dr-drill.ps1 or the Kubernetes DR Finalizer CI workflow against the target cluster before treating HA/DR as operationally proven." }),
+    $(if ($securityEvidenceFinalize.passed) { "- Security evidence finalizer proof is present; attach its JSON/Markdown report plus promoted evidence JSON to image release review." } else { "- Security evidence finalizer proof is pending; run scripts\finalize-security-evidence.ps1 after downloading successful image signing and container security workflow artifacts." }),
+    $(if ($durableGatePassed) { "- For external pilot distribution, still attach signed-image and SBOM evidence when publishing images." } else { "- Do not present it as durable pilot-ready until Docker, real S3 client, Browser E2E, and signed-image evidence gates pass." }),
     '- Keep `.osmu-run` out of git; regenerate reports from scripts when evidence changes.'
 )
 
