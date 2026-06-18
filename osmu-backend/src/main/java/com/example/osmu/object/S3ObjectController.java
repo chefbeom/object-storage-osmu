@@ -29,6 +29,7 @@ import java.util.Base64;
 import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.stream.Collectors;
 import java.util.zip.CRC32;
@@ -73,6 +74,7 @@ public class S3ObjectController {
     private static final String AWS_CONTENT_MD5_HEADER = "Content-MD5";
     private static final String AWS_CONTENT_SHA256_HEADER = "x-amz-content-sha256";
     private static final String AWS_DECODED_CONTENT_LENGTH_HEADER = "x-amz-decoded-content-length";
+    private static final String AWS_TRAILER_HEADER = "x-amz-trailer";
     private static final String AWS_CHECKSUM_SHA256_HEADER = "x-amz-checksum-sha256";
     private static final String AWS_CHECKSUM_SHA1_HEADER = "x-amz-checksum-sha1";
     private static final String AWS_CHECKSUM_CRC32_HEADER = "x-amz-checksum-crc32";
@@ -304,14 +306,13 @@ public class S3ObjectController {
         RequestBodyContent requestContent = requestBodyContent(request, "multipart part upload");
         long contentLength = requestContent.contentLength();
         MultipartUploadUploadedPart part;
-        List<BodyChecksumValidator> checksumValidators = bodyChecksums(request);
-        ChecksumResponseHeader checksumResponseHeader = checksumResponseHeader(request);
+        ChecksumValidation checksumValidation = requestBodyChecksumValidation(request, requestContent);
         try (S3ChecksumValidatingInputStream content = new S3ChecksumValidatingInputStream(
                 requestContent.inputStream(),
                 contentLength,
                 request.getHeader(AWS_CONTENT_MD5_HEADER),
                 payloadHashValidator(request),
-                checksumValidators
+                checksumValidation.validators()
         )) {
             part = objectService.uploadMultipartPart(bucketName, objectKey, uploadId, partNumber, content, contentLength, user);
             content.finish();
@@ -321,7 +322,7 @@ public class S3ObjectController {
         if (part.etag() != null && !part.etag().isBlank()) {
             builder.eTag(quoted(unquote(part.etag())));
         }
-        checksumResponseHeader.apply(builder);
+        checksumValidation.responseHeader().apply(builder);
         return builder.build();
     }
 
@@ -397,14 +398,13 @@ public class S3ObjectController {
         RequestBodyContent requestContent = requestBodyContent(request, "S3 object upload");
         long contentLength = requestContent.contentLength();
         StoredObjectRecord object;
-        List<BodyChecksumValidator> checksumValidators = bodyChecksums(request);
-        ChecksumResponseHeader checksumResponseHeader = checksumResponseHeader(request);
+        ChecksumValidation checksumValidation = requestBodyChecksumValidation(request, requestContent);
         try (S3ChecksumValidatingInputStream content = new S3ChecksumValidatingInputStream(
                 requestContent.inputStream(),
                 contentLength,
                 request.getHeader(AWS_CONTENT_MD5_HEADER),
                 payloadHashValidator(request),
-                checksumValidators
+                checksumValidation.validators()
         )) {
             object = objectService.upload(
                     bucketName,
@@ -414,7 +414,7 @@ public class S3ObjectController {
                     contentLength,
                     contentType(request),
                     user,
-                    checksumResponseHeader.asMap()
+                    checksumValidation.values()
             );
             content.finish();
             String calculatedMd5 = content.md5Hex();
@@ -423,7 +423,7 @@ public class S3ObjectController {
             ResponseEntity.BodyBuilder builder = ResponseEntity.ok()
                     .eTag(quoted(object.etag().isBlank() ? calculatedMd5 : object.etag()))
                     .header("x-amz-tagging-count", String.valueOf(object.tags().size()));
-            checksumResponseHeader.apply(builder);
+            checksumValidation.responseHeader().apply(builder);
             return builder.build();
         } catch (IOException | RuntimeException exception) {
             dataFlowMonitoringService.recordFailure("upload", bucketName, objectKey, user.loginId(), exception.getMessage(), "S3");
@@ -784,21 +784,23 @@ public class S3ObjectController {
     private RequestBodyContent requestBodyContent(HttpServletRequest request, String operation) throws IOException {
         if (isAwsChunkedPayload(request)) {
             long decodedContentLength = requiredNonNegativeLongHeader(request, AWS_DECODED_CONTENT_LENGTH_HEADER);
+            AwsChunkedInputStream chunkedInputStream = new AwsChunkedInputStream(
+                    request.getInputStream(),
+                    decodedContentLength,
+                    isAwsStreamingPayload(request),
+                    streamingSignatureContext(request)
+            );
             return new RequestBodyContent(
-                    new AwsChunkedInputStream(
-                            request.getInputStream(),
-                            decodedContentLength,
-                            isAwsStreamingPayload(request),
-                            streamingSignatureContext(request)
-                    ),
-                    decodedContentLength
+                    chunkedInputStream,
+                    decodedContentLength,
+                    chunkedInputStream
             );
         }
         long contentLength = request.getContentLengthLong();
         if (contentLength < 0) {
             throw new ApiException(ApiErrorCode.VALIDATION_ERROR, "Content-Length is required for " + operation + ".");
         }
-        return new RequestBodyContent(request.getInputStream(), contentLength);
+        return new RequestBodyContent(request.getInputStream(), contentLength, null);
     }
 
     private boolean isAwsChunkedPayload(HttpServletRequest request) {
@@ -1606,16 +1608,28 @@ public class S3ObjectController {
         return decoded;
     }
 
-    private List<BodyChecksumValidator> bodyChecksums(HttpServletRequest request) {
+    private ChecksumValidation requestBodyChecksumValidation(HttpServletRequest request, RequestBodyContent requestContent) {
+        Map<String, String> checksumValues = new LinkedHashMap<>();
         List<BodyChecksumValidator> validators = new ArrayList<>();
-        addMessageDigestChecksum(validators, request, AWS_CHECKSUM_SHA256_HEADER, "SHA-256", 32);
-        addMessageDigestChecksum(validators, request, AWS_CHECKSUM_SHA1_HEADER, "SHA-1", 20);
-        addCrcChecksum(validators, request, AWS_CHECKSUM_CRC32_HEADER, new CRC32());
-        addCrcChecksum(validators, request, AWS_CHECKSUM_CRC32C_HEADER, new CRC32C());
+        addMessageDigestChecksum(validators, checksumValues, request, AWS_CHECKSUM_SHA256_HEADER, "SHA-256", 32);
+        addMessageDigestChecksum(validators, checksumValues, request, AWS_CHECKSUM_SHA1_HEADER, "SHA-1", 20);
+        addCrcChecksum(validators, checksumValues, request, AWS_CHECKSUM_CRC32_HEADER, new CRC32());
+        addCrcChecksum(validators, checksumValues, request, AWS_CHECKSUM_CRC32C_HEADER, new CRC32C());
+        String trailerChecksumHeader = requestedTrailerChecksumHeader(request, requestContent);
+        if (trailerChecksumHeader != null) {
+            addTrailerChecksum(validators, checksumValues, requestContent.chunkedInputStream(), trailerChecksumHeader);
+        }
         if (validators.size() > 1) {
             throw new ApiException(ApiErrorCode.INVALID_DIGEST, "Only one x-amz-checksum-* header is supported.");
         }
-        return validators;
+        String responseHeaderName = !checksumValues.isEmpty()
+                ? checksumValues.keySet().iterator().next()
+                : trailerChecksumHeader == null ? "" : trailerChecksumHeader;
+        return new ChecksumValidation(
+                validators,
+                new ChecksumResponseHeader(responseHeaderName, checksumValues),
+                checksumValues
+        );
     }
 
     private ChecksumResponseHeader checksumResponseHeader(HttpServletRequest request) {
@@ -1627,7 +1641,7 @@ public class S3ObjectController {
         )) {
             String value = request.getHeader(headerName);
             if (value != null && !value.isBlank()) {
-                return new ChecksumResponseHeader(headerName, value.trim());
+                return new ChecksumResponseHeader(headerName, Map.of(headerName, value.trim()));
             }
         }
         return ChecksumResponseHeader.empty();
@@ -1654,6 +1668,7 @@ public class S3ObjectController {
 
     private void addMessageDigestChecksum(
             List<BodyChecksumValidator> validators,
+            Map<String, String> checksumValues,
             HttpServletRequest request,
             String headerName,
             String algorithm,
@@ -1663,6 +1678,7 @@ public class S3ObjectController {
         if (rawChecksum == null || rawChecksum.isBlank()) {
             return;
         }
+        checksumValues.put(headerName, rawChecksum.trim());
         validators.add(BodyChecksumValidator.messageDigest(
                 headerName,
                 messageDigest(algorithm),
@@ -1672,6 +1688,7 @@ public class S3ObjectController {
 
     private void addCrcChecksum(
             List<BodyChecksumValidator> validators,
+            Map<String, String> checksumValues,
             HttpServletRequest request,
             String headerName,
             Checksum checksum
@@ -1680,11 +1697,82 @@ public class S3ObjectController {
         if (rawChecksum == null || rawChecksum.isBlank()) {
             return;
         }
+        checksumValues.put(headerName, rawChecksum.trim());
         validators.add(BodyChecksumValidator.crc(
                 headerName,
                 checksum,
                 decodeChecksum(headerName, rawChecksum, 4)
         ));
+    }
+
+    private String requestedTrailerChecksumHeader(HttpServletRequest request, RequestBodyContent requestContent) {
+        String rawTrailer = request.getHeader(AWS_TRAILER_HEADER);
+        if (rawTrailer == null || rawTrailer.isBlank()) {
+            return null;
+        }
+        if (requestContent.chunkedInputStream() == null) {
+            throw new ApiException(ApiErrorCode.VALIDATION_ERROR, "x-amz-trailer requires aws-chunked request body.");
+        }
+        List<String> checksumTrailers = new ArrayList<>();
+        for (String token : rawTrailer.split(",")) {
+            String name = token.trim().toLowerCase(Locale.ROOT);
+            if (name.isBlank()) {
+                continue;
+            }
+            if (isSupportedChecksumHeader(name)) {
+                checksumTrailers.add(name);
+            } else if (name.startsWith("x-amz-checksum-")) {
+                throw new ApiException(ApiErrorCode.INVALID_DIGEST, name + " trailer is not supported.");
+            }
+        }
+        if (checksumTrailers.size() > 1) {
+            throw new ApiException(ApiErrorCode.INVALID_DIGEST, "Only one x-amz-checksum-* trailer is supported.");
+        }
+        return checksumTrailers.isEmpty() ? null : checksumTrailers.get(0);
+    }
+
+    private boolean isSupportedChecksumHeader(String headerName) {
+        return AWS_CHECKSUM_SHA256_HEADER.equals(headerName)
+                || AWS_CHECKSUM_SHA1_HEADER.equals(headerName)
+                || AWS_CHECKSUM_CRC32_HEADER.equals(headerName)
+                || AWS_CHECKSUM_CRC32C_HEADER.equals(headerName);
+    }
+
+    private void addTrailerChecksum(
+            List<BodyChecksumValidator> validators,
+            Map<String, String> checksumValues,
+            AwsChunkedInputStream chunkedInputStream,
+            String headerName
+    ) {
+        switch (headerName) {
+            case AWS_CHECKSUM_SHA256_HEADER -> validators.add(BodyChecksumValidator.trailerMessageDigest(
+                    headerName,
+                    messageDigest("SHA-256"),
+                    32,
+                    chunkedInputStream,
+                    checksumValues
+            ));
+            case AWS_CHECKSUM_SHA1_HEADER -> validators.add(BodyChecksumValidator.trailerMessageDigest(
+                    headerName,
+                    messageDigest("SHA-1"),
+                    20,
+                    chunkedInputStream,
+                    checksumValues
+            ));
+            case AWS_CHECKSUM_CRC32_HEADER -> validators.add(BodyChecksumValidator.trailerCrc(
+                    headerName,
+                    new CRC32(),
+                    chunkedInputStream,
+                    checksumValues
+            ));
+            case AWS_CHECKSUM_CRC32C_HEADER -> validators.add(BodyChecksumValidator.trailerCrc(
+                    headerName,
+                    new CRC32C(),
+                    chunkedInputStream,
+                    checksumValues
+            ));
+            default -> throw new ApiException(ApiErrorCode.INVALID_DIGEST, headerName + " trailer is not supported.");
+        }
     }
 
     private static byte[] decodeChecksum(String headerName, String rawChecksum, int expectedLength) {
@@ -1711,7 +1799,7 @@ public class S3ObjectController {
         }
     }
 
-    private record RequestBodyContent(InputStream inputStream, long contentLength) {
+    private record RequestBodyContent(InputStream inputStream, long contentLength, AwsChunkedInputStream chunkedInputStream) {
     }
 
     private static final class AwsChunkedInputStream extends InputStream {
@@ -1724,6 +1812,7 @@ public class S3ObjectController {
         private boolean finished;
         private long decodedLength;
         private String previousSignature;
+        private final Map<String, String> trailers = new LinkedHashMap<>();
 
         private AwsChunkedInputStream(
                 InputStream input,
@@ -1886,7 +1975,21 @@ public class S3ObjectController {
             String line;
             do {
                 line = readAsciiLine();
+                if (line != null && !line.isEmpty()) {
+                    int separator = line.indexOf(':');
+                    if (separator <= 0) {
+                        throw new ApiException(ApiErrorCode.VALIDATION_ERROR, "Invalid aws-chunked trailer header.");
+                    }
+                    trailers.put(
+                            line.substring(0, separator).trim().toLowerCase(Locale.ROOT),
+                            line.substring(separator + 1).trim()
+                    );
+                }
             } while (line != null && !line.isEmpty());
+        }
+
+        private String trailer(String headerName) {
+            return trailers.get(headerName.toLowerCase(Locale.ROOT));
         }
 
         private void consumeCrlf() throws IOException {
@@ -1958,6 +2061,7 @@ public class S3ObjectController {
                 }
                 checksumValidators.forEach(validator -> validator.update(value));
                 bytesRead++;
+                finishIfTrailerChecksumReady();
             }
             return value;
         }
@@ -1976,8 +2080,17 @@ public class S3ObjectController {
                 }
                 checksumValidators.forEach(validator -> validator.update(buffer, offset, count));
                 bytesRead += count;
+                finishIfTrailerChecksumReady();
             }
             return count;
+        }
+
+        private void finishIfTrailerChecksumReady() {
+            if (expectedLength >= 0
+                    && bytesRead == expectedLength
+                    && checksumValidators.stream().anyMatch(BodyChecksumValidator::requiresTrailerFinish)) {
+                finish();
+            }
         }
 
         private void finish() {
@@ -2024,25 +2137,53 @@ public class S3ObjectController {
         private final MessageDigest messageDigest;
         private final Checksum checksum;
         private final byte[] expectedDigest;
+        private final int expectedLength;
+        private final AwsChunkedInputStream trailerSource;
+        private final Map<String, String> checksumValues;
 
         private BodyChecksumValidator(
                 String headerName,
                 MessageDigest messageDigest,
                 Checksum checksum,
-                byte[] expectedDigest
+                byte[] expectedDigest,
+                int expectedLength,
+                AwsChunkedInputStream trailerSource,
+                Map<String, String> checksumValues
         ) {
             this.headerName = headerName;
             this.messageDigest = messageDigest;
             this.checksum = checksum;
             this.expectedDigest = expectedDigest;
+            this.expectedLength = expectedLength;
+            this.trailerSource = trailerSource;
+            this.checksumValues = checksumValues;
         }
 
         private static BodyChecksumValidator messageDigest(String headerName, MessageDigest messageDigest, byte[] expectedDigest) {
-            return new BodyChecksumValidator(headerName, messageDigest, null, expectedDigest);
+            return new BodyChecksumValidator(headerName, messageDigest, null, expectedDigest, expectedDigest.length, null, null);
         }
 
         private static BodyChecksumValidator crc(String headerName, Checksum checksum, byte[] expectedDigest) {
-            return new BodyChecksumValidator(headerName, null, checksum, expectedDigest);
+            return new BodyChecksumValidator(headerName, null, checksum, expectedDigest, expectedDigest.length, null, null);
+        }
+
+        private static BodyChecksumValidator trailerMessageDigest(
+                String headerName,
+                MessageDigest messageDigest,
+                int expectedLength,
+                AwsChunkedInputStream trailerSource,
+                Map<String, String> checksumValues
+        ) {
+            return new BodyChecksumValidator(headerName, messageDigest, null, null, expectedLength, trailerSource, checksumValues);
+        }
+
+        private static BodyChecksumValidator trailerCrc(
+                String headerName,
+                Checksum checksum,
+                AwsChunkedInputStream trailerSource,
+                Map<String, String> checksumValues
+        ) {
+            return new BodyChecksumValidator(headerName, null, checksum, null, 4, trailerSource, checksumValues);
         }
 
         private void update(int value) {
@@ -2062,12 +2203,34 @@ public class S3ObjectController {
         }
 
         private void validate() {
+            byte[] expected = expectedDigest();
             byte[] actualDigest = messageDigest != null
                     ? messageDigest.digest()
                     : intDigest(checksum.getValue());
-            if (!MessageDigest.isEqual(expectedDigest, actualDigest)) {
+            if (!MessageDigest.isEqual(expected, actualDigest)) {
                 throw new ApiException(ApiErrorCode.BAD_DIGEST, headerName + " does not match uploaded object body.");
             }
+        }
+
+        private boolean requiresTrailerFinish() {
+            return trailerSource != null;
+        }
+
+        private byte[] expectedDigest() {
+            if (expectedDigest != null) {
+                return expectedDigest;
+            }
+            if (trailerSource == null) {
+                throw new ApiException(ApiErrorCode.INVALID_DIGEST, headerName + " checksum is unavailable.");
+            }
+            String rawChecksum = trailerSource.trailer(headerName);
+            if (rawChecksum == null || rawChecksum.isBlank()) {
+                throw new ApiException(ApiErrorCode.VALIDATION_ERROR, headerName + " trailer is required.");
+            }
+            if (checksumValues != null) {
+                checksumValues.put(headerName, rawChecksum.trim());
+            }
+            return decodeChecksum(headerName, rawChecksum, expectedLength);
         }
 
         private static byte[] intDigest(long value) {
@@ -2097,23 +2260,32 @@ public class S3ObjectController {
     private record DeleteObjectError(String key, String code, String message) {
     }
 
-    private record ChecksumResponseHeader(String name, String value) {
+    private record ChecksumValidation(
+            List<BodyChecksumValidator> validators,
+            ChecksumResponseHeader responseHeader,
+            Map<String, String> values
+    ) {
+    }
+
+    private record ChecksumResponseHeader(String name, Map<String, String> values) {
 
         private static ChecksumResponseHeader empty() {
-            return new ChecksumResponseHeader("", "");
+            return new ChecksumResponseHeader("", Map.of());
         }
 
         private void apply(ResponseEntity.BodyBuilder builder) {
+            String value = values.get(name);
             if (name != null && !name.isBlank() && value != null && !value.isBlank()) {
                 builder.header(name, value);
             }
         }
 
         private Map<String, String> asMap() {
-            if (name == null || name.isBlank() || value == null || value.isBlank()) {
+            if (name == null || name.isBlank()) {
                 return Map.of();
             }
-            return Map.of(name, value);
+            String value = values.get(name);
+            return value == null || value.isBlank() ? Map.of() : Map.of(name, value);
         }
     }
 

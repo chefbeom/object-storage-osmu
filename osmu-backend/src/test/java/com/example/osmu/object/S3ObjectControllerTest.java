@@ -297,6 +297,46 @@ class S3ObjectControllerTest {
                 .andExpect(status().isBadRequest())
                 .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_XML))
                 .andExpect(content().string(containsString("<Code>InvalidRequest</Code>")));
+
+        String trailerChecksum = checksumBase64("SHA-256", decodedBody);
+        String trailerBody = "d;chunk-signature=" + chunkSignature + "\r\n"
+                + decodedBody
+                + "\r\n0;chunk-signature=" + finalChunkSignature + "\r\n"
+                + "x-amz-checksum-sha256:" + trailerChecksum + "\r\n\r\n";
+        mockMvc.perform(put("/api/s3/{bucketName}/docs/chunked-trailer-checksum.txt", bucketName)
+                        .header("X-OSMU-Access-Key", credentials.accessKey())
+                        .header("X-OSMU-Secret-Key", credentials.secretKey())
+                        .header("x-amz-content-sha256", "STREAMING-AWS4-HMAC-SHA256-PAYLOAD")
+                        .header("x-amz-decoded-content-length", decodedBody.getBytes(StandardCharsets.UTF_8).length)
+                        .header("x-amz-trailer", "x-amz-checksum-sha256")
+                        .header(HttpHeaders.CONTENT_ENCODING, "aws-chunked")
+                        .contentType(MediaType.TEXT_PLAIN)
+                        .content(trailerBody.getBytes(StandardCharsets.UTF_8)))
+                .andExpect(status().isOk())
+                .andExpect(header().string("x-amz-checksum-sha256", trailerChecksum));
+
+        mockMvc.perform(head("/api/s3/{bucketName}/docs/chunked-trailer-checksum.txt", bucketName)
+                        .header("X-OSMU-Access-Key", credentials.accessKey())
+                        .header("X-OSMU-Secret-Key", credentials.secretKey()))
+                .andExpect(status().isOk())
+                .andExpect(header().string("x-amz-checksum-sha256", trailerChecksum));
+
+        String badTrailerBody = "d;chunk-signature=" + chunkSignature + "\r\n"
+                + decodedBody
+                + "\r\n0;chunk-signature=" + finalChunkSignature + "\r\n"
+                + "x-amz-checksum-sha256:" + checksumBase64("SHA-256", "different") + "\r\n\r\n";
+        mockMvc.perform(put("/api/s3/{bucketName}/docs/chunked-bad-trailer-checksum.txt", bucketName)
+                        .header("X-OSMU-Access-Key", credentials.accessKey())
+                        .header("X-OSMU-Secret-Key", credentials.secretKey())
+                        .header("x-amz-content-sha256", "STREAMING-AWS4-HMAC-SHA256-PAYLOAD")
+                        .header("x-amz-decoded-content-length", decodedBody.getBytes(StandardCharsets.UTF_8).length)
+                        .header("x-amz-trailer", "x-amz-checksum-sha256")
+                        .header(HttpHeaders.CONTENT_ENCODING, "aws-chunked")
+                        .contentType(MediaType.TEXT_PLAIN)
+                        .content(badTrailerBody.getBytes(StandardCharsets.UTF_8)))
+                .andExpect(status().isBadRequest())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_XML))
+                .andExpect(content().string(containsString("<Code>BadDigest</Code>")));
     }
 
     @Test

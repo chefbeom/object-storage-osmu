@@ -289,7 +289,7 @@
 - Feature: S3 compatibility supported/partial/unsupported matrix.
 - Preconditions: `dev-docs/s3-compatibility.md`, `api-spec.md`, and backend S3 tests are available.
 - Steps: Review the S3 matrix and compare it with backend tests for path-style, virtual-hosted-style, SigV4, presigned auth, object PUT/GET/HEAD/DELETE, CopyObject, tagging, list, multi-delete, multipart, checksum, and aws-chunked body decoding.
-- Expected: The matrix lists supported, partial, and unsupported behavior, including aws-chunked decoded length validation, `STREAMING-AWS4-HMAC-SHA256-PAYLOAD` chunk-signature presence/format validation, SigV4 header-auth cryptographic per-chunk signature chain verification, and missing trailer checksum parity.
+- Expected: The matrix lists supported, partial, and unsupported behavior, including aws-chunked decoded length validation, `STREAMING-AWS4-HMAC-SHA256-PAYLOAD` chunk-signature presence/format validation, SigV4 header-auth cryptographic per-chunk signature chain verification, trailing checksum validation, and remaining CRC64NVME gap.
 - Priority: P1
 - Automated: backend S3 controller tests and `verify-s3-client-smoke.ps1`; document consistency is reviewed through `git diff --check` and code review.
 
@@ -302,6 +302,16 @@
 - Expected: Valid bodies are decoded and stored. Missing/invalid chunk signature format returns S3 XML `InvalidRequest`. Tampered SigV4 chunk data returns S3 XML `AccessDenied`.
 - Priority: P1
 - Automated: `S3ObjectControllerTest.accessKeyCanUploadAwsChunkedStreamingPayload`, `S3ObjectControllerTest.awsSigV4HeaderAuthVerifiesAwsChunkedStreamingSignatureChain`
+
+### TC-S3-OBJECT-007
+
+- Feature: S3 aws-chunked trailing checksum validation.
+- Preconditions: Target bucket exists. Active access key has `READ` and `WRITE` scope.
+- Input: `PUT /api/s3/{bucketName}/{objectKey}` with `Content-Encoding: aws-chunked`, `x-amz-decoded-content-length`, `x-amz-trailer: x-amz-checksum-sha256`, and final chunk trailer `x-amz-checksum-sha256:{base64}`.
+- Steps: Upload a valid trailing checksum, verify the upload response and later HEAD expose the checksum header, then upload a mismatched trailing checksum.
+- Expected: Valid checksum is stored in object metadata and echoed as `x-amz-checksum-sha256`. Mismatched checksum returns S3 XML `BadDigest`.
+- Priority: P1
+- Automated: `S3ObjectControllerTest.accessKeyCanUploadAwsChunkedStreamingPayload`
 
 ### TC-S3-MULTIPART-COMPLETE-001
 
