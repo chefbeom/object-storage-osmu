@@ -45,7 +45,7 @@
 - CopyObject supports source preconditions through ETag and Last-Modified headers, including AWS-documented combined-header precedence cases, plus destination `If-Match`/`If-None-Match` overwrite guards, and returns `412 PreconditionFailed` when they fail.
 - S3 multipart initiate accepts optional OSMU expected-size metadata headers. When omitted, it creates an AWS-style unknown-size multipart session and checks quota on complete using the actual completed object size.
 - S3 multipart part upload validates optional `Content-MD5`, signed `x-amz-content-sha256`, and one optional `x-amz-checksum-*` value header, and returns the matching checksum response header.
-- S3 multipart complete validates one optional final object `x-amz-checksum-*` value header against the completed object, stores matching checksum metadata, returns the matching checksum response header, and exposes it in complete-result XML.
+- S3 multipart complete validates one optional final object `x-amz-checksum-*` value header against the completed object, validates optional `x-amz-mp-object-size` against the actual completed object size, stores matching checksum metadata, returns the matching checksum response header, and exposes it in complete-result XML.
 - S3 multipart complete request XML accepts optional per-part checksum elements and validates their syntax before storage completion. When every completed part supplies the same `ChecksumSHA256` or `ChecksumSHA1` value and no final object checksum header is supplied, OSMU stores the AWS-style composite checksum calculated from the ordered part checksum bytes.
 - S3 multipart complete rejects missing uploaded parts or stale per-part ETags before storage completion.
 - Missing S3 multipart upload IDs return S3 XML `NoSuchUpload`.

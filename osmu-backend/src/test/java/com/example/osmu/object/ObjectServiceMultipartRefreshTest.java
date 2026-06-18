@@ -500,6 +500,71 @@ class ObjectServiceMultipartRefreshTest {
     }
 
     @Test
+    void completeMultipartUploadRejectsMismatchedExpectedObjectSizeBeforeMetadataCommit() {
+        BucketRecord bucket = new BucketRecord(1L, "bucket", "USER", 1L, 1000000000L, 0L, 0L, OffsetDateTime.now());
+        StoredObjectRecord uploaded = new StoredObjectRecord(
+                "videos/size-fail.mp4",
+                5L,
+                "video/mp4",
+                OffsetDateTime.now(),
+                Map.of()
+        );
+        when(bucketService.get("bucket", user)).thenReturn(bucket);
+        when(storageAdapter.statObject("bucket", "videos/size-fail.mp4")).thenReturn(Optional.empty());
+        when(storageAdapter.createMultipartUpload(
+                eq("bucket"),
+                eq("videos/size-fail.mp4"),
+                eq("video/mp4"),
+                eq(900),
+                anyList()
+        )).thenAnswer(invocation -> storageUpload("storage-upload-size-fail", invocation.getArgument(4), 900, "create"));
+        when(storageAdapter.completeMultipartUpload(
+                eq("bucket"),
+                eq("videos/size-fail.mp4"),
+                eq("storage-upload-size-fail"),
+                anyList()
+        )).thenReturn(uploaded);
+        givenUploadedParts(
+                "bucket",
+                "videos/size-fail.mp4",
+                "storage-upload-size-fail",
+                new MultipartUploadUploadedPart(1, "\"etag-1\"", 5L)
+        );
+
+        MultipartUploadCreateResponse created = objectService.createMultipartUpload(
+                "bucket",
+                new MultipartUploadCreateRequest(
+                        "videos/size-fail.mp4",
+                        "video/mp4",
+                        5L,
+                        5L,
+                        900,
+                        ""
+                ),
+                user
+        );
+
+        assertThatThrownBy(() -> objectService.completeMultipartUpload(
+                "bucket",
+                new MultipartUploadCompleteRequest(
+                        created.uploadId(),
+                        "videos/size-fail.mp4",
+                        List.of(new CompletedMultipartUploadPart(1, "\"etag-1\""))
+                ),
+                user,
+                Map.of(),
+                6L
+        )).isInstanceOfSatisfying(ApiException.class, exception ->
+                assertThat(exception.code()).isEqualTo(ApiErrorCode.VALIDATION_ERROR));
+
+        PresignedUploadSession failedSession = uploadSessionRepository.findByUploadId(created.uploadId()).orElseThrow();
+        assertThat(failedSession.status()).isEqualTo("FAILED");
+        verify(storageAdapter).deleteObject("bucket", "videos/size-fail.mp4");
+        verify(objectMetadataRepository, never()).save(eq("bucket"), any(StoredObjectRecord.class));
+        verify(bucketService, never()).applyObjectChange(eq("bucket"), anyLong(), anyLong());
+    }
+
+    @Test
     void completeMultipartUploadRejectsInvalidPartChecksumBeforeStorageComplete() {
         BucketRecord bucket = new BucketRecord(1L, "bucket", "USER", 1L, 1000000000L, 0L, 0L, OffsetDateTime.now());
         when(bucketService.get("bucket", user)).thenReturn(bucket);

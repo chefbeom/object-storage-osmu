@@ -77,6 +77,7 @@ public class S3ObjectController {
     private static final String AWS_CONTENT_SHA256_HEADER = "x-amz-content-sha256";
     private static final String AWS_DECODED_CONTENT_LENGTH_HEADER = "x-amz-decoded-content-length";
     private static final String AWS_TRAILER_HEADER = "x-amz-trailer";
+    private static final String AWS_MP_OBJECT_SIZE_HEADER = "x-amz-mp-object-size";
     private static final String AWS_CHECKSUM_SHA256_HEADER = "x-amz-checksum-sha256";
     private static final String AWS_CHECKSUM_SHA1_HEADER = "x-amz-checksum-sha1";
     private static final String AWS_CHECKSUM_CRC32_HEADER = "x-amz-checksum-crc32";
@@ -373,7 +374,8 @@ public class S3ObjectController {
                 bucketName,
                 new MultipartUploadCompleteRequest(uploadId, objectKey, completedPartsFromXml(requestBody(request))),
                 user,
-                checksumResponseHeader.asMap()
+                checksumResponseHeader.asMap(),
+                multipartObjectSize(request)
         );
         auditLogService.record("S3_OBJECT_MULTIPART_COMPLETE", user.loginId(), "OBJECT", bucketName + "/" + object.key(), "SUCCESS", "S3-style multipart upload completed", request);
         dataFlowMonitoringService.recordUpload(bucketName, object.key(), object.sizeBytes(), user.loginId(), "S3");
@@ -2015,6 +2017,25 @@ public class S3ObjectController {
             throw new ApiException(ApiErrorCode.INVALID_DIGEST, "Only one x-amz-checksum-* trailer is supported.");
         }
         return checksumTrailers.isEmpty() ? null : checksumTrailers.get(0);
+    }
+
+    private Long multipartObjectSize(HttpServletRequest request) {
+        String rawSize = request.getHeader(AWS_MP_OBJECT_SIZE_HEADER);
+        if (rawSize == null || rawSize.isBlank()) {
+            return null;
+        }
+        if (rawSize.contains(",")) {
+            throw new ApiException(ApiErrorCode.VALIDATION_ERROR, AWS_MP_OBJECT_SIZE_HEADER + " must specify one size.");
+        }
+        try {
+            long size = Long.parseLong(rawSize.trim());
+            if (size <= 0) {
+                throw new ApiException(ApiErrorCode.VALIDATION_ERROR, AWS_MP_OBJECT_SIZE_HEADER + " must be positive.");
+            }
+            return size;
+        } catch (NumberFormatException exception) {
+            throw new ApiException(ApiErrorCode.VALIDATION_ERROR, AWS_MP_OBJECT_SIZE_HEADER + " must be a positive integer.");
+        }
     }
 
     private boolean isSupportedChecksumHeader(String headerName) {

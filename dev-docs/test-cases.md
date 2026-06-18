@@ -357,11 +357,11 @@
 
 - Feature: S3 multipart complete XML part list validation.
 - Preconditions: Target bucket exists. Active access key has `WRITE` scope. Multipart upload session exists.
-- Input: `POST /api/s3/{bucketName}/{objectKey}?uploadId={uploadId}` with `CompleteMultipartUpload` XML.
-- Steps: Send valid ascending part list, send invalid lists with empty parts, duplicate `PartNumber`, descending `PartNumber`, `PartNumber` outside 1~10000, and blank `ETag`, then request completion with a missing uploaded part and a stale ETag.
-- Expected: Valid XML is parsed and passed to multipart complete. Invalid XML, missing uploaded part, and stale ETag return S3 XML `InvalidRequest` before storage complete.
+- Input: `POST /api/s3/{bucketName}/{objectKey}?uploadId={uploadId}` with `CompleteMultipartUpload` XML and optional `x-amz-mp-object-size`.
+- Steps: Send valid ascending part list, send invalid lists with empty parts, duplicate `PartNumber`, descending `PartNumber`, `PartNumber` outside 1~10000, and blank `ETag`, reject invalid `x-amz-mp-object-size`, then request completion with a missing uploaded part, a stale ETag, and a mismatched expected object size.
+- Expected: Valid XML is parsed and passed to multipart complete. Invalid XML, invalid or mismatched `x-amz-mp-object-size`, missing uploaded part, and stale ETag return S3 XML `InvalidRequest`; completed storage objects are rolled back before metadata commit on expected-size mismatch.
 - Priority: P1
-- Automated: `S3ObjectControllerMultipartTest.completeMultipartUploadParsesS3XmlAndReturnsResultXml`, `S3ObjectControllerMultipartTest.completeMultipartUploadRejectsInvalidPartListXml`, `ObjectServiceMultipartRefreshTest.completeMultipartUploadRejectsMissingOrMismatchedUploadedPartBeforeStorageComplete`
+- Automated: `S3ObjectControllerMultipartTest.completeMultipartUploadParsesS3XmlAndReturnsResultXml`, `S3ObjectControllerMultipartTest.completeMultipartUploadRejectsInvalidPartListXml`, `S3ObjectControllerMultipartTest.completeMultipartUploadRejectsInvalidMultipartObjectSizeHeader`, `ObjectServiceMultipartRefreshTest.completeMultipartUploadRejectsMissingOrMismatchedUploadedPartBeforeStorageComplete`, `ObjectServiceMultipartRefreshTest.completeMultipartUploadRejectsMismatchedExpectedObjectSizeBeforeMetadataCommit`
 
 ### TC-S3-MULTIPART-COMPLETE-002
 

@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
@@ -347,6 +348,7 @@ class S3ObjectControllerMultipartTest {
         String crc64Checksum = "rosUhgp5mIg=";
         String partChecksum = "rosUhgp5mIg=";
         request.addHeader("x-amz-checksum-crc64nvme", crc64Checksum);
+        request.addHeader("x-amz-mp-object-size", "10485760");
         request.setContent("""
                 <CompleteMultipartUpload>
                   <Part>
@@ -362,7 +364,8 @@ class S3ObjectControllerMultipartTest {
                 eq("bucket"),
                 any(MultipartUploadCompleteRequest.class),
                 eq(user),
-                argThat(headers -> crc64Checksum.equals(headers.get("x-amz-checksum-crc64nvme")))
+                argThat(headers -> crc64Checksum.equals(headers.get("x-amz-checksum-crc64nvme"))),
+                eq(10485760L)
         ))
                 .thenReturn(new StoredObjectRecord(
                         "videos/input.mp4",
@@ -383,7 +386,8 @@ class S3ObjectControllerMultipartTest {
                 eq("bucket"),
                 captor.capture(),
                 eq(user),
-                argThat(headers -> crc64Checksum.equals(headers.get("x-amz-checksum-crc64nvme")))
+                argThat(headers -> crc64Checksum.equals(headers.get("x-amz-checksum-crc64nvme"))),
+                eq(10485760L)
         );
         assertThat(captor.getValue().uploadId()).isEqualTo("upload-1");
         assertThat(captor.getValue().parts()).extracting(CompletedMultipartUploadPart::partNumber)
@@ -425,7 +429,8 @@ class S3ObjectControllerMultipartTest {
                 eq("bucket"),
                 any(MultipartUploadCompleteRequest.class),
                 eq(user),
-                argThat(Map::isEmpty)
+                argThat(Map::isEmpty),
+                isNull()
         ))
                 .thenReturn(new StoredObjectRecord(
                         "videos/input.mp4",
@@ -443,6 +448,25 @@ class S3ObjectControllerMultipartTest {
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(response.getHeaders().getFirst("x-amz-checksum-sha256")).isEqualTo(compositeChecksum);
         assertThat(response.getBody()).contains("<ChecksumSHA256>" + compositeChecksum + "</ChecksumSHA256>");
+    }
+
+    @Test
+    void completeMultipartUploadRejectsInvalidMultipartObjectSizeHeader() {
+        MockHttpServletRequest request = request("POST");
+        request.setContentType(MediaType.APPLICATION_XML_VALUE);
+        request.addHeader("x-amz-mp-object-size", "not-a-number");
+        request.setContent("""
+                <CompleteMultipartUpload>
+                  <Part><PartNumber>1</PartNumber><ETag>"etag-1"</ETag></Part>
+                </CompleteMultipartUpload>
+                """.getBytes(StandardCharsets.UTF_8));
+        when(s3RequestAuthService.currentUser(request, "bucket", "WRITE")).thenReturn(user);
+
+        assertThatThrownBy(() -> controller.completeMultipartUpload("bucket", "videos/input.mp4", "upload-1", request))
+                .isInstanceOfSatisfying(ApiException.class, exception ->
+                        assertThat(exception.code()).isEqualTo(ApiErrorCode.VALIDATION_ERROR));
+
+        verifyNoInteractions(objectService);
     }
 
     @Test

@@ -1,5 +1,39 @@
 # Worklog - main
 
+### 2026-06-18 - S3 multipart complete object-size guard
+
+- Work time:
+  - End: 2026-06-18 19:11:08 +09:00
+- User command:
+  - Active goal: continue development from `dev-docs`.
+- Request analysis:
+  - `dev-docs` still tracks broader AWS multipart/error parity gaps.
+  - AWS CompleteMultipartUpload documents `x-amz-mp-object-size` as the expected total object size and says mismatch returns `HTTP 400 InvalidRequest`.
+- Execution:
+  - Added S3 `x-amz-mp-object-size` parsing for CompleteMultipartUpload.
+  - Passed the expected object size into `ObjectService.completeMultipartUpload`.
+  - Validated the expected size against the actual completed storage object before metadata commit, rolling back the completed object and marking the session failed on mismatch.
+  - Added controller/service regressions and docs.
+- Modified files:
+  - `osmu-backend/src/main/java/com/example/osmu/object/S3ObjectController.java`
+  - `osmu-backend/src/main/java/com/example/osmu/object/ObjectService.java`
+  - `osmu-backend/src/test/java/com/example/osmu/object/S3ObjectControllerMultipartTest.java`
+  - `osmu-backend/src/test/java/com/example/osmu/object/ObjectServiceMultipartRefreshTest.java`
+  - `dev-docs/PRODUCT_REQUIREMENTS.md`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/backend-design.md`
+  - `dev-docs/s3-compatibility.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/feature-inventory.md`
+  - `dev-docs/worklog/main/worklog-main.md`
+- Tests:
+  - `gradle test --tests com.example.osmu.object.ObjectServiceMultipartRefreshTest.completeMultipartUploadRejectsMismatchedExpectedObjectSizeBeforeMetadataCommit --tests com.example.osmu.object.S3ObjectControllerMultipartTest.completeMultipartUploadParsesS3XmlAndReturnsResultXml --tests com.example.osmu.object.S3ObjectControllerMultipartTest.completeMultipartUploadRejectsInvalidMultipartObjectSizeHeader`: passed.
+  - `gradle test --tests com.example.osmu.object.ObjectServiceMultipartRefreshTest --tests com.example.osmu.object.S3ObjectControllerMultipartTest`: passed.
+  - `gradle test`: passed.
+- Review:
+  - Validation happens after storage completion because the storage adapter is the authoritative source for actual completed size; rollback keeps failed completes out of metadata.
+  - Remaining multipart gaps include checksum-type negotiation, CRC aggregation variants, and broader AWS conditional/error edge parity.
+
 ### 2026-06-18 - S3 multipart SHA composite checksum aggregation
 
 - Work time:

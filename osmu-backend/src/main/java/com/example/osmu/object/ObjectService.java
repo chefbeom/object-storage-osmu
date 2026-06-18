@@ -790,6 +790,16 @@ public class ObjectService {
             AuthenticatedUser user,
             Map<String, String> checksums
     ) {
+        return completeMultipartUpload(bucketName, request, user, checksums, null);
+    }
+
+    public synchronized StoredObjectRecord completeMultipartUpload(
+            String bucketName,
+            MultipartUploadCompleteRequest request,
+            AuthenticatedUser user,
+            Map<String, String> checksums,
+            Long expectedObjectSize
+    ) {
         bucketService.assertCanWrite(bucketName, user);
         String normalizedBucketName = bucketService.get(bucketName, user).name();
         String normalizedKey = normalizeRequiredKey(request.key());
@@ -839,6 +849,7 @@ public class ObjectService {
                 uploadedObject = storageAdapter.setObjectTags(normalizedBucketName, normalizedKey, tags);
             }
             try {
+                validateMultipartObjectSize(uploadedObject, expectedObjectSize);
                 validateStoredObjectChecksums(normalizedBucketName, normalizedKey, requestedChecksums);
                 bucketService.assertObjectChangeAllowed(normalizedBucketName, uploadedObject.sizeBytes(), 1L);
             } catch (RuntimeException exception) {
@@ -1022,6 +1033,18 @@ public class ObjectService {
         }
         if (!MessageDigest.isEqual(expected, actual)) {
             throw new ApiException(ApiErrorCode.BAD_DIGEST, checksum.getKey() + " does not match completed multipart object body.");
+        }
+    }
+
+    private void validateMultipartObjectSize(StoredObjectRecord uploadedObject, Long expectedObjectSize) {
+        if (expectedObjectSize == null) {
+            return;
+        }
+        if (expectedObjectSize <= 0) {
+            throw new ApiException(ApiErrorCode.VALIDATION_ERROR, "x-amz-mp-object-size must be positive.");
+        }
+        if (uploadedObject.sizeBytes() != expectedObjectSize) {
+            throw new ApiException(ApiErrorCode.VALIDATION_ERROR, "x-amz-mp-object-size does not match completed object size.");
         }
     }
 
