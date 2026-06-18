@@ -55,6 +55,10 @@ test('HomeView exposes stable selectors for browser E2E flows', () => {
     'dashboard-config-panel',
     'dashboard-edit-mode-toggle',
     'dashboard-view-mode-summary',
+    'dashboard-loading-state',
+    'dashboard-error-state',
+    'dashboard-retry-button',
+    'dashboard-empty-state',
     'dashboard-widget-reset-button',
     'dashboard-layout-sync',
     'dashboard-layout-preset-select',
@@ -413,7 +417,9 @@ test('HomeView exposes stable selectors for browser E2E flows', () => {
   assert.match(dashboardSource, /deleteDashboardLayout/)
   assert.match(dashboardSource, /dashboardLayoutSyncLabel/)
   assert.match(dashboardSource, /dashboardEditMode/)
+  assert.match(dashboardSource, /dashboardLoadState/)
   assert.match(dashboardSource, /toggleDashboardEditMode/)
+  assert.match(dashboardSource, /retry-dashboard-load/)
   assert.match(dashboardSource, /DASHBOARD_LAYOUT_SCHEMA_VERSION/)
   assert.match(dashboardSource, /dashboardLayoutPresets/)
   assert.match(dashboardSource, /dashboardLayoutDefaults/)

@@ -83,6 +83,8 @@
         :dashboard-layout-sync-label="dashboardLayoutSyncLabel"
         :dashboard-layout-pending="dashboardLayoutSync.pending"
         :dashboard-edit-mode="dashboardEditMode"
+        :dashboard-loading="dashboardLoadState.loading"
+        :dashboard-load-error="dashboardLoadState.error"
         :usage-percent="usagePercent"
         :usage="usage"
         :selected-bucket="selectedBucket"
@@ -142,6 +144,7 @@
         @update-dashboard-layout-default-target-id="dashboardLayoutDefaultForm.targetId = $event"
         @update-dashboard-layout-default-preset-id="dashboardLayoutDefaultForm.presetId = $event"
         @toggle-dashboard-edit-mode="toggleDashboardEditMode"
+        @retry-dashboard-load="loadDashboard"
         @reset-dashboard-widgets="resetDashboardWidgets"
         @add-dashboard-widget="addDashboardWidget"
         @add-dashboard-widget-by-id="addDashboardWidgetById"
@@ -1118,6 +1121,7 @@ const dataFlowMonitoring = reactive({
 })
 const confirmDialog = reactive({ open: false, title: '', message: '', confirmLabel: '확인', pending: false, action: null })
 const dashboardLayoutSync = reactive({ source: 'LOCAL', updatedAt: '', pending: false })
+const dashboardLoadState = reactive({ loading: false, error: '' })
 
 const buckets = ref([])
 const objects = ref([])
@@ -2029,7 +2033,7 @@ async function refreshDashboardAutoData() {
   if (dashboardAutoRefreshRunning || !isLoggedIn.value || activePage.value !== 'dashboard') return
   dashboardAutoRefreshRunning = true
   try {
-    await loadDashboard()
+    await loadDashboard({ background: true })
   } finally {
     dashboardAutoRefreshRunning = false
   }
@@ -2048,76 +2052,96 @@ async function loadHealth() {
   }
 }
 
-async function loadDashboard() {
-  clearError()
+async function loadDashboard(options = {}) {
+  const background = options?.background === true
+  if (!background) {
+    clearError()
+    dashboardLoadState.loading = true
+    dashboardLoadState.error = ''
+  }
   refreshPendingMultipartUploads()
-  await loadDashboardWidgetCatalog()
-  await Promise.all([loadDashboardLayout(), loadDashboardLayoutPresets(), loadDashboardLayoutDefaults()])
-  const dashboardSummaryLoaded = isAdmin.value ? await loadDashboardSummary() : false
-  if (!dashboardSummaryLoaded) {
-    await loadHealth()
-  }
+  try {
+    await loadDashboardWidgetCatalog()
+    await Promise.all([loadDashboardLayout(), loadDashboardLayoutPresets(), loadDashboardLayoutDefaults()])
+    const dashboardSummaryLoaded = isAdmin.value ? await loadDashboardSummary() : false
+    if (!dashboardSummaryLoaded) {
+      await loadHealth()
+    }
 
-  const [bucketResult, keyResult] = await Promise.all([
-    safeRequest(() => getBuckets(), { items: [] }),
-    safeRequest(() => getAccessKeys(), { items: [] }),
-  ])
-
-  buckets.value = bucketResult.items || []
-  accessKeys.value = keyResult.items || []
-  await Promise.all([loadStorageProfiles(), loadStorageProfileRequests()])
-  await loadS3ClientConfig()
-  syncAccessKeyBucketSelection()
-  if (!dashboardSummaryLoaded) {
-    Object.assign(usage, summarizeBuckets(buckets.value))
-  }
-
-  if (!selectedBucket.value && buckets.value.length > 0) {
-    selectedBucket.value = buckets.value[0].name
-  }
-
-  if (canUseAdminTools.value) {
-    const [userResult, organizationResult, organizationUsageResult] = await Promise.all([
-      safeRequest(() => getUsers(), { items: [] }),
-      safeRequest(() => getOrganizations(), { items: [] }),
-      safeRequest(() => getOrganizationUsage(), { items: [] }),
+    const [bucketResult, keyResult] = await Promise.all([
+      safeRequest(() => getBuckets(), { items: [] }),
+      safeRequest(() => getAccessKeys(), { items: [] }),
     ])
-    users.value = userResult.items || []
-    organizations.value = organizationResult.items || []
-    organizationUsages.value = organizationUsageResult.items || []
-  } else {
-    users.value = []
-    organizations.value = []
-    organizationUsages.value = []
-  }
 
-  if (isAdmin.value) {
-    await Promise.all([
-      dashboardSummaryLoaded ? Promise.resolve() : loadAdminUsage(),
-      dashboardSummaryLoaded ? Promise.resolve() : loadBackupStatus(),
-      dashboardSummaryLoaded ? Promise.resolve() : loadRetentionStatus(),
-      dashboardSummaryLoaded ? Promise.resolve() : loadDataFlowMonitoring(),
-      loadStorageExpansionExecutionLogRetentionStatus(),
-      refreshLifecycleRules(),
-      refreshLifecycleRuleConflicts(),
-      loadQuotaPolicies(),
-      loadStorageProfileRequests(),
-      loadStorageExpansionRequests(),
-      loadStorageExpansionSummary(),
-      loadStorageExpansionRunnerPreflight(),
-      loadObjectSharePolicy(),
-      dashboardSummaryLoaded ? Promise.resolve() : refreshObjectShareAnalytics(),
-      dashboardSummaryLoaded ? Promise.resolve() : handleLoadAuditLogs(),
-    ])
-  } else {
-    resetAdminOnlyState()
-  }
+    buckets.value = bucketResult.items || []
+    accessKeys.value = keyResult.items || []
+    await Promise.all([loadStorageProfiles(), loadStorageProfileRequests()])
+    await loadS3ClientConfig()
+    syncAccessKeyBucketSelection()
+    if (!dashboardSummaryLoaded) {
+      Object.assign(usage, summarizeBuckets(buckets.value))
+    }
 
-  if (selectedBucket.value) {
-    await loadSelectedBucketDetails()
-  } else {
-    objects.value = []
-    objectPrefixes.value = []
+    if (!selectedBucket.value && buckets.value.length > 0) {
+      selectedBucket.value = buckets.value[0].name
+    }
+
+    if (canUseAdminTools.value) {
+      const [userResult, organizationResult, organizationUsageResult] = await Promise.all([
+        safeRequest(() => getUsers(), { items: [] }),
+        safeRequest(() => getOrganizations(), { items: [] }),
+        safeRequest(() => getOrganizationUsage(), { items: [] }),
+      ])
+      users.value = userResult.items || []
+      organizations.value = organizationResult.items || []
+      organizationUsages.value = organizationUsageResult.items || []
+    } else {
+      users.value = []
+      organizations.value = []
+      organizationUsages.value = []
+    }
+
+    if (isAdmin.value) {
+      await Promise.all([
+        dashboardSummaryLoaded ? Promise.resolve() : loadAdminUsage(),
+        dashboardSummaryLoaded ? Promise.resolve() : loadBackupStatus(),
+        dashboardSummaryLoaded ? Promise.resolve() : loadRetentionStatus(),
+        dashboardSummaryLoaded ? Promise.resolve() : loadDataFlowMonitoring(),
+        loadStorageExpansionExecutionLogRetentionStatus(),
+        refreshLifecycleRules(),
+        refreshLifecycleRuleConflicts(),
+        loadQuotaPolicies(),
+        loadStorageProfileRequests(),
+        loadStorageExpansionRequests(),
+        loadStorageExpansionSummary(),
+        loadStorageExpansionRunnerPreflight(),
+        loadObjectSharePolicy(),
+        dashboardSummaryLoaded ? Promise.resolve() : refreshObjectShareAnalytics(),
+        dashboardSummaryLoaded ? Promise.resolve() : handleLoadAuditLogs(),
+      ])
+    } else {
+      resetAdminOnlyState()
+    }
+
+    if (selectedBucket.value) {
+      await loadSelectedBucketDetails()
+    } else {
+      objects.value = []
+      objectPrefixes.value = []
+    }
+
+    if (!background) {
+      dashboardLoadState.error = errorMessage.value || ''
+    }
+  } catch (error) {
+    if (!background) {
+      dashboardLoadState.error = error?.message || 'Dashboard 데이터를 불러오지 못했습니다.'
+    }
+    setError(error)
+  } finally {
+    if (!background) {
+      dashboardLoadState.loading = false
+    }
   }
 }
 
@@ -2297,6 +2321,8 @@ function resetSessionData() {
   dashboardLayoutSync.source = 'LOCAL'
   dashboardLayoutSync.updatedAt = ''
   dashboardLayoutSync.pending = false
+  dashboardLoadState.loading = false
+  dashboardLoadState.error = ''
   dashboardEditMode.value = false
   resetObjectVersions()
   resetObjectShareLinks()

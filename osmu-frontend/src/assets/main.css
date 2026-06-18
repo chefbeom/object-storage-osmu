@@ -504,6 +504,54 @@ label {
   overflow-wrap: anywhere;
 }
 
+.dashboard-state-panel {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 0 18px 14px;
+  padding: 12px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: #f8fafc;
+}
+
+.dashboard-state-panel span,
+.dashboard-state-panel strong,
+.dashboard-state-panel small {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.dashboard-state-panel strong,
+.dashboard-state-panel small {
+  display: block;
+}
+
+.dashboard-state-panel small {
+  margin-top: 3px;
+  color: var(--color-muted);
+  font-size: 12px;
+}
+
+.dashboard-loading-state {
+  border-color: #bfdbfe;
+  background: #eff6ff;
+}
+
+.dashboard-error-state {
+  border-color: #fecaca;
+  background: #fef2f2;
+}
+
+.dashboard-error-state strong {
+  color: #991b1b;
+}
+
+.dashboard-empty-state {
+  grid-column: 1 / -1;
+}
+
 .dashboard-add-form,
 .dashboard-preset-form,
 .dashboard-preset-save-form,

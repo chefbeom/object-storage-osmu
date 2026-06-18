@@ -16,6 +16,17 @@
     <p v-if="!dashboardEditMode" class="dashboard-view-mode-summary" data-testid="dashboard-view-mode-summary">
       조회 mode / {{ visibleDashboardWidgets.length }} visible panels / {{ dashboardLayoutSyncLabel }}
     </p>
+    <div v-if="dashboardLoading" class="dashboard-state-panel dashboard-loading-state" data-testid="dashboard-loading-state" role="status" aria-live="polite">
+      <strong>Dashboard loading</strong>
+      <small>최신 layout, bucket, access key, readiness 상태를 불러오는 중입니다.</small>
+    </div>
+    <div v-if="dashboardLoadError" class="dashboard-state-panel dashboard-error-state" data-testid="dashboard-error-state" role="alert">
+      <span>
+        <strong>Dashboard load failed</strong>
+        <small>{{ dashboardLoadError }}</small>
+      </span>
+      <button data-testid="dashboard-retry-button" type="button" class="ghost" @click="$emit('retry-dashboard-load')">Retry</button>
+    </div>
     <template v-if="dashboardEditMode">
     <div class="inline-form dashboard-add-form">
       <select data-testid="dashboard-widget-select" :value="dashboardWidgetToAdd" @change="$emit('update-widget-to-add', $event.target.value)">
@@ -288,7 +299,18 @@
     </template>
   </section>
 
-  <section class="dashboard-widget-sections" data-testid="dashboard-widget-sections">
+  <section
+    v-if="!dashboardLoading && visibleDashboardWidgetSections.length === 0"
+    class="empty-state-panel dashboard-empty-state"
+    data-testid="dashboard-empty-state"
+  >
+    <div class="empty-state-body">
+      <strong>표시할 dashboard panel이 없습니다</strong>
+      <small>편집 mode에서 panel을 다시 표시하거나 preset을 적용하세요.</small>
+    </div>
+  </section>
+
+  <section v-else class="dashboard-widget-sections" data-testid="dashboard-widget-sections">
     <section
       v-for="section in visibleDashboardWidgetSections"
       :key="section.id"
@@ -1640,6 +1662,8 @@ const props = defineProps({
   dashboardWidgetDropIndex: { type: Number, required: true },
   dashboardLayoutSyncLabel: { type: String, required: true },
   dashboardLayoutPending: { type: Boolean, required: true },
+  dashboardLoading: { type: Boolean, required: true },
+  dashboardLoadError: { type: String, required: true },
   usagePercent: { type: Number, required: true },
   usage: { type: Object, required: true },
   selectedBucket: { type: String, required: true },
@@ -1695,6 +1719,7 @@ const props = defineProps({
 
 defineEmits([
   'toggle-dashboard-edit-mode',
+  'retry-dashboard-load',
   'update-widget-to-add',
   'update-dashboard-layout-preset',
   'update-dashboard-layout-preset-name',
