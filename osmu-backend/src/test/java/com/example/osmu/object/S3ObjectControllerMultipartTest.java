@@ -186,6 +186,53 @@ class S3ObjectControllerMultipartTest {
     }
 
     @Test
+    void createMultipartUploadRejectsUnsupportedControlHeaders() {
+        expectUnsupportedCreateMultipartHeader("x-amz-acl", "public-read");
+        expectUnsupportedCreateMultipartHeader("x-amz-grant-read", "id=\"abc\"");
+        expectUnsupportedCreateMultipartHeader("x-amz-object-lock-mode", "GOVERNANCE");
+        expectUnsupportedCreateMultipartHeader("x-amz-object-lock-legal-hold", "ON");
+        expectUnsupportedCreateMultipartHeader("x-amz-server-side-encryption", "aws:kms");
+        expectUnsupportedCreateMultipartHeader("x-amz-server-side-encryption-customer-algorithm", "AES256");
+        expectUnsupportedCreateMultipartHeader("x-amz-storage-class", "GLACIER");
+        expectUnsupportedCreateMultipartHeader("x-amz-website-redirect-location", "/target");
+        expectUnsupportedCreateMultipartHeader("x-amz-request-payer", "requester");
+
+        MockHttpServletRequest safeDefaultsRequest = request("POST");
+        safeDefaultsRequest.addHeader("x-amz-acl", "private");
+        safeDefaultsRequest.addHeader("x-amz-storage-class", "STANDARD");
+        when(s3RequestAuthService.currentUser(safeDefaultsRequest, "bucket", "WRITE")).thenReturn(user);
+        when(objectService.createS3MultipartUpload(
+                eq("bucket"),
+                argThat(body -> body.key().equals("videos/input.mp4")),
+                eq(user)
+        )).thenReturn(new MultipartUploadCreateResponse(
+                "upload-safe",
+                "videos/input.mp4",
+                0L,
+                0L,
+                0,
+                900,
+                OffsetDateTime.now().plusMinutes(15),
+                List.of()
+        ));
+
+        var response = controller.createMultipartUpload("bucket", "videos/input.mp4", safeDefaultsRequest);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(response.getBody()).contains("<UploadId>upload-safe</UploadId>");
+    }
+
+    private void expectUnsupportedCreateMultipartHeader(String headerName, String value) {
+        MockHttpServletRequest request = request("POST");
+        request.addHeader(headerName, value);
+        when(s3RequestAuthService.currentUser(request, "bucket", "WRITE")).thenReturn(user);
+
+        assertThatThrownBy(() -> controller.createMultipartUpload("bucket", "videos/input.mp4", request))
+                .isInstanceOfSatisfying(ApiException.class, exception ->
+                        assertThat(exception.code()).isEqualTo(ApiErrorCode.VALIDATION_ERROR));
+    }
+
+    @Test
     void listMultipartUploadsReturnsS3Xml() {
         MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/s3/bucket");
         when(s3RequestAuthService.currentUser(request, "bucket", "WRITE")).thenReturn(user);

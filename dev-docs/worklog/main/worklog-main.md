@@ -1,5 +1,36 @@
 # Worklog - main
 
+### 2026-06-18 - S3 multipart initiate unsupported controls
+
+- Work time:
+  - End: 2026-06-18 19:50:39 +09:00
+- User command:
+  - Active goal: continue development from `dev-docs`.
+- Request analysis:
+  - `dev-docs` still tracks broader S3 error behavior parity and CreateMultipartUpload edge parity.
+  - AWS CreateMultipartUpload documents ACL, grant, Object Lock, server-side encryption, storage class, website redirect, and requester-pays controls that OSMU does not support in the S3 multipart initiate path.
+- Execution:
+  - Added S3 multipart initiate validation for unsupported control headers before session creation.
+  - Rejected non-private ACL, grant headers, Object Lock headers, server-side encryption headers, non-`STANDARD` storage class, website redirect, and requester-pays as S3 XML `InvalidRequest`.
+  - Accepted safe no-op defaults `x-amz-acl: private` and `x-amz-storage-class: STANDARD`.
+  - Added controller regression coverage and updated S3 compatibility/API/backend/PRD/test docs.
+- Modified files:
+  - `osmu-backend/src/main/java/com/example/osmu/object/S3ObjectController.java`
+  - `osmu-backend/src/test/java/com/example/osmu/object/S3ObjectControllerMultipartTest.java`
+  - `dev-docs/PRODUCT_REQUIREMENTS.md`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/backend-design.md`
+  - `dev-docs/s3-compatibility.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/feature-inventory.md`
+  - `dev-docs/worklog/main/worklog-main.md`
+- Tests:
+  - `gradle test --tests com.example.osmu.object.S3ObjectControllerMultipartTest`: passed.
+  - `gradle test`: passed.
+- Review:
+  - Unsupported create controls no longer get silently ignored, reducing false S3 compatibility claims.
+  - Remaining CreateMultipartUpload parity still includes exact AWS edge error/status behavior and persisted checksum negotiation across later multipart operations.
+
 ### 2026-06-18 - S3 multipart initiate checksum negotiation headers
 
 - Work time:

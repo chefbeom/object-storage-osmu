@@ -85,6 +85,26 @@ public class S3ObjectController {
     private static final String AWS_CHECKSUM_CRC32C_HEADER = "x-amz-checksum-crc32c";
     private static final String AWS_CHECKSUM_CRC64NVME_HEADER = "x-amz-checksum-crc64nvme";
     private static final String AWS_CHECKSUM_ALGORITHM_HEADER = "x-amz-checksum-algorithm";
+    private static final String AWS_ACL_HEADER = "x-amz-acl";
+    private static final List<String> AWS_ACL_GRANT_HEADERS = List.of(
+            "x-amz-grant-full-control",
+            "x-amz-grant-read",
+            "x-amz-grant-read-acp",
+            "x-amz-grant-write-acp"
+    );
+    private static final String AWS_OBJECT_LOCK_MODE_HEADER = "x-amz-object-lock-mode";
+    private static final String AWS_OBJECT_LOCK_RETAIN_UNTIL_DATE_HEADER = "x-amz-object-lock-retain-until-date";
+    private static final String AWS_OBJECT_LOCK_LEGAL_HOLD_HEADER = "x-amz-object-lock-legal-hold";
+    private static final String AWS_SSE_HEADER = "x-amz-server-side-encryption";
+    private static final String AWS_SSE_KMS_KEY_ID_HEADER = "x-amz-server-side-encryption-aws-kms-key-id";
+    private static final String AWS_SSE_CONTEXT_HEADER = "x-amz-server-side-encryption-context";
+    private static final String AWS_SSE_BUCKET_KEY_ENABLED_HEADER = "x-amz-server-side-encryption-bucket-key-enabled";
+    private static final String AWS_SSE_CUSTOMER_ALGORITHM_HEADER = "x-amz-server-side-encryption-customer-algorithm";
+    private static final String AWS_SSE_CUSTOMER_KEY_HEADER = "x-amz-server-side-encryption-customer-key";
+    private static final String AWS_SSE_CUSTOMER_KEY_MD5_HEADER = "x-amz-server-side-encryption-customer-key-MD5";
+    private static final String AWS_STORAGE_CLASS_HEADER = "x-amz-storage-class";
+    private static final String AWS_WEBSITE_REDIRECT_HEADER = "x-amz-website-redirect-location";
+    private static final String AWS_REQUEST_PAYER_HEADER = "x-amz-request-payer";
     private static final String HTTP_IF_RANGE_HEADER = "If-Range";
     private static final String AWS_UNSIGNED_PAYLOAD = "UNSIGNED-PAYLOAD";
     private static final String AWS_STREAMING_PAYLOAD_PREFIX = "STREAMING-";
@@ -284,6 +304,7 @@ public class S3ObjectController {
             HttpServletRequest request
     ) {
         AuthenticatedUser user = s3RequestAuthService.currentUser(request, bucketName, "WRITE");
+        validateMultipartInitiateUnsupportedControls(request);
         String checksumAlgorithm = multipartInitiateChecksumAlgorithm(request);
         String checksumType = multipartInitiateChecksumType(request, checksumAlgorithm);
         MultipartUploadCreateResponse response = objectService.createS3MultipartUpload(
@@ -874,6 +895,44 @@ public class S3ObjectController {
             case "CRC64NVME" -> AWS_CHECKSUM_CRC64NVME_HEADER;
             default -> throw new ApiException(ApiErrorCode.VALIDATION_ERROR, AWS_CHECKSUM_ALGORITHM_HEADER + " is not supported.");
         };
+    }
+
+    private void validateMultipartInitiateUnsupportedControls(HttpServletRequest request) {
+        String acl = request.getHeader(AWS_ACL_HEADER);
+        if (acl != null && !acl.isBlank() && !"private".equalsIgnoreCase(acl.trim())) {
+            throw unsupportedMultipartInitiateHeader(AWS_ACL_HEADER);
+        }
+        for (String headerName : AWS_ACL_GRANT_HEADERS) {
+            rejectNonBlankMultipartInitiateHeader(request, headerName);
+        }
+        rejectNonBlankMultipartInitiateHeader(request, AWS_OBJECT_LOCK_MODE_HEADER);
+        rejectNonBlankMultipartInitiateHeader(request, AWS_OBJECT_LOCK_RETAIN_UNTIL_DATE_HEADER);
+        rejectNonBlankMultipartInitiateHeader(request, AWS_OBJECT_LOCK_LEGAL_HOLD_HEADER);
+        rejectNonBlankMultipartInitiateHeader(request, AWS_SSE_HEADER);
+        rejectNonBlankMultipartInitiateHeader(request, AWS_SSE_KMS_KEY_ID_HEADER);
+        rejectNonBlankMultipartInitiateHeader(request, AWS_SSE_CONTEXT_HEADER);
+        rejectNonBlankMultipartInitiateHeader(request, AWS_SSE_BUCKET_KEY_ENABLED_HEADER);
+        rejectNonBlankMultipartInitiateHeader(request, AWS_SSE_CUSTOMER_ALGORITHM_HEADER);
+        rejectNonBlankMultipartInitiateHeader(request, AWS_SSE_CUSTOMER_KEY_HEADER);
+        rejectNonBlankMultipartInitiateHeader(request, AWS_SSE_CUSTOMER_KEY_MD5_HEADER);
+        rejectNonBlankMultipartInitiateHeader(request, AWS_WEBSITE_REDIRECT_HEADER);
+        rejectNonBlankMultipartInitiateHeader(request, AWS_REQUEST_PAYER_HEADER);
+        String storageClass = request.getHeader(AWS_STORAGE_CLASS_HEADER);
+        if (storageClass != null && !storageClass.isBlank()
+                && !"STANDARD".equalsIgnoreCase(storageClass.trim())) {
+            throw unsupportedMultipartInitiateHeader(AWS_STORAGE_CLASS_HEADER);
+        }
+    }
+
+    private void rejectNonBlankMultipartInitiateHeader(HttpServletRequest request, String headerName) {
+        String value = request.getHeader(headerName);
+        if (value != null && !value.isBlank()) {
+            throw unsupportedMultipartInitiateHeader(headerName);
+        }
+    }
+
+    private ApiException unsupportedMultipartInitiateHeader(String headerName) {
+        return new ApiException(ApiErrorCode.VALIDATION_ERROR, headerName + " is not supported for S3 CreateMultipartUpload.");
     }
 
     private String multipartInitiateChecksumAlgorithm(HttpServletRequest request) {
