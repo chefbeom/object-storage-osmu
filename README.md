@@ -279,5 +279,5 @@ powershell -ExecutionPolicy Bypass -File .\scripts\verify-s3-client-smoke.ps1 -C
 - host-installed `aws` 또는 `mc` 기반 S3 smoke 검증.
 - data-flow 장기 analytics를 위한 partition 또는 time-series 저장소 연동.
 - tenant billing/chargeback을 위한 요금 정책, 비용 리포트, 임계치 모델링.
-- S3 parity 확대: 남은 AWS multipart checksum 협상/real-client option 세부 동작, generic digest/large/conflict/internal 이후 남은 non-bucket error message/status nuance.
+- S3 parity 확대: 남은 AWS multipart checksum 협상/real-client option 세부 동작, digest/large/conflict/internal/missing-length 이후 남은 non-bucket error message/status nuance.
 - 운영 패키징: demo notes, release notes, troubleshooting, runbook 보강.

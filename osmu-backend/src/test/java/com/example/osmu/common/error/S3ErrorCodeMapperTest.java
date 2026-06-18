@@ -27,6 +27,8 @@ class S3ErrorCodeMapperTest {
                 "CompleteMultipartUpload parts must be in ascending PartNumber order without duplicates.")).isEqualTo("InvalidPartOrder");
         assertThat(S3ErrorCodeMapper.codeFor(ApiErrorCode.VALIDATION_ERROR,
                 "Multipart upload part 1 is smaller than the minimum allowed object size.")).isEqualTo("EntityTooSmall");
+        assertThat(S3ErrorCodeMapper.codeFor(ApiErrorCode.VALIDATION_ERROR,
+                "Content-Length is required for S3 object upload.")).isEqualTo("MissingContentLength");
         assertThat(S3ErrorCodeMapper.codeFor(ApiErrorCode.QUOTA_EXCEEDED, "quota")).isEqualTo("EntityTooLarge");
         assertThat(S3ErrorCodeMapper.codeFor(ApiErrorCode.CONFLICT, "conflict")).isEqualTo("OperationAborted");
         assertThat(S3ErrorCodeMapper.codeFor(ApiErrorCode.CONFLICT, "Bucket is not empty.")).isEqualTo("BucketNotEmpty");
@@ -78,5 +80,7 @@ class S3ErrorCodeMapperTest {
                 .isEqualTo("A conflicting conditional action is currently in progress against this resource. Try again.");
         assertThat(S3ErrorCodeMapper.messageFor("InternalError", "storage unavailable"))
                 .isEqualTo("We encountered an internal error. Please try again.");
+        assertThat(S3ErrorCodeMapper.messageFor("MissingContentLength", "Content-Length is required for S3 object upload."))
+                .isEqualTo("You must provide the Content-Length HTTP header.");
     }
 }

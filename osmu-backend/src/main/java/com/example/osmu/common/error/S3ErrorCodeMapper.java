@@ -83,6 +83,9 @@ public final class S3ErrorCodeMapper {
         if ("InternalError".equals(s3Code)) {
             return "We encountered an internal error. Please try again.";
         }
+        if ("MissingContentLength".equals(s3Code)) {
+            return "You must provide the Content-Length HTTP header.";
+        }
         return message == null || message.isBlank() ? s3Code : message;
     }
 
@@ -109,6 +112,9 @@ public final class S3ErrorCodeMapper {
         }
         if (normalized.contains("minimum allowed object size")) {
             return "EntityTooSmall";
+        }
+        if (normalized.contains("content-length is required")) {
+            return "MissingContentLength";
         }
         return "InvalidRequest";
     }

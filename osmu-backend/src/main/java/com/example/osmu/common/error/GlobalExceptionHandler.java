@@ -94,6 +94,9 @@ public class GlobalExceptionHandler {
         if ("AccessDenied".equals(code)) {
             return HttpStatusCode.valueOf(403);
         }
+        if ("MissingContentLength".equals(code)) {
+            return HttpStatusCode.valueOf(411);
+        }
         return fallback.status();
     }
 

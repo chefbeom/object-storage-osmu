@@ -1,5 +1,37 @@
 # Worklog - main
 
+### 2026-06-19 - S3 MissingContentLength error parity
+
+- Work time:
+  - End: 2026-06-19 KST
+- User command:
+  - Active goal: continue development from `dev-docs`.
+- Request analysis:
+  - `dev-docs` still track remaining AWS non-bucket per-error message/status nuance.
+  - AWS S3 error docs define `MissingContentLength` as HTTP `411 Length Required` with message `You must provide the Content-Length HTTP header.`
+  - OSMU required non-streaming object and multipart part `Content-Length`, but S3 XML errors still surfaced generic `InvalidRequest` with HTTP `400`.
+- Execution:
+  - Mapped validation failures mentioning missing `Content-Length` to S3 XML `MissingContentLength`.
+  - Normalized the S3 XML message to the AWS-style text and mapped S3 response status to HTTP `411`.
+  - Added mapper and MockMvc regression tests for missing object upload `Content-Length`.
+  - Updated README and `dev-docs`.
+- Modified files:
+  - `osmu-backend/src/main/java/com/example/osmu/common/error/S3ErrorCodeMapper.java`
+  - `osmu-backend/src/main/java/com/example/osmu/common/error/GlobalExceptionHandler.java`
+  - `osmu-backend/src/test/java/com/example/osmu/common/error/S3ErrorCodeMapperTest.java`
+  - `osmu-backend/src/test/java/com/example/osmu/object/S3ObjectControllerTest.java`
+  - `README.md`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/backend-design.md`
+  - `dev-docs/s3-compatibility.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/feature-inventory.md`
+  - `dev-docs/worklog/main/worklog-main.md`
+- Tests:
+  - `$env:JAVA_HOME='C:\jdk-17'; .\gradlew.bat test --no-daemon --tests com.example.osmu.common.error.S3ErrorCodeMapperTest --tests com.example.osmu.object.S3ObjectControllerTest.missingS3ObjectContentLengthReturnsMissingContentLengthXml`: passed.
+- Follow-up:
+  - Continue remaining AWS checksum real-client option coverage and non-bucket per-error status/message nuance.
+
 ### 2026-06-18 - S3 CompleteMultipartUpload inferred ChecksumType response
 
 - Work time:

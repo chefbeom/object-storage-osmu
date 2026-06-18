@@ -263,6 +263,22 @@ class S3ObjectControllerTest {
     }
 
     @Test
+    void missingS3ObjectContentLengthReturnsMissingContentLengthXml() throws Exception {
+        String token = loginAndReturnAccessToken("admin", "password");
+        String bucketName = "s3-missing-length-bucket";
+        createBucket(token, bucketName);
+        AccessKeyCredentials credentials = createAccessKey(token, bucketName, "WRITE");
+
+        mockMvc.perform(put("/api/s3/{bucketName}/docs/no-length.txt", bucketName)
+                        .header("X-OSMU-Access-Key", credentials.accessKey())
+                        .header("X-OSMU-Secret-Key", credentials.secretKey())
+                        .contentType(MediaType.TEXT_PLAIN))
+                .andExpect(status().is(411))
+                .andExpect(content().string(containsString("<Code>MissingContentLength</Code>")))
+                .andExpect(content().string(containsString("<Message>You must provide the Content-Length HTTP header.</Message>")));
+    }
+
+    @Test
     void accessKeyCanCopyObjectFromSourceVersionId() throws Exception {
         String token = loginAndReturnAccessToken("admin", "password");
         String bucketName = "s3-copy-version-bucket";
