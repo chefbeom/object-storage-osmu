@@ -255,10 +255,11 @@ MVP 데모 기준 완료율은 약 90~95%입니다.
 - S3 single object PUT `x-amz-sdk-checksum-algorithm` auto-compute and AWS CLI `--checksum-algorithm SHA256` smoke coverage
 - S3 boto3 SDK checksum option smoke with `ChecksumAlgorithm=SHA256` and `ChecksumMode=ENABLED`
 - S3 AWS SDK JavaScript checksum option smoke with `ChecksumAlgorithm: "SHA256"` and `ChecksumMode: "ENABLED"`
+- S3 AWS SDK Java checksum option smoke with `ChecksumAlgorithm.SHA256` and `ChecksumMode.ENABLED` when `OSMU_AWS_SDK_JAVA_CLASSPATH` points to AWS SDK Java v2 jars
 
 남은 것:
 
-- full AWS multipart checksum negotiation parity beyond stored UploadPart checksum metadata and complete-time matching guards, especially exact AWS response propagation and external AWS SDK Java checksum option coverage
+- full AWS multipart checksum negotiation parity beyond stored UploadPart checksum metadata and complete-time matching guards, especially exact AWS response propagation
 
 ### 4.7 MariaDB metadata
 

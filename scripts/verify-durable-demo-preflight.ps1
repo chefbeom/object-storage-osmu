@@ -4,7 +4,7 @@ param(
     [string] $ComposeFile = ".\infra\local\docker-compose.yml",
     [string] $ReportPath = ".\.osmu-run\latest-durable-demo-preflight.json",
     [string] $SummaryPath = ".\.osmu-run\latest-durable-demo-preflight.md",
-    [ValidateSet("auto", "aws", "boto3", "aws-js", "mc", "docker-mc", "all")]
+    [ValidateSet("auto", "aws", "boto3", "aws-js", "aws-java", "mc", "docker-mc", "all")]
     [string] $S3Client = "docker-mc",
     [switch] $AllowNotReady,
     [switch] $NoReport
@@ -129,14 +129,38 @@ function Test-NodeAwsSdkS3Available() {
     }
 }
 
-function Get-S3SelectionReady([string] $Selection, [bool] $AwsAvailable, [bool] $Boto3Available, [bool] $AwsJsAvailable, [bool] $McAvailable, [bool] $DockerClientAvailable) {
+function Test-JavaAwsSdkS3Available() {
+    if ([string]::IsNullOrWhiteSpace($env:OSMU_AWS_SDK_JAVA_CLASSPATH)) {
+        return [pscustomobject]@{
+            available = $false
+            detail = "OSMU_AWS_SDK_JAVA_CLASSPATH is not set"
+        }
+    }
+
+    $java = Test-Command "java"
+    $javac = Test-Command "javac"
+    if (-not $java -or -not $javac) {
+        return [pscustomobject]@{
+            available = $false
+            detail = "java and javac are required for AWS SDK Java smoke"
+        }
+    }
+
+    return [pscustomobject]@{
+        available = $true
+        detail = "$($java.Source) and $($javac.Source) with OSMU_AWS_SDK_JAVA_CLASSPATH"
+    }
+}
+
+function Get-S3SelectionReady([string] $Selection, [bool] $AwsAvailable, [bool] $Boto3Available, [bool] $AwsJsAvailable, [bool] $AwsJavaAvailable, [bool] $McAvailable, [bool] $DockerClientAvailable) {
     switch ($Selection) {
         "aws" { return $AwsAvailable }
         "boto3" { return $Boto3Available }
         "aws-js" { return $AwsJsAvailable }
+        "aws-java" { return $AwsJavaAvailable }
         "mc" { return $McAvailable }
         "docker-mc" { return $DockerClientAvailable }
-        default { return ($AwsAvailable -or $Boto3Available -or $AwsJsAvailable -or $McAvailable -or $DockerClientAvailable) }
+        default { return ($AwsAvailable -or $Boto3Available -or $AwsJsAvailable -or $AwsJavaAvailable -or $McAvailable -or $DockerClientAvailable) }
     }
 }
 
@@ -252,6 +276,10 @@ $awsJsStatus = Test-NodeAwsSdkS3Available
 $awsJsAvailable = [bool]$awsJsStatus.available
 Add-Check "AWS SDK JavaScript S3" $(if ($awsJsAvailable) { "PASS" } else { "FAIL" }) $false $awsJsStatus.detail
 
+$awsJavaStatus = Test-JavaAwsSdkS3Available
+$awsJavaAvailable = [bool]$awsJavaStatus.available
+Add-Check "AWS SDK Java S3" $(if ($awsJavaAvailable) { "PASS" } else { "FAIL" }) $false $awsJavaStatus.detail
+
 $mc = Test-Command "mc"
 $mcAvailable = $false
 if ($mc) {
@@ -270,12 +298,12 @@ else {
     Add-Check "Dockerized MinIO Client mc" "FAIL" $false "Docker daemon is unavailable for containerized mc"
 }
 
-$s3SelectionReady = Get-S3SelectionReady $S3Client $awsAvailable $boto3Available $awsJsAvailable $mcAvailable $dockerDaemonAvailable
+$s3SelectionReady = Get-S3SelectionReady $S3Client $awsAvailable $boto3Available $awsJsAvailable $awsJavaAvailable $mcAvailable $dockerDaemonAvailable
 if ($s3SelectionReady) {
     Add-Check "Selected real S3 client path" "PASS" $true "selected S3 client path is available" "S3Client=$S3Client"
 }
 else {
-    Add-Check "Selected real S3 client path" "FAIL" $true "selected S3 client path is unavailable" "S3Client=$S3Client; choose auto/aws/boto3/aws-js/mc or start Docker Desktop for docker-mc"
+    Add-Check "Selected real S3 client path" "FAIL" $true "selected S3 client path is unavailable" "S3Client=$S3Client; choose auto/aws/boto3/aws-js/aws-java/mc or start Docker Desktop for docker-mc"
 }
 
 $requiredFailures = @($script:Checks | Where-Object { $_.required -and $_.status -eq "FAIL" })

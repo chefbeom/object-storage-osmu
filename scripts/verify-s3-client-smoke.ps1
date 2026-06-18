@@ -4,7 +4,7 @@ param(
     [string] $AdminLoginId = "admin",
     [string] $AdminPassword = "password",
     [string] $BucketName = "",
-    [ValidateSet("auto", "aws", "boto3", "aws-js", "mc", "docker-mc", "all")]
+    [ValidateSet("auto", "aws", "boto3", "aws-js", "aws-java", "mc", "docker-mc", "all")]
     [string] $Client = "auto",
     [string] $DockerMcImage = "minio/mc:RELEASE.2025-05-21T01-59-54Z",
     [switch] $SkipManualSigV4,
@@ -1136,6 +1136,154 @@ console.log(JSON.stringify({ ChecksumSHA256: expected }));
     }
 }
 
+function Get-JavaWithAwsSdkS3() {
+    $classpath = $env:OSMU_AWS_SDK_JAVA_CLASSPATH
+    if ([string]::IsNullOrWhiteSpace($classpath)) {
+        return $null
+    }
+
+    $java = Get-Command java -ErrorAction SilentlyContinue
+    $javac = Get-Command javac -ErrorAction SilentlyContinue
+    if (-not $java -or -not $javac) {
+        return $null
+    }
+
+    return [pscustomobject]@{
+        Java = $java.Source
+        Javac = $javac.Source
+        Classpath = $classpath
+    }
+}
+
+function Invoke-AwsJavaSdkSmoke($apiBase, $s3Endpoint, $bucketName, $accessKey, $secretKey) {
+    $javaSdk = Get-JavaWithAwsSdkS3
+    if (-not $javaSdk) {
+        return $false
+    }
+
+    Step "AWS SDK Java S3 smoke"
+    $tempDir = Join-Path ([System.IO.Path]::GetTempPath()) "osmu-aws-java-s3-smoke-$([Guid]::NewGuid())"
+    New-Item -ItemType Directory -Force -Path $tempDir | Out-Null
+    try {
+        $sourcePath = Join-Path $tempDir "OsmuAwsSdkJavaChecksumSmoke.java"
+        Set-Content -LiteralPath $sourcePath -Encoding UTF8 -Value @'
+import java.net.URI;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.util.Arrays;
+import java.util.Base64;
+
+import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
+import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
+import software.amazon.awssdk.core.ResponseBytes;
+import software.amazon.awssdk.core.sync.RequestBody;
+import software.amazon.awssdk.regions.Region;
+import software.amazon.awssdk.services.s3.S3Client;
+import software.amazon.awssdk.services.s3.S3Configuration;
+import software.amazon.awssdk.services.s3.model.ChecksumAlgorithm;
+import software.amazon.awssdk.services.s3.model.ChecksumMode;
+import software.amazon.awssdk.services.s3.model.DeleteObjectRequest;
+import software.amazon.awssdk.services.s3.model.GetObjectRequest;
+import software.amazon.awssdk.services.s3.model.GetObjectResponse;
+import software.amazon.awssdk.services.s3.model.HeadObjectRequest;
+import software.amazon.awssdk.services.s3.model.ListObjectsV2Request;
+import software.amazon.awssdk.services.s3.model.PutObjectRequest;
+
+public final class OsmuAwsSdkJavaChecksumSmoke {
+    private OsmuAwsSdkJavaChecksumSmoke() {
+    }
+
+    public static void main(String[] args) throws Exception {
+        String endpoint = args[0];
+        String bucket = args[1];
+        String accessKey = args[2];
+        String secretKey = args[3];
+        String key = "aws-java-checksum-smoke.txt";
+        byte[] body = "osmu aws sdk java checksum smoke".getBytes(StandardCharsets.UTF_8);
+        String expected = Base64.getEncoder().encodeToString(MessageDigest.getInstance("SHA-256").digest(body));
+
+        try (S3Client client = S3Client.builder()
+            .endpointOverride(URI.create(endpoint))
+            .region(Region.US_EAST_1)
+            .credentialsProvider(StaticCredentialsProvider.create(AwsBasicCredentials.create(accessKey, secretKey)))
+            .serviceConfiguration(S3Configuration.builder().pathStyleAccessEnabled(true).build())
+            .build()) {
+
+            boolean bucketListed = client.listBuckets().buckets().stream()
+                .anyMatch(item -> bucket.equals(item.name()));
+            if (!bucketListed) {
+                throw new IllegalStateException("AWS SDK Java listBuckets did not include " + bucket + ".");
+            }
+
+            String putChecksum = client.putObject(PutObjectRequest.builder()
+                    .bucket(bucket)
+                    .key(key)
+                    .contentType("text/plain")
+                    .checksumAlgorithm(ChecksumAlgorithm.SHA256)
+                    .build(),
+                RequestBody.fromBytes(body))
+                .checksumSHA256();
+            if (putChecksum != null && !expected.equals(putChecksum)) {
+                throw new IllegalStateException("AWS SDK Java putObject returned unexpected ChecksumSHA256.");
+            }
+
+            String headChecksum = client.headObject(HeadObjectRequest.builder()
+                    .bucket(bucket)
+                    .key(key)
+                    .checksumMode(ChecksumMode.ENABLED)
+                    .build())
+                .checksumSHA256();
+            if (!expected.equals(headChecksum)) {
+                throw new IllegalStateException("AWS SDK Java headObject did not expose stored ChecksumSHA256.");
+            }
+
+            boolean objectListed = client.listObjectsV2(ListObjectsV2Request.builder()
+                    .bucket(bucket)
+                    .maxKeys(1000)
+                    .build())
+                .contents()
+                .stream()
+                .anyMatch(item -> key.equals(item.key()));
+            if (!objectListed) {
+                throw new IllegalStateException("AWS SDK Java listObjectsV2 did not include checksum object.");
+            }
+
+            ResponseBytes<GetObjectResponse> getResult = client.getObjectAsBytes(GetObjectRequest.builder()
+                .bucket(bucket)
+                .key(key)
+                .checksumMode(ChecksumMode.ENABLED)
+                .build());
+            if (!Arrays.equals(body, getResult.asByteArray())) {
+                throw new IllegalStateException("AWS SDK Java getObject body mismatch.");
+            }
+            if (!expected.equals(getResult.response().checksumSHA256())) {
+                throw new IllegalStateException("AWS SDK Java getObject did not expose stored ChecksumSHA256.");
+            }
+
+            client.deleteObject(DeleteObjectRequest.builder()
+                .bucket(bucket)
+                .key(key)
+                .build());
+        }
+
+        System.out.println("{\"ChecksumSHA256\":\"" + expected + "\"}");
+    }
+}
+'@
+        Invoke-External $javaSdk.Javac @("-cp", $javaSdk.Classpath, $sourcePath) | Out-Null
+        $runtimeClasspath = "$tempDir$([System.IO.Path]::PathSeparator)$($javaSdk.Classpath)"
+        $result = Invoke-ExternalText $javaSdk.Java @("-cp", $runtimeClasspath, "OsmuAwsSdkJavaChecksumSmoke", $s3Endpoint, $bucketName, $accessKey, $secretKey)
+        $parsed = $result | ConvertFrom-Json
+        if (-not $parsed.ChecksumSHA256) {
+            throw "AWS SDK Java checksum smoke did not return checksum evidence."
+        }
+        return $true
+    }
+    finally {
+        Remove-Item -Recurse -Force -LiteralPath $tempDir -ErrorAction SilentlyContinue
+    }
+}
+
 function Invoke-McSmoke($apiBase, $s3Endpoint, $bucketName, $accessKey, $secretKey) {
     $mc = Get-Command mc -ErrorAction SilentlyContinue
     if (-not $mc) {
@@ -1349,6 +1497,13 @@ try {
             throw "Node.js with @aws-sdk/client-s3 is not available in repo node_modules."
         }
     }
+    if ($Client -in @("auto", "aws-java", "all")) {
+        if (Invoke-AwsJavaSdkSmoke $ApiBase $S3Endpoint $BucketName $accessKey $secretKey) {
+            $ranClients.Add("aws-java")
+        } elseif ($Client -eq "aws-java") {
+            throw "Java with AWS SDK Java v2 is not available. Set OSMU_AWS_SDK_JAVA_CLASSPATH to the SDK v2 classpath and ensure java+javac are on PATH."
+        }
+    }
     if ($Client -in @("auto", "mc", "all")) {
         if (Invoke-McSmoke $ApiBase $S3Endpoint $BucketName $accessKey $secretKey) {
             $ranClients.Add("mc")
@@ -1365,7 +1520,7 @@ try {
     }
 
     if ($ranClients.Count -eq 0) {
-        $message = "No real S3 client found. Install AWS CLI (aws), install Python+boto3, install Node.js with @aws-sdk/client-s3 in repo node_modules, install MinIO Client (mc), or start Docker Desktop for Dockerized MinIO Client smoke."
+        $message = "No real S3 client found. Install AWS CLI (aws), install Python+boto3, install Node.js with @aws-sdk/client-s3 in repo node_modules, set OSMU_AWS_SDK_JAVA_CLASSPATH for AWS SDK Java v2, install MinIO Client (mc), or start Docker Desktop for Dockerized MinIO Client smoke."
         if ($RequireClient) {
             throw $message
         }
@@ -1377,7 +1532,7 @@ try {
 finally {
     if ($createdBucket -and -not $KeepBucket) {
         Step "Cleanup smoke data"
-        foreach ($key in @("aws-cli-smoke.txt", "aws-cli-checksum-smoke.txt", "boto3-checksum-smoke.txt", "aws-js-checksum-smoke.txt", "mc-smoke.txt", "docker-mc-smoke.txt", "manual-sigv4-smoke.txt", "manual-copy-sigv4-smoke.txt", "manual-copy-precondition-fail.txt", "manual-bad-payload.txt", "manual-bad-checksum.txt", "manual-vhost-smoke.txt", "manual-multipart-checksum.bin", "manual-multipart-sdk-checksum.bin", "manual-delete-md5-a.txt", "manual-delete-md5-b.txt", "manual-delete-md5-protected.txt")) {
+        foreach ($key in @("aws-cli-smoke.txt", "aws-cli-checksum-smoke.txt", "boto3-checksum-smoke.txt", "aws-js-checksum-smoke.txt", "aws-java-checksum-smoke.txt", "mc-smoke.txt", "docker-mc-smoke.txt", "manual-sigv4-smoke.txt", "manual-copy-sigv4-smoke.txt", "manual-copy-precondition-fail.txt", "manual-bad-payload.txt", "manual-bad-checksum.txt", "manual-vhost-smoke.txt", "manual-multipart-checksum.bin", "manual-multipart-sdk-checksum.bin", "manual-delete-md5-a.txt", "manual-delete-md5-b.txt", "manual-delete-md5-protected.txt")) {
             try {
                 Invoke-Json "DELETE" "$ApiBase/buckets/$BucketName/objects/$key" $null $token | Out-Null
             } catch {

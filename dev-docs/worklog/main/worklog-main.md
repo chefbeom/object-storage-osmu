@@ -1,5 +1,45 @@
 # Worklog - main
 
+### 2026-06-18 - AWS SDK Java S3 checksum smoke path
+
+- Work time:
+  - End: 2026-06-18 KST
+- User command:
+  - Active goal: continue development from `dev-docs`.
+- Request analysis:
+  - `dev-docs` tracked AWS SDK Java checksum option coverage as a remaining S3 parity smoke gap.
+  - Existing smoke coverage already included AWS CLI, boto3, and AWS SDK JavaScript checksum options.
+- Execution:
+  - Added `aws-java` to `scripts/verify-s3-client-smoke.ps1`.
+  - The smoke uses local `java` + `javac` and `OSMU_AWS_SDK_JAVA_CLASSPATH` for AWS SDK Java v2 jars instead of downloading dependencies.
+  - The generated Java smoke uses path-style SigV4 config, `ChecksumAlgorithm.SHA256`, and HEAD/GET `ChecksumMode.ENABLED`.
+  - Added `aws-java` selection support to durable demo preflight/gate/finalizer, MVP readiness, and prototype prerequisite checks.
+  - Updated README and `dev-docs` so AWS SDK Java is an optional checksum smoke target rather than a future Java-specific gap.
+- Modified files:
+  - `scripts/verify-s3-client-smoke.ps1`
+  - `scripts/verify-durable-demo-preflight.ps1`
+  - `scripts/verify-durable-demo-gate.ps1`
+  - `scripts/verify-prototype-prerequisites.ps1`
+  - `scripts/verify-mvp-demo-readiness.ps1`
+  - `scripts/finalize-durable-mvp-demo.ps1`
+  - `scripts/verify-commercial-readiness.ps1`
+  - `README.md`
+  - `dev-docs/s3-compatibility.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/feature-inventory.md`
+  - `dev-docs/local-dev-env.md`
+  - `dev-docs/document-index.md`
+  - `dev-docs/commercial-readiness.md`
+  - `dev-docs/backup-restore-drill.md`
+  - `dev-docs/secret-rotation-policy.md`
+  - `dev-docs/worklog/main/worklog-main.md`
+- Tests:
+  - PowerShell parser check for modified scripts: passed.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-durable-demo-preflight.ps1 -S3Client aws-java -AllowNotReady -NoReport`: passed with expected `pending` because `OSMU_AWS_SDK_JAVA_CLASSPATH` is not set and Docker daemon is stopped.
+- Follow-up:
+  - Run `verify-s3-client-smoke.ps1 -Client aws-java -RequireClient` with AWS SDK Java v2 jars on `OSMU_AWS_SDK_JAVA_CLASSPATH` and a running backend.
+  - Continue multipart checksum response propagation and remaining AWS error behavior parity.
+
 ### 2026-06-18 - S3 PreconditionFailed message parity
 
 - Work time:

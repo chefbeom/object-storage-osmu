@@ -45,7 +45,7 @@ Do not copy secret values into this document, worklogs, release reports, or scre
 7. Start backend and frontend.
 8. Run health checks.
 9. Run login, bucket list, object list, object download, and audit log checks.
-10. Run S3 smoke with `scripts\verify-s3-client-smoke.ps1` when `aws`, Python+boto3, AWS SDK JavaScript, or `mc` is available.
+10. Run S3 smoke with `scripts\verify-s3-client-smoke.ps1` when `aws`, Python+boto3, AWS SDK JavaScript, AWS SDK Java via `OSMU_AWS_SDK_JAVA_CLASSPATH`, or `mc` is available.
 11. Compare restored object count, total bytes, bucket names, user count, and recent audit events against the backup manifest.
 12. Record drill result, gaps, restore duration, and next action. Do not record secret values.
 

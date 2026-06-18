@@ -66,13 +66,13 @@
 | MinIO Client `mc` | Supported smoke target | Alias to OSMU endpoint and OSMU Access Key | Dockerized `mc` is the strongest current local evidence. |
 | boto3 | Supported smoke target | endpoint URL, region, SigV4, path-style | Optional `verify-s3-client-smoke.ps1 -Client boto3` covers `ChecksumAlgorithm=SHA256` plus HEAD/GET `ChecksumMode=ENABLED` when Python+boto3 is available. |
 | AWS SDK JavaScript | Supported smoke target | endpoint URL, region, SigV4, path-style | Optional `verify-s3-client-smoke.ps1 -Client aws-js` covers `ChecksumAlgorithm: "SHA256"` plus HEAD/GET `ChecksumMode: "ENABLED"` when Node.js with `@aws-sdk/client-s3` is available in repo `node_modules`. |
-| AWS SDK Java | Supported config target | endpoint URL, region, SigV4, path-style | Matrix/snippet exposed in developer console. Real checksum option smoke remains a future parity target. |
+| AWS SDK Java | Supported optional smoke target | endpoint URL, region, SigV4, path-style | Optional `verify-s3-client-smoke.ps1 -Client aws-java` covers `ChecksumAlgorithm.SHA256` plus HEAD/GET `ChecksumMode.ENABLED` when `java`, `javac`, and `OSMU_AWS_SDK_JAVA_CLASSPATH` for AWS SDK Java v2 are available. |
 | s3cmd | Supported config target | endpoint URL, access/secret key, path-style | Real smoke may depend on local client availability. |
 | s3fs/goofys | Partial target | endpoint URL, path-style, credentials | Mount behavior is not part of default local gate yet. |
 
 ## Verification Rule
 
 - Backend unit/controller tests prove API contract behavior.
-- `scripts/verify-s3-client-smoke.ps1` proves built-in SigV4 checksum, multipart, SDK-style UploadPart checksum, AWS CLI `--checksum-algorithm SHA256` when host `aws` is available, boto3 `ChecksumAlgorithm=SHA256` when Python+boto3 is available, AWS SDK JavaScript `ChecksumAlgorithm: "SHA256"` when Node.js with `@aws-sdk/client-s3` is available, and optional host/Docker real-client smoke.
+- `scripts/verify-s3-client-smoke.ps1` proves built-in SigV4 checksum, multipart, SDK-style UploadPart checksum, AWS CLI `--checksum-algorithm SHA256` when host `aws` is available, boto3 `ChecksumAlgorithm=SHA256` when Python+boto3 is available, AWS SDK JavaScript `ChecksumAlgorithm: "SHA256"` when Node.js with `@aws-sdk/client-s3` is available, AWS SDK Java `ChecksumAlgorithm.SHA256` when `OSMU_AWS_SDK_JAVA_CLASSPATH` points to AWS SDK Java v2 jars, and optional host/Docker real-client smoke.
 - `scripts/verify-docker-integration.ps1` is stronger because it exercises MariaDB + MinIO + backend container networking, including the SDK-style multipart checksum path.
 - Any newly claimed S3 operation must update this matrix, `api-spec.md`, `test-cases.md`, and at least one automated backend or smoke test.

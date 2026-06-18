@@ -2,7 +2,7 @@ param(
     [string] $ReportPath = ".\.osmu-run\latest-demo-readiness.json",
     [string] $SummaryPath = ".\.osmu-run\latest-demo-readiness.md",
     [string] $JavaHome = "",
-    [ValidateSet("auto", "aws", "boto3", "aws-js", "mc", "docker-mc", "all")]
+    [ValidateSet("auto", "aws", "boto3", "aws-js", "aws-java", "mc", "docker-mc", "all")]
     [string] $S3Client = "docker-mc",
     [switch] $SkipBackendTests,
     [switch] $SkipDockerFullStackE2E,
@@ -241,10 +241,34 @@ function Test-NodeAwsSdkS3Available() {
     }
 }
 
+function Test-JavaAwsSdkS3Available() {
+    if ([string]::IsNullOrWhiteSpace($env:OSMU_AWS_SDK_JAVA_CLASSPATH)) {
+        return [pscustomobject]@{
+            passed = $false
+            detail = "OSMU_AWS_SDK_JAVA_CLASSPATH is not set."
+        }
+    }
+
+    $java = Get-Command java -ErrorAction SilentlyContinue
+    $javac = Get-Command javac -ErrorAction SilentlyContinue
+    if (-not $java -or -not $javac) {
+        return [pscustomobject]@{
+            passed = $false
+            detail = "java and javac are required for AWS SDK Java smoke."
+        }
+    }
+
+    return [pscustomobject]@{
+        passed = $true
+        detail = "$($java.Source) and $($javac.Source) with OSMU_AWS_SDK_JAVA_CLASSPATH"
+    }
+}
+
 function Test-RealS3ClientAvailable() {
     $aws = Get-Command aws -ErrorAction SilentlyContinue
     $boto3Status = Test-PythonBoto3Available
     $awsJsStatus = Test-NodeAwsSdkS3Available
+    $awsJavaStatus = Test-JavaAwsSdkS3Available
     $mc = Get-Command mc -ErrorAction SilentlyContinue
     $dockerStatus = Test-DockerDaemonAvailable
 
@@ -258,6 +282,9 @@ function Test-RealS3ClientAvailable() {
     if ($awsJsStatus.passed) {
         $details += "aws-js=$($awsJsStatus.detail)"
     }
+    if ($awsJavaStatus.passed) {
+        $details += "aws-java=$($awsJavaStatus.detail)"
+    }
     if ($mc) {
         $details += "mc=$($mc.Source)"
     }
@@ -265,11 +292,11 @@ function Test-RealS3ClientAvailable() {
         $details += "docker-mc=$($dockerStatus.detail)"
     }
     if (-not $details) {
-        $details += "aws/Python+boto3/Node @aws-sdk/client-s3/mc not found and Docker daemon is not available for dockerized mc."
+        $details += "aws/Python+boto3/Node @aws-sdk/client-s3/AWS SDK Java classpath/mc not found and Docker daemon is not available for dockerized mc."
     }
 
     return [pscustomobject]@{
-        passed = [bool]($aws -or $boto3Status.passed -or $awsJsStatus.passed -or $mc -or $dockerStatus.passed)
+        passed = [bool]($aws -or $boto3Status.passed -or $awsJsStatus.passed -or $awsJavaStatus.passed -or $mc -or $dockerStatus.passed)
         detail = $details -join "; "
     }
 }
@@ -409,7 +436,7 @@ $s3ClientStatus = Test-RealS3ClientAvailable
 if ($s3ClientStatus.passed) {
     Add-Check "Real S3 client readiness" "READY" "At least one real S3 client is available." $s3ClientStatus.detail
 } else {
-    Add-Check "Real S3 client readiness" "PENDING" "AWS CLI, Python+boto3, AWS SDK JavaScript, host MinIO Client mc, or Dockerized MinIO Client is required for real client smoke." $s3ClientStatus.detail
+    Add-Check "Real S3 client readiness" "PENDING" "AWS CLI, Python+boto3, AWS SDK JavaScript, AWS SDK Java via OSMU_AWS_SDK_JAVA_CLASSPATH, host MinIO Client mc, or Dockerized MinIO Client is required for real client smoke." $s3ClientStatus.detail
 }
 
 if ($javaStatus.passed) {
@@ -463,6 +490,7 @@ $nextCommands = @(
     "powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-docker-integration.ps1",
     "powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-s3-client-smoke.ps1 -Client auto -RequireClient",
     "powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-s3-client-smoke.ps1 -Client aws-js -RequireClient",
+    "powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-s3-client-smoke.ps1 -Client aws-java -RequireClient",
     "powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-s3-client-smoke.ps1 -Client docker-mc -RequireClient",
     "cd .\osmu-frontend; npm run test:e2e"
 )
