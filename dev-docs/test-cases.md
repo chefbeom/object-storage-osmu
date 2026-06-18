@@ -310,6 +310,7 @@
 - Preconditions: `dev-docs/s3-compatibility.md`, `api-spec.md`, and backend S3 tests are available.
 - Steps: Review the S3 matrix and compare it with backend tests for path-style, virtual-hosted-style, SigV4, presigned auth, object PUT/GET/HEAD/DELETE, CopyObject, tagging, list, multi-delete, multipart, checksum, and aws-chunked body decoding.
 - Expected: The matrix lists supported, partial, and unsupported behavior, including aws-chunked decoded length validation, `STREAMING-AWS4-HMAC-SHA256-PAYLOAD` chunk-signature presence/format validation, SigV4 header-auth cryptographic per-chunk signature chain verification, trailing checksum validation including CRC64NVME, multipart initiate checksum algorithm/type header persistence/echo and unsupported control rejection, UploadPart auto checksum persistence and ListParts checksum XML, SHA1/SHA256/CRC32/CRC32C multipart composite checksum aggregation, CRC64NVME full-object multipart checksum handling, complete-time checksum negotiation mismatch `BadDigest`, and remaining broader checksum negotiation gap.
+- Expected error-message evidence: mapper coverage normalizes AWS-style messages for key S3 XML errors including Content-MD5 digest failures, multipart special errors, generic too-large/conflict/internal errors, and keeps non-MD5 checksum detail.
 - Priority: P1
 - Automated: backend S3 controller tests and `verify-s3-client-smoke.ps1`; document consistency is reviewed through `git diff --check` and code review.
 

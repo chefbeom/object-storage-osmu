@@ -1,5 +1,34 @@
 # Worklog - main
 
+### 2026-06-18 - S3 generic error message normalization
+
+- Work time:
+  - End: 2026-06-18 KST
+- User command:
+  - Active goal: continue development from `dev-docs`.
+- Request analysis:
+  - `dev-docs` still track remaining AWS non-bucket per-error message nuance.
+  - AWS S3 error docs define generic messages for `EntityTooLarge`, `OperationAborted`, and `InternalError`.
+  - OSMU already mapped these codes but still returned internal quota/conflict/storage text or the code itself as the XML message.
+- Execution:
+  - Normalized S3 XML messages for `EntityTooLarge`, `OperationAborted`, and `InternalError`.
+  - Added mapper assertions.
+  - Updated README and `dev-docs`.
+- Modified files:
+  - `osmu-backend/src/main/java/com/example/osmu/common/error/S3ErrorCodeMapper.java`
+  - `osmu-backend/src/test/java/com/example/osmu/common/error/S3ErrorCodeMapperTest.java`
+  - `README.md`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/backend-design.md`
+  - `dev-docs/s3-compatibility.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/feature-inventory.md`
+  - `dev-docs/worklog/main/worklog-main.md`
+- Tests:
+  - `$env:JAVA_HOME='C:\jdk-17'; .\gradlew.bat test --no-daemon --rerun-tasks --tests com.example.osmu.common.error.S3ErrorCodeMapperTest`: passed.
+- Follow-up:
+  - Continue remaining multipart checksum negotiation response edge and AWS non-bucket per-error status/message nuance.
+
 ### 2026-06-18 - S3 Content-MD5 digest error messages
 
 - Work time:

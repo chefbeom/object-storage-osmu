@@ -74,6 +74,15 @@ public final class S3ErrorCodeMapper {
             return "Your proposed upload is smaller than the minimum allowed object size. "
                     + "Each part must be at least 5 MB in size, except the last part.";
         }
+        if ("EntityTooLarge".equals(s3Code)) {
+            return "Your proposed upload exceeds the maximum allowed object size.";
+        }
+        if ("OperationAborted".equals(s3Code)) {
+            return "A conflicting conditional action is currently in progress against this resource. Try again.";
+        }
+        if ("InternalError".equals(s3Code)) {
+            return "We encountered an internal error. Please try again.";
+        }
         return message == null || message.isBlank() ? s3Code : message;
     }
 

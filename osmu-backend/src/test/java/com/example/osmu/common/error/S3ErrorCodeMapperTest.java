@@ -72,6 +72,11 @@ class S3ErrorCodeMapperTest {
         assertThat(S3ErrorCodeMapper.messageFor("EntityTooSmall", "small part"))
                 .isEqualTo("Your proposed upload is smaller than the minimum allowed object size. "
                         + "Each part must be at least 5 MB in size, except the last part.");
-        assertThat(S3ErrorCodeMapper.messageFor("InternalError", "")).isEqualTo("InternalError");
+        assertThat(S3ErrorCodeMapper.messageFor("EntityTooLarge", "Bucket quota exceeded."))
+                .isEqualTo("Your proposed upload exceeds the maximum allowed object size.");
+        assertThat(S3ErrorCodeMapper.messageFor("OperationAborted", "conflict"))
+                .isEqualTo("A conflicting conditional action is currently in progress against this resource. Try again.");
+        assertThat(S3ErrorCodeMapper.messageFor("InternalError", "storage unavailable"))
+                .isEqualTo("We encountered an internal error. Please try again.");
     }
 }
