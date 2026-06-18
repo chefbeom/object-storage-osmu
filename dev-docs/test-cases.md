@@ -75,7 +75,7 @@
 - Input: `PUT/GET/DELETE /api/s3/{bucketName}?lifecycle` with `X-OSMU-Access-Key` and `X-OSMU-Secret-Key`.
 - Steps: Use the `ADMIN` scoped key to put/get/delete lifecycle XML, then use the `READ`-only key to request lifecycle XML.
 - Expected: `ADMIN` scoped key succeeds without Bearer JWT. `READ`-only key is rejected with `403`.
-- Expected error body: S3 XML with `AccessDenied`.
+- Expected error body: S3 XML with `AccessDenied` and message `Access Denied`.
 - Priority: P1
 - Automated: `BucketLifecycleControllerTest.accessKeyWithAdminScopeCanUseS3StyleLifecycleQueryAlias`, `BucketLifecycleControllerTest.accessKeyWithoutAdminScopeCannotUseS3StyleLifecycleQueryAlias`
 
@@ -146,7 +146,7 @@
 - Input: `GET /api/s3/{bucketName}/{objectKey}?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=...&X-Amz-Date=...&X-Amz-Expires=...&X-Amz-SignedHeaders=host&X-Amz-Signature=...` without `Authorization` or `X-OSMU-Secret-Key`.
 - Steps: Upload an object, sign a presigned URL query using the returned access key secret, then GET the object through the S3-style alias.
 - Expected: Backend validates the SigV4 query canonical request with `UNSIGNED-PAYLOAD`, applies access key `READ` scope, and returns the object body.
-- Expected error body: expired presigned URL returns S3 XML with `AccessDenied`.
+- Expected error body: expired presigned URL returns S3 XML with `AccessDenied` and message `Access Denied`.
 - Priority: P1
 - Automated: `S3ObjectControllerTest.awsSigV4PresignedUrlCanGetObjectWithoutSecretHeader`, `S3ObjectControllerTest.awsSigV4PresignedUrlRejectsExpiredSignature`
 
@@ -229,7 +229,7 @@
 - Input: `PUT /api/s3/{bucketName}/blocked.txt`, `GET /api/s3/{bucketName}/write-only.txt`.
 - Steps: Try PUT with read-only key, PUT with write-only key, then GET with write-only key.
 - Expected: Read-only PUT is `403`, write-only PUT succeeds, write-only GET is `403`.
-- Expected error body: S3 XML with `AccessDenied`.
+- Expected error body: S3 XML with `AccessDenied` and message `Access Denied`.
 - Priority: P1
 - Automated: `S3ObjectControllerTest.accessKeyScopeControlsS3StyleObjectActions`
 
@@ -319,7 +319,7 @@
 - Preconditions: Target bucket exists. Active access key has `WRITE` scope.
 - Input: `PUT /api/s3/{bucketName}/{objectKey}` with `x-amz-content-sha256: STREAMING-AWS4-HMAC-SHA256-PAYLOAD`, `Content-Encoding: aws-chunked`, and `x-amz-decoded-content-length`.
 - Steps: Upload valid aws-chunked body where each chunk header includes a 64-character lowercase hex `chunk-signature`, upload bodies with missing chunk signature and invalid final chunk signature, then upload a SigV4 header-auth aws-chunked body with a valid chunk signature chain and a tampered body with the original chunk signature.
-- Expected: Valid bodies are decoded and stored. Missing/invalid chunk signature format returns S3 XML `InvalidRequest`. Tampered SigV4 chunk data returns HTTP `403` with S3 XML `AccessDenied`.
+- Expected: Valid bodies are decoded and stored. Missing/invalid chunk signature format returns S3 XML `InvalidRequest`. Tampered SigV4 chunk data returns HTTP `403` with S3 XML `AccessDenied` and message `Access Denied`.
 - Priority: P1
 - Automated: `S3ObjectControllerTest.accessKeyCanUploadAwsChunkedStreamingPayload`, `S3ObjectControllerTest.awsSigV4HeaderAuthVerifiesAwsChunkedStreamingSignatureChain`
 

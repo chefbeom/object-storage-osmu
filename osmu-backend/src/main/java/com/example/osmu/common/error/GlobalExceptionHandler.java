@@ -83,10 +83,11 @@ public class GlobalExceptionHandler {
         String resource = S3TraceHeaders.resource(request);
         String requestId = requestId(request);
         String hostId = S3TraceHeaders.hostId(requestId, resource);
+        String s3Message = S3ErrorCodeMapper.messageFor(code, message);
         return ResponseEntity
                 .status(s3Status(code, statusCode))
                 .contentType(MediaType.APPLICATION_XML)
-                .body(s3ErrorXml(code, message, resource, requestId, hostId, s3ErrorDetails(code, request)));
+                .body(s3ErrorXml(code, s3Message, resource, requestId, hostId, s3ErrorDetails(code, request)));
     }
 
     private HttpStatusCode s3Status(String code, ApiErrorCode fallback) {

@@ -27,4 +27,11 @@ class S3ErrorCodeMapperTest {
         assertThat(S3ErrorCodeMapper.codeFor(ApiErrorCode.STORAGE_ERROR, "storage")).isEqualTo("InternalError");
         assertThat(S3ErrorCodeMapper.codeFor(ApiErrorCode.INTERNAL_ERROR, "server")).isEqualTo("InternalError");
     }
+
+    @Test
+    void normalizesS3ErrorMessages() {
+        assertThat(S3ErrorCodeMapper.messageFor("AccessDenied", "Missing access key credentials.")).isEqualTo("Access Denied");
+        assertThat(S3ErrorCodeMapper.messageFor("NoSuchKey", "Object not found.")).isEqualTo("Object not found.");
+        assertThat(S3ErrorCodeMapper.messageFor("InternalError", "")).isEqualTo("InternalError");
+    }
 }

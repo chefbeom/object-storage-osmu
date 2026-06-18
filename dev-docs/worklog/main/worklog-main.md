@@ -1,5 +1,39 @@
 # Worklog - main
 
+### 2026-06-18 - S3 AccessDenied message parity
+
+- Work time:
+  - End: 2026-06-18 KST
+- User command:
+  - Active goal: continue development from `dev-docs`.
+- Request analysis:
+  - `dev-docs` still tracks full AWS error behavior parity as future work.
+  - S3 `AccessDenied` status was already normalized to HTTP `403`, but the XML `Message` could still leak internal auth or SigV4 failure detail.
+- Execution:
+  - Added `S3ErrorCodeMapper.messageFor` and normalized S3 `AccessDenied` messages to `Access Denied`.
+  - Applied the normalized message in global S3 XML errors and multi-object delete per-key errors.
+  - Removed the stale local delete error-code mapper from `S3ObjectController`.
+  - Added mapper and S3 object scope regression assertions.
+  - Updated API/backend/S3 compatibility docs, product requirements, and test cases.
+- Modified files:
+  - `osmu-backend/src/main/java/com/example/osmu/common/error/S3ErrorCodeMapper.java`
+  - `osmu-backend/src/main/java/com/example/osmu/common/error/GlobalExceptionHandler.java`
+  - `osmu-backend/src/main/java/com/example/osmu/object/S3ObjectController.java`
+  - `osmu-backend/src/test/java/com/example/osmu/common/error/S3ErrorCodeMapperTest.java`
+  - `osmu-backend/src/test/java/com/example/osmu/object/S3ObjectControllerTest.java`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/backend-design.md`
+  - `dev-docs/s3-compatibility.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/PRODUCT_REQUIREMENTS.md`
+  - `dev-docs/worklog/main/worklog-main.md`
+- Tests:
+  - `./gradlew.bat test --no-daemon --tests com.example.osmu.common.error.S3ErrorCodeMapperTest --tests com.example.osmu.object.S3ObjectControllerTest.accessKeyScopeControlsS3StyleObjectActions --tests com.example.osmu.object.S3ObjectControllerTest.accessKeyCanUploadAwsChunkedStreamingPayload`: passed.
+  - `git diff --check`: passed.
+- Review:
+  - S3 clients now receive the AWS-style generic `Access Denied` message while REST JSON errors keep detailed messages.
+  - Error code mapping and message normalization are centralized for global S3 errors and multi-delete per-key errors.
+
 ### 2026-06-18 - S3 success trace headers
 
 - Work time:

@@ -831,7 +831,8 @@ class S3ObjectControllerTest {
                         .content(tamperedBody.getBytes(StandardCharsets.UTF_8)))
                 .andExpect(status().isForbidden())
                 .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_XML))
-                .andExpect(content().string(containsString("<Code>AccessDenied</Code>")));
+                .andExpect(content().string(containsString("<Code>AccessDenied</Code>")))
+                .andExpect(content().string(containsString("<Message>Access Denied</Message>")));
     }
 
     @Test
@@ -1559,7 +1560,8 @@ class S3ObjectControllerTest {
                         .contentType(MediaType.TEXT_PLAIN)
                         .content("blocked"))
                 .andExpect(status().isForbidden())
-                .andExpect(content().string(containsString("<Code>AccessDenied</Code>")));
+                .andExpect(content().string(containsString("<Code>AccessDenied</Code>")))
+                .andExpect(content().string(containsString("<Message>Access Denied</Message>")));
 
         AccessKeyCredentials writer = createAccessKey(token, bucketName, "WRITE");
         mockMvc.perform(put("/api/s3/{bucketName}/write-only.txt", bucketName)
@@ -1573,7 +1575,8 @@ class S3ObjectControllerTest {
                         .header("X-OSMU-Access-Key", writer.accessKey())
                         .header("X-OSMU-Secret-Key", writer.secretKey()))
                 .andExpect(status().isForbidden())
-                .andExpect(content().string(containsString("<Code>AccessDenied</Code>")));
+                .andExpect(content().string(containsString("<Code>AccessDenied</Code>")))
+                .andExpect(content().string(containsString("<Message>Access Denied</Message>")));
     }
 
     @Test

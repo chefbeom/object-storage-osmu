@@ -281,10 +281,11 @@ public class S3ObjectController {
                 deletedKeys.add(object.key());
             } catch (ApiException exception) {
                 if (exception.code() != ApiErrorCode.NOT_FOUND || !exception.getMessage().toLowerCase().contains("object")) {
+                    String code = S3ErrorCodeMapper.codeFor(exception.code(), exception.getMessage());
                     errors.add(new DeleteObjectError(
                             objectKey,
-                            S3ErrorCodeMapper.codeFor(exception.code(), exception.getMessage()),
-                            exception.getMessage()
+                            code,
+                            S3ErrorCodeMapper.messageFor(code, exception.getMessage())
                     ));
                     continue;
                 }
@@ -1510,29 +1511,6 @@ public class S3ObjectController {
         } catch (XMLStreamException exception) {
             throw new ApiException(ApiErrorCode.INTERNAL_ERROR, "Failed to render S3 multipart complete XML.");
         }
-    }
-
-    private String s3DeleteErrorCode(ApiErrorCode code, String message) {
-        return switch (code) {
-            case AUTHENTICATION_REQUIRED, AUTHORIZATION_FAILED -> "AccessDenied";
-            case NOT_FOUND -> message != null && (
-                    message.toLowerCase(java.util.Locale.ROOT).contains("upload session")
-                            || message.toLowerCase(java.util.Locale.ROOT).contains("multipart upload")
-            )
-                    ? "NoSuchUpload"
-                    : message != null && message.toLowerCase(java.util.Locale.ROOT).contains("bucket") ? "NoSuchBucket" : "NoSuchKey";
-            case PRECONDITION_FAILED -> "PreconditionFailed";
-            case RANGE_NOT_SATISFIABLE -> "InvalidRange";
-            case INVALID_DIGEST -> "InvalidDigest";
-            case BAD_DIGEST -> "BadDigest";
-            case VALIDATION_ERROR -> "InvalidRequest";
-            case QUOTA_EXCEEDED -> "EntityTooLarge";
-            case CONFLICT -> message != null && message.toLowerCase(java.util.Locale.ROOT).contains("bucket")
-                    && message.toLowerCase(java.util.Locale.ROOT).contains("not empty")
-                    ? "BucketNotEmpty"
-                    : "OperationAborted";
-            case STORAGE_ERROR, INTERNAL_ERROR -> "InternalError";
-        };
     }
 
     private String contentType(HttpServletRequest request) {

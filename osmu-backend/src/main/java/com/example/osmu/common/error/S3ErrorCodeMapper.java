@@ -22,6 +22,13 @@ public final class S3ErrorCodeMapper {
         };
     }
 
+    public static String messageFor(String s3Code, String message) {
+        if ("AccessDenied".equals(s3Code)) {
+            return "Access Denied";
+        }
+        return message == null || message.isBlank() ? s3Code : message;
+    }
+
     private static boolean isBucketError(String message) {
         return message != null && message.toLowerCase(Locale.ROOT).contains("bucket");
     }
