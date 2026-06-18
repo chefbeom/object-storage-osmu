@@ -39,6 +39,8 @@ import org.junit.jupiter.api.Test;
 
 class ObjectServiceMultipartRefreshTest {
 
+    private static final long MIN_MULTIPART_PART_SIZE_BYTES_FOR_TEST = 5L * 1024L * 1024L;
+
     private final BucketService bucketService = mock(BucketService.class);
     private final ObjectStorageAdapter storageAdapter = mock(ObjectStorageAdapter.class);
     private final ObjectMetadataRepository objectMetadataRepository = mock(ObjectMetadataRepository.class);
@@ -331,7 +333,7 @@ class ObjectServiceMultipartRefreshTest {
                 "bucket",
                 "videos/composite.mp4",
                 "storage-upload-composite",
-                new MultipartUploadUploadedPart(1, "\"etag-1\"", 6L),
+                new MultipartUploadUploadedPart(1, "\"etag-1\"", MIN_MULTIPART_PART_SIZE_BYTES_FOR_TEST),
                 new MultipartUploadUploadedPart(2, "\"etag-2\"", 5L)
         );
 
@@ -413,7 +415,7 @@ class ObjectServiceMultipartRefreshTest {
                 "bucket",
                 "videos/negotiated-crc32c.mp4",
                 "storage-upload-negotiated-crc32c",
-                new MultipartUploadUploadedPart(1, "\"etag-1\"", 6L),
+                new MultipartUploadUploadedPart(1, "\"etag-1\"", MIN_MULTIPART_PART_SIZE_BYTES_FOR_TEST),
                 new MultipartUploadUploadedPart(2, "\"etag-2\"", 5L)
         );
 
@@ -482,7 +484,7 @@ class ObjectServiceMultipartRefreshTest {
                 "bucket",
                 "videos/stored-part-checksum.mp4",
                 "storage-upload-stored-part-checksum",
-                new MultipartUploadUploadedPart(1, "\"etag-1\"", 6L),
+                new MultipartUploadUploadedPart(1, "\"etag-1\"", MIN_MULTIPART_PART_SIZE_BYTES_FOR_TEST),
                 new MultipartUploadUploadedPart(2, "\"etag-2\"", 5L)
         );
 
@@ -1102,7 +1104,7 @@ class ObjectServiceMultipartRefreshTest {
                 "bucket",
                 "videos/missing-part.mp4",
                 "storage-upload-missing-part",
-                new MultipartUploadUploadedPart(1, "\"etag-1\"", 5L)
+                new MultipartUploadUploadedPart(1, "\"etag-1\"", MIN_MULTIPART_PART_SIZE_BYTES_FOR_TEST)
         );
 
         assertThatThrownBy(() -> objectService.completeMultipartUpload(
@@ -1143,6 +1145,63 @@ class ObjectServiceMultipartRefreshTest {
                 anyList()
         );
         verify(bucketService, never()).applyObjectChange(eq("bucket"), anyLong(), anyLong());
+    }
+
+    @Test
+    void completeMultipartUploadRejectsSmallNonLastPartBeforeStorageComplete() {
+        BucketRecord bucket = new BucketRecord(1L, "bucket", "USER", 1L, 1000000000L, 0L, 0L, OffsetDateTime.now());
+        when(bucketService.get("bucket", user)).thenReturn(bucket);
+        when(storageAdapter.statObject("bucket", "videos/small-non-last-part.mp4")).thenReturn(Optional.empty());
+        when(storageAdapter.createMultipartUpload(
+                eq("bucket"),
+                eq("videos/small-non-last-part.mp4"),
+                eq("video/mp4"),
+                eq(900),
+                anyList()
+        )).thenAnswer(invocation -> storageUpload("storage-upload-small-non-last-part", invocation.getArgument(4), 900, "create"));
+
+        MultipartUploadCreateResponse created = objectService.createMultipartUpload(
+                "bucket",
+                new MultipartUploadCreateRequest(
+                        "videos/small-non-last-part.mp4",
+                        "video/mp4",
+                        10L,
+                        5L,
+                        900,
+                        ""
+                ),
+                user
+        );
+        givenUploadedParts(
+                "bucket",
+                "videos/small-non-last-part.mp4",
+                "storage-upload-small-non-last-part",
+                new MultipartUploadUploadedPart(1, "\"etag-1\"", MIN_MULTIPART_PART_SIZE_BYTES_FOR_TEST - 1L),
+                new MultipartUploadUploadedPart(2, "\"etag-2\"", 1L)
+        );
+
+        assertThatThrownBy(() -> objectService.completeMultipartUpload(
+                "bucket",
+                new MultipartUploadCompleteRequest(
+                        created.uploadId(),
+                        "videos/small-non-last-part.mp4",
+                        List.of(
+                                new CompletedMultipartUploadPart(1, "\"etag-1\""),
+                                new CompletedMultipartUploadPart(2, "\"etag-2\"")
+                        )
+                ),
+                user
+        )).isInstanceOfSatisfying(ApiException.class, exception -> {
+            assertThat(exception.code()).isEqualTo(ApiErrorCode.VALIDATION_ERROR);
+            assertThat(exception.getMessage()).contains("minimum allowed object size");
+        });
+
+        verify(storageAdapter, never()).completeMultipartUpload(
+                eq("bucket"),
+                eq("videos/small-non-last-part.mp4"),
+                eq("storage-upload-small-non-last-part"),
+                anyList()
+        );
     }
 
     @Test
@@ -1582,7 +1641,7 @@ class ObjectServiceMultipartRefreshTest {
                 "bucket",
                 key,
                 storageUploadId,
-                new MultipartUploadUploadedPart(1, "\"etag-1\"", 6L),
+                new MultipartUploadUploadedPart(1, "\"etag-1\"", MIN_MULTIPART_PART_SIZE_BYTES_FOR_TEST),
                 new MultipartUploadUploadedPart(2, "\"etag-2\"", 5L)
         );
 

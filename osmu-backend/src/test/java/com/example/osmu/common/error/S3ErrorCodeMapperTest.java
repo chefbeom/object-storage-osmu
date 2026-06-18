@@ -25,6 +25,8 @@ class S3ErrorCodeMapperTest {
                 "Multipart upload part 2 ETag does not match uploaded part.")).isEqualTo("InvalidPart");
         assertThat(S3ErrorCodeMapper.codeFor(ApiErrorCode.VALIDATION_ERROR,
                 "CompleteMultipartUpload parts must be in ascending PartNumber order without duplicates.")).isEqualTo("InvalidPartOrder");
+        assertThat(S3ErrorCodeMapper.codeFor(ApiErrorCode.VALIDATION_ERROR,
+                "Multipart upload part 1 is smaller than the minimum allowed object size.")).isEqualTo("EntityTooSmall");
         assertThat(S3ErrorCodeMapper.codeFor(ApiErrorCode.QUOTA_EXCEEDED, "quota")).isEqualTo("EntityTooLarge");
         assertThat(S3ErrorCodeMapper.codeFor(ApiErrorCode.CONFLICT, "conflict")).isEqualTo("OperationAborted");
         assertThat(S3ErrorCodeMapper.codeFor(ApiErrorCode.CONFLICT, "Bucket is not empty.")).isEqualTo("BucketNotEmpty");
@@ -61,6 +63,9 @@ class S3ErrorCodeMapperTest {
         assertThat(S3ErrorCodeMapper.messageFor("InvalidPartOrder", "part order"))
                 .isEqualTo("The list of parts was not in ascending order. "
                         + "The parts list must be specified in order by part number.");
+        assertThat(S3ErrorCodeMapper.messageFor("EntityTooSmall", "small part"))
+                .isEqualTo("Your proposed upload is smaller than the minimum allowed object size. "
+                        + "Each part must be at least 5 MB in size, except the last part.");
         assertThat(S3ErrorCodeMapper.messageFor("InternalError", "")).isEqualTo("InternalError");
     }
 }

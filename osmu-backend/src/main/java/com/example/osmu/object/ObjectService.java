@@ -1823,7 +1823,22 @@ public class ObjectService {
                         "Multipart upload part " + completedPart.partNumber() + " ETag does not match uploaded part."
                 );
             }
+            if (!isLastCompletedPart(completedParts, completedPart)
+                    && uploadedPart.sizeBytes() < MIN_MULTIPART_PART_SIZE_BYTES) {
+                throw new ApiException(
+                        ApiErrorCode.VALIDATION_ERROR,
+                        "Multipart upload part " + completedPart.partNumber()
+                                + " is smaller than the minimum allowed object size."
+                );
+            }
         }
+    }
+
+    private boolean isLastCompletedPart(
+            List<CompletedMultipartUploadPart> completedParts,
+            CompletedMultipartUploadPart completedPart
+    ) {
+        return completedPart.partNumber() == completedParts.get(completedParts.size() - 1).partNumber();
     }
 
     private List<CompletedMultipartUploadPart> withStoredMultipartPartChecksums(

@@ -251,6 +251,7 @@ MVP 데모 기준 완료율은 약 90~95%입니다.
 - S3 multipart complete `x-amz-checksum-type` FULL_OBJECT/COMPOSITE validation and response XML
 - S3 CompleteMultipartUpload result XML `Location` propagation
 - S3 CompleteMultipartUpload special error mapping for `InvalidPartOrder` and `InvalidPart`
+- S3 CompleteMultipartUpload `EntityTooSmall` guard for uploaded non-last parts below 5 MiB
 - S3 multipart SHA1/SHA256/CRC32/CRC32C composite checksum aggregation from per-part complete XML
 - S3 multipart initiate checksum negotiation persistence plus complete-time algorithm/type mismatch `BadDigest` guards
 - S3 multipart UploadPart checksum auto-compute/persistence, `x-amz-sdk-checksum-algorithm` handling, stored checksum merge on complete, and ListParts checksum XML
@@ -263,7 +264,7 @@ MVP 데모 기준 완료율은 약 90~95%입니다.
 
 남은 것:
 
-- full AWS multipart checksum negotiation parity beyond stored UploadPart checksum metadata and complete-time matching guards, especially remaining exact AWS checksum/error response propagation edges and remaining special errors
+- full AWS multipart checksum negotiation parity beyond stored UploadPart checksum metadata and complete-time matching guards, especially remaining exact AWS checksum/error response propagation edges
 
 ### 4.7 MariaDB metadata
 

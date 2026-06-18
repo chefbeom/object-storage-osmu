@@ -1,5 +1,37 @@
 # Worklog - main
 
+### 2026-06-18 - S3 CompleteMultipartUpload EntityTooSmall guard
+
+- Work time:
+  - End: 2026-06-18 KST
+- User command:
+  - Active goal: continue development from `dev-docs`.
+- Request analysis:
+  - `dev-docs` still track remaining multipart error-response parity.
+  - AWS CompleteMultipartUpload special errors include `EntityTooSmall`, `InvalidPart`, `InvalidPartOrder`, and `NoSuchUpload`.
+  - OSMU already covered `NoSuchUpload`, `InvalidPart`, and `InvalidPartOrder`; uploaded non-last parts smaller than 5 MiB still reached storage completion.
+- Execution:
+  - Added `ObjectService` validation that uploaded non-last completed parts must be at least 5 MiB before delegating to storage completion.
+  - Mapped the validation message to S3 XML `EntityTooSmall` and normalized its message to AWS-style text.
+  - Added mapper and service regression tests, and adjusted checksum-focused multipart mocks so their non-last part size satisfies the S3 minimum.
+  - Updated README and `dev-docs`.
+- Modified files:
+  - `osmu-backend/src/main/java/com/example/osmu/object/ObjectService.java`
+  - `osmu-backend/src/main/java/com/example/osmu/common/error/S3ErrorCodeMapper.java`
+  - `osmu-backend/src/test/java/com/example/osmu/object/ObjectServiceMultipartRefreshTest.java`
+  - `osmu-backend/src/test/java/com/example/osmu/common/error/S3ErrorCodeMapperTest.java`
+  - `README.md`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/backend-design.md`
+  - `dev-docs/s3-compatibility.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/feature-inventory.md`
+  - `dev-docs/worklog/main/worklog-main.md`
+- Tests:
+  - `$env:JAVA_HOME='C:\jdk-17'; .\gradlew.bat test --no-daemon --rerun-tasks --tests com.example.osmu.common.error.S3ErrorCodeMapperTest --tests com.example.osmu.object.ObjectServiceMultipartRefreshTest --tests com.example.osmu.object.S3ObjectControllerMultipartTest`: passed.
+- Follow-up:
+  - Continue remaining AWS checksum/error response propagation edges and non-bucket per-error message/status nuance.
+
 ### 2026-06-18 - S3 CompleteMultipartUpload initiated ChecksumType response
 
 - Work time:

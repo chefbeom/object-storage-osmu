@@ -64,6 +64,10 @@ public final class S3ErrorCodeMapper {
             return "The list of parts was not in ascending order. "
                     + "The parts list must be specified in order by part number.";
         }
+        if ("EntityTooSmall".equals(s3Code)) {
+            return "Your proposed upload is smaller than the minimum allowed object size. "
+                    + "Each part must be at least 5 MB in size, except the last part.";
+        }
         return message == null || message.isBlank() ? s3Code : message;
     }
 
@@ -83,6 +87,9 @@ public final class S3ErrorCodeMapper {
         }
         if (normalized.contains("completemultipartupload parts must be in ascending partnumber order")) {
             return "InvalidPartOrder";
+        }
+        if (normalized.contains("minimum allowed object size")) {
+            return "EntityTooSmall";
         }
         return "InvalidRequest";
     }
