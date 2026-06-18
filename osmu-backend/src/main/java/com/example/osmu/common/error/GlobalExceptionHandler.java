@@ -1,13 +1,10 @@
 package com.example.osmu.common.error;
 
 import com.example.osmu.common.web.RequestIdFilter;
+import com.example.osmu.common.web.S3TraceHeaders;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.ConstraintViolationException;
 import java.io.StringWriter;
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
-import java.util.Base64;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import org.springframework.http.HttpStatusCode;
@@ -26,12 +23,10 @@ import org.slf4j.LoggerFactory;
 public class GlobalExceptionHandler {
 
     private static final Logger log = LoggerFactory.getLogger(GlobalExceptionHandler.class);
-    private static final String S3_REQUEST_ID_HEADER = "x-amz-request-id";
-    private static final String S3_HOST_ID_HEADER = "x-amz-id-2";
 
     @ExceptionHandler(ApiException.class)
     public ResponseEntity<?> handleApiException(ApiException exception, HttpServletRequest request) {
-        if (isS3Path(request)) {
+        if (S3TraceHeaders.isS3Request(request)) {
             return s3ErrorResponse(S3ErrorCodeMapper.codeFor(exception.code(), exception.getMessage()), exception.getMessage(), request, exception.code());
         }
         return ResponseEntity
@@ -46,7 +41,7 @@ public class GlobalExceptionHandler {
             IllegalArgumentException.class
     })
     public ResponseEntity<?> handleValidation(Exception exception, HttpServletRequest request) {
-        if (isS3Path(request)) {
+        if (S3TraceHeaders.isS3Request(request)) {
             return s3ErrorResponse("InvalidRequest", exception.getMessage(), request, ApiErrorCode.VALIDATION_ERROR);
         }
         return ResponseEntity
@@ -58,7 +53,7 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(Exception.class)
     public ResponseEntity<?> handleUnexpected(Exception exception, HttpServletRequest request) {
         log.error("Unhandled request exception. path={}", request == null ? null : request.getRequestURI(), exception);
-        if (isS3Path(request)) {
+        if (S3TraceHeaders.isS3Request(request)) {
             return s3ErrorResponse("InternalError", "Unexpected server error.", request, ApiErrorCode.INTERNAL_ERROR);
         }
         return ResponseEntity
@@ -75,28 +70,6 @@ public class GlobalExceptionHandler {
         return requestId instanceof String value ? value : null;
     }
 
-    private boolean isS3Path(HttpServletRequest request) {
-        if (request == null || request.getRequestURI() == null) {
-            return false;
-        }
-        String uri = request.getRequestURI();
-        if ("/api/s3".equals(uri) || uri.startsWith("/api/s3/")) {
-            return true;
-        }
-        return isRootS3Request(request, uri);
-    }
-
-    private boolean isRootS3Request(HttpServletRequest request, String uri) {
-        if (uri.startsWith("/api/") || uri.startsWith("/actuator")) {
-            return false;
-        }
-        String authorization = request.getHeader("Authorization");
-        return authorization != null && authorization.startsWith("AWS4-HMAC-SHA256 ")
-                || "AWS4-HMAC-SHA256".equals(request.getParameter("X-Amz-Algorithm"))
-                || hasText(request.getHeader("X-OSMU-Access-Key"))
-                || hasText(request.getHeader("X-OSMU-Secret-Key"));
-    }
-
     private boolean hasText(String value) {
         return value != null && !value.isBlank();
     }
@@ -107,19 +80,13 @@ public class GlobalExceptionHandler {
             HttpServletRequest request,
             ApiErrorCode statusCode
     ) {
-        String resource = requestResource(request);
+        String resource = S3TraceHeaders.resource(request);
         String requestId = requestId(request);
-        String hostId = hasText(requestId) ? s3HostId(requestId, resource) : "";
-        ResponseEntity.BodyBuilder response = ResponseEntity
+        String hostId = S3TraceHeaders.hostId(requestId, resource);
+        return ResponseEntity
                 .status(s3Status(code, statusCode))
-                .contentType(MediaType.APPLICATION_XML);
-        if (hasText(requestId)) {
-            response.header(S3_REQUEST_ID_HEADER, requestId);
-        }
-        if (hasText(hostId)) {
-            response.header(S3_HOST_ID_HEADER, hostId);
-        }
-        return response.body(s3ErrorXml(code, message, resource, requestId, hostId, s3ErrorDetails(code, request)));
+                .contentType(MediaType.APPLICATION_XML)
+                .body(s3ErrorXml(code, message, resource, requestId, hostId, s3ErrorDetails(code, request)));
     }
 
     private HttpStatusCode s3Status(String code, ApiErrorCode fallback) {
@@ -127,16 +94,6 @@ public class GlobalExceptionHandler {
             return HttpStatusCode.valueOf(403);
         }
         return fallback.status();
-    }
-
-    private String requestResource(HttpServletRequest request) {
-        if (request == null || request.getRequestURI() == null) {
-            return "";
-        }
-        String query = request.getQueryString();
-        return query == null || query.isBlank()
-                ? request.getRequestURI()
-                : request.getRequestURI() + "?" + query;
     }
 
     private String s3ErrorXml(String code, String message, String resource, String requestId, String hostId, Map<String, String> details) {
@@ -209,16 +166,6 @@ public class GlobalExceptionHandler {
         String bucketName = resourcePath.substring(0, separator);
         String key = resourcePath.substring(separator + 1);
         return new S3ResourceParts(bucketName.isBlank() ? null : bucketName, key.isBlank() ? null : key);
-    }
-
-    private String s3HostId(String requestId, String resource) {
-        try {
-            String seed = requestId + ":" + (resource == null ? "" : resource);
-            byte[] digest = MessageDigest.getInstance("SHA-256").digest(seed.getBytes(StandardCharsets.UTF_8));
-            return Base64.getEncoder().encodeToString(digest);
-        } catch (NoSuchAlgorithmException exception) {
-            return requestId;
-        }
     }
 
     private void writeElement(XMLStreamWriter xml, String name, String value) throws XMLStreamException {

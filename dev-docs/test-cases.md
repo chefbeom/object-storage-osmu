@@ -166,7 +166,7 @@
 - Preconditions: Target bucket exists. Active access key has `READ`, `WRITE`, and `DELETE` scope.
 - Input: `PUT/HEAD/GET/DELETE /api/s3/{bucketName}/{objectKey}` with `X-OSMU-Access-Key`, `X-OSMU-Secret-Key`, and optional destination `If-Match`/`If-None-Match`.
 - Steps: PUT raw text object with `x-amz-tagging`, HEAD metadata, GET object body, exercise PUT destination `If-Match`/`If-None-Match` overwrite guards, DELETE object, then GET again.
-- Expected: PUT returns `ETag` and tag count. HEAD returns content length and `ETag`. GET streams the original body and returns tags and `ETag` headers. Existing target plus `If-None-Match: *`, missing target plus `If-Match`, and non-matching `If-Match` return `412 PreconditionFailed`; matching `If-Match` overwrites. DELETE returns `204`. GET after delete returns `404`.
+- Expected: PUT returns `ETag`, tag count, `x-amz-request-id`, and `x-amz-id-2`. HEAD returns content length and `ETag`. GET streams the original body and returns tags and `ETag` headers. Existing target plus `If-None-Match: *`, missing target plus `If-Match`, and non-matching `If-Match` return `412 PreconditionFailed`; matching `If-Match` overwrites. DELETE returns `204`. GET after delete returns `404`.
 - Expected error body: S3 XML with `NoSuchKey`.
 - Priority: P1
 - Automated: `S3ObjectControllerTest.accessKeyCanPutHeadGetAndDeleteObjectThroughS3StylePath`

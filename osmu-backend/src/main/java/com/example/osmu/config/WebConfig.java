@@ -2,6 +2,7 @@ package com.example.osmu.config;
 
 import com.example.osmu.auth.JwtAuthInterceptor;
 import com.example.osmu.common.web.RequestIdFilter;
+import com.example.osmu.common.web.S3TraceHeaders;
 import java.util.Arrays;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Configuration;
@@ -29,7 +30,11 @@ public class WebConfig implements WebMvcConfigurer {
                 .allowedOrigins(allowedOrigins)
                 .allowedMethods("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS")
                 .allowedHeaders("*")
-                .exposedHeaders(RequestIdFilter.REQUEST_ID_HEADER)
+                .exposedHeaders(
+                        RequestIdFilter.REQUEST_ID_HEADER,
+                        S3TraceHeaders.REQUEST_ID_HEADER,
+                        S3TraceHeaders.HOST_ID_HEADER
+                )
                 .allowCredentials(false);
     }
 

@@ -224,7 +224,7 @@ MVP 데모 기준 완료율은 약 90~95%입니다.
 - CopyObject `x-amz-checksum-algorithm` recalculated checksum metadata/header/XML for supported algorithms
 - tagging
 - multi-delete 일부
-- S3 XML error response with `Code`/`Message`/`Resource`/`RequestId`/`HostId` plus `x-amz-request-id`/`x-amz-id-2` headers
+- S3 response trace headers `x-amz-request-id`/`x-amz-id-2` with matching S3 XML error `RequestId`/`HostId`
 - S3 CreateBucket LocationConstraint XML validation
 - S3 CreateBucket invalid XML root/duplicate LocationConstraint rejection
 - S3 CreateBucket unsupported ACL/Object Lock/Object Ownership/bucket namespace control rejection

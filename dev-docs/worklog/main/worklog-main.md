@@ -1,5 +1,41 @@
 # Worklog - main
 
+### 2026-06-18 - S3 success trace headers
+
+- Work time:
+  - End: 2026-06-18 KST
+- User command:
+  - Active goal: continue development from `dev-docs`.
+- Request analysis:
+  - S3 XML errors exposed AWS trace headers, but successful S3 responses still relied only on `X-Request-Id`.
+  - AWS SDK/client diagnostics expect `x-amz-request-id` and `x-amz-id-2` on normal S3 operations too.
+- Execution:
+  - Added `S3TraceHeaders` helper for S3 request detection, resource rendering, and opaque host id generation.
+  - `RequestIdFilter` now adds `x-amz-request-id` and `x-amz-id-2` to S3 responses.
+  - `GlobalExceptionHandler` reuses the helper so XML `HostId` and header `x-amz-id-2` stay aligned.
+  - Backend CORS now exposes the S3 trace headers with `X-Request-Id`.
+  - Added success-response trace header assertions to `S3ObjectControllerTest.accessKeyCanPutHeadGetAndDeleteObjectThroughS3StylePath`.
+  - Updated API/backend/S3 compatibility docs, product requirements, feature inventory, and test cases.
+- Modified files:
+  - `osmu-backend/src/main/java/com/example/osmu/common/web/S3TraceHeaders.java`
+  - `osmu-backend/src/main/java/com/example/osmu/common/web/RequestIdFilter.java`
+  - `osmu-backend/src/main/java/com/example/osmu/common/error/GlobalExceptionHandler.java`
+  - `osmu-backend/src/main/java/com/example/osmu/config/WebConfig.java`
+  - `osmu-backend/src/test/java/com/example/osmu/object/S3ObjectControllerTest.java`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/backend-design.md`
+  - `dev-docs/s3-compatibility.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/PRODUCT_REQUIREMENTS.md`
+  - `dev-docs/feature-inventory.md`
+  - `dev-docs/worklog/main/worklog-main.md`
+- Tests:
+  - `./gradlew.bat test --no-daemon --tests com.example.osmu.object.S3ObjectControllerTest.accessKeyCanPutHeadGetAndDeleteObjectThroughS3StylePath --tests com.example.osmu.object.S3ObjectControllerTest.missingS3MultipartUploadReturnsNoSuchUploadXml`: passed.
+  - `git diff --check`: passed.
+- Review:
+  - Successful and error S3 responses now share the same trace id/header generation path.
+  - Browser clients can read the S3 trace headers through backend CORS.
+
 ### 2026-06-18 - S3 error trace headers
 
 - Work time:

@@ -31,6 +31,11 @@ public class RequestIdFilter extends OncePerRequestFilter {
         String requestId = requestId(request);
         request.setAttribute(REQUEST_ID_ATTRIBUTE, requestId);
         response.setHeader(REQUEST_ID_HEADER, requestId);
+        if (S3TraceHeaders.isS3Request(request)) {
+            String resource = S3TraceHeaders.resource(request);
+            response.setHeader(S3TraceHeaders.REQUEST_ID_HEADER, requestId);
+            response.setHeader(S3TraceHeaders.HOST_ID_HEADER, S3TraceHeaders.hostId(requestId, resource));
+        }
         filterChain.doFilter(request, response);
     }
 

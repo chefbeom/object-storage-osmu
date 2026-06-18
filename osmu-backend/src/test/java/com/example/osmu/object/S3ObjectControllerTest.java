@@ -57,14 +57,19 @@ class S3ObjectControllerTest {
         String bucketName = "s3-object-alias-bucket";
         createBucket(token, bucketName);
         AccessKeyCredentials credentials = createAccessKey(token, bucketName, "READ", "WRITE", "DELETE");
+        String uploadResource = "/api/s3/" + bucketName + "/docs/sample.txt";
+        String uploadHostId = checksumBase64("SHA-256", "req-s3-upload-trace:" + uploadResource);
 
         MvcResult uploadResult = mockMvc.perform(put("/api/s3/{bucketName}/docs/sample.txt", bucketName)
                         .header("X-OSMU-Access-Key", credentials.accessKey())
                         .header("X-OSMU-Secret-Key", credentials.secretKey())
+                        .header("X-Request-Id", "req-s3-upload-trace")
                         .header("x-amz-tagging", "project=osmu&stage=raw")
                         .contentType(MediaType.TEXT_PLAIN)
                         .content("hello s3 alias"))
                 .andExpect(status().isOk())
+                .andExpect(header().string("x-amz-request-id", "req-s3-upload-trace"))
+                .andExpect(header().string("x-amz-id-2", uploadHostId))
                 .andExpect(header().string(HttpHeaders.ETAG, containsString("\"")))
                 .andExpect(header().string("x-amz-tagging-count", "2"))
                 .andReturn();
