@@ -1,5 +1,38 @@
 # Worklog - main
 
+### 2026-06-18 - S3 error trace headers
+
+- Work time:
+  - End: 2026-06-18 KST
+- User command:
+  - Active goal: continue development from `dev-docs`.
+- Request analysis:
+  - S3 XML error body now includes `RequestId` and opaque `HostId`, but AWS SDK/client diagnostics also expect `x-amz-request-id` and `x-amz-id-2` headers.
+  - Existing MinIO CORS provisioning already exposes those headers, so backend S3 error responses should emit them.
+- Execution:
+  - Added `x-amz-request-id` and `x-amz-id-2` headers to S3 XML error responses.
+  - Reused the same values as XML `RequestId` and `HostId`.
+  - Kept the normal `X-Request-Id` response header through `RequestIdFilter`.
+  - Added regression assertions to `S3ObjectControllerTest.missingS3MultipartUploadReturnsNoSuchUploadXml`.
+  - Updated API/backend/S3 compatibility docs, product requirements, feature inventory, and test cases.
+- Modified files:
+  - `osmu-backend/src/main/java/com/example/osmu/common/error/GlobalExceptionHandler.java`
+  - `osmu-backend/src/test/java/com/example/osmu/object/S3ObjectControllerTest.java`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/backend-design.md`
+  - `dev-docs/s3-compatibility.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/PRODUCT_REQUIREMENTS.md`
+  - `dev-docs/feature-inventory.md`
+  - `README.md`
+  - `dev-docs/worklog/main/worklog-main.md`
+- Tests:
+  - `./gradlew.bat test --no-daemon --tests com.example.osmu.object.S3ObjectControllerTest.missingS3MultipartUploadReturnsNoSuchUploadXml`: passed.
+  - `git diff --check`: passed.
+- Review:
+  - Header/body request trace values now align for S3 XML errors.
+  - Remaining error exactness work is per-error message/status nuance outside the covered common tracing headers.
+
 ### 2026-06-18 - S3 AccessDenied status parity
 
 - Work time:

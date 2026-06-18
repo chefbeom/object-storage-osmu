@@ -1528,6 +1528,8 @@ class S3ObjectControllerTest {
                         .header("X-Request-Id", "req-nosuchupload")
                         .accept(MediaType.APPLICATION_XML))
                 .andExpect(status().isNotFound())
+                .andExpect(header().string("x-amz-request-id", "req-nosuchupload"))
+                .andExpect(header().string("x-amz-id-2", hostId))
                 .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_XML))
                 .andExpect(content().string(containsString("<Code>NoSuchUpload</Code>")))
                 .andExpect(content().string(containsString("<BucketName>" + bucketName + "</BucketName>")))

@@ -26,6 +26,8 @@ import org.slf4j.LoggerFactory;
 public class GlobalExceptionHandler {
 
     private static final Logger log = LoggerFactory.getLogger(GlobalExceptionHandler.class);
+    private static final String S3_REQUEST_ID_HEADER = "x-amz-request-id";
+    private static final String S3_HOST_ID_HEADER = "x-amz-id-2";
 
     @ExceptionHandler(ApiException.class)
     public ResponseEntity<?> handleApiException(ApiException exception, HttpServletRequest request) {
@@ -105,10 +107,19 @@ public class GlobalExceptionHandler {
             HttpServletRequest request,
             ApiErrorCode statusCode
     ) {
-        return ResponseEntity
+        String resource = requestResource(request);
+        String requestId = requestId(request);
+        String hostId = hasText(requestId) ? s3HostId(requestId, resource) : "";
+        ResponseEntity.BodyBuilder response = ResponseEntity
                 .status(s3Status(code, statusCode))
-                .contentType(MediaType.APPLICATION_XML)
-                .body(s3ErrorXml(code, message, requestResource(request), requestId(request), s3ErrorDetails(code, request)));
+                .contentType(MediaType.APPLICATION_XML);
+        if (hasText(requestId)) {
+            response.header(S3_REQUEST_ID_HEADER, requestId);
+        }
+        if (hasText(hostId)) {
+            response.header(S3_HOST_ID_HEADER, hostId);
+        }
+        return response.body(s3ErrorXml(code, message, resource, requestId, hostId, s3ErrorDetails(code, request)));
     }
 
     private HttpStatusCode s3Status(String code, ApiErrorCode fallback) {
@@ -128,7 +139,7 @@ public class GlobalExceptionHandler {
                 : request.getRequestURI() + "?" + query;
     }
 
-    private String s3ErrorXml(String code, String message, String resource, String requestId, Map<String, String> details) {
+    private String s3ErrorXml(String code, String message, String resource, String requestId, String hostId, Map<String, String> details) {
         try {
             StringWriter output = new StringWriter();
             XMLStreamWriter xml = XMLOutputFactory.newFactory().createXMLStreamWriter(output);
@@ -144,7 +155,9 @@ public class GlobalExceptionHandler {
             }
             if (requestId != null && !requestId.isBlank()) {
                 writeElement(xml, "RequestId", requestId);
-                writeElement(xml, "HostId", s3HostId(requestId, resource));
+                if (hasText(hostId)) {
+                    writeElement(xml, "HostId", hostId);
+                }
             }
             xml.writeEndElement();
             xml.writeEndDocument();
