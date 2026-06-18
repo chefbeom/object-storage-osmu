@@ -102,6 +102,15 @@ public class InMemoryObjectMetadataRepository implements ObjectMetadataRepositor
     }
 
     @Override
+    public List<StoredObjectRecord> findAllByBucketName(String bucketName) {
+        return bucketObjects(bucketName)
+                .values()
+                .stream()
+                .sorted(Comparator.comparing(StoredObjectRecord::key))
+                .toList();
+    }
+
+    @Override
     public List<DeletedObjectCandidate> findDeletedBefore(OffsetDateTime cutoff, int limit) {
         return findDeletedBefore(cutoff, limit, "", "", Map.of());
     }

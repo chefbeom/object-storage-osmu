@@ -18,9 +18,13 @@ import com.example.osmu.storageprofile.repository.StorageProfileAssignmentReposi
 import com.example.osmu.user.UserAccount;
 import com.example.osmu.user.repository.UserRepository;
 import java.time.OffsetDateTime;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.regex.Pattern;
 import org.springframework.stereotype.Service;
@@ -134,16 +138,36 @@ public class BucketService {
         bucketRepository.deleteByName(bucket.name());
     }
 
-    public synchronized BucketRecord syncUsage(String bucketName, AuthenticatedUser user) {
+    public synchronized BucketSyncResponse syncUsage(String bucketName, AuthenticatedUser user) {
         BucketRecord current = get(bucketName, user);
         assertCanManage(user, current);
+        List<StoredObjectRecord> indexedObjects = objectMetadataRepository.findAllByBucketName(current.name());
+        Map<String, StoredObjectRecord> indexedByKey = new LinkedHashMap<>();
+        for (StoredObjectRecord object : indexedObjects) {
+            indexedByKey.put(object.key(), object);
+        }
         List<StoredObjectRecord> storageObjects = storageAdapter.listObjects(current.name(), "");
-        List<StoredObjectRecord> visibleObjects = storageObjects.stream()
-                .filter(object -> !ObjectVersionStorageKeys.isInternalStorageKey(object.key()))
-                .map(object -> objectMetadataRepository.findByKey(current.name(), object.key())
-                        .map(existing -> reconcileSyncedObject(object, existing))
-                        .orElse(object))
-                .toList();
+        List<StoredObjectRecord> visibleObjects = new ArrayList<>();
+        Set<String> visibleKeys = new LinkedHashSet<>();
+        long metadataAddedCount = 0L;
+        long metadataUpdatedCount = 0L;
+        for (StoredObjectRecord object : storageObjects) {
+            if (ObjectVersionStorageKeys.isInternalStorageKey(object.key())) {
+                continue;
+            }
+            StoredObjectRecord existing = indexedByKey.get(object.key());
+            StoredObjectRecord synced = existing == null ? object : reconcileSyncedObject(object, existing);
+            if (existing == null) {
+                metadataAddedCount++;
+            } else if (!sameSyncedMetadata(existing, synced)) {
+                metadataUpdatedCount++;
+            }
+            visibleObjects.add(synced);
+            visibleKeys.add(synced.key());
+        }
+        long metadataRemovedCount = indexedObjects.stream()
+                .filter(object -> !visibleKeys.contains(object.key()))
+                .count();
         long usedBytes = storageObjects.stream()
                 .filter(object -> !ObjectVersionStorageKeys.isUploadStagingStorageKey(object.key()))
                 .mapToLong(StoredObjectRecord::sizeBytes)
@@ -152,7 +176,7 @@ public class BucketService {
                 .filter(object -> !ObjectVersionStorageKeys.isUploadStagingStorageKey(object.key()))
                 .count();
         objectMetadataRepository.replaceBucketObjects(current.name(), visibleObjects);
-        return bucketRepository.save(new BucketRecord(
+        BucketRecord synced = bucketRepository.save(new BucketRecord(
                 current.id(),
                 current.name(),
                 current.ownerType(),
@@ -162,6 +186,29 @@ public class BucketService {
                 objectCount,
                 current.createdAt()
         ));
+        long internalStorageObjectCount = storageObjects.stream()
+                .filter(object -> ObjectVersionStorageKeys.isInternalStorageKey(object.key()))
+                .count();
+        long stagingStorageObjectCount = storageObjects.stream()
+                .filter(object -> ObjectVersionStorageKeys.isUploadStagingStorageKey(object.key()))
+                .count();
+        long deletedObjectMetadataRetainedCount = visibleObjects.stream()
+                .filter(StoredObjectRecord::isDeleted)
+                .count();
+        return BucketSyncResponse.of(
+                current,
+                synced,
+                storageObjects.size(),
+                visibleObjects.size(),
+                internalStorageObjectCount,
+                stagingStorageObjectCount,
+                indexedObjects.size(),
+                visibleObjects.size(),
+                metadataAddedCount,
+                metadataUpdatedCount,
+                metadataRemovedCount,
+                deletedObjectMetadataRetainedCount
+        );
     }
 
     private StoredObjectRecord reconcileSyncedObject(StoredObjectRecord actual, StoredObjectRecord existing) {
@@ -181,12 +228,25 @@ public class BucketService {
         return !normalizedFirst.isBlank() && normalizedFirst.equals(normalizedSecond);
     }
 
+    private boolean sameSyncedMetadata(StoredObjectRecord existing, StoredObjectRecord synced) {
+        return existing.sizeBytes() == synced.sizeBytes()
+                && Objects.equals(normalizeContentType(existing.contentType()), normalizeContentType(synced.contentType()))
+                && Objects.equals(existing.tags(), synced.tags())
+                && Objects.equals(existing.deletedAt(), synced.deletedAt())
+                && Objects.equals(normalizeEtag(existing.etag()), normalizeEtag(synced.etag()))
+                && Objects.equals(existing.checksums(), synced.checksums());
+    }
+
     private String normalizeEtag(String value) {
         String normalized = value == null ? "" : value.trim();
         if (normalized.length() >= 2 && normalized.startsWith("\"") && normalized.endsWith("\"")) {
             return normalized.substring(1, normalized.length() - 1);
         }
         return normalized;
+    }
+
+    private String normalizeContentType(String value) {
+        return value == null ? "" : value.trim();
     }
 
     public synchronized void applyObjectChange(String bucketName, long sizeDelta, long objectCountDelta) {

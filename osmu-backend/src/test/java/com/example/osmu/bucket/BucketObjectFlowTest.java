@@ -18,6 +18,7 @@ import com.jayway.jsonpath.JsonPath;
 import com.example.osmu.object.StoredObjectRecord;
 import com.example.osmu.object.repository.ObjectMetadataRepository;
 import com.example.osmu.storage.ObjectStorageAdapter;
+import java.time.OffsetDateTime;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -984,12 +985,25 @@ class BucketObjectFlowTest {
                 .andExpect(jsonPath("$.data.objectCount").value(0));
 
         storageAdapter.putObject("sync-direct-bucket", "direct/s3-object.txt", "direct-write".getBytes(), MediaType.TEXT_PLAIN_VALUE);
+        objectMetadataRepository.save(
+                "sync-direct-bucket",
+                new StoredObjectRecord("ghost.txt", 5L, MediaType.TEXT_PLAIN_VALUE, OffsetDateTime.now())
+        );
 
         mockMvc.perform(post("/api/buckets/{bucketName}/sync", "sync-direct-bucket")
                         .header("Authorization", "Bearer " + accessToken))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.usedBytes").value(12))
-                .andExpect(jsonPath("$.data.objectCount").value(1));
+                .andExpect(jsonPath("$.data.objectCount").value(1))
+                .andExpect(jsonPath("$.data.previousUsedBytes").value(0))
+                .andExpect(jsonPath("$.data.previousObjectCount").value(0))
+                .andExpect(jsonPath("$.data.storageObjectCount").value(1))
+                .andExpect(jsonPath("$.data.visibleStorageObjectCount").value(1))
+                .andExpect(jsonPath("$.data.metadataObjectCountBefore").value(1))
+                .andExpect(jsonPath("$.data.metadataObjectCountAfter").value(1))
+                .andExpect(jsonPath("$.data.metadataAddedCount").value(1))
+                .andExpect(jsonPath("$.data.metadataUpdatedCount").value(0))
+                .andExpect(jsonPath("$.data.metadataRemovedCount").value(1));
 
         mockMvc.perform(get("/api/buckets/{bucketName}/objects", "sync-direct-bucket")
                         .header("Authorization", "Bearer " + accessToken)
@@ -1038,7 +1052,10 @@ class BucketObjectFlowTest {
 
         mockMvc.perform(post("/api/buckets/{bucketName}/sync", "drift-bucket")
                         .header("Authorization", "Bearer " + accessToken))
-                .andExpect(status().isOk());
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.metadataAddedCount").value(0))
+                .andExpect(jsonPath("$.data.metadataUpdatedCount").value(1))
+                .andExpect(jsonPath("$.data.metadataRemovedCount").value(0));
 
         mockMvc.perform(get("/api/buckets/{bucketName}/objects/metadata/drift.txt", "drift-bucket")
                         .header("Authorization", "Bearer " + accessToken))

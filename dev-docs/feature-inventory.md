@@ -198,12 +198,12 @@ MVP 데모 기준 완료율은 약 90~95%입니다.
 - multipart upload/resume 초안
 - trash/restore/purge
 - versioning/retention/lifecycle 일부
+- S3 직접 업로드 이후 bucket sync 기반 metadata drift 보정과 add/update/remove reconciliation summary
 
 남은 것:
 
 - 대용량 업로드 중단/재개 E2E
 - 실제 MinIO multipart resume 검증
-- S3 직접 업로드 이후 metadata drift sync
 - 대량 object search/filter
 - versioning + multipart overwrite edge case
 
@@ -238,13 +238,13 @@ MVP 데모 기준 완료율은 약 90~95%입니다.
 - Flyway migration V1~V43
 - bucket/object/access key/audit/quota/dashboard/storage expansion/restore drill evidence repository
 - in-memory repository와 MariaDB repository 병행 구조
+- object metadata drift reconciliation을 위한 bucket 단위 metadata scan과 sync summary
 
 남은 것:
 
 - 실제 MariaDB integration test
 - migration rollback 전략
 - index/slow query 검증
-- metadata drift reconciliation
 - backup/restore drill 실검증
 
 ### 4.8 MinIO와 storage backend

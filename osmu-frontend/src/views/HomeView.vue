@@ -2548,7 +2548,8 @@ async function handleSyncBucket(bucketName) {
   const result = await runAction(() => syncBucketUsage(bucketName))
   if (result) {
     await loadDashboard()
-    setStatusMessage(`${bucketName} 버킷 사용량 동기화 완료`)
+    const summary = result.data || {}
+    setStatusMessage(`${bucketName} 버킷 사용량 동기화 완료 (added ${summary.metadataAddedCount || 0}, updated ${summary.metadataUpdatedCount || 0}, removed ${summary.metadataRemovedCount || 0})`)
   }
 }
 

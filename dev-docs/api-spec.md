@@ -989,7 +989,19 @@ S3 직접 업로드, presigned upload, 외부 client 작업 이후 bucket 사용
     "name": "project-data",
     "quotaBytes": 1099511627776,
     "usedBytes": 1048576,
-    "objectCount": 12
+    "objectCount": 12,
+    "previousUsedBytes": 524288,
+    "previousObjectCount": 10,
+    "storageObjectCount": 14,
+    "visibleStorageObjectCount": 12,
+    "internalStorageObjectCount": 2,
+    "stagingStorageObjectCount": 0,
+    "metadataObjectCountBefore": 11,
+    "metadataObjectCountAfter": 12,
+    "metadataAddedCount": 2,
+    "metadataUpdatedCount": 1,
+    "metadataRemovedCount": 1,
+    "deletedObjectMetadataRetainedCount": 0
   }
 }
 ```
@@ -999,6 +1011,7 @@ S3 직접 업로드, presigned upload, 외부 client 작업 이후 bucket 사용
 - MVP에서는 빈 버킷만 삭제 가능.
 - 삭제 성공/실패 모두 감사 로그 대상.
 - S3 직접 접근으로 생긴 metadata drift는 sync API로 보정한다.
+- 응답은 기존 bucket 필드와 함께 storage scan, metadata add/update/remove, 내부 object, staging object count를 반환해 어떤 drift가 보정됐는지 운영자가 확인할 수 있게 한다.
 - sync는 bucket 관리 권한이 있는 사용자만 실행한다.
 
 ### GET /api/buckets/{bucketName}/tags

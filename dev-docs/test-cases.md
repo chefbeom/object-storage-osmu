@@ -1164,7 +1164,7 @@ ID:
 - 조건: Backend upload로 index에 반영된 object를 storage 경로에서 직접 덮어쓴다.
 - 입력: `GET /api/buckets/{bucketName}/objects/metadata/{objectKey}`, 이후 `POST /api/buckets/{bucketName}/sync`
 - 절차: 직접 덮어쓰기 전후 상세 API를 호출하고 sync 후 다시 상세 API를 호출한다.
-- 기대 결과: index와 storage actual이 다르면 `syncStatus = STALE`, sync 후에는 `SYNCED`가 반환된다. storage actual fields가 함께 반환된다. sync 시 ETag가 바뀐 object의 stale checksum metadata는 보존되지 않는다.
+- 기대 결과: index와 storage actual이 다르면 `syncStatus = STALE`, sync 후에는 `SYNCED`가 반환된다. storage actual fields가 함께 반환된다. sync 응답은 previous/current usage, storage/internal/staging count, metadata before/after count, metadata add/update/remove count를 포함한다. sync 시 ETag가 바뀐 object의 stale checksum metadata는 보존되지 않는다.
 - 우선순위: P0
 - 자동화 여부: Automated
 

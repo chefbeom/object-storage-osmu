@@ -122,6 +122,30 @@ public class MariaDbObjectMetadataRepository implements ObjectMetadataRepository
     }
 
     @Override
+    public List<StoredObjectRecord> findAllByBucketName(String bucketName) {
+        ensureSchema();
+        String sql = """
+                SELECT object_key, size_bytes, content_type, last_modified_at, tags, deleted_at, etag, checksums
+                FROM object_metadata
+                WHERE bucket_name = ?
+                ORDER BY object_key
+                """;
+        try (Connection connection = connect();
+             PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setString(1, bucketName);
+            try (ResultSet resultSet = statement.executeQuery()) {
+                List<StoredObjectRecord> objects = new ArrayList<>();
+                while (resultSet.next()) {
+                    objects.add(mapRow(resultSet));
+                }
+                return objects;
+            }
+        } catch (SQLException exception) {
+            throw databaseException(exception);
+        }
+    }
+
+    @Override
     public StoredObjectPage listDeletedObjects(
             String bucketName,
             String prefix,

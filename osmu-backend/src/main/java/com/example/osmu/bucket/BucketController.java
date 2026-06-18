@@ -67,14 +67,14 @@ public class BucketController {
     }
 
     @PostMapping("/{bucketName}/sync")
-    public ApiResponse<BucketRecord> syncBucketUsage(
+    public ApiResponse<BucketSyncResponse> syncBucketUsage(
             @PathVariable("bucketName") String bucketName,
             HttpServletRequest request
     ) {
         AuthenticatedUser user = authContext.currentUser(request);
-        BucketRecord bucket = bucketService.syncUsage(bucketName, user);
-        auditLogService.record("BUCKET_SYNC", user.loginId(), "BUCKET", bucket.name(), "SUCCESS", "Bucket usage synced", request);
-        return ApiResponse.of(bucket);
+        BucketSyncResponse sync = bucketService.syncUsage(bucketName, user);
+        auditLogService.record("BUCKET_SYNC", user.loginId(), "BUCKET", sync.name(), "SUCCESS", "Bucket usage synced", request);
+        return ApiResponse.of(sync);
     }
 
     @GetMapping("/{bucketName}/permissions")

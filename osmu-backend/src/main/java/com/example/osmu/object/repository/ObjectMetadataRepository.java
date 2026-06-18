@@ -31,6 +31,8 @@ public interface ObjectMetadataRepository {
 
     Optional<StoredObjectRecord> findByKey(String bucketName, String objectKey);
 
+    List<StoredObjectRecord> findAllByBucketName(String bucketName);
+
     default List<DeletedObjectCandidate> findDeletedBefore(OffsetDateTime cutoff, int limit) {
         return findDeletedBefore(cutoff, limit, "", "", Map.of());
     }
