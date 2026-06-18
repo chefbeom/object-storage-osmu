@@ -56,7 +56,7 @@ public class MariaDbAccessKeyRepository implements AccessKeyRepository {
     public List<AccessKeyRecord> findAllRecords() {
         ensureSchema();
         String sql = """
-                SELECT id, owner_id, name, access_key, allowed_buckets, permissions, bucket_scopes, status, created_at, expires_at
+                SELECT id, owner_id, name, access_key, allowed_buckets, permissions, bucket_scopes, status, created_at, expires_at, last_used_at
                 FROM access_keys
                 ORDER BY id
                 """;
@@ -77,7 +77,7 @@ public class MariaDbAccessKeyRepository implements AccessKeyRepository {
     public List<AccessKeyRecord> findRecordsByOwnerId(long ownerId) {
         ensureSchema();
         String sql = """
-                SELECT id, owner_id, name, access_key, allowed_buckets, permissions, bucket_scopes, status, created_at, expires_at
+                SELECT id, owner_id, name, access_key, allowed_buckets, permissions, bucket_scopes, status, created_at, expires_at, last_used_at
                 FROM access_keys
                 WHERE owner_id = ?
                 ORDER BY id
@@ -101,7 +101,7 @@ public class MariaDbAccessKeyRepository implements AccessKeyRepository {
     public Optional<AccessKeyRecord> findRecordById(long id) {
         ensureSchema();
         String sql = """
-                SELECT id, owner_id, name, access_key, allowed_buckets, permissions, bucket_scopes, status, created_at, expires_at
+                SELECT id, owner_id, name, access_key, allowed_buckets, permissions, bucket_scopes, status, created_at, expires_at, last_used_at
                 FROM access_keys
                 WHERE id = ?
                 """;
@@ -162,8 +162,8 @@ public class MariaDbAccessKeyRepository implements AccessKeyRepository {
         ensureSchema();
         String sql = """
                 INSERT INTO access_keys
-                    (id, owner_id, name, access_key, secret_key_hash, secret_key_ciphertext, allowed_buckets, permissions, bucket_scopes, status, created_at, expires_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    (id, owner_id, name, access_key, secret_key_hash, secret_key_ciphertext, allowed_buckets, permissions, bucket_scopes, status, created_at, expires_at, last_used_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON DUPLICATE KEY UPDATE
                     name = VALUES(name),
                     secret_key_hash = VALUES(secret_key_hash),
@@ -188,6 +188,7 @@ public class MariaDbAccessKeyRepository implements AccessKeyRepository {
             statement.setString(10, accessKey.status());
             statement.setTimestamp(11, Timestamp.from(accessKey.createdAt().toInstant()));
             statement.setTimestamp(12, timestampOrNull(accessKey.expiresAt()));
+            statement.setTimestamp(13, timestampOrNull(accessKey.lastUsedAt()));
             statement.executeUpdate();
             return accessKey.toRecord();
         } catch (SQLException exception) {
@@ -226,6 +227,35 @@ public class MariaDbAccessKeyRepository implements AccessKeyRepository {
     }
 
     @Override
+    public void updateSecret(long id, String secretKeyHash, String secretKeyCiphertext) {
+        ensureSchema();
+        String sql = "UPDATE access_keys SET secret_key_hash = ?, secret_key_ciphertext = ? WHERE id = ?";
+        try (Connection connection = connect();
+             PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setString(1, secretKeyHash);
+            statement.setString(2, secretKeyCiphertext);
+            statement.setLong(3, id);
+            statement.executeUpdate();
+        } catch (SQLException exception) {
+            throw databaseException(exception);
+        }
+    }
+
+    @Override
+    public void markUsed(long id, OffsetDateTime usedAt) {
+        ensureSchema();
+        String sql = "UPDATE access_keys SET last_used_at = ? WHERE id = ?";
+        try (Connection connection = connect();
+             PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setTimestamp(1, timestampOrNull(usedAt));
+            statement.setLong(2, id);
+            statement.executeUpdate();
+        } catch (SQLException exception) {
+            throw databaseException(exception);
+        }
+    }
+
+    @Override
     public boolean isHealthy() {
         try (Connection connection = connect();
              PreparedStatement statement = connection.prepareStatement("SELECT 1");
@@ -255,8 +285,10 @@ public class MariaDbAccessKeyRepository implements AccessKeyRepository {
                     status VARCHAR(32) NOT NULL,
                     created_at TIMESTAMP NOT NULL,
                     expires_at TIMESTAMP NULL,
+                    last_used_at TIMESTAMP NULL,
                     INDEX idx_access_keys_owner_id (owner_id),
-                    INDEX idx_access_keys_status (status)
+                    INDEX idx_access_keys_status (status),
+                    INDEX idx_access_keys_last_used_at (last_used_at)
                 )
                 """;
         try (Connection connection = connect();
@@ -274,6 +306,8 @@ public class MariaDbAccessKeyRepository implements AccessKeyRepository {
         executeUpdate(connection, "ALTER TABLE access_keys ADD COLUMN IF NOT EXISTS permissions TEXT NULL");
         executeUpdate(connection, "ALTER TABLE access_keys ADD COLUMN IF NOT EXISTS bucket_scopes TEXT NULL");
         executeUpdate(connection, "ALTER TABLE access_keys ADD COLUMN IF NOT EXISTS secret_key_ciphertext TEXT NULL");
+        executeUpdate(connection, "ALTER TABLE access_keys ADD COLUMN IF NOT EXISTS last_used_at TIMESTAMP NULL");
+        executeUpdate(connection, "CREATE INDEX IF NOT EXISTS idx_access_keys_last_used_at ON access_keys (last_used_at)");
         executeUpdate(connection, "UPDATE access_keys SET allowed_buckets = '[\"*\"]' WHERE allowed_buckets IS NULL");
         executeUpdate(connection, "UPDATE access_keys SET permissions = '[\"READ\",\"WRITE\",\"DELETE\"]' WHERE permissions IS NULL");
         executeUpdate(connection, "ALTER TABLE access_keys MODIFY COLUMN allowed_buckets TEXT NOT NULL");
@@ -304,7 +338,8 @@ public class MariaDbAccessKeyRepository implements AccessKeyRepository {
                 readBucketScopes(resultSet.getString("bucket_scopes"), allowedBuckets, permissions),
                 resultSet.getString("status"),
                 resultSet.getTimestamp("created_at").toInstant().atOffset(ZoneOffset.UTC),
-                offsetDateTimeOrNull(resultSet.getTimestamp("expires_at"))
+                offsetDateTimeOrNull(resultSet.getTimestamp("expires_at")),
+                offsetDateTimeOrNull(resultSet.getTimestamp("last_used_at"))
         );
     }
 

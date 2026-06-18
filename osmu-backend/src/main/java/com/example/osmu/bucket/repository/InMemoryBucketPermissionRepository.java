@@ -61,6 +61,14 @@ public class InMemoryBucketPermissionRepository implements BucketPermissionRepos
     }
 
     @Override
+    public int deleteBySubject(String subjectType, long subjectId) {
+        int before = permissions.size();
+        permissions.values().removeIf(permission -> permission.subjectType().equals(subjectType)
+                && permission.subjectId() == subjectId);
+        return before - permissions.size();
+    }
+
+    @Override
     public boolean isHealthy() {
         return true;
     }

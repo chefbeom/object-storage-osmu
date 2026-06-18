@@ -7,6 +7,6 @@ import java.util.List;
 
 public record AccessKeyBucketScope(
         @NotBlank String bucketName,
-        @NotEmpty @Size(max = 3) List<@NotBlank String> permissions
+        @NotEmpty @Size(max = 4) List<@NotBlank String> permissions
 ) {
 }

@@ -20,5 +20,7 @@ public interface BucketPermissionRepository {
 
     void deleteByBucketId(long bucketId);
 
+    int deleteBySubject(String subjectType, long subjectId);
+
     boolean isHealthy();
 }

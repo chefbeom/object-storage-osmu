@@ -13,7 +13,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
-@RequestMapping("/api/s3/{bucketName}")
+@RequestMapping({"/api/s3/{bucketName}", "/{bucketName}"})
 public class S3BucketTaggingController {
 
     private final BucketTagService bucketTagService;
@@ -28,7 +28,7 @@ public class S3BucketTaggingController {
         this.s3RequestAuthService = s3RequestAuthService;
     }
 
-    @GetMapping(params = "tagging", produces = MediaType.APPLICATION_XML_VALUE)
+    @GetMapping(value = {"", "/"}, params = "tagging", produces = MediaType.APPLICATION_XML_VALUE)
     public ResponseEntity<String> getBucketTagging(
             @PathVariable("bucketName") String bucketName,
             HttpServletRequest request
@@ -39,7 +39,7 @@ public class S3BucketTaggingController {
                 .body(taggingXmlMapper.toXml(bucketTagService.getTags(bucketName, user, request)));
     }
 
-    @PutMapping(params = "tagging", consumes = {MediaType.APPLICATION_XML_VALUE, MediaType.TEXT_XML_VALUE})
+    @PutMapping(value = {"", "/"}, params = "tagging", consumes = {MediaType.APPLICATION_XML_VALUE, MediaType.TEXT_XML_VALUE})
     public ResponseEntity<Void> putBucketTagging(
             @PathVariable("bucketName") String bucketName,
             @RequestBody String rawXml,
@@ -50,7 +50,7 @@ public class S3BucketTaggingController {
         return ResponseEntity.ok().build();
     }
 
-    @DeleteMapping(params = "tagging")
+    @DeleteMapping(value = {"", "/"}, params = "tagging")
     public ResponseEntity<Void> deleteBucketTagging(
             @PathVariable("bucketName") String bucketName,
             HttpServletRequest request

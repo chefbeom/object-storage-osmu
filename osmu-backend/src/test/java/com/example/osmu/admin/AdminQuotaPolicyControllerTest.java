@@ -90,6 +90,17 @@ class AdminQuotaPolicyControllerTest {
                 .andExpect(jsonPath("$.items[2].action").value("CREATE"))
                 .andExpect(jsonPath("$.items[2].newQuotaBytes").value(4096))
                 .andExpect(jsonPath("$.items[2].reason").value("initial pilot quota"));
+
+        mockMvc.perform(get("/api/admin/audit-logs")
+                        .header("Authorization", "Bearer " + adminToken)
+                        .param("targetType", "QUOTA_POLICY")
+                        .param("targetId", "USER:" + userId)
+                        .param("limit", "10"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items[*].eventType", hasItem("QUOTA_POLICY_SAVE")))
+                .andExpect(jsonPath("$.items[*].eventType", hasItem("QUOTA_POLICY_DELETE")))
+                .andExpect(jsonPath("$.items[*].actorId", hasItem("admin")))
+                .andExpect(jsonPath("$.items[*].targetId", hasItem("USER:" + userId)));
     }
 
     private int createUser(String adminToken, String loginId, String email) throws Exception {

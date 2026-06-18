@@ -1,10 +1,13 @@
 package com.example.osmu.admin;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.example.osmu.accesskey.S3AccessPolicyProvisioner;
 import com.example.osmu.accesskey.repository.AccessKeyRepository;
 import com.example.osmu.audit.AuditLogEntry;
 import com.example.osmu.audit.AuditLogService;
 import com.example.osmu.audit.repository.AuditLogRepository;
+import com.example.osmu.admin.repository.BackupRestoreDrillEvidenceRepository;
 import com.example.osmu.auth.AuthContext;
 import com.example.osmu.auth.AuthenticatedUser;
 import com.example.osmu.auth.repository.RefreshTokenRepository;
@@ -14,25 +17,39 @@ import com.example.osmu.common.api.ApiResponse;
 import com.example.osmu.common.api.ListResponse;
 import com.example.osmu.common.error.ApiErrorCode;
 import com.example.osmu.common.error.ApiException;
+import com.example.osmu.dashboard.repository.DashboardLayoutRepository;
 import com.example.osmu.object.DeletedObjectCandidate;
 import com.example.osmu.object.ObjectLifecycleRule;
 import com.example.osmu.object.ObjectRetentionPolicy;
 import com.example.osmu.object.ObjectRetentionPurgeJob;
 import com.example.osmu.object.ObjectShareLink;
+import com.example.osmu.object.ObjectShareLinkResponse;
+import com.example.osmu.object.ObjectSharePolicyService;
 import com.example.osmu.object.ObjectVersionRetentionPurgeJob;
 import com.example.osmu.object.repository.ObjectMetadataRepository;
 import com.example.osmu.object.repository.ObjectLifecycleRuleRepository;
 import com.example.osmu.object.repository.ObjectRetentionPolicyRepository;
+import com.example.osmu.object.repository.ObjectShareLinkRepository;
 import com.example.osmu.object.repository.ObjectVersionRepository;
 import com.example.osmu.object.repository.ObjectVersionRepository.VersionCandidate;
 import com.example.osmu.object.repository.PresignedUploadSessionRepository;
 import com.example.osmu.organization.repository.OrganizationRepository;
+import com.example.osmu.monitoring.DataFlowEventFilter;
+import com.example.osmu.monitoring.DataFlowMonitoringResponse;
+import com.example.osmu.monitoring.DataFlowMonitoringService;
+import com.example.osmu.quota.QuotaPolicyResponse;
+import com.example.osmu.quota.QuotaPolicyService;
 import com.example.osmu.storage.ObjectStorageAdapter;
 import com.example.osmu.user.repository.UserRepository;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
 import jakarta.servlet.http.HttpServletRequest;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.OffsetDateTime;
+import java.time.format.DateTimeParseException;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -59,12 +76,15 @@ import org.springframework.web.bind.annotation.RestController;
 public class AdminController {
 
     private static final Pattern TAG_KEY_PATTERN = Pattern.compile("^[A-Za-z0-9_.:/@+-]+$");
+    private static final ObjectMapper JSON_MAPPER = new ObjectMapper();
 
     private final BucketService bucketService;
     private final BucketRepository bucketRepository;
     private final UserRepository userRepository;
+    private final DashboardLayoutRepository dashboardLayoutRepository;
     private final OrganizationRepository organizationRepository;
     private final AuditLogRepository auditLogRepository;
+    private final BackupRestoreDrillEvidenceRepository restoreDrillEvidenceRepository;
     private final RefreshTokenRepository refreshTokenRepository;
     private final AccessKeyRepository accessKeyRepository;
     private final ObjectMetadataRepository objectMetadataRepository;
@@ -72,6 +92,9 @@ public class AdminController {
     private final ObjectRetentionPolicyRepository retentionPolicyRepository;
     private final ObjectVersionRepository objectVersionRepository;
     private final PresignedUploadSessionRepository uploadSessionRepository;
+    private final ObjectShareLinkRepository shareLinkRepository;
+    private final ObjectSharePolicyService sharePolicyService;
+    private final QuotaPolicyService quotaPolicyService;
     private final S3AccessPolicyProvisioner policyProvisioner;
     private final AuditLogService auditLogService;
     private final ObjectLifecycleS3XmlService lifecycleS3XmlService;
@@ -79,15 +102,35 @@ public class AdminController {
     private final ObjectStorageAdapter storageAdapter;
     private final ObjectProvider<ObjectRetentionPurgeJob> retentionPurgeJobProvider;
     private final ObjectProvider<ObjectVersionRetentionPurgeJob> versionRetentionPurgeJobProvider;
+    private final DataFlowMonitoringService dataFlowMonitoringService;
     private final MeterRegistry meterRegistry;
     private final boolean objectRetentionEnabled;
+    private final String storageMode;
+    private final String metadataMode;
+    private final boolean restoreDrillExecuted;
+    private final String lastBackupAt;
+    private final String lastRestoreDrillAt;
+    private final String operationsReadinessReportPath;
+    private final String operationsReadinessFinalizeReportPath;
+    private final String operationsReadinessArtifactImportReportPath;
+    private final String operationsEvidencePlanReportPath;
+    private final String operationsEvidencePlanInvocationReportPath;
+    private final String operationsInvocationUnblockPlanReportPath;
+    private final String operationsDispatchPreflightReportPath;
+    private final String operationsWorkflowRunIdPlanReportPath;
+    private final String operationsArtifactCollectionPlanReportPath;
+    private final String operationsEvidenceHandoffReportPath;
+    private final String operationsReadinessConvergenceReportPath;
+    private final String kubernetesOperationsReportSyncReportPath;
 
     public AdminController(
             BucketService bucketService,
             BucketRepository bucketRepository,
             UserRepository userRepository,
+            DashboardLayoutRepository dashboardLayoutRepository,
             OrganizationRepository organizationRepository,
             AuditLogRepository auditLogRepository,
+            BackupRestoreDrillEvidenceRepository restoreDrillEvidenceRepository,
             RefreshTokenRepository refreshTokenRepository,
             AccessKeyRepository accessKeyRepository,
             ObjectMetadataRepository objectMetadataRepository,
@@ -95,6 +138,9 @@ public class AdminController {
             ObjectRetentionPolicyRepository retentionPolicyRepository,
             ObjectVersionRepository objectVersionRepository,
             PresignedUploadSessionRepository uploadSessionRepository,
+            ObjectShareLinkRepository shareLinkRepository,
+            ObjectSharePolicyService sharePolicyService,
+            QuotaPolicyService quotaPolicyService,
             S3AccessPolicyProvisioner policyProvisioner,
             AuditLogService auditLogService,
             ObjectLifecycleS3XmlService lifecycleS3XmlService,
@@ -102,14 +148,34 @@ public class AdminController {
             ObjectStorageAdapter storageAdapter,
             ObjectProvider<ObjectRetentionPurgeJob> retentionPurgeJobProvider,
             ObjectProvider<ObjectVersionRetentionPurgeJob> versionRetentionPurgeJobProvider,
+            DataFlowMonitoringService dataFlowMonitoringService,
             MeterRegistry meterRegistry,
-            @Value("${osmu.object.retention.enabled:true}") boolean objectRetentionEnabled
+            @Value("${osmu.object.retention.enabled:true}") boolean objectRetentionEnabled,
+            @Value("${osmu.storage.mode:in-memory}") String storageMode,
+            @Value("${osmu.metadata.mode:in-memory}") String metadataMode,
+            @Value("${osmu.backup.restore-drill-executed:false}") boolean restoreDrillExecuted,
+            @Value("${osmu.backup.last-backup-at:}") String lastBackupAt,
+            @Value("${osmu.backup.last-restore-drill-at:}") String lastRestoreDrillAt,
+            @Value("${osmu.operations.readiness.report-path:.osmu-run/latest-operations-readiness.json}") String operationsReadinessReportPath,
+            @Value("${osmu.operations.readiness.finalize-report-path:.osmu-run/latest-operations-readiness-finalize.json}") String operationsReadinessFinalizeReportPath,
+            @Value("${osmu.operations.readiness.artifact-import-report-path:.osmu-run/latest-operations-readiness-artifact-import.json}") String operationsReadinessArtifactImportReportPath,
+            @Value("${osmu.operations.readiness.evidence-plan-report-path:.osmu-run/latest-operations-evidence-plan.json}") String operationsEvidencePlanReportPath,
+            @Value("${osmu.operations.readiness.evidence-plan-invocation-report-path:.osmu-run/latest-operations-evidence-plan-invocation.json}") String operationsEvidencePlanInvocationReportPath,
+            @Value("${osmu.operations.readiness.invocation-unblock-plan-report-path:.osmu-run/latest-operations-invocation-unblock-plan.json}") String operationsInvocationUnblockPlanReportPath,
+            @Value("${osmu.operations.readiness.dispatch-preflight-report-path:.osmu-run/latest-operations-dispatch-preflight.json}") String operationsDispatchPreflightReportPath,
+            @Value("${osmu.operations.readiness.workflow-run-id-plan-report-path:.osmu-run/latest-operations-workflow-run-ids.json}") String operationsWorkflowRunIdPlanReportPath,
+            @Value("${osmu.operations.readiness.artifact-collection-plan-report-path:.osmu-run/latest-operations-artifact-collection-plan.json}") String operationsArtifactCollectionPlanReportPath,
+            @Value("${osmu.operations.readiness.evidence-handoff-report-path:.osmu-run/latest-operations-evidence-handoff.json}") String operationsEvidenceHandoffReportPath,
+            @Value("${osmu.operations.readiness.convergence-report-path:.osmu-run/latest-operations-readiness-convergence.json}") String operationsReadinessConvergenceReportPath,
+            @Value("${osmu.operations.readiness.kubernetes-report-sync-report-path:.osmu-run/latest-kubernetes-operations-report-sync.json}") String kubernetesOperationsReportSyncReportPath
     ) {
         this.bucketService = bucketService;
         this.bucketRepository = bucketRepository;
         this.userRepository = userRepository;
+        this.dashboardLayoutRepository = dashboardLayoutRepository;
         this.organizationRepository = organizationRepository;
         this.auditLogRepository = auditLogRepository;
+        this.restoreDrillEvidenceRepository = restoreDrillEvidenceRepository;
         this.refreshTokenRepository = refreshTokenRepository;
         this.accessKeyRepository = accessKeyRepository;
         this.objectMetadataRepository = objectMetadataRepository;
@@ -117,6 +183,9 @@ public class AdminController {
         this.retentionPolicyRepository = retentionPolicyRepository;
         this.objectVersionRepository = objectVersionRepository;
         this.uploadSessionRepository = uploadSessionRepository;
+        this.shareLinkRepository = shareLinkRepository;
+        this.sharePolicyService = sharePolicyService;
+        this.quotaPolicyService = quotaPolicyService;
         this.policyProvisioner = policyProvisioner;
         this.auditLogService = auditLogService;
         this.lifecycleS3XmlService = lifecycleS3XmlService;
@@ -124,21 +193,112 @@ public class AdminController {
         this.storageAdapter = storageAdapter;
         this.retentionPurgeJobProvider = retentionPurgeJobProvider;
         this.versionRetentionPurgeJobProvider = versionRetentionPurgeJobProvider;
+        this.dataFlowMonitoringService = dataFlowMonitoringService;
         this.meterRegistry = meterRegistry;
         this.objectRetentionEnabled = objectRetentionEnabled;
+        this.storageMode = storageMode;
+        this.metadataMode = metadataMode;
+        this.restoreDrillExecuted = restoreDrillExecuted;
+        this.lastBackupAt = blankToNull(lastBackupAt);
+        this.lastRestoreDrillAt = blankToNull(lastRestoreDrillAt);
+        this.operationsReadinessReportPath = blankToNull(operationsReadinessReportPath);
+        this.operationsReadinessFinalizeReportPath = blankToNull(operationsReadinessFinalizeReportPath);
+        this.operationsReadinessArtifactImportReportPath = blankToNull(operationsReadinessArtifactImportReportPath);
+        this.operationsEvidencePlanReportPath = blankToNull(operationsEvidencePlanReportPath);
+        this.operationsEvidencePlanInvocationReportPath = blankToNull(operationsEvidencePlanInvocationReportPath);
+        this.operationsInvocationUnblockPlanReportPath = blankToNull(operationsInvocationUnblockPlanReportPath);
+        this.operationsDispatchPreflightReportPath = blankToNull(operationsDispatchPreflightReportPath);
+        this.operationsWorkflowRunIdPlanReportPath = blankToNull(operationsWorkflowRunIdPlanReportPath);
+        this.operationsArtifactCollectionPlanReportPath = blankToNull(operationsArtifactCollectionPlanReportPath);
+        this.operationsEvidenceHandoffReportPath = blankToNull(operationsEvidenceHandoffReportPath);
+        this.operationsReadinessConvergenceReportPath = blankToNull(operationsReadinessConvergenceReportPath);
+        this.kubernetesOperationsReportSyncReportPath = blankToNull(kubernetesOperationsReportSyncReportPath);
+    }
+
+    @GetMapping("/dashboard/summary")
+    public ApiResponse<DashboardSummaryResponse> dashboardSummary() {
+        UsageResponse usage = usageSnapshot();
+        DashboardSystemStatusResponse system = systemStatusSnapshot();
+        BackupStatusResponse backup = backupStatusSnapshot();
+        ObjectRetentionStatusResponse retention = retentionStatus();
+        ObjectShareAnalyticsResponse shareAnalytics = shareAnalyticsSnapshot(10);
+        DashboardQuotaSummaryResponse quota = quotaSummarySnapshot();
+        DashboardReadinessResponse readiness = readinessSnapshot(usage, system, backup, shareAnalytics, quota);
+        DataFlowMonitoringResponse dataFlow = dataFlowMonitoringService.snapshot();
+        ListResponse<AuditLogEntry> recentAuditLogs = auditLogService.list(
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                10
+        );
+        return ApiResponse.of(new DashboardSummaryResponse(
+                usage,
+                system,
+                backup,
+                retention,
+                shareAnalytics,
+                quota,
+                readiness,
+                dataFlow,
+                recentAuditLogs,
+                OffsetDateTime.now()
+        ));
+    }
+
+    @GetMapping("/monitoring/data-flow")
+    public ApiResponse<DataFlowMonitoringResponse> dataFlowMonitoring(
+            @RequestParam(name = "bucketName", required = false) String bucketName,
+            @RequestParam(name = "actorId", required = false) String actorId,
+            @RequestParam(name = "source", required = false) String source,
+            @RequestParam(name = "operation", required = false) String operation,
+            @RequestParam(name = "status", required = false) String status,
+            @RequestParam(name = "from", required = false) String from,
+            @RequestParam(name = "to", required = false) String to,
+            @RequestParam(name = "limit", required = false) Integer limit
+    ) {
+        DataFlowEventFilter filter = new DataFlowEventFilter(
+                bucketName,
+                actorId,
+                source,
+                operation,
+                status,
+                parseOptionalOffsetDateTime(from, "from"),
+                parseOptionalOffsetDateTime(to, "to")
+        );
+        return ApiResponse.of(dataFlowMonitoringService.snapshot(filter, normalizeDataFlowLimit(limit)));
     }
 
     @GetMapping("/usage")
     public ApiResponse<UsageResponse> usage() {
+        return ApiResponse.of(usageSnapshot());
+    }
+
+    @GetMapping("/dashboard/readiness")
+    public ApiResponse<DashboardReadinessResponse> dashboardReadiness() {
+        UsageResponse usage = usageSnapshot();
+        DashboardSystemStatusResponse system = systemStatusSnapshot();
+        BackupStatusResponse backup = backupStatusSnapshot();
+        ObjectShareAnalyticsResponse shareAnalytics = shareAnalyticsSnapshot(10);
+        DashboardQuotaSummaryResponse quota = quotaSummarySnapshot();
+        return ApiResponse.of(readinessSnapshot(usage, system, backup, shareAnalytics, quota));
+    }
+
+    private UsageResponse usageSnapshot() {
         long quotaBytes = bucketService.totalQuotaBytes();
         long usedBytes = bucketService.totalUsedBytes();
-        return ApiResponse.of(new UsageResponse(
+        return new UsageResponse(
                 quotaBytes,
                 usedBytes,
                 Math.max(0L, quotaBytes - usedBytes),
                 bucketService.list().size(),
                 bucketService.totalObjectCount()
-        ));
+        );
     }
 
     @GetMapping("/audit-logs")
@@ -179,23 +339,228 @@ public class AdminController {
 
     @GetMapping("/system/status")
     public ApiResponse<Map<String, String>> systemStatus() {
+        DashboardSystemStatusResponse status = systemStatusSnapshot();
+        return ApiResponse.of(Map.of(
+                "backend", status.backend(),
+                "database", status.database(),
+                "storage", status.storage(),
+                "accessKeyProvisioner", status.accessKeyProvisioner(),
+                "metadataEngine", status.metadataEngine(),
+                "storageEngine", status.storageEngine()
+        ));
+    }
+
+    private DashboardSystemStatusResponse systemStatusSnapshot() {
         boolean databaseHealthy = bucketRepository.isHealthy()
                 && userRepository.isHealthy()
+                && dashboardLayoutRepository.isHealthy()
                 && organizationRepository.isHealthy()
                 && auditLogRepository.isHealthy()
+                && restoreDrillEvidenceRepository.isHealthy()
                 && refreshTokenRepository.isHealthy()
                 && accessKeyRepository.isHealthy()
                 && objectMetadataRepository.isHealthy()
                 && lifecycleRuleRepository.isHealthy()
                 && retentionPolicyRepository.isHealthy()
                 && objectVersionRepository.isHealthy()
-                && uploadSessionRepository.isHealthy();
-        return ApiResponse.of(Map.of(
-                "backend", "UP",
-                "database", databaseHealthy ? "UP" : "DOWN",
-                "storage", storageAdapter.isHealthy() ? "UP" : "DOWN",
-                "accessKeyProvisioner", policyProvisioner.isHealthy() ? "UP" : "DOWN"
-        ));
+                && uploadSessionRepository.isHealthy()
+                && shareLinkRepository.isHealthy()
+                && sharePolicyService.isHealthy();
+        return new DashboardSystemStatusResponse(
+                "UP",
+                databaseHealthy ? "UP" : "DOWN",
+                storageAdapter.isHealthy() ? "UP" : "DOWN",
+                policyProvisioner.isHealthy() ? "UP" : "DOWN",
+                mode(metadataMode),
+                mode(storageMode)
+        );
+    }
+
+    private BackupStatusResponse backupStatusSnapshot() {
+        boolean databaseHealthy = bucketRepository.isHealthy()
+                && userRepository.isHealthy()
+                && dashboardLayoutRepository.isHealthy()
+                && organizationRepository.isHealthy()
+                && auditLogRepository.isHealthy()
+                && restoreDrillEvidenceRepository.isHealthy()
+                && refreshTokenRepository.isHealthy()
+                && accessKeyRepository.isHealthy()
+                && objectMetadataRepository.isHealthy()
+                && lifecycleRuleRepository.isHealthy()
+                && retentionPolicyRepository.isHealthy()
+                && objectVersionRepository.isHealthy()
+                && shareLinkRepository.isHealthy()
+                && uploadSessionRepository.isHealthy()
+                && sharePolicyService.isHealthy()
+                && policyProvisioner.isHealthy();
+        boolean storageHealthy = storageAdapter.isHealthy();
+        String normalizedMetadataMode = mode(metadataMode);
+        String normalizedStorageMode = mode(storageMode);
+        List<String> pendingGates = new java.util.ArrayList<>();
+        if (!"mariadb".equals(normalizedMetadataMode)) {
+            pendingGates.add("MariaDB metadata mode is not enabled.");
+        }
+        if (!"minio".equals(normalizedStorageMode)) {
+            pendingGates.add("MinIO object storage mode is not enabled.");
+        }
+        BackupRestoreDrillEvidenceResponse latestSuccessfulDrill = latestRestoreDrillEvidence("SUCCESS");
+        BackupRestoreDrillEvidenceResponse latestAnyDrill = latestRestoreDrillEvidence(null);
+        boolean successfulRestoreDrillExecuted = restoreDrillExecuted || latestSuccessfulDrill != null;
+        String effectiveLastRestoreDrillAt = lastRestoreDrillAt;
+        if (effectiveLastRestoreDrillAt == null && latestSuccessfulDrill != null) {
+            effectiveLastRestoreDrillAt = latestSuccessfulDrill.recordedAt();
+        }
+        if (effectiveLastRestoreDrillAt == null && latestAnyDrill != null) {
+            effectiveLastRestoreDrillAt = latestAnyDrill.recordedAt();
+        }
+        if (!successfulRestoreDrillExecuted) {
+            pendingGates.add("Successful restore drill evidence has not been recorded.");
+        }
+        return new BackupStatusResponse(
+                pendingGates.isEmpty() && databaseHealthy && storageHealthy ? "READY" : "DRILL_PENDING",
+                normalizedMetadataMode,
+                normalizedStorageMode,
+                databaseHealthy,
+                storageHealthy,
+                "24h",
+                "4h",
+                true,
+                successfulRestoreDrillExecuted,
+                lastBackupAt,
+                effectiveLastRestoreDrillAt,
+                latestSuccessfulDrill == null ? latestAnyDrill : latestSuccessfulDrill,
+                List.copyOf(pendingGates)
+        );
+    }
+
+    private BackupRestoreDrillEvidenceResponse latestRestoreDrillEvidence(String result) {
+        return restoreDrillEvidenceRepository.findLatestByResult(result).orElse(null);
+    }
+
+    private ObjectShareAnalyticsResponse shareAnalyticsSnapshot(int limit) {
+        List<ObjectShareLink> links = shareLinkRepository.findAll();
+        List<ObjectShareLinkResponse> recentLinks = links.stream()
+                .sorted(Comparator.comparing(ObjectShareLink::id).reversed())
+                .limit(limit)
+                .map(link -> ObjectShareLinkResponse.of(link, null, null))
+                .toList();
+        return new ObjectShareAnalyticsResponse(
+                links.size(),
+                countStatus(links, "ACTIVE"),
+                countStatus(links, "EXPIRED"),
+                countStatus(links, "REVOKED"),
+                countStatus(links, "LIMIT_REACHED"),
+                links.stream().filter(ObjectShareLink::passwordProtected).count(),
+                links.stream().filter(ObjectShareLink::ipRestricted).count(),
+                links.stream().mapToLong(ObjectShareLink::downloadCount).sum(),
+                links.stream()
+                        .map(ObjectShareLink::lastAccessedAt)
+                        .filter(value -> value != null)
+                        .max(OffsetDateTime::compareTo)
+                        .orElse(null),
+                recentLinks
+        );
+    }
+
+    private DashboardQuotaSummaryResponse quotaSummarySnapshot() {
+        List<QuotaPolicyResponse> policies = quotaPolicyService.list();
+        List<QuotaPolicyResponse> topPolicies = policies.stream()
+                .sorted(Comparator.comparingDouble(this::quotaUsageRatio).reversed()
+                        .thenComparingLong(QuotaPolicyResponse::remainingBytes))
+                .limit(5)
+                .toList();
+        return new DashboardQuotaSummaryResponse(
+                policies.size(),
+                policies.stream().filter(this::isQuotaWarning).count(),
+                policies.stream().filter(this::isQuotaExhausted).count(),
+                policies.stream().mapToLong(QuotaPolicyResponse::quotaBytes).sum(),
+                policies.stream().mapToLong(QuotaPolicyResponse::usedBytes).sum(),
+                policies.stream().mapToLong(QuotaPolicyResponse::remainingBytes).sum(),
+                topPolicies
+        );
+    }
+
+    private DashboardReadinessResponse readinessSnapshot(
+            UsageResponse usage,
+            DashboardSystemStatusResponse system,
+            BackupStatusResponse backup,
+            ObjectShareAnalyticsResponse shareAnalytics,
+            DashboardQuotaSummaryResponse quota
+    ) {
+        java.util.ArrayList<DashboardReadinessItemResponse> items = new java.util.ArrayList<>();
+        addBlockerIfNotUp(items, "SYSTEM", "BACKEND_DOWN", "Backend API", system.backend(), "dashboard", "status-list", "상태 확인");
+        addBlockerIfNotUp(items, "SYSTEM", "DATABASE_DOWN", "Metadata database", system.database(), "dashboard", "status-list", "DB 확인");
+        addBlockerIfNotUp(items, "SYSTEM", "STORAGE_DOWN", "Object storage", system.storage(), "dashboard", "status-list", "스토리지 확인");
+        addBlockerIfNotUp(items, "SECURITY", "ACCESS_KEY_PROVISIONER_DOWN", "Access key provisioner", system.accessKeyProvisioner(), "admin", "admin-access-keys", "Access key 확인");
+
+        String metadataEngine = mode(system.metadataEngine());
+        String storageEngine = mode(system.storageEngine());
+        if (!"mariadb".equals(metadataEngine)) {
+            addReadinessItem(items, "WARNING", "RUNTIME", "METADATA_ENGINE", "MariaDB metadata mode is not enabled.", "dashboard", "dashboard-widget-runtime", "런타임 확인");
+        }
+        if (!"minio".equals(storageEngine)) {
+            addReadinessItem(items, "WARNING", "RUNTIME", "STORAGE_ENGINE", "MinIO object storage mode is not enabled.", "dashboard", "dashboard-widget-runtime", "런타임 확인");
+        }
+        backup.pendingGates().stream()
+                .forEach(gate -> addUniqueReadinessItem(items, "WARNING", "BACKUP", "BACKUP_GATE", gate, "dashboard", "backup-status-panel", "백업 확인"));
+        addOperationsReadinessItems(items);
+        if (usage.bucketCount() == 0) {
+            addReadinessItem(items, "WARNING", "STORAGE", "NO_BUCKET", "No bucket exists for a demo workflow.", "storage", "storage-buckets", "버킷 생성");
+        }
+        if (quota.exhaustedPolicyCount() > 0) {
+            addReadinessItem(items, "WARNING", "QUOTA", "QUOTA_EXHAUSTED", "%d quota policies are exhausted.".formatted(quota.exhaustedPolicyCount()), "admin", "admin-quota-policies", "쿼터 확인");
+        } else if (quota.warningPolicyCount() > 0) {
+            addReadinessItem(items, "WARNING", "QUOTA", "QUOTA_WARNING", "%d quota policies are near limit.".formatted(quota.warningPolicyCount()), "admin", "admin-quota-policies", "쿼터 확인");
+        }
+        if (shareAnalytics.expiredLinks() > 0) {
+            addReadinessItem(items, "WARNING", "SHARING", "EXPIRED_SHARE_LINKS", "%d expired share links need cleanup.".formatted(shareAnalytics.expiredLinks()), "admin", "admin-object-share", "공유 정리");
+        }
+
+        List<String> blockers = items.stream()
+                .filter(item -> "BLOCKER".equals(item.severity()))
+                .map(DashboardReadinessItemResponse::message)
+                .toList();
+        List<String> warnings = items.stream()
+                .filter(item -> "WARNING".equals(item.severity()))
+                .map(DashboardReadinessItemResponse::message)
+                .toList();
+        DashboardOperationsEvidencePlanResponse operationsEvidencePlan = operationsEvidencePlanSnapshot();
+        DashboardOperationsEvidenceInvocationResponse operationsEvidenceInvocation = operationsEvidenceInvocationSnapshot();
+        DashboardOperationsInvocationUnblockPlanResponse operationsInvocationUnblockPlan = operationsInvocationUnblockPlanSnapshot();
+        DashboardOperationsDispatchPreflightResponse operationsDispatchPreflight = operationsDispatchPreflightSnapshot();
+        DashboardOperationsWorkflowRunIdPlanResponse operationsWorkflowRunIdPlan = operationsWorkflowRunIdPlanSnapshot();
+        DashboardOperationsArtifactCollectionPlanResponse operationsArtifactCollectionPlan = operationsArtifactCollectionPlanSnapshot();
+        DashboardOperationsReadinessArtifactImportResponse operationsReadinessArtifactImport = operationsReadinessArtifactImportSnapshot();
+        DashboardOperationsReadinessFinalizeResponse operationsReadinessFinalize = operationsReadinessFinalizeSnapshot();
+        DashboardOperationsEvidenceHandoffResponse operationsEvidenceHandoff = operationsEvidenceHandoffSnapshot();
+        DashboardOperationsReadinessConvergenceResponse operationsReadinessConvergence = operationsReadinessConvergenceSnapshot();
+        DashboardKubernetesOperationsReportSyncResponse kubernetesOperationsReportSync = kubernetesOperationsReportSyncSnapshot();
+        String status = !blockers.isEmpty()
+                ? "ACTION_REQUIRED"
+                : warnings.isEmpty() ? "READY" : "REVIEW";
+        return new DashboardReadinessResponse(
+                status,
+                runtimeProfile(metadataEngine, storageEngine),
+                blockers.size(),
+                warnings.size(),
+                List.copyOf(blockers),
+                List.copyOf(warnings),
+                readinessSeveritySummaries(items),
+                readinessCategorySummaries(items),
+                List.copyOf(items),
+                operationsEvidencePlan,
+                operationsEvidenceInvocation,
+                operationsInvocationUnblockPlan,
+                operationsDispatchPreflight,
+                operationsWorkflowRunIdPlan,
+                operationsArtifactCollectionPlan,
+                operationsReadinessArtifactImport,
+                operationsReadinessFinalize,
+                operationsEvidenceHandoff,
+                operationsReadinessConvergence,
+                kubernetesOperationsReportSync,
+                OffsetDateTime.now()
+        );
     }
 
     @GetMapping("/object-retention/status")
@@ -317,6 +682,10 @@ public class AdminController {
                 10000
         );
         String prefix = normalizeRulePrefix(request.prefix(), current == null ? "" : current.prefix());
+        String bucketName = normalizeLifecycleBucketName(
+                request.bucketName(),
+                current == null ? "" : current.bucketName()
+        );
         Map<String, String> tags = request.tags() == null
                 ? current == null ? Map.of() : current.tags()
                 : parseTags(request.tags());
@@ -340,6 +709,7 @@ public class AdminController {
                 name,
                 enabled,
                 priority,
+                bucketName,
                 targetType,
                 prefix,
                 tags,
@@ -594,6 +964,14 @@ public class AdminController {
         return normalized;
     }
 
+    private String normalizeLifecycleBucketName(String value, String fallback) {
+        String normalized = value == null ? fallback : value.trim();
+        if (normalized == null) {
+            return "";
+        }
+        return normalized.toLowerCase(Locale.ROOT);
+    }
+
     private Map<String, String> parseTags(String tags) {
         if (tags == null || tags.isBlank()) {
             return Map.of();
@@ -673,6 +1051,1231 @@ public class AdminController {
             throw new ApiException(ApiErrorCode.VALIDATION_ERROR, "status must be ACTIVE, EXPIRED, REVOKED, or LIMIT_REACHED.");
         }
         return normalized;
+    }
+
+    private String mode(String value) {
+        return value == null || value.isBlank() ? "in-memory" : value.trim().toLowerCase(Locale.ROOT);
+    }
+
+    private void addBlockerIfNotUp(
+            java.util.ArrayList<DashboardReadinessItemResponse> items,
+            String category,
+            String code,
+            String label,
+            String status,
+            String targetPage,
+            String targetPanel,
+            String actionLabel
+    ) {
+        if (!"UP".equalsIgnoreCase(status)) {
+            addReadinessItem(
+                    items,
+                    "BLOCKER",
+                    category,
+                    code,
+                    "%s is %s.".formatted(label, status == null || status.isBlank() ? "UNKNOWN" : status),
+                    targetPage,
+                    targetPanel,
+                    actionLabel
+            );
+        }
+    }
+
+    private List<DashboardReadinessCategoryResponse> readinessCategorySummaries(List<DashboardReadinessItemResponse> items) {
+        Map<String, List<DashboardReadinessItemResponse>> grouped = items.stream()
+                .collect(java.util.stream.Collectors.groupingBy(
+                        item -> item.category() == null || item.category().isBlank() ? "GENERAL" : item.category(),
+                        LinkedHashMap::new,
+                        java.util.stream.Collectors.toList()
+                ));
+        return grouped.entrySet().stream()
+                .map(entry -> new DashboardReadinessCategoryResponse(
+                        entry.getKey(),
+                        entry.getValue().size(),
+                        (int) entry.getValue().stream().filter(item -> "BLOCKER".equals(item.severity())).count(),
+                        (int) entry.getValue().stream().filter(item -> "WARNING".equals(item.severity())).count()
+                ))
+                .toList();
+    }
+
+    private List<DashboardReadinessSeverityResponse> readinessSeveritySummaries(List<DashboardReadinessItemResponse> items) {
+        Map<String, List<DashboardReadinessItemResponse>> grouped = items.stream()
+                .collect(java.util.stream.Collectors.groupingBy(
+                        item -> item.severity() == null || item.severity().isBlank() ? "UNKNOWN" : item.severity(),
+                        LinkedHashMap::new,
+                        java.util.stream.Collectors.toList()
+                ));
+        return grouped.entrySet().stream()
+                .map(entry -> new DashboardReadinessSeverityResponse(entry.getKey(), entry.getValue().size()))
+                .toList();
+    }
+
+    private void addUniqueReadinessItem(
+            java.util.ArrayList<DashboardReadinessItemResponse> items,
+            String severity,
+            String category,
+            String code,
+            String message,
+            String targetPage,
+            String targetPanel,
+            String actionLabel
+    ) {
+        boolean exists = items.stream().anyMatch(item -> item.message().equals(message));
+        if (!exists) {
+            addReadinessItem(items, severity, category, code, message, targetPage, targetPanel, actionLabel);
+        }
+    }
+
+    private void addReadinessItem(
+            java.util.ArrayList<DashboardReadinessItemResponse> items,
+            String severity,
+            String category,
+            String code,
+            String message,
+            String targetPage,
+            String targetPanel,
+            String actionLabel
+    ) {
+        addReadinessItem(items, severity, category, code, message, targetPage, targetPanel, actionLabel, "", "", "", "", "");
+    }
+
+    private void addReadinessItem(
+            java.util.ArrayList<DashboardReadinessItemResponse> items,
+            String severity,
+            String category,
+            String code,
+            String message,
+            String targetPage,
+            String targetPanel,
+            String actionLabel,
+            String evidencePath,
+            String remediationCommand,
+            String remediationWorkflow,
+            String remediationWorkflowCommand,
+            String remediationNote
+    ) {
+        items.add(new DashboardReadinessItemResponse(
+                severity,
+                category,
+                code,
+                message,
+                targetPage,
+                targetPanel,
+                actionLabel,
+                evidencePath,
+                remediationCommand,
+                remediationWorkflow,
+                remediationWorkflowCommand,
+                remediationNote
+        ));
+    }
+
+    private void addOperationsReadinessItems(java.util.ArrayList<DashboardReadinessItemResponse> items) {
+        JsonNode readinessReport = readOptionalJsonReport(operationsReadinessReportPath);
+        if (readinessReport != null) {
+            String result = jsonText(readinessReport, "result");
+            String summary = jsonText(readinessReport, "summary");
+            if (!"ready".equalsIgnoreCase(result)) {
+                addReadinessItem(
+                        items,
+                        "WARNING",
+                        "OPERATIONS",
+                        "OPERATIONS_READINESS_PENDING",
+                        "Operations readiness remains %s%s.".formatted(
+                                result.isBlank() ? "unknown" : result,
+                                summary.isBlank() ? "" : ": " + summary
+                        ),
+                        "dashboard",
+                        "dashboard-readiness-panel",
+                        "Operations readiness"
+                );
+            }
+            addOperationsEvidencePlanItem(items);
+            addOperationsEvidenceInvocationItem(items);
+            addOperationsInvocationUnblockPlanItem(items);
+            addOperationsDispatchPreflightItem(items);
+            addOperationsWorkflowRunIdPlanItem(items);
+            addOperationsArtifactCollectionPlanItem(items);
+            addPendingOperationsReadinessChecks(items, readinessReport);
+        }
+
+        addOperationsEvidenceHandoffItem(items);
+
+        addOperationsReadinessArtifactImportItem(items);
+        addOperationsReadinessFinalizeItem(items);
+        addOperationsReadinessConvergenceItem(items);
+        addKubernetesOperationsReportSyncItem(items);
+    }
+
+    private void addOperationsEvidencePlanItem(java.util.ArrayList<DashboardReadinessItemResponse> items) {
+        DashboardOperationsEvidencePlanResponse evidencePlan = operationsEvidencePlanSnapshot();
+        if (evidencePlan.result().isBlank()) {
+            return;
+        }
+        String result = evidencePlan.result();
+        if ("ready".equalsIgnoreCase(result)) {
+            return;
+        }
+        addReadinessItem(
+                items,
+                "WARNING",
+                "OPERATIONS",
+                "OPERATIONS_EVIDENCE_PLAN",
+                "Operations evidence plan is %s%s%s.".formatted(
+                        result.isBlank() ? "available" : result,
+                        ": actionCount=" + evidencePlan.actionCount(),
+                        ", unplannedCount=" + evidencePlan.unplannedCount()
+                ),
+                "dashboard",
+                "dashboard-readiness-panel",
+                "Evidence plan",
+                operationsEvidencePlanReportPath == null ? "" : operationsEvidencePlanReportPath,
+                "powershell -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\write-operations-evidence-plan.ps1",
+                "",
+                "",
+                "Review the ordered evidence plan before running live Kubernetes or security evidence workflows."
+        );
+    }
+
+    private DashboardOperationsEvidencePlanResponse operationsEvidencePlanSnapshot() {
+        JsonNode evidencePlanReport = readOptionalJsonReport(operationsEvidencePlanReportPath);
+        if (evidencePlanReport == null) {
+            return DashboardOperationsEvidencePlanResponse.empty();
+        }
+        java.util.ArrayList<DashboardOperationsEvidenceActionResponse> actions = new java.util.ArrayList<>();
+        JsonNode actionNodes = evidencePlanReport.path("actions");
+        if (actionNodes.isArray()) {
+            for (JsonNode action : actionNodes) {
+                actions.add(new DashboardOperationsEvidenceActionResponse(
+                        jsonInt(action, "order"),
+                        jsonText(action, "name"),
+                        jsonText(action, "category"),
+                        jsonText(action, "actionType"),
+                        jsonText(action, "evidencePath"),
+                        jsonText(action, "requiredEvidence"),
+                        jsonText(action, "localCommand"),
+                        jsonText(action, "workflow"),
+                        jsonText(action, "workflowCommand"),
+                        jsonText(action, "recommendedCommand"),
+                        jsonTextList(action, "operatorInputs"),
+                        jsonBoolean(action, "hasPlaceholders"),
+                        jsonBoolean(action, "requiresOperatorApproval"),
+                        jsonBoolean(action, "requiresKubeconfigSecret"),
+                        jsonText(action, "note")
+                ));
+            }
+        }
+        return new DashboardOperationsEvidencePlanResponse(
+                jsonText(evidencePlanReport, "result"),
+                jsonText(evidencePlanReport, "sourceSummary"),
+                jsonText(evidencePlanReport, "sourceReport"),
+                jsonInt(evidencePlanReport, "pendingCount"),
+                jsonInt(evidencePlanReport, "actionCount"),
+                jsonInt(evidencePlanReport, "unplannedCount"),
+                List.copyOf(actions)
+        );
+    }
+
+    private void addOperationsEvidenceInvocationItem(java.util.ArrayList<DashboardReadinessItemResponse> items) {
+        DashboardOperationsEvidenceInvocationResponse invocation = operationsEvidenceInvocationSnapshot();
+        if (invocation.result().isBlank()) {
+            return;
+        }
+        String result = invocation.result();
+        if ("ready".equalsIgnoreCase(result)) {
+            return;
+        }
+        addReadinessItem(
+                items,
+                "WARNING",
+                "OPERATIONS",
+                "OPERATIONS_EVIDENCE_PLAN_INVOCATION",
+                "Operations evidence invocation is %s%s%s%s.".formatted(
+                        result.isBlank() ? "available" : result,
+                        ": selectedActionCount=" + invocation.selectedActionCount(),
+                        ", plannedCount=" + invocation.plannedCount(),
+                        ", blockedCount=" + invocation.blockedCount()
+                ),
+                "dashboard",
+                "dashboard-readiness-panel",
+                "Evidence invocation",
+                operationsEvidencePlanInvocationReportPath == null ? "" : operationsEvidencePlanInvocationReportPath,
+                "powershell -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\invoke-operations-evidence-plan.ps1",
+                "",
+                "",
+                "Review blocked/planned invocation actions before dispatching live Kubernetes or security evidence workflows."
+        );
+    }
+
+    private DashboardOperationsEvidenceInvocationResponse operationsEvidenceInvocationSnapshot() {
+        JsonNode invocationReport = readOptionalJsonReport(operationsEvidencePlanInvocationReportPath);
+        if (invocationReport == null) {
+            return DashboardOperationsEvidenceInvocationResponse.empty();
+        }
+        java.util.ArrayList<DashboardOperationsEvidenceInvocationActionResponse> actions = new java.util.ArrayList<>();
+        JsonNode actionNodes = invocationReport.path("actions");
+        if (actionNodes.isArray()) {
+            for (JsonNode action : actionNodes) {
+                actions.add(new DashboardOperationsEvidenceInvocationActionResponse(
+                        jsonInt(action, "order"),
+                        jsonText(action, "name"),
+                        jsonText(action, "category"),
+                        jsonText(action, "actionType"),
+                        jsonText(action, "evidencePath"),
+                        jsonText(action, "commandMode"),
+                        jsonText(action, "command"),
+                        jsonText(action, "status"),
+                        jsonTextList(action, "blockReasons"),
+                        jsonTextList(action, "unresolvedPlaceholders"),
+                        jsonBoolean(action, "requiresOperatorApproval"),
+                        jsonBoolean(action, "requiresKubeconfigSecret"),
+                        jsonNullableInt(action, "exitCode")
+                ));
+            }
+        }
+        return new DashboardOperationsEvidenceInvocationResponse(
+                jsonText(invocationReport, "result"),
+                jsonText(invocationReport, "sourceSummary"),
+                jsonText(invocationReport, "sourcePlan"),
+                jsonText(invocationReport, "commandMode"),
+                jsonText(invocationReport, "executionMode"),
+                jsonInt(invocationReport, "selectedActionCount"),
+                jsonInt(invocationReport, "plannedCount"),
+                jsonInt(invocationReport, "blockedCount"),
+                jsonInt(invocationReport, "executedCount"),
+                jsonInt(invocationReport, "failedCount"),
+                List.copyOf(actions)
+        );
+    }
+
+    private void addOperationsInvocationUnblockPlanItem(java.util.ArrayList<DashboardReadinessItemResponse> items) {
+        DashboardOperationsInvocationUnblockPlanResponse unblockPlan = operationsInvocationUnblockPlanSnapshot();
+        if (unblockPlan.result().isBlank()) {
+            return;
+        }
+        String result = unblockPlan.result();
+        if ("ready".equalsIgnoreCase(result)) {
+            return;
+        }
+        addReadinessItem(
+                items,
+                "WARNING",
+                "OPERATIONS",
+                "OPERATIONS_INVOCATION_UNBLOCK_PLAN",
+                "Operations invocation unblock plan is %s%s%s%s.".formatted(
+                        result.isBlank() ? "available" : result,
+                        ": blockedActions=" + unblockPlan.blockedCount(),
+                        ", requiredPlaceholders=" + unblockPlan.requiredPlaceholderCount(),
+                        ", ambiguousPlaceholders=" + unblockPlan.ambiguousRepeatedPlaceholderCount()
+                ),
+                "dashboard",
+                "dashboard-readiness-panel",
+                "Invocation unblock",
+                operationsInvocationUnblockPlanReportPath == null ? "" : operationsInvocationUnblockPlanReportPath,
+                "powershell -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\write-operations-invocation-unblock-plan.ps1",
+                "",
+                unblockPlan.confirmedPlanCommand(),
+                unblockPlan.decisionRule()
+        );
+    }
+
+    private DashboardOperationsInvocationUnblockPlanResponse operationsInvocationUnblockPlanSnapshot() {
+        JsonNode unblockPlanReport = readOptionalJsonReport(operationsInvocationUnblockPlanReportPath);
+        if (unblockPlanReport == null) {
+            return DashboardOperationsInvocationUnblockPlanResponse.empty();
+        }
+        java.util.ArrayList<DashboardOperationsInvocationUnblockActionResponse> actions = new java.util.ArrayList<>();
+        JsonNode actionNodes = unblockPlanReport.path("actions");
+        if (actionNodes.isArray()) {
+            for (JsonNode action : actionNodes) {
+                java.util.ArrayList<DashboardOperationsInvocationUnblockInputResponse> requiredInputs = new java.util.ArrayList<>();
+                JsonNode inputNodes = action.path("requiredInputs");
+                if (inputNodes.isArray()) {
+                    for (JsonNode input : inputNodes) {
+                        requiredInputs.add(new DashboardOperationsInvocationUnblockInputResponse(
+                                jsonText(input, "placeholder"),
+                                jsonText(input, "parameter"),
+                                jsonText(input, "valueTemplate"),
+                                jsonInt(input, "occurrenceCount"),
+                                jsonBoolean(input, "ambiguousRepeatedPlaceholder"),
+                                jsonText(input, "note")
+                        ));
+                    }
+                }
+                actions.add(new DashboardOperationsInvocationUnblockActionResponse(
+                        jsonInt(action, "order"),
+                        jsonText(action, "name"),
+                        jsonText(action, "category"),
+                        jsonText(action, "actionType"),
+                        jsonText(action, "evidencePath"),
+                        jsonText(action, "status"),
+                        jsonText(action, "commandMode"),
+                        jsonText(action, "command"),
+                        jsonTextList(action, "blockReasons"),
+                        jsonTextList(action, "unresolvedPlaceholders"),
+                        jsonBoolean(action, "requiresOperatorApproval"),
+                        jsonBoolean(action, "requiresKubeconfigSecret"),
+                        jsonBoolean(action, "needsOperatorApprovalConfirmation"),
+                        jsonBoolean(action, "needsKubeconfigSecretConfirmation"),
+                        List.copyOf(requiredInputs),
+                        jsonBoolean(action, "ambiguousRepeatedPlaceholders"),
+                        jsonText(action, "planCommand")
+                ));
+            }
+        }
+        return new DashboardOperationsInvocationUnblockPlanResponse(
+                jsonText(unblockPlanReport, "result"),
+                jsonText(unblockPlanReport, "sourceInvocationReport"),
+                jsonText(unblockPlanReport, "sourceResult"),
+                jsonText(unblockPlanReport, "sourceSummary"),
+                jsonInt(unblockPlanReport, "selectedActionCount"),
+                jsonInt(unblockPlanReport, "plannedCount"),
+                jsonInt(unblockPlanReport, "blockedCount"),
+                jsonInt(unblockPlanReport, "failedCount"),
+                jsonBoolean(unblockPlanReport, "needsKubeconfigSecretConfirmation"),
+                jsonBoolean(unblockPlanReport, "needsOperatorApprovalConfirmation"),
+                jsonInt(unblockPlanReport, "requiredPlaceholderCount"),
+                jsonInt(unblockPlanReport, "ambiguousRepeatedPlaceholderCount"),
+                jsonIntList(unblockPlanReport, "blockedActionOrders"),
+                jsonIntList(unblockPlanReport, "plannedActionOrders"),
+                jsonText(unblockPlanReport, "confirmedPlanCommand"),
+                jsonText(unblockPlanReport, "blockedOnlyPlanCommand"),
+                jsonText(unblockPlanReport, "plannedOnlyCommand"),
+                jsonText(unblockPlanReport, "decisionRule"),
+                List.copyOf(actions)
+        );
+    }
+
+    private void addOperationsDispatchPreflightItem(java.util.ArrayList<DashboardReadinessItemResponse> items) {
+        DashboardOperationsDispatchPreflightResponse preflight = operationsDispatchPreflightSnapshot();
+        if (preflight.result().isBlank()) {
+            return;
+        }
+        String result = preflight.result();
+        if ("ready".equalsIgnoreCase(result)) {
+            return;
+        }
+        addReadinessItem(
+                items,
+                "WARNING",
+                "OPERATIONS",
+                "OPERATIONS_DISPATCH_PREFLIGHT",
+                "Operations dispatch preflight is %s%s%s%s.".formatted(
+                        result.isBlank() ? "available" : result,
+                        ": failedChecks=" + preflight.failedCheckCount(),
+                        ", missingInputs=" + preflight.missingInputCount(),
+                        ", warnings=" + preflight.warningCheckCount()
+                ),
+                "dashboard",
+                "dashboard-readiness-panel",
+                "Dispatch preflight",
+                operationsDispatchPreflightReportPath == null ? "" : operationsDispatchPreflightReportPath,
+                "powershell -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\write-operations-dispatch-preflight.ps1",
+                "",
+                preflight.readyPlanCommand(),
+                preflight.decisionRule()
+        );
+    }
+
+    private DashboardOperationsDispatchPreflightResponse operationsDispatchPreflightSnapshot() {
+        JsonNode preflightReport = readOptionalJsonReport(operationsDispatchPreflightReportPath);
+        if (preflightReport == null) {
+            return DashboardOperationsDispatchPreflightResponse.empty();
+        }
+        java.util.ArrayList<DashboardOperationsDispatchPreflightWorkflowFileResponse> workflowFiles = new java.util.ArrayList<>();
+        JsonNode workflowNodes = preflightReport.path("workflowFiles");
+        if (workflowNodes.isArray()) {
+            for (JsonNode workflow : workflowNodes) {
+                workflowFiles.add(new DashboardOperationsDispatchPreflightWorkflowFileResponse(
+                        jsonInt(workflow, "actionOrder"),
+                        jsonText(workflow, "workflow"),
+                        jsonText(workflow, "path"),
+                        jsonBoolean(workflow, "exists"),
+                        jsonTextList(workflow, "requiredSecrets")
+                ));
+            }
+        }
+        java.util.ArrayList<DashboardOperationsDispatchPreflightCheckResponse> checks = new java.util.ArrayList<>();
+        JsonNode checkNodes = preflightReport.path("checks");
+        if (checkNodes.isArray()) {
+            for (JsonNode check : checkNodes) {
+                checks.add(new DashboardOperationsDispatchPreflightCheckResponse(
+                        jsonText(check, "code"),
+                        jsonText(check, "status"),
+                        jsonText(check, "message")
+                ));
+            }
+        }
+        java.util.ArrayList<DashboardOperationsDispatchPreflightInputResponse> requiredInputs = new java.util.ArrayList<>();
+        JsonNode inputNodes = preflightReport.path("requiredInputs");
+        if (inputNodes.isArray()) {
+            for (JsonNode input : inputNodes) {
+                requiredInputs.add(new DashboardOperationsDispatchPreflightInputResponse(
+                        jsonInt(input, "actionOrder"),
+                        jsonText(input, "placeholder"),
+                        jsonText(input, "parameter"),
+                        jsonBoolean(input, "supplied"),
+                        jsonText(input, "valuePreview"),
+                        jsonBoolean(input, "ambiguousRepeatedPlaceholder"),
+                        jsonText(input, "note")
+                ));
+            }
+        }
+        return new DashboardOperationsDispatchPreflightResponse(
+                jsonText(preflightReport, "result"),
+                jsonText(preflightReport, "sourceUnblockPlan"),
+                jsonText(preflightReport, "sourceResult"),
+                jsonInt(preflightReport, "selectedActionCount"),
+                jsonIntList(preflightReport, "selectedActionOrders"),
+                jsonBoolean(preflightReport, "needsKubeconfigSecretConfirmation"),
+                jsonBoolean(preflightReport, "needsOperatorApprovalConfirmation"),
+                jsonInt(preflightReport, "requiredInputCount"),
+                jsonInt(preflightReport, "missingInputCount"),
+                jsonInt(preflightReport, "ambiguousInputCount"),
+                jsonInt(preflightReport, "failedCheckCount"),
+                jsonInt(preflightReport, "warningCheckCount"),
+                jsonTextList(preflightReport, "requiredGitHubSecrets"),
+                List.copyOf(workflowFiles),
+                List.copyOf(checks),
+                jsonText(preflightReport, "readyPlanCommand"),
+                jsonText(preflightReport, "executeCommand"),
+                List.copyOf(requiredInputs),
+                jsonText(preflightReport, "decisionRule")
+        );
+    }
+
+    private void addOperationsWorkflowRunIdPlanItem(java.util.ArrayList<DashboardReadinessItemResponse> items) {
+        DashboardOperationsWorkflowRunIdPlanResponse runIdPlan = operationsWorkflowRunIdPlanSnapshot();
+        if (runIdPlan.result().isBlank()) {
+            return;
+        }
+        String result = runIdPlan.result();
+        if ("ready".equalsIgnoreCase(result)) {
+            return;
+        }
+        addReadinessItem(
+                items,
+                "WARNING",
+                "OPERATIONS",
+                "OPERATIONS_WORKFLOW_RUN_ID_PLAN",
+                "Operations workflow run id plan is %s%s%s.".formatted(
+                        result.isBlank() ? "available" : result,
+                        ": workflows=" + runIdPlan.workflowCount(),
+                        ", missingRuns=" + runIdPlan.missingWorkflowCount()
+                ),
+                "dashboard",
+                "dashboard-readiness-panel",
+                "Workflow run ids",
+                operationsWorkflowRunIdPlanReportPath == null ? "" : operationsWorkflowRunIdPlanReportPath,
+                "powershell -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\write-operations-workflow-run-id-plan.ps1",
+                "",
+                "",
+                "Use the generated gh run list commands after workflow dispatch, then regenerate the artifact collection plan with recommended run ids."
+        );
+    }
+
+    private DashboardOperationsWorkflowRunIdPlanResponse operationsWorkflowRunIdPlanSnapshot() {
+        JsonNode runIdPlanReport = readOptionalJsonReport(operationsWorkflowRunIdPlanReportPath);
+        if (runIdPlanReport == null) {
+            return DashboardOperationsWorkflowRunIdPlanResponse.empty();
+        }
+        java.util.ArrayList<DashboardOperationsWorkflowRunResponse> workflows = new java.util.ArrayList<>();
+        JsonNode workflowNodes = runIdPlanReport.path("workflows");
+        if (workflowNodes.isArray()) {
+            for (JsonNode workflow : workflowNodes) {
+                workflows.add(new DashboardOperationsWorkflowRunResponse(
+                        jsonText(workflow, "workflow"),
+                        jsonText(workflow, "group"),
+                        jsonText(workflow, "queryCommand"),
+                        jsonText(workflow, "queryMode"),
+                        jsonInt(workflow, "candidateCount"),
+                        jsonText(workflow, "latestRunId"),
+                        jsonText(workflow, "latestStatus"),
+                        jsonText(workflow, "latestConclusion"),
+                        jsonText(workflow, "latestCreatedAt"),
+                        jsonText(workflow, "latestHeadSha"),
+                        jsonText(workflow, "latestUrl"),
+                        jsonText(workflow, "recommendedRunId"),
+                        jsonText(workflow, "recommendedHeadSha"),
+                        jsonText(workflow, "recommendedCreatedAt"),
+                        jsonText(workflow, "recommendedUrl"),
+                        jsonBoolean(workflow, "latestRunIsRecommended"),
+                        jsonBoolean(workflow, "readyForArtifactDownload"),
+                        jsonBoolean(workflow, "requiredForReadiness"),
+                        jsonText(workflow, "runIdParameter"),
+                        jsonText(workflow, "artifactName"),
+                        jsonText(workflow, "note")
+                ));
+            }
+        }
+        return new DashboardOperationsWorkflowRunIdPlanResponse(
+                jsonText(runIdPlanReport, "result"),
+                jsonText(runIdPlanReport, "sourceInvocationReport"),
+                jsonText(runIdPlanReport, "invocationResult"),
+                jsonText(runIdPlanReport, "branch"),
+                jsonText(runIdPlanReport, "queryMode"),
+                jsonInt(runIdPlanReport, "limit"),
+                jsonInt(runIdPlanReport, "workflowCount"),
+                jsonInt(runIdPlanReport, "readyWorkflowCount"),
+                jsonInt(runIdPlanReport, "missingWorkflowCount"),
+                jsonInt(runIdPlanReport, "staleWorkflowCount"),
+                jsonText(runIdPlanReport, "imageSigningVersion"),
+                jsonText(runIdPlanReport, "commitSha"),
+                jsonText(runIdPlanReport, "artifactCollectionPlanCommand"),
+                jsonText(runIdPlanReport, "securityEvidenceFinalizerCommand"),
+                jsonText(runIdPlanReport, "decisionRule"),
+                List.copyOf(workflows)
+        );
+    }
+
+    private void addOperationsArtifactCollectionPlanItem(java.util.ArrayList<DashboardReadinessItemResponse> items) {
+        DashboardOperationsArtifactCollectionPlanResponse collectionPlan = operationsArtifactCollectionPlanSnapshot();
+        if (collectionPlan.result().isBlank()) {
+            return;
+        }
+        String result = collectionPlan.result();
+        if ("ready".equalsIgnoreCase(result)) {
+            return;
+        }
+        addReadinessItem(
+                items,
+                "WARNING",
+                "OPERATIONS",
+                "OPERATIONS_ARTIFACT_COLLECTION_PLAN",
+                "Operations artifact collection plan is %s%s%s.".formatted(
+                        result.isBlank() ? "available" : result,
+                        ": artifacts=" + collectionPlan.artifactCount(),
+                        ", missingRequired=" + collectionPlan.missingRequiredArtifactCount()
+                ),
+                "dashboard",
+                "dashboard-readiness-panel",
+                "Artifact collection",
+                operationsArtifactCollectionPlanReportPath == null ? "" : operationsArtifactCollectionPlanReportPath,
+                "powershell -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\write-operations-artifact-collection-plan.ps1",
+                ".github/workflows/operations-readiness-artifact-finalizer-ci.yml",
+                collectionPlan.operationsArtifactFinalizerCommand(),
+                "Fill workflow run ids after evidence workflow dispatch, then import artifacts locally or through the operations artifact finalizer workflow."
+        );
+    }
+
+    private DashboardOperationsArtifactCollectionPlanResponse operationsArtifactCollectionPlanSnapshot() {
+        JsonNode collectionPlanReport = readOptionalJsonReport(operationsArtifactCollectionPlanReportPath);
+        if (collectionPlanReport == null) {
+            return DashboardOperationsArtifactCollectionPlanResponse.empty();
+        }
+        java.util.ArrayList<DashboardOperationsArtifactCollectionArtifactResponse> artifacts = new java.util.ArrayList<>();
+        JsonNode artifactNodes = collectionPlanReport.path("artifacts");
+        if (artifactNodes.isArray()) {
+            for (JsonNode artifact : artifactNodes) {
+                artifacts.add(new DashboardOperationsArtifactCollectionArtifactResponse(
+                        jsonText(artifact, "group"),
+                        jsonText(artifact, "workflow"),
+                        jsonText(artifact, "runId"),
+                        jsonText(artifact, "runIdInput"),
+                        jsonText(artifact, "artifactName"),
+                        jsonText(artifact, "artifactNameInput"),
+                        jsonText(artifact, "downloadPath"),
+                        jsonText(artifact, "downloadCommand"),
+                        jsonBoolean(artifact, "requiredForReadiness"),
+                        jsonBoolean(artifact, "ready"),
+                        jsonText(artifact, "note")
+                ));
+            }
+        }
+        return new DashboardOperationsArtifactCollectionPlanResponse(
+                jsonText(collectionPlanReport, "result"),
+                jsonText(collectionPlanReport, "sourceInvocationReport"),
+                jsonText(collectionPlanReport, "invocationResult"),
+                jsonText(collectionPlanReport, "invocationSummary"),
+                jsonInt(collectionPlanReport, "artifactCount"),
+                jsonInt(collectionPlanReport, "requiredArtifactCount"),
+                jsonInt(collectionPlanReport, "readyArtifactCount"),
+                jsonInt(collectionPlanReport, "missingRequiredArtifactCount"),
+                jsonText(collectionPlanReport, "securityEvidenceFinalizerCommand"),
+                jsonText(collectionPlanReport, "operationsArtifactFinalizerCommand"),
+                jsonText(collectionPlanReport, "localImportCommand"),
+                jsonText(collectionPlanReport, "decisionRule"),
+                List.copyOf(artifacts)
+        );
+    }
+
+    private void addOperationsReadinessArtifactImportItem(java.util.ArrayList<DashboardReadinessItemResponse> items) {
+        DashboardOperationsReadinessArtifactImportResponse artifactImport = operationsReadinessArtifactImportSnapshot();
+        if (artifactImport.result().isBlank()) {
+            return;
+        }
+        String result = artifactImport.result();
+        if ("passed".equalsIgnoreCase(result)) {
+            return;
+        }
+        addReadinessItem(
+                items,
+                "WARNING",
+                "OPERATIONS",
+                "OPERATIONS_READINESS_ARTIFACT_IMPORT",
+                "Operations readiness artifact import is %s%s%s.".formatted(
+                        result.isBlank() ? "unknown" : result,
+                        artifactImport.status().isBlank() ? "" : ": status=" + artifactImport.status(),
+                        ", failedCount=" + artifactImport.failedCount()
+                ),
+                "dashboard",
+                "dashboard-readiness-panel",
+                "Evidence artifacts",
+                operationsReadinessArtifactImportReportPath == null ? "" : operationsReadinessArtifactImportReportPath,
+                "powershell -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\import-operations-readiness-artifacts.ps1",
+                ".github/workflows/operations-readiness-artifact-finalizer-ci.yml",
+                "",
+                artifactImport.secretPolicy()
+        );
+    }
+
+    private DashboardOperationsReadinessArtifactImportResponse operationsReadinessArtifactImportSnapshot() {
+        JsonNode importReport = readOptionalJsonReport(operationsReadinessArtifactImportReportPath);
+        if (importReport == null) {
+            return DashboardOperationsReadinessArtifactImportResponse.empty();
+        }
+        java.util.ArrayList<DashboardOperationsReadinessArtifactImportEntryResponse> entries = new java.util.ArrayList<>();
+        JsonNode entryNodes = importReport.path("entries");
+        if (entryNodes.isArray()) {
+            for (JsonNode entry : entryNodes) {
+                entries.add(new DashboardOperationsReadinessArtifactImportEntryResponse(
+                        jsonText(entry, "group"),
+                        jsonText(entry, "fileName"),
+                        jsonText(entry, "status"),
+                        jsonBoolean(entry, "passed"),
+                        jsonText(entry, "detail"),
+                        jsonText(entry, "sourcePath"),
+                        jsonText(entry, "destinationPath")
+                ));
+            }
+        }
+        return new DashboardOperationsReadinessArtifactImportResponse(
+                jsonText(importReport, "result"),
+                jsonText(importReport, "status"),
+                jsonInt(importReport, "selectedGroupCount"),
+                jsonInt(importReport, "importedCount"),
+                jsonInt(importReport, "failedCount"),
+                jsonText(importReport, "outputDirectory"),
+                jsonText(importReport, "secretPolicy"),
+                List.copyOf(entries)
+        );
+    }
+
+    private void addOperationsReadinessFinalizeItem(java.util.ArrayList<DashboardReadinessItemResponse> items) {
+        DashboardOperationsReadinessFinalizeResponse finalizeReport = operationsReadinessFinalizeSnapshot();
+        if (finalizeReport.result().isBlank()) {
+            return;
+        }
+        String result = finalizeReport.result();
+        if ("ready".equalsIgnoreCase(result)) {
+            return;
+        }
+        addReadinessItem(
+                items,
+                "WARNING",
+                "OPERATIONS",
+                "OPERATIONS_READINESS_FINALIZER",
+                "Operations readiness finalizer is %s%s%s.".formatted(
+                        result.isBlank() ? "unknown" : result,
+                        finalizeReport.readinessResult().isBlank() ? "" : ": readinessResult=" + finalizeReport.readinessResult(),
+                        ", failedCount=" + finalizeReport.failedCount()
+                ),
+                "dashboard",
+                "dashboard-readiness-panel",
+                "Operations finalizer",
+                operationsReadinessFinalizeReportPath == null ? "" : operationsReadinessFinalizeReportPath,
+                "powershell -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\finalize-operations-readiness.ps1",
+                ".github/workflows/operations-readiness-finalizer-ci.yml",
+                "",
+                finalizeReport.secretPolicy().isBlank()
+                        ? "Run selected evidence finalizers, then regenerate operations readiness."
+                        : finalizeReport.secretPolicy()
+        );
+    }
+
+    private DashboardOperationsReadinessFinalizeResponse operationsReadinessFinalizeSnapshot() {
+        JsonNode finalizeReport = readOptionalJsonReport(operationsReadinessFinalizeReportPath);
+        if (finalizeReport == null) {
+            return DashboardOperationsReadinessFinalizeResponse.empty();
+        }
+        java.util.LinkedHashMap<String, Boolean> selectedSteps = new java.util.LinkedHashMap<>();
+        JsonNode selectedStepNodes = finalizeReport.path("selectedSteps");
+        if (selectedStepNodes.isObject()) {
+            selectedStepNodes.fields().forEachRemaining(entry -> selectedSteps.put(entry.getKey(), entry.getValue().asBoolean(false)));
+        }
+        java.util.LinkedHashMap<String, String> paths = new java.util.LinkedHashMap<>();
+        JsonNode pathNodes = finalizeReport.path("paths");
+        if (pathNodes.isObject()) {
+            pathNodes.fields().forEachRemaining(entry -> paths.put(entry.getKey(), entry.getValue().asText("")));
+        }
+        java.util.ArrayList<DashboardOperationsReadinessFinalizeCommandResponse> commands = new java.util.ArrayList<>();
+        JsonNode commandNodes = finalizeReport.path("commands");
+        if (commandNodes.isArray()) {
+            for (JsonNode command : commandNodes) {
+                commands.add(new DashboardOperationsReadinessFinalizeCommandResponse(
+                        jsonText(command, "name"),
+                        jsonText(command, "script"),
+                        jsonTextList(command, "arguments"),
+                        jsonText(command, "command")
+                ));
+            }
+        }
+        java.util.ArrayList<DashboardOperationsReadinessFinalizeStepResponse> steps = new java.util.ArrayList<>();
+        JsonNode stepNodes = finalizeReport.path("steps");
+        if (stepNodes.isArray()) {
+            for (JsonNode step : stepNodes) {
+                steps.add(new DashboardOperationsReadinessFinalizeStepResponse(
+                        jsonText(step, "name"),
+                        jsonText(step, "script"),
+                        jsonTextList(step, "arguments"),
+                        jsonText(step, "command"),
+                        jsonText(step, "result"),
+                        jsonInt(step, "exitCode"),
+                        jsonText(step, "output"),
+                        jsonText(step, "notes")
+                ));
+            }
+        }
+        return new DashboardOperationsReadinessFinalizeResponse(
+                jsonText(finalizeReport, "result"),
+                jsonText(finalizeReport, "status"),
+                jsonText(finalizeReport, "readinessResult"),
+                jsonText(finalizeReport, "readinessSummary"),
+                jsonText(finalizeReport, "namespace"),
+                jsonText(finalizeReport, "sourceNamespace"),
+                jsonText(finalizeReport, "restoreNamespace"),
+                jsonText(finalizeReport, "backupTimestamp"),
+                jsonText(finalizeReport, "powerShellCommand"),
+                jsonInt(finalizeReport, "failedCount"),
+                Map.copyOf(selectedSteps),
+                Map.copyOf(paths),
+                List.copyOf(commands),
+                List.copyOf(steps),
+                jsonTextList(finalizeReport, "gaps"),
+                jsonText(finalizeReport, "secretPolicy")
+        );
+    }
+
+    private void addOperationsEvidenceHandoffItem(java.util.ArrayList<DashboardReadinessItemResponse> items) {
+        DashboardOperationsEvidenceHandoffResponse handoff = operationsEvidenceHandoffSnapshot();
+        if (handoff.result().isBlank()) {
+            return;
+        }
+        String result = handoff.result();
+        String nextCode = handoff.nextStep().code();
+        if ("ready".equalsIgnoreCase(result) || "none".equalsIgnoreCase(nextCode)) {
+            return;
+        }
+        addReadinessItem(
+                items,
+                "WARNING",
+                "OPERATIONS",
+                "OPERATIONS_EVIDENCE_HANDOFF",
+                "Operations evidence handoff is %s%s%s%s%s%s.".formatted(
+                        result.isBlank() ? "available" : result,
+                        nextCode.isBlank() ? "" : ": next=" + nextCode,
+                        ", blockedActions=" + handoff.blockedActionCount(),
+                        ", missingRuns=" + handoff.missingWorkflowRunCount(),
+                        ", missingArtifacts=" + handoff.missingRequiredArtifactCount(),
+                        handoff.finalizerGapCount() == 0 ? "" : ", finalizerGaps=" + handoff.finalizerGapCount()
+                ),
+                "dashboard",
+                "dashboard-readiness-panel",
+                "Evidence handoff",
+                operationsEvidenceHandoffReportPath == null ? "" : operationsEvidenceHandoffReportPath,
+                handoff.nextStep().command(),
+                "",
+                "",
+                "%s%s".formatted(
+                        handoff.nextStep().reason(),
+                        handoff.nextStep().note().isBlank() ? "" : " " + handoff.nextStep().note()
+                ).trim()
+        );
+    }
+
+    private DashboardOperationsEvidenceHandoffResponse operationsEvidenceHandoffSnapshot() {
+        JsonNode handoffReport = readOptionalJsonReport(operationsEvidenceHandoffReportPath);
+        if (handoffReport == null) {
+            return DashboardOperationsEvidenceHandoffResponse.empty();
+        }
+        java.util.ArrayList<DashboardOperationsEvidenceHandoffStageResponse> stages = new java.util.ArrayList<>();
+        JsonNode stageNodes = handoffReport.path("stages");
+        if (stageNodes.isArray()) {
+            for (JsonNode stage : stageNodes) {
+                stages.add(new DashboardOperationsEvidenceHandoffStageResponse(
+                        jsonText(stage, "name"),
+                        jsonText(stage, "reportPath"),
+                        jsonBoolean(stage, "exists"),
+                        jsonText(stage, "result"),
+                        jsonText(stage, "summary"),
+                        jsonBoolean(stage, "ready"),
+                        jsonText(stage, "command"),
+                        jsonText(stage, "note")
+                ));
+            }
+        }
+        JsonNode nextStep = handoffReport.path("nextStep");
+        return new DashboardOperationsEvidenceHandoffResponse(
+                jsonText(handoffReport, "result"),
+                jsonText(handoffReport, "generatedAt"),
+                new DashboardOperationsEvidenceHandoffNextStepResponse(
+                        jsonText(nextStep, "code"),
+                        jsonText(nextStep, "title"),
+                        jsonText(nextStep, "command"),
+                        jsonText(nextStep, "reason"),
+                        jsonText(nextStep, "note")
+                ),
+                jsonInt(handoffReport, "stageCount"),
+                jsonInt(handoffReport, "readyStageCount"),
+                jsonInt(handoffReport, "blockedActionCount"),
+                jsonInt(handoffReport, "missingWorkflowRunCount"),
+                jsonInt(handoffReport, "missingRequiredArtifactCount"),
+                jsonInt(handoffReport, "failedImportCount"),
+                jsonInt(handoffReport, "finalizerFailedCount"),
+                jsonInt(handoffReport, "finalizerGapCount"),
+                List.copyOf(stages)
+        );
+    }
+
+    private void addOperationsReadinessConvergenceItem(java.util.ArrayList<DashboardReadinessItemResponse> items) {
+        DashboardOperationsReadinessConvergenceResponse convergence = operationsReadinessConvergenceSnapshot();
+        if (convergence.result().isBlank()) {
+            return;
+        }
+        String result = convergence.result();
+        if ("ready".equalsIgnoreCase(result)) {
+            return;
+        }
+        String bottleneckCode = convergence.currentBottleneck().code();
+        addReadinessItem(
+                items,
+                "WARNING",
+                "OPERATIONS",
+                "OPERATIONS_READINESS_CONVERGENCE",
+                "Operations readiness convergence is %s%s%s%s.".formatted(
+                        result.isBlank() ? "available" : result,
+                        bottleneckCode.isBlank() ? "" : ": bottleneck=" + bottleneckCode,
+                        ", stages=" + convergence.readyStageCount() + "/" + convergence.stageCount(),
+                        convergence.finalizerGapCount() == 0 ? "" : ", finalizerGaps=" + convergence.finalizerGapCount()
+                ),
+                "dashboard",
+                "dashboard-readiness-panel",
+                "Convergence",
+                operationsReadinessConvergenceReportPath == null ? "" : operationsReadinessConvergenceReportPath,
+                convergence.currentBottleneck().command(),
+                "",
+                "",
+                "%s%s".formatted(
+                        convergence.currentBottleneck().reason(),
+                        convergence.safetyPolicy().isBlank() ? "" : " " + convergence.safetyPolicy()
+                ).trim()
+        );
+    }
+
+    private DashboardOperationsReadinessConvergenceResponse operationsReadinessConvergenceSnapshot() {
+        JsonNode convergenceReport = readOptionalJsonReport(operationsReadinessConvergenceReportPath);
+        if (convergenceReport == null) {
+            return DashboardOperationsReadinessConvergenceResponse.empty();
+        }
+        JsonNode bottleneck = convergenceReport.path("currentBottleneck");
+        java.util.ArrayList<DashboardOperationsReadinessConvergenceCommandResponse> recommendedCommands = new java.util.ArrayList<>();
+        JsonNode commandNodes = convergenceReport.path("recommendedCommands");
+        if (commandNodes.isArray()) {
+            for (JsonNode command : commandNodes) {
+                recommendedCommands.add(new DashboardOperationsReadinessConvergenceCommandResponse(
+                        jsonInt(command, "order"),
+                        jsonText(command, "name"),
+                        jsonText(command, "command"),
+                        jsonText(command, "reason")
+                ));
+            }
+        }
+        return new DashboardOperationsReadinessConvergenceResponse(
+                jsonText(convergenceReport, "result"),
+                jsonText(convergenceReport, "generatedAt"),
+                jsonText(convergenceReport, "handoffReportPath"),
+                jsonText(convergenceReport, "readinessReportPath"),
+                jsonText(convergenceReport, "operationsReadinessFinalizeReportPath"),
+                jsonBoolean(convergenceReport, "handoffExists"),
+                jsonText(convergenceReport, "handoffResult"),
+                jsonBoolean(convergenceReport, "readinessExists"),
+                jsonText(convergenceReport, "readinessResult"),
+                jsonText(convergenceReport, "readinessSummary"),
+                jsonBoolean(convergenceReport, "finalizerExists"),
+                jsonText(convergenceReport, "finalizerResult"),
+                jsonText(convergenceReport, "finalizerReadinessResult"),
+                jsonInt(convergenceReport, "finalizerFailedCount"),
+                jsonText(convergenceReport, "kubernetesOperationsReportSyncReportPath"),
+                jsonBoolean(convergenceReport, "kubernetesReportSyncExists"),
+                jsonText(convergenceReport, "kubernetesReportSyncResult"),
+                jsonInt(convergenceReport, "kubernetesReportSyncFailedCount"),
+                jsonText(convergenceReport, "kubernetesReportSyncConfigMapName"),
+                jsonText(convergenceReport, "kubernetesReportSyncConfigMapKey"),
+                jsonText(convergenceReport, "kubernetesReportSyncSourceReportResult"),
+                jsonBoolean(convergenceReport, "kubernetesReportSyncReady"),
+                jsonInt(convergenceReport, "finalizerGapCount"),
+                jsonInt(convergenceReport, "stageCount"),
+                jsonInt(convergenceReport, "readyStageCount"),
+                jsonInt(convergenceReport, "blockedActionCount"),
+                jsonInt(convergenceReport, "missingWorkflowRunCount"),
+                jsonInt(convergenceReport, "missingRequiredArtifactCount"),
+                jsonInt(convergenceReport, "failedImportCount"),
+                new DashboardOperationsReadinessConvergenceBottleneckResponse(
+                        jsonText(bottleneck, "code"),
+                        jsonText(bottleneck, "title"),
+                        jsonText(bottleneck, "reason"),
+                        jsonText(bottleneck, "command")
+                ),
+                List.copyOf(recommendedCommands),
+                jsonText(convergenceReport, "decisionRule"),
+                jsonText(convergenceReport, "safetyPolicy")
+        );
+    }
+
+    private void addKubernetesOperationsReportSyncItem(java.util.ArrayList<DashboardReadinessItemResponse> items) {
+        DashboardKubernetesOperationsReportSyncResponse reportSync = kubernetesOperationsReportSyncSnapshot();
+        if (reportSync.result().isBlank()) {
+            return;
+        }
+        String result = reportSync.result();
+        if ("applied".equalsIgnoreCase(result) && reportSync.failedCount() == 0) {
+            return;
+        }
+        String remediationCommand = switch (result.toLowerCase(Locale.ROOT)) {
+            case "planned" -> reportSync.serverDryRunCommand();
+            case "server-dry-run-passed" -> reportSync.applyCommand();
+            default -> reportSync.clientDryRunCommand();
+        };
+        addReadinessItem(
+                items,
+                "WARNING",
+                "OPERATIONS",
+                "KUBERNETES_OPERATIONS_REPORT_SYNC",
+                "Kubernetes operations report sync is %s: namespace=%s, configMap=%s, failedCount=%d.".formatted(
+                        result,
+                        reportSync.namespace().isBlank() ? "unknown" : reportSync.namespace(),
+                        reportSync.configMapName().isBlank() ? "unknown" : reportSync.configMapName(),
+                        reportSync.failedCount()
+                ),
+                "dashboard",
+                "dashboard-readiness-panel",
+                "Kubernetes sync",
+                kubernetesOperationsReportSyncReportPath == null ? "" : kubernetesOperationsReportSyncReportPath,
+                remediationCommand,
+                ".github/workflows/kubernetes-operations-report-sync-ci.yml",
+                reportSync.applyCommand(),
+                reportSync.safetyPolicy()
+        );
+    }
+
+    private DashboardKubernetesOperationsReportSyncResponse kubernetesOperationsReportSyncSnapshot() {
+        JsonNode report = readOptionalJsonReport(kubernetesOperationsReportSyncReportPath);
+        if (report == null) {
+            return DashboardKubernetesOperationsReportSyncResponse.empty();
+        }
+        java.util.ArrayList<DashboardKubernetesOperationsReportSyncCheckResponse> checks = new java.util.ArrayList<>();
+        JsonNode checkNodes = report.path("checks");
+        if (checkNodes.isArray()) {
+            for (JsonNode check : checkNodes) {
+                checks.add(new DashboardKubernetesOperationsReportSyncCheckResponse(
+                        jsonText(check, "name"),
+                        jsonBoolean(check, "passed"),
+                        jsonText(check, "summary"),
+                        jsonText(check, "command"),
+                        jsonInt(check, "exitCode")
+                ));
+            }
+        }
+        return new DashboardKubernetesOperationsReportSyncResponse(
+                jsonText(report, "result"),
+                jsonText(report, "generatedAt"),
+                jsonText(report, "namespace"),
+                jsonText(report, "configMapName"),
+                jsonText(report, "configMapKey"),
+                jsonText(report, "sourceReportPath"),
+                jsonText(report, "sourceReportFormatVersion"),
+                jsonText(report, "sourceReportResult"),
+                jsonLong(report, "sourceReportBytes"),
+                jsonText(report, "sourceReportSha256"),
+                jsonText(report, "clientDryRunCommand"),
+                jsonText(report, "serverDryRunCommand"),
+                jsonText(report, "applyCommand"),
+                jsonInt(report, "checkCount"),
+                jsonInt(report, "failedCount"),
+                List.copyOf(checks),
+                jsonText(report, "safetyPolicy")
+        );
+    }
+
+    private void addPendingOperationsReadinessChecks(
+            java.util.ArrayList<DashboardReadinessItemResponse> items,
+            JsonNode readinessReport
+    ) {
+        JsonNode checks = readinessReport.path("checks");
+        if (!checks.isArray()) {
+            return;
+        }
+        int count = 0;
+        for (JsonNode check : checks) {
+            if (check.path("passed").asBoolean(false)) {
+                continue;
+            }
+            String name = jsonText(check, "name");
+            String category = jsonText(check, "category");
+            String detail = jsonText(check, "detail");
+            String evidencePath = jsonText(check, "evidencePath");
+            JsonNode remediation = check.path("remediation");
+            String remediationCommand = jsonText(remediation, "command");
+            String remediationWorkflow = jsonText(remediation, "workflow");
+            String remediationWorkflowCommand = jsonText(remediation, "workflowCommand");
+            String remediationNote = jsonText(remediation, "note");
+            addReadinessItem(
+                    items,
+                    "WARNING",
+                    "OPERATIONS",
+                    "OPERATIONS_READINESS_CHECK",
+                    "Operations readiness pending: %s%s%s.".formatted(
+                            name.isBlank() ? "unnamed check" : name,
+                            category.isBlank() ? "" : " / " + category,
+                            detail.isBlank() ? "" : " - " + detail
+                    ),
+                    "dashboard",
+                    "dashboard-readiness-panel",
+                    "Evidence",
+                    evidencePath,
+                    remediationCommand,
+                    remediationWorkflow,
+                    remediationWorkflowCommand,
+                    remediationNote
+            );
+            count++;
+            if (count >= 8) {
+                return;
+            }
+        }
+    }
+
+    private JsonNode readOptionalJsonReport(String reportPath) {
+        if (reportPath == null || reportPath.isBlank()) {
+            return null;
+        }
+        Path path = Path.of(reportPath).toAbsolutePath().normalize();
+        if (!Files.isRegularFile(path)) {
+            return null;
+        }
+        try {
+            return JSON_MAPPER.readTree(path.toFile());
+        } catch (IOException exception) {
+            return null;
+        }
+    }
+
+    private String jsonText(JsonNode node, String fieldName) {
+        JsonNode value = node.path(fieldName);
+        if (value.isMissingNode() || value.isNull()) {
+            return "";
+        }
+        return value.asText("");
+    }
+
+    private int jsonInt(JsonNode node, String fieldName) {
+        JsonNode value = node.path(fieldName);
+        return value.isNumber() ? value.asInt(0) : 0;
+    }
+
+    private long jsonLong(JsonNode node, String fieldName) {
+        JsonNode value = node.path(fieldName);
+        return value.isNumber() ? value.asLong(0L) : 0L;
+    }
+
+    private Integer jsonNullableInt(JsonNode node, String fieldName) {
+        JsonNode value = node.path(fieldName);
+        return value.isNumber() ? value.asInt() : null;
+    }
+
+    private boolean jsonBoolean(JsonNode node, String fieldName) {
+        JsonNode value = node.path(fieldName);
+        return value.isBoolean() && value.asBoolean(false);
+    }
+
+    private List<String> jsonTextList(JsonNode node, String fieldName) {
+        JsonNode value = node.path(fieldName);
+        if (!value.isArray()) {
+            return List.of();
+        }
+        java.util.ArrayList<String> values = new java.util.ArrayList<>();
+        for (JsonNode item : value) {
+            if (!item.isNull()) {
+                String text = item.asText("");
+                if (!text.isBlank()) {
+                    values.add(text);
+                }
+            }
+        }
+        return List.copyOf(values);
+    }
+
+    private List<Integer> jsonIntList(JsonNode node, String fieldName) {
+        JsonNode value = node.path(fieldName);
+        if (!value.isArray()) {
+            return List.of();
+        }
+        java.util.ArrayList<Integer> values = new java.util.ArrayList<>();
+        for (JsonNode item : value) {
+            if (item.isNumber()) {
+                values.add(item.asInt());
+            }
+        }
+        return List.copyOf(values);
+    }
+
+    private String runtimeProfile(String metadataEngine, String storageEngine) {
+        if ("mariadb".equals(metadataEngine) && "minio".equals(storageEngine)) {
+            return "MariaDB + MinIO";
+        }
+        if ("in-memory".equals(metadataEngine) || "in-memory".equals(storageEngine)) {
+            return "Local demo runtime";
+        }
+        return "%s + %s".formatted(metadataEngine, storageEngine);
+    }
+
+    private boolean isQuotaWarning(QuotaPolicyResponse policy) {
+        return policy.quotaBytes() > 0
+                && !isQuotaExhausted(policy)
+                && policy.usedBytes() * 100.0 / policy.quotaBytes() >= 80.0;
+    }
+
+    private boolean isQuotaExhausted(QuotaPolicyResponse policy) {
+        return policy.quotaBytes() > 0 && policy.remainingBytes() <= 0;
+    }
+
+    private double quotaUsageRatio(QuotaPolicyResponse policy) {
+        if (policy.quotaBytes() <= 0) {
+            return 0.0;
+        }
+        return (double) policy.usedBytes() / (double) policy.quotaBytes();
+    }
+
+    private String blankToNull(String value) {
+        return value == null || value.isBlank() ? null : value.trim();
+    }
+
+    private OffsetDateTime parseOptionalOffsetDateTime(String value, String fieldName) {
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+        try {
+            return OffsetDateTime.parse(value.trim());
+        } catch (DateTimeParseException exception) {
+            throw new ApiException(ApiErrorCode.VALIDATION_ERROR, fieldName + " must be an ISO-8601 offset datetime.");
+        }
+    }
+
+    private int normalizeDataFlowLimit(Integer limit) {
+        if (limit == null || limit <= 0) {
+            return 50;
+        }
+        return Math.min(500, limit);
     }
 
     private double counterValue(String name, String tagName, String tagValue) {

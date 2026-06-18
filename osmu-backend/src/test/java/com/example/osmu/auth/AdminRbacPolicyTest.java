@@ -1,0 +1,44 @@
+package com.example.osmu.auth;
+
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+import org.junit.jupiter.api.Test;
+
+class AdminRbacPolicyTest {
+
+    private final AdminRbacPolicy policy = new AdminRbacPolicy();
+
+    @Test
+    void adminCanAccessEveryAdminRoute() {
+        assertTrue(policy.isAllowed("GET", "/api/admin/backup/status", "ADMIN"));
+        assertTrue(policy.isAllowed("POST", "/api/admin/storage-expansion/requests/1/apply-runner", "ADMIN"));
+        assertTrue(policy.isAllowed("DELETE", "/api/admin/organizations/1", "ADMIN"));
+    }
+
+    @Test
+    void orgAdminCanAccessOnlyScopedIdentityAndOrganizationReadRoutes() {
+        assertTrue(policy.isAllowed("GET", "/api/admin/users", "ORG_ADMIN"));
+        assertTrue(policy.isAllowed("POST", "/api/admin/users", "ORG_ADMIN"));
+        assertTrue(policy.isAllowed("PATCH", "/api/admin/users/123/status", "ORG_ADMIN"));
+        assertTrue(policy.isAllowed("GET", "/api/admin/organizations", "ORG_ADMIN"));
+        assertTrue(policy.isAllowed("GET", "/api/admin/organizations/usage", "ORG_ADMIN"));
+
+        assertFalse(policy.isAllowed("GET", "/api/admin/audit-logs", "ORG_ADMIN"));
+        assertFalse(policy.isAllowed("GET", "/api/admin/backup/status", "ORG_ADMIN"));
+        assertFalse(policy.isAllowed("GET", "/api/admin/backup/restore-drill-evidence", "ORG_ADMIN"));
+        assertFalse(policy.isAllowed("POST", "/api/admin/backup/restore-drill-evidence", "ORG_ADMIN"));
+        assertFalse(policy.isAllowed("GET", "/api/admin/storage-expansion/summary", "ORG_ADMIN"));
+        assertFalse(policy.isAllowed("POST", "/api/admin/storage-expansion/requests", "ORG_ADMIN"));
+        assertFalse(policy.isAllowed("PUT", "/api/admin/quota-policies/USER/1", "ORG_ADMIN"));
+        assertFalse(policy.isAllowed("DELETE", "/api/admin/organizations/1", "ORG_ADMIN"));
+    }
+
+    @Test
+    void nonAdminRolesCannotAccessAdminRoutes() {
+        assertFalse(policy.isAllowed("GET", "/api/admin/users", "USER"));
+        assertFalse(policy.isAllowed("GET", "/api/admin/users", "DEVELOPER"));
+        assertFalse(policy.isAllowed("GET", "/api/admin/users", ""));
+        assertFalse(policy.isAllowed("GET", "/api/admin/users", null));
+    }
+}

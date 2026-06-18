@@ -4,6 +4,7 @@ import com.example.osmu.accesskey.AccessKeyBucketScope;
 import com.example.osmu.accesskey.AccessKeyCredential;
 import com.example.osmu.accesskey.AccessKeyEntity;
 import com.example.osmu.accesskey.AccessKeyRecord;
+import java.time.OffsetDateTime;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
@@ -75,7 +76,8 @@ public class InMemoryAccessKeyRepository implements AccessKeyRepository {
                 bucketScopes,
                 existing.status(),
                 existing.createdAt(),
-                existing.expiresAt()
+                existing.expiresAt(),
+                existing.lastUsedAt()
         ));
     }
 
@@ -93,7 +95,46 @@ public class InMemoryAccessKeyRepository implements AccessKeyRepository {
                 existing.bucketScopes(),
                 status,
                 existing.createdAt(),
-                existing.expiresAt()
+                existing.expiresAt(),
+                existing.lastUsedAt()
+        ));
+    }
+
+    @Override
+    public void updateSecret(long id, String secretKeyHash, String secretKeyCiphertext) {
+        accessKeys.computeIfPresent(id, (keyId, existing) -> new AccessKeyEntity(
+                existing.id(),
+                existing.ownerId(),
+                existing.name(),
+                existing.accessKey(),
+                secretKeyHash,
+                secretKeyCiphertext,
+                existing.allowedBuckets(),
+                existing.permissions(),
+                existing.bucketScopes(),
+                existing.status(),
+                existing.createdAt(),
+                existing.expiresAt(),
+                existing.lastUsedAt()
+        ));
+    }
+
+    @Override
+    public void markUsed(long id, OffsetDateTime usedAt) {
+        accessKeys.computeIfPresent(id, (keyId, existing) -> new AccessKeyEntity(
+                existing.id(),
+                existing.ownerId(),
+                existing.name(),
+                existing.accessKey(),
+                existing.secretKeyHash(),
+                existing.secretKeyCiphertext(),
+                existing.allowedBuckets(),
+                existing.permissions(),
+                existing.bucketScopes(),
+                existing.status(),
+                existing.createdAt(),
+                existing.expiresAt(),
+                usedAt
         ));
     }
 

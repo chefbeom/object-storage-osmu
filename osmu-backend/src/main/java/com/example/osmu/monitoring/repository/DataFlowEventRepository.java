@@ -1,0 +1,16 @@
+package com.example.osmu.monitoring.repository;
+
+import com.example.osmu.monitoring.DataFlowEventFilter;
+import com.example.osmu.monitoring.DataFlowEventRecord;
+import java.util.List;
+
+public interface DataFlowEventRepository {
+
+    List<DataFlowEventRecord> find(DataFlowEventFilter filter, int limit);
+
+    long nextId();
+
+    DataFlowEventRecord save(DataFlowEventRecord event);
+
+    boolean isHealthy();
+}

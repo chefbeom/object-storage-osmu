@@ -113,6 +113,7 @@ class AdminObjectRetentionControllerTest {
                                   "name": "Archive raw videos",
                                   "enabled": true,
                                   "priority": 50,
+                                  "bucketName": "Video-Raw",
                                   "targetType": "OBJECT_VERSION",
                                   "prefix": "videos/raw/",
                                   "tags": "project=osmu,stage=raw",
@@ -123,6 +124,7 @@ class AdminObjectRetentionControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.name").value("Archive raw videos"))
                 .andExpect(jsonPath("$.data.priority").value(50))
+                .andExpect(jsonPath("$.data.bucketName").value("video-raw"))
                 .andExpect(jsonPath("$.data.targetType").value("OBJECT_VERSION"))
                 .andExpect(jsonPath("$.data.prefix").value("videos/raw/"))
                 .andExpect(jsonPath("$.data.tags.project").value("osmu"))

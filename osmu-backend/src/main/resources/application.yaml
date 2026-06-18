@@ -41,6 +41,7 @@ osmu:
   storage:
     mode: ${OSMU_STORAGE_MODE:in-memory}
     endpoint: ${OSMU_STORAGE_ENDPOINT:http://localhost:9000}
+    presigned-endpoint: ${OSMU_STORAGE_PRESIGNED_ENDPOINT:${OSMU_STORAGE_ENDPOINT:http://localhost:9000}}
     access-key: ${OSMU_STORAGE_ACCESS_KEY:minioadmin}
     secret-key: ${OSMU_STORAGE_SECRET_KEY:minioadmin}
     cors:
@@ -48,6 +49,38 @@ osmu:
       allowed-origins: ${OSMU_STORAGE_CORS_ALLOWED_ORIGINS:http://localhost:5173,http://127.0.0.1:5173}
       mc-path: ${OSMU_STORAGE_CORS_MC_PATH:${OSMU_ACCESS_KEY_MC_PATH:mc}}
       minio-alias: ${OSMU_STORAGE_CORS_MINIO_ALIAS:${OSMU_ACCESS_KEY_MINIO_ALIAS:osmu-minio}}
+  storage-expansion:
+    runner:
+      enabled: ${OSMU_STORAGE_EXPANSION_RUNNER_ENABLED:false}
+      kubectl-path: ${OSMU_STORAGE_EXPANSION_KUBECTL_PATH:kubectl}
+      helm-path: ${OSMU_STORAGE_EXPANSION_HELM_PATH:helm}
+      helm-chart-path: ${OSMU_STORAGE_EXPANSION_HELM_CHART_PATH:./infra/helm/osmu}
+      namespace: ${OSMU_STORAGE_EXPANSION_NAMESPACE:osmu}
+      timeout-seconds: ${OSMU_STORAGE_EXPANSION_RUNNER_TIMEOUT_SECONDS:30}
+      preflight-timeout-seconds: ${OSMU_STORAGE_EXPANSION_RUNNER_PREFLIGHT_TIMEOUT_SECONDS:3}
+    apply-runner:
+      enabled: ${OSMU_STORAGE_EXPANSION_APPLY_RUNNER_ENABLED:false}
+    rollback-runner:
+      enabled: ${OSMU_STORAGE_EXPANSION_ROLLBACK_RUNNER_ENABLED:false}
+    gitops-pr-runner:
+      enabled: ${OSMU_STORAGE_EXPANSION_GITOPS_PR_RUNNER_ENABLED:false}
+      repository-path: ${OSMU_STORAGE_EXPANSION_GITOPS_REPOSITORY_PATH:}
+      git-path: ${OSMU_STORAGE_EXPANSION_GIT_PATH:git}
+      gh-path: ${OSMU_STORAGE_EXPANSION_GH_PATH:gh}
+      base-branch: ${OSMU_STORAGE_EXPANSION_GITOPS_BASE_BRANCH:main}
+      timeout-seconds: ${OSMU_STORAGE_EXPANSION_GITOPS_PR_RUNNER_TIMEOUT_SECONDS:60}
+    post-run-verifier:
+      enabled: ${OSMU_STORAGE_EXPANSION_POST_RUN_VERIFIER_ENABLED:true}
+      bucket-prefix: ${OSMU_STORAGE_EXPANSION_POST_RUN_BUCKET_PREFIX:osmu-expansion-smoke}
+    execution-log:
+      masking-enabled: ${OSMU_STORAGE_EXPANSION_EXECUTION_LOG_MASKING_ENABLED:true}
+      max-output-chars: ${OSMU_STORAGE_EXPANSION_EXECUTION_LOG_MAX_OUTPUT_CHARS:16384}
+      retention:
+        enabled: ${OSMU_STORAGE_EXPANSION_EXECUTION_LOG_RETENTION_ENABLED:true}
+        retention-days: ${OSMU_STORAGE_EXPANSION_EXECUTION_LOG_RETENTION_DAYS:90}
+        batch-size: ${OSMU_STORAGE_EXPANSION_EXECUTION_LOG_RETENTION_BATCH_SIZE:100}
+        initial-delay-ms: ${OSMU_STORAGE_EXPANSION_EXECUTION_LOG_RETENTION_INITIAL_DELAY_MS:180000}
+        fixed-delay-ms: ${OSMU_STORAGE_EXPANSION_EXECUTION_LOG_RETENTION_FIXED_DELAY_MS:3600000}
   access-key:
     provisioning-mode: ${OSMU_ACCESS_KEY_PROVISIONING_MODE:noop}
     secret-encryption-key: ${OSMU_ACCESS_KEY_SECRET_ENCRYPTION_KEY:local-dev-access-key-secret-encryption-key-change-me}
@@ -55,6 +88,8 @@ osmu:
       mc-path: ${OSMU_ACCESS_KEY_MC_PATH:mc}
       alias: ${OSMU_ACCESS_KEY_MINIO_ALIAS:osmu-minio}
   s3:
+    public-endpoint: ${OSMU_S3_PUBLIC_ENDPOINT:}
+    region: ${OSMU_S3_REGION:us-east-1}
     sigv4:
       clock-skew-seconds: ${OSMU_S3_SIGV4_CLOCK_SKEW_SECONDS:900}
     virtual-hosted-style:
@@ -62,6 +97,10 @@ osmu:
       domain-suffixes: ${OSMU_S3_VIRTUAL_HOSTED_STYLE_DOMAIN_SUFFIXES:localhost}
   metadata:
     mode: ${OSMU_METADATA_MODE:in-memory}
+  operations:
+    readiness:
+      report-path: ${OSMU_OPERATIONS_READINESS_REPORT_PATH:.osmu-run/latest-operations-readiness.json}
+      artifact-import-report-path: ${OSMU_OPERATIONS_READINESS_ARTIFACT_IMPORT_REPORT_PATH:.osmu-run/latest-operations-readiness-artifact-import.json}
   upload:
     cleanup:
       enabled: ${OSMU_UPLOAD_CLEANUP_ENABLED:true}

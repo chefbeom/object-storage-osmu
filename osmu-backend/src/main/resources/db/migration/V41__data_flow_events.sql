@@ -1,0 +1,20 @@
+CREATE TABLE IF NOT EXISTS data_flow_events (
+    id BIGINT NOT NULL PRIMARY KEY,
+    event_type VARCHAR(32) NOT NULL,
+    operation VARCHAR(64) NOT NULL,
+    direction VARCHAR(32) NOT NULL,
+    bucket_name VARCHAR(255) NOT NULL,
+    object_key TEXT NULL,
+    actor_id VARCHAR(255) NULL,
+    status VARCHAR(32) NOT NULL,
+    size_bytes BIGINT NOT NULL DEFAULT 0,
+    message VARCHAR(512) NULL,
+    source VARCHAR(64) NOT NULL,
+    created_at TIMESTAMP NOT NULL,
+    KEY idx_data_flow_events_created_at (created_at, id),
+    KEY idx_data_flow_events_bucket (bucket_name, created_at),
+    KEY idx_data_flow_events_actor (actor_id, created_at),
+    KEY idx_data_flow_events_source (source, created_at),
+    KEY idx_data_flow_events_operation (operation, created_at),
+    KEY idx_data_flow_events_status (status, created_at)
+);

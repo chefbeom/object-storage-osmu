@@ -51,7 +51,7 @@ public class VirtualHostedStyleS3RequestFilter extends OncePerRequestFilter {
         }
 
         String requestUri = request.getRequestURI();
-        if (requestUri == null || !isS3Path(requestUri)) {
+        if (requestUri == null) {
             filterChain.doFilter(request, response);
             return;
         }
@@ -62,16 +62,32 @@ public class VirtualHostedStyleS3RequestFilter extends OncePerRequestFilter {
             return;
         }
 
-        String restPath = requestUri.length() == S3_PATH_PREFIX.length()
-                ? ""
-                : requestUri.substring(S3_PATH_PREFIX.length());
-        String targetPath = S3_PATH_PREFIX + "/" + bucketName + restPath;
+        String targetPath = targetPath(requestUri, bucketName);
+        if (targetPath == null) {
+            filterChain.doFilter(request, response);
+            return;
+        }
+
         request.setAttribute(ORIGINAL_REQUEST_URI_ATTRIBUTE, requestUri);
         filterChain.doFilter(new VirtualHostedStyleRequest(request, targetPath), response);
     }
 
     private boolean isS3Path(String requestUri) {
         return S3_PATH_PREFIX.equals(requestUri) || requestUri.startsWith(S3_PATH_PREFIX + "/");
+    }
+
+    private String targetPath(String requestUri, String bucketName) {
+        if (isS3Path(requestUri)) {
+            String restPath = requestUri.length() == S3_PATH_PREFIX.length()
+                    ? ""
+                    : requestUri.substring(S3_PATH_PREFIX.length());
+            return S3_PATH_PREFIX + "/" + bucketName + restPath;
+        }
+        if (requestUri.startsWith("/api/") || requestUri.startsWith("/actuator")) {
+            return null;
+        }
+        String restPath = "/".equals(requestUri) ? "" : requestUri;
+        return "/" + bucketName + restPath;
     }
 
     private String virtualHostedBucketName(HttpServletRequest request) {

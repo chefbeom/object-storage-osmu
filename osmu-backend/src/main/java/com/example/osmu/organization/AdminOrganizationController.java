@@ -5,11 +5,14 @@ import com.example.osmu.auth.AuthContext;
 import com.example.osmu.auth.AuthenticatedUser;
 import com.example.osmu.bucket.BucketRecord;
 import com.example.osmu.bucket.BucketService;
+import com.example.osmu.bucket.repository.BucketPermissionRepository;
 import com.example.osmu.common.api.ApiResponse;
 import com.example.osmu.common.api.ListResponse;
 import com.example.osmu.common.error.ApiErrorCode;
 import com.example.osmu.common.error.ApiException;
+import com.example.osmu.dashboard.repository.DashboardLayoutDefaultRepository;
 import com.example.osmu.organization.repository.OrganizationRepository;
+import com.example.osmu.quota.QuotaPolicyService;
 import com.example.osmu.user.repository.UserRepository;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
@@ -32,20 +35,29 @@ public class AdminOrganizationController {
 
     private final OrganizationRepository organizationRepository;
     private final BucketService bucketService;
+    private final BucketPermissionRepository bucketPermissionRepository;
     private final UserRepository userRepository;
+    private final DashboardLayoutDefaultRepository dashboardLayoutDefaultRepository;
+    private final QuotaPolicyService quotaPolicyService;
     private final AuditLogService auditLogService;
     private final AuthContext authContext;
 
     public AdminOrganizationController(
             OrganizationRepository organizationRepository,
             BucketService bucketService,
+            BucketPermissionRepository bucketPermissionRepository,
             UserRepository userRepository,
+            DashboardLayoutDefaultRepository dashboardLayoutDefaultRepository,
+            QuotaPolicyService quotaPolicyService,
             AuditLogService auditLogService,
             AuthContext authContext
     ) {
         this.organizationRepository = organizationRepository;
         this.bucketService = bucketService;
+        this.bucketPermissionRepository = bucketPermissionRepository;
         this.userRepository = userRepository;
+        this.dashboardLayoutDefaultRepository = dashboardLayoutDefaultRepository;
+        this.quotaPolicyService = quotaPolicyService;
         this.auditLogService = auditLogService;
         this.authContext = authContext;
     }
@@ -113,8 +125,27 @@ public class AdminOrganizationController {
             throw new ApiException(ApiErrorCode.CONFLICT, "Organization has users.");
         }
         organizationRepository.deleteById(organization.id());
+        boolean defaultRemoved = dashboardLayoutDefaultRepository.deleteByTarget("ORGANIZATION", String.valueOf(organization.id()));
+        if (defaultRemoved) {
+            auditLogService.record("DASHBOARD_LAYOUT_DEFAULT_DELETE", actor.loginId(), "DASHBOARD_LAYOUT_DEFAULT", "ORGANIZATION:" + organization.id(), "SUCCESS", "Organization dashboard default deleted", request);
+        }
+        deleteOrganizationQuotaPolicy(actor, organization);
+        int permissionsRemoved = bucketPermissionRepository.deleteBySubject("ORGANIZATION", organization.id());
+        if (permissionsRemoved > 0) {
+            auditLogService.record("BUCKET_PERMISSION_SUBJECT_CLEANUP", actor.loginId(), "ORGANIZATION", String.valueOf(organization.id()), "SUCCESS", "Organization bucket permissions deleted: " + permissionsRemoved, request);
+        }
         auditLogService.record("ORGANIZATION_DELETE", actor.loginId(), "ORGANIZATION", organization.name(), "SUCCESS", "Organization deleted", request);
         return ResponseEntity.noContent().build();
+    }
+
+    private void deleteOrganizationQuotaPolicy(AuthenticatedUser actor, OrganizationRecord organization) {
+        try {
+            quotaPolicyService.delete("ORGANIZATION", organization.id(), actor.loginId(), "Organization deleted");
+        } catch (ApiException exception) {
+            if (exception.code() != ApiErrorCode.NOT_FOUND) {
+                throw exception;
+            }
+        }
     }
 
     private List<OrganizationRecord> visibleOrganizations(AuthenticatedUser actor) {

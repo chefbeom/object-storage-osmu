@@ -77,7 +77,8 @@ public class AccessKeyService {
                 bucketScopes,
                 "ACTIVE",
                 OffsetDateTime.now(),
-                request.expiresAt()
+                request.expiresAt(),
+                null
         );
         AccessKeyRecord record = entity.toRecord();
         S3AccessPolicy policy = policyGenerator.generate(id, bucketScopes);
@@ -118,6 +119,73 @@ public class AccessKeyService {
         deactivate(existing);
     }
 
+    public synchronized BulkDisableAccessKeysResponse bulkDisable(BulkDisableAccessKeysRequest request, AuthenticatedUser user) {
+        List<Long> requestedIds = request.keyIds().stream()
+                .filter(id -> id != null)
+                .distinct()
+                .toList();
+        List<Long> disabledIds = new ArrayList<>();
+        List<Long> skippedIds = new ArrayList<>();
+        for (Long keyId : requestedIds) {
+            AccessKeyRecord existing = accessKeyRepository.findRecordById(keyId)
+                    .orElseThrow(() -> new ApiException(ApiErrorCode.NOT_FOUND, "Access key not found."));
+            if (!user.isAdmin() && existing.ownerId() != user.id()) {
+                throw new ApiException(ApiErrorCode.AUTHORIZATION_FAILED, "Access key access denied.");
+            }
+            if (!"ACTIVE".equals(existing.status())) {
+                skippedIds.add(existing.id());
+                continue;
+            }
+            deactivate(existing);
+            disabledIds.add(existing.id());
+        }
+        return new BulkDisableAccessKeysResponse(
+                requestedIds.size(),
+                disabledIds.size(),
+                skippedIds.size(),
+                disabledIds,
+                skippedIds
+        );
+    }
+
+    public synchronized CreateAccessKeyResponse rotate(long id, AuthenticatedUser user) {
+        AccessKeyRecord existing = accessKeyRepository.findRecordById(id)
+                .orElseThrow(() -> new ApiException(ApiErrorCode.NOT_FOUND, "Access key not found."));
+        if (!user.isAdmin() && existing.ownerId() != user.id()) {
+            throw new ApiException(ApiErrorCode.AUTHORIZATION_FAILED, "Access key access denied.");
+        }
+        if (!"ACTIVE".equals(existing.status()) || isExpired(existing)) {
+            throw new ApiException(ApiErrorCode.VALIDATION_ERROR, "Only active access keys can be rotated.");
+        }
+
+        String oldSecretKey = decryptStoredSecret(existing.accessKey());
+        String rotatedSecretKey = token(36);
+        S3AccessPolicy policy = policyGenerator.generate(existing.id(), bucketScopes(existing));
+        policyProvisioner.rotateSecret(existing, rotatedSecretKey);
+        try {
+            accessKeyRepository.updateSecret(
+                    existing.id(),
+                    secretHash(rotatedSecretKey),
+                    secretCipher.encrypt(rotatedSecretKey)
+            );
+        } catch (RuntimeException exception) {
+            rollbackSecretRotation(existing, oldSecretKey, exception);
+            throw exception;
+        }
+
+        return new CreateAccessKeyResponse(
+                existing.id(),
+                existing.name(),
+                existing.accessKey(),
+                rotatedSecretKey,
+                existing.policyName(),
+                policy.policyDocument(),
+                existing.allowedBuckets(),
+                existing.permissions(),
+                bucketScopes(existing)
+        );
+    }
+
     public AuthenticatedUser authenticate(String accessKey, String secretKey, String bucketName, String requiredPermission) {
         return authenticateAny(accessKey, secretKey, bucketName, requiredPermission);
     }
@@ -145,6 +213,7 @@ public class AccessKeyService {
         if (!allowed) {
             throw new ApiException(ApiErrorCode.AUTHORIZATION_FAILED, "Access key scope denied.");
         }
+        markUsed(credential);
         return owner;
     }
 
@@ -174,6 +243,7 @@ public class AccessKeyService {
         if (!allowed) {
             throw new ApiException(ApiErrorCode.AUTHORIZATION_FAILED, "Access key scope denied.");
         }
+        markUsed(credential);
         return owner;
     }
 
@@ -185,6 +255,7 @@ public class AccessKeyService {
         if (buckets.isEmpty()) {
             throw new ApiException(ApiErrorCode.AUTHORIZATION_FAILED, "Access key scope denied.");
         }
+        markUsed(credential);
         return new AccessKeyBucketList(owner, buckets);
     }
 
@@ -207,6 +278,7 @@ public class AccessKeyService {
         if (buckets.isEmpty()) {
             throw new ApiException(ApiErrorCode.AUTHORIZATION_FAILED, "Access key scope denied.");
         }
+        markUsed(credential);
         return new AccessKeyBucketList(owner, buckets);
     }
 
@@ -285,7 +357,8 @@ public class AccessKeyService {
                         scope.bucketScopes(),
                         accessKey.status(),
                         accessKey.createdAt(),
-                        accessKey.expiresAt()
+                        accessKey.expiresAt(),
+                        accessKey.lastUsedAt()
                 );
                 try {
                     policyProvisioner.syncPolicy(scopedRecord, policyGenerator.generate(scopedRecord.id(), scope.bucketScopes()));
@@ -574,6 +647,38 @@ public class AccessKeyService {
 
     private boolean isExpired(AccessKeyCredential credential) {
         return credential.expiresAt() != null && !credential.expiresAt().isAfter(OffsetDateTime.now());
+    }
+
+    private boolean isExpired(AccessKeyRecord accessKey) {
+        return accessKey.expiresAt() != null && !accessKey.expiresAt().isAfter(OffsetDateTime.now());
+    }
+
+    private String decryptStoredSecret(String accessKey) {
+        try {
+            return accessKeyRepository.findCredentialByAccessKey(accessKey)
+                    .map(AccessKeyCredential::secretKeyCiphertext)
+                    .filter(ciphertext -> ciphertext != null && !ciphertext.isBlank())
+                    .map(secretCipher::decrypt)
+                    .filter(secret -> secret != null && !secret.isBlank())
+                    .orElse(null);
+        } catch (RuntimeException exception) {
+            return null;
+        }
+    }
+
+    private void rollbackSecretRotation(AccessKeyRecord accessKey, String oldSecretKey, RuntimeException originalException) {
+        if (oldSecretKey == null || oldSecretKey.isBlank()) {
+            return;
+        }
+        try {
+            policyProvisioner.rotateSecret(accessKey, oldSecretKey);
+        } catch (RuntimeException rollbackException) {
+            originalException.addSuppressed(rollbackException);
+        }
+    }
+
+    private void markUsed(AccessKeyCredential credential) {
+        accessKeyRepository.markUsed(credential.id(), OffsetDateTime.now());
     }
 
     private boolean secretMatches(String secretKey, String expectedHash) {

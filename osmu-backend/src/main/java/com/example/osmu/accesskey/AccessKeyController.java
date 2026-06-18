@@ -50,6 +50,33 @@ public class AccessKeyController {
         return ApiResponse.of(response);
     }
 
+    @PostMapping("/{keyId}/rotate")
+    public ApiResponse<CreateAccessKeyResponse> rotateAccessKey(@PathVariable("keyId") long keyId, HttpServletRequest request) {
+        AuthenticatedUser user = authContext.currentUser(request);
+        CreateAccessKeyResponse response = accessKeyService.rotate(keyId, user);
+        auditLogService.record("ACCESS_KEY_ROTATE", user.loginId(), "ACCESS_KEY", response.accessKey(), "SUCCESS", "Access key secret rotated", request);
+        return ApiResponse.of(response);
+    }
+
+    @PostMapping("/bulk-disable")
+    public ApiResponse<BulkDisableAccessKeysResponse> bulkDisableAccessKeys(
+            @Valid @RequestBody BulkDisableAccessKeysRequest request,
+            HttpServletRequest httpRequest
+    ) {
+        AuthenticatedUser user = authContext.currentUser(httpRequest);
+        BulkDisableAccessKeysResponse response = accessKeyService.bulkDisable(request, user);
+        auditLogService.record(
+                "ACCESS_KEY_BULK_DISABLE",
+                user.loginId(),
+                "ACCESS_KEY",
+                "count=" + response.disabledCount(),
+                "SUCCESS",
+                "Access keys bulk disabled",
+                httpRequest
+        );
+        return ApiResponse.of(response);
+    }
+
     @DeleteMapping("/{keyId}")
     public ResponseEntity<Void> deleteAccessKey(@PathVariable("keyId") long keyId, HttpServletRequest request) {
         AuthenticatedUser user = authContext.currentUser(request);

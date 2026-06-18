@@ -13,4 +13,17 @@ public record AccessKeyCredential(
         String status,
         OffsetDateTime expiresAt
 ) {
+    @Override
+    public String toString() {
+        return "AccessKeyCredential["
+                + "id=" + id
+                + ", ownerId=" + ownerId
+                + ", accessKey=" + accessKey
+                + ", secretKeyHash=<redacted>"
+                + ", secretKeyCiphertext=<redacted>"
+                + ", bucketScopes=" + bucketScopes
+                + ", status=" + status
+                + ", expiresAt=" + expiresAt
+                + "]";
+    }
 }

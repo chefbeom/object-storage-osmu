@@ -15,7 +15,7 @@ import org.springframework.web.bind.annotation.RequestMethod;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
-@RequestMapping("/api/s3")
+@RequestMapping({"/api/s3", "/"})
 public class S3RootController {
 
     private static final String AWS_XML_NAMESPACE = "http://s3.amazonaws.com/doc/2006-03-01/";
@@ -28,7 +28,7 @@ public class S3RootController {
         this.auditLogService = auditLogService;
     }
 
-    @GetMapping(produces = MediaType.APPLICATION_XML_VALUE)
+    @GetMapping(value = {"", "/"}, produces = MediaType.APPLICATION_XML_VALUE)
     public ResponseEntity<String> listBuckets(HttpServletRequest request) {
         S3BucketListAccess access = s3RequestAuthService.bucketListAccess(request);
         auditLogService.record("S3_BUCKET_LIST", access.user().loginId(), "BUCKET", "*", "SUCCESS", "S3-style bucket list read", request);
@@ -37,7 +37,7 @@ public class S3RootController {
                 .body(listBucketsXml(access));
     }
 
-    @RequestMapping(method = RequestMethod.HEAD)
+    @RequestMapping(value = {"", "/"}, method = RequestMethod.HEAD)
     public ResponseEntity<Void> headService(HttpServletRequest request) {
         S3BucketListAccess access = s3RequestAuthService.bucketListAccess(request);
         auditLogService.record("S3_SERVICE_HEAD", access.user().loginId(), "BUCKET", "*", "SUCCESS", "S3-style service metadata read", request);

@@ -55,12 +55,14 @@ import org.springframework.stereotype.Component;
 public class MinioObjectStorageAdapter implements ObjectStorageAdapter {
 
     private final MinioClient minioClient;
+    private final MinioClient presignedMinioClient;
     private final MinioAsyncClient minioAsyncClient;
     private final MinioBucketCorsProvisioner corsProvisioner;
     private final String region;
 
     public MinioObjectStorageAdapter(
             @Value("${osmu.storage.endpoint}") String endpoint,
+            @Value("${osmu.storage.presigned-endpoint:${osmu.storage.endpoint}}") String presignedEndpoint,
             @Value("${osmu.storage.access-key}") String accessKey,
             @Value("${osmu.storage.secret-key}") String secretKey,
             @Value("${osmu.storage.region:us-east-1}") String region,
@@ -68,8 +70,15 @@ public class MinioObjectStorageAdapter implements ObjectStorageAdapter {
     ) {
         this.region = region;
         this.corsProvisioner = corsProvisioner;
+        String effectivePresignedEndpoint = presignedEndpoint == null || presignedEndpoint.isBlank()
+                ? endpoint
+                : presignedEndpoint;
         this.minioClient = MinioClient.builder()
                 .endpoint(endpoint)
+                .credentials(accessKey, secretKey)
+                .build();
+        this.presignedMinioClient = MinioClient.builder()
+                .endpoint(effectivePresignedEndpoint)
                 .credentials(accessKey, secretKey)
                 .build();
         this.minioAsyncClient = MinioAsyncClient.builder()
@@ -510,9 +519,10 @@ public class MinioObjectStorageAdapter implements ObjectStorageAdapter {
             int expiresInSeconds
     ) {
         try {
-            String url = minioClient.getPresignedObjectUrl(GetPresignedObjectUrlArgs.builder()
+            String url = presignedMinioClient.getPresignedObjectUrl(GetPresignedObjectUrlArgs.builder()
                     .method(method)
                     .bucket(bucketName)
+                    .region(region)
                     .object(objectKey)
                     .expiry(expiresInSeconds, TimeUnit.SECONDS)
                     .build());
@@ -534,9 +544,10 @@ public class MinioObjectStorageAdapter implements ObjectStorageAdapter {
                     "partNumber", String.valueOf(partNumber),
                     "uploadId", storageUploadId
             );
-            String url = minioClient.getPresignedObjectUrl(GetPresignedObjectUrlArgs.builder()
+            String url = presignedMinioClient.getPresignedObjectUrl(GetPresignedObjectUrlArgs.builder()
                     .method(Method.PUT)
                     .bucket(bucketName)
+                    .region(region)
                     .object(objectKey)
                     .expiry(expiresInSeconds, TimeUnit.SECONDS)
                     .extraQueryParams(queryParams)

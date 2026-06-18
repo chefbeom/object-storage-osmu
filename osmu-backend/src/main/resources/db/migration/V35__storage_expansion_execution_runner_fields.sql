@@ -1,0 +1,3 @@
+ALTER TABLE storage_expansion_executions
+    ADD COLUMN IF NOT EXISTS exit_code INT NULL,
+    ADD COLUMN IF NOT EXISTS timed_out BOOLEAN NOT NULL DEFAULT FALSE;

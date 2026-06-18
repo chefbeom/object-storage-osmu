@@ -30,7 +30,7 @@ class HealthControllerTest {
         mockMvc.perform(get("/api/storage/health"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.status").value("UP"))
-                .andExpect(jsonPath("$.data.engine").value("in-memory-minio-adapter"))
+                .andExpect(jsonPath("$.data.engine").value("in-memory"))
                 .andExpect(jsonPath("$.data.accessKeyProvisioner").value("UP"));
     }
 
@@ -39,6 +39,6 @@ class HealthControllerTest {
         mockMvc.perform(get("/api/database/health"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.status").value("UP"))
-                .andExpect(jsonPath("$.data.engine").value("metadata-repositories"));
+                .andExpect(jsonPath("$.data.engine").value("in-memory"));
     }
 }

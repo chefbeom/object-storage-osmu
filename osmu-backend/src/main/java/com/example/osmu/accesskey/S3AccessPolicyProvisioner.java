@@ -4,6 +4,8 @@ public interface S3AccessPolicyProvisioner {
 
     void provision(AccessKeyRecord accessKey, String secretKey, S3AccessPolicy policy);
 
+    void rotateSecret(AccessKeyRecord accessKey, String secretKey);
+
     void syncPolicy(AccessKeyRecord accessKey, S3AccessPolicy policy);
 
     void deactivate(AccessKeyRecord accessKey);

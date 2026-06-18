@@ -2,6 +2,8 @@ package com.example.osmu.auth;
 
 import com.example.osmu.common.error.ApiErrorCode;
 import com.example.osmu.common.error.ApiException;
+import com.example.osmu.user.UserAccount;
+import com.example.osmu.user.repository.UserRepository;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.stereotype.Component;
@@ -13,9 +15,17 @@ public class JwtAuthInterceptor implements HandlerInterceptor {
     public static final String CLAIMS_ATTRIBUTE = "osmu.jwt.claims";
 
     private final JwtTokenService jwtTokenService;
+    private final UserRepository userRepository;
+    private final AdminRbacPolicy adminRbacPolicy;
 
-    public JwtAuthInterceptor(JwtTokenService jwtTokenService) {
+    public JwtAuthInterceptor(
+            JwtTokenService jwtTokenService,
+            UserRepository userRepository,
+            AdminRbacPolicy adminRbacPolicy
+    ) {
         this.jwtTokenService = jwtTokenService;
+        this.userRepository = userRepository;
+        this.adminRbacPolicy = adminRbacPolicy;
     }
 
     @Override
@@ -31,11 +41,26 @@ public class JwtAuthInterceptor implements HandlerInterceptor {
 
         String token = extractBearerToken(authorization);
         JwtClaims claims = jwtTokenService.verifyAccessToken(token);
-        if (isAdminPath(request.getRequestURI()) && !isAdminRequestAllowed(request.getMethod(), request.getRequestURI(), claims.role())) {
+        UserAccount user = activeUser(claims);
+        if (isAdminPath(request.getRequestURI()) && !adminRbacPolicy.isAllowed(request.getMethod(), request.getRequestURI(), user.role())) {
             throw new ApiException(ApiErrorCode.AUTHORIZATION_FAILED, "Admin role required.");
         }
         request.setAttribute(CLAIMS_ATTRIBUTE, claims);
         return true;
+    }
+
+    private UserAccount activeUser(JwtClaims claims) {
+        return userRepository.findById(parseUserId(claims.subject()))
+                .filter(account -> "ACTIVE".equals(account.status()))
+                .orElseThrow(() -> new ApiException(ApiErrorCode.AUTHENTICATION_REQUIRED, "Invalid authenticated user."));
+    }
+
+    private long parseUserId(String subject) {
+        try {
+            return Long.parseLong(subject);
+        } catch (NumberFormatException exception) {
+            throw new ApiException(ApiErrorCode.AUTHENTICATION_REQUIRED, "Invalid authenticated user.");
+        }
     }
 
     private String extractBearerToken(String authorization) {
@@ -87,29 +112,4 @@ public class JwtAuthInterceptor implements HandlerInterceptor {
         return uri.startsWith("/api/admin/");
     }
 
-    private boolean isAdminRequestAllowed(String method, String uri, String role) {
-        if ("ADMIN".equals(role)) {
-            return true;
-        }
-        if (!"ORG_ADMIN".equals(role)) {
-            return false;
-        }
-        return isOrgAdminPath(method, uri);
-    }
-
-    private boolean isOrgAdminPath(String method, String uri) {
-        if ("GET".equalsIgnoreCase(method) && "/api/admin/users".equals(uri)) {
-            return true;
-        }
-        if ("POST".equalsIgnoreCase(method) && "/api/admin/users".equals(uri)) {
-            return true;
-        }
-        if ("PATCH".equalsIgnoreCase(method) && uri.matches("^/api/admin/users/\\d+/status$")) {
-            return true;
-        }
-        if ("GET".equalsIgnoreCase(method) && "/api/admin/organizations".equals(uri)) {
-            return true;
-        }
-        return "GET".equalsIgnoreCase(method) && "/api/admin/organizations/usage".equals(uri);
-    }
 }

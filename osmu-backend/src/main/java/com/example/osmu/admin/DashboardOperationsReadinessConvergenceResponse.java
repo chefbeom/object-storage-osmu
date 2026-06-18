@@ -1,0 +1,79 @@
+package com.example.osmu.admin;
+
+import com.fasterxml.jackson.annotation.JsonInclude;
+import java.util.List;
+
+@JsonInclude(JsonInclude.Include.NON_EMPTY)
+public record DashboardOperationsReadinessConvergenceResponse(
+        String result,
+        String generatedAt,
+        String handoffReportPath,
+        String readinessReportPath,
+        String operationsReadinessFinalizeReportPath,
+        boolean handoffExists,
+        String handoffResult,
+        boolean readinessExists,
+        String readinessResult,
+        String readinessSummary,
+        boolean finalizerExists,
+        String finalizerResult,
+        String finalizerReadinessResult,
+        int finalizerFailedCount,
+        String kubernetesOperationsReportSyncReportPath,
+        boolean kubernetesReportSyncExists,
+        String kubernetesReportSyncResult,
+        int kubernetesReportSyncFailedCount,
+        String kubernetesReportSyncConfigMapName,
+        String kubernetesReportSyncConfigMapKey,
+        String kubernetesReportSyncSourceReportResult,
+        boolean kubernetesReportSyncReady,
+        int finalizerGapCount,
+        int stageCount,
+        int readyStageCount,
+        int blockedActionCount,
+        int missingWorkflowRunCount,
+        int missingRequiredArtifactCount,
+        int failedImportCount,
+        DashboardOperationsReadinessConvergenceBottleneckResponse currentBottleneck,
+        List<DashboardOperationsReadinessConvergenceCommandResponse> recommendedCommands,
+        String decisionRule,
+        String safetyPolicy
+) {
+    public static DashboardOperationsReadinessConvergenceResponse empty() {
+        return new DashboardOperationsReadinessConvergenceResponse(
+                "",
+                "",
+                "",
+                "",
+                "",
+                false,
+                "",
+                false,
+                "",
+                "",
+                false,
+                "",
+                "",
+                0,
+                "",
+                false,
+                "",
+                0,
+                "",
+                "",
+                "",
+                false,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                DashboardOperationsReadinessConvergenceBottleneckResponse.empty(),
+                List.of(),
+                "",
+                ""
+        );
+    }
+}

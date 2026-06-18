@@ -175,6 +175,20 @@ public class MariaDbBucketPermissionRepository implements BucketPermissionReposi
     }
 
     @Override
+    public int deleteBySubject(String subjectType, long subjectId) {
+        ensureSchema();
+        String sql = "DELETE FROM bucket_permissions WHERE subject_type = ? AND subject_id = ?";
+        try (Connection connection = connect();
+             PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setString(1, subjectType);
+            statement.setLong(2, subjectId);
+            return statement.executeUpdate();
+        } catch (SQLException exception) {
+            throw databaseException(exception);
+        }
+    }
+
+    @Override
     public boolean isHealthy() {
         try (Connection connection = connect();
              PreparedStatement statement = connection.prepareStatement("SELECT 1");

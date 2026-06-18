@@ -13,4 +13,18 @@ public record CreateAccessKeyResponse(
         List<String> permissions,
         List<AccessKeyBucketScope> bucketScopes
 ) {
+    @Override
+    public String toString() {
+        return "CreateAccessKeyResponse["
+                + "id=" + id
+                + ", name=" + name
+                + ", accessKey=" + accessKey
+                + ", secretKey=<redacted>"
+                + ", policyName=" + policyName
+                + ", policyDocument=<omitted>"
+                + ", allowedBuckets=" + allowedBuckets
+                + ", permissions=" + permissions
+                + ", bucketScopes=" + bucketScopes
+                + "]";
+    }
 }

@@ -5,6 +5,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -105,6 +106,58 @@ class AdminOrganizationControllerTest {
         String adminToken = loginAndReturnAccessToken("admin", "password");
         int organizationId = createOrganization(adminToken, "Delete Empty Org 1");
 
+        mockMvc.perform(put("/api/dashboard/layout/defaults")
+                        .header("Authorization", "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "targetType": "ORGANIZATION",
+                                  "targetId": "%d",
+                                  "presetId": "compact"
+                                }
+                                """.formatted(organizationId)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.targetType").value("ORGANIZATION"))
+                .andExpect(jsonPath("$.data.targetId").value(String.valueOf(organizationId)));
+
+        mockMvc.perform(put("/api/admin/quota-policies/ORGANIZATION/{targetId}", organizationId)
+                        .header("Authorization", "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "quotaBytes": 4096,
+                                  "reason": "organization cleanup test"
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.targetType").value("ORGANIZATION"))
+                .andExpect(jsonPath("$.data.targetId").value(organizationId));
+
+        mockMvc.perform(post("/api/buckets")
+                        .header("Authorization", "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "name": "org-cleanup-permission-bucket",
+                                  "quotaBytes": 1024,
+                                  "ownerType": "USER"
+                                }
+                                """))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(post("/api/buckets/{bucketName}/permissions", "org-cleanup-permission-bucket")
+                        .header("Authorization", "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "subjectType": "ORGANIZATION",
+                                  "subjectId": %d,
+                                  "permissions": ["READ", "WRITE"]
+                                }
+                                """.formatted(organizationId)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items[?(@.subjectType == 'ORGANIZATION' && @.subjectId == %d)]".formatted(organizationId)).exists());
+
         mockMvc.perform(delete("/api/admin/organizations/{organizationId}", organizationId)
                         .header("Authorization", "Bearer " + adminToken))
                 .andExpect(status().isNoContent());
@@ -113,6 +166,27 @@ class AdminOrganizationControllerTest {
                         .header("Authorization", "Bearer " + adminToken))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.items[*].name", org.hamcrest.Matchers.not(hasItem("Delete Empty Org 1"))));
+
+        mockMvc.perform(get("/api/dashboard/layout/defaults")
+                        .header("Authorization", "Bearer " + adminToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data[?(@.targetType == 'ORGANIZATION' && @.targetId == '%d')]".formatted(organizationId)).isEmpty());
+
+        mockMvc.perform(get("/api/admin/quota-policies")
+                        .header("Authorization", "Bearer " + adminToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items[?(@.targetType == 'ORGANIZATION' && @.targetId == %d)]".formatted(organizationId)).isEmpty());
+
+        mockMvc.perform(get("/api/admin/quota-policies/history")
+                        .header("Authorization", "Bearer " + adminToken)
+                        .param("limit", "10"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items[?(@.targetType == 'ORGANIZATION' && @.targetId == %d && @.action == 'DELETE')]".formatted(organizationId)).exists());
+
+        mockMvc.perform(get("/api/buckets/{bucketName}/permissions", "org-cleanup-permission-bucket")
+                        .header("Authorization", "Bearer " + adminToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items[?(@.subjectType == 'ORGANIZATION' && @.subjectId == %d)]".formatted(organizationId)).isEmpty());
     }
 
     @Test

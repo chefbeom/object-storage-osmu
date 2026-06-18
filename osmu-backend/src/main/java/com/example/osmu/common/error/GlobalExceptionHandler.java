@@ -67,9 +67,29 @@ public class GlobalExceptionHandler {
     }
 
     private boolean isS3Path(HttpServletRequest request) {
-        return request != null
-                && request.getRequestURI() != null
-                && ("/api/s3".equals(request.getRequestURI()) || request.getRequestURI().startsWith("/api/s3/"));
+        if (request == null || request.getRequestURI() == null) {
+            return false;
+        }
+        String uri = request.getRequestURI();
+        if ("/api/s3".equals(uri) || uri.startsWith("/api/s3/")) {
+            return true;
+        }
+        return isRootS3Request(request, uri);
+    }
+
+    private boolean isRootS3Request(HttpServletRequest request, String uri) {
+        if (uri.startsWith("/api/") || uri.startsWith("/actuator")) {
+            return false;
+        }
+        String authorization = request.getHeader("Authorization");
+        return authorization != null && authorization.startsWith("AWS4-HMAC-SHA256 ")
+                || "AWS4-HMAC-SHA256".equals(request.getParameter("X-Amz-Algorithm"))
+                || hasText(request.getHeader("X-OSMU-Access-Key"))
+                || hasText(request.getHeader("X-OSMU-Secret-Key"));
+    }
+
+    private boolean hasText(String value) {
+        return value != null && !value.isBlank();
     }
 
     private ResponseEntity<String> s3ErrorResponse(

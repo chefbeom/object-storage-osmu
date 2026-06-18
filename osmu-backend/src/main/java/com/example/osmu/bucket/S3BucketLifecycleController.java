@@ -16,7 +16,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
-@RequestMapping("/api/s3/{bucketName}")
+@RequestMapping({"/api/s3/{bucketName}", "/{bucketName}"})
 public class S3BucketLifecycleController {
 
     private final BucketLifecycleService bucketLifecycleService;
@@ -30,7 +30,7 @@ public class S3BucketLifecycleController {
         this.s3RequestAuthService = s3RequestAuthService;
     }
 
-    @GetMapping(params = "lifecycle", produces = {MediaType.APPLICATION_XML_VALUE, MediaType.TEXT_XML_VALUE})
+    @GetMapping(value = {"", "/"}, params = "lifecycle", produces = {MediaType.APPLICATION_XML_VALUE, MediaType.TEXT_XML_VALUE})
     public ResponseEntity<String> getBucketLifecycle(
             @PathVariable("bucketName") String bucketName,
             HttpServletRequest request
@@ -41,7 +41,7 @@ public class S3BucketLifecycleController {
                 .body(lifecycle.xml());
     }
 
-    @PutMapping(params = "lifecycle", consumes = {MediaType.APPLICATION_XML_VALUE, MediaType.TEXT_XML_VALUE})
+    @PutMapping(value = {"", "/"}, params = "lifecycle", consumes = {MediaType.APPLICATION_XML_VALUE, MediaType.TEXT_XML_VALUE})
     public ResponseEntity<Void> putBucketLifecycle(
             @PathVariable("bucketName") String bucketName,
             @RequestBody String rawXml,
@@ -55,7 +55,7 @@ public class S3BucketLifecycleController {
         return ResponseEntity.ok().build();
     }
 
-    @DeleteMapping(params = "lifecycle")
+    @DeleteMapping(value = {"", "/"}, params = "lifecycle")
     public ResponseEntity<Void> deleteBucketLifecycle(
             @PathVariable("bucketName") String bucketName,
             HttpServletRequest request

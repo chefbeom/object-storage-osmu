@@ -14,6 +14,7 @@ public record BackupStatusResponse(
         boolean restoreDrillExecuted,
         String lastBackupAt,
         String lastRestoreDrillAt,
+        BackupRestoreDrillEvidenceResponse latestRestoreDrillEvidence,
         List<String> pendingGates
 ) {
 }

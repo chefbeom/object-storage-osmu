@@ -1,0 +1,23 @@
+CREATE TABLE IF NOT EXISTS backup_restore_drill_evidence (
+    audit_log_id BIGINT NOT NULL PRIMARY KEY,
+    environment VARCHAR(160) NOT NULL,
+    operator_name VARCHAR(160) NOT NULL,
+    result VARCHAR(32) NOT NULL,
+    started_at TIMESTAMP NULL,
+    completed_at TIMESTAMP NULL,
+    backup_timestamp TIMESTAMP NULL,
+    restore_duration_minutes BIGINT NOT NULL,
+    observed_rpo_hours BIGINT NOT NULL,
+    rpo_target_met BOOLEAN NOT NULL,
+    rto_target_met BOOLEAN NOT NULL,
+    metadata_row_count BIGINT NOT NULL,
+    object_count BIGINT NOT NULL,
+    object_bytes BIGINT NOT NULL,
+    backup_manifest_sha256 VARCHAR(64) NULL,
+    evidence_uri VARCHAR(255) NULL,
+    gaps_text MEDIUMTEXT NULL,
+    status_impact VARCHAR(64) NOT NULL,
+    recorded_at TIMESTAMP NOT NULL,
+    KEY idx_backup_restore_drill_result_recorded (result, recorded_at, audit_log_id),
+    KEY idx_backup_restore_drill_recorded (recorded_at, audit_log_id)
+);

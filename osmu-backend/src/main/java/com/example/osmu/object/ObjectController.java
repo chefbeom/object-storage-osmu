@@ -5,6 +5,7 @@ import com.example.osmu.auth.AuthenticatedUser;
 import com.example.osmu.audit.AuditLogService;
 import com.example.osmu.common.api.ApiResponse;
 import com.example.osmu.common.api.ListResponse;
+import com.example.osmu.monitoring.DataFlowMonitoringService;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.List;
@@ -34,17 +35,20 @@ public class ObjectController {
     private final ObjectShareLinkService shareLinkService;
     private final AuditLogService auditLogService;
     private final AuthContext authContext;
+    private final DataFlowMonitoringService dataFlowMonitoringService;
 
     public ObjectController(
             ObjectService objectService,
             ObjectShareLinkService shareLinkService,
             AuditLogService auditLogService,
-            AuthContext authContext
+            AuthContext authContext,
+            DataFlowMonitoringService dataFlowMonitoringService
     ) {
         this.objectService = objectService;
         this.shareLinkService = shareLinkService;
         this.auditLogService = auditLogService;
         this.authContext = authContext;
+        this.dataFlowMonitoringService = dataFlowMonitoringService;
     }
 
     @GetMapping
@@ -60,10 +64,11 @@ public class ObjectController {
             HttpServletRequest request
     ) {
         AuthenticatedUser user = authContext.currentUser(request);
-        if (deleted) {
-            return objectService.listDeleted(bucketName, prefix, search, tag, cursor, limit, user);
-        }
-        return objectService.list(bucketName, prefix, delimiter, search, tag, cursor, limit, user);
+        StoredObjectPage page = deleted
+                ? objectService.listDeleted(bucketName, prefix, search, tag, cursor, limit, user)
+                : objectService.list(bucketName, prefix, delimiter, search, tag, cursor, limit, user);
+        dataFlowMonitoringService.recordList(bucketName, user.loginId(), "REST");
+        return page;
     }
 
     @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
@@ -75,12 +80,18 @@ public class ObjectController {
             HttpServletRequest request
     ) throws IOException {
         AuthenticatedUser user = authContext.currentUser(request);
-        StoredObjectRecord object;
-        try (InputStream stream = file.getInputStream()) {
-            object = objectService.upload(bucketName, key, tags, stream, file.getSize(), file.getContentType(), user);
+        try {
+            StoredObjectRecord object;
+            try (InputStream stream = file.getInputStream()) {
+                object = objectService.upload(bucketName, key, tags, stream, file.getSize(), file.getContentType(), user);
+            }
+            auditLogService.record("OBJECT_UPLOAD", user.loginId(), "OBJECT", bucketName + "/" + object.key(), "SUCCESS", "Object uploaded", request);
+            dataFlowMonitoringService.recordUpload(bucketName, object.key(), object.sizeBytes(), user.loginId(), "REST");
+            return ApiResponse.of(object);
+        } catch (IOException | RuntimeException exception) {
+            dataFlowMonitoringService.recordFailure("upload", bucketName, key, user.loginId(), exception.getMessage(), "REST");
+            throw exception;
         }
-        auditLogService.record("OBJECT_UPLOAD", user.loginId(), "OBJECT", bucketName + "/" + object.key(), "SUCCESS", "Object uploaded", request);
-        return ApiResponse.of(object);
     }
 
     @PostMapping("/presigned-upload")
@@ -188,8 +199,15 @@ public class ObjectController {
             HttpServletRequest request
     ) {
         AuthenticatedUser user = authContext.currentUser(request);
-        StoredObjectRecord object = objectService.completePresignedUpload(bucketName, completeRequest, user);
+        StoredObjectRecord object;
+        try {
+            object = objectService.completePresignedUpload(bucketName, completeRequest, user);
+        } catch (RuntimeException exception) {
+            dataFlowMonitoringService.recordFailure("upload", bucketName, completeRequest.key(), user.loginId(), exception.getMessage(), "REST");
+            throw exception;
+        }
         auditLogService.record("OBJECT_PRESIGNED_UPLOAD_COMPLETE", user.loginId(), "OBJECT", bucketName + "/" + object.key(), "SUCCESS", "Presigned upload completed", request);
+        dataFlowMonitoringService.recordUpload(bucketName, object.key(), object.sizeBytes(), user.loginId(), "REST");
         return ApiResponse.of(object);
     }
 
@@ -236,8 +254,15 @@ public class ObjectController {
             HttpServletRequest request
     ) {
         AuthenticatedUser user = authContext.currentUser(request);
-        StoredObjectRecord object = objectService.completeMultipartUpload(bucketName, completeRequest, user);
+        StoredObjectRecord object;
+        try {
+            object = objectService.completeMultipartUpload(bucketName, completeRequest, user);
+        } catch (RuntimeException exception) {
+            dataFlowMonitoringService.recordFailure("upload", bucketName, completeRequest.key(), user.loginId(), exception.getMessage(), "REST");
+            throw exception;
+        }
         auditLogService.record("OBJECT_MULTIPART_UPLOAD_COMPLETE", user.loginId(), "OBJECT", bucketName + "/" + object.key(), "SUCCESS", "Multipart upload completed", request);
+        dataFlowMonitoringService.recordUpload(bucketName, object.key(), object.sizeBytes(), user.loginId(), "REST");
         return ApiResponse.of(object);
     }
 
@@ -250,6 +275,7 @@ public class ObjectController {
         AuthenticatedUser user = authContext.currentUser(request);
         objectService.abortMultipartUpload(bucketName, abortRequest, user);
         auditLogService.record("OBJECT_MULTIPART_UPLOAD_ABORT", user.loginId(), "OBJECT", bucketName + "/" + abortRequest.key(), "SUCCESS", "Multipart upload aborted", request);
+        dataFlowMonitoringService.recordCancel("upload", bucketName, abortRequest.key(), user.loginId(), "REST");
         return ResponseEntity.noContent().build();
     }
 
@@ -304,7 +330,13 @@ public class ObjectController {
             HttpServletRequest request
     ) {
         AuthenticatedUser user = authContext.currentUser(request);
-        StoredObjectStream object = objectService.downloadVersion(bucketName, objectKey, versionId, user);
+        StoredObjectStream object;
+        try {
+            object = objectService.downloadVersion(bucketName, objectKey, versionId, user);
+        } catch (RuntimeException exception) {
+            dataFlowMonitoringService.recordFailure("download", bucketName, objectKey, user.loginId(), exception.getMessage(), "REST");
+            throw exception;
+        }
         auditLogService.record(
                 "OBJECT_VERSION_DOWNLOAD",
                 user.loginId(),
@@ -314,9 +346,13 @@ public class ObjectController {
                 "Object version download started",
                 request
         );
+        dataFlowMonitoringService.recordDownload(bucketName, object.metadata().key(), object.metadata().sizeBytes(), user.loginId(), "REST");
         StreamingResponseBody body = outputStream -> {
             try (InputStream inputStream = object.content()) {
                 inputStream.transferTo(outputStream);
+            } catch (IOException | RuntimeException exception) {
+                dataFlowMonitoringService.recordFailure("download", bucketName, object.metadata().key(), user.loginId(), exception.getMessage(), "REST");
+                throw exception;
             }
         };
         return ResponseEntity.ok()
@@ -354,7 +390,13 @@ public class ObjectController {
             HttpServletRequest request
     ) {
         AuthenticatedUser user = authContext.currentUser(request);
-        StoredObjectStream object = objectService.downloadStream(bucketName, objectKey, user);
+        StoredObjectStream object;
+        try {
+            object = objectService.downloadStream(bucketName, objectKey, user);
+        } catch (RuntimeException exception) {
+            dataFlowMonitoringService.recordFailure("download", bucketName, objectKey, user.loginId(), exception.getMessage(), "REST");
+            throw exception;
+        }
         auditLogService.record(
                 "OBJECT_DOWNLOAD",
                 user.loginId(),
@@ -364,9 +406,13 @@ public class ObjectController {
                 "Object download started",
                 request
         );
+        dataFlowMonitoringService.recordDownload(bucketName, object.metadata().key(), object.metadata().sizeBytes(), user.loginId(), "REST");
         StreamingResponseBody body = outputStream -> {
             try (InputStream inputStream = object.content()) {
                 inputStream.transferTo(outputStream);
+            } catch (IOException | RuntimeException exception) {
+                dataFlowMonitoringService.recordFailure("download", bucketName, object.metadata().key(), user.loginId(), exception.getMessage(), "REST");
+                throw exception;
             }
         };
         return ResponseEntity.ok()
@@ -383,8 +429,15 @@ public class ObjectController {
             HttpServletRequest request
     ) {
         AuthenticatedUser user = authContext.currentUser(request);
-        StoredObjectRecord object = objectService.delete(bucketName, objectKey, user);
+        StoredObjectRecord object;
+        try {
+            object = objectService.delete(bucketName, objectKey, user);
+        } catch (RuntimeException exception) {
+            dataFlowMonitoringService.recordFailure("delete", bucketName, objectKey, user.loginId(), exception.getMessage(), "REST");
+            throw exception;
+        }
         auditLogService.record("OBJECT_DELETE", user.loginId(), "OBJECT", bucketName + "/" + object.key(), "SUCCESS", "Object moved to trash", request);
+        dataFlowMonitoringService.recordDelete(bucketName, object.key(), user.loginId(), "REST");
         return ResponseEntity.noContent().build();
     }
 

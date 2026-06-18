@@ -6,6 +6,7 @@ import com.example.osmu.bucket.S3RequestAuthService;
 import com.example.osmu.common.error.ApiErrorCode;
 import com.example.osmu.common.error.ApiException;
 import com.example.osmu.common.error.S3ErrorCodeMapper;
+import com.example.osmu.monitoring.DataFlowMonitoringService;
 import jakarta.servlet.http.HttpServletRequest;
 import java.io.FilterInputStream;
 import java.io.IOException;
@@ -54,7 +55,7 @@ import org.xml.sax.InputSource;
 import org.xml.sax.SAXException;
 
 @RestController
-@RequestMapping("/api/s3/{bucketName}")
+@RequestMapping({"/api/s3/{bucketName}", "/{bucketName}"})
 public class S3ObjectController {
 
     private static final String OSMU_TAGS_HEADER = "X-OSMU-Tags";
@@ -67,12 +68,14 @@ public class S3ObjectController {
     private static final String AWS_COPY_SOURCE_IF_UNMODIFIED_SINCE_HEADER = "x-amz-copy-source-if-unmodified-since";
     private static final String AWS_CONTENT_MD5_HEADER = "Content-MD5";
     private static final String AWS_CONTENT_SHA256_HEADER = "x-amz-content-sha256";
+    private static final String AWS_DECODED_CONTENT_LENGTH_HEADER = "x-amz-decoded-content-length";
     private static final String AWS_CHECKSUM_SHA256_HEADER = "x-amz-checksum-sha256";
     private static final String AWS_CHECKSUM_SHA1_HEADER = "x-amz-checksum-sha1";
     private static final String AWS_CHECKSUM_CRC32_HEADER = "x-amz-checksum-crc32";
     private static final String AWS_CHECKSUM_CRC32C_HEADER = "x-amz-checksum-crc32c";
     private static final String AWS_UNSIGNED_PAYLOAD = "UNSIGNED-PAYLOAD";
     private static final String AWS_STREAMING_PAYLOAD_PREFIX = "STREAMING-";
+    private static final String AWS_CHUNKED_CONTENT_ENCODING = "aws-chunked";
     private static final String OSMU_MULTIPART_SIZE_HEADER = "X-OSMU-Multipart-Size-Bytes";
     private static final String AWS_META_OSMU_SIZE_HEADER = "x-amz-meta-osmu-size-bytes";
     private static final String OSMU_MULTIPART_PART_SIZE_HEADER = "X-OSMU-Multipart-Part-Size-Bytes";
@@ -84,18 +87,21 @@ public class S3ObjectController {
     private final ObjectService objectService;
     private final S3RequestAuthService s3RequestAuthService;
     private final AuditLogService auditLogService;
+    private final DataFlowMonitoringService dataFlowMonitoringService;
 
     public S3ObjectController(
             ObjectService objectService,
             S3RequestAuthService s3RequestAuthService,
-            AuditLogService auditLogService
+            AuditLogService auditLogService,
+            DataFlowMonitoringService dataFlowMonitoringService
     ) {
         this.objectService = objectService;
         this.s3RequestAuthService = s3RequestAuthService;
         this.auditLogService = auditLogService;
+        this.dataFlowMonitoringService = dataFlowMonitoringService;
     }
 
-    @GetMapping(params = "list-type=2", produces = MediaType.APPLICATION_XML_VALUE)
+    @GetMapping(value = {"", "/"}, params = "list-type=2", produces = MediaType.APPLICATION_XML_VALUE)
     public ResponseEntity<String> listObjectsV2(
             @PathVariable("bucketName") String bucketName,
             @RequestParam(name = "prefix", required = false) String prefix,
@@ -121,12 +127,13 @@ public class S3ObjectController {
                 user
         );
         auditLogService.record("S3_OBJECT_LIST", user.loginId(), "BUCKET", bucketName, "SUCCESS", "S3-style object list read", request);
+        dataFlowMonitoringService.recordList(bucketName, user.loginId(), "S3");
         return ResponseEntity.ok()
                 .contentType(MediaType.APPLICATION_XML)
                 .body(listObjectsXml(bucketName, prefix, delimiter, continuationToken, normalizedMaxKeys, urlEncode, includeOwner, user, page));
     }
 
-    @GetMapping(params = {"!list-type", "!uploads", "!location", "!lifecycle", "!delete", "!tagging"}, produces = MediaType.APPLICATION_XML_VALUE)
+    @GetMapping(value = {"", "/"}, params = {"!list-type", "!uploads", "!location", "!lifecycle", "!delete", "!tagging"}, produces = MediaType.APPLICATION_XML_VALUE)
     public ResponseEntity<String> listObjectsV1(
             @PathVariable("bucketName") String bucketName,
             @RequestParam(name = "prefix", required = false) String prefix,
@@ -152,12 +159,13 @@ public class S3ObjectController {
                 user
         );
         auditLogService.record("S3_OBJECT_LIST", user.loginId(), "BUCKET", bucketName, "SUCCESS", "S3-style object list read", request);
+        dataFlowMonitoringService.recordList(bucketName, user.loginId(), "S3");
         return ResponseEntity.ok()
                 .contentType(MediaType.APPLICATION_XML)
                 .body(listObjectsV1Xml(bucketName, prefix, delimiter, marker, normalizedMaxKeys, urlEncode, includeOwner, user, page));
     }
 
-    @GetMapping(params = "uploads", produces = MediaType.APPLICATION_XML_VALUE)
+    @GetMapping(value = {"", "/"}, params = "uploads", produces = MediaType.APPLICATION_XML_VALUE)
     public ResponseEntity<String> listMultipartUploads(
             @PathVariable("bucketName") String bucketName,
             @RequestParam(name = "prefix", required = false) String prefix,
@@ -176,6 +184,7 @@ public class S3ObjectController {
                 user
         );
         auditLogService.record("S3_OBJECT_MULTIPART_UPLOADS_LIST", user.loginId(), "BUCKET", response.bucketName(), "SUCCESS", "S3-style multipart uploads listed", request);
+        dataFlowMonitoringService.recordList(bucketName, user.loginId(), "S3");
         return ResponseEntity.ok()
                 .contentType(MediaType.APPLICATION_XML)
                 .body(listMultipartUploadsXml(response));
@@ -221,7 +230,7 @@ public class S3ObjectController {
         return ResponseEntity.noContent().build();
     }
 
-    @PostMapping(params = "delete", consumes = {MediaType.APPLICATION_XML_VALUE, MediaType.TEXT_XML_VALUE}, produces = MediaType.APPLICATION_XML_VALUE)
+    @PostMapping(value = {"", "/"}, params = "delete", consumes = MediaType.ALL_VALUE, produces = MediaType.APPLICATION_XML_VALUE)
     public ResponseEntity<String> deleteObjects(
             @PathVariable("bucketName") String bucketName,
             HttpServletRequest request
@@ -247,6 +256,7 @@ public class S3ObjectController {
             }
         }
         auditLogService.record("S3_OBJECT_DELETE_MULTI", user.loginId(), "BUCKET", bucketName, "SUCCESS", "S3-style multi-object delete", request);
+        deletedKeys.forEach(key -> dataFlowMonitoringService.recordDelete(bucketName, key, user.loginId(), "S3"));
         return ResponseEntity.ok()
                 .contentType(MediaType.APPLICATION_XML)
                 .body(deleteResultXml(deleteRequest.quiet() ? List.of() : deletedKeys, errors));
@@ -285,16 +295,14 @@ public class S3ObjectController {
             @RequestParam("uploadId") String uploadId,
             HttpServletRequest request
     ) throws IOException {
-        long contentLength = request.getContentLengthLong();
-        if (contentLength < 0) {
-            throw new ApiException(ApiErrorCode.VALIDATION_ERROR, "Content-Length is required for multipart part upload.");
-        }
+        RequestBodyContent requestContent = requestBodyContent(request, "multipart part upload");
+        long contentLength = requestContent.contentLength();
         AuthenticatedUser user = s3RequestAuthService.currentUser(request, bucketName, "WRITE");
         MultipartUploadUploadedPart part;
         List<BodyChecksumValidator> checksumValidators = bodyChecksums(request);
         ChecksumResponseHeader checksumResponseHeader = checksumResponseHeader(request);
         try (S3ChecksumValidatingInputStream content = new S3ChecksumValidatingInputStream(
-                request.getInputStream(),
+                requestContent.inputStream(),
                 contentLength,
                 request.getHeader(AWS_CONTENT_MD5_HEADER),
                 payloadHashValidator(request),
@@ -347,6 +355,7 @@ public class S3ObjectController {
                 checksumResponseHeader.asMap()
         );
         auditLogService.record("S3_OBJECT_MULTIPART_COMPLETE", user.loginId(), "OBJECT", bucketName + "/" + object.key(), "SUCCESS", "S3-style multipart upload completed", request);
+        dataFlowMonitoringService.recordUpload(bucketName, object.key(), object.sizeBytes(), user.loginId(), "S3");
         ResponseEntity.BodyBuilder builder = ResponseEntity.ok().contentType(MediaType.APPLICATION_XML);
         if (!object.etag().isBlank()) {
             builder.eTag(etag(object));
@@ -365,6 +374,7 @@ public class S3ObjectController {
         AuthenticatedUser user = s3RequestAuthService.currentUser(request, bucketName, "WRITE");
         objectService.abortMultipartUpload(bucketName, new MultipartUploadAbortRequest(uploadId, objectKey), user);
         auditLogService.record("S3_OBJECT_MULTIPART_ABORT", user.loginId(), "OBJECT", bucketName + "/" + objectKey, "SUCCESS", "S3-style multipart upload aborted", request);
+        dataFlowMonitoringService.recordCancel("upload", bucketName, objectKey, user.loginId(), "S3");
         return ResponseEntity.noContent().build();
     }
 
@@ -378,16 +388,14 @@ public class S3ObjectController {
         if (copySourceHeader != null && !copySourceHeader.isBlank()) {
             return copyObject(bucketName, objectKey, copySourceHeader, request);
         }
-        long contentLength = request.getContentLengthLong();
-        if (contentLength < 0) {
-            throw new ApiException(ApiErrorCode.VALIDATION_ERROR, "Content-Length is required for S3 object upload.");
-        }
+        RequestBodyContent requestContent = requestBodyContent(request, "S3 object upload");
+        long contentLength = requestContent.contentLength();
         AuthenticatedUser user = s3RequestAuthService.currentUser(request, bucketName, "WRITE");
         StoredObjectRecord object;
         List<BodyChecksumValidator> checksumValidators = bodyChecksums(request);
         ChecksumResponseHeader checksumResponseHeader = checksumResponseHeader(request);
         try (S3ChecksumValidatingInputStream content = new S3ChecksumValidatingInputStream(
-                request.getInputStream(),
+                requestContent.inputStream(),
                 contentLength,
                 request.getHeader(AWS_CONTENT_MD5_HEADER),
                 payloadHashValidator(request),
@@ -406,11 +414,15 @@ public class S3ObjectController {
             content.finish();
             String calculatedMd5 = content.md5Hex();
             auditLogService.record("S3_OBJECT_PUT", user.loginId(), "OBJECT", bucketName + "/" + object.key(), "SUCCESS", "S3-style object uploaded", request);
+            dataFlowMonitoringService.recordUpload(bucketName, object.key(), object.sizeBytes(), user.loginId(), "S3");
             ResponseEntity.BodyBuilder builder = ResponseEntity.ok()
                     .eTag(quoted(object.etag().isBlank() ? calculatedMd5 : object.etag()))
                     .header("x-amz-tagging-count", String.valueOf(object.tags().size()));
             checksumResponseHeader.apply(builder);
             return builder.build();
+        } catch (IOException | RuntimeException exception) {
+            dataFlowMonitoringService.recordFailure("upload", bucketName, objectKey, user.loginId(), exception.getMessage(), "S3");
+            throw exception;
         }
     }
 
@@ -446,6 +458,7 @@ public class S3ObjectController {
         }
         String etag = HexFormat.of().formatHex(md5.digest());
         auditLogService.record("S3_OBJECT_COPY", user.loginId(), "OBJECT", targetBucketName + "/" + copiedObject.key(), "SUCCESS", "S3-style object copied", request);
+        dataFlowMonitoringService.recordUpload(targetBucketName, copiedObject.key(), copiedObject.sizeBytes(), user.loginId(), "S3-COPY");
         ResponseEntity.BodyBuilder builder = ResponseEntity.ok()
                 .contentType(MediaType.APPLICATION_XML)
                 .eTag(quoted(etag));
@@ -468,6 +481,8 @@ public class S3ObjectController {
             return conditionalResponse;
         }
         ByteRange range = byteRange(request.getHeader(HttpHeaders.RANGE), object.metadata().sizeBytes());
+        long responseBytes = range == null ? object.metadata().sizeBytes() : range.length();
+        dataFlowMonitoringService.recordDownload(bucketName, object.metadata().key(), responseBytes, user.loginId(), "S3");
         StreamingResponseBody body = outputStream -> {
             try (InputStream inputStream = object.content()) {
                 if (range == null) {
@@ -476,6 +491,9 @@ public class S3ObjectController {
                     skipFully(inputStream, range.start());
                     transferRange(inputStream, outputStream, range.length());
                 }
+            } catch (IOException | RuntimeException exception) {
+                dataFlowMonitoringService.recordFailure("download", bucketName, object.metadata().key(), user.loginId(), exception.getMessage(), "S3");
+                throw exception;
             }
         };
         if (range != null) {
@@ -527,6 +545,7 @@ public class S3ObjectController {
         AuthenticatedUser user = s3RequestAuthService.currentUser(request, bucketName, "DELETE");
         StoredObjectRecord object = objectService.delete(bucketName, objectKey, user);
         auditLogService.record("S3_OBJECT_DELETE", user.loginId(), "OBJECT", bucketName + "/" + object.key(), "SUCCESS", "S3-style object moved to trash", request);
+        dataFlowMonitoringService.recordDelete(bucketName, object.key(), user.loginId(), "S3");
         return ResponseEntity.noContent().build();
     }
 
@@ -757,12 +776,41 @@ public class S3ObjectController {
         return new String(body, StandardCharsets.UTF_8);
     }
 
+    private RequestBodyContent requestBodyContent(HttpServletRequest request, String operation) throws IOException {
+        if (isAwsChunkedPayload(request)) {
+            return new RequestBodyContent(
+                    new AwsChunkedInputStream(request.getInputStream()),
+                    requiredNonNegativeLongHeader(request, AWS_DECODED_CONTENT_LENGTH_HEADER)
+            );
+        }
+        long contentLength = request.getContentLengthLong();
+        if (contentLength < 0) {
+            throw new ApiException(ApiErrorCode.VALIDATION_ERROR, "Content-Length is required for " + operation + ".");
+        }
+        return new RequestBodyContent(request.getInputStream(), contentLength);
+    }
+
+    private boolean isAwsChunkedPayload(HttpServletRequest request) {
+        String payloadHash = request.getHeader(AWS_CONTENT_SHA256_HEADER);
+        String contentEncoding = request.getHeader(HttpHeaders.CONTENT_ENCODING);
+        return payloadHash != null && payloadHash.trim().startsWith(AWS_STREAMING_PAYLOAD_PREFIX)
+                || contentEncoding != null && contentEncoding.toLowerCase(java.util.Locale.ROOT).contains(AWS_CHUNKED_CONTENT_ENCODING);
+    }
+
     private long requiredLongHeader(HttpServletRequest request, String primaryName, String fallbackName) {
         String rawValue = firstHeader(request, primaryName, fallbackName);
         if (rawValue == null || rawValue.isBlank()) {
             throw new ApiException(ApiErrorCode.VALIDATION_ERROR, primaryName + " header is required.");
         }
         return parsePositiveLong(rawValue, primaryName);
+    }
+
+    private long requiredNonNegativeLongHeader(HttpServletRequest request, String name) {
+        String rawValue = request.getHeader(name);
+        if (rawValue == null || rawValue.isBlank()) {
+            throw new ApiException(ApiErrorCode.VALIDATION_ERROR, name + " header is required.");
+        }
+        return parseNonNegativeLong(rawValue, name);
     }
 
     private Long optionalLongHeader(HttpServletRequest request, String primaryName, String fallbackName) {
@@ -802,6 +850,18 @@ public class S3ObjectController {
             return parsed;
         } catch (NumberFormatException exception) {
             throw new ApiException(ApiErrorCode.VALIDATION_ERROR, headerName + " must be a positive number.");
+        }
+    }
+
+    private long parseNonNegativeLong(String rawValue, String headerName) {
+        try {
+            long parsed = Long.parseLong(rawValue.trim());
+            if (parsed < 0) {
+                throw new NumberFormatException("negative");
+            }
+            return parsed;
+        } catch (NumberFormatException exception) {
+            throw new ApiException(ApiErrorCode.VALIDATION_ERROR, headerName + " must be a non-negative number.");
         }
     }
 
@@ -1517,7 +1577,7 @@ public class S3ObjectController {
             return null;
         }
         if (normalized.startsWith(AWS_STREAMING_PAYLOAD_PREFIX)) {
-            throw new ApiException(ApiErrorCode.VALIDATION_ERROR, "SigV4 streaming payload is not supported.");
+            return null;
         }
         return BodyChecksumValidator.messageDigest(
                 AWS_CONTENT_SHA256_HEADER,
@@ -1582,6 +1642,132 @@ public class S3ObjectController {
             return HexFormat.of().parseHex(rawChecksum);
         } catch (IllegalArgumentException exception) {
             throw new ApiException(ApiErrorCode.INVALID_DIGEST, headerName + " must be a valid hex checksum.");
+        }
+    }
+
+    private record RequestBodyContent(InputStream inputStream, long contentLength) {
+    }
+
+    private static final class AwsChunkedInputStream extends InputStream {
+        private final InputStream input;
+        private byte[] chunk = new byte[0];
+        private int offset;
+        private boolean finished;
+
+        private AwsChunkedInputStream(InputStream input) {
+            this.input = input;
+        }
+
+        @Override
+        public int read() throws IOException {
+            if (!ensureChunk()) {
+                return -1;
+            }
+            return chunk[offset++] & 0xff;
+        }
+
+        @Override
+        public int read(byte[] buffer, int bufferOffset, int length) throws IOException {
+            if (buffer == null) {
+                throw new NullPointerException("buffer");
+            }
+            if (bufferOffset < 0 || length < 0 || length > buffer.length - bufferOffset) {
+                throw new IndexOutOfBoundsException();
+            }
+            if (length == 0) {
+                return 0;
+            }
+            if (!ensureChunk()) {
+                return -1;
+            }
+            int count = Math.min(length, chunk.length - offset);
+            System.arraycopy(chunk, offset, buffer, bufferOffset, count);
+            offset += count;
+            return count;
+        }
+
+        @Override
+        public void close() throws IOException {
+            input.close();
+        }
+
+        private boolean ensureChunk() throws IOException {
+            while (!finished && offset >= chunk.length) {
+                readNextChunk();
+            }
+            return !finished || offset < chunk.length;
+        }
+
+        private void readNextChunk() throws IOException {
+            String header = readAsciiLine();
+            while (header != null && header.isEmpty()) {
+                header = readAsciiLine();
+            }
+            if (header == null) {
+                throw new IOException("Unexpected end of aws-chunked stream.");
+            }
+
+            String rawSize = header.split(";", 2)[0].trim();
+            long size;
+            try {
+                size = Long.parseLong(rawSize, 16);
+            } catch (NumberFormatException exception) {
+                throw new IOException("Invalid aws-chunked size.", exception);
+            }
+            if (size < 0 || size > Integer.MAX_VALUE) {
+                throw new IOException("Unsupported aws-chunked size.");
+            }
+            if (size == 0) {
+                drainTrailers();
+                chunk = new byte[0];
+                offset = 0;
+                finished = true;
+                return;
+            }
+
+            chunk = input.readNBytes((int) size);
+            if (chunk.length != size) {
+                throw new IOException("Unexpected end of aws-chunked data.");
+            }
+            consumeCrlf();
+            offset = 0;
+        }
+
+        private void drainTrailers() throws IOException {
+            String line;
+            do {
+                line = readAsciiLine();
+            } while (line != null && !line.isEmpty());
+        }
+
+        private void consumeCrlf() throws IOException {
+            int first = input.read();
+            if (first == '\n') {
+                return;
+            }
+            if (first != '\r') {
+                throw new IOException("Invalid aws-chunked chunk terminator.");
+            }
+            int second = input.read();
+            if (second != '\n') {
+                throw new IOException("Invalid aws-chunked chunk terminator.");
+            }
+        }
+
+        private String readAsciiLine() throws IOException {
+            StringBuilder line = new StringBuilder();
+            while (true) {
+                int value = input.read();
+                if (value < 0) {
+                    return line.isEmpty() ? null : line.toString();
+                }
+                if (value == '\n') {
+                    return line.toString();
+                }
+                if (value != '\r') {
+                    line.append((char) value);
+                }
+            }
         }
     }
 

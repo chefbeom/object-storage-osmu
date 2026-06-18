@@ -15,8 +15,27 @@ public record AccessKeyEntity(
         List<AccessKeyBucketScope> bucketScopes,
         String status,
         OffsetDateTime createdAt,
-        OffsetDateTime expiresAt
+        OffsetDateTime expiresAt,
+        OffsetDateTime lastUsedAt
 ) {
+    @Override
+    public String toString() {
+        return "AccessKeyEntity["
+                + "id=" + id
+                + ", ownerId=" + ownerId
+                + ", name=" + name
+                + ", accessKey=" + accessKey
+                + ", secretKeyHash=<redacted>"
+                + ", secretKeyCiphertext=<redacted>"
+                + ", allowedBuckets=" + allowedBuckets
+                + ", permissions=" + permissions
+                + ", bucketScopes=" + bucketScopes
+                + ", status=" + status
+                + ", createdAt=" + createdAt
+                + ", expiresAt=" + expiresAt
+                + ", lastUsedAt=" + lastUsedAt
+                + "]";
+    }
 
     public AccessKeyRecord toRecord() {
         return new AccessKeyRecord(
@@ -30,7 +49,8 @@ public record AccessKeyEntity(
                 bucketScopes,
                 status,
                 createdAt,
-                expiresAt
+                expiresAt,
+                lastUsedAt
         );
     }
 }

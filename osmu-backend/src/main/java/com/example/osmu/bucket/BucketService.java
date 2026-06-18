@@ -14,6 +14,7 @@ import com.example.osmu.organization.OrganizationRecord;
 import com.example.osmu.organization.repository.OrganizationRepository;
 import com.example.osmu.quota.repository.QuotaPolicyRepository;
 import com.example.osmu.storage.ObjectStorageAdapter;
+import com.example.osmu.storageprofile.repository.StorageProfileAssignmentRepository;
 import com.example.osmu.user.UserAccount;
 import com.example.osmu.user.repository.UserRepository;
 import java.time.OffsetDateTime;
@@ -40,6 +41,7 @@ public class BucketService {
     private final UserRepository userRepository;
     private final OrganizationRepository organizationRepository;
     private final QuotaPolicyRepository quotaPolicyRepository;
+    private final StorageProfileAssignmentRepository storageProfileAssignmentRepository;
 
     public BucketService(
             BucketRepository bucketRepository,
@@ -50,7 +52,8 @@ public class BucketService {
             ObjectVersionRepository objectVersionRepository,
             UserRepository userRepository,
             OrganizationRepository organizationRepository,
-            QuotaPolicyRepository quotaPolicyRepository
+            QuotaPolicyRepository quotaPolicyRepository,
+            StorageProfileAssignmentRepository storageProfileAssignmentRepository
     ) {
         this.bucketRepository = bucketRepository;
         this.bucketPermissionRepository = bucketPermissionRepository;
@@ -61,6 +64,7 @@ public class BucketService {
         this.userRepository = userRepository;
         this.organizationRepository = organizationRepository;
         this.quotaPolicyRepository = quotaPolicyRepository;
+        this.storageProfileAssignmentRepository = storageProfileAssignmentRepository;
     }
 
     public List<BucketRecord> list() {
@@ -126,6 +130,7 @@ public class BucketService {
         objectVersionRepository.deleteByBucketName(bucket.name());
         bucketPermissionRepository.deleteByBucketId(bucket.id());
         bucketTagRepository.delete(bucket.name());
+        storageProfileAssignmentRepository.deleteByBucketName(bucket.name());
         bucketRepository.deleteByName(bucket.name());
     }
 
@@ -164,10 +169,24 @@ public class BucketService {
         if (!actual.checksums().isEmpty()
                 || existing.checksums().isEmpty()
                 || actual.etag().isBlank()
-                || !actual.etag().equals(existing.etag())) {
+                || !sameEtag(actual.etag(), existing.etag())) {
             return synced;
         }
         return synced.withChecksums(existing.checksums());
+    }
+
+    private boolean sameEtag(String first, String second) {
+        String normalizedFirst = normalizeEtag(first);
+        String normalizedSecond = normalizeEtag(second);
+        return !normalizedFirst.isBlank() && normalizedFirst.equals(normalizedSecond);
+    }
+
+    private String normalizeEtag(String value) {
+        String normalized = value == null ? "" : value.trim();
+        if (normalized.length() >= 2 && normalized.startsWith("\"") && normalized.endsWith("\"")) {
+            return normalized.substring(1, normalized.length() - 1);
+        }
+        return normalized;
     }
 
     public synchronized void applyObjectChange(String bucketName, long sizeDelta, long objectCountDelta) {

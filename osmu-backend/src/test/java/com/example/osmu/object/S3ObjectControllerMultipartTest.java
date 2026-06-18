@@ -14,6 +14,7 @@ import com.example.osmu.auth.AuthenticatedUser;
 import com.example.osmu.bucket.S3RequestAuthService;
 import com.example.osmu.common.error.ApiErrorCode;
 import com.example.osmu.common.error.ApiException;
+import com.example.osmu.monitoring.DataFlowMonitoringService;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -34,10 +35,12 @@ class S3ObjectControllerMultipartTest {
     private final ObjectService objectService = mock(ObjectService.class);
     private final S3RequestAuthService s3RequestAuthService = mock(S3RequestAuthService.class);
     private final AuditLogService auditLogService = mock(AuditLogService.class);
+    private final DataFlowMonitoringService dataFlowMonitoringService = mock(DataFlowMonitoringService.class);
     private final S3ObjectController controller = new S3ObjectController(
             objectService,
             s3RequestAuthService,
-            auditLogService
+            auditLogService,
+            dataFlowMonitoringService
     );
     private final AuthenticatedUser user = new AuthenticatedUser(1L, "admin", "ADMIN", null);
 

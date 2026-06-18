@@ -14,6 +14,7 @@ public record AccessKeyRecord(
         List<AccessKeyBucketScope> bucketScopes,
         String status,
         OffsetDateTime createdAt,
-        OffsetDateTime expiresAt
+        OffsetDateTime expiresAt,
+        OffsetDateTime lastUsedAt
 ) {
 }

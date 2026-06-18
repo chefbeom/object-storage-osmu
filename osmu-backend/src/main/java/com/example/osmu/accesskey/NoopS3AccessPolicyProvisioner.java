@@ -12,6 +12,10 @@ public class NoopS3AccessPolicyProvisioner implements S3AccessPolicyProvisioner 
     }
 
     @Override
+    public void rotateSecret(AccessKeyRecord accessKey, String secretKey) {
+    }
+
+    @Override
     public void syncPolicy(AccessKeyRecord accessKey, S3AccessPolicy policy) {
     }
 

@@ -212,6 +212,67 @@ class S3ObjectControllerTest {
     }
 
     @Test
+    void accessKeyCanUploadAwsChunkedStreamingPayload() throws Exception {
+        String token = loginAndReturnAccessToken("admin", "password");
+        String bucketName = "s3-object-aws-chunked-bucket";
+        createBucket(token, bucketName);
+        AccessKeyCredentials credentials = createAccessKey(token, bucketName, "READ", "WRITE");
+        String decodedBody = "chunked body!";
+        String encodedBody = "d;chunk-signature=abc\r\n"
+                + decodedBody
+                + "\r\n0;chunk-signature=def\r\n\r\n";
+
+        mockMvc.perform(put("/api/s3/{bucketName}/docs/chunked.txt", bucketName)
+                        .header("X-OSMU-Access-Key", credentials.accessKey())
+                        .header("X-OSMU-Secret-Key", credentials.secretKey())
+                        .header("x-amz-content-sha256", "STREAMING-AWS4-HMAC-SHA256-PAYLOAD")
+                        .header("x-amz-decoded-content-length", decodedBody.getBytes(StandardCharsets.UTF_8).length)
+                        .header(HttpHeaders.CONTENT_ENCODING, "aws-chunked")
+                        .contentType(MediaType.TEXT_PLAIN)
+                        .content(encodedBody.getBytes(StandardCharsets.UTF_8)))
+                .andExpect(status().isOk());
+
+        MvcResult downloadResult = mockMvc.perform(get("/api/s3/{bucketName}/docs/chunked.txt", bucketName)
+                        .header("X-OSMU-Access-Key", credentials.accessKey())
+                        .header("X-OSMU-Secret-Key", credentials.secretKey()))
+                .andExpect(request().asyncStarted())
+                .andReturn();
+
+        mockMvc.perform(asyncDispatch(downloadResult))
+                .andExpect(status().isOk())
+                .andExpect(content().string(decodedBody));
+    }
+
+    @Test
+    void accessKeyCanUseMultiDeleteWithGenericContentTypeAndTrailingSlash() throws Exception {
+        String token = loginAndReturnAccessToken("admin", "password");
+        String bucketName = "s3-object-multi-delete-bucket";
+        createBucket(token, bucketName);
+        AccessKeyCredentials credentials = createAccessKey(token, bucketName, "READ", "WRITE", "DELETE");
+        putS3Object(bucketName, "docs/delete-me.txt", "delete me", credentials);
+
+        mockMvc.perform(post("/api/s3/{bucketName}/", bucketName)
+                        .queryParam("delete", "")
+                        .header("X-OSMU-Access-Key", credentials.accessKey())
+                        .header("X-OSMU-Secret-Key", credentials.secretKey())
+                        .contentType(MediaType.APPLICATION_OCTET_STREAM)
+                        .content("""
+                                <Delete>
+                                  <Object><Key>docs/delete-me.txt</Key></Object>
+                                </Delete>
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_XML))
+                .andExpect(content().string(containsString("<Deleted><Key>docs/delete-me.txt</Key></Deleted>")));
+
+        mockMvc.perform(get("/api/s3/{bucketName}/docs/delete-me.txt", bucketName)
+                        .header("X-OSMU-Access-Key", credentials.accessKey())
+                        .header("X-OSMU-Secret-Key", credentials.secretKey()))
+                .andExpect(status().isNotFound())
+                .andExpect(content().string(containsString("<Code>NoSuchKey</Code>")));
+    }
+
+    @Test
     void accessKeyCanListObjectsThroughS3ListObjectsV2Xml() throws Exception {
         String token = loginAndReturnAccessToken("admin", "password");
         String bucketName = "s3-object-list-bucket";
@@ -487,6 +548,74 @@ class S3ObjectControllerTest {
                 .andExpect(content().string(containsString("<ListAllMyBucketsResult xmlns=\"http://s3.amazonaws.com/doc/2006-03-01/\">")))
                 .andExpect(content().string(containsString("<Name>%s</Name>".formatted(bucketName))))
                 .andExpect(content().string(not(containsString("<Name>%s</Name>".formatted(otherBucketName)))));
+    }
+
+    @Test
+    void accessKeyCanUseS3ClientRootEndpointPathStyle() throws Exception {
+        String token = loginAndReturnAccessToken("admin", "password");
+        String bucketName = "s3-client-root-path-bucket";
+        createBucket(token, bucketName);
+        AccessKeyCredentials credentials = createAccessKey(token, bucketName, "READ", "WRITE", "DELETE");
+
+        mockMvc.perform(get("/")
+                        .header("X-OSMU-Access-Key", credentials.accessKey())
+                        .header("X-OSMU-Secret-Key", credentials.secretKey())
+                        .accept(MediaType.APPLICATION_XML))
+                .andExpect(status().isOk())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_XML))
+                .andExpect(content().string(containsString("<Name>%s</Name>".formatted(bucketName))));
+
+        mockMvc.perform(put("/{bucketName}/docs/root-endpoint.txt", bucketName)
+                        .header("X-OSMU-Access-Key", credentials.accessKey())
+                        .header("X-OSMU-Secret-Key", credentials.secretKey())
+                        .contentType(MediaType.TEXT_PLAIN)
+                        .content("root endpoint"))
+                .andExpect(status().isOk());
+
+        MvcResult downloadResult = mockMvc.perform(get("/{bucketName}/docs/root-endpoint.txt", bucketName)
+                        .header("X-OSMU-Access-Key", credentials.accessKey())
+                        .header("X-OSMU-Secret-Key", credentials.secretKey()))
+                .andExpect(request().asyncStarted())
+                .andReturn();
+
+        mockMvc.perform(asyncDispatch(downloadResult))
+                .andExpect(status().isOk())
+                .andExpect(content().string("root endpoint"));
+
+        mockMvc.perform(get("/{bucketName}", bucketName)
+                        .queryParam("list-type", "2")
+                        .header("X-OSMU-Access-Key", credentials.accessKey())
+                        .header("X-OSMU-Secret-Key", credentials.secretKey())
+                        .accept(MediaType.APPLICATION_XML))
+                .andExpect(status().isOk())
+                .andExpect(content().string(containsString("<Key>docs/root-endpoint.txt</Key>")));
+    }
+
+    @Test
+    void accessKeyCanUseS3ClientRootEndpointVirtualHostedStyle() throws Exception {
+        String token = loginAndReturnAccessToken("admin", "password");
+        String bucketName = "s3-client-root-vhost-bucket";
+        createBucket(token, bucketName);
+        AccessKeyCredentials credentials = createAccessKey(token, bucketName, "READ", "WRITE");
+
+        mockMvc.perform(put("/docs/virtual-hosted.txt")
+                        .header(HttpHeaders.HOST, bucketName + ".localhost")
+                        .header("X-OSMU-Access-Key", credentials.accessKey())
+                        .header("X-OSMU-Secret-Key", credentials.secretKey())
+                        .contentType(MediaType.TEXT_PLAIN)
+                        .content("virtual hosted root"))
+                .andExpect(status().isOk());
+
+        MvcResult downloadResult = mockMvc.perform(get("/docs/virtual-hosted.txt")
+                        .header(HttpHeaders.HOST, bucketName + ".localhost")
+                        .header("X-OSMU-Access-Key", credentials.accessKey())
+                        .header("X-OSMU-Secret-Key", credentials.secretKey()))
+                .andExpect(request().asyncStarted())
+                .andReturn();
+
+        mockMvc.perform(asyncDispatch(downloadResult))
+                .andExpect(status().isOk())
+                .andExpect(content().string("virtual hosted root"));
     }
 
     @Test

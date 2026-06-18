@@ -17,7 +17,7 @@ import org.springframework.web.bind.annotation.RequestMethod;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
-@RequestMapping("/api/s3/{bucketName}")
+@RequestMapping({"/api/s3/{bucketName}", "/{bucketName}"})
 public class S3BucketController {
 
     private static final String AWS_XML_NAMESPACE = "http://s3.amazonaws.com/doc/2006-03-01/";
@@ -42,7 +42,7 @@ public class S3BucketController {
         this.region = region;
     }
 
-    @PutMapping(params = {"!lifecycle", "!tagging"})
+    @PutMapping(value = {"", "/"}, params = {"!lifecycle", "!tagging"})
     public ResponseEntity<Void> createBucket(
             @PathVariable("bucketName") String bucketName,
             HttpServletRequest request
@@ -56,7 +56,7 @@ public class S3BucketController {
                 .build();
     }
 
-    @RequestMapping(method = RequestMethod.HEAD)
+    @RequestMapping(value = {"", "/"}, method = RequestMethod.HEAD)
     public ResponseEntity<Void> headBucket(
             @PathVariable("bucketName") String bucketName,
             HttpServletRequest request
@@ -69,7 +69,7 @@ public class S3BucketController {
                 .build();
     }
 
-    @GetMapping(params = "location", produces = MediaType.APPLICATION_XML_VALUE)
+    @GetMapping(value = {"", "/"}, params = "location", produces = MediaType.APPLICATION_XML_VALUE)
     public ResponseEntity<String> getBucketLocation(
             @PathVariable("bucketName") String bucketName,
             HttpServletRequest request
@@ -83,7 +83,7 @@ public class S3BucketController {
                 .body(locationXml());
     }
 
-    @DeleteMapping(params = {"!lifecycle", "!tagging"})
+    @DeleteMapping(value = {"", "/"}, params = {"!lifecycle", "!tagging"})
     public ResponseEntity<Void> deleteBucket(
             @PathVariable("bucketName") String bucketName,
             HttpServletRequest request

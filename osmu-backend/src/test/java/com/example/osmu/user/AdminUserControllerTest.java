@@ -113,6 +113,51 @@ class AdminUserControllerTest {
                                 }
                                 """.formatted(userRefreshToken)))
                 .andExpect(status().isUnauthorized());
+
+        mockMvc.perform(get("/api/users/me")
+                        .header("Authorization", "Bearer " + userToken))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.error.code").value("AUTHENTICATION_REQUIRED"));
+    }
+
+    @Test
+    void inactiveAdminAccessTokenCannotUseClaimOnlyAdminEndpoint() throws Exception {
+        String adminToken = loginAndReturnAccessToken("admin", "password");
+
+        String createResponse = mockMvc.perform(post("/api/admin/users")
+                        .header("Authorization", "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "loginId": "disabled-admin-claim-1",
+                                  "email": "disabled-admin-claim-1@example.com",
+                                  "name": "Disabled Admin Claim",
+                                  "password": "admin-password",
+                                  "role": "ADMIN"
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+        int userId = JsonPath.read(createResponse, "$.data.id");
+        String disabledAdminToken = loginAndReturnAccessToken("disabled-admin-claim-1", "admin-password");
+
+        mockMvc.perform(patch("/api/admin/users/{userId}/status", userId)
+                        .header("Authorization", "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "status": "INACTIVE"
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("INACTIVE"));
+
+        mockMvc.perform(get("/api/admin/quota-policies")
+                        .header("Authorization", "Bearer " + disabledAdminToken))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.error.code").value("AUTHENTICATION_REQUIRED"));
     }
 
     @Test
@@ -155,6 +200,16 @@ class AdminUserControllerTest {
         String userToken = loginAndReturnAccessToken("limited-user-1", "user-password");
 
         mockMvc.perform(get("/api/admin/users")
+                        .header("Authorization", "Bearer " + userToken))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.error.code").value("AUTHORIZATION_FAILED"));
+
+        mockMvc.perform(get("/api/admin/backup/status")
+                        .header("Authorization", "Bearer " + userToken))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.error.code").value("AUTHORIZATION_FAILED"));
+
+        mockMvc.perform(get("/api/admin/storage-expansion/summary")
                         .header("Authorization", "Bearer " + userToken))
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.error.code").value("AUTHORIZATION_FAILED"));
@@ -230,6 +285,50 @@ class AdminUserControllerTest {
         mockMvc.perform(get("/api/admin/audit-logs")
                         .header("Authorization", "Bearer " + orgAdminToken))
                 .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void orgAdminCannotUseGlobalAdminOnlyOperationalApis() throws Exception {
+        String adminToken = loginAndReturnAccessToken("admin", "password");
+        int orgId = createOrganization(adminToken, "Global Admin Only Org");
+        createUser(adminToken, "global-denied-org-admin", "global-denied-org-admin@example.com", "ORG_ADMIN", orgId);
+        String orgAdminToken = loginAndReturnAccessToken("global-denied-org-admin", "user-password");
+
+        mockMvc.perform(get("/api/admin/backup/status")
+                        .header("Authorization", "Bearer " + orgAdminToken))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.error.code").value("AUTHORIZATION_FAILED"));
+
+        mockMvc.perform(post("/api/admin/backup/restore-drill-evidence")
+                        .header("Authorization", "Bearer " + orgAdminToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{}"))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.error.code").value("AUTHORIZATION_FAILED"));
+
+        mockMvc.perform(get("/api/admin/backup/restore-drill-evidence")
+                        .header("Authorization", "Bearer " + orgAdminToken))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.error.code").value("AUTHORIZATION_FAILED"));
+
+        mockMvc.perform(get("/api/admin/storage-expansion/summary")
+                        .header("Authorization", "Bearer " + orgAdminToken))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.error.code").value("AUTHORIZATION_FAILED"));
+
+        mockMvc.perform(post("/api/admin/storage-expansion/requests")
+                        .header("Authorization", "Bearer " + orgAdminToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "requestedCapacityBytes": 107374182400,
+                                  "serverCount": 4,
+                                  "volumesPerServer": 1,
+                                  "reason": "blocked org admin request"
+                                }
+                                """))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.error.code").value("AUTHORIZATION_FAILED"));
     }
 
     @Test
