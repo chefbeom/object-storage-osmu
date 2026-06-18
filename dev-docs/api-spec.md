@@ -2302,13 +2302,14 @@ Query parameters:
 - `bucketName`: exact bucket name filter.
 - `actorId`: exact login/user id filter.
 - `source`: event source filter, for example `rest`, `s3`, `s3-copy`.
-- `operation`: event operation filter, for example `upload`, `download`, `list`, `delete`.
+- `operation`: event operation filter, for example `upload`, `download`, `copy`, `list`, `delete`.
 - `status`: event status filter, for example `SUCCESS`, `FAILED`, `CANCELLED`.
 - `limit`: recent event response limit. Default `50`, maximum `500`.
 
 Trend response:
 
 - `trendPoints`: latest 24 UTC hourly buckets grouped by `source` and `operation`.
+- S3 CopyObject is recorded as `eventType=COPY`, `operation=copy`, `direction=INTERNAL`; copied bytes are exposed as `copiedBytes` and `internalBytes`, not as external ingress.
 
 Response:
 
@@ -2318,13 +2319,16 @@ Response:
     "traffic": {
       "uploadedBytes": 1048576,
       "downloadedBytes": 524288,
-      "totalBytes": 1572864,
+      "copiedBytes": 262144,
+      "totalBytes": 1835008,
       "ingressBytes": 1048576,
-      "egressBytes": 524288
+      "egressBytes": 524288,
+      "internalBytes": 262144
     },
     "operations": {
       "uploadCount": 12,
       "downloadCount": 8,
+      "copyCount": 3,
       "listCount": 30,
       "deleteCount": 1,
       "cancelCount": 1,
@@ -2336,9 +2340,11 @@ Response:
         "bucketName": "media",
         "uploadedBytes": 1048576,
         "downloadedBytes": 524288,
-        "totalBytes": 1572864,
+        "copiedBytes": 262144,
+        "totalBytes": 1835008,
         "uploadCount": 12,
         "downloadCount": 8,
+        "copyCount": 3,
         "listCount": 30,
         "deleteCount": 1,
         "cancelCount": 1,

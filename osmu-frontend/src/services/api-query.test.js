@@ -94,8 +94,8 @@ test('getDataFlowMonitoring reads admin data flow endpoint', async () => {
   const fetchMock = mockFetch([
     () => jsonResponse({
       data: {
-        traffic: { uploadedBytes: 1024, downloadedBytes: 256 },
-        operations: { uploadCount: 1, downloadCount: 1, failureCount: 0 },
+        traffic: { uploadedBytes: 1024, downloadedBytes: 256, copiedBytes: 128, internalBytes: 128 },
+        operations: { uploadCount: 1, downloadCount: 1, copyCount: 1, failureCount: 0 },
         topBuckets: [],
         trendPoints: [{ bucketStartAt: '2026-06-18T00:00:00Z', source: 'rest', operation: 'upload', totalCount: 1 }],
         recentEvents: [],
@@ -127,6 +127,7 @@ test('getDataFlowMonitoring reads admin data flow endpoint', async () => {
     assert.equal(url.searchParams.get('limit'), '25')
     assert.equal(fetchMock.calls[0].options.method, undefined)
     assert.equal(result.data.traffic.uploadedBytes, 1024)
+    assert.equal(result.data.traffic.copiedBytes, 128)
     assert.equal(result.data.trendPoints[0].operation, 'upload')
   } finally {
     cleanupFetch(fetchMock)

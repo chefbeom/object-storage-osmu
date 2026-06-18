@@ -19,6 +19,7 @@
 - Data Flow Monitoring panel provides CSV export through `data-flow-export-button`.
 - Export uses the same date, bucket, actor, source, operation, status, and limit filters as the on-screen monitoring panel.
 - Data Flow Monitoring panel renders source/operation trend points through `data-flow-trend-chart`.
+- Data Flow Monitoring separates upload, download, and internal copy traffic in the summary and bucket rows.
 
 ## Multipart Refresh Note
 

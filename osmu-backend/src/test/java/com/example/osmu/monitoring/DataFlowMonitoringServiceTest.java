@@ -17,6 +17,7 @@ class DataFlowMonitoringServiceTest {
     void recordsTrafficOperationsBucketsAndRecentEvents() {
         service.recordUpload("media", "a.bin", 1024L, "admin", "REST");
         service.recordDownload("media", "a.bin", 512L, "admin", "S3");
+        service.recordCopy("media", "a-copy.bin", 256L, "admin", "S3-COPY");
         service.recordList("media", "admin", "REST");
         service.recordDelete("media", "a.bin", "admin", "REST");
         service.recordCancel("upload", "media", "b.bin", "admin", "REST");
@@ -26,28 +27,37 @@ class DataFlowMonitoringServiceTest {
 
         assertThat(snapshot.traffic().uploadedBytes()).isEqualTo(1024L);
         assertThat(snapshot.traffic().downloadedBytes()).isEqualTo(512L);
-        assertThat(snapshot.traffic().totalBytes()).isEqualTo(1536L);
+        assertThat(snapshot.traffic().copiedBytes()).isEqualTo(256L);
+        assertThat(snapshot.traffic().totalBytes()).isEqualTo(1792L);
+        assertThat(snapshot.traffic().ingressBytes()).isEqualTo(1024L);
+        assertThat(snapshot.traffic().egressBytes()).isEqualTo(512L);
+        assertThat(snapshot.traffic().internalBytes()).isEqualTo(256L);
         assertThat(snapshot.operations().uploadCount()).isEqualTo(1L);
         assertThat(snapshot.operations().downloadCount()).isEqualTo(1L);
+        assertThat(snapshot.operations().copyCount()).isEqualTo(1L);
         assertThat(snapshot.operations().listCount()).isEqualTo(1L);
         assertThat(snapshot.operations().deleteCount()).isEqualTo(1L);
         assertThat(snapshot.operations().cancelCount()).isEqualTo(1L);
         assertThat(snapshot.operations().failureCount()).isEqualTo(1L);
         assertThat(snapshot.topBuckets()).hasSize(1);
         assertThat(snapshot.topBuckets().get(0).bucketName()).isEqualTo("media");
+        assertThat(snapshot.topBuckets().get(0).copiedBytes()).isEqualTo(256L);
+        assertThat(snapshot.topBuckets().get(0).copyCount()).isEqualTo(1L);
         assertThat(snapshot.trendPoints()).extracting(DataFlowTrendPointResponse::operation)
-                .contains("upload", "download", "list", "delete");
+                .contains("upload", "download", "copy", "list", "delete");
         assertThat(snapshot.trendPoints()).anySatisfy(point -> {
             assertThat(point.source()).isEqualTo("rest");
             assertThat(point.operation()).isEqualTo("upload");
             assertThat(point.successCount()).isEqualTo(1L);
             assertThat(point.bytes()).isEqualTo(1024L);
         });
-        assertThat(snapshot.recentEvents()).hasSize(6);
+        assertThat(snapshot.recentEvents()).hasSize(7);
         assertThat(snapshot.recentEvents().get(0).eventType()).isEqualTo("FAILURE");
         assertThat(meterRegistry.find("osmu.data.flow.operations").tag("operation", "upload").tag("status", "success").counter().count()).isEqualTo(1.0);
         assertThat(meterRegistry.find("osmu.data.flow.operations").tag("operation", "upload").tag("bucket", "media").counter().count()).isEqualTo(1.0);
+        assertThat(meterRegistry.find("osmu.data.flow.operations").tag("operation", "copy").tag("source", "s3-copy").counter().count()).isEqualTo(1.0);
         assertThat(meterRegistry.find("osmu.data.flow.bytes").tag("direction", "ingress").tag("bucket", "media").counter().count()).isEqualTo(1024.0);
+        assertThat(meterRegistry.find("osmu.data.flow.bytes").tag("direction", "internal").tag("bucket", "media").counter().count()).isEqualTo(256.0);
     }
 
     @Test

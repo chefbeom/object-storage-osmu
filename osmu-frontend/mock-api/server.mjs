@@ -642,8 +642,10 @@ function dataFlowSummary(filters = {}) {
   const events = filterDataFlowEvents(state.dataFlowEvents || [], filters)
   const successUploads = events.filter((event) => event.eventType === 'UPLOAD' && event.status === 'SUCCESS')
   const successDownloads = events.filter((event) => event.eventType === 'DOWNLOAD' && event.status === 'SUCCESS')
+  const successCopies = events.filter((event) => event.eventType === 'COPY' && event.status === 'SUCCESS')
   const uploadedBytes = successUploads.reduce((sum, event) => sum + Number(event.sizeBytes || 0), 0)
   const downloadedBytes = successDownloads.reduce((sum, event) => sum + Number(event.sizeBytes || 0), 0)
+  const copiedBytes = successCopies.reduce((sum, event) => sum + Number(event.sizeBytes || 0), 0)
   const operationCount = (operation) => events.filter((event) => event.operation === operation && event.status === 'SUCCESS').length
   const bucketMetrics = new Map()
   for (const event of events) {
@@ -653,9 +655,11 @@ function dataFlowSummary(filters = {}) {
         bucketName: event.bucketName,
         uploadedBytes: 0,
         downloadedBytes: 0,
+        copiedBytes: 0,
         totalBytes: 0,
         uploadCount: 0,
         downloadCount: 0,
+        copyCount: 0,
         listCount: 0,
         deleteCount: 0,
         cancelCount: 0,
@@ -672,24 +676,31 @@ function dataFlowSummary(filters = {}) {
       bucket.downloadedBytes += Number(event.sizeBytes || 0)
       bucket.downloadCount += 1
     }
+    if (event.eventType === 'COPY' && event.status === 'SUCCESS') {
+      bucket.copiedBytes += Number(event.sizeBytes || 0)
+      bucket.copyCount += 1
+    }
     if (event.eventType === 'LIST' && event.status === 'SUCCESS') bucket.listCount += 1
     if (event.eventType === 'DELETE' && event.status === 'SUCCESS') bucket.deleteCount += 1
     if (event.eventType === 'CANCEL') bucket.cancelCount += 1
     if (event.eventType === 'FAILURE' || event.status === 'FAILED') bucket.failureCount += 1
-    bucket.totalBytes = bucket.uploadedBytes + bucket.downloadedBytes
+    bucket.totalBytes = bucket.uploadedBytes + bucket.downloadedBytes + bucket.copiedBytes
     if (new Date(event.createdAt) > new Date(bucket.lastEventAt)) bucket.lastEventAt = event.createdAt
   }
   return {
     traffic: {
       uploadedBytes,
       downloadedBytes,
-      totalBytes: uploadedBytes + downloadedBytes,
+      copiedBytes,
+      totalBytes: uploadedBytes + downloadedBytes + copiedBytes,
       ingressBytes: uploadedBytes,
       egressBytes: downloadedBytes,
+      internalBytes: copiedBytes,
     },
     operations: {
       uploadCount: operationCount('upload'),
       downloadCount: operationCount('download'),
+      copyCount: operationCount('copy'),
       listCount: operationCount('list'),
       deleteCount: operationCount('delete'),
       cancelCount: events.filter((event) => event.eventType === 'CANCEL').length,

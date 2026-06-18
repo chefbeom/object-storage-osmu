@@ -458,7 +458,7 @@ public class S3ObjectController {
         }
         String etag = HexFormat.of().formatHex(md5.digest());
         auditLogService.record("S3_OBJECT_COPY", user.loginId(), "OBJECT", targetBucketName + "/" + copiedObject.key(), "SUCCESS", "S3-style object copied", request);
-        dataFlowMonitoringService.recordUpload(targetBucketName, copiedObject.key(), copiedObject.sizeBytes(), user.loginId(), "S3-COPY");
+        dataFlowMonitoringService.recordCopy(targetBucketName, copiedObject.key(), copiedObject.sizeBytes(), user.loginId(), "S3-COPY");
         ResponseEntity.BodyBuilder builder = ResponseEntity.ok()
                 .contentType(MediaType.APPLICATION_XML)
                 .eTag(quoted(etag));

@@ -1328,6 +1328,7 @@
             <option value="">All</option>
             <option value="upload">Upload</option>
             <option value="download">Download</option>
+            <option value="copy">Copy</option>
             <option value="list">List</option>
             <option value="delete">Delete</option>
           </select>
@@ -1368,8 +1369,8 @@
           <dd data-testid="data-flow-total-bytes">{{ formatBytes(dataFlowTraffic.totalBytes || 0) }}</dd>
         </div>
         <div>
-          <dt>Upload / Download</dt>
-          <dd>{{ formatBytes(dataFlowTraffic.uploadedBytes || 0) }} / {{ formatBytes(dataFlowTraffic.downloadedBytes || 0) }}</dd>
+          <dt>Upload / Download / Copy</dt>
+          <dd>{{ formatBytes(dataFlowTraffic.uploadedBytes || 0) }} / {{ formatBytes(dataFlowTraffic.downloadedBytes || 0) }} / {{ formatBytes(dataFlowTraffic.copiedBytes || 0) }}</dd>
         </div>
         <div>
           <dt>Operations</dt>
@@ -1405,13 +1406,13 @@
         <li v-if="dataFlowTopBuckets.length === 0">
           <span>
             <strong>No bucket traffic yet</strong>
-            <small>uploads and downloads will appear here</small>
+            <small>uploads, downloads, and copies will appear here</small>
           </span>
         </li>
         <li v-for="bucket in dataFlowTopBuckets" :key="bucket.bucketName">
           <span>
             <strong>{{ bucket.bucketName }}</strong>
-            <small>{{ formatBytes(bucket.totalBytes || 0) }} / {{ formatCount(bucket.uploadCount || 0) }} uploads / {{ formatCount(bucket.downloadCount || 0) }} downloads / {{ formatCount(bucket.listCount || 0) }} lists</small>
+            <small>{{ formatBytes(bucket.totalBytes || 0) }} / {{ formatCount(bucket.uploadCount || 0) }} uploads / {{ formatCount(bucket.downloadCount || 0) }} downloads / {{ formatCount(bucket.copyCount || 0) }} copies / {{ formatCount(bucket.listCount || 0) }} lists</small>
           </span>
           <b>{{ formatDateTime(bucket.lastEventAt) || '-' }}</b>
         </li>
@@ -1809,10 +1810,10 @@ function dataFlowTrendWidth(point) {
   return `${Math.max(4, Math.round((totalCount / dataFlowTrendMaxCount.value) * 100))}%`
 }
 const dataFlowTrafficLabel = computed(() => (
-  `${props.formatBytes(dataFlowTraffic.value.uploadedBytes || 0)} up / ${props.formatBytes(dataFlowTraffic.value.downloadedBytes || 0)} down`
+  `${props.formatBytes(dataFlowTraffic.value.uploadedBytes || 0)} up / ${props.formatBytes(dataFlowTraffic.value.downloadedBytes || 0)} down / ${props.formatBytes(dataFlowTraffic.value.copiedBytes || 0)} copy`
 ))
 const dataFlowOperationLabel = computed(() => (
-  `${props.formatCount(dataFlowOperations.value.uploadCount || 0)} uploads / ${props.formatCount(dataFlowOperations.value.downloadCount || 0)} downloads / ${props.formatCount(dataFlowOperations.value.failureCount || 0)} failed / ${props.formatCount(dataFlowOperations.value.cancelCount || 0)} cancelled`
+  `${props.formatCount(dataFlowOperations.value.uploadCount || 0)} uploads / ${props.formatCount(dataFlowOperations.value.downloadCount || 0)} downloads / ${props.formatCount(dataFlowOperations.value.copyCount || 0)} copies / ${props.formatCount(dataFlowOperations.value.failureCount || 0)} failed / ${props.formatCount(dataFlowOperations.value.cancelCount || 0)} cancelled`
 ))
 const dataFlowStatusLabel = computed(() => (
   Number(dataFlowOperations.value.failureCount || 0) > 0 || Number(dataFlowOperations.value.cancelCount || 0) > 0 ? 'CHECK' : 'CLEAR'

@@ -276,6 +276,6 @@ powershell -ExecutionPolicy Bypass -File .\scripts\verify-s3-client-smoke.ps1 -C
 - 실제 Kubernetes cluster와 GitHub-hosted workflow evidence 수집.
 - host-installed `aws` 또는 `mc` 기반 S3 smoke 검증.
 - data-flow 장기 analytics를 위한 partition 또는 time-series 저장소 연동.
-- tenant billing/chargeback을 위한 내부 copy traffic과 외부 ingress/egress 분리.
+- tenant billing/chargeback을 위한 요금 정책, 비용 리포트, 임계치 모델링.
 - S3 parity 확대: aws-chunked streaming signature, trailer checksum, checksum aggregation, exact AWS error schema.
 - 운영 패키징: demo notes, release notes, troubleshooting, runbook 보강.

@@ -43,6 +43,13 @@ public class DataFlowMonitoringService {
         incrementBytes("egress", normalizedBytes, source, bucketName);
     }
 
+    public void recordCopy(String bucketName, String objectKey, long sizeBytes, String actorId, String source) {
+        long normalizedBytes = positiveBytes(sizeBytes);
+        persistEvent("COPY", "copy", "INTERNAL", bucketName, objectKey, actorId, "SUCCESS", normalizedBytes, "Object copied internally", source);
+        incrementOperation("copy", "success", source, bucketName);
+        incrementBytes("internal", normalizedBytes, source, bucketName);
+    }
+
     public void recordList(String bucketName, String actorId, String source) {
         persistEvent("LIST", "list", "METADATA", bucketName, "", actorId, "SUCCESS", 0L, "Object list read", source);
         incrementOperation("list", "success", source, bucketName);
@@ -115,13 +122,16 @@ public class DataFlowMonitoringService {
                 new DataFlowTrafficSummaryResponse(
                         summary.uploadedBytes,
                         summary.downloadedBytes,
-                        summary.uploadedBytes + summary.downloadedBytes,
+                        summary.copiedBytes,
+                        summary.uploadedBytes + summary.downloadedBytes + summary.copiedBytes,
                         summary.uploadedBytes,
-                        summary.downloadedBytes
+                        summary.downloadedBytes,
+                        summary.copiedBytes
                 ),
                 new DataFlowOperationSummaryResponse(
                         summary.uploadCount,
                         summary.downloadCount,
+                        summary.copyCount,
                         summary.listCount,
                         summary.deleteCount,
                         summary.cancelCount,
@@ -274,8 +284,10 @@ public class DataFlowMonitoringService {
     private static final class SummaryAccumulator {
         private long uploadedBytes;
         private long downloadedBytes;
+        private long copiedBytes;
         private long uploadCount;
         private long downloadCount;
+        private long copyCount;
         private long listCount;
         private long deleteCount;
         private long cancelCount;
@@ -290,6 +302,10 @@ public class DataFlowMonitoringService {
             if ("DOWNLOAD".equalsIgnoreCase(event.eventType()) && success) {
                 downloadedBytes += event.sizeBytes();
                 downloadCount += 1;
+            }
+            if ("COPY".equalsIgnoreCase(event.eventType()) && success) {
+                copiedBytes += event.sizeBytes();
+                copyCount += 1;
             }
             if ("LIST".equalsIgnoreCase(event.eventType()) && success) {
                 listCount += 1;
@@ -310,8 +326,10 @@ public class DataFlowMonitoringService {
         private final String bucketName;
         private long uploadedBytes;
         private long downloadedBytes;
+        private long copiedBytes;
         private long uploadCount;
         private long downloadCount;
+        private long copyCount;
         private long listCount;
         private long deleteCount;
         private long cancelCount;
@@ -331,6 +349,10 @@ public class DataFlowMonitoringService {
             if ("DOWNLOAD".equalsIgnoreCase(event.eventType()) && success) {
                 downloadedBytes += event.sizeBytes();
                 downloadCount += 1;
+            }
+            if ("COPY".equalsIgnoreCase(event.eventType()) && success) {
+                copiedBytes += event.sizeBytes();
+                copyCount += 1;
             }
             if ("LIST".equalsIgnoreCase(event.eventType()) && success) {
                 listCount += 1;
@@ -354,9 +376,11 @@ public class DataFlowMonitoringService {
                     bucketName,
                     uploadedBytes,
                     downloadedBytes,
-                    uploadedBytes + downloadedBytes,
+                    copiedBytes,
+                    uploadedBytes + downloadedBytes + copiedBytes,
                     uploadCount,
                     downloadCount,
+                    copyCount,
                     listCount,
                     deleteCount,
                     cancelCount,

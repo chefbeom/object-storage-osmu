@@ -1076,13 +1076,16 @@ const dataFlowMonitoring = reactive({
   traffic: {
     uploadedBytes: 0,
     downloadedBytes: 0,
+    copiedBytes: 0,
     totalBytes: 0,
     ingressBytes: 0,
     egressBytes: 0,
+    internalBytes: 0,
   },
   operations: {
     uploadCount: 0,
     downloadCount: 0,
+    copyCount: 0,
     listCount: 0,
     deleteCount: 0,
     cancelCount: 0,
@@ -3168,13 +3171,16 @@ function applyDataFlowMonitoring(data = {}) {
   Object.assign(dataFlowMonitoring.traffic, {
     uploadedBytes: Number(data.traffic?.uploadedBytes || 0),
     downloadedBytes: Number(data.traffic?.downloadedBytes || 0),
+    copiedBytes: Number(data.traffic?.copiedBytes || 0),
     totalBytes: Number(data.traffic?.totalBytes || 0),
     ingressBytes: Number(data.traffic?.ingressBytes || 0),
     egressBytes: Number(data.traffic?.egressBytes || 0),
+    internalBytes: Number(data.traffic?.internalBytes || 0),
   })
   Object.assign(dataFlowMonitoring.operations, {
     uploadCount: Number(data.operations?.uploadCount || 0),
     downloadCount: Number(data.operations?.downloadCount || 0),
+    copyCount: Number(data.operations?.copyCount || 0),
     listCount: Number(data.operations?.listCount || 0),
     deleteCount: Number(data.operations?.deleteCount || 0),
     cancelCount: Number(data.operations?.cancelCount || 0),
