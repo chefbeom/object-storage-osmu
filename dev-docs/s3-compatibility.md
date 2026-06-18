@@ -71,6 +71,6 @@
 ## Verification Rule
 
 - Backend unit/controller tests prove API contract behavior.
-- `scripts/verify-s3-client-smoke.ps1` proves built-in SigV4 and optional host/Docker real-client smoke.
-- `scripts/verify-docker-integration.ps1` is stronger because it exercises MariaDB + MinIO + backend container networking.
+- `scripts/verify-s3-client-smoke.ps1` proves built-in SigV4 checksum, multipart, SDK-style UploadPart checksum, and optional host/Docker real-client smoke.
+- `scripts/verify-docker-integration.ps1` is stronger because it exercises MariaDB + MinIO + backend container networking, including the SDK-style multipart checksum path.
 - Any newly claimed S3 operation must update this matrix, `api-spec.md`, `test-cases.md`, and at least one automated backend or smoke test.

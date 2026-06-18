@@ -138,6 +138,16 @@ function Get-Sha256Base64([byte[]] $Bytes) {
     }
 }
 
+function Get-CompositeSha256Base64([string[]] $PartChecksums) {
+    $checksumBytes = [System.Collections.Generic.List[byte]]::new()
+    foreach ($partChecksum in $PartChecksums) {
+        foreach ($value in [Convert]::FromBase64String($partChecksum)) {
+            $checksumBytes.Add($value)
+        }
+    }
+    return Get-Sha256Base64 $checksumBytes.ToArray()
+}
+
 function Get-HmacSha256([byte[]] $Key, [string] $Text) {
     $hmac = [System.Security.Cryptography.HMACSHA256]::new($Key)
     try {
@@ -584,6 +594,83 @@ function Invoke-S3MultipartChecksumSmoke($apiBase, $s3Endpoint, $bucketName, $ac
             -or $headEtag -ne $expectedMultipartEtag) {
         throw "S3 multipart checksum HEAD did not expose stored checksum and multipart ETag."
     }
+
+    $sdkObjectKey = "manual-multipart-sdk-checksum.bin"
+    $sdkInitiateUrl = "$s3Endpoint/$bucketName/${sdkObjectKey}?uploads"
+    $sdkInitiateHeaders = @{
+        "x-amz-meta-osmu-size-bytes" = [string]$allBytes.Length
+        "x-amz-meta-osmu-part-size-bytes" = [string]$part1.Length
+        "x-amz-checksum-algorithm" = "SHA256"
+        "x-amz-checksum-type" = "COMPOSITE"
+    }
+    $sdkInitiate = Invoke-SignedHttp "POST" $sdkInitiateUrl ([byte[]]::new(0)) $accessKey $secretKey $null $null "application/octet-stream" $sdkInitiateHeaders
+    if ($sdkInitiate.StatusCode -ne 200 -or $sdkInitiate.Body -notmatch "<UploadId>([^<]+)</UploadId>") {
+        throw "S3 multipart SDK checksum initiate failed: HTTP $($sdkInitiate.StatusCode) $($sdkInitiate.Body)"
+    }
+    $sdkUploadId = $Matches[1]
+
+    $sdkPart1Url = "$s3Endpoint/$bucketName/${sdkObjectKey}?partNumber=1&uploadId=$([System.Uri]::EscapeDataString($sdkUploadId))"
+    $sdkPart1Response = Invoke-SignedHttp "PUT" $sdkPart1Url $part1 $accessKey $secretKey $null $null "application/octet-stream" @{
+        "x-amz-sdk-checksum-algorithm" = "SHA256"
+    }
+    $sdkPart1Etag = Get-HeaderValue $sdkPart1Response.Headers "ETag"
+    if ($sdkPart1Response.StatusCode -ne 200 -or -not $sdkPart1Etag -or (Get-HeaderValue $sdkPart1Response.Headers "x-amz-checksum-sha256") -ne $part1Checksum) {
+        throw "S3 multipart SDK checksum part 1 upload failed: HTTP $($sdkPart1Response.StatusCode)."
+    }
+
+    $sdkPart2Url = "$s3Endpoint/$bucketName/${sdkObjectKey}?partNumber=2&uploadId=$([System.Uri]::EscapeDataString($sdkUploadId))"
+    $sdkPart2Response = Invoke-SignedHttp "PUT" $sdkPart2Url $part2 $accessKey $secretKey $null $null "application/octet-stream" @{
+        "x-amz-sdk-checksum-algorithm" = "SHA256"
+    }
+    $sdkPart2Etag = Get-HeaderValue $sdkPart2Response.Headers "ETag"
+    if ($sdkPart2Response.StatusCode -ne 200 -or -not $sdkPart2Etag -or (Get-HeaderValue $sdkPart2Response.Headers "x-amz-checksum-sha256") -ne $part2Checksum) {
+        throw "S3 multipart SDK checksum part 2 upload failed: HTTP $($sdkPart2Response.StatusCode)."
+    }
+
+    $listPartsResponse = Invoke-SignedHttp "GET" "$s3Endpoint/$bucketName/${sdkObjectKey}?uploadId=$([System.Uri]::EscapeDataString($sdkUploadId))" ([byte[]]::new(0)) $accessKey $secretKey
+    if ($listPartsResponse.StatusCode -ne 200 `
+            -or -not $listPartsResponse.Body.Contains("<ChecksumSHA256>$part1Checksum</ChecksumSHA256>") `
+            -or -not $listPartsResponse.Body.Contains("<ChecksumSHA256>$part2Checksum</ChecksumSHA256>")) {
+        throw "S3 multipart SDK checksum ListParts did not expose stored part checksums: HTTP $($listPartsResponse.StatusCode) $($listPartsResponse.Body)"
+    }
+
+    $sdkExpectedMultipartEtag = Get-S3MultipartEtag -PartEtags @($sdkPart1Etag, $sdkPart2Etag)
+    $sdkCompositeChecksum = Get-CompositeSha256Base64 @($part1Checksum, $part2Checksum)
+    $sdkCompleteXml = @"
+<CompleteMultipartUpload xmlns="http://s3.amazonaws.com/doc/2006-03-01/">
+  <Part>
+    <PartNumber>1</PartNumber>
+    <ETag>$sdkPart1Etag</ETag>
+  </Part>
+  <Part>
+    <PartNumber>2</PartNumber>
+    <ETag>$sdkPart2Etag</ETag>
+  </Part>
+</CompleteMultipartUpload>
+"@
+    $sdkCompleteBytes = [System.Text.Encoding]::UTF8.GetBytes($sdkCompleteXml)
+    $sdkCompleteUrl = "$s3Endpoint/$bucketName/${sdkObjectKey}?uploadId=$([System.Uri]::EscapeDataString($sdkUploadId))"
+    $sdkCompleteResponse = Invoke-SignedHttp "POST" $sdkCompleteUrl $sdkCompleteBytes $accessKey $secretKey $null $null "application/xml" @{
+        "x-amz-checksum-type" = "COMPOSITE"
+    }
+    if ($sdkCompleteResponse.StatusCode -ne 200 `
+            -or (Get-HeaderValue $sdkCompleteResponse.Headers "x-amz-checksum-sha256") -ne $sdkCompositeChecksum `
+            -or -not $sdkCompleteResponse.Body.Contains("<ChecksumSHA256>$sdkCompositeChecksum</ChecksumSHA256>") `
+            -or -not $sdkCompleteResponse.Body.Contains("<ChecksumType>COMPOSITE</ChecksumType>")) {
+        throw "S3 multipart SDK checksum complete failed: HTTP $($sdkCompleteResponse.StatusCode) $($sdkCompleteResponse.Body)"
+    }
+    $sdkCompleteEtag = Normalize-Etag (Get-HeaderValue $sdkCompleteResponse.Headers "ETag")
+    if ($sdkCompleteEtag -ne $sdkExpectedMultipartEtag -or -not $sdkCompleteResponse.Body.Contains("<ETag>`"$sdkExpectedMultipartEtag`"</ETag>")) {
+        throw "S3 multipart SDK checksum complete ETag mismatch. expected=$sdkExpectedMultipartEtag actual=$sdkCompleteEtag body=$($sdkCompleteResponse.Body)"
+    }
+
+    $sdkHeadResponse = Invoke-SignedHttp "HEAD" "$s3Endpoint/$bucketName/$sdkObjectKey" ([byte[]]::new(0)) $accessKey $secretKey
+    $sdkHeadEtag = Normalize-Etag (Get-HeaderValue $sdkHeadResponse.Headers "ETag")
+    if ($sdkHeadResponse.StatusCode -ne 200 `
+            -or (Get-HeaderValue $sdkHeadResponse.Headers "x-amz-checksum-sha256") -ne $sdkCompositeChecksum `
+            -or $sdkHeadEtag -ne $sdkExpectedMultipartEtag) {
+        throw "S3 multipart SDK checksum HEAD did not expose stored checksum and multipart ETag."
+    }
 }
 
 function Invoke-ManualSigV4Smoke($apiBase, $s3Endpoint, $bucketName, $accessKey, $secretKey, $token, [bool] $includeVirtualHosted, [bool] $includeMultipartChecksum) {
@@ -983,7 +1070,7 @@ try {
 finally {
     if ($createdBucket -and -not $KeepBucket) {
         Step "Cleanup smoke data"
-        foreach ($key in @("aws-cli-smoke.txt", "mc-smoke.txt", "docker-mc-smoke.txt", "manual-sigv4-smoke.txt", "manual-copy-sigv4-smoke.txt", "manual-copy-precondition-fail.txt", "manual-bad-payload.txt", "manual-bad-checksum.txt", "manual-vhost-smoke.txt", "manual-multipart-checksum.bin", "manual-delete-md5-a.txt", "manual-delete-md5-b.txt", "manual-delete-md5-protected.txt")) {
+        foreach ($key in @("aws-cli-smoke.txt", "mc-smoke.txt", "docker-mc-smoke.txt", "manual-sigv4-smoke.txt", "manual-copy-sigv4-smoke.txt", "manual-copy-precondition-fail.txt", "manual-bad-payload.txt", "manual-bad-checksum.txt", "manual-vhost-smoke.txt", "manual-multipart-checksum.bin", "manual-multipart-sdk-checksum.bin", "manual-delete-md5-a.txt", "manual-delete-md5-b.txt", "manual-delete-md5-protected.txt")) {
             try {
                 Invoke-Json "DELETE" "$ApiBase/buckets/$BucketName/objects/$key" $null $token | Out-Null
             } catch {

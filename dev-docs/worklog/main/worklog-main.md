@@ -1,5 +1,33 @@
 # Worklog - main
 
+### 2026-06-18 - S3 multipart SDK checksum smoke coverage
+
+- Work time:
+  - End: 2026-06-18 KST
+- User command:
+  - Active goal: continue development from `dev-docs`.
+- Request analysis:
+  - UploadPart checksum persistence and stored-checksum complete were implemented, but smoke scripts did not prove the SDK-style `x-amz-sdk-checksum-algorithm` path.
+- Execution:
+  - Extended built-in SigV4 multipart checksum smoke in `verify-s3-client-smoke.ps1` and `verify-docker-integration.ps1`.
+  - Added initiate checksum negotiation, UploadPart auto-computed SHA256 response checks, ListParts stored checksum XML checks, CompleteMultipartUpload without per-part checksum XML, composite checksum response checks, and final HEAD checksum/ETag checks.
+  - Added cleanup for the new smoke objects and updated README/dev-docs evidence notes.
+- Modified files:
+  - `scripts/verify-s3-client-smoke.ps1`
+  - `scripts/verify-docker-integration.ps1`
+  - `README.md`
+  - `dev-docs/local-dev-env.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/feature-inventory.md`
+  - `dev-docs/s3-compatibility.md`
+  - `dev-docs/worklog/main/worklog-main.md`
+- Tests:
+  - PowerShell parser syntax checks for both smoke scripts: passed.
+  - `git diff --check`: passed.
+- Review:
+  - Built-in SigV4 smoke now proves stored UploadPart checksum metadata can drive composite complete when clients omit duplicate per-part checksum XML.
+  - Remaining gap is external host AWS CLI/SDK checksum-option coverage and exact AWS response parity.
+
 ### 2026-06-18 - S3 multipart checksum type validation after stored part merge
 
 - Work time:
