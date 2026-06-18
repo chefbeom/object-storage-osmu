@@ -1516,6 +1516,7 @@ class S3ObjectControllerTest {
         createBucket(token, bucketName);
         AccessKeyCredentials credentials = createAccessKey(token, bucketName, "WRITE");
         String missingUploadResource = "/api/s3/" + bucketName + "/video/missing.mp4?uploadId=missing-upload";
+        String hostId = checksumBase64("SHA-256", "req-nosuchupload:" + missingUploadResource);
 
         mockMvc.perform(get("/api/s3/{bucketName}/video/missing.mp4", bucketName)
                         .queryParam("uploadId", "missing-upload")
@@ -1528,7 +1529,8 @@ class S3ObjectControllerTest {
                 .andExpect(content().string(containsString("<Code>NoSuchUpload</Code>")))
                 .andExpect(content().string(containsString("<Resource>" + missingUploadResource + "</Resource>")))
                 .andExpect(content().string(containsString("<RequestId>req-nosuchupload</RequestId>")))
-                .andExpect(content().string(containsString("<HostId>req-nosuchupload</HostId>")));
+                .andExpect(content().string(containsString("<HostId>" + hostId + "</HostId>")))
+                .andExpect(content().string(not(containsString("<HostId>req-nosuchupload</HostId>"))));
     }
 
     @Test

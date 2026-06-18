@@ -4,6 +4,10 @@ import com.example.osmu.common.web.RequestIdFilter;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.ConstraintViolationException;
 import java.io.StringWriter;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.util.Base64;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.MethodArgumentNotValidException;
@@ -127,7 +131,7 @@ public class GlobalExceptionHandler {
             }
             if (requestId != null && !requestId.isBlank()) {
                 writeElement(xml, "RequestId", requestId);
-                writeElement(xml, "HostId", requestId);
+                writeElement(xml, "HostId", s3HostId(requestId, resource));
             }
             xml.writeEndElement();
             xml.writeEndDocument();
@@ -136,6 +140,16 @@ public class GlobalExceptionHandler {
             return output.toString();
         } catch (XMLStreamException exception) {
             return "<Error><Code>InternalError</Code><Message>Failed to render error response.</Message></Error>";
+        }
+    }
+
+    private String s3HostId(String requestId, String resource) {
+        try {
+            String seed = requestId + ":" + (resource == null ? "" : resource);
+            byte[] digest = MessageDigest.getInstance("SHA-256").digest(seed.getBytes(StandardCharsets.UTF_8));
+            return Base64.getEncoder().encodeToString(digest);
+        } catch (NoSuchAlgorithmException exception) {
+            return requestId;
         }
     }
 

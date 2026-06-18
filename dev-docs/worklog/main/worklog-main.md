@@ -1,5 +1,35 @@
 # Worklog - main
 
+### 2026-06-18 - S3 error HostId parity
+
+- Work time:
+  - End: 2026-06-18 KST
+- User command:
+  - Active goal: continue development from `dev-docs`.
+- Request analysis:
+  - `dev-docs/s3-compatibility.md` still tracked exact AWS error schema as a remaining S3 parity axis.
+  - Current S3 XML errors included `HostId`, but it mirrored `RequestId`, which is weaker than AWS-style opaque host/request trace evidence.
+- Execution:
+  - Updated `GlobalExceptionHandler` to render S3 XML `HostId` as a deterministic SHA-256/Base64 value derived from request id plus request resource.
+  - Kept `RequestId` unchanged for client correlation and normal REST JSON errors unchanged.
+  - Updated `S3ObjectControllerTest.missingS3MultipartUploadReturnsNoSuchUploadXml` to assert `HostId` no longer mirrors `RequestId`.
+  - Updated README/dev-docs to describe the opaque `HostId` and narrow the remaining error gap to per-error AWS detail schema.
+- Modified files:
+  - `osmu-backend/src/main/java/com/example/osmu/common/error/GlobalExceptionHandler.java`
+  - `osmu-backend/src/test/java/com/example/osmu/object/S3ObjectControllerTest.java`
+  - `README.md`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/backend-design.md`
+  - `dev-docs/s3-compatibility.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/worklog/main/worklog-main.md`
+- Tests:
+  - `./gradlew.bat test --no-daemon --tests com.example.osmu.object.S3ObjectControllerTest.missingS3MultipartUploadReturnsNoSuchUploadXml`: passed.
+  - `git diff --check`: passed.
+- Review:
+  - This improves S3 XML error envelope compatibility without changing REST API error bodies.
+  - Remaining error parity work is specific AWS per-error fields and exact message/status nuances.
+
 ### 2026-06-18 - AWS SDK JavaScript S3 checksum smoke
 
 - Work time:

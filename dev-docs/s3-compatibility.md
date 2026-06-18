@@ -9,7 +9,7 @@
 | Path-style endpoint | Supported | `/api/s3/{bucketName}` and root `/{bucketName}` mappings. | `S3ObjectControllerTest`, `S3BucketControllerTest`, `verify-s3-client-smoke.ps1` |
 | Virtual-hosted-style endpoint | MVP supported | Configured suffix such as `{bucket}.localhost`; original URI is preserved for SigV4 canonical request. | `S3ObjectControllerTest`, `verify-s3-client-smoke.ps1` |
 | Access key header auth | Supported | `X-OSMU-Access-Key` + `X-OSMU-Secret-Key`. | backend controller tests |
-| S3 XML error envelope | MVP supported | Global `/api/s3/**` errors include `Code`, `Message`, `Resource`, `RequestId`, and `HostId`; MVP `HostId` mirrors the request id. | `S3ObjectControllerTest.missingS3MultipartUploadReturnsNoSuchUploadXml` |
+| S3 XML error envelope | MVP supported | Global `/api/s3/**` errors include `Code`, `Message`, `Resource`, `RequestId`, and an opaque deterministic `HostId` derived from request id plus resource. | `S3ObjectControllerTest.missingS3MultipartUploadReturnsNoSuchUploadXml` |
 | AWS SigV4 header auth | Supported | Canonical request, signed headers, clock skew, encrypted signing secret, bucket scope. | `S3ObjectControllerTest`, `S3BucketControllerTest` |
 | AWS SigV4 presigned query auth | Supported | `X-Amz-*` parameters and expiry validation. | `S3ObjectControllerTest` |
 | Non-streaming payload hash | Supported | Signed `x-amz-content-sha256` is validated against object and multipart-part request bodies. | `S3ObjectControllerTest`, `S3ObjectControllerMultipartTest` |
