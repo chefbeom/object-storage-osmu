@@ -1277,17 +1277,16 @@ public class S3ObjectController {
             if (!"CompleteMultipartUpload".equals(localName(root))) {
                 throw new ApiException(ApiErrorCode.VALIDATION_ERROR, "Invalid CompleteMultipartUpload XML.");
             }
-            NodeList partNodes = root.getElementsByTagNameNS("*", "Part");
-            if (partNodes.getLength() == 0) {
+            List<Element> partNodes = completeMultipartPartElements(root);
+            if (partNodes.isEmpty()) {
                 throw new ApiException(ApiErrorCode.VALIDATION_ERROR, "CompleteMultipartUpload requires at least one Part.");
             }
-            if (partNodes.getLength() > MAX_MULTIPART_PART_NUMBER) {
+            if (partNodes.size() > MAX_MULTIPART_PART_NUMBER) {
                 throw new ApiException(ApiErrorCode.VALIDATION_ERROR, "CompleteMultipartUpload can contain at most 10000 parts.");
             }
             List<CompletedMultipartUploadPart> parts = new ArrayList<>();
             int lastPartNumber = 0;
-            for (int i = 0; i < partNodes.getLength(); i++) {
-                Element part = (Element) partNodes.item(i);
+            for (Element part : partNodes) {
                 int partNumber = parseMultipartPartNumber(requiredMultipartTagText(part, "PartNumber"));
                 if (partNumber <= lastPartNumber) {
                     throw new ApiException(ApiErrorCode.VALIDATION_ERROR,
@@ -1322,17 +1321,32 @@ public class S3ObjectController {
         return (int) partNumber;
     }
 
+    private List<Element> completeMultipartPartElements(Element root) {
+        List<Element> parts = new ArrayList<>();
+        NodeList children = root.getChildNodes();
+        for (int i = 0; i < children.getLength(); i++) {
+            Node node = children.item(i);
+            if (!(node instanceof Element child)) {
+                continue;
+            }
+            if (!"Part".equals(localName(child))) {
+                throw new ApiException(ApiErrorCode.VALIDATION_ERROR, "Invalid CompleteMultipartUpload XML.");
+            }
+            parts.add(child);
+        }
+        return parts;
+    }
+
     private String localName(Element element) {
         return element.getLocalName() == null ? element.getNodeName() : element.getLocalName();
     }
 
     private String requiredMultipartTagText(Element parent, String localName) {
-        NodeList nodes = parent.getElementsByTagNameNS("*", localName);
-        if (nodes.getLength() == 0) {
-            throw new ApiException(ApiErrorCode.VALIDATION_ERROR,
-                    "CompleteMultipartUpload Part requires PartNumber and ETag.");
+        String value = optionalDirectChildText(parent, localName);
+        if (value == null) {
+            throw new ApiException(ApiErrorCode.VALIDATION_ERROR, "Invalid CompleteMultipartUpload XML.");
         }
-        return nodes.item(0).getTextContent();
+        return value;
     }
 
     private void rejectUnsupportedMultipartPartChecksumXml(Element part) {
