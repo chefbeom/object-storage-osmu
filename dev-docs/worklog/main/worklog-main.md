@@ -1,5 +1,28 @@
 # Worklog - main
 
+### 2026-06-19 - S3 PreconditionFailed message punctuation parity
+
+- Work time:
+  - End: 2026-06-19 KST
+- User command:
+  - Active goal: continue development from `dev-docs`.
+- Request analysis:
+  - AWS S3 error docs list `PreconditionFailed` with description `At least one of the preconditions you specified did not hold.`
+  - OSMU already returned the right code/status, but the normalized message still used `pre-conditions` and omitted the final period.
+- Execution:
+  - Updated `PreconditionFailed` S3 XML message normalization to the AWS-style text.
+  - Updated mapper/controller regression expectations and API docs.
+- Modified files:
+  - `osmu-backend/src/main/java/com/example/osmu/common/error/S3ErrorCodeMapper.java`
+  - `osmu-backend/src/test/java/com/example/osmu/common/error/S3ErrorCodeMapperTest.java`
+  - `osmu-backend/src/test/java/com/example/osmu/object/S3ObjectControllerTest.java`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/worklog/main/worklog-main.md`
+- Tests:
+  - `$env:JAVA_HOME='C:\jdk-17'; .\gradlew.bat test --no-daemon --tests com.example.osmu.common.error.S3ErrorCodeMapperTest --tests com.example.osmu.object.S3ObjectControllerTest`: passed.
+- Follow-up:
+  - Continue remaining AWS checksum real-client option coverage and broader S3 error behavior parity.
+
 ### 2026-06-19 - S3 NoSuchBucket message punctuation parity
 
 - Work time:

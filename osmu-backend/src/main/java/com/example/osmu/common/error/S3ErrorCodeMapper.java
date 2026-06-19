@@ -48,7 +48,7 @@ public final class S3ErrorCodeMapper {
             return "The lifecycle configuration does not exist.";
         }
         if ("PreconditionFailed".equals(s3Code)) {
-            return "At least one of the pre-conditions you specified did not hold";
+            return "At least one of the preconditions you specified did not hold.";
         }
         if ("InvalidBucketName".equals(s3Code)) {
             return "The specified bucket is not valid.";

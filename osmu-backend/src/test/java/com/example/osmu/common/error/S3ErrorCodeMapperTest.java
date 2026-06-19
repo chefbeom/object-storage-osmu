@@ -62,7 +62,7 @@ class S3ErrorCodeMapperTest {
         assertThat(S3ErrorCodeMapper.messageFor("NoSuchLifecycleConfiguration", "Lifecycle configuration not found."))
                 .isEqualTo("The lifecycle configuration does not exist.");
         assertThat(S3ErrorCodeMapper.messageFor("PreconditionFailed", "Object precondition failed."))
-                .isEqualTo("At least one of the pre-conditions you specified did not hold");
+                .isEqualTo("At least one of the preconditions you specified did not hold.");
         assertThat(S3ErrorCodeMapper.messageFor("InvalidBucketName", "Invalid S3 bucket name."))
                 .isEqualTo("The specified bucket is not valid.");
         assertThat(S3ErrorCodeMapper.messageFor("BucketAlreadyOwnedByYou", "Bucket already owned by you."))

@@ -1361,7 +1361,7 @@ Headers:
 - S3 XML `EntityTooLarge`, `OperationAborted`, and `InternalError` responses use AWS-style generic messages for S3 client compatibility.
 - S3 XML `InvalidRange` responses use HTTP `416` and message `The requested range cannot be satisfied.` for AWS client compatibility.
 - S3 XML `NoSuchBucket`, `NoSuchKey`, `NoSuchUpload`, and `NoSuchLifecycleConfiguration` responses use AWS-style messages for bucket, object key, multipart upload, and bucket lifecycle configuration misses.
-- S3 XML `PreconditionFailed` responses use HTTP `412` and message `At least one of the pre-conditions you specified did not hold`.
+- S3 XML `PreconditionFailed` responses use HTTP `412` and message `At least one of the preconditions you specified did not hold.`
 - S3 XML `InvalidBucketName`, `BucketAlreadyOwnedByYou`, `BucketAlreadyExists`, and `BucketNotEmpty` responses use AWS-style bucket error messages instead of internal validation/conflict text.
 - S3 XML `InvalidPart`, `InvalidPartOrder`, and `EntityTooSmall` responses use AWS-style CompleteMultipartUpload special-error messages.
 - The same S3 error code mapping is used for global `/api/s3/**` error XML and multi-object delete `DeleteResult/Error` entries.
