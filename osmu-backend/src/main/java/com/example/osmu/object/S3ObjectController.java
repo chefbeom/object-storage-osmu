@@ -1248,6 +1248,9 @@ public class S3ObjectController {
         }
         try {
             Element root = xmlDocument(rawXml).getDocumentElement();
+            if (!"CompleteMultipartUpload".equals(localName(root))) {
+                throw new ApiException(ApiErrorCode.VALIDATION_ERROR, "Invalid CompleteMultipartUpload XML.");
+            }
             NodeList partNodes = root.getElementsByTagNameNS("*", "Part");
             if (partNodes.getLength() == 0) {
                 throw new ApiException(ApiErrorCode.VALIDATION_ERROR, "CompleteMultipartUpload requires at least one Part.");
@@ -1289,6 +1292,10 @@ public class S3ObjectController {
             throw new ApiException(ApiErrorCode.VALIDATION_ERROR, "PartNumber must be between 1 and 10000.");
         }
         return (int) partNumber;
+    }
+
+    private String localName(Element element) {
+        return element.getLocalName() == null ? element.getNodeName() : element.getLocalName();
     }
 
     private String requiredMultipartTagText(Element parent, String localName) {

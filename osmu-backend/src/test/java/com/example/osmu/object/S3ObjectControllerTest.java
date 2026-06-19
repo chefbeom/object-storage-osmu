@@ -1632,6 +1632,30 @@ class S3ObjectControllerTest {
     }
 
     @Test
+    void completeMultipartUploadRejectsUnexpectedRootXml() throws Exception {
+        String token = loginAndReturnAccessToken("admin", "password");
+        String bucketName = "s3-multipart-invalid-root-bucket";
+        createBucket(token, bucketName);
+        AccessKeyCredentials credentials = createAccessKey(token, bucketName, "WRITE");
+
+        mockMvc.perform(post("/api/s3/{bucketName}/video/input.mp4", bucketName)
+                        .queryParam("uploadId", "upload-1")
+                        .header("X-OSMU-Access-Key", credentials.accessKey())
+                        .header("X-OSMU-Secret-Key", credentials.secretKey())
+                        .contentType(MediaType.APPLICATION_XML)
+                        .accept(MediaType.APPLICATION_XML)
+                        .content("""
+                                <NotCompleteMultipartUpload>
+                                  <Part><PartNumber>1</PartNumber><ETag>"etag-1"</ETag></Part>
+                                </NotCompleteMultipartUpload>
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_XML))
+                .andExpect(content().string(containsString("<Code>MalformedXML</Code>")))
+                .andExpect(content().string(containsString("<Message>The XML you provided was not well-formed or did not validate against our published schema.</Message>")));
+    }
+
+    @Test
     void accessKeyScopeControlsS3StyleObjectActions() throws Exception {
         String token = loginAndReturnAccessToken("admin", "password");
         String bucketName = "s3-object-scope-bucket";
