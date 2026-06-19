@@ -1910,6 +1910,21 @@ tbody tr.selected {
   font-weight: 900;
 }
 
+.chargeback-form input {
+  min-width: 0;
+}
+
+.chargeback-table-wrap td {
+  vertical-align: top;
+}
+
+.chargeback-table-wrap td strong,
+.chargeback-table-wrap td small,
+.chargeback-table-wrap td span {
+  display: block;
+  overflow-wrap: anywhere;
+}
+
 .approval-workflow-list li {
   align-items: flex-start;
 }

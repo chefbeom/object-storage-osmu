@@ -398,7 +398,7 @@ MVP 데모 기준 완료율은 약 90~95%입니다.
 
 5. 운영/관리 기능 고도화
    - 실제 OIDC/LDAP provider smoke 실행과 `.osmu-run/latest-enterprise-auth-smoke.json` evidence 확보
-   - data-flow 장기 analytics와 chargeback 모델링. 현재 chargeback preview API는 구현됐고, 남은 것은 요금 정책 저장, 리포트 UI, 임계치/알림이다.
+   - data-flow 장기 analytics와 chargeback 모델링. 현재 chargeback preview API와 Admin billing panel은 구현됐고, 남은 것은 요금 정책 저장, 리포트 export, 임계치/알림이다.
    - 운영 패키징, troubleshooting, runbook 보강
 
 6. S3 대체성 회귀 smoke

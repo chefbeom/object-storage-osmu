@@ -17928,3 +17928,12 @@ feat/bucket-management
   - `npm.cmd run test:unit -- api-query`: 통과.
   - `verify-openapi-contract.ps1`, `verify-iam-rbac-matrix.ps1`, `verify-commercial-readiness.ps1`: 통과.
 - 후속: persistent pricing policy, invoice/export, threshold alert, admin billing UI, time-series/partition 기반 장기 analytics는 아직 남아 있다.
+
+### 2026-06-19 - Admin billing chargeback preview UI
+
+- 작업 해석: AWS S3 세부 호환 확장이 아니라 OSMU 운영/관리 기능을 우선해야 하므로, 직전 chargeback preview API의 후속으로 Admin billing panel을 구현했다.
+- Frontend: `BillingChargebackPanel.vue`를 추가하고 Admin page에 연결했다. 날짜, currency, storage/ingress/egress/internal/operation rate, event scan limit 입력과 refresh/reset, preview total, traffic/rate/window 요약, organization별 cost row를 제공한다.
+- State/API: `HomeView.vue`에서 `getChargebackPreview`를 호출하고, ADMIN/ORG_ADMIN의 admin load 및 panel refresh/reset 흐름에 연결했다. 권한이 빠지면 chargeback option/preview state를 reset한다.
+- Mock/demo: frontend mock API에 `/admin/billing/chargeback-preview`와 organization usage row를 추가해 로컬 데모에서도 panel이 빈 상태로 끊기지 않게 했다.
+- 문서/verifier: README, frontend design, commercial readiness, feature inventory, test cases, IAM/RBAC verifier, commercial readiness verifier를 갱신했다.
+- 후속: persistent pricing policy 저장, invoice/export, threshold alert, time-series/partition 기반 장기 analytics는 아직 남아 있다.

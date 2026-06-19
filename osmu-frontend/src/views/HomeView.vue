@@ -351,6 +351,8 @@
         :object-share-analytics="objectShareAnalytics"
         :object-share-analytics-filter="objectShareAnalyticsFilter"
         :enterprise-auth-plan="enterpriseAuthPlan"
+        :chargeback-options="chargebackOptions"
+        :chargeback-preview="chargebackPreview"
         :quota-policy-form="quotaPolicyForm"
         :quota-policy-target-options="quotaPolicyTargetOptions"
         :quota-policies="quotaPolicies"
@@ -396,6 +398,9 @@
         @delete-bucket-tags="handleDeleteBucketTags"
         @save-object-share-policy="handleSaveObjectSharePolicy"
         @refresh-object-share-analytics="refreshObjectShareAnalytics"
+        @update-chargeback-option="updateChargebackOption"
+        @refresh-chargeback-preview="loadChargebackPreview"
+        @reset-chargeback-options="handleResetChargebackOptions"
         @save-quota-policy="handleSaveQuotaPolicy"
         @reset-quota-policy-target="resetQuotaPolicyTarget"
         @reset-quota-policy-form="resetQuotaPolicyForm"
@@ -546,6 +551,7 @@ import {
   getDashboardSummary,
   getDashboardWidgetCatalog,
   getDataFlowMonitoring,
+  getChargebackPreview,
   getEnterpriseAuthPlan,
   getHealth,
   getObjectLifecycleConflicts,
@@ -748,6 +754,24 @@ const defaultDashboardWidgets = [
   { id: 'execution-retention', enabled: true, size: 'normal', section: 'governance' },
   { id: 'storage-expansion', enabled: true, size: 'normal', section: 'operations' },
   { id: 'selected', enabled: true, size: 'normal', section: 'overview' },
+]
+const defaultChargebackOptions = Object.freeze({
+  from: '',
+  to: '',
+  currency: 'USD',
+  storageGbMonthRate: '0.020000',
+  ingressGbRate: '0',
+  egressGbRate: '0.010000',
+  internalGbRate: '0',
+  operationThousandRate: '0.004000',
+  eventScanLimit: 10000,
+})
+const chargebackRateFields = [
+  'storageGbMonthRate',
+  'ingressGbRate',
+  'egressGbRate',
+  'internalGbRate',
+  'operationThousandRate',
 ]
 
 const route = useRoute()
@@ -1163,6 +1187,7 @@ const dataFlowMonitoring = reactive({
 const confirmDialog = reactive({ open: false, title: '', message: '', confirmLabel: '확인', pending: false, action: null })
 const dashboardLayoutSync = reactive({ source: 'LOCAL', updatedAt: '', pending: false })
 const dashboardLoadState = reactive({ loading: false, error: '' })
+const chargebackOptions = reactive({ ...defaultChargebackOptions })
 
 const buckets = ref([])
 const objects = ref([])
@@ -1171,6 +1196,7 @@ const bucketPermissions = ref([])
 const users = ref([])
 const organizations = ref([])
 const organizationUsages = ref([])
+const chargebackPreview = ref(defaultChargebackPreview())
 const teams = ref([])
 const quotaPolicies = ref([])
 const quotaPolicyHistory = ref([])
@@ -2236,11 +2262,13 @@ async function loadDashboard(options = {}) {
       organizationUsages.value = organizationUsageResult.items || []
       teams.value = teamResult.items || []
       syncTeamFormDefaults()
+      await loadChargebackPreview()
     } else {
       users.value = []
       organizations.value = []
       organizationUsages.value = []
       teams.value = []
+      resetChargebackPreview()
     }
 
     if (isAdmin.value) {
@@ -2353,6 +2381,17 @@ async function loadDataFlowMonitoring() {
   const result = await safeRequest(() => getDataFlowMonitoring(dataFlowFilterPayload()), null)
   if (result?.data) {
     applyDataFlowMonitoring(result.data)
+  }
+}
+
+async function loadChargebackPreview() {
+  if (!canUseAdminTools.value) {
+    resetChargebackPreview()
+    return
+  }
+  const result = await safeRequest(() => getChargebackPreview(chargebackPreviewPayload()), null)
+  if (result?.data) {
+    applyChargebackPreview(result.data)
   }
 }
 
@@ -2538,6 +2577,8 @@ function resetAdminOnlyState() {
   resetDashboardQuotaSummary()
   resetDashboardReadiness()
   resetDataFlowMonitoring()
+  resetChargebackOptions()
+  resetChargebackPreview()
 }
 
 function resetUploadRuntime() {
@@ -3502,6 +3543,52 @@ function applyDataFlowMonitoring(data = {}) {
 
 function resetDataFlowMonitoring() {
   applyDataFlowMonitoring({})
+}
+
+function defaultChargebackPreview() {
+  return {
+    currency: defaultChargebackOptions.currency,
+    from: '',
+    to: '',
+    rates: {
+      storageGbMonthRate: Number(defaultChargebackOptions.storageGbMonthRate),
+      ingressGbRate: Number(defaultChargebackOptions.ingressGbRate),
+      egressGbRate: Number(defaultChargebackOptions.egressGbRate),
+      internalGbRate: Number(defaultChargebackOptions.internalGbRate),
+      operationThousandRate: Number(defaultChargebackOptions.operationThousandRate),
+    },
+    eventScanLimit: defaultChargebackOptions.eventScanLimit,
+    scannedEventCount: 0,
+    organizationCount: 0,
+    bucketCount: 0,
+    usedBytes: 0,
+    ingressBytes: 0,
+    egressBytes: 0,
+    internalBytes: 0,
+    billableOperationCount: 0,
+    failedOperationCount: 0,
+    cancelledOperationCount: 0,
+    estimatedTotalCost: 0,
+    organizations: [],
+    generatedAt: '',
+  }
+}
+
+function applyChargebackPreview(data = {}) {
+  const fallback = defaultChargebackPreview()
+  chargebackPreview.value = {
+    ...fallback,
+    ...data,
+    rates: {
+      ...fallback.rates,
+      ...(data.rates || {}),
+    },
+    organizations: Array.isArray(data.organizations) ? data.organizations : [],
+  }
+}
+
+function resetChargebackPreview() {
+  applyChargebackPreview({})
 }
 
 function applyDashboardReadiness(data) {
@@ -4885,6 +4972,23 @@ function handleResetDataFlowFilter() {
   loadDataFlowMonitoring()
 }
 
+function updateChargebackOption(event) {
+  const field = event?.field
+  if (!Object.prototype.hasOwnProperty.call(chargebackOptions, field)) return
+  chargebackOptions[field] = field === 'eventScanLimit'
+    ? normalizedChargebackNumber(event.value, defaultChargebackOptions.eventScanLimit)
+    : event.value
+}
+
+function resetChargebackOptions() {
+  Object.assign(chargebackOptions, { ...defaultChargebackOptions })
+}
+
+async function handleResetChargebackOptions() {
+  resetChargebackOptions()
+  await loadChargebackPreview()
+}
+
 function dataFlowFilterPayload() {
   return {
     bucketName: dataFlowFilter.bucketName.trim(),
@@ -4896,6 +5000,25 @@ function dataFlowFilterPayload() {
     to: localDateTimeToIso(dataFlowFilter.to),
     limit: dataFlowFilter.limit || 50,
   }
+}
+
+function chargebackPreviewPayload() {
+  const payload = {
+    from: localDateTimeToIso(chargebackOptions.from),
+    to: localDateTimeToIso(chargebackOptions.to),
+    currency: String(chargebackOptions.currency || '').trim(),
+    eventScanLimit: normalizedChargebackNumber(chargebackOptions.eventScanLimit, defaultChargebackOptions.eventScanLimit),
+  }
+  for (const field of chargebackRateFields) {
+    payload[field] = normalizedChargebackNumber(chargebackOptions[field], '')
+  }
+  return payload
+}
+
+function normalizedChargebackNumber(value, fallback) {
+  if (value === '' || value === null || value === undefined) return fallback
+  const number = Number(value)
+  return Number.isFinite(number) ? number : fallback
 }
 
 function localDateTimeToIso(value) {

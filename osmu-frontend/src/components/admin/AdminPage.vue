@@ -241,6 +241,19 @@
       @delete-quota-policy="$emit('delete-quota-policy', $event)"
     />
 
+    <BillingChargebackPanel
+      v-if="canUseAdminTools"
+      id="admin-billing-chargeback"
+      :can-use-admin-tools="canUseAdminTools"
+      :chargeback-options="chargebackOptions"
+      :chargeback-preview="chargebackPreview"
+      :format-bytes="formatBytes"
+      :format-date-time="formatDateTime"
+      @update-chargeback-option="$emit('update-chargeback-option', $event)"
+      @refresh-chargeback-preview="$emit('refresh-chargeback-preview')"
+      @reset-chargeback-options="$emit('reset-chargeback-options')"
+    />
+
     <article v-if="isAdmin" id="admin-storage-profiles" class="panel" data-testid="admin-storage-profile-panel">
       <div class="panel-head">
         <div>
@@ -386,6 +399,7 @@
 <script setup>
 import { computed } from 'vue'
 import AccessKeyPanel from './AccessKeyPanel.vue'
+import BillingChargebackPanel from './BillingChargebackPanel.vue'
 import BucketMetadataPanel from './BucketMetadataPanel.vue'
 import BucketPermissionsPanel from './BucketPermissionsPanel.vue'
 import IdentityAdminPanel from './IdentityAdminPanel.vue'
@@ -417,6 +431,8 @@ const props = defineProps({
   objectShareAnalytics: { type: Object, required: true },
   objectShareAnalyticsFilter: { type: Object, required: true },
   enterpriseAuthPlan: { type: Object, required: true },
+  chargebackOptions: { type: Object, required: true },
+  chargebackPreview: { type: Object, required: true },
   quotaPolicyForm: { type: Object, required: true },
   quotaPolicyTargetOptions: { type: Array, required: true },
   quotaPolicies: { type: Array, required: true },
@@ -614,6 +630,9 @@ defineEmits([
   'delete-bucket-tags',
   'save-object-share-policy',
   'refresh-object-share-analytics',
+  'update-chargeback-option',
+  'refresh-chargeback-preview',
+  'reset-chargeback-options',
   'save-quota-policy',
   'reset-quota-policy-target',
   'reset-quota-policy-form',

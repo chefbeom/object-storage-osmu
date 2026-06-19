@@ -435,6 +435,10 @@ function handleAdminRoute(request, response, path, jsonBody, url) {
     sendJson(response, 200, apiData(usageSummary()))
     return
   }
+  if (request.method === 'GET' && path === '/admin/billing/chargeback-preview') {
+    sendJson(response, 200, apiData(chargebackPreview(url)))
+    return
+  }
   if (request.method === 'GET' && path === '/admin/backup/status') {
     sendJson(response, 200, apiData(backupStatus()))
     return
@@ -473,7 +477,7 @@ function handleAdminRoute(request, response, path, jsonBody, url) {
     return
   }
   if (request.method === 'GET' && path === '/admin/organizations/usage') {
-    sendJson(response, 200, apiItems([]))
+    sendJson(response, 200, apiItems(organizationUsageRows()))
     return
   }
   if (request.method === 'GET' && path === '/admin/security/enterprise-auth-plan') {
@@ -1032,6 +1036,138 @@ function normalizeDataFlowLimit(limit) {
   return Math.min(500, Math.floor(limit))
 }
 
+function chargebackPreview(url) {
+  refreshBucketUsage()
+  const rates = chargebackRates(url)
+  const limit = normalizeChargebackEventLimit(Number(url.searchParams.get('eventScanLimit') || 10000))
+  const events = filterDataFlowEvents(state.dataFlowEvents || [], {
+    from: url.searchParams.get('from') || '',
+    to: url.searchParams.get('to') || '',
+  }).slice(0, limit)
+  const organizations = organizationUsageRows().map((organization) => chargebackOrganization(organization, events, rates))
+  return {
+    currency: String(url.searchParams.get('currency') || 'USD').trim().toUpperCase().slice(0, 12) || 'USD',
+    from: url.searchParams.get('from') || null,
+    to: url.searchParams.get('to') || null,
+    rates,
+    eventScanLimit: limit,
+    scannedEventCount: events.length,
+    organizationCount: organizations.length,
+    bucketCount: organizations.reduce((sum, organization) => sum + organization.bucketCount, 0),
+    usedBytes: organizations.reduce((sum, organization) => sum + organization.usedBytes, 0),
+    ingressBytes: organizations.reduce((sum, organization) => sum + organization.ingressBytes, 0),
+    egressBytes: organizations.reduce((sum, organization) => sum + organization.egressBytes, 0),
+    internalBytes: organizations.reduce((sum, organization) => sum + organization.internalBytes, 0),
+    billableOperationCount: organizations.reduce((sum, organization) => sum + organization.billableOperationCount, 0),
+    failedOperationCount: organizations.reduce((sum, organization) => sum + organization.failedOperationCount, 0),
+    cancelledOperationCount: organizations.reduce((sum, organization) => sum + organization.cancelledOperationCount, 0),
+    estimatedTotalCost: money(organizations.reduce((sum, organization) => sum + organization.estimatedTotalCost, 0)),
+    organizations,
+    generatedAt: new Date().toISOString(),
+  }
+}
+
+function chargebackRates(url) {
+  return {
+    storageGbMonthRate: parseChargebackRate(url.searchParams.get('storageGbMonthRate')),
+    ingressGbRate: parseChargebackRate(url.searchParams.get('ingressGbRate')),
+    egressGbRate: parseChargebackRate(url.searchParams.get('egressGbRate')),
+    internalGbRate: parseChargebackRate(url.searchParams.get('internalGbRate')),
+    operationThousandRate: parseChargebackRate(url.searchParams.get('operationThousandRate')),
+  }
+}
+
+function chargebackOrganization(organization, events, rates) {
+  const counters = chargebackCounters(events)
+  const projectedStorageCost = costForBytes(rates.storageGbMonthRate, organization.usedBytes)
+  const ingressCost = costForBytes(rates.ingressGbRate, counters.ingressBytes)
+  const egressCost = costForBytes(rates.egressGbRate, counters.egressBytes)
+  const internalCost = costForBytes(rates.internalGbRate, counters.internalBytes)
+  const operationCost = costForOperations(rates.operationThousandRate, counters.billableOperationCount)
+  return {
+    organizationId: organization.id,
+    organizationName: organization.name,
+    bucketCount: organization.bucketCount,
+    objectCount: organization.objectCount,
+    usedBytes: organization.usedBytes,
+    ingressBytes: counters.ingressBytes,
+    egressBytes: counters.egressBytes,
+    internalBytes: counters.internalBytes,
+    billableOperationCount: counters.billableOperationCount,
+    failedOperationCount: counters.failedOperationCount,
+    cancelledOperationCount: counters.cancelledOperationCount,
+    projectedStorageCost,
+    ingressCost,
+    egressCost,
+    internalCost,
+    operationCost,
+    estimatedTotalCost: money(projectedStorageCost + ingressCost + egressCost + internalCost + operationCost),
+  }
+}
+
+function chargebackCounters(events) {
+  return events.reduce((counters, event) => {
+    if (event.status === 'FAILED' || event.eventType === 'FAILURE') {
+      counters.failedOperationCount += 1
+      return counters
+    }
+    if (event.status === 'CANCELLED' || event.eventType === 'CANCEL') {
+      counters.cancelledOperationCount += 1
+      return counters
+    }
+    if (event.status !== 'SUCCESS') return counters
+    counters.billableOperationCount += 1
+    const bytes = Math.max(0, Number(event.sizeBytes || 0))
+    if (event.direction === 'INGRESS') counters.ingressBytes += bytes
+    if (event.direction === 'EGRESS') counters.egressBytes += bytes
+    if (event.direction === 'INTERNAL') counters.internalBytes += bytes
+    return counters
+  }, {
+    ingressBytes: 0,
+    egressBytes: 0,
+    internalBytes: 0,
+    billableOperationCount: 0,
+    failedOperationCount: 0,
+    cancelledOperationCount: 0,
+  })
+}
+
+function organizationUsageRows() {
+  refreshBucketUsage()
+  const usedBytes = state.buckets.reduce((sum, bucket) => sum + Number(bucket.usedBytes || 0), 0)
+  return [{
+    id: 1,
+    name: 'Mock Organization',
+    defaultQuotaBytes: 10 * BYTES_PER_GIB,
+    bucketQuotaBytes: state.buckets.reduce((sum, bucket) => sum + Number(bucket.quotaBytes || 0), 0),
+    bucketCount: state.buckets.length,
+    objectCount: Array.from(state.objects.values()).reduce((sum, items) => sum + items.length, 0),
+    usedBytes,
+  }]
+}
+
+function parseChargebackRate(value) {
+  const number = Number(value || 0)
+  return Number.isFinite(number) && number > 0 ? money(number) : 0
+}
+
+function normalizeChargebackEventLimit(limit) {
+  if (!Number.isFinite(limit) || limit <= 0) return 10000
+  return Math.min(50000, Math.floor(limit))
+}
+
+function costForBytes(rate, bytes) {
+  return money((Number(rate || 0) * Math.max(0, Number(bytes || 0))) / BYTES_PER_GIB)
+}
+
+function costForOperations(rate, count) {
+  return money((Number(rate || 0) * Math.max(0, Number(count || 0))) / 1000)
+}
+
+function money(value) {
+  return Math.round(Number(value || 0) * 1000000) / 1000000
+}
+
 function usageSummary() {
   refreshBucketUsage()
   return {
@@ -1490,6 +1626,12 @@ async function runSelfTest() {
     }
     if (!readiness.data.items.some((item) => item.code === 'OPERATIONS_READINESS_CONVERGENCE')) {
       throw new Error('readiness convergence item self-test failed')
+    }
+    const chargeback = await (await fetch(`${base}/admin/billing/chargeback-preview?storageGbMonthRate=0.02&egressGbRate=0.01&operationThousandRate=0.004`, {
+      headers: { Authorization: `Bearer ${login.data.accessToken}` },
+    })).json()
+    if (!chargeback.data || chargeback.data.organizationCount < 1 || !chargeback.data.organizations?.length) {
+      throw new Error('chargeback preview self-test failed')
     }
     const bucket = await (await fetch(`${base}/buckets`, {
       method: 'POST',

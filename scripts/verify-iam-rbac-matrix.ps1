@@ -14,7 +14,8 @@ param(
     [string] $LdapLoginServicePath = ".\osmu-backend\src\main\java\com\example\osmu\auth\LdapLoginService.java",
     [string] $DashboardLayoutServicePath = ".\osmu-backend\src\main\java\com\example\osmu\dashboard\DashboardLayoutService.java",
     [string] $HomeViewPath = ".\osmu-frontend\src\views\HomeView.vue",
-    [string] $AdminPagePath = ".\osmu-frontend\src\components\admin\AdminPage.vue"
+    [string] $AdminPagePath = ".\osmu-frontend\src\components\admin\AdminPage.vue",
+    [string] $BillingChargebackPanelPath = ".\osmu-frontend\src\components\admin\BillingChargebackPanel.vue"
 )
 
 $ErrorActionPreference = "Stop"
@@ -115,6 +116,7 @@ Assert-Contains $frontendDesign 'getEnterpriseAuthPlan' "Frontend design"
 Assert-Contains $frontendDesign 'completeOidcCallback' "Frontend design"
 Assert-Contains $frontendDesign 'loginWithLdap' "Frontend design"
 Assert-Contains $frontendDesign 'getChargebackPreview' "Frontend design"
+Assert-Contains $frontendDesign 'BillingChargebackPanel' "Frontend design"
 Assert-Contains $frontendDesign 'previewEnterpriseAuthClaims' "Frontend design"
 Assert-Contains $frontendDesign 'provisionEnterpriseAuthUser' "Frontend design"
 Assert-Contains $frontendDesign 'adminOnly' "Frontend design"
@@ -202,11 +204,18 @@ Assert-Contains $homeView 'createTeam' "HomeView"
 Assert-Contains $homeView 'deleteTeam' "HomeView"
 Assert-Contains $homeView 'getEnterpriseAuthPlan' "HomeView"
 Assert-Contains $homeView 'enterpriseAuthPlan' "HomeView"
+Assert-Contains $homeView 'getChargebackPreview' "HomeView"
+Assert-Contains $homeView 'loadChargebackPreview' "HomeView"
 
 $adminPage = Read-RequiredFile $AdminPagePath "AdminPage"
+Assert-Contains $adminPage 'BillingChargebackPanel' "AdminPage"
 Assert-Contains $adminPage 'Enterprise auth plan' "AdminPage"
 Assert-Contains $adminPage 'enterpriseAuthStatus' "AdminPage"
 Assert-Contains $adminPage 'osmu_roles' "AdminPage"
+
+$billingChargebackPanel = Read-RequiredFile $BillingChargebackPanelPath "Billing chargeback panel"
+Assert-Contains $billingChargebackPanel 'billing-chargeback-panel' "Billing chargeback panel"
+Assert-Contains $billingChargebackPanel 'chargeback-organization-table' "Billing chargeback panel"
 
 Write-Host "IAM/RBAC matrix verified."
 Write-Host "Matrix: $(Resolve-ProjectPath $MatrixPath)"
