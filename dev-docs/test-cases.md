@@ -883,6 +883,16 @@ ID:
 - Priority: P1
 - Automated: `AdminUserControllerTest.adminUserListSupportsFiltersAndCursorPagination`, `api-query.test.js`
 
+### TC-ORG-006B
+
+- Feature: Team RBAC management scope.
+- Preconditions: ADMIN, ORG_ADMIN, two organizations, same-org users, and another-org users exist.
+- Input: `GET/POST /api/admin/teams`, `PUT /api/admin/teams/{teamId}/members`, `DELETE /api/admin/teams/{teamId}`.
+- Steps: ADMIN creates a team with same-org members. ORG_ADMIN creates a team in its organization, tries to include another-org user, lists teams, updates members, and deletes the team.
+- Expected: ADMIN can manage all teams. ORG_ADMIN sees and manages only its organization teams. Cross-organization members and protected admin/auditor members are rejected with `403 AUTHORIZATION_FAILED`. Team deletion removes connected `TEAM` bucket permission rows.
+- Priority: P1
+- Automated: `AdminTeamControllerTest`
+
 ### TC-ORG-007
 
 - 기능: ORG_ADMIN global admin API 차단
@@ -1004,6 +1014,16 @@ ID:
 - 기대 결과: permission별로 `READ`, `WRITE`, `DELETE` object action이 분리되어 동작하고, target user는 permission 목록 관리 API에 접근할 수 없다. 권한 회수 후 기존 Access Key도 stale policy를 유지하지 않는다.
 - 우선순위: P1
 - 자동화 여부: Automated
+
+### TC-BUCKET-010A
+
+- Feature: `TEAM` bucket permission applies to team members.
+- Preconditions: A bucket, a team, one team member, and one outsider exist in the same organization.
+- Input: `POST /api/buckets/{bucketName}/permissions` with `subjectType = TEAM`.
+- Steps: Grant `READ` to the team, verify the member can list objects and create a scoped read Access Key, verify the outsider is denied, revoke the permission, then update team members.
+- Expected: Team members inherit bucket permissions through team membership. Outsiders do not. Permission revoke or membership removal resynchronizes affected active Access Keys and marks keys `INACTIVE` when no scope remains.
+- Priority: P1
+- Automated: `BucketObjectFlowTest.teamBucketPermissionAppliesToTeamMembers`
 
 ## 5.1 Storage Profile
 

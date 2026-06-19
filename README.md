@@ -89,6 +89,7 @@ Frontend는 MariaDB나 MinIO에 직접 접근하지 않습니다. Backend API만
 - 오브젝트: 업로드, 다운로드, 목록, 검색, prefix 탐색, tag, soft delete, restore, purge.
 - S3 호환 API: SigV4, bucket/object 기본 동작, range/conditional GET, CopyObject, multipart, multi-delete, checksum header/trailer 및 multipart checksum negotiation 일부, aws-chunked body decode, S3 XML 오류 응답을 지원한다. 목표는 주요 S3 클라이언트 대체 사용 가능성이고, AWS의 모든 세부 edge parity는 목표가 아니다. 새 S3 작업은 실제 클라이언트 전환 흐름이 깨질 때만 보강한다. 전체 지원/부분지원/미지원 범위는 `dev-docs/s3-compatibility.md`에 정리한다.
 - Access Key: one-time secret, bucket scope, 권한 분리, revoke/bulk disable, MinIO policy 연동 초안.
+- 조직/팀 RBAC: `ADMIN`/`ORG_ADMIN`/`AUDITOR`/`USER` 역할, 조직별 사용자/팀 관리, `TEAM` bucket permission, 권한 회수 시 Access Key policy 재동기화.
 - Lifecycle/Retention: rule dry-run, conflict report, S3 lifecycle XML import/export, version/trash retention cleanup.
 - 공유/보안: object share link, password/IP 제한, usage limit, cleanup, analytics.
 - Dashboard: widget catalog, layout preset, system/backup/quota/share/readiness/data-flow 요약.
@@ -277,7 +278,7 @@ powershell -ExecutionPolicy Bypass -File .\scripts\verify-s3-client-smoke.ps1 -C
 ## 다음 개발 축
 
 - 실제 Kubernetes cluster와 GitHub-hosted workflow evidence 수집.
-- 관리자/감사자/조직 관리자 워크플로우와 권한 정책 고도화.
+- 관리자/감사자/조직 관리자 워크플로우와 SSO/OIDC 연동 검토.
 - data-flow 장기 analytics를 위한 partition 또는 time-series 저장소 연동.
 - tenant billing/chargeback을 위한 요금 정책, 비용 리포트, 임계치 모델링.
 - S3 대체성 유지: host `aws`/`mc`, boto3, AWS SDK smoke에서 실제 사용 흐름이 깨지는 경우만 우선 보강하고, AWS 세부 parity 추적은 제품 영향이 확인될 때만 수행한다.

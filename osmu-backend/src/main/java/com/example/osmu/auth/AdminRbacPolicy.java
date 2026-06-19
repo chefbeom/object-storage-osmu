@@ -17,7 +17,11 @@ public class AdminRbacPolicy {
             RouteRule.exact("POST", "/api/admin/users"),
             RouteRule.pattern("PATCH", "^/api/admin/users/\\d+/status$"),
             RouteRule.exact("GET", "/api/admin/organizations"),
-            RouteRule.exact("GET", "/api/admin/organizations/usage")
+            RouteRule.exact("GET", "/api/admin/organizations/usage"),
+            RouteRule.exact("GET", "/api/admin/teams"),
+            RouteRule.exact("POST", "/api/admin/teams"),
+            RouteRule.pattern("PUT", "^/api/admin/teams/\\d+/members$"),
+            RouteRule.pattern("DELETE", "^/api/admin/teams/\\d+$")
     );
     private static final List<RouteRule> AUDITOR_ALLOWED_ROUTES = List.of(
             RouteRule.exact("GET", "/api/admin/audit-logs"),

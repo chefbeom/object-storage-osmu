@@ -1528,6 +1528,33 @@ export function getOrganizations() {
   return request('/admin/organizations')
 }
 
+export function getTeams(filters = {}) {
+  const params = new URLSearchParams()
+  if (filters.organizationId) params.set('organizationId', filters.organizationId)
+  const query = params.toString()
+  return request(`/admin/teams${query ? `?${query}` : ''}`)
+}
+
+export function createTeam(payload) {
+  return request('/admin/teams', {
+    method: 'POST',
+    body: payload,
+  })
+}
+
+export function updateTeamMembers(teamId, memberIds) {
+  return request(`/admin/teams/${encodeURIComponent(teamId)}/members`, {
+    method: 'PUT',
+    body: { memberIds },
+  })
+}
+
+export function deleteTeam(teamId) {
+  return request(`/admin/teams/${encodeURIComponent(teamId)}`, {
+    method: 'DELETE',
+  })
+}
+
 export function getOrganizationUsage() {
   return request('/admin/organizations/usage')
 }

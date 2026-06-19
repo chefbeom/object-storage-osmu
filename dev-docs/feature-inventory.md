@@ -109,11 +109,11 @@ MVP 데모 기준 완료율은 약 90~95%입니다.
 - 실제 운영용 계정 bootstrap 정책: `OSMU_BOOTSTRAP_ADMIN_ENABLED`, `OSMU_BOOTSTRAP_ADMIN_ALLOW_DEFAULT_CREDENTIALS`, 필수 admin 필드 검증, 기본 비밀번호 운영 차단
 - refresh token/session 만료 UX: refresh 실패와 저장 token 복구 실패 시 session state/data를 정리하고 `/login?redirect=...&reason=session-expired|session-invalid` 안내 표시
 - read-only auditor 역할: `AUDITOR` role, 감사/상태/backup 조회 admin route allowlist, Dashboard/Audit navigation, read-only audit widget catalog, 변경성 admin API 차단
+- 부서/team 단위 RBAC: `teams`/`team_members` metadata, `/api/admin/teams` 관리 API, `TEAM` bucket permission subject, 팀 멤버 기반 bucket 접근, 멤버 변경/팀 삭제 시 Access Key policy 재동기화, AdminPage 팀 관리 UI
 
 남은 것:
 
 - SSO/OIDC 검토
-- 부서/team 단위 RBAC
 
 ### 4.2 개발자 콘솔
 

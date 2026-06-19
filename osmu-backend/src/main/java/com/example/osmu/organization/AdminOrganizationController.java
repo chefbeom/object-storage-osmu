@@ -12,6 +12,7 @@ import com.example.osmu.common.error.ApiErrorCode;
 import com.example.osmu.common.error.ApiException;
 import com.example.osmu.dashboard.repository.DashboardLayoutDefaultRepository;
 import com.example.osmu.organization.repository.OrganizationRepository;
+import com.example.osmu.organization.repository.TeamRepository;
 import com.example.osmu.quota.QuotaPolicyService;
 import com.example.osmu.user.repository.UserRepository;
 import jakarta.servlet.http.HttpServletRequest;
@@ -37,6 +38,7 @@ public class AdminOrganizationController {
     private final BucketService bucketService;
     private final BucketPermissionRepository bucketPermissionRepository;
     private final UserRepository userRepository;
+    private final TeamRepository teamRepository;
     private final DashboardLayoutDefaultRepository dashboardLayoutDefaultRepository;
     private final QuotaPolicyService quotaPolicyService;
     private final AuditLogService auditLogService;
@@ -47,6 +49,7 @@ public class AdminOrganizationController {
             BucketService bucketService,
             BucketPermissionRepository bucketPermissionRepository,
             UserRepository userRepository,
+            TeamRepository teamRepository,
             DashboardLayoutDefaultRepository dashboardLayoutDefaultRepository,
             QuotaPolicyService quotaPolicyService,
             AuditLogService auditLogService,
@@ -56,6 +59,7 @@ public class AdminOrganizationController {
         this.bucketService = bucketService;
         this.bucketPermissionRepository = bucketPermissionRepository;
         this.userRepository = userRepository;
+        this.teamRepository = teamRepository;
         this.dashboardLayoutDefaultRepository = dashboardLayoutDefaultRepository;
         this.quotaPolicyService = quotaPolicyService;
         this.auditLogService = auditLogService;
@@ -123,6 +127,11 @@ public class AdminOrganizationController {
                 .anyMatch(user -> user.organizationId() != null && user.organizationId().longValue() == organization.id());
         if (hasUsers) {
             throw new ApiException(ApiErrorCode.CONFLICT, "Organization has users.");
+        }
+        boolean hasTeams = teamRepository.findAll().stream()
+                .anyMatch(team -> team.organizationId() == organization.id());
+        if (hasTeams) {
+            throw new ApiException(ApiErrorCode.CONFLICT, "Organization has teams.");
         }
         organizationRepository.deleteById(organization.id());
         boolean defaultRemoved = dashboardLayoutDefaultRepository.deleteByTarget("ORGANIZATION", String.valueOf(organization.id()));

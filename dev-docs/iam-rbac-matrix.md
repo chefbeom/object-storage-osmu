@@ -28,6 +28,7 @@
 | User status | `PATCH /api/admin/users/{userId}/status` | Allow | Allow | Deny | Deny | `ORG_ADMIN`은 자기 조직 일반 `USER`만 관리, 자기 자신/관리자/AUDITOR role 차단 | `AdminRbacPolicy`, `AdminUserController.assertCanManage` |
 | Organization list | `GET /api/admin/organizations` | Allow | Allow | Deny | Deny | `ORG_ADMIN`은 자기 조직만 조회 | `AdminRbacPolicy`, `AdminOrganizationController.visibleOrganizations` |
 | Organization usage | `GET /api/admin/organizations/usage` | Allow | Allow | Deny | Deny | `ORG_ADMIN`은 자기 조직 usage만 조회 | `AdminRbacPolicy`, `AdminOrganizationController.visibleOrganizations` |
+| Team management | `GET/POST /api/admin/teams`, `PUT /api/admin/teams/{teamId}/members`, `DELETE /api/admin/teams/{teamId}` | Allow | Allow | Deny | Deny | `ORG_ADMIN`은 자기 조직 팀과 같은 조직 멤버만 관리 | `AdminRbacPolicy`, `AdminTeamController` |
 | Organization create/delete | `POST /api/admin/organizations`, `DELETE /api/admin/organizations/{id}` | Allow | Deny | Deny | Deny | 전역 tenant 구조 변경 | `AdminRbacPolicy`, controller admin check |
 | Audit | `GET /api/admin/audit-logs`, `GET /api/admin/audit-logs/export.csv` | Allow | Deny | Allow | Deny | 전역 감사 로그 read-only | `AdminRbacPolicy` |
 | Usage/status | `GET /api/admin/usage`, `GET /api/admin/system/status`, `GET /api/admin/dashboard/*` | Allow | Deny | Allow | Deny | 전역 운영 상태 read-only | `AdminRbacPolicy` |
@@ -47,7 +48,7 @@
 | Organization bucket | 전체 조회/관리 | 자기 조직 `ORG` bucket 생성/삭제/관리 | 같은 조직 object 작업 가능, bucket 관리 작업 제한 | `BucketService`, bucket permission checks |
 | Object read | 전체 가능 | 조직/permission 범위 | 소유/permission 범위 | `ObjectService`, `BucketService` |
 | Object write/delete | 전체 가능 | 조직/permission 범위 | 소유/permission 범위 | `ObjectService`, quota checks |
-| Bucket permission | 전체 가능 | 자기 조직 subject 중심으로 제한 | bucket admin permission 없으면 제한 | `BucketPermissionRepository`, `BucketService` |
+| Bucket permission | 전체 가능 | 자기 조직 `USER`/`ORGANIZATION`/`TEAM` subject 중심으로 제한 | bucket admin permission 없으면 제한 | `BucketPermissionRepository`, `BucketService` |
 | Access key list | 전체 가능 | 현재는 본인 key 중심 | 본인 key만 | `AccessKeyService` |
 | Access key create | 접근 가능한 bucket scope만 | 접근 가능한 bucket scope만 | 접근 가능한 bucket scope만 | `AccessKeyService`, S3 policy generator |
 | S3 SigV4/API key | key scope 기준 | key scope 기준 | key scope 기준 | `S3RequestAuthService`, `AccessKeyService` |
@@ -105,6 +106,8 @@ Kubernetes ServiceAccount와 cluster RBAC 권한 경계는 `kubernetes-rbac-matr
 현재 검증 항목:
 
 - `AdminRbacPolicyTest`: role별 admin route 허용/차단.
+- `AdminTeamControllerTest`: `ADMIN`/`ORG_ADMIN` 팀 관리 scope와 팀 삭제 cleanup 검증.
+- `BucketObjectFlowTest.teamBucketPermissionAppliesToTeamMembers`: `TEAM` subject bucket permission과 Access Key 재동기화 검증.
 - `AdminUserControllerTest`: `USER`/`ORG_ADMIN`의 global admin API 차단.
 - `DashboardLayoutControllerTest`: non-admin dashboard admin-only widget 숨김/저장 차단.
 - `HomeView.test.js`: frontend role-aware dashboard filtering source contract.

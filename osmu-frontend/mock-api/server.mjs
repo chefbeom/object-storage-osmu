@@ -37,6 +37,18 @@ function createInitialState() {
       auditLog('DEMO_BOOTSTRAP', 'SYSTEM', 'mock-api', 'SUCCESS'),
     ],
     dataFlowEvents: [],
+    teams: [
+      {
+        id: 1,
+        organizationId: 1,
+        name: 'Mock Data Team',
+        description: 'Mock team-based bucket permission group',
+        memberIds: [2],
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      },
+    ],
+    teamSequence: 2,
     storageProfileAssignments: new Map(),
     storageProfileRequests: [],
     storageProfileRequestSequence: 1,
@@ -440,6 +452,46 @@ function handleAdminRoute(request, response, path, jsonBody, url) {
   }
   if (request.method === 'GET' && path === '/admin/organizations/usage') {
     sendJson(response, 200, apiItems([]))
+    return
+  }
+  if (request.method === 'GET' && path === '/admin/teams') {
+    const organizationId = Number(url.searchParams.get('organizationId') || 0)
+    const teams = organizationId
+      ? state.teams.filter((team) => team.organizationId === organizationId)
+      : state.teams
+    sendJson(response, 200, apiItems(teams))
+    return
+  }
+  if (request.method === 'POST' && path === '/admin/teams') {
+    const team = {
+      id: state.teamSequence++,
+      organizationId: Number(jsonBody.organizationId || 1),
+      name: jsonBody.name || `Mock Team ${state.teamSequence}`,
+      description: jsonBody.description || '',
+      memberIds: Array.isArray(jsonBody.memberIds) ? jsonBody.memberIds.map(Number).filter(Boolean) : [],
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    }
+    state.teams.unshift(team)
+    state.auditLogs.unshift(auditLog('TEAM_CREATE', 'TEAM', team.name, 'SUCCESS'))
+    sendJson(response, 200, apiData(team))
+    return
+  }
+  const teamMembersMatch = /^\/admin\/teams\/(\d+)\/members$/.exec(path)
+  if (teamMembersMatch && request.method === 'PUT') {
+    const teamId = Number(teamMembersMatch[1])
+    state.teams = state.teams.map((team) => team.id === teamId
+      ? { ...team, memberIds: Array.isArray(jsonBody.memberIds) ? jsonBody.memberIds.map(Number).filter(Boolean) : [], updatedAt: new Date().toISOString() }
+      : team)
+    sendJson(response, 200, apiData(state.teams.find((team) => team.id === teamId)))
+    return
+  }
+  const teamDeleteMatch = /^\/admin\/teams\/(\d+)$/.exec(path)
+  if (teamDeleteMatch && request.method === 'DELETE') {
+    const teamId = Number(teamDeleteMatch[1])
+    state.teams = state.teams.filter((team) => team.id !== teamId)
+    response.writeHead(204)
+    response.end()
     return
   }
   if (request.method === 'GET' && path === '/admin/quota-policies') {

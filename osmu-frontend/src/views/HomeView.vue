@@ -339,6 +339,8 @@
         :bucket-permission-form="bucketPermissionForm"
         :users="users"
         :organizations="organizations"
+        :teams="teams"
+        :team-form="teamForm"
         :bucket-permissions="bucketPermissions"
         :can-use-bucket-lifecycle="canUseBucketLifecycle"
         :bucket-lifecycle-xml="bucketLifecycleXml"
@@ -428,6 +430,8 @@
         @export-lifecycle-xml="handleExportLifecycleXml"
         @import-lifecycle-xml="handleImportLifecycleXml"
         @create-organization="handleCreateOrganization"
+        @create-team="handleCreateTeam"
+        @delete-team="handleDeleteTeam"
         @create-user="handleCreateUser"
         @toggle-user-status="handleToggleUserStatus"
       />
@@ -496,6 +500,7 @@ import {
   createOrganization,
   createPresignedDownloadUrl,
   createPresignedUploadUrl,
+  createTeam,
   createStorageExpansionExecutionRecord,
   createStorageExpansionExecutionPlan,
   createStorageExpansionGitOpsPlan,
@@ -513,6 +518,7 @@ import {
   deleteObjectLifecycleRule,
   deleteObjectShareLink,
   deleteObjectVersion,
+  deleteTeam,
   deleteQuotaPolicy,
   deleteStoredMultipartUploadSession,
   downloadStorageExpansionGitOpsArtifactBundle,
@@ -563,6 +569,7 @@ import {
   getStorageExpansionSummary,
   getStorageProfiles,
   getStorageProfileRequests,
+  getTeams,
   getAdminStorageProfileRequests,
   getUsage,
   getUsers,
@@ -1057,6 +1064,7 @@ const accessKeyForm = reactive({ name: 'local-dev-key', expiresAt: '', scopeBuck
 const bucketPermissionForm = reactive({ subjectType: 'USER', subjectId: '', permissions: ['READ'] })
 const userForm = reactive({ loginId: '', email: '', name: '', password: '', role: 'USER', organizationId: '' })
 const organizationForm = reactive({ name: '', description: '', defaultQuotaTb: 10 })
+const teamForm = reactive({ organizationId: '', name: '', description: '', memberIds: [] })
 const quotaPolicyForm = reactive({ targetType: 'USER', targetId: '', targetSearch: '', quotaGb: 100, reason: '', editingKey: '' })
 const storageExpansionForm = reactive({ capacityGb: 1024, serverCount: 4, volumesPerServer: 1, reason: '' })
 const storageProfileForm = reactive({ requestedProfile: 'STANDARD', reason: '' })
@@ -1160,6 +1168,7 @@ const bucketPermissions = ref([])
 const users = ref([])
 const organizations = ref([])
 const organizationUsages = ref([])
+const teams = ref([])
 const quotaPolicies = ref([])
 const quotaPolicyHistory = ref([])
 const storageExpansionRequests = ref([])
@@ -2213,18 +2222,22 @@ async function loadDashboard(options = {}) {
     }
 
     if (canUseAdminTools.value) {
-      const [userResult, organizationResult, organizationUsageResult] = await Promise.all([
+      const [userResult, organizationResult, organizationUsageResult, teamResult] = await Promise.all([
         safeRequest(() => getUsers(), { items: [] }),
         safeRequest(() => getOrganizations(), { items: [] }),
         safeRequest(() => getOrganizationUsage(), { items: [] }),
+        safeRequest(() => getTeams(), { items: [] }),
       ])
       users.value = userResult.items || []
       organizations.value = organizationResult.items || []
       organizationUsages.value = organizationUsageResult.items || []
+      teams.value = teamResult.items || []
+      syncTeamFormDefaults()
     } else {
       users.value = []
       organizations.value = []
       organizationUsages.value = []
+      teams.value = []
     }
 
     if (isAdmin.value) {
@@ -4335,6 +4348,67 @@ async function handleCreateOrganization() {
     organizationForm.description = ''
     await loadDashboard()
     setStatusMessage(`${result.data?.name || organizationForm.name || '조직'} 생성 완료`)
+  }
+}
+
+async function loadTeams() {
+  if (!canUseAdminTools.value) {
+    teams.value = []
+    return
+  }
+  const result = await safeRequest(() => getTeams(), { items: [] })
+  teams.value = result.items || []
+  syncTeamFormDefaults()
+}
+
+async function handleCreateTeam() {
+  if (!teamForm.organizationId || !teamForm.name) {
+    setErrorMessage('조직과 팀 이름을 입력해야 합니다.')
+    return
+  }
+  const memberIds = teamForm.memberIds
+    .map((memberId) => Number(memberId))
+    .filter((memberId) => Number.isFinite(memberId) && memberId > 0)
+  const result = await runAction(() => createTeam({
+    organizationId: Number(teamForm.organizationId),
+    name: teamForm.name,
+    description: teamForm.description,
+    memberIds,
+  }))
+  if (result) {
+    const createdName = result.data?.name || teamForm.name
+    resetTeamForm()
+    await loadTeams()
+    setStatusMessage(`${createdName} 팀 생성 완료`)
+  }
+}
+
+function handleDeleteTeam(team) {
+  openConfirmDialog({
+    title: '팀 삭제',
+    message: `${team.name} 팀을 삭제하고 연결된 TEAM 버킷 권한을 정리합니다.`,
+    confirmLabel: '삭제',
+    action: async () => {
+      const result = await runAction(() => runCommand(() => deleteTeam(team.id)))
+      if (!result) return false
+      await loadTeams()
+      await loadBucketPermissions()
+      setStatusMessage(`${team.name} 팀 삭제 완료`)
+      return true
+    },
+  })
+}
+
+function resetTeamForm() {
+  teamForm.name = ''
+  teamForm.description = ''
+  teamForm.memberIds = []
+  syncTeamFormDefaults()
+}
+
+function syncTeamFormDefaults() {
+  if (!teamForm.organizationId && organizations.value.length > 0) {
+    teamForm.organizationId = String(organizations.value[0].id)
   }
 }
 

@@ -191,6 +191,7 @@
       :bucket-permission-form="bucketPermissionForm"
       :users="users"
       :organizations="organizations"
+      :teams="teams"
       :bucket-permissions="bucketPermissions"
       @grant-bucket-permissions="$emit('grant-bucket-permissions')"
       @revoke-bucket-permission="$emit('revoke-bucket-permission', $event)"
@@ -364,6 +365,8 @@
       :can-use-admin-tools="canUseAdminTools"
       :organization-form="organizationForm"
       :organization-usages="organizationUsages"
+      :team-form="teamForm"
+      :teams="teams"
       :user-form="userForm"
       :users="users"
       :organizations="organizations"
@@ -372,6 +375,8 @@
       :session="session"
       :format-bytes="formatBytes"
       @create-organization="$emit('create-organization')"
+      @create-team="$emit('create-team')"
+      @delete-team="$emit('delete-team', $event)"
       @create-user="$emit('create-user')"
       @toggle-user-status="$emit('toggle-user-status', $event)"
     />
@@ -401,6 +406,7 @@ const props = defineProps({
   bucketPermissionForm: { type: Object, required: true },
   users: { type: Array, required: true },
   organizations: { type: Array, required: true },
+  teams: { type: Array, required: true },
   bucketPermissions: { type: Array, required: true },
   canUseBucketLifecycle: { type: Boolean, required: true },
   bucketLifecycleXml: { type: Object, required: true },
@@ -433,6 +439,7 @@ const props = defineProps({
   canUseAdminTools: { type: Boolean, required: true },
   organizationForm: { type: Object, required: true },
   organizationUsages: { type: Array, required: true },
+  teamForm: { type: Object, required: true },
   userForm: { type: Object, required: true },
   session: { type: Object, required: true },
   formatKeyScope: { type: Function, required: true },
@@ -608,6 +615,8 @@ defineEmits([
   'export-lifecycle-xml',
   'import-lifecycle-xml',
   'create-organization',
+  'create-team',
+  'delete-team',
   'create-user',
   'toggle-user-status',
 ])

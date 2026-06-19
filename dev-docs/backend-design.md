@@ -243,6 +243,16 @@ Controller -> Service -> StorageAdapter
 - ORG_ADMIN은 USER role만 생성 가능
 - 조직 생성 감사 로그 기록
 
+### 5.5.1 AdminTeamController / TeamRepository
+
+책임:
+
+- 조직 안의 팀/부서 권한 그룹 생성, 조회, 멤버 교체, 삭제.
+- `ADMIN`은 전체 조직 팀을 관리하고, `ORG_ADMIN`은 자기 조직 팀만 관리한다.
+- 팀 멤버는 같은 조직 사용자로 제한한다. `ORG_ADMIN`은 `ADMIN`/`AUDITOR` 계정을 팀 멤버로 지정할 수 없다.
+- 팀 삭제 시 `TEAM:{teamId}` bucket permission을 함께 정리한다.
+- 팀 멤버 변경 또는 팀 삭제 후 영향을 받는 사용자의 활성 Access Key를 현재 bucket scope 기준으로 재동기화한다.
+
 ### 5.6 AuditLogService
 
 책임:
@@ -257,7 +267,7 @@ Controller -> Service -> StorageAdapter
 
 - `bucket_permissions` metadata 저장
 - bucket별 권한 목록 조회
-- user 또는 organization subject 권한 중복 차단
+- user, organization, team subject 권한 중복 차단
 - bucket 삭제 시 permission metadata 정리
 
 ### 5.8 ObjectMetadataRepository

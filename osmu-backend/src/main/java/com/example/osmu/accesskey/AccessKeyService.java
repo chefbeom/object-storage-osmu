@@ -6,6 +6,7 @@ import com.example.osmu.bucket.BucketRecord;
 import com.example.osmu.bucket.BucketService;
 import com.example.osmu.common.error.ApiErrorCode;
 import com.example.osmu.common.error.ApiException;
+import com.example.osmu.organization.repository.TeamRepository;
 import com.example.osmu.user.UserAccount;
 import com.example.osmu.user.repository.UserRepository;
 import java.nio.charset.StandardCharsets;
@@ -32,6 +33,7 @@ public class AccessKeyService {
     private final AccessKeyRepository accessKeyRepository;
     private final BucketService bucketService;
     private final UserRepository userRepository;
+    private final TeamRepository teamRepository;
     private final S3AccessPolicyGenerator policyGenerator;
     private final S3AccessPolicyProvisioner policyProvisioner;
     private final AccessKeySecretCipher secretCipher;
@@ -42,6 +44,7 @@ public class AccessKeyService {
             AccessKeyRepository accessKeyRepository,
             BucketService bucketService,
             UserRepository userRepository,
+            TeamRepository teamRepository,
             S3AccessPolicyGenerator policyGenerator,
             S3AccessPolicyProvisioner policyProvisioner,
             AccessKeySecretCipher secretCipher,
@@ -50,6 +53,7 @@ public class AccessKeyService {
         this.accessKeyRepository = accessKeyRepository;
         this.bucketService = bucketService;
         this.userRepository = userRepository;
+        this.teamRepository = teamRepository;
         this.policyGenerator = policyGenerator;
         this.policyProvisioner = policyProvisioner;
         this.secretCipher = secretCipher;
@@ -345,8 +349,16 @@ public class AccessKeyService {
     }
 
     public synchronized int reconcileActiveKeysForSubject(String subjectType, long subjectId) {
+        return reconcileActiveKeysForOwners(ownerIdsForSubject(subjectType, subjectId));
+    }
+
+    public synchronized int reconcileActiveKeysForOwners(List<Long> ownerIds) {
         int changed = 0;
-        for (long ownerId : ownerIdsForSubject(subjectType, subjectId)) {
+        LinkedHashSet<Long> uniqueOwnerIds = new LinkedHashSet<>(ownerIds == null ? List.of() : ownerIds);
+        for (Long ownerId : uniqueOwnerIds) {
+            if (ownerId == null) {
+                continue;
+            }
             for (AccessKeyRecord accessKey : accessKeyRepository.findRecordsByOwnerId(ownerId)) {
                 if (!"ACTIVE".equals(accessKey.status())) {
                     continue;
@@ -406,6 +418,9 @@ public class AccessKeyService {
                     .filter(user -> user.organizationId() != null && user.organizationId() == subjectId)
                     .map(UserAccount::id)
                     .toList();
+        }
+        if ("TEAM".equals(subjectType)) {
+            return teamRepository.findMemberIds(subjectId);
         }
         return List.of();
     }

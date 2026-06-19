@@ -85,19 +85,31 @@ public class GlobalExceptionHandler {
         String hostId = S3TraceHeaders.hostId(requestId, resource);
         String s3Message = S3ErrorCodeMapper.messageFor(code, message);
         return ResponseEntity
-                .status(s3Status(code, statusCode))
+                .status(s3Status(code, statusCode, request))
                 .contentType(MediaType.APPLICATION_XML)
                 .body(s3ErrorXml(code, s3Message, resource, requestId, hostId, s3ErrorDetails(code, request)));
     }
 
-    private HttpStatusCode s3Status(String code, ApiErrorCode fallback) {
+    private HttpStatusCode s3Status(String code, ApiErrorCode fallback, HttpServletRequest request) {
         if ("AccessDenied".equals(code)) {
+            if (fallback == ApiErrorCode.AUTHENTICATION_REQUIRED && !isAwsSigV4Request(request)) {
+                return fallback.status();
+            }
             return HttpStatusCode.valueOf(403);
         }
         if ("MissingContentLength".equals(code)) {
             return HttpStatusCode.valueOf(411);
         }
         return fallback.status();
+    }
+
+    private boolean isAwsSigV4Request(HttpServletRequest request) {
+        if (request == null) {
+            return false;
+        }
+        String authorization = request.getHeader("Authorization");
+        return (authorization != null && authorization.startsWith("AWS4-HMAC-SHA256 "))
+                || "AWS4-HMAC-SHA256".equals(request.getParameter("X-Amz-Algorithm"));
     }
 
     private String s3ErrorXml(String code, String message, String resource, String requestId, String hostId, Map<String, String> details) {

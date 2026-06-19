@@ -968,6 +968,121 @@ class BucketObjectFlowTest {
     }
 
     @Test
+    void teamBucketPermissionAppliesToTeamMembers() throws Exception {
+        String adminToken = loginAndReturnAccessToken("admin", "password");
+        int organizationId = createOrganization(adminToken, "Team Permission Org 1");
+        int memberId = createUser(adminToken, "team-permission-member-1", "team-permission-member-1@example.com", "USER", organizationId);
+        int outsiderId = createUser(adminToken, "team-permission-outsider-1", "team-permission-outsider-1@example.com", "USER", organizationId);
+        String memberToken = loginAndReturnAccessToken("team-permission-member-1", "user-password");
+        String outsiderToken = loginAndReturnAccessToken("team-permission-outsider-1", "user-password");
+
+        String teamResponse = mockMvc.perform(post("/api/admin/teams")
+                        .header("Authorization", "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "organizationId": %d,
+                                  "name": "Permission Team",
+                                  "description": "bucket permission team",
+                                  "memberIds": [%d]
+                                }
+                                """.formatted(organizationId, memberId)))
+                .andExpect(status().isOk())
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+        int teamId = JsonPath.read(teamResponse, "$.data.id");
+
+        mockMvc.perform(post("/api/buckets")
+                        .header("Authorization", "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "name": "team-permission-bucket",
+                                  "quotaBytes": 1024
+                                }
+                                """))
+                .andExpect(status().isOk());
+
+        MockMultipartFile seedFile = new MockMultipartFile(
+                "file",
+                "team-seed.txt",
+                MediaType.TEXT_PLAIN_VALUE,
+                "team-seed".getBytes()
+        );
+        mockMvc.perform(multipart("/api/buckets/{bucketName}/objects", "team-permission-bucket")
+                        .file(seedFile)
+                        .header("Authorization", "Bearer " + adminToken)
+                        .param("key", "team-seed.txt"))
+                .andExpect(status().isOk());
+
+        String permissionResponse = mockMvc.perform(post("/api/buckets/{bucketName}/permissions", "team-permission-bucket")
+                        .header("Authorization", "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "subjectType": "TEAM",
+                                  "subjectId": %d,
+                                  "permissions": ["READ"]
+                                }
+                                """.formatted(teamId)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items[?(@.subjectType == 'TEAM' && @.subjectId == %d)]".formatted(teamId)).exists())
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+        int permissionId = JsonPath.read(permissionResponse, "$.items[0].id");
+
+        mockMvc.perform(get("/api/buckets/{bucketName}/objects", "team-permission-bucket")
+                        .header("Authorization", "Bearer " + memberToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items[*].key", hasItem("team-seed.txt")));
+
+        mockMvc.perform(post("/api/access-keys")
+                        .header("Authorization", "Bearer " + memberToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "name": "team-read-key",
+                                  "allowedBuckets": ["team-permission-bucket"],
+                                  "permissions": ["READ"]
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.permissions[*]", hasItem("READ")));
+
+        mockMvc.perform(get("/api/buckets/{bucketName}/objects", "team-permission-bucket")
+                        .header("Authorization", "Bearer " + outsiderToken))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.error.code").value("AUTHORIZATION_FAILED"));
+
+        mockMvc.perform(delete("/api/buckets/{bucketName}/permissions/{permissionId}", "team-permission-bucket", permissionId)
+                        .header("Authorization", "Bearer " + adminToken))
+                .andExpect(status().isNoContent());
+
+        mockMvc.perform(get("/api/buckets/{bucketName}/objects", "team-permission-bucket")
+                        .header("Authorization", "Bearer " + memberToken))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.error.code").value("AUTHORIZATION_FAILED"));
+
+        mockMvc.perform(get("/api/access-keys")
+                        .header("Authorization", "Bearer " + memberToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items[?(@.name == 'team-read-key')].status", hasItem("INACTIVE")));
+
+        mockMvc.perform(put("/api/admin/teams/{teamId}/members", teamId)
+                        .header("Authorization", "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "memberIds": [%d]
+                                }
+                                """.formatted(outsiderId)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.memberIds[*]", hasItem(outsiderId)));
+    }
+
+    @Test
     void bucketSyncReconcilesObjectsWrittenThroughS3Path() throws Exception {
         String accessToken = loginAndReturnAccessToken("admin", "password");
 

@@ -17788,3 +17788,34 @@ feat/bucket-management
   - `$env:JAVA_HOME='C:\jdk-17'; $env:Path="$env:JAVA_HOME\bin;$env:Path"; .\gradlew.bat test --no-daemon --tests com.example.osmu.object.S3ObjectControllerMultipartTest.completeMultipartUploadRejectsUnsupportedChecksumNegotiationHeaders --tests com.example.osmu.object.S3ObjectControllerMultipartTest.completeMultipartUploadParsesS3XmlAndReturnsResultXml --tests com.example.osmu.common.error.S3ErrorCodeMapperTest`: 통과.
 - 후속:
   - 남은 큰 축은 broader multipart checksum exact AWS edge parity와 live Kubernetes/security evidence다.
+
+### 2026-06-19 - 팀 단위 RBAC와 S3 대체성 기준 유지
+- 작업 시간:
+  - 시작: 2026-06-19 KST
+  - 종료: 2026-06-19 KST
+- 사용자 방향:
+  - AWS S3 호환에 과도하게 집중하지 말고, AWS S3는 대체 가능한 수준으로 둔다.
+  - 다음 구현은 제품 운영 기능 중심으로 진행한다.
+- 수행:
+  - `teams`, `team_members` metadata와 `/api/admin/teams` 관리 API를 추가했다.
+  - `ADMIN`은 전체 팀을 관리하고, `ORG_ADMIN`은 자기 조직 팀과 같은 조직 멤버만 관리하도록 제한했다.
+  - bucket permission subject에 `TEAM`을 추가해 팀 멤버가 팀 권한으로 bucket/object 작업을 수행할 수 있게 했다.
+  - 팀 권한 회수, 팀 멤버 변경, 팀 삭제 시 영향받는 활성 Access Key를 현재 bucket scope 기준으로 재동기화하게 했다.
+  - AdminPage에 팀 생성/삭제 UI와 bucket permission TEAM 선택을 추가했다.
+  - README와 dev-docs에서 S3는 대체성 검증 레이어로 유지하고, 운영/권한 관리 기능을 제품 중심으로 설명했다.
+- 수정 파일:
+  - `osmu-backend/src/main/java/com/example/osmu/organization/AdminTeamController.java`
+  - `osmu-backend/src/main/java/com/example/osmu/organization/repository/TeamRepository.java`
+  - `osmu-backend/src/main/java/com/example/osmu/accesskey/AccessKeyService.java`
+  - `osmu-backend/src/main/java/com/example/osmu/bucket/BucketService.java`
+  - `osmu-backend/src/main/resources/db/migration/V47__teams.sql`
+  - `osmu-frontend/src/views/HomeView.vue`
+  - `osmu-frontend/src/components/admin/IdentityAdminPanel.vue`
+  - `osmu-frontend/src/components/admin/BucketPermissionsPanel.vue`
+  - `README.md`
+  - `dev-docs/*.md`
+- 검증:
+  - `$env:JAVA_HOME='C:\jdk-17'; $env:Path="$env:JAVA_HOME\bin;$env:Path"; .\gradlew.bat test --no-daemon --tests com.example.osmu.organization.AdminTeamControllerTest --tests com.example.osmu.bucket.BucketObjectFlowTest.teamBucketPermissionAppliesToTeamMembers --tests com.example.osmu.auth.AdminRbacPolicyTest`: 통과.
+- 후속:
+  - SSO/OIDC 검토, 운영/live evidence, release packaging을 우선한다.
+  - S3 신규 세부 호환 작업은 실제 지원 클라이언트 smoke 실패나 전환 blocker가 확인될 때만 진행한다.

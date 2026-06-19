@@ -24,7 +24,7 @@ Authorization: Bearer <accessToken>
 
 관리자 API인 `/api/admin/**`는 기본적으로 `ADMIN` role이 필요하다.
 예외적으로 `ORG_ADMIN`은 조직 스코프가 적용된 사용자/조직 조회 API만 접근할 수 있다.
-현재 허용 route는 `GET/POST /api/admin/users`, `PATCH /api/admin/users/{userId}/status`, `GET /api/admin/organizations`, `GET /api/admin/organizations/usage`이다.
+현재 허용 route는 `GET/POST /api/admin/users`, `PATCH /api/admin/users/{userId}/status`, `GET /api/admin/organizations`, `GET /api/admin/organizations/usage`, `GET/POST /api/admin/teams`, `PUT /api/admin/teams/{teamId}/members`, `DELETE /api/admin/teams/{teamId}`이다.
 `AUDITOR`는 read-only 감사/상태 조회 role이다. 허용 route는 `GET /api/admin/audit-logs`, `GET /api/admin/audit-logs/export.csv`, `GET /api/admin/usage`, `GET /api/admin/system/status`, `GET /api/admin/dashboard/summary`, `GET /api/admin/dashboard/readiness`, `GET /api/admin/backup/status`, `GET /api/admin/backup/restore-drill-evidence`로 제한한다.
 
 일반 사용자는 본인이 소유한 bucket, object, access key만 접근할 수 있다. `ADMIN`은 전체 리소스에 접근할 수 있다.
@@ -906,6 +906,65 @@ Rules:
 - 조직 quota 차단은 Backend upload와 presigned upload complete 경로에서 적용한다.
 - 조직 quota 차단은 Backend upload와 presigned upload complete 경로에서 적용한다.
 
+### GET /api/admin/teams
+
+팀 목록 조회. `ADMIN`은 전체 팀을 조회하고, `ORG_ADMIN`은 자기 조직 팀만 조회한다.
+
+Query:
+
+- `organizationId`: 특정 조직 팀만 조회한다. `ORG_ADMIN`은 자기 조직 범위로 제한된다.
+
+Response item:
+
+```json
+{
+  "id": 1,
+  "organizationId": 10,
+  "name": "Data Platform",
+  "description": "dataset access group",
+  "memberIds": [2, 3],
+  "createdAt": "2026-06-19T00:00:00+09:00",
+  "updatedAt": "2026-06-19T00:00:00+09:00"
+}
+```
+
+### POST /api/admin/teams
+
+팀 생성. `ADMIN`은 대상 `organizationId`를 지정해야 하며, `ORG_ADMIN`은 자기 조직 팀만 생성할 수 있다.
+
+Request:
+
+```json
+{
+  "organizationId": 10,
+  "name": "Data Platform",
+  "description": "dataset access group",
+  "memberIds": [2, 3]
+}
+```
+
+Rules:
+
+- 같은 조직 안에서 팀 이름은 중복될 수 없다.
+- 팀 멤버는 같은 조직 사용자여야 한다.
+- `ORG_ADMIN`은 다른 조직 사용자나 `ADMIN`/`AUDITOR` 계정을 팀 멤버로 지정할 수 없다.
+
+### PUT /api/admin/teams/{teamId}/members
+
+팀 멤버 전체 교체. 멤버에서 빠진 사용자의 활성 Access Key는 현재 버킷 권한 기준으로 재동기화되며 남은 scope가 없으면 `INACTIVE`가 된다.
+
+Request:
+
+```json
+{
+  "memberIds": [2, 4]
+}
+```
+
+### DELETE /api/admin/teams/{teamId}
+
+팀 삭제. 연결된 `TEAM:{teamId}` bucket permission을 함께 제거하고, 영향을 받는 활성 Access Key를 재동기화한다.
+
 ## 8. Bucket API
 
 ### GET /api/buckets
@@ -1530,13 +1589,13 @@ Limitations:
 
 정책:
 
-- `subjectType`은 `USER`, `ORGANIZATION`을 지원한다.
+- `subjectType`은 `USER`, `ORGANIZATION`, `TEAM`을 지원한다.
 - `permissions`는 `READ`, `WRITE`, `DELETE`, `ADMIN`을 지원한다.
 - `READ`는 object 목록/다운로드/presigned download 권한이다.
 - `WRITE`는 object upload/presigned upload/complete 권한이다.
 - `DELETE`는 object 삭제 권한이다.
 - `ADMIN`은 bucket permission 관리 권한이며 object 작업 권한도 포함한다.
-- `ORG_ADMIN`은 자기 조직 user 또는 자기 조직 subject에만 권한을 부여할 수 있다.
+- `ORG_ADMIN`은 자기 조직 user, organization, team subject에만 권한을 부여할 수 있다.
 - 권한 부여는 감사 로그 대상이다.
 
 ### DELETE /api/buckets/{bucketName}/permissions/{permissionId}

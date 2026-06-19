@@ -11,7 +11,9 @@ import com.example.osmu.object.repository.ObjectVersionRepository;
 import com.example.osmu.object.StoredObjectRecord;
 import com.example.osmu.object.ObjectVersionStorageKeys;
 import com.example.osmu.organization.OrganizationRecord;
+import com.example.osmu.organization.TeamRecord;
 import com.example.osmu.organization.repository.OrganizationRepository;
+import com.example.osmu.organization.repository.TeamRepository;
 import com.example.osmu.quota.repository.QuotaPolicyRepository;
 import com.example.osmu.storage.ObjectStorageAdapter;
 import com.example.osmu.storageprofile.repository.StorageProfileAssignmentRepository;
@@ -44,6 +46,7 @@ public class BucketService {
     private final ObjectVersionRepository objectVersionRepository;
     private final UserRepository userRepository;
     private final OrganizationRepository organizationRepository;
+    private final TeamRepository teamRepository;
     private final QuotaPolicyRepository quotaPolicyRepository;
     private final StorageProfileAssignmentRepository storageProfileAssignmentRepository;
 
@@ -56,6 +59,7 @@ public class BucketService {
             ObjectVersionRepository objectVersionRepository,
             UserRepository userRepository,
             OrganizationRepository organizationRepository,
+            TeamRepository teamRepository,
             QuotaPolicyRepository quotaPolicyRepository,
             StorageProfileAssignmentRepository storageProfileAssignmentRepository
     ) {
@@ -67,6 +71,7 @@ public class BucketService {
         this.objectVersionRepository = objectVersionRepository;
         this.userRepository = userRepository;
         this.organizationRepository = organizationRepository;
+        this.teamRepository = teamRepository;
         this.quotaPolicyRepository = quotaPolicyRepository;
         this.storageProfileAssignmentRepository = storageProfileAssignmentRepository;
     }
@@ -387,6 +392,9 @@ public class BucketService {
         if ("USER".equals(permission.subjectType())) {
             return permission.subjectId() == user.id();
         }
+        if ("TEAM".equals(permission.subjectType())) {
+            return teamRepository.hasMember(permission.subjectId(), user.id());
+        }
         return "ORGANIZATION".equals(permission.subjectType())
                 && user.organizationId() != null
                 && permission.subjectId() == user.organizationId();
@@ -437,7 +445,7 @@ public class BucketService {
 
     private String normalizeSubjectType(String rawSubjectType) {
         String subjectType = rawSubjectType == null ? "" : rawSubjectType.trim().toUpperCase(Locale.ROOT);
-        if (!Set.of("USER", "ORGANIZATION").contains(subjectType)) {
+        if (!Set.of("USER", "ORGANIZATION", "TEAM").contains(subjectType)) {
             throw new ApiException(ApiErrorCode.VALIDATION_ERROR, "Invalid bucket permission subject type.");
         }
         return subjectType;
@@ -466,6 +474,15 @@ public class BucketService {
             UserAccount subject = userRepository.findById(subjectId)
                     .orElseThrow(() -> new ApiException(ApiErrorCode.VALIDATION_ERROR, "Bucket permission user not found."));
             if (actor.isOrgAdmin() && (actor.organizationId() == null || !actor.organizationId().equals(subject.organizationId()))) {
+                throw new ApiException(ApiErrorCode.AUTHORIZATION_FAILED, "Bucket permission subject denied.");
+            }
+            return;
+        }
+
+        if ("TEAM".equals(subjectType)) {
+            TeamRecord team = teamRepository.findById(subjectId)
+                    .orElseThrow(() -> new ApiException(ApiErrorCode.VALIDATION_ERROR, "Bucket permission team not found."));
+            if (actor.isOrgAdmin() && (actor.organizationId() == null || actor.organizationId() != team.organizationId())) {
                 throw new ApiException(ApiErrorCode.AUTHORIZATION_FAILED, "Bucket permission subject denied.");
             }
             return;

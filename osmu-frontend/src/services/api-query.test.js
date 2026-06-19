@@ -31,6 +31,7 @@ import {
   getObjectShareLinks,
   getObjects,
   getS3ClientConfig,
+  getTeams,
   getUsers,
   importDashboardLayoutPreset,
   importDashboardLayoutPresetBundle,
@@ -401,6 +402,22 @@ test('getUsers sends admin user filters as query parameters', async () => {
     assert.equal(url.searchParams.get('status'), 'ACTIVE')
     assert.equal(url.searchParams.get('limit'), '25')
     assert.equal(url.searchParams.get('cursor'), '42')
+  } finally {
+    cleanupFetch(fetchMock)
+  }
+})
+
+test('getTeams sends admin team filters as query parameters', async () => {
+  const fetchMock = mockFetch([
+    () => jsonResponse({ items: [], nextCursor: null }),
+  ])
+
+  try {
+    await getTeams({ organizationId: 7 })
+
+    const url = new URL(fetchMock.calls[0].url)
+    assert.equal(url.pathname, '/api/admin/teams')
+    assert.equal(url.searchParams.get('organizationId'), '7')
   } finally {
     cleanupFetch(fetchMock)
   }

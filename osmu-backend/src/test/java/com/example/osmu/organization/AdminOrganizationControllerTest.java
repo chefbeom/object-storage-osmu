@@ -218,6 +218,25 @@ class AdminOrganizationControllerTest {
                         .header("Authorization", "Bearer " + adminToken))
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.error.code").value("CONFLICT"));
+
+        int teamOrgId = createOrganization(adminToken, "Delete Team Blocked Org 1");
+        mockMvc.perform(post("/api/admin/teams")
+                        .header("Authorization", "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "organizationId": %d,
+                                  "name": "Delete Block Team",
+                                  "description": "team blocks organization delete",
+                                  "memberIds": []
+                                }
+                                """.formatted(teamOrgId)))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(delete("/api/admin/organizations/{organizationId}", teamOrgId)
+                        .header("Authorization", "Bearer " + adminToken))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.error.code").value("CONFLICT"));
     }
 
     @Test

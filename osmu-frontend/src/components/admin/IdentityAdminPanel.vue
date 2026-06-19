@@ -27,6 +27,37 @@
   <article v-if="canUseAdminTools" class="panel">
     <div class="panel-head">
       <div>
+        <p class="eyebrow">Teams</p>
+        <h3>팀 권한 그룹</h3>
+      </div>
+    </div>
+    <form class="inline-form team-form" @submit.prevent="$emit('create-team')">
+      <select v-model="teamForm.organizationId">
+        <option value="">Org</option>
+        <option v-for="organization in organizations" :key="organization.id" :value="organization.id">{{ organization.name }}</option>
+      </select>
+      <input v-model="teamForm.name" placeholder="Data Platform" />
+      <input v-model="teamForm.description" placeholder="description" />
+      <select v-model="teamForm.memberIds" multiple>
+        <option v-for="user in users" :key="user.id" :value="user.id">{{ user.loginId }}</option>
+      </select>
+      <button type="submit" :disabled="!isLoggedIn">생성</button>
+    </form>
+    <ul class="compact-list">
+      <li v-for="team in teams" :key="team.id">
+        <span class="list-main">
+          <b>{{ team.name }}</b>
+          <small>org {{ team.organizationId }} / members {{ team.memberIds?.length || 0 }}</small>
+        </span>
+        <button type="button" class="danger" @click="$emit('delete-team', team)">삭제</button>
+      </li>
+      <li v-if="teams.length === 0" class="empty">팀 없음</li>
+    </ul>
+  </article>
+
+  <article v-if="canUseAdminTools" class="panel">
+    <div class="panel-head">
+      <div>
         <p class="eyebrow">Users</p>
         <h3>사용자 관리</h3>
       </div>
@@ -65,6 +96,8 @@ defineProps({
   canUseAdminTools: { type: Boolean, required: true },
   organizationForm: { type: Object, required: true },
   organizationUsages: { type: Array, required: true },
+  teamForm: { type: Object, required: true },
+  teams: { type: Array, required: true },
   userForm: { type: Object, required: true },
   users: { type: Array, required: true },
   organizations: { type: Array, required: true },
@@ -76,6 +109,8 @@ defineProps({
 
 defineEmits([
   'create-organization',
+  'create-team',
+  'delete-team',
   'create-user',
   'toggle-user-status',
 ])

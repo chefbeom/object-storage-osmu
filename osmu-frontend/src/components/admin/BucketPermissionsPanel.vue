@@ -11,6 +11,7 @@
       <select v-model="bucketPermissionForm.subjectType">
         <option value="USER">USER</option>
         <option value="ORGANIZATION">ORGANIZATION</option>
+        <option value="TEAM">TEAM</option>
       </select>
       <select v-if="bucketPermissionForm.subjectType === 'USER' && users.length > 0" v-model="bucketPermissionForm.subjectId">
         <option value="">User</option>
@@ -19,6 +20,10 @@
       <select v-else-if="bucketPermissionForm.subjectType === 'ORGANIZATION' && organizations.length > 0" v-model="bucketPermissionForm.subjectId">
         <option value="">Org</option>
         <option v-for="organization in organizations" :key="organization.id" :value="organization.id">{{ organization.name }}</option>
+      </select>
+      <select v-else-if="bucketPermissionForm.subjectType === 'TEAM' && teams.length > 0" v-model="bucketPermissionForm.subjectId">
+        <option value="">Team</option>
+        <option v-for="team in teams" :key="team.id" :value="team.id">{{ team.name }}</option>
       </select>
       <input v-else v-model="bucketPermissionForm.subjectId" type="number" min="1" placeholder="subject id" />
       <div class="permission-row">
@@ -47,6 +52,7 @@ defineProps({
   bucketPermissionForm: { type: Object, required: true },
   users: { type: Array, required: true },
   organizations: { type: Array, required: true },
+  teams: { type: Array, required: true },
   bucketPermissions: { type: Array, required: true },
 })
 

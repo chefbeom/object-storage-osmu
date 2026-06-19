@@ -48,6 +48,8 @@ MariaDB는 실제 파일 데이터를 저장하지 않는다.
 | --- | --- |
 | `organizations` | 조직/부서/프로젝트 |
 | `users` | 사용자 |
+| `teams` | 조직 안의 팀/부서 권한 그룹 |
+| `team_members` | 팀별 사용자 멤버십 |
 | `refresh_tokens` | refresh token hash와 폐기 상태 |
 | `buckets` | 버킷 메타데이터 |
 | `bucket_tags` | S3 bucket tagging metadata |
@@ -121,6 +123,37 @@ CREATE TABLE users (
 - `V4__organizations.sql`에서 `organizations` table과 `users.organization_id`를 추가한다.
 - in-memory repository도 동일하게 `organizationId`를 사용자 profile에 포함한다.
 - 현재 FK는 문서 목표이며 MVP migration은 기존 데이터 호환을 우선해 nullable column과 index부터 제공한다.
+
+## 5.1 teams / team_members
+
+```sql
+CREATE TABLE teams (
+  id BIGINT NOT NULL PRIMARY KEY,
+  organization_id BIGINT NOT NULL,
+  name VARCHAR(100) NOT NULL,
+  description VARCHAR(500) NULL,
+  created_at DATETIME(6) NOT NULL,
+  updated_at DATETIME(6) NOT NULL,
+  UNIQUE KEY uk_teams_org_name (organization_id, name),
+  KEY idx_teams_organization (organization_id)
+);
+
+CREATE TABLE team_members (
+  team_id BIGINT NOT NULL,
+  user_id BIGINT NOT NULL,
+  created_at DATETIME(6) NOT NULL,
+  PRIMARY KEY (team_id, user_id),
+  KEY idx_team_members_user (user_id)
+);
+```
+
+현재 구현:
+
+- Flyway `V47__teams.sql`에서 `teams`, `team_members`를 생성한다.
+- `teams.organization_id`는 조직 범위를 나타낸다. `ORG_ADMIN`은 자기 조직 팀만 조회/생성/수정/삭제할 수 있다.
+- `team_members.user_id`는 같은 조직 사용자만 허용한다.
+- `bucket_permissions.subject_type = TEAM`이면 `subject_id`는 `teams.id`를 의미한다.
+- 팀 멤버 변경이나 팀 삭제로 권한이 사라진 사용자의 활성 Access Key는 현재 bucket scope 기준으로 재동기화한다.
 
 ## 6. refresh_tokens
 
@@ -221,6 +254,7 @@ CREATE TABLE bucket_permissions (
 
 - `USER`
 - `ORGANIZATION`
+- `TEAM`
 
 `permission`:
 
@@ -731,6 +765,9 @@ CREATE TABLE system_settings (
 ```mermaid
 erDiagram
     organizations ||--o{ users : has
+    organizations ||--o{ teams : has
+    teams ||--o{ team_members : has
+    users ||--o{ team_members : joins
     users ||--o{ refresh_tokens : owns
     users ||--o{ access_keys : owns
     buckets ||--o{ bucket_permissions : grants
@@ -758,23 +795,25 @@ erDiagram
 
 1. `organizations`
 2. `users`
-3. `refresh_tokens`
-4. `buckets`
-5. `bucket_tags`
-6. `bucket_permissions`
-7. `access_keys`
-8. `audit_logs`
-9. `quota_policies`
-10. `quota_policy_history`
-11. `object_metadata`
-12. `object_versions`
-13. `presigned_upload_sessions`
-14. `object_share_links`
-15. `system_settings`
-16. `object_lifecycle_rules`
-17. `bucket_storage_profile_assignments`
-18. `storage_profile_requests`
-19. `data_flow_events`
+3. `teams`
+4. `team_members`
+5. `refresh_tokens`
+6. `buckets`
+7. `bucket_tags`
+8. `bucket_permissions`
+9. `access_keys`
+10. `audit_logs`
+11. `quota_policies`
+12. `quota_policy_history`
+13. `object_metadata`
+14. `object_versions`
+15. `presigned_upload_sessions`
+16. `object_share_links`
+17. `system_settings`
+18. `object_lifecycle_rules`
+19. `bucket_storage_profile_assignments`
+20. `storage_profile_requests`
+21. `data_flow_events`
 
 ## Object Lifecycle Migrations
 
