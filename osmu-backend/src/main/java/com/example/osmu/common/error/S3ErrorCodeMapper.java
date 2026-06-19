@@ -36,7 +36,7 @@ public final class S3ErrorCodeMapper {
             return "The Content-MD5 you specified did not match what we received.";
         }
         if ("NoSuchBucket".equals(s3Code)) {
-            return "The specified bucket does not exist";
+            return "The specified bucket does not exist.";
         }
         if ("NoSuchKey".equals(s3Code)) {
             return "The specified key does not exist.";

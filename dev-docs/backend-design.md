@@ -60,7 +60,7 @@
 - `RequestIdFilter` adds AWS-style trace headers to S3 responses: `x-amz-request-id` mirrors the normalized request id, and `x-amz-id-2` is an opaque deterministic host id derived from request id plus resource. The same values are reused in S3 XML error `RequestId`/`HostId`, and backend CORS exposes them with `X-Request-Id`.
 - S3 XML `AccessDenied` responses are normalized to HTTP `403` and message `Access Denied` even when the underlying REST error category is `AUTHENTICATION_REQUIRED`; non-S3 JSON auth failures continue to return HTTP `401` with detailed JSON messages.
 - S3 XML `InvalidRange` responses are normalized to HTTP `416` and message `The requested range cannot be satisfied.`.
-- S3 XML `NoSuchBucket`, `NoSuchKey`, and `NoSuchUpload` messages are normalized to AWS-style not-found text instead of leaking internal repository/storage messages.
+- S3 XML `NoSuchBucket`, `NoSuchKey`, `NoSuchUpload`, and `NoSuchLifecycleConfiguration` messages are normalized to AWS-style not-found text instead of leaking internal repository/storage messages.
 - S3 XML `PreconditionFailed` responses are normalized to HTTP `412` and AWS-style precondition failure text across object, CopyObject, and multipart destination guards.
 - S3 XML `InvalidBucketName`, `BucketAlreadyOwnedByYou`, `BucketAlreadyExists`, and `BucketNotEmpty` responses are normalized to AWS-style bucket error messages.
 - S3 XML `InvalidPart`, `InvalidPartOrder`, and `EntityTooSmall` responses are normalized to AWS-style CompleteMultipartUpload special-error messages.

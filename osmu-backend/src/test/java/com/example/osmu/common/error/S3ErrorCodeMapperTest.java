@@ -55,7 +55,7 @@ class S3ErrorCodeMapperTest {
                 .isEqualTo("The Content-MD5 you specified is not valid.");
         assertThat(S3ErrorCodeMapper.messageFor("BadDigest", "x-amz-checksum-sha256 does not match uploaded object body."))
                 .isEqualTo("x-amz-checksum-sha256 does not match uploaded object body.");
-        assertThat(S3ErrorCodeMapper.messageFor("NoSuchBucket", "Bucket not found.")).isEqualTo("The specified bucket does not exist");
+        assertThat(S3ErrorCodeMapper.messageFor("NoSuchBucket", "Bucket not found.")).isEqualTo("The specified bucket does not exist.");
         assertThat(S3ErrorCodeMapper.messageFor("NoSuchKey", "Object not found.")).isEqualTo("The specified key does not exist.");
         assertThat(S3ErrorCodeMapper.messageFor("NoSuchUpload", "Upload session not found."))
                 .isEqualTo("The specified multipart upload does not exist. The upload ID might be invalid, or the multipart upload might have been aborted or completed.");

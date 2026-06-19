@@ -1,5 +1,28 @@
 # Worklog - main
 
+### 2026-06-19 - S3 NoSuchBucket message punctuation parity
+
+- Work time:
+  - End: 2026-06-19 KST
+- User command:
+  - Active goal: continue development from `dev-docs`.
+- Request analysis:
+  - AWS S3 error docs list `NoSuchBucket` with description `The specified bucket does not exist.`
+  - OSMU normalized the right S3 code but omitted the final period in the S3 XML message.
+- Execution:
+  - Updated `NoSuchBucket` S3 XML message normalization to include the AWS-style final period.
+  - Updated mapper regression coverage and not-found message docs, including the newly covered lifecycle not-found code.
+- Modified files:
+  - `osmu-backend/src/main/java/com/example/osmu/common/error/S3ErrorCodeMapper.java`
+  - `osmu-backend/src/test/java/com/example/osmu/common/error/S3ErrorCodeMapperTest.java`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/backend-design.md`
+  - `dev-docs/worklog/main/worklog-main.md`
+- Tests:
+  - `$env:JAVA_HOME='C:\jdk-17'; .\gradlew.bat test --no-daemon --tests com.example.osmu.common.error.S3ErrorCodeMapperTest`: passed.
+- Follow-up:
+  - Continue remaining AWS checksum real-client option coverage and broader S3 error behavior parity.
+
 ### 2026-06-19 - S3 NoSuchLifecycleConfiguration error parity
 
 - Work time:
