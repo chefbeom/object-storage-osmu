@@ -13,6 +13,7 @@ import com.example.osmu.monitoring.repository.InMemoryDataFlowEventRepository;
 import com.example.osmu.organization.OrganizationRecord;
 import com.example.osmu.organization.repository.InMemoryOrganizationRepository;
 import com.example.osmu.billing.repository.InMemoryBillingPricingPolicyRepository;
+import com.example.osmu.billing.repository.InMemoryChargebackNotificationDeliveryRepository;
 import java.math.BigDecimal;
 import java.time.OffsetDateTime;
 import org.junit.jupiter.api.Test;
@@ -24,13 +25,16 @@ class ChargebackPreviewServiceTest {
     private final InMemoryOrganizationRepository organizationRepository = new InMemoryOrganizationRepository();
     private final InMemoryBucketRepository bucketRepository = new InMemoryBucketRepository();
     private final InMemoryDataFlowEventRepository dataFlowEventRepository = new InMemoryDataFlowEventRepository();
+    private final InMemoryChargebackNotificationDeliveryRepository notificationDeliveryRepository =
+            new InMemoryChargebackNotificationDeliveryRepository();
     private final BillingPricingPolicyService pricingPolicyService =
             new BillingPricingPolicyService(new InMemoryBillingPricingPolicyRepository());
     private final ChargebackPreviewService service = new ChargebackPreviewService(
             organizationRepository,
             bucketRepository,
             dataFlowEventRepository,
-            pricingPolicyService
+            pricingPolicyService,
+            notificationDeliveryRepository
     );
 
     @Test
@@ -191,6 +195,28 @@ class ChargebackPreviewServiceTest {
         assertThat(notification.payload()).containsEntry("eventType", "chargeback.threshold");
         assertThat(notification.payload()).containsEntry("channel", "SLACK");
         assertThat(notification.payload()).containsEntry("target", "ops-webhook");
+
+        ChargebackAlertNotificationDispatchResponse dispatch = service.queueAlertNotifications(
+                new AuthenticatedUser(1L, "admin", "ADMIN", null),
+                new ChargebackPreviewRequest(null, null, null, null, null, null, null, null, 0),
+                "slack",
+                "ops-webhook",
+                "unit test dispatch"
+        );
+
+        assertThat(dispatch.mode()).isEqualTo("OUTBOX");
+        assertThat(dispatch.status()).isEqualTo("PENDING_DELIVERY_ADAPTER");
+        assertThat(dispatch.externalDeliveryEnabled()).isFalse();
+        assertThat(dispatch.queuedCount()).isEqualTo(1L);
+        assertThat(dispatch.deliveries().get(0).id()).isGreaterThan(0L);
+        assertThat(dispatch.deliveries().get(0).payloadJson()).contains("\"eventType\":\"chargeback.threshold\"");
+
+        ChargebackAlertNotificationOutboxResponse outbox = service.notificationOutbox(
+                new AuthenticatedUser(1L, "admin", "ADMIN", null),
+                10
+        );
+        assertThat(outbox.deliveryCount()).isEqualTo(1L);
+        assertThat(outbox.deliveries().get(0).status()).isEqualTo("PENDING_DELIVERY_ADAPTER");
     }
 
     @Test

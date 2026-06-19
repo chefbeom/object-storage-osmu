@@ -14,6 +14,7 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -148,6 +149,45 @@ public class AdminBillingController {
                 operationThousandRate,
                 eventScanLimit
         ), notificationChannel, notificationTarget));
+    }
+
+    @PostMapping("/chargeback-alert-notifications/outbox")
+    public ApiResponse<ChargebackAlertNotificationDispatchResponse> queueChargebackAlertNotifications(
+            @RequestParam(name = "from", required = false) String from,
+            @RequestParam(name = "to", required = false) String to,
+            @RequestParam(name = "currency", required = false) String currency,
+            @RequestParam(name = "storageGbMonthRate", required = false) BigDecimal storageGbMonthRate,
+            @RequestParam(name = "ingressGbRate", required = false) BigDecimal ingressGbRate,
+            @RequestParam(name = "egressGbRate", required = false) BigDecimal egressGbRate,
+            @RequestParam(name = "internalGbRate", required = false) BigDecimal internalGbRate,
+            @RequestParam(name = "operationThousandRate", required = false) BigDecimal operationThousandRate,
+            @RequestParam(name = "eventScanLimit", required = false) Integer eventScanLimit,
+            @RequestParam(name = "notificationChannel", required = false) String notificationChannel,
+            @RequestParam(name = "notificationTarget", required = false) String notificationTarget,
+            @RequestParam(name = "reason", required = false) String reason,
+            HttpServletRequest request
+    ) {
+        AuthenticatedUser actor = authContext.currentUser(request);
+        return ApiResponse.of(chargebackPreviewService.queueAlertNotifications(actor, chargebackRequest(
+                from,
+                to,
+                currency,
+                storageGbMonthRate,
+                ingressGbRate,
+                egressGbRate,
+                internalGbRate,
+                operationThousandRate,
+                eventScanLimit
+        ), notificationChannel, notificationTarget, reason));
+    }
+
+    @GetMapping("/chargeback-alert-notifications/outbox")
+    public ApiResponse<ChargebackAlertNotificationOutboxResponse> chargebackAlertNotificationOutbox(
+            @RequestParam(name = "limit", required = false) Integer limit,
+            HttpServletRequest request
+    ) {
+        AuthenticatedUser actor = authContext.currentUser(request);
+        return ApiResponse.of(chargebackPreviewService.notificationOutbox(actor, limit == null ? 50 : limit));
     }
 
     @GetMapping(value = "/chargeback-preview/export.csv", produces = "text/csv")

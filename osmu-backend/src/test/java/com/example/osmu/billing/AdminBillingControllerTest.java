@@ -133,6 +133,25 @@ class AdminBillingControllerTest {
                 .andExpect(jsonPath("$.data.notifications[0].severity").value("CRITICAL"))
                 .andExpect(jsonPath("$.data.notifications[0].subject", containsString("CRITICAL chargeback alert")))
                 .andExpect(jsonPath("$.data.notifications[0].payload.eventType").value("chargeback.threshold"));
+
+        mockMvc.perform(post("/api/admin/billing/chargeback-alert-notifications/outbox")
+                        .header("Authorization", "Bearer " + adminToken)
+                        .param("notificationChannel", "slack")
+                        .param("notificationTarget", "ops-webhook")
+                        .param("reason", "billing notification test"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.mode").value("OUTBOX"))
+                .andExpect(jsonPath("$.data.status").value("PENDING_DELIVERY_ADAPTER"))
+                .andExpect(jsonPath("$.data.externalDeliveryEnabled").value(false))
+                .andExpect(jsonPath("$.data.queuedCount").value(1))
+                .andExpect(jsonPath("$.data.deliveries[0].organizationName").value("Billing Policy Org 1"))
+                .andExpect(jsonPath("$.data.deliveries[0].payloadJson", containsString("chargeback.threshold")));
+
+        mockMvc.perform(get("/api/admin/billing/chargeback-alert-notifications/outbox")
+                        .header("Authorization", "Bearer " + adminToken)
+                        .param("limit", "10"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.deliveries[*].organizationName", hasItem("Billing Policy Org 1")));
     }
 
     @Test
@@ -243,6 +262,20 @@ class AdminBillingControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.notifications[*].organizationName", hasItem("Billing Visible Org 1")))
                 .andExpect(jsonPath("$.data.notifications[*].organizationName", not(hasItem("Billing Hidden Org 1"))));
+
+        mockMvc.perform(post("/api/admin/billing/chargeback-alert-notifications/outbox")
+                        .header("Authorization", "Bearer " + orgAdminToken)
+                        .param("notificationChannel", "webhook")
+                        .param("notificationTarget", "org-webhook"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.deliveries[*].organizationName", hasItem("Billing Visible Org 1")))
+                .andExpect(jsonPath("$.data.deliveries[*].organizationName", not(hasItem("Billing Hidden Org 1"))));
+
+        mockMvc.perform(get("/api/admin/billing/chargeback-alert-notifications/outbox")
+                        .header("Authorization", "Bearer " + orgAdminToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.deliveries[*].organizationName", hasItem("Billing Visible Org 1")))
+                .andExpect(jsonPath("$.data.deliveries[*].organizationName", not(hasItem("Billing Hidden Org 1"))));
     }
 
     private String loginAndReturnAccessToken(String loginId, String password) throws Exception {

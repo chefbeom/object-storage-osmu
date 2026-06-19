@@ -17986,3 +17986,9 @@ feat/bucket-management
 - Frontend/mock: `getChargebackAlertNotificationPreview` wrapper, Admin billing panel notification channel/target input, notification metrics/list, mock API route/self-test를 추가했다.
 - 문서: README, API spec/OpenAPI, IAM/RBAC matrix, security/frontend/backend/commercial/test-case 문서를 갱신했다.
 - 후속: 실제 webhook/email/Slack delivery adapter, secret storage, retry/backoff, delivery audit persistence, finalized invoice approval/persistence, approved pricing workflow는 아직 남아 있다.
+
+### 2026-06-20 - Chargeback notification outbox
+- Backend: added `GET/POST /api/admin/billing/chargeback-alert-notifications/outbox` so scoped threshold notification payloads can be persisted as delivery outbox/history rows with `PENDING_DELIVERY_ADAPTER` and `externalDeliveryEnabled=false`; no external send adapter is invoked.
+- Frontend/mock: Admin billing panel now has a queue action and outbox/history metrics/list, API wrappers for `queueChargebackAlertNotifications` and `getChargebackAlertNotificationOutbox`, and mock API self-test coverage.
+- Docs/verifiers: README, API spec, IAM/RBAC matrix, security design, commercial readiness, feature inventory, test cases, OpenAPI verifier, IAM/RBAC verifier, and commercial readiness verifier now include the outbox surface and pending adapter/retry/secret follow-up.
+- Verification: node --check mock API, OpenAPI contract verifier, IAM/RBAC verifier, commercial readiness verifier, frontend unit tests, frontend build, mock API self-test, and git diff --check passed. Backend Gradle tests were not run to avoid network/download-triggering Gradle setup in this commit-only pass.

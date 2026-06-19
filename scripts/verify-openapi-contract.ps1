@@ -80,6 +80,8 @@ $requiredOperations = @(
     @("/api/admin/billing/chargeback-preview", "get", "getChargebackPreview"),
     @("/api/admin/billing/chargeback-alerts", "get", "getChargebackAlerts"),
     @("/api/admin/billing/chargeback-alert-notifications/preview", "get", "getChargebackAlertNotificationPreview"),
+    @("/api/admin/billing/chargeback-alert-notifications/outbox", "get", "getChargebackAlertNotificationOutbox"),
+    @("/api/admin/billing/chargeback-alert-notifications/outbox", "post", "queueChargebackAlertNotifications"),
     @("/api/admin/billing/chargeback-preview/export.csv", "get", "downloadChargebackPreviewCsv"),
     @("/api/admin/billing/chargeback-invoice-draft/export.csv", "get", "downloadChargebackInvoiceDraftCsv"),
     @("/api/admin/organizations/{organizationId}", "delete", "deleteOrganization"),

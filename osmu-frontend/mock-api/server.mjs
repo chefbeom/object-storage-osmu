@@ -54,6 +54,8 @@ function createInitialState() {
     storageProfileRequests: [],
     storageProfileRequestSequence: 1,
     billingPricingPolicy: defaultBillingPricingPolicy(),
+    chargebackNotificationDeliveries: [],
+    chargebackNotificationDeliverySequence: 1,
   }
 
   initialState.objects.set('osmu-demo-media', [
@@ -446,6 +448,14 @@ function handleAdminRoute(request, response, path, jsonBody, url) {
   }
   if (request.method === 'GET' && path === '/admin/billing/chargeback-alert-notifications/preview') {
     sendJson(response, 200, apiData(chargebackAlertNotificationPreview(url)))
+    return
+  }
+  if (request.method === 'POST' && path === '/admin/billing/chargeback-alert-notifications/outbox') {
+    sendJson(response, 200, apiData(queueChargebackAlertNotifications(url)))
+    return
+  }
+  if (request.method === 'GET' && path === '/admin/billing/chargeback-alert-notifications/outbox') {
+    sendJson(response, 200, apiData(chargebackAlertNotificationOutbox(url)))
     return
   }
   if (request.method === 'GET' && path === '/admin/billing/chargeback-preview/export.csv') {
@@ -1180,6 +1190,57 @@ function normalizeNotificationTarget(value) {
   return target ? target.slice(0, 512) : 'UNCONFIGURED'
 }
 
+function queueChargebackAlertNotifications(url) {
+  const preview = chargebackAlertNotificationPreview(url)
+  const now = new Date().toISOString()
+  const reason = String(url.searchParams.get('reason') || 'Chargeback alert notification queued from admin billing panel.').trim().slice(0, 512)
+  const deliveries = (preview.notifications || []).map((notification) => {
+    const delivery = {
+      id: state.chargebackNotificationDeliverySequence++,
+      organizationId: notification.organizationId,
+      organizationName: notification.organizationName,
+      severity: notification.severity,
+      estimatedTotalCost: notification.estimatedTotalCost,
+      warningAmount: notification.warningAmount,
+      criticalAmount: notification.criticalAmount,
+      channel: preview.channel,
+      target: preview.target,
+      status: 'PENDING_DELIVERY_ADAPTER',
+      attemptCount: 0,
+      nextAttemptAt: now,
+      subject: notification.subject,
+      message: notification.message,
+      payloadJson: JSON.stringify(notification.payload),
+      requestedBy: 'admin',
+      reason: reason || 'Chargeback alert notification queued from admin billing panel.',
+      createdAt: now,
+      updatedAt: now,
+      lastError: '',
+    }
+    state.chargebackNotificationDeliveries.unshift(delivery)
+    return delivery
+  })
+  return {
+    mode: 'OUTBOX',
+    status: 'PENDING_DELIVERY_ADAPTER',
+    externalDeliveryEnabled: false,
+    queuedCount: deliveries.length,
+    deliveries,
+    generatedAt: new Date().toISOString(),
+    note: 'Recorded in delivery outbox; no external notification was sent because delivery adapters are not configured.',
+  }
+}
+
+function chargebackAlertNotificationOutbox(url) {
+  const limit = clampNumber(Number(url.searchParams.get('limit') || 50), 1, 200)
+  const deliveries = state.chargebackNotificationDeliveries.slice(0, limit)
+  return {
+    deliveryCount: deliveries.length,
+    deliveries,
+    generatedAt: new Date().toISOString(),
+  }
+}
+
 function chargebackPreviewCsv(url) {
   const preview = chargebackPreview(url)
   const rates = preview.rates || {}
@@ -1418,6 +1479,11 @@ function costForOperations(rate, count) {
 
 function money(value) {
   return Math.round(Number(value || 0) * 1000000) / 1000000
+}
+
+function clampNumber(value, min, max) {
+  if (!Number.isFinite(value)) return min
+  return Math.max(min, Math.min(max, value))
 }
 
 function usageSummary() {
@@ -1904,6 +1970,19 @@ async function runSelfTest() {
     })).json()
     if (!chargebackAlertNotifications.data || chargebackAlertNotifications.data.mode !== 'PREVIEW' || chargebackAlertNotifications.data.channel !== 'SLACK' || chargebackAlertNotifications.data.externalDeliveryEnabled !== false || chargebackAlertNotifications.data.notifications?.[0]?.payload?.eventType !== 'chargeback.threshold') {
       throw new Error('chargeback alert notification preview self-test failed')
+    }
+    const queuedChargebackNotifications = await (await fetch(`${base}/admin/billing/chargeback-alert-notifications/outbox?notificationChannel=slack&notificationTarget=ops-webhook&operationThousandRate=0.004&reason=self-test`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${login.data.accessToken}` },
+    })).json()
+    if (!queuedChargebackNotifications.data || queuedChargebackNotifications.data.mode !== 'OUTBOX' || queuedChargebackNotifications.data.status !== 'PENDING_DELIVERY_ADAPTER' || queuedChargebackNotifications.data.queuedCount < 1) {
+      throw new Error('chargeback alert notification outbox queue self-test failed')
+    }
+    const chargebackNotificationOutbox = await (await fetch(`${base}/admin/billing/chargeback-alert-notifications/outbox?limit=5`, {
+      headers: { Authorization: `Bearer ${login.data.accessToken}` },
+    })).json()
+    if (!chargebackNotificationOutbox.data || chargebackNotificationOutbox.data.deliveryCount < 1 || chargebackNotificationOutbox.data.deliveries?.[0]?.payloadJson?.includes('chargeback.threshold') !== true) {
+      throw new Error('chargeback alert notification outbox list self-test failed')
     }
     const chargebackCsv = await (await fetch(`${base}/admin/billing/chargeback-preview/export.csv?operationThousandRate=0.004`, {
       headers: { Authorization: `Bearer ${login.data.accessToken}` },

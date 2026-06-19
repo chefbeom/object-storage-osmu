@@ -1,6 +1,7 @@
 package com.example.osmu.billing;
 
 import com.example.osmu.auth.AuthenticatedUser;
+import com.example.osmu.billing.repository.ChargebackNotificationDeliveryRepository;
 import com.example.osmu.bucket.BucketRecord;
 import com.example.osmu.bucket.repository.BucketRepository;
 import com.example.osmu.common.error.ApiErrorCode;
@@ -30,17 +31,20 @@ public class ChargebackPreviewService {
     private final BucketRepository bucketRepository;
     private final DataFlowEventRepository dataFlowEventRepository;
     private final BillingPricingPolicyService pricingPolicyService;
+    private final ChargebackNotificationDeliveryRepository notificationDeliveryRepository;
 
     public ChargebackPreviewService(
             OrganizationRepository organizationRepository,
             BucketRepository bucketRepository,
             DataFlowEventRepository dataFlowEventRepository,
-            BillingPricingPolicyService pricingPolicyService
+            BillingPricingPolicyService pricingPolicyService,
+            ChargebackNotificationDeliveryRepository notificationDeliveryRepository
     ) {
         this.organizationRepository = organizationRepository;
         this.bucketRepository = bucketRepository;
         this.dataFlowEventRepository = dataFlowEventRepository;
         this.pricingPolicyService = pricingPolicyService;
+        this.notificationDeliveryRepository = notificationDeliveryRepository;
     }
 
     public ChargebackPreviewResponse preview(AuthenticatedUser actor, ChargebackPreviewRequest request) {
@@ -280,6 +284,76 @@ public class ChargebackPreviewService {
         );
     }
 
+    public ChargebackAlertNotificationDispatchResponse queueAlertNotifications(
+            AuthenticatedUser actor,
+            ChargebackPreviewRequest request,
+            String notificationChannel,
+            String notificationTarget,
+            String reason
+    ) {
+        ChargebackAlertNotificationPreviewResponse preview = alertNotificationPreview(
+                actor,
+                request,
+                notificationChannel,
+                notificationTarget
+        );
+        OffsetDateTime now = OffsetDateTime.now();
+        String normalizedReason = normalizeReason(reason);
+        List<ChargebackAlertNotificationDeliveryRecord> records = preview.notifications().stream()
+                .map(notification -> new ChargebackAlertNotificationDeliveryRecord(
+                        null,
+                        notification.organizationId(),
+                        notification.organizationName(),
+                        notification.severity(),
+                        money(notification.estimatedTotalCost()),
+                        money(notification.warningAmount()),
+                        money(notification.criticalAmount()),
+                        preview.channel(),
+                        preview.target(),
+                        "PENDING_DELIVERY_ADAPTER",
+                        0,
+                        now,
+                        notification.subject(),
+                        notification.message(),
+                        payloadJson(notification.payload()),
+                        actor.loginId(),
+                        normalizedReason,
+                        now,
+                        now,
+                        null
+                ))
+                .toList();
+        List<ChargebackAlertNotificationDeliveryRecord> saved = notificationDeliveryRepository.saveAll(records);
+        return new ChargebackAlertNotificationDispatchResponse(
+                "OUTBOX",
+                "PENDING_DELIVERY_ADAPTER",
+                false,
+                saved.size(),
+                saved.stream().map(ChargebackPreviewService::deliveryResponse).toList(),
+                OffsetDateTime.now(),
+                "Recorded in delivery outbox; no external notification was sent because delivery adapters are not configured."
+        );
+    }
+
+    public ChargebackAlertNotificationOutboxResponse notificationOutbox(AuthenticatedUser actor, int limit) {
+        if (actor == null) {
+            throw new ApiException(ApiErrorCode.AUTHENTICATION_REQUIRED, "Authentication required.");
+        }
+        List<ChargebackAlertNotificationDeliveryRecord> records;
+        if (actor.isAdmin()) {
+            records = notificationDeliveryRepository.findAll(limit);
+        } else if (actor.isOrgAdmin() && actor.organizationId() != null) {
+            records = notificationDeliveryRepository.findByOrganizationId(actor.organizationId(), limit);
+        } else {
+            throw new ApiException(ApiErrorCode.AUTHORIZATION_FAILED, "Chargeback notification outbox access denied.");
+        }
+        return new ChargebackAlertNotificationOutboxResponse(
+                records.size(),
+                records.stream().map(ChargebackPreviewService::deliveryResponse).toList(),
+                OffsetDateTime.now()
+        );
+    }
+
     private List<OrganizationRecord> visibleOrganizations(AuthenticatedUser actor) {
         if (actor == null) {
             throw new ApiException(ApiErrorCode.AUTHENTICATION_REQUIRED, "Authentication required.");
@@ -386,6 +460,73 @@ public class ChargebackPreviewService {
             throw new ApiException(ApiErrorCode.VALIDATION_ERROR, "notificationTarget must be a single-line value up to 512 characters.");
         }
         return target;
+    }
+
+    private static String normalizeReason(String value) {
+        if (value == null || value.isBlank()) {
+            return "Chargeback alert notification queued from admin billing panel.";
+        }
+        String reason = value.trim();
+        if (reason.length() > 512 || reason.contains("\r") || reason.contains("\n")) {
+            throw new ApiException(ApiErrorCode.VALIDATION_ERROR, "reason must be a single-line value up to 512 characters.");
+        }
+        return reason;
+    }
+
+    private static ChargebackAlertNotificationDeliveryResponse deliveryResponse(
+            ChargebackAlertNotificationDeliveryRecord record
+    ) {
+        return new ChargebackAlertNotificationDeliveryResponse(
+                record.id() == null ? 0L : record.id(),
+                record.organizationId(),
+                record.organizationName(),
+                record.severity(),
+                money(record.estimatedTotalCost()),
+                money(record.warningAmount()),
+                money(record.criticalAmount()),
+                record.channel(),
+                record.target(),
+                record.status(),
+                record.attemptCount(),
+                record.nextAttemptAt(),
+                record.subject(),
+                record.message(),
+                record.payloadJson(),
+                record.requestedBy(),
+                record.reason(),
+                record.createdAt(),
+                record.updatedAt(),
+                record.lastError()
+        );
+    }
+
+    private static String payloadJson(Map<String, Object> payload) {
+        StringBuilder json = new StringBuilder("{");
+        int index = 0;
+        for (Map.Entry<String, Object> entry : payload.entrySet()) {
+            if (index > 0) {
+                json.append(',');
+            }
+            json.append(jsonString(entry.getKey())).append(':').append(jsonValue(entry.getValue()));
+            index += 1;
+        }
+        return json.append('}').toString();
+    }
+
+    private static String jsonValue(Object value) {
+        if (value instanceof Number || value instanceof Boolean) {
+            return String.valueOf(value);
+        }
+        return jsonString(value == null ? "" : String.valueOf(value));
+    }
+
+    private static String jsonString(String value) {
+        return "\"" + value
+                .replace("\\", "\\\\")
+                .replace("\"", "\\\"")
+                .replace("\r", "\\r")
+                .replace("\n", "\\n")
+                + "\"";
     }
 
     private static ChargebackAlertNotificationOrganizationResponse notificationFor(

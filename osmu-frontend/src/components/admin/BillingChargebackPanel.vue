@@ -131,6 +131,14 @@
         Invoice draft
       </button>
       <button
+        data-testid="chargeback-notification-queue-button"
+        type="button"
+        class="ghost"
+        @click="$emit('queue-chargeback-alert-notifications')"
+      >
+        Queue notify
+      </button>
+      <button
         v-if="isAdmin"
         data-testid="chargeback-save-policy-button"
         type="button"
@@ -239,6 +247,32 @@
       <li v-if="notificationRows.length === 0" class="empty">No chargeback notification payloads.</li>
     </ul>
 
+    <div class="compact-metrics chargeback-notification-outbox-metrics" data-testid="chargeback-notification-outbox-metrics">
+      <div>
+        <span>Outbox</span>
+        <b data-testid="chargeback-notification-outbox-count">{{ formatCount(notificationOutbox.deliveryCount) }}</b>
+      </div>
+      <div>
+        <span>Status</span>
+        <b data-testid="chargeback-notification-outbox-status">{{ notificationOutboxRows[0]?.status || '-' }}</b>
+      </div>
+      <div>
+        <span>Updated</span>
+        <b data-testid="chargeback-notification-outbox-updated">{{ formatDateTime(notificationOutbox.generatedAt) || '-' }}</b>
+      </div>
+    </div>
+
+    <ul class="compact-list chargeback-notification-outbox-list" data-testid="chargeback-notification-outbox-list">
+      <li v-for="delivery in notificationOutboxRows" :key="delivery.id" data-testid="chargeback-notification-outbox-row">
+        <span class="list-main">
+          <b>{{ delivery.organizationName }}</b>
+          <small>{{ delivery.subject }} / {{ delivery.channel }} -> {{ delivery.target }}</small>
+        </span>
+        <strong>{{ delivery.status }}</strong>
+      </li>
+      <li v-if="notificationOutboxRows.length === 0" class="empty">No chargeback notification outbox records.</li>
+    </ul>
+
     <div class="table-wrap chargeback-table-wrap">
       <table data-testid="chargeback-organization-table">
         <thead>
@@ -289,6 +323,7 @@ const props = defineProps({
   chargebackPreview: { type: Object, required: true },
   chargebackAlerts: { type: Object, required: true },
   chargebackAlertNotificationPreview: { type: Object, required: true },
+  chargebackAlertNotificationOutbox: { type: Object, required: true },
   billingPricingPolicy: { type: Object, required: true },
   formatBytes: { type: Function, required: true },
   formatDateTime: { type: Function, required: true },
@@ -299,6 +334,7 @@ const emit = defineEmits([
   'refresh-chargeback-preview',
   'reset-chargeback-options',
   'save-billing-pricing-policy',
+  'queue-chargeback-alert-notifications',
   'export-chargeback-csv',
   'export-chargeback-invoice-draft-csv',
 ])
@@ -306,6 +342,7 @@ const emit = defineEmits([
 const preview = computed(() => props.chargebackPreview || {})
 const alerts = computed(() => props.chargebackAlerts || {})
 const notificationPreview = computed(() => props.chargebackAlertNotificationPreview || {})
+const notificationOutbox = computed(() => props.chargebackAlertNotificationOutbox || {})
 const rates = computed(() => preview.value.rates || {})
 const organizations = computed(() => (
   Array.isArray(preview.value.organizations) ? preview.value.organizations : []
@@ -315,6 +352,9 @@ const alertOrganizations = computed(() => (
 ))
 const notificationRows = computed(() => (
   Array.isArray(notificationPreview.value.notifications) ? notificationPreview.value.notifications : []
+))
+const notificationOutboxRows = computed(() => (
+  Array.isArray(notificationOutbox.value.deliveries) ? notificationOutbox.value.deliveries : []
 ))
 
 function updateOption(field, value) {

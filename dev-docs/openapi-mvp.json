@@ -731,6 +731,96 @@
         }
       }
     },
+    "/api/admin/billing/chargeback-alert-notifications/outbox": {
+      "get": {
+        "tags": ["Billing", "Admin"],
+        "operationId": "getChargebackAlertNotificationOutbox",
+        "summary": "List scoped chargeback notification delivery outbox records",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": { "type": "integer", "default": 50, "maximum": 200 }
+          }
+        ],
+        "responses": {
+          "200": { "$ref": "#/components/responses/JsonOk" },
+          "403": { "$ref": "#/components/responses/Error" }
+        }
+      },
+      "post": {
+        "tags": ["Billing", "Admin"],
+        "operationId": "queueChargebackAlertNotifications",
+        "summary": "Record scoped chargeback threshold alert notifications into the delivery outbox without external sending",
+        "parameters": [
+          {
+            "name": "from",
+            "in": "query",
+            "schema": { "type": "string", "format": "date-time" }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "schema": { "type": "string", "format": "date-time" }
+          },
+          {
+            "name": "currency",
+            "in": "query",
+            "schema": { "type": "string", "default": "USD" }
+          },
+          {
+            "name": "storageGbMonthRate",
+            "in": "query",
+            "schema": { "type": "number", "format": "double", "minimum": 0 }
+          },
+          {
+            "name": "ingressGbRate",
+            "in": "query",
+            "schema": { "type": "number", "format": "double", "minimum": 0 }
+          },
+          {
+            "name": "egressGbRate",
+            "in": "query",
+            "schema": { "type": "number", "format": "double", "minimum": 0 }
+          },
+          {
+            "name": "internalGbRate",
+            "in": "query",
+            "schema": { "type": "number", "format": "double", "minimum": 0 }
+          },
+          {
+            "name": "operationThousandRate",
+            "in": "query",
+            "schema": { "type": "number", "format": "double", "minimum": 0 }
+          },
+          {
+            "name": "eventScanLimit",
+            "in": "query",
+            "schema": { "type": "integer", "default": 10000, "maximum": 50000 }
+          },
+          {
+            "name": "notificationChannel",
+            "in": "query",
+            "schema": { "type": "string", "default": "WEBHOOK" }
+          },
+          {
+            "name": "notificationTarget",
+            "in": "query",
+            "schema": { "type": "string", "default": "UNCONFIGURED" }
+          },
+          {
+            "name": "reason",
+            "in": "query",
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": { "$ref": "#/components/responses/JsonOk" },
+          "400": { "$ref": "#/components/responses/Error" },
+          "403": { "$ref": "#/components/responses/Error" }
+        }
+      }
+    },
     "/api/admin/billing/chargeback-preview/export.csv": {
       "get": {
         "tags": ["Billing", "Admin"],

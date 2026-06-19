@@ -355,6 +355,7 @@
         :chargeback-preview="chargebackPreview"
         :chargeback-alerts="chargebackAlerts"
         :chargeback-alert-notification-preview="chargebackAlertNotificationPreview"
+        :chargeback-alert-notification-outbox="chargebackAlertNotificationOutbox"
         :billing-pricing-policy="billingPricingPolicy"
         :quota-policy-form="quotaPolicyForm"
         :quota-policy-target-options="quotaPolicyTargetOptions"
@@ -405,6 +406,7 @@
         @refresh-chargeback-preview="loadChargebackPanel"
         @reset-chargeback-options="handleResetChargebackOptions"
         @save-billing-pricing-policy="handleSaveBillingPricingPolicy"
+        @queue-chargeback-alert-notifications="handleQueueChargebackAlertNotifications"
         @export-chargeback-csv="handleExportChargebackCsv"
         @export-chargeback-invoice-draft-csv="handleExportChargebackInvoiceDraftCsv"
         @save-quota-policy="handleSaveQuotaPolicy"
@@ -553,6 +555,7 @@ import {
   getBucketTags,
   getBuckets,
   getChargebackAlertNotificationPreview,
+  getChargebackAlertNotificationOutbox,
   getChargebackAlerts,
   getDatabaseHealth,
   getDashboardLayout,
@@ -603,6 +606,7 @@ import {
   purgeObject,
   putBucketLifecycleS3Xml,
   putBucketTags,
+  queueChargebackAlertNotifications,
   restoreObject,
   restoreObjectVersion,
   revokeBucketPermission,
@@ -1215,6 +1219,7 @@ const organizationUsages = ref([])
 const chargebackPreview = ref(defaultChargebackPreview())
 const chargebackAlerts = ref(defaultChargebackAlerts())
 const chargebackAlertNotificationPreview = ref(defaultChargebackAlertNotificationPreview())
+const chargebackAlertNotificationOutbox = ref(defaultChargebackAlertNotificationOutbox())
 const billingPricingPolicy = ref(defaultBillingPricingPolicy())
 const teams = ref([])
 const quotaPolicies = ref([])
@@ -2292,6 +2297,7 @@ async function loadDashboard(options = {}) {
       resetChargebackPreview()
       resetChargebackAlerts()
       resetChargebackAlertNotificationPreview()
+      resetChargebackAlertNotificationOutbox()
     }
 
     if (isAdmin.value) {
@@ -2451,8 +2457,24 @@ async function loadChargebackAlertNotificationPreview() {
   }
 }
 
+async function loadChargebackAlertNotificationOutbox() {
+  if (!canUseAdminTools.value) {
+    resetChargebackAlertNotificationOutbox()
+    return
+  }
+  const result = await safeRequest(() => getChargebackAlertNotificationOutbox({ limit: 25 }), null)
+  if (result?.data) {
+    applyChargebackAlertNotificationOutbox(result.data)
+  }
+}
+
 async function loadChargebackPanel() {
-  await Promise.all([loadChargebackPreview(), loadChargebackAlerts(), loadChargebackAlertNotificationPreview()])
+  await Promise.all([
+    loadChargebackPreview(),
+    loadChargebackAlerts(),
+    loadChargebackAlertNotificationPreview(),
+    loadChargebackAlertNotificationOutbox(),
+  ])
 }
 
 async function handleSaveBillingPricingPolicy() {
@@ -2462,6 +2484,22 @@ async function handleSaveBillingPricingPolicy() {
     applyBillingPricingPolicy(result.data)
     await loadChargebackPanel()
     setStatusMessage('Billing pricing policy saved.')
+  }
+}
+
+async function handleQueueChargebackAlertNotifications() {
+  const result = await runAction(() => queueChargebackAlertNotifications({
+    ...chargebackPreviewPayload(),
+    reason: 'Admin billing panel notification queue',
+  }))
+  if (result?.data) {
+    applyChargebackAlertNotificationOutbox({
+      deliveryCount: result.data.queuedCount,
+      deliveries: result.data.deliveries || [],
+      generatedAt: result.data.generatedAt,
+    })
+    await loadChargebackAlertNotificationOutbox()
+    setStatusMessage('Chargeback notification outbox updated.')
   }
 }
 
@@ -2668,6 +2706,7 @@ function resetAdminOnlyState() {
   resetChargebackPreview()
   resetChargebackAlerts()
   resetChargebackAlertNotificationPreview()
+  resetChargebackAlertNotificationOutbox()
 }
 
 function resetUploadRuntime() {
@@ -3791,6 +3830,28 @@ function applyChargebackAlertNotificationPreview(data = {}) {
 
 function resetChargebackAlertNotificationPreview() {
   applyChargebackAlertNotificationPreview({})
+}
+
+function defaultChargebackAlertNotificationOutbox() {
+  return {
+    deliveryCount: 0,
+    deliveries: [],
+    generatedAt: '',
+  }
+}
+
+function applyChargebackAlertNotificationOutbox(data = {}) {
+  const fallback = defaultChargebackAlertNotificationOutbox()
+  chargebackAlertNotificationOutbox.value = {
+    ...fallback,
+    ...data,
+    deliveryCount: Number(data.deliveryCount || 0),
+    deliveries: Array.isArray(data.deliveries) ? data.deliveries : [],
+  }
+}
+
+function resetChargebackAlertNotificationOutbox() {
+  applyChargebackAlertNotificationOutbox({})
 }
 
 function applyDashboardReadiness(data) {

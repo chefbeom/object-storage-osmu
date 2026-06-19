@@ -24,7 +24,7 @@ Authorization: Bearer <accessToken>
 
 관리자 API인 `/api/admin/**`는 기본적으로 `ADMIN` role이 필요하다.
 예외적으로 `ORG_ADMIN`은 조직 스코프가 적용된 사용자/조직 조회 API만 접근할 수 있다.
-현재 허용 route는 `GET/POST /api/admin/users`, `PATCH /api/admin/users/{userId}/status`, `GET /api/admin/organizations`, `GET /api/admin/organizations/usage`, `GET /api/admin/billing/pricing-policy`, `GET /api/admin/billing/chargeback-preview`, `GET /api/admin/billing/chargeback-alerts`, `GET /api/admin/billing/chargeback-alert-notifications/preview`, `GET /api/admin/billing/chargeback-preview/export.csv`, `GET /api/admin/billing/chargeback-invoice-draft/export.csv`, `GET/POST /api/admin/teams`, `PUT /api/admin/teams/{teamId}/members`, `DELETE /api/admin/teams/{teamId}`이다.
+현재 허용 route는 `GET/POST /api/admin/users`, `PATCH /api/admin/users/{userId}/status`, `GET /api/admin/organizations`, `GET /api/admin/organizations/usage`, `GET /api/admin/billing/pricing-policy`, `GET /api/admin/billing/chargeback-preview`, `GET /api/admin/billing/chargeback-alerts`, `GET /api/admin/billing/chargeback-alert-notifications/preview`, `GET/POST /api/admin/billing/chargeback-alert-notifications/outbox`, `GET /api/admin/billing/chargeback-preview/export.csv`, `GET /api/admin/billing/chargeback-invoice-draft/export.csv`, `GET/POST /api/admin/teams`, `PUT /api/admin/teams/{teamId}/members`, `DELETE /api/admin/teams/{teamId}`이다.
 `AUDITOR`는 read-only 감사/상태 조회 role이다. 허용 route는 `GET /api/admin/audit-logs`, `GET /api/admin/audit-logs/export.csv`, `GET /api/admin/usage`, `GET /api/admin/system/status`, `GET /api/admin/security/enterprise-auth-plan`, `GET /api/admin/dashboard/summary`, `GET /api/admin/dashboard/readiness`, `GET /api/admin/backup/status`, `GET /api/admin/backup/restore-drill-evidence`로 제한한다.
 
 일반 사용자는 본인이 소유한 bucket, object, access key만 접근할 수 있다. `ADMIN`은 전체 리소스에 접근할 수 있다.
@@ -2710,6 +2710,38 @@ Notes:
 
 - This is the first external alert integration surface. Actual delivery, retry, secret storage, and webhook provider adapters remain follow-up work.
 - Scope filtering is identical to chargeback alerts.
+
+### POST /api/admin/billing/chargeback-alert-notifications/outbox
+
+Records scoped chargeback threshold alert notification payloads into a delivery outbox. `ADMIN` queues visible alerted organizations and `ORG_ADMIN` queues only its own organization. The records are persisted with `PENDING_DELIVERY_ADAPTER` so operators can review delivery history before a real email/webhook/Slack adapter exists. This endpoint does not send webhooks, email, Slack messages, or any other external notification.
+
+Query parameters are the same as `GET /api/admin/billing/chargeback-alert-notifications/preview`, plus:
+
+- `reason` (optional): operator note for the outbox record. Defaults to `manual`.
+
+Response:
+
+- `mode`: `OUTBOX`
+- `status`: `PENDING_DELIVERY_ADAPTER`
+- `externalDeliveryEnabled=false`
+- `queuedCount`
+- `deliveries[]`: persisted delivery rows with channel, target, status, payloadJson, requester, reason, and timestamps.
+- `note`: outbox-only no-send notice.
+
+### GET /api/admin/billing/chargeback-alert-notifications/outbox
+
+Lists scoped chargeback notification delivery outbox/history rows. `ADMIN` sees all rows and `ORG_ADMIN` sees only rows for its organization.
+
+Query parameters:
+
+- `limit` (optional): number of rows to return, clamped to 1..200.
+
+Response:
+
+- `mode`: `OUTBOX`
+- `deliveryCount`
+- `deliveries[]`: delivery rows ordered by newest first.
+- `generatedAt`
 
 ### GET /api/admin/billing/chargeback-preview/export.csv
 

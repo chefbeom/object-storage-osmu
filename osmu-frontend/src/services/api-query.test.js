@@ -23,6 +23,7 @@ import {
   getBillingPricingPolicy,
   getBuckets,
   getChargebackAlertNotificationPreview,
+  getChargebackAlertNotificationOutbox,
   getChargebackAlerts,
   getChargebackPreview,
   getDashboardLayout,
@@ -47,6 +48,7 @@ import {
   loginWithLdap,
   previewEnterpriseAuthClaims,
   provisionEnterpriseAuthUser,
+  queueChargebackAlertNotifications,
   saveDashboardLayout,
   saveDashboardLayoutDefault,
   saveBillingPricingPolicy,
@@ -563,6 +565,58 @@ test('getChargebackAlertNotificationPreview reads scoped billing alert notificat
     assert.equal(fetchMock.calls[0].options.method, undefined)
     assert.equal(result.data.mode, 'PREVIEW')
     assert.equal(result.data.notificationCount, 1)
+  } finally {
+    cleanupFetch(fetchMock)
+  }
+})
+
+test('chargeback alert notification outbox wrappers queue and read delivery records', async () => {
+  const fetchMock = mockFetch([
+    () => jsonResponse({
+      data: {
+        mode: 'OUTBOX',
+        status: 'PENDING_DELIVERY_ADAPTER',
+        queuedCount: 1,
+        deliveries: [{ organizationName: 'Media', status: 'PENDING_DELIVERY_ADAPTER' }],
+      },
+    }),
+    () => jsonResponse({
+      data: {
+        deliveryCount: 1,
+        deliveries: [{ organizationName: 'Media', status: 'PENDING_DELIVERY_ADAPTER' }],
+      },
+    }),
+  ])
+
+  try {
+    const queued = await queueChargebackAlertNotifications({
+      from: '2026-06-01T00:00:00.000Z',
+      to: '2026-06-30T23:59:59.000Z',
+      currency: 'krw',
+      storageGbMonthRate: '1.25',
+      notificationChannel: 'slack',
+      notificationTarget: 'ops-webhook',
+      reason: 'review send',
+    })
+    const outbox = await getChargebackAlertNotificationOutbox({ limit: 25 })
+
+    const queueUrl = new URL(fetchMock.calls[0].url)
+    assert.equal(queueUrl.pathname, '/api/admin/billing/chargeback-alert-notifications/outbox')
+    assert.equal(queueUrl.searchParams.get('from'), '2026-06-01T00:00:00.000Z')
+    assert.equal(queueUrl.searchParams.get('to'), '2026-06-30T23:59:59.000Z')
+    assert.equal(queueUrl.searchParams.get('currency'), 'krw')
+    assert.equal(queueUrl.searchParams.get('storageGbMonthRate'), '1.25')
+    assert.equal(queueUrl.searchParams.get('notificationChannel'), 'slack')
+    assert.equal(queueUrl.searchParams.get('notificationTarget'), 'ops-webhook')
+    assert.equal(queueUrl.searchParams.get('reason'), 'review send')
+    assert.equal(fetchMock.calls[0].options.method, 'POST')
+    assert.equal(queued.data.status, 'PENDING_DELIVERY_ADAPTER')
+
+    const listUrl = new URL(fetchMock.calls[1].url)
+    assert.equal(listUrl.pathname, '/api/admin/billing/chargeback-alert-notifications/outbox')
+    assert.equal(listUrl.searchParams.get('limit'), '25')
+    assert.equal(fetchMock.calls[1].options.method, undefined)
+    assert.equal(outbox.data.deliveryCount, 1)
   } finally {
     cleanupFetch(fetchMock)
   }
