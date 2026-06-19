@@ -17435,6 +17435,41 @@ feat/bucket-management
 - 후속:
   - 다음 구현 우선순위는 AWS edge parity가 아니라 운영/live evidence, release packaging, 주요 S3 client smoke 실패 지점 보강으로 둔다.
 
+### 2026-06-19 - MVP demo package notes 자동화
+- 작업 시간:
+  - 시작: 2026-06-19 KST
+  - 종료: 2026-06-19 KST
+- 사용자 명령:
+  - active goal `dev-docs` 기준으로 계속 개발 진행.
+- 요청 분석:
+  - S3 목표를 대체 가능성 중심으로 재정렬한 뒤, 다음 우선순위는 AWS edge parity가 아니라 release packaging과 운영 증거 정리라고 판단했다.
+  - 기존 release notes는 있었지만, 데모 전달 시 어떤 `.osmu-run` evidence를 첨부해야 하는지, local durable MVP와 hosted/production pilot의 Go/No-Go 경계가 무엇인지 한 장으로 묶는 package notes 산출물이 없었다.
+- 수행:
+  - `scripts/write-mvp-demo-package-notes.ps1`를 추가해 demo readiness, durable gate/finalize, release report, audit, decision, release notes, MVP completion, operations readiness를 읽고 `.osmu-run/latest-demo-package-notes.md`를 생성하게 했다.
+  - package notes에 S3 replacement boundary를 명시해, 데모/파일럿 문서에서도 AWS S3 full parity로 오해하지 않도록 했다.
+  - `scripts/verify-mvp-demo-package-notes.ps1`를 추가해 self-test fixture와 실제 산출물 검증을 모두 지원하게 했다.
+  - `write-durable-release-artifacts.ps1`와 `finalize-durable-mvp-demo.ps1`에 demo package notes 경로와 생성/검증 흐름을 연결했다.
+  - `verify-mvp-completion.ps1`가 demo package notes를 local MVP completion 필수 evidence로 확인하게 했다.
+  - README, MVP release checklist, feature inventory에 package notes 명령과 현황을 반영했다.
+- 수정한 파일:
+  - `scripts/write-mvp-demo-package-notes.ps1`
+  - `scripts/verify-mvp-demo-package-notes.ps1`
+  - `scripts/write-durable-release-artifacts.ps1`
+  - `scripts/finalize-durable-mvp-demo.ps1`
+  - `scripts/verify-mvp-completion.ps1`
+  - `README.md`
+  - `dev-docs/mvp-release-checklist.md`
+  - `dev-docs/feature-inventory.md`
+  - `dev-docs/worklog/main/worklog-main.md`
+- 검증:
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\write-mvp-demo-package-notes.ps1`: 통과.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-mvp-demo-package-notes.ps1 -SelfTest`: 통과.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-mvp-demo-package-notes.ps1`: 통과.
+  - `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-mvp-completion.ps1 -FailIfLocalMvpNotReady`: 통과, `Result: ready`, `Classification: local-durable-mvp-ready`.
+  - PowerShell parser check for touched scripts: 통과.
+- 후속:
+  - 남은 큰 축은 GitHub-hosted durable/real S3/Browser/image-signing evidence와 operations live/security evidence다.
+
 ### 2026-06-19 - S3 checksum algorithm 중복 헤더 회귀 검증
 - 작업 시간:
   - 시작: 2026-06-19 KST

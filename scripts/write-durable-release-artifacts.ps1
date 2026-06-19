@@ -4,6 +4,7 @@ param(
     [string] $AuditPath = ".\.osmu-run\latest-mvp-audit.md",
     [string] $DecisionPath = ".\.osmu-run\latest-release-decision.md",
     [string] $ReleaseNotesPath = ".\.osmu-run\latest-release-notes.md",
+    [string] $DemoPackageNotesPath = ".\.osmu-run\latest-demo-package-notes.md",
     [string] $ApiBase = "http://localhost:8080/api",
     [string] $FrontendBase = "http://localhost:5173",
     [switch] $BackendTestsIncluded
@@ -203,6 +204,16 @@ Invoke-ProjectScript "write-mvp-release-notes.ps1" @(
     "-OutputPath", (Resolve-ProjectPath $ReleaseNotesPath)
 )
 
+Step "Write MVP demo package notes"
+Invoke-ProjectScript "write-mvp-demo-package-notes.ps1" @(
+    "-DurableGateReportPath", $resolvedDurableGateReportPath,
+    "-ReleaseReportPath", $resolvedReleaseReportPath,
+    "-AuditPath", (Resolve-ProjectPath $AuditPath),
+    "-DecisionPath", (Resolve-ProjectPath $DecisionPath),
+    "-ReleaseNotesPath", (Resolve-ProjectPath $ReleaseNotesPath),
+    "-OutputPath", (Resolve-ProjectPath $DemoPackageNotesPath)
+)
+
 Step "Verify MVP release artifacts"
 Invoke-ProjectScript "verify-mvp-release-artifacts.ps1" @(
     "-ReleaseReportPath", $resolvedReleaseReportPath,
@@ -210,6 +221,11 @@ Invoke-ProjectScript "verify-mvp-release-artifacts.ps1" @(
     "-AuditPath", (Resolve-ProjectPath $AuditPath),
     "-DecisionPath", (Resolve-ProjectPath $DecisionPath),
     "-ReleaseNotesPath", (Resolve-ProjectPath $ReleaseNotesPath)
+)
+
+Step "Verify MVP demo package notes"
+Invoke-ProjectScript "verify-mvp-demo-package-notes.ps1" @(
+    "-OutputPath", (Resolve-ProjectPath $DemoPackageNotesPath)
 )
 
 Write-Host "Durable release artifacts generated."

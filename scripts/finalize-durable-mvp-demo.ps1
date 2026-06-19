@@ -11,6 +11,7 @@ param(
     [string] $AuditPath = ".\.osmu-run\latest-mvp-audit.md",
     [string] $DecisionPath = ".\.osmu-run\latest-release-decision.md",
     [string] $ReleaseNotesPath = ".\.osmu-run\latest-release-notes.md",
+    [string] $DemoPackageNotesPath = ".\.osmu-run\latest-demo-package-notes.md",
     [string] $ReadinessReportPath = ".\.osmu-run\latest-demo-readiness.json",
     [string] $ReportPath = ".\.osmu-run\latest-durable-mvp-finalize.json",
     [string] $SummaryPath = ".\.osmu-run\latest-durable-mvp-finalize.md",
@@ -109,6 +110,7 @@ $resolvedReleaseReportPath = Resolve-ProjectPath $ReleaseReportPath
 $resolvedAuditPath = Resolve-ProjectPath $AuditPath
 $resolvedDecisionPath = Resolve-ProjectPath $DecisionPath
 $resolvedReleaseNotesPath = Resolve-ProjectPath $ReleaseNotesPath
+$resolvedDemoPackageNotesPath = Resolve-ProjectPath $DemoPackageNotesPath
 $resolvedReadinessReportPath = Resolve-ProjectPath $ReadinessReportPath
 
 $preflightArgs = @(
@@ -136,6 +138,7 @@ $releaseArgs = @(
     "-AuditPath", $AuditPath,
     "-DecisionPath", $DecisionPath,
     "-ReleaseNotesPath", $ReleaseNotesPath,
+    "-DemoPackageNotesPath", $DemoPackageNotesPath,
     "-BackendTestsIncluded"
 )
 
@@ -168,6 +171,7 @@ $report = [ordered]@{
     auditPath = $resolvedAuditPath
     decisionPath = $resolvedDecisionPath
     releaseNotesPath = $resolvedReleaseNotesPath
+    demoPackageNotesPath = $resolvedDemoPackageNotesPath
     readinessReportPath = $resolvedReadinessReportPath
     commands = $commands
 }
@@ -222,6 +226,7 @@ $summaryLines = @(
     "- MVP audit: $($report.auditPath)",
     "- Release decision: $($report.decisionPath)",
     "- Release notes: $($report.releaseNotesPath)",
+    "- Demo package notes: $($report.demoPackageNotesPath)",
     "- Readiness report: $($report.readinessReportPath)",
     "",
     "## Commands",

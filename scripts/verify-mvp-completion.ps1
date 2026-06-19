@@ -6,6 +6,7 @@ param(
     [string] $AuditPath = ".\.osmu-run\latest-mvp-audit.md",
     [string] $DecisionPath = ".\.osmu-run\latest-release-decision.md",
     [string] $ReleaseNotesPath = ".\.osmu-run\latest-release-notes.md",
+    [string] $DemoPackageNotesPath = ".\.osmu-run\latest-demo-package-notes.md",
     [string] $OperationsReadinessPath = ".\.osmu-run\latest-operations-readiness.json",
     [string] $JsonOutputPath = ".\.osmu-run\latest-mvp-completion.json",
     [string] $MarkdownOutputPath = ".\.osmu-run\latest-mvp-completion.md",
@@ -132,6 +133,7 @@ $operations = Read-OptionalJson $OperationsReadinessPath "Production operations 
 $audit = Read-OptionalText $AuditPath "MVP audit"
 $decision = Read-OptionalText $DecisionPath "MVP release decision"
 $releaseNotes = Read-OptionalText $ReleaseNotesPath "MVP release notes"
+$demoPackageNotes = Read-OptionalText $DemoPackageNotesPath "MVP demo package notes"
 $featureInventory = Read-OptionalText ".\dev-docs\feature-inventory.md" "Feature inventory"
 $prototypeStatus = Read-OptionalText ".\dev-docs\prototype-status.md" "Prototype status"
 $releaseChecklist = Read-OptionalText ".\dev-docs\mvp-release-checklist.md" "MVP release checklist"
@@ -153,6 +155,7 @@ Add-Check "Release report passed" "release-artifact" ($release.exists -and $rele
 Add-Check "Audit marks durable and frontend evidence passed" "release-artifact" ((Test-Contains $audit "- PASS: Durable MVP demo gate") -and (Test-Contains $audit "- PASS: Frontend portal checks") -and (Test-Contains $audit "Browser click E2E passed") -and (Test-NotContains $audit "Browser click E2E pending")) "audit durable/frontend/browser status checked" $audit.path
 Add-Check "Release decision marks durable MVP pilot GO" "release-artifact" (Test-Contains $decision "- Durable MVP pilot: GO") "durable MVP pilot decision line checked" $decision.path
 Add-Check "Release notes preserve durable proof" "release-artifact" ((Test-Contains $releaseNotes "Durable MVP demo gate report: result=ready") -and (Test-Contains $releaseNotes "local durable MVP demo evidence")) "durable proof release note checked" $releaseNotes.path
+Add-Check "Demo package notes preserve pilot handoff" "release-artifact" ((Test-Contains $demoPackageNotes "Package status: local-durable-mvp-ready") -and (Test-Contains $demoPackageNotes "S3 Replacement Boundary") -and (Test-Contains $demoPackageNotes "dev-docs/s3-compatibility.md")) "demo package handoff checked" $demoPackageNotes.path
 Add-Check "Feature inventory local MVP state current" "documentation" ((Test-Contains $featureInventory "MVP demo current estimate: 90-95%") -and (Test-Contains $featureInventory "docker-durable-demo-verified")) "feature inventory local MVP status checked" $featureInventory.path
 Add-Check "Prototype status local MVP state current" "documentation" ((Test-Contains $prototypeStatus "docker-durable-demo-verified") -and (Test-NotContains $prototypeStatus "full Docker runtime verification is still pending")) "prototype status stale blocker check" $prototypeStatus.path
 Add-Check "Release checklist local durable decision current" "documentation" ((Test-Contains $releaseChecklist "GO for local durable MVP demo") -and (Test-NotContains $releaseChecklist "NO-GO until every durable gate above passes")) "release checklist durable decision checked" $releaseChecklist.path
@@ -189,6 +192,7 @@ $report = [ordered]@{
     auditPath = $audit.path
     decisionPath = $decision.path
     releaseNotesPath = $releaseNotes.path
+    demoPackageNotesPath = $demoPackageNotes.path
     operationsReadinessPath = $operations.path
     checks = $checks
     decisionRule = "Local durable MVP completion is ready only when durable demo readiness, durable gate, durable finalizer, release artifacts, and key status documents all agree on docker-durable-demo-verified with no local durable pending checks. Production/B2B operations readiness is reported separately and does not block local MVP demo completion."

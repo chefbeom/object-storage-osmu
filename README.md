@@ -216,6 +216,7 @@ MVP readiness report:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\scripts\verify-mvp-demo-readiness.ps1
+powershell -ExecutionPolicy Bypass -File .\scripts\write-mvp-demo-package-notes.ps1
 ```
 
 Durable MVP gate:
