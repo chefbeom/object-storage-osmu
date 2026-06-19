@@ -44,7 +44,7 @@ public class S3BucketLifecycleController {
     @PutMapping(value = {"", "/"}, params = "lifecycle", consumes = {MediaType.APPLICATION_XML_VALUE, MediaType.TEXT_XML_VALUE})
     public ResponseEntity<Void> putBucketLifecycle(
             @PathVariable("bucketName") String bucketName,
-            @RequestBody String rawXml,
+            @RequestBody(required = false) String rawXml,
             HttpServletRequest request
     ) {
         if (rawXml == null || rawXml.isBlank()) {

@@ -129,6 +129,16 @@
 - Priority: P1
 - Automated: `S3ObjectControllerTest.bearerCanCreateAndAccessKeyCanDeleteBucketThroughS3StylePath`, `S3ObjectControllerTest.bearerCanCreateBucketWithS3LocationConstraintXml`, `S3ObjectControllerTest.createBucketRejectsInvalidCreateBucketConfigurationXml`, `S3ObjectControllerTest.createBucketRejectsUnsupportedAclObjectLockAndOwnershipControls`, `S3ObjectControllerTest.createBucketReturnsS3DuplicateBucketCodes`, `S3ObjectControllerTest.bucketLevelRequestsRejectInvalidS3BucketNames`, `S3ObjectControllerTest.deleteBucketReturnsBucketNotEmptyForNonEmptyBucket`, `S3ObjectControllerTest.deleteBucketReturnsBucketNotEmptyWhenRetainedVersionsExist`
 
+### TC-S3-BUCKET-004
+
+- Feature: S3 bucket tagging XML request body validation.
+- Preconditions: Admin can authenticate with Bearer JWT. Target bucket exists.
+- Input: `PUT /api/s3/{bucketName}?tagging` with valid tagging XML, invalid schema XML, malformed XML, and missing XML body.
+- Steps: Create a bucket, save valid S3 tagging XML, fetch/delete tags, then submit invalid/malformed/missing tagging bodies.
+- Expected: Valid XML stores bucket tags. Schema-invalid tag XML returns S3 XML `InvalidRequest`. Malformed XML returns S3 XML `MalformedXML` with AWS-style message. Missing or blank XML body returns S3 XML `MissingRequestBodyError` with message `Request body is empty.`.
+- Priority: P1
+- Automated: `BucketTaggingControllerTest.adminCanPutGetAndDeleteS3BucketTagging`, `BucketTaggingControllerTest.invalidS3BucketTaggingXmlReturnsInvalidRequest`, `BucketTaggingControllerTest.malformedS3BucketTaggingXmlReturnsMalformedXml`, `BucketTaggingControllerTest.missingS3BucketTaggingBodyReturnsMissingRequestBodyError`
+
 ### TC-S3-AUTH-001
 
 - Feature: AWS SigV4 header authorization for S3-style alias.

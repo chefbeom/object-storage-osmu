@@ -1,5 +1,39 @@
 # Worklog - main
 
+### 2026-06-19 - S3 MissingRequestBodyError parity
+
+- Work time:
+  - End: 2026-06-19 KST
+- User command:
+  - Active goal: continue development from `dev-docs`.
+- Request analysis:
+  - `dev-docs` still track remaining AWS non-bucket per-error message/status nuance.
+  - AWS S3 error docs define `MissingRequestBodyError` as HTTP `400 Bad Request` when an XML request body is empty, with message `Request body is empty.`
+  - OSMU already rejected missing or blank S3 XML request bodies, but the global S3 XML error response surfaced generic `InvalidRequest`.
+- Execution:
+  - Mapped validation failures with `XML is required.` messages to S3 XML `MissingRequestBodyError`.
+  - Normalized the S3 XML message to AWS-style text.
+  - Allowed S3 bucket tagging/lifecycle controller request bodies to reach mapper-level validation when omitted.
+  - Added bucket tagging missing-body regression coverage.
+  - Updated README and `dev-docs`.
+- Modified files:
+  - `osmu-backend/src/main/java/com/example/osmu/common/error/S3ErrorCodeMapper.java`
+  - `osmu-backend/src/main/java/com/example/osmu/bucket/S3BucketTaggingController.java`
+  - `osmu-backend/src/main/java/com/example/osmu/bucket/S3BucketLifecycleController.java`
+  - `osmu-backend/src/test/java/com/example/osmu/common/error/S3ErrorCodeMapperTest.java`
+  - `osmu-backend/src/test/java/com/example/osmu/bucket/BucketTaggingControllerTest.java`
+  - `README.md`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/backend-design.md`
+  - `dev-docs/s3-compatibility.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/feature-inventory.md`
+  - `dev-docs/worklog/main/worklog-main.md`
+- Tests:
+  - `$env:JAVA_HOME='C:\jdk-17'; .\gradlew.bat test --no-daemon --tests com.example.osmu.common.error.S3ErrorCodeMapperTest --tests com.example.osmu.object.S3ObjectControllerTest --tests com.example.osmu.bucket.BucketTaggingControllerTest`: passed.
+- Follow-up:
+  - Continue remaining AWS checksum real-client option coverage and non-bucket per-error status/message nuance.
+
 ### 2026-06-19 - S3 MalformedXML error parity
 
 - Work time:

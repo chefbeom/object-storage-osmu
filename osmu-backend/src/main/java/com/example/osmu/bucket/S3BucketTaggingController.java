@@ -42,7 +42,7 @@ public class S3BucketTaggingController {
     @PutMapping(value = {"", "/"}, params = "tagging", consumes = {MediaType.APPLICATION_XML_VALUE, MediaType.TEXT_XML_VALUE})
     public ResponseEntity<Void> putBucketTagging(
             @PathVariable("bucketName") String bucketName,
-            @RequestBody String rawXml,
+            @RequestBody(required = false) String rawXml,
             HttpServletRequest request
     ) {
         AuthenticatedUser user = currentUser(request, bucketName);

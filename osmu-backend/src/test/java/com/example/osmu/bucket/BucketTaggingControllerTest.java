@@ -203,6 +203,22 @@ class BucketTaggingControllerTest {
     }
 
     @Test
+    void missingS3BucketTaggingBodyReturnsMissingRequestBodyError() throws Exception {
+        String token = loginAndReturnAccessToken("admin", "password");
+        String bucketName = "s3-bucket-tagging-missing-body";
+        createBucket(token, bucketName);
+
+        mockMvc.perform(put("/api/s3/{bucketName}", bucketName)
+                        .queryParam("tagging", "")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_XML))
+                .andExpect(status().isBadRequest())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_XML))
+                .andExpect(content().string(containsString("<Code>MissingRequestBodyError</Code>")))
+                .andExpect(content().string(containsString("<Message>Request body is empty.</Message>")));
+    }
+
+    @Test
     void malformedS3BucketTaggingXmlReturnsMalformedXml() throws Exception {
         String token = loginAndReturnAccessToken("admin", "password");
         String bucketName = "s3-bucket-tagging-malformed-bucket";

@@ -1247,26 +1247,26 @@ Prototype path-style bucket/object API for S3 client interoperability.
 - `HEAD /api/s3/{bucketName}` checks bucket existence/access and returns `x-amz-bucket-region`.
 - `GET /api/s3/{bucketName}?location` returns S3-compatible `LocationConstraint` XML.
 - `GET /api/s3/{bucketName}?tagging` returns S3-compatible bucket tagging XML.
-- `PUT /api/s3/{bucketName}?tagging` replaces bucket tags from S3-compatible tagging XML.
+- `PUT /api/s3/{bucketName}?tagging` replaces bucket tags from S3-compatible tagging XML. Missing or blank XML returns S3 XML `MissingRequestBodyError`.
 - `DELETE /api/s3/{bucketName}?tagging` clears bucket tags.
 - `DELETE /api/s3/{bucketName}` deletes an empty bucket through the S3-style path.
 - `GET /api/s3/{bucketName}` returns basic S3 `ListObjects` V1 XML.
 - `GET /api/s3/{bucketName}?list-type=2` returns basic S3 `ListObjectsV2` XML.
 - `GET /api/s3/{bucketName}?uploads` returns active S3-style multipart upload sessions.
-- `POST /api/s3/{bucketName}?delete` deletes multiple objects from S3-compatible delete XML.
+- `POST /api/s3/{bucketName}?delete` deletes multiple objects from S3-compatible delete XML. Missing or blank XML returns S3 XML `MissingRequestBodyError`.
 - `PUT /api/s3/{bucketName}/{objectKey}` uploads a raw request body.
 - `PUT /api/s3/{bucketName}/{objectKey}` with `x-amz-copy-source: /sourceBucket/sourceKey` or `/sourceBucket/sourceKey?versionId={versionId}` copies an existing object or retained OSMU object version.
 - `POST /api/s3/{bucketName}/{objectKey}?uploads` initiates an S3-style multipart upload.
 - `PUT /api/s3/{bucketName}/{objectKey}?partNumber={n}&uploadId={uploadId}` uploads one multipart part through the backend.
 - `GET /api/s3/{bucketName}/{objectKey}?uploadId={uploadId}` lists uploaded multipart parts and supports `max-parts` 1~1000 plus `part-number-marker` 0~10000 pagination.
-- `POST /api/s3/{bucketName}/{objectKey}?uploadId={uploadId}` completes multipart upload from S3 `CompleteMultipartUpload` XML.
+- `POST /api/s3/{bucketName}/{objectKey}?uploadId={uploadId}` completes multipart upload from S3 `CompleteMultipartUpload` XML. Missing or blank XML returns S3 XML `MissingRequestBodyError`.
 - `DELETE /api/s3/{bucketName}/{objectKey}?uploadId={uploadId}` aborts multipart upload.
 - `HEAD /api/s3/{bucketName}/{objectKey}` returns object metadata headers.
 - `GET /api/s3/{bucketName}/{objectKey}` streams the object body.
 - `HEAD` and `GET` support basic conditional headers `If-Match`, `If-None-Match`, `If-Modified-Since`, and `If-Unmodified-Since`.
 - `GET /api/s3/{bucketName}/{objectKey}` supports one `Range: bytes=start-end`, `bytes=start-`, or `bytes=-suffixLength` request.
 - `GET /api/s3/{bucketName}/{objectKey}?tagging` returns S3-compatible object tagging XML.
-- `PUT /api/s3/{bucketName}/{objectKey}?tagging` replaces object tags from S3-compatible tagging XML.
+- `PUT /api/s3/{bucketName}/{objectKey}?tagging` replaces object tags from S3-compatible tagging XML. Missing or blank XML returns S3 XML `MissingRequestBodyError`.
 - `DELETE /api/s3/{bucketName}/{objectKey}?tagging` clears object tags.
 - `DELETE /api/s3/{bucketName}/{objectKey}` moves the object to trash using the same soft-delete behavior as the REST object API.
 
@@ -1339,7 +1339,7 @@ Headers:
 - Range GET honors `If-Range` with an ETag or HTTP date: matching validators return the requested range, while stale validators ignore `Range` and return the full object.
 - Bucket-level responses return `x-amz-bucket-region`; default MVP region is `us-east-1`.
 - Bucket create returns `200 OK`, `Location: /{bucketName}`, and `x-amz-bucket-region`. Invalid S3 bucket names return `400 InvalidBucketName`; invalid CreateBucket XML returns `400 MalformedXML`; unsupported CreateBucket control headers return `400 InvalidRequest`. Bucket delete returns `204 No Content`; deleting a bucket that still has active objects or retained object versions returns `409 BucketNotEmpty`.
-- Bucket tagging uses `Tagging/TagSet/Tag/Key/Value` XML, stores up to 50 bucket metadata tags, and disables DOCTYPE/external entity loading while parsing.
+- Bucket tagging uses `Tagging/TagSet/Tag/Key/Value` XML, stores up to 50 bucket metadata tags, returns `MissingRequestBodyError` for missing/blank XML, and disables DOCTYPE/external entity loading while parsing.
 - Range GET returns `206 Partial Content`, `Accept-Ranges: bytes`, and `Content-Range` for one byte range. Multi-range requests are rejected with `416 RANGE_NOT_SATISFIABLE`, matching AWS S3's documented one-range behavior.
 - `ListObjectsV2` supports `prefix`, `delimiter`, `max-keys` from `1` to `1000`, `continuation-token`, `encoding-type=url`, and `fetch-owner=true|false`.
 - `ListObjectsV2` returns `Contents`, `CommonPrefixes`, `IsTruncated`, `NextContinuationToken`, and optional `Owner`.
@@ -1352,10 +1352,10 @@ Headers:
 - Key-specific failures return `DeleteResult/Error` entries with `Key`, S3-style `Code`, and `Message`. `Quiet=true` only suppresses successful `Deleted` entries, not `Error` entries.
 - Multi-object delete validates optional `Content-MD5`; invalid base64 MD5 returns `InvalidDigest`, and mismatched body checksum returns `BadDigest`. Content-MD5 digest errors use AWS-style `InvalidDigest`/`BadDigest` messages.
 - Object tagging uses `Tagging/TagSet/Tag/Key/Value` XML and reuses the same tag metadata used by the REST object API.
-- `PUT ?tagging` rejects blank or invalid XML and the parser disables DOCTYPE/external entity loading.
+- `PUT ?tagging` rejects missing/blank XML as `MissingRequestBodyError`, rejects invalid XML as `MalformedXML` or `InvalidRequest` depending on parser/schema shape, and disables DOCTYPE/external entity loading.
 - S3 responses expose AWS-style trace headers: `x-amz-request-id` mirrors the normalized `X-Request-Id`, and `x-amz-id-2` is an opaque deterministic value derived from request id plus resource. These headers are exposed through backend CORS for browser clients.
 - Errors under `/api/s3/**` return AWS-style XML `<Error><Code>...</Code><Message>...</Message><Resource>...</Resource><RequestId>...</RequestId><HostId>...</HostId></Error>`; when derivable, per-error details such as `BucketName`, `Key`, and `UploadId` are emitted between `Message` and `Resource`. XML `RequestId` and `HostId` match the S3 trace headers.
-- S3 XML error code mapping includes `AccessDenied`, `NoSuchBucket`, `NoSuchKey`, `NoSuchUpload`, `BucketAlreadyOwnedByYou`, `BucketAlreadyExists`, `BucketNotEmpty`, `InvalidBucketName`, `InvalidRange`, `InvalidRequest`, `MalformedXML`, `InvalidPart`, `InvalidPartOrder`, `InvalidDigest`, `BadDigest`, `PreconditionFailed`, `EntityTooSmall`, `EntityTooLarge`, `OperationAborted`, `MissingContentLength`, `IncompleteBody`, and `InternalError`.
+- S3 XML error code mapping includes `AccessDenied`, `NoSuchBucket`, `NoSuchKey`, `NoSuchUpload`, `BucketAlreadyOwnedByYou`, `BucketAlreadyExists`, `BucketNotEmpty`, `InvalidBucketName`, `InvalidRange`, `InvalidRequest`, `MalformedXML`, `MissingRequestBodyError`, `InvalidPart`, `InvalidPartOrder`, `InvalidDigest`, `BadDigest`, `PreconditionFailed`, `EntityTooSmall`, `EntityTooLarge`, `OperationAborted`, `MissingContentLength`, `IncompleteBody`, and `InternalError`.
 - S3 XML `AccessDenied` responses use HTTP `403` and message `Access Denied` for AWS client compatibility even when the underlying REST auth failure category is `AUTHENTICATION_REQUIRED`; normal REST JSON auth failures still use HTTP `401` and retain detailed JSON messages.
 - S3 XML `BadDigest`/`InvalidDigest` responses for Content-MD5 use AWS-style messages while non-MD5 checksum failures retain the more specific failing checksum message.
 - S3 XML `EntityTooLarge`, `OperationAborted`, and `InternalError` responses use AWS-style generic messages for S3 client compatibility.

@@ -92,6 +92,9 @@ public final class S3ErrorCodeMapper {
         if ("MalformedXML".equals(s3Code)) {
             return "The XML you provided was not well-formed or did not validate against our published schema.";
         }
+        if ("MissingRequestBodyError".equals(s3Code)) {
+            return "Request body is empty.";
+        }
         return message == null || message.isBlank() ? s3Code : message;
     }
 
@@ -124,6 +127,9 @@ public final class S3ErrorCodeMapper {
         }
         if (normalized.contains("request body length does not match expected content length")) {
             return "IncompleteBody";
+        }
+        if (normalized.contains("xml is required")) {
+            return "MissingRequestBodyError";
         }
         if (normalized.contains("invalid ") && normalized.contains(" xml")) {
             return "MalformedXML";
