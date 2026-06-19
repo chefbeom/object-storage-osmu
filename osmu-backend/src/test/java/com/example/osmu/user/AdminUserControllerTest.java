@@ -396,6 +396,59 @@ class AdminUserControllerTest {
     }
 
     @Test
+    void auditorCanReadAuditAndStatusButCannotMutateAdminResources() throws Exception {
+        String adminToken = loginAndReturnAccessToken("admin", "password");
+        createUser(adminToken, "readonly-auditor-1", "readonly-auditor-1@example.com", "AUDITOR");
+        String auditorToken = loginAndReturnAccessToken("readonly-auditor-1", "user-password");
+
+        mockMvc.perform(get("/api/admin/audit-logs")
+                        .header("Authorization", "Bearer " + auditorToken))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/admin/audit-logs/export.csv")
+                        .header("Authorization", "Bearer " + auditorToken))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Content-Disposition", "attachment; filename=\"osmu-audit-logs.csv\""));
+
+        mockMvc.perform(get("/api/admin/dashboard/summary")
+                        .header("Authorization", "Bearer " + auditorToken))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/admin/backup/status")
+                        .header("Authorization", "Bearer " + auditorToken))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(post("/api/admin/users")
+                        .header("Authorization", "Bearer " + auditorToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "loginId": "auditor-created-user",
+                                  "email": "auditor-created-user@example.com",
+                                  "name": "Auditor Created User",
+                                  "password": "user-password",
+                                  "role": "USER"
+                                }
+                                """))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.error.code").value("AUTHORIZATION_FAILED"));
+
+        mockMvc.perform(post("/api/admin/storage-expansion/requests")
+                        .header("Authorization", "Bearer " + auditorToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "requestedCapacityBytes": 107374182400,
+                                  "serverCount": 4,
+                                  "volumesPerServer": 1,
+                                  "reason": "auditor blocked request"
+                                }
+                                """))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.error.code").value("AUTHORIZATION_FAILED"));
+    }
+
+    @Test
     void userAuditLogUsesAuthenticatedAdminActor() throws Exception {
         String adminToken = loginAndReturnAccessToken("admin", "password");
         mockMvc.perform(post("/api/admin/users")

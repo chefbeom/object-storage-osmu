@@ -212,7 +212,7 @@ function safeRedirectPath(value) {
 
 function canAccessPath(path, role) {
   if (path.startsWith('/audit')) {
-    return role === 'ADMIN'
+    return role === 'ADMIN' || role === 'AUDITOR'
   }
   if (path.startsWith('/admin')) {
     return role === 'ADMIN' || role === 'ORG_ADMIN'

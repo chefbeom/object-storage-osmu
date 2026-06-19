@@ -50,7 +50,7 @@ const router = createRouter({
       path: '/audit',
       name: 'audit',
       component: HomeView,
-      meta: { requiresAuth: true, roles: ['ADMIN'] },
+      meta: { requiresAuth: true, roles: ['ADMIN', 'AUDITOR'] },
     },
     {
       path: '/:pathMatch(.*)*',
@@ -108,7 +108,7 @@ function safeRedirectPath(value) {
 
 function canAccessPath(path, role) {
   if (path.startsWith('/audit')) {
-    return role === 'ADMIN'
+    return role === 'ADMIN' || role === 'AUDITOR'
   }
   if (path.startsWith('/admin')) {
     return role === 'ADMIN' || role === 'ORG_ADMIN'
@@ -130,6 +130,9 @@ function fallbackPathForRole(role) {
   }
   if (role === 'ORG_ADMIN') {
     return '/admin'
+  }
+  if (role === 'AUDITOR') {
+    return '/dashboard'
   }
   return '/developer'
 }

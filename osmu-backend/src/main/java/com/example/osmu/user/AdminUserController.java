@@ -241,7 +241,8 @@ public class AdminUserController {
                 || !actor.organizationId().equals(user.organizationId())
                 || actor.id() == user.id()
                 || "ADMIN".equals(user.role())
-                || "ORG_ADMIN".equals(user.role())) {
+                || "ORG_ADMIN".equals(user.role())
+                || "AUDITOR".equals(user.role())) {
             throw new ApiException(ApiErrorCode.AUTHORIZATION_FAILED, "User management denied.");
         }
     }

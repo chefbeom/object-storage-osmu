@@ -15,7 +15,9 @@ const state = reactive({
 const isLoggedIn = computed(() => Boolean(state.accessToken))
 const isAdmin = computed(() => state.user?.role === 'ADMIN')
 const isOrgAdmin = computed(() => state.user?.role === 'ORG_ADMIN')
+const isAuditor = computed(() => state.user?.role === 'AUDITOR')
 const canUseAdminTools = computed(() => isAdmin.value || isOrgAdmin.value)
+const canUseAuditTools = computed(() => isAdmin.value || isAuditor.value)
 
 function applySession(data, options = {}) {
   state.user = data.user
@@ -161,7 +163,9 @@ export function useAuthStore() {
     isLoggedIn,
     isAdmin,
     isOrgAdmin,
+    isAuditor,
     canUseAdminTools,
+    canUseAuditTools,
     applySession,
     restoreSession,
     startAuthSync,

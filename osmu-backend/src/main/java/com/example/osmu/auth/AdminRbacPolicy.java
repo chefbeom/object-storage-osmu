@@ -10,6 +10,7 @@ public class AdminRbacPolicy {
 
     private static final String ADMIN = "ADMIN";
     private static final String ORG_ADMIN = "ORG_ADMIN";
+    private static final String AUDITOR = "AUDITOR";
 
     private static final List<RouteRule> ORG_ADMIN_ALLOWED_ROUTES = List.of(
             RouteRule.exact("GET", "/api/admin/users"),
@@ -18,16 +19,30 @@ public class AdminRbacPolicy {
             RouteRule.exact("GET", "/api/admin/organizations"),
             RouteRule.exact("GET", "/api/admin/organizations/usage")
     );
+    private static final List<RouteRule> AUDITOR_ALLOWED_ROUTES = List.of(
+            RouteRule.exact("GET", "/api/admin/audit-logs"),
+            RouteRule.exact("GET", "/api/admin/audit-logs/export.csv"),
+            RouteRule.exact("GET", "/api/admin/usage"),
+            RouteRule.exact("GET", "/api/admin/system/status"),
+            RouteRule.exact("GET", "/api/admin/dashboard/summary"),
+            RouteRule.exact("GET", "/api/admin/dashboard/readiness"),
+            RouteRule.exact("GET", "/api/admin/backup/status"),
+            RouteRule.exact("GET", "/api/admin/backup/restore-drill-evidence")
+    );
 
     public boolean isAllowed(String method, String uri, String role) {
         String normalizedRole = normalizeRole(role);
         if (ADMIN.equals(normalizedRole)) {
             return true;
         }
-        if (!ORG_ADMIN.equals(normalizedRole)) {
+        if (ORG_ADMIN.equals(normalizedRole)) {
+            return ORG_ADMIN_ALLOWED_ROUTES.stream()
+                    .anyMatch(rule -> rule.matches(method, uri));
+        }
+        if (!AUDITOR.equals(normalizedRole)) {
             return false;
         }
-        return ORG_ADMIN_ALLOWED_ROUTES.stream()
+        return AUDITOR_ALLOWED_ROUTES.stream()
                 .anyMatch(rule -> rule.matches(method, uri));
     }
 

@@ -837,9 +837,10 @@ MVP:
 
 ### 12.5 호환성
 
-- AWS S3 SDK와 호환되어야 한다.
-- MinIO Client와 호환되어야 한다.
-- s3fs-fuse, goofys 같은 FUSE 기반 마운트 도구와 연동 가능해야 한다.
+- AWS SDK, boto3, AWS CLI, MinIO Client의 핵심 bucket/object/multipart 사용 흐름과 호환되어야 한다.
+- AWS S3 전체 동작 복제가 아니라 내부 스토리지 전환에 필요한 대체 가능성을 목표로 한다.
+- S3 호환성은 제품 확장 우선순위가 아니라 회귀 검증 기준이다. 새 S3 세부 동작은 지원 클라이언트 smoke 실패나 고객 전환 blocker가 확인될 때만 추가한다.
+- s3fs-fuse, goofys 같은 FUSE 기반 마운트 도구는 고객 전환 시나리오가 확인될 때 연동 범위와 검증 기준을 확정한다.
 
 ### 12.6 운영성
 

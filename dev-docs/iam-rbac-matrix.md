@@ -14,29 +14,30 @@
 | --- | --- | --- |
 | `ADMIN` | 전역 시스템 관리자 | 모든 `/api/admin/**`, 전체 bucket/object/access key, dashboard admin panel |
 | `ORG_ADMIN` | 조직 관리자 | 자기 조직 사용자/조직 usage, 자기 조직 bucket 관리, 일반 사용자 생성/비활성화 |
+| `AUDITOR` | 읽기 전용 감사자 | 감사 로그, 운영 상태, dashboard summary/readiness, backup status 조회 |
 | `USER` | 개발자/일반 사용자 | 본인 또는 허용된 bucket/object/access key, developer S3 client flow |
 
-현재 구현에는 `AUDITOR`, `STORAGE_ADMIN`, `SECURITY_ADMIN` 같은 세분화 role이 없다. 이 role들은 후속 설계 후보이며, 추가 시 `AdminRbacPolicy`, dashboard widget matrix, frontend navigation, API spec을 함께 갱신해야 한다.
+현재 구현에는 `STORAGE_ADMIN`, `SECURITY_ADMIN` 같은 추가 세분화 role이 없다. 이 role들은 후속 설계 후보이며, 추가 시 `AdminRbacPolicy`, dashboard widget matrix, frontend navigation, API spec을 함께 갱신해야 한다.
 
 ## 2. Admin API Matrix
 
-| Area | Endpoint pattern | `ADMIN` | `ORG_ADMIN` | `USER` | Scope rule | Enforcement |
-| --- | --- | --- | --- | --- | --- | --- |
-| User list | `GET /api/admin/users` | Allow | Allow | Deny | `ORG_ADMIN`은 자기 조직 사용자만 조회 | `AdminRbacPolicy`, `AdminUserController.canView` |
-| User create | `POST /api/admin/users` | Allow | Allow | Deny | `ORG_ADMIN`은 자기 조직 `USER`만 생성 | `AdminRbacPolicy`, `AdminUserController.resolveCreateOrganization`, `validateCreateRole` |
-| User status | `PATCH /api/admin/users/{userId}/status` | Allow | Allow | Deny | `ORG_ADMIN`은 자기 조직 일반 `USER`만 관리, 자기 자신/관리자 role 차단 | `AdminRbacPolicy`, `AdminUserController.assertCanManage` |
-| Organization list | `GET /api/admin/organizations` | Allow | Allow | Deny | `ORG_ADMIN`은 자기 조직만 조회 | `AdminRbacPolicy`, `AdminOrganizationController.visibleOrganizations` |
-| Organization usage | `GET /api/admin/organizations/usage` | Allow | Allow | Deny | `ORG_ADMIN`은 자기 조직 usage만 조회 | `AdminRbacPolicy`, `AdminOrganizationController.visibleOrganizations` |
-| Organization create/delete | `POST /api/admin/organizations`, `DELETE /api/admin/organizations/{id}` | Allow | Deny | Deny | 전역 tenant 구조 변경 | `AdminRbacPolicy`, controller admin check |
-| Audit | `GET /api/admin/audit-logs`, `GET /api/admin/audit-logs/export.csv` | Allow | Deny | Deny | 전역 감사 로그 | `AdminRbacPolicy` |
-| Usage/status | `GET /api/admin/usage`, `GET /api/admin/system/status`, `GET /api/admin/dashboard/*` | Allow | Deny | Deny | 전역 운영 상태 | `AdminRbacPolicy` |
-| Quota policy | `/api/admin/quota-policies/**` | Allow | Deny | Deny | 전역 quota 정책과 history | `AdminRbacPolicy` |
-| Object share policy | `/api/admin/object-share-policy`, `/api/admin/object-share-analytics` | Allow | Deny | Deny | 전역 공유 정책/분석 | `AdminRbacPolicy` |
-| Lifecycle/retention admin | `/api/admin/object-lifecycle/**`, `/api/admin/object-retention/**` | Allow | Deny | Deny | 전역 lifecycle/retention 운영 | `AdminRbacPolicy` |
-| Storage expansion | `/api/admin/storage-expansion/**` | Allow | Deny | Deny | MinIO pool/PV/GitOps 증설 운영 | `AdminRbacPolicy`, `StorageExpansionService.requireAdmin` |
-| Backup/restore drill | `GET /api/admin/backup/status`, `POST /api/admin/backup/restore-drill-evidence` | Allow | Deny | Deny | 백업 준비도와 복구 증거 기록 | `AdminRbacPolicy` |
+| Area | Endpoint pattern | `ADMIN` | `ORG_ADMIN` | `AUDITOR` | `USER` | Scope rule | Enforcement |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| User list | `GET /api/admin/users` | Allow | Allow | Deny | Deny | `ORG_ADMIN`은 자기 조직 사용자만 조회 | `AdminRbacPolicy`, `AdminUserController.canView` |
+| User create | `POST /api/admin/users` | Allow | Allow | Deny | Deny | `ORG_ADMIN`은 자기 조직 `USER`만 생성. `ADMIN`만 `AUDITOR` 생성 가능 | `AdminRbacPolicy`, `AdminUserController.resolveCreateOrganization`, `validateCreateRole` |
+| User status | `PATCH /api/admin/users/{userId}/status` | Allow | Allow | Deny | Deny | `ORG_ADMIN`은 자기 조직 일반 `USER`만 관리, 자기 자신/관리자/AUDITOR role 차단 | `AdminRbacPolicy`, `AdminUserController.assertCanManage` |
+| Organization list | `GET /api/admin/organizations` | Allow | Allow | Deny | Deny | `ORG_ADMIN`은 자기 조직만 조회 | `AdminRbacPolicy`, `AdminOrganizationController.visibleOrganizations` |
+| Organization usage | `GET /api/admin/organizations/usage` | Allow | Allow | Deny | Deny | `ORG_ADMIN`은 자기 조직 usage만 조회 | `AdminRbacPolicy`, `AdminOrganizationController.visibleOrganizations` |
+| Organization create/delete | `POST /api/admin/organizations`, `DELETE /api/admin/organizations/{id}` | Allow | Deny | Deny | Deny | 전역 tenant 구조 변경 | `AdminRbacPolicy`, controller admin check |
+| Audit | `GET /api/admin/audit-logs`, `GET /api/admin/audit-logs/export.csv` | Allow | Deny | Allow | Deny | 전역 감사 로그 read-only | `AdminRbacPolicy` |
+| Usage/status | `GET /api/admin/usage`, `GET /api/admin/system/status`, `GET /api/admin/dashboard/*` | Allow | Deny | Allow | Deny | 전역 운영 상태 read-only | `AdminRbacPolicy` |
+| Quota policy | `/api/admin/quota-policies/**` | Allow | Deny | Deny | Deny | 전역 quota 정책과 history | `AdminRbacPolicy` |
+| Object share policy | `/api/admin/object-share-policy`, `/api/admin/object-share-analytics` | Allow | Deny | Deny | Deny | 전역 공유 정책/분석 | `AdminRbacPolicy` |
+| Lifecycle/retention admin | `/api/admin/object-lifecycle/**`, `/api/admin/object-retention/**` | Allow | Deny | Deny | Deny | 전역 lifecycle/retention 운영 | `AdminRbacPolicy` |
+| Storage expansion | `/api/admin/storage-expansion/**` | Allow | Deny | Deny | Deny | MinIO pool/PV/GitOps 증설 운영 | `AdminRbacPolicy`, `StorageExpansionService.requireAdmin` |
+| Backup/restore drill | `GET /api/admin/backup/status`, `GET /api/admin/backup/restore-drill-evidence`, `POST /api/admin/backup/restore-drill-evidence` | Allow | Deny | GET only | Deny | 백업 준비도와 복구 증거. `AUDITOR`는 조회만 가능 | `AdminRbacPolicy` |
 
-기본 원칙: `/api/admin/**`는 `ADMIN` 전용이다. `ORG_ADMIN` 허용 route는 위 표의 사용자/조직 조회 및 자기 조직 사용자 관리 API뿐이다.
+기본 원칙: `/api/admin/**`는 `ADMIN` 전용이다. `ORG_ADMIN` 허용 route는 위 표의 사용자/조직 조회 및 자기 조직 사용자 관리 API뿐이며, `AUDITOR` 허용 route는 감사/상태/backup evidence 조회 API뿐이다.
 
 ## 3. Non-Admin Resource Scope Matrix
 
@@ -53,11 +54,12 @@
 
 ## 4. Dashboard Panel Matrix
 
-| Widget group | Widget ids | `ADMIN` | `ORG_ADMIN` | `USER` | Catalog access | Enforcement |
-| --- | --- | --- | --- | --- | --- | --- |
-| Common storage | `capacity`, `remaining`, `buckets`, `objects`, `health`, `runtime`, `readiness`, `backup`, `io`, `selected` | Show | Show | Show | `allowedRoles=["ADMIN","ORG_ADMIN","USER"]`, `accessMode=read-only` | `DashboardLayoutService.widgetCatalog`, `HomeView.dashboardWidgetCatalogForCurrentRole` |
-| Access key operations | `access-keys` | Show | Show | Show | `allowedRoles=["ADMIN","ORG_ADMIN","USER"]`, `accessMode=read-only`; data API scope still applies | `AccessKeyService`, dashboard summary scope |
-| Audit/global operations | `requests`, `sharing`, `quota`, `identity`, `lifecycle`, `retention`, `execution-retention`, `storage-expansion` | Show | Hide | Hide | `allowedRoles=["ADMIN"]`, `accessMode=admin-only` | `DashboardLayoutService.isWidgetAllowedForUser`, frontend role filter |
+| Widget group | Widget ids | `ADMIN` | `ORG_ADMIN` | `AUDITOR` | `USER` | Catalog access | Enforcement |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| Common storage | `capacity`, `remaining`, `buckets`, `objects`, `health`, `runtime`, `readiness`, `backup`, `io`, `selected` | Show | Show | Show | Show | `allowedRoles=["ADMIN","ORG_ADMIN","AUDITOR","USER"]`, `accessMode=read-only` | `DashboardLayoutService.widgetCatalog`, `HomeView.dashboardWidgetCatalogForCurrentRole` |
+| Access key operations | `access-keys` | Show | Show | Show | Show | `allowedRoles=["ADMIN","ORG_ADMIN","AUDITOR","USER"]`, `accessMode=read-only`; data API scope still applies | `AccessKeyService`, dashboard summary scope |
+| Audit read-only | `requests` | Show | Hide | Show | Hide | `allowedRoles=["ADMIN","AUDITOR"]`, `accessMode=read-only` | `DashboardLayoutService.isWidgetAllowedForUser`, frontend role filter |
+| Admin operations | `sharing`, `quota`, `identity`, `lifecycle`, `retention`, `execution-retention`, `storage-expansion` | Show | Hide | Hide | Hide | `allowedRoles=["ADMIN"]`, `accessMode=admin-only` | `DashboardLayoutService.isWidgetAllowedForUser`, frontend role filter |
 
 Dashboard server policy:
 
@@ -65,11 +67,11 @@ Dashboard server policy:
 - Catalog items include `allowedRoles` and `accessMode` so frontend/test verifiers can compare panel visibility with this matrix.
 - `GET /api/dashboard/layout/presets` filters preset widgets by current role.
 - `GET /api/dashboard/layout` removes widgets no longer visible to the current role.
-- `PUT /api/dashboard/layout` rejects `adminOnly` widgets from non-`ADMIN` users with `AUTHORIZATION_FAILED`.
+- `PUT /api/dashboard/layout` rejects widgets outside the current role's `allowedRoles` with `AUTHORIZATION_FAILED`.
 
 Frontend policy:
 
-- Sidebar navigation hides Admin/Audit pages by role.
+- Sidebar navigation hides Admin/Audit pages by role. `AUDITOR` sees Dashboard and Audit only.
 - AdminPage hides global operations panels at parent component level with `isAdmin`; `ORG_ADMIN` keeps only org-scoped identity controls, access keys, and bucket-scoped permission/metadata panels.
 - Dashboard palette uses backend catalog metadata.
 - Fallback catalog, localStorage recovery, and direct add events all pass through the current role-visible catalog.

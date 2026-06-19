@@ -17372,6 +17372,44 @@ feat/bucket-management
 - 후속:
   - 남은 큰 축은 broader multipart checksum exact AWS edge parity와 live Kubernetes/security evidence다.
 
+### 2026-06-19 - read-only AUDITOR 역할과 S3 대체성 기준 정리
+- 작업 시간:
+  - 시작: 2026-06-19 KST
+  - 종료: 2026-06-19 KST
+- 사용자 명령:
+  - "앞으로 구현해야할 내용" 파악 이후, AWS 호환에 과도하게 치우치지 말고 AWS S3는 대체 가능한 수준으로만 둔다.
+- 요청 분석:
+  - 다음 구현 축은 AWS edge parity가 아니라 운영 제품 기능이어야 한다고 판단했다.
+  - 남은 IAM/RBAC 항목 중 `read-only auditor 역할`은 운영/감사 제품성에 직접 연결되므로 먼저 닫았다.
+  - 문서에는 S3-compatible API가 제품 중심 기능이 아니라 migration compatibility layer이자 회귀 검증 기준이라는 방향을 명시했다.
+- 수행:
+  - `AUDITOR` role을 추가하고 감사 로그, usage/status, dashboard summary/readiness, backup status, restore drill evidence 조회만 허용하는 admin route allowlist를 추가했다.
+  - `AUDITOR`는 Dashboard/Audit navigation과 read-only audit widget을 볼 수 있고, 사용자/조직/쿼터/증설 등 변경성 admin API는 차단하도록 backend/frontend 권한을 맞췄다.
+  - Dashboard widget 허용 기준을 `adminOnly` 단일 플래그에서 role별 `allowedRoles` 기준으로 정리했다.
+  - 관리자만 `AUDITOR` 계정을 만들 수 있도록 사용자 생성/관리 정책과 테스트를 보강했다.
+  - README, roadmap, feature inventory, S3 compatibility matrix, PRD 문서에 "S3는 대체 가능한 수준의 호환 계층이며 새 S3 세부 동작은 smoke 실패나 전환 blocker가 있을 때만 보강"한다는 기준을 반영했다.
+- 수정한 파일:
+  - `osmu-backend/src/main/java/com/example/osmu/auth/AdminRbacPolicy.java`
+  - `osmu-backend/src/main/java/com/example/osmu/auth/AuthenticatedUser.java`
+  - `osmu-backend/src/main/java/com/example/osmu/dashboard/DashboardLayoutService.java`
+  - `osmu-backend/src/main/java/com/example/osmu/user/AdminUserController.java`
+  - `osmu-backend/src/main/java/com/example/osmu/user/CreateUserRequest.java`
+  - `osmu-frontend/src/stores/auth.js`
+  - `osmu-frontend/src/router/index.js`
+  - `osmu-frontend/src/views/HomeView.vue`
+  - `osmu-frontend/src/views/LoginView.vue`
+  - `osmu-frontend/src/components/admin/IdentityAdminPanel.vue`
+  - 관련 backend/frontend 테스트와 `README.md`, `PRODUCT_REQUIREMENTS.md`, `dev-docs/*`, `scripts/verify-iam-rbac-matrix.ps1`
+- 검증:
+  - `$env:JAVA_HOME='C:\jdk-17'; $env:Path="$env:JAVA_HOME\bin;$env:Path"; .\gradlew.bat test --no-daemon --tests com.example.osmu.auth.AdminRbacPolicyTest --tests com.example.osmu.user.AdminUserControllerTest --tests com.example.osmu.dashboard.DashboardLayoutControllerTest`: 통과.
+  - `npm.cmd run test:unit`: 78개 통과.
+  - `npm.cmd run build`: 통과.
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\verify-iam-rbac-matrix.ps1`: 통과.
+  - `git diff --check`: 통과.
+- 후속:
+  - 다음 우선순위는 SSO/OIDC 검토, 부서/team 단위 RBAC, 운영 evidence, analytics/chargeback이다.
+  - S3 관련 신규 작업은 실제 지원 클라이언트 smoke 실패나 고객 전환 blocker가 확인될 때만 진행한다.
+
 ### 2026-06-19 - 운영용 admin bootstrap 정책 추가
 - 작업 시간:
   - 시작: 2026-06-19 KST

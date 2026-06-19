@@ -243,7 +243,8 @@ class DashboardLayoutControllerTest {
                 .andExpect(jsonPath("$.data[?(@.id == 'access-keys')].category", hasItem("SECURITY")))
                 .andExpect(jsonPath("$.data[?(@.id == 'access-keys')].allowedRoles[0]", hasItem("ADMIN")))
                 .andExpect(jsonPath("$.data[?(@.id == 'access-keys')].allowedRoles[1]", hasItem("ORG_ADMIN")))
-                .andExpect(jsonPath("$.data[?(@.id == 'access-keys')].allowedRoles[2]", hasItem("USER")))
+                .andExpect(jsonPath("$.data[?(@.id == 'access-keys')].allowedRoles[2]", hasItem("AUDITOR")))
+                .andExpect(jsonPath("$.data[?(@.id == 'access-keys')].allowedRoles[3]", hasItem("USER")))
                 .andExpect(jsonPath("$.data[?(@.id == 'access-keys')].accessMode", hasItem("read-only")))
                 .andExpect(jsonPath("$.data[?(@.id == 'access-keys')].configOptions[0].key", hasItem("tone")))
                 .andExpect(jsonPath("$.data[?(@.id == 'access-keys')].configOptions[0].defaultValue", hasItem("default")))
@@ -322,7 +323,7 @@ class DashboardLayoutControllerTest {
                 .andExpect(jsonPath("$.data[*].id", org.hamcrest.Matchers.not(hasItem("storage-expansion"))))
                 .andExpect(jsonPath("$.data[*].adminOnly", org.hamcrest.Matchers.not(hasItem(true))))
                 .andExpect(jsonPath("$.data[?(@.id == 'access-keys')].accessMode", hasItem("read-only")))
-                .andExpect(jsonPath("$.data[?(@.id == 'access-keys')].allowedRoles[2]", hasItem("USER")));
+                .andExpect(jsonPath("$.data[?(@.id == 'access-keys')].allowedRoles[3]", hasItem("USER")));
 
         mockMvc.perform(get("/api/dashboard/layout/presets")
                         .header("Authorization", "Bearer " + userToken))
@@ -370,6 +371,61 @@ class DashboardLayoutControllerTest {
                 .andExpect(jsonPath("$.data.widgets[*].id", hasItem("access-keys")))
                 .andExpect(jsonPath("$.data.widgets[*].id", org.hamcrest.Matchers.not(hasItem("identity"))))
                 .andExpect(jsonPath("$.data.widgets[*].id", org.hamcrest.Matchers.not(hasItem("storage-expansion"))));
+    }
+
+    @Test
+    void auditorDashboardLayoutAllowsAuditWidgetsOnlyFromAdminOnlyCatalog() throws Exception {
+        String adminToken = loginAndReturnAccessToken("admin", "password");
+        String loginId = "dashboard-auditor-" + System.nanoTime();
+        createUser(adminToken, loginId, "AUDITOR", null);
+        String auditorToken = loginAndReturnAccessToken(loginId, "user-password");
+        String scope = "auditor-widget-test-" + System.nanoTime();
+
+        mockMvc.perform(get("/api/dashboard/layout/widgets")
+                        .header("Authorization", "Bearer " + auditorToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data[*].id", hasItem("capacity")))
+                .andExpect(jsonPath("$.data[*].id", hasItem("requests")))
+                .andExpect(jsonPath("$.data[*].id", org.hamcrest.Matchers.not(hasItem("quota"))))
+                .andExpect(jsonPath("$.data[*].id", org.hamcrest.Matchers.not(hasItem("identity"))))
+                .andExpect(jsonPath("$.data[*].id", org.hamcrest.Matchers.not(hasItem("storage-expansion"))))
+                .andExpect(jsonPath("$.data[?(@.id == 'requests')].adminOnly", hasItem(true)))
+                .andExpect(jsonPath("$.data[?(@.id == 'requests')].allowedRoles[1]", hasItem("AUDITOR")))
+                .andExpect(jsonPath("$.data[?(@.id == 'requests')].accessMode", hasItem("read-only")));
+
+        mockMvc.perform(get("/api/dashboard/layout/presets")
+                        .header("Authorization", "Bearer " + auditorToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data[*].widgets[*].id", hasItem("requests")))
+                .andExpect(jsonPath("$.data[*].widgets[*].id", org.hamcrest.Matchers.not(hasItem("storage-expansion"))));
+
+        mockMvc.perform(put("/api/dashboard/layout")
+                        .header("Authorization", "Bearer " + auditorToken)
+                        .param("scope", scope)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "widgets": [
+                                    { "id": "requests", "enabled": true, "size": "normal" }
+                                  ]
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.widgets[*].id", hasItem("requests")));
+
+        mockMvc.perform(put("/api/dashboard/layout")
+                        .header("Authorization", "Bearer " + auditorToken)
+                        .param("scope", scope)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "widgets": [
+                                    { "id": "quota", "enabled": true, "size": "normal" }
+                                  ]
+                                }
+                                """))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.error.code").value("AUTHORIZATION_FAILED"));
     }
 
     @Test

@@ -4,7 +4,7 @@
 
 ## Product Boundary
 
-OSMU의 S3 목표는 AWS S3 완전 호환이 아니라 "기존 S3 클라이언트와 SDK가 큰 수정 없이 내부 스토리지로 전환할 수 있는 대체 가능성"이다. 따라서 우선순위는 bucket/object CRUD, multipart upload, copy, tagging, lifecycle XML subset, SigV4, presigned URL, 기본 checksum, 실제 `aws`/`mc`/boto3/AWS SDK smoke 통과에 둔다. AWS 문서의 모든 오류 메시지, edge header 조합, versioning nuance, checksum negotiation 세부 parity는 기본 목표가 아니며, 실제 마이그레이션 클라이언트가 실패할 때만 제품 영향 기준으로 선별 보강한다.
+OSMU의 S3 목표는 AWS S3 완전 호환이 아니라 "기존 S3 클라이언트와 SDK가 큰 수정 없이 내부 스토리지로 전환할 수 있는 대체 가능성"이다. 따라서 우선순위는 bucket/object CRUD, multipart upload, copy, tagging, lifecycle XML subset, SigV4, presigned URL, 기본 checksum, 실제 `aws`/`mc`/boto3/AWS SDK smoke 통과에 둔다. AWS 문서의 모든 오류 메시지, edge header 조합, versioning nuance, checksum negotiation 세부 parity는 기본 목표가 아니며, 실제 마이그레이션 클라이언트가 실패할 때만 제품 영향 기준으로 선별 보강한다. S3 호환성 작업은 OSMU의 운영/권한/감사/관리 제품 경험을 대체하지 않는 보조 호환 계층으로 취급한다.
 
 ## Compatibility Level
 
@@ -81,3 +81,4 @@ OSMU의 S3 목표는 AWS S3 완전 호환이 아니라 "기존 S3 클라이언�
 - `scripts/verify-docker-integration.ps1` is stronger because it exercises MariaDB + MinIO + backend container networking, including the SDK-style multipart checksum path.
 - Any newly claimed S3 operation must update this matrix, `api-spec.md`, `test-cases.md`, and at least one automated backend or smoke test.
 - New S3 work should start from target-client replacement needs, not from chasing AWS edge parity for its own sake.
+- New S3 behavior is accepted into the roadmap only when it protects replacement use: a supported client smoke fails, a migration scenario is blocked, or an OSMU control-plane feature needs the subset.

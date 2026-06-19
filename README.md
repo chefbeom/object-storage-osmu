@@ -6,7 +6,7 @@ OSMU(Object Storage Management Utility)는 기업 내부망 또는 전용 인프
 
 ## 핵심 목표
 
-- 기존 S3 클라이언트가 큰 수정 없이 사용할 수 있는 대체용 S3-compatible API를 제공하되, AWS S3 전체 스펙의 세부 호환을 제품 목표로 삼지는 않는다.
+- 기존 S3 클라이언트가 큰 수정 없이 사용할 수 있는 대체용 S3-compatible API를 제공하되, AWS S3 전체 스펙의 세부 호환을 제품 목표로 삼지는 않는다. S3는 제품의 중심 기능이 아니라 내부 스토리지 전환을 돕는 호환 계층이다.
 - MariaDB에는 사용자, 조직, 버킷, 오브젝트 인덱스, 권한, 감사 로그, quota, readiness evidence 같은 metadata를 저장한다.
 - MinIO에는 실제 오브젝트 binary와 multipart payload를 저장한다.
 - 웹 포털에서 관리자 콘솔, 개발자 콘솔, bucket/object 탐색, Access Key, quota, audit, lifecycle, 공유, dashboard, data-flow monitoring을 제공한다.
@@ -18,7 +18,7 @@ OSMU(Object Storage Management Utility)는 기업 내부망 또는 전용 인프
 - Web Portal: 로그인, dashboard, bucket/object, admin/developer, audit, lifecycle, share, quota, storage expansion, operations readiness, data-flow monitoring 화면 제공.
 - Backend: REST API, S3 호환 API, SigV4, bucket/object, multipart, CopyObject, multi-delete, Access Key, dashboard/readiness, monitoring API 제공.
 - Operations: Kubernetes/Helm draft, monitoring artifact, backup/restore drill, storage expansion runner, security evidence writer/finalizer, operations readiness finalizer와 verifier 제공.
-- 남은 큰 축: 실제 운영 클러스터 evidence, GitHub-hosted durable gate evidence, host `aws`/`mc` smoke, 장기 analytics/time-series, 운영 패키징.
+- 남은 큰 축: 실제 운영 클러스터 evidence, GitHub-hosted durable gate evidence, 장기 analytics/time-series, 운영 패키징. S3 client smoke는 대체성 회귀 검증으로 유지한다.
 
 ## 아키텍처 개요
 
@@ -87,7 +87,7 @@ Frontend는 MariaDB나 MinIO에 직접 접근하지 않습니다. Backend API만
 - 사용자/조직: 사용자 상태, 조직, 조직별 버킷 관리.
 - 버킷: 생성, 목록, 상세, 삭제, quota, tag, permission.
 - 오브젝트: 업로드, 다운로드, 목록, 검색, prefix 탐색, tag, soft delete, restore, purge.
-- S3 호환 API: SigV4, bucket/object 기본 동작, range/conditional GET, CopyObject, multipart, multi-delete, checksum header/trailer 및 multipart checksum negotiation 일부, aws-chunked body decode, S3 XML 오류 응답을 지원한다. 목표는 주요 S3 클라이언트 대체 사용 가능성이고, AWS의 모든 세부 edge parity는 목표가 아니다. 전체 지원/부분지원/미지원 범위는 `dev-docs/s3-compatibility.md`에 정리한다.
+- S3 호환 API: SigV4, bucket/object 기본 동작, range/conditional GET, CopyObject, multipart, multi-delete, checksum header/trailer 및 multipart checksum negotiation 일부, aws-chunked body decode, S3 XML 오류 응답을 지원한다. 목표는 주요 S3 클라이언트 대체 사용 가능성이고, AWS의 모든 세부 edge parity는 목표가 아니다. 새 S3 작업은 실제 클라이언트 전환 흐름이 깨질 때만 보강한다. 전체 지원/부분지원/미지원 범위는 `dev-docs/s3-compatibility.md`에 정리한다.
 - Access Key: one-time secret, bucket scope, 권한 분리, revoke/bulk disable, MinIO policy 연동 초안.
 - Lifecycle/Retention: rule dry-run, conflict report, S3 lifecycle XML import/export, version/trash retention cleanup.
 - 공유/보안: object share link, password/IP 제한, usage limit, cleanup, analytics.
@@ -277,7 +277,7 @@ powershell -ExecutionPolicy Bypass -File .\scripts\verify-s3-client-smoke.ps1 -C
 ## 다음 개발 축
 
 - 실제 Kubernetes cluster와 GitHub-hosted workflow evidence 수집.
-- host-installed `aws` 또는 `mc` 기반 S3 smoke 검증.
+- 관리자/감사자/조직 관리자 워크플로우와 권한 정책 고도화.
 - data-flow 장기 analytics를 위한 partition 또는 time-series 저장소 연동.
 - tenant billing/chargeback을 위한 요금 정책, 비용 리포트, 임계치 모델링.
 - S3 대체성 유지: host `aws`/`mc`, boto3, AWS SDK smoke에서 실제 사용 흐름이 깨지는 경우만 우선 보강하고, AWS 세부 parity 추적은 제품 영향이 확인될 때만 수행한다.

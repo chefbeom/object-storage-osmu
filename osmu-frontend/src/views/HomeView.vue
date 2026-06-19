@@ -621,12 +621,12 @@ const DASHBOARD_LAYOUT_SCHEMA_VERSION = 'osmu.dashboard-layout.v1'
 const DASHBOARD_WIDGET_STORAGE_KEY = 'osmu.dashboard.widgets.v1'
 const DASHBOARD_SECTION_STORAGE_KEY = 'osmu.dashboard.sections.v1'
 const navigationItems = [
-  { page: 'dashboard', to: '/dashboard', label: 'Dashboard', roles: ['ADMIN', 'ORG_ADMIN', 'USER'] },
+  { page: 'dashboard', to: '/dashboard', label: 'Dashboard', roles: ['ADMIN', 'ORG_ADMIN', 'AUDITOR', 'USER'] },
   { page: 'storage', to: '/storage', label: 'Storage', roles: ['ADMIN', 'ORG_ADMIN', 'USER'] },
   { page: 'objects', to: '/objects', label: 'Objects', roles: ['ADMIN', 'ORG_ADMIN', 'USER'] },
   { page: 'developer', to: '/developer', label: 'Developer', roles: ['ADMIN', 'ORG_ADMIN', 'USER'] },
   { page: 'admin', to: '/admin', label: 'Admin', roles: ['ADMIN', 'ORG_ADMIN'] },
-  { page: 'audit', to: '/audit', label: 'Audit', roles: ['ADMIN'] },
+  { page: 'audit', to: '/audit', label: 'Audit', roles: ['ADMIN', 'AUDITOR'] },
 ]
 const pageMeta = {
   dashboard: {
@@ -670,7 +670,7 @@ const defaultDashboardWidgetCatalog = [
   { id: 'readiness', title: '데모 준비도', description: '배포 준비도 warning/blocker', category: 'OPERATIONS', adminOnly: false },
   { id: 'backup', title: '백업 준비도', description: '백업/복구 RPO/RTO 상태', category: 'OPERATIONS', adminOnly: false },
   { id: 'io', title: '데이터 입출력', description: '트래픽, 업로드/다운로드, 실패/취소 흐름', category: 'OBJECTS', adminOnly: false },
-  { id: 'requests', title: '요청/감사 현황', description: '최근 감사 이벤트', category: 'AUDIT', adminOnly: true },
+  { id: 'requests', title: '요청/감사 현황', description: '최근 감사 이벤트', category: 'AUDIT', adminOnly: true, allowedRoles: ['ADMIN', 'AUDITOR'], accessMode: 'read-only' },
   { id: 'sharing', title: '공유 링크 현황', description: '공유 링크 운영 지표', category: 'SHARING', adminOnly: true },
   { id: 'quota', title: '쿼터 정책 경보', description: '쿼터 warning/exhausted 지표', category: 'GOVERNANCE', adminOnly: true },
   { id: 'access-keys', title: 'Access Key 운영', description: 'S3 access key 활성 상태', category: 'SECURITY', adminOnly: false },
@@ -721,6 +721,7 @@ const defaultDashboardSections = dashboardWidgetSections.map((section) => ({ id:
 const dashboardLayoutDefaultRoleOptions = [
   { id: 'ADMIN', label: 'ADMIN' },
   { id: 'ORG_ADMIN', label: 'ORG_ADMIN' },
+  { id: 'AUDITOR', label: 'AUDITOR' },
   { id: 'USER', label: 'USER' },
 ]
 const defaultDashboardWidgets = [
@@ -747,7 +748,9 @@ const session = auth.state
 const isLoggedIn = auth.isLoggedIn
 const isAdmin = auth.isAdmin
 const isOrgAdmin = auth.isOrgAdmin
+const isAuditor = auth.isAuditor
 const canUseAdminTools = auth.canUseAdminTools
+const canUseAuditTools = auth.canUseAuditTools
 
 const health = reactive({
   backend: 'DOWN',
@@ -1511,7 +1514,8 @@ function sanitizeDashboardWidgets(widgets, fallback = defaultDashboardWidgets) {
 }
 
 function dashboardWidgetCatalogForCurrentRole() {
-  return dashboardWidgetCatalog.value.filter((widget) => !widget.adminOnly || isAdmin.value)
+  const role = session.user?.role
+  return dashboardWidgetCatalog.value.filter((widget) => dashboardWidgetAllowedRoles(widget).includes(role))
 }
 
 function sanitizeDashboardSections(sections, fallback = defaultDashboardSections) {
@@ -1588,7 +1592,7 @@ function dashboardWidgetCatalogItem(widgetOrId) {
 function dashboardWidgetAllowedRoles(widgetOrId) {
   const item = typeof widgetOrId === 'string' ? dashboardWidgetCatalogItem(widgetOrId) : widgetOrId
   if (Array.isArray(item?.allowedRoles) && item.allowedRoles.length > 0) return item.allowedRoles
-  return item?.adminOnly ? ['ADMIN'] : ['ADMIN', 'ORG_ADMIN', 'USER']
+  return item?.adminOnly ? ['ADMIN'] : ['ADMIN', 'ORG_ADMIN', 'AUDITOR', 'USER']
 }
 
 function dashboardWidgetAccessMode(widgetOrId) {
@@ -2185,7 +2189,7 @@ async function loadDashboard(options = {}) {
   try {
     await loadDashboardWidgetCatalog()
     await Promise.all([loadDashboardLayout(), loadDashboardLayoutPresets(), loadDashboardLayoutDefaults()])
-    const dashboardSummaryLoaded = isAdmin.value ? await loadDashboardSummary() : false
+    const dashboardSummaryLoaded = canUseAuditTools.value ? await loadDashboardSummary() : false
     if (!dashboardSummaryLoaded) {
       await loadHealth()
     }
@@ -2241,7 +2245,7 @@ async function loadDashboard(options = {}) {
         dashboardSummaryLoaded ? Promise.resolve() : refreshObjectShareAnalytics(),
         dashboardSummaryLoaded ? Promise.resolve() : handleLoadAuditLogs(),
       ])
-    } else {
+    } else if (!isAuditor.value) {
       resetAdminOnlyState()
     }
 
@@ -4377,7 +4381,7 @@ async function applyUserStatus(userId, nextStatus) {
 }
 
 async function handleLoadAuditLogs() {
-  if (!isAdmin.value) return
+  if (!canUseAuditTools.value) return
   const result = await safeRequest(() => getAuditLogs(auditFilterPayload()), { items: [], nextCursor: '' })
   auditLogs.value = result.items || []
   auditNextCursor.value = result.nextCursor || ''

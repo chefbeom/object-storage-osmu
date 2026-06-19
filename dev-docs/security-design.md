@@ -77,6 +77,7 @@ MVP:
 
 - `ADMIN`
 - `ORG_ADMIN`
+- `AUDITOR`
 - `USER`
 
 권한:
@@ -99,7 +100,8 @@ MVP:
 - `ORG_ADMIN`은 자기 조직 일반 `USER` 생성/비활성화만 가능하다.
 - `ORG_ADMIN` 허용 route는 `GET/POST /api/admin/users`, `PATCH /api/admin/users/{userId}/status`, `GET /api/admin/organizations`, `GET /api/admin/organizations/usage`로 제한한다.
 - `ORG_ADMIN`은 감사 로그, 전체 시스템 usage, system status, storage expansion, backup/restore drill, quota policy 같은 global admin API에는 접근할 수 없다.
-- Dashboard widget catalog/layout/preset 응답은 role 기준으로 필터링한다. `adminOnly` dashboard panel은 `ADMIN`에게만 노출되며, `USER`와 `ORG_ADMIN`이 직접 저장 요청에 넣으면 `AUTHORIZATION_FAILED`로 차단한다.
+- `AUDITOR`는 감사 로그, usage/status, dashboard summary/readiness, backup status와 restore drill evidence 조회만 가능하다. 사용자/조직/쿼터/증설/복구 증거 기록 같은 변경성 admin API는 차단한다.
+- Dashboard widget catalog/layout/preset 응답은 role 기준으로 필터링한다. `requests` audit widget은 `ADMIN`과 `AUDITOR`에게 read-only로 노출되며, admin operation widget은 `ADMIN`에게만 노출된다. 현재 role의 `allowedRoles` 밖 widget을 직접 저장 요청에 넣으면 `AUTHORIZATION_FAILED`로 차단한다.
 
 ## 4. 버킷 보안
 

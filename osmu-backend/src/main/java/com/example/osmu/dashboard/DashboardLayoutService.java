@@ -30,7 +30,10 @@ public class DashboardLayoutService {
     private static final int MAX_PRESET_DESCRIPTION_LENGTH = 500;
     private static final int MAX_PRESET_BUNDLE_SIZE = 50;
     private static final Set<String> ALLOWED_DEFAULT_TARGET_TYPES = Set.of("ROLE", "ORGANIZATION");
-    private static final Set<String> ALLOWED_DEFAULT_ROLE_TARGETS = Set.of("ADMIN", "ORG_ADMIN", "USER");
+    private static final Set<String> ALLOWED_DEFAULT_ROLE_TARGETS = Set.of("ADMIN", "ORG_ADMIN", "AUDITOR", "USER");
+    private static final List<String> COMMON_WIDGET_ROLES = List.of("ADMIN", "ORG_ADMIN", "AUDITOR", "USER");
+    private static final List<String> ADMIN_WIDGET_ROLES = List.of("ADMIN");
+    private static final List<String> AUDIT_WIDGET_ROLES = List.of("ADMIN", "AUDITOR");
     private static final Set<String> ALLOWED_WIDGET_SIZES = Set.of("compact", "normal", "wide");
     private static final List<String> WIDGET_SECTION_ORDER = List.of("overview", "operations", "governance");
     private static final Set<String> ALLOWED_WIDGET_SECTIONS = Set.copyOf(WIDGET_SECTION_ORDER);
@@ -53,7 +56,7 @@ public class DashboardLayoutService {
             widget("readiness", "데모 준비도", "Current deployment/demo readiness blockers and warnings.", "OPERATIONS", false),
             widget("backup", "백업 준비도", "Backup/restore readiness and RPO/RTO contract.", "OPERATIONS", false),
             widget("io", "데이터 입출력", "Current upload progress and I/O status.", "OBJECTS", false),
-            widget("requests", "요청/감사 현황", "Recent request and audit event count.", "AUDIT", true),
+            widget("requests", "요청/감사 현황", "Recent request and audit event count.", "AUDIT", true, AUDIT_WIDGET_ROLES, "read-only"),
             widget("sharing", "공유 링크 현황", "Temporary object share link activity.", "SHARING", true),
             widget("quota", "쿼터 정책 경보", "Quota policy warning and exhausted target count.", "GOVERNANCE", true),
             widget("access-keys", "Access Key 운영", "Active S3-compatible access key inventory and provisioner state.", "SECURITY", false),
@@ -737,7 +740,7 @@ public class DashboardLayoutService {
         List<DashboardWidgetLayout> sanitized = sanitizeWidgets(widgets);
         for (DashboardWidgetLayout widget : sanitized) {
             if (!isWidgetAllowedForUser(user, widget.id())) {
-                throw new ApiException(ApiErrorCode.AUTHORIZATION_FAILED, "Dashboard widget is admin-only.");
+                throw new ApiException(ApiErrorCode.AUTHORIZATION_FAILED, "Dashboard widget is not allowed for this role.");
             }
         }
         return sanitized;
@@ -751,7 +754,7 @@ public class DashboardLayoutService {
 
     private boolean isWidgetAllowedForUser(AuthenticatedUser user, String widgetId) {
         DashboardWidgetCatalogItem item = WIDGET_CATALOG_BY_ID.get(widgetId);
-        return item != null && (!item.adminOnly() || user.isAdmin());
+        return item != null && item.allowedRoles().contains(normalizeRole(user.role()));
     }
 
     private static DashboardWidgetCatalogItem widget(
@@ -761,8 +764,20 @@ public class DashboardLayoutService {
             String category,
             boolean adminOnly
     ) {
-        List<String> allowedRoles = adminOnly ? List.of("ADMIN") : List.of("ADMIN", "ORG_ADMIN", "USER");
+        List<String> allowedRoles = adminOnly ? ADMIN_WIDGET_ROLES : COMMON_WIDGET_ROLES;
         String accessMode = adminOnly ? "admin-only" : "read-only";
+        return new DashboardWidgetCatalogItem(id, title, description, category, adminOnly, allowedRoles, accessMode, DEFAULT_WIDGET_CONFIG_OPTIONS);
+    }
+
+    private static DashboardWidgetCatalogItem widget(
+            String id,
+            String title,
+            String description,
+            String category,
+            boolean adminOnly,
+            List<String> allowedRoles,
+            String accessMode
+    ) {
         return new DashboardWidgetCatalogItem(id, title, description, category, adminOnly, allowedRoles, accessMode, DEFAULT_WIDGET_CONFIG_OPTIONS);
     }
 

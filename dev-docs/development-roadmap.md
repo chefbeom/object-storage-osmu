@@ -4,13 +4,15 @@
 
 ## 1. 최종 목표
 
-OSMU는 기업이 자체 인프라에서 운영할 수 있는 S3 대체 가능 프라이빗 오브젝트 스토리지 플랫폼이다.
+OSMU는 기업이 자체 인프라에서 운영할 수 있는 S3 대체 가능 프라이빗 오브젝트 스토리지 관리 플랫폼이다.
+
+제품 개발 우선순위는 운영 가능한 control plane, 웹 포털, RBAC/감사, 배포/백업/모니터링 자동화에 둔다. S3-compatible API는 기존 클라이언트와 SDK가 내부 스토리지로 전환할 수 있게 하는 최소 대체성 계층이며, AWS S3의 세부 edge parity를 따라가는 것을 로드맵 목표로 삼지 않는다.
 
 최종 제품은 다음을 제공한다.
 
 - 대용량 파일 저장
 - REST API
-- S3-compatible replacement API
+- S3-compatible replacement layer
 - Web Portal
 - FUSE Mount 연동 후보
 - 사용자/조직/권한 관리
@@ -200,6 +202,8 @@ OSMU는 기업이 자체 인프라에서 운영할 수 있는 S3 대체 가능 �
 1. API 명세 최종 검토
 2. DB 설계 최종 검토
 3. Docker Compose 작성
-4. Backend dependency 추가
-5. Health API 구현
+4. 운영/권한/감사 workflow 보강
+5. Release gate와 운영 evidence 최신화
+6. 장기 analytics/time-series와 chargeback 모델링
+7. S3 대체성 회귀 smoke 유지
 

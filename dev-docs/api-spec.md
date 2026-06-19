@@ -25,6 +25,7 @@ Authorization: Bearer <accessToken>
 관리자 API인 `/api/admin/**`는 기본적으로 `ADMIN` role이 필요하다.
 예외적으로 `ORG_ADMIN`은 조직 스코프가 적용된 사용자/조직 조회 API만 접근할 수 있다.
 현재 허용 route는 `GET/POST /api/admin/users`, `PATCH /api/admin/users/{userId}/status`, `GET /api/admin/organizations`, `GET /api/admin/organizations/usage`이다.
+`AUDITOR`는 read-only 감사/상태 조회 role이다. 허용 route는 `GET /api/admin/audit-logs`, `GET /api/admin/audit-logs/export.csv`, `GET /api/admin/usage`, `GET /api/admin/system/status`, `GET /api/admin/dashboard/summary`, `GET /api/admin/dashboard/readiness`, `GET /api/admin/backup/status`, `GET /api/admin/backup/restore-drill-evidence`로 제한한다.
 
 일반 사용자는 본인이 소유한 bucket, object, access key만 접근할 수 있다. `ADMIN`은 전체 리소스에 접근할 수 있다.
 
@@ -298,7 +299,7 @@ Query:
 
 저장된 구성이 없으면 `source`는 `DEFAULT`, `widgets`는 빈 배열이다. Frontend는 이 경우 기본 catalog 구성을 적용한다.
 
-저장 시 widget id는 서버 catalog에 등록되어 있고 현재 role이 사용할 수 있는 id만 허용한다. `adminOnly=true` widget을 `USER` 또는 `ORG_ADMIN`이 직접 저장 요청에 넣으면 `403 AUTHORIZATION_FAILED`를 반환한다.
+저장 시 widget id는 서버 catalog에 등록되어 있고 현재 role이 사용할 수 있는 id만 허용한다. 현재 role이 widget의 `allowedRoles`에 없으면 `403 AUTHORIZATION_FAILED`를 반환한다.
 
 ### GET /api/dashboard/layout/widgets
 
@@ -315,7 +316,7 @@ Query:
       "description": "Active S3-compatible access key inventory and provisioner state.",
       "category": "SECURITY",
       "adminOnly": false,
-      "allowedRoles": ["ADMIN", "ORG_ADMIN", "USER"],
+      "allowedRoles": ["ADMIN", "ORG_ADMIN", "AUDITOR", "USER"],
       "accessMode": "read-only",
       "configOptions": [
         {
@@ -366,7 +367,7 @@ Query:
 현재 dashboard widget catalog id는 `capacity`, `remaining`, `buckets`, `objects`, `health`, `runtime`, `readiness`, `backup`, `io`, `requests`, `sharing`, `quota`, `access-keys`, `identity`, `lifecycle`, `selected`, `retention`, `execution-retention`, `storage-expansion`이다.
 현재 widget option schema는 `tone`(`default`, `focus`, `muted`)과 `refreshInterval`(`manual`, `30s`, `60s`, `5m`, `15m`)을 제공한다.
 `allowedRoles`는 panel별 허용 role matrix를 나타내고 `accessMode=read-only` panel은 dashboard에서 요약 조회 중심으로 표시한다. `accessMode=admin-only` panel은 `ADMIN`에게만 노출된다.
-`ADMIN`은 전체 catalog를 받는다. `USER`와 `ORG_ADMIN`은 `adminOnly=true` widget을 응답에서 받지 않으며, 저장된 layout이나 preset에 해당 widget이 남아 있어도 조회/적용 응답에서 제거된다.
+`ADMIN`은 전체 catalog를 받는다. `AUDITOR`는 read-only 공통 widget과 `requests` 감사 widget만 받는다. `USER`와 `ORG_ADMIN`은 `adminOnly=true` widget을 응답에서 받지 않으며, 저장된 layout이나 preset에 해당 widget이 남아 있어도 조회/적용 응답에서 제거된다.
 
 ### GET /api/dashboard/layout/presets
 
@@ -440,7 +441,7 @@ ROLE 또는 ORGANIZATION 기준으로 지정된 dashboard 기본 preset 목록�
 검증:
 
 - `targetType`은 `ROLE`, `ORGANIZATION`만 허용한다.
-- `ROLE` target은 `ADMIN`, `ORG_ADMIN`, `USER`만 허용한다.
+- `ROLE` target은 `ADMIN`, `ORG_ADMIN`, `AUDITOR`, `USER`만 허용한다.
 - `presetId`는 built-in 또는 custom preset 중 존재해야 한다.
 - 개인 저장 layout이 있으면 개인 layout이 기본 preset보다 우선한다.
 
@@ -778,7 +779,7 @@ Response is newest-first by user id and includes `nextCursor` when another page 
 
 정책:
 
-- `ADMIN`은 `ADMIN`, `ORG_ADMIN`, `USER`를 생성할 수 있다.
+- `ADMIN`은 `ADMIN`, `ORG_ADMIN`, `AUDITOR`, `USER`를 생성할 수 있다.
 - `ORG_ADMIN`은 본인 조직의 일반 `USER`만 생성할 수 있다.
 - `ORG_ADMIN`이 `organizationId`를 생략하면 본인 조직으로 자동 지정된다.
 - `ORG_ADMIN`이 다른 조직 또는 관리자 role을 지정하면 `403 AUTHORIZATION_FAILED`를 반환한다.
@@ -3384,7 +3385,7 @@ Query:
 
 ### GET /api/admin/audit-logs/export.csv
 
-Audit log CSV export. `ADMIN` required. Uses same filter query as `GET /api/admin/audit-logs`:
+Audit log CSV export. `ADMIN` 또는 `AUDITOR` required. Uses same filter query as `GET /api/admin/audit-logs`:
 
 - `eventType`
 - `actorId`

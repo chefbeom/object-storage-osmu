@@ -103,9 +103,9 @@ Web Portal은 관리자와 사용자가 OSMU를 브라우저에서 사용할 수
 - 인증이 필요한 `/dashboard`, `/storage`, `/objects`, `/admin`, `/audit` 접근 시 session이 없으면 `/login?redirect=...`로 이동한다.
 - 저장된 session 복구가 만료/폐기된 token 때문에 실패하면 `/login?redirect=...&reason=session-expired`로 이동하고, login 화면에 재로그인 안내를 표시한다.
 - 저장된 session 복구가 서버 오류 등 예상 외 이유로 실패하면 `/login?redirect=...&reason=session-invalid`로 이동하고, 저장된 로그인 정보를 확인할 수 없다는 안내를 표시한다.
-- `/admin`은 `ADMIN`, `ORG_ADMIN`만 접근 가능하며 `/audit`은 `ADMIN`만 접근 가능하다.
+- `/admin`은 `ADMIN`, `ORG_ADMIN`만 접근 가능하며 `/audit`은 `ADMIN`, `AUDITOR`만 접근 가능하다.
 - `USER` role은 관리자 mode를 선택해도 실제 role 기준으로 `/developer` 개발자 작업 화면으로 이동한다.
-- Sidebar navigation은 role 기준으로 표시한다. 개발자 사용자는 Dashboard, Storage, Objects, Developer만 보고 Admin/Audit는 보지 않는다.
+- Sidebar navigation은 role 기준으로 표시한다. 개발자 사용자는 Dashboard, Storage, Objects, Developer만 보고 Admin/Audit는 보지 않는다. `AUDITOR`는 Dashboard와 Audit만 보고, dashboard palette에서는 read-only 감사/상태 widget만 본다.
 
 ### 5.2 DashboardView
 

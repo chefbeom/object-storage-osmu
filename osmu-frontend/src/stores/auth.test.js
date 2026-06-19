@@ -261,6 +261,28 @@ test('clearSession removes tokens without leaving an expiration notice', () => {
   }
 })
 
+test('auditor role can use audit tools without admin tools', () => {
+  const auth = useAuthStore()
+  const stopSync = auth.startAuthSync()
+
+  try {
+    auth.applySession({
+      accessToken: 'auditor-access',
+      refreshToken: 'auditor-refresh',
+      user: { loginId: 'auditor', role: 'AUDITOR' },
+    })
+
+    assert.equal(auth.isAuditor.value, true)
+    assert.equal(auth.canUseAuditTools.value, true)
+    assert.equal(auth.isAdmin.value, false)
+    assert.equal(auth.canUseAdminTools.value, false)
+  } finally {
+    auth.clearSession()
+    stopSync()
+    delete globalThis.window
+  }
+})
+
 function installBrowserStorage() {
   const sessionStorage = createMemoryStorage()
   const localStorage = createMemoryStorage()

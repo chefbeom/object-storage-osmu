@@ -893,6 +893,16 @@ ID:
 - 우선순위: P1
 - 자동화 여부: Automated
 
+### TC-ORG-008
+
+- 기능: AUDITOR read-only 감사/상태 접근
+- 조건: ADMIN이 `AUDITOR` 사용자를 생성했고 AUDITOR token이 존재한다.
+- 입력: `GET /api/admin/audit-logs`, `GET /api/admin/dashboard/summary`, `GET /api/admin/backup/status`, `POST /api/admin/users`, `POST /api/admin/storage-expansion/requests`
+- 절차: AUDITOR로 감사/상태 조회 API와 변경성 admin API를 각각 호출한다.
+- 기대 결과: 감사/상태/backup 조회는 HTTP 200, 사용자 생성과 storage expansion 요청은 `403 AUTHORIZATION_FAILED`.
+- 우선순위: P1
+- 자동화 여부: `AdminRbacPolicyTest.auditorCanAccessOnlyReadOnlyAuditAndStatusRoutes`, `AdminUserControllerTest.auditorCanReadAuditAndStatusButCannotMutateAdminResources`
+
 ## 5. Bucket
 
 ### TC-BUCKET-001

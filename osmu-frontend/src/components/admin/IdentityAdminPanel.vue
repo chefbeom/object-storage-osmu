@@ -43,6 +43,7 @@
       <select v-model="userForm.role">
         <option value="USER">USER</option>
         <option v-if="isAdmin" value="ORG_ADMIN">ORG_ADMIN</option>
+        <option v-if="isAdmin" value="AUDITOR">AUDITOR</option>
         <option v-if="isAdmin" value="ADMIN">ADMIN</option>
       </select>
       <button type="submit" :disabled="!isLoggedIn">생성</button>

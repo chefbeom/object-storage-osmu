@@ -14,4 +14,8 @@ public record AuthenticatedUser(
     public boolean isOrgAdmin() {
         return "ORG_ADMIN".equals(role);
     }
+
+    public boolean isAuditor() {
+        return "AUDITOR".equals(role);
+    }
 }

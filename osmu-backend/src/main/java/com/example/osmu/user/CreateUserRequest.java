@@ -10,7 +10,7 @@ public record CreateUserRequest(
         @NotBlank @Email @Size(max = 255) String email,
         @NotBlank @Size(max = 100) String name,
         @NotBlank @Size(min = 8, max = 100) String password,
-        @NotBlank @Pattern(regexp = "ADMIN|ORG_ADMIN|USER") String role,
+        @NotBlank @Pattern(regexp = "ADMIN|ORG_ADMIN|AUDITOR|USER") String role,
         Long organizationId
 ) {
 }
