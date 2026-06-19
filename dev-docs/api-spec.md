@@ -2580,6 +2580,50 @@ Validation:
 - `eventScanLimit` defaults to the current policy value when omitted and is capped at `50000`.
 - saving records `BILLING_PRICING_POLICY_SAVE` audit log.
 
+### POST /api/admin/billing/pricing-policy-proposals
+
+Creates an internal chargeback pricing policy proposal. `ADMIN` only. The proposal starts as `PENDING_APPROVAL` and does not change the active pricing policy until an admin approves it. This is an OSMU operations workflow for B2B chargeback review; it is not an AWS billing feature, a legal price list, or a customer-facing commercial approval.
+
+Request body is the same shape as `PUT /api/admin/billing/pricing-policy`.
+
+Response:
+
+- `status`: `PENDING_APPROVAL`
+- `approvedPriceList=false`
+- `proposal`: proposed currency, rates, thresholds, event limit, requester, reason, and timestamps.
+- `note`: internal-approval-only notice.
+
+### GET /api/admin/billing/pricing-policy-proposals
+
+Lists internal pricing policy proposals. `ADMIN` only.
+
+Query parameters:
+
+- `status` (optional): `PENDING_APPROVAL` or `APPROVED_APPLIED`.
+- `limit` (optional): number of rows to return, clamped to 1..200.
+
+Response:
+
+- `proposalCount`
+- `proposals[]`: newest proposal records first.
+- `generatedAt`
+
+### POST /api/admin/billing/pricing-policy-proposals/{proposalId}/approve
+
+Approves a `PENDING_APPROVAL` pricing policy proposal and applies its values to `GET /api/admin/billing/pricing-policy`. `ADMIN` only. The response still returns `approvedPriceList=false` because this approval is only for internal chargeback calculation; legal/commercial final price approval remains outside the MVP.
+
+Query parameters:
+
+- `approvalNote` (optional): internal approval note.
+
+Response:
+
+- `status`: `APPROVED_APPLIED`
+- `approvedPriceList=false`
+- `proposal`: approved proposal row with approver and approval/apply timestamps.
+- `appliedPolicy`: the active chargeback pricing policy after approval.
+- `note`: internal calculation-only notice.
+
 ### GET /api/admin/billing/chargeback-preview
 
 Organization chargeback pre-model. `ADMIN` sees every organization. `ORG_ADMIN` sees only the caller's organization. This endpoint does not persist invoices or mutate billing policy; it projects costs from current organization-owned bucket usage and bounded data-flow events. Query pricing fields override `GET /api/admin/billing/pricing-policy`; omitted pricing fields use the saved policy.

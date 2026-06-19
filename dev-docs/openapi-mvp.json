@@ -540,6 +540,67 @@
         }
       }
     },
+    "/api/admin/billing/pricing-policy-proposals": {
+      "get": {
+        "tags": ["Billing", "Admin"],
+        "operationId": "getBillingPricingPolicyProposals",
+        "summary": "List internal chargeback pricing policy proposals",
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "schema": { "type": "string", "enum": ["PENDING_APPROVAL", "APPROVED_APPLIED"] }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": { "type": "integer", "default": 50, "maximum": 200 }
+          }
+        ],
+        "responses": {
+          "200": { "$ref": "#/components/responses/JsonOk" },
+          "400": { "$ref": "#/components/responses/Error" },
+          "403": { "$ref": "#/components/responses/Error" }
+        }
+      },
+      "post": {
+        "tags": ["Billing", "Admin"],
+        "operationId": "createBillingPricingPolicyProposal",
+        "summary": "Create an internal chargeback pricing policy proposal without applying it",
+        "requestBody": { "$ref": "#/components/requestBodies/JsonObject" },
+        "responses": {
+          "200": { "$ref": "#/components/responses/JsonOk" },
+          "400": { "$ref": "#/components/responses/Error" },
+          "403": { "$ref": "#/components/responses/Error" }
+        }
+      }
+    },
+    "/api/admin/billing/pricing-policy-proposals/{proposalId}/approve": {
+      "post": {
+        "tags": ["Billing", "Admin"],
+        "operationId": "approveBillingPricingPolicyProposal",
+        "summary": "Approve and apply an internal chargeback pricing policy proposal",
+        "parameters": [
+          {
+            "name": "proposalId",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "integer", "format": "int64" }
+          },
+          {
+            "name": "approvalNote",
+            "in": "query",
+            "schema": { "type": "string", "maxLength": 512 }
+          }
+        ],
+        "responses": {
+          "200": { "$ref": "#/components/responses/JsonOk" },
+          "400": { "$ref": "#/components/responses/Error" },
+          "403": { "$ref": "#/components/responses/Error" },
+          "404": { "$ref": "#/components/responses/Error" }
+        }
+      }
+    },
     "/api/admin/billing/chargeback-preview": {
       "get": {
         "tags": ["Billing", "Admin"],

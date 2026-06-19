@@ -1,10 +1,12 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
+  approveBillingPricingPolicyProposal,
   approveChargebackInvoiceDraft,
   clearAuthTokens,
   completeOidcCallback,
   cleanupObjectShareLinks,
+  createBillingPricingPolicyProposal,
   createChargebackInvoiceDrafts,
   applyDashboardLayoutPreset,
   createObjectShareLink,
@@ -23,6 +25,7 @@ import {
   getAuditLogs,
   getBackupRestoreDrillEvidence,
   getBillingPricingPolicy,
+  getBillingPricingPolicyProposals,
   getBuckets,
   getChargebackAlertNotificationPreview,
   getChargebackAlertNotificationOutbox,
@@ -743,6 +746,79 @@ test('billing pricing policy wrappers read and save admin billing policy endpoin
     assert.equal(current.data.currency, 'USD')
     assert.equal(saved.data.currency, 'KRW')
     assert.equal(saved.data.criticalAmount, 3000)
+  } finally {
+    cleanupFetch(fetchMock)
+  }
+})
+
+test('billing pricing policy proposal wrappers create list and approve internal policy records', async () => {
+  const fetchMock = mockFetch([
+    () => jsonResponse({
+      data: {
+        status: 'PENDING_APPROVAL',
+        approvedPriceList: false,
+        proposal: { id: 11, status: 'PENDING_APPROVAL', currency: 'KRW' },
+      },
+    }),
+    () => jsonResponse({
+      data: {
+        proposalCount: 1,
+        proposals: [{ id: 11, status: 'PENDING_APPROVAL', currency: 'KRW' }],
+      },
+    }),
+    () => jsonResponse({
+      data: {
+        status: 'APPROVED_APPLIED',
+        approvedPriceList: false,
+        proposal: { id: 11, status: 'APPROVED_APPLIED', currency: 'KRW' },
+        appliedPolicy: { currency: 'KRW', storageGbMonthRate: 1.25 },
+      },
+    }),
+  ])
+
+  try {
+    const created = await createBillingPricingPolicyProposal({
+      currency: 'KRW',
+      storageGbMonthRate: '1.25',
+      ingressGbRate: '0.10',
+      operationThousandRate: '0.01',
+      warningAmount: '2000',
+      criticalAmount: '3000',
+      eventScanLimit: 2500,
+      reason: 'proposal unit test',
+    })
+    const listed = await getBillingPricingPolicyProposals({ status: 'PENDING_APPROVAL', limit: 25 })
+    const approved = await approveBillingPricingPolicyProposal(11, { approvalNote: 'approved' })
+
+    assert.equal(new URL(fetchMock.calls[0].url).pathname, '/api/admin/billing/pricing-policy-proposals')
+    assert.equal(fetchMock.calls[0].options.method, 'POST')
+    assert.deepEqual(JSON.parse(fetchMock.calls[0].options.body), {
+      currency: 'KRW',
+      storageGbMonthRate: '1.25',
+      ingressGbRate: '0.10',
+      operationThousandRate: '0.01',
+      warningAmount: '2000',
+      criticalAmount: '3000',
+      eventScanLimit: 2500,
+      reason: 'proposal unit test',
+    })
+    assert.equal(created.data.status, 'PENDING_APPROVAL')
+    assert.equal(created.data.approvedPriceList, false)
+
+    const listUrl = new URL(fetchMock.calls[1].url)
+    assert.equal(listUrl.pathname, '/api/admin/billing/pricing-policy-proposals')
+    assert.equal(listUrl.searchParams.get('status'), 'PENDING_APPROVAL')
+    assert.equal(listUrl.searchParams.get('limit'), '25')
+    assert.equal(fetchMock.calls[1].options.method, undefined)
+    assert.equal(listed.data.proposalCount, 1)
+
+    const approveUrl = new URL(fetchMock.calls[2].url)
+    assert.equal(approveUrl.pathname, '/api/admin/billing/pricing-policy-proposals/11/approve')
+    assert.equal(approveUrl.searchParams.get('approvalNote'), 'approved')
+    assert.equal(fetchMock.calls[2].options.method, 'POST')
+    assert.equal(approved.data.status, 'APPROVED_APPLIED')
+    assert.equal(approved.data.approvedPriceList, false)
+    assert.equal(approved.data.appliedPolicy.currency, 'KRW')
   } finally {
     cleanupFetch(fetchMock)
   }

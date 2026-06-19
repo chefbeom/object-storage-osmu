@@ -54,6 +54,8 @@ function createInitialState() {
     storageProfileRequests: [],
     storageProfileRequestSequence: 1,
     billingPricingPolicy: defaultBillingPricingPolicy(),
+    billingPricingPolicyProposals: [],
+    billingPricingPolicyProposalSequence: 1,
     chargebackNotificationDeliveries: [],
     chargebackNotificationDeliverySequence: 1,
     chargebackInvoiceDrafts: [],
@@ -479,6 +481,19 @@ function handleAdminRoute(request, response, path, jsonBody, url) {
   }
   if (request.method === 'GET' && path === '/admin/billing/chargeback-invoice-draft/export.csv') {
     sendCsv(response, 'osmu-chargeback-invoice-draft.csv', chargebackInvoiceDraftCsv(url))
+    return
+  }
+  if (request.method === 'POST' && path === '/admin/billing/pricing-policy-proposals') {
+    sendJson(response, 200, apiData(createBillingPricingPolicyProposal(jsonBody)))
+    return
+  }
+  if (request.method === 'GET' && path === '/admin/billing/pricing-policy-proposals') {
+    sendJson(response, 200, apiData(billingPricingPolicyProposals(url)))
+    return
+  }
+  const pricingPolicyProposalApproveMatch = path.match(/^\/admin\/billing\/pricing-policy-proposals\/(\d+)\/approve$/)
+  if (request.method === 'POST' && pricingPolicyProposalApproveMatch) {
+    sendJson(response, 200, apiData(approveBillingPricingPolicyProposal(Number(pricingPolicyProposalApproveMatch[1]), url)))
     return
   }
   if (request.method === 'GET' && path === '/admin/billing/pricing-policy') {
@@ -1352,6 +1367,97 @@ function approveChargebackInvoiceDraft(invoiceId, url) {
   }
 }
 
+function createBillingPricingPolicyProposal(payload = {}) {
+  const now = new Date().toISOString()
+  const proposedPolicy = saveBillingPricingPolicy(payload)
+  const proposal = {
+    id: state.billingPricingPolicyProposalSequence++,
+    status: 'PENDING_APPROVAL',
+    approvedPriceList: false,
+    currency: proposedPolicy.currency,
+    storageGbMonthRate: proposedPolicy.storageGbMonthRate,
+    ingressGbRate: proposedPolicy.ingressGbRate,
+    egressGbRate: proposedPolicy.egressGbRate,
+    internalGbRate: proposedPolicy.internalGbRate,
+    operationThousandRate: proposedPolicy.operationThousandRate,
+    warningAmount: proposedPolicy.warningAmount,
+    criticalAmount: proposedPolicy.criticalAmount,
+    eventScanLimit: proposedPolicy.eventScanLimit,
+    requestedBy: 'admin',
+    approvedBy: '',
+    reason: String(payload.reason || 'Billing pricing policy proposal').trim().slice(0, 512),
+    approvalNote: '',
+    createdAt: now,
+    updatedAt: now,
+    approvedAt: '',
+    appliedAt: '',
+  }
+  state.billingPricingPolicyProposals.unshift(proposal)
+  state.auditLogs.unshift(auditLog('BILLING_PRICING_POLICY_PROPOSAL_CREATE', 'BILLING_PRICING_POLICY_PROPOSAL', String(proposal.id)))
+  return {
+    status: 'PENDING_APPROVAL',
+    approvedPriceList: false,
+    proposal,
+    generatedAt: now,
+    note: 'Pricing policy proposal is waiting for internal approval and is not an approved external price list.',
+  }
+}
+
+function billingPricingPolicyProposals(url) {
+  const limit = clampNumber(Number(url.searchParams.get('limit') || 50), 1, 200)
+  const status = String(url.searchParams.get('status') || '').trim().toUpperCase()
+  const proposals = (status
+    ? state.billingPricingPolicyProposals.filter((proposal) => proposal.status === status)
+    : state.billingPricingPolicyProposals).slice(0, limit)
+  return {
+    proposalCount: proposals.length,
+    proposals,
+    generatedAt: new Date().toISOString(),
+  }
+}
+
+function approveBillingPricingPolicyProposal(proposalId, url) {
+  const proposal = state.billingPricingPolicyProposals.find((item) => item.id === proposalId)
+  if (!proposal) {
+    return {
+      status: 'NOT_FOUND',
+      approvedPriceList: false,
+      proposal: null,
+      appliedPolicy: state.billingPricingPolicy,
+      generatedAt: new Date().toISOString(),
+      note: 'Billing pricing policy proposal not found.',
+    }
+  }
+  if (proposal.status !== 'PENDING_APPROVAL') {
+    return {
+      status: proposal.status,
+      approvedPriceList: false,
+      proposal,
+      appliedPolicy: state.billingPricingPolicy,
+      generatedAt: new Date().toISOString(),
+      note: 'Only pending pricing policy proposals can be approved.',
+    }
+  }
+  const now = new Date().toISOString()
+  state.billingPricingPolicy = saveBillingPricingPolicy(proposal)
+  proposal.status = 'APPROVED_APPLIED'
+  proposal.approvedPriceList = false
+  proposal.approvedBy = 'admin'
+  proposal.approvalNote = String(url.searchParams.get('approvalNote') || 'Internal billing pricing policy proposal approved.').trim().slice(0, 512)
+  proposal.approvedAt = now
+  proposal.appliedAt = now
+  proposal.updatedAt = now
+  state.auditLogs.unshift(auditLog('BILLING_PRICING_POLICY_PROPOSAL_APPROVE', 'BILLING_PRICING_POLICY_PROPOSAL', String(proposal.id)))
+  return {
+    status: 'APPROVED_APPLIED',
+    approvedPriceList: false,
+    proposal,
+    appliedPolicy: state.billingPricingPolicy,
+    generatedAt: now,
+    note: 'Pricing policy proposal was approved for internal chargeback calculation only; it is not a final legal price list.',
+  }
+}
+
 function chargebackPreviewCsv(url) {
   const preview = chargebackPreview(url)
   const rates = preview.rates || {}
@@ -2063,6 +2169,27 @@ async function runSelfTest() {
     })).json()
     if (savedPricingPolicy.data.currency !== 'KRW' || savedPricingPolicy.data.eventScanLimit !== 2500 || savedPricingPolicy.data.criticalAmount !== 0.00001) {
       throw new Error('billing pricing policy self-test failed')
+    }
+    const createdPricingPolicyProposal = await (await fetch(`${base}/admin/billing/pricing-policy-proposals`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${login.data.accessToken}` },
+      body: JSON.stringify({ currency: 'krw', storageGbMonthRate: 2, ingressGbRate: 0.02, operationThousandRate: 0.004, warningAmount: 0.000005, criticalAmount: 0.00001, eventScanLimit: 2500, reason: 'self-test' }),
+    })).json()
+    if (!createdPricingPolicyProposal.data || createdPricingPolicyProposal.data.status !== 'PENDING_APPROVAL' || createdPricingPolicyProposal.data.approvedPriceList !== false) {
+      throw new Error('billing pricing policy proposal create self-test failed')
+    }
+    const listedPricingPolicyProposals = await (await fetch(`${base}/admin/billing/pricing-policy-proposals?status=PENDING_APPROVAL&limit=5`, {
+      headers: { Authorization: `Bearer ${login.data.accessToken}` },
+    })).json()
+    if (!listedPricingPolicyProposals.data || listedPricingPolicyProposals.data.proposalCount < 1 || listedPricingPolicyProposals.data.proposals?.[0]?.status !== 'PENDING_APPROVAL') {
+      throw new Error('billing pricing policy proposal list self-test failed')
+    }
+    const approvedPricingPolicyProposal = await (await fetch(`${base}/admin/billing/pricing-policy-proposals/${listedPricingPolicyProposals.data.proposals[0].id}/approve?approvalNote=self-test`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${login.data.accessToken}` },
+    })).json()
+    if (!approvedPricingPolicyProposal.data || approvedPricingPolicyProposal.data.status !== 'APPROVED_APPLIED' || approvedPricingPolicyProposal.data.approvedPriceList !== false || approvedPricingPolicyProposal.data.appliedPolicy?.storageGbMonthRate !== 2) {
+      throw new Error('billing pricing policy proposal approval self-test failed')
     }
     const chargeback = await (await fetch(`${base}/admin/billing/chargeback-preview?storageGbMonthRate=0.02&egressGbRate=0.01&operationThousandRate=0.004`, {
       headers: { Authorization: `Bearer ${login.data.accessToken}` },

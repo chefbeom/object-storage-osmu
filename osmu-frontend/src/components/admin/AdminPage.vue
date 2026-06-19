@@ -253,12 +253,15 @@
       :chargeback-alert-notification-outbox="chargebackAlertNotificationOutbox"
       :chargeback-invoice-drafts="chargebackInvoiceDrafts"
       :billing-pricing-policy="billingPricingPolicy"
+      :billing-pricing-policy-proposals="billingPricingPolicyProposals"
       :format-bytes="formatBytes"
       :format-date-time="formatDateTime"
       @update-chargeback-option="$emit('update-chargeback-option', $event)"
       @refresh-chargeback-preview="$emit('refresh-chargeback-preview')"
       @reset-chargeback-options="$emit('reset-chargeback-options')"
       @save-billing-pricing-policy="$emit('save-billing-pricing-policy')"
+      @create-billing-pricing-policy-proposal="$emit('create-billing-pricing-policy-proposal')"
+      @approve-billing-pricing-policy-proposal="$emit('approve-billing-pricing-policy-proposal', $event)"
       @queue-chargeback-alert-notifications="$emit('queue-chargeback-alert-notifications')"
       @export-chargeback-csv="$emit('export-chargeback-csv')"
       @export-chargeback-invoice-draft-csv="$emit('export-chargeback-invoice-draft-csv')"
@@ -450,6 +453,7 @@ const props = defineProps({
   chargebackAlertNotificationOutbox: { type: Object, required: true },
   chargebackInvoiceDrafts: { type: Object, required: true },
   billingPricingPolicy: { type: Object, required: true },
+  billingPricingPolicyProposals: { type: Object, required: true },
   quotaPolicyForm: { type: Object, required: true },
   quotaPolicyTargetOptions: { type: Array, required: true },
   quotaPolicies: { type: Array, required: true },
@@ -651,6 +655,8 @@ defineEmits([
   'refresh-chargeback-preview',
   'reset-chargeback-options',
   'save-billing-pricing-policy',
+  'create-billing-pricing-policy-proposal',
+  'approve-billing-pricing-policy-proposal',
   'queue-chargeback-alert-notifications',
   'export-chargeback-csv',
   'export-chargeback-invoice-draft-csv',

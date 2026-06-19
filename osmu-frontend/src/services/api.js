@@ -1299,6 +1299,30 @@ export function approveChargebackInvoiceDraft(invoiceId, options = {}) {
   })
 }
 
+export function createBillingPricingPolicyProposal(payload) {
+  return request('/admin/billing/pricing-policy-proposals', {
+    method: 'POST',
+    body: payload,
+  })
+}
+
+export function getBillingPricingPolicyProposals(options = {}) {
+  const query = new URLSearchParams()
+  appendQuery(query, 'status', options.status)
+  appendQuery(query, 'limit', options.limit)
+  const suffix = query.toString() ? `?${query.toString()}` : ''
+  return request(`/admin/billing/pricing-policy-proposals${suffix}`)
+}
+
+export function approveBillingPricingPolicyProposal(proposalId, options = {}) {
+  const query = new URLSearchParams()
+  appendQuery(query, 'approvalNote', options.approvalNote)
+  const suffix = query.toString() ? `?${query.toString()}` : ''
+  return request(`/admin/billing/pricing-policy-proposals/${encodeURIComponent(proposalId)}/approve${suffix}`, {
+    method: 'POST',
+  })
+}
+
 export function getBillingPricingPolicy() {
   return request('/admin/billing/pricing-policy')
 }

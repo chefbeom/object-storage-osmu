@@ -13,6 +13,7 @@ import com.example.osmu.monitoring.repository.InMemoryDataFlowEventRepository;
 import com.example.osmu.organization.OrganizationRecord;
 import com.example.osmu.organization.repository.InMemoryOrganizationRepository;
 import com.example.osmu.billing.repository.InMemoryBillingPricingPolicyRepository;
+import com.example.osmu.billing.repository.InMemoryBillingPricingPolicyProposalRepository;
 import com.example.osmu.billing.repository.InMemoryChargebackInvoiceDraftRepository;
 import com.example.osmu.billing.repository.InMemoryChargebackNotificationDeliveryRepository;
 import java.math.BigDecimal;
@@ -31,7 +32,10 @@ class ChargebackPreviewServiceTest {
     private final InMemoryChargebackInvoiceDraftRepository invoiceDraftRepository =
             new InMemoryChargebackInvoiceDraftRepository();
     private final BillingPricingPolicyService pricingPolicyService =
-            new BillingPricingPolicyService(new InMemoryBillingPricingPolicyRepository());
+            new BillingPricingPolicyService(
+                    new InMemoryBillingPricingPolicyRepository(),
+                    new InMemoryBillingPricingPolicyProposalRepository()
+            );
     private final ChargebackPreviewService service = new ChargebackPreviewService(
             organizationRepository,
             bucketRepository,
@@ -157,6 +161,54 @@ class ChargebackPreviewServiceTest {
         assertThat(alerts.alertCount()).isEqualTo(1L);
         assertThat(alerts.criticalCount()).isEqualTo(1L);
         assertThat(alerts.organizations().get(0).severity()).isEqualTo("CRITICAL");
+    }
+
+    @Test
+    void createsAndApprovesPricingPolicyProposalBeforeApplyingRates() {
+        BillingPricingPolicyProposalCreateResponse created = pricingPolicyService.createProposal(
+                new BillingPricingPolicyRequest(
+                        "krw",
+                        BigDecimal.valueOf(10L),
+                        BigDecimal.valueOf(20L),
+                        BigDecimal.valueOf(30L),
+                        BigDecimal.valueOf(40L),
+                        BigDecimal.valueOf(50L),
+                        BigDecimal.valueOf(60L),
+                        BigDecimal.valueOf(70L),
+                        25,
+                        "proposal test"
+                ),
+                "admin"
+        );
+
+        assertThat(created.status()).isEqualTo(BillingPricingPolicyService.PROPOSAL_STATUS_PENDING_APPROVAL);
+        assertThat(created.approvedPriceList()).isFalse();
+        assertThat(created.proposal().requestedBy()).isEqualTo("admin");
+        assertThat(pricingPolicyService.current().currency()).isEqualTo("USD");
+
+        BillingPricingPolicyProposalListResponse pending =
+                pricingPolicyService.proposals("pending_approval", 10);
+        assertThat(pending.proposalCount()).isEqualTo(1L);
+        assertThat(pending.proposals().get(0).status())
+                .isEqualTo(BillingPricingPolicyService.PROPOSAL_STATUS_PENDING_APPROVAL);
+
+        BillingPricingPolicyProposalApprovalResponse approved = pricingPolicyService.approveProposal(
+                created.proposal().id(),
+                "admin",
+                "approved for internal chargeback"
+        );
+
+        assertThat(approved.status()).isEqualTo(BillingPricingPolicyService.PROPOSAL_STATUS_APPROVED_APPLIED);
+        assertThat(approved.approvedPriceList()).isFalse();
+        assertThat(approved.proposal().approvedBy()).isEqualTo("admin");
+        assertThat(approved.proposal().approvalNote()).isEqualTo("approved for internal chargeback");
+        assertThat(approved.appliedPolicy().currency()).isEqualTo("KRW");
+        assertThat(pricingPolicyService.current().storageGbMonthRate()).isEqualByComparingTo("10.000000");
+
+        assertThatThrownBy(() -> pricingPolicyService.approveProposal(created.proposal().id(), "admin", "again"))
+                .isInstanceOf(ApiException.class)
+                .extracting("code")
+                .isEqualTo(ApiErrorCode.VALIDATION_ERROR);
     }
 
     @Test

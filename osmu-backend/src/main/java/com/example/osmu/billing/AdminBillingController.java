@@ -69,6 +69,58 @@ public class AdminBillingController {
         return ApiResponse.of(saved);
     }
 
+    @PostMapping("/pricing-policy-proposals")
+    public ApiResponse<BillingPricingPolicyProposalCreateResponse> createPricingPolicyProposal(
+            @RequestBody BillingPricingPolicyRequest request,
+            HttpServletRequest httpRequest
+    ) {
+        AuthenticatedUser actor = authContext.currentUser(httpRequest);
+        BillingPricingPolicyProposalCreateResponse created = pricingPolicyService.createProposal(request, actor.loginId());
+        auditLogService.record(
+                "BILLING_PRICING_POLICY_PROPOSAL_CREATE",
+                actor.loginId(),
+                "BILLING_PRICING_POLICY_PROPOSAL",
+                String.valueOf(created.proposal().id()),
+                "SUCCESS",
+                request == null || request.reason() == null || request.reason().isBlank()
+                        ? "Billing pricing policy proposal created"
+                        : request.reason().trim(),
+                httpRequest
+        );
+        return ApiResponse.of(created);
+    }
+
+    @GetMapping("/pricing-policy-proposals")
+    public ApiResponse<BillingPricingPolicyProposalListResponse> pricingPolicyProposals(
+            @RequestParam(name = "status", required = false) String status,
+            @RequestParam(name = "limit", required = false) Integer limit
+    ) {
+        return ApiResponse.of(pricingPolicyService.proposals(status, limit == null ? 50 : limit));
+    }
+
+    @PostMapping("/pricing-policy-proposals/{proposalId}/approve")
+    public ApiResponse<BillingPricingPolicyProposalApprovalResponse> approvePricingPolicyProposal(
+            @PathVariable long proposalId,
+            @RequestParam(name = "approvalNote", required = false) String approvalNote,
+            HttpServletRequest httpRequest
+    ) {
+        AuthenticatedUser actor = authContext.currentUser(httpRequest);
+        BillingPricingPolicyProposalApprovalResponse approved =
+                pricingPolicyService.approveProposal(proposalId, actor.loginId(), approvalNote);
+        auditLogService.record(
+                "BILLING_PRICING_POLICY_PROPOSAL_APPROVE",
+                actor.loginId(),
+                "BILLING_PRICING_POLICY_PROPOSAL",
+                String.valueOf(proposalId),
+                "SUCCESS",
+                approvalNote == null || approvalNote.isBlank()
+                        ? "Billing pricing policy proposal approved"
+                        : approvalNote.trim(),
+                httpRequest
+        );
+        return ApiResponse.of(approved);
+    }
+
     @GetMapping("/chargeback-preview")
     public ApiResponse<ChargebackPreviewResponse> chargebackPreview(
             @RequestParam(name = "from", required = false) String from,

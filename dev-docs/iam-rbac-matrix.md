@@ -30,6 +30,7 @@
 | Organization usage | `GET /api/admin/organizations/usage` | Allow | Allow | Deny | Deny | `ORG_ADMIN`은 자기 조직 usage만 조회 | `AdminRbacPolicy`, `AdminOrganizationController.visibleOrganizations` |
 | Billing pricing policy read | `GET /api/admin/billing/pricing-policy` | Allow | Allow | Deny | Deny | `ORG_ADMIN`은 preview 계산용 read-only 정책만 조회 | `AdminRbacPolicy`, `AdminBillingController` |
 | Billing pricing policy save | `PUT /api/admin/billing/pricing-policy` | Allow | Deny | Deny | Deny | global chargeback 기본 rate 저장은 `ADMIN` 전용 | `AdminRbacPolicy`, `AdminBillingController`, `BillingPricingPolicyService` |
+| Billing pricing policy proposal approval | `GET/POST /api/admin/billing/pricing-policy-proposals`, `POST /api/admin/billing/pricing-policy-proposals/{proposalId}/approve` | Allow | Deny | Deny | Deny | ADMIN-only internal chargeback pricing proposal/approval. `APPROVED_APPLIED` updates the internal calculation policy but still is not an approved external price list | `AdminRbacPolicy`, `AdminBillingController`, `BillingPricingPolicyService` |
 | Chargeback preview | `GET /api/admin/billing/chargeback-preview` | Allow | Allow | Deny | Deny | `ORG_ADMIN`은 자기 조직 chargeback preview만 조회 | `AdminRbacPolicy`, `AdminBillingController`, `ChargebackPreviewService` |
 | Chargeback threshold alerts | `GET /api/admin/billing/chargeback-alerts` | Allow | Allow | Deny | Deny | `ORG_ADMIN`은 자기 조직 chargeback threshold alert만 조회 | `AdminRbacPolicy`, `AdminBillingController`, `ChargebackPreviewService` |
 | Chargeback alert notification preview | `GET /api/admin/billing/chargeback-alert-notifications/preview` | Allow | Allow | Deny | Deny | threshold alert와 같은 scope로 외부 알림 payload를 preview하며 실제 전송은 하지 않음 | `AdminRbacPolicy`, `AdminBillingController`, `ChargebackPreviewService` |
@@ -118,7 +119,7 @@ Kubernetes ServiceAccount와 cluster RBAC 권한 경계는 `kubernetes-rbac-matr
 
 - `AdminRbacPolicyTest`: role별 admin route 허용/차단.
 - `AdminEnterpriseAuthPlanControllerTest`, `EnterpriseAuthPlanServiceTest`, `OidcClaimPreviewServiceTest`, `OidcJitProvisioningServiceTest`, `OidcLoginServiceTest`, `LdapLoginServiceTest`: local-only enterprise auth plan, OIDC/LDAP readiness, OIDC claim preview/audit, admin-approved JIT apply, OIDC callback state/token/JWKS 검증, LDAP bind/search adapter, role/org/team claim mapping 검증.
-- `AdminBillingControllerTest`, `ChargebackPreviewServiceTest`: `ADMIN`/`ORG_ADMIN` chargeback preview/export/draft invoice export/threshold alert/notification preview/outbox scope, ADMIN-only invoice draft persistence/internal approval, pricing policy save/defaulting, data-flow event cost pre-model, unsupported role denial 검증.
+- `AdminBillingControllerTest`, `ChargebackPreviewServiceTest`: `ADMIN`/`ORG_ADMIN` chargeback preview/export/draft invoice export/threshold alert/notification preview/outbox scope, ADMIN-only invoice draft persistence/internal approval and pricing policy proposal approval, pricing policy save/defaulting, data-flow event cost pre-model, unsupported role denial 검증.
 - `AdminTeamControllerTest`: `ADMIN`/`ORG_ADMIN` 팀 관리 scope와 팀 삭제 cleanup 검증.
 - `BucketObjectFlowTest.teamBucketPermissionAppliesToTeamMembers`: `TEAM` subject bucket permission과 Access Key 재동기화 검증.
 - `AdminUserControllerTest`: `USER`/`ORG_ADMIN`의 global admin API 차단.

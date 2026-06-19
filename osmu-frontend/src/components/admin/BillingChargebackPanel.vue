@@ -156,6 +156,15 @@
       >
         Save policy
       </button>
+      <button
+        v-if="isAdmin"
+        data-testid="billing-pricing-policy-proposal-button"
+        type="button"
+        class="ghost"
+        @click="$emit('create-billing-pricing-policy-proposal')"
+      >
+        Propose policy
+      </button>
     </form>
 
     <div class="compact-metrics chargeback-metrics" data-testid="chargeback-metrics">
@@ -202,6 +211,44 @@
         </span>
         <strong>{{ billingPricingPolicy.currency || preview.currency || chargebackOptions.currency }}</strong>
       </li>
+    </ul>
+
+    <div v-if="isAdmin" class="compact-metrics billing-pricing-policy-proposal-metrics" data-testid="billing-pricing-policy-proposal-metrics">
+      <div>
+        <span>Policy proposals</span>
+        <b data-testid="billing-pricing-policy-proposal-count">{{ formatCount(pricingPolicyProposals.proposalCount) }}</b>
+      </div>
+      <div>
+        <span>Status</span>
+        <b data-testid="billing-pricing-policy-proposal-status">{{ pricingPolicyProposalRows[0]?.status || '-' }}</b>
+      </div>
+      <div>
+        <span>Updated</span>
+        <b data-testid="billing-pricing-policy-proposal-updated">{{ formatDateTime(pricingPolicyProposals.generatedAt) || '-' }}</b>
+      </div>
+    </div>
+
+    <ul v-if="isAdmin" class="compact-list billing-pricing-policy-proposal-list" data-testid="billing-pricing-policy-proposal-list">
+      <li v-for="proposal in pricingPolicyProposalRows" :key="proposal.id" data-testid="billing-pricing-policy-proposal-row">
+        <span class="list-main">
+          <b>{{ proposal.currency }} policy #{{ proposal.id }}</b>
+          <small>
+            storage {{ formatRate(proposal.storageGbMonthRate) }} / ingress {{ formatRate(proposal.ingressGbRate) }} / ops {{ formatRate(proposal.operationThousandRate) }} / warn {{ formatMoney(proposal.warningAmount, proposal.currency) }} / critical {{ formatMoney(proposal.criticalAmount, proposal.currency) }}
+          </small>
+          <small>{{ proposal.approvedPriceList ? 'Approved price list' : 'Internal calculation only' }} / {{ proposal.reason || '-' }}</small>
+        </span>
+        <button
+          v-if="proposal.status === 'PENDING_APPROVAL'"
+          data-testid="billing-pricing-policy-proposal-approve-button"
+          type="button"
+          class="ghost"
+          @click="$emit('approve-billing-pricing-policy-proposal', proposal.id)"
+        >
+          Approve
+        </button>
+        <strong v-else :class="['status-pill', proposal.status === 'APPROVED_APPLIED' ? 'up' : 'mock']">{{ proposal.status || '-' }}</strong>
+      </li>
+      <li v-if="pricingPolicyProposalRows.length === 0" class="empty">No billing pricing policy proposals.</li>
     </ul>
 
     <div class="compact-metrics chargeback-alert-metrics" data-testid="chargeback-alert-metrics">
@@ -370,6 +417,7 @@ const props = defineProps({
   chargebackAlertNotificationOutbox: { type: Object, required: true },
   chargebackInvoiceDrafts: { type: Object, required: true },
   billingPricingPolicy: { type: Object, required: true },
+  billingPricingPolicyProposals: { type: Object, required: true },
   formatBytes: { type: Function, required: true },
   formatDateTime: { type: Function, required: true },
 })
@@ -379,6 +427,8 @@ const emit = defineEmits([
   'refresh-chargeback-preview',
   'reset-chargeback-options',
   'save-billing-pricing-policy',
+  'create-billing-pricing-policy-proposal',
+  'approve-billing-pricing-policy-proposal',
   'queue-chargeback-alert-notifications',
   'export-chargeback-csv',
   'export-chargeback-invoice-draft-csv',
@@ -391,6 +441,7 @@ const alerts = computed(() => props.chargebackAlerts || {})
 const notificationPreview = computed(() => props.chargebackAlertNotificationPreview || {})
 const notificationOutbox = computed(() => props.chargebackAlertNotificationOutbox || {})
 const invoiceDrafts = computed(() => props.chargebackInvoiceDrafts || {})
+const pricingPolicyProposals = computed(() => props.billingPricingPolicyProposals || {})
 const rates = computed(() => preview.value.rates || {})
 const organizations = computed(() => (
   Array.isArray(preview.value.organizations) ? preview.value.organizations : []
@@ -406,6 +457,9 @@ const notificationOutboxRows = computed(() => (
 ))
 const invoiceDraftRows = computed(() => (
   Array.isArray(invoiceDrafts.value.invoices) ? invoiceDrafts.value.invoices : []
+))
+const pricingPolicyProposalRows = computed(() => (
+  Array.isArray(pricingPolicyProposals.value.proposals) ? pricingPolicyProposals.value.proposals : []
 ))
 
 function updateOption(field, value) {

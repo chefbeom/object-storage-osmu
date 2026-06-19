@@ -358,6 +358,7 @@
         :chargeback-alert-notification-outbox="chargebackAlertNotificationOutbox"
         :chargeback-invoice-drafts="chargebackInvoiceDrafts"
         :billing-pricing-policy="billingPricingPolicy"
+        :billing-pricing-policy-proposals="billingPricingPolicyProposals"
         :quota-policy-form="quotaPolicyForm"
         :quota-policy-target-options="quotaPolicyTargetOptions"
         :quota-policies="quotaPolicies"
@@ -407,6 +408,8 @@
         @refresh-chargeback-preview="loadChargebackPanel"
         @reset-chargeback-options="handleResetChargebackOptions"
         @save-billing-pricing-policy="handleSaveBillingPricingPolicy"
+        @create-billing-pricing-policy-proposal="handleCreateBillingPricingPolicyProposal"
+        @approve-billing-pricing-policy-proposal="handleApproveBillingPricingPolicyProposal"
         @queue-chargeback-alert-notifications="handleQueueChargebackAlertNotifications"
         @export-chargeback-csv="handleExportChargebackCsv"
         @export-chargeback-invoice-draft-csv="handleExportChargebackInvoiceDraftCsv"
@@ -504,6 +507,7 @@ import ObjectPage from '@/components/objects/ObjectPage.vue'
 import StoragePage from '@/components/storage/StoragePage.vue'
 import {
   MULTIPART_UPLOAD_THRESHOLD_BYTES,
+  approveBillingPricingPolicyProposal,
   approveChargebackInvoiceDraft,
   applyStorageExpansionExecutionRecord,
   applyStorageProfileRequest,
@@ -512,6 +516,7 @@ import {
   cleanupObjectShareLinks,
   completePresignedUpload,
   createAccessKey,
+  createBillingPricingPolicyProposal,
   createBucket,
   createChargebackInvoiceDrafts,
   createDashboardLayoutPreset,
@@ -554,6 +559,7 @@ import {
   getAuditLogs,
   getBackupStatus,
   getBillingPricingPolicy,
+  getBillingPricingPolicyProposals,
   getBucketLifecycleS3Xml,
   getBucketPermissions,
   getBucketStorageProfile,
@@ -1228,6 +1234,7 @@ const chargebackAlertNotificationPreview = ref(defaultChargebackAlertNotificatio
 const chargebackAlertNotificationOutbox = ref(defaultChargebackAlertNotificationOutbox())
 const chargebackInvoiceDrafts = ref(defaultChargebackInvoiceDrafts())
 const billingPricingPolicy = ref(defaultBillingPricingPolicy())
+const billingPricingPolicyProposals = ref(defaultBillingPricingPolicyProposals())
 const teams = ref([])
 const quotaPolicies = ref([])
 const quotaPolicyHistory = ref([])
@@ -2432,6 +2439,17 @@ async function loadBillingPricingPolicy() {
   }
 }
 
+async function loadBillingPricingPolicyProposals() {
+  if (!isAdmin.value) {
+    resetBillingPricingPolicyProposals()
+    return
+  }
+  const result = await safeRequest(() => getBillingPricingPolicyProposals({ limit: 25 }), null)
+  if (result?.data) {
+    applyBillingPricingPolicyProposals(result.data)
+  }
+}
+
 async function loadChargebackPreview() {
   if (!canUseAdminTools.value) {
     resetChargebackPreview()
@@ -2494,6 +2512,7 @@ async function loadChargebackPanel() {
     loadChargebackAlertNotificationPreview(),
     loadChargebackAlertNotificationOutbox(),
     loadChargebackInvoiceDrafts(),
+    loadBillingPricingPolicyProposals(),
   ])
 }
 
@@ -2504,6 +2523,38 @@ async function handleSaveBillingPricingPolicy() {
     applyBillingPricingPolicy(result.data)
     await loadChargebackPanel()
     setStatusMessage('Billing pricing policy saved.')
+  }
+}
+
+async function handleCreateBillingPricingPolicyProposal() {
+  if (!isAdmin.value) return
+  const result = await runAction(() => createBillingPricingPolicyProposal({
+    ...billingPricingPolicyPayload(),
+    reason: 'Admin billing panel pricing policy proposal',
+  }))
+  if (result?.data) {
+    applyBillingPricingPolicyProposals({
+      proposalCount: 1,
+      proposals: result.data.proposal ? [result.data.proposal] : [],
+      generatedAt: result.data.generatedAt,
+    })
+    await loadBillingPricingPolicyProposals()
+    setStatusMessage('Billing pricing policy proposal created for internal approval.')
+  }
+}
+
+async function handleApproveBillingPricingPolicyProposal(proposalId) {
+  if (!isAdmin.value || !proposalId) return
+  const result = await runAction(() => approveBillingPricingPolicyProposal(proposalId, {
+    approvalNote: 'Approved from admin billing panel',
+  }))
+  if (result?.data) {
+    if (result.data.appliedPolicy) {
+      applyBillingPricingPolicy(result.data.appliedPolicy)
+    }
+    await loadBillingPricingPolicyProposals()
+    await loadChargebackPanel()
+    setStatusMessage('Billing pricing policy proposal approved and applied internally.')
   }
 }
 
@@ -2750,6 +2801,7 @@ function resetAdminOnlyState() {
   resetDashboardReadiness()
   resetDataFlowMonitoring()
   resetBillingPricingPolicy()
+  resetBillingPricingPolicyProposals()
   resetChargebackOptions()
   resetChargebackPreview()
   resetChargebackAlerts()
@@ -3773,6 +3825,54 @@ function syncChargebackOptionsFromPolicy() {
 
 function resetBillingPricingPolicy() {
   applyBillingPricingPolicy({})
+}
+
+function defaultBillingPricingPolicyProposals() {
+  return {
+    proposalCount: 0,
+    proposals: [],
+    generatedAt: '',
+  }
+}
+
+function normalizeBillingPricingPolicyProposal(proposal = {}) {
+  return {
+    id: proposal.id,
+    status: proposal.status || '',
+    approvedPriceList: Boolean(proposal.approvedPriceList),
+    currency: proposal.currency || defaultChargebackOptions.currency,
+    storageGbMonthRate: Number(proposal.storageGbMonthRate || 0),
+    ingressGbRate: Number(proposal.ingressGbRate || 0),
+    egressGbRate: Number(proposal.egressGbRate || 0),
+    internalGbRate: Number(proposal.internalGbRate || 0),
+    operationThousandRate: Number(proposal.operationThousandRate || 0),
+    warningAmount: Number(proposal.warningAmount || 0),
+    criticalAmount: Number(proposal.criticalAmount || 0),
+    eventScanLimit: Number(proposal.eventScanLimit || defaultChargebackOptions.eventScanLimit),
+    requestedBy: proposal.requestedBy || '',
+    approvedBy: proposal.approvedBy || '',
+    reason: proposal.reason || '',
+    approvalNote: proposal.approvalNote || '',
+    createdAt: proposal.createdAt || '',
+    updatedAt: proposal.updatedAt || '',
+    approvedAt: proposal.approvedAt || '',
+    appliedAt: proposal.appliedAt || '',
+  }
+}
+
+function applyBillingPricingPolicyProposals(data = {}) {
+  const proposals = Array.isArray(data.proposals)
+    ? data.proposals.map((proposal) => normalizeBillingPricingPolicyProposal(proposal))
+    : []
+  billingPricingPolicyProposals.value = {
+    proposalCount: Number(data.proposalCount ?? proposals.length),
+    proposals,
+    generatedAt: data.generatedAt || '',
+  }
+}
+
+function resetBillingPricingPolicyProposals() {
+  applyBillingPricingPolicyProposals({})
 }
 
 function defaultChargebackPreview() {

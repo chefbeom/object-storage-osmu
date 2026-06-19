@@ -101,6 +101,57 @@ class AdminBillingControllerTest {
                 .andExpect(jsonPath("$.data.eventScanLimit").value(5000))
                 .andExpect(jsonPath("$.data.updatedAt").exists());
 
+        String pricingPolicyProposalResponse = mockMvc.perform(post("/api/admin/billing/pricing-policy-proposals")
+                        .header("Authorization", "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "currency": "krw",
+                                  "storageGbMonthRate": 1073741824,
+                                  "ingressGbRate": 1073741824,
+                                  "operationThousandRate": 1000,
+                                  "warningAmount": 20,
+                                  "criticalAmount": 25,
+                                  "eventScanLimit": 5000,
+                                  "reason": "billing policy proposal test"
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("PENDING_APPROVAL"))
+                .andExpect(jsonPath("$.data.approvedPriceList").value(false))
+                .andExpect(jsonPath("$.data.proposal.status").value("PENDING_APPROVAL"))
+                .andExpect(jsonPath("$.data.proposal.requestedBy").value("admin"))
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+
+        Integer pricingPolicyProposalId = JsonPath.read(pricingPolicyProposalResponse, "$.data.proposal.id");
+
+        mockMvc.perform(get("/api/admin/billing/pricing-policy-proposals")
+                        .header("Authorization", "Bearer " + adminToken)
+                        .param("status", "PENDING_APPROVAL")
+                        .param("limit", "10"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.proposals[*].id", hasItem(pricingPolicyProposalId)));
+
+        mockMvc.perform(post("/api/admin/billing/pricing-policy-proposals/{proposalId}/approve", pricingPolicyProposalId)
+                        .header("Authorization", "Bearer " + adminToken)
+                        .param("approvalNote", "approved for internal chargeback policy"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("APPROVED_APPLIED"))
+                .andExpect(jsonPath("$.data.approvedPriceList").value(false))
+                .andExpect(jsonPath("$.data.proposal.status").value("APPROVED_APPLIED"))
+                .andExpect(jsonPath("$.data.proposal.approvedBy").value("admin"))
+                .andExpect(jsonPath("$.data.appliedPolicy.currency").value("KRW"))
+                .andExpect(jsonPath("$.data.appliedPolicy.eventScanLimit").value(5000));
+
+        mockMvc.perform(get("/api/admin/billing/pricing-policy-proposals")
+                        .header("Authorization", "Bearer " + adminToken)
+                        .param("status", "APPROVED_APPLIED")
+                        .param("limit", "10"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.proposals[*].id", hasItem(pricingPolicyProposalId)));
+
         mockMvc.perform(get("/api/admin/billing/chargeback-preview")
                         .header("Authorization", "Bearer " + adminToken))
                 .andExpect(status().isOk())

@@ -1,0 +1,22 @@
+CREATE TABLE IF NOT EXISTS billing_pricing_policy_proposals (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    status VARCHAR(32) NOT NULL,
+    currency VARCHAR(12) NOT NULL,
+    storage_gb_month_rate DECIMAL(18,6) NOT NULL DEFAULT 0,
+    ingress_gb_rate DECIMAL(18,6) NOT NULL DEFAULT 0,
+    egress_gb_rate DECIMAL(18,6) NOT NULL DEFAULT 0,
+    internal_gb_rate DECIMAL(18,6) NOT NULL DEFAULT 0,
+    operation_thousand_rate DECIMAL(18,6) NOT NULL DEFAULT 0,
+    warning_amount DECIMAL(18,6) NOT NULL DEFAULT 0,
+    critical_amount DECIMAL(18,6) NOT NULL DEFAULT 0,
+    event_scan_limit INT NOT NULL DEFAULT 10000,
+    requested_by VARCHAR(128) NOT NULL,
+    approved_by VARCHAR(128) NULL,
+    reason VARCHAR(512) NOT NULL,
+    approval_note VARCHAR(512) NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    approved_at TIMESTAMP NULL,
+    applied_at TIMESTAMP NULL,
+    INDEX idx_billing_pricing_policy_proposals_status_created (status, created_at)
+);
