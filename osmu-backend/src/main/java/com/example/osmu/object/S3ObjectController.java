@@ -56,6 +56,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.servlet.mvc.method.annotation.StreamingResponseBody;
 import org.w3c.dom.Element;
+import org.w3c.dom.Node;
 import org.w3c.dom.NodeList;
 import org.xml.sax.InputSource;
 import org.xml.sax.SAXException;
@@ -1297,6 +1298,7 @@ public class S3ObjectController {
                 if (etag.isBlank()) {
                     throw new ApiException(ApiErrorCode.VALIDATION_ERROR, "CompleteMultipartUpload Part ETag is required.");
                 }
+                rejectUnsupportedMultipartPartChecksumXml(part);
                 Map<String, String> checksums = new LinkedHashMap<>();
                 addOptionalChecksum(checksums, part, "ChecksumSHA256", AWS_CHECKSUM_SHA256_HEADER);
                 addOptionalChecksum(checksums, part, "ChecksumSHA1", AWS_CHECKSUM_SHA1_HEADER);
@@ -1330,6 +1332,29 @@ public class S3ObjectController {
                     "CompleteMultipartUpload Part requires PartNumber and ETag.");
         }
         return nodes.item(0).getTextContent();
+    }
+
+    private void rejectUnsupportedMultipartPartChecksumXml(Element part) {
+        NodeList children = part.getChildNodes();
+        for (int i = 0; i < children.getLength(); i++) {
+            Node node = children.item(i);
+            if (!(node instanceof Element child)) {
+                continue;
+            }
+            String xmlName = localName(child);
+            if (xmlName.startsWith("Checksum") && !isSupportedMultipartPartChecksumXml(xmlName)) {
+                throw new ApiException(ApiErrorCode.INVALID_DIGEST,
+                        xmlName + " is not supported for S3 CompleteMultipartUpload.");
+            }
+        }
+    }
+
+    private boolean isSupportedMultipartPartChecksumXml(String xmlName) {
+        return "ChecksumSHA256".equals(xmlName)
+                || "ChecksumSHA1".equals(xmlName)
+                || "ChecksumCRC32".equals(xmlName)
+                || "ChecksumCRC32C".equals(xmlName)
+                || "ChecksumCRC64NVME".equals(xmlName);
     }
 
     private void addOptionalChecksum(Map<String, String> checksums, Element part, String xmlName, String headerName) {

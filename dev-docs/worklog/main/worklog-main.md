@@ -17372,6 +17372,36 @@ feat/bucket-management
 - 후속:
   - 남은 큰 축은 broader multipart checksum exact AWS edge parity와 live Kubernetes/security evidence다.
 
+### 2026-06-19 - S3 CompleteMultipartUpload unsupported part checksum XML 거절
+- 작업 시간:
+  - 시작: 2026-06-19 KST
+  - 종료: 2026-06-19 KST
+- 사용자 명령:
+  - active goal `dev-docs` 기준으로 계속 개발 진행.
+- 요청 분석:
+  - 직전 작업에 이어 CompleteMultipartUpload checksum edge parity를 더 좁혔다.
+  - AWS CompleteMultipartUpload XML request syntax에는 `ChecksumCRC32`, `ChecksumCRC32C`, `ChecksumCRC64NVME`, `ChecksumSHA1`, `ChecksumSHA256` 외에도 `ChecksumMD5`, `ChecksumSHA512`, `ChecksumXXHASH64`, `ChecksumXXHASH3`, `ChecksumXXHASH128`가 있다.
+  - OSMU checksum subset은 SHA256/SHA1/CRC32/CRC32C/CRC64NVME만 지원하므로, unsupported checksum XML element를 조용히 무시하면 클라이언트가 보낸 checksum option이 적용된 것처럼 보일 수 있다고 판단했다.
+- 수행:
+  - `S3ObjectController.completedPartsFromXml`가 `Part` child 중 `Checksum*` 이름을 가진 unsupported XML element를 만나면 S3 XML `InvalidDigest` 경로로 거절하게 했다.
+  - 지원 XML element는 기존처럼 `CompletedMultipartUploadPart.checksums()`로 파싱하고, 이후 저장된 UploadPart checksum metadata merge/composite validation 경로를 그대로 사용한다.
+  - 회귀 테스트 `completeMultipartUploadRejectsUnsupportedPartChecksumXml`를 추가했다.
+  - `api-spec.md`, `backend-design.md`, `s3-compatibility.md`, `test-cases.md`, `PRODUCT_REQUIREMENTS.md`, `feature-inventory.md`에 unsupported per-part checksum XML rejection 계약을 반영했다.
+- 수정한 파일:
+  - `osmu-backend/src/main/java/com/example/osmu/object/S3ObjectController.java`
+  - `osmu-backend/src/test/java/com/example/osmu/object/S3ObjectControllerMultipartTest.java`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/backend-design.md`
+  - `dev-docs/s3-compatibility.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/PRODUCT_REQUIREMENTS.md`
+  - `dev-docs/feature-inventory.md`
+  - `dev-docs/worklog/main/worklog-main.md`
+- 검증:
+  - `$env:JAVA_HOME='C:\jdk-17'; $env:Path="$env:JAVA_HOME\bin;$env:Path"; .\gradlew.bat test --no-daemon --tests com.example.osmu.object.S3ObjectControllerMultipartTest.completeMultipartUploadRejectsUnsupportedPartChecksumXml --tests com.example.osmu.object.S3ObjectControllerMultipartTest.completeMultipartUploadParsesS3XmlAndReturnsResultXml --tests com.example.osmu.common.error.S3ErrorCodeMapperTest`: 통과.
+- 후속:
+  - 남은 큰 축은 broader multipart checksum exact AWS edge parity와 live Kubernetes/security evidence다.
+
 ### 2026-06-19 - S3 CompleteMultipartUpload checksum negotiation header 경계 강화
 - 작업 시간:
   - 시작: 2026-06-19 KST
