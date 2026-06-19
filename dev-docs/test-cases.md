@@ -63,8 +63,8 @@
 - Feature: S3-style lifecycle query alias.
 - Preconditions: ADMIN user is logged in. Target bucket exists.
 - Input: `PUT/GET/DELETE /api/s3/{bucketName}?lifecycle` with raw XML and one PUT with no XML body.
-- Steps: Put raw LifecycleConfiguration XML through query alias, get raw XML through query alias, delete through query alias, then submit a missing lifecycle XML body.
-- Expected: Alias uses the same bucket lifecycle rules. GET returns XML content type. DELETE removes the bucket-scoped lifecycle config. Missing or blank lifecycle XML returns S3 XML `MissingRequestBodyError` with message `Request body is empty.`.
+- Steps: Put raw LifecycleConfiguration XML through query alias, get raw XML through query alias, delete through query alias, get lifecycle again, then submit a missing lifecycle XML body.
+- Expected: Alias uses the same bucket lifecycle rules. GET returns XML content type while configuration exists. DELETE removes the bucket-scoped lifecycle config. GET after delete returns S3 XML `NoSuchLifecycleConfiguration` with HTTP `404` and message `The lifecycle configuration does not exist.` Missing or blank lifecycle XML returns S3 XML `MissingRequestBodyError` with message `Request body is empty.`.
 - Priority: P1
 - Automated: `BucketLifecycleControllerTest.adminCanUseS3StyleLifecycleQueryAlias`, `BucketLifecycleControllerTest.missingS3BucketLifecycleBodyReturnsMissingRequestBodyError`
 

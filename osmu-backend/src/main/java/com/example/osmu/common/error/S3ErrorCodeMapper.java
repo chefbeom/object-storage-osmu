@@ -44,6 +44,9 @@ public final class S3ErrorCodeMapper {
         if ("NoSuchUpload".equals(s3Code)) {
             return "The specified multipart upload does not exist. The upload ID might be invalid, or the multipart upload might have been aborted or completed.";
         }
+        if ("NoSuchLifecycleConfiguration".equals(s3Code)) {
+            return "The lifecycle configuration does not exist.";
+        }
         if ("PreconditionFailed".equals(s3Code)) {
             return "At least one of the pre-conditions you specified did not hold";
         }
@@ -138,10 +141,18 @@ public final class S3ErrorCodeMapper {
     }
 
     private static String notFoundCode(String message) {
+        if (isLifecycleConfigurationError(message)) {
+            return "NoSuchLifecycleConfiguration";
+        }
         if (isUploadError(message)) {
             return "NoSuchUpload";
         }
         return isBucketError(message) ? "NoSuchBucket" : "NoSuchKey";
+    }
+
+    private static boolean isLifecycleConfigurationError(String message) {
+        String normalized = message == null ? "" : message.toLowerCase(Locale.ROOT);
+        return normalized.contains("lifecycle configuration");
     }
 
     private static boolean isUploadError(String message) {

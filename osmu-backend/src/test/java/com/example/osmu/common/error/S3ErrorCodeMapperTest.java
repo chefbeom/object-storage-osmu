@@ -13,6 +13,7 @@ class S3ErrorCodeMapperTest {
         assertThat(S3ErrorCodeMapper.codeFor(ApiErrorCode.NOT_FOUND, "Bucket not found.")).isEqualTo("NoSuchBucket");
         assertThat(S3ErrorCodeMapper.codeFor(ApiErrorCode.NOT_FOUND, "Object not found.")).isEqualTo("NoSuchKey");
         assertThat(S3ErrorCodeMapper.codeFor(ApiErrorCode.NOT_FOUND, "Upload session not found.")).isEqualTo("NoSuchUpload");
+        assertThat(S3ErrorCodeMapper.codeFor(ApiErrorCode.NOT_FOUND, "Lifecycle configuration not found.")).isEqualTo("NoSuchLifecycleConfiguration");
         assertThat(S3ErrorCodeMapper.codeFor(ApiErrorCode.PRECONDITION_FAILED, "failed")).isEqualTo("PreconditionFailed");
         assertThat(S3ErrorCodeMapper.codeFor(ApiErrorCode.RANGE_NOT_SATISFIABLE, "range")).isEqualTo("InvalidRange");
         assertThat(S3ErrorCodeMapper.codeFor(ApiErrorCode.INVALID_DIGEST, "digest")).isEqualTo("InvalidDigest");
@@ -58,6 +59,8 @@ class S3ErrorCodeMapperTest {
         assertThat(S3ErrorCodeMapper.messageFor("NoSuchKey", "Object not found.")).isEqualTo("The specified key does not exist.");
         assertThat(S3ErrorCodeMapper.messageFor("NoSuchUpload", "Upload session not found."))
                 .isEqualTo("The specified multipart upload does not exist. The upload ID might be invalid, or the multipart upload might have been aborted or completed.");
+        assertThat(S3ErrorCodeMapper.messageFor("NoSuchLifecycleConfiguration", "Lifecycle configuration not found."))
+                .isEqualTo("The lifecycle configuration does not exist.");
         assertThat(S3ErrorCodeMapper.messageFor("PreconditionFailed", "Object precondition failed."))
                 .isEqualTo("At least one of the pre-conditions you specified did not hold");
         assertThat(S3ErrorCodeMapper.messageFor("InvalidBucketName", "Invalid S3 bucket name."))

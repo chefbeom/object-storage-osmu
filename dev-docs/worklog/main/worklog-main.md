@@ -1,5 +1,35 @@
 # Worklog - main
 
+### 2026-06-19 - S3 NoSuchLifecycleConfiguration error parity
+
+- Work time:
+  - End: 2026-06-19 KST
+- User command:
+  - Active goal: continue development from `dev-docs`.
+- Request analysis:
+  - AWS `GetBucketLifecycleConfiguration` documents the special error `NoSuchLifecycleConfiguration` with HTTP `404 Not Found` when the lifecycle configuration does not exist.
+  - OSMU S3 lifecycle alias returned an empty lifecycle XML body with `200 OK` after delete/no config, which was useful for REST UI flows but less S3-compatible for the S3 alias.
+- Execution:
+  - Changed only the S3 lifecycle alias GET path to return S3 XML `NoSuchLifecycleConfiguration` when no bucket-scoped lifecycle rules exist.
+  - Kept REST bucket lifecycle GET behavior unchanged.
+  - Added mapper and controller regression assertions.
+  - Updated compatibility/API/backend/test-case/feature docs.
+- Modified files:
+  - `osmu-backend/src/main/java/com/example/osmu/bucket/S3BucketLifecycleController.java`
+  - `osmu-backend/src/main/java/com/example/osmu/common/error/S3ErrorCodeMapper.java`
+  - `osmu-backend/src/test/java/com/example/osmu/bucket/BucketLifecycleControllerTest.java`
+  - `osmu-backend/src/test/java/com/example/osmu/common/error/S3ErrorCodeMapperTest.java`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/backend-design.md`
+  - `dev-docs/s3-compatibility.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/feature-inventory.md`
+  - `dev-docs/worklog/main/worklog-main.md`
+- Tests:
+  - `$env:JAVA_HOME='C:\jdk-17'; .\gradlew.bat test --no-daemon --tests com.example.osmu.common.error.S3ErrorCodeMapperTest --tests com.example.osmu.bucket.BucketLifecycleControllerTest`: passed.
+- Follow-up:
+  - Continue remaining AWS checksum real-client option coverage and broader S3 error behavior parity.
+
 ### 2026-06-19 - S3 lifecycle MissingRequestBodyError coverage
 
 - Work time:

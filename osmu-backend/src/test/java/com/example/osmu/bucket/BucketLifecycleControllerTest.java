@@ -198,8 +198,10 @@ class BucketLifecycleControllerTest {
                         .queryParam("lifecycle", "")
                         .header("Authorization", "Bearer " + token)
                         .accept(MediaType.APPLICATION_XML))
-                .andExpect(status().isOk())
-                .andExpect(content().string(org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString("Query lifecycle"))));
+                .andExpect(status().isNotFound())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_XML))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("<Code>NoSuchLifecycleConfiguration</Code>")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("<Message>The lifecycle configuration does not exist.</Message>")));
     }
 
     @Test

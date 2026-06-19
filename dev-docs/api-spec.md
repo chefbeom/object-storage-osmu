@@ -1224,7 +1224,7 @@ Rules:
 
 OSMU REST 인증을 사용하지만, path-style S3 lifecycle 문법에 가까운 raw XML alias를 제공한다. bucket 관리 권한이 필요하다.
 
-- `GET /api/s3/{bucketName}?lifecycle` with `Accept: application/xml`
+- `GET /api/s3/{bucketName}?lifecycle` with `Accept: application/xml`; missing bucket lifecycle configuration returns S3 XML `NoSuchLifecycleConfiguration` with HTTP `404`
 - `PUT /api/s3/{bucketName}?lifecycle` with `Content-Type: application/xml`; missing or blank XML returns S3 XML `MissingRequestBodyError`
 - `DELETE /api/s3/{bucketName}?lifecycle`
 
@@ -1355,7 +1355,7 @@ Headers:
 - `PUT ?tagging` rejects missing/blank XML as `MissingRequestBodyError`, rejects invalid XML as `MalformedXML` or `InvalidRequest` depending on parser/schema shape, and disables DOCTYPE/external entity loading.
 - S3 responses expose AWS-style trace headers: `x-amz-request-id` mirrors the normalized `X-Request-Id`, and `x-amz-id-2` is an opaque deterministic value derived from request id plus resource. These headers are exposed through backend CORS for browser clients.
 - Errors under `/api/s3/**` return AWS-style XML `<Error><Code>...</Code><Message>...</Message><Resource>...</Resource><RequestId>...</RequestId><HostId>...</HostId></Error>`; when derivable, per-error details such as `BucketName`, `Key`, and `UploadId` are emitted between `Message` and `Resource`. XML `RequestId` and `HostId` match the S3 trace headers.
-- S3 XML error code mapping includes `AccessDenied`, `NoSuchBucket`, `NoSuchKey`, `NoSuchUpload`, `BucketAlreadyOwnedByYou`, `BucketAlreadyExists`, `BucketNotEmpty`, `InvalidBucketName`, `InvalidRange`, `InvalidRequest`, `MalformedXML`, `MissingRequestBodyError`, `InvalidPart`, `InvalidPartOrder`, `InvalidDigest`, `BadDigest`, `PreconditionFailed`, `EntityTooSmall`, `EntityTooLarge`, `OperationAborted`, `MissingContentLength`, `IncompleteBody`, and `InternalError`.
+- S3 XML error code mapping includes `AccessDenied`, `NoSuchBucket`, `NoSuchKey`, `NoSuchUpload`, `NoSuchLifecycleConfiguration`, `BucketAlreadyOwnedByYou`, `BucketAlreadyExists`, `BucketNotEmpty`, `InvalidBucketName`, `InvalidRange`, `InvalidRequest`, `MalformedXML`, `MissingRequestBodyError`, `InvalidPart`, `InvalidPartOrder`, `InvalidDigest`, `BadDigest`, `PreconditionFailed`, `EntityTooSmall`, `EntityTooLarge`, `OperationAborted`, `MissingContentLength`, `IncompleteBody`, and `InternalError`.
 - S3 XML `AccessDenied` responses use HTTP `403` and message `Access Denied` for AWS client compatibility even when the underlying REST auth failure category is `AUTHENTICATION_REQUIRED`; normal REST JSON auth failures still use HTTP `401` and retain detailed JSON messages.
 - S3 XML `BadDigest`/`InvalidDigest` responses for Content-MD5 use AWS-style messages while non-MD5 checksum failures retain the more specific failing checksum message.
 - S3 XML `EntityTooLarge`, `OperationAborted`, and `InternalError` responses use AWS-style generic messages for S3 client compatibility.

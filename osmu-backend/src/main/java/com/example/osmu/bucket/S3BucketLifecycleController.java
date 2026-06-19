@@ -36,6 +36,9 @@ public class S3BucketLifecycleController {
             HttpServletRequest request
     ) {
         BucketLifecycleXml lifecycle = bucketLifecycleService.exportXml(bucketName, currentUser(request, bucketName));
+        if (lifecycle.ruleCount() == 0) {
+            throw new ApiException(ApiErrorCode.NOT_FOUND, "Lifecycle configuration not found.");
+        }
         return ResponseEntity.ok()
                 .contentType(MediaType.APPLICATION_XML)
                 .body(lifecycle.xml());
