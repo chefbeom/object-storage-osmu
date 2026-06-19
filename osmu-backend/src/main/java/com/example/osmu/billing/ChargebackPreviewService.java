@@ -4,6 +4,7 @@ import com.example.osmu.auth.AuthenticatedUser;
 import com.example.osmu.billing.repository.ChargebackFinalInvoiceRepository;
 import com.example.osmu.billing.repository.ChargebackInvoiceDraftRepository;
 import com.example.osmu.billing.repository.ChargebackNotificationDeliveryRepository;
+import com.example.osmu.billing.repository.ChargebackPaymentProviderHandoffRepository;
 import com.example.osmu.bucket.BucketRecord;
 import com.example.osmu.bucket.repository.BucketRepository;
 import com.example.osmu.common.error.ApiErrorCode;
@@ -36,6 +37,7 @@ public class ChargebackPreviewService {
     private final ChargebackNotificationDeliveryRepository notificationDeliveryRepository;
     private final ChargebackInvoiceDraftRepository invoiceDraftRepository;
     private final ChargebackFinalInvoiceRepository finalInvoiceRepository;
+    private final ChargebackPaymentProviderHandoffRepository paymentHandoffRepository;
 
     public ChargebackPreviewService(
             OrganizationRepository organizationRepository,
@@ -44,7 +46,8 @@ public class ChargebackPreviewService {
             BillingPricingPolicyService pricingPolicyService,
             ChargebackNotificationDeliveryRepository notificationDeliveryRepository,
             ChargebackInvoiceDraftRepository invoiceDraftRepository,
-            ChargebackFinalInvoiceRepository finalInvoiceRepository
+            ChargebackFinalInvoiceRepository finalInvoiceRepository,
+            ChargebackPaymentProviderHandoffRepository paymentHandoffRepository
     ) {
         this.organizationRepository = organizationRepository;
         this.bucketRepository = bucketRepository;
@@ -53,6 +56,7 @@ public class ChargebackPreviewService {
         this.notificationDeliveryRepository = notificationDeliveryRepository;
         this.invoiceDraftRepository = invoiceDraftRepository;
         this.finalInvoiceRepository = finalInvoiceRepository;
+        this.paymentHandoffRepository = paymentHandoffRepository;
     }
 
     public ChargebackPreviewResponse preview(AuthenticatedUser actor, ChargebackPreviewRequest request) {
@@ -427,6 +431,93 @@ public class ChargebackPreviewService {
         );
     }
 
+    public ChargebackPaymentProviderHandoffPreviewResponse paymentProviderHandoffPreview(
+            AuthenticatedUser actor,
+            long invoiceId,
+            String provider,
+            String targetAccount
+    ) {
+        requireAdmin(actor, "Chargeback payment provider handoff preview requires ADMIN.");
+        ChargebackFinalInvoiceRecord invoice = paymentHandoffReadyInvoice(invoiceId);
+        String normalizedProvider = normalizePaymentProvider(provider);
+        String normalizedTarget = normalizePaymentTarget(targetAccount);
+        Map<String, Object> payload = paymentProviderPayload(invoice, normalizedProvider, normalizedTarget);
+        return new ChargebackPaymentProviderHandoffPreviewResponse(
+                "PREVIEW",
+                normalizedProvider,
+                normalizedTarget,
+                false,
+                finalInvoiceResponse(invoice),
+                payload,
+                OffsetDateTime.now(),
+                "Preview only - no external payment provider was called."
+        );
+    }
+
+    public ChargebackPaymentProviderHandoffQueueResponse queuePaymentProviderHandoff(
+            AuthenticatedUser actor,
+            long invoiceId,
+            String provider,
+            String targetAccount,
+            String reason
+    ) {
+        ChargebackPaymentProviderHandoffPreviewResponse preview = paymentProviderHandoffPreview(
+                actor,
+                invoiceId,
+                provider,
+                targetAccount
+        );
+        OffsetDateTime now = OffsetDateTime.now();
+        ChargebackFinalInvoiceResponse invoice = preview.invoice();
+        ChargebackPaymentProviderHandoffRecord saved = paymentHandoffRepository.save(
+                new ChargebackPaymentProviderHandoffRecord(
+                        null,
+                        invoice.id(),
+                        invoice.invoiceNumber(),
+                        invoice.organizationId(),
+                        invoice.organizationName(),
+                        invoice.currency(),
+                        money(invoice.estimatedTotalCost()),
+                        preview.provider(),
+                        preview.targetAccount(),
+                        "PENDING_PAYMENT_PROVIDER_ADAPTER",
+                        0,
+                        null,
+                        payloadJson(preview.payload()),
+                        actor.loginId(),
+                        normalizePaymentHandoffReason(reason),
+                        now,
+                        now,
+                        null
+                )
+        );
+        return new ChargebackPaymentProviderHandoffQueueResponse(
+                "OUTBOX",
+                "PENDING_PAYMENT_PROVIDER_ADAPTER",
+                false,
+                paymentHandoffResponse(saved),
+                OffsetDateTime.now(),
+                "Recorded in payment provider handoff outbox; no external payment provider was called."
+        );
+    }
+
+    public ChargebackPaymentProviderHandoffListResponse paymentProviderHandoffs(
+            AuthenticatedUser actor,
+            String status,
+            int limit
+    ) {
+        requireAdmin(actor, "Chargeback payment provider handoff access requires ADMIN.");
+        String normalizedStatus = normalizePaymentHandoffStatusFilter(status);
+        List<ChargebackPaymentProviderHandoffRecord> records = normalizedStatus.isBlank()
+                ? paymentHandoffRepository.findAll(limit)
+                : paymentHandoffRepository.findByStatus(normalizedStatus, limit);
+        return new ChargebackPaymentProviderHandoffListResponse(
+                records.size(),
+                records.stream().map(ChargebackPreviewService::paymentHandoffResponse).toList(),
+                OffsetDateTime.now()
+        );
+    }
+
     public ChargebackAlertResponse alerts(AuthenticatedUser actor, ChargebackPreviewRequest request) {
         ChargebackPreviewResponse preview = preview(actor, request);
         BillingPricingPolicy pricingPolicy = pricingPolicyService.current();
@@ -715,6 +806,38 @@ public class ChargebackPreviewService {
         return reference;
     }
 
+    private static String normalizePaymentProvider(String value) {
+        String provider = value == null || value.isBlank()
+                ? "MANUAL_AP"
+                : value.trim().toUpperCase(Locale.ROOT).replace(' ', '_');
+        if (!provider.matches("[A-Z0-9_-]{1,64}")) {
+            throw new ApiException(ApiErrorCode.VALIDATION_ERROR, "paymentProvider must be 1-64 alphanumeric, dash, or underscore characters.");
+        }
+        return provider;
+    }
+
+    private static String normalizePaymentTarget(String value) {
+        if (value == null || value.isBlank()) {
+            return "UNCONFIGURED";
+        }
+        String target = value.trim();
+        if (target.length() > 512 || target.contains("\r") || target.contains("\n")) {
+            throw new ApiException(ApiErrorCode.VALIDATION_ERROR, "paymentTargetAccount must be a single-line value up to 512 characters.");
+        }
+        return target;
+    }
+
+    private static String normalizePaymentHandoffReason(String value) {
+        if (value == null || value.isBlank()) {
+            return "Chargeback payment provider handoff queued from admin billing panel.";
+        }
+        String reason = value.trim();
+        if (reason.length() > 512 || reason.contains("\r") || reason.contains("\n")) {
+            throw new ApiException(ApiErrorCode.VALIDATION_ERROR, "reason must be a single-line value up to 512 characters.");
+        }
+        return reason;
+    }
+
     private static String normalizeInvoiceStatusFilter(String value) {
         if (value == null || value.isBlank()) {
             return "";
@@ -735,6 +858,26 @@ public class ChargebackPreviewService {
             throw new ApiException(ApiErrorCode.VALIDATION_ERROR, "status must be FINALIZED, PAYMENT_REQUESTED, or PAID.");
         }
         return status;
+    }
+
+    private static String normalizePaymentHandoffStatusFilter(String value) {
+        if (value == null || value.isBlank()) {
+            return "";
+        }
+        String status = value.trim().toUpperCase(Locale.ROOT);
+        if (!"PENDING_PAYMENT_PROVIDER_ADAPTER".equals(status)) {
+            throw new ApiException(ApiErrorCode.VALIDATION_ERROR, "status must be PENDING_PAYMENT_PROVIDER_ADAPTER.");
+        }
+        return status;
+    }
+
+    private ChargebackFinalInvoiceRecord paymentHandoffReadyInvoice(long invoiceId) {
+        ChargebackFinalInvoiceRecord invoice = finalInvoiceRepository.findById(invoiceId)
+                .orElseThrow(() -> new ApiException(ApiErrorCode.NOT_FOUND, "Chargeback final invoice not found."));
+        if (!"PAYMENT_REQUESTED".equals(invoice.status())) {
+            throw new ApiException(ApiErrorCode.VALIDATION_ERROR, "Only PAYMENT_REQUESTED invoices can be queued for payment provider handoff.");
+        }
+        return invoice;
     }
 
     private static ChargebackInvoiceDraftRecord invoiceDraftRecord(
@@ -923,6 +1066,51 @@ public class ChargebackPreviewService {
                 record.paymentRequestedAt(),
                 record.paidAt(),
                 record.note()
+        );
+    }
+
+    private static Map<String, Object> paymentProviderPayload(
+            ChargebackFinalInvoiceRecord invoice,
+            String provider,
+            String targetAccount
+    ) {
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("eventType", "chargeback.payment_provider.handoff");
+        payload.put("finalInvoiceId", invoice.id() == null ? 0L : invoice.id());
+        payload.put("invoiceNumber", invoice.invoiceNumber());
+        payload.put("organizationId", invoice.organizationId());
+        payload.put("organizationName", invoice.organizationName());
+        payload.put("currency", invoice.currency());
+        payload.put("amount", money(invoice.estimatedTotalCost()));
+        payload.put("paymentStatus", invoice.paymentStatus());
+        payload.put("provider", provider);
+        payload.put("targetAccount", targetAccount);
+        payload.put("externalPaymentEnabled", false);
+        return payload;
+    }
+
+    private static ChargebackPaymentProviderHandoffResponse paymentHandoffResponse(
+            ChargebackPaymentProviderHandoffRecord record
+    ) {
+        return new ChargebackPaymentProviderHandoffResponse(
+                record.id() == null ? 0L : record.id(),
+                record.finalInvoiceId(),
+                record.invoiceNumber(),
+                record.organizationId(),
+                record.organizationName(),
+                record.currency(),
+                money(record.amount()),
+                record.provider(),
+                record.targetAccount(),
+                record.status(),
+                record.attemptCount(),
+                record.nextAttemptAt(),
+                record.payloadJson(),
+                record.requestedBy(),
+                record.reason(),
+                record.createdAt(),
+                record.updatedAt(),
+                record.lastError()
         );
     }
 

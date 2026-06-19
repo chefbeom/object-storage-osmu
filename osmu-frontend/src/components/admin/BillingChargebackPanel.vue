@@ -106,6 +106,18 @@
         @input="updateOption('notificationTarget', $event.target.value)"
       />
       <input
+        data-testid="chargeback-payment-provider-input"
+        :value="chargebackOptions.paymentProvider"
+        placeholder="payment provider"
+        @input="updateOption('paymentProvider', $event.target.value)"
+      />
+      <input
+        data-testid="chargeback-payment-target-input"
+        :value="chargebackOptions.paymentTargetAccount"
+        placeholder="payment target"
+        @input="updateOption('paymentTargetAccount', $event.target.value)"
+      />
+      <input
         data-testid="chargeback-event-limit-input"
         min="1"
         max="50000"
@@ -405,7 +417,16 @@
           Request payment
         </button>
         <button
-          v-else-if="invoice.status === 'PAYMENT_REQUESTED'"
+          v-if="invoice.status === 'PAYMENT_REQUESTED'"
+          data-testid="chargeback-payment-handoff-button"
+          type="button"
+          class="ghost"
+          @click="$emit('queue-chargeback-payment-provider-handoff', invoice.id)"
+        >
+          Queue handoff
+        </button>
+        <button
+          v-if="invoice.status === 'PAYMENT_REQUESTED'"
           data-testid="chargeback-final-invoice-payment-record-button"
           type="button"
           class="ghost"
@@ -413,9 +434,36 @@
         >
           Record paid
         </button>
-        <strong v-else :class="['status-pill', invoice.status === 'PAID' ? 'up' : 'mock']">{{ invoice.status || '-' }}</strong>
+        <strong v-if="invoice.status !== 'FINALIZED' && invoice.status !== 'PAYMENT_REQUESTED'" :class="['status-pill', invoice.status === 'PAID' ? 'up' : 'mock']">{{ invoice.status || '-' }}</strong>
       </li>
       <li v-if="finalInvoiceRows.length === 0" class="empty">No chargeback final invoice records.</li>
+    </ul>
+
+    <div v-if="isAdmin" class="compact-metrics chargeback-payment-handoff-metrics" data-testid="chargeback-payment-handoff-metrics">
+      <div>
+        <span>Payment handoffs</span>
+        <b data-testid="chargeback-payment-handoff-count">{{ formatCount(paymentHandoffs.handoffCount) }}</b>
+      </div>
+      <div>
+        <span>Status</span>
+        <b data-testid="chargeback-payment-handoff-status">{{ paymentHandoffRows[0]?.status || '-' }}</b>
+      </div>
+      <div>
+        <span>Provider</span>
+        <b data-testid="chargeback-payment-handoff-provider">{{ paymentHandoffRows[0]?.provider || chargebackOptions.paymentProvider || '-' }}</b>
+      </div>
+    </div>
+
+    <ul v-if="isAdmin" class="compact-list chargeback-payment-handoff-list" data-testid="chargeback-payment-handoff-list">
+      <li v-for="handoff in paymentHandoffRows" :key="handoff.id" data-testid="chargeback-payment-handoff-row">
+        <span class="list-main">
+          <b>{{ handoff.invoiceNumber }}</b>
+          <small>{{ handoff.organizationName }} / {{ formatMoney(handoff.amount, handoff.currency) }} / {{ handoff.provider }} -> {{ handoff.targetAccount }}</small>
+          <small>{{ handoff.reason || '-' }}</small>
+        </span>
+        <strong>{{ handoff.status || '-' }}</strong>
+      </li>
+      <li v-if="paymentHandoffRows.length === 0" class="empty">No chargeback payment provider handoffs.</li>
     </ul>
 
     <div class="table-wrap chargeback-table-wrap">
@@ -471,6 +519,7 @@ const props = defineProps({
   chargebackAlertNotificationOutbox: { type: Object, required: true },
   chargebackInvoiceDrafts: { type: Object, required: true },
   chargebackFinalInvoices: { type: Object, required: true },
+  chargebackPaymentProviderHandoffs: { type: Object, required: true },
   billingPricingPolicy: { type: Object, required: true },
   billingPricingPolicyProposals: { type: Object, required: true },
   formatBytes: { type: Function, required: true },
@@ -491,6 +540,7 @@ const emit = defineEmits([
   'approve-chargeback-invoice-draft',
   'finalize-chargeback-invoice-draft',
   'request-chargeback-invoice-payment',
+  'queue-chargeback-payment-provider-handoff',
   'record-chargeback-invoice-payment',
 ])
 
@@ -500,6 +550,7 @@ const notificationPreview = computed(() => props.chargebackAlertNotificationPrev
 const notificationOutbox = computed(() => props.chargebackAlertNotificationOutbox || {})
 const invoiceDrafts = computed(() => props.chargebackInvoiceDrafts || {})
 const finalInvoices = computed(() => props.chargebackFinalInvoices || {})
+const paymentHandoffs = computed(() => props.chargebackPaymentProviderHandoffs || {})
 const pricingPolicyProposals = computed(() => props.billingPricingPolicyProposals || {})
 const rates = computed(() => preview.value.rates || {})
 const organizations = computed(() => (
@@ -519,6 +570,9 @@ const invoiceDraftRows = computed(() => (
 ))
 const finalInvoiceRows = computed(() => (
   Array.isArray(finalInvoices.value.invoices) ? finalInvoices.value.invoices : []
+))
+const paymentHandoffRows = computed(() => (
+  Array.isArray(paymentHandoffs.value.handoffs) ? paymentHandoffs.value.handoffs : []
 ))
 const pricingPolicyProposalRows = computed(() => (
   Array.isArray(pricingPolicyProposals.value.proposals) ? pricingPolicyProposals.value.proposals : []

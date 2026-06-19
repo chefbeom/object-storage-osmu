@@ -1325,6 +1325,33 @@ export function requestChargebackInvoicePayment(invoiceId, options = {}) {
   })
 }
 
+export function getChargebackPaymentProviderHandoffPreview(invoiceId, options = {}) {
+  const query = new URLSearchParams()
+  appendQuery(query, 'paymentProvider', options.paymentProvider)
+  appendQuery(query, 'paymentTargetAccount', options.paymentTargetAccount)
+  const suffix = query.toString() ? `?${query.toString()}` : ''
+  return request(`/admin/billing/chargeback-invoices/${encodeURIComponent(invoiceId)}/payment-provider-handoff/preview${suffix}`)
+}
+
+export function queueChargebackPaymentProviderHandoff(invoiceId, options = {}) {
+  const query = new URLSearchParams()
+  appendQuery(query, 'paymentProvider', options.paymentProvider)
+  appendQuery(query, 'paymentTargetAccount', options.paymentTargetAccount)
+  appendQuery(query, 'reason', options.reason)
+  const suffix = query.toString() ? `?${query.toString()}` : ''
+  return request(`/admin/billing/chargeback-invoices/${encodeURIComponent(invoiceId)}/payment-provider-handoff${suffix}`, {
+    method: 'POST',
+  })
+}
+
+export function getChargebackPaymentProviderHandoffs(options = {}) {
+  const query = new URLSearchParams()
+  appendQuery(query, 'status', options.status)
+  appendQuery(query, 'limit', options.limit)
+  const suffix = query.toString() ? `?${query.toString()}` : ''
+  return request(`/admin/billing/chargeback-payment-provider-handoffs${suffix}`)
+}
+
 export function recordChargebackInvoicePayment(invoiceId, options = {}) {
   const query = new URLSearchParams()
   appendQuery(query, 'paymentReference', options.paymentReference)

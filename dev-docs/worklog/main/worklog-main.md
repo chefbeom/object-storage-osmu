@@ -18012,3 +18012,11 @@ feat/bucket-management
 - Frontend/mock: Admin billing panel now shows final invoice metrics/list and payment state controls. API wrappers and mock API self-test cover finalize, payment request, and payment record flows.
 - Docs/verifiers: README, API spec/OpenAPI, backend/frontend/security/database/commercial docs, IAM/RBAC matrix, feature inventory, test cases, and contract verifier scripts now describe the final invoice/payment state workflow and remaining external payment/notification adapter gaps.
 - Verification: OpenAPI contract verifier, Flyway migration verifier, IAM/RBAC verifier, commercial readiness verifier, frontend unit tests, mock API self-test, node syntax check, frontend build, and git diff check passed. Backend Gradle tests were not run to avoid network/download-triggering Gradle setup in this commit-only pass.
+
+### 2026-06-20 - Chargeback payment provider handoff outbox
+- Scope: continued B2B billing operations, not AWS/S3 parity expansion. S3 remains replacement-compatibility only.
+- Backend: added ADMIN-only payment provider handoff preview, queue, and list APIs for `PAYMENT_REQUESTED` final invoices. New records use `PENDING_PAYMENT_PROVIDER_ADAPTER` and do not call external payment providers.
+- Persistence: added in-memory/MariaDB handoff repositories and Flyway migration `V54__chargeback_payment_provider_handoffs.sql`; secrets and raw provider responses are not stored.
+- Frontend/mock: Admin billing panel now has payment provider/target inputs, a Queue handoff action, handoff outbox metrics/list, API wrappers, selector tests, and mock API self-test coverage.
+- Docs/verifiers: README, API spec/OpenAPI, backend/frontend/security/database/commercial docs, IAM/RBAC matrix, feature inventory, test cases, and contract verifiers now include the payment handoff outbox and remaining real adapter/retry/secret gaps.
+- Verification: OpenAPI contract verifier, Flyway migration verifier, IAM/RBAC verifier, commercial readiness verifier, node syntax check, frontend unit tests, frontend build, mock API self-test, and git diff check passed. Backend Gradle tests were attempted with `--offline`, but the wrapper still tried to fetch Gradle 9.5.1 and was blocked; no escalation or download retry was performed.

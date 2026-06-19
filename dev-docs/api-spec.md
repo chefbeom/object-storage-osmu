@@ -2907,6 +2907,56 @@ Response:
 - `finalInvoice=true`, `paymentRequest=true`
 - `invoice`: updated final invoice row.
 
+### GET /api/admin/billing/chargeback-invoices/{invoiceId}/payment-provider-handoff/preview
+
+Builds a payment-provider handoff payload for a `PAYMENT_REQUESTED` final chargeback invoice. `ADMIN` only. This is a no-send preview and does not call card, bank-transfer, tax invoice, ERP, webhook, or payment provider adapters.
+
+Query parameters:
+
+- `paymentProvider` (optional): provider code, default `MANUAL_AP`.
+- `paymentTargetAccount` (optional): operator-visible account/route identifier, default `UNCONFIGURED`.
+
+Response:
+
+- `mode`: `PREVIEW`
+- `externalPaymentEnabled=false`
+- `invoice`: final invoice row.
+- `payload.eventType`: `chargeback.payment_provider.handoff`
+- `payload.externalPaymentEnabled=false`
+- `note`: no-send notice.
+
+### POST /api/admin/billing/chargeback-invoices/{invoiceId}/payment-provider-handoff
+
+Persists a payment-provider handoff outbox row for a `PAYMENT_REQUESTED` final chargeback invoice. `ADMIN` only. The row is stored with `PENDING_PAYMENT_PROVIDER_ADAPTER`; it is review/retry input for a future adapter and still does not call any external payment provider.
+
+Query parameters:
+
+- `paymentProvider` (optional): provider code, default `MANUAL_AP`.
+- `paymentTargetAccount` (optional): operator-visible account/route identifier, default `UNCONFIGURED`.
+- `reason` (optional): single-line operator note.
+
+Response:
+
+- `mode`: `OUTBOX`
+- `status`: `PENDING_PAYMENT_PROVIDER_ADAPTER`
+- `externalPaymentEnabled=false`
+- `handoff`: persisted outbox row with `payloadJson`.
+
+### GET /api/admin/billing/chargeback-payment-provider-handoffs
+
+Lists final invoice payment-provider handoff outbox/history rows. `ADMIN` only.
+
+Query parameters:
+
+- `status` (optional): `PENDING_PAYMENT_PROVIDER_ADAPTER`.
+- `limit` (optional): number of rows to return, clamped to 1..200.
+
+Response:
+
+- `handoffCount`
+- `handoffs[]`: newest handoff rows first.
+- `generatedAt`
+
 ### POST /api/admin/billing/chargeback-invoices/{invoiceId}/payment-record
 
 Records manual payment completion for a `PAYMENT_REQUESTED` chargeback invoice. `ADMIN` only. This closes the product-side workflow as `PAID`; external reconciliation remains an operator/legal process.

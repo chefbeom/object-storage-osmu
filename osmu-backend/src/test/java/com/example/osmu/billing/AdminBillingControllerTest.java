@@ -272,6 +272,37 @@ class AdminBillingControllerTest {
                 .andExpect(jsonPath("$.data.paymentRequest").value(true))
                 .andExpect(jsonPath("$.data.invoice.paymentRequestedBy").value("admin"));
 
+        mockMvc.perform(get("/api/admin/billing/chargeback-invoices/{invoiceId}/payment-provider-handoff/preview", finalInvoiceId)
+                        .header("Authorization", "Bearer " + adminToken)
+                        .param("paymentProvider", "manual_ap")
+                        .param("paymentTargetAccount", "finance-ap"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.mode").value("PREVIEW"))
+                .andExpect(jsonPath("$.data.provider").value("MANUAL_AP"))
+                .andExpect(jsonPath("$.data.targetAccount").value("finance-ap"))
+                .andExpect(jsonPath("$.data.externalPaymentEnabled").value(false))
+                .andExpect(jsonPath("$.data.invoice.id").value(finalInvoiceId))
+                .andExpect(jsonPath("$.data.payload.eventType").value("chargeback.payment_provider.handoff"));
+
+        mockMvc.perform(post("/api/admin/billing/chargeback-invoices/{invoiceId}/payment-provider-handoff", finalInvoiceId)
+                        .header("Authorization", "Bearer " + adminToken)
+                        .param("paymentProvider", "manual_ap")
+                        .param("paymentTargetAccount", "finance-ap")
+                        .param("reason", "billing payment handoff test"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.mode").value("OUTBOX"))
+                .andExpect(jsonPath("$.data.status").value("PENDING_PAYMENT_PROVIDER_ADAPTER"))
+                .andExpect(jsonPath("$.data.externalPaymentEnabled").value(false))
+                .andExpect(jsonPath("$.data.handoff.invoiceNumber", containsString("OSMU-FINAL-")))
+                .andExpect(jsonPath("$.data.handoff.payloadJson", containsString("chargeback.payment_provider.handoff")));
+
+        mockMvc.perform(get("/api/admin/billing/chargeback-payment-provider-handoffs")
+                        .header("Authorization", "Bearer " + adminToken)
+                        .param("status", "PENDING_PAYMENT_PROVIDER_ADAPTER")
+                        .param("limit", "10"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.handoffs[*].invoiceNumber", hasItem(containsString("OSMU-FINAL-"))));
+
         mockMvc.perform(post("/api/admin/billing/chargeback-invoices/{invoiceId}/payment-record", finalInvoiceId)
                         .header("Authorization", "Bearer " + adminToken)
                         .param("paymentReference", "PAY-2026-0001")

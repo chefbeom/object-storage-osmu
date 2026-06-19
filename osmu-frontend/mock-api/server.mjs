@@ -62,6 +62,8 @@ function createInitialState() {
     chargebackInvoiceDraftSequence: 1,
     chargebackFinalInvoices: [],
     chargebackFinalInvoiceSequence: 1,
+    chargebackPaymentProviderHandoffs: [],
+    chargebackPaymentProviderHandoffSequence: 1,
   }
 
   initialState.objects.set('osmu-demo-media', [
@@ -489,6 +491,20 @@ function handleAdminRoute(request, response, path, jsonBody, url) {
   const finalInvoicePaymentRequestMatch = path.match(/^\/admin\/billing\/chargeback-invoices\/(\d+)\/payment-request$/)
   if (request.method === 'POST' && finalInvoicePaymentRequestMatch) {
     sendJson(response, 200, apiData(requestChargebackInvoicePayment(Number(finalInvoicePaymentRequestMatch[1]), url)))
+    return
+  }
+  const finalInvoicePaymentHandoffPreviewMatch = path.match(/^\/admin\/billing\/chargeback-invoices\/(\d+)\/payment-provider-handoff\/preview$/)
+  if (request.method === 'GET' && finalInvoicePaymentHandoffPreviewMatch) {
+    sendJson(response, 200, apiData(chargebackPaymentProviderHandoffPreview(Number(finalInvoicePaymentHandoffPreviewMatch[1]), url)))
+    return
+  }
+  const finalInvoicePaymentHandoffMatch = path.match(/^\/admin\/billing\/chargeback-invoices\/(\d+)\/payment-provider-handoff$/)
+  if (request.method === 'POST' && finalInvoicePaymentHandoffMatch) {
+    sendJson(response, 200, apiData(queueChargebackPaymentProviderHandoff(Number(finalInvoicePaymentHandoffMatch[1]), url)))
+    return
+  }
+  if (request.method === 'GET' && path === '/admin/billing/chargeback-payment-provider-handoffs') {
+    sendJson(response, 200, apiData(chargebackPaymentProviderHandoffs(url)))
     return
   }
   const finalInvoicePaymentRecordMatch = path.match(/^\/admin\/billing\/chargeback-invoices\/(\d+)\/payment-record$/)
@@ -1536,6 +1552,121 @@ function recordChargebackInvoicePayment(invoiceId, url) {
   }
 }
 
+function chargebackPaymentProviderHandoffPreview(invoiceId, url) {
+  const invoice = state.chargebackFinalInvoices.find((item) => item.id === invoiceId)
+  const now = new Date().toISOString()
+  if (!invoice || invoice.status !== 'PAYMENT_REQUESTED') {
+    return {
+      mode: 'PREVIEW',
+      provider: paymentProvider(url),
+      targetAccount: paymentTargetAccount(url),
+      externalPaymentEnabled: false,
+      invoice: invoice || null,
+      payload: {},
+      generatedAt: now,
+      note: 'Only PAYMENT_REQUESTED invoices can be queued for payment provider handoff.',
+    }
+  }
+  const provider = paymentProvider(url)
+  const targetAccount = paymentTargetAccount(url)
+  return {
+    mode: 'PREVIEW',
+    provider,
+    targetAccount,
+    externalPaymentEnabled: false,
+    invoice,
+    payload: chargebackPaymentProviderPayload(invoice, provider, targetAccount),
+    generatedAt: now,
+    note: 'Preview only - no external payment provider was called.',
+  }
+}
+
+function queueChargebackPaymentProviderHandoff(invoiceId, url) {
+  const preview = chargebackPaymentProviderHandoffPreview(invoiceId, url)
+  const now = new Date().toISOString()
+  if (!preview.invoice || preview.invoice.status !== 'PAYMENT_REQUESTED') {
+    return {
+      mode: 'OUTBOX',
+      status: 'INVALID_INVOICE',
+      externalPaymentEnabled: false,
+      handoff: null,
+      generatedAt: now,
+      note: preview.note,
+    }
+  }
+  const handoff = {
+    id: state.chargebackPaymentProviderHandoffSequence++,
+    finalInvoiceId: preview.invoice.id,
+    invoiceNumber: preview.invoice.invoiceNumber,
+    organizationId: preview.invoice.organizationId,
+    organizationName: preview.invoice.organizationName,
+    currency: preview.invoice.currency,
+    amount: Number(preview.invoice.estimatedTotalCost || 0),
+    provider: preview.provider,
+    targetAccount: preview.targetAccount,
+    status: 'PENDING_PAYMENT_PROVIDER_ADAPTER',
+    attemptCount: 0,
+    nextAttemptAt: '',
+    payloadJson: JSON.stringify(preview.payload),
+    requestedBy: 'admin',
+    reason: String(url.searchParams.get('reason') || 'Chargeback payment provider handoff queued from admin billing panel.').trim().slice(0, 512),
+    createdAt: now,
+    updatedAt: now,
+    lastError: '',
+  }
+  state.chargebackPaymentProviderHandoffs.unshift(handoff)
+  state.auditLogs.unshift(auditLog('CHARGEBACK_FINAL_INVOICE_PAYMENT_PROVIDER_HANDOFF_QUEUE', 'CHARGEBACK_FINAL_INVOICE', String(invoiceId)))
+  return {
+    mode: 'OUTBOX',
+    status: 'PENDING_PAYMENT_PROVIDER_ADAPTER',
+    externalPaymentEnabled: false,
+    handoff,
+    generatedAt: now,
+    note: 'Recorded in payment provider handoff outbox; no external payment provider was called.',
+  }
+}
+
+function chargebackPaymentProviderHandoffs(url) {
+  const limit = clampNumber(Number(url.searchParams.get('limit') || 50), 1, 200)
+  const status = String(url.searchParams.get('status') || '').trim().toUpperCase()
+  const handoffs = (status
+    ? state.chargebackPaymentProviderHandoffs.filter((handoff) => handoff.status === status)
+    : state.chargebackPaymentProviderHandoffs).slice(0, limit)
+  return {
+    handoffCount: handoffs.length,
+    handoffs,
+    generatedAt: new Date().toISOString(),
+  }
+}
+
+function chargebackPaymentProviderPayload(invoice, provider, targetAccount) {
+  return {
+    eventType: 'chargeback.payment_provider.handoff',
+    finalInvoiceId: invoice.id,
+    invoiceNumber: invoice.invoiceNumber,
+    organizationId: invoice.organizationId,
+    organizationName: invoice.organizationName,
+    currency: invoice.currency,
+    amount: Number(invoice.estimatedTotalCost || 0),
+    paymentStatus: invoice.paymentStatus,
+    provider,
+    targetAccount,
+    externalPaymentEnabled: false,
+  }
+}
+
+function paymentProvider(url) {
+  return String(url.searchParams.get('paymentProvider') || 'MANUAL_AP')
+    .trim()
+    .toUpperCase()
+    .replaceAll(' ', '_')
+    .slice(0, 64) || 'MANUAL_AP'
+}
+
+function paymentTargetAccount(url) {
+  return String(url.searchParams.get('paymentTargetAccount') || 'UNCONFIGURED').trim().slice(0, 512) || 'UNCONFIGURED'
+}
+
 function createBillingPricingPolicyProposal(payload = {}) {
   const now = new Date().toISOString()
   const proposedPolicy = saveBillingPricingPolicy(payload)
@@ -2442,6 +2573,25 @@ async function runSelfTest() {
     })).json()
     if (!requestedPayment.data || requestedPayment.data.status !== 'PAYMENT_REQUESTED' || requestedPayment.data.paymentStatus !== 'REQUESTED') {
       throw new Error('chargeback final invoice payment request self-test failed')
+    }
+    const handoffPreview = await (await fetch(`${base}/admin/billing/chargeback-invoices/${listedFinalInvoices.data.invoices[0].id}/payment-provider-handoff/preview?paymentProvider=manual_ap&paymentTargetAccount=finance-ap`, {
+      headers: { Authorization: `Bearer ${login.data.accessToken}` },
+    })).json()
+    if (!handoffPreview.data || handoffPreview.data.mode !== 'PREVIEW' || handoffPreview.data.externalPaymentEnabled !== false || handoffPreview.data.payload?.eventType !== 'chargeback.payment_provider.handoff') {
+      throw new Error('chargeback payment provider handoff preview self-test failed')
+    }
+    const queuedHandoff = await (await fetch(`${base}/admin/billing/chargeback-invoices/${listedFinalInvoices.data.invoices[0].id}/payment-provider-handoff?paymentProvider=manual_ap&paymentTargetAccount=finance-ap&reason=self-test`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${login.data.accessToken}` },
+    })).json()
+    if (!queuedHandoff.data || queuedHandoff.data.status !== 'PENDING_PAYMENT_PROVIDER_ADAPTER' || queuedHandoff.data.externalPaymentEnabled !== false) {
+      throw new Error('chargeback payment provider handoff queue self-test failed')
+    }
+    const handoffList = await (await fetch(`${base}/admin/billing/chargeback-payment-provider-handoffs?limit=5`, {
+      headers: { Authorization: `Bearer ${login.data.accessToken}` },
+    })).json()
+    if (!handoffList.data || handoffList.data.handoffCount < 1 || handoffList.data.handoffs?.[0]?.payloadJson?.includes('chargeback.payment_provider.handoff') !== true) {
+      throw new Error('chargeback payment provider handoff list self-test failed')
     }
     const recordedPayment = await (await fetch(`${base}/admin/billing/chargeback-invoices/${listedFinalInvoices.data.invoices[0].id}/payment-record?paymentReference=PAY-SELF-TEST&paymentNote=self-test`, {
       method: 'POST',

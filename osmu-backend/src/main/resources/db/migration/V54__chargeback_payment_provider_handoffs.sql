@@ -1,0 +1,23 @@
+CREATE TABLE IF NOT EXISTS chargeback_payment_provider_handoffs (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    final_invoice_id BIGINT NOT NULL,
+    invoice_number VARCHAR(128) NOT NULL,
+    organization_id BIGINT NOT NULL,
+    organization_name VARCHAR(255) NOT NULL,
+    currency VARCHAR(12) NOT NULL,
+    amount DECIMAL(18,6) NOT NULL DEFAULT 0,
+    provider VARCHAR(64) NOT NULL,
+    target_account VARCHAR(512) NOT NULL,
+    status VARCHAR(64) NOT NULL,
+    attempt_count INT NOT NULL DEFAULT 0,
+    next_attempt_at TIMESTAMP NULL,
+    payload_json TEXT NOT NULL,
+    requested_by VARCHAR(128) NOT NULL,
+    reason VARCHAR(512) NOT NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    last_error VARCHAR(512) NULL,
+    INDEX idx_chargeback_payment_handoffs_invoice_created (final_invoice_id, created_at),
+    INDEX idx_chargeback_payment_handoffs_status_next (status, next_attempt_at),
+    INDEX idx_chargeback_payment_handoffs_org_created (organization_id, created_at)
+);

@@ -17,6 +17,7 @@ import com.example.osmu.billing.repository.InMemoryBillingPricingPolicyProposalR
 import com.example.osmu.billing.repository.InMemoryChargebackFinalInvoiceRepository;
 import com.example.osmu.billing.repository.InMemoryChargebackInvoiceDraftRepository;
 import com.example.osmu.billing.repository.InMemoryChargebackNotificationDeliveryRepository;
+import com.example.osmu.billing.repository.InMemoryChargebackPaymentProviderHandoffRepository;
 import java.math.BigDecimal;
 import java.time.OffsetDateTime;
 import org.junit.jupiter.api.Test;
@@ -34,6 +35,8 @@ class ChargebackPreviewServiceTest {
             new InMemoryChargebackInvoiceDraftRepository();
     private final InMemoryChargebackFinalInvoiceRepository finalInvoiceRepository =
             new InMemoryChargebackFinalInvoiceRepository();
+    private final InMemoryChargebackPaymentProviderHandoffRepository paymentHandoffRepository =
+            new InMemoryChargebackPaymentProviderHandoffRepository();
     private final BillingPricingPolicyService pricingPolicyService =
             new BillingPricingPolicyService(
                     new InMemoryBillingPricingPolicyRepository(),
@@ -46,7 +49,8 @@ class ChargebackPreviewServiceTest {
             pricingPolicyService,
             notificationDeliveryRepository,
             invoiceDraftRepository,
-            finalInvoiceRepository
+            finalInvoiceRepository,
+            paymentHandoffRepository
     );
 
     @Test
@@ -368,6 +372,39 @@ class ChargebackPreviewServiceTest {
         assertThat(paymentRequested.paymentRequest()).isTrue();
         assertThat(paymentRequested.invoice().paymentRequestedBy()).isEqualTo("admin");
 
+        ChargebackPaymentProviderHandoffPreviewResponse handoffPreview = service.paymentProviderHandoffPreview(
+                new AuthenticatedUser(1L, "admin", "ADMIN", null),
+                finalized.invoice().id(),
+                "manual_ap",
+                "finance-ap"
+        );
+        assertThat(handoffPreview.mode()).isEqualTo("PREVIEW");
+        assertThat(handoffPreview.provider()).isEqualTo("MANUAL_AP");
+        assertThat(handoffPreview.targetAccount()).isEqualTo("finance-ap");
+        assertThat(handoffPreview.externalPaymentEnabled()).isFalse();
+        assertThat(handoffPreview.payload()).containsEntry("eventType", "chargeback.payment_provider.handoff");
+        assertThat(handoffPreview.payload()).containsEntry("externalPaymentEnabled", false);
+
+        ChargebackPaymentProviderHandoffQueueResponse queuedHandoff = service.queuePaymentProviderHandoff(
+                new AuthenticatedUser(1L, "admin", "ADMIN", null),
+                finalized.invoice().id(),
+                "manual_ap",
+                "finance-ap",
+                "unit test handoff"
+        );
+        assertThat(queuedHandoff.mode()).isEqualTo("OUTBOX");
+        assertThat(queuedHandoff.status()).isEqualTo("PENDING_PAYMENT_PROVIDER_ADAPTER");
+        assertThat(queuedHandoff.externalPaymentEnabled()).isFalse();
+        assertThat(queuedHandoff.handoff().payloadJson()).contains("\"eventType\":\"chargeback.payment_provider.handoff\"");
+
+        ChargebackPaymentProviderHandoffListResponse handoffs = service.paymentProviderHandoffs(
+                new AuthenticatedUser(1L, "admin", "ADMIN", null),
+                "PENDING_PAYMENT_PROVIDER_ADAPTER",
+                10
+        );
+        assertThat(handoffs.handoffCount()).isEqualTo(1L);
+        assertThat(handoffs.handoffs().get(0).provider()).isEqualTo("MANUAL_AP");
+
         ChargebackFinalInvoiceActionResponse paid = service.recordFinalInvoicePayment(
                 new AuthenticatedUser(1L, "admin", "ADMIN", null),
                 finalized.invoice().id(),
@@ -418,6 +455,15 @@ class ChargebackPreviewServiceTest {
                 .isEqualTo(ApiErrorCode.AUTHORIZATION_FAILED);
 
         assertThatThrownBy(() -> service.finalInvoices(
+                new AuthenticatedUser(3L, "org-admin", "ORG_ADMIN", 1L),
+                null,
+                10
+        ))
+                .isInstanceOf(ApiException.class)
+                .extracting("code")
+                .isEqualTo(ApiErrorCode.AUTHORIZATION_FAILED);
+
+        assertThatThrownBy(() -> service.paymentProviderHandoffs(
                 new AuthenticatedUser(3L, "org-admin", "ORG_ADMIN", 1L),
                 null,
                 10

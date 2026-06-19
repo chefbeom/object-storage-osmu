@@ -358,6 +358,7 @@
         :chargeback-alert-notification-outbox="chargebackAlertNotificationOutbox"
         :chargeback-invoice-drafts="chargebackInvoiceDrafts"
         :chargeback-final-invoices="chargebackFinalInvoices"
+        :chargeback-payment-provider-handoffs="chargebackPaymentProviderHandoffs"
         :billing-pricing-policy="billingPricingPolicy"
         :billing-pricing-policy-proposals="billingPricingPolicyProposals"
         :quota-policy-form="quotaPolicyForm"
@@ -418,6 +419,7 @@
         @approve-chargeback-invoice-draft="handleApproveChargebackInvoiceDraft"
         @finalize-chargeback-invoice-draft="handleFinalizeChargebackInvoiceDraft"
         @request-chargeback-invoice-payment="handleRequestChargebackInvoicePayment"
+        @queue-chargeback-payment-provider-handoff="handleQueueChargebackPaymentProviderHandoff"
         @record-chargeback-invoice-payment="handleRecordChargebackInvoicePayment"
         @save-quota-policy="handleSaveQuotaPolicy"
         @reset-quota-policy-target="resetQuotaPolicyTarget"
@@ -575,6 +577,7 @@ import {
   getChargebackAlerts,
   getChargebackFinalInvoices,
   getChargebackInvoiceDrafts,
+  getChargebackPaymentProviderHandoffs,
   getDatabaseHealth,
   getDashboardLayout,
   getDashboardLayoutDefaults,
@@ -625,6 +628,7 @@ import {
   putBucketLifecycleS3Xml,
   putBucketTags,
   queueChargebackAlertNotifications,
+  queueChargebackPaymentProviderHandoff,
   recordChargebackInvoicePayment,
   requestChargebackInvoicePayment,
   restoreObject,
@@ -804,6 +808,8 @@ const defaultChargebackOptions = Object.freeze({
   criticalAmount: '0',
   notificationChannel: 'WEBHOOK',
   notificationTarget: '',
+  paymentProvider: 'MANUAL_AP',
+  paymentTargetAccount: '',
   eventScanLimit: 10000,
 })
 const chargebackRateFields = [
@@ -1242,6 +1248,7 @@ const chargebackAlertNotificationPreview = ref(defaultChargebackAlertNotificatio
 const chargebackAlertNotificationOutbox = ref(defaultChargebackAlertNotificationOutbox())
 const chargebackInvoiceDrafts = ref(defaultChargebackInvoiceDrafts())
 const chargebackFinalInvoices = ref(defaultChargebackFinalInvoices())
+const chargebackPaymentProviderHandoffs = ref(defaultChargebackPaymentProviderHandoffs())
 const billingPricingPolicy = ref(defaultBillingPricingPolicy())
 const billingPricingPolicyProposals = ref(defaultBillingPricingPolicyProposals())
 const teams = ref([])
@@ -2525,6 +2532,17 @@ async function loadChargebackFinalInvoices() {
   }
 }
 
+async function loadChargebackPaymentProviderHandoffs() {
+  if (!isAdmin.value) {
+    resetChargebackPaymentProviderHandoffs()
+    return
+  }
+  const result = await safeRequest(() => getChargebackPaymentProviderHandoffs({ limit: 25 }), null)
+  if (result?.data) {
+    applyChargebackPaymentProviderHandoffs(result.data)
+  }
+}
+
 async function loadChargebackPanel() {
   await Promise.all([
     loadChargebackPreview(),
@@ -2533,6 +2551,7 @@ async function loadChargebackPanel() {
     loadChargebackAlertNotificationOutbox(),
     loadChargebackInvoiceDrafts(),
     loadChargebackFinalInvoices(),
+    loadChargebackPaymentProviderHandoffs(),
     loadBillingPricingPolicyProposals(),
   ])
 }
@@ -2658,6 +2677,24 @@ async function handleRequestChargebackInvoicePayment(invoiceId) {
   if (result?.data) {
     await loadChargebackFinalInvoices()
     setStatusMessage('Chargeback payment request recorded.')
+  }
+}
+
+async function handleQueueChargebackPaymentProviderHandoff(invoiceId) {
+  if (!isAdmin.value || !invoiceId) return
+  const result = await runAction(() => queueChargebackPaymentProviderHandoff(invoiceId, {
+    paymentProvider: chargebackOptions.paymentProvider,
+    paymentTargetAccount: chargebackOptions.paymentTargetAccount,
+    reason: 'Admin billing panel payment provider handoff',
+  }))
+  if (result?.data) {
+    applyChargebackPaymentProviderHandoffs({
+      handoffCount: 1,
+      handoffs: result.data.handoff ? [result.data.handoff] : [],
+      generatedAt: result.data.generatedAt,
+    })
+    await loadChargebackPaymentProviderHandoffs()
+    setStatusMessage('Chargeback payment provider handoff queued.')
   }
 }
 
@@ -2864,6 +2901,7 @@ function resetAdminOnlyState() {
   resetChargebackAlertNotificationOutbox()
   resetChargebackInvoiceDrafts()
   resetChargebackFinalInvoices()
+  resetChargebackPaymentProviderHandoffs()
 }
 
 function resetUploadRuntime() {
@@ -3876,6 +3914,8 @@ function syncChargebackOptionsFromPolicy() {
   chargebackOptions.criticalAmount = String(policy.criticalAmount ?? defaultChargebackOptions.criticalAmount)
   chargebackOptions.notificationChannel = defaultChargebackOptions.notificationChannel
   chargebackOptions.notificationTarget = defaultChargebackOptions.notificationTarget
+  chargebackOptions.paymentProvider = defaultChargebackOptions.paymentProvider
+  chargebackOptions.paymentTargetAccount = defaultChargebackOptions.paymentTargetAccount
   chargebackOptions.eventScanLimit = Number(policy.eventScanLimit || defaultChargebackOptions.eventScanLimit)
 }
 
@@ -4136,6 +4176,52 @@ function applyChargebackFinalInvoices(data = {}) {
 
 function resetChargebackFinalInvoices() {
   applyChargebackFinalInvoices({})
+}
+
+function defaultChargebackPaymentProviderHandoffs() {
+  return {
+    handoffCount: 0,
+    handoffs: [],
+    generatedAt: '',
+  }
+}
+
+function normalizeChargebackPaymentProviderHandoff(handoff = {}) {
+  return {
+    id: handoff.id,
+    finalInvoiceId: handoff.finalInvoiceId,
+    invoiceNumber: handoff.invoiceNumber || '',
+    organizationId: handoff.organizationId,
+    organizationName: handoff.organizationName || '',
+    currency: handoff.currency || defaultChargebackOptions.currency,
+    amount: Number(handoff.amount || 0),
+    provider: handoff.provider || '',
+    targetAccount: handoff.targetAccount || '',
+    status: handoff.status || '',
+    attemptCount: Number(handoff.attemptCount || 0),
+    nextAttemptAt: handoff.nextAttemptAt || '',
+    payloadJson: handoff.payloadJson || '',
+    requestedBy: handoff.requestedBy || '',
+    reason: handoff.reason || '',
+    createdAt: handoff.createdAt || '',
+    updatedAt: handoff.updatedAt || '',
+    lastError: handoff.lastError || '',
+  }
+}
+
+function applyChargebackPaymentProviderHandoffs(data = {}) {
+  const handoffs = Array.isArray(data.handoffs)
+    ? data.handoffs.map((handoff) => normalizeChargebackPaymentProviderHandoff(handoff))
+    : []
+  chargebackPaymentProviderHandoffs.value = {
+    handoffCount: Number(data.handoffCount ?? handoffs.length),
+    handoffs,
+    generatedAt: data.generatedAt || '',
+  }
+}
+
+function resetChargebackPaymentProviderHandoffs() {
+  applyChargebackPaymentProviderHandoffs({})
 }
 
 function applyDashboardReadiness(data) {

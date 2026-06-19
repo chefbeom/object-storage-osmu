@@ -33,6 +33,8 @@ import {
   getChargebackAlerts,
   getChargebackFinalInvoices,
   getChargebackInvoiceDrafts,
+  getChargebackPaymentProviderHandoffPreview,
+  getChargebackPaymentProviderHandoffs,
   getChargebackPreview,
   getDashboardLayout,
   getDashboardLayoutDefaults,
@@ -57,6 +59,7 @@ import {
   previewEnterpriseAuthClaims,
   provisionEnterpriseAuthUser,
   queueChargebackAlertNotifications,
+  queueChargebackPaymentProviderHandoff,
   recordChargebackInvoicePayment,
   requestChargebackInvoicePayment,
   saveDashboardLayout,
@@ -694,7 +697,7 @@ test('chargeback invoice draft wrappers create list and approve internal review 
   }
 })
 
-test('chargeback final invoice wrappers finalize and update payment status', async () => {
+test('chargeback final invoice wrappers finalize update payment status and queue provider handoff', async () => {
   const fetchMock = mockFetch([
     () => jsonResponse({
       data: {
@@ -720,6 +723,30 @@ test('chargeback final invoice wrappers finalize and update payment status', asy
     }),
     () => jsonResponse({
       data: {
+        mode: 'PREVIEW',
+        provider: 'MANUAL_AP',
+        targetAccount: 'finance-ap',
+        externalPaymentEnabled: false,
+        invoice: { id: 9, invoiceNumber: 'OSMU-FINAL-20260620-1' },
+        payload: { eventType: 'chargeback.payment_provider.handoff' },
+      },
+    }),
+    () => jsonResponse({
+      data: {
+        mode: 'OUTBOX',
+        status: 'PENDING_PAYMENT_PROVIDER_ADAPTER',
+        externalPaymentEnabled: false,
+        handoff: { id: 3, finalInvoiceId: 9, provider: 'MANUAL_AP' },
+      },
+    }),
+    () => jsonResponse({
+      data: {
+        handoffCount: 1,
+        handoffs: [{ id: 3, status: 'PENDING_PAYMENT_PROVIDER_ADAPTER', provider: 'MANUAL_AP' }],
+      },
+    }),
+    () => jsonResponse({
+      data: {
         mode: 'PAYMENT_RECORD',
         status: 'PAID',
         paymentStatus: 'PAID',
@@ -732,6 +759,19 @@ test('chargeback final invoice wrappers finalize and update payment status', asy
     const finalized = await finalizeChargebackInvoiceDraft(7, { finalizationNote: 'finalize' })
     const listed = await getChargebackFinalInvoices({ status: 'FINALIZED', limit: 25 })
     const requested = await requestChargebackInvoicePayment(9, { paymentRequestNote: 'send request' })
+    const handoffPreview = await getChargebackPaymentProviderHandoffPreview(9, {
+      paymentProvider: 'manual_ap',
+      paymentTargetAccount: 'finance-ap',
+    })
+    const queuedHandoff = await queueChargebackPaymentProviderHandoff(9, {
+      paymentProvider: 'manual_ap',
+      paymentTargetAccount: 'finance-ap',
+      reason: 'handoff',
+    })
+    const handoffs = await getChargebackPaymentProviderHandoffs({
+      status: 'PENDING_PAYMENT_PROVIDER_ADAPTER',
+      limit: 25,
+    })
     const paid = await recordChargebackInvoicePayment(9, {
       paymentReference: 'PAY-2026-0001',
       paymentNote: 'paid',
@@ -756,11 +796,33 @@ test('chargeback final invoice wrappers finalize and update payment status', asy
     assert.equal(fetchMock.calls[2].options.method, 'POST')
     assert.equal(requested.data.paymentStatus, 'REQUESTED')
 
-    const recordUrl = new URL(fetchMock.calls[3].url)
+    const handoffPreviewUrl = new URL(fetchMock.calls[3].url)
+    assert.equal(handoffPreviewUrl.pathname, '/api/admin/billing/chargeback-invoices/9/payment-provider-handoff/preview')
+    assert.equal(handoffPreviewUrl.searchParams.get('paymentProvider'), 'manual_ap')
+    assert.equal(handoffPreviewUrl.searchParams.get('paymentTargetAccount'), 'finance-ap')
+    assert.equal(fetchMock.calls[3].options.method, undefined)
+    assert.equal(handoffPreview.data.externalPaymentEnabled, false)
+
+    const queueHandoffUrl = new URL(fetchMock.calls[4].url)
+    assert.equal(queueHandoffUrl.pathname, '/api/admin/billing/chargeback-invoices/9/payment-provider-handoff')
+    assert.equal(queueHandoffUrl.searchParams.get('paymentProvider'), 'manual_ap')
+    assert.equal(queueHandoffUrl.searchParams.get('paymentTargetAccount'), 'finance-ap')
+    assert.equal(queueHandoffUrl.searchParams.get('reason'), 'handoff')
+    assert.equal(fetchMock.calls[4].options.method, 'POST')
+    assert.equal(queuedHandoff.data.status, 'PENDING_PAYMENT_PROVIDER_ADAPTER')
+
+    const handoffListUrl = new URL(fetchMock.calls[5].url)
+    assert.equal(handoffListUrl.pathname, '/api/admin/billing/chargeback-payment-provider-handoffs')
+    assert.equal(handoffListUrl.searchParams.get('status'), 'PENDING_PAYMENT_PROVIDER_ADAPTER')
+    assert.equal(handoffListUrl.searchParams.get('limit'), '25')
+    assert.equal(fetchMock.calls[5].options.method, undefined)
+    assert.equal(handoffs.data.handoffCount, 1)
+
+    const recordUrl = new URL(fetchMock.calls[6].url)
     assert.equal(recordUrl.pathname, '/api/admin/billing/chargeback-invoices/9/payment-record')
     assert.equal(recordUrl.searchParams.get('paymentReference'), 'PAY-2026-0001')
     assert.equal(recordUrl.searchParams.get('paymentNote'), 'paid')
-    assert.equal(fetchMock.calls[3].options.method, 'POST')
+    assert.equal(fetchMock.calls[6].options.method, 'POST')
     assert.equal(paid.data.paymentStatus, 'PAID')
   } finally {
     cleanupFetch(fetchMock)

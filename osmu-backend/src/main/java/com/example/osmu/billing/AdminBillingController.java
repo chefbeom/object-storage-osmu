@@ -360,6 +360,67 @@ public class AdminBillingController {
         return ApiResponse.of(payment);
     }
 
+    @GetMapping("/chargeback-invoices/{invoiceId}/payment-provider-handoff/preview")
+    public ApiResponse<ChargebackPaymentProviderHandoffPreviewResponse> previewChargebackPaymentProviderHandoff(
+            @PathVariable long invoiceId,
+            @RequestParam(name = "paymentProvider", required = false) String paymentProvider,
+            @RequestParam(name = "paymentTargetAccount", required = false) String paymentTargetAccount,
+            HttpServletRequest request
+    ) {
+        AuthenticatedUser actor = authContext.currentUser(request);
+        return ApiResponse.of(chargebackPreviewService.paymentProviderHandoffPreview(
+                actor,
+                invoiceId,
+                paymentProvider,
+                paymentTargetAccount
+        ));
+    }
+
+    @PostMapping("/chargeback-invoices/{invoiceId}/payment-provider-handoff")
+    public ApiResponse<ChargebackPaymentProviderHandoffQueueResponse> queueChargebackPaymentProviderHandoff(
+            @PathVariable long invoiceId,
+            @RequestParam(name = "paymentProvider", required = false) String paymentProvider,
+            @RequestParam(name = "paymentTargetAccount", required = false) String paymentTargetAccount,
+            @RequestParam(name = "reason", required = false) String reason,
+            HttpServletRequest request
+    ) {
+        AuthenticatedUser actor = authContext.currentUser(request);
+        ChargebackPaymentProviderHandoffQueueResponse queued =
+                chargebackPreviewService.queuePaymentProviderHandoff(
+                        actor,
+                        invoiceId,
+                        paymentProvider,
+                        paymentTargetAccount,
+                        reason
+                );
+        auditLogService.record(
+                "CHARGEBACK_FINAL_INVOICE_PAYMENT_PROVIDER_HANDOFF_QUEUE",
+                actor.loginId(),
+                "CHARGEBACK_FINAL_INVOICE",
+                String.valueOf(invoiceId),
+                "SUCCESS",
+                reason == null || reason.isBlank()
+                        ? "Chargeback payment provider handoff queued"
+                        : reason.trim(),
+                request
+        );
+        return ApiResponse.of(queued);
+    }
+
+    @GetMapping("/chargeback-payment-provider-handoffs")
+    public ApiResponse<ChargebackPaymentProviderHandoffListResponse> chargebackPaymentProviderHandoffs(
+            @RequestParam(name = "status", required = false) String status,
+            @RequestParam(name = "limit", required = false) Integer limit,
+            HttpServletRequest request
+    ) {
+        AuthenticatedUser actor = authContext.currentUser(request);
+        return ApiResponse.of(chargebackPreviewService.paymentProviderHandoffs(
+                actor,
+                status,
+                limit == null ? 50 : limit
+        ));
+    }
+
     @PostMapping("/chargeback-invoices/{invoiceId}/payment-record")
     public ApiResponse<ChargebackFinalInvoiceActionResponse> recordChargebackInvoicePayment(
             @PathVariable long invoiceId,

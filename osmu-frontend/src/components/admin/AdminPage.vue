@@ -253,6 +253,7 @@
       :chargeback-alert-notification-outbox="chargebackAlertNotificationOutbox"
       :chargeback-invoice-drafts="chargebackInvoiceDrafts"
       :chargeback-final-invoices="chargebackFinalInvoices"
+      :chargeback-payment-provider-handoffs="chargebackPaymentProviderHandoffs"
       :billing-pricing-policy="billingPricingPolicy"
       :billing-pricing-policy-proposals="billingPricingPolicyProposals"
       :format-bytes="formatBytes"
@@ -270,6 +271,7 @@
       @approve-chargeback-invoice-draft="$emit('approve-chargeback-invoice-draft', $event)"
       @finalize-chargeback-invoice-draft="$emit('finalize-chargeback-invoice-draft', $event)"
       @request-chargeback-invoice-payment="$emit('request-chargeback-invoice-payment', $event)"
+      @queue-chargeback-payment-provider-handoff="$emit('queue-chargeback-payment-provider-handoff', $event)"
       @record-chargeback-invoice-payment="$emit('record-chargeback-invoice-payment', $event)"
     />
 
@@ -457,6 +459,7 @@ const props = defineProps({
   chargebackAlertNotificationOutbox: { type: Object, required: true },
   chargebackInvoiceDrafts: { type: Object, required: true },
   chargebackFinalInvoices: { type: Object, required: true },
+  chargebackPaymentProviderHandoffs: { type: Object, required: true },
   billingPricingPolicy: { type: Object, required: true },
   billingPricingPolicyProposals: { type: Object, required: true },
   quotaPolicyForm: { type: Object, required: true },
@@ -669,6 +672,7 @@ defineEmits([
   'approve-chargeback-invoice-draft',
   'finalize-chargeback-invoice-draft',
   'request-chargeback-invoice-payment',
+  'queue-chargeback-payment-provider-handoff',
   'record-chargeback-invoice-payment',
   'save-quota-policy',
   'reset-quota-policy-target',
