@@ -1299,6 +1299,7 @@ public class S3ObjectController {
                     throw new ApiException(ApiErrorCode.VALIDATION_ERROR, "CompleteMultipartUpload Part ETag is required.");
                 }
                 rejectUnsupportedMultipartPartChecksumXml(part);
+                validateSingleMultipartPartChecksumXml(part);
                 Map<String, String> checksums = new LinkedHashMap<>();
                 addOptionalChecksum(checksums, part, "ChecksumSHA256", AWS_CHECKSUM_SHA256_HEADER);
                 addOptionalChecksum(checksums, part, "ChecksumSHA1", AWS_CHECKSUM_SHA1_HEADER);
@@ -1349,6 +1350,26 @@ public class S3ObjectController {
         }
     }
 
+    private void validateSingleMultipartPartChecksumXml(Element part) {
+        int checksumElementCount = 0;
+        NodeList children = part.getChildNodes();
+        for (int i = 0; i < children.getLength(); i++) {
+            Node node = children.item(i);
+            if (!(node instanceof Element child)) {
+                continue;
+            }
+            if (isSupportedMultipartPartChecksumXml(localName(child))
+                    && child.getTextContent() != null
+                    && !child.getTextContent().isBlank()) {
+                checksumElementCount++;
+            }
+        }
+        if (checksumElementCount > 1) {
+            throw new ApiException(ApiErrorCode.INVALID_DIGEST,
+                    "CompleteMultipartUpload Part can contain only one supported checksum element.");
+        }
+    }
+
     private boolean isSupportedMultipartPartChecksumXml(String xmlName) {
         return "ChecksumSHA256".equals(xmlName)
                 || "ChecksumSHA1".equals(xmlName)
@@ -1358,14 +1379,27 @@ public class S3ObjectController {
     }
 
     private void addOptionalChecksum(Map<String, String> checksums, Element part, String xmlName, String headerName) {
-        NodeList nodes = part.getElementsByTagNameNS("*", xmlName);
-        if (nodes.getLength() == 0) {
+        String value = optionalDirectChildText(part, xmlName);
+        if (value == null || value.isBlank()) {
             return;
         }
-        String value = nodes.item(0).getTextContent();
-        if (value != null && !value.isBlank()) {
-            checksums.put(headerName, value.trim());
+        checksums.put(headerName, value.trim());
+    }
+
+    private String optionalDirectChildText(Element parent, String localName) {
+        String blankValue = null;
+        NodeList children = parent.getChildNodes();
+        for (int i = 0; i < children.getLength(); i++) {
+            Node node = children.item(i);
+            if (node instanceof Element child && localName.equals(localName(child))) {
+                String value = child.getTextContent();
+                if (value != null && !value.isBlank()) {
+                    return value;
+                }
+                blankValue = value;
+            }
         }
+        return blankValue;
     }
 
     private String copyObjectResultXml(StoredObjectRecord object, String etag) {

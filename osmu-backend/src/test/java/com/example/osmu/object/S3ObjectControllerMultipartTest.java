@@ -955,6 +955,32 @@ class S3ObjectControllerMultipartTest {
     }
 
     @Test
+    void completeMultipartUploadRejectsMultiplePartChecksumXmlElements() {
+        MockHttpServletRequest request = request("POST");
+        request.setContentType(MediaType.APPLICATION_XML_VALUE);
+        request.setContent("""
+                <CompleteMultipartUpload>
+                  <Part>
+                    <PartNumber>1</PartNumber>
+                    <ETag>"etag-1"</ETag>
+                    <ChecksumSHA256>value-1</ChecksumSHA256>
+                    <ChecksumCRC32C>value-2</ChecksumCRC32C>
+                  </Part>
+                </CompleteMultipartUpload>
+                """.getBytes(StandardCharsets.UTF_8));
+        when(s3RequestAuthService.currentUser(request, "bucket", "WRITE")).thenReturn(user);
+
+        assertThatThrownBy(() -> controller.completeMultipartUpload("bucket", "videos/input.mp4", "upload-1", request))
+                .isInstanceOfSatisfying(ApiException.class, exception -> {
+                    assertThat(exception.code()).isEqualTo(ApiErrorCode.INVALID_DIGEST);
+                    assertThat(exception.getMessage()).isEqualTo(
+                            "CompleteMultipartUpload Part can contain only one supported checksum element.");
+                });
+
+        verifyNoInteractions(objectService);
+    }
+
+    @Test
     void completeMultipartUploadRejectsUnsupportedControlHeaders() {
         for (String headerName : List.of(
                 "x-amz-request-payer",
