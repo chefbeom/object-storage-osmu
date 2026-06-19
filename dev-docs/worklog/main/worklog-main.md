@@ -17195,3 +17195,34 @@ feat/bucket-management
   - `$env:JAVA_HOME='C:\jdk-17'; .\gradlew.bat test --no-daemon --tests com.example.osmu.admin.AdminObjectRetentionControllerTest.adminCanExportAndImportS3LifecycleXml`: 통과.
 - 후속:
   - 남은 lifecycle schema 세부 검증은 tag value edge와 일부 XML child ordering/limit parity이며, 큰 축은 live Kubernetes/security evidence와 broader S3 checksum/client-option edge parity다.
+
+### 2026-06-19 - S3 Lifecycle Tag 제한 검증
+- 작업 시간:
+  - 시작: 2026-06-19 KST
+  - 종료: 2026-06-19 KST
+- 사용한 명령:
+  - active goal `dev-docs` 기준으로 계속 개발 진행.
+- 요청 분석:
+  - AWS S3 `Tag` 문서는 tag key가 최소 1자이고 value가 필수라고 설명하며, S3 object tagging user guide는 key 최대 128자/value 최대 256자를 안내한다.
+  - OSMU lifecycle matcher는 내부 tag map을 사용하므로 lifecycle XML import 단계에서도 OSMU tag key/value 제한과 중복 key 제한을 맞춰야 한다.
+  - 기존 importer는 blank key/value와 duplicate key 일부만 XML 오류로 처리했고, 긴 key/value나 허용되지 않는 key 문자, 너무 많은 tag는 제한하지 않았다.
+- 수행:
+  - `ObjectLifecycleS3XmlService`에 lifecycle tag key/value 제한을 추가했다.
+  - tag key는 1~128자, letters/digits/`.`/`_`/`:`/`/`/`@`/`+`/`-`만 허용하고, tag value는 1~256자와 no-control-character 제한을 적용했다.
+  - `And` tag filter는 최대 10개 unique key만 허용하고, duplicate key나 길이/문자 제한 위반은 S3 XML `InvalidRequest`로 응답하게 했다.
+  - S3-style lifecycle alias 회귀 테스트 `invalidS3BucketLifecycleTagRestrictionsReturnInvalidRequest`를 추가했다.
+  - `api-spec.md`, `backend-design.md`, `system-architecture.md`, `s3-compatibility.md`, `test-cases.md`에 lifecycle tag restriction 계약을 반영했다.
+- 수정한 파일:
+  - `osmu-backend/src/main/java/com/example/osmu/admin/ObjectLifecycleS3XmlService.java`
+  - `osmu-backend/src/test/java/com/example/osmu/bucket/BucketLifecycleControllerTest.java`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/backend-design.md`
+  - `dev-docs/system-architecture.md`
+  - `dev-docs/s3-compatibility.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/worklog/main/worklog-main.md`
+- 검증:
+  - `$env:JAVA_HOME='C:\jdk-17'; .\gradlew.bat test --no-daemon --tests com.example.osmu.common.error.S3ErrorCodeMapperTest --tests com.example.osmu.bucket.BucketLifecycleControllerTest.invalidS3BucketLifecycleTagRestrictionsReturnInvalidRequest --tests com.example.osmu.bucket.BucketLifecycleControllerTest.adminCanPutGetAndDeleteBucketLifecycleConfiguration --tests com.example.osmu.bucket.BucketLifecycleControllerTest.adminCanUseS3StyleLifecycleQueryAlias`: 통과.
+  - `$env:JAVA_HOME='C:\jdk-17'; .\gradlew.bat test --no-daemon --tests com.example.osmu.admin.AdminObjectRetentionControllerTest.adminCanExportAndImportS3LifecycleXml`: 통과.
+- 후속:
+  - 남은 lifecycle schema 세부 검증은 XML child ordering/limit parity와 broader S3 checksum/client-option edge parity다.

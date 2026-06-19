@@ -11,6 +11,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.regex.Pattern;
 import javax.xml.XMLConstants;
 import javax.xml.parsers.DocumentBuilderFactory;
 import org.springframework.stereotype.Service;
@@ -23,6 +24,10 @@ import org.w3c.dom.NodeList;
 public class ObjectLifecycleS3XmlService {
 
     private static final int DEFAULT_BATCH_SIZE = 100;
+    private static final int MAX_TAG_COUNT = 10;
+    private static final int MAX_TAG_KEY_LENGTH = 128;
+    private static final int MAX_TAG_VALUE_LENGTH = 256;
+    private static final Pattern TAG_KEY_PATTERN = Pattern.compile("^[A-Za-z0-9_.:/@+-]+$");
 
     public String exportRules(List<ObjectLifecycleRule> rules) {
         StringBuilder xml = new StringBuilder();
@@ -276,12 +281,25 @@ public class ObjectLifecycleS3XmlService {
         String key = textOfFirstChild(tag, "Key");
         String value = textOfFirstChild(tag, "Value");
         if (!key.isBlank() && !value.isBlank()) {
+            validateLifecycleTag(key, value);
             if (tags.put(key, value) != null) {
-                throw invalidLifecycleXml();
+                throw new ApiException(ApiErrorCode.VALIDATION_ERROR, "Duplicate Lifecycle tag key is not allowed.");
+            }
+            if (tags.size() > MAX_TAG_COUNT) {
+                throw new ApiException(ApiErrorCode.VALIDATION_ERROR, "Lifecycle tags can contain at most 10 pairs.");
             }
             return;
         }
         throw invalidLifecycleXml();
+    }
+
+    private void validateLifecycleTag(String key, String value) {
+        if (key.length() > MAX_TAG_KEY_LENGTH || !TAG_KEY_PATTERN.matcher(key).matches()) {
+            throw new ApiException(ApiErrorCode.VALIDATION_ERROR, "Invalid Lifecycle tag key.");
+        }
+        if (value.length() > MAX_TAG_VALUE_LENGTH || value.chars().anyMatch(Character::isISOControl)) {
+            throw new ApiException(ApiErrorCode.VALIDATION_ERROR, "Invalid Lifecycle tag value.");
+        }
     }
 
     private Document parse(String xml) {

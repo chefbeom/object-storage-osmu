@@ -444,6 +444,106 @@ class BucketLifecycleControllerTest {
     }
 
     @Test
+    void invalidS3BucketLifecycleTagRestrictionsReturnInvalidRequest() throws Exception {
+        String token = loginAndReturnAccessToken("admin", "password");
+        String bucketName = "lifecycle-invalid-tag-bucket";
+        createBucket(token, bucketName);
+        String longTagKey = "k".repeat(129);
+        String longTagValue = "v".repeat(257);
+        String elevenTags = java.util.stream.IntStream.rangeClosed(1, 11)
+                .mapToObj(index -> "<Tag><Key>k" + index + "</Key><Value>v" + index + "</Value></Tag>")
+                .collect(java.util.stream.Collectors.joining("\n"));
+
+        mockMvc.perform(put("/api/s3/{bucketName}", bucketName)
+                        .queryParam("lifecycle", "")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_XML)
+                        .content("""
+                                <LifecycleConfiguration>
+                                  <Rule>
+                                    <ID>Invalid tag key</ID>
+                                    <Status>Enabled</Status>
+                                    <Filter><Tag><Key>%s</Key><Value>raw</Value></Tag></Filter>
+                                    <Expiration><Days>7</Days></Expiration>
+                                  </Rule>
+                                </LifecycleConfiguration>
+                                """.formatted(longTagKey)))
+                .andExpect(status().isBadRequest())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_XML))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("<Code>InvalidRequest</Code>")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("<Message>Invalid Lifecycle tag key.</Message>")));
+
+        mockMvc.perform(put("/api/s3/{bucketName}", bucketName)
+                        .queryParam("lifecycle", "")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_XML)
+                        .content("""
+                                <LifecycleConfiguration>
+                                  <Rule>
+                                    <ID>Invalid tag value</ID>
+                                    <Status>Enabled</Status>
+                                    <Filter><Tag><Key>stage</Key><Value>%s</Value></Tag></Filter>
+                                    <Expiration><Days>7</Days></Expiration>
+                                  </Rule>
+                                </LifecycleConfiguration>
+                                """.formatted(longTagValue)))
+                .andExpect(status().isBadRequest())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_XML))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("<Code>InvalidRequest</Code>")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("<Message>Invalid Lifecycle tag value.</Message>")));
+
+        mockMvc.perform(put("/api/s3/{bucketName}", bucketName)
+                        .queryParam("lifecycle", "")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_XML)
+                        .content("""
+                                <LifecycleConfiguration>
+                                  <Rule>
+                                    <ID>Duplicate tag key</ID>
+                                    <Status>Enabled</Status>
+                                    <Filter>
+                                      <And>
+                                        <Tag><Key>stage</Key><Value>raw</Value></Tag>
+                                        <Tag><Key>stage</Key><Value>cold</Value></Tag>
+                                      </And>
+                                    </Filter>
+                                    <Expiration><Days>7</Days></Expiration>
+                                  </Rule>
+                                </LifecycleConfiguration>
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_XML))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("<Code>InvalidRequest</Code>")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("<Message>Duplicate Lifecycle tag key is not allowed.</Message>")));
+
+        mockMvc.perform(put("/api/s3/{bucketName}", bucketName)
+                        .queryParam("lifecycle", "")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_XML)
+                        .content("""
+                                <LifecycleConfiguration>
+                                  <Rule>
+                                    <ID>Too many tags</ID>
+                                    <Status>Enabled</Status>
+                                    <Filter><And>%s</And></Filter>
+                                    <Expiration><Days>7</Days></Expiration>
+                                  </Rule>
+                                </LifecycleConfiguration>
+                                """.formatted(elevenTags)))
+                .andExpect(status().isBadRequest())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_XML))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("<Code>InvalidRequest</Code>")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("<Message>Lifecycle tags can contain at most 10 pairs.</Message>")));
+
+        mockMvc.perform(get("/api/s3/{bucketName}", bucketName)
+                        .queryParam("lifecycle", "")
+                        .header("Authorization", "Bearer " + token)
+                        .accept(MediaType.APPLICATION_XML))
+                .andExpect(status().isNotFound())
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("<Code>NoSuchLifecycleConfiguration</Code>")));
+    }
+
+    @Test
     void accessKeyWithAdminScopeCanUseS3StyleLifecycleQueryAlias() throws Exception {
         String token = loginAndReturnAccessToken("admin", "password");
         String bucketName = "lifecycle-key-bucket";
