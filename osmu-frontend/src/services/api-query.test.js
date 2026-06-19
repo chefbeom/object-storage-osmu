@@ -19,6 +19,7 @@ import {
   getAuditLogs,
   getBackupRestoreDrillEvidence,
   getBuckets,
+  getChargebackPreview,
   getDashboardLayout,
   getDashboardLayoutDefaults,
   getDashboardLayoutPresets,
@@ -340,6 +341,49 @@ test('downloadDataFlowMonitoringCsv uses export endpoint and returns CSV blob', 
     assert.equal(url.searchParams.get('to'), '2026-06-19T00:00:00.000Z')
     assert.equal(url.searchParams.get('limit'), '25')
     assert.equal(await blob.text(), 'createdAt,eventType\n2026-06-18T00:00:00Z,UPLOAD\n')
+  } finally {
+    cleanupFetch(fetchMock)
+  }
+})
+
+test('getChargebackPreview reads admin billing preview endpoint', async () => {
+  const fetchMock = mockFetch([
+    () => jsonResponse({
+      data: {
+        currency: 'KRW',
+        rates: { storageGbMonthRate: 1, ingressGbRate: 2 },
+        organizations: [{ organizationName: 'Media', estimatedTotalCost: 25 }],
+      },
+    }),
+  ])
+
+  try {
+    const result = await getChargebackPreview({
+      from: '2026-06-01T00:00:00.000Z',
+      to: '2026-06-30T23:59:59.000Z',
+      currency: 'krw',
+      storageGbMonthRate: '1.25',
+      ingressGbRate: '0.10',
+      egressGbRate: '0.20',
+      internalGbRate: '0.05',
+      operationThousandRate: '0.01',
+      eventScanLimit: 2500,
+    })
+
+    const url = new URL(fetchMock.calls[0].url)
+    assert.equal(url.pathname, '/api/admin/billing/chargeback-preview')
+    assert.equal(url.searchParams.get('from'), '2026-06-01T00:00:00.000Z')
+    assert.equal(url.searchParams.get('to'), '2026-06-30T23:59:59.000Z')
+    assert.equal(url.searchParams.get('currency'), 'krw')
+    assert.equal(url.searchParams.get('storageGbMonthRate'), '1.25')
+    assert.equal(url.searchParams.get('ingressGbRate'), '0.10')
+    assert.equal(url.searchParams.get('egressGbRate'), '0.20')
+    assert.equal(url.searchParams.get('internalGbRate'), '0.05')
+    assert.equal(url.searchParams.get('operationThousandRate'), '0.01')
+    assert.equal(url.searchParams.get('eventScanLimit'), '2500')
+    assert.equal(fetchMock.calls[0].options.method, undefined)
+    assert.equal(result.data.currency, 'KRW')
+    assert.equal(result.data.organizations[0].estimatedTotalCost, 25)
   } finally {
     cleanupFetch(fetchMock)
   }

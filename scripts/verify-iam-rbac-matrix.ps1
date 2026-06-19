@@ -5,6 +5,7 @@ param(
     [string] $FrontendDesignPath = ".\dev-docs\frontend-design.md",
     [string] $AdminRbacPolicyPath = ".\osmu-backend\src\main\java\com\example\osmu\auth\AdminRbacPolicy.java",
     [string] $EnterpriseAuthPlanServicePath = ".\osmu-backend\src\main\java\com\example\osmu\auth\EnterpriseAuthPlanService.java",
+    [string] $ChargebackPreviewServicePath = ".\osmu-backend\src\main\java\com\example\osmu\billing\ChargebackPreviewService.java",
     [string] $OidcAuthorizationServicePath = ".\osmu-backend\src\main\java\com\example\osmu\auth\OidcAuthorizationService.java",
     [string] $OidcClaimPreviewServicePath = ".\osmu-backend\src\main\java\com\example\osmu\auth\OidcClaimPreviewService.java",
     [string] $OidcJitProvisioningServicePath = ".\osmu-backend\src\main\java\com\example\osmu\auth\OidcJitProvisioningService.java",
@@ -59,12 +60,15 @@ Assert-Contains $matrix '`USER`' "IAM/RBAC matrix"
 Assert-Contains $matrix 'GET /api/admin/users' "IAM/RBAC matrix"
 Assert-Contains $matrix 'PATCH /api/admin/users/{userId}/status' "IAM/RBAC matrix"
 Assert-Contains $matrix 'GET /api/admin/organizations/usage' "IAM/RBAC matrix"
+Assert-Contains $matrix 'GET /api/admin/billing/chargeback-preview' "IAM/RBAC matrix"
 Assert-Contains $matrix 'GET/POST /api/admin/teams' "IAM/RBAC matrix"
 Assert-Contains $matrix '`TEAM` subject' "IAM/RBAC matrix"
 Assert-Contains $matrix 'GET /api/admin/security/enterprise-auth-plan' "IAM/RBAC matrix"
 Assert-Contains $matrix 'POST /api/admin/security/enterprise-auth/claim-preview' "IAM/RBAC matrix"
 Assert-Contains $matrix 'POST /api/admin/security/enterprise-auth/jit-provision' "IAM/RBAC matrix"
 Assert-Contains $matrix 'AdminEnterpriseAuthPlanControllerTest' "IAM/RBAC matrix"
+Assert-Contains $matrix 'AdminBillingControllerTest' "IAM/RBAC matrix"
+Assert-Contains $matrix 'ChargebackPreviewServiceTest' "IAM/RBAC matrix"
 Assert-Contains $matrix 'OidcClaimPreviewServiceTest' "IAM/RBAC matrix"
 Assert-Contains $matrix 'OidcJitProvisioningServiceTest' "IAM/RBAC matrix"
 Assert-Contains $matrix 'OidcLoginServiceTest' "IAM/RBAC matrix"
@@ -82,6 +86,7 @@ Assert-Contains $securityDesign "AdminRbacPolicy" "Security design"
 Assert-Contains $securityDesign "EnterpriseAuthPlanService" "Security design"
 Assert-Contains $securityDesign "osmu_roles" "Security design"
 Assert-Contains $securityDesign "Dashboard widget catalog/layout/preset" "Security design"
+Assert-Contains $securityDesign "ChargebackPreviewService" "Security design"
 
 $apiSpec = Read-RequiredFile $ApiSpecPath "API spec"
 Assert-Contains $apiSpec '관리자 API인 `/api/admin/**`는 기본적으로 `ADMIN` role이 필요하다.' "API spec"
@@ -96,6 +101,7 @@ Assert-Contains $apiSpec 'POST /api/admin/security/enterprise-auth/jit-provision
 Assert-Contains $apiSpec 'GET /api/auth/oidc/authorize' "API spec"
 Assert-Contains $apiSpec 'GET /api/auth/oidc/callback' "API spec"
 Assert-Contains $apiSpec 'POST /api/auth/ldap/login' "API spec"
+Assert-Contains $apiSpec 'GET /api/admin/billing/chargeback-preview' "API spec"
 Assert-Contains $apiSpec 'OSMU_ENTERPRISE_AUTH_OIDC_ISSUER_URI' "API spec"
 Assert-Contains $apiSpec 'OSMU_ENTERPRISE_AUTH_OIDC_AUTHORIZATION_ENABLED' "API spec"
 Assert-Contains $apiSpec 'OSMU_ENTERPRISE_AUTH_OIDC_CALLBACK_ENABLED' "API spec"
@@ -108,6 +114,7 @@ $frontendDesign = Read-RequiredFile $FrontendDesignPath "Frontend design"
 Assert-Contains $frontendDesign 'getEnterpriseAuthPlan' "Frontend design"
 Assert-Contains $frontendDesign 'completeOidcCallback' "Frontend design"
 Assert-Contains $frontendDesign 'loginWithLdap' "Frontend design"
+Assert-Contains $frontendDesign 'getChargebackPreview' "Frontend design"
 Assert-Contains $frontendDesign 'previewEnterpriseAuthClaims' "Frontend design"
 Assert-Contains $frontendDesign 'provisionEnterpriseAuthUser' "Frontend design"
 Assert-Contains $frontendDesign 'adminOnly' "Frontend design"
@@ -119,6 +126,7 @@ Assert-Contains $adminRbacPolicy 'RouteRule.exact("POST", "/api/admin/users")' "
 Assert-Contains $adminRbacPolicy 'RouteRule.pattern("PATCH", "^/api/admin/users/\\d+/status$")' "Admin RBAC policy"
 Assert-Contains $adminRbacPolicy 'RouteRule.exact("GET", "/api/admin/organizations")' "Admin RBAC policy"
 Assert-Contains $adminRbacPolicy 'RouteRule.exact("GET", "/api/admin/organizations/usage")' "Admin RBAC policy"
+Assert-Contains $adminRbacPolicy 'RouteRule.exact("GET", "/api/admin/billing/chargeback-preview")' "Admin RBAC policy"
 Assert-Contains $adminRbacPolicy 'RouteRule.exact("GET", "/api/admin/teams")' "Admin RBAC policy"
 Assert-Contains $adminRbacPolicy 'RouteRule.pattern("PUT", "^/api/admin/teams/\\d+/members$")' "Admin RBAC policy"
 Assert-Contains $adminRbacPolicy 'AUDITOR_ALLOWED_ROUTES' "Admin RBAC policy"
@@ -167,6 +175,12 @@ Assert-Contains $ldapLoginService 'osmu.enterprise-auth.ldap.login-enabled' "LDA
 Assert-Contains $ldapLoginService 'LdapSearchRequest' "LDAP login service"
 Assert-Contains $ldapLoginService 'LdapBindRequest' "LDAP login service"
 Assert-Contains $ldapLoginService 'LDAP user is not provisioned.' "LDAP login service"
+
+$chargebackPreviewService = Read-RequiredFile $ChargebackPreviewServicePath "Chargeback preview service"
+Assert-Contains $chargebackPreviewService 'visibleOrganizations' "Chargeback preview service"
+Assert-Contains $chargebackPreviewService 'actor.isOrgAdmin()' "Chargeback preview service"
+Assert-Contains $chargebackPreviewService 'Chargeback preview access denied.' "Chargeback preview service"
+Assert-Contains $chargebackPreviewService 'eventScanLimit' "Chargeback preview service"
 
 $dashboardLayoutService = Read-RequiredFile $DashboardLayoutServicePath "Dashboard layout service"
 Assert-Contains $dashboardLayoutService 'isWidgetAllowedForUser' "Dashboard layout service"

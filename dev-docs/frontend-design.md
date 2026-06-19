@@ -20,6 +20,7 @@
 - Export uses the same date, bucket, actor, source, operation, status, and limit filters as the on-screen monitoring panel.
 - Data Flow Monitoring panel renders source/operation trend points through `data-flow-trend-chart`.
 - Data Flow Monitoring separates upload, download, and internal copy traffic in the summary and bucket rows.
+- Chargeback preview is API-first through `getChargebackPreview`; the first UI follow-up is an admin billing panel that reuses organization usage and data-flow filters without presenting it as a finalized invoice.
 
 ## Multipart Refresh Note
 
@@ -295,7 +296,7 @@ Version UI:
 - 조직 생성
 - 기본 쿼터 표시
 - 조직별 사용량, bucket count, object count 표시
-- ORG_ADMIN에게 자기 조직 usage 표시
+- ORG_ADMIN에게 자기 조직 usage 표시. Chargeback preview UI가 추가될 때도 `getChargebackPreview` 결과는 자기 조직 scope만 표시해야 한다.
 - 사용자 생성 화면과 조직 선택 연동
 
 - Admin can delete empty organizations with a confirm dialog.

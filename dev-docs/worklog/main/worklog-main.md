@@ -17916,3 +17916,15 @@ feat/bucket-management
 - Secret contract: live 실행은 `OSMU_ENTERPRISE_AUTH_ADMIN_PASSWORD`가 필수이고 LDAP 요구 시 `OSMU_ENTERPRISE_AUTH_LDAP_LOGIN_ID`, `OSMU_ENTERPRISE_AUTH_LDAP_PASSWORD`가 필요하다. OIDC callback code/state와 claim/JIT JSON은 고정 secret 이름으로 선택 제공한다.
 - Safety: plan-only 결과도 artifact로 업로드하지만 operations readiness PASS는 `result=passed` evidence만 인정한다. Live evidence에는 password/token/OIDC code-state/raw claim JSON을 저장하지 않는다.
 - 연결: operations readiness remediation workflow를 `enterprise-auth-smoke-ci.yml`로 바꾸고, workflow run id plan과 artifact collection plan이 `enterprise-auth-smoke-{runId}` artifact를 추천하도록 등록했다.
+### 2026-06-19 - Tenant chargeback preview API
+
+- 작업 해석: 다음 개발 축의 billing/chargeback은 최종 과금이나 runtime license lock이 아니라, data-flow monitoring과 organization usage를 묶어 내부 비용 리포트 구조를 먼저 확인하는 pre-model로 해석했다.
+- Backend: `GET /api/admin/billing/chargeback-preview`를 추가했다. `ChargebackPreviewService`는 현재 ORG-owned bucket usage와 bounded `data_flow_events`를 합산해 storage, ingress, egress, internal copy, operation cost를 조직별로 계산한다.
+- Scope/RBAC: `ADMIN`은 전체 조직을 보고, `ORG_ADMIN`은 자기 조직만 본다. `AUDITOR`와 일반 사용자는 차단한다. user-owned bucket과 deleted/unknown bucket event는 chargeback preview에서 제외한다.
+- Frontend contract: `getChargebackPreview` API wrapper와 query test를 추가했다. UI는 아직 invoice 화면이 아니라 후속 admin billing panel 작업으로 남겼다.
+- 문서/verifier: API spec, OpenAPI, IAM/RBAC matrix, security/backend/frontend design, commercial readiness, feature inventory, test cases, README를 갱신했다.
+- 검증:
+  - `$env:JAVA_HOME='C:\jdk-17'; .\gradlew.bat test --no-daemon --tests com.example.osmu.billing.ChargebackPreviewServiceTest --tests com.example.osmu.billing.AdminBillingControllerTest --tests com.example.osmu.auth.AdminRbacPolicyTest`: 통과.
+  - `npm.cmd run test:unit -- api-query`: 통과.
+  - `verify-openapi-contract.ps1`, `verify-iam-rbac-matrix.ps1`, `verify-commercial-readiness.ps1`: 통과.
+- 후속: persistent pricing policy, invoice/export, threshold alert, admin billing UI, time-series/partition 기반 장기 analytics는 아직 남아 있다.

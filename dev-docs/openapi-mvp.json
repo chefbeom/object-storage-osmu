@@ -16,6 +16,7 @@
     { "name": "Auth" },
     { "name": "Users" },
     { "name": "Organizations" },
+    { "name": "Billing" },
     { "name": "Buckets" },
     { "name": "Objects" },
     { "name": "Access Keys" },
@@ -514,6 +515,67 @@
         "summary": "List organization storage usage",
         "responses": {
           "200": { "$ref": "#/components/responses/JsonList" }
+        }
+      }
+    },
+    "/api/admin/billing/chargeback-preview": {
+      "get": {
+        "tags": ["Billing", "Admin"],
+        "operationId": "getChargebackPreview",
+        "summary": "Preview organization chargeback costs from current usage and data-flow events",
+        "parameters": [
+          {
+            "name": "from",
+            "in": "query",
+            "schema": { "type": "string", "format": "date-time" },
+            "description": "Inclusive data-flow event window start."
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "schema": { "type": "string", "format": "date-time" },
+            "description": "Inclusive data-flow event window end."
+          },
+          {
+            "name": "currency",
+            "in": "query",
+            "schema": { "type": "string", "default": "USD" }
+          },
+          {
+            "name": "storageGbMonthRate",
+            "in": "query",
+            "schema": { "type": "number", "format": "double", "minimum": 0 }
+          },
+          {
+            "name": "ingressGbRate",
+            "in": "query",
+            "schema": { "type": "number", "format": "double", "minimum": 0 }
+          },
+          {
+            "name": "egressGbRate",
+            "in": "query",
+            "schema": { "type": "number", "format": "double", "minimum": 0 }
+          },
+          {
+            "name": "internalGbRate",
+            "in": "query",
+            "schema": { "type": "number", "format": "double", "minimum": 0 }
+          },
+          {
+            "name": "operationThousandRate",
+            "in": "query",
+            "schema": { "type": "number", "format": "double", "minimum": 0 }
+          },
+          {
+            "name": "eventScanLimit",
+            "in": "query",
+            "schema": { "type": "integer", "default": 10000, "maximum": 50000 }
+          }
+        ],
+        "responses": {
+          "200": { "$ref": "#/components/responses/JsonOk" },
+          "400": { "$ref": "#/components/responses/Error" },
+          "403": { "$ref": "#/components/responses/Error" }
         }
       }
     },

@@ -23,6 +23,7 @@ class AdminRbacPolicyTest {
         assertTrue(policy.isAllowed("PATCH", "/api/admin/users/123/status", "ORG_ADMIN"));
         assertTrue(policy.isAllowed("GET", "/api/admin/organizations", "ORG_ADMIN"));
         assertTrue(policy.isAllowed("GET", "/api/admin/organizations/usage", "ORG_ADMIN"));
+        assertTrue(policy.isAllowed("GET", "/api/admin/billing/chargeback-preview", "ORG_ADMIN"));
         assertTrue(policy.isAllowed("GET", "/api/admin/teams", "ORG_ADMIN"));
         assertTrue(policy.isAllowed("POST", "/api/admin/teams", "ORG_ADMIN"));
         assertTrue(policy.isAllowed("PUT", "/api/admin/teams/123/members", "ORG_ADMIN"));

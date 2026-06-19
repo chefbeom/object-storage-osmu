@@ -24,7 +24,7 @@ Authorization: Bearer <accessToken>
 
 관리자 API인 `/api/admin/**`는 기본적으로 `ADMIN` role이 필요하다.
 예외적으로 `ORG_ADMIN`은 조직 스코프가 적용된 사용자/조직 조회 API만 접근할 수 있다.
-현재 허용 route는 `GET/POST /api/admin/users`, `PATCH /api/admin/users/{userId}/status`, `GET /api/admin/organizations`, `GET /api/admin/organizations/usage`, `GET/POST /api/admin/teams`, `PUT /api/admin/teams/{teamId}/members`, `DELETE /api/admin/teams/{teamId}`이다.
+현재 허용 route는 `GET/POST /api/admin/users`, `PATCH /api/admin/users/{userId}/status`, `GET /api/admin/organizations`, `GET /api/admin/organizations/usage`, `GET /api/admin/billing/chargeback-preview`, `GET/POST /api/admin/teams`, `PUT /api/admin/teams/{teamId}/members`, `DELETE /api/admin/teams/{teamId}`이다.
 `AUDITOR`는 read-only 감사/상태 조회 role이다. 허용 route는 `GET /api/admin/audit-logs`, `GET /api/admin/audit-logs/export.csv`, `GET /api/admin/usage`, `GET /api/admin/system/status`, `GET /api/admin/security/enterprise-auth-plan`, `GET /api/admin/dashboard/summary`, `GET /api/admin/dashboard/readiness`, `GET /api/admin/backup/status`, `GET /api/admin/backup/restore-drill-evidence`로 제한한다.
 
 일반 사용자는 본인이 소유한 bucket, object, access key만 접근할 수 있다. `ADMIN`은 전체 리소스에 접근할 수 있다.
@@ -2526,6 +2526,79 @@ Access Key 여러 개를 한 번에 비활성화한다.
 ### GET /api/admin/usage
 
 전체 사용량 조회.
+
+### GET /api/admin/billing/chargeback-preview
+
+Organization chargeback pre-model. `ADMIN` sees every organization. `ORG_ADMIN` sees only the caller's organization. This endpoint does not persist invoices or mutate billing policy; it projects costs from current organization-owned bucket usage and bounded data-flow events.
+
+Query parameters:
+
+- `from`, `to`: optional ISO-8601 offset datetime window for data-flow events.
+- `currency`: optional display currency code, default `USD`.
+- `storageGbMonthRate`: projected monthly storage rate per GiB based on current `usedBytes`.
+- `ingressGbRate`, `egressGbRate`, `internalGbRate`: data-flow byte rates per GiB.
+- `operationThousandRate`: operation rate per 1,000 successful data-flow events.
+- `eventScanLimit`: bounded event scan limit, default `10000`, maximum `50000`.
+
+Response:
+
+```json
+{
+  "success": true,
+  "data": {
+    "currency": "KRW",
+    "from": "2026-06-01T00:00:00Z",
+    "to": "2026-06-30T23:59:59Z",
+    "rates": {
+      "storageGbMonthRate": 12.5,
+      "ingressGbRate": 0.1,
+      "egressGbRate": 0.2,
+      "internalGbRate": 0.05,
+      "operationThousandRate": 0.01
+    },
+    "eventScanLimit": 10000,
+    "scannedEventCount": 128,
+    "organizationCount": 2,
+    "bucketCount": 7,
+    "usedBytes": 34359738368,
+    "ingressBytes": 1073741824,
+    "egressBytes": 2147483648,
+    "internalBytes": 536870912,
+    "billableOperationCount": 120,
+    "failedOperationCount": 3,
+    "cancelledOperationCount": 1,
+    "estimatedTotalCost": 401.2262,
+    "organizations": [
+      {
+        "organizationId": 1,
+        "organizationName": "AI Lab",
+        "bucketCount": 3,
+        "objectCount": 240,
+        "usedBytes": 17179869184,
+        "ingressBytes": 1073741824,
+        "egressBytes": 2147483648,
+        "internalBytes": 536870912,
+        "billableOperationCount": 120,
+        "failedOperationCount": 3,
+        "cancelledOperationCount": 1,
+        "projectedStorageCost": 200.0,
+        "ingressCost": 0.1,
+        "egressCost": 0.4,
+        "internalCost": 0.025,
+        "operationCost": 0.0012,
+        "estimatedTotalCost": 200.5262
+      }
+    ],
+    "generatedAt": "2026-06-19T00:00:00Z"
+  }
+}
+```
+
+Notes:
+
+- Failed and cancelled events are reported for operations review but not charged.
+- User-owned buckets and deleted/unknown buckets are excluded from organization chargeback preview.
+- This is not AWS billing parity. It is an OSMU tenant cost model for B2B operations and chargeback planning.
 
 ### GET /api/admin/security/enterprise-auth-plan
 

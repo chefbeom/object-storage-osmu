@@ -1160,6 +1160,21 @@ export function downloadDataFlowMonitoringCsv(filters = {}) {
   return download(`/admin/monitoring/data-flow/export.csv${suffix}`)
 }
 
+export function getChargebackPreview(options = {}) {
+  const query = new URLSearchParams()
+  appendQuery(query, 'from', options.from)
+  appendQuery(query, 'to', options.to)
+  appendQuery(query, 'currency', options.currency)
+  appendQuery(query, 'storageGbMonthRate', options.storageGbMonthRate)
+  appendQuery(query, 'ingressGbRate', options.ingressGbRate)
+  appendQuery(query, 'egressGbRate', options.egressGbRate)
+  appendQuery(query, 'internalGbRate', options.internalGbRate)
+  appendQuery(query, 'operationThousandRate', options.operationThousandRate)
+  appendQuery(query, 'eventScanLimit', options.eventScanLimit)
+  const suffix = query.toString() ? `?${query.toString()}` : ''
+  return request(`/admin/billing/chargeback-preview${suffix}`)
+}
+
 export function getDashboardLayout(scope = 'main') {
   return request(`/dashboard/layout?scope=${encodeURIComponent(scope)}`)
 }

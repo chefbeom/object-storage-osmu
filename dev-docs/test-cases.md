@@ -833,6 +833,16 @@ ID:
 - 우선순위: P1
 - 자동화 여부: Automated
 
+### TC-ORG-004A
+
+- Feature: Organization chargeback preview
+- Condition: Organization-owned buckets have current usage and recent `data_flow_events`.
+- Input: `GET /api/admin/billing/chargeback-preview?storageGbMonthRate=...&ingressGbRate=...&egressGbRate=...&operationThousandRate=...`
+- Steps: Create two organizations, upload data to an ORG-owned bucket, optionally generate download/copy/failure events, then call the chargeback preview API as `ADMIN` and `ORG_ADMIN`.
+- Expected: `ADMIN` sees every organization. `ORG_ADMIN` sees only the caller organization. The response includes current `usedBytes`, ingress/egress/internal bytes, billable successful operation count, failed/cancelled counts, per-organization cost components, and total estimated cost. User-owned or unknown buckets are excluded. The response is a preview only and does not persist invoices or pricing policy.
+- Priority: P1
+- Automation: `AdminBillingControllerTest`, `ChargebackPreviewServiceTest`
+
 ### TC-ORG-005
 
 - 기능: 조직 quota 초과 업로드 차단
@@ -2340,6 +2350,7 @@ MVP 완료 전 다음 테스트는 반드시 통과해야 한다.
 - TC-ORG-001
 - TC-ORG-003
 - TC-ORG-004
+- TC-ORG-004A
 - TC-ORG-005
 - TC-ORG-006
 - TC-ORG-007

@@ -347,6 +347,7 @@ public interface ObjectStorageAdapter {
 - Share link cleanup marks expired active links as `EXPIRED` for a bucket and requires bucket manage permission.
 - `ObjectShareLinkCleanupJob` automatically marks expired active share links as `EXPIRED` and records `osmu.object.share.cleanup.links{result=success}` plus `osmu.object.share.cleanup.runs{result=failure}` metrics.
 - `DataFlowEventRetentionJob` deletes old `data_flow_events` rows in bounded batches and records `DATA_FLOW_EVENT_RETENTION` audit plus `osmu.data.flow.retention.events{result=success}` and `osmu.data.flow.retention.runs{result=failure}` metrics.
+- `ChargebackPreviewService` builds an API-first tenant cost pre-model from current organization-owned bucket usage plus bounded `data_flow_events`. `ADMIN` receives every organization; `ORG_ADMIN` receives only the caller organization. It does not persist invoices or billing policy.
 - Share link create/download/revoke/cleanup writes `OBJECT_SHARE_LINK_CREATE`, `OBJECT_SHARE_LINK_DOWNLOAD`, `OBJECT_SHARE_LINK_REVOKE`, and `OBJECT_SHARE_LINK_CLEANUP` audit events. Global policy saves write `OBJECT_SHARE_POLICY_SAVE`.
 - Multipart upload는 MinIO multipart upload id와 part별 presigned PUT URL을 발급하고, complete 시 ETag 목록으로 object를 확정한다.
 - Multipart refresh는 저장된 `partSizeBytes`, `partCount`, storage upload id를 사용해 기존 multipart upload에 대한 part별 presigned PUT URL을 재발급한다.

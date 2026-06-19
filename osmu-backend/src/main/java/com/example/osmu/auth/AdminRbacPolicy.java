@@ -18,6 +18,7 @@ public class AdminRbacPolicy {
             RouteRule.pattern("PATCH", "^/api/admin/users/\\d+/status$"),
             RouteRule.exact("GET", "/api/admin/organizations"),
             RouteRule.exact("GET", "/api/admin/organizations/usage"),
+            RouteRule.exact("GET", "/api/admin/billing/chargeback-preview"),
             RouteRule.exact("GET", "/api/admin/teams"),
             RouteRule.exact("POST", "/api/admin/teams"),
             RouteRule.pattern("PUT", "^/api/admin/teams/\\d+/members$"),
