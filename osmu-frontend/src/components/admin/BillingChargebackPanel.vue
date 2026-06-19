@@ -359,9 +359,63 @@
         >
           Approve
         </button>
+        <button
+          v-else-if="invoice.status === 'APPROVED_INTERNAL'"
+          data-testid="chargeback-invoice-draft-finalize-button"
+          type="button"
+          class="ghost"
+          @click="$emit('finalize-chargeback-invoice-draft', invoice.id)"
+        >
+          Finalize
+        </button>
         <strong v-else>{{ invoice.status }}</strong>
       </li>
       <li v-if="invoiceDraftRows.length === 0" class="empty">No chargeback invoice draft records.</li>
+    </ul>
+
+    <div v-if="isAdmin" class="compact-metrics chargeback-final-invoice-metrics" data-testid="chargeback-final-invoice-metrics">
+      <div>
+        <span>Final invoices</span>
+        <b data-testid="chargeback-final-invoice-count">{{ formatCount(finalInvoices.invoiceCount) }}</b>
+      </div>
+      <div>
+        <span>Status</span>
+        <b data-testid="chargeback-final-invoice-status">{{ finalInvoiceRows[0]?.status || '-' }}</b>
+      </div>
+      <div>
+        <span>Payment</span>
+        <b data-testid="chargeback-final-invoice-payment-status">{{ finalInvoiceRows[0]?.paymentStatus || '-' }}</b>
+      </div>
+    </div>
+
+    <ul v-if="isAdmin" class="compact-list chargeback-final-invoice-list" data-testid="chargeback-final-invoice-list">
+      <li v-for="invoice in finalInvoiceRows" :key="invoice.id" data-testid="chargeback-final-invoice-row">
+        <span class="list-main">
+          <b>{{ invoice.invoiceNumber }}</b>
+          <small>{{ invoice.organizationName }} / {{ formatMoney(invoice.estimatedTotalCost, invoice.currency) }} / {{ invoice.paymentStatus || '-' }}</small>
+          <small>{{ invoice.paymentReference || invoice.finalizationNote || '-' }}</small>
+        </span>
+        <button
+          v-if="invoice.status === 'FINALIZED'"
+          data-testid="chargeback-final-invoice-payment-request-button"
+          type="button"
+          class="ghost"
+          @click="$emit('request-chargeback-invoice-payment', invoice.id)"
+        >
+          Request payment
+        </button>
+        <button
+          v-else-if="invoice.status === 'PAYMENT_REQUESTED'"
+          data-testid="chargeback-final-invoice-payment-record-button"
+          type="button"
+          class="ghost"
+          @click="$emit('record-chargeback-invoice-payment', invoice.id)"
+        >
+          Record paid
+        </button>
+        <strong v-else :class="['status-pill', invoice.status === 'PAID' ? 'up' : 'mock']">{{ invoice.status || '-' }}</strong>
+      </li>
+      <li v-if="finalInvoiceRows.length === 0" class="empty">No chargeback final invoice records.</li>
     </ul>
 
     <div class="table-wrap chargeback-table-wrap">
@@ -416,6 +470,7 @@ const props = defineProps({
   chargebackAlertNotificationPreview: { type: Object, required: true },
   chargebackAlertNotificationOutbox: { type: Object, required: true },
   chargebackInvoiceDrafts: { type: Object, required: true },
+  chargebackFinalInvoices: { type: Object, required: true },
   billingPricingPolicy: { type: Object, required: true },
   billingPricingPolicyProposals: { type: Object, required: true },
   formatBytes: { type: Function, required: true },
@@ -434,6 +489,9 @@ const emit = defineEmits([
   'export-chargeback-invoice-draft-csv',
   'create-chargeback-invoice-drafts',
   'approve-chargeback-invoice-draft',
+  'finalize-chargeback-invoice-draft',
+  'request-chargeback-invoice-payment',
+  'record-chargeback-invoice-payment',
 ])
 
 const preview = computed(() => props.chargebackPreview || {})
@@ -441,6 +499,7 @@ const alerts = computed(() => props.chargebackAlerts || {})
 const notificationPreview = computed(() => props.chargebackAlertNotificationPreview || {})
 const notificationOutbox = computed(() => props.chargebackAlertNotificationOutbox || {})
 const invoiceDrafts = computed(() => props.chargebackInvoiceDrafts || {})
+const finalInvoices = computed(() => props.chargebackFinalInvoices || {})
 const pricingPolicyProposals = computed(() => props.billingPricingPolicyProposals || {})
 const rates = computed(() => preview.value.rates || {})
 const organizations = computed(() => (
@@ -457,6 +516,9 @@ const notificationOutboxRows = computed(() => (
 ))
 const invoiceDraftRows = computed(() => (
   Array.isArray(invoiceDrafts.value.invoices) ? invoiceDrafts.value.invoices : []
+))
+const finalInvoiceRows = computed(() => (
+  Array.isArray(finalInvoices.value.invoices) ? finalInvoices.value.invoices : []
 ))
 const pricingPolicyProposalRows = computed(() => (
   Array.isArray(pricingPolicyProposals.value.proposals) ? pricingPolicyProposals.value.proposals : []

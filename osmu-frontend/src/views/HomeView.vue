@@ -357,6 +357,7 @@
         :chargeback-alert-notification-preview="chargebackAlertNotificationPreview"
         :chargeback-alert-notification-outbox="chargebackAlertNotificationOutbox"
         :chargeback-invoice-drafts="chargebackInvoiceDrafts"
+        :chargeback-final-invoices="chargebackFinalInvoices"
         :billing-pricing-policy="billingPricingPolicy"
         :billing-pricing-policy-proposals="billingPricingPolicyProposals"
         :quota-policy-form="quotaPolicyForm"
@@ -415,6 +416,9 @@
         @export-chargeback-invoice-draft-csv="handleExportChargebackInvoiceDraftCsv"
         @create-chargeback-invoice-drafts="handleCreateChargebackInvoiceDrafts"
         @approve-chargeback-invoice-draft="handleApproveChargebackInvoiceDraft"
+        @finalize-chargeback-invoice-draft="handleFinalizeChargebackInvoiceDraft"
+        @request-chargeback-invoice-payment="handleRequestChargebackInvoicePayment"
+        @record-chargeback-invoice-payment="handleRecordChargebackInvoicePayment"
         @save-quota-policy="handleSaveQuotaPolicy"
         @reset-quota-policy-target="resetQuotaPolicyTarget"
         @reset-quota-policy-form="resetQuotaPolicyForm"
@@ -553,6 +557,7 @@ import {
   downloadObjectVersion,
   downloadDataFlowMonitoringCsv,
   dryRunObjectLifecycleRule,
+  finalizeChargebackInvoiceDraft,
   exportDashboardLayoutPreset,
   exportDashboardLayoutPresetBundle,
   getAccessKeys,
@@ -568,6 +573,7 @@ import {
   getChargebackAlertNotificationPreview,
   getChargebackAlertNotificationOutbox,
   getChargebackAlerts,
+  getChargebackFinalInvoices,
   getChargebackInvoiceDrafts,
   getDatabaseHealth,
   getDashboardLayout,
@@ -619,6 +625,8 @@ import {
   putBucketLifecycleS3Xml,
   putBucketTags,
   queueChargebackAlertNotifications,
+  recordChargebackInvoicePayment,
+  requestChargebackInvoicePayment,
   restoreObject,
   restoreObjectVersion,
   revokeBucketPermission,
@@ -1233,6 +1241,7 @@ const chargebackAlerts = ref(defaultChargebackAlerts())
 const chargebackAlertNotificationPreview = ref(defaultChargebackAlertNotificationPreview())
 const chargebackAlertNotificationOutbox = ref(defaultChargebackAlertNotificationOutbox())
 const chargebackInvoiceDrafts = ref(defaultChargebackInvoiceDrafts())
+const chargebackFinalInvoices = ref(defaultChargebackFinalInvoices())
 const billingPricingPolicy = ref(defaultBillingPricingPolicy())
 const billingPricingPolicyProposals = ref(defaultBillingPricingPolicyProposals())
 const teams = ref([])
@@ -2505,6 +2514,17 @@ async function loadChargebackInvoiceDrafts() {
   }
 }
 
+async function loadChargebackFinalInvoices() {
+  if (!isAdmin.value) {
+    resetChargebackFinalInvoices()
+    return
+  }
+  const result = await safeRequest(() => getChargebackFinalInvoices({ limit: 25 }), null)
+  if (result?.data) {
+    applyChargebackFinalInvoices(result.data)
+  }
+}
+
 async function loadChargebackPanel() {
   await Promise.all([
     loadChargebackPreview(),
@@ -2512,6 +2532,7 @@ async function loadChargebackPanel() {
     loadChargebackAlertNotificationPreview(),
     loadChargebackAlertNotificationOutbox(),
     loadChargebackInvoiceDrafts(),
+    loadChargebackFinalInvoices(),
     loadBillingPricingPolicyProposals(),
   ])
 }
@@ -2615,6 +2636,40 @@ async function handleApproveChargebackInvoiceDraft(invoiceId) {
   if (result?.data) {
     await loadChargebackInvoiceDrafts()
     setStatusMessage('Chargeback invoice draft approved internally.')
+  }
+}
+
+async function handleFinalizeChargebackInvoiceDraft(invoiceId) {
+  if (!isAdmin.value || !invoiceId) return
+  const result = await runAction(() => finalizeChargebackInvoiceDraft(invoiceId, {
+    finalizationNote: 'Finalized from admin billing panel',
+  }))
+  if (result?.data) {
+    await loadChargebackFinalInvoices()
+    setStatusMessage('Chargeback final invoice created.')
+  }
+}
+
+async function handleRequestChargebackInvoicePayment(invoiceId) {
+  if (!isAdmin.value || !invoiceId) return
+  const result = await runAction(() => requestChargebackInvoicePayment(invoiceId, {
+    paymentRequestNote: 'Payment requested from admin billing panel',
+  }))
+  if (result?.data) {
+    await loadChargebackFinalInvoices()
+    setStatusMessage('Chargeback payment request recorded.')
+  }
+}
+
+async function handleRecordChargebackInvoicePayment(invoiceId) {
+  if (!isAdmin.value || !invoiceId) return
+  const result = await runAction(() => recordChargebackInvoicePayment(invoiceId, {
+    paymentReference: `MANUAL-${new Date().toISOString().slice(0, 10)}`,
+    paymentNote: 'Payment recorded from admin billing panel',
+  }))
+  if (result?.data) {
+    await loadChargebackFinalInvoices()
+    setStatusMessage('Chargeback payment record saved.')
   }
 }
 
@@ -2808,6 +2863,7 @@ function resetAdminOnlyState() {
   resetChargebackAlertNotificationPreview()
   resetChargebackAlertNotificationOutbox()
   resetChargebackInvoiceDrafts()
+  resetChargebackFinalInvoices()
 }
 
 function resetUploadRuntime() {
@@ -4023,6 +4079,63 @@ function applyChargebackInvoiceDrafts(data = {}) {
 
 function resetChargebackInvoiceDrafts() {
   applyChargebackInvoiceDrafts({})
+}
+
+function defaultChargebackFinalInvoices() {
+  return {
+    invoiceCount: 0,
+    invoices: [],
+    generatedAt: '',
+  }
+}
+
+function normalizeChargebackFinalInvoice(invoice = {}) {
+  return {
+    id: invoice.id,
+    sourceDraftId: invoice.sourceDraftId,
+    invoiceNumber: invoice.invoiceNumber || '',
+    status: invoice.status || '',
+    paymentStatus: invoice.paymentStatus || '',
+    finalInvoice: Boolean(invoice.finalInvoice),
+    paymentRequest: Boolean(invoice.paymentRequest),
+    organizationId: invoice.organizationId,
+    organizationName: invoice.organizationName || '',
+    currency: invoice.currency || defaultChargebackOptions.currency,
+    estimatedTotalCost: Number(invoice.estimatedTotalCost || 0),
+    storageCost: Number(invoice.storageCost || 0),
+    trafficCost: Number(invoice.trafficCost || 0),
+    operationCost: Number(invoice.operationCost || 0),
+    requestedBy: invoice.requestedBy || '',
+    approvedBy: invoice.approvedBy || '',
+    finalizedBy: invoice.finalizedBy || '',
+    paymentRequestedBy: invoice.paymentRequestedBy || '',
+    paymentRecordedBy: invoice.paymentRecordedBy || '',
+    reason: invoice.reason || '',
+    finalizationNote: invoice.finalizationNote || '',
+    paymentRequestNote: invoice.paymentRequestNote || '',
+    paymentReference: invoice.paymentReference || '',
+    createdAt: invoice.createdAt || '',
+    updatedAt: invoice.updatedAt || '',
+    finalizedAt: invoice.finalizedAt || '',
+    paymentRequestedAt: invoice.paymentRequestedAt || '',
+    paidAt: invoice.paidAt || '',
+    note: invoice.note || '',
+  }
+}
+
+function applyChargebackFinalInvoices(data = {}) {
+  const invoices = Array.isArray(data.invoices)
+    ? data.invoices.map((invoice) => normalizeChargebackFinalInvoice(invoice))
+    : []
+  chargebackFinalInvoices.value = {
+    invoiceCount: Number(data.invoiceCount ?? invoices.length),
+    invoices,
+    generatedAt: data.generatedAt || '',
+  }
+}
+
+function resetChargebackFinalInvoices() {
+  applyChargebackFinalInvoices({})
 }
 
 function applyDashboardReadiness(data) {

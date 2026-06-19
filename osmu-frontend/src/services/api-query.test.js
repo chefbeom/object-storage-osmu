@@ -20,6 +20,7 @@ import {
   downloadChargebackPreviewCsv,
   downloadAuditLogsCsv,
   downloadDataFlowMonitoringCsv,
+  finalizeChargebackInvoiceDraft,
   exportDashboardLayoutPreset,
   exportDashboardLayoutPresetBundle,
   getAuditLogs,
@@ -30,6 +31,7 @@ import {
   getChargebackAlertNotificationPreview,
   getChargebackAlertNotificationOutbox,
   getChargebackAlerts,
+  getChargebackFinalInvoices,
   getChargebackInvoiceDrafts,
   getChargebackPreview,
   getDashboardLayout,
@@ -55,6 +57,8 @@ import {
   previewEnterpriseAuthClaims,
   provisionEnterpriseAuthUser,
   queueChargebackAlertNotifications,
+  recordChargebackInvoicePayment,
+  requestChargebackInvoicePayment,
   saveDashboardLayout,
   saveDashboardLayoutDefault,
   saveBillingPricingPolicy,
@@ -685,6 +689,79 @@ test('chargeback invoice draft wrappers create list and approve internal review 
     assert.equal(approveUrl.searchParams.get('approvalNote'), 'approved')
     assert.equal(fetchMock.calls[2].options.method, 'POST')
     assert.equal(approved.data.status, 'APPROVED_INTERNAL')
+  } finally {
+    cleanupFetch(fetchMock)
+  }
+})
+
+test('chargeback final invoice wrappers finalize and update payment status', async () => {
+  const fetchMock = mockFetch([
+    () => jsonResponse({
+      data: {
+        mode: 'FINAL_INVOICE',
+        status: 'FINALIZED',
+        paymentStatus: 'NOT_REQUESTED',
+        invoice: { id: 9, sourceDraftId: 7, invoiceNumber: 'OSMU-FINAL-20260620-1' },
+      },
+    }),
+    () => jsonResponse({
+      data: {
+        invoiceCount: 1,
+        invoices: [{ id: 9, status: 'FINALIZED', paymentStatus: 'NOT_REQUESTED' }],
+      },
+    }),
+    () => jsonResponse({
+      data: {
+        mode: 'PAYMENT_REQUEST',
+        status: 'PAYMENT_REQUESTED',
+        paymentStatus: 'REQUESTED',
+        invoice: { id: 9, paymentRequestedBy: 'admin' },
+      },
+    }),
+    () => jsonResponse({
+      data: {
+        mode: 'PAYMENT_RECORD',
+        status: 'PAID',
+        paymentStatus: 'PAID',
+        invoice: { id: 9, paymentReference: 'PAY-2026-0001' },
+      },
+    }),
+  ])
+
+  try {
+    const finalized = await finalizeChargebackInvoiceDraft(7, { finalizationNote: 'finalize' })
+    const listed = await getChargebackFinalInvoices({ status: 'FINALIZED', limit: 25 })
+    const requested = await requestChargebackInvoicePayment(9, { paymentRequestNote: 'send request' })
+    const paid = await recordChargebackInvoicePayment(9, {
+      paymentReference: 'PAY-2026-0001',
+      paymentNote: 'paid',
+    })
+
+    const finalizeUrl = new URL(fetchMock.calls[0].url)
+    assert.equal(finalizeUrl.pathname, '/api/admin/billing/chargeback-invoice-drafts/7/finalize')
+    assert.equal(finalizeUrl.searchParams.get('finalizationNote'), 'finalize')
+    assert.equal(fetchMock.calls[0].options.method, 'POST')
+    assert.equal(finalized.data.status, 'FINALIZED')
+
+    const listUrl = new URL(fetchMock.calls[1].url)
+    assert.equal(listUrl.pathname, '/api/admin/billing/chargeback-invoices')
+    assert.equal(listUrl.searchParams.get('status'), 'FINALIZED')
+    assert.equal(listUrl.searchParams.get('limit'), '25')
+    assert.equal(fetchMock.calls[1].options.method, undefined)
+    assert.equal(listed.data.invoiceCount, 1)
+
+    const requestUrl = new URL(fetchMock.calls[2].url)
+    assert.equal(requestUrl.pathname, '/api/admin/billing/chargeback-invoices/9/payment-request')
+    assert.equal(requestUrl.searchParams.get('paymentRequestNote'), 'send request')
+    assert.equal(fetchMock.calls[2].options.method, 'POST')
+    assert.equal(requested.data.paymentStatus, 'REQUESTED')
+
+    const recordUrl = new URL(fetchMock.calls[3].url)
+    assert.equal(recordUrl.pathname, '/api/admin/billing/chargeback-invoices/9/payment-record')
+    assert.equal(recordUrl.searchParams.get('paymentReference'), 'PAY-2026-0001')
+    assert.equal(recordUrl.searchParams.get('paymentNote'), 'paid')
+    assert.equal(fetchMock.calls[3].options.method, 'POST')
+    assert.equal(paid.data.paymentStatus, 'PAID')
   } finally {
     cleanupFetch(fetchMock)
   }

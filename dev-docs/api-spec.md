@@ -2860,6 +2860,70 @@ Response:
 - `invoice`: approved invoice draft row.
 - `note`: internal approval-only notice.
 
+### POST /api/admin/billing/chargeback-invoice-drafts/{invoiceId}/finalize
+
+Creates a final chargeback invoice from a persisted `APPROVED_INTERNAL` draft. `ADMIN` only. The final invoice copies the approved draft snapshot and receives an `OSMU-FINAL-...` invoice number. This is the OSMU legal invoice state inside the product, but it does not call an external payment processor.
+
+Query parameters:
+
+- `finalizationNote` (optional): single-line finalization note.
+
+Response:
+
+- `mode`: `FINAL_INVOICE`
+- `status`: `FINALIZED`
+- `paymentStatus`: `NOT_REQUESTED`
+- `finalInvoice=true`, `paymentRequest=false`
+- `invoice`: final invoice row with source draft id, cost snapshot, finalizer, and timestamps.
+
+### GET /api/admin/billing/chargeback-invoices
+
+Lists final chargeback invoices and their payment workflow state. `ADMIN` only.
+
+Query parameters:
+
+- `status` (optional): `FINALIZED`, `PAYMENT_REQUESTED`, or `PAID`.
+- `limit` (optional): number of rows to return, clamped to 1..200.
+
+Response:
+
+- `invoiceCount`
+- `invoices[]`: newest final invoice records first.
+- `generatedAt`
+
+### POST /api/admin/billing/chargeback-invoices/{invoiceId}/payment-request
+
+Records that payment was requested for a `FINALIZED` chargeback invoice. `ADMIN` only. This updates OSMU billing workflow state to `PAYMENT_REQUESTED` / `REQUESTED`; it does not send email, webhook, card, bank-transfer, or tax invoice provider calls.
+
+Query parameters:
+
+- `paymentRequestNote` (optional): single-line payment request note.
+
+Response:
+
+- `mode`: `PAYMENT_REQUEST`
+- `status`: `PAYMENT_REQUESTED`
+- `paymentStatus`: `REQUESTED`
+- `finalInvoice=true`, `paymentRequest=true`
+- `invoice`: updated final invoice row.
+
+### POST /api/admin/billing/chargeback-invoices/{invoiceId}/payment-record
+
+Records manual payment completion for a `PAYMENT_REQUESTED` chargeback invoice. `ADMIN` only. This closes the product-side workflow as `PAID`; external reconciliation remains an operator/legal process.
+
+Query parameters:
+
+- `paymentReference` (required): external receipt, accounting, bank transfer, or manual reconciliation reference.
+- `paymentNote` (optional): single-line payment note.
+
+Response:
+
+- `mode`: `PAYMENT_RECORD`
+- `status`: `PAID`
+- `paymentStatus`: `PAID`
+- `finalInvoice=true`, `paymentRequest=true`
+- `invoice`: updated final invoice row with `paymentReference` and payment timestamps.
+
 ### GET /api/admin/security/enterprise-auth-plan
 
 Enterprise SSO/OIDC/LDAP 도입 전 현재 인증 경계와 claim mapping plan을 조회한다. 현재 활성 login mode는 `LOCAL_PASSWORD`이며, OIDC/LDAP는 plan/readiness 상태로만 노출한다. `ADMIN`은 조회 가능하고, `AUDITOR`도 보안 검토용 read-only route로 조회할 수 있다.

@@ -993,6 +993,113 @@
         }
       }
     },
+    "/api/admin/billing/chargeback-invoice-drafts/{invoiceId}/finalize": {
+      "post": {
+        "tags": ["Billing", "Admin"],
+        "operationId": "finalizeChargebackInvoiceDraft",
+        "summary": "Create a final chargeback invoice from an approved internal draft",
+        "parameters": [
+          {
+            "name": "invoiceId",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "integer", "format": "int64" }
+          },
+          {
+            "name": "finalizationNote",
+            "in": "query",
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": { "$ref": "#/components/responses/JsonOk" },
+          "400": { "$ref": "#/components/responses/Error" },
+          "403": { "$ref": "#/components/responses/Error" },
+          "404": { "$ref": "#/components/responses/Error" }
+        }
+      }
+    },
+    "/api/admin/billing/chargeback-invoices": {
+      "get": {
+        "tags": ["Billing", "Admin"],
+        "operationId": "getChargebackFinalInvoices",
+        "summary": "List final chargeback invoices and payment workflow state",
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "schema": { "type": "string", "enum": ["FINALIZED", "PAYMENT_REQUESTED", "PAID"] }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": { "type": "integer", "default": 50, "maximum": 200 }
+          }
+        ],
+        "responses": {
+          "200": { "$ref": "#/components/responses/JsonOk" },
+          "403": { "$ref": "#/components/responses/Error" }
+        }
+      }
+    },
+    "/api/admin/billing/chargeback-invoices/{invoiceId}/payment-request": {
+      "post": {
+        "tags": ["Billing", "Admin"],
+        "operationId": "requestChargebackInvoicePayment",
+        "summary": "Record a payment request for a finalized chargeback invoice",
+        "parameters": [
+          {
+            "name": "invoiceId",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "integer", "format": "int64" }
+          },
+          {
+            "name": "paymentRequestNote",
+            "in": "query",
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": { "$ref": "#/components/responses/JsonOk" },
+          "400": { "$ref": "#/components/responses/Error" },
+          "403": { "$ref": "#/components/responses/Error" },
+          "404": { "$ref": "#/components/responses/Error" }
+        }
+      }
+    },
+    "/api/admin/billing/chargeback-invoices/{invoiceId}/payment-record": {
+      "post": {
+        "tags": ["Billing", "Admin"],
+        "operationId": "recordChargebackInvoicePayment",
+        "summary": "Record manual payment completion for a chargeback invoice",
+        "parameters": [
+          {
+            "name": "invoiceId",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "integer", "format": "int64" }
+          },
+          {
+            "name": "paymentReference",
+            "in": "query",
+            "required": true,
+            "schema": { "type": "string" }
+          },
+          {
+            "name": "paymentNote",
+            "in": "query",
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": { "$ref": "#/components/responses/JsonOk" },
+          "400": { "$ref": "#/components/responses/Error" },
+          "403": { "$ref": "#/components/responses/Error" },
+          "404": { "$ref": "#/components/responses/Error" }
+        }
+      }
+    },
     "/api/admin/billing/chargeback-preview/export.csv": {
       "get": {
         "tags": ["Billing", "Admin"],

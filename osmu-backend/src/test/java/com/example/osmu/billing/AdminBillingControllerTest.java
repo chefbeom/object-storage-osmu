@@ -236,6 +236,52 @@ class AdminBillingControllerTest {
                 .andExpect(jsonPath("$.data.finalInvoice").value(false))
                 .andExpect(jsonPath("$.data.paymentRequest").value(false))
                 .andExpect(jsonPath("$.data.invoice.approvedBy").value("admin"));
+
+        String finalInvoiceResponse = mockMvc.perform(post("/api/admin/billing/chargeback-invoice-drafts/{invoiceId}/finalize", invoiceId)
+                        .header("Authorization", "Bearer " + adminToken)
+                        .param("finalizationNote", "finalize pilot invoice"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.mode").value("FINAL_INVOICE"))
+                .andExpect(jsonPath("$.data.status").value("FINALIZED"))
+                .andExpect(jsonPath("$.data.paymentStatus").value("NOT_REQUESTED"))
+                .andExpect(jsonPath("$.data.finalInvoice").value(true))
+                .andExpect(jsonPath("$.data.paymentRequest").value(false))
+                .andExpect(jsonPath("$.data.invoice.invoiceNumber", containsString("OSMU-FINAL-")))
+                .andExpect(jsonPath("$.data.invoice.sourceDraftId").value(invoiceId))
+                .andExpect(jsonPath("$.data.invoice.finalizedBy").value("admin"))
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+
+        Integer finalInvoiceId = JsonPath.read(finalInvoiceResponse, "$.data.invoice.id");
+
+        mockMvc.perform(get("/api/admin/billing/chargeback-invoices")
+                        .header("Authorization", "Bearer " + adminToken)
+                        .param("status", "FINALIZED")
+                        .param("limit", "10"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.invoices[*].id", hasItem(finalInvoiceId)));
+
+        mockMvc.perform(post("/api/admin/billing/chargeback-invoices/{invoiceId}/payment-request", finalInvoiceId)
+                        .header("Authorization", "Bearer " + adminToken)
+                        .param("paymentRequestNote", "send payment request"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.mode").value("PAYMENT_REQUEST"))
+                .andExpect(jsonPath("$.data.status").value("PAYMENT_REQUESTED"))
+                .andExpect(jsonPath("$.data.paymentStatus").value("REQUESTED"))
+                .andExpect(jsonPath("$.data.paymentRequest").value(true))
+                .andExpect(jsonPath("$.data.invoice.paymentRequestedBy").value("admin"));
+
+        mockMvc.perform(post("/api/admin/billing/chargeback-invoices/{invoiceId}/payment-record", finalInvoiceId)
+                        .header("Authorization", "Bearer " + adminToken)
+                        .param("paymentReference", "PAY-2026-0001")
+                        .param("paymentNote", "manual payment confirmed"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.mode").value("PAYMENT_RECORD"))
+                .andExpect(jsonPath("$.data.status").value("PAID"))
+                .andExpect(jsonPath("$.data.paymentStatus").value("PAID"))
+                .andExpect(jsonPath("$.data.invoice.paymentRecordedBy").value("admin"))
+                .andExpect(jsonPath("$.data.invoice.paymentReference").value("PAY-2026-0001"));
     }
 
     @Test

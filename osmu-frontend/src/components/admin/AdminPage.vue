@@ -252,6 +252,7 @@
       :chargeback-alert-notification-preview="chargebackAlertNotificationPreview"
       :chargeback-alert-notification-outbox="chargebackAlertNotificationOutbox"
       :chargeback-invoice-drafts="chargebackInvoiceDrafts"
+      :chargeback-final-invoices="chargebackFinalInvoices"
       :billing-pricing-policy="billingPricingPolicy"
       :billing-pricing-policy-proposals="billingPricingPolicyProposals"
       :format-bytes="formatBytes"
@@ -267,6 +268,9 @@
       @export-chargeback-invoice-draft-csv="$emit('export-chargeback-invoice-draft-csv')"
       @create-chargeback-invoice-drafts="$emit('create-chargeback-invoice-drafts')"
       @approve-chargeback-invoice-draft="$emit('approve-chargeback-invoice-draft', $event)"
+      @finalize-chargeback-invoice-draft="$emit('finalize-chargeback-invoice-draft', $event)"
+      @request-chargeback-invoice-payment="$emit('request-chargeback-invoice-payment', $event)"
+      @record-chargeback-invoice-payment="$emit('record-chargeback-invoice-payment', $event)"
     />
 
     <article v-if="isAdmin" id="admin-storage-profiles" class="panel" data-testid="admin-storage-profile-panel">
@@ -452,6 +456,7 @@ const props = defineProps({
   chargebackAlertNotificationPreview: { type: Object, required: true },
   chargebackAlertNotificationOutbox: { type: Object, required: true },
   chargebackInvoiceDrafts: { type: Object, required: true },
+  chargebackFinalInvoices: { type: Object, required: true },
   billingPricingPolicy: { type: Object, required: true },
   billingPricingPolicyProposals: { type: Object, required: true },
   quotaPolicyForm: { type: Object, required: true },
@@ -662,6 +667,9 @@ defineEmits([
   'export-chargeback-invoice-draft-csv',
   'create-chargeback-invoice-drafts',
   'approve-chargeback-invoice-draft',
+  'finalize-chargeback-invoice-draft',
+  'request-chargeback-invoice-payment',
+  'record-chargeback-invoice-payment',
   'save-quota-policy',
   'reset-quota-policy-target',
   'reset-quota-policy-form',

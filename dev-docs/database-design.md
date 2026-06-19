@@ -788,8 +788,9 @@ erDiagram
 - Flyway 또는 Liquibase 중 하나를 사용한다.
 - 마이그레이션 파일은 수정하지 않는다.
 - 변경은 새 마이그레이션으로 추가한다.
-- 현재 MVP는 `osmu-backend/src/main/resources/db/migration` 아래 `V1__init_metadata_schema.sql`부터 `V52__billing_pricing_policy_proposals.sql`까지의 Flyway migration을 제공한다.
+- 현재 MVP는 `osmu-backend/src/main/resources/db/migration` 아래 `V1__init_metadata_schema.sql`부터 `V53__chargeback_final_invoices.sql`까지의 Flyway migration을 제공한다.
 - `V52__billing_pricing_policy_proposals.sql`은 ADMIN-only 내부 chargeback 가격 정책 제안/승인 기록을 저장한다. `PENDING_APPROVAL` 제안은 활성 정책을 바꾸지 않고, 승인 시 `APPROVED_APPLIED`로 전환되어 내부 계산 정책에만 적용된다.
+- `V53__chargeback_final_invoices.sql`은 승인된 chargeback invoice draft에서 생성한 final invoice와 `FINALIZED` -> `PAYMENT_REQUESTED` -> `PAID` payment 상태, 수동 payment reference를 저장한다. 외부 payment provider secret이나 provider response 원문은 저장하지 않는다.
 - repository의 `CREATE TABLE IF NOT EXISTS`는 local fallback이다.
 
 ## 17. 구현 순서

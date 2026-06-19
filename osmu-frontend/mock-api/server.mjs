@@ -60,6 +60,8 @@ function createInitialState() {
     chargebackNotificationDeliverySequence: 1,
     chargebackInvoiceDrafts: [],
     chargebackInvoiceDraftSequence: 1,
+    chargebackFinalInvoices: [],
+    chargebackFinalInvoiceSequence: 1,
   }
 
   initialState.objects.set('osmu-demo-media', [
@@ -473,6 +475,25 @@ function handleAdminRoute(request, response, path, jsonBody, url) {
   const invoiceDraftApproveMatch = path.match(/^\/admin\/billing\/chargeback-invoice-drafts\/(\d+)\/approve$/)
   if (request.method === 'POST' && invoiceDraftApproveMatch) {
     sendJson(response, 200, apiData(approveChargebackInvoiceDraft(Number(invoiceDraftApproveMatch[1]), url)))
+    return
+  }
+  const invoiceDraftFinalizeMatch = path.match(/^\/admin\/billing\/chargeback-invoice-drafts\/(\d+)\/finalize$/)
+  if (request.method === 'POST' && invoiceDraftFinalizeMatch) {
+    sendJson(response, 200, apiData(finalizeChargebackInvoiceDraft(Number(invoiceDraftFinalizeMatch[1]), url)))
+    return
+  }
+  if (request.method === 'GET' && path === '/admin/billing/chargeback-invoices') {
+    sendJson(response, 200, apiData(chargebackFinalInvoices(url)))
+    return
+  }
+  const finalInvoicePaymentRequestMatch = path.match(/^\/admin\/billing\/chargeback-invoices\/(\d+)\/payment-request$/)
+  if (request.method === 'POST' && finalInvoicePaymentRequestMatch) {
+    sendJson(response, 200, apiData(requestChargebackInvoicePayment(Number(finalInvoicePaymentRequestMatch[1]), url)))
+    return
+  }
+  const finalInvoicePaymentRecordMatch = path.match(/^\/admin\/billing\/chargeback-invoices\/(\d+)\/payment-record$/)
+  if (request.method === 'POST' && finalInvoicePaymentRecordMatch) {
+    sendJson(response, 200, apiData(recordChargebackInvoicePayment(Number(finalInvoicePaymentRecordMatch[1]), url)))
     return
   }
   if (request.method === 'GET' && path === '/admin/billing/chargeback-preview/export.csv') {
@@ -1367,6 +1388,154 @@ function approveChargebackInvoiceDraft(invoiceId, url) {
   }
 }
 
+function finalizeChargebackInvoiceDraft(invoiceId, url) {
+  const draft = state.chargebackInvoiceDrafts.find((item) => item.id === invoiceId)
+  const now = new Date().toISOString()
+  if (!draft || draft.status !== 'APPROVED_INTERNAL') {
+    return {
+      mode: 'FINAL_INVOICE',
+      status: 'INVALID_DRAFT',
+      paymentStatus: 'NOT_REQUESTED',
+      finalInvoice: false,
+      paymentRequest: false,
+      invoice: null,
+      generatedAt: now,
+      note: 'Only APPROVED_INTERNAL invoice drafts can become final invoices.',
+    }
+  }
+  const existing = state.chargebackFinalInvoices.find((invoice) => invoice.sourceDraftId === invoiceId)
+  if (existing) {
+    return {
+      mode: 'FINAL_INVOICE',
+      status: existing.status,
+      paymentStatus: existing.paymentStatus,
+      finalInvoice: true,
+      paymentRequest: existing.paymentRequest,
+      invoice: existing,
+      generatedAt: now,
+      note: 'Chargeback invoice draft already has a final invoice.',
+    }
+  }
+  const finalInvoice = {
+    ...draft,
+    id: state.chargebackFinalInvoiceSequence++,
+    sourceDraftId: draft.id,
+    invoiceNumber: String(draft.invoiceNumber || '').startsWith('OSMU-DRAFT-')
+      ? `OSMU-FINAL-${String(draft.invoiceNumber).slice('OSMU-DRAFT-'.length)}`
+      : `OSMU-FINAL-${draft.invoiceNumber || draft.id}`,
+    status: 'FINALIZED',
+    paymentStatus: 'NOT_REQUESTED',
+    finalInvoice: true,
+    paymentRequest: false,
+    finalizedBy: 'admin',
+    paymentRequestedBy: '',
+    paymentRecordedBy: '',
+    finalizationNote: String(url.searchParams.get('finalizationNote') || 'Final chargeback invoice created from approved internal draft.').trim().slice(0, 512),
+    paymentRequestNote: '',
+    paymentReference: '',
+    finalizedAt: now,
+    paymentRequestedAt: '',
+    paidAt: '',
+    updatedAt: now,
+    note: 'Final legal chargeback invoice created; payment request is not sent until explicitly requested.',
+  }
+  state.chargebackFinalInvoices.unshift(finalInvoice)
+  return {
+    mode: 'FINAL_INVOICE',
+    status: 'FINALIZED',
+    paymentStatus: 'NOT_REQUESTED',
+    finalInvoice: true,
+    paymentRequest: false,
+    invoice: finalInvoice,
+    generatedAt: now,
+    note: 'Final invoice created from approved internal chargeback draft; no payment request has been sent.',
+  }
+}
+
+function chargebackFinalInvoices(url) {
+  const limit = clampNumber(Number(url.searchParams.get('limit') || 50), 1, 200)
+  const status = String(url.searchParams.get('status') || '').trim().toUpperCase()
+  const invoices = (status
+    ? state.chargebackFinalInvoices.filter((invoice) => invoice.status === status)
+    : state.chargebackFinalInvoices).slice(0, limit)
+  return {
+    invoiceCount: invoices.length,
+    invoices,
+    generatedAt: new Date().toISOString(),
+  }
+}
+
+function requestChargebackInvoicePayment(invoiceId, url) {
+  const invoice = state.chargebackFinalInvoices.find((item) => item.id === invoiceId)
+  const now = new Date().toISOString()
+  if (!invoice || invoice.status !== 'FINALIZED') {
+    return {
+      mode: 'PAYMENT_REQUEST',
+      status: 'INVALID_INVOICE',
+      paymentStatus: invoice?.paymentStatus || 'NOT_REQUESTED',
+      finalInvoice: Boolean(invoice),
+      paymentRequest: false,
+      invoice: invoice || null,
+      generatedAt: now,
+      note: 'Only FINALIZED invoices can request payment.',
+    }
+  }
+  invoice.status = 'PAYMENT_REQUESTED'
+  invoice.paymentStatus = 'REQUESTED'
+  invoice.paymentRequest = true
+  invoice.paymentRequestedBy = 'admin'
+  invoice.paymentRequestNote = String(url.searchParams.get('paymentRequestNote') || 'Manual chargeback payment workflow update.').trim().slice(0, 512)
+  invoice.paymentRequestedAt = now
+  invoice.updatedAt = now
+  invoice.note = 'Final invoice payment request recorded for billing operations.'
+  return {
+    mode: 'PAYMENT_REQUEST',
+    status: 'PAYMENT_REQUESTED',
+    paymentStatus: 'REQUESTED',
+    finalInvoice: true,
+    paymentRequest: true,
+    invoice,
+    generatedAt: now,
+    note: 'Payment request recorded for the final chargeback invoice.',
+  }
+}
+
+function recordChargebackInvoicePayment(invoiceId, url) {
+  const invoice = state.chargebackFinalInvoices.find((item) => item.id === invoiceId)
+  const now = new Date().toISOString()
+  if (!invoice || invoice.status !== 'PAYMENT_REQUESTED') {
+    return {
+      mode: 'PAYMENT_RECORD',
+      status: 'INVALID_INVOICE',
+      paymentStatus: invoice?.paymentStatus || 'NOT_REQUESTED',
+      finalInvoice: Boolean(invoice),
+      paymentRequest: Boolean(invoice?.paymentRequest),
+      invoice: invoice || null,
+      generatedAt: now,
+      note: 'Only PAYMENT_REQUESTED invoices can be marked paid.',
+    }
+  }
+  invoice.status = 'PAID'
+  invoice.paymentStatus = 'PAID'
+  invoice.paymentRequest = true
+  invoice.paymentRecordedBy = 'admin'
+  invoice.paymentReference = String(url.searchParams.get('paymentReference') || `MANUAL-${now.slice(0, 10)}`).trim().slice(0, 512)
+  invoice.paymentRequestNote = String(url.searchParams.get('paymentNote') || invoice.paymentRequestNote || 'Manual chargeback payment workflow update.').trim().slice(0, 512)
+  invoice.paidAt = now
+  invoice.updatedAt = now
+  invoice.note = 'Final invoice payment recorded for billing operations.'
+  return {
+    mode: 'PAYMENT_RECORD',
+    status: 'PAID',
+    paymentStatus: 'PAID',
+    finalInvoice: true,
+    paymentRequest: true,
+    invoice,
+    generatedAt: now,
+    note: 'Payment record attached to the final chargeback invoice.',
+  }
+}
+
 function createBillingPricingPolicyProposal(payload = {}) {
   const now = new Date().toISOString()
   const proposedPolicy = saveBillingPricingPolicy(payload)
@@ -2253,6 +2422,33 @@ async function runSelfTest() {
     })).json()
     if (!approvedInvoiceDraft.data || approvedInvoiceDraft.data.status !== 'APPROVED_INTERNAL' || approvedInvoiceDraft.data.paymentRequest !== false) {
       throw new Error('chargeback invoice draft approval self-test failed')
+    }
+    const finalizedInvoice = await (await fetch(`${base}/admin/billing/chargeback-invoice-drafts/${listedInvoiceDrafts.data.invoices[0].id}/finalize?finalizationNote=self-test`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${login.data.accessToken}` },
+    })).json()
+    if (!finalizedInvoice.data || finalizedInvoice.data.status !== 'FINALIZED' || finalizedInvoice.data.paymentStatus !== 'NOT_REQUESTED' || finalizedInvoice.data.finalInvoice !== true) {
+      throw new Error('chargeback final invoice finalize self-test failed')
+    }
+    const listedFinalInvoices = await (await fetch(`${base}/admin/billing/chargeback-invoices?status=FINALIZED&limit=5`, {
+      headers: { Authorization: `Bearer ${login.data.accessToken}` },
+    })).json()
+    if (!listedFinalInvoices.data || listedFinalInvoices.data.invoiceCount < 1 || listedFinalInvoices.data.invoices?.[0]?.status !== 'FINALIZED') {
+      throw new Error('chargeback final invoice list self-test failed')
+    }
+    const requestedPayment = await (await fetch(`${base}/admin/billing/chargeback-invoices/${listedFinalInvoices.data.invoices[0].id}/payment-request?paymentRequestNote=self-test`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${login.data.accessToken}` },
+    })).json()
+    if (!requestedPayment.data || requestedPayment.data.status !== 'PAYMENT_REQUESTED' || requestedPayment.data.paymentStatus !== 'REQUESTED') {
+      throw new Error('chargeback final invoice payment request self-test failed')
+    }
+    const recordedPayment = await (await fetch(`${base}/admin/billing/chargeback-invoices/${listedFinalInvoices.data.invoices[0].id}/payment-record?paymentReference=PAY-SELF-TEST&paymentNote=self-test`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${login.data.accessToken}` },
+    })).json()
+    if (!recordedPayment.data || recordedPayment.data.status !== 'PAID' || recordedPayment.data.invoice?.paymentReference !== 'PAY-SELF-TEST') {
+      throw new Error('chargeback final invoice payment record self-test failed')
     }
     const bucket = await (await fetch(`${base}/buckets`, {
       method: 'POST',

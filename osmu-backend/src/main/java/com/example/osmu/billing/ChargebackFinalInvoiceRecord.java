@@ -1,0 +1,49 @@
+package com.example.osmu.billing;
+
+import java.math.BigDecimal;
+import java.time.OffsetDateTime;
+
+public record ChargebackFinalInvoiceRecord(
+        Long id,
+        long sourceDraftId,
+        String invoiceNumber,
+        String status,
+        String paymentStatus,
+        long organizationId,
+        String organizationName,
+        String currency,
+        OffsetDateTime from,
+        OffsetDateTime to,
+        OffsetDateTime previewGeneratedAt,
+        int eventScanLimit,
+        BigDecimal storageGbMonthRate,
+        BigDecimal ingressGbRate,
+        BigDecimal egressGbRate,
+        BigDecimal internalGbRate,
+        BigDecimal operationThousandRate,
+        long bucketCount,
+        long objectCount,
+        long usedBytes,
+        BigDecimal storageCost,
+        BigDecimal trafficCost,
+        BigDecimal operationCost,
+        BigDecimal estimatedTotalCost,
+        String requestedBy,
+        String approvedBy,
+        String finalizedBy,
+        String paymentRequestedBy,
+        String paymentRecordedBy,
+        String reason,
+        String approvalNote,
+        String finalizationNote,
+        String paymentRequestNote,
+        String paymentReference,
+        OffsetDateTime createdAt,
+        OffsetDateTime updatedAt,
+        OffsetDateTime approvedAt,
+        OffsetDateTime finalizedAt,
+        OffsetDateTime paymentRequestedAt,
+        OffsetDateTime paidAt,
+        String note
+) {
+}

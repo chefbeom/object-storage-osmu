@@ -1299,6 +1299,42 @@ export function approveChargebackInvoiceDraft(invoiceId, options = {}) {
   })
 }
 
+export function finalizeChargebackInvoiceDraft(invoiceId, options = {}) {
+  const query = new URLSearchParams()
+  appendQuery(query, 'finalizationNote', options.finalizationNote)
+  const suffix = query.toString() ? `?${query.toString()}` : ''
+  return request(`/admin/billing/chargeback-invoice-drafts/${encodeURIComponent(invoiceId)}/finalize${suffix}`, {
+    method: 'POST',
+  })
+}
+
+export function getChargebackFinalInvoices(options = {}) {
+  const query = new URLSearchParams()
+  appendQuery(query, 'status', options.status)
+  appendQuery(query, 'limit', options.limit)
+  const suffix = query.toString() ? `?${query.toString()}` : ''
+  return request(`/admin/billing/chargeback-invoices${suffix}`)
+}
+
+export function requestChargebackInvoicePayment(invoiceId, options = {}) {
+  const query = new URLSearchParams()
+  appendQuery(query, 'paymentRequestNote', options.paymentRequestNote)
+  const suffix = query.toString() ? `?${query.toString()}` : ''
+  return request(`/admin/billing/chargeback-invoices/${encodeURIComponent(invoiceId)}/payment-request${suffix}`, {
+    method: 'POST',
+  })
+}
+
+export function recordChargebackInvoicePayment(invoiceId, options = {}) {
+  const query = new URLSearchParams()
+  appendQuery(query, 'paymentReference', options.paymentReference)
+  appendQuery(query, 'paymentNote', options.paymentNote)
+  const suffix = query.toString() ? `?${query.toString()}` : ''
+  return request(`/admin/billing/chargeback-invoices/${encodeURIComponent(invoiceId)}/payment-record${suffix}`, {
+    method: 'POST',
+  })
+}
+
 export function createBillingPricingPolicyProposal(payload) {
   return request('/admin/billing/pricing-policy-proposals', {
     method: 'POST',

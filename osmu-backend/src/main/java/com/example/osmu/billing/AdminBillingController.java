@@ -288,7 +288,98 @@ public class AdminBillingController {
             HttpServletRequest request
     ) {
         AuthenticatedUser actor = authContext.currentUser(request);
-        return ApiResponse.of(chargebackPreviewService.approveInvoiceDraft(actor, invoiceId, approvalNote));
+        ChargebackInvoiceDraftApprovalResponse approved =
+                chargebackPreviewService.approveInvoiceDraft(actor, invoiceId, approvalNote);
+        auditLogService.record(
+                "CHARGEBACK_INVOICE_DRAFT_APPROVE",
+                actor.loginId(),
+                "CHARGEBACK_INVOICE_DRAFT",
+                String.valueOf(invoiceId),
+                "SUCCESS",
+                approvalNote == null || approvalNote.isBlank()
+                        ? "Chargeback invoice draft approved"
+                        : approvalNote.trim(),
+                request
+        );
+        return ApiResponse.of(approved);
+    }
+
+    @PostMapping("/chargeback-invoice-drafts/{invoiceId}/finalize")
+    public ApiResponse<ChargebackFinalInvoiceActionResponse> finalizeChargebackInvoiceDraft(
+            @PathVariable long invoiceId,
+            @RequestParam(name = "finalizationNote", required = false) String finalizationNote,
+            HttpServletRequest request
+    ) {
+        AuthenticatedUser actor = authContext.currentUser(request);
+        ChargebackFinalInvoiceActionResponse finalized =
+                chargebackPreviewService.finalizeInvoiceDraft(actor, invoiceId, finalizationNote);
+        auditLogService.record(
+                "CHARGEBACK_FINAL_INVOICE_CREATE",
+                actor.loginId(),
+                "CHARGEBACK_INVOICE_DRAFT",
+                String.valueOf(invoiceId),
+                "SUCCESS",
+                finalizationNote == null || finalizationNote.isBlank()
+                        ? "Chargeback final invoice created"
+                        : finalizationNote.trim(),
+                request
+        );
+        return ApiResponse.of(finalized);
+    }
+
+    @GetMapping("/chargeback-invoices")
+    public ApiResponse<ChargebackFinalInvoiceListResponse> chargebackFinalInvoices(
+            @RequestParam(name = "status", required = false) String status,
+            @RequestParam(name = "limit", required = false) Integer limit,
+            HttpServletRequest request
+    ) {
+        AuthenticatedUser actor = authContext.currentUser(request);
+        return ApiResponse.of(chargebackPreviewService.finalInvoices(actor, status, limit == null ? 50 : limit));
+    }
+
+    @PostMapping("/chargeback-invoices/{invoiceId}/payment-request")
+    public ApiResponse<ChargebackFinalInvoiceActionResponse> requestChargebackInvoicePayment(
+            @PathVariable long invoiceId,
+            @RequestParam(name = "paymentRequestNote", required = false) String paymentRequestNote,
+            HttpServletRequest request
+    ) {
+        AuthenticatedUser actor = authContext.currentUser(request);
+        ChargebackFinalInvoiceActionResponse payment =
+                chargebackPreviewService.requestFinalInvoicePayment(actor, invoiceId, paymentRequestNote);
+        auditLogService.record(
+                "CHARGEBACK_FINAL_INVOICE_PAYMENT_REQUEST",
+                actor.loginId(),
+                "CHARGEBACK_FINAL_INVOICE",
+                String.valueOf(invoiceId),
+                "SUCCESS",
+                paymentRequestNote == null || paymentRequestNote.isBlank()
+                        ? "Chargeback final invoice payment requested"
+                        : paymentRequestNote.trim(),
+                request
+        );
+        return ApiResponse.of(payment);
+    }
+
+    @PostMapping("/chargeback-invoices/{invoiceId}/payment-record")
+    public ApiResponse<ChargebackFinalInvoiceActionResponse> recordChargebackInvoicePayment(
+            @PathVariable long invoiceId,
+            @RequestParam(name = "paymentReference") String paymentReference,
+            @RequestParam(name = "paymentNote", required = false) String paymentNote,
+            HttpServletRequest request
+    ) {
+        AuthenticatedUser actor = authContext.currentUser(request);
+        ChargebackFinalInvoiceActionResponse paid =
+                chargebackPreviewService.recordFinalInvoicePayment(actor, invoiceId, paymentReference, paymentNote);
+        auditLogService.record(
+                "CHARGEBACK_FINAL_INVOICE_PAYMENT_RECORD",
+                actor.loginId(),
+                "CHARGEBACK_FINAL_INVOICE",
+                String.valueOf(invoiceId),
+                "SUCCESS",
+                paymentReference,
+                request
+        );
+        return ApiResponse.of(paid);
     }
 
     @GetMapping(value = "/chargeback-preview/export.csv", produces = "text/csv")

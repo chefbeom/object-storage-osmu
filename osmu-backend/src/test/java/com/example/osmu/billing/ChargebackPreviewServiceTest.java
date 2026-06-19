@@ -14,6 +14,7 @@ import com.example.osmu.organization.OrganizationRecord;
 import com.example.osmu.organization.repository.InMemoryOrganizationRepository;
 import com.example.osmu.billing.repository.InMemoryBillingPricingPolicyRepository;
 import com.example.osmu.billing.repository.InMemoryBillingPricingPolicyProposalRepository;
+import com.example.osmu.billing.repository.InMemoryChargebackFinalInvoiceRepository;
 import com.example.osmu.billing.repository.InMemoryChargebackInvoiceDraftRepository;
 import com.example.osmu.billing.repository.InMemoryChargebackNotificationDeliveryRepository;
 import java.math.BigDecimal;
@@ -31,6 +32,8 @@ class ChargebackPreviewServiceTest {
             new InMemoryChargebackNotificationDeliveryRepository();
     private final InMemoryChargebackInvoiceDraftRepository invoiceDraftRepository =
             new InMemoryChargebackInvoiceDraftRepository();
+    private final InMemoryChargebackFinalInvoiceRepository finalInvoiceRepository =
+            new InMemoryChargebackFinalInvoiceRepository();
     private final BillingPricingPolicyService pricingPolicyService =
             new BillingPricingPolicyService(
                     new InMemoryBillingPricingPolicyRepository(),
@@ -42,7 +45,8 @@ class ChargebackPreviewServiceTest {
             dataFlowEventRepository,
             pricingPolicyService,
             notificationDeliveryRepository,
-            invoiceDraftRepository
+            invoiceDraftRepository,
+            finalInvoiceRepository
     );
 
     @Test
@@ -332,6 +336,48 @@ class ChargebackPreviewServiceTest {
                 10
         );
         assertThat(approvedList.invoiceCount()).isEqualTo(1L);
+
+        ChargebackFinalInvoiceActionResponse finalized = service.finalizeInvoiceDraft(
+                new AuthenticatedUser(1L, "admin", "ADMIN", null),
+                draft.id(),
+                "final invoice ready"
+        );
+        assertThat(finalized.mode()).isEqualTo("FINAL_INVOICE");
+        assertThat(finalized.status()).isEqualTo("FINALIZED");
+        assertThat(finalized.paymentStatus()).isEqualTo("NOT_REQUESTED");
+        assertThat(finalized.finalInvoice()).isTrue();
+        assertThat(finalized.paymentRequest()).isFalse();
+        assertThat(finalized.invoice().invoiceNumber()).startsWith("OSMU-FINAL-");
+        assertThat(finalized.invoice().sourceDraftId()).isEqualTo(draft.id());
+        assertThat(finalized.invoice().finalizedBy()).isEqualTo("admin");
+
+        ChargebackFinalInvoiceListResponse finalInvoices = service.finalInvoices(
+                new AuthenticatedUser(1L, "admin", "ADMIN", null),
+                "FINALIZED",
+                10
+        );
+        assertThat(finalInvoices.invoiceCount()).isEqualTo(1L);
+
+        ChargebackFinalInvoiceActionResponse paymentRequested = service.requestFinalInvoicePayment(
+                new AuthenticatedUser(1L, "admin", "ADMIN", null),
+                finalized.invoice().id(),
+                "send payment request"
+        );
+        assertThat(paymentRequested.status()).isEqualTo("PAYMENT_REQUESTED");
+        assertThat(paymentRequested.paymentStatus()).isEqualTo("REQUESTED");
+        assertThat(paymentRequested.paymentRequest()).isTrue();
+        assertThat(paymentRequested.invoice().paymentRequestedBy()).isEqualTo("admin");
+
+        ChargebackFinalInvoiceActionResponse paid = service.recordFinalInvoicePayment(
+                new AuthenticatedUser(1L, "admin", "ADMIN", null),
+                finalized.invoice().id(),
+                "PAY-2026-0001",
+                "payment confirmed"
+        );
+        assertThat(paid.status()).isEqualTo("PAID");
+        assertThat(paid.paymentStatus()).isEqualTo("PAID");
+        assertThat(paid.invoice().paymentRecordedBy()).isEqualTo("admin");
+        assertThat(paid.invoice().paymentReference()).isEqualTo("PAY-2026-0001");
     }
 
     @Test
@@ -366,6 +412,15 @@ class ChargebackPreviewServiceTest {
                 new AuthenticatedUser(3L, "org-admin", "ORG_ADMIN", 1L),
                 new ChargebackPreviewRequest(null, null, null, null, null, null, null, null, 0),
                 "denied"
+        ))
+                .isInstanceOf(ApiException.class)
+                .extracting("code")
+                .isEqualTo(ApiErrorCode.AUTHORIZATION_FAILED);
+
+        assertThatThrownBy(() -> service.finalInvoices(
+                new AuthenticatedUser(3L, "org-admin", "ORG_ADMIN", 1L),
+                null,
+                10
         ))
                 .isInstanceOf(ApiException.class)
                 .extracting("code")

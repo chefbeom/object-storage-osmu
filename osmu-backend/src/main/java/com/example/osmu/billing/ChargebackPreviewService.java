@@ -1,6 +1,7 @@
 package com.example.osmu.billing;
 
 import com.example.osmu.auth.AuthenticatedUser;
+import com.example.osmu.billing.repository.ChargebackFinalInvoiceRepository;
 import com.example.osmu.billing.repository.ChargebackInvoiceDraftRepository;
 import com.example.osmu.billing.repository.ChargebackNotificationDeliveryRepository;
 import com.example.osmu.bucket.BucketRecord;
@@ -34,6 +35,7 @@ public class ChargebackPreviewService {
     private final BillingPricingPolicyService pricingPolicyService;
     private final ChargebackNotificationDeliveryRepository notificationDeliveryRepository;
     private final ChargebackInvoiceDraftRepository invoiceDraftRepository;
+    private final ChargebackFinalInvoiceRepository finalInvoiceRepository;
 
     public ChargebackPreviewService(
             OrganizationRepository organizationRepository,
@@ -41,7 +43,8 @@ public class ChargebackPreviewService {
             DataFlowEventRepository dataFlowEventRepository,
             BillingPricingPolicyService pricingPolicyService,
             ChargebackNotificationDeliveryRepository notificationDeliveryRepository,
-            ChargebackInvoiceDraftRepository invoiceDraftRepository
+            ChargebackInvoiceDraftRepository invoiceDraftRepository,
+            ChargebackFinalInvoiceRepository finalInvoiceRepository
     ) {
         this.organizationRepository = organizationRepository;
         this.bucketRepository = bucketRepository;
@@ -49,6 +52,7 @@ public class ChargebackPreviewService {
         this.pricingPolicyService = pricingPolicyService;
         this.notificationDeliveryRepository = notificationDeliveryRepository;
         this.invoiceDraftRepository = invoiceDraftRepository;
+        this.finalInvoiceRepository = finalInvoiceRepository;
     }
 
     public ChargebackPreviewResponse preview(AuthenticatedUser actor, ChargebackPreviewRequest request) {
@@ -311,6 +315,118 @@ public class ChargebackPreviewService {
         );
     }
 
+    public ChargebackFinalInvoiceActionResponse finalizeInvoiceDraft(
+            AuthenticatedUser actor,
+            long invoiceId,
+            String finalizationNote
+    ) {
+        requireAdmin(actor, "Chargeback final invoice creation requires ADMIN.");
+        ChargebackInvoiceDraftRecord draft = invoiceDraftRepository.findById(invoiceId)
+                .orElseThrow(() -> new ApiException(ApiErrorCode.NOT_FOUND, "Chargeback invoice draft not found."));
+        if (!"APPROVED_INTERNAL".equals(draft.status())) {
+            throw new ApiException(ApiErrorCode.VALIDATION_ERROR, "Only APPROVED_INTERNAL invoice drafts can become final invoices.");
+        }
+        if (finalInvoiceRepository.findBySourceDraftId(invoiceId).isPresent()) {
+            throw new ApiException(ApiErrorCode.VALIDATION_ERROR, "Chargeback invoice draft already has a final invoice.");
+        }
+        OffsetDateTime now = OffsetDateTime.now();
+        ChargebackFinalInvoiceRecord saved = finalInvoiceRepository.save(finalInvoiceRecord(
+                draft,
+                actor.loginId(),
+                normalizeFinalizationNote(finalizationNote),
+                now
+        ));
+        return new ChargebackFinalInvoiceActionResponse(
+                "FINAL_INVOICE",
+                "FINALIZED",
+                "NOT_REQUESTED",
+                true,
+                false,
+                finalInvoiceResponse(saved),
+                OffsetDateTime.now(),
+                "Final invoice created from approved internal chargeback draft; no payment request has been sent."
+        );
+    }
+
+    public ChargebackFinalInvoiceListResponse finalInvoices(
+            AuthenticatedUser actor,
+            String status,
+            int limit
+    ) {
+        requireAdmin(actor, "Chargeback final invoice access requires ADMIN.");
+        String normalizedStatus = normalizeFinalInvoiceStatusFilter(status);
+        List<ChargebackFinalInvoiceRecord> records = normalizedStatus.isBlank()
+                ? finalInvoiceRepository.findAll(limit)
+                : finalInvoiceRepository.findByStatus(normalizedStatus, limit);
+        return new ChargebackFinalInvoiceListResponse(
+                records.size(),
+                records.stream().map(ChargebackPreviewService::finalInvoiceResponse).toList(),
+                OffsetDateTime.now()
+        );
+    }
+
+    public ChargebackFinalInvoiceActionResponse requestFinalInvoicePayment(
+            AuthenticatedUser actor,
+            long invoiceId,
+            String paymentRequestNote
+    ) {
+        requireAdmin(actor, "Chargeback payment request requires ADMIN.");
+        ChargebackFinalInvoiceRecord current = finalInvoiceRepository.findById(invoiceId)
+                .orElseThrow(() -> new ApiException(ApiErrorCode.NOT_FOUND, "Chargeback final invoice not found."));
+        if (!"FINALIZED".equals(current.status())) {
+            throw new ApiException(ApiErrorCode.VALIDATION_ERROR, "Only FINALIZED invoices can request payment.");
+        }
+        ChargebackFinalInvoiceRecord updated = finalInvoiceRepository.updatePaymentRequest(
+                invoiceId,
+                "PAYMENT_REQUESTED",
+                "REQUESTED",
+                actor.loginId(),
+                normalizePaymentRequestNote(paymentRequestNote)
+        );
+        return new ChargebackFinalInvoiceActionResponse(
+                "PAYMENT_REQUEST",
+                "PAYMENT_REQUESTED",
+                "REQUESTED",
+                true,
+                true,
+                finalInvoiceResponse(updated),
+                OffsetDateTime.now(),
+                "Payment request recorded for the final chargeback invoice."
+        );
+    }
+
+    public ChargebackFinalInvoiceActionResponse recordFinalInvoicePayment(
+            AuthenticatedUser actor,
+            long invoiceId,
+            String paymentReference,
+            String paymentNote
+    ) {
+        requireAdmin(actor, "Chargeback payment record requires ADMIN.");
+        ChargebackFinalInvoiceRecord current = finalInvoiceRepository.findById(invoiceId)
+                .orElseThrow(() -> new ApiException(ApiErrorCode.NOT_FOUND, "Chargeback final invoice not found."));
+        if (!"PAYMENT_REQUESTED".equals(current.status())) {
+            throw new ApiException(ApiErrorCode.VALIDATION_ERROR, "Only PAYMENT_REQUESTED invoices can be marked paid.");
+        }
+        ChargebackFinalInvoiceRecord updated = finalInvoiceRepository.updatePaymentRecord(
+                invoiceId,
+                "PAID",
+                "PAID",
+                actor.loginId(),
+                normalizePaymentReference(paymentReference),
+                normalizePaymentRequestNote(paymentNote)
+        );
+        return new ChargebackFinalInvoiceActionResponse(
+                "PAYMENT_RECORD",
+                "PAID",
+                "PAID",
+                true,
+                true,
+                finalInvoiceResponse(updated),
+                OffsetDateTime.now(),
+                "Payment record attached to the final chargeback invoice."
+        );
+    }
+
     public ChargebackAlertResponse alerts(AuthenticatedUser actor, ChargebackPreviewRequest request) {
         ChargebackPreviewResponse preview = preview(actor, request);
         BillingPricingPolicy pricingPolicy = pricingPolicyService.current();
@@ -566,6 +682,39 @@ public class ChargebackPreviewService {
         return note;
     }
 
+    private static String normalizeFinalizationNote(String value) {
+        if (value == null || value.isBlank()) {
+            return "Final chargeback invoice created from approved internal draft.";
+        }
+        String note = value.trim();
+        if (note.length() > 512 || note.contains("\r") || note.contains("\n")) {
+            throw new ApiException(ApiErrorCode.VALIDATION_ERROR, "finalizationNote must be a single-line value up to 512 characters.");
+        }
+        return note;
+    }
+
+    private static String normalizePaymentRequestNote(String value) {
+        if (value == null || value.isBlank()) {
+            return "Manual chargeback payment workflow update.";
+        }
+        String note = value.trim();
+        if (note.length() > 512 || note.contains("\r") || note.contains("\n")) {
+            throw new ApiException(ApiErrorCode.VALIDATION_ERROR, "payment note must be a single-line value up to 512 characters.");
+        }
+        return note;
+    }
+
+    private static String normalizePaymentReference(String value) {
+        if (value == null || value.isBlank()) {
+            throw new ApiException(ApiErrorCode.VALIDATION_ERROR, "paymentReference is required.");
+        }
+        String reference = value.trim();
+        if (reference.length() > 512 || reference.contains("\r") || reference.contains("\n")) {
+            throw new ApiException(ApiErrorCode.VALIDATION_ERROR, "paymentReference must be a single-line value up to 512 characters.");
+        }
+        return reference;
+    }
+
     private static String normalizeInvoiceStatusFilter(String value) {
         if (value == null || value.isBlank()) {
             return "";
@@ -573,6 +722,17 @@ public class ChargebackPreviewService {
         String status = value.trim().toUpperCase(Locale.ROOT);
         if (!List.of("DRAFT_REVIEW", "APPROVED_INTERNAL").contains(status)) {
             throw new ApiException(ApiErrorCode.VALIDATION_ERROR, "status must be DRAFT_REVIEW or APPROVED_INTERNAL.");
+        }
+        return status;
+    }
+
+    private static String normalizeFinalInvoiceStatusFilter(String value) {
+        if (value == null || value.isBlank()) {
+            return "";
+        }
+        String status = value.trim().toUpperCase(Locale.ROOT);
+        if (!List.of("FINALIZED", "PAYMENT_REQUESTED", "PAID").contains(status)) {
+            throw new ApiException(ApiErrorCode.VALIDATION_ERROR, "status must be FINALIZED, PAYMENT_REQUESTED, or PAID.");
         }
         return status;
     }
@@ -654,6 +814,114 @@ public class ChargebackPreviewService {
                 record.createdAt(),
                 record.updatedAt(),
                 record.approvedAt(),
+                record.note()
+        );
+    }
+
+    private static ChargebackFinalInvoiceRecord finalInvoiceRecord(
+            ChargebackInvoiceDraftRecord draft,
+            String finalizedBy,
+            String finalizationNote,
+            OffsetDateTime now
+    ) {
+        return new ChargebackFinalInvoiceRecord(
+                null,
+                draft.id() == null ? 0L : draft.id(),
+                finalInvoiceNumber(draft),
+                "FINALIZED",
+                "NOT_REQUESTED",
+                draft.organizationId(),
+                draft.organizationName(),
+                draft.currency(),
+                draft.from(),
+                draft.to(),
+                draft.previewGeneratedAt(),
+                draft.eventScanLimit(),
+                money(draft.storageGbMonthRate()),
+                money(draft.ingressGbRate()),
+                money(draft.egressGbRate()),
+                money(draft.internalGbRate()),
+                money(draft.operationThousandRate()),
+                draft.bucketCount(),
+                draft.objectCount(),
+                draft.usedBytes(),
+                money(draft.storageCost()),
+                money(draft.trafficCost()),
+                money(draft.operationCost()),
+                money(draft.estimatedTotalCost()),
+                draft.requestedBy(),
+                draft.approvedBy(),
+                finalizedBy,
+                null,
+                null,
+                draft.reason(),
+                draft.approvalNote(),
+                finalizationNote,
+                null,
+                null,
+                now,
+                now,
+                draft.approvedAt(),
+                now,
+                null,
+                null,
+                "Final legal chargeback invoice created; payment request is not sent until explicitly requested."
+        );
+    }
+
+    private static String finalInvoiceNumber(ChargebackInvoiceDraftRecord draft) {
+        String source = draft.invoiceNumber() == null || draft.invoiceNumber().isBlank()
+                ? "OSMU-DRAFT-" + (draft.id() == null ? "0" : draft.id())
+                : draft.invoiceNumber();
+        return source.startsWith("OSMU-DRAFT-")
+                ? "OSMU-FINAL-" + source.substring("OSMU-DRAFT-".length())
+                : "OSMU-FINAL-" + source;
+    }
+
+    private static ChargebackFinalInvoiceResponse finalInvoiceResponse(ChargebackFinalInvoiceRecord record) {
+        return new ChargebackFinalInvoiceResponse(
+                record.id() == null ? 0L : record.id(),
+                record.sourceDraftId(),
+                record.invoiceNumber(),
+                record.status(),
+                record.paymentStatus(),
+                true,
+                !"NOT_REQUESTED".equals(record.paymentStatus()),
+                record.organizationId(),
+                record.organizationName(),
+                record.currency(),
+                record.from(),
+                record.to(),
+                record.previewGeneratedAt(),
+                record.eventScanLimit(),
+                money(record.storageGbMonthRate()),
+                money(record.ingressGbRate()),
+                money(record.egressGbRate()),
+                money(record.internalGbRate()),
+                money(record.operationThousandRate()),
+                record.bucketCount(),
+                record.objectCount(),
+                record.usedBytes(),
+                money(record.storageCost()),
+                money(record.trafficCost()),
+                money(record.operationCost()),
+                money(record.estimatedTotalCost()),
+                record.requestedBy(),
+                record.approvedBy(),
+                record.finalizedBy(),
+                record.paymentRequestedBy(),
+                record.paymentRecordedBy(),
+                record.reason(),
+                record.approvalNote(),
+                record.finalizationNote(),
+                record.paymentRequestNote(),
+                record.paymentReference(),
+                record.createdAt(),
+                record.updatedAt(),
+                record.approvedAt(),
+                record.finalizedAt(),
+                record.paymentRequestedAt(),
+                record.paidAt(),
                 record.note()
         );
     }
