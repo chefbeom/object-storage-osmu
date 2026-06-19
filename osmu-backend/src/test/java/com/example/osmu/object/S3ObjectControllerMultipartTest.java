@@ -487,6 +487,19 @@ class S3ObjectControllerMultipartTest {
         assertThatThrownBy(() -> controller.uploadMultipartPart("bucket", "videos/input.mp4", 1, "upload-1", request))
                 .isInstanceOfSatisfying(ApiException.class, exception ->
                         assertThat(exception.code()).isEqualTo(ApiErrorCode.BAD_DIGEST));
+
+        MockHttpServletRequest duplicateRequest = request("PUT");
+        duplicateRequest.setContent("hello".getBytes(StandardCharsets.UTF_8));
+        duplicateRequest.addHeader("x-amz-sdk-checksum-algorithm", "SHA256");
+        duplicateRequest.addHeader("x-amz-sdk-checksum-algorithm", "CRC32C");
+        when(s3RequestAuthService.currentUser(duplicateRequest, "bucket", "WRITE")).thenReturn(user);
+
+        assertThatThrownBy(() -> controller.uploadMultipartPart("bucket", "videos/input.mp4", 1, "upload-1", duplicateRequest))
+                .isInstanceOfSatisfying(ApiException.class, exception -> {
+                    assertThat(exception.code()).isEqualTo(ApiErrorCode.VALIDATION_ERROR);
+                    assertThat(exception.getMessage()).isEqualTo("x-amz-sdk-checksum-algorithm must specify one checksum algorithm.");
+                });
+
         verify(objectService, never()).uploadMultipartPart(
                 eq("bucket"),
                 eq("videos/input.mp4"),

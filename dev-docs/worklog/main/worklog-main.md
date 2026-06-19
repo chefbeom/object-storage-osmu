@@ -17403,6 +17403,35 @@ feat/bucket-management
 - 후속:
   - 남은 큰 축은 broader multipart checksum exact AWS edge parity와 live Kubernetes/security evidence다.
 
+### 2026-06-19 - S3 checksum algorithm 중복 헤더 회귀 검증
+- 작업 시간:
+  - 시작: 2026-06-19 KST
+  - 종료: 2026-06-19 KST
+- 사용자 명령:
+  - active goal `dev-docs` 기준으로 계속 개발 진행.
+- 요청 분석:
+  - 직전 단일 헤더 helper가 CopyObject, raw object PUT SDK checksum, multipart UploadPart SDK checksum 경로에도 적용되었다.
+  - 해당 경로는 기존 happy/unsupported/mismatch 테스트가 있었지만, 동일 checksum algorithm 헤더가 여러 값으로 들어오는 회귀 케이스는 명시적으로 고정되어 있지 않았다.
+- 수행:
+  - CopyObject `x-amz-checksum-algorithm` duplicate value가 S3 XML `InvalidRequest`로 거절되는 통합 테스트 assertion을 추가했다.
+  - raw object `PUT`의 duplicate `x-amz-sdk-checksum-algorithm` 거절 assertion을 추가했다.
+  - multipart UploadPart의 duplicate `x-amz-sdk-checksum-algorithm` 거절 assertion을 추가했다.
+  - `PRODUCT_REQUIREMENTS.md`, `api-spec.md`, `backend-design.md`, `s3-compatibility.md`, `test-cases.md`, `feature-inventory.md`에 duplicate checksum algorithm header rejection 계약을 반영했다.
+- 수정한 파일:
+  - `osmu-backend/src/test/java/com/example/osmu/object/S3ObjectControllerTest.java`
+  - `osmu-backend/src/test/java/com/example/osmu/object/S3ObjectControllerMultipartTest.java`
+  - `dev-docs/PRODUCT_REQUIREMENTS.md`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/backend-design.md`
+  - `dev-docs/s3-compatibility.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/feature-inventory.md`
+  - `dev-docs/worklog/main/worklog-main.md`
+- 검증:
+  - `$env:JAVA_HOME='C:\jdk-17'; $env:Path="$env:JAVA_HOME\bin;$env:Path"; .\gradlew.bat test --no-daemon --tests com.example.osmu.object.S3ObjectControllerTest.copyObjectCopiesAndReplacesUserMetadata --tests com.example.osmu.object.S3ObjectControllerTest.accessKeyCanUploadWithSdkChecksumAlgorithm --tests com.example.osmu.object.S3ObjectControllerMultipartTest.uploadMultipartPartRejectsSdkChecksumAlgorithmMismatchWithInitiate --tests com.example.osmu.common.error.S3ErrorCodeMapperTest`: 통과.
+- 후속:
+  - 남은 큰 축은 broader multipart checksum exact AWS edge parity와 live Kubernetes/security evidence다.
+
 ### 2026-06-19 - S3 CompleteMultipartUpload PartNumber/ETag 중복 필드 거절
 - 작업 시간:
   - 시작: 2026-06-19 KST

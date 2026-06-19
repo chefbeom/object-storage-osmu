@@ -226,9 +226,9 @@
 
 - Feature: S3 object user metadata, CopyObject metadata directive, and CopyObject checksum algorithm handling.
 - Preconditions: Target bucket exists. Active access key has `READ` and `WRITE` scope.
-- Input: `PUT /api/s3/{bucketName}/{objectKey}` with `x-amz-meta-*` and `x-amz-checksum-sha1`, then CopyObject with default metadata directive, `x-amz-checksum-algorithm: SHA256`, unsupported `SHA512`, and `x-amz-metadata-directive: REPLACE`.
-- Steps: Upload a source object with two `x-amz-meta-*` headers and SHA1 checksum, verify source `HEAD`, copy it without a metadata directive, verify copied `HEAD`, copy it with checksum algorithm override, reject an unsupported checksum algorithm, then copy with `REPLACE`, a new `Content-Type`, and a replacement `x-amz-meta-*` header.
-- Expected: Source and default-copy targets return stored user metadata/checksum on `HEAD`. CopyObject default `COPY` preserves source user metadata and checksum metadata. `x-amz-checksum-algorithm: SHA256` stores and returns the recalculated SHA256 checksum; unsupported `SHA512` returns S3 XML `InvalidRequest`. `REPLACE` stores only request user metadata and the request `Content-Type`.
+- Input: `PUT /api/s3/{bucketName}/{objectKey}` with `x-amz-meta-*` and `x-amz-checksum-sha1`, then CopyObject with default metadata directive, `x-amz-checksum-algorithm: SHA256`, unsupported `SHA512`, duplicate checksum algorithm values, and `x-amz-metadata-directive: REPLACE`.
+- Steps: Upload a source object with two `x-amz-meta-*` headers and SHA1 checksum, verify source `HEAD`, copy it without a metadata directive, verify copied `HEAD`, copy it with checksum algorithm override, reject unsupported and duplicate checksum algorithms, then copy with `REPLACE`, a new `Content-Type`, and a replacement `x-amz-meta-*` header.
+- Expected: Source and default-copy targets return stored user metadata/checksum on `HEAD`. CopyObject default `COPY` preserves source user metadata and checksum metadata. `x-amz-checksum-algorithm: SHA256` stores and returns the recalculated SHA256 checksum; duplicate or unsupported checksum algorithms return S3 XML `InvalidRequest`. `REPLACE` stores only request user metadata and the request `Content-Type`.
 - Priority: P1
 - Automated: `S3ObjectControllerTest.copyObjectCopiesAndReplacesUserMetadata`
 
@@ -358,9 +358,9 @@
 
 - Feature: S3 object SDK checksum algorithm auto compute.
 - Preconditions: Target bucket exists. Active access key has `READ` and `WRITE` scope.
-- Input: `PUT /api/s3/{bucketName}/{objectKey}` with `x-amz-sdk-checksum-algorithm: SHA256` and no explicit `x-amz-checksum-*` value header.
-- Steps: Upload an object with SDK checksum algorithm, verify upload response/HEAD/list checksum exposure, then reject a request where the SDK checksum algorithm conflicts with an explicit checksum value header and reject an unsupported SDK checksum algorithm.
-- Expected: The backend computes and stores the SHA256 checksum while streaming the object body, returns `x-amz-checksum-sha256`, exposes `ChecksumAlgorithm=SHA256` in list XML, returns `BadDigest` for mismatched SDK/value header shape, and returns `InvalidRequest` for unsupported SDK algorithm names.
+- Input: `PUT /api/s3/{bucketName}/{objectKey}` with single or duplicate `x-amz-sdk-checksum-algorithm` values and no explicit `x-amz-checksum-*` value header.
+- Steps: Upload an object with SDK checksum algorithm, verify upload response/HEAD/list checksum exposure, then reject a request where the SDK checksum algorithm conflicts with an explicit checksum value header and reject unsupported or duplicate SDK checksum algorithms.
+- Expected: The backend computes and stores the SHA256 checksum while streaming the object body, returns `x-amz-checksum-sha256`, exposes `ChecksumAlgorithm=SHA256` in list XML, returns `BadDigest` for mismatched SDK/value header shape, and returns `InvalidRequest` for duplicate or unsupported SDK algorithm names.
 - Priority: P1
 - Automated: `S3ObjectControllerTest.accessKeyCanUploadWithSdkChecksumAlgorithm`, `scripts/verify-s3-client-smoke.ps1` when host AWS CLI, Python+boto3, Node.js with `@aws-sdk/client-s3`, or AWS SDK Java v2 classpath via `OSMU_AWS_SDK_JAVA_CLASSPATH` is available.
 
@@ -378,9 +378,9 @@
 
 - Feature: S3 multipart UploadPart checksum auto compute and persistence.
 - Preconditions: Target bucket exists. Active access key has `WRITE` scope. Multipart upload session exists.
-- Input: `PUT /api/s3/{bucketName}/{objectKey}?partNumber={n}&uploadId={uploadId}` after initiate with `x-amz-checksum-algorithm: CRC32C`, with no explicit part checksum header, and a second request with mismatched `x-amz-sdk-checksum-algorithm`.
-- Steps: Initiate with CRC32C/COMPOSITE, upload a part without explicit checksum so the backend computes and stores CRC32C, list parts, complete with XML that omits per-part checksum elements, then repeat with `x-amz-sdk-checksum-algorithm: SHA256` against the CRC32C session.
-- Expected: UploadPart returns `ETag` plus `x-amz-checksum-crc32c`, the checksum is persisted by upload id and part number, ListParts emits `ChecksumCRC32C`, CompleteMultipartUpload can use the stored checksum when XML omits it, and mismatched SDK/initiate algorithms return S3 XML `BadDigest` before storage part upload.
+- Input: `PUT /api/s3/{bucketName}/{objectKey}?partNumber={n}&uploadId={uploadId}` after initiate with `x-amz-checksum-algorithm: CRC32C`, with no explicit part checksum header, and additional requests with mismatched or duplicate `x-amz-sdk-checksum-algorithm`.
+- Steps: Initiate with CRC32C/COMPOSITE, upload a part without explicit checksum so the backend computes and stores CRC32C, list parts, complete with XML that omits per-part checksum elements, then repeat with `x-amz-sdk-checksum-algorithm: SHA256` and duplicate SDK algorithm values against the CRC32C session.
+- Expected: UploadPart returns `ETag` plus `x-amz-checksum-crc32c`, the checksum is persisted by upload id and part number, ListParts emits `ChecksumCRC32C`, CompleteMultipartUpload can use the stored checksum when XML omits it, duplicate SDK algorithm values return S3 XML `InvalidRequest`, and mismatched SDK/initiate algorithms return S3 XML `BadDigest` before storage part upload.
 - Priority: P1
 - Automated: `S3ObjectControllerMultipartTest.uploadMultipartPartComputesAndStoresInitiatedChecksum`, `S3ObjectControllerMultipartTest.uploadMultipartPartRejectsSdkChecksumAlgorithmMismatchWithInitiate`, `S3ObjectControllerMultipartTest.completeMultipartUploadAllowsCompositeHeaderWithoutXmlPartChecksums`, `S3ObjectControllerMultipartTest.listAndAbortMultipartUploadUseS3QueryAlias`, `ObjectServiceMultipartRefreshTest.s3MultipartCompleteUsesStoredPartChecksumsWhenXmlOmitsThem`, `ObjectServiceMultipartRefreshTest.completeMultipartUploadRejectsRequestedChecksumTypeWhenShapeMissing`, `ObjectServiceMultipartRefreshTest.listMultipartUploadPartsReturnsStoredPartChecksums`, `ObjectServiceMultipartRefreshTest.recordMultipartUploadPartChecksumsRejectsMismatchedInitiateAlgorithm`, `scripts/verify-s3-client-smoke.ps1`, `scripts/verify-docker-integration.ps1`
 

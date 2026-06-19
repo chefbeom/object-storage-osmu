@@ -525,6 +525,14 @@ class S3ObjectControllerTest {
                 .andExpect(status().isBadRequest())
                 .andExpect(content().string(containsString("<Code>InvalidRequest</Code>")));
 
+        mockMvc.perform(put("/api/s3/{bucketName}/docs/copied-duplicate-checksum.txt", bucketName)
+                        .header("X-OSMU-Access-Key", credentials.accessKey())
+                        .header("X-OSMU-Secret-Key", credentials.secretKey())
+                        .header("x-amz-copy-source", "/" + bucketName + "/docs/source-metadata.txt")
+                        .header("x-amz-checksum-algorithm", "SHA256", "CRC32C"))
+                .andExpect(status().isBadRequest())
+                .andExpect(content().string(containsString("<Code>InvalidRequest</Code>")));
+
         mockMvc.perform(put("/api/s3/{bucketName}/docs/replaced-metadata.txt", bucketName)
                         .header("X-OSMU-Access-Key", credentials.accessKey())
                         .header("X-OSMU-Secret-Key", credentials.secretKey())
@@ -639,6 +647,16 @@ class S3ObjectControllerTest {
                         .header("X-OSMU-Access-Key", credentials.accessKey())
                         .header("X-OSMU-Secret-Key", credentials.secretKey())
                         .header("x-amz-sdk-checksum-algorithm", "SHA512")
+                        .contentType(MediaType.TEXT_PLAIN)
+                        .content(body))
+                .andExpect(status().isBadRequest())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_XML))
+                .andExpect(content().string(containsString("<Code>InvalidRequest</Code>")));
+
+        mockMvc.perform(put("/api/s3/{bucketName}/docs/sdk-checksum-duplicate.txt", bucketName)
+                        .header("X-OSMU-Access-Key", credentials.accessKey())
+                        .header("X-OSMU-Secret-Key", credentials.secretKey())
+                        .header("x-amz-sdk-checksum-algorithm", "SHA256", "CRC32C")
                         .contentType(MediaType.TEXT_PLAIN)
                         .content(body))
                 .andExpect(status().isBadRequest())
