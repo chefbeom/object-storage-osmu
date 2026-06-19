@@ -6,6 +6,11 @@ import org.junit.jupiter.api.Test;
 
 class S3ErrorCodeMapperTest {
 
+    private static final String BUCKET_ALREADY_OWNED_BY_YOU_MESSAGE = "The bucket you tried to create already exists, and you own it. "
+            + "Amazon S3 returns this error in all AWS Regions except in the North Virginia Region. "
+            + "For legacy compatibility, if you re-create an existing bucket that you already own "
+            + "in the North Virginia Region, Amazon S3 returns 200 OK and resets the bucket access control lists (ACLs).";
+
     @Test
     void mapsApiErrorsToS3XmlErrorCodes() {
         assertThat(S3ErrorCodeMapper.codeFor(ApiErrorCode.AUTHENTICATION_REQUIRED, "expired")).isEqualTo("AccessDenied");
@@ -66,7 +71,7 @@ class S3ErrorCodeMapperTest {
         assertThat(S3ErrorCodeMapper.messageFor("InvalidBucketName", "Invalid S3 bucket name."))
                 .isEqualTo("The specified bucket is not valid.");
         assertThat(S3ErrorCodeMapper.messageFor("BucketAlreadyOwnedByYou", "Bucket already owned by you."))
-                .isEqualTo("Your previous request to create the named bucket succeeded and you already own it.");
+                .isEqualTo(BUCKET_ALREADY_OWNED_BY_YOU_MESSAGE);
         assertThat(S3ErrorCodeMapper.messageFor("BucketAlreadyExists", "Bucket already exists."))
                 .isEqualTo("The requested bucket name is not available. "
                         + "The bucket namespace is shared by all users of the system. "

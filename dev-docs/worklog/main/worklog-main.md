@@ -16973,3 +16973,26 @@ feat/bucket-management
 - 후속:
   - UploadPart가 initiate negotiation algorithm을 자동 계산/저장하는 AWS parity는 아직 남아 있다.
   - CompleteMultipartUpload response의 checksum type/algorithm propagation을 AWS와 더 정확히 맞추는 작업이 남아 있다.
+
+### 2026-06-19 - S3 BucketAlreadyOwnedByYou 메시지 정규화
+
+- 작업 시간:
+  - 시작: 2026-06-19 KST
+  - 종료: 2026-06-19 KST
+- 사용자 명령:
+  - 승인 상태 확인 후 active goal `dev-docs` 기준으로 다음 구현 진행.
+- 요청 분석:
+  - AWS S3 API Error 문서의 `BucketAlreadyOwnedByYou` 설명이 현재 OSMU의 짧은 legacy 문구와 달라 S3 XML bucket duplicate owner 응답의 메시지 parity를 더 맞출 수 있다고 판단했다.
+  - 기존 code/status 매핑은 이미 `409 BucketAlreadyOwnedByYou`로 동작하므로 message normalization만 좁게 변경한다.
+- 실행:
+  - `S3ErrorCodeMapper.messageFor("BucketAlreadyOwnedByYou", ...)`가 현재 AWS S3 API Error 문서 설명 기반 메시지를 반환하도록 수정했다.
+  - mapper 단위 테스트와 S3-style CreateBucket duplicate owner 컨트롤러 테스트의 기대 XML 메시지를 갱신했다.
+- 수정한 파일:
+  - `osmu-backend/src/main/java/com/example/osmu/common/error/S3ErrorCodeMapper.java`
+  - `osmu-backend/src/test/java/com/example/osmu/common/error/S3ErrorCodeMapperTest.java`
+  - `osmu-backend/src/test/java/com/example/osmu/object/S3ObjectControllerTest.java`
+  - `dev-docs/worklog/main/worklog-main.md`
+- 검증:
+  - `$env:JAVA_HOME='C:\jdk-17'; .\gradlew.bat test --no-daemon --tests com.example.osmu.common.error.S3ErrorCodeMapperTest --tests com.example.osmu.object.S3ObjectControllerTest.createBucketReturnsS3DuplicateBucketCodes`: 통과.
+- 후속:
+  - 큰 축은 여전히 live Kubernetes/security evidence 수집과 S3 multipart checksum 세부 parity 확장이다.
