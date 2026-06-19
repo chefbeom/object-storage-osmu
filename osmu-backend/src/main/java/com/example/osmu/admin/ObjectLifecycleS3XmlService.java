@@ -24,6 +24,8 @@ import org.w3c.dom.NodeList;
 public class ObjectLifecycleS3XmlService {
 
     private static final int DEFAULT_BATCH_SIZE = 100;
+    private static final int MAX_RULE_COUNT = 1000;
+    private static final int MAX_RULE_ID_LENGTH = 255;
     private static final int MAX_TAG_COUNT = 10;
     private static final int MAX_TAG_KEY_LENGTH = 128;
     private static final int MAX_TAG_VALUE_LENGTH = 256;
@@ -70,6 +72,9 @@ public class ObjectLifecycleS3XmlService {
         if (ruleElements.isEmpty()) {
             throw new ApiException(ApiErrorCode.VALIDATION_ERROR, "Lifecycle XML must contain at least one Rule.");
         }
+        if (ruleElements.size() > MAX_RULE_COUNT) {
+            throw new ApiException(ApiErrorCode.VALIDATION_ERROR, "Lifecycle configuration can contain at most 1000 rules.");
+        }
         List<ObjectLifecycleRule> rules = new ArrayList<>();
         int index = 1;
         for (Element ruleElement : ruleElements) {
@@ -83,6 +88,9 @@ public class ObjectLifecycleS3XmlService {
         String name = textOfFirstChild(ruleElement, "ID");
         if (name.isBlank()) {
             name = "imported-lifecycle-rule-" + index;
+        }
+        if (name.length() > MAX_RULE_ID_LENGTH) {
+            throw new ApiException(ApiErrorCode.VALIDATION_ERROR, "Lifecycle rule ID can be at most 255 characters.");
         }
         boolean enabled = parseStatus(ruleElement);
         ParsedFilter filter = parseFilter(ruleElement);

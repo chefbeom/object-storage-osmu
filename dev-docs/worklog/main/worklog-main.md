@@ -17226,3 +17226,33 @@ feat/bucket-management
   - `$env:JAVA_HOME='C:\jdk-17'; .\gradlew.bat test --no-daemon --tests com.example.osmu.admin.AdminObjectRetentionControllerTest.adminCanExportAndImportS3LifecycleXml`: 통과.
 - 후속:
   - 남은 lifecycle schema 세부 검증은 XML child ordering/limit parity와 broader S3 checksum/client-option edge parity다.
+
+### 2026-06-19 - S3 Lifecycle Rule limit 검증
+- 작업 시간:
+  - 시작: 2026-06-19 KST
+  - 종료: 2026-06-19 KST
+- 사용한 명령:
+  - active goal `dev-docs` 기준으로 계속 개발 진행.
+- 요청 분석:
+  - AWS S3 PutBucketLifecycleConfiguration 문서는 lifecycle configuration이 최대 1,000개 `Rule`을 가질 수 있다고 설명한다.
+  - AWS S3 LifecycleRule 문서는 `Rule/ID`가 255자를 넘을 수 없다고 설명한다.
+  - 기존 importer는 `Rule` 개수와 ID 길이를 제한하지 않아 과도한 XML이 그대로 bucket lifecycle rule로 저장될 수 있었다.
+- 수행:
+  - `ObjectLifecycleS3XmlService`에 `MAX_RULE_COUNT=1000`, `MAX_RULE_ID_LENGTH=255` 검증을 추가했다.
+  - 1001개 이상 `Rule` 또는 255자를 넘는 `Rule/ID`는 S3 XML `InvalidRequest`로 응답하게 했다.
+  - S3-style lifecycle alias 회귀 테스트 `invalidS3BucketLifecycleLimitsReturnInvalidRequest`를 추가했다.
+  - `api-spec.md`, `backend-design.md`, `system-architecture.md`, `s3-compatibility.md`, `test-cases.md`에 lifecycle rule count/ID limit 계약을 반영했다.
+- 수정한 파일:
+  - `osmu-backend/src/main/java/com/example/osmu/admin/ObjectLifecycleS3XmlService.java`
+  - `osmu-backend/src/test/java/com/example/osmu/bucket/BucketLifecycleControllerTest.java`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/backend-design.md`
+  - `dev-docs/system-architecture.md`
+  - `dev-docs/s3-compatibility.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/worklog/main/worklog-main.md`
+- 검증:
+  - `$env:JAVA_HOME='C:\jdk-17'; .\gradlew.bat test --no-daemon --tests com.example.osmu.common.error.S3ErrorCodeMapperTest --tests com.example.osmu.bucket.BucketLifecycleControllerTest.invalidS3BucketLifecycleLimitsReturnInvalidRequest --tests com.example.osmu.bucket.BucketLifecycleControllerTest.adminCanPutGetAndDeleteBucketLifecycleConfiguration --tests com.example.osmu.bucket.BucketLifecycleControllerTest.adminCanUseS3StyleLifecycleQueryAlias`: 통과.
+  - `$env:JAVA_HOME='C:\jdk-17'; .\gradlew.bat test --no-daemon --tests com.example.osmu.admin.AdminObjectRetentionControllerTest.adminCanExportAndImportS3LifecycleXml`: 통과.
+- 후속:
+  - 남은 lifecycle XML child ordering parity와 broader S3 checksum/client-option edge parity를 계속 좁힌다.

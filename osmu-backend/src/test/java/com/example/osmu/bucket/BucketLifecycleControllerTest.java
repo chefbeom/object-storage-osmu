@@ -544,6 +544,64 @@ class BucketLifecycleControllerTest {
     }
 
     @Test
+    void invalidS3BucketLifecycleLimitsReturnInvalidRequest() throws Exception {
+        String token = loginAndReturnAccessToken("admin", "password");
+        String bucketName = "lifecycle-invalid-limits-bucket";
+        createBucket(token, bucketName);
+        String longRuleId = "r".repeat(256);
+        String tooManyRules = java.util.stream.IntStream.rangeClosed(1, 1001)
+                .mapToObj(index -> """
+                        <Rule>
+                          <ID>rule-%d</ID>
+                          <Status>Enabled</Status>
+                          <Filter><Prefix>tmp/%d/</Prefix></Filter>
+                          <Expiration><Days>7</Days></Expiration>
+                        </Rule>
+                        """.formatted(index, index))
+                .collect(java.util.stream.Collectors.joining("\n"));
+
+        mockMvc.perform(put("/api/s3/{bucketName}", bucketName)
+                        .queryParam("lifecycle", "")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_XML)
+                        .content("""
+                                <LifecycleConfiguration>
+                                  <Rule>
+                                    <ID>%s</ID>
+                                    <Status>Enabled</Status>
+                                    <Filter><Prefix>tmp/</Prefix></Filter>
+                                    <Expiration><Days>7</Days></Expiration>
+                                  </Rule>
+                                </LifecycleConfiguration>
+                                """.formatted(longRuleId)))
+                .andExpect(status().isBadRequest())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_XML))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("<Code>InvalidRequest</Code>")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("<Message>Lifecycle rule ID can be at most 255 characters.</Message>")));
+
+        mockMvc.perform(put("/api/s3/{bucketName}", bucketName)
+                        .queryParam("lifecycle", "")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_XML)
+                        .content("""
+                                <LifecycleConfiguration>
+                                %s
+                                </LifecycleConfiguration>
+                                """.formatted(tooManyRules)))
+                .andExpect(status().isBadRequest())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_XML))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("<Code>InvalidRequest</Code>")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("<Message>Lifecycle configuration can contain at most 1000 rules.</Message>")));
+
+        mockMvc.perform(get("/api/s3/{bucketName}", bucketName)
+                        .queryParam("lifecycle", "")
+                        .header("Authorization", "Bearer " + token)
+                        .accept(MediaType.APPLICATION_XML))
+                .andExpect(status().isNotFound())
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("<Code>NoSuchLifecycleConfiguration</Code>")));
+    }
+
+    @Test
     void accessKeyWithAdminScopeCanUseS3StyleLifecycleQueryAlias() throws Exception {
         String token = loginAndReturnAccessToken("admin", "password");
         String bucketName = "lifecycle-key-bucket";
