@@ -14,7 +14,7 @@
 - `BucketLifecycleController` exposes `GET/PUT/DELETE /api/buckets/{bucketName}/lifecycle`; PUT replaces only rules scoped to that bucket and stores imported XML rules with `bucketName`.
 - Bucket lifecycle GET supports JSON wrapper by default and raw XML when `Accept` is `application/xml` or `text/xml`.
 - Bucket lifecycle PUT supports JSON wrapper and raw XML bodies via `Content-Type: application/xml` or `text/xml`.
-- `S3BucketLifecycleController` exposes `/api/s3/{bucketName}?lifecycle` as a path-style S3 lifecycle alias backed by the same bucket lifecycle service.
+- `S3BucketLifecycleController` exposes `/api/s3/{bucketName}?lifecycle` as a path-style S3 lifecycle alias backed by the same bucket lifecycle service and maps missing/blank lifecycle XML to S3 `MissingRequestBodyError`.
 - `S3RequestAuthService` resolves JWT auth, OSMU access key headers (`X-OSMU-Access-Key`, `X-OSMU-Secret-Key`), or AWS SigV4 header auth for S3-style aliases.
 - `S3SignatureV4Verifier` validates `AWS4-HMAC-SHA256` Authorization headers and query/presigned URL parameters using canonical request, signed headers, `x-amz-date` or `X-Amz-Date`, `x-amz-content-sha256` or `UNSIGNED-PAYLOAD`, and encrypted access key signing secret material.
 - SigV4 verification enforces request time within configurable `osmu.s3.sigv4.clock-skew-seconds`; presigned URL auth also enforces `X-Amz-Expires`.

@@ -1225,7 +1225,7 @@ Rules:
 OSMU REST 인증을 사용하지만, path-style S3 lifecycle 문법에 가까운 raw XML alias를 제공한다. bucket 관리 권한이 필요하다.
 
 - `GET /api/s3/{bucketName}?lifecycle` with `Accept: application/xml`
-- `PUT /api/s3/{bucketName}?lifecycle` with `Content-Type: application/xml`
+- `PUT /api/s3/{bucketName}?lifecycle` with `Content-Type: application/xml`; missing or blank XML returns S3 XML `MissingRequestBodyError`
 - `DELETE /api/s3/{bucketName}?lifecycle`
 
 This alias uses the same bucket-scoped lifecycle rules as `/api/buckets/{bucketName}/lifecycle`.

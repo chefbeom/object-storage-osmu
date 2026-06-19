@@ -1,5 +1,29 @@
 # Worklog - main
 
+### 2026-06-19 - S3 lifecycle MissingRequestBodyError coverage
+
+- Work time:
+  - End: 2026-06-19 KST
+- User command:
+  - Active goal: continue development from `dev-docs`.
+- Request analysis:
+  - The previous `MissingRequestBodyError` mapper change also covers `Lifecycle XML is required.` validation, but lifecycle alias evidence was not explicit.
+  - `dev-docs` already document `/api/s3/{bucketName}?lifecycle` as an S3-style raw XML alias, so missing body behavior should be covered like bucket/object tagging XML.
+- Execution:
+  - Added S3 lifecycle alias missing-body regression coverage.
+  - Updated lifecycle API, backend design, compatibility matrix, and test-case docs to state `MissingRequestBodyError`.
+- Modified files:
+  - `osmu-backend/src/test/java/com/example/osmu/bucket/BucketLifecycleControllerTest.java`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/backend-design.md`
+  - `dev-docs/s3-compatibility.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/worklog/main/worklog-main.md`
+- Tests:
+  - `$env:JAVA_HOME='C:\jdk-17'; .\gradlew.bat test --no-daemon --tests com.example.osmu.bucket.BucketLifecycleControllerTest`: passed.
+- Follow-up:
+  - Continue remaining AWS checksum real-client option coverage and non-bucket per-error status/message nuance.
+
 ### 2026-06-19 - S3 MissingRequestBodyError parity
 
 - Work time:

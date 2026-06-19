@@ -203,6 +203,22 @@ class BucketLifecycleControllerTest {
     }
 
     @Test
+    void missingS3BucketLifecycleBodyReturnsMissingRequestBodyError() throws Exception {
+        String token = loginAndReturnAccessToken("admin", "password");
+        String bucketName = "lifecycle-missing-body-bucket";
+        createBucket(token, bucketName);
+
+        mockMvc.perform(put("/api/s3/{bucketName}", bucketName)
+                        .queryParam("lifecycle", "")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_XML))
+                .andExpect(status().isBadRequest())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_XML))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("<Code>MissingRequestBodyError</Code>")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("<Message>Request body is empty.</Message>")));
+    }
+
+    @Test
     void accessKeyWithAdminScopeCanUseS3StyleLifecycleQueryAlias() throws Exception {
         String token = loginAndReturnAccessToken("admin", "password");
         String bucketName = "lifecycle-key-bucket";
