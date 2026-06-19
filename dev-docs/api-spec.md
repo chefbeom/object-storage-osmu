@@ -24,7 +24,7 @@ Authorization: Bearer <accessToken>
 
 관리자 API인 `/api/admin/**`는 기본적으로 `ADMIN` role이 필요하다.
 예외적으로 `ORG_ADMIN`은 조직 스코프가 적용된 사용자/조직 조회 API만 접근할 수 있다.
-현재 허용 route는 `GET/POST /api/admin/users`, `PATCH /api/admin/users/{userId}/status`, `GET /api/admin/organizations`, `GET /api/admin/organizations/usage`, `GET /api/admin/billing/pricing-policy`, `GET /api/admin/billing/chargeback-preview`, `GET /api/admin/billing/chargeback-alerts`, `GET /api/admin/billing/chargeback-preview/export.csv`, `GET /api/admin/billing/chargeback-invoice-draft/export.csv`, `GET/POST /api/admin/teams`, `PUT /api/admin/teams/{teamId}/members`, `DELETE /api/admin/teams/{teamId}`이다.
+현재 허용 route는 `GET/POST /api/admin/users`, `PATCH /api/admin/users/{userId}/status`, `GET /api/admin/organizations`, `GET /api/admin/organizations/usage`, `GET /api/admin/billing/pricing-policy`, `GET /api/admin/billing/chargeback-preview`, `GET /api/admin/billing/chargeback-alerts`, `GET /api/admin/billing/chargeback-alert-notifications/preview`, `GET /api/admin/billing/chargeback-preview/export.csv`, `GET /api/admin/billing/chargeback-invoice-draft/export.csv`, `GET/POST /api/admin/teams`, `PUT /api/admin/teams/{teamId}/members`, `DELETE /api/admin/teams/{teamId}`이다.
 `AUDITOR`는 read-only 감사/상태 조회 role이다. 허용 route는 `GET /api/admin/audit-logs`, `GET /api/admin/audit-logs/export.csv`, `GET /api/admin/usage`, `GET /api/admin/system/status`, `GET /api/admin/security/enterprise-auth-plan`, `GET /api/admin/dashboard/summary`, `GET /api/admin/dashboard/readiness`, `GET /api/admin/backup/status`, `GET /api/admin/backup/restore-drill-evidence`로 제한한다.
 
 일반 사용자는 본인이 소유한 bucket, object, access key만 접근할 수 있다. `ADMIN`은 전체 리소스에 접근할 수 있다.
@@ -2688,6 +2688,28 @@ Notes:
 
 - Threshold alerts are pre-invoice operational signals for tenant cost review; they do not create bills or external notifications.
 - The same org-scope filtering as chargeback preview/export applies to alert rows.
+
+### GET /api/admin/billing/chargeback-alert-notifications/preview
+
+Builds scoped external notification payload previews from the same chargeback threshold alert model. `ADMIN` sees payload previews for every alerted organization and `ORG_ADMIN` sees only its own organization. This endpoint does not send webhooks, email, Slack messages, or any other external notification; it only returns the payload shape and target metadata for review.
+
+Query parameters are the same as `GET /api/admin/billing/chargeback-preview`, plus:
+
+- `notificationChannel` (optional): label for the external channel preview. Defaults to `WEBHOOK` and is normalized to uppercase.
+- `notificationTarget` (optional): endpoint, alias, or routing key to include in the preview payload. Defaults to `UNCONFIGURED`.
+
+Response:
+
+- `mode`: `PREVIEW`
+- `channel`, `target`, `externalDeliveryEnabled=false`
+- `notificationCount`
+- `notifications[]`: `organizationId`, `organizationName`, `severity`, `estimatedTotalCost`, threshold amounts, `subject`, `message`, and machine-readable `payload`.
+- `note`: preview-only no-send notice.
+
+Notes:
+
+- This is the first external alert integration surface. Actual delivery, retry, secret storage, and webhook provider adapters remain follow-up work.
+- Scope filtering is identical to chargeback alerts.
 
 ### GET /api/admin/billing/chargeback-preview/export.csv
 

@@ -152,6 +152,48 @@ class ChargebackPreviewServiceTest {
     }
 
     @Test
+    void buildsChargebackAlertNotificationPreviewWithoutExternalDelivery() {
+        OffsetDateTime now = OffsetDateTime.now();
+        organizationRepository.save(new OrganizationRecord(1L, "Notify Org", "", 10_000L, now));
+        bucketRepository.save(new BucketRecord(1L, "notify-bucket", "ORG", 1L, 10_000L, 1024L, 1L, now));
+
+        pricingPolicyService.save(new BillingPricingPolicyRequest(
+                "krw",
+                ONE_GIB_RATE,
+                BigDecimal.ZERO,
+                BigDecimal.ZERO,
+                BigDecimal.ZERO,
+                BigDecimal.ZERO,
+                BigDecimal.valueOf(20L),
+                BigDecimal.valueOf(25L),
+                25,
+                "notification preview test"
+        ));
+
+        ChargebackAlertNotificationPreviewResponse preview = service.alertNotificationPreview(
+                new AuthenticatedUser(1L, "admin", "ADMIN", null),
+                new ChargebackPreviewRequest(null, null, null, null, null, null, null, null, 0),
+                "slack",
+                "ops-webhook"
+        );
+
+        assertThat(preview.mode()).isEqualTo("PREVIEW");
+        assertThat(preview.channel()).isEqualTo("SLACK");
+        assertThat(preview.target()).isEqualTo("ops-webhook");
+        assertThat(preview.externalDeliveryEnabled()).isFalse();
+        assertThat(preview.notificationCount()).isEqualTo(1L);
+        assertThat(preview.note()).contains("no external notification was sent");
+
+        ChargebackAlertNotificationOrganizationResponse notification = preview.notifications().get(0);
+        assertThat(notification.organizationName()).isEqualTo("Notify Org");
+        assertThat(notification.severity()).isEqualTo("CRITICAL");
+        assertThat(notification.subject()).contains("CRITICAL chargeback alert");
+        assertThat(notification.payload()).containsEntry("eventType", "chargeback.threshold");
+        assertThat(notification.payload()).containsEntry("channel", "SLACK");
+        assertThat(notification.payload()).containsEntry("target", "ops-webhook");
+    }
+
+    @Test
     void rejectsUnsupportedRolesAndInvalidRates() {
         assertThatThrownBy(() -> service.preview(
                 new AuthenticatedUser(3L, "auditor", "AUDITOR", null),
@@ -164,6 +206,16 @@ class ChargebackPreviewServiceTest {
         assertThatThrownBy(() -> service.preview(
                 new AuthenticatedUser(1L, "admin", "ADMIN", null),
                 new ChargebackPreviewRequest(null, null, null, BigDecimal.valueOf(-1L), null, null, null, null, 0)
+        ))
+                .isInstanceOf(ApiException.class)
+                .extracting("code")
+                .isEqualTo(ApiErrorCode.VALIDATION_ERROR);
+
+        assertThatThrownBy(() -> service.alertNotificationPreview(
+                new AuthenticatedUser(1L, "admin", "ADMIN", null),
+                new ChargebackPreviewRequest(null, null, null, null, null, null, null, null, 0),
+                "bad channel!",
+                null
         ))
                 .isInstanceOf(ApiException.class)
                 .extracting("code")

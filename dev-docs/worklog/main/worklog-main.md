@@ -17977,3 +17977,12 @@ feat/bucket-management
 - Frontend/mock: `downloadChargebackInvoiceDraftCsv` wrapper, Admin billing panel `chargeback-invoice-draft-export-button`, mock API route/self-test를 추가했다.
 - 문서: README, API spec/OpenAPI, IAM/RBAC matrix, security/frontend/backend/commercial/test-case 문서를 갱신했다.
 - 후속: finalized invoice approval/persistence, approved pricing workflow, external alert notification, time-series/partition 기반 장기 analytics는 아직 남아 있다.
+
+### 2026-06-20 - Chargeback alert notification preview
+
+- 작업 해석: 남은 chargeback 후속 항목 중 외부 알림 연동을 실제 네트워크 전송이 아니라 먼저 payload/scope를 검증하는 no-send preview route로 진행했다. AWS S3 parity가 아니라 OSMU 운영/상업화 기능 축이다.
+- Backend: `GET /api/admin/billing/chargeback-alert-notifications/preview`를 추가했다. `ChargebackPreviewService.alertNotificationPreview`는 기존 threshold alert 계산과 같은 rate/window/event-limit/scope를 재사용하고, organization별 subject/message/machine-readable `chargeback.threshold` payload를 만든다.
+- RBAC: `ADMIN`은 전체 alerted organization payload를 보고, `ORG_ADMIN`은 자기 조직 payload만 본다. `AUDITOR`와 일반 사용자는 차단한다. `externalDeliveryEnabled=false`로 실제 외부 전송과 구분했다.
+- Frontend/mock: `getChargebackAlertNotificationPreview` wrapper, Admin billing panel notification channel/target input, notification metrics/list, mock API route/self-test를 추가했다.
+- 문서: README, API spec/OpenAPI, IAM/RBAC matrix, security/frontend/backend/commercial/test-case 문서를 갱신했다.
+- 후속: 실제 webhook/email/Slack delivery adapter, secret storage, retry/backoff, delivery audit persistence, finalized invoice approval/persistence, approved pricing workflow는 아직 남아 있다.

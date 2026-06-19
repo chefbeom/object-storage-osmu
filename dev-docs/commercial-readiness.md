@@ -36,7 +36,7 @@ This draft keeps B2B sales, licensing, and pilot packaging decisions visible whi
 - Business tier: larger deployment with backup/restore drill support and priority response.
 - Enterprise tier: SSO/LDAP, custom retention/compliance requirements, deployment review, and dedicated support.
 - Final prices: pending market validation and legal/commercial approval.
-- Internal chargeback preview: `GET/PUT /api/admin/billing/pricing-policy`, `GET /api/admin/billing/chargeback-preview`, `GET /api/admin/billing/chargeback-alerts`, `GET /api/admin/billing/chargeback-preview/export.csv`, `GET /api/admin/billing/chargeback-invoice-draft/export.csv`, and the Admin billing panel can model organization storage, ingress, egress, internal copy, operation costs, warning/critical threshold alerts, scoped CSV export, and draft invoice CSV export from current usage and data-flow events; this is not a final invoice or approved commercial price list.
+- Internal chargeback preview: `GET/PUT /api/admin/billing/pricing-policy`, `GET /api/admin/billing/chargeback-preview`, `GET /api/admin/billing/chargeback-alerts`, `GET /api/admin/billing/chargeback-alert-notifications/preview`, `GET /api/admin/billing/chargeback-preview/export.csv`, `GET /api/admin/billing/chargeback-invoice-draft/export.csv`, and the Admin billing panel can model organization storage, ingress, egress, internal copy, operation costs, warning/critical threshold alerts, scoped notification payload preview, scoped CSV export, and draft invoice CSV export from current usage and data-flow events; this is not a final invoice or approved commercial price list, and it does not send external notifications.
 
 ## Required Before Paid Pilot
 
@@ -73,6 +73,6 @@ This draft keeps B2B sales, licensing, and pilot packaging decisions visible whi
 - Pilot packaging: drafted.
 - License model: drafted.
 - Pricing tiers: drafted.
-- Chargeback preview: API, persistent pricing policy, Admin billing panel, scoped threshold alerts, scoped preview CSV export, and draft invoice CSV export implemented; finalized invoice approval/persistence, approved pricing workflow, and external alert notification routes remain pending.
+- Chargeback preview: API, persistent pricing policy, Admin billing panel, scoped threshold alerts, scoped notification payload preview, scoped preview CSV export, and draft invoice CSV export implemented; finalized invoice approval/persistence, approved pricing workflow, and actual external notification delivery adapters remain pending.
 - Enterprise auth plan: implemented as local-only plan/readiness API plus OIDC claim preview/audit, admin-approved JIT provisioning, authorization URL start, callback validation for existing local users, LDAP bind/search adapter for existing local users, a guarded enterprise auth smoke evidence helper, and a manual GitHub Actions smoke workflow. Real target directory smoke result is pending.
 - Final legal/commercial approval: pending.

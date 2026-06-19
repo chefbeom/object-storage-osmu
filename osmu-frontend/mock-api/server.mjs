@@ -444,6 +444,10 @@ function handleAdminRoute(request, response, path, jsonBody, url) {
     sendJson(response, 200, apiData(chargebackAlerts(url)))
     return
   }
+  if (request.method === 'GET' && path === '/admin/billing/chargeback-alert-notifications/preview') {
+    sendJson(response, 200, apiData(chargebackAlertNotificationPreview(url)))
+    return
+  }
   if (request.method === 'GET' && path === '/admin/billing/chargeback-preview/export.csv') {
     sendCsv(response, 'osmu-chargeback-preview.csv', chargebackPreviewCsv(url))
     return
@@ -1122,6 +1126,58 @@ function chargebackAlertOrganization(organization, warningAmount, criticalAmount
     warningAmount,
     criticalAmount,
   }
+}
+
+function chargebackAlertNotificationPreview(url) {
+  const alerts = chargebackAlerts(url)
+  const channel = normalizeNotificationChannel(url.searchParams.get('notificationChannel'))
+  const target = normalizeNotificationTarget(url.searchParams.get('notificationTarget'))
+  const notifications = (alerts.organizations || []).map((alert) => {
+    const subject = `[OSMU] ${alert.severity} chargeback alert for ${alert.organizationName}`
+    const message = `${alert.organizationName} projected chargeback cost is ${alerts.currency} ${money(alert.estimatedTotalCost)} (warning ${money(alert.warningAmount)}, critical ${money(alert.criticalAmount)}).`
+    return {
+      organizationId: alert.organizationId,
+      organizationName: alert.organizationName,
+      severity: alert.severity,
+      estimatedTotalCost: money(alert.estimatedTotalCost),
+      warningAmount: money(alert.warningAmount),
+      criticalAmount: money(alert.criticalAmount),
+      subject,
+      message,
+      payload: {
+        eventType: 'chargeback.threshold',
+        channel,
+        target,
+        organizationId: alert.organizationId,
+        organizationName: alert.organizationName,
+        severity: alert.severity,
+        currency: alerts.currency,
+        estimatedTotalCost: money(alert.estimatedTotalCost),
+        warningAmount: money(alert.warningAmount),
+        criticalAmount: money(alert.criticalAmount),
+      },
+    }
+  })
+  return {
+    mode: 'PREVIEW',
+    channel,
+    target,
+    externalDeliveryEnabled: false,
+    currency: alerts.currency,
+    notificationCount: notifications.length,
+    notifications,
+    generatedAt: new Date().toISOString(),
+    note: 'Preview only - no external notification was sent.',
+  }
+}
+
+function normalizeNotificationChannel(value) {
+  return String(value || 'WEBHOOK').trim().toUpperCase().replace(/\s+/g, '_').slice(0, 32) || 'WEBHOOK'
+}
+
+function normalizeNotificationTarget(value) {
+  const target = String(value || '').trim()
+  return target ? target.slice(0, 512) : 'UNCONFIGURED'
 }
 
 function chargebackPreviewCsv(url) {
@@ -1842,6 +1898,12 @@ async function runSelfTest() {
     })).json()
     if (!chargebackAlerts.data || chargebackAlerts.data.currency !== 'KRW' || chargebackAlerts.data.criticalCount < 1 || chargebackAlerts.data.organizations?.[0]?.severity !== 'CRITICAL') {
       throw new Error('chargeback threshold alerts self-test failed')
+    }
+    const chargebackAlertNotifications = await (await fetch(`${base}/admin/billing/chargeback-alert-notifications/preview?notificationChannel=slack&notificationTarget=ops-webhook&operationThousandRate=0.004`, {
+      headers: { Authorization: `Bearer ${login.data.accessToken}` },
+    })).json()
+    if (!chargebackAlertNotifications.data || chargebackAlertNotifications.data.mode !== 'PREVIEW' || chargebackAlertNotifications.data.channel !== 'SLACK' || chargebackAlertNotifications.data.externalDeliveryEnabled !== false || chargebackAlertNotifications.data.notifications?.[0]?.payload?.eventType !== 'chargeback.threshold') {
+      throw new Error('chargeback alert notification preview self-test failed')
     }
     const chargebackCsv = await (await fetch(`${base}/admin/billing/chargeback-preview/export.csv?operationThousandRate=0.004`, {
       headers: { Authorization: `Bearer ${login.data.accessToken}` },

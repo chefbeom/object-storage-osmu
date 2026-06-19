@@ -255,6 +255,31 @@ public class ChargebackPreviewService {
         );
     }
 
+    public ChargebackAlertNotificationPreviewResponse alertNotificationPreview(
+            AuthenticatedUser actor,
+            ChargebackPreviewRequest request,
+            String notificationChannel,
+            String notificationTarget
+    ) {
+        ChargebackAlertResponse alerts = alerts(actor, request);
+        String channel = normalizeNotificationChannel(notificationChannel);
+        String target = normalizeNotificationTarget(notificationTarget);
+        List<ChargebackAlertNotificationOrganizationResponse> notifications = alerts.organizations().stream()
+                .map(alert -> notificationFor(alert, alerts.currency(), channel, target))
+                .toList();
+        return new ChargebackAlertNotificationPreviewResponse(
+                "PREVIEW",
+                channel,
+                target,
+                false,
+                alerts.currency(),
+                notifications.size(),
+                notifications,
+                OffsetDateTime.now(),
+                "Preview only - no external notification was sent."
+        );
+    }
+
     private List<OrganizationRecord> visibleOrganizations(AuthenticatedUser actor) {
         if (actor == null) {
             throw new ApiException(ApiErrorCode.AUTHENTICATION_REQUIRED, "Authentication required.");
@@ -340,6 +365,68 @@ public class ChargebackPreviewService {
     ) {
         String date = preview.generatedAt().toLocalDate().format(DateTimeFormatter.BASIC_ISO_DATE);
         return "OSMU-DRAFT-" + date + "-" + organization.organizationId();
+    }
+
+    private static String normalizeNotificationChannel(String value) {
+        String channel = value == null || value.isBlank()
+                ? "WEBHOOK"
+                : value.trim().toUpperCase(Locale.ROOT).replace(' ', '_');
+        if (!channel.matches("[A-Z0-9_-]{1,32}")) {
+            throw new ApiException(ApiErrorCode.VALIDATION_ERROR, "notificationChannel must be 1-32 alphanumeric, dash, or underscore characters.");
+        }
+        return channel;
+    }
+
+    private static String normalizeNotificationTarget(String value) {
+        if (value == null || value.isBlank()) {
+            return "UNCONFIGURED";
+        }
+        String target = value.trim();
+        if (target.length() > 512 || target.contains("\r") || target.contains("\n")) {
+            throw new ApiException(ApiErrorCode.VALIDATION_ERROR, "notificationTarget must be a single-line value up to 512 characters.");
+        }
+        return target;
+    }
+
+    private static ChargebackAlertNotificationOrganizationResponse notificationFor(
+            ChargebackAlertOrganizationResponse alert,
+            String currency,
+            String channel,
+            String target
+    ) {
+        String subject = "[OSMU] " + alert.severity() + " chargeback alert for " + alert.organizationName();
+        String message = alert.organizationName()
+                + " projected chargeback cost is "
+                + currency
+                + " "
+                + money(alert.estimatedTotalCost())
+                + " (warning "
+                + money(alert.warningAmount())
+                + ", critical "
+                + money(alert.criticalAmount())
+                + ").";
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("eventType", "chargeback.threshold");
+        payload.put("channel", channel);
+        payload.put("target", target);
+        payload.put("organizationId", alert.organizationId());
+        payload.put("organizationName", alert.organizationName());
+        payload.put("severity", alert.severity());
+        payload.put("currency", currency);
+        payload.put("estimatedTotalCost", money(alert.estimatedTotalCost()));
+        payload.put("warningAmount", money(alert.warningAmount()));
+        payload.put("criticalAmount", money(alert.criticalAmount()));
+        return new ChargebackAlertNotificationOrganizationResponse(
+                alert.organizationId(),
+                alert.organizationName(),
+                alert.severity(),
+                money(alert.estimatedTotalCost()),
+                money(alert.warningAmount()),
+                money(alert.criticalAmount()),
+                subject,
+                message,
+                payload
+        );
     }
 
     private static ChargebackAlertOrganizationResponse alertFor(

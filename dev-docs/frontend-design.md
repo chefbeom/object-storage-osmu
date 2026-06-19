@@ -20,7 +20,7 @@
 - Export uses the same date, bucket, actor, source, operation, status, and limit filters as the on-screen monitoring panel.
 - Data Flow Monitoring panel renders source/operation trend points through `data-flow-trend-chart`.
 - Data Flow Monitoring separates upload, download, and internal copy traffic in the summary and bucket rows.
-- Chargeback preview uses `getBillingPricingPolicy`, `saveBillingPricingPolicy`, `getChargebackPreview`, `getChargebackAlerts`, `downloadChargebackPreviewCsv`, and `downloadChargebackInvoiceDraftCsv` through `BillingChargebackPanel` in Admin; it exposes date/rate/event-limit inputs, warning/critical threshold policy inputs, ADMIN-only policy save, scoped alert list, scoped CSV export, draft invoice CSV export, organization cost rows, and preview totals without presenting the result as a finalized invoice.
+- Chargeback preview uses `getBillingPricingPolicy`, `saveBillingPricingPolicy`, `getChargebackPreview`, `getChargebackAlerts`, `getChargebackAlertNotificationPreview`, `downloadChargebackPreviewCsv`, and `downloadChargebackInvoiceDraftCsv` through `BillingChargebackPanel` in Admin; it exposes date/rate/event-limit inputs, warning/critical threshold policy inputs, notification channel/target preview inputs, ADMIN-only policy save, scoped alert list, scoped notification payload preview, scoped CSV export, draft invoice CSV export, organization cost rows, and preview totals without presenting the result as a finalized invoice or sending external notifications.
 
 ## Multipart Refresh Note
 

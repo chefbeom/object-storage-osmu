@@ -94,6 +94,18 @@
         @input="updateOption('criticalAmount', $event.target.value)"
       />
       <input
+        data-testid="chargeback-notification-channel-input"
+        :value="chargebackOptions.notificationChannel"
+        placeholder="notify channel"
+        @input="updateOption('notificationChannel', $event.target.value)"
+      />
+      <input
+        data-testid="chargeback-notification-target-input"
+        :value="chargebackOptions.notificationTarget"
+        placeholder="notify target"
+        @input="updateOption('notificationTarget', $event.target.value)"
+      />
+      <input
         data-testid="chargeback-event-limit-input"
         min="1"
         max="50000"
@@ -201,6 +213,32 @@
       <li v-if="alertOrganizations.length === 0" class="empty">No chargeback threshold alerts.</li>
     </ul>
 
+    <div class="compact-metrics chargeback-notification-metrics" data-testid="chargeback-notification-metrics">
+      <div>
+        <span>Notify preview</span>
+        <b data-testid="chargeback-notification-count">{{ formatCount(notificationPreview.notificationCount) }}</b>
+      </div>
+      <div>
+        <span>Channel</span>
+        <b data-testid="chargeback-notification-channel">{{ notificationPreview.channel || '-' }}</b>
+      </div>
+      <div>
+        <span>Delivery</span>
+        <b data-testid="chargeback-notification-mode">{{ notificationPreview.externalDeliveryEnabled ? 'Enabled' : 'Preview' }}</b>
+      </div>
+    </div>
+
+    <ul class="compact-list chargeback-notification-list" data-testid="chargeback-notification-list">
+      <li v-for="notification in notificationRows" :key="notification.organizationId" data-testid="chargeback-notification-row">
+        <span class="list-main">
+          <b>{{ notification.subject }}</b>
+          <small>{{ notification.message }}</small>
+        </span>
+        <strong>{{ notification.payload?.target || notificationPreview.target || '-' }}</strong>
+      </li>
+      <li v-if="notificationRows.length === 0" class="empty">No chargeback notification payloads.</li>
+    </ul>
+
     <div class="table-wrap chargeback-table-wrap">
       <table data-testid="chargeback-organization-table">
         <thead>
@@ -250,6 +288,7 @@ const props = defineProps({
   chargebackOptions: { type: Object, required: true },
   chargebackPreview: { type: Object, required: true },
   chargebackAlerts: { type: Object, required: true },
+  chargebackAlertNotificationPreview: { type: Object, required: true },
   billingPricingPolicy: { type: Object, required: true },
   formatBytes: { type: Function, required: true },
   formatDateTime: { type: Function, required: true },
@@ -266,12 +305,16 @@ const emit = defineEmits([
 
 const preview = computed(() => props.chargebackPreview || {})
 const alerts = computed(() => props.chargebackAlerts || {})
+const notificationPreview = computed(() => props.chargebackAlertNotificationPreview || {})
 const rates = computed(() => preview.value.rates || {})
 const organizations = computed(() => (
   Array.isArray(preview.value.organizations) ? preview.value.organizations : []
 ))
 const alertOrganizations = computed(() => (
   Array.isArray(alerts.value.organizations) ? alerts.value.organizations : []
+))
+const notificationRows = computed(() => (
+  Array.isArray(notificationPreview.value.notifications) ? notificationPreview.value.notifications : []
 ))
 
 function updateOption(field, value) {

@@ -1220,6 +1220,23 @@ export function getChargebackAlerts(options = {}) {
   return request(`/admin/billing/chargeback-alerts${suffix}`)
 }
 
+export function getChargebackAlertNotificationPreview(options = {}) {
+  const query = new URLSearchParams()
+  appendQuery(query, 'from', options.from)
+  appendQuery(query, 'to', options.to)
+  appendQuery(query, 'currency', options.currency)
+  appendQuery(query, 'storageGbMonthRate', options.storageGbMonthRate)
+  appendQuery(query, 'ingressGbRate', options.ingressGbRate)
+  appendQuery(query, 'egressGbRate', options.egressGbRate)
+  appendQuery(query, 'internalGbRate', options.internalGbRate)
+  appendQuery(query, 'operationThousandRate', options.operationThousandRate)
+  appendQuery(query, 'eventScanLimit', options.eventScanLimit)
+  appendQuery(query, 'notificationChannel', options.notificationChannel)
+  appendQuery(query, 'notificationTarget', options.notificationTarget)
+  const suffix = query.toString() ? `?${query.toString()}` : ''
+  return request(`/admin/billing/chargeback-alert-notifications/preview${suffix}`)
+}
+
 export function getBillingPricingPolicy() {
   return request('/admin/billing/pricing-policy')
 }

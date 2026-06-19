@@ -22,6 +22,7 @@ import {
   getBackupRestoreDrillEvidence,
   getBillingPricingPolicy,
   getBuckets,
+  getChargebackAlertNotificationPreview,
   getChargebackAlerts,
   getChargebackPreview,
   getDashboardLayout,
@@ -512,6 +513,56 @@ test('getChargebackAlerts reads current admin billing threshold alerts query', a
     assert.equal(fetchMock.calls[0].options.method, undefined)
     assert.equal(result.data.alertCount, 1)
     assert.equal(result.data.organizations[0].severity, 'CRITICAL')
+  } finally {
+    cleanupFetch(fetchMock)
+  }
+})
+
+test('getChargebackAlertNotificationPreview reads scoped billing alert notification payload query', async () => {
+  const fetchMock = mockFetch([
+    () => jsonResponse({
+      data: {
+        mode: 'PREVIEW',
+        channel: 'SLACK',
+        target: 'ops-webhook',
+        externalDeliveryEnabled: false,
+        notificationCount: 1,
+        notifications: [{ organizationName: 'Media', severity: 'CRITICAL' }],
+      },
+    }),
+  ])
+
+  try {
+    const result = await getChargebackAlertNotificationPreview({
+      from: '2026-06-01T00:00:00.000Z',
+      to: '2026-06-30T23:59:59.000Z',
+      currency: 'krw',
+      storageGbMonthRate: '1.25',
+      ingressGbRate: '0.10',
+      egressGbRate: '0.20',
+      internalGbRate: '0.05',
+      operationThousandRate: '0.01',
+      eventScanLimit: 2500,
+      notificationChannel: 'slack',
+      notificationTarget: 'ops-webhook',
+    })
+
+    const url = new URL(fetchMock.calls[0].url)
+    assert.equal(url.pathname, '/api/admin/billing/chargeback-alert-notifications/preview')
+    assert.equal(url.searchParams.get('from'), '2026-06-01T00:00:00.000Z')
+    assert.equal(url.searchParams.get('to'), '2026-06-30T23:59:59.000Z')
+    assert.equal(url.searchParams.get('currency'), 'krw')
+    assert.equal(url.searchParams.get('storageGbMonthRate'), '1.25')
+    assert.equal(url.searchParams.get('ingressGbRate'), '0.10')
+    assert.equal(url.searchParams.get('egressGbRate'), '0.20')
+    assert.equal(url.searchParams.get('internalGbRate'), '0.05')
+    assert.equal(url.searchParams.get('operationThousandRate'), '0.01')
+    assert.equal(url.searchParams.get('eventScanLimit'), '2500')
+    assert.equal(url.searchParams.get('notificationChannel'), 'slack')
+    assert.equal(url.searchParams.get('notificationTarget'), 'ops-webhook')
+    assert.equal(fetchMock.calls[0].options.method, undefined)
+    assert.equal(result.data.mode, 'PREVIEW')
+    assert.equal(result.data.notificationCount, 1)
   } finally {
     cleanupFetch(fetchMock)
   }

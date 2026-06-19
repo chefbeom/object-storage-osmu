@@ -354,6 +354,7 @@
         :chargeback-options="chargebackOptions"
         :chargeback-preview="chargebackPreview"
         :chargeback-alerts="chargebackAlerts"
+        :chargeback-alert-notification-preview="chargebackAlertNotificationPreview"
         :billing-pricing-policy="billingPricingPolicy"
         :quota-policy-form="quotaPolicyForm"
         :quota-policy-target-options="quotaPolicyTargetOptions"
@@ -551,6 +552,7 @@ import {
   getBucketStorageProfile,
   getBucketTags,
   getBuckets,
+  getChargebackAlertNotificationPreview,
   getChargebackAlerts,
   getDatabaseHealth,
   getDashboardLayout,
@@ -776,6 +778,8 @@ const defaultChargebackOptions = Object.freeze({
   operationThousandRate: '0',
   warningAmount: '0',
   criticalAmount: '0',
+  notificationChannel: 'WEBHOOK',
+  notificationTarget: '',
   eventScanLimit: 10000,
 })
 const chargebackRateFields = [
@@ -1210,6 +1214,7 @@ const organizations = ref([])
 const organizationUsages = ref([])
 const chargebackPreview = ref(defaultChargebackPreview())
 const chargebackAlerts = ref(defaultChargebackAlerts())
+const chargebackAlertNotificationPreview = ref(defaultChargebackAlertNotificationPreview())
 const billingPricingPolicy = ref(defaultBillingPricingPolicy())
 const teams = ref([])
 const quotaPolicies = ref([])
@@ -2286,6 +2291,7 @@ async function loadDashboard(options = {}) {
       resetBillingPricingPolicy()
       resetChargebackPreview()
       resetChargebackAlerts()
+      resetChargebackAlertNotificationPreview()
     }
 
     if (isAdmin.value) {
@@ -2434,8 +2440,19 @@ async function loadChargebackAlerts() {
   }
 }
 
+async function loadChargebackAlertNotificationPreview() {
+  if (!canUseAdminTools.value) {
+    resetChargebackAlertNotificationPreview()
+    return
+  }
+  const result = await safeRequest(() => getChargebackAlertNotificationPreview(chargebackPreviewPayload()), null)
+  if (result?.data) {
+    applyChargebackAlertNotificationPreview(result.data)
+  }
+}
+
 async function loadChargebackPanel() {
-  await Promise.all([loadChargebackPreview(), loadChargebackAlerts()])
+  await Promise.all([loadChargebackPreview(), loadChargebackAlerts(), loadChargebackAlertNotificationPreview()])
 }
 
 async function handleSaveBillingPricingPolicy() {
@@ -2650,6 +2667,7 @@ function resetAdminOnlyState() {
   resetChargebackOptions()
   resetChargebackPreview()
   resetChargebackAlerts()
+  resetChargebackAlertNotificationPreview()
 }
 
 function resetUploadRuntime() {
@@ -3660,6 +3678,8 @@ function syncChargebackOptionsFromPolicy() {
   chargebackOptions.operationThousandRate = String(policy.operationThousandRate ?? defaultChargebackOptions.operationThousandRate)
   chargebackOptions.warningAmount = String(policy.warningAmount ?? defaultChargebackOptions.warningAmount)
   chargebackOptions.criticalAmount = String(policy.criticalAmount ?? defaultChargebackOptions.criticalAmount)
+  chargebackOptions.notificationChannel = defaultChargebackOptions.notificationChannel
+  chargebackOptions.notificationTarget = defaultChargebackOptions.notificationTarget
   chargebackOptions.eventScanLimit = Number(policy.eventScanLimit || defaultChargebackOptions.eventScanLimit)
 }
 
@@ -3742,6 +3762,35 @@ function applyChargebackAlerts(data = {}) {
 
 function resetChargebackAlerts() {
   applyChargebackAlerts({})
+}
+
+function defaultChargebackAlertNotificationPreview() {
+  return {
+    mode: 'PREVIEW',
+    channel: defaultChargebackOptions.notificationChannel,
+    target: 'UNCONFIGURED',
+    externalDeliveryEnabled: false,
+    currency: defaultChargebackOptions.currency,
+    notificationCount: 0,
+    notifications: [],
+    generatedAt: '',
+    note: '',
+  }
+}
+
+function applyChargebackAlertNotificationPreview(data = {}) {
+  const fallback = defaultChargebackAlertNotificationPreview()
+  chargebackAlertNotificationPreview.value = {
+    ...fallback,
+    ...data,
+    externalDeliveryEnabled: Boolean(data.externalDeliveryEnabled),
+    notificationCount: Number(data.notificationCount || 0),
+    notifications: Array.isArray(data.notifications) ? data.notifications : [],
+  }
+}
+
+function resetChargebackAlertNotificationPreview() {
+  applyChargebackAlertNotificationPreview({})
 }
 
 function applyDashboardReadiness(data) {
@@ -5161,6 +5210,8 @@ function chargebackPreviewPayload() {
     to: localDateTimeToIso(chargebackOptions.to),
     currency: String(chargebackOptions.currency || '').trim(),
     eventScanLimit: normalizedChargebackNumber(chargebackOptions.eventScanLimit, defaultChargebackOptions.eventScanLimit),
+    notificationChannel: String(chargebackOptions.notificationChannel || '').trim(),
+    notificationTarget: String(chargebackOptions.notificationTarget || '').trim(),
   }
   for (const field of chargebackRateFields) {
     payload[field] = normalizedChargebackNumber(chargebackOptions[field], '')

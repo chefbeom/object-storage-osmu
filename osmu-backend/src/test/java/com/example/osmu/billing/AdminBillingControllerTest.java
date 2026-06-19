@@ -118,6 +118,21 @@ class AdminBillingControllerTest {
                 .andExpect(jsonPath("$.data.criticalCount").value(1))
                 .andExpect(jsonPath("$.data.organizations[0].organizationName").value("Billing Policy Org 1"))
                 .andExpect(jsonPath("$.data.organizations[0].severity").value("CRITICAL"));
+
+        mockMvc.perform(get("/api/admin/billing/chargeback-alert-notifications/preview")
+                        .header("Authorization", "Bearer " + adminToken)
+                        .param("notificationChannel", "slack")
+                        .param("notificationTarget", "ops-webhook"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.mode").value("PREVIEW"))
+                .andExpect(jsonPath("$.data.channel").value("SLACK"))
+                .andExpect(jsonPath("$.data.target").value("ops-webhook"))
+                .andExpect(jsonPath("$.data.externalDeliveryEnabled").value(false))
+                .andExpect(jsonPath("$.data.notificationCount").value(1))
+                .andExpect(jsonPath("$.data.notifications[0].organizationName").value("Billing Policy Org 1"))
+                .andExpect(jsonPath("$.data.notifications[0].severity").value("CRITICAL"))
+                .andExpect(jsonPath("$.data.notifications[0].subject", containsString("CRITICAL chargeback alert")))
+                .andExpect(jsonPath("$.data.notifications[0].payload.eventType").value("chargeback.threshold"));
     }
 
     @Test
@@ -175,7 +190,27 @@ class AdminBillingControllerTest {
     void orgAdminSeesOnlyOwnChargebackPreview() throws Exception {
         String adminToken = loginAndReturnAccessToken("admin", "password");
         int visibleOrg = createOrganization(adminToken, "Billing Visible Org 1");
-        createOrganization(adminToken, "Billing Hidden Org 1");
+        int hiddenOrg = createOrganization(adminToken, "Billing Hidden Org 1");
+        createOrganizationBucket(adminToken, visibleOrg, "billing-visible-bucket-1");
+        createOrganizationBucket(adminToken, hiddenOrg, "billing-hidden-bucket-1");
+        uploadTextObject(adminToken, "billing-visible-bucket-1", "visible-billing.txt");
+        uploadTextObject(adminToken, "billing-hidden-bucket-1", "hidden-billing.txt");
+        mockMvc.perform(put("/api/admin/billing/pricing-policy")
+                        .header("Authorization", "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "currency": "krw",
+                                  "storageGbMonthRate": 1073741824,
+                                  "ingressGbRate": 1073741824,
+                                  "operationThousandRate": 1000,
+                                  "warningAmount": 20,
+                                  "criticalAmount": 25,
+                                  "eventScanLimit": 5000,
+                                  "reason": "billing scope test"
+                                }
+                                """))
+                .andExpect(status().isOk());
         createUser(adminToken, "billing-org-admin-1", "billing-org-admin-1@example.com", "ORG_ADMIN", visibleOrg);
         String orgAdminToken = loginAndReturnAccessToken("billing-org-admin-1", "user-password");
 
@@ -200,7 +235,14 @@ class AdminBillingControllerTest {
         mockMvc.perform(get("/api/admin/billing/chargeback-alerts")
                         .header("Authorization", "Bearer " + orgAdminToken))
                 .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.organizations[*].organizationName", hasItem("Billing Visible Org 1")))
                 .andExpect(jsonPath("$.data.organizations[*].organizationName", not(hasItem("Billing Hidden Org 1"))));
+
+        mockMvc.perform(get("/api/admin/billing/chargeback-alert-notifications/preview")
+                        .header("Authorization", "Bearer " + orgAdminToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.notifications[*].organizationName", hasItem("Billing Visible Org 1")))
+                .andExpect(jsonPath("$.data.notifications[*].organizationName", not(hasItem("Billing Hidden Org 1"))));
     }
 
     private String loginAndReturnAccessToken(String loginId, String password) throws Exception {
@@ -251,6 +293,20 @@ class AdminBillingControllerTest {
                                   "ownerId": %d
                                 }
                                 """.formatted(bucketName, organizationId)))
+                .andExpect(status().isOk());
+    }
+
+    private void uploadTextObject(String token, String bucketName, String key) throws Exception {
+        MockMultipartFile file = new MockMultipartFile(
+                "file",
+                key,
+                MediaType.TEXT_PLAIN_VALUE,
+                "billing-data".getBytes()
+        );
+        mockMvc.perform(multipart("/api/buckets/{bucketName}/objects", bucketName)
+                        .file(file)
+                        .header("Authorization", "Bearer " + token)
+                        .param("key", key))
                 .andExpect(status().isOk());
     }
 

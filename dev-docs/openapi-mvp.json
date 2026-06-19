@@ -662,6 +662,75 @@
         }
       }
     },
+    "/api/admin/billing/chargeback-alert-notifications/preview": {
+      "get": {
+        "tags": ["Billing", "Admin"],
+        "operationId": "getChargebackAlertNotificationPreview",
+        "summary": "Preview scoped chargeback threshold alert notification payloads without external delivery",
+        "parameters": [
+          {
+            "name": "from",
+            "in": "query",
+            "schema": { "type": "string", "format": "date-time" }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "schema": { "type": "string", "format": "date-time" }
+          },
+          {
+            "name": "currency",
+            "in": "query",
+            "schema": { "type": "string", "default": "USD" }
+          },
+          {
+            "name": "storageGbMonthRate",
+            "in": "query",
+            "schema": { "type": "number", "format": "double", "minimum": 0 }
+          },
+          {
+            "name": "ingressGbRate",
+            "in": "query",
+            "schema": { "type": "number", "format": "double", "minimum": 0 }
+          },
+          {
+            "name": "egressGbRate",
+            "in": "query",
+            "schema": { "type": "number", "format": "double", "minimum": 0 }
+          },
+          {
+            "name": "internalGbRate",
+            "in": "query",
+            "schema": { "type": "number", "format": "double", "minimum": 0 }
+          },
+          {
+            "name": "operationThousandRate",
+            "in": "query",
+            "schema": { "type": "number", "format": "double", "minimum": 0 }
+          },
+          {
+            "name": "eventScanLimit",
+            "in": "query",
+            "schema": { "type": "integer", "default": 10000, "maximum": 50000 }
+          },
+          {
+            "name": "notificationChannel",
+            "in": "query",
+            "schema": { "type": "string", "default": "WEBHOOK" }
+          },
+          {
+            "name": "notificationTarget",
+            "in": "query",
+            "schema": { "type": "string", "default": "UNCONFIGURED" }
+          }
+        ],
+        "responses": {
+          "200": { "$ref": "#/components/responses/JsonOk" },
+          "400": { "$ref": "#/components/responses/Error" },
+          "403": { "$ref": "#/components/responses/Error" }
+        }
+      }
+    },
     "/api/admin/billing/chargeback-preview/export.csv": {
       "get": {
         "tags": ["Billing", "Admin"],

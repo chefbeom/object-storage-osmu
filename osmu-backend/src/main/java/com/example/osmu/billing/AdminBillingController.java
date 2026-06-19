@@ -121,6 +121,35 @@ public class AdminBillingController {
         )));
     }
 
+    @GetMapping("/chargeback-alert-notifications/preview")
+    public ApiResponse<ChargebackAlertNotificationPreviewResponse> chargebackAlertNotificationPreview(
+            @RequestParam(name = "from", required = false) String from,
+            @RequestParam(name = "to", required = false) String to,
+            @RequestParam(name = "currency", required = false) String currency,
+            @RequestParam(name = "storageGbMonthRate", required = false) BigDecimal storageGbMonthRate,
+            @RequestParam(name = "ingressGbRate", required = false) BigDecimal ingressGbRate,
+            @RequestParam(name = "egressGbRate", required = false) BigDecimal egressGbRate,
+            @RequestParam(name = "internalGbRate", required = false) BigDecimal internalGbRate,
+            @RequestParam(name = "operationThousandRate", required = false) BigDecimal operationThousandRate,
+            @RequestParam(name = "eventScanLimit", required = false) Integer eventScanLimit,
+            @RequestParam(name = "notificationChannel", required = false) String notificationChannel,
+            @RequestParam(name = "notificationTarget", required = false) String notificationTarget,
+            HttpServletRequest request
+    ) {
+        AuthenticatedUser actor = authContext.currentUser(request);
+        return ApiResponse.of(chargebackPreviewService.alertNotificationPreview(actor, chargebackRequest(
+                from,
+                to,
+                currency,
+                storageGbMonthRate,
+                ingressGbRate,
+                egressGbRate,
+                internalGbRate,
+                operationThousandRate,
+                eventScanLimit
+        ), notificationChannel, notificationTarget));
+    }
+
     @GetMapping(value = "/chargeback-preview/export.csv", produces = "text/csv")
     public ResponseEntity<String> exportChargebackPreviewCsv(
             @RequestParam(name = "from", required = false) String from,
