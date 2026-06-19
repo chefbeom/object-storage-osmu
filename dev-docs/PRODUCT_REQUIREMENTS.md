@@ -7,7 +7,7 @@
 - Admin can view lifecycle rule conflict report for overlapping enabled rule scopes.
 - Admin can export/import lifecycle rules using an AWS S3 LifecycleConfiguration XML-compatible subset.
 - Bucket owners/admins can manage bucket-scoped lifecycle XML through `GET/PUT/DELETE /api/buckets/{bucketName}/lifecycle`.
-- Bucket lifecycle API supports both JSON wrapper and raw XML request/response for stronger S3 client interoperability.
+- Bucket lifecycle API supports both JSON wrapper and raw XML request/response for stronger S3 client interoperability, including single `Content-MD5`, explicit `x-amz-checksum-*`, and matching `x-amz-sdk-checksum-algorithm` validation before replacement.
 - OSMU also provides `/api/s3/{bucketName}?lifecycle` as a path-style S3 lifecycle alias using OSMU REST authentication or OSMU access key headers.
 - Access key usage for bucket lifecycle alias requires active target bucket `ADMIN` scope.
 - Bucket-scoped lifecycle rules only purge candidates in the configured bucket; global rules use empty `bucketName`.

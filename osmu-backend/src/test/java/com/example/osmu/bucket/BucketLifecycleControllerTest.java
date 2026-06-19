@@ -555,6 +555,40 @@ class BucketLifecycleControllerTest {
                 .andExpect(content().string(org.hamcrest.Matchers.containsString("<Code>InvalidRequest</Code>")))
                 .andExpect(content().string(org.hamcrest.Matchers.containsString("<Message>x-amz-sdk-checksum-algorithm requires a matching x-amz-checksum-* header for S3 Bucket lifecycle.</Message>")));
 
+        mockMvc.perform(put("/api/s3/{bucketName}", bucketName)
+                        .queryParam("lifecycle", "")
+                        .header("Authorization", "Bearer " + token)
+                        .header("Content-MD5", "AAAAAA==", "BBBBBB==")
+                        .contentType(MediaType.APPLICATION_XML)
+                        .content(replacementXml))
+                .andExpect(status().isBadRequest())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_XML))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("<Code>InvalidDigest</Code>")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("<Message>The Content-MD5 you specified is not valid.</Message>")));
+
+        mockMvc.perform(put("/api/s3/{bucketName}", bucketName)
+                        .queryParam("lifecycle", "")
+                        .header("Authorization", "Bearer " + token)
+                        .header("x-amz-checksum-crc32", crc32Checksum(replacementXml), "AAAAAA==")
+                        .contentType(MediaType.APPLICATION_XML)
+                        .content(replacementXml))
+                .andExpect(status().isBadRequest())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_XML))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("<Code>InvalidDigest</Code>")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("<Message>Only one x-amz-checksum-* header is supported.</Message>")));
+
+        mockMvc.perform(put("/api/s3/{bucketName}", bucketName)
+                        .queryParam("lifecycle", "")
+                        .header("Authorization", "Bearer " + token)
+                        .header("x-amz-sdk-checksum-algorithm", "CRC32", "SHA256")
+                        .header("x-amz-checksum-crc32", crc32Checksum(replacementXml))
+                        .contentType(MediaType.APPLICATION_XML)
+                        .content(replacementXml))
+                .andExpect(status().isBadRequest())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_XML))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("<Code>InvalidRequest</Code>")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("<Message>x-amz-sdk-checksum-algorithm must specify one checksum algorithm.</Message>")));
+
         mockMvc.perform(get("/api/s3/{bucketName}", bucketName)
                         .queryParam("lifecycle", "")
                         .header("Authorization", "Bearer " + token)

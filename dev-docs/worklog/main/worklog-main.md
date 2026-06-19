@@ -17432,6 +17432,36 @@ feat/bucket-management
 - 후속:
   - 남은 큰 축은 broader multipart checksum exact AWS edge parity와 live Kubernetes/security evidence다.
 
+### 2026-06-19 - S3 bucket lifecycle checksum 중복 헤더 거절
+- 작업 시간:
+  - 시작: 2026-06-19 KST
+  - 종료: 2026-06-19 KST
+- 사용자 명령:
+  - active goal `dev-docs` 기준으로 계속 개발 진행.
+- 요청 분석:
+  - S3 object/multipart checksum 단일 헤더 검증을 정리한 뒤, bucket lifecycle PUT checksum 경로도 같은 방식으로 점검했다.
+  - 기존 lifecycle checksum 파서는 `Content-MD5`, 명시 `x-amz-checksum-*`, `x-amz-sdk-checksum-algorithm`에서 첫 헤더 값만 볼 수 있어 동일 헤더 중복값이 일부 무시될 수 있었다.
+- 수행:
+  - `S3BucketLifecycleController`에 단일 non-blank 헤더 helper를 추가했다.
+  - duplicate `Content-MD5`와 duplicate explicit `x-amz-checksum-*` value는 S3 XML `InvalidDigest` 경로로 거절하게 했다.
+  - duplicate `x-amz-sdk-checksum-algorithm`은 S3 XML `InvalidRequest` 경로로 거절하게 했다.
+  - `s3BucketLifecyclePutValidatesChecksumHeaders`에 duplicate Content-MD5, explicit checksum, SDK checksum algorithm assertions를 추가했다.
+  - `PRODUCT_REQUIREMENTS.md`, `api-spec.md`, `backend-design.md`, `s3-compatibility.md`, `test-cases.md`, `feature-inventory.md`에 lifecycle checksum 단일 헤더 계약을 반영했다.
+- 수정한 파일:
+  - `osmu-backend/src/main/java/com/example/osmu/bucket/S3BucketLifecycleController.java`
+  - `osmu-backend/src/test/java/com/example/osmu/bucket/BucketLifecycleControllerTest.java`
+  - `dev-docs/PRODUCT_REQUIREMENTS.md`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/backend-design.md`
+  - `dev-docs/s3-compatibility.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/feature-inventory.md`
+  - `dev-docs/worklog/main/worklog-main.md`
+- 검증:
+  - `$env:JAVA_HOME='C:\jdk-17'; $env:Path="$env:JAVA_HOME\bin;$env:Path"; .\gradlew.bat test --no-daemon --tests com.example.osmu.bucket.BucketLifecycleControllerTest.s3BucketLifecyclePutValidatesChecksumHeaders --tests com.example.osmu.common.error.S3ErrorCodeMapperTest`: 통과.
+- 후속:
+  - 남은 큰 축은 broader multipart checksum exact AWS edge parity와 live Kubernetes/security evidence다.
+
 ### 2026-06-19 - S3 CompleteMultipartUpload PartNumber/ETag 중복 필드 거절
 - 작업 시간:
   - 시작: 2026-06-19 KST

@@ -14,7 +14,7 @@
 - `BucketLifecycleController` exposes `GET/PUT/DELETE /api/buckets/{bucketName}/lifecycle`; PUT replaces only rules scoped to that bucket and stores imported XML rules with `bucketName`.
 - Bucket lifecycle GET supports JSON wrapper by default and raw XML when `Accept` is `application/xml` or `text/xml`.
 - Bucket lifecycle PUT supports JSON wrapper and raw XML bodies via `Content-Type: application/xml` or `text/xml`.
-- `S3BucketLifecycleController` validates lifecycle PUT `Content-MD5`, one explicit `x-amz-checksum-*` value header, and matching `x-amz-sdk-checksum-algorithm` against the raw lifecycle XML body before replacing the bucket configuration.
+- `S3BucketLifecycleController` validates lifecycle PUT single `Content-MD5`, one explicit `x-amz-checksum-*` value header, and matching single `x-amz-sdk-checksum-algorithm` against the raw lifecycle XML body before replacing the bucket configuration; duplicate checksum value headers are rejected before replacement.
 - `S3BucketLifecycleController` rejects `x-amz-transition-default-minimum-object-size` before replacement because the OSMU lifecycle subset does not support S3 Transition actions.
 - `S3BucketLifecycleController` exposes `/api/s3/{bucketName}?lifecycle` as a path-style S3 lifecycle alias backed by the same bucket lifecycle service, maps missing/blank lifecycle XML to S3 `MissingRequestBodyError`, invalid lifecycle XML to `MalformedXML`, and a missing bucket lifecycle configuration to S3 `NoSuchLifecycleConfiguration`.
 - `S3RequestAuthService` resolves JWT auth, OSMU access key headers (`X-OSMU-Access-Key`, `X-OSMU-Secret-Key`), or AWS SigV4 header auth for S3-style aliases.

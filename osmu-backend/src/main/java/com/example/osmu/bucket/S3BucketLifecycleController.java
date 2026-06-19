@@ -11,6 +11,7 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
 import java.util.Base64;
+import java.util.Enumeration;
 import java.util.List;
 import java.util.Locale;
 import java.util.zip.CRC32;
@@ -106,7 +107,12 @@ public class S3BucketLifecycleController {
 
     private void validateLifecycleChecksumHeaders(String rawXml, HttpServletRequest request) {
         byte[] body = rawXml.getBytes(StandardCharsets.UTF_8);
-        validateContentMd5(body, request.getHeader(AWS_CONTENT_MD5_HEADER));
+        validateContentMd5(body, singleNonBlankHeaderValue(
+                request,
+                AWS_CONTENT_MD5_HEADER,
+                ApiErrorCode.INVALID_DIGEST,
+                AWS_CONTENT_MD5_HEADER + " must specify one digest."
+        ));
 
         String checksumHeader = explicitChecksumHeader(request);
         String sdkChecksumHeader = sdkChecksumHeader(request);
@@ -123,7 +129,12 @@ public class S3BucketLifecycleController {
             );
         }
         if (!checksumHeader.isBlank()) {
-            validateChecksum(body, checksumHeader, request.getHeader(checksumHeader));
+            validateChecksum(body, checksumHeader, singleNonBlankHeaderValue(
+                    request,
+                    checksumHeader,
+                    ApiErrorCode.INVALID_DIGEST,
+                    "Only one x-amz-checksum-* header is supported."
+            ));
         }
     }
 
@@ -147,8 +158,13 @@ public class S3BucketLifecycleController {
                 AWS_CHECKSUM_CRC32C_HEADER,
                 AWS_CHECKSUM_CRC64NVME_HEADER
         )) {
-            String value = request.getHeader(headerName);
-            if (value != null && !value.isBlank()) {
+            String value = singleNonBlankHeaderValue(
+                    request,
+                    headerName,
+                    ApiErrorCode.INVALID_DIGEST,
+                    "Only one x-amz-checksum-* header is supported."
+            );
+            if (!value.isBlank()) {
                 headers.add(headerName);
             }
         }
@@ -159,14 +175,39 @@ public class S3BucketLifecycleController {
     }
 
     private String sdkChecksumHeader(HttpServletRequest request) {
-        String rawAlgorithm = request.getHeader(AWS_SDK_CHECKSUM_ALGORITHM_HEADER);
-        if (rawAlgorithm == null || rawAlgorithm.isBlank()) {
+        String rawAlgorithm = singleNonBlankHeaderValue(
+                request,
+                AWS_SDK_CHECKSUM_ALGORITHM_HEADER,
+                ApiErrorCode.VALIDATION_ERROR,
+                AWS_SDK_CHECKSUM_ALGORITHM_HEADER + " must specify one checksum algorithm."
+        );
+        if (rawAlgorithm.isBlank()) {
             return "";
         }
-        if (rawAlgorithm.contains(",")) {
-            throw new ApiException(ApiErrorCode.VALIDATION_ERROR, AWS_SDK_CHECKSUM_ALGORITHM_HEADER + " must specify one checksum algorithm.");
-        }
         return checksumHeaderForAlgorithm(rawAlgorithm.trim());
+    }
+
+    private String singleNonBlankHeaderValue(
+            HttpServletRequest request,
+            String headerName,
+            ApiErrorCode multipleValuesCode,
+            String multipleValuesMessage
+    ) {
+        List<String> values = new ArrayList<>();
+        Enumeration<String> headerValues = request.getHeaders(headerName);
+        while (headerValues.hasMoreElements()) {
+            String value = headerValues.nextElement();
+            if (value != null && !value.isBlank()) {
+                values.add(value.trim());
+            }
+        }
+        if (values.isEmpty()) {
+            return "";
+        }
+        if (values.size() > 1 || values.get(0).contains(",")) {
+            throw new ApiException(multipleValuesCode, multipleValuesMessage);
+        }
+        return values.get(0);
     }
 
     private String checksumHeaderForAlgorithm(String algorithm) {
