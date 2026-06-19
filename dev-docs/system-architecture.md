@@ -6,7 +6,7 @@ Dry-run uses the same candidate lookup path with a read-only preview limit and d
 
 Conflict report compares enabled rules with overlapping bucket scope and the same target type. Empty `bucketName` is global and overlaps any bucket; different non-empty buckets do not overlap. Prefixes overlap when one starts with the other, and tags overlap when shared keys have equal values. This gives operators an early warning before broad rules consume candidates intended for narrower rules.
 
-S3 Lifecycle XML import/export is an interoperability layer. It maps S3 `Expiration/Days` to OSMU `TRASH_OBJECT` retention rules and `NoncurrentVersionExpiration/NoncurrentDays` to `OBJECT_VERSION` retention rules. Bucket lifecycle endpoints support both JSON wrapper and raw XML request/response. `/api/s3/{bucketName}?lifecycle` provides a path-style S3 lifecycle alias over the same service while still using OSMU REST authentication. OSMU-only `priority`, `batchSize`, and `bucketName` are assigned on import rather than encoded in XML.
+S3 Lifecycle XML import/export is an interoperability layer. It maps S3 `Expiration/Days` to OSMU `TRASH_OBJECT` retention rules and `NoncurrentVersionExpiration/NoncurrentDays` to `OBJECT_VERSION` retention rules. The importer validates the lifecycle root and requires each `Rule/Status` to be `Enabled` or `Disabled`. Bucket lifecycle endpoints support both JSON wrapper and raw XML request/response. `/api/s3/{bucketName}?lifecycle` provides a path-style S3 lifecycle alias over the same service while still using OSMU REST authentication. OSMU-only `priority`, `batchSize`, and `bucketName` are assigned on import rather than encoded in XML.
 # OSMU System Architecture
 
 이 문서는 OSMU의 시스템 아키텍처를 정의한다.

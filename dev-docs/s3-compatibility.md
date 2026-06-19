@@ -28,7 +28,7 @@
 | `GET Bucket location` | Supported | Region-compatible response. |
 | `DELETE Bucket` | MVP supported | Requires empty bucket and `ADMIN` scope. Invalid names return `InvalidBucketName`; active objects or retained object versions return S3 XML `BucketNotEmpty`; other exact AWS error parity is not guaranteed. |
 | `GET/PUT/DELETE Bucket tagging` | Supported | S3 XML `Tagging/TagSet` subset with XXE-safe parser. Missing or blank XML body returns `MissingRequestBodyError`; unexpected roots return `MalformedXML`. |
-| `GET/PUT/DELETE Bucket lifecycle` | MVP supported | S3 XML lifecycle subset mapped to OSMU lifecycle rules. Missing configuration returns `NoSuchLifecycleConfiguration`; missing or blank XML body returns `MissingRequestBodyError`; unexpected roots return `MalformedXML`. |
+| `GET/PUT/DELETE Bucket lifecycle` | MVP supported | S3 XML lifecycle subset mapped to OSMU lifecycle rules. Missing configuration returns `NoSuchLifecycleConfiguration`; missing or blank XML body returns `MissingRequestBodyError`; unexpected roots and missing/unsupported `Rule/Status` values return `MalformedXML`. |
 | Bucket policy, ACL, public access block, object lock | Not supported | OSMU uses internal RBAC, Access Key scopes, retention/lifecycle policy, and admin console instead. |
 
 ## Object API

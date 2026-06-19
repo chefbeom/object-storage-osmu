@@ -17107,3 +17107,31 @@ feat/bucket-management
   - `$env:JAVA_HOME='C:\jdk-17'; .\gradlew.bat test --no-daemon --tests com.example.osmu.common.error.S3ErrorCodeMapperTest --tests com.example.osmu.bucket.BucketLifecycleControllerTest.unexpectedS3BucketLifecycleRootReturnsMalformedXml --tests com.example.osmu.bucket.BucketLifecycleControllerTest.adminCanUseS3StyleLifecycleQueryAlias`: 통과.
 - 후속:
   - 남은 live Kubernetes/security evidence와 broader AWS lifecycle schema/client-option edge parity를 계속 좁힌다.
+
+### 2026-06-19 - S3 Lifecycle Rule Status 검증
+- 작업 시간:
+  - 시작: 2026-06-19 KST
+  - 종료: 2026-06-19 KST
+- 사용한 명령:
+  - active goal `dev-docs` 기준으로 계속 개발 진행.
+- 요청 분석:
+  - AWS S3 `LifecycleRule` 문서에서 `Status`는 필수이고 valid values는 `Enabled | Disabled`다.
+  - 기존 OSMU importer는 `Status`가 없거나 오타 값이어도 `Disabled`가 아니면 enabled rule로 저장해 schema-invalid lifecycle XML을 받아들일 수 있었다.
+- 수행:
+  - `ObjectLifecycleS3XmlService`에 status parser를 분리하고 `Enabled`/`Disabled`만 허용하도록 수정했다.
+  - missing 또는 unsupported `Rule/Status` 값은 기존 `Invalid Lifecycle XML.` 경로를 통해 S3 XML `MalformedXML`로 응답하게 했다.
+  - S3-style lifecycle alias 회귀 테스트 `invalidS3BucketLifecycleStatusReturnsMalformedXml`를 추가했다.
+  - `api-spec.md`, `backend-design.md`, `system-architecture.md`, `s3-compatibility.md`, `test-cases.md`에 status validation 계약을 반영했다.
+- 수정한 파일:
+  - `osmu-backend/src/main/java/com/example/osmu/admin/ObjectLifecycleS3XmlService.java`
+  - `osmu-backend/src/test/java/com/example/osmu/bucket/BucketLifecycleControllerTest.java`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/backend-design.md`
+  - `dev-docs/system-architecture.md`
+  - `dev-docs/s3-compatibility.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/worklog/main/worklog-main.md`
+- 검증:
+  - `$env:JAVA_HOME='C:\jdk-17'; .\gradlew.bat test --no-daemon --tests com.example.osmu.common.error.S3ErrorCodeMapperTest --tests com.example.osmu.bucket.BucketLifecycleControllerTest.invalidS3BucketLifecycleStatusReturnsMalformedXml --tests com.example.osmu.bucket.BucketLifecycleControllerTest.adminCanUseS3StyleLifecycleQueryAlias`: 통과.
+- 후속:
+  - 남은 lifecycle schema 세부 검증은 filter shape와 action subset 경계이며, 큰 축은 live Kubernetes/security evidence와 broader S3 checksum/client-option edge parity다.

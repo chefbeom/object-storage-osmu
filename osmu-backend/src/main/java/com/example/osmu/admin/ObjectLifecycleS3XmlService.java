@@ -79,7 +79,7 @@ public class ObjectLifecycleS3XmlService {
         if (name.isBlank()) {
             name = "imported-lifecycle-rule-" + index;
         }
-        boolean enabled = !"Disabled".equalsIgnoreCase(textOfFirstChild(ruleElement, "Status"));
+        boolean enabled = parseStatus(ruleElement);
         ParsedFilter filter = parseFilter(ruleElement);
         RetentionTarget target = parseRetentionTarget(ruleElement);
         return new ObjectLifecycleRule(
@@ -114,6 +114,17 @@ public class ObjectLifecycleS3XmlService {
             );
         }
         throw new ApiException(ApiErrorCode.VALIDATION_ERROR, "Rule must contain Expiration/Days or NoncurrentVersionExpiration/NoncurrentDays.");
+    }
+
+    private boolean parseStatus(Element ruleElement) {
+        String status = textOfFirstChild(ruleElement, "Status");
+        if ("Enabled".equals(status)) {
+            return true;
+        }
+        if ("Disabled".equals(status)) {
+            return false;
+        }
+        throw new ApiException(ApiErrorCode.VALIDATION_ERROR, "Invalid Lifecycle XML.");
     }
 
     private ParsedFilter parseFilter(Element ruleElement) {

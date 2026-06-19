@@ -10,11 +10,11 @@
 - Save/delete writes `OBJECT_LIFECYCLE_RULE_SAVE` and `OBJECT_LIFECYCLE_RULE_DELETE` audit events.
 - `GET /api/admin/object-lifecycle/rules/{ruleId}/dry-run` previews matched candidates without deleting data.
 - `GET /api/admin/object-lifecycle/conflicts` reports enabled rules with overlapping bucket/target/prefix/tag scopes.
-- `ObjectLifecycleS3XmlService` exports/imports AWS S3 LifecycleConfiguration XML subset for lifecycle rule interoperability.
+- `ObjectLifecycleS3XmlService` exports/imports AWS S3 LifecycleConfiguration XML subset for lifecycle rule interoperability and validates the lifecycle root plus required `Rule/Status` values (`Enabled` or `Disabled`).
 - `BucketLifecycleController` exposes `GET/PUT/DELETE /api/buckets/{bucketName}/lifecycle`; PUT replaces only rules scoped to that bucket and stores imported XML rules with `bucketName`.
 - Bucket lifecycle GET supports JSON wrapper by default and raw XML when `Accept` is `application/xml` or `text/xml`.
 - Bucket lifecycle PUT supports JSON wrapper and raw XML bodies via `Content-Type: application/xml` or `text/xml`.
-- `S3BucketLifecycleController` exposes `/api/s3/{bucketName}?lifecycle` as a path-style S3 lifecycle alias backed by the same bucket lifecycle service, maps missing/blank lifecycle XML to S3 `MissingRequestBodyError`, and maps a missing bucket lifecycle configuration to S3 `NoSuchLifecycleConfiguration`.
+- `S3BucketLifecycleController` exposes `/api/s3/{bucketName}?lifecycle` as a path-style S3 lifecycle alias backed by the same bucket lifecycle service, maps missing/blank lifecycle XML to S3 `MissingRequestBodyError`, invalid lifecycle XML to `MalformedXML`, and a missing bucket lifecycle configuration to S3 `NoSuchLifecycleConfiguration`.
 - `S3RequestAuthService` resolves JWT auth, OSMU access key headers (`X-OSMU-Access-Key`, `X-OSMU-Secret-Key`), or AWS SigV4 header auth for S3-style aliases.
 - `S3SignatureV4Verifier` validates `AWS4-HMAC-SHA256` Authorization headers and query/presigned URL parameters using canonical request, signed headers, `x-amz-date` or `X-Amz-Date`, `x-amz-content-sha256` or `UNSIGNED-PAYLOAD`, and encrypted access key signing secret material.
 - SigV4 verification enforces request time within configurable `osmu.s3.sigv4.clock-skew-seconds`; presigned URL auth also enforces `X-Amz-Expires`.
