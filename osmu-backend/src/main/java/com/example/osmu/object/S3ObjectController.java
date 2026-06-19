@@ -916,12 +916,13 @@ public class S3ObjectController {
     }
 
     private String copyObjectChecksumHeader(HttpServletRequest request) {
-        String rawAlgorithm = request.getHeader(AWS_CHECKSUM_ALGORITHM_HEADER);
-        if (rawAlgorithm == null || rawAlgorithm.isBlank()) {
+        String rawAlgorithm = singleNonBlankHeaderValue(
+                request,
+                AWS_CHECKSUM_ALGORITHM_HEADER,
+                AWS_CHECKSUM_ALGORITHM_HEADER + " must specify one checksum algorithm."
+        );
+        if (rawAlgorithm.isBlank()) {
             return null;
-        }
-        if (rawAlgorithm.contains(",")) {
-            throw new ApiException(ApiErrorCode.VALIDATION_ERROR, AWS_CHECKSUM_ALGORITHM_HEADER + " must specify one checksum algorithm.");
         }
         return switch (rawAlgorithm.trim().toUpperCase(Locale.ROOT)) {
             case "SHA256" -> AWS_CHECKSUM_SHA256_HEADER;
@@ -997,12 +998,13 @@ public class S3ObjectController {
     }
 
     private String multipartInitiateChecksumType(HttpServletRequest request, String checksumAlgorithm) {
-        String rawChecksumType = request.getHeader(AWS_CHECKSUM_TYPE_HEADER);
-        if (rawChecksumType == null || rawChecksumType.isBlank()) {
+        String rawChecksumType = singleNonBlankHeaderValue(
+                request,
+                AWS_CHECKSUM_TYPE_HEADER,
+                AWS_CHECKSUM_TYPE_HEADER + " must specify one checksum type."
+        );
+        if (rawChecksumType.isBlank()) {
             return "";
-        }
-        if (rawChecksumType.contains(",")) {
-            throw new ApiException(ApiErrorCode.VALIDATION_ERROR, AWS_CHECKSUM_TYPE_HEADER + " must specify one checksum type.");
         }
         String checksumType = rawChecksumType.trim().toUpperCase(Locale.ROOT);
         if (!"COMPOSITE".equals(checksumType) && !"FULL_OBJECT".equals(checksumType)) {
@@ -2360,12 +2362,13 @@ public class S3ObjectController {
     }
 
     private String multipartChecksumType(HttpServletRequest request) {
-        String rawChecksumType = request.getHeader(AWS_CHECKSUM_TYPE_HEADER);
-        if (rawChecksumType == null || rawChecksumType.isBlank()) {
+        String rawChecksumType = singleNonBlankHeaderValue(
+                request,
+                AWS_CHECKSUM_TYPE_HEADER,
+                AWS_CHECKSUM_TYPE_HEADER + " must specify one checksum type."
+        );
+        if (rawChecksumType.isBlank()) {
             return "";
-        }
-        if (rawChecksumType.contains(",")) {
-            throw new ApiException(ApiErrorCode.VALIDATION_ERROR, AWS_CHECKSUM_TYPE_HEADER + " must specify one checksum type.");
         }
         String checksumType = rawChecksumType.trim().toUpperCase(Locale.ROOT);
         if ("FULL_OBJECT".equals(checksumType) || "COMPOSITE".equals(checksumType)) {
@@ -2375,12 +2378,13 @@ public class S3ObjectController {
     }
 
     private Long multipartObjectSize(HttpServletRequest request) {
-        String rawSize = request.getHeader(AWS_MP_OBJECT_SIZE_HEADER);
-        if (rawSize == null || rawSize.isBlank()) {
+        String rawSize = singleNonBlankHeaderValue(
+                request,
+                AWS_MP_OBJECT_SIZE_HEADER,
+                AWS_MP_OBJECT_SIZE_HEADER + " must specify one size."
+        );
+        if (rawSize.isBlank()) {
             return null;
-        }
-        if (rawSize.contains(",")) {
-            throw new ApiException(ApiErrorCode.VALIDATION_ERROR, AWS_MP_OBJECT_SIZE_HEADER + " must specify one size.");
         }
         try {
             long size = Long.parseLong(rawSize.trim());
@@ -2393,6 +2397,21 @@ public class S3ObjectController {
         }
     }
 
+    private String singleNonBlankHeaderValue(
+            HttpServletRequest request,
+            String headerName,
+            String multipleValuesMessage
+    ) {
+        List<String> values = nonBlankHeaderValues(request, headerName);
+        if (values.isEmpty()) {
+            return "";
+        }
+        if (values.size() > 1 || values.get(0).contains(",")) {
+            throw new ApiException(ApiErrorCode.VALIDATION_ERROR, multipleValuesMessage);
+        }
+        return values.get(0);
+    }
+
     private boolean isSupportedChecksumHeader(String headerName) {
         return AWS_CHECKSUM_SHA256_HEADER.equals(headerName)
                 || AWS_CHECKSUM_SHA1_HEADER.equals(headerName)
@@ -2402,12 +2421,13 @@ public class S3ObjectController {
     }
 
     private String sdkChecksumHeader(HttpServletRequest request) {
-        String rawAlgorithm = request.getHeader(AWS_SDK_CHECKSUM_ALGORITHM_HEADER);
-        if (rawAlgorithm == null || rawAlgorithm.isBlank()) {
+        String rawAlgorithm = singleNonBlankHeaderValue(
+                request,
+                AWS_SDK_CHECKSUM_ALGORITHM_HEADER,
+                AWS_SDK_CHECKSUM_ALGORITHM_HEADER + " must specify one checksum algorithm."
+        );
+        if (rawAlgorithm.isBlank()) {
             return "";
-        }
-        if (rawAlgorithm.contains(",")) {
-            throw new ApiException(ApiErrorCode.VALIDATION_ERROR, AWS_SDK_CHECKSUM_ALGORITHM_HEADER + " must specify one checksum algorithm.");
         }
         return checksumHeaderForAlgorithm(rawAlgorithm.trim());
     }

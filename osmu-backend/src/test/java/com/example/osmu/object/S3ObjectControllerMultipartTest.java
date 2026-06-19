@@ -158,6 +158,17 @@ class S3ObjectControllerMultipartTest {
                 .isInstanceOfSatisfying(ApiException.class, exception ->
                         assertThat(exception.code()).isEqualTo(ApiErrorCode.VALIDATION_ERROR));
 
+        MockHttpServletRequest duplicateAlgorithmRequest = request("POST");
+        duplicateAlgorithmRequest.addHeader("x-amz-checksum-algorithm", "SHA256");
+        duplicateAlgorithmRequest.addHeader("x-amz-checksum-algorithm", "CRC32C");
+        when(s3RequestAuthService.currentUser(duplicateAlgorithmRequest, "bucket", "WRITE")).thenReturn(user);
+
+        assertThatThrownBy(() -> controller.createMultipartUpload("bucket", "videos/input.mp4", duplicateAlgorithmRequest))
+                .isInstanceOfSatisfying(ApiException.class, exception -> {
+                    assertThat(exception.code()).isEqualTo(ApiErrorCode.VALIDATION_ERROR);
+                    assertThat(exception.getMessage()).isEqualTo("x-amz-checksum-algorithm must specify one checksum algorithm.");
+                });
+
         MockHttpServletRequest invalidTypeRequest = request("POST");
         invalidTypeRequest.addHeader("x-amz-checksum-type", "SIDEWAYS");
         when(s3RequestAuthService.currentUser(invalidTypeRequest, "bucket", "WRITE")).thenReturn(user);
@@ -165,6 +176,17 @@ class S3ObjectControllerMultipartTest {
         assertThatThrownBy(() -> controller.createMultipartUpload("bucket", "videos/input.mp4", invalidTypeRequest))
                 .isInstanceOfSatisfying(ApiException.class, exception ->
                         assertThat(exception.code()).isEqualTo(ApiErrorCode.VALIDATION_ERROR));
+
+        MockHttpServletRequest duplicateTypeRequest = request("POST");
+        duplicateTypeRequest.addHeader("x-amz-checksum-type", "COMPOSITE");
+        duplicateTypeRequest.addHeader("x-amz-checksum-type", "FULL_OBJECT");
+        when(s3RequestAuthService.currentUser(duplicateTypeRequest, "bucket", "WRITE")).thenReturn(user);
+
+        assertThatThrownBy(() -> controller.createMultipartUpload("bucket", "videos/input.mp4", duplicateTypeRequest))
+                .isInstanceOfSatisfying(ApiException.class, exception -> {
+                    assertThat(exception.code()).isEqualTo(ApiErrorCode.VALIDATION_ERROR);
+                    assertThat(exception.getMessage()).isEqualTo("x-amz-checksum-type must specify one checksum type.");
+                });
 
         MockHttpServletRequest invalidCompositeRequest = request("POST");
         invalidCompositeRequest.addHeader("x-amz-checksum-algorithm", "CRC64NVME");
@@ -883,6 +905,17 @@ class S3ObjectControllerMultipartTest {
                 .isInstanceOfSatisfying(ApiException.class, exception ->
                         assertThat(exception.code()).isEqualTo(ApiErrorCode.VALIDATION_ERROR));
 
+        MockHttpServletRequest duplicateTypeRequest = completeMultipartRequest();
+        duplicateTypeRequest.addHeader("x-amz-checksum-type", "COMPOSITE");
+        duplicateTypeRequest.addHeader("x-amz-checksum-type", "FULL_OBJECT");
+        when(s3RequestAuthService.currentUser(duplicateTypeRequest, "bucket", "WRITE")).thenReturn(user);
+
+        assertThatThrownBy(() -> controller.completeMultipartUpload("bucket", "videos/input.mp4", "upload-1", duplicateTypeRequest))
+                .isInstanceOfSatisfying(ApiException.class, exception -> {
+                    assertThat(exception.code()).isEqualTo(ApiErrorCode.VALIDATION_ERROR);
+                    assertThat(exception.getMessage()).isEqualTo("x-amz-checksum-type must specify one checksum type.");
+                });
+
         verifyNoInteractions(objectService);
     }
 
@@ -1088,6 +1121,23 @@ class S3ObjectControllerMultipartTest {
         assertThatThrownBy(() -> controller.completeMultipartUpload("bucket", "videos/input.mp4", "upload-1", request))
                 .isInstanceOfSatisfying(ApiException.class, exception ->
                         assertThat(exception.code()).isEqualTo(ApiErrorCode.VALIDATION_ERROR));
+
+        MockHttpServletRequest duplicateRequest = request("POST");
+        duplicateRequest.setContentType(MediaType.APPLICATION_XML_VALUE);
+        duplicateRequest.addHeader("x-amz-mp-object-size", "10");
+        duplicateRequest.addHeader("x-amz-mp-object-size", "20");
+        duplicateRequest.setContent("""
+                <CompleteMultipartUpload>
+                  <Part><PartNumber>1</PartNumber><ETag>"etag-1"</ETag></Part>
+                </CompleteMultipartUpload>
+                """.getBytes(StandardCharsets.UTF_8));
+        when(s3RequestAuthService.currentUser(duplicateRequest, "bucket", "WRITE")).thenReturn(user);
+
+        assertThatThrownBy(() -> controller.completeMultipartUpload("bucket", "videos/input.mp4", "upload-1", duplicateRequest))
+                .isInstanceOfSatisfying(ApiException.class, exception -> {
+                    assertThat(exception.code()).isEqualTo(ApiErrorCode.VALIDATION_ERROR);
+                    assertThat(exception.getMessage()).isEqualTo("x-amz-mp-object-size must specify one size.");
+                });
 
         verifyNoInteractions(objectService);
     }

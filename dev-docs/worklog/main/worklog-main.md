@@ -17372,6 +17372,37 @@ feat/bucket-management
 - 후속:
   - 남은 큰 축은 broader multipart checksum exact AWS edge parity와 live Kubernetes/security evidence다.
 
+### 2026-06-19 - S3 multipart checksum type/object-size 단일 헤더 검증
+- 작업 시간:
+  - 시작: 2026-06-19 KST
+  - 종료: 2026-06-19 KST
+- 사용자 명령:
+  - active goal `dev-docs` 기준으로 계속 개발 진행.
+- 요청 분석:
+  - 직전 multipart checksum/XML 보강 후, CompleteMultipartUpload의 단일값 헤더 경계를 추가 점검했다.
+  - 기존 `x-amz-checksum-algorithm`, `x-amz-checksum-type`, `x-amz-mp-object-size` 파서는 콤마로 병합된 값은 막았지만, 동일 헤더가 여러 줄로 전달되는 경우에는 `getHeader` 첫 값만 볼 수 있었다.
+  - 이 경우 클라이언트가 여러 checksum negotiation 값 또는 여러 expected object size를 보냈는데도 일부 값이 조용히 무시될 수 있었다.
+- 수행:
+  - `S3ObjectController`에 `singleNonBlankHeaderValue` helper를 추가해 동일 헤더의 non-blank 값이 둘 이상이거나 콤마 병합값이면 S3 XML `InvalidRequest` 경로로 거절하게 했다.
+  - multipart initiate/copy checksum algorithm, multipart initiate `x-amz-checksum-type`, multipart complete `x-amz-checksum-type`, complete `x-amz-mp-object-size`에 단일값 검증을 적용했다.
+  - 회귀 테스트에 duplicate initiate checksum algorithm/type, duplicate complete checksum type, duplicate complete object size header 케이스를 추가했다.
+  - `PRODUCT_REQUIREMENTS.md`, `api-spec.md`, `backend-design.md`, `s3-compatibility.md`, `test-cases.md`, `feature-inventory.md`에 단일 헤더 계약을 반영했다.
+- 수정한 파일:
+  - `osmu-backend/src/main/java/com/example/osmu/object/S3ObjectController.java`
+  - `osmu-backend/src/test/java/com/example/osmu/object/S3ObjectControllerMultipartTest.java`
+  - `dev-docs/PRODUCT_REQUIREMENTS.md`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/backend-design.md`
+  - `dev-docs/s3-compatibility.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/feature-inventory.md`
+  - `dev-docs/worklog/main/worklog-main.md`
+- 검증:
+  - `$env:JAVA_HOME='C:\jdk-17'; $env:Path="$env:JAVA_HOME\bin;$env:Path"; .\gradlew.bat test --no-daemon --tests com.example.osmu.object.S3ObjectControllerMultipartTest.createMultipartUploadRejectsUnsupportedChecksumNegotiation --tests com.example.osmu.object.S3ObjectControllerMultipartTest.completeMultipartUploadRejectsInvalidChecksumType --tests com.example.osmu.object.S3ObjectControllerMultipartTest.completeMultipartUploadRejectsInvalidMultipartObjectSizeHeader --tests com.example.osmu.object.S3ObjectControllerMultipartTest.completeMultipartUploadParsesS3XmlAndReturnsResultXml --tests com.example.osmu.common.error.S3ErrorCodeMapperTest`: 통과.
+  - `$env:JAVA_HOME='C:\jdk-17'; $env:Path="$env:JAVA_HOME\bin;$env:Path"; .\gradlew.bat test --no-daemon --tests com.example.osmu.object.S3ObjectControllerMultipartTest.createMultipartUploadEchoesChecksumAlgorithmAndType --tests com.example.osmu.object.S3ObjectControllerMultipartTest.uploadMultipartPartRejectsSdkChecksumAlgorithmMismatchWithInitiate --tests com.example.osmu.object.S3ObjectControllerTest.copyObjectCopiesAndReplacesUserMetadata --tests com.example.osmu.object.S3ObjectControllerTest.accessKeyCanUploadWithSdkChecksumAlgorithm`: 통과.
+- 후속:
+  - 남은 큰 축은 broader multipart checksum exact AWS edge parity와 live Kubernetes/security evidence다.
+
 ### 2026-06-19 - S3 CompleteMultipartUpload PartNumber/ETag 중복 필드 거절
 - 작업 시간:
   - 시작: 2026-06-19 KST
