@@ -4,15 +4,15 @@
 
 ## 1. 최종 목표
 
-OSMU는 기업이 자체 인프라에서 운영할 수 있는 S3 호환 프라이빗 오브젝트 스토리지 플랫폼이다.
+OSMU는 기업이 자체 인프라에서 운영할 수 있는 S3 대체 가능 프라이빗 오브젝트 스토리지 플랫폼이다.
 
 최종 제품은 다음을 제공한다.
 
 - 대용량 파일 저장
 - REST API
-- S3 호환 API
+- S3-compatible replacement API
 - Web Portal
-- FUSE Mount 연동
+- FUSE Mount 연동 후보
 - 사용자/조직/권한 관리
 - Access Key 관리
 - 쿼터

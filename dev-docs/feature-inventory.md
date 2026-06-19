@@ -18,7 +18,7 @@ OSMU는 기업 내부에서 대용량 파일, 이미지, 영상, 로그, 비정�
 최종 목표는 다음과 같습니다.
 
 - 스트리밍 플랫폼, 클라우드 스토리지 플랫폼, 자체 스토리지 플랫폼이 필요한 기업에 B2B 제품으로 제공
-- AWS S3를 쓰지 않고 자체 스토리지를 운영하려는 조직에 S3 호환 접근 제공
+- AWS S3를 쓰지 않고 자체 스토리지를 운영하려는 조직에 대체 가능한 수준의 S3 호환 접근 제공
 - MariaDB 기반 control plane metadata 관리
 - MinIO 기반 object binary 저장
 - 관리자 콘솔, 개발자 콘솔, IAM/API Key, 권한, quota, audit, backup, data-flow monitoring 제공
@@ -35,7 +35,7 @@ OSMU는 기업 내부에서 대용량 파일, 이미지, 영상, 로그, 비정�
 | 프론트엔드 콘솔 | 55% | 로그인, 페이지 분리, 대시보드 palette, data-flow monitoring 패널, operations readiness 요약/remediation/evidence plan/invocation/invocation unblock/dispatch preflight/workflow run id/artifact collection/artifact import/finalizer/evidence handoff action 표시, 관리자 작업 실패 remediation UX, admin/developer 화면 뼈대가 있음 |
 | 백엔드 REST API | 50% | auth, bucket, object, access key, admin, dashboard, data-flow monitoring, storage expansion, restore drill evidence history, operations readiness dashboard evidence/remediation/evidence plan/invocation/invocation unblock/dispatch preflight/workflow run id/artifact collection/artifact import/finalizer/evidence handoff API가 있음 |
 | MariaDB metadata | 35% | Flyway migration 46개와 repository 구현이 있음 |
-| MinIO/S3 호환 | 35% | S3 API 일부, SigV4, MinIO adapter, smoke script가 있음 |
+| MinIO/S3 호환 | 35% | S3 API 일부, SigV4, MinIO adapter, smoke script가 있음. 목표는 AWS 완전 호환이 아니라 주요 클라이언트 대체 사용 가능성 |
 | Docker/local demo | 90% | Docker/MariaDB/MinIO/backend/frontend durable gate, Browser E2E, Docker integration smoke, Dockerized real S3 client smoke가 `docker-mc` 기준 통과 |
 | Kubernetes/Helm | 75% | Draft manifests/Helm chart, ServiceAccount hardening, storage expansion RBAC, backup CronJobs, backup drill evidence script, restore namespace preparation helper, external DR bucket bootstrap, external DR bucket immutability preflight, bounded and hardened external DR artifact transfer helper, backup artifact preflight helper, isolated restore drill helper, DR drill orchestration wrapper, restore smoke helper, DR evidence API request helper, Kubernetes DR finalization wrapper, Kubernetes DR Finalizer CI workflow, storage expansion finalization wrapper, Storage Expansion Finalizer CI workflow, dedicated Kubernetes HA/DR Readiness CI workflow, Operations Readiness Finalizer CI workflow, Operations Readiness Artifact Finalizer CI workflow, operations readiness artifact gate, PDB, topology spread, and live HA/DR evidence script exist; actual cluster verification is still needed |
 | 테스트/검증 자동화 | 78% | 프론트/문서/manifest/static gate, backend Gradle tests, Docker durable gate, Browser E2E, Docker integration smoke, Dockerized real S3 client smoke, operations readiness, operations evidence plan verifier, guarded operations evidence plan invocation verifier, operations invocation unblock plan verifier, operations dispatch preflight verifier, operations workflow run id plan verifier, operations artifact collection plan verifier, operations evidence handoff verifier with finalizer-missing/pending fixtures, operations readiness convergence verifier, Kubernetes report sync live dashboard polling verifier, Kubernetes report ConfigMap/backend Pod mount verifier, pending evidence remediation metadata, operations readiness finalizer plan self-test, cross-platform finalizer `pwsh` command propagation check, operations readiness artifact importer self-test, operations readiness dashboard API/frontend invocation unblock, dispatch preflight, workflow run id, artifact collection, artifact import, finalizer, evidence handoff, convergence visibility test, Operations Readiness Artifact Finalizer CI draft, Kubernetes HA/DR Readiness CI draft, IAM/RBAC finalizer self-test와 전용 IAM/RBAC Finalizer CI draft, security evidence writer/finalizer self-test, Security Evidence Finalizer CI draft, digest/hash evidence 검증은 통과, live Kubernetes/security CI evidence는 환경 필요 |
@@ -282,7 +282,8 @@ MVP 데모 기준 완료율은 약 90~95%입니다.
 
 남은 것:
 
-- full AWS multipart checksum negotiation parity beyond stored UploadPart checksum metadata and complete-time matching guards, especially remaining real-client option coverage and exact AWS checksum/error edge behavior
+- host `aws`/`mc`, boto3, AWS SDK 등 주요 클라이언트 smoke에서 실제 대체 사용 흐름이 깨지는 지점 보강
+- AWS S3의 세부 checksum/error/header parity는 제품 영향이 확인될 때만 선별 대응
 
 ### 4.7 MariaDB metadata
 

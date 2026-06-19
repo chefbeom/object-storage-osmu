@@ -22,7 +22,7 @@ OSMU의 목표는 기업이 자체 인프라에서 대용량 파일을 안전하
 
 ### 1.2 제품 한 줄 정의
 
-기업이 자체 인프라에서 AWS S3처럼 사용할 수 있는 대용량 파일 저장, 관리, 공유, 백업용 프라이빗 오브젝트 스토리지 플랫폼.
+기업이 자체 인프라에서 주요 S3 클라이언트로 대체 사용할 수 있는 대용량 파일 저장, 관리, 공유, 백업용 프라이빗 오브젝트 스토리지 플랫폼.
 
 ## 2. 해결해야 하는 문제
 
@@ -122,8 +122,9 @@ OSMU는 하나의 접근 방식만 제공하면 안 된다. 기업 환경마다 
 
 ### 5.3 S3 호환 API
 
-- AWS SDK, boto3, MinIO Client, AWS CLI 같은 기존 도구와 호환되어야 한다.
-- S3 API 자체는 MinIO가 담당하고, OSMU는 계정, 권한, 버킷 관리 기능을 제공한다.
+- AWS SDK, boto3, MinIO Client, AWS CLI 같은 기존 도구의 핵심 bucket/object/multipart 흐름과 호환되어야 한다.
+- AWS S3 전체 동작 복제가 아니라, 내부 스토리지 전환에 필요한 대체 가능성을 목표로 한다.
+- S3 API의 data plane은 MinIO와 OSMU S3-compatible alias가 함께 담당하고, OSMU는 계정, 권한, 버킷, 메타데이터 관리 기능을 제공한다.
 
 ### 5.4 FUSE Mount
 
@@ -289,9 +290,9 @@ MVP는 "기업 내부에 설치해 실제로 파일을 저장하고 관리할 �
 
 ### 8.5 호환성
 
-- AWS S3 SDK와 호환되어야 한다.
-- MinIO Client와 호환되어야 한다.
-- s3fs-fuse, goofys 연동 가능성을 유지해야 한다.
+- AWS S3 SDK, boto3, AWS CLI, MinIO Client의 핵심 사용 흐름과 호환되어야 한다.
+- s3fs-fuse, goofys 연동은 기본 목표가 아니라, 고객 전환 시나리오가 확인될 때 검증/지원 범위를 넓힌다.
+- AWS S3 세부 edge behavior는 지원 클라이언트 smoke 실패나 고객 마이그레이션 영향이 확인될 때만 선별 보강한다.
 
 ## 9. 데이터 저장 원칙
 

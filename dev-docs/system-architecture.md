@@ -28,7 +28,7 @@ OSMU는 직접 스토리지 엔진을 처음부터 구현하지 않는다. 제�
 
 ## 2. 설계 목표
 
-- S3 호환 API를 지원한다.
+- 주요 S3 클라이언트가 대체 사용할 수 있는 S3-compatible API를 지원한다.
 - REST API로 제품 관리 기능을 제공한다.
 - 영상, 이미지, 문서, 백업, AI 데이터 등 확장자 제한 없이 저장한다.
 - 실제 파일 데이터는 MinIO에 저장한다.
@@ -43,11 +43,12 @@ OSMU는 직접 스토리지 엔진을 처음부터 구현하지 않는다. 제�
 flowchart LR
     Admin["Admin / User"] --> Portal["Vue Web Portal"]
     App["Application"] --> RestClient["REST Client"]
-    S3Client["AWS SDK / boto3 / mc"] --> S3Api["S3 Compatible API"]
-    FuseClient["s3fs-fuse / goofys"] --> S3Api
+    S3Client["AWS SDK / boto3 / mc"] --> S3Api["S3-compatible replacement API"]
+    FuseClient["s3fs-fuse / goofys 후보"] --> S3Api
 
     Portal --> Backend["Spring Boot Backend"]
     RestClient --> Backend
+    S3Api --> Backend
 
     Backend --> Auth["Auth / RBAC"]
     Backend --> Bucket["Bucket Service"]
@@ -64,7 +65,6 @@ flowchart LR
     Object --> StorageAdapter
     StorageAdapter --> MinIO["MinIO Object Storage"]
 
-    S3Api --> MinIO
     MinIO --> Disk["Disk / Volume / Erasure Coding"]
 
     Backend --> Metrics["Metrics / Health"]
@@ -90,7 +90,7 @@ flowchart TD
     Backend --> MariaDB["mariadb container"]
     Backend --> MinIO["minio container"]
 
-    S3Client["S3 Client"] --> MinIO
+    S3Client["S3 Client"] --> Backend
     MinIOConsole["MinIO Console"] --> MinIO
 
     MariaDB --> MariaVolume["mariadb-data volume"]
@@ -116,7 +116,7 @@ flowchart TD
 
 - MinIO
 - S3 API
-- FUSE Mount
+- FUSE Mount 후보
 - Object binary
 - Erasure Coding
 - 복제와 백업
@@ -126,7 +126,7 @@ flowchart TD
 - 파일 바이너리는 MariaDB에 저장하지 않는다.
 - 대용량 파일은 Backend 메모리에 통째로 올리지 않는다.
 - MVP 이후 presigned URL과 multipart upload를 우선 도입한다.
-- S3 호환성은 Backend가 직접 재구현하지 않고 MinIO에 위임한다.
+- S3 data plane은 MinIO를 우선 활용하고, Backend는 OSMU 권한/메타데이터와 연결되는 대체용 S3-compatible alias를 제공한다.
 
 ### 5.2 Control Plane
 

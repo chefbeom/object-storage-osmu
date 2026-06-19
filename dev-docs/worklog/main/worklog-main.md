@@ -17403,6 +17403,38 @@ feat/bucket-management
 - 후속:
   - 남은 큰 축은 broader multipart checksum exact AWS edge parity와 live Kubernetes/security evidence다.
 
+### 2026-06-19 - S3 호환 목표를 대체 가능성 중심으로 재정렬
+- 작업 시간:
+  - 시작: 2026-06-19 KST
+  - 종료: 2026-06-19 KST
+- 사용자 명령:
+  - AWS 호환에 초점이 과도하므로, AWS S3는 대체 가능한 수준으로만 맞추라는 방향 전환.
+- 요청 분석:
+  - 최근 작업이 S3 checksum/header/XML edge parity를 계속 좁히는 방향으로 흘러, OSMU의 본래 제품 목표인 private object storage control plane, 운영 evidence, 포털 완성도보다 AWS 세부 동작 추적이 과해질 수 있다고 판단했다.
+  - S3 API는 핵심이지만 목표는 AWS 완전 복제가 아니라 기존 S3 클라이언트와 SDK가 큰 수정 없이 내부 스토리지로 전환할 수 있는 수준이다.
+- 수행:
+  - README의 핵심 목표와 다음 개발 축에서 `고급 S3 parity`를 제거하고, S3 대체성 유지 기준을 명시했다.
+  - `s3-compatibility.md`에 Product Boundary를 추가해 bucket/object CRUD, multipart, copy, tagging, lifecycle XML subset, SigV4, presigned URL, 기본 checksum, real client smoke를 우선순위로 고정했다.
+  - `backend-design.md`, `api-spec.md`, `PRODUCT_REQUIREMENTS.md`, `feature-inventory.md`에서 full/exact AWS parity를 미래 개발 목표처럼 보이게 하던 표현을 제품 영향 기반 선별 대응으로 바꿨다.
+  - `PROJECT_MEMORY.md`, `planning-requirements.md`, `system-architecture.md`, `development-roadmap.md`, `frontend-design.md`의 장기 목표/아키텍처/개발자 UX 표현도 S3 대체 가능성 중심으로 맞췄다.
+- 수정한 파일:
+  - `README.md`
+  - `dev-docs/s3-compatibility.md`
+  - `dev-docs/backend-design.md`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/PRODUCT_REQUIREMENTS.md`
+  - `dev-docs/feature-inventory.md`
+  - `dev-docs/PROJECT_MEMORY.md`
+  - `dev-docs/planning-requirements.md`
+  - `dev-docs/system-architecture.md`
+  - `dev-docs/development-roadmap.md`
+  - `dev-docs/frontend-design.md`
+  - `dev-docs/worklog/main/worklog-main.md`
+- 검증:
+  - 문서 방향 수정이며 코드 실행 테스트는 없음.
+- 후속:
+  - 다음 구현 우선순위는 AWS edge parity가 아니라 운영/live evidence, release packaging, 주요 S3 client smoke 실패 지점 보강으로 둔다.
+
 ### 2026-06-19 - S3 checksum algorithm 중복 헤더 회귀 검증
 - 작업 시간:
   - 시작: 2026-06-19 KST

@@ -57,7 +57,7 @@
 - `x-amz-tagging` and `X-OSMU-Tags` are accepted for upload tags.
 - Multi-object delete uses the same soft-delete behavior as the REST object API and treats missing keys as deleted for S3 compatibility.
 - Object tagging XML uses the same metadata tag store as the REST object API; tag read requires `READ`, tag update/delete requires `WRITE`.
-- Full AWS multipart checksum negotiation parity beyond stored UploadPart checksum metadata and complete-time matching guards, especially exact AWS response propagation and broader real-client option coverage, automatic DNS/proxy provisioning for virtual-hosted-style domains, remaining conditional edge parity beyond documented object `PUT`/`HEAD`/`GET`, CopyObject source/destination, and multipart complete ETag guards, exact CopyObject full AWS versioning/remaining conditional edge parity beyond documented source ETag/date and destination ETag guards, remaining CreateBucket/DeleteBucket/CreateMultipartUpload edge error parity beyond covered control headers/name/duplicate/active-or-retained non-empty/unsupported-create-control cases, and full AWS error behavior parity remain future work. `dev-docs/s3-compatibility.md` tracks the supported/partial/unsupported matrix.
+- AWS S3 전체 동작 호환은 제품 요구사항이 아니다. S3 compatibility is scoped to replacement use for common clients and SDKs: authentication, bucket/object CRUD, multipart upload, copy, tagging, lifecycle XML subset, basic checksum, and clear XML errors. AWS edge behavior is only expanded when a supported real-client smoke or target migration scenario proves product impact. `dev-docs/s3-compatibility.md` tracks the supported/partial/unsupported matrix.
 # Private Object Storage Platform 기획서 초안
 
 ## 1. 문서 개요
@@ -905,9 +905,9 @@ MVP:
 
 ### 12.5 호환성
 
-- AWS S3 SDK와 호환되어야 한다.
-- MinIO Client와 호환되어야 한다.
-- s3fs-fuse, goofys 같은 FUSE 기반 마운트 도구와 연동 가능해야 한다.
+- AWS SDK, boto3, AWS CLI, MinIO Client의 핵심 bucket/object/multipart 사용 흐름과 호환되어야 한다.
+- AWS S3 전체 동작 복제가 아니라 내부 스토리지 전환에 필요한 대체 가능성을 목표로 한다.
+- s3fs-fuse, goofys 같은 FUSE 기반 마운트 도구는 고객 전환 시나리오가 확인될 때 연동 범위와 검증 기준을 확정한다.
 
 ### 12.6 운영성
 
