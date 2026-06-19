@@ -152,6 +152,37 @@ public class AdminBillingController {
                 .body(csv);
     }
 
+    @GetMapping(value = "/chargeback-invoice-draft/export.csv", produces = "text/csv")
+    public ResponseEntity<String> exportChargebackInvoiceDraftCsv(
+            @RequestParam(name = "from", required = false) String from,
+            @RequestParam(name = "to", required = false) String to,
+            @RequestParam(name = "currency", required = false) String currency,
+            @RequestParam(name = "storageGbMonthRate", required = false) BigDecimal storageGbMonthRate,
+            @RequestParam(name = "ingressGbRate", required = false) BigDecimal ingressGbRate,
+            @RequestParam(name = "egressGbRate", required = false) BigDecimal egressGbRate,
+            @RequestParam(name = "internalGbRate", required = false) BigDecimal internalGbRate,
+            @RequestParam(name = "operationThousandRate", required = false) BigDecimal operationThousandRate,
+            @RequestParam(name = "eventScanLimit", required = false) Integer eventScanLimit,
+            HttpServletRequest request
+    ) {
+        AuthenticatedUser actor = authContext.currentUser(request);
+        String csv = chargebackPreviewService.exportInvoiceDraftCsv(actor, chargebackRequest(
+                from,
+                to,
+                currency,
+                storageGbMonthRate,
+                ingressGbRate,
+                egressGbRate,
+                internalGbRate,
+                operationThousandRate,
+                eventScanLimit
+        ));
+        return ResponseEntity.ok()
+                .contentType(MediaType.parseMediaType("text/csv"))
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"osmu-chargeback-invoice-draft.csv\"")
+                .body(csv);
+    }
+
     private ChargebackPreviewRequest chargebackRequest(
             String from,
             String to,

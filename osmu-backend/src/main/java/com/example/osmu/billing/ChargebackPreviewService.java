@@ -13,6 +13,7 @@ import com.example.osmu.organization.repository.OrganizationRepository;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.OffsetDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -202,6 +203,37 @@ public class ChargebackPreviewService {
         return csv.toString();
     }
 
+    public String exportInvoiceDraftCsv(AuthenticatedUser actor, ChargebackPreviewRequest request) {
+        ChargebackPreviewResponse preview = preview(actor, request);
+        StringBuilder csv = new StringBuilder("rowType,invoiceNumber,invoiceStatus,currency,from,to,generatedAt,organizationId,organizationName,bucketCount,objectCount,usedBytes,storageCost,trafficCost,operationCost,estimatedTotalCost,note\n");
+        for (ChargebackOrganizationPreviewResponse organization : preview.organizations()) {
+            BigDecimal trafficCost = money(organization.ingressCost()
+                    .add(organization.egressCost())
+                    .add(organization.internalCost()));
+            appendCsvRow(
+                    csv,
+                    "DRAFT_INVOICE",
+                    draftInvoiceNumber(preview, organization),
+                    "DRAFT",
+                    preview.currency(),
+                    preview.from(),
+                    preview.to(),
+                    preview.generatedAt(),
+                    organization.organizationId(),
+                    organization.organizationName(),
+                    organization.bucketCount(),
+                    organization.objectCount(),
+                    organization.usedBytes(),
+                    organization.projectedStorageCost(),
+                    trafficCost,
+                    organization.operationCost(),
+                    organization.estimatedTotalCost(),
+                    "Preview only - not a final invoice or approved commercial price list."
+            );
+        }
+        return csv.toString();
+    }
+
     public ChargebackAlertResponse alerts(AuthenticatedUser actor, ChargebackPreviewRequest request) {
         ChargebackPreviewResponse preview = preview(actor, request);
         BillingPricingPolicy pricingPolicy = pricingPolicyService.current();
@@ -300,6 +332,14 @@ public class ChargebackPreviewService {
     private static String csvCell(Object value) {
         String text = value == null ? "" : String.valueOf(value);
         return "\"" + text.replace("\"", "\"\"").replace("\r", " ").replace("\n", " ") + "\"";
+    }
+
+    private static String draftInvoiceNumber(
+            ChargebackPreviewResponse preview,
+            ChargebackOrganizationPreviewResponse organization
+    ) {
+        String date = preview.generatedAt().toLocalDate().format(DateTimeFormatter.BASIC_ISO_DATE);
+        return "OSMU-DRAFT-" + date + "-" + organization.organizationId();
     }
 
     private static ChargebackAlertOrganizationResponse alertFor(

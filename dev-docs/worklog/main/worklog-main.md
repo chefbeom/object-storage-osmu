@@ -17968,3 +17968,12 @@ feat/bucket-management
 - Frontend/mock: `getChargebackAlerts` wrapper, Admin billing panel threshold inputs, alert metrics/list, mock API route와 self-test를 추가했다. pricing policy 저장 후 preview와 alert가 함께 갱신된다.
 - 문서/verifier: README, API spec, OpenAPI, IAM/RBAC matrix, security/frontend/commercial docs, feature inventory, test cases, openapi/IAM/commercial verifier를 갱신했다.
 - 후속: finalized invoice export, approved pricing workflow, external alert notification route, time-series/partition 기반 장기 analytics는 아직 남아 있다.
+
+### 2026-06-20 - Chargeback invoice draft CSV export
+
+- 작업 해석: AWS S3 parity가 아니라 OSMU B2B 운영/관리 축의 billing/chargeback 후속 slice로 진행했다. 목표는 최종 청구 확정이 아니라 내부 검토용 draft invoice CSV export다.
+- Backend: `GET /api/admin/billing/chargeback-invoice-draft/export.csv`를 추가했다. `ChargebackPreviewService.exportInvoiceDraftCsv`는 기존 preview 계산과 같은 rate/window/event-limit/scope를 재사용하고, organization별 `DRAFT_INVOICE` row와 `OSMU-DRAFT-YYYYMMDD-{organizationId}` 번호를 생성한다.
+- RBAC: `ORG_ADMIN`도 자기 조직 draft export를 받을 수 있지만, pricing policy save나 final invoice persistence는 여전히 지원하지 않는다. `AUDITOR`와 일반 사용자는 차단한다.
+- Frontend/mock: `downloadChargebackInvoiceDraftCsv` wrapper, Admin billing panel `chargeback-invoice-draft-export-button`, mock API route/self-test를 추가했다.
+- 문서: README, API spec/OpenAPI, IAM/RBAC matrix, security/frontend/backend/commercial/test-case 문서를 갱신했다.
+- 후속: finalized invoice approval/persistence, approved pricing workflow, external alert notification, time-series/partition 기반 장기 analytics는 아직 남아 있다.

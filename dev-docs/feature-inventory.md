@@ -33,7 +33,7 @@ OSMU는 기업 내부에서 대용량 파일, 이미지, 영상, 로그, 비정�
 | --- | ---: | --- |
 | 기획/요구사항/문서 | 70% | 목표, API, DB, 배포, 보안, 테스트 문서가 있음 |
 | 프론트엔드 콘솔 | 55% | 로그인, 페이지 분리, 대시보드 palette, data-flow monitoring 패널, operations readiness 요약/remediation/evidence plan/invocation/invocation unblock/dispatch preflight/workflow run id/artifact collection/artifact import/finalizer/evidence handoff action 표시, 관리자 작업 실패 remediation UX, admin/developer 화면 뼈대가 있음 |
-| 백엔드 REST API | 54% | auth, bucket, object, access key, admin, dashboard, data-flow monitoring, billing pricing policy, chargeback preview/export/threshold alerts, storage expansion, restore drill evidence history, operations readiness dashboard evidence/remediation/evidence plan/invocation/invocation unblock/dispatch preflight/workflow run id/artifact collection/artifact import/finalizer/evidence handoff API가 있음 |
+| 백엔드 REST API | 54% | auth, bucket, object, access key, admin, dashboard, data-flow monitoring, billing pricing policy, chargeback preview/export/threshold alerts/draft invoice export, storage expansion, restore drill evidence history, operations readiness dashboard evidence/remediation/evidence plan/invocation/invocation unblock/dispatch preflight/workflow run id/artifact collection/artifact import/finalizer/evidence handoff API가 있음 |
 | MariaDB metadata | 35% | Flyway migration 49개와 repository 구현이 있음 |
 | MinIO/S3 호환 | 35% | S3 API 일부, SigV4, MinIO adapter, smoke script가 있음. 목표는 AWS 완전 호환이 아니라 주요 클라이언트 대체 사용 가능성 |
 | Docker/local demo | 90% | Docker/MariaDB/MinIO/backend/frontend durable gate, Browser E2E, Docker integration smoke, Dockerized real S3 client smoke가 `docker-mc` 기준 통과 |
@@ -398,7 +398,7 @@ MVP 데모 기준 완료율은 약 90~95%입니다.
 
 5. 운영/관리 기능 고도화
    - 실제 OIDC/LDAP provider smoke 실행과 `.osmu-run/latest-enterprise-auth-smoke.json` evidence 확보
-   - data-flow 장기 analytics와 chargeback 모델링. 현재 chargeback preview API, pricing policy 저장, Admin billing panel, scoped threshold alert, scoped preview CSV export는 구현됐고, 남은 것은 finalized invoice export와 외부 알림 연동이다.
+   - data-flow 장기 analytics와 chargeback 모델링. 현재 chargeback preview API, pricing policy 저장, Admin billing panel, scoped threshold alert, scoped preview CSV export, draft invoice CSV export는 구현됐고, 남은 것은 finalized invoice approval/persistence와 외부 알림 연동이다.
    - 운영 패키징, troubleshooting, runbook 보강
 
 6. S3 대체성 회귀 smoke

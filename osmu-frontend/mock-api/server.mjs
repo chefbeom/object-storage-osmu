@@ -448,6 +448,10 @@ function handleAdminRoute(request, response, path, jsonBody, url) {
     sendCsv(response, 'osmu-chargeback-preview.csv', chargebackPreviewCsv(url))
     return
   }
+  if (request.method === 'GET' && path === '/admin/billing/chargeback-invoice-draft/export.csv') {
+    sendCsv(response, 'osmu-chargeback-invoice-draft.csv', chargebackInvoiceDraftCsv(url))
+    return
+  }
   if (request.method === 'GET' && path === '/admin/billing/pricing-policy') {
     sendJson(response, 200, apiData(state.billingPricingPolicy))
     return
@@ -1195,6 +1199,34 @@ function chargebackPreviewCsv(url) {
   return rows.map((row) => row.map(csvCell).join(',')).join('\n') + '\n'
 }
 
+function chargebackInvoiceDraftCsv(url) {
+  const preview = chargebackPreview(url)
+  const generatedDate = String(preview.generatedAt || new Date().toISOString()).slice(0, 10).replace(/-/g, '')
+  const rows = [
+    ['rowType', 'invoiceNumber', 'invoiceStatus', 'currency', 'from', 'to', 'generatedAt', 'organizationId', 'organizationName', 'bucketCount', 'objectCount', 'usedBytes', 'storageCost', 'trafficCost', 'operationCost', 'estimatedTotalCost', 'note'],
+    ...(preview.organizations || []).map((organization) => [
+      'DRAFT_INVOICE',
+      `OSMU-DRAFT-${generatedDate}-${organization.organizationId}`,
+      'DRAFT',
+      preview.currency,
+      preview.from,
+      preview.to,
+      preview.generatedAt,
+      organization.organizationId,
+      organization.organizationName,
+      organization.bucketCount,
+      organization.objectCount,
+      organization.usedBytes,
+      organization.projectedStorageCost,
+      money(Number(organization.ingressCost || 0) + Number(organization.egressCost || 0) + Number(organization.internalCost || 0)),
+      organization.operationCost,
+      organization.estimatedTotalCost,
+      'Preview only - not a final invoice or approved commercial price list.',
+    ]),
+  ]
+  return rows.map((row) => row.map(csvCell).join(',')).join('\n') + '\n'
+}
+
 function chargebackRates(url) {
   return {
     storageGbMonthRate: parseChargebackRate(url.searchParams.get('storageGbMonthRate'), state.billingPricingPolicy.storageGbMonthRate),
@@ -1816,6 +1848,12 @@ async function runSelfTest() {
     })).text()
     if (!chargebackCsv.includes('"TOTAL","KRW"') || !chargebackCsv.includes('"ORGANIZATION","KRW"')) {
       throw new Error('chargeback CSV export self-test failed')
+    }
+    const chargebackInvoiceDraftExport = await (await fetch(`${base}/admin/billing/chargeback-invoice-draft/export.csv?operationThousandRate=0.004`, {
+      headers: { Authorization: `Bearer ${login.data.accessToken}` },
+    })).text()
+    if (!chargebackInvoiceDraftExport.includes('"DRAFT_INVOICE"') || !chargebackInvoiceDraftExport.includes('"OSMU-DRAFT-') || !chargebackInvoiceDraftExport.includes('not a final invoice')) {
+      throw new Error('chargeback invoice draft CSV export self-test failed')
     }
     const bucket = await (await fetch(`${base}/buckets`, {
       method: 'POST',

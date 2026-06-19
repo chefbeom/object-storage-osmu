@@ -93,7 +93,7 @@ Frontend는 MariaDB나 MinIO에 직접 접근하지 않습니다. Backend API만
 - Lifecycle/Retention: rule dry-run, conflict report, S3 lifecycle XML import/export, version/trash retention cleanup.
 - 공유/보안: object share link, password/IP 제한, usage limit, cleanup, analytics, enterprise auth plan.
 - Dashboard: widget catalog, layout preset, system/backup/quota/share/readiness/data-flow 요약.
-- Monitoring: data-flow event 저장, filter, CSV export, source/operation trend chart, tenant chargeback preview API/UI, billing pricing policy, threshold alerts, chargeback preview CSV export, Prometheus/Grafana starter artifact.
+- Monitoring: data-flow event 저장, filter, CSV export, source/operation trend chart, tenant chargeback preview API/UI, billing pricing policy, threshold alerts, chargeback preview CSV export, chargeback invoice draft CSV export, Prometheus/Grafana starter artifact.
 - Storage Expansion: 증설 요청, dry-run/apply/rollback runner, GitOps artifact, execution history.
 - Operations Readiness: evidence plan, invocation unblock, dispatch preflight, workflow run id, artifact import/finalizer, convergence report.
 - Enterprise Auth Evidence: OIDC/LDAP smoke plan과 target IdP/directory evidence를 operations readiness blocker로 추적.
@@ -291,6 +291,6 @@ Enterprise auth는 `scripts/write-enterprise-auth-smoke-plan.ps1` 또는 `.githu
 - 실제 Kubernetes cluster와 GitHub-hosted workflow evidence 수집.
 - 관리자/감사자/조직 관리자 워크플로우 보강, 실제 IdP/LDAP pilot smoke 실행과 `.osmu-run/latest-enterprise-auth-smoke.json` evidence 확보.
 - data-flow 장기 analytics를 위한 partition 또는 time-series 저장소 연동.
-- tenant billing/chargeback: preview API, admin billing panel, pricing policy 저장, warning/critical threshold alert, 비용 리포트 CSV export를 기반으로 최종 invoice/export와 외부 알림 연동을 보강.
+- tenant billing/chargeback: preview API, admin billing panel, pricing policy 저장, warning/critical threshold alert, 비용 리포트 CSV export, draft invoice CSV export를 기반으로 최종 invoice 승인/저장과 외부 알림 연동을 보강.
 - S3 대체성 유지: host `aws`/`mc`, boto3, AWS SDK smoke에서 실제 사용 흐름이 깨지는 경우만 우선 보강하고, AWS 세부 parity 추적은 제품 영향이 확인될 때만 수행한다.
 - 운영 패키징: demo notes, release notes, troubleshooting, runbook 보강.

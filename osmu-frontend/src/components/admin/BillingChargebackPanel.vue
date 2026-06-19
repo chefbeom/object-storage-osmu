@@ -111,6 +111,14 @@
         CSV
       </button>
       <button
+        data-testid="chargeback-invoice-draft-export-button"
+        type="button"
+        class="ghost"
+        @click="$emit('export-chargeback-invoice-draft-csv')"
+      >
+        Invoice draft
+      </button>
+      <button
         v-if="isAdmin"
         data-testid="chargeback-save-policy-button"
         type="button"
@@ -253,6 +261,7 @@ const emit = defineEmits([
   'reset-chargeback-options',
   'save-billing-pricing-policy',
   'export-chargeback-csv',
+  'export-chargeback-invoice-draft-csv',
 ])
 
 const preview = computed(() => props.chargebackPreview || {})
