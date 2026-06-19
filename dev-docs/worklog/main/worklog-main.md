@@ -17080,3 +17080,30 @@ feat/bucket-management
   - `$env:JAVA_HOME='C:\jdk-17'; .\gradlew.bat test --no-daemon --tests com.example.osmu.common.error.S3ErrorCodeMapperTest --tests com.example.osmu.bucket.BucketTaggingControllerTest.unexpectedS3BucketTaggingRootReturnsMalformedXml --tests com.example.osmu.object.S3ObjectControllerTest.objectTaggingRejectsUnexpectedRootXml`: 통과.
 - 후속:
   - 다음 XML schema 경계 후보는 lifecycle root/schema 세부 검증과 남은 S3 checksum/client-option edge parity다.
+
+### 2026-06-19 - S3 Lifecycle XML root 검증
+- 작업 시간:
+  - 시작: 2026-06-19 KST
+  - 종료: 2026-06-19 KST
+- 사용한 명령:
+  - active goal `dev-docs` 기준으로 계속 개발 진행.
+- 요청 분석:
+  - AWS S3 PutBucketLifecycleConfiguration 요청 body의 공식 request syntax root는 `LifecycleConfiguration`이다.
+  - AWS 문서 예제에는 `LifeCycleConfiguration` casing도 섞여 있어, 복사 예제 호환성을 위해 두 root 이름을 허용하기로 했다.
+  - 기존 OSMU lifecycle XML importer는 root 이름을 확인하지 않고 내부 `Rule` 노드를 검색했기 때문에, 다른 XML 문서에 `Rule`이 포함되면 lifecycle XML처럼 처리될 수 있었다.
+- 수행:
+  - `ObjectLifecycleS3XmlService.importRules`에서 root local name이 `LifecycleConfiguration` 또는 `LifeCycleConfiguration`인지 먼저 검증하도록 수정했다.
+  - 잘못된 root 또는 파싱 실패는 `Invalid Lifecycle XML.` 검증 오류 경로를 타게 하여 S3 XML `MalformedXML` 응답으로 매핑했다.
+  - MockMvc 테스트 `unexpectedS3BucketLifecycleRootReturnsMalformedXml`를 추가해 잘못된 root가 `MalformedXML`을 반환하고 lifecycle config를 만들지 않는지 확인했다.
+  - `api-spec.md`, `s3-compatibility.md`, `test-cases.md`에 lifecycle XML root validation 동작을 반영했다.
+- 수정한 파일:
+  - `osmu-backend/src/main/java/com/example/osmu/admin/ObjectLifecycleS3XmlService.java`
+  - `osmu-backend/src/test/java/com/example/osmu/bucket/BucketLifecycleControllerTest.java`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/s3-compatibility.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/worklog/main/worklog-main.md`
+- 검증:
+  - `$env:JAVA_HOME='C:\jdk-17'; .\gradlew.bat test --no-daemon --tests com.example.osmu.common.error.S3ErrorCodeMapperTest --tests com.example.osmu.bucket.BucketLifecycleControllerTest.unexpectedS3BucketLifecycleRootReturnsMalformedXml --tests com.example.osmu.bucket.BucketLifecycleControllerTest.adminCanUseS3StyleLifecycleQueryAlias`: 통과.
+- 후속:
+  - 남은 live Kubernetes/security evidence와 broader AWS lifecycle schema/client-option edge parity를 계속 좁힌다.

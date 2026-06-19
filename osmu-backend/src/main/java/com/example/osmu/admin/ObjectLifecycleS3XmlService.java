@@ -57,7 +57,11 @@ public class ObjectLifecycleS3XmlService {
             throw new ApiException(ApiErrorCode.VALIDATION_ERROR, "Lifecycle XML is required.");
         }
         Document document = parse(rawXml);
-        List<Element> ruleElements = childElements(document.getDocumentElement(), "Rule");
+        Element root = document.getDocumentElement();
+        if (!isLifecycleConfigurationRoot(root)) {
+            throw new ApiException(ApiErrorCode.VALIDATION_ERROR, "Invalid Lifecycle XML.");
+        }
+        List<Element> ruleElements = childElements(root, "Rule");
         if (ruleElements.isEmpty()) {
             throw new ApiException(ApiErrorCode.VALIDATION_ERROR, "Lifecycle XML must contain at least one Rule.");
         }
@@ -179,8 +183,13 @@ public class ObjectLifecycleS3XmlService {
             return factory.newDocumentBuilder()
                     .parse(new ByteArrayInputStream(xml.getBytes(StandardCharsets.UTF_8)));
         } catch (Exception exception) {
-            throw new ApiException(ApiErrorCode.VALIDATION_ERROR, "Lifecycle XML is invalid.");
+            throw new ApiException(ApiErrorCode.VALIDATION_ERROR, "Invalid Lifecycle XML.");
         }
+    }
+
+    private boolean isLifecycleConfigurationRoot(Element root) {
+        String name = nodeName(root);
+        return "LifecycleConfiguration".equals(name) || "LifeCycleConfiguration".equals(name);
     }
 
     private int positiveInt(String value, String fieldName) {
