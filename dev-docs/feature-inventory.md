@@ -106,6 +106,7 @@ MVP 데모 기준 완료율은 약 90~95%입니다.
 - `finalize-storage-expansion.ps1` 기반 storage expansion finalization wrapper. RBAC auth, server-side dry-run, optional backend dry-run/apply runner 호출을 하나의 증거 JSON/Markdown으로 묶고, 실제 apply는 `-RunBackendApply -ConfirmApply`가 있을 때만 수행
 - `.github/workflows/storage-expansion-finalizer-ci.yml` 기반 수동 CI workflow. plan-only가 기본이며, live evidence는 `run_live=true`와 `OSMU_KUBECONFIG_BASE64` secret이 있을 때만 수행
 - 관리자 계정도 작업 가능하도록 admin route 구성
+- 실제 운영용 계정 bootstrap 정책: `OSMU_BOOTSTRAP_ADMIN_ENABLED`, `OSMU_BOOTSTRAP_ADMIN_ALLOW_DEFAULT_CREDENTIALS`, 필수 admin 필드 검증, 기본 비밀번호 운영 차단
 
 남은 것:
 
@@ -113,7 +114,6 @@ MVP 데모 기준 완료율은 약 90~95%입니다.
 - SSO/OIDC 검토
 - 부서/team 단위 RBAC
 - read-only auditor 역할
-- 실제 운영용 계정 bootstrap 정책
 
 ### 4.2 개발자 콘솔
 

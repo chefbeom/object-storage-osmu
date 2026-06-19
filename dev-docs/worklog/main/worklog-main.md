@@ -17372,6 +17372,42 @@ feat/bucket-management
 - 후속:
   - 남은 큰 축은 broader multipart checksum exact AWS edge parity와 live Kubernetes/security evidence다.
 
+### 2026-06-19 - 운영용 admin bootstrap 정책 추가
+- 작업 시간:
+  - 시작: 2026-06-19 KST
+  - 종료: 2026-06-19 KST
+- 사용자 지시:
+  - AWS S3 완전 호환에 과도하게 쏠리지 말고, AWS S3는 대체 가능한 수준으로 두며 제품 운영 기능을 우선한다.
+- 요청 분석:
+  - `feature-inventory.md`의 로그인/권한 남은 항목 중 `실제 운영용 계정 bootstrap 정책`이 로컬에서 바로 구현 가능한 비-S3 운영 보안 항목이라고 판단했다.
+  - 기존 구현은 in-memory와 MariaDB repository가 각각 `admin/password` bootstrap seed를 직접 만들고 있어 운영 환경에서 기본 credential을 차단할 정책 지점이 없었다.
+- 수행:
+  - `BootstrapAdminProperties`를 추가해 bootstrap admin 생성 여부, 기본 credential 허용 여부, login id/password/email/name 필수값 검증을 중앙화했다.
+  - in-memory와 MariaDB 사용자 저장소가 동일한 bootstrap 정책을 사용하도록 변경했다.
+  - `OSMU_BOOTSTRAP_ADMIN_ENABLED`, `OSMU_BOOTSTRAP_ADMIN_ALLOW_DEFAULT_CREDENTIALS` 설정을 추가했다.
+  - 로컬/demo 기본값은 기존 `admin/password` 흐름을 유지하고, 운영에서는 `allow-default-credentials=false`와 Secret 기반 `OSMU_ADMIN_PASSWORD`로 기본 비밀번호 기동을 차단하도록 문서화했다.
+  - `feature-inventory.md`에서 운영용 계정 bootstrap 정책을 구현된 항목으로 이동했다.
+- 수정한 파일:
+  - `osmu-backend/src/main/java/com/example/osmu/user/BootstrapAdminProperties.java`
+  - `osmu-backend/src/main/java/com/example/osmu/user/repository/InMemoryUserRepository.java`
+  - `osmu-backend/src/main/java/com/example/osmu/user/repository/MariaDbUserRepository.java`
+  - `osmu-backend/src/test/java/com/example/osmu/user/BootstrapAdminPropertiesTest.java`
+  - `osmu-backend/src/main/resources/application.yaml`
+  - `osmu-backend/.env.example`
+  - `infra/local/.env.example`
+  - `dev-docs/security-design.md`
+  - `dev-docs/backend-design.md`
+  - `dev-docs/PRODUCT_REQUIREMENTS.md`
+  - `dev-docs/local-dev-env.md`
+  - `dev-docs/feature-inventory.md`
+  - `dev-docs/worklog/main/worklog-main.md`
+- 검증:
+  - `osmu-backend`에서 `$env:JAVA_HOME='C:\jdk-17'; $env:Path="$env:JAVA_HOME\bin;$env:Path"; .\gradlew.bat test --no-daemon --tests com.example.osmu.user.BootstrapAdminPropertiesTest --tests com.example.osmu.auth.AuthControllerTest --tests com.example.osmu.user.AdminUserControllerTest`: 통과.
+- 후속:
+  - refresh token/session 만료 UX 정리.
+  - SSO/OIDC 검토.
+  - 부서/team 단위 RBAC와 read-only auditor 역할.
+
 ### 2026-06-19 - S3 multipart checksum type/object-size 단일 헤더 검증
 - 작업 시간:
   - 시작: 2026-06-19 KST

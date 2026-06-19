@@ -425,3 +425,11 @@ MVP 보상 전략:
 - scheduler global kill switch인 `osmu.object.retention.enabled=false`는 DB policy보다 우선한다.
 - policy 변경 성공 시 `OBJECT_RETENTION_POLICY_UPDATE` 감사 로그를 기록한다.
 
+## Bootstrap Admin Runtime Policy
+
+- `BootstrapAdminProperties`가 초기 관리자 계정 정책을 중앙화한다. in-memory와 MariaDB metadata mode는 같은 정책을 사용한다.
+- `osmu.bootstrap.admin.enabled=false`이면 초기 admin 자동 생성을 건너뛴다.
+- `osmu.bootstrap.admin.allow-default-credentials=false`이면 로컬 기본 비밀번호 `password`를 차단한다.
+- bootstrap이 켜져 있을 때 login id, password, email, name이 비어 있으면 backend 시작을 실패시킨다.
+- 운영 배포는 기본 credential 허용을 끄고 Secret 기반 admin 비밀번호를 주입한다.
+

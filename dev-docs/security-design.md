@@ -52,6 +52,9 @@ MVP:
 
 - bootstrap admin 계정을 in-memory 또는 MariaDB 사용자 저장소에 생성한다.
 - bootstrap admin 비밀번호는 PBKDF2-SHA256 hash로 저장한다.
+- bootstrap admin 생성은 `osmu.bootstrap.admin.enabled`로 켜고 끌 수 있다.
+- 로컬/demo 기본값은 `admin/password`를 허용하지만, 운영 환경은 `OSMU_BOOTSTRAP_ADMIN_ALLOW_DEFAULT_CREDENTIALS=false`와 명시적인 `OSMU_ADMIN_PASSWORD`를 함께 설정해 기본 비밀번호 기동을 차단한다.
+- bootstrap admin 설정값이 비어 있거나 운영 기본 credential 금지 정책을 위반하면 backend는 시작 단계에서 실패해야 한다.
 - access token과 refresh token은 HMAC SHA-256 서명 JWT로 발급한다.
 - Health, Login, Refresh 외 `/api/**`는 Bearer access token을 검증한다.
 - refresh token은 SHA-256 hash로 저장하고, refresh 성공 시 회전하며, logout 시 폐기한다.

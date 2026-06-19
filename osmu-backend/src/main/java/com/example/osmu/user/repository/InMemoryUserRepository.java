@@ -1,6 +1,7 @@
 package com.example.osmu.user.repository;
 
 import com.example.osmu.auth.PasswordService;
+import com.example.osmu.user.BootstrapAdminProperties;
 import com.example.osmu.user.UserAccount;
 import java.util.Comparator;
 import java.util.List;
@@ -8,7 +9,6 @@ import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.atomic.AtomicLong;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Repository;
 
@@ -23,22 +23,9 @@ public class InMemoryUserRepository implements UserRepository {
 
     public InMemoryUserRepository(
             PasswordService passwordService,
-            @Value("${osmu.bootstrap.admin.login-id:admin}") String adminLoginId,
-            @Value("${osmu.bootstrap.admin.password:password}") String adminPassword,
-            @Value("${osmu.bootstrap.admin.email:admin@example.com}") String adminEmail,
-            @Value("${osmu.bootstrap.admin.name:Admin}") String adminName
+            BootstrapAdminProperties bootstrapAdminProperties
     ) {
-        UserAccount admin = new UserAccount(
-                1L,
-                adminLoginId,
-                adminEmail,
-                adminName,
-                passwordService.hash(adminPassword),
-                "ADMIN",
-                "ACTIVE",
-                null
-        );
-        save(admin);
+        bootstrapAdminProperties.createAdmin(1L, passwordService).ifPresent(this::save);
     }
 
     @Override

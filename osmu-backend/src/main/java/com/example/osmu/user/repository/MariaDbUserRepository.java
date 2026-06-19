@@ -3,6 +3,7 @@ package com.example.osmu.user.repository;
 import com.example.osmu.auth.PasswordService;
 import com.example.osmu.common.error.ApiErrorCode;
 import com.example.osmu.common.error.ApiException;
+import com.example.osmu.user.BootstrapAdminProperties;
 import com.example.osmu.user.UserAccount;
 import java.sql.Connection;
 import java.sql.DriverManager;
@@ -26,10 +27,7 @@ public class MariaDbUserRepository implements UserRepository {
     private final String username;
     private final String password;
     private final PasswordService passwordService;
-    private final String adminLoginId;
-    private final String adminPassword;
-    private final String adminEmail;
-    private final String adminName;
+    private final BootstrapAdminProperties bootstrapAdminProperties;
     private volatile boolean schemaReady;
 
     public MariaDbUserRepository(
@@ -37,19 +35,13 @@ public class MariaDbUserRepository implements UserRepository {
             @Value("${spring.datasource.username}") String username,
             @Value("${spring.datasource.password}") String password,
             PasswordService passwordService,
-            @Value("${osmu.bootstrap.admin.login-id:admin}") String adminLoginId,
-            @Value("${osmu.bootstrap.admin.password:password}") String adminPassword,
-            @Value("${osmu.bootstrap.admin.email:admin@example.com}") String adminEmail,
-            @Value("${osmu.bootstrap.admin.name:Admin}") String adminName
+            BootstrapAdminProperties bootstrapAdminProperties
     ) {
         this.url = url;
         this.username = username;
         this.password = password;
         this.passwordService = passwordService;
-        this.adminLoginId = adminLoginId;
-        this.adminPassword = adminPassword;
-        this.adminEmail = adminEmail;
-        this.adminName = adminName;
+        this.bootstrapAdminProperties = bootstrapAdminProperties;
     }
 
     @Override
@@ -241,6 +233,11 @@ public class MariaDbUserRepository implements UserRepository {
     }
 
     private void seedAdmin(Connection connection) throws SQLException {
+        Optional<UserAccount> bootstrapAdmin = bootstrapAdminProperties.createAdmin(1L, passwordService);
+        if (bootstrapAdmin.isEmpty()) {
+            return;
+        }
+        UserAccount admin = bootstrapAdmin.get();
         String sql = """
                 INSERT IGNORE INTO users
                     (id, login_id, email, name, password_hash, role, status, organization_id, created_at, updated_at)
@@ -248,14 +245,14 @@ public class MariaDbUserRepository implements UserRepository {
                 """;
         Timestamp now = Timestamp.from(Instant.now());
         try (PreparedStatement statement = connection.prepareStatement(sql)) {
-            statement.setLong(1, 1L);
-            statement.setString(2, adminLoginId);
-            statement.setString(3, adminEmail);
-            statement.setString(4, adminName);
-            statement.setString(5, passwordService.hash(adminPassword));
-            statement.setString(6, "ADMIN");
-            statement.setString(7, "ACTIVE");
-            statement.setObject(8, null);
+            statement.setLong(1, admin.id());
+            statement.setString(2, admin.loginId());
+            statement.setString(3, admin.email());
+            statement.setString(4, admin.name());
+            statement.setString(5, admin.passwordHash());
+            statement.setString(6, admin.role());
+            statement.setString(7, admin.status());
+            setNullableLong(statement, 8, admin.organizationId());
             statement.setTimestamp(9, now);
             statement.setTimestamp(10, now);
             statement.executeUpdate();
