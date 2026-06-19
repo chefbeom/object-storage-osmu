@@ -17372,6 +17372,36 @@ feat/bucket-management
 - 후속:
   - 남은 큰 축은 broader multipart checksum exact AWS edge parity와 live Kubernetes/security evidence다.
 
+### 2026-06-19 - S3 CompleteMultipartUpload PartNumber/ETag 중복 필드 거절
+- 작업 시간:
+  - 시작: 2026-06-19 KST
+  - 종료: 2026-06-19 KST
+- 사용자 명령:
+  - active goal `dev-docs` 기준으로 계속 개발 진행.
+- 요청 분석:
+  - 직전 direct-child schema 검증 후, `Part` 내부의 required field cardinality를 추가 점검했다.
+  - AWS CompleteMultipartUpload request syntax는 각 `Part`에 단일 `PartNumber`와 단일 `ETag` 구조를 보여준다.
+  - 기존 helper는 direct child 중 첫 non-blank 값을 반환하므로 duplicate `PartNumber` 또는 duplicate `ETag` direct child가 있어도 일부 값을 무시하고 진행할 수 있었다.
+- 수행:
+  - `requiredMultipartTagText`가 direct child text를 수집해 정확히 하나일 때만 통과하도록 변경했다.
+  - duplicate direct `PartNumber`/`ETag`는 `Invalid CompleteMultipartUpload XML.` 경로로 실패시켜 S3 XML `MalformedXML` 매핑을 타게 했다.
+  - 회귀 테스트 `completeMultipartUploadRejectsInvalidPartListXml`에 duplicate direct `PartNumber`와 duplicate direct `ETag` 케이스를 추가했다.
+  - `api-spec.md`, `backend-design.md`, `s3-compatibility.md`, `test-cases.md`, `PRODUCT_REQUIREMENTS.md`, `feature-inventory.md`에 duplicate required field rejection 계약을 반영했다.
+- 수정한 파일:
+  - `osmu-backend/src/main/java/com/example/osmu/object/S3ObjectController.java`
+  - `osmu-backend/src/test/java/com/example/osmu/object/S3ObjectControllerMultipartTest.java`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/backend-design.md`
+  - `dev-docs/s3-compatibility.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/PRODUCT_REQUIREMENTS.md`
+  - `dev-docs/feature-inventory.md`
+  - `dev-docs/worklog/main/worklog-main.md`
+- 검증:
+  - `$env:JAVA_HOME='C:\jdk-17'; $env:Path="$env:JAVA_HOME\bin;$env:Path"; .\gradlew.bat test --no-daemon --tests com.example.osmu.object.S3ObjectControllerMultipartTest.completeMultipartUploadRejectsInvalidPartListXml --tests com.example.osmu.object.S3ObjectControllerMultipartTest.completeMultipartUploadParsesS3XmlAndReturnsResultXml --tests com.example.osmu.object.S3ObjectControllerTest.completeMultipartUploadRejectsUnexpectedRootXml --tests com.example.osmu.common.error.S3ErrorCodeMapperTest`: 통과.
+- 후속:
+  - 남은 큰 축은 broader multipart checksum exact AWS edge parity와 live Kubernetes/security evidence다.
+
 ### 2026-06-19 - S3 CompleteMultipartUpload XML direct-child schema 검증
 - 작업 시간:
   - 시작: 2026-06-19 KST

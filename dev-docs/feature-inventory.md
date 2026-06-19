@@ -241,6 +241,7 @@ MVP 데모 기준 완료율은 약 90~95%입니다.
 - CRC64NVME checksum validation/header/XML exposure
 - S3 multipart complete XML part list validation (ascending/unique/range/ETag)
 - S3 multipart complete direct `Part`/`PartNumber`/`ETag` XML schema validation
+- S3 multipart complete duplicate direct `PartNumber`/`ETag` XML field rejection
 - S3 multipart complete uploaded part existence and ETag match validation
 - S3 multipart complete destination `If-Match`/`If-None-Match` overwrite guards
 - S3 multipart complete `x-amz-mp-object-size` actual-size validation and rollback

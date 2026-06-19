@@ -1136,6 +1136,16 @@ class S3ObjectControllerMultipartTest {
                   <Part><PartMetadata><PartNumber>1</PartNumber></PartMetadata><ETag>"etag-1"</ETag></Part>
                 </CompleteMultipartUpload>
                 """);
+        assertInvalidCompleteMultipartXml("""
+                <CompleteMultipartUpload>
+                  <Part><PartNumber>1</PartNumber><PartNumber>2</PartNumber><ETag>"etag-1"</ETag></Part>
+                </CompleteMultipartUpload>
+                """);
+        assertInvalidCompleteMultipartXml("""
+                <CompleteMultipartUpload>
+                  <Part><PartNumber>1</PartNumber><ETag>"etag-1"</ETag><ETag>"etag-2"</ETag></Part>
+                </CompleteMultipartUpload>
+                """);
 
         verifyNoInteractions(objectService);
     }

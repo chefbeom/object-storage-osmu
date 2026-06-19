@@ -1342,11 +1342,11 @@ public class S3ObjectController {
     }
 
     private String requiredMultipartTagText(Element parent, String localName) {
-        String value = optionalDirectChildText(parent, localName);
-        if (value == null) {
+        List<String> values = directChildTexts(parent, localName);
+        if (values.size() != 1) {
             throw new ApiException(ApiErrorCode.VALIDATION_ERROR, "Invalid CompleteMultipartUpload XML.");
         }
-        return value;
+        return values.get(0);
     }
 
     private void rejectUnsupportedMultipartPartChecksumXml(Element part) {
@@ -1401,19 +1401,25 @@ public class S3ObjectController {
     }
 
     private String optionalDirectChildText(Element parent, String localName) {
-        String blankValue = null;
+        List<String> values = directChildTexts(parent, localName);
+        for (String value : values) {
+            if (value != null && !value.isBlank()) {
+                return value;
+            }
+        }
+        return values.isEmpty() ? null : values.get(values.size() - 1);
+    }
+
+    private List<String> directChildTexts(Element parent, String localName) {
+        List<String> values = new ArrayList<>();
         NodeList children = parent.getChildNodes();
         for (int i = 0; i < children.getLength(); i++) {
             Node node = children.item(i);
             if (node instanceof Element child && localName.equals(localName(child))) {
-                String value = child.getTextContent();
-                if (value != null && !value.isBlank()) {
-                    return value;
-                }
-                blankValue = value;
+                values.add(child.getTextContent());
             }
         }
-        return blankValue;
+        return values;
     }
 
     private String copyObjectResultXml(StoredObjectRecord object, String etag) {
