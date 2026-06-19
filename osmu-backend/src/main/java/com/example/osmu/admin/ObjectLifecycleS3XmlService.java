@@ -99,21 +99,58 @@ public class ObjectLifecycleS3XmlService {
     }
 
     private RetentionTarget parseRetentionTarget(Element ruleElement) {
-        Element noncurrent = firstChild(ruleElement, "NoncurrentVersionExpiration");
-        if (noncurrent != null) {
+        Element selectedAction = singleLifecycleAction(ruleElement);
+        String actionName = nodeName(selectedAction);
+        if ("NoncurrentVersionExpiration".equals(actionName)) {
             return new RetentionTarget(
                     ObjectLifecycleRule.TARGET_OBJECT_VERSION,
-                    positiveInt(textOfFirstChild(noncurrent, "NoncurrentDays"), "NoncurrentDays")
+                    positiveInt(textOfFirstChild(selectedAction, "NoncurrentDays"), "NoncurrentDays")
             );
         }
-        Element expiration = firstChild(ruleElement, "Expiration");
-        if (expiration != null) {
+        if ("Expiration".equals(actionName)) {
             return new RetentionTarget(
                     ObjectLifecycleRule.TARGET_TRASH_OBJECT,
-                    positiveInt(textOfFirstChild(expiration, "Days"), "Days")
+                    positiveInt(textOfFirstChild(selectedAction, "Days"), "Days")
             );
         }
-        throw new ApiException(ApiErrorCode.VALIDATION_ERROR, "Rule must contain Expiration/Days or NoncurrentVersionExpiration/NoncurrentDays.");
+        throw unsupportedLifecycleAction(actionName);
+    }
+
+    private Element singleLifecycleAction(Element ruleElement) {
+        Element selected = null;
+        for (Element child : childElements(ruleElement)) {
+            String name = nodeName(child);
+            if (!isLifecycleAction(name)) {
+                continue;
+            }
+            if (isUnsupportedLifecycleAction(name)) {
+                throw unsupportedLifecycleAction(name);
+            }
+            if (selected != null) {
+                throw unsupportedLifecycleAction("combination");
+            }
+            selected = child;
+        }
+        if (selected == null) {
+            throw new ApiException(ApiErrorCode.VALIDATION_ERROR, "Rule must contain Expiration/Days or NoncurrentVersionExpiration/NoncurrentDays.");
+        }
+        return selected;
+    }
+
+    private boolean isLifecycleAction(String name) {
+        return "Expiration".equals(name)
+                || "NoncurrentVersionExpiration".equals(name)
+                || isUnsupportedLifecycleAction(name);
+    }
+
+    private boolean isUnsupportedLifecycleAction(String name) {
+        return "Transition".equals(name)
+                || "NoncurrentVersionTransition".equals(name)
+                || "AbortIncompleteMultipartUpload".equals(name);
+    }
+
+    private ApiException unsupportedLifecycleAction(String name) {
+        return new ApiException(ApiErrorCode.VALIDATION_ERROR, "Unsupported Lifecycle action " + name + ".");
     }
 
     private boolean parseStatus(Element ruleElement) {

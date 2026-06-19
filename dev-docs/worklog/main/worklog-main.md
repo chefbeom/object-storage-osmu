@@ -17165,3 +17165,33 @@ feat/bucket-management
   - `$env:JAVA_HOME='C:\jdk-17'; .\gradlew.bat test --no-daemon --tests com.example.osmu.admin.AdminObjectRetentionControllerTest.adminCanExportAndImportS3LifecycleXml`: 통과.
 - 후속:
   - 남은 lifecycle schema 세부 검증은 action subset 경계와 tag value edge이며, 큰 축은 live Kubernetes/security evidence와 broader S3 checksum/client-option edge parity다.
+
+### 2026-06-19 - S3 Lifecycle Action subset 검증
+- 작업 시간:
+  - 시작: 2026-06-19 KST
+  - 종료: 2026-06-19 KST
+- 사용한 명령:
+  - active goal `dev-docs` 기준으로 계속 개발 진행.
+- 요청 분석:
+  - AWS S3 `LifecycleRule` 문서에는 `Expiration`, `NoncurrentVersionExpiration`, `Transition`, `NoncurrentVersionTransition`, `AbortIncompleteMultipartUpload` action이 있다.
+  - OSMU lifecycle rule은 현재 하나의 target type과 retention days만 저장하므로 `Transition`류 action이나 한 rule 안의 여러 target action을 조용히 일부만 반영하면 운영자가 의도한 policy와 다른 purge rule이 저장될 수 있었다.
+- 수행:
+  - `ObjectLifecycleS3XmlService.parseRetentionTarget`를 single action 검증 경로로 바꾸고, 각 imported rule이 정확히 하나의 OSMU-supported action만 갖도록 했다.
+  - 지원 action은 `Expiration/Days`, `NoncurrentVersionExpiration/NoncurrentDays`로 제한했다.
+  - `Transition`, `NoncurrentVersionTransition`, `AbortIncompleteMultipartUpload`, 또는 multiple target action 조합은 `Unsupported Lifecycle action ...` 경로를 통해 S3 XML `InvalidRequest`로 응답하게 했다.
+  - S3-style lifecycle alias 회귀 테스트 `unsupportedS3BucketLifecycleActionReturnsInvalidRequest`, `multipleS3BucketLifecycleActionsReturnInvalidRequest`를 추가했다.
+  - `api-spec.md`, `backend-design.md`, `system-architecture.md`, `s3-compatibility.md`, `test-cases.md`에 action subset validation 계약을 반영했다.
+- 수정한 파일:
+  - `osmu-backend/src/main/java/com/example/osmu/admin/ObjectLifecycleS3XmlService.java`
+  - `osmu-backend/src/test/java/com/example/osmu/bucket/BucketLifecycleControllerTest.java`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/backend-design.md`
+  - `dev-docs/system-architecture.md`
+  - `dev-docs/s3-compatibility.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/worklog/main/worklog-main.md`
+- 검증:
+  - `$env:JAVA_HOME='C:\jdk-17'; .\gradlew.bat test --no-daemon --tests com.example.osmu.common.error.S3ErrorCodeMapperTest --tests com.example.osmu.bucket.BucketLifecycleControllerTest.unsupportedS3BucketLifecycleActionReturnsInvalidRequest --tests com.example.osmu.bucket.BucketLifecycleControllerTest.multipleS3BucketLifecycleActionsReturnInvalidRequest --tests com.example.osmu.bucket.BucketLifecycleControllerTest.adminCanPutGetAndDeleteBucketLifecycleConfiguration --tests com.example.osmu.bucket.BucketLifecycleControllerTest.adminCanUseS3StyleLifecycleQueryAlias`: 통과.
+  - `$env:JAVA_HOME='C:\jdk-17'; .\gradlew.bat test --no-daemon --tests com.example.osmu.admin.AdminObjectRetentionControllerTest.adminCanExportAndImportS3LifecycleXml`: 통과.
+- 후속:
+  - 남은 lifecycle schema 세부 검증은 tag value edge와 일부 XML child ordering/limit parity이며, 큰 축은 live Kubernetes/security evidence와 broader S3 checksum/client-option edge parity다.

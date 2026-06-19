@@ -374,6 +374,76 @@ class BucketLifecycleControllerTest {
     }
 
     @Test
+    void unsupportedS3BucketLifecycleActionReturnsInvalidRequest() throws Exception {
+        String token = loginAndReturnAccessToken("admin", "password");
+        String bucketName = "lifecycle-unsupported-action-bucket";
+        createBucket(token, bucketName);
+
+        mockMvc.perform(put("/api/s3/{bucketName}", bucketName)
+                        .queryParam("lifecycle", "")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_XML)
+                        .content("""
+                                <LifecycleConfiguration>
+                                  <Rule>
+                                    <ID>Unsupported transition</ID>
+                                    <Status>Enabled</Status>
+                                    <Filter><Prefix>tmp/</Prefix></Filter>
+                                    <Transition>
+                                      <Days>30</Days>
+                                      <StorageClass>GLACIER</StorageClass>
+                                    </Transition>
+                                  </Rule>
+                                </LifecycleConfiguration>
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_XML))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("<Code>InvalidRequest</Code>")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("<Message>Unsupported Lifecycle action Transition.</Message>")));
+
+        mockMvc.perform(get("/api/s3/{bucketName}", bucketName)
+                        .queryParam("lifecycle", "")
+                        .header("Authorization", "Bearer " + token)
+                        .accept(MediaType.APPLICATION_XML))
+                .andExpect(status().isNotFound())
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("<Code>NoSuchLifecycleConfiguration</Code>")));
+    }
+
+    @Test
+    void multipleS3BucketLifecycleActionsReturnInvalidRequest() throws Exception {
+        String token = loginAndReturnAccessToken("admin", "password");
+        String bucketName = "lifecycle-multiple-actions-bucket";
+        createBucket(token, bucketName);
+
+        mockMvc.perform(put("/api/s3/{bucketName}", bucketName)
+                        .queryParam("lifecycle", "")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_XML)
+                        .content("""
+                                <LifecycleConfiguration>
+                                  <Rule>
+                                    <ID>Multiple actions</ID>
+                                    <Status>Enabled</Status>
+                                    <Filter><Prefix>tmp/</Prefix></Filter>
+                                    <Expiration><Days>7</Days></Expiration>
+                                    <NoncurrentVersionExpiration><NoncurrentDays>30</NoncurrentDays></NoncurrentVersionExpiration>
+                                  </Rule>
+                                </LifecycleConfiguration>
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_XML))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("<Code>InvalidRequest</Code>")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("<Message>Unsupported Lifecycle action combination.</Message>")));
+
+        mockMvc.perform(get("/api/s3/{bucketName}", bucketName)
+                        .queryParam("lifecycle", "")
+                        .header("Authorization", "Bearer " + token)
+                        .accept(MediaType.APPLICATION_XML))
+                .andExpect(status().isNotFound())
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("<Code>NoSuchLifecycleConfiguration</Code>")));
+    }
+
+    @Test
     void accessKeyWithAdminScopeCanUseS3StyleLifecycleQueryAlias() throws Exception {
         String token = loginAndReturnAccessToken("admin", "password");
         String bucketName = "lifecycle-key-bucket";

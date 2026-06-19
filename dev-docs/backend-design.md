@@ -10,7 +10,7 @@
 - Save/delete writes `OBJECT_LIFECYCLE_RULE_SAVE` and `OBJECT_LIFECYCLE_RULE_DELETE` audit events.
 - `GET /api/admin/object-lifecycle/rules/{ruleId}/dry-run` previews matched candidates without deleting data.
 - `GET /api/admin/object-lifecycle/conflicts` reports enabled rules with overlapping bucket/target/prefix/tag scopes.
-- `ObjectLifecycleS3XmlService` exports/imports AWS S3 LifecycleConfiguration XML subset for lifecycle rule interoperability and validates the lifecycle root, required `Rule/Status` values (`Enabled` or `Disabled`), direct `Filter` predicate shape, and unsupported object-size predicates.
+- `ObjectLifecycleS3XmlService` exports/imports AWS S3 LifecycleConfiguration XML subset for lifecycle rule interoperability and validates the lifecycle root, required `Rule/Status` values (`Enabled` or `Disabled`), direct `Filter` predicate shape, unsupported object-size predicates, and unsupported lifecycle action combinations.
 - `BucketLifecycleController` exposes `GET/PUT/DELETE /api/buckets/{bucketName}/lifecycle`; PUT replaces only rules scoped to that bucket and stores imported XML rules with `bucketName`.
 - Bucket lifecycle GET supports JSON wrapper by default and raw XML when `Accept` is `application/xml` or `text/xml`.
 - Bucket lifecycle PUT supports JSON wrapper and raw XML bodies via `Content-Type: application/xml` or `text/xml`.
