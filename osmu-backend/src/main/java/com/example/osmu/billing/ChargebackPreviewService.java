@@ -1,6 +1,7 @@
 package com.example.osmu.billing;
 
 import com.example.osmu.auth.AuthenticatedUser;
+import com.example.osmu.billing.repository.ChargebackInvoiceDraftRepository;
 import com.example.osmu.billing.repository.ChargebackNotificationDeliveryRepository;
 import com.example.osmu.bucket.BucketRecord;
 import com.example.osmu.bucket.repository.BucketRepository;
@@ -32,19 +33,22 @@ public class ChargebackPreviewService {
     private final DataFlowEventRepository dataFlowEventRepository;
     private final BillingPricingPolicyService pricingPolicyService;
     private final ChargebackNotificationDeliveryRepository notificationDeliveryRepository;
+    private final ChargebackInvoiceDraftRepository invoiceDraftRepository;
 
     public ChargebackPreviewService(
             OrganizationRepository organizationRepository,
             BucketRepository bucketRepository,
             DataFlowEventRepository dataFlowEventRepository,
             BillingPricingPolicyService pricingPolicyService,
-            ChargebackNotificationDeliveryRepository notificationDeliveryRepository
+            ChargebackNotificationDeliveryRepository notificationDeliveryRepository,
+            ChargebackInvoiceDraftRepository invoiceDraftRepository
     ) {
         this.organizationRepository = organizationRepository;
         this.bucketRepository = bucketRepository;
         this.dataFlowEventRepository = dataFlowEventRepository;
         this.pricingPolicyService = pricingPolicyService;
         this.notificationDeliveryRepository = notificationDeliveryRepository;
+        this.invoiceDraftRepository = invoiceDraftRepository;
     }
 
     public ChargebackPreviewResponse preview(AuthenticatedUser actor, ChargebackPreviewRequest request) {
@@ -238,6 +242,75 @@ public class ChargebackPreviewService {
         return csv.toString();
     }
 
+    public ChargebackInvoiceDraftCreateResponse persistInvoiceDrafts(
+            AuthenticatedUser actor,
+            ChargebackPreviewRequest request,
+            String reason
+    ) {
+        requireAdmin(actor, "Chargeback invoice draft persistence requires ADMIN.");
+        ChargebackPreviewResponse preview = preview(actor, request);
+        OffsetDateTime now = OffsetDateTime.now();
+        String normalizedReason = normalizeReason(reason);
+        List<ChargebackInvoiceDraftRecord> records = preview.organizations().stream()
+                .map(organization -> invoiceDraftRecord(preview, organization, actor.loginId(), normalizedReason, now))
+                .toList();
+        List<ChargebackInvoiceDraftRecord> saved = invoiceDraftRepository.saveAll(records);
+        return new ChargebackInvoiceDraftCreateResponse(
+                "DRAFT_REVIEW",
+                "DRAFT_REVIEW",
+                false,
+                false,
+                saved.size(),
+                saved.stream().map(ChargebackPreviewService::invoiceResponse).toList(),
+                OffsetDateTime.now(),
+                "Persisted for internal review only - not a final legal invoice or payment request."
+        );
+    }
+
+    public ChargebackInvoiceDraftListResponse invoiceDrafts(
+            AuthenticatedUser actor,
+            String status,
+            int limit
+    ) {
+        requireAdmin(actor, "Chargeback invoice draft access requires ADMIN.");
+        String normalizedStatus = normalizeInvoiceStatusFilter(status);
+        List<ChargebackInvoiceDraftRecord> records = normalizedStatus.isBlank()
+                ? invoiceDraftRepository.findAll(limit)
+                : invoiceDraftRepository.findByStatus(normalizedStatus, limit);
+        return new ChargebackInvoiceDraftListResponse(
+                records.size(),
+                records.stream().map(ChargebackPreviewService::invoiceResponse).toList(),
+                OffsetDateTime.now()
+        );
+    }
+
+    public ChargebackInvoiceDraftApprovalResponse approveInvoiceDraft(
+            AuthenticatedUser actor,
+            long invoiceId,
+            String approvalNote
+    ) {
+        requireAdmin(actor, "Chargeback invoice draft approval requires ADMIN.");
+        ChargebackInvoiceDraftRecord current = invoiceDraftRepository.findById(invoiceId)
+                .orElseThrow(() -> new ApiException(ApiErrorCode.NOT_FOUND, "Chargeback invoice draft not found."));
+        if (!"DRAFT_REVIEW".equals(current.status())) {
+            throw new ApiException(ApiErrorCode.VALIDATION_ERROR, "Only DRAFT_REVIEW invoice drafts can be approved.");
+        }
+        ChargebackInvoiceDraftRecord approved = invoiceDraftRepository.updateApproval(
+                invoiceId,
+                "APPROVED_INTERNAL",
+                actor.loginId(),
+                normalizeApprovalNote(approvalNote)
+        );
+        return new ChargebackInvoiceDraftApprovalResponse(
+                "APPROVED_INTERNAL",
+                false,
+                false,
+                invoiceResponse(approved),
+                OffsetDateTime.now(),
+                "Approved internally for chargeback review only - not a final legal invoice or payment request."
+        );
+    }
+
     public ChargebackAlertResponse alerts(AuthenticatedUser actor, ChargebackPreviewRequest request) {
         ChargebackPreviewResponse preview = preview(actor, request);
         BillingPricingPolicy pricingPolicy = pricingPolicyService.current();
@@ -369,6 +442,15 @@ public class ChargebackPreviewService {
         throw new ApiException(ApiErrorCode.AUTHORIZATION_FAILED, "Chargeback preview access denied.");
     }
 
+    private static void requireAdmin(AuthenticatedUser actor, String message) {
+        if (actor == null) {
+            throw new ApiException(ApiErrorCode.AUTHENTICATION_REQUIRED, "Authentication required.");
+        }
+        if (!actor.isAdmin()) {
+            throw new ApiException(ApiErrorCode.AUTHORIZATION_FAILED, message);
+        }
+    }
+
     private void validateWindow(OffsetDateTime from, OffsetDateTime to) {
         if (from != null && to != null && from.isAfter(to)) {
             throw new ApiException(ApiErrorCode.VALIDATION_ERROR, "from must be earlier than or equal to to.");
@@ -471,6 +553,109 @@ public class ChargebackPreviewService {
             throw new ApiException(ApiErrorCode.VALIDATION_ERROR, "reason must be a single-line value up to 512 characters.");
         }
         return reason;
+    }
+
+    private static String normalizeApprovalNote(String value) {
+        if (value == null || value.isBlank()) {
+            return "Internal chargeback invoice draft approved.";
+        }
+        String note = value.trim();
+        if (note.length() > 512 || note.contains("\r") || note.contains("\n")) {
+            throw new ApiException(ApiErrorCode.VALIDATION_ERROR, "approvalNote must be a single-line value up to 512 characters.");
+        }
+        return note;
+    }
+
+    private static String normalizeInvoiceStatusFilter(String value) {
+        if (value == null || value.isBlank()) {
+            return "";
+        }
+        String status = value.trim().toUpperCase(Locale.ROOT);
+        if (!List.of("DRAFT_REVIEW", "APPROVED_INTERNAL").contains(status)) {
+            throw new ApiException(ApiErrorCode.VALIDATION_ERROR, "status must be DRAFT_REVIEW or APPROVED_INTERNAL.");
+        }
+        return status;
+    }
+
+    private static ChargebackInvoiceDraftRecord invoiceDraftRecord(
+            ChargebackPreviewResponse preview,
+            ChargebackOrganizationPreviewResponse organization,
+            String requestedBy,
+            String reason,
+            OffsetDateTime now
+    ) {
+        BigDecimal trafficCost = money(organization.ingressCost()
+                .add(organization.egressCost())
+                .add(organization.internalCost()));
+        return new ChargebackInvoiceDraftRecord(
+                null,
+                draftInvoiceNumber(preview, organization),
+                "DRAFT_REVIEW",
+                organization.organizationId(),
+                organization.organizationName(),
+                preview.currency(),
+                preview.from(),
+                preview.to(),
+                preview.generatedAt(),
+                preview.eventScanLimit(),
+                money(preview.rates().storageGbMonthRate()),
+                money(preview.rates().ingressGbRate()),
+                money(preview.rates().egressGbRate()),
+                money(preview.rates().internalGbRate()),
+                money(preview.rates().operationThousandRate()),
+                organization.bucketCount(),
+                organization.objectCount(),
+                organization.usedBytes(),
+                money(organization.projectedStorageCost()),
+                trafficCost,
+                money(organization.operationCost()),
+                money(organization.estimatedTotalCost()),
+                requestedBy,
+                null,
+                reason,
+                null,
+                now,
+                now,
+                null,
+                "Internal review only - not a final legal invoice or payment request."
+        );
+    }
+
+    private static ChargebackInvoiceDraftResponse invoiceResponse(ChargebackInvoiceDraftRecord record) {
+        return new ChargebackInvoiceDraftResponse(
+                record.id() == null ? 0L : record.id(),
+                record.invoiceNumber(),
+                record.status(),
+                false,
+                false,
+                record.organizationId(),
+                record.organizationName(),
+                record.currency(),
+                record.from(),
+                record.to(),
+                record.previewGeneratedAt(),
+                record.eventScanLimit(),
+                money(record.storageGbMonthRate()),
+                money(record.ingressGbRate()),
+                money(record.egressGbRate()),
+                money(record.internalGbRate()),
+                money(record.operationThousandRate()),
+                record.bucketCount(),
+                record.objectCount(),
+                record.usedBytes(),
+                money(record.storageCost()),
+                money(record.trafficCost()),
+                money(record.operationCost()),
+                money(record.estimatedTotalCost()),
+                record.requestedBy(),
+                record.approvedBy(),
+                record.reason(),
+                record.approvalNote(),
+                record.createdAt(),
+                record.updatedAt(),
+                record.approvedAt(),
+                record.note()
+        );
     }
 
     private static ChargebackAlertNotificationDeliveryResponse deliveryResponse(

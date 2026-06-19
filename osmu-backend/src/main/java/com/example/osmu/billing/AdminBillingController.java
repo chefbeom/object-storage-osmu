@@ -14,6 +14,7 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -188,6 +189,54 @@ public class AdminBillingController {
     ) {
         AuthenticatedUser actor = authContext.currentUser(request);
         return ApiResponse.of(chargebackPreviewService.notificationOutbox(actor, limit == null ? 50 : limit));
+    }
+
+    @PostMapping("/chargeback-invoice-drafts")
+    public ApiResponse<ChargebackInvoiceDraftCreateResponse> persistChargebackInvoiceDrafts(
+            @RequestParam(name = "from", required = false) String from,
+            @RequestParam(name = "to", required = false) String to,
+            @RequestParam(name = "currency", required = false) String currency,
+            @RequestParam(name = "storageGbMonthRate", required = false) BigDecimal storageGbMonthRate,
+            @RequestParam(name = "ingressGbRate", required = false) BigDecimal ingressGbRate,
+            @RequestParam(name = "egressGbRate", required = false) BigDecimal egressGbRate,
+            @RequestParam(name = "internalGbRate", required = false) BigDecimal internalGbRate,
+            @RequestParam(name = "operationThousandRate", required = false) BigDecimal operationThousandRate,
+            @RequestParam(name = "eventScanLimit", required = false) Integer eventScanLimit,
+            @RequestParam(name = "reason", required = false) String reason,
+            HttpServletRequest request
+    ) {
+        AuthenticatedUser actor = authContext.currentUser(request);
+        return ApiResponse.of(chargebackPreviewService.persistInvoiceDrafts(actor, chargebackRequest(
+                from,
+                to,
+                currency,
+                storageGbMonthRate,
+                ingressGbRate,
+                egressGbRate,
+                internalGbRate,
+                operationThousandRate,
+                eventScanLimit
+        ), reason));
+    }
+
+    @GetMapping("/chargeback-invoice-drafts")
+    public ApiResponse<ChargebackInvoiceDraftListResponse> chargebackInvoiceDrafts(
+            @RequestParam(name = "status", required = false) String status,
+            @RequestParam(name = "limit", required = false) Integer limit,
+            HttpServletRequest request
+    ) {
+        AuthenticatedUser actor = authContext.currentUser(request);
+        return ApiResponse.of(chargebackPreviewService.invoiceDrafts(actor, status, limit == null ? 50 : limit));
+    }
+
+    @PostMapping("/chargeback-invoice-drafts/{invoiceId}/approve")
+    public ApiResponse<ChargebackInvoiceDraftApprovalResponse> approveChargebackInvoiceDraft(
+            @PathVariable long invoiceId,
+            @RequestParam(name = "approvalNote", required = false) String approvalNote,
+            HttpServletRequest request
+    ) {
+        AuthenticatedUser actor = authContext.currentUser(request);
+        return ApiResponse.of(chargebackPreviewService.approveInvoiceDraft(actor, invoiceId, approvalNote));
     }
 
     @GetMapping(value = "/chargeback-preview/export.csv", produces = "text/csv")

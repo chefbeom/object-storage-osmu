@@ -44,6 +44,9 @@ class AdminRbacPolicyTest {
         assertFalse(policy.isAllowed("POST", "/api/admin/storage-expansion/requests", "ORG_ADMIN"));
         assertFalse(policy.isAllowed("PUT", "/api/admin/quota-policies/USER/1", "ORG_ADMIN"));
         assertFalse(policy.isAllowed("PUT", "/api/admin/billing/pricing-policy", "ORG_ADMIN"));
+        assertFalse(policy.isAllowed("GET", "/api/admin/billing/chargeback-invoice-drafts", "ORG_ADMIN"));
+        assertFalse(policy.isAllowed("POST", "/api/admin/billing/chargeback-invoice-drafts", "ORG_ADMIN"));
+        assertFalse(policy.isAllowed("POST", "/api/admin/billing/chargeback-invoice-drafts/123/approve", "ORG_ADMIN"));
         assertFalse(policy.isAllowed("DELETE", "/api/admin/organizations/1", "ORG_ADMIN"));
     }
 
@@ -73,6 +76,9 @@ class AdminRbacPolicyTest {
         assertFalse(policy.isAllowed("GET", "/api/admin/billing/chargeback-alert-notifications/preview", "AUDITOR"));
         assertFalse(policy.isAllowed("GET", "/api/admin/billing/chargeback-alert-notifications/outbox", "AUDITOR"));
         assertFalse(policy.isAllowed("POST", "/api/admin/billing/chargeback-alert-notifications/outbox", "AUDITOR"));
+        assertFalse(policy.isAllowed("GET", "/api/admin/billing/chargeback-invoice-drafts", "AUDITOR"));
+        assertFalse(policy.isAllowed("POST", "/api/admin/billing/chargeback-invoice-drafts", "AUDITOR"));
+        assertFalse(policy.isAllowed("POST", "/api/admin/billing/chargeback-invoice-drafts/123/approve", "AUDITOR"));
         assertFalse(policy.isAllowed("GET", "/api/admin/billing/chargeback-preview/export.csv", "AUDITOR"));
         assertFalse(policy.isAllowed("GET", "/api/admin/billing/chargeback-invoice-draft/export.csv", "AUDITOR"));
         assertFalse(policy.isAllowed("DELETE", "/api/admin/organizations/1", "AUDITOR"));

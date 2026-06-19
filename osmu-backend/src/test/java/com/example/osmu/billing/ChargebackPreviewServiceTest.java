@@ -13,6 +13,7 @@ import com.example.osmu.monitoring.repository.InMemoryDataFlowEventRepository;
 import com.example.osmu.organization.OrganizationRecord;
 import com.example.osmu.organization.repository.InMemoryOrganizationRepository;
 import com.example.osmu.billing.repository.InMemoryBillingPricingPolicyRepository;
+import com.example.osmu.billing.repository.InMemoryChargebackInvoiceDraftRepository;
 import com.example.osmu.billing.repository.InMemoryChargebackNotificationDeliveryRepository;
 import java.math.BigDecimal;
 import java.time.OffsetDateTime;
@@ -27,6 +28,8 @@ class ChargebackPreviewServiceTest {
     private final InMemoryDataFlowEventRepository dataFlowEventRepository = new InMemoryDataFlowEventRepository();
     private final InMemoryChargebackNotificationDeliveryRepository notificationDeliveryRepository =
             new InMemoryChargebackNotificationDeliveryRepository();
+    private final InMemoryChargebackInvoiceDraftRepository invoiceDraftRepository =
+            new InMemoryChargebackInvoiceDraftRepository();
     private final BillingPricingPolicyService pricingPolicyService =
             new BillingPricingPolicyService(new InMemoryBillingPricingPolicyRepository());
     private final ChargebackPreviewService service = new ChargebackPreviewService(
@@ -34,7 +37,8 @@ class ChargebackPreviewServiceTest {
             bucketRepository,
             dataFlowEventRepository,
             pricingPolicyService,
-            notificationDeliveryRepository
+            notificationDeliveryRepository,
+            invoiceDraftRepository
     );
 
     @Test
@@ -220,6 +224,65 @@ class ChargebackPreviewServiceTest {
     }
 
     @Test
+    void persistsAndApprovesChargebackInvoiceDraftsForInternalReview() {
+        OffsetDateTime now = OffsetDateTime.now();
+        organizationRepository.save(new OrganizationRecord(1L, "Invoice Org", "", 10_000L, now));
+        bucketRepository.save(new BucketRecord(1L, "invoice-bucket", "ORG", 1L, 10_000L, 1024L, 1L, now));
+
+        ChargebackInvoiceDraftCreateResponse create = service.persistInvoiceDrafts(
+                new AuthenticatedUser(1L, "admin", "ADMIN", null),
+                new ChargebackPreviewRequest(
+                        now.minusHours(1),
+                        now.plusHours(1),
+                        "krw",
+                        ONE_GIB_RATE,
+                        BigDecimal.ZERO,
+                        BigDecimal.ZERO,
+                        BigDecimal.ZERO,
+                        BigDecimal.ZERO,
+                        100
+                ),
+                "unit test invoice draft"
+        );
+
+        assertThat(create.mode()).isEqualTo("DRAFT_REVIEW");
+        assertThat(create.status()).isEqualTo("DRAFT_REVIEW");
+        assertThat(create.finalInvoice()).isFalse();
+        assertThat(create.paymentRequest()).isFalse();
+        assertThat(create.persistedCount()).isEqualTo(1L);
+        ChargebackInvoiceDraftResponse draft = create.invoices().get(0);
+        assertThat(draft.id()).isGreaterThan(0L);
+        assertThat(draft.invoiceNumber()).startsWith("OSMU-DRAFT-");
+        assertThat(draft.organizationName()).isEqualTo("Invoice Org");
+        assertThat(draft.estimatedTotalCost()).isEqualByComparingTo("1024.000000");
+
+        ChargebackInvoiceDraftListResponse drafts = service.invoiceDrafts(
+                new AuthenticatedUser(1L, "admin", "ADMIN", null),
+                "DRAFT_REVIEW",
+                10
+        );
+        assertThat(drafts.invoiceCount()).isEqualTo(1L);
+
+        ChargebackInvoiceDraftApprovalResponse approved = service.approveInvoiceDraft(
+                new AuthenticatedUser(1L, "admin", "ADMIN", null),
+                draft.id(),
+                "approved for pilot review"
+        );
+        assertThat(approved.status()).isEqualTo("APPROVED_INTERNAL");
+        assertThat(approved.finalInvoice()).isFalse();
+        assertThat(approved.paymentRequest()).isFalse();
+        assertThat(approved.invoice().approvedBy()).isEqualTo("admin");
+        assertThat(approved.invoice().approvalNote()).isEqualTo("approved for pilot review");
+
+        ChargebackInvoiceDraftListResponse approvedList = service.invoiceDrafts(
+                new AuthenticatedUser(1L, "admin", "ADMIN", null),
+                "APPROVED_INTERNAL",
+                10
+        );
+        assertThat(approvedList.invoiceCount()).isEqualTo(1L);
+    }
+
+    @Test
     void rejectsUnsupportedRolesAndInvalidRates() {
         assertThatThrownBy(() -> service.preview(
                 new AuthenticatedUser(3L, "auditor", "AUDITOR", null),
@@ -246,6 +309,15 @@ class ChargebackPreviewServiceTest {
                 .isInstanceOf(ApiException.class)
                 .extracting("code")
                 .isEqualTo(ApiErrorCode.VALIDATION_ERROR);
+
+        assertThatThrownBy(() -> service.persistInvoiceDrafts(
+                new AuthenticatedUser(3L, "org-admin", "ORG_ADMIN", 1L),
+                new ChargebackPreviewRequest(null, null, null, null, null, null, null, null, 0),
+                "denied"
+        ))
+                .isInstanceOf(ApiException.class)
+                .extracting("code")
+                .isEqualTo(ApiErrorCode.AUTHORIZATION_FAILED);
     }
 
     private DataFlowEventRecord event(

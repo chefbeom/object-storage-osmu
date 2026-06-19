@@ -152,6 +152,39 @@ class AdminBillingControllerTest {
                         .param("limit", "10"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.deliveries[*].organizationName", hasItem("Billing Policy Org 1")));
+
+        String invoiceDraftResponse = mockMvc.perform(post("/api/admin/billing/chargeback-invoice-drafts")
+                        .header("Authorization", "Bearer " + adminToken)
+                        .param("reason", "billing invoice draft test"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.mode").value("DRAFT_REVIEW"))
+                .andExpect(jsonPath("$.data.status").value("DRAFT_REVIEW"))
+                .andExpect(jsonPath("$.data.finalInvoice").value(false))
+                .andExpect(jsonPath("$.data.paymentRequest").value(false))
+                .andExpect(jsonPath("$.data.persistedCount").value(1))
+                .andExpect(jsonPath("$.data.invoices[0].organizationName").value("Billing Policy Org 1"))
+                .andExpect(jsonPath("$.data.invoices[0].status").value("DRAFT_REVIEW"))
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+
+        Integer invoiceId = JsonPath.read(invoiceDraftResponse, "$.data.invoices[0].id");
+
+        mockMvc.perform(get("/api/admin/billing/chargeback-invoice-drafts")
+                        .header("Authorization", "Bearer " + adminToken)
+                        .param("status", "DRAFT_REVIEW")
+                        .param("limit", "10"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.invoices[*].organizationName", hasItem("Billing Policy Org 1")));
+
+        mockMvc.perform(post("/api/admin/billing/chargeback-invoice-drafts/{invoiceId}/approve", invoiceId)
+                        .header("Authorization", "Bearer " + adminToken)
+                        .param("approvalNote", "approved for internal review"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("APPROVED_INTERNAL"))
+                .andExpect(jsonPath("$.data.finalInvoice").value(false))
+                .andExpect(jsonPath("$.data.paymentRequest").value(false))
+                .andExpect(jsonPath("$.data.invoice.approvedBy").value("admin"));
     }
 
     @Test

@@ -1264,6 +1264,41 @@ export function getChargebackAlertNotificationOutbox(options = {}) {
   return request(`/admin/billing/chargeback-alert-notifications/outbox${suffix}`)
 }
 
+export function createChargebackInvoiceDrafts(options = {}) {
+  const query = new URLSearchParams()
+  appendQuery(query, 'from', options.from)
+  appendQuery(query, 'to', options.to)
+  appendQuery(query, 'currency', options.currency)
+  appendQuery(query, 'storageGbMonthRate', options.storageGbMonthRate)
+  appendQuery(query, 'ingressGbRate', options.ingressGbRate)
+  appendQuery(query, 'egressGbRate', options.egressGbRate)
+  appendQuery(query, 'internalGbRate', options.internalGbRate)
+  appendQuery(query, 'operationThousandRate', options.operationThousandRate)
+  appendQuery(query, 'eventScanLimit', options.eventScanLimit)
+  appendQuery(query, 'reason', options.reason)
+  const suffix = query.toString() ? `?${query.toString()}` : ''
+  return request(`/admin/billing/chargeback-invoice-drafts${suffix}`, {
+    method: 'POST',
+  })
+}
+
+export function getChargebackInvoiceDrafts(options = {}) {
+  const query = new URLSearchParams()
+  appendQuery(query, 'status', options.status)
+  appendQuery(query, 'limit', options.limit)
+  const suffix = query.toString() ? `?${query.toString()}` : ''
+  return request(`/admin/billing/chargeback-invoice-drafts${suffix}`)
+}
+
+export function approveChargebackInvoiceDraft(invoiceId, options = {}) {
+  const query = new URLSearchParams()
+  appendQuery(query, 'approvalNote', options.approvalNote)
+  const suffix = query.toString() ? `?${query.toString()}` : ''
+  return request(`/admin/billing/chargeback-invoice-drafts/${encodeURIComponent(invoiceId)}/approve${suffix}`, {
+    method: 'POST',
+  })
+}
+
 export function getBillingPricingPolicy() {
   return request('/admin/billing/pricing-policy')
 }

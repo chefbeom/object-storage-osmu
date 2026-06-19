@@ -356,6 +356,7 @@
         :chargeback-alerts="chargebackAlerts"
         :chargeback-alert-notification-preview="chargebackAlertNotificationPreview"
         :chargeback-alert-notification-outbox="chargebackAlertNotificationOutbox"
+        :chargeback-invoice-drafts="chargebackInvoiceDrafts"
         :billing-pricing-policy="billingPricingPolicy"
         :quota-policy-form="quotaPolicyForm"
         :quota-policy-target-options="quotaPolicyTargetOptions"
@@ -409,6 +410,8 @@
         @queue-chargeback-alert-notifications="handleQueueChargebackAlertNotifications"
         @export-chargeback-csv="handleExportChargebackCsv"
         @export-chargeback-invoice-draft-csv="handleExportChargebackInvoiceDraftCsv"
+        @create-chargeback-invoice-drafts="handleCreateChargebackInvoiceDrafts"
+        @approve-chargeback-invoice-draft="handleApproveChargebackInvoiceDraft"
         @save-quota-policy="handleSaveQuotaPolicy"
         @reset-quota-policy-target="resetQuotaPolicyTarget"
         @reset-quota-policy-form="resetQuotaPolicyForm"
@@ -501,6 +504,7 @@ import ObjectPage from '@/components/objects/ObjectPage.vue'
 import StoragePage from '@/components/storage/StoragePage.vue'
 import {
   MULTIPART_UPLOAD_THRESHOLD_BYTES,
+  approveChargebackInvoiceDraft,
   applyStorageExpansionExecutionRecord,
   applyStorageProfileRequest,
   applyDashboardLayoutPreset,
@@ -509,6 +513,7 @@ import {
   completePresignedUpload,
   createAccessKey,
   createBucket,
+  createChargebackInvoiceDrafts,
   createDashboardLayoutPreset,
   createObjectShareLink,
   createOrganization,
@@ -557,6 +562,7 @@ import {
   getChargebackAlertNotificationPreview,
   getChargebackAlertNotificationOutbox,
   getChargebackAlerts,
+  getChargebackInvoiceDrafts,
   getDatabaseHealth,
   getDashboardLayout,
   getDashboardLayoutDefaults,
@@ -1220,6 +1226,7 @@ const chargebackPreview = ref(defaultChargebackPreview())
 const chargebackAlerts = ref(defaultChargebackAlerts())
 const chargebackAlertNotificationPreview = ref(defaultChargebackAlertNotificationPreview())
 const chargebackAlertNotificationOutbox = ref(defaultChargebackAlertNotificationOutbox())
+const chargebackInvoiceDrafts = ref(defaultChargebackInvoiceDrafts())
 const billingPricingPolicy = ref(defaultBillingPricingPolicy())
 const teams = ref([])
 const quotaPolicies = ref([])
@@ -2298,6 +2305,7 @@ async function loadDashboard(options = {}) {
       resetChargebackAlerts()
       resetChargebackAlertNotificationPreview()
       resetChargebackAlertNotificationOutbox()
+      resetChargebackInvoiceDrafts()
     }
 
     if (isAdmin.value) {
@@ -2468,12 +2476,24 @@ async function loadChargebackAlertNotificationOutbox() {
   }
 }
 
+async function loadChargebackInvoiceDrafts() {
+  if (!isAdmin.value) {
+    resetChargebackInvoiceDrafts()
+    return
+  }
+  const result = await safeRequest(() => getChargebackInvoiceDrafts({ limit: 25 }), null)
+  if (result?.data) {
+    applyChargebackInvoiceDrafts(result.data)
+  }
+}
+
 async function loadChargebackPanel() {
   await Promise.all([
     loadChargebackPreview(),
     loadChargebackAlerts(),
     loadChargebackAlertNotificationPreview(),
     loadChargebackAlertNotificationOutbox(),
+    loadChargebackInvoiceDrafts(),
   ])
 }
 
@@ -2516,6 +2536,34 @@ async function handleExportChargebackInvoiceDraftCsv() {
   if (blob) {
     downloadBlob(blob, `osmu-chargeback-invoice-draft-${new Date().toISOString().slice(0, 10)}.csv`)
     setStatusMessage('Chargeback invoice draft CSV export complete.')
+  }
+}
+
+async function handleCreateChargebackInvoiceDrafts() {
+  if (!isAdmin.value) return
+  const result = await runAction(() => createChargebackInvoiceDrafts({
+    ...chargebackPreviewPayload(),
+    reason: 'Admin billing panel invoice draft persistence',
+  }))
+  if (result?.data) {
+    applyChargebackInvoiceDrafts({
+      invoiceCount: result.data.persistedCount,
+      invoices: result.data.invoices || [],
+      generatedAt: result.data.generatedAt,
+    })
+    await loadChargebackInvoiceDrafts()
+    setStatusMessage('Chargeback invoice draft records saved.')
+  }
+}
+
+async function handleApproveChargebackInvoiceDraft(invoiceId) {
+  if (!isAdmin.value || !invoiceId) return
+  const result = await runAction(() => approveChargebackInvoiceDraft(invoiceId, {
+    approvalNote: 'Approved from admin billing panel',
+  }))
+  if (result?.data) {
+    await loadChargebackInvoiceDrafts()
+    setStatusMessage('Chargeback invoice draft approved internally.')
   }
 }
 
@@ -2707,6 +2755,7 @@ function resetAdminOnlyState() {
   resetChargebackAlerts()
   resetChargebackAlertNotificationPreview()
   resetChargebackAlertNotificationOutbox()
+  resetChargebackInvoiceDrafts()
 }
 
 function resetUploadRuntime() {
@@ -3852,6 +3901,28 @@ function applyChargebackAlertNotificationOutbox(data = {}) {
 
 function resetChargebackAlertNotificationOutbox() {
   applyChargebackAlertNotificationOutbox({})
+}
+
+function defaultChargebackInvoiceDrafts() {
+  return {
+    invoiceCount: 0,
+    invoices: [],
+    generatedAt: '',
+  }
+}
+
+function applyChargebackInvoiceDrafts(data = {}) {
+  const fallback = defaultChargebackInvoiceDrafts()
+  chargebackInvoiceDrafts.value = {
+    ...fallback,
+    ...data,
+    invoiceCount: Number(data.invoiceCount || 0),
+    invoices: Array.isArray(data.invoices) ? data.invoices : [],
+  }
+}
+
+function resetChargebackInvoiceDrafts() {
+  applyChargebackInvoiceDrafts({})
 }
 
 function applyDashboardReadiness(data) {

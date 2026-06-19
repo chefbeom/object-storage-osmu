@@ -1,9 +1,11 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
+  approveChargebackInvoiceDraft,
   clearAuthTokens,
   completeOidcCallback,
   cleanupObjectShareLinks,
+  createChargebackInvoiceDrafts,
   applyDashboardLayoutPreset,
   createObjectShareLink,
   createDashboardLayoutPreset,
@@ -25,6 +27,7 @@ import {
   getChargebackAlertNotificationPreview,
   getChargebackAlertNotificationOutbox,
   getChargebackAlerts,
+  getChargebackInvoiceDrafts,
   getChargebackPreview,
   getDashboardLayout,
   getDashboardLayoutDefaults,
@@ -617,6 +620,68 @@ test('chargeback alert notification outbox wrappers queue and read delivery reco
     assert.equal(listUrl.searchParams.get('limit'), '25')
     assert.equal(fetchMock.calls[1].options.method, undefined)
     assert.equal(outbox.data.deliveryCount, 1)
+  } finally {
+    cleanupFetch(fetchMock)
+  }
+})
+
+test('chargeback invoice draft wrappers create list and approve internal review records', async () => {
+  const fetchMock = mockFetch([
+    () => jsonResponse({
+      data: {
+        mode: 'DRAFT_REVIEW',
+        status: 'DRAFT_REVIEW',
+        persistedCount: 1,
+        invoices: [{ id: 7, organizationName: 'Media', status: 'DRAFT_REVIEW' }],
+      },
+    }),
+    () => jsonResponse({
+      data: {
+        invoiceCount: 1,
+        invoices: [{ id: 7, organizationName: 'Media', status: 'DRAFT_REVIEW' }],
+      },
+    }),
+    () => jsonResponse({
+      data: {
+        status: 'APPROVED_INTERNAL',
+        invoice: { id: 7, organizationName: 'Media', status: 'APPROVED_INTERNAL' },
+      },
+    }),
+  ])
+
+  try {
+    const created = await createChargebackInvoiceDrafts({
+      from: '2026-06-01T00:00:00.000Z',
+      to: '2026-06-30T23:59:59.000Z',
+      currency: 'krw',
+      operationThousandRate: '0.01',
+      reason: 'monthly review',
+    })
+    const listed = await getChargebackInvoiceDrafts({ status: 'DRAFT_REVIEW', limit: 25 })
+    const approved = await approveChargebackInvoiceDraft(7, { approvalNote: 'approved' })
+
+    const createUrl = new URL(fetchMock.calls[0].url)
+    assert.equal(createUrl.pathname, '/api/admin/billing/chargeback-invoice-drafts')
+    assert.equal(createUrl.searchParams.get('from'), '2026-06-01T00:00:00.000Z')
+    assert.equal(createUrl.searchParams.get('to'), '2026-06-30T23:59:59.000Z')
+    assert.equal(createUrl.searchParams.get('currency'), 'krw')
+    assert.equal(createUrl.searchParams.get('operationThousandRate'), '0.01')
+    assert.equal(createUrl.searchParams.get('reason'), 'monthly review')
+    assert.equal(fetchMock.calls[0].options.method, 'POST')
+    assert.equal(created.data.status, 'DRAFT_REVIEW')
+
+    const listUrl = new URL(fetchMock.calls[1].url)
+    assert.equal(listUrl.pathname, '/api/admin/billing/chargeback-invoice-drafts')
+    assert.equal(listUrl.searchParams.get('status'), 'DRAFT_REVIEW')
+    assert.equal(listUrl.searchParams.get('limit'), '25')
+    assert.equal(fetchMock.calls[1].options.method, undefined)
+    assert.equal(listed.data.invoiceCount, 1)
+
+    const approveUrl = new URL(fetchMock.calls[2].url)
+    assert.equal(approveUrl.pathname, '/api/admin/billing/chargeback-invoice-drafts/7/approve')
+    assert.equal(approveUrl.searchParams.get('approvalNote'), 'approved')
+    assert.equal(fetchMock.calls[2].options.method, 'POST')
+    assert.equal(approved.data.status, 'APPROVED_INTERNAL')
   } finally {
     cleanupFetch(fetchMock)
   }

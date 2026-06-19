@@ -56,6 +56,8 @@ function createInitialState() {
     billingPricingPolicy: defaultBillingPricingPolicy(),
     chargebackNotificationDeliveries: [],
     chargebackNotificationDeliverySequence: 1,
+    chargebackInvoiceDrafts: [],
+    chargebackInvoiceDraftSequence: 1,
   }
 
   initialState.objects.set('osmu-demo-media', [
@@ -456,6 +458,19 @@ function handleAdminRoute(request, response, path, jsonBody, url) {
   }
   if (request.method === 'GET' && path === '/admin/billing/chargeback-alert-notifications/outbox') {
     sendJson(response, 200, apiData(chargebackAlertNotificationOutbox(url)))
+    return
+  }
+  if (request.method === 'POST' && path === '/admin/billing/chargeback-invoice-drafts') {
+    sendJson(response, 200, apiData(createChargebackInvoiceDrafts(url)))
+    return
+  }
+  if (request.method === 'GET' && path === '/admin/billing/chargeback-invoice-drafts') {
+    sendJson(response, 200, apiData(chargebackInvoiceDrafts(url)))
+    return
+  }
+  const invoiceDraftApproveMatch = path.match(/^\/admin\/billing\/chargeback-invoice-drafts\/(\d+)\/approve$/)
+  if (request.method === 'POST' && invoiceDraftApproveMatch) {
+    sendJson(response, 200, apiData(approveChargebackInvoiceDraft(Number(invoiceDraftApproveMatch[1]), url)))
     return
   }
   if (request.method === 'GET' && path === '/admin/billing/chargeback-preview/export.csv') {
@@ -1241,6 +1256,102 @@ function chargebackAlertNotificationOutbox(url) {
   }
 }
 
+function createChargebackInvoiceDrafts(url) {
+  const preview = chargebackPreview(url)
+  const now = new Date().toISOString()
+  const reason = String(url.searchParams.get('reason') || 'Chargeback invoice draft persisted from admin billing panel.').trim().slice(0, 512)
+  const generatedDate = String(preview.generatedAt || now).slice(0, 10).replace(/-/g, '')
+  const invoices = (preview.organizations || []).map((organization) => {
+    const invoice = {
+      id: state.chargebackInvoiceDraftSequence++,
+      invoiceNumber: `OSMU-DRAFT-${generatedDate}-${organization.organizationId}`,
+      status: 'DRAFT_REVIEW',
+      finalInvoice: false,
+      paymentRequest: false,
+      organizationId: organization.organizationId,
+      organizationName: organization.organizationName,
+      currency: preview.currency,
+      from: preview.from,
+      to: preview.to,
+      previewGeneratedAt: preview.generatedAt,
+      eventScanLimit: preview.eventScanLimit,
+      storageGbMonthRate: preview.rates?.storageGbMonthRate || 0,
+      ingressGbRate: preview.rates?.ingressGbRate || 0,
+      egressGbRate: preview.rates?.egressGbRate || 0,
+      internalGbRate: preview.rates?.internalGbRate || 0,
+      operationThousandRate: preview.rates?.operationThousandRate || 0,
+      bucketCount: organization.bucketCount,
+      objectCount: organization.objectCount,
+      usedBytes: organization.usedBytes,
+      storageCost: organization.projectedStorageCost,
+      trafficCost: money(Number(organization.ingressCost || 0) + Number(organization.egressCost || 0) + Number(organization.internalCost || 0)),
+      operationCost: organization.operationCost,
+      estimatedTotalCost: organization.estimatedTotalCost,
+      requestedBy: 'admin',
+      approvedBy: '',
+      reason: reason || 'Chargeback invoice draft persisted from admin billing panel.',
+      approvalNote: '',
+      createdAt: now,
+      updatedAt: now,
+      approvedAt: '',
+      note: 'Internal review only - not a final legal invoice or payment request.',
+    }
+    state.chargebackInvoiceDrafts.unshift(invoice)
+    return invoice
+  })
+  return {
+    mode: 'DRAFT_REVIEW',
+    status: 'DRAFT_REVIEW',
+    finalInvoice: false,
+    paymentRequest: false,
+    persistedCount: invoices.length,
+    invoices,
+    generatedAt: new Date().toISOString(),
+    note: 'Persisted for internal review only - not a final legal invoice or payment request.',
+  }
+}
+
+function chargebackInvoiceDrafts(url) {
+  const limit = clampNumber(Number(url.searchParams.get('limit') || 50), 1, 200)
+  const status = String(url.searchParams.get('status') || '').trim().toUpperCase()
+  const invoices = (status
+    ? state.chargebackInvoiceDrafts.filter((invoice) => invoice.status === status)
+    : state.chargebackInvoiceDrafts).slice(0, limit)
+  return {
+    invoiceCount: invoices.length,
+    invoices,
+    generatedAt: new Date().toISOString(),
+  }
+}
+
+function approveChargebackInvoiceDraft(invoiceId, url) {
+  const invoice = state.chargebackInvoiceDrafts.find((item) => item.id === invoiceId)
+  if (!invoice) {
+    return {
+      status: 'NOT_FOUND',
+      finalInvoice: false,
+      paymentRequest: false,
+      invoice: null,
+      generatedAt: new Date().toISOString(),
+      note: 'Chargeback invoice draft not found.',
+    }
+  }
+  const now = new Date().toISOString()
+  invoice.status = 'APPROVED_INTERNAL'
+  invoice.approvedBy = 'admin'
+  invoice.approvalNote = String(url.searchParams.get('approvalNote') || 'Internal chargeback invoice draft approved.').trim().slice(0, 512)
+  invoice.approvedAt = now
+  invoice.updatedAt = now
+  return {
+    status: 'APPROVED_INTERNAL',
+    finalInvoice: false,
+    paymentRequest: false,
+    invoice,
+    generatedAt: now,
+    note: 'Approved internally for chargeback review only - not a final legal invoice or payment request.',
+  }
+}
+
 function chargebackPreviewCsv(url) {
   const preview = chargebackPreview(url)
   const rates = preview.rates || {}
@@ -1995,6 +2106,26 @@ async function runSelfTest() {
     })).text()
     if (!chargebackInvoiceDraftExport.includes('"DRAFT_INVOICE"') || !chargebackInvoiceDraftExport.includes('"OSMU-DRAFT-') || !chargebackInvoiceDraftExport.includes('not a final invoice')) {
       throw new Error('chargeback invoice draft CSV export self-test failed')
+    }
+    const createdInvoiceDrafts = await (await fetch(`${base}/admin/billing/chargeback-invoice-drafts?operationThousandRate=0.004&reason=self-test`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${login.data.accessToken}` },
+    })).json()
+    if (!createdInvoiceDrafts.data || createdInvoiceDrafts.data.status !== 'DRAFT_REVIEW' || createdInvoiceDrafts.data.persistedCount < 1 || createdInvoiceDrafts.data.finalInvoice !== false) {
+      throw new Error('chargeback invoice draft persistence self-test failed')
+    }
+    const listedInvoiceDrafts = await (await fetch(`${base}/admin/billing/chargeback-invoice-drafts?status=DRAFT_REVIEW&limit=5`, {
+      headers: { Authorization: `Bearer ${login.data.accessToken}` },
+    })).json()
+    if (!listedInvoiceDrafts.data || listedInvoiceDrafts.data.invoiceCount < 1 || listedInvoiceDrafts.data.invoices?.[0]?.status !== 'DRAFT_REVIEW') {
+      throw new Error('chargeback invoice draft list self-test failed')
+    }
+    const approvedInvoiceDraft = await (await fetch(`${base}/admin/billing/chargeback-invoice-drafts/${listedInvoiceDrafts.data.invoices[0].id}/approve?approvalNote=self-test`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${login.data.accessToken}` },
+    })).json()
+    if (!approvedInvoiceDraft.data || approvedInvoiceDraft.data.status !== 'APPROVED_INTERNAL' || approvedInvoiceDraft.data.paymentRequest !== false) {
+      throw new Error('chargeback invoice draft approval self-test failed')
     }
     const bucket = await (await fetch(`${base}/buckets`, {
       method: 'POST',

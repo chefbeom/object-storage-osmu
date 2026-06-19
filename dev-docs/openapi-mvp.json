@@ -821,6 +821,117 @@
         }
       }
     },
+    "/api/admin/billing/chargeback-invoice-drafts": {
+      "get": {
+        "tags": ["Billing", "Admin"],
+        "operationId": "getChargebackInvoiceDrafts",
+        "summary": "List persisted chargeback invoice draft review records",
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "schema": { "type": "string", "enum": ["DRAFT_REVIEW", "APPROVED_INTERNAL"] }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": { "type": "integer", "default": 50, "maximum": 200 }
+          }
+        ],
+        "responses": {
+          "200": { "$ref": "#/components/responses/JsonOk" },
+          "403": { "$ref": "#/components/responses/Error" }
+        }
+      },
+      "post": {
+        "tags": ["Billing", "Admin"],
+        "operationId": "createChargebackInvoiceDrafts",
+        "summary": "Persist current chargeback invoice draft rows for internal review",
+        "parameters": [
+          {
+            "name": "from",
+            "in": "query",
+            "schema": { "type": "string", "format": "date-time" }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "schema": { "type": "string", "format": "date-time" }
+          },
+          {
+            "name": "currency",
+            "in": "query",
+            "schema": { "type": "string", "default": "USD" }
+          },
+          {
+            "name": "storageGbMonthRate",
+            "in": "query",
+            "schema": { "type": "number", "format": "double", "minimum": 0 }
+          },
+          {
+            "name": "ingressGbRate",
+            "in": "query",
+            "schema": { "type": "number", "format": "double", "minimum": 0 }
+          },
+          {
+            "name": "egressGbRate",
+            "in": "query",
+            "schema": { "type": "number", "format": "double", "minimum": 0 }
+          },
+          {
+            "name": "internalGbRate",
+            "in": "query",
+            "schema": { "type": "number", "format": "double", "minimum": 0 }
+          },
+          {
+            "name": "operationThousandRate",
+            "in": "query",
+            "schema": { "type": "number", "format": "double", "minimum": 0 }
+          },
+          {
+            "name": "eventScanLimit",
+            "in": "query",
+            "schema": { "type": "integer", "default": 10000, "maximum": 50000 }
+          },
+          {
+            "name": "reason",
+            "in": "query",
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": { "$ref": "#/components/responses/JsonOk" },
+          "400": { "$ref": "#/components/responses/Error" },
+          "403": { "$ref": "#/components/responses/Error" }
+        }
+      }
+    },
+    "/api/admin/billing/chargeback-invoice-drafts/{invoiceId}/approve": {
+      "post": {
+        "tags": ["Billing", "Admin"],
+        "operationId": "approveChargebackInvoiceDraft",
+        "summary": "Approve a persisted chargeback invoice draft for internal review",
+        "parameters": [
+          {
+            "name": "invoiceId",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "integer", "format": "int64" }
+          },
+          {
+            "name": "approvalNote",
+            "in": "query",
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": { "$ref": "#/components/responses/JsonOk" },
+          "400": { "$ref": "#/components/responses/Error" },
+          "403": { "$ref": "#/components/responses/Error" },
+          "404": { "$ref": "#/components/responses/Error" }
+        }
+      }
+    },
     "/api/admin/billing/chargeback-preview/export.csv": {
       "get": {
         "tags": ["Billing", "Admin"],

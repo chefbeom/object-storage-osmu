@@ -131,6 +131,15 @@
         Invoice draft
       </button>
       <button
+        v-if="isAdmin"
+        data-testid="chargeback-invoice-draft-save-button"
+        type="button"
+        class="ghost"
+        @click="$emit('create-chargeback-invoice-drafts')"
+      >
+        Save draft
+      </button>
+      <button
         data-testid="chargeback-notification-queue-button"
         type="button"
         class="ghost"
@@ -273,6 +282,41 @@
       <li v-if="notificationOutboxRows.length === 0" class="empty">No chargeback notification outbox records.</li>
     </ul>
 
+    <div v-if="isAdmin" class="compact-metrics chargeback-invoice-draft-metrics" data-testid="chargeback-invoice-draft-metrics">
+      <div>
+        <span>Draft records</span>
+        <b data-testid="chargeback-invoice-draft-count">{{ formatCount(invoiceDrafts.invoiceCount) }}</b>
+      </div>
+      <div>
+        <span>Status</span>
+        <b data-testid="chargeback-invoice-draft-status">{{ invoiceDraftRows[0]?.status || '-' }}</b>
+      </div>
+      <div>
+        <span>Updated</span>
+        <b data-testid="chargeback-invoice-draft-updated">{{ formatDateTime(invoiceDrafts.generatedAt) || '-' }}</b>
+      </div>
+    </div>
+
+    <ul v-if="isAdmin" class="compact-list chargeback-invoice-draft-list" data-testid="chargeback-invoice-draft-list">
+      <li v-for="invoice in invoiceDraftRows" :key="invoice.id" data-testid="chargeback-invoice-draft-row">
+        <span class="list-main">
+          <b>{{ invoice.invoiceNumber }}</b>
+          <small>{{ invoice.organizationName }} / {{ formatMoney(invoice.estimatedTotalCost, invoice.currency) }} / {{ invoice.reason || '-' }}</small>
+        </span>
+        <button
+          v-if="invoice.status === 'DRAFT_REVIEW'"
+          data-testid="chargeback-invoice-draft-approve-button"
+          type="button"
+          class="ghost"
+          @click="$emit('approve-chargeback-invoice-draft', invoice.id)"
+        >
+          Approve
+        </button>
+        <strong v-else>{{ invoice.status }}</strong>
+      </li>
+      <li v-if="invoiceDraftRows.length === 0" class="empty">No chargeback invoice draft records.</li>
+    </ul>
+
     <div class="table-wrap chargeback-table-wrap">
       <table data-testid="chargeback-organization-table">
         <thead>
@@ -324,6 +368,7 @@ const props = defineProps({
   chargebackAlerts: { type: Object, required: true },
   chargebackAlertNotificationPreview: { type: Object, required: true },
   chargebackAlertNotificationOutbox: { type: Object, required: true },
+  chargebackInvoiceDrafts: { type: Object, required: true },
   billingPricingPolicy: { type: Object, required: true },
   formatBytes: { type: Function, required: true },
   formatDateTime: { type: Function, required: true },
@@ -337,12 +382,15 @@ const emit = defineEmits([
   'queue-chargeback-alert-notifications',
   'export-chargeback-csv',
   'export-chargeback-invoice-draft-csv',
+  'create-chargeback-invoice-drafts',
+  'approve-chargeback-invoice-draft',
 ])
 
 const preview = computed(() => props.chargebackPreview || {})
 const alerts = computed(() => props.chargebackAlerts || {})
 const notificationPreview = computed(() => props.chargebackAlertNotificationPreview || {})
 const notificationOutbox = computed(() => props.chargebackAlertNotificationOutbox || {})
+const invoiceDrafts = computed(() => props.chargebackInvoiceDrafts || {})
 const rates = computed(() => preview.value.rates || {})
 const organizations = computed(() => (
   Array.isArray(preview.value.organizations) ? preview.value.organizations : []
@@ -355,6 +403,9 @@ const notificationRows = computed(() => (
 ))
 const notificationOutboxRows = computed(() => (
   Array.isArray(notificationOutbox.value.deliveries) ? notificationOutbox.value.deliveries : []
+))
+const invoiceDraftRows = computed(() => (
+  Array.isArray(invoiceDrafts.value.invoices) ? invoiceDrafts.value.invoices : []
 ))
 
 function updateOption(field, value) {

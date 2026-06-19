@@ -2769,6 +2769,53 @@ Response:
 - CSV fields: `rowType`, `invoiceNumber`, `invoiceStatus`, `currency`, `from`, `to`, `generatedAt`, `organizationId`, `organizationName`, `bucketCount`, `objectCount`, `usedBytes`, `storageCost`, `trafficCost`, `operationCost`, `estimatedTotalCost`, and `note`.
 - Each organization row uses `rowType=DRAFT_INVOICE`, `invoiceStatus=DRAFT`, and an `OSMU-DRAFT-YYYYMMDD-{organizationId}` invoice number.
 
+### POST /api/admin/billing/chargeback-invoice-drafts
+
+Persists the current scoped chargeback organization rows as internal draft invoice review records. `ADMIN` only. The records start in `DRAFT_REVIEW` and carry `finalInvoice=false` and `paymentRequest=false`; they are audit/review evidence, not legal final invoices, approved commercial prices, or payment requests.
+
+Query parameters are the same as `GET /api/admin/billing/chargeback-preview`, plus:
+
+- `reason` (optional): operator note for the persisted draft records.
+
+Response:
+
+- `mode`: `DRAFT_REVIEW`
+- `status`: `DRAFT_REVIEW`
+- `finalInvoice=false`, `paymentRequest=false`
+- `persistedCount`
+- `invoices[]`: persisted snapshot rows with invoice number, organization, rate snapshot, cost snapshot, requester, reason, status, and timestamps.
+- `note`: internal review-only notice.
+
+### GET /api/admin/billing/chargeback-invoice-drafts
+
+Lists persisted chargeback invoice draft review records. `ADMIN` only.
+
+Query parameters:
+
+- `status` (optional): `DRAFT_REVIEW` or `APPROVED_INTERNAL`.
+- `limit` (optional): number of rows to return, clamped to 1..200.
+
+Response:
+
+- `invoiceCount`
+- `invoices[]`: newest persisted draft records first.
+- `generatedAt`
+
+### POST /api/admin/billing/chargeback-invoice-drafts/{invoiceId}/approve
+
+Marks a persisted `DRAFT_REVIEW` chargeback invoice draft record as `APPROVED_INTERNAL`. `ADMIN` only. This approval is internal commercial review evidence and still returns `finalInvoice=false` and `paymentRequest=false`.
+
+Query parameters:
+
+- `approvalNote` (optional): single-line approval note.
+
+Response:
+
+- `status`: `APPROVED_INTERNAL`
+- `finalInvoice=false`, `paymentRequest=false`
+- `invoice`: approved invoice draft row.
+- `note`: internal approval-only notice.
+
 ### GET /api/admin/security/enterprise-auth-plan
 
 Enterprise SSO/OIDC/LDAP 도입 전 현재 인증 경계와 claim mapping plan을 조회한다. 현재 활성 login mode는 `LOCAL_PASSWORD`이며, OIDC/LDAP는 plan/readiness 상태로만 노출한다. `ADMIN`은 조회 가능하고, `AUDITOR`도 보안 검토용 read-only route로 조회할 수 있다.
