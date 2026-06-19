@@ -20,7 +20,7 @@
 - Export uses the same date, bucket, actor, source, operation, status, and limit filters as the on-screen monitoring panel.
 - Data Flow Monitoring panel renders source/operation trend points through `data-flow-trend-chart`.
 - Data Flow Monitoring separates upload, download, and internal copy traffic in the summary and bucket rows.
-- Chargeback preview uses `getChargebackPreview` through `BillingChargebackPanel` in Admin; it exposes date/rate/event-limit inputs, organization cost rows, and preview totals without presenting the result as a finalized invoice.
+- Chargeback preview uses `getBillingPricingPolicy`, `saveBillingPricingPolicy`, and `getChargebackPreview` through `BillingChargebackPanel` in Admin; it exposes date/rate/event-limit inputs, ADMIN-only policy save, organization cost rows, and preview totals without presenting the result as a finalized invoice.
 
 ## Multipart Refresh Note
 
@@ -179,7 +179,7 @@ Web Portal은 관리자와 사용자가 OSMU를 브라우저에서 사용할 수
 
 - ADMIN custom dashboard preset bundle export/import UI를 제공해 고객사별 대시보드 구성을 JSON 묶음으로 옮길 수 있음
 - `/admin`에서 API 작업이 실패하면 전역 오류 아래 `admin-action-remediation-panel`을 표시한다. 패널은 `ApiClientError.status`, `code`, `requestId`를 보존하고 `AUTHENTICATION_REQUIRED`, `AUTHORIZATION_FAILED`, `VALIDATION_ERROR`, `NOT_FOUND`, `CONFLICT`, 기타 실패별로 세션 재로그인, 권한/scope 확인, 입력값 수정, 목록 새로고침, 감사 로그 확인 같은 다음 조치를 안내한다.
-- AdminPage는 role별 panel 노출을 parent level에서 제한한다. `ADMIN`은 object share policy/analytics, quota policy, lifecycle/retention, storage expansion runner 같은 global operations panel을 볼 수 있고, `ORG_ADMIN`은 Access Key, 선택 bucket 권한/metadata, 자기 조직 사용자/조직/팀 관리만 본다. `admin-role-restricted-panel-list`는 숨겨진 global operations 영역을 고정 selector로 표시한다.
+- AdminPage는 role별 panel 노출을 parent level에서 제한한다. `ADMIN`은 object share policy/analytics, quota policy, lifecycle/retention, storage expansion runner 같은 global operations panel과 billing pricing policy save를 볼 수 있고, `ORG_ADMIN`은 Access Key, 선택 bucket 권한/metadata, 자기 조직 사용자/조직/팀 관리, billing pricing policy read-only preview만 본다. `admin-role-restricted-panel-list`는 숨겨진 global operations 영역을 고정 selector로 표시한다.
 - `admin-approval-workflow-panel`은 Storage Profile `PENDING/APPROVED` 요청과 Storage Expansion `PLANNED/APPROVED` 요청을 한 큐로 묶어 승인, 반려, dry-run 계획, 적용 단계를 보여준다. 각 row는 `admin-approval-profile-*`, `admin-approval-expansion-*` 버튼으로 기존 admin API action을 재사용한다.
 - `admin-security-audit-policy-panel`은 Access Key hygiene, 공유 링크 보호 정책, quota 정책 coverage, lifecycle conflict, enterprise auth plan, audit failure 상태를 한 화면에 정리한다. `getEnterpriseAuthPlan`으로 `GET /api/admin/security/enterprise-auth-plan`을 읽고, `LOCAL_PASSWORD` active / OIDC, LDAP planned / role-org-team claim mapping을 `admin-security-policy-row`에 표시한다. `previewEnterpriseAuthClaims`는 admin-only `POST /api/admin/security/enterprise-auth/claim-preview` wrapper로 sample OIDC claim mapping과 audit evidence contract를 고정하고, `provisionEnterpriseAuthUser`는 `POST /api/admin/security/enterprise-auth/jit-provision` wrapper로 admin-approved JIT apply contract를 고정한다. `getOidcAuthorizationRequest`는 public `GET /api/auth/oidc/authorize` wrapper로 OIDC authorization URL start contract를 고정하고, `completeOidcCallback`은 `GET /api/auth/oidc/callback?code&state` wrapper로 callback/token exchange 결과를 기존 login response contract에 맞춰 받는다. `loginWithLdap`은 `POST /api/auth/ldap/login` wrapper로 LDAP bind/search 결과를 기존 login response contract에 맞춰 받는다. `admin-security-audit-open-audit-link`로 `/audit` 상세 필터/CSV 화면으로 이동하며, `admin-security-policy-row`는 보안 정책별 상태와 근거를 고정 selector로 노출한다.
 - ADMIN Storage Expansion panel은 요청 capacity, server count, PV/server, reason을 입력해 MinIO pool 증설 계획을 만들고 `PLANNED/APPROVED/REJECTED/APPLIED` 상태를 관리함
@@ -296,7 +296,7 @@ Version UI:
 - 조직 생성
 - 기본 쿼터 표시
 - 조직별 사용량, bucket count, object count 표시
-- ORG_ADMIN에게 자기 조직 usage 표시. `BillingChargebackPanel`도 `getChargebackPreview` 결과를 사용하므로 자기 조직 scope만 표시해야 한다.
+- ORG_ADMIN에게 자기 조직 usage 표시. `BillingChargebackPanel`도 `getBillingPricingPolicy`와 `getChargebackPreview` 결과를 사용하지만 저장 버튼은 ADMIN에게만 보이고, preview는 자기 조직 scope만 표시해야 한다.
 - 사용자 생성 화면과 조직 선택 연동
 
 - Admin can delete empty organizations with a confirm dialog.

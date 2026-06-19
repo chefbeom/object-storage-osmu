@@ -837,9 +837,9 @@ ID:
 
 - Feature: Organization chargeback preview
 - Condition: Organization-owned buckets have current usage and recent `data_flow_events`.
-- Input: `GET /api/admin/billing/chargeback-preview?storageGbMonthRate=...&ingressGbRate=...&egressGbRate=...&operationThousandRate=...`
-- Steps: Create two organizations, upload data to an ORG-owned bucket, optionally generate download/copy/failure events, call the chargeback preview API as `ADMIN` and `ORG_ADMIN`, then open Admin billing panel and refresh the same preview.
-- Expected: `ADMIN` sees every organization. `ORG_ADMIN` sees only the caller organization. The response includes current `usedBytes`, ingress/egress/internal bytes, billable successful operation count, failed/cancelled counts, per-organization cost components, and total estimated cost. User-owned or unknown buckets are excluded. The Admin billing panel renders `billing-chargeback-panel`, editable rate/date/event-limit inputs, preview totals, and organization rows. The response and UI are preview only and do not persist invoices or pricing policy.
+- Input: `PUT /api/admin/billing/pricing-policy`, then `GET /api/admin/billing/chargeback-preview?storageGbMonthRate=...&ingressGbRate=...&egressGbRate=...&operationThousandRate=...`
+- Steps: Create two organizations, upload data to an ORG-owned bucket, optionally generate download/copy/failure events, save a pricing policy as `ADMIN`, call the chargeback preview API as `ADMIN` and `ORG_ADMIN`, then open Admin billing panel, save the policy, and refresh the same preview.
+- Expected: `ADMIN` can save pricing policy. `ORG_ADMIN` can read pricing policy for preview but cannot save it. `ADMIN` sees every organization. `ORG_ADMIN` sees only the caller organization. Preview uses saved policy values when query rates are omitted and query rates override saved values when present. The response includes current `usedBytes`, ingress/egress/internal bytes, billable successful operation count, failed/cancelled counts, per-organization cost components, and total estimated cost. User-owned or unknown buckets are excluded. The Admin billing panel renders `billing-chargeback-panel`, editable rate/date/event-limit inputs, `chargeback-save-policy-button` for ADMIN, preview totals, and organization rows. The response and UI are preview only and do not persist invoices.
 - Priority: P1
 - Automation: `AdminBillingControllerTest`, `ChargebackPreviewServiceTest`, `HomeView.test.js`
 

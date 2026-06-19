@@ -22,23 +22,24 @@ import org.springframework.stereotype.Service;
 @Service
 public class ChargebackPreviewService {
 
-    private static final int DEFAULT_EVENT_SCAN_LIMIT = 10_000;
-    private static final int MAX_EVENT_SCAN_LIMIT = 50_000;
     private static final BigDecimal BYTES_PER_GIB = BigDecimal.valueOf(1024L * 1024L * 1024L);
     private static final BigDecimal OPERATIONS_PER_THOUSAND = BigDecimal.valueOf(1000L);
 
     private final OrganizationRepository organizationRepository;
     private final BucketRepository bucketRepository;
     private final DataFlowEventRepository dataFlowEventRepository;
+    private final BillingPricingPolicyService pricingPolicyService;
 
     public ChargebackPreviewService(
             OrganizationRepository organizationRepository,
             BucketRepository bucketRepository,
-            DataFlowEventRepository dataFlowEventRepository
+            DataFlowEventRepository dataFlowEventRepository,
+            BillingPricingPolicyService pricingPolicyService
     ) {
         this.organizationRepository = organizationRepository;
         this.bucketRepository = bucketRepository;
         this.dataFlowEventRepository = dataFlowEventRepository;
+        this.pricingPolicyService = pricingPolicyService;
     }
 
     public ChargebackPreviewResponse preview(AuthenticatedUser actor, ChargebackPreviewRequest request) {
@@ -46,9 +47,10 @@ public class ChargebackPreviewService {
                 ? new ChargebackPreviewRequest(null, null, null, null, null, null, null, null, 0)
                 : request;
         validateWindow(safeRequest.from(), safeRequest.to());
-        ChargebackRateResponse rates = normalizeRates(safeRequest);
-        String currency = normalizeCurrency(safeRequest.currency());
-        int eventScanLimit = normalizeEventScanLimit(safeRequest.eventScanLimit());
+        BillingPricingPolicy pricingPolicy = pricingPolicyService.current();
+        ChargebackRateResponse rates = normalizeRates(safeRequest, pricingPolicy);
+        String currency = BillingPricingPolicyService.normalizeCurrency(safeRequest.currency(), pricingPolicy.currency());
+        int eventScanLimit = BillingPricingPolicyService.normalizeEventScanLimit(safeRequest.eventScanLimit(), pricingPolicy.eventScanLimit());
         List<OrganizationRecord> organizations = visibleOrganizations(actor);
         List<BucketRecord> buckets = bucketRepository.findAll();
 
@@ -137,40 +139,14 @@ public class ChargebackPreviewService {
         }
     }
 
-    private ChargebackRateResponse normalizeRates(ChargebackPreviewRequest request) {
+    private ChargebackRateResponse normalizeRates(ChargebackPreviewRequest request, BillingPricingPolicy pricingPolicy) {
         return new ChargebackRateResponse(
-                normalizeRate(request.storageGbMonthRate(), "storageGbMonthRate"),
-                normalizeRate(request.ingressGbRate(), "ingressGbRate"),
-                normalizeRate(request.egressGbRate(), "egressGbRate"),
-                normalizeRate(request.internalGbRate(), "internalGbRate"),
-                normalizeRate(request.operationThousandRate(), "operationThousandRate")
+                BillingPricingPolicyService.normalizeRate(request.storageGbMonthRate(), pricingPolicy.storageGbMonthRate(), "storageGbMonthRate"),
+                BillingPricingPolicyService.normalizeRate(request.ingressGbRate(), pricingPolicy.ingressGbRate(), "ingressGbRate"),
+                BillingPricingPolicyService.normalizeRate(request.egressGbRate(), pricingPolicy.egressGbRate(), "egressGbRate"),
+                BillingPricingPolicyService.normalizeRate(request.internalGbRate(), pricingPolicy.internalGbRate(), "internalGbRate"),
+                BillingPricingPolicyService.normalizeRate(request.operationThousandRate(), pricingPolicy.operationThousandRate(), "operationThousandRate")
         );
-    }
-
-    private BigDecimal normalizeRate(BigDecimal rate, String fieldName) {
-        BigDecimal normalized = rate == null ? BigDecimal.ZERO : rate;
-        if (normalized.compareTo(BigDecimal.ZERO) < 0) {
-            throw new ApiException(ApiErrorCode.VALIDATION_ERROR, fieldName + " must be zero or greater.");
-        }
-        return money(normalized);
-    }
-
-    private String normalizeCurrency(String currency) {
-        if (currency == null || currency.isBlank()) {
-            return "USD";
-        }
-        String normalized = currency.trim().toUpperCase(Locale.ROOT);
-        if (normalized.length() > 12) {
-            throw new ApiException(ApiErrorCode.VALIDATION_ERROR, "currency must be 12 characters or fewer.");
-        }
-        return normalized;
-    }
-
-    private int normalizeEventScanLimit(int eventScanLimit) {
-        if (eventScanLimit <= 0) {
-            return DEFAULT_EVENT_SCAN_LIMIT;
-        }
-        return Math.min(MAX_EVENT_SCAN_LIMIT, eventScanLimit);
     }
 
     private static BigDecimal costForBytes(BigDecimal rate, long bytes) {

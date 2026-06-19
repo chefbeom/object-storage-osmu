@@ -89,6 +89,15 @@
       <button data-testid="chargeback-reset-button" type="button" class="ghost" @click="$emit('reset-chargeback-options')">
         Reset
       </button>
+      <button
+        v-if="isAdmin"
+        data-testid="chargeback-save-policy-button"
+        type="button"
+        class="ghost"
+        @click="$emit('save-billing-pricing-policy')"
+      >
+        Save policy
+      </button>
     </form>
 
     <div class="compact-metrics chargeback-metrics" data-testid="chargeback-metrics">
@@ -127,6 +136,13 @@
           <small>{{ formatDateTime(preview.from) || '-' }} -> {{ formatDateTime(preview.to) || '-' }}</small>
         </span>
         <strong>{{ formatDateTime(preview.generatedAt) || '-' }}</strong>
+      </li>
+      <li>
+        <span class="list-main">
+          <b>Policy</b>
+          <small>{{ formatDateTime(billingPricingPolicy.updatedAt) || '-' }}</small>
+        </span>
+        <strong>{{ billingPricingPolicy.currency || preview.currency || chargebackOptions.currency }}</strong>
       </li>
     </ul>
 
@@ -175,8 +191,10 @@ import { computed } from 'vue'
 
 const props = defineProps({
   canUseAdminTools: { type: Boolean, required: true },
+  isAdmin: { type: Boolean, required: true },
   chargebackOptions: { type: Object, required: true },
   chargebackPreview: { type: Object, required: true },
+  billingPricingPolicy: { type: Object, required: true },
   formatBytes: { type: Function, required: true },
   formatDateTime: { type: Function, required: true },
 })
@@ -185,6 +203,7 @@ const emit = defineEmits([
   'update-chargeback-option',
   'refresh-chargeback-preview',
   'reset-chargeback-options',
+  'save-billing-pricing-policy',
 ])
 
 const preview = computed(() => props.chargebackPreview || {})

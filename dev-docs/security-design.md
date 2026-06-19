@@ -111,9 +111,9 @@ Enterprise auth plan:
 - 관리자 API RBAC는 `AdminRbacPolicy`에서 중앙 관리한다.
 - `ADMIN`은 모든 `/api/admin/**` API에 접근할 수 있다.
 - `USER` 또는 알 수 없는 role은 모든 `/api/admin/**` API에서 차단된다.
-- `ORG_ADMIN`은 자기 조직 사용자, 조직 usage, chargeback preview만 볼 수 있다.
+- `ORG_ADMIN`은 자기 조직 사용자, 조직 usage, billing pricing policy read-only 값, chargeback preview만 볼 수 있다.
 - `ORG_ADMIN`은 자기 조직 일반 `USER` 생성/비활성화만 가능하다.
-- `ORG_ADMIN` 허용 route는 `GET/POST /api/admin/users`, `PATCH /api/admin/users/{userId}/status`, `GET /api/admin/organizations`, `GET /api/admin/organizations/usage`, `GET /api/admin/billing/chargeback-preview`, `GET/POST /api/admin/teams`, `PUT /api/admin/teams/{teamId}/members`, `DELETE /api/admin/teams/{teamId}`로 제한한다.
+- `ORG_ADMIN` 허용 route는 `GET/POST /api/admin/users`, `PATCH /api/admin/users/{userId}/status`, `GET /api/admin/organizations`, `GET /api/admin/organizations/usage`, `GET /api/admin/billing/pricing-policy`, `GET /api/admin/billing/chargeback-preview`, `GET/POST /api/admin/teams`, `PUT /api/admin/teams/{teamId}/members`, `DELETE /api/admin/teams/{teamId}`로 제한한다.
 - `ChargebackPreviewService`는 `ORG_ADMIN` 요청에서 actor의 organization id만 조회하고, user-owned bucket과 deleted/unknown bucket data-flow event는 chargeback preview에서 제외한다.
 - `ORG_ADMIN`은 감사 로그, 전체 시스템 usage, system status, storage expansion, backup/restore drill, quota policy 같은 global admin API에는 접근할 수 없다.
 - `AUDITOR`는 감사 로그, usage/status, enterprise auth plan, dashboard summary/readiness, backup status와 restore drill evidence 조회만 가능하다. 사용자/조직/쿼터/증설/복구 증거 기록 같은 변경성 admin API는 차단한다.
@@ -125,7 +125,7 @@ Enterprise auth plan:
 - Public bucket은 MVP에서 제외.
 - 버킷 소유자는 기본 admin 권한.
 - 조직/사용자 단위 권한 부여.
-- `ORG_ADMIN`은 자기 조직 사용자, 조직 usage, chargeback preview만 볼 수 있다.
+- `ORG_ADMIN`은 자기 조직 사용자, 조직 usage, billing pricing policy read-only 값, chargeback preview만 볼 수 있다.
 - `ORG_ADMIN`은 자기 조직 일반 `USER` 생성/비활성화만 가능하다.
 - `ORG_ADMIN`은 감사 로그, 전체 시스템 usage, system status 같은 global admin API에는 접근할 수 없다.
 

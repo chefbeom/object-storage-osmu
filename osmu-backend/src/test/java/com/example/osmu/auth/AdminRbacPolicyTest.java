@@ -23,6 +23,7 @@ class AdminRbacPolicyTest {
         assertTrue(policy.isAllowed("PATCH", "/api/admin/users/123/status", "ORG_ADMIN"));
         assertTrue(policy.isAllowed("GET", "/api/admin/organizations", "ORG_ADMIN"));
         assertTrue(policy.isAllowed("GET", "/api/admin/organizations/usage", "ORG_ADMIN"));
+        assertTrue(policy.isAllowed("GET", "/api/admin/billing/pricing-policy", "ORG_ADMIN"));
         assertTrue(policy.isAllowed("GET", "/api/admin/billing/chargeback-preview", "ORG_ADMIN"));
         assertTrue(policy.isAllowed("GET", "/api/admin/teams", "ORG_ADMIN"));
         assertTrue(policy.isAllowed("POST", "/api/admin/teams", "ORG_ADMIN"));
@@ -36,6 +37,7 @@ class AdminRbacPolicyTest {
         assertFalse(policy.isAllowed("GET", "/api/admin/storage-expansion/summary", "ORG_ADMIN"));
         assertFalse(policy.isAllowed("POST", "/api/admin/storage-expansion/requests", "ORG_ADMIN"));
         assertFalse(policy.isAllowed("PUT", "/api/admin/quota-policies/USER/1", "ORG_ADMIN"));
+        assertFalse(policy.isAllowed("PUT", "/api/admin/billing/pricing-policy", "ORG_ADMIN"));
         assertFalse(policy.isAllowed("DELETE", "/api/admin/organizations/1", "ORG_ADMIN"));
     }
 
@@ -60,6 +62,7 @@ class AdminRbacPolicyTest {
         assertFalse(policy.isAllowed("GET", "/api/admin/storage-expansion/summary", "AUDITOR"));
         assertFalse(policy.isAllowed("POST", "/api/admin/storage-expansion/requests", "AUDITOR"));
         assertFalse(policy.isAllowed("PUT", "/api/admin/quota-policies/USER/1", "AUDITOR"));
+        assertFalse(policy.isAllowed("GET", "/api/admin/billing/pricing-policy", "AUDITOR"));
         assertFalse(policy.isAllowed("DELETE", "/api/admin/organizations/1", "AUDITOR"));
     }
 

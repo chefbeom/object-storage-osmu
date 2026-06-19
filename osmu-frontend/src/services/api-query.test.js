@@ -18,6 +18,7 @@ import {
   exportDashboardLayoutPresetBundle,
   getAuditLogs,
   getBackupRestoreDrillEvidence,
+  getBillingPricingPolicy,
   getBuckets,
   getChargebackPreview,
   getDashboardLayout,
@@ -44,6 +45,7 @@ import {
   provisionEnterpriseAuthUser,
   saveDashboardLayout,
   saveDashboardLayoutDefault,
+  saveBillingPricingPolicy,
   saveObjectSharePolicy,
   updateDashboardLayoutPreset,
   updateObjectTags,
@@ -384,6 +386,58 @@ test('getChargebackPreview reads admin billing preview endpoint', async () => {
     assert.equal(fetchMock.calls[0].options.method, undefined)
     assert.equal(result.data.currency, 'KRW')
     assert.equal(result.data.organizations[0].estimatedTotalCost, 25)
+  } finally {
+    cleanupFetch(fetchMock)
+  }
+})
+
+test('billing pricing policy wrappers read and save admin billing policy endpoint', async () => {
+  const fetchMock = mockFetch([
+    () => jsonResponse({
+      data: {
+        currency: 'USD',
+        storageGbMonthRate: 0.02,
+        eventScanLimit: 10000,
+      },
+    }),
+    () => jsonResponse({
+      data: {
+        currency: 'KRW',
+        storageGbMonthRate: 1.25,
+        eventScanLimit: 2500,
+      },
+    }),
+  ])
+
+  try {
+    const current = await getBillingPricingPolicy()
+    const saved = await saveBillingPricingPolicy({
+      currency: 'KRW',
+      storageGbMonthRate: '1.25',
+      ingressGbRate: '0.10',
+      egressGbRate: '0.20',
+      internalGbRate: '0.05',
+      operationThousandRate: '0.01',
+      eventScanLimit: 2500,
+      reason: 'unit test',
+    })
+
+    assert.equal(new URL(fetchMock.calls[0].url).pathname, '/api/admin/billing/pricing-policy')
+    assert.equal(fetchMock.calls[0].options.method, undefined)
+    assert.equal(new URL(fetchMock.calls[1].url).pathname, '/api/admin/billing/pricing-policy')
+    assert.equal(fetchMock.calls[1].options.method, 'PUT')
+    assert.deepEqual(JSON.parse(fetchMock.calls[1].options.body), {
+      currency: 'KRW',
+      storageGbMonthRate: '1.25',
+      ingressGbRate: '0.10',
+      egressGbRate: '0.20',
+      internalGbRate: '0.05',
+      operationThousandRate: '0.01',
+      eventScanLimit: 2500,
+      reason: 'unit test',
+    })
+    assert.equal(current.data.currency, 'USD')
+    assert.equal(saved.data.currency, 'KRW')
   } finally {
     cleanupFetch(fetchMock)
   }

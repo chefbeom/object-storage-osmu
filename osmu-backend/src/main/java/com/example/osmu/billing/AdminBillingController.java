@@ -1,5 +1,6 @@
 package com.example.osmu.billing;
 
+import com.example.osmu.audit.AuditLogService;
 import com.example.osmu.auth.AuthContext;
 import com.example.osmu.auth.AuthenticatedUser;
 import com.example.osmu.common.api.ApiResponse;
@@ -10,6 +11,8 @@ import java.math.BigDecimal;
 import java.time.OffsetDateTime;
 import java.time.format.DateTimeParseException;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -19,11 +22,46 @@ import org.springframework.web.bind.annotation.RestController;
 public class AdminBillingController {
 
     private final ChargebackPreviewService chargebackPreviewService;
+    private final BillingPricingPolicyService pricingPolicyService;
+    private final AuditLogService auditLogService;
     private final AuthContext authContext;
 
-    public AdminBillingController(ChargebackPreviewService chargebackPreviewService, AuthContext authContext) {
+    public AdminBillingController(
+            ChargebackPreviewService chargebackPreviewService,
+            BillingPricingPolicyService pricingPolicyService,
+            AuditLogService auditLogService,
+            AuthContext authContext
+    ) {
         this.chargebackPreviewService = chargebackPreviewService;
+        this.pricingPolicyService = pricingPolicyService;
+        this.auditLogService = auditLogService;
         this.authContext = authContext;
+    }
+
+    @GetMapping("/pricing-policy")
+    public ApiResponse<BillingPricingPolicy> pricingPolicy() {
+        return ApiResponse.of(pricingPolicyService.current());
+    }
+
+    @PutMapping("/pricing-policy")
+    public ApiResponse<BillingPricingPolicy> savePricingPolicy(
+            @RequestBody BillingPricingPolicyRequest request,
+            HttpServletRequest httpRequest
+    ) {
+        AuthenticatedUser actor = authContext.currentUser(httpRequest);
+        BillingPricingPolicy saved = pricingPolicyService.save(request);
+        auditLogService.record(
+                "BILLING_PRICING_POLICY_SAVE",
+                actor.loginId(),
+                "BILLING_PRICING_POLICY",
+                "global",
+                "SUCCESS",
+                request == null || request.reason() == null || request.reason().isBlank()
+                        ? "Billing pricing policy saved"
+                        : request.reason().trim(),
+                httpRequest
+        );
+        return ApiResponse.of(saved);
     }
 
     @GetMapping("/chargeback-preview")

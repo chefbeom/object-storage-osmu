@@ -17937,3 +17937,19 @@ feat/bucket-management
 - Mock/demo: frontend mock API에 `/admin/billing/chargeback-preview`와 organization usage row를 추가해 로컬 데모에서도 panel이 빈 상태로 끊기지 않게 했다.
 - 문서/verifier: README, frontend design, commercial readiness, feature inventory, test cases, IAM/RBAC verifier, commercial readiness verifier를 갱신했다.
 - 후속: persistent pricing policy 저장, invoice/export, threshold alert, time-series/partition 기반 장기 analytics는 아직 남아 있다.
+
+### 2026-06-20 - Billing pricing policy 저장
+
+- 작업 해석: chargeback preview가 매번 임시 rate만 받으면 운영자가 pilot cost model을 반복 재입력해야 하므로, 다음 billing/chargeback slice는 persistent pricing policy 저장으로 잡았다.
+- Backend: `GET/PUT /api/admin/billing/pricing-policy`를 추가했다. `BillingPricingPolicyService`는 currency, storage/ingress/egress/internal/operation rate, event scan limit를 singleton policy로 검증/저장한다. MariaDB migration `V48__billing_pricing_policy.sql`과 in-memory/MariaDB repository를 추가했다.
+- Preview 연동: `ChargebackPreviewService`는 query rate가 없으면 저장된 pricing policy를 기본값으로 사용하고, query rate가 있으면 request 값이 우선한다.
+- RBAC: `ORG_ADMIN`은 pricing policy를 read-only로 조회하고 자기 조직 preview에만 사용한다. `PUT /api/admin/billing/pricing-policy`는 `ADMIN` 전용이다.
+- Frontend/mock: `getBillingPricingPolicy`, `saveBillingPricingPolicy` wrapper와 Admin billing panel의 `chargeback-save-policy-button`을 추가했다. mock API/self-test도 policy 저장 후 preview 기본값 반영을 확인한다.
+- 문서/verifier: API spec, OpenAPI, IAM/RBAC matrix, security/frontend/commercial docs, README, feature inventory, test cases, openapi/IAM/commercial verifier를 갱신했다.
+- 검증:
+  - `npm.cmd run test:unit -- api-query HomeView`: 통과.
+  - `npm.cmd run build`: 통과.
+  - `npm.cmd run mock:api:self-test`: 통과.
+  - `verify-openapi-contract.ps1`, `verify-iam-rbac-matrix.ps1`, `verify-commercial-readiness.ps1`: 통과.
+  - `$env:JAVA_HOME='C:\jdk-17'; .\gradlew.bat test --no-daemon --tests com.example.osmu.billing.ChargebackPreviewServiceTest --tests com.example.osmu.billing.AdminBillingControllerTest --tests com.example.osmu.auth.AdminRbacPolicyTest`: 통과.
+- 후속: invoice/export, threshold alert, time-series/partition 기반 장기 analytics는 아직 남아 있다.

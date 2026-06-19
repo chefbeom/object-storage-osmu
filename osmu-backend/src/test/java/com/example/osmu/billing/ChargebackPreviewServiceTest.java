@@ -12,6 +12,7 @@ import com.example.osmu.monitoring.DataFlowEventRecord;
 import com.example.osmu.monitoring.repository.InMemoryDataFlowEventRepository;
 import com.example.osmu.organization.OrganizationRecord;
 import com.example.osmu.organization.repository.InMemoryOrganizationRepository;
+import com.example.osmu.billing.repository.InMemoryBillingPricingPolicyRepository;
 import java.math.BigDecimal;
 import java.time.OffsetDateTime;
 import org.junit.jupiter.api.Test;
@@ -23,10 +24,13 @@ class ChargebackPreviewServiceTest {
     private final InMemoryOrganizationRepository organizationRepository = new InMemoryOrganizationRepository();
     private final InMemoryBucketRepository bucketRepository = new InMemoryBucketRepository();
     private final InMemoryDataFlowEventRepository dataFlowEventRepository = new InMemoryDataFlowEventRepository();
+    private final BillingPricingPolicyService pricingPolicyService =
+            new BillingPricingPolicyService(new InMemoryBillingPricingPolicyRepository());
     private final ChargebackPreviewService service = new ChargebackPreviewService(
             organizationRepository,
             bucketRepository,
-            dataFlowEventRepository
+            dataFlowEventRepository,
+            pricingPolicyService
     );
 
     @Test
@@ -102,6 +106,36 @@ class ChargebackPreviewServiceTest {
         assertThat(preview.organizations()).extracting(ChargebackOrganizationPreviewResponse::organizationName)
                 .containsExactly("Visible Org");
         assertThat(preview.usedBytes()).isEqualTo(100L);
+    }
+
+    @Test
+    void usesPersistedPricingPolicyWhenPreviewRequestOmitsRates() {
+        OffsetDateTime now = OffsetDateTime.now();
+        organizationRepository.save(new OrganizationRecord(1L, "Policy Org", "", 10_000L, now));
+        bucketRepository.save(new BucketRecord(1L, "policy-bucket", "ORG", 1L, 10_000L, 1024L, 1L, now));
+        dataFlowEventRepository.save(event("UPLOAD", "upload", "INGRESS", "policy-bucket", "SUCCESS", 2048L, now));
+
+        pricingPolicyService.save(new BillingPricingPolicyRequest(
+                "krw",
+                ONE_GIB_RATE,
+                ONE_GIB_RATE,
+                BigDecimal.ZERO,
+                BigDecimal.ZERO,
+                BigDecimal.valueOf(1000L),
+                25,
+                "unit test"
+        ));
+
+        ChargebackPreviewResponse preview = service.preview(
+                new AuthenticatedUser(1L, "admin", "ADMIN", null),
+                new ChargebackPreviewRequest(null, null, null, null, null, null, null, null, 0)
+        );
+
+        assertThat(preview.currency()).isEqualTo("KRW");
+        assertThat(preview.eventScanLimit()).isEqualTo(25);
+        assertThat(preview.rates().storageGbMonthRate()).isEqualByComparingTo("1073741824.000000");
+        assertThat(preview.rates().ingressGbRate()).isEqualByComparingTo("1073741824.000000");
+        assertThat(preview.estimatedTotalCost()).isEqualByComparingTo("3073.000000");
     }
 
     @Test

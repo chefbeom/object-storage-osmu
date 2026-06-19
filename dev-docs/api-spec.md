@@ -24,7 +24,7 @@ Authorization: Bearer <accessToken>
 
 관리자 API인 `/api/admin/**`는 기본적으로 `ADMIN` role이 필요하다.
 예외적으로 `ORG_ADMIN`은 조직 스코프가 적용된 사용자/조직 조회 API만 접근할 수 있다.
-현재 허용 route는 `GET/POST /api/admin/users`, `PATCH /api/admin/users/{userId}/status`, `GET /api/admin/organizations`, `GET /api/admin/organizations/usage`, `GET /api/admin/billing/chargeback-preview`, `GET/POST /api/admin/teams`, `PUT /api/admin/teams/{teamId}/members`, `DELETE /api/admin/teams/{teamId}`이다.
+현재 허용 route는 `GET/POST /api/admin/users`, `PATCH /api/admin/users/{userId}/status`, `GET /api/admin/organizations`, `GET /api/admin/organizations/usage`, `GET /api/admin/billing/pricing-policy`, `GET /api/admin/billing/chargeback-preview`, `GET/POST /api/admin/teams`, `PUT /api/admin/teams/{teamId}/members`, `DELETE /api/admin/teams/{teamId}`이다.
 `AUDITOR`는 read-only 감사/상태 조회 role이다. 허용 route는 `GET /api/admin/audit-logs`, `GET /api/admin/audit-logs/export.csv`, `GET /api/admin/usage`, `GET /api/admin/system/status`, `GET /api/admin/security/enterprise-auth-plan`, `GET /api/admin/dashboard/summary`, `GET /api/admin/dashboard/readiness`, `GET /api/admin/backup/status`, `GET /api/admin/backup/restore-drill-evidence`로 제한한다.
 
 일반 사용자는 본인이 소유한 bucket, object, access key만 접근할 수 있다. `ADMIN`은 전체 리소스에 접근할 수 있다.
@@ -2527,18 +2527,66 @@ Access Key 여러 개를 한 번에 비활성화한다.
 
 전체 사용량 조회.
 
+### GET /api/admin/billing/pricing-policy
+
+Internal chargeback preview default pricing policy. `ADMIN` can read and update it. `ORG_ADMIN` can read it to calculate its scoped preview but cannot update it. This policy is a preview default, not a final invoice or approved commercial price list.
+
+Response:
+
+```json
+{
+  "success": true,
+  "data": {
+    "currency": "USD",
+    "storageGbMonthRate": 0.02,
+    "ingressGbRate": 0,
+    "egressGbRate": 0.01,
+    "internalGbRate": 0,
+    "operationThousandRate": 0.004,
+    "eventScanLimit": 10000,
+    "updatedAt": "2026-06-20T00:00:00Z"
+  }
+}
+```
+
+### PUT /api/admin/billing/pricing-policy
+
+Save the default pricing inputs used by chargeback preview when request query rates are omitted. `ADMIN` only.
+
+Request:
+
+```json
+{
+  "currency": "KRW",
+  "storageGbMonthRate": 12.5,
+  "ingressGbRate": 0.1,
+  "egressGbRate": 0.2,
+  "internalGbRate": 0.05,
+  "operationThousandRate": 0.01,
+  "eventScanLimit": 10000,
+  "reason": "pilot cost model update"
+}
+```
+
+Validation:
+
+- `currency` is normalized to uppercase and can be at most 12 characters.
+- rates must be zero or greater and are stored with 6 decimal places.
+- `eventScanLimit` defaults to the current policy value when omitted and is capped at `50000`.
+- saving records `BILLING_PRICING_POLICY_SAVE` audit log.
+
 ### GET /api/admin/billing/chargeback-preview
 
-Organization chargeback pre-model. `ADMIN` sees every organization. `ORG_ADMIN` sees only the caller's organization. This endpoint does not persist invoices or mutate billing policy; it projects costs from current organization-owned bucket usage and bounded data-flow events.
+Organization chargeback pre-model. `ADMIN` sees every organization. `ORG_ADMIN` sees only the caller's organization. This endpoint does not persist invoices or mutate billing policy; it projects costs from current organization-owned bucket usage and bounded data-flow events. Query pricing fields override `GET /api/admin/billing/pricing-policy`; omitted pricing fields use the saved policy.
 
 Query parameters:
 
 - `from`, `to`: optional ISO-8601 offset datetime window for data-flow events.
-- `currency`: optional display currency code, default `USD`.
+- `currency`: optional display currency code. When omitted, the saved pricing policy currency is used.
 - `storageGbMonthRate`: projected monthly storage rate per GiB based on current `usedBytes`.
 - `ingressGbRate`, `egressGbRate`, `internalGbRate`: data-flow byte rates per GiB.
 - `operationThousandRate`: operation rate per 1,000 successful data-flow events.
-- `eventScanLimit`: bounded event scan limit, default `10000`, maximum `50000`.
+- `eventScanLimit`: bounded event scan limit. When omitted, the saved pricing policy limit is used. Maximum is `50000`.
 
 Response:
 

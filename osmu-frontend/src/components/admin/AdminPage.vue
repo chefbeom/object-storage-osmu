@@ -245,13 +245,16 @@
       v-if="canUseAdminTools"
       id="admin-billing-chargeback"
       :can-use-admin-tools="canUseAdminTools"
+      :is-admin="isAdmin"
       :chargeback-options="chargebackOptions"
       :chargeback-preview="chargebackPreview"
+      :billing-pricing-policy="billingPricingPolicy"
       :format-bytes="formatBytes"
       :format-date-time="formatDateTime"
       @update-chargeback-option="$emit('update-chargeback-option', $event)"
       @refresh-chargeback-preview="$emit('refresh-chargeback-preview')"
       @reset-chargeback-options="$emit('reset-chargeback-options')"
+      @save-billing-pricing-policy="$emit('save-billing-pricing-policy')"
     />
 
     <article v-if="isAdmin" id="admin-storage-profiles" class="panel" data-testid="admin-storage-profile-panel">
@@ -433,6 +436,7 @@ const props = defineProps({
   enterpriseAuthPlan: { type: Object, required: true },
   chargebackOptions: { type: Object, required: true },
   chargebackPreview: { type: Object, required: true },
+  billingPricingPolicy: { type: Object, required: true },
   quotaPolicyForm: { type: Object, required: true },
   quotaPolicyTargetOptions: { type: Array, required: true },
   quotaPolicies: { type: Array, required: true },
@@ -633,6 +637,7 @@ defineEmits([
   'update-chargeback-option',
   'refresh-chargeback-preview',
   'reset-chargeback-options',
+  'save-billing-pricing-policy',
   'save-quota-policy',
   'reset-quota-policy-target',
   'reset-quota-policy-form',

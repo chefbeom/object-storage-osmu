@@ -353,6 +353,7 @@
         :enterprise-auth-plan="enterpriseAuthPlan"
         :chargeback-options="chargebackOptions"
         :chargeback-preview="chargebackPreview"
+        :billing-pricing-policy="billingPricingPolicy"
         :quota-policy-form="quotaPolicyForm"
         :quota-policy-target-options="quotaPolicyTargetOptions"
         :quota-policies="quotaPolicies"
@@ -401,6 +402,7 @@
         @update-chargeback-option="updateChargebackOption"
         @refresh-chargeback-preview="loadChargebackPreview"
         @reset-chargeback-options="handleResetChargebackOptions"
+        @save-billing-pricing-policy="handleSaveBillingPricingPolicy"
         @save-quota-policy="handleSaveQuotaPolicy"
         @reset-quota-policy-target="resetQuotaPolicyTarget"
         @reset-quota-policy-form="resetQuotaPolicyForm"
@@ -538,6 +540,7 @@ import {
   getAccessKeys,
   getAuditLogs,
   getBackupStatus,
+  getBillingPricingPolicy,
   getBucketLifecycleS3Xml,
   getBucketPermissions,
   getBucketStorageProfile,
@@ -605,6 +608,7 @@ import {
   runStorageExpansionGitOpsPrExecution,
   runObjectRetentionPurge,
   saveDashboardLayoutDefault,
+  saveBillingPricingPolicy,
   saveObjectLifecycleRule,
   saveObjectSharePolicy,
   saveDashboardLayout,
@@ -759,11 +763,11 @@ const defaultChargebackOptions = Object.freeze({
   from: '',
   to: '',
   currency: 'USD',
-  storageGbMonthRate: '0.020000',
+  storageGbMonthRate: '0',
   ingressGbRate: '0',
-  egressGbRate: '0.010000',
+  egressGbRate: '0',
   internalGbRate: '0',
-  operationThousandRate: '0.004000',
+  operationThousandRate: '0',
   eventScanLimit: 10000,
 })
 const chargebackRateFields = [
@@ -1197,6 +1201,7 @@ const users = ref([])
 const organizations = ref([])
 const organizationUsages = ref([])
 const chargebackPreview = ref(defaultChargebackPreview())
+const billingPricingPolicy = ref(defaultBillingPricingPolicy())
 const teams = ref([])
 const quotaPolicies = ref([])
 const quotaPolicyHistory = ref([])
@@ -2262,12 +2267,14 @@ async function loadDashboard(options = {}) {
       organizationUsages.value = organizationUsageResult.items || []
       teams.value = teamResult.items || []
       syncTeamFormDefaults()
+      await loadBillingPricingPolicy()
       await loadChargebackPreview()
     } else {
       users.value = []
       organizations.value = []
       organizationUsages.value = []
       teams.value = []
+      resetBillingPricingPolicy()
       resetChargebackPreview()
     }
 
@@ -2384,6 +2391,17 @@ async function loadDataFlowMonitoring() {
   }
 }
 
+async function loadBillingPricingPolicy() {
+  if (!canUseAdminTools.value) {
+    resetBillingPricingPolicy()
+    return
+  }
+  const result = await safeRequest(() => getBillingPricingPolicy(), null)
+  if (result?.data) {
+    applyBillingPricingPolicy(result.data)
+  }
+}
+
 async function loadChargebackPreview() {
   if (!canUseAdminTools.value) {
     resetChargebackPreview()
@@ -2392,6 +2410,16 @@ async function loadChargebackPreview() {
   const result = await safeRequest(() => getChargebackPreview(chargebackPreviewPayload()), null)
   if (result?.data) {
     applyChargebackPreview(result.data)
+  }
+}
+
+async function handleSaveBillingPricingPolicy() {
+  if (!isAdmin.value) return
+  const result = await runAction(() => saveBillingPricingPolicy(billingPricingPolicyPayload()))
+  if (result?.data) {
+    applyBillingPricingPolicy(result.data)
+    await loadChargebackPreview()
+    setStatusMessage('Billing pricing policy saved.')
   }
 }
 
@@ -2577,6 +2605,7 @@ function resetAdminOnlyState() {
   resetDashboardQuotaSummary()
   resetDashboardReadiness()
   resetDataFlowMonitoring()
+  resetBillingPricingPolicy()
   resetChargebackOptions()
   resetChargebackPreview()
 }
@@ -3543,6 +3572,51 @@ function applyDataFlowMonitoring(data = {}) {
 
 function resetDataFlowMonitoring() {
   applyDataFlowMonitoring({})
+}
+
+function defaultBillingPricingPolicy() {
+  return {
+    currency: defaultChargebackOptions.currency,
+    storageGbMonthRate: Number(defaultChargebackOptions.storageGbMonthRate),
+    ingressGbRate: Number(defaultChargebackOptions.ingressGbRate),
+    egressGbRate: Number(defaultChargebackOptions.egressGbRate),
+    internalGbRate: Number(defaultChargebackOptions.internalGbRate),
+    operationThousandRate: Number(defaultChargebackOptions.operationThousandRate),
+    eventScanLimit: defaultChargebackOptions.eventScanLimit,
+    updatedAt: '',
+  }
+}
+
+function applyBillingPricingPolicy(data = {}, syncOptions = true) {
+  const fallback = defaultBillingPricingPolicy()
+  billingPricingPolicy.value = {
+    ...fallback,
+    ...data,
+    storageGbMonthRate: Number(data.storageGbMonthRate ?? fallback.storageGbMonthRate),
+    ingressGbRate: Number(data.ingressGbRate ?? fallback.ingressGbRate),
+    egressGbRate: Number(data.egressGbRate ?? fallback.egressGbRate),
+    internalGbRate: Number(data.internalGbRate ?? fallback.internalGbRate),
+    operationThousandRate: Number(data.operationThousandRate ?? fallback.operationThousandRate),
+    eventScanLimit: Number(data.eventScanLimit || fallback.eventScanLimit),
+  }
+  if (syncOptions) {
+    syncChargebackOptionsFromPolicy()
+  }
+}
+
+function syncChargebackOptionsFromPolicy() {
+  const policy = billingPricingPolicy.value || defaultBillingPricingPolicy()
+  chargebackOptions.currency = policy.currency || defaultChargebackOptions.currency
+  chargebackOptions.storageGbMonthRate = String(policy.storageGbMonthRate ?? defaultChargebackOptions.storageGbMonthRate)
+  chargebackOptions.ingressGbRate = String(policy.ingressGbRate ?? defaultChargebackOptions.ingressGbRate)
+  chargebackOptions.egressGbRate = String(policy.egressGbRate ?? defaultChargebackOptions.egressGbRate)
+  chargebackOptions.internalGbRate = String(policy.internalGbRate ?? defaultChargebackOptions.internalGbRate)
+  chargebackOptions.operationThousandRate = String(policy.operationThousandRate ?? defaultChargebackOptions.operationThousandRate)
+  chargebackOptions.eventScanLimit = Number(policy.eventScanLimit || defaultChargebackOptions.eventScanLimit)
+}
+
+function resetBillingPricingPolicy() {
+  applyBillingPricingPolicy({})
 }
 
 function defaultChargebackPreview() {
@@ -4981,7 +5055,7 @@ function updateChargebackOption(event) {
 }
 
 function resetChargebackOptions() {
-  Object.assign(chargebackOptions, { ...defaultChargebackOptions })
+  syncChargebackOptionsFromPolicy()
 }
 
 async function handleResetChargebackOptions() {
@@ -5013,6 +5087,19 @@ function chargebackPreviewPayload() {
     payload[field] = normalizedChargebackNumber(chargebackOptions[field], '')
   }
   return payload
+}
+
+function billingPricingPolicyPayload() {
+  return {
+    currency: String(chargebackOptions.currency || '').trim(),
+    storageGbMonthRate: normalizedChargebackNumber(chargebackOptions.storageGbMonthRate, 0),
+    ingressGbRate: normalizedChargebackNumber(chargebackOptions.ingressGbRate, 0),
+    egressGbRate: normalizedChargebackNumber(chargebackOptions.egressGbRate, 0),
+    internalGbRate: normalizedChargebackNumber(chargebackOptions.internalGbRate, 0),
+    operationThousandRate: normalizedChargebackNumber(chargebackOptions.operationThousandRate, 0),
+    eventScanLimit: normalizedChargebackNumber(chargebackOptions.eventScanLimit, defaultChargebackOptions.eventScanLimit),
+    reason: 'Admin billing panel policy update',
+  }
 }
 
 function normalizedChargebackNumber(value, fallback) {

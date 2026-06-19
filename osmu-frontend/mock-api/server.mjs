@@ -53,6 +53,7 @@ function createInitialState() {
     storageProfileAssignments: new Map(),
     storageProfileRequests: [],
     storageProfileRequestSequence: 1,
+    billingPricingPolicy: defaultBillingPricingPolicy(),
   }
 
   initialState.objects.set('osmu-demo-media', [
@@ -437,6 +438,16 @@ function handleAdminRoute(request, response, path, jsonBody, url) {
   }
   if (request.method === 'GET' && path === '/admin/billing/chargeback-preview') {
     sendJson(response, 200, apiData(chargebackPreview(url)))
+    return
+  }
+  if (request.method === 'GET' && path === '/admin/billing/pricing-policy') {
+    sendJson(response, 200, apiData(state.billingPricingPolicy))
+    return
+  }
+  if (request.method === 'PUT' && path === '/admin/billing/pricing-policy') {
+    state.billingPricingPolicy = saveBillingPricingPolicy(jsonBody)
+    state.auditLogs.unshift(auditLog('BILLING_PRICING_POLICY_SAVE', 'BILLING_PRICING_POLICY', 'global'))
+    sendJson(response, 200, apiData(state.billingPricingPolicy))
     return
   }
   if (request.method === 'GET' && path === '/admin/backup/status') {
@@ -1039,14 +1050,14 @@ function normalizeDataFlowLimit(limit) {
 function chargebackPreview(url) {
   refreshBucketUsage()
   const rates = chargebackRates(url)
-  const limit = normalizeChargebackEventLimit(Number(url.searchParams.get('eventScanLimit') || 10000))
+  const limit = normalizeChargebackEventLimit(Number(url.searchParams.get('eventScanLimit') || state.billingPricingPolicy.eventScanLimit || 10000))
   const events = filterDataFlowEvents(state.dataFlowEvents || [], {
     from: url.searchParams.get('from') || '',
     to: url.searchParams.get('to') || '',
   }).slice(0, limit)
   const organizations = organizationUsageRows().map((organization) => chargebackOrganization(organization, events, rates))
   return {
-    currency: String(url.searchParams.get('currency') || 'USD').trim().toUpperCase().slice(0, 12) || 'USD',
+    currency: String(url.searchParams.get('currency') || state.billingPricingPolicy.currency || 'USD').trim().toUpperCase().slice(0, 12) || 'USD',
     from: url.searchParams.get('from') || null,
     to: url.searchParams.get('to') || null,
     rates,
@@ -1069,11 +1080,11 @@ function chargebackPreview(url) {
 
 function chargebackRates(url) {
   return {
-    storageGbMonthRate: parseChargebackRate(url.searchParams.get('storageGbMonthRate')),
-    ingressGbRate: parseChargebackRate(url.searchParams.get('ingressGbRate')),
-    egressGbRate: parseChargebackRate(url.searchParams.get('egressGbRate')),
-    internalGbRate: parseChargebackRate(url.searchParams.get('internalGbRate')),
-    operationThousandRate: parseChargebackRate(url.searchParams.get('operationThousandRate')),
+    storageGbMonthRate: parseChargebackRate(url.searchParams.get('storageGbMonthRate'), state.billingPricingPolicy.storageGbMonthRate),
+    ingressGbRate: parseChargebackRate(url.searchParams.get('ingressGbRate'), state.billingPricingPolicy.ingressGbRate),
+    egressGbRate: parseChargebackRate(url.searchParams.get('egressGbRate'), state.billingPricingPolicy.egressGbRate),
+    internalGbRate: parseChargebackRate(url.searchParams.get('internalGbRate'), state.billingPricingPolicy.internalGbRate),
+    operationThousandRate: parseChargebackRate(url.searchParams.get('operationThousandRate'), state.billingPricingPolicy.operationThousandRate),
   }
 }
 
@@ -1146,8 +1157,35 @@ function organizationUsageRows() {
   }]
 }
 
-function parseChargebackRate(value) {
-  const number = Number(value || 0)
+function defaultBillingPricingPolicy() {
+  return {
+    currency: 'USD',
+    storageGbMonthRate: 0,
+    ingressGbRate: 0,
+    egressGbRate: 0,
+    internalGbRate: 0,
+    operationThousandRate: 0,
+    eventScanLimit: 10000,
+    updatedAt: null,
+  }
+}
+
+function saveBillingPricingPolicy(payload = {}) {
+  const current = state.billingPricingPolicy || defaultBillingPricingPolicy()
+  return {
+    currency: String(payload.currency || current.currency || 'USD').trim().toUpperCase().slice(0, 12) || 'USD',
+    storageGbMonthRate: parseChargebackRate(payload.storageGbMonthRate, current.storageGbMonthRate),
+    ingressGbRate: parseChargebackRate(payload.ingressGbRate, current.ingressGbRate),
+    egressGbRate: parseChargebackRate(payload.egressGbRate, current.egressGbRate),
+    internalGbRate: parseChargebackRate(payload.internalGbRate, current.internalGbRate),
+    operationThousandRate: parseChargebackRate(payload.operationThousandRate, current.operationThousandRate),
+    eventScanLimit: normalizeChargebackEventLimit(Number(payload.eventScanLimit || current.eventScanLimit || 10000)),
+    updatedAt: new Date().toISOString(),
+  }
+}
+
+function parseChargebackRate(value, fallback = 0) {
+  const number = Number(value ?? fallback)
   return Number.isFinite(number) && number > 0 ? money(number) : 0
 }
 
@@ -1627,10 +1665,18 @@ async function runSelfTest() {
     if (!readiness.data.items.some((item) => item.code === 'OPERATIONS_READINESS_CONVERGENCE')) {
       throw new Error('readiness convergence item self-test failed')
     }
+    const savedPricingPolicy = await (await fetch(`${base}/admin/billing/pricing-policy`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${login.data.accessToken}` },
+      body: JSON.stringify({ currency: 'krw', storageGbMonthRate: 1, eventScanLimit: 2500 }),
+    })).json()
+    if (savedPricingPolicy.data.currency !== 'KRW' || savedPricingPolicy.data.eventScanLimit !== 2500) {
+      throw new Error('billing pricing policy self-test failed')
+    }
     const chargeback = await (await fetch(`${base}/admin/billing/chargeback-preview?storageGbMonthRate=0.02&egressGbRate=0.01&operationThousandRate=0.004`, {
       headers: { Authorization: `Bearer ${login.data.accessToken}` },
     })).json()
-    if (!chargeback.data || chargeback.data.organizationCount < 1 || !chargeback.data.organizations?.length) {
+    if (!chargeback.data || chargeback.data.currency !== 'KRW' || chargeback.data.eventScanLimit !== 2500 || chargeback.data.organizationCount < 1 || !chargeback.data.organizations?.length) {
       throw new Error('chargeback preview self-test failed')
     }
     const bucket = await (await fetch(`${base}/buckets`, {

@@ -75,6 +75,8 @@ $requiredOperations = @(
     @("/api/admin/organizations", "get", "getOrganizations"),
     @("/api/admin/organizations", "post", "createOrganization"),
     @("/api/admin/organizations/usage", "get", "getOrganizationUsage"),
+    @("/api/admin/billing/pricing-policy", "get", "getBillingPricingPolicy"),
+    @("/api/admin/billing/pricing-policy", "put", "saveBillingPricingPolicy"),
     @("/api/admin/billing/chargeback-preview", "get", "getChargebackPreview"),
     @("/api/admin/organizations/{organizationId}", "delete", "deleteOrganization"),
     @("/api/admin/storage-expansion/requests", "get", "getStorageExpansionRequests"),

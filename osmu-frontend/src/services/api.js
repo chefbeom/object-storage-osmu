@@ -1175,6 +1175,17 @@ export function getChargebackPreview(options = {}) {
   return request(`/admin/billing/chargeback-preview${suffix}`)
 }
 
+export function getBillingPricingPolicy() {
+  return request('/admin/billing/pricing-policy')
+}
+
+export function saveBillingPricingPolicy(payload) {
+  return request('/admin/billing/pricing-policy', {
+    method: 'PUT',
+    body: payload,
+  })
+}
+
 export function getDashboardLayout(scope = 'main') {
   return request(`/dashboard/layout?scope=${encodeURIComponent(scope)}`)
 }

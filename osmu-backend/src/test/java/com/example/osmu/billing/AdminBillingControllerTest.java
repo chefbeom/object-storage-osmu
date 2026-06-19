@@ -5,6 +5,7 @@ import static org.hamcrest.Matchers.not;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -54,6 +55,50 @@ class AdminBillingControllerTest {
                 .andExpect(jsonPath("$.data.organizations[?(@.organizationName == 'Billing Org 1')].ingressBytes", hasItem(12)))
                 .andExpect(jsonPath("$.data.organizations[?(@.organizationName == 'Billing Org 1')].billableOperationCount", hasItem(1)))
                 .andExpect(jsonPath("$.data.organizations[?(@.organizationName == 'Billing Org 1')].estimatedTotalCost", hasItem(25.0)));
+    }
+
+    @Test
+    void adminCanSavePricingPolicyAndPreviewUsesStoredRates() throws Exception {
+        String adminToken = loginAndReturnAccessToken("admin", "password");
+        int organizationId = createOrganization(adminToken, "Billing Policy Org 1");
+        createOrganizationBucket(adminToken, organizationId, "billing-policy-bucket-1");
+
+        MockMultipartFile file = new MockMultipartFile(
+                "file",
+                "billing-policy.txt",
+                MediaType.TEXT_PLAIN_VALUE,
+                "billing-data".getBytes()
+        );
+        mockMvc.perform(multipart("/api/buckets/{bucketName}/objects", "billing-policy-bucket-1")
+                        .file(file)
+                        .header("Authorization", "Bearer " + adminToken)
+                        .param("key", "billing-policy.txt"))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(put("/api/admin/billing/pricing-policy")
+                        .header("Authorization", "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "currency": "krw",
+                                  "storageGbMonthRate": 1073741824,
+                                  "ingressGbRate": 1073741824,
+                                  "operationThousandRate": 1000,
+                                  "eventScanLimit": 5000,
+                                  "reason": "billing policy test"
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.currency").value("KRW"))
+                .andExpect(jsonPath("$.data.eventScanLimit").value(5000))
+                .andExpect(jsonPath("$.data.updatedAt").exists());
+
+        mockMvc.perform(get("/api/admin/billing/chargeback-preview")
+                        .header("Authorization", "Bearer " + adminToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.currency").value("KRW"))
+                .andExpect(jsonPath("$.data.eventScanLimit").value(5000))
+                .andExpect(jsonPath("$.data.organizations[?(@.organizationName == 'Billing Policy Org 1')].estimatedTotalCost", hasItem(25.0)));
     }
 
     @Test
