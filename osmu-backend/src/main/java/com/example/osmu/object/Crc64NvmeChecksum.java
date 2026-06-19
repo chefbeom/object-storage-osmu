@@ -2,9 +2,9 @@ package com.example.osmu.object;
 
 import java.util.zip.Checksum;
 
-final class Crc64NvmeChecksum implements Checksum {
+public final class Crc64NvmeChecksum implements Checksum {
 
-    static final int DIGEST_LENGTH_BYTES = 8;
+    public static final int DIGEST_LENGTH_BYTES = 8;
 
     private static final long INITIAL_VALUE = 0xffffffffffffffffL;
     private static final long XOR_OUT = 0xffffffffffffffffL;

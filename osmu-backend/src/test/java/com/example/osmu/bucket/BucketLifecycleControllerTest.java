@@ -10,7 +10,10 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.jayway.jsonpath.JsonPath;
+import java.nio.charset.StandardCharsets;
+import java.util.Base64;
 import java.util.Map;
+import java.util.zip.CRC32;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -484,6 +487,84 @@ class BucketLifecycleControllerTest {
     }
 
     @Test
+    void s3BucketLifecyclePutValidatesChecksumHeaders() throws Exception {
+        String token = loginAndReturnAccessToken("admin", "password");
+        String bucketName = "lifecycle-checksum-bucket";
+        createBucket(token, bucketName);
+        String lifecycleXml = """
+                <LifecycleConfiguration>
+                  <Rule>
+                    <ID>Checksum lifecycle</ID>
+                    <Status>Enabled</Status>
+                    <Filter><Prefix>tmp/</Prefix></Filter>
+                    <Expiration><Days>7</Days></Expiration>
+                  </Rule>
+                </LifecycleConfiguration>
+                """;
+        String replacementXml = """
+                <LifecycleConfiguration>
+                  <Rule>
+                    <ID>Checksum replacement</ID>
+                    <Status>Enabled</Status>
+                    <Filter><Prefix>tmp/</Prefix></Filter>
+                    <Expiration><Days>14</Days></Expiration>
+                  </Rule>
+                </LifecycleConfiguration>
+                """;
+
+        mockMvc.perform(put("/api/s3/{bucketName}", bucketName)
+                        .queryParam("lifecycle", "")
+                        .header("Authorization", "Bearer " + token)
+                        .header("x-amz-sdk-checksum-algorithm", "CRC32")
+                        .header("x-amz-checksum-crc32", crc32Checksum(lifecycleXml))
+                        .contentType(MediaType.APPLICATION_XML)
+                        .content(lifecycleXml))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(put("/api/s3/{bucketName}", bucketName)
+                        .queryParam("lifecycle", "")
+                        .header("Authorization", "Bearer " + token)
+                        .header("x-amz-checksum-crc32", "AAAAAA==")
+                        .contentType(MediaType.APPLICATION_XML)
+                        .content(replacementXml))
+                .andExpect(status().isBadRequest())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_XML))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("<Code>BadDigest</Code>")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("<Message>x-amz-checksum-crc32 does not match lifecycle XML body.</Message>")));
+
+        mockMvc.perform(put("/api/s3/{bucketName}", bucketName)
+                        .queryParam("lifecycle", "")
+                        .header("Authorization", "Bearer " + token)
+                        .header("x-amz-sdk-checksum-algorithm", "SHA256")
+                        .header("x-amz-checksum-crc32", crc32Checksum(replacementXml))
+                        .contentType(MediaType.APPLICATION_XML)
+                        .content(replacementXml))
+                .andExpect(status().isBadRequest())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_XML))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("<Code>BadDigest</Code>")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("<Message>x-amz-sdk-checksum-algorithm does not match lifecycle checksum.</Message>")));
+
+        mockMvc.perform(put("/api/s3/{bucketName}", bucketName)
+                        .queryParam("lifecycle", "")
+                        .header("Authorization", "Bearer " + token)
+                        .header("x-amz-sdk-checksum-algorithm", "SHA256")
+                        .contentType(MediaType.APPLICATION_XML)
+                        .content(replacementXml))
+                .andExpect(status().isBadRequest())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_XML))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("<Code>InvalidRequest</Code>")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("<Message>x-amz-sdk-checksum-algorithm requires a matching x-amz-checksum-* header for S3 Bucket lifecycle.</Message>")));
+
+        mockMvc.perform(get("/api/s3/{bucketName}", bucketName)
+                        .queryParam("lifecycle", "")
+                        .header("Authorization", "Bearer " + token)
+                        .accept(MediaType.APPLICATION_XML))
+                .andExpect(status().isOk())
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("Checksum lifecycle")))
+                .andExpect(content().string(org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString("Checksum replacement"))));
+    }
+
+    @Test
     void invalidS3BucketLifecycleTagRestrictionsReturnInvalidRequest() throws Exception {
         String token = loginAndReturnAccessToken("admin", "password");
         String bucketName = "lifecycle-invalid-tag-bucket";
@@ -733,6 +814,20 @@ class BucketLifecycleControllerTest {
         org.assertj.core.api.Assertions.assertThat(filterIndex).isGreaterThan(idIndex);
         org.assertj.core.api.Assertions.assertThat(statusIndex).isGreaterThan(filterIndex);
         org.assertj.core.api.Assertions.assertThat(actionIndex).isGreaterThan(statusIndex);
+    }
+
+    private String crc32Checksum(String value) {
+        CRC32 checksum = new CRC32();
+        byte[] bytes = value.getBytes(StandardCharsets.UTF_8);
+        checksum.update(bytes, 0, bytes.length);
+        long normalized = checksum.getValue() & 0xffffffffL;
+        byte[] digest = new byte[]{
+                (byte) (normalized >>> 24),
+                (byte) (normalized >>> 16),
+                (byte) (normalized >>> 8),
+                (byte) normalized
+        };
+        return Base64.getEncoder().encodeToString(digest);
     }
 
     private AccessKeyCredentials createAccessKey(String token, String bucketName, String permission) throws Exception {

@@ -17311,3 +17311,34 @@ feat/bucket-management
   - `$env:JAVA_HOME='C:\jdk-17'; .\gradlew.bat test --no-daemon --tests com.example.osmu.bucket.BucketLifecycleControllerTest.unsupportedS3BucketLifecycleTransitionDefaultHeaderReturnsInvalidRequest --tests com.example.osmu.bucket.BucketLifecycleControllerTest.adminCanUseS3StyleLifecycleQueryAlias --tests com.example.osmu.common.error.S3ErrorCodeMapperTest`: 통과.
 - 후속:
   - 남은 큰 축은 lifecycle PUT checksum header parity, broader multipart checksum edge parity, live Kubernetes/security evidence다.
+
+### 2026-06-19 - S3 Lifecycle PUT checksum header 검증
+- 작업 시간:
+  - 시작: 2026-06-19 KST
+  - 종료: 2026-06-19 KST
+- 사용한 명령:
+  - active goal `dev-docs` 기준으로 계속 개발 진행.
+- 요청 분석:
+  - 직전 후속 항목의 lifecycle PUT checksum header parity를 로컬에서 검증 가능한 단위로 좁혔다.
+  - AWS `PutBucketLifecycleConfiguration`은 `x-amz-sdk-checksum-algorithm`과 명시적 checksum value header 조합을 문서화한다.
+  - 기존 S3 lifecycle alias는 checksum 관련 헤더를 조용히 무시하고 XML 설정을 교체할 수 있었다.
+- 수행:
+  - `S3BucketLifecycleController`가 `Content-MD5`, 하나의 명시적 `x-amz-checksum-*`, 그리고 matching `x-amz-sdk-checksum-algorithm`을 raw lifecycle XML body 기준으로 검증하게 했다.
+  - `x-amz-checksum-sha256`, `x-amz-checksum-sha1`, `x-amz-checksum-crc32`, `x-amz-checksum-crc32c`, `x-amz-checksum-crc64nvme`를 지원했다.
+  - checksum syntax 오류는 `InvalidDigest`, checksum 값 또는 SDK/header algorithm mismatch는 `BadDigest`로 응답하고 configuration을 교체하지 않게 했다.
+  - `Crc64NvmeChecksum`을 bucket lifecycle checksum 검증에서도 재사용할 수 있도록 public utility로 열었다.
+  - `s3BucketLifecyclePutValidatesChecksumHeaders` 회귀 테스트를 추가하고, `api-spec.md`, `backend-design.md`, `s3-compatibility.md`, `test-cases.md`, `feature-inventory.md`를 갱신했다.
+- 수정한 파일:
+  - `osmu-backend/src/main/java/com/example/osmu/bucket/S3BucketLifecycleController.java`
+  - `osmu-backend/src/main/java/com/example/osmu/object/Crc64NvmeChecksum.java`
+  - `osmu-backend/src/test/java/com/example/osmu/bucket/BucketLifecycleControllerTest.java`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/backend-design.md`
+  - `dev-docs/s3-compatibility.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/feature-inventory.md`
+  - `dev-docs/worklog/main/worklog-main.md`
+- 검증:
+  - `$env:JAVA_HOME='C:\jdk-17'; .\gradlew.bat test --no-daemon --tests com.example.osmu.bucket.BucketLifecycleControllerTest.s3BucketLifecyclePutValidatesChecksumHeaders --tests com.example.osmu.bucket.BucketLifecycleControllerTest.adminCanUseS3StyleLifecycleQueryAlias --tests com.example.osmu.common.error.S3ErrorCodeMapperTest`: 통과.
+- 후속:
+  - 남은 큰 축은 broader multipart checksum edge parity와 live Kubernetes/security evidence다.
