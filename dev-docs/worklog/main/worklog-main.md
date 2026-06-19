@@ -1,5 +1,27 @@
 # Worklog - main
 
+### 2026-06-19 - S3 lifecycle not-found BucketName detail
+
+- Work time:
+  - End: 2026-06-19 KST
+- User command:
+  - Active goal: continue development from `dev-docs`.
+- Request analysis:
+  - OSMU S3 XML error envelope emits derivable per-error details such as `BucketName`.
+  - `NoSuchLifecycleConfiguration` is a bucket-level S3 error and the bucket name is derivable from `/api/s3/{bucketName}?lifecycle`.
+- Execution:
+  - Added `BucketName` detail emission for S3 XML `NoSuchLifecycleConfiguration`.
+  - Added lifecycle alias regression assertion and updated test-case docs.
+- Modified files:
+  - `osmu-backend/src/main/java/com/example/osmu/common/error/GlobalExceptionHandler.java`
+  - `osmu-backend/src/test/java/com/example/osmu/bucket/BucketLifecycleControllerTest.java`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/worklog/main/worklog-main.md`
+- Tests:
+  - `$env:JAVA_HOME='C:\jdk-17'; .\gradlew.bat test --no-daemon --tests com.example.osmu.bucket.BucketLifecycleControllerTest`: passed.
+- Follow-up:
+  - Continue remaining AWS checksum real-client option coverage and broader S3 error behavior parity.
+
 ### 2026-06-19 - S3 PreconditionFailed message punctuation parity
 
 - Work time:

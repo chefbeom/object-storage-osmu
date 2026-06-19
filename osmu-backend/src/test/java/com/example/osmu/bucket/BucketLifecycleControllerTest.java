@@ -201,7 +201,8 @@ class BucketLifecycleControllerTest {
                 .andExpect(status().isNotFound())
                 .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_XML))
                 .andExpect(content().string(org.hamcrest.Matchers.containsString("<Code>NoSuchLifecycleConfiguration</Code>")))
-                .andExpect(content().string(org.hamcrest.Matchers.containsString("<Message>The lifecycle configuration does not exist.</Message>")));
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("<Message>The lifecycle configuration does not exist.</Message>")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("<BucketName>" + bucketName + "</BucketName>")));
     }
 
     @Test

@@ -135,7 +135,7 @@ public class GlobalExceptionHandler {
         Map<String, String> details = new LinkedHashMap<>();
         if (resource.bucketName() != null && switch (code) {
             case "NoSuchBucket", "InvalidBucketName", "BucketNotEmpty", "BucketAlreadyOwnedByYou", "BucketAlreadyExists",
-                    "NoSuchKey", "NoSuchUpload" -> true;
+                    "NoSuchKey", "NoSuchUpload", "NoSuchLifecycleConfiguration" -> true;
             default -> false;
         }) {
             details.put("BucketName", resource.bucketName());
