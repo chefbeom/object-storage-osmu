@@ -1347,7 +1347,7 @@ Headers:
 - `ListObjects` V1 returns `Contents`, `CommonPrefixes`, `IsTruncated`, `NextMarker`, and optional `Owner`.
 - `encoding-type=url` returns `EncodingType` and percent-encodes list key-like XML values such as `Prefix`, `Delimiter`, `Key`, `CommonPrefixes`, and pagination markers.
 - `fetch-owner=true` adds `Owner/ID` and `Owner/DisplayName` under each `Contents` item using the authenticated OSMU user.
-- Multi-object delete uses `Delete/Object/Key` XML, accepts up to 1000 objects, and returns `DeleteResult/Deleted`. If `Delete/Quiet` is `true`, successful `Deleted` entries are suppressed.
+- Multi-object delete uses `Delete/Object/Key` XML, requires the `Delete` root element, accepts up to 1000 objects, and returns `DeleteResult/Deleted`. Unexpected XML roots return S3 XML `MalformedXML` before delete execution. If `Delete/Quiet` is `true`, successful `Deleted` entries are suppressed.
 - Multi-object delete uses the same OSMU soft-delete behavior as single object delete. Missing object keys are reported as deleted for S3 compatibility.
 - Key-specific failures return `DeleteResult/Error` entries with `Key`, S3-style `Code`, and `Message`. `Quiet=true` only suppresses successful `Deleted` entries, not `Error` entries.
 - Multi-object delete validates optional `Content-MD5`; invalid base64 MD5 returns `InvalidDigest`, and mismatched body checksum returns `BadDigest`. Content-MD5 digest errors use AWS-style `InvalidDigest`/`BadDigest` messages.

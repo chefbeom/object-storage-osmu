@@ -910,6 +910,41 @@ class S3ObjectControllerTest {
     }
 
     @Test
+    void multiDeleteRejectsUnexpectedRootXml() throws Exception {
+        String token = loginAndReturnAccessToken("admin", "password");
+        String bucketName = "s3-object-multi-delete-invalid-root-bucket";
+        createBucket(token, bucketName);
+        AccessKeyCredentials credentials = createAccessKey(token, bucketName, "READ", "WRITE", "DELETE");
+        putS3Object(bucketName, "docs/keep.txt", "keep", credentials);
+
+        mockMvc.perform(post("/api/s3/{bucketName}", bucketName)
+                        .queryParam("delete", "")
+                        .header("X-OSMU-Access-Key", credentials.accessKey())
+                        .header("X-OSMU-Secret-Key", credentials.secretKey())
+                        .contentType(MediaType.APPLICATION_XML)
+                        .accept(MediaType.APPLICATION_XML)
+                        .content("""
+                                <NotDelete>
+                                  <Object><Key>docs/keep.txt</Key></Object>
+                                </NotDelete>
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_XML))
+                .andExpect(content().string(containsString("<Code>MalformedXML</Code>")))
+                .andExpect(content().string(containsString("<Message>The XML you provided was not well-formed or did not validate against our published schema.</Message>")));
+
+        MvcResult downloadResult = mockMvc.perform(get("/api/s3/{bucketName}/docs/keep.txt", bucketName)
+                        .header("X-OSMU-Access-Key", credentials.accessKey())
+                        .header("X-OSMU-Secret-Key", credentials.secretKey()))
+                .andExpect(request().asyncStarted())
+                .andReturn();
+
+        mockMvc.perform(asyncDispatch(downloadResult))
+                .andExpect(status().isOk())
+                .andExpect(content().string("keep"));
+    }
+
+    @Test
     void accessKeyCanListObjectsThroughS3ListObjectsV2Xml() throws Exception {
         String token = loginAndReturnAccessToken("admin", "password");
         String bucketName = "s3-object-list-bucket";

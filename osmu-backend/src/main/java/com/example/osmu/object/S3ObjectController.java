@@ -1344,6 +1344,9 @@ public class S3ObjectController {
         }
         try {
             Element root = xmlDocument(rawXml).getDocumentElement();
+            if (!"Delete".equals(localName(root))) {
+                throw new ApiException(ApiErrorCode.VALIDATION_ERROR, "Invalid Delete XML.");
+            }
             NodeList objectNodes = root.getElementsByTagNameNS("*", "Object");
             if (objectNodes.getLength() == 0) {
                 throw new ApiException(ApiErrorCode.VALIDATION_ERROR, "Delete XML requires at least one Object.");

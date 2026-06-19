@@ -17023,3 +17023,30 @@ feat/bucket-management
   - `$env:JAVA_HOME='C:\jdk-17'; .\gradlew.bat test --no-daemon --tests com.example.osmu.common.error.S3ErrorCodeMapperTest --tests com.example.osmu.object.S3ObjectControllerTest.completeMultipartUploadRejectsUnexpectedRootXml --tests com.example.osmu.object.S3ObjectControllerTest.completeMultipartUploadInvalidPartOrderReturnsInvalidPartOrderXml`: 통과.
 - 후속:
   - 남은 큰 축은 live Kubernetes/security evidence와 broader AWS multipart checksum/client-option edge parity다.
+
+### 2026-06-19 - S3 Multi-Object Delete XML root 검증
+
+- 작업 시간:
+  - 시작: 2026-06-19 KST
+  - 종료: 2026-06-19 KST
+- 사용자 명령:
+  - active goal `dev-docs` 기준으로 계속 개발 진행.
+- 요청 분석:
+  - AWS S3 DeleteObjects 요청 body는 `Delete` 루트를 사용한다.
+  - 기존 OSMU multi-delete XML parser는 루트 이름을 확인하지 않고 내부 `Object` 노드를 검색했기 때문에, 다른 XML 문서에 `Object/Key`가 들어 있으면 삭제 요청으로 처리될 수 있었다.
+- 실행:
+  - `S3ObjectController.deleteObjectsFromXml`에서 root local name이 `Delete`인지 먼저 검증하도록 수정했다.
+  - 잘못된 루트는 `Invalid Delete XML.` 메시지 경로를 통해 S3 XML `MalformedXML`로 응답한다.
+  - MockMvc 테스트 `multiDeleteRejectsUnexpectedRootXml`를 추가하고, 실패한 요청이 대상 object를 삭제하지 않는지 확인했다.
+  - `api-spec.md`, `s3-compatibility.md`, `test-cases.md`에 multi-delete root validation을 반영했다.
+- 수정한 파일:
+  - `osmu-backend/src/main/java/com/example/osmu/object/S3ObjectController.java`
+  - `osmu-backend/src/test/java/com/example/osmu/object/S3ObjectControllerTest.java`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/s3-compatibility.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/worklog/main/worklog-main.md`
+- 검증:
+  - `$env:JAVA_HOME='C:\jdk-17'; .\gradlew.bat test --no-daemon --tests com.example.osmu.common.error.S3ErrorCodeMapperTest --tests com.example.osmu.object.S3ObjectControllerTest.multiDeleteRejectsUnexpectedRootXml --tests com.example.osmu.object.S3ObjectControllerTest.accessKeyCanUseMultiDeleteWithGenericContentTypeAndTrailingSlash`: 통과.
+- 후속:
+  - XML root/schema 경계는 tagging/lifecycle 쪽까지 계속 점검할 수 있고, 큰 축은 여전히 live evidence와 고급 S3 parity다.
