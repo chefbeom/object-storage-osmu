@@ -20,7 +20,7 @@
 - Export uses the same date, bucket, actor, source, operation, status, and limit filters as the on-screen monitoring panel.
 - Data Flow Monitoring panel renders source/operation trend points through `data-flow-trend-chart`.
 - Data Flow Monitoring separates upload, download, and internal copy traffic in the summary and bucket rows.
-- Chargeback preview uses `getBillingPricingPolicy`, `saveBillingPricingPolicy`, and `getChargebackPreview` through `BillingChargebackPanel` in Admin; it exposes date/rate/event-limit inputs, ADMIN-only policy save, organization cost rows, and preview totals without presenting the result as a finalized invoice.
+- Chargeback preview uses `getBillingPricingPolicy`, `saveBillingPricingPolicy`, `getChargebackPreview`, and `downloadChargebackPreviewCsv` through `BillingChargebackPanel` in Admin; it exposes date/rate/event-limit inputs, ADMIN-only policy save, scoped CSV export, organization cost rows, and preview totals without presenting the result as a finalized invoice.
 
 ## Multipart Refresh Note
 
@@ -296,7 +296,7 @@ Version UI:
 - 조직 생성
 - 기본 쿼터 표시
 - 조직별 사용량, bucket count, object count 표시
-- ORG_ADMIN에게 자기 조직 usage 표시. `BillingChargebackPanel`도 `getBillingPricingPolicy`와 `getChargebackPreview` 결과를 사용하지만 저장 버튼은 ADMIN에게만 보이고, preview는 자기 조직 scope만 표시해야 한다.
+- ORG_ADMIN에게 자기 조직 usage 표시. `BillingChargebackPanel`도 `getBillingPricingPolicy`, `getChargebackPreview`, `downloadChargebackPreviewCsv` 결과를 사용하지만 저장 버튼은 ADMIN에게만 보이고, preview/export는 자기 조직 scope만 표시해야 한다.
 - 사용자 생성 화면과 조직 선택 연동
 
 - Admin can delete empty organizations with a confirm dialog.

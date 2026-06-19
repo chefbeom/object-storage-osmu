@@ -89,6 +89,9 @@
       <button data-testid="chargeback-reset-button" type="button" class="ghost" @click="$emit('reset-chargeback-options')">
         Reset
       </button>
+      <button data-testid="chargeback-export-button" type="button" class="ghost" @click="$emit('export-chargeback-csv')">
+        CSV
+      </button>
       <button
         v-if="isAdmin"
         data-testid="chargeback-save-policy-button"
@@ -204,6 +207,7 @@ const emit = defineEmits([
   'refresh-chargeback-preview',
   'reset-chargeback-options',
   'save-billing-pricing-policy',
+  'export-chargeback-csv',
 ])
 
 const preview = computed(() => props.chargebackPreview || {})

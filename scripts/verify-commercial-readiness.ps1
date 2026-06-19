@@ -34,7 +34,7 @@ Assert-Contains $content "time-limited pilot license" "Commercial readiness draf
 Assert-Contains $content "stored capacity tier" "Commercial readiness draft"
 Assert-Contains $content "Do not add hard runtime lockouts before product/legal review." "Commercial readiness draft"
 Assert-Contains $content "Final prices: pending market validation and legal/commercial approval." "Commercial readiness draft"
-Assert-Contains $content 'Internal chargeback preview: `GET/PUT /api/admin/billing/pricing-policy`, `GET /api/admin/billing/chargeback-preview`, and the Admin billing panel can model organization storage, ingress, egress, internal copy, and operation costs from current usage and data-flow events; this is not a final invoice or approved commercial price list.' "Commercial readiness draft"
+Assert-Contains $content 'Internal chargeback preview: `GET/PUT /api/admin/billing/pricing-policy`, `GET /api/admin/billing/chargeback-preview`, `GET /api/admin/billing/chargeback-preview/export.csv`, and the Admin billing panel can model and export organization storage, ingress, egress, internal copy, and operation costs from current usage and data-flow events; this is not a final invoice or approved commercial price list.' "Commercial readiness draft"
 Assert-Contains $content "Docker/MariaDB/MinIO integration gate passes." "Commercial readiness draft"
 Assert-Contains $content 'Real S3 client gate passes with AWS CLI, boto3, AWS SDK JavaScript, AWS SDK Java via `OSMU_AWS_SDK_JAVA_CLASSPATH`, host MinIO Client, or Dockerized MinIO Client.' "Commercial readiness draft"
 Assert-Contains $content "Browser E2E gate passes." "Commercial readiness draft"
@@ -49,7 +49,7 @@ Assert-Contains $content 'Kubernetes HA/DR readiness report is generated as `.os
 Assert-Contains $content 'Enterprise auth target smoke evidence is generated as `.osmu-run/latest-enterprise-auth-smoke.json` with `result=passed` from the customer or pilot IdP/directory through `scripts/write-enterprise-auth-smoke-plan.ps1` or `.github/workflows/enterprise-auth-smoke-ci.yml`, or the enterprise auth scope is explicitly deferred in the pilot contract.' "Commercial readiness draft"
 Assert-Contains $content 'Operations readiness artifact import report is generated as `.osmu-run/latest-operations-readiness-artifact-import.json` when evidence is assembled from prior workflow artifacts, including enterprise auth smoke evidence when provided.' "Commercial readiness draft"
 Assert-Contains $content 'Operations readiness finalizer report is generated as `.osmu-run/latest-operations-readiness-finalize.json` and the underlying operations readiness result is `ready`; operations readiness includes the enterprise auth target smoke evidence check.' "Commercial readiness draft"
-Assert-Contains $content '- Chargeback preview: API, persistent pricing policy, and Admin billing panel pre-model implemented; invoice export and threshold alerts remain pending.' "Commercial readiness draft"
+Assert-Contains $content '- Chargeback preview: API, persistent pricing policy, Admin billing panel, and scoped preview CSV export implemented; finalized invoice export and threshold alerts remain pending.' "Commercial readiness draft"
 Assert-Contains $content "Final legal/commercial approval: pending." "Commercial readiness draft"
 
 Write-Host "Commercial readiness draft verified."

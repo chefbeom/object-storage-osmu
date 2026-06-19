@@ -17953,3 +17953,10 @@ feat/bucket-management
   - `verify-openapi-contract.ps1`, `verify-iam-rbac-matrix.ps1`, `verify-commercial-readiness.ps1`: í†µê³¼.
   - `$env:JAVA_HOME='C:\jdk-17'; .\gradlew.bat test --no-daemon --tests com.example.osmu.billing.ChargebackPreviewServiceTest --tests com.example.osmu.billing.AdminBillingControllerTest --tests com.example.osmu.auth.AdminRbacPolicyTest`: í†µê³¼.
 - í›„ì†: invoice/export, threshold alert, time-series/partition ê¸°ë°˜ ì¥ê¸° analyticsëŠ” ì•„ì§ ë‚¨ì•„ ìˆë‹¤.
+### 2026-06-20 - Chargeback preview CSV export
+- ÀÛ¾÷ ÇØ¼®: AWS S3 ¼¼ºÎ parity°¡ ¾Æ´Ï¶ó OSMU ¿î¿µÀÚ°¡ ³»ºÎ ºñ¿ë ¸ğµ¨À» ³»·Á¹Ş¾Æ °ËÅäÇÒ ¼ö ÀÖ´Â billing/chargeback ¸®Æ÷Æ® export slice·Î ÁøÇàÇß´Ù.
+- Backend: `GET /api/admin/billing/chargeback-preview/export.csv`¸¦ Ãß°¡Çß´Ù. `ChargebackPreviewService.exportCsv`´Â JSON preview¿Í °°Àº request, pricing policy, visibility scope¸¦ Àç»ç¿ëÇÏ°í `TOTAL` row¿Í organization row¸¦ RFC4180-style escaped CSV·Î ¸¸µç´Ù.
+- RBAC: `ORG_ADMIN`µµ exportÇÒ ¼ö ÀÖÁö¸¸ `GET /api/admin/billing/chargeback-preview`¿Í µ¿ÀÏÇÏ°Ô ÀÚ±â Á¶Á÷¸¸ Æ÷ÇÔÇÑ´Ù. `AUDITOR`¿Í ÀÏ¹İ »ç¿ëÀÚ´Â Â÷´ÜÇÑ´Ù.
+- Frontend/mock: `downloadChargebackPreviewCsv` wrapper¿Í Admin billing panel `chargeback-export-button`À» Ãß°¡Çß´Ù. mock API/self-testµµ `osmu-chargeback-preview.csv` export¿Í KRW policy ¹İ¿µÀ» È®ÀÎÇÑ´Ù.
+- ¹®¼­/verifier: README, API spec, OpenAPI, IAM/RBAC matrix, security/frontend/commercial docs, feature inventory, test cases, openapi/IAM/commercial verifier¸¦ °»½ÅÇß´Ù.
+- ÈÄ¼Ó: finalized invoice export, threshold alert, time-series/partition ±â¹İ Àå±â analytics´Â ¾ÆÁ÷ ³²¾Æ ÀÖ´Ù.

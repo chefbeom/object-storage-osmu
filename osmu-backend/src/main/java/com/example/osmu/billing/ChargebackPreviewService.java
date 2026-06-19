@@ -118,6 +118,90 @@ public class ChargebackPreviewService {
         );
     }
 
+    public String exportCsv(AuthenticatedUser actor, ChargebackPreviewRequest request) {
+        ChargebackPreviewResponse preview = preview(actor, request);
+        ChargebackRateResponse rates = preview.rates();
+        BigDecimal totalStorageCost = sumCost(preview, "storage");
+        BigDecimal totalIngressCost = sumCost(preview, "ingress");
+        BigDecimal totalEgressCost = sumCost(preview, "egress");
+        BigDecimal totalInternalCost = sumCost(preview, "internal");
+        BigDecimal totalOperationCost = sumCost(preview, "operation");
+        long totalObjectCount = preview.organizations().stream()
+                .mapToLong(ChargebackOrganizationPreviewResponse::objectCount)
+                .sum();
+
+        StringBuilder csv = new StringBuilder("rowType,currency,from,to,generatedAt,eventScanLimit,scannedEventCount,organizationCount,organizationId,organizationName,bucketCount,objectCount,usedBytes,ingressBytes,egressBytes,internalBytes,billableOperationCount,failedOperationCount,cancelledOperationCount,storageGbMonthRate,ingressGbRate,egressGbRate,internalGbRate,operationThousandRate,projectedStorageCost,ingressCost,egressCost,internalCost,operationCost,estimatedTotalCost\n");
+        appendCsvRow(
+                csv,
+                "TOTAL",
+                preview.currency(),
+                preview.from(),
+                preview.to(),
+                preview.generatedAt(),
+                preview.eventScanLimit(),
+                preview.scannedEventCount(),
+                preview.organizationCount(),
+                "",
+                "TOTAL",
+                preview.bucketCount(),
+                totalObjectCount,
+                preview.usedBytes(),
+                preview.ingressBytes(),
+                preview.egressBytes(),
+                preview.internalBytes(),
+                preview.billableOperationCount(),
+                preview.failedOperationCount(),
+                preview.cancelledOperationCount(),
+                rates.storageGbMonthRate(),
+                rates.ingressGbRate(),
+                rates.egressGbRate(),
+                rates.internalGbRate(),
+                rates.operationThousandRate(),
+                totalStorageCost,
+                totalIngressCost,
+                totalEgressCost,
+                totalInternalCost,
+                totalOperationCost,
+                preview.estimatedTotalCost()
+        );
+        for (ChargebackOrganizationPreviewResponse organization : preview.organizations()) {
+            appendCsvRow(
+                    csv,
+                    "ORGANIZATION",
+                    preview.currency(),
+                    preview.from(),
+                    preview.to(),
+                    preview.generatedAt(),
+                    preview.eventScanLimit(),
+                    preview.scannedEventCount(),
+                    "",
+                    organization.organizationId(),
+                    organization.organizationName(),
+                    organization.bucketCount(),
+                    organization.objectCount(),
+                    organization.usedBytes(),
+                    organization.ingressBytes(),
+                    organization.egressBytes(),
+                    organization.internalBytes(),
+                    organization.billableOperationCount(),
+                    organization.failedOperationCount(),
+                    organization.cancelledOperationCount(),
+                    rates.storageGbMonthRate(),
+                    rates.ingressGbRate(),
+                    rates.egressGbRate(),
+                    rates.internalGbRate(),
+                    rates.operationThousandRate(),
+                    organization.projectedStorageCost(),
+                    organization.ingressCost(),
+                    organization.egressCost(),
+                    organization.internalCost(),
+                    organization.operationCost(),
+                    organization.estimatedTotalCost()
+            );
+        }
+        return csv.toString();
+    }
+
     private List<OrganizationRecord> visibleOrganizations(AuthenticatedUser actor) {
         if (actor == null) {
             throw new ApiException(ApiErrorCode.AUTHENTICATION_REQUIRED, "Authentication required.");
@@ -165,6 +249,36 @@ public class ChargebackPreviewService {
 
     private static BigDecimal money(BigDecimal value) {
         return value.setScale(6, RoundingMode.HALF_UP);
+    }
+
+    private static BigDecimal sumCost(ChargebackPreviewResponse preview, String field) {
+        BigDecimal total = BigDecimal.ZERO;
+        for (ChargebackOrganizationPreviewResponse organization : preview.organizations()) {
+            total = switch (field) {
+                case "storage" -> total.add(organization.projectedStorageCost());
+                case "ingress" -> total.add(organization.ingressCost());
+                case "egress" -> total.add(organization.egressCost());
+                case "internal" -> total.add(organization.internalCost());
+                case "operation" -> total.add(organization.operationCost());
+                default -> total;
+            };
+        }
+        return money(total);
+    }
+
+    private static void appendCsvRow(StringBuilder csv, Object... values) {
+        for (int index = 0; index < values.length; index += 1) {
+            if (index > 0) {
+                csv.append(',');
+            }
+            csv.append(csvCell(values[index]));
+        }
+        csv.append('\n');
+    }
+
+    private static String csvCell(Object value) {
+        String text = value == null ? "" : String.valueOf(value);
+        return "\"" + text.replace("\"", "\"\"").replace("\r", " ").replace("\n", " ") + "\"";
     }
 
     private static final class OrganizationAccumulator {

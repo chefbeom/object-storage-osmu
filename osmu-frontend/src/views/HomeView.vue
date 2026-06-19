@@ -403,6 +403,7 @@
         @refresh-chargeback-preview="loadChargebackPreview"
         @reset-chargeback-options="handleResetChargebackOptions"
         @save-billing-pricing-policy="handleSaveBillingPricingPolicy"
+        @export-chargeback-csv="handleExportChargebackCsv"
         @save-quota-policy="handleSaveQuotaPolicy"
         @reset-quota-policy-target="resetQuotaPolicyTarget"
         @reset-quota-policy-form="resetQuotaPolicyForm"
@@ -529,6 +530,7 @@ import {
   deleteTeam,
   deleteQuotaPolicy,
   deleteStoredMultipartUploadSession,
+  downloadChargebackPreviewCsv,
   downloadStorageExpansionGitOpsArtifactBundle,
   downloadStorageExpansionManifestArtifact,
   downloadObject,
@@ -2420,6 +2422,14 @@ async function handleSaveBillingPricingPolicy() {
     applyBillingPricingPolicy(result.data)
     await loadChargebackPreview()
     setStatusMessage('Billing pricing policy saved.')
+  }
+}
+
+async function handleExportChargebackCsv() {
+  const blob = await runAction(() => downloadChargebackPreviewCsv(chargebackPreviewPayload()))
+  if (blob) {
+    downloadBlob(blob, `osmu-chargeback-preview-${new Date().toISOString().slice(0, 10)}.csv`)
+    setStatusMessage('Chargeback CSV export complete.')
   }
 }
 

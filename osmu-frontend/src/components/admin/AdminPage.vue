@@ -255,6 +255,7 @@
       @refresh-chargeback-preview="$emit('refresh-chargeback-preview')"
       @reset-chargeback-options="$emit('reset-chargeback-options')"
       @save-billing-pricing-policy="$emit('save-billing-pricing-policy')"
+      @export-chargeback-csv="$emit('export-chargeback-csv')"
     />
 
     <article v-if="isAdmin" id="admin-storage-profiles" class="panel" data-testid="admin-storage-profile-panel">
@@ -638,6 +639,7 @@ defineEmits([
   'refresh-chargeback-preview',
   'reset-chargeback-options',
   'save-billing-pricing-policy',
+  'export-chargeback-csv',
   'save-quota-policy',
   'reset-quota-policy-target',
   'reset-quota-policy-form',

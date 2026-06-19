@@ -1,11 +1,14 @@
 package com.example.osmu.billing;
 
+import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.hasItem;
 import static org.hamcrest.Matchers.not;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -14,6 +17,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.web.servlet.MockMvc;
@@ -102,6 +106,40 @@ class AdminBillingControllerTest {
     }
 
     @Test
+    void adminCanExportChargebackPreviewCsv() throws Exception {
+        String adminToken = loginAndReturnAccessToken("admin", "password");
+        int organizationId = createOrganization(adminToken, "Billing Export Org 1");
+        createOrganizationBucket(adminToken, organizationId, "billing-export-bucket-1");
+
+        MockMultipartFile file = new MockMultipartFile(
+                "file",
+                "billing-export.txt",
+                MediaType.TEXT_PLAIN_VALUE,
+                "billing-data".getBytes()
+        );
+        mockMvc.perform(multipart("/api/buckets/{bucketName}/objects", "billing-export-bucket-1")
+                        .file(file)
+                        .header("Authorization", "Bearer " + adminToken)
+                        .param("key", "billing-export.txt"))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/admin/billing/chargeback-preview/export.csv")
+                        .header("Authorization", "Bearer " + adminToken)
+                        .param("storageGbMonthRate", "1073741824")
+                        .param("ingressGbRate", "1073741824")
+                        .param("operationThousandRate", "1000")
+                        .param("currency", "krw"))
+                .andExpect(status().isOk())
+                .andExpect(content().contentTypeCompatibleWith("text/csv"))
+                .andExpect(header().string(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"osmu-chargeback-preview.csv\""))
+                .andExpect(content().string(containsString("rowType,currency,from,to,generatedAt,eventScanLimit,scannedEventCount")))
+                .andExpect(content().string(containsString("\"TOTAL\",\"KRW\"")))
+                .andExpect(content().string(containsString("\"ORGANIZATION\",\"KRW\"")))
+                .andExpect(content().string(containsString("\"Billing Export Org 1\"")))
+                .andExpect(content().string(containsString("\"25.000000\"")));
+    }
+
+    @Test
     void orgAdminSeesOnlyOwnChargebackPreview() throws Exception {
         String adminToken = loginAndReturnAccessToken("admin", "password");
         int visibleOrg = createOrganization(adminToken, "Billing Visible Org 1");
@@ -114,6 +152,12 @@ class AdminBillingControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.organizations[*].organizationName", hasItem("Billing Visible Org 1")))
                 .andExpect(jsonPath("$.data.organizations[*].organizationName", not(hasItem("Billing Hidden Org 1"))));
+
+        mockMvc.perform(get("/api/admin/billing/chargeback-preview/export.csv")
+                        .header("Authorization", "Bearer " + orgAdminToken))
+                .andExpect(status().isOk())
+                .andExpect(content().string(containsString("Billing Visible Org 1")))
+                .andExpect(content().string(not(containsString("Billing Hidden Org 1"))));
     }
 
     private String loginAndReturnAccessToken(String loginId, String password) throws Exception {

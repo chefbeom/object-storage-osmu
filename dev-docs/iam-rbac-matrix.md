@@ -13,7 +13,7 @@
 | Role | 성격 | 현재 범위 |
 | --- | --- | --- |
 | `ADMIN` | 전역 시스템 관리자 | 모든 `/api/admin/**`, 전체 bucket/object/access key, dashboard admin panel |
-| `ORG_ADMIN` | 조직 관리자 | 자기 조직 사용자/조직 usage/chargeback preview, pricing policy 조회, 자기 조직 bucket 관리, 일반 사용자 생성/비활성화 |
+| `ORG_ADMIN` | 조직 관리자 | 자기 조직 사용자/조직 usage/chargeback preview/export, pricing policy 조회, 자기 조직 bucket 관리, 일반 사용자 생성/비활성화 |
 | `AUDITOR` | 읽기 전용 감사자 | 감사 로그, 운영 상태, dashboard summary/readiness, backup status 조회 |
 | `USER` | 개발자/일반 사용자 | 본인 또는 허용된 bucket/object/access key, developer S3 client flow |
 
@@ -31,6 +31,7 @@
 | Billing pricing policy read | `GET /api/admin/billing/pricing-policy` | Allow | Allow | Deny | Deny | `ORG_ADMIN`은 preview 계산용 read-only 정책만 조회 | `AdminRbacPolicy`, `AdminBillingController` |
 | Billing pricing policy save | `PUT /api/admin/billing/pricing-policy` | Allow | Deny | Deny | Deny | global chargeback 기본 rate 저장은 `ADMIN` 전용 | `AdminRbacPolicy`, `AdminBillingController`, `BillingPricingPolicyService` |
 | Chargeback preview | `GET /api/admin/billing/chargeback-preview` | Allow | Allow | Deny | Deny | `ORG_ADMIN`은 자기 조직 chargeback preview만 조회 | `AdminRbacPolicy`, `AdminBillingController`, `ChargebackPreviewService` |
+| Chargeback preview CSV export | `GET /api/admin/billing/chargeback-preview/export.csv` | Allow | Allow | Deny | Deny | preview와 같은 query/policy/scope를 CSV로 export | `AdminRbacPolicy`, `AdminBillingController`, `ChargebackPreviewService` |
 | Team management | `GET/POST /api/admin/teams`, `PUT /api/admin/teams/{teamId}/members`, `DELETE /api/admin/teams/{teamId}` | Allow | Allow | Deny | Deny | `ORG_ADMIN`은 자기 조직 팀과 같은 조직 멤버만 관리 | `AdminRbacPolicy`, `AdminTeamController` |
 | Organization create/delete | `POST /api/admin/organizations`, `DELETE /api/admin/organizations/{id}` | Allow | Deny | Deny | Deny | 전역 tenant 구조 변경 | `AdminRbacPolicy`, controller admin check |
 | Audit | `GET /api/admin/audit-logs`, `GET /api/admin/audit-logs/export.csv` | Allow | Deny | Allow | Deny | 전역 감사 로그 read-only | `AdminRbacPolicy` |
@@ -112,7 +113,7 @@ Kubernetes ServiceAccount와 cluster RBAC 권한 경계는 `kubernetes-rbac-matr
 
 - `AdminRbacPolicyTest`: role별 admin route 허용/차단.
 - `AdminEnterpriseAuthPlanControllerTest`, `EnterpriseAuthPlanServiceTest`, `OidcClaimPreviewServiceTest`, `OidcJitProvisioningServiceTest`, `OidcLoginServiceTest`, `LdapLoginServiceTest`: local-only enterprise auth plan, OIDC/LDAP readiness, OIDC claim preview/audit, admin-approved JIT apply, OIDC callback state/token/JWKS 검증, LDAP bind/search adapter, role/org/team claim mapping 검증.
-- `AdminBillingControllerTest`, `ChargebackPreviewServiceTest`: `ADMIN`/`ORG_ADMIN` chargeback preview scope, pricing policy save/defaulting, data-flow event cost pre-model, unsupported role denial 검증.
+- `AdminBillingControllerTest`, `ChargebackPreviewServiceTest`: `ADMIN`/`ORG_ADMIN` chargeback preview/export scope, pricing policy save/defaulting, data-flow event cost pre-model, unsupported role denial 검증.
 - `AdminTeamControllerTest`: `ADMIN`/`ORG_ADMIN` 팀 관리 scope와 팀 삭제 cleanup 검증.
 - `BucketObjectFlowTest.teamBucketPermissionAppliesToTeamMembers`: `TEAM` subject bucket permission과 Access Key 재동기화 검증.
 - `AdminUserControllerTest`: `USER`/`ORG_ADMIN`의 global admin API 차단.

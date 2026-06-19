@@ -20,6 +20,7 @@ public class AdminRbacPolicy {
             RouteRule.exact("GET", "/api/admin/organizations/usage"),
             RouteRule.exact("GET", "/api/admin/billing/pricing-policy"),
             RouteRule.exact("GET", "/api/admin/billing/chargeback-preview"),
+            RouteRule.exact("GET", "/api/admin/billing/chargeback-preview/export.csv"),
             RouteRule.exact("GET", "/api/admin/teams"),
             RouteRule.exact("POST", "/api/admin/teams"),
             RouteRule.pattern("PUT", "^/api/admin/teams/\\d+/members$"),

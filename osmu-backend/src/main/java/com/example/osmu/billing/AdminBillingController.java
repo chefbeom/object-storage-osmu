@@ -10,6 +10,9 @@ import jakarta.servlet.http.HttpServletRequest;
 import java.math.BigDecimal;
 import java.time.OffsetDateTime;
 import java.time.format.DateTimeParseException;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -78,7 +81,62 @@ public class AdminBillingController {
             HttpServletRequest request
     ) {
         AuthenticatedUser actor = authContext.currentUser(request);
-        return ApiResponse.of(chargebackPreviewService.preview(actor, new ChargebackPreviewRequest(
+        return ApiResponse.of(chargebackPreviewService.preview(actor, chargebackRequest(
+                from,
+                to,
+                currency,
+                storageGbMonthRate,
+                ingressGbRate,
+                egressGbRate,
+                internalGbRate,
+                operationThousandRate,
+                eventScanLimit
+        )));
+    }
+
+    @GetMapping(value = "/chargeback-preview/export.csv", produces = "text/csv")
+    public ResponseEntity<String> exportChargebackPreviewCsv(
+            @RequestParam(name = "from", required = false) String from,
+            @RequestParam(name = "to", required = false) String to,
+            @RequestParam(name = "currency", required = false) String currency,
+            @RequestParam(name = "storageGbMonthRate", required = false) BigDecimal storageGbMonthRate,
+            @RequestParam(name = "ingressGbRate", required = false) BigDecimal ingressGbRate,
+            @RequestParam(name = "egressGbRate", required = false) BigDecimal egressGbRate,
+            @RequestParam(name = "internalGbRate", required = false) BigDecimal internalGbRate,
+            @RequestParam(name = "operationThousandRate", required = false) BigDecimal operationThousandRate,
+            @RequestParam(name = "eventScanLimit", required = false) Integer eventScanLimit,
+            HttpServletRequest request
+    ) {
+        AuthenticatedUser actor = authContext.currentUser(request);
+        String csv = chargebackPreviewService.exportCsv(actor, chargebackRequest(
+                from,
+                to,
+                currency,
+                storageGbMonthRate,
+                ingressGbRate,
+                egressGbRate,
+                internalGbRate,
+                operationThousandRate,
+                eventScanLimit
+        ));
+        return ResponseEntity.ok()
+                .contentType(MediaType.parseMediaType("text/csv"))
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"osmu-chargeback-preview.csv\"")
+                .body(csv);
+    }
+
+    private ChargebackPreviewRequest chargebackRequest(
+            String from,
+            String to,
+            String currency,
+            BigDecimal storageGbMonthRate,
+            BigDecimal ingressGbRate,
+            BigDecimal egressGbRate,
+            BigDecimal internalGbRate,
+            BigDecimal operationThousandRate,
+            Integer eventScanLimit
+    ) {
+        return new ChargebackPreviewRequest(
                 parseOptionalOffsetDateTime(from, "from"),
                 parseOptionalOffsetDateTime(to, "to"),
                 currency,
@@ -88,7 +146,7 @@ public class AdminBillingController {
                 internalGbRate,
                 operationThousandRate,
                 eventScanLimit == null ? 0 : eventScanLimit
-        )));
+        );
     }
 
     private OffsetDateTime parseOptionalOffsetDateTime(String value, String fieldName) {

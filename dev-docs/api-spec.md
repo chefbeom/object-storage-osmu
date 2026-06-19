@@ -24,7 +24,7 @@ Authorization: Bearer <accessToken>
 
 관리자 API인 `/api/admin/**`는 기본적으로 `ADMIN` role이 필요하다.
 예외적으로 `ORG_ADMIN`은 조직 스코프가 적용된 사용자/조직 조회 API만 접근할 수 있다.
-현재 허용 route는 `GET/POST /api/admin/users`, `PATCH /api/admin/users/{userId}/status`, `GET /api/admin/organizations`, `GET /api/admin/organizations/usage`, `GET /api/admin/billing/pricing-policy`, `GET /api/admin/billing/chargeback-preview`, `GET/POST /api/admin/teams`, `PUT /api/admin/teams/{teamId}/members`, `DELETE /api/admin/teams/{teamId}`이다.
+현재 허용 route는 `GET/POST /api/admin/users`, `PATCH /api/admin/users/{userId}/status`, `GET /api/admin/organizations`, `GET /api/admin/organizations/usage`, `GET /api/admin/billing/pricing-policy`, `GET /api/admin/billing/chargeback-preview`, `GET /api/admin/billing/chargeback-preview/export.csv`, `GET/POST /api/admin/teams`, `PUT /api/admin/teams/{teamId}/members`, `DELETE /api/admin/teams/{teamId}`이다.
 `AUDITOR`는 read-only 감사/상태 조회 role이다. 허용 route는 `GET /api/admin/audit-logs`, `GET /api/admin/audit-logs/export.csv`, `GET /api/admin/usage`, `GET /api/admin/system/status`, `GET /api/admin/security/enterprise-auth-plan`, `GET /api/admin/dashboard/summary`, `GET /api/admin/dashboard/readiness`, `GET /api/admin/backup/status`, `GET /api/admin/backup/restore-drill-evidence`로 제한한다.
 
 일반 사용자는 본인이 소유한 bucket, object, access key만 접근할 수 있다. `ADMIN`은 전체 리소스에 접근할 수 있다.
@@ -2647,6 +2647,19 @@ Notes:
 - Failed and cancelled events are reported for operations review but not charged.
 - User-owned buckets and deleted/unknown buckets are excluded from organization chargeback preview.
 - This is not AWS billing parity. It is an OSMU tenant cost model for B2B operations and chargeback planning.
+
+### GET /api/admin/billing/chargeback-preview/export.csv
+
+Exports the same scoped chargeback preview as CSV for internal review or offline handoff. `ADMIN` exports all visible organizations and `ORG_ADMIN` exports only its own organization. This is still a preview report, not a persisted invoice.
+
+Query parameters are the same as `GET /api/admin/billing/chargeback-preview`.
+
+Response:
+
+- `Content-Type: text/csv`
+- `Content-Disposition: attachment; filename="osmu-chargeback-preview.csv"`
+- CSV fields: `rowType`, `currency`, `from`, `to`, `generatedAt`, `eventScanLimit`, `scannedEventCount`, `organizationCount`, `organizationId`, `organizationName`, `bucketCount`, `objectCount`, `usedBytes`, `ingressBytes`, `egressBytes`, `internalBytes`, `billableOperationCount`, `failedOperationCount`, `cancelledOperationCount`, rate columns, cost component columns, and `estimatedTotalCost`.
+- The first row is `TOTAL`; following rows are `ORGANIZATION`.
 
 ### GET /api/admin/security/enterprise-auth-plan
 

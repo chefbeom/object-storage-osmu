@@ -440,6 +440,10 @@ function handleAdminRoute(request, response, path, jsonBody, url) {
     sendJson(response, 200, apiData(chargebackPreview(url)))
     return
   }
+  if (request.method === 'GET' && path === '/admin/billing/chargeback-preview/export.csv') {
+    sendCsv(response, 'osmu-chargeback-preview.csv', chargebackPreviewCsv(url))
+    return
+  }
   if (request.method === 'GET' && path === '/admin/billing/pricing-policy') {
     sendJson(response, 200, apiData(state.billingPricingPolicy))
     return
@@ -1078,6 +1082,81 @@ function chargebackPreview(url) {
   }
 }
 
+function chargebackPreviewCsv(url) {
+  const preview = chargebackPreview(url)
+  const rates = preview.rates || {}
+  const organizations = preview.organizations || []
+  const totalRow = [
+    'TOTAL',
+    preview.currency,
+    preview.from,
+    preview.to,
+    preview.generatedAt,
+    preview.eventScanLimit,
+    preview.scannedEventCount,
+    preview.organizationCount,
+    '',
+    'TOTAL',
+    preview.bucketCount,
+    organizations.reduce((sum, organization) => sum + Number(organization.objectCount || 0), 0),
+    preview.usedBytes,
+    preview.ingressBytes,
+    preview.egressBytes,
+    preview.internalBytes,
+    preview.billableOperationCount,
+    preview.failedOperationCount,
+    preview.cancelledOperationCount,
+    rates.storageGbMonthRate,
+    rates.ingressGbRate,
+    rates.egressGbRate,
+    rates.internalGbRate,
+    rates.operationThousandRate,
+    money(organizations.reduce((sum, organization) => sum + Number(organization.projectedStorageCost || 0), 0)),
+    money(organizations.reduce((sum, organization) => sum + Number(organization.ingressCost || 0), 0)),
+    money(organizations.reduce((sum, organization) => sum + Number(organization.egressCost || 0), 0)),
+    money(organizations.reduce((sum, organization) => sum + Number(organization.internalCost || 0), 0)),
+    money(organizations.reduce((sum, organization) => sum + Number(organization.operationCost || 0), 0)),
+    preview.estimatedTotalCost,
+  ]
+  const rows = [
+    ['rowType', 'currency', 'from', 'to', 'generatedAt', 'eventScanLimit', 'scannedEventCount', 'organizationCount', 'organizationId', 'organizationName', 'bucketCount', 'objectCount', 'usedBytes', 'ingressBytes', 'egressBytes', 'internalBytes', 'billableOperationCount', 'failedOperationCount', 'cancelledOperationCount', 'storageGbMonthRate', 'ingressGbRate', 'egressGbRate', 'internalGbRate', 'operationThousandRate', 'projectedStorageCost', 'ingressCost', 'egressCost', 'internalCost', 'operationCost', 'estimatedTotalCost'],
+    totalRow,
+    ...organizations.map((organization) => [
+      'ORGANIZATION',
+      preview.currency,
+      preview.from,
+      preview.to,
+      preview.generatedAt,
+      preview.eventScanLimit,
+      preview.scannedEventCount,
+      '',
+      organization.organizationId,
+      organization.organizationName,
+      organization.bucketCount,
+      organization.objectCount,
+      organization.usedBytes,
+      organization.ingressBytes,
+      organization.egressBytes,
+      organization.internalBytes,
+      organization.billableOperationCount,
+      organization.failedOperationCount,
+      organization.cancelledOperationCount,
+      rates.storageGbMonthRate,
+      rates.ingressGbRate,
+      rates.egressGbRate,
+      rates.internalGbRate,
+      rates.operationThousandRate,
+      organization.projectedStorageCost,
+      organization.ingressCost,
+      organization.egressCost,
+      organization.internalCost,
+      organization.operationCost,
+      organization.estimatedTotalCost,
+    ]),
+  ]
+  return rows.map((row) => row.map(csvCell).join(',')).join('\n') + '\n'
+}
+
 function chargebackRates(url) {
   return {
     storageGbMonthRate: parseChargebackRate(url.searchParams.get('storageGbMonthRate'), state.billingPricingPolicy.storageGbMonthRate),
@@ -1678,6 +1757,12 @@ async function runSelfTest() {
     })).json()
     if (!chargeback.data || chargeback.data.currency !== 'KRW' || chargeback.data.eventScanLimit !== 2500 || chargeback.data.organizationCount < 1 || !chargeback.data.organizations?.length) {
       throw new Error('chargeback preview self-test failed')
+    }
+    const chargebackCsv = await (await fetch(`${base}/admin/billing/chargeback-preview/export.csv?operationThousandRate=0.004`, {
+      headers: { Authorization: `Bearer ${login.data.accessToken}` },
+    })).text()
+    if (!chargebackCsv.includes('"TOTAL","KRW"') || !chargebackCsv.includes('"ORGANIZATION","KRW"')) {
+      throw new Error('chargeback CSV export self-test failed')
     }
     const bucket = await (await fetch(`${base}/buckets`, {
       method: 'POST',
