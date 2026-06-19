@@ -58,6 +58,7 @@ MVP:
 - access token과 refresh token은 HMAC SHA-256 서명 JWT로 발급한다.
 - Health, Login, Refresh 외 `/api/**`는 Bearer access token을 검증한다.
 - refresh token은 SHA-256 hash로 저장하고, refresh 성공 시 회전하며, logout 시 폐기한다.
+- frontend는 refresh 실패와 저장 token 복구 실패를 구분해 token/session state를 지우고 login 화면에 `session-expired` 또는 `session-invalid` 안내를 표시한다.
 - `/api/admin/**`는 기본적으로 `ADMIN` role만 접근할 수 있다.
 - 예외적으로 `ORG_ADMIN`은 `AdminRbacPolicy`에 명시된 조직 스코프 API만 접근할 수 있다.
 - `GET /api/users/me`는 JWT subject 기준 사용자 저장소를 조회한다.

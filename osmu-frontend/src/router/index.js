@@ -81,9 +81,13 @@ router.beforeEach(async (to) => {
   }
 
   if (to.meta.requiresAuth && !hasSession) {
+    const reason = auth.consumeSessionNoticeReason()
     return {
       name: 'login',
-      query: { redirect: to.fullPath || '/dashboard' },
+      query: {
+        redirect: to.fullPath || '/dashboard',
+        ...(reason ? { reason } : {}),
+      },
     }
   }
 

@@ -17408,6 +17408,42 @@ feat/bucket-management
   - SSO/OIDC 검토.
   - 부서/team 단위 RBAC와 read-only auditor 역할.
 
+### 2026-06-19 - refresh token/session 만료 UX 정리
+- 작업 시간:
+  - 시작: 2026-06-19 KST
+  - 종료: 2026-06-19 KST
+- 사용자 지시:
+  - AWS S3는 대체 가능한 수준에 두고, 제품 운영/사용자 경험에 필요한 남은 항목을 우선 구현한다.
+- 요청 분석:
+  - `feature-inventory.md`의 로그인/권한 남은 항목 중 `refresh token/session 만료 UX 정리`가 로컬 frontend test/build로 검증 가능한 제품 UX 항목이라고 판단했다.
+  - 기존 frontend는 refresh 실패 시 token을 지우고 HomeView에서 `/login?reason=session-expired` redirect를 수행했지만, 저장된 token 복구 실패와 refresh 실패 사유를 auth store/router/login 화면 사이에서 일관되게 전달하지 못했다.
+- 수행:
+  - API client의 `clearAuthTokens`/`clearAccessToken`에 reason 전달을 추가하고 refresh 실패는 401/403의 `session-expired`, 그 외 실패의 `session-invalid`, 명시 logout의 `logout`으로 구분했다.
+  - auth store에 `sessionNoticeReason`과 `consumeSessionNoticeReason()`을 추가해 `session-expired`/`session-invalid` 안내 사유를 보존하고 route guard가 소비할 수 있게 했다.
+  - 저장 token 복구 중 `/api/users/me` 확인이 401/403 또는 `AUTHENTICATION_REQUIRED`로 실패하면 `session-expired`, 그 외 실패는 `session-invalid`로 표시한다.
+  - router guard가 인증 필요 route에서 session 복구 실패 시 `/login?redirect=...&reason=...`로 이동하도록 정리했다.
+  - login 화면이 `session-expired`와 `session-invalid` 안내 문구를 구분해 표시하도록 확장했다.
+  - `feature-inventory.md`에서 refresh token/session 만료 UX를 구현된 항목으로 이동했다.
+- 수정한 파일:
+  - `osmu-frontend/src/services/api.js`
+  - `osmu-frontend/src/stores/auth.js`
+  - `osmu-frontend/src/stores/auth.test.js`
+  - `osmu-frontend/src/router/index.js`
+  - `osmu-frontend/src/views/LoginView.vue`
+  - `osmu-frontend/src/views/HomeView.test.js`
+  - `dev-docs/frontend-design.md`
+  - `dev-docs/security-design.md`
+  - `dev-docs/PRODUCT_REQUIREMENTS.md`
+  - `dev-docs/feature-inventory.md`
+  - `dev-docs/worklog/main/worklog-main.md`
+- 검증:
+  - `osmu-frontend`에서 `npm.cmd run test:unit`: 통과, 77 tests passed.
+  - `osmu-frontend`에서 `npm.cmd run build`: 통과.
+- 후속:
+  - SSO/OIDC 검토.
+  - 부서/team 단위 RBAC.
+  - read-only auditor 역할.
+
 ### 2026-06-19 - S3 multipart checksum type/object-size 단일 헤더 검증
 - 작업 시간:
   - 시작: 2026-06-19 KST

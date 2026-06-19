@@ -149,9 +149,7 @@ const errorMessage = ref('')
 const loginButtonLabel = computed(() => (
   loginForm.mode === 'developer' ? '개발자 콘솔로 로그인' : '관리자 콘솔로 로그인'
 ))
-const sessionNotice = computed(() => (
-  route.query.reason === 'session-expired' ? '세션이 만료되었습니다. 다시 로그인해주세요.' : ''
-))
+const sessionNotice = computed(() => sessionNoticeMessage(route.query.reason))
 
 onMounted(() => {
   const rememberedLoginId = readRememberedLoginId()
@@ -228,5 +226,16 @@ function browserLocalStorage() {
   } catch {
     return null
   }
+}
+
+function sessionNoticeMessage(reason) {
+  const value = Array.isArray(reason) ? reason[0] : reason
+  if (value === 'session-expired') {
+    return '세션이 만료되었습니다. 다시 로그인해주세요.'
+  }
+  if (value === 'session-invalid') {
+    return '저장된 로그인 정보를 확인할 수 없습니다. 다시 로그인해주세요.'
+  }
+  return ''
 }
 </script>

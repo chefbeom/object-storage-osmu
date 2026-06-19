@@ -107,10 +107,10 @@ MVP 데모 기준 완료율은 약 90~95%입니다.
 - `.github/workflows/storage-expansion-finalizer-ci.yml` 기반 수동 CI workflow. plan-only가 기본이며, live evidence는 `run_live=true`와 `OSMU_KUBECONFIG_BASE64` secret이 있을 때만 수행
 - 관리자 계정도 작업 가능하도록 admin route 구성
 - 실제 운영용 계정 bootstrap 정책: `OSMU_BOOTSTRAP_ADMIN_ENABLED`, `OSMU_BOOTSTRAP_ADMIN_ALLOW_DEFAULT_CREDENTIALS`, 필수 admin 필드 검증, 기본 비밀번호 운영 차단
+- refresh token/session 만료 UX: refresh 실패와 저장 token 복구 실패 시 session state/data를 정리하고 `/login?redirect=...&reason=session-expired|session-invalid` 안내 표시
 
 남은 것:
 
-- refresh token/session 만료 UX 정리
 - SSO/OIDC 검토
 - 부서/team 단위 RBAC
 - read-only auditor 역할

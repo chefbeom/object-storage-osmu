@@ -39,23 +39,23 @@ export function setAuthTokens(tokens) {
   notifyAuthStateChange()
 }
 
-export function clearAccessToken() {
+export function clearAccessToken(reason = '') {
   accessToken = null
-  notifyAuthStateChange()
+  notifyAuthStateChange(reason)
 }
 
-export function clearAuthTokens() {
+export function clearAuthTokens(reason = '') {
   accessToken = null
   refreshToken = null
-  notifyAuthStateChange()
+  notifyAuthStateChange(reason)
 }
 
 export function setAuthStateListener(listener) {
   authStateListener = listener
 }
 
-function notifyAuthStateChange() {
-  authStateListener?.({ accessToken, refreshToken })
+function notifyAuthStateChange(reason = '') {
+  authStateListener?.({ accessToken, refreshToken, reason })
 }
 
 async function request(path, options = {}) {
@@ -261,6 +261,10 @@ function apiError(response, payload = null) {
   return new ApiClientError(message, { code, requestId, status })
 }
 
+function authFailureReason(response) {
+  return response.status === 401 || response.status === 403 ? 'session-expired' : 'session-invalid'
+}
+
 function assertValidObjectTagInput(tags) {
   const error = validateObjectTagInput(tags)
   if (error) {
@@ -309,7 +313,7 @@ export async function refreshSession() {
   })
 
   if (!response.ok) {
-    clearAuthTokens()
+    clearAuthTokens(authFailureReason(response))
     return null
   }
 
@@ -326,7 +330,7 @@ export async function logout() {
       retry: false,
     })
   } finally {
-    clearAuthTokens()
+    clearAuthTokens('logout')
   }
 }
 

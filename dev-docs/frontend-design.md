@@ -101,6 +101,8 @@ Web Portal은 관리자와 사용자가 OSMU를 브라우저에서 사용할 수
 - 개발자 mode는 `/developer`로 이동하며 Access Key/API Key를 이용한 S3 호환 저장 흐름을 강조한다.
 - 로그인 실패 메시지 표시.
 - 인증이 필요한 `/dashboard`, `/storage`, `/objects`, `/admin`, `/audit` 접근 시 session이 없으면 `/login?redirect=...`로 이동한다.
+- 저장된 session 복구가 만료/폐기된 token 때문에 실패하면 `/login?redirect=...&reason=session-expired`로 이동하고, login 화면에 재로그인 안내를 표시한다.
+- 저장된 session 복구가 서버 오류 등 예상 외 이유로 실패하면 `/login?redirect=...&reason=session-invalid`로 이동하고, 저장된 로그인 정보를 확인할 수 없다는 안내를 표시한다.
 - `/admin`은 `ADMIN`, `ORG_ADMIN`만 접근 가능하며 `/audit`은 `ADMIN`만 접근 가능하다.
 - `USER` role은 관리자 mode를 선택해도 실제 role 기준으로 `/developer` 개발자 작업 화면으로 이동한다.
 - Sidebar navigation은 role 기준으로 표시한다. 개발자 사용자는 Dashboard, Storage, Objects, Developer만 보고 Admin/Audit는 보지 않는다.
@@ -350,7 +352,7 @@ systemStore
 - baseURL
 - JWT header
 - JSON API, 파일 다운로드, 파일 업로드 401 refresh retry 처리
-- refresh 실패 시 token/session state와 화면 데이터를 정리
+- refresh 실패 시 token/session state와 화면 데이터를 정리하고 `session-expired` 또는 `session-invalid` 사유를 auth store와 login redirect query로 전달
 - 새로고침 시 sessionStorage token을 복구하고 `/api/users/me`로 사용자 정보를 재확인
 - 에러 응답 변환
 - 에러 응답의 `requestId`를 alert에 표시해 운영 문의와 감사 로그 추적에 사용
