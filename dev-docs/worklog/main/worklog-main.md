@@ -17135,3 +17135,33 @@ feat/bucket-management
   - `$env:JAVA_HOME='C:\jdk-17'; .\gradlew.bat test --no-daemon --tests com.example.osmu.common.error.S3ErrorCodeMapperTest --tests com.example.osmu.bucket.BucketLifecycleControllerTest.invalidS3BucketLifecycleStatusReturnsMalformedXml --tests com.example.osmu.bucket.BucketLifecycleControllerTest.adminCanUseS3StyleLifecycleQueryAlias`: 통과.
 - 후속:
   - 남은 lifecycle schema 세부 검증은 filter shape와 action subset 경계이며, 큰 축은 live Kubernetes/security evidence와 broader S3 checksum/client-option edge parity다.
+
+### 2026-06-19 - S3 Lifecycle Filter shape 검증
+- 작업 시간:
+  - 시작: 2026-06-19 KST
+  - 종료: 2026-06-19 KST
+- 사용한 명령:
+  - active goal `dev-docs` 기준으로 계속 개발 진행.
+- 요청 분석:
+  - AWS S3 `LifecycleRuleFilter` 문서에서 `Filter`는 비어 있으면 bucket 전체에 적용되고, 비어 있지 않으면 `Prefix`, `Tag`, `ObjectSizeGreaterThan`, `ObjectSizeLessThan`, `And` 중 정확히 하나의 direct predicate만 가질 수 있다.
+  - OSMU lifecycle subset은 prefix/tag/and만 구현하므로 object-size predicate를 조용히 무시하면 더 넓은 scope의 purge rule로 저장될 위험이 있었다.
+- 수행:
+  - `ObjectLifecycleS3XmlService.parseFilter`에서 empty filter, single direct predicate, `And` predicate를 명시적으로 파싱하도록 정리했다.
+  - direct `Filter`에 여러 predicate가 있거나 알 수 없는 predicate가 있으면 `Invalid Lifecycle XML.` 경로를 통해 S3 XML `MalformedXML`로 응답하게 했다.
+  - AWS에는 존재하지만 OSMU subset에서 미지원인 `ObjectSizeGreaterThan`/`ObjectSizeLessThan`은 `Unsupported Lifecycle filter predicate ...` 경로를 통해 S3 XML `InvalidRequest`로 응답하게 했다.
+  - S3-style lifecycle alias 회귀 테스트 `invalidS3BucketLifecycleFilterShapeReturnsMalformedXml`, `unsupportedS3BucketLifecycleObjectSizeFilterReturnsInvalidRequest`를 추가했다.
+  - `api-spec.md`, `backend-design.md`, `system-architecture.md`, `s3-compatibility.md`, `test-cases.md`에 filter shape validation 계약을 반영했다.
+- 수정한 파일:
+  - `osmu-backend/src/main/java/com/example/osmu/admin/ObjectLifecycleS3XmlService.java`
+  - `osmu-backend/src/test/java/com/example/osmu/bucket/BucketLifecycleControllerTest.java`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/backend-design.md`
+  - `dev-docs/system-architecture.md`
+  - `dev-docs/s3-compatibility.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/worklog/main/worklog-main.md`
+- 검증:
+  - `$env:JAVA_HOME='C:\jdk-17'; .\gradlew.bat test --no-daemon --tests com.example.osmu.common.error.S3ErrorCodeMapperTest --tests com.example.osmu.bucket.BucketLifecycleControllerTest.invalidS3BucketLifecycleFilterShapeReturnsMalformedXml --tests com.example.osmu.bucket.BucketLifecycleControllerTest.unsupportedS3BucketLifecycleObjectSizeFilterReturnsInvalidRequest --tests com.example.osmu.bucket.BucketLifecycleControllerTest.adminCanPutGetAndDeleteBucketLifecycleConfiguration --tests com.example.osmu.bucket.BucketLifecycleControllerTest.adminCanUseS3StyleLifecycleQueryAlias`: 통과.
+  - `$env:JAVA_HOME='C:\jdk-17'; .\gradlew.bat test --no-daemon --tests com.example.osmu.admin.AdminObjectRetentionControllerTest.adminCanExportAndImportS3LifecycleXml`: 통과.
+- 후속:
+  - 남은 lifecycle schema 세부 검증은 action subset 경계와 tag value edge이며, 큰 축은 live Kubernetes/security evidence와 broader S3 checksum/client-option edge parity다.

@@ -134,25 +134,85 @@ public class ObjectLifecycleS3XmlService {
         if (filter == null) {
             return new ParsedFilter(prefix, tags);
         }
-        String filterPrefix = textOfFirstChild(filter, "Prefix");
-        if (!filterPrefix.isBlank()) {
-            prefix = filterPrefix;
+        List<Element> predicates = childElements(filter);
+        if (predicates.isEmpty()) {
+            return new ParsedFilter("", tags);
         }
-        Element directTag = firstChild(filter, "Tag");
-        if (directTag != null) {
-            addTag(tags, directTag);
+        Element predicate = singleLifecycleFilterPredicate(predicates);
+        return parseFilterPredicate(predicate);
+    }
+
+    private ParsedFilter parseFilterPredicate(Element predicate) {
+        String name = nodeName(predicate);
+        if ("Prefix".equals(name)) {
+            return new ParsedFilter(predicate.getTextContent().trim(), Map.of());
         }
-        Element and = firstChild(filter, "And");
-        if (and != null) {
-            String andPrefix = textOfFirstChild(and, "Prefix");
-            if (!andPrefix.isBlank()) {
-                prefix = andPrefix;
-            }
-            for (Element tag : childElements(and, "Tag")) {
-                addTag(tags, tag);
+        if ("Tag".equals(name)) {
+            Map<String, String> tags = new LinkedHashMap<>();
+            addTag(tags, predicate);
+            return new ParsedFilter("", tags);
+        }
+        if ("And".equals(name)) {
+            return parseAndFilter(predicate);
+        }
+        throw unsupportedLifecycleFilterPredicate(name);
+    }
+
+    private ParsedFilter parseAndFilter(Element and) {
+        String prefix = "";
+        Map<String, String> tags = new LinkedHashMap<>();
+        List<Element> predicates = childElements(and);
+        if (predicates.isEmpty()) {
+            throw invalidLifecycleXml();
+        }
+        boolean hasPrefix = false;
+        for (Element predicate : predicates) {
+            String name = nodeName(predicate);
+            if ("Prefix".equals(name)) {
+                if (hasPrefix) {
+                    throw invalidLifecycleXml();
+                }
+                hasPrefix = true;
+                prefix = predicate.getTextContent().trim();
+            } else if ("Tag".equals(name)) {
+                addTag(tags, predicate);
+            } else if (isUnsupportedLifecycleFilterPredicate(name)) {
+                throw unsupportedLifecycleFilterPredicate(name);
+            } else {
+                throw invalidLifecycleXml();
             }
         }
         return new ParsedFilter(prefix, tags);
+    }
+
+    private Element singleLifecycleFilterPredicate(List<Element> predicates) {
+        Element selected = null;
+        for (Element predicate : predicates) {
+            String name = nodeName(predicate);
+            if (isUnsupportedLifecycleFilterPredicate(name)) {
+                throw unsupportedLifecycleFilterPredicate(name);
+            }
+            if (!isSupportedLifecycleFilterPredicate(name)) {
+                throw invalidLifecycleXml();
+            }
+            if (selected != null) {
+                throw invalidLifecycleXml();
+            }
+            selected = predicate;
+        }
+        return selected;
+    }
+
+    private boolean isSupportedLifecycleFilterPredicate(String name) {
+        return "Prefix".equals(name) || "Tag".equals(name) || "And".equals(name);
+    }
+
+    private boolean isUnsupportedLifecycleFilterPredicate(String name) {
+        return "ObjectSizeGreaterThan".equals(name) || "ObjectSizeLessThan".equals(name);
+    }
+
+    private ApiException unsupportedLifecycleFilterPredicate(String name) {
+        return new ApiException(ApiErrorCode.VALIDATION_ERROR, "Unsupported Lifecycle filter predicate " + name + ".");
     }
 
     private void appendFilter(StringBuilder xml, ObjectLifecycleRule rule) {
@@ -179,8 +239,12 @@ public class ObjectLifecycleS3XmlService {
         String key = textOfFirstChild(tag, "Key");
         String value = textOfFirstChild(tag, "Value");
         if (!key.isBlank() && !value.isBlank()) {
-            tags.put(key, value);
+            if (tags.put(key, value) != null) {
+                throw invalidLifecycleXml();
+            }
+            return;
         }
+        throw invalidLifecycleXml();
     }
 
     private Document parse(String xml) {
@@ -194,13 +258,17 @@ public class ObjectLifecycleS3XmlService {
             return factory.newDocumentBuilder()
                     .parse(new ByteArrayInputStream(xml.getBytes(StandardCharsets.UTF_8)));
         } catch (Exception exception) {
-            throw new ApiException(ApiErrorCode.VALIDATION_ERROR, "Invalid Lifecycle XML.");
+            throw invalidLifecycleXml();
         }
     }
 
     private boolean isLifecycleConfigurationRoot(Element root) {
         String name = nodeName(root);
         return "LifecycleConfiguration".equals(name) || "LifeCycleConfiguration".equals(name);
+    }
+
+    private ApiException invalidLifecycleXml() {
+        return new ApiException(ApiErrorCode.VALIDATION_ERROR, "Invalid Lifecycle XML.");
     }
 
     private int positiveInt(String value, String fieldName) {
@@ -231,10 +299,23 @@ public class ObjectLifecycleS3XmlService {
         if (parent == null) {
             return elements;
         }
+        for (Element element : childElements(parent)) {
+            if (name.equals(nodeName(element))) {
+                elements.add(element);
+            }
+        }
+        return elements;
+    }
+
+    private List<Element> childElements(Element parent) {
+        List<Element> elements = new ArrayList<>();
+        if (parent == null) {
+            return elements;
+        }
         NodeList nodes = parent.getChildNodes();
         for (int index = 0; index < nodes.getLength(); index++) {
             Node node = nodes.item(index);
-            if (node instanceof Element element && name.equals(nodeName(element))) {
+            if (node instanceof Element element) {
                 elements.add(element);
             }
         }

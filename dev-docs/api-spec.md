@@ -1215,6 +1215,8 @@ Rules:
 - Imported rules get generated rule ids, priority `10`, `20`, ... and batch size `100`.
 - XML root must be `LifecycleConfiguration`; `LifeCycleConfiguration` is accepted for compatibility with AWS example casing.
 - `Rule/Status` is required and must be exactly `Enabled` or `Disabled`; missing or unsupported status values are rejected as invalid lifecycle XML.
+- `Filter` may be empty or contain exactly one direct predicate. Supported direct predicates are `Prefix`, `Tag`, and `And`; multiple direct predicates or unknown predicate elements are rejected as invalid lifecycle XML.
+- AWS object-size filter predicates (`ObjectSizeGreaterThan`, `ObjectSizeLessThan`) are recognized but not supported by the OSMU lifecycle subset and return `InvalidRequest`.
 - Supported XML subset: `Rule`, `ID`, `Status`, `Filter/Prefix`, `Filter/Tag`, `Filter/And`, `Expiration/Days`, `NoncurrentVersionExpiration/NoncurrentDays`.
 - Success writes `BUCKET_LIFECYCLE_PUT` audit log.
 
@@ -1227,7 +1229,7 @@ Rules:
 OSMU REST 인증을 사용하지만, path-style S3 lifecycle 문법에 가까운 raw XML alias를 제공한다. bucket 관리 권한이 필요하다.
 
 - `GET /api/s3/{bucketName}?lifecycle` with `Accept: application/xml`; missing bucket lifecycle configuration returns S3 XML `NoSuchLifecycleConfiguration` with HTTP `404`
-- `PUT /api/s3/{bucketName}?lifecycle` with `Content-Type: application/xml`; missing or blank XML returns S3 XML `MissingRequestBodyError`; unexpected lifecycle XML roots or invalid `Rule/Status` values return S3 XML `MalformedXML`
+- `PUT /api/s3/{bucketName}?lifecycle` with `Content-Type: application/xml`; missing or blank XML returns S3 XML `MissingRequestBodyError`; unexpected lifecycle XML roots, invalid `Rule/Status` values, or invalid filter shapes return S3 XML `MalformedXML`; unsupported object-size filters return S3 XML `InvalidRequest`
 - `DELETE /api/s3/{bucketName}?lifecycle`
 
 This alias uses the same bucket-scoped lifecycle rules as `/api/buckets/{bucketName}/lifecycle`.
@@ -4292,7 +4294,7 @@ Mapping:
 
 ### POST /api/admin/object-lifecycle/s3-xml
 
-Import AWS S3 LifecycleConfiguration XML subset. `ADMIN` required. Imported rules get generated rule ids, priority based on XML order (`10`, `20`, ...), and batch size `100`. Each `Rule/Status` is required and must be `Enabled` or `Disabled`.
+Import AWS S3 LifecycleConfiguration XML subset. `ADMIN` required. Imported rules get generated rule ids, priority based on XML order (`10`, `20`, ...), and batch size `100`. Each `Rule/Status` is required and must be `Enabled` or `Disabled`. `Filter` may be empty or contain exactly one supported direct predicate (`Prefix`, `Tag`, or `And`); object-size filters are not part of the OSMU subset.
 
 Request:
 

@@ -305,6 +305,75 @@ class BucketLifecycleControllerTest {
     }
 
     @Test
+    void invalidS3BucketLifecycleFilterShapeReturnsMalformedXml() throws Exception {
+        String token = loginAndReturnAccessToken("admin", "password");
+        String bucketName = "lifecycle-invalid-filter-bucket";
+        createBucket(token, bucketName);
+
+        mockMvc.perform(put("/api/s3/{bucketName}", bucketName)
+                        .queryParam("lifecycle", "")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_XML)
+                        .content("""
+                                <LifecycleConfiguration>
+                                  <Rule>
+                                    <ID>Invalid filter shape</ID>
+                                    <Status>Enabled</Status>
+                                    <Filter>
+                                      <Prefix>tmp/</Prefix>
+                                      <Tag><Key>stage</Key><Value>raw</Value></Tag>
+                                    </Filter>
+                                    <Expiration><Days>7</Days></Expiration>
+                                  </Rule>
+                                </LifecycleConfiguration>
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_XML))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("<Code>MalformedXML</Code>")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("<Message>The XML you provided was not well-formed or did not validate against our published schema.</Message>")));
+
+        mockMvc.perform(get("/api/s3/{bucketName}", bucketName)
+                        .queryParam("lifecycle", "")
+                        .header("Authorization", "Bearer " + token)
+                        .accept(MediaType.APPLICATION_XML))
+                .andExpect(status().isNotFound())
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("<Code>NoSuchLifecycleConfiguration</Code>")));
+    }
+
+    @Test
+    void unsupportedS3BucketLifecycleObjectSizeFilterReturnsInvalidRequest() throws Exception {
+        String token = loginAndReturnAccessToken("admin", "password");
+        String bucketName = "lifecycle-unsupported-filter-bucket";
+        createBucket(token, bucketName);
+
+        mockMvc.perform(put("/api/s3/{bucketName}", bucketName)
+                        .queryParam("lifecycle", "")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_XML)
+                        .content("""
+                                <LifecycleConfiguration>
+                                  <Rule>
+                                    <ID>Unsupported object size filter</ID>
+                                    <Status>Enabled</Status>
+                                    <Filter><ObjectSizeGreaterThan>1024</ObjectSizeGreaterThan></Filter>
+                                    <Expiration><Days>7</Days></Expiration>
+                                  </Rule>
+                                </LifecycleConfiguration>
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_XML))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("<Code>InvalidRequest</Code>")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("<Message>Unsupported Lifecycle filter predicate ObjectSizeGreaterThan.</Message>")));
+
+        mockMvc.perform(get("/api/s3/{bucketName}", bucketName)
+                        .queryParam("lifecycle", "")
+                        .header("Authorization", "Bearer " + token)
+                        .accept(MediaType.APPLICATION_XML))
+                .andExpect(status().isNotFound())
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("<Code>NoSuchLifecycleConfiguration</Code>")));
+    }
+
+    @Test
     void accessKeyWithAdminScopeCanUseS3StyleLifecycleQueryAlias() throws Exception {
         String token = loginAndReturnAccessToken("admin", "password");
         String bucketName = "lifecycle-key-bucket";
