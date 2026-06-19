@@ -1213,6 +1213,7 @@ Rules:
 
 - Imported rules get `bucketName = {bucketName}`.
 - Imported rules get generated rule ids, priority `10`, `20`, ... and batch size `100`.
+- Exported lifecycle XML emits each rule in AWS example-friendly child order: `ID`, `Filter`, `Status`, then the selected lifecycle action.
 - Lifecycle XML can contain at most 1000 `Rule` elements, matching the S3 lifecycle configuration limit.
 - `Rule/ID` is optional, but when present it must be at most 255 characters.
 - XML root must be `LifecycleConfiguration`; `LifeCycleConfiguration` is accepted for compatibility with AWS example casing.
@@ -4286,7 +4287,7 @@ Response:
 
 ### GET /api/admin/object-lifecycle/s3-xml
 
-Export lifecycle rules as an AWS S3 LifecycleConfiguration-compatible XML subset. `ADMIN` required.
+Export lifecycle rules as an AWS S3 LifecycleConfiguration-compatible XML subset. `ADMIN` required. Exported rules use `ID`, `Filter`, `Status`, lifecycle action child ordering.
 
 Mapping:
 

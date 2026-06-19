@@ -147,7 +147,10 @@ class BucketLifecycleControllerTest {
                 .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_XML))
                 .andExpect(content().string(org.hamcrest.Matchers.containsString("<LifecycleConfiguration")))
                 .andExpect(content().string(org.hamcrest.Matchers.containsString("Raw XML versions")))
-                .andExpect(content().string(org.hamcrest.Matchers.containsString("<NoncurrentVersionExpiration>")));
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("<NoncurrentVersionExpiration>")))
+                .andExpect(result -> assertLifecycleRuleChildOrder(
+                        result.getResponse().getContentAsString(),
+                        "<NoncurrentVersionExpiration>"));
 
         mockMvc.perform(get("/api/buckets/{bucketName}/lifecycle", bucketName)
                         .header("Authorization", "Bearer " + token))
@@ -187,7 +190,10 @@ class BucketLifecycleControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_XML))
                 .andExpect(content().string(org.hamcrest.Matchers.containsString("Query lifecycle")))
-                .andExpect(content().string(org.hamcrest.Matchers.containsString("<Expiration>")));
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("<Expiration>")))
+                .andExpect(result -> assertLifecycleRuleChildOrder(
+                        result.getResponse().getContentAsString(),
+                        "<Expiration>"));
 
         mockMvc.perform(delete("/api/s3/{bucketName}", bucketName)
                         .queryParam("lifecycle", "")
@@ -681,6 +687,18 @@ class BucketLifecycleControllerTest {
                                 """.formatted(bucketName)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.name").value(bucketName));
+    }
+
+    private void assertLifecycleRuleChildOrder(String xml, String actionElement) {
+        int idIndex = xml.indexOf("<ID>");
+        int filterIndex = xml.indexOf("<Filter>");
+        int statusIndex = xml.indexOf("<Status>");
+        int actionIndex = xml.indexOf(actionElement);
+
+        org.assertj.core.api.Assertions.assertThat(idIndex).isNotNegative();
+        org.assertj.core.api.Assertions.assertThat(filterIndex).isGreaterThan(idIndex);
+        org.assertj.core.api.Assertions.assertThat(statusIndex).isGreaterThan(filterIndex);
+        org.assertj.core.api.Assertions.assertThat(actionIndex).isGreaterThan(statusIndex);
     }
 
     private AccessKeyCredentials createAccessKey(String token, String bucketName, String permission) throws Exception {

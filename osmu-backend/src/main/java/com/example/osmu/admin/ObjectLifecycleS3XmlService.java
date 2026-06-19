@@ -38,8 +38,8 @@ public class ObjectLifecycleS3XmlService {
         for (ObjectLifecycleRule rule : rules) {
             xml.append("  <Rule>\n");
             xml.append("    <ID>").append(escapeXml(rule.name())).append("</ID>\n");
-            xml.append("    <Status>").append(rule.enabled() ? "Enabled" : "Disabled").append("</Status>\n");
             appendFilter(xml, rule);
+            xml.append("    <Status>").append(rule.enabled() ? "Enabled" : "Disabled").append("</Status>\n");
             if (ObjectLifecycleRule.TARGET_OBJECT_VERSION.equals(rule.targetType())) {
                 xml.append("    <NoncurrentVersionExpiration>\n");
                 xml.append("      <NoncurrentDays>").append(rule.retentionDays()).append("</NoncurrentDays>\n");

@@ -17256,3 +17256,31 @@ feat/bucket-management
   - `$env:JAVA_HOME='C:\jdk-17'; .\gradlew.bat test --no-daemon --tests com.example.osmu.admin.AdminObjectRetentionControllerTest.adminCanExportAndImportS3LifecycleXml`: 통과.
 - 후속:
   - 남은 lifecycle XML child ordering parity와 broader S3 checksum/client-option edge parity를 계속 좁힌다.
+
+### 2026-06-19 - S3 Lifecycle XML export child order 정렬
+- 작업 시간:
+  - 시작: 2026-06-19 KST
+  - 종료: 2026-06-19 KST
+- 사용한 명령:
+  - active goal `dev-docs` 기준으로 계속 개발 진행.
+- 요청 분석:
+  - 직전 lifecycle 후속 항목 중 XML child ordering parity가 남아 있었다.
+  - AWS S3 lifecycle 예시는 `Rule` 하위 XML을 `ID`, `Filter` 또는 legacy `Prefix`, `Status`, action 순서로 보여준다.
+  - 기존 export는 `ID`, `Status`, `Filter`, action 순서라 S3 예시와 맞지 않았다.
+- 수행:
+  - `ObjectLifecycleS3XmlService.exportRules`의 rule child 출력 순서를 `ID`, `Filter`, `Status`, action으로 변경했다.
+  - raw bucket lifecycle GET과 S3-style lifecycle alias GET 테스트에 XML child order 검증을 추가했다.
+  - `api-spec.md`, `backend-design.md`, `system-architecture.md`, `s3-compatibility.md`, `test-cases.md`에 export child order 계약을 반영했다.
+- 수정한 파일:
+  - `osmu-backend/src/main/java/com/example/osmu/admin/ObjectLifecycleS3XmlService.java`
+  - `osmu-backend/src/test/java/com/example/osmu/bucket/BucketLifecycleControllerTest.java`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/backend-design.md`
+  - `dev-docs/system-architecture.md`
+  - `dev-docs/s3-compatibility.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/worklog/main/worklog-main.md`
+- 검증:
+  - `$env:JAVA_HOME='C:\jdk-17'; .\gradlew.bat test --no-daemon --tests com.example.osmu.bucket.BucketLifecycleControllerTest.adminCanUseRawXmlBucketLifecycleConfiguration --tests com.example.osmu.bucket.BucketLifecycleControllerTest.adminCanUseS3StyleLifecycleQueryAlias --tests com.example.osmu.admin.AdminObjectRetentionControllerTest.adminCanExportAndImportS3LifecycleXml`: 통과.
+- 후속:
+  - 남은 큰 축은 broader S3 checksum/client-option edge parity와 live Kubernetes/security evidence다.
