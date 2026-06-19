@@ -17050,3 +17050,33 @@ feat/bucket-management
   - `$env:JAVA_HOME='C:\jdk-17'; .\gradlew.bat test --no-daemon --tests com.example.osmu.common.error.S3ErrorCodeMapperTest --tests com.example.osmu.object.S3ObjectControllerTest.multiDeleteRejectsUnexpectedRootXml --tests com.example.osmu.object.S3ObjectControllerTest.accessKeyCanUseMultiDeleteWithGenericContentTypeAndTrailingSlash`: 통과.
 - 후속:
   - XML root/schema 경계는 tagging/lifecycle 쪽까지 계속 점검할 수 있고, 큰 축은 여전히 live evidence와 고급 S3 parity다.
+
+### 2026-06-19 - S3 Tagging XML root 검증
+
+- 작업 시간:
+  - 시작: 2026-06-19 KST
+  - 종료: 2026-06-19 KST
+- 사용자 명령:
+  - active goal `dev-docs` 기준으로 계속 개발 진행.
+- 요청 분석:
+  - AWS S3 PutBucketTagging과 PutObjectTagging 요청 body는 `Tagging` 루트를 사용한다.
+  - 기존 OSMU bucket/object tagging parser는 루트 이름을 확인하지 않고 내부 `Tag` 노드를 검색했기 때문에, 다른 XML 문서에 `TagSet/Tag`가 들어 있으면 tagging 요청으로 처리될 수 있었다.
+- 실행:
+  - `S3TaggingXmlMapper.fromXml`에서 root local name이 `Tagging`인지 검증하도록 수정했다.
+  - `S3ObjectController.tagsFromTaggingXml`에도 같은 root 검증을 추가했다.
+  - 잘못된 루트는 `Invalid Tagging XML.` 메시지 경로를 통해 S3 XML `MalformedXML`로 응답한다.
+  - bucket tagging 테스트 `unexpectedS3BucketTaggingRootReturnsMalformedXml`와 object tagging 테스트 `objectTaggingRejectsUnexpectedRootXml`를 추가했다.
+  - `api-spec.md`, `s3-compatibility.md`, `test-cases.md`에 bucket/object tagging root validation을 반영했다.
+- 수정한 파일:
+  - `osmu-backend/src/main/java/com/example/osmu/bucket/S3TaggingXmlMapper.java`
+  - `osmu-backend/src/main/java/com/example/osmu/object/S3ObjectController.java`
+  - `osmu-backend/src/test/java/com/example/osmu/bucket/BucketTaggingControllerTest.java`
+  - `osmu-backend/src/test/java/com/example/osmu/object/S3ObjectControllerTest.java`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/s3-compatibility.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/worklog/main/worklog-main.md`
+- 검증:
+  - `$env:JAVA_HOME='C:\jdk-17'; .\gradlew.bat test --no-daemon --tests com.example.osmu.common.error.S3ErrorCodeMapperTest --tests com.example.osmu.bucket.BucketTaggingControllerTest.unexpectedS3BucketTaggingRootReturnsMalformedXml --tests com.example.osmu.object.S3ObjectControllerTest.objectTaggingRejectsUnexpectedRootXml`: 통과.
+- 후속:
+  - 다음 XML schema 경계 후보는 lifecycle root/schema 세부 검증과 남은 S3 checksum/client-option edge parity다.

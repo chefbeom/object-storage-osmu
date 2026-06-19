@@ -1228,6 +1228,9 @@ public class S3ObjectController {
         }
         try {
             Element root = xmlDocument(rawXml).getDocumentElement();
+            if (!"Tagging".equals(localName(root))) {
+                throw new ApiException(ApiErrorCode.VALIDATION_ERROR, "Invalid Tagging XML.");
+            }
             NodeList tagNodes = root.getElementsByTagNameNS("*", "Tag");
             Map<String, String> tags = new LinkedHashMap<>();
             for (int i = 0; i < tagNodes.getLength(); i++) {

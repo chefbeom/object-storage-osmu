@@ -268,6 +268,41 @@ class S3ObjectControllerTest {
     }
 
     @Test
+    void objectTaggingRejectsUnexpectedRootXml() throws Exception {
+        String token = loginAndReturnAccessToken("admin", "password");
+        String bucketName = "s3-object-tagging-invalid-root-bucket";
+        createBucket(token, bucketName);
+        AccessKeyCredentials credentials = createAccessKey(token, bucketName, "READ", "WRITE");
+        putS3Object(bucketName, "docs/tagged.txt", "keep object", credentials);
+
+        mockMvc.perform(put("/api/s3/{bucketName}/docs/tagged.txt", bucketName)
+                        .queryParam("tagging", "")
+                        .header("X-OSMU-Access-Key", credentials.accessKey())
+                        .header("X-OSMU-Secret-Key", credentials.secretKey())
+                        .contentType(MediaType.APPLICATION_XML)
+                        .accept(MediaType.APPLICATION_XML)
+                        .content("""
+                                <NotTagging>
+                                  <TagSet><Tag><Key>project</Key><Value>osmu</Value></Tag></TagSet>
+                                </NotTagging>
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_XML))
+                .andExpect(content().string(containsString("<Code>MalformedXML</Code>")))
+                .andExpect(content().string(containsString("<Message>The XML you provided was not well-formed or did not validate against our published schema.</Message>")));
+
+        MvcResult downloadResult = mockMvc.perform(get("/api/s3/{bucketName}/docs/tagged.txt", bucketName)
+                        .header("X-OSMU-Access-Key", credentials.accessKey())
+                        .header("X-OSMU-Secret-Key", credentials.secretKey()))
+                .andExpect(request().asyncStarted())
+                .andReturn();
+
+        mockMvc.perform(asyncDispatch(downloadResult))
+                .andExpect(status().isOk())
+                .andExpect(content().string("keep object"));
+    }
+
+    @Test
     void missingS3ObjectContentLengthReturnsMissingContentLengthXml() throws Exception {
         String token = loginAndReturnAccessToken("admin", "password");
         String bucketName = "s3-missing-length-bucket";

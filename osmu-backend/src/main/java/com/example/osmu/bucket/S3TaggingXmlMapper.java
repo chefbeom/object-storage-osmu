@@ -25,6 +25,9 @@ public class S3TaggingXmlMapper {
         }
         try {
             Element root = xmlDocument(rawXml).getDocumentElement();
+            if (!"Tagging".equals(localName(root))) {
+                throw new ApiException(ApiErrorCode.VALIDATION_ERROR, "Invalid Tagging XML.");
+            }
             NodeList tagNodes = root.getElementsByTagNameNS("*", "Tag");
             Map<String, String> tags = new LinkedHashMap<>();
             for (int i = 0; i < tagNodes.getLength(); i++) {
@@ -85,6 +88,10 @@ public class S3TaggingXmlMapper {
             throw new ApiException(ApiErrorCode.VALIDATION_ERROR, "Tagging XML requires Key and Value.");
         }
         return nodes.item(0).getTextContent();
+    }
+
+    private String localName(Element element) {
+        return element.getLocalName() == null ? element.getNodeName() : element.getLocalName();
     }
 
     private void writeElement(XMLStreamWriter xml, String name, String value) throws XMLStreamException {

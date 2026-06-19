@@ -1339,7 +1339,7 @@ Headers:
 - Range GET honors `If-Range` with an ETag or HTTP date: matching validators return the requested range, while stale validators ignore `Range` and return the full object.
 - Bucket-level responses return `x-amz-bucket-region`; default MVP region is `us-east-1`.
 - Bucket create returns `200 OK`, `Location: /{bucketName}`, and `x-amz-bucket-region`. Invalid S3 bucket names return `400 InvalidBucketName`; invalid CreateBucket XML returns `400 MalformedXML`; unsupported CreateBucket control headers return `400 InvalidRequest`. Bucket delete returns `204 No Content`; deleting a bucket that still has active objects or retained object versions returns `409 BucketNotEmpty`.
-- Bucket tagging uses `Tagging/TagSet/Tag/Key/Value` XML, stores up to 50 bucket metadata tags, returns `MissingRequestBodyError` for missing/blank XML, and disables DOCTYPE/external entity loading while parsing.
+- Bucket tagging uses `Tagging/TagSet/Tag/Key/Value` XML, requires the `Tagging` root element, stores up to 50 bucket metadata tags, returns `MissingRequestBodyError` for missing/blank XML, returns `MalformedXML` for unexpected roots, and disables DOCTYPE/external entity loading while parsing.
 - Range GET returns `206 Partial Content`, `Accept-Ranges: bytes`, and `Content-Range` for one byte range. Multi-range requests are rejected with `416 RANGE_NOT_SATISFIABLE`, matching AWS S3's documented one-range behavior.
 - `ListObjectsV2` supports `prefix`, `delimiter`, `max-keys` from `1` to `1000`, `continuation-token`, `encoding-type=url`, and `fetch-owner=true|false`.
 - `ListObjectsV2` returns `Contents`, `CommonPrefixes`, `IsTruncated`, `NextContinuationToken`, and optional `Owner`.
@@ -1351,7 +1351,7 @@ Headers:
 - Multi-object delete uses the same OSMU soft-delete behavior as single object delete. Missing object keys are reported as deleted for S3 compatibility.
 - Key-specific failures return `DeleteResult/Error` entries with `Key`, S3-style `Code`, and `Message`. `Quiet=true` only suppresses successful `Deleted` entries, not `Error` entries.
 - Multi-object delete validates optional `Content-MD5`; invalid base64 MD5 returns `InvalidDigest`, and mismatched body checksum returns `BadDigest`. Content-MD5 digest errors use AWS-style `InvalidDigest`/`BadDigest` messages.
-- Object tagging uses `Tagging/TagSet/Tag/Key/Value` XML and reuses the same tag metadata used by the REST object API.
+- Object tagging uses `Tagging/TagSet/Tag/Key/Value` XML, requires the `Tagging` root element, rejects unexpected roots as `MalformedXML`, and reuses the same tag metadata used by the REST object API.
 - `PUT ?tagging` rejects missing/blank XML as `MissingRequestBodyError`, rejects invalid XML as `MalformedXML` or `InvalidRequest` depending on parser/schema shape, and disables DOCTYPE/external entity loading.
 - S3 responses expose AWS-style trace headers: `x-amz-request-id` mirrors the normalized `X-Request-Id`, and `x-amz-id-2` is an opaque deterministic value derived from request id plus resource. These headers are exposed through backend CORS for browser clients.
 - Errors under `/api/s3/**` return AWS-style XML `<Error><Code>...</Code><Message>...</Message><Resource>...</Resource><RequestId>...</RequestId><HostId>...</HostId></Error>`; when derivable, per-error details such as `BucketName`, `Key`, and `UploadId` are emitted between `Message` and `Resource`. XML `RequestId` and `HostId` match the S3 trace headers.
