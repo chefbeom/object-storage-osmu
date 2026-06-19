@@ -1235,6 +1235,7 @@ OSMU REST 인증을 사용하지만, path-style S3 lifecycle 문법에 가까운
 
 - `GET /api/s3/{bucketName}?lifecycle` with `Accept: application/xml`; missing bucket lifecycle configuration returns S3 XML `NoSuchLifecycleConfiguration` with HTTP `404`
 - `PUT /api/s3/{bucketName}?lifecycle` with `Content-Type: application/xml`; missing or blank XML returns S3 XML `MissingRequestBodyError`; unexpected lifecycle XML roots, invalid `Rule/Status` values, or invalid filter shapes return S3 XML `MalformedXML`; too many lifecycle rules, overlong `Rule/ID`, unsupported object-size filters, unsupported lifecycle actions, multiple target actions in one rule, or lifecycle tag restriction violations return S3 XML `InvalidRequest`
+- Because OSMU does not support S3 Transition lifecycle actions, `x-amz-transition-default-minimum-object-size` on `PUT /api/s3/{bucketName}?lifecycle` is rejected as S3 XML `InvalidRequest` before configuration replacement.
 - `DELETE /api/s3/{bucketName}?lifecycle`
 
 This alias uses the same bucket-scoped lifecycle rules as `/api/buckets/{bucketName}/lifecycle`.

@@ -17284,3 +17284,30 @@ feat/bucket-management
   - `$env:JAVA_HOME='C:\jdk-17'; .\gradlew.bat test --no-daemon --tests com.example.osmu.bucket.BucketLifecycleControllerTest.adminCanUseRawXmlBucketLifecycleConfiguration --tests com.example.osmu.bucket.BucketLifecycleControllerTest.adminCanUseS3StyleLifecycleQueryAlias --tests com.example.osmu.admin.AdminObjectRetentionControllerTest.adminCanExportAndImportS3LifecycleXml`: 통과.
 - 후속:
   - 남은 큰 축은 broader S3 checksum/client-option edge parity와 live Kubernetes/security evidence다.
+
+### 2026-06-19 - S3 Lifecycle transition default header 거절
+- 작업 시간:
+  - 시작: 2026-06-19 KST
+  - 종료: 2026-06-19 KST
+- 사용한 명령:
+  - active goal `dev-docs` 기준으로 계속 개발 진행.
+- 요청 분석:
+  - 직전 후속 항목의 broader S3 client-option edge parity 중 로컬에서 검증 가능한 lifecycle header 경계를 좁혔다.
+  - AWS `PutBucketLifecycleConfiguration` 문서는 `x-amz-transition-default-minimum-object-size` 요청/응답 헤더를 정의한다.
+  - OSMU lifecycle subset은 S3 `Transition` action 자체를 지원하지 않으므로, transition minimum-size 헤더를 조용히 무시하면 클라이언트 옵션이 적용된 것처럼 보일 수 있다.
+- 수행:
+  - `S3BucketLifecycleController`가 `PUT /api/s3/{bucketName}?lifecycle`에서 `x-amz-transition-default-minimum-object-size`를 받으면 S3 XML `InvalidRequest`로 거절하게 했다.
+  - 거절 시 lifecycle configuration이 저장되지 않는 회귀 테스트 `unsupportedS3BucketLifecycleTransitionDefaultHeaderReturnsInvalidRequest`를 추가했다.
+  - `api-spec.md`, `backend-design.md`, `s3-compatibility.md`, `test-cases.md`에 unsupported lifecycle transition default header 계약을 반영했다.
+- 수정한 파일:
+  - `osmu-backend/src/main/java/com/example/osmu/bucket/S3BucketLifecycleController.java`
+  - `osmu-backend/src/test/java/com/example/osmu/bucket/BucketLifecycleControllerTest.java`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/backend-design.md`
+  - `dev-docs/s3-compatibility.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/worklog/main/worklog-main.md`
+- 검증:
+  - `$env:JAVA_HOME='C:\jdk-17'; .\gradlew.bat test --no-daemon --tests com.example.osmu.bucket.BucketLifecycleControllerTest.unsupportedS3BucketLifecycleTransitionDefaultHeaderReturnsInvalidRequest --tests com.example.osmu.bucket.BucketLifecycleControllerTest.adminCanUseS3StyleLifecycleQueryAlias --tests com.example.osmu.common.error.S3ErrorCodeMapperTest`: 통과.
+- 후속:
+  - 남은 큰 축은 lifecycle PUT checksum header parity, broader multipart checksum edge parity, live Kubernetes/security evidence다.

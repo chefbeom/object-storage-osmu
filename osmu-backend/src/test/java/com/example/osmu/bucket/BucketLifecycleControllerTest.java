@@ -450,6 +450,40 @@ class BucketLifecycleControllerTest {
     }
 
     @Test
+    void unsupportedS3BucketLifecycleTransitionDefaultHeaderReturnsInvalidRequest() throws Exception {
+        String token = loginAndReturnAccessToken("admin", "password");
+        String bucketName = "lifecycle-unsupported-header-bucket";
+        createBucket(token, bucketName);
+
+        mockMvc.perform(put("/api/s3/{bucketName}", bucketName)
+                        .queryParam("lifecycle", "")
+                        .header("Authorization", "Bearer " + token)
+                        .header("x-amz-transition-default-minimum-object-size", "all_storage_classes_128K")
+                        .contentType(MediaType.APPLICATION_XML)
+                        .content("""
+                                <LifecycleConfiguration>
+                                  <Rule>
+                                    <ID>Unsupported transition default header</ID>
+                                    <Status>Enabled</Status>
+                                    <Filter><Prefix>tmp/</Prefix></Filter>
+                                    <Expiration><Days>7</Days></Expiration>
+                                  </Rule>
+                                </LifecycleConfiguration>
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_XML))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("<Code>InvalidRequest</Code>")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("<Message>x-amz-transition-default-minimum-object-size is not supported for OSMU S3 Bucket lifecycle.</Message>")));
+
+        mockMvc.perform(get("/api/s3/{bucketName}", bucketName)
+                        .queryParam("lifecycle", "")
+                        .header("Authorization", "Bearer " + token)
+                        .accept(MediaType.APPLICATION_XML))
+                .andExpect(status().isNotFound())
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("<Code>NoSuchLifecycleConfiguration</Code>")));
+    }
+
+    @Test
     void invalidS3BucketLifecycleTagRestrictionsReturnInvalidRequest() throws Exception {
         String token = loginAndReturnAccessToken("admin", "password");
         String bucketName = "lifecycle-invalid-tag-bucket";

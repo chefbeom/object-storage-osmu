@@ -19,6 +19,9 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping({"/api/s3/{bucketName}", "/{bucketName}"})
 public class S3BucketLifecycleController {
 
+    private static final String AWS_TRANSITION_DEFAULT_MINIMUM_OBJECT_SIZE_HEADER =
+            "x-amz-transition-default-minimum-object-size";
+
     private final BucketLifecycleService bucketLifecycleService;
     private final S3RequestAuthService s3RequestAuthService;
 
@@ -53,6 +56,7 @@ public class S3BucketLifecycleController {
         if (rawXml == null || rawXml.isBlank()) {
             throw new ApiException(ApiErrorCode.VALIDATION_ERROR, "Lifecycle XML is required.");
         }
+        validateUnsupportedTransitionDefaultMinimumObjectSize(request);
         AuthenticatedUser user = currentUser(request, bucketName);
         bucketLifecycleService.replaceXml(bucketName, rawXml, user, request);
         return ResponseEntity.ok().build();
@@ -69,5 +73,15 @@ public class S3BucketLifecycleController {
 
     private AuthenticatedUser currentUser(HttpServletRequest request, String bucketName) {
         return s3RequestAuthService.currentUser(request, bucketName, "ADMIN");
+    }
+
+    private void validateUnsupportedTransitionDefaultMinimumObjectSize(HttpServletRequest request) {
+        String value = request.getHeader(AWS_TRANSITION_DEFAULT_MINIMUM_OBJECT_SIZE_HEADER);
+        if (value != null && !value.isBlank()) {
+            throw new ApiException(
+                    ApiErrorCode.VALIDATION_ERROR,
+                    AWS_TRANSITION_DEFAULT_MINIMUM_OBJECT_SIZE_HEADER + " is not supported for OSMU S3 Bucket lifecycle."
+            );
+        }
     }
 }
