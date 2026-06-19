@@ -17342,3 +17342,32 @@ feat/bucket-management
   - `$env:JAVA_HOME='C:\jdk-17'; .\gradlew.bat test --no-daemon --tests com.example.osmu.bucket.BucketLifecycleControllerTest.s3BucketLifecyclePutValidatesChecksumHeaders --tests com.example.osmu.bucket.BucketLifecycleControllerTest.adminCanUseS3StyleLifecycleQueryAlias --tests com.example.osmu.common.error.S3ErrorCodeMapperTest`: 통과.
 - 후속:
   - 남은 큰 축은 broader multipart checksum edge parity와 live Kubernetes/security evidence다.
+
+### 2026-06-19 - S3 CompleteMultipartUpload unsupported control header 거절
+- 작업 시간:
+  - 시작: 2026-06-19 KST
+  - 종료: 2026-06-19 KST
+- 사용한 명령:
+  - active goal `dev-docs` 기준으로 계속 개발 진행.
+- 요청 분석:
+  - broader multipart checksum/client-option edge parity 중 CompleteMultipartUpload 요청 헤더 경계를 확인했다.
+  - AWS CompleteMultipartUpload 문서는 checksum 헤더 외에도 `x-amz-request-payer`, `x-amz-expected-bucket-owner`, SSE-C customer headers를 요청 문법에 포함한다.
+  - OSMU는 requester-pays, AWS account owner ID, SSE-C customer encryption을 지원하지 않으므로 해당 헤더를 조용히 무시하면 클라이언트 옵션이 적용된 것처럼 보일 수 있다.
+- 수행:
+  - `S3ObjectController.completeMultipartUpload` 시작부에서 unsupported complete control headers를 S3 XML `InvalidRequest` 경로로 명시 거절하게 했다.
+  - 대상 헤더는 `x-amz-request-payer`, `x-amz-expected-bucket-owner`, `x-amz-server-side-encryption-customer-algorithm`, `x-amz-server-side-encryption-customer-key`, `x-amz-server-side-encryption-customer-key-MD5`다.
+  - service/storage completion 전에 거절되는 단위 테스트 `completeMultipartUploadRejectsUnsupportedControlHeaders`를 추가했다.
+  - `api-spec.md`, `backend-design.md`, `s3-compatibility.md`, `test-cases.md`, `feature-inventory.md`에 CompleteMultipartUpload unsupported control header 계약을 반영했다.
+- 수정한 파일:
+  - `osmu-backend/src/main/java/com/example/osmu/object/S3ObjectController.java`
+  - `osmu-backend/src/test/java/com/example/osmu/object/S3ObjectControllerMultipartTest.java`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/backend-design.md`
+  - `dev-docs/s3-compatibility.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/feature-inventory.md`
+  - `dev-docs/worklog/main/worklog-main.md`
+- 검증:
+  - `$env:JAVA_HOME='C:\jdk-17'; .\gradlew.bat test --no-daemon --tests com.example.osmu.object.S3ObjectControllerMultipartTest.completeMultipartUploadRejectsUnsupportedControlHeaders --tests com.example.osmu.object.S3ObjectControllerMultipartTest.completeMultipartUploadParsesS3XmlAndReturnsResultXml --tests com.example.osmu.common.error.S3ErrorCodeMapperTest`: 통과.
+- 후속:
+  - 남은 큰 축은 broader multipart checksum exact AWS edge parity와 live Kubernetes/security evidence다.

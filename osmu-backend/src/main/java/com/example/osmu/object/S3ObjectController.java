@@ -106,6 +106,7 @@ public class S3ObjectController {
     private static final String AWS_STORAGE_CLASS_HEADER = "x-amz-storage-class";
     private static final String AWS_WEBSITE_REDIRECT_HEADER = "x-amz-website-redirect-location";
     private static final String AWS_REQUEST_PAYER_HEADER = "x-amz-request-payer";
+    private static final String AWS_EXPECTED_BUCKET_OWNER_HEADER = "x-amz-expected-bucket-owner";
     private static final String HTTP_IF_RANGE_HEADER = "If-Range";
     private static final String AWS_UNSIGNED_PAYLOAD = "UNSIGNED-PAYLOAD";
     private static final String AWS_STREAMING_PAYLOAD_PREFIX = "STREAMING-";
@@ -419,6 +420,7 @@ public class S3ObjectController {
             HttpServletRequest request
     ) throws IOException {
         AuthenticatedUser user = s3RequestAuthService.currentUser(request, bucketName, "WRITE");
+        validateMultipartCompleteUnsupportedControls(request);
         assertCopyTargetPreconditions(request, bucketName, objectKey, user);
         ChecksumResponseHeader checksumResponseHeader = checksumResponseHeader(request);
         List<CompletedMultipartUploadPart> completedParts = completedPartsFromXml(requestBody(request));
@@ -966,6 +968,25 @@ public class S3ObjectController {
 
     private ApiException unsupportedMultipartInitiateHeader(String headerName) {
         return new ApiException(ApiErrorCode.VALIDATION_ERROR, headerName + " is not supported for S3 CreateMultipartUpload.");
+    }
+
+    private void validateMultipartCompleteUnsupportedControls(HttpServletRequest request) {
+        rejectNonBlankMultipartCompleteHeader(request, AWS_REQUEST_PAYER_HEADER);
+        rejectNonBlankMultipartCompleteHeader(request, AWS_EXPECTED_BUCKET_OWNER_HEADER);
+        rejectNonBlankMultipartCompleteHeader(request, AWS_SSE_CUSTOMER_ALGORITHM_HEADER);
+        rejectNonBlankMultipartCompleteHeader(request, AWS_SSE_CUSTOMER_KEY_HEADER);
+        rejectNonBlankMultipartCompleteHeader(request, AWS_SSE_CUSTOMER_KEY_MD5_HEADER);
+    }
+
+    private void rejectNonBlankMultipartCompleteHeader(HttpServletRequest request, String headerName) {
+        String value = request.getHeader(headerName);
+        if (value != null && !value.isBlank()) {
+            throw unsupportedMultipartCompleteHeader(headerName);
+        }
+    }
+
+    private ApiException unsupportedMultipartCompleteHeader(String headerName) {
+        return new ApiException(ApiErrorCode.VALIDATION_ERROR, headerName + " is not supported for S3 CompleteMultipartUpload.");
     }
 
     private String multipartInitiateChecksumAlgorithm(HttpServletRequest request) {

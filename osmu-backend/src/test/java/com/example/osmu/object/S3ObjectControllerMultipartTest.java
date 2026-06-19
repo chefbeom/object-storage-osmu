@@ -887,6 +887,29 @@ class S3ObjectControllerMultipartTest {
     }
 
     @Test
+    void completeMultipartUploadRejectsUnsupportedControlHeaders() {
+        for (String headerName : List.of(
+                "x-amz-request-payer",
+                "x-amz-expected-bucket-owner",
+                "x-amz-server-side-encryption-customer-algorithm",
+                "x-amz-server-side-encryption-customer-key",
+                "x-amz-server-side-encryption-customer-key-MD5"
+        )) {
+            MockHttpServletRequest request = completeMultipartRequest();
+            request.addHeader(headerName, "value");
+            when(s3RequestAuthService.currentUser(request, "bucket", "WRITE")).thenReturn(user);
+
+            assertThatThrownBy(() -> controller.completeMultipartUpload("bucket", "videos/input.mp4", "upload-1", request))
+                    .isInstanceOfSatisfying(ApiException.class, exception -> {
+                        assertThat(exception.code()).isEqualTo(ApiErrorCode.VALIDATION_ERROR);
+                        assertThat(exception.getMessage()).isEqualTo(headerName + " is not supported for S3 CompleteMultipartUpload.");
+                    });
+        }
+
+        verifyNoInteractions(objectService);
+    }
+
+    @Test
     void completeMultipartUploadHonorsTargetPreconditions() throws Exception {
         StoredObjectRecord existingTarget = new StoredObjectRecord(
                 "videos/input.mp4",
