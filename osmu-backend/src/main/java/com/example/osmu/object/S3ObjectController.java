@@ -971,6 +971,7 @@ public class S3ObjectController {
     }
 
     private void validateMultipartCompleteUnsupportedControls(HttpServletRequest request) {
+        rejectNonBlankMultipartCompleteHeader(request, AWS_CHECKSUM_ALGORITHM_HEADER);
         rejectNonBlankMultipartCompleteHeader(request, AWS_REQUEST_PAYER_HEADER);
         rejectNonBlankMultipartCompleteHeader(request, AWS_EXPECTED_BUCKET_OWNER_HEADER);
         rejectNonBlankMultipartCompleteHeader(request, AWS_SSE_CUSTOMER_ALGORITHM_HEADER);
@@ -2099,19 +2100,49 @@ public class S3ObjectController {
     }
 
     private ChecksumResponseHeader checksumResponseHeader(HttpServletRequest request) {
-        for (String headerName : List.of(
-                AWS_CHECKSUM_SHA256_HEADER,
-                AWS_CHECKSUM_SHA1_HEADER,
-                AWS_CHECKSUM_CRC32_HEADER,
-                AWS_CHECKSUM_CRC32C_HEADER,
-                AWS_CHECKSUM_CRC64NVME_HEADER
-        )) {
-            String value = request.getHeader(headerName);
+        Map<String, String> checksumHeaders = new LinkedHashMap<>();
+        Enumeration<String> requestHeaderNames = request.getHeaderNames();
+        while (requestHeaderNames.hasMoreElements()) {
+            String headerName = requestHeaderNames.nextElement();
+            String normalizedHeaderName = headerName.toLowerCase(Locale.ROOT);
+            if (!normalizedHeaderName.startsWith("x-amz-checksum-")
+                    || AWS_CHECKSUM_TYPE_HEADER.equals(normalizedHeaderName)
+                    || AWS_CHECKSUM_ALGORITHM_HEADER.equals(normalizedHeaderName)) {
+                continue;
+            }
+            List<String> values = nonBlankHeaderValues(request, headerName);
+            if (values.isEmpty()) {
+                continue;
+            }
+            if (!isSupportedChecksumHeader(normalizedHeaderName)) {
+                throw new ApiException(ApiErrorCode.INVALID_DIGEST,
+                        normalizedHeaderName + " is not supported for S3 CompleteMultipartUpload.");
+            }
+            if (values.size() > 1) {
+                throw new ApiException(ApiErrorCode.INVALID_DIGEST, "Only one x-amz-checksum-* header is supported.");
+            }
+            checksumHeaders.put(normalizedHeaderName, values.get(0));
+        }
+        if (checksumHeaders.size() > 1) {
+            throw new ApiException(ApiErrorCode.INVALID_DIGEST, "Only one x-amz-checksum-* header is supported.");
+        }
+        if (checksumHeaders.isEmpty()) {
+            return ChecksumResponseHeader.empty();
+        }
+        Map.Entry<String, String> checksumHeader = checksumHeaders.entrySet().iterator().next();
+        return new ChecksumResponseHeader(checksumHeader.getKey(), Map.of(checksumHeader.getKey(), checksumHeader.getValue()));
+    }
+
+    private List<String> nonBlankHeaderValues(HttpServletRequest request, String headerName) {
+        List<String> values = new ArrayList<>();
+        Enumeration<String> headerValues = request.getHeaders(headerName);
+        while (headerValues.hasMoreElements()) {
+            String value = headerValues.nextElement();
             if (value != null && !value.isBlank()) {
-                return new ChecksumResponseHeader(headerName, Map.of(headerName, value.trim()));
+                values.add(value.trim());
             }
         }
-        return ChecksumResponseHeader.empty();
+        return values;
     }
 
     private BodyChecksumValidator payloadHashValidator(HttpServletRequest request) {

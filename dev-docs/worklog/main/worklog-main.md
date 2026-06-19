@@ -17371,3 +17371,32 @@ feat/bucket-management
   - `$env:JAVA_HOME='C:\jdk-17'; .\gradlew.bat test --no-daemon --tests com.example.osmu.object.S3ObjectControllerMultipartTest.completeMultipartUploadRejectsUnsupportedControlHeaders --tests com.example.osmu.object.S3ObjectControllerMultipartTest.completeMultipartUploadParsesS3XmlAndReturnsResultXml --tests com.example.osmu.common.error.S3ErrorCodeMapperTest`: 통과.
 - 후속:
   - 남은 큰 축은 broader multipart checksum exact AWS edge parity와 live Kubernetes/security evidence다.
+
+### 2026-06-19 - S3 CompleteMultipartUpload checksum negotiation header 경계 강화
+- 작업 시간:
+  - 시작: 2026-06-19 KST
+  - 종료: 2026-06-19 KST
+- 사용자 명령:
+  - active goal `dev-docs` 기준으로 계속 개발 진행.
+- 요청 분석:
+  - 직전 후속 항목인 broader multipart checksum exact AWS edge parity 중 CompleteMultipartUpload final checksum header 경계를 확인했다.
+  - AWS CompleteMultipartUpload 요청 문법은 final checksum value headers와 `x-amz-checksum-type`을 포함하지만, `x-amz-checksum-algorithm`은 complete 단계 요청 헤더가 아니다.
+  - 기존 컨트롤러는 complete 단계 final checksum value header를 순서대로 확인하면서 첫 번째 supported header만 채택해, 여러 checksum value header나 unsupported `x-amz-checksum-*` header를 조용히 무시할 수 있었다.
+- 수행:
+  - `S3ObjectController.completeMultipartUpload`에서 `x-amz-checksum-algorithm`을 unsupported CompleteMultipartUpload header로 거절하게 했다.
+  - complete 단계 final checksum value header를 전체 스캔해 supported checksum value header가 정확히 하나일 때만 허용하고, 여러 checksum value header 또는 unsupported checksum value header는 S3 XML `InvalidDigest` 경로로 거절하게 했다.
+  - 회귀 테스트 `completeMultipartUploadRejectsUnsupportedChecksumNegotiationHeaders`를 추가했다.
+  - `api-spec.md`, `backend-design.md`, `s3-compatibility.md`, `test-cases.md`, `feature-inventory.md`에 complete checksum header 경계 계약을 반영했다.
+- 수정한 파일:
+  - `osmu-backend/src/main/java/com/example/osmu/object/S3ObjectController.java`
+  - `osmu-backend/src/test/java/com/example/osmu/object/S3ObjectControllerMultipartTest.java`
+  - `dev-docs/api-spec.md`
+  - `dev-docs/backend-design.md`
+  - `dev-docs/s3-compatibility.md`
+  - `dev-docs/test-cases.md`
+  - `dev-docs/feature-inventory.md`
+  - `dev-docs/worklog/main/worklog-main.md`
+- 검증:
+  - `$env:JAVA_HOME='C:\jdk-17'; $env:Path="$env:JAVA_HOME\bin;$env:Path"; .\gradlew.bat test --no-daemon --tests com.example.osmu.object.S3ObjectControllerMultipartTest.completeMultipartUploadRejectsUnsupportedChecksumNegotiationHeaders --tests com.example.osmu.object.S3ObjectControllerMultipartTest.completeMultipartUploadParsesS3XmlAndReturnsResultXml --tests com.example.osmu.common.error.S3ErrorCodeMapperTest`: 통과.
+- 후속:
+  - 남은 큰 축은 broader multipart checksum exact AWS edge parity와 live Kubernetes/security evidence다.

@@ -887,6 +887,42 @@ class S3ObjectControllerMultipartTest {
     }
 
     @Test
+    void completeMultipartUploadRejectsUnsupportedChecksumNegotiationHeaders() throws Exception {
+        MockHttpServletRequest algorithmRequest = completeMultipartRequest();
+        algorithmRequest.addHeader("x-amz-checksum-algorithm", "SHA256");
+        when(s3RequestAuthService.currentUser(algorithmRequest, "bucket", "WRITE")).thenReturn(user);
+
+        assertThatThrownBy(() -> controller.completeMultipartUpload("bucket", "videos/input.mp4", "upload-1", algorithmRequest))
+                .isInstanceOfSatisfying(ApiException.class, exception -> {
+                    assertThat(exception.code()).isEqualTo(ApiErrorCode.VALIDATION_ERROR);
+                    assertThat(exception.getMessage()).isEqualTo("x-amz-checksum-algorithm is not supported for S3 CompleteMultipartUpload.");
+                });
+
+        MockHttpServletRequest unsupportedValueRequest = completeMultipartRequest();
+        unsupportedValueRequest.addHeader("x-amz-checksum-sha512", checksumBase64("SHA-512", "final-object"));
+        when(s3RequestAuthService.currentUser(unsupportedValueRequest, "bucket", "WRITE")).thenReturn(user);
+
+        assertThatThrownBy(() -> controller.completeMultipartUpload("bucket", "videos/input.mp4", "upload-1", unsupportedValueRequest))
+                .isInstanceOfSatisfying(ApiException.class, exception -> {
+                    assertThat(exception.code()).isEqualTo(ApiErrorCode.INVALID_DIGEST);
+                    assertThat(exception.getMessage()).isEqualTo("x-amz-checksum-sha512 is not supported for S3 CompleteMultipartUpload.");
+                });
+
+        MockHttpServletRequest multipleValuesRequest = completeMultipartRequest();
+        multipleValuesRequest.addHeader("x-amz-checksum-sha256", checksumBase64("SHA-256", "final-object"));
+        multipleValuesRequest.addHeader("x-amz-checksum-crc32c", "AAAAAA==");
+        when(s3RequestAuthService.currentUser(multipleValuesRequest, "bucket", "WRITE")).thenReturn(user);
+
+        assertThatThrownBy(() -> controller.completeMultipartUpload("bucket", "videos/input.mp4", "upload-1", multipleValuesRequest))
+                .isInstanceOfSatisfying(ApiException.class, exception -> {
+                    assertThat(exception.code()).isEqualTo(ApiErrorCode.INVALID_DIGEST);
+                    assertThat(exception.getMessage()).isEqualTo("Only one x-amz-checksum-* header is supported.");
+                });
+
+        verifyNoInteractions(objectService);
+    }
+
+    @Test
     void completeMultipartUploadRejectsUnsupportedControlHeaders() {
         for (String headerName : List.of(
                 "x-amz-request-payer",

@@ -244,6 +244,7 @@ MVP 데모 기준 완료율은 약 90~95%입니다.
 - S3 multipart complete destination `If-Match`/`If-None-Match` overwrite guards
 - S3 multipart complete `x-amz-mp-object-size` actual-size validation and rollback
 - S3 multipart complete unsupported requester-pays, expected-bucket-owner, and SSE-C customer header rejection before storage completion
+- S3 multipart complete single supported final checksum header enforcement and unsupported checksum negotiation header rejection
 - S3 multipart missing upload `NoSuchUpload` error mapping
 - S3 multipart ListParts pagination (max-parts/part-number-marker)
 - S3 multipart initiate without expected-size header
