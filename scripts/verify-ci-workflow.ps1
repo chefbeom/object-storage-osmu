@@ -12,6 +12,7 @@ param(
     [string] $KubernetesOperationsReportSyncWorkflowPath = ".\.github\workflows\kubernetes-operations-report-sync-ci.yml",
     [string] $OperationsReadinessFinalizerWorkflowPath = ".\.github\workflows\operations-readiness-finalizer-ci.yml",
     [string] $OperationsReadinessArtifactFinalizerWorkflowPath = ".\.github\workflows\operations-readiness-artifact-finalizer-ci.yml",
+    [string] $EnterpriseAuthSmokeWorkflowPath = ".\.github\workflows\enterprise-auth-smoke-ci.yml",
     [string] $BrowserE2ESpecPath = ".\osmu-frontend\e2e\lightweight-demo.spec.js",
     [string] $FrontendPackagePath = ".\osmu-frontend\package.json",
     [string] $PlaywrightConfigPath = ".\osmu-frontend\playwright.config.js"
@@ -458,9 +459,13 @@ Assert-Contains $operationsReadinessArtifactWorkflowContent "ha_dr_readiness_run
 Assert-Contains $operationsReadinessArtifactWorkflowContent "kubernetes_dr_run_id:" "Operations Readiness Artifact Finalizer CI workflow"
 Assert-Contains $operationsReadinessArtifactWorkflowContent "iam_rbac_run_id:" "Operations Readiness Artifact Finalizer CI workflow"
 Assert-Contains $operationsReadinessArtifactWorkflowContent "security_evidence_run_id:" "Operations Readiness Artifact Finalizer CI workflow"
+Assert-Contains $operationsReadinessArtifactWorkflowContent "enterprise_auth_run_id:" "Operations Readiness Artifact Finalizer CI workflow"
 Assert-Contains $operationsReadinessArtifactWorkflowContent "kubernetes_operations_report_sync_run_id:" "Operations Readiness Artifact Finalizer CI workflow"
+Assert-Contains $operationsReadinessArtifactWorkflowContent "Download enterprise auth smoke evidence" "Operations Readiness Artifact Finalizer CI workflow"
 Assert-Contains $operationsReadinessArtifactWorkflowContent "Download Kubernetes operations report sync evidence" "Operations Readiness Artifact Finalizer CI workflow"
+Assert-Contains $operationsReadinessArtifactWorkflowContent "EnterpriseAuthArtifactPath" "Operations Readiness Artifact Finalizer CI workflow"
 Assert-Contains $operationsReadinessArtifactWorkflowContent "KubernetesOperationsReportSyncArtifactPath" "Operations Readiness Artifact Finalizer CI workflow"
+Assert-Contains $operationsReadinessArtifactWorkflowContent ".osmu-run/latest-enterprise-auth-smoke.json" "Operations Readiness Artifact Finalizer CI workflow"
 Assert-Contains $operationsReadinessArtifactWorkflowContent ".osmu-run/latest-kubernetes-operations-report-sync.json" "Operations Readiness Artifact Finalizer CI workflow"
 Assert-Contains $operationsReadinessArtifactWorkflowContent "actions/download-artifact@v4" "Operations Readiness Artifact Finalizer CI workflow"
 Assert-Contains $operationsReadinessArtifactWorkflowContent "github-token: `${{ secrets.GITHUB_TOKEN }}" "Operations Readiness Artifact Finalizer CI workflow"
@@ -482,6 +487,35 @@ Assert-Contains $operationsReadinessArtifactWorkflowContent ".osmu-run/latest-st
 Assert-Contains $operationsReadinessArtifactWorkflowContent ".osmu-run/latest-kubernetes-ha-dr-readiness.json" "Operations Readiness Artifact Finalizer CI workflow"
 Assert-Contains $operationsReadinessArtifactWorkflowContent ".osmu-run/latest-kubernetes-dr-finalize.json" "Operations Readiness Artifact Finalizer CI workflow"
 Assert-Contains $operationsReadinessArtifactWorkflowContent ".osmu-run/latest-security-evidence-finalize.json" "Operations Readiness Artifact Finalizer CI workflow"
+
+$enterpriseAuthSmokeWorkflow = Read-Workflow $EnterpriseAuthSmokeWorkflowPath "Enterprise Auth Smoke CI workflow"
+$enterpriseAuthSmokeWorkflowContent = $enterpriseAuthSmokeWorkflow.Content
+
+Assert-Contains $enterpriseAuthSmokeWorkflowContent "name: Enterprise Auth Smoke CI" "Enterprise Auth Smoke CI workflow"
+Assert-Contains $enterpriseAuthSmokeWorkflowContent "workflow_dispatch:" "Enterprise Auth Smoke CI workflow"
+Assert-NotContains $enterpriseAuthSmokeWorkflowContent "pull_request:" "Enterprise Auth Smoke CI workflow"
+Assert-NotContains $enterpriseAuthSmokeWorkflowContent "push:" "Enterprise Auth Smoke CI workflow"
+Assert-Contains $enterpriseAuthSmokeWorkflowContent "contents: read" "Enterprise Auth Smoke CI workflow"
+Assert-Contains $enterpriseAuthSmokeWorkflowContent "runs-on: ubuntu-latest" "Enterprise Auth Smoke CI workflow"
+Assert-Contains $enterpriseAuthSmokeWorkflowContent "timeout-minutes: 20" "Enterprise Auth Smoke CI workflow"
+Assert-Contains $enterpriseAuthSmokeWorkflowContent "run_live:" "Enterprise Auth Smoke CI workflow"
+Assert-Contains $enterpriseAuthSmokeWorkflowContent "require_oidc:" "Enterprise Auth Smoke CI workflow"
+Assert-Contains $enterpriseAuthSmokeWorkflowContent "require_ldap:" "Enterprise Auth Smoke CI workflow"
+Assert-Contains $enterpriseAuthSmokeWorkflowContent "confirm_jit_provision:" "Enterprise Auth Smoke CI workflow"
+Assert-Contains $enterpriseAuthSmokeWorkflowContent "Plan enterprise auth smoke" "Enterprise Auth Smoke CI workflow"
+Assert-Contains $enterpriseAuthSmokeWorkflowContent "Run enterprise auth smoke" "Enterprise Auth Smoke CI workflow"
+Assert-Contains $enterpriseAuthSmokeWorkflowContent "Promote plan-only enterprise auth smoke" "Enterprise Auth Smoke CI workflow"
+Assert-Contains $enterpriseAuthSmokeWorkflowContent "./scripts/write-enterprise-auth-smoke-plan.ps1" "Enterprise Auth Smoke CI workflow"
+Assert-Contains $enterpriseAuthSmokeWorkflowContent "OSMU_ENTERPRISE_AUTH_ADMIN_PASSWORD" "Enterprise Auth Smoke CI workflow"
+Assert-Contains $enterpriseAuthSmokeWorkflowContent "OSMU_ENTERPRISE_AUTH_LDAP_LOGIN_ID" "Enterprise Auth Smoke CI workflow"
+Assert-Contains $enterpriseAuthSmokeWorkflowContent "OSMU_ENTERPRISE_AUTH_LDAP_PASSWORD" "Enterprise Auth Smoke CI workflow"
+Assert-Contains $enterpriseAuthSmokeWorkflowContent "OSMU_ENTERPRISE_AUTH_CLAIM_PREVIEW_JSON_BASE64" "Enterprise Auth Smoke CI workflow"
+Assert-Contains $enterpriseAuthSmokeWorkflowContent "OSMU_ENTERPRISE_AUTH_JIT_PROVISION_JSON_BASE64" "Enterprise Auth Smoke CI workflow"
+Assert-Contains $enterpriseAuthSmokeWorkflowContent "OSMU_ENTERPRISE_AUTH_ADMIN_PASSWORD secret is required when run_live=true." "Enterprise Auth Smoke CI workflow"
+Assert-Contains $enterpriseAuthSmokeWorkflowContent "actions/upload-artifact@v4" "Enterprise Auth Smoke CI workflow"
+Assert-Contains $enterpriseAuthSmokeWorkflowContent "enterprise-auth-smoke-" "Enterprise Auth Smoke CI workflow"
+Assert-Contains $enterpriseAuthSmokeWorkflowContent ".osmu-run/latest-enterprise-auth-smoke.json" "Enterprise Auth Smoke CI workflow"
+Assert-Contains $enterpriseAuthSmokeWorkflowContent ".osmu-run/latest-enterprise-auth-smoke.md" "Enterprise Auth Smoke CI workflow"
 
 $frontendPackage = Read-RequiredFile $FrontendPackagePath "Frontend package manifest"
 $frontendPackageJson = $frontendPackage.Content | ConvertFrom-Json
@@ -531,5 +565,6 @@ Write-Host "Kubernetes DR Finalizer workflow: $($kubernetesDrWorkflow.Path)"
 Write-Host "Kubernetes Operations Report Sync workflow: $($kubernetesOperationsReportSyncWorkflow.Path)"
 Write-Host "Operations Readiness Finalizer workflow: $($operationsReadinessWorkflow.Path)"
 Write-Host "Operations Readiness Artifact Finalizer workflow: $($operationsReadinessArtifactWorkflow.Path)"
+Write-Host "Enterprise Auth Smoke workflow: $($enterpriseAuthSmokeWorkflow.Path)"
 Write-Host "Playwright config: $($playwrightConfig.Path)"
 Write-Host "Browser E2E spec: $($browserSpec.Path)"

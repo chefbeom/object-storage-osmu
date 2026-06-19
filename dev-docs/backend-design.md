@@ -140,6 +140,12 @@ Controller -> Service -> StorageAdapter
 - DTO validation
 - 인증 사용자 전달
 - 비즈니스 로직 직접 구현 금지
+- `AdminEnterpriseAuthPlanController` exposes `GET /api/admin/security/enterprise-auth-plan` as a read-only enterprise auth plan endpoint. It does not enable OIDC/LDAP login; it reports local-only login, OIDC/LDAP configuration readiness, role/organization/team claim mapping, and cutover gates through `EnterpriseAuthPlanService`.
+- `AdminEnterpriseAuthPlanController` exposes `POST /api/admin/security/enterprise-auth/claim-preview` as an admin-only claim mapping preview. `OidcClaimPreviewService` maps sample OIDC claims to OSMU role/organization/team/domain/user-match outcomes and the controller records `OIDC_CLAIM_PREVIEW` audit evidence without storing the raw claim payload.
+- `AdminEnterpriseAuthPlanController` exposes `POST /api/admin/security/enterprise-auth/jit-provision` as an admin-only JIT apply endpoint. `OidcJitProvisioningService` reuses the preview result, rejects disallowed domains and missing required claims, requires explicit approval for privileged roles, validates organization assignment, creates an `ACTIVE` local user with a random non-disclosed password hash, and records `OIDC_JIT_PROVISION` audit evidence without storing raw claims.
+- `AuthController` exposes `GET /api/auth/oidc/authorize` as a public OIDC authorization-code start endpoint. `OidcAuthorizationService` validates explicit enablement and required OIDC properties, generates `state`, `nonce`, and PKCE `S256` challenge, and stores the `code_verifier` server-side for the later callback step.
+- `AuthController` also exposes `GET /api/auth/oidc/callback` as a public callback endpoint. `OidcLoginService` consumes state, exchanges the authorization code through `OidcTokenClient`, validates RS256 `id_token` signatures and issuer/audience/nonce through `OidcIdTokenVerifier`, then issues normal OSMU access/refresh tokens only for an existing `ACTIVE` local user matched by email.
+- `AuthController` exposes `POST /api/auth/ldap/login` as a public LDAP bind/search login adapter. `LdapLoginService` validates explicit enablement, searches the target directory through `LdapClient`, binds the found user DN with the submitted password, applies the same allowed-domain and existing `ACTIVE` local user email boundary, then issues normal OSMU access/refresh tokens. `JndiLdapClient` uses JNDI only at runtime and stores no LDAP password.
 
 ### 4.2 Service
 

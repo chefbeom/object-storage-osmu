@@ -17819,3 +17819,100 @@ feat/bucket-management
 - 후속:
   - SSO/OIDC 검토, 운영/live evidence, release packaging을 우선한다.
   - S3 신규 세부 호환 작업은 실제 지원 클라이언트 smoke 실패나 전환 blocker가 확인될 때만 진행한다.
+### 2026-06-19 - Enterprise auth plan API/UI
+
+- 명령 해석: SSO/OIDC 검토를 실제 OIDC 로그인 전체 구현으로 바로 확장하기보다, 현재 제품 방향에 맞게 local-only 인증 경계와 OIDC/LDAP 도입 plan을 API/UI/문서로 고정해야 한다고 판단.
+- 작업 방식: `GET /api/admin/security/enterprise-auth-plan`을 추가해 현재 활성 login mode, OIDC/LDAP provider readiness, role/org/team claim mapping, cutover gates를 read-only로 노출했다. `AUDITOR`는 보안 검토용으로 조회만 허용한다.
+- Backend: `EnterpriseAuthPlanService`, `AdminEnterpriseAuthPlanController`, response record, focused tests 추가.
+- Frontend: API client, mock API, HomeView load/reset state, AdminPage security policy row 추가.
+- 문서: API spec, OpenAPI, security/backend/frontend design, IAM/RBAC matrix, feature inventory, commercial readiness, README 갱신.
+- 후속: 실제 OIDC authorization-code callback, LDAP bind/search adapter, IdP pilot smoke, JIT provisioning approval/audit flow 구현.
+
+### 2026-06-19 - OIDC authorization request start
+
+- 작업 해석: enterprise auth plan 다음 단계는 전체 SSO cutover가 아니라, local password login을 유지한 상태에서 OIDC authorization-code flow의 첫 요청 경계를 작게 여는 것이다.
+- Backend: `GET /api/auth/oidc/authorize`를 public endpoint로 추가했다. `OidcAuthorizationService`가 명시적 enable flag와 issuer/client/authorization URI/redirect URI를 검증하고, `state`, `nonce`, PKCE `S256` challenge를 생성한다. `code_verifier`는 backend state store에만 저장한다.
+- 보안 경계: 이 endpoint는 OSMU JWT/session을 발급하지 않는다. callback/token exchange/JWKS issuer validation, allowed domain 검증, refresh token 회전 검증 전까지 local password login이 유일한 활성 login mode다.
+- Frontend/mock: `getOidcAuthorizationRequest` API wrapper와 mock API 응답을 추가해 UI 연결 contract를 고정했다.
+- 문서/verifier: API spec, OpenAPI, security/backend/frontend design, feature inventory, commercial readiness, README, IAM/RBAC verifier를 갱신했다.
+- 후속: OIDC callback/token exchange/JWKS 검증, claim preview/audit, LDAP bind/search adapter, IdP pilot smoke.
+
+### 2026-06-19 - OIDC callback/token/JWKS validation
+
+- 작업 해석: OIDC start endpoint 다음 단계로 전체 JIT/LDAP cutover가 아니라, state/nonce/PKCE 기반 callback과 기존 local user 매핑을 먼저 닫힌 범위로 구현했다.
+- Backend: `GET /api/auth/oidc/callback`을 public endpoint로 추가했다. `OidcLoginService`는 저장된 state를 consume해 replay를 막고, token endpoint에 `code_verifier`를 포함해 authorization code를 교환한다.
+- 검증: `OidcIdTokenVerifier`는 JWKS `RS256` signature, `iss`, `aud`, `exp`, `nonce`를 검증한다. `OidcLoginService`는 검증된 email claim이 기존 `ACTIVE` local user email과 매칭되고 allowed domain을 통과할 때만 OSMU access/refresh token을 발급한다.
+- 경계: JIT provisioning, role/org/team claim 자동 반영, LDAP bind/search adapter는 아직 활성화하지 않았다. local password login은 계속 유지한다.
+- Frontend/mock: `completeOidcCallback` API wrapper와 mock callback 응답을 추가했다.
+- 문서/verifier: API spec, OpenAPI, security/backend/frontend design, feature inventory, commercial readiness, README, env example, IAM/RBAC verifier를 갱신했다.
+- 후속: 실제 IdP pilot smoke, claim preview/audit, JIT provisioning 승인 flow, LDAP bind/search adapter.
+
+### 2026-06-19 - OIDC claim preview/audit gate
+
+- 작업 해석: OIDC callback 다음 단계는 바로 JIT user 생성이 아니라, sample claim이 OSMU role/org/team/domain/local-user 정책에 어떻게 매핑되는지 관리자에게 preview하고 audit evidence를 남기는 것이다.
+- Backend: `POST /api/admin/security/enterprise-auth/claim-preview`를 admin-only endpoint로 추가했다. `OidcClaimPreviewService`는 subject/email/name/role/org/team claim을 읽고, `MATCHED_EXISTING_USER`, `REQUIRES_ADMIN_APPROVAL`, `REJECTED_DOMAIN`, `MISSING_REQUIRED_CLAIM` 상태를 계산한다.
+- 보안 경계: claim preview는 실제 user 생성, role 변경, organization/team 연결을 수행하지 않는다. `OIDC_CLAIM_PREVIEW` audit event에는 status, primary role, JIT 필요 여부만 저장하고 raw claim payload는 저장하지 않는다.
+- Frontend/mock: `previewEnterpriseAuthClaims` API wrapper와 mock preview 응답을 추가했다.
+- 문서/verifier: API spec, OpenAPI, security/backend/frontend design, feature inventory, commercial readiness, README, IAM/RBAC matrix/verifier를 갱신했다.
+- 후속: JIT provisioning 승인/apply flow, LDAP bind/search adapter, 실제 IdP pilot smoke.
+
+### 2026-06-19 - OIDC JIT provisioning approval/apply
+
+- 작업 해석: claim preview 다음 단계는 OIDC callback에서 자동 user를 만드는 것이 아니라, 관리자가 sample claim을 승인하고 local user 생성만 명시적으로 apply하는 흐름이다.
+- Backend: `POST /api/admin/security/enterprise-auth/jit-provision`을 admin-only endpoint로 추가했다. `OidcJitProvisioningService`는 preview를 다시 계산하고 required claim, allowed domain, existing ACTIVE user, approved role, organization을 검증한다.
+- 보안 경계: `ADMIN`, `ORG_ADMIN`, `AUDITOR` 생성은 `approvePrivilegedRole=true`가 필요하고, `ORG_ADMIN`은 organization id가 필요하다. callback은 계속 기존 ACTIVE local user 매핑만 수행하며 자동 JIT 생성은 하지 않는다.
+- Audit: `OIDC_JIT_PROVISION` event에는 생성 결과, 승인 role, organization id, privileged approval 여부만 저장하고 raw claim payload는 저장하지 않는다.
+- Frontend/mock: `provisionEnterpriseAuthUser` API wrapper와 mock apply 응답을 추가했다.
+- 문서/verifier: API spec, OpenAPI, security/backend/frontend design, feature inventory, commercial readiness, README, IAM/RBAC matrix/verifier를 갱신했다.
+- 후속: LDAP bind/search adapter, 실제 IdP pilot smoke, callback auto-JIT 비활성 유지 상태의 rollback/evidence 검증.
+
+### 2026-06-19 - LDAP bind/search login adapter
+
+- 작업 해석: JIT apply 다음 단계는 LDAP/Active Directory를 local password login의 즉시 대체로 켜는 것이 아니라, directory bind/search 성공 후 기존 `ACTIVE` local user email과 매칭될 때만 OSMU session을 발급하는 adapter를 닫힌 범위로 구현하는 것이다.
+- Backend: `POST /api/auth/ldap/login`을 public endpoint로 추가했다. `LdapLoginService`는 `OSMU_ENTERPRISE_AUTH_LDAP_LOGIN_ENABLED=true`일 때만 동작하고, `LdapClient`로 user DN/email을 search한 뒤 user DN bind로 password를 검증한다.
+- 보안 경계: LDAP password는 저장하지 않는다. allowed domain과 기존 ACTIVE local user email mapping을 통과해야만 access/refresh token을 발급한다. LDAP에서 local user를 자동 생성하거나 role/org/team을 자동 반영하지 않는다.
+- 구현: `JndiLdapClient`는 Java JNDI 기반으로 service bind 또는 anonymous search, user DN bind, timeout을 지원한다. 단위 테스트는 fake client로 search/bind/token 발급/disabled/domain/not-provisioned/inactive-user 경계를 검증한다.
+- Frontend/mock: `loginWithLdap` API wrapper와 mock `/auth/ldap/login` 응답을 추가했다.
+- 문서/verifier: API spec, OpenAPI, security/backend/frontend design, feature inventory, commercial readiness, README, IAM/RBAC verifier를 갱신했다.
+- 후속: 실제 OIDC/LDAP provider smoke, 운영 evidence, login cutover go/no-go 검증.
+
+### 2026-06-19 - Enterprise auth smoke evidence helper
+
+- 작업 해석: 실제 IdP/LDAP 연결은 현재 환경에서 임의로 수행할 수 없으므로, 운영자가 target IdP/directory에서 안전하게 실행하고 evidence를 남길 수 있는 smoke helper를 먼저 추가했다.
+- Script: `scripts/write-enterprise-auth-smoke-plan.ps1`을 추가했다. 기본값은 plan-only라 HTTP 요청을 실행하지 않고, `-Execute`와 필요한 admin credential, OIDC code/state, LDAP credential, claim/JIT JSON path가 제공될 때만 live smoke를 수행한다.
+- 범위: enterprise auth plan API, OIDC authorize/callback, OIDC claim preview audit, admin-approved JIT provisioning, LDAP bind/search login, audit log evidence를 한 JSON/Markdown report로 묶는다.
+- 보안 경계: evidence에는 admin password, LDAP password, access/refresh token, OIDC authorization code/state, client secret, raw OIDC claim JSON을 저장하지 않는다. JIT user 생성은 `-ConfirmJitProvision` 없이는 차단한다.
+- Verifier: `scripts/verify-enterprise-auth-smoke-plan.ps1`을 추가해 plan-only 산출물, endpoint coverage, secret 비저장을 검증한다.
+- 문서: README, security design, feature inventory, commercial readiness, local verifier를 갱신했다.
+- 검증:
+  - `powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-enterprise-auth-smoke-plan.ps1`: 통과.
+- 후속: 실제 pilot IdP/LDAP 환경에서 `write-enterprise-auth-smoke-plan.ps1 -Execute`를 실행하고 `.osmu-run/latest-enterprise-auth-smoke.json`의 `result=passed`를 확보한다.
+
+### 2026-06-19 - Enterprise auth smoke를 operations readiness에 연결
+
+- 작업 해석: helper만 있으면 운영자가 dashboard/readiness에서 target IdP/LDAP smoke gap을 놓칠 수 있으므로, production/B2B readiness의 명시 evidence check로 연결했다.
+- Script: `scripts/write-operations-readiness.ps1`에 `EnterpriseAuthSmokeEvidencePath` 입력과 `Enterprise auth target smoke evidence` check를 추가했다. `.osmu-run/latest-enterprise-auth-smoke.json`의 `result=passed`일 때만 PASS가 된다.
+- Remediation: pending check에는 `write-enterprise-auth-smoke-plan.ps1 -Execute -RequireOidc -RequireLdap` 명령과 secret 비저장 note를 노출한다.
+- Verifier/docs: `verify-operations-readiness.ps1`, README, commercial readiness, feature inventory를 갱신했다.
+- 검증:
+  - `powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-operations-readiness.ps1`: 통과.
+  - `powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-commercial-readiness.ps1`: 통과.
+
+### 2026-06-19 - Enterprise auth evidence artifact import 연결
+
+- 작업 해석: target IdP/LDAP smoke를 외부 workflow나 별도 환경에서 만든 뒤에도 operations readiness 표준 `.osmu-run` 경로로 모을 수 있어야 한다고 판단했다.
+- Script: `import-operations-readiness-artifacts.ps1`에 `EnterpriseAuthArtifactPath`를 추가하고 `latest-enterprise-auth-smoke.json`의 `result=passed` 검증 후 표준 경로로 승격하게 했다.
+- Workflow: `operations-readiness-artifact-finalizer-ci.yml`에 enterprise auth run id/artifact name input, artifact download, import argument, upload artifact path를 추가했다.
+- Artifact collection: `write-operations-artifact-collection-plan.ps1`은 invocation command에 `write-enterprise-auth-smoke-plan.ps1`이 있으면 `enterprise-auth` artifact group을 만들고 finalizer/local import 명령에 반영한다.
+- Verifier: `verify-operations-readiness-artifact-import.ps1`와 `verify-operations-artifact-collection-plan.ps1` fixture를 enterprise auth evidence까지 검증하도록 갱신했다.
+- 검증:
+  - `powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-operations-readiness-artifact-import.ps1`: 통과.
+  - `powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-operations-artifact-collection-plan.ps1`: 통과.
+
+### 2026-06-19 - Enterprise Auth Smoke CI workflow
+
+- 작업 해석: `latest-enterprise-auth-smoke.json`을 operations readiness blocker로 요구하지만 실제 target 환경에서 evidence를 생성하는 표준 CI entrypoint가 없었다.
+- Workflow: `.github/workflows/enterprise-auth-smoke-ci.yml`을 추가했다. 기본값은 plan-only이며 `run_live=true`일 때만 target API HTTP smoke를 실행한다.
+- Secret contract: live 실행은 `OSMU_ENTERPRISE_AUTH_ADMIN_PASSWORD`가 필수이고 LDAP 요구 시 `OSMU_ENTERPRISE_AUTH_LDAP_LOGIN_ID`, `OSMU_ENTERPRISE_AUTH_LDAP_PASSWORD`가 필요하다. OIDC callback code/state와 claim/JIT JSON은 고정 secret 이름으로 선택 제공한다.
+- Safety: plan-only 결과도 artifact로 업로드하지만 operations readiness PASS는 `result=passed` evidence만 인정한다. Live evidence에는 password/token/OIDC code-state/raw claim JSON을 저장하지 않는다.
+- 연결: operations readiness remediation workflow를 `enterprise-auth-smoke-ci.yml`로 바꾸고, workflow run id plan과 artifact collection plan이 `enterprise-auth-smoke-{runId}` artifact를 추천하도록 등록했다.

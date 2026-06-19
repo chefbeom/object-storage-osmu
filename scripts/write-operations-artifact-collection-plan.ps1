@@ -9,6 +9,7 @@ param(
     [string] $ImageSigningRunId = "",
     [string] $ContainerSecurityRunId = "",
     [string] $SecurityEvidenceRunId = "",
+    [string] $EnterpriseAuthRunId = "",
     [string] $KubernetesOperationsReportSyncRunId = "",
     [string] $ImageSigningVersion = "v0.1.0-rc.1",
     [string] $CommitSha = "<commit-sha>",
@@ -53,6 +54,13 @@ function Get-WorkflowName([string] $Command) {
         return ""
     }
     return $match.Groups[1].Value
+}
+
+function Test-CommandMentions([string] $Command, [string] $Needle) {
+    if ([string]::IsNullOrWhiteSpace($Command)) {
+        return $false
+    }
+    return $Command.Contains($Needle)
 }
 
 function Get-RunIdOrPlaceholder([string] $RunId, [string] $PlaceholderName) {
@@ -112,8 +120,13 @@ if ($invocation.formatVersion -ne "osmu.operations-evidence-plan-invocation.v1")
 }
 
 $workflows = New-Object System.Collections.Generic.HashSet[string]
+$hasEnterpriseAuthSmoke = $false
 foreach ($action in @($invocation.actions)) {
-    Add-UniqueWorkflow $workflows (Get-WorkflowName (Get-Text $action "command"))
+    $command = Get-Text $action "command"
+    Add-UniqueWorkflow $workflows (Get-WorkflowName $command)
+    if (Test-CommandMentions $command "write-enterprise-auth-smoke-plan.ps1") {
+        $hasEnterpriseAuthSmoke = $true
+    }
 }
 
 $artifacts = New-Object System.Collections.Generic.List[object]
@@ -124,6 +137,7 @@ $iamRbacRun = Get-RunIdOrPlaceholder $IamRbacRunId "iam-rbac-run-id"
 $imageSigningRun = Get-RunIdOrPlaceholder $ImageSigningRunId "image-signing-run-id"
 $containerSecurityRun = Get-RunIdOrPlaceholder $ContainerSecurityRunId "container-security-run-id"
 $securityEvidenceRun = Get-RunIdOrPlaceholder $SecurityEvidenceRunId "security-evidence-run-id"
+$enterpriseAuthRun = Get-RunIdOrPlaceholder $EnterpriseAuthRunId "enterprise-auth-run-id"
 $kubernetesOperationsReportSyncRun = Get-RunIdOrPlaceholder $KubernetesOperationsReportSyncRunId "kubernetes-operations-report-sync-run-id"
 
 if ($workflows.Contains("storage-expansion-finalizer-ci.yml")) {
@@ -146,6 +160,9 @@ if ($workflows.Contains("container-security-ci.yml")) {
 }
 if ($workflows.Contains("security-evidence-finalizer-ci.yml")) {
     Add-Artifact $artifacts "security-evidence" "security-evidence-finalizer-ci.yml" $securityEvidenceRun "security_evidence_run_id" "security-evidence-finalizer-$securityEvidenceRun" "security_evidence_artifact_name" ".osmu-run/operations-readiness-artifacts/security-evidence" $true "Imports latest-security-evidence-finalize.json, image signing evidence, and container security evidence."
+}
+if ($hasEnterpriseAuthSmoke -or $workflows.Contains("enterprise-auth-smoke-ci.yml")) {
+    Add-Artifact $artifacts "enterprise-auth" "enterprise-auth-smoke-ci.yml" $enterpriseAuthRun "enterprise_auth_run_id" "enterprise-auth-smoke-$enterpriseAuthRun" "enterprise_auth_artifact_name" ".osmu-run/operations-readiness-artifacts/enterprise-auth" $true "Imports latest-enterprise-auth-smoke.json from target IdP/directory smoke evidence."
 }
 if ($workflows.Contains("kubernetes-operations-report-sync-ci.yml")) {
     Add-Artifact $artifacts "kubernetes-operations-report-sync" "kubernetes-operations-report-sync-ci.yml" $kubernetesOperationsReportSyncRun "kubernetes_operations_report_sync_run_id" "kubernetes-operations-report-sync-$kubernetesOperationsReportSyncRun" "kubernetes_operations_report_sync_artifact_name" ".osmu-run/operations-readiness-artifacts/kubernetes-operations-report-sync" $true "Imports latest-kubernetes-operations-report-sync.json for convergence-level deployed dashboard sync evidence."
@@ -191,6 +208,9 @@ foreach ($artifact in $requiredArtifacts) {
     }
     elseif ($group -eq "security-evidence") {
         $localImportArgs.Add("-SecurityEvidenceArtifactPath $downloadPath")
+    }
+    elseif ($group -eq "enterprise-auth") {
+        $localImportArgs.Add("-EnterpriseAuthArtifactPath $downloadPath")
     }
     elseif ($group -eq "kubernetes-operations-report-sync") {
         $localImportArgs.Add("-KubernetesOperationsReportSyncArtifactPath $downloadPath")

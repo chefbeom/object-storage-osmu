@@ -301,6 +301,24 @@ export function login(loginId, password) {
   })
 }
 
+export function loginWithLdap(loginId, password) {
+  return request('/auth/ldap/login', {
+    method: 'POST',
+    body: { loginId, password },
+  })
+}
+
+export function getOidcAuthorizationRequest() {
+  return request('/auth/oidc/authorize')
+}
+
+export function completeOidcCallback(code, state) {
+  const query = new URLSearchParams()
+  appendQuery(query, 'code', code)
+  appendQuery(query, 'state', state)
+  return request(`/auth/oidc/callback?${query.toString()}`)
+}
+
 export async function refreshSession() {
   if (!refreshToken) {
     return null
@@ -1094,6 +1112,24 @@ export function getDashboardSummary() {
 
 export function getDashboardReadiness() {
   return request('/admin/dashboard/readiness')
+}
+
+export function getEnterpriseAuthPlan() {
+  return request('/admin/security/enterprise-auth-plan')
+}
+
+export function previewEnterpriseAuthClaims(claims) {
+  return request('/admin/security/enterprise-auth/claim-preview', {
+    method: 'POST',
+    body: { claims },
+  })
+}
+
+export function provisionEnterpriseAuthUser(payload) {
+  return request('/admin/security/enterprise-auth/jit-provision', {
+    method: 'POST',
+    body: payload,
+  })
 }
 
 export function getDataFlowMonitoring(filters = {}) {

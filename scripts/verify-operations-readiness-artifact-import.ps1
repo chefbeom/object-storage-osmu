@@ -45,6 +45,7 @@ $haDrSource = Join-Path $sourceRoot "ha-dr-readiness"
 $kubernetesDrSource = Join-Path $sourceRoot "kubernetes-dr"
 $iamSource = Join-Path $sourceRoot "iam-rbac"
 $securitySource = Join-Path $sourceRoot "security-evidence"
+$enterpriseAuthSource = Join-Path $sourceRoot "enterprise-auth"
 $kubernetesOperationsReportSyncSource = Join-Path $sourceRoot "kubernetes-operations-report-sync"
 
 Write-JsonEvidence (Join-Path $storageSource "latest-storage-expansion-finalize.json") @{
@@ -78,6 +79,11 @@ Write-JsonEvidence (Join-Path $securitySource "latest-container-security-evidenc
     formatVersion = "osmu.container-security-evidence.v1"
     result = "passed"
 }
+Write-JsonEvidence (Join-Path $enterpriseAuthSource "latest-enterprise-auth-smoke.json") @{
+    formatVersion = "osmu.enterprise-auth-smoke.v1"
+    result = "passed"
+}
+Write-TextEvidence (Join-Path $enterpriseAuthSource "latest-enterprise-auth-smoke.md") "# Enterprise auth smoke"
 Write-JsonEvidence (Join-Path $kubernetesOperationsReportSyncSource "latest-kubernetes-operations-report-sync.json") @{
     formatVersion = "osmu.kubernetes-operations-report-sync.v1"
     result = "applied"
@@ -99,6 +105,7 @@ $importScript = Resolve-ProjectPath ".\scripts\import-operations-readiness-artif
     -KubernetesDrArtifactPath $kubernetesDrSource `
     -IamRbacArtifactPath $iamSource `
     -SecurityEvidenceArtifactPath $securitySource `
+    -EnterpriseAuthArtifactPath $enterpriseAuthSource `
     -KubernetesOperationsReportSyncArtifactPath $kubernetesOperationsReportSyncSource `
     -OutputDirectory $promotedRoot `
     -JsonOutputPath (Join-Path $resolvedOutputDirectory "latest-operations-readiness-artifact-import.json") `
@@ -120,6 +127,7 @@ Assert-True (Test-Path -LiteralPath (Join-Path $promotedRoot "latest-iam-rbac-fi
 Assert-True (Test-Path -LiteralPath (Join-Path $promotedRoot "latest-security-evidence-finalize.json")) "Promoted security finalizer evidence missing."
 Assert-True (Test-Path -LiteralPath (Join-Path $promotedRoot "latest-image-signing-evidence.json")) "Promoted image signing evidence missing."
 Assert-True (Test-Path -LiteralPath (Join-Path $promotedRoot "latest-container-security-evidence.json")) "Promoted container security evidence missing."
+Assert-True (Test-Path -LiteralPath (Join-Path $promotedRoot "latest-enterprise-auth-smoke.json")) "Promoted enterprise auth smoke evidence missing."
 Assert-True (Test-Path -LiteralPath (Join-Path $promotedRoot "latest-kubernetes-operations-report-sync.json")) "Promoted Kubernetes operations report sync evidence missing."
 
 Write-JsonEvidence (Join-Path $invalidRoot "latest-kubernetes-ha-dr-readiness.json") @{

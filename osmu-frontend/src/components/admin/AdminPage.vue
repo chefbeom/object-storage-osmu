@@ -416,6 +416,7 @@ const props = defineProps({
   objectSharePolicyForm: { type: Object, required: true },
   objectShareAnalytics: { type: Object, required: true },
   objectShareAnalyticsFilter: { type: Object, required: true },
+  enterpriseAuthPlan: { type: Object, required: true },
   quotaPolicyForm: { type: Object, required: true },
   quotaPolicyTargetOptions: { type: Array, required: true },
   quotaPolicies: { type: Array, required: true },
@@ -530,6 +531,13 @@ const securityPolicyRows = computed(() => [
     evidence: 'Lifecycle conflict check is exposed before retention or lifecycle XML changes.',
   },
   {
+    key: 'enterprise-auth',
+    title: 'Enterprise auth plan',
+    status: enterpriseAuthStatus(props.enterpriseAuthPlan),
+    detail: enterpriseAuthDetail(props.enterpriseAuthPlan),
+    evidence: enterpriseAuthEvidence(props.enterpriseAuthPlan),
+  },
+  {
     key: 'audit-trail',
     title: 'Audit trail',
     status: props.auditLogs.length === 0 ? 'MISSING' : (auditFailureCount.value > 0 ? 'REVIEW' : 'SUCCESS'),
@@ -561,6 +569,32 @@ function isStaleOrUnused(value) {
 
 function policyFlag(value) {
   return value ? 'on' : 'off'
+}
+
+function enterpriseAuthStatus(plan) {
+  const status = String(plan?.status || '').toUpperCase()
+  if (status === 'ACTIVE') return 'SUCCESS'
+  if (status === 'PLAN_READY' || status === 'LOCAL_ONLY') return 'REVIEW'
+  return 'MISSING'
+}
+
+function enterpriseAuthDetail(plan) {
+  const active = Array.isArray(plan?.activeLoginModes) && plan.activeLoginModes.length > 0
+    ? plan.activeLoginModes.join(', ')
+    : (plan?.currentLoginMode || 'LOCAL_PASSWORD')
+  const planned = Array.isArray(plan?.plannedExternalModes) && plan.plannedExternalModes.length > 0
+    ? plan.plannedExternalModes.join(', ')
+    : 'OIDC, LDAP'
+  const provider = plan?.externalProviderConfigured ? 'provider configured' : 'provider pending'
+  return `${active} active / ${planned} planned / ${provider}`
+}
+
+function enterpriseAuthEvidence(plan) {
+  const mapping = plan?.claimMapping || {}
+  const reviewGates = Array.isArray(plan?.gates)
+    ? plan.gates.filter((gate) => String(gate.status || '').toUpperCase() !== 'SUCCESS').length
+    : 0
+  return `Claims role=${mapping.roleClaim || 'osmu_roles'}, org=${mapping.organizationClaim || 'osmu_org'}, team=${mapping.teamClaim || 'osmu_teams'} / ${reviewGates} review gates`
 }
 
 defineEmits([

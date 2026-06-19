@@ -46,6 +46,11 @@ public class InMemoryUserRepository implements UserRepository {
     }
 
     @Override
+    public Optional<UserAccount> findByEmail(String email) {
+        return Optional.ofNullable(usersByEmail.get(email));
+    }
+
+    @Override
     public boolean existsByLoginId(String loginId) {
         return usersByLoginId.containsKey(loginId);
     }

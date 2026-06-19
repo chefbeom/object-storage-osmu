@@ -350,6 +350,7 @@
         :object-share-policy-form="objectSharePolicyForm"
         :object-share-analytics="objectShareAnalytics"
         :object-share-analytics-filter="objectShareAnalyticsFilter"
+        :enterprise-auth-plan="enterpriseAuthPlan"
         :quota-policy-form="quotaPolicyForm"
         :quota-policy-target-options="quotaPolicyTargetOptions"
         :quota-policies="quotaPolicies"
@@ -545,6 +546,7 @@ import {
   getDashboardSummary,
   getDashboardWidgetCatalog,
   getDataFlowMonitoring,
+  getEnterpriseAuthPlan,
   getHealth,
   getObjectLifecycleConflicts,
   getObjectLifecycleRules,
@@ -1060,6 +1062,7 @@ const objectShareAnalytics = reactive({
   recentLinks: [],
 })
 const objectShareAnalyticsFilter = reactive({ bucketName: '', status: '', limit: 10 })
+const enterpriseAuthPlan = ref(defaultEnterpriseAuthPlan())
 const accessKeyForm = reactive({ name: 'local-dev-key', expiresAt: '', scopeBucket: '', scopePermissions: ['READ', 'WRITE', 'DELETE'], scopes: [] })
 const bucketPermissionForm = reactive({ subjectType: 'USER', subjectId: '', permissions: ['READ'] })
 const userForm = reactive({ loginId: '', email: '', name: '', password: '', role: 'USER', organizationId: '' })
@@ -2255,6 +2258,7 @@ async function loadDashboard(options = {}) {
         loadStorageExpansionSummary(),
         loadStorageExpansionRunnerPreflight(),
         loadObjectSharePolicy(),
+        loadEnterpriseAuthPlan(),
         dashboardSummaryLoaded ? Promise.resolve() : refreshObjectShareAnalytics(),
         dashboardSummaryLoaded ? Promise.resolve() : handleLoadAuditLogs(),
       ])
@@ -2349,6 +2353,41 @@ async function loadDataFlowMonitoring() {
   const result = await safeRequest(() => getDataFlowMonitoring(dataFlowFilterPayload()), null)
   if (result?.data) {
     applyDataFlowMonitoring(result.data)
+  }
+}
+
+async function loadEnterpriseAuthPlan() {
+  const result = await safeRequest(() => getEnterpriseAuthPlan(), null)
+  enterpriseAuthPlan.value = result?.data || defaultEnterpriseAuthPlan()
+}
+
+function resetEnterpriseAuthPlan() {
+  enterpriseAuthPlan.value = defaultEnterpriseAuthPlan()
+}
+
+function defaultEnterpriseAuthPlan() {
+  return {
+    status: 'LOCAL_ONLY',
+    currentLoginMode: 'LOCAL_PASSWORD',
+    activeLoginModes: ['LOCAL_PASSWORD'],
+    plannedExternalModes: ['OIDC', 'LDAP'],
+    externalProviderConfigured: false,
+    oidc: { status: 'NOT_CONFIGURED', issuerUri: '', clientIdConfigured: false },
+    ldap: { status: 'NOT_CONFIGURED', url: '', baseDn: '' },
+    claimMapping: {
+      subjectClaim: 'sub',
+      emailClaim: 'email',
+      nameClaim: 'name',
+      roleClaim: 'osmu_roles',
+      organizationClaim: 'osmu_org',
+      teamClaim: 'osmu_teams',
+      allowedDomains: [],
+      jitProvisioningEnabled: false,
+    },
+    roleMappings: [],
+    gates: [],
+    nextImplementationSteps: [],
+    generatedAt: '',
   }
 }
 
@@ -2495,6 +2534,7 @@ function resetAdminOnlyState() {
   resetStorageExpansionForm()
   resetObjectSharePolicy()
   resetObjectShareAnalytics()
+  resetEnterpriseAuthPlan()
   resetDashboardQuotaSummary()
   resetDashboardReadiness()
   resetDataFlowMonitoring()

@@ -142,6 +142,13 @@ function New-WorkflowMetadata([string] $Workflow) {
             requiredForReadiness = $true
             note = "Required by operations readiness artifact import."
         }
+        "enterprise-auth-smoke-ci.yml" = [ordered]@{
+            group = "enterprise-auth"
+            runIdParameter = "EnterpriseAuthRunId"
+            artifactNameTemplate = "enterprise-auth-smoke-{runId}"
+            requiredForReadiness = $true
+            note = "Required by operations readiness artifact import when target IdP/directory smoke evidence is part of the invocation."
+        }
         "kubernetes-operations-report-sync-ci.yml" = [ordered]@{
             group = "kubernetes-operations-report-sync"
             runIdParameter = "KubernetesOperationsReportSyncRunId"

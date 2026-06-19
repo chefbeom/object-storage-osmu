@@ -67,6 +67,29 @@ class AuthControllerTest {
     }
 
     @Test
+    void oidcCallbackIsPublicButDisabledByDefault() throws Exception {
+        mockMvc.perform(get("/api/auth/oidc/callback")
+                        .param("code", "auth-code")
+                        .param("state", "state-1"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error.code").value("VALIDATION_ERROR"));
+    }
+
+    @Test
+    void ldapLoginIsPublicButDisabledByDefault() throws Exception {
+        mockMvc.perform(post("/api/auth/ldap/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "loginId": "admin",
+                                  "password": "ldap-password"
+                                }
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error.code").value("VALIDATION_ERROR"));
+    }
+
+    @Test
     void protectedApiAcceptsIssuedAccessToken() throws Exception {
         String accessToken = loginAndReturnAccessToken();
 

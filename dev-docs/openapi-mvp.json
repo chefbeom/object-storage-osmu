@@ -80,6 +80,66 @@
         }
       }
     },
+    "/api/auth/ldap/login": {
+      "post": {
+        "tags": ["Auth"],
+        "operationId": "loginWithLdap",
+        "summary": "Bind/search LDAP user credentials and issue OSMU tokens for an existing active local email match",
+        "security": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/LoginRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": { "$ref": "#/components/responses/JsonOk" },
+          "400": { "$ref": "#/components/responses/Error" },
+          "401": { "$ref": "#/components/responses/Error" }
+        }
+      }
+    },
+    "/api/auth/oidc/authorize": {
+      "get": {
+        "tags": ["Auth"],
+        "operationId": "getOidcAuthorizationRequest",
+        "summary": "Create an OIDC authorization-code start URL with state, nonce, and PKCE challenge",
+        "security": [],
+        "responses": {
+          "200": { "$ref": "#/components/responses/JsonOk" },
+          "400": { "$ref": "#/components/responses/Error" }
+        }
+      }
+    },
+    "/api/auth/oidc/callback": {
+      "get": {
+        "tags": ["Auth"],
+        "operationId": "completeOidcCallback",
+        "summary": "Complete OIDC authorization-code callback with state consume, token exchange, JWKS id token validation, and existing local user mapping",
+        "security": [],
+        "parameters": [
+          {
+            "name": "code",
+            "in": "query",
+            "required": true,
+            "schema": { "type": "string" }
+          },
+          {
+            "name": "state",
+            "in": "query",
+            "required": true,
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": { "$ref": "#/components/responses/JsonOk" },
+          "400": { "$ref": "#/components/responses/Error" },
+          "401": { "$ref": "#/components/responses/Error" }
+        }
+      }
+    },
     "/api/auth/refresh": {
       "post": {
         "tags": ["Auth"],
@@ -1670,6 +1730,86 @@
         "summary": "Read global usage counters",
         "responses": {
           "200": { "$ref": "#/components/responses/JsonOk" }
+        }
+      }
+    },
+    "/api/admin/security/enterprise-auth-plan": {
+      "get": {
+        "tags": ["Admin"],
+        "operationId": "getEnterpriseAuthPlan",
+        "summary": "Read the local-only enterprise auth plan, OIDC/LDAP readiness, and role/organization/team claim mapping gates",
+        "responses": {
+          "200": { "$ref": "#/components/responses/JsonOk" },
+          "401": { "$ref": "#/components/responses/Error" },
+          "403": { "$ref": "#/components/responses/Error" }
+        }
+      }
+    },
+    "/api/admin/security/enterprise-auth/claim-preview": {
+      "post": {
+        "tags": ["Admin"],
+        "operationId": "previewEnterpriseAuthClaims",
+        "summary": "Preview OIDC claim mapping and write an audit event before admin-approved JIT apply",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["claims"],
+                "properties": {
+                  "claims": {
+                    "type": "object",
+                    "additionalProperties": true
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "$ref": "#/components/responses/JsonOk" },
+          "400": { "$ref": "#/components/responses/Error" },
+          "401": { "$ref": "#/components/responses/Error" },
+          "403": { "$ref": "#/components/responses/Error" }
+        }
+      }
+    },
+    "/api/admin/security/enterprise-auth/jit-provision": {
+      "post": {
+        "tags": ["Admin"],
+        "operationId": "provisionEnterpriseAuthUser",
+        "summary": "Create an admin-approved local user from verified OIDC claims without enabling automatic callback JIT",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["claims", "approvedRole"],
+                "properties": {
+                  "claims": {
+                    "type": "object",
+                    "additionalProperties": true
+                  },
+                  "approvedRole": {
+                    "type": "string",
+                    "enum": ["ADMIN", "ORG_ADMIN", "AUDITOR", "USER"]
+                  },
+                  "organizationId": { "type": "integer", "nullable": true },
+                  "approvePrivilegedRole": { "type": "boolean" },
+                  "reason": { "type": "string", "maxLength": 300 }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "$ref": "#/components/responses/JsonOk" },
+          "400": { "$ref": "#/components/responses/Error" },
+          "401": { "$ref": "#/components/responses/Error" },
+          "403": { "$ref": "#/components/responses/Error" },
+          "409": { "$ref": "#/components/responses/Error" }
         }
       }
     },

@@ -43,6 +43,14 @@ on:
         description: Optional Security Evidence Finalizer CI artifact name
         required: false
         default: ""
+      enterprise_auth_run_id:
+        description: Optional Enterprise auth smoke evidence run id
+        required: false
+        default: ""
+      enterprise_auth_artifact_name:
+        description: Optional Enterprise auth smoke evidence artifact name
+        required: false
+        default: ""
       kubernetes_operations_report_sync_run_id:
         description: Optional Kubernetes Operations Report Sync CI run id
         required: false
@@ -120,6 +128,15 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           path: .osmu-run/operations-readiness-artifacts/security-evidence
 
+      - name: Download enterprise auth smoke evidence
+        if: ${{ inputs.enterprise_auth_run_id != '' && inputs.enterprise_auth_artifact_name != '' }}
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ inputs.enterprise_auth_artifact_name }}
+          run-id: ${{ inputs.enterprise_auth_run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: .osmu-run/operations-readiness-artifacts/enterprise-auth
+
       - name: Download Kubernetes operations report sync evidence
         if: ${{ inputs.kubernetes_operations_report_sync_run_id != '' && inputs.kubernetes_operations_report_sync_artifact_name != '' }}
         uses: actions/download-artifact@v4
@@ -143,6 +160,7 @@ jobs:
             @("KubernetesDrArtifactPath", ".osmu-run/operations-readiness-artifacts/kubernetes-dr"),
             @("IamRbacArtifactPath", ".osmu-run/operations-readiness-artifacts/iam-rbac"),
             @("SecurityEvidenceArtifactPath", ".osmu-run/operations-readiness-artifacts/security-evidence"),
+            @("EnterpriseAuthArtifactPath", ".osmu-run/operations-readiness-artifacts/enterprise-auth"),
             @("KubernetesOperationsReportSyncArtifactPath", ".osmu-run/operations-readiness-artifacts/kubernetes-operations-report-sync")
           )
           foreach ($artifactRoot in $artifactRoots) {
@@ -187,6 +205,8 @@ jobs:
             .osmu-run/latest-security-evidence-finalize.md
             .osmu-run/latest-image-signing-evidence.json
             .osmu-run/latest-container-security-evidence.json
+            .osmu-run/latest-enterprise-auth-smoke.json
+            .osmu-run/latest-enterprise-auth-smoke.md
             .osmu-run/latest-kubernetes-operations-report-sync.json
             .osmu-run/latest-kubernetes-operations-report-sync-plan.json
             .osmu-run/latest-kubernetes-operations-report-sync-server-dry-run.json

@@ -31,7 +31,9 @@
 | Team management | `GET/POST /api/admin/teams`, `PUT /api/admin/teams/{teamId}/members`, `DELETE /api/admin/teams/{teamId}` | Allow | Allow | Deny | Deny | `ORG_ADMIN`은 자기 조직 팀과 같은 조직 멤버만 관리 | `AdminRbacPolicy`, `AdminTeamController` |
 | Organization create/delete | `POST /api/admin/organizations`, `DELETE /api/admin/organizations/{id}` | Allow | Deny | Deny | Deny | 전역 tenant 구조 변경 | `AdminRbacPolicy`, controller admin check |
 | Audit | `GET /api/admin/audit-logs`, `GET /api/admin/audit-logs/export.csv` | Allow | Deny | Allow | Deny | 전역 감사 로그 read-only | `AdminRbacPolicy` |
-| Usage/status | `GET /api/admin/usage`, `GET /api/admin/system/status`, `GET /api/admin/dashboard/*` | Allow | Deny | Allow | Deny | 전역 운영 상태 read-only | `AdminRbacPolicy` |
+| Usage/status | `GET /api/admin/usage`, `GET /api/admin/system/status`, `GET /api/admin/security/enterprise-auth-plan`, `GET /api/admin/dashboard/*` | Allow | Deny | Allow | Deny | 전역 운영/보안 plan 상태 read-only | `AdminRbacPolicy`, `AdminEnterpriseAuthPlanController` |
+| Enterprise auth claim preview | `POST /api/admin/security/enterprise-auth/claim-preview` | Allow | Deny | Deny | Deny | OIDC sample claim은 PII를 포함할 수 있으므로 admin-only preview/audit | `AdminRbacPolicy`, `AdminEnterpriseAuthPlanController`, `OidcClaimPreviewService` |
+| Enterprise auth JIT apply | `POST /api/admin/security/enterprise-auth/jit-provision` | Allow | Deny | Deny | Deny | 신규 local user 생성과 privileged role 승인이 가능하므로 admin-only apply/audit | `AdminRbacPolicy`, `AdminEnterpriseAuthPlanController`, `OidcJitProvisioningService` |
 | Quota policy | `/api/admin/quota-policies/**` | Allow | Deny | Deny | Deny | 전역 quota 정책과 history | `AdminRbacPolicy` |
 | Object share policy | `/api/admin/object-share-policy`, `/api/admin/object-share-analytics` | Allow | Deny | Deny | Deny | 전역 공유 정책/분석 | `AdminRbacPolicy` |
 | Lifecycle/retention admin | `/api/admin/object-lifecycle/**`, `/api/admin/object-retention/**` | Allow | Deny | Deny | Deny | 전역 lifecycle/retention 운영 | `AdminRbacPolicy` |
@@ -106,6 +108,7 @@ Kubernetes ServiceAccount와 cluster RBAC 권한 경계는 `kubernetes-rbac-matr
 현재 검증 항목:
 
 - `AdminRbacPolicyTest`: role별 admin route 허용/차단.
+- `AdminEnterpriseAuthPlanControllerTest`, `EnterpriseAuthPlanServiceTest`, `OidcClaimPreviewServiceTest`, `OidcJitProvisioningServiceTest`, `OidcLoginServiceTest`, `LdapLoginServiceTest`: local-only enterprise auth plan, OIDC/LDAP readiness, OIDC claim preview/audit, admin-approved JIT apply, OIDC callback state/token/JWKS 검증, LDAP bind/search adapter, role/org/team claim mapping 검증.
 - `AdminTeamControllerTest`: `ADMIN`/`ORG_ADMIN` 팀 관리 scope와 팀 삭제 cleanup 검증.
 - `BucketObjectFlowTest.teamBucketPermissionAppliesToTeamMembers`: `TEAM` subject bucket permission과 Access Key 재동기화 검증.
 - `AdminUserControllerTest`: `USER`/`ORG_ADMIN`의 global admin API 차단.

@@ -25,7 +25,7 @@ Authorization: Bearer <accessToken>
 관리자 API인 `/api/admin/**`는 기본적으로 `ADMIN` role이 필요하다.
 예외적으로 `ORG_ADMIN`은 조직 스코프가 적용된 사용자/조직 조회 API만 접근할 수 있다.
 현재 허용 route는 `GET/POST /api/admin/users`, `PATCH /api/admin/users/{userId}/status`, `GET /api/admin/organizations`, `GET /api/admin/organizations/usage`, `GET/POST /api/admin/teams`, `PUT /api/admin/teams/{teamId}/members`, `DELETE /api/admin/teams/{teamId}`이다.
-`AUDITOR`는 read-only 감사/상태 조회 role이다. 허용 route는 `GET /api/admin/audit-logs`, `GET /api/admin/audit-logs/export.csv`, `GET /api/admin/usage`, `GET /api/admin/system/status`, `GET /api/admin/dashboard/summary`, `GET /api/admin/dashboard/readiness`, `GET /api/admin/backup/status`, `GET /api/admin/backup/restore-drill-evidence`로 제한한다.
+`AUDITOR`는 read-only 감사/상태 조회 role이다. 허용 route는 `GET /api/admin/audit-logs`, `GET /api/admin/audit-logs/export.csv`, `GET /api/admin/usage`, `GET /api/admin/system/status`, `GET /api/admin/security/enterprise-auth-plan`, `GET /api/admin/dashboard/summary`, `GET /api/admin/dashboard/readiness`, `GET /api/admin/backup/status`, `GET /api/admin/backup/restore-drill-evidence`로 제한한다.
 
 일반 사용자는 본인이 소유한 bucket, object, access key만 접근할 수 있다. `ADMIN`은 전체 리소스에 접근할 수 있다.
 
@@ -133,6 +133,10 @@ MariaDB 연결 상태 확인.
 
 ## 3. Auth API
 
+LDAP bind/search adapter는 public route `POST /api/auth/ldap/login`으로 제공된다. LDAP password는 OSMU에 저장하지 않으며, directory bind가 성공하고 LDAP email attribute가 기존 `ACTIVE` local user email과 매칭될 때만 OSMU session/JWT를 발급한다.
+
+현재 public route는 Health, Storage Health, Database Health, Login, Refresh, OIDC authorization request start/callback, LDAP login adapter만 포함한다. `/api/auth/oidc/authorize`는 외부 IdP로 보낼 authorization URL을 만들 뿐이며, `/api/auth/oidc/callback`은 state/nonce/PKCE token exchange/JWKS 검증 뒤 기존 ACTIVE local user와 email이 매칭될 때만 OSMU session/JWT를 발급한다. `/api/auth/ldap/login`도 LDAP bind/search 성공 뒤 기존 ACTIVE local user email과 매칭될 때만 OSMU session/JWT를 발급한다.
+
 ### POST /api/auth/login
 
 로그인.
@@ -184,6 +188,104 @@ MariaDB 연결 상태 확인.
   }
 }
 ```
+
+### GET /api/auth/oidc/authorize
+
+OIDC authorization-code flow 시작용 public endpoint다. `state`, `nonce`, PKCE `code_challenge`를 만들고, `code_verifier`는 backend state store에만 저장한다. 이 endpoint는 login을 완료하지 않으며, callback/token exchange/JWKS issuer validation이 구현되기 전까지 local password login을 대체하지 않는다.
+
+설정이 비활성화되어 있거나 필수 OIDC property가 없으면 `VALIDATION_ERROR`를 반환한다.
+
+Response:
+
+```json
+{
+  "data": {
+    "authorizationUrl": "https://idp.example.com/realms/osmu/protocol/openid-connect/auth?response_type=code&client_id=osmu-web&redirect_uri=http%3A%2F%2Flocalhost%3A5173%2Fauth%2Foidc%2Fcallback&scope=openid+profile+email&state=state&nonce=nonce&code_challenge=challenge&code_challenge_method=S256",
+    "state": "state",
+    "nonce": "nonce",
+    "codeChallenge": "challenge",
+    "codeChallengeMethod": "S256",
+    "redirectUri": "http://localhost:5173/auth/oidc/callback",
+    "scopes": ["openid", "profile", "email"],
+    "expiresAt": "2026-06-19T00:05:00Z"
+  }
+}
+```
+
+Properties:
+
+- `OSMU_ENTERPRISE_AUTH_OIDC_AUTHORIZATION_ENABLED`: `true`일 때만 authorization request start endpoint가 동작한다.
+- `OSMU_ENTERPRISE_AUTH_OIDC_ISSUER_URI`, `OSMU_ENTERPRISE_AUTH_OIDC_CLIENT_ID`: provider metadata와 client 식별자다.
+- `OSMU_ENTERPRISE_AUTH_OIDC_AUTHORIZATION_URI`, `OSMU_ENTERPRISE_AUTH_OIDC_REDIRECT_URI`: authorization URL 생성에 필요하다.
+- `OSMU_ENTERPRISE_AUTH_OIDC_SCOPES`: 기본값은 `openid,profile,email`이며 `openid`를 반드시 포함해야 한다.
+- `OSMU_ENTERPRISE_AUTH_OIDC_STATE_TTL_SECONDS`: server-side state 보관 TTL이며 최소 60초로 보정된다.
+
+### GET /api/auth/oidc/callback
+
+OIDC authorization-code callback endpoint다. Backend가 저장해 둔 `state`를 consume해 replay를 차단하고, token endpoint에 `code_verifier`를 포함해 authorization code를 교환한다. 이후 `id_token`을 JWKS `RS256` 서명, `iss`, `aud`, `exp`, `nonce` 기준으로 검증한다.
+
+OIDC callback은 자동 JIT provisioning을 수행하지 않는다. 검증된 email claim이 기존 `ACTIVE` local user email과 매칭되고, `OSMU_ENTERPRISE_AUTH_ALLOWED_DOMAINS`가 설정된 경우 해당 domain에 포함될 때만 OSMU access/refresh token을 발급한다. 신규 사용자는 admin-only `POST /api/admin/security/enterprise-auth/jit-provision`으로 별도 승인 생성한다.
+
+Request:
+
+```http
+GET /api/auth/oidc/callback?code=auth-code&state=state
+```
+
+Response:
+
+```json
+{
+  "data": {
+    "accessToken": "jwt",
+    "refreshToken": "refresh-token",
+    "user": {
+      "id": 1,
+      "loginId": "admin",
+      "email": "admin@example.com",
+      "name": "Admin",
+      "role": "ADMIN",
+      "status": "ACTIVE"
+    }
+  }
+}
+```
+
+Properties:
+
+- `OSMU_ENTERPRISE_AUTH_OIDC_CALLBACK_ENABLED`: `true`일 때만 callback/token exchange가 동작한다.
+- `OSMU_ENTERPRISE_AUTH_OIDC_TOKEN_URI`: authorization code token exchange endpoint다.
+- `OSMU_ENTERPRISE_AUTH_OIDC_JWKS_URI`: `id_token` RS256 signature 검증용 JWKS endpoint다.
+- `OSMU_ENTERPRISE_AUTH_OIDC_CLIENT_SECRET`: confidential client secret이다. 비어 있으면 token request body에서 제외한다.
+- `OSMU_ENTERPRISE_AUTH_ALLOWED_DOMAINS`: email domain allowlist다. 비어 있으면 domain 제한을 적용하지 않는다.
+- `OSMU_ENTERPRISE_AUTH_JIT_PROVISIONING_ENABLED`: callback 자동 JIT enablement gate다. 기본값은 `false`이며 현재 권장 경계는 admin-only `jit-provision` apply다.
+
+### POST /api/auth/ldap/login
+
+LDAP/Active Directory bind/search login adapter다. `OSMU_ENTERPRISE_AUTH_LDAP_LOGIN_ENABLED=true`와 LDAP URL/base DN/search filter가 모두 준비된 경우에만 동작한다. Directory password는 OSMU에 저장하지 않으며, LDAP user DN bind가 성공하고 LDAP email attribute가 기존 `ACTIVE` local user email과 매칭될 때만 OSMU access/refresh token을 발급한다.
+
+Request:
+
+```json
+{
+  "loginId": "admin",
+  "password": "directory-password"
+}
+```
+
+Response는 `/api/auth/login`과 같은 `LoginResponse`다.
+
+Properties:
+
+- `OSMU_ENTERPRISE_AUTH_LDAP_LOGIN_ENABLED`: `true`일 때만 LDAP login adapter가 동작한다.
+- `OSMU_ENTERPRISE_AUTH_LDAP_URL`: `ldap://` 또는 `ldaps://` directory endpoint다.
+- `OSMU_ENTERPRISE_AUTH_LDAP_BIND_DN`, `OSMU_ENTERPRISE_AUTH_LDAP_BIND_PASSWORD`: user search용 service bind 계정이다. 비어 있으면 anonymous search를 시도한다.
+- `OSMU_ENTERPRISE_AUTH_LDAP_BASE_DN`: user search base DN이다.
+- `OSMU_ENTERPRISE_AUTH_LDAP_USER_SEARCH_FILTER`: `{0}` placeholder를 포함해야 하며 loginId를 안전하게 bind parameter로 전달한다.
+- `OSMU_ENTERPRISE_AUTH_LDAP_EMAIL_ATTRIBUTE`: local user email mapping에 사용할 attribute다. 기본값은 `mail`이다.
+- `OSMU_ENTERPRISE_AUTH_LDAP_DISPLAY_NAME_ATTRIBUTE`: display name attribute다. 기본값은 `displayName`이다.
+- `OSMU_ENTERPRISE_AUTH_LDAP_CONNECT_TIMEOUT_MS`, `OSMU_ENTERPRISE_AUTH_LDAP_READ_TIMEOUT_MS`: LDAP 연결/read timeout이다.
+- `OSMU_ENTERPRISE_AUTH_ALLOWED_DOMAINS`: LDAP email domain allowlist에도 적용된다.
 
 ### POST /api/auth/refresh
 
@@ -2424,6 +2526,188 @@ Access Key 여러 개를 한 번에 비활성화한다.
 ### GET /api/admin/usage
 
 전체 사용량 조회.
+
+### GET /api/admin/security/enterprise-auth-plan
+
+Enterprise SSO/OIDC/LDAP 도입 전 현재 인증 경계와 claim mapping plan을 조회한다. 현재 활성 login mode는 `LOCAL_PASSWORD`이며, OIDC/LDAP는 plan/readiness 상태로만 노출한다. `ADMIN`은 조회 가능하고, `AUDITOR`도 보안 검토용 read-only route로 조회할 수 있다.
+
+Response:
+
+```json
+{
+  "data": {
+    "status": "LOCAL_ONLY",
+    "currentLoginMode": "LOCAL_PASSWORD",
+    "activeLoginModes": ["LOCAL_PASSWORD"],
+    "plannedExternalModes": ["OIDC", "LDAP"],
+    "externalProviderConfigured": false,
+    "oidc": {
+      "status": "NOT_CONFIGURED",
+      "issuerUri": "",
+      "clientIdConfigured": false
+    },
+    "ldap": {
+      "status": "NOT_CONFIGURED",
+      "url": "",
+      "baseDn": ""
+    },
+    "claimMapping": {
+      "subjectClaim": "sub",
+      "emailClaim": "email",
+      "nameClaim": "name",
+      "roleClaim": "osmu_roles",
+      "organizationClaim": "osmu_org",
+      "teamClaim": "osmu_teams",
+      "allowedDomains": [],
+      "jitProvisioningEnabled": false
+    },
+    "roleMappings": [
+      {
+        "externalValue": "osmu-admins",
+        "osmuRole": "ADMIN",
+        "scopeRule": "Global administration"
+      }
+    ],
+    "gates": [
+      {
+        "key": "login-cutover",
+        "status": "REVIEW",
+        "detail": "Local password login remains the only active login mode until callback, state, nonce, and PKCE tests exist."
+      }
+    ],
+    "nextImplementationSteps": [
+      "Add OIDC authorization-code callback with state, nonce, PKCE, and issuer validation."
+    ],
+    "generatedAt": "2026-06-19T00:00:00Z"
+  }
+}
+```
+
+Properties:
+
+- `OSMU_ENTERPRISE_AUTH_OIDC_ISSUER_URI`, `OSMU_ENTERPRISE_AUTH_OIDC_CLIENT_ID`: 설정되면 `oidc.status=CONFIGURED`, 전체 `status=PLAN_READY`로 바뀐다.
+- `OSMU_ENTERPRISE_AUTH_LDAP_URL`, `OSMU_ENTERPRISE_AUTH_LDAP_BASE_DN`: 설정되면 `ldap.status=CONFIGURED`, 전체 `status=PLAN_READY`로 바뀐다.
+- `OSMU_ENTERPRISE_AUTH_LDAP_LOGIN_ENABLED`: LDAP bind/search adapter gate인 `ldap-bind-search` 상태를 계산한다.
+- `OSMU_ENTERPRISE_AUTH_CLAIMS_ROLES`, `OSMU_ENTERPRISE_AUTH_CLAIMS_ORGANIZATION`, `OSMU_ENTERPRISE_AUTH_CLAIMS_TEAMS`: 외부 IdP claim과 `ADMIN`/`ORG_ADMIN`/`AUDITOR`/`USER`, organization, team RBAC 연결 기준이다.
+- OIDC callback/token exchange/JWKS 검증은 `callback-enabled` flag와 기존 local user email mapping이 준비된 경우에만 동작한다. LDAP bind/search adapter는 `ldap.login-enabled` flag와 기존 local user email mapping이 준비된 경우에만 동작한다. OIDC claim preview/audit과 admin-approved JIT apply는 admin-only로 지원한다. callback 자동 JIT provisioning은 아직 활성화하지 않는다. 이 API는 enterprise auth plan과 운영 gate를 노출하는 read-only contract다.
+
+추가 enterprise OIDC start gate property: `OSMU_ENTERPRISE_AUTH_OIDC_AUTHORIZATION_ENABLED`, `OSMU_ENTERPRISE_AUTH_OIDC_AUTHORIZATION_URI`, `OSMU_ENTERPRISE_AUTH_OIDC_REDIRECT_URI`가 모두 준비되면 `oidc-authorization-request` gate가 `SUCCESS`가 된다.
+
+### POST /api/admin/security/enterprise-auth/claim-preview
+
+OIDC/JIT provisioning 활성화 전 sample claim을 관리자 권한으로 preview하고 audit event를 남긴다. 실제 user 생성, role 변경, organization/team 연결은 수행하지 않는다. claim preview는 PII가 포함될 수 있으므로 `ADMIN`만 호출한다.
+
+Request:
+
+```json
+{
+  "claims": {
+    "sub": "oidc-admin-1",
+    "email": "admin@example.com",
+    "name": "Admin From IdP",
+    "osmu_roles": ["osmu-admins"],
+    "osmu_org": "platform",
+    "osmu_teams": ["media", "ai"]
+  }
+}
+```
+
+Response:
+
+```json
+{
+  "data": {
+    "status": "MATCHED_EXISTING_USER",
+    "subject": "oidc-admin-1",
+    "email": "admin@example.com",
+    "name": "Admin From IdP",
+    "roleClaimValues": ["osmu-admins"],
+    "mappedRoles": ["ADMIN"],
+    "primaryRole": "ADMIN",
+    "organizationClaimValue": "platform",
+    "teamClaimValues": ["media", "ai"],
+    "allowedDomainMatched": true,
+    "existingUser": {
+      "id": 1,
+      "loginId": "admin",
+      "role": "ADMIN",
+      "status": "ACTIVE"
+    },
+    "jitProvisioningRequired": false,
+    "adminApprovalRequired": false,
+    "warnings": [],
+    "generatedAt": "2026-06-19T00:00:00Z",
+    "auditLogId": 100
+  }
+}
+```
+
+Status values:
+
+- `MATCHED_EXISTING_USER`: email claim이 기존 `ACTIVE` local user와 매칭된다.
+- `REQUIRES_ADMIN_APPROVAL`: allowed domain은 통과했지만 local user가 없어 JIT provisioning 승인 대상이다.
+- `REJECTED_DOMAIN`: email domain이 allowlist에 없다.
+- `MISSING_REQUIRED_CLAIM`: subject 또는 email claim이 없다.
+
+Audit:
+
+- 성공/검토 모두 `OIDC_CLAIM_PREVIEW` audit event를 남긴다.
+- `targetId`는 email claim이 있으면 email, 없으면 subject를 사용한다.
+- audit message에는 status, primary role, JIT 필요 여부만 남기고 raw claim payload는 저장하지 않는다.
+
+### POST /api/admin/security/enterprise-auth/jit-provision
+
+OIDC claim preview 후 관리자가 승인한 신규 local user를 생성한다. OIDC callback 자체는 자동 user 생성을 하지 않으며, 이 endpoint는 `ADMIN`만 호출할 수 있다. Backend는 전달된 claim을 다시 preview해서 required claim, allowed domain, existing user 상태를 재검증한다.
+
+Request:
+
+```json
+{
+  "claims": {
+    "sub": "oidc-user-1",
+    "email": "jit.user@example.com",
+    "name": "JIT User",
+    "osmu_roles": ["external-users"]
+  },
+  "approvedRole": "USER",
+  "organizationId": null,
+  "approvePrivilegedRole": false,
+  "reason": "pilot onboarding"
+}
+```
+
+Response:
+
+```json
+{
+  "data": {
+    "status": "PROVISIONED",
+    "user": {
+      "id": 2,
+      "loginId": "jit.user",
+      "email": "jit.user@example.com",
+      "name": "JIT User",
+      "role": "USER",
+      "status": "ACTIVE",
+      "organizationId": null
+    },
+    "approvedRole": "USER",
+    "organizationId": null,
+    "privilegedRoleApproved": false,
+    "auditLogId": 101
+  }
+}
+```
+
+Rules:
+
+- `REJECTED_DOMAIN` 또는 `MISSING_REQUIRED_CLAIM` preview 결과는 `VALIDATION_ERROR`로 거부한다.
+- 기존 `ACTIVE` local user가 같은 email로 있으면 새로 만들지 않고 `ALREADY_PROVISIONED`를 반환한다.
+- `approvedRole`은 `USER`, `ADMIN`, `ORG_ADMIN`, `AUDITOR` 중 하나여야 한다.
+- `ADMIN`, `ORG_ADMIN`, `AUDITOR`는 mapped OIDC role에 포함되어야 하며 `approvePrivilegedRole=true`가 필요하다. `USER`는 downgrade 승인용으로 허용한다.
+- `ORG_ADMIN` provisioning은 존재하는 `organizationId`가 필요하다.
+- 생성된 local user password는 backend가 random hash로만 저장하며 응답하지 않는다.
+- 성공 시 `OIDC_JIT_PROVISION` audit event를 남기고 raw claim payload는 저장하지 않는다.
 
 ### GET /api/admin/monitoring/data-flow
 

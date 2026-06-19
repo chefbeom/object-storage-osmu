@@ -4,8 +4,16 @@ param(
     [string] $ApiSpecPath = ".\dev-docs\api-spec.md",
     [string] $FrontendDesignPath = ".\dev-docs\frontend-design.md",
     [string] $AdminRbacPolicyPath = ".\osmu-backend\src\main\java\com\example\osmu\auth\AdminRbacPolicy.java",
+    [string] $EnterpriseAuthPlanServicePath = ".\osmu-backend\src\main\java\com\example\osmu\auth\EnterpriseAuthPlanService.java",
+    [string] $OidcAuthorizationServicePath = ".\osmu-backend\src\main\java\com\example\osmu\auth\OidcAuthorizationService.java",
+    [string] $OidcClaimPreviewServicePath = ".\osmu-backend\src\main\java\com\example\osmu\auth\OidcClaimPreviewService.java",
+    [string] $OidcJitProvisioningServicePath = ".\osmu-backend\src\main\java\com\example\osmu\auth\OidcJitProvisioningService.java",
+    [string] $OidcLoginServicePath = ".\osmu-backend\src\main\java\com\example\osmu\auth\OidcLoginService.java",
+    [string] $OidcIdTokenVerifierPath = ".\osmu-backend\src\main\java\com\example\osmu\auth\OidcIdTokenVerifier.java",
+    [string] $LdapLoginServicePath = ".\osmu-backend\src\main\java\com\example\osmu\auth\LdapLoginService.java",
     [string] $DashboardLayoutServicePath = ".\osmu-backend\src\main\java\com\example\osmu\dashboard\DashboardLayoutService.java",
-    [string] $HomeViewPath = ".\osmu-frontend\src\views\HomeView.vue"
+    [string] $HomeViewPath = ".\osmu-frontend\src\views\HomeView.vue",
+    [string] $AdminPagePath = ".\osmu-frontend\src\components\admin\AdminPage.vue"
 )
 
 $ErrorActionPreference = "Stop"
@@ -53,6 +61,14 @@ Assert-Contains $matrix 'PATCH /api/admin/users/{userId}/status' "IAM/RBAC matri
 Assert-Contains $matrix 'GET /api/admin/organizations/usage' "IAM/RBAC matrix"
 Assert-Contains $matrix 'GET/POST /api/admin/teams' "IAM/RBAC matrix"
 Assert-Contains $matrix '`TEAM` subject' "IAM/RBAC matrix"
+Assert-Contains $matrix 'GET /api/admin/security/enterprise-auth-plan' "IAM/RBAC matrix"
+Assert-Contains $matrix 'POST /api/admin/security/enterprise-auth/claim-preview' "IAM/RBAC matrix"
+Assert-Contains $matrix 'POST /api/admin/security/enterprise-auth/jit-provision' "IAM/RBAC matrix"
+Assert-Contains $matrix 'AdminEnterpriseAuthPlanControllerTest' "IAM/RBAC matrix"
+Assert-Contains $matrix 'OidcClaimPreviewServiceTest' "IAM/RBAC matrix"
+Assert-Contains $matrix 'OidcJitProvisioningServiceTest' "IAM/RBAC matrix"
+Assert-Contains $matrix 'OidcLoginServiceTest' "IAM/RBAC matrix"
+Assert-Contains $matrix 'LdapLoginServiceTest' "IAM/RBAC matrix"
 Assert-Contains $matrix '/api/admin/storage-expansion/**' "IAM/RBAC matrix"
 Assert-Contains $matrix 'POST /api/admin/backup/restore-drill-evidence' "IAM/RBAC matrix"
 Assert-Contains $matrix 'Audit read-only' "IAM/RBAC matrix"
@@ -63,6 +79,8 @@ Assert-Contains $matrix 'DashboardLayoutControllerTest' "IAM/RBAC matrix"
 
 $securityDesign = Read-RequiredFile $SecurityDesignPath "Security design"
 Assert-Contains $securityDesign "AdminRbacPolicy" "Security design"
+Assert-Contains $securityDesign "EnterpriseAuthPlanService" "Security design"
+Assert-Contains $securityDesign "osmu_roles" "Security design"
 Assert-Contains $securityDesign "Dashboard widget catalog/layout/preset" "Security design"
 
 $apiSpec = Read-RequiredFile $ApiSpecPath "API spec"
@@ -72,9 +90,26 @@ Assert-Contains $apiSpec 'adminOnly=true' "API spec"
 Assert-Contains $apiSpec 'allowedRoles' "API spec"
 Assert-Contains $apiSpec 'accessMode' "API spec"
 Assert-Contains $apiSpec 'GET /api/admin/teams' "API spec"
+Assert-Contains $apiSpec 'GET /api/admin/security/enterprise-auth-plan' "API spec"
+Assert-Contains $apiSpec 'POST /api/admin/security/enterprise-auth/claim-preview' "API spec"
+Assert-Contains $apiSpec 'POST /api/admin/security/enterprise-auth/jit-provision' "API spec"
+Assert-Contains $apiSpec 'GET /api/auth/oidc/authorize' "API spec"
+Assert-Contains $apiSpec 'GET /api/auth/oidc/callback' "API spec"
+Assert-Contains $apiSpec 'POST /api/auth/ldap/login' "API spec"
+Assert-Contains $apiSpec 'OSMU_ENTERPRISE_AUTH_OIDC_ISSUER_URI' "API spec"
+Assert-Contains $apiSpec 'OSMU_ENTERPRISE_AUTH_OIDC_AUTHORIZATION_ENABLED' "API spec"
+Assert-Contains $apiSpec 'OSMU_ENTERPRISE_AUTH_OIDC_CALLBACK_ENABLED' "API spec"
+Assert-Contains $apiSpec 'OSMU_ENTERPRISE_AUTH_OIDC_JWKS_URI' "API spec"
+Assert-Contains $apiSpec 'OSMU_ENTERPRISE_AUTH_JIT_PROVISIONING_ENABLED' "API spec"
+Assert-Contains $apiSpec 'OSMU_ENTERPRISE_AUTH_LDAP_LOGIN_ENABLED' "API spec"
 Assert-Contains $apiSpec '`subjectType`은 `USER`, `ORGANIZATION`, `TEAM`을 지원한다.' "API spec"
 
 $frontendDesign = Read-RequiredFile $FrontendDesignPath "Frontend design"
+Assert-Contains $frontendDesign 'getEnterpriseAuthPlan' "Frontend design"
+Assert-Contains $frontendDesign 'completeOidcCallback' "Frontend design"
+Assert-Contains $frontendDesign 'loginWithLdap' "Frontend design"
+Assert-Contains $frontendDesign 'previewEnterpriseAuthClaims' "Frontend design"
+Assert-Contains $frontendDesign 'provisionEnterpriseAuthUser' "Frontend design"
 Assert-Contains $frontendDesign 'adminOnly' "Frontend design"
 Assert-Contains $frontendDesign 'dashboard palette catalog와 저장 layout은 role 기준으로 필터링한다.' "Frontend design"
 
@@ -88,7 +123,50 @@ Assert-Contains $adminRbacPolicy 'RouteRule.exact("GET", "/api/admin/teams")' "A
 Assert-Contains $adminRbacPolicy 'RouteRule.pattern("PUT", "^/api/admin/teams/\\d+/members$")' "Admin RBAC policy"
 Assert-Contains $adminRbacPolicy 'AUDITOR_ALLOWED_ROUTES' "Admin RBAC policy"
 Assert-Contains $adminRbacPolicy 'RouteRule.exact("GET", "/api/admin/audit-logs")' "Admin RBAC policy"
+Assert-Contains $adminRbacPolicy 'RouteRule.exact("GET", "/api/admin/security/enterprise-auth-plan")' "Admin RBAC policy"
 Assert-Contains $adminRbacPolicy 'RouteRule.exact("GET", "/api/admin/dashboard/summary")' "Admin RBAC policy"
+
+$enterpriseAuthPlanService = Read-RequiredFile $EnterpriseAuthPlanServicePath "Enterprise auth plan service"
+Assert-Contains $enterpriseAuthPlanService 'List.of("OIDC", "LDAP")' "Enterprise auth plan service"
+Assert-Contains $enterpriseAuthPlanService 'osmu_roles' "Enterprise auth plan service"
+Assert-Contains $enterpriseAuthPlanService 'osmu_org' "Enterprise auth plan service"
+Assert-Contains $enterpriseAuthPlanService 'osmu_teams' "Enterprise auth plan service"
+Assert-Contains $enterpriseAuthPlanService 'oidc-authorization-request' "Enterprise auth plan service"
+Assert-Contains $enterpriseAuthPlanService 'oidc-callback-validation' "Enterprise auth plan service"
+Assert-Contains $enterpriseAuthPlanService 'ldap-bind-search' "Enterprise auth plan service"
+
+$oidcAuthorizationService = Read-RequiredFile $OidcAuthorizationServicePath "OIDC authorization service"
+Assert-Contains $oidcAuthorizationService 'code_challenge_method' "OIDC authorization service"
+Assert-Contains $oidcAuthorizationService '"S256"' "OIDC authorization service"
+Assert-Contains $oidcAuthorizationService 'states.put(state' "OIDC authorization service"
+Assert-Contains $oidcAuthorizationService 'consumeState' "OIDC authorization service"
+
+$oidcClaimPreviewService = Read-RequiredFile $OidcClaimPreviewServicePath "OIDC claim preview service"
+Assert-Contains $oidcClaimPreviewService 'MATCHED_EXISTING_USER' "OIDC claim preview service"
+Assert-Contains $oidcClaimPreviewService 'REQUIRES_ADMIN_APPROVAL' "OIDC claim preview service"
+Assert-Contains $oidcClaimPreviewService 'allowedDomainMatched' "OIDC claim preview service"
+
+$oidcJitProvisioningService = Read-RequiredFile $OidcJitProvisioningServicePath "OIDC JIT provisioning service"
+Assert-Contains $oidcJitProvisioningService 'approvePrivilegedRole' "OIDC JIT provisioning service"
+Assert-Contains $oidcJitProvisioningService 'OIDC email domain is not allowed.' "OIDC JIT provisioning service"
+Assert-Contains $oidcJitProvisioningService 'Organization is required for ORG_ADMIN provisioning.' "OIDC JIT provisioning service"
+Assert-Contains $oidcJitProvisioningService 'randomPassword' "OIDC JIT provisioning service"
+
+$oidcLoginService = Read-RequiredFile $OidcLoginServicePath "OIDC login service"
+Assert-Contains $oidcLoginService 'exchangeAuthorizationCode' "OIDC login service"
+Assert-Contains $oidcLoginService 'findByEmail' "OIDC login service"
+Assert-Contains $oidcLoginService 'ACTIVE' "OIDC login service"
+
+$oidcIdTokenVerifier = Read-RequiredFile $OidcIdTokenVerifierPath "OIDC id token verifier"
+Assert-Contains $oidcIdTokenVerifier '"RS256"' "OIDC id token verifier"
+Assert-Contains $oidcIdTokenVerifier 'SHA256withRSA' "OIDC id token verifier"
+Assert-Contains $oidcIdTokenVerifier 'audienceContains' "OIDC id token verifier"
+
+$ldapLoginService = Read-RequiredFile $LdapLoginServicePath "LDAP login service"
+Assert-Contains $ldapLoginService 'osmu.enterprise-auth.ldap.login-enabled' "LDAP login service"
+Assert-Contains $ldapLoginService 'LdapSearchRequest' "LDAP login service"
+Assert-Contains $ldapLoginService 'LdapBindRequest' "LDAP login service"
+Assert-Contains $ldapLoginService 'LDAP user is not provisioned.' "LDAP login service"
 
 $dashboardLayoutService = Read-RequiredFile $DashboardLayoutServicePath "Dashboard layout service"
 Assert-Contains $dashboardLayoutService 'isWidgetAllowedForUser' "Dashboard layout service"
@@ -108,6 +186,13 @@ Assert-Contains $homeView 'dashboardWidgetAllowedRoles' "HomeView"
 Assert-Contains $homeView 'getTeams' "HomeView"
 Assert-Contains $homeView 'createTeam' "HomeView"
 Assert-Contains $homeView 'deleteTeam' "HomeView"
+Assert-Contains $homeView 'getEnterpriseAuthPlan' "HomeView"
+Assert-Contains $homeView 'enterpriseAuthPlan' "HomeView"
+
+$adminPage = Read-RequiredFile $AdminPagePath "AdminPage"
+Assert-Contains $adminPage 'Enterprise auth plan' "AdminPage"
+Assert-Contains $adminPage 'enterpriseAuthStatus' "AdminPage"
+Assert-Contains $adminPage 'osmu_roles' "AdminPage"
 
 Write-Host "IAM/RBAC matrix verified."
 Write-Host "Matrix: $(Resolve-ProjectPath $MatrixPath)"

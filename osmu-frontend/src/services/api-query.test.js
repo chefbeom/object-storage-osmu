@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
   clearAuthTokens,
+  completeOidcCallback,
   cleanupObjectShareLinks,
   applyDashboardLayoutPreset,
   createObjectShareLink,
@@ -25,16 +26,21 @@ import {
   getDashboardSummary,
   getDashboardWidgetCatalog,
   getDataFlowMonitoring,
+  getEnterpriseAuthPlan,
   getObjectMetadata,
   getObjectShareAnalytics,
   getObjectSharePolicy,
   getObjectShareLinks,
   getObjects,
+  getOidcAuthorizationRequest,
   getS3ClientConfig,
   getTeams,
   getUsers,
   importDashboardLayoutPreset,
   importDashboardLayoutPresetBundle,
+  loginWithLdap,
+  previewEnterpriseAuthClaims,
+  provisionEnterpriseAuthUser,
   saveDashboardLayout,
   saveDashboardLayoutDefault,
   saveObjectSharePolicy,
@@ -59,6 +65,173 @@ test('getDashboardSummary reads admin dashboard aggregate endpoint', async () =>
     assert.equal(fetchMock.calls[0].url, 'http://localhost:8080/api/admin/dashboard/summary')
     assert.equal(fetchMock.calls[0].options.method, undefined)
     assert.equal(result.data.usage.usedBytes, 256)
+  } finally {
+    cleanupFetch(fetchMock)
+  }
+})
+
+test('getEnterpriseAuthPlan reads admin security plan endpoint', async () => {
+  const fetchMock = mockFetch([
+    () => jsonResponse({
+      data: {
+        status: 'LOCAL_ONLY',
+        currentLoginMode: 'LOCAL_PASSWORD',
+        plannedExternalModes: ['OIDC', 'LDAP'],
+      },
+    }),
+  ])
+
+  try {
+    const result = await getEnterpriseAuthPlan()
+
+    assert.equal(fetchMock.calls[0].url, 'http://localhost:8080/api/admin/security/enterprise-auth-plan')
+    assert.equal(fetchMock.calls[0].options.method, undefined)
+    assert.equal(result.data.currentLoginMode, 'LOCAL_PASSWORD')
+  } finally {
+    cleanupFetch(fetchMock)
+  }
+})
+
+test('previewEnterpriseAuthClaims posts sample claims for admin review', async () => {
+  const fetchMock = mockFetch([
+    () => jsonResponse({
+      data: {
+        status: 'MATCHED_EXISTING_USER',
+        email: 'admin@example.com',
+        primaryRole: 'ADMIN',
+        auditLogId: 12,
+      },
+    }),
+  ])
+
+  try {
+    const result = await previewEnterpriseAuthClaims({
+      sub: 'oidc-admin-1',
+      email: 'admin@example.com',
+      osmu_roles: ['osmu-admins'],
+    })
+
+    assert.equal(fetchMock.calls[0].url, 'http://localhost:8080/api/admin/security/enterprise-auth/claim-preview')
+    assert.equal(fetchMock.calls[0].options.method, 'POST')
+    assert.deepEqual(JSON.parse(fetchMock.calls[0].options.body), {
+      claims: {
+        sub: 'oidc-admin-1',
+        email: 'admin@example.com',
+        osmu_roles: ['osmu-admins'],
+      },
+    })
+    assert.equal(result.data.primaryRole, 'ADMIN')
+  } finally {
+    cleanupFetch(fetchMock)
+  }
+})
+
+test('provisionEnterpriseAuthUser posts admin-approved OIDC JIT payload', async () => {
+  const fetchMock = mockFetch([
+    () => jsonResponse({
+      data: {
+        status: 'PROVISIONED',
+        user: { loginId: 'jit.user', email: 'jit.user@example.com', role: 'USER' },
+        approvedRole: 'USER',
+        auditLogId: 21,
+      },
+    }),
+  ])
+
+  try {
+    const payload = {
+      claims: {
+        sub: 'oidc-user-1',
+        email: 'jit.user@example.com',
+        osmu_roles: ['external-users'],
+      },
+      approvedRole: 'USER',
+      approvePrivilegedRole: false,
+      reason: 'pilot onboarding',
+    }
+    const result = await provisionEnterpriseAuthUser(payload)
+
+    assert.equal(fetchMock.calls[0].url, 'http://localhost:8080/api/admin/security/enterprise-auth/jit-provision')
+    assert.equal(fetchMock.calls[0].options.method, 'POST')
+    assert.deepEqual(JSON.parse(fetchMock.calls[0].options.body), payload)
+    assert.equal(result.data.user.loginId, 'jit.user')
+  } finally {
+    cleanupFetch(fetchMock)
+  }
+})
+
+test('loginWithLdap posts LDAP credentials to public login adapter', async () => {
+  const fetchMock = mockFetch([
+    () => jsonResponse({
+      data: {
+        accessToken: 'jwt',
+        refreshToken: 'refresh',
+        user: { loginId: 'admin', role: 'ADMIN' },
+      },
+    }),
+  ])
+
+  try {
+    const result = await loginWithLdap('admin', 'ldap password')
+
+    assert.equal(fetchMock.calls[0].url, 'http://localhost:8080/api/auth/ldap/login')
+    assert.equal(fetchMock.calls[0].options.method, 'POST')
+    assert.deepEqual(JSON.parse(fetchMock.calls[0].options.body), {
+      loginId: 'admin',
+      password: 'ldap password',
+    })
+    assert.equal(result.data.user.role, 'ADMIN')
+  } finally {
+    cleanupFetch(fetchMock)
+  }
+})
+
+test('getOidcAuthorizationRequest reads public OIDC start endpoint', async () => {
+  const fetchMock = mockFetch([
+    () => jsonResponse({
+      data: {
+        authorizationUrl: 'https://idp.example.com/auth?response_type=code',
+        state: 'state-1',
+        nonce: 'nonce-1',
+        codeChallenge: 'challenge-1',
+        codeChallengeMethod: 'S256',
+        redirectUri: 'http://localhost:5173/auth/oidc/callback',
+        scopes: ['openid', 'profile', 'email'],
+      },
+    }),
+  ])
+
+  try {
+    const result = await getOidcAuthorizationRequest()
+
+    assert.equal(fetchMock.calls[0].url, 'http://localhost:8080/api/auth/oidc/authorize')
+    assert.equal(fetchMock.calls[0].options.method, undefined)
+    assert.equal(result.data.codeChallengeMethod, 'S256')
+  } finally {
+    cleanupFetch(fetchMock)
+  }
+})
+
+test('completeOidcCallback reads public OIDC callback endpoint with code and state', async () => {
+  const fetchMock = mockFetch([
+    () => jsonResponse({
+      data: {
+        accessToken: 'jwt',
+        refreshToken: 'refresh',
+        user: { loginId: 'admin', role: 'ADMIN' },
+      },
+    }),
+  ])
+
+  try {
+    const result = await completeOidcCallback('auth code', 'state 1')
+
+    const url = new URL(fetchMock.calls[0].url)
+    assert.equal(url.origin + url.pathname, 'http://localhost:8080/api/auth/oidc/callback')
+    assert.equal(url.searchParams.get('code'), 'auth code')
+    assert.equal(url.searchParams.get('state'), 'state 1')
+    assert.equal(fetchMock.calls[0].options.method, undefined)
+    assert.equal(result.data.user.role, 'ADMIN')
   } finally {
     cleanupFetch(fetchMock)
   }

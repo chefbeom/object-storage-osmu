@@ -163,6 +163,9 @@ Run "powershell -ExecutionPolicy Bypass -File .\scripts\verify-operations-eviden
 Step "Operations evidence plan invocation check"
 Run "powershell -ExecutionPolicy Bypass -File .\scripts\verify-operations-evidence-plan-invocation.ps1"
 
+Step "Enterprise auth smoke plan check"
+Run "powershell -ExecutionPolicy Bypass -File .\scripts\verify-enterprise-auth-smoke-plan.ps1"
+
 Step "Operations invocation unblock plan check"
 Run "powershell -ExecutionPolicy Bypass -File .\scripts\verify-operations-invocation-unblock-plan.ps1"
 

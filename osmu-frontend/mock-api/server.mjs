@@ -48,6 +48,7 @@ function createInitialState() {
         updatedAt: new Date().toISOString(),
       },
     ],
+    userSequence: 3,
     teamSequence: 2,
     storageProfileAssignments: new Map(),
     storageProfileRequests: [],
@@ -206,6 +207,27 @@ async function handleRequest(request, response) {
     const user = userForLogin(loginId)
     state.auditLogs.unshift(auditLog('LOGIN_SUCCESS', 'AUTH', loginId, 'SUCCESS', user.loginId))
     sendJson(response, 200, apiData(authPayload(user)))
+    return
+  }
+  if (request.method === 'POST' && path === '/auth/ldap/login') {
+    const loginId = jsonBody.loginId || 'admin'
+    const user = userForLogin(loginId)
+    state.auditLogs.unshift(auditLog('LOGIN_LDAP', 'AUTH', loginId, 'SUCCESS', user.loginId))
+    sendJson(response, 200, apiData(authPayload(user)))
+    return
+  }
+  if (request.method === 'GET' && path === '/auth/oidc/authorize') {
+    sendJson(response, 200, apiData(oidcAuthorizationRequest()))
+    return
+  }
+  if (request.method === 'GET' && path === '/auth/oidc/callback') {
+    const code = url.searchParams.get('code') || ''
+    const callbackState = url.searchParams.get('state') || ''
+    if (!code || !callbackState) {
+      sendJson(response, 400, { error: { code: 'VALIDATION_ERROR', message: 'OIDC code and state are required.' } })
+      return
+    }
+    sendJson(response, 200, apiData(authPayload(adminUser())))
     return
   }
   if (request.method === 'POST' && path === '/auth/refresh') {
@@ -454,6 +476,22 @@ function handleAdminRoute(request, response, path, jsonBody, url) {
     sendJson(response, 200, apiItems([]))
     return
   }
+  if (request.method === 'GET' && path === '/admin/security/enterprise-auth-plan') {
+    sendJson(response, 200, apiData(enterpriseAuthPlan()))
+    return
+  }
+  if (request.method === 'POST' && path === '/admin/security/enterprise-auth/claim-preview') {
+    const preview = enterpriseAuthClaimPreview(jsonBody.claims || {})
+    state.auditLogs.unshift(auditLog('OIDC_CLAIM_PREVIEW', 'OIDC_CLAIM', preview.email || preview.subject || 'unknown', 'SUCCESS'))
+    sendJson(response, 200, apiData(preview))
+    return
+  }
+  if (request.method === 'POST' && path === '/admin/security/enterprise-auth/jit-provision') {
+    const provision = enterpriseAuthJitProvision(jsonBody)
+    state.auditLogs.unshift(auditLog('OIDC_JIT_PROVISION', 'USER', provision.user.loginId, 'SUCCESS'))
+    sendJson(response, 200, apiData(provision))
+    return
+  }
   if (request.method === 'GET' && path === '/admin/teams') {
     const organizationId = Number(url.searchParams.get('organizationId') || 0)
     const teams = organizationId
@@ -652,6 +690,121 @@ function developerUser() {
     role: 'USER',
     organizationId: 1,
     status: 'ACTIVE',
+  }
+}
+
+function enterpriseAuthPlan() {
+  return {
+    status: 'LOCAL_ONLY',
+    currentLoginMode: 'LOCAL_PASSWORD',
+    activeLoginModes: ['LOCAL_PASSWORD'],
+    plannedExternalModes: ['OIDC', 'LDAP'],
+    externalProviderConfigured: false,
+    oidc: { status: 'NOT_CONFIGURED', issuerUri: '', clientIdConfigured: false },
+    ldap: { status: 'NOT_CONFIGURED', url: '', baseDn: '' },
+    claimMapping: {
+      subjectClaim: 'sub',
+      emailClaim: 'email',
+      nameClaim: 'name',
+      roleClaim: 'osmu_roles',
+      organizationClaim: 'osmu_org',
+      teamClaim: 'osmu_teams',
+      allowedDomains: [],
+      jitProvisioningEnabled: false,
+    },
+    roleMappings: [
+      { externalValue: 'osmu-admins', osmuRole: 'ADMIN', scopeRule: 'Global administration' },
+      { externalValue: 'osmu-org-admins', osmuRole: 'ORG_ADMIN', scopeRule: 'Organization claim must match managed organization' },
+      { externalValue: 'osmu-auditors', osmuRole: 'AUDITOR', scopeRule: 'Read-only audit and status routes' },
+      { externalValue: '*', osmuRole: 'USER', scopeRule: 'Default role when no privileged mapping matches' },
+    ],
+    gates: [
+      { key: 'provider-metadata', status: 'REVIEW', detail: 'Configure OIDC or LDAP provider before pilot login.' },
+      { key: 'oidc-authorization-request', status: 'REVIEW', detail: 'Enable OIDC authorization-code start only after provider metadata and redirect URI are configured.' },
+      { key: 'ldap-bind-search', status: 'REVIEW', detail: 'Enable LDAP bind/search only after directory smoke evidence is ready.' },
+      { key: 'claim-mapping', status: 'SUCCESS', detail: 'Role, organization, and team claims are mapped.' },
+      { key: 'login-cutover', status: 'REVIEW', detail: 'Local password login remains the only active login mode.' },
+    ],
+    nextImplementationSteps: [
+      'Run OIDC callback smoke before replacing local-only login.',
+      'Run LDAP bind/search smoke before replacing local-only login.',
+    ],
+    generatedAt: new Date().toISOString(),
+  }
+}
+
+function oidcAuthorizationRequest() {
+  const stateValue = randomUUID()
+  const nonce = randomUUID()
+  const codeChallenge = randomUUID().replaceAll('-', '')
+  const redirectUri = 'http://localhost:5173/auth/oidc/callback'
+  const params = new URLSearchParams({
+    response_type: 'code',
+    client_id: 'osmu-web',
+    redirect_uri: redirectUri,
+    scope: 'openid profile email',
+    state: stateValue,
+    nonce,
+    code_challenge: codeChallenge,
+    code_challenge_method: 'S256',
+  })
+  return {
+    authorizationUrl: `https://idp.example.com/realms/osmu/protocol/openid-connect/auth?${params.toString()}`,
+    state: stateValue,
+    nonce,
+    codeChallenge,
+    codeChallengeMethod: 'S256',
+    redirectUri,
+    scopes: ['openid', 'profile', 'email'],
+    expiresAt: new Date(Date.now() + 300000).toISOString(),
+  }
+}
+
+function enterpriseAuthClaimPreview(claims = {}) {
+  const email = String(claims.email || '').trim().toLowerCase()
+  const roleValues = Array.isArray(claims.osmu_roles) ? claims.osmu_roles : Array.isArray(claims.groups) ? claims.groups : []
+  const mappedRoles = roleValues.includes('osmu-admins') ? ['ADMIN'] : roleValues.includes('osmu-org-admins') ? ['ORG_ADMIN'] : ['USER']
+  const matchedAdmin = email === 'admin@example.com'
+  return {
+    status: matchedAdmin ? 'MATCHED_EXISTING_USER' : 'REQUIRES_ADMIN_APPROVAL',
+    subject: String(claims.sub || ''),
+    email,
+    name: String(claims.name || ''),
+    roleClaimValues: roleValues,
+    mappedRoles,
+    primaryRole: mappedRoles[0],
+    organizationClaimValue: String(claims.osmu_org || claims.department || ''),
+    teamClaimValues: Array.isArray(claims.osmu_teams) ? claims.osmu_teams : Array.isArray(claims.teams) ? claims.teams : [],
+    allowedDomainMatched: !email || email.endsWith('@example.com'),
+    existingUser: matchedAdmin ? { id: 1, loginId: 'admin', role: 'ADMIN', status: 'ACTIVE' } : null,
+    jitProvisioningRequired: !matchedAdmin,
+    adminApprovalRequired: !matchedAdmin,
+    warnings: matchedAdmin ? [] : ['No ACTIVE local user matches this email; JIT provisioning would require admin approval.'],
+    generatedAt: new Date().toISOString(),
+    auditLogId: state.auditLogs.length + 1,
+  }
+}
+
+function enterpriseAuthJitProvision(payload = {}) {
+  const preview = enterpriseAuthClaimPreview(payload.claims || {})
+  const loginId = preview.existingUser?.loginId || (preview.email.split('@')[0] || 'oidc-user').replace(/[^a-z0-9._-]/gi, '.').toLowerCase()
+  const approvedRole = String(payload.approvedRole || preview.primaryRole || 'USER').toUpperCase()
+  return {
+    status: preview.existingUser ? 'ALREADY_PROVISIONED' : 'PROVISIONED',
+    user: {
+      id: preview.existingUser?.id || state.userSequence++,
+      loginId,
+      email: preview.email,
+      name: preview.name || loginId,
+      role: approvedRole,
+      status: 'ACTIVE',
+      organizationId: payload.organizationId || null,
+    },
+    preview,
+    approvedRole,
+    organizationId: payload.organizationId || null,
+    privilegedRoleApproved: Boolean(payload.approvePrivilegedRole),
+    auditLogId: state.auditLogs.length + 1,
   }
 }
 

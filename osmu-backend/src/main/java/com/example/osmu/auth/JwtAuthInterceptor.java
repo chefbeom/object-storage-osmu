@@ -100,6 +100,9 @@ public class JwtAuthInterceptor implements HandlerInterceptor {
                 || "/api/storage/health".equals(uri)
                 || "/api/database/health".equals(uri)
                 || "/api/auth/login".equals(uri)
+                || "/api/auth/ldap/login".equals(uri)
+                || "/api/auth/oidc/authorize".equals(uri)
+                || "/api/auth/oidc/callback".equals(uri)
                 || "/api/auth/refresh".equals(uri)
                 || uri.startsWith("/api/public/share-links/");
     }

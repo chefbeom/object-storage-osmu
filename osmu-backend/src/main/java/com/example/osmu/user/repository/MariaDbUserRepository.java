@@ -110,6 +110,28 @@ public class MariaDbUserRepository implements UserRepository {
     }
 
     @Override
+    public Optional<UserAccount> findByEmail(String email) {
+        ensureSchema();
+        String sql = """
+                SELECT id, login_id, email, name, password_hash, role, status, organization_id
+                FROM users
+                WHERE email = ?
+                """;
+        try (Connection connection = connect();
+             PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setString(1, email);
+            try (ResultSet resultSet = statement.executeQuery()) {
+                if (resultSet.next()) {
+                    return Optional.of(mapRow(resultSet));
+                }
+                return Optional.empty();
+            }
+        } catch (SQLException exception) {
+            throw databaseException(exception);
+        }
+    }
+
+    @Override
     public boolean existsByLoginId(String loginId) {
         ensureSchema();
         String sql = "SELECT 1 FROM users WHERE login_id = ? LIMIT 1";

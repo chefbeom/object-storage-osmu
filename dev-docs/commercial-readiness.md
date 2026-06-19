@@ -59,10 +59,11 @@ This draft keeps B2B sales, licensing, and pilot packaging decisions visible whi
 - Kubernetes HA/DR readiness report is generated as `.osmu-run/latest-kubernetes-ha-dr-readiness.json` from the target namespace through `.github/workflows/kubernetes-ha-dr-readiness-ci.yml` or the operations readiness finalizer.
 - Secret/certificate rotation executed in the target environment.
 - Monitoring alerts connected to a real Prometheus/Alertmanager/Grafana stack.
-- SSO/LDAP or enterprise auth plan implemented or explicitly scoped out.
+- SSO/LDAP or enterprise auth plan implemented or explicitly scoped out. Current code exposes the enterprise auth plan through `GET /api/admin/security/enterprise-auth-plan`, claim preview/audit through `POST /api/admin/security/enterprise-auth/claim-preview`, admin-approved JIT provisioning through `POST /api/admin/security/enterprise-auth/jit-provision`, OIDC authorization request start through `GET /api/auth/oidc/authorize`, callback/token exchange/JWKS validation through `GET /api/auth/oidc/callback`, and LDAP bind/search login through `POST /api/auth/ldap/login`; real IdP/directory smoke remains a production follow-up.
+- Enterprise auth target smoke evidence is generated as `.osmu-run/latest-enterprise-auth-smoke.json` with `result=passed` from the customer or pilot IdP/directory through `scripts/write-enterprise-auth-smoke-plan.ps1` or `.github/workflows/enterprise-auth-smoke-ci.yml`, or the enterprise auth scope is explicitly deferred in the pilot contract.
 - Security review, dependency/vulnerability review, and signed image evidence complete.
-- Operations readiness artifact import report is generated as `.osmu-run/latest-operations-readiness-artifact-import.json` when evidence is assembled from prior workflow artifacts.
-- Operations readiness finalizer report is generated as `.osmu-run/latest-operations-readiness-finalize.json` and the underlying operations readiness result is `ready`.
+- Operations readiness artifact import report is generated as `.osmu-run/latest-operations-readiness-artifact-import.json` when evidence is assembled from prior workflow artifacts, including enterprise auth smoke evidence when provided.
+- Operations readiness finalizer report is generated as `.osmu-run/latest-operations-readiness-finalize.json` and the underlying operations readiness result is `ready`; operations readiness includes the enterprise auth target smoke evidence check.
 - Pricing, terms, support SLA, and license agreement approved.
 
 ## Current Status
@@ -71,4 +72,5 @@ This draft keeps B2B sales, licensing, and pilot packaging decisions visible whi
 - Pilot packaging: drafted.
 - License model: drafted.
 - Pricing tiers: drafted.
+- Enterprise auth plan: implemented as local-only plan/readiness API plus OIDC claim preview/audit, admin-approved JIT provisioning, authorization URL start, callback validation for existing local users, LDAP bind/search adapter for existing local users, a guarded enterprise auth smoke evidence helper, and a manual GitHub Actions smoke workflow. Real target directory smoke result is pending.
 - Final legal/commercial approval: pending.

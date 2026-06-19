@@ -10,9 +10,11 @@ import com.example.osmu.user.repository.UserRepository;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import java.util.Map;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
@@ -22,6 +24,9 @@ public class AuthController {
     private final AuthContext authContext;
     private final AuditLogService auditLogService;
     private final JwtTokenService jwtTokenService;
+    private final LdapLoginService ldapLoginService;
+    private final OidcAuthorizationService oidcAuthorizationService;
+    private final OidcLoginService oidcLoginService;
     private final PasswordService passwordService;
     private final RefreshTokenService refreshTokenService;
     private final UserRepository userRepository;
@@ -30,6 +35,9 @@ public class AuthController {
             AuthContext authContext,
             AuditLogService auditLogService,
             JwtTokenService jwtTokenService,
+            LdapLoginService ldapLoginService,
+            OidcAuthorizationService oidcAuthorizationService,
+            OidcLoginService oidcLoginService,
             PasswordService passwordService,
             RefreshTokenService refreshTokenService,
             UserRepository userRepository
@@ -37,6 +45,9 @@ public class AuthController {
         this.authContext = authContext;
         this.auditLogService = auditLogService;
         this.jwtTokenService = jwtTokenService;
+        this.ldapLoginService = ldapLoginService;
+        this.oidcAuthorizationService = oidcAuthorizationService;
+        this.oidcLoginService = oidcLoginService;
         this.passwordService = passwordService;
         this.refreshTokenService = refreshTokenService;
         this.userRepository = userRepository;
@@ -59,6 +70,43 @@ public class AuthController {
                 refreshTokenService.issue(profile),
                 profile
         ));
+    }
+
+    @PostMapping("/ldap/login")
+    public ApiResponse<LoginResponse> ldapLogin(
+            @Valid @RequestBody LdapLoginRequest request,
+            HttpServletRequest httpRequest
+    ) {
+        try {
+            LoginResponse response = ldapLoginService.login(request);
+            auditLogService.record(
+                    "LOGIN_LDAP",
+                    response.user().loginId(),
+                    "USER",
+                    response.user().loginId(),
+                    "SUCCESS",
+                    "LDAP user login",
+                    httpRequest
+            );
+            return ApiResponse.of(response);
+        } catch (ApiException exception) {
+            String targetId = request == null || request.loginId() == null ? "unknown" : request.loginId();
+            auditLogService.record("LOGIN_LDAP", "anonymous", "USER", targetId, "FAIL", "LDAP login failed", httpRequest);
+            throw exception;
+        }
+    }
+
+    @GetMapping("/oidc/authorize")
+    public ApiResponse<OidcAuthorizationResponse> oidcAuthorize() {
+        return ApiResponse.of(oidcAuthorizationService.beginAuthorization());
+    }
+
+    @GetMapping("/oidc/callback")
+    public ApiResponse<LoginResponse> oidcCallback(
+            @RequestParam String code,
+            @RequestParam String state
+    ) {
+        return ApiResponse.of(oidcLoginService.completeAuthorization(code, state));
     }
 
     @PostMapping("/refresh")

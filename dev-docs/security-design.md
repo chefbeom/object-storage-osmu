@@ -66,10 +66,25 @@ MVP:
 
 향후:
 
-- SSO
-- LDAP
+- SSO/OIDC login callback 구현
+- LDAP/Active Directory bind/search adapter 구현
 - Active Directory
 - MFA
+
+Enterprise auth plan:
+
+- `POST /api/auth/ldap/login`은 public LDAP bind/search adapter다. `OSMU_ENTERPRISE_AUTH_LDAP_LOGIN_ENABLED=true`와 LDAP URL/base DN/search filter가 설정된 경우에만 동작한다. service bind 또는 anonymous search로 user DN/email을 찾고, user DN으로 bind해 password를 검증한 뒤 기존 `ACTIVE` local user email과 매칭될 때만 OSMU JWT/refresh token을 발급한다.
+- `GET /api/auth/oidc/authorize`는 public OIDC 시작 endpoint다. `OSMU_ENTERPRISE_AUTH_OIDC_AUTHORIZATION_ENABLED=true`와 issuer/client/authorization URI/redirect URI가 모두 있을 때만 authorization URL을 만들며, `state`, `nonce`, PKCE `code_challenge`를 반환한다. `code_verifier`는 backend state store에만 저장한다.
+- `GET /api/auth/oidc/callback`은 저장된 state를 consume해 replay를 차단하고, token endpoint에 `code_verifier`를 포함해 authorization code를 교환한 뒤 JWKS `RS256` 서명, `iss`, `aud`, `exp`, `nonce`를 검증한다. 검증된 email claim이 기존 `ACTIVE` local user email과 매칭되고 allowed domain 정책을 통과할 때만 OSMU JWT/refresh token을 발급한다.
+- `POST /api/admin/security/enterprise-auth/claim-preview`는 admin-only sample claim preview다. role/org/team/email mapping, allowed domain, existing local user match, JIT approval 필요 여부를 계산하고 `OIDC_CLAIM_PREVIEW` audit event를 남긴다. raw claim payload는 audit log에 저장하지 않는다.
+- `POST /api/admin/security/enterprise-auth/jit-provision`은 admin-only JIT apply endpoint다. 같은 claim preview 결과를 다시 계산하고 allowed domain/required claim을 통과한 경우에만 local user를 생성한다. `ADMIN`, `ORG_ADMIN`, `AUDITOR` 생성은 `approvePrivilegedRole=true`가 있어야 하며 `ORG_ADMIN`은 organization id가 필요하다. `OIDC_JIT_PROVISION` audit event에는 승인 role과 결과 요약만 남기고 raw claim payload는 저장하지 않는다.
+
+- `GET /api/admin/security/enterprise-auth-plan`은 현재 활성 login mode가 `LOCAL_PASSWORD`임을 명시하고, OIDC/LDAP는 plan/readiness 상태로만 노출한다.
+- `EnterpriseAuthPlanService`는 `OSMU_ENTERPRISE_AUTH_OIDC_ISSUER_URI`, `OSMU_ENTERPRISE_AUTH_OIDC_CLIENT_ID`, `OSMU_ENTERPRISE_AUTH_LDAP_URL`, `OSMU_ENTERPRISE_AUTH_LDAP_BASE_DN` 설정을 읽어 provider readiness를 계산한다.
+- 기본 claim mapping은 `sub`, `email`, `name`, `osmu_roles`, `osmu_org`, `osmu_teams`이다. role mapping은 `osmu-admins -> ADMIN`, `osmu-org-admins -> ORG_ADMIN`, `osmu-auditors -> AUDITOR`, default `USER`로 고정한다.
+- OIDC callback은 JIT user 자동 생성을 하지 않는다. 신규 사용자는 admin claim preview와 `jit-provision` apply를 거친 뒤에만 local user로 생성된다.
+- OIDC callback/token exchange/JWKS 검증, LDAP bind/search login adapter, claim preview/audit, JIT provisioning apply는 구현되어 있지만 flag와 admin review 경계로 분리되어 있다. 실제 IdP/directory smoke 전까지 local password login은 유지한다.
+- `scripts/write-enterprise-auth-smoke-plan.ps1`은 실제 IdP/LDAP 연결 검증을 위한 `.osmu-run/latest-enterprise-auth-smoke.json`/Markdown evidence를 생성한다. 기본값은 plan-only라 HTTP 요청을 실행하지 않으며, `-Execute`와 필요한 credential/state가 명시된 경우에만 OIDC/LDAP smoke를 수행한다. evidence에는 admin password, LDAP password, access/refresh token, OIDC authorization code/state, raw claim JSON을 기록하지 않는다.
 
 ## 3. 인가
 
@@ -100,7 +115,7 @@ MVP:
 - `ORG_ADMIN`은 자기 조직 일반 `USER` 생성/비활성화만 가능하다.
 - `ORG_ADMIN` 허용 route는 `GET/POST /api/admin/users`, `PATCH /api/admin/users/{userId}/status`, `GET /api/admin/organizations`, `GET /api/admin/organizations/usage`로 제한한다.
 - `ORG_ADMIN`은 감사 로그, 전체 시스템 usage, system status, storage expansion, backup/restore drill, quota policy 같은 global admin API에는 접근할 수 없다.
-- `AUDITOR`는 감사 로그, usage/status, dashboard summary/readiness, backup status와 restore drill evidence 조회만 가능하다. 사용자/조직/쿼터/증설/복구 증거 기록 같은 변경성 admin API는 차단한다.
+- `AUDITOR`는 감사 로그, usage/status, enterprise auth plan, dashboard summary/readiness, backup status와 restore drill evidence 조회만 가능하다. 사용자/조직/쿼터/증설/복구 증거 기록 같은 변경성 admin API는 차단한다.
 - Dashboard widget catalog/layout/preset 응답은 role 기준으로 필터링한다. `requests` audit widget은 `ADMIN`과 `AUDITOR`에게 read-only로 노출되며, admin operation widget은 `ADMIN`에게만 노출된다. 현재 role의 `allowedRoles` 밖 widget을 직접 저장 요청에 넣으면 `AUTHORIZATION_FAILED`로 차단한다.
 
 ## 4. 버킷 보안

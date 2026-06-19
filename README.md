@@ -91,11 +91,12 @@ Frontend는 MariaDB나 MinIO에 직접 접근하지 않습니다. Backend API만
 - Access Key: one-time secret, bucket scope, 권한 분리, revoke/bulk disable, MinIO policy 연동 초안.
 - 조직/팀 RBAC: `ADMIN`/`ORG_ADMIN`/`AUDITOR`/`USER` 역할, 조직별 사용자/팀 관리, `TEAM` bucket permission, 권한 회수 시 Access Key policy 재동기화.
 - Lifecycle/Retention: rule dry-run, conflict report, S3 lifecycle XML import/export, version/trash retention cleanup.
-- 공유/보안: object share link, password/IP 제한, usage limit, cleanup, analytics.
+- 공유/보안: object share link, password/IP 제한, usage limit, cleanup, analytics, enterprise auth plan.
 - Dashboard: widget catalog, layout preset, system/backup/quota/share/readiness/data-flow 요약.
 - Monitoring: data-flow event 저장, filter, CSV export, source/operation trend chart, Prometheus/Grafana starter artifact.
 - Storage Expansion: 증설 요청, dry-run/apply/rollback runner, GitOps artifact, execution history.
 - Operations Readiness: evidence plan, invocation unblock, dispatch preflight, workflow run id, artifact import/finalizer, convergence report.
+- Enterprise Auth Evidence: OIDC/LDAP smoke plan과 target IdP/directory evidence를 operations readiness blocker로 추적.
 
 ## 저장소 구조
 
@@ -250,6 +251,14 @@ powershell -ExecutionPolicy Bypass -File .\scripts\verify-s3-client-smoke.ps1 -C
 powershell -ExecutionPolicy Bypass -File .\scripts\verify-s3-client-smoke.ps1 -Client docker-mc -RequireClient
 ```
 
+Enterprise auth smoke plan:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\write-enterprise-auth-smoke-plan.ps1
+powershell -ExecutionPolicy Bypass -File .\scripts\verify-enterprise-auth-smoke-plan.ps1
+gh workflow run enterprise-auth-smoke-ci.yml -f run_live=true -f api_base=<api-base> -f admin_login_id=<admin> -f require_oidc=true -f require_ldap=true
+```
+
 ## 문서 진입점
 
 - `dev-docs/document-index.md`: 전체 문서 색인.
@@ -267,6 +276,8 @@ powershell -ExecutionPolicy Bypass -File .\scripts\verify-s3-client-smoke.ps1 -C
 
 검증 script는 실행 결과를 `.osmu-run` 아래 JSON/Markdown evidence로 저장합니다. 이 디렉터리는 로컬 실행 산출물이며 git에 포함하지 않습니다. Dashboard readiness API는 일부 evidence 파일을 읽어 운영자가 현재 blocker, 다음 명령, finalizer 상태를 웹 포털에서 볼 수 있게 합니다.
 
+Enterprise auth는 `scripts/write-enterprise-auth-smoke-plan.ps1` 또는 `.github/workflows/enterprise-auth-smoke-ci.yml`로 OIDC authorization/callback, LDAP bind/search login, claim preview/JIT approval, audit log 확인 계획을 `.osmu-run/latest-enterprise-auth-smoke.json`과 Markdown으로 남깁니다. 기본 plan-only 모드는 HTTP 요청을 실행하지 않으며, 실제 IdP/LDAP smoke는 운영자가 `-Execute` 또는 workflow `run_live=true`와 필요한 credential/state를 명시한 경우에만 수행합니다. evidence에는 admin password, LDAP password, token, OIDC code/state, raw claim JSON을 기록하지 않습니다.
+
 ## 개발 기준
 
 - 구현 기준은 `dev-docs`와 `PRODUCT_REQUIREMENTS.md`입니다.
@@ -278,7 +289,7 @@ powershell -ExecutionPolicy Bypass -File .\scripts\verify-s3-client-smoke.ps1 -C
 ## 다음 개발 축
 
 - 실제 Kubernetes cluster와 GitHub-hosted workflow evidence 수집.
-- 관리자/감사자/조직 관리자 워크플로우와 SSO/OIDC 연동 검토.
+- 관리자/감사자/조직 관리자 워크플로우 보강, 실제 IdP/LDAP pilot smoke 실행과 `.osmu-run/latest-enterprise-auth-smoke.json` evidence 확보.
 - data-flow 장기 analytics를 위한 partition 또는 time-series 저장소 연동.
 - tenant billing/chargeback을 위한 요금 정책, 비용 리포트, 임계치 모델링.
 - S3 대체성 유지: host `aws`/`mc`, boto3, AWS SDK smoke에서 실제 사용 흐름이 깨지는 경우만 우선 보강하고, AWS 세부 parity 추적은 제품 영향이 확인될 때만 수행한다.
