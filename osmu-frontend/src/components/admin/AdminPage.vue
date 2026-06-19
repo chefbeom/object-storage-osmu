@@ -248,6 +248,7 @@
       :is-admin="isAdmin"
       :chargeback-options="chargebackOptions"
       :chargeback-preview="chargebackPreview"
+      :chargeback-alerts="chargebackAlerts"
       :billing-pricing-policy="billingPricingPolicy"
       :format-bytes="formatBytes"
       :format-date-time="formatDateTime"
@@ -437,6 +438,7 @@ const props = defineProps({
   enterpriseAuthPlan: { type: Object, required: true },
   chargebackOptions: { type: Object, required: true },
   chargebackPreview: { type: Object, required: true },
+  chargebackAlerts: { type: Object, required: true },
   billingPricingPolicy: { type: Object, required: true },
   quotaPolicyForm: { type: Object, required: true },
   quotaPolicyTargetOptions: { type: Array, required: true },

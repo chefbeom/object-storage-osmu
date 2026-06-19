@@ -353,6 +353,7 @@
         :enterprise-auth-plan="enterpriseAuthPlan"
         :chargeback-options="chargebackOptions"
         :chargeback-preview="chargebackPreview"
+        :chargeback-alerts="chargebackAlerts"
         :billing-pricing-policy="billingPricingPolicy"
         :quota-policy-form="quotaPolicyForm"
         :quota-policy-target-options="quotaPolicyTargetOptions"
@@ -400,7 +401,7 @@
         @save-object-share-policy="handleSaveObjectSharePolicy"
         @refresh-object-share-analytics="refreshObjectShareAnalytics"
         @update-chargeback-option="updateChargebackOption"
-        @refresh-chargeback-preview="loadChargebackPreview"
+        @refresh-chargeback-preview="loadChargebackPanel"
         @reset-chargeback-options="handleResetChargebackOptions"
         @save-billing-pricing-policy="handleSaveBillingPricingPolicy"
         @export-chargeback-csv="handleExportChargebackCsv"
@@ -548,6 +549,7 @@ import {
   getBucketStorageProfile,
   getBucketTags,
   getBuckets,
+  getChargebackAlerts,
   getDatabaseHealth,
   getDashboardLayout,
   getDashboardLayoutDefaults,
@@ -770,6 +772,8 @@ const defaultChargebackOptions = Object.freeze({
   egressGbRate: '0',
   internalGbRate: '0',
   operationThousandRate: '0',
+  warningAmount: '0',
+  criticalAmount: '0',
   eventScanLimit: 10000,
 })
 const chargebackRateFields = [
@@ -1203,6 +1207,7 @@ const users = ref([])
 const organizations = ref([])
 const organizationUsages = ref([])
 const chargebackPreview = ref(defaultChargebackPreview())
+const chargebackAlerts = ref(defaultChargebackAlerts())
 const billingPricingPolicy = ref(defaultBillingPricingPolicy())
 const teams = ref([])
 const quotaPolicies = ref([])
@@ -2270,7 +2275,7 @@ async function loadDashboard(options = {}) {
       teams.value = teamResult.items || []
       syncTeamFormDefaults()
       await loadBillingPricingPolicy()
-      await loadChargebackPreview()
+      await loadChargebackPanel()
     } else {
       users.value = []
       organizations.value = []
@@ -2278,6 +2283,7 @@ async function loadDashboard(options = {}) {
       teams.value = []
       resetBillingPricingPolicy()
       resetChargebackPreview()
+      resetChargebackAlerts()
     }
 
     if (isAdmin.value) {
@@ -2415,12 +2421,27 @@ async function loadChargebackPreview() {
   }
 }
 
+async function loadChargebackAlerts() {
+  if (!canUseAdminTools.value) {
+    resetChargebackAlerts()
+    return
+  }
+  const result = await safeRequest(() => getChargebackAlerts(chargebackPreviewPayload()), null)
+  if (result?.data) {
+    applyChargebackAlerts(result.data)
+  }
+}
+
+async function loadChargebackPanel() {
+  await Promise.all([loadChargebackPreview(), loadChargebackAlerts()])
+}
+
 async function handleSaveBillingPricingPolicy() {
   if (!isAdmin.value) return
   const result = await runAction(() => saveBillingPricingPolicy(billingPricingPolicyPayload()))
   if (result?.data) {
     applyBillingPricingPolicy(result.data)
-    await loadChargebackPreview()
+    await loadChargebackPanel()
     setStatusMessage('Billing pricing policy saved.')
   }
 }
@@ -2618,6 +2639,7 @@ function resetAdminOnlyState() {
   resetBillingPricingPolicy()
   resetChargebackOptions()
   resetChargebackPreview()
+  resetChargebackAlerts()
 }
 
 function resetUploadRuntime() {
@@ -3592,6 +3614,8 @@ function defaultBillingPricingPolicy() {
     egressGbRate: Number(defaultChargebackOptions.egressGbRate),
     internalGbRate: Number(defaultChargebackOptions.internalGbRate),
     operationThousandRate: Number(defaultChargebackOptions.operationThousandRate),
+    warningAmount: Number(defaultChargebackOptions.warningAmount),
+    criticalAmount: Number(defaultChargebackOptions.criticalAmount),
     eventScanLimit: defaultChargebackOptions.eventScanLimit,
     updatedAt: '',
   }
@@ -3607,6 +3631,8 @@ function applyBillingPricingPolicy(data = {}, syncOptions = true) {
     egressGbRate: Number(data.egressGbRate ?? fallback.egressGbRate),
     internalGbRate: Number(data.internalGbRate ?? fallback.internalGbRate),
     operationThousandRate: Number(data.operationThousandRate ?? fallback.operationThousandRate),
+    warningAmount: Number(data.warningAmount ?? fallback.warningAmount),
+    criticalAmount: Number(data.criticalAmount ?? fallback.criticalAmount),
     eventScanLimit: Number(data.eventScanLimit || fallback.eventScanLimit),
   }
   if (syncOptions) {
@@ -3622,6 +3648,8 @@ function syncChargebackOptionsFromPolicy() {
   chargebackOptions.egressGbRate = String(policy.egressGbRate ?? defaultChargebackOptions.egressGbRate)
   chargebackOptions.internalGbRate = String(policy.internalGbRate ?? defaultChargebackOptions.internalGbRate)
   chargebackOptions.operationThousandRate = String(policy.operationThousandRate ?? defaultChargebackOptions.operationThousandRate)
+  chargebackOptions.warningAmount = String(policy.warningAmount ?? defaultChargebackOptions.warningAmount)
+  chargebackOptions.criticalAmount = String(policy.criticalAmount ?? defaultChargebackOptions.criticalAmount)
   chargebackOptions.eventScanLimit = Number(policy.eventScanLimit || defaultChargebackOptions.eventScanLimit)
 }
 
@@ -3673,6 +3701,37 @@ function applyChargebackPreview(data = {}) {
 
 function resetChargebackPreview() {
   applyChargebackPreview({})
+}
+
+function defaultChargebackAlerts() {
+  return {
+    currency: defaultChargebackOptions.currency,
+    warningAmount: Number(defaultChargebackOptions.warningAmount),
+    criticalAmount: Number(defaultChargebackOptions.criticalAmount),
+    alertCount: 0,
+    warningCount: 0,
+    criticalCount: 0,
+    organizations: [],
+    generatedAt: '',
+  }
+}
+
+function applyChargebackAlerts(data = {}) {
+  const fallback = defaultChargebackAlerts()
+  chargebackAlerts.value = {
+    ...fallback,
+    ...data,
+    warningAmount: Number(data.warningAmount ?? fallback.warningAmount),
+    criticalAmount: Number(data.criticalAmount ?? fallback.criticalAmount),
+    alertCount: Number(data.alertCount || 0),
+    warningCount: Number(data.warningCount || 0),
+    criticalCount: Number(data.criticalCount || 0),
+    organizations: Array.isArray(data.organizations) ? data.organizations : [],
+  }
+}
+
+function resetChargebackAlerts() {
+  applyChargebackAlerts({})
 }
 
 function applyDashboardReadiness(data) {
@@ -5070,7 +5129,7 @@ function resetChargebackOptions() {
 
 async function handleResetChargebackOptions() {
   resetChargebackOptions()
-  await loadChargebackPreview()
+  await loadChargebackPanel()
 }
 
 function dataFlowFilterPayload() {
@@ -5107,6 +5166,8 @@ function billingPricingPolicyPayload() {
     egressGbRate: normalizedChargebackNumber(chargebackOptions.egressGbRate, 0),
     internalGbRate: normalizedChargebackNumber(chargebackOptions.internalGbRate, 0),
     operationThousandRate: normalizedChargebackNumber(chargebackOptions.operationThousandRate, 0),
+    warningAmount: normalizedChargebackNumber(chargebackOptions.warningAmount, 0),
+    criticalAmount: normalizedChargebackNumber(chargebackOptions.criticalAmount, 0),
     eventScanLimit: normalizedChargebackNumber(chargebackOptions.eventScanLimit, defaultChargebackOptions.eventScanLimit),
     reason: 'Admin billing panel policy update',
   }

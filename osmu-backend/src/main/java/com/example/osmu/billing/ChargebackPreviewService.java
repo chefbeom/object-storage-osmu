@@ -202,6 +202,27 @@ public class ChargebackPreviewService {
         return csv.toString();
     }
 
+    public ChargebackAlertResponse alerts(AuthenticatedUser actor, ChargebackPreviewRequest request) {
+        ChargebackPreviewResponse preview = preview(actor, request);
+        BillingPricingPolicy pricingPolicy = pricingPolicyService.current();
+        BigDecimal warningAmount = money(pricingPolicy.warningAmount());
+        BigDecimal criticalAmount = money(pricingPolicy.criticalAmount());
+        List<ChargebackAlertOrganizationResponse> alerts = preview.organizations().stream()
+                .map(organization -> alertFor(organization, warningAmount, criticalAmount))
+                .filter(alert -> alert != null)
+                .toList();
+        return new ChargebackAlertResponse(
+                preview.currency(),
+                warningAmount,
+                criticalAmount,
+                alerts.size(),
+                alerts.stream().filter(alert -> "WARNING".equals(alert.severity())).count(),
+                alerts.stream().filter(alert -> "CRITICAL".equals(alert.severity())).count(),
+                alerts,
+                OffsetDateTime.now()
+        );
+    }
+
     private List<OrganizationRecord> visibleOrganizations(AuthenticatedUser actor) {
         if (actor == null) {
             throw new ApiException(ApiErrorCode.AUTHENTICATION_REQUIRED, "Authentication required.");
@@ -279,6 +300,27 @@ public class ChargebackPreviewService {
     private static String csvCell(Object value) {
         String text = value == null ? "" : String.valueOf(value);
         return "\"" + text.replace("\"", "\"\"").replace("\r", " ").replace("\n", " ") + "\"";
+    }
+
+    private static ChargebackAlertOrganizationResponse alertFor(
+            ChargebackOrganizationPreviewResponse organization,
+            BigDecimal warningAmount,
+            BigDecimal criticalAmount
+    ) {
+        BigDecimal estimatedCost = money(organization.estimatedTotalCost());
+        boolean critical = criticalAmount.compareTo(BigDecimal.ZERO) > 0 && estimatedCost.compareTo(criticalAmount) >= 0;
+        boolean warning = warningAmount.compareTo(BigDecimal.ZERO) > 0 && estimatedCost.compareTo(warningAmount) >= 0;
+        if (!critical && !warning) {
+            return null;
+        }
+        return new ChargebackAlertOrganizationResponse(
+                organization.organizationId(),
+                organization.organizationName(),
+                critical ? "CRITICAL" : "WARNING",
+                estimatedCost,
+                warningAmount,
+                criticalAmount
+        );
     }
 
     private static final class OrganizationAccumulator {

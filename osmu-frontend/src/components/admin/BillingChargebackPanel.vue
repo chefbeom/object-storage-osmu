@@ -76,6 +76,24 @@
         @input="updateOption('operationThousandRate', $event.target.value)"
       />
       <input
+        data-testid="chargeback-warning-threshold-input"
+        min="0"
+        step="0.000001"
+        type="number"
+        :value="chargebackOptions.warningAmount"
+        placeholder="warning amount"
+        @input="updateOption('warningAmount', $event.target.value)"
+      />
+      <input
+        data-testid="chargeback-critical-threshold-input"
+        min="0"
+        step="0.000001"
+        type="number"
+        :value="chargebackOptions.criticalAmount"
+        placeholder="critical amount"
+        @input="updateOption('criticalAmount', $event.target.value)"
+      />
+      <input
         data-testid="chargeback-event-limit-input"
         min="1"
         max="50000"
@@ -143,10 +161,36 @@
       <li>
         <span class="list-main">
           <b>Policy</b>
-          <small>{{ formatDateTime(billingPricingPolicy.updatedAt) || '-' }}</small>
+          <small>{{ formatDateTime(billingPricingPolicy.updatedAt) || '-' }} / warn {{ formatMoney(alerts.warningAmount, alerts.currency) }} / critical {{ formatMoney(alerts.criticalAmount, alerts.currency) }}</small>
         </span>
         <strong>{{ billingPricingPolicy.currency || preview.currency || chargebackOptions.currency }}</strong>
       </li>
+    </ul>
+
+    <div class="compact-metrics chargeback-alert-metrics" data-testid="chargeback-alert-metrics">
+      <div>
+        <span>Alerts</span>
+        <b data-testid="chargeback-alert-count">{{ formatCount(alerts.alertCount) }}</b>
+      </div>
+      <div>
+        <span>Warning</span>
+        <b data-testid="chargeback-warning-count">{{ formatCount(alerts.warningCount) }}</b>
+      </div>
+      <div>
+        <span>Critical</span>
+        <b data-testid="chargeback-critical-count">{{ formatCount(alerts.criticalCount) }}</b>
+      </div>
+    </div>
+
+    <ul class="compact-list chargeback-alert-list" data-testid="chargeback-alert-list">
+      <li v-for="alert in alertOrganizations" :key="alert.organizationId" data-testid="chargeback-alert-row">
+        <span class="list-main">
+          <b>{{ alert.organizationName }}</b>
+          <small>{{ formatMoney(alert.estimatedTotalCost, alerts.currency) }} / warn {{ formatMoney(alert.warningAmount, alerts.currency) }} / critical {{ formatMoney(alert.criticalAmount, alerts.currency) }}</small>
+        </span>
+        <strong :class="['status-pill', alert.severity === 'CRITICAL' ? 'down' : 'mock']">{{ alert.severity }}</strong>
+      </li>
+      <li v-if="alertOrganizations.length === 0" class="empty">No chargeback threshold alerts.</li>
     </ul>
 
     <div class="table-wrap chargeback-table-wrap">
@@ -197,6 +241,7 @@ const props = defineProps({
   isAdmin: { type: Boolean, required: true },
   chargebackOptions: { type: Object, required: true },
   chargebackPreview: { type: Object, required: true },
+  chargebackAlerts: { type: Object, required: true },
   billingPricingPolicy: { type: Object, required: true },
   formatBytes: { type: Function, required: true },
   formatDateTime: { type: Function, required: true },
@@ -211,9 +256,13 @@ const emit = defineEmits([
 ])
 
 const preview = computed(() => props.chargebackPreview || {})
+const alerts = computed(() => props.chargebackAlerts || {})
 const rates = computed(() => preview.value.rates || {})
 const organizations = computed(() => (
   Array.isArray(preview.value.organizations) ? preview.value.organizations : []
+))
+const alertOrganizations = computed(() => (
+  Array.isArray(alerts.value.organizations) ? alerts.value.organizations : []
 ))
 
 function updateOption(field, value) {
@@ -229,9 +278,9 @@ function formatRate(value) {
   return amount.toLocaleString(undefined, { maximumFractionDigits: 6 })
 }
 
-function formatMoney(value) {
+function formatMoney(value, currencyValue = '') {
   const amount = Number(value || 0)
-  const currency = String(preview.value.currency || props.chargebackOptions.currency || 'USD').toUpperCase()
+  const currency = String(currencyValue || preview.value.currency || props.chargebackOptions.currency || 'USD').toUpperCase()
   return `${currency} ${amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 6 })}`
 }
 

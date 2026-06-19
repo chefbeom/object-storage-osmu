@@ -24,7 +24,7 @@ Authorization: Bearer <accessToken>
 
 관리자 API인 `/api/admin/**`는 기본적으로 `ADMIN` role이 필요하다.
 예외적으로 `ORG_ADMIN`은 조직 스코프가 적용된 사용자/조직 조회 API만 접근할 수 있다.
-현재 허용 route는 `GET/POST /api/admin/users`, `PATCH /api/admin/users/{userId}/status`, `GET /api/admin/organizations`, `GET /api/admin/organizations/usage`, `GET /api/admin/billing/pricing-policy`, `GET /api/admin/billing/chargeback-preview`, `GET /api/admin/billing/chargeback-preview/export.csv`, `GET/POST /api/admin/teams`, `PUT /api/admin/teams/{teamId}/members`, `DELETE /api/admin/teams/{teamId}`이다.
+현재 허용 route는 `GET/POST /api/admin/users`, `PATCH /api/admin/users/{userId}/status`, `GET /api/admin/organizations`, `GET /api/admin/organizations/usage`, `GET /api/admin/billing/pricing-policy`, `GET /api/admin/billing/chargeback-preview`, `GET /api/admin/billing/chargeback-alerts`, `GET /api/admin/billing/chargeback-preview/export.csv`, `GET/POST /api/admin/teams`, `PUT /api/admin/teams/{teamId}/members`, `DELETE /api/admin/teams/{teamId}`이다.
 `AUDITOR`는 read-only 감사/상태 조회 role이다. 허용 route는 `GET /api/admin/audit-logs`, `GET /api/admin/audit-logs/export.csv`, `GET /api/admin/usage`, `GET /api/admin/system/status`, `GET /api/admin/security/enterprise-auth-plan`, `GET /api/admin/dashboard/summary`, `GET /api/admin/dashboard/readiness`, `GET /api/admin/backup/status`, `GET /api/admin/backup/restore-drill-evidence`로 제한한다.
 
 일반 사용자는 본인이 소유한 bucket, object, access key만 접근할 수 있다. `ADMIN`은 전체 리소스에 접근할 수 있다.
@@ -2543,6 +2543,8 @@ Response:
     "egressGbRate": 0.01,
     "internalGbRate": 0,
     "operationThousandRate": 0.004,
+    "warningAmount": 2000,
+    "criticalAmount": 3000,
     "eventScanLimit": 10000,
     "updatedAt": "2026-06-20T00:00:00Z"
   }
@@ -2563,6 +2565,8 @@ Request:
   "egressGbRate": 0.2,
   "internalGbRate": 0.05,
   "operationThousandRate": 0.01,
+  "warningAmount": 2000,
+  "criticalAmount": 3000,
   "eventScanLimit": 10000,
   "reason": "pilot cost model update"
 }
@@ -2572,6 +2576,7 @@ Validation:
 
 - `currency` is normalized to uppercase and can be at most 12 characters.
 - rates must be zero or greater and are stored with 6 decimal places.
+- `warningAmount` and `criticalAmount` are saved as preview alert thresholds. `0` disables that severity, and non-zero `criticalAmount` must be greater than or equal to `warningAmount`.
 - `eventScanLimit` defaults to the current policy value when omitted and is capped at `50000`.
 - saving records `BILLING_PRICING_POLICY_SAVE` audit log.
 
@@ -2647,6 +2652,42 @@ Notes:
 - Failed and cancelled events are reported for operations review but not charged.
 - User-owned buckets and deleted/unknown buckets are excluded from organization chargeback preview.
 - This is not AWS billing parity. It is an OSMU tenant cost model for B2B operations and chargeback planning.
+
+### GET /api/admin/billing/chargeback-alerts
+
+Returns scoped threshold alerts for the same organization chargeback model. `ADMIN` sees every organization and `ORG_ADMIN` sees only the caller's organization. Query parameters are the same as `GET /api/admin/billing/chargeback-preview`; rates and event window affect the projected cost, while `warningAmount` and `criticalAmount` come from the saved billing pricing policy.
+
+Response:
+
+```json
+{
+  "success": true,
+  "data": {
+    "currency": "KRW",
+    "warningAmount": 2000,
+    "criticalAmount": 3000,
+    "alertCount": 1,
+    "warningCount": 0,
+    "criticalCount": 1,
+    "organizations": [
+      {
+        "organizationId": 1,
+        "organizationName": "AI Lab",
+        "severity": "CRITICAL",
+        "estimatedTotalCost": 3200.0,
+        "warningAmount": 2000,
+        "criticalAmount": 3000
+      }
+    ],
+    "generatedAt": "2026-06-19T00:00:00Z"
+  }
+}
+```
+
+Notes:
+
+- Threshold alerts are pre-invoice operational signals for tenant cost review; they do not create bills or external notifications.
+- The same org-scope filtering as chargeback preview/export applies to alert rows.
 
 ### GET /api/admin/billing/chargeback-preview/export.csv
 

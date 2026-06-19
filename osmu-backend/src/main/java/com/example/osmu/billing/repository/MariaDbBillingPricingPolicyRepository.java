@@ -39,7 +39,8 @@ public class MariaDbBillingPricingPolicyRepository implements BillingPricingPoli
         ensureSchema();
         String sql = """
                 SELECT currency, storage_gb_month_rate, ingress_gb_rate, egress_gb_rate,
-                       internal_gb_rate, operation_thousand_rate, event_scan_limit, updated_at
+                       internal_gb_rate, operation_thousand_rate, warning_amount,
+                       critical_amount, event_scan_limit, updated_at
                 FROM billing_pricing_policy
                 WHERE id = 1
                 """;
@@ -58,8 +59,9 @@ public class MariaDbBillingPricingPolicyRepository implements BillingPricingPoli
         String sql = """
                 INSERT INTO billing_pricing_policy
                     (id, currency, storage_gb_month_rate, ingress_gb_rate, egress_gb_rate,
-                     internal_gb_rate, operation_thousand_rate, event_scan_limit, updated_at)
-                VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?)
+                     internal_gb_rate, operation_thousand_rate, warning_amount,
+                     critical_amount, event_scan_limit, updated_at)
+                VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON DUPLICATE KEY UPDATE
                     currency = VALUES(currency),
                     storage_gb_month_rate = VALUES(storage_gb_month_rate),
@@ -67,6 +69,8 @@ public class MariaDbBillingPricingPolicyRepository implements BillingPricingPoli
                     egress_gb_rate = VALUES(egress_gb_rate),
                     internal_gb_rate = VALUES(internal_gb_rate),
                     operation_thousand_rate = VALUES(operation_thousand_rate),
+                    warning_amount = VALUES(warning_amount),
+                    critical_amount = VALUES(critical_amount),
                     event_scan_limit = VALUES(event_scan_limit),
                     updated_at = VALUES(updated_at)
                 """;
@@ -78,8 +82,10 @@ public class MariaDbBillingPricingPolicyRepository implements BillingPricingPoli
             statement.setBigDecimal(4, policy.egressGbRate());
             statement.setBigDecimal(5, policy.internalGbRate());
             statement.setBigDecimal(6, policy.operationThousandRate());
-            statement.setInt(7, policy.eventScanLimit());
-            statement.setTimestamp(8, Timestamp.from(policy.updatedAt().toInstant()));
+            statement.setBigDecimal(7, policy.warningAmount());
+            statement.setBigDecimal(8, policy.criticalAmount());
+            statement.setInt(9, policy.eventScanLimit());
+            statement.setTimestamp(10, Timestamp.from(policy.updatedAt().toInstant()));
             statement.executeUpdate();
             return policy;
         } catch (SQLException exception) {
@@ -100,6 +106,8 @@ public class MariaDbBillingPricingPolicyRepository implements BillingPricingPoli
                     egress_gb_rate DECIMAL(18,6) NOT NULL DEFAULT 0,
                     internal_gb_rate DECIMAL(18,6) NOT NULL DEFAULT 0,
                     operation_thousand_rate DECIMAL(18,6) NOT NULL DEFAULT 0,
+                    warning_amount DECIMAL(18,6) NOT NULL DEFAULT 0,
+                    critical_amount DECIMAL(18,6) NOT NULL DEFAULT 0,
                     event_scan_limit INT NOT NULL DEFAULT 10000,
                     updated_at TIMESTAMP NULL,
                     CONSTRAINT chk_billing_pricing_policy_singleton CHECK (id = 1),
@@ -128,6 +136,8 @@ public class MariaDbBillingPricingPolicyRepository implements BillingPricingPoli
                 decimal(resultSet, "egress_gb_rate"),
                 decimal(resultSet, "internal_gb_rate"),
                 decimal(resultSet, "operation_thousand_rate"),
+                decimal(resultSet, "warning_amount"),
+                decimal(resultSet, "critical_amount"),
                 resultSet.getInt("event_scan_limit"),
                 updatedAt == null ? null : updatedAt.toInstant().atOffset(ZoneOffset.UTC)
         );

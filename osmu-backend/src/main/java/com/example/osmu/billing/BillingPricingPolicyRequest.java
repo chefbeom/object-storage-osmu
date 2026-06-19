@@ -9,6 +9,8 @@ public record BillingPricingPolicyRequest(
         BigDecimal egressGbRate,
         BigDecimal internalGbRate,
         BigDecimal operationThousandRate,
+        BigDecimal warningAmount,
+        BigDecimal criticalAmount,
         Integer eventScanLimit,
         String reason
 ) {

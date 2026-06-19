@@ -37,6 +37,8 @@ public class BillingPricingPolicyService {
                 normalizeRate(request.egressGbRate(), current.egressGbRate(), "egressGbRate"),
                 normalizeRate(request.internalGbRate(), current.internalGbRate(), "internalGbRate"),
                 normalizeRate(request.operationThousandRate(), current.operationThousandRate(), "operationThousandRate"),
+                normalizeThreshold(request.warningAmount(), current.warningAmount(), "warningAmount"),
+                normalizeCriticalThreshold(request.criticalAmount(), current.criticalAmount(), request.warningAmount(), current.warningAmount()),
                 normalizeEventScanLimit(request.eventScanLimit(), current.eventScanLimit()),
                 OffsetDateTime.now()
         );
@@ -64,6 +66,24 @@ public class BillingPricingPolicyService {
             throw new ApiException(ApiErrorCode.VALIDATION_ERROR, fieldName + " must be zero or greater.");
         }
         return money(normalized);
+    }
+
+    public static BigDecimal normalizeThreshold(BigDecimal value, BigDecimal fallback, String fieldName) {
+        return normalizeRate(value, fallback, fieldName);
+    }
+
+    private static BigDecimal normalizeCriticalThreshold(
+            BigDecimal requestedCritical,
+            BigDecimal currentCritical,
+            BigDecimal requestedWarning,
+            BigDecimal currentWarning
+    ) {
+        BigDecimal critical = normalizeThreshold(requestedCritical, currentCritical, "criticalAmount");
+        BigDecimal warning = normalizeThreshold(requestedWarning, currentWarning, "warningAmount");
+        if (critical.compareTo(BigDecimal.ZERO) > 0 && warning.compareTo(BigDecimal.ZERO) > 0 && critical.compareTo(warning) < 0) {
+            throw new ApiException(ApiErrorCode.VALIDATION_ERROR, "criticalAmount must be zero or greater than or equal to warningAmount.");
+        }
+        return critical;
     }
 
     public static int normalizeEventScanLimit(Integer value, int fallback) {

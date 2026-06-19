@@ -88,12 +88,16 @@ class AdminBillingControllerTest {
                                   "storageGbMonthRate": 1073741824,
                                   "ingressGbRate": 1073741824,
                                   "operationThousandRate": 1000,
+                                  "warningAmount": 20,
+                                  "criticalAmount": 25,
                                   "eventScanLimit": 5000,
                                   "reason": "billing policy test"
                                 }
                                 """))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.currency").value("KRW"))
+                .andExpect(jsonPath("$.data.warningAmount").value(20.0))
+                .andExpect(jsonPath("$.data.criticalAmount").value(25.0))
                 .andExpect(jsonPath("$.data.eventScanLimit").value(5000))
                 .andExpect(jsonPath("$.data.updatedAt").exists());
 
@@ -103,6 +107,17 @@ class AdminBillingControllerTest {
                 .andExpect(jsonPath("$.data.currency").value("KRW"))
                 .andExpect(jsonPath("$.data.eventScanLimit").value(5000))
                 .andExpect(jsonPath("$.data.organizations[?(@.organizationName == 'Billing Policy Org 1')].estimatedTotalCost", hasItem(25.0)));
+
+        mockMvc.perform(get("/api/admin/billing/chargeback-alerts")
+                        .header("Authorization", "Bearer " + adminToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.currency").value("KRW"))
+                .andExpect(jsonPath("$.data.warningAmount").value(20.0))
+                .andExpect(jsonPath("$.data.criticalAmount").value(25.0))
+                .andExpect(jsonPath("$.data.alertCount").value(1))
+                .andExpect(jsonPath("$.data.criticalCount").value(1))
+                .andExpect(jsonPath("$.data.organizations[0].organizationName").value("Billing Policy Org 1"))
+                .andExpect(jsonPath("$.data.organizations[0].severity").value("CRITICAL"));
     }
 
     @Test
@@ -158,6 +173,11 @@ class AdminBillingControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(content().string(containsString("Billing Visible Org 1")))
                 .andExpect(content().string(not(containsString("Billing Hidden Org 1"))));
+
+        mockMvc.perform(get("/api/admin/billing/chargeback-alerts")
+                        .header("Authorization", "Bearer " + orgAdminToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.organizations[*].organizationName", not(hasItem("Billing Hidden Org 1"))));
     }
 
     private String loginAndReturnAccessToken(String loginId, String password) throws Exception {

@@ -122,6 +122,8 @@ class ChargebackPreviewServiceTest {
                 BigDecimal.ZERO,
                 BigDecimal.ZERO,
                 BigDecimal.valueOf(1000L),
+                BigDecimal.valueOf(2000L),
+                BigDecimal.valueOf(3000L),
                 25,
                 "unit test"
         ));
@@ -136,6 +138,17 @@ class ChargebackPreviewServiceTest {
         assertThat(preview.rates().storageGbMonthRate()).isEqualByComparingTo("1073741824.000000");
         assertThat(preview.rates().ingressGbRate()).isEqualByComparingTo("1073741824.000000");
         assertThat(preview.estimatedTotalCost()).isEqualByComparingTo("3073.000000");
+
+        ChargebackAlertResponse alerts = service.alerts(
+                new AuthenticatedUser(1L, "admin", "ADMIN", null),
+                new ChargebackPreviewRequest(null, null, null, null, null, null, null, null, 0)
+        );
+
+        assertThat(alerts.warningAmount()).isEqualByComparingTo("2000.000000");
+        assertThat(alerts.criticalAmount()).isEqualByComparingTo("3000.000000");
+        assertThat(alerts.alertCount()).isEqualTo(1L);
+        assertThat(alerts.criticalCount()).isEqualTo(1L);
+        assertThat(alerts.organizations().get(0).severity()).isEqualTo("CRITICAL");
     }
 
     @Test

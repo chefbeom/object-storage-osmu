@@ -17960,3 +17960,11 @@ feat/bucket-management
 - Frontend/mock: `downloadChargebackPreviewCsv` wrapper�� Admin billing panel `chargeback-export-button`�� �߰��ߴ�. mock API/self-test�� `osmu-chargeback-preview.csv` export�� KRW policy �ݿ��� Ȯ���Ѵ�.
 - ����/verifier: README, API spec, OpenAPI, IAM/RBAC matrix, security/frontend/commercial docs, feature inventory, test cases, openapi/IAM/commercial verifier�� �����ߴ�.
 - �ļ�: finalized invoice export, threshold alert, time-series/partition ��� ��� analytics�� ���� ���� �ִ�.
+
+### 2026-06-20 - Chargeback threshold alert pre-model
+- 작업 해석: AWS S3 호환성 확장이 아니라 OSMU 운영자가 tenant 비용 급증을 미리 볼 수 있는 billing/chargeback 운영 기능으로 진행했다.
+- Backend: pricing policy에 `warningAmount`, `criticalAmount`를 추가하고 `GET /api/admin/billing/chargeback-alerts`를 구현했다. alert API는 chargeback preview와 같은 rate/window/event limit 계산과 같은 조직 scope를 쓰되, 저장된 warning/critical threshold로 `WARNING`/`CRITICAL` organization row를 반환한다.
+- RBAC: `ADMIN`은 전체 조직 alert를 보고, `ORG_ADMIN`은 자기 조직 alert만 본다. `AUDITOR`와 일반 사용자는 기존 chargeback preview/export와 같이 차단한다.
+- Frontend/mock: `getChargebackAlerts` wrapper, Admin billing panel threshold inputs, alert metrics/list, mock API route와 self-test를 추가했다. pricing policy 저장 후 preview와 alert가 함께 갱신된다.
+- 문서/verifier: README, API spec, OpenAPI, IAM/RBAC matrix, security/frontend/commercial docs, feature inventory, test cases, openapi/IAM/commercial verifier를 갱신했다.
+- 후속: finalized invoice export, approved pricing workflow, external alert notification route, time-series/partition 기반 장기 analytics는 아직 남아 있다.

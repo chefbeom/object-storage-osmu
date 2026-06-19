@@ -1,0 +1,3 @@
+ALTER TABLE billing_pricing_policy
+    ADD COLUMN IF NOT EXISTS warning_amount DECIMAL(18,6) NOT NULL DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS critical_amount DECIMAL(18,6) NOT NULL DEFAULT 0;

@@ -21,6 +21,7 @@ import {
   getBackupRestoreDrillEvidence,
   getBillingPricingPolicy,
   getBuckets,
+  getChargebackAlerts,
   getChargebackPreview,
   getDashboardLayout,
   getDashboardLayoutDefaults,
@@ -431,12 +432,59 @@ test('downloadChargebackPreviewCsv exports current admin billing preview query',
   }
 })
 
+test('getChargebackAlerts reads current admin billing threshold alerts query', async () => {
+  const fetchMock = mockFetch([
+    () => jsonResponse({
+      data: {
+        currency: 'KRW',
+        warningAmount: 20,
+        criticalAmount: 25,
+        alertCount: 1,
+        organizations: [{ organizationName: 'Media', severity: 'CRITICAL' }],
+      },
+    }),
+  ])
+
+  try {
+    const result = await getChargebackAlerts({
+      from: '2026-06-01T00:00:00.000Z',
+      to: '2026-06-30T23:59:59.000Z',
+      currency: 'krw',
+      storageGbMonthRate: '1.25',
+      ingressGbRate: '0.10',
+      egressGbRate: '0.20',
+      internalGbRate: '0.05',
+      operationThousandRate: '0.01',
+      eventScanLimit: 2500,
+    })
+
+    const url = new URL(fetchMock.calls[0].url)
+    assert.equal(url.pathname, '/api/admin/billing/chargeback-alerts')
+    assert.equal(url.searchParams.get('from'), '2026-06-01T00:00:00.000Z')
+    assert.equal(url.searchParams.get('to'), '2026-06-30T23:59:59.000Z')
+    assert.equal(url.searchParams.get('currency'), 'krw')
+    assert.equal(url.searchParams.get('storageGbMonthRate'), '1.25')
+    assert.equal(url.searchParams.get('ingressGbRate'), '0.10')
+    assert.equal(url.searchParams.get('egressGbRate'), '0.20')
+    assert.equal(url.searchParams.get('internalGbRate'), '0.05')
+    assert.equal(url.searchParams.get('operationThousandRate'), '0.01')
+    assert.equal(url.searchParams.get('eventScanLimit'), '2500')
+    assert.equal(fetchMock.calls[0].options.method, undefined)
+    assert.equal(result.data.alertCount, 1)
+    assert.equal(result.data.organizations[0].severity, 'CRITICAL')
+  } finally {
+    cleanupFetch(fetchMock)
+  }
+})
+
 test('billing pricing policy wrappers read and save admin billing policy endpoint', async () => {
   const fetchMock = mockFetch([
     () => jsonResponse({
       data: {
         currency: 'USD',
         storageGbMonthRate: 0.02,
+        warningAmount: 20,
+        criticalAmount: 25,
         eventScanLimit: 10000,
       },
     }),
@@ -444,6 +492,8 @@ test('billing pricing policy wrappers read and save admin billing policy endpoin
       data: {
         currency: 'KRW',
         storageGbMonthRate: 1.25,
+        warningAmount: 2000,
+        criticalAmount: 3000,
         eventScanLimit: 2500,
       },
     }),
@@ -458,6 +508,8 @@ test('billing pricing policy wrappers read and save admin billing policy endpoin
       egressGbRate: '0.20',
       internalGbRate: '0.05',
       operationThousandRate: '0.01',
+      warningAmount: '2000',
+      criticalAmount: '3000',
       eventScanLimit: 2500,
       reason: 'unit test',
     })
@@ -473,11 +525,14 @@ test('billing pricing policy wrappers read and save admin billing policy endpoin
       egressGbRate: '0.20',
       internalGbRate: '0.05',
       operationThousandRate: '0.01',
+      warningAmount: '2000',
+      criticalAmount: '3000',
       eventScanLimit: 2500,
       reason: 'unit test',
     })
     assert.equal(current.data.currency, 'USD')
     assert.equal(saved.data.currency, 'KRW')
+    assert.equal(saved.data.criticalAmount, 3000)
   } finally {
     cleanupFetch(fetchMock)
   }

@@ -440,6 +440,10 @@ function handleAdminRoute(request, response, path, jsonBody, url) {
     sendJson(response, 200, apiData(chargebackPreview(url)))
     return
   }
+  if (request.method === 'GET' && path === '/admin/billing/chargeback-alerts') {
+    sendJson(response, 200, apiData(chargebackAlerts(url)))
+    return
+  }
   if (request.method === 'GET' && path === '/admin/billing/chargeback-preview/export.csv') {
     sendCsv(response, 'osmu-chargeback-preview.csv', chargebackPreviewCsv(url))
     return
@@ -1082,6 +1086,40 @@ function chargebackPreview(url) {
   }
 }
 
+function chargebackAlerts(url) {
+  const preview = chargebackPreview(url)
+  const warningAmount = money(state.billingPricingPolicy.warningAmount)
+  const criticalAmount = money(state.billingPricingPolicy.criticalAmount)
+  const organizations = (preview.organizations || [])
+    .map((organization) => chargebackAlertOrganization(organization, warningAmount, criticalAmount))
+    .filter(Boolean)
+  return {
+    currency: preview.currency,
+    warningAmount,
+    criticalAmount,
+    alertCount: organizations.length,
+    warningCount: organizations.filter((organization) => organization.severity === 'WARNING').length,
+    criticalCount: organizations.filter((organization) => organization.severity === 'CRITICAL').length,
+    organizations,
+    generatedAt: new Date().toISOString(),
+  }
+}
+
+function chargebackAlertOrganization(organization, warningAmount, criticalAmount) {
+  const estimatedTotalCost = money(organization.estimatedTotalCost)
+  const isCritical = criticalAmount > 0 && estimatedTotalCost >= criticalAmount
+  const isWarning = warningAmount > 0 && estimatedTotalCost >= warningAmount
+  if (!isCritical && !isWarning) return null
+  return {
+    organizationId: organization.organizationId,
+    organizationName: organization.organizationName,
+    severity: isCritical ? 'CRITICAL' : 'WARNING',
+    estimatedTotalCost,
+    warningAmount,
+    criticalAmount,
+  }
+}
+
 function chargebackPreviewCsv(url) {
   const preview = chargebackPreview(url)
   const rates = preview.rates || {}
@@ -1244,6 +1282,8 @@ function defaultBillingPricingPolicy() {
     egressGbRate: 0,
     internalGbRate: 0,
     operationThousandRate: 0,
+    warningAmount: 0,
+    criticalAmount: 0,
     eventScanLimit: 10000,
     updatedAt: null,
   }
@@ -1251,6 +1291,11 @@ function defaultBillingPricingPolicy() {
 
 function saveBillingPricingPolicy(payload = {}) {
   const current = state.billingPricingPolicy || defaultBillingPricingPolicy()
+  const warningAmount = parseChargebackRate(payload.warningAmount, current.warningAmount)
+  const criticalAmount = parseChargebackRate(payload.criticalAmount, current.criticalAmount)
+  if (criticalAmount > 0 && warningAmount > 0 && criticalAmount < warningAmount) {
+    throw new Error('criticalAmount must be zero or greater than or equal to warningAmount.')
+  }
   return {
     currency: String(payload.currency || current.currency || 'USD').trim().toUpperCase().slice(0, 12) || 'USD',
     storageGbMonthRate: parseChargebackRate(payload.storageGbMonthRate, current.storageGbMonthRate),
@@ -1258,6 +1303,8 @@ function saveBillingPricingPolicy(payload = {}) {
     egressGbRate: parseChargebackRate(payload.egressGbRate, current.egressGbRate),
     internalGbRate: parseChargebackRate(payload.internalGbRate, current.internalGbRate),
     operationThousandRate: parseChargebackRate(payload.operationThousandRate, current.operationThousandRate),
+    warningAmount,
+    criticalAmount,
     eventScanLimit: normalizeChargebackEventLimit(Number(payload.eventScanLimit || current.eventScanLimit || 10000)),
     updatedAt: new Date().toISOString(),
   }
@@ -1747,9 +1794,9 @@ async function runSelfTest() {
     const savedPricingPolicy = await (await fetch(`${base}/admin/billing/pricing-policy`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${login.data.accessToken}` },
-      body: JSON.stringify({ currency: 'krw', storageGbMonthRate: 1, eventScanLimit: 2500 }),
+      body: JSON.stringify({ currency: 'krw', storageGbMonthRate: 1, warningAmount: 0.000005, criticalAmount: 0.00001, eventScanLimit: 2500 }),
     })).json()
-    if (savedPricingPolicy.data.currency !== 'KRW' || savedPricingPolicy.data.eventScanLimit !== 2500) {
+    if (savedPricingPolicy.data.currency !== 'KRW' || savedPricingPolicy.data.eventScanLimit !== 2500 || savedPricingPolicy.data.criticalAmount !== 0.00001) {
       throw new Error('billing pricing policy self-test failed')
     }
     const chargeback = await (await fetch(`${base}/admin/billing/chargeback-preview?storageGbMonthRate=0.02&egressGbRate=0.01&operationThousandRate=0.004`, {
@@ -1757,6 +1804,12 @@ async function runSelfTest() {
     })).json()
     if (!chargeback.data || chargeback.data.currency !== 'KRW' || chargeback.data.eventScanLimit !== 2500 || chargeback.data.organizationCount < 1 || !chargeback.data.organizations?.length) {
       throw new Error('chargeback preview self-test failed')
+    }
+    const chargebackAlerts = await (await fetch(`${base}/admin/billing/chargeback-alerts?operationThousandRate=0.004`, {
+      headers: { Authorization: `Bearer ${login.data.accessToken}` },
+    })).json()
+    if (!chargebackAlerts.data || chargebackAlerts.data.currency !== 'KRW' || chargebackAlerts.data.criticalCount < 1 || chargebackAlerts.data.organizations?.[0]?.severity !== 'CRITICAL') {
+      throw new Error('chargeback threshold alerts self-test failed')
     }
     const chargebackCsv = await (await fetch(`${base}/admin/billing/chargeback-preview/export.csv?operationThousandRate=0.004`, {
       headers: { Authorization: `Bearer ${login.data.accessToken}` },

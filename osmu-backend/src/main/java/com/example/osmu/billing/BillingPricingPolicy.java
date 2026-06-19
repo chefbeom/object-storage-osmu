@@ -10,12 +10,16 @@ public record BillingPricingPolicy(
         BigDecimal egressGbRate,
         BigDecimal internalGbRate,
         BigDecimal operationThousandRate,
+        BigDecimal warningAmount,
+        BigDecimal criticalAmount,
         int eventScanLimit,
         OffsetDateTime updatedAt
 ) {
     public static BillingPricingPolicy defaults() {
         return new BillingPricingPolicy(
                 "USD",
+                BigDecimal.ZERO,
+                BigDecimal.ZERO,
                 BigDecimal.ZERO,
                 BigDecimal.ZERO,
                 BigDecimal.ZERO,
