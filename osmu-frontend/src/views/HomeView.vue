@@ -420,6 +420,8 @@
         @finalize-chargeback-invoice-draft="handleFinalizeChargebackInvoiceDraft"
         @request-chargeback-invoice-payment="handleRequestChargebackInvoicePayment"
         @queue-chargeback-payment-provider-handoff="handleQueueChargebackPaymentProviderHandoff"
+        @record-chargeback-notification-adapter-result="handleRecordChargebackNotificationAdapterResult"
+        @record-chargeback-payment-provider-adapter-result="handleRecordChargebackPaymentProviderAdapterResult"
         @record-chargeback-invoice-payment="handleRecordChargebackInvoicePayment"
         @save-quota-policy="handleSaveQuotaPolicy"
         @reset-quota-policy-target="resetQuotaPolicyTarget"
@@ -629,7 +631,9 @@ import {
   putBucketTags,
   queueChargebackAlertNotifications,
   queueChargebackPaymentProviderHandoff,
+  recordChargebackAlertNotificationAdapterResult,
   recordChargebackInvoicePayment,
+  recordChargebackPaymentProviderHandoffAdapterResult,
   requestChargebackInvoicePayment,
   restoreObject,
   restoreObjectVersion,
@@ -2614,6 +2618,22 @@ async function handleQueueChargebackAlertNotifications() {
   }
 }
 
+async function handleRecordChargebackNotificationAdapterResult(payload = {}) {
+  if (!isAdmin.value || !payload.deliveryId) return
+  const retry = payload.result === 'RETRY'
+  const result = await runAction(() => recordChargebackAlertNotificationAdapterResult(payload.deliveryId, {
+    result: payload.result || 'BLOCKED_CREDENTIAL',
+    retryDelayMinutes: retry ? 60 : undefined,
+    lastError: retry
+      ? 'Notification adapter retry scheduled from admin billing panel.'
+      : 'Notification adapter credential/configuration reference missing.',
+  }))
+  if (result?.data) {
+    await loadChargebackAlertNotificationOutbox()
+    setStatusMessage('Chargeback notification adapter result recorded.')
+  }
+}
+
 async function handleExportChargebackCsv() {
   const blob = await runAction(() => downloadChargebackPreviewCsv(chargebackPreviewPayload()))
   if (blob) {
@@ -2695,6 +2715,22 @@ async function handleQueueChargebackPaymentProviderHandoff(invoiceId) {
     })
     await loadChargebackPaymentProviderHandoffs()
     setStatusMessage('Chargeback payment provider handoff queued.')
+  }
+}
+
+async function handleRecordChargebackPaymentProviderAdapterResult(payload = {}) {
+  if (!isAdmin.value || !payload.handoffId) return
+  const retry = payload.result === 'RETRY'
+  const result = await runAction(() => recordChargebackPaymentProviderHandoffAdapterResult(payload.handoffId, {
+    result: payload.result || 'BLOCKED_CREDENTIAL',
+    retryDelayMinutes: retry ? 60 : undefined,
+    lastError: retry
+      ? 'Payment provider adapter retry scheduled from admin billing panel.'
+      : 'Payment provider adapter credential/configuration reference missing.',
+  }))
+  if (result?.data) {
+    await loadChargebackPaymentProviderHandoffs()
+    setStatusMessage('Chargeback payment provider adapter result recorded.')
   }
 }
 
@@ -4085,13 +4121,41 @@ function defaultChargebackAlertNotificationOutbox() {
   }
 }
 
+function normalizeChargebackAlertNotificationDelivery(delivery = {}) {
+  return {
+    id: delivery.id,
+    organizationId: delivery.organizationId,
+    organizationName: delivery.organizationName || '',
+    severity: delivery.severity || '',
+    estimatedTotalCost: Number(delivery.estimatedTotalCost || 0),
+    warningAmount: Number(delivery.warningAmount || 0),
+    criticalAmount: Number(delivery.criticalAmount || 0),
+    channel: delivery.channel || '',
+    target: delivery.target || '',
+    status: delivery.status || '',
+    attemptCount: Number(delivery.attemptCount || 0),
+    nextAttemptAt: delivery.nextAttemptAt || '',
+    subject: delivery.subject || '',
+    message: delivery.message || '',
+    payloadJson: delivery.payloadJson || '',
+    requestedBy: delivery.requestedBy || '',
+    reason: delivery.reason || '',
+    createdAt: delivery.createdAt || '',
+    updatedAt: delivery.updatedAt || '',
+    lastError: delivery.lastError || '',
+  }
+}
+
 function applyChargebackAlertNotificationOutbox(data = {}) {
+  const deliveries = Array.isArray(data.deliveries)
+    ? data.deliveries.map((delivery) => normalizeChargebackAlertNotificationDelivery(delivery))
+    : []
   const fallback = defaultChargebackAlertNotificationOutbox()
   chargebackAlertNotificationOutbox.value = {
     ...fallback,
     ...data,
-    deliveryCount: Number(data.deliveryCount || 0),
-    deliveries: Array.isArray(data.deliveries) ? data.deliveries : [],
+    deliveryCount: Number(data.deliveryCount ?? deliveries.length),
+    deliveries,
   }
 }
 

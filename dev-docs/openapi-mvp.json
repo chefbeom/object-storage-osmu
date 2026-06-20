@@ -882,6 +882,43 @@
         }
       }
     },
+    "/api/admin/billing/chargeback-alert-notifications/outbox/{deliveryId}/adapter-result": {
+      "post": {
+        "tags": ["Billing", "Admin"],
+        "operationId": "recordChargebackAlertNotificationAdapterResult",
+        "summary": "Record a chargeback notification adapter result and retry state without external sending",
+        "parameters": [
+          {
+            "name": "deliveryId",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "integer", "format": "int64" }
+          },
+          {
+            "name": "result",
+            "in": "query",
+            "schema": { "type": "string", "enum": ["SUCCESS", "RETRY", "BLOCKED_CREDENTIAL"], "default": "BLOCKED_CREDENTIAL" }
+          },
+          {
+            "name": "retryDelayMinutes",
+            "in": "query",
+            "schema": { "type": "integer", "minimum": 1, "maximum": 1440, "default": 60 }
+          },
+          {
+            "name": "lastError",
+            "in": "query",
+            "schema": { "type": "string", "maxLength": 512 }
+          }
+        ],
+        "responses": {
+          "200": { "$ref": "#/components/responses/JsonOk" },
+          "400": { "$ref": "#/components/responses/Error" },
+          "403": { "$ref": "#/components/responses/Error" },
+          "404": { "$ref": "#/components/responses/Error" },
+          "409": { "$ref": "#/components/responses/Error" }
+        }
+      }
+    },
     "/api/admin/billing/chargeback-invoice-drafts": {
       "get": {
         "tags": ["Billing", "Admin"],
@@ -1144,7 +1181,7 @@
           {
             "name": "status",
             "in": "query",
-            "schema": { "type": "string", "enum": ["PENDING_PAYMENT_PROVIDER_ADAPTER"] }
+            "schema": { "type": "string", "enum": ["PENDING_PAYMENT_PROVIDER_ADAPTER", "PAYMENT_PROVIDER_ADAPTER_RETRY_SCHEDULED", "PAYMENT_PROVIDER_ADAPTER_BLOCKED_CREDENTIAL", "PAYMENT_PROVIDER_ADAPTER_SUCCEEDED"] }
           },
           {
             "name": "limit",
@@ -1155,6 +1192,43 @@
         "responses": {
           "200": { "$ref": "#/components/responses/JsonOk" },
           "403": { "$ref": "#/components/responses/Error" }
+        }
+      }
+    },
+    "/api/admin/billing/chargeback-payment-provider-handoffs/{handoffId}/adapter-result": {
+      "post": {
+        "tags": ["Billing", "Admin"],
+        "operationId": "recordChargebackPaymentProviderHandoffAdapterResult",
+        "summary": "Record a chargeback payment provider adapter result and retry state without external payment calls",
+        "parameters": [
+          {
+            "name": "handoffId",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "integer", "format": "int64" }
+          },
+          {
+            "name": "result",
+            "in": "query",
+            "schema": { "type": "string", "enum": ["SUCCESS", "RETRY", "BLOCKED_CREDENTIAL"], "default": "BLOCKED_CREDENTIAL" }
+          },
+          {
+            "name": "retryDelayMinutes",
+            "in": "query",
+            "schema": { "type": "integer", "minimum": 1, "maximum": 1440, "default": 60 }
+          },
+          {
+            "name": "lastError",
+            "in": "query",
+            "schema": { "type": "string", "maxLength": 512 }
+          }
+        ],
+        "responses": {
+          "200": { "$ref": "#/components/responses/JsonOk" },
+          "400": { "$ref": "#/components/responses/Error" },
+          "403": { "$ref": "#/components/responses/Error" },
+          "404": { "$ref": "#/components/responses/Error" },
+          "409": { "$ref": "#/components/responses/Error" }
         }
       }
     },

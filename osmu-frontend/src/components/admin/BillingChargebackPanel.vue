@@ -335,8 +335,27 @@
         <span class="list-main">
           <b>{{ delivery.organizationName }}</b>
           <small>{{ delivery.subject }} / {{ delivery.channel }} -> {{ delivery.target }}</small>
+          <small>{{ adapterAttemptSummary(delivery) }}</small>
         </span>
-        <strong>{{ delivery.status }}</strong>
+        <button
+          v-if="isAdmin && canBlockAdapter(delivery.status)"
+          data-testid="chargeback-notification-adapter-block-button"
+          type="button"
+          class="ghost"
+          @click="$emit('record-chargeback-notification-adapter-result', { deliveryId: delivery.id, result: 'BLOCKED_CREDENTIAL' })"
+        >
+          Block
+        </button>
+        <button
+          v-else-if="isAdmin && canRetryAdapter(delivery.status)"
+          data-testid="chargeback-notification-adapter-retry-button"
+          type="button"
+          class="ghost"
+          @click="$emit('record-chargeback-notification-adapter-result', { deliveryId: delivery.id, result: 'RETRY' })"
+        >
+          Retry
+        </button>
+        <strong v-else :class="['status-pill', adapterSucceeded(delivery.status) ? 'up' : 'mock']">{{ delivery.status }}</strong>
       </li>
       <li v-if="notificationOutboxRows.length === 0" class="empty">No chargeback notification outbox records.</li>
     </ul>
@@ -459,9 +478,27 @@
         <span class="list-main">
           <b>{{ handoff.invoiceNumber }}</b>
           <small>{{ handoff.organizationName }} / {{ formatMoney(handoff.amount, handoff.currency) }} / {{ handoff.provider }} -> {{ handoff.targetAccount }}</small>
-          <small>{{ handoff.reason || '-' }}</small>
+          <small>{{ adapterAttemptSummary(handoff) }}</small>
         </span>
-        <strong>{{ handoff.status || '-' }}</strong>
+        <button
+          v-if="canBlockAdapter(handoff.status)"
+          data-testid="chargeback-payment-handoff-adapter-block-button"
+          type="button"
+          class="ghost"
+          @click="$emit('record-chargeback-payment-provider-adapter-result', { handoffId: handoff.id, result: 'BLOCKED_CREDENTIAL' })"
+        >
+          Block
+        </button>
+        <button
+          v-else-if="canRetryAdapter(handoff.status)"
+          data-testid="chargeback-payment-handoff-adapter-retry-button"
+          type="button"
+          class="ghost"
+          @click="$emit('record-chargeback-payment-provider-adapter-result', { handoffId: handoff.id, result: 'RETRY' })"
+        >
+          Retry
+        </button>
+        <strong v-else :class="['status-pill', adapterSucceeded(handoff.status) ? 'up' : 'mock']">{{ handoff.status || '-' }}</strong>
       </li>
       <li v-if="paymentHandoffRows.length === 0" class="empty">No chargeback payment provider handoffs.</li>
     </ul>
@@ -541,6 +578,8 @@ const emit = defineEmits([
   'finalize-chargeback-invoice-draft',
   'request-chargeback-invoice-payment',
   'queue-chargeback-payment-provider-handoff',
+  'record-chargeback-notification-adapter-result',
+  'record-chargeback-payment-provider-adapter-result',
   'record-chargeback-invoice-payment',
 ])
 
@@ -603,5 +642,25 @@ function costBreakdown(organization) {
     `traffic ${formatMoney(Number(organization.ingressCost || 0) + Number(organization.egressCost || 0) + Number(organization.internalCost || 0))}`,
     `ops ${formatMoney(organization.operationCost)}`,
   ].join(' / ')
+}
+
+function adapterSucceeded(status = '') {
+  return String(status || '').endsWith('_SUCCEEDED')
+}
+
+function canRetryAdapter(status = '') {
+  return String(status || '').includes('_BLOCKED_CREDENTIAL')
+}
+
+function canBlockAdapter(status = '') {
+  const normalized = String(status || '')
+  return normalized && !adapterSucceeded(normalized) && !canRetryAdapter(normalized)
+}
+
+function adapterAttemptSummary(record = {}) {
+  const attempts = formatCount(record.attemptCount)
+  const next = formatDateTime(record.nextAttemptAt)
+  const error = record.lastError || record.reason || '-'
+  return `attempts ${attempts} / next ${next || '-'} / ${error}`
 }
 </script>

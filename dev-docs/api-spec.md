@@ -2752,7 +2752,7 @@ Response:
 
 Notes:
 
-- This is the first external alert integration surface. Actual delivery, retry, secret storage, and webhook provider adapters remain follow-up work.
+- This is the first external alert integration surface. Actual delivery, autonomous retry worker, secret storage, and webhook provider adapters remain follow-up work.
 - Scope filtering is identical to chargeback alerts.
 
 ### POST /api/admin/billing/chargeback-alert-notifications/outbox
@@ -2786,6 +2786,24 @@ Response:
 - `deliveryCount`
 - `deliveries[]`: delivery rows ordered by newest first.
 - `generatedAt`
+
+### POST /api/admin/billing/chargeback-alert-notifications/outbox/{deliveryId}/adapter-result
+
+Records an adapter result for a persisted chargeback notification delivery row. `ADMIN` only. This endpoint updates OSMU outbox state and retry metadata only; it does not send email, Slack, webhook, or any external notification.
+
+Query parameters:
+
+- `result` (optional): `SUCCESS`, `RETRY`, or `BLOCKED_CREDENTIAL`. Default is `BLOCKED_CREDENTIAL`.
+- `retryDelayMinutes` (optional): next retry delay for `RETRY`, clamped to 1..1440. Default is `60`.
+- `lastError` (optional): single-line non-secret operator/adapter error summary up to 512 characters. Credential-like values and raw provider response details are rejected.
+
+Response:
+
+- `mode`: `ADAPTER_RESULT`
+- `status`: `DELIVERY_ADAPTER_SUCCEEDED`, `DELIVERY_ADAPTER_RETRY_SCHEDULED`, or `DELIVERY_ADAPTER_BLOCKED_CREDENTIAL`
+- `externalDeliveryEnabled=false`
+- `delivery`: updated outbox row with incremented `attemptCount`, optional `nextAttemptAt`, and sanitized `lastError`.
+- `note`: result-only no-send notice.
 
 ### GET /api/admin/billing/chargeback-preview/export.csv
 
@@ -2948,7 +2966,7 @@ Lists final invoice payment-provider handoff outbox/history rows. `ADMIN` only.
 
 Query parameters:
 
-- `status` (optional): `PENDING_PAYMENT_PROVIDER_ADAPTER`.
+- `status` (optional): `PENDING_PAYMENT_PROVIDER_ADAPTER`, `PAYMENT_PROVIDER_ADAPTER_RETRY_SCHEDULED`, `PAYMENT_PROVIDER_ADAPTER_BLOCKED_CREDENTIAL`, or `PAYMENT_PROVIDER_ADAPTER_SUCCEEDED`.
 - `limit` (optional): number of rows to return, clamped to 1..200.
 
 Response:
@@ -2956,6 +2974,24 @@ Response:
 - `handoffCount`
 - `handoffs[]`: newest handoff rows first.
 - `generatedAt`
+
+### POST /api/admin/billing/chargeback-payment-provider-handoffs/{handoffId}/adapter-result
+
+Records an adapter result for a persisted payment-provider handoff row. `ADMIN` only. This endpoint updates OSMU handoff state and retry metadata only; it does not call card, bank-transfer, tax invoice, ERP, webhook, or payment provider adapters.
+
+Query parameters:
+
+- `result` (optional): `SUCCESS`, `RETRY`, or `BLOCKED_CREDENTIAL`. Default is `BLOCKED_CREDENTIAL`.
+- `retryDelayMinutes` (optional): next retry delay for `RETRY`, clamped to 1..1440. Default is `60`.
+- `lastError` (optional): single-line non-secret operator/adapter error summary up to 512 characters. Credential-like values and raw provider response details are rejected.
+
+Response:
+
+- `mode`: `ADAPTER_RESULT`
+- `status`: `PAYMENT_PROVIDER_ADAPTER_SUCCEEDED`, `PAYMENT_PROVIDER_ADAPTER_RETRY_SCHEDULED`, or `PAYMENT_PROVIDER_ADAPTER_BLOCKED_CREDENTIAL`
+- `externalPaymentEnabled=false`
+- `handoff`: updated outbox row with incremented `attemptCount`, optional `nextAttemptAt`, and sanitized `lastError`.
+- `note`: result-only no-call notice.
 
 ### POST /api/admin/billing/chargeback-invoices/{invoiceId}/payment-record
 

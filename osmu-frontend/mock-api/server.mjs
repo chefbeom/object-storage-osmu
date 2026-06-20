@@ -466,6 +466,11 @@ function handleAdminRoute(request, response, path, jsonBody, url) {
     sendJson(response, 200, apiData(chargebackAlertNotificationOutbox(url)))
     return
   }
+  const chargebackNotificationAdapterResultMatch = path.match(/^\/admin\/billing\/chargeback-alert-notifications\/outbox\/(\d+)\/adapter-result$/)
+  if (request.method === 'POST' && chargebackNotificationAdapterResultMatch) {
+    sendJson(response, 200, apiData(recordChargebackNotificationAdapterResult(Number(chargebackNotificationAdapterResultMatch[1]), url)))
+    return
+  }
   if (request.method === 'POST' && path === '/admin/billing/chargeback-invoice-drafts') {
     sendJson(response, 200, apiData(createChargebackInvoiceDrafts(url)))
     return
@@ -505,6 +510,11 @@ function handleAdminRoute(request, response, path, jsonBody, url) {
   }
   if (request.method === 'GET' && path === '/admin/billing/chargeback-payment-provider-handoffs') {
     sendJson(response, 200, apiData(chargebackPaymentProviderHandoffs(url)))
+    return
+  }
+  const chargebackPaymentProviderAdapterResultMatch = path.match(/^\/admin\/billing\/chargeback-payment-provider-handoffs\/(\d+)\/adapter-result$/)
+  if (request.method === 'POST' && chargebackPaymentProviderAdapterResultMatch) {
+    sendJson(response, 200, apiData(recordChargebackPaymentProviderAdapterResult(Number(chargebackPaymentProviderAdapterResultMatch[1]), url)))
     return
   }
   const finalInvoicePaymentRecordMatch = path.match(/^\/admin\/billing\/chargeback-invoices\/(\d+)\/payment-record$/)
@@ -1308,6 +1318,41 @@ function chargebackAlertNotificationOutbox(url) {
   }
 }
 
+function recordChargebackNotificationAdapterResult(deliveryId, url) {
+  const delivery = state.chargebackNotificationDeliveries.find((item) => item.id === deliveryId)
+  const now = new Date().toISOString()
+  if (!delivery) {
+    return {
+      mode: 'ADAPTER_RESULT',
+      status: 'NOT_FOUND',
+      externalDeliveryEnabled: false,
+      delivery: null,
+      recordedAt: now,
+      note: 'Chargeback notification delivery not found.',
+    }
+  }
+  const result = adapterResult(url)
+  delivery.status = notificationAdapterStatus(result)
+  delivery.attemptCount = Number(delivery.attemptCount || 0) + 1
+  delivery.nextAttemptAt = adapterNextAttemptAt(result, url, now)
+  delivery.updatedAt = now
+  delivery.lastError = adapterLastError(
+    result,
+    url,
+    'Notification adapter waiting for credential/configuration reference.',
+    'Notification adapter retry scheduled.'
+  )
+  state.auditLogs.unshift(auditLog('CHARGEBACK_ALERT_NOTIFICATION_ADAPTER_RESULT_RECORD', 'CHARGEBACK_ALERT_NOTIFICATION_DELIVERY', String(deliveryId)))
+  return {
+    mode: 'ADAPTER_RESULT',
+    status: delivery.status,
+    externalDeliveryEnabled: false,
+    delivery,
+    recordedAt: now,
+    note: adapterResultNote(result, 'notification'),
+  }
+}
+
 function createChargebackInvoiceDrafts(url) {
   const preview = chargebackPreview(url)
   const now = new Date().toISOString()
@@ -1639,6 +1684,41 @@ function chargebackPaymentProviderHandoffs(url) {
   }
 }
 
+function recordChargebackPaymentProviderAdapterResult(handoffId, url) {
+  const handoff = state.chargebackPaymentProviderHandoffs.find((item) => item.id === handoffId)
+  const now = new Date().toISOString()
+  if (!handoff) {
+    return {
+      mode: 'ADAPTER_RESULT',
+      status: 'NOT_FOUND',
+      externalPaymentEnabled: false,
+      handoff: null,
+      recordedAt: now,
+      note: 'Chargeback payment provider handoff not found.',
+    }
+  }
+  const result = adapterResult(url)
+  handoff.status = paymentProviderAdapterStatus(result)
+  handoff.attemptCount = Number(handoff.attemptCount || 0) + 1
+  handoff.nextAttemptAt = adapterNextAttemptAt(result, url, now)
+  handoff.updatedAt = now
+  handoff.lastError = adapterLastError(
+    result,
+    url,
+    'Payment provider adapter waiting for credential/configuration reference.',
+    'Payment provider adapter retry scheduled.'
+  )
+  state.auditLogs.unshift(auditLog('CHARGEBACK_PAYMENT_PROVIDER_ADAPTER_RESULT_RECORD', 'CHARGEBACK_PAYMENT_PROVIDER_HANDOFF', String(handoffId)))
+  return {
+    mode: 'ADAPTER_RESULT',
+    status: handoff.status,
+    externalPaymentEnabled: false,
+    handoff,
+    recordedAt: now,
+    note: adapterResultNote(result, 'payment provider'),
+  }
+}
+
 function chargebackPaymentProviderPayload(invoice, provider, targetAccount) {
   return {
     eventType: 'chargeback.payment_provider.handoff',
@@ -1665,6 +1745,65 @@ function paymentProvider(url) {
 
 function paymentTargetAccount(url) {
   return String(url.searchParams.get('paymentTargetAccount') || 'UNCONFIGURED').trim().slice(0, 512) || 'UNCONFIGURED'
+}
+
+function adapterResult(url) {
+  const result = String(url.searchParams.get('result') || 'BLOCKED_CREDENTIAL')
+    .trim()
+    .toUpperCase()
+    .replaceAll('-', '_')
+    .replaceAll(' ', '_')
+  if (result === 'BLOCKED_SECRET' || result === 'SECRET_REQUIRED') {
+    return 'BLOCKED_CREDENTIAL'
+  }
+  return ['SUCCESS', 'RETRY', 'BLOCKED_CREDENTIAL'].includes(result) ? result : 'BLOCKED_CREDENTIAL'
+}
+
+function notificationAdapterStatus(result) {
+  if (result === 'SUCCESS') {
+    return 'DELIVERY_ADAPTER_SUCCEEDED'
+  }
+  if (result === 'RETRY') {
+    return 'DELIVERY_ADAPTER_RETRY_SCHEDULED'
+  }
+  return 'DELIVERY_ADAPTER_BLOCKED_CREDENTIAL'
+}
+
+function paymentProviderAdapterStatus(result) {
+  if (result === 'SUCCESS') {
+    return 'PAYMENT_PROVIDER_ADAPTER_SUCCEEDED'
+  }
+  if (result === 'RETRY') {
+    return 'PAYMENT_PROVIDER_ADAPTER_RETRY_SCHEDULED'
+  }
+  return 'PAYMENT_PROVIDER_ADAPTER_BLOCKED_CREDENTIAL'
+}
+
+function adapterNextAttemptAt(result, url, now) {
+  if (result !== 'RETRY') {
+    return ''
+  }
+  const retryDelayMinutes = clampNumber(Number(url.searchParams.get('retryDelayMinutes') || 60), 1, 1440)
+  return new Date(Date.parse(now) + retryDelayMinutes * 60 * 1000).toISOString()
+}
+
+function adapterLastError(result, url, blockedFallback, retryFallback) {
+  if (result === 'SUCCESS') {
+    return ''
+  }
+  return String(url.searchParams.get('lastError') || (result === 'RETRY' ? retryFallback : blockedFallback))
+    .trim()
+    .slice(0, 512)
+}
+
+function adapterResultNote(result, adapterName) {
+  if (result === 'SUCCESS') {
+    return `Recorded ${adapterName} adapter success result; no external call was made by this API.`
+  }
+  if (result === 'RETRY') {
+    return `Recorded retryable ${adapterName} adapter result and scheduled the next attempt.`
+  }
+  return `Recorded blocked ${adapterName} adapter result without storing credentials or raw provider responses.`
 }
 
 function createBillingPricingPolicyProposal(payload = {}) {
@@ -2522,6 +2661,13 @@ async function runSelfTest() {
     if (!chargebackNotificationOutbox.data || chargebackNotificationOutbox.data.deliveryCount < 1 || chargebackNotificationOutbox.data.deliveries?.[0]?.payloadJson?.includes('chargeback.threshold') !== true) {
       throw new Error('chargeback alert notification outbox list self-test failed')
     }
+    const notificationAdapterResult = await (await fetch(`${base}/admin/billing/chargeback-alert-notifications/outbox/${chargebackNotificationOutbox.data.deliveries[0].id}/adapter-result?result=RETRY&retryDelayMinutes=30&lastError=adapter-not-ready`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${login.data.accessToken}` },
+    })).json()
+    if (!notificationAdapterResult.data || notificationAdapterResult.data.status !== 'DELIVERY_ADAPTER_RETRY_SCHEDULED' || notificationAdapterResult.data.delivery?.attemptCount !== 1 || !notificationAdapterResult.data.delivery?.nextAttemptAt) {
+      throw new Error('chargeback alert notification adapter result self-test failed')
+    }
     const chargebackCsv = await (await fetch(`${base}/admin/billing/chargeback-preview/export.csv?operationThousandRate=0.004`, {
       headers: { Authorization: `Bearer ${login.data.accessToken}` },
     })).text()
@@ -2592,6 +2738,13 @@ async function runSelfTest() {
     })).json()
     if (!handoffList.data || handoffList.data.handoffCount < 1 || handoffList.data.handoffs?.[0]?.payloadJson?.includes('chargeback.payment_provider.handoff') !== true) {
       throw new Error('chargeback payment provider handoff list self-test failed')
+    }
+    const handoffAdapterResult = await (await fetch(`${base}/admin/billing/chargeback-payment-provider-handoffs/${handoffList.data.handoffs[0].id}/adapter-result?result=BLOCKED_CREDENTIAL`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${login.data.accessToken}` },
+    })).json()
+    if (!handoffAdapterResult.data || handoffAdapterResult.data.status !== 'PAYMENT_PROVIDER_ADAPTER_BLOCKED_CREDENTIAL' || handoffAdapterResult.data.handoff?.attemptCount !== 1) {
+      throw new Error('chargeback payment provider adapter result self-test failed')
     }
     const recordedPayment = await (await fetch(`${base}/admin/billing/chargeback-invoices/${listedFinalInvoices.data.invoices[0].id}/payment-record?paymentReference=PAY-SELF-TEST&paymentNote=self-test`, {
       method: 'POST',

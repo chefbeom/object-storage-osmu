@@ -3,6 +3,7 @@ package com.example.osmu.billing.repository;
 import com.example.osmu.billing.ChargebackPaymentProviderHandoffRecord;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Optional;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicLong;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -23,6 +24,13 @@ public class InMemoryChargebackPaymentProviderHandoffRepository implements Charg
     }
 
     @Override
+    public Optional<ChargebackPaymentProviderHandoffRecord> findById(long id) {
+        return records.stream()
+                .filter(record -> record.id() != null && record.id() == id)
+                .findFirst();
+    }
+
+    @Override
     public List<ChargebackPaymentProviderHandoffRecord> findAll(int limit) {
         return records.stream()
                 .sorted(Comparator.comparing(ChargebackPaymentProviderHandoffRecord::createdAt).reversed())
@@ -37,6 +45,18 @@ public class InMemoryChargebackPaymentProviderHandoffRepository implements Charg
                 .sorted(Comparator.comparing(ChargebackPaymentProviderHandoffRecord::createdAt).reversed())
                 .limit(normalizeLimit(limit))
                 .toList();
+    }
+
+    @Override
+    public ChargebackPaymentProviderHandoffRecord update(ChargebackPaymentProviderHandoffRecord updated) {
+        for (int index = 0; index < records.size(); index++) {
+            ChargebackPaymentProviderHandoffRecord existing = records.get(index);
+            if (existing.id() != null && existing.id().equals(updated.id())) {
+                records.set(index, updated);
+                return updated;
+            }
+        }
+        throw new IllegalArgumentException("Chargeback payment handoff not found: " + updated.id());
     }
 
     private static int normalizeLimit(int limit) {

@@ -185,7 +185,7 @@ class AdminBillingControllerTest {
                 .andExpect(jsonPath("$.data.notifications[0].subject", containsString("CRITICAL chargeback alert")))
                 .andExpect(jsonPath("$.data.notifications[0].payload.eventType").value("chargeback.threshold"));
 
-        mockMvc.perform(post("/api/admin/billing/chargeback-alert-notifications/outbox")
+        String queuedNotificationResponse = mockMvc.perform(post("/api/admin/billing/chargeback-alert-notifications/outbox")
                         .header("Authorization", "Bearer " + adminToken)
                         .param("notificationChannel", "slack")
                         .param("notificationTarget", "ops-webhook")
@@ -196,7 +196,22 @@ class AdminBillingControllerTest {
                 .andExpect(jsonPath("$.data.externalDeliveryEnabled").value(false))
                 .andExpect(jsonPath("$.data.queuedCount").value(1))
                 .andExpect(jsonPath("$.data.deliveries[0].organizationName").value("Billing Policy Org 1"))
-                .andExpect(jsonPath("$.data.deliveries[0].payloadJson", containsString("chargeback.threshold")));
+                .andExpect(jsonPath("$.data.deliveries[0].payloadJson", containsString("chargeback.threshold")))
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+
+        Integer deliveryId = JsonPath.read(queuedNotificationResponse, "$.data.deliveries[0].id");
+
+        mockMvc.perform(post("/api/admin/billing/chargeback-alert-notifications/outbox/{deliveryId}/adapter-result", deliveryId)
+                        .header("Authorization", "Bearer " + adminToken)
+                        .param("result", "BLOCKED_CREDENTIAL"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.mode").value("ADAPTER_RESULT"))
+                .andExpect(jsonPath("$.data.status").value("DELIVERY_ADAPTER_BLOCKED_CREDENTIAL"))
+                .andExpect(jsonPath("$.data.externalDeliveryEnabled").value(false))
+                .andExpect(jsonPath("$.data.delivery.attemptCount").value(1))
+                .andExpect(jsonPath("$.data.delivery.lastError", containsString("credential/configuration")));
 
         mockMvc.perform(get("/api/admin/billing/chargeback-alert-notifications/outbox")
                         .header("Authorization", "Bearer " + adminToken)
@@ -284,7 +299,7 @@ class AdminBillingControllerTest {
                 .andExpect(jsonPath("$.data.invoice.id").value(finalInvoiceId))
                 .andExpect(jsonPath("$.data.payload.eventType").value("chargeback.payment_provider.handoff"));
 
-        mockMvc.perform(post("/api/admin/billing/chargeback-invoices/{invoiceId}/payment-provider-handoff", finalInvoiceId)
+        String queuedHandoffResponse = mockMvc.perform(post("/api/admin/billing/chargeback-invoices/{invoiceId}/payment-provider-handoff", finalInvoiceId)
                         .header("Authorization", "Bearer " + adminToken)
                         .param("paymentProvider", "manual_ap")
                         .param("paymentTargetAccount", "finance-ap")
@@ -294,11 +309,28 @@ class AdminBillingControllerTest {
                 .andExpect(jsonPath("$.data.status").value("PENDING_PAYMENT_PROVIDER_ADAPTER"))
                 .andExpect(jsonPath("$.data.externalPaymentEnabled").value(false))
                 .andExpect(jsonPath("$.data.handoff.invoiceNumber", containsString("OSMU-FINAL-")))
-                .andExpect(jsonPath("$.data.handoff.payloadJson", containsString("chargeback.payment_provider.handoff")));
+                .andExpect(jsonPath("$.data.handoff.payloadJson", containsString("chargeback.payment_provider.handoff")))
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+
+        Integer handoffId = JsonPath.read(queuedHandoffResponse, "$.data.handoff.id");
+
+        mockMvc.perform(post("/api/admin/billing/chargeback-payment-provider-handoffs/{handoffId}/adapter-result", handoffId)
+                        .header("Authorization", "Bearer " + adminToken)
+                        .param("result", "RETRY")
+                        .param("retryDelayMinutes", "45")
+                        .param("lastError", "Payment adapter configuration pending."))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.mode").value("ADAPTER_RESULT"))
+                .andExpect(jsonPath("$.data.status").value("PAYMENT_PROVIDER_ADAPTER_RETRY_SCHEDULED"))
+                .andExpect(jsonPath("$.data.externalPaymentEnabled").value(false))
+                .andExpect(jsonPath("$.data.handoff.attemptCount").value(1))
+                .andExpect(jsonPath("$.data.handoff.nextAttemptAt").exists());
 
         mockMvc.perform(get("/api/admin/billing/chargeback-payment-provider-handoffs")
                         .header("Authorization", "Bearer " + adminToken)
-                        .param("status", "PENDING_PAYMENT_PROVIDER_ADAPTER")
+                        .param("status", "PAYMENT_PROVIDER_ADAPTER_RETRY_SCHEDULED")
                         .param("limit", "10"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.handoffs[*].invoiceNumber", hasItem(containsString("OSMU-FINAL-"))));

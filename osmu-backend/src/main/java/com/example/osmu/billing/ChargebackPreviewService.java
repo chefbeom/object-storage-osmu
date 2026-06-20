@@ -29,6 +29,8 @@ public class ChargebackPreviewService {
 
     private static final BigDecimal BYTES_PER_GIB = BigDecimal.valueOf(1024L * 1024L * 1024L);
     private static final BigDecimal OPERATIONS_PER_THOUSAND = BigDecimal.valueOf(1000L);
+    private static final int DEFAULT_ADAPTER_RETRY_DELAY_MINUTES = 60;
+    private static final int MAX_ADAPTER_RETRY_DELAY_MINUTES = 1440;
 
     private final OrganizationRepository organizationRepository;
     private final BucketRepository bucketRepository;
@@ -539,6 +541,58 @@ public class ChargebackPreviewService {
         );
     }
 
+    public ChargebackPaymentProviderHandoffAttemptResponse recordPaymentProviderHandoffAdapterResult(
+            AuthenticatedUser actor,
+            long handoffId,
+            String result,
+            Integer retryDelayMinutes,
+            String lastError
+    ) {
+        requireAdmin(actor, "Chargeback payment provider handoff adapter result access denied.");
+        ChargebackPaymentProviderHandoffRecord record = paymentHandoffRepository.findById(handoffId)
+                .orElseThrow(() -> new ApiException(ApiErrorCode.NOT_FOUND, "Chargeback payment handoff not found."));
+        rejectCompletedAdapterStatus(record.status(), "Chargeback payment provider handoff adapter result already recorded.");
+        String normalizedResult = normalizeAdapterResult(result);
+        OffsetDateTime now = OffsetDateTime.now();
+        String status = paymentHandoffAdapterStatus(normalizedResult);
+        OffsetDateTime nextAttemptAt = nextAdapterAttemptAt(normalizedResult, retryDelayMinutes, now);
+        String error = adapterLastError(
+                normalizedResult,
+                lastError,
+                "Payment provider adapter waiting for credential/configuration reference.",
+                "Payment provider adapter retry scheduled."
+        );
+        ChargebackPaymentProviderHandoffRecord updated = new ChargebackPaymentProviderHandoffRecord(
+                record.id(),
+                record.finalInvoiceId(),
+                record.invoiceNumber(),
+                record.organizationId(),
+                record.organizationName(),
+                record.currency(),
+                record.amount(),
+                record.provider(),
+                record.targetAccount(),
+                status,
+                record.attemptCount() + 1,
+                nextAttemptAt,
+                record.payloadJson(),
+                record.requestedBy(),
+                record.reason(),
+                record.createdAt(),
+                now,
+                error
+        );
+        ChargebackPaymentProviderHandoffRecord saved = paymentHandoffRepository.update(updated);
+        return new ChargebackPaymentProviderHandoffAttemptResponse(
+                "ADAPTER_RESULT",
+                saved.status(),
+                false,
+                paymentHandoffResponse(saved),
+                now,
+                adapterResultNote(normalizedResult, "payment provider")
+        );
+    }
+
     public ChargebackAlertNotificationPreviewResponse alertNotificationPreview(
             AuthenticatedUser actor,
             ChargebackPreviewRequest request,
@@ -631,6 +685,60 @@ public class ChargebackPreviewService {
                 records.size(),
                 records.stream().map(ChargebackPreviewService::deliveryResponse).toList(),
                 OffsetDateTime.now()
+        );
+    }
+
+    public ChargebackAlertNotificationDeliveryAttemptResponse recordNotificationDeliveryAdapterResult(
+            AuthenticatedUser actor,
+            long deliveryId,
+            String result,
+            Integer retryDelayMinutes,
+            String lastError
+    ) {
+        requireAdmin(actor, "Chargeback notification delivery adapter result access denied.");
+        ChargebackAlertNotificationDeliveryRecord record = notificationDeliveryRepository.findById(deliveryId)
+                .orElseThrow(() -> new ApiException(ApiErrorCode.NOT_FOUND, "Chargeback notification delivery not found."));
+        rejectCompletedAdapterStatus(record.status(), "Chargeback notification delivery adapter result already recorded.");
+        String normalizedResult = normalizeAdapterResult(result);
+        OffsetDateTime now = OffsetDateTime.now();
+        String status = notificationDeliveryAdapterStatus(normalizedResult);
+        OffsetDateTime nextAttemptAt = nextAdapterAttemptAt(normalizedResult, retryDelayMinutes, now);
+        String error = adapterLastError(
+                normalizedResult,
+                lastError,
+                "Notification adapter waiting for credential/configuration reference.",
+                "Notification adapter retry scheduled."
+        );
+        ChargebackAlertNotificationDeliveryRecord updated = new ChargebackAlertNotificationDeliveryRecord(
+                record.id(),
+                record.organizationId(),
+                record.organizationName(),
+                record.severity(),
+                record.estimatedTotalCost(),
+                record.warningAmount(),
+                record.criticalAmount(),
+                record.channel(),
+                record.target(),
+                status,
+                record.attemptCount() + 1,
+                nextAttemptAt,
+                record.subject(),
+                record.message(),
+                record.payloadJson(),
+                record.requestedBy(),
+                record.reason(),
+                record.createdAt(),
+                now,
+                error
+        );
+        ChargebackAlertNotificationDeliveryRecord saved = notificationDeliveryRepository.update(updated);
+        return new ChargebackAlertNotificationDeliveryAttemptResponse(
+                "ADAPTER_RESULT",
+                saved.status(),
+                false,
+                deliveryResponse(saved),
+                now,
+                adapterResultNote(normalizedResult, "notification")
         );
     }
 
@@ -865,10 +973,101 @@ public class ChargebackPreviewService {
             return "";
         }
         String status = value.trim().toUpperCase(Locale.ROOT);
-        if (!"PENDING_PAYMENT_PROVIDER_ADAPTER".equals(status)) {
-            throw new ApiException(ApiErrorCode.VALIDATION_ERROR, "status must be PENDING_PAYMENT_PROVIDER_ADAPTER.");
+        if (!List.of(
+                "PENDING_PAYMENT_PROVIDER_ADAPTER",
+                "PAYMENT_PROVIDER_ADAPTER_RETRY_SCHEDULED",
+                "PAYMENT_PROVIDER_ADAPTER_BLOCKED_CREDENTIAL",
+                "PAYMENT_PROVIDER_ADAPTER_SUCCEEDED"
+        ).contains(status)) {
+            throw new ApiException(ApiErrorCode.VALIDATION_ERROR, "status must be a supported payment provider adapter state.");
         }
         return status;
+    }
+
+    private static String normalizeAdapterResult(String value) {
+        String result = value == null || value.isBlank()
+                ? "BLOCKED_CREDENTIAL"
+                : value.trim().toUpperCase(Locale.ROOT).replace('-', '_').replace(' ', '_');
+        if ("BLOCKED_SECRET".equals(result) || "SECRET_REQUIRED".equals(result)) {
+            return "BLOCKED_CREDENTIAL";
+        }
+        if (!List.of("SUCCESS", "RETRY", "BLOCKED_CREDENTIAL").contains(result)) {
+            throw new ApiException(ApiErrorCode.VALIDATION_ERROR, "result must be SUCCESS, RETRY, or BLOCKED_CREDENTIAL.");
+        }
+        return result;
+    }
+
+    private static String notificationDeliveryAdapterStatus(String result) {
+        return switch (result) {
+            case "SUCCESS" -> "DELIVERY_ADAPTER_SUCCEEDED";
+            case "RETRY" -> "DELIVERY_ADAPTER_RETRY_SCHEDULED";
+            default -> "DELIVERY_ADAPTER_BLOCKED_CREDENTIAL";
+        };
+    }
+
+    private static String paymentHandoffAdapterStatus(String result) {
+        return switch (result) {
+            case "SUCCESS" -> "PAYMENT_PROVIDER_ADAPTER_SUCCEEDED";
+            case "RETRY" -> "PAYMENT_PROVIDER_ADAPTER_RETRY_SCHEDULED";
+            default -> "PAYMENT_PROVIDER_ADAPTER_BLOCKED_CREDENTIAL";
+        };
+    }
+
+    private static OffsetDateTime nextAdapterAttemptAt(String result, Integer retryDelayMinutes, OffsetDateTime now) {
+        if (!"RETRY".equals(result)) {
+            return null;
+        }
+        int minutes = retryDelayMinutes == null ? DEFAULT_ADAPTER_RETRY_DELAY_MINUTES : retryDelayMinutes;
+        if (minutes < 1 || minutes > MAX_ADAPTER_RETRY_DELAY_MINUTES) {
+            throw new ApiException(ApiErrorCode.VALIDATION_ERROR, "retryDelayMinutes must be between 1 and 1440.");
+        }
+        return now.plusMinutes(minutes);
+    }
+
+    private static String adapterLastError(
+            String result,
+            String value,
+            String blockedFallback,
+            String retryFallback
+    ) {
+        if ("SUCCESS".equals(result)) {
+            return null;
+        }
+        String fallback = "RETRY".equals(result) ? retryFallback : blockedFallback;
+        String error = value == null || value.isBlank() ? fallback : value.trim();
+        if (error.length() > 512 || error.contains("\r") || error.contains("\n")) {
+            throw new ApiException(ApiErrorCode.VALIDATION_ERROR, "lastError must be a single-line value up to 512 characters.");
+        }
+        rejectSecretLikeAdapterText(error);
+        return error;
+    }
+
+    private static void rejectSecretLikeAdapterText(String value) {
+        String text = value.toLowerCase(Locale.ROOT);
+        if (text.contains("password")
+                || text.contains("secret")
+                || text.contains("token")
+                || text.contains("authorization")
+                || text.contains("bearer ")
+                || text.contains("private key")
+                || text.contains("access_key")
+                || text.contains("secret_key")) {
+            throw new ApiException(ApiErrorCode.VALIDATION_ERROR, "lastError must not contain credential material or raw provider response details.");
+        }
+    }
+
+    private static void rejectCompletedAdapterStatus(String status, String message) {
+        if (status != null && status.endsWith("_SUCCEEDED")) {
+            throw new ApiException(ApiErrorCode.CONFLICT, message);
+        }
+    }
+
+    private static String adapterResultNote(String result, String adapterName) {
+        return switch (result) {
+            case "SUCCESS" -> "Recorded " + adapterName + " adapter success result; no external call was made by this API.";
+            case "RETRY" -> "Recorded retryable " + adapterName + " adapter result and scheduled the next attempt.";
+            default -> "Recorded blocked " + adapterName + " adapter result without storing credentials or raw provider responses.";
+        };
     }
 
     private ChargebackFinalInvoiceRecord paymentHandoffReadyInvoice(long invoiceId) {

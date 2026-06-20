@@ -15,6 +15,7 @@ import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Repository;
@@ -59,6 +60,24 @@ public class MariaDbChargebackPaymentProviderHandoffRepository implements Charge
     }
 
     @Override
+    public Optional<ChargebackPaymentProviderHandoffRecord> findById(long id) {
+        ensureSchema();
+        String sql = """
+                SELECT *
+                FROM chargeback_payment_provider_handoffs
+                WHERE id = ?
+                """;
+        try (Connection connection = connect();
+             PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setLong(1, id);
+            List<ChargebackPaymentProviderHandoffRecord> records = mapRows(statement);
+            return records.stream().findFirst();
+        } catch (SQLException exception) {
+            throw databaseException(exception);
+        }
+    }
+
+    @Override
     public List<ChargebackPaymentProviderHandoffRecord> findAll(int limit) {
         ensureSchema();
         String sql = """
@@ -85,6 +104,33 @@ public class MariaDbChargebackPaymentProviderHandoffRepository implements Charge
             statement.setString(1, status);
             statement.setInt(2, normalizeLimit(limit));
             return mapRows(statement);
+        } catch (SQLException exception) {
+            throw databaseException(exception);
+        }
+    }
+
+    @Override
+    public ChargebackPaymentProviderHandoffRecord update(ChargebackPaymentProviderHandoffRecord record) {
+        ensureSchema();
+        String sql = """
+                UPDATE chargeback_payment_provider_handoffs
+                SET status = ?, attempt_count = ?, next_attempt_at = ?, updated_at = ?, last_error = ?
+                WHERE id = ?
+                """;
+        try (Connection connection = connect();
+             PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setString(1, record.status());
+            statement.setInt(2, record.attemptCount());
+            statement.setTimestamp(3, timestamp(record.nextAttemptAt()));
+            statement.setTimestamp(4, timestamp(record.updatedAt()));
+            statement.setString(5, record.lastError());
+            statement.setLong(6, record.id());
+            int updatedRows = statement.executeUpdate();
+            if (updatedRows == 0) {
+                throw new ApiException(ApiErrorCode.NOT_FOUND, "Chargeback payment handoff not found.");
+            }
+            return findById(record.id())
+                    .orElseThrow(() -> new ApiException(ApiErrorCode.NOT_FOUND, "Chargeback payment handoff not found."));
         } catch (SQLException exception) {
             throw databaseException(exception);
         }

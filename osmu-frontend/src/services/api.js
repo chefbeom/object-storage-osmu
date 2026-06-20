@@ -1264,6 +1264,17 @@ export function getChargebackAlertNotificationOutbox(options = {}) {
   return request(`/admin/billing/chargeback-alert-notifications/outbox${suffix}`)
 }
 
+export function recordChargebackAlertNotificationAdapterResult(deliveryId, options = {}) {
+  const query = new URLSearchParams()
+  appendQuery(query, 'result', options.result)
+  appendQuery(query, 'retryDelayMinutes', options.retryDelayMinutes)
+  appendQuery(query, 'lastError', options.lastError)
+  const suffix = query.toString() ? `?${query.toString()}` : ''
+  return request(`/admin/billing/chargeback-alert-notifications/outbox/${encodeURIComponent(deliveryId)}/adapter-result${suffix}`, {
+    method: 'POST',
+  })
+}
+
 export function createChargebackInvoiceDrafts(options = {}) {
   const query = new URLSearchParams()
   appendQuery(query, 'from', options.from)
@@ -1350,6 +1361,17 @@ export function getChargebackPaymentProviderHandoffs(options = {}) {
   appendQuery(query, 'limit', options.limit)
   const suffix = query.toString() ? `?${query.toString()}` : ''
   return request(`/admin/billing/chargeback-payment-provider-handoffs${suffix}`)
+}
+
+export function recordChargebackPaymentProviderHandoffAdapterResult(handoffId, options = {}) {
+  const query = new URLSearchParams()
+  appendQuery(query, 'result', options.result)
+  appendQuery(query, 'retryDelayMinutes', options.retryDelayMinutes)
+  appendQuery(query, 'lastError', options.lastError)
+  const suffix = query.toString() ? `?${query.toString()}` : ''
+  return request(`/admin/billing/chargeback-payment-provider-handoffs/${encodeURIComponent(handoffId)}/adapter-result${suffix}`, {
+    method: 'POST',
+  })
 }
 
 export function recordChargebackInvoicePayment(invoiceId, options = {}) {

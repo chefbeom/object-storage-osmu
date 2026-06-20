@@ -791,7 +791,7 @@ erDiagram
 - 현재 MVP는 `osmu-backend/src/main/resources/db/migration` 아래 `V1__init_metadata_schema.sql`부터 `V54__chargeback_payment_provider_handoffs.sql`까지의 Flyway migration을 제공한다.
 - `V52__billing_pricing_policy_proposals.sql`은 ADMIN-only 내부 chargeback 가격 정책 제안/승인 기록을 저장한다. `PENDING_APPROVAL` 제안은 활성 정책을 바꾸지 않고, 승인 시 `APPROVED_APPLIED`로 전환되어 내부 계산 정책에만 적용된다.
 - `V53__chargeback_final_invoices.sql`은 승인된 chargeback invoice draft에서 생성한 final invoice와 `FINALIZED` -> `PAYMENT_REQUESTED` -> `PAID` payment 상태, 수동 payment reference를 저장한다. 외부 payment provider secret이나 provider response 원문은 저장하지 않는다.
-- `V54__chargeback_payment_provider_handoffs.sql`은 `PAYMENT_REQUESTED` final invoice를 외부 결제 provider adapter에 넘기기 전 검토할 no-send handoff outbox를 저장한다. `PENDING_PAYMENT_PROVIDER_ADAPTER` 상태와 payload JSON만 저장하며 secret 값이나 실제 provider 응답 원문은 저장하지 않는다.
+- `V54__chargeback_payment_provider_handoffs.sql`은 `PAYMENT_REQUESTED` final invoice를 외부 결제 provider adapter에 넘기기 전 검토할 no-send handoff outbox를 저장한다. `PENDING_PAYMENT_PROVIDER_ADAPTER`, adapter retry/block/success 상태, attempt count, next attempt time, sanitized last error, payload JSON을 저장하며 secret 값이나 실제 provider 응답 원문은 저장하지 않는다. Notification delivery outbox도 기존 `V50__chargeback_notification_deliveries.sql`의 status/attempt/next-at/last-error 컬럼으로 같은 adapter result retry state를 기록한다.
 - repository의 `CREATE TABLE IF NOT EXISTS`는 local fallback이다.
 
 ## 17. 구현 순서

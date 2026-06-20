@@ -18020,3 +18020,10 @@ feat/bucket-management
 - Frontend/mock: Admin billing panel now has payment provider/target inputs, a Queue handoff action, handoff outbox metrics/list, API wrappers, selector tests, and mock API self-test coverage.
 - Docs/verifiers: README, API spec/OpenAPI, backend/frontend/security/database/commercial docs, IAM/RBAC matrix, feature inventory, test cases, and contract verifiers now include the payment handoff outbox and remaining real adapter/retry/secret gaps.
 - Verification: OpenAPI contract verifier, Flyway migration verifier, IAM/RBAC verifier, commercial readiness verifier, node syntax check, frontend unit tests, frontend build, mock API self-test, and git diff check passed. Backend Gradle tests were attempted with `--offline`, but the wrapper still tried to fetch Gradle 9.5.1 and was blocked; no escalation or download retry was performed.
+### 2026-06-20 - Chargeback adapter result retry state
+
+- Task interpretation: continue dev-docs-driven billing/chargeback work without expanding AWS compatibility scope.
+- Backend: added ADMIN-only adapter result APIs for chargeback notification deliveries and payment provider handoffs. They update status, attempt count, next retry time, and sanitized last error only; no external notification/payment provider call is made and credential-like lastError values are rejected.
+- Frontend/mock: added API wrappers, Admin billing panel block/retry controls, mock API state transitions, and self-test coverage for notification/payment adapter result records.
+- Docs/verifiers: README, API spec/OpenAPI, backend/frontend/security/database/commercial docs, IAM/RBAC matrix, test cases, and contract verifiers now describe adapter result retry state and keep actual adapter execution/secret/autonomous retry worker as follow-up.
+- Verification: OpenAPI contract, commercial readiness, IAM/RBAC matrix, migration verifier, frontend unit tests, frontend build, mock API self-test, node syntax check, and git diff check passed. Backend Gradle tests were not rerun to avoid the Gradle distribution fetch that was previously blocked.

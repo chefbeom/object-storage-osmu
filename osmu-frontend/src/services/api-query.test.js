@@ -60,7 +60,9 @@ import {
   provisionEnterpriseAuthUser,
   queueChargebackAlertNotifications,
   queueChargebackPaymentProviderHandoff,
+  recordChargebackAlertNotificationAdapterResult,
   recordChargebackInvoicePayment,
+  recordChargebackPaymentProviderHandoffAdapterResult,
   requestChargebackInvoicePayment,
   saveDashboardLayout,
   saveDashboardLayoutDefault,
@@ -599,6 +601,14 @@ test('chargeback alert notification outbox wrappers queue and read delivery reco
         deliveries: [{ organizationName: 'Media', status: 'PENDING_DELIVERY_ADAPTER' }],
       },
     }),
+    () => jsonResponse({
+      data: {
+        mode: 'ADAPTER_RESULT',
+        status: 'DELIVERY_ADAPTER_RETRY_SCHEDULED',
+        externalDeliveryEnabled: false,
+        delivery: { id: 3, attemptCount: 1, status: 'DELIVERY_ADAPTER_RETRY_SCHEDULED' },
+      },
+    }),
   ])
 
   try {
@@ -612,6 +622,11 @@ test('chargeback alert notification outbox wrappers queue and read delivery reco
       reason: 'review send',
     })
     const outbox = await getChargebackAlertNotificationOutbox({ limit: 25 })
+    const adapterResult = await recordChargebackAlertNotificationAdapterResult(3, {
+      result: 'RETRY',
+      retryDelayMinutes: 60,
+      lastError: 'adapter endpoint not ready',
+    })
 
     const queueUrl = new URL(fetchMock.calls[0].url)
     assert.equal(queueUrl.pathname, '/api/admin/billing/chargeback-alert-notifications/outbox')
@@ -630,6 +645,14 @@ test('chargeback alert notification outbox wrappers queue and read delivery reco
     assert.equal(listUrl.searchParams.get('limit'), '25')
     assert.equal(fetchMock.calls[1].options.method, undefined)
     assert.equal(outbox.data.deliveryCount, 1)
+
+    const adapterUrl = new URL(fetchMock.calls[2].url)
+    assert.equal(adapterUrl.pathname, '/api/admin/billing/chargeback-alert-notifications/outbox/3/adapter-result')
+    assert.equal(adapterUrl.searchParams.get('result'), 'RETRY')
+    assert.equal(adapterUrl.searchParams.get('retryDelayMinutes'), '60')
+    assert.equal(adapterUrl.searchParams.get('lastError'), 'adapter endpoint not ready')
+    assert.equal(fetchMock.calls[2].options.method, 'POST')
+    assert.equal(adapterResult.data.status, 'DELIVERY_ADAPTER_RETRY_SCHEDULED')
   } finally {
     cleanupFetch(fetchMock)
   }
@@ -747,6 +770,14 @@ test('chargeback final invoice wrappers finalize update payment status and queue
     }),
     () => jsonResponse({
       data: {
+        mode: 'ADAPTER_RESULT',
+        status: 'PAYMENT_PROVIDER_ADAPTER_BLOCKED_CREDENTIAL',
+        externalPaymentEnabled: false,
+        handoff: { id: 3, attemptCount: 1, status: 'PAYMENT_PROVIDER_ADAPTER_BLOCKED_CREDENTIAL' },
+      },
+    }),
+    () => jsonResponse({
+      data: {
         mode: 'PAYMENT_RECORD',
         status: 'PAID',
         paymentStatus: 'PAID',
@@ -771,6 +802,10 @@ test('chargeback final invoice wrappers finalize update payment status and queue
     const handoffs = await getChargebackPaymentProviderHandoffs({
       status: 'PENDING_PAYMENT_PROVIDER_ADAPTER',
       limit: 25,
+    })
+    const handoffAdapterResult = await recordChargebackPaymentProviderHandoffAdapterResult(3, {
+      result: 'BLOCKED_CREDENTIAL',
+      lastError: 'adapter configuration pending',
     })
     const paid = await recordChargebackInvoicePayment(9, {
       paymentReference: 'PAY-2026-0001',
@@ -818,11 +853,18 @@ test('chargeback final invoice wrappers finalize update payment status and queue
     assert.equal(fetchMock.calls[5].options.method, undefined)
     assert.equal(handoffs.data.handoffCount, 1)
 
-    const recordUrl = new URL(fetchMock.calls[6].url)
+    const handoffAdapterUrl = new URL(fetchMock.calls[6].url)
+    assert.equal(handoffAdapterUrl.pathname, '/api/admin/billing/chargeback-payment-provider-handoffs/3/adapter-result')
+    assert.equal(handoffAdapterUrl.searchParams.get('result'), 'BLOCKED_CREDENTIAL')
+    assert.equal(handoffAdapterUrl.searchParams.get('lastError'), 'adapter configuration pending')
+    assert.equal(fetchMock.calls[6].options.method, 'POST')
+    assert.equal(handoffAdapterResult.data.status, 'PAYMENT_PROVIDER_ADAPTER_BLOCKED_CREDENTIAL')
+
+    const recordUrl = new URL(fetchMock.calls[7].url)
     assert.equal(recordUrl.pathname, '/api/admin/billing/chargeback-invoices/9/payment-record')
     assert.equal(recordUrl.searchParams.get('paymentReference'), 'PAY-2026-0001')
     assert.equal(recordUrl.searchParams.get('paymentNote'), 'paid')
-    assert.equal(fetchMock.calls[6].options.method, 'POST')
+    assert.equal(fetchMock.calls[7].options.method, 'POST')
     assert.equal(paid.data.paymentStatus, 'PAID')
   } finally {
     cleanupFetch(fetchMock)

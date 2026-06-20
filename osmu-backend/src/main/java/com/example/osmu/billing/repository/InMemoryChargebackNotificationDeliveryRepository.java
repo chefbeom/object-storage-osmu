@@ -4,6 +4,7 @@ import com.example.osmu.billing.ChargebackAlertNotificationDeliveryRecord;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Optional;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicLong;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -28,8 +29,24 @@ public class InMemoryChargebackNotificationDeliveryRepository implements Chargeb
     }
 
     @Override
+    public Optional<ChargebackAlertNotificationDeliveryRecord> findById(long id) {
+        return records.stream()
+                .filter(record -> record.id() != null && record.id() == id)
+                .findFirst();
+    }
+
+    @Override
     public List<ChargebackAlertNotificationDeliveryRecord> findAll(int limit) {
         return records.stream()
+                .sorted(Comparator.comparing(ChargebackAlertNotificationDeliveryRecord::createdAt).reversed())
+                .limit(normalizeLimit(limit))
+                .toList();
+    }
+
+    @Override
+    public List<ChargebackAlertNotificationDeliveryRecord> findByStatus(String status, int limit) {
+        return records.stream()
+                .filter(record -> record.status().equals(status))
                 .sorted(Comparator.comparing(ChargebackAlertNotificationDeliveryRecord::createdAt).reversed())
                 .limit(normalizeLimit(limit))
                 .toList();
@@ -42,6 +59,18 @@ public class InMemoryChargebackNotificationDeliveryRepository implements Chargeb
                 .sorted(Comparator.comparing(ChargebackAlertNotificationDeliveryRecord::createdAt).reversed())
                 .limit(normalizeLimit(limit))
                 .toList();
+    }
+
+    @Override
+    public ChargebackAlertNotificationDeliveryRecord update(ChargebackAlertNotificationDeliveryRecord updated) {
+        for (int index = 0; index < records.size(); index++) {
+            ChargebackAlertNotificationDeliveryRecord existing = records.get(index);
+            if (existing.id() != null && existing.id().equals(updated.id())) {
+                records.set(index, updated);
+                return updated;
+            }
+        }
+        throw new IllegalArgumentException("Chargeback notification delivery not found: " + updated.id());
     }
 
     private static int normalizeLimit(int limit) {

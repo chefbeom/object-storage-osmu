@@ -243,6 +243,35 @@ public class AdminBillingController {
         return ApiResponse.of(chargebackPreviewService.notificationOutbox(actor, limit == null ? 50 : limit));
     }
 
+    @PostMapping("/chargeback-alert-notifications/outbox/{deliveryId}/adapter-result")
+    public ApiResponse<ChargebackAlertNotificationDeliveryAttemptResponse> recordChargebackAlertNotificationAdapterResult(
+            @PathVariable long deliveryId,
+            @RequestParam(name = "result", required = false) String result,
+            @RequestParam(name = "retryDelayMinutes", required = false) Integer retryDelayMinutes,
+            @RequestParam(name = "lastError", required = false) String lastError,
+            HttpServletRequest request
+    ) {
+        AuthenticatedUser actor = authContext.currentUser(request);
+        ChargebackAlertNotificationDeliveryAttemptResponse recorded =
+                chargebackPreviewService.recordNotificationDeliveryAdapterResult(
+                        actor,
+                        deliveryId,
+                        result,
+                        retryDelayMinutes,
+                        lastError
+                );
+        auditLogService.record(
+                "CHARGEBACK_ALERT_NOTIFICATION_ADAPTER_RESULT_RECORD",
+                actor.loginId(),
+                "CHARGEBACK_ALERT_NOTIFICATION_DELIVERY",
+                String.valueOf(deliveryId),
+                "SUCCESS",
+                "Chargeback notification adapter result recorded: " + recorded.status(),
+                request
+        );
+        return ApiResponse.of(recorded);
+    }
+
     @PostMapping("/chargeback-invoice-drafts")
     public ApiResponse<ChargebackInvoiceDraftCreateResponse> persistChargebackInvoiceDrafts(
             @RequestParam(name = "from", required = false) String from,
@@ -419,6 +448,35 @@ public class AdminBillingController {
                 status,
                 limit == null ? 50 : limit
         ));
+    }
+
+    @PostMapping("/chargeback-payment-provider-handoffs/{handoffId}/adapter-result")
+    public ApiResponse<ChargebackPaymentProviderHandoffAttemptResponse> recordChargebackPaymentProviderAdapterResult(
+            @PathVariable long handoffId,
+            @RequestParam(name = "result", required = false) String result,
+            @RequestParam(name = "retryDelayMinutes", required = false) Integer retryDelayMinutes,
+            @RequestParam(name = "lastError", required = false) String lastError,
+            HttpServletRequest request
+    ) {
+        AuthenticatedUser actor = authContext.currentUser(request);
+        ChargebackPaymentProviderHandoffAttemptResponse recorded =
+                chargebackPreviewService.recordPaymentProviderHandoffAdapterResult(
+                        actor,
+                        handoffId,
+                        result,
+                        retryDelayMinutes,
+                        lastError
+                );
+        auditLogService.record(
+                "CHARGEBACK_PAYMENT_PROVIDER_ADAPTER_RESULT_RECORD",
+                actor.loginId(),
+                "CHARGEBACK_PAYMENT_PROVIDER_HANDOFF",
+                String.valueOf(handoffId),
+                "SUCCESS",
+                "Chargeback payment provider adapter result recorded: " + recorded.status(),
+                request
+        );
+        return ApiResponse.of(recorded);
     }
 
     @PostMapping("/chargeback-invoices/{invoiceId}/payment-record")

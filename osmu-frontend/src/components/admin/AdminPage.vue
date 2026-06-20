@@ -272,6 +272,8 @@
       @finalize-chargeback-invoice-draft="$emit('finalize-chargeback-invoice-draft', $event)"
       @request-chargeback-invoice-payment="$emit('request-chargeback-invoice-payment', $event)"
       @queue-chargeback-payment-provider-handoff="$emit('queue-chargeback-payment-provider-handoff', $event)"
+      @record-chargeback-notification-adapter-result="$emit('record-chargeback-notification-adapter-result', $event)"
+      @record-chargeback-payment-provider-adapter-result="$emit('record-chargeback-payment-provider-adapter-result', $event)"
       @record-chargeback-invoice-payment="$emit('record-chargeback-invoice-payment', $event)"
     />
 
@@ -673,6 +675,8 @@ defineEmits([
   'finalize-chargeback-invoice-draft',
   'request-chargeback-invoice-payment',
   'queue-chargeback-payment-provider-handoff',
+  'record-chargeback-notification-adapter-result',
+  'record-chargeback-payment-provider-adapter-result',
   'record-chargeback-invoice-payment',
   'save-quota-policy',
   'reset-quota-policy-target',

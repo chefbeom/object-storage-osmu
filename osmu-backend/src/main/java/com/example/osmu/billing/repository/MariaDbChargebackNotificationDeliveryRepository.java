@@ -15,6 +15,7 @@ import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Repository;
@@ -64,6 +65,24 @@ public class MariaDbChargebackNotificationDeliveryRepository implements Chargeba
     }
 
     @Override
+    public Optional<ChargebackAlertNotificationDeliveryRecord> findById(long id) {
+        ensureSchema();
+        String sql = """
+                SELECT *
+                FROM chargeback_notification_deliveries
+                WHERE id = ?
+                """;
+        try (Connection connection = connect();
+             PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setLong(1, id);
+            List<ChargebackAlertNotificationDeliveryRecord> records = mapRows(statement);
+            return records.stream().findFirst();
+        } catch (SQLException exception) {
+            throw databaseException(exception);
+        }
+    }
+
+    @Override
     public List<ChargebackAlertNotificationDeliveryRecord> findAll(int limit) {
         ensureSchema();
         String sql = """
@@ -73,6 +92,26 @@ public class MariaDbChargebackNotificationDeliveryRepository implements Chargeba
                 LIMIT ?
                 """;
         return query(sql, normalizeLimit(limit));
+    }
+
+    @Override
+    public List<ChargebackAlertNotificationDeliveryRecord> findByStatus(String status, int limit) {
+        ensureSchema();
+        String sql = """
+                SELECT *
+                FROM chargeback_notification_deliveries
+                WHERE status = ?
+                ORDER BY created_at DESC, id DESC
+                LIMIT ?
+                """;
+        try (Connection connection = connect();
+             PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setString(1, status);
+            statement.setInt(2, normalizeLimit(limit));
+            return mapRows(statement);
+        } catch (SQLException exception) {
+            throw databaseException(exception);
+        }
     }
 
     @Override
@@ -86,6 +125,33 @@ public class MariaDbChargebackNotificationDeliveryRepository implements Chargeba
                 LIMIT ?
                 """;
         return queryByOrganization(sql, organizationId, normalizeLimit(limit));
+    }
+
+    @Override
+    public ChargebackAlertNotificationDeliveryRecord update(ChargebackAlertNotificationDeliveryRecord record) {
+        ensureSchema();
+        String sql = """
+                UPDATE chargeback_notification_deliveries
+                SET status = ?, attempt_count = ?, next_attempt_at = ?, updated_at = ?, last_error = ?
+                WHERE id = ?
+                """;
+        try (Connection connection = connect();
+             PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setString(1, record.status());
+            statement.setInt(2, record.attemptCount());
+            statement.setTimestamp(3, timestamp(record.nextAttemptAt()));
+            statement.setTimestamp(4, timestamp(record.updatedAt()));
+            statement.setString(5, record.lastError());
+            statement.setLong(6, record.id());
+            int updatedRows = statement.executeUpdate();
+            if (updatedRows == 0) {
+                throw new ApiException(ApiErrorCode.NOT_FOUND, "Chargeback notification delivery not found.");
+            }
+            return findById(record.id())
+                    .orElseThrow(() -> new ApiException(ApiErrorCode.NOT_FOUND, "Chargeback notification delivery not found."));
+        } catch (SQLException exception) {
+            throw databaseException(exception);
+        }
     }
 
     private void bind(PreparedStatement statement, ChargebackAlertNotificationDeliveryRecord record) throws SQLException {

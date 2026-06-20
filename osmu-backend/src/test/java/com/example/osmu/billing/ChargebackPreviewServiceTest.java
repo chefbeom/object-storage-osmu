@@ -281,6 +281,30 @@ class ChargebackPreviewServiceTest {
         );
         assertThat(outbox.deliveryCount()).isEqualTo(1L);
         assertThat(outbox.deliveries().get(0).status()).isEqualTo("PENDING_DELIVERY_ADAPTER");
+
+        ChargebackAlertNotificationDeliveryAttemptResponse blocked = service.recordNotificationDeliveryAdapterResult(
+                new AuthenticatedUser(1L, "admin", "ADMIN", null),
+                outbox.deliveries().get(0).id(),
+                "BLOCKED_SECRET",
+                null,
+                null
+        );
+        assertThat(blocked.mode()).isEqualTo("ADAPTER_RESULT");
+        assertThat(blocked.status()).isEqualTo("DELIVERY_ADAPTER_BLOCKED_CREDENTIAL");
+        assertThat(blocked.externalDeliveryEnabled()).isFalse();
+        assertThat(blocked.delivery().attemptCount()).isEqualTo(1);
+        assertThat(blocked.delivery().lastError()).contains("credential/configuration");
+
+        ChargebackAlertNotificationDeliveryAttemptResponse retry = service.recordNotificationDeliveryAdapterResult(
+                new AuthenticatedUser(1L, "admin", "ADMIN", null),
+                outbox.deliveries().get(0).id(),
+                "RETRY",
+                30,
+                "Notification adapter endpoint is not ready."
+        );
+        assertThat(retry.status()).isEqualTo("DELIVERY_ADAPTER_RETRY_SCHEDULED");
+        assertThat(retry.delivery().attemptCount()).isEqualTo(2);
+        assertThat(retry.delivery().nextAttemptAt()).isNotNull();
     }
 
     @Test
@@ -405,6 +429,37 @@ class ChargebackPreviewServiceTest {
         assertThat(handoffs.handoffCount()).isEqualTo(1L);
         assertThat(handoffs.handoffs().get(0).provider()).isEqualTo("MANUAL_AP");
 
+        ChargebackPaymentProviderHandoffAttemptResponse blockedHandoff =
+                service.recordPaymentProviderHandoffAdapterResult(
+                        new AuthenticatedUser(1L, "admin", "ADMIN", null),
+                        handoffs.handoffs().get(0).id(),
+                        "BLOCKED_CREDENTIAL",
+                        null,
+                        null
+                );
+        assertThat(blockedHandoff.status()).isEqualTo("PAYMENT_PROVIDER_ADAPTER_BLOCKED_CREDENTIAL");
+        assertThat(blockedHandoff.externalPaymentEnabled()).isFalse();
+        assertThat(blockedHandoff.handoff().attemptCount()).isEqualTo(1);
+
+        ChargebackPaymentProviderHandoffAttemptResponse retryHandoff =
+                service.recordPaymentProviderHandoffAdapterResult(
+                        new AuthenticatedUser(1L, "admin", "ADMIN", null),
+                        handoffs.handoffs().get(0).id(),
+                        "RETRY",
+                        45,
+                        "Payment adapter configuration pending."
+                );
+        assertThat(retryHandoff.status()).isEqualTo("PAYMENT_PROVIDER_ADAPTER_RETRY_SCHEDULED");
+        assertThat(retryHandoff.handoff().attemptCount()).isEqualTo(2);
+        assertThat(retryHandoff.handoff().nextAttemptAt()).isNotNull();
+
+        ChargebackPaymentProviderHandoffListResponse retryHandoffs = service.paymentProviderHandoffs(
+                new AuthenticatedUser(1L, "admin", "ADMIN", null),
+                "PAYMENT_PROVIDER_ADAPTER_RETRY_SCHEDULED",
+                10
+        );
+        assertThat(retryHandoffs.handoffCount()).isEqualTo(1L);
+
         ChargebackFinalInvoiceActionResponse paid = service.recordFinalInvoicePayment(
                 new AuthenticatedUser(1L, "admin", "ADMIN", null),
                 finalized.invoice().id(),
@@ -467,6 +522,28 @@ class ChargebackPreviewServiceTest {
                 new AuthenticatedUser(3L, "org-admin", "ORG_ADMIN", 1L),
                 null,
                 10
+        ))
+                .isInstanceOf(ApiException.class)
+                .extracting("code")
+                .isEqualTo(ApiErrorCode.AUTHORIZATION_FAILED);
+
+        assertThatThrownBy(() -> service.recordNotificationDeliveryAdapterResult(
+                new AuthenticatedUser(3L, "org-admin", "ORG_ADMIN", 1L),
+                1L,
+                "RETRY",
+                30,
+                "adapter not ready"
+        ))
+                .isInstanceOf(ApiException.class)
+                .extracting("code")
+                .isEqualTo(ApiErrorCode.AUTHORIZATION_FAILED);
+
+        assertThatThrownBy(() -> service.recordPaymentProviderHandoffAdapterResult(
+                new AuthenticatedUser(3L, "org-admin", "ORG_ADMIN", 1L),
+                1L,
+                "RETRY",
+                30,
+                "adapter not ready"
         ))
                 .isInstanceOf(ApiException.class)
                 .extracting("code")
