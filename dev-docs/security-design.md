@@ -85,6 +85,7 @@ Enterprise auth plan:
 - OIDC callback은 JIT user 자동 생성을 하지 않는다. 신규 사용자는 admin claim preview와 `jit-provision` apply를 거친 뒤에만 local user로 생성된다.
 - OIDC callback/token exchange/JWKS 검증, LDAP bind/search login adapter, claim preview/audit, JIT provisioning apply는 구현되어 있지만 flag와 admin review 경계로 분리되어 있다. 실제 IdP/directory smoke 전까지 local password login은 유지한다.
 - `scripts/write-enterprise-auth-smoke-plan.ps1`은 실제 IdP/LDAP 연결 검증을 위한 `.osmu-run/latest-enterprise-auth-smoke.json`/Markdown evidence를 생성한다. 기본값은 plan-only라 HTTP 요청을 실행하지 않으며, `-Execute`와 필요한 credential/state가 명시된 경우에만 OIDC/LDAP smoke를 수행한다. evidence에는 admin password, LDAP password, access/refresh token, OIDC authorization code/state, raw claim JSON을 기록하지 않는다.
+- `scripts/write-secret-rotation-evidence.ps1`은 target 환경의 secret/certificate rotation 실행 증거를 `.osmu-run/latest-secret-rotation-evidence.json`/Markdown으로 기록한다. evidence에는 환경명, operator, timestamp, change/audit/rollout/smoke 참조와 boolean confirmation만 저장하며 password, token, private key, kubeconfig, database/MinIO/OIDC/LDAP/SMTP/webhook secret 값은 저장하지 않는다.
 
 ## 3. 인가
 

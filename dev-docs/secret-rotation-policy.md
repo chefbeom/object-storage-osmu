@@ -84,3 +84,19 @@ powershell -ExecutionPolicy Bypass -File .\scripts\verify-secret-rotation-policy
 ```
 
 The verifier checks that the policy covers secret inventory, no-git storage rules, rotation triggers, runbook steps, JWT behavior, access key encryption key behavior, and TLS certificate handling.
+
+Target-environment execution evidence is recorded with:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\write-secret-rotation-evidence.ps1 -EnvironmentName <env> -TargetCluster <cluster> -Operator <operator> -RotationStartedAt <iso-time> -RotationCompletedAt <iso-time> -ChangeApprovalRef <change-id> -SecretManagerEvidenceRef <audit-ref> -WorkloadRestartEvidenceRef <rollout-ref> -SmokeEvidenceRef <smoke-ref> -ArtifactLeakReviewEvidenceRef <scan-ref> -AccessKeyEncryptionDecisionRef <decision-ref> -RotateAdminPassword -RotateJwtSigningSecret -RotateDatabaseCredentials -RotateMinioRootCredentials -RotateTlsCertificate -ConfirmNoSecretValues -ConfirmWorkloadRestart -ConfirmSmokePassed -ConfirmArtifactLeakReview -FailIfNotPassed
+```
+
+The writer creates `.osmu-run/latest-secret-rotation-evidence.json` and `.osmu-run/latest-secret-rotation-evidence.md`. It records environment labels, timestamps, boolean rotation confirmations, and external evidence references only; it rejects credential-shaped references and must never receive secret values.
+
+The writer self-test is:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\verify-secret-rotation-evidence.ps1
+```
+
+Production/B2B readiness requires `latest-secret-rotation-evidence.json` with `result=passed` from the target environment. Plan-only policy verification is not enough for a paid production sale.

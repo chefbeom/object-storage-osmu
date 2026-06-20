@@ -97,6 +97,9 @@ Run "powershell -ExecutionPolicy Bypass -File .\scripts\verify-tls-ingress.ps1"
 Step "Secret rotation policy draft check"
 Run "powershell -ExecutionPolicy Bypass -File .\scripts\verify-secret-rotation-policy.ps1"
 
+Step "Secret rotation evidence writer self-test"
+Run "powershell -ExecutionPolicy Bypass -File .\scripts\verify-secret-rotation-evidence.ps1"
+
 Step "IAM/RBAC matrix check"
 Run "powershell -ExecutionPolicy Bypass -File .\scripts\verify-iam-rbac-matrix.ps1"
 

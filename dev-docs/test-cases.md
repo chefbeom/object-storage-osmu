@@ -2165,6 +2165,16 @@ TC-FE-023 보강: 사용자가 취소한 경우에는 abort API를 호출한다.
 - Priority: P2
 - Automated: `scripts/verify-secret-rotation-policy.ps1`
 
+### TC-INFRA-008A
+
+- Feature: Secret and certificate rotation target evidence writer verification.
+- Preconditions: PowerShell is available.
+- Input: `powershell -ExecutionPolicy Bypass -File .\scripts\verify-secret-rotation-evidence.ps1`
+- Steps: Generate synthetic passed target-environment rotation evidence, verify `osmu.secret-rotation-evidence.v1`, `result=passed`, all core secret/certificate rotation flags, confirmation flags, decision rule, and no-secret policy. Verify credential-shaped evidence references such as `password=...` are rejected.
+- Expected: Operators have a repeatable evidence writer for production/B2B secret/certificate rotation that stores only external references, timestamps, and booleans, not secret values.
+- Priority: P2
+- Automated: `scripts/verify-secret-rotation-evidence.ps1`
+
 ### TC-INFRA-009
 
 - Feature: Backup restore drill draft verification.

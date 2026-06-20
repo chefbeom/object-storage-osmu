@@ -3,7 +3,9 @@ param(
     [string] $DeploymentStrategyPath = ".\dev-docs\deployment-strategy.md",
     [string] $SecurityDesignPath = ".\dev-docs\security-design.md",
     [string] $HelmValuesPath = ".\infra\helm\osmu\values.yaml",
-    [string] $KubernetesSecretExamplePath = ".\infra\k8s\secret.example.yaml"
+    [string] $KubernetesSecretExamplePath = ".\infra\k8s\secret.example.yaml",
+    [string] $EvidenceWriterPath = ".\scripts\write-secret-rotation-evidence.ps1",
+    [string] $EvidenceVerifierPath = ".\scripts\verify-secret-rotation-evidence.ps1"
 )
 
 $ErrorActionPreference = "Stop"
@@ -47,6 +49,9 @@ Assert-Contains $policy "Rotation Runbook" "Secret rotation policy"
 Assert-Contains $policy 'Changing `OSMU_JWT_SECRET` invalidates existing access and refresh tokens.' "Secret rotation policy"
 Assert-Contains $policy 'Changing `OSMU_ACCESS_KEY_SECRET_ENCRYPTION_KEY` prevents decrypting existing SigV4 secret material' "Secret rotation policy"
 Assert-Contains $policy "Pilot readiness requires creating the TLS Secret and verifying HTTPS routing" "Secret rotation policy"
+Assert-Contains $policy "write-secret-rotation-evidence.ps1" "Secret rotation policy"
+Assert-Contains $policy "latest-secret-rotation-evidence.json" "Secret rotation policy"
+Assert-Contains $policy "verify-secret-rotation-evidence.ps1" "Secret rotation policy"
 
 $deploymentStrategy = Read-RequiredFile $DeploymentStrategyPath "Deployment strategy"
 Assert-Contains $deploymentStrategy "secret-rotation-policy.md" "Deployment strategy"
@@ -61,6 +66,15 @@ Assert-Contains $helmValues "create: false" "Helm values"
 $secretExample = Read-RequiredFile $KubernetesSecretExamplePath "Kubernetes secret example"
 Assert-Contains $secretExample "kind: Secret" "Kubernetes secret example"
 Assert-Contains $secretExample "change-me" "Kubernetes secret example"
+
+$evidenceWriter = Read-RequiredFile $EvidenceWriterPath "Secret rotation evidence writer"
+Assert-Contains $evidenceWriter "osmu.secret-rotation-evidence.v1" "Secret rotation evidence writer"
+Assert-Contains $evidenceWriter "ConfirmNoSecretValues" "Secret rotation evidence writer"
+Assert-Contains $evidenceWriter "does not contain password values" "Secret rotation evidence writer"
+
+$evidenceVerifier = Read-RequiredFile $EvidenceVerifierPath "Secret rotation evidence verifier"
+Assert-Contains $evidenceVerifier "write-secret-rotation-evidence.ps1" "Secret rotation evidence verifier"
+Assert-Contains $evidenceVerifier "Secret-like evidence reference should be rejected." "Secret rotation evidence verifier"
 
 Write-Host "Secret rotation policy draft verified."
 Write-Host "Policy: $(Resolve-ProjectPath $PolicyPath)"

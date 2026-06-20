@@ -17,7 +17,7 @@ OSMU(Object Storage Management Utility)는 기업 내부망 또는 전용 인프
 - 로컬 durable MVP 데모: Docker Compose 기반 MariaDB + MinIO + Backend + Frontend 조합으로 검증 가능.
 - Web Portal: 로그인, dashboard, bucket/object, admin/developer, audit, lifecycle, share, quota, storage expansion, operations readiness, data-flow monitoring 화면 제공.
 - Backend: REST API, S3 호환 API, SigV4, bucket/object, multipart, CopyObject, multi-delete, Access Key, dashboard/readiness, monitoring API 제공.
-- Operations: Kubernetes/Helm draft, monitoring artifact, backup/restore drill, storage expansion runner, security evidence writer/finalizer, operations readiness finalizer와 verifier 제공.
+- Operations: Kubernetes/Helm draft, monitoring artifact, backup/restore drill, storage expansion runner, secret rotation evidence writer, security evidence writer/finalizer, operations readiness finalizer와 verifier 제공.
 - 남은 큰 축: 실제 운영 클러스터 evidence, GitHub-hosted durable gate evidence, 장기 analytics/time-series, 운영 패키징. S3 client smoke는 대체성 회귀 검증으로 유지한다.
 
 ## 아키텍처 개요
@@ -33,7 +33,7 @@ OSMU는 다섯 plane으로 나누어 이해하면 쉽습니다.
 ## Chargeback Note
 
 - 현재 billing/chargeback은 내부 pricing policy/proposal, 상업 가격표 승인 참조 기록, preview/export, threshold alert, notification/payment outbox, notification webhook/Slack/EMAIL SMTP relay adapter send, payment provider generic/CARD/BANK/TAX/ERP webhook profile handoff send, private/local webhook URL과 SMTP relay host 기본 차단, outbound payload size cap, generic notification/payment webhook HMAC signature header 옵션, invoice/payment workflow, adapter retry 상태 기록, notification/payment adapter retry worker dry-run/run까지 제공한다.
-- 아직 남은 범위는 실제 card/bank/tax/ERP native provider API adapter, production secret rotation evidence, 실제 운영 연동별 검증이다.
+- 아직 남은 범위는 실제 card/bank/tax/ERP native provider API adapter, target 환경의 secret/certificate rotation `result=passed` evidence 확보, 실제 운영 연동별 검증이다.
 
 ```mermaid
 flowchart LR

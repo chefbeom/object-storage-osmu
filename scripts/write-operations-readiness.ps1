@@ -7,6 +7,7 @@ param(
     [string] $SecurityEvidenceFinalizeReportPath = ".\.osmu-run\latest-security-evidence-finalize.json",
     [string] $ImageSigningEvidencePath = ".\.osmu-run\latest-image-signing-evidence.json",
     [string] $ContainerSecurityEvidencePath = ".\.osmu-run\latest-container-security-evidence.json",
+    [string] $SecretRotationEvidencePath = ".\.osmu-run\latest-secret-rotation-evidence.json",
     [string] $EnterpriseAuthSmokeEvidencePath = ".\.osmu-run\latest-enterprise-auth-smoke.json",
     [string] $JsonOutputPath = ".\.osmu-run\latest-operations-readiness.json",
     [string] $MarkdownOutputPath = ".\.osmu-run\latest-operations-readiness.md",
@@ -168,6 +169,7 @@ $iamRbacFinalizeReport = Read-JsonReport $IamRbacFinalizeReportPath "IAM/RBAC fi
 $securityFinalizeReport = Read-JsonReport $SecurityEvidenceFinalizeReportPath "Security evidence finalizer"
 $imageSigningReport = Read-JsonReport $ImageSigningEvidencePath "Image signing evidence"
 $containerSecurityReport = Read-JsonReport $ContainerSecurityEvidencePath "Container security evidence"
+$secretRotationReport = Read-JsonReport $SecretRotationEvidencePath "Secret rotation evidence"
 $enterpriseAuthSmokeReport = Read-JsonReport $EnterpriseAuthSmokeEvidencePath "Enterprise auth smoke evidence"
 
 $storageExpansionRemediation = New-Remediation `
@@ -200,6 +202,11 @@ $containerSecurityRemediation = New-Remediation `
     ".github/workflows/container-security-ci.yml" `
     "gh workflow run container-security-ci.yml" `
     "The workflow writes .osmu-run/latest-container-security-evidence.json after Trivy high/critical scans and SPDX SBOM generation."
+$secretRotationRemediation = New-Remediation `
+    "powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\write-secret-rotation-evidence.ps1 -EnvironmentName <env> -TargetCluster <cluster> -Operator <operator> -RotationStartedAt <iso-time> -RotationCompletedAt <iso-time> -ChangeApprovalRef <change-id> -SecretManagerEvidenceRef <audit-ref> -WorkloadRestartEvidenceRef <rollout-ref> -SmokeEvidenceRef <smoke-ref> -ArtifactLeakReviewEvidenceRef <scan-ref> -AccessKeyEncryptionDecisionRef <decision-ref> -RotateAdminPassword -RotateJwtSigningSecret -RotateDatabaseCredentials -RotateMinioRootCredentials -RotateTlsCertificate -ConfirmNoSecretValues -ConfirmWorkloadRestart -ConfirmSmokePassed -ConfirmArtifactLeakReview -FailIfNotPassed" `
+    "" `
+    "" `
+    "Run after target-environment secret/certificate rotation. The evidence stores references and booleans only; do not pass secret values, tokens, private keys, kubeconfig, database credentials, MinIO credentials, OIDC/LDAP secrets, SMTP credentials, or webhook signing secrets."
 $enterpriseAuthSmokeRemediation = New-Remediation `
     "powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\write-enterprise-auth-smoke-plan.ps1 -Execute -AdminLoginId <admin> -AdminPassword <secret> -RequireOidc -RequireLdap" `
     ".github/workflows/enterprise-auth-smoke-ci.yml" `
@@ -240,6 +247,8 @@ Add-FileCheck "Operations readiness artifact finalizer workflow" "automation" ".
 Add-FileCheck "Container security evidence writer" "security-hardening" ".\scripts\write-container-security-evidence.ps1" "container security evidence writer committed"
 Add-FileCheck "Image signing evidence writer" "security-hardening" ".\scripts\write-image-signing-evidence.ps1" "image signing evidence writer committed"
 Add-FileCheck "Security evidence writer self-test" "security-hardening" ".\scripts\verify-security-evidence-writers.ps1" "security evidence writer self-test committed"
+Add-FileCheck "Secret rotation evidence writer" "security-hardening" ".\scripts\write-secret-rotation-evidence.ps1" "secret rotation evidence writer committed"
+Add-FileCheck "Secret rotation evidence writer self-test" "security-hardening" ".\scripts\verify-secret-rotation-evidence.ps1" "secret rotation evidence writer self-test committed"
 Add-FileCheck "Security evidence finalizer" "security-hardening" ".\scripts\finalize-security-evidence.ps1" "security evidence finalizer committed"
 Add-FileCheck "Security evidence finalizer self-test" "security-hardening" ".\scripts\verify-security-evidence-finalizer.ps1" "security evidence finalizer self-test committed"
 Add-FileCheck "Security evidence finalizer workflow" "security-hardening" ".\.github\workflows\security-evidence-finalizer-ci.yml" "manual workflow for security evidence finalizer artifact promotion"
@@ -254,6 +263,7 @@ Add-Check "IAM/RBAC finalizer report" "iam-rbac" ($iamRbacFinalizeReport.exists 
 Add-Check "Security evidence finalizer report" "security-hardening" ($securityFinalizeReport.exists -and $securityFinalizeReport.parsed -and $securityFinalizeReport.data.result -eq "passed") (Get-GenericResultDetail $securityFinalizeReport) $securityFinalizeReport.path "security evidence finalizer result=passed from promoted CI artifacts" $securityFinalizeRemediation
 Add-Check "Signed image evidence" "security-hardening" ($imageSigningReport.exists -and $imageSigningReport.parsed -and $imageSigningReport.data.result -eq "passed") (Get-GenericResultDetail $imageSigningReport) $imageSigningReport.path "published image digest and Cosign verification evidence" $imageSigningRemediation
 Add-Check "Container scan/SBOM evidence" "security-hardening" ($containerSecurityReport.exists -and $containerSecurityReport.parsed -and $containerSecurityReport.data.result -eq "passed") (Get-GenericResultDetail $containerSecurityReport) $containerSecurityReport.path "successful container scan and SBOM artifact evidence" $containerSecurityRemediation
+Add-Check "Secret/certificate rotation target evidence" "security-hardening" ($secretRotationReport.exists -and $secretRotationReport.parsed -and $secretRotationReport.data.result -eq "passed") (Get-GenericResultDetail $secretRotationReport) $secretRotationReport.path "secret/certificate rotation evidence result=passed from target environment" $secretRotationRemediation
 Add-Check "Enterprise auth target smoke evidence" "enterprise-auth" ($enterpriseAuthSmokeReport.exists -and $enterpriseAuthSmokeReport.parsed -and $enterpriseAuthSmokeReport.data.result -eq "passed") (Get-GenericResultDetail $enterpriseAuthSmokeReport) $enterpriseAuthSmokeReport.path "enterprise auth smoke result=passed from target IdP/directory, or explicit commercial scope-out" $enterpriseAuthSmokeRemediation
 
 $passedCount = @($checks | Where-Object { $_.passed }).Count
@@ -279,10 +289,11 @@ $report = [ordered]@{
         securityEvidenceFinalizeReport = $securityFinalizeReport.path
         imageSigningEvidence = $imageSigningReport.path
         containerSecurityEvidence = $containerSecurityReport.path
+        secretRotationEvidence = $secretRotationReport.path
         enterpriseAuthSmokeEvidence = $enterpriseAuthSmokeReport.path
     }
     checks = $checks
-    decisionRule = "Production/B2B operations readiness is ready only when every listed static, automation, live Kubernetes, storage expansion, HA/DR, security, and enterprise auth evidence check is PASS."
+    decisionRule = "Production/B2B operations readiness is ready only when every listed static, automation, live Kubernetes, storage expansion, HA/DR, security, secret rotation, and enterprise auth evidence check is PASS."
 }
 
 $markdownLines = @(
