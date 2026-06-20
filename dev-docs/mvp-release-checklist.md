@@ -284,9 +284,9 @@ Run in GitHub Actions before pilot/customer distribution:
 - [ ] `.osmu-run/latest-image-signing-evidence.json` is generated from the successful publish/sign workflow and attached to operations readiness evidence.
 - [ ] `scripts/finalize-security-evidence.ps1` passes with non-synthetic CI artifacts and writes `.osmu-run/latest-security-evidence-finalize.json`.
 - [x] Commercial positioning, pilot package, license model, and pricing tier draft exist.
-- [ ] Final pricing, terms, support SLA, and license agreement are approved.
+- [ ] `.osmu-run/latest-commercial-approval-evidence.json` is generated with `result=passed` for final pricing, terms, support SLA, license agreement, legal approval, and pilot contract boundary references.
 - [x] Commercial positioning, pilot package, license model, and pricing tier draft exist.
-- [ ] Final pricing, terms, support SLA, and license agreement are approved.
+- [ ] `.osmu-run/latest-commercial-approval-evidence.json` is generated with `result=passed` for final pricing, terms, support SLA, license agreement, legal approval, and pilot contract boundary references.
 
 ## Go/No-Go Rules
 
