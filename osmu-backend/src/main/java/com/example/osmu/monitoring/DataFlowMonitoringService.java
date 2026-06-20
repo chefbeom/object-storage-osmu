@@ -214,6 +214,26 @@ public class DataFlowMonitoringService {
         );
     }
 
+    public DataFlowDailyRollupResponse materializedDailyRollup(DataFlowEventFilter filter, Integer days, Integer limit) {
+        OffsetDateTime generatedAt = OffsetDateTime.now();
+        int normalizedDays = normalizeDailyRollupDays(days);
+        int normalizedLimit = normalizeDailyRollupLimit(limit);
+        DataFlowEventFilter boundedFilter = boundedDailyRollupFilter(filter, normalizedDays, generatedAt);
+        List<DataFlowDailyRollupPointResponse> points = eventRepository.materializedDailyRollup(boundedFilter, normalizedLimit);
+        return new DataFlowDailyRollupResponse(
+                "DATA_FLOW_DAILY_ROLLUP_MATERIALIZED",
+                "UTC_DAY",
+                normalizedDays,
+                normalizedLimit,
+                points.size(),
+                points,
+                generatedAt,
+                "ADMIN-only materialized data-flow analytics rollup. Query filters are identical to the daily rollup endpoint.",
+                "Reads aggregate-only rows from data_flow_daily_rollups in MariaDB mode and from the refreshed in-memory store in local mode.",
+                "This reads OSMU materialized operations analytics rows; it does not expose object keys, raw event messages, or AWS billing parity fields."
+        );
+    }
+
     public String exportDailyRollupCsv(DataFlowEventFilter filter, Integer days, Integer limit) {
         DataFlowDailyRollupResponse rollup = dailyRollup(filter, days, limit);
         StringBuilder csv = new StringBuilder("day,bucketName,source,operation,successCount,failureCount,cancelCount,totalCount,uploadedBytes,downloadedBytes,copiedBytes,totalBytes\n");

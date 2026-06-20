@@ -119,16 +119,17 @@ public class MariaDbDataFlowEventRepository implements DataFlowEventRepository {
 
     @Override
     public List<DataFlowDailyRollupPointResponse> refreshDailyRollup(DataFlowEventFilter filter, int limit) {
-        List<DataFlowDailyRollupPointResponse> points = dailyRollup(filter, limit);
+        DataFlowEventFilter safeFilter = filter == null ? DataFlowEventFilter.empty() : filter;
+        List<DataFlowDailyRollupPointResponse> points = dailyRollup(safeFilter, limit);
         if (points.isEmpty()) {
             return points;
         }
         String sql = """
                 INSERT INTO data_flow_daily_rollups
-                    (rollup_day, bucket_name, source, operation, success_count, failure_count,
+                    (rollup_day, bucket_name, actor_id, source, operation, status, success_count, failure_count,
                      cancel_count, total_count, uploaded_bytes, downloaded_bytes, copied_bytes,
                      total_bytes, refreshed_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON DUPLICATE KEY UPDATE
                     success_count = VALUES(success_count),
                     failure_count = VALUES(failure_count),
@@ -141,26 +142,85 @@ public class MariaDbDataFlowEventRepository implements DataFlowEventRepository {
                     refreshed_at = VALUES(refreshed_at)
                 """;
         Timestamp refreshedAt = Timestamp.from(OffsetDateTime.now(ZoneOffset.UTC).toInstant());
+        String actorId = dimensionValue(safeFilter.actorId());
+        String status = dimensionValue(safeFilter.status());
         try (Connection connection = connect();
              PreparedStatement statement = connection.prepareStatement(sql)) {
             for (DataFlowDailyRollupPointResponse point : points) {
                 statement.setDate(1, Date.valueOf(point.day()));
                 statement.setString(2, point.bucketName());
-                statement.setString(3, point.source());
-                statement.setString(4, point.operation());
-                statement.setLong(5, point.successCount());
-                statement.setLong(6, point.failureCount());
-                statement.setLong(7, point.cancelCount());
-                statement.setLong(8, point.totalCount());
-                statement.setLong(9, point.uploadedBytes());
-                statement.setLong(10, point.downloadedBytes());
-                statement.setLong(11, point.copiedBytes());
-                statement.setLong(12, point.totalBytes());
-                statement.setTimestamp(13, refreshedAt);
+                statement.setString(3, actorId);
+                statement.setString(4, point.source());
+                statement.setString(5, point.operation());
+                statement.setString(6, status);
+                statement.setLong(7, point.successCount());
+                statement.setLong(8, point.failureCount());
+                statement.setLong(9, point.cancelCount());
+                statement.setLong(10, point.totalCount());
+                statement.setLong(11, point.uploadedBytes());
+                statement.setLong(12, point.downloadedBytes());
+                statement.setLong(13, point.copiedBytes());
+                statement.setLong(14, point.totalBytes());
+                statement.setTimestamp(15, refreshedAt);
                 statement.addBatch();
             }
             statement.executeBatch();
             return points;
+        } catch (SQLException exception) {
+            throw databaseException(exception);
+        }
+    }
+
+    @Override
+    public List<DataFlowDailyRollupPointResponse> materializedDailyRollup(DataFlowEventFilter filter, int limit) {
+        ensureSchema();
+        DataFlowEventFilter safeFilter = filter == null ? DataFlowEventFilter.empty() : filter;
+        StringBuilder sql = new StringBuilder("""
+                SELECT
+                    rollup_day,
+                    bucket_name,
+                    source,
+                    operation,
+                    success_count,
+                    failure_count,
+                    cancel_count,
+                    total_count,
+                    uploaded_bytes,
+                    downloaded_bytes,
+                    copied_bytes,
+                    total_bytes
+                FROM data_flow_daily_rollups
+                WHERE 1 = 1
+                """);
+        List<Object> parameters = appendMaterializedFilter(sql, safeFilter);
+        sql.append("""
+                ORDER BY rollup_day DESC, total_count DESC, bucket_name ASC, source ASC, operation ASC
+                LIMIT ?
+                """);
+        parameters.add(Math.max(0, limit));
+        try (Connection connection = connect();
+             PreparedStatement statement = connection.prepareStatement(sql.toString())) {
+            bindParameters(statement, parameters);
+            try (ResultSet resultSet = statement.executeQuery()) {
+                List<DataFlowDailyRollupPointResponse> records = new ArrayList<>();
+                while (resultSet.next()) {
+                    records.add(new DataFlowDailyRollupPointResponse(
+                            resultSet.getDate("rollup_day").toLocalDate(),
+                            resultSet.getString("bucket_name"),
+                            resultSet.getString("source"),
+                            resultSet.getString("operation"),
+                            resultSet.getLong("success_count"),
+                            resultSet.getLong("failure_count"),
+                            resultSet.getLong("cancel_count"),
+                            resultSet.getLong("total_count"),
+                            resultSet.getLong("uploaded_bytes"),
+                            resultSet.getLong("downloaded_bytes"),
+                            resultSet.getLong("copied_bytes"),
+                            resultSet.getLong("total_bytes")
+                    ));
+                }
+                return records;
+            }
         } catch (SQLException exception) {
             throw databaseException(exception);
         }
@@ -279,8 +339,10 @@ public class MariaDbDataFlowEventRepository implements DataFlowEventRepository {
                 CREATE TABLE IF NOT EXISTS data_flow_daily_rollups (
                     rollup_day DATE NOT NULL,
                     bucket_name VARCHAR(255) NOT NULL,
+                    actor_id VARCHAR(255) NOT NULL DEFAULT '',
                     source VARCHAR(64) NOT NULL,
                     operation VARCHAR(64) NOT NULL,
+                    status VARCHAR(32) NOT NULL DEFAULT '',
                     success_count BIGINT NOT NULL DEFAULT 0,
                     failure_count BIGINT NOT NULL DEFAULT 0,
                     cancel_count BIGINT NOT NULL DEFAULT 0,
@@ -290,9 +352,11 @@ public class MariaDbDataFlowEventRepository implements DataFlowEventRepository {
                     copied_bytes BIGINT NOT NULL DEFAULT 0,
                     total_bytes BIGINT NOT NULL DEFAULT 0,
                     refreshed_at TIMESTAMP NOT NULL,
-                    PRIMARY KEY (rollup_day, bucket_name, source, operation),
+                    PRIMARY KEY (rollup_day, bucket_name, actor_id, source, operation, status),
                     INDEX idx_data_flow_daily_rollups_bucket (bucket_name, rollup_day),
+                    INDEX idx_data_flow_daily_rollups_actor (actor_id, rollup_day),
                     INDEX idx_data_flow_daily_rollups_operation (operation, rollup_day),
+                    INDEX idx_data_flow_daily_rollups_status (status, rollup_day),
                     INDEX idx_data_flow_daily_rollups_refreshed_at (refreshed_at)
                 )
                 """;
@@ -360,6 +424,35 @@ public class MariaDbDataFlowEventRepository implements DataFlowEventRepository {
         return parameters;
     }
 
+    private List<Object> appendMaterializedFilter(StringBuilder sql, DataFlowEventFilter safeFilter) {
+        List<Object> parameters = new ArrayList<>();
+        if (safeFilter.bucketName() != null) {
+            sql.append(" AND bucket_name = ?");
+            parameters.add(safeFilter.bucketName());
+        }
+        sql.append(" AND actor_id = ?");
+        parameters.add(dimensionValue(safeFilter.actorId()));
+        if (safeFilter.source() != null) {
+            sql.append(" AND source = ?");
+            parameters.add(safeFilter.source());
+        }
+        if (safeFilter.operation() != null) {
+            sql.append(" AND operation = ?");
+            parameters.add(safeFilter.operation());
+        }
+        sql.append(" AND status = ?");
+        parameters.add(dimensionValue(safeFilter.status()));
+        if (safeFilter.from() != null) {
+            sql.append(" AND rollup_day >= ?");
+            parameters.add(Date.valueOf(safeFilter.from().withOffsetSameInstant(ZoneOffset.UTC).toLocalDate()));
+        }
+        if (safeFilter.to() != null) {
+            sql.append(" AND rollup_day <= ?");
+            parameters.add(Date.valueOf(safeFilter.to().withOffsetSameInstant(ZoneOffset.UTC).toLocalDate()));
+        }
+        return parameters;
+    }
+
     private DataFlowEventRecord mapRow(ResultSet resultSet) throws SQLException {
         return new DataFlowEventRecord(
                 resultSet.getLong("id"),
@@ -382,6 +475,8 @@ public class MariaDbDataFlowEventRepository implements DataFlowEventRepository {
             Object parameter = parameters.get(index);
             if (parameter instanceof Timestamp timestamp) {
                 statement.setTimestamp(index + 1, timestamp);
+            } else if (parameter instanceof Date date) {
+                statement.setDate(index + 1, date);
             } else if (parameter instanceof Integer integer) {
                 statement.setInt(index + 1, integer);
             } else if (parameter instanceof Long longValue) {
@@ -398,6 +493,10 @@ public class MariaDbDataFlowEventRepository implements DataFlowEventRepository {
 
     private OffsetDateTime toOffset(Timestamp value) {
         return value == null ? null : value.toInstant().atOffset(ZoneOffset.UTC);
+    }
+
+    private String dimensionValue(String value) {
+        return value == null || value.isBlank() ? "" : value;
     }
 
     private ApiException databaseException(SQLException exception) {

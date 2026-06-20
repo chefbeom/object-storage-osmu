@@ -208,6 +208,7 @@
         @export-data-flow-csv="handleExportDataFlowCsv"
         @export-data-flow-daily-rollup-csv="handleExportDataFlowDailyRollupCsv"
         @materialize-data-flow-daily-rollup="handleMaterializeDataFlowDailyRollup"
+        @load-materialized-data-flow-daily-rollup="handleLoadMaterializedDataFlowDailyRollup"
         @reset-data-flow-filter="handleResetDataFlowFilter"
       />
 
@@ -601,6 +602,7 @@ import {
   getDashboardSummary,
   getDashboardWidgetCatalog,
   getDataFlowDailyRollup,
+  getMaterializedDataFlowDailyRollup,
   getDataFlowMonitoring,
   getChargebackPreview,
   getEnterpriseAuthPlan,
@@ -2936,6 +2938,14 @@ async function handleMaterializeDataFlowDailyRollup() {
   if (result?.data) {
     applyDataFlowDailyRollup(result.data)
     setStatusMessage(`Data flow daily rollup store refreshed: ${formatCount(result.data.storedPointCount || 0)} points.`)
+  }
+}
+
+async function handleLoadMaterializedDataFlowDailyRollup() {
+  const result = await runAction(() => getMaterializedDataFlowDailyRollup(dataFlowFilterPayload()))
+  if (result?.data) {
+    applyDataFlowDailyRollup(result.data)
+    setStatusMessage(`Materialized data flow daily rollup loaded: ${formatCount(result.data.pointCount || 0)} points.`)
   }
 }
 

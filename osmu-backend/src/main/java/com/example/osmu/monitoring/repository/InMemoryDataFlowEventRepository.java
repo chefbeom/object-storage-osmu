@@ -22,6 +22,7 @@ public class InMemoryDataFlowEventRepository implements DataFlowEventRepository 
 
     private final AtomicLong idSequence = new AtomicLong(1);
     private final CopyOnWriteArrayList<DataFlowEventRecord> events = new CopyOnWriteArrayList<>();
+    private final CopyOnWriteArrayList<MaterializedRollupRecord> materializedRollups = new CopyOnWriteArrayList<>();
 
     @Override
     public List<DataFlowEventRecord> find(DataFlowEventFilter filter, int limit) {
@@ -71,7 +72,31 @@ public class InMemoryDataFlowEventRepository implements DataFlowEventRepository 
 
     @Override
     public List<DataFlowDailyRollupPointResponse> refreshDailyRollup(DataFlowEventFilter filter, int limit) {
-        return dailyRollup(filter, limit);
+        DataFlowEventFilter safeFilter = filter == null ? DataFlowEventFilter.empty() : filter;
+        List<DataFlowDailyRollupPointResponse> points = dailyRollup(safeFilter, limit);
+        String actorId = dimensionValue(safeFilter.actorId());
+        String status = dimensionValue(safeFilter.status());
+        for (DataFlowDailyRollupPointResponse point : points) {
+            materializedRollups.removeIf(record -> record.matchesKey(point, actorId, status));
+            materializedRollups.add(new MaterializedRollupRecord(actorId, status, point));
+        }
+        return points;
+    }
+
+    @Override
+    public List<DataFlowDailyRollupPointResponse> materializedDailyRollup(DataFlowEventFilter filter, int limit) {
+        DataFlowEventFilter safeFilter = filter == null ? DataFlowEventFilter.empty() : filter;
+        return materializedRollups.stream()
+                .filter(record -> record.matchesFilter(safeFilter))
+                .map(MaterializedRollupRecord::point)
+                .sorted(Comparator
+                        .comparing(DataFlowDailyRollupPointResponse::day, Comparator.reverseOrder())
+                        .thenComparing(Comparator.comparingLong(DataFlowDailyRollupPointResponse::totalCount).reversed())
+                        .thenComparing(DataFlowDailyRollupPointResponse::bucketName)
+                        .thenComparing(DataFlowDailyRollupPointResponse::source)
+                        .thenComparing(DataFlowDailyRollupPointResponse::operation))
+                .limit(Math.max(0, limit))
+                .toList();
     }
 
     @Override
@@ -115,6 +140,32 @@ public class InMemoryDataFlowEventRepository implements DataFlowEventRepository 
 
     private static String lowerOrUnknown(String value) {
         return value == null || value.isBlank() ? "unknown" : value.toLowerCase(Locale.ROOT);
+    }
+
+    private static String dimensionValue(String value) {
+        return value == null || value.isBlank() ? "" : value;
+    }
+
+    private record MaterializedRollupRecord(String actorId, String status, DataFlowDailyRollupPointResponse point) {
+
+        private boolean matchesKey(DataFlowDailyRollupPointResponse candidate, String candidateActorId, String candidateStatus) {
+            return point.day().equals(candidate.day())
+                    && point.bucketName().equals(candidate.bucketName())
+                    && actorId.equals(candidateActorId)
+                    && point.source().equals(candidate.source())
+                    && point.operation().equals(candidate.operation())
+                    && status.equals(candidateStatus);
+        }
+
+        private boolean matchesFilter(DataFlowEventFilter filter) {
+            return (filter.bucketName() == null || filter.bucketName().equals(point.bucketName()))
+                    && (filter.actorId() == null ? actorId.isBlank() : filter.actorId().equals(actorId))
+                    && (filter.source() == null || filter.source().equalsIgnoreCase(point.source()))
+                    && (filter.operation() == null || filter.operation().equalsIgnoreCase(point.operation()))
+                    && (filter.status() == null ? status.isBlank() : filter.status().equalsIgnoreCase(status))
+                    && (filter.from() == null || !point.day().isBefore(filter.from().withOffsetSameInstant(ZoneOffset.UTC).toLocalDate()))
+                    && (filter.to() == null || !point.day().isAfter(filter.to().withOffsetSameInstant(ZoneOffset.UTC).toLocalDate()));
+        }
     }
 
     private static final class DailyRollupAccumulator {

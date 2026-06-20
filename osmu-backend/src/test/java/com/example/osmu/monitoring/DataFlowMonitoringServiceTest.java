@@ -183,6 +183,38 @@ class DataFlowMonitoringServiceTest {
         assertThat(response.points()).noneSatisfy(point -> assertThat(point.bucketName()).isEqualTo("archive"));
     }
 
+    @Test
+    void readsMaterializedDailyRollupWithoutMixingActorOrStatusDimensions() {
+        OffsetDateTime now = OffsetDateTime.now(ZoneOffset.UTC);
+        eventRepository.save(event("UPLOAD", "upload", "INGRESS", "media", "admin", "SUCCESS", 1024L, "rest", now.minusHours(2)));
+        eventRepository.save(event("UPLOAD", "upload", "INGRESS", "media", "developer", "SUCCESS", 2048L, "rest", now.minusHours(1)));
+        eventRepository.save(event("FAILURE", "download", "CONTROL", "media", "admin", "FAILED", 0L, "rest", now.minusMinutes(30)));
+
+        DataFlowEventFilter adminSuccessFilter = new DataFlowEventFilter(
+                "media",
+                "admin",
+                "rest",
+                "upload",
+                "SUCCESS",
+                now.minusDays(1),
+                now.plusDays(1)
+        );
+        service.materializeDailyRollup(adminSuccessFilter, 30, 10);
+
+        DataFlowDailyRollupResponse stored = service.materializedDailyRollup(adminSuccessFilter, 30, 10);
+        DataFlowDailyRollupResponse unscoped = service.materializedDailyRollup(
+                new DataFlowEventFilter("media", null, "rest", "upload", null, now.minusDays(1), now.plusDays(1)),
+                30,
+                10
+        );
+
+        assertThat(stored.mode()).isEqualTo("DATA_FLOW_DAILY_ROLLUP_MATERIALIZED");
+        assertThat(stored.storagePolicy()).contains("data_flow_daily_rollups");
+        assertThat(stored.points()).hasSize(1);
+        assertThat(stored.points().get(0).uploadedBytes()).isEqualTo(1024L);
+        assertThat(unscoped.points()).isEmpty();
+    }
+
     private static DataFlowEventRecord event(
             String eventType,
             String operation,

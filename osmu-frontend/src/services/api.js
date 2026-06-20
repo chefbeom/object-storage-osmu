@@ -1176,6 +1176,21 @@ export function materializeDataFlowDailyRollup(filters = {}) {
   return request(`/admin/monitoring/data-flow/daily-rollup/materialize${suffix}`, { method: 'POST' })
 }
 
+export function getMaterializedDataFlowDailyRollup(filters = {}) {
+  const query = new URLSearchParams()
+  appendQuery(query, 'bucketName', filters.bucketName)
+  appendQuery(query, 'actorId', filters.actorId)
+  appendQuery(query, 'source', filters.source)
+  appendQuery(query, 'operation', filters.operation)
+  appendQuery(query, 'status', filters.status)
+  appendQuery(query, 'from', filters.from)
+  appendQuery(query, 'to', filters.to)
+  appendQuery(query, 'days', filters.days)
+  appendQuery(query, 'limit', filters.limit)
+  const suffix = query.toString() ? `?${query.toString()}` : ''
+  return request(`/admin/monitoring/data-flow/daily-rollup/materialized${suffix}`)
+}
+
 export function downloadDataFlowMonitoringCsv(filters = {}) {
   const query = new URLSearchParams()
   appendQuery(query, 'bucketName', filters.bucketName)

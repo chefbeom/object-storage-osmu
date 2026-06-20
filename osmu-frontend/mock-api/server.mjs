@@ -300,6 +300,10 @@ async function handleRequest(request, response) {
     sendJson(response, 200, apiData(materializeDataFlowDailyRollup(dataFlowFilters(url))))
     return
   }
+  if (request.method === 'GET' && path === '/admin/monitoring/data-flow/daily-rollup/materialized') {
+    sendJson(response, 200, apiData(materializedDataFlowDailyRollup(dataFlowFilters(url))))
+    return
+  }
   if (request.method === 'GET' && path === '/admin/monitoring/data-flow/daily-rollup/export.csv') {
     sendCsv(response, 'osmu-data-flow-daily-rollup.csv', dataFlowDailyRollupCsv(dataFlowFilters(url)))
     return
@@ -1166,7 +1170,20 @@ function dataFlowDailyRollup(filters = {}) {
 
 function materializeDataFlowDailyRollup(filters = {}) {
   const rollup = dataFlowDailyRollup(filters)
-  state.dataFlowDailyRollups = rollup.points.map((point) => ({ ...point, refreshedAt: new Date().toISOString() }))
+  const actorId = materializedDimension(filters.actorId)
+  const status = materializedDimension(filters.status)
+  const refreshedAt = new Date().toISOString()
+  for (const point of rollup.points) {
+    state.dataFlowDailyRollups = state.dataFlowDailyRollups.filter((record) => !(
+      record.day === point.day
+      && record.bucketName === point.bucketName
+      && record.actorId === actorId
+      && record.source === point.source
+      && record.operation === point.operation
+      && record.status === status
+    ))
+    state.dataFlowDailyRollups.push({ ...point, actorId, status, refreshedAt })
+  }
   return {
     mode: 'DATA_FLOW_DAILY_ROLLUP_MATERIALIZATION',
     granularity: rollup.granularity,
@@ -1180,6 +1197,57 @@ function materializeDataFlowDailyRollup(filters = {}) {
     storagePolicy: 'Refreshes mock materialized daily rollup rows; MariaDB mode persists data_flow_daily_rollups.',
     note: 'Materialization stores aggregate rows only; object keys, raw event messages, and AWS billing parity fields are not stored.',
   }
+}
+
+function materializedDataFlowDailyRollup(filters = {}) {
+  const days = Math.min(366, Math.max(1, Math.floor(Number(filters.days || 30))))
+  const limit = Math.min(1000, Math.max(1, Math.floor(Number(filters.limit || 200))))
+  const actorId = materializedDimension(filters.actorId)
+  const status = materializedDimension(filters.status)
+  const fromDay = dataFlowFilterDay(filters.from)
+  const toDay = dataFlowFilterDay(filters.to)
+  const points = state.dataFlowDailyRollups
+    .filter((point) => {
+      if (filters.bucketName && point.bucketName !== filters.bucketName) return false
+      if (point.actorId !== actorId) return false
+      if (filters.source && String(point.source || '').toLowerCase() !== String(filters.source).toLowerCase()) return false
+      if (filters.operation && String(point.operation || '').toLowerCase() !== String(filters.operation).toLowerCase()) return false
+      if (point.status !== status) return false
+      if (fromDay && point.day < fromDay) return false
+      if (toDay && point.day > toDay) return false
+      return true
+    })
+    .sort((left, right) => (
+      right.day.localeCompare(left.day)
+      || right.totalCount - left.totalCount
+      || left.bucketName.localeCompare(right.bucketName)
+      || left.source.localeCompare(right.source)
+      || left.operation.localeCompare(right.operation)
+    ))
+    .slice(0, limit)
+    .map(({ actorId: ignoredActorId, status: ignoredStatus, refreshedAt: ignoredRefreshedAt, ...point }) => point)
+  return {
+    mode: 'DATA_FLOW_DAILY_ROLLUP_MATERIALIZED',
+    granularity: 'UTC_DAY',
+    dayWindow: days,
+    pointLimit: limit,
+    pointCount: points.length,
+    points,
+    generatedAt: new Date().toISOString(),
+    scopePolicy: 'ADMIN-only materialized data-flow analytics rollup. Query filters are identical to the daily rollup endpoint.',
+    storagePolicy: 'Reads mock materialized daily rollup rows; MariaDB mode reads data_flow_daily_rollups.',
+    note: 'This reads OSMU materialized operations analytics rows; it does not expose object keys, raw event messages, or AWS billing parity fields.',
+  }
+}
+
+function materializedDimension(value) {
+  return value ? String(value) : ''
+}
+
+function dataFlowFilterDay(value) {
+  if (!value) return ''
+  const timestamp = Date.parse(value)
+  return Number.isNaN(timestamp) ? '' : new Date(timestamp).toISOString().slice(0, 10)
 }
 
 function dataFlowTrend(events) {

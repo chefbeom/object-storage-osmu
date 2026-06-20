@@ -3536,6 +3536,51 @@ Notes:
 - In-memory mode returns the same computed aggregate rows without durable storage.
 - This endpoint is a storage-model bridge for OSMU operations analytics; it is not an AWS billing export.
 
+### GET /api/admin/monitoring/data-flow/daily-rollup/materialized
+
+Reads ADMIN-only materialized daily rollup rows from the long-term analytics store.
+
+Query parameters are identical to `GET /api/admin/monitoring/data-flow/daily-rollup`: `from`, `to`, `bucketName`, `actorId`, `source`, `operation`, `status`, `days`, and `limit`.
+
+Response:
+
+```json
+{
+  "data": {
+    "mode": "DATA_FLOW_DAILY_ROLLUP_MATERIALIZED",
+    "granularity": "UTC_DAY",
+    "dayWindow": 30,
+    "pointLimit": 200,
+    "pointCount": 1,
+    "points": [
+      {
+        "day": "2026-06-18",
+        "bucketName": "media",
+        "source": "s3",
+        "operation": "download",
+        "successCount": 8,
+        "failureCount": 1,
+        "cancelCount": 0,
+        "totalCount": 9,
+        "uploadedBytes": 0,
+        "downloadedBytes": 524288,
+        "copiedBytes": 0,
+        "totalBytes": 524288
+      }
+    ],
+    "generatedAt": "2026-06-18T10:25:00Z",
+    "scopePolicy": "ADMIN-only materialized data-flow analytics rollup. Query filters are identical to the daily rollup endpoint.",
+    "storagePolicy": "Reads aggregate-only rows from data_flow_daily_rollups in MariaDB mode and from the refreshed in-memory store in local mode.",
+    "note": "This reads OSMU materialized operations analytics rows; it does not expose object keys, raw event messages, or AWS billing parity fields."
+  }
+}
+```
+
+Notes:
+
+- `POST /api/admin/monitoring/data-flow/daily-rollup/materialize` must refresh rows before this endpoint returns stored points.
+- The materialized key includes UTC day, bucket, actor filter dimension, source, operation, and status filter dimension so scoped refreshes do not overwrite unscoped aggregate rows.
+
 ### GET /api/admin/monitoring/data-flow/daily-rollup/export.csv
 
 Exports the same ADMIN-only daily rollup window as CSV for operations handoff, offline analytics, and chargeback planning.

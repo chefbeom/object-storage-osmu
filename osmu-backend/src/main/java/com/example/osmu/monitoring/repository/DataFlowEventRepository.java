@@ -14,6 +14,8 @@ public interface DataFlowEventRepository {
 
     List<DataFlowDailyRollupPointResponse> refreshDailyRollup(DataFlowEventFilter filter, int limit);
 
+    List<DataFlowDailyRollupPointResponse> materializedDailyRollup(DataFlowEventFilter filter, int limit);
+
     long nextId();
 
     DataFlowEventRecord save(DataFlowEventRecord event);
