@@ -207,6 +207,7 @@
         @refresh-data-flow-monitoring="loadDataFlowMonitoring"
         @export-data-flow-csv="handleExportDataFlowCsv"
         @export-data-flow-daily-rollup-csv="handleExportDataFlowDailyRollupCsv"
+        @materialize-data-flow-daily-rollup="handleMaterializeDataFlowDailyRollup"
         @reset-data-flow-filter="handleResetDataFlowFilter"
       />
 
@@ -639,6 +640,7 @@ import {
   importObjectLifecycleS3Xml,
   listObjectVersions,
   logout as logoutApi,
+  materializeDataFlowDailyRollup,
   purgeObject,
   putBucketLifecycleS3Xml,
   putBucketTags,
@@ -2926,6 +2928,14 @@ async function handleExportDataFlowDailyRollupCsv() {
   if (blob) {
     downloadBlob(blob, `osmu-data-flow-daily-rollup-${new Date().toISOString().slice(0, 10)}.csv`)
     setStatusMessage('Data flow daily rollup CSV export complete.')
+  }
+}
+
+async function handleMaterializeDataFlowDailyRollup() {
+  const result = await runAction(() => materializeDataFlowDailyRollup(dataFlowFilterPayload()))
+  if (result?.data) {
+    applyDataFlowDailyRollup(result.data)
+    setStatusMessage(`Data flow daily rollup store refreshed: ${formatCount(result.data.storedPointCount || 0)} points.`)
   }
 }
 

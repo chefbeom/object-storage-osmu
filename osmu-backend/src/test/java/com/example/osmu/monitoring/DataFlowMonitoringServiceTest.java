@@ -154,6 +154,35 @@ class DataFlowMonitoringServiceTest {
         assertThat(csv).doesNotContain("object.bin");
     }
 
+    @Test
+    void materializesDailyRollupForLongTermAnalyticsStore() {
+        OffsetDateTime now = OffsetDateTime.now(ZoneOffset.UTC);
+        eventRepository.save(event("UPLOAD", "upload", "INGRESS", "media", "admin", "SUCCESS", 1024L, "rest", now.minusHours(2)));
+        eventRepository.save(event("COPY", "copy", "INTERNAL", "media", "admin", "SUCCESS", 256L, "rest", now.minusHours(1)));
+        eventRepository.save(event("UPLOAD", "upload", "INGRESS", "archive", "admin", "SUCCESS", 2048L, "rest", now.minusHours(1)));
+
+        DataFlowDailyRollupMaterializationResponse response = service.materializeDailyRollup(
+                new DataFlowEventFilter("media", null, null, null, null, now.minusDays(1), now.plusDays(1)),
+                30,
+                10
+        );
+
+        assertThat(response.mode()).isEqualTo("DATA_FLOW_DAILY_ROLLUP_MATERIALIZATION");
+        assertThat(response.granularity()).isEqualTo("UTC_DAY");
+        assertThat(response.dayWindow()).isEqualTo(30);
+        assertThat(response.pointLimit()).isEqualTo(10);
+        assertThat(response.pointCount()).isEqualTo(response.storedPointCount());
+        assertThat(response.storagePolicy()).contains("data_flow_daily_rollups");
+        assertThat(response.note()).contains("object keys");
+        assertThat(response.points()).hasSize(2);
+        assertThat(response.points()).anySatisfy(point -> {
+            assertThat(point.bucketName()).isEqualTo("media");
+            assertThat(point.operation()).isEqualTo("copy");
+            assertThat(point.copiedBytes()).isEqualTo(256L);
+        });
+        assertThat(response.points()).noneSatisfy(point -> assertThat(point.bucketName()).isEqualTo("archive"));
+    }
+
     private static DataFlowEventRecord event(
             String eventType,
             String operation,

@@ -6,6 +6,7 @@ import com.example.osmu.monitoring.DataFlowDailyRollupPointResponse;
 import com.example.osmu.monitoring.DataFlowEventFilter;
 import com.example.osmu.monitoring.DataFlowEventRecord;
 import java.sql.Connection;
+import java.sql.Date;
 import java.sql.DriverManager;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
@@ -117,6 +118,55 @@ public class MariaDbDataFlowEventRepository implements DataFlowEventRepository {
     }
 
     @Override
+    public List<DataFlowDailyRollupPointResponse> refreshDailyRollup(DataFlowEventFilter filter, int limit) {
+        List<DataFlowDailyRollupPointResponse> points = dailyRollup(filter, limit);
+        if (points.isEmpty()) {
+            return points;
+        }
+        String sql = """
+                INSERT INTO data_flow_daily_rollups
+                    (rollup_day, bucket_name, source, operation, success_count, failure_count,
+                     cancel_count, total_count, uploaded_bytes, downloaded_bytes, copied_bytes,
+                     total_bytes, refreshed_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON DUPLICATE KEY UPDATE
+                    success_count = VALUES(success_count),
+                    failure_count = VALUES(failure_count),
+                    cancel_count = VALUES(cancel_count),
+                    total_count = VALUES(total_count),
+                    uploaded_bytes = VALUES(uploaded_bytes),
+                    downloaded_bytes = VALUES(downloaded_bytes),
+                    copied_bytes = VALUES(copied_bytes),
+                    total_bytes = VALUES(total_bytes),
+                    refreshed_at = VALUES(refreshed_at)
+                """;
+        Timestamp refreshedAt = Timestamp.from(OffsetDateTime.now(ZoneOffset.UTC).toInstant());
+        try (Connection connection = connect();
+             PreparedStatement statement = connection.prepareStatement(sql)) {
+            for (DataFlowDailyRollupPointResponse point : points) {
+                statement.setDate(1, Date.valueOf(point.day()));
+                statement.setString(2, point.bucketName());
+                statement.setString(3, point.source());
+                statement.setString(4, point.operation());
+                statement.setLong(5, point.successCount());
+                statement.setLong(6, point.failureCount());
+                statement.setLong(7, point.cancelCount());
+                statement.setLong(8, point.totalCount());
+                statement.setLong(9, point.uploadedBytes());
+                statement.setLong(10, point.downloadedBytes());
+                statement.setLong(11, point.copiedBytes());
+                statement.setLong(12, point.totalBytes());
+                statement.setTimestamp(13, refreshedAt);
+                statement.addBatch();
+            }
+            statement.executeBatch();
+            return points;
+        } catch (SQLException exception) {
+            throw databaseException(exception);
+        }
+    }
+
+    @Override
     public long nextId() {
         ensureSchema();
         String sql = "SELECT COALESCE(MAX(id), 0) + 1 AS next_id FROM data_flow_events";
@@ -203,7 +253,7 @@ public class MariaDbDataFlowEventRepository implements DataFlowEventRepository {
         if (schemaReady) {
             return;
         }
-        String sql = """
+        String eventSql = """
                 CREATE TABLE IF NOT EXISTS data_flow_events (
                     id BIGINT NOT NULL PRIMARY KEY,
                     event_type VARCHAR(32) NOT NULL,
@@ -225,9 +275,32 @@ public class MariaDbDataFlowEventRepository implements DataFlowEventRepository {
                     INDEX idx_data_flow_events_status (status, created_at)
                 )
                 """;
+        String rollupSql = """
+                CREATE TABLE IF NOT EXISTS data_flow_daily_rollups (
+                    rollup_day DATE NOT NULL,
+                    bucket_name VARCHAR(255) NOT NULL,
+                    source VARCHAR(64) NOT NULL,
+                    operation VARCHAR(64) NOT NULL,
+                    success_count BIGINT NOT NULL DEFAULT 0,
+                    failure_count BIGINT NOT NULL DEFAULT 0,
+                    cancel_count BIGINT NOT NULL DEFAULT 0,
+                    total_count BIGINT NOT NULL DEFAULT 0,
+                    uploaded_bytes BIGINT NOT NULL DEFAULT 0,
+                    downloaded_bytes BIGINT NOT NULL DEFAULT 0,
+                    copied_bytes BIGINT NOT NULL DEFAULT 0,
+                    total_bytes BIGINT NOT NULL DEFAULT 0,
+                    refreshed_at TIMESTAMP NOT NULL,
+                    PRIMARY KEY (rollup_day, bucket_name, source, operation),
+                    INDEX idx_data_flow_daily_rollups_bucket (bucket_name, rollup_day),
+                    INDEX idx_data_flow_daily_rollups_operation (operation, rollup_day),
+                    INDEX idx_data_flow_daily_rollups_refreshed_at (refreshed_at)
+                )
+                """;
         try (Connection connection = connect();
-             PreparedStatement statement = connection.prepareStatement(sql)) {
-            statement.executeUpdate();
+             PreparedStatement eventStatement = connection.prepareStatement(eventSql);
+             PreparedStatement rollupStatement = connection.prepareStatement(rollupSql)) {
+            eventStatement.executeUpdate();
+            rollupStatement.executeUpdate();
             schemaReady = true;
         } catch (SQLException exception) {
             throw databaseException(exception);

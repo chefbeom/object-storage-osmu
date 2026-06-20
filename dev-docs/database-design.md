@@ -721,7 +721,7 @@ CREATE TABLE audit_logs (
 
 ## 13.1. data_flow_events
 
-Object data-flow monitoring events are stored here in MariaDB mode. The admin monitoring API aggregates this table by period, bucket, actor, source, operation, and status. `GET /api/admin/monitoring/data-flow/daily-rollup` also aggregates this table by `DATE(created_at)`, bucket, source, and operation for long-term analytics and chargeback planning. The table intentionally stores object keys as `TEXT` for long S3 keys, but does not index `object_key` in the MVP. `DataFlowEventRetentionJob` periodically deletes rows older than the configured retention window in bounded batches.
+Object data-flow monitoring events are stored here in MariaDB mode. The admin monitoring API aggregates this table by period, bucket, actor, source, operation, and status. `GET /api/admin/monitoring/data-flow/daily-rollup` also aggregates this table by `DATE(created_at)`, bucket, source, and operation for long-term analytics and chargeback planning. `POST /api/admin/monitoring/data-flow/daily-rollup/materialize` stores aggregate rows in `data_flow_daily_rollups` as a bridge toward partitioned or time-series analytics. The table intentionally stores object keys as `TEXT` for long S3 keys, but does not index `object_key` in the MVP. `DataFlowEventRetentionJob` periodically deletes rows older than the configured retention window in bounded batches.
 
 ```sql
 CREATE TABLE data_flow_events (
@@ -743,6 +743,32 @@ CREATE TABLE data_flow_events (
   KEY idx_data_flow_events_source (source, created_at),
   KEY idx_data_flow_events_operation (operation, created_at),
   KEY idx_data_flow_events_status (status, created_at)
+);
+```
+
+## 13.2. data_flow_daily_rollups
+
+Materialized UTC-day data-flow rollup rows are stored here in MariaDB mode. The table keeps aggregate counts and bytes only; it does not store object keys, raw event messages, credentials, or provider responses.
+
+```sql
+CREATE TABLE data_flow_daily_rollups (
+  rollup_day DATE NOT NULL,
+  bucket_name VARCHAR(255) NOT NULL,
+  source VARCHAR(64) NOT NULL,
+  operation VARCHAR(64) NOT NULL,
+  success_count BIGINT NOT NULL DEFAULT 0,
+  failure_count BIGINT NOT NULL DEFAULT 0,
+  cancel_count BIGINT NOT NULL DEFAULT 0,
+  total_count BIGINT NOT NULL DEFAULT 0,
+  uploaded_bytes BIGINT NOT NULL DEFAULT 0,
+  downloaded_bytes BIGINT NOT NULL DEFAULT 0,
+  copied_bytes BIGINT NOT NULL DEFAULT 0,
+  total_bytes BIGINT NOT NULL DEFAULT 0,
+  refreshed_at TIMESTAMP NOT NULL,
+  PRIMARY KEY (rollup_day, bucket_name, source, operation),
+  KEY idx_data_flow_daily_rollups_bucket (bucket_name, rollup_day),
+  KEY idx_data_flow_daily_rollups_operation (operation, rollup_day),
+  KEY idx_data_flow_daily_rollups_refreshed_at (refreshed_at)
 );
 ```
 
@@ -781,6 +807,7 @@ erDiagram
     users ||--o{ audit_logs : writes
     buckets ||--o{ data_flow_events : records
     users ||--o{ data_flow_events : acts
+    buckets ||--o{ data_flow_daily_rollups : materializes
 ```
 
 ## 16. 마이그레이션 원칙
@@ -788,10 +815,11 @@ erDiagram
 - Flyway 또는 Liquibase 중 하나를 사용한다.
 - 마이그레이션 파일은 수정하지 않는다.
 - 변경은 새 마이그레이션으로 추가한다.
-- 현재 MVP는 `osmu-backend/src/main/resources/db/migration` 아래 `V1__init_metadata_schema.sql`부터 `V54__chargeback_payment_provider_handoffs.sql`까지의 Flyway migration을 제공한다.
+- 현재 MVP는 `osmu-backend/src/main/resources/db/migration` 아래 `V1__init_metadata_schema.sql`부터 `V56__data_flow_daily_rollups.sql`까지의 Flyway migration을 제공한다.
 - `V52__billing_pricing_policy_proposals.sql`은 ADMIN-only 내부 chargeback 가격 정책 제안/승인 기록을 저장한다. `PENDING_APPROVAL` 제안은 활성 정책을 바꾸지 않고, 승인 시 `APPROVED_APPLIED`로 전환되어 내부 계산 정책에만 적용된다. `V55__billing_pricing_policy_price_list_approval.sql`은 `approved_price_list`, commercial approval reference/note/actor/effective timestamps를 추가해 내부 승인 이후 `PRICE_LIST_APPROVED` 가격표 승인 참조를 기록한다.
 - `V53__chargeback_final_invoices.sql`은 승인된 chargeback invoice draft에서 생성한 final invoice와 `FINALIZED` -> `PAYMENT_REQUESTED` -> `PAID` payment 상태, 수동 payment reference를 저장한다. 외부 payment provider secret이나 provider response 원문은 저장하지 않는다.
 - `V54__chargeback_payment_provider_handoffs.sql`은 `PAYMENT_REQUESTED` final invoice를 payment provider handoff adapter에 넘기기 전 검토할 handoff outbox를 저장한다. `PENDING_PAYMENT_PROVIDER_ADAPTER`, adapter retry/block/success 상태, attempt count, next attempt time, sanitized last error, payload JSON을 저장하며, configured webhook handoff send/retry worker가 사용해도 secret 값, webhook URL, provider 응답 원문은 저장하지 않는다. Notification delivery outbox도 기존 `V50__chargeback_notification_deliveries.sql`의 status/attempt/next-at/last-error 컬럼으로 같은 adapter result retry state를 기록한다.
+- `V56__data_flow_daily_rollups.sql`은 장기 analytics/time-series 전환 전 단계로 daily rollup aggregate 저장소를 추가한다.
 - repository의 `CREATE TABLE IF NOT EXISTS`는 local fallback이다.
 
 ## 17. 구현 순서
@@ -817,6 +845,7 @@ erDiagram
 19. `bucket_storage_profile_assignments`
 20. `storage_profile_requests`
 21. `data_flow_events`
+22. `data_flow_daily_rollups`
 
 ## Object Lifecycle Migrations
 

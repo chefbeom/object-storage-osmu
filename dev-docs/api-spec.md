@@ -3489,6 +3489,53 @@ Notes:
 - MariaDB mode aggregates `data_flow_events` at query time by `DATE(created_at)`, bucket, source, and operation; it does not expose object keys or raw event messages.
 - The endpoint is a product-side analytics bridge before table partitioning or a dedicated time-series store is introduced.
 
+### POST /api/admin/monitoring/data-flow/daily-rollup/materialize
+
+Refreshes ADMIN-only materialized daily rollup rows for long-term analytics storage.
+
+Query parameters are identical to `GET /api/admin/monitoring/data-flow/daily-rollup`: `from`, `to`, `bucketName`, `actorId`, `source`, `operation`, `status`, `days`, and `limit`.
+
+Response:
+
+```json
+{
+  "data": {
+    "mode": "DATA_FLOW_DAILY_ROLLUP_MATERIALIZATION",
+    "granularity": "UTC_DAY",
+    "dayWindow": 30,
+    "pointLimit": 200,
+    "pointCount": 1,
+    "storedPointCount": 1,
+    "points": [
+      {
+        "day": "2026-06-18",
+        "bucketName": "media",
+        "source": "s3",
+        "operation": "download",
+        "successCount": 8,
+        "failureCount": 1,
+        "cancelCount": 0,
+        "totalCount": 9,
+        "uploadedBytes": 0,
+        "downloadedBytes": 524288,
+        "copiedBytes": 0,
+        "totalBytes": 524288
+      }
+    ],
+    "generatedAt": "2026-06-18T10:20:00Z",
+    "scopePolicy": "ADMIN-only data-flow rollup materialization. Query filters are identical to the daily rollup endpoint.",
+    "storagePolicy": "Refreshes data_flow_daily_rollups in MariaDB mode and returns computed rollup points in in-memory mode. This is the handoff point for a future partitioned or time-series repository.",
+    "note": "Materialization stores aggregate rows only; object keys, raw event messages, and AWS billing parity fields are not stored."
+  }
+}
+```
+
+Notes:
+
+- MariaDB mode upserts aggregate rows into `data_flow_daily_rollups` by UTC day, bucket, source, and operation.
+- In-memory mode returns the same computed aggregate rows without durable storage.
+- This endpoint is a storage-model bridge for OSMU operations analytics; it is not an AWS billing export.
+
 ### GET /api/admin/monitoring/data-flow/daily-rollup/export.csv
 
 Exports the same ADMIN-only daily rollup window as CSV for operations handoff, offline analytics, and chargeback planning.

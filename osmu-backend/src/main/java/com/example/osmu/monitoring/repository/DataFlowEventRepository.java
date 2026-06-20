@@ -12,6 +12,8 @@ public interface DataFlowEventRepository {
 
     List<DataFlowDailyRollupPointResponse> dailyRollup(DataFlowEventFilter filter, int limit);
 
+    List<DataFlowDailyRollupPointResponse> refreshDailyRollup(DataFlowEventFilter filter, int limit);
+
     long nextId();
 
     DataFlowEventRecord save(DataFlowEventRecord event);

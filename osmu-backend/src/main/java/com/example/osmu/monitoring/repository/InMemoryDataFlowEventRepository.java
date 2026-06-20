@@ -70,6 +70,11 @@ public class InMemoryDataFlowEventRepository implements DataFlowEventRepository 
     }
 
     @Override
+    public List<DataFlowDailyRollupPointResponse> refreshDailyRollup(DataFlowEventFilter filter, int limit) {
+        return dailyRollup(filter, limit);
+    }
+
+    @Override
     public long nextId() {
         return idSequence.getAndIncrement();
     }

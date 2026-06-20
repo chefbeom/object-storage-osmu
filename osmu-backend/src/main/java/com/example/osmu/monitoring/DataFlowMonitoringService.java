@@ -177,18 +177,7 @@ public class DataFlowMonitoringService {
         OffsetDateTime generatedAt = OffsetDateTime.now();
         int normalizedDays = normalizeDailyRollupDays(days);
         int normalizedLimit = normalizeDailyRollupLimit(limit);
-        DataFlowEventFilter safeFilter = filter == null ? DataFlowEventFilter.empty() : filter;
-        DataFlowEventFilter boundedFilter = safeFilter.from() == null
-                ? new DataFlowEventFilter(
-                        safeFilter.bucketName(),
-                        safeFilter.actorId(),
-                        safeFilter.source(),
-                        safeFilter.operation(),
-                        safeFilter.status(),
-                        generatedAt.minusDays(normalizedDays - 1L).toLocalDate().atStartOfDay().atOffset(ZoneOffset.UTC),
-                        safeFilter.to()
-                )
-                : safeFilter;
+        DataFlowEventFilter boundedFilter = boundedDailyRollupFilter(filter, normalizedDays, generatedAt);
         List<DataFlowDailyRollupPointResponse> points = eventRepository.dailyRollup(boundedFilter, normalizedLimit);
         return new DataFlowDailyRollupResponse(
                 "DATA_FLOW_DAILY_ROLLUP",
@@ -201,6 +190,27 @@ public class DataFlowMonitoringService {
                 "ADMIN-only data-flow analytics rollup. Query filters are identical to the detailed data-flow monitoring endpoint.",
                 "Aggregates persisted data_flow_events in MariaDB mode and runtime events in in-memory mode. A future partitioned or time-series repository can replace this backing store without changing the API contract.",
                 "This is an OSMU operations and chargeback planning rollup, not AWS billing parity."
+        );
+    }
+
+    public DataFlowDailyRollupMaterializationResponse materializeDailyRollup(DataFlowEventFilter filter, Integer days, Integer limit) {
+        OffsetDateTime generatedAt = OffsetDateTime.now();
+        int normalizedDays = normalizeDailyRollupDays(days);
+        int normalizedLimit = normalizeDailyRollupLimit(limit);
+        DataFlowEventFilter boundedFilter = boundedDailyRollupFilter(filter, normalizedDays, generatedAt);
+        List<DataFlowDailyRollupPointResponse> points = eventRepository.refreshDailyRollup(boundedFilter, normalizedLimit);
+        return new DataFlowDailyRollupMaterializationResponse(
+                "DATA_FLOW_DAILY_ROLLUP_MATERIALIZATION",
+                "UTC_DAY",
+                normalizedDays,
+                normalizedLimit,
+                points.size(),
+                points.size(),
+                points,
+                generatedAt,
+                "ADMIN-only data-flow rollup materialization. Query filters are identical to the daily rollup endpoint.",
+                "Refreshes data_flow_daily_rollups in MariaDB mode and returns computed rollup points in in-memory mode. This is the handoff point for a future partitioned or time-series repository.",
+                "Materialization stores aggregate rows only; object keys, raw event messages, and AWS billing parity fields are not stored."
         );
     }
 
@@ -225,6 +235,22 @@ public class DataFlowMonitoringService {
             );
         }
         return csv.toString();
+    }
+
+    private DataFlowEventFilter boundedDailyRollupFilter(DataFlowEventFilter filter, int normalizedDays, OffsetDateTime generatedAt) {
+        DataFlowEventFilter safeFilter = filter == null ? DataFlowEventFilter.empty() : filter;
+        if (safeFilter.from() != null) {
+            return safeFilter;
+        }
+        return new DataFlowEventFilter(
+                safeFilter.bucketName(),
+                safeFilter.actorId(),
+                safeFilter.source(),
+                safeFilter.operation(),
+                safeFilter.status(),
+                generatedAt.minusDays(normalizedDays - 1L).toLocalDate().atStartOfDay().atOffset(ZoneOffset.UTC),
+                safeFilter.to()
+        );
     }
 
     private void persistEvent(

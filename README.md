@@ -98,7 +98,7 @@ Frontend는 MariaDB나 MinIO에 직접 접근하지 않습니다. Backend API만
 - Lifecycle/Retention: rule dry-run, conflict report, S3 lifecycle XML import/export, version/trash retention cleanup.
 - 공유/보안: object share link, password/IP 제한, usage limit, cleanup, analytics, enterprise auth plan.
 - Dashboard: widget catalog, layout preset, system/backup/quota/share/readiness/data-flow 요약.
-- Monitoring: data-flow event 저장, filter, detailed/daily-rollup CSV export, source/operation trend chart, daily rollup, tenant chargeback preview API/UI, billing pricing policy와 proposal/internal approval/commercial price-list reference, threshold alerts, chargeback alert notification preview/outbox/webhook send/adapter retry state, chargeback preview CSV export, chargeback invoice draft CSV export/persistence/internal approval, final invoice/payment state workflow, payment provider handoff outbox/webhook send/adapter retry state/readiness, Prometheus/Grafana starter artifact.
+- Monitoring: data-flow event 저장, filter, detailed/daily-rollup CSV export, source/operation trend chart, daily rollup, daily rollup materialized store refresh, tenant chargeback preview API/UI, billing pricing policy와 proposal/internal approval/commercial price-list reference, threshold alerts, chargeback alert notification preview/outbox/webhook send/adapter retry state, chargeback preview CSV export, chargeback invoice draft CSV export/persistence/internal approval, final invoice/payment state workflow, payment provider handoff outbox/webhook send/adapter retry state/readiness, Prometheus/Grafana starter artifact.
 - Storage Expansion: 증설 요청, dry-run/apply/rollback runner, GitOps artifact, execution history.
 - Operations Readiness: evidence plan, invocation unblock, dispatch preflight, workflow run id, artifact import/finalizer, convergence report, handoff package evidence.
 - Enterprise Auth Evidence: OIDC/LDAP smoke plan과 target IdP/directory evidence를 operations readiness blocker로 추적.
@@ -295,7 +295,7 @@ Enterprise auth는 `scripts/write-enterprise-auth-smoke-plan.ps1` 또는 `.githu
 
 - 실제 Kubernetes cluster와 GitHub-hosted workflow evidence 수집.
 - 관리자/감사자/조직 관리자 워크플로우 보강, 실제 IdP/LDAP pilot smoke 실행과 `.osmu-run/latest-enterprise-auth-smoke.json` evidence 확보.
-- data-flow daily rollup 기반 장기 analytics를 partition 또는 time-series 저장소로 확장.
+- data-flow daily rollup과 materialized rollup store 기반 장기 analytics를 partition 또는 time-series 저장소로 확장.
 - tenant billing/chargeback: preview API, admin billing panel, pricing policy 저장과 proposal/internal approval/commercial price-list reference, warning/critical threshold alert, alert notification preview/outbox/webhook/Slack/EMAIL SMTP relay send/adapter retry state, private/local webhook URL과 SMTP relay host 기본 차단, outbound payload size cap, generic notification/payment webhook HMAC signature header 옵션, payment provider generic/CARD/BANK/TAX/ERP webhook profile handoff/readiness, 비용 리포트 CSV export, draft invoice CSV export/persistence/internal approval, final invoice/payment state workflow, payment provider handoff outbox/webhook send/adapter retry state, notification/payment adapter retry worker를 기반으로 native provider API adapter와 target commercial integration evidence를 보강.
 - S3 대체성 유지: host `aws`/`mc`, boto3, AWS SDK smoke에서 실제 사용 흐름이 깨지는 경우만 우선 보강하고, AWS 세부 parity 추적은 제품 영향이 확인될 때만 수행한다.
 - 운영 패키징: demo notes, release notes, troubleshooting, runbook, operations handoff package target evidence 보강.

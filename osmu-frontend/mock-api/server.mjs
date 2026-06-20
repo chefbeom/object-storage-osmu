@@ -37,6 +37,7 @@ function createInitialState() {
       auditLog('DEMO_BOOTSTRAP', 'SYSTEM', 'mock-api', 'SUCCESS'),
     ],
     dataFlowEvents: [],
+    dataFlowDailyRollups: [],
     teams: [
       {
         id: 1,
@@ -293,6 +294,10 @@ async function handleRequest(request, response) {
   }
   if (request.method === 'GET' && path === '/admin/monitoring/data-flow/daily-rollup') {
     sendJson(response, 200, apiData(dataFlowDailyRollup(dataFlowFilters(url))))
+    return
+  }
+  if (request.method === 'POST' && path === '/admin/monitoring/data-flow/daily-rollup/materialize') {
+    sendJson(response, 200, apiData(materializeDataFlowDailyRollup(dataFlowFilters(url))))
     return
   }
   if (request.method === 'GET' && path === '/admin/monitoring/data-flow/daily-rollup/export.csv') {
@@ -1156,6 +1161,24 @@ function dataFlowDailyRollup(filters = {}) {
     scopePolicy: 'ADMIN-only data-flow analytics rollup. Query filters are identical to the detailed data-flow monitoring endpoint.',
     storagePolicy: 'Aggregates mock runtime data-flow events; MariaDB mode aggregates persisted data_flow_events.',
     note: 'This is an OSMU operations and chargeback planning rollup, not AWS billing parity.',
+  }
+}
+
+function materializeDataFlowDailyRollup(filters = {}) {
+  const rollup = dataFlowDailyRollup(filters)
+  state.dataFlowDailyRollups = rollup.points.map((point) => ({ ...point, refreshedAt: new Date().toISOString() }))
+  return {
+    mode: 'DATA_FLOW_DAILY_ROLLUP_MATERIALIZATION',
+    granularity: rollup.granularity,
+    dayWindow: rollup.dayWindow,
+    pointLimit: rollup.pointLimit,
+    pointCount: rollup.pointCount,
+    storedPointCount: state.dataFlowDailyRollups.length,
+    points: rollup.points,
+    generatedAt: new Date().toISOString(),
+    scopePolicy: 'ADMIN-only data-flow rollup materialization. Query filters are identical to the daily rollup endpoint.',
+    storagePolicy: 'Refreshes mock materialized daily rollup rows; MariaDB mode persists data_flow_daily_rollups.',
+    note: 'Materialization stores aggregate rows only; object keys, raw event messages, and AWS billing parity fields are not stored.',
   }
 }
 

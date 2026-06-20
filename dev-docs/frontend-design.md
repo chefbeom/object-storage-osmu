@@ -18,6 +18,7 @@
 
 - Data Flow Monitoring panel provides CSV export through `data-flow-export-button`.
 - Data Flow Monitoring panel provides daily rollup CSV export through `data-flow-daily-rollup-export-button`.
+- Data Flow Monitoring panel refreshes the materialized daily rollup store through `data-flow-daily-rollup-materialize-button` and `materializeDataFlowDailyRollup`.
 - Export uses the same date, bucket, actor, source, operation, status, and limit filters as the on-screen monitoring panel.
 - Data Flow Monitoring panel renders source/operation trend points through `data-flow-trend-chart` and daily bucket/source/operation rollup rows through `data-flow-daily-rollup`.
 - Data Flow Monitoring separates upload, download, and internal copy traffic in the summary and bucket rows.
