@@ -101,6 +101,7 @@ Assert-True ($report.summary.requiredCount -eq 8) "Expected all eight implemente
 Assert-True ($report.summary.requiredVerifiedCount -eq 8) "Expected all required integration profiles verified."
 Assert-True ($integrations.Count -eq 8) "Expected eight integration entries."
 Assert-True ($checks.Count -ge 20) "Expected commercial integration checks."
+Assert-True (@($checks | Where-Object { $_.id -eq "verification-window-order" -and $_.passed }).Count -eq 1) "Expected verification window order check to pass."
 Assert-True ($report.confirmations.noSecretValues) "Expected no-secret-values confirmation."
 Assert-True ($report.confirmations.noRawProviderResponses) "Expected no-raw-provider-responses confirmation."
 Assert-True ($report.confirmations.payloadSizeCaps) "Expected payload size caps confirmation."
@@ -135,6 +136,53 @@ finally {
     $ErrorActionPreference = $previousErrorActionPreference
 }
 Assert-True ($invalidExitCode -ne 0) "Credential-like evidence reference should be rejected."
+
+$previousErrorActionPreference = $ErrorActionPreference
+$ErrorActionPreference = "Continue"
+try {
+    $invalidWindowOutput = & powershell -NoProfile -ExecutionPolicy Bypass -File $scriptPath `
+        -EnvironmentName "pilot-prod-self-test" `
+        -TargetCluster "customer-cluster-a" `
+        -Operator "ops-self-test" `
+        -VerificationStartedAt "2026-06-20T01:45:00Z" `
+        -VerificationCompletedAt "2026-06-20T01:00:00Z" `
+        -ChangeApprovalRef "CHG-2026-COMMERCIAL-INTEGRATION-SELF-TEST" `
+        -NotificationWebhookEvidenceRef "notification-webhook-run-20260620" `
+        -SlackWebhookEvidenceRef "slack-webhook-run-20260620" `
+        -EmailSmtpEvidenceRef "email-smtp-run-20260620" `
+        -PaymentGenericWebhookEvidenceRef "payment-generic-webhook-run-20260620" `
+        -PaymentCardProfileEvidenceRef "payment-card-profile-run-20260620" `
+        -PaymentBankProfileEvidenceRef "payment-bank-profile-run-20260620" `
+        -PaymentTaxProfileEvidenceRef "payment-tax-profile-run-20260620" `
+        -PaymentErpProfileEvidenceRef "payment-erp-profile-run-20260620" `
+        -AdapterRetryWorkerEvidenceRef "adapter-retry-worker-run-20260620" `
+        -PayloadReviewEvidenceRef "payload-cap-review-20260620" `
+        -PrivateNetworkBlockEvidenceRef "private-network-block-review-20260620" `
+        -HmacSignatureEvidenceRef "hmac-signature-review-20260620" `
+        -VerifiedNotificationWebhook `
+        -VerifiedSlackWebhook `
+        -VerifiedEmailSmtp `
+        -VerifiedPaymentGenericWebhook `
+        -VerifiedPaymentCardProfile `
+        -VerifiedPaymentBankProfile `
+        -VerifiedPaymentTaxProfile `
+        -VerifiedPaymentErpProfile `
+        -ConfirmAdapterRetryWorkerRun `
+        -ConfirmPayloadSizeCaps `
+        -ConfirmPrivateNetworkBlocking `
+        -ConfirmHmacSignatureHeaders `
+        -ConfirmNoSecretValues `
+        -ConfirmNoRawProviderResponses `
+        -RequireAllImplementedAdapters `
+        -FailIfNotPassed `
+        -NoWrite 2>&1
+    $invalidWindowExitCode = $LASTEXITCODE
+}
+finally {
+    $ErrorActionPreference = $previousErrorActionPreference
+}
+Assert-True ($invalidWindowExitCode -ne 0) "Reversed verification window should be rejected."
+Assert-Contains ($invalidWindowOutput | Out-String) "Verification window order valid" "invalid verification window output"
 
 Write-Host "Commercial integration evidence writer verified."
 Write-Host "JSON: $jsonOutputPath"

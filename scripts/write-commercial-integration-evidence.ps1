@@ -84,6 +84,17 @@ function Test-DateText([string] $Value) {
     return [DateTimeOffset]::TryParse($Value, [ref] $parsed)
 }
 
+function Get-ParsedDateText([string] $Value) {
+    if ([string]::IsNullOrWhiteSpace($Value)) {
+        return $null
+    }
+    $parsed = [DateTimeOffset]::MinValue
+    if ([DateTimeOffset]::TryParse($Value, [ref] $parsed)) {
+        return $parsed
+    }
+    return $null
+}
+
 function New-Check([string] $Id, [string] $Name, [string] $Status, [string] $Detail) {
     return [ordered]@{
         id = $Id
@@ -178,12 +189,16 @@ $verifiedCount = @($integrations | Where-Object { $_.verified -and -not [string]
 $requiredIntegrations = @($integrations | Where-Object { $_.required })
 $requiredVerifiedCount = @($requiredIntegrations | Where-Object { $_.verified -and -not [string]::IsNullOrWhiteSpace([string] $_.evidenceRef) }).Count
 $hasAnyInput = -not [string]::IsNullOrWhiteSpace($EnvironmentName + $TargetCluster + $Operator + $ChangeApprovalRef + $NotificationWebhookEvidenceRef + $SlackWebhookEvidenceRef + $EmailSmtpEvidenceRef + $PaymentGenericWebhookEvidenceRef + $PaymentCardProfileEvidenceRef + $PaymentBankProfileEvidenceRef + $PaymentTaxProfileEvidenceRef + $PaymentErpProfileEvidenceRef + $AdapterRetryWorkerEvidenceRef + $PayloadReviewEvidenceRef + $PrivateNetworkBlockEvidenceRef + $HmacSignatureEvidenceRef + $VerificationStartedAt + $VerificationCompletedAt) -or $verifiedCount -gt 0
+$verificationStartedAtParsed = Get-ParsedDateText $VerificationStartedAt
+$verificationCompletedAtParsed = Get-ParsedDateText $VerificationCompletedAt
+$verificationWindowOrdered = $null -ne $verificationStartedAtParsed -and $null -ne $verificationCompletedAtParsed -and $verificationCompletedAtParsed -ge $verificationStartedAtParsed
 
 Add-Check "environment-name" "Environment name recorded" (-not [string]::IsNullOrWhiteSpace($EnvironmentName)) "environmentName=$EnvironmentName"
 Add-Check "target-cluster" "Target cluster recorded" (-not [string]::IsNullOrWhiteSpace($TargetCluster)) "targetCluster=$TargetCluster"
 Add-Check "operator" "Operator recorded" (-not [string]::IsNullOrWhiteSpace($Operator)) "operator=$Operator"
 Add-Check "verification-started-at" "Verification start timestamp recorded" (Test-DateText $VerificationStartedAt) "verificationStartedAt=$VerificationStartedAt"
 Add-Check "verification-completed-at" "Verification completion timestamp recorded" (Test-DateText $VerificationCompletedAt) "verificationCompletedAt=$VerificationCompletedAt"
+Add-Check "verification-window-order" "Verification window order valid" $verificationWindowOrdered "verificationStartedAt=$VerificationStartedAt; verificationCompletedAt=$VerificationCompletedAt"
 Add-Check "change-approval-ref" "Change approval reference recorded" (-not [string]::IsNullOrWhiteSpace($ChangeApprovalRef)) "changeApprovalRef=$ChangeApprovalRef"
 Add-Check "no-secret-values-confirmed" "No credential values recorded confirmation" ([bool] $ConfirmNoSecretValues) "Evidence stores references and booleans only."
 Add-Check "no-raw-provider-responses-confirmed" "No raw provider responses recorded confirmation" ([bool] $ConfirmNoRawProviderResponses) "Provider responses are summarized outside this evidence."

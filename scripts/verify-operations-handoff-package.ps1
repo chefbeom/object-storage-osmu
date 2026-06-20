@@ -94,6 +94,7 @@ Assert-True ($report.result -eq "passed") "Expected result=passed."
 Assert-True ($report.summary.failureCount -eq 0) "Expected zero failed checks."
 Assert-True ($report.summary.plannedCount -eq 0) "Expected zero planned checks when production evidence is required."
 Assert-True ($checks.Count -ge 22) "Expected operations handoff package checks."
+Assert-True (@($checks | Where-Object { $_.id -eq "handoff-window-order" -and $_.passed }).Count -eq 1) "Expected handoff window order check to pass."
 Assert-True ($report.confirmations.noSecretValues) "Expected no-secret-values confirmation."
 Assert-True ($report.confirmations.runbookReviewed) "Expected runbook reviewed confirmation."
 Assert-True ($report.confirmations.troubleshootingReviewed) "Expected troubleshooting reviewed confirmation."
@@ -128,6 +129,49 @@ finally {
     $ErrorActionPreference = $previousErrorActionPreference
 }
 Assert-True ($invalidExitCode -ne 0) "Credential-like evidence reference should be rejected."
+
+$previousErrorActionPreference = $ErrorActionPreference
+$ErrorActionPreference = "Continue"
+try {
+    $invalidWindowOutput = & powershell -NoProfile -ExecutionPolicy Bypass -File $scriptPath `
+        -EnvironmentName "pilot-prod-self-test" `
+        -TargetCluster "customer-cluster-a" `
+        -Operator "ops-self-test" `
+        -HandoffStartedAt "2026-06-20T02:30:00Z" `
+        -HandoffCompletedAt "2026-06-20T02:00:00Z" `
+        -ChangeApprovalRef "CHG-2026-OPERATIONS-HANDOFF-SELF-TEST" `
+        -DeploymentEvidenceRef "deployment-release-run-20260620" `
+        -OperationsReadinessRef "latest-operations-readiness-ready-20260620" `
+        -OperationsConvergenceRef "latest-operations-readiness-convergence-ready-20260620" `
+        -SecretRotationEvidenceRef "latest-secret-rotation-evidence-passed-20260620" `
+        -CommercialIntegrationEvidenceRef "latest-commercial-integration-evidence-passed-20260620" `
+        -EnterpriseAuthEvidenceRef "latest-enterprise-auth-smoke-passed-20260620" `
+        -BackupRestoreEvidenceRef "latest-kubernetes-dr-finalize-ready-20260620" `
+        -HaDrEvidenceRef "latest-kubernetes-ha-dr-readiness-passed-20260620" `
+        -MonitoringEvidenceRef "prometheus-alertmanager-grafana-review-20260620" `
+        -SecurityEvidenceRef "latest-security-evidence-finalize-passed-20260620" `
+        -IamRbacEvidenceRef "latest-iam-rbac-finalize-passed-20260620" `
+        -RunbookReviewRef "operator-runbook-review-20260620" `
+        -TroubleshootingReviewRef "troubleshooting-review-20260620" `
+        -SupportEscalationRef "support-escalation-ticket-20260620" `
+        -SupportSlaRef "support-sla-contract-20260620" `
+        -KnownGapsRef "known-gaps-acceptance-20260620" `
+        -ConfirmRunbookReviewed `
+        -ConfirmTroubleshootingReviewed `
+        -ConfirmRollbackReviewed `
+        -ConfirmSupportEscalationReviewed `
+        -ConfirmKnownGapsAccepted `
+        -ConfirmNoSecretValues `
+        -RequireProductionEvidence `
+        -FailIfNotPassed `
+        -NoWrite 2>&1
+    $invalidWindowExitCode = $LASTEXITCODE
+}
+finally {
+    $ErrorActionPreference = $previousErrorActionPreference
+}
+Assert-True ($invalidWindowExitCode -ne 0) "Reversed handoff window should be rejected."
+Assert-Contains ($invalidWindowOutput | Out-String) "Handoff window order valid" "invalid handoff window output"
 
 Write-Host "Operations handoff package writer verified."
 Write-Host "JSON: $jsonOutputPath"

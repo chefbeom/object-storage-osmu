@@ -72,6 +72,17 @@ function Test-DateText([string] $Value) {
     return [DateTimeOffset]::TryParse($Value, [ref] $parsed)
 }
 
+function Get-ParsedDateText([string] $Value) {
+    if ([string]::IsNullOrWhiteSpace($Value)) {
+        return $null
+    }
+    $parsed = [DateTimeOffset]::MinValue
+    if ([DateTimeOffset]::TryParse($Value, [ref] $parsed)) {
+        return $parsed
+    }
+    return $null
+}
+
 function New-Check([string] $Id, [string] $Name, [string] $Status, [string] $Detail, [string] $EvidenceRef) {
     return [ordered]@{
         id = $Id
@@ -131,12 +142,16 @@ foreach ($entry in @(
 
 $evidenceText = $DeploymentEvidenceRef + $OperationsReadinessRef + $OperationsConvergenceRef + $SecretRotationEvidenceRef + $CommercialIntegrationEvidenceRef + $EnterpriseAuthEvidenceRef + $BackupRestoreEvidenceRef + $HaDrEvidenceRef + $MonitoringEvidenceRef + $SecurityEvidenceRef + $IamRbacEvidenceRef + $RunbookReviewRef + $TroubleshootingReviewRef + $SupportEscalationRef + $SupportSlaRef + $KnownGapsRef
 $hasAnyInput = -not [string]::IsNullOrWhiteSpace($EnvironmentName + $TargetCluster + $Operator + $HandoffStartedAt + $HandoffCompletedAt + $ChangeApprovalRef + $evidenceText) -or $ConfirmRunbookReviewed -or $ConfirmTroubleshootingReviewed -or $ConfirmRollbackReviewed -or $ConfirmSupportEscalationReviewed -or $ConfirmKnownGapsAccepted -or $ConfirmNoSecretValues
+$handoffStartedAtParsed = Get-ParsedDateText $HandoffStartedAt
+$handoffCompletedAtParsed = Get-ParsedDateText $HandoffCompletedAt
+$handoffWindowOrdered = $null -ne $handoffStartedAtParsed -and $null -ne $handoffCompletedAtParsed -and $handoffCompletedAtParsed -ge $handoffStartedAtParsed
 
 Add-Check "environment-name" "Environment name recorded" (-not [string]::IsNullOrWhiteSpace($EnvironmentName)) "environmentName=$EnvironmentName"
 Add-Check "target-cluster" "Target cluster recorded" (-not [string]::IsNullOrWhiteSpace($TargetCluster)) "targetCluster=$TargetCluster"
 Add-Check "operator" "Operator recorded" (-not [string]::IsNullOrWhiteSpace($Operator)) "operator=$Operator"
 Add-Check "handoff-started-at" "Handoff start timestamp recorded" (Test-DateText $HandoffStartedAt) "handoffStartedAt=$HandoffStartedAt"
 Add-Check "handoff-completed-at" "Handoff completion timestamp recorded" (Test-DateText $HandoffCompletedAt) "handoffCompletedAt=$HandoffCompletedAt"
+Add-Check "handoff-window-order" "Handoff window order valid" $handoffWindowOrdered "handoffStartedAt=$HandoffStartedAt; handoffCompletedAt=$HandoffCompletedAt"
 Add-Check "change-approval-ref" "Change approval reference recorded" (-not [string]::IsNullOrWhiteSpace($ChangeApprovalRef)) "changeApprovalRef=$ChangeApprovalRef" $ChangeApprovalRef
 Add-Check "no-secret-values-confirmed" "No credential values recorded confirmation" ([bool] $ConfirmNoSecretValues) "Evidence stores references and booleans only."
 Add-Check "runbook-reviewed" "Operator runbook reviewed" ([bool] $ConfirmRunbookReviewed -and -not [string]::IsNullOrWhiteSpace($RunbookReviewRef)) "runbookReviewRef=$RunbookReviewRef" $RunbookReviewRef
