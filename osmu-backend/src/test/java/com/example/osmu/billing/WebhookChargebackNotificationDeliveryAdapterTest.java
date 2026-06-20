@@ -4,10 +4,21 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sun.net.httpserver.HttpServer;
+import java.io.BufferedReader;
+import java.io.BufferedWriter;
+import java.io.IOException;
+import java.io.InputStreamReader;
+import java.io.OutputStreamWriter;
 import java.math.BigDecimal;
 import java.net.InetSocketAddress;
+import java.net.ServerSocket;
+import java.net.Socket;
 import java.nio.charset.StandardCharsets;
 import java.time.OffsetDateTime;
+import java.util.List;
+import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Test;
 
@@ -30,7 +41,24 @@ class WebhookChargebackNotificationDeliveryAdapterTest {
         try {
             String slackUrl = "http://127.0.0.1:" + server.getAddress().getPort() + "/slack";
             WebhookChargebackNotificationDeliveryAdapter adapter =
-                    new WebhookChargebackNotificationDeliveryAdapter(OBJECT_MAPPER, "", slackUrl, "", "", 3000, true);
+                    new WebhookChargebackNotificationDeliveryAdapter(
+                            OBJECT_MAPPER,
+                            "",
+                            slackUrl,
+                            "",
+                            "",
+                            3000,
+                            true,
+                            "",
+                            25,
+                            "",
+                            "osmu.local",
+                            "[OSMU]",
+                            "",
+                            "",
+                            false,
+                            false
+                    );
 
             assertThat(adapter.isConfigured()).isTrue();
             assertThat(adapter.isConfigured("SLACK")).isTrue();
@@ -66,6 +94,167 @@ class WebhookChargebackNotificationDeliveryAdapterTest {
             assertThat(requestBody.get()).contains("Amount: 1200");
         } finally {
             server.stop(0);
+        }
+    }
+
+    @Test
+    void sendsEmailPayloadWhenEmailChannelIsConfigured() throws Exception {
+        try (FakeSmtpServer smtpServer = new FakeSmtpServer()) {
+            WebhookChargebackNotificationDeliveryAdapter adapter =
+                    new WebhookChargebackNotificationDeliveryAdapter(
+                            OBJECT_MAPPER,
+                            "",
+                            "",
+                            "",
+                            "",
+                            3000,
+                            false,
+                            "127.0.0.1",
+                            smtpServer.port(),
+                            "billing@example.com",
+                            "osmu.local",
+                            "[OSMU]",
+                            "",
+                            "",
+                            false,
+                            true
+                    );
+
+            assertThat(adapter.isConfigured()).isTrue();
+            assertThat(adapter.isConfigured("EMAIL")).isTrue();
+            assertThat(adapter.isConfigured("WEBHOOK")).isFalse();
+
+            ChargebackNotificationDeliveryAdapterResult result = adapter.deliver(new ChargebackAlertNotificationDeliveryRecord(
+                    11L,
+                    9L,
+                    "Email Org",
+                    "WARNING",
+                    BigDecimal.valueOf(75L),
+                    BigDecimal.valueOf(70L),
+                    BigDecimal.valueOf(100L),
+                    "EMAIL",
+                    "finance@example.com",
+                    "PENDING_DELIVERY_ADAPTER",
+                    0,
+                    null,
+                    "Chargeback warning threshold crossed",
+                    "Email Org exceeded the warning billing threshold.",
+                    "{\"eventType\":\"chargeback.threshold\"}",
+                    "admin",
+                    "unit test",
+                    OffsetDateTime.now(),
+                    OffsetDateTime.now(),
+                    null
+            ));
+
+            assertThat(result.result()).isEqualTo("SUCCESS");
+            assertThat(smtpServer.awaitMessage()).isTrue();
+            assertThat(smtpServer.commands()).contains("MAIL FROM:<billing@example.com>");
+            assertThat(smtpServer.commands()).contains("RCPT TO:<finance@example.com>");
+            assertThat(smtpServer.message()).contains("X-OSMU-Event-Type: chargeback.threshold.email.delivery");
+            assertThat(smtpServer.message()).contains("Email Org exceeded the warning billing threshold.");
+            assertThat(smtpServer.message()).contains("{\"eventType\":\"chargeback.threshold\"}");
+        }
+    }
+
+    @Test
+    void doesNotConfigurePrivateEmailRelayByDefault() {
+        WebhookChargebackNotificationDeliveryAdapter adapter =
+                new WebhookChargebackNotificationDeliveryAdapter(
+                        OBJECT_MAPPER,
+                        "",
+                        "",
+                        "",
+                        "",
+                        3000,
+                        false,
+                        "127.0.0.1",
+                        25,
+                        "billing@example.com",
+                        "osmu.local",
+                        "[OSMU]",
+                        "",
+                        "",
+                        false,
+                        false
+                );
+
+        assertThat(adapter.isConfigured("EMAIL")).isFalse();
+    }
+
+    private static final class FakeSmtpServer implements AutoCloseable {
+
+        private final ServerSocket serverSocket;
+        private final Thread worker;
+        private final List<String> commands = new CopyOnWriteArrayList<>();
+        private final AtomicReference<String> message = new AtomicReference<>("");
+        private final CountDownLatch messageReceived = new CountDownLatch(1);
+
+        private FakeSmtpServer() throws IOException {
+            this.serverSocket = new ServerSocket(0, 1, java.net.InetAddress.getByName("127.0.0.1"));
+            this.worker = new Thread(this::serve, "fake-smtp-server");
+            this.worker.setDaemon(true);
+            this.worker.start();
+        }
+
+        private int port() {
+            return serverSocket.getLocalPort();
+        }
+
+        private List<String> commands() {
+            return commands;
+        }
+
+        private String message() {
+            return message.get();
+        }
+
+        private boolean awaitMessage() throws InterruptedException {
+            return messageReceived.await(3, TimeUnit.SECONDS);
+        }
+
+        private void serve() {
+            try (Socket socket = serverSocket.accept();
+                 BufferedReader reader = new BufferedReader(new InputStreamReader(socket.getInputStream(), StandardCharsets.UTF_8));
+                 BufferedWriter writer = new BufferedWriter(new OutputStreamWriter(socket.getOutputStream(), StandardCharsets.UTF_8))) {
+                send(writer, "220 fake smtp");
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    commands.add(line);
+                    if (line.startsWith("EHLO") || line.startsWith("HELO")) {
+                        send(writer, "250 fake smtp ready");
+                    } else if (line.startsWith("MAIL FROM:") || line.startsWith("RCPT TO:")) {
+                        send(writer, "250 ok");
+                    } else if (line.equals("DATA")) {
+                        send(writer, "354 end data with dot");
+                        StringBuilder builder = new StringBuilder();
+                        while ((line = reader.readLine()) != null && !".".equals(line)) {
+                            builder.append(line).append('\n');
+                        }
+                        message.set(builder.toString());
+                        messageReceived.countDown();
+                        send(writer, "250 queued");
+                    } else if (line.equals("QUIT")) {
+                        send(writer, "221 bye");
+                        return;
+                    } else {
+                        send(writer, "250 ok");
+                    }
+                }
+            } catch (IOException ignored) {
+                messageReceived.countDown();
+            }
+        }
+
+        private static void send(BufferedWriter writer, String line) throws IOException {
+            writer.write(line);
+            writer.write("\r\n");
+            writer.flush();
+        }
+
+        @Override
+        public void close() throws IOException {
+            serverSocket.close();
         }
     }
 }

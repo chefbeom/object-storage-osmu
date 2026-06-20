@@ -247,8 +247,8 @@ public class ChargebackAdapterRetryWorkerService {
                 adapterLastError(
                         result,
                         adapterResult.lastError(),
-                        "Notification webhook adapter retry scheduled.",
-                        "Notification webhook adapter blocked this delivery row."
+                        "Notification adapter retry scheduled.",
+                        "Notification adapter blocked this delivery row."
                 )
         );
     }
@@ -325,7 +325,7 @@ public class ChargebackAdapterRetryWorkerService {
                 "due-outbox",
                 "SUCCESS",
                 (notificationAdapterConfigured || paymentAdapterConfigured
-                        ? "Chargeback adapter retry worker processed due rows; configured webhooks were attempted when eligible: "
+                        ? "Chargeback adapter retry worker processed due rows; configured adapters were attempted when eligible: "
                         : "Chargeback adapter retry worker blocked due rows without external calls: ")
                         + updatedCount
         );
@@ -409,11 +409,11 @@ public class ChargebackAdapterRetryWorkerService {
     ) {
         if (dryRun) {
             return adapterConfigured
-                    ? "Due notification adapter retry candidate; configured webhook adapter would be attempted."
+                    ? "Due notification adapter retry candidate; configured notification adapter would be attempted."
                     : "Due notification adapter retry candidate.";
         }
         if ("DELIVERY_ADAPTER_SUCCEEDED".equals(toStatus)) {
-            return "Notification webhook adapter delivered this due row.";
+            return "Notification adapter delivered this due row.";
         }
         return updated.lastError();
     }
@@ -437,10 +437,10 @@ public class ChargebackAdapterRetryWorkerService {
 
     private static String retryWorkerRunNote(boolean notificationAdapterConfigured, boolean paymentAdapterConfigured) {
         if (notificationAdapterConfigured && paymentAdapterConfigured) {
-            return "Configured notification and payment provider webhook adapters were attempted for due rows.";
+            return "Configured notification and payment provider adapters were attempted for due rows.";
         }
         if (notificationAdapterConfigured) {
-            return "Configured notification webhook adapter was attempted for due notification rows; payment rows remain blocked until payment adapter configuration exists.";
+            return "Configured notification adapter was attempted for due notification rows; payment rows remain blocked until payment adapter configuration exists.";
         }
         if (paymentAdapterConfigured) {
             return "Configured payment provider webhook adapter was attempted for due payment handoff rows; notification rows remain blocked until notification adapter configuration exists.";

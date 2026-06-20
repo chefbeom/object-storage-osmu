@@ -1401,7 +1401,7 @@ function sendChargebackNotificationAdapter(deliveryId) {
     externalDeliveryEnabled: true,
     delivery,
     recordedAt: now,
-    note: 'Notification webhook adapter delivered this outbox row.',
+    note: 'Notification delivery adapter delivered this outbox row.',
   }
 }
 

@@ -2753,7 +2753,7 @@ Notes:
 
 ### GET /api/admin/billing/chargeback-alert-notifications/preview
 
-Builds scoped external notification payload previews from the same chargeback threshold alert model. `ADMIN` sees payload previews for every alerted organization and `ORG_ADMIN` sees only its own organization. This endpoint does not send webhooks, email, Slack messages, or any other external notification; it only returns the payload shape and target metadata for review. `externalDeliveryEnabled` is channel-aware: generic webhook channels use `osmu.billing.notification-delivery.webhook-url` and optional secret header settings, while `SLACK` can also use `osmu.billing.notification-delivery.slack.webhook-url`.
+Builds scoped external notification payload previews from the same chargeback threshold alert model. `ADMIN` sees payload previews for every alerted organization and `ORG_ADMIN` sees only its own organization. This endpoint does not send webhooks, email, Slack messages, or any other external notification; it only returns the payload shape and target metadata for review. `externalDeliveryEnabled` is channel-aware: generic webhook channels use `osmu.billing.notification-delivery.webhook-url` and optional secret header settings, `SLACK` can also use `osmu.billing.notification-delivery.slack.webhook-url`, and `EMAIL` can use the configured SMTP relay adapter.
 
 Query parameters are the same as `GET /api/admin/billing/chargeback-preview`, plus:
 
@@ -2770,7 +2770,7 @@ Response:
 
 Notes:
 
-- This is the external alert review surface. Delivery execution is handled by `POST /api/admin/billing/chargeback-alert-notifications/outbox/{deliveryId}/adapter-send` or by the adapter retry worker when a channel-compatible adapter is configured. Generic webhook delivery and `SLACK` incoming webhook delivery are implemented; email-specific adapters remain follow-up work.
+- This is the external alert review surface. Delivery execution is handled by `POST /api/admin/billing/chargeback-alert-notifications/outbox/{deliveryId}/adapter-send` or by the adapter retry worker when a channel-compatible adapter is configured. Generic webhook delivery, `SLACK` incoming webhook delivery, and `EMAIL` SMTP relay delivery are implemented.
 - Scope filtering is identical to chargeback alerts.
 
 ### POST /api/admin/billing/chargeback-alert-notifications/outbox
@@ -2788,7 +2788,7 @@ Response:
 - `externalDeliveryEnabled`
 - `queuedCount`
 - `deliveries[]`: persisted delivery rows with channel, target, status, payloadJson, requester, reason, and timestamps.
-- `note`: outbox-only notice; when a webhook adapter is configured, it can be sent later by ADMIN or the retry worker.
+- `note`: outbox-only notice; when a channel-compatible notification adapter is configured, it can be sent later by ADMIN or the retry worker.
 
 ### GET /api/admin/billing/chargeback-alert-notifications/outbox
 
@@ -2825,7 +2825,7 @@ Response:
 
 ### POST /api/admin/billing/chargeback-alert-notifications/outbox/{deliveryId}/adapter-send
 
-Attempts configured delivery for a persisted chargeback notification delivery row. `ADMIN` only. Generic channels use `osmu.billing.notification-delivery.webhook-url`; `SLACK` rows use `osmu.billing.notification-delivery.slack.webhook-url` when configured and otherwise fall back to the generic webhook if configured. If no channel-compatible adapter is configured or the configuration is invalid, the row moves to `DELIVERY_ADAPTER_BLOCKED_CREDENTIAL` without an external call. Generic webhook sends a JSON envelope with delivery metadata plus the original notification payload. Slack webhook sends a Slack-compatible `text` JSON payload. It never stores webhook URLs, secret header values, response bodies, or raw provider responses in the outbox.
+Attempts configured delivery for a persisted chargeback notification delivery row. `ADMIN` only. Generic channels use `osmu.billing.notification-delivery.webhook-url`; `SLACK` rows use `osmu.billing.notification-delivery.slack.webhook-url` when configured and otherwise fall back to the generic webhook if configured; `EMAIL` rows use the configured SMTP relay adapter when configured and otherwise fall back to the generic webhook if configured. If no channel-compatible adapter is configured or the configuration is invalid, the row moves to `DELIVERY_ADAPTER_BLOCKED_CREDENTIAL` without an external call. Generic webhook sends a JSON envelope with delivery metadata plus the original notification payload. Slack webhook sends a Slack-compatible `text` JSON payload. Email sends a UTF-8 plain text SMTP message to the outbox `target` email address. It never stores webhook URLs, secret header values, SMTP password values, response bodies, or raw provider responses in the outbox.
 
 Configuration:
 
@@ -2834,6 +2834,14 @@ Configuration:
 - `osmu.billing.notification-delivery.secret-header-name` and `osmu.billing.notification-delivery.secret-header-value` (optional pair): header name/value sent with the webhook request; header values are never stored in delivery rows.
 - `osmu.billing.notification-delivery.timeout-ms` (optional): request timeout, clamped to 500..15000ms. Default is `3000`.
 - `osmu.billing.notification-delivery.allow-private-network` (optional): default `false`. When false, localhost, loopback, link-local, private IPv4/IPv6, and local-domain webhook hosts are rejected before any external call. Enable only for local/dev or explicitly approved internal network integrations.
+- `osmu.billing.notification-delivery.email.smtp-host` (optional): SMTP relay host used for `notificationChannel=EMAIL`.
+- `osmu.billing.notification-delivery.email.smtp-port` (optional): SMTP relay port. Default is `25`.
+- `osmu.billing.notification-delivery.email.from` (optional): sender email address for SMTP relay delivery.
+- `osmu.billing.notification-delivery.email.helo-domain` (optional): SMTP HELO/EHLO name. Default is `osmu.local`.
+- `osmu.billing.notification-delivery.email.subject-prefix` (optional): email subject prefix. Default is `[OSMU]`.
+- `osmu.billing.notification-delivery.email.username` and `osmu.billing.notification-delivery.email.password` (optional pair): SMTP `AUTH PLAIN` credentials; password values are never stored in delivery rows.
+- `osmu.billing.notification-delivery.email.starttls-enabled` (optional): default `false`; when true, the adapter issues `STARTTLS` before authentication and message transfer.
+- `osmu.billing.notification-delivery.email.allow-private-network` (optional): default `false`. When false, localhost, loopback, link-local, private IPv4/IPv6, and local-domain SMTP relay hosts are rejected. Enable only for local/dev or explicitly approved internal mail relay integrations.
 
 Query parameters:
 
@@ -2843,13 +2851,13 @@ Response:
 
 - `mode`: `ADAPTER_RESULT`
 - `status`: `DELIVERY_ADAPTER_SUCCEEDED`, `DELIVERY_ADAPTER_RETRY_SCHEDULED`, or `DELIVERY_ADAPTER_BLOCKED_CREDENTIAL`
-- `externalDeliveryEnabled`: true only when the webhook adapter is configured.
+- `externalDeliveryEnabled`: true only when a channel-compatible notification adapter is configured.
 - `delivery`: updated outbox row with incremented `attemptCount`, optional `nextAttemptAt`, and sanitized `lastError`.
-- `note`: webhook send result summary.
+- `note`: adapter send result summary.
 
 ### GET /api/admin/billing/chargeback-adapter-retry-worker/status
 
-Returns a dry-run view of due chargeback notification delivery and payment provider handoff adapter retry rows. `ADMIN` only. The endpoint does not call external notification or payment providers and does not update outbox state. `externalAdaptersEnabled` is true when generic notification webhook, `SLACK` notification webhook, or payment-provider webhook handoff adapter configuration exists.
+Returns a dry-run view of due chargeback notification delivery and payment provider handoff adapter retry rows. `ADMIN` only. The endpoint does not call external notification or payment providers and does not update outbox state. `externalAdaptersEnabled` is true when generic notification webhook, `SLACK` notification webhook, `EMAIL` SMTP relay, or payment-provider webhook handoff adapter configuration exists.
 
 Query parameters:
 
