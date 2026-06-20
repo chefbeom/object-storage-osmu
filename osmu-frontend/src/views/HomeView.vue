@@ -359,6 +359,7 @@
         :chargeback-invoice-drafts="chargebackInvoiceDrafts"
         :chargeback-final-invoices="chargebackFinalInvoices"
         :chargeback-payment-provider-handoffs="chargebackPaymentProviderHandoffs"
+        :chargeback-payment-provider-adapter-readiness="chargebackPaymentProviderAdapterReadiness"
         :chargeback-adapter-retry-worker="chargebackAdapterRetryWorker"
         :billing-pricing-policy="billingPricingPolicy"
         :billing-pricing-policy-proposals="billingPricingPolicyProposals"
@@ -587,6 +588,7 @@ import {
   getChargebackAlerts,
   getChargebackFinalInvoices,
   getChargebackInvoiceDrafts,
+  getChargebackPaymentProviderAdapterReadiness,
   getChargebackPaymentProviderHandoffs,
   getDatabaseHealth,
   getDashboardLayout,
@@ -1280,6 +1282,7 @@ const chargebackAlertNotificationOutbox = ref(defaultChargebackAlertNotification
 const chargebackInvoiceDrafts = ref(defaultChargebackInvoiceDrafts())
 const chargebackFinalInvoices = ref(defaultChargebackFinalInvoices())
 const chargebackPaymentProviderHandoffs = ref(defaultChargebackPaymentProviderHandoffs())
+const chargebackPaymentProviderAdapterReadiness = ref(defaultChargebackPaymentProviderAdapterReadiness())
 const chargebackAdapterRetryWorker = ref(defaultChargebackAdapterRetryWorker())
 const billingPricingPolicy = ref(defaultBillingPricingPolicy())
 const billingPricingPolicyProposals = ref(defaultBillingPricingPolicyProposals())
@@ -2363,6 +2366,7 @@ async function loadDashboard(options = {}) {
       resetChargebackInvoiceDrafts()
       resetChargebackFinalInvoices()
       resetChargebackPaymentProviderHandoffs()
+      resetChargebackPaymentProviderAdapterReadiness()
       resetChargebackAdapterRetryWorker()
     }
 
@@ -2578,6 +2582,17 @@ async function loadChargebackPaymentProviderHandoffs() {
   }
 }
 
+async function loadChargebackPaymentProviderAdapterReadiness() {
+  if (!isAdmin.value) {
+    resetChargebackPaymentProviderAdapterReadiness()
+    return
+  }
+  const result = await safeRequest(() => getChargebackPaymentProviderAdapterReadiness(), null)
+  if (result?.data) {
+    applyChargebackPaymentProviderAdapterReadiness(result.data)
+  }
+}
+
 async function loadChargebackAdapterRetryWorker() {
   if (!isAdmin.value) {
     resetChargebackAdapterRetryWorker()
@@ -2598,6 +2613,7 @@ async function loadChargebackPanel() {
     loadChargebackInvoiceDrafts(),
     loadChargebackFinalInvoices(),
     loadChargebackPaymentProviderHandoffs(),
+    loadChargebackPaymentProviderAdapterReadiness(),
     loadChargebackAdapterRetryWorker(),
     loadBillingPricingPolicyProposals(),
   ])
@@ -3036,6 +3052,7 @@ function resetAdminOnlyState() {
   resetChargebackInvoiceDrafts()
   resetChargebackFinalInvoices()
   resetChargebackPaymentProviderHandoffs()
+  resetChargebackPaymentProviderAdapterReadiness()
   resetChargebackAdapterRetryWorker()
 }
 
@@ -4390,6 +4407,60 @@ function applyChargebackPaymentProviderHandoffs(data = {}) {
 
 function resetChargebackPaymentProviderHandoffs() {
   applyChargebackPaymentProviderHandoffs({})
+}
+
+function defaultChargebackPaymentProviderAdapterReadiness() {
+  return {
+    mode: 'PAYMENT_PROVIDER_ADAPTER_READINESS',
+    status: '',
+    nativeApiSupported: false,
+    nativeApiReady: false,
+    profileCount: 0,
+    webhookReadyProfileCount: 0,
+    profiles: [],
+    generatedAt: '',
+    scopePolicy: '',
+    secretPolicy: '',
+    note: '',
+  }
+}
+
+function normalizeChargebackPaymentProviderAdapterProfile(profile = {}) {
+  return {
+    providerProfile: profile.providerProfile || '',
+    sampleProvider: profile.sampleProvider || '',
+    adapterMode: profile.adapterMode || '',
+    status: profile.status || '',
+    webhookProfileConfigured: Boolean(profile.webhookProfileConfigured),
+    nativeApiSupported: Boolean(profile.nativeApiSupported),
+    nativeApiReady: Boolean(profile.nativeApiReady),
+    requiredConfiguration: profile.requiredConfiguration || '',
+    note: profile.note || '',
+  }
+}
+
+function applyChargebackPaymentProviderAdapterReadiness(data = {}) {
+  const profiles = Array.isArray(data.profiles)
+    ? data.profiles.map((profile) => normalizeChargebackPaymentProviderAdapterProfile(profile))
+    : []
+  const fallback = defaultChargebackPaymentProviderAdapterReadiness()
+  chargebackPaymentProviderAdapterReadiness.value = {
+    ...fallback,
+    ...data,
+    nativeApiSupported: Boolean(data.nativeApiSupported),
+    nativeApiReady: Boolean(data.nativeApiReady),
+    profileCount: Number(data.profileCount ?? profiles.length),
+    webhookReadyProfileCount: Number(data.webhookReadyProfileCount || 0),
+    profiles,
+    generatedAt: data.generatedAt || '',
+    scopePolicy: data.scopePolicy || '',
+    secretPolicy: data.secretPolicy || '',
+    note: data.note || '',
+  }
+}
+
+function resetChargebackPaymentProviderAdapterReadiness() {
+  applyChargebackPaymentProviderAdapterReadiness({})
 }
 
 function defaultChargebackAdapterRetryWorker() {

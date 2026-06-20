@@ -359,6 +359,23 @@ class AdminBillingControllerTest {
                 .andExpect(jsonPath("$.data.updatedCount").value(1))
                 .andExpect(jsonPath("$.data.items[0].toStatus").value("PAYMENT_PROVIDER_ADAPTER_BLOCKED_CREDENTIAL"));
 
+        mockMvc.perform(get("/api/admin/billing/payment-provider-adapter-readiness")
+                        .header("Authorization", "Bearer " + adminToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.mode").value("PAYMENT_PROVIDER_ADAPTER_READINESS"))
+                .andExpect(jsonPath("$.data.status").value("ACTION_REQUIRED"))
+                .andExpect(jsonPath("$.data.nativeApiSupported").value(false))
+                .andExpect(jsonPath("$.data.nativeApiReady").value(false))
+                .andExpect(jsonPath("$.data.profileCount").value(5))
+                .andExpect(jsonPath("$.data.webhookReadyProfileCount").value(0))
+                .andExpect(jsonPath("$.data.profiles[0].providerProfile").value("GENERIC"))
+                .andExpect(jsonPath("$.data.profiles[1].providerProfile").value("CARD"))
+                .andExpect(jsonPath("$.data.profiles[1].sampleProvider").value("CARD_PROVIDER"))
+                .andExpect(jsonPath("$.data.profiles[1].webhookProfileConfigured").value(false))
+                .andExpect(jsonPath("$.data.profiles[1].nativeApiSupported").value(false))
+                .andExpect(jsonPath("$.data.profiles[1].requiredConfiguration", containsString("card.webhook-url")))
+                .andExpect(jsonPath("$.data.secretPolicy", containsString("never returned")));
+
         mockMvc.perform(get("/api/admin/billing/chargeback-payment-provider-handoffs")
                         .header("Authorization", "Bearer " + adminToken)
                         .param("status", "PAYMENT_PROVIDER_ADAPTER_BLOCKED_CREDENTIAL")

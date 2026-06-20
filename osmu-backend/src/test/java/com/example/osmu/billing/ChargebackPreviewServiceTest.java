@@ -697,6 +697,43 @@ class ChargebackPreviewServiceTest {
     }
 
     @Test
+    void reportsPaymentProviderAdapterReadinessByProfileWithoutExternalCalls() {
+        ChargebackPreviewService readinessService = serviceWithPaymentProviderAdapter(new ChargebackPaymentProviderAdapter() {
+            @Override
+            public boolean isConfigured() {
+                return false;
+            }
+
+            @Override
+            public boolean isConfigured(String provider) {
+                return "CARD_PROVIDER".equals(provider) || "TAX_PROVIDER".equals(provider);
+            }
+
+            @Override
+            public ChargebackPaymentProviderAdapterResult deliver(ChargebackPaymentProviderHandoffRecord record) {
+                throw new AssertionError("readiness must not deliver payment provider handoffs");
+            }
+        });
+
+        ChargebackPaymentProviderAdapterReadinessResponse readiness =
+                readinessService.paymentProviderAdapterReadiness(new AuthenticatedUser(1L, "admin", "ADMIN", null));
+
+        assertThat(readiness.mode()).isEqualTo("PAYMENT_PROVIDER_ADAPTER_READINESS");
+        assertThat(readiness.status()).isEqualTo("WEBHOOK_PROFILE_READY");
+        assertThat(readiness.nativeApiSupported()).isFalse();
+        assertThat(readiness.nativeApiReady()).isFalse();
+        assertThat(readiness.profileCount()).isEqualTo(5);
+        assertThat(readiness.webhookReadyProfileCount()).isEqualTo(2);
+        assertThat(readiness.secretPolicy()).contains("never returned");
+        assertThat(readiness.profiles()).extracting(ChargebackPaymentProviderAdapterProfileResponse::providerProfile)
+                .containsExactly("GENERIC", "CARD", "BANK", "TAX", "ERP");
+        assertThat(readiness.profiles().get(1).status()).isEqualTo("WEBHOOK_READY");
+        assertThat(readiness.profiles().get(1).webhookProfileConfigured()).isTrue();
+        assertThat(readiness.profiles().get(2).status()).isEqualTo("ACTION_REQUIRED");
+        assertThat(readiness.profiles().get(2).requiredConfiguration()).contains("bank.webhook-url");
+    }
+
+    @Test
     void rejectsUnsupportedRolesAndInvalidRates() {
         assertThatThrownBy(() -> service.preview(
                 new AuthenticatedUser(3L, "auditor", "AUDITOR", null),
@@ -746,6 +783,13 @@ class ChargebackPreviewServiceTest {
                 new AuthenticatedUser(3L, "org-admin", "ORG_ADMIN", 1L),
                 null,
                 10
+        ))
+                .isInstanceOf(ApiException.class)
+                .extracting("code")
+                .isEqualTo(ApiErrorCode.AUTHORIZATION_FAILED);
+
+        assertThatThrownBy(() -> service.paymentProviderAdapterReadiness(
+                new AuthenticatedUser(3L, "org-admin", "ORG_ADMIN", 1L)
         ))
                 .isInstanceOf(ApiException.class)
                 .extracting("code")

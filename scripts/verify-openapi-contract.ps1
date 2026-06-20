@@ -90,6 +90,7 @@ $requiredOperations = @(
     @("/api/admin/billing/chargeback-alert-notifications/outbox/{deliveryId}/adapter-send", "post", "sendChargebackAlertNotificationAdapter"),
     @("/api/admin/billing/chargeback-adapter-retry-worker/status", "get", "getChargebackAdapterRetryWorkerStatus"),
     @("/api/admin/billing/chargeback-adapter-retry-worker/run", "post", "runChargebackAdapterRetryWorker"),
+    @("/api/admin/billing/payment-provider-adapter-readiness", "get", "getChargebackPaymentProviderAdapterReadiness"),
     @("/api/admin/billing/chargeback-invoice-drafts", "get", "getChargebackInvoiceDrafts"),
     @("/api/admin/billing/chargeback-invoice-drafts", "post", "createChargebackInvoiceDrafts"),
     @("/api/admin/billing/chargeback-invoice-drafts/{invoiceId}/approve", "post", "approveChargebackInvoiceDraft"),

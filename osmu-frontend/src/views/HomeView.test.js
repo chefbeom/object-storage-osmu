@@ -415,6 +415,12 @@ test('HomeView exposes stable selectors for browser E2E flows', () => {
     'chargeback-payment-handoff-count',
     'chargeback-payment-handoff-status',
     'chargeback-payment-handoff-provider',
+    'chargeback-payment-adapter-readiness-metrics',
+    'chargeback-payment-adapter-profile-count',
+    'chargeback-payment-adapter-webhook-ready-count',
+    'chargeback-payment-adapter-native-status',
+    'chargeback-payment-adapter-readiness-list',
+    'chargeback-payment-adapter-readiness-row',
     'chargeback-payment-handoff-list',
     'chargeback-payment-handoff-row',
     'chargeback-payment-handoff-adapter-send-button',
@@ -655,6 +661,11 @@ test('HomeView exposes stable selectors for browser E2E flows', () => {
   assert.match(dashboardSource, /operationsEvidenceHandoffStages/)
   assert.match(dashboardSource, /operationsHandoffPackage/)
   assert.match(dashboardSource, /operationsHandoffPackageChecks/)
+  assert.match(dashboardSource, /chargebackPaymentProviderAdapterReadiness/)
+  assert.match(dashboardSource, /getChargebackPaymentProviderAdapterReadiness/)
+  assert.match(dashboardSource, /defaultChargebackPaymentProviderAdapterReadiness/)
+  assert.match(dashboardSource, /normalizeChargebackPaymentProviderAdapterProfile/)
+  assert.match(dashboardSource, /applyChargebackPaymentProviderAdapterReadiness/)
   assert.match(dashboardSource, /finalizerGapCount/)
   assert.match(dashboardSource, /operationsReadinessConvergence/)
   assert.match(dashboardSource, /operationsReadinessConvergenceBottleneck/)

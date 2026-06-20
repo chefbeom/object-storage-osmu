@@ -535,6 +535,33 @@
       </div>
     </div>
 
+    <div v-if="isAdmin" class="compact-metrics chargeback-payment-adapter-readiness-metrics" data-testid="chargeback-payment-adapter-readiness-metrics">
+      <div>
+        <span>Adapter profiles</span>
+        <b data-testid="chargeback-payment-adapter-profile-count">{{ formatCount(paymentProviderAdapterReadiness.profileCount) }}</b>
+      </div>
+      <div>
+        <span>Webhook ready</span>
+        <b data-testid="chargeback-payment-adapter-webhook-ready-count">{{ formatCount(paymentProviderAdapterReadiness.webhookReadyProfileCount) }}</b>
+      </div>
+      <div>
+        <span>Native API</span>
+        <b data-testid="chargeback-payment-adapter-native-status">{{ paymentProviderAdapterReadiness.nativeApiReady ? 'Ready' : 'Pending' }}</b>
+      </div>
+    </div>
+
+    <ul v-if="isAdmin" class="compact-list chargeback-payment-adapter-readiness-list" data-testid="chargeback-payment-adapter-readiness-list">
+      <li v-for="profile in paymentProviderAdapterProfiles" :key="profile.providerProfile" data-testid="chargeback-payment-adapter-readiness-row">
+        <span class="list-main">
+          <b>{{ profile.providerProfile }}</b>
+          <small>{{ profile.adapterMode || '-' }} / {{ profile.sampleProvider || '-' }}</small>
+          <small>{{ profile.note || profile.requiredConfiguration || '-' }}</small>
+        </span>
+        <strong :class="['status-pill', profile.webhookProfileConfigured || profile.nativeApiReady ? 'up' : 'mock']">{{ profile.status || '-' }}</strong>
+      </li>
+      <li v-if="paymentProviderAdapterProfiles.length === 0" class="empty">No payment provider adapter readiness rows.</li>
+    </ul>
+
     <ul v-if="isAdmin" class="compact-list chargeback-payment-handoff-list" data-testid="chargeback-payment-handoff-list">
       <li v-for="handoff in paymentHandoffRows" :key="handoff.id" data-testid="chargeback-payment-handoff-row">
         <span class="list-main">
@@ -628,6 +655,7 @@ const props = defineProps({
   chargebackInvoiceDrafts: { type: Object, required: true },
   chargebackFinalInvoices: { type: Object, required: true },
   chargebackPaymentProviderHandoffs: { type: Object, required: true },
+  chargebackPaymentProviderAdapterReadiness: { type: Object, required: true },
   chargebackAdapterRetryWorker: { type: Object, required: true },
   billingPricingPolicy: { type: Object, required: true },
   billingPricingPolicyProposals: { type: Object, required: true },
@@ -667,6 +695,7 @@ const notificationOutbox = computed(() => props.chargebackAlertNotificationOutbo
 const invoiceDrafts = computed(() => props.chargebackInvoiceDrafts || {})
 const finalInvoices = computed(() => props.chargebackFinalInvoices || {})
 const paymentHandoffs = computed(() => props.chargebackPaymentProviderHandoffs || {})
+const paymentProviderAdapterReadiness = computed(() => props.chargebackPaymentProviderAdapterReadiness || {})
 const adapterRetryWorker = computed(() => props.chargebackAdapterRetryWorker || {})
 const pricingPolicyProposals = computed(() => props.billingPricingPolicyProposals || {})
 const rates = computed(() => preview.value.rates || {})
@@ -690,6 +719,9 @@ const finalInvoiceRows = computed(() => (
 ))
 const paymentHandoffRows = computed(() => (
   Array.isArray(paymentHandoffs.value.handoffs) ? paymentHandoffs.value.handoffs : []
+))
+const paymentProviderAdapterProfiles = computed(() => (
+  Array.isArray(paymentProviderAdapterReadiness.value.profiles) ? paymentProviderAdapterReadiness.value.profiles : []
 ))
 const adapterRetryWorkerItems = computed(() => (
   Array.isArray(adapterRetryWorker.value.items) ? adapterRetryWorker.value.items : []

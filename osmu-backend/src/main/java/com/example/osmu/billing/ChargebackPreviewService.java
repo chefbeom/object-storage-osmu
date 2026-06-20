@@ -528,6 +528,36 @@ public class ChargebackPreviewService {
         );
     }
 
+    public ChargebackPaymentProviderAdapterReadinessResponse paymentProviderAdapterReadiness(AuthenticatedUser actor) {
+        requireAdmin(actor, "Chargeback payment provider adapter readiness requires ADMIN.");
+        List<ChargebackPaymentProviderAdapterProfileResponse> profiles = List.of(
+                paymentProviderAdapterProfile("GENERIC", "MANUAL_AP"),
+                paymentProviderAdapterProfile("CARD", "CARD_PROVIDER"),
+                paymentProviderAdapterProfile("BANK", "BANK_PROVIDER"),
+                paymentProviderAdapterProfile("TAX", "TAX_PROVIDER"),
+                paymentProviderAdapterProfile("ERP", "ERP_PROVIDER")
+        );
+        int webhookReadyProfileCount = (int) profiles.stream()
+                .filter(ChargebackPaymentProviderAdapterProfileResponse::webhookProfileConfigured)
+                .count();
+        String status = webhookReadyProfileCount == 0 ? "ACTION_REQUIRED" : "WEBHOOK_PROFILE_READY";
+        return new ChargebackPaymentProviderAdapterReadinessResponse(
+                "PAYMENT_PROVIDER_ADAPTER_READINESS",
+                status,
+                false,
+                false,
+                profiles.size(),
+                webhookReadyProfileCount,
+                profiles,
+                OffsetDateTime.now(),
+                "This readiness view checks OSMU payment-provider handoff adapter configuration only; it does not call card, bank, tax, ERP, webhook, or payment-provider APIs.",
+                "Only configuration presence and sanitized profile metadata are exposed. Webhook URLs, secret header values, HMAC secrets, certificates, provider credentials, raw provider responses, and customer payment data are never returned.",
+                webhookReadyProfileCount == 0
+                        ? "Configure the generic payment-provider webhook or provider-specific CARD/BANK/TAX/ERP webhook profiles before sending handoff rows. Native provider API adapters remain a follow-up implementation."
+                        : "At least one webhook handoff profile is configured. Native card/bank/tax/ERP API adapters remain a follow-up implementation."
+        );
+    }
+
     public ChargebackAlertResponse alerts(AuthenticatedUser actor, ChargebackPreviewRequest request) {
         ChargebackPreviewResponse preview = preview(actor, request);
         BillingPricingPolicy pricingPolicy = pricingPolicyService.current();
@@ -1211,6 +1241,36 @@ public class ChargebackPreviewService {
             case "SUCCESS" -> "Payment provider webhook adapter delivered this handoff row.";
             case "RETRY" -> "Payment provider webhook adapter returned a retryable result and scheduled the next attempt.";
             default -> "Payment provider webhook adapter blocked this handoff row without storing credentials or raw provider responses.";
+        };
+    }
+
+    private ChargebackPaymentProviderAdapterProfileResponse paymentProviderAdapterProfile(
+            String providerProfile,
+            String sampleProvider
+    ) {
+        boolean webhookConfigured = paymentProviderAdapter.isConfigured(sampleProvider);
+        return new ChargebackPaymentProviderAdapterProfileResponse(
+                providerProfile,
+                sampleProvider,
+                webhookConfigured ? "WEBHOOK_PROFILE" : "UNCONFIGURED",
+                webhookConfigured ? "WEBHOOK_READY" : "ACTION_REQUIRED",
+                webhookConfigured,
+                false,
+                false,
+                paymentProviderAdapterRequirement(providerProfile),
+                webhookConfigured
+                        ? providerProfile + " handoff can use the configured webhook profile or generic payment-provider webhook fallback."
+                        : providerProfile + " handoff needs a configured webhook profile or native provider API adapter before external send."
+        );
+    }
+
+    private static String paymentProviderAdapterRequirement(String providerProfile) {
+        return switch (providerProfile) {
+            case "CARD" -> "Set osmu.billing.payment-provider.card.webhook-url or the generic payment-provider webhook; native card processor API support is not implemented yet.";
+            case "BANK" -> "Set osmu.billing.payment-provider.bank.webhook-url or the generic payment-provider webhook; native bank-transfer API support is not implemented yet.";
+            case "TAX" -> "Set osmu.billing.payment-provider.tax.webhook-url or the generic payment-provider webhook; native tax invoice API support is not implemented yet.";
+            case "ERP" -> "Set osmu.billing.payment-provider.erp.webhook-url or the generic payment-provider webhook; native ERP API support is not implemented yet.";
+            default -> "Set osmu.billing.payment-provider.webhook-url for generic/manual payment-provider handoff delivery.";
         };
     }
 

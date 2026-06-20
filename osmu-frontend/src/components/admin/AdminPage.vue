@@ -254,6 +254,7 @@
       :chargeback-invoice-drafts="chargebackInvoiceDrafts"
       :chargeback-final-invoices="chargebackFinalInvoices"
       :chargeback-payment-provider-handoffs="chargebackPaymentProviderHandoffs"
+      :chargeback-payment-provider-adapter-readiness="chargebackPaymentProviderAdapterReadiness"
       :chargeback-adapter-retry-worker="chargebackAdapterRetryWorker"
       :billing-pricing-policy="billingPricingPolicy"
       :billing-pricing-policy-proposals="billingPricingPolicyProposals"
@@ -468,6 +469,7 @@ const props = defineProps({
   chargebackInvoiceDrafts: { type: Object, required: true },
   chargebackFinalInvoices: { type: Object, required: true },
   chargebackPaymentProviderHandoffs: { type: Object, required: true },
+  chargebackPaymentProviderAdapterReadiness: { type: Object, required: true },
   chargebackAdapterRetryWorker: { type: Object, required: true },
   billingPricingPolicy: { type: Object, required: true },
   billingPricingPolicyProposals: { type: Object, required: true },

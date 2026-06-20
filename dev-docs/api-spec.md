@@ -2893,6 +2893,20 @@ Response:
 - `items[]`: rows considered by the worker and their target status.
 - `note`: dry-run, adapter attempt, or no-send blocked transition summary.
 
+### GET /api/admin/billing/payment-provider-adapter-readiness
+
+Returns a read-only payment-provider adapter readiness view for `GENERIC`, `CARD`, `BANK`, `TAX`, and `ERP` profiles. `ADMIN` only. The endpoint does not call notification, webhook, card, bank, tax, ERP, or payment-provider APIs and does not expose credential material. It exists to show which handoff profiles can currently use the configured webhook adapter layer and which profiles still need native provider API adapter implementation or target configuration.
+
+Response:
+
+- `mode`: `PAYMENT_PROVIDER_ADAPTER_READINESS`
+- `status`: `ACTION_REQUIRED` when no profile is configured, otherwise `WEBHOOK_PROFILE_READY`.
+- `nativeApiSupported=false`, `nativeApiReady=false` until real card/bank/tax/ERP native API adapters are implemented and verified.
+- `profileCount`, `webhookReadyProfileCount`
+- `profiles[]`: profile rows with `providerProfile`, `sampleProvider`, `adapterMode`, `status`, `webhookProfileConfigured`, `nativeApiSupported`, `nativeApiReady`, `requiredConfiguration`, and `note`.
+- `scopePolicy`: read-only/no-external-call boundary.
+- `secretPolicy`: confirms webhook URLs, secret headers, HMAC secrets, certificates, provider credentials, raw provider responses, and customer payment data are not returned.
+
 ### GET /api/admin/billing/chargeback-preview/export.csv
 
 Exports the same scoped chargeback preview as CSV for internal review or offline handoff. `ADMIN` exports all visible organizations and `ORG_ADMIN` exports only its own organization. This is still a preview report, not a persisted invoice.

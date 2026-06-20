@@ -1024,6 +1024,17 @@
         }
       }
     },
+    "/api/admin/billing/payment-provider-adapter-readiness": {
+      "get": {
+        "tags": ["Billing", "Admin"],
+        "operationId": "getChargebackPaymentProviderAdapterReadiness",
+        "summary": "Read payment provider adapter readiness by generic, card, bank, tax, and ERP profile",
+        "responses": {
+          "200": { "$ref": "#/components/responses/JsonOk" },
+          "403": { "$ref": "#/components/responses/Error" }
+        }
+      }
+    },
     "/api/admin/billing/chargeback-invoice-drafts": {
       "get": {
         "tags": ["Billing", "Admin"],

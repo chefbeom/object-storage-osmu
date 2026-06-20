@@ -306,6 +306,14 @@ public class AdminBillingController {
         return ApiResponse.of(response);
     }
 
+    @GetMapping("/payment-provider-adapter-readiness")
+    public ApiResponse<ChargebackPaymentProviderAdapterReadinessResponse> paymentProviderAdapterReadiness(
+            HttpServletRequest request
+    ) {
+        AuthenticatedUser actor = authContext.currentUser(request);
+        return ApiResponse.of(chargebackPreviewService.paymentProviderAdapterReadiness(actor));
+    }
+
     @PostMapping("/chargeback-alert-notifications/outbox/{deliveryId}/adapter-result")
     public ApiResponse<ChargebackAlertNotificationDeliveryAttemptResponse> recordChargebackAlertNotificationAdapterResult(
             @PathVariable long deliveryId,

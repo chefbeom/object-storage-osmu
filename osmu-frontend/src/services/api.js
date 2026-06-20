@@ -1389,6 +1389,10 @@ export function getChargebackPaymentProviderHandoffs(options = {}) {
   return request(`/admin/billing/chargeback-payment-provider-handoffs${suffix}`)
 }
 
+export function getChargebackPaymentProviderAdapterReadiness() {
+  return request('/admin/billing/payment-provider-adapter-readiness')
+}
+
 export function recordChargebackPaymentProviderHandoffAdapterResult(handoffId, options = {}) {
   const query = new URLSearchParams()
   appendQuery(query, 'result', options.result)
