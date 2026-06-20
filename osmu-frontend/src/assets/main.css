@@ -929,6 +929,7 @@ label {
 
 .data-flow-filter-actions {
   display: flex;
+  flex-wrap: wrap;
   align-items: end;
   gap: 8px;
   min-width: 0;

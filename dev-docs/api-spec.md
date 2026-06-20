@@ -3489,6 +3489,19 @@ Notes:
 - MariaDB mode aggregates `data_flow_events` at query time by `DATE(created_at)`, bucket, source, and operation; it does not expose object keys or raw event messages.
 - The endpoint is a product-side analytics bridge before table partitioning or a dedicated time-series store is introduced.
 
+### GET /api/admin/monitoring/data-flow/daily-rollup/export.csv
+
+Exports the same ADMIN-only daily rollup window as CSV for operations handoff, offline analytics, and chargeback planning.
+
+Query parameters are identical to `GET /api/admin/monitoring/data-flow/daily-rollup`: `from`, `to`, `bucketName`, `actorId`, `source`, `operation`, `status`, `days`, and `limit`.
+
+Response:
+
+- `Content-Type: text/csv`
+- `Content-Disposition: attachment; filename="osmu-data-flow-daily-rollup.csv"`
+- Columns: `day,bucketName,source,operation,successCount,failureCount,cancelCount,totalCount,uploadedBytes,downloadedBytes,copiedBytes,totalBytes`
+- Rows use the same UTC-day aggregation as the JSON daily rollup endpoint and do not include object keys or raw event messages.
+
 ### GET /api/admin/monitoring/data-flow/export.csv
 
 Exports the same administrator data-flow event window as CSV. `ADMIN` role required.

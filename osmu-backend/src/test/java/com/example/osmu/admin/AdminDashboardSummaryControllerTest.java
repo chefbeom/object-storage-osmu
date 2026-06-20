@@ -157,6 +157,27 @@ class AdminDashboardSummaryControllerTest {
     }
 
     @Test
+    void adminCanExportDataFlowDailyRollupCsv() throws Exception {
+        String adminToken = loginAndReturnAccessToken("admin", "password");
+
+        mockMvc.perform(get("/api/admin/monitoring/data-flow/daily-rollup/export.csv")
+                        .param("bucketName", "media")
+                        .param("actorId", "admin")
+                        .param("source", "rest")
+                        .param("operation", "upload")
+                        .param("status", "SUCCESS")
+                        .param("from", "2026-06-18T00:00:00Z")
+                        .param("to", "2026-06-19T00:00:00Z")
+                        .param("days", "14")
+                        .param("limit", "25")
+                        .header("Authorization", "Bearer " + adminToken))
+                .andExpect(status().isOk())
+                .andExpect(header().string(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"osmu-data-flow-daily-rollup.csv\""))
+                .andExpect(content().contentTypeCompatibleWith("text/csv"))
+                .andExpect(content().string(org.hamcrest.Matchers.startsWith("day,bucketName,source,operation,successCount,failureCount,cancelCount,totalCount,uploadedBytes,downloadedBytes,copiedBytes,totalBytes\n")));
+    }
+
+    @Test
     void dashboardSummaryReflectsRecordedRestoreDrillEvidence() throws Exception {
         String adminToken = loginAndReturnAccessToken("admin", "password");
 

@@ -2962,6 +2962,80 @@
         }
       }
     },
+    "/api/admin/monitoring/data-flow/daily-rollup/export.csv": {
+      "get": {
+        "tags": ["Admin"],
+        "operationId": "downloadDataFlowDailyRollupCsv",
+        "summary": "Export administrator data-flow daily rollups as filtered CSV for operations handoff and offline analytics",
+        "parameters": [
+          {
+            "name": "from",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "string", "format": "date-time" }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "string", "format": "date-time" }
+          },
+          {
+            "name": "bucketName",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "string" }
+          },
+          {
+            "name": "actorId",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "string" }
+          },
+          {
+            "name": "source",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "string", "enum": ["rest", "s3", "s3-copy"] }
+          },
+          {
+            "name": "operation",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "string", "enum": ["upload", "download", "copy", "list", "delete"] }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "string", "enum": ["SUCCESS", "FAILED", "CANCELLED"] }
+          },
+          {
+            "name": "days",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "integer", "minimum": 1, "maximum": 366, "default": 30 }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "integer", "minimum": 1, "maximum": 1000, "default": 200 }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Daily rollup CSV export",
+            "content": {
+              "text/csv": {
+                "schema": { "type": "string" }
+              }
+            }
+          },
+          "403": { "$ref": "#/components/responses/Error" }
+        }
+      }
+    },
     "/api/admin/monitoring/data-flow/export.csv": {
       "get": {
         "tags": ["Admin"],

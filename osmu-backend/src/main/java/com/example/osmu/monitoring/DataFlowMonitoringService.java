@@ -204,6 +204,29 @@ public class DataFlowMonitoringService {
         );
     }
 
+    public String exportDailyRollupCsv(DataFlowEventFilter filter, Integer days, Integer limit) {
+        DataFlowDailyRollupResponse rollup = dailyRollup(filter, days, limit);
+        StringBuilder csv = new StringBuilder("day,bucketName,source,operation,successCount,failureCount,cancelCount,totalCount,uploadedBytes,downloadedBytes,copiedBytes,totalBytes\n");
+        for (DataFlowDailyRollupPointResponse point : rollup.points()) {
+            appendCsvRow(
+                    csv,
+                    point.day(),
+                    point.bucketName(),
+                    point.source(),
+                    point.operation(),
+                    point.successCount(),
+                    point.failureCount(),
+                    point.cancelCount(),
+                    point.totalCount(),
+                    point.uploadedBytes(),
+                    point.downloadedBytes(),
+                    point.copiedBytes(),
+                    point.totalBytes()
+            );
+        }
+        return csv.toString();
+    }
+
     private void persistEvent(
             String eventType,
             String operation,

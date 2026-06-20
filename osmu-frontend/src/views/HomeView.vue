@@ -206,6 +206,7 @@
         @update-data-flow-filter="updateDataFlowFilter"
         @refresh-data-flow-monitoring="loadDataFlowMonitoring"
         @export-data-flow-csv="handleExportDataFlowCsv"
+        @export-data-flow-daily-rollup-csv="handleExportDataFlowDailyRollupCsv"
         @reset-data-flow-filter="handleResetDataFlowFilter"
       />
 
@@ -567,6 +568,7 @@ import {
   downloadStorageExpansionManifestArtifact,
   downloadObject,
   downloadObjectVersion,
+  downloadDataFlowDailyRollupCsv,
   downloadDataFlowMonitoringCsv,
   dryRunObjectLifecycleRule,
   finalizeChargebackInvoiceDraft,
@@ -2916,6 +2918,14 @@ async function handleExportDataFlowCsv() {
   if (blob) {
     downloadBlob(blob, `osmu-data-flow-${new Date().toISOString().slice(0, 10)}.csv`)
     setStatusMessage('Data flow CSV export complete.')
+  }
+}
+
+async function handleExportDataFlowDailyRollupCsv() {
+  const blob = await runAction(() => downloadDataFlowDailyRollupCsv(dataFlowFilterPayload()))
+  if (blob) {
+    downloadBlob(blob, `osmu-data-flow-daily-rollup-${new Date().toISOString().slice(0, 10)}.csv`)
+    setStatusMessage('Data flow daily rollup CSV export complete.')
   }
 }
 

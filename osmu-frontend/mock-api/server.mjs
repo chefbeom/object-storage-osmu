@@ -295,6 +295,10 @@ async function handleRequest(request, response) {
     sendJson(response, 200, apiData(dataFlowDailyRollup(dataFlowFilters(url))))
     return
   }
+  if (request.method === 'GET' && path === '/admin/monitoring/data-flow/daily-rollup/export.csv') {
+    sendCsv(response, 'osmu-data-flow-daily-rollup.csv', dataFlowDailyRollupCsv(dataFlowFilters(url)))
+    return
+  }
   if (request.method === 'GET' && path === '/admin/monitoring/data-flow/export.csv') {
     sendCsv(response, 'osmu-data-flow.csv', dataFlowCsv(dataFlowFilters(url)))
     return
@@ -1213,6 +1217,27 @@ function dataFlowCsv(filters = {}) {
         event.source,
         event.message,
       ]),
+  ]
+  return rows.map((row) => row.map(csvCell).join(',')).join('\n') + '\n'
+}
+
+function dataFlowDailyRollupCsv(filters = {}) {
+  const rows = [
+    ['day', 'bucketName', 'source', 'operation', 'successCount', 'failureCount', 'cancelCount', 'totalCount', 'uploadedBytes', 'downloadedBytes', 'copiedBytes', 'totalBytes'],
+    ...dataFlowDailyRollup(filters).points.map((point) => [
+      point.day,
+      point.bucketName,
+      point.source,
+      point.operation,
+      point.successCount,
+      point.failureCount,
+      point.cancelCount,
+      point.totalCount,
+      point.uploadedBytes,
+      point.downloadedBytes,
+      point.copiedBytes,
+      point.totalBytes,
+    ]),
   ]
   return rows.map((row) => row.map(csvCell).join(',')).join('\n') + '\n'
 }

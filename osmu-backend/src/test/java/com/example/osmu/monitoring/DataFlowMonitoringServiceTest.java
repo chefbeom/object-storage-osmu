@@ -134,6 +134,26 @@ class DataFlowMonitoringServiceTest {
         assertThat(rollup.points()).noneSatisfy(point -> assertThat(point.bucketName()).isEqualTo("archive"));
     }
 
+    @Test
+    void exportsDailyRollupAsCsvWithoutObjectKeysOrMessages() {
+        OffsetDateTime now = OffsetDateTime.now(ZoneOffset.UTC);
+        eventRepository.save(event("UPLOAD", "upload", "INGRESS", "media", "admin", "SUCCESS", 1024L, "rest", now.minusHours(2)));
+        eventRepository.save(event("FAILURE", "download", "CONTROL", "media", "admin", "FAILED", 0L, "rest", now.minusMinutes(30)));
+        eventRepository.save(event("UPLOAD", "upload", "INGRESS", "archive", "admin", "SUCCESS", 2048L, "rest", now.minusHours(1)));
+
+        String csv = service.exportDailyRollupCsv(
+                new DataFlowEventFilter("media", null, null, null, null, now.minusDays(1), now.plusDays(1)),
+                30,
+                10
+        );
+
+        assertThat(csv).startsWith("day,bucketName,source,operation,successCount,failureCount,cancelCount,totalCount,uploadedBytes,downloadedBytes,copiedBytes,totalBytes\n");
+        assertThat(csv).contains("\"media\",\"rest\",\"upload\",\"1\",\"0\",\"0\",\"1\",\"1024\",\"0\",\"0\",\"1024\"");
+        assertThat(csv).contains("\"media\",\"rest\",\"download\",\"0\",\"1\",\"0\",\"1\",\"0\",\"0\",\"0\",\"0\"");
+        assertThat(csv).doesNotContain("archive");
+        assertThat(csv).doesNotContain("object.bin");
+    }
+
     private static DataFlowEventRecord event(
             String eventType,
             String operation,

@@ -1432,6 +1432,7 @@
         <div class="data-flow-filter-actions">
           <button data-testid="data-flow-refresh-button" type="submit" class="ghost">Refresh</button>
           <button data-testid="data-flow-export-button" type="button" class="ghost" @click="$emit('export-data-flow-csv')">CSV</button>
+          <button data-testid="data-flow-daily-rollup-export-button" type="button" class="ghost" @click="$emit('export-data-flow-daily-rollup-csv')">Rollup CSV</button>
           <button data-testid="data-flow-reset-button" type="button" class="ghost" @click="$emit('reset-data-flow-filter')">Reset</button>
         </div>
       </form>
@@ -1815,6 +1816,7 @@ defineEmits([
   'update-data-flow-filter',
   'refresh-data-flow-monitoring',
   'export-data-flow-csv',
+  'export-data-flow-daily-rollup-csv',
   'reset-data-flow-filter',
 ])
 

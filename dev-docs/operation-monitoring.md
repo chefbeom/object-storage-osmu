@@ -124,11 +124,12 @@ MVP implementation:
 - The focused endpoint supports `from`, `to`, `bucketName`, `actorId`, `source`, `operation`, `status`, and `limit` filters.
 - `GET /api/admin/monitoring/data-flow/daily-rollup` exposes an admin-only UTC-day rollup grouped by bucket, source, and operation for longer analytics windows and chargeback planning.
 - `GET /api/admin/monitoring/data-flow/export.csv` exports the same filtered event window as newest-first CSV for audit handoff or offline analysis.
+- `GET /api/admin/monitoring/data-flow/daily-rollup/export.csv` exports the same filtered daily rollup as CSV without object keys or raw event messages for operations handoff and offline analytics.
 - `GET /api/admin/dashboard/summary` includes the same snapshot as `dataFlow` so the dashboard can render it without extra round trips.
 - REST object APIs record list, upload, presigned/multipart completion, download, delete, and multipart abort events.
 - S3-compatible APIs record list, put, multipart complete, copy, get, delete, multi-delete, and multipart abort events. CopyObject is counted as internal copy traffic, separate from external ingress and egress.
 - MariaDB mode stores detailed events in `data_flow_events`; in-memory mode keeps events in process for local/demo execution.
-- The admin dashboard shows a compact data I/O widget plus a detailed Data Flow Monitoring panel with upload/download/copy traffic, operations, source/operation trend chart, daily rollup rows, top buckets, recent events, filters, and CSV export.
+- The admin dashboard shows a compact data I/O widget plus a detailed Data Flow Monitoring panel with upload/download/copy traffic, operations, source/operation trend chart, daily rollup rows, top buckets, recent events, filters, detailed CSV export, and daily rollup CSV export.
 - Prometheus/Grafana starter artifacts include `OsmuDataFlowFailureSpike`, `OsmuDataFlowCancelSpike`, `OsmuDataFlowAbnormalEgress`, `OsmuDataFlowBucketTrafficAnomaly`, and `OsmuDataFlowRetentionFailures` backed by `osmu_data_flow_operations_total`, `osmu_data_flow_bytes_total`, and `osmu_data_flow_retention_runs_total`.
 - `DataFlowEventRetentionJob` deletes events older than the configured retention window and records `DATA_FLOW_EVENT_RETENTION` audit plus `osmu.data.flow.retention.events` and `osmu.data.flow.retention.runs` metrics.
 

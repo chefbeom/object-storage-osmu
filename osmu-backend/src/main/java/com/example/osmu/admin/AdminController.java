@@ -312,6 +312,29 @@ public class AdminController {
         ));
     }
 
+    @GetMapping(value = "/monitoring/data-flow/daily-rollup/export.csv", produces = "text/csv")
+    public ResponseEntity<String> exportDataFlowDailyRollupCsv(
+            @RequestParam(name = "bucketName", required = false) String bucketName,
+            @RequestParam(name = "actorId", required = false) String actorId,
+            @RequestParam(name = "source", required = false) String source,
+            @RequestParam(name = "operation", required = false) String operation,
+            @RequestParam(name = "status", required = false) String status,
+            @RequestParam(name = "from", required = false) String from,
+            @RequestParam(name = "to", required = false) String to,
+            @RequestParam(name = "days", required = false) Integer days,
+            @RequestParam(name = "limit", required = false) Integer limit
+    ) {
+        String csv = dataFlowMonitoringService.exportDailyRollupCsv(
+                dataFlowFilter(bucketName, actorId, source, operation, status, from, to),
+                days,
+                limit
+        );
+        return ResponseEntity.ok()
+                .contentType(MediaType.parseMediaType("text/csv"))
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"osmu-data-flow-daily-rollup.csv\"")
+                .body(csv);
+    }
+
     private DataFlowEventFilter dataFlowFilter(
             String bucketName,
             String actorId,
