@@ -2599,7 +2599,7 @@ Lists internal pricing policy proposals. `ADMIN` only.
 
 Query parameters:
 
-- `status` (optional): `PENDING_APPROVAL` or `APPROVED_APPLIED`.
+- `status` (optional): `PENDING_APPROVAL`, `APPROVED_APPLIED`, or `PRICE_LIST_APPROVED`.
 - `limit` (optional): number of rows to return, clamped to 1..200.
 
 Response:
@@ -2623,6 +2623,24 @@ Response:
 - `proposal`: approved proposal row with approver and approval/apply timestamps.
 - `appliedPolicy`: the active chargeback pricing policy after approval.
 - `note`: internal calculation-only notice.
+
+### POST /api/admin/billing/pricing-policy-proposals/{proposalId}/commercial-approval
+
+Records a commercial/legal approval reference for an `APPROVED_APPLIED` pricing policy proposal. `ADMIN` only. This marks the proposal as `PRICE_LIST_APPROVED` and `approvedPriceList=true`, but still does not call payment providers, tax invoice providers, notification adapters, or store credential material.
+
+Query parameters:
+
+- `approvalReference` (required): contract, legal, or commercial approval reference. Credential-like text is rejected.
+- `approvalNote` (optional): short commercial approval note. Credential-like text is rejected.
+- `effectiveFrom` (optional): ISO-8601 offset datetime. Defaults to request time.
+
+Response:
+
+- `status`: `PRICE_LIST_APPROVED`
+- `approvedPriceList=true`
+- `proposal`: approved proposal row with commercial approver, reference, note, commercial approval timestamp, and effective-from timestamp.
+- `appliedPolicy`: unchanged active chargeback pricing policy.
+- `note`: commercial price-list approval reference notice.
 
 ### GET /api/admin/billing/chargeback-preview
 

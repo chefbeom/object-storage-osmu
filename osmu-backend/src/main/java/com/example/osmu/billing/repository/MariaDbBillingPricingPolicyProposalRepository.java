@@ -46,9 +46,10 @@ public class MariaDbBillingPricingPolicyProposalRepository implements BillingPri
                 INSERT INTO billing_pricing_policy_proposals
                     (status, currency, storage_gb_month_rate, ingress_gb_rate, egress_gb_rate,
                      internal_gb_rate, operation_thousand_rate, warning_amount, critical_amount,
-                     event_scan_limit, requested_by, approved_by, reason, approval_note,
-                     created_at, updated_at, approved_at, applied_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                     event_scan_limit, requested_by, approved_by, approved_price_list, reason, approval_note,
+                     commercial_approved_by, commercial_approval_reference, commercial_approval_note,
+                     created_at, updated_at, approved_at, applied_at, commercial_approved_at, commercial_effective_from)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """;
         try (Connection connection = connect();
              PreparedStatement statement = connection.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
@@ -120,7 +121,7 @@ public class MariaDbBillingPricingPolicyProposalRepository implements BillingPri
         OffsetDateTime now = OffsetDateTime.now();
         String sql = """
                 UPDATE billing_pricing_policy_proposals
-                SET status = ?, approved_by = ?, approval_note = ?, approved_at = ?, applied_at = ?, updated_at = ?
+                SET status = ?, approved_by = ?, approved_price_list = FALSE, approval_note = ?, approved_at = ?, applied_at = ?, updated_at = ?
                 WHERE id = ?
                 """;
         try (Connection connection = connect();
@@ -132,6 +133,49 @@ public class MariaDbBillingPricingPolicyProposalRepository implements BillingPri
             statement.setTimestamp(5, timestamp(now));
             statement.setTimestamp(6, timestamp(now));
             statement.setLong(7, id);
+            int updated = statement.executeUpdate();
+            if (updated == 0) {
+                throw new ApiException(ApiErrorCode.NOT_FOUND, "Billing pricing policy proposal not found.");
+            }
+            return findById(id).orElseThrow(() -> new ApiException(ApiErrorCode.NOT_FOUND, "Billing pricing policy proposal not found."));
+        } catch (SQLException exception) {
+            throw databaseException(exception);
+        }
+    }
+
+    @Override
+    public BillingPricingPolicyProposalRecord updateCommercialApproval(
+            long id,
+            String status,
+            String approvedBy,
+            String approvalReference,
+            String approvalNote,
+            OffsetDateTime effectiveFrom
+    ) {
+        ensureSchema();
+        OffsetDateTime now = OffsetDateTime.now();
+        String sql = """
+                UPDATE billing_pricing_policy_proposals
+                SET status = ?,
+                    approved_price_list = TRUE,
+                    commercial_approved_by = ?,
+                    commercial_approval_reference = ?,
+                    commercial_approval_note = ?,
+                    commercial_approved_at = ?,
+                    commercial_effective_from = ?,
+                    updated_at = ?
+                WHERE id = ?
+                """;
+        try (Connection connection = connect();
+             PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setString(1, status);
+            statement.setString(2, approvedBy);
+            statement.setString(3, approvalReference);
+            statement.setString(4, approvalNote);
+            statement.setTimestamp(5, timestamp(now));
+            statement.setTimestamp(6, timestamp(effectiveFrom));
+            statement.setTimestamp(7, timestamp(now));
+            statement.setLong(8, id);
             int updated = statement.executeUpdate();
             if (updated == 0) {
                 throw new ApiException(ApiErrorCode.NOT_FOUND, "Billing pricing policy proposal not found.");
@@ -155,12 +199,18 @@ public class MariaDbBillingPricingPolicyProposalRepository implements BillingPri
         statement.setInt(10, record.eventScanLimit());
         statement.setString(11, record.requestedBy());
         statement.setString(12, record.approvedBy());
-        statement.setString(13, record.reason());
-        statement.setString(14, record.approvalNote());
-        statement.setTimestamp(15, timestamp(record.createdAt()));
-        statement.setTimestamp(16, timestamp(record.updatedAt()));
-        statement.setTimestamp(17, timestamp(record.approvedAt()));
-        statement.setTimestamp(18, timestamp(record.appliedAt()));
+        statement.setBoolean(13, record.approvedPriceList());
+        statement.setString(14, record.reason());
+        statement.setString(15, record.approvalNote());
+        statement.setString(16, record.commercialApprovedBy());
+        statement.setString(17, record.commercialApprovalReference());
+        statement.setString(18, record.commercialApprovalNote());
+        statement.setTimestamp(19, timestamp(record.createdAt()));
+        statement.setTimestamp(20, timestamp(record.updatedAt()));
+        statement.setTimestamp(21, timestamp(record.approvedAt()));
+        statement.setTimestamp(22, timestamp(record.appliedAt()));
+        statement.setTimestamp(23, timestamp(record.commercialApprovedAt()));
+        statement.setTimestamp(24, timestamp(record.commercialEffectiveFrom()));
     }
 
     private List<BillingPricingPolicyProposalRecord> query(String sql, int limit) {
@@ -198,12 +248,18 @@ public class MariaDbBillingPricingPolicyProposalRepository implements BillingPri
                 resultSet.getInt("event_scan_limit"),
                 resultSet.getString("requested_by"),
                 resultSet.getString("approved_by"),
+                resultSet.getBoolean("approved_price_list"),
                 resultSet.getString("reason"),
                 resultSet.getString("approval_note"),
+                resultSet.getString("commercial_approved_by"),
+                resultSet.getString("commercial_approval_reference"),
+                resultSet.getString("commercial_approval_note"),
                 offsetDateTime(resultSet.getTimestamp("created_at")),
                 offsetDateTime(resultSet.getTimestamp("updated_at")),
                 offsetDateTime(resultSet.getTimestamp("approved_at")),
-                offsetDateTime(resultSet.getTimestamp("applied_at"))
+                offsetDateTime(resultSet.getTimestamp("applied_at")),
+                offsetDateTime(resultSet.getTimestamp("commercial_approved_at")),
+                offsetDateTime(resultSet.getTimestamp("commercial_effective_from"))
         );
     }
 
@@ -226,13 +282,20 @@ public class MariaDbBillingPricingPolicyProposalRepository implements BillingPri
                     event_scan_limit INT NOT NULL DEFAULT 10000,
                     requested_by VARCHAR(128) NOT NULL,
                     approved_by VARCHAR(128) NULL,
+                    approved_price_list BOOLEAN NOT NULL DEFAULT FALSE,
                     reason VARCHAR(512) NOT NULL,
                     approval_note VARCHAR(512) NULL,
+                    commercial_approved_by VARCHAR(128) NULL,
+                    commercial_approval_reference VARCHAR(128) NULL,
+                    commercial_approval_note VARCHAR(512) NULL,
                     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
                     updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
                     approved_at TIMESTAMP NULL,
                     applied_at TIMESTAMP NULL,
-                    INDEX idx_billing_pricing_policy_proposals_status_created (status, created_at)
+                    commercial_approved_at TIMESTAMP NULL,
+                    commercial_effective_from TIMESTAMP NULL,
+                    INDEX idx_billing_pricing_policy_proposals_status_created (status, created_at),
+                    INDEX idx_billing_pricing_policy_proposals_price_list (approved_price_list, commercial_approved_at)
                 )
                 """;
         try (Connection connection = connect();
@@ -286,12 +349,18 @@ public class MariaDbBillingPricingPolicyProposalRepository implements BillingPri
                 record.eventScanLimit(),
                 record.requestedBy(),
                 record.approvedBy(),
+                record.approvedPriceList(),
                 record.reason(),
                 record.approvalNote(),
+                record.commercialApprovedBy(),
+                record.commercialApprovalReference(),
+                record.commercialApprovalNote(),
                 record.createdAt(),
                 record.updatedAt(),
                 record.approvedAt(),
-                record.appliedAt()
+                record.appliedAt(),
+                record.commercialApprovedAt(),
+                record.commercialEffectiveFrom()
         );
     }
 

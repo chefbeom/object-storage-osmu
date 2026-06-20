@@ -248,6 +248,9 @@
             storage {{ formatRate(proposal.storageGbMonthRate) }} / ingress {{ formatRate(proposal.ingressGbRate) }} / ops {{ formatRate(proposal.operationThousandRate) }} / warn {{ formatMoney(proposal.warningAmount, proposal.currency) }} / critical {{ formatMoney(proposal.criticalAmount, proposal.currency) }}
           </small>
           <small>{{ proposal.approvedPriceList ? 'Approved price list' : 'Internal calculation only' }} / {{ proposal.reason || '-' }}</small>
+          <small v-if="proposal.commercialApprovalReference">
+            {{ proposal.commercialApprovalReference }} / effective {{ formatDateTime(proposal.commercialEffectiveFrom) || '-' }}
+          </small>
         </span>
         <button
           v-if="proposal.status === 'PENDING_APPROVAL'"
@@ -258,7 +261,16 @@
         >
           Approve
         </button>
-        <strong v-else :class="['status-pill', proposal.status === 'APPROVED_APPLIED' ? 'up' : 'mock']">{{ proposal.status || '-' }}</strong>
+        <button
+          v-else-if="proposal.status === 'APPROVED_APPLIED' && !proposal.approvedPriceList"
+          data-testid="billing-pricing-policy-price-list-approve-button"
+          type="button"
+          class="ghost"
+          @click="$emit('approve-billing-pricing-policy-proposal-price-list', proposal.id)"
+        >
+          Approve price list
+        </button>
+        <strong v-else :class="['status-pill', pricingPolicyProposalStatusClass(proposal.status)]">{{ proposal.status || '-' }}</strong>
       </li>
       <li v-if="pricingPolicyProposalRows.length === 0" class="empty">No billing pricing policy proposals.</li>
     </ul>
@@ -612,6 +624,7 @@ const emit = defineEmits([
   'save-billing-pricing-policy',
   'create-billing-pricing-policy-proposal',
   'approve-billing-pricing-policy-proposal',
+  'approve-billing-pricing-policy-proposal-price-list',
   'queue-chargeback-alert-notifications',
   'export-chargeback-csv',
   'export-chargeback-invoice-draft-csv',
@@ -716,5 +729,11 @@ function adapterWorkerSummary(item = {}) {
   const attempts = formatCount(item.attemptCount)
   const next = formatDateTime(item.nextAttemptAt)
   return `attempts ${attempts} / next ${next || '-'} / ${item.note || '-'}`
+}
+
+function pricingPolicyProposalStatusClass(status = '') {
+  return ['APPROVED_APPLIED', 'PRICE_LIST_APPROVED'].includes(String(status || '').toUpperCase())
+    ? 'up'
+    : 'mock'
 }
 </script>

@@ -1425,6 +1425,17 @@ export function approveBillingPricingPolicyProposal(proposalId, options = {}) {
   })
 }
 
+export function approveBillingPricingPolicyProposalPriceList(proposalId, options = {}) {
+  const query = new URLSearchParams()
+  appendQuery(query, 'approvalReference', options.approvalReference)
+  appendQuery(query, 'approvalNote', options.approvalNote)
+  appendQuery(query, 'effectiveFrom', options.effectiveFrom)
+  const suffix = query.toString() ? `?${query.toString()}` : ''
+  return request(`/admin/billing/pricing-policy-proposals/${encodeURIComponent(proposalId)}/commercial-approval${suffix}`, {
+    method: 'POST',
+  })
+}
+
 export function getBillingPricingPolicy() {
   return request('/admin/billing/pricing-policy')
 }

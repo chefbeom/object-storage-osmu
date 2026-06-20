@@ -124,6 +124,35 @@ public class AdminBillingController {
         return ApiResponse.of(approved);
     }
 
+    @PostMapping("/pricing-policy-proposals/{proposalId}/commercial-approval")
+    public ApiResponse<BillingPricingPolicyProposalApprovalResponse> approvePricingPolicyProposalPriceList(
+            @PathVariable long proposalId,
+            @RequestParam(name = "approvalReference") String approvalReference,
+            @RequestParam(name = "approvalNote", required = false) String approvalNote,
+            @RequestParam(name = "effectiveFrom", required = false) String effectiveFrom,
+            HttpServletRequest httpRequest
+    ) {
+        AuthenticatedUser actor = authContext.currentUser(httpRequest);
+        BillingPricingPolicyProposalApprovalResponse approved =
+                pricingPolicyService.approveCommercialPriceList(
+                        proposalId,
+                        actor.loginId(),
+                        approvalReference,
+                        approvalNote,
+                        parseOptionalOffsetDateTime(effectiveFrom, "effectiveFrom")
+                );
+        auditLogService.record(
+                "BILLING_PRICING_POLICY_PRICE_LIST_APPROVE",
+                actor.loginId(),
+                "BILLING_PRICING_POLICY_PROPOSAL",
+                String.valueOf(proposalId),
+                "SUCCESS",
+                approvalReference,
+                httpRequest
+        );
+        return ApiResponse.of(approved);
+    }
+
     @GetMapping("/chargeback-preview")
     public ApiResponse<ChargebackPreviewResponse> chargebackPreview(
             @RequestParam(name = "from", required = false) String from,

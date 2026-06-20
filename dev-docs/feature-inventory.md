@@ -427,4 +427,4 @@ OSMU는 현재 "상용 제품"은 아니지만, "MVP 데모 가능한 웹/백엔
 ## Chargeback Update
 
 - Implemented no-send adapter retry worker dry-run/run for due notification delivery and payment provider handoff rows.
-- Remaining billing/chargeback scope is approved external commercial price-list workflow, actual payment provider adapter execution/secrets, actual external notification delivery adapter execution/secrets, and external-send retry execution.
+- Remaining billing/chargeback scope is actual payment provider adapter execution/secrets, actual external notification delivery adapter execution/secrets, and external-send retry execution; approved commercial price-list reference recording is implemented for internally approved pricing proposals.

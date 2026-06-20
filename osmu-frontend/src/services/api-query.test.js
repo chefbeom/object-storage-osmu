@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
   approveBillingPricingPolicyProposal,
+  approveBillingPricingPolicyProposalPriceList,
   approveChargebackInvoiceDraft,
   clearAuthTokens,
   completeOidcCallback,
@@ -990,6 +991,19 @@ test('billing pricing policy proposal wrappers create list and approve internal 
         appliedPolicy: { currency: 'KRW', storageGbMonthRate: 1.25 },
       },
     }),
+    () => jsonResponse({
+      data: {
+        status: 'PRICE_LIST_APPROVED',
+        approvedPriceList: true,
+        proposal: {
+          id: 11,
+          status: 'PRICE_LIST_APPROVED',
+          approvedPriceList: true,
+          commercialApprovalReference: 'LEGAL-2026-0001',
+        },
+        appliedPolicy: { currency: 'KRW', storageGbMonthRate: 1.25 },
+      },
+    }),
   ])
 
   try {
@@ -1005,6 +1019,11 @@ test('billing pricing policy proposal wrappers create list and approve internal 
     })
     const listed = await getBillingPricingPolicyProposals({ status: 'PENDING_APPROVAL', limit: 25 })
     const approved = await approveBillingPricingPolicyProposal(11, { approvalNote: 'approved' })
+    const priceListApproved = await approveBillingPricingPolicyProposalPriceList(11, {
+      approvalReference: 'LEGAL-2026-0001',
+      approvalNote: 'commercial approved',
+      effectiveFrom: '2026-06-20T00:00:00Z',
+    })
 
     assert.equal(new URL(fetchMock.calls[0].url).pathname, '/api/admin/billing/pricing-policy-proposals')
     assert.equal(fetchMock.calls[0].options.method, 'POST')
@@ -1035,6 +1054,15 @@ test('billing pricing policy proposal wrappers create list and approve internal 
     assert.equal(approved.data.status, 'APPROVED_APPLIED')
     assert.equal(approved.data.approvedPriceList, false)
     assert.equal(approved.data.appliedPolicy.currency, 'KRW')
+
+    const priceListApproveUrl = new URL(fetchMock.calls[3].url)
+    assert.equal(priceListApproveUrl.pathname, '/api/admin/billing/pricing-policy-proposals/11/commercial-approval')
+    assert.equal(priceListApproveUrl.searchParams.get('approvalReference'), 'LEGAL-2026-0001')
+    assert.equal(priceListApproveUrl.searchParams.get('approvalNote'), 'commercial approved')
+    assert.equal(priceListApproveUrl.searchParams.get('effectiveFrom'), '2026-06-20T00:00:00Z')
+    assert.equal(fetchMock.calls[3].options.method, 'POST')
+    assert.equal(priceListApproved.data.status, 'PRICE_LIST_APPROVED')
+    assert.equal(priceListApproved.data.approvedPriceList, true)
   } finally {
     cleanupFetch(fetchMock)
   }

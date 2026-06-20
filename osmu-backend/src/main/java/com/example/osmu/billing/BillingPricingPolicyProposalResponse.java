@@ -20,9 +20,14 @@ public record BillingPricingPolicyProposalResponse(
         String approvedBy,
         String reason,
         String approvalNote,
+        String commercialApprovedBy,
+        String commercialApprovalReference,
+        String commercialApprovalNote,
         OffsetDateTime createdAt,
         OffsetDateTime updatedAt,
         OffsetDateTime approvedAt,
-        OffsetDateTime appliedAt
+        OffsetDateTime appliedAt,
+        OffsetDateTime commercialApprovedAt,
+        OffsetDateTime commercialEffectiveFrom
 ) {
 }

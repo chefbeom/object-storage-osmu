@@ -152,6 +152,29 @@ class AdminBillingControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.proposals[*].id", hasItem(pricingPolicyProposalId)));
 
+        mockMvc.perform(post("/api/admin/billing/pricing-policy-proposals/{proposalId}/commercial-approval", pricingPolicyProposalId)
+                        .header("Authorization", "Bearer " + adminToken)
+                        .param("approvalReference", "LEGAL-2026-0001")
+                        .param("approvalNote", "commercial terms approved")
+                        .param("effectiveFrom", "2026-06-20T00:00:00Z"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("PRICE_LIST_APPROVED"))
+                .andExpect(jsonPath("$.data.approvedPriceList").value(true))
+                .andExpect(jsonPath("$.data.proposal.status").value("PRICE_LIST_APPROVED"))
+                .andExpect(jsonPath("$.data.proposal.approvedPriceList").value(true))
+                .andExpect(jsonPath("$.data.proposal.commercialApprovedBy").value("admin"))
+                .andExpect(jsonPath("$.data.proposal.commercialApprovalReference").value("LEGAL-2026-0001"))
+                .andExpect(jsonPath("$.data.proposal.commercialApprovalNote").value("commercial terms approved"))
+                .andExpect(jsonPath("$.data.proposal.commercialApprovedAt").exists())
+                .andExpect(jsonPath("$.data.proposal.commercialEffectiveFrom").value("2026-06-20T00:00:00Z"));
+
+        mockMvc.perform(get("/api/admin/billing/pricing-policy-proposals")
+                        .header("Authorization", "Bearer " + adminToken)
+                        .param("status", "PRICE_LIST_APPROVED")
+                        .param("limit", "10"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.proposals[*].id", hasItem(pricingPolicyProposalId)));
+
         mockMvc.perform(get("/api/admin/billing/chargeback-preview")
                         .header("Authorization", "Bearer " + adminToken))
                 .andExpect(status().isOk())

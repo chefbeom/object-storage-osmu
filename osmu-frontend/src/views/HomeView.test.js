@@ -362,6 +362,7 @@ test('HomeView exposes stable selectors for browser E2E flows', () => {
     'billing-pricing-policy-proposal-list',
     'billing-pricing-policy-proposal-row',
     'billing-pricing-policy-proposal-approve-button',
+    'billing-pricing-policy-price-list-approve-button',
     'chargeback-alert-metrics',
     'chargeback-alert-count',
     'chargeback-warning-count',

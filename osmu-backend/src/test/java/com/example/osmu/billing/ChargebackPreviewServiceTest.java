@@ -213,6 +213,26 @@ class ChargebackPreviewServiceTest {
         assertThat(approved.appliedPolicy().currency()).isEqualTo("KRW");
         assertThat(pricingPolicyService.current().storageGbMonthRate()).isEqualByComparingTo("10.000000");
 
+        BillingPricingPolicyProposalApprovalResponse priceListApproved = pricingPolicyService.approveCommercialPriceList(
+                created.proposal().id(),
+                "admin",
+                "LEGAL-2026-0001",
+                "commercial approval recorded",
+                OffsetDateTime.parse("2026-06-20T00:00:00Z")
+        );
+
+        assertThat(priceListApproved.status()).isEqualTo(BillingPricingPolicyService.PROPOSAL_STATUS_PRICE_LIST_APPROVED);
+        assertThat(priceListApproved.approvedPriceList()).isTrue();
+        assertThat(priceListApproved.proposal().commercialApprovedBy()).isEqualTo("admin");
+        assertThat(priceListApproved.proposal().commercialApprovalReference()).isEqualTo("LEGAL-2026-0001");
+        assertThat(priceListApproved.proposal().commercialApprovalNote()).isEqualTo("commercial approval recorded");
+        assertThat(priceListApproved.proposal().commercialEffectiveFrom()).isEqualTo(OffsetDateTime.parse("2026-06-20T00:00:00Z"));
+
+        BillingPricingPolicyProposalListResponse commercialApproved =
+                pricingPolicyService.proposals("PRICE_LIST_APPROVED", 10);
+        assertThat(commercialApproved.proposalCount()).isEqualTo(1L);
+        assertThat(commercialApproved.proposals().get(0).approvedPriceList()).isTrue();
+
         assertThatThrownBy(() -> pricingPolicyService.approveProposal(created.proposal().id(), "admin", "again"))
                 .isInstanceOf(ApiException.class)
                 .extracting("code")

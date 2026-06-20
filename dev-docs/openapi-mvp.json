@@ -549,7 +549,7 @@
           {
             "name": "status",
             "in": "query",
-            "schema": { "type": "string", "enum": ["PENDING_APPROVAL", "APPROVED_APPLIED"] }
+            "schema": { "type": "string", "enum": ["PENDING_APPROVAL", "APPROVED_APPLIED", "PRICE_LIST_APPROVED"] }
           },
           {
             "name": "limit",
@@ -591,6 +591,43 @@
             "name": "approvalNote",
             "in": "query",
             "schema": { "type": "string", "maxLength": 512 }
+          }
+        ],
+        "responses": {
+          "200": { "$ref": "#/components/responses/JsonOk" },
+          "400": { "$ref": "#/components/responses/Error" },
+          "403": { "$ref": "#/components/responses/Error" },
+          "404": { "$ref": "#/components/responses/Error" }
+        }
+      }
+    },
+    "/api/admin/billing/pricing-policy-proposals/{proposalId}/commercial-approval": {
+      "post": {
+        "tags": ["Billing", "Admin"],
+        "operationId": "approveBillingPricingPolicyProposalPriceList",
+        "summary": "Record commercial approval reference for an internally approved pricing proposal",
+        "parameters": [
+          {
+            "name": "proposalId",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "integer", "format": "int64" }
+          },
+          {
+            "name": "approvalReference",
+            "in": "query",
+            "required": true,
+            "schema": { "type": "string", "maxLength": 128 }
+          },
+          {
+            "name": "approvalNote",
+            "in": "query",
+            "schema": { "type": "string", "maxLength": 512 }
+          },
+          {
+            "name": "effectiveFrom",
+            "in": "query",
+            "schema": { "type": "string", "format": "date-time" }
           }
         ],
         "responses": {

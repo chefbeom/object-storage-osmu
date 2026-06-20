@@ -413,6 +413,7 @@
         @save-billing-pricing-policy="handleSaveBillingPricingPolicy"
         @create-billing-pricing-policy-proposal="handleCreateBillingPricingPolicyProposal"
         @approve-billing-pricing-policy-proposal="handleApproveBillingPricingPolicyProposal"
+        @approve-billing-pricing-policy-proposal-price-list="handleApproveBillingPricingPolicyProposalPriceList"
         @queue-chargeback-alert-notifications="handleQueueChargebackAlertNotifications"
         @export-chargeback-csv="handleExportChargebackCsv"
         @export-chargeback-invoice-draft-csv="handleExportChargebackInvoiceDraftCsv"
@@ -519,6 +520,7 @@ import StoragePage from '@/components/storage/StoragePage.vue'
 import {
   MULTIPART_UPLOAD_THRESHOLD_BYTES,
   approveBillingPricingPolicyProposal,
+  approveBillingPricingPolicyProposalPriceList,
   approveChargebackInvoiceDraft,
   applyStorageExpansionExecutionRecord,
   applyStorageProfileRequest,
@@ -2623,6 +2625,20 @@ async function handleApproveBillingPricingPolicyProposal(proposalId) {
   }
 }
 
+async function handleApproveBillingPricingPolicyProposalPriceList(proposalId) {
+  if (!isAdmin.value || !proposalId) return
+  const generatedAt = new Date()
+  const result = await runAction(() => approveBillingPricingPolicyProposalPriceList(proposalId, {
+    approvalReference: `PRICE-LIST-${generatedAt.toISOString().slice(0, 10)}`,
+    approvalNote: 'Commercial price list approval recorded from admin billing panel',
+    effectiveFrom: generatedAt.toISOString(),
+  }))
+  if (result?.data) {
+    await loadBillingPricingPolicyProposals()
+    setStatusMessage('Billing pricing policy proposal recorded as an approved price list.')
+  }
+}
+
 async function handleQueueChargebackAlertNotifications() {
   const result = await runAction(() => queueChargebackAlertNotifications({
     ...chargebackPreviewPayload(),
@@ -4020,10 +4036,15 @@ function normalizeBillingPricingPolicyProposal(proposal = {}) {
     approvedBy: proposal.approvedBy || '',
     reason: proposal.reason || '',
     approvalNote: proposal.approvalNote || '',
+    commercialApprovedBy: proposal.commercialApprovedBy || '',
+    commercialApprovalReference: proposal.commercialApprovalReference || '',
+    commercialApprovalNote: proposal.commercialApprovalNote || '',
     createdAt: proposal.createdAt || '',
     updatedAt: proposal.updatedAt || '',
     approvedAt: proposal.approvedAt || '',
     appliedAt: proposal.appliedAt || '',
+    commercialApprovedAt: proposal.commercialApprovedAt || '',
+    commercialEffectiveFrom: proposal.commercialEffectiveFrom || '',
   }
 }
 

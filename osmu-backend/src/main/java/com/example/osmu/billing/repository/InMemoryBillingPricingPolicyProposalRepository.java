@@ -76,12 +76,65 @@ public class InMemoryBillingPricingPolicyProposalRepository implements BillingPr
                         current.eventScanLimit(),
                         current.requestedBy(),
                         approvedBy,
+                        false,
                         current.reason(),
                         approvalNote,
+                        current.commercialApprovedBy(),
+                        current.commercialApprovalReference(),
+                        current.commercialApprovalNote(),
                         current.createdAt(),
                         now,
                         now,
-                        now
+                        now,
+                        current.commercialApprovedAt(),
+                        current.commercialEffectiveFrom()
+                );
+                records.set(index, updated);
+                return updated;
+            }
+        }
+        throw new ApiException(ApiErrorCode.NOT_FOUND, "Billing pricing policy proposal not found.");
+    }
+
+    @Override
+    public BillingPricingPolicyProposalRecord updateCommercialApproval(
+            long id,
+            String status,
+            String approvedBy,
+            String approvalReference,
+            String approvalNote,
+            OffsetDateTime effectiveFrom
+    ) {
+        OffsetDateTime now = OffsetDateTime.now();
+        for (int index = 0; index < records.size(); index += 1) {
+            BillingPricingPolicyProposalRecord current = records.get(index);
+            if (current.id() != null && current.id() == id) {
+                BillingPricingPolicyProposalRecord updated = new BillingPricingPolicyProposalRecord(
+                        current.id(),
+                        status,
+                        current.currency(),
+                        current.storageGbMonthRate(),
+                        current.ingressGbRate(),
+                        current.egressGbRate(),
+                        current.internalGbRate(),
+                        current.operationThousandRate(),
+                        current.warningAmount(),
+                        current.criticalAmount(),
+                        current.eventScanLimit(),
+                        current.requestedBy(),
+                        current.approvedBy(),
+                        true,
+                        current.reason(),
+                        current.approvalNote(),
+                        approvedBy,
+                        approvalReference,
+                        approvalNote,
+                        current.createdAt(),
+                        now,
+                        current.approvedAt(),
+                        current.appliedAt(),
+                        now,
+                        effectiveFrom
                 );
                 records.set(index, updated);
                 return updated;
@@ -112,12 +165,18 @@ public class InMemoryBillingPricingPolicyProposalRepository implements BillingPr
                 record.eventScanLimit(),
                 record.requestedBy(),
                 record.approvedBy(),
+                record.approvedPriceList(),
                 record.reason(),
                 record.approvalNote(),
+                record.commercialApprovedBy(),
+                record.commercialApprovalReference(),
+                record.commercialApprovalNote(),
                 record.createdAt(),
                 record.updatedAt(),
                 record.approvedAt(),
-                record.appliedAt()
+                record.appliedAt(),
+                record.commercialApprovedAt(),
+                record.commercialEffectiveFrom()
         );
     }
 }

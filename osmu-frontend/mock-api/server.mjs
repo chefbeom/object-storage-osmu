@@ -551,6 +551,11 @@ function handleAdminRoute(request, response, path, jsonBody, url) {
     sendJson(response, 200, apiData(approveBillingPricingPolicyProposal(Number(pricingPolicyProposalApproveMatch[1]), url)))
     return
   }
+  const pricingPolicyProposalCommercialApproveMatch = path.match(/^\/admin\/billing\/pricing-policy-proposals\/(\d+)\/commercial-approval$/)
+  if (request.method === 'POST' && pricingPolicyProposalCommercialApproveMatch) {
+    sendJson(response, 200, apiData(approveBillingPricingPolicyProposalPriceList(Number(pricingPolicyProposalCommercialApproveMatch[1]), url)))
+    return
+  }
   if (request.method === 'GET' && path === '/admin/billing/pricing-policy') {
     sendJson(response, 200, apiData(state.billingPricingPolicy))
     return
@@ -1924,10 +1929,15 @@ function createBillingPricingPolicyProposal(payload = {}) {
     approvedBy: '',
     reason: String(payload.reason || 'Billing pricing policy proposal').trim().slice(0, 512),
     approvalNote: '',
+    commercialApprovedBy: '',
+    commercialApprovalReference: '',
+    commercialApprovalNote: '',
     createdAt: now,
     updatedAt: now,
     approvedAt: '',
     appliedAt: '',
+    commercialApprovedAt: '',
+    commercialEffectiveFrom: '',
   }
   state.billingPricingPolicyProposals.unshift(proposal)
   state.auditLogs.unshift(auditLog('BILLING_PRICING_POLICY_PROPOSAL_CREATE', 'BILLING_PRICING_POLICY_PROPOSAL', String(proposal.id)))
@@ -1992,6 +2002,50 @@ function approveBillingPricingPolicyProposal(proposalId, url) {
     appliedPolicy: state.billingPricingPolicy,
     generatedAt: now,
     note: 'Pricing policy proposal was approved for internal chargeback calculation only; it is not a final legal price list.',
+  }
+}
+
+function approveBillingPricingPolicyProposalPriceList(proposalId, url) {
+  const proposal = state.billingPricingPolicyProposals.find((item) => item.id === proposalId)
+  if (!proposal) {
+    return {
+      status: 'NOT_FOUND',
+      approvedPriceList: false,
+      proposal: null,
+      appliedPolicy: state.billingPricingPolicy,
+      generatedAt: new Date().toISOString(),
+      note: 'Billing pricing policy proposal not found.',
+    }
+  }
+  if (proposal.status !== 'APPROVED_APPLIED') {
+    return {
+      status: proposal.status,
+      approvedPriceList: Boolean(proposal.approvedPriceList),
+      proposal,
+      appliedPolicy: state.billingPricingPolicy,
+      generatedAt: new Date().toISOString(),
+      note: 'Only internally approved pricing policy proposals can become approved price lists.',
+    }
+  }
+  const now = new Date().toISOString()
+  const approvalReference = String(url.searchParams.get('approvalReference') || '').trim().slice(0, 128)
+  const effectiveFrom = String(url.searchParams.get('effectiveFrom') || now).trim()
+  proposal.status = 'PRICE_LIST_APPROVED'
+  proposal.approvedPriceList = true
+  proposal.commercialApprovedBy = 'admin'
+  proposal.commercialApprovalReference = approvalReference
+  proposal.commercialApprovalNote = String(url.searchParams.get('approvalNote') || '').trim().slice(0, 512)
+  proposal.commercialApprovedAt = now
+  proposal.commercialEffectiveFrom = effectiveFrom
+  proposal.updatedAt = now
+  state.auditLogs.unshift(auditLog('BILLING_PRICING_POLICY_PRICE_LIST_APPROVE', 'BILLING_PRICING_POLICY_PROPOSAL', String(proposal.id)))
+  return {
+    status: 'PRICE_LIST_APPROVED',
+    approvedPriceList: true,
+    proposal,
+    appliedPolicy: state.billingPricingPolicy,
+    generatedAt: now,
+    note: 'Pricing policy proposal was recorded as an approved external commercial price list reference.',
   }
 }
 
@@ -2727,6 +2781,19 @@ async function runSelfTest() {
     })).json()
     if (!approvedPricingPolicyProposal.data || approvedPricingPolicyProposal.data.status !== 'APPROVED_APPLIED' || approvedPricingPolicyProposal.data.approvedPriceList !== false || approvedPricingPolicyProposal.data.appliedPolicy?.storageGbMonthRate !== 2) {
       throw new Error('billing pricing policy proposal approval self-test failed')
+    }
+    const priceListPricingPolicyProposal = await (await fetch(`${base}/admin/billing/pricing-policy-proposals/${listedPricingPolicyProposals.data.proposals[0].id}/commercial-approval?approvalReference=LEGAL-2026-0001&approvalNote=self-test&effectiveFrom=2026-06-20T00:00:00Z`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${login.data.accessToken}` },
+    })).json()
+    if (!priceListPricingPolicyProposal.data || priceListPricingPolicyProposal.data.status !== 'PRICE_LIST_APPROVED' || priceListPricingPolicyProposal.data.approvedPriceList !== true || priceListPricingPolicyProposal.data.proposal?.commercialApprovalReference !== 'LEGAL-2026-0001') {
+      throw new Error('billing pricing policy proposal price-list approval self-test failed')
+    }
+    const listedPriceListPricingPolicyProposals = await (await fetch(`${base}/admin/billing/pricing-policy-proposals?status=PRICE_LIST_APPROVED&limit=5`, {
+      headers: { Authorization: `Bearer ${login.data.accessToken}` },
+    })).json()
+    if (!listedPriceListPricingPolicyProposals.data || listedPriceListPricingPolicyProposals.data.proposalCount < 1 || listedPriceListPricingPolicyProposals.data.proposals?.[0]?.approvedPriceList !== true) {
+      throw new Error('billing pricing policy proposal price-list list self-test failed')
     }
     const chargeback = await (await fetch(`${base}/admin/billing/chargeback-preview?storageGbMonthRate=0.02&egressGbRate=0.01&operationThousandRate=0.004`, {
       headers: { Authorization: `Bearer ${login.data.accessToken}` },

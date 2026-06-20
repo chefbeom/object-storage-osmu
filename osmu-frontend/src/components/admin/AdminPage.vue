@@ -265,6 +265,7 @@
       @save-billing-pricing-policy="$emit('save-billing-pricing-policy')"
       @create-billing-pricing-policy-proposal="$emit('create-billing-pricing-policy-proposal')"
       @approve-billing-pricing-policy-proposal="$emit('approve-billing-pricing-policy-proposal', $event)"
+      @approve-billing-pricing-policy-proposal-price-list="$emit('approve-billing-pricing-policy-proposal-price-list', $event)"
       @queue-chargeback-alert-notifications="$emit('queue-chargeback-alert-notifications')"
       @export-chargeback-csv="$emit('export-chargeback-csv')"
       @export-chargeback-invoice-draft-csv="$emit('export-chargeback-invoice-draft-csv')"
@@ -671,6 +672,7 @@ defineEmits([
   'save-billing-pricing-policy',
   'create-billing-pricing-policy-proposal',
   'approve-billing-pricing-policy-proposal',
+  'approve-billing-pricing-policy-proposal-price-list',
   'queue-chargeback-alert-notifications',
   'export-chargeback-csv',
   'export-chargeback-invoice-draft-csv',

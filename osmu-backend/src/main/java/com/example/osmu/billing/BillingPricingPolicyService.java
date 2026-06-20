@@ -18,6 +18,7 @@ public class BillingPricingPolicyService {
     public static final int MAX_EVENT_SCAN_LIMIT = 50_000;
     public static final String PROPOSAL_STATUS_PENDING_APPROVAL = "PENDING_APPROVAL";
     public static final String PROPOSAL_STATUS_APPROVED_APPLIED = "APPROVED_APPLIED";
+    public static final String PROPOSAL_STATUS_PRICE_LIST_APPROVED = "PRICE_LIST_APPROVED";
 
     private final BillingPricingPolicyRepository repository;
     private final BillingPricingPolicyProposalRepository proposalRepository;
@@ -64,10 +65,16 @@ public class BillingPricingPolicyService {
                 proposed.eventScanLimit(),
                 normalizeActor(requestedBy),
                 null,
+                false,
                 normalizeReason(request.reason(), "Billing pricing policy proposal"),
+                null,
+                null,
+                null,
                 null,
                 now,
                 now,
+                null,
+                null,
                 null,
                 null
         ));
@@ -128,6 +135,37 @@ public class BillingPricingPolicyService {
                 applied,
                 now,
                 "Pricing policy proposal was approved for internal chargeback calculation only; it is not a final legal price list."
+        );
+    }
+
+    public BillingPricingPolicyProposalApprovalResponse approveCommercialPriceList(
+            long proposalId,
+            String approvedBy,
+            String approvalReference,
+            String approvalNote,
+            OffsetDateTime effectiveFrom
+    ) {
+        BillingPricingPolicyProposalRecord proposal = proposalRepository.findById(proposalId)
+                .orElseThrow(() -> new ApiException(ApiErrorCode.NOT_FOUND, "Billing pricing policy proposal not found."));
+        if (!PROPOSAL_STATUS_APPROVED_APPLIED.equals(proposal.status())) {
+            throw new ApiException(ApiErrorCode.VALIDATION_ERROR, "Only internally approved billing pricing policy proposals can become approved price lists.");
+        }
+        OffsetDateTime now = OffsetDateTime.now();
+        BillingPricingPolicyProposalRecord approved = proposalRepository.updateCommercialApproval(
+                proposalId,
+                PROPOSAL_STATUS_PRICE_LIST_APPROVED,
+                normalizeActor(approvedBy),
+                normalizeApprovalReference(approvalReference),
+                normalizeCommercialOptionalNote(approvalNote),
+                effectiveFrom == null ? now : effectiveFrom
+        );
+        return new BillingPricingPolicyProposalApprovalResponse(
+                PROPOSAL_STATUS_PRICE_LIST_APPROVED,
+                true,
+                proposalResponse(approved),
+                repository.get(),
+                now,
+                "Pricing policy proposal was recorded as an approved external commercial price list reference."
         );
     }
 
@@ -209,7 +247,8 @@ public class BillingPricingPolicyService {
         }
         String normalized = value.trim().toUpperCase(Locale.ROOT);
         if (!PROPOSAL_STATUS_PENDING_APPROVAL.equals(normalized)
-                && !PROPOSAL_STATUS_APPROVED_APPLIED.equals(normalized)) {
+                && !PROPOSAL_STATUS_APPROVED_APPLIED.equals(normalized)
+                && !PROPOSAL_STATUS_PRICE_LIST_APPROVED.equals(normalized)) {
             throw new ApiException(ApiErrorCode.VALIDATION_ERROR, "Unsupported billing pricing policy proposal status.");
         }
         return normalized;
@@ -231,6 +270,18 @@ public class BillingPricingPolicyService {
         return normalized;
     }
 
+    private static String normalizeApprovalReference(String value) {
+        String normalized = value == null || value.isBlank() ? "" : value.trim();
+        if (normalized.isBlank()) {
+            throw new ApiException(ApiErrorCode.VALIDATION_ERROR, "approvalReference is required.");
+        }
+        if (normalized.length() > 128) {
+            throw new ApiException(ApiErrorCode.VALIDATION_ERROR, "approvalReference must be 128 characters or fewer.");
+        }
+        rejectSecretLikeText(normalized, "approvalReference");
+        return normalized;
+    }
+
     private static String normalizeOptionalNote(String value) {
         if (value == null || value.isBlank()) {
             return "";
@@ -242,11 +293,31 @@ public class BillingPricingPolicyService {
         return normalized;
     }
 
+    private static String normalizeCommercialOptionalNote(String value) {
+        String normalized = normalizeOptionalNote(value);
+        rejectSecretLikeText(normalized, "approvalNote");
+        return normalized;
+    }
+
+    private static void rejectSecretLikeText(String value, String fieldName) {
+        String text = value.toLowerCase(Locale.ROOT);
+        if (text.contains("password")
+                || text.contains("secret")
+                || text.contains("token")
+                || text.contains("authorization")
+                || text.contains("bearer ")
+                || text.contains("private key")
+                || text.contains("access_key")
+                || text.contains("secret_key")) {
+            throw new ApiException(ApiErrorCode.VALIDATION_ERROR, fieldName + " must not contain credential material.");
+        }
+    }
+
     private static BillingPricingPolicyProposalResponse proposalResponse(BillingPricingPolicyProposalRecord record) {
         return new BillingPricingPolicyProposalResponse(
                 record.id() == null ? 0L : record.id(),
                 record.status(),
-                false,
+                record.approvedPriceList(),
                 record.currency(),
                 record.storageGbMonthRate(),
                 record.ingressGbRate(),
@@ -260,10 +331,15 @@ public class BillingPricingPolicyService {
                 record.approvedBy() == null ? "" : record.approvedBy(),
                 record.reason(),
                 record.approvalNote() == null ? "" : record.approvalNote(),
+                record.commercialApprovedBy() == null ? "" : record.commercialApprovedBy(),
+                record.commercialApprovalReference() == null ? "" : record.commercialApprovalReference(),
+                record.commercialApprovalNote() == null ? "" : record.commercialApprovalNote(),
                 record.createdAt(),
                 record.updatedAt(),
                 record.approvedAt(),
-                record.appliedAt()
+                record.appliedAt(),
+                record.commercialApprovedAt(),
+                record.commercialEffectiveFrom()
         );
     }
 }
