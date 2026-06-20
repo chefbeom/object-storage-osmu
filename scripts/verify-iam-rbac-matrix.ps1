@@ -8,6 +8,8 @@ param(
     [string] $ChargebackPreviewServicePath = ".\osmu-backend\src\main\java\com\example\osmu\billing\ChargebackPreviewService.java",
     [string] $ChargebackAdapterRetryWorkerServicePath = ".\osmu-backend\src\main\java\com\example\osmu\billing\ChargebackAdapterRetryWorkerService.java",
     [string] $ChargebackNotificationDeliveryAdapterPath = ".\osmu-backend\src\main\java\com\example\osmu\billing\WebhookChargebackNotificationDeliveryAdapter.java",
+    [string] $ChargebackPaymentProviderAdapterPath = ".\osmu-backend\src\main\java\com\example\osmu\billing\WebhookChargebackPaymentProviderAdapter.java",
+    [string] $WebhookEndpointPolicyPath = ".\osmu-backend\src\main\java\com\example\osmu\billing\WebhookEndpointPolicy.java",
     [string] $BillingPricingPolicyServicePath = ".\osmu-backend\src\main\java\com\example\osmu\billing\BillingPricingPolicyService.java",
     [string] $OidcAuthorizationServicePath = ".\osmu-backend\src\main\java\com\example\osmu\auth\OidcAuthorizationService.java",
     [string] $OidcClaimPreviewServicePath = ".\osmu-backend\src\main\java\com\example\osmu\auth\OidcClaimPreviewService.java",
@@ -148,6 +150,8 @@ Assert-Contains $apiSpec 'POST /api/admin/billing/chargeback-alert-notifications
 Assert-Contains $apiSpec 'POST /api/admin/billing/chargeback-alert-notifications/outbox/{deliveryId}/adapter-result' "API spec"
 Assert-Contains $apiSpec 'POST /api/admin/billing/chargeback-alert-notifications/outbox/{deliveryId}/adapter-send' "API spec"
 Assert-Contains $apiSpec 'osmu.billing.notification-delivery.slack.webhook-url' "API spec"
+Assert-Contains $apiSpec 'osmu.billing.notification-delivery.allow-private-network' "API spec"
+Assert-Contains $apiSpec 'osmu.billing.payment-provider.allow-private-network' "API spec"
 Assert-Contains $apiSpec 'Slack-compatible `text` JSON payload' "API spec"
 Assert-Contains $apiSpec 'GET /api/admin/billing/chargeback-adapter-retry-worker/status' "API spec"
 Assert-Contains $apiSpec 'POST /api/admin/billing/chargeback-adapter-retry-worker/run' "API spec"
@@ -313,9 +317,19 @@ Assert-Contains $chargebackAdapterRetryWorkerService 'isConfigured(record.channe
 
 $chargebackNotificationDeliveryAdapter = Read-RequiredFile $ChargebackNotificationDeliveryAdapterPath "Chargeback notification delivery adapter"
 Assert-Contains $chargebackNotificationDeliveryAdapter 'notification-delivery.slack.webhook-url' "Chargeback notification delivery adapter"
+Assert-Contains $chargebackNotificationDeliveryAdapter 'notification-delivery.allow-private-network' "Chargeback notification delivery adapter"
 Assert-Contains $chargebackNotificationDeliveryAdapter 'chargeback.threshold.slack.delivery' "Chargeback notification delivery adapter"
 Assert-Contains $chargebackNotificationDeliveryAdapter 'slackEnvelope' "Chargeback notification delivery adapter"
 Assert-Contains $chargebackNotificationDeliveryAdapter 'isConfigured(String channel)' "Chargeback notification delivery adapter"
+
+$chargebackPaymentProviderAdapter = Read-RequiredFile $ChargebackPaymentProviderAdapterPath "Chargeback payment provider adapter"
+Assert-Contains $chargebackPaymentProviderAdapter 'payment-provider.allow-private-network' "Chargeback payment provider adapter"
+Assert-Contains $chargebackPaymentProviderAdapter 'WebhookEndpointPolicy.configuredUri' "Chargeback payment provider adapter"
+
+$webhookEndpointPolicy = Read-RequiredFile $WebhookEndpointPolicyPath "Webhook endpoint policy"
+Assert-Contains $webhookEndpointPolicy 'isPrivateOrLocalHost' "Webhook endpoint policy"
+Assert-Contains $webhookEndpointPolicy 'localhost' "Webhook endpoint policy"
+Assert-Contains $webhookEndpointPolicy 'first == 192' "Webhook endpoint policy"
 
 $billingPricingPolicyService = Read-RequiredFile $BillingPricingPolicyServicePath "Billing pricing policy service"
 Assert-Contains $billingPricingPolicyService 'createProposal' "Billing pricing policy service"

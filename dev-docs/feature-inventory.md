@@ -398,7 +398,7 @@ MVP 데모 기준 완료율은 약 90~95%입니다.
 
 5. 운영/관리 기능 고도화
    - 실제 OIDC/LDAP provider smoke 실행과 `.osmu-run/latest-enterprise-auth-smoke.json` evidence 확보
-   - data-flow 장기 analytics와 chargeback 모델링. 현재 chargeback preview API, pricing policy 저장과 proposal/internal approval/commercial price-list reference, Admin billing panel, scoped threshold alert, scoped notification payload preview/outbox/history와 configured generic webhook/Slack send/adapter retry state, scoped preview CSV export, draft invoice CSV export/persistence/internal approval, final invoice/payment state workflow, payment provider handoff outbox/history와 configured webhook handoff send/adapter retry state는 구현됐고, 남은 것은 card/bank/tax/ERP별 provider adapter, email 전용 알림 adapter, 외부 전송 운영 hardening이다.
+   - data-flow 장기 analytics와 chargeback 모델링. 현재 chargeback preview API, pricing policy 저장과 proposal/internal approval/commercial price-list reference, Admin billing panel, scoped threshold alert, scoped notification payload preview/outbox/history와 configured generic webhook/Slack send/adapter retry state, private/local webhook URL 기본 차단, scoped preview CSV export, draft invoice CSV export/persistence/internal approval, final invoice/payment state workflow, payment provider handoff outbox/history와 configured webhook handoff send/adapter retry state는 구현됐고, 남은 것은 card/bank/tax/ERP별 provider adapter, email 전용 알림 adapter, broader external-send hardening이다.
    - 운영 패키징, troubleshooting, runbook 보강
 
 6. S3 대체성 회귀 smoke
@@ -427,4 +427,4 @@ OSMU는 현재 "상용 제품"은 아니지만, "MVP 데모 가능한 웹/백엔
 ## Chargeback Update
 
 - Implemented adapter retry worker dry-run/run for due notification delivery and payment provider handoff rows; notification rows can attempt the configured generic notification webhook adapter or `SLACK` channel Slack webhook adapter, and payment handoff rows can attempt the configured payment-provider webhook handoff adapter.
-- Remaining billing/chargeback scope is card/bank/tax/ERP-specific provider adapters, email-specific notification adapters, broader external-send hardening, and production secret rotation evidence; approved commercial price-list reference recording, notification webhook/Slack send, and payment webhook send are implemented.
+- Remaining billing/chargeback scope is card/bank/tax/ERP-specific provider adapters, email-specific notification adapters, broader external-send hardening, and production secret rotation evidence; approved commercial price-list reference recording, notification webhook/Slack send, payment webhook send, and private/local webhook URL blocking are implemented.

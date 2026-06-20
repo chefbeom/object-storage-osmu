@@ -2833,6 +2833,7 @@ Configuration:
 - `osmu.billing.notification-delivery.slack.webhook-url` (optional): HTTP/HTTPS Slack incoming webhook endpoint used for `notificationChannel=SLACK`.
 - `osmu.billing.notification-delivery.secret-header-name` and `osmu.billing.notification-delivery.secret-header-value` (optional pair): header name/value sent with the webhook request; header values are never stored in delivery rows.
 - `osmu.billing.notification-delivery.timeout-ms` (optional): request timeout, clamped to 500..15000ms. Default is `3000`.
+- `osmu.billing.notification-delivery.allow-private-network` (optional): default `false`. When false, localhost, loopback, link-local, private IPv4/IPv6, and local-domain webhook hosts are rejected before any external call. Enable only for local/dev or explicitly approved internal network integrations.
 
 Query parameters:
 
@@ -3077,6 +3078,7 @@ Configuration:
 - `osmu.billing.payment-provider.webhook-url` (optional): HTTP/HTTPS endpoint to call.
 - `osmu.billing.payment-provider.secret-header-name` and `osmu.billing.payment-provider.secret-header-value` (optional pair): header name/value sent with the webhook request; header values are never stored in handoff rows.
 - `osmu.billing.payment-provider.timeout-ms` (optional): request timeout, clamped to 500..15000ms. Default is `3000`.
+- `osmu.billing.payment-provider.allow-private-network` (optional): default `false`. When false, localhost, loopback, link-local, private IPv4/IPv6, and local-domain webhook hosts are rejected before any external call. Enable only for local/dev or explicitly approved internal network integrations.
 
 Query parameters:
 

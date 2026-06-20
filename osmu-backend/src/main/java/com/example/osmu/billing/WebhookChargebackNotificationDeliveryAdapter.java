@@ -31,6 +31,7 @@ public class WebhookChargebackNotificationDeliveryAdapter implements ChargebackN
     private final String secretHeaderName;
     private final String secretHeaderValue;
     private final int timeoutMs;
+    private final boolean allowPrivateNetwork;
 
     public WebhookChargebackNotificationDeliveryAdapter(
             ObjectMapper objectMapper,
@@ -38,7 +39,8 @@ public class WebhookChargebackNotificationDeliveryAdapter implements ChargebackN
             @Value("${osmu.billing.notification-delivery.slack.webhook-url:}") String slackWebhookUrl,
             @Value("${osmu.billing.notification-delivery.secret-header-name:}") String secretHeaderName,
             @Value("${osmu.billing.notification-delivery.secret-header-value:}") String secretHeaderValue,
-            @Value("${osmu.billing.notification-delivery.timeout-ms:3000}") int timeoutMs
+            @Value("${osmu.billing.notification-delivery.timeout-ms:3000}") int timeoutMs,
+            @Value("${osmu.billing.notification-delivery.allow-private-network:false}") boolean allowPrivateNetwork
     ) {
         this.objectMapper = objectMapper;
         this.webhookUrl = normalize(webhookUrl);
@@ -46,6 +48,7 @@ public class WebhookChargebackNotificationDeliveryAdapter implements ChargebackN
         this.secretHeaderName = normalize(secretHeaderName);
         this.secretHeaderValue = normalize(secretHeaderValue);
         this.timeoutMs = Math.max(MIN_TIMEOUT_MS, Math.min(timeoutMs <= 0 ? DEFAULT_TIMEOUT_MS : timeoutMs, MAX_TIMEOUT_MS));
+        this.allowPrivateNetwork = allowPrivateNetwork;
         this.httpClient = HttpClient.newBuilder()
                 .connectTimeout(Duration.ofMillis(this.timeoutMs))
                 .build();
@@ -210,23 +213,8 @@ public class WebhookChargebackNotificationDeliveryAdapter implements ChargebackN
         return configuredUri(webhookUrl) != null && secretHeaderConfigIsValid();
     }
 
-    private static URI configuredUri(String value) {
-        if (value.isBlank()) {
-            return null;
-        }
-        try {
-            URI uri = URI.create(value);
-            String scheme = uri.getScheme() == null ? "" : uri.getScheme().toLowerCase(Locale.ROOT);
-            if (!("http".equals(scheme) || "https".equals(scheme))
-                    || uri.getHost() == null
-                    || uri.getHost().isBlank()
-                    || uri.getUserInfo() != null) {
-                return null;
-            }
-            return uri;
-        } catch (IllegalArgumentException exception) {
-            return null;
-        }
+    private URI configuredUri(String value) {
+        return WebhookEndpointPolicy.configuredUri(value, allowPrivateNetwork);
     }
 
     private static boolean slackChannel(String value) {

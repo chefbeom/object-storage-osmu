@@ -30,7 +30,7 @@ class WebhookChargebackNotificationDeliveryAdapterTest {
         try {
             String slackUrl = "http://127.0.0.1:" + server.getAddress().getPort() + "/slack";
             WebhookChargebackNotificationDeliveryAdapter adapter =
-                    new WebhookChargebackNotificationDeliveryAdapter(OBJECT_MAPPER, "", slackUrl, "", "", 3000);
+                    new WebhookChargebackNotificationDeliveryAdapter(OBJECT_MAPPER, "", slackUrl, "", "", 3000, true);
 
             assertThat(adapter.isConfigured()).isTrue();
             assertThat(adapter.isConfigured("SLACK")).isTrue();

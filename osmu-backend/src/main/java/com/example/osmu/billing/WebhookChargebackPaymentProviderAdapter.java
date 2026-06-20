@@ -9,7 +9,6 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
 import java.util.LinkedHashMap;
-import java.util.Locale;
 import java.util.Map;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
@@ -28,19 +27,22 @@ public class WebhookChargebackPaymentProviderAdapter implements ChargebackPaymen
     private final String secretHeaderName;
     private final String secretHeaderValue;
     private final int timeoutMs;
+    private final boolean allowPrivateNetwork;
 
     public WebhookChargebackPaymentProviderAdapter(
             ObjectMapper objectMapper,
             @Value("${osmu.billing.payment-provider.webhook-url:}") String webhookUrl,
             @Value("${osmu.billing.payment-provider.secret-header-name:}") String secretHeaderName,
             @Value("${osmu.billing.payment-provider.secret-header-value:}") String secretHeaderValue,
-            @Value("${osmu.billing.payment-provider.timeout-ms:3000}") int timeoutMs
+            @Value("${osmu.billing.payment-provider.timeout-ms:3000}") int timeoutMs,
+            @Value("${osmu.billing.payment-provider.allow-private-network:false}") boolean allowPrivateNetwork
     ) {
         this.objectMapper = objectMapper;
         this.webhookUrl = normalize(webhookUrl);
         this.secretHeaderName = normalize(secretHeaderName);
         this.secretHeaderValue = normalize(secretHeaderValue);
         this.timeoutMs = Math.max(MIN_TIMEOUT_MS, Math.min(timeoutMs <= 0 ? DEFAULT_TIMEOUT_MS : timeoutMs, MAX_TIMEOUT_MS));
+        this.allowPrivateNetwork = allowPrivateNetwork;
         this.httpClient = HttpClient.newBuilder()
                 .connectTimeout(Duration.ofMillis(this.timeoutMs))
                 .build();
@@ -130,22 +132,7 @@ public class WebhookChargebackPaymentProviderAdapter implements ChargebackPaymen
     }
 
     private URI configuredUri() {
-        if (webhookUrl.isBlank()) {
-            return null;
-        }
-        try {
-            URI uri = URI.create(webhookUrl);
-            String scheme = uri.getScheme() == null ? "" : uri.getScheme().toLowerCase(Locale.ROOT);
-            if (!("http".equals(scheme) || "https".equals(scheme))
-                    || uri.getHost() == null
-                    || uri.getHost().isBlank()
-                    || uri.getUserInfo() != null) {
-                return null;
-            }
-            return uri;
-        } catch (IllegalArgumentException exception) {
-            return null;
-        }
+        return WebhookEndpointPolicy.configuredUri(webhookUrl, allowPrivateNetwork);
     }
 
     private boolean secretHeaderConfigIsValid() {
