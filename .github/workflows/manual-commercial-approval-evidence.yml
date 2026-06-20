@@ -1,0 +1,160 @@
+name: Manual Commercial Approval Evidence
+
+on:
+  workflow_dispatch:
+    inputs:
+      product_version:
+        description: Product version under commercial approval
+        required: true
+        default: v0.1.0-rc.1
+      approval_ref:
+        description: External commercial approval reference
+        required: true
+        default: ""
+      approved_by:
+        description: Commercial or legal approver
+        required: true
+        default: ""
+      approved_at:
+        description: Approval time in ISO-8601 format
+        required: true
+        default: ""
+      pricing_approval_ref:
+        description: External final pricing approval reference
+        required: true
+        default: ""
+      terms_approval_ref:
+        description: External final terms approval reference
+        required: true
+        default: ""
+      support_sla_approval_ref:
+        description: External support SLA approval reference
+        required: true
+        default: ""
+      license_agreement_ref:
+        description: External license agreement reference
+        required: true
+        default: ""
+      legal_approval_ref:
+        description: External legal approval reference
+        required: true
+        default: ""
+      pilot_contract_ref:
+        description: External pilot contract boundary reference
+        required: true
+        default: ""
+      notes_ref:
+        description: Optional external notes reference
+        required: false
+        default: ""
+      confirm_pricing_approved:
+        description: Confirm final pricing approval
+        required: true
+        type: boolean
+        default: false
+      confirm_terms_approved:
+        description: Confirm final terms approval
+        required: true
+        type: boolean
+        default: false
+      confirm_support_sla_approved:
+        description: Confirm support SLA approval
+        required: true
+        type: boolean
+        default: false
+      confirm_license_approved:
+        description: Confirm license agreement approval
+        required: true
+        type: boolean
+        default: false
+      confirm_legal_approved:
+        description: Confirm legal approval
+        required: true
+        type: boolean
+        default: false
+      confirm_no_secret_values:
+        description: Confirm inputs contain references only, not secret values
+        required: true
+        type: boolean
+        default: false
+      fail_if_not_passed:
+        description: Fail workflow when evidence result is not passed
+        required: true
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: manual-commercial-approval-evidence-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  commercial-approval-evidence:
+    name: Manual commercial approval evidence
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Record commercial approval evidence
+        shell: pwsh
+        env:
+          OSMU_PRODUCT_VERSION: ${{ inputs.product_version }}
+          OSMU_APPROVAL_REF: ${{ inputs.approval_ref }}
+          OSMU_APPROVED_BY: ${{ inputs.approved_by }}
+          OSMU_APPROVED_AT: ${{ inputs.approved_at }}
+          OSMU_PRICING_APPROVAL_REF: ${{ inputs.pricing_approval_ref }}
+          OSMU_TERMS_APPROVAL_REF: ${{ inputs.terms_approval_ref }}
+          OSMU_SUPPORT_SLA_APPROVAL_REF: ${{ inputs.support_sla_approval_ref }}
+          OSMU_LICENSE_AGREEMENT_REF: ${{ inputs.license_agreement_ref }}
+          OSMU_LEGAL_APPROVAL_REF: ${{ inputs.legal_approval_ref }}
+          OSMU_PILOT_CONTRACT_REF: ${{ inputs.pilot_contract_ref }}
+          OSMU_NOTES_REF: ${{ inputs.notes_ref }}
+          OSMU_CONFIRM_PRICING_APPROVED: ${{ inputs.confirm_pricing_approved }}
+          OSMU_CONFIRM_TERMS_APPROVED: ${{ inputs.confirm_terms_approved }}
+          OSMU_CONFIRM_SUPPORT_SLA_APPROVED: ${{ inputs.confirm_support_sla_approved }}
+          OSMU_CONFIRM_LICENSE_APPROVED: ${{ inputs.confirm_license_approved }}
+          OSMU_CONFIRM_LEGAL_APPROVED: ${{ inputs.confirm_legal_approved }}
+          OSMU_CONFIRM_NO_SECRET_VALUES: ${{ inputs.confirm_no_secret_values }}
+          OSMU_FAIL_IF_NOT_PASSED: ${{ inputs.fail_if_not_passed }}
+        run: |
+          $evidenceArgs = @(
+            "-ProductVersion", $env:OSMU_PRODUCT_VERSION,
+            "-ApprovalRef", $env:OSMU_APPROVAL_REF,
+            "-ApprovedBy", $env:OSMU_APPROVED_BY,
+            "-ApprovedAt", $env:OSMU_APPROVED_AT,
+            "-PricingApprovalRef", $env:OSMU_PRICING_APPROVAL_REF,
+            "-TermsApprovalRef", $env:OSMU_TERMS_APPROVAL_REF,
+            "-SupportSlaApprovalRef", $env:OSMU_SUPPORT_SLA_APPROVAL_REF,
+            "-LicenseAgreementRef", $env:OSMU_LICENSE_AGREEMENT_REF,
+            "-LegalApprovalRef", $env:OSMU_LEGAL_APPROVAL_REF,
+            "-PilotContractRef", $env:OSMU_PILOT_CONTRACT_REF,
+            "-NotesRef", $env:OSMU_NOTES_REF,
+            "-JsonOutputPath", ".osmu-run/latest-commercial-approval-evidence.json",
+            "-MarkdownOutputPath", ".osmu-run/latest-commercial-approval-evidence.md"
+          )
+
+          if ($env:OSMU_CONFIRM_PRICING_APPROVED -eq "true") { $evidenceArgs += "-ConfirmPricingApproved" }
+          if ($env:OSMU_CONFIRM_TERMS_APPROVED -eq "true") { $evidenceArgs += "-ConfirmTermsApproved" }
+          if ($env:OSMU_CONFIRM_SUPPORT_SLA_APPROVED -eq "true") { $evidenceArgs += "-ConfirmSupportSlaApproved" }
+          if ($env:OSMU_CONFIRM_LICENSE_APPROVED -eq "true") { $evidenceArgs += "-ConfirmLicenseApproved" }
+          if ($env:OSMU_CONFIRM_LEGAL_APPROVED -eq "true") { $evidenceArgs += "-ConfirmLegalApproved" }
+          if ($env:OSMU_CONFIRM_NO_SECRET_VALUES -eq "true") { $evidenceArgs += "-ConfirmNoSecretValues" }
+          if ($env:OSMU_FAIL_IF_NOT_PASSED -eq "true") { $evidenceArgs += "-FailIfNotPassed" }
+
+          ./scripts/write-commercial-approval-evidence.ps1 @evidenceArgs
+
+      - name: Upload commercial approval evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: commercial-approval-evidence-${{ github.run_id }}
+          path: |
+            .osmu-run/latest-commercial-approval-evidence.json
+            .osmu-run/latest-commercial-approval-evidence.md
+          if-no-files-found: error
+          retention-days: 14

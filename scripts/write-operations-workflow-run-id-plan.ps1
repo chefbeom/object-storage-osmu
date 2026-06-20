@@ -52,6 +52,25 @@ function Get-WorkflowName([string] $Command) {
     return $match.Groups[1].Value
 }
 
+function Get-ManualEvidenceWorkflowName([string] $Command) {
+    if ([string]::IsNullOrWhiteSpace($Command)) {
+        return ""
+    }
+    if ($Command.Contains("write-secret-rotation-evidence.ps1")) {
+        return "manual-secret-rotation-evidence.yml"
+    }
+    if ($Command.Contains("write-commercial-integration-evidence.ps1")) {
+        return "manual-commercial-integration-evidence.yml"
+    }
+    if ($Command.Contains("write-commercial-approval-evidence.ps1")) {
+        return "manual-commercial-approval-evidence.yml"
+    }
+    if ($Command.Contains("write-operations-handoff-package.ps1")) {
+        return "manual-operations-handoff-package.yml"
+    }
+    return ""
+}
+
 function Add-UniqueWorkflow([System.Collections.Generic.List[string]] $Workflows, [string] $Workflow) {
     if ([string]::IsNullOrWhiteSpace($Workflow)) {
         return
@@ -142,12 +161,40 @@ function New-WorkflowMetadata([string] $Workflow) {
             requiredForReadiness = $true
             note = "Required by operations readiness artifact import."
         }
+        "manual-secret-rotation-evidence.yml" = [ordered]@{
+            group = "secret-rotation"
+            runIdParameter = "SecretRotationRunId"
+            artifactNameTemplate = "secret-rotation-evidence-{runId}"
+            requiredForReadiness = $true
+            note = "Required by operations readiness artifact import when target secret/certificate rotation evidence is part of the invocation."
+        }
+        "manual-commercial-integration-evidence.yml" = [ordered]@{
+            group = "commercial-integration"
+            runIdParameter = "CommercialIntegrationRunId"
+            artifactNameTemplate = "commercial-integration-evidence-{runId}"
+            requiredForReadiness = $true
+            note = "Required by operations readiness artifact import when target notification/payment handoff evidence is part of the invocation."
+        }
+        "manual-commercial-approval-evidence.yml" = [ordered]@{
+            group = "commercial-approval"
+            runIdParameter = "CommercialApprovalRunId"
+            artifactNameTemplate = "commercial-approval-evidence-{runId}"
+            requiredForReadiness = $true
+            note = "Required by operations readiness artifact import when final commercial approval evidence is part of the invocation."
+        }
         "enterprise-auth-smoke-ci.yml" = [ordered]@{
             group = "enterprise-auth"
             runIdParameter = "EnterpriseAuthRunId"
             artifactNameTemplate = "enterprise-auth-smoke-{runId}"
             requiredForReadiness = $true
             note = "Required by operations readiness artifact import when target IdP/directory smoke evidence is part of the invocation."
+        }
+        "manual-operations-handoff-package.yml" = [ordered]@{
+            group = "operations-handoff-package"
+            runIdParameter = "OperationsHandoffPackageRunId"
+            artifactNameTemplate = "operations-handoff-package-{runId}"
+            requiredForReadiness = $true
+            note = "Required by operations readiness artifact import when target handoff package evidence is part of the invocation."
         }
         "kubernetes-operations-report-sync-ci.yml" = [ordered]@{
             group = "kubernetes-operations-report-sync"
@@ -289,7 +336,12 @@ $branchName = Get-CurrentBranch
 $effectiveCommitSha = Get-CurrentCommitSha
 $workflows = New-Object System.Collections.Generic.List[string]
 foreach ($action in @($invocation.actions)) {
-    Add-UniqueWorkflow $workflows (Get-WorkflowName (Get-Text $action "command"))
+    $command = Get-Text $action "command"
+    $workflow = Get-WorkflowName $command
+    if ([string]::IsNullOrWhiteSpace($workflow)) {
+        $workflow = Get-ManualEvidenceWorkflowName $command
+    }
+    Add-UniqueWorkflow $workflows $workflow
 }
 
 $queryMode = if ($Execute) { "execute" } elseif (-not [string]::IsNullOrWhiteSpace($RunListJsonDirectory)) { "fixture" } else { "plan-only" }

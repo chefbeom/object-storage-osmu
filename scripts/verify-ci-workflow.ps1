@@ -12,6 +12,10 @@ param(
     [string] $KubernetesOperationsReportSyncWorkflowPath = ".\.github\workflows\kubernetes-operations-report-sync-ci.yml",
     [string] $OperationsReadinessFinalizerWorkflowPath = ".\.github\workflows\operations-readiness-finalizer-ci.yml",
     [string] $OperationsReadinessArtifactFinalizerWorkflowPath = ".\.github\workflows\operations-readiness-artifact-finalizer-ci.yml",
+    [string] $ManualSecretRotationEvidenceWorkflowPath = ".\.github\workflows\manual-secret-rotation-evidence.yml",
+    [string] $ManualCommercialIntegrationEvidenceWorkflowPath = ".\.github\workflows\manual-commercial-integration-evidence.yml",
+    [string] $ManualCommercialApprovalEvidenceWorkflowPath = ".\.github\workflows\manual-commercial-approval-evidence.yml",
+    [string] $ManualOperationsHandoffPackageWorkflowPath = ".\.github\workflows\manual-operations-handoff-package.yml",
     [string] $EnterpriseAuthSmokeWorkflowPath = ".\.github\workflows\enterprise-auth-smoke-ci.yml",
     [string] $BrowserE2ESpecPath = ".\osmu-frontend\e2e\lightweight-demo.spec.js",
     [string] $FrontendPackagePath = ".\osmu-frontend\package.json",
@@ -512,6 +516,80 @@ Assert-Contains $operationsReadinessArtifactWorkflowContent ".osmu-run/latest-ku
 Assert-Contains $operationsReadinessArtifactWorkflowContent ".osmu-run/latest-kubernetes-dr-finalize.json" "Operations Readiness Artifact Finalizer CI workflow"
 Assert-Contains $operationsReadinessArtifactWorkflowContent ".osmu-run/latest-security-evidence-finalize.json" "Operations Readiness Artifact Finalizer CI workflow"
 
+$manualSecretRotationWorkflow = Read-Workflow $ManualSecretRotationEvidenceWorkflowPath "Manual Secret Rotation Evidence workflow"
+$manualSecretRotationWorkflowContent = $manualSecretRotationWorkflow.Content
+
+Assert-Contains $manualSecretRotationWorkflowContent "name: Manual Secret Rotation Evidence" "Manual Secret Rotation Evidence workflow"
+Assert-Contains $manualSecretRotationWorkflowContent "workflow_dispatch:" "Manual Secret Rotation Evidence workflow"
+Assert-NotContains $manualSecretRotationWorkflowContent "pull_request:" "Manual Secret Rotation Evidence workflow"
+Assert-NotContains $manualSecretRotationWorkflowContent "push:" "Manual Secret Rotation Evidence workflow"
+Assert-Contains $manualSecretRotationWorkflowContent "contents: read" "Manual Secret Rotation Evidence workflow"
+Assert-Contains $manualSecretRotationWorkflowContent "runs-on: ubuntu-latest" "Manual Secret Rotation Evidence workflow"
+Assert-Contains $manualSecretRotationWorkflowContent "timeout-minutes: 15" "Manual Secret Rotation Evidence workflow"
+Assert-Contains $manualSecretRotationWorkflowContent "Record secret rotation evidence" "Manual Secret Rotation Evidence workflow"
+Assert-Contains $manualSecretRotationWorkflowContent "./scripts/write-secret-rotation-evidence.ps1" "Manual Secret Rotation Evidence workflow"
+Assert-Contains $manualSecretRotationWorkflowContent "-FailIfNotPassed" "Manual Secret Rotation Evidence workflow"
+Assert-Contains $manualSecretRotationWorkflowContent "actions/upload-artifact@v4" "Manual Secret Rotation Evidence workflow"
+Assert-Contains $manualSecretRotationWorkflowContent "secret-rotation-evidence-" "Manual Secret Rotation Evidence workflow"
+Assert-Contains $manualSecretRotationWorkflowContent ".osmu-run/latest-secret-rotation-evidence.json" "Manual Secret Rotation Evidence workflow"
+Assert-Contains $manualSecretRotationWorkflowContent ".osmu-run/latest-secret-rotation-evidence.md" "Manual Secret Rotation Evidence workflow"
+
+$manualCommercialIntegrationWorkflow = Read-Workflow $ManualCommercialIntegrationEvidenceWorkflowPath "Manual Commercial Integration Evidence workflow"
+$manualCommercialIntegrationWorkflowContent = $manualCommercialIntegrationWorkflow.Content
+
+Assert-Contains $manualCommercialIntegrationWorkflowContent "name: Manual Commercial Integration Evidence" "Manual Commercial Integration Evidence workflow"
+Assert-Contains $manualCommercialIntegrationWorkflowContent "workflow_dispatch:" "Manual Commercial Integration Evidence workflow"
+Assert-NotContains $manualCommercialIntegrationWorkflowContent "pull_request:" "Manual Commercial Integration Evidence workflow"
+Assert-NotContains $manualCommercialIntegrationWorkflowContent "push:" "Manual Commercial Integration Evidence workflow"
+Assert-Contains $manualCommercialIntegrationWorkflowContent "contents: read" "Manual Commercial Integration Evidence workflow"
+Assert-Contains $manualCommercialIntegrationWorkflowContent "runs-on: ubuntu-latest" "Manual Commercial Integration Evidence workflow"
+Assert-Contains $manualCommercialIntegrationWorkflowContent "timeout-minutes: 15" "Manual Commercial Integration Evidence workflow"
+Assert-Contains $manualCommercialIntegrationWorkflowContent "Record commercial integration evidence" "Manual Commercial Integration Evidence workflow"
+Assert-Contains $manualCommercialIntegrationWorkflowContent "./scripts/write-commercial-integration-evidence.ps1" "Manual Commercial Integration Evidence workflow"
+Assert-Contains $manualCommercialIntegrationWorkflowContent "-RequireAllImplementedAdapters" "Manual Commercial Integration Evidence workflow"
+Assert-Contains $manualCommercialIntegrationWorkflowContent "-FailIfNotPassed" "Manual Commercial Integration Evidence workflow"
+Assert-Contains $manualCommercialIntegrationWorkflowContent "actions/upload-artifact@v4" "Manual Commercial Integration Evidence workflow"
+Assert-Contains $manualCommercialIntegrationWorkflowContent "commercial-integration-evidence-" "Manual Commercial Integration Evidence workflow"
+Assert-Contains $manualCommercialIntegrationWorkflowContent ".osmu-run/latest-commercial-integration-evidence.json" "Manual Commercial Integration Evidence workflow"
+Assert-Contains $manualCommercialIntegrationWorkflowContent ".osmu-run/latest-commercial-integration-evidence.md" "Manual Commercial Integration Evidence workflow"
+
+$manualCommercialApprovalWorkflow = Read-Workflow $ManualCommercialApprovalEvidenceWorkflowPath "Manual Commercial Approval Evidence workflow"
+$manualCommercialApprovalWorkflowContent = $manualCommercialApprovalWorkflow.Content
+
+Assert-Contains $manualCommercialApprovalWorkflowContent "name: Manual Commercial Approval Evidence" "Manual Commercial Approval Evidence workflow"
+Assert-Contains $manualCommercialApprovalWorkflowContent "workflow_dispatch:" "Manual Commercial Approval Evidence workflow"
+Assert-NotContains $manualCommercialApprovalWorkflowContent "pull_request:" "Manual Commercial Approval Evidence workflow"
+Assert-NotContains $manualCommercialApprovalWorkflowContent "push:" "Manual Commercial Approval Evidence workflow"
+Assert-Contains $manualCommercialApprovalWorkflowContent "contents: read" "Manual Commercial Approval Evidence workflow"
+Assert-Contains $manualCommercialApprovalWorkflowContent "runs-on: ubuntu-latest" "Manual Commercial Approval Evidence workflow"
+Assert-Contains $manualCommercialApprovalWorkflowContent "timeout-minutes: 15" "Manual Commercial Approval Evidence workflow"
+Assert-Contains $manualCommercialApprovalWorkflowContent "Record commercial approval evidence" "Manual Commercial Approval Evidence workflow"
+Assert-Contains $manualCommercialApprovalWorkflowContent "./scripts/write-commercial-approval-evidence.ps1" "Manual Commercial Approval Evidence workflow"
+Assert-Contains $manualCommercialApprovalWorkflowContent "-FailIfNotPassed" "Manual Commercial Approval Evidence workflow"
+Assert-Contains $manualCommercialApprovalWorkflowContent "actions/upload-artifact@v4" "Manual Commercial Approval Evidence workflow"
+Assert-Contains $manualCommercialApprovalWorkflowContent "commercial-approval-evidence-" "Manual Commercial Approval Evidence workflow"
+Assert-Contains $manualCommercialApprovalWorkflowContent ".osmu-run/latest-commercial-approval-evidence.json" "Manual Commercial Approval Evidence workflow"
+Assert-Contains $manualCommercialApprovalWorkflowContent ".osmu-run/latest-commercial-approval-evidence.md" "Manual Commercial Approval Evidence workflow"
+
+$manualOperationsHandoffPackageWorkflow = Read-Workflow $ManualOperationsHandoffPackageWorkflowPath "Manual Operations Handoff Package workflow"
+$manualOperationsHandoffPackageWorkflowContent = $manualOperationsHandoffPackageWorkflow.Content
+
+Assert-Contains $manualOperationsHandoffPackageWorkflowContent "name: Manual Operations Handoff Package" "Manual Operations Handoff Package workflow"
+Assert-Contains $manualOperationsHandoffPackageWorkflowContent "workflow_dispatch:" "Manual Operations Handoff Package workflow"
+Assert-NotContains $manualOperationsHandoffPackageWorkflowContent "pull_request:" "Manual Operations Handoff Package workflow"
+Assert-NotContains $manualOperationsHandoffPackageWorkflowContent "push:" "Manual Operations Handoff Package workflow"
+Assert-Contains $manualOperationsHandoffPackageWorkflowContent "contents: read" "Manual Operations Handoff Package workflow"
+Assert-Contains $manualOperationsHandoffPackageWorkflowContent "runs-on: ubuntu-latest" "Manual Operations Handoff Package workflow"
+Assert-Contains $manualOperationsHandoffPackageWorkflowContent "timeout-minutes: 15" "Manual Operations Handoff Package workflow"
+Assert-Contains $manualOperationsHandoffPackageWorkflowContent "Record operations handoff package" "Manual Operations Handoff Package workflow"
+Assert-Contains $manualOperationsHandoffPackageWorkflowContent "./scripts/write-operations-handoff-package.ps1" "Manual Operations Handoff Package workflow"
+Assert-Contains $manualOperationsHandoffPackageWorkflowContent "-RequireProductionEvidence" "Manual Operations Handoff Package workflow"
+Assert-Contains $manualOperationsHandoffPackageWorkflowContent "-FailIfNotPassed" "Manual Operations Handoff Package workflow"
+Assert-Contains $manualOperationsHandoffPackageWorkflowContent "actions/upload-artifact@v4" "Manual Operations Handoff Package workflow"
+Assert-Contains $manualOperationsHandoffPackageWorkflowContent "operations-handoff-package-" "Manual Operations Handoff Package workflow"
+Assert-Contains $manualOperationsHandoffPackageWorkflowContent ".osmu-run/latest-operations-handoff-package.json" "Manual Operations Handoff Package workflow"
+Assert-Contains $manualOperationsHandoffPackageWorkflowContent ".osmu-run/latest-operations-handoff-package.md" "Manual Operations Handoff Package workflow"
+
 $enterpriseAuthSmokeWorkflow = Read-Workflow $EnterpriseAuthSmokeWorkflowPath "Enterprise Auth Smoke CI workflow"
 $enterpriseAuthSmokeWorkflowContent = $enterpriseAuthSmokeWorkflow.Content
 
@@ -589,6 +667,10 @@ Write-Host "Kubernetes DR Finalizer workflow: $($kubernetesDrWorkflow.Path)"
 Write-Host "Kubernetes Operations Report Sync workflow: $($kubernetesOperationsReportSyncWorkflow.Path)"
 Write-Host "Operations Readiness Finalizer workflow: $($operationsReadinessWorkflow.Path)"
 Write-Host "Operations Readiness Artifact Finalizer workflow: $($operationsReadinessArtifactWorkflow.Path)"
+Write-Host "Manual Secret Rotation Evidence workflow: $($manualSecretRotationWorkflow.Path)"
+Write-Host "Manual Commercial Integration Evidence workflow: $($manualCommercialIntegrationWorkflow.Path)"
+Write-Host "Manual Commercial Approval Evidence workflow: $($manualCommercialApprovalWorkflow.Path)"
+Write-Host "Manual Operations Handoff Package workflow: $($manualOperationsHandoffPackageWorkflow.Path)"
 Write-Host "Enterprise Auth Smoke workflow: $($enterpriseAuthSmokeWorkflow.Path)"
 Write-Host "Playwright config: $($playwrightConfig.Path)"
 Write-Host "Browser E2E spec: $($browserSpec.Path)"

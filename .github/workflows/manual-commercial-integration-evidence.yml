@@ -1,0 +1,265 @@
+name: Manual Commercial Integration Evidence
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment_name:
+        description: Target environment label
+        required: true
+        default: prod
+      target_cluster:
+        description: Target cluster label
+        required: true
+        default: osmu-prod
+      operator:
+        description: Operator or team recording the evidence
+        required: true
+        default: ""
+      verification_started_at:
+        description: Verification start time in ISO-8601 format
+        required: true
+        default: ""
+      verification_completed_at:
+        description: Verification completion time in ISO-8601 format
+        required: true
+        default: ""
+      change_approval_ref:
+        description: External change approval reference
+        required: true
+        default: ""
+      notification_webhook_evidence_ref:
+        description: External generic notification webhook evidence reference
+        required: false
+        default: ""
+      slack_webhook_evidence_ref:
+        description: External Slack notification evidence reference
+        required: false
+        default: ""
+      email_smtp_evidence_ref:
+        description: External EMAIL SMTP relay evidence reference
+        required: false
+        default: ""
+      payment_generic_webhook_evidence_ref:
+        description: External generic payment webhook evidence reference
+        required: false
+        default: ""
+      payment_card_profile_evidence_ref:
+        description: External CARD payment profile evidence reference
+        required: false
+        default: ""
+      payment_bank_profile_evidence_ref:
+        description: External BANK payment profile evidence reference
+        required: false
+        default: ""
+      payment_tax_profile_evidence_ref:
+        description: External TAX payment profile evidence reference
+        required: false
+        default: ""
+      payment_erp_profile_evidence_ref:
+        description: External ERP payment profile evidence reference
+        required: false
+        default: ""
+      adapter_retry_worker_evidence_ref:
+        description: External adapter retry worker evidence reference
+        required: true
+        default: ""
+      payload_review_evidence_ref:
+        description: External payload size cap review evidence reference
+        required: true
+        default: ""
+      private_network_block_evidence_ref:
+        description: External private/local endpoint blocking evidence reference
+        required: true
+        default: ""
+      hmac_signature_evidence_ref:
+        description: External HMAC signature header review evidence reference
+        required: true
+        default: ""
+      verified_notification_webhook:
+        description: Confirm generic notification webhook delivery
+        required: true
+        type: boolean
+        default: false
+      verified_slack_webhook:
+        description: Confirm Slack notification webhook delivery
+        required: true
+        type: boolean
+        default: false
+      verified_email_smtp:
+        description: Confirm EMAIL SMTP relay delivery
+        required: true
+        type: boolean
+        default: false
+      verified_payment_generic_webhook:
+        description: Confirm generic payment webhook handoff
+        required: true
+        type: boolean
+        default: false
+      verified_payment_card_profile:
+        description: Confirm CARD payment profile handoff
+        required: true
+        type: boolean
+        default: false
+      verified_payment_bank_profile:
+        description: Confirm BANK payment profile handoff
+        required: true
+        type: boolean
+        default: false
+      verified_payment_tax_profile:
+        description: Confirm TAX payment profile handoff
+        required: true
+        type: boolean
+        default: false
+      verified_payment_erp_profile:
+        description: Confirm ERP payment profile handoff
+        required: true
+        type: boolean
+        default: false
+      confirm_adapter_retry_worker_run:
+        description: Confirm adapter retry worker target run
+        required: true
+        type: boolean
+        default: false
+      confirm_payload_size_caps:
+        description: Confirm outbound payload size caps
+        required: true
+        type: boolean
+        default: false
+      confirm_private_network_blocking:
+        description: Confirm private/local endpoint blocking
+        required: true
+        type: boolean
+        default: false
+      confirm_hmac_signature_headers:
+        description: Confirm webhook HMAC signature header review
+        required: true
+        type: boolean
+        default: false
+      confirm_no_secret_values:
+        description: Confirm inputs contain references only, not secret values
+        required: true
+        type: boolean
+        default: false
+      confirm_no_raw_provider_responses:
+        description: Confirm raw provider responses and customer payment data are excluded
+        required: true
+        type: boolean
+        default: false
+      require_all_implemented_adapters:
+        description: Require every implemented notification/payment handoff adapter
+        required: true
+        type: boolean
+        default: true
+      fail_if_not_passed:
+        description: Fail workflow when evidence result is not passed
+        required: true
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: manual-commercial-integration-evidence-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  commercial-integration-evidence:
+    name: Manual commercial integration evidence
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Record commercial integration evidence
+        shell: pwsh
+        env:
+          OSMU_ENVIRONMENT_NAME: ${{ inputs.environment_name }}
+          OSMU_TARGET_CLUSTER: ${{ inputs.target_cluster }}
+          OSMU_OPERATOR: ${{ inputs.operator }}
+          OSMU_VERIFICATION_STARTED_AT: ${{ inputs.verification_started_at }}
+          OSMU_VERIFICATION_COMPLETED_AT: ${{ inputs.verification_completed_at }}
+          OSMU_CHANGE_APPROVAL_REF: ${{ inputs.change_approval_ref }}
+          OSMU_NOTIFICATION_WEBHOOK_EVIDENCE_REF: ${{ inputs.notification_webhook_evidence_ref }}
+          OSMU_SLACK_WEBHOOK_EVIDENCE_REF: ${{ inputs.slack_webhook_evidence_ref }}
+          OSMU_EMAIL_SMTP_EVIDENCE_REF: ${{ inputs.email_smtp_evidence_ref }}
+          OSMU_PAYMENT_GENERIC_WEBHOOK_EVIDENCE_REF: ${{ inputs.payment_generic_webhook_evidence_ref }}
+          OSMU_PAYMENT_CARD_PROFILE_EVIDENCE_REF: ${{ inputs.payment_card_profile_evidence_ref }}
+          OSMU_PAYMENT_BANK_PROFILE_EVIDENCE_REF: ${{ inputs.payment_bank_profile_evidence_ref }}
+          OSMU_PAYMENT_TAX_PROFILE_EVIDENCE_REF: ${{ inputs.payment_tax_profile_evidence_ref }}
+          OSMU_PAYMENT_ERP_PROFILE_EVIDENCE_REF: ${{ inputs.payment_erp_profile_evidence_ref }}
+          OSMU_ADAPTER_RETRY_WORKER_EVIDENCE_REF: ${{ inputs.adapter_retry_worker_evidence_ref }}
+          OSMU_PAYLOAD_REVIEW_EVIDENCE_REF: ${{ inputs.payload_review_evidence_ref }}
+          OSMU_PRIVATE_NETWORK_BLOCK_EVIDENCE_REF: ${{ inputs.private_network_block_evidence_ref }}
+          OSMU_HMAC_SIGNATURE_EVIDENCE_REF: ${{ inputs.hmac_signature_evidence_ref }}
+          OSMU_VERIFIED_NOTIFICATION_WEBHOOK: ${{ inputs.verified_notification_webhook }}
+          OSMU_VERIFIED_SLACK_WEBHOOK: ${{ inputs.verified_slack_webhook }}
+          OSMU_VERIFIED_EMAIL_SMTP: ${{ inputs.verified_email_smtp }}
+          OSMU_VERIFIED_PAYMENT_GENERIC_WEBHOOK: ${{ inputs.verified_payment_generic_webhook }}
+          OSMU_VERIFIED_PAYMENT_CARD_PROFILE: ${{ inputs.verified_payment_card_profile }}
+          OSMU_VERIFIED_PAYMENT_BANK_PROFILE: ${{ inputs.verified_payment_bank_profile }}
+          OSMU_VERIFIED_PAYMENT_TAX_PROFILE: ${{ inputs.verified_payment_tax_profile }}
+          OSMU_VERIFIED_PAYMENT_ERP_PROFILE: ${{ inputs.verified_payment_erp_profile }}
+          OSMU_CONFIRM_ADAPTER_RETRY_WORKER_RUN: ${{ inputs.confirm_adapter_retry_worker_run }}
+          OSMU_CONFIRM_PAYLOAD_SIZE_CAPS: ${{ inputs.confirm_payload_size_caps }}
+          OSMU_CONFIRM_PRIVATE_NETWORK_BLOCKING: ${{ inputs.confirm_private_network_blocking }}
+          OSMU_CONFIRM_HMAC_SIGNATURE_HEADERS: ${{ inputs.confirm_hmac_signature_headers }}
+          OSMU_CONFIRM_NO_SECRET_VALUES: ${{ inputs.confirm_no_secret_values }}
+          OSMU_CONFIRM_NO_RAW_PROVIDER_RESPONSES: ${{ inputs.confirm_no_raw_provider_responses }}
+          OSMU_REQUIRE_ALL_IMPLEMENTED_ADAPTERS: ${{ inputs.require_all_implemented_adapters }}
+          OSMU_FAIL_IF_NOT_PASSED: ${{ inputs.fail_if_not_passed }}
+        run: |
+          $evidenceArgs = @(
+            "-EnvironmentName", $env:OSMU_ENVIRONMENT_NAME,
+            "-TargetCluster", $env:OSMU_TARGET_CLUSTER,
+            "-Operator", $env:OSMU_OPERATOR,
+            "-VerificationStartedAt", $env:OSMU_VERIFICATION_STARTED_AT,
+            "-VerificationCompletedAt", $env:OSMU_VERIFICATION_COMPLETED_AT,
+            "-ChangeApprovalRef", $env:OSMU_CHANGE_APPROVAL_REF,
+            "-NotificationWebhookEvidenceRef", $env:OSMU_NOTIFICATION_WEBHOOK_EVIDENCE_REF,
+            "-SlackWebhookEvidenceRef", $env:OSMU_SLACK_WEBHOOK_EVIDENCE_REF,
+            "-EmailSmtpEvidenceRef", $env:OSMU_EMAIL_SMTP_EVIDENCE_REF,
+            "-PaymentGenericWebhookEvidenceRef", $env:OSMU_PAYMENT_GENERIC_WEBHOOK_EVIDENCE_REF,
+            "-PaymentCardProfileEvidenceRef", $env:OSMU_PAYMENT_CARD_PROFILE_EVIDENCE_REF,
+            "-PaymentBankProfileEvidenceRef", $env:OSMU_PAYMENT_BANK_PROFILE_EVIDENCE_REF,
+            "-PaymentTaxProfileEvidenceRef", $env:OSMU_PAYMENT_TAX_PROFILE_EVIDENCE_REF,
+            "-PaymentErpProfileEvidenceRef", $env:OSMU_PAYMENT_ERP_PROFILE_EVIDENCE_REF,
+            "-AdapterRetryWorkerEvidenceRef", $env:OSMU_ADAPTER_RETRY_WORKER_EVIDENCE_REF,
+            "-PayloadReviewEvidenceRef", $env:OSMU_PAYLOAD_REVIEW_EVIDENCE_REF,
+            "-PrivateNetworkBlockEvidenceRef", $env:OSMU_PRIVATE_NETWORK_BLOCK_EVIDENCE_REF,
+            "-HmacSignatureEvidenceRef", $env:OSMU_HMAC_SIGNATURE_EVIDENCE_REF,
+            "-JsonOutputPath", ".osmu-run/latest-commercial-integration-evidence.json",
+            "-MarkdownOutputPath", ".osmu-run/latest-commercial-integration-evidence.md"
+          )
+
+          if ($env:OSMU_VERIFIED_NOTIFICATION_WEBHOOK -eq "true") { $evidenceArgs += "-VerifiedNotificationWebhook" }
+          if ($env:OSMU_VERIFIED_SLACK_WEBHOOK -eq "true") { $evidenceArgs += "-VerifiedSlackWebhook" }
+          if ($env:OSMU_VERIFIED_EMAIL_SMTP -eq "true") { $evidenceArgs += "-VerifiedEmailSmtp" }
+          if ($env:OSMU_VERIFIED_PAYMENT_GENERIC_WEBHOOK -eq "true") { $evidenceArgs += "-VerifiedPaymentGenericWebhook" }
+          if ($env:OSMU_VERIFIED_PAYMENT_CARD_PROFILE -eq "true") { $evidenceArgs += "-VerifiedPaymentCardProfile" }
+          if ($env:OSMU_VERIFIED_PAYMENT_BANK_PROFILE -eq "true") { $evidenceArgs += "-VerifiedPaymentBankProfile" }
+          if ($env:OSMU_VERIFIED_PAYMENT_TAX_PROFILE -eq "true") { $evidenceArgs += "-VerifiedPaymentTaxProfile" }
+          if ($env:OSMU_VERIFIED_PAYMENT_ERP_PROFILE -eq "true") { $evidenceArgs += "-VerifiedPaymentErpProfile" }
+          if ($env:OSMU_CONFIRM_ADAPTER_RETRY_WORKER_RUN -eq "true") { $evidenceArgs += "-ConfirmAdapterRetryWorkerRun" }
+          if ($env:OSMU_CONFIRM_PAYLOAD_SIZE_CAPS -eq "true") { $evidenceArgs += "-ConfirmPayloadSizeCaps" }
+          if ($env:OSMU_CONFIRM_PRIVATE_NETWORK_BLOCKING -eq "true") { $evidenceArgs += "-ConfirmPrivateNetworkBlocking" }
+          if ($env:OSMU_CONFIRM_HMAC_SIGNATURE_HEADERS -eq "true") { $evidenceArgs += "-ConfirmHmacSignatureHeaders" }
+          if ($env:OSMU_CONFIRM_NO_SECRET_VALUES -eq "true") { $evidenceArgs += "-ConfirmNoSecretValues" }
+          if ($env:OSMU_CONFIRM_NO_RAW_PROVIDER_RESPONSES -eq "true") { $evidenceArgs += "-ConfirmNoRawProviderResponses" }
+          if ($env:OSMU_REQUIRE_ALL_IMPLEMENTED_ADAPTERS -eq "true") { $evidenceArgs += "-RequireAllImplementedAdapters" }
+          if ($env:OSMU_FAIL_IF_NOT_PASSED -eq "true") { $evidenceArgs += "-FailIfNotPassed" }
+
+          ./scripts/write-commercial-integration-evidence.ps1 @evidenceArgs
+
+      - name: Upload commercial integration evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: commercial-integration-evidence-${{ github.run_id }}
+          path: |
+            .osmu-run/latest-commercial-integration-evidence.json
+            .osmu-run/latest-commercial-integration-evidence.md
+          if-no-files-found: error
+          retention-days: 14

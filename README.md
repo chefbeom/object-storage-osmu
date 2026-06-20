@@ -17,8 +17,8 @@ OSMU(Object Storage Management Utility)는 기업 내부망 또는 전용 인프
 - 로컬 durable MVP 데모: Docker Compose 기반 MariaDB + MinIO + Backend + Frontend 조합으로 검증 가능.
 - Web Portal: 로그인, dashboard, bucket/object, admin/developer, audit, lifecycle, share, quota, storage expansion, operations readiness, data-flow monitoring 화면 제공.
 - Backend: REST API, S3 호환 API, SigV4, bucket/object, multipart, CopyObject, multi-delete, Access Key, dashboard/readiness, monitoring API 제공.
-- Operations: Kubernetes/Helm draft, monitoring artifact, backup/restore drill, storage expansion runner, secret rotation evidence writer, commercial integration evidence writer, commercial approval evidence writer, operations handoff package evidence writer, security evidence writer/finalizer, operations readiness finalizer와 verifier 제공.
-- 남은 큰 축: 실제 운영 클러스터 evidence, GitHub-hosted durable gate evidence, 장기 analytics/time-series, target commercial approval과 운영 handoff package `result=passed` evidence. S3 client smoke는 대체성 회귀 검증으로 유지한다.
+- Operations: Kubernetes/Helm draft, monitoring artifact, backup/restore drill, storage expansion runner, secret rotation/commercial integration/commercial approval/operations handoff package evidence writer와 manual evidence workflow, security evidence writer/finalizer, operations readiness finalizer와 verifier 제공.
+- 남은 큰 축: 실제 운영 클러스터 evidence, GitHub-hosted durable gate evidence, 장기 analytics/time-series, target secret rotation/commercial integration/commercial approval과 운영 handoff package `result=passed` evidence 확보이다. S3 client smoke는 대체성 회귀 검증으로 유지한다.
 
 ## 아키텍처 개요
 
@@ -100,7 +100,7 @@ Frontend는 MariaDB나 MinIO에 직접 접근하지 않습니다. Backend API만
 - Dashboard: widget catalog, layout preset, system/backup/quota/share/readiness/data-flow 요약.
 - Monitoring: data-flow event 저장, filter, detailed/daily-rollup/materialized-rollup CSV export, source/operation trend chart, daily rollup, daily rollup materialized store refresh/read/export, event/materialized rollup retention status/manual run, tenant chargeback preview API/UI, billing pricing policy와 proposal/internal approval/commercial price-list reference, threshold alerts, chargeback alert notification preview/outbox/webhook send/adapter retry state, chargeback preview CSV export, chargeback invoice draft CSV export/persistence/internal approval, final invoice/payment state workflow, payment provider handoff outbox/webhook send/adapter retry state/readiness, Prometheus/Grafana starter artifact.
 - Storage Expansion: 증설 요청, dry-run/apply/rollback runner, GitOps artifact, execution history.
-- Operations Readiness: evidence plan, invocation unblock, dispatch preflight, workflow run id, secret rotation/commercial integration/approval/handoff package artifact import/finalizer, convergence report, handoff package evidence.
+- Operations Readiness: evidence plan, invocation unblock, dispatch preflight, workflow run id, secret rotation/commercial integration/approval/handoff package manual evidence workflow와 artifact import/finalizer, convergence report, handoff package evidence.
 - Enterprise Auth Evidence: OIDC/LDAP smoke plan과 target IdP/directory evidence를 operations readiness blocker로 추적.
 
 ## 저장소 구조

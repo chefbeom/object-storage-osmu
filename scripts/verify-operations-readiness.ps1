@@ -107,12 +107,16 @@ Assert-CheckExists $report "Image signing evidence writer" "security-hardening"
 Assert-CheckExists $report "Security evidence writer self-test" "security-hardening"
 Assert-CheckExists $report "Secret rotation evidence writer" "security-hardening"
 Assert-CheckExists $report "Secret rotation evidence writer self-test" "security-hardening"
+Assert-CheckExists $report "Secret rotation evidence workflow" "security-hardening"
 Assert-CheckExists $report "Commercial integration evidence writer" "commercial-integration"
 Assert-CheckExists $report "Commercial integration evidence writer self-test" "commercial-integration"
+Assert-CheckExists $report "Commercial integration evidence workflow" "commercial-integration"
 Assert-CheckExists $report "Commercial approval evidence writer" "commercial-approval"
 Assert-CheckExists $report "Commercial approval evidence writer self-test" "commercial-approval"
+Assert-CheckExists $report "Commercial approval evidence workflow" "commercial-approval"
 Assert-CheckExists $report "Operations handoff package writer" "operations-handoff-package"
 Assert-CheckExists $report "Operations handoff package writer self-test" "operations-handoff-package"
+Assert-CheckExists $report "Operations handoff package workflow" "operations-handoff-package"
 Assert-CheckExists $report "Security evidence finalizer" "security-hardening"
 Assert-CheckExists $report "Security evidence finalizer self-test" "security-hardening"
 Assert-CheckExists $report "Security evidence finalizer workflow" "security-hardening"
@@ -145,6 +149,12 @@ if ($secretRotationCheck.Count -ne 1) {
 if (-not ([string] $secretRotationCheck[0].remediation.command).Contains("write-secret-rotation-evidence.ps1")) {
     throw "Secret/certificate rotation target evidence remediation must point to write-secret-rotation-evidence.ps1."
 }
+if ($secretRotationCheck[0].remediation.workflow -ne ".github/workflows/manual-secret-rotation-evidence.yml") {
+    throw "Secret/certificate rotation target evidence remediation workflow must point to manual-secret-rotation-evidence.yml."
+}
+if (-not ([string] $secretRotationCheck[0].remediation.workflowCommand).Contains("gh workflow run manual-secret-rotation-evidence.yml")) {
+    throw "Secret/certificate rotation target evidence remediation workflow command must dispatch manual-secret-rotation-evidence.yml."
+}
 if (-not ([string] $secretRotationCheck[0].requiredEvidence).Contains("target environment")) {
     throw "Secret/certificate rotation target evidence must require target environment evidence."
 }
@@ -155,6 +165,12 @@ if ($commercialIntegrationCheck.Count -ne 1) {
 if (-not ([string] $commercialIntegrationCheck[0].remediation.command).Contains("write-commercial-integration-evidence.ps1")) {
     throw "Commercial integration target evidence remediation must point to write-commercial-integration-evidence.ps1."
 }
+if ($commercialIntegrationCheck[0].remediation.workflow -ne ".github/workflows/manual-commercial-integration-evidence.yml") {
+    throw "Commercial integration target evidence remediation workflow must point to manual-commercial-integration-evidence.yml."
+}
+if (-not ([string] $commercialIntegrationCheck[0].remediation.workflowCommand).Contains("gh workflow run manual-commercial-integration-evidence.yml")) {
+    throw "Commercial integration target evidence remediation workflow command must dispatch manual-commercial-integration-evidence.yml."
+}
 if (-not ([string] $commercialIntegrationCheck[0].requiredEvidence).Contains("target environment")) {
     throw "Commercial integration target evidence must require target environment evidence."
 }
@@ -164,6 +180,12 @@ if ($commercialApprovalCheck.Count -ne 1) {
 }
 if (-not ([string] $commercialApprovalCheck[0].remediation.command).Contains("write-commercial-approval-evidence.ps1")) {
     throw "Commercial approval target evidence remediation must point to write-commercial-approval-evidence.ps1."
+}
+if ($commercialApprovalCheck[0].remediation.workflow -ne ".github/workflows/manual-commercial-approval-evidence.yml") {
+    throw "Commercial approval target evidence remediation workflow must point to manual-commercial-approval-evidence.yml."
+}
+if (-not ([string] $commercialApprovalCheck[0].remediation.workflowCommand).Contains("gh workflow run manual-commercial-approval-evidence.yml")) {
+    throw "Commercial approval target evidence remediation workflow command must dispatch manual-commercial-approval-evidence.yml."
 }
 if (-not ([string] $commercialApprovalCheck[0].requiredEvidence).Contains("final pricing") -or -not ([string] $commercialApprovalCheck[0].requiredEvidence).Contains("legal approval")) {
     throw "Commercial approval target evidence must require final pricing and legal approval evidence."
@@ -190,6 +212,12 @@ if ($operationsHandoffPackageCheck.Count -ne 1) {
 }
 if (-not ([string] $operationsHandoffPackageCheck[0].remediation.command).Contains("write-operations-handoff-package.ps1")) {
     throw "Operations handoff package target evidence remediation must point to write-operations-handoff-package.ps1."
+}
+if ($operationsHandoffPackageCheck[0].remediation.workflow -ne ".github/workflows/manual-operations-handoff-package.yml") {
+    throw "Operations handoff package target evidence remediation workflow must point to manual-operations-handoff-package.yml."
+}
+if (-not ([string] $operationsHandoffPackageCheck[0].remediation.workflowCommand).Contains("gh workflow run manual-operations-handoff-package.yml")) {
+    throw "Operations handoff package target evidence remediation workflow command must dispatch manual-operations-handoff-package.yml."
 }
 if (-not ([string] $operationsHandoffPackageCheck[0].remediation.command).Contains("-CommercialApprovalEvidenceRef")) {
     throw "Operations handoff package target evidence remediation must include CommercialApprovalEvidenceRef."
