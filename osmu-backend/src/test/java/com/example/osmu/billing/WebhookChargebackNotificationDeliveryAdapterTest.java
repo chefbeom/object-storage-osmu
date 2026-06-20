@@ -48,6 +48,7 @@ class WebhookChargebackNotificationDeliveryAdapterTest {
                             "",
                             "",
                             3000,
+                            65536,
                             true,
                             "",
                             25,
@@ -108,6 +109,7 @@ class WebhookChargebackNotificationDeliveryAdapterTest {
                             "",
                             "",
                             3000,
+                            65536,
                             false,
                             "127.0.0.1",
                             smtpServer.port(),
@@ -167,6 +169,7 @@ class WebhookChargebackNotificationDeliveryAdapterTest {
                         "",
                         "",
                         3000,
+                        65536,
                         false,
                         "127.0.0.1",
                         25,
@@ -180,6 +183,56 @@ class WebhookChargebackNotificationDeliveryAdapterTest {
                 );
 
         assertThat(adapter.isConfigured("EMAIL")).isFalse();
+    }
+
+    @Test
+    void blocksOversizedGenericWebhookPayloadBeforeSending() {
+        WebhookChargebackNotificationDeliveryAdapter adapter =
+                new WebhookChargebackNotificationDeliveryAdapter(
+                        OBJECT_MAPPER,
+                        "https://hooks.example.com/osmu",
+                        "",
+                        "",
+                        "",
+                        3000,
+                        1024,
+                        false,
+                        "",
+                        25,
+                        "",
+                        "osmu.local",
+                        "[OSMU]",
+                        "",
+                        "",
+                        false,
+                        false
+                );
+
+        ChargebackNotificationDeliveryAdapterResult result = adapter.deliver(new ChargebackAlertNotificationDeliveryRecord(
+                12L,
+                10L,
+                "Oversized Org",
+                "WARNING",
+                BigDecimal.valueOf(100L),
+                BigDecimal.valueOf(70L),
+                BigDecimal.valueOf(100L),
+                "WEBHOOK",
+                "ops-webhook",
+                "PENDING_DELIVERY_ADAPTER",
+                0,
+                null,
+                "Chargeback warning threshold crossed",
+                "x".repeat(2048),
+                "{\"eventType\":\"chargeback.threshold\"}",
+                "admin",
+                "unit test",
+                OffsetDateTime.now(),
+                OffsetDateTime.now(),
+                null
+        ));
+
+        assertThat(result.result()).isEqualTo("BLOCKED_CREDENTIAL");
+        assertThat(result.lastError()).contains("max payload size");
     }
 
     private static final class FakeSmtpServer implements AutoCloseable {

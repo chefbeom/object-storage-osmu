@@ -2833,6 +2833,7 @@ Configuration:
 - `osmu.billing.notification-delivery.slack.webhook-url` (optional): HTTP/HTTPS Slack incoming webhook endpoint used for `notificationChannel=SLACK`.
 - `osmu.billing.notification-delivery.secret-header-name` and `osmu.billing.notification-delivery.secret-header-value` (optional pair): header name/value sent with the webhook request; header values are never stored in delivery rows.
 - `osmu.billing.notification-delivery.timeout-ms` (optional): request timeout, clamped to 500..15000ms. Default is `3000`.
+- `osmu.billing.notification-delivery.max-payload-bytes` (optional): max outbound notification payload size in UTF-8 bytes, clamped to 1024..262144. Default is `65536`. Oversized webhook, Slack, or EMAIL payloads are blocked before any external call.
 - `osmu.billing.notification-delivery.allow-private-network` (optional): default `false`. When false, localhost, loopback, link-local, private IPv4/IPv6, and local-domain webhook hosts are rejected before any external call. Enable only for local/dev or explicitly approved internal network integrations.
 - `osmu.billing.notification-delivery.email.smtp-host` (optional): SMTP relay host used for `notificationChannel=EMAIL`.
 - `osmu.billing.notification-delivery.email.smtp-port` (optional): SMTP relay port. Default is `25`.
@@ -2845,7 +2846,7 @@ Configuration:
 
 Query parameters:
 
-- `retryDelayMinutes` (optional): next retry delay for retryable webhook results, clamped to 1..1440. Default is `60`.
+- `retryDelayMinutes` (optional): next retry delay for retryable adapter results, clamped to 1..1440. Default is `60`.
 
 Response:
 
@@ -2874,11 +2875,11 @@ Response:
 
 ### POST /api/admin/billing/chargeback-adapter-retry-worker/run
 
-Runs the chargeback adapter retry worker for due outbox rows. `ADMIN` only. With `dryRun=false`, due notification rows call the configured generic webhook or `SLACK` webhook adapter when available for that row's channel, and due payment handoff rows call the configured payment-provider webhook handoff adapter when available. Each row moves to success, retry, or blocked state. If a relevant adapter is not configured, the row moves to its credential/configuration blocked state without an external call.
+Runs the chargeback adapter retry worker for due outbox rows. `ADMIN` only. With `dryRun=false`, due notification rows call the configured generic webhook, `SLACK` webhook, or `EMAIL` SMTP relay adapter when available for that row's channel, and due payment handoff rows call the configured payment-provider webhook handoff adapter when available. Each row moves to success, retry, or blocked state. If a relevant adapter is not configured, the row moves to its credential/configuration blocked state without an external call.
 
 Query parameters:
 
-- `dryRun` (optional): default `true`. Use `false` to apply configured webhook attempts and blocked transitions for unconfigured adapters.
+- `dryRun` (optional): default `true`. Use `false` to apply configured adapter attempts and blocked transitions for unconfigured adapters.
 - `limit` (optional): total scan limit, clamped to 1..200.
 
 Response:
@@ -2887,7 +2888,7 @@ Response:
 - `enabled`, `dryRun`, `externalAdaptersEnabled`
 - `notificationCandidateCount`, `paymentCandidateCount`, `updatedCount`
 - `items[]`: rows considered by the worker and their target status.
-- `note`: dry-run, webhook notification attempt, or no-send blocked transition summary.
+- `note`: dry-run, adapter attempt, or no-send blocked transition summary.
 
 ### GET /api/admin/billing/chargeback-preview/export.csv
 
@@ -3079,18 +3080,19 @@ Response:
 
 ### POST /api/admin/billing/chargeback-payment-provider-handoffs/{handoffId}/adapter-send
 
-Attempts configured payment-provider webhook handoff delivery for a persisted handoff row. `ADMIN` only. If `osmu.billing.payment-provider.webhook-url` is not configured or is invalid, the row moves to `PAYMENT_PROVIDER_ADAPTER_BLOCKED_CREDENTIAL` without an external call. When configured, OSMU sends a JSON envelope to the webhook with handoff metadata plus the original payment-provider payload. This is a B2B handoff adapter, not a built-in card/bank/tax provider integration. It never stores the webhook URL, secret header value, response body, or raw provider response in the outbox.
+Attempts configured payment-provider webhook handoff delivery for a persisted handoff row. `ADMIN` only. If `osmu.billing.payment-provider.webhook-url` is not configured or is invalid, the row moves to `PAYMENT_PROVIDER_ADAPTER_BLOCKED_CREDENTIAL` without an external call. When configured, OSMU sends a JSON envelope to the webhook with handoff metadata plus the original payment-provider payload. This is a B2B handoff adapter, not a built-in card/bank/tax provider integration. Oversized outbound payloads are blocked before any external call. It never stores the webhook URL, secret header value, response body, or raw provider response in the outbox.
 
 Configuration:
 
 - `osmu.billing.payment-provider.webhook-url` (optional): HTTP/HTTPS endpoint to call.
 - `osmu.billing.payment-provider.secret-header-name` and `osmu.billing.payment-provider.secret-header-value` (optional pair): header name/value sent with the webhook request; header values are never stored in handoff rows.
 - `osmu.billing.payment-provider.timeout-ms` (optional): request timeout, clamped to 500..15000ms. Default is `3000`.
+- `osmu.billing.payment-provider.max-payload-bytes` (optional): max outbound payment handoff payload size in UTF-8 bytes, clamped to 1024..262144. Default is `65536`.
 - `osmu.billing.payment-provider.allow-private-network` (optional): default `false`. When false, localhost, loopback, link-local, private IPv4/IPv6, and local-domain webhook hosts are rejected before any external call. Enable only for local/dev or explicitly approved internal network integrations.
 
 Query parameters:
 
-- `retryDelayMinutes` (optional): next retry delay for retryable webhook results, clamped to 1..1440. Default is `60`.
+- `retryDelayMinutes` (optional): next retry delay for retryable webhook or adapter results, clamped to 1..1440. Default is `60`.
 
 Response:
 

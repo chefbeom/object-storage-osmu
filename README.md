@@ -32,7 +32,7 @@ OSMU는 다섯 plane으로 나누어 이해하면 쉽습니다.
 
 ## Chargeback Note
 
-- 현재 billing/chargeback은 내부 pricing policy/proposal, 상업 가격표 승인 참조 기록, preview/export, threshold alert, notification/payment outbox, notification webhook/Slack/EMAIL SMTP relay adapter send, payment provider webhook handoff send, private/local webhook URL과 SMTP relay host 기본 차단, invoice/payment workflow, adapter retry 상태 기록, notification/payment adapter retry worker dry-run/run까지 제공한다.
+- 현재 billing/chargeback은 내부 pricing policy/proposal, 상업 가격표 승인 참조 기록, preview/export, threshold alert, notification/payment outbox, notification webhook/Slack/EMAIL SMTP relay adapter send, payment provider webhook handoff send, private/local webhook URL과 SMTP relay host 기본 차단, outbound payload size cap, invoice/payment workflow, adapter retry 상태 기록, notification/payment adapter retry worker dry-run/run까지 제공한다.
 - 아직 남은 범위는 card/bank/tax/ERP별 provider adapter, broader external-send hardening, production secret rotation evidence이다.
 
 ```mermaid
@@ -296,6 +296,6 @@ Enterprise auth는 `scripts/write-enterprise-auth-smoke-plan.ps1` 또는 `.githu
 - 실제 Kubernetes cluster와 GitHub-hosted workflow evidence 수집.
 - 관리자/감사자/조직 관리자 워크플로우 보강, 실제 IdP/LDAP pilot smoke 실행과 `.osmu-run/latest-enterprise-auth-smoke.json` evidence 확보.
 - data-flow 장기 analytics를 위한 partition 또는 time-series 저장소 연동.
-- tenant billing/chargeback: preview API, admin billing panel, pricing policy 저장과 proposal/internal approval/commercial price-list reference, warning/critical threshold alert, alert notification preview/outbox/webhook/Slack/EMAIL SMTP relay send/adapter retry state, private/local webhook URL과 SMTP relay host 기본 차단, 비용 리포트 CSV export, draft invoice CSV export/persistence/internal approval, final invoice/payment state workflow, payment provider handoff outbox/webhook send/adapter retry state, notification/payment adapter retry worker를 기반으로 provider별 결제 adapter, broader external-send hardening을 보강.
+- tenant billing/chargeback: preview API, admin billing panel, pricing policy 저장과 proposal/internal approval/commercial price-list reference, warning/critical threshold alert, alert notification preview/outbox/webhook/Slack/EMAIL SMTP relay send/adapter retry state, private/local webhook URL과 SMTP relay host 기본 차단, outbound payload size cap, 비용 리포트 CSV export, draft invoice CSV export/persistence/internal approval, final invoice/payment state workflow, payment provider handoff outbox/webhook send/adapter retry state, notification/payment adapter retry worker를 기반으로 provider별 결제 adapter, broader external-send hardening을 보강.
 - S3 대체성 유지: host `aws`/`mc`, boto3, AWS SDK smoke에서 실제 사용 흐름이 깨지는 경우만 우선 보강하고, AWS 세부 parity 추적은 제품 영향이 확인될 때만 수행한다.
 - 운영 패키징: demo notes, release notes, troubleshooting, runbook 보강.

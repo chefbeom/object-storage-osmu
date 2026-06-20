@@ -44,6 +44,7 @@ public class WebhookChargebackNotificationDeliveryAdapter implements ChargebackN
     private final String secretHeaderName;
     private final String secretHeaderValue;
     private final int timeoutMs;
+    private final int maxPayloadBytes;
     private final boolean allowPrivateNetwork;
     private final String emailSmtpHost;
     private final int emailSmtpPort;
@@ -62,6 +63,7 @@ public class WebhookChargebackNotificationDeliveryAdapter implements ChargebackN
             @Value("${osmu.billing.notification-delivery.secret-header-name:}") String secretHeaderName,
             @Value("${osmu.billing.notification-delivery.secret-header-value:}") String secretHeaderValue,
             @Value("${osmu.billing.notification-delivery.timeout-ms:3000}") int timeoutMs,
+            @Value("${osmu.billing.notification-delivery.max-payload-bytes:65536}") int maxPayloadBytes,
             @Value("${osmu.billing.notification-delivery.allow-private-network:false}") boolean allowPrivateNetwork,
             @Value("${osmu.billing.notification-delivery.email.smtp-host:}") String emailSmtpHost,
             @Value("${osmu.billing.notification-delivery.email.smtp-port:25}") int emailSmtpPort,
@@ -79,6 +81,7 @@ public class WebhookChargebackNotificationDeliveryAdapter implements ChargebackN
         this.secretHeaderName = normalize(secretHeaderName);
         this.secretHeaderValue = normalize(secretHeaderValue);
         this.timeoutMs = Math.max(MIN_TIMEOUT_MS, Math.min(timeoutMs <= 0 ? DEFAULT_TIMEOUT_MS : timeoutMs, MAX_TIMEOUT_MS));
+        this.maxPayloadBytes = ExternalAdapterPayloadPolicy.normalizeMaxPayloadBytes(maxPayloadBytes);
         this.allowPrivateNetwork = allowPrivateNetwork;
         this.emailSmtpHost = normalize(emailSmtpHost);
         this.emailSmtpPort = normalizePort(emailSmtpPort);
@@ -137,6 +140,9 @@ public class WebhookChargebackNotificationDeliveryAdapter implements ChargebackN
         } catch (JsonProcessingException exception) {
             return ChargebackNotificationDeliveryAdapterResult.blocked("Notification webhook payload serialization failed.");
         }
+        if (payloadExceedsLimit(requestBody)) {
+            return ChargebackNotificationDeliveryAdapterResult.blocked("Notification webhook payload exceeds the configured max payload size.");
+        }
 
         try {
             HttpRequest.Builder requestBuilder = HttpRequest.newBuilder(uri)
@@ -182,6 +188,9 @@ public class WebhookChargebackNotificationDeliveryAdapter implements ChargebackN
         } catch (JsonProcessingException exception) {
             return ChargebackNotificationDeliveryAdapterResult.blocked("Slack notification payload serialization failed.");
         }
+        if (payloadExceedsLimit(requestBody)) {
+            return ChargebackNotificationDeliveryAdapterResult.blocked("Slack notification payload exceeds the configured max payload size.");
+        }
 
         try {
             HttpResponse<Void> httpResponse = httpClient.send(
@@ -223,6 +232,9 @@ public class WebhookChargebackNotificationDeliveryAdapter implements ChargebackN
             return ChargebackNotificationDeliveryAdapterResult.blocked("Email notification target must be a single email address.");
         }
         String requestBody = emailMessage(record, recipient);
+        if (payloadExceedsLimit(requestBody)) {
+            return ChargebackNotificationDeliveryAdapterResult.blocked("Email notification payload exceeds the configured max payload size.");
+        }
         try {
             sendEmail(recipient, requestBody);
             return ChargebackNotificationDeliveryAdapterResult.success();
@@ -372,6 +384,10 @@ public class WebhookChargebackNotificationDeliveryAdapter implements ChargebackN
         } catch (JsonProcessingException exception) {
             return payloadJson;
         }
+    }
+
+    private boolean payloadExceedsLimit(String value) {
+        return ExternalAdapterPayloadPolicy.exceedsMaxPayloadBytes(value, maxPayloadBytes);
     }
 
     private boolean genericWebhookIsConfigured() {

@@ -27,6 +27,7 @@ public class WebhookChargebackPaymentProviderAdapter implements ChargebackPaymen
     private final String secretHeaderName;
     private final String secretHeaderValue;
     private final int timeoutMs;
+    private final int maxPayloadBytes;
     private final boolean allowPrivateNetwork;
 
     public WebhookChargebackPaymentProviderAdapter(
@@ -35,6 +36,7 @@ public class WebhookChargebackPaymentProviderAdapter implements ChargebackPaymen
             @Value("${osmu.billing.payment-provider.secret-header-name:}") String secretHeaderName,
             @Value("${osmu.billing.payment-provider.secret-header-value:}") String secretHeaderValue,
             @Value("${osmu.billing.payment-provider.timeout-ms:3000}") int timeoutMs,
+            @Value("${osmu.billing.payment-provider.max-payload-bytes:65536}") int maxPayloadBytes,
             @Value("${osmu.billing.payment-provider.allow-private-network:false}") boolean allowPrivateNetwork
     ) {
         this.objectMapper = objectMapper;
@@ -42,6 +44,7 @@ public class WebhookChargebackPaymentProviderAdapter implements ChargebackPaymen
         this.secretHeaderName = normalize(secretHeaderName);
         this.secretHeaderValue = normalize(secretHeaderValue);
         this.timeoutMs = Math.max(MIN_TIMEOUT_MS, Math.min(timeoutMs <= 0 ? DEFAULT_TIMEOUT_MS : timeoutMs, MAX_TIMEOUT_MS));
+        this.maxPayloadBytes = ExternalAdapterPayloadPolicy.normalizeMaxPayloadBytes(maxPayloadBytes);
         this.allowPrivateNetwork = allowPrivateNetwork;
         this.httpClient = HttpClient.newBuilder()
                 .connectTimeout(Duration.ofMillis(this.timeoutMs))
@@ -68,6 +71,9 @@ public class WebhookChargebackPaymentProviderAdapter implements ChargebackPaymen
             requestBody = objectMapper.writeValueAsString(handoffEnvelope(record));
         } catch (JsonProcessingException exception) {
             return ChargebackPaymentProviderAdapterResult.blocked("Payment provider webhook payload serialization failed.");
+        }
+        if (ExternalAdapterPayloadPolicy.exceedsMaxPayloadBytes(requestBody, maxPayloadBytes)) {
+            return ChargebackPaymentProviderAdapterResult.blocked("Payment provider webhook payload exceeds the configured max payload size.");
         }
 
         try {
