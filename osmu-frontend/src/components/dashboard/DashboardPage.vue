@@ -1439,6 +1439,31 @@
           <button data-testid="data-flow-reset-button" type="button" class="ghost" @click="$emit('reset-data-flow-filter')">Reset</button>
         </div>
       </form>
+      <dl class="status-dl compact data-flow-retention-strip" data-testid="data-flow-retention-panel">
+        <div>
+          <dt>Event Retention</dt>
+          <dd data-testid="data-flow-retention-event-days">{{ dataFlowRetentionEventLabel }}</dd>
+        </div>
+        <div>
+          <dt>Daily Rollup</dt>
+          <dd data-testid="data-flow-retention-rollup-days">{{ dataFlowRetentionRollupLabel }}</dd>
+        </div>
+        <div>
+          <dt>Deleted</dt>
+          <dd data-testid="data-flow-retention-deleted">{{ dataFlowRetentionDeletedLabel }}</dd>
+        </div>
+        <div>
+          <dt>Failed Runs</dt>
+          <dd data-testid="data-flow-retention-failed">{{ dataFlowRetentionFailureLabel }}</dd>
+        </div>
+        <div class="data-flow-retention-actions">
+          <dt>Retention</dt>
+          <dd>
+            <button data-testid="data-flow-retention-refresh-button" type="button" class="ghost" @click="$emit('refresh-data-flow-retention')">Refresh</button>
+            <button data-testid="data-flow-retention-run-button" type="button" class="ghost" @click="$emit('run-data-flow-retention')">Run</button>
+          </dd>
+        </div>
+      </dl>
       <dl class="status-dl compact">
         <div>
           <dt>Total Traffic</dt>
@@ -1729,6 +1754,7 @@ const props = defineProps({
   backupStatus: { type: Object, required: true },
   uploadState: { type: Object, required: true },
   dataFlowMonitoring: { type: Object, required: true },
+  dataFlowRetention: { type: Object, required: true },
   dataFlowFilter: { type: Object, required: true },
   auditLogs: { type: Array, required: true },
   auditNextCursor: { type: String, required: true },
@@ -1823,6 +1849,8 @@ defineEmits([
   'materialize-data-flow-daily-rollup',
   'load-materialized-data-flow-daily-rollup',
   'export-materialized-data-flow-daily-rollup-csv',
+  'refresh-data-flow-retention',
+  'run-data-flow-retention',
   'reset-data-flow-filter',
 ])
 
@@ -1908,6 +1936,28 @@ const dataFlowDailyRollupPoints = computed(() => (
 const dataFlowRecentEvents = computed(() => (
   Array.isArray(props.dataFlowMonitoring?.recentEvents) ? props.dataFlowMonitoring.recentEvents.slice(0, 5) : []
 ))
+const dataFlowRetention = computed(() => props.dataFlowRetention || {})
+const dataFlowEventRetention = computed(() => dataFlowRetention.value.eventRetention || {})
+const dataFlowDailyRollupRetention = computed(() => dataFlowRetention.value.dailyRollupRetention || {})
+const dataFlowRetentionEventLabel = computed(() => dataFlowRetentionPolicyLabel(dataFlowEventRetention.value))
+const dataFlowRetentionRollupLabel = computed(() => dataFlowRetentionPolicyLabel(dataFlowDailyRollupRetention.value))
+const dataFlowRetentionDeletedLabel = computed(() => (
+  `${props.formatCount(dataFlowEventRetention.value.deletedCount || 0)} events / ${props.formatCount(dataFlowDailyRollupRetention.value.deletedCount || 0)} rollups`
+))
+const dataFlowRetentionFailureLabel = computed(() => (
+  `${props.formatCount(dataFlowEventRetention.value.failedRunCount || 0)} events / ${props.formatCount(dataFlowDailyRollupRetention.value.failedRunCount || 0)} rollups`
+))
+
+function dataFlowRetentionPolicyLabel(policy = {}) {
+  if (!policy.enabled) {
+    return 'Off'
+  }
+  const days = Number(policy.retentionDays || 0)
+  const batch = Number(policy.batchSize || 0)
+  const jobState = policy.jobAvailable ? 'ready' : 'job missing'
+  return `${days || '-'}d / ${props.formatCount(batch)} batch / ${jobState}`
+}
+
 function dataFlowTrendWidth(point) {
   const totalCount = Math.max(0, Number(point?.totalCount || 0))
   if (totalCount === 0) {

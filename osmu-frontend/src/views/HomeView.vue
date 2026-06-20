@@ -119,6 +119,7 @@
         :backup-status="backupStatus"
         :upload-state="uploadState"
         :data-flow-monitoring="dataFlowMonitoring"
+        :data-flow-retention="dataFlowRetention"
         :data-flow-filter="dataFlowFilter"
         :audit-logs="auditLogs"
         :audit-next-cursor="auditNextCursor"
@@ -210,6 +211,8 @@
         @materialize-data-flow-daily-rollup="handleMaterializeDataFlowDailyRollup"
         @load-materialized-data-flow-daily-rollup="handleLoadMaterializedDataFlowDailyRollup"
         @export-materialized-data-flow-daily-rollup-csv="handleExportMaterializedDataFlowDailyRollupCsv"
+        @refresh-data-flow-retention="loadDataFlowRetention"
+        @run-data-flow-retention="handleRunDataFlowRetention"
         @reset-data-flow-filter="handleResetDataFlowFilter"
       />
 
@@ -604,6 +607,7 @@ import {
   getDashboardSummary,
   getDashboardWidgetCatalog,
   getDataFlowDailyRollup,
+  getDataFlowRetentionStatus,
   getMaterializedDataFlowDailyRollup,
   getDataFlowMonitoring,
   getChargebackPreview,
@@ -664,6 +668,7 @@ import {
   runStorageExpansionDryRunExecution,
   runStorageExpansionRollbackExecution,
   runStorageExpansionExecutionLogRetention,
+  runDataFlowRetention,
   runChargebackAdapterRetryWorker,
   runStorageExpansionGitOpsPrExecution,
   runObjectRetentionPurge,
@@ -1113,6 +1118,7 @@ const dashboardReadiness = reactive({
   },
   generatedAt: '',
 })
+const dataFlowRetention = reactive(defaultDataFlowRetention())
 const retentionPolicy = reactive({
   enabled: false,
   retentionDays: 0,
@@ -2386,6 +2392,7 @@ async function loadDashboard(options = {}) {
         dashboardSummaryLoaded ? Promise.resolve() : loadBackupStatus(),
         dashboardSummaryLoaded ? Promise.resolve() : loadRetentionStatus(),
         dashboardSummaryLoaded ? loadDataFlowDailyRollup() : loadDataFlowMonitoring(),
+        loadDataFlowRetention(),
         loadStorageExpansionExecutionLogRetentionStatus(),
         refreshLifecycleRules(),
         refreshLifecycleRuleConflicts(),
@@ -2504,6 +2511,17 @@ async function loadDataFlowDailyRollup() {
   const result = await safeRequest(() => getDataFlowDailyRollup(dataFlowFilterPayload()), null)
   if (result?.data) {
     applyDataFlowDailyRollup(result.data)
+  }
+}
+
+async function loadDataFlowRetention() {
+  if (!isAdmin.value) {
+    resetDataFlowRetention()
+    return
+  }
+  const result = await safeRequest(() => getDataFlowRetentionStatus(), null)
+  if (result?.data) {
+    applyDataFlowRetention(result.data)
   }
 }
 
@@ -2956,6 +2974,18 @@ async function handleExportMaterializedDataFlowDailyRollupCsv() {
   if (blob) {
     downloadBlob(blob, `osmu-data-flow-daily-rollup-materialized-${new Date().toISOString().slice(0, 10)}.csv`)
     setStatusMessage('Materialized data flow daily rollup CSV export complete.')
+  }
+}
+
+async function handleRunDataFlowRetention() {
+  const result = await runAction(() => runDataFlowRetention({ includeEvents: true, includeDailyRollups: true }))
+  if (result?.data) {
+    if (result.data.status) {
+      applyDataFlowRetention(result.data.status)
+    } else {
+      await loadDataFlowRetention()
+    }
+    setStatusMessage(`Data flow retention completed: events ${formatCount(result.data.deletedEventCount || 0)}, rollups ${formatCount(result.data.deletedDailyRollupCount || 0)}.`)
   }
 }
 
@@ -4122,9 +4152,57 @@ function applyDataFlowDailyRollup(data = {}) {
   }
 }
 
+function defaultDataFlowRetentionPolicy() {
+  return {
+    enabled: false,
+    jobAvailable: false,
+    retentionDays: 0,
+    batchSize: 0,
+    deletedCount: 0,
+    failedRunCount: 0,
+  }
+}
+
+function defaultDataFlowRetention() {
+  return {
+    mode: 'DATA_FLOW_RETENTION',
+    eventRetention: defaultDataFlowRetentionPolicy(),
+    dailyRollupRetention: defaultDataFlowRetentionPolicy(),
+    generatedAt: '',
+    note: '',
+  }
+}
+
+function normalizeDataFlowRetentionPolicy(policy = {}) {
+  return {
+    enabled: Boolean(policy.enabled),
+    jobAvailable: Boolean(policy.jobAvailable),
+    retentionDays: Number(policy.retentionDays || 0),
+    batchSize: Number(policy.batchSize || 0),
+    deletedCount: Number(policy.deletedCount || 0),
+    failedRunCount: Number(policy.failedRunCount || 0),
+  }
+}
+
+function applyDataFlowRetention(data = {}) {
+  Object.assign(dataFlowRetention, {
+    ...defaultDataFlowRetention(),
+    mode: data.mode || 'DATA_FLOW_RETENTION',
+    eventRetention: normalizeDataFlowRetentionPolicy(data.eventRetention),
+    dailyRollupRetention: normalizeDataFlowRetentionPolicy(data.dailyRollupRetention),
+    generatedAt: data.generatedAt || '',
+    note: data.note || '',
+  })
+}
+
+function resetDataFlowRetention() {
+  applyDataFlowRetention({})
+}
+
 function resetDataFlowMonitoring() {
   applyDataFlowMonitoring({})
   applyDataFlowDailyRollup({})
+  resetDataFlowRetention()
 }
 
 function defaultBillingPricingPolicy() {

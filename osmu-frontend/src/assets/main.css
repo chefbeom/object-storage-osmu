@@ -935,6 +935,18 @@ label {
   min-width: 0;
 }
 
+.status-dl.compact.data-flow-retention-strip {
+  grid-template-columns: repeat(4, minmax(0, 1fr)) minmax(160px, auto);
+  border-top: 1px solid var(--color-border);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.data-flow-retention-actions dd {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
 .data-flow-trend {
   display: grid;
   gap: 9px;
@@ -2274,6 +2286,7 @@ tbody tr.selected {
 
   .status-dl,
   .status-dl.compact,
+  .status-dl.compact.data-flow-retention-strip,
   .developer-onboarding-list,
   .developer-compatibility-row,
   .client-snippet-list,

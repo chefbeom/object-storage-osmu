@@ -21,7 +21,7 @@
 - Data Flow Monitoring panel refreshes the materialized daily rollup store through `data-flow-daily-rollup-materialize-button` and `materializeDataFlowDailyRollup`.
 - Data Flow Monitoring panel reads the materialized daily rollup store through `data-flow-daily-rollup-materialized-load-button` and `getMaterializedDataFlowDailyRollup`.
 - Data Flow Monitoring panel exports the materialized daily rollup store through `data-flow-daily-rollup-materialized-export-button` and `downloadMaterializedDataFlowDailyRollupCsv`.
-- Data Flow retention service wrappers expose `getDataFlowRetentionStatus` and `runDataFlowRetention` for the next ADMIN operations panel slice.
+- Data Flow Monitoring panel renders retention status and manual cleanup controls through `data-flow-retention-panel`, `data-flow-retention-event-days`, `data-flow-retention-rollup-days`, `data-flow-retention-deleted`, `data-flow-retention-failed`, `data-flow-retention-refresh-button`, and `data-flow-retention-run-button`, backed by `getDataFlowRetentionStatus` and `runDataFlowRetention`.
 - Export uses the same date, bucket, actor, source, operation, status, and limit filters as the on-screen monitoring panel.
 - Data Flow Monitoring panel renders source/operation trend points through `data-flow-trend-chart` and daily bucket/source/operation rollup rows through `data-flow-daily-rollup`.
 - Data Flow Monitoring separates upload, download, and internal copy traffic in the summary and bucket rows.
