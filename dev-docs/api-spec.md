@@ -3532,7 +3532,7 @@ Response:
 
 Notes:
 
-- MariaDB mode upserts aggregate rows into `data_flow_daily_rollups` by UTC day, bucket, source, and operation.
+- MariaDB mode upserts aggregate rows into `data_flow_daily_rollups` by UTC day, bucket, actor filter dimension, source, operation, and status filter dimension.
 - In-memory mode returns the same computed aggregate rows without durable storage.
 - This endpoint is a storage-model bridge for OSMU operations analytics; it is not an AWS billing export.
 
@@ -3580,6 +3580,19 @@ Notes:
 
 - `POST /api/admin/monitoring/data-flow/daily-rollup/materialize` must refresh rows before this endpoint returns stored points.
 - The materialized key includes UTC day, bucket, actor filter dimension, source, operation, and status filter dimension so scoped refreshes do not overwrite unscoped aggregate rows.
+
+### GET /api/admin/monitoring/data-flow/daily-rollup/materialized/export.csv
+
+Exports ADMIN-only materialized daily rollup rows from the long-term analytics store as CSV.
+
+Query parameters are identical to `GET /api/admin/monitoring/data-flow/daily-rollup/materialized`: `from`, `to`, `bucketName`, `actorId`, `source`, `operation`, `status`, `days`, and `limit`.
+
+Response:
+
+- `Content-Type: text/csv`
+- `Content-Disposition: attachment; filename="osmu-data-flow-daily-rollup-materialized.csv"`
+- Columns: `day,bucketName,source,operation,successCount,failureCount,cancelCount,totalCount,uploadedBytes,downloadedBytes,copiedBytes,totalBytes`
+- Rows come from refreshed `data_flow_daily_rollups` aggregate storage and do not include object keys or raw event messages.
 
 ### GET /api/admin/monitoring/data-flow/daily-rollup/export.csv
 

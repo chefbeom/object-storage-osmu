@@ -304,6 +304,10 @@ async function handleRequest(request, response) {
     sendJson(response, 200, apiData(materializedDataFlowDailyRollup(dataFlowFilters(url))))
     return
   }
+  if (request.method === 'GET' && path === '/admin/monitoring/data-flow/daily-rollup/materialized/export.csv') {
+    sendCsv(response, 'osmu-data-flow-daily-rollup-materialized.csv', materializedDataFlowDailyRollupCsv(dataFlowFilters(url)))
+    return
+  }
   if (request.method === 'GET' && path === '/admin/monitoring/data-flow/daily-rollup/export.csv') {
     sendCsv(response, 'osmu-data-flow-daily-rollup.csv', dataFlowDailyRollupCsv(dataFlowFilters(url)))
     return
@@ -1313,9 +1317,17 @@ function dataFlowCsv(filters = {}) {
 }
 
 function dataFlowDailyRollupCsv(filters = {}) {
+  return dataFlowDailyRollupPointsCsv(dataFlowDailyRollup(filters).points)
+}
+
+function materializedDataFlowDailyRollupCsv(filters = {}) {
+  return dataFlowDailyRollupPointsCsv(materializedDataFlowDailyRollup(filters).points)
+}
+
+function dataFlowDailyRollupPointsCsv(points = []) {
   const rows = [
     ['day', 'bucketName', 'source', 'operation', 'successCount', 'failureCount', 'cancelCount', 'totalCount', 'uploadedBytes', 'downloadedBytes', 'copiedBytes', 'totalBytes'],
-    ...dataFlowDailyRollup(filters).points.map((point) => [
+    ...points.map((point) => [
       point.day,
       point.bucketName,
       point.source,

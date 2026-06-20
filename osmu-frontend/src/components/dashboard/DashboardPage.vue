@@ -1435,6 +1435,7 @@
           <button data-testid="data-flow-daily-rollup-export-button" type="button" class="ghost" @click="$emit('export-data-flow-daily-rollup-csv')">Rollup CSV</button>
           <button data-testid="data-flow-daily-rollup-materialize-button" type="button" class="ghost" @click="$emit('materialize-data-flow-daily-rollup')">Refresh Store</button>
           <button data-testid="data-flow-daily-rollup-materialized-load-button" type="button" class="ghost" @click="$emit('load-materialized-data-flow-daily-rollup')">Load Store</button>
+          <button data-testid="data-flow-daily-rollup-materialized-export-button" type="button" class="ghost" @click="$emit('export-materialized-data-flow-daily-rollup-csv')">Store CSV</button>
           <button data-testid="data-flow-reset-button" type="button" class="ghost" @click="$emit('reset-data-flow-filter')">Reset</button>
         </div>
       </form>
@@ -1821,6 +1822,7 @@ defineEmits([
   'export-data-flow-daily-rollup-csv',
   'materialize-data-flow-daily-rollup',
   'load-materialized-data-flow-daily-rollup',
+  'export-materialized-data-flow-daily-rollup-csv',
   'reset-data-flow-filter',
 ])
 

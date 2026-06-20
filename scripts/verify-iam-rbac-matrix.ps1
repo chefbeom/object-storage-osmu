@@ -109,6 +109,7 @@ Assert-Contains $matrix 'GET /api/admin/monitoring/data-flow/daily-rollup' "IAM/
 Assert-Contains $matrix 'GET /api/admin/monitoring/data-flow/daily-rollup/export.csv' "IAM/RBAC matrix"
 Assert-Contains $matrix 'POST /api/admin/monitoring/data-flow/daily-rollup/materialize' "IAM/RBAC matrix"
 Assert-Contains $matrix 'GET /api/admin/monitoring/data-flow/daily-rollup/materialized' "IAM/RBAC matrix"
+Assert-Contains $matrix 'GET /api/admin/monitoring/data-flow/daily-rollup/materialized/export.csv' "IAM/RBAC matrix"
 Assert-Contains $matrix 'DataFlowMonitoringService' "IAM/RBAC matrix"
 Assert-Contains $matrix 'AdminEnterpriseAuthPlanControllerTest' "IAM/RBAC matrix"
 Assert-Contains $matrix 'AdminBillingControllerTest' "IAM/RBAC matrix"

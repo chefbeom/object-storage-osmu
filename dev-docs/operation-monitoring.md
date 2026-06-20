@@ -127,11 +127,12 @@ MVP implementation:
 - `GET /api/admin/monitoring/data-flow/daily-rollup/materialized` reads refreshed aggregate rows from `data_flow_daily_rollups` without re-scanning detailed event rows.
 - `GET /api/admin/monitoring/data-flow/export.csv` exports the same filtered event window as newest-first CSV for audit handoff or offline analysis.
 - `GET /api/admin/monitoring/data-flow/daily-rollup/export.csv` exports the same filtered daily rollup as CSV without object keys or raw event messages for operations handoff and offline analytics.
+- `GET /api/admin/monitoring/data-flow/daily-rollup/materialized/export.csv` exports refreshed aggregate-only rows from the materialized store for operations handoff and offline analytics.
 - `GET /api/admin/dashboard/summary` includes the same snapshot as `dataFlow` so the dashboard can render it without extra round trips.
 - REST object APIs record list, upload, presigned/multipart completion, download, delete, and multipart abort events.
 - S3-compatible APIs record list, put, multipart complete, copy, get, delete, multi-delete, and multipart abort events. CopyObject is counted as internal copy traffic, separate from external ingress and egress.
 - MariaDB mode stores detailed events in `data_flow_events` and materialized UTC-day aggregates in `data_flow_daily_rollups`; in-memory mode keeps events and refreshed rollup rows in process for local/demo execution.
-- The admin dashboard shows a compact data I/O widget plus a detailed Data Flow Monitoring panel with upload/download/copy traffic, operations, source/operation trend chart, daily rollup rows, top buckets, recent events, filters, detailed CSV export, daily rollup CSV export, daily rollup store refresh, and materialized rollup load.
+- The admin dashboard shows a compact data I/O widget plus a detailed Data Flow Monitoring panel with upload/download/copy traffic, operations, source/operation trend chart, daily rollup rows, top buckets, recent events, filters, detailed CSV export, daily rollup CSV export, daily rollup store refresh, materialized rollup load, and materialized rollup CSV export.
 - Prometheus/Grafana starter artifacts include `OsmuDataFlowFailureSpike`, `OsmuDataFlowCancelSpike`, `OsmuDataFlowAbnormalEgress`, `OsmuDataFlowBucketTrafficAnomaly`, and `OsmuDataFlowRetentionFailures` backed by `osmu_data_flow_operations_total`, `osmu_data_flow_bytes_total`, and `osmu_data_flow_retention_runs_total`.
 - `DataFlowEventRetentionJob` deletes events older than the configured retention window and records `DATA_FLOW_EVENT_RETENTION` audit plus `osmu.data.flow.retention.events` and `osmu.data.flow.retention.runs` metrics.
 

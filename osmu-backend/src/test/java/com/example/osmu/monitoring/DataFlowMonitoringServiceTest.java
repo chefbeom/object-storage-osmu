@@ -215,6 +215,31 @@ class DataFlowMonitoringServiceTest {
         assertThat(unscoped.points()).isEmpty();
     }
 
+    @Test
+    void exportsMaterializedDailyRollupCsvFromStoredAggregateOnlyRows() {
+        OffsetDateTime now = OffsetDateTime.now(ZoneOffset.UTC);
+        eventRepository.save(event("UPLOAD", "upload", "INGRESS", "media", "admin", "SUCCESS", 1024L, "rest", now.minusHours(2)));
+        eventRepository.save(event("UPLOAD", "upload", "INGRESS", "media", "developer", "SUCCESS", 2048L, "rest", now.minusHours(1)));
+
+        DataFlowEventFilter adminSuccessFilter = new DataFlowEventFilter(
+                "media",
+                "admin",
+                "rest",
+                "upload",
+                "SUCCESS",
+                now.minusDays(1),
+                now.plusDays(1)
+        );
+        service.materializeDailyRollup(adminSuccessFilter, 30, 10);
+
+        String csv = service.exportMaterializedDailyRollupCsv(adminSuccessFilter, 30, 10);
+
+        assertThat(csv).startsWith("day,bucketName,source,operation,successCount,failureCount,cancelCount,totalCount,uploadedBytes,downloadedBytes,copiedBytes,totalBytes\n");
+        assertThat(csv).contains("\"media\",\"rest\",\"upload\",\"1\",\"0\",\"0\",\"1\",\"1024\",\"0\",\"0\",\"1024\"");
+        assertThat(csv).doesNotContain("2048");
+        assertThat(csv).doesNotContain("object.bin");
+    }
+
     private static DataFlowEventRecord event(
             String eventType,
             String operation,

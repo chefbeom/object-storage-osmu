@@ -209,6 +209,7 @@
         @export-data-flow-daily-rollup-csv="handleExportDataFlowDailyRollupCsv"
         @materialize-data-flow-daily-rollup="handleMaterializeDataFlowDailyRollup"
         @load-materialized-data-flow-daily-rollup="handleLoadMaterializedDataFlowDailyRollup"
+        @export-materialized-data-flow-daily-rollup-csv="handleExportMaterializedDataFlowDailyRollupCsv"
         @reset-data-flow-filter="handleResetDataFlowFilter"
       />
 
@@ -571,6 +572,7 @@ import {
   downloadObject,
   downloadObjectVersion,
   downloadDataFlowDailyRollupCsv,
+  downloadMaterializedDataFlowDailyRollupCsv,
   downloadDataFlowMonitoringCsv,
   dryRunObjectLifecycleRule,
   finalizeChargebackInvoiceDraft,
@@ -2946,6 +2948,14 @@ async function handleLoadMaterializedDataFlowDailyRollup() {
   if (result?.data) {
     applyDataFlowDailyRollup(result.data)
     setStatusMessage(`Materialized data flow daily rollup loaded: ${formatCount(result.data.pointCount || 0)} points.`)
+  }
+}
+
+async function handleExportMaterializedDataFlowDailyRollupCsv() {
+  const blob = await runAction(() => downloadMaterializedDataFlowDailyRollupCsv(dataFlowFilterPayload()))
+  if (blob) {
+    downloadBlob(blob, `osmu-data-flow-daily-rollup-materialized-${new Date().toISOString().slice(0, 10)}.csv`)
+    setStatusMessage('Materialized data flow daily rollup CSV export complete.')
   }
 }
 

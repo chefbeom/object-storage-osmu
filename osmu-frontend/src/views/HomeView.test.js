@@ -125,6 +125,7 @@ test('HomeView exposes stable selectors for browser E2E flows', () => {
     'data-flow-daily-rollup-export-button',
     'data-flow-daily-rollup-materialize-button',
     'data-flow-daily-rollup-materialized-load-button',
+    'data-flow-daily-rollup-materialized-export-button',
     'data-flow-reset-button',
     'data-flow-total-bytes',
     'data-flow-failed-cancelled',
@@ -670,10 +671,12 @@ test('HomeView exposes stable selectors for browser E2E flows', () => {
   assert.match(dashboardSource, /getDataFlowDailyRollup/)
   assert.match(dashboardSource, /getMaterializedDataFlowDailyRollup/)
   assert.match(dashboardSource, /downloadDataFlowDailyRollupCsv/)
+  assert.match(dashboardSource, /downloadMaterializedDataFlowDailyRollupCsv/)
   assert.match(dashboardSource, /materializeDataFlowDailyRollup/)
   assert.match(dashboardSource, /handleExportDataFlowDailyRollupCsv/)
   assert.match(dashboardSource, /handleMaterializeDataFlowDailyRollup/)
   assert.match(dashboardSource, /handleLoadMaterializedDataFlowDailyRollup/)
+  assert.match(dashboardSource, /handleExportMaterializedDataFlowDailyRollupCsv/)
   assert.match(dashboardSource, /defaultDataFlowDailyRollup/)
   assert.match(dashboardSource, /applyDataFlowDailyRollup/)
   assert.match(dashboardSource, /chargebackPaymentProviderAdapterReadiness/)

@@ -21,6 +21,7 @@ import {
   downloadChargebackPreviewCsv,
   downloadAuditLogsCsv,
   downloadDataFlowDailyRollupCsv,
+  downloadMaterializedDataFlowDailyRollupCsv,
   downloadDataFlowMonitoringCsv,
   finalizeChargebackInvoiceDraft,
   exportDashboardLayoutPreset,
@@ -534,6 +535,44 @@ test('downloadDataFlowDailyRollupCsv uses rollup export endpoint and returns CSV
 
     const url = new URL(fetchMock.calls[0].url)
     assert.equal(url.pathname, '/api/admin/monitoring/data-flow/daily-rollup/export.csv')
+    assert.equal(url.searchParams.get('bucketName'), 'media')
+    assert.equal(url.searchParams.get('actorId'), 'admin')
+    assert.equal(url.searchParams.get('source'), 'rest')
+    assert.equal(url.searchParams.get('operation'), 'upload')
+    assert.equal(url.searchParams.get('status'), 'SUCCESS')
+    assert.equal(url.searchParams.get('from'), '2026-06-18T00:00:00.000Z')
+    assert.equal(url.searchParams.get('to'), '2026-06-19T00:00:00.000Z')
+    assert.equal(url.searchParams.get('days'), '30')
+    assert.equal(url.searchParams.get('limit'), '25')
+    assert.equal(await blob.text(), 'day,bucketName,totalBytes\n2026-06-18,media,1024\n')
+  } finally {
+    cleanupFetch(fetchMock)
+  }
+})
+
+test('downloadMaterializedDataFlowDailyRollupCsv uses stored rollup export endpoint and returns CSV blob', async () => {
+  const fetchMock = mockFetch([
+    () => new Response('day,bucketName,totalBytes\n2026-06-18,media,1024\n', {
+      status: 200,
+      headers: { 'Content-Type': 'text/csv' },
+    }),
+  ])
+
+  try {
+    const blob = await downloadMaterializedDataFlowDailyRollupCsv({
+      bucketName: 'media',
+      actorId: 'admin',
+      source: 'rest',
+      operation: 'upload',
+      status: 'SUCCESS',
+      from: '2026-06-18T00:00:00.000Z',
+      to: '2026-06-19T00:00:00.000Z',
+      days: 30,
+      limit: 25,
+    })
+
+    const url = new URL(fetchMock.calls[0].url)
+    assert.equal(url.pathname, '/api/admin/monitoring/data-flow/daily-rollup/materialized/export.csv')
     assert.equal(url.searchParams.get('bucketName'), 'media')
     assert.equal(url.searchParams.get('actorId'), 'admin')
     assert.equal(url.searchParams.get('source'), 'rest')

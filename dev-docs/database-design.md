@@ -721,7 +721,7 @@ CREATE TABLE audit_logs (
 
 ## 13.1. data_flow_events
 
-Object data-flow monitoring events are stored here in MariaDB mode. The admin monitoring API aggregates this table by period, bucket, actor, source, operation, and status. `GET /api/admin/monitoring/data-flow/daily-rollup` also aggregates this table by `DATE(created_at)`, bucket, source, and operation for long-term analytics and chargeback planning. `POST /api/admin/monitoring/data-flow/daily-rollup/materialize` stores aggregate rows in `data_flow_daily_rollups` as a bridge toward partitioned or time-series analytics. The table intentionally stores object keys as `TEXT` for long S3 keys, but does not index `object_key` in the MVP. `DataFlowEventRetentionJob` periodically deletes rows older than the configured retention window in bounded batches.
+Object data-flow monitoring events are stored here in MariaDB mode. The admin monitoring API aggregates this table by period, bucket, actor, source, operation, and status. `GET /api/admin/monitoring/data-flow/daily-rollup` also aggregates this table by `DATE(created_at)`, bucket, source, and operation for long-term analytics and chargeback planning. `POST /api/admin/monitoring/data-flow/daily-rollup/materialize` stores aggregate rows in `data_flow_daily_rollups` as a bridge toward partitioned or time-series analytics, and the materialized read/export endpoints use that aggregate table instead of re-scanning event detail. The table intentionally stores object keys as `TEXT` for long S3 keys, but does not index `object_key` in the MVP. `DataFlowEventRetentionJob` periodically deletes rows older than the configured retention window in bounded batches.
 
 ```sql
 CREATE TABLE data_flow_events (
