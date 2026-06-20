@@ -2753,7 +2753,7 @@ Notes:
 
 ### GET /api/admin/billing/chargeback-alert-notifications/preview
 
-Builds scoped external notification payload previews from the same chargeback threshold alert model. `ADMIN` sees payload previews for every alerted organization and `ORG_ADMIN` sees only its own organization. This endpoint does not send webhooks, email, Slack messages, or any other external notification; it only returns the payload shape and target metadata for review.
+Builds scoped external notification payload previews from the same chargeback threshold alert model. `ADMIN` sees payload previews for every alerted organization and `ORG_ADMIN` sees only its own organization. This endpoint does not send webhooks, email, Slack messages, or any other external notification; it only returns the payload shape and target metadata for review. `externalDeliveryEnabled` reflects whether `osmu.billing.notification-delivery.webhook-url` and optional secret header settings are valid.
 
 Query parameters are the same as `GET /api/admin/billing/chargeback-preview`, plus:
 
@@ -2763,19 +2763,19 @@ Query parameters are the same as `GET /api/admin/billing/chargeback-preview`, pl
 Response:
 
 - `mode`: `PREVIEW`
-- `channel`, `target`, `externalDeliveryEnabled=false`
+- `channel`, `target`, `externalDeliveryEnabled`
 - `notificationCount`
 - `notifications[]`: `organizationId`, `organizationName`, `severity`, `estimatedTotalCost`, threshold amounts, `subject`, `message`, and machine-readable `payload`.
 - `note`: preview-only no-send notice.
 
 Notes:
 
-- This is the first external alert integration surface. Actual delivery, external adapter execution, secret storage, and webhook provider adapters remain follow-up work.
+- This is the external alert review surface. Webhook delivery execution is handled by `POST /api/admin/billing/chargeback-alert-notifications/outbox/{deliveryId}/adapter-send` or by the adapter retry worker when the webhook adapter is configured; email/Slack-specific adapters remain follow-up work.
 - Scope filtering is identical to chargeback alerts.
 
 ### POST /api/admin/billing/chargeback-alert-notifications/outbox
 
-Records scoped chargeback threshold alert notification payloads into a delivery outbox. `ADMIN` queues visible alerted organizations and `ORG_ADMIN` queues only its own organization. The records are persisted with `PENDING_DELIVERY_ADAPTER` so operators can review delivery history before a real email/webhook/Slack adapter exists. This endpoint does not send webhooks, email, Slack messages, or any other external notification.
+Records scoped chargeback threshold alert notification payloads into a delivery outbox. `ADMIN` queues visible alerted organizations and `ORG_ADMIN` queues only its own organization. The records are persisted with `PENDING_DELIVERY_ADAPTER` so operators can review delivery history before ADMIN webhook send or retry worker execution. This endpoint does not send webhooks, email, Slack messages, or any other external notification.
 
 Query parameters are the same as `GET /api/admin/billing/chargeback-alert-notifications/preview`, plus:
 
@@ -2785,10 +2785,10 @@ Response:
 
 - `mode`: `OUTBOX`
 - `status`: `PENDING_DELIVERY_ADAPTER`
-- `externalDeliveryEnabled=false`
+- `externalDeliveryEnabled`
 - `queuedCount`
 - `deliveries[]`: persisted delivery rows with channel, target, status, payloadJson, requester, reason, and timestamps.
-- `note`: outbox-only no-send notice.
+- `note`: outbox-only notice; when a webhook adapter is configured, it can be sent later by ADMIN or the retry worker.
 
 ### GET /api/admin/billing/chargeback-alert-notifications/outbox
 
@@ -2823,9 +2823,31 @@ Response:
 - `delivery`: updated outbox row with incremented `attemptCount`, optional `nextAttemptAt`, and sanitized `lastError`.
 - `note`: result-only no-send notice.
 
+### POST /api/admin/billing/chargeback-alert-notifications/outbox/{deliveryId}/adapter-send
+
+Attempts configured webhook delivery for a persisted chargeback notification delivery row. `ADMIN` only. If `osmu.billing.notification-delivery.webhook-url` is not configured or is invalid, the row moves to `DELIVERY_ADAPTER_BLOCKED_CREDENTIAL` without an external call. When configured, OSMU sends a JSON envelope to the webhook with delivery metadata plus the original notification payload. It never stores the webhook URL, secret header value, response body, or raw provider response in the outbox.
+
+Configuration:
+
+- `osmu.billing.notification-delivery.webhook-url` (optional): HTTP/HTTPS endpoint to call.
+- `osmu.billing.notification-delivery.secret-header-name` and `osmu.billing.notification-delivery.secret-header-value` (optional pair): header name/value sent with the webhook request; header values are never stored in delivery rows.
+- `osmu.billing.notification-delivery.timeout-ms` (optional): request timeout, clamped to 500..15000ms. Default is `3000`.
+
+Query parameters:
+
+- `retryDelayMinutes` (optional): next retry delay for retryable webhook results, clamped to 1..1440. Default is `60`.
+
+Response:
+
+- `mode`: `ADAPTER_RESULT`
+- `status`: `DELIVERY_ADAPTER_SUCCEEDED`, `DELIVERY_ADAPTER_RETRY_SCHEDULED`, or `DELIVERY_ADAPTER_BLOCKED_CREDENTIAL`
+- `externalDeliveryEnabled`: true only when the webhook adapter is configured.
+- `delivery`: updated outbox row with incremented `attemptCount`, optional `nextAttemptAt`, and sanitized `lastError`.
+- `note`: webhook send result summary.
+
 ### GET /api/admin/billing/chargeback-adapter-retry-worker/status
 
-Returns a dry-run view of due chargeback notification delivery and payment provider handoff adapter retry rows. `ADMIN` only. The endpoint does not call external notification or payment providers and does not update outbox state.
+Returns a dry-run view of due chargeback notification delivery and payment provider handoff adapter retry rows. `ADMIN` only. The endpoint does not call external notification or payment providers and does not update outbox state. `externalAdaptersEnabled` is true when the notification webhook adapter is configured; payment provider adapters remain no-send.
 
 Query parameters:
 
@@ -2836,26 +2858,26 @@ Response:
 - `mode`: `ADAPTER_RETRY_WORKER`
 - `enabled`: whether the scheduled worker is enabled by configuration.
 - `dryRun=true`
-- `externalAdaptersEnabled=false`
+- `externalAdaptersEnabled`
 - `notificationCandidateCount`, `paymentCandidateCount`, `updatedCount=0`
 - `items[]`: candidate rows with `itemType`, `id`, `fromStatus`, `toStatus`, `attemptCount`, optional `nextAttemptAt`, and note.
 
 ### POST /api/admin/billing/chargeback-adapter-retry-worker/run
 
-Runs the chargeback adapter retry worker for due outbox rows. `ADMIN` only. With `dryRun=false`, it does not call external adapters; due notification rows move to `DELIVERY_ADAPTER_BLOCKED_CREDENTIAL`, due payment handoff rows move to `PAYMENT_PROVIDER_ADAPTER_BLOCKED_CREDENTIAL`, `attemptCount` increments, `nextAttemptAt` clears, and a sanitized fixed error is stored.
+Runs the chargeback adapter retry worker for due outbox rows. `ADMIN` only. With `dryRun=false`, due notification rows call the configured webhook adapter when available and move to success, retry, or blocked state. If the notification webhook adapter is not configured, notification rows move to `DELIVERY_ADAPTER_BLOCKED_CREDENTIAL` without an external call. Payment handoff rows remain no-send and move to `PAYMENT_PROVIDER_ADAPTER_BLOCKED_CREDENTIAL`.
 
 Query parameters:
 
-- `dryRun` (optional): default `true`. Use `false` to apply the no-send blocked transition.
+- `dryRun` (optional): default `true`. Use `false` to apply webhook notification attempts and no-send payment blocked transitions.
 - `limit` (optional): total scan limit, clamped to 1..200.
 
 Response:
 
 - `mode`: `ADAPTER_RETRY_WORKER`
-- `enabled`, `dryRun`, `externalAdaptersEnabled=false`
+- `enabled`, `dryRun`, `externalAdaptersEnabled`
 - `notificationCandidateCount`, `paymentCandidateCount`, `updatedCount`
 - `items[]`: rows considered by the worker and their target status.
-- `note`: dry-run or no-send blocked transition summary.
+- `note`: dry-run, webhook notification attempt, or no-send blocked transition summary.
 
 ### GET /api/admin/billing/chargeback-preview/export.csv
 

@@ -71,6 +71,7 @@ import {
   saveDashboardLayoutDefault,
   saveBillingPricingPolicy,
   saveObjectSharePolicy,
+  sendChargebackAlertNotificationAdapter,
   updateDashboardLayoutPreset,
   updateObjectTags,
 } from './api.js'
@@ -614,6 +615,14 @@ test('chargeback alert notification outbox wrappers queue and read delivery reco
     }),
     () => jsonResponse({
       data: {
+        mode: 'ADAPTER_RESULT',
+        status: 'DELIVERY_ADAPTER_SUCCEEDED',
+        externalDeliveryEnabled: true,
+        delivery: { id: 3, attemptCount: 2, status: 'DELIVERY_ADAPTER_SUCCEEDED' },
+      },
+    }),
+    () => jsonResponse({
+      data: {
         mode: 'ADAPTER_RETRY_WORKER',
         dryRun: true,
         externalAdaptersEnabled: false,
@@ -648,6 +657,7 @@ test('chargeback alert notification outbox wrappers queue and read delivery reco
       retryDelayMinutes: 60,
       lastError: 'adapter endpoint not ready',
     })
+    const adapterSend = await sendChargebackAlertNotificationAdapter(3, { retryDelayMinutes: 120 })
     const workerStatus = await getChargebackAdapterRetryWorkerStatus({ limit: 25 })
     const workerRun = await runChargebackAdapterRetryWorker({ dryRun: false, limit: 25 })
 
@@ -677,17 +687,23 @@ test('chargeback alert notification outbox wrappers queue and read delivery reco
     assert.equal(fetchMock.calls[2].options.method, 'POST')
     assert.equal(adapterResult.data.status, 'DELIVERY_ADAPTER_RETRY_SCHEDULED')
 
-    const workerStatusUrl = new URL(fetchMock.calls[3].url)
+    const adapterSendUrl = new URL(fetchMock.calls[3].url)
+    assert.equal(adapterSendUrl.pathname, '/api/admin/billing/chargeback-alert-notifications/outbox/3/adapter-send')
+    assert.equal(adapterSendUrl.searchParams.get('retryDelayMinutes'), '120')
+    assert.equal(fetchMock.calls[3].options.method, 'POST')
+    assert.equal(adapterSend.data.status, 'DELIVERY_ADAPTER_SUCCEEDED')
+
+    const workerStatusUrl = new URL(fetchMock.calls[4].url)
     assert.equal(workerStatusUrl.pathname, '/api/admin/billing/chargeback-adapter-retry-worker/status')
     assert.equal(workerStatusUrl.searchParams.get('limit'), '25')
-    assert.equal(fetchMock.calls[3].options.method, undefined)
+    assert.equal(fetchMock.calls[4].options.method, undefined)
     assert.equal(workerStatus.data.mode, 'ADAPTER_RETRY_WORKER')
 
-    const workerRunUrl = new URL(fetchMock.calls[4].url)
+    const workerRunUrl = new URL(fetchMock.calls[5].url)
     assert.equal(workerRunUrl.pathname, '/api/admin/billing/chargeback-adapter-retry-worker/run')
     assert.equal(workerRunUrl.searchParams.get('dryRun'), 'false')
     assert.equal(workerRunUrl.searchParams.get('limit'), '25')
-    assert.equal(fetchMock.calls[4].options.method, 'POST')
+    assert.equal(fetchMock.calls[5].options.method, 'POST')
     assert.equal(workerRun.data.updatedCount, 1)
   } finally {
     cleanupFetch(fetchMock)

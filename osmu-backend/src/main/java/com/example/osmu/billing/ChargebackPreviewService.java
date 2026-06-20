@@ -40,6 +40,7 @@ public class ChargebackPreviewService {
     private final ChargebackInvoiceDraftRepository invoiceDraftRepository;
     private final ChargebackFinalInvoiceRepository finalInvoiceRepository;
     private final ChargebackPaymentProviderHandoffRepository paymentHandoffRepository;
+    private final ChargebackNotificationDeliveryAdapter notificationDeliveryAdapter;
 
     public ChargebackPreviewService(
             OrganizationRepository organizationRepository,
@@ -49,7 +50,8 @@ public class ChargebackPreviewService {
             ChargebackNotificationDeliveryRepository notificationDeliveryRepository,
             ChargebackInvoiceDraftRepository invoiceDraftRepository,
             ChargebackFinalInvoiceRepository finalInvoiceRepository,
-            ChargebackPaymentProviderHandoffRepository paymentHandoffRepository
+            ChargebackPaymentProviderHandoffRepository paymentHandoffRepository,
+            ChargebackNotificationDeliveryAdapter notificationDeliveryAdapter
     ) {
         this.organizationRepository = organizationRepository;
         this.bucketRepository = bucketRepository;
@@ -59,6 +61,7 @@ public class ChargebackPreviewService {
         this.invoiceDraftRepository = invoiceDraftRepository;
         this.finalInvoiceRepository = finalInvoiceRepository;
         this.paymentHandoffRepository = paymentHandoffRepository;
+        this.notificationDeliveryAdapter = notificationDeliveryAdapter;
     }
 
     public ChargebackPreviewResponse preview(AuthenticatedUser actor, ChargebackPreviewRequest request) {
@@ -609,7 +612,7 @@ public class ChargebackPreviewService {
                 "PREVIEW",
                 channel,
                 target,
-                false,
+                notificationDeliveryAdapter.isConfigured(),
                 alerts.currency(),
                 notifications.size(),
                 notifications,
@@ -658,14 +661,17 @@ public class ChargebackPreviewService {
                 ))
                 .toList();
         List<ChargebackAlertNotificationDeliveryRecord> saved = notificationDeliveryRepository.saveAll(records);
+        boolean externalDeliveryEnabled = notificationDeliveryAdapter.isConfigured();
         return new ChargebackAlertNotificationDispatchResponse(
                 "OUTBOX",
                 "PENDING_DELIVERY_ADAPTER",
-                false,
+                externalDeliveryEnabled,
                 saved.size(),
                 saved.stream().map(ChargebackPreviewService::deliveryResponse).toList(),
                 OffsetDateTime.now(),
-                "Recorded in delivery outbox; no external notification was sent because delivery adapters are not configured."
+                externalDeliveryEnabled
+                        ? "Recorded in delivery outbox; configured webhook delivery adapter can be sent by ADMIN or retry worker."
+                        : "Recorded in delivery outbox; no external notification was sent because delivery adapters are not configured."
         );
     }
 
@@ -701,6 +707,52 @@ public class ChargebackPreviewService {
         rejectCompletedAdapterStatus(record.status(), "Chargeback notification delivery adapter result already recorded.");
         String normalizedResult = normalizeAdapterResult(result);
         OffsetDateTime now = OffsetDateTime.now();
+        return updateNotificationDeliveryAttempt(
+                record,
+                normalizedResult,
+                retryDelayMinutes,
+                lastError,
+                false,
+                now,
+                adapterResultNote(normalizedResult, "notification")
+        );
+    }
+
+    public ChargebackAlertNotificationDeliveryAttemptResponse sendNotificationDeliveryAdapter(
+            AuthenticatedUser actor,
+            long deliveryId,
+            Integer retryDelayMinutes
+    ) {
+        requireAdmin(actor, "Chargeback notification delivery adapter send access denied.");
+        ChargebackAlertNotificationDeliveryRecord record = notificationDeliveryRepository.findById(deliveryId)
+                .orElseThrow(() -> new ApiException(ApiErrorCode.NOT_FOUND, "Chargeback notification delivery not found."));
+        rejectCompletedAdapterStatus(record.status(), "Chargeback notification delivery adapter already succeeded.");
+        OffsetDateTime now = OffsetDateTime.now();
+        boolean externalDeliveryEnabled = notificationDeliveryAdapter.isConfigured();
+        ChargebackNotificationDeliveryAdapterResult adapterResult = externalDeliveryEnabled
+                ? notificationDeliveryAdapter.deliver(record)
+                : ChargebackNotificationDeliveryAdapterResult.blocked("Notification webhook adapter is not configured.");
+        String normalizedResult = normalizeAdapterResult(adapterResult.result());
+        return updateNotificationDeliveryAttempt(
+                record,
+                normalizedResult,
+                retryDelayMinutes,
+                adapterResult.lastError(),
+                externalDeliveryEnabled,
+                now,
+                notificationAdapterSendNote(normalizedResult, externalDeliveryEnabled)
+        );
+    }
+
+    private ChargebackAlertNotificationDeliveryAttemptResponse updateNotificationDeliveryAttempt(
+            ChargebackAlertNotificationDeliveryRecord record,
+            String normalizedResult,
+            Integer retryDelayMinutes,
+            String lastError,
+            boolean externalDeliveryEnabled,
+            OffsetDateTime now,
+            String note
+    ) {
         String status = notificationDeliveryAdapterStatus(normalizedResult);
         OffsetDateTime nextAttemptAt = nextAdapterAttemptAt(normalizedResult, retryDelayMinutes, now);
         String error = adapterLastError(
@@ -735,10 +787,10 @@ public class ChargebackPreviewService {
         return new ChargebackAlertNotificationDeliveryAttemptResponse(
                 "ADAPTER_RESULT",
                 saved.status(),
-                false,
+                externalDeliveryEnabled,
                 deliveryResponse(saved),
                 now,
-                adapterResultNote(normalizedResult, "notification")
+                note
         );
     }
 
@@ -1067,6 +1119,17 @@ public class ChargebackPreviewService {
             case "SUCCESS" -> "Recorded " + adapterName + " adapter success result; no external call was made by this API.";
             case "RETRY" -> "Recorded retryable " + adapterName + " adapter result and scheduled the next attempt.";
             default -> "Recorded blocked " + adapterName + " adapter result without storing credentials or raw provider responses.";
+        };
+    }
+
+    private static String notificationAdapterSendNote(String result, boolean externalDeliveryEnabled) {
+        if (!externalDeliveryEnabled) {
+            return "Notification webhook adapter is not configured; delivery row was blocked without an external call.";
+        }
+        return switch (result) {
+            case "SUCCESS" -> "Notification webhook adapter delivered this outbox row.";
+            case "RETRY" -> "Notification webhook adapter returned a retryable result and scheduled the next attempt.";
+            default -> "Notification webhook adapter blocked this outbox row without storing credentials or raw provider responses.";
         };
     }
 

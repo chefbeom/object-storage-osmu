@@ -335,6 +335,27 @@ public class AdminBillingController {
         return ApiResponse.of(recorded);
     }
 
+    @PostMapping("/chargeback-alert-notifications/outbox/{deliveryId}/adapter-send")
+    public ApiResponse<ChargebackAlertNotificationDeliveryAttemptResponse> sendChargebackAlertNotificationAdapter(
+            @PathVariable long deliveryId,
+            @RequestParam(name = "retryDelayMinutes", required = false) Integer retryDelayMinutes,
+            HttpServletRequest request
+    ) {
+        AuthenticatedUser actor = authContext.currentUser(request);
+        ChargebackAlertNotificationDeliveryAttemptResponse sent =
+                chargebackPreviewService.sendNotificationDeliveryAdapter(actor, deliveryId, retryDelayMinutes);
+        auditLogService.record(
+                "CHARGEBACK_ALERT_NOTIFICATION_ADAPTER_SEND",
+                actor.loginId(),
+                "CHARGEBACK_ALERT_NOTIFICATION_DELIVERY",
+                String.valueOf(deliveryId),
+                "SUCCESS",
+                "Chargeback notification adapter send recorded: " + sent.status(),
+                request
+        );
+        return ApiResponse.of(sent);
+    }
+
     @PostMapping("/chargeback-invoice-drafts")
     public ApiResponse<ChargebackInvoiceDraftCreateResponse> persistChargebackInvoiceDrafts(
             @RequestParam(name = "from", required = false) String from,

@@ -474,6 +474,11 @@ function handleAdminRoute(request, response, path, jsonBody, url) {
     sendJson(response, 200, apiData(chargebackAdapterRetryWorker(url, String(url.searchParams.get('dryRun') ?? 'true') !== 'false')))
     return
   }
+  const chargebackNotificationAdapterSendMatch = path.match(/^\/admin\/billing\/chargeback-alert-notifications\/outbox\/(\d+)\/adapter-send$/)
+  if (request.method === 'POST' && chargebackNotificationAdapterSendMatch) {
+    sendJson(response, 200, apiData(sendChargebackNotificationAdapter(Number(chargebackNotificationAdapterSendMatch[1]))))
+    return
+  }
   const chargebackNotificationAdapterResultMatch = path.match(/^\/admin\/billing\/chargeback-alert-notifications\/outbox\/(\d+)\/adapter-result$/)
   if (request.method === 'POST' && chargebackNotificationAdapterResultMatch) {
     sendJson(response, 200, apiData(recordChargebackNotificationAdapterResult(Number(chargebackNotificationAdapterResultMatch[1]), url)))
@@ -1363,6 +1368,35 @@ function recordChargebackNotificationAdapterResult(deliveryId, url) {
     delivery,
     recordedAt: now,
     note: adapterResultNote(result, 'notification'),
+  }
+}
+
+function sendChargebackNotificationAdapter(deliveryId) {
+  const delivery = state.chargebackNotificationDeliveries.find((item) => item.id === deliveryId)
+  const now = new Date().toISOString()
+  if (!delivery) {
+    return {
+      mode: 'ADAPTER_RESULT',
+      status: 'NOT_FOUND',
+      externalDeliveryEnabled: false,
+      delivery: null,
+      recordedAt: now,
+      note: 'Chargeback notification delivery not found.',
+    }
+  }
+  delivery.status = 'DELIVERY_ADAPTER_SUCCEEDED'
+  delivery.attemptCount = Number(delivery.attemptCount || 0) + 1
+  delivery.nextAttemptAt = ''
+  delivery.updatedAt = now
+  delivery.lastError = ''
+  state.auditLogs.unshift(auditLog('CHARGEBACK_ALERT_NOTIFICATION_ADAPTER_SEND', 'CHARGEBACK_ALERT_NOTIFICATION_DELIVERY', String(deliveryId)))
+  return {
+    mode: 'ADAPTER_RESULT',
+    status: delivery.status,
+    externalDeliveryEnabled: true,
+    delivery,
+    recordedAt: now,
+    note: 'Notification webhook adapter delivered this outbox row.',
   }
 }
 
@@ -2832,6 +2866,13 @@ async function runSelfTest() {
     })).json()
     if (!notificationAdapterResult.data || notificationAdapterResult.data.status !== 'DELIVERY_ADAPTER_RETRY_SCHEDULED' || notificationAdapterResult.data.delivery?.attemptCount !== 1 || !notificationAdapterResult.data.delivery?.nextAttemptAt) {
       throw new Error('chargeback alert notification adapter result self-test failed')
+    }
+    const notificationAdapterSend = await (await fetch(`${base}/admin/billing/chargeback-alert-notifications/outbox/${chargebackNotificationOutbox.data.deliveries[0].id}/adapter-send?retryDelayMinutes=30`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${login.data.accessToken}` },
+    })).json()
+    if (!notificationAdapterSend.data || notificationAdapterSend.data.status !== 'DELIVERY_ADAPTER_SUCCEEDED' || notificationAdapterSend.data.delivery?.attemptCount !== 2 || notificationAdapterSend.data.externalDeliveryEnabled !== true) {
+      throw new Error('chargeback alert notification adapter send self-test failed')
     }
     const chargebackCsv = await (await fetch(`${base}/admin/billing/chargeback-preview/export.csv?operationThousandRate=0.004`, {
       headers: { Authorization: `Bearer ${login.data.accessToken}` },

@@ -33,7 +33,7 @@ OSMU는 기업 내부에서 대용량 파일, 이미지, 영상, 로그, 비정�
 | --- | ---: | --- |
 | 기획/요구사항/문서 | 70% | 목표, API, DB, 배포, 보안, 테스트 문서가 있음 |
 | 프론트엔드 콘솔 | 55% | 로그인, 페이지 분리, 대시보드 palette, data-flow monitoring 패널, operations readiness 요약/remediation/evidence plan/invocation/invocation unblock/dispatch preflight/workflow run id/artifact collection/artifact import/finalizer/evidence handoff action 표시, 관리자 작업 실패 remediation UX, admin/developer 화면 뼈대가 있음 |
-| 백엔드 REST API | 57% | auth, bucket, object, access key, admin, dashboard, data-flow monitoring, billing pricing policy/proposal approval, chargeback preview/export/threshold alerts/notification preview/outbox/adapter retry state/draft invoice export/persistence/internal approval/final invoice/payment state workflow/payment provider handoff outbox/adapter retry state, storage expansion, restore drill evidence history, operations readiness dashboard evidence/remediation/evidence plan/invocation/invocation unblock/dispatch preflight/workflow run id/artifact collection/artifact import/finalizer/evidence handoff API가 있음 |
+| 백엔드 REST API | 57% | auth, bucket, object, access key, admin, dashboard, data-flow monitoring, billing pricing policy/proposal approval, chargeback preview/export/threshold alerts/notification preview/outbox/webhook send/adapter retry state/draft invoice export/persistence/internal approval/final invoice/payment state workflow/payment provider handoff outbox/adapter retry state, storage expansion, restore drill evidence history, operations readiness dashboard evidence/remediation/evidence plan/invocation/invocation unblock/dispatch preflight/workflow run id/artifact collection/artifact import/finalizer/evidence handoff API가 있음 |
 | MariaDB metadata | 37% | Flyway migration 54개와 repository 구현이 있음 |
 | MinIO/S3 호환 | 35% | S3 API 일부, SigV4, MinIO adapter, smoke script가 있음. 목표는 AWS 완전 호환이 아니라 주요 클라이언트 대체 사용 가능성 |
 | Docker/local demo | 90% | Docker/MariaDB/MinIO/backend/frontend durable gate, Browser E2E, Docker integration smoke, Dockerized real S3 client smoke가 `docker-mc` 기준 통과 |
@@ -398,7 +398,7 @@ MVP 데모 기준 완료율은 약 90~95%입니다.
 
 5. 운영/관리 기능 고도화
    - 실제 OIDC/LDAP provider smoke 실행과 `.osmu-run/latest-enterprise-auth-smoke.json` evidence 확보
-   - data-flow 장기 analytics와 chargeback 모델링. 현재 chargeback preview API, pricing policy 저장과 proposal/internal approval, Admin billing panel, scoped threshold alert, scoped notification payload preview/outbox/history와 adapter retry state, scoped preview CSV export, draft invoice CSV export/persistence/internal approval, final invoice/payment state workflow, payment provider handoff outbox/history와 adapter retry state는 구현됐고, 남은 것은 외부 확정 가격표 승인, 실제 payment provider adapter 실행/secret, 실제 외부 알림 delivery adapter 실행/secret, autonomous retry worker 연동이다.
+   - data-flow 장기 analytics와 chargeback 모델링. 현재 chargeback preview API, pricing policy 저장과 proposal/internal approval/commercial price-list reference, Admin billing panel, scoped threshold alert, scoped notification payload preview/outbox/history와 configured webhook send/adapter retry state, scoped preview CSV export, draft invoice CSV export/persistence/internal approval, final invoice/payment state workflow, payment provider handoff outbox/history와 adapter retry state는 구현됐고, 남은 것은 payment provider adapter 실행/secret, email/Slack 전용 알림 adapter, 외부 전송 운영 hardening이다.
    - 운영 패키징, troubleshooting, runbook 보강
 
 6. S3 대체성 회귀 smoke
@@ -426,5 +426,5 @@ OSMU는 현재 "상용 제품"은 아니지만, "MVP 데모 가능한 웹/백엔
 
 ## Chargeback Update
 
-- Implemented no-send adapter retry worker dry-run/run for due notification delivery and payment provider handoff rows.
-- Remaining billing/chargeback scope is actual payment provider adapter execution/secrets, actual external notification delivery adapter execution/secrets, and external-send retry execution; approved commercial price-list reference recording is implemented for internally approved pricing proposals.
+- Implemented adapter retry worker dry-run/run for due notification delivery and payment provider handoff rows; notification rows can attempt the configured webhook adapter, while payment rows remain no-send/blocked.
+- Remaining billing/chargeback scope is payment provider adapter execution/secrets, email/Slack-specific notification adapters, broader external-send hardening, and production secret rotation evidence; approved commercial price-list reference recording and notification webhook send are implemented.

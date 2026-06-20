@@ -956,6 +956,33 @@
         }
       }
     },
+    "/api/admin/billing/chargeback-alert-notifications/outbox/{deliveryId}/adapter-send": {
+      "post": {
+        "tags": ["Billing", "Admin"],
+        "operationId": "sendChargebackAlertNotificationAdapter",
+        "summary": "Attempt configured chargeback notification webhook delivery for an outbox row",
+        "parameters": [
+          {
+            "name": "deliveryId",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "integer", "format": "int64" }
+          },
+          {
+            "name": "retryDelayMinutes",
+            "in": "query",
+            "schema": { "type": "integer", "minimum": 1, "maximum": 1440, "default": 60 }
+          }
+        ],
+        "responses": {
+          "200": { "$ref": "#/components/responses/JsonOk" },
+          "400": { "$ref": "#/components/responses/Error" },
+          "403": { "$ref": "#/components/responses/Error" },
+          "404": { "$ref": "#/components/responses/Error" },
+          "409": { "$ref": "#/components/responses/Error" }
+        }
+      }
+    },
     "/api/admin/billing/chargeback-adapter-retry-worker/status": {
       "get": {
         "tags": ["Billing", "Admin"],
@@ -978,7 +1005,7 @@
       "post": {
         "tags": ["Billing", "Admin"],
         "operationId": "runChargebackAdapterRetryWorker",
-        "summary": "Run the no-send chargeback adapter retry worker against due rows",
+        "summary": "Run chargeback adapter retry worker against due rows",
         "parameters": [
           {
             "name": "dryRun",

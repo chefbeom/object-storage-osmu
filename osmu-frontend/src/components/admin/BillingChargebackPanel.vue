@@ -349,15 +349,24 @@
           <small>{{ delivery.subject }} / {{ delivery.channel }} -> {{ delivery.target }}</small>
           <small>{{ adapterAttemptSummary(delivery) }}</small>
         </span>
-        <button
-          v-if="isAdmin && canBlockAdapter(delivery.status)"
-          data-testid="chargeback-notification-adapter-block-button"
-          type="button"
-          class="ghost"
-          @click="$emit('record-chargeback-notification-adapter-result', { deliveryId: delivery.id, result: 'BLOCKED_CREDENTIAL' })"
-        >
-          Block
-        </button>
+        <span v-if="isAdmin && canSendNotificationAdapter(delivery.status)" class="key-actions">
+          <button
+            data-testid="chargeback-notification-adapter-send-button"
+            type="button"
+            class="ghost"
+            @click="$emit('send-chargeback-notification-adapter', { deliveryId: delivery.id })"
+          >
+            Send
+          </button>
+          <button
+            data-testid="chargeback-notification-adapter-block-button"
+            type="button"
+            class="ghost"
+            @click="$emit('record-chargeback-notification-adapter-result', { deliveryId: delivery.id, result: 'BLOCKED_CREDENTIAL' })"
+          >
+            Block
+          </button>
+        </span>
         <button
           v-else-if="isAdmin && canRetryAdapter(delivery.status)"
           data-testid="chargeback-notification-adapter-retry-button"
@@ -633,6 +642,7 @@ const emit = defineEmits([
   'finalize-chargeback-invoice-draft',
   'request-chargeback-invoice-payment',
   'queue-chargeback-payment-provider-handoff',
+  'send-chargeback-notification-adapter',
   'record-chargeback-notification-adapter-result',
   'record-chargeback-payment-provider-adapter-result',
   'refresh-chargeback-adapter-retry-worker',
@@ -716,6 +726,10 @@ function canRetryAdapter(status = '') {
 function canBlockAdapter(status = '') {
   const normalized = String(status || '')
   return normalized && !adapterSucceeded(normalized) && !canRetryAdapter(normalized)
+}
+
+function canSendNotificationAdapter(status = '') {
+  return ['PENDING_DELIVERY_ADAPTER', 'DELIVERY_ADAPTER_RETRY_SCHEDULED'].includes(String(status || ''))
 }
 
 function adapterAttemptSummary(record = {}) {

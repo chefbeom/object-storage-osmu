@@ -274,6 +274,7 @@
       @finalize-chargeback-invoice-draft="$emit('finalize-chargeback-invoice-draft', $event)"
       @request-chargeback-invoice-payment="$emit('request-chargeback-invoice-payment', $event)"
       @queue-chargeback-payment-provider-handoff="$emit('queue-chargeback-payment-provider-handoff', $event)"
+      @send-chargeback-notification-adapter="$emit('send-chargeback-notification-adapter', $event)"
       @record-chargeback-notification-adapter-result="$emit('record-chargeback-notification-adapter-result', $event)"
       @record-chargeback-payment-provider-adapter-result="$emit('record-chargeback-payment-provider-adapter-result', $event)"
       @refresh-chargeback-adapter-retry-worker="$emit('refresh-chargeback-adapter-retry-worker')"
@@ -681,6 +682,7 @@ defineEmits([
   'finalize-chargeback-invoice-draft',
   'request-chargeback-invoice-payment',
   'queue-chargeback-payment-provider-handoff',
+  'send-chargeback-notification-adapter',
   'record-chargeback-notification-adapter-result',
   'record-chargeback-payment-provider-adapter-result',
   'refresh-chargeback-adapter-retry-worker',

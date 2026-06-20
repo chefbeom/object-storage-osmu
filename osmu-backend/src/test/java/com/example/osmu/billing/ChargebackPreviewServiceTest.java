@@ -50,7 +50,8 @@ class ChargebackPreviewServiceTest {
             notificationDeliveryRepository,
             invoiceDraftRepository,
             finalInvoiceRepository,
-            paymentHandoffRepository
+            paymentHandoffRepository,
+            disabledNotificationAdapter()
     );
 
     @Test
@@ -328,6 +329,62 @@ class ChargebackPreviewServiceTest {
     }
 
     @Test
+    void sendsConfiguredChargebackAlertNotificationAdapter() {
+        OffsetDateTime now = OffsetDateTime.now();
+        organizationRepository.save(new OrganizationRecord(1L, "Webhook Org", "", 10_000L, now));
+        bucketRepository.save(new BucketRecord(1L, "webhook-bucket", "ORG", 1L, 10_000L, 1024L, 1L, now));
+
+        pricingPolicyService.save(new BillingPricingPolicyRequest(
+                "krw",
+                ONE_GIB_RATE,
+                BigDecimal.ZERO,
+                BigDecimal.ZERO,
+                BigDecimal.ZERO,
+                BigDecimal.ZERO,
+                BigDecimal.valueOf(20L),
+                BigDecimal.valueOf(25L),
+                25,
+                "notification adapter send test"
+        ));
+
+        ChargebackPreviewService sendingService = serviceWithNotificationAdapter(new ChargebackNotificationDeliveryAdapter() {
+            @Override
+            public boolean isConfigured() {
+                return true;
+            }
+
+            @Override
+            public ChargebackNotificationDeliveryAdapterResult deliver(ChargebackAlertNotificationDeliveryRecord record) {
+                assertThat(record.payloadJson()).contains("\"eventType\":\"chargeback.threshold\"");
+                return ChargebackNotificationDeliveryAdapterResult.success();
+            }
+        });
+
+        ChargebackAlertNotificationDispatchResponse dispatch = sendingService.queueAlertNotifications(
+                new AuthenticatedUser(1L, "admin", "ADMIN", null),
+                new ChargebackPreviewRequest(null, null, null, null, null, null, null, null, 0),
+                "webhook",
+                "ops-webhook",
+                "unit test send"
+        );
+
+        assertThat(dispatch.externalDeliveryEnabled()).isTrue();
+        assertThat(dispatch.queuedCount()).isEqualTo(1L);
+
+        ChargebackAlertNotificationDeliveryAttemptResponse sent = sendingService.sendNotificationDeliveryAdapter(
+                new AuthenticatedUser(1L, "admin", "ADMIN", null),
+                dispatch.deliveries().get(0).id(),
+                null
+        );
+
+        assertThat(sent.status()).isEqualTo("DELIVERY_ADAPTER_SUCCEEDED");
+        assertThat(sent.externalDeliveryEnabled()).isTrue();
+        assertThat(sent.delivery().attemptCount()).isEqualTo(1);
+        assertThat(sent.delivery().lastError()).isNull();
+        assertThat(sent.note()).contains("delivered");
+    }
+
+    @Test
     void persistsAndApprovesChargebackInvoiceDraftsForInternalReview() {
         OffsetDateTime now = OffsetDateTime.now();
         organizationRepository.save(new OrganizationRecord(1L, "Invoice Org", "", 10_000L, now));
@@ -568,6 +625,34 @@ class ChargebackPreviewServiceTest {
                 .isInstanceOf(ApiException.class)
                 .extracting("code")
                 .isEqualTo(ApiErrorCode.AUTHORIZATION_FAILED);
+    }
+
+    private ChargebackPreviewService serviceWithNotificationAdapter(ChargebackNotificationDeliveryAdapter adapter) {
+        return new ChargebackPreviewService(
+                organizationRepository,
+                bucketRepository,
+                dataFlowEventRepository,
+                pricingPolicyService,
+                notificationDeliveryRepository,
+                invoiceDraftRepository,
+                finalInvoiceRepository,
+                paymentHandoffRepository,
+                adapter
+        );
+    }
+
+    private static ChargebackNotificationDeliveryAdapter disabledNotificationAdapter() {
+        return new ChargebackNotificationDeliveryAdapter() {
+            @Override
+            public boolean isConfigured() {
+                return false;
+            }
+
+            @Override
+            public ChargebackNotificationDeliveryAdapterResult deliver(ChargebackAlertNotificationDeliveryRecord record) {
+                return ChargebackNotificationDeliveryAdapterResult.blocked("Notification webhook adapter is not configured.");
+            }
+        };
     }
 
     private DataFlowEventRecord event(

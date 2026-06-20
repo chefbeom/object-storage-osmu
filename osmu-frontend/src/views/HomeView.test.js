@@ -383,6 +383,7 @@ test('HomeView exposes stable selectors for browser E2E flows', () => {
     'chargeback-notification-outbox-updated',
     'chargeback-notification-outbox-list',
     'chargeback-notification-outbox-row',
+    'chargeback-notification-adapter-send-button',
     'chargeback-notification-adapter-block-button',
     'chargeback-notification-adapter-retry-button',
     'chargeback-adapter-retry-worker-metrics',

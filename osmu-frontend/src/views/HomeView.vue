@@ -422,6 +422,7 @@
         @finalize-chargeback-invoice-draft="handleFinalizeChargebackInvoiceDraft"
         @request-chargeback-invoice-payment="handleRequestChargebackInvoicePayment"
         @queue-chargeback-payment-provider-handoff="handleQueueChargebackPaymentProviderHandoff"
+        @send-chargeback-notification-adapter="handleSendChargebackNotificationAdapter"
         @record-chargeback-notification-adapter-result="handleRecordChargebackNotificationAdapterResult"
         @record-chargeback-payment-provider-adapter-result="handleRecordChargebackPaymentProviderAdapterResult"
         @refresh-chargeback-adapter-retry-worker="loadChargebackAdapterRetryWorker"
@@ -658,6 +659,7 @@ import {
   saveBillingPricingPolicy,
   saveObjectLifecycleRule,
   saveObjectSharePolicy,
+  sendChargebackAlertNotificationAdapter,
   saveDashboardLayout,
   saveQuotaPolicy,
   syncBucketUsage,
@@ -2652,6 +2654,20 @@ async function handleQueueChargebackAlertNotifications() {
     })
     await loadChargebackAlertNotificationOutbox()
     setStatusMessage('Chargeback notification outbox updated.')
+  }
+}
+
+async function handleSendChargebackNotificationAdapter(payload = {}) {
+  if (!isAdmin.value || !payload.deliveryId) return
+  const result = await runAction(() => sendChargebackAlertNotificationAdapter(payload.deliveryId, {
+    retryDelayMinutes: 60,
+  }))
+  if (result?.data) {
+    await Promise.all([
+      loadChargebackAlertNotificationOutbox(),
+      loadChargebackAdapterRetryWorker(),
+    ])
+    setStatusMessage('Chargeback notification adapter send recorded.')
   }
 }
 

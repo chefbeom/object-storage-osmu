@@ -32,8 +32,8 @@ OSMU는 다섯 plane으로 나누어 이해하면 쉽습니다.
 
 ## Chargeback Note
 
-- 현재 billing/chargeback은 내부 pricing policy/proposal, 상업 가격표 승인 참조 기록, preview/export, threshold alert, notification/payment outbox, invoice/payment workflow, adapter retry 상태 기록, no-send adapter retry worker dry-run/run까지 제공한다.
-- 아직 남은 범위는 승인된 외부 가격표, 실제 payment provider adapter 실행/secret, 실제 외부 알림 delivery adapter 실행/secret, external-send retry execution이다.
+- 현재 billing/chargeback은 내부 pricing policy/proposal, 상업 가격표 승인 참조 기록, preview/export, threshold alert, notification/payment outbox, notification webhook adapter send, invoice/payment workflow, adapter retry 상태 기록, notification webhook retry worker와 no-send payment adapter retry worker dry-run/run까지 제공한다.
+- 아직 남은 범위는 실제 payment provider adapter 실행/secret, email/Slack 전용 알림 adapter, 외부 전송 운영 hardening, production secret rotation evidence이다.
 
 ```mermaid
 flowchart LR
@@ -98,7 +98,7 @@ Frontend는 MariaDB나 MinIO에 직접 접근하지 않습니다. Backend API만
 - Lifecycle/Retention: rule dry-run, conflict report, S3 lifecycle XML import/export, version/trash retention cleanup.
 - 공유/보안: object share link, password/IP 제한, usage limit, cleanup, analytics, enterprise auth plan.
 - Dashboard: widget catalog, layout preset, system/backup/quota/share/readiness/data-flow 요약.
-- Monitoring: data-flow event 저장, filter, CSV export, source/operation trend chart, tenant chargeback preview API/UI, billing pricing policy와 proposal/internal approval/commercial price-list reference, threshold alerts, chargeback alert notification preview/outbox/adapter retry state, chargeback preview CSV export, chargeback invoice draft CSV export/persistence/internal approval, final invoice/payment state workflow, payment provider handoff outbox/adapter retry state, Prometheus/Grafana starter artifact.
+- Monitoring: data-flow event 저장, filter, CSV export, source/operation trend chart, tenant chargeback preview API/UI, billing pricing policy와 proposal/internal approval/commercial price-list reference, threshold alerts, chargeback alert notification preview/outbox/webhook send/adapter retry state, chargeback preview CSV export, chargeback invoice draft CSV export/persistence/internal approval, final invoice/payment state workflow, payment provider handoff outbox/adapter retry state, Prometheus/Grafana starter artifact.
 - Storage Expansion: 증설 요청, dry-run/apply/rollback runner, GitOps artifact, execution history.
 - Operations Readiness: evidence plan, invocation unblock, dispatch preflight, workflow run id, artifact import/finalizer, convergence report.
 - Enterprise Auth Evidence: OIDC/LDAP smoke plan과 target IdP/directory evidence를 operations readiness blocker로 추적.
@@ -296,6 +296,6 @@ Enterprise auth는 `scripts/write-enterprise-auth-smoke-plan.ps1` 또는 `.githu
 - 실제 Kubernetes cluster와 GitHub-hosted workflow evidence 수집.
 - 관리자/감사자/조직 관리자 워크플로우 보강, 실제 IdP/LDAP pilot smoke 실행과 `.osmu-run/latest-enterprise-auth-smoke.json` evidence 확보.
 - data-flow 장기 analytics를 위한 partition 또는 time-series 저장소 연동.
-- tenant billing/chargeback: preview API, admin billing panel, pricing policy 저장과 proposal/internal approval/commercial price-list reference, warning/critical threshold alert, alert notification preview/outbox/adapter retry state, 비용 리포트 CSV export, draft invoice CSV export/persistence/internal approval, final invoice/payment state workflow, payment provider handoff outbox/adapter retry state, no-send adapter retry worker를 기반으로 실제 payment provider adapter 실행/secret, 실제 외부 알림 delivery adapter 실행/secret, 외부 전송 retry 실행을 보강.
+- tenant billing/chargeback: preview API, admin billing panel, pricing policy 저장과 proposal/internal approval/commercial price-list reference, warning/critical threshold alert, alert notification preview/outbox/webhook send/adapter retry state, 비용 리포트 CSV export, draft invoice CSV export/persistence/internal approval, final invoice/payment state workflow, payment provider handoff outbox/adapter retry state, notification webhook retry worker와 no-send payment retry worker를 기반으로 payment provider adapter 실행/secret, email/Slack 전용 알림 adapter, 외부 전송 운영 hardening을 보강.
 - S3 대체성 유지: host `aws`/`mc`, boto3, AWS SDK smoke에서 실제 사용 흐름이 깨지는 경우만 우선 보강하고, AWS 세부 parity 추적은 제품 영향이 확인될 때만 수행한다.
 - 운영 패키징: demo notes, release notes, troubleshooting, runbook 보강.

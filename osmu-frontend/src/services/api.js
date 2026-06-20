@@ -1275,6 +1275,15 @@ export function recordChargebackAlertNotificationAdapterResult(deliveryId, optio
   })
 }
 
+export function sendChargebackAlertNotificationAdapter(deliveryId, options = {}) {
+  const query = new URLSearchParams()
+  appendQuery(query, 'retryDelayMinutes', options.retryDelayMinutes)
+  const suffix = query.toString() ? `?${query.toString()}` : ''
+  return request(`/admin/billing/chargeback-alert-notifications/outbox/${encodeURIComponent(deliveryId)}/adapter-send${suffix}`, {
+    method: 'POST',
+  })
+}
+
 export function getChargebackAdapterRetryWorkerStatus(options = {}) {
   const query = new URLSearchParams()
   appendQuery(query, 'limit', options.limit)
