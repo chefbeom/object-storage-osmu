@@ -103,6 +103,9 @@ Run "powershell -ExecutionPolicy Bypass -File .\scripts\verify-secret-rotation-e
 Step "Commercial integration evidence writer self-test"
 Run "powershell -ExecutionPolicy Bypass -File .\scripts\verify-commercial-integration-evidence.ps1"
 
+Step "Operations handoff package writer self-test"
+Run "powershell -ExecutionPolicy Bypass -File .\scripts\verify-operations-handoff-package.ps1"
+
 Step "IAM/RBAC matrix check"
 Run "powershell -ExecutionPolicy Bypass -File .\scripts\verify-iam-rbac-matrix.ps1"
 

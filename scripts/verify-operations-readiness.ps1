@@ -109,6 +109,8 @@ Assert-CheckExists $report "Secret rotation evidence writer" "security-hardening
 Assert-CheckExists $report "Secret rotation evidence writer self-test" "security-hardening"
 Assert-CheckExists $report "Commercial integration evidence writer" "commercial-integration"
 Assert-CheckExists $report "Commercial integration evidence writer self-test" "commercial-integration"
+Assert-CheckExists $report "Operations handoff package writer" "operations-handoff-package"
+Assert-CheckExists $report "Operations handoff package writer self-test" "operations-handoff-package"
 Assert-CheckExists $report "Security evidence finalizer" "security-hardening"
 Assert-CheckExists $report "Security evidence finalizer self-test" "security-hardening"
 Assert-CheckExists $report "Security evidence finalizer workflow" "security-hardening"
@@ -125,6 +127,7 @@ Assert-CheckExists $report "Container scan/SBOM evidence" "security-hardening"
 Assert-CheckExists $report "Secret/certificate rotation target evidence" "security-hardening"
 Assert-CheckExists $report "Commercial integration target evidence" "commercial-integration"
 Assert-CheckExists $report "Enterprise auth target smoke evidence" "enterprise-auth"
+Assert-CheckExists $report "Operations handoff package target evidence" "operations-handoff-package"
 
 Assert-CheckRemediation $report "Storage expansion finalizer live evidence" "finalize-storage-expansion.ps1" ".github/workflows/storage-expansion-finalizer-ci.yml" "gh workflow run storage-expansion-finalizer-ci.yml"
 Assert-CheckRemediation $report "Kubernetes HA/DR readiness live evidence" "verify-kubernetes-ha-dr-readiness.ps1" ".github/workflows/kubernetes-ha-dr-readiness-ci.yml" "gh workflow run kubernetes-ha-dr-readiness-ci.yml"
@@ -168,6 +171,16 @@ if (-not ([string] $enterpriseAuthCheck[0].remediation.workflowCommand).Contains
 if (-not ([string] $enterpriseAuthCheck[0].requiredEvidence).Contains("target IdP/directory")) {
     throw "Enterprise auth target smoke evidence must require target IdP/directory evidence."
 }
+$operationsHandoffPackageCheck = @($report.checks | Where-Object { $_.name -eq "Operations handoff package target evidence" })
+if ($operationsHandoffPackageCheck.Count -ne 1) {
+    throw "Operations readiness report must contain one Operations handoff package target evidence check."
+}
+if (-not ([string] $operationsHandoffPackageCheck[0].remediation.command).Contains("write-operations-handoff-package.ps1")) {
+    throw "Operations handoff package target evidence remediation must point to write-operations-handoff-package.ps1."
+}
+if (-not ([string] $operationsHandoffPackageCheck[0].requiredEvidence).Contains("target environment")) {
+    throw "Operations handoff package target evidence must require target environment evidence."
+}
 
 Assert-Contains $markdown "# OSMU Operations Readiness" "Operations readiness markdown"
 Assert-Contains $markdown "Production/B2B operations readiness" "Operations readiness markdown"
@@ -177,6 +190,7 @@ Assert-Contains $markdown "Security evidence finalizer report" "Operations readi
 Assert-Contains $markdown "Secret/certificate rotation target evidence" "Operations readiness markdown"
 Assert-Contains $markdown "Commercial integration target evidence" "Operations readiness markdown"
 Assert-Contains $markdown "Enterprise auth target smoke evidence" "Operations readiness markdown"
+Assert-Contains $markdown "Operations handoff package target evidence" "Operations readiness markdown"
 Assert-Contains $markdown "Required Next Evidence" "Operations readiness markdown"
 Assert-Contains $markdown "Remediation command" "Operations readiness markdown"
 Assert-Contains $markdown "Workflow" "Operations readiness markdown"

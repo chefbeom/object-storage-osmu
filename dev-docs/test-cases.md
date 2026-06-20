@@ -2185,6 +2185,16 @@ TC-FE-023 보강: 사용자가 취소한 경우에는 abort API를 호출한다.
 - Priority: P2
 - Automated: `scripts/verify-commercial-integration-evidence.ps1`
 
+### TC-INFRA-008C
+
+- Feature: Operations handoff package target evidence writer verification.
+- Preconditions: PowerShell is available.
+- Input: `powershell -ExecutionPolicy Bypass -File .\scripts\verify-operations-handoff-package.ps1`
+- Steps: Generate synthetic passed target-environment operations handoff package evidence, verify `osmu.operations-handoff-package.v1`, `result=passed`, runbook review, troubleshooting review, rollback review, support escalation review, known gaps acceptance, no-secret policy, and target readiness/convergence/secret rotation/commercial integration/enterprise auth/backup/HA-DR/monitoring/security/IAM-RBAC evidence references. Verify credential-shaped evidence references such as `password=...` are rejected.
+- Expected: Operators have a repeatable evidence writer for production/B2B handoff packaging that stores only external references, timestamps, and booleans, and does not execute `kubectl`, `gh`, notification/payment adapters, or provider APIs.
+- Priority: P2
+- Automated: `scripts/verify-operations-handoff-package.ps1`
+
 ### TC-INFRA-009
 
 - Feature: Backup restore drill draft verification.
@@ -2357,6 +2367,9 @@ MVP 완료 전 다음 테스트는 반드시 통과해야 한다.
 - TC-INFRA-006
 - TC-INFRA-007
 - TC-INFRA-008
+- TC-INFRA-008A
+- TC-INFRA-008B
+- TC-INFRA-008C
 - TC-INFRA-009
 - TC-INFRA-010
 - TC-INFRA-011
