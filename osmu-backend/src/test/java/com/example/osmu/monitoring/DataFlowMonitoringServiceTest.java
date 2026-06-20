@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import com.example.osmu.monitoring.repository.InMemoryDataFlowEventRepository;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import org.junit.jupiter.api.Test;
 
 class DataFlowMonitoringServiceTest {
@@ -93,5 +94,70 @@ class DataFlowMonitoringServiceTest {
         assertThat(csv).startsWith("createdAt,eventType,operation,direction,bucketName,objectKey,actorId,status,sizeBytes,source,message\n");
         assertThat(csv).contains("\"FAILURE\",\"download\",\"CONTROL\",\"media\",\"raw,\"\"bad\"\".csv\",\"admin\",\"FAILED\",\"0\",\"rest\",\"line one line two\"");
         assertThat(csv).doesNotContain("ignored.bin");
+    }
+
+    @Test
+    void buildsDailyRollupForLongTermAnalytics() {
+        OffsetDateTime now = OffsetDateTime.now(ZoneOffset.UTC);
+        eventRepository.save(event("UPLOAD", "upload", "INGRESS", "media", "admin", "SUCCESS", 1024L, "rest", now.minusHours(2)));
+        eventRepository.save(event("DOWNLOAD", "download", "EGRESS", "media", "admin", "SUCCESS", 512L, "s3", now.minusHours(1)));
+        eventRepository.save(event("FAILURE", "download", "CONTROL", "media", "admin", "FAILED", 0L, "rest", now.minusMinutes(30)));
+        eventRepository.save(event("COPY", "copy", "INTERNAL", "media", "admin", "SUCCESS", 256L, "rest", now.minusDays(1)));
+        eventRepository.save(event("UPLOAD", "upload", "INGRESS", "archive", "admin", "SUCCESS", 2048L, "rest", now.minusHours(1)));
+
+        DataFlowDailyRollupResponse rollup = service.dailyRollup(
+                new DataFlowEventFilter("media", null, null, null, null, now.minusDays(2), now.plusDays(1)),
+                30,
+                10
+        );
+
+        assertThat(rollup.mode()).isEqualTo("DATA_FLOW_DAILY_ROLLUP");
+        assertThat(rollup.granularity()).isEqualTo("UTC_DAY");
+        assertThat(rollup.dayWindow()).isEqualTo(30);
+        assertThat(rollup.pointLimit()).isEqualTo(10);
+        assertThat(rollup.storagePolicy()).contains("data_flow_events");
+        assertThat(rollup.points()).hasSize(4);
+        assertThat(rollup.points()).anySatisfy(point -> {
+            assertThat(point.day()).isEqualTo(now.toLocalDate());
+            assertThat(point.bucketName()).isEqualTo("media");
+            assertThat(point.source()).isEqualTo("rest");
+            assertThat(point.operation()).isEqualTo("upload");
+            assertThat(point.successCount()).isEqualTo(1L);
+            assertThat(point.uploadedBytes()).isEqualTo(1024L);
+            assertThat(point.totalBytes()).isEqualTo(1024L);
+        });
+        assertThat(rollup.points()).anySatisfy(point -> {
+            assertThat(point.operation()).isEqualTo("download");
+            assertThat(point.failureCount()).isEqualTo(1L);
+            assertThat(point.totalCount()).isEqualTo(1L);
+        });
+        assertThat(rollup.points()).noneSatisfy(point -> assertThat(point.bucketName()).isEqualTo("archive"));
+    }
+
+    private static DataFlowEventRecord event(
+            String eventType,
+            String operation,
+            String direction,
+            String bucketName,
+            String actorId,
+            String status,
+            long sizeBytes,
+            String source,
+            OffsetDateTime createdAt
+    ) {
+        return new DataFlowEventRecord(
+                null,
+                eventType,
+                operation,
+                direction,
+                bucketName,
+                "object.bin",
+                actorId,
+                status,
+                sizeBytes,
+                "",
+                source,
+                createdAt
+        );
     }
 }

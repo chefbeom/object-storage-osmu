@@ -1474,6 +1474,21 @@
           <small>{{ formatCount(point.failureCount || 0) }} fail / {{ formatCount(point.cancelCount || 0) }} cancel / {{ formatBytes(point.bytes || 0) }}</small>
         </div>
       </div>
+      <ul class="compact-list" data-testid="data-flow-daily-rollup">
+        <li v-if="dataFlowDailyRollupPoints.length === 0">
+          <span>
+            <strong>No daily rollup yet</strong>
+            <small>daily bucket/source/operation aggregates will appear here</small>
+          </span>
+        </li>
+        <li v-for="point in dataFlowDailyRollupPoints" :key="`${point.day}-${point.bucketName}-${point.source}-${point.operation}`" data-testid="data-flow-daily-rollup-row">
+          <span>
+            <strong>{{ point.day || '-' }} / {{ point.bucketName || 'unknown' }}</strong>
+            <small>{{ point.source || 'unknown' }} / {{ point.operation || 'unknown' }} / {{ formatCount(point.successCount || 0) }} ok / {{ formatCount(point.failureCount || 0) }} fail / {{ formatCount(point.cancelCount || 0) }} cancel</small>
+          </span>
+          <b data-testid="data-flow-daily-rollup-bytes">{{ formatBytes(point.totalBytes || 0) }}</b>
+        </li>
+      </ul>
       <ul class="compact-list" data-testid="data-flow-top-buckets">
         <li v-if="dataFlowTopBuckets.length === 0">
           <span>
@@ -1877,6 +1892,10 @@ const dataFlowTrendPoints = computed(() => (
 const dataFlowTrendMaxCount = computed(() => Math.max(
   1,
   ...dataFlowTrendPoints.value.map((point) => Number(point.totalCount || 0)),
+))
+const dataFlowDailyRollup = computed(() => props.dataFlowMonitoring?.dailyRollup || {})
+const dataFlowDailyRollupPoints = computed(() => (
+  Array.isArray(dataFlowDailyRollup.value.points) ? dataFlowDailyRollup.value.points.slice(0, 8) : []
 ))
 const dataFlowRecentEvents = computed(() => (
   Array.isArray(props.dataFlowMonitoring?.recentEvents) ? props.dataFlowMonitoring.recentEvents.slice(0, 5) : []

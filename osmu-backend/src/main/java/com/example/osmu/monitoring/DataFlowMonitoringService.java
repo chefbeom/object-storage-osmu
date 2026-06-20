@@ -20,6 +20,10 @@ public class DataFlowMonitoringService {
     private static final int SUMMARY_EVENT_SCAN_LIMIT = 10_000;
     private static final int TOP_BUCKET_LIMIT = 5;
     private static final int TREND_POINT_LIMIT = 24;
+    private static final int DEFAULT_DAILY_ROLLUP_DAYS = 30;
+    private static final int MAX_DAILY_ROLLUP_DAYS = 366;
+    private static final int DEFAULT_DAILY_ROLLUP_LIMIT = 200;
+    private static final int MAX_DAILY_ROLLUP_LIMIT = 1000;
 
     private final MeterRegistry meterRegistry;
     private final DataFlowEventRepository eventRepository;
@@ -169,6 +173,37 @@ public class DataFlowMonitoringService {
         return csv.toString();
     }
 
+    public DataFlowDailyRollupResponse dailyRollup(DataFlowEventFilter filter, Integer days, Integer limit) {
+        OffsetDateTime generatedAt = OffsetDateTime.now();
+        int normalizedDays = normalizeDailyRollupDays(days);
+        int normalizedLimit = normalizeDailyRollupLimit(limit);
+        DataFlowEventFilter safeFilter = filter == null ? DataFlowEventFilter.empty() : filter;
+        DataFlowEventFilter boundedFilter = safeFilter.from() == null
+                ? new DataFlowEventFilter(
+                        safeFilter.bucketName(),
+                        safeFilter.actorId(),
+                        safeFilter.source(),
+                        safeFilter.operation(),
+                        safeFilter.status(),
+                        generatedAt.minusDays(normalizedDays - 1L).toLocalDate().atStartOfDay().atOffset(ZoneOffset.UTC),
+                        safeFilter.to()
+                )
+                : safeFilter;
+        List<DataFlowDailyRollupPointResponse> points = eventRepository.dailyRollup(boundedFilter, normalizedLimit);
+        return new DataFlowDailyRollupResponse(
+                "DATA_FLOW_DAILY_ROLLUP",
+                "UTC_DAY",
+                normalizedDays,
+                normalizedLimit,
+                points.size(),
+                points,
+                generatedAt,
+                "ADMIN-only data-flow analytics rollup. Query filters are identical to the detailed data-flow monitoring endpoint.",
+                "Aggregates persisted data_flow_events in MariaDB mode and runtime events in in-memory mode. A future partitioned or time-series repository can replace this backing store without changing the API contract.",
+                "This is an OSMU operations and chargeback planning rollup, not AWS billing parity."
+        );
+    }
+
     private void persistEvent(
             String eventType,
             String operation,
@@ -227,6 +262,20 @@ public class DataFlowMonitoringService {
             return DEFAULT_RECENT_EVENT_LIMIT;
         }
         return Math.min(MAX_RECENT_EVENT_LIMIT, limit);
+    }
+
+    private int normalizeDailyRollupDays(Integer days) {
+        if (days == null || days <= 0) {
+            return DEFAULT_DAILY_ROLLUP_DAYS;
+        }
+        return Math.min(MAX_DAILY_ROLLUP_DAYS, days);
+    }
+
+    private int normalizeDailyRollupLimit(Integer limit) {
+        if (limit == null || limit <= 0) {
+            return DEFAULT_DAILY_ROLLUP_LIMIT;
+        }
+        return Math.min(MAX_DAILY_ROLLUP_LIMIT, limit);
     }
 
     private long positiveBytes(long sizeBytes) {

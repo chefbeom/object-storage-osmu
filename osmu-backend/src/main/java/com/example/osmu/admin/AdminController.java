@@ -34,6 +34,7 @@ import com.example.osmu.object.repository.ObjectVersionRepository;
 import com.example.osmu.object.repository.ObjectVersionRepository.VersionCandidate;
 import com.example.osmu.object.repository.PresignedUploadSessionRepository;
 import com.example.osmu.organization.repository.OrganizationRepository;
+import com.example.osmu.monitoring.DataFlowDailyRollupResponse;
 import com.example.osmu.monitoring.DataFlowEventFilter;
 import com.example.osmu.monitoring.DataFlowMonitoringResponse;
 import com.example.osmu.monitoring.DataFlowMonitoringService;
@@ -290,6 +291,25 @@ public class AdminController {
                 .contentType(MediaType.parseMediaType("text/csv"))
                 .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"osmu-data-flow.csv\"")
                 .body(csv);
+    }
+
+    @GetMapping("/monitoring/data-flow/daily-rollup")
+    public ApiResponse<DataFlowDailyRollupResponse> dataFlowDailyRollup(
+            @RequestParam(name = "bucketName", required = false) String bucketName,
+            @RequestParam(name = "actorId", required = false) String actorId,
+            @RequestParam(name = "source", required = false) String source,
+            @RequestParam(name = "operation", required = false) String operation,
+            @RequestParam(name = "status", required = false) String status,
+            @RequestParam(name = "from", required = false) String from,
+            @RequestParam(name = "to", required = false) String to,
+            @RequestParam(name = "days", required = false) Integer days,
+            @RequestParam(name = "limit", required = false) Integer limit
+    ) {
+        return ApiResponse.of(dataFlowMonitoringService.dailyRollup(
+                dataFlowFilter(bucketName, actorId, source, operation, status, from, to),
+                days,
+                limit
+        ));
     }
 
     private DataFlowEventFilter dataFlowFilter(

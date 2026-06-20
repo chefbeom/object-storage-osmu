@@ -3352,6 +3352,7 @@ Trend response:
 
 - `trendPoints`: latest 24 UTC hourly buckets grouped by `source` and `operation`.
 - S3 CopyObject is recorded as `eventType=COPY`, `operation=copy`, `direction=INTERNAL`; copied bytes are exposed as `copiedBytes` and `internalBytes`, not as external ingress.
+- Long-term daily analytics are exposed separately through `GET /api/admin/monitoring/data-flow/daily-rollup` so the detailed snapshot can stay compact.
 
 Response:
 
@@ -3438,6 +3439,55 @@ Persistence:
 - The response is aggregated from persisted event rows matching the requested filters. The MVP summary scans up to the latest 10,000 matching events.
 - Micrometer counters are still emitted for Prometheus via `osmu.data.flow.operations` and `osmu.data.flow.bytes` with source/status/direction/bucket labels for starter alerting.
 - Scheduled retention deletes old data-flow event rows with `DATA_FLOW_EVENT_RETENTION` audit and `osmu.data.flow.retention.*` metrics. Defaults: enabled, 90 days, batch size 1000, fixed delay 6 hours.
+
+### GET /api/admin/monitoring/data-flow/daily-rollup
+
+Returns an ADMIN-only UTC-day rollup for longer-running data-flow analytics and chargeback planning.
+
+Query parameters:
+
+- Same filters as `GET /api/admin/monitoring/data-flow`: `from`, `to`, `bucketName`, `actorId`, `source`, `operation`, and `status`.
+- `days`: default `30`, maximum `366`. When `from` is omitted, the API applies a UTC-day lower bound for the latest `days` window.
+- `limit`: rollup point limit. Default `200`, maximum `1000`.
+
+Response:
+
+```json
+{
+  "data": {
+    "mode": "DATA_FLOW_DAILY_ROLLUP",
+    "granularity": "UTC_DAY",
+    "dayWindow": 30,
+    "pointLimit": 200,
+    "pointCount": 1,
+    "points": [
+      {
+        "day": "2026-06-18",
+        "bucketName": "media",
+        "source": "s3",
+        "operation": "download",
+        "successCount": 8,
+        "failureCount": 1,
+        "cancelCount": 0,
+        "totalCount": 9,
+        "uploadedBytes": 0,
+        "downloadedBytes": 524288,
+        "copiedBytes": 0,
+        "totalBytes": 524288
+      }
+    ],
+    "generatedAt": "2026-06-18T10:20:00Z",
+    "scopePolicy": "ADMIN-only data-flow analytics rollup. Query filters are identical to the detailed data-flow monitoring endpoint.",
+    "storagePolicy": "Aggregates persisted data_flow_events in MariaDB mode and runtime events in in-memory mode. A future partitioned or time-series repository can replace this backing store without changing the API contract.",
+    "note": "This is an OSMU operations and chargeback planning rollup, not AWS billing parity."
+  }
+}
+```
+
+Notes:
+
+- MariaDB mode aggregates `data_flow_events` at query time by `DATE(created_at)`, bucket, source, and operation; it does not expose object keys or raw event messages.
+- The endpoint is a product-side analytics bridge before table partitioning or a dedicated time-series store is introduced.
 
 ### GET /api/admin/monitoring/data-flow/export.csv
 

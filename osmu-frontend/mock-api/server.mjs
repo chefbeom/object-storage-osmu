@@ -291,6 +291,10 @@ async function handleRequest(request, response) {
     sendJson(response, 200, apiData(dataFlowSummary(dataFlowFilters(url))))
     return
   }
+  if (request.method === 'GET' && path === '/admin/monitoring/data-flow/daily-rollup') {
+    sendJson(response, 200, apiData(dataFlowDailyRollup(dataFlowFilters(url))))
+    return
+  }
   if (request.method === 'GET' && path === '/admin/monitoring/data-flow/export.csv') {
     sendCsv(response, 'osmu-data-flow.csv', dataFlowCsv(dataFlowFilters(url)))
     return
@@ -1000,7 +1004,8 @@ function dataFlowFilters(url) {
     status: url.searchParams.get('status') || '',
     from: url.searchParams.get('from') || '',
     to: url.searchParams.get('to') || '',
-    limit: Number(url.searchParams.get('limit') || 50),
+    days: url.searchParams.has('days') ? Number(url.searchParams.get('days')) : undefined,
+    limit: url.searchParams.has('limit') ? Number(url.searchParams.get('limit')) : undefined,
   }
 }
 
@@ -1077,6 +1082,76 @@ function dataFlowSummary(filters = {}) {
     trendPoints: dataFlowTrend(events),
     recentEvents: events.slice(0, normalizeDataFlowLimit(filters.limit)),
     generatedAt: new Date().toISOString(),
+  }
+}
+
+function dataFlowDailyRollup(filters = {}) {
+  const days = Math.min(366, Math.max(1, Math.floor(Number(filters.days || 30))))
+  const limit = Math.min(1000, Math.max(1, Math.floor(Number(filters.limit || 200))))
+  const boundedFilters = { ...filters }
+  if (!boundedFilters.from) {
+    const from = new Date()
+    from.setUTCHours(0, 0, 0, 0)
+    from.setUTCDate(from.getUTCDate() - (days - 1))
+    boundedFilters.from = from.toISOString()
+  }
+  const buckets = new Map()
+  for (const event of filterDataFlowEvents(state.dataFlowEvents || [], boundedFilters)) {
+    const parsed = Date.parse(event.createdAt)
+    if (Number.isNaN(parsed)) continue
+    const day = new Date(parsed).toISOString().slice(0, 10)
+    const bucketName = event.bucketName || 'unknown'
+    const source = String(event.source || 'unknown').toLowerCase()
+    const operation = String(event.operation || 'unknown').toLowerCase()
+    const key = `${day}|${bucketName}|${source}|${operation}`
+    if (!buckets.has(key)) {
+      buckets.set(key, {
+        day,
+        bucketName,
+        source,
+        operation,
+        successCount: 0,
+        failureCount: 0,
+        cancelCount: 0,
+        totalCount: 0,
+        uploadedBytes: 0,
+        downloadedBytes: 0,
+        copiedBytes: 0,
+        totalBytes: 0,
+      })
+    }
+    const point = buckets.get(key)
+    point.totalCount += 1
+    if (event.status === 'SUCCESS') {
+      point.successCount += 1
+      if (event.eventType === 'UPLOAD') point.uploadedBytes += Math.max(0, Number(event.sizeBytes || 0))
+      if (event.eventType === 'DOWNLOAD') point.downloadedBytes += Math.max(0, Number(event.sizeBytes || 0))
+      if (event.eventType === 'COPY') point.copiedBytes += Math.max(0, Number(event.sizeBytes || 0))
+    }
+    if (event.eventType === 'FAILURE' || event.status === 'FAILED') point.failureCount += 1
+    if (event.eventType === 'CANCEL' || event.status === 'CANCELLED') point.cancelCount += 1
+    point.totalBytes = point.uploadedBytes + point.downloadedBytes + point.copiedBytes
+  }
+  const points = [...buckets.values()]
+    .sort((left, right) => (
+      right.day.localeCompare(left.day)
+      || right.totalCount - left.totalCount
+      || left.bucketName.localeCompare(right.bucketName)
+      || left.source.localeCompare(right.source)
+      || left.operation.localeCompare(right.operation)
+    ))
+    .slice(0, limit)
+  return {
+    mode: 'DATA_FLOW_DAILY_ROLLUP',
+    granularity: 'UTC_DAY',
+    dayWindow: days,
+    pointLimit: limit,
+    pointCount: points.length,
+    points,
+    generatedAt: new Date().toISOString(),
+    scopePolicy: 'ADMIN-only data-flow analytics rollup. Query filters are identical to the detailed data-flow monitoring endpoint.',
+    storagePolicy: 'Aggregates mock runtime data-flow events; MariaDB mode aggregates persisted data_flow_events.',
+    note: 'This is an OSMU operations and chargeback planning rollup, not AWS billing parity.',
   }
 }
 

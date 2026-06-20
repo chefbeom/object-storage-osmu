@@ -131,6 +131,32 @@ class AdminDashboardSummaryControllerTest {
     }
 
     @Test
+    void adminCanReadDataFlowDailyRollup() throws Exception {
+        String adminToken = loginAndReturnAccessToken("admin", "password");
+
+        mockMvc.perform(get("/api/admin/monitoring/data-flow/daily-rollup")
+                        .param("bucketName", "media")
+                        .param("actorId", "admin")
+                        .param("source", "rest")
+                        .param("operation", "upload")
+                        .param("status", "SUCCESS")
+                        .param("from", "2026-06-18T00:00:00Z")
+                        .param("to", "2026-06-19T00:00:00Z")
+                        .param("days", "14")
+                        .param("limit", "25")
+                        .header("Authorization", "Bearer " + adminToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.mode").value("DATA_FLOW_DAILY_ROLLUP"))
+                .andExpect(jsonPath("$.data.granularity").value("UTC_DAY"))
+                .andExpect(jsonPath("$.data.dayWindow").value(14))
+                .andExpect(jsonPath("$.data.pointLimit").value(25))
+                .andExpect(jsonPath("$.data.pointCount").isNumber())
+                .andExpect(jsonPath("$.data.points").isArray())
+                .andExpect(jsonPath("$.data.storagePolicy", org.hamcrest.Matchers.containsString("data_flow_events")))
+                .andExpect(jsonPath("$.data.generatedAt").exists());
+    }
+
+    @Test
     void dashboardSummaryReflectsRecordedRestoreDrillEvidence() throws Exception {
         String adminToken = loginAndReturnAccessToken("admin", "password");
 

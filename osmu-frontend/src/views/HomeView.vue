@@ -597,6 +597,7 @@ import {
   getDashboardReadiness,
   getDashboardSummary,
   getDashboardWidgetCatalog,
+  getDataFlowDailyRollup,
   getDataFlowMonitoring,
   getChargebackPreview,
   getEnterpriseAuthPlan,
@@ -1261,6 +1262,7 @@ const dataFlowMonitoring = reactive({
   topBuckets: [],
   trendPoints: [],
   recentEvents: [],
+  dailyRollup: defaultDataFlowDailyRollup(),
   generatedAt: '',
 })
 const confirmDialog = reactive({ open: false, title: '', message: '', confirmLabel: '확인', pending: false, action: null })
@@ -2375,7 +2377,7 @@ async function loadDashboard(options = {}) {
         dashboardSummaryLoaded ? Promise.resolve() : loadAdminUsage(),
         dashboardSummaryLoaded ? Promise.resolve() : loadBackupStatus(),
         dashboardSummaryLoaded ? Promise.resolve() : loadRetentionStatus(),
-        dashboardSummaryLoaded ? Promise.resolve() : loadDataFlowMonitoring(),
+        dashboardSummaryLoaded ? loadDataFlowDailyRollup() : loadDataFlowMonitoring(),
         loadStorageExpansionExecutionLogRetentionStatus(),
         refreshLifecycleRules(),
         refreshLifecycleRuleConflicts(),
@@ -2477,9 +2479,23 @@ async function loadDashboardSummary() {
 }
 
 async function loadDataFlowMonitoring() {
-  const result = await safeRequest(() => getDataFlowMonitoring(dataFlowFilterPayload()), null)
+  const payload = dataFlowFilterPayload()
+  const [snapshotResult, rollupResult] = await Promise.all([
+    safeRequest(() => getDataFlowMonitoring(payload), null),
+    safeRequest(() => getDataFlowDailyRollup(payload), null),
+  ])
+  if (snapshotResult?.data) {
+    applyDataFlowMonitoring(snapshotResult.data)
+  }
+  if (rollupResult?.data) {
+    applyDataFlowDailyRollup(rollupResult.data)
+  }
+}
+
+async function loadDataFlowDailyRollup() {
+  const result = await safeRequest(() => getDataFlowDailyRollup(dataFlowFilterPayload()), null)
   if (result?.data) {
-    applyDataFlowMonitoring(result.data)
+    applyDataFlowDailyRollup(result.data)
   }
 }
 
@@ -4016,8 +4032,59 @@ function applyDataFlowMonitoring(data = {}) {
   dataFlowMonitoring.generatedAt = data.generatedAt || ''
 }
 
+function defaultDataFlowDailyRollup() {
+  return {
+    mode: 'DATA_FLOW_DAILY_ROLLUP',
+    granularity: 'UTC_DAY',
+    dayWindow: 30,
+    pointLimit: 0,
+    pointCount: 0,
+    points: [],
+    generatedAt: '',
+    scopePolicy: '',
+    storagePolicy: '',
+    note: '',
+  }
+}
+
+function normalizeDataFlowDailyRollupPoint(point = {}) {
+  return {
+    day: point.day || '',
+    bucketName: point.bucketName || '',
+    source: point.source || '',
+    operation: point.operation || '',
+    successCount: Number(point.successCount || 0),
+    failureCount: Number(point.failureCount || 0),
+    cancelCount: Number(point.cancelCount || 0),
+    totalCount: Number(point.totalCount || 0),
+    uploadedBytes: Number(point.uploadedBytes || 0),
+    downloadedBytes: Number(point.downloadedBytes || 0),
+    copiedBytes: Number(point.copiedBytes || 0),
+    totalBytes: Number(point.totalBytes || 0),
+  }
+}
+
+function applyDataFlowDailyRollup(data = {}) {
+  const points = Array.isArray(data.points)
+    ? data.points.map((point) => normalizeDataFlowDailyRollupPoint(point))
+    : []
+  dataFlowMonitoring.dailyRollup = {
+    ...defaultDataFlowDailyRollup(),
+    ...data,
+    dayWindow: Number(data.dayWindow || 30),
+    pointLimit: Number(data.pointLimit || 0),
+    pointCount: Number(data.pointCount ?? points.length),
+    points,
+    generatedAt: data.generatedAt || '',
+    scopePolicy: data.scopePolicy || '',
+    storagePolicy: data.storagePolicy || '',
+    note: data.note || '',
+  }
+}
+
 function resetDataFlowMonitoring() {
   applyDataFlowMonitoring({})
+  applyDataFlowDailyRollup({})
 }
 
 function defaultBillingPricingPolicy() {

@@ -44,6 +44,7 @@ import {
   getDashboardReadiness,
   getDashboardSummary,
   getDashboardWidgetCatalog,
+  getDataFlowDailyRollup,
   getDataFlowMonitoring,
   getEnterpriseAuthPlan,
   getObjectMetadata,
@@ -333,6 +334,51 @@ test('getDataFlowMonitoring reads admin data flow endpoint', async () => {
     assert.equal(result.data.traffic.uploadedBytes, 1024)
     assert.equal(result.data.traffic.copiedBytes, 128)
     assert.equal(result.data.trendPoints[0].operation, 'upload')
+  } finally {
+    cleanupFetch(fetchMock)
+  }
+})
+
+test('getDataFlowDailyRollup reads admin daily data flow rollup endpoint', async () => {
+  const fetchMock = mockFetch([
+    () => jsonResponse({
+      data: {
+        mode: 'DATA_FLOW_DAILY_ROLLUP',
+        granularity: 'UTC_DAY',
+        dayWindow: 30,
+        pointLimit: 25,
+        points: [{ day: '2026-06-18', bucketName: 'media', source: 'rest', operation: 'upload', totalBytes: 1024 }],
+      },
+    }),
+  ])
+
+  try {
+    const result = await getDataFlowDailyRollup({
+      bucketName: 'media',
+      actorId: 'admin',
+      source: 'rest',
+      operation: 'upload',
+      status: 'SUCCESS',
+      from: '2026-06-18T00:00:00.000Z',
+      to: '2026-06-19T00:00:00.000Z',
+      days: 30,
+      limit: 25,
+    })
+
+    const url = new URL(fetchMock.calls[0].url)
+    assert.equal(url.origin + url.pathname, 'http://localhost:8080/api/admin/monitoring/data-flow/daily-rollup')
+    assert.equal(url.searchParams.get('bucketName'), 'media')
+    assert.equal(url.searchParams.get('actorId'), 'admin')
+    assert.equal(url.searchParams.get('source'), 'rest')
+    assert.equal(url.searchParams.get('operation'), 'upload')
+    assert.equal(url.searchParams.get('status'), 'SUCCESS')
+    assert.equal(url.searchParams.get('from'), '2026-06-18T00:00:00.000Z')
+    assert.equal(url.searchParams.get('to'), '2026-06-19T00:00:00.000Z')
+    assert.equal(url.searchParams.get('days'), '30')
+    assert.equal(url.searchParams.get('limit'), '25')
+    assert.equal(fetchMock.calls[0].options.method, undefined)
+    assert.equal(result.data.mode, 'DATA_FLOW_DAILY_ROLLUP')
+    assert.equal(result.data.points[0].totalBytes, 1024)
   } finally {
     cleanupFetch(fetchMock)
   }

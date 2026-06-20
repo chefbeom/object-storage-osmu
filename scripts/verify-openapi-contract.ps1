@@ -180,6 +180,7 @@ $requiredOperations = @(
     @("/api/access-keys/{keyId}/rotate", "post", "rotateAccessKey"),
     @("/api/admin/usage", "get", "getUsage"),
     @("/api/admin/monitoring/data-flow", "get", "getDataFlowMonitoring"),
+    @("/api/admin/monitoring/data-flow/daily-rollup", "get", "getDataFlowDailyRollup"),
     @("/api/admin/quota-policies", "get", "getQuotaPolicies"),
     @("/api/admin/quota-policies/history", "get", "getQuotaPolicyHistory"),
     @("/api/admin/quota-policies/{targetType}/{targetId}", "put", "saveQuotaPolicy"),

@@ -2,6 +2,7 @@ package com.example.osmu.monitoring.repository;
 
 import com.example.osmu.common.error.ApiErrorCode;
 import com.example.osmu.common.error.ApiException;
+import com.example.osmu.monitoring.DataFlowDailyRollupPointResponse;
 import com.example.osmu.monitoring.DataFlowEventFilter;
 import com.example.osmu.monitoring.DataFlowEventRecord;
 import java.sql.Connection;
@@ -42,35 +43,7 @@ public class MariaDbDataFlowEventRepository implements DataFlowEventRepository {
         ensureSchema();
         DataFlowEventFilter safeFilter = filter == null ? DataFlowEventFilter.empty() : filter;
         StringBuilder sql = new StringBuilder(selectSql()).append(" WHERE 1 = 1");
-        List<Object> parameters = new ArrayList<>();
-        if (safeFilter.bucketName() != null) {
-            sql.append(" AND bucket_name = ?");
-            parameters.add(safeFilter.bucketName());
-        }
-        if (safeFilter.actorId() != null) {
-            sql.append(" AND actor_id = ?");
-            parameters.add(safeFilter.actorId());
-        }
-        if (safeFilter.source() != null) {
-            sql.append(" AND source = ?");
-            parameters.add(safeFilter.source());
-        }
-        if (safeFilter.operation() != null) {
-            sql.append(" AND operation = ?");
-            parameters.add(safeFilter.operation());
-        }
-        if (safeFilter.status() != null) {
-            sql.append(" AND status = ?");
-            parameters.add(safeFilter.status());
-        }
-        if (safeFilter.from() != null) {
-            sql.append(" AND created_at >= ?");
-            parameters.add(Timestamp.from(safeFilter.from().toInstant()));
-        }
-        if (safeFilter.to() != null) {
-            sql.append(" AND created_at <= ?");
-            parameters.add(Timestamp.from(safeFilter.to().toInstant()));
-        }
+        List<Object> parameters = appendFilter(sql, safeFilter);
         sql.append(" ORDER BY created_at DESC, id DESC LIMIT ?");
         parameters.add(Math.max(0, limit));
 
@@ -79,6 +52,64 @@ public class MariaDbDataFlowEventRepository implements DataFlowEventRepository {
             bindParameters(statement, parameters);
             try (ResultSet resultSet = statement.executeQuery()) {
                 return collect(resultSet);
+            }
+        } catch (SQLException exception) {
+            throw databaseException(exception);
+        }
+    }
+
+    @Override
+    public List<DataFlowDailyRollupPointResponse> dailyRollup(DataFlowEventFilter filter, int limit) {
+        ensureSchema();
+        DataFlowEventFilter safeFilter = filter == null ? DataFlowEventFilter.empty() : filter;
+        StringBuilder sql = new StringBuilder("""
+                SELECT
+                    DATE(created_at) AS rollup_day,
+                    bucket_name,
+                    LOWER(source) AS source,
+                    LOWER(operation) AS operation,
+                    SUM(CASE WHEN status = 'SUCCESS' THEN 1 ELSE 0 END) AS success_count,
+                    SUM(CASE WHEN event_type = 'FAILURE' OR status = 'FAILED' THEN 1 ELSE 0 END) AS failure_count,
+                    SUM(CASE WHEN event_type = 'CANCEL' OR status = 'CANCELLED' THEN 1 ELSE 0 END) AS cancel_count,
+                    COUNT(*) AS total_count,
+                    SUM(CASE WHEN event_type = 'UPLOAD' AND status = 'SUCCESS' THEN size_bytes ELSE 0 END) AS uploaded_bytes,
+                    SUM(CASE WHEN event_type = 'DOWNLOAD' AND status = 'SUCCESS' THEN size_bytes ELSE 0 END) AS downloaded_bytes,
+                    SUM(CASE WHEN event_type = 'COPY' AND status = 'SUCCESS' THEN size_bytes ELSE 0 END) AS copied_bytes
+                FROM data_flow_events
+                WHERE 1 = 1
+                """);
+        List<Object> parameters = appendFilter(sql, safeFilter);
+        sql.append("""
+                GROUP BY rollup_day, bucket_name, LOWER(source), LOWER(operation)
+                ORDER BY rollup_day DESC, total_count DESC, bucket_name ASC, source ASC, operation ASC
+                LIMIT ?
+                """);
+        parameters.add(Math.max(0, limit));
+        try (Connection connection = connect();
+             PreparedStatement statement = connection.prepareStatement(sql.toString())) {
+            bindParameters(statement, parameters);
+            try (ResultSet resultSet = statement.executeQuery()) {
+                List<DataFlowDailyRollupPointResponse> records = new ArrayList<>();
+                while (resultSet.next()) {
+                    long uploadedBytes = resultSet.getLong("uploaded_bytes");
+                    long downloadedBytes = resultSet.getLong("downloaded_bytes");
+                    long copiedBytes = resultSet.getLong("copied_bytes");
+                    records.add(new DataFlowDailyRollupPointResponse(
+                            resultSet.getDate("rollup_day").toLocalDate(),
+                            resultSet.getString("bucket_name"),
+                            resultSet.getString("source"),
+                            resultSet.getString("operation"),
+                            resultSet.getLong("success_count"),
+                            resultSet.getLong("failure_count"),
+                            resultSet.getLong("cancel_count"),
+                            resultSet.getLong("total_count"),
+                            uploadedBytes,
+                            downloadedBytes,
+                            copiedBytes,
+                            uploadedBytes + downloadedBytes + copiedBytes
+                    ));
+                }
+                return records;
             }
         } catch (SQLException exception) {
             throw databaseException(exception);
@@ -221,6 +252,39 @@ public class MariaDbDataFlowEventRepository implements DataFlowEventRepository {
 
     private Connection connect() throws SQLException {
         return DriverManager.getConnection(url, username, password);
+    }
+
+    private List<Object> appendFilter(StringBuilder sql, DataFlowEventFilter safeFilter) {
+        List<Object> parameters = new ArrayList<>();
+        if (safeFilter.bucketName() != null) {
+            sql.append(" AND bucket_name = ?");
+            parameters.add(safeFilter.bucketName());
+        }
+        if (safeFilter.actorId() != null) {
+            sql.append(" AND actor_id = ?");
+            parameters.add(safeFilter.actorId());
+        }
+        if (safeFilter.source() != null) {
+            sql.append(" AND source = ?");
+            parameters.add(safeFilter.source());
+        }
+        if (safeFilter.operation() != null) {
+            sql.append(" AND operation = ?");
+            parameters.add(safeFilter.operation());
+        }
+        if (safeFilter.status() != null) {
+            sql.append(" AND status = ?");
+            parameters.add(safeFilter.status());
+        }
+        if (safeFilter.from() != null) {
+            sql.append(" AND created_at >= ?");
+            parameters.add(Timestamp.from(safeFilter.from().toInstant()));
+        }
+        if (safeFilter.to() != null) {
+            sql.append(" AND created_at <= ?");
+            parameters.add(Timestamp.from(safeFilter.to().toInstant()));
+        }
+        return parameters;
     }
 
     private DataFlowEventRecord mapRow(ResultSet resultSet) throws SQLException {

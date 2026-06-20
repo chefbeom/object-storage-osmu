@@ -126,6 +126,9 @@ test('HomeView exposes stable selectors for browser E2E flows', () => {
     'data-flow-total-bytes',
     'data-flow-failed-cancelled',
     'data-flow-trend-chart',
+    'data-flow-daily-rollup',
+    'data-flow-daily-rollup-row',
+    'data-flow-daily-rollup-bytes',
     'data-flow-top-buckets',
     'data-flow-recent-events',
     'backup-status-panel',
@@ -661,6 +664,9 @@ test('HomeView exposes stable selectors for browser E2E flows', () => {
   assert.match(dashboardSource, /operationsEvidenceHandoffStages/)
   assert.match(dashboardSource, /operationsHandoffPackage/)
   assert.match(dashboardSource, /operationsHandoffPackageChecks/)
+  assert.match(dashboardSource, /getDataFlowDailyRollup/)
+  assert.match(dashboardSource, /defaultDataFlowDailyRollup/)
+  assert.match(dashboardSource, /applyDataFlowDailyRollup/)
   assert.match(dashboardSource, /chargebackPaymentProviderAdapterReadiness/)
   assert.match(dashboardSource, /getChargebackPaymentProviderAdapterReadiness/)
   assert.match(dashboardSource, /defaultChargebackPaymentProviderAdapterReadiness/)
