@@ -11,6 +11,7 @@ param(
     [string] $SecurityEvidenceRunId = "",
     [string] $CommercialApprovalRunId = "",
     [string] $EnterpriseAuthRunId = "",
+    [string] $OperationsHandoffPackageRunId = "",
     [string] $KubernetesOperationsReportSyncRunId = "",
     [string] $ImageSigningVersion = "v0.1.0-rc.1",
     [string] $CommitSha = "<commit-sha>",
@@ -123,6 +124,7 @@ if ($invocation.formatVersion -ne "osmu.operations-evidence-plan-invocation.v1")
 $workflows = New-Object System.Collections.Generic.HashSet[string]
 $hasCommercialApprovalEvidence = $false
 $hasEnterpriseAuthSmoke = $false
+$hasOperationsHandoffPackage = $false
 foreach ($action in @($invocation.actions)) {
     $command = Get-Text $action "command"
     Add-UniqueWorkflow $workflows (Get-WorkflowName $command)
@@ -131,6 +133,9 @@ foreach ($action in @($invocation.actions)) {
     }
     if (Test-CommandMentions $command "write-enterprise-auth-smoke-plan.ps1") {
         $hasEnterpriseAuthSmoke = $true
+    }
+    if (Test-CommandMentions $command "write-operations-handoff-package.ps1") {
+        $hasOperationsHandoffPackage = $true
     }
 }
 
@@ -144,6 +149,7 @@ $containerSecurityRun = Get-RunIdOrPlaceholder $ContainerSecurityRunId "containe
 $securityEvidenceRun = Get-RunIdOrPlaceholder $SecurityEvidenceRunId "security-evidence-run-id"
 $commercialApprovalRun = Get-RunIdOrPlaceholder $CommercialApprovalRunId "commercial-approval-run-id"
 $enterpriseAuthRun = Get-RunIdOrPlaceholder $EnterpriseAuthRunId "enterprise-auth-run-id"
+$operationsHandoffPackageRun = Get-RunIdOrPlaceholder $OperationsHandoffPackageRunId "operations-handoff-package-run-id"
 $kubernetesOperationsReportSyncRun = Get-RunIdOrPlaceholder $KubernetesOperationsReportSyncRunId "kubernetes-operations-report-sync-run-id"
 
 if ($workflows.Contains("storage-expansion-finalizer-ci.yml")) {
@@ -172,6 +178,9 @@ if ($hasCommercialApprovalEvidence) {
 }
 if ($hasEnterpriseAuthSmoke -or $workflows.Contains("enterprise-auth-smoke-ci.yml")) {
     Add-Artifact $artifacts "enterprise-auth" "enterprise-auth-smoke-ci.yml" $enterpriseAuthRun "enterprise_auth_run_id" "enterprise-auth-smoke-$enterpriseAuthRun" "enterprise_auth_artifact_name" ".osmu-run/operations-readiness-artifacts/enterprise-auth" $true "Imports latest-enterprise-auth-smoke.json from target IdP/directory smoke evidence."
+}
+if ($hasOperationsHandoffPackage) {
+    Add-Artifact $artifacts "operations-handoff-package" "manual-operations-handoff-package" $operationsHandoffPackageRun "operations_handoff_package_run_id" "operations-handoff-package-$operationsHandoffPackageRun" "operations_handoff_package_artifact_name" ".osmu-run/operations-readiness-artifacts/operations-handoff-package" $true "Imports latest-operations-handoff-package.json from pilot or production handoff package evidence."
 }
 if ($workflows.Contains("kubernetes-operations-report-sync-ci.yml")) {
     Add-Artifact $artifacts "kubernetes-operations-report-sync" "kubernetes-operations-report-sync-ci.yml" $kubernetesOperationsReportSyncRun "kubernetes_operations_report_sync_run_id" "kubernetes-operations-report-sync-$kubernetesOperationsReportSyncRun" "kubernetes_operations_report_sync_artifact_name" ".osmu-run/operations-readiness-artifacts/kubernetes-operations-report-sync" $true "Imports latest-kubernetes-operations-report-sync.json for convergence-level deployed dashboard sync evidence."
@@ -223,6 +232,9 @@ foreach ($artifact in $requiredArtifacts) {
     }
     elseif ($group -eq "enterprise-auth") {
         $localImportArgs.Add("-EnterpriseAuthArtifactPath $downloadPath")
+    }
+    elseif ($group -eq "operations-handoff-package") {
+        $localImportArgs.Add("-OperationsHandoffPackageArtifactPath $downloadPath")
     }
     elseif ($group -eq "kubernetes-operations-report-sync") {
         $localImportArgs.Add("-KubernetesOperationsReportSyncArtifactPath $downloadPath")

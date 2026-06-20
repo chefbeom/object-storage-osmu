@@ -59,6 +59,14 @@ on:
         description: Optional Enterprise auth smoke evidence artifact name
         required: false
         default: ""
+      operations_handoff_package_run_id:
+        description: Optional operations handoff package evidence run id
+        required: false
+        default: ""
+      operations_handoff_package_artifact_name:
+        description: Optional operations handoff package evidence artifact name
+        required: false
+        default: ""
       kubernetes_operations_report_sync_run_id:
         description: Optional Kubernetes Operations Report Sync CI run id
         required: false
@@ -154,6 +162,15 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           path: .osmu-run/operations-readiness-artifacts/enterprise-auth
 
+      - name: Download operations handoff package evidence
+        if: ${{ inputs.operations_handoff_package_run_id != '' && inputs.operations_handoff_package_artifact_name != '' }}
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ inputs.operations_handoff_package_artifact_name }}
+          run-id: ${{ inputs.operations_handoff_package_run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: .osmu-run/operations-readiness-artifacts/operations-handoff-package
+
       - name: Download Kubernetes operations report sync evidence
         if: ${{ inputs.kubernetes_operations_report_sync_run_id != '' && inputs.kubernetes_operations_report_sync_artifact_name != '' }}
         uses: actions/download-artifact@v4
@@ -179,6 +196,7 @@ jobs:
             @("SecurityEvidenceArtifactPath", ".osmu-run/operations-readiness-artifacts/security-evidence"),
             @("CommercialApprovalArtifactPath", ".osmu-run/operations-readiness-artifacts/commercial-approval"),
             @("EnterpriseAuthArtifactPath", ".osmu-run/operations-readiness-artifacts/enterprise-auth"),
+            @("OperationsHandoffPackageArtifactPath", ".osmu-run/operations-readiness-artifacts/operations-handoff-package"),
             @("KubernetesOperationsReportSyncArtifactPath", ".osmu-run/operations-readiness-artifacts/kubernetes-operations-report-sync")
           )
           foreach ($artifactRoot in $artifactRoots) {
@@ -227,6 +245,8 @@ jobs:
             .osmu-run/latest-commercial-approval-evidence.md
             .osmu-run/latest-enterprise-auth-smoke.json
             .osmu-run/latest-enterprise-auth-smoke.md
+            .osmu-run/latest-operations-handoff-package.json
+            .osmu-run/latest-operations-handoff-package.md
             .osmu-run/latest-kubernetes-operations-report-sync.json
             .osmu-run/latest-kubernetes-operations-report-sync-plan.json
             .osmu-run/latest-kubernetes-operations-report-sync-server-dry-run.json

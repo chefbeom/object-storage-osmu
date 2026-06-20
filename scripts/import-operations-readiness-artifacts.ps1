@@ -6,6 +6,7 @@ param(
     [string] $SecurityEvidenceArtifactPath = "",
     [string] $CommercialApprovalArtifactPath = "",
     [string] $EnterpriseAuthArtifactPath = "",
+    [string] $OperationsHandoffPackageArtifactPath = "",
     [string] $KubernetesOperationsReportSyncArtifactPath = "",
     [string] $OutputDirectory = ".\.osmu-run",
     [string] $JsonOutputPath = ".\.osmu-run\latest-operations-readiness-artifact-import.json",
@@ -170,6 +171,9 @@ Import-EvidenceFile "commercial-approval" $CommercialApprovalArtifactPath "lates
 Import-EvidenceFile "enterprise-auth" $EnterpriseAuthArtifactPath "latest-enterprise-auth-smoke.json" $true "result" "passed|scope-out"
 Import-EvidenceFile "enterprise-auth" $EnterpriseAuthArtifactPath "latest-enterprise-auth-smoke.md" $false
 
+Import-EvidenceFile "operations-handoff-package" $OperationsHandoffPackageArtifactPath "latest-operations-handoff-package.json" $true "result" "passed"
+Import-EvidenceFile "operations-handoff-package" $OperationsHandoffPackageArtifactPath "latest-operations-handoff-package.md" $false
+
 Import-EvidenceFile "kubernetes-operations-report-sync" $KubernetesOperationsReportSyncArtifactPath "latest-kubernetes-operations-report-sync.json" $true "result" "applied"
 Import-EvidenceFile "kubernetes-operations-report-sync" $KubernetesOperationsReportSyncArtifactPath "latest-kubernetes-operations-report-sync-plan.json" $false
 Import-EvidenceFile "kubernetes-operations-report-sync" $KubernetesOperationsReportSyncArtifactPath "latest-kubernetes-operations-report-sync-server-dry-run.json" $false
@@ -184,6 +188,7 @@ $selectedGroups = @(
     @("security-evidence", $SecurityEvidenceArtifactPath),
     @("commercial-approval", $CommercialApprovalArtifactPath),
     @("enterprise-auth", $EnterpriseAuthArtifactPath),
+    @("operations-handoff-package", $OperationsHandoffPackageArtifactPath),
     @("kubernetes-operations-report-sync", $KubernetesOperationsReportSyncArtifactPath)
 ) | Where-Object { -not [string]::IsNullOrWhiteSpace([string] $_[1]) }
 $result = if ($failedEntries.Count -eq 0) { "passed" } else { "failed" }
