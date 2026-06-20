@@ -556,6 +556,7 @@ class ChargebackPreviewServiceTest {
         assertThat(handoffPreview.targetAccount()).isEqualTo("finance-ap");
         assertThat(handoffPreview.externalPaymentEnabled()).isFalse();
         assertThat(handoffPreview.payload()).containsEntry("eventType", "chargeback.payment_provider.handoff");
+        assertThat(handoffPreview.payload()).containsEntry("providerProfile", "GENERIC");
         assertThat(handoffPreview.payload()).containsEntry("externalPaymentEnabled", false);
 
         ChargebackPaymentProviderHandoffQueueResponse queuedHandoff = service.queuePaymentProviderHandoff(

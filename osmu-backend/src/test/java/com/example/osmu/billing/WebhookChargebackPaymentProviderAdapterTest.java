@@ -29,6 +29,10 @@ class WebhookChargebackPaymentProviderAdapterTest {
                         "",
                         "",
                         "",
+                        "",
+                        "",
+                        "",
+                        "",
                         3000,
                         1024,
                         false
@@ -81,6 +85,10 @@ class WebhookChargebackPaymentProviderAdapterTest {
                             webhookUrl,
                             "",
                             "",
+                            "",
+                            "",
+                            "",
+                            "",
                             "payment-signing-secret",
                             "X-OSMU-Payment-Signature",
                             "X-OSMU-Payment-Timestamp",
@@ -110,6 +118,10 @@ class WebhookChargebackPaymentProviderAdapterTest {
                         "https://payments.example.com/osmu",
                         "",
                         "",
+                        "",
+                        "",
+                        "",
+                        "",
                         "payment-signing-secret",
                         "X-OSMU-Signature\nBad",
                         "X-OSMU-Signature-Timestamp",
@@ -121,7 +133,89 @@ class WebhookChargebackPaymentProviderAdapterTest {
         assertThat(adapter.isConfigured()).isFalse();
     }
 
+    @Test
+    void routesCardProviderToCardWebhookProfile() throws Exception {
+        AtomicReference<String> requestPath = new AtomicReference<>("");
+        AtomicReference<String> requestBody = new AtomicReference<>("");
+        HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/generic", exchange -> {
+            requestPath.set(exchange.getRequestURI().getPath());
+            requestBody.set(new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8));
+            exchange.sendResponseHeaders(200, -1);
+            exchange.close();
+        });
+        server.createContext("/card", exchange -> {
+            requestPath.set(exchange.getRequestURI().getPath());
+            requestBody.set(new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8));
+            exchange.sendResponseHeaders(200, -1);
+            exchange.close();
+        });
+        server.start();
+        try {
+            String baseUrl = "http://127.0.0.1:" + server.getAddress().getPort();
+            WebhookChargebackPaymentProviderAdapter adapter =
+                    new WebhookChargebackPaymentProviderAdapter(
+                            OBJECT_MAPPER,
+                            baseUrl + "/generic",
+                            baseUrl + "/card",
+                            "",
+                            "",
+                            "",
+                            "",
+                            "",
+                            "",
+                            "",
+                            "",
+                            3000,
+                            65536,
+                            true
+                    );
+
+            ChargebackPaymentProviderAdapterResult result = adapter.deliver(handoffRecord(
+                    "{\"eventType\":\"chargeback.payment_provider.handoff\"}",
+                    "CARD_STRIPE"
+            ));
+
+            assertThat(result.result()).isEqualTo("SUCCESS");
+            assertThat(requestPath.get()).isEqualTo("/card");
+            assertThat(requestBody.get()).contains("\"provider\":\"CARD_STRIPE\"");
+            assertThat(requestBody.get()).contains("\"providerProfile\":\"CARD\"");
+        } finally {
+            server.stop(0);
+        }
+    }
+
+    @Test
+    void configuresOnlyMatchingPaymentProviderProfileWhenGenericWebhookIsMissing() {
+        WebhookChargebackPaymentProviderAdapter adapter =
+                new WebhookChargebackPaymentProviderAdapter(
+                        OBJECT_MAPPER,
+                        "",
+                        "https://card-payments.example.com/osmu",
+                        "",
+                        "",
+                        "",
+                        "",
+                        "",
+                        "",
+                        "",
+                        "",
+                        3000,
+                        65536,
+                        false
+                );
+
+        assertThat(adapter.isConfigured()).isTrue();
+        assertThat(adapter.isConfigured("CARD_STRIPE")).isTrue();
+        assertThat(adapter.isConfigured("BANK_TRANSFER")).isFalse();
+        assertThat(adapter.isConfigured("MANUAL_AP")).isFalse();
+    }
+
     private static ChargebackPaymentProviderHandoffRecord handoffRecord(String payloadJson) {
+        return handoffRecord(payloadJson, "MANUAL_AP");
+    }
+
+    private static ChargebackPaymentProviderHandoffRecord handoffRecord(String payloadJson, String provider) {
         return new ChargebackPaymentProviderHandoffRecord(
                 16L,
                 8L,
@@ -130,7 +224,7 @@ class WebhookChargebackPaymentProviderAdapterTest {
                 "Payment Org",
                 "KRW",
                 BigDecimal.valueOf(1200L),
-                "MANUAL_AP",
+                provider,
                 "finance-ap",
                 "PENDING_PAYMENT_PROVIDER_ADAPTER",
                 0,

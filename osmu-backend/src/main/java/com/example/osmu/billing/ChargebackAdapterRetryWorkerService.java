@@ -112,17 +112,18 @@ public class ChargebackAdapterRetryWorkerService {
             }
         }
         for (ChargebackPaymentProviderHandoffRecord record : paymentCandidates) {
+            boolean providerAdapterConfigured = paymentProviderAdapter.isConfigured(record.provider());
             if (dryRun) {
-                items.add(paymentItem(record, null, true, paymentAdapterConfigured));
+                items.add(paymentItem(record, null, true, providerAdapterConfigured));
             } else {
-                ChargebackPaymentProviderHandoffRecord updated = paymentAdapterConfigured
+                ChargebackPaymentProviderHandoffRecord updated = providerAdapterConfigured
                         ? attemptPaymentProviderHandoff(record, now)
                         : blockPayment(record, now);
                 paymentHandoffRepository.update(updated);
                 if (PAYMENT_BLOCKED_STATUS.equals(updated.status())) {
                     blockedPaymentCounter.increment();
                 }
-                items.add(paymentItem(record, updated, false, paymentAdapterConfigured));
+                items.add(paymentItem(record, updated, false, providerAdapterConfigured));
                 updatedCount += 1;
             }
         }
@@ -443,7 +444,7 @@ public class ChargebackAdapterRetryWorkerService {
             return "Configured notification adapter was attempted for due notification rows; payment rows remain blocked until payment adapter configuration exists.";
         }
         if (paymentAdapterConfigured) {
-            return "Configured payment provider webhook adapter was attempted for due payment handoff rows; notification rows remain blocked until notification adapter configuration exists.";
+            return "Configured payment provider webhook adapter was available for eligible due payment handoff rows; notification rows remain blocked until notification adapter configuration exists.";
         }
         return "Due adapter retry rows were blocked because external adapter credentials/configuration are not configured.";
     }

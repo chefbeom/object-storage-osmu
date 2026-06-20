@@ -3015,11 +3015,11 @@ Response:
 
 ### GET /api/admin/billing/chargeback-invoices/{invoiceId}/payment-provider-handoff/preview
 
-Builds a payment-provider handoff payload for a `PAYMENT_REQUESTED` final chargeback invoice. `ADMIN` only. This is a no-send preview and does not call card, bank-transfer, tax invoice, ERP, webhook, or payment provider adapters. `externalPaymentEnabled` reflects whether `osmu.billing.payment-provider.webhook-url` plus optional secret header and HMAC signature settings are valid.
+Builds a payment-provider handoff payload for a `PAYMENT_REQUESTED` final chargeback invoice. `ADMIN` only. This is a no-send preview and does not call card, bank-transfer, tax invoice, ERP, webhook, or payment provider adapters. `externalPaymentEnabled` reflects whether the generic `osmu.billing.payment-provider.webhook-url` or the provider-specific CARD/BANK/TAX/ERP webhook profile for the requested `paymentProvider` is valid with optional secret header and HMAC signature settings.
 
 Query parameters:
 
-- `paymentProvider` (optional): provider code, default `MANUAL_AP`.
+- `paymentProvider` (optional): provider code, default `MANUAL_AP`. Codes beginning with `CARD`, `BANK`, `TAX`, or `ERP` can route to matching provider-specific webhook profiles; other codes use the generic profile.
 - `paymentTargetAccount` (optional): operator-visible account/route identifier, default `UNCONFIGURED`.
 
 Response:
@@ -3028,6 +3028,7 @@ Response:
 - `externalPaymentEnabled`
 - `invoice`: final invoice row.
 - `payload.eventType`: `chargeback.payment_provider.handoff`
+- `payload.providerProfile`: `CARD`, `BANK`, `TAX`, `ERP`, or `GENERIC`.
 - `payload.externalPaymentEnabled=false`
 - `note`: no-send notice.
 
@@ -3037,7 +3038,7 @@ Persists a payment-provider handoff outbox row for a `PAYMENT_REQUESTED` final c
 
 Query parameters:
 
-- `paymentProvider` (optional): provider code, default `MANUAL_AP`.
+- `paymentProvider` (optional): provider code, default `MANUAL_AP`. Codes beginning with `CARD`, `BANK`, `TAX`, or `ERP` can route to matching provider-specific webhook profiles; other codes use the generic profile.
 - `paymentTargetAccount` (optional): operator-visible account/route identifier, default `UNCONFIGURED`.
 - `reason` (optional): single-line operator note.
 
@@ -3083,11 +3084,15 @@ Response:
 
 ### POST /api/admin/billing/chargeback-payment-provider-handoffs/{handoffId}/adapter-send
 
-Attempts configured payment-provider webhook handoff delivery for a persisted handoff row. `ADMIN` only. If `osmu.billing.payment-provider.webhook-url` is not configured or is invalid, the row moves to `PAYMENT_PROVIDER_ADAPTER_BLOCKED_CREDENTIAL` without an external call. When configured, OSMU sends a JSON envelope to the webhook with handoff metadata plus the original payment-provider payload, and can add timestamped HMAC-SHA256 signature headers. This is a B2B handoff adapter, not a built-in card/bank/tax provider integration. Oversized outbound payloads are blocked before any external call. It never stores the webhook URL, secret header value, signature secret, response body, or raw provider response in the outbox.
+Attempts configured payment-provider webhook handoff delivery for a persisted handoff row. `ADMIN` only. OSMU first selects a provider-specific webhook profile for `paymentProvider` codes beginning with `CARD`, `BANK`, `TAX`, or `ERP`; when that profile is blank it falls back to `osmu.billing.payment-provider.webhook-url`. If the selected webhook is not configured or is invalid, the row moves to `PAYMENT_PROVIDER_ADAPTER_BLOCKED_CREDENTIAL` without an external call. When configured, OSMU sends a JSON envelope to the webhook with handoff metadata, `providerProfile`, plus the original payment-provider payload, and can add timestamped HMAC-SHA256 signature headers. This is a B2B handoff adapter profile layer, not a built-in card/bank/tax/ERP processor integration. Oversized outbound payloads are blocked before any external call. It never stores the webhook URL, secret header value, signature secret, response body, or raw provider response in the outbox.
 
 Configuration:
 
 - `osmu.billing.payment-provider.webhook-url` (optional): HTTP/HTTPS endpoint to call.
+- `osmu.billing.payment-provider.card.webhook-url` (optional): HTTP/HTTPS endpoint for `paymentProvider` codes beginning with `CARD`. Blank values fall back to the generic webhook URL.
+- `osmu.billing.payment-provider.bank.webhook-url` (optional): HTTP/HTTPS endpoint for `paymentProvider` codes beginning with `BANK`. Blank values fall back to the generic webhook URL.
+- `osmu.billing.payment-provider.tax.webhook-url` (optional): HTTP/HTTPS endpoint for `paymentProvider` codes beginning with `TAX`. Blank values fall back to the generic webhook URL.
+- `osmu.billing.payment-provider.erp.webhook-url` (optional): HTTP/HTTPS endpoint for `paymentProvider` codes beginning with `ERP`. Blank values fall back to the generic webhook URL.
 - `osmu.billing.payment-provider.secret-header-name` and `osmu.billing.payment-provider.secret-header-value` (optional pair): header name/value sent with the webhook request; header values are never stored in handoff rows.
 - `osmu.billing.payment-provider.signature-secret` (optional): payment-provider webhook HMAC-SHA256 signing secret. When set, OSMU sends a timestamp header and signature header with format `t=<epochSeconds>,v1=<hex-hmac-sha256(timestamp + "." + payload)>`; the secret is never stored in handoff rows.
 - `osmu.billing.payment-provider.signature-header-name` (optional): signature header name. Default is `X-OSMU-Signature`.

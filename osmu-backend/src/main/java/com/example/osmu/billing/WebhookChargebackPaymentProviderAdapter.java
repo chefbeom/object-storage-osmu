@@ -9,6 +9,7 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
 import java.util.LinkedHashMap;
+import java.util.Locale;
 import java.util.Map;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
@@ -24,6 +25,10 @@ public class WebhookChargebackPaymentProviderAdapter implements ChargebackPaymen
     private final ObjectMapper objectMapper;
     private final HttpClient httpClient;
     private final String webhookUrl;
+    private final String cardWebhookUrl;
+    private final String bankWebhookUrl;
+    private final String taxWebhookUrl;
+    private final String erpWebhookUrl;
     private final String secretHeaderName;
     private final String secretHeaderValue;
     private final String signatureSecret;
@@ -36,6 +41,10 @@ public class WebhookChargebackPaymentProviderAdapter implements ChargebackPaymen
     public WebhookChargebackPaymentProviderAdapter(
             ObjectMapper objectMapper,
             @Value("${osmu.billing.payment-provider.webhook-url:}") String webhookUrl,
+            @Value("${osmu.billing.payment-provider.card.webhook-url:}") String cardWebhookUrl,
+            @Value("${osmu.billing.payment-provider.bank.webhook-url:}") String bankWebhookUrl,
+            @Value("${osmu.billing.payment-provider.tax.webhook-url:}") String taxWebhookUrl,
+            @Value("${osmu.billing.payment-provider.erp.webhook-url:}") String erpWebhookUrl,
             @Value("${osmu.billing.payment-provider.secret-header-name:}") String secretHeaderName,
             @Value("${osmu.billing.payment-provider.secret-header-value:}") String secretHeaderValue,
             @Value("${osmu.billing.payment-provider.signature-secret:}") String signatureSecret,
@@ -47,6 +56,10 @@ public class WebhookChargebackPaymentProviderAdapter implements ChargebackPaymen
     ) {
         this.objectMapper = objectMapper;
         this.webhookUrl = normalize(webhookUrl);
+        this.cardWebhookUrl = normalize(cardWebhookUrl);
+        this.bankWebhookUrl = normalize(bankWebhookUrl);
+        this.taxWebhookUrl = normalize(taxWebhookUrl);
+        this.erpWebhookUrl = normalize(erpWebhookUrl);
         this.secretHeaderName = normalize(secretHeaderName);
         this.secretHeaderValue = normalize(secretHeaderValue);
         this.signatureSecret = normalize(signatureSecret);
@@ -68,14 +81,21 @@ public class WebhookChargebackPaymentProviderAdapter implements ChargebackPaymen
 
     @Override
     public boolean isConfigured() {
-        return configuredUri() != null && secretHeaderConfigIsValid() && signatureConfigIsValid();
+        return anyConfiguredUri() && secretHeaderConfigIsValid() && signatureConfigIsValid();
+    }
+
+    @Override
+    public boolean isConfigured(String provider) {
+        return configuredUriForProvider(provider) != null && secretHeaderConfigIsValid() && signatureConfigIsValid();
     }
 
     @Override
     public ChargebackPaymentProviderAdapterResult deliver(ChargebackPaymentProviderHandoffRecord record) {
-        URI uri = configuredUri();
+        URI uri = configuredUriForProvider(record.provider());
         if (uri == null) {
-            return ChargebackPaymentProviderAdapterResult.blocked("Payment provider webhook adapter is not configured.");
+            return ChargebackPaymentProviderAdapterResult.blocked(
+                    "Payment provider webhook adapter is not configured for provider " + providerCode(record.provider()) + "."
+            );
         }
         if (!secretHeaderConfigIsValid()) {
             return ChargebackPaymentProviderAdapterResult.blocked("Payment provider webhook header configuration is invalid.");
@@ -146,6 +166,7 @@ public class WebhookChargebackPaymentProviderAdapter implements ChargebackPaymen
         envelope.put("currency", record.currency());
         envelope.put("amount", record.amount());
         envelope.put("provider", record.provider());
+        envelope.put("providerProfile", providerProfile(record.provider()));
         envelope.put("targetAccount", record.targetAccount());
         envelope.put("payload", payload(record.payloadJson()));
         return envelope;
@@ -162,8 +183,31 @@ public class WebhookChargebackPaymentProviderAdapter implements ChargebackPaymen
         }
     }
 
-    private URI configuredUri() {
-        return WebhookEndpointPolicy.configuredUri(webhookUrl, allowPrivateNetwork);
+    private boolean anyConfiguredUri() {
+        return configuredRawUri(webhookUrl) != null
+                || configuredRawUri(cardWebhookUrl) != null
+                || configuredRawUri(bankWebhookUrl) != null
+                || configuredRawUri(taxWebhookUrl) != null
+                || configuredRawUri(erpWebhookUrl) != null;
+    }
+
+    private URI configuredUriForProvider(String provider) {
+        return configuredRawUri(webhookUrlForProvider(provider));
+    }
+
+    private URI configuredRawUri(String value) {
+        return WebhookEndpointPolicy.configuredUri(value, allowPrivateNetwork);
+    }
+
+    private String webhookUrlForProvider(String provider) {
+        String providerSpecificUrl = switch (providerProfile(provider)) {
+            case "CARD" -> cardWebhookUrl;
+            case "BANK" -> bankWebhookUrl;
+            case "TAX" -> taxWebhookUrl;
+            case "ERP" -> erpWebhookUrl;
+            default -> "";
+        };
+        return providerSpecificUrl.isBlank() ? webhookUrl : providerSpecificUrl;
     }
 
     private boolean secretHeaderConfigIsValid() {
@@ -196,6 +240,28 @@ public class WebhookChargebackPaymentProviderAdapter implements ChargebackPaymen
 
     private static boolean containsLineBreak(String value) {
         return value.contains("\r") || value.contains("\n");
+    }
+
+    private static String providerProfile(String provider) {
+        String normalizedProvider = providerCode(provider);
+        if (normalizedProvider.startsWith("CARD")) {
+            return "CARD";
+        }
+        if (normalizedProvider.startsWith("BANK")) {
+            return "BANK";
+        }
+        if (normalizedProvider.startsWith("TAX")) {
+            return "TAX";
+        }
+        if (normalizedProvider.startsWith("ERP")) {
+            return "ERP";
+        }
+        return "GENERIC";
+    }
+
+    private static String providerCode(String provider) {
+        String normalizedProvider = normalize(provider).toUpperCase(Locale.ROOT).replace('-', '_').replace(' ', '_');
+        return normalizedProvider.isBlank() ? "MANUAL_AP" : normalizedProvider;
     }
 
     private static String normalize(String value) {

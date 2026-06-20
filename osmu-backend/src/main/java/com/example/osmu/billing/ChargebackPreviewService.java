@@ -454,7 +454,7 @@ public class ChargebackPreviewService {
                 "PREVIEW",
                 normalizedProvider,
                 normalizedTarget,
-                paymentProviderAdapter.isConfigured(),
+                paymentProviderAdapter.isConfigured(normalizedProvider),
                 finalInvoiceResponse(invoice),
                 payload,
                 OffsetDateTime.now(),
@@ -502,10 +502,10 @@ public class ChargebackPreviewService {
         return new ChargebackPaymentProviderHandoffQueueResponse(
                 "OUTBOX",
                 "PENDING_PAYMENT_PROVIDER_ADAPTER",
-                paymentProviderAdapter.isConfigured(),
+                preview.externalPaymentEnabled(),
                 paymentHandoffResponse(saved),
                 OffsetDateTime.now(),
-                paymentProviderAdapter.isConfigured()
+                preview.externalPaymentEnabled()
                         ? "Recorded in payment provider handoff outbox; configured webhook handoff adapter can be sent by ADMIN or retry worker."
                         : "Recorded in payment provider handoff outbox; no external payment provider was called."
         );
@@ -583,7 +583,7 @@ public class ChargebackPreviewService {
                 .orElseThrow(() -> new ApiException(ApiErrorCode.NOT_FOUND, "Chargeback payment handoff not found."));
         rejectCompletedAdapterStatus(record.status(), "Chargeback payment provider handoff adapter already succeeded.");
         OffsetDateTime now = OffsetDateTime.now();
-        boolean externalPaymentEnabled = paymentProviderAdapter.isConfigured();
+        boolean externalPaymentEnabled = paymentProviderAdapter.isConfigured(record.provider());
         ChargebackPaymentProviderAdapterResult adapterResult = externalPaymentEnabled
                 ? paymentProviderAdapter.deliver(record)
                 : ChargebackPaymentProviderAdapterResult.blocked("Payment provider webhook adapter is not configured.");
@@ -1029,6 +1029,23 @@ public class ChargebackPreviewService {
         return provider;
     }
 
+    private static String paymentProviderProfile(String provider) {
+        String normalizedProvider = normalizePaymentProvider(provider);
+        if (normalizedProvider.startsWith("CARD")) {
+            return "CARD";
+        }
+        if (normalizedProvider.startsWith("BANK")) {
+            return "BANK";
+        }
+        if (normalizedProvider.startsWith("TAX")) {
+            return "TAX";
+        }
+        if (normalizedProvider.startsWith("ERP")) {
+            return "ERP";
+        }
+        return "GENERIC";
+    }
+
     private static String normalizePaymentTarget(String value) {
         if (value == null || value.isBlank()) {
             return "UNCONFIGURED";
@@ -1410,6 +1427,7 @@ public class ChargebackPreviewService {
         payload.put("amount", money(invoice.estimatedTotalCost()));
         payload.put("paymentStatus", invoice.paymentStatus());
         payload.put("provider", provider);
+        payload.put("providerProfile", paymentProviderProfile(provider));
         payload.put("targetAccount", targetAccount);
         payload.put("externalPaymentEnabled", false);
         return payload;
