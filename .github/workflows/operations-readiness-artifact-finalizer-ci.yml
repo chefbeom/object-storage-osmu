@@ -43,6 +43,22 @@ on:
         description: Optional Security Evidence Finalizer CI artifact name
         required: false
         default: ""
+      secret_rotation_run_id:
+        description: Optional secret rotation evidence run id
+        required: false
+        default: ""
+      secret_rotation_artifact_name:
+        description: Optional secret rotation evidence artifact name
+        required: false
+        default: ""
+      commercial_integration_run_id:
+        description: Optional commercial integration evidence run id
+        required: false
+        default: ""
+      commercial_integration_artifact_name:
+        description: Optional commercial integration evidence artifact name
+        required: false
+        default: ""
       commercial_approval_run_id:
         description: Optional commercial approval evidence run id
         required: false
@@ -144,6 +160,24 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           path: .osmu-run/operations-readiness-artifacts/security-evidence
 
+      - name: Download secret rotation evidence
+        if: ${{ inputs.secret_rotation_run_id != '' && inputs.secret_rotation_artifact_name != '' }}
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ inputs.secret_rotation_artifact_name }}
+          run-id: ${{ inputs.secret_rotation_run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: .osmu-run/operations-readiness-artifacts/secret-rotation
+
+      - name: Download commercial integration evidence
+        if: ${{ inputs.commercial_integration_run_id != '' && inputs.commercial_integration_artifact_name != '' }}
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ inputs.commercial_integration_artifact_name }}
+          run-id: ${{ inputs.commercial_integration_run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: .osmu-run/operations-readiness-artifacts/commercial-integration
+
       - name: Download commercial approval evidence
         if: ${{ inputs.commercial_approval_run_id != '' && inputs.commercial_approval_artifact_name != '' }}
         uses: actions/download-artifact@v4
@@ -194,6 +228,8 @@ jobs:
             @("KubernetesDrArtifactPath", ".osmu-run/operations-readiness-artifacts/kubernetes-dr"),
             @("IamRbacArtifactPath", ".osmu-run/operations-readiness-artifacts/iam-rbac"),
             @("SecurityEvidenceArtifactPath", ".osmu-run/operations-readiness-artifacts/security-evidence"),
+            @("SecretRotationArtifactPath", ".osmu-run/operations-readiness-artifacts/secret-rotation"),
+            @("CommercialIntegrationArtifactPath", ".osmu-run/operations-readiness-artifacts/commercial-integration"),
             @("CommercialApprovalArtifactPath", ".osmu-run/operations-readiness-artifacts/commercial-approval"),
             @("EnterpriseAuthArtifactPath", ".osmu-run/operations-readiness-artifacts/enterprise-auth"),
             @("OperationsHandoffPackageArtifactPath", ".osmu-run/operations-readiness-artifacts/operations-handoff-package"),
@@ -241,6 +277,10 @@ jobs:
             .osmu-run/latest-security-evidence-finalize.md
             .osmu-run/latest-image-signing-evidence.json
             .osmu-run/latest-container-security-evidence.json
+            .osmu-run/latest-secret-rotation-evidence.json
+            .osmu-run/latest-secret-rotation-evidence.md
+            .osmu-run/latest-commercial-integration-evidence.json
+            .osmu-run/latest-commercial-integration-evidence.md
             .osmu-run/latest-commercial-approval-evidence.json
             .osmu-run/latest-commercial-approval-evidence.md
             .osmu-run/latest-enterprise-auth-smoke.json

@@ -45,6 +45,8 @@ $haDrSource = Join-Path $sourceRoot "ha-dr-readiness"
 $kubernetesDrSource = Join-Path $sourceRoot "kubernetes-dr"
 $iamSource = Join-Path $sourceRoot "iam-rbac"
 $securitySource = Join-Path $sourceRoot "security-evidence"
+$secretRotationSource = Join-Path $sourceRoot "secret-rotation"
+$commercialIntegrationSource = Join-Path $sourceRoot "commercial-integration"
 $commercialApprovalSource = Join-Path $sourceRoot "commercial-approval"
 $enterpriseAuthSource = Join-Path $sourceRoot "enterprise-auth"
 $operationsHandoffPackageSource = Join-Path $sourceRoot "operations-handoff-package"
@@ -81,6 +83,16 @@ Write-JsonEvidence (Join-Path $securitySource "latest-container-security-evidenc
     formatVersion = "osmu.container-security-evidence.v1"
     result = "passed"
 }
+Write-JsonEvidence (Join-Path $secretRotationSource "latest-secret-rotation-evidence.json") @{
+    formatVersion = "osmu.secret-rotation-evidence.v1"
+    result = "passed"
+}
+Write-TextEvidence (Join-Path $secretRotationSource "latest-secret-rotation-evidence.md") "# Secret rotation"
+Write-JsonEvidence (Join-Path $commercialIntegrationSource "latest-commercial-integration-evidence.json") @{
+    formatVersion = "osmu.commercial-integration-evidence.v1"
+    result = "passed"
+}
+Write-TextEvidence (Join-Path $commercialIntegrationSource "latest-commercial-integration-evidence.md") "# Commercial integration"
 Write-JsonEvidence (Join-Path $commercialApprovalSource "latest-commercial-approval-evidence.json") @{
     formatVersion = "osmu.commercial-approval-evidence.v1"
     result = "passed"
@@ -123,6 +135,8 @@ $importScript = Resolve-ProjectPath ".\scripts\import-operations-readiness-artif
     -KubernetesDrArtifactPath $kubernetesDrSource `
     -IamRbacArtifactPath $iamSource `
     -SecurityEvidenceArtifactPath $securitySource `
+    -SecretRotationArtifactPath $secretRotationSource `
+    -CommercialIntegrationArtifactPath $commercialIntegrationSource `
     -CommercialApprovalArtifactPath $commercialApprovalSource `
     -EnterpriseAuthArtifactPath $enterpriseAuthSource `
     -OperationsHandoffPackageArtifactPath $operationsHandoffPackageSource `
@@ -139,7 +153,7 @@ $report = Get-Content -Raw -LiteralPath $reportPath | ConvertFrom-Json
 Assert-True ($report.formatVersion -eq "osmu.operations-readiness-artifact-import.v1") "Unexpected import report formatVersion."
 Assert-True ($report.result -eq "passed") "Expected import report result=passed."
 Assert-True ($report.status -eq "artifact-imported") "Expected import report status=artifact-imported."
-Assert-True ($report.importedCount -ge 12) "Expected imported evidence files."
+Assert-True ($report.importedCount -ge 16) "Expected imported evidence files."
 Assert-True (Test-Path -LiteralPath (Join-Path $promotedRoot "latest-storage-expansion-finalize.json")) "Promoted storage expansion evidence missing."
 Assert-True (Test-Path -LiteralPath (Join-Path $promotedRoot "latest-kubernetes-ha-dr-readiness.json")) "Promoted HA/DR readiness evidence missing."
 Assert-True (Test-Path -LiteralPath (Join-Path $promotedRoot "latest-kubernetes-dr-finalize.json")) "Promoted Kubernetes DR evidence missing."
@@ -147,6 +161,10 @@ Assert-True (Test-Path -LiteralPath (Join-Path $promotedRoot "latest-iam-rbac-fi
 Assert-True (Test-Path -LiteralPath (Join-Path $promotedRoot "latest-security-evidence-finalize.json")) "Promoted security finalizer evidence missing."
 Assert-True (Test-Path -LiteralPath (Join-Path $promotedRoot "latest-image-signing-evidence.json")) "Promoted image signing evidence missing."
 Assert-True (Test-Path -LiteralPath (Join-Path $promotedRoot "latest-container-security-evidence.json")) "Promoted container security evidence missing."
+Assert-True (Test-Path -LiteralPath (Join-Path $promotedRoot "latest-secret-rotation-evidence.json")) "Promoted secret rotation evidence missing."
+Assert-True (Test-Path -LiteralPath (Join-Path $promotedRoot "latest-secret-rotation-evidence.md")) "Promoted secret rotation markdown missing."
+Assert-True (Test-Path -LiteralPath (Join-Path $promotedRoot "latest-commercial-integration-evidence.json")) "Promoted commercial integration evidence missing."
+Assert-True (Test-Path -LiteralPath (Join-Path $promotedRoot "latest-commercial-integration-evidence.md")) "Promoted commercial integration markdown missing."
 Assert-True (Test-Path -LiteralPath (Join-Path $promotedRoot "latest-commercial-approval-evidence.json")) "Promoted commercial approval evidence missing."
 Assert-True (Test-Path -LiteralPath (Join-Path $promotedRoot "latest-commercial-approval-evidence.md")) "Promoted commercial approval markdown missing."
 Assert-True (Test-Path -LiteralPath (Join-Path $promotedRoot "latest-enterprise-auth-smoke.json")) "Promoted enterprise auth smoke evidence missing."
@@ -154,6 +172,10 @@ Assert-True (Test-Path -LiteralPath (Join-Path $promotedRoot "latest-operations-
 Assert-True (Test-Path -LiteralPath (Join-Path $promotedRoot "latest-operations-handoff-package.md")) "Promoted operations handoff package markdown missing."
 Assert-True (Test-Path -LiteralPath (Join-Path $promotedRoot "latest-kubernetes-operations-report-sync.json")) "Promoted Kubernetes operations report sync evidence missing."
 $promotedCommercialApproval = Get-Content -Raw -LiteralPath (Join-Path $promotedRoot "latest-commercial-approval-evidence.json") | ConvertFrom-Json
+$promotedSecretRotation = Get-Content -Raw -LiteralPath (Join-Path $promotedRoot "latest-secret-rotation-evidence.json") | ConvertFrom-Json
+$promotedCommercialIntegration = Get-Content -Raw -LiteralPath (Join-Path $promotedRoot "latest-commercial-integration-evidence.json") | ConvertFrom-Json
+Assert-True ($promotedSecretRotation.result -eq "passed") "Promoted secret rotation evidence should preserve result=passed."
+Assert-True ($promotedCommercialIntegration.result -eq "passed") "Promoted commercial integration evidence should preserve result=passed."
 Assert-True ($promotedCommercialApproval.result -eq "passed") "Promoted commercial approval evidence should preserve result=passed."
 $promotedEnterpriseAuth = Get-Content -Raw -LiteralPath (Join-Path $promotedRoot "latest-enterprise-auth-smoke.json") | ConvertFrom-Json
 Assert-True ($promotedEnterpriseAuth.result -eq "scope-out") "Promoted enterprise auth scope-out evidence should be preserved."

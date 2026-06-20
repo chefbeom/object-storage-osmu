@@ -100,7 +100,7 @@ Frontend는 MariaDB나 MinIO에 직접 접근하지 않습니다. Backend API만
 - Dashboard: widget catalog, layout preset, system/backup/quota/share/readiness/data-flow 요약.
 - Monitoring: data-flow event 저장, filter, detailed/daily-rollup/materialized-rollup CSV export, source/operation trend chart, daily rollup, daily rollup materialized store refresh/read/export, event/materialized rollup retention status/manual run, tenant chargeback preview API/UI, billing pricing policy와 proposal/internal approval/commercial price-list reference, threshold alerts, chargeback alert notification preview/outbox/webhook send/adapter retry state, chargeback preview CSV export, chargeback invoice draft CSV export/persistence/internal approval, final invoice/payment state workflow, payment provider handoff outbox/webhook send/adapter retry state/readiness, Prometheus/Grafana starter artifact.
 - Storage Expansion: 증설 요청, dry-run/apply/rollback runner, GitOps artifact, execution history.
-- Operations Readiness: evidence plan, invocation unblock, dispatch preflight, workflow run id, commercial approval/handoff package artifact import/finalizer, convergence report, handoff package evidence.
+- Operations Readiness: evidence plan, invocation unblock, dispatch preflight, workflow run id, secret rotation/commercial integration/approval/handoff package artifact import/finalizer, convergence report, handoff package evidence.
 - Enterprise Auth Evidence: OIDC/LDAP smoke plan과 target IdP/directory evidence를 operations readiness blocker로 추적.
 
 ## 저장소 구조

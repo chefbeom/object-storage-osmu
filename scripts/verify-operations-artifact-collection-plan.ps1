@@ -47,6 +47,8 @@ $commands = @(
     "gh workflow run image-publish-sign-ci.yml -f version=v0.1.0-rc.1 -f publish=true",
     "gh workflow run container-security-ci.yml",
     "gh workflow run security-evidence-finalizer-ci.yml -f fail_if_not_passed=true",
+    "powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\write-secret-rotation-evidence.ps1 -EnvironmentName prod -TargetCluster osmu-prod -Operator ops-owner -RotationStartedAt 2026-06-20T00:00:00Z -RotationCompletedAt 2026-06-20T00:30:00Z -ChangeApprovalRef secret-rotation-20260620 -SecretManagerEvidenceRef vault-audit-20260620 -WorkloadRestartEvidenceRef rollout-20260620 -SmokeEvidenceRef smoke-20260620 -ArtifactLeakReviewEvidenceRef leak-review-20260620 -AccessKeyEncryptionDecisionRef access-key-decision-20260620 -RotateAdminPassword -RotateJwtSigningSecret -RotateDatabaseCredentials -RotateMinioRootCredentials -RotateTlsCertificate -ConfirmNoSecretValues -ConfirmWorkloadRestart -ConfirmSmokePassed -ConfirmArtifactLeakReview -RequireAllCoreSecrets -FailIfNotPassed",
+    "powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\write-commercial-integration-evidence.ps1 -EnvironmentName prod -TargetCluster osmu-prod -Operator ops-owner -VerificationStartedAt 2026-06-20T00:30:00Z -VerificationCompletedAt 2026-06-20T01:00:00Z -ChangeApprovalRef commercial-integration-20260620 -NotificationWebhookEvidenceRef notification-webhook-20260620 -SlackWebhookEvidenceRef slack-webhook-20260620 -EmailSmtpEvidenceRef email-smtp-20260620 -PaymentGenericWebhookEvidenceRef payment-generic-20260620 -PaymentCardProfileEvidenceRef payment-card-20260620 -PaymentBankProfileEvidenceRef payment-bank-20260620 -PaymentTaxProfileEvidenceRef payment-tax-20260620 -PaymentErpProfileEvidenceRef payment-erp-20260620 -AdapterRetryWorkerEvidenceRef adapter-retry-20260620 -PayloadReviewEvidenceRef payload-review-20260620 -PrivateNetworkBlockEvidenceRef private-block-20260620 -HmacSignatureEvidenceRef hmac-review-20260620 -VerifiedNotificationWebhook -VerifiedSlackWebhook -VerifiedEmailSmtp -VerifiedPaymentGenericWebhook -VerifiedPaymentCardProfile -VerifiedPaymentBankProfile -VerifiedPaymentTaxProfile -VerifiedPaymentErpProfile -ConfirmAdapterRetryWorkerRun -ConfirmPayloadSizeCaps -ConfirmPrivateNetworkBlocking -ConfirmHmacSignatureHeaders -ConfirmNoSecretValues -ConfirmNoRawProviderResponses -RequireAllImplementedAdapters -FailIfNotPassed",
     "powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\write-commercial-approval-evidence.ps1 -ProductVersion v0.1.0-rc.1 -ApprovalRef approval-20260620 -ApprovedBy commercial-owner -ApprovedAt 2026-06-20T00:00:00Z -PricingApprovalRef pricing-20260620 -TermsApprovalRef terms-20260620 -SupportSlaApprovalRef sla-20260620 -LicenseAgreementRef license-20260620 -LegalApprovalRef legal-20260620 -PilotContractRef pilot-contract-20260620 -ConfirmPricingApproved -ConfirmTermsApproved -ConfirmSupportSlaApproved -ConfirmLicenseApproved -ConfirmLegalApproved -ConfirmNoSecretValues -FailIfNotPassed",
     "gh workflow run enterprise-auth-smoke-ci.yml -f run_live=true -f require_oidc=true -f require_ldap=true",
     "powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\write-operations-handoff-package.ps1 -EnvironmentName prod -TargetCluster osmu-prod -Operator ops-owner -HandoffStartedAt 2026-06-20T01:00:00Z -HandoffCompletedAt 2026-06-20T02:00:00Z -ChangeApprovalRef change-20260620 -DeploymentEvidenceRef deploy-20260620 -OperationsReadinessRef readiness-20260620 -OperationsConvergenceRef convergence-20260620 -SecretRotationEvidenceRef secret-rotation-20260620 -CommercialIntegrationEvidenceRef commercial-integration-20260620 -CommercialApprovalEvidenceRef commercial-approval-20260620 -EnterpriseAuthEvidenceRef enterprise-auth-20260620 -BackupRestoreEvidenceRef backup-restore-20260620 -HaDrEvidenceRef ha-dr-20260620 -MonitoringEvidenceRef monitoring-20260620 -SecurityEvidenceRef security-20260620 -IamRbacEvidenceRef iam-rbac-20260620 -RunbookReviewRef runbook-20260620 -TroubleshootingReviewRef troubleshooting-20260620 -SupportEscalationRef support-escalation-20260620 -SupportSlaRef support-sla-20260620 -KnownGapsRef known-gaps-20260620 -ConfirmRunbookReviewed -ConfirmTroubleshootingReviewed -ConfirmRollbackReviewed -ConfirmSupportEscalationReviewed -ConfirmKnownGapsAccepted -ConfirmNoSecretValues -RequireProductionEvidence -FailIfNotPassed",
@@ -102,10 +104,12 @@ $missingReport = Get-Content -Raw -LiteralPath $missingJsonOutputPath | ConvertF
 $missingMarkdown = Get-Content -Raw -LiteralPath $missingMarkdownOutputPath
 Assert-True ($missingReport.formatVersion -eq "osmu.operations-artifact-collection-plan.v1") "Unexpected collection plan formatVersion."
 Assert-True ($missingReport.result -eq "action-required") "Expected action-required result without run ids."
-Assert-True ($missingReport.artifactCount -eq 10) "Expected ten inferred artifacts."
-Assert-True ($missingReport.requiredArtifactCount -eq 8) "Expected eight required readiness/convergence artifacts."
-Assert-True ($missingReport.missingRequiredArtifactCount -eq 8) "Expected eight missing required artifacts."
+Assert-True ($missingReport.artifactCount -eq 12) "Expected twelve inferred artifacts."
+Assert-True ($missingReport.requiredArtifactCount -eq 10) "Expected ten required readiness/convergence artifacts."
+Assert-True ($missingReport.missingRequiredArtifactCount -eq 10) "Expected ten missing required artifacts."
 Assert-Contains $missingMarkdown "storage-expansion-finalizer-<storage-expansion-run-id>" "missing collection markdown"
+Assert-Contains $missingMarkdown "secret-rotation-evidence-<secret-rotation-run-id>" "missing collection markdown"
+Assert-Contains $missingMarkdown "commercial-integration-evidence-<commercial-integration-run-id>" "missing collection markdown"
 Assert-Contains $missingMarkdown "commercial-approval-evidence-<commercial-approval-run-id>" "missing collection markdown"
 Assert-Contains $missingMarkdown "enterprise-auth-smoke-<enterprise-auth-run-id>" "missing collection markdown"
 Assert-Contains $missingMarkdown "operations-handoff-package-<operations-handoff-package-run-id>" "missing collection markdown"
@@ -123,10 +127,12 @@ Assert-True (-not $missingMarkdown.Contains("OrderedDictionary.downloadPath")) "
     -ImageSigningRunId "104" `
     -ContainerSecurityRunId "105" `
     -SecurityEvidenceRunId "106" `
-    -CommercialApprovalRunId "107" `
-    -EnterpriseAuthRunId "108" `
-    -OperationsHandoffPackageRunId "109" `
-    -KubernetesOperationsReportSyncRunId "110" `
+    -SecretRotationRunId "107" `
+    -CommercialIntegrationRunId "108" `
+    -CommercialApprovalRunId "109" `
+    -EnterpriseAuthRunId "110" `
+    -OperationsHandoffPackageRunId "111" `
+    -KubernetesOperationsReportSyncRunId "112" `
     -ImageSigningVersion "v0.1.0-rc.1" `
     -CommitSha "abc123" | Out-Host
 if ($LASTEXITCODE -ne 0) {
@@ -137,20 +143,26 @@ $readyReport = Get-Content -Raw -LiteralPath $readyJsonOutputPath | ConvertFrom-
 $readyMarkdown = Get-Content -Raw -LiteralPath $readyMarkdownOutputPath
 Assert-True ($readyReport.result -eq "ready") "Expected ready result when all required run ids are supplied."
 Assert-True ($readyReport.missingRequiredArtifactCount -eq 0) "Expected no missing required artifacts."
-Assert-True ($readyReport.readyArtifactCount -eq 10) "Expected all artifacts to be concrete."
+Assert-True ($readyReport.readyArtifactCount -eq 12) "Expected all artifacts to be concrete."
 Assert-Contains $readyMarkdown "storage_expansion_run_id=101" "ready collection markdown"
 Assert-Contains $readyMarkdown "security_evidence_run_id=106" "ready collection markdown"
-Assert-Contains $readyMarkdown "commercial_approval_run_id=107" "ready collection markdown"
-Assert-Contains $readyMarkdown "enterprise_auth_run_id=108" "ready collection markdown"
-Assert-Contains $readyMarkdown "operations_handoff_package_run_id=109" "ready collection markdown"
-Assert-Contains $readyMarkdown "kubernetes_operations_report_sync_run_id=110" "ready collection markdown"
+Assert-Contains $readyMarkdown "secret_rotation_run_id=107" "ready collection markdown"
+Assert-Contains $readyMarkdown "commercial_integration_run_id=108" "ready collection markdown"
+Assert-Contains $readyMarkdown "commercial_approval_run_id=109" "ready collection markdown"
+Assert-Contains $readyMarkdown "enterprise_auth_run_id=110" "ready collection markdown"
+Assert-Contains $readyMarkdown "operations_handoff_package_run_id=111" "ready collection markdown"
+Assert-Contains $readyMarkdown "kubernetes_operations_report_sync_run_id=112" "ready collection markdown"
 Assert-Contains $readyMarkdown "osmu-image-signing-v0.1.0-rc.1-abc123" "ready collection markdown"
 Assert-Contains $readyMarkdown "osmu-container-security-abc123" "ready collection markdown"
 Assert-Contains $readyMarkdown "gh run download 106 -n security-evidence-finalizer-106" "ready collection markdown"
-Assert-Contains $readyMarkdown "gh run download 107 -n commercial-approval-evidence-107" "ready collection markdown"
-Assert-Contains $readyMarkdown "gh run download 108 -n enterprise-auth-smoke-108" "ready collection markdown"
-Assert-Contains $readyMarkdown "gh run download 109 -n operations-handoff-package-109" "ready collection markdown"
-Assert-Contains $readyMarkdown "gh run download 110 -n kubernetes-operations-report-sync-110" "ready collection markdown"
+Assert-Contains $readyMarkdown "gh run download 107 -n secret-rotation-evidence-107" "ready collection markdown"
+Assert-Contains $readyMarkdown "gh run download 108 -n commercial-integration-evidence-108" "ready collection markdown"
+Assert-Contains $readyMarkdown "gh run download 109 -n commercial-approval-evidence-109" "ready collection markdown"
+Assert-Contains $readyMarkdown "gh run download 110 -n enterprise-auth-smoke-110" "ready collection markdown"
+Assert-Contains $readyMarkdown "gh run download 111 -n operations-handoff-package-111" "ready collection markdown"
+Assert-Contains $readyMarkdown "gh run download 112 -n kubernetes-operations-report-sync-112" "ready collection markdown"
+Assert-Contains $readyMarkdown "-SecretRotationArtifactPath .\.osmu-run\operations-readiness-artifacts\secret-rotation" "ready collection markdown"
+Assert-Contains $readyMarkdown "-CommercialIntegrationArtifactPath .\.osmu-run\operations-readiness-artifacts\commercial-integration" "ready collection markdown"
 Assert-Contains $readyMarkdown "-CommercialApprovalArtifactPath .\.osmu-run\operations-readiness-artifacts\commercial-approval" "ready collection markdown"
 Assert-Contains $readyMarkdown "-OperationsHandoffPackageArtifactPath .\.osmu-run\operations-readiness-artifacts\operations-handoff-package" "ready collection markdown"
 

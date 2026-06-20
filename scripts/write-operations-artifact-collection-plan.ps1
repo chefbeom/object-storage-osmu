@@ -9,6 +9,8 @@ param(
     [string] $ImageSigningRunId = "",
     [string] $ContainerSecurityRunId = "",
     [string] $SecurityEvidenceRunId = "",
+    [string] $SecretRotationRunId = "",
+    [string] $CommercialIntegrationRunId = "",
     [string] $CommercialApprovalRunId = "",
     [string] $EnterpriseAuthRunId = "",
     [string] $OperationsHandoffPackageRunId = "",
@@ -122,12 +124,20 @@ if ($invocation.formatVersion -ne "osmu.operations-evidence-plan-invocation.v1")
 }
 
 $workflows = New-Object System.Collections.Generic.HashSet[string]
+$hasSecretRotationEvidence = $false
+$hasCommercialIntegrationEvidence = $false
 $hasCommercialApprovalEvidence = $false
 $hasEnterpriseAuthSmoke = $false
 $hasOperationsHandoffPackage = $false
 foreach ($action in @($invocation.actions)) {
     $command = Get-Text $action "command"
     Add-UniqueWorkflow $workflows (Get-WorkflowName $command)
+    if (Test-CommandMentions $command "write-secret-rotation-evidence.ps1") {
+        $hasSecretRotationEvidence = $true
+    }
+    if (Test-CommandMentions $command "write-commercial-integration-evidence.ps1") {
+        $hasCommercialIntegrationEvidence = $true
+    }
     if (Test-CommandMentions $command "write-commercial-approval-evidence.ps1") {
         $hasCommercialApprovalEvidence = $true
     }
@@ -147,6 +157,8 @@ $iamRbacRun = Get-RunIdOrPlaceholder $IamRbacRunId "iam-rbac-run-id"
 $imageSigningRun = Get-RunIdOrPlaceholder $ImageSigningRunId "image-signing-run-id"
 $containerSecurityRun = Get-RunIdOrPlaceholder $ContainerSecurityRunId "container-security-run-id"
 $securityEvidenceRun = Get-RunIdOrPlaceholder $SecurityEvidenceRunId "security-evidence-run-id"
+$secretRotationRun = Get-RunIdOrPlaceholder $SecretRotationRunId "secret-rotation-run-id"
+$commercialIntegrationRun = Get-RunIdOrPlaceholder $CommercialIntegrationRunId "commercial-integration-run-id"
 $commercialApprovalRun = Get-RunIdOrPlaceholder $CommercialApprovalRunId "commercial-approval-run-id"
 $enterpriseAuthRun = Get-RunIdOrPlaceholder $EnterpriseAuthRunId "enterprise-auth-run-id"
 $operationsHandoffPackageRun = Get-RunIdOrPlaceholder $OperationsHandoffPackageRunId "operations-handoff-package-run-id"
@@ -172,6 +184,12 @@ if ($workflows.Contains("container-security-ci.yml")) {
 }
 if ($workflows.Contains("security-evidence-finalizer-ci.yml")) {
     Add-Artifact $artifacts "security-evidence" "security-evidence-finalizer-ci.yml" $securityEvidenceRun "security_evidence_run_id" "security-evidence-finalizer-$securityEvidenceRun" "security_evidence_artifact_name" ".osmu-run/operations-readiness-artifacts/security-evidence" $true "Imports latest-security-evidence-finalize.json, image signing evidence, and container security evidence."
+}
+if ($hasSecretRotationEvidence) {
+    Add-Artifact $artifacts "secret-rotation" "manual-secret-rotation-evidence" $secretRotationRun "secret_rotation_run_id" "secret-rotation-evidence-$secretRotationRun" "secret_rotation_artifact_name" ".osmu-run/operations-readiness-artifacts/secret-rotation" $true "Imports latest-secret-rotation-evidence.json from target secret/certificate rotation evidence."
+}
+if ($hasCommercialIntegrationEvidence) {
+    Add-Artifact $artifacts "commercial-integration" "manual-commercial-integration-evidence" $commercialIntegrationRun "commercial_integration_run_id" "commercial-integration-evidence-$commercialIntegrationRun" "commercial_integration_artifact_name" ".osmu-run/operations-readiness-artifacts/commercial-integration" $true "Imports latest-commercial-integration-evidence.json from target notification/payment handoff adapter evidence."
 }
 if ($hasCommercialApprovalEvidence) {
     Add-Artifact $artifacts "commercial-approval" "manual-commercial-approval-evidence" $commercialApprovalRun "commercial_approval_run_id" "commercial-approval-evidence-$commercialApprovalRun" "commercial_approval_artifact_name" ".osmu-run/operations-readiness-artifacts/commercial-approval" $true "Imports latest-commercial-approval-evidence.json from final pricing, terms, support SLA, license, legal, and pilot contract approval evidence."
@@ -226,6 +244,12 @@ foreach ($artifact in $requiredArtifacts) {
     }
     elseif ($group -eq "security-evidence") {
         $localImportArgs.Add("-SecurityEvidenceArtifactPath $downloadPath")
+    }
+    elseif ($group -eq "secret-rotation") {
+        $localImportArgs.Add("-SecretRotationArtifactPath $downloadPath")
+    }
+    elseif ($group -eq "commercial-integration") {
+        $localImportArgs.Add("-CommercialIntegrationArtifactPath $downloadPath")
     }
     elseif ($group -eq "commercial-approval") {
         $localImportArgs.Add("-CommercialApprovalArtifactPath $downloadPath")

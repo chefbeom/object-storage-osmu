@@ -4,6 +4,8 @@ param(
     [string] $KubernetesDrArtifactPath = "",
     [string] $IamRbacArtifactPath = "",
     [string] $SecurityEvidenceArtifactPath = "",
+    [string] $SecretRotationArtifactPath = "",
+    [string] $CommercialIntegrationArtifactPath = "",
     [string] $CommercialApprovalArtifactPath = "",
     [string] $EnterpriseAuthArtifactPath = "",
     [string] $OperationsHandoffPackageArtifactPath = "",
@@ -165,6 +167,12 @@ Import-EvidenceFile "security-evidence" $SecurityEvidenceArtifactPath "latest-se
 Import-EvidenceFile "security-evidence" $SecurityEvidenceArtifactPath "latest-image-signing-evidence.json" $true "result" "passed"
 Import-EvidenceFile "security-evidence" $SecurityEvidenceArtifactPath "latest-container-security-evidence.json" $true "result" "passed"
 
+Import-EvidenceFile "secret-rotation" $SecretRotationArtifactPath "latest-secret-rotation-evidence.json" $true "result" "passed"
+Import-EvidenceFile "secret-rotation" $SecretRotationArtifactPath "latest-secret-rotation-evidence.md" $false
+
+Import-EvidenceFile "commercial-integration" $CommercialIntegrationArtifactPath "latest-commercial-integration-evidence.json" $true "result" "passed"
+Import-EvidenceFile "commercial-integration" $CommercialIntegrationArtifactPath "latest-commercial-integration-evidence.md" $false
+
 Import-EvidenceFile "commercial-approval" $CommercialApprovalArtifactPath "latest-commercial-approval-evidence.json" $true "result" "passed"
 Import-EvidenceFile "commercial-approval" $CommercialApprovalArtifactPath "latest-commercial-approval-evidence.md" $false
 
@@ -186,6 +194,8 @@ $selectedGroups = @(
     @("kubernetes-dr", $KubernetesDrArtifactPath),
     @("iam-rbac", $IamRbacArtifactPath),
     @("security-evidence", $SecurityEvidenceArtifactPath),
+    @("secret-rotation", $SecretRotationArtifactPath),
+    @("commercial-integration", $CommercialIntegrationArtifactPath),
     @("commercial-approval", $CommercialApprovalArtifactPath),
     @("enterprise-auth", $EnterpriseAuthArtifactPath),
     @("operations-handoff-package", $OperationsHandoffPackageArtifactPath),
