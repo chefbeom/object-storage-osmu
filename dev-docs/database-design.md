@@ -748,7 +748,7 @@ CREATE TABLE data_flow_events (
 
 ## 13.2. data_flow_daily_rollups
 
-Materialized UTC-day data-flow rollup rows are stored here in MariaDB mode. The table keeps aggregate counts and bytes only; it does not store object keys, raw event messages, credentials, or provider responses. `actor_id` and `status` are materialized filter dimensions; empty values represent an unscoped refresh so scoped refreshes do not overwrite global aggregate rows.
+Materialized UTC-day data-flow rollup rows are stored here in MariaDB mode. The table keeps aggregate counts and bytes only; it does not store object keys, raw event messages, credentials, or provider responses. `actor_id` and `status` are materialized filter dimensions; empty values represent an unscoped refresh so scoped refreshes do not overwrite global aggregate rows. `DataFlowDailyRollupRetentionJob` deletes rows with `rollup_day` older than the configured daily-rollup retention window in bounded batches.
 
 ```sql
 CREATE TABLE data_flow_daily_rollups (

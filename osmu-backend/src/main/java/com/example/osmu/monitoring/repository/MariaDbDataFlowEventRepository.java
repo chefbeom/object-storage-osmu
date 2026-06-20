@@ -12,6 +12,7 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
+import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
@@ -291,6 +292,28 @@ public class MariaDbDataFlowEventRepository implements DataFlowEventRepository {
         try (Connection connection = connect();
              PreparedStatement statement = connection.prepareStatement(sql)) {
             statement.setTimestamp(1, timestamp(cutoff));
+            statement.setInt(2, limit);
+            return statement.executeUpdate();
+        } catch (SQLException exception) {
+            throw databaseException(exception);
+        }
+    }
+
+    @Override
+    public int deleteMaterializedRollupsBefore(LocalDate cutoffDay, int limit) {
+        ensureSchema();
+        if (cutoffDay == null || limit <= 0) {
+            return 0;
+        }
+        String sql = """
+                DELETE FROM data_flow_daily_rollups
+                WHERE rollup_day < ?
+                ORDER BY rollup_day ASC, bucket_name ASC, actor_id ASC, source ASC, operation ASC, status ASC
+                LIMIT ?
+                """;
+        try (Connection connection = connect();
+             PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setDate(1, Date.valueOf(cutoffDay));
             statement.setInt(2, limit);
             return statement.executeUpdate();
         } catch (SQLException exception) {

@@ -3,6 +3,7 @@ package com.example.osmu.monitoring.repository;
 import com.example.osmu.monitoring.DataFlowEventFilter;
 import com.example.osmu.monitoring.DataFlowEventRecord;
 import com.example.osmu.monitoring.DataFlowDailyRollupPointResponse;
+import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.util.List;
 
@@ -21,6 +22,8 @@ public interface DataFlowEventRepository {
     DataFlowEventRecord save(DataFlowEventRecord event);
 
     int deleteBefore(OffsetDateTime cutoff, int limit);
+
+    int deleteMaterializedRollupsBefore(LocalDate cutoffDay, int limit);
 
     boolean isHealthy();
 }

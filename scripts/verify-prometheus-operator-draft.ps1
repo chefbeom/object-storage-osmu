@@ -57,6 +57,7 @@ Assert-Contains $kubernetesManifest.Content "OsmuDataFlowCancelSpike" "Kubernete
 Assert-Contains $kubernetesManifest.Content "OsmuDataFlowAbnormalEgress" "Kubernetes Prometheus Operator draft"
 Assert-Contains $kubernetesManifest.Content "OsmuDataFlowBucketTrafficAnomaly" "Kubernetes Prometheus Operator draft"
 Assert-Contains $kubernetesManifest.Content "OsmuDataFlowRetentionFailures" "Kubernetes Prometheus Operator draft"
+Assert-Contains $kubernetesManifest.Content "OsmuDataFlowDailyRollupRetentionFailures" "Kubernetes Prometheus Operator draft"
 Assert-Contains $kubernetesManifest.Content "OsmuBackupCronJobFailed" "Kubernetes Prometheus Operator draft"
 Assert-Contains $kubernetesManifest.Content "OsmuBackupCronJobStale" "Kubernetes Prometheus Operator draft"
 Assert-NotContains $kustomization.Content "monitoring-operator.yaml" "kustomization.yaml"
@@ -82,6 +83,7 @@ Assert-Contains $helmTemplate.Content "OsmuDataFlowCancelSpike" "Helm Prometheus
 Assert-Contains $helmTemplate.Content "OsmuDataFlowAbnormalEgress" "Helm Prometheus Operator template"
 Assert-Contains $helmTemplate.Content "OsmuDataFlowBucketTrafficAnomaly" "Helm Prometheus Operator template"
 Assert-Contains $helmTemplate.Content "OsmuDataFlowRetentionFailures" "Helm Prometheus Operator template"
+Assert-Contains $helmTemplate.Content "OsmuDataFlowDailyRollupRetentionFailures" "Helm Prometheus Operator template"
 Assert-Contains $helmTemplate.Content "OsmuBackupCronJobFailed" "Helm Prometheus Operator template"
 Assert-Contains $helmTemplate.Content "OsmuBackupCronJobStale" "Helm Prometheus Operator template"
 

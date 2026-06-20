@@ -134,6 +134,26 @@ public class InMemoryDataFlowEventRepository implements DataFlowEventRepository 
     }
 
     @Override
+    public int deleteMaterializedRollupsBefore(LocalDate cutoffDay, int limit) {
+        if (cutoffDay == null || limit <= 0) {
+            return 0;
+        }
+        List<MaterializedRollupRecord> candidates = materializedRollups.stream()
+                .filter(record -> record.point().day().isBefore(cutoffDay))
+                .sorted(Comparator
+                        .comparing((MaterializedRollupRecord record) -> record.point().day())
+                        .thenComparing(record -> record.point().bucketName())
+                        .thenComparing(MaterializedRollupRecord::actorId)
+                        .thenComparing(record -> record.point().source())
+                        .thenComparing(record -> record.point().operation())
+                        .thenComparing(MaterializedRollupRecord::status))
+                .limit(limit)
+                .toList();
+        materializedRollups.removeAll(candidates);
+        return candidates.size();
+    }
+
+    @Override
     public boolean isHealthy() {
         return true;
     }

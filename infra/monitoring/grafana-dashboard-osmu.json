@@ -118,6 +118,10 @@
         {
           "expr": "increase(osmu_data_flow_retention_runs_total{job=\"$job\",result=\"failure\"}[15m])",
           "legendFormat": "data-flow retention"
+        },
+        {
+          "expr": "increase(osmu_data_flow_daily_rollup_retention_runs_total{job=\"$job\",result=\"failure\"}[15m])",
+          "legendFormat": "data-flow rollup retention"
         }
       ]
     },

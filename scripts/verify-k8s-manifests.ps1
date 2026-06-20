@@ -234,6 +234,7 @@ Assert-Contains $monitoringOperator "path: /actuator/prometheus" "monitoring-ope
 Assert-Contains $monitoringOperator "OsmuBackendDown" "monitoring-operator.yaml"
 Assert-Contains $monitoringOperator "OsmuBackendHighErrorRate" "monitoring-operator.yaml"
 Assert-Contains $monitoringOperator "OsmuBackendHighLatencyP95" "monitoring-operator.yaml"
+Assert-Contains $monitoringOperator "OsmuDataFlowDailyRollupRetentionFailures" "monitoring-operator.yaml"
 Assert-Contains $monitoringOperator "OsmuBackupCronJobFailed" "monitoring-operator.yaml"
 Assert-Contains $monitoringOperator "OsmuBackupCronJobStale" "monitoring-operator.yaml"
 
