@@ -4798,7 +4798,7 @@ Response:
         "severity": "WARNING",
         "category": "OPERATIONS",
         "code": "OPERATIONS_HANDOFF_PACKAGE",
-        "message": "Operations handoff package is failed: failures=2, planned=1, checks=23.",
+        "message": "Operations handoff package is failed: failures=2, planned=1, checks=24.",
         "targetPage": "dashboard",
         "targetPanel": "dashboard-readiness-panel",
         "actionLabel": "Handoff package",

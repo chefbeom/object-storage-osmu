@@ -56,6 +56,7 @@ $scriptPath = Resolve-ProjectPath ".\scripts\write-operations-handoff-package.ps
     -OperationsConvergenceRef "latest-operations-readiness-convergence-ready-20260620" `
     -SecretRotationEvidenceRef "latest-secret-rotation-evidence-passed-20260620" `
     -CommercialIntegrationEvidenceRef "latest-commercial-integration-evidence-passed-20260620" `
+    -CommercialApprovalEvidenceRef "latest-commercial-approval-evidence-passed-20260620" `
     -EnterpriseAuthEvidenceRef "latest-enterprise-auth-smoke-passed-20260620" `
     -BackupRestoreEvidenceRef "latest-kubernetes-dr-finalize-ready-20260620" `
     -HaDrEvidenceRef "latest-kubernetes-ha-dr-readiness-passed-20260620" `
@@ -93,8 +94,9 @@ Assert-True ($report.formatVersion -eq "osmu.operations-handoff-package.v1") "Un
 Assert-True ($report.result -eq "passed") "Expected result=passed."
 Assert-True ($report.summary.failureCount -eq 0) "Expected zero failed checks."
 Assert-True ($report.summary.plannedCount -eq 0) "Expected zero planned checks when production evidence is required."
-Assert-True ($checks.Count -ge 22) "Expected operations handoff package checks."
+Assert-True ($checks.Count -ge 23) "Expected operations handoff package checks."
 Assert-True (@($checks | Where-Object { $_.id -eq "handoff-window-order" -and $_.passed }).Count -eq 1) "Expected handoff window order check to pass."
+Assert-True (@($checks | Where-Object { $_.id -eq "commercial-approval-evidence" -and $_.passed }).Count -eq 1) "Expected commercial approval evidence check to pass."
 Assert-True ($report.confirmations.noSecretValues) "Expected no-secret-values confirmation."
 Assert-True ($report.confirmations.runbookReviewed) "Expected runbook reviewed confirmation."
 Assert-True ($report.confirmations.troubleshootingReviewed) "Expected troubleshooting reviewed confirmation."
@@ -106,6 +108,7 @@ Assert-True ($report.confirmations.requireProductionEvidence) "Expected producti
 Assert-Contains $markdown "# OSMU Operations Handoff Package" "operations handoff package markdown"
 Assert-Contains $markdown "Record passed target package" "operations handoff package markdown"
 Assert-Contains $report.decisionRule "Production/B2B operations handoff package readiness requires result=passed" "operations handoff package JSON"
+Assert-Contains $report.decisionRule "commercial approval" "operations handoff package JSON"
 Assert-Contains $report.scopePolicy "does not execute kubectl, gh, provider APIs" "operations handoff package JSON"
 Assert-Contains $report.secretPolicy "must not contain passwords, bearer tokens, kubeconfig values" "operations handoff package JSON"
 
@@ -145,6 +148,7 @@ try {
         -OperationsConvergenceRef "latest-operations-readiness-convergence-ready-20260620" `
         -SecretRotationEvidenceRef "latest-secret-rotation-evidence-passed-20260620" `
         -CommercialIntegrationEvidenceRef "latest-commercial-integration-evidence-passed-20260620" `
+        -CommercialApprovalEvidenceRef "latest-commercial-approval-evidence-passed-20260620" `
         -EnterpriseAuthEvidenceRef "latest-enterprise-auth-smoke-passed-20260620" `
         -BackupRestoreEvidenceRef "latest-kubernetes-dr-finalize-ready-20260620" `
         -HaDrEvidenceRef "latest-kubernetes-ha-dr-readiness-passed-20260620" `

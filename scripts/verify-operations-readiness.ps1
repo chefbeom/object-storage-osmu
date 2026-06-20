@@ -109,6 +109,8 @@ Assert-CheckExists $report "Secret rotation evidence writer" "security-hardening
 Assert-CheckExists $report "Secret rotation evidence writer self-test" "security-hardening"
 Assert-CheckExists $report "Commercial integration evidence writer" "commercial-integration"
 Assert-CheckExists $report "Commercial integration evidence writer self-test" "commercial-integration"
+Assert-CheckExists $report "Commercial approval evidence writer" "commercial-approval"
+Assert-CheckExists $report "Commercial approval evidence writer self-test" "commercial-approval"
 Assert-CheckExists $report "Operations handoff package writer" "operations-handoff-package"
 Assert-CheckExists $report "Operations handoff package writer self-test" "operations-handoff-package"
 Assert-CheckExists $report "Security evidence finalizer" "security-hardening"
@@ -126,6 +128,7 @@ Assert-CheckExists $report "Signed image evidence" "security-hardening"
 Assert-CheckExists $report "Container scan/SBOM evidence" "security-hardening"
 Assert-CheckExists $report "Secret/certificate rotation target evidence" "security-hardening"
 Assert-CheckExists $report "Commercial integration target evidence" "commercial-integration"
+Assert-CheckExists $report "Commercial approval target evidence" "commercial-approval"
 Assert-CheckExists $report "Enterprise auth target smoke evidence" "enterprise-auth"
 Assert-CheckExists $report "Operations handoff package target evidence" "operations-handoff-package"
 
@@ -155,6 +158,16 @@ if (-not ([string] $commercialIntegrationCheck[0].remediation.command).Contains(
 if (-not ([string] $commercialIntegrationCheck[0].requiredEvidence).Contains("target environment")) {
     throw "Commercial integration target evidence must require target environment evidence."
 }
+$commercialApprovalCheck = @($report.checks | Where-Object { $_.name -eq "Commercial approval target evidence" })
+if ($commercialApprovalCheck.Count -ne 1) {
+    throw "Operations readiness report must contain one Commercial approval target evidence check."
+}
+if (-not ([string] $commercialApprovalCheck[0].remediation.command).Contains("write-commercial-approval-evidence.ps1")) {
+    throw "Commercial approval target evidence remediation must point to write-commercial-approval-evidence.ps1."
+}
+if (-not ([string] $commercialApprovalCheck[0].requiredEvidence).Contains("final pricing") -or -not ([string] $commercialApprovalCheck[0].requiredEvidence).Contains("legal approval")) {
+    throw "Commercial approval target evidence must require final pricing and legal approval evidence."
+}
 $enterpriseAuthCheck = @($report.checks | Where-Object { $_.name -eq "Enterprise auth target smoke evidence" })
 if ($enterpriseAuthCheck.Count -ne 1) {
     throw "Operations readiness report must contain one Enterprise auth target smoke evidence check."
@@ -178,6 +191,9 @@ if ($operationsHandoffPackageCheck.Count -ne 1) {
 if (-not ([string] $operationsHandoffPackageCheck[0].remediation.command).Contains("write-operations-handoff-package.ps1")) {
     throw "Operations handoff package target evidence remediation must point to write-operations-handoff-package.ps1."
 }
+if (-not ([string] $operationsHandoffPackageCheck[0].remediation.command).Contains("-CommercialApprovalEvidenceRef")) {
+    throw "Operations handoff package target evidence remediation must include CommercialApprovalEvidenceRef."
+}
 if (-not ([string] $operationsHandoffPackageCheck[0].requiredEvidence).Contains("target environment")) {
     throw "Operations handoff package target evidence must require target environment evidence."
 }
@@ -189,6 +205,7 @@ Assert-Contains $markdown "Kubernetes DR finalizer live evidence" "Operations re
 Assert-Contains $markdown "Security evidence finalizer report" "Operations readiness markdown"
 Assert-Contains $markdown "Secret/certificate rotation target evidence" "Operations readiness markdown"
 Assert-Contains $markdown "Commercial integration target evidence" "Operations readiness markdown"
+Assert-Contains $markdown "Commercial approval target evidence" "Operations readiness markdown"
 Assert-Contains $markdown "Enterprise auth target smoke evidence" "Operations readiness markdown"
 Assert-Contains $markdown "Operations handoff package target evidence" "Operations readiness markdown"
 Assert-Contains $markdown "Required Next Evidence" "Operations readiness markdown"

@@ -9,6 +9,7 @@ param(
     [string] $ContainerSecurityEvidencePath = ".\.osmu-run\latest-container-security-evidence.json",
     [string] $SecretRotationEvidencePath = ".\.osmu-run\latest-secret-rotation-evidence.json",
     [string] $CommercialIntegrationEvidencePath = ".\.osmu-run\latest-commercial-integration-evidence.json",
+    [string] $CommercialApprovalEvidencePath = ".\.osmu-run\latest-commercial-approval-evidence.json",
     [string] $EnterpriseAuthSmokeEvidencePath = ".\.osmu-run\latest-enterprise-auth-smoke.json",
     [string] $OperationsHandoffPackagePath = ".\.osmu-run\latest-operations-handoff-package.json",
     [string] $JsonOutputPath = ".\.osmu-run\latest-operations-readiness.json",
@@ -191,6 +192,7 @@ $imageSigningReport = Read-JsonReport $ImageSigningEvidencePath "Image signing e
 $containerSecurityReport = Read-JsonReport $ContainerSecurityEvidencePath "Container security evidence"
 $secretRotationReport = Read-JsonReport $SecretRotationEvidencePath "Secret rotation evidence"
 $commercialIntegrationReport = Read-JsonReport $CommercialIntegrationEvidencePath "Commercial integration evidence"
+$commercialApprovalReport = Read-JsonReport $CommercialApprovalEvidencePath "Commercial approval evidence"
 $enterpriseAuthSmokeReport = Read-JsonReport $EnterpriseAuthSmokeEvidencePath "Enterprise auth smoke evidence"
 $operationsHandoffPackageReport = Read-JsonReport $OperationsHandoffPackagePath "Operations handoff package"
 
@@ -234,16 +236,21 @@ $commercialIntegrationRemediation = New-Remediation `
     "" `
     "" `
     "Run after target-environment notification webhook, Slack, EMAIL SMTP relay, generic payment webhook, and CARD/BANK/TAX/ERP payment webhook profile handoff checks. VerificationCompletedAt must be the same as or later than VerificationStartedAt. This evidence does not claim native card/bank/tax/ERP processor API support and must not include credentials, raw provider responses, or customer payment data."
+$commercialApprovalRemediation = New-Remediation `
+    "powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\write-commercial-approval-evidence.ps1 -ProductVersion <version> -ApprovalRef <approval-ref> -ApprovedBy <approver> -ApprovedAt <iso-time> -PricingApprovalRef <ref> -TermsApprovalRef <ref> -SupportSlaApprovalRef <ref> -LicenseAgreementRef <ref> -LegalApprovalRef <ref> -PilotContractRef <ref> -ConfirmPricingApproved -ConfirmTermsApproved -ConfirmSupportSlaApproved -ConfirmLicenseApproved -ConfirmLegalApproved -ConfirmNoSecretValues -FailIfNotPassed" `
+    "" `
+    "" `
+    "Run after final pricing, terms, support SLA, license agreement, legal approval, and pilot contract boundary are approved. The evidence stores references and booleans only; do not pass prices, raw legal terms, contracts, customer payment data, passwords, tokens, private keys, license keys, or signing secrets."
 $enterpriseAuthSmokeRemediation = New-Remediation `
     "powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\write-enterprise-auth-smoke-plan.ps1 -Execute -AdminLoginId <admin> -AdminPassword <secret> -RequireOidc -RequireLdap" `
     ".github/workflows/enterprise-auth-smoke-ci.yml" `
     "gh workflow run enterprise-auth-smoke-ci.yml -f run_live=true -f api_base=<api-base> -f admin_login_id=<admin> -f require_oidc=true -f require_ldap=true -f fail_if_not_passed=true" `
     "Run against the target pilot IdP/directory only after OIDC/LDAP provider flags and local user mapping are configured, or record an explicit commercial scope-out with write-enterprise-auth-smoke-plan.ps1 -ConfirmScopeOut -ScopeOutRef <approval-ref> -ScopeOutReason <reason>. The workflow requires OSMU_ENTERPRISE_AUTH_ADMIN_PASSWORD and, when LDAP is required, OSMU_ENTERPRISE_AUTH_LDAP_LOGIN_ID/OSMU_ENTERPRISE_AUTH_LDAP_PASSWORD secrets. Evidence does not include passwords, tokens, OIDC code/state, raw claim JSON, or credential-like scope-out references."
 $operationsHandoffPackageRemediation = New-Remediation `
-    "powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\write-operations-handoff-package.ps1 -EnvironmentName <env> -TargetCluster <cluster> -Operator <operator> -HandoffStartedAt <iso-time> -HandoffCompletedAt <iso-time> -ChangeApprovalRef <change-id> -DeploymentEvidenceRef <ref> -OperationsReadinessRef <ref> -OperationsConvergenceRef <ref> -SecretRotationEvidenceRef <ref> -CommercialIntegrationEvidenceRef <ref> -EnterpriseAuthEvidenceRef <ref> -BackupRestoreEvidenceRef <ref> -HaDrEvidenceRef <ref> -MonitoringEvidenceRef <ref> -SecurityEvidenceRef <ref> -IamRbacEvidenceRef <ref> -RunbookReviewRef <ref> -TroubleshootingReviewRef <ref> -SupportEscalationRef <ref> -SupportSlaRef <ref> -KnownGapsRef <ref> -ConfirmRunbookReviewed -ConfirmTroubleshootingReviewed -ConfirmRollbackReviewed -ConfirmSupportEscalationReviewed -ConfirmKnownGapsAccepted -ConfirmNoSecretValues -RequireProductionEvidence -FailIfNotPassed" `
+    "powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\write-operations-handoff-package.ps1 -EnvironmentName <env> -TargetCluster <cluster> -Operator <operator> -HandoffStartedAt <iso-time> -HandoffCompletedAt <iso-time> -ChangeApprovalRef <change-id> -DeploymentEvidenceRef <ref> -OperationsReadinessRef <ref> -OperationsConvergenceRef <ref> -SecretRotationEvidenceRef <ref> -CommercialIntegrationEvidenceRef <ref> -CommercialApprovalEvidenceRef <ref> -EnterpriseAuthEvidenceRef <ref> -BackupRestoreEvidenceRef <ref> -HaDrEvidenceRef <ref> -MonitoringEvidenceRef <ref> -SecurityEvidenceRef <ref> -IamRbacEvidenceRef <ref> -RunbookReviewRef <ref> -TroubleshootingReviewRef <ref> -SupportEscalationRef <ref> -SupportSlaRef <ref> -KnownGapsRef <ref> -ConfirmRunbookReviewed -ConfirmTroubleshootingReviewed -ConfirmRollbackReviewed -ConfirmSupportEscalationReviewed -ConfirmKnownGapsAccepted -ConfirmNoSecretValues -RequireProductionEvidence -FailIfNotPassed" `
     "" `
     "" `
-    "Run at pilot or production handoff after the operator has reviewed runbook, troubleshooting, rollback, support escalation, known gaps, and target evidence. HandoffCompletedAt must be the same as or later than HandoffStartedAt. The package stores references and booleans only; do not pass passwords, bearer tokens, kubeconfig values, private keys, provider credentials, raw provider responses, or customer payment data."
+    "Run at pilot or production handoff after the operator has reviewed runbook, troubleshooting, rollback, support escalation, known gaps, commercial approval, and target evidence. HandoffCompletedAt must be the same as or later than HandoffStartedAt. The package stores references and booleans only; do not pass passwords, bearer tokens, kubeconfig values, private keys, provider credentials, raw provider responses, or customer payment data."
 
 Add-Check "Release report available" "release" ($releaseReport.exists -and $releaseReport.parsed) $releaseReport.detail $releaseReport.path "latest release report generated by the release gate"
 
@@ -283,6 +290,8 @@ Add-FileCheck "Secret rotation evidence writer" "security-hardening" ".\scripts\
 Add-FileCheck "Secret rotation evidence writer self-test" "security-hardening" ".\scripts\verify-secret-rotation-evidence.ps1" "secret rotation evidence writer self-test committed"
 Add-FileCheck "Commercial integration evidence writer" "commercial-integration" ".\scripts\write-commercial-integration-evidence.ps1" "commercial integration evidence writer committed"
 Add-FileCheck "Commercial integration evidence writer self-test" "commercial-integration" ".\scripts\verify-commercial-integration-evidence.ps1" "commercial integration evidence writer self-test committed"
+Add-FileCheck "Commercial approval evidence writer" "commercial-approval" ".\scripts\write-commercial-approval-evidence.ps1" "commercial approval evidence writer committed"
+Add-FileCheck "Commercial approval evidence writer self-test" "commercial-approval" ".\scripts\verify-commercial-approval-evidence.ps1" "commercial approval evidence writer self-test committed"
 Add-FileCheck "Operations handoff package writer" "operations-handoff-package" ".\scripts\write-operations-handoff-package.ps1" "operations handoff package writer committed"
 Add-FileCheck "Operations handoff package writer self-test" "operations-handoff-package" ".\scripts\verify-operations-handoff-package.ps1" "operations handoff package writer self-test committed"
 Add-FileCheck "Security evidence finalizer" "security-hardening" ".\scripts\finalize-security-evidence.ps1" "security evidence finalizer committed"
@@ -301,6 +310,7 @@ Add-Check "Signed image evidence" "security-hardening" ($imageSigningReport.exis
 Add-Check "Container scan/SBOM evidence" "security-hardening" ($containerSecurityReport.exists -and $containerSecurityReport.parsed -and $containerSecurityReport.data.result -eq "passed") (Get-GenericResultDetail $containerSecurityReport) $containerSecurityReport.path "successful container scan and SBOM artifact evidence" $containerSecurityRemediation
 Add-Check "Secret/certificate rotation target evidence" "security-hardening" ($secretRotationReport.exists -and $secretRotationReport.parsed -and $secretRotationReport.data.result -eq "passed") (Get-GenericResultDetail $secretRotationReport) $secretRotationReport.path "secret/certificate rotation evidence result=passed from target environment" $secretRotationRemediation
 Add-Check "Commercial integration target evidence" "commercial-integration" ($commercialIntegrationReport.exists -and $commercialIntegrationReport.parsed -and $commercialIntegrationReport.data.result -eq "passed") (Get-GenericResultDetail $commercialIntegrationReport) $commercialIntegrationReport.path "commercial integration evidence result=passed from target environment" $commercialIntegrationRemediation
+Add-Check "Commercial approval target evidence" "commercial-approval" ($commercialApprovalReport.exists -and $commercialApprovalReport.parsed -and $commercialApprovalReport.data.result -eq "passed") (Get-GenericResultDetail $commercialApprovalReport) $commercialApprovalReport.path "commercial approval evidence result=passed for final pricing, terms, support SLA, license agreement, legal approval, and pilot contract boundary" $commercialApprovalRemediation
 Add-Check "Enterprise auth target smoke evidence" "enterprise-auth" (Test-EnterpriseAuthEvidenceAccepted $enterpriseAuthSmokeReport) (Get-GenericResultDetail $enterpriseAuthSmokeReport) $enterpriseAuthSmokeReport.path "enterprise auth smoke result=passed from target IdP/directory, or result=scope-out with explicit commercial approval reference and reason" $enterpriseAuthSmokeRemediation
 Add-Check "Operations handoff package target evidence" "operations-handoff-package" ($operationsHandoffPackageReport.exists -and $operationsHandoffPackageReport.parsed -and $operationsHandoffPackageReport.data.result -eq "passed") (Get-GenericResultDetail $operationsHandoffPackageReport) $operationsHandoffPackageReport.path "operations handoff package result=passed from target environment" $operationsHandoffPackageRemediation
 
@@ -329,11 +339,12 @@ $report = [ordered]@{
         containerSecurityEvidence = $containerSecurityReport.path
         secretRotationEvidence = $secretRotationReport.path
         commercialIntegrationEvidence = $commercialIntegrationReport.path
+        commercialApprovalEvidence = $commercialApprovalReport.path
         enterpriseAuthSmokeEvidence = $enterpriseAuthSmokeReport.path
         operationsHandoffPackage = $operationsHandoffPackageReport.path
     }
     checks = $checks
-    decisionRule = "Production/B2B operations readiness is ready only when every listed static, automation, live Kubernetes, storage expansion, HA/DR, security, secret rotation, commercial integration, enterprise auth, and operations handoff package evidence check is PASS."
+    decisionRule = "Production/B2B operations readiness is ready only when every listed static, automation, live Kubernetes, storage expansion, HA/DR, security, secret rotation, commercial integration, commercial approval, enterprise auth, and operations handoff package evidence check is PASS."
 }
 
 $markdownLines = @(
