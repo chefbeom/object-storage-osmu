@@ -2753,7 +2753,7 @@ Notes:
 
 ### GET /api/admin/billing/chargeback-alert-notifications/preview
 
-Builds scoped external notification payload previews from the same chargeback threshold alert model. `ADMIN` sees payload previews for every alerted organization and `ORG_ADMIN` sees only its own organization. This endpoint does not send webhooks, email, Slack messages, or any other external notification; it only returns the payload shape and target metadata for review. `externalDeliveryEnabled` reflects whether `osmu.billing.notification-delivery.webhook-url` and optional secret header settings are valid.
+Builds scoped external notification payload previews from the same chargeback threshold alert model. `ADMIN` sees payload previews for every alerted organization and `ORG_ADMIN` sees only its own organization. This endpoint does not send webhooks, email, Slack messages, or any other external notification; it only returns the payload shape and target metadata for review. `externalDeliveryEnabled` is channel-aware: generic webhook channels use `osmu.billing.notification-delivery.webhook-url` and optional secret header settings, while `SLACK` can also use `osmu.billing.notification-delivery.slack.webhook-url`.
 
 Query parameters are the same as `GET /api/admin/billing/chargeback-preview`, plus:
 
@@ -2770,7 +2770,7 @@ Response:
 
 Notes:
 
-- This is the external alert review surface. Webhook delivery execution is handled by `POST /api/admin/billing/chargeback-alert-notifications/outbox/{deliveryId}/adapter-send` or by the adapter retry worker when the webhook adapter is configured; email/Slack-specific adapters remain follow-up work.
+- This is the external alert review surface. Delivery execution is handled by `POST /api/admin/billing/chargeback-alert-notifications/outbox/{deliveryId}/adapter-send` or by the adapter retry worker when a channel-compatible adapter is configured. Generic webhook delivery and `SLACK` incoming webhook delivery are implemented; email-specific adapters remain follow-up work.
 - Scope filtering is identical to chargeback alerts.
 
 ### POST /api/admin/billing/chargeback-alert-notifications/outbox
@@ -2825,11 +2825,12 @@ Response:
 
 ### POST /api/admin/billing/chargeback-alert-notifications/outbox/{deliveryId}/adapter-send
 
-Attempts configured webhook delivery for a persisted chargeback notification delivery row. `ADMIN` only. If `osmu.billing.notification-delivery.webhook-url` is not configured or is invalid, the row moves to `DELIVERY_ADAPTER_BLOCKED_CREDENTIAL` without an external call. When configured, OSMU sends a JSON envelope to the webhook with delivery metadata plus the original notification payload. It never stores the webhook URL, secret header value, response body, or raw provider response in the outbox.
+Attempts configured delivery for a persisted chargeback notification delivery row. `ADMIN` only. Generic channels use `osmu.billing.notification-delivery.webhook-url`; `SLACK` rows use `osmu.billing.notification-delivery.slack.webhook-url` when configured and otherwise fall back to the generic webhook if configured. If no channel-compatible adapter is configured or the configuration is invalid, the row moves to `DELIVERY_ADAPTER_BLOCKED_CREDENTIAL` without an external call. Generic webhook sends a JSON envelope with delivery metadata plus the original notification payload. Slack webhook sends a Slack-compatible `text` JSON payload. It never stores webhook URLs, secret header values, response bodies, or raw provider responses in the outbox.
 
 Configuration:
 
 - `osmu.billing.notification-delivery.webhook-url` (optional): HTTP/HTTPS endpoint to call.
+- `osmu.billing.notification-delivery.slack.webhook-url` (optional): HTTP/HTTPS Slack incoming webhook endpoint used for `notificationChannel=SLACK`.
 - `osmu.billing.notification-delivery.secret-header-name` and `osmu.billing.notification-delivery.secret-header-value` (optional pair): header name/value sent with the webhook request; header values are never stored in delivery rows.
 - `osmu.billing.notification-delivery.timeout-ms` (optional): request timeout, clamped to 500..15000ms. Default is `3000`.
 
@@ -2847,7 +2848,7 @@ Response:
 
 ### GET /api/admin/billing/chargeback-adapter-retry-worker/status
 
-Returns a dry-run view of due chargeback notification delivery and payment provider handoff adapter retry rows. `ADMIN` only. The endpoint does not call external notification or payment providers and does not update outbox state. `externalAdaptersEnabled` is true when either the notification webhook adapter or payment-provider webhook handoff adapter is configured.
+Returns a dry-run view of due chargeback notification delivery and payment provider handoff adapter retry rows. `ADMIN` only. The endpoint does not call external notification or payment providers and does not update outbox state. `externalAdaptersEnabled` is true when generic notification webhook, `SLACK` notification webhook, or payment-provider webhook handoff adapter configuration exists.
 
 Query parameters:
 
@@ -2864,7 +2865,7 @@ Response:
 
 ### POST /api/admin/billing/chargeback-adapter-retry-worker/run
 
-Runs the chargeback adapter retry worker for due outbox rows. `ADMIN` only. With `dryRun=false`, due notification rows call the configured notification webhook adapter when available and due payment handoff rows call the configured payment-provider webhook handoff adapter when available. Each row moves to success, retry, or blocked state. If a relevant adapter is not configured, the row moves to its credential/configuration blocked state without an external call.
+Runs the chargeback adapter retry worker for due outbox rows. `ADMIN` only. With `dryRun=false`, due notification rows call the configured generic webhook or `SLACK` webhook adapter when available for that row's channel, and due payment handoff rows call the configured payment-provider webhook handoff adapter when available. Each row moves to success, retry, or blocked state. If a relevant adapter is not configured, the row moves to its credential/configuration blocked state without an external call.
 
 Query parameters:
 

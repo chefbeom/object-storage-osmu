@@ -386,6 +386,77 @@ class ChargebackPreviewServiceTest {
     }
 
     @Test
+    void evaluatesNotificationAdapterConfigurationPerChannel() {
+        OffsetDateTime now = OffsetDateTime.now();
+        organizationRepository.save(new OrganizationRecord(1L, "Slack Org", "", 10_000L, now));
+        bucketRepository.save(new BucketRecord(1L, "slack-bucket", "ORG", 1L, 10_000L, 1024L, 1L, now));
+
+        pricingPolicyService.save(new BillingPricingPolicyRequest(
+                "krw",
+                ONE_GIB_RATE,
+                BigDecimal.ZERO,
+                BigDecimal.ZERO,
+                BigDecimal.ZERO,
+                BigDecimal.ZERO,
+                BigDecimal.valueOf(20L),
+                BigDecimal.valueOf(25L),
+                25,
+                "channel adapter test"
+        ));
+
+        ChargebackPreviewService slackService = serviceWithNotificationAdapter(new ChargebackNotificationDeliveryAdapter() {
+            @Override
+            public boolean isConfigured() {
+                return true;
+            }
+
+            @Override
+            public boolean isConfigured(String channel) {
+                return "SLACK".equals(channel);
+            }
+
+            @Override
+            public ChargebackNotificationDeliveryAdapterResult deliver(ChargebackAlertNotificationDeliveryRecord record) {
+                assertThat(record.channel()).isEqualTo("SLACK");
+                return ChargebackNotificationDeliveryAdapterResult.success();
+            }
+        });
+
+        ChargebackAlertNotificationPreviewResponse slackPreview = slackService.alertNotificationPreview(
+                new AuthenticatedUser(1L, "admin", "ADMIN", null),
+                new ChargebackPreviewRequest(null, null, null, null, null, null, null, null, 0),
+                "slack",
+                "ops-alerts"
+        );
+        ChargebackAlertNotificationPreviewResponse webhookPreview = slackService.alertNotificationPreview(
+                new AuthenticatedUser(1L, "admin", "ADMIN", null),
+                new ChargebackPreviewRequest(null, null, null, null, null, null, null, null, 0),
+                "webhook",
+                "ops-webhook"
+        );
+
+        assertThat(slackPreview.externalDeliveryEnabled()).isTrue();
+        assertThat(webhookPreview.externalDeliveryEnabled()).isFalse();
+
+        ChargebackAlertNotificationDispatchResponse dispatch = slackService.queueAlertNotifications(
+                new AuthenticatedUser(1L, "admin", "ADMIN", null),
+                new ChargebackPreviewRequest(null, null, null, null, null, null, null, null, 0),
+                "slack",
+                "ops-alerts",
+                "channel-specific send"
+        );
+
+        assertThat(dispatch.externalDeliveryEnabled()).isTrue();
+        ChargebackAlertNotificationDeliveryAttemptResponse sent = slackService.sendNotificationDeliveryAdapter(
+                new AuthenticatedUser(1L, "admin", "ADMIN", null),
+                dispatch.deliveries().get(0).id(),
+                null
+        );
+        assertThat(sent.status()).isEqualTo("DELIVERY_ADAPTER_SUCCEEDED");
+        assertThat(sent.externalDeliveryEnabled()).isTrue();
+    }
+
+    @Test
     void persistsAndApprovesChargebackInvoiceDraftsForInternalReview() {
         OffsetDateTime now = OffsetDateTime.now();
         organizationRepository.save(new OrganizationRecord(1L, "Invoice Org", "", 10_000L, now));

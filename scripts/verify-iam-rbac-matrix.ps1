@@ -7,6 +7,7 @@ param(
     [string] $EnterpriseAuthPlanServicePath = ".\osmu-backend\src\main\java\com\example\osmu\auth\EnterpriseAuthPlanService.java",
     [string] $ChargebackPreviewServicePath = ".\osmu-backend\src\main\java\com\example\osmu\billing\ChargebackPreviewService.java",
     [string] $ChargebackAdapterRetryWorkerServicePath = ".\osmu-backend\src\main\java\com\example\osmu\billing\ChargebackAdapterRetryWorkerService.java",
+    [string] $ChargebackNotificationDeliveryAdapterPath = ".\osmu-backend\src\main\java\com\example\osmu\billing\WebhookChargebackNotificationDeliveryAdapter.java",
     [string] $BillingPricingPolicyServicePath = ".\osmu-backend\src\main\java\com\example\osmu\billing\BillingPricingPolicyService.java",
     [string] $OidcAuthorizationServicePath = ".\osmu-backend\src\main\java\com\example\osmu\auth\OidcAuthorizationService.java",
     [string] $OidcClaimPreviewServicePath = ".\osmu-backend\src\main\java\com\example\osmu\auth\OidcClaimPreviewService.java",
@@ -73,6 +74,7 @@ Assert-Contains $matrix 'GET /api/admin/billing/chargeback-alert-notifications/p
 Assert-Contains $matrix 'GET/POST /api/admin/billing/chargeback-alert-notifications/outbox' "IAM/RBAC matrix"
 Assert-Contains $matrix 'POST /api/admin/billing/chargeback-alert-notifications/outbox/{deliveryId}/adapter-result' "IAM/RBAC matrix"
 Assert-Contains $matrix 'POST /api/admin/billing/chargeback-alert-notifications/outbox/{deliveryId}/adapter-send' "IAM/RBAC matrix"
+Assert-Contains $matrix 'configured generic webhook/Slack send' "IAM/RBAC matrix"
 Assert-Contains $matrix 'GET /api/admin/billing/chargeback-adapter-retry-worker/status' "IAM/RBAC matrix"
 Assert-Contains $matrix 'POST /api/admin/billing/chargeback-adapter-retry-worker/run' "IAM/RBAC matrix"
 Assert-Contains $matrix 'ChargebackAdapterRetryWorkerService' "IAM/RBAC matrix"
@@ -145,6 +147,8 @@ Assert-Contains $apiSpec 'GET /api/admin/billing/chargeback-alert-notifications/
 Assert-Contains $apiSpec 'POST /api/admin/billing/chargeback-alert-notifications/outbox' "API spec"
 Assert-Contains $apiSpec 'POST /api/admin/billing/chargeback-alert-notifications/outbox/{deliveryId}/adapter-result' "API spec"
 Assert-Contains $apiSpec 'POST /api/admin/billing/chargeback-alert-notifications/outbox/{deliveryId}/adapter-send' "API spec"
+Assert-Contains $apiSpec 'osmu.billing.notification-delivery.slack.webhook-url' "API spec"
+Assert-Contains $apiSpec 'Slack-compatible `text` JSON payload' "API spec"
 Assert-Contains $apiSpec 'GET /api/admin/billing/chargeback-adapter-retry-worker/status' "API spec"
 Assert-Contains $apiSpec 'POST /api/admin/billing/chargeback-adapter-retry-worker/run' "API spec"
 Assert-Contains $apiSpec 'GET /api/admin/billing/chargeback-invoice-drafts' "API spec"
@@ -305,6 +309,13 @@ Assert-Contains $chargebackAdapterRetryWorkerService 'notificationDeliveryAdapte
 Assert-Contains $chargebackAdapterRetryWorkerService 'paymentProviderAdapter.deliver' "Chargeback adapter retry worker service"
 Assert-Contains $chargebackAdapterRetryWorkerService 'DELIVERY_ADAPTER_BLOCKED_CREDENTIAL' "Chargeback adapter retry worker service"
 Assert-Contains $chargebackAdapterRetryWorkerService 'PAYMENT_PROVIDER_ADAPTER_BLOCKED_CREDENTIAL' "Chargeback adapter retry worker service"
+Assert-Contains $chargebackAdapterRetryWorkerService 'isConfigured(record.channel())' "Chargeback adapter retry worker service"
+
+$chargebackNotificationDeliveryAdapter = Read-RequiredFile $ChargebackNotificationDeliveryAdapterPath "Chargeback notification delivery adapter"
+Assert-Contains $chargebackNotificationDeliveryAdapter 'notification-delivery.slack.webhook-url' "Chargeback notification delivery adapter"
+Assert-Contains $chargebackNotificationDeliveryAdapter 'chargeback.threshold.slack.delivery' "Chargeback notification delivery adapter"
+Assert-Contains $chargebackNotificationDeliveryAdapter 'slackEnvelope' "Chargeback notification delivery adapter"
+Assert-Contains $chargebackNotificationDeliveryAdapter 'isConfigured(String channel)' "Chargeback notification delivery adapter"
 
 $billingPricingPolicyService = Read-RequiredFile $BillingPricingPolicyServicePath "Billing pricing policy service"
 Assert-Contains $billingPricingPolicyService 'createProposal' "Billing pricing policy service"

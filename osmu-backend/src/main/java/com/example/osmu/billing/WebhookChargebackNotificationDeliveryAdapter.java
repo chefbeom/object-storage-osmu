@@ -18,13 +18,16 @@ import org.springframework.stereotype.Component;
 public class WebhookChargebackNotificationDeliveryAdapter implements ChargebackNotificationDeliveryAdapter {
 
     private static final String DELIVERY_EVENT_TYPE = "chargeback.threshold.delivery";
+    private static final String SLACK_DELIVERY_EVENT_TYPE = "chargeback.threshold.slack.delivery";
     private static final int DEFAULT_TIMEOUT_MS = 3000;
     private static final int MIN_TIMEOUT_MS = 500;
     private static final int MAX_TIMEOUT_MS = 15000;
+    private static final int SLACK_TEXT_LIMIT = 3000;
 
     private final ObjectMapper objectMapper;
     private final HttpClient httpClient;
     private final String webhookUrl;
+    private final String slackWebhookUrl;
     private final String secretHeaderName;
     private final String secretHeaderValue;
     private final int timeoutMs;
@@ -32,12 +35,14 @@ public class WebhookChargebackNotificationDeliveryAdapter implements ChargebackN
     public WebhookChargebackNotificationDeliveryAdapter(
             ObjectMapper objectMapper,
             @Value("${osmu.billing.notification-delivery.webhook-url:}") String webhookUrl,
+            @Value("${osmu.billing.notification-delivery.slack.webhook-url:}") String slackWebhookUrl,
             @Value("${osmu.billing.notification-delivery.secret-header-name:}") String secretHeaderName,
             @Value("${osmu.billing.notification-delivery.secret-header-value:}") String secretHeaderValue,
             @Value("${osmu.billing.notification-delivery.timeout-ms:3000}") int timeoutMs
     ) {
         this.objectMapper = objectMapper;
         this.webhookUrl = normalize(webhookUrl);
+        this.slackWebhookUrl = normalize(slackWebhookUrl);
         this.secretHeaderName = normalize(secretHeaderName);
         this.secretHeaderValue = normalize(secretHeaderValue);
         this.timeoutMs = Math.max(MIN_TIMEOUT_MS, Math.min(timeoutMs <= 0 ? DEFAULT_TIMEOUT_MS : timeoutMs, MAX_TIMEOUT_MS));
@@ -48,12 +53,28 @@ public class WebhookChargebackNotificationDeliveryAdapter implements ChargebackN
 
     @Override
     public boolean isConfigured() {
-        return configuredUri() != null && secretHeaderConfigIsValid();
+        return genericWebhookIsConfigured() || configuredUri(slackWebhookUrl) != null;
+    }
+
+    @Override
+    public boolean isConfigured(String channel) {
+        if (slackChannel(channel)) {
+            return configuredUri(slackWebhookUrl) != null || genericWebhookIsConfigured();
+        }
+        return genericWebhookIsConfigured();
     }
 
     @Override
     public ChargebackNotificationDeliveryAdapterResult deliver(ChargebackAlertNotificationDeliveryRecord record) {
-        URI uri = configuredUri();
+        URI slackUri = configuredUri(slackWebhookUrl);
+        if (slackChannel(record.channel()) && slackUri != null) {
+            return deliverSlack(record, slackUri);
+        }
+        return deliverGeneric(record);
+    }
+
+    private ChargebackNotificationDeliveryAdapterResult deliverGeneric(ChargebackAlertNotificationDeliveryRecord record) {
+        URI uri = configuredUri(webhookUrl);
         if (uri == null) {
             return ChargebackNotificationDeliveryAdapterResult.blocked("Notification webhook adapter is not configured.");
         }
@@ -68,17 +89,16 @@ public class WebhookChargebackNotificationDeliveryAdapter implements ChargebackN
             return ChargebackNotificationDeliveryAdapterResult.blocked("Notification webhook payload serialization failed.");
         }
 
-        HttpRequest.Builder requestBuilder = HttpRequest.newBuilder(uri)
-                .timeout(Duration.ofMillis(timeoutMs))
-                .header("Content-Type", "application/json")
-                .header("X-OSMU-Event-Type", DELIVERY_EVENT_TYPE)
-                .header("X-OSMU-Delivery-Id", String.valueOf(record.id() == null ? 0L : record.id()))
-                .POST(HttpRequest.BodyPublishers.ofString(requestBody));
-        if (!secretHeaderName.isBlank() && !secretHeaderValue.isBlank()) {
-            requestBuilder.header(secretHeaderName, secretHeaderValue);
-        }
-
         try {
+            HttpRequest.Builder requestBuilder = HttpRequest.newBuilder(uri)
+                    .timeout(Duration.ofMillis(timeoutMs))
+                    .header("Content-Type", "application/json")
+                    .header("X-OSMU-Event-Type", DELIVERY_EVENT_TYPE)
+                    .header("X-OSMU-Delivery-Id", String.valueOf(record.id() == null ? 0L : record.id()))
+                    .POST(HttpRequest.BodyPublishers.ofString(requestBody));
+            if (!secretHeaderName.isBlank() && !secretHeaderValue.isBlank()) {
+                requestBuilder.header(secretHeaderName, secretHeaderValue);
+            }
             HttpResponse<Void> httpResponse = httpClient.send(
                     requestBuilder.build(),
                     HttpResponse.BodyHandlers.discarding()
@@ -103,6 +123,48 @@ public class WebhookChargebackNotificationDeliveryAdapter implements ChargebackN
         }
     }
 
+    private ChargebackNotificationDeliveryAdapterResult deliverSlack(
+            ChargebackAlertNotificationDeliveryRecord record,
+            URI uri
+    ) {
+        String requestBody;
+        try {
+            requestBody = objectMapper.writeValueAsString(slackEnvelope(record));
+        } catch (JsonProcessingException exception) {
+            return ChargebackNotificationDeliveryAdapterResult.blocked("Slack notification payload serialization failed.");
+        }
+
+        try {
+            HttpResponse<Void> httpResponse = httpClient.send(
+                    HttpRequest.newBuilder(uri)
+                            .timeout(Duration.ofMillis(timeoutMs))
+                            .header("Content-Type", "application/json")
+                            .header("X-OSMU-Event-Type", SLACK_DELIVERY_EVENT_TYPE)
+                            .header("X-OSMU-Delivery-Id", String.valueOf(record.id() == null ? 0L : record.id()))
+                            .POST(HttpRequest.BodyPublishers.ofString(requestBody))
+                            .build(),
+                    HttpResponse.BodyHandlers.discarding()
+            );
+            int statusCode = httpResponse.statusCode();
+            if (statusCode >= 200 && statusCode < 300) {
+                return ChargebackNotificationDeliveryAdapterResult.success();
+            }
+            if (statusCode == 429 || statusCode >= 500) {
+                return ChargebackNotificationDeliveryAdapterResult.retry(
+                        "Slack notification webhook returned retryable HTTP " + statusCode + "."
+                );
+            }
+            return ChargebackNotificationDeliveryAdapterResult.blocked(
+                    "Slack notification webhook returned non-retryable HTTP " + statusCode + "."
+            );
+        } catch (InterruptedException exception) {
+            Thread.currentThread().interrupt();
+            return ChargebackNotificationDeliveryAdapterResult.retry("Slack notification webhook request was interrupted.");
+        } catch (IOException | IllegalArgumentException exception) {
+            return ChargebackNotificationDeliveryAdapterResult.retry("Slack notification webhook request failed; retry scheduled.");
+        }
+    }
+
     private Map<String, Object> deliveryEnvelope(ChargebackAlertNotificationDeliveryRecord record) {
         Map<String, Object> envelope = new LinkedHashMap<>();
         envelope.put("eventType", DELIVERY_EVENT_TYPE);
@@ -118,6 +180,21 @@ public class WebhookChargebackNotificationDeliveryAdapter implements ChargebackN
         return envelope;
     }
 
+    private Map<String, Object> slackEnvelope(ChargebackAlertNotificationDeliveryRecord record) {
+        Map<String, Object> envelope = new LinkedHashMap<>();
+        envelope.put("text", truncate(slackText(record), SLACK_TEXT_LIMIT));
+        return envelope;
+    }
+
+    private static String slackText(ChargebackAlertNotificationDeliveryRecord record) {
+        String amount = record.estimatedTotalCost() == null ? "0" : record.estimatedTotalCost().toPlainString();
+        return "[OSMU] " + normalize(record.severity()) + " chargeback alert - " + normalize(record.organizationName())
+                + "\n" + normalize(record.subject())
+                + "\n" + normalize(record.message())
+                + "\nAmount: " + amount
+                + "\nTarget: " + normalize(record.target());
+    }
+
     private Object payload(String payloadJson) {
         if (payloadJson == null || payloadJson.isBlank()) {
             return Map.of();
@@ -129,12 +206,16 @@ public class WebhookChargebackNotificationDeliveryAdapter implements ChargebackN
         }
     }
 
-    private URI configuredUri() {
-        if (webhookUrl.isBlank()) {
+    private boolean genericWebhookIsConfigured() {
+        return configuredUri(webhookUrl) != null && secretHeaderConfigIsValid();
+    }
+
+    private static URI configuredUri(String value) {
+        if (value.isBlank()) {
             return null;
         }
         try {
-            URI uri = URI.create(webhookUrl);
+            URI uri = URI.create(value);
             String scheme = uri.getScheme() == null ? "" : uri.getScheme().toLowerCase(Locale.ROOT);
             if (!("http".equals(scheme) || "https".equals(scheme))
                     || uri.getHost() == null
@@ -146,6 +227,17 @@ public class WebhookChargebackNotificationDeliveryAdapter implements ChargebackN
         } catch (IllegalArgumentException exception) {
             return null;
         }
+    }
+
+    private static boolean slackChannel(String value) {
+        return "SLACK".equals(normalize(value).toUpperCase(Locale.ROOT));
+    }
+
+    private static String truncate(String value, int limit) {
+        if (value.length() <= limit) {
+            return value;
+        }
+        return value.substring(0, limit - 3) + "...";
     }
 
     private boolean secretHeaderConfigIsValid() {

@@ -96,17 +96,18 @@ public class ChargebackAdapterRetryWorkerService {
         int updatedCount = 0;
 
         for (ChargebackAlertNotificationDeliveryRecord record : notificationCandidates) {
+            boolean channelAdapterConfigured = notificationDeliveryAdapter.isConfigured(record.channel());
             if (dryRun) {
-                items.add(notificationItem(record, null, true, notificationAdapterConfigured));
+                items.add(notificationItem(record, null, true, channelAdapterConfigured));
             } else {
-                ChargebackAlertNotificationDeliveryRecord updated = notificationAdapterConfigured
+                ChargebackAlertNotificationDeliveryRecord updated = channelAdapterConfigured
                         ? attemptNotificationDelivery(record, now)
                         : blockNotification(record, now);
                 notificationDeliveryRepository.update(updated);
                 if (NOTIFICATION_BLOCKED_STATUS.equals(updated.status())) {
                     blockedNotificationCounter.increment();
                 }
-                items.add(notificationItem(record, updated, false, notificationAdapterConfigured));
+                items.add(notificationItem(record, updated, false, channelAdapterConfigured));
                 updatedCount += 1;
             }
         }

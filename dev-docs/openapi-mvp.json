@@ -960,7 +960,7 @@
       "post": {
         "tags": ["Billing", "Admin"],
         "operationId": "sendChargebackAlertNotificationAdapter",
-        "summary": "Attempt configured chargeback notification webhook delivery for an outbox row",
+        "summary": "Attempt configured chargeback notification webhook or Slack delivery for an outbox row",
         "parameters": [
           {
             "name": "deliveryId",
