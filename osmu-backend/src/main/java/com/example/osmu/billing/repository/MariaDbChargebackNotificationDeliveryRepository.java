@@ -115,6 +115,27 @@ public class MariaDbChargebackNotificationDeliveryRepository implements Chargeba
     }
 
     @Override
+    public List<ChargebackAlertNotificationDeliveryRecord> findDueAdapterRetries(OffsetDateTime now, int limit) {
+        ensureSchema();
+        String sql = """
+                SELECT *
+                FROM chargeback_notification_deliveries
+                WHERE status IN ('PENDING_DELIVERY_ADAPTER', 'DELIVERY_ADAPTER_RETRY_SCHEDULED')
+                  AND (next_attempt_at IS NULL OR next_attempt_at <= ?)
+                ORDER BY updated_at ASC, id ASC
+                LIMIT ?
+                """;
+        try (Connection connection = connect();
+             PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setTimestamp(1, timestamp(now));
+            statement.setInt(2, normalizeLimit(limit));
+            return mapRows(statement);
+        } catch (SQLException exception) {
+            throw databaseException(exception);
+        }
+    }
+
+    @Override
     public List<ChargebackAlertNotificationDeliveryRecord> findByOrganizationId(long organizationId, int limit) {
         ensureSchema();
         String sql = """

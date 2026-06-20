@@ -919,6 +919,47 @@
         }
       }
     },
+    "/api/admin/billing/chargeback-adapter-retry-worker/status": {
+      "get": {
+        "tags": ["Billing", "Admin"],
+        "operationId": "getChargebackAdapterRetryWorkerStatus",
+        "summary": "Dry-run due chargeback adapter retry worker candidates without external calls",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": { "type": "integer", "default": 50, "maximum": 200 }
+          }
+        ],
+        "responses": {
+          "200": { "$ref": "#/components/responses/JsonOk" },
+          "403": { "$ref": "#/components/responses/Error" }
+        }
+      }
+    },
+    "/api/admin/billing/chargeback-adapter-retry-worker/run": {
+      "post": {
+        "tags": ["Billing", "Admin"],
+        "operationId": "runChargebackAdapterRetryWorker",
+        "summary": "Run the no-send chargeback adapter retry worker against due rows",
+        "parameters": [
+          {
+            "name": "dryRun",
+            "in": "query",
+            "schema": { "type": "boolean", "default": true }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": { "type": "integer", "default": 50, "maximum": 200 }
+          }
+        ],
+        "responses": {
+          "200": { "$ref": "#/components/responses/JsonOk" },
+          "403": { "$ref": "#/components/responses/Error" }
+        }
+      }
+    },
     "/api/admin/billing/chargeback-invoice-drafts": {
       "get": {
         "tags": ["Billing", "Admin"],

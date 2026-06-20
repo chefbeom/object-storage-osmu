@@ -1,6 +1,7 @@
 package com.example.osmu.billing.repository;
 
 import com.example.osmu.billing.ChargebackPaymentProviderHandoffRecord;
+import java.time.OffsetDateTime;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
@@ -48,6 +49,16 @@ public class InMemoryChargebackPaymentProviderHandoffRepository implements Charg
     }
 
     @Override
+    public List<ChargebackPaymentProviderHandoffRecord> findDueAdapterRetries(OffsetDateTime now, int limit) {
+        return records.stream()
+                .filter(record -> isRetryCandidate(record.status()))
+                .filter(record -> record.nextAttemptAt() == null || !record.nextAttemptAt().isAfter(now))
+                .sorted(Comparator.comparing(ChargebackPaymentProviderHandoffRecord::updatedAt))
+                .limit(normalizeLimit(limit))
+                .toList();
+    }
+
+    @Override
     public ChargebackPaymentProviderHandoffRecord update(ChargebackPaymentProviderHandoffRecord updated) {
         for (int index = 0; index < records.size(); index++) {
             ChargebackPaymentProviderHandoffRecord existing = records.get(index);
@@ -61,6 +72,11 @@ public class InMemoryChargebackPaymentProviderHandoffRepository implements Charg
 
     private static int normalizeLimit(int limit) {
         return Math.max(1, Math.min(limit <= 0 ? 50 : limit, 200));
+    }
+
+    private static boolean isRetryCandidate(String status) {
+        return "PENDING_PAYMENT_PROVIDER_ADAPTER".equals(status)
+                || "PAYMENT_PROVIDER_ADAPTER_RETRY_SCHEDULED".equals(status);
     }
 
     private static ChargebackPaymentProviderHandoffRecord withId(

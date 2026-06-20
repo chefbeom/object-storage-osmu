@@ -1275,6 +1275,23 @@ export function recordChargebackAlertNotificationAdapterResult(deliveryId, optio
   })
 }
 
+export function getChargebackAdapterRetryWorkerStatus(options = {}) {
+  const query = new URLSearchParams()
+  appendQuery(query, 'limit', options.limit)
+  const suffix = query.toString() ? `?${query.toString()}` : ''
+  return request(`/admin/billing/chargeback-adapter-retry-worker/status${suffix}`)
+}
+
+export function runChargebackAdapterRetryWorker(options = {}) {
+  const query = new URLSearchParams()
+  appendQuery(query, 'dryRun', options.dryRun)
+  appendQuery(query, 'limit', options.limit)
+  const suffix = query.toString() ? `?${query.toString()}` : ''
+  return request(`/admin/billing/chargeback-adapter-retry-worker/run${suffix}`, {
+    method: 'POST',
+  })
+}
+
 export function createChargebackInvoiceDrafts(options = {}) {
   const query = new URLSearchParams()
   appendQuery(query, 'from', options.from)

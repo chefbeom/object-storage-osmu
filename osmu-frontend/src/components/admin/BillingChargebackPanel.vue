@@ -360,6 +360,47 @@
       <li v-if="notificationOutboxRows.length === 0" class="empty">No chargeback notification outbox records.</li>
     </ul>
 
+    <div v-if="isAdmin" class="compact-metrics chargeback-adapter-retry-worker-metrics" data-testid="chargeback-adapter-retry-worker-metrics">
+      <div>
+        <span>Notification due</span>
+        <b data-testid="chargeback-adapter-retry-worker-notifications">{{ formatCount(adapterRetryWorker.notificationCandidateCount) }}</b>
+      </div>
+      <div>
+        <span>Payment due</span>
+        <b data-testid="chargeback-adapter-retry-worker-payments">{{ formatCount(adapterRetryWorker.paymentCandidateCount) }}</b>
+      </div>
+      <div>
+        <span>Updated</span>
+        <b data-testid="chargeback-adapter-retry-worker-updated">{{ formatCount(adapterRetryWorker.updatedCount) }}</b>
+      </div>
+    </div>
+
+    <form v-if="isAdmin" class="inline-form chargeback-adapter-retry-worker-actions" @submit.prevent="$emit('refresh-chargeback-adapter-retry-worker')">
+      <button data-testid="chargeback-adapter-retry-worker-refresh-button" type="submit" class="ghost">
+        Refresh worker
+      </button>
+      <button
+        data-testid="chargeback-adapter-retry-worker-run-button"
+        type="button"
+        class="ghost"
+        @click="$emit('run-chargeback-adapter-retry-worker')"
+      >
+        Run due
+      </button>
+    </form>
+
+    <ul v-if="isAdmin" class="compact-list chargeback-adapter-retry-worker-list" data-testid="chargeback-adapter-retry-worker-list">
+      <li v-for="item in adapterRetryWorkerItems" :key="`${item.itemType}-${item.id}`" data-testid="chargeback-adapter-retry-worker-row">
+        <span class="list-main">
+          <b>{{ item.itemType }} #{{ item.id }}</b>
+          <small>{{ item.fromStatus || '-' }} -> {{ item.toStatus || '-' }}</small>
+          <small>{{ adapterWorkerSummary(item) }}</small>
+        </span>
+        <strong :class="['status-pill', item.toStatus?.endsWith('_BLOCKED_CREDENTIAL') ? 'mock' : 'up']">{{ item.toStatus || '-' }}</strong>
+      </li>
+      <li v-if="adapterRetryWorkerItems.length === 0" class="empty">No due adapter retry candidates.</li>
+    </ul>
+
     <div v-if="isAdmin" class="compact-metrics chargeback-invoice-draft-metrics" data-testid="chargeback-invoice-draft-metrics">
       <div>
         <span>Draft records</span>
@@ -557,6 +598,7 @@ const props = defineProps({
   chargebackInvoiceDrafts: { type: Object, required: true },
   chargebackFinalInvoices: { type: Object, required: true },
   chargebackPaymentProviderHandoffs: { type: Object, required: true },
+  chargebackAdapterRetryWorker: { type: Object, required: true },
   billingPricingPolicy: { type: Object, required: true },
   billingPricingPolicyProposals: { type: Object, required: true },
   formatBytes: { type: Function, required: true },
@@ -580,6 +622,8 @@ const emit = defineEmits([
   'queue-chargeback-payment-provider-handoff',
   'record-chargeback-notification-adapter-result',
   'record-chargeback-payment-provider-adapter-result',
+  'refresh-chargeback-adapter-retry-worker',
+  'run-chargeback-adapter-retry-worker',
   'record-chargeback-invoice-payment',
 ])
 
@@ -590,6 +634,7 @@ const notificationOutbox = computed(() => props.chargebackAlertNotificationOutbo
 const invoiceDrafts = computed(() => props.chargebackInvoiceDrafts || {})
 const finalInvoices = computed(() => props.chargebackFinalInvoices || {})
 const paymentHandoffs = computed(() => props.chargebackPaymentProviderHandoffs || {})
+const adapterRetryWorker = computed(() => props.chargebackAdapterRetryWorker || {})
 const pricingPolicyProposals = computed(() => props.billingPricingPolicyProposals || {})
 const rates = computed(() => preview.value.rates || {})
 const organizations = computed(() => (
@@ -612,6 +657,9 @@ const finalInvoiceRows = computed(() => (
 ))
 const paymentHandoffRows = computed(() => (
   Array.isArray(paymentHandoffs.value.handoffs) ? paymentHandoffs.value.handoffs : []
+))
+const adapterRetryWorkerItems = computed(() => (
+  Array.isArray(adapterRetryWorker.value.items) ? adapterRetryWorker.value.items : []
 ))
 const pricingPolicyProposalRows = computed(() => (
   Array.isArray(pricingPolicyProposals.value.proposals) ? pricingPolicyProposals.value.proposals : []
@@ -662,5 +710,11 @@ function adapterAttemptSummary(record = {}) {
   const next = formatDateTime(record.nextAttemptAt)
   const error = record.lastError || record.reason || '-'
   return `attempts ${attempts} / next ${next || '-'} / ${error}`
+}
+
+function adapterWorkerSummary(item = {}) {
+  const attempts = formatCount(item.attemptCount)
+  const next = formatDateTime(item.nextAttemptAt)
+  return `attempts ${attempts} / next ${next || '-'} / ${item.note || '-'}`
 }
 </script>

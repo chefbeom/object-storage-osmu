@@ -2752,7 +2752,7 @@ Response:
 
 Notes:
 
-- This is the first external alert integration surface. Actual delivery, autonomous retry worker, secret storage, and webhook provider adapters remain follow-up work.
+- This is the first external alert integration surface. Actual delivery, external adapter execution, secret storage, and webhook provider adapters remain follow-up work.
 - Scope filtering is identical to chargeback alerts.
 
 ### POST /api/admin/billing/chargeback-alert-notifications/outbox
@@ -2804,6 +2804,40 @@ Response:
 - `externalDeliveryEnabled=false`
 - `delivery`: updated outbox row with incremented `attemptCount`, optional `nextAttemptAt`, and sanitized `lastError`.
 - `note`: result-only no-send notice.
+
+### GET /api/admin/billing/chargeback-adapter-retry-worker/status
+
+Returns a dry-run view of due chargeback notification delivery and payment provider handoff adapter retry rows. `ADMIN` only. The endpoint does not call external notification or payment providers and does not update outbox state.
+
+Query parameters:
+
+- `limit` (optional): total scan limit, clamped to 1..200.
+
+Response:
+
+- `mode`: `ADAPTER_RETRY_WORKER`
+- `enabled`: whether the scheduled worker is enabled by configuration.
+- `dryRun=true`
+- `externalAdaptersEnabled=false`
+- `notificationCandidateCount`, `paymentCandidateCount`, `updatedCount=0`
+- `items[]`: candidate rows with `itemType`, `id`, `fromStatus`, `toStatus`, `attemptCount`, optional `nextAttemptAt`, and note.
+
+### POST /api/admin/billing/chargeback-adapter-retry-worker/run
+
+Runs the chargeback adapter retry worker for due outbox rows. `ADMIN` only. With `dryRun=false`, it does not call external adapters; due notification rows move to `DELIVERY_ADAPTER_BLOCKED_CREDENTIAL`, due payment handoff rows move to `PAYMENT_PROVIDER_ADAPTER_BLOCKED_CREDENTIAL`, `attemptCount` increments, `nextAttemptAt` clears, and a sanitized fixed error is stored.
+
+Query parameters:
+
+- `dryRun` (optional): default `true`. Use `false` to apply the no-send blocked transition.
+- `limit` (optional): total scan limit, clamped to 1..200.
+
+Response:
+
+- `mode`: `ADAPTER_RETRY_WORKER`
+- `enabled`, `dryRun`, `externalAdaptersEnabled=false`
+- `notificationCandidateCount`, `paymentCandidateCount`, `updatedCount`
+- `items[]`: rows considered by the worker and their target status.
+- `note`: dry-run or no-send blocked transition summary.
 
 ### GET /api/admin/billing/chargeback-preview/export.csv
 

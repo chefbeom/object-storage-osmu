@@ -6,6 +6,7 @@ param(
     [string] $AdminRbacPolicyPath = ".\osmu-backend\src\main\java\com\example\osmu\auth\AdminRbacPolicy.java",
     [string] $EnterpriseAuthPlanServicePath = ".\osmu-backend\src\main\java\com\example\osmu\auth\EnterpriseAuthPlanService.java",
     [string] $ChargebackPreviewServicePath = ".\osmu-backend\src\main\java\com\example\osmu\billing\ChargebackPreviewService.java",
+    [string] $ChargebackAdapterRetryWorkerServicePath = ".\osmu-backend\src\main\java\com\example\osmu\billing\ChargebackAdapterRetryWorkerService.java",
     [string] $BillingPricingPolicyServicePath = ".\osmu-backend\src\main\java\com\example\osmu\billing\BillingPricingPolicyService.java",
     [string] $OidcAuthorizationServicePath = ".\osmu-backend\src\main\java\com\example\osmu\auth\OidcAuthorizationService.java",
     [string] $OidcClaimPreviewServicePath = ".\osmu-backend\src\main\java\com\example\osmu\auth\OidcClaimPreviewService.java",
@@ -70,6 +71,9 @@ Assert-Contains $matrix 'GET /api/admin/billing/chargeback-alerts' "IAM/RBAC mat
 Assert-Contains $matrix 'GET /api/admin/billing/chargeback-alert-notifications/preview' "IAM/RBAC matrix"
 Assert-Contains $matrix 'GET/POST /api/admin/billing/chargeback-alert-notifications/outbox' "IAM/RBAC matrix"
 Assert-Contains $matrix 'POST /api/admin/billing/chargeback-alert-notifications/outbox/{deliveryId}/adapter-result' "IAM/RBAC matrix"
+Assert-Contains $matrix 'GET /api/admin/billing/chargeback-adapter-retry-worker/status' "IAM/RBAC matrix"
+Assert-Contains $matrix 'POST /api/admin/billing/chargeback-adapter-retry-worker/run' "IAM/RBAC matrix"
+Assert-Contains $matrix 'ChargebackAdapterRetryWorkerService' "IAM/RBAC matrix"
 Assert-Contains $matrix 'GET /api/admin/billing/chargeback-preview/export.csv' "IAM/RBAC matrix"
 Assert-Contains $matrix 'GET /api/admin/billing/chargeback-invoice-draft/export.csv' "IAM/RBAC matrix"
 Assert-Contains $matrix 'GET/POST /api/admin/billing/chargeback-invoice-drafts' "IAM/RBAC matrix"
@@ -108,6 +112,8 @@ Assert-Contains $securityDesign "EnterpriseAuthPlanService" "Security design"
 Assert-Contains $securityDesign "osmu_roles" "Security design"
 Assert-Contains $securityDesign "Dashboard widget catalog/layout/preset" "Security design"
 Assert-Contains $securityDesign "ChargebackPreviewService" "Security design"
+Assert-Contains $securityDesign "GET /api/admin/billing/chargeback-adapter-retry-worker/status" "Security design"
+Assert-Contains $securityDesign "POST /api/admin/billing/chargeback-adapter-retry-worker/run" "Security design"
 
 $apiSpec = Read-RequiredFile $ApiSpecPath "API spec"
 Assert-Contains $apiSpec '관리자 API인 `/api/admin/**`는 기본적으로 `ADMIN` role이 필요하다.' "API spec"
@@ -133,6 +139,8 @@ Assert-Contains $apiSpec 'GET /api/admin/billing/chargeback-alert-notifications/
 Assert-Contains $apiSpec 'GET /api/admin/billing/chargeback-alert-notifications/outbox' "API spec"
 Assert-Contains $apiSpec 'POST /api/admin/billing/chargeback-alert-notifications/outbox' "API spec"
 Assert-Contains $apiSpec 'POST /api/admin/billing/chargeback-alert-notifications/outbox/{deliveryId}/adapter-result' "API spec"
+Assert-Contains $apiSpec 'GET /api/admin/billing/chargeback-adapter-retry-worker/status' "API spec"
+Assert-Contains $apiSpec 'POST /api/admin/billing/chargeback-adapter-retry-worker/run' "API spec"
 Assert-Contains $apiSpec 'GET /api/admin/billing/chargeback-invoice-drafts' "API spec"
 Assert-Contains $apiSpec 'POST /api/admin/billing/chargeback-invoice-drafts' "API spec"
 Assert-Contains $apiSpec 'POST /api/admin/billing/chargeback-invoice-drafts/{invoiceId}/approve' "API spec"
@@ -168,6 +176,8 @@ Assert-Contains $frontendDesign 'getChargebackAlertNotificationPreview' "Fronten
 Assert-Contains $frontendDesign 'queueChargebackAlertNotifications' "Frontend design"
 Assert-Contains $frontendDesign 'getChargebackAlertNotificationOutbox' "Frontend design"
 Assert-Contains $frontendDesign 'recordChargebackAlertNotificationAdapterResult' "Frontend design"
+Assert-Contains $frontendDesign 'getChargebackAdapterRetryWorkerStatus' "Frontend design"
+Assert-Contains $frontendDesign 'runChargebackAdapterRetryWorker' "Frontend design"
 Assert-Contains $frontendDesign 'createChargebackInvoiceDrafts' "Frontend design"
 Assert-Contains $frontendDesign 'getChargebackInvoiceDrafts' "Frontend design"
 Assert-Contains $frontendDesign 'approveChargebackInvoiceDraft' "Frontend design"
@@ -276,6 +286,12 @@ Assert-Contains $chargebackPreviewService 'chargeback.threshold' "Chargeback pre
 Assert-Contains $chargebackPreviewService 'exportInvoiceDraftCsv' "Chargeback preview service"
 Assert-Contains $chargebackPreviewService 'OSMU-DRAFT-' "Chargeback preview service"
 
+$chargebackAdapterRetryWorkerService = Read-RequiredFile $ChargebackAdapterRetryWorkerServicePath "Chargeback adapter retry worker service"
+Assert-Contains $chargebackAdapterRetryWorkerService 'findDueAdapterRetries' "Chargeback adapter retry worker service"
+Assert-Contains $chargebackAdapterRetryWorkerService 'ADAPTER_RETRY_WORKER' "Chargeback adapter retry worker service"
+Assert-Contains $chargebackAdapterRetryWorkerService 'DELIVERY_ADAPTER_BLOCKED_CREDENTIAL' "Chargeback adapter retry worker service"
+Assert-Contains $chargebackAdapterRetryWorkerService 'PAYMENT_PROVIDER_ADAPTER_BLOCKED_CREDENTIAL' "Chargeback adapter retry worker service"
+
 $billingPricingPolicyService = Read-RequiredFile $BillingPricingPolicyServicePath "Billing pricing policy service"
 Assert-Contains $billingPricingPolicyService 'createProposal' "Billing pricing policy service"
 Assert-Contains $billingPricingPolicyService 'approveProposal' "Billing pricing policy service"
@@ -314,6 +330,8 @@ Assert-Contains $homeView 'getChargebackAlertNotificationPreview' "HomeView"
 Assert-Contains $homeView 'queueChargebackAlertNotifications' "HomeView"
 Assert-Contains $homeView 'getChargebackAlertNotificationOutbox' "HomeView"
 Assert-Contains $homeView 'recordChargebackAlertNotificationAdapterResult' "HomeView"
+Assert-Contains $homeView 'getChargebackAdapterRetryWorkerStatus' "HomeView"
+Assert-Contains $homeView 'runChargebackAdapterRetryWorker' "HomeView"
 Assert-Contains $homeView 'createChargebackInvoiceDrafts' "HomeView"
 Assert-Contains $homeView 'getChargebackInvoiceDrafts' "HomeView"
 Assert-Contains $homeView 'approveChargebackInvoiceDraft' "HomeView"
@@ -345,6 +363,8 @@ Assert-Contains $billingChargebackPanel 'chargeback-notification-queue-button' "
 Assert-Contains $billingChargebackPanel 'chargeback-notification-outbox-list' "Billing chargeback panel"
 Assert-Contains $billingChargebackPanel 'chargeback-notification-adapter-block-button' "Billing chargeback panel"
 Assert-Contains $billingChargebackPanel 'chargeback-notification-adapter-retry-button' "Billing chargeback panel"
+Assert-Contains $billingChargebackPanel 'chargeback-adapter-retry-worker-refresh-button' "Billing chargeback panel"
+Assert-Contains $billingChargebackPanel 'chargeback-adapter-retry-worker-run-button' "Billing chargeback panel"
 Assert-Contains $billingChargebackPanel 'chargeback-invoice-draft-save-button' "Billing chargeback panel"
 Assert-Contains $billingChargebackPanel 'chargeback-invoice-draft-list' "Billing chargeback panel"
 Assert-Contains $billingChargebackPanel 'chargeback-invoice-draft-approve-button' "Billing chargeback panel"

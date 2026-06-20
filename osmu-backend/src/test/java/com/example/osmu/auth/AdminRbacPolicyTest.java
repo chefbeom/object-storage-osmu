@@ -49,6 +49,8 @@ class AdminRbacPolicyTest {
         assertFalse(policy.isAllowed("POST", "/api/admin/billing/chargeback-invoice-drafts/123/approve", "ORG_ADMIN"));
         assertFalse(policy.isAllowed("POST", "/api/admin/billing/chargeback-invoice-drafts/123/finalize", "ORG_ADMIN"));
         assertFalse(policy.isAllowed("POST", "/api/admin/billing/chargeback-alert-notifications/outbox/123/adapter-result", "ORG_ADMIN"));
+        assertFalse(policy.isAllowed("GET", "/api/admin/billing/chargeback-adapter-retry-worker/status", "ORG_ADMIN"));
+        assertFalse(policy.isAllowed("POST", "/api/admin/billing/chargeback-adapter-retry-worker/run", "ORG_ADMIN"));
         assertFalse(policy.isAllowed("GET", "/api/admin/billing/chargeback-invoices", "ORG_ADMIN"));
         assertFalse(policy.isAllowed("POST", "/api/admin/billing/chargeback-invoices/123/payment-request", "ORG_ADMIN"));
         assertFalse(policy.isAllowed("GET", "/api/admin/billing/chargeback-invoices/123/payment-provider-handoff/preview", "ORG_ADMIN"));
@@ -89,6 +91,8 @@ class AdminRbacPolicyTest {
         assertFalse(policy.isAllowed("GET", "/api/admin/billing/chargeback-alert-notifications/outbox", "AUDITOR"));
         assertFalse(policy.isAllowed("POST", "/api/admin/billing/chargeback-alert-notifications/outbox", "AUDITOR"));
         assertFalse(policy.isAllowed("POST", "/api/admin/billing/chargeback-alert-notifications/outbox/123/adapter-result", "AUDITOR"));
+        assertFalse(policy.isAllowed("GET", "/api/admin/billing/chargeback-adapter-retry-worker/status", "AUDITOR"));
+        assertFalse(policy.isAllowed("POST", "/api/admin/billing/chargeback-adapter-retry-worker/run", "AUDITOR"));
         assertFalse(policy.isAllowed("GET", "/api/admin/billing/chargeback-invoice-drafts", "AUDITOR"));
         assertFalse(policy.isAllowed("POST", "/api/admin/billing/chargeback-invoice-drafts", "AUDITOR"));
         assertFalse(policy.isAllowed("POST", "/api/admin/billing/chargeback-invoice-drafts/123/approve", "AUDITOR"));

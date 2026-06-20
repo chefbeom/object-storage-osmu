@@ -466,6 +466,14 @@ function handleAdminRoute(request, response, path, jsonBody, url) {
     sendJson(response, 200, apiData(chargebackAlertNotificationOutbox(url)))
     return
   }
+  if (request.method === 'GET' && path === '/admin/billing/chargeback-adapter-retry-worker/status') {
+    sendJson(response, 200, apiData(chargebackAdapterRetryWorker(url, true)))
+    return
+  }
+  if (request.method === 'POST' && path === '/admin/billing/chargeback-adapter-retry-worker/run') {
+    sendJson(response, 200, apiData(chargebackAdapterRetryWorker(url, String(url.searchParams.get('dryRun') ?? 'true') !== 'false')))
+    return
+  }
   const chargebackNotificationAdapterResultMatch = path.match(/^\/admin\/billing\/chargeback-alert-notifications\/outbox\/(\d+)\/adapter-result$/)
   if (request.method === 'POST' && chargebackNotificationAdapterResultMatch) {
     sendJson(response, 200, apiData(recordChargebackNotificationAdapterResult(Number(chargebackNotificationAdapterResultMatch[1]), url)))
@@ -1351,6 +1359,96 @@ function recordChargebackNotificationAdapterResult(deliveryId, url) {
     recordedAt: now,
     note: adapterResultNote(result, 'notification'),
   }
+}
+
+function chargebackAdapterRetryWorker(url, dryRun = true) {
+  const now = new Date().toISOString()
+  const limit = clampNumber(Number(url.searchParams.get('limit') || 50), 1, 200)
+  const notificationLimit = Math.max(1, Math.floor(limit / 2))
+  const paymentLimit = Math.max(1, limit - notificationLimit)
+  const notifications = dueNotificationAdapterRetries(now).slice(0, notificationLimit)
+  const handoffs = duePaymentAdapterRetries(now).slice(0, paymentLimit)
+  const items = [
+    ...notifications.map((delivery) => adapterRetryWorkerItem(
+      'NOTIFICATION',
+      delivery,
+      'DELIVERY_ADAPTER_BLOCKED_CREDENTIAL',
+      dryRun,
+      'Notification adapter retry worker blocked because delivery adapter credentials/configuration are not configured.'
+    )),
+    ...handoffs.map((handoff) => adapterRetryWorkerItem(
+      'PAYMENT_PROVIDER',
+      handoff,
+      'PAYMENT_PROVIDER_ADAPTER_BLOCKED_CREDENTIAL',
+      dryRun,
+      'Payment provider adapter retry worker blocked because payment adapter credentials/configuration are not configured.'
+    )),
+  ]
+  if (!dryRun) {
+    for (const delivery of notifications) {
+      delivery.status = 'DELIVERY_ADAPTER_BLOCKED_CREDENTIAL'
+      delivery.attemptCount = Number(delivery.attemptCount || 0) + 1
+      delivery.nextAttemptAt = ''
+      delivery.updatedAt = now
+      delivery.lastError = 'Notification adapter retry worker blocked because delivery adapter credentials/configuration are not configured.'
+    }
+    for (const handoff of handoffs) {
+      handoff.status = 'PAYMENT_PROVIDER_ADAPTER_BLOCKED_CREDENTIAL'
+      handoff.attemptCount = Number(handoff.attemptCount || 0) + 1
+      handoff.nextAttemptAt = ''
+      handoff.updatedAt = now
+      handoff.lastError = 'Payment provider adapter retry worker blocked because payment adapter credentials/configuration are not configured.'
+    }
+    if (items.length > 0) {
+      state.auditLogs.unshift(auditLog('CHARGEBACK_ADAPTER_RETRY_WORKER_RUN', 'CHARGEBACK_ADAPTER_RETRY', 'due-outbox'))
+    }
+  }
+  return {
+    mode: 'ADAPTER_RETRY_WORKER',
+    enabled: false,
+    dryRun,
+    externalAdaptersEnabled: false,
+    scanLimit: limit,
+    notificationCandidateCount: notifications.length,
+    paymentCandidateCount: handoffs.length,
+    updatedCount: dryRun ? 0 : items.length,
+    items,
+    generatedAt: now,
+    note: dryRun
+      ? 'Dry-run only; no external adapter calls or status updates were performed.'
+      : 'Due adapter retry rows were blocked because external adapter credentials/configuration are not configured.',
+  }
+}
+
+function dueNotificationAdapterRetries(now) {
+  return state.chargebackNotificationDeliveries
+    .filter((delivery) => ['PENDING_DELIVERY_ADAPTER', 'DELIVERY_ADAPTER_RETRY_SCHEDULED'].includes(delivery.status))
+    .filter((delivery) => isDueAt(delivery.nextAttemptAt, now))
+}
+
+function duePaymentAdapterRetries(now) {
+  return state.chargebackPaymentProviderHandoffs
+    .filter((handoff) => ['PENDING_PAYMENT_PROVIDER_ADAPTER', 'PAYMENT_PROVIDER_ADAPTER_RETRY_SCHEDULED'].includes(handoff.status))
+    .filter((handoff) => isDueAt(handoff.nextAttemptAt, now))
+}
+
+function adapterRetryWorkerItem(itemType, record, toStatus, dryRun, note) {
+  return {
+    itemType,
+    id: record.id,
+    fromStatus: record.status,
+    toStatus,
+    attemptCount: dryRun ? Number(record.attemptCount || 0) : Number(record.attemptCount || 0) + 1,
+    nextAttemptAt: dryRun ? record.nextAttemptAt || '' : '',
+    note: dryRun ? `Due ${itemType.toLowerCase()} adapter retry candidate.` : note,
+  }
+}
+
+function isDueAt(value, now) {
+  if (!value) {
+    return true
+  }
+  return Date.parse(value) <= Date.parse(now)
 }
 
 function createChargebackInvoiceDrafts(url) {
@@ -2739,11 +2837,24 @@ async function runSelfTest() {
     if (!handoffList.data || handoffList.data.handoffCount < 1 || handoffList.data.handoffs?.[0]?.payloadJson?.includes('chargeback.payment_provider.handoff') !== true) {
       throw new Error('chargeback payment provider handoff list self-test failed')
     }
+    const retryWorkerStatus = await (await fetch(`${base}/admin/billing/chargeback-adapter-retry-worker/status?limit=5`, {
+      headers: { Authorization: `Bearer ${login.data.accessToken}` },
+    })).json()
+    if (!retryWorkerStatus.data || retryWorkerStatus.data.mode !== 'ADAPTER_RETRY_WORKER' || retryWorkerStatus.data.dryRun !== true || retryWorkerStatus.data.paymentCandidateCount < 1) {
+      throw new Error('chargeback adapter retry worker status self-test failed')
+    }
+    const retryWorkerRun = await (await fetch(`${base}/admin/billing/chargeback-adapter-retry-worker/run?dryRun=false&limit=5`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${login.data.accessToken}` },
+    })).json()
+    if (!retryWorkerRun.data || retryWorkerRun.data.mode !== 'ADAPTER_RETRY_WORKER' || retryWorkerRun.data.dryRun !== false || retryWorkerRun.data.updatedCount < 1 || retryWorkerRun.data.items?.[0]?.toStatus !== 'PAYMENT_PROVIDER_ADAPTER_BLOCKED_CREDENTIAL') {
+      throw new Error('chargeback adapter retry worker run self-test failed')
+    }
     const handoffAdapterResult = await (await fetch(`${base}/admin/billing/chargeback-payment-provider-handoffs/${handoffList.data.handoffs[0].id}/adapter-result?result=BLOCKED_CREDENTIAL`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${login.data.accessToken}` },
     })).json()
-    if (!handoffAdapterResult.data || handoffAdapterResult.data.status !== 'PAYMENT_PROVIDER_ADAPTER_BLOCKED_CREDENTIAL' || handoffAdapterResult.data.handoff?.attemptCount !== 1) {
+    if (!handoffAdapterResult.data || handoffAdapterResult.data.status !== 'PAYMENT_PROVIDER_ADAPTER_BLOCKED_CREDENTIAL' || handoffAdapterResult.data.handoff?.attemptCount < 2) {
       throw new Error('chargeback payment provider adapter result self-test failed')
     }
     const recordedPayment = await (await fetch(`${base}/admin/billing/chargeback-invoices/${listedFinalInvoices.data.invoices[0].id}/payment-record?paymentReference=PAY-SELF-TEST&paymentNote=self-test`, {

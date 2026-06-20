@@ -18027,3 +18027,10 @@ feat/bucket-management
 - Frontend/mock: added API wrappers, Admin billing panel block/retry controls, mock API state transitions, and self-test coverage for notification/payment adapter result records.
 - Docs/verifiers: README, API spec/OpenAPI, backend/frontend/security/database/commercial docs, IAM/RBAC matrix, test cases, and contract verifiers now describe adapter result retry state and keep actual adapter execution/secret/autonomous retry worker as follow-up.
 - Verification: OpenAPI contract, commercial readiness, IAM/RBAC matrix, migration verifier, frontend unit tests, frontend build, mock API self-test, node syntax check, and git diff check passed. Backend Gradle tests were not rerun to avoid the Gradle distribution fetch that was previously blocked.
+
+### 2026-06-20 - Chargeback adapter retry worker
+
+- Backend: added ADMIN-only chargeback adapter retry worker status/run APIs plus a disabled-by-default scheduled job. The worker scans due notification delivery and payment provider handoff outbox rows, moves them to credential/configuration blocked states, increments attempts, clears retry time, emits counters, and records audit without external adapter calls.
+- Frontend/mock: added API wrappers, mock API behavior/self-test, and Admin billing panel worker metrics/actions/list selectors for dry-run/run visibility.
+- Docs/verifiers: updated OpenAPI, API/frontend/backend/security/commercial/IAM/test docs and contract verifiers to describe the no-send worker. Actual payment provider execution, external notification delivery, adapter secrets, and external-send retry execution remain follow-up work.
+- Verification: verify-openapi-contract.ps1, verify-commercial-readiness.ps1, verify-iam-rbac-matrix.ps1, verify-migrations.ps1, frontend unit tests, mock API self-test, frontend build, and node --check passed. Backend Gradle test was not completed because the wrapper attempted to fetch Gradle 9.5.1 even in offline mode.

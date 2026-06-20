@@ -30,6 +30,11 @@ OSMU는 다섯 plane으로 나누어 이해하면 쉽습니다.
 - **Data Plane**: MinIO. 실제 오브젝트 byte, multipart part, bucket payload를 저장한다.
 - **Operations Plane**: scripts, CI, Docker, Kubernetes, Helm. 배포, 검증, 백업/복구, HA/DR, security evidence를 자동화한다.
 
+## Chargeback Note
+
+- 현재 billing/chargeback은 내부 pricing policy/proposal, preview/export, threshold alert, notification/payment outbox, invoice/payment workflow, adapter retry 상태 기록, no-send adapter retry worker dry-run/run까지 제공한다.
+- 아직 남은 범위는 승인된 외부 가격표, 실제 payment provider adapter 실행/secret, 실제 외부 알림 delivery adapter 실행/secret, external-send retry execution이다.
+
 ```mermaid
 flowchart LR
     User["관리자 / 개발자"] --> Portal["Vue Web Portal"]

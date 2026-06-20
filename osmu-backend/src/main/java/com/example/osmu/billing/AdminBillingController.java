@@ -27,17 +27,20 @@ import org.springframework.web.bind.annotation.RestController;
 public class AdminBillingController {
 
     private final ChargebackPreviewService chargebackPreviewService;
+    private final ChargebackAdapterRetryWorkerService adapterRetryWorkerService;
     private final BillingPricingPolicyService pricingPolicyService;
     private final AuditLogService auditLogService;
     private final AuthContext authContext;
 
     public AdminBillingController(
             ChargebackPreviewService chargebackPreviewService,
+            ChargebackAdapterRetryWorkerService adapterRetryWorkerService,
             BillingPricingPolicyService pricingPolicyService,
             AuditLogService auditLogService,
             AuthContext authContext
     ) {
         this.chargebackPreviewService = chargebackPreviewService;
+        this.adapterRetryWorkerService = adapterRetryWorkerService;
         this.pricingPolicyService = pricingPolicyService;
         this.auditLogService = auditLogService;
         this.authContext = authContext;
@@ -241,6 +244,37 @@ public class AdminBillingController {
     ) {
         AuthenticatedUser actor = authContext.currentUser(request);
         return ApiResponse.of(chargebackPreviewService.notificationOutbox(actor, limit == null ? 50 : limit));
+    }
+
+    @GetMapping("/chargeback-adapter-retry-worker/status")
+    public ApiResponse<ChargebackAdapterRetryWorkerRunResponse> chargebackAdapterRetryWorkerStatus(
+            @RequestParam(name = "limit", required = false) Integer limit,
+            HttpServletRequest request
+    ) {
+        AuthenticatedUser actor = authContext.currentUser(request);
+        return ApiResponse.of(adapterRetryWorkerService.status(actor, limit == null ? 50 : limit));
+    }
+
+    @PostMapping("/chargeback-adapter-retry-worker/run")
+    public ApiResponse<ChargebackAdapterRetryWorkerRunResponse> runChargebackAdapterRetryWorker(
+            @RequestParam(name = "dryRun", required = false) Boolean dryRun,
+            @RequestParam(name = "limit", required = false) Integer limit,
+            HttpServletRequest request
+    ) {
+        AuthenticatedUser actor = authContext.currentUser(request);
+        ChargebackAdapterRetryWorkerRunResponse response =
+                adapterRetryWorkerService.runFromAdmin(actor, dryRun == null || dryRun, limit == null ? 50 : limit);
+        auditLogService.record(
+                "CHARGEBACK_ADAPTER_RETRY_WORKER_REQUEST",
+                actor.loginId(),
+                "CHARGEBACK_ADAPTER_RETRY",
+                "due-outbox",
+                "SUCCESS",
+                "Chargeback adapter retry worker requested: dryRun=" + response.dryRun()
+                        + ", updated=" + response.updatedCount(),
+                request
+        );
+        return ApiResponse.of(response);
     }
 
     @PostMapping("/chargeback-alert-notifications/outbox/{deliveryId}/adapter-result")

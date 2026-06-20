@@ -30,6 +30,7 @@ import {
   getBuckets,
   getChargebackAlertNotificationPreview,
   getChargebackAlertNotificationOutbox,
+  getChargebackAdapterRetryWorkerStatus,
   getChargebackAlerts,
   getChargebackFinalInvoices,
   getChargebackInvoiceDrafts,
@@ -64,6 +65,7 @@ import {
   recordChargebackInvoicePayment,
   recordChargebackPaymentProviderHandoffAdapterResult,
   requestChargebackInvoicePayment,
+  runChargebackAdapterRetryWorker,
   saveDashboardLayout,
   saveDashboardLayoutDefault,
   saveBillingPricingPolicy,
@@ -609,6 +611,24 @@ test('chargeback alert notification outbox wrappers queue and read delivery reco
         delivery: { id: 3, attemptCount: 1, status: 'DELIVERY_ADAPTER_RETRY_SCHEDULED' },
       },
     }),
+    () => jsonResponse({
+      data: {
+        mode: 'ADAPTER_RETRY_WORKER',
+        dryRun: true,
+        externalAdaptersEnabled: false,
+        notificationCandidateCount: 1,
+        paymentCandidateCount: 0,
+        updatedCount: 0,
+      },
+    }),
+    () => jsonResponse({
+      data: {
+        mode: 'ADAPTER_RETRY_WORKER',
+        dryRun: false,
+        externalAdaptersEnabled: false,
+        updatedCount: 1,
+      },
+    }),
   ])
 
   try {
@@ -627,6 +647,8 @@ test('chargeback alert notification outbox wrappers queue and read delivery reco
       retryDelayMinutes: 60,
       lastError: 'adapter endpoint not ready',
     })
+    const workerStatus = await getChargebackAdapterRetryWorkerStatus({ limit: 25 })
+    const workerRun = await runChargebackAdapterRetryWorker({ dryRun: false, limit: 25 })
 
     const queueUrl = new URL(fetchMock.calls[0].url)
     assert.equal(queueUrl.pathname, '/api/admin/billing/chargeback-alert-notifications/outbox')
@@ -653,6 +675,19 @@ test('chargeback alert notification outbox wrappers queue and read delivery reco
     assert.equal(adapterUrl.searchParams.get('lastError'), 'adapter endpoint not ready')
     assert.equal(fetchMock.calls[2].options.method, 'POST')
     assert.equal(adapterResult.data.status, 'DELIVERY_ADAPTER_RETRY_SCHEDULED')
+
+    const workerStatusUrl = new URL(fetchMock.calls[3].url)
+    assert.equal(workerStatusUrl.pathname, '/api/admin/billing/chargeback-adapter-retry-worker/status')
+    assert.equal(workerStatusUrl.searchParams.get('limit'), '25')
+    assert.equal(fetchMock.calls[3].options.method, undefined)
+    assert.equal(workerStatus.data.mode, 'ADAPTER_RETRY_WORKER')
+
+    const workerRunUrl = new URL(fetchMock.calls[4].url)
+    assert.equal(workerRunUrl.pathname, '/api/admin/billing/chargeback-adapter-retry-worker/run')
+    assert.equal(workerRunUrl.searchParams.get('dryRun'), 'false')
+    assert.equal(workerRunUrl.searchParams.get('limit'), '25')
+    assert.equal(fetchMock.calls[4].options.method, 'POST')
+    assert.equal(workerRun.data.updatedCount, 1)
   } finally {
     cleanupFetch(fetchMock)
   }

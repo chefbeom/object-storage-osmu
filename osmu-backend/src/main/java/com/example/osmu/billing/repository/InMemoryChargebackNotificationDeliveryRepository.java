@@ -1,6 +1,7 @@
 package com.example.osmu.billing.repository;
 
 import com.example.osmu.billing.ChargebackAlertNotificationDeliveryRecord;
+import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
@@ -53,6 +54,16 @@ public class InMemoryChargebackNotificationDeliveryRepository implements Chargeb
     }
 
     @Override
+    public List<ChargebackAlertNotificationDeliveryRecord> findDueAdapterRetries(OffsetDateTime now, int limit) {
+        return records.stream()
+                .filter(record -> isRetryCandidate(record.status()))
+                .filter(record -> record.nextAttemptAt() == null || !record.nextAttemptAt().isAfter(now))
+                .sorted(Comparator.comparing(ChargebackAlertNotificationDeliveryRecord::updatedAt))
+                .limit(normalizeLimit(limit))
+                .toList();
+    }
+
+    @Override
     public List<ChargebackAlertNotificationDeliveryRecord> findByOrganizationId(long organizationId, int limit) {
         return records.stream()
                 .filter(record -> record.organizationId() == organizationId)
@@ -75,6 +86,11 @@ public class InMemoryChargebackNotificationDeliveryRepository implements Chargeb
 
     private static int normalizeLimit(int limit) {
         return Math.max(1, Math.min(limit <= 0 ? 50 : limit, 200));
+    }
+
+    private static boolean isRetryCandidate(String status) {
+        return "PENDING_DELIVERY_ADAPTER".equals(status)
+                || "DELIVERY_ADAPTER_RETRY_SCHEDULED".equals(status);
     }
 
     private static ChargebackAlertNotificationDeliveryRecord withId(

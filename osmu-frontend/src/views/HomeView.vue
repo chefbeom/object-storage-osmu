@@ -359,6 +359,7 @@
         :chargeback-invoice-drafts="chargebackInvoiceDrafts"
         :chargeback-final-invoices="chargebackFinalInvoices"
         :chargeback-payment-provider-handoffs="chargebackPaymentProviderHandoffs"
+        :chargeback-adapter-retry-worker="chargebackAdapterRetryWorker"
         :billing-pricing-policy="billingPricingPolicy"
         :billing-pricing-policy-proposals="billingPricingPolicyProposals"
         :quota-policy-form="quotaPolicyForm"
@@ -422,6 +423,8 @@
         @queue-chargeback-payment-provider-handoff="handleQueueChargebackPaymentProviderHandoff"
         @record-chargeback-notification-adapter-result="handleRecordChargebackNotificationAdapterResult"
         @record-chargeback-payment-provider-adapter-result="handleRecordChargebackPaymentProviderAdapterResult"
+        @refresh-chargeback-adapter-retry-worker="loadChargebackAdapterRetryWorker"
+        @run-chargeback-adapter-retry-worker="handleRunChargebackAdapterRetryWorker"
         @record-chargeback-invoice-payment="handleRecordChargebackInvoicePayment"
         @save-quota-policy="handleSaveQuotaPolicy"
         @reset-quota-policy-target="resetQuotaPolicyTarget"
@@ -574,6 +577,7 @@ import {
   getBucketStorageProfile,
   getBucketTags,
   getBuckets,
+  getChargebackAdapterRetryWorkerStatus,
   getChargebackAlertNotificationPreview,
   getChargebackAlertNotificationOutbox,
   getChargebackAlerts,
@@ -645,6 +649,7 @@ import {
   runStorageExpansionDryRunExecution,
   runStorageExpansionRollbackExecution,
   runStorageExpansionExecutionLogRetention,
+  runChargebackAdapterRetryWorker,
   runStorageExpansionGitOpsPrExecution,
   runObjectRetentionPurge,
   saveDashboardLayoutDefault,
@@ -1253,6 +1258,7 @@ const chargebackAlertNotificationOutbox = ref(defaultChargebackAlertNotification
 const chargebackInvoiceDrafts = ref(defaultChargebackInvoiceDrafts())
 const chargebackFinalInvoices = ref(defaultChargebackFinalInvoices())
 const chargebackPaymentProviderHandoffs = ref(defaultChargebackPaymentProviderHandoffs())
+const chargebackAdapterRetryWorker = ref(defaultChargebackAdapterRetryWorker())
 const billingPricingPolicy = ref(defaultBillingPricingPolicy())
 const billingPricingPolicyProposals = ref(defaultBillingPricingPolicyProposals())
 const teams = ref([])
@@ -2333,6 +2339,9 @@ async function loadDashboard(options = {}) {
       resetChargebackAlertNotificationPreview()
       resetChargebackAlertNotificationOutbox()
       resetChargebackInvoiceDrafts()
+      resetChargebackFinalInvoices()
+      resetChargebackPaymentProviderHandoffs()
+      resetChargebackAdapterRetryWorker()
     }
 
     if (isAdmin.value) {
@@ -2547,6 +2556,17 @@ async function loadChargebackPaymentProviderHandoffs() {
   }
 }
 
+async function loadChargebackAdapterRetryWorker() {
+  if (!isAdmin.value) {
+    resetChargebackAdapterRetryWorker()
+    return
+  }
+  const result = await safeRequest(() => getChargebackAdapterRetryWorkerStatus({ limit: 25 }), null)
+  if (result?.data) {
+    applyChargebackAdapterRetryWorker(result.data)
+  }
+}
+
 async function loadChargebackPanel() {
   await Promise.all([
     loadChargebackPreview(),
@@ -2556,6 +2576,7 @@ async function loadChargebackPanel() {
     loadChargebackInvoiceDrafts(),
     loadChargebackFinalInvoices(),
     loadChargebackPaymentProviderHandoffs(),
+    loadChargebackAdapterRetryWorker(),
     loadBillingPricingPolicyProposals(),
   ])
 }
@@ -2731,6 +2752,19 @@ async function handleRecordChargebackPaymentProviderAdapterResult(payload = {}) 
   if (result?.data) {
     await loadChargebackPaymentProviderHandoffs()
     setStatusMessage('Chargeback payment provider adapter result recorded.')
+  }
+}
+
+async function handleRunChargebackAdapterRetryWorker() {
+  if (!isAdmin.value) return
+  const result = await runAction(() => runChargebackAdapterRetryWorker({ dryRun: false, limit: 25 }))
+  if (result?.data) {
+    applyChargebackAdapterRetryWorker(result.data)
+    await Promise.all([
+      loadChargebackAlertNotificationOutbox(),
+      loadChargebackPaymentProviderHandoffs(),
+    ])
+    setStatusMessage('Chargeback adapter retry worker completed.')
   }
 }
 
@@ -2938,6 +2972,7 @@ function resetAdminOnlyState() {
   resetChargebackInvoiceDrafts()
   resetChargebackFinalInvoices()
   resetChargebackPaymentProviderHandoffs()
+  resetChargebackAdapterRetryWorker()
 }
 
 function resetUploadRuntime() {
@@ -4286,6 +4321,59 @@ function applyChargebackPaymentProviderHandoffs(data = {}) {
 
 function resetChargebackPaymentProviderHandoffs() {
   applyChargebackPaymentProviderHandoffs({})
+}
+
+function defaultChargebackAdapterRetryWorker() {
+  return {
+    mode: 'ADAPTER_RETRY_WORKER',
+    enabled: false,
+    dryRun: true,
+    externalAdaptersEnabled: false,
+    scanLimit: 50,
+    notificationCandidateCount: 0,
+    paymentCandidateCount: 0,
+    updatedCount: 0,
+    items: [],
+    generatedAt: '',
+    note: '',
+  }
+}
+
+function normalizeChargebackAdapterRetryWorkerItem(item = {}) {
+  return {
+    itemType: item.itemType || '',
+    id: item.id,
+    fromStatus: item.fromStatus || '',
+    toStatus: item.toStatus || '',
+    attemptCount: Number(item.attemptCount || 0),
+    nextAttemptAt: item.nextAttemptAt || '',
+    note: item.note || '',
+  }
+}
+
+function applyChargebackAdapterRetryWorker(data = {}) {
+  const items = Array.isArray(data.items)
+    ? data.items.map((item) => normalizeChargebackAdapterRetryWorkerItem(item))
+    : []
+  const fallback = defaultChargebackAdapterRetryWorker()
+  chargebackAdapterRetryWorker.value = {
+    ...fallback,
+    ...data,
+    enabled: Boolean(data.enabled),
+    dryRun: data.dryRun !== false,
+    externalAdaptersEnabled: Boolean(data.externalAdaptersEnabled),
+    scanLimit: Number(data.scanLimit || fallback.scanLimit),
+    notificationCandidateCount: Number(data.notificationCandidateCount || 0),
+    paymentCandidateCount: Number(data.paymentCandidateCount || 0),
+    updatedCount: Number(data.updatedCount || 0),
+    items,
+    generatedAt: data.generatedAt || '',
+    note: data.note || '',
+  }
+}
+
+function resetChargebackAdapterRetryWorker() {
+  applyChargebackAdapterRetryWorker({})
 }
 
 function applyDashboardReadiness(data) {

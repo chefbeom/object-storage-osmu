@@ -254,6 +254,7 @@
       :chargeback-invoice-drafts="chargebackInvoiceDrafts"
       :chargeback-final-invoices="chargebackFinalInvoices"
       :chargeback-payment-provider-handoffs="chargebackPaymentProviderHandoffs"
+      :chargeback-adapter-retry-worker="chargebackAdapterRetryWorker"
       :billing-pricing-policy="billingPricingPolicy"
       :billing-pricing-policy-proposals="billingPricingPolicyProposals"
       :format-bytes="formatBytes"
@@ -274,6 +275,8 @@
       @queue-chargeback-payment-provider-handoff="$emit('queue-chargeback-payment-provider-handoff', $event)"
       @record-chargeback-notification-adapter-result="$emit('record-chargeback-notification-adapter-result', $event)"
       @record-chargeback-payment-provider-adapter-result="$emit('record-chargeback-payment-provider-adapter-result', $event)"
+      @refresh-chargeback-adapter-retry-worker="$emit('refresh-chargeback-adapter-retry-worker')"
+      @run-chargeback-adapter-retry-worker="$emit('run-chargeback-adapter-retry-worker')"
       @record-chargeback-invoice-payment="$emit('record-chargeback-invoice-payment', $event)"
     />
 
@@ -462,6 +465,7 @@ const props = defineProps({
   chargebackInvoiceDrafts: { type: Object, required: true },
   chargebackFinalInvoices: { type: Object, required: true },
   chargebackPaymentProviderHandoffs: { type: Object, required: true },
+  chargebackAdapterRetryWorker: { type: Object, required: true },
   billingPricingPolicy: { type: Object, required: true },
   billingPricingPolicyProposals: { type: Object, required: true },
   quotaPolicyForm: { type: Object, required: true },
@@ -677,6 +681,8 @@ defineEmits([
   'queue-chargeback-payment-provider-handoff',
   'record-chargeback-notification-adapter-result',
   'record-chargeback-payment-provider-adapter-result',
+  'refresh-chargeback-adapter-retry-worker',
+  'run-chargeback-adapter-retry-worker',
   'record-chargeback-invoice-payment',
   'save-quota-policy',
   'reset-quota-policy-target',

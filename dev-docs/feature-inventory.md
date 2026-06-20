@@ -423,3 +423,8 @@ OSMU는 현재 "상용 제품"은 아니지만, "MVP 데모 가능한 웹/백엔
 - host-installed `aws` 또는 `mc` client smoke는 대체성 회귀 증거로만 유지
 
 로컬 durable MVP 데모는 이미 90~95%로 보고, 위 항목이 닫히면 hosted/pilot 배포 판단이 더 선명해집니다.
+
+## Chargeback Update
+
+- Implemented no-send adapter retry worker dry-run/run for due notification delivery and payment provider handoff rows.
+- Remaining billing/chargeback scope is approved external commercial price-list workflow, actual payment provider adapter execution/secrets, actual external notification delivery adapter execution/secrets, and external-send retry execution.

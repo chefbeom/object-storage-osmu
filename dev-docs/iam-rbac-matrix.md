@@ -114,6 +114,10 @@ Kubernetes ServiceAccount와 cluster RBAC 권한 경계는 `kubernetes-rbac-matr
 - storage expansion, backup, restore, HA/DR 운영 API 변경
 - access key scope, bucket permission, S3 호환 인증 정책 변경
 
+## Additional Chargeback Admin Route
+
+- Chargeback adapter retry worker: `GET /api/admin/billing/chargeback-adapter-retry-worker/status`, `POST /api/admin/billing/chargeback-adapter-retry-worker/run` are `ADMIN` only. `ORG_ADMIN`, `AUDITOR`, and `USER` are denied. `ChargebackAdapterRetryWorkerService` performs dry-run/run state transitions without external adapter calls, secrets, or raw provider responses.
+
 ## 7. Verification Evidence
 
 현재 검증 항목:

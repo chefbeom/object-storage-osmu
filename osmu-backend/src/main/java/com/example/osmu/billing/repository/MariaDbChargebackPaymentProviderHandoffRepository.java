@@ -110,6 +110,27 @@ public class MariaDbChargebackPaymentProviderHandoffRepository implements Charge
     }
 
     @Override
+    public List<ChargebackPaymentProviderHandoffRecord> findDueAdapterRetries(OffsetDateTime now, int limit) {
+        ensureSchema();
+        String sql = """
+                SELECT *
+                FROM chargeback_payment_provider_handoffs
+                WHERE status IN ('PENDING_PAYMENT_PROVIDER_ADAPTER', 'PAYMENT_PROVIDER_ADAPTER_RETRY_SCHEDULED')
+                  AND (next_attempt_at IS NULL OR next_attempt_at <= ?)
+                ORDER BY updated_at ASC, id ASC
+                LIMIT ?
+                """;
+        try (Connection connection = connect();
+             PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setTimestamp(1, timestamp(now));
+            statement.setInt(2, normalizeLimit(limit));
+            return mapRows(statement);
+        } catch (SQLException exception) {
+            throw databaseException(exception);
+        }
+    }
+
+    @Override
     public ChargebackPaymentProviderHandoffRecord update(ChargebackPaymentProviderHandoffRecord record) {
         ensureSchema();
         String sql = """
