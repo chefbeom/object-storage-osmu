@@ -40,7 +40,8 @@ Assert-Contains $content 'GET /api/admin/billing/payment-provider-adapter-readin
 Assert-Contains $content 'configured generic webhook/Slack/EMAIL SMTP relay send, private/local webhook and SMTP relay host blocking, outbound payload size caps, optional generic notification/payment webhook HMAC signature headers' "Commercial readiness draft"
 Assert-Contains $content 'payment provider handoff outbox/history with adapter retry state and configured generic/CARD/BANK/TAX/ERP webhook profile handoff send' "Commercial readiness draft"
 Assert-Contains $content 'ADMIN-only payment provider adapter readiness' "Commercial readiness draft"
-Assert-Contains $content 'native card/bank/tax/ERP processor adapters and raw provider response storage remain out of scope.' "Commercial readiness draft"
+Assert-Contains $content 'native payment provider adapter SPI/composite dispatch' "Commercial readiness draft"
+Assert-Contains $content 'concrete card/bank/tax/ERP native processor implementations and raw provider response storage remain out of scope.' "Commercial readiness draft"
 Assert-Contains $content "Docker/MariaDB/MinIO integration gate passes." "Commercial readiness draft"
 Assert-Contains $content 'Real S3 client gate passes with AWS CLI, boto3, AWS SDK JavaScript, AWS SDK Java via `OSMU_AWS_SDK_JAVA_CLASSPATH`, host MinIO Client, or Dockerized MinIO Client.' "Commercial readiness draft"
 Assert-Contains $content "Browser E2E gate passes." "Commercial readiness draft"
@@ -65,7 +66,7 @@ Assert-Contains $content 'payment provider handoff outbox/history with configure
 Assert-Contains $content 'commercial integration evidence writer' "Commercial readiness draft"
 Assert-Contains $content 'commercial approval evidence writer' "Commercial readiness draft"
 Assert-Contains $content 'operations handoff package evidence writer/workflow implemented' "Commercial readiness draft"
-Assert-Contains $content 'native card/bank/tax/ERP provider API adapters, target secret/certificate rotation `result=passed` evidence, target commercial integration `result=passed` evidence, target commercial approval `result=passed` evidence, and target operations handoff package `result=passed` evidence remain pending.' "Commercial readiness draft"
+Assert-Contains $content 'concrete native card/bank/tax/ERP provider API adapters, target secret/certificate rotation `result=passed` evidence, target commercial integration `result=passed` evidence, target commercial approval `result=passed` evidence, and target operations handoff package `result=passed` evidence remain pending.' "Commercial readiness draft"
 Assert-Contains $content 'Final legal/commercial approval: evidence writer implemented; target `result=passed` approval evidence pending.' "Commercial readiness draft"
 
 Write-Host "Commercial readiness draft verified."

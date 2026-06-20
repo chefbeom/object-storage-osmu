@@ -506,7 +506,9 @@ public class ChargebackPreviewService {
                 paymentHandoffResponse(saved),
                 OffsetDateTime.now(),
                 preview.externalPaymentEnabled()
-                        ? "Recorded in payment provider handoff outbox; configured webhook handoff adapter can be sent by ADMIN or retry worker."
+                        ? "Recorded in payment provider handoff outbox; configured "
+                        + paymentProviderAdapterModeLabel(paymentProviderAdapter.adapterMode(preview.provider()))
+                        + " adapter can be sent by ADMIN or retry worker."
                         : "Recorded in payment provider handoff outbox; no external payment provider was called."
         );
     }
@@ -540,21 +542,32 @@ public class ChargebackPreviewService {
         int webhookReadyProfileCount = (int) profiles.stream()
                 .filter(ChargebackPaymentProviderAdapterProfileResponse::webhookProfileConfigured)
                 .count();
-        String status = webhookReadyProfileCount == 0 ? "ACTION_REQUIRED" : "WEBHOOK_PROFILE_READY";
+        int nativeApiReadyProfileCount = (int) profiles.stream()
+                .filter(ChargebackPaymentProviderAdapterProfileResponse::nativeApiReady)
+                .count();
+        boolean nativeApiSupported = profiles.stream()
+                .anyMatch(ChargebackPaymentProviderAdapterProfileResponse::nativeApiSupported);
+        boolean nativeApiReady = nativeApiReadyProfileCount > 0;
+        String status = nativeApiReady
+                ? "NATIVE_API_READY"
+                : (webhookReadyProfileCount == 0 ? "ACTION_REQUIRED" : "WEBHOOK_PROFILE_READY");
         return new ChargebackPaymentProviderAdapterReadinessResponse(
                 "PAYMENT_PROVIDER_ADAPTER_READINESS",
                 status,
-                false,
-                false,
+                nativeApiSupported,
+                nativeApiReady,
                 profiles.size(),
                 webhookReadyProfileCount,
+                nativeApiReadyProfileCount,
                 profiles,
                 OffsetDateTime.now(),
                 "This readiness view checks OSMU payment-provider handoff adapter configuration only; it does not call card, bank, tax, ERP, webhook, or payment-provider APIs.",
                 "Only configuration presence and sanitized profile metadata are exposed. Webhook URLs, secret header values, HMAC secrets, certificates, provider credentials, raw provider responses, and customer payment data are never returned.",
-                webhookReadyProfileCount == 0
+                nativeApiReady
+                        ? "At least one native payment provider API adapter is configured; webhook profiles remain available as fallback where configured."
+                        : (webhookReadyProfileCount == 0
                         ? "Configure the generic payment-provider webhook or provider-specific CARD/BANK/TAX/ERP webhook profiles before sending handoff rows. Native provider API adapters remain a follow-up implementation."
-                        : "At least one webhook handoff profile is configured. Native card/bank/tax/ERP API adapters remain a follow-up implementation."
+                        : "At least one webhook handoff profile is configured. Native card/bank/tax/ERP API adapters remain a follow-up implementation.")
         );
     }
 
@@ -1235,33 +1248,59 @@ public class ChargebackPreviewService {
 
     private static String paymentProviderAdapterSendNote(String result, boolean externalPaymentEnabled) {
         if (!externalPaymentEnabled) {
-            return "Payment provider webhook adapter is not configured; handoff row was blocked without an external call.";
+            return "Payment provider adapter is not configured; handoff row was blocked without an external call.";
         }
         return switch (result) {
-            case "SUCCESS" -> "Payment provider webhook adapter delivered this handoff row.";
-            case "RETRY" -> "Payment provider webhook adapter returned a retryable result and scheduled the next attempt.";
-            default -> "Payment provider webhook adapter blocked this handoff row without storing credentials or raw provider responses.";
+            case "SUCCESS" -> "Payment provider adapter delivered this handoff row.";
+            case "RETRY" -> "Payment provider adapter returned a retryable result and scheduled the next attempt.";
+            default -> "Payment provider adapter blocked this handoff row without storing credentials or raw provider responses.";
         };
+    }
+
+    private static String paymentProviderAdapterModeLabel(String adapterMode) {
+        return "NATIVE_API".equals(adapterMode) ? "native payment provider API" : "payment-provider webhook";
     }
 
     private ChargebackPaymentProviderAdapterProfileResponse paymentProviderAdapterProfile(
             String providerProfile,
             String sampleProvider
     ) {
-        boolean webhookConfigured = paymentProviderAdapter.isConfigured(sampleProvider);
+        boolean webhookConfigured = paymentProviderAdapter.webhookProfileConfigured(sampleProvider);
+        boolean nativeSupported = paymentProviderAdapter.nativeApiSupported(sampleProvider);
+        boolean nativeReady = paymentProviderAdapter.nativeApiReady(sampleProvider);
+        String adapterMode = paymentProviderAdapter.adapterMode(sampleProvider);
         return new ChargebackPaymentProviderAdapterProfileResponse(
                 providerProfile,
                 sampleProvider,
-                webhookConfigured ? "WEBHOOK_PROFILE" : "UNCONFIGURED",
-                webhookConfigured ? "WEBHOOK_READY" : "ACTION_REQUIRED",
+                adapterMode,
+                paymentProviderAdapterProfileStatus(webhookConfigured, nativeSupported, nativeReady),
                 webhookConfigured,
-                false,
-                false,
+                nativeSupported,
+                nativeReady,
                 paymentProviderAdapterRequirement(providerProfile),
-                webhookConfigured
+                nativeReady
+                        ? providerProfile + " handoff can use a configured native provider API adapter."
+                        : (webhookConfigured
                         ? providerProfile + " handoff can use the configured webhook profile or generic payment-provider webhook fallback."
-                        : providerProfile + " handoff needs a configured webhook profile or native provider API adapter before external send."
+                        : providerProfile + " handoff needs a configured webhook profile or native provider API adapter before external send.")
         );
+    }
+
+    private static String paymentProviderAdapterProfileStatus(
+            boolean webhookConfigured,
+            boolean nativeSupported,
+            boolean nativeReady
+    ) {
+        if (nativeReady) {
+            return "NATIVE_API_READY";
+        }
+        if (webhookConfigured) {
+            return "WEBHOOK_READY";
+        }
+        if (nativeSupported) {
+            return "NATIVE_API_CONFIGURATION_REQUIRED";
+        }
+        return "ACTION_REQUIRED";
     }
 
     private static String paymentProviderAdapterRequirement(String providerProfile) {

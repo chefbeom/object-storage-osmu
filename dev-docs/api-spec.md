@@ -2895,14 +2895,14 @@ Response:
 
 ### GET /api/admin/billing/payment-provider-adapter-readiness
 
-Returns a read-only payment-provider adapter readiness view for `GENERIC`, `CARD`, `BANK`, `TAX`, and `ERP` profiles. `ADMIN` only. The endpoint does not call notification, webhook, card, bank, tax, ERP, or payment-provider APIs and does not expose credential material. It exists to show which handoff profiles can currently use the configured webhook adapter layer and which profiles still need native provider API adapter implementation or target configuration.
+Returns a read-only payment-provider adapter readiness view for `GENERIC`, `CARD`, `BANK`, `TAX`, and `ERP` profiles. `ADMIN` only. The endpoint does not call notification, webhook, card, bank, tax, ERP, or payment-provider APIs and does not expose credential material. It exists to show which handoff profiles can currently use the configured webhook adapter layer, which profiles have a native provider API adapter registered and configured, and which profiles still need target configuration or concrete native implementation.
 
 Response:
 
 - `mode`: `PAYMENT_PROVIDER_ADAPTER_READINESS`
-- `status`: `ACTION_REQUIRED` when no profile is configured, otherwise `WEBHOOK_PROFILE_READY`.
-- `nativeApiSupported=false`, `nativeApiReady=false` until real card/bank/tax/ERP native API adapters are implemented and verified.
-- `profileCount`, `webhookReadyProfileCount`
+- `status`: `ACTION_REQUIRED` when no profile is configured, `WEBHOOK_PROFILE_READY` when at least one webhook profile is configured, or `NATIVE_API_READY` when at least one native provider API adapter is registered and configured.
+- `nativeApiSupported`, `nativeApiReady`: reflect registered native adapter SPI implementations; the current product still ships without concrete card/bank/tax/ERP provider implementations.
+- `profileCount`, `webhookReadyProfileCount`, `nativeApiReadyProfileCount`
 - `profiles[]`: profile rows with `providerProfile`, `sampleProvider`, `adapterMode`, `status`, `webhookProfileConfigured`, `nativeApiSupported`, `nativeApiReady`, `requiredConfiguration`, and `note`.
 - `scopePolicy`: read-only/no-external-call boundary.
 - `secretPolicy`: confirms webhook URLs, secret headers, HMAC secrets, certificates, provider credentials, raw provider responses, and customer payment data are not returned.

@@ -10,6 +10,7 @@ public record ChargebackPaymentProviderAdapterReadinessResponse(
         boolean nativeApiReady,
         int profileCount,
         int webhookReadyProfileCount,
+        int nativeApiReadyProfileCount,
         List<ChargebackPaymentProviderAdapterProfileResponse> profiles,
         OffsetDateTime generatedAt,
         String scopePolicy,

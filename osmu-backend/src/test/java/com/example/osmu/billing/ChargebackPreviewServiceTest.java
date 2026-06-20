@@ -724,6 +724,7 @@ class ChargebackPreviewServiceTest {
         assertThat(readiness.nativeApiReady()).isFalse();
         assertThat(readiness.profileCount()).isEqualTo(5);
         assertThat(readiness.webhookReadyProfileCount()).isEqualTo(2);
+        assertThat(readiness.nativeApiReadyProfileCount()).isZero();
         assertThat(readiness.secretPolicy()).contains("never returned");
         assertThat(readiness.profiles()).extracting(ChargebackPaymentProviderAdapterProfileResponse::providerProfile)
                 .containsExactly("GENERIC", "CARD", "BANK", "TAX", "ERP");
@@ -731,6 +732,112 @@ class ChargebackPreviewServiceTest {
         assertThat(readiness.profiles().get(1).webhookProfileConfigured()).isTrue();
         assertThat(readiness.profiles().get(2).status()).isEqualTo("ACTION_REQUIRED");
         assertThat(readiness.profiles().get(2).requiredConfiguration()).contains("bank.webhook-url");
+    }
+
+    @Test
+    void sendsNativePaymentProviderAdapterWhenConfigured() {
+        OffsetDateTime now = OffsetDateTime.now();
+        organizationRepository.save(new OrganizationRecord(1L, "Native Pay Org", "", 10_000L, now));
+        bucketRepository.save(new BucketRecord(1L, "native-pay-bucket", "ORG", 1L, 10_000L, 1024L, 1L, now));
+
+        ChargebackPreviewService nativeService = serviceWithPaymentProviderAdapter(new ChargebackPaymentProviderAdapter() {
+            @Override
+            public boolean isConfigured() {
+                return true;
+            }
+
+            @Override
+            public boolean isConfigured(String provider) {
+                return provider != null && provider.startsWith("BANK");
+            }
+
+            @Override
+            public boolean nativeApiSupported(String provider) {
+                return provider != null && provider.startsWith("BANK");
+            }
+
+            @Override
+            public boolean nativeApiReady(String provider) {
+                return provider != null && provider.startsWith("BANK");
+            }
+
+            @Override
+            public String adapterMode(String provider) {
+                return nativeApiReady(provider) ? "NATIVE_API" : "UNCONFIGURED";
+            }
+
+            @Override
+            public ChargebackPaymentProviderAdapterResult deliver(ChargebackPaymentProviderHandoffRecord record) {
+                assertThat(record.provider()).isEqualTo("BANK_TRANSFER");
+                assertThat(record.payloadJson()).contains("\"providerProfile\":\"BANK\"");
+                return ChargebackPaymentProviderAdapterResult.success();
+            }
+        });
+
+        ChargebackInvoiceDraftCreateResponse create = nativeService.persistInvoiceDrafts(
+                new AuthenticatedUser(1L, "admin", "ADMIN", null),
+                new ChargebackPreviewRequest(
+                        now.minusHours(1),
+                        now.plusHours(1),
+                        "krw",
+                        ONE_GIB_RATE,
+                        BigDecimal.ZERO,
+                        BigDecimal.ZERO,
+                        BigDecimal.ZERO,
+                        BigDecimal.ZERO,
+                        100
+                ),
+                "native payment adapter test"
+        );
+        ChargebackInvoiceDraftApprovalResponse approved = nativeService.approveInvoiceDraft(
+                new AuthenticatedUser(1L, "admin", "ADMIN", null),
+                create.invoices().get(0).id(),
+                "approve"
+        );
+        ChargebackFinalInvoiceActionResponse finalized = nativeService.finalizeInvoiceDraft(
+                new AuthenticatedUser(1L, "admin", "ADMIN", null),
+                approved.invoice().id(),
+                "finalize"
+        );
+        nativeService.requestFinalInvoicePayment(
+                new AuthenticatedUser(1L, "admin", "ADMIN", null),
+                finalized.invoice().id(),
+                "request payment"
+        );
+
+        ChargebackPaymentProviderAdapterReadinessResponse readiness =
+                nativeService.paymentProviderAdapterReadiness(new AuthenticatedUser(1L, "admin", "ADMIN", null));
+        assertThat(readiness.status()).isEqualTo("NATIVE_API_READY");
+        assertThat(readiness.nativeApiSupported()).isTrue();
+        assertThat(readiness.nativeApiReady()).isTrue();
+        assertThat(readiness.webhookReadyProfileCount()).isZero();
+        assertThat(readiness.nativeApiReadyProfileCount()).isEqualTo(1);
+        ChargebackPaymentProviderAdapterProfileResponse bankProfile = readiness.profiles().get(2);
+        assertThat(bankProfile.providerProfile()).isEqualTo("BANK");
+        assertThat(bankProfile.adapterMode()).isEqualTo("NATIVE_API");
+        assertThat(bankProfile.status()).isEqualTo("NATIVE_API_READY");
+        assertThat(bankProfile.webhookProfileConfigured()).isFalse();
+        assertThat(bankProfile.nativeApiSupported()).isTrue();
+        assertThat(bankProfile.nativeApiReady()).isTrue();
+
+        ChargebackPaymentProviderHandoffQueueResponse queued = nativeService.queuePaymentProviderHandoff(
+                new AuthenticatedUser(1L, "admin", "ADMIN", null),
+                finalized.invoice().id(),
+                "bank_transfer",
+                "finance-bank",
+                "unit test native payment send"
+        );
+        assertThat(queued.externalPaymentEnabled()).isTrue();
+        assertThat(queued.note()).contains("native payment provider API adapter");
+
+        ChargebackPaymentProviderHandoffAttemptResponse sent = nativeService.sendPaymentProviderHandoffAdapter(
+                new AuthenticatedUser(1L, "admin", "ADMIN", null),
+                queued.handoff().id(),
+                null
+        );
+        assertThat(sent.status()).isEqualTo("PAYMENT_PROVIDER_ADAPTER_SUCCEEDED");
+        assertThat(sent.externalPaymentEnabled()).isTrue();
+        assertThat(sent.note()).contains("Payment provider adapter delivered");
     }
 
     @Test

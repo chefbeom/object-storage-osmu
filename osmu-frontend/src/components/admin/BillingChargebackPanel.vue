@@ -547,6 +547,7 @@
       <div>
         <span>Native API</span>
         <b data-testid="chargeback-payment-adapter-native-status">{{ paymentProviderAdapterReadiness.nativeApiReady ? 'Ready' : 'Pending' }}</b>
+        <small data-testid="chargeback-payment-adapter-native-ready-count">{{ formatCount(paymentProviderAdapterReadiness.nativeApiReadyProfileCount) }} ready</small>
       </div>
     </div>
 
@@ -555,6 +556,7 @@
         <span class="list-main">
           <b>{{ profile.providerProfile }}</b>
           <small>{{ profile.adapterMode || '-' }} / {{ profile.sampleProvider || '-' }}</small>
+          <small>{{ nativeAdapterSummary(profile) }}</small>
           <small>{{ profile.note || profile.requiredConfiguration || '-' }}</small>
         </span>
         <strong :class="['status-pill', profile.webhookProfileConfigured || profile.nativeApiReady ? 'up' : 'mock']">{{ profile.status || '-' }}</strong>
@@ -747,6 +749,16 @@ function formatMoney(value, currencyValue = '') {
   const amount = Number(value || 0)
   const currency = String(currencyValue || preview.value.currency || props.chargebackOptions.currency || 'USD').toUpperCase()
   return `${currency} ${amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 6 })}`
+}
+
+function nativeAdapterSummary(profile = {}) {
+  if (profile.nativeApiReady) {
+    return 'Native API ready'
+  }
+  if (profile.nativeApiSupported) {
+    return 'Native API configured later'
+  }
+  return 'Native API not implemented'
 }
 
 function costBreakdown(organization) {

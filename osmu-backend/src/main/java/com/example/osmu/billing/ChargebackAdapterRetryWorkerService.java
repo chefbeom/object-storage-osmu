@@ -307,8 +307,8 @@ public class ChargebackAdapterRetryWorkerService {
                 adapterLastError(
                         result,
                         adapterResult.lastError(),
-                        "Payment provider webhook adapter retry scheduled.",
-                        "Payment provider webhook adapter blocked this handoff row."
+                        "Payment provider adapter retry scheduled.",
+                        "Payment provider adapter blocked this handoff row."
                 )
         );
     }
@@ -427,11 +427,11 @@ public class ChargebackAdapterRetryWorkerService {
     ) {
         if (dryRun) {
             return adapterConfigured
-                    ? "Due payment provider adapter retry candidate; configured webhook adapter would be attempted."
+                    ? "Due payment provider adapter retry candidate; configured payment provider adapter would be attempted."
                     : "Due payment provider adapter retry candidate.";
         }
         if ("PAYMENT_PROVIDER_ADAPTER_SUCCEEDED".equals(toStatus)) {
-            return "Payment provider webhook adapter delivered this due handoff row.";
+            return "Payment provider adapter delivered this due handoff row.";
         }
         return updated.lastError();
     }
@@ -444,7 +444,7 @@ public class ChargebackAdapterRetryWorkerService {
             return "Configured notification adapter was attempted for due notification rows; payment rows remain blocked until payment adapter configuration exists.";
         }
         if (paymentAdapterConfigured) {
-            return "Configured payment provider webhook adapter was available for eligible due payment handoff rows; notification rows remain blocked until notification adapter configuration exists.";
+            return "Configured payment provider adapter was available for eligible due payment handoff rows; notification rows remain blocked until notification adapter configuration exists.";
         }
         return "Due adapter retry rows were blocked because external adapter credentials/configuration are not configured.";
     }

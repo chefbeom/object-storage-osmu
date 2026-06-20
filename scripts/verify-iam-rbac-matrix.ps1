@@ -9,6 +9,8 @@ param(
     [string] $ChargebackAdapterRetryWorkerServicePath = ".\osmu-backend\src\main\java\com\example\osmu\billing\ChargebackAdapterRetryWorkerService.java",
     [string] $ChargebackNotificationDeliveryAdapterPath = ".\osmu-backend\src\main\java\com\example\osmu\billing\WebhookChargebackNotificationDeliveryAdapter.java",
     [string] $ChargebackPaymentProviderAdapterPath = ".\osmu-backend\src\main\java\com\example\osmu\billing\WebhookChargebackPaymentProviderAdapter.java",
+    [string] $ChargebackNativePaymentProviderAdapterPath = ".\osmu-backend\src\main\java\com\example\osmu\billing\ChargebackNativePaymentProviderAdapter.java",
+    [string] $CompositeChargebackPaymentProviderAdapterPath = ".\osmu-backend\src\main\java\com\example\osmu\billing\CompositeChargebackPaymentProviderAdapter.java",
     [string] $WebhookEndpointPolicyPath = ".\osmu-backend\src\main\java\com\example\osmu\billing\WebhookEndpointPolicy.java",
     [string] $ExternalAdapterPayloadPolicyPath = ".\osmu-backend\src\main\java\com\example\osmu\billing\ExternalAdapterPayloadPolicy.java",
     [string] $ExternalAdapterSignaturePolicyPath = ".\osmu-backend\src\main\java\com\example\osmu\billing\ExternalAdapterSignaturePolicy.java",
@@ -350,6 +352,9 @@ Assert-Contains $chargebackPreviewService 'paymentProviderAdapterReadiness' "Cha
 Assert-Contains $chargebackPreviewService 'PAYMENT_PROVIDER_ADAPTER_RETRY_SCHEDULED' "Chargeback preview service"
 Assert-Contains $chargebackPreviewService 'paymentProviderAdapter.isConfigured(normalizedProvider)' "Chargeback preview service"
 Assert-Contains $chargebackPreviewService 'paymentProviderAdapter.isConfigured(record.provider())' "Chargeback preview service"
+Assert-Contains $chargebackPreviewService 'nativeApiReadyProfileCount' "Chargeback preview service"
+Assert-Contains $chargebackPreviewService 'paymentProviderAdapter.nativeApiSupported(sampleProvider)' "Chargeback preview service"
+Assert-Contains $chargebackPreviewService 'paymentProviderAdapter.webhookProfileConfigured(sampleProvider)' "Chargeback preview service"
 Assert-Contains $chargebackPreviewService 'paymentProviderProfile' "Chargeback preview service"
 Assert-Contains $chargebackPreviewService 'recordFinalInvoicePayment' "Chargeback preview service"
 Assert-Contains $chargebackPreviewService 'PAYMENT_REQUESTED' "Chargeback preview service"
@@ -368,6 +373,19 @@ Assert-Contains $chargebackAdapterRetryWorkerService 'PAYMENT_PROVIDER_ADAPTER_B
 Assert-Contains $chargebackAdapterRetryWorkerService 'isConfigured(record.channel())' "Chargeback adapter retry worker service"
 Assert-Contains $chargebackAdapterRetryWorkerService 'paymentProviderAdapter.isConfigured(record.provider())' "Chargeback adapter retry worker service"
 Assert-Contains $chargebackAdapterRetryWorkerService 'Configured notification adapter was attempted' "Chargeback adapter retry worker service"
+
+$chargebackNativePaymentProviderAdapter = Read-RequiredFile $ChargebackNativePaymentProviderAdapterPath "Chargeback native payment provider adapter"
+Assert-Contains $chargebackNativePaymentProviderAdapter 'interface ChargebackNativePaymentProviderAdapter' "Chargeback native payment provider adapter"
+Assert-Contains $chargebackNativePaymentProviderAdapter 'providerProfile' "Chargeback native payment provider adapter"
+Assert-Contains $chargebackNativePaymentProviderAdapter 'deliver' "Chargeback native payment provider adapter"
+
+$compositeChargebackPaymentProviderAdapter = Read-RequiredFile $CompositeChargebackPaymentProviderAdapterPath "Composite chargeback payment provider adapter"
+Assert-Contains $compositeChargebackPaymentProviderAdapter '@Primary' "Composite chargeback payment provider adapter"
+Assert-Contains $compositeChargebackPaymentProviderAdapter 'WebhookChargebackPaymentProviderAdapter' "Composite chargeback payment provider adapter"
+Assert-Contains $compositeChargebackPaymentProviderAdapter 'ChargebackNativePaymentProviderAdapter' "Composite chargeback payment provider adapter"
+Assert-Contains $compositeChargebackPaymentProviderAdapter 'nativeApiSupported' "Composite chargeback payment provider adapter"
+Assert-Contains $compositeChargebackPaymentProviderAdapter 'nativeApiReady' "Composite chargeback payment provider adapter"
+Assert-Contains $compositeChargebackPaymentProviderAdapter 'webhookAdapter.deliver(record)' "Composite chargeback payment provider adapter"
 
 $chargebackNotificationDeliveryAdapter = Read-RequiredFile $ChargebackNotificationDeliveryAdapterPath "Chargeback notification delivery adapter"
 Assert-Contains $chargebackNotificationDeliveryAdapter 'notification-delivery.slack.webhook-url' "Chargeback notification delivery adapter"

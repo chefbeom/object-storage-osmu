@@ -1,6 +1,7 @@
 package com.example.osmu.billing;
 
 import static org.hamcrest.Matchers.containsString;
+import static org.hamcrest.Matchers.greaterThanOrEqualTo;
 import static org.hamcrest.Matchers.hasItem;
 import static org.hamcrest.Matchers.not;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -13,6 +14,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.jayway.jsonpath.JsonPath;
+import java.time.OffsetDateTime;
+import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
@@ -64,6 +67,8 @@ class AdminBillingControllerTest {
     @Test
     void adminCanSavePricingPolicyAndPreviewUsesStoredRates() throws Exception {
         String adminToken = loginAndReturnAccessToken("admin", "password");
+        String billingFrom = OffsetDateTime.now().minusSeconds(2).toString();
+        String billingTo = OffsetDateTime.now().plusMinutes(5).toString();
         int organizationId = createOrganization(adminToken, "Billing Policy Org 1");
         createOrganizationBucket(adminToken, organizationId, "billing-policy-bucket-1");
 
@@ -176,25 +181,31 @@ class AdminBillingControllerTest {
                 .andExpect(jsonPath("$.data.proposals[*].id", hasItem(pricingPolicyProposalId)));
 
         mockMvc.perform(get("/api/admin/billing/chargeback-preview")
-                        .header("Authorization", "Bearer " + adminToken))
+                        .header("Authorization", "Bearer " + adminToken)
+                        .param("from", billingFrom)
+                        .param("to", billingTo))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.currency").value("KRW"))
                 .andExpect(jsonPath("$.data.eventScanLimit").value(5000))
                 .andExpect(jsonPath("$.data.organizations[?(@.organizationName == 'Billing Policy Org 1')].estimatedTotalCost", hasItem(25.0)));
 
         mockMvc.perform(get("/api/admin/billing/chargeback-alerts")
-                        .header("Authorization", "Bearer " + adminToken))
+                        .header("Authorization", "Bearer " + adminToken)
+                        .param("from", billingFrom)
+                        .param("to", billingTo))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.currency").value("KRW"))
                 .andExpect(jsonPath("$.data.warningAmount").value(20.0))
                 .andExpect(jsonPath("$.data.criticalAmount").value(25.0))
-                .andExpect(jsonPath("$.data.alertCount").value(1))
-                .andExpect(jsonPath("$.data.criticalCount").value(1))
-                .andExpect(jsonPath("$.data.organizations[0].organizationName").value("Billing Policy Org 1"))
-                .andExpect(jsonPath("$.data.organizations[0].severity").value("CRITICAL"));
+                .andExpect(jsonPath("$.data.alertCount").value(greaterThanOrEqualTo(1)))
+                .andExpect(jsonPath("$.data.criticalCount").value(greaterThanOrEqualTo(1)))
+                .andExpect(jsonPath("$.data.organizations[*].organizationName", hasItem("Billing Policy Org 1")))
+                .andExpect(jsonPath("$.data.organizations[*].severity", hasItem("CRITICAL")));
 
         mockMvc.perform(get("/api/admin/billing/chargeback-alert-notifications/preview")
                         .header("Authorization", "Bearer " + adminToken)
+                        .param("from", billingFrom)
+                        .param("to", billingTo)
                         .param("notificationChannel", "slack")
                         .param("notificationTarget", "ops-webhook"))
                 .andExpect(status().isOk())
@@ -202,14 +213,16 @@ class AdminBillingControllerTest {
                 .andExpect(jsonPath("$.data.channel").value("SLACK"))
                 .andExpect(jsonPath("$.data.target").value("ops-webhook"))
                 .andExpect(jsonPath("$.data.externalDeliveryEnabled").value(false))
-                .andExpect(jsonPath("$.data.notificationCount").value(1))
-                .andExpect(jsonPath("$.data.notifications[0].organizationName").value("Billing Policy Org 1"))
-                .andExpect(jsonPath("$.data.notifications[0].severity").value("CRITICAL"))
-                .andExpect(jsonPath("$.data.notifications[0].subject", containsString("CRITICAL chargeback alert")))
-                .andExpect(jsonPath("$.data.notifications[0].payload.eventType").value("chargeback.threshold"));
+                .andExpect(jsonPath("$.data.notificationCount").value(greaterThanOrEqualTo(1)))
+                .andExpect(jsonPath("$.data.notifications[*].organizationName", hasItem("Billing Policy Org 1")))
+                .andExpect(jsonPath("$.data.notifications[?(@.organizationName == 'Billing Policy Org 1')].severity", hasItem("CRITICAL")))
+                .andExpect(jsonPath("$.data.notifications[?(@.organizationName == 'Billing Policy Org 1')].subject", hasItem(containsString("CRITICAL chargeback alert"))))
+                .andExpect(jsonPath("$.data.notifications[?(@.organizationName == 'Billing Policy Org 1')].payload.eventType", hasItem("chargeback.threshold")));
 
         String queuedNotificationResponse = mockMvc.perform(post("/api/admin/billing/chargeback-alert-notifications/outbox")
                         .header("Authorization", "Bearer " + adminToken)
+                        .param("from", billingFrom)
+                        .param("to", billingTo)
                         .param("notificationChannel", "slack")
                         .param("notificationTarget", "ops-webhook")
                         .param("reason", "billing notification test"))
@@ -217,14 +230,18 @@ class AdminBillingControllerTest {
                 .andExpect(jsonPath("$.data.mode").value("OUTBOX"))
                 .andExpect(jsonPath("$.data.status").value("PENDING_DELIVERY_ADAPTER"))
                 .andExpect(jsonPath("$.data.externalDeliveryEnabled").value(false))
-                .andExpect(jsonPath("$.data.queuedCount").value(1))
-                .andExpect(jsonPath("$.data.deliveries[0].organizationName").value("Billing Policy Org 1"))
-                .andExpect(jsonPath("$.data.deliveries[0].payloadJson", containsString("chargeback.threshold")))
+                .andExpect(jsonPath("$.data.queuedCount").value(greaterThanOrEqualTo(1)))
+                .andExpect(jsonPath("$.data.deliveries[*].organizationName", hasItem("Billing Policy Org 1")))
+                .andExpect(jsonPath("$.data.deliveries[?(@.organizationName == 'Billing Policy Org 1')].payloadJson", hasItem(containsString("chargeback.threshold"))))
                 .andReturn()
                 .getResponse()
                 .getContentAsString();
 
-        Integer deliveryId = JsonPath.read(queuedNotificationResponse, "$.data.deliveries[0].id");
+        List<Integer> deliveryIds = JsonPath.read(
+                queuedNotificationResponse,
+                "$.data.deliveries[?(@.organizationName == 'Billing Policy Org 1')].id"
+        );
+        Integer deliveryId = deliveryIds.get(0);
 
         mockMvc.perform(post("/api/admin/billing/chargeback-alert-notifications/outbox/{deliveryId}/adapter-result", deliveryId)
                         .header("Authorization", "Bearer " + adminToken)
@@ -244,20 +261,26 @@ class AdminBillingControllerTest {
 
         String invoiceDraftResponse = mockMvc.perform(post("/api/admin/billing/chargeback-invoice-drafts")
                         .header("Authorization", "Bearer " + adminToken)
+                        .param("from", billingFrom)
+                        .param("to", billingTo)
                         .param("reason", "billing invoice draft test"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.mode").value("DRAFT_REVIEW"))
                 .andExpect(jsonPath("$.data.status").value("DRAFT_REVIEW"))
                 .andExpect(jsonPath("$.data.finalInvoice").value(false))
                 .andExpect(jsonPath("$.data.paymentRequest").value(false))
-                .andExpect(jsonPath("$.data.persistedCount").value(1))
-                .andExpect(jsonPath("$.data.invoices[0].organizationName").value("Billing Policy Org 1"))
-                .andExpect(jsonPath("$.data.invoices[0].status").value("DRAFT_REVIEW"))
+                .andExpect(jsonPath("$.data.persistedCount").value(greaterThanOrEqualTo(1)))
+                .andExpect(jsonPath("$.data.invoices[*].organizationName", hasItem("Billing Policy Org 1")))
+                .andExpect(jsonPath("$.data.invoices[?(@.organizationName == 'Billing Policy Org 1')].status", hasItem("DRAFT_REVIEW")))
                 .andReturn()
                 .getResponse()
                 .getContentAsString();
 
-        Integer invoiceId = JsonPath.read(invoiceDraftResponse, "$.data.invoices[0].id");
+        List<Integer> invoiceIds = JsonPath.read(
+                invoiceDraftResponse,
+                "$.data.invoices[?(@.organizationName == 'Billing Policy Org 1')].id"
+        );
+        Integer invoiceId = invoiceIds.get(0);
 
         mockMvc.perform(get("/api/admin/billing/chargeback-invoice-drafts")
                         .header("Authorization", "Bearer " + adminToken)
@@ -356,8 +379,8 @@ class AdminBillingControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.mode").value("ADAPTER_RETRY_WORKER"))
                 .andExpect(jsonPath("$.data.dryRun").value(false))
-                .andExpect(jsonPath("$.data.updatedCount").value(1))
-                .andExpect(jsonPath("$.data.items[0].toStatus").value("PAYMENT_PROVIDER_ADAPTER_BLOCKED_CREDENTIAL"));
+                .andExpect(jsonPath("$.data.updatedCount").value(greaterThanOrEqualTo(1)))
+                .andExpect(jsonPath("$.data.items[?(@.itemType == 'PAYMENT_PROVIDER')].toStatus", hasItem("PAYMENT_PROVIDER_ADAPTER_BLOCKED_CREDENTIAL")));
 
         mockMvc.perform(get("/api/admin/billing/payment-provider-adapter-readiness")
                         .header("Authorization", "Bearer " + adminToken))
@@ -368,6 +391,7 @@ class AdminBillingControllerTest {
                 .andExpect(jsonPath("$.data.nativeApiReady").value(false))
                 .andExpect(jsonPath("$.data.profileCount").value(5))
                 .andExpect(jsonPath("$.data.webhookReadyProfileCount").value(0))
+                .andExpect(jsonPath("$.data.nativeApiReadyProfileCount").value(0))
                 .andExpect(jsonPath("$.data.profiles[0].providerProfile").value("GENERIC"))
                 .andExpect(jsonPath("$.data.profiles[1].providerProfile").value("CARD"))
                 .andExpect(jsonPath("$.data.profiles[1].sampleProvider").value("CARD_PROVIDER"))

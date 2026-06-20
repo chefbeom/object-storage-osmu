@@ -546,6 +546,10 @@ function handleAdminRoute(request, response, path, jsonBody, url) {
     sendJson(response, 200, apiData(chargebackPaymentProviderHandoffs(url)))
     return
   }
+  if (request.method === 'GET' && path === '/admin/billing/payment-provider-adapter-readiness') {
+    sendJson(response, 200, apiData(chargebackPaymentProviderAdapterReadiness()))
+    return
+  }
   const chargebackPaymentProviderAdapterResultMatch = path.match(/^\/admin\/billing\/chargeback-payment-provider-handoffs\/(\d+)\/adapter-result$/)
   if (request.method === 'POST' && chargebackPaymentProviderAdapterResultMatch) {
     sendJson(response, 200, apiData(recordChargebackPaymentProviderAdapterResult(Number(chargebackPaymentProviderAdapterResultMatch[1]), url)))
@@ -2089,7 +2093,38 @@ function sendChargebackPaymentProviderAdapter(handoffId) {
     externalPaymentEnabled: true,
     handoff,
     recordedAt: now,
-    note: 'Payment provider webhook adapter delivered this handoff row.',
+    note: 'Payment provider adapter delivered this handoff row.',
+  }
+}
+
+function chargebackPaymentProviderAdapterReadiness() {
+  const profiles = ['GENERIC', 'CARD', 'BANK', 'TAX', 'ERP'].map((profile) => {
+    const sampleProvider = profile === 'GENERIC' ? 'MANUAL_AP' : `${profile}_PROVIDER`
+    return {
+      providerProfile: profile,
+      sampleProvider,
+      adapterMode: 'UNCONFIGURED',
+      status: 'ACTION_REQUIRED',
+      webhookProfileConfigured: false,
+      nativeApiSupported: false,
+      nativeApiReady: false,
+      requiredConfiguration: paymentProviderAdapterRequirement(profile),
+      note: `${profile} handoff needs a configured webhook profile or native provider API adapter before external send.`,
+    }
+  })
+  return {
+    mode: 'PAYMENT_PROVIDER_ADAPTER_READINESS',
+    status: 'ACTION_REQUIRED',
+    nativeApiSupported: false,
+    nativeApiReady: false,
+    profileCount: profiles.length,
+    webhookReadyProfileCount: 0,
+    nativeApiReadyProfileCount: 0,
+    profiles,
+    generatedAt: new Date().toISOString(),
+    scopePolicy: 'Mock readiness checks configuration shape only and does not call provider APIs.',
+    secretPolicy: 'Webhook URLs, signing secrets, provider credentials, raw provider responses, and customer payment data are never returned.',
+    note: 'Configure generic or provider-specific webhook profiles before sending handoff rows. Native provider API adapters remain a follow-up implementation.',
   }
 }
 
@@ -2104,6 +2139,7 @@ function chargebackPaymentProviderPayload(invoice, provider, targetAccount) {
     amount: Number(invoice.estimatedTotalCost || 0),
     paymentStatus: invoice.paymentStatus,
     provider,
+    providerProfile: paymentProviderProfile(provider),
     targetAccount,
     externalPaymentEnabled: false,
   }
@@ -2115,6 +2151,39 @@ function paymentProvider(url) {
     .toUpperCase()
     .replaceAll(' ', '_')
     .slice(0, 64) || 'MANUAL_AP'
+}
+
+function paymentProviderProfile(provider) {
+  const normalized = String(provider || '').trim().toUpperCase().replaceAll('-', '_').replaceAll(' ', '_')
+  if (normalized.startsWith('CARD')) {
+    return 'CARD'
+  }
+  if (normalized.startsWith('BANK')) {
+    return 'BANK'
+  }
+  if (normalized.startsWith('TAX')) {
+    return 'TAX'
+  }
+  if (normalized.startsWith('ERP')) {
+    return 'ERP'
+  }
+  return 'GENERIC'
+}
+
+function paymentProviderAdapterRequirement(profile) {
+  if (profile === 'CARD') {
+    return 'Set osmu.billing.payment-provider.card.webhook-url or the generic payment-provider webhook; native card processor API support is not implemented yet.'
+  }
+  if (profile === 'BANK') {
+    return 'Set osmu.billing.payment-provider.bank.webhook-url or the generic payment-provider webhook; native bank-transfer API support is not implemented yet.'
+  }
+  if (profile === 'TAX') {
+    return 'Set osmu.billing.payment-provider.tax.webhook-url or the generic payment-provider webhook; native tax invoice API support is not implemented yet.'
+  }
+  if (profile === 'ERP') {
+    return 'Set osmu.billing.payment-provider.erp.webhook-url or the generic payment-provider webhook; native ERP API support is not implemented yet.'
+  }
+  return 'Set osmu.billing.payment-provider.webhook-url for generic/manual payment-provider handoff delivery.'
 }
 
 function paymentTargetAccount(url) {
