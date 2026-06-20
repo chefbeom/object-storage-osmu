@@ -4,6 +4,7 @@ param(
     [string] $KubernetesDrArtifactPath = "",
     [string] $IamRbacArtifactPath = "",
     [string] $SecurityEvidenceArtifactPath = "",
+    [string] $CommercialApprovalArtifactPath = "",
     [string] $EnterpriseAuthArtifactPath = "",
     [string] $KubernetesOperationsReportSyncArtifactPath = "",
     [string] $OutputDirectory = ".\.osmu-run",
@@ -163,6 +164,9 @@ Import-EvidenceFile "security-evidence" $SecurityEvidenceArtifactPath "latest-se
 Import-EvidenceFile "security-evidence" $SecurityEvidenceArtifactPath "latest-image-signing-evidence.json" $true "result" "passed"
 Import-EvidenceFile "security-evidence" $SecurityEvidenceArtifactPath "latest-container-security-evidence.json" $true "result" "passed"
 
+Import-EvidenceFile "commercial-approval" $CommercialApprovalArtifactPath "latest-commercial-approval-evidence.json" $true "result" "passed"
+Import-EvidenceFile "commercial-approval" $CommercialApprovalArtifactPath "latest-commercial-approval-evidence.md" $false
+
 Import-EvidenceFile "enterprise-auth" $EnterpriseAuthArtifactPath "latest-enterprise-auth-smoke.json" $true "result" "passed|scope-out"
 Import-EvidenceFile "enterprise-auth" $EnterpriseAuthArtifactPath "latest-enterprise-auth-smoke.md" $false
 
@@ -178,6 +182,7 @@ $selectedGroups = @(
     @("kubernetes-dr", $KubernetesDrArtifactPath),
     @("iam-rbac", $IamRbacArtifactPath),
     @("security-evidence", $SecurityEvidenceArtifactPath),
+    @("commercial-approval", $CommercialApprovalArtifactPath),
     @("enterprise-auth", $EnterpriseAuthArtifactPath),
     @("kubernetes-operations-report-sync", $KubernetesOperationsReportSyncArtifactPath)
 ) | Where-Object { -not [string]::IsNullOrWhiteSpace([string] $_[1]) }

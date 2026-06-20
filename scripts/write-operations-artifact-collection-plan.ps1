@@ -9,6 +9,7 @@ param(
     [string] $ImageSigningRunId = "",
     [string] $ContainerSecurityRunId = "",
     [string] $SecurityEvidenceRunId = "",
+    [string] $CommercialApprovalRunId = "",
     [string] $EnterpriseAuthRunId = "",
     [string] $KubernetesOperationsReportSyncRunId = "",
     [string] $ImageSigningVersion = "v0.1.0-rc.1",
@@ -120,10 +121,14 @@ if ($invocation.formatVersion -ne "osmu.operations-evidence-plan-invocation.v1")
 }
 
 $workflows = New-Object System.Collections.Generic.HashSet[string]
+$hasCommercialApprovalEvidence = $false
 $hasEnterpriseAuthSmoke = $false
 foreach ($action in @($invocation.actions)) {
     $command = Get-Text $action "command"
     Add-UniqueWorkflow $workflows (Get-WorkflowName $command)
+    if (Test-CommandMentions $command "write-commercial-approval-evidence.ps1") {
+        $hasCommercialApprovalEvidence = $true
+    }
     if (Test-CommandMentions $command "write-enterprise-auth-smoke-plan.ps1") {
         $hasEnterpriseAuthSmoke = $true
     }
@@ -137,6 +142,7 @@ $iamRbacRun = Get-RunIdOrPlaceholder $IamRbacRunId "iam-rbac-run-id"
 $imageSigningRun = Get-RunIdOrPlaceholder $ImageSigningRunId "image-signing-run-id"
 $containerSecurityRun = Get-RunIdOrPlaceholder $ContainerSecurityRunId "container-security-run-id"
 $securityEvidenceRun = Get-RunIdOrPlaceholder $SecurityEvidenceRunId "security-evidence-run-id"
+$commercialApprovalRun = Get-RunIdOrPlaceholder $CommercialApprovalRunId "commercial-approval-run-id"
 $enterpriseAuthRun = Get-RunIdOrPlaceholder $EnterpriseAuthRunId "enterprise-auth-run-id"
 $kubernetesOperationsReportSyncRun = Get-RunIdOrPlaceholder $KubernetesOperationsReportSyncRunId "kubernetes-operations-report-sync-run-id"
 
@@ -160,6 +166,9 @@ if ($workflows.Contains("container-security-ci.yml")) {
 }
 if ($workflows.Contains("security-evidence-finalizer-ci.yml")) {
     Add-Artifact $artifacts "security-evidence" "security-evidence-finalizer-ci.yml" $securityEvidenceRun "security_evidence_run_id" "security-evidence-finalizer-$securityEvidenceRun" "security_evidence_artifact_name" ".osmu-run/operations-readiness-artifacts/security-evidence" $true "Imports latest-security-evidence-finalize.json, image signing evidence, and container security evidence."
+}
+if ($hasCommercialApprovalEvidence) {
+    Add-Artifact $artifacts "commercial-approval" "manual-commercial-approval-evidence" $commercialApprovalRun "commercial_approval_run_id" "commercial-approval-evidence-$commercialApprovalRun" "commercial_approval_artifact_name" ".osmu-run/operations-readiness-artifacts/commercial-approval" $true "Imports latest-commercial-approval-evidence.json from final pricing, terms, support SLA, license, legal, and pilot contract approval evidence."
 }
 if ($hasEnterpriseAuthSmoke -or $workflows.Contains("enterprise-auth-smoke-ci.yml")) {
     Add-Artifact $artifacts "enterprise-auth" "enterprise-auth-smoke-ci.yml" $enterpriseAuthRun "enterprise_auth_run_id" "enterprise-auth-smoke-$enterpriseAuthRun" "enterprise_auth_artifact_name" ".osmu-run/operations-readiness-artifacts/enterprise-auth" $true "Imports latest-enterprise-auth-smoke.json from target IdP/directory smoke evidence."
@@ -208,6 +217,9 @@ foreach ($artifact in $requiredArtifacts) {
     }
     elseif ($group -eq "security-evidence") {
         $localImportArgs.Add("-SecurityEvidenceArtifactPath $downloadPath")
+    }
+    elseif ($group -eq "commercial-approval") {
+        $localImportArgs.Add("-CommercialApprovalArtifactPath $downloadPath")
     }
     elseif ($group -eq "enterprise-auth") {
         $localImportArgs.Add("-EnterpriseAuthArtifactPath $downloadPath")

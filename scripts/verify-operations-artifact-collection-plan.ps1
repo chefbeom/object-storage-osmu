@@ -47,6 +47,7 @@ $commands = @(
     "gh workflow run image-publish-sign-ci.yml -f version=v0.1.0-rc.1 -f publish=true",
     "gh workflow run container-security-ci.yml",
     "gh workflow run security-evidence-finalizer-ci.yml -f fail_if_not_passed=true",
+    "powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\write-commercial-approval-evidence.ps1 -ProductVersion v0.1.0-rc.1 -ApprovalRef approval-20260620 -ApprovedBy commercial-owner -ApprovedAt 2026-06-20T00:00:00Z -PricingApprovalRef pricing-20260620 -TermsApprovalRef terms-20260620 -SupportSlaApprovalRef sla-20260620 -LicenseAgreementRef license-20260620 -LegalApprovalRef legal-20260620 -PilotContractRef pilot-contract-20260620 -ConfirmPricingApproved -ConfirmTermsApproved -ConfirmSupportSlaApproved -ConfirmLicenseApproved -ConfirmLegalApproved -ConfirmNoSecretValues -FailIfNotPassed",
     "gh workflow run enterprise-auth-smoke-ci.yml -f run_live=true -f require_oidc=true -f require_ldap=true",
     "gh workflow run kubernetes-operations-report-sync-ci.yml -f run_live=true -f apply=true"
 )
@@ -100,10 +101,11 @@ $missingReport = Get-Content -Raw -LiteralPath $missingJsonOutputPath | ConvertF
 $missingMarkdown = Get-Content -Raw -LiteralPath $missingMarkdownOutputPath
 Assert-True ($missingReport.formatVersion -eq "osmu.operations-artifact-collection-plan.v1") "Unexpected collection plan formatVersion."
 Assert-True ($missingReport.result -eq "action-required") "Expected action-required result without run ids."
-Assert-True ($missingReport.artifactCount -eq 8) "Expected eight inferred artifacts."
-Assert-True ($missingReport.requiredArtifactCount -eq 6) "Expected six required readiness/convergence artifacts."
-Assert-True ($missingReport.missingRequiredArtifactCount -eq 6) "Expected six missing required artifacts."
+Assert-True ($missingReport.artifactCount -eq 9) "Expected nine inferred artifacts."
+Assert-True ($missingReport.requiredArtifactCount -eq 7) "Expected seven required readiness/convergence artifacts."
+Assert-True ($missingReport.missingRequiredArtifactCount -eq 7) "Expected seven missing required artifacts."
 Assert-Contains $missingMarkdown "storage-expansion-finalizer-<storage-expansion-run-id>" "missing collection markdown"
+Assert-Contains $missingMarkdown "commercial-approval-evidence-<commercial-approval-run-id>" "missing collection markdown"
 Assert-Contains $missingMarkdown "enterprise-auth-smoke-<enterprise-auth-run-id>" "missing collection markdown"
 Assert-Contains $missingMarkdown "operations-readiness-artifact-finalizer-ci.yml" "missing collection markdown"
 Assert-Contains $missingMarkdown ".\.osmu-run\operations-readiness-artifacts\storage-expansion" "missing collection markdown"
@@ -119,8 +121,9 @@ Assert-True (-not $missingMarkdown.Contains("OrderedDictionary.downloadPath")) "
     -ImageSigningRunId "104" `
     -ContainerSecurityRunId "105" `
     -SecurityEvidenceRunId "106" `
-    -EnterpriseAuthRunId "107" `
-    -KubernetesOperationsReportSyncRunId "108" `
+    -CommercialApprovalRunId "107" `
+    -EnterpriseAuthRunId "108" `
+    -KubernetesOperationsReportSyncRunId "109" `
     -ImageSigningVersion "v0.1.0-rc.1" `
     -CommitSha "abc123" | Out-Host
 if ($LASTEXITCODE -ne 0) {
@@ -131,16 +134,19 @@ $readyReport = Get-Content -Raw -LiteralPath $readyJsonOutputPath | ConvertFrom-
 $readyMarkdown = Get-Content -Raw -LiteralPath $readyMarkdownOutputPath
 Assert-True ($readyReport.result -eq "ready") "Expected ready result when all required run ids are supplied."
 Assert-True ($readyReport.missingRequiredArtifactCount -eq 0) "Expected no missing required artifacts."
-Assert-True ($readyReport.readyArtifactCount -eq 8) "Expected all artifacts to be concrete."
+Assert-True ($readyReport.readyArtifactCount -eq 9) "Expected all artifacts to be concrete."
 Assert-Contains $readyMarkdown "storage_expansion_run_id=101" "ready collection markdown"
 Assert-Contains $readyMarkdown "security_evidence_run_id=106" "ready collection markdown"
-Assert-Contains $readyMarkdown "enterprise_auth_run_id=107" "ready collection markdown"
-Assert-Contains $readyMarkdown "kubernetes_operations_report_sync_run_id=108" "ready collection markdown"
+Assert-Contains $readyMarkdown "commercial_approval_run_id=107" "ready collection markdown"
+Assert-Contains $readyMarkdown "enterprise_auth_run_id=108" "ready collection markdown"
+Assert-Contains $readyMarkdown "kubernetes_operations_report_sync_run_id=109" "ready collection markdown"
 Assert-Contains $readyMarkdown "osmu-image-signing-v0.1.0-rc.1-abc123" "ready collection markdown"
 Assert-Contains $readyMarkdown "osmu-container-security-abc123" "ready collection markdown"
 Assert-Contains $readyMarkdown "gh run download 106 -n security-evidence-finalizer-106" "ready collection markdown"
-Assert-Contains $readyMarkdown "gh run download 107 -n enterprise-auth-smoke-107" "ready collection markdown"
-Assert-Contains $readyMarkdown "gh run download 108 -n kubernetes-operations-report-sync-108" "ready collection markdown"
+Assert-Contains $readyMarkdown "gh run download 107 -n commercial-approval-evidence-107" "ready collection markdown"
+Assert-Contains $readyMarkdown "gh run download 108 -n enterprise-auth-smoke-108" "ready collection markdown"
+Assert-Contains $readyMarkdown "gh run download 109 -n kubernetes-operations-report-sync-109" "ready collection markdown"
+Assert-Contains $readyMarkdown "-CommercialApprovalArtifactPath .\.osmu-run\operations-readiness-artifacts\commercial-approval" "ready collection markdown"
 
 Write-Host "Operations artifact collection plan verified."
 Write-Host "Missing report: $missingJsonOutputPath"

@@ -43,6 +43,14 @@ on:
         description: Optional Security Evidence Finalizer CI artifact name
         required: false
         default: ""
+      commercial_approval_run_id:
+        description: Optional commercial approval evidence run id
+        required: false
+        default: ""
+      commercial_approval_artifact_name:
+        description: Optional commercial approval evidence artifact name
+        required: false
+        default: ""
       enterprise_auth_run_id:
         description: Optional Enterprise auth smoke evidence run id
         required: false
@@ -128,6 +136,15 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           path: .osmu-run/operations-readiness-artifacts/security-evidence
 
+      - name: Download commercial approval evidence
+        if: ${{ inputs.commercial_approval_run_id != '' && inputs.commercial_approval_artifact_name != '' }}
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ inputs.commercial_approval_artifact_name }}
+          run-id: ${{ inputs.commercial_approval_run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: .osmu-run/operations-readiness-artifacts/commercial-approval
+
       - name: Download enterprise auth smoke evidence
         if: ${{ inputs.enterprise_auth_run_id != '' && inputs.enterprise_auth_artifact_name != '' }}
         uses: actions/download-artifact@v4
@@ -160,6 +177,7 @@ jobs:
             @("KubernetesDrArtifactPath", ".osmu-run/operations-readiness-artifacts/kubernetes-dr"),
             @("IamRbacArtifactPath", ".osmu-run/operations-readiness-artifacts/iam-rbac"),
             @("SecurityEvidenceArtifactPath", ".osmu-run/operations-readiness-artifacts/security-evidence"),
+            @("CommercialApprovalArtifactPath", ".osmu-run/operations-readiness-artifacts/commercial-approval"),
             @("EnterpriseAuthArtifactPath", ".osmu-run/operations-readiness-artifacts/enterprise-auth"),
             @("KubernetesOperationsReportSyncArtifactPath", ".osmu-run/operations-readiness-artifacts/kubernetes-operations-report-sync")
           )
@@ -205,6 +223,8 @@ jobs:
             .osmu-run/latest-security-evidence-finalize.md
             .osmu-run/latest-image-signing-evidence.json
             .osmu-run/latest-container-security-evidence.json
+            .osmu-run/latest-commercial-approval-evidence.json
+            .osmu-run/latest-commercial-approval-evidence.md
             .osmu-run/latest-enterprise-auth-smoke.json
             .osmu-run/latest-enterprise-auth-smoke.md
             .osmu-run/latest-kubernetes-operations-report-sync.json
