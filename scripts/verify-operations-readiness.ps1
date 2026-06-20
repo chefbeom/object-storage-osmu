@@ -107,6 +107,8 @@ Assert-CheckExists $report "Image signing evidence writer" "security-hardening"
 Assert-CheckExists $report "Security evidence writer self-test" "security-hardening"
 Assert-CheckExists $report "Secret rotation evidence writer" "security-hardening"
 Assert-CheckExists $report "Secret rotation evidence writer self-test" "security-hardening"
+Assert-CheckExists $report "Commercial integration evidence writer" "commercial-integration"
+Assert-CheckExists $report "Commercial integration evidence writer self-test" "commercial-integration"
 Assert-CheckExists $report "Security evidence finalizer" "security-hardening"
 Assert-CheckExists $report "Security evidence finalizer self-test" "security-hardening"
 Assert-CheckExists $report "Security evidence finalizer workflow" "security-hardening"
@@ -121,6 +123,7 @@ Assert-CheckExists $report "Security evidence finalizer report" "security-harden
 Assert-CheckExists $report "Signed image evidence" "security-hardening"
 Assert-CheckExists $report "Container scan/SBOM evidence" "security-hardening"
 Assert-CheckExists $report "Secret/certificate rotation target evidence" "security-hardening"
+Assert-CheckExists $report "Commercial integration target evidence" "commercial-integration"
 Assert-CheckExists $report "Enterprise auth target smoke evidence" "enterprise-auth"
 
 Assert-CheckRemediation $report "Storage expansion finalizer live evidence" "finalize-storage-expansion.ps1" ".github/workflows/storage-expansion-finalizer-ci.yml" "gh workflow run storage-expansion-finalizer-ci.yml"
@@ -138,6 +141,16 @@ if (-not ([string] $secretRotationCheck[0].remediation.command).Contains("write-
 }
 if (-not ([string] $secretRotationCheck[0].requiredEvidence).Contains("target environment")) {
     throw "Secret/certificate rotation target evidence must require target environment evidence."
+}
+$commercialIntegrationCheck = @($report.checks | Where-Object { $_.name -eq "Commercial integration target evidence" })
+if ($commercialIntegrationCheck.Count -ne 1) {
+    throw "Operations readiness report must contain one Commercial integration target evidence check."
+}
+if (-not ([string] $commercialIntegrationCheck[0].remediation.command).Contains("write-commercial-integration-evidence.ps1")) {
+    throw "Commercial integration target evidence remediation must point to write-commercial-integration-evidence.ps1."
+}
+if (-not ([string] $commercialIntegrationCheck[0].requiredEvidence).Contains("target environment")) {
+    throw "Commercial integration target evidence must require target environment evidence."
 }
 $enterpriseAuthCheck = @($report.checks | Where-Object { $_.name -eq "Enterprise auth target smoke evidence" })
 if ($enterpriseAuthCheck.Count -ne 1) {
@@ -162,6 +175,7 @@ Assert-Contains $markdown "Storage expansion finalizer live evidence" "Operation
 Assert-Contains $markdown "Kubernetes DR finalizer live evidence" "Operations readiness markdown"
 Assert-Contains $markdown "Security evidence finalizer report" "Operations readiness markdown"
 Assert-Contains $markdown "Secret/certificate rotation target evidence" "Operations readiness markdown"
+Assert-Contains $markdown "Commercial integration target evidence" "Operations readiness markdown"
 Assert-Contains $markdown "Enterprise auth target smoke evidence" "Operations readiness markdown"
 Assert-Contains $markdown "Required Next Evidence" "Operations readiness markdown"
 Assert-Contains $markdown "Remediation command" "Operations readiness markdown"

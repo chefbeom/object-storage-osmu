@@ -8,6 +8,7 @@ param(
     [string] $ImageSigningEvidencePath = ".\.osmu-run\latest-image-signing-evidence.json",
     [string] $ContainerSecurityEvidencePath = ".\.osmu-run\latest-container-security-evidence.json",
     [string] $SecretRotationEvidencePath = ".\.osmu-run\latest-secret-rotation-evidence.json",
+    [string] $CommercialIntegrationEvidencePath = ".\.osmu-run\latest-commercial-integration-evidence.json",
     [string] $EnterpriseAuthSmokeEvidencePath = ".\.osmu-run\latest-enterprise-auth-smoke.json",
     [string] $JsonOutputPath = ".\.osmu-run\latest-operations-readiness.json",
     [string] $MarkdownOutputPath = ".\.osmu-run\latest-operations-readiness.md",
@@ -170,6 +171,7 @@ $securityFinalizeReport = Read-JsonReport $SecurityEvidenceFinalizeReportPath "S
 $imageSigningReport = Read-JsonReport $ImageSigningEvidencePath "Image signing evidence"
 $containerSecurityReport = Read-JsonReport $ContainerSecurityEvidencePath "Container security evidence"
 $secretRotationReport = Read-JsonReport $SecretRotationEvidencePath "Secret rotation evidence"
+$commercialIntegrationReport = Read-JsonReport $CommercialIntegrationEvidencePath "Commercial integration evidence"
 $enterpriseAuthSmokeReport = Read-JsonReport $EnterpriseAuthSmokeEvidencePath "Enterprise auth smoke evidence"
 
 $storageExpansionRemediation = New-Remediation `
@@ -207,6 +209,11 @@ $secretRotationRemediation = New-Remediation `
     "" `
     "" `
     "Run after target-environment secret/certificate rotation. The evidence stores references and booleans only; do not pass secret values, tokens, private keys, kubeconfig, database credentials, MinIO credentials, OIDC/LDAP secrets, SMTP credentials, or webhook signing secrets."
+$commercialIntegrationRemediation = New-Remediation `
+    "powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\write-commercial-integration-evidence.ps1 -EnvironmentName <env> -TargetCluster <cluster> -Operator <operator> -VerificationStartedAt <iso-time> -VerificationCompletedAt <iso-time> -ChangeApprovalRef <change-id> -NotificationWebhookEvidenceRef <ref> -SlackWebhookEvidenceRef <ref> -EmailSmtpEvidenceRef <ref> -PaymentGenericWebhookEvidenceRef <ref> -PaymentCardProfileEvidenceRef <ref> -PaymentBankProfileEvidenceRef <ref> -PaymentTaxProfileEvidenceRef <ref> -PaymentErpProfileEvidenceRef <ref> -AdapterRetryWorkerEvidenceRef <ref> -PayloadReviewEvidenceRef <ref> -PrivateNetworkBlockEvidenceRef <ref> -HmacSignatureEvidenceRef <ref> -VerifiedNotificationWebhook -VerifiedSlackWebhook -VerifiedEmailSmtp -VerifiedPaymentGenericWebhook -VerifiedPaymentCardProfile -VerifiedPaymentBankProfile -VerifiedPaymentTaxProfile -VerifiedPaymentErpProfile -ConfirmAdapterRetryWorkerRun -ConfirmPayloadSizeCaps -ConfirmPrivateNetworkBlocking -ConfirmHmacSignatureHeaders -ConfirmNoSecretValues -ConfirmNoRawProviderResponses -RequireAllImplementedAdapters -FailIfNotPassed" `
+    "" `
+    "" `
+    "Run after target-environment notification webhook, Slack, EMAIL SMTP relay, generic payment webhook, and CARD/BANK/TAX/ERP payment webhook profile handoff checks. This evidence does not claim native card/bank/tax/ERP processor API support and must not include credentials, raw provider responses, or customer payment data."
 $enterpriseAuthSmokeRemediation = New-Remediation `
     "powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\write-enterprise-auth-smoke-plan.ps1 -Execute -AdminLoginId <admin> -AdminPassword <secret> -RequireOidc -RequireLdap" `
     ".github/workflows/enterprise-auth-smoke-ci.yml" `
@@ -249,6 +256,8 @@ Add-FileCheck "Image signing evidence writer" "security-hardening" ".\scripts\wr
 Add-FileCheck "Security evidence writer self-test" "security-hardening" ".\scripts\verify-security-evidence-writers.ps1" "security evidence writer self-test committed"
 Add-FileCheck "Secret rotation evidence writer" "security-hardening" ".\scripts\write-secret-rotation-evidence.ps1" "secret rotation evidence writer committed"
 Add-FileCheck "Secret rotation evidence writer self-test" "security-hardening" ".\scripts\verify-secret-rotation-evidence.ps1" "secret rotation evidence writer self-test committed"
+Add-FileCheck "Commercial integration evidence writer" "commercial-integration" ".\scripts\write-commercial-integration-evidence.ps1" "commercial integration evidence writer committed"
+Add-FileCheck "Commercial integration evidence writer self-test" "commercial-integration" ".\scripts\verify-commercial-integration-evidence.ps1" "commercial integration evidence writer self-test committed"
 Add-FileCheck "Security evidence finalizer" "security-hardening" ".\scripts\finalize-security-evidence.ps1" "security evidence finalizer committed"
 Add-FileCheck "Security evidence finalizer self-test" "security-hardening" ".\scripts\verify-security-evidence-finalizer.ps1" "security evidence finalizer self-test committed"
 Add-FileCheck "Security evidence finalizer workflow" "security-hardening" ".\.github\workflows\security-evidence-finalizer-ci.yml" "manual workflow for security evidence finalizer artifact promotion"
@@ -264,6 +273,7 @@ Add-Check "Security evidence finalizer report" "security-hardening" ($securityFi
 Add-Check "Signed image evidence" "security-hardening" ($imageSigningReport.exists -and $imageSigningReport.parsed -and $imageSigningReport.data.result -eq "passed") (Get-GenericResultDetail $imageSigningReport) $imageSigningReport.path "published image digest and Cosign verification evidence" $imageSigningRemediation
 Add-Check "Container scan/SBOM evidence" "security-hardening" ($containerSecurityReport.exists -and $containerSecurityReport.parsed -and $containerSecurityReport.data.result -eq "passed") (Get-GenericResultDetail $containerSecurityReport) $containerSecurityReport.path "successful container scan and SBOM artifact evidence" $containerSecurityRemediation
 Add-Check "Secret/certificate rotation target evidence" "security-hardening" ($secretRotationReport.exists -and $secretRotationReport.parsed -and $secretRotationReport.data.result -eq "passed") (Get-GenericResultDetail $secretRotationReport) $secretRotationReport.path "secret/certificate rotation evidence result=passed from target environment" $secretRotationRemediation
+Add-Check "Commercial integration target evidence" "commercial-integration" ($commercialIntegrationReport.exists -and $commercialIntegrationReport.parsed -and $commercialIntegrationReport.data.result -eq "passed") (Get-GenericResultDetail $commercialIntegrationReport) $commercialIntegrationReport.path "commercial integration evidence result=passed from target environment" $commercialIntegrationRemediation
 Add-Check "Enterprise auth target smoke evidence" "enterprise-auth" ($enterpriseAuthSmokeReport.exists -and $enterpriseAuthSmokeReport.parsed -and $enterpriseAuthSmokeReport.data.result -eq "passed") (Get-GenericResultDetail $enterpriseAuthSmokeReport) $enterpriseAuthSmokeReport.path "enterprise auth smoke result=passed from target IdP/directory, or explicit commercial scope-out" $enterpriseAuthSmokeRemediation
 
 $passedCount = @($checks | Where-Object { $_.passed }).Count
@@ -290,10 +300,11 @@ $report = [ordered]@{
         imageSigningEvidence = $imageSigningReport.path
         containerSecurityEvidence = $containerSecurityReport.path
         secretRotationEvidence = $secretRotationReport.path
+        commercialIntegrationEvidence = $commercialIntegrationReport.path
         enterpriseAuthSmokeEvidence = $enterpriseAuthSmokeReport.path
     }
     checks = $checks
-    decisionRule = "Production/B2B operations readiness is ready only when every listed static, automation, live Kubernetes, storage expansion, HA/DR, security, secret rotation, and enterprise auth evidence check is PASS."
+    decisionRule = "Production/B2B operations readiness is ready only when every listed static, automation, live Kubernetes, storage expansion, HA/DR, security, secret rotation, commercial integration, and enterprise auth evidence check is PASS."
 }
 
 $markdownLines = @(

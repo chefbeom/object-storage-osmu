@@ -100,6 +100,9 @@ Run "powershell -ExecutionPolicy Bypass -File .\scripts\verify-secret-rotation-p
 Step "Secret rotation evidence writer self-test"
 Run "powershell -ExecutionPolicy Bypass -File .\scripts\verify-secret-rotation-evidence.ps1"
 
+Step "Commercial integration evidence writer self-test"
+Run "powershell -ExecutionPolicy Bypass -File .\scripts\verify-commercial-integration-evidence.ps1"
+
 Step "IAM/RBAC matrix check"
 Run "powershell -ExecutionPolicy Bypass -File .\scripts\verify-iam-rbac-matrix.ps1"
 

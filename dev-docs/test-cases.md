@@ -2175,6 +2175,16 @@ TC-FE-023 보강: 사용자가 취소한 경우에는 abort API를 호출한다.
 - Priority: P2
 - Automated: `scripts/verify-secret-rotation-evidence.ps1`
 
+### TC-INFRA-008B
+
+- Feature: Commercial integration target evidence writer verification.
+- Preconditions: PowerShell is available.
+- Input: `powershell -ExecutionPolicy Bypass -File .\scripts\verify-commercial-integration-evidence.ps1`
+- Steps: Generate synthetic passed target-environment commercial integration evidence, verify `osmu.commercial-integration-evidence.v1`, `result=passed`, notification webhook, Slack, EMAIL SMTP relay, generic payment webhook, CARD/BANK/TAX/ERP payment webhook profile handoff entries, adapter retry worker confirmation, payload cap confirmation, private/local endpoint blocking confirmation, HMAC signature confirmation, no-secret policy, no-raw-provider-response policy, and native processor scope disclaimer. Verify credential-shaped evidence references such as `Bearer ...` are rejected.
+- Expected: Operators have a repeatable evidence writer for production/B2B commercial integration verification that stores only external references, timestamps, and booleans, not credentials, raw provider responses, or customer payment data.
+- Priority: P2
+- Automated: `scripts/verify-commercial-integration-evidence.ps1`
+
 ### TC-INFRA-009
 
 - Feature: Backup restore drill draft verification.
