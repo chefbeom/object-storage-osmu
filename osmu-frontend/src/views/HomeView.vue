@@ -1005,6 +1005,22 @@ const dashboardReadiness = reactive({
     gaps: [],
     secretPolicy: '',
   },
+  operationsHandoffPackage: {
+    result: '',
+    generatedAt: '',
+    environmentName: '',
+    targetCluster: '',
+    operatorName: '',
+    passedCount: 0,
+    failureCount: 0,
+    plannedCount: 0,
+    checkCount: 0,
+    confirmations: {},
+    checks: [],
+    decisionRule: '',
+    scopePolicy: '',
+    secretPolicy: '',
+  },
   operationsEvidenceHandoff: {
     result: '',
     generatedAt: '',
@@ -4448,6 +4464,7 @@ function applyDashboardReadiness(data) {
     operationsArtifactCollectionPlan: normalizeOperationsArtifactCollectionPlan(data.operationsArtifactCollectionPlan),
     operationsReadinessArtifactImport: normalizeOperationsReadinessArtifactImport(data.operationsReadinessArtifactImport),
     operationsReadinessFinalize: normalizeOperationsReadinessFinalize(data.operationsReadinessFinalize),
+    operationsHandoffPackage: normalizeOperationsHandoffPackage(data.operationsHandoffPackage),
     operationsEvidenceHandoff: normalizeOperationsEvidenceHandoff(data.operationsEvidenceHandoff),
     operationsReadinessConvergence: normalizeOperationsReadinessConvergence(data.operationsReadinessConvergence),
     kubernetesOperationsReportSync: normalizeKubernetesOperationsReportSync(data.kubernetesOperationsReportSync),
@@ -4610,6 +4627,25 @@ function normalizeOperationsReadinessFinalize(report = {}) {
     commands: Array.isArray(report?.commands) ? report.commands : [],
     steps: Array.isArray(report?.steps) ? report.steps : [],
     gaps: Array.isArray(report?.gaps) ? report.gaps : [],
+    secretPolicy: report?.secretPolicy || '',
+  }
+}
+
+function normalizeOperationsHandoffPackage(report = {}) {
+  return {
+    result: report?.result || '',
+    generatedAt: report?.generatedAt || '',
+    environmentName: report?.environmentName || '',
+    targetCluster: report?.targetCluster || '',
+    operatorName: report?.operatorName || '',
+    passedCount: Number(report?.passedCount || 0),
+    failureCount: Number(report?.failureCount || 0),
+    plannedCount: Number(report?.plannedCount || 0),
+    checkCount: Number(report?.checkCount || 0),
+    confirmations: report?.confirmations && typeof report.confirmations === 'object' ? report.confirmations : {},
+    checks: Array.isArray(report?.checks) ? report.checks : [],
+    decisionRule: report?.decisionRule || '',
+    scopePolicy: report?.scopePolicy || '',
     secretPolicy: report?.secretPolicy || '',
   }
 }

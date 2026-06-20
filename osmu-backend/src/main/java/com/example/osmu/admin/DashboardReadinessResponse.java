@@ -21,6 +21,7 @@ public record DashboardReadinessResponse(
         DashboardOperationsArtifactCollectionPlanResponse operationsArtifactCollectionPlan,
         DashboardOperationsReadinessArtifactImportResponse operationsReadinessArtifactImport,
         DashboardOperationsReadinessFinalizeResponse operationsReadinessFinalize,
+        DashboardOperationsHandoffPackageResponse operationsHandoffPackage,
         DashboardOperationsEvidenceHandoffResponse operationsEvidenceHandoff,
         DashboardOperationsReadinessConvergenceResponse operationsReadinessConvergence,
         DashboardKubernetesOperationsReportSyncResponse kubernetesOperationsReportSync,

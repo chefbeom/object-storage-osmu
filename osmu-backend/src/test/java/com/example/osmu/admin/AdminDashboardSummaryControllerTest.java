@@ -331,6 +331,55 @@ class AdminDashboardSummaryControllerTest {
                         """
         );
         Files.writeString(
+                Path.of(".osmu-run/latest-operations-handoff-package.json"),
+                """
+                        {
+                          "formatVersion": "osmu.operations-handoff-package.v1",
+                          "generatedAt": "2026-06-20T02:30:00Z",
+                          "result": "failed",
+                          "environmentName": "pilot-prod",
+                          "targetCluster": "customer-cluster-a",
+                          "operatorName": "ops-admin",
+                          "summary": {
+                            "passedCount": 20,
+                            "failureCount": 2,
+                            "plannedCount": 1,
+                            "checkCount": 23
+                          },
+                          "confirmations": {
+                            "noSecretValues": true,
+                            "runbookReviewed": false,
+                            "troubleshootingReviewed": true,
+                            "rollbackReviewed": true,
+                            "supportEscalationReviewed": false,
+                            "knownGapsAccepted": true,
+                            "requireProductionEvidence": true
+                          },
+                          "checks": [
+                            {
+                              "id": "runbook-reviewed",
+                              "name": "Operator runbook reviewed",
+                              "status": "FAIL",
+                              "passed": false,
+                              "detail": "runbookReviewRef=",
+                              "evidenceRef": ""
+                            },
+                            {
+                              "id": "commercial-integration-evidence",
+                              "name": "Commercial integration target evidence",
+                              "status": "PASS",
+                              "passed": true,
+                              "detail": "required=true; evidenceRef=latest-commercial-integration-evidence-passed",
+                              "evidenceRef": "latest-commercial-integration-evidence-passed"
+                            }
+                          ],
+                          "decisionRule": "Production/B2B operations handoff package readiness requires result=passed.",
+                          "scopePolicy": "This package is a handoff wrapper and does not execute kubectl, gh, provider APIs, notification adapters, or payment adapters.",
+                          "secretPolicy": "Evidence stores references only and must not contain passwords, bearer tokens, kubeconfig values, private keys, provider credentials, raw provider responses, or customer payment data."
+                        }
+                        """
+        );
+        Files.writeString(
                 Path.of(".osmu-run/latest-operations-evidence-plan-invocation.json"),
                 """
                         {
@@ -836,6 +885,20 @@ class AdminDashboardSummaryControllerTest {
                 .andExpect(jsonPath("$.data.operationsReadinessFinalize.steps[0].result").value("passed"))
                 .andExpect(jsonPath("$.data.operationsReadinessFinalize.gaps").value(hasItem("Operations readiness result is pending: passed=36 pending=6.")))
                 .andExpect(jsonPath("$.data.operationsReadinessFinalize.secretPolicy").value("Operations readiness finalizer masks admin passwords in recorded commands and does not write kubeconfig, registry tokens, DR secrets, or bearer tokens."))
+                .andExpect(jsonPath("$.data.operationsHandoffPackage.result").value("failed"))
+                .andExpect(jsonPath("$.data.operationsHandoffPackage.environmentName").value("pilot-prod"))
+                .andExpect(jsonPath("$.data.operationsHandoffPackage.targetCluster").value("customer-cluster-a"))
+                .andExpect(jsonPath("$.data.operationsHandoffPackage.operatorName").value("ops-admin"))
+                .andExpect(jsonPath("$.data.operationsHandoffPackage.failureCount").value(2))
+                .andExpect(jsonPath("$.data.operationsHandoffPackage.plannedCount").value(1))
+                .andExpect(jsonPath("$.data.operationsHandoffPackage.checkCount").value(23))
+                .andExpect(jsonPath("$.data.operationsHandoffPackage.confirmations.noSecretValues").value(true))
+                .andExpect(jsonPath("$.data.operationsHandoffPackage.confirmations.runbookReviewed").value(false))
+                .andExpect(jsonPath("$.data.operationsHandoffPackage.checks[0].id").value("runbook-reviewed"))
+                .andExpect(jsonPath("$.data.operationsHandoffPackage.checks[0].status").value("FAIL"))
+                .andExpect(jsonPath("$.data.operationsHandoffPackage.checks[1].evidenceRef").value("latest-commercial-integration-evidence-passed"))
+                .andExpect(jsonPath("$.data.items[?(@.code == 'OPERATIONS_HANDOFF_PACKAGE')].evidencePath").value(hasItem(".osmu-run/latest-operations-handoff-package.json")))
+                .andExpect(jsonPath("$.data.items[?(@.code == 'OPERATIONS_HANDOFF_PACKAGE')].remediationCommand").value(hasItem("powershell -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\write-operations-handoff-package.ps1")))
                 .andExpect(jsonPath("$.data.operationsEvidenceHandoff.result").value("blocked"))
                 .andExpect(jsonPath("$.data.operationsEvidenceHandoff.nextStep.code").value("resolve-invocation-blockers"))
                 .andExpect(jsonPath("$.data.operationsEvidenceHandoff.nextStep.command").value("powershell -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\write-operations-invocation-unblock-plan.ps1"))

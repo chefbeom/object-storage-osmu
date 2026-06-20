@@ -120,6 +120,7 @@ public class AdminController {
     private final String operationsWorkflowRunIdPlanReportPath;
     private final String operationsArtifactCollectionPlanReportPath;
     private final String operationsEvidenceHandoffReportPath;
+    private final String operationsHandoffPackageReportPath;
     private final String operationsReadinessConvergenceReportPath;
     private final String kubernetesOperationsReportSyncReportPath;
 
@@ -166,6 +167,7 @@ public class AdminController {
             @Value("${osmu.operations.readiness.workflow-run-id-plan-report-path:.osmu-run/latest-operations-workflow-run-ids.json}") String operationsWorkflowRunIdPlanReportPath,
             @Value("${osmu.operations.readiness.artifact-collection-plan-report-path:.osmu-run/latest-operations-artifact-collection-plan.json}") String operationsArtifactCollectionPlanReportPath,
             @Value("${osmu.operations.readiness.evidence-handoff-report-path:.osmu-run/latest-operations-evidence-handoff.json}") String operationsEvidenceHandoffReportPath,
+            @Value("${osmu.operations.readiness.handoff-package-report-path:.osmu-run/latest-operations-handoff-package.json}") String operationsHandoffPackageReportPath,
             @Value("${osmu.operations.readiness.convergence-report-path:.osmu-run/latest-operations-readiness-convergence.json}") String operationsReadinessConvergenceReportPath,
             @Value("${osmu.operations.readiness.kubernetes-report-sync-report-path:.osmu-run/latest-kubernetes-operations-report-sync.json}") String kubernetesOperationsReportSyncReportPath
     ) {
@@ -211,6 +213,7 @@ public class AdminController {
         this.operationsWorkflowRunIdPlanReportPath = blankToNull(operationsWorkflowRunIdPlanReportPath);
         this.operationsArtifactCollectionPlanReportPath = blankToNull(operationsArtifactCollectionPlanReportPath);
         this.operationsEvidenceHandoffReportPath = blankToNull(operationsEvidenceHandoffReportPath);
+        this.operationsHandoffPackageReportPath = blankToNull(operationsHandoffPackageReportPath);
         this.operationsReadinessConvergenceReportPath = blankToNull(operationsReadinessConvergenceReportPath);
         this.kubernetesOperationsReportSyncReportPath = blankToNull(kubernetesOperationsReportSyncReportPath);
     }
@@ -567,6 +570,7 @@ public class AdminController {
         DashboardOperationsArtifactCollectionPlanResponse operationsArtifactCollectionPlan = operationsArtifactCollectionPlanSnapshot();
         DashboardOperationsReadinessArtifactImportResponse operationsReadinessArtifactImport = operationsReadinessArtifactImportSnapshot();
         DashboardOperationsReadinessFinalizeResponse operationsReadinessFinalize = operationsReadinessFinalizeSnapshot();
+        DashboardOperationsHandoffPackageResponse operationsHandoffPackage = operationsHandoffPackageSnapshot();
         DashboardOperationsEvidenceHandoffResponse operationsEvidenceHandoff = operationsEvidenceHandoffSnapshot();
         DashboardOperationsReadinessConvergenceResponse operationsReadinessConvergence = operationsReadinessConvergenceSnapshot();
         DashboardKubernetesOperationsReportSyncResponse kubernetesOperationsReportSync = kubernetesOperationsReportSyncSnapshot();
@@ -591,6 +595,7 @@ public class AdminController {
                 operationsArtifactCollectionPlan,
                 operationsReadinessArtifactImport,
                 operationsReadinessFinalize,
+                operationsHandoffPackage,
                 operationsEvidenceHandoff,
                 operationsReadinessConvergence,
                 kubernetesOperationsReportSync,
@@ -1235,6 +1240,7 @@ public class AdminController {
         }
 
         addOperationsEvidenceHandoffItem(items);
+        addOperationsHandoffPackageItem(items);
 
         addOperationsReadinessArtifactImportItem(items);
         addOperationsReadinessFinalizeItem(items);
@@ -1888,6 +1894,82 @@ public class AdminController {
                 List.copyOf(steps),
                 jsonTextList(finalizeReport, "gaps"),
                 jsonText(finalizeReport, "secretPolicy")
+        );
+    }
+
+    private void addOperationsHandoffPackageItem(java.util.ArrayList<DashboardReadinessItemResponse> items) {
+        DashboardOperationsHandoffPackageResponse handoffPackage = operationsHandoffPackageSnapshot();
+        if (handoffPackage.result().isBlank()) {
+            return;
+        }
+        String result = handoffPackage.result();
+        if ("passed".equalsIgnoreCase(result)) {
+            return;
+        }
+        addReadinessItem(
+                items,
+                "WARNING",
+                "OPERATIONS",
+                "OPERATIONS_HANDOFF_PACKAGE",
+                "Operations handoff package is %s: failures=%d, planned=%d, checks=%d.".formatted(
+                        result.isBlank() ? "available" : result,
+                        handoffPackage.failureCount(),
+                        handoffPackage.plannedCount(),
+                        handoffPackage.checkCount()
+                ),
+                "dashboard",
+                "dashboard-readiness-panel",
+                "Handoff package",
+                operationsHandoffPackageReportPath == null ? "" : operationsHandoffPackageReportPath,
+                "powershell -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\write-operations-handoff-package.ps1",
+                "",
+                "",
+                handoffPackage.secretPolicy().isBlank()
+                        ? "Record target handoff package evidence after runbook, troubleshooting, rollback, support, and known-gap review."
+                        : handoffPackage.secretPolicy()
+        );
+    }
+
+    private DashboardOperationsHandoffPackageResponse operationsHandoffPackageSnapshot() {
+        JsonNode packageReport = readOptionalJsonReport(operationsHandoffPackageReportPath);
+        if (packageReport == null) {
+            return DashboardOperationsHandoffPackageResponse.empty();
+        }
+        java.util.LinkedHashMap<String, Boolean> confirmations = new java.util.LinkedHashMap<>();
+        JsonNode confirmationNodes = packageReport.path("confirmations");
+        if (confirmationNodes.isObject()) {
+            confirmationNodes.fields().forEachRemaining(entry -> confirmations.put(entry.getKey(), entry.getValue().asBoolean(false)));
+        }
+        java.util.ArrayList<DashboardOperationsHandoffPackageCheckResponse> checks = new java.util.ArrayList<>();
+        JsonNode checkNodes = packageReport.path("checks");
+        if (checkNodes.isArray()) {
+            for (JsonNode check : checkNodes) {
+                checks.add(new DashboardOperationsHandoffPackageCheckResponse(
+                        jsonText(check, "id"),
+                        jsonText(check, "name"),
+                        jsonText(check, "status"),
+                        jsonBoolean(check, "passed"),
+                        jsonText(check, "detail"),
+                        jsonText(check, "evidenceRef")
+                ));
+            }
+        }
+        JsonNode summary = packageReport.path("summary");
+        return new DashboardOperationsHandoffPackageResponse(
+                jsonText(packageReport, "result"),
+                jsonText(packageReport, "generatedAt"),
+                jsonText(packageReport, "environmentName"),
+                jsonText(packageReport, "targetCluster"),
+                jsonText(packageReport, "operatorName"),
+                jsonInt(summary, "passedCount"),
+                jsonInt(summary, "failureCount"),
+                jsonInt(summary, "plannedCount"),
+                jsonInt(summary, "checkCount"),
+                Map.copyOf(confirmations),
+                List.copyOf(checks),
+                jsonText(packageReport, "decisionRule"),
+                jsonText(packageReport, "scopePolicy"),
+                jsonText(packageReport, "secretPolicy")
         );
     }
 

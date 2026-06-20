@@ -541,6 +541,12 @@
             Handoff: {{ operationsEvidenceHandoffItem.message }}
           </small>
           <small
+            v-if="operationsHandoffPackageItem"
+            data-testid="readiness-handoff-package-item-summary"
+          >
+            Package: {{ operationsHandoffPackageItem.message }}
+          </small>
+          <small
             v-if="operationsReadinessConvergenceItem"
             data-testid="readiness-convergence-item-summary"
           >
@@ -562,6 +568,38 @@
           Operations
         </button>
       </div>
+      <div
+        v-if="operationsHandoffPackage.result"
+        class="readiness-invocation-summary"
+        data-testid="readiness-handoff-package-summary"
+      >
+        <strong>Handoff package: {{ operationsHandoffPackage.result }}</strong>
+        <small>
+          {{ operationsHandoffPackage.environmentName || 'unknown env' }} /
+          {{ operationsHandoffPackage.targetCluster || 'unknown cluster' }} /
+          failures {{ operationsHandoffPackage.failureCount || 0 }} /
+          planned {{ operationsHandoffPackage.plannedCount || 0 }} /
+          checks {{ operationsHandoffPackage.checkCount || 0 }}
+        </small>
+        <small v-if="operationsHandoffPackage.secretPolicy">
+          {{ operationsHandoffPackage.secretPolicy }}
+        </small>
+      </div>
+      <ol
+        v-if="operationsHandoffPackageChecks.length > 0"
+        class="readiness-evidence-plan-actions readiness-handoff-package-checks"
+        data-testid="readiness-handoff-package-checks"
+      >
+        <li
+          v-for="check in operationsHandoffPackageChecks.slice(0, 3)"
+          :key="check.id || check.name"
+        >
+          <span>
+            <strong>{{ check.status || 'UNKNOWN' }} / {{ check.name || check.id }}</strong>
+            <small>{{ check.detail || check.evidenceRef || 'detail unavailable' }}</small>
+          </span>
+        </li>
+      </ol>
       <div
         v-if="operationsEvidenceHandoff.result"
         class="readiness-invocation-summary"
@@ -1930,6 +1968,10 @@ const operationsEvidenceHandoffItem = computed(() => (
   operationsReadinessItems.value.find((item) => item.code === 'OPERATIONS_EVIDENCE_HANDOFF') || null
 ))
 
+const operationsHandoffPackageItem = computed(() => (
+  operationsReadinessItems.value.find((item) => item.code === 'OPERATIONS_HANDOFF_PACKAGE') || null
+))
+
 const operationsReadinessConvergenceItem = computed(() => (
   operationsReadinessItems.value.find((item) => item.code === 'OPERATIONS_READINESS_CONVERGENCE') || null
 ))
@@ -2037,6 +2079,15 @@ const operationsEvidenceHandoffNextStep = computed(() => (
 const operationsEvidenceHandoffStages = computed(() => {
   const stages = operationsEvidenceHandoff.value?.stages
   return Array.isArray(stages) ? stages : []
+})
+
+const operationsHandoffPackage = computed(() => (
+  props.dashboardReadiness.operationsHandoffPackage || {}
+))
+
+const operationsHandoffPackageChecks = computed(() => {
+  const checks = operationsHandoffPackage.value?.checks
+  return Array.isArray(checks) ? checks : []
 })
 
 const operationsReadinessConvergence = computed(() => (
