@@ -35,6 +35,8 @@ class AdminBillingControllerTest {
     @Test
     void adminCanPreviewChargebackFromOrganizationUsageAndDataFlow() throws Exception {
         String adminToken = loginAndReturnAccessToken("admin", "password");
+        String billingFrom = OffsetDateTime.now().minusSeconds(2).toString();
+        String billingTo = OffsetDateTime.now().plusMinutes(5).toString();
         int organizationId = createOrganization(adminToken, "Billing Org 1");
         createOrganizationBucket(adminToken, organizationId, "billing-org-bucket-1");
 
@@ -62,6 +64,24 @@ class AdminBillingControllerTest {
                 .andExpect(jsonPath("$.data.organizations[?(@.organizationName == 'Billing Org 1')].ingressBytes", hasItem(12)))
                 .andExpect(jsonPath("$.data.organizations[?(@.organizationName == 'Billing Org 1')].billableOperationCount", hasItem(1)))
                 .andExpect(jsonPath("$.data.organizations[?(@.organizationName == 'Billing Org 1')].estimatedTotalCost", hasItem(25.0)));
+
+        mockMvc.perform(get("/api/admin/billing/chargeback-daily-rollup")
+                        .header("Authorization", "Bearer " + adminToken)
+                        .param("from", billingFrom)
+                        .param("to", billingTo)
+                        .param("storageGbMonthRate", "1073741824")
+                        .param("ingressGbRate", "1073741824")
+                        .param("operationThousandRate", "1000")
+                        .param("currency", "krw")
+                        .param("days", "7")
+                        .param("limit", "50"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.mode").value("CHARGEBACK_DAILY_ROLLUP"))
+                .andExpect(jsonPath("$.data.rollupSource").value("DATA_FLOW_DAILY_ROLLUP"))
+                .andExpect(jsonPath("$.data.currency").value("KRW"))
+                .andExpect(jsonPath("$.data.inputPointCount").value(greaterThanOrEqualTo(1)))
+                .andExpect(jsonPath("$.data.points[*].organizationName", hasItem("Billing Org 1")))
+                .andExpect(jsonPath("$.data.points[?(@.organizationName == 'Billing Org 1')].estimatedTotalCost", hasItem(25.0)));
     }
 
     @Test

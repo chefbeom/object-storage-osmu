@@ -248,6 +248,7 @@
       :is-admin="isAdmin"
       :chargeback-options="chargebackOptions"
       :chargeback-preview="chargebackPreview"
+      :chargeback-daily-rollup="chargebackDailyRollup"
       :chargeback-alerts="chargebackAlerts"
       :chargeback-alert-notification-preview="chargebackAlertNotificationPreview"
       :chargeback-alert-notification-outbox="chargebackAlertNotificationOutbox"
@@ -463,6 +464,7 @@ const props = defineProps({
   enterpriseAuthPlan: { type: Object, required: true },
   chargebackOptions: { type: Object, required: true },
   chargebackPreview: { type: Object, required: true },
+  chargebackDailyRollup: { type: Object, required: true },
   chargebackAlerts: { type: Object, required: true },
   chargebackAlertNotificationPreview: { type: Object, required: true },
   chargebackAlertNotificationOutbox: { type: Object, required: true },

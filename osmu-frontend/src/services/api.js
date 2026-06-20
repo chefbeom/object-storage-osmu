@@ -1262,6 +1262,24 @@ export function getChargebackPreview(options = {}) {
   return request(`/admin/billing/chargeback-preview${suffix}`)
 }
 
+export function getChargebackDailyRollup(options = {}) {
+  const query = new URLSearchParams()
+  appendQuery(query, 'from', options.from)
+  appendQuery(query, 'to', options.to)
+  appendQuery(query, 'currency', options.currency)
+  appendQuery(query, 'storageGbMonthRate', options.storageGbMonthRate)
+  appendQuery(query, 'ingressGbRate', options.ingressGbRate)
+  appendQuery(query, 'egressGbRate', options.egressGbRate)
+  appendQuery(query, 'internalGbRate', options.internalGbRate)
+  appendQuery(query, 'operationThousandRate', options.operationThousandRate)
+  appendQuery(query, 'eventScanLimit', options.eventScanLimit)
+  appendQuery(query, 'days', options.days)
+  appendQuery(query, 'limit', options.limit)
+  appendQuery(query, 'materialized', options.materialized)
+  const suffix = query.toString() ? `?${query.toString()}` : ''
+  return request(`/admin/billing/chargeback-daily-rollup${suffix}`)
+}
+
 export function downloadChargebackPreviewCsv(options = {}) {
   const query = new URLSearchParams()
   appendQuery(query, 'from', options.from)

@@ -9,6 +9,7 @@ import com.example.osmu.bucket.BucketRecord;
 import com.example.osmu.bucket.repository.BucketRepository;
 import com.example.osmu.common.error.ApiErrorCode;
 import com.example.osmu.common.error.ApiException;
+import com.example.osmu.monitoring.DataFlowDailyRollupPointResponse;
 import com.example.osmu.monitoring.DataFlowEventFilter;
 import com.example.osmu.monitoring.DataFlowEventRecord;
 import com.example.osmu.monitoring.repository.DataFlowEventRepository;
@@ -16,8 +17,11 @@ import com.example.osmu.organization.OrganizationRecord;
 import com.example.osmu.organization.repository.OrganizationRepository;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.time.LocalDate;
 import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -31,6 +35,10 @@ public class ChargebackPreviewService {
     private static final BigDecimal OPERATIONS_PER_THOUSAND = BigDecimal.valueOf(1000L);
     private static final int DEFAULT_ADAPTER_RETRY_DELAY_MINUTES = 60;
     private static final int MAX_ADAPTER_RETRY_DELAY_MINUTES = 1440;
+    private static final int DEFAULT_DAILY_ROLLUP_DAYS = 30;
+    private static final int MAX_DAILY_ROLLUP_DAYS = 366;
+    private static final int DEFAULT_DAILY_ROLLUP_LIMIT = 200;
+    private static final int MAX_DAILY_ROLLUP_LIMIT = 1000;
 
     private final OrganizationRepository organizationRepository;
     private final BucketRepository bucketRepository;
@@ -140,6 +148,79 @@ public class ChargebackPreviewService {
                 money(totals.estimatedTotalCost),
                 previews,
                 OffsetDateTime.now()
+        );
+    }
+
+    public ChargebackDailyRollupResponse dailyRollup(
+            AuthenticatedUser actor,
+            ChargebackPreviewRequest request,
+            Integer days,
+            Integer limit,
+            boolean materialized
+    ) {
+        ChargebackPreviewRequest safeRequest = request == null
+                ? new ChargebackPreviewRequest(null, null, null, null, null, null, null, null, 0)
+                : request;
+        validateWindow(safeRequest.from(), safeRequest.to());
+        OffsetDateTime generatedAt = OffsetDateTime.now();
+        int normalizedDays = normalizeDailyRollupDays(days);
+        int normalizedLimit = normalizeDailyRollupLimit(limit);
+        BillingPricingPolicy pricingPolicy = pricingPolicyService.current();
+        ChargebackRateResponse rates = normalizeRates(safeRequest, pricingPolicy);
+        String currency = BillingPricingPolicyService.normalizeCurrency(safeRequest.currency(), pricingPolicy.currency());
+
+        List<OrganizationRecord> organizations = visibleOrganizations(actor);
+        Map<Long, OrganizationUsageSnapshot> organizationUsage = organizationUsageSnapshots(organizations);
+        Map<String, Long> bucketOrganizationIds = visibleBucketOrganizationIds(organizationUsage);
+        DataFlowEventFilter rollupFilter = chargebackRollupFilter(safeRequest, normalizedDays, generatedAt);
+        List<DataFlowDailyRollupPointResponse> inputPoints = materialized
+                ? dataFlowEventRepository.materializedDailyRollup(rollupFilter, normalizedLimit)
+                : dataFlowEventRepository.dailyRollup(rollupFilter, normalizedLimit);
+
+        Map<String, ChargebackDailyAccumulator> accumulators = new LinkedHashMap<>();
+        int visibleInputPointCount = 0;
+        for (DataFlowDailyRollupPointResponse point : inputPoints) {
+            Long organizationId = bucketOrganizationIds.get(point.bucketName());
+            if (organizationId == null) {
+                continue;
+            }
+            OrganizationUsageSnapshot usage = organizationUsage.get(organizationId);
+            if (usage == null) {
+                continue;
+            }
+            visibleInputPointCount += 1;
+            String key = point.day() + "|" + organizationId;
+            accumulators.computeIfAbsent(
+                    key,
+                    ignored -> new ChargebackDailyAccumulator(point.day(), usage)
+            ).record(point);
+        }
+
+        List<ChargebackDailyRollupPointResponse> points = accumulators.values().stream()
+                .map(accumulator -> accumulator.snapshot(rates))
+                .sorted(Comparator
+                        .comparing(ChargebackDailyRollupPointResponse::day, Comparator.reverseOrder())
+                        .thenComparing(ChargebackDailyRollupPointResponse::estimatedTotalCost, Comparator.reverseOrder())
+                        .thenComparing(ChargebackDailyRollupPointResponse::organizationName))
+                .toList();
+        BigDecimal totalEstimatedCost = points.stream()
+                .map(ChargebackDailyRollupPointResponse::estimatedTotalCost)
+                .reduce(money(BigDecimal.ZERO), BigDecimal::add);
+
+        return new ChargebackDailyRollupResponse(
+                "CHARGEBACK_DAILY_ROLLUP",
+                materialized ? "MATERIALIZED_DATA_FLOW_DAILY_ROLLUP" : "DATA_FLOW_DAILY_ROLLUP",
+                "UTC_DAY",
+                currency,
+                normalizedDays,
+                normalizedLimit,
+                visibleInputPointCount,
+                points.size(),
+                money(totalEstimatedCost),
+                points,
+                generatedAt,
+                "ADMIN/ORG_ADMIN scoped chargeback trend from data-flow daily rollups; no raw object keys or provider responses are returned.",
+                "Daily points apply the current organization bucket storage snapshot to each active rollup day and combine it with per-day ingress, egress, internal copy, and operation counts. This is OSMU chargeback planning, not AWS billing parity."
         );
     }
 
@@ -918,6 +999,62 @@ public class ChargebackPreviewService {
         if (from != null && to != null && from.isAfter(to)) {
             throw new ApiException(ApiErrorCode.VALIDATION_ERROR, "from must be earlier than or equal to to.");
         }
+    }
+
+    private Map<Long, OrganizationUsageSnapshot> organizationUsageSnapshots(List<OrganizationRecord> organizations) {
+        Map<Long, OrganizationUsageSnapshot> usage = new LinkedHashMap<>();
+        for (OrganizationRecord organization : organizations) {
+            usage.put(organization.id(), new OrganizationUsageSnapshot(organization));
+        }
+        for (BucketRecord bucket : bucketRepository.findAll()) {
+            if (!"ORG".equals(bucket.ownerType())) {
+                continue;
+            }
+            OrganizationUsageSnapshot snapshot = usage.get(bucket.ownerId());
+            if (snapshot != null) {
+                snapshot.recordBucket(bucket);
+            }
+        }
+        return usage;
+    }
+
+    private Map<String, Long> visibleBucketOrganizationIds(Map<Long, OrganizationUsageSnapshot> organizationUsage) {
+        Map<String, Long> bucketOrganizationIds = new LinkedHashMap<>();
+        for (BucketRecord bucket : bucketRepository.findAll()) {
+            if ("ORG".equals(bucket.ownerType()) && organizationUsage.containsKey(bucket.ownerId())) {
+                bucketOrganizationIds.put(bucket.name(), bucket.ownerId());
+            }
+        }
+        return bucketOrganizationIds;
+    }
+
+    private DataFlowEventFilter chargebackRollupFilter(
+            ChargebackPreviewRequest request,
+            int normalizedDays,
+            OffsetDateTime generatedAt
+    ) {
+        OffsetDateTime from = request.from();
+        if (from == null) {
+            from = generatedAt.minusDays(normalizedDays - 1L)
+                    .toLocalDate()
+                    .atStartOfDay()
+                    .atOffset(ZoneOffset.UTC);
+        }
+        return new DataFlowEventFilter(null, null, null, null, null, from, request.to());
+    }
+
+    private int normalizeDailyRollupDays(Integer days) {
+        if (days == null || days <= 0) {
+            return DEFAULT_DAILY_ROLLUP_DAYS;
+        }
+        return Math.min(MAX_DAILY_ROLLUP_DAYS, days);
+    }
+
+    private int normalizeDailyRollupLimit(Integer limit) {
+        if (limit == null || limit <= 0) {
+            return DEFAULT_DAILY_ROLLUP_LIMIT;
+        }
+        return Math.min(MAX_DAILY_ROLLUP_LIMIT, limit);
     }
 
     private ChargebackRateResponse normalizeRates(ChargebackPreviewRequest request, BillingPricingPolicy pricingPolicy) {
@@ -1739,6 +1876,81 @@ public class ChargebackPreviewService {
                     bucketCount,
                     objectCount,
                     usedBytes,
+                    ingressBytes,
+                    egressBytes,
+                    internalBytes,
+                    billableOperationCount,
+                    failedOperationCount,
+                    cancelledOperationCount,
+                    projectedStorageCost,
+                    ingressCost,
+                    egressCost,
+                    internalCost,
+                    operationCost,
+                    total
+            );
+        }
+    }
+
+    private static final class OrganizationUsageSnapshot {
+        private final OrganizationRecord organization;
+        private long bucketCount;
+        private long objectCount;
+        private long usedBytes;
+
+        private OrganizationUsageSnapshot(OrganizationRecord organization) {
+            this.organization = organization;
+        }
+
+        private void recordBucket(BucketRecord bucket) {
+            bucketCount += 1;
+            objectCount += bucket.objectCount();
+            usedBytes += Math.max(0L, bucket.usedBytes());
+        }
+    }
+
+    private static final class ChargebackDailyAccumulator {
+        private final LocalDate day;
+        private final OrganizationUsageSnapshot usage;
+        private long ingressBytes;
+        private long egressBytes;
+        private long internalBytes;
+        private long billableOperationCount;
+        private long failedOperationCount;
+        private long cancelledOperationCount;
+
+        private ChargebackDailyAccumulator(LocalDate day, OrganizationUsageSnapshot usage) {
+            this.day = day;
+            this.usage = usage;
+        }
+
+        private void record(DataFlowDailyRollupPointResponse point) {
+            billableOperationCount += Math.max(0L, point.successCount());
+            failedOperationCount += Math.max(0L, point.failureCount());
+            cancelledOperationCount += Math.max(0L, point.cancelCount());
+            ingressBytes += Math.max(0L, point.uploadedBytes());
+            egressBytes += Math.max(0L, point.downloadedBytes());
+            internalBytes += Math.max(0L, point.copiedBytes());
+        }
+
+        private ChargebackDailyRollupPointResponse snapshot(ChargebackRateResponse rates) {
+            BigDecimal projectedStorageCost = costForBytes(rates.storageGbMonthRate(), usage.usedBytes);
+            BigDecimal ingressCost = costForBytes(rates.ingressGbRate(), ingressBytes);
+            BigDecimal egressCost = costForBytes(rates.egressGbRate(), egressBytes);
+            BigDecimal internalCost = costForBytes(rates.internalGbRate(), internalBytes);
+            BigDecimal operationCost = costForOperations(rates.operationThousandRate(), billableOperationCount);
+            BigDecimal total = money(projectedStorageCost
+                    .add(ingressCost)
+                    .add(egressCost)
+                    .add(internalCost)
+                    .add(operationCost));
+            return new ChargebackDailyRollupPointResponse(
+                    day,
+                    usage.organization.id(),
+                    usage.organization.name(),
+                    usage.bucketCount,
+                    usage.objectCount,
+                    usage.usedBytes,
                     ingressBytes,
                     egressBytes,
                     internalBytes,

@@ -24,7 +24,7 @@ Authorization: Bearer <accessToken>
 
 관리자 API인 `/api/admin/**`는 기본적으로 `ADMIN` role이 필요하다.
 예외적으로 `ORG_ADMIN`은 조직 스코프가 적용된 사용자/조직 조회 API만 접근할 수 있다.
-현재 허용 route는 `GET/POST /api/admin/users`, `PATCH /api/admin/users/{userId}/status`, `GET /api/admin/organizations`, `GET /api/admin/organizations/usage`, `GET /api/admin/billing/pricing-policy`, `GET /api/admin/billing/chargeback-preview`, `GET /api/admin/billing/chargeback-alerts`, `GET /api/admin/billing/chargeback-alert-notifications/preview`, `GET/POST /api/admin/billing/chargeback-alert-notifications/outbox`, `GET /api/admin/billing/chargeback-preview/export.csv`, `GET /api/admin/billing/chargeback-invoice-draft/export.csv`, `GET/POST /api/admin/teams`, `PUT /api/admin/teams/{teamId}/members`, `DELETE /api/admin/teams/{teamId}`이다.
+현재 허용 route는 `GET/POST /api/admin/users`, `PATCH /api/admin/users/{userId}/status`, `GET /api/admin/organizations`, `GET /api/admin/organizations/usage`, `GET /api/admin/billing/pricing-policy`, `GET /api/admin/billing/chargeback-preview`, `GET /api/admin/billing/chargeback-daily-rollup`, `GET /api/admin/billing/chargeback-alerts`, `GET /api/admin/billing/chargeback-alert-notifications/preview`, `GET/POST /api/admin/billing/chargeback-alert-notifications/outbox`, `GET /api/admin/billing/chargeback-preview/export.csv`, `GET /api/admin/billing/chargeback-invoice-draft/export.csv`, `GET/POST /api/admin/teams`, `PUT /api/admin/teams/{teamId}/members`, `DELETE /api/admin/teams/{teamId}`이다.
 `AUDITOR`는 read-only 감사/상태 조회 role이다. 허용 route는 `GET /api/admin/audit-logs`, `GET /api/admin/audit-logs/export.csv`, `GET /api/admin/usage`, `GET /api/admin/system/status`, `GET /api/admin/security/enterprise-auth-plan`, `GET /api/admin/dashboard/summary`, `GET /api/admin/dashboard/readiness`, `GET /api/admin/backup/status`, `GET /api/admin/backup/restore-drill-evidence`로 제한한다.
 
 일반 사용자는 본인이 소유한 bucket, object, access key만 접근할 수 있다. `ADMIN`은 전체 리소스에 접근할 수 있다.
@@ -2714,6 +2714,61 @@ Notes:
 - Failed and cancelled events are reported for operations review but not charged.
 - User-owned buckets and deleted/unknown buckets are excluded from organization chargeback preview.
 - This is not AWS billing parity. It is an OSMU tenant cost model for B2B operations and chargeback planning.
+
+### GET /api/admin/billing/chargeback-daily-rollup
+
+Returns a scoped daily chargeback trend built from data-flow daily rollup points. `ADMIN` sees every organization and `ORG_ADMIN` sees only the caller's organization. Query pricing fields use the same saved-policy fallback rules as `GET /api/admin/billing/chargeback-preview`; `days`, `limit`, and `materialized` control the source rollup window. This endpoint returns aggregate day/organization rows only, not object keys, raw data-flow messages, provider payloads, or AWS billing parity fields.
+
+Query parameters:
+
+- `from`, `to`: optional ISO-8601 offset datetime window. When `from` is omitted, the service uses the requested `days` window ending at request time.
+- `currency`, `storageGbMonthRate`, `ingressGbRate`, `egressGbRate`, `internalGbRate`, `operationThousandRate`: same semantics as chargeback preview.
+- `eventScanLimit`: accepted for query parity with chargeback preview; daily rollup source rows are bounded by `limit`.
+- `days`: daily rollup lookback window. Defaults to `30`; maximum is `366`.
+- `limit`: maximum input rollup points read before organization/day aggregation. Defaults to `200`; maximum is `1000`.
+- `materialized`: when `true`, reads `data_flow_daily_rollups`; otherwise aggregates live `data_flow_events`.
+
+Response:
+
+```json
+{
+  "success": true,
+  "data": {
+    "mode": "CHARGEBACK_DAILY_ROLLUP",
+    "rollupSource": "DATA_FLOW_DAILY_ROLLUP",
+    "granularity": "UTC_DAY",
+    "currency": "KRW",
+    "days": 30,
+    "limit": 200,
+    "inputPointCount": 8,
+    "pointCount": 2,
+    "totalEstimatedCost": 92.0,
+    "points": [
+      {
+        "day": "2026-06-21",
+        "organizationId": 1,
+        "organizationName": "AI Lab",
+        "bucketCount": 3,
+        "objectCount": 240,
+        "usedBytes": 17179869184,
+        "ingressBytes": 1073741824,
+        "egressBytes": 2147483648,
+        "internalBytes": 536870912,
+        "billableOperationCount": 120,
+        "failedOperationCount": 3,
+        "cancelledOperationCount": 1,
+        "projectedStorageCost": 64.0,
+        "ingressCost": 12.0,
+        "egressCost": 8.0,
+        "internalCost": 4.0,
+        "operationCost": 4.0,
+        "estimatedTotalCost": 92.0
+      }
+    ],
+    "generatedAt": "2026-06-21T00:00:00Z"
+  }
+}
+```
 
 ### GET /api/admin/billing/chargeback-alerts
 

@@ -180,6 +180,42 @@ public class AdminBillingController {
         )));
     }
 
+    @GetMapping("/chargeback-daily-rollup")
+    public ApiResponse<ChargebackDailyRollupResponse> chargebackDailyRollup(
+            @RequestParam(name = "from", required = false) String from,
+            @RequestParam(name = "to", required = false) String to,
+            @RequestParam(name = "currency", required = false) String currency,
+            @RequestParam(name = "storageGbMonthRate", required = false) BigDecimal storageGbMonthRate,
+            @RequestParam(name = "ingressGbRate", required = false) BigDecimal ingressGbRate,
+            @RequestParam(name = "egressGbRate", required = false) BigDecimal egressGbRate,
+            @RequestParam(name = "internalGbRate", required = false) BigDecimal internalGbRate,
+            @RequestParam(name = "operationThousandRate", required = false) BigDecimal operationThousandRate,
+            @RequestParam(name = "eventScanLimit", required = false) Integer eventScanLimit,
+            @RequestParam(name = "days", required = false) Integer days,
+            @RequestParam(name = "limit", required = false) Integer limit,
+            @RequestParam(name = "materialized", required = false) Boolean materialized,
+            HttpServletRequest request
+    ) {
+        AuthenticatedUser actor = authContext.currentUser(request);
+        return ApiResponse.of(chargebackPreviewService.dailyRollup(
+                actor,
+                chargebackRequest(
+                        from,
+                        to,
+                        currency,
+                        storageGbMonthRate,
+                        ingressGbRate,
+                        egressGbRate,
+                        internalGbRate,
+                        operationThousandRate,
+                        eventScanLimit
+                ),
+                days,
+                limit,
+                materialized != null && materialized
+        ));
+    }
+
     @GetMapping("/chargeback-alerts")
     public ApiResponse<ChargebackAlertResponse> chargebackAlerts(
             @RequestParam(name = "from", required = false) String from,

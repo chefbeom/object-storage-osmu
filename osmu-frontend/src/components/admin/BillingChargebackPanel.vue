@@ -225,6 +225,33 @@
       </li>
     </ul>
 
+    <div class="compact-metrics chargeback-daily-rollup-metrics" data-testid="chargeback-daily-rollup-metrics">
+      <div>
+        <span>Daily trend</span>
+        <b data-testid="chargeback-daily-rollup-count">{{ formatCount(dailyRollup.pointCount) }}</b>
+      </div>
+      <div>
+        <span>Trend total</span>
+        <b data-testid="chargeback-daily-rollup-total">{{ formatMoney(dailyRollup.totalEstimatedCost, dailyRollup.currency) }}</b>
+      </div>
+      <div>
+        <span>Source</span>
+        <b data-testid="chargeback-daily-rollup-source">{{ dailyRollup.rollupSource || '-' }}</b>
+      </div>
+    </div>
+
+    <ul class="compact-list chargeback-daily-rollup-list" data-testid="chargeback-daily-rollup-list">
+      <li v-for="point in dailyRollupRows" :key="`${point.day}-${point.organizationId}`" data-testid="chargeback-daily-rollup-row">
+        <span class="list-main">
+          <b>{{ point.day }} / {{ point.organizationName }}</b>
+          <small>{{ formatBytes(point.ingressBytes) }} in / {{ formatBytes(point.egressBytes) }} out / {{ formatBytes(point.internalBytes) }} internal</small>
+          <small>storage {{ formatMoney(point.projectedStorageCost, dailyRollup.currency) }} / ops {{ formatCount(point.billableOperationCount) }}</small>
+        </span>
+        <strong>{{ formatMoney(point.estimatedTotalCost, dailyRollup.currency) }}</strong>
+      </li>
+      <li v-if="dailyRollupRows.length === 0" class="empty">No chargeback daily rollup points.</li>
+    </ul>
+
     <div v-if="isAdmin" class="compact-metrics billing-pricing-policy-proposal-metrics" data-testid="billing-pricing-policy-proposal-metrics">
       <div>
         <span>Policy proposals</span>
@@ -651,6 +678,7 @@ const props = defineProps({
   isAdmin: { type: Boolean, required: true },
   chargebackOptions: { type: Object, required: true },
   chargebackPreview: { type: Object, required: true },
+  chargebackDailyRollup: { type: Object, required: true },
   chargebackAlerts: { type: Object, required: true },
   chargebackAlertNotificationPreview: { type: Object, required: true },
   chargebackAlertNotificationOutbox: { type: Object, required: true },
@@ -691,6 +719,7 @@ const emit = defineEmits([
 ])
 
 const preview = computed(() => props.chargebackPreview || {})
+const dailyRollup = computed(() => props.chargebackDailyRollup || {})
 const alerts = computed(() => props.chargebackAlerts || {})
 const notificationPreview = computed(() => props.chargebackAlertNotificationPreview || {})
 const notificationOutbox = computed(() => props.chargebackAlertNotificationOutbox || {})
@@ -703,6 +732,9 @@ const pricingPolicyProposals = computed(() => props.billingPricingPolicyProposal
 const rates = computed(() => preview.value.rates || {})
 const organizations = computed(() => (
   Array.isArray(preview.value.organizations) ? preview.value.organizations : []
+))
+const dailyRollupRows = computed(() => (
+  Array.isArray(dailyRollup.value.points) ? dailyRollup.value.points.slice(0, 6) : []
 ))
 const alertOrganizations = computed(() => (
   Array.isArray(alerts.value.organizations) ? alerts.value.organizations : []

@@ -360,6 +360,7 @@
         :enterprise-auth-plan="enterpriseAuthPlan"
         :chargeback-options="chargebackOptions"
         :chargeback-preview="chargebackPreview"
+        :chargeback-daily-rollup="chargebackDailyRollup"
         :chargeback-alerts="chargebackAlerts"
         :chargeback-alert-notification-preview="chargebackAlertNotificationPreview"
         :chargeback-alert-notification-outbox="chargebackAlertNotificationOutbox"
@@ -595,6 +596,7 @@ import {
   getChargebackAlertNotificationPreview,
   getChargebackAlertNotificationOutbox,
   getChargebackAlerts,
+  getChargebackDailyRollup,
   getChargebackFinalInvoices,
   getChargebackInvoiceDrafts,
   getChargebackPaymentProviderAdapterReadiness,
@@ -1292,6 +1294,7 @@ const users = ref([])
 const organizations = ref([])
 const organizationUsages = ref([])
 const chargebackPreview = ref(defaultChargebackPreview())
+const chargebackDailyRollup = ref(defaultChargebackDailyRollup())
 const chargebackAlerts = ref(defaultChargebackAlerts())
 const chargebackAlertNotificationPreview = ref(defaultChargebackAlertNotificationPreview())
 const chargebackAlertNotificationOutbox = ref(defaultChargebackAlertNotificationOutbox())
@@ -2558,6 +2561,21 @@ async function loadChargebackPreview() {
   }
 }
 
+async function loadChargebackDailyRollup() {
+  if (!canUseAdminTools.value) {
+    resetChargebackDailyRollup()
+    return
+  }
+  const result = await safeRequest(() => getChargebackDailyRollup({
+    ...chargebackPreviewPayload(),
+    days: 30,
+    limit: 200,
+  }), null)
+  if (result?.data) {
+    applyChargebackDailyRollup(result.data)
+  }
+}
+
 async function loadChargebackAlerts() {
   if (!canUseAdminTools.value) {
     resetChargebackAlerts()
@@ -2649,6 +2667,7 @@ async function loadChargebackAdapterRetryWorker() {
 async function loadChargebackPanel() {
   await Promise.all([
     loadChargebackPreview(),
+    loadChargebackDailyRollup(),
     loadChargebackAlerts(),
     loadChargebackAlertNotificationPreview(),
     loadChargebackAlertNotificationOutbox(),
@@ -3132,6 +3151,7 @@ function resetAdminOnlyState() {
   resetBillingPricingPolicyProposals()
   resetChargebackOptions()
   resetChargebackPreview()
+  resetChargebackDailyRollup()
   resetChargebackAlerts()
   resetChargebackAlertNotificationPreview()
   resetChargebackAlertNotificationOutbox()
@@ -4357,6 +4377,71 @@ function applyChargebackPreview(data = {}) {
 
 function resetChargebackPreview() {
   applyChargebackPreview({})
+}
+
+function defaultChargebackDailyRollup() {
+  return {
+    mode: 'CHARGEBACK_DAILY_ROLLUP',
+    rollupSource: '',
+    granularity: 'UTC_DAY',
+    currency: defaultChargebackOptions.currency,
+    days: 30,
+    limit: 200,
+    inputPointCount: 0,
+    pointCount: 0,
+    totalEstimatedCost: 0,
+    points: [],
+    generatedAt: '',
+    note: '',
+    storageCostPolicy: '',
+  }
+}
+
+function normalizeChargebackDailyRollupPoint(point = {}) {
+  return {
+    day: point.day || '',
+    organizationId: point.organizationId,
+    organizationName: point.organizationName || '',
+    bucketCount: Number(point.bucketCount || 0),
+    objectCount: Number(point.objectCount || 0),
+    usedBytes: Number(point.usedBytes || 0),
+    ingressBytes: Number(point.ingressBytes || 0),
+    egressBytes: Number(point.egressBytes || 0),
+    internalBytes: Number(point.internalBytes || 0),
+    billableOperationCount: Number(point.billableOperationCount || 0),
+    failedOperationCount: Number(point.failedOperationCount || 0),
+    cancelledOperationCount: Number(point.cancelledOperationCount || 0),
+    projectedStorageCost: Number(point.projectedStorageCost || 0),
+    ingressCost: Number(point.ingressCost || 0),
+    egressCost: Number(point.egressCost || 0),
+    internalCost: Number(point.internalCost || 0),
+    operationCost: Number(point.operationCost || 0),
+    estimatedTotalCost: Number(point.estimatedTotalCost || 0),
+  }
+}
+
+function applyChargebackDailyRollup(data = {}) {
+  const fallback = defaultChargebackDailyRollup()
+  const points = Array.isArray(data.points)
+    ? data.points.map((point) => normalizeChargebackDailyRollupPoint(point))
+    : []
+  chargebackDailyRollup.value = {
+    ...fallback,
+    ...data,
+    days: Number(data.days || fallback.days),
+    limit: Number(data.limit || fallback.limit),
+    inputPointCount: Number(data.inputPointCount || 0),
+    pointCount: Number(data.pointCount ?? points.length),
+    totalEstimatedCost: Number(data.totalEstimatedCost || 0),
+    points,
+    generatedAt: data.generatedAt || '',
+    note: data.note || '',
+    storageCostPolicy: data.storageCostPolicy || '',
+  }
+}
+
+function resetChargebackDailyRollup() {
+  applyChargebackDailyRollup({})
 }
 
 function defaultChargebackAlerts() {

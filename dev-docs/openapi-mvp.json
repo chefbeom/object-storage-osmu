@@ -699,6 +699,84 @@
         }
       }
     },
+    "/api/admin/billing/chargeback-daily-rollup": {
+      "get": {
+        "tags": ["Billing", "Admin"],
+        "operationId": "getChargebackDailyRollup",
+        "summary": "Read scoped daily chargeback trends from data-flow daily rollups",
+        "parameters": [
+          {
+            "name": "from",
+            "in": "query",
+            "schema": { "type": "string", "format": "date-time" },
+            "description": "Inclusive data-flow rollup window start."
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "schema": { "type": "string", "format": "date-time" },
+            "description": "Inclusive data-flow rollup window end."
+          },
+          {
+            "name": "currency",
+            "in": "query",
+            "schema": { "type": "string", "default": "USD" }
+          },
+          {
+            "name": "storageGbMonthRate",
+            "in": "query",
+            "schema": { "type": "number", "format": "double", "minimum": 0 }
+          },
+          {
+            "name": "ingressGbRate",
+            "in": "query",
+            "schema": { "type": "number", "format": "double", "minimum": 0 }
+          },
+          {
+            "name": "egressGbRate",
+            "in": "query",
+            "schema": { "type": "number", "format": "double", "minimum": 0 }
+          },
+          {
+            "name": "internalGbRate",
+            "in": "query",
+            "schema": { "type": "number", "format": "double", "minimum": 0 }
+          },
+          {
+            "name": "operationThousandRate",
+            "in": "query",
+            "schema": { "type": "number", "format": "double", "minimum": 0 }
+          },
+          {
+            "name": "eventScanLimit",
+            "in": "query",
+            "schema": { "type": "integer", "default": 10000, "maximum": 50000 },
+            "description": "Accepted for query parity with chargeback preview; daily rollup reads aggregate point limits through limit."
+          },
+          {
+            "name": "days",
+            "in": "query",
+            "schema": { "type": "integer", "default": 30, "maximum": 366 }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": { "type": "integer", "default": 200, "maximum": 1000 }
+          },
+          {
+            "name": "materialized",
+            "in": "query",
+            "schema": { "type": "boolean", "default": false },
+            "description": "Read data_flow_daily_rollups instead of aggregating live data_flow_events."
+          }
+        ],
+        "responses": {
+          "200": { "$ref": "#/components/responses/JsonOk" },
+          "400": { "$ref": "#/components/responses/Error" },
+          "403": { "$ref": "#/components/responses/Error" }
+        }
+      }
+    },
     "/api/admin/billing/chargeback-alerts": {
       "get": {
         "tags": ["Billing", "Admin"],

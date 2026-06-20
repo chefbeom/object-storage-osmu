@@ -131,6 +131,60 @@ class ChargebackPreviewServiceTest {
     }
 
     @Test
+    void buildsDailyChargebackRollupFromDataFlowDailyRollups() {
+        OffsetDateTime now = OffsetDateTime.now();
+        organizationRepository.save(new OrganizationRecord(1L, "Trend Org", "", 10_000L, now));
+        organizationRepository.save(new OrganizationRecord(2L, "Hidden Trend Org", "", 10_000L, now));
+        bucketRepository.save(new BucketRecord(1L, "trend-bucket", "ORG", 1L, 10_000L, 1024L, 2L, now));
+        bucketRepository.save(new BucketRecord(2L, "hidden-trend-bucket", "ORG", 2L, 10_000L, 2048L, 1L, now));
+        dataFlowEventRepository.save(event("UPLOAD", "upload", "INGRESS", "trend-bucket", "SUCCESS", 2048L, now.minusMinutes(5)));
+        dataFlowEventRepository.save(event("DOWNLOAD", "download", "EGRESS", "trend-bucket", "SUCCESS", 512L, now.minusMinutes(4)));
+        dataFlowEventRepository.save(event("COPY", "copy", "INTERNAL", "trend-bucket", "SUCCESS", 256L, now.minusMinutes(3)));
+        dataFlowEventRepository.save(event("LIST", "list", "METADATA", "trend-bucket", "SUCCESS", 0L, now.minusMinutes(2)));
+        dataFlowEventRepository.save(event("FAILURE", "download", "CONTROL", "trend-bucket", "FAILED", 0L, now.minusMinutes(1)));
+        dataFlowEventRepository.save(event("CANCEL", "upload", "CONTROL", "trend-bucket", "CANCELLED", 0L, now));
+        dataFlowEventRepository.save(event("UPLOAD", "upload", "INGRESS", "hidden-trend-bucket", "SUCCESS", 9999L, now));
+
+        ChargebackDailyRollupResponse rollup = service.dailyRollup(
+                new AuthenticatedUser(2L, "org-admin", "ORG_ADMIN", 1L),
+                new ChargebackPreviewRequest(
+                        now.minusHours(1),
+                        now.plusHours(1),
+                        "krw",
+                        ONE_GIB_RATE,
+                        ONE_GIB_RATE,
+                        ONE_GIB_RATE,
+                        ONE_GIB_RATE,
+                        BigDecimal.valueOf(1000L),
+                        0
+                ),
+                7,
+                50,
+                false
+        );
+
+        assertThat(rollup.mode()).isEqualTo("CHARGEBACK_DAILY_ROLLUP");
+        assertThat(rollup.rollupSource()).isEqualTo("DATA_FLOW_DAILY_ROLLUP");
+        assertThat(rollup.currency()).isEqualTo("KRW");
+        assertThat(rollup.pointCount()).isEqualTo(1);
+        assertThat(rollup.inputPointCount()).isEqualTo(4);
+        assertThat(rollup.totalEstimatedCost()).isEqualByComparingTo("3844.000000");
+
+        ChargebackDailyRollupPointResponse point = rollup.points().get(0);
+        assertThat(point.organizationName()).isEqualTo("Trend Org");
+        assertThat(point.bucketCount()).isEqualTo(1L);
+        assertThat(point.objectCount()).isEqualTo(2L);
+        assertThat(point.usedBytes()).isEqualTo(1024L);
+        assertThat(point.ingressBytes()).isEqualTo(2048L);
+        assertThat(point.egressBytes()).isEqualTo(512L);
+        assertThat(point.internalBytes()).isEqualTo(256L);
+        assertThat(point.billableOperationCount()).isEqualTo(4L);
+        assertThat(point.failedOperationCount()).isEqualTo(1L);
+        assertThat(point.cancelledOperationCount()).isEqualTo(1L);
+        assertThat(point.estimatedTotalCost()).isEqualByComparingTo("3844.000000");
+    }
+
+    @Test
     void usesPersistedPricingPolicyWhenPreviewRequestOmitsRates() {
         OffsetDateTime now = OffsetDateTime.now();
         organizationRepository.save(new OrganizationRecord(1L, "Policy Org", "", 10_000L, now));

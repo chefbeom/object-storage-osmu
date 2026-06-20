@@ -471,6 +471,10 @@ function handleAdminRoute(request, response, path, jsonBody, url) {
     sendJson(response, 200, apiData(chargebackPreview(url)))
     return
   }
+  if (request.method === 'GET' && path === '/admin/billing/chargeback-daily-rollup') {
+    sendJson(response, 200, apiData(chargebackDailyRollup(url)))
+    return
+  }
   if (request.method === 'GET' && path === '/admin/billing/chargeback-alerts') {
     sendJson(response, 200, apiData(chargebackAlerts(url)))
     return
@@ -1408,6 +1412,78 @@ function chargebackPreview(url) {
     estimatedTotalCost: money(organizations.reduce((sum, organization) => sum + organization.estimatedTotalCost, 0)),
     organizations,
     generatedAt: new Date().toISOString(),
+  }
+}
+
+function chargebackDailyRollup(url) {
+  refreshBucketUsage()
+  const rates = chargebackRates(url)
+  const materialized = String(url.searchParams.get('materialized') || 'false').toLowerCase() === 'true'
+  const rollup = materialized ? materializedDataFlowDailyRollup(dataFlowFilters(url)) : dataFlowDailyRollup(dataFlowFilters(url))
+  const usage = organizationUsageRows()[0]
+  const dailyBuckets = new Map()
+  for (const point of rollup.points || []) {
+    const key = `${point.day}|${usage.id}`
+    if (!dailyBuckets.has(key)) {
+      dailyBuckets.set(key, {
+        day: point.day,
+        organizationId: usage.id,
+        organizationName: usage.name,
+        bucketCount: usage.bucketCount,
+        objectCount: usage.objectCount,
+        usedBytes: usage.usedBytes,
+        ingressBytes: 0,
+        egressBytes: 0,
+        internalBytes: 0,
+        billableOperationCount: 0,
+        failedOperationCount: 0,
+        cancelledOperationCount: 0,
+      })
+    }
+    const bucket = dailyBuckets.get(key)
+    bucket.ingressBytes += Number(point.uploadedBytes || 0)
+    bucket.egressBytes += Number(point.downloadedBytes || 0)
+    bucket.internalBytes += Number(point.copiedBytes || 0)
+    bucket.billableOperationCount += Number(point.successCount || 0)
+    bucket.failedOperationCount += Number(point.failureCount || 0)
+    bucket.cancelledOperationCount += Number(point.cancelCount || 0)
+  }
+  const points = [...dailyBuckets.values()]
+    .map((point) => {
+      const projectedStorageCost = costForBytes(rates.storageGbMonthRate, point.usedBytes)
+      const ingressCost = costForBytes(rates.ingressGbRate, point.ingressBytes)
+      const egressCost = costForBytes(rates.egressGbRate, point.egressBytes)
+      const internalCost = costForBytes(rates.internalGbRate, point.internalBytes)
+      const operationCost = costForOperations(rates.operationThousandRate, point.billableOperationCount)
+      return {
+        ...point,
+        projectedStorageCost,
+        ingressCost,
+        egressCost,
+        internalCost,
+        operationCost,
+        estimatedTotalCost: money(projectedStorageCost + ingressCost + egressCost + internalCost + operationCost),
+      }
+    })
+    .sort((left, right) => (
+      right.day.localeCompare(left.day)
+      || right.estimatedTotalCost - left.estimatedTotalCost
+      || left.organizationName.localeCompare(right.organizationName)
+    ))
+  return {
+    mode: 'CHARGEBACK_DAILY_ROLLUP',
+    rollupSource: materialized ? 'MATERIALIZED_DATA_FLOW_DAILY_ROLLUP' : 'DATA_FLOW_DAILY_ROLLUP',
+    granularity: 'UTC_DAY',
+    currency: String(url.searchParams.get('currency') || state.billingPricingPolicy.currency || 'USD').trim().toUpperCase().slice(0, 12) || 'USD',
+    days: rollup.dayWindow,
+    limit: rollup.pointLimit,
+    inputPointCount: (rollup.points || []).length,
+    pointCount: points.length,
+    totalEstimatedCost: money(points.reduce((sum, point) => sum + point.estimatedTotalCost, 0)),
+    points,
+    generatedAt: new Date().toISOString(),
+    note: 'ADMIN/ORG_ADMIN scoped chargeback trend from data-flow daily rollups; no raw object keys or provider responses are returned.',
+    storageCostPolicy: 'Daily points apply the current organization bucket storage snapshot to each active rollup day. This is OSMU chargeback planning, not AWS billing parity.',
   }
 }
 
@@ -3140,6 +3216,12 @@ async function runSelfTest() {
     })).json()
     if (!chargeback.data || chargeback.data.currency !== 'KRW' || chargeback.data.eventScanLimit !== 2500 || chargeback.data.organizationCount < 1 || !chargeback.data.organizations?.length) {
       throw new Error('chargeback preview self-test failed')
+    }
+    const chargebackDailyRollup = await (await fetch(`${base}/admin/billing/chargeback-daily-rollup?storageGbMonthRate=0.02&egressGbRate=0.01&operationThousandRate=0.004&days=30&limit=200`, {
+      headers: { Authorization: `Bearer ${login.data.accessToken}` },
+    })).json()
+    if (!chargebackDailyRollup.data || chargebackDailyRollup.data.mode !== 'CHARGEBACK_DAILY_ROLLUP' || chargebackDailyRollup.data.rollupSource !== 'DATA_FLOW_DAILY_ROLLUP' || chargebackDailyRollup.data.pointCount < 1 || !chargebackDailyRollup.data.points?.length) {
+      throw new Error('chargeback daily rollup self-test failed')
     }
     const chargebackAlerts = await (await fetch(`${base}/admin/billing/chargeback-alerts?operationThousandRate=0.004`, {
       headers: { Authorization: `Bearer ${login.data.accessToken}` },
