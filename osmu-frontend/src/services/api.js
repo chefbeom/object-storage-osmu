@@ -1191,6 +1191,18 @@ export function getMaterializedDataFlowDailyRollup(filters = {}) {
   return request(`/admin/monitoring/data-flow/daily-rollup/materialized${suffix}`)
 }
 
+export function getDataFlowRetentionStatus() {
+  return request('/admin/monitoring/data-flow/retention/status')
+}
+
+export function runDataFlowRetention(options = {}) {
+  const query = new URLSearchParams()
+  appendQuery(query, 'includeEvents', options.includeEvents)
+  appendQuery(query, 'includeDailyRollups', options.includeDailyRollups)
+  const suffix = query.toString() ? `?${query.toString()}` : ''
+  return request(`/admin/monitoring/data-flow/retention/run${suffix}`, { method: 'POST' })
+}
+
 export function downloadDataFlowMonitoringCsv(filters = {}) {
   const query = new URLSearchParams()
   appendQuery(query, 'bucketName', filters.bucketName)

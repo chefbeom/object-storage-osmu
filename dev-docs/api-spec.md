@@ -3440,6 +3440,88 @@ Persistence:
 - Micrometer counters are still emitted for Prometheus via `osmu.data.flow.operations` and `osmu.data.flow.bytes` with source/status/direction/bucket labels for starter alerting.
 - Scheduled retention deletes old data-flow event rows with `DATA_FLOW_EVENT_RETENTION` audit and `osmu.data.flow.retention.*` metrics. Defaults: enabled, 90 days, batch size 1000, fixed delay 6 hours.
 
+### GET /api/admin/monitoring/data-flow/retention/status
+
+Returns ADMIN-only data-flow retention status for detailed event rows and materialized daily rollup rows.
+
+Response:
+
+```json
+{
+  "data": {
+    "mode": "DATA_FLOW_RETENTION",
+    "eventRetention": {
+      "enabled": true,
+      "jobAvailable": true,
+      "retentionDays": 90,
+      "batchSize": 1000,
+      "deletedCount": 12,
+      "failedRunCount": 0
+    },
+    "dailyRollupRetention": {
+      "enabled": true,
+      "jobAvailable": true,
+      "retentionDays": 1095,
+      "batchSize": 1000,
+      "deletedCount": 3,
+      "failedRunCount": 0
+    },
+    "generatedAt": "2026-06-18T10:25:00Z",
+    "note": "OSMU data-flow retention status for detailed events and materialized daily rollups. This is operational analytics retention, not AWS billing parity."
+  }
+}
+```
+
+### POST /api/admin/monitoring/data-flow/retention/run
+
+Runs selected ADMIN-only data-flow retention targets immediately.
+
+Query parameters:
+
+- `includeEvents`: optional boolean, default `true`. Runs detailed `data_flow_events` retention.
+- `includeDailyRollups`: optional boolean, default `true`. Runs materialized `data_flow_daily_rollups` retention.
+
+Response:
+
+```json
+{
+  "data": {
+    "mode": "DATA_FLOW_RETENTION",
+    "deletedEventCount": 2,
+    "deletedDailyRollupCount": 1,
+    "status": {
+      "mode": "DATA_FLOW_RETENTION",
+      "eventRetention": {
+        "enabled": true,
+        "jobAvailable": true,
+        "retentionDays": 90,
+        "batchSize": 1000,
+        "deletedCount": 14,
+        "failedRunCount": 0
+      },
+      "dailyRollupRetention": {
+        "enabled": true,
+        "jobAvailable": true,
+        "retentionDays": 1095,
+        "batchSize": 1000,
+        "deletedCount": 4,
+        "failedRunCount": 0
+      },
+      "generatedAt": "2026-06-18T10:30:00Z",
+      "note": "OSMU data-flow retention status for detailed events and materialized daily rollups. This is operational analytics retention, not AWS billing parity."
+    },
+    "generatedAt": "2026-06-18T10:30:00Z",
+    "note": "Manual ADMIN data-flow retention run. Detailed event retention is shorter; materialized rollup retention is longer for aggregate analytics."
+  }
+}
+```
+
+Notes:
+
+- Passing both `includeEvents=false` and `includeDailyRollups=false` returns `VALIDATION_ERROR`.
+- If the selected scheduler bean is disabled or unavailable, the API returns `CONFLICT`.
+- The manual run records `DATA_FLOW_RETENTION_RUN` audit in addition to the target-specific retention audit written when rows are actually deleted.
+
 ### GET /api/admin/monitoring/data-flow/daily-rollup
 
 Returns an ADMIN-only UTC-day rollup for longer-running data-flow analytics and chargeback planning.

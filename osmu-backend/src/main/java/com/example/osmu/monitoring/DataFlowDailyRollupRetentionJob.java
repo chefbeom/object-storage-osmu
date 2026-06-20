@@ -77,6 +77,14 @@ public class DataFlowDailyRollupRetentionJob {
         return deletedCount;
     }
 
+    public int retentionDays() {
+        return retentionDays;
+    }
+
+    public int batchSize() {
+        return batchSize;
+    }
+
     private void recordAudit(int deletedCount, LocalDate cutoffDay) {
         try {
             auditLogService.record(

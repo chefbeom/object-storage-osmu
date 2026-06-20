@@ -2895,6 +2895,44 @@
         }
       }
     },
+    "/api/admin/monitoring/data-flow/retention/status": {
+      "get": {
+        "tags": ["Admin"],
+        "operationId": "getDataFlowRetentionStatus",
+        "summary": "Read administrator data-flow event and materialized daily rollup retention status",
+        "responses": {
+          "200": { "$ref": "#/components/responses/JsonOk" },
+          "403": { "$ref": "#/components/responses/Error" }
+        }
+      }
+    },
+    "/api/admin/monitoring/data-flow/retention/run": {
+      "post": {
+        "tags": ["Admin"],
+        "operationId": "runDataFlowRetention",
+        "summary": "Run selected data-flow event and materialized daily rollup retention targets now",
+        "parameters": [
+          {
+            "name": "includeEvents",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "boolean", "default": true }
+          },
+          {
+            "name": "includeDailyRollups",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "boolean", "default": true }
+          }
+        ],
+        "responses": {
+          "200": { "$ref": "#/components/responses/JsonOk" },
+          "400": { "$ref": "#/components/responses/Error" },
+          "403": { "$ref": "#/components/responses/Error" },
+          "409": { "$ref": "#/components/responses/Error" }
+        }
+      }
+    },
     "/api/admin/monitoring/data-flow/daily-rollup": {
       "get": {
         "tags": ["Admin"],

@@ -75,6 +75,14 @@ public class DataFlowEventRetentionJob {
         return deletedCount;
     }
 
+    public int retentionDays() {
+        return retentionDays;
+    }
+
+    public int batchSize() {
+        return batchSize;
+    }
+
     private void recordAudit(int deletedCount, OffsetDateTime cutoff) {
         try {
             auditLogService.record(

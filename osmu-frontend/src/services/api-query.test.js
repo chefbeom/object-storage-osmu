@@ -47,6 +47,7 @@ import {
   getDashboardSummary,
   getDashboardWidgetCatalog,
   getDataFlowDailyRollup,
+  getDataFlowRetentionStatus,
   getMaterializedDataFlowDailyRollup,
   getDataFlowMonitoring,
   getEnterpriseAuthPlan,
@@ -72,6 +73,7 @@ import {
   recordChargebackPaymentProviderHandoffAdapterResult,
   requestChargebackInvoicePayment,
   runChargebackAdapterRetryWorker,
+  runDataFlowRetention,
   saveDashboardLayout,
   saveDashboardLayoutDefault,
   saveBillingPricingPolicy,
@@ -471,6 +473,57 @@ test('getMaterializedDataFlowDailyRollup reads stored admin daily rollup endpoin
     assert.equal(fetchMock.calls[0].options.method, undefined)
     assert.equal(result.data.mode, 'DATA_FLOW_DAILY_ROLLUP_MATERIALIZED')
     assert.equal(result.data.pointCount, 1)
+  } finally {
+    cleanupFetch(fetchMock)
+  }
+})
+
+test('getDataFlowRetentionStatus reads admin data flow retention status endpoint', async () => {
+  const fetchMock = mockFetch([
+    () => jsonResponse({
+      data: {
+        mode: 'DATA_FLOW_RETENTION',
+        eventRetention: { enabled: true, jobAvailable: true, retentionDays: 90, batchSize: 1000 },
+        dailyRollupRetention: { enabled: true, jobAvailable: true, retentionDays: 1095, batchSize: 1000 },
+      },
+    }),
+  ])
+
+  try {
+    const result = await getDataFlowRetentionStatus()
+
+    assert.equal(fetchMock.calls[0].url, 'http://localhost:8080/api/admin/monitoring/data-flow/retention/status')
+    assert.equal(fetchMock.calls[0].options.method, undefined)
+    assert.equal(result.data.mode, 'DATA_FLOW_RETENTION')
+    assert.equal(result.data.dailyRollupRetention.retentionDays, 1095)
+  } finally {
+    cleanupFetch(fetchMock)
+  }
+})
+
+test('runDataFlowRetention posts selected retention targets', async () => {
+  const fetchMock = mockFetch([
+    () => jsonResponse({
+      data: {
+        mode: 'DATA_FLOW_RETENTION',
+        deletedEventCount: 0,
+        deletedDailyRollupCount: 1,
+      },
+    }),
+  ])
+
+  try {
+    const result = await runDataFlowRetention({
+      includeEvents: false,
+      includeDailyRollups: true,
+    })
+
+    const url = new URL(fetchMock.calls[0].url)
+    assert.equal(url.origin + url.pathname, 'http://localhost:8080/api/admin/monitoring/data-flow/retention/run')
+    assert.equal(url.searchParams.get('includeEvents'), 'false')
+    assert.equal(url.searchParams.get('includeDailyRollups'), 'true')
+    assert.equal(fetchMock.calls[0].options.method, 'POST')
+    assert.equal(result.data.deletedDailyRollupCount, 1)
   } finally {
     cleanupFetch(fetchMock)
   }

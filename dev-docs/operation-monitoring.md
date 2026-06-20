@@ -125,6 +125,8 @@ MVP implementation:
 - `GET /api/admin/monitoring/data-flow/daily-rollup` exposes an admin-only UTC-day rollup grouped by bucket, source, and operation for longer analytics windows and chargeback planning.
 - `POST /api/admin/monitoring/data-flow/daily-rollup/materialize` refreshes the same aggregate rows into `data_flow_daily_rollups` in MariaDB mode so query-time rollups can later move toward partitioned or time-series storage.
 - `GET /api/admin/monitoring/data-flow/daily-rollup/materialized` reads refreshed aggregate rows from `data_flow_daily_rollups` without re-scanning detailed event rows.
+- `GET /api/admin/monitoring/data-flow/retention/status` reports detailed-event and materialized-rollup retention enablement, job availability, configured retention days/batch size, and retention metrics.
+- `POST /api/admin/monitoring/data-flow/retention/run` manually runs selected detailed-event and/or materialized-rollup retention targets and records `DATA_FLOW_RETENTION_RUN` audit.
 - `GET /api/admin/monitoring/data-flow/export.csv` exports the same filtered event window as newest-first CSV for audit handoff or offline analysis.
 - `GET /api/admin/monitoring/data-flow/daily-rollup/export.csv` exports the same filtered daily rollup as CSV without object keys or raw event messages for operations handoff and offline analytics.
 - `GET /api/admin/monitoring/data-flow/daily-rollup/materialized/export.csv` exports refreshed aggregate-only rows from the materialized store for operations handoff and offline analytics.
@@ -151,6 +153,9 @@ Retention configuration:
 - `OSMU_DATA_FLOW_RETENTION_BATCH_SIZE=1000`
 - `OSMU_DATA_FLOW_RETENTION_INITIAL_DELAY_MS=300000`
 - `OSMU_DATA_FLOW_RETENTION_FIXED_DELAY_MS=21600000`
+- `OSMU_DATA_FLOW_DAILY_ROLLUP_RETENTION_ENABLED=true`
+- `OSMU_DATA_FLOW_DAILY_ROLLUP_RETENTION_DAYS=1095`
+- `OSMU_DATA_FLOW_DAILY_ROLLUP_RETENTION_BATCH_SIZE=1000`
 
 Production follow-up:
 
