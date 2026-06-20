@@ -530,6 +530,11 @@ function handleAdminRoute(request, response, path, jsonBody, url) {
     sendJson(response, 200, apiData(recordChargebackPaymentProviderAdapterResult(Number(chargebackPaymentProviderAdapterResultMatch[1]), url)))
     return
   }
+  const chargebackPaymentProviderAdapterSendMatch = path.match(/^\/admin\/billing\/chargeback-payment-provider-handoffs\/(\d+)\/adapter-send$/)
+  if (request.method === 'POST' && chargebackPaymentProviderAdapterSendMatch) {
+    sendJson(response, 200, apiData(sendChargebackPaymentProviderAdapter(Number(chargebackPaymentProviderAdapterSendMatch[1]))))
+    return
+  }
   const finalInvoicePaymentRecordMatch = path.match(/^\/admin\/billing\/chargeback-invoices\/(\d+)\/payment-record$/)
   if (request.method === 'POST' && finalInvoicePaymentRecordMatch) {
     sendJson(response, 200, apiData(recordChargebackInvoicePayment(Number(finalInvoicePaymentRecordMatch[1]), url)))
@@ -1856,6 +1861,35 @@ function recordChargebackPaymentProviderAdapterResult(handoffId, url) {
   }
 }
 
+function sendChargebackPaymentProviderAdapter(handoffId) {
+  const handoff = state.chargebackPaymentProviderHandoffs.find((item) => item.id === handoffId)
+  const now = new Date().toISOString()
+  if (!handoff) {
+    return {
+      mode: 'ADAPTER_RESULT',
+      status: 'NOT_FOUND',
+      externalPaymentEnabled: false,
+      handoff: null,
+      recordedAt: now,
+      note: 'Chargeback payment provider handoff not found.',
+    }
+  }
+  handoff.status = 'PAYMENT_PROVIDER_ADAPTER_SUCCEEDED'
+  handoff.attemptCount = Number(handoff.attemptCount || 0) + 1
+  handoff.nextAttemptAt = ''
+  handoff.updatedAt = now
+  handoff.lastError = ''
+  state.auditLogs.unshift(auditLog('CHARGEBACK_PAYMENT_PROVIDER_ADAPTER_SEND', 'CHARGEBACK_PAYMENT_PROVIDER_HANDOFF', String(handoffId)))
+  return {
+    mode: 'ADAPTER_RESULT',
+    status: handoff.status,
+    externalPaymentEnabled: true,
+    handoff,
+    recordedAt: now,
+    note: 'Payment provider webhook adapter delivered this handoff row.',
+  }
+}
+
 function chargebackPaymentProviderPayload(invoice, provider, targetAccount) {
   return {
     eventType: 'chargeback.payment_provider.handoff',
@@ -2964,6 +2998,13 @@ async function runSelfTest() {
     })).json()
     if (!handoffAdapterResult.data || handoffAdapterResult.data.status !== 'PAYMENT_PROVIDER_ADAPTER_BLOCKED_CREDENTIAL' || handoffAdapterResult.data.handoff?.attemptCount < 2) {
       throw new Error('chargeback payment provider adapter result self-test failed')
+    }
+    const handoffAdapterSend = await (await fetch(`${base}/admin/billing/chargeback-payment-provider-handoffs/${handoffList.data.handoffs[0].id}/adapter-send?retryDelayMinutes=30`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${login.data.accessToken}` },
+    })).json()
+    if (!handoffAdapterSend.data || handoffAdapterSend.data.status !== 'PAYMENT_PROVIDER_ADAPTER_SUCCEEDED' || handoffAdapterSend.data.handoff?.attemptCount < 3 || handoffAdapterSend.data.externalPaymentEnabled !== true) {
+      throw new Error('chargeback payment provider adapter send self-test failed')
     }
     const recordedPayment = await (await fetch(`${base}/admin/billing/chargeback-invoices/${listedFinalInvoices.data.invoices[0].id}/payment-record?paymentReference=PAY-SELF-TEST&paymentNote=self-test`, {
       method: 'POST',

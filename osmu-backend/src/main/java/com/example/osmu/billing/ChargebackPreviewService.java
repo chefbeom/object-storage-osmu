@@ -41,6 +41,7 @@ public class ChargebackPreviewService {
     private final ChargebackFinalInvoiceRepository finalInvoiceRepository;
     private final ChargebackPaymentProviderHandoffRepository paymentHandoffRepository;
     private final ChargebackNotificationDeliveryAdapter notificationDeliveryAdapter;
+    private final ChargebackPaymentProviderAdapter paymentProviderAdapter;
 
     public ChargebackPreviewService(
             OrganizationRepository organizationRepository,
@@ -51,7 +52,8 @@ public class ChargebackPreviewService {
             ChargebackInvoiceDraftRepository invoiceDraftRepository,
             ChargebackFinalInvoiceRepository finalInvoiceRepository,
             ChargebackPaymentProviderHandoffRepository paymentHandoffRepository,
-            ChargebackNotificationDeliveryAdapter notificationDeliveryAdapter
+            ChargebackNotificationDeliveryAdapter notificationDeliveryAdapter,
+            ChargebackPaymentProviderAdapter paymentProviderAdapter
     ) {
         this.organizationRepository = organizationRepository;
         this.bucketRepository = bucketRepository;
@@ -62,6 +64,7 @@ public class ChargebackPreviewService {
         this.finalInvoiceRepository = finalInvoiceRepository;
         this.paymentHandoffRepository = paymentHandoffRepository;
         this.notificationDeliveryAdapter = notificationDeliveryAdapter;
+        this.paymentProviderAdapter = paymentProviderAdapter;
     }
 
     public ChargebackPreviewResponse preview(AuthenticatedUser actor, ChargebackPreviewRequest request) {
@@ -451,7 +454,7 @@ public class ChargebackPreviewService {
                 "PREVIEW",
                 normalizedProvider,
                 normalizedTarget,
-                false,
+                paymentProviderAdapter.isConfigured(),
                 finalInvoiceResponse(invoice),
                 payload,
                 OffsetDateTime.now(),
@@ -499,10 +502,12 @@ public class ChargebackPreviewService {
         return new ChargebackPaymentProviderHandoffQueueResponse(
                 "OUTBOX",
                 "PENDING_PAYMENT_PROVIDER_ADAPTER",
-                false,
+                paymentProviderAdapter.isConfigured(),
                 paymentHandoffResponse(saved),
                 OffsetDateTime.now(),
-                "Recorded in payment provider handoff outbox; no external payment provider was called."
+                paymentProviderAdapter.isConfigured()
+                        ? "Recorded in payment provider handoff outbox; configured webhook handoff adapter can be sent by ADMIN or retry worker."
+                        : "Recorded in payment provider handoff outbox; no external payment provider was called."
         );
     }
 
@@ -557,6 +562,52 @@ public class ChargebackPreviewService {
         rejectCompletedAdapterStatus(record.status(), "Chargeback payment provider handoff adapter result already recorded.");
         String normalizedResult = normalizeAdapterResult(result);
         OffsetDateTime now = OffsetDateTime.now();
+        return updatePaymentProviderHandoffAttempt(
+                record,
+                normalizedResult,
+                retryDelayMinutes,
+                lastError,
+                false,
+                now,
+                adapterResultNote(normalizedResult, "payment provider")
+        );
+    }
+
+    public ChargebackPaymentProviderHandoffAttemptResponse sendPaymentProviderHandoffAdapter(
+            AuthenticatedUser actor,
+            long handoffId,
+            Integer retryDelayMinutes
+    ) {
+        requireAdmin(actor, "Chargeback payment provider handoff adapter send access denied.");
+        ChargebackPaymentProviderHandoffRecord record = paymentHandoffRepository.findById(handoffId)
+                .orElseThrow(() -> new ApiException(ApiErrorCode.NOT_FOUND, "Chargeback payment handoff not found."));
+        rejectCompletedAdapterStatus(record.status(), "Chargeback payment provider handoff adapter already succeeded.");
+        OffsetDateTime now = OffsetDateTime.now();
+        boolean externalPaymentEnabled = paymentProviderAdapter.isConfigured();
+        ChargebackPaymentProviderAdapterResult adapterResult = externalPaymentEnabled
+                ? paymentProviderAdapter.deliver(record)
+                : ChargebackPaymentProviderAdapterResult.blocked("Payment provider webhook adapter is not configured.");
+        String normalizedResult = normalizeAdapterResult(adapterResult.result());
+        return updatePaymentProviderHandoffAttempt(
+                record,
+                normalizedResult,
+                retryDelayMinutes,
+                adapterResult.lastError(),
+                externalPaymentEnabled,
+                now,
+                paymentProviderAdapterSendNote(normalizedResult, externalPaymentEnabled)
+        );
+    }
+
+    private ChargebackPaymentProviderHandoffAttemptResponse updatePaymentProviderHandoffAttempt(
+            ChargebackPaymentProviderHandoffRecord record,
+            String normalizedResult,
+            Integer retryDelayMinutes,
+            String lastError,
+            boolean externalPaymentEnabled,
+            OffsetDateTime now,
+            String note
+    ) {
         String status = paymentHandoffAdapterStatus(normalizedResult);
         OffsetDateTime nextAttemptAt = nextAdapterAttemptAt(normalizedResult, retryDelayMinutes, now);
         String error = adapterLastError(
@@ -589,10 +640,10 @@ public class ChargebackPreviewService {
         return new ChargebackPaymentProviderHandoffAttemptResponse(
                 "ADAPTER_RESULT",
                 saved.status(),
-                false,
+                externalPaymentEnabled,
                 paymentHandoffResponse(saved),
                 now,
-                adapterResultNote(normalizedResult, "payment provider")
+                note
         );
     }
 
@@ -1130,6 +1181,17 @@ public class ChargebackPreviewService {
             case "SUCCESS" -> "Notification webhook adapter delivered this outbox row.";
             case "RETRY" -> "Notification webhook adapter returned a retryable result and scheduled the next attempt.";
             default -> "Notification webhook adapter blocked this outbox row without storing credentials or raw provider responses.";
+        };
+    }
+
+    private static String paymentProviderAdapterSendNote(String result, boolean externalPaymentEnabled) {
+        if (!externalPaymentEnabled) {
+            return "Payment provider webhook adapter is not configured; handoff row was blocked without an external call.";
+        }
+        return switch (result) {
+            case "SUCCESS" -> "Payment provider webhook adapter delivered this handoff row.";
+            case "RETRY" -> "Payment provider webhook adapter returned a retryable result and scheduled the next attempt.";
+            default -> "Payment provider webhook adapter blocked this handoff row without storing credentials or raw provider responses.";
         };
     }
 

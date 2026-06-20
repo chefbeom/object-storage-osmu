@@ -1400,6 +1400,15 @@ export function recordChargebackPaymentProviderHandoffAdapterResult(handoffId, o
   })
 }
 
+export function sendChargebackPaymentProviderHandoffAdapter(handoffId, options = {}) {
+  const query = new URLSearchParams()
+  appendQuery(query, 'retryDelayMinutes', options.retryDelayMinutes)
+  const suffix = query.toString() ? `?${query.toString()}` : ''
+  return request(`/admin/billing/chargeback-payment-provider-handoffs/${encodeURIComponent(handoffId)}/adapter-send${suffix}`, {
+    method: 'POST',
+  })
+}
+
 export function recordChargebackInvoicePayment(invoiceId, options = {}) {
   const query = new URLSearchParams()
   appendQuery(query, 'paymentReference', options.paymentReference)

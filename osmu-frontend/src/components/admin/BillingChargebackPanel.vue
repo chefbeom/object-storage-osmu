@@ -542,15 +542,24 @@
           <small>{{ handoff.organizationName }} / {{ formatMoney(handoff.amount, handoff.currency) }} / {{ handoff.provider }} -> {{ handoff.targetAccount }}</small>
           <small>{{ adapterAttemptSummary(handoff) }}</small>
         </span>
-        <button
-          v-if="canBlockAdapter(handoff.status)"
-          data-testid="chargeback-payment-handoff-adapter-block-button"
-          type="button"
-          class="ghost"
-          @click="$emit('record-chargeback-payment-provider-adapter-result', { handoffId: handoff.id, result: 'BLOCKED_CREDENTIAL' })"
-        >
-          Block
-        </button>
+        <span v-if="canSendPaymentProviderAdapter(handoff.status)" class="key-actions">
+          <button
+            data-testid="chargeback-payment-handoff-adapter-send-button"
+            type="button"
+            class="ghost"
+            @click="$emit('send-chargeback-payment-provider-adapter', { handoffId: handoff.id })"
+          >
+            Send
+          </button>
+          <button
+            data-testid="chargeback-payment-handoff-adapter-block-button"
+            type="button"
+            class="ghost"
+            @click="$emit('record-chargeback-payment-provider-adapter-result', { handoffId: handoff.id, result: 'BLOCKED_CREDENTIAL' })"
+          >
+            Block
+          </button>
+        </span>
         <button
           v-else-if="canRetryAdapter(handoff.status)"
           data-testid="chargeback-payment-handoff-adapter-retry-button"
@@ -643,6 +652,7 @@ const emit = defineEmits([
   'request-chargeback-invoice-payment',
   'queue-chargeback-payment-provider-handoff',
   'send-chargeback-notification-adapter',
+  'send-chargeback-payment-provider-adapter',
   'record-chargeback-notification-adapter-result',
   'record-chargeback-payment-provider-adapter-result',
   'refresh-chargeback-adapter-retry-worker',
@@ -730,6 +740,10 @@ function canBlockAdapter(status = '') {
 
 function canSendNotificationAdapter(status = '') {
   return ['PENDING_DELIVERY_ADAPTER', 'DELIVERY_ADAPTER_RETRY_SCHEDULED'].includes(String(status || ''))
+}
+
+function canSendPaymentProviderAdapter(status = '') {
+  return ['PENDING_PAYMENT_PROVIDER_ADAPTER', 'PAYMENT_PROVIDER_ADAPTER_RETRY_SCHEDULED'].includes(String(status || ''))
 }
 
 function adapterAttemptSummary(record = {}) {

@@ -417,6 +417,7 @@ test('HomeView exposes stable selectors for browser E2E flows', () => {
     'chargeback-payment-handoff-provider',
     'chargeback-payment-handoff-list',
     'chargeback-payment-handoff-row',
+    'chargeback-payment-handoff-adapter-send-button',
     'chargeback-payment-handoff-adapter-block-button',
     'chargeback-payment-handoff-adapter-retry-button',
     'chargeback-organization-table',

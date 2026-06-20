@@ -1337,6 +1337,33 @@
         }
       }
     },
+    "/api/admin/billing/chargeback-payment-provider-handoffs/{handoffId}/adapter-send": {
+      "post": {
+        "tags": ["Billing", "Admin"],
+        "operationId": "sendChargebackPaymentProviderHandoffAdapter",
+        "summary": "Attempt configured chargeback payment provider webhook handoff delivery",
+        "parameters": [
+          {
+            "name": "handoffId",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "integer", "format": "int64" }
+          },
+          {
+            "name": "retryDelayMinutes",
+            "in": "query",
+            "schema": { "type": "integer", "minimum": 1, "maximum": 1440, "default": 60 }
+          }
+        ],
+        "responses": {
+          "200": { "$ref": "#/components/responses/JsonOk" },
+          "400": { "$ref": "#/components/responses/Error" },
+          "403": { "$ref": "#/components/responses/Error" },
+          "404": { "$ref": "#/components/responses/Error" },
+          "409": { "$ref": "#/components/responses/Error" }
+        }
+      }
+    },
     "/api/admin/billing/chargeback-invoices/{invoiceId}/payment-record": {
       "post": {
         "tags": ["Billing", "Admin"],

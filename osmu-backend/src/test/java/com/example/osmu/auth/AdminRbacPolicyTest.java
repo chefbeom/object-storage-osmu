@@ -58,6 +58,7 @@ class AdminRbacPolicyTest {
         assertFalse(policy.isAllowed("POST", "/api/admin/billing/chargeback-invoices/123/payment-provider-handoff", "ORG_ADMIN"));
         assertFalse(policy.isAllowed("GET", "/api/admin/billing/chargeback-payment-provider-handoffs", "ORG_ADMIN"));
         assertFalse(policy.isAllowed("POST", "/api/admin/billing/chargeback-payment-provider-handoffs/123/adapter-result", "ORG_ADMIN"));
+        assertFalse(policy.isAllowed("POST", "/api/admin/billing/chargeback-payment-provider-handoffs/123/adapter-send", "ORG_ADMIN"));
         assertFalse(policy.isAllowed("POST", "/api/admin/billing/chargeback-invoices/123/payment-record", "ORG_ADMIN"));
         assertFalse(policy.isAllowed("GET", "/api/admin/billing/pricing-policy-proposals", "ORG_ADMIN"));
         assertFalse(policy.isAllowed("POST", "/api/admin/billing/pricing-policy-proposals", "ORG_ADMIN"));
@@ -106,6 +107,7 @@ class AdminRbacPolicyTest {
         assertFalse(policy.isAllowed("POST", "/api/admin/billing/chargeback-invoices/123/payment-provider-handoff", "AUDITOR"));
         assertFalse(policy.isAllowed("GET", "/api/admin/billing/chargeback-payment-provider-handoffs", "AUDITOR"));
         assertFalse(policy.isAllowed("POST", "/api/admin/billing/chargeback-payment-provider-handoffs/123/adapter-result", "AUDITOR"));
+        assertFalse(policy.isAllowed("POST", "/api/admin/billing/chargeback-payment-provider-handoffs/123/adapter-send", "AUDITOR"));
         assertFalse(policy.isAllowed("POST", "/api/admin/billing/chargeback-invoices/123/payment-record", "AUDITOR"));
         assertFalse(policy.isAllowed("GET", "/api/admin/billing/pricing-policy-proposals", "AUDITOR"));
         assertFalse(policy.isAllowed("POST", "/api/admin/billing/pricing-policy-proposals", "AUDITOR"));

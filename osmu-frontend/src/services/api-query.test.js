@@ -72,6 +72,7 @@ import {
   saveBillingPricingPolicy,
   saveObjectSharePolicy,
   sendChargebackAlertNotificationAdapter,
+  sendChargebackPaymentProviderHandoffAdapter,
   updateDashboardLayoutPreset,
   updateObjectTags,
 } from './api.js'
@@ -830,6 +831,14 @@ test('chargeback final invoice wrappers finalize update payment status and queue
     }),
     () => jsonResponse({
       data: {
+        mode: 'ADAPTER_RESULT',
+        status: 'PAYMENT_PROVIDER_ADAPTER_SUCCEEDED',
+        externalPaymentEnabled: true,
+        handoff: { id: 3, attemptCount: 2, status: 'PAYMENT_PROVIDER_ADAPTER_SUCCEEDED' },
+      },
+    }),
+    () => jsonResponse({
+      data: {
         mode: 'PAYMENT_RECORD',
         status: 'PAID',
         paymentStatus: 'PAID',
@@ -859,6 +868,7 @@ test('chargeback final invoice wrappers finalize update payment status and queue
       result: 'BLOCKED_CREDENTIAL',
       lastError: 'adapter configuration pending',
     })
+    const handoffAdapterSend = await sendChargebackPaymentProviderHandoffAdapter(3, { retryDelayMinutes: 90 })
     const paid = await recordChargebackInvoicePayment(9, {
       paymentReference: 'PAY-2026-0001',
       paymentNote: 'paid',
@@ -912,11 +922,17 @@ test('chargeback final invoice wrappers finalize update payment status and queue
     assert.equal(fetchMock.calls[6].options.method, 'POST')
     assert.equal(handoffAdapterResult.data.status, 'PAYMENT_PROVIDER_ADAPTER_BLOCKED_CREDENTIAL')
 
-    const recordUrl = new URL(fetchMock.calls[7].url)
+    const handoffAdapterSendUrl = new URL(fetchMock.calls[7].url)
+    assert.equal(handoffAdapterSendUrl.pathname, '/api/admin/billing/chargeback-payment-provider-handoffs/3/adapter-send')
+    assert.equal(handoffAdapterSendUrl.searchParams.get('retryDelayMinutes'), '90')
+    assert.equal(fetchMock.calls[7].options.method, 'POST')
+    assert.equal(handoffAdapterSend.data.status, 'PAYMENT_PROVIDER_ADAPTER_SUCCEEDED')
+
+    const recordUrl = new URL(fetchMock.calls[8].url)
     assert.equal(recordUrl.pathname, '/api/admin/billing/chargeback-invoices/9/payment-record')
     assert.equal(recordUrl.searchParams.get('paymentReference'), 'PAY-2026-0001')
     assert.equal(recordUrl.searchParams.get('paymentNote'), 'paid')
-    assert.equal(fetchMock.calls[7].options.method, 'POST')
+    assert.equal(fetchMock.calls[8].options.method, 'POST')
     assert.equal(paid.data.paymentStatus, 'PAID')
   } finally {
     cleanupFetch(fetchMock)

@@ -51,7 +51,8 @@ class ChargebackPreviewServiceTest {
             invoiceDraftRepository,
             finalInvoiceRepository,
             paymentHandoffRepository,
-            disabledNotificationAdapter()
+            disabledNotificationAdapter(),
+            disabledPaymentProviderAdapter()
     );
 
     @Test
@@ -550,6 +551,80 @@ class ChargebackPreviewServiceTest {
     }
 
     @Test
+    void sendsConfiguredPaymentProviderHandoffAdapter() {
+        OffsetDateTime now = OffsetDateTime.now();
+        organizationRepository.save(new OrganizationRecord(1L, "Pay Org", "", 10_000L, now));
+        bucketRepository.save(new BucketRecord(1L, "pay-bucket", "ORG", 1L, 10_000L, 1024L, 1L, now));
+
+        ChargebackPreviewService sendingService = serviceWithPaymentProviderAdapter(new ChargebackPaymentProviderAdapter() {
+            @Override
+            public boolean isConfigured() {
+                return true;
+            }
+
+            @Override
+            public ChargebackPaymentProviderAdapterResult deliver(ChargebackPaymentProviderHandoffRecord record) {
+                assertThat(record.payloadJson()).contains("\"eventType\":\"chargeback.payment_provider.handoff\"");
+                assertThat(record.invoiceNumber()).startsWith("OSMU-FINAL-");
+                return ChargebackPaymentProviderAdapterResult.success();
+            }
+        });
+
+        ChargebackInvoiceDraftCreateResponse create = sendingService.persistInvoiceDrafts(
+                new AuthenticatedUser(1L, "admin", "ADMIN", null),
+                new ChargebackPreviewRequest(
+                        now.minusHours(1),
+                        now.plusHours(1),
+                        "krw",
+                        ONE_GIB_RATE,
+                        BigDecimal.ZERO,
+                        BigDecimal.ZERO,
+                        BigDecimal.ZERO,
+                        BigDecimal.ZERO,
+                        100
+                ),
+                "payment adapter send test"
+        );
+        ChargebackInvoiceDraftApprovalResponse approved = sendingService.approveInvoiceDraft(
+                new AuthenticatedUser(1L, "admin", "ADMIN", null),
+                create.invoices().get(0).id(),
+                "approve"
+        );
+        ChargebackFinalInvoiceActionResponse finalized = sendingService.finalizeInvoiceDraft(
+                new AuthenticatedUser(1L, "admin", "ADMIN", null),
+                approved.invoice().id(),
+                "finalize"
+        );
+        sendingService.requestFinalInvoicePayment(
+                new AuthenticatedUser(1L, "admin", "ADMIN", null),
+                finalized.invoice().id(),
+                "request payment"
+        );
+
+        ChargebackPaymentProviderHandoffQueueResponse queued = sendingService.queuePaymentProviderHandoff(
+                new AuthenticatedUser(1L, "admin", "ADMIN", null),
+                finalized.invoice().id(),
+                "manual_ap",
+                "finance-ap",
+                "unit test payment send"
+        );
+
+        assertThat(queued.externalPaymentEnabled()).isTrue();
+
+        ChargebackPaymentProviderHandoffAttemptResponse sent = sendingService.sendPaymentProviderHandoffAdapter(
+                new AuthenticatedUser(1L, "admin", "ADMIN", null),
+                queued.handoff().id(),
+                null
+        );
+
+        assertThat(sent.status()).isEqualTo("PAYMENT_PROVIDER_ADAPTER_SUCCEEDED");
+        assertThat(sent.externalPaymentEnabled()).isTrue();
+        assertThat(sent.handoff().attemptCount()).isEqualTo(1);
+        assertThat(sent.handoff().lastError()).isNull();
+        assertThat(sent.note()).contains("delivered");
+    }
+
+    @Test
     void rejectsUnsupportedRolesAndInvalidRates() {
         assertThatThrownBy(() -> service.preview(
                 new AuthenticatedUser(3L, "auditor", "AUDITOR", null),
@@ -637,6 +712,22 @@ class ChargebackPreviewServiceTest {
                 invoiceDraftRepository,
                 finalInvoiceRepository,
                 paymentHandoffRepository,
+                adapter,
+                disabledPaymentProviderAdapter()
+        );
+    }
+
+    private ChargebackPreviewService serviceWithPaymentProviderAdapter(ChargebackPaymentProviderAdapter adapter) {
+        return new ChargebackPreviewService(
+                organizationRepository,
+                bucketRepository,
+                dataFlowEventRepository,
+                pricingPolicyService,
+                notificationDeliveryRepository,
+                invoiceDraftRepository,
+                finalInvoiceRepository,
+                paymentHandoffRepository,
+                disabledNotificationAdapter(),
                 adapter
         );
     }
@@ -651,6 +742,20 @@ class ChargebackPreviewServiceTest {
             @Override
             public ChargebackNotificationDeliveryAdapterResult deliver(ChargebackAlertNotificationDeliveryRecord record) {
                 return ChargebackNotificationDeliveryAdapterResult.blocked("Notification webhook adapter is not configured.");
+            }
+        };
+    }
+
+    private static ChargebackPaymentProviderAdapter disabledPaymentProviderAdapter() {
+        return new ChargebackPaymentProviderAdapter() {
+            @Override
+            public boolean isConfigured() {
+                return false;
+            }
+
+            @Override
+            public ChargebackPaymentProviderAdapterResult deliver(ChargebackPaymentProviderHandoffRecord record) {
+                return ChargebackPaymentProviderAdapterResult.blocked("Payment provider webhook adapter is not configured.");
             }
         };
     }

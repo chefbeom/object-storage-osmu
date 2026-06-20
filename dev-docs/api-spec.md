@@ -2847,7 +2847,7 @@ Response:
 
 ### GET /api/admin/billing/chargeback-adapter-retry-worker/status
 
-Returns a dry-run view of due chargeback notification delivery and payment provider handoff adapter retry rows. `ADMIN` only. The endpoint does not call external notification or payment providers and does not update outbox state. `externalAdaptersEnabled` is true when the notification webhook adapter is configured; payment provider adapters remain no-send.
+Returns a dry-run view of due chargeback notification delivery and payment provider handoff adapter retry rows. `ADMIN` only. The endpoint does not call external notification or payment providers and does not update outbox state. `externalAdaptersEnabled` is true when either the notification webhook adapter or payment-provider webhook handoff adapter is configured.
 
 Query parameters:
 
@@ -2864,11 +2864,11 @@ Response:
 
 ### POST /api/admin/billing/chargeback-adapter-retry-worker/run
 
-Runs the chargeback adapter retry worker for due outbox rows. `ADMIN` only. With `dryRun=false`, due notification rows call the configured webhook adapter when available and move to success, retry, or blocked state. If the notification webhook adapter is not configured, notification rows move to `DELIVERY_ADAPTER_BLOCKED_CREDENTIAL` without an external call. Payment handoff rows remain no-send and move to `PAYMENT_PROVIDER_ADAPTER_BLOCKED_CREDENTIAL`.
+Runs the chargeback adapter retry worker for due outbox rows. `ADMIN` only. With `dryRun=false`, due notification rows call the configured notification webhook adapter when available and due payment handoff rows call the configured payment-provider webhook handoff adapter when available. Each row moves to success, retry, or blocked state. If a relevant adapter is not configured, the row moves to its credential/configuration blocked state without an external call.
 
 Query parameters:
 
-- `dryRun` (optional): default `true`. Use `false` to apply webhook notification attempts and no-send payment blocked transitions.
+- `dryRun` (optional): default `true`. Use `false` to apply configured webhook attempts and blocked transitions for unconfigured adapters.
 - `limit` (optional): total scan limit, clamped to 1..200.
 
 Response:
@@ -3001,7 +3001,7 @@ Response:
 
 ### GET /api/admin/billing/chargeback-invoices/{invoiceId}/payment-provider-handoff/preview
 
-Builds a payment-provider handoff payload for a `PAYMENT_REQUESTED` final chargeback invoice. `ADMIN` only. This is a no-send preview and does not call card, bank-transfer, tax invoice, ERP, webhook, or payment provider adapters.
+Builds a payment-provider handoff payload for a `PAYMENT_REQUESTED` final chargeback invoice. `ADMIN` only. This is a no-send preview and does not call card, bank-transfer, tax invoice, ERP, webhook, or payment provider adapters. `externalPaymentEnabled` reflects whether `osmu.billing.payment-provider.webhook-url` and optional secret header settings are valid.
 
 Query parameters:
 
@@ -3011,7 +3011,7 @@ Query parameters:
 Response:
 
 - `mode`: `PREVIEW`
-- `externalPaymentEnabled=false`
+- `externalPaymentEnabled`
 - `invoice`: final invoice row.
 - `payload.eventType`: `chargeback.payment_provider.handoff`
 - `payload.externalPaymentEnabled=false`
@@ -3019,7 +3019,7 @@ Response:
 
 ### POST /api/admin/billing/chargeback-invoices/{invoiceId}/payment-provider-handoff
 
-Persists a payment-provider handoff outbox row for a `PAYMENT_REQUESTED` final chargeback invoice. `ADMIN` only. The row is stored with `PENDING_PAYMENT_PROVIDER_ADAPTER`; it is review/retry input for a future adapter and still does not call any external payment provider.
+Persists a payment-provider handoff outbox row for a `PAYMENT_REQUESTED` final chargeback invoice. `ADMIN` only. The row is stored with `PENDING_PAYMENT_PROVIDER_ADAPTER`; it is review/retry input for ADMIN webhook send or retry worker execution. This endpoint still does not call any external payment provider.
 
 Query parameters:
 
@@ -3031,7 +3031,7 @@ Response:
 
 - `mode`: `OUTBOX`
 - `status`: `PENDING_PAYMENT_PROVIDER_ADAPTER`
-- `externalPaymentEnabled=false`
+- `externalPaymentEnabled`
 - `handoff`: persisted outbox row with `payloadJson`.
 
 ### GET /api/admin/billing/chargeback-payment-provider-handoffs
@@ -3066,6 +3066,28 @@ Response:
 - `externalPaymentEnabled=false`
 - `handoff`: updated outbox row with incremented `attemptCount`, optional `nextAttemptAt`, and sanitized `lastError`.
 - `note`: result-only no-call notice.
+
+### POST /api/admin/billing/chargeback-payment-provider-handoffs/{handoffId}/adapter-send
+
+Attempts configured payment-provider webhook handoff delivery for a persisted handoff row. `ADMIN` only. If `osmu.billing.payment-provider.webhook-url` is not configured or is invalid, the row moves to `PAYMENT_PROVIDER_ADAPTER_BLOCKED_CREDENTIAL` without an external call. When configured, OSMU sends a JSON envelope to the webhook with handoff metadata plus the original payment-provider payload. This is a B2B handoff adapter, not a built-in card/bank/tax provider integration. It never stores the webhook URL, secret header value, response body, or raw provider response in the outbox.
+
+Configuration:
+
+- `osmu.billing.payment-provider.webhook-url` (optional): HTTP/HTTPS endpoint to call.
+- `osmu.billing.payment-provider.secret-header-name` and `osmu.billing.payment-provider.secret-header-value` (optional pair): header name/value sent with the webhook request; header values are never stored in handoff rows.
+- `osmu.billing.payment-provider.timeout-ms` (optional): request timeout, clamped to 500..15000ms. Default is `3000`.
+
+Query parameters:
+
+- `retryDelayMinutes` (optional): next retry delay for retryable webhook results, clamped to 1..1440. Default is `60`.
+
+Response:
+
+- `mode`: `ADAPTER_RESULT`
+- `status`: `PAYMENT_PROVIDER_ADAPTER_SUCCEEDED`, `PAYMENT_PROVIDER_ADAPTER_RETRY_SCHEDULED`, or `PAYMENT_PROVIDER_ADAPTER_BLOCKED_CREDENTIAL`
+- `externalPaymentEnabled`: true only when the webhook adapter is configured.
+- `handoff`: updated outbox row with incremented `attemptCount`, optional `nextAttemptAt`, and sanitized `lastError`.
+- `note`: webhook handoff send result summary.
 
 ### POST /api/admin/billing/chargeback-invoices/{invoiceId}/payment-record
 

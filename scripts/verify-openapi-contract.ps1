@@ -100,6 +100,7 @@ $requiredOperations = @(
     @("/api/admin/billing/chargeback-invoices/{invoiceId}/payment-provider-handoff", "post", "queueChargebackPaymentProviderHandoff"),
     @("/api/admin/billing/chargeback-payment-provider-handoffs", "get", "getChargebackPaymentProviderHandoffs"),
     @("/api/admin/billing/chargeback-payment-provider-handoffs/{handoffId}/adapter-result", "post", "recordChargebackPaymentProviderHandoffAdapterResult"),
+    @("/api/admin/billing/chargeback-payment-provider-handoffs/{handoffId}/adapter-send", "post", "sendChargebackPaymentProviderHandoffAdapter"),
     @("/api/admin/billing/chargeback-invoices/{invoiceId}/payment-record", "post", "recordChargebackInvoicePayment"),
     @("/api/admin/billing/chargeback-preview/export.csv", "get", "downloadChargebackPreviewCsv"),
     @("/api/admin/billing/chargeback-invoice-draft/export.csv", "get", "downloadChargebackInvoiceDraftCsv"),

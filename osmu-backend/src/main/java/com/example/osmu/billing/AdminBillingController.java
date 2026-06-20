@@ -563,6 +563,27 @@ public class AdminBillingController {
         return ApiResponse.of(recorded);
     }
 
+    @PostMapping("/chargeback-payment-provider-handoffs/{handoffId}/adapter-send")
+    public ApiResponse<ChargebackPaymentProviderHandoffAttemptResponse> sendChargebackPaymentProviderAdapter(
+            @PathVariable long handoffId,
+            @RequestParam(name = "retryDelayMinutes", required = false) Integer retryDelayMinutes,
+            HttpServletRequest request
+    ) {
+        AuthenticatedUser actor = authContext.currentUser(request);
+        ChargebackPaymentProviderHandoffAttemptResponse sent =
+                chargebackPreviewService.sendPaymentProviderHandoffAdapter(actor, handoffId, retryDelayMinutes);
+        auditLogService.record(
+                "CHARGEBACK_PAYMENT_PROVIDER_ADAPTER_SEND",
+                actor.loginId(),
+                "CHARGEBACK_PAYMENT_PROVIDER_HANDOFF",
+                String.valueOf(handoffId),
+                "SUCCESS",
+                "Chargeback payment provider adapter send recorded: " + sent.status(),
+                request
+        );
+        return ApiResponse.of(sent);
+    }
+
     @PostMapping("/chargeback-invoices/{invoiceId}/payment-record")
     public ApiResponse<ChargebackFinalInvoiceActionResponse> recordChargebackInvoicePayment(
             @PathVariable long invoiceId,
