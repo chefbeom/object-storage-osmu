@@ -81,7 +81,13 @@ Write-JsonEvidence (Join-Path $securitySource "latest-container-security-evidenc
 }
 Write-JsonEvidence (Join-Path $enterpriseAuthSource "latest-enterprise-auth-smoke.json") @{
     formatVersion = "osmu.enterprise-auth-smoke.v1"
-    result = "passed"
+    result = "scope-out"
+    scopeOut = @{
+        confirmed = $true
+        reference = "pilot-contract-enterprise-auth-deferred-20260620"
+        reason = "Pilot phase uses local password login."
+        accepted = $true
+    }
 }
 Write-TextEvidence (Join-Path $enterpriseAuthSource "latest-enterprise-auth-smoke.md") "# Enterprise auth smoke"
 Write-JsonEvidence (Join-Path $kubernetesOperationsReportSyncSource "latest-kubernetes-operations-report-sync.json") @{
@@ -129,6 +135,8 @@ Assert-True (Test-Path -LiteralPath (Join-Path $promotedRoot "latest-image-signi
 Assert-True (Test-Path -LiteralPath (Join-Path $promotedRoot "latest-container-security-evidence.json")) "Promoted container security evidence missing."
 Assert-True (Test-Path -LiteralPath (Join-Path $promotedRoot "latest-enterprise-auth-smoke.json")) "Promoted enterprise auth smoke evidence missing."
 Assert-True (Test-Path -LiteralPath (Join-Path $promotedRoot "latest-kubernetes-operations-report-sync.json")) "Promoted Kubernetes operations report sync evidence missing."
+$promotedEnterpriseAuth = Get-Content -Raw -LiteralPath (Join-Path $promotedRoot "latest-enterprise-auth-smoke.json") | ConvertFrom-Json
+Assert-True ($promotedEnterpriseAuth.result -eq "scope-out") "Promoted enterprise auth scope-out evidence should be preserved."
 
 Write-JsonEvidence (Join-Path $invalidRoot "latest-kubernetes-ha-dr-readiness.json") @{
     formatVersion = "osmu.kubernetes-ha-dr-readiness.v1"

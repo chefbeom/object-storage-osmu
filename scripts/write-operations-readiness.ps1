@@ -163,6 +163,24 @@ function Get-GenericResultDetail([object] $Report) {
     return "result=$result"
 }
 
+function Test-EnterpriseAuthEvidenceAccepted([object] $Report) {
+    if (-not ($Report.exists -and $Report.parsed)) {
+        return $false
+    }
+    $result = [string] (Get-ObjectProperty $Report.data "result")
+    if ($result -eq "passed") {
+        return $true
+    }
+    if ($result -ne "scope-out") {
+        return $false
+    }
+    $scopeOut = Get-ObjectProperty $Report.data "scopeOut"
+    $accepted = [bool] (Get-ObjectProperty $scopeOut "accepted")
+    $reference = [string] (Get-ObjectProperty $scopeOut "reference")
+    $reason = [string] (Get-ObjectProperty $scopeOut "reason")
+    return $accepted -and -not [string]::IsNullOrWhiteSpace($reference) -and -not [string]::IsNullOrWhiteSpace($reason)
+}
+
 $releaseReport = Read-JsonReport $ReleaseReportPath "MVP release report"
 $storageExpansionReport = Read-JsonReport $StorageExpansionFinalizeReportPath "Storage expansion finalizer"
 $haDrReadinessReport = Read-JsonReport $KubernetesHaDrReadinessReportPath "Kubernetes HA/DR readiness"
@@ -220,7 +238,7 @@ $enterpriseAuthSmokeRemediation = New-Remediation `
     "powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\write-enterprise-auth-smoke-plan.ps1 -Execute -AdminLoginId <admin> -AdminPassword <secret> -RequireOidc -RequireLdap" `
     ".github/workflows/enterprise-auth-smoke-ci.yml" `
     "gh workflow run enterprise-auth-smoke-ci.yml -f run_live=true -f api_base=<api-base> -f admin_login_id=<admin> -f require_oidc=true -f require_ldap=true -f fail_if_not_passed=true" `
-    "Run against the target pilot IdP/directory only after OIDC/LDAP provider flags and local user mapping are configured. The workflow requires OSMU_ENTERPRISE_AUTH_ADMIN_PASSWORD and, when LDAP is required, OSMU_ENTERPRISE_AUTH_LDAP_LOGIN_ID/OSMU_ENTERPRISE_AUTH_LDAP_PASSWORD secrets. Evidence does not include passwords, tokens, OIDC code/state, or raw claim JSON."
+    "Run against the target pilot IdP/directory only after OIDC/LDAP provider flags and local user mapping are configured, or record an explicit commercial scope-out with write-enterprise-auth-smoke-plan.ps1 -ConfirmScopeOut -ScopeOutRef <approval-ref> -ScopeOutReason <reason>. The workflow requires OSMU_ENTERPRISE_AUTH_ADMIN_PASSWORD and, when LDAP is required, OSMU_ENTERPRISE_AUTH_LDAP_LOGIN_ID/OSMU_ENTERPRISE_AUTH_LDAP_PASSWORD secrets. Evidence does not include passwords, tokens, OIDC code/state, raw claim JSON, or credential-like scope-out references."
 $operationsHandoffPackageRemediation = New-Remediation `
     "powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\write-operations-handoff-package.ps1 -EnvironmentName <env> -TargetCluster <cluster> -Operator <operator> -HandoffStartedAt <iso-time> -HandoffCompletedAt <iso-time> -ChangeApprovalRef <change-id> -DeploymentEvidenceRef <ref> -OperationsReadinessRef <ref> -OperationsConvergenceRef <ref> -SecretRotationEvidenceRef <ref> -CommercialIntegrationEvidenceRef <ref> -EnterpriseAuthEvidenceRef <ref> -BackupRestoreEvidenceRef <ref> -HaDrEvidenceRef <ref> -MonitoringEvidenceRef <ref> -SecurityEvidenceRef <ref> -IamRbacEvidenceRef <ref> -RunbookReviewRef <ref> -TroubleshootingReviewRef <ref> -SupportEscalationRef <ref> -SupportSlaRef <ref> -KnownGapsRef <ref> -ConfirmRunbookReviewed -ConfirmTroubleshootingReviewed -ConfirmRollbackReviewed -ConfirmSupportEscalationReviewed -ConfirmKnownGapsAccepted -ConfirmNoSecretValues -RequireProductionEvidence -FailIfNotPassed" `
     "" `
@@ -283,7 +301,7 @@ Add-Check "Signed image evidence" "security-hardening" ($imageSigningReport.exis
 Add-Check "Container scan/SBOM evidence" "security-hardening" ($containerSecurityReport.exists -and $containerSecurityReport.parsed -and $containerSecurityReport.data.result -eq "passed") (Get-GenericResultDetail $containerSecurityReport) $containerSecurityReport.path "successful container scan and SBOM artifact evidence" $containerSecurityRemediation
 Add-Check "Secret/certificate rotation target evidence" "security-hardening" ($secretRotationReport.exists -and $secretRotationReport.parsed -and $secretRotationReport.data.result -eq "passed") (Get-GenericResultDetail $secretRotationReport) $secretRotationReport.path "secret/certificate rotation evidence result=passed from target environment" $secretRotationRemediation
 Add-Check "Commercial integration target evidence" "commercial-integration" ($commercialIntegrationReport.exists -and $commercialIntegrationReport.parsed -and $commercialIntegrationReport.data.result -eq "passed") (Get-GenericResultDetail $commercialIntegrationReport) $commercialIntegrationReport.path "commercial integration evidence result=passed from target environment" $commercialIntegrationRemediation
-Add-Check "Enterprise auth target smoke evidence" "enterprise-auth" ($enterpriseAuthSmokeReport.exists -and $enterpriseAuthSmokeReport.parsed -and $enterpriseAuthSmokeReport.data.result -eq "passed") (Get-GenericResultDetail $enterpriseAuthSmokeReport) $enterpriseAuthSmokeReport.path "enterprise auth smoke result=passed from target IdP/directory, or explicit commercial scope-out" $enterpriseAuthSmokeRemediation
+Add-Check "Enterprise auth target smoke evidence" "enterprise-auth" (Test-EnterpriseAuthEvidenceAccepted $enterpriseAuthSmokeReport) (Get-GenericResultDetail $enterpriseAuthSmokeReport) $enterpriseAuthSmokeReport.path "enterprise auth smoke result=passed from target IdP/directory, or result=scope-out with explicit commercial approval reference and reason" $enterpriseAuthSmokeRemediation
 Add-Check "Operations handoff package target evidence" "operations-handoff-package" ($operationsHandoffPackageReport.exists -and $operationsHandoffPackageReport.parsed -and $operationsHandoffPackageReport.data.result -eq "passed") (Get-GenericResultDetail $operationsHandoffPackageReport) $operationsHandoffPackageReport.path "operations handoff package result=passed from target environment" $operationsHandoffPackageRemediation
 
 $passedCount = @($checks | Where-Object { $_.passed }).Count

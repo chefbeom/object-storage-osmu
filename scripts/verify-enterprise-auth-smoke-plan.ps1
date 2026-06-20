@@ -90,13 +90,54 @@ Assert-Contains $endpoints "POST /api/admin/security/enterprise-auth/claim-previ
 Assert-Contains $endpoints "POST /api/admin/security/enterprise-auth/jit-provision" "enterprise auth smoke endpoints"
 Assert-Contains $endpoints "GET /api/admin/audit-logs?eventType=<type>" "enterprise auth smoke endpoints"
 Assert-Contains $markdown "# OSMU Enterprise Auth Smoke Plan" "enterprise auth smoke markdown"
-Assert-Contains $markdown "Plan-only mode performs no HTTP requests." "enterprise auth smoke markdown"
+Assert-Contains $markdown "Plan-only and scope-out modes perform no HTTP requests." "enterprise auth smoke markdown"
 Assert-Contains $markdown "Admin password, LDAP password, access/refresh tokens, OIDC authorization code/state" "enterprise auth smoke markdown"
 
 foreach ($secret in @($adminSecret, $ldapSecret, $oidcCode, $oidcState)) {
     Assert-NotContains $reportText $secret "enterprise auth smoke JSON"
     Assert-NotContains $markdown $secret "enterprise auth smoke markdown"
 }
+
+$scopeOutJsonOutputPath = Join-Path $resolvedOutputDirectory "latest-enterprise-auth-smoke-scope-out.json"
+$scopeOutMarkdownOutputPath = Join-Path $resolvedOutputDirectory "latest-enterprise-auth-smoke-scope-out.md"
+& powershell -NoProfile -ExecutionPolicy Bypass -File $scriptPath `
+    -ConfirmScopeOut `
+    -ScopeOutRef "pilot-contract-enterprise-auth-deferred-20260620" `
+    -ScopeOutReason "Pilot phase uses local password login; IdP and LDAP smoke move to production onboarding." `
+    -JsonOutputPath $scopeOutJsonOutputPath `
+    -MarkdownOutputPath $scopeOutMarkdownOutputPath `
+    -FailIfNotPassed | Out-Host
+if ($LASTEXITCODE -ne 0) {
+    throw "write-enterprise-auth-smoke-plan.ps1 scope-out mode failed with exit code $LASTEXITCODE."
+}
+
+$scopeOutReportText = Get-Content -Raw -LiteralPath $scopeOutJsonOutputPath
+$scopeOutMarkdown = Get-Content -Raw -LiteralPath $scopeOutMarkdownOutputPath
+$scopeOutReport = $scopeOutReportText | ConvertFrom-Json
+$scopeOutChecks = @($scopeOutReport.checks)
+
+Assert-True ($scopeOutReport.result -eq "scope-out") "Expected result=scope-out."
+Assert-True ($scopeOutReport.executionMode -eq "scope-out") "Expected scope-out execution mode."
+Assert-True ($scopeOutReport.scopeOut.confirmed) "Expected confirmed scope-out."
+Assert-True ($scopeOutReport.scopeOut.accepted) "Expected accepted scope-out."
+Assert-True (@($scopeOutChecks | Where-Object { $_.id -eq "enterprise-auth-scope-out-confirmed" -and $_.status -eq "PASS" }).Count -eq 1) "Expected scope-out confirmation check to pass."
+Assert-Contains $scopeOutMarkdown "Explicit commercial scope-out" "enterprise auth scope-out markdown"
+
+$previousErrorActionPreference = $ErrorActionPreference
+$ErrorActionPreference = "Continue"
+try {
+    $invalidScopeOutOutput = & powershell -NoProfile -ExecutionPolicy Bypass -File $scriptPath `
+        -ConfirmScopeOut `
+        -ScopeOutRef "pilot-contract-enterprise-auth-deferred-20260620" `
+        -ScopeOutReason "password=super-secret" `
+        -NoWrite 2>&1
+    $invalidScopeOutExitCode = $LASTEXITCODE
+}
+finally {
+    $ErrorActionPreference = $previousErrorActionPreference
+}
+Assert-True ($invalidScopeOutExitCode -ne 0) "Credential-like scope-out reason should be rejected."
+Assert-Contains ($invalidScopeOutOutput | Out-String) "ScopeOutReason appears to contain credential material" "invalid enterprise auth scope-out output"
 
 Write-Host "Enterprise auth smoke plan verified."
 Write-Host "JSON: $jsonOutputPath"

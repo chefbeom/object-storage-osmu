@@ -168,8 +168,8 @@ if ($enterpriseAuthCheck[0].remediation.workflow -ne ".github/workflows/enterpri
 if (-not ([string] $enterpriseAuthCheck[0].remediation.workflowCommand).Contains("gh workflow run enterprise-auth-smoke-ci.yml")) {
     throw "Enterprise auth target smoke evidence remediation workflow command must dispatch enterprise-auth-smoke-ci.yml."
 }
-if (-not ([string] $enterpriseAuthCheck[0].requiredEvidence).Contains("target IdP/directory")) {
-    throw "Enterprise auth target smoke evidence must require target IdP/directory evidence."
+if (-not ([string] $enterpriseAuthCheck[0].requiredEvidence).Contains("target IdP/directory") -or -not ([string] $enterpriseAuthCheck[0].requiredEvidence).Contains("scope-out")) {
+    throw "Enterprise auth target smoke evidence must require target IdP/directory evidence or scope-out evidence."
 }
 $operationsHandoffPackageCheck = @($report.checks | Where-Object { $_.name -eq "Operations handoff package target evidence" })
 if ($operationsHandoffPackageCheck.Count -ne 1) {
@@ -195,6 +195,38 @@ Assert-Contains $markdown "Required Next Evidence" "Operations readiness markdow
 Assert-Contains $markdown "Remediation command" "Operations readiness markdown"
 Assert-Contains $markdown "Workflow" "Operations readiness markdown"
 Assert-Contains $markdown "Workflow command" "Operations readiness markdown"
+
+$scopeOutFixtureDirectory = Resolve-ProjectPath ".\.osmu-run\operations-readiness-enterprise-auth-scope-out-self-test"
+New-Item -ItemType Directory -Force -Path $scopeOutFixtureDirectory | Out-Null
+$scopeOutEvidencePath = Join-Path $scopeOutFixtureDirectory "latest-enterprise-auth-smoke.json"
+$scopeOutJsonOutputPath = Join-Path $scopeOutFixtureDirectory "latest-operations-readiness.json"
+$scopeOutMarkdownOutputPath = Join-Path $scopeOutFixtureDirectory "latest-operations-readiness.md"
+@{
+    formatVersion = "osmu.enterprise-auth-smoke.v1"
+    result = "scope-out"
+    scopeOut = @{
+        confirmed = $true
+        reference = "pilot-contract-enterprise-auth-deferred-20260620"
+        reason = "Pilot phase uses local password login."
+        accepted = $true
+    }
+} | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $scopeOutEvidencePath -Encoding UTF8
+
+& powershell -NoProfile -ExecutionPolicy Bypass -File $scriptPath `
+    -EnterpriseAuthSmokeEvidencePath $scopeOutEvidencePath `
+    -JsonOutputPath $scopeOutJsonOutputPath `
+    -MarkdownOutputPath $scopeOutMarkdownOutputPath | Out-Host
+if ($LASTEXITCODE -ne 0) {
+    throw "write-operations-readiness.ps1 failed for enterprise auth scope-out fixture with exit code $LASTEXITCODE."
+}
+$scopeOutReport = Get-Content -Raw -LiteralPath $scopeOutJsonOutputPath | ConvertFrom-Json
+$scopeOutEnterpriseAuthCheck = @($scopeOutReport.checks | Where-Object { $_.name -eq "Enterprise auth target smoke evidence" })
+if ($scopeOutEnterpriseAuthCheck.Count -ne 1 -or -not $scopeOutEnterpriseAuthCheck[0].passed) {
+    throw "Enterprise auth scope-out evidence must satisfy the operations readiness enterprise-auth check."
+}
+if (-not ([string] $scopeOutEnterpriseAuthCheck[0].detail).Contains("result=scope-out")) {
+    throw "Enterprise auth scope-out readiness detail must preserve result=scope-out."
+}
 
 Write-Host "Operations readiness artifact verified."
 Write-Host "JSON: $resolvedJsonOutputPath"

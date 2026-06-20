@@ -10,6 +10,8 @@ param(
     [string] $LdapPassword = "",
     [string] $ExpectedEmail = "",
     [string[]] $ExpectedAuditEventTypes = @("LOGIN_LDAP", "OIDC_CLAIM_PREVIEW", "OIDC_JIT_PROVISION"),
+    [string] $ScopeOutRef = "",
+    [string] $ScopeOutReason = "",
     [string] $JsonOutputPath = ".\.osmu-run\latest-enterprise-auth-smoke.json",
     [string] $MarkdownOutputPath = ".\.osmu-run\latest-enterprise-auth-smoke.md",
     [switch] $Execute,
@@ -17,6 +19,7 @@ param(
     [switch] $RequireLdap,
     [switch] $RequireAuditEvents,
     [switch] $ConfirmJitProvision,
+    [switch] $ConfirmScopeOut,
     [switch] $FailIfNotPassed,
     [switch] $NoWrite
 )
@@ -65,6 +68,25 @@ function Protect-Detail([string] $Text) {
     $safe = [regex]::Replace($safe, "accessToken['""]?\s*[:=]\s*['""]?[^,'""\s}]+", "accessToken=<redacted>")
     $safe = [regex]::Replace($safe, "refreshToken['""]?\s*[:=]\s*['""]?[^,'""\s}]+", "refreshToken=<redacted>")
     return $safe
+}
+
+function Assert-SafeEvidenceText([string] $Value, [string] $Label) {
+    if ([string]::IsNullOrWhiteSpace($Value)) {
+        return
+    }
+
+    $patterns = @(
+        "-----BEGIN [A-Z ]*PRIVATE KEY-----",
+        "\bA(KIA|SIA)[0-9A-Z]{16}\b",
+        "\bBearer\s+[A-Za-z0-9._~+/=-]{12,}",
+        "(?i)\b(password|passwd|secret|token|client_secret|ldap_password|oidc_code|oidc_state|refresh_token|access_token)\s*[=:]\s*\S+"
+    )
+
+    foreach ($pattern in $patterns) {
+        if ($Value -match $pattern) {
+            throw "$Label appears to contain credential material. Store only a non-secret commercial approval reference or summary."
+        }
+    }
 }
 
 function New-Check(
@@ -144,11 +166,26 @@ function Add-PlanChecks {
     Add-Check "audit-log" "Enterprise auth audit evidence" "audit" "GET /api/admin/audit-logs?eventType=<type>" "PLANNED" "Confirms LOGIN_LDAP, OIDC_CLAIM_PREVIEW, or OIDC_JIT_PROVISION audit entries after live checks." @("AdminPassword")
 }
 
+function Add-ScopeOutChecks {
+    $confirmedStatus = if ($ConfirmScopeOut) { "PASS" } else { "FAIL" }
+    $refStatus = if (-not [string]::IsNullOrWhiteSpace($ScopeOutRef)) { "PASS" } else { "FAIL" }
+    $reasonStatus = if (-not [string]::IsNullOrWhiteSpace($ScopeOutReason)) { "PASS" } else { "FAIL" }
+    Add-Check "enterprise-auth-scope-out-confirmed" "Enterprise auth commercial scope-out confirmed" "enterprise-auth" "commercial approval" $confirmedStatus "ConfirmScopeOut=$([bool] $ConfirmScopeOut)." @("ConfirmScopeOut")
+    Add-Check "enterprise-auth-scope-out-ref" "Enterprise auth scope-out approval reference recorded" "enterprise-auth" "commercial approval" $refStatus "scopeOutRef=$ScopeOutRef." @("ScopeOutRef")
+    Add-Check "enterprise-auth-scope-out-reason" "Enterprise auth scope-out reason recorded" "enterprise-auth" "commercial approval" $reasonStatus "scopeOutReason=$ScopeOutReason." @("ScopeOutReason")
+}
+
 $checks = New-Object System.Collections.Generic.List[object]
 $adminToken = ""
 $executedEventTypes = New-Object System.Collections.Generic.List[string]
 
-if (-not $Execute) {
+Assert-SafeEvidenceText $ScopeOutRef "ScopeOutRef"
+Assert-SafeEvidenceText $ScopeOutReason "ScopeOutReason"
+
+if ($ConfirmScopeOut) {
+    Add-ScopeOutChecks
+}
+elseif (-not $Execute) {
     Add-PlanChecks
 }
 else {
@@ -353,7 +390,10 @@ $blockedCount = @($checkArray | Where-Object { $_.status -eq "BLOCKED" }).Count
 $plannedCount = @($checkArray | Where-Object { $_.status -eq "PLANNED" }).Count
 $skippedCount = @($checkArray | Where-Object { $_.status -eq "SKIPPED" }).Count
 
-$result = if (-not $Execute) {
+$result = if ($ConfirmScopeOut) {
+    if ($failCount -eq 0) { "scope-out" } else { "failed" }
+}
+elseif (-not $Execute) {
     "planned"
 }
 elseif ($failCount -gt 0) {
@@ -377,11 +417,17 @@ $report = [ordered]@{
     formatVersion = "osmu.enterprise-auth-smoke.v1"
     generatedAt = $generatedAt
     result = $result
-    executionMode = if ($Execute) { "execute" } else { "plan-only" }
+    executionMode = if ($ConfirmScopeOut) { "scope-out" } elseif ($Execute) { "execute" } else { "plan-only" }
     apiBase = $ApiBase
     requireOidc = [bool] $RequireOidc
     requireLdap = [bool] $RequireLdap
     requireAuditEvents = [bool] $RequireAuditEvents
+    scopeOut = [ordered]@{
+        confirmed = [bool] $ConfirmScopeOut
+        reference = $ScopeOutRef
+        reason = $ScopeOutReason
+        accepted = $result -eq "scope-out"
+    }
     inputs = [ordered]@{
         adminLoginId = $AdminLoginId
         adminPasswordProvided = -not [string]::IsNullOrWhiteSpace($AdminPassword)
@@ -402,8 +448,8 @@ $report = [ordered]@{
         skippedCount = $skippedCount
     }
     checks = $checkArray
-    decisionRule = "Paid/production pilot requires result=passed from the target IdP/directory, or an explicit documented scope-out. Default plan-only mode performs no HTTP requests."
-    secretPolicy = "Admin password, LDAP password, access/refresh tokens, OIDC authorization code/state, client secrets, and raw OIDC claim JSON are never written to this evidence."
+    decisionRule = "Paid/production pilot requires result=passed from the target IdP/directory, or result=scope-out with an explicit non-secret commercial approval reference and reason. Default plan-only and scope-out modes perform no HTTP requests."
+    secretPolicy = "Admin password, LDAP password, access/refresh tokens, OIDC authorization code/state, client secrets, raw OIDC claim JSON, and credential-like scope-out references are never written to this evidence."
 }
 
 $markdownLines = @(
@@ -432,6 +478,9 @@ $markdownLines = @(
     "- JIT provisioning confirmed: $($report.inputs.confirmJitProvision)",
     "- LDAP login/password provided: $($report.inputs.ldapLoginIdProvided)/$($report.inputs.ldapPasswordProvided)",
     "- Expected email provided: $($report.inputs.expectedEmailProvided)",
+    "- Enterprise auth scope-out confirmed: $($report.scopeOut.confirmed)",
+    "- Enterprise auth scope-out reference: $($report.scopeOut.reference)",
+    "- Enterprise auth scope-out reason: $($report.scopeOut.reason)",
     "",
     "## Checks",
     ""
@@ -452,8 +501,9 @@ $markdownLines += ""
 $markdownLines += "- Plan only: ``powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\write-enterprise-auth-smoke-plan.ps1``"
 $markdownLines += "- Live target smoke: ``powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\write-enterprise-auth-smoke-plan.ps1 -Execute -AdminLoginId <admin> -AdminPassword <secret> -RequireOidc -RequireLdap``"
 $markdownLines += "- LDAP-only target smoke: ``powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\write-enterprise-auth-smoke-plan.ps1 -Execute -AdminLoginId <admin> -AdminPassword <secret> -LdapLoginId <directory-user> -LdapPassword <secret> -RequireLdap``"
+$markdownLines += "- Explicit commercial scope-out: ``powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\write-enterprise-auth-smoke-plan.ps1 -ConfirmScopeOut -ScopeOutRef <contract-or-approval-ref> -ScopeOutReason <non-secret-reason> -FailIfNotPassed``"
 $markdownLines += ""
-$markdownLines += "Plan-only mode performs no HTTP requests."
+$markdownLines += "Plan-only and scope-out modes perform no HTTP requests."
 
 if (-not $NoWrite) {
     New-Item -ItemType Directory -Force -Path (Split-Path -Parent $resolvedJsonOutputPath) | Out-Null
@@ -466,6 +516,6 @@ if (-not $NoWrite) {
 
 Write-Host ($markdownLines -join [Environment]::NewLine)
 
-if ($FailIfNotPassed -and $result -ne "passed") {
+if ($FailIfNotPassed -and $result -notin @("passed", "scope-out")) {
     throw "Enterprise auth smoke did not pass: $result"
 }

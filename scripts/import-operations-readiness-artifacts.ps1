@@ -95,9 +95,10 @@ function Test-EvidenceJson([string] $Path, [string] $ExpectedProperty, [string] 
     }
 
     $actual = [string] (Get-JsonProperty $json $ExpectedProperty)
+    $expectedValues = @($ExpectedValue -split "\|" | ForEach-Object { $_.Trim() } | Where-Object { $_ })
     return [pscustomobject]@{
-        passed = $actual -eq $ExpectedValue
-        detail = "$ExpectedProperty=$actual expected=$ExpectedValue"
+        passed = $expectedValues -contains $actual
+        detail = "$ExpectedProperty=$actual expected=$($expectedValues -join '|')"
     }
 }
 
@@ -162,7 +163,7 @@ Import-EvidenceFile "security-evidence" $SecurityEvidenceArtifactPath "latest-se
 Import-EvidenceFile "security-evidence" $SecurityEvidenceArtifactPath "latest-image-signing-evidence.json" $true "result" "passed"
 Import-EvidenceFile "security-evidence" $SecurityEvidenceArtifactPath "latest-container-security-evidence.json" $true "result" "passed"
 
-Import-EvidenceFile "enterprise-auth" $EnterpriseAuthArtifactPath "latest-enterprise-auth-smoke.json" $true "result" "passed"
+Import-EvidenceFile "enterprise-auth" $EnterpriseAuthArtifactPath "latest-enterprise-auth-smoke.json" $true "result" "passed|scope-out"
 Import-EvidenceFile "enterprise-auth" $EnterpriseAuthArtifactPath "latest-enterprise-auth-smoke.md" $false
 
 Import-EvidenceFile "kubernetes-operations-report-sync" $KubernetesOperationsReportSyncArtifactPath "latest-kubernetes-operations-report-sync.json" $true "result" "applied"

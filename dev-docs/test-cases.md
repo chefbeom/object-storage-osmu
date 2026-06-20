@@ -2195,6 +2195,16 @@ TC-FE-023 보강: 사용자가 취소한 경우에는 abort API를 호출한다.
 - Priority: P2
 - Automated: `scripts/verify-operations-handoff-package.ps1`
 
+### TC-INFRA-008D
+
+- Feature: Enterprise auth target smoke and scope-out evidence writer verification.
+- Preconditions: PowerShell is available.
+- Input: `powershell -ExecutionPolicy Bypass -File .\scripts\verify-enterprise-auth-smoke-plan.ps1`
+- Steps: Generate plan-only enterprise auth smoke evidence and verify `osmu.enterprise-auth-smoke.v1`, planned OIDC/LDAP/admin/audit checks, no HTTP execution, input presence booleans, and no secret storage for admin password, LDAP password, OIDC code, or OIDC state. Generate explicit commercial scope-out evidence with `-ConfirmScopeOut`, verify `result=scope-out`, non-secret approval reference/reason, no HTTP execution, and operations readiness acceptance. Verify credential-shaped scope-out text such as `password=...` is rejected.
+- Expected: Operators can either collect real target IdP/LDAP smoke evidence or record an honest contract-approved enterprise auth deferral without leaking credentials or treating an unverified directory as a passed smoke.
+- Priority: P2
+- Automated: `scripts/verify-enterprise-auth-smoke-plan.ps1`, `scripts/verify-operations-readiness.ps1`, `scripts/verify-operations-readiness-artifact-import.ps1`
+
 ### TC-INFRA-009
 
 - Feature: Backup restore drill draft verification.

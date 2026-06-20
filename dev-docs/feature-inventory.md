@@ -114,7 +114,7 @@ MVP 데모 기준 완료율은 약 90~95%입니다.
 
 남은 것:
 
-- 실제 IdP/LDAP directory pilot에서 `scripts/write-enterprise-auth-smoke-plan.ps1 -Execute` 또는 `.github/workflows/enterprise-auth-smoke-ci.yml` `run_live=true` 실행 후 `result=passed` evidence 확보
+- 실제 IdP/LDAP directory pilot에서 `scripts/write-enterprise-auth-smoke-plan.ps1 -Execute` 또는 `.github/workflows/enterprise-auth-smoke-ci.yml` `run_live=true` 실행 후 `result=passed` evidence 확보. 파일럿 계약상 enterprise auth가 명시적으로 제외되면 `write-enterprise-auth-smoke-plan.ps1 -ConfirmScopeOut`로 non-secret approval reference와 reason을 기록한 `result=scope-out` evidence 확보
 
 ### 4.2 개발자 콘솔
 
