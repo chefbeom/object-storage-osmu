@@ -87,6 +87,7 @@ Assert-True ($report.result -eq "passed") "Expected result=passed."
 Assert-True ($report.summary.failureCount -eq 0) "Expected zero failed checks."
 Assert-True ($report.summary.coreRotatedCount -eq $report.summary.coreRequiredCount) "Expected all core rotations."
 Assert-True ($checks.Count -ge 15) "Expected secret rotation checks."
+Assert-True (@($checks | Where-Object { $_.id -eq "rotation-window-order" -and $_.passed }).Count -eq 1) "Expected rotation window order check to pass."
 Assert-True (@($rotations | Where-Object { $_.core -and $_.rotated }).Count -ge 5) "Expected core rotation entries."
 Assert-True ($report.confirmations.noSecretValues) "Expected no-secret-values confirmation."
 Assert-True ($report.confirmations.workloadRestart) "Expected workload restart confirmation."
@@ -119,6 +120,41 @@ finally {
     $ErrorActionPreference = $previousErrorActionPreference
 }
 Assert-True ($invalidExitCode -ne 0) "Secret-like evidence reference should be rejected."
+
+$previousErrorActionPreference = $ErrorActionPreference
+$ErrorActionPreference = "Continue"
+try {
+    $invalidWindowOutput = & powershell -NoProfile -ExecutionPolicy Bypass -File $scriptPath `
+        -EnvironmentName "pilot-prod-self-test" `
+        -TargetCluster "customer-cluster-a" `
+        -Operator "ops-self-test" `
+        -RotationStartedAt "2026-06-20T00:30:00Z" `
+        -RotationCompletedAt "2026-06-20T00:00:00Z" `
+        -ChangeApprovalRef "CHG-2026-SECRET-ROTATION-SELF-TEST" `
+        -SecretManagerEvidenceRef "vault-audit-run-20260620" `
+        -WorkloadRestartEvidenceRef "rollout-status-run-20260620" `
+        -SmokeEvidenceRef "latest-restore-smoke-20260620" `
+        -ArtifactLeakReviewEvidenceRef "artifact-leak-review-20260620" `
+        -JsonOutputPath (Join-Path $resolvedOutputDirectory "invalid-window.json") `
+        -MarkdownOutputPath (Join-Path $resolvedOutputDirectory "invalid-window.md") `
+        -RotateAdminPassword `
+        -RotateJwtSigningSecret `
+        -RotateDatabaseCredentials `
+        -RotateMinioRootCredentials `
+        -RotateTlsCertificate `
+        -ConfirmNoSecretValues `
+        -ConfirmWorkloadRestart `
+        -ConfirmSmokePassed `
+        -ConfirmArtifactLeakReview `
+        -RequireAllCoreSecrets `
+        -FailIfNotPassed 2>&1
+    $invalidWindowExitCode = $LASTEXITCODE
+}
+finally {
+    $ErrorActionPreference = $previousErrorActionPreference
+}
+Assert-True ($invalidWindowExitCode -ne 0) "Reversed rotation window should be rejected."
+Assert-Contains ($invalidWindowOutput | Out-String) "Rotation window order valid" "invalid rotation window output"
 
 Write-Host "Secret rotation evidence writer verified."
 Write-Host "JSON: $jsonOutputPath"

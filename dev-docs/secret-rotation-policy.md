@@ -91,7 +91,7 @@ Target-environment execution evidence is recorded with:
 powershell -ExecutionPolicy Bypass -File .\scripts\write-secret-rotation-evidence.ps1 -EnvironmentName <env> -TargetCluster <cluster> -Operator <operator> -RotationStartedAt <iso-time> -RotationCompletedAt <iso-time> -ChangeApprovalRef <change-id> -SecretManagerEvidenceRef <audit-ref> -WorkloadRestartEvidenceRef <rollout-ref> -SmokeEvidenceRef <smoke-ref> -ArtifactLeakReviewEvidenceRef <scan-ref> -AccessKeyEncryptionDecisionRef <decision-ref> -RotateAdminPassword -RotateJwtSigningSecret -RotateDatabaseCredentials -RotateMinioRootCredentials -RotateTlsCertificate -ConfirmNoSecretValues -ConfirmWorkloadRestart -ConfirmSmokePassed -ConfirmArtifactLeakReview -FailIfNotPassed
 ```
 
-The writer creates `.osmu-run/latest-secret-rotation-evidence.json` and `.osmu-run/latest-secret-rotation-evidence.md`. It records environment labels, timestamps, boolean rotation confirmations, and external evidence references only; it rejects credential-shaped references and must never receive secret values.
+The writer creates `.osmu-run/latest-secret-rotation-evidence.json` and `.osmu-run/latest-secret-rotation-evidence.md`. It records environment labels, timestamps, boolean rotation confirmations, and external evidence references only; it rejects credential-shaped references, requires `RotationCompletedAt` to be the same as or later than `RotationStartedAt`, and must never receive secret values.
 
 The writer self-test is:
 

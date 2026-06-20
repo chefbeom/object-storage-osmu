@@ -67,6 +67,17 @@ function Test-DateText([string] $Value) {
     return [DateTimeOffset]::TryParse($Value, [ref] $parsed)
 }
 
+function Get-ParsedDateText([string] $Value) {
+    if ([string]::IsNullOrWhiteSpace($Value)) {
+        return $null
+    }
+    $parsed = [DateTimeOffset]::MinValue
+    if ([DateTimeOffset]::TryParse($Value, [ref] $parsed)) {
+        return $parsed
+    }
+    return $null
+}
+
 function New-Check([string] $Id, [string] $Name, [string] $Status, [string] $Detail) {
     return [ordered]@{
         id = $Id
@@ -130,12 +141,16 @@ $coreRotations = @($rotations | Where-Object { $_.core })
 $rotatedCoreCount = @($coreRotations | Where-Object { $_.rotated }).Count
 $rotatedCount = @($rotations | Where-Object { $_.rotated }).Count
 $hasAnyInput = -not [string]::IsNullOrWhiteSpace($EnvironmentName + $TargetCluster + $Operator + $ChangeApprovalRef + $SecretManagerEvidenceRef + $WorkloadRestartEvidenceRef + $SmokeEvidenceRef + $ArtifactLeakReviewEvidenceRef + $AccessKeyEncryptionDecisionRef + $RotationStartedAt + $RotationCompletedAt) -or $rotatedCount -gt 0
+$rotationStartedAtParsed = Get-ParsedDateText $RotationStartedAt
+$rotationCompletedAtParsed = Get-ParsedDateText $RotationCompletedAt
+$rotationWindowOrdered = $null -ne $rotationStartedAtParsed -and $null -ne $rotationCompletedAtParsed -and $rotationCompletedAtParsed -ge $rotationStartedAtParsed
 
 Add-Check "environment-name" "Environment name recorded" (-not [string]::IsNullOrWhiteSpace($EnvironmentName)) "environmentName=$EnvironmentName"
 Add-Check "target-cluster" "Target cluster recorded" (-not [string]::IsNullOrWhiteSpace($TargetCluster)) "targetCluster=$TargetCluster"
 Add-Check "operator" "Operator recorded" (-not [string]::IsNullOrWhiteSpace($Operator)) "operator=$Operator"
 Add-Check "rotation-started-at" "Rotation start timestamp recorded" (Test-DateText $RotationStartedAt) "rotationStartedAt=$RotationStartedAt"
 Add-Check "rotation-completed-at" "Rotation completion timestamp recorded" (Test-DateText $RotationCompletedAt) "rotationCompletedAt=$RotationCompletedAt"
+Add-Check "rotation-window-order" "Rotation window order valid" $rotationWindowOrdered "rotationStartedAt=$RotationStartedAt; rotationCompletedAt=$RotationCompletedAt"
 Add-Check "change-approval-ref" "Change approval reference recorded" (-not [string]::IsNullOrWhiteSpace($ChangeApprovalRef)) "changeApprovalRef=$ChangeApprovalRef"
 Add-Check "secret-manager-evidence-ref" "Secret manager audit reference recorded" (-not [string]::IsNullOrWhiteSpace($SecretManagerEvidenceRef)) "secretManagerEvidenceRef=$SecretManagerEvidenceRef"
 Add-Check "workload-restart-evidence-ref" "Workload restart evidence reference recorded" (-not [string]::IsNullOrWhiteSpace($WorkloadRestartEvidenceRef)) "workloadRestartEvidenceRef=$WorkloadRestartEvidenceRef"
