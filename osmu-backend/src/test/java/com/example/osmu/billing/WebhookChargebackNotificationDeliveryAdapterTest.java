@@ -15,11 +15,14 @@ import java.net.ServerSocket;
 import java.net.Socket;
 import java.nio.charset.StandardCharsets;
 import java.time.OffsetDateTime;
+import java.util.HexFormat;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
+import javax.crypto.Mac;
+import javax.crypto.spec.SecretKeySpec;
 import org.junit.jupiter.api.Test;
 
 class WebhookChargebackNotificationDeliveryAdapterTest {
@@ -45,6 +48,9 @@ class WebhookChargebackNotificationDeliveryAdapterTest {
                             OBJECT_MAPPER,
                             "",
                             slackUrl,
+                            "",
+                            "",
+                            "",
                             "",
                             "",
                             3000,
@@ -104,6 +110,9 @@ class WebhookChargebackNotificationDeliveryAdapterTest {
             WebhookChargebackNotificationDeliveryAdapter adapter =
                     new WebhookChargebackNotificationDeliveryAdapter(
                             OBJECT_MAPPER,
+                            "",
+                            "",
+                            "",
                             "",
                             "",
                             "",
@@ -168,6 +177,9 @@ class WebhookChargebackNotificationDeliveryAdapterTest {
                         "",
                         "",
                         "",
+                        "",
+                        "",
+                        "",
                         3000,
                         65536,
                         false,
@@ -191,6 +203,9 @@ class WebhookChargebackNotificationDeliveryAdapterTest {
                 new WebhookChargebackNotificationDeliveryAdapter(
                         OBJECT_MAPPER,
                         "https://hooks.example.com/osmu",
+                        "",
+                        "",
+                        "",
                         "",
                         "",
                         "",
@@ -233,6 +248,113 @@ class WebhookChargebackNotificationDeliveryAdapterTest {
 
         assertThat(result.result()).isEqualTo("BLOCKED_CREDENTIAL");
         assertThat(result.lastError()).contains("max payload size");
+    }
+
+    @Test
+    void signsGenericWebhookPayloadWhenSignatureSecretIsConfigured() throws Exception {
+        AtomicReference<String> requestBody = new AtomicReference<>("");
+        AtomicReference<String> signatureHeader = new AtomicReference<>("");
+        AtomicReference<String> timestampHeader = new AtomicReference<>("");
+        HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/webhook", exchange -> {
+            requestBody.set(new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8));
+            signatureHeader.set(exchange.getRequestHeaders().getFirst("X-OSMU-Test-Signature"));
+            timestampHeader.set(exchange.getRequestHeaders().getFirst("X-OSMU-Test-Timestamp"));
+            exchange.sendResponseHeaders(200, -1);
+            exchange.close();
+        });
+        server.start();
+        try {
+            String webhookUrl = "http://127.0.0.1:" + server.getAddress().getPort() + "/webhook";
+            WebhookChargebackNotificationDeliveryAdapter adapter =
+                    new WebhookChargebackNotificationDeliveryAdapter(
+                            OBJECT_MAPPER,
+                            webhookUrl,
+                            "",
+                            "",
+                            "",
+                            "notification-signing-secret",
+                            "X-OSMU-Test-Signature",
+                            "X-OSMU-Test-Timestamp",
+                            3000,
+                            65536,
+                            true,
+                            "",
+                            25,
+                            "",
+                            "osmu.local",
+                            "[OSMU]",
+                            "",
+                            "",
+                            false,
+                            false
+                    );
+
+            ChargebackNotificationDeliveryAdapterResult result = adapter.deliver(new ChargebackAlertNotificationDeliveryRecord(
+                    13L,
+                    11L,
+                    "Signed Org",
+                    "WARNING",
+                    BigDecimal.valueOf(200L),
+                    BigDecimal.valueOf(100L),
+                    BigDecimal.valueOf(300L),
+                    "WEBHOOK",
+                    "signed-webhook",
+                    "PENDING_DELIVERY_ADAPTER",
+                    0,
+                    null,
+                    "Chargeback warning threshold crossed",
+                    "Signed Org exceeded the warning billing threshold.",
+                    "{\"eventType\":\"chargeback.threshold\"}",
+                    "admin",
+                    "unit test",
+                    OffsetDateTime.now(),
+                    OffsetDateTime.now(),
+                    null
+            ));
+
+            String expectedSignature = "t=" + timestampHeader.get()
+                    + ",v1=" + hmacSha256("notification-signing-secret", timestampHeader.get() + "." + requestBody.get());
+            assertThat(result.result()).isEqualTo("SUCCESS");
+            assertThat(signatureHeader.get()).isEqualTo(expectedSignature);
+        } finally {
+            server.stop(0);
+        }
+    }
+
+    @Test
+    void rejectsInvalidGenericWebhookSignatureHeaderConfiguration() {
+        WebhookChargebackNotificationDeliveryAdapter adapter =
+                new WebhookChargebackNotificationDeliveryAdapter(
+                        OBJECT_MAPPER,
+                        "https://hooks.example.com/osmu",
+                        "",
+                        "",
+                        "",
+                        "notification-signing-secret",
+                        "X-OSMU-Signature\nBad",
+                        "X-OSMU-Signature-Timestamp",
+                        3000,
+                        65536,
+                        false,
+                        "",
+                        25,
+                        "",
+                        "osmu.local",
+                        "[OSMU]",
+                        "",
+                        "",
+                        false,
+                        false
+                );
+
+        assertThat(adapter.isConfigured("WEBHOOK")).isFalse();
+    }
+
+    private static String hmacSha256(String secret, String payload) throws Exception {
+        Mac mac = Mac.getInstance("HmacSHA256");
+        mac.init(new SecretKeySpec(secret.getBytes(StandardCharsets.UTF_8), "HmacSHA256"));
+        return HexFormat.of().formatHex(mac.doFinal(payload.getBytes(StandardCharsets.UTF_8)));
     }
 
     private static final class FakeSmtpServer implements AutoCloseable {

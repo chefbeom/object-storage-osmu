@@ -26,6 +26,9 @@ public class WebhookChargebackPaymentProviderAdapter implements ChargebackPaymen
     private final String webhookUrl;
     private final String secretHeaderName;
     private final String secretHeaderValue;
+    private final String signatureSecret;
+    private final String signatureHeaderName;
+    private final String signatureTimestampHeaderName;
     private final int timeoutMs;
     private final int maxPayloadBytes;
     private final boolean allowPrivateNetwork;
@@ -35,6 +38,9 @@ public class WebhookChargebackPaymentProviderAdapter implements ChargebackPaymen
             @Value("${osmu.billing.payment-provider.webhook-url:}") String webhookUrl,
             @Value("${osmu.billing.payment-provider.secret-header-name:}") String secretHeaderName,
             @Value("${osmu.billing.payment-provider.secret-header-value:}") String secretHeaderValue,
+            @Value("${osmu.billing.payment-provider.signature-secret:}") String signatureSecret,
+            @Value("${osmu.billing.payment-provider.signature-header-name:X-OSMU-Signature}") String signatureHeaderName,
+            @Value("${osmu.billing.payment-provider.signature-timestamp-header-name:X-OSMU-Signature-Timestamp}") String signatureTimestampHeaderName,
             @Value("${osmu.billing.payment-provider.timeout-ms:3000}") int timeoutMs,
             @Value("${osmu.billing.payment-provider.max-payload-bytes:65536}") int maxPayloadBytes,
             @Value("${osmu.billing.payment-provider.allow-private-network:false}") boolean allowPrivateNetwork
@@ -43,6 +49,15 @@ public class WebhookChargebackPaymentProviderAdapter implements ChargebackPaymen
         this.webhookUrl = normalize(webhookUrl);
         this.secretHeaderName = normalize(secretHeaderName);
         this.secretHeaderValue = normalize(secretHeaderValue);
+        this.signatureSecret = normalize(signatureSecret);
+        this.signatureHeaderName = ExternalAdapterSignaturePolicy.normalizeHeaderName(
+                signatureHeaderName,
+                ExternalAdapterSignaturePolicy.DEFAULT_SIGNATURE_HEADER_NAME
+        );
+        this.signatureTimestampHeaderName = ExternalAdapterSignaturePolicy.normalizeHeaderName(
+                signatureTimestampHeaderName,
+                ExternalAdapterSignaturePolicy.DEFAULT_TIMESTAMP_HEADER_NAME
+        );
         this.timeoutMs = Math.max(MIN_TIMEOUT_MS, Math.min(timeoutMs <= 0 ? DEFAULT_TIMEOUT_MS : timeoutMs, MAX_TIMEOUT_MS));
         this.maxPayloadBytes = ExternalAdapterPayloadPolicy.normalizeMaxPayloadBytes(maxPayloadBytes);
         this.allowPrivateNetwork = allowPrivateNetwork;
@@ -53,7 +68,7 @@ public class WebhookChargebackPaymentProviderAdapter implements ChargebackPaymen
 
     @Override
     public boolean isConfigured() {
-        return configuredUri() != null && secretHeaderConfigIsValid();
+        return configuredUri() != null && secretHeaderConfigIsValid() && signatureConfigIsValid();
     }
 
     @Override
@@ -64,6 +79,9 @@ public class WebhookChargebackPaymentProviderAdapter implements ChargebackPaymen
         }
         if (!secretHeaderConfigIsValid()) {
             return ChargebackPaymentProviderAdapterResult.blocked("Payment provider webhook header configuration is invalid.");
+        }
+        if (!signatureConfigIsValid()) {
+            return ChargebackPaymentProviderAdapterResult.blocked("Payment provider webhook signature configuration is invalid.");
         }
 
         String requestBody;
@@ -86,6 +104,13 @@ public class WebhookChargebackPaymentProviderAdapter implements ChargebackPaymen
             if (!secretHeaderName.isBlank() && !secretHeaderValue.isBlank()) {
                 requestBuilder.header(secretHeaderName, secretHeaderValue);
             }
+            ExternalAdapterSignaturePolicy.addSignatureHeaders(
+                    requestBuilder,
+                    requestBody,
+                    signatureSecret,
+                    signatureHeaderName,
+                    signatureTimestampHeaderName
+            );
             HttpResponse<Void> httpResponse = httpClient.send(
                     requestBuilder.build(),
                     HttpResponse.BodyHandlers.discarding()
@@ -146,6 +171,14 @@ public class WebhookChargebackPaymentProviderAdapter implements ChargebackPaymen
             return true;
         }
         return validHeaderName(secretHeaderName) && !secretHeaderValue.isBlank() && !containsLineBreak(secretHeaderValue);
+    }
+
+    private boolean signatureConfigIsValid() {
+        return ExternalAdapterSignaturePolicy.signatureConfigIsValid(
+                signatureSecret,
+                signatureHeaderName,
+                signatureTimestampHeaderName
+        );
     }
 
     private static boolean validHeaderName(String value) {

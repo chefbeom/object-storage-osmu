@@ -116,7 +116,7 @@ Kubernetes ServiceAccount와 cluster RBAC 권한 경계는 `kubernetes-rbac-matr
 
 ## Additional Chargeback Admin Route
 
-- Chargeback adapter retry worker: `GET /api/admin/billing/chargeback-adapter-retry-worker/status`, `POST /api/admin/billing/chargeback-adapter-retry-worker/run` are `ADMIN` only. `ORG_ADMIN`, `AUDITOR`, and `USER` are denied. `ChargebackAdapterRetryWorkerService` performs dry-run state inspection and attempts configured generic notification webhook, `SLACK` notification webhook, and payment webhook adapters on run without storing secrets, webhook URLs, or raw provider responses.
+- Chargeback adapter retry worker: `GET /api/admin/billing/chargeback-adapter-retry-worker/status`, `POST /api/admin/billing/chargeback-adapter-retry-worker/run` are `ADMIN` only. `ORG_ADMIN`, `AUDITOR`, and `USER` are denied. `ChargebackAdapterRetryWorkerService` performs dry-run state inspection and attempts configured generic notification webhook, `SLACK` notification webhook, `EMAIL` SMTP relay, and payment webhook adapters on run without storing secrets, signing secrets, webhook URLs, SMTP passwords, or raw provider responses.
 
 ## 7. Verification Evidence
 

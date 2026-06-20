@@ -2753,7 +2753,7 @@ Notes:
 
 ### GET /api/admin/billing/chargeback-alert-notifications/preview
 
-Builds scoped external notification payload previews from the same chargeback threshold alert model. `ADMIN` sees payload previews for every alerted organization and `ORG_ADMIN` sees only its own organization. This endpoint does not send webhooks, email, Slack messages, or any other external notification; it only returns the payload shape and target metadata for review. `externalDeliveryEnabled` is channel-aware: generic webhook channels use `osmu.billing.notification-delivery.webhook-url` and optional secret header settings, `SLACK` can also use `osmu.billing.notification-delivery.slack.webhook-url`, and `EMAIL` can use the configured SMTP relay adapter.
+Builds scoped external notification payload previews from the same chargeback threshold alert model. `ADMIN` sees payload previews for every alerted organization and `ORG_ADMIN` sees only its own organization. This endpoint does not send webhooks, email, Slack messages, or any other external notification; it only returns the payload shape and target metadata for review. `externalDeliveryEnabled` is channel-aware: generic webhook channels use `osmu.billing.notification-delivery.webhook-url` plus optional secret header and HMAC signature settings, `SLACK` can also use `osmu.billing.notification-delivery.slack.webhook-url`, and `EMAIL` can use the configured SMTP relay adapter.
 
 Query parameters are the same as `GET /api/admin/billing/chargeback-preview`, plus:
 
@@ -2825,13 +2825,16 @@ Response:
 
 ### POST /api/admin/billing/chargeback-alert-notifications/outbox/{deliveryId}/adapter-send
 
-Attempts configured delivery for a persisted chargeback notification delivery row. `ADMIN` only. Generic channels use `osmu.billing.notification-delivery.webhook-url`; `SLACK` rows use `osmu.billing.notification-delivery.slack.webhook-url` when configured and otherwise fall back to the generic webhook if configured; `EMAIL` rows use the configured SMTP relay adapter when configured and otherwise fall back to the generic webhook if configured. If no channel-compatible adapter is configured or the configuration is invalid, the row moves to `DELIVERY_ADAPTER_BLOCKED_CREDENTIAL` without an external call. Generic webhook sends a JSON envelope with delivery metadata plus the original notification payload. Slack webhook sends a Slack-compatible `text` JSON payload. Email sends a UTF-8 plain text SMTP message to the outbox `target` email address. It never stores webhook URLs, secret header values, SMTP password values, response bodies, or raw provider responses in the outbox.
+Attempts configured delivery for a persisted chargeback notification delivery row. `ADMIN` only. Generic channels use `osmu.billing.notification-delivery.webhook-url`; `SLACK` rows use `osmu.billing.notification-delivery.slack.webhook-url` when configured and otherwise fall back to the generic webhook if configured; `EMAIL` rows use the configured SMTP relay adapter when configured and otherwise fall back to the generic webhook if configured. If no channel-compatible adapter is configured or the configuration is invalid, the row moves to `DELIVERY_ADAPTER_BLOCKED_CREDENTIAL` without an external call. Generic webhook sends a JSON envelope with delivery metadata plus the original notification payload and can add timestamped HMAC-SHA256 signature headers. Slack webhook sends a Slack-compatible `text` JSON payload. Email sends a UTF-8 plain text SMTP message to the outbox `target` email address. It never stores webhook URLs, secret header values, signature secrets, SMTP password values, response bodies, or raw provider responses in the outbox.
 
 Configuration:
 
 - `osmu.billing.notification-delivery.webhook-url` (optional): HTTP/HTTPS endpoint to call.
 - `osmu.billing.notification-delivery.slack.webhook-url` (optional): HTTP/HTTPS Slack incoming webhook endpoint used for `notificationChannel=SLACK`.
 - `osmu.billing.notification-delivery.secret-header-name` and `osmu.billing.notification-delivery.secret-header-value` (optional pair): header name/value sent with the webhook request; header values are never stored in delivery rows.
+- `osmu.billing.notification-delivery.signature-secret` (optional): generic notification webhook HMAC-SHA256 signing secret. When set, OSMU sends a timestamp header and signature header with format `t=<epochSeconds>,v1=<hex-hmac-sha256(timestamp + "." + payload)>`; the secret is never stored in delivery rows. This does not apply to Slack or EMAIL SMTP delivery.
+- `osmu.billing.notification-delivery.signature-header-name` (optional): signature header name. Default is `X-OSMU-Signature`.
+- `osmu.billing.notification-delivery.signature-timestamp-header-name` (optional): timestamp header name. Default is `X-OSMU-Signature-Timestamp`.
 - `osmu.billing.notification-delivery.timeout-ms` (optional): request timeout, clamped to 500..15000ms. Default is `3000`.
 - `osmu.billing.notification-delivery.max-payload-bytes` (optional): max outbound notification payload size in UTF-8 bytes, clamped to 1024..262144. Default is `65536`. Oversized webhook, Slack, or EMAIL payloads are blocked before any external call.
 - `osmu.billing.notification-delivery.allow-private-network` (optional): default `false`. When false, localhost, loopback, link-local, private IPv4/IPv6, and local-domain webhook hosts are rejected before any external call. Enable only for local/dev or explicitly approved internal network integrations.
@@ -3012,7 +3015,7 @@ Response:
 
 ### GET /api/admin/billing/chargeback-invoices/{invoiceId}/payment-provider-handoff/preview
 
-Builds a payment-provider handoff payload for a `PAYMENT_REQUESTED` final chargeback invoice. `ADMIN` only. This is a no-send preview and does not call card, bank-transfer, tax invoice, ERP, webhook, or payment provider adapters. `externalPaymentEnabled` reflects whether `osmu.billing.payment-provider.webhook-url` and optional secret header settings are valid.
+Builds a payment-provider handoff payload for a `PAYMENT_REQUESTED` final chargeback invoice. `ADMIN` only. This is a no-send preview and does not call card, bank-transfer, tax invoice, ERP, webhook, or payment provider adapters. `externalPaymentEnabled` reflects whether `osmu.billing.payment-provider.webhook-url` plus optional secret header and HMAC signature settings are valid.
 
 Query parameters:
 
@@ -3080,12 +3083,15 @@ Response:
 
 ### POST /api/admin/billing/chargeback-payment-provider-handoffs/{handoffId}/adapter-send
 
-Attempts configured payment-provider webhook handoff delivery for a persisted handoff row. `ADMIN` only. If `osmu.billing.payment-provider.webhook-url` is not configured or is invalid, the row moves to `PAYMENT_PROVIDER_ADAPTER_BLOCKED_CREDENTIAL` without an external call. When configured, OSMU sends a JSON envelope to the webhook with handoff metadata plus the original payment-provider payload. This is a B2B handoff adapter, not a built-in card/bank/tax provider integration. Oversized outbound payloads are blocked before any external call. It never stores the webhook URL, secret header value, response body, or raw provider response in the outbox.
+Attempts configured payment-provider webhook handoff delivery for a persisted handoff row. `ADMIN` only. If `osmu.billing.payment-provider.webhook-url` is not configured or is invalid, the row moves to `PAYMENT_PROVIDER_ADAPTER_BLOCKED_CREDENTIAL` without an external call. When configured, OSMU sends a JSON envelope to the webhook with handoff metadata plus the original payment-provider payload, and can add timestamped HMAC-SHA256 signature headers. This is a B2B handoff adapter, not a built-in card/bank/tax provider integration. Oversized outbound payloads are blocked before any external call. It never stores the webhook URL, secret header value, signature secret, response body, or raw provider response in the outbox.
 
 Configuration:
 
 - `osmu.billing.payment-provider.webhook-url` (optional): HTTP/HTTPS endpoint to call.
 - `osmu.billing.payment-provider.secret-header-name` and `osmu.billing.payment-provider.secret-header-value` (optional pair): header name/value sent with the webhook request; header values are never stored in handoff rows.
+- `osmu.billing.payment-provider.signature-secret` (optional): payment-provider webhook HMAC-SHA256 signing secret. When set, OSMU sends a timestamp header and signature header with format `t=<epochSeconds>,v1=<hex-hmac-sha256(timestamp + "." + payload)>`; the secret is never stored in handoff rows.
+- `osmu.billing.payment-provider.signature-header-name` (optional): signature header name. Default is `X-OSMU-Signature`.
+- `osmu.billing.payment-provider.signature-timestamp-header-name` (optional): timestamp header name. Default is `X-OSMU-Signature-Timestamp`.
 - `osmu.billing.payment-provider.timeout-ms` (optional): request timeout, clamped to 500..15000ms. Default is `3000`.
 - `osmu.billing.payment-provider.max-payload-bytes` (optional): max outbound payment handoff payload size in UTF-8 bytes, clamped to 1024..262144. Default is `65536`.
 - `osmu.billing.payment-provider.allow-private-network` (optional): default `false`. When false, localhost, loopback, link-local, private IPv4/IPv6, and local-domain webhook hosts are rejected before any external call. Enable only for local/dev or explicitly approved internal network integrations.

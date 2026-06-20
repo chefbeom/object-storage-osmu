@@ -11,6 +11,7 @@ param(
     [string] $ChargebackPaymentProviderAdapterPath = ".\osmu-backend\src\main\java\com\example\osmu\billing\WebhookChargebackPaymentProviderAdapter.java",
     [string] $WebhookEndpointPolicyPath = ".\osmu-backend\src\main\java\com\example\osmu\billing\WebhookEndpointPolicy.java",
     [string] $ExternalAdapterPayloadPolicyPath = ".\osmu-backend\src\main\java\com\example\osmu\billing\ExternalAdapterPayloadPolicy.java",
+    [string] $ExternalAdapterSignaturePolicyPath = ".\osmu-backend\src\main\java\com\example\osmu\billing\ExternalAdapterSignaturePolicy.java",
     [string] $BillingPricingPolicyServicePath = ".\osmu-backend\src\main\java\com\example\osmu\billing\BillingPricingPolicyService.java",
     [string] $OidcAuthorizationServicePath = ".\osmu-backend\src\main\java\com\example\osmu\auth\OidcAuthorizationService.java",
     [string] $OidcClaimPreviewServicePath = ".\osmu-backend\src\main\java\com\example\osmu\auth\OidcClaimPreviewService.java",
@@ -81,6 +82,8 @@ Assert-Contains $matrix 'configured generic webhook/Slack/EMAIL SMTP relay send'
 Assert-Contains $matrix 'GET /api/admin/billing/chargeback-adapter-retry-worker/status' "IAM/RBAC matrix"
 Assert-Contains $matrix 'POST /api/admin/billing/chargeback-adapter-retry-worker/run' "IAM/RBAC matrix"
 Assert-Contains $matrix 'ChargebackAdapterRetryWorkerService' "IAM/RBAC matrix"
+Assert-Contains $matrix '`EMAIL` SMTP relay' "IAM/RBAC matrix"
+Assert-Contains $matrix 'signing secrets' "IAM/RBAC matrix"
 Assert-Contains $matrix 'GET /api/admin/billing/chargeback-preview/export.csv' "IAM/RBAC matrix"
 Assert-Contains $matrix 'GET /api/admin/billing/chargeback-invoice-draft/export.csv' "IAM/RBAC matrix"
 Assert-Contains $matrix 'GET/POST /api/admin/billing/chargeback-invoice-drafts' "IAM/RBAC matrix"
@@ -125,6 +128,9 @@ Assert-Contains $securityDesign "POST /api/admin/billing/chargeback-adapter-retr
 Assert-Contains $securityDesign "POST /api/admin/billing/pricing-policy-proposals/{proposalId}/commercial-approval" "Security design"
 Assert-Contains $securityDesign "osmu.billing.notification-delivery.max-payload-bytes" "Security design"
 Assert-Contains $securityDesign "osmu.billing.payment-provider.max-payload-bytes" "Security design"
+Assert-Contains $securityDesign "osmu.billing.notification-delivery.signature-secret" "Security design"
+Assert-Contains $securityDesign "osmu.billing.payment-provider.signature-secret" "Security design"
+Assert-Contains $securityDesign "timestamped HMAC-SHA256 headers" "Security design"
 
 $apiSpec = Read-RequiredFile $ApiSpecPath "API spec"
 Assert-Contains $apiSpec '관리자 API인 `/api/admin/**`는 기본적으로 `ADMIN` role이 필요하다.' "API spec"
@@ -155,10 +161,17 @@ Assert-Contains $apiSpec 'POST /api/admin/billing/chargeback-alert-notifications
 Assert-Contains $apiSpec 'osmu.billing.notification-delivery.slack.webhook-url' "API spec"
 Assert-Contains $apiSpec 'osmu.billing.notification-delivery.allow-private-network' "API spec"
 Assert-Contains $apiSpec 'osmu.billing.notification-delivery.max-payload-bytes' "API spec"
+Assert-Contains $apiSpec 'osmu.billing.notification-delivery.signature-secret' "API spec"
+Assert-Contains $apiSpec 'osmu.billing.notification-delivery.signature-header-name' "API spec"
+Assert-Contains $apiSpec 'osmu.billing.notification-delivery.signature-timestamp-header-name' "API spec"
 Assert-Contains $apiSpec 'osmu.billing.notification-delivery.email.smtp-host' "API spec"
 Assert-Contains $apiSpec 'osmu.billing.notification-delivery.email.allow-private-network' "API spec"
 Assert-Contains $apiSpec 'osmu.billing.payment-provider.allow-private-network' "API spec"
 Assert-Contains $apiSpec 'osmu.billing.payment-provider.max-payload-bytes' "API spec"
+Assert-Contains $apiSpec 'osmu.billing.payment-provider.signature-secret' "API spec"
+Assert-Contains $apiSpec 'osmu.billing.payment-provider.signature-header-name' "API spec"
+Assert-Contains $apiSpec 'osmu.billing.payment-provider.signature-timestamp-header-name' "API spec"
+Assert-Contains $apiSpec 't=<epochSeconds>,v1=<hex-hmac-sha256(timestamp + "." + payload)>' "API spec"
 Assert-Contains $apiSpec 'Slack-compatible `text` JSON payload' "API spec"
 Assert-Contains $apiSpec '`EMAIL` SMTP relay delivery' "API spec"
 Assert-Contains $apiSpec 'GET /api/admin/billing/chargeback-adapter-retry-worker/status' "API spec"
@@ -217,6 +230,7 @@ Assert-Contains $frontendDesign 'recordChargebackInvoicePayment' "Frontend desig
 Assert-Contains $frontendDesign 'downloadChargebackPreviewCsv' "Frontend design"
 Assert-Contains $frontendDesign 'downloadChargebackInvoiceDraftCsv' "Frontend design"
 Assert-Contains $frontendDesign 'BillingChargebackPanel' "Frontend design"
+Assert-Contains $frontendDesign 'optional HMAC signature headers on generic notification/payment webhooks' "Frontend design"
 Assert-Contains $frontendDesign 'previewEnterpriseAuthClaims' "Frontend design"
 Assert-Contains $frontendDesign 'provisionEnterpriseAuthUser' "Frontend design"
 Assert-Contains $frontendDesign 'adminOnly' "Frontend design"
@@ -328,6 +342,7 @@ $chargebackNotificationDeliveryAdapter = Read-RequiredFile $ChargebackNotificati
 Assert-Contains $chargebackNotificationDeliveryAdapter 'notification-delivery.slack.webhook-url' "Chargeback notification delivery adapter"
 Assert-Contains $chargebackNotificationDeliveryAdapter 'notification-delivery.allow-private-network' "Chargeback notification delivery adapter"
 Assert-Contains $chargebackNotificationDeliveryAdapter 'notification-delivery.max-payload-bytes' "Chargeback notification delivery adapter"
+Assert-Contains $chargebackNotificationDeliveryAdapter 'notification-delivery.signature-secret' "Chargeback notification delivery adapter"
 Assert-Contains $chargebackNotificationDeliveryAdapter 'notification-delivery.email.smtp-host' "Chargeback notification delivery adapter"
 Assert-Contains $chargebackNotificationDeliveryAdapter 'notification-delivery.email.allow-private-network' "Chargeback notification delivery adapter"
 Assert-Contains $chargebackNotificationDeliveryAdapter 'chargeback.threshold.slack.delivery' "Chargeback notification delivery adapter"
@@ -337,12 +352,17 @@ Assert-Contains $chargebackNotificationDeliveryAdapter 'sendEmail' "Chargeback n
 Assert-Contains $chargebackNotificationDeliveryAdapter 'emailIsConfigured' "Chargeback notification delivery adapter"
 Assert-Contains $chargebackNotificationDeliveryAdapter 'payloadExceedsLimit' "Chargeback notification delivery adapter"
 Assert-Contains $chargebackNotificationDeliveryAdapter 'isConfigured(String channel)' "Chargeback notification delivery adapter"
+Assert-Contains $chargebackNotificationDeliveryAdapter 'ExternalAdapterSignaturePolicy.addSignatureHeaders' "Chargeback notification delivery adapter"
+Assert-Contains $chargebackNotificationDeliveryAdapter 'signatureConfigIsValid' "Chargeback notification delivery adapter"
 
 $chargebackPaymentProviderAdapter = Read-RequiredFile $ChargebackPaymentProviderAdapterPath "Chargeback payment provider adapter"
 Assert-Contains $chargebackPaymentProviderAdapter 'payment-provider.allow-private-network' "Chargeback payment provider adapter"
 Assert-Contains $chargebackPaymentProviderAdapter 'payment-provider.max-payload-bytes' "Chargeback payment provider adapter"
+Assert-Contains $chargebackPaymentProviderAdapter 'payment-provider.signature-secret' "Chargeback payment provider adapter"
 Assert-Contains $chargebackPaymentProviderAdapter 'WebhookEndpointPolicy.configuredUri' "Chargeback payment provider adapter"
 Assert-Contains $chargebackPaymentProviderAdapter 'ExternalAdapterPayloadPolicy.exceedsMaxPayloadBytes' "Chargeback payment provider adapter"
+Assert-Contains $chargebackPaymentProviderAdapter 'ExternalAdapterSignaturePolicy.addSignatureHeaders' "Chargeback payment provider adapter"
+Assert-Contains $chargebackPaymentProviderAdapter 'signatureConfigIsValid' "Chargeback payment provider adapter"
 
 $webhookEndpointPolicy = Read-RequiredFile $WebhookEndpointPolicyPath "Webhook endpoint policy"
 Assert-Contains $webhookEndpointPolicy 'isPrivateOrLocalHost' "Webhook endpoint policy"
@@ -354,6 +374,14 @@ Assert-Contains $externalAdapterPayloadPolicy 'DEFAULT_MAX_PAYLOAD_BYTES = 65536
 Assert-Contains $externalAdapterPayloadPolicy 'MIN_MAX_PAYLOAD_BYTES = 1024' "External adapter payload policy"
 Assert-Contains $externalAdapterPayloadPolicy 'MAX_MAX_PAYLOAD_BYTES = 262144' "External adapter payload policy"
 Assert-Contains $externalAdapterPayloadPolicy 'exceedsMaxPayloadBytes' "External adapter payload policy"
+
+$externalAdapterSignaturePolicy = Read-RequiredFile $ExternalAdapterSignaturePolicyPath "External adapter signature policy"
+Assert-Contains $externalAdapterSignaturePolicy 'DEFAULT_SIGNATURE_HEADER_NAME = "X-OSMU-Signature"' "External adapter signature policy"
+Assert-Contains $externalAdapterSignaturePolicy 'DEFAULT_TIMESTAMP_HEADER_NAME = "X-OSMU-Signature-Timestamp"' "External adapter signature policy"
+Assert-Contains $externalAdapterSignaturePolicy 'signatureConfigIsValid' "External adapter signature policy"
+Assert-Contains $externalAdapterSignaturePolicy 'Mac.getInstance("HmacSHA256")' "External adapter signature policy"
+Assert-Contains $externalAdapterSignaturePolicy 'timestamp + "." + payload' "External adapter signature policy"
+Assert-Contains $externalAdapterSignaturePolicy 'validHeaderName' "External adapter signature policy"
 
 $billingPricingPolicyService = Read-RequiredFile $BillingPricingPolicyServicePath "Billing pricing policy service"
 Assert-Contains $billingPricingPolicyService 'createProposal' "Billing pricing policy service"

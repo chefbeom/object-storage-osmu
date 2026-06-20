@@ -43,6 +43,9 @@ public class WebhookChargebackNotificationDeliveryAdapter implements ChargebackN
     private final String slackWebhookUrl;
     private final String secretHeaderName;
     private final String secretHeaderValue;
+    private final String signatureSecret;
+    private final String signatureHeaderName;
+    private final String signatureTimestampHeaderName;
     private final int timeoutMs;
     private final int maxPayloadBytes;
     private final boolean allowPrivateNetwork;
@@ -62,6 +65,9 @@ public class WebhookChargebackNotificationDeliveryAdapter implements ChargebackN
             @Value("${osmu.billing.notification-delivery.slack.webhook-url:}") String slackWebhookUrl,
             @Value("${osmu.billing.notification-delivery.secret-header-name:}") String secretHeaderName,
             @Value("${osmu.billing.notification-delivery.secret-header-value:}") String secretHeaderValue,
+            @Value("${osmu.billing.notification-delivery.signature-secret:}") String signatureSecret,
+            @Value("${osmu.billing.notification-delivery.signature-header-name:X-OSMU-Signature}") String signatureHeaderName,
+            @Value("${osmu.billing.notification-delivery.signature-timestamp-header-name:X-OSMU-Signature-Timestamp}") String signatureTimestampHeaderName,
             @Value("${osmu.billing.notification-delivery.timeout-ms:3000}") int timeoutMs,
             @Value("${osmu.billing.notification-delivery.max-payload-bytes:65536}") int maxPayloadBytes,
             @Value("${osmu.billing.notification-delivery.allow-private-network:false}") boolean allowPrivateNetwork,
@@ -80,6 +86,15 @@ public class WebhookChargebackNotificationDeliveryAdapter implements ChargebackN
         this.slackWebhookUrl = normalize(slackWebhookUrl);
         this.secretHeaderName = normalize(secretHeaderName);
         this.secretHeaderValue = normalize(secretHeaderValue);
+        this.signatureSecret = normalize(signatureSecret);
+        this.signatureHeaderName = ExternalAdapterSignaturePolicy.normalizeHeaderName(
+                signatureHeaderName,
+                ExternalAdapterSignaturePolicy.DEFAULT_SIGNATURE_HEADER_NAME
+        );
+        this.signatureTimestampHeaderName = ExternalAdapterSignaturePolicy.normalizeHeaderName(
+                signatureTimestampHeaderName,
+                ExternalAdapterSignaturePolicy.DEFAULT_TIMESTAMP_HEADER_NAME
+        );
         this.timeoutMs = Math.max(MIN_TIMEOUT_MS, Math.min(timeoutMs <= 0 ? DEFAULT_TIMEOUT_MS : timeoutMs, MAX_TIMEOUT_MS));
         this.maxPayloadBytes = ExternalAdapterPayloadPolicy.normalizeMaxPayloadBytes(maxPayloadBytes);
         this.allowPrivateNetwork = allowPrivateNetwork;
@@ -133,6 +148,9 @@ public class WebhookChargebackNotificationDeliveryAdapter implements ChargebackN
         if (!secretHeaderConfigIsValid()) {
             return ChargebackNotificationDeliveryAdapterResult.blocked("Notification webhook header configuration is invalid.");
         }
+        if (!signatureConfigIsValid()) {
+            return ChargebackNotificationDeliveryAdapterResult.blocked("Notification webhook signature configuration is invalid.");
+        }
 
         String requestBody;
         try {
@@ -154,6 +172,13 @@ public class WebhookChargebackNotificationDeliveryAdapter implements ChargebackN
             if (!secretHeaderName.isBlank() && !secretHeaderValue.isBlank()) {
                 requestBuilder.header(secretHeaderName, secretHeaderValue);
             }
+            ExternalAdapterSignaturePolicy.addSignatureHeaders(
+                    requestBuilder,
+                    requestBody,
+                    signatureSecret,
+                    signatureHeaderName,
+                    signatureTimestampHeaderName
+            );
             HttpResponse<Void> httpResponse = httpClient.send(
                     requestBuilder.build(),
                     HttpResponse.BodyHandlers.discarding()
@@ -391,7 +416,7 @@ public class WebhookChargebackNotificationDeliveryAdapter implements ChargebackN
     }
 
     private boolean genericWebhookIsConfigured() {
-        return configuredUri(webhookUrl) != null && secretHeaderConfigIsValid();
+        return configuredUri(webhookUrl) != null && secretHeaderConfigIsValid() && signatureConfigIsValid();
     }
 
     private boolean emailIsConfigured() {
@@ -431,6 +456,14 @@ public class WebhookChargebackNotificationDeliveryAdapter implements ChargebackN
             return true;
         }
         return validHeaderName(secretHeaderName) && !secretHeaderValue.isBlank() && !containsLineBreak(secretHeaderValue);
+    }
+
+    private boolean signatureConfigIsValid() {
+        return ExternalAdapterSignaturePolicy.signatureConfigIsValid(
+                signatureSecret,
+                signatureHeaderName,
+                signatureTimestampHeaderName
+        );
     }
 
     private boolean emailAuthConfigIsValid() {
