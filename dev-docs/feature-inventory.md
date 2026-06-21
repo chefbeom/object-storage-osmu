@@ -6,6 +6,7 @@
 - Monthly aggregate rows group by UTC month, bucket, source, and operation, and can be calculated from live event rows, from the materialized daily rollup store, or read from the compacted monthly aggregate store.
 - The monthly view is an OSMU operations analytics surface, not AWS billing parity. It excludes object keys and raw event messages.
 - `scripts/write-data-flow-storage-plan.ps1` and `.github/workflows/manual-data-flow-storage-plan-evidence.yml` record the sizing, query-window, target p95 query latency, no-object-key aggregate policy, backfill, rollback, dashboard cutover, retention budget, and query-plan/target-store evidence checklist for the future partition/time-series transition. MariaDB partition/dual-write candidates now consume the sanitized `scripts/write-mariadb-query-plan-evidence.ps1` JSON summary via `-QueryPlanEvidenceJsonPath` or workflow `query_plan_evidence_json_base64`, and dashboard readiness plus operations artifact import expose that summary under `dataFlowStoragePlan.queryPlanEvidence` while checks remain pending.
+- `scripts/write-data-flow-storage-transition-runbook-evidence.ps1` turns a passed storage plan into a target rehearsal record for backfill, dual-write or partition toggle, rollback, reconciliation, dashboard cutover, and retention dry-run evidence without storing raw SQL, raw EXPLAIN, object keys, raw event messages, or secrets.
 - Remaining analytics scope is table partitioning or an external time-series repository for high-volume retention and faster long-window reads.
 
 ## Current Completion Correction
@@ -74,6 +75,7 @@ MVP 데모 기준 완료율은 약 90~95%입니다.
 - Prometheus observability draft check
 - monitoring artifacts draft check, including Alertmanager/Grafana threshold target contract
 - monitoring threshold evidence writer check
+- data-flow storage transition runbook evidence writer check
 - Prometheus Operator draft check
 - Flyway migration version check: 58 migrations
 - frontend unit tests: 95 passed

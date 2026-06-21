@@ -250,6 +250,9 @@ Run "powershell -ExecutionPolicy Bypass -File .\scripts\verify-object-list-query
 Step "Data-flow storage plan check"
 Run "powershell -ExecutionPolicy Bypass -File .\scripts\verify-data-flow-storage-plan.ps1"
 
+Step "Data-flow storage transition runbook evidence check"
+Run "powershell -ExecutionPolicy Bypass -File .\scripts\verify-data-flow-storage-transition-runbook-evidence.ps1"
+
 if (-not $SkipDocker) {
     Step "Docker Compose config check"
     Run "docker compose --env-file .\infra\local\.env.example -f .\infra\local\docker-compose.yml config --quiet"

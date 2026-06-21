@@ -2389,6 +2389,16 @@ TC-FE-023 보강: 사용자가 취소한 경우에는 abort API를 호출한다.
 - Priority: P1
 - Automated: `scripts/write-data-flow-storage-plan.ps1`, `scripts/verify-data-flow-storage-plan.ps1`, `scripts/verify-local.ps1`
 
+### TC-MON-003
+
+- Feature: Data-flow storage transition runbook rehearsal evidence.
+- Preconditions: PowerShell is available and `.osmu-run/latest-data-flow-storage-plan.json` exists with `formatVersion=osmu.data-flow-storage-plan.v1`, `result=passed`, and `pendingCount=0`.
+- Input: `powershell -ExecutionPolicy Bypass -File .\scripts\verify-data-flow-storage-transition-runbook-evidence.ps1`; target evidence uses `powershell -ExecutionPolicy Bypass -File .\scripts\write-data-flow-storage-transition-runbook-evidence.ps1 -EnvironmentName <env> -TargetCluster <cluster> -Operator <operator> -ReviewStartedAt <iso-time> -ReviewCompletedAt <iso-time> -ChangeApprovalRef <change-id> -DataFlowStoragePlanJsonPath .\.osmu-run\latest-data-flow-storage-plan.json -DataFlowStoragePlanEvidenceRef <ref> -BackfillEvidenceRef <ref> -DualWriteOrPartitionToggleEvidenceRef <ref> -RollbackEvidenceRef <ref> -ReconciliationEvidenceRef <ref> -DashboardCutoverEvidenceRef <ref> -RetentionDryRunEvidenceRef <ref> -EvidenceRef <run-ref> -ConfirmBackfillRehearsed -ConfirmDualWriteOrPartitionToggleReviewed -ConfirmRollbackRehearsed -ConfirmReconciliationPassed -ConfirmDashboardCutoverReviewed -ConfirmRetentionDryRunReviewed -ConfirmNoObjectKeysInAggregates -ConfirmNoSecretValues -FailIfNotPassed`.
+- Steps: Generate a passed fixture from a sanitized storage plan, verify the JSON/Markdown include the reduced plan snapshot, backfill rehearsal, dual-write or partition toggle review, rollback rehearsal, row/count reconciliation, dashboard cutover review, retention dry-run review, no-object-key aggregate confirmation, no-secret confirmation, and target p95 query latency summary. Try credential-shaped evidence references, reversed review windows, and a storage plan snapshot that contains raw SQL or raw EXPLAIN fields.
+- Expected: Target rehearsal evidence passes only when the storage plan snapshot has already passed and every rehearsal reference/confirmation is present. The report stores external references and reduced plan summary fields only, rejects secret-like references, rejects raw SQL/raw EXPLAIN plan payloads, excludes object keys/raw event messages, and keeps the scope as OSMU operations analytics rather than AWS billing parity.
+- Priority: P1
+- Automated: `scripts/write-data-flow-storage-transition-runbook-evidence.ps1`, `scripts/verify-data-flow-storage-transition-runbook-evidence.ps1`, `scripts/verify-local.ps1`
+
 ### TC-INFRA-005
 
 - Feature: NetworkPolicy draft verification.
