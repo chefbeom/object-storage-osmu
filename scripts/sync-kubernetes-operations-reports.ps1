@@ -117,6 +117,35 @@ function Get-ObjectInt([object] $Value) {
     }
 }
 
+function Test-SanitizedQueryPlanEvidenceSummary([object] $QueryPlanEvidence) {
+    if ($null -eq $QueryPlanEvidence) {
+        return [pscustomobject]@{
+            passed = $true
+            detail = "queryPlanEvidence summary absent"
+        }
+    }
+
+    $summaryText = $QueryPlanEvidence | ConvertTo-Json -Depth 20 -Compress
+    $patterns = @(
+        '(?i)"(sql|rawSql|raw_sql|explain|explainJson|explain_json|rawExplain|raw_explain|password|passwd|secret|token|credential|apiKey|api_key|accessKey|access_key|privateKey|private_key)"\s*:',
+        '(?i)\b(password|passwd|secret|token|credential|api[_-]?key|access[_-]?key|private[_-]?key)\s*=\s*\S+',
+        '(?i)\bSELECT\b[\s\S]{0,200}\bFROM\b'
+    )
+    foreach ($pattern in $patterns) {
+        if ($summaryText -match $pattern) {
+            return [pscustomobject]@{
+                passed = $false
+                detail = "queryPlanEvidence summary contains raw SQL, raw EXPLAIN, or credential-shaped content"
+            }
+        }
+    }
+
+    return [pscustomobject]@{
+        passed = $true
+        detail = "queryPlanEvidence summary is sanitized"
+    }
+}
+
 Assert-KubernetesName "Namespace" $Namespace
 Assert-KubernetesName "ConfigMapName" $ConfigMapName
 Assert-ConfigMapKey $ConfigMapKey
@@ -211,6 +240,7 @@ else {
             $dataFlowQueryPlanEvidenceFailedCount = Get-ObjectInt $queryPlanEvidence.failedCount
             $dataFlowQueryPlanEvidenceExpectedFormatVersion = [string] $queryPlanEvidence.expectedFormatVersion
             $dataFlowQueryPlanEvidenceFormatVersion = [string] $queryPlanEvidence.formatVersion
+            $dataFlowQueryPlanEvidenceSanitized = Test-SanitizedQueryPlanEvidenceSummary $queryPlanEvidence
         }
         $dataFlowQueryPlanEvidenceRequired = @("MARIADB_PARTITION", "DUAL_WRITE") -contains $dataFlowStoragePlanCandidateStore
         Add-Check "data-flow-storage-plan-json-valid" $true "Data-flow storage plan file is valid JSON."
@@ -229,6 +259,10 @@ else {
                 "data-flow-query-plan-evidence-format-contract" `
                 ($dataFlowQueryPlanEvidenceExpectedFormatVersion -eq "osmu.mariadb-query-plan-evidence.v1") `
                 "queryPlanEvidence expectedFormatVersion=$dataFlowQueryPlanEvidenceExpectedFormatVersion."
+            Add-Check `
+                "data-flow-query-plan-evidence-sanitized" `
+                $dataFlowQueryPlanEvidenceSanitized.passed `
+                $dataFlowQueryPlanEvidenceSanitized.detail
         }
     }
     catch {

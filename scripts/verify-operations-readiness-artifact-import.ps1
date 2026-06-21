@@ -40,6 +40,7 @@ $sourceRoot = Join-Path $resolvedOutputDirectory "source"
 $promotedRoot = Join-Path $resolvedOutputDirectory "promoted"
 $invalidRoot = Join-Path $resolvedOutputDirectory "invalid-source"
 $invalidDataFlowRoot = Join-Path $resolvedOutputDirectory "invalid-data-flow-source"
+$unsafeDataFlowRoot = Join-Path $resolvedOutputDirectory "unsafe-data-flow-source"
 
 $storageSource = Join-Path $sourceRoot "storage-expansion"
 $haDrSource = Join-Path $sourceRoot "ha-dr-readiness"
@@ -288,6 +289,47 @@ $invalidDataFlowReport = Get-Content -Raw -LiteralPath $invalidDataFlowJson | Co
 Assert-True ($invalidDataFlowReport.result -eq "failed") "Invalid data-flow import report should be failed."
 Assert-True (-not (Test-Path -LiteralPath (Join-Path $invalidDataFlowOutput "latest-data-flow-storage-plan.json"))) "Invalid data-flow storage plan must not be promoted."
 Assert-True (($invalidDataFlowReport.entries | ConvertTo-Json -Depth 8).Contains("requires queryPlanEvidence summary")) "Invalid data-flow report should describe missing query plan summary."
+
+Write-JsonEvidence (Join-Path $unsafeDataFlowRoot "latest-kubernetes-operations-report-sync.json") @{
+    formatVersion = "osmu.kubernetes-operations-report-sync.v1"
+    result = "applied"
+    failedCount = 0
+}
+Write-JsonEvidence (Join-Path $unsafeDataFlowRoot "latest-data-flow-storage-plan.json") @{
+    formatVersion = "osmu.data-flow-storage-plan.v1"
+    result = "plan-ready-execute-required"
+    candidateStore = "MARIADB_PARTITION"
+    pendingCount = 1
+    queryPlanEvidence = @{
+        provided = $true
+        expectedFormatVersion = "osmu.mariadb-query-plan-evidence.v1"
+        result = "passed"
+        failedCount = 0
+        rawSql = "SELECT id FROM data_flow_events"
+    }
+}
+$unsafeDataFlowOutput = Join-Path $resolvedOutputDirectory "unsafe-data-flow-promoted"
+$unsafeDataFlowJson = Join-Path $resolvedOutputDirectory "unsafe-data-flow-import.json"
+$unsafeDataFlowMarkdown = Join-Path $resolvedOutputDirectory "unsafe-data-flow-import.md"
+$previousErrorActionPreference = $ErrorActionPreference
+$ErrorActionPreference = "Continue"
+try {
+    $unsafeDataFlowOutputLines = & powershell -NoProfile -ExecutionPolicy Bypass -File $importScript `
+        -KubernetesOperationsReportSyncArtifactPath $unsafeDataFlowRoot `
+        -OutputDirectory $unsafeDataFlowOutput `
+        -JsonOutputPath $unsafeDataFlowJson `
+        -MarkdownOutputPath $unsafeDataFlowMarkdown 2>&1
+    $unsafeDataFlowExitCode = $LASTEXITCODE
+}
+finally {
+    $ErrorActionPreference = $previousErrorActionPreference
+}
+Assert-True ($unsafeDataFlowExitCode -ne 0) "Data-flow storage plan with unsafe query plan summary should fail import."
+Assert-True (Test-Path -LiteralPath $unsafeDataFlowJson) "Unsafe data-flow import report should still be written."
+$unsafeDataFlowReport = Get-Content -Raw -LiteralPath $unsafeDataFlowJson | ConvertFrom-Json
+Assert-True ($unsafeDataFlowReport.result -eq "failed") "Unsafe data-flow import report should be failed."
+Assert-True (-not (Test-Path -LiteralPath (Join-Path $unsafeDataFlowOutput "latest-data-flow-storage-plan.json"))) "Unsafe data-flow storage plan must not be promoted."
+Assert-True (($unsafeDataFlowReport.entries | ConvertTo-Json -Depth 8).Contains("raw SQL")) "Unsafe data-flow report should describe sanitized summary failure."
 
 Write-Host "Operations readiness artifact import verified."
 Write-Host "Report: $reportPath"

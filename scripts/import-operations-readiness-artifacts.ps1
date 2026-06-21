@@ -107,6 +107,35 @@ function Test-EvidenceJson([string] $Path, [string] $ExpectedProperty, [string] 
     }
 }
 
+function Test-SanitizedQueryPlanEvidenceSummary([object] $QueryPlanEvidence) {
+    if ($null -eq $QueryPlanEvidence) {
+        return [pscustomobject]@{
+            passed = $true
+            detail = "queryPlanEvidence summary absent"
+        }
+    }
+
+    $summaryText = $QueryPlanEvidence | ConvertTo-Json -Depth 20 -Compress
+    $patterns = @(
+        '(?i)"(sql|rawSql|raw_sql|explain|explainJson|explain_json|rawExplain|raw_explain|password|passwd|secret|token|credential|apiKey|api_key|accessKey|access_key|privateKey|private_key)"\s*:',
+        '(?i)\b(password|passwd|secret|token|credential|api[_-]?key|access[_-]?key|private[_-]?key)\s*=\s*\S+',
+        '(?i)\bSELECT\b[\s\S]{0,200}\bFROM\b'
+    )
+    foreach ($pattern in $patterns) {
+        if ($summaryText -match $pattern) {
+            return [pscustomobject]@{
+                passed = $false
+                detail = "queryPlanEvidence summary contains raw SQL, raw EXPLAIN, or credential-shaped content"
+            }
+        }
+    }
+
+    return [pscustomobject]@{
+        passed = $true
+        detail = "queryPlanEvidence summary is sanitized"
+    }
+}
+
 function Test-DataFlowStoragePlanEvidenceJson([string] $Path) {
     try {
         $json = Get-Content -Raw -LiteralPath $Path | ConvertFrom-Json
@@ -143,6 +172,10 @@ function Test-DataFlowStoragePlanEvidenceJson([string] $Path) {
                 passed = $false
                 detail = "queryPlanEvidence expectedFormatVersion=$expectedFormatVersion expected=osmu.mariadb-query-plan-evidence.v1"
             }
+        }
+        $sanitized = Test-SanitizedQueryPlanEvidenceSummary $queryPlanEvidence
+        if (-not $sanitized.passed) {
+            return $sanitized
         }
     }
 

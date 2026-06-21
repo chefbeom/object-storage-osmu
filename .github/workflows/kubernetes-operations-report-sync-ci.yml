@@ -78,6 +78,13 @@ jobs:
             if ($plan.queryPlanEvidence.expectedFormatVersion -ne "osmu.mariadb-query-plan-evidence.v1") {
               throw "Unexpected queryPlanEvidence expectedFormatVersion: $($plan.queryPlanEvidence.expectedFormatVersion)"
             }
+            $summaryText = $plan.queryPlanEvidence | ConvertTo-Json -Depth 20 -Compress
+            $forbiddenPropertyPattern = '(?i)"(sql|rawSql|raw_sql|explain|explainJson|explain_json|rawExplain|raw_explain|password|passwd|secret|token|credential|apiKey|api_key|accessKey|access_key|privateKey|private_key)"\s*:'
+            $credentialPattern = '(?i)\b(password|passwd|secret|token|credential|api[_-]?key|access[_-]?key|private[_-]?key)\s*=\s*\S+'
+            $rawSqlPattern = '(?i)\bSELECT\b[\s\S]{0,200}\bFROM\b'
+            if ($summaryText -match $forbiddenPropertyPattern -or $summaryText -match $credentialPattern -or $summaryText -match $rawSqlPattern) {
+              throw "queryPlanEvidence summary must not contain raw SQL, raw EXPLAIN, or credential-shaped content."
+            }
           }
 
       - name: Plan Kubernetes operations report sync

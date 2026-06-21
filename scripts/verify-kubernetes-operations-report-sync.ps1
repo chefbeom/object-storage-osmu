@@ -49,9 +49,11 @@ New-Item -ItemType Directory -Force -Path $resolvedOutputDirectory | Out-Null
 $scriptPath = Resolve-ProjectPath ".\scripts\sync-kubernetes-operations-reports.ps1"
 $fixturePath = Join-Path $resolvedOutputDirectory "latest-operations-readiness-convergence.json"
 $dataFlowStoragePlanPath = Join-Path $resolvedOutputDirectory "latest-data-flow-storage-plan.json"
+$unsafeDataFlowStoragePlanPath = Join-Path $resolvedOutputDirectory "unsafe-data-flow-storage-plan.json"
 $planEvidencePath = Join-Path $resolvedOutputDirectory "plan.json"
 $serverDryRunEvidencePath = Join-Path $resolvedOutputDirectory "server-dry-run.json"
 $applyEvidencePath = Join-Path $resolvedOutputDirectory "apply.json"
+$unsafeEvidencePath = Join-Path $resolvedOutputDirectory "unsafe-plan.json"
 $fakeKubectlPath = Join-Path $resolvedOutputDirectory "fake-kubectl.ps1"
 
 Write-JsonFixture $fixturePath ([ordered]@{
@@ -194,6 +196,7 @@ Assert-Equal $plan.dataFlowQueryPlanEvidenceProvided $false "plan data-flow quer
 Assert-Equal $plan.dataFlowQueryPlanEvidenceResult "" "plan data-flow query plan summary result"
 Assert-Equal $plan.dataFlowQueryPlanEvidenceFailedCount 0 "plan data-flow query plan failed count"
 Assert-Equal $plan.dataFlowQueryPlanEvidenceExpectedFormatVersion "osmu.mariadb-query-plan-evidence.v1" "plan data-flow query plan expected format"
+Assert-Contains ($plan.checks | ConvertTo-Json -Depth 10) "data-flow-query-plan-evidence-sanitized" "plan data-flow query plan sanitized check"
 Assert-Equal $plan.failedCount 0 "plan failed count"
 Assert-Contains $plan.serverDryRunCommand "--dry-run=server" "plan server dry-run command"
 Assert-Contains $plan.serverDryRunCommand "latest-data-flow-storage-plan.json" "plan server dry-run data-flow plan command"
@@ -238,6 +241,31 @@ Assert-Contains $apply.publishEvidenceApplyOutput "configured" "publish evidence
 Assert-Contains ($apply.checks | ConvertTo-Json -Depth 10) "render-configmap-with-sync-evidence" "apply evidence render check"
 Assert-Contains ($apply.checks | ConvertTo-Json -Depth 10) "apply-configmap-with-sync-evidence" "apply evidence publish check"
 Assert-Equal $apply.dataFlowQueryPlanEvidencePresent $true "apply data-flow query plan summary present"
+
+Write-JsonFixture $unsafeDataFlowStoragePlanPath ([ordered]@{
+    formatVersion = "osmu.data-flow-storage-plan.v1"
+    result = "plan-ready-execute-required"
+    candidateStore = "MARIADB_PARTITION"
+    pendingCount = 1
+    queryPlanEvidence = [ordered]@{
+        provided = $true
+        expectedFormatVersion = "osmu.mariadb-query-plan-evidence.v1"
+        result = "passed"
+        failedCount = 0
+        rawSql = "SELECT id FROM data_flow_events"
+    }
+})
+$unsafeOutput = & powershell -NoProfile -ExecutionPolicy Bypass -File $scriptPath `
+    -PlanOnly `
+    -ReportPath $fixturePath `
+    -DataFlowStoragePlanPath $unsafeDataFlowStoragePlanPath `
+    -EvidencePath $unsafeEvidencePath 2>&1
+$unsafeExitCode = $LASTEXITCODE
+Assert-True ($unsafeExitCode -ne 0) "Unsafe data-flow query plan summary must fail sync plan."
+Assert-True (Test-Path -LiteralPath $unsafeEvidencePath) "Unsafe sync evidence should still be written."
+$unsafePlan = Get-Content -Raw -LiteralPath $unsafeEvidencePath | ConvertFrom-Json
+Assert-Equal $unsafePlan.result "failed" "unsafe plan result"
+Assert-Contains ($unsafePlan.checks | ConvertTo-Json -Depth 10) "raw SQL" "unsafe plan sanitized detail"
 
 Write-Host "Kubernetes operations report sync verified."
 Write-Host "Plan evidence: $planEvidencePath"
