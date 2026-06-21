@@ -96,6 +96,7 @@ async function installDeveloperApiMocks(page, options = {}) {
     loginId: developerLoginId,
     name: 'Developer User',
     role: 'USER',
+    ...(options.user || {}),
   }
   const accessKeys = (options.accessKeys || []).map((key) => ({ ...key }))
 
@@ -385,6 +386,67 @@ test('developer login lands on S3 API console with access key controls', async (
   await page.getByTestId('confirm-submit-button').click()
   await expect(page.getByTestId('status-alert')).toContainText('비활성화 완료')
   await expect(page.getByTestId('access-key-list')).toContainText('INACTIVE')
+})
+
+test('org admin can open scoped admin page without global operation panels', async ({ page }) => {
+  await installDeveloperApiMocks(page, {
+    user: {
+      id: 2102,
+      loginId: 'org-admin-browser',
+      name: 'Org Admin Browser',
+      role: 'ORG_ADMIN',
+      organizationId: 3001,
+    },
+  })
+  await page.addInitScript(() => {
+    window.localStorage.removeItem('osmu.dashboard.widgets.v1')
+    window.localStorage.removeItem('osmu.auth.tokens')
+    window.localStorage.removeItem('osmu.login.rememberedId')
+    window.sessionStorage.removeItem('osmu.auth.tokens')
+  })
+
+  await page.goto(`${frontendBaseUrl}/login?mode=admin`)
+  await page.getByTestId('login-id-input').fill('org-admin-browser')
+  await page.getByTestId('login-password-input').fill(adminPassword)
+  await page.getByTestId('login-submit-button').click()
+
+  await expect(page).toHaveURL(/\/admin$/)
+  await expect(page.locator('#admin-access-keys')).toBeVisible()
+  await expect(page.getByTestId('admin-role-empty-state')).toBeVisible()
+  await expect(page.getByTestId('admin-role-restricted-panel-list')).toContainText('Share policy / analytics')
+  await expect(page.getByTestId('admin-role-restricted-panel-list')).toContainText('Quota, lifecycle, retention')
+  await expect(page.getByTestId('admin-role-restricted-panel-list')).toContainText('Storage expansion and runner controls')
+  await expect(page.getByRole('link', { name: 'Admin' })).toBeVisible()
+  await expect(page.getByTestId('admin-approval-workflow-panel')).toHaveCount(0)
+  await expect(page.getByTestId('admin-security-audit-policy-panel')).toHaveCount(0)
+  await expect(page.getByTestId('object-share-policy-panel')).toHaveCount(0)
+  await expect(page.getByTestId('object-share-analytics-panel')).toHaveCount(0)
+  await expect(page.getByTestId('quota-policy-panel')).toHaveCount(0)
+  await expect(page.locator('.lifecycle-rules')).toHaveCount(0)
+  await expect(page.getByTestId('storage-expansion-panel')).toHaveCount(0)
+  await expect(page.getByTestId('admin-storage-profile-panel')).toHaveCount(0)
+})
+
+test('user is redirected away from admin page', async ({ page }) => {
+  await installDeveloperApiMocks(page)
+  await page.addInitScript(() => {
+    window.localStorage.removeItem('osmu.dashboard.widgets.v1')
+    window.localStorage.removeItem('osmu.auth.tokens')
+    window.localStorage.removeItem('osmu.login.rememberedId')
+    window.sessionStorage.removeItem('osmu.auth.tokens')
+  })
+
+  await page.goto(`${frontendBaseUrl}/login?mode=admin`)
+  await page.getByTestId('login-id-input').fill(developerLoginId)
+  await page.getByTestId('login-password-input').fill(developerPassword)
+  await page.getByTestId('login-submit-button').click()
+  await expect(page).toHaveURL(/\/developer$/)
+
+  await page.goto(`${frontendBaseUrl}/admin`)
+  await expect(page).toHaveURL(/\/developer$/)
+  await expect(page.getByTestId('developer-page')).toBeVisible()
+  await expect(page.getByRole('link', { name: 'Admin' })).toHaveCount(0)
+  await expect(page.locator('#admin-access-keys')).toHaveCount(0)
 })
 
 test('developer can filter access keys and inspect operational hints', async ({ page }) => {

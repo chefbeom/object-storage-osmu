@@ -593,7 +593,7 @@
 - Steps: Compare rendered AdminPage panels against `dev-docs/iam-rbac-matrix.md`; inspect `admin-role-restricted-panel-list` for `ORG_ADMIN`.
 - Expected: `ADMIN` sees global operations panels for share policy/analytics, quota, lifecycle/retention, storage expansion, and storage profile approvals. `ORG_ADMIN` can reach `/admin` but does not render those global operations panels; it keeps org-scoped identity controls plus access key and bucket-scoped permission/metadata panels. `USER` is routed away from `/admin`.
 - Priority: P1
-- Automated: `npm run test:unit` selector/source contract. Browser role-switch E2E is pending.
+- Automated: `npm run test:unit` selector/source contract, Browser E2E `org admin can open scoped admin page without global operation panels` and `user is redirected away from admin page`.
 
 ### TC-FE-ADMIN-FAILURE-REMEDIATION
 
