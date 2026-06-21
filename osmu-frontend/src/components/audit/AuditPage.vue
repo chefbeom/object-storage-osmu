@@ -31,15 +31,15 @@
           <option value="SUCCESS">SUCCESS</option>
           <option value="FAIL">FAIL</option>
         </select>
-        <input v-model="auditFilter.from" type="datetime-local" />
-        <input v-model="auditFilter.to" type="datetime-local" />
-        <input v-model.number="auditFilter.limit" type="number" min="1" max="500" />
+        <input data-testid="audit-from-input" v-model="auditFilter.from" type="datetime-local" />
+        <input data-testid="audit-to-input" v-model="auditFilter.to" type="datetime-local" />
+        <input data-testid="audit-limit-input" v-model.number="auditFilter.limit" type="number" min="1" max="500" />
         <button data-testid="audit-search-button" type="submit">필터</button>
         <button data-testid="audit-export-button" type="button" class="ghost" @click="$emit('export-audit-csv')">CSV</button>
         <button data-testid="audit-reset-button" type="button" class="ghost" @click="$emit('reset-audit-filter')">초기화</button>
       </form>
       <ul class="audit-list" data-testid="audit-list">
-        <li v-for="entry in auditLogs" :key="entry.id" class="audit-entry">
+        <li v-for="entry in auditLogs" :key="entry.id" class="audit-entry" data-testid="audit-entry">
           <div>
             <strong>{{ entry.eventType }}</strong>
             <small>{{ entry.actorId }} -> {{ entry.targetId }}</small>
@@ -53,7 +53,7 @@
         <li v-if="auditLogs.length === 0" class="empty">로그 없음</li>
       </ul>
       <div class="panel-actions" v-if="auditLogs.length > 0">
-        <button type="button" class="ghost" :disabled="!auditNextCursor" @click="$emit('load-next-audit-logs')">다음 로그</button>
+        <button data-testid="audit-next-button" type="button" class="ghost" :disabled="!auditNextCursor" @click="$emit('load-next-audit-logs')">다음 로그</button>
       </div>
     </article>
   </section>

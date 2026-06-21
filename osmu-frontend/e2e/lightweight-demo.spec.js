@@ -426,6 +426,13 @@ test('admin can complete lightweight storage portal click path', async ({ page }
   await expect(page.getByTestId('object-table')).toContainText('stage=curated')
 
   await page.getByRole('link', { name: 'Audit' }).click()
+  await page.getByTestId('audit-result-select').selectOption('SUCCESS')
+  await page.getByTestId('audit-limit-input').fill('5')
   await page.getByTestId('audit-search-button').click()
   await expect(page.getByTestId('audit-list')).toContainText(/BUCKET|OBJECT|LOGIN/)
+  await expect(page.getByTestId('audit-entry').first()).toContainText('SUCCESS')
+  await expect(page.getByTestId('audit-next-button')).toBeVisible()
+  await page.getByTestId('audit-reset-button').click()
+  await expect(page.getByTestId('audit-result-select')).toHaveValue('')
+  await expect(page.getByTestId('audit-limit-input')).toHaveValue('50')
 })
