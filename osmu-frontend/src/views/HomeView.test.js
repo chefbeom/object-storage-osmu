@@ -823,6 +823,8 @@ test('HomeView exposes stable selectors for browser E2E flows', () => {
   assert.match(dashboardSource, /operationsReadinessConvergence/)
   assert.match(dashboardSource, /operationsReadinessConvergenceBottleneck/)
   assert.match(dashboardSource, /operationsReadinessConvergenceCommands/)
+  assert.match(dashboardSource, /kubernetesReportSyncWorkflowCommand/)
+  assert.match(dashboardSource, /kubernetesReportSyncWorkflowNote/)
   assert.match(dashboardSource, /kubernetesReportSyncReady/)
   assert.match(dashboardSource, /kubernetesOperationsReportSync/)
   assert.match(dashboardSource, /kubernetesOperationsReportSyncChecks/)

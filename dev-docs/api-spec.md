@@ -5538,6 +5538,8 @@ Response:
       "kubernetesReportSyncConfigMapName": "osmu-operations-reports",
       "kubernetesReportSyncConfigMapKey": "latest-operations-readiness-convergence.json",
       "kubernetesReportSyncSourceReportResult": "action-required",
+      "kubernetesReportSyncWorkflowCommand": "gh workflow run kubernetes-operations-report-sync-ci.yml -f namespace=osmu -f report_path=./.osmu-run/latest-operations-readiness-convergence.json -f run_live=true -f apply=false -f data_flow_storage_plan_json_base64=<base64-latest-data-flow-storage-plan-json>",
+      "kubernetesReportSyncWorkflowNote": "For GitHub Actions sync, include data_flow_storage_plan_json_base64 only when .osmu-run/latest-data-flow-storage-plan.json should be carried into the operations report ConfigMap; omit the input when no target analytics-storage plan evidence is ready.",
       "kubernetesReportSyncReady": false,
       "finalizerGapCount": 1,
       "stageCount": 7,

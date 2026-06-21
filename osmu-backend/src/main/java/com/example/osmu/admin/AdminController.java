@@ -2582,6 +2582,8 @@ public class AdminController {
                 jsonText(convergenceReport, "kubernetesReportSyncConfigMapName"),
                 jsonText(convergenceReport, "kubernetesReportSyncConfigMapKey"),
                 jsonText(convergenceReport, "kubernetesReportSyncSourceReportResult"),
+                jsonText(convergenceReport, "kubernetesReportSyncWorkflowCommand"),
+                jsonText(convergenceReport, "kubernetesReportSyncWorkflowNote"),
                 jsonBoolean(convergenceReport, "kubernetesReportSyncReady"),
                 jsonInt(convergenceReport, "finalizerGapCount"),
                 jsonInt(convergenceReport, "stageCount"),

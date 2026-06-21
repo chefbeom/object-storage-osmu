@@ -747,6 +747,9 @@
         <small v-if="operationsReadinessConvergenceBottleneck.reason">
           {{ operationsReadinessConvergenceBottleneck.reason }}
         </small>
+        <small v-if="operationsReadinessConvergence.kubernetesReportSyncWorkflowNote">
+          {{ operationsReadinessConvergence.kubernetesReportSyncWorkflowNote }}
+        </small>
         <div class="readiness-artifact-command-row">
           <button
             v-if="operationsReadinessConvergenceBottleneck.command"
@@ -757,6 +760,16 @@
             @click="copyReadinessRemediationCommand(operationsReadinessConvergenceBottleneck.command)"
           >
             Bottleneck Command
+          </button>
+          <button
+            v-if="operationsReadinessConvergence.kubernetesReportSyncWorkflowCommand"
+            data-testid="readiness-convergence-workflow-command-copy-button"
+            type="button"
+            class="ghost"
+            title="Copy convergence workflow command"
+            @click="copyReadinessRemediationCommand(operationsReadinessConvergence.kubernetesReportSyncWorkflowCommand)"
+          >
+            Workflow Command
           </button>
         </div>
       </div>

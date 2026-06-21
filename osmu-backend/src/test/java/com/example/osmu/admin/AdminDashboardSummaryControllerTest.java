@@ -1,6 +1,7 @@
 package com.example.osmu.admin;
 
 import static org.hamcrest.Matchers.hasItem;
+import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.not;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -1036,6 +1037,8 @@ class AdminDashboardSummaryControllerTest {
                           "kubernetesReportSyncConfigMapName": "osmu-operations-reports",
                           "kubernetesReportSyncConfigMapKey": "latest-operations-readiness-convergence.json",
                           "kubernetesReportSyncSourceReportResult": "action-required",
+                          "kubernetesReportSyncWorkflowCommand": "gh workflow run kubernetes-operations-report-sync-ci.yml -f namespace=osmu -f report_path=./.osmu-run/latest-operations-readiness-convergence.json -f run_live=true -f apply=false -f data_flow_storage_plan_json_base64=<base64-latest-data-flow-storage-plan-json>",
+                          "kubernetesReportSyncWorkflowNote": "For GitHub Actions sync, include data_flow_storage_plan_json_base64 only when .osmu-run/latest-data-flow-storage-plan.json should be carried into the operations report ConfigMap; omit the input when no target analytics-storage plan evidence is ready.",
                           "kubernetesReportSyncReady": false,
                           "finalizerGapCount": 1,
                           "stageCount": 7,
@@ -1327,6 +1330,8 @@ class AdminDashboardSummaryControllerTest {
                 .andExpect(jsonPath("$.data.operationsReadinessConvergence.kubernetesReportSyncResult").value("planned"))
                 .andExpect(jsonPath("$.data.operationsReadinessConvergence.kubernetesReportSyncFailedCount").value(0))
                 .andExpect(jsonPath("$.data.operationsReadinessConvergence.kubernetesReportSyncConfigMapName").value("osmu-operations-reports"))
+                .andExpect(jsonPath("$.data.operationsReadinessConvergence.kubernetesReportSyncWorkflowCommand").value("gh workflow run kubernetes-operations-report-sync-ci.yml -f namespace=osmu -f report_path=./.osmu-run/latest-operations-readiness-convergence.json -f run_live=true -f apply=false -f data_flow_storage_plan_json_base64=<base64-latest-data-flow-storage-plan-json>"))
+                .andExpect(jsonPath("$.data.operationsReadinessConvergence.kubernetesReportSyncWorkflowNote").value(containsString("omit the input")))
                 .andExpect(jsonPath("$.data.operationsReadinessConvergence.kubernetesReportSyncReady").value(false))
                 .andExpect(jsonPath("$.data.operationsReadinessConvergence.finalizerGapCount").value(1))
                 .andExpect(jsonPath("$.data.operationsReadinessConvergence.safetyPolicy").value("This convergence writer does not execute kubectl, gh, workflow dispatch, finalizer, or ConfigMap sync commands; it only reads local reports and writes JSON/Markdown guidance."))
