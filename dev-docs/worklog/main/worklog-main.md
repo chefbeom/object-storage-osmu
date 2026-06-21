@@ -18043,3 +18043,11 @@ feat/bucket-management
 - Docs/verifiers: updated README, API spec/OpenAPI, backend/frontend/security/IAM/commercial/test docs, feature inventory, and OpenAPI/IAM verifier scripts to include monthly rollup JSON/CSV and the remaining dedicated partitioned/time-series repository gap.
 - Verification: pending local checks before commit.
 - Verification final: git diff --check, node --check mock API, OpenAPI contract verifier, IAM/RBAC verifier, commercial readiness verifier, mock API self-test, frontend unit tests, and focused offline backend Gradle tests passed.
+
+### 2026-06-21 - Data-flow monthly aggregate store
+
+- Scope: continued non-S3 operations analytics work. S3 remains replacement-compatibility only; this slice reduces the long-term analytics storage gap.
+- Backend: added `data_flow_monthly_rollups` via `V58__data_flow_monthly_rollups.sql`, plus monthly rollup materialize/read/export APIs: `POST /api/admin/monitoring/data-flow/monthly-rollup/materialize`, `GET /api/admin/monitoring/data-flow/monthly-rollup/materialized`, and `GET /api/admin/monitoring/data-flow/monthly-rollup/materialized/export.csv`. Monthly materialization compacts aggregate-only `data_flow_daily_rollups` rows and preserves actor/status filter dimensions.
+- Frontend/mock: added monthly store refresh/load/export buttons, API wrappers, HomeView handlers, mock API state/routes, and self-test coverage.
+- Docs/verifiers: updated README, API/OpenAPI, backend/frontend/database/security/IAM/operation/test/MVP docs, OpenAPI verifier, IAM/RBAC verifier, and migration docs for the monthly aggregate store.
+- Verification: git diff --check, node --check mock API, OpenAPI contract verifier, IAM/RBAC verifier, commercial readiness verifier, Flyway migration verifier, mock API self-test, frontend unit tests, and focused offline backend Gradle tests passed.

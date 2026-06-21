@@ -213,6 +213,9 @@
         @export-materialized-data-flow-daily-rollup-csv="handleExportMaterializedDataFlowDailyRollupCsv"
         @load-data-flow-monthly-rollup="handleLoadDataFlowMonthlyRollup"
         @export-data-flow-monthly-rollup-csv="handleExportDataFlowMonthlyRollupCsv"
+        @materialize-data-flow-monthly-rollup="handleMaterializeDataFlowMonthlyRollup"
+        @load-materialized-data-flow-monthly-rollup="handleLoadMaterializedDataFlowMonthlyRollup"
+        @export-materialized-data-flow-monthly-rollup-csv="handleExportMaterializedDataFlowMonthlyRollupCsv"
         @refresh-data-flow-retention="loadDataFlowRetention"
         @run-data-flow-retention="handleRunDataFlowRetention"
         @reset-data-flow-filter="handleResetDataFlowFilter"
@@ -582,6 +585,7 @@ import {
   downloadDataFlowDailyRollupCsv,
   downloadMaterializedDataFlowDailyRollupCsv,
   downloadDataFlowMonthlyRollupCsv,
+  downloadMaterializedDataFlowMonthlyRollupCsv,
   downloadDataFlowMonitoringCsv,
   dryRunObjectLifecycleRule,
   finalizeChargebackInvoiceDraft,
@@ -617,6 +621,7 @@ import {
   getDataFlowMonthlyRollup,
   getDataFlowRetentionStatus,
   getMaterializedDataFlowDailyRollup,
+  getMaterializedDataFlowMonthlyRollup,
   getDataFlowMonitoring,
   getChargebackPreview,
   getEnterpriseAuthPlan,
@@ -657,6 +662,7 @@ import {
   listObjectVersions,
   logout as logoutApi,
   materializeDataFlowDailyRollup,
+  materializeDataFlowMonthlyRollup,
   purgeObject,
   putBucketLifecycleS3Xml,
   putBucketTags,
@@ -3039,6 +3045,30 @@ async function handleExportDataFlowMonthlyRollupCsv() {
   if (blob) {
     downloadBlob(blob, `osmu-data-flow-monthly-rollup-${new Date().toISOString().slice(0, 10)}.csv`)
     setStatusMessage('Data flow monthly rollup CSV export complete.')
+  }
+}
+
+async function handleMaterializeDataFlowMonthlyRollup() {
+  const result = await runAction(() => materializeDataFlowMonthlyRollup(dataFlowFilterPayload()))
+  if (result?.data) {
+    applyDataFlowMonthlyRollup(result.data)
+    setStatusMessage(`Data flow monthly rollup store refreshed: ${formatCount(result.data.storedPointCount || 0)} points.`)
+  }
+}
+
+async function handleLoadMaterializedDataFlowMonthlyRollup() {
+  const result = await runAction(() => getMaterializedDataFlowMonthlyRollup(dataFlowFilterPayload()))
+  if (result?.data) {
+    applyDataFlowMonthlyRollup(result.data)
+    setStatusMessage(`Materialized data flow monthly rollup loaded: ${formatCount(result.data.pointCount || 0)} points.`)
+  }
+}
+
+async function handleExportMaterializedDataFlowMonthlyRollupCsv() {
+  const blob = await runAction(() => downloadMaterializedDataFlowMonthlyRollupCsv(dataFlowFilterPayload()))
+  if (blob) {
+    downloadBlob(blob, `osmu-data-flow-monthly-rollup-materialized-${new Date().toISOString().slice(0, 10)}.csv`)
+    setStatusMessage('Materialized data flow monthly rollup CSV export complete.')
   }
 }
 

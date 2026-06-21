@@ -2,10 +2,10 @@
 
 ## Latest Data-flow Analytics Status
 
-- Admin monitoring now includes long-term monthly data-flow aggregate JSON/CSV surfaces in addition to detailed event export, daily rollup, and materialized daily rollup read/export.
-- Monthly aggregate rows group by UTC month, bucket, source, and operation, and can be calculated from live event rows or from the materialized daily rollup store.
+- Admin monitoring now includes long-term monthly data-flow aggregate JSON/CSV surfaces and monthly aggregate store refresh/read/export in addition to detailed event export, daily rollup, and materialized daily rollup read/export.
+- Monthly aggregate rows group by UTC month, bucket, source, and operation, and can be calculated from live event rows, from the materialized daily rollup store, or read from the compacted monthly aggregate store.
 - The monthly view is an OSMU operations analytics surface, not AWS billing parity. It excludes object keys and raw event messages.
-- Remaining analytics scope is a dedicated partitioned or time-series repository for high-volume retention and faster long-window reads.
+- Remaining analytics scope is table partitioning or an external time-series repository for high-volume retention and faster long-window reads.
 
 ## Current Completion Correction
 

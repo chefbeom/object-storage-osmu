@@ -279,8 +279,62 @@ public class DataFlowMonitoringService {
     }
 
     public String exportMonthlyRollupCsv(DataFlowEventFilter filter, Integer months, Integer limit, boolean materialized) {
+        return monthlyRollupCsv(monthlyRollup(filter, months, limit, materialized));
+    }
+
+    public DataFlowMonthlyRollupMaterializationResponse materializeMonthlyRollup(
+            DataFlowEventFilter filter,
+            Integer months,
+            Integer limit
+    ) {
+        OffsetDateTime generatedAt = OffsetDateTime.now();
+        int normalizedMonths = normalizeMonthlyRollupMonths(months);
+        int normalizedLimit = normalizeMonthlyRollupLimit(limit);
+        DataFlowEventFilter boundedFilter = boundedMonthlyRollupFilter(filter, normalizedMonths, generatedAt);
+        List<DataFlowMonthlyRollupPointResponse> points = eventRepository.refreshMonthlyRollup(boundedFilter, normalizedLimit);
+        return new DataFlowMonthlyRollupMaterializationResponse(
+                "DATA_FLOW_MONTHLY_ROLLUP_MATERIALIZATION",
+                "DATA_FLOW_DAILY_ROLLUP_MATERIALIZED",
+                "UTC_MONTH",
+                normalizedMonths,
+                normalizedLimit,
+                points.size(),
+                points.size(),
+                points,
+                generatedAt,
+                "ADMIN-only monthly data-flow rollup materialization. Query filters are identical to the monthly rollup endpoint.",
+                "Compacts aggregate-only data_flow_daily_rollups rows into data_flow_monthly_rollups for long-window operations analytics.",
+                "Monthly materialization stores aggregate rows only; object keys, raw event messages, and AWS billing parity fields are not stored."
+        );
+    }
+
+    public DataFlowMonthlyRollupResponse storedMonthlyRollup(DataFlowEventFilter filter, Integer months, Integer limit) {
+        OffsetDateTime generatedAt = OffsetDateTime.now();
+        int normalizedMonths = normalizeMonthlyRollupMonths(months);
+        int normalizedLimit = normalizeMonthlyRollupLimit(limit);
+        DataFlowEventFilter boundedFilter = boundedMonthlyRollupFilter(filter, normalizedMonths, generatedAt);
+        List<DataFlowMonthlyRollupPointResponse> points = eventRepository.storedMonthlyRollup(boundedFilter, normalizedLimit);
+        return new DataFlowMonthlyRollupResponse(
+                "DATA_FLOW_MONTHLY_ROLLUP_STORED",
+                "DATA_FLOW_MONTHLY_ROLLUPS",
+                "UTC_MONTH",
+                normalizedMonths,
+                normalizedLimit,
+                points.size(),
+                points,
+                generatedAt,
+                "ADMIN-only stored monthly data-flow analytics rollup. Query filters are identical to the monthly rollup endpoint.",
+                "Reads aggregate-only rows from data_flow_monthly_rollups in MariaDB mode and from the refreshed in-memory monthly store in local mode.",
+                "This reads OSMU stored monthly operations analytics rows; it does not expose object keys, raw event messages, or AWS billing parity fields."
+        );
+    }
+
+    public String exportStoredMonthlyRollupCsv(DataFlowEventFilter filter, Integer months, Integer limit) {
+        return monthlyRollupCsv(storedMonthlyRollup(filter, months, limit));
+    }
+
+    private String monthlyRollupCsv(DataFlowMonthlyRollupResponse rollup) {
         StringBuilder csv = new StringBuilder("month,bucketName,source,operation,successCount,failureCount,cancelCount,totalCount,uploadedBytes,downloadedBytes,copiedBytes,totalBytes\n");
-        DataFlowMonthlyRollupResponse rollup = monthlyRollup(filter, months, limit, materialized);
         for (DataFlowMonthlyRollupPointResponse point : rollup.points()) {
             appendCsvRow(
                     csv,

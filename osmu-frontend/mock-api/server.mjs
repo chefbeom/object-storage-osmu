@@ -38,6 +38,7 @@ function createInitialState() {
     ],
     dataFlowEvents: [],
     dataFlowDailyRollups: [],
+    dataFlowMonthlyRollups: [],
     teams: [
       {
         id: 1,
@@ -315,6 +316,18 @@ async function handleRequest(request, response) {
   if (request.method === 'GET' && path === '/admin/monitoring/data-flow/monthly-rollup') {
     const filters = dataFlowFilters(url)
     sendJson(response, 200, apiData(filters.materialized ? materializedDataFlowMonthlyRollup(filters) : dataFlowMonthlyRollup(filters)))
+    return
+  }
+  if (request.method === 'POST' && path === '/admin/monitoring/data-flow/monthly-rollup/materialize') {
+    sendJson(response, 200, apiData(materializeDataFlowMonthlyRollup(dataFlowFilters(url))))
+    return
+  }
+  if (request.method === 'GET' && path === '/admin/monitoring/data-flow/monthly-rollup/materialized') {
+    sendJson(response, 200, apiData(storedDataFlowMonthlyRollup(dataFlowFilters(url))))
+    return
+  }
+  if (request.method === 'GET' && path === '/admin/monitoring/data-flow/monthly-rollup/materialized/export.csv') {
+    sendCsv(response, 'osmu-data-flow-monthly-rollup-materialized.csv', storedDataFlowMonthlyRollupCsv(dataFlowFilters(url)))
     return
   }
   if (request.method === 'GET' && path === '/admin/monitoring/data-flow/monthly-rollup/export.csv') {
@@ -1356,6 +1369,88 @@ function materializedDataFlowMonthlyRollup(filters = {}) {
   }
 }
 
+function materializeDataFlowMonthlyRollup(filters = {}) {
+  const rollup = materializedDataFlowMonthlyRollup(filters)
+  const actorId = materializedDimension(filters.actorId)
+  const status = materializedDimension(filters.status)
+  const refreshedAt = new Date().toISOString()
+  for (const point of rollup.points) {
+    state.dataFlowMonthlyRollups = state.dataFlowMonthlyRollups.filter((record) => !(
+      record.month === point.month
+      && record.bucketName === point.bucketName
+      && record.actorId === actorId
+      && record.source === point.source
+      && record.operation === point.operation
+      && record.status === status
+    ))
+    state.dataFlowMonthlyRollups.push({ ...point, actorId, status, refreshedAt })
+  }
+  return {
+    mode: 'DATA_FLOW_MONTHLY_ROLLUP_MATERIALIZATION',
+    rollupSource: 'DATA_FLOW_DAILY_ROLLUP_MATERIALIZED',
+    granularity: 'UTC_MONTH',
+    monthWindow: rollup.monthWindow,
+    pointLimit: rollup.pointLimit,
+    pointCount: rollup.pointCount,
+    storedPointCount: rollup.points.length,
+    points: rollup.points,
+    generatedAt: new Date().toISOString(),
+    scopePolicy: 'ADMIN-only monthly data-flow rollup materialization. Query filters are identical to the monthly rollup endpoint.',
+    storagePolicy: 'Compacts mock materialized daily rollup rows into data_flow_monthly_rollups.',
+    note: 'Monthly materialization stores aggregate rows only; object keys, raw event messages, and AWS billing parity fields are not stored.',
+  }
+}
+
+function storedDataFlowMonthlyRollup(filters = {}) {
+  const months = Math.min(60, Math.max(1, Math.floor(Number(filters.months || 12))))
+  const limit = Math.min(1000, Math.max(1, Math.floor(Number(filters.limit || 200))))
+  const boundedFilters = { ...filters }
+  if (!boundedFilters.from) {
+    const from = new Date()
+    from.setUTCDate(1)
+    from.setUTCHours(0, 0, 0, 0)
+    from.setUTCMonth(from.getUTCMonth() - (months - 1))
+    boundedFilters.from = from.toISOString()
+  }
+  const actorId = materializedDimension(boundedFilters.actorId)
+  const status = materializedDimension(boundedFilters.status)
+  const fromMonth = dataFlowFilterMonth(boundedFilters.from)
+  const toMonth = dataFlowFilterMonth(boundedFilters.to)
+  const points = state.dataFlowMonthlyRollups
+    .filter((point) => {
+      if (boundedFilters.bucketName && point.bucketName !== boundedFilters.bucketName) return false
+      if (point.actorId !== actorId) return false
+      if (boundedFilters.source && String(point.source || '').toLowerCase() !== String(boundedFilters.source).toLowerCase()) return false
+      if (boundedFilters.operation && String(point.operation || '').toLowerCase() !== String(boundedFilters.operation).toLowerCase()) return false
+      if (point.status !== status) return false
+      if (fromMonth && point.month < fromMonth) return false
+      if (toMonth && point.month > toMonth) return false
+      return true
+    })
+    .sort((left, right) => (
+      right.month.localeCompare(left.month)
+      || right.totalCount - left.totalCount
+      || left.bucketName.localeCompare(right.bucketName)
+      || left.source.localeCompare(right.source)
+      || left.operation.localeCompare(right.operation)
+    ))
+    .slice(0, limit)
+    .map(({ actorId: ignoredActorId, status: ignoredStatus, refreshedAt: ignoredRefreshedAt, ...point }) => point)
+  return {
+    mode: 'DATA_FLOW_MONTHLY_ROLLUP_STORED',
+    rollupSource: 'DATA_FLOW_MONTHLY_ROLLUPS',
+    granularity: 'UTC_MONTH',
+    monthWindow: months,
+    pointLimit: limit,
+    pointCount: points.length,
+    points,
+    generatedAt: new Date().toISOString(),
+    scopePolicy: 'ADMIN-only stored monthly data-flow analytics rollup. Query filters are identical to the monthly rollup endpoint.',
+    storagePolicy: 'Reads mock data_flow_monthly_rollups rows; MariaDB mode reads the dedicated monthly aggregate table.',
+    note: 'This reads OSMU stored monthly operations analytics rows; it does not expose object keys, raw event messages, or AWS billing parity fields.',
+  }
+}
+
 function emptyMonthlyRollupPoint(month, bucketName, source, operation) {
   return {
     month,
@@ -1417,6 +1512,12 @@ function dataFlowFilterDay(value) {
   if (!value) return ''
   const timestamp = Date.parse(value)
   return Number.isNaN(timestamp) ? '' : new Date(timestamp).toISOString().slice(0, 10)
+}
+
+function dataFlowFilterMonth(value) {
+  if (!value) return ''
+  const timestamp = Date.parse(value)
+  return Number.isNaN(timestamp) ? '' : new Date(timestamp).toISOString().slice(0, 7)
 }
 
 function dataFlowTrend(events) {
@@ -1491,9 +1592,17 @@ function materializedDataFlowDailyRollupCsv(filters = {}) {
 
 function dataFlowMonthlyRollupCsv(filters = {}) {
   const rollup = filters.materialized ? materializedDataFlowMonthlyRollup(filters) : dataFlowMonthlyRollup(filters)
+  return dataFlowMonthlyRollupPointsCsv(rollup.points)
+}
+
+function storedDataFlowMonthlyRollupCsv(filters = {}) {
+  return dataFlowMonthlyRollupPointsCsv(storedDataFlowMonthlyRollup(filters).points)
+}
+
+function dataFlowMonthlyRollupPointsCsv(points = []) {
   const rows = [
     ['month', 'bucketName', 'source', 'operation', 'successCount', 'failureCount', 'cancelCount', 'totalCount', 'uploadedBytes', 'downloadedBytes', 'copiedBytes', 'totalBytes'],
-    ...rollup.points.map((point) => [
+    ...points.map((point) => [
       point.month,
       point.bucketName,
       point.source,
@@ -3428,6 +3537,32 @@ async function runSelfTest() {
     })).text()
     if (!dataFlowMonthlyRollupCsv.includes('"month","bucketName","source","operation"')) {
       throw new Error('data flow monthly rollup CSV self-test failed')
+    }
+    const dataFlowDailyMaterialize = await (await fetch(`${base}/admin/monitoring/data-flow/daily-rollup/materialize?days=30&limit=200`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${login.data.accessToken}` },
+    })).json()
+    if (dataFlowDailyMaterialize.data?.mode !== 'DATA_FLOW_DAILY_ROLLUP_MATERIALIZATION') {
+      throw new Error('data flow daily materialization self-test failed')
+    }
+    const dataFlowMonthlyMaterialize = await (await fetch(`${base}/admin/monitoring/data-flow/monthly-rollup/materialize?months=12&limit=200`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${login.data.accessToken}` },
+    })).json()
+    if (dataFlowMonthlyMaterialize.data?.mode !== 'DATA_FLOW_MONTHLY_ROLLUP_MATERIALIZATION') {
+      throw new Error('data flow monthly materialization self-test failed')
+    }
+    const dataFlowStoredMonthlyRollup = await (await fetch(`${base}/admin/monitoring/data-flow/monthly-rollup/materialized?months=12&limit=200`, {
+      headers: { Authorization: `Bearer ${login.data.accessToken}` },
+    })).json()
+    if (dataFlowStoredMonthlyRollup.data?.mode !== 'DATA_FLOW_MONTHLY_ROLLUP_STORED' || !Array.isArray(dataFlowStoredMonthlyRollup.data.points)) {
+      throw new Error('stored data flow monthly rollup self-test failed')
+    }
+    const dataFlowStoredMonthlyRollupCsv = await (await fetch(`${base}/admin/monitoring/data-flow/monthly-rollup/materialized/export.csv?months=12&limit=200`, {
+      headers: { Authorization: `Bearer ${login.data.accessToken}` },
+    })).text()
+    if (!dataFlowStoredMonthlyRollupCsv.includes('"month","bucketName","source","operation"')) {
+      throw new Error('stored data flow monthly rollup CSV self-test failed')
     }
     const savedPricingPolicy = await (await fetch(`${base}/admin/billing/pricing-policy`, {
       method: 'PUT',

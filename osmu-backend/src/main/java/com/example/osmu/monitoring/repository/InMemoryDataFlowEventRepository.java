@@ -25,6 +25,7 @@ public class InMemoryDataFlowEventRepository implements DataFlowEventRepository 
     private final AtomicLong idSequence = new AtomicLong(1);
     private final CopyOnWriteArrayList<DataFlowEventRecord> events = new CopyOnWriteArrayList<>();
     private final CopyOnWriteArrayList<MaterializedRollupRecord> materializedRollups = new CopyOnWriteArrayList<>();
+    private final CopyOnWriteArrayList<StoredMonthlyRollupRecord> storedMonthlyRollups = new CopyOnWriteArrayList<>();
 
     @Override
     public List<DataFlowEventRecord> find(DataFlowEventFilter filter, int limit) {
@@ -144,6 +145,35 @@ public class InMemoryDataFlowEventRepository implements DataFlowEventRepository 
     }
 
     @Override
+    public List<DataFlowMonthlyRollupPointResponse> refreshMonthlyRollup(DataFlowEventFilter filter, int limit) {
+        DataFlowEventFilter safeFilter = filter == null ? DataFlowEventFilter.empty() : filter;
+        List<DataFlowMonthlyRollupPointResponse> points = materializedMonthlyRollup(safeFilter, limit);
+        String actorId = dimensionValue(safeFilter.actorId());
+        String status = dimensionValue(safeFilter.status());
+        for (DataFlowMonthlyRollupPointResponse point : points) {
+            storedMonthlyRollups.removeIf(record -> record.matchesKey(point, actorId, status));
+            storedMonthlyRollups.add(new StoredMonthlyRollupRecord(actorId, status, point));
+        }
+        return points;
+    }
+
+    @Override
+    public List<DataFlowMonthlyRollupPointResponse> storedMonthlyRollup(DataFlowEventFilter filter, int limit) {
+        DataFlowEventFilter safeFilter = filter == null ? DataFlowEventFilter.empty() : filter;
+        return storedMonthlyRollups.stream()
+                .filter(record -> record.matchesFilter(safeFilter))
+                .map(StoredMonthlyRollupRecord::point)
+                .sorted(Comparator
+                        .comparing(DataFlowMonthlyRollupPointResponse::month, Comparator.reverseOrder())
+                        .thenComparing(Comparator.comparingLong(DataFlowMonthlyRollupPointResponse::totalCount).reversed())
+                        .thenComparing(DataFlowMonthlyRollupPointResponse::bucketName)
+                        .thenComparing(DataFlowMonthlyRollupPointResponse::source)
+                        .thenComparing(DataFlowMonthlyRollupPointResponse::operation))
+                .limit(Math.max(0, limit))
+                .toList();
+    }
+
+    @Override
     public long nextId() {
         return idSequence.getAndIncrement();
     }
@@ -245,6 +275,28 @@ public class InMemoryDataFlowEventRepository implements DataFlowEventRepository 
                     && (filter.status() == null ? status.isBlank() : filter.status().equalsIgnoreCase(status))
                     && (filter.from() == null || !point.day().isBefore(filter.from().withOffsetSameInstant(ZoneOffset.UTC).toLocalDate()))
                     && (filter.to() == null || !point.day().isAfter(filter.to().withOffsetSameInstant(ZoneOffset.UTC).toLocalDate()));
+        }
+    }
+
+    private record StoredMonthlyRollupRecord(String actorId, String status, DataFlowMonthlyRollupPointResponse point) {
+
+        private boolean matchesKey(DataFlowMonthlyRollupPointResponse candidate, String candidateActorId, String candidateStatus) {
+            return point.month().equals(candidate.month())
+                    && point.bucketName().equals(candidate.bucketName())
+                    && actorId.equals(candidateActorId)
+                    && point.source().equals(candidate.source())
+                    && point.operation().equals(candidate.operation())
+                    && status.equals(candidateStatus);
+        }
+
+        private boolean matchesFilter(DataFlowEventFilter filter) {
+            return (filter.bucketName() == null || filter.bucketName().equals(point.bucketName()))
+                    && (filter.actorId() == null ? actorId.isBlank() : filter.actorId().equals(actorId))
+                    && (filter.source() == null || filter.source().equalsIgnoreCase(point.source()))
+                    && (filter.operation() == null || filter.operation().equalsIgnoreCase(point.operation()))
+                    && (filter.status() == null ? status.isBlank() : filter.status().equalsIgnoreCase(status))
+                    && (filter.from() == null || !YearMonth.parse(point.month()).isBefore(YearMonth.from(filter.from().withOffsetSameInstant(ZoneOffset.UTC))))
+                    && (filter.to() == null || !YearMonth.parse(point.month()).isAfter(YearMonth.from(filter.to().withOffsetSameInstant(ZoneOffset.UTC))));
         }
     }
 

@@ -1460,6 +1460,9 @@
           <button data-testid="data-flow-daily-rollup-materialized-export-button" type="button" class="ghost" @click="$emit('export-materialized-data-flow-daily-rollup-csv')">Store CSV</button>
           <button data-testid="data-flow-monthly-rollup-load-button" type="button" class="ghost" @click="$emit('load-data-flow-monthly-rollup')">Monthly</button>
           <button data-testid="data-flow-monthly-rollup-export-button" type="button" class="ghost" @click="$emit('export-data-flow-monthly-rollup-csv')">Monthly CSV</button>
+          <button data-testid="data-flow-monthly-rollup-materialize-button" type="button" class="ghost" @click="$emit('materialize-data-flow-monthly-rollup')">Monthly Store</button>
+          <button data-testid="data-flow-monthly-rollup-materialized-load-button" type="button" class="ghost" @click="$emit('load-materialized-data-flow-monthly-rollup')">Load Monthly Store</button>
+          <button data-testid="data-flow-monthly-rollup-materialized-export-button" type="button" class="ghost" @click="$emit('export-materialized-data-flow-monthly-rollup-csv')">Monthly Store CSV</button>
           <button data-testid="data-flow-reset-button" type="button" class="ghost" @click="$emit('reset-data-flow-filter')">Reset</button>
         </div>
       </form>
@@ -1890,6 +1893,9 @@ defineEmits([
   'export-materialized-data-flow-daily-rollup-csv',
   'load-data-flow-monthly-rollup',
   'export-data-flow-monthly-rollup-csv',
+  'materialize-data-flow-monthly-rollup',
+  'load-materialized-data-flow-monthly-rollup',
+  'export-materialized-data-flow-monthly-rollup-csv',
   'refresh-data-flow-retention',
   'run-data-flow-retention',
   'reset-data-flow-filter',

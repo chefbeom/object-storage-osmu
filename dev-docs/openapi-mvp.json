@@ -3507,6 +3507,46 @@
         }
       }
     },
+    "/api/admin/monitoring/data-flow/monthly-rollup/materialize": {
+      "post": {
+        "tags": ["Admin"],
+        "operationId": "materializeDataFlowMonthlyRollup",
+        "summary": "Compact materialized data-flow daily rollups into stored UTC-month aggregate rows",
+        "responses": {
+          "200": { "$ref": "#/components/responses/JsonOk" },
+          "403": { "$ref": "#/components/responses/Error" }
+        }
+      }
+    },
+    "/api/admin/monitoring/data-flow/monthly-rollup/materialized": {
+      "get": {
+        "tags": ["Admin"],
+        "operationId": "getMaterializedDataFlowMonthlyRollup",
+        "summary": "Read stored administrator data-flow monthly aggregate rows from data_flow_monthly_rollups",
+        "responses": {
+          "200": { "$ref": "#/components/responses/JsonOk" },
+          "403": { "$ref": "#/components/responses/Error" }
+        }
+      }
+    },
+    "/api/admin/monitoring/data-flow/monthly-rollup/materialized/export.csv": {
+      "get": {
+        "tags": ["Admin"],
+        "operationId": "downloadMaterializedDataFlowMonthlyRollupCsv",
+        "summary": "Export stored administrator data-flow monthly aggregate rows as CSV",
+        "responses": {
+          "200": {
+            "description": "Stored monthly rollup CSV export",
+            "content": {
+              "text/csv": {
+                "schema": { "type": "string" }
+              }
+            }
+          },
+          "403": { "$ref": "#/components/responses/Error" }
+        }
+      }
+    },
     "/api/admin/monitoring/data-flow/monthly-rollup/export.csv": {
       "get": {
         "tags": ["Admin"],

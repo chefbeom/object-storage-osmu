@@ -3806,7 +3806,70 @@ Response:
 Notes:
 
 - `materialized=true` reads aggregate-only `data_flow_daily_rollups` rows and groups them by UTC month, bucket, source, and operation.
-- The endpoint does not store a separate monthly table yet; it is a stable API bridge before a dedicated partitioned or time-series repository is introduced.
+- Operators can compact those monthly aggregate rows into `data_flow_monthly_rollups` with the materialization endpoint below when longer-window reads should avoid daily-row regrouping.
+
+### POST /api/admin/monitoring/data-flow/monthly-rollup/materialize
+
+Compacts refreshed `data_flow_daily_rollups` rows into `data_flow_monthly_rollups`. `ADMIN` role required.
+
+Query parameters are identical to `GET /api/admin/monitoring/data-flow/monthly-rollup` except `materialized`; this endpoint always uses materialized daily rollup rows as its input.
+
+Response:
+
+```json
+{
+  "data": {
+    "mode": "DATA_FLOW_MONTHLY_ROLLUP_MATERIALIZATION",
+    "rollupSource": "DATA_FLOW_DAILY_ROLLUP_MATERIALIZED",
+    "granularity": "UTC_MONTH",
+    "monthWindow": 12,
+    "pointLimit": 200,
+    "pointCount": 1,
+    "storedPointCount": 1,
+    "points": [
+      {
+        "month": "2026-06",
+        "bucketName": "media",
+        "source": "s3",
+        "operation": "download",
+        "successCount": 32,
+        "failureCount": 2,
+        "cancelCount": 1,
+        "totalCount": 35,
+        "uploadedBytes": 0,
+        "downloadedBytes": 16777216,
+        "copiedBytes": 0,
+        "totalBytes": 16777216
+      }
+    ],
+    "generatedAt": "2026-06-18T10:30:00Z",
+    "scopePolicy": "ADMIN-only monthly data-flow rollup materialization. Query filters are identical to the monthly rollup endpoint.",
+    "storagePolicy": "Compacts aggregate-only data_flow_daily_rollups rows into data_flow_monthly_rollups for long-window operations analytics.",
+    "note": "Monthly materialization stores aggregate rows only; object keys, raw event messages, and AWS billing parity fields are not stored."
+  }
+}
+```
+
+### GET /api/admin/monitoring/data-flow/monthly-rollup/materialized
+
+Reads aggregate-only rows from the dedicated `data_flow_monthly_rollups` store. `ADMIN` role required.
+
+Query parameters are identical to `GET /api/admin/monitoring/data-flow/monthly-rollup` except `materialized`.
+
+Response fields match the monthly rollup response with `mode=DATA_FLOW_MONTHLY_ROLLUP_STORED` and `rollupSource=DATA_FLOW_MONTHLY_ROLLUPS`.
+
+### GET /api/admin/monitoring/data-flow/monthly-rollup/materialized/export.csv
+
+Exports stored `data_flow_monthly_rollups` rows as CSV.
+
+Query parameters are identical to `GET /api/admin/monitoring/data-flow/monthly-rollup/materialized`.
+
+Response:
+
+- `Content-Type: text/csv`
+- `Content-Disposition: attachment; filename="osmu-data-flow-monthly-rollup-materialized.csv"`
+- Columns: `month,bucketName,source,operation,successCount,failureCount,cancelCount,totalCount,uploadedBytes,downloadedBytes,copiedBytes,totalBytes`
+- Rows are aggregate-only and do not include object keys, raw event messages, provider payloads, or AWS billing parity fields.
 
 ### GET /api/admin/monitoring/data-flow/monthly-rollup/export.csv
 

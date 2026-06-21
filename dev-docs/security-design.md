@@ -1,3 +1,7 @@
+## Data-flow Monthly Store RBAC Addendum
+
+- Data-flow monthly rollup materialize/read/export store APIs are global ADMIN-only operations. `ORG_ADMIN`, `AUDITOR`, and `USER` cannot access `POST /api/admin/monitoring/data-flow/monthly-rollup/materialize`, `GET /api/admin/monitoring/data-flow/monthly-rollup/materialized`, or `GET /api/admin/monitoring/data-flow/monthly-rollup/materialized/export.csv`.
+
 ## Object Lifecycle Rule Audit
 
 - Lifecycle rule save/delete is ADMIN-only.

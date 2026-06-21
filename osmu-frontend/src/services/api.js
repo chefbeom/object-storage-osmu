@@ -1207,6 +1207,36 @@ export function getDataFlowMonthlyRollup(filters = {}) {
   return request(`/admin/monitoring/data-flow/monthly-rollup${suffix}`)
 }
 
+export function materializeDataFlowMonthlyRollup(filters = {}) {
+  const query = new URLSearchParams()
+  appendQuery(query, 'bucketName', filters.bucketName)
+  appendQuery(query, 'actorId', filters.actorId)
+  appendQuery(query, 'source', filters.source)
+  appendQuery(query, 'operation', filters.operation)
+  appendQuery(query, 'status', filters.status)
+  appendQuery(query, 'from', filters.from)
+  appendQuery(query, 'to', filters.to)
+  appendQuery(query, 'months', filters.months)
+  appendQuery(query, 'limit', filters.limit)
+  const suffix = query.toString() ? `?${query.toString()}` : ''
+  return request(`/admin/monitoring/data-flow/monthly-rollup/materialize${suffix}`, { method: 'POST' })
+}
+
+export function getMaterializedDataFlowMonthlyRollup(filters = {}) {
+  const query = new URLSearchParams()
+  appendQuery(query, 'bucketName', filters.bucketName)
+  appendQuery(query, 'actorId', filters.actorId)
+  appendQuery(query, 'source', filters.source)
+  appendQuery(query, 'operation', filters.operation)
+  appendQuery(query, 'status', filters.status)
+  appendQuery(query, 'from', filters.from)
+  appendQuery(query, 'to', filters.to)
+  appendQuery(query, 'months', filters.months)
+  appendQuery(query, 'limit', filters.limit)
+  const suffix = query.toString() ? `?${query.toString()}` : ''
+  return request(`/admin/monitoring/data-flow/monthly-rollup/materialized${suffix}`)
+}
+
 export function getDataFlowRetentionStatus() {
   return request('/admin/monitoring/data-flow/retention/status')
 }
@@ -1277,6 +1307,21 @@ export function downloadDataFlowMonthlyRollupCsv(filters = {}) {
   appendQuery(query, 'materialized', filters.materialized)
   const suffix = query.toString() ? `?${query.toString()}` : ''
   return download(`/admin/monitoring/data-flow/monthly-rollup/export.csv${suffix}`)
+}
+
+export function downloadMaterializedDataFlowMonthlyRollupCsv(filters = {}) {
+  const query = new URLSearchParams()
+  appendQuery(query, 'bucketName', filters.bucketName)
+  appendQuery(query, 'actorId', filters.actorId)
+  appendQuery(query, 'source', filters.source)
+  appendQuery(query, 'operation', filters.operation)
+  appendQuery(query, 'status', filters.status)
+  appendQuery(query, 'from', filters.from)
+  appendQuery(query, 'to', filters.to)
+  appendQuery(query, 'months', filters.months)
+  appendQuery(query, 'limit', filters.limit)
+  const suffix = query.toString() ? `?${query.toString()}` : ''
+  return download(`/admin/monitoring/data-flow/monthly-rollup/materialized/export.csv${suffix}`)
 }
 
 export function getChargebackPreview(options = {}) {

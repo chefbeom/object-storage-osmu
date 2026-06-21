@@ -22,6 +22,10 @@ public interface DataFlowEventRepository {
 
     List<DataFlowMonthlyRollupPointResponse> materializedMonthlyRollup(DataFlowEventFilter filter, int limit);
 
+    List<DataFlowMonthlyRollupPointResponse> refreshMonthlyRollup(DataFlowEventFilter filter, int limit);
+
+    List<DataFlowMonthlyRollupPointResponse> storedMonthlyRollup(DataFlowEventFilter filter, int limit);
+
     long nextId();
 
     DataFlowEventRecord save(DataFlowEventRecord event);

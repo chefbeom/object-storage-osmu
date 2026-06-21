@@ -305,6 +305,98 @@ public class MariaDbDataFlowEventRepository implements DataFlowEventRepository {
     }
 
     @Override
+    public List<DataFlowMonthlyRollupPointResponse> refreshMonthlyRollup(DataFlowEventFilter filter, int limit) {
+        DataFlowEventFilter safeFilter = filter == null ? DataFlowEventFilter.empty() : filter;
+        List<DataFlowMonthlyRollupPointResponse> points = materializedMonthlyRollup(safeFilter, limit);
+        if (points.isEmpty()) {
+            return points;
+        }
+        String sql = """
+                INSERT INTO data_flow_monthly_rollups
+                    (rollup_month, bucket_name, actor_id, source, operation, status, success_count, failure_count,
+                     cancel_count, total_count, uploaded_bytes, downloaded_bytes, copied_bytes,
+                     total_bytes, refreshed_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON DUPLICATE KEY UPDATE
+                    success_count = VALUES(success_count),
+                    failure_count = VALUES(failure_count),
+                    cancel_count = VALUES(cancel_count),
+                    total_count = VALUES(total_count),
+                    uploaded_bytes = VALUES(uploaded_bytes),
+                    downloaded_bytes = VALUES(downloaded_bytes),
+                    copied_bytes = VALUES(copied_bytes),
+                    total_bytes = VALUES(total_bytes),
+                    refreshed_at = VALUES(refreshed_at)
+                """;
+        Timestamp refreshedAt = Timestamp.from(OffsetDateTime.now(ZoneOffset.UTC).toInstant());
+        String actorId = dimensionValue(safeFilter.actorId());
+        String status = dimensionValue(safeFilter.status());
+        try (Connection connection = connect();
+             PreparedStatement statement = connection.prepareStatement(sql)) {
+            for (DataFlowMonthlyRollupPointResponse point : points) {
+                statement.setDate(1, Date.valueOf(LocalDate.parse(point.month() + "-01")));
+                statement.setString(2, point.bucketName());
+                statement.setString(3, actorId);
+                statement.setString(4, point.source());
+                statement.setString(5, point.operation());
+                statement.setString(6, status);
+                statement.setLong(7, point.successCount());
+                statement.setLong(8, point.failureCount());
+                statement.setLong(9, point.cancelCount());
+                statement.setLong(10, point.totalCount());
+                statement.setLong(11, point.uploadedBytes());
+                statement.setLong(12, point.downloadedBytes());
+                statement.setLong(13, point.copiedBytes());
+                statement.setLong(14, point.totalBytes());
+                statement.setTimestamp(15, refreshedAt);
+                statement.addBatch();
+            }
+            statement.executeBatch();
+            return points;
+        } catch (SQLException exception) {
+            throw databaseException(exception);
+        }
+    }
+
+    @Override
+    public List<DataFlowMonthlyRollupPointResponse> storedMonthlyRollup(DataFlowEventFilter filter, int limit) {
+        ensureSchema();
+        DataFlowEventFilter safeFilter = filter == null ? DataFlowEventFilter.empty() : filter;
+        StringBuilder sql = new StringBuilder("""
+                SELECT
+                    CONCAT(YEAR(rollup_month), '-', LPAD(MONTH(rollup_month), 2, '0')) AS rollup_month,
+                    bucket_name,
+                    source,
+                    operation,
+                    success_count,
+                    failure_count,
+                    cancel_count,
+                    total_count,
+                    uploaded_bytes,
+                    downloaded_bytes,
+                    copied_bytes,
+                    total_bytes
+                FROM data_flow_monthly_rollups
+                WHERE 1 = 1
+                """);
+        List<Object> parameters = appendMonthlyStoredFilter(sql, safeFilter);
+        sql.append("""
+                ORDER BY rollup_month DESC, total_count DESC, bucket_name ASC, source ASC, operation ASC
+                LIMIT ?
+                """);
+        parameters.add(Math.max(0, limit));
+        try (Connection connection = connect();
+             PreparedStatement statement = connection.prepareStatement(sql.toString())) {
+            bindParameters(statement, parameters);
+            try (ResultSet resultSet = statement.executeQuery()) {
+                return collectMonthlyRollup(resultSet);
+            }
+        } catch (SQLException exception) {
+            throw databaseException(exception);
+        }
+    }
+
+    @Override
     public long nextId() {
         ensureSchema();
         String sql = "SELECT COALESCE(MAX(id), 0) + 1 AS next_id FROM data_flow_events";
@@ -460,11 +552,38 @@ public class MariaDbDataFlowEventRepository implements DataFlowEventRepository {
                     INDEX idx_data_flow_daily_rollups_refreshed_at (refreshed_at)
                 )
                 """;
+        String monthlyRollupSql = """
+                CREATE TABLE IF NOT EXISTS data_flow_monthly_rollups (
+                    rollup_month DATE NOT NULL,
+                    bucket_name VARCHAR(255) NOT NULL,
+                    actor_id VARCHAR(255) NOT NULL DEFAULT '',
+                    source VARCHAR(64) NOT NULL,
+                    operation VARCHAR(64) NOT NULL,
+                    status VARCHAR(32) NOT NULL DEFAULT '',
+                    success_count BIGINT NOT NULL DEFAULT 0,
+                    failure_count BIGINT NOT NULL DEFAULT 0,
+                    cancel_count BIGINT NOT NULL DEFAULT 0,
+                    total_count BIGINT NOT NULL DEFAULT 0,
+                    uploaded_bytes BIGINT NOT NULL DEFAULT 0,
+                    downloaded_bytes BIGINT NOT NULL DEFAULT 0,
+                    copied_bytes BIGINT NOT NULL DEFAULT 0,
+                    total_bytes BIGINT NOT NULL DEFAULT 0,
+                    refreshed_at TIMESTAMP NOT NULL,
+                    PRIMARY KEY (rollup_month, bucket_name, actor_id, source, operation, status),
+                    INDEX idx_data_flow_monthly_rollups_bucket (bucket_name, rollup_month),
+                    INDEX idx_data_flow_monthly_rollups_actor (actor_id, rollup_month),
+                    INDEX idx_data_flow_monthly_rollups_operation (operation, rollup_month),
+                    INDEX idx_data_flow_monthly_rollups_status (status, rollup_month),
+                    INDEX idx_data_flow_monthly_rollups_refreshed_at (refreshed_at)
+                )
+                """;
         try (Connection connection = connect();
              PreparedStatement eventStatement = connection.prepareStatement(eventSql);
-             PreparedStatement rollupStatement = connection.prepareStatement(rollupSql)) {
+             PreparedStatement rollupStatement = connection.prepareStatement(rollupSql);
+             PreparedStatement monthlyRollupStatement = connection.prepareStatement(monthlyRollupSql)) {
             eventStatement.executeUpdate();
             rollupStatement.executeUpdate();
+            monthlyRollupStatement.executeUpdate();
             schemaReady = true;
         } catch (SQLException exception) {
             throw databaseException(exception);
@@ -573,6 +692,41 @@ public class MariaDbDataFlowEventRepository implements DataFlowEventRepository {
         if (safeFilter.to() != null) {
             sql.append(" AND rollup_day <= ?");
             parameters.add(Date.valueOf(safeFilter.to().withOffsetSameInstant(ZoneOffset.UTC).toLocalDate()));
+        }
+        return parameters;
+    }
+
+    private List<Object> appendMonthlyStoredFilter(StringBuilder sql, DataFlowEventFilter safeFilter) {
+        List<Object> parameters = new ArrayList<>();
+        if (safeFilter.bucketName() != null) {
+            sql.append(" AND bucket_name = ?");
+            parameters.add(safeFilter.bucketName());
+        }
+        sql.append(" AND actor_id = ?");
+        parameters.add(dimensionValue(safeFilter.actorId()));
+        if (safeFilter.source() != null) {
+            sql.append(" AND source = ?");
+            parameters.add(safeFilter.source());
+        }
+        if (safeFilter.operation() != null) {
+            sql.append(" AND operation = ?");
+            parameters.add(safeFilter.operation());
+        }
+        sql.append(" AND status = ?");
+        parameters.add(dimensionValue(safeFilter.status()));
+        if (safeFilter.from() != null) {
+            sql.append(" AND rollup_month >= ?");
+            parameters.add(Date.valueOf(safeFilter.from()
+                    .withOffsetSameInstant(ZoneOffset.UTC)
+                    .toLocalDate()
+                    .withDayOfMonth(1)));
+        }
+        if (safeFilter.to() != null) {
+            sql.append(" AND rollup_month <= ?");
+            parameters.add(Date.valueOf(safeFilter.to()
+                    .withOffsetSameInstant(ZoneOffset.UTC)
+                    .toLocalDate()
+                    .withDayOfMonth(1)));
         }
         return parameters;
     }

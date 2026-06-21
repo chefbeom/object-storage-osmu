@@ -120,12 +120,19 @@ test('HomeView exposes stable selectors for browser E2E flows', () => {
     'data-flow-filter-operation',
     'data-flow-filter-status',
     'data-flow-filter-limit',
+    'data-flow-filter-months',
+    'data-flow-filter-monthly-materialized',
     'data-flow-refresh-button',
     'data-flow-export-button',
     'data-flow-daily-rollup-export-button',
     'data-flow-daily-rollup-materialize-button',
     'data-flow-daily-rollup-materialized-load-button',
     'data-flow-daily-rollup-materialized-export-button',
+    'data-flow-monthly-rollup-load-button',
+    'data-flow-monthly-rollup-export-button',
+    'data-flow-monthly-rollup-materialize-button',
+    'data-flow-monthly-rollup-materialized-load-button',
+    'data-flow-monthly-rollup-materialized-export-button',
     'data-flow-retention-panel',
     'data-flow-retention-event-days',
     'data-flow-retention-rollup-days',
@@ -140,6 +147,9 @@ test('HomeView exposes stable selectors for browser E2E flows', () => {
     'data-flow-daily-rollup',
     'data-flow-daily-rollup-row',
     'data-flow-daily-rollup-bytes',
+    'data-flow-monthly-rollup',
+    'data-flow-monthly-rollup-row',
+    'data-flow-monthly-rollup-bytes',
     'data-flow-top-buckets',
     'data-flow-recent-events',
     'backup-status-panel',
@@ -685,16 +695,22 @@ test('HomeView exposes stable selectors for browser E2E flows', () => {
   assert.match(dashboardSource, /getDataFlowDailyRollup/)
   assert.match(dashboardSource, /getDataFlowMonthlyRollup/)
   assert.match(dashboardSource, /getMaterializedDataFlowDailyRollup/)
+  assert.match(dashboardSource, /getMaterializedDataFlowMonthlyRollup/)
   assert.match(dashboardSource, /downloadDataFlowDailyRollupCsv/)
   assert.match(dashboardSource, /downloadDataFlowMonthlyRollupCsv/)
   assert.match(dashboardSource, /downloadMaterializedDataFlowDailyRollupCsv/)
+  assert.match(dashboardSource, /downloadMaterializedDataFlowMonthlyRollupCsv/)
   assert.match(dashboardSource, /materializeDataFlowDailyRollup/)
+  assert.match(dashboardSource, /materializeDataFlowMonthlyRollup/)
   assert.match(dashboardSource, /handleExportDataFlowDailyRollupCsv/)
   assert.match(dashboardSource, /handleLoadDataFlowMonthlyRollup/)
   assert.match(dashboardSource, /handleExportDataFlowMonthlyRollupCsv/)
   assert.match(dashboardSource, /handleMaterializeDataFlowDailyRollup/)
   assert.match(dashboardSource, /handleLoadMaterializedDataFlowDailyRollup/)
   assert.match(dashboardSource, /handleExportMaterializedDataFlowDailyRollupCsv/)
+  assert.match(dashboardSource, /handleMaterializeDataFlowMonthlyRollup/)
+  assert.match(dashboardSource, /handleLoadMaterializedDataFlowMonthlyRollup/)
+  assert.match(dashboardSource, /handleExportMaterializedDataFlowMonthlyRollupCsv/)
   assert.match(dashboardSource, /defaultDataFlowDailyRollup/)
   assert.match(dashboardSource, /defaultDataFlowMonthlyRollup/)
   assert.match(dashboardSource, /applyDataFlowDailyRollup/)
