@@ -1,6 +1,10 @@
 param(
     [int] $ApiPort = 8080,
     [int] $FrontendPort = 5173,
+    [int] $MultipartUploadThresholdBytes = 64,
+    [int] $MultipartUploadPartSizeBytes = 32,
+    [switch] $EnableMultipartFixture,
+    [string] $TestGrep = "",
     [string] $BrowserChannel = $env:OSMU_PLAYWRIGHT_CHANNEL,
     [string] $LogDir = ".\.osmu-run\frontend-mock-demo",
     [switch] $NoPreClean
@@ -107,11 +111,18 @@ try {
     }
 
     Step "Start frontend mock demo"
-    Invoke-ProjectScript "start-frontend-mock-demo.ps1" @(
+    $startArguments = @(
         "-ApiPort", "$ApiPort",
         "-FrontendPort", "$FrontendPort",
         "-LogDir", $LogDir
     )
+    if ($EnableMultipartFixture) {
+        $startArguments += @(
+            "-MultipartUploadThresholdBytes", "$MultipartUploadThresholdBytes",
+            "-MultipartUploadPartSizeBytes", "$MultipartUploadPartSizeBytes"
+        )
+    }
+    Invoke-ProjectScript "start-frontend-mock-demo.ps1" $startArguments
 
     Step "Reset mock API state"
     $reset = Invoke-Json "POST" "http://localhost:$ApiPort/api/mock/reset"
@@ -127,6 +138,7 @@ try {
     $previousDeveloperPassword = $env:OSMU_DEVELOPER_PASSWORD
     $previousChannel = $env:OSMU_PLAYWRIGHT_CHANNEL
     $previousExpectOperationsConvergence = $env:OSMU_EXPECT_OPERATIONS_CONVERGENCE
+    $previousMultipartFixture = $env:OSMU_BROWSER_MULTIPART_FIXTURE
     try {
         $env:OSMU_FRONTEND_BASE_URL = $frontendBase
         $env:OSMU_ADMIN_LOGIN_ID = "admin"
@@ -134,11 +146,18 @@ try {
         $env:OSMU_DEVELOPER_LOGIN_ID = "developer"
         $env:OSMU_DEVELOPER_PASSWORD = "password"
         $env:OSMU_EXPECT_OPERATIONS_CONVERGENCE = "true"
+        if ($EnableMultipartFixture) {
+            $env:OSMU_BROWSER_MULTIPART_FIXTURE = "true"
+        }
         if ($resolvedBrowserChannel) {
             $env:OSMU_PLAYWRIGHT_CHANNEL = $resolvedBrowserChannel
         }
 
-        Invoke-FrontendCommand @("run", "test:e2e")
+        if ($TestGrep) {
+            Invoke-FrontendCommand @("run", "test:e2e", "--", "-g", $TestGrep)
+        } else {
+            Invoke-FrontendCommand @("run", "test:e2e")
+        }
     }
     finally {
         $env:OSMU_FRONTEND_BASE_URL = $previousFrontendBase
@@ -148,6 +167,7 @@ try {
         $env:OSMU_DEVELOPER_PASSWORD = $previousDeveloperPassword
         $env:OSMU_PLAYWRIGHT_CHANNEL = $previousChannel
         $env:OSMU_EXPECT_OPERATIONS_CONVERGENCE = $previousExpectOperationsConvergence
+        $env:OSMU_BROWSER_MULTIPART_FIXTURE = $previousMultipartFixture
     }
 
     Write-Host "Browser E2E mock demo verified."

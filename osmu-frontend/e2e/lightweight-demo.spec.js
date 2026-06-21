@@ -23,6 +23,14 @@ function parseTagInput(tags = '') {
     }, {})
 }
 
+function readRequestJson(request) {
+  try {
+    return request.postDataJSON() || {}
+  } catch {
+    return {}
+  }
+}
+
 async function expectAdminBucketContextReady(page) {
   await expect(
     page.getByTestId('admin-bucket-empty-state')
@@ -132,8 +140,58 @@ async function installDeveloperApiMocks(page, options = {}) {
   const presignedUploadRequests = options.presignedUploadRequests
   const presignedUploadCompletes = options.presignedUploadCompletes
   const presignedUploads = new Map()
+  const multipartUploadRequests = options.multipartUploadRequests
+  const multipartRefreshRequests = options.multipartRefreshRequests
+  const multipartPartsRequests = options.multipartPartsRequests
+  const multipartCompleteRequests = options.multipartCompleteRequests
+  const multipartAbortRequests = options.multipartAbortRequests
+  const multipartPartUploadRequests = options.multipartPartUploadRequests
+  const multipartPartUploadDelays = [...(options.multipartPartUploadDelays || [])]
+  const multipartUploads = new Map()
+  const multipartUploadedParts = new Map()
   let presignedUploadCounter = 0
+  let multipartUploadCounter = 0
   let adminActionFailureIndex = 0
+
+  await page.route('https://storage.local/**', async (route) => {
+    const request = route.request()
+    const method = request.method()
+    const url = new URL(request.url())
+    const corsHeaders = {
+      'access-control-allow-origin': '*',
+      'access-control-allow-methods': 'PUT,OPTIONS',
+      'access-control-allow-headers': '*',
+      'access-control-expose-headers': 'ETag',
+    }
+    if (method === 'OPTIONS') {
+      return route.fulfill({ status: 204, headers: corsHeaders })
+    }
+    if (method === 'PUT' && url.pathname.startsWith('/multipart/')) {
+      const [, , uploadId, partToken] = url.pathname.split('/')
+      const partNumber = Number(partToken?.replace('part-', '') || 0)
+      const etag = `"browser-${uploadId}-${partNumber}"`
+      if (Array.isArray(multipartPartUploadRequests)) {
+        multipartPartUploadRequests.push({ uploadId, partNumber })
+      }
+      const delayMs = Number(multipartPartUploadDelays.shift() || 0)
+      if (delayMs > 0) {
+        await new Promise((resolve) => setTimeout(resolve, delayMs))
+      }
+      multipartUploadedParts.set(uploadId, [
+        ...(multipartUploadedParts.get(uploadId) || []).filter((part) => part.partNumber !== partNumber),
+        { partNumber, etag },
+      ].sort((left, right) => left.partNumber - right.partNumber))
+      return route.fulfill({
+        status: 200,
+        headers: {
+          ...corsHeaders,
+          ETag: etag,
+        },
+        body: '',
+      })
+    }
+    return route.fulfill({ status: 404, headers: corsHeaders, body: '' })
+  })
 
   await page.route('**/api/**', async (route) => {
     const request = route.request()
@@ -158,7 +216,7 @@ async function installDeveloperApiMocks(page, options = {}) {
 
     if (method === 'POST' && path === '/auth/refresh') {
       if (Array.isArray(authRefreshRequests)) {
-        authRefreshRequests.push(await request.postDataJSON().catch(() => ({})))
+        authRefreshRequests.push(readRequestJson(request))
       }
       if (options.authRefreshFails) {
         return json({
@@ -287,8 +345,100 @@ async function installDeveloperApiMocks(page, options = {}) {
       }
     }
 
+    if (method === 'POST' && path === `/buckets/${developerBucketName}/objects/multipart-upload`) {
+      const body = readRequestJson(request)
+      multipartUploadCounter += 1
+      const uploadId = `browser-multipart-${multipartUploadCounter}`
+      const partSizeBytes = Number(body.partSizeBytes || 32)
+      const sizeBytes = Number(body.sizeBytes || 0)
+      const partCount = Math.max(1, Math.ceil(sizeBytes / partSizeBytes))
+      const parts = Array.from({ length: partCount }, (_, index) => {
+        const partNumber = index + 1
+        const startByte = index * partSizeBytes
+        const endByte = Math.min(sizeBytes - 1, startByte + partSizeBytes - 1)
+        return {
+          partNumber,
+          url: `https://storage.local/multipart/${uploadId}/part-${partNumber}`,
+          startByte,
+          endByte,
+        }
+      })
+      const upload = {
+        uploadId,
+        key: body.key || `multipart-${multipartUploadCounter}.bin`,
+        tags: body.tags || '',
+        contentType: body.contentType || 'application/octet-stream',
+        partSizeBytes,
+        partCount,
+        parts,
+        expiresAt: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+      }
+      multipartUploads.set(uploadId, upload)
+      multipartUploadedParts.set(uploadId, [])
+      if (Array.isArray(multipartUploadRequests)) {
+        multipartUploadRequests.push({ ...body, uploadId })
+      }
+      return json({ data: upload })
+    }
+
+    if (method === 'POST' && path === `/buckets/${developerBucketName}/objects/multipart-upload/refresh`) {
+      const body = readRequestJson(request)
+      const upload = multipartUploads.get(body.uploadId)
+      if (Array.isArray(multipartRefreshRequests)) {
+        multipartRefreshRequests.push({ ...body })
+      }
+      return json({ data: upload })
+    }
+
+    if (method === 'POST' && path === `/buckets/${developerBucketName}/objects/multipart-upload/parts`) {
+      const body = readRequestJson(request)
+      if (Array.isArray(multipartPartsRequests)) {
+        multipartPartsRequests.push({ ...body })
+      }
+      return json({ data: { parts: multipartUploadedParts.get(body.uploadId) || [] } })
+    }
+
+    if (method === 'POST' && path === `/buckets/${developerBucketName}/objects/multipart-upload/complete`) {
+      const body = readRequestJson(request)
+      const upload = multipartUploads.get(body.uploadId) || {
+        key: body.key,
+        tags: '',
+        contentType: 'application/octet-stream',
+      }
+      if (Array.isArray(multipartCompleteRequests)) {
+        multipartCompleteRequests.push({ ...body })
+      }
+      const firstPage = objectPages[0]
+      if (firstPage && !firstPage.items?.some((item) => item.key === upload.key)) {
+        firstPage.items = [
+          ...(firstPage.items || []),
+          {
+            key: upload.key,
+            sizeBytes: Number(upload.partSizeBytes || 0) * Number(upload.partCount || 1),
+            contentType: upload.contentType,
+            tags: parseTagInput(upload.tags),
+          },
+        ]
+      }
+      return json({
+        data: {
+          key: upload.key,
+          contentType: upload.contentType,
+          tags: parseTagInput(upload.tags),
+        },
+      })
+    }
+
+    if (method === 'POST' && path === `/buckets/${developerBucketName}/objects/multipart-upload/abort`) {
+      const body = readRequestJson(request)
+      if (Array.isArray(multipartAbortRequests)) {
+        multipartAbortRequests.push({ ...body })
+      }
+      return json({ data: { success: true } })
+    }
+
     if (method === 'POST' && path === `/buckets/${developerBucketName}/objects/presigned-upload`) {
-      const body = await request.postDataJSON().catch(() => ({}))
+      const body = readRequestJson(request)
       presignedUploadCounter += 1
       const uploadId = `browser-presigned-${presignedUploadCounter}`
       const upload = {
@@ -312,7 +462,7 @@ async function installDeveloperApiMocks(page, options = {}) {
     }
 
     if (method === 'POST' && path === `/buckets/${developerBucketName}/objects/presigned-upload/complete`) {
-      const body = await request.postDataJSON().catch(() => ({}))
+      const body = readRequestJson(request)
       const upload = presignedUploads.get(body.uploadId) || {
         uploadId: body.uploadId,
         key: body.key,
@@ -800,6 +950,87 @@ test('developer can cancel and retry single object upload', async ({ page }) => 
   expect(objectUploadRequests).toHaveLength(2)
 })
 
+test('developer can pause and resume multipart object upload from pending session', async ({ page }) => {
+  test.skip(process.env.OSMU_BROWSER_MULTIPART_FIXTURE !== 'true', 'Requires small multipart Vite fixture env.')
+
+  const multipartUploadRequests = []
+  const multipartRefreshRequests = []
+  const multipartPartsRequests = []
+  const multipartCompleteRequests = []
+  const multipartAbortRequests = []
+  const multipartPartUploadRequests = []
+  const multipartKey = 'browser-multipart-pause.bin'
+  await installDeveloperApiMocks(page, {
+    multipartUploadRequests,
+    multipartRefreshRequests,
+    multipartPartsRequests,
+    multipartCompleteRequests,
+    multipartAbortRequests,
+    multipartPartUploadRequests,
+    multipartPartUploadDelays: [2000, 2000, 2000, 0, 0, 0],
+  })
+  await page.addInitScript(() => {
+    window.localStorage.removeItem('osmu.dashboard.widgets.v1')
+    window.localStorage.removeItem('osmu.auth.tokens')
+    window.localStorage.removeItem('osmu.login.rememberedId')
+    window.sessionStorage.removeItem('osmu.auth.tokens')
+  })
+
+  await page.goto(`${frontendBaseUrl}/login?mode=developer`)
+  await page.getByTestId('login-id-input').fill(developerLoginId)
+  await page.getByTestId('login-password-input').fill(developerPassword)
+  await page.getByTestId('login-submit-button').click()
+
+  await expect(page).toHaveURL(/\/developer$/)
+  await page.getByRole('link', { name: 'Objects' }).click()
+  await page.getByTestId('object-key-input').fill(multipartKey)
+  await page.getByTestId('object-tags-input').fill('project=osmu,stage=multipart')
+  await page.getByTestId('object-file-input').setInputFiles({
+    name: multipartKey,
+    mimeType: 'application/octet-stream',
+    buffer: Buffer.alloc(96, 7),
+  })
+
+  const createResponse = page.waitForResponse((response) => (
+    response.status() === 200
+      && new URL(response.url()).pathname.endsWith(`/api/buckets/${developerBucketName}/objects/multipart-upload`)
+  ))
+  await page.getByTestId('object-upload-button').click()
+  await createResponse
+  await expect(page.getByTestId('object-upload-pause-button')).toBeEnabled()
+  await page.getByTestId('object-upload-pause-button').click()
+
+  await expect(page.getByTestId('status-alert')).toContainText('Multipart upload paused')
+  await expect(page.getByTestId('object-upload-progress')).toContainText('Multipart upload paused')
+  await expect(page.getByTestId('object-multipart-resume-panel')).toBeVisible()
+  const pausedRow = page.getByTestId('object-multipart-resume-row').filter({ hasText: multipartKey })
+  await expect(pausedRow).toBeVisible()
+  await expect(pausedRow.getByTestId('object-multipart-resume-button')).toBeEnabled()
+  await expect.poll(() => page.evaluate(() => (
+    Object.keys(window.sessionStorage).filter((key) => key.startsWith('osmu.multipartUpload.')).length
+  ))).toBe(1)
+  expect(multipartAbortRequests).toHaveLength(0)
+
+  const completeResponse = page.waitForResponse((response) => (
+    response.status() === 200
+      && new URL(response.url()).pathname.endsWith(`/api/buckets/${developerBucketName}/objects/multipart-upload/complete`)
+  ))
+  await pausedRow.getByTestId('object-multipart-resume-button').click()
+  await completeResponse
+
+  await expect(page.getByTestId('status-alert')).toContainText(multipartKey)
+  await expect(page.getByTestId('object-table')).toContainText(multipartKey)
+  await expect.poll(() => page.evaluate(() => (
+    Object.keys(window.sessionStorage).filter((key) => key.startsWith('osmu.multipartUpload.')).length
+  ))).toBe(0)
+  expect(multipartUploadRequests).toHaveLength(1)
+  expect(multipartRefreshRequests).toHaveLength(1)
+  expect(multipartPartsRequests).toHaveLength(1)
+  expect(multipartCompleteRequests).toHaveLength(1)
+  expect(multipartAbortRequests).toHaveLength(0)
+  expect(multipartPartUploadRequests.length).toBeGreaterThan(0)
+})
+
 test('developer can create and complete presigned object upload handoff', async ({ page }) => {
   const presignedUploadRequests = []
   const presignedUploadCompletes = []
@@ -914,9 +1145,9 @@ test('developer object metadata detail shows drift fields from fixture', async (
   await expect(detailPanel).toContainText(driftKey)
   await expect(page.getByTestId('object-metadata-sync-status')).toHaveClass(/mock/)
   await expect(detailPanel).toContainText('Index size')
-  await expect(detailPanel).toContainText('64 B')
+  await expect(detailPanel).toContainText('64')
   await expect(detailPanel).toContainText('Storage size')
-  await expect(detailPanel).toContainText('128 B')
+  await expect(detailPanel).toContainText('128')
   await expect(detailPanel).toContainText('index-etag')
   await expect(detailPanel).toContainText('storage-etag')
   await expect(detailPanel).toContainText('project=archive')
@@ -947,8 +1178,8 @@ test('developer can inspect and delete pending multipart resume sessions', async
     buffer: Buffer.from('resume-fixture'),
   })
 
-  const seededKeys = await page.evaluate(({ bucketName }) => {
-    const partSizeBytes = 64 * 1024 * 1024
+  const resumePartSizeBytes = process.env.OSMU_BROWSER_MULTIPART_FIXTURE === 'true' ? 32 : 64 * 1024 * 1024
+  const seededKeys = await page.evaluate(({ bucketName, partSizeBytes }) => {
     const input = document.querySelector('[data-testid="object-file-input"]')
     const file = input.files[0]
     const hashString = (value) => {
@@ -1012,7 +1243,7 @@ test('developer can inspect and delete pending multipart resume sessions', async
       updatedAt: new Date(now - 30 * 60 * 1000).toISOString(),
     }))
     return { matchingStorageKey, expiredStorageKey }
-  }, { bucketName: developerBucketName })
+  }, { bucketName: developerBucketName, partSizeBytes: resumePartSizeBytes })
 
   await page.getByTestId('refresh-button').click()
   await expect(page.getByTestId('object-multipart-resume-panel')).toBeVisible()

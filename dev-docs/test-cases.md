@@ -2041,7 +2041,7 @@ TC-FE-023 보강: 사용자가 취소한 경우에는 abort API를 호출한다.
 - 절차: 대용량 파일 upload 중 Pause를 누른 뒤 pending multipart 목록과 같은 파일 Resume 흐름을 확인한다. 별도 실행에서 Cancel을 누른다.
 - 기대 결과: Pause는 진행 중인 browser upload만 abort하고 `multipart-upload/abort` API를 호출하지 않는다. `sessionStorage` resume session은 유지되어 pending multipart 목록과 Retry/Resume 흐름에서 재사용된다. Cancel은 기존처럼 remote abort API를 호출하고 local resume session을 삭제한다.
 - 우선순위: P1
-- 자동화 여부: Automated (`api-multipart-upload.test.js` preserveSessionOnAbort/local session 보존, `HomeView.test.js` pause event/options/source wiring). Browser/MinIO pause/resume execution E2E pending.
+- 자동화 여부: Automated (`api-multipart-upload.test.js` preserveSessionOnAbort/local session 보존, `HomeView.test.js` pause event/options/source wiring, `scripts/verify-browser-e2e-mock-demo.ps1 -EnableMultipartFixture -TestGrep "pause and resume multipart"` small multipart fixture Browser click path). Browser/MinIO pause/resume execution E2E pending.
 
 ## 11. Security
 

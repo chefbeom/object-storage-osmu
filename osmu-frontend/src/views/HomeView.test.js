@@ -1060,6 +1060,7 @@ test('HomeView exposes stable selectors for browser E2E flows', () => {
   assert.match(dashboardSource, /preserveSessionOnAbort:\s*\(\) => uploadAbortMode\.value === 'pause'/)
   assert.match(dashboardSource, /function handlePauseUpload\(\)/)
   assert.match(dashboardSource, /Multipart upload paused\. Resume from pending multipart\./)
+  assert.match(dashboardSource, /const pendingSessions = pendingMultipartUploads\.value/)
   assert.match(dashboardSource, /title: 'Multipart resume 삭제'/)
   assert.match(dashboardSource, /title: '공유 링크 해제'/)
   assert.match(dashboardSource, /title: '만료 공유 링크 정리'/)

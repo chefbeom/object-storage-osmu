@@ -258,6 +258,7 @@ Run when Browser/Chrome automation works again:
 - [x] Browser E2E spec includes single-object upload cancel/retry button flow and list refresh after retry.
 - [x] Browser E2E spec includes presigned upload URL/complete handoff controls and list refresh after complete.
 - [x] Browser E2E spec includes pending multipart resume panel, matching Resume enable, Expired disable, and delete confirm paths.
+- [x] Browser E2E spec includes opt-in mock multipart Pause -> pending resume -> complete click path with `object-upload-pause-button`; actual MinIO-backed pause/resume execution evidence remains a durable gate item.
 - [x] Browser E2E spec includes object metadata drift fixture with sync-status badge and index/storage row comparison.
 - [x] Browser E2E spec includes object prefix open/root breadcrumb navigation, search highlight, tag filter, tag edit, and invalid tag error paths.
 - [x] Browser E2E spec includes Object Explorer page size select, first-page cursor reset, and next-page limit retention paths.

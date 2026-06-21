@@ -1,6 +1,8 @@
 param(
     [int] $ApiPort = 8080,
     [int] $FrontendPort = 5173,
+    [int] $MultipartUploadThresholdBytes = 0,
+    [int] $MultipartUploadPartSizeBytes = 0,
     [string] $LogDir = ".\.osmu-run\frontend-mock-demo"
 )
 
@@ -102,6 +104,14 @@ Assert-PortAvailable $ApiPort "Mock API"
 Assert-PortAvailable $FrontendPort "Frontend"
 
 $frontendRoot = Join-Path $root "osmu-frontend"
+$frontendCommand = "`$env:VITE_API_BASE_URL='http://localhost:$ApiPort/api'; "
+if ($MultipartUploadThresholdBytes -gt 0) {
+    $frontendCommand += "`$env:VITE_MULTIPART_UPLOAD_THRESHOLD_BYTES='$MultipartUploadThresholdBytes'; "
+}
+if ($MultipartUploadPartSizeBytes -gt 0) {
+    $frontendCommand += "`$env:VITE_MULTIPART_UPLOAD_PART_SIZE_BYTES='$MultipartUploadPartSizeBytes'; "
+}
+$frontendCommand += "npm.cmd run dev -- --host 127.0.0.1 --port $FrontendPort"
 
 Start-LoggedProcess `
     "mock-api" `
@@ -115,7 +125,7 @@ Write-ListenerPidFile $ApiPort $apiListenerPid "mock api"
 Start-LoggedProcess `
     "frontend" `
     $frontendRoot `
-    @("-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", "`$env:VITE_API_BASE_URL='http://localhost:$ApiPort/api'; npm.cmd run dev -- --host 127.0.0.1 --port $FrontendPort") `
+    @("-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", $frontendCommand) `
     $frontendPid
 
 Wait-Http "http://localhost:$FrontendPort" "frontend"

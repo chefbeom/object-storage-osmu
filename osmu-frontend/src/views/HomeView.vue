@@ -1644,7 +1644,10 @@ const canRetryUpload = computed(() => Boolean(lastUploadRequest.value) && upload
 const objectPrefixBreadcrumbs = computed(() => buildObjectPrefixBreadcrumbs(objectPrefix.value))
 const matchingMultipartResumeSession = computed(() => {
   if (!selectedBucket.value || !objectForm.file || !objectForm.key) return null
-  return getStoredMultipartUploadSessionForFile(selectedBucket.value, objectForm.key, objectForm.file, objectForm.tags)
+  const pendingSessions = pendingMultipartUploads.value
+  const session = getStoredMultipartUploadSessionForFile(selectedBucket.value, objectForm.key, objectForm.file, objectForm.tags)
+  if (!session) return null
+  return pendingSessions.some((pending) => pending.storageKey === session.storageKey) ? session : null
 })
 const visibleMultipartResumeSessions = computed(() => pendingMultipartUploads.value
   .filter((session) => !selectedBucket.value || session.bucketName === selectedBucket.value)
