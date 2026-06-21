@@ -1746,7 +1746,7 @@ ID:
 - 절차: ObjectExplorer에서 업로드 실행.
 - 기대 결과: 업로드 중 진행률과 전송 bytes가 표시되고 중복 업로드가 차단되며, 완료 후 목록에 파일이 나타난다.
 - 우선순위: P1
-- 자동화 여부: Automated (`npm run test:unit` object metadata drift status/detail row helpers). Browser panel render E2E pending.
+- 자동화 여부: Automated (`npm run test:unit` object metadata drift status/detail row helpers, Browser E2E object detail panel render).
 
 ### TC-FE-003
 
@@ -1916,7 +1916,7 @@ ID:
 - 절차: ObjectExplorer에서 object 상세 버튼을 클릭한다.
 - 기대 결과: `GET /api/buckets/{bucketName}/objects/metadata/{objectKey}` 요청이 전송되고 key, size, contentType, ETag, checksums, lastModifiedAt, tags가 패널에 표시된다. Index/storage detail row는 `object-metadata-row-state`로 `Synced`, `Drift`, `Missing` 상태를 표시한다.
 - 우선순위: P1
-- 자동화 여부: Automated (`npm run test:unit` object metadata API wrapper, row state helper, stable selector).
+- 자동화 여부: Automated (`npm run test:unit` object metadata API wrapper, row state helper, stable selector, Browser E2E detail panel with updated tags and `object-metadata-row-state`).
 
 ### TC-FE-020
 
@@ -1936,7 +1936,7 @@ ID:
 - 절차: ObjectExplorer에서 object 상세를 열고 sync status badge와 index/storage 값을 확인한다.
 - 기대 결과: `SYNCED`, `STALE`, `MISSING_IN_STORAGE` 상태가 각각 다른 badge 색으로 표시되고 index/storage size/type/tag/ETag/checksum이 비교 가능하다.
 - 우선순위: P1
-- 자동화 여부: Later
+- 자동화 여부: Automated (`npm run test:unit` metadata status/detail row helper, Browser E2E row state render). Drift-specific backend fixture E2E pending.
 
 ### TC-FE-022
 
