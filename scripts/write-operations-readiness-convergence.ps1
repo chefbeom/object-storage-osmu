@@ -132,6 +132,32 @@ function Get-KubernetesReportSyncNextCommand([object] $Report, [bool] $Exists) {
     return New-KubernetesReportSyncCommand $Report "-PlanOnly"
 }
 
+function Get-KubernetesReportSyncWorkflowCommand([object] $Report, [bool] $Exists) {
+    $namespace = Get-Text $Report "namespace"
+    if ([string]::IsNullOrWhiteSpace($namespace)) {
+        $namespace = "osmu"
+    }
+    $reportPath = Get-Text $Report "sourceReportPath"
+    if ([string]::IsNullOrWhiteSpace($reportPath)) {
+        $reportPath = "./.osmu-run/latest-operations-readiness-convergence.json"
+    }
+
+    $runLive = "false"
+    $apply = "false"
+    if ($Exists) {
+        $result = Get-Text $Report "result"
+        if ("planned".Equals($result, [System.StringComparison]::OrdinalIgnoreCase)) {
+            $runLive = "true"
+        }
+        elseif ("server-dry-run-passed".Equals($result, [System.StringComparison]::OrdinalIgnoreCase)) {
+            $runLive = "true"
+            $apply = "true"
+        }
+    }
+
+    return "gh workflow run kubernetes-operations-report-sync-ci.yml -f namespace=$namespace -f report_path=$reportPath -f run_live=$runLive -f apply=$apply -f data_flow_storage_plan_json_base64=<base64-latest-data-flow-storage-plan-json>"
+}
+
 $handoff = Read-OptionalJson $HandoffReportPath
 $readiness = Read-OptionalJson $ReadinessReportPath
 $finalize = Read-OptionalJson $OperationsReadinessFinalizeReportPath
@@ -147,6 +173,7 @@ $nextStep = Get-JsonProperty $handoff.json "nextStep"
 $nextCode = Get-Text $nextStep "code"
 $nextCommand = Get-Text $nextStep "command"
 $kubernetesReportSyncCommand = Get-KubernetesReportSyncNextCommand $kubernetesReportSync.json $kubernetesReportSync.exists
+$kubernetesReportSyncWorkflowCommand = Get-KubernetesReportSyncWorkflowCommand $kubernetesReportSync.json $kubernetesReportSync.exists
 $handoffReady = $handoff.exists -and (Is-ReadyResult $handoffResult) -and "none".Equals($nextCode, [System.StringComparison]::OrdinalIgnoreCase)
 $readinessReady = $readiness.exists -and (Is-ReadyResult $readinessResult)
 $finalizerReady = (-not $finalize.exists) -or ((Is-ReadyResult $finalizerResult) -and (Is-ReadyResult $finalizerReadinessResult))
@@ -275,6 +302,8 @@ $report = [ordered]@{
     kubernetesReportSyncConfigMapName = Get-Text $kubernetesReportSync.json "configMapName"
     kubernetesReportSyncConfigMapKey = Get-Text $kubernetesReportSync.json "configMapKey"
     kubernetesReportSyncSourceReportResult = Get-Text $kubernetesReportSync.json "sourceReportResult"
+    kubernetesReportSyncWorkflowCommand = $kubernetesReportSyncWorkflowCommand
+    kubernetesReportSyncWorkflowNote = "For GitHub Actions sync, include data_flow_storage_plan_json_base64 only when .osmu-run/latest-data-flow-storage-plan.json should be carried into the operations report ConfigMap; omit the input when no target analytics-storage plan evidence is ready."
     kubernetesReportSyncReady = [bool] $kubernetesReportSyncReady
     finalizerGapCount = Get-Int $handoff.json "finalizerGapCount"
     stageCount = Get-Int $handoff.json "stageCount"
@@ -312,6 +341,8 @@ $markdownLines = @(
     "- Kubernetes report sync: $kubernetesReportSyncResult",
     "- Kubernetes report sync ready: $kubernetesReportSyncReady",
     "- Kubernetes report sync ConfigMap: $($report.kubernetesReportSyncConfigMapName)",
+    "- Kubernetes report sync workflow: ``$($report.kubernetesReportSyncWorkflowCommand)``",
+    "- Kubernetes report sync workflow note: $($report.kubernetesReportSyncWorkflowNote)",
     "- Stages: $($report.readyStageCount)/$($report.stageCount) ready",
     "- Blocked actions: $($report.blockedActionCount)",
     "- Missing workflow runs: $($report.missingWorkflowRunCount)",

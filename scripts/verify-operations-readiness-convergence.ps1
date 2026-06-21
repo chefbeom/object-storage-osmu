@@ -198,7 +198,11 @@ Assert-Equal $syncRequiredReport.currentBottleneck.code "sync-kubernetes-operati
 Assert-Equal $syncRequiredReport.kubernetesReportSyncExists $false "sync required exists"
 Assert-Equal $syncRequiredReport.kubernetesReportSyncReady $false "sync required ready"
 Assert-Contains $syncRequiredReport.recommendedCommands[0].command "sync-kubernetes-operations-reports.ps1" "sync required command"
+Assert-Contains $syncRequiredReport.kubernetesReportSyncWorkflowCommand "kubernetes-operations-report-sync-ci.yml" "sync required workflow command"
+Assert-Contains $syncRequiredReport.kubernetesReportSyncWorkflowCommand "data_flow_storage_plan_json_base64=<base64-latest-data-flow-storage-plan-json>" "sync required data-flow workflow input"
+Assert-Contains $syncRequiredReport.kubernetesReportSyncWorkflowNote "omit the input" "sync required workflow note"
 Assert-Contains $syncRequiredMarkdown "Kubernetes report sync: " "sync required markdown status"
+Assert-Contains $syncRequiredMarkdown "Kubernetes report sync workflow:" "sync required markdown workflow command"
 
 Write-JsonFixture $readySyncPath ([ordered]@{
     formatVersion = "osmu.kubernetes-operations-report-sync.v1"
@@ -230,6 +234,7 @@ Assert-Equal @($readyReport.recommendedCommands).Count 0 "ready command count"
 Assert-Equal $readyReport.finalizerResult "ready" "ready finalizer"
 Assert-Equal $readyReport.kubernetesReportSyncResult "applied" "ready sync result"
 Assert-Equal $readyReport.kubernetesReportSyncReady $true "ready sync ready"
+Assert-Contains $readyReport.kubernetesReportSyncWorkflowCommand "data_flow_storage_plan_json_base64=<base64-latest-data-flow-storage-plan-json>" "ready data-flow workflow input"
 Assert-Contains $readyMarkdown "Result: ready" "ready markdown result"
 
 Assert-True ($readyReport.safetyPolicy.Contains("does not execute")) "safety policy"
