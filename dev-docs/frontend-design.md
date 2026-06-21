@@ -228,7 +228,7 @@ Web Portal은 관리자와 사용자가 OSMU를 브라우저에서 사용할 수
 - Object Explorer는 prefix breadcrumb/open, 검색 match highlight, tag edit form/button에 stable selector(`object-prefix-breadcrumb`, `object-prefix-open-button`, `object-key-match`, `object-tag-form`, `object-tag-edit-button`)를 제공해 Browser E2E가 prefix/search/tag 흐름을 직접 검증할 수 있게 한다.
 - object version 목록 패널과 version restore 버튼
 - object version 목록 패널과 version restore 버튼
-- presigned upload URL 생성 시 object tag 전달
+- presigned upload URL 생성 시 object tag 전달, `object-presigned-upload-url-button` URL 발급, `object-presigned-upload-complete-button` handoff 완료, `object-presigned-url` 표시와 complete 후 목록 refresh
 - delimiter 기반 폴더형 prefix 이동
 - prefix breadcrumb 버튼 이동
 - `nextCursor` 기반 다음 파일 로드

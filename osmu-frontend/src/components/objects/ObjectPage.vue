@@ -102,6 +102,24 @@
         <button data-testid="object-upload-retry-button" type="button" class="ghost" :disabled="!canRetryUpload" @click="$emit('retry-upload')">
           재시도
         </button>
+        <button
+          data-testid="object-presigned-upload-url-button"
+          type="button"
+          class="ghost"
+          :disabled="!selectedBucket || !objectForm.key"
+          @click="$emit('create-presigned-upload-url')"
+        >
+          Presigned URL
+        </button>
+        <button
+          data-testid="object-presigned-upload-complete-button"
+          type="button"
+          class="ghost"
+          :disabled="!selectedBucket || !pendingUploadId || !objectForm.key"
+          @click="$emit('complete-presigned-upload')"
+        >
+          Complete URL
+        </button>
       </form>
 
       <div
@@ -175,7 +193,7 @@
         </button>
       </form>
 
-      <p v-if="presignedUrl" class="secret-box">Presigned URL: {{ presignedUrl }}</p>
+      <p v-if="presignedUrl" class="secret-box" data-testid="object-presigned-url">Presigned URL: {{ presignedUrl }}</p>
 
       <div class="table-wrap">
         <table data-testid="object-table">
@@ -378,6 +396,7 @@ defineProps({
   shareLinkUrl: { type: String, required: true },
   objectVersions: { type: Object, required: true },
   presignedUrl: { type: String, required: true },
+  pendingUploadId: { type: String, required: true },
   formatBytes: { type: Function, required: true },
   formatMultipartResumeStatus: { type: Function, required: true },
   isMatchingResumeSession: { type: Function, required: true },
@@ -412,6 +431,8 @@ defineEmits([
   'open-object-prefix',
   'download-object',
   'create-presigned-download-url',
+  'create-presigned-upload-url',
+  'complete-presigned-upload',
   'start-object-tag-edit',
   'load-object-metadata',
   'create-object-share-link',

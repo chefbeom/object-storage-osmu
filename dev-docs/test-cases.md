@@ -1905,11 +1905,11 @@ Evidence note: `npm run test:unit` covers stable bucket row cell selectors, and 
 
 - 기능: Object Explorer presigned upload tag 전달
 - 조건: presigned upload URL 발급이 가능한 bucket과 object key/tag 입력값이 있다.
-- 입력: key `videos/input.mp4`, tags `project=osmu,stage=raw`, presigned upload 버튼
-- 절차: ObjectExplorer에서 tag 입력 후 presigned upload URL을 생성하고 complete를 수행한다.
-- 기대 결과: URL 발급 요청 body에 `tags`가 포함되고, complete 이후 목록 태그 열에 동일한 tags가 표시된다.
+- 입력: key `videos/input.mp4`, tags `project=osmu,stage=raw`, `object-presigned-upload-url-button`, `object-presigned-upload-complete-button`
+- 절차: ObjectExplorer에서 tag 입력 후 presigned upload URL을 생성하고, 외부 PUT handoff 완료 후 complete를 수행한다.
+- 기대 결과: URL 발급 요청 body에 `tags`가 포함되고, URL 발급 전 complete 버튼은 비활성화되며, URL 발급 후 `object-presigned-url`이 표시된다. complete 이후 pending upload id와 URL이 정리되고 목록 tag 열에 동일한 tags가 표시된다.
 - 우선순위: P1
-- 자동화 여부: Automated (`npm run test:unit` presigned upload API wrapper). Browser/MinIO E2E pending.
+- 자동화 여부: Automated (`npm run test:unit` presigned upload API wrapper and selector contract, Browser E2E presigned upload URL/complete handoff with list refresh). Browser/MinIO real storage PUT E2E pending.
 
 ### TC-FE-019
 

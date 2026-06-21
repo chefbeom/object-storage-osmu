@@ -9,6 +9,20 @@ const developerPassword = process.env.OSMU_DEVELOPER_PASSWORD || 'password'
 const developerBucketName = 'developer-e2e-bucket'
 const expectOperationsConvergence = process.env.OSMU_EXPECT_OPERATIONS_CONVERGENCE === 'true'
 
+function parseTagInput(tags = '') {
+  return String(tags)
+    .split(',')
+    .map((pair) => pair.trim())
+    .filter(Boolean)
+    .reduce((result, pair) => {
+      const separatorIndex = pair.indexOf('=')
+      if (separatorIndex > 0 && separatorIndex < pair.length - 1) {
+        result[pair.slice(0, separatorIndex).trim()] = pair.slice(separatorIndex + 1).trim()
+      }
+      return result
+    }, {})
+}
+
 async function expectAdminBucketContextReady(page) {
   await expect(
     page.getByTestId('admin-bucket-empty-state')
@@ -115,6 +129,10 @@ async function installDeveloperApiMocks(page, options = {}) {
   const objectUploadAttempts = new Map()
   const objectUploadDelays = options.objectUploadDelays || []
   const objectUploadKey = options.objectUploadKey || ''
+  const presignedUploadRequests = options.presignedUploadRequests
+  const presignedUploadCompletes = options.presignedUploadCompletes
+  const presignedUploads = new Map()
+  let presignedUploadCounter = 0
   let adminActionFailureIndex = 0
 
   await page.route('**/api/**', async (route) => {
@@ -267,6 +285,64 @@ async function installDeveloperApiMocks(page, options = {}) {
       } catch {
         return undefined
       }
+    }
+
+    if (method === 'POST' && path === `/buckets/${developerBucketName}/objects/presigned-upload`) {
+      const body = await request.postDataJSON().catch(() => ({}))
+      presignedUploadCounter += 1
+      const uploadId = `browser-presigned-${presignedUploadCounter}`
+      const upload = {
+        uploadId,
+        key: body.key || `presigned-${presignedUploadCounter}.txt`,
+        tags: body.tags || '',
+        contentType: body.contentType || 'application/octet-stream',
+      }
+      presignedUploads.set(uploadId, upload)
+      if (Array.isArray(presignedUploadRequests)) {
+        presignedUploadRequests.push({ ...body, uploadId })
+      }
+      return json({
+        data: {
+          uploadId,
+          key: upload.key,
+          url: `https://storage.local/presigned/${uploadId}`,
+          expiresAt: '2026-06-21T00:15:00Z',
+        },
+      })
+    }
+
+    if (method === 'POST' && path === `/buckets/${developerBucketName}/objects/presigned-upload/complete`) {
+      const body = await request.postDataJSON().catch(() => ({}))
+      const upload = presignedUploads.get(body.uploadId) || {
+        uploadId: body.uploadId,
+        key: body.key,
+        tags: '',
+        contentType: 'application/octet-stream',
+      }
+      const completedKey = upload.key || body.key || 'presigned-complete.txt'
+      if (Array.isArray(presignedUploadCompletes)) {
+        presignedUploadCompletes.push({ ...body })
+      }
+      const firstPage = objectPages[0]
+      if (firstPage && !firstPage.items?.some((item) => item.key === completedKey)) {
+        firstPage.items = [
+          ...(firstPage.items || []),
+          {
+            key: completedKey,
+            sizeBytes: 17,
+            contentType: upload.contentType,
+            tags: parseTagInput(upload.tags),
+          },
+        ]
+      }
+      return json({
+        data: {
+          key: completedKey,
+          sizeBytes: 17,
+          contentType: upload.contentType,
+          tags: parseTagInput(upload.tags),
+        },
+      })
     }
 
     const objectMetadataPathPrefix = `/buckets/${developerBucketName}/objects/metadata/`
@@ -722,6 +798,67 @@ test('developer can cancel and retry single object upload', async ({ page }) => 
   await expect(page.getByTestId('status-alert')).toContainText(retryKey)
   await expect(page.getByTestId('object-table')).toContainText(retryKey)
   expect(objectUploadRequests).toHaveLength(2)
+})
+
+test('developer can create and complete presigned object upload handoff', async ({ page }) => {
+  const presignedUploadRequests = []
+  const presignedUploadCompletes = []
+  const presignedKey = 'browser-presigned.txt'
+  await installDeveloperApiMocks(page, {
+    presignedUploadRequests,
+    presignedUploadCompletes,
+  })
+  await page.addInitScript(() => {
+    window.localStorage.removeItem('osmu.dashboard.widgets.v1')
+    window.localStorage.removeItem('osmu.auth.tokens')
+    window.localStorage.removeItem('osmu.login.rememberedId')
+    window.sessionStorage.removeItem('osmu.auth.tokens')
+  })
+
+  await page.goto(`${frontendBaseUrl}/login?mode=developer`)
+  await page.getByTestId('login-id-input').fill(developerLoginId)
+  await page.getByTestId('login-password-input').fill(developerPassword)
+  await page.getByTestId('login-submit-button').click()
+
+  await expect(page).toHaveURL(/\/developer$/)
+  await page.getByRole('link', { name: 'Objects' }).click()
+  await page.getByTestId('object-key-input').fill(presignedKey)
+  await page.getByTestId('object-tags-input').fill('project=osmu,stage=presigned')
+  await expect(page.getByTestId('object-presigned-upload-complete-button')).toBeDisabled()
+
+  const createResponse = page.waitForResponse((response) => (
+    response.status() === 200
+      && new URL(response.url()).pathname.endsWith(`/api/buckets/${developerBucketName}/objects/presigned-upload`)
+  ))
+  await page.getByTestId('object-presigned-upload-url-button').click()
+  await createResponse
+
+  await expect(page.getByTestId('status-alert')).toContainText('Presigned upload URL')
+  await expect(page.getByTestId('object-presigned-url')).toContainText('browser-presigned-1')
+  await expect(page.getByTestId('object-presigned-upload-complete-button')).toBeEnabled()
+
+  const completeResponse = page.waitForResponse((response) => (
+    response.status() === 200
+      && new URL(response.url()).pathname.endsWith(`/api/buckets/${developerBucketName}/objects/presigned-upload/complete`)
+  ))
+  await page.getByTestId('object-presigned-upload-complete-button').click()
+  await completeResponse
+
+  await expect(page.getByTestId('status-alert')).toContainText('Presigned upload 완료')
+  await expect(page.getByTestId('object-presigned-url')).toHaveCount(0)
+  await expect(page.getByTestId('object-table')).toContainText(presignedKey)
+  await expect(page.getByTestId('object-table')).toContainText('stage=presigned')
+  expect(presignedUploadRequests).toHaveLength(1)
+  expect(presignedUploadRequests[0]).toMatchObject({
+    key: presignedKey,
+    tags: 'project=osmu,stage=presigned',
+    contentType: 'application/octet-stream',
+    uploadId: 'browser-presigned-1',
+  })
+  expect(presignedUploadCompletes).toEqual([{
+    uploadId: 'browser-presigned-1',
+    key: presignedKey,
+  }])
 })
 
 test('developer object metadata detail shows drift fields from fixture', async ({ page }) => {
