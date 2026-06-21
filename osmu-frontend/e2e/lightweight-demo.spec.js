@@ -469,7 +469,11 @@ test('admin can complete lightweight storage portal click path', async ({ page }
   await page.getByTestId('audit-search-button').click()
   await expect(page.getByTestId('audit-list')).toContainText(/BUCKET|OBJECT|LOGIN/)
   await expect(page.getByTestId('audit-entry').first()).toContainText('SUCCESS')
-  await expect(page.getByTestId('audit-next-button')).toBeVisible()
+  await expect(page.getByTestId('audit-entry')).toHaveCount(5)
+  const auditNextButton = page.getByTestId('audit-next-button')
+  await expect(auditNextButton).toBeEnabled()
+  await auditNextButton.click()
+  await expect(page.getByTestId('audit-entry').nth(5)).toContainText('SUCCESS')
   const auditDownloadPromise = page.waitForEvent('download')
   await page.getByTestId('audit-export-button').click()
   const auditDownload = await auditDownloadPromise

@@ -238,6 +238,8 @@ Run when Browser/Chrome automation works again:
 - [x] Manual Browser E2E CI workflow draft exists and is checked by `scripts/verify-ci-workflow.ps1`.
 - [x] Browser E2E spec includes developer mode login to `/developer`, S3 endpoint/snippet visibility, Admin nav hiding, and Access Key create UI contract.
 - [x] Browser E2E spec includes operations readiness convergence summary and recommended command row visibility.
+- [x] Browser E2E spec includes bucket lifecycle XML save/load/delete and bucket tags save/load/delete click paths.
+- [x] Browser E2E spec includes audit filter, next-page click, CSV download filename, and reset click paths.
 - [x] Backend-backed Browser E2E prototype passes locally.
 - [ ] Login as seeded admin/demo user.
 - [ ] Bucket list renders names, usage, and object counts.
