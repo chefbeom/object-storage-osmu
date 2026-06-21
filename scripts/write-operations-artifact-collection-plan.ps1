@@ -15,6 +15,7 @@ param(
     [string] $CommercialApprovalRunId = "",
     [string] $EnterpriseAuthRunId = "",
     [string] $OperationsHandoffPackageRunId = "",
+    [string] $DataFlowStoragePlanRunId = "",
     [string] $KubernetesOperationsReportSyncRunId = "",
     [string] $ImageSigningVersion = "v0.1.0-rc.1",
     [string] $CommitSha = "<commit-sha>",
@@ -131,6 +132,7 @@ $hasCommercialIntegrationEvidence = $false
 $hasCommercialApprovalEvidence = $false
 $hasEnterpriseAuthSmoke = $false
 $hasOperationsHandoffPackage = $false
+$hasDataFlowStoragePlan = $false
 foreach ($action in @($invocation.actions)) {
     $command = Get-Text $action "command"
     Add-UniqueWorkflow $workflows (Get-WorkflowName $command)
@@ -152,6 +154,9 @@ foreach ($action in @($invocation.actions)) {
     if (Test-CommandMentions $command "write-operations-handoff-package.ps1") {
         $hasOperationsHandoffPackage = $true
     }
+    if (Test-CommandMentions $command "write-data-flow-storage-plan.ps1") {
+        $hasDataFlowStoragePlan = $true
+    }
 }
 
 $artifacts = New-Object System.Collections.Generic.List[object]
@@ -168,6 +173,7 @@ $commercialIntegrationRun = Get-RunIdOrPlaceholder $CommercialIntegrationRunId "
 $commercialApprovalRun = Get-RunIdOrPlaceholder $CommercialApprovalRunId "commercial-approval-run-id"
 $enterpriseAuthRun = Get-RunIdOrPlaceholder $EnterpriseAuthRunId "enterprise-auth-run-id"
 $operationsHandoffPackageRun = Get-RunIdOrPlaceholder $OperationsHandoffPackageRunId "operations-handoff-package-run-id"
+$dataFlowStoragePlanRun = Get-RunIdOrPlaceholder $DataFlowStoragePlanRunId "data-flow-storage-plan-run-id"
 $kubernetesOperationsReportSyncRun = Get-RunIdOrPlaceholder $KubernetesOperationsReportSyncRunId "kubernetes-operations-report-sync-run-id"
 
 if ($workflows.Contains("storage-expansion-finalizer-ci.yml")) {
@@ -208,6 +214,9 @@ if ($hasEnterpriseAuthSmoke -or $workflows.Contains("enterprise-auth-smoke-ci.ym
 }
 if ($hasOperationsHandoffPackage) {
     Add-Artifact $artifacts "operations-handoff-package" "manual-operations-handoff-package.yml" $operationsHandoffPackageRun "operations_handoff_package_run_id" "operations-handoff-package-$operationsHandoffPackageRun" "operations_handoff_package_artifact_name" ".osmu-run/operations-readiness-artifacts/operations-handoff-package" $true "Imports latest-operations-handoff-package.json from pilot or production handoff package evidence."
+}
+if ($hasDataFlowStoragePlan -or $workflows.Contains("manual-data-flow-storage-plan-evidence.yml")) {
+    Add-Artifact $artifacts "data-flow-storage-plan" "manual-data-flow-storage-plan-evidence.yml" $dataFlowStoragePlanRun "data_flow_storage_plan_run_id" "data-flow-storage-plan-evidence-$dataFlowStoragePlanRun" "data_flow_storage_plan_artifact_name" ".osmu-run/operations-readiness-artifacts/data-flow-storage-plan" $true "Imports latest-data-flow-storage-plan.json from target analytics storage sizing, backfill, rollback, retention budget, and sanitized query-plan evidence."
 }
 if ($workflows.Contains("kubernetes-operations-report-sync-ci.yml")) {
     Add-Artifact $artifacts "kubernetes-operations-report-sync" "kubernetes-operations-report-sync-ci.yml" $kubernetesOperationsReportSyncRun "kubernetes_operations_report_sync_run_id" "kubernetes-operations-report-sync-$kubernetesOperationsReportSyncRun" "kubernetes_operations_report_sync_artifact_name" ".osmu-run/operations-readiness-artifacts/kubernetes-operations-report-sync" $true "Imports latest-kubernetes-operations-report-sync.json for convergence-level deployed dashboard sync evidence and optional latest-data-flow-storage-plan.json for dashboard plan visibility. MariaDB partition or dual-write plans must include the sanitized query-plan evidence summary."
@@ -272,6 +281,9 @@ foreach ($artifact in $requiredArtifacts) {
     }
     elseif ($group -eq "operations-handoff-package") {
         $localImportArgs.Add("-OperationsHandoffPackageArtifactPath $downloadPath")
+    }
+    elseif ($group -eq "data-flow-storage-plan") {
+        $localImportArgs.Add("-DataFlowStoragePlanArtifactPath $downloadPath")
     }
     elseif ($group -eq "kubernetes-operations-report-sync") {
         $localImportArgs.Add("-KubernetesOperationsReportSyncArtifactPath $downloadPath")

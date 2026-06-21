@@ -71,6 +71,9 @@ function Get-ManualEvidenceWorkflowName([string] $Command) {
     if ($Command.Contains("write-operations-handoff-package.ps1")) {
         return "manual-operations-handoff-package.yml"
     }
+    if ($Command.Contains("write-data-flow-storage-plan.ps1")) {
+        return "manual-data-flow-storage-plan-evidence.yml"
+    }
     return ""
 }
 
@@ -205,6 +208,13 @@ function New-WorkflowMetadata([string] $Workflow) {
             artifactNameTemplate = "operations-handoff-package-{runId}"
             requiredForReadiness = $true
             note = "Required by operations readiness artifact import when target handoff package evidence is part of the invocation."
+        }
+        "manual-data-flow-storage-plan-evidence.yml" = [ordered]@{
+            group = "data-flow-storage-plan"
+            runIdParameter = "DataFlowStoragePlanRunId"
+            artifactNameTemplate = "data-flow-storage-plan-evidence-{runId}"
+            requiredForReadiness = $true
+            note = "Required by operations readiness artifact import when target data-flow partition/time-series transition evidence is part of the invocation."
         }
         "kubernetes-operations-report-sync-ci.yml" = [ordered]@{
             group = "kubernetes-operations-report-sync"

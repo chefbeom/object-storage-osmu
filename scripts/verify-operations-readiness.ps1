@@ -197,6 +197,15 @@ if (-not ([string] $dataFlowStoragePlanCheck[0].remediation.command).Contains("Q
 if (-not ([string] $dataFlowStoragePlanCheck[0].remediation.command).Contains("RequireQueryPlanEvidence")) {
     throw "Data-flow storage transition target evidence remediation must require query-plan evidence for the MariaDB candidate."
 }
+if ($dataFlowStoragePlanCheck[0].remediation.workflow -ne ".github/workflows/manual-data-flow-storage-plan-evidence.yml") {
+    throw "Data-flow storage transition target evidence remediation must point to the manual data-flow storage plan workflow."
+}
+if (-not ([string] $dataFlowStoragePlanCheck[0].remediation.workflowCommand).Contains("manual-data-flow-storage-plan-evidence.yml")) {
+    throw "Data-flow storage transition target evidence remediation workflow command must dispatch manual-data-flow-storage-plan-evidence.yml."
+}
+if (-not ([string] $dataFlowStoragePlanCheck[0].remediation.workflowCommand).Contains("query_plan_evidence_json_base64")) {
+    throw "Data-flow storage transition target evidence workflow command must include query_plan_evidence_json_base64."
+}
 if (-not ([string] $dataFlowStoragePlanCheck[0].requiredEvidence).Contains("target query-plan evidence")) {
     throw "Data-flow storage transition target evidence must require target query-plan evidence."
 }

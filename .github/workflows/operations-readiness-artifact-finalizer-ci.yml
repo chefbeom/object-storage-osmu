@@ -91,6 +91,14 @@ on:
         description: Optional operations handoff package evidence artifact name
         required: false
         default: ""
+      data_flow_storage_plan_run_id:
+        description: Optional data-flow storage plan evidence run id
+        required: false
+        default: ""
+      data_flow_storage_plan_artifact_name:
+        description: Optional data-flow storage plan evidence artifact name
+        required: false
+        default: ""
       kubernetes_operations_report_sync_run_id:
         description: Optional Kubernetes Operations Report Sync CI run id
         required: false
@@ -238,6 +246,15 @@ jobs:
           run-id: ${{ inputs.operations_handoff_package_run_id }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
           path: .osmu-run/operations-readiness-artifacts/operations-handoff-package
+
+      - name: Download data-flow storage plan evidence
+        if: ${{ inputs.data_flow_storage_plan_run_id != '' && inputs.data_flow_storage_plan_artifact_name != '' }}
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ inputs.data_flow_storage_plan_artifact_name }}
+          run-id: ${{ inputs.data_flow_storage_plan_run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: .osmu-run/operations-readiness-artifacts/data-flow-storage-plan
 
       - name: Download Kubernetes operations report sync evidence
         if: ${{ inputs.kubernetes_operations_report_sync_run_id != '' && inputs.kubernetes_operations_report_sync_artifact_name != '' }}

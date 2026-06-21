@@ -1,0 +1,189 @@
+name: Manual Data-flow Storage Plan Evidence
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment_name:
+        description: Target environment label
+        required: true
+        default: prod
+      target_cluster:
+        description: Target cluster label
+        required: true
+        default: osmu-prod
+      operator:
+        description: Operator or team recording the evidence
+        required: true
+        default: ""
+      candidate_store:
+        description: Target analytics storage candidate
+        required: true
+        type: choice
+        options:
+          - MARIADB_PARTITION
+          - EXTERNAL_TIME_SERIES
+          - DUAL_WRITE
+        default: MARIADB_PARTITION
+      expected_peak_events_per_day:
+        description: Target peak data-flow events per day
+        required: true
+        default: "0"
+      expected_query_window_days:
+        description: Target long-window query range in days
+        required: true
+        default: "0"
+      event_retention_days:
+        description: Detailed event retention days
+        required: true
+        default: "90"
+      daily_rollup_retention_days:
+        description: Daily rollup retention days
+        required: true
+        default: "730"
+      monthly_rollup_retention_months:
+        description: Monthly rollup retention months
+        required: true
+        default: "36"
+      evidence_ref:
+        description: External sizing or benchmark evidence reference
+        required: true
+        default: ""
+      query_plan_evidence_json_base64:
+        description: Optional base64 latest-mariadb-query-plan-evidence.json summary for MariaDB partition or dual-write candidates
+        required: false
+        default: ""
+      confirm_no_object_key_in_aggregates:
+        description: Confirm aggregates exclude object keys and raw event messages
+        required: true
+        type: boolean
+        default: false
+      confirm_backfill_plan:
+        description: Confirm bounded backfill plan
+        required: true
+        type: boolean
+        default: false
+      confirm_rollback_plan:
+        description: Confirm rollback/read-path fallback plan
+        required: true
+        type: boolean
+        default: false
+      confirm_dashboard_cutover_plan:
+        description: Confirm dashboard cutover plan
+        required: true
+        type: boolean
+        default: false
+      confirm_retention_job_budget:
+        description: Confirm retention job batch/time budget
+        required: true
+        type: boolean
+        default: false
+      confirm_explain_evidence:
+        description: Confirm query-plan or target-store evidence exists
+        required: true
+        type: boolean
+        default: false
+      require_query_plan_evidence:
+        description: Require sanitized MariaDB query-plan evidence summary
+        required: true
+        type: boolean
+        default: true
+      fail_if_not_passed:
+        description: Fail workflow when evidence result is not passed
+        required: true
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: manual-data-flow-storage-plan-evidence-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  data-flow-storage-plan-evidence:
+    name: Manual data-flow storage plan evidence
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Record data-flow storage plan evidence
+        shell: pwsh
+        env:
+          OSMU_ENVIRONMENT_NAME: ${{ inputs.environment_name }}
+          OSMU_TARGET_CLUSTER: ${{ inputs.target_cluster }}
+          OSMU_OPERATOR: ${{ inputs.operator }}
+          OSMU_CANDIDATE_STORE: ${{ inputs.candidate_store }}
+          OSMU_EXPECTED_PEAK_EVENTS_PER_DAY: ${{ inputs.expected_peak_events_per_day }}
+          OSMU_EXPECTED_QUERY_WINDOW_DAYS: ${{ inputs.expected_query_window_days }}
+          OSMU_EVENT_RETENTION_DAYS: ${{ inputs.event_retention_days }}
+          OSMU_DAILY_ROLLUP_RETENTION_DAYS: ${{ inputs.daily_rollup_retention_days }}
+          OSMU_MONTHLY_ROLLUP_RETENTION_MONTHS: ${{ inputs.monthly_rollup_retention_months }}
+          OSMU_EVIDENCE_REF: ${{ inputs.evidence_ref }}
+          OSMU_QUERY_PLAN_EVIDENCE_JSON_BASE64: ${{ inputs.query_plan_evidence_json_base64 }}
+          OSMU_CONFIRM_NO_OBJECT_KEY_IN_AGGREGATES: ${{ inputs.confirm_no_object_key_in_aggregates }}
+          OSMU_CONFIRM_BACKFILL_PLAN: ${{ inputs.confirm_backfill_plan }}
+          OSMU_CONFIRM_ROLLBACK_PLAN: ${{ inputs.confirm_rollback_plan }}
+          OSMU_CONFIRM_DASHBOARD_CUTOVER_PLAN: ${{ inputs.confirm_dashboard_cutover_plan }}
+          OSMU_CONFIRM_RETENTION_JOB_BUDGET: ${{ inputs.confirm_retention_job_budget }}
+          OSMU_CONFIRM_EXPLAIN_EVIDENCE: ${{ inputs.confirm_explain_evidence }}
+          OSMU_REQUIRE_QUERY_PLAN_EVIDENCE: ${{ inputs.require_query_plan_evidence }}
+          OSMU_FAIL_IF_NOT_PASSED: ${{ inputs.fail_if_not_passed }}
+        run: |
+          $queryPlanPath = ""
+          try {
+            New-Item -ItemType Directory -Force -Path ".osmu-run" | Out-Null
+            if (-not [string]::IsNullOrWhiteSpace($env:OSMU_QUERY_PLAN_EVIDENCE_JSON_BASE64)) {
+              $queryPlanPath = ".osmu-run/latest-mariadb-query-plan-evidence.json"
+              [System.IO.File]::WriteAllBytes(
+                (Join-Path (Resolve-Path ".").Path $queryPlanPath),
+                [Convert]::FromBase64String($env:OSMU_QUERY_PLAN_EVIDENCE_JSON_BASE64)
+              )
+            }
+
+            $evidenceArgs = @(
+              "-EnvironmentName", $env:OSMU_ENVIRONMENT_NAME,
+              "-TargetCluster", $env:OSMU_TARGET_CLUSTER,
+              "-Operator", $env:OSMU_OPERATOR,
+              "-CandidateStore", $env:OSMU_CANDIDATE_STORE,
+              "-ExpectedPeakEventsPerDay", $env:OSMU_EXPECTED_PEAK_EVENTS_PER_DAY,
+              "-ExpectedQueryWindowDays", $env:OSMU_EXPECTED_QUERY_WINDOW_DAYS,
+              "-EventRetentionDays", $env:OSMU_EVENT_RETENTION_DAYS,
+              "-DailyRollupRetentionDays", $env:OSMU_DAILY_ROLLUP_RETENTION_DAYS,
+              "-MonthlyRollupRetentionMonths", $env:OSMU_MONTHLY_ROLLUP_RETENTION_MONTHS,
+              "-EvidenceRef", $env:OSMU_EVIDENCE_REF,
+              "-JsonOutputPath", ".osmu-run/latest-data-flow-storage-plan.json",
+              "-MarkdownOutputPath", ".osmu-run/latest-data-flow-storage-plan.md"
+            )
+
+            if (-not [string]::IsNullOrWhiteSpace($queryPlanPath)) { $evidenceArgs += @("-QueryPlanEvidenceJsonPath", $queryPlanPath) }
+            if ($env:OSMU_CONFIRM_NO_OBJECT_KEY_IN_AGGREGATES -eq "true") { $evidenceArgs += "-ConfirmNoObjectKeyInAggregates" }
+            if ($env:OSMU_CONFIRM_BACKFILL_PLAN -eq "true") { $evidenceArgs += "-ConfirmBackfillPlan" }
+            if ($env:OSMU_CONFIRM_ROLLBACK_PLAN -eq "true") { $evidenceArgs += "-ConfirmRollbackPlan" }
+            if ($env:OSMU_CONFIRM_DASHBOARD_CUTOVER_PLAN -eq "true") { $evidenceArgs += "-ConfirmDashboardCutoverPlan" }
+            if ($env:OSMU_CONFIRM_RETENTION_JOB_BUDGET -eq "true") { $evidenceArgs += "-ConfirmRetentionJobBudget" }
+            if ($env:OSMU_CONFIRM_EXPLAIN_EVIDENCE -eq "true") { $evidenceArgs += "-ConfirmExplainEvidence" }
+            if ($env:OSMU_REQUIRE_QUERY_PLAN_EVIDENCE -eq "true") { $evidenceArgs += "-RequireQueryPlanEvidence" }
+            if ($env:OSMU_FAIL_IF_NOT_PASSED -eq "true") { $evidenceArgs += "-FailIfNotPassed" }
+
+            ./scripts/write-data-flow-storage-plan.ps1 @evidenceArgs
+          }
+          finally {
+            if (-not [string]::IsNullOrWhiteSpace($queryPlanPath)) {
+              Remove-Item -LiteralPath $queryPlanPath -Force -ErrorAction SilentlyContinue
+            }
+          }
+
+      - name: Upload data-flow storage plan evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: data-flow-storage-plan-evidence-${{ github.run_id }}
+          path: |
+            .osmu-run/latest-data-flow-storage-plan.json
+            .osmu-run/latest-data-flow-storage-plan.md
+          if-no-files-found: error
+          retention-days: 14

@@ -17,6 +17,7 @@ param(
     [string] $ManualCommercialIntegrationEvidenceWorkflowPath = ".\.github\workflows\manual-commercial-integration-evidence.yml",
     [string] $ManualCommercialApprovalEvidenceWorkflowPath = ".\.github\workflows\manual-commercial-approval-evidence.yml",
     [string] $ManualOperationsHandoffPackageWorkflowPath = ".\.github\workflows\manual-operations-handoff-package.yml",
+    [string] $ManualDataFlowStoragePlanEvidenceWorkflowPath = ".\.github\workflows\manual-data-flow-storage-plan-evidence.yml",
     [string] $EnterpriseAuthSmokeWorkflowPath = ".\.github\workflows\enterprise-auth-smoke-ci.yml",
     [string] $BrowserE2ESpecPath = ".\osmu-frontend\e2e\lightweight-demo.spec.js",
     [string] $FrontendApiPath = ".\osmu-frontend\src\services\api.js",
@@ -500,6 +501,8 @@ Assert-Contains $operationsReadinessArtifactWorkflowContent "commercial_approval
 Assert-Contains $operationsReadinessArtifactWorkflowContent "enterprise_auth_run_id:" "Operations Readiness Artifact Finalizer CI workflow"
 Assert-Contains $operationsReadinessArtifactWorkflowContent "operations_handoff_package_run_id:" "Operations Readiness Artifact Finalizer CI workflow"
 Assert-Contains $operationsReadinessArtifactWorkflowContent "operations_handoff_package_artifact_name:" "Operations Readiness Artifact Finalizer CI workflow"
+Assert-Contains $operationsReadinessArtifactWorkflowContent "data_flow_storage_plan_run_id:" "Operations Readiness Artifact Finalizer CI workflow"
+Assert-Contains $operationsReadinessArtifactWorkflowContent "data_flow_storage_plan_artifact_name:" "Operations Readiness Artifact Finalizer CI workflow"
 Assert-Contains $operationsReadinessArtifactWorkflowContent "kubernetes_operations_report_sync_run_id:" "Operations Readiness Artifact Finalizer CI workflow"
 Assert-Contains $operationsReadinessArtifactWorkflowContent "data_flow_storage_plan_json_base64:" "Operations Readiness Artifact Finalizer CI workflow"
 Assert-Contains $operationsReadinessArtifactWorkflowContent "Restore direct data-flow storage plan evidence" "Operations Readiness Artifact Finalizer CI workflow"
@@ -511,6 +514,7 @@ Assert-Contains $operationsReadinessArtifactWorkflowContent "Download commercial
 Assert-Contains $operationsReadinessArtifactWorkflowContent "Download commercial approval evidence" "Operations Readiness Artifact Finalizer CI workflow"
 Assert-Contains $operationsReadinessArtifactWorkflowContent "Download enterprise auth smoke evidence" "Operations Readiness Artifact Finalizer CI workflow"
 Assert-Contains $operationsReadinessArtifactWorkflowContent "Download operations handoff package evidence" "Operations Readiness Artifact Finalizer CI workflow"
+Assert-Contains $operationsReadinessArtifactWorkflowContent "Download data-flow storage plan evidence" "Operations Readiness Artifact Finalizer CI workflow"
 Assert-Contains $operationsReadinessArtifactWorkflowContent "Download Kubernetes operations report sync evidence" "Operations Readiness Artifact Finalizer CI workflow"
 Assert-Contains $operationsReadinessArtifactWorkflowContent "SecretRotationArtifactPath" "Operations Readiness Artifact Finalizer CI workflow"
 Assert-Contains $operationsReadinessArtifactWorkflowContent "StorageBackendTelemetryArtifactPath" "Operations Readiness Artifact Finalizer CI workflow"
@@ -682,6 +686,31 @@ Assert-Contains $manualOperationsHandoffPackageWorkflowContent "actions/upload-a
 Assert-Contains $manualOperationsHandoffPackageWorkflowContent "operations-handoff-package-" "Manual Operations Handoff Package workflow"
 Assert-Contains $manualOperationsHandoffPackageWorkflowContent ".osmu-run/latest-operations-handoff-package.json" "Manual Operations Handoff Package workflow"
 Assert-Contains $manualOperationsHandoffPackageWorkflowContent ".osmu-run/latest-operations-handoff-package.md" "Manual Operations Handoff Package workflow"
+
+$manualDataFlowStoragePlanWorkflow = Read-Workflow $ManualDataFlowStoragePlanEvidenceWorkflowPath "Manual Data-flow Storage Plan Evidence workflow"
+$manualDataFlowStoragePlanWorkflowContent = $manualDataFlowStoragePlanWorkflow.Content
+
+Assert-Contains $manualDataFlowStoragePlanWorkflowContent "name: Manual Data-flow Storage Plan Evidence" "Manual Data-flow Storage Plan Evidence workflow"
+Assert-Contains $manualDataFlowStoragePlanWorkflowContent "workflow_dispatch:" "Manual Data-flow Storage Plan Evidence workflow"
+Assert-NotContains $manualDataFlowStoragePlanWorkflowContent "pull_request:" "Manual Data-flow Storage Plan Evidence workflow"
+Assert-NotContains $manualDataFlowStoragePlanWorkflowContent "push:" "Manual Data-flow Storage Plan Evidence workflow"
+Assert-Contains $manualDataFlowStoragePlanWorkflowContent "contents: read" "Manual Data-flow Storage Plan Evidence workflow"
+Assert-Contains $manualDataFlowStoragePlanWorkflowContent "runs-on: ubuntu-latest" "Manual Data-flow Storage Plan Evidence workflow"
+Assert-Contains $manualDataFlowStoragePlanWorkflowContent "timeout-minutes: 15" "Manual Data-flow Storage Plan Evidence workflow"
+Assert-Contains $manualDataFlowStoragePlanWorkflowContent "candidate_store:" "Manual Data-flow Storage Plan Evidence workflow"
+Assert-Contains $manualDataFlowStoragePlanWorkflowContent "query_plan_evidence_json_base64:" "Manual Data-flow Storage Plan Evidence workflow"
+Assert-Contains $manualDataFlowStoragePlanWorkflowContent "OSMU_QUERY_PLAN_EVIDENCE_JSON_BASE64" "Manual Data-flow Storage Plan Evidence workflow"
+Assert-Contains $manualDataFlowStoragePlanWorkflowContent "Record data-flow storage plan evidence" "Manual Data-flow Storage Plan Evidence workflow"
+Assert-Contains $manualDataFlowStoragePlanWorkflowContent "./scripts/write-data-flow-storage-plan.ps1" "Manual Data-flow Storage Plan Evidence workflow"
+Assert-Contains $manualDataFlowStoragePlanWorkflowContent "-QueryPlanEvidenceJsonPath" "Manual Data-flow Storage Plan Evidence workflow"
+Assert-Contains $manualDataFlowStoragePlanWorkflowContent "-RequireQueryPlanEvidence" "Manual Data-flow Storage Plan Evidence workflow"
+Assert-Contains $manualDataFlowStoragePlanWorkflowContent "-ConfirmNoObjectKeyInAggregates" "Manual Data-flow Storage Plan Evidence workflow"
+Assert-Contains $manualDataFlowStoragePlanWorkflowContent "-FailIfNotPassed" "Manual Data-flow Storage Plan Evidence workflow"
+Assert-Contains $manualDataFlowStoragePlanWorkflowContent "Remove-Item -LiteralPath `$queryPlanPath -Force -ErrorAction SilentlyContinue" "Manual Data-flow Storage Plan Evidence workflow"
+Assert-Contains $manualDataFlowStoragePlanWorkflowContent "actions/upload-artifact@v4" "Manual Data-flow Storage Plan Evidence workflow"
+Assert-Contains $manualDataFlowStoragePlanWorkflowContent "data-flow-storage-plan-evidence-" "Manual Data-flow Storage Plan Evidence workflow"
+Assert-Contains $manualDataFlowStoragePlanWorkflowContent ".osmu-run/latest-data-flow-storage-plan.json" "Manual Data-flow Storage Plan Evidence workflow"
+Assert-Contains $manualDataFlowStoragePlanWorkflowContent ".osmu-run/latest-data-flow-storage-plan.md" "Manual Data-flow Storage Plan Evidence workflow"
 
 $enterpriseAuthSmokeWorkflow = Read-Workflow $EnterpriseAuthSmokeWorkflowPath "Enterprise Auth Smoke CI workflow"
 $enterpriseAuthSmokeWorkflowContent = $enterpriseAuthSmokeWorkflow.Content
@@ -958,6 +987,7 @@ Write-Host "Manual Secret Rotation Evidence workflow: $($manualSecretRotationWor
 Write-Host "Manual Commercial Integration Evidence workflow: $($manualCommercialIntegrationWorkflow.Path)"
 Write-Host "Manual Commercial Approval Evidence workflow: $($manualCommercialApprovalWorkflow.Path)"
 Write-Host "Manual Operations Handoff Package workflow: $($manualOperationsHandoffPackageWorkflow.Path)"
+Write-Host "Manual Data-flow Storage Plan Evidence workflow: $($manualDataFlowStoragePlanWorkflow.Path)"
 Write-Host "Enterprise Auth Smoke workflow: $($enterpriseAuthSmokeWorkflow.Path)"
 Write-Host "Playwright config: $($playwrightConfig.Path)"
 Write-Host "Browser E2E spec: $($browserSpec.Path)"
