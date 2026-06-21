@@ -1073,6 +1073,43 @@ class AdminDashboardSummaryControllerTest {
                               "recommendedCommandCount": 1
                             }
                           },
+                          "targetEvidenceSnapshots": {
+                            "dataFlowStoragePlan": {
+                              "provided": true,
+                              "path": ".osmu-run/latest-data-flow-storage-plan.json",
+                              "parsed": true,
+                              "formatVersion": "osmu.data-flow-storage-plan.v1",
+                              "expectedFormatVersion": "osmu.data-flow-storage-plan.v1",
+                              "validFormatVersion": true,
+                              "result": "passed",
+                              "passed": true,
+                              "environmentName": "pilot-prod",
+                              "targetCluster": "customer-cluster-a",
+                              "candidateStore": "MARIADB_PARTITION",
+                              "expectedPeakEventsPerDay": 250000,
+                              "expectedQueryWindowDays": 180,
+                              "eventRetentionDays": 90,
+                              "dailyRollupRetentionDays": 730,
+                              "monthlyRollupRetentionMonths": 36,
+                              "checkCount": 9,
+                              "passedCount": 9,
+                              "pendingCount": 0,
+                              "queryPlanEvidence": {
+                                "provided": true,
+                                "formatVersion": "osmu.mariadb-query-plan-evidence.v1",
+                                "expectedFormatVersion": "osmu.mariadb-query-plan-evidence.v1",
+                                "validFormatVersion": true,
+                                "result": "passed",
+                                "mode": "fixture",
+                                "checkCount": 3,
+                                "passedCount": 3,
+                                "failedCount": 0,
+                                "failedChecks": [],
+                                "detail": "formatVersion=osmu.mariadb-query-plan-evidence.v1; result=passed; mode=fixture; passed=3; failed=0; checks=3"
+                              },
+                              "topPendingChecks": []
+                            }
+                          },
                           "confirmations": {
                             "noSecretValues": true,
                             "runbookReviewed": false,
@@ -1910,6 +1947,12 @@ class AdminDashboardSummaryControllerTest {
                 .andExpect(jsonPath("$.data.operationsHandoffPackage.operationsReadinessSnapshot.pendingCount").value(0))
                 .andExpect(jsonPath("$.data.operationsHandoffPackage.operationsConvergenceSnapshot.kubernetesReportSyncReady").value(true))
                 .andExpect(jsonPath("$.data.operationsHandoffPackage.operationsConvergenceSnapshot.stageCount").value(6))
+                .andExpect(jsonPath("$.data.operationsHandoffPackage.dataFlowStoragePlanSnapshot.result").value("passed"))
+                .andExpect(jsonPath("$.data.operationsHandoffPackage.dataFlowStoragePlanSnapshot.candidateStore").value("MARIADB_PARTITION"))
+                .andExpect(jsonPath("$.data.operationsHandoffPackage.dataFlowStoragePlanSnapshot.expectedPeakEventsPerDay").value(250000))
+                .andExpect(jsonPath("$.data.operationsHandoffPackage.dataFlowStoragePlanSnapshot.pendingCount").value(0))
+                .andExpect(jsonPath("$.data.operationsHandoffPackage.dataFlowStoragePlanSnapshot.queryPlanEvidence.result").value("passed"))
+                .andExpect(jsonPath("$.data.operationsHandoffPackage.dataFlowStoragePlanSnapshot.queryPlanEvidence.failedCount").value(0))
                 .andExpect(jsonPath("$.data.operationsHandoffPackage.checks[0].id").value("runbook-reviewed"))
                 .andExpect(jsonPath("$.data.operationsHandoffPackage.checks[0].status").value("FAIL"))
                 .andExpect(jsonPath("$.data.operationsHandoffPackage.checks[1].evidenceRef").value("latest-commercial-integration-evidence-passed"))

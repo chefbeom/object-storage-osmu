@@ -1164,6 +1164,17 @@
           sync {{ operationsHandoffPackageConvergenceSnapshot.kubernetesReportSyncReady ? 'ready' : 'not-ready' }} /
           finalizer gaps {{ operationsHandoffPackageConvergenceSnapshot.finalizerGapCount || 0 }}
         </small>
+        <small
+          v-if="operationsHandoffPackageDataFlowStoragePlanSnapshot.result"
+          data-testid="readiness-handoff-package-data-flow-snapshot-summary"
+        >
+          Data-flow snapshot:
+          {{ operationsHandoffPackageDataFlowStoragePlanSnapshot.result }} /
+          store {{ operationsHandoffPackageDataFlowStoragePlanSnapshot.candidateStore || '-' }} /
+          passed {{ operationsHandoffPackageDataFlowStoragePlanSnapshot.passedCount || 0 }} /
+          pending {{ operationsHandoffPackageDataFlowStoragePlanSnapshot.pendingCount || 0 }} /
+          query-plan {{ operationsHandoffPackageDataFlowQueryPlanSnapshot.result || '-' }}
+        </small>
       </div>
       <ol
         v-if="operationsHandoffPackageChecks.length > 0"
@@ -2891,6 +2902,14 @@ const operationsHandoffPackageReadinessSnapshot = computed(() => (
 
 const operationsHandoffPackageConvergenceSnapshot = computed(() => (
   operationsHandoffPackage.value?.operationsConvergenceSnapshot || {}
+))
+
+const operationsHandoffPackageDataFlowStoragePlanSnapshot = computed(() => (
+  operationsHandoffPackage.value?.dataFlowStoragePlanSnapshot || {}
+))
+
+const operationsHandoffPackageDataFlowQueryPlanSnapshot = computed(() => (
+  operationsHandoffPackageDataFlowStoragePlanSnapshot.value?.queryPlanEvidence || {}
 ))
 
 const operationsHandoffPackageChecks = computed(() => {

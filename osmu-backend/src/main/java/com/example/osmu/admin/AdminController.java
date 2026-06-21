@@ -2353,6 +2353,9 @@ public class AdminController {
                 operationsHandoffPackageReadinessSnapshot(operationSnapshots.path("readiness"));
         DashboardOperationsHandoffPackageConvergenceSnapshotResponse convergenceSnapshot =
                 operationsHandoffPackageConvergenceSnapshot(operationSnapshots.path("convergence"));
+        JsonNode targetEvidenceSnapshots = packageReport.path("targetEvidenceSnapshots");
+        DashboardDataFlowStoragePlanResponse dataFlowStoragePlanSnapshot =
+                dataFlowStoragePlanSnapshotFromNode(targetEvidenceSnapshots.path("dataFlowStoragePlan"), false);
         return new DashboardOperationsHandoffPackageResponse(
                 jsonText(packageReport, "result"),
                 jsonText(packageReport, "generatedAt"),
@@ -2367,6 +2370,7 @@ public class AdminController {
                 Map.copyOf(evidenceRefs),
                 readinessSnapshot,
                 convergenceSnapshot,
+                dataFlowStoragePlanSnapshot,
                 List.copyOf(checks),
                 jsonText(packageReport, "decisionRule"),
                 jsonText(packageReport, "scopePolicy"),
@@ -3183,11 +3187,21 @@ public class AdminController {
 
     private DashboardDataFlowStoragePlanResponse dataFlowStoragePlanSnapshot() {
         JsonNode planReport = readOptionalJsonReport(dataFlowStoragePlanReportPath);
-        if (planReport == null) {
+        return dataFlowStoragePlanSnapshotFromNode(planReport, true);
+    }
+
+    private DashboardDataFlowStoragePlanResponse dataFlowStoragePlanSnapshotFromNode(JsonNode planReport, boolean emptyWhenMissing) {
+        if (planReport == null || planReport.isMissingNode() || planReport.isNull() || !planReport.isObject()) {
+            if (!emptyWhenMissing) {
+                return null;
+            }
             return DashboardDataFlowStoragePlanResponse.empty();
         }
         java.util.ArrayList<DashboardDataFlowStoragePlanCheckResponse> checks = new java.util.ArrayList<>();
         JsonNode checkNodes = planReport.path("checks");
+        if (!checkNodes.isArray()) {
+            checkNodes = planReport.path("topPendingChecks");
+        }
         if (checkNodes.isArray()) {
             for (JsonNode check : checkNodes) {
                 checks.add(new DashboardDataFlowStoragePlanCheckResponse(
@@ -3206,7 +3220,7 @@ public class AdminController {
                 jsonText(planReport, "recordedAt"),
                 jsonText(planReport, "environmentName"),
                 jsonText(planReport, "targetCluster"),
-                jsonText(planReport, "operator"),
+                firstNonBlank(jsonText(planReport, "operator"), jsonText(planReport, "operatorName")),
                 jsonText(planReport, "evidenceRef"),
                 jsonText(planReport, "candidateStore"),
                 jsonInt(planReport, "expectedPeakEventsPerDay"),
@@ -3836,6 +3850,13 @@ public class AdminController {
 
     private String blankToNull(String value) {
         return value == null || value.isBlank() ? null : value.trim();
+    }
+
+    private String firstNonBlank(String first, String second) {
+        if (first != null && !first.isBlank()) {
+            return first;
+        }
+        return second == null ? "" : second;
     }
 
     private OffsetDateTime parseOptionalOffsetDateTime(String value, String fieldName) {
