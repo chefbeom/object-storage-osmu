@@ -238,6 +238,9 @@ Run "powershell -ExecutionPolicy Bypass -File .\scripts\verify-mariadb-query-pla
 Step "Object list query pushdown check"
 Run "powershell -ExecutionPolicy Bypass -File .\scripts\verify-object-list-query-pushdown.ps1"
 
+Step "Data-flow storage plan check"
+Run "powershell -ExecutionPolicy Bypass -File .\scripts\verify-data-flow-storage-plan.ps1"
+
 if (-not $SkipDocker) {
     Step "Docker Compose config check"
     Run "docker compose --env-file .\infra\local\.env.example -f .\infra\local\docker-compose.yml config --quiet"
