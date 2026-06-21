@@ -747,6 +747,108 @@ class AdminDashboardSummaryControllerTest {
                         """
         );
         Files.writeString(
+                Path.of(".osmu-run/latest-commercial-integration-evidence.json"),
+                """
+                        {
+                          "formatVersion": "osmu.commercial-integration-evidence.v1",
+                          "generatedAt": "2026-06-20T03:00:00Z",
+                          "result": "failed",
+                          "environmentName": "pilot-prod",
+                          "targetCluster": "customer-cluster-a",
+                          "operatorName": "commerce-ops",
+                          "summary": {
+                            "integrationCount": 8,
+                            "verifiedCount": 7,
+                            "requiredCount": 8,
+                            "requiredVerifiedCount": 7,
+                            "paymentProviderAdapterReadinessReviewed": true,
+                            "paymentProviderAdapterReadinessStatus": "WEBHOOK_PROFILE_READY",
+                            "paymentProviderAdapterWebhookReadyProfileCount": 5,
+                            "paymentProviderAdapterNativeReadyProfileCount": 0,
+                            "failureCount": 1,
+                            "plannedCount": 0
+                          },
+                          "checks": [
+                            {
+                              "id": "integration-payment-erp",
+                              "name": "ERP payment webhook profile verified",
+                              "status": "FAIL",
+                              "passed": false,
+                              "detail": "required=true verified=false evidenceRef="
+                            },
+                            {
+                              "id": "payment-provider-adapter-readiness-reviewed",
+                              "name": "Payment provider adapter readiness reviewed",
+                              "status": "PASS",
+                              "passed": true,
+                              "detail": "reviewed=true"
+                            }
+                          ],
+                          "decisionRule": "Production/B2B commercial integration readiness requires result=passed.",
+                          "scopePolicy": "This evidence covers configured webhook/Slack/EMAIL SMTP relay and payment webhook profile handoff verification without claiming native processor API support.",
+                          "secretPolicy": "Evidence stores references only and does not contain webhook URLs with credentials, SMTP passwords, payment provider credentials, signing secrets, bearer tokens, private keys, raw provider responses, or customer payment data."
+                        }
+                        """
+        );
+        Files.writeString(
+                Path.of(".osmu-run/latest-commercial-approval-evidence.json"),
+                """
+                        {
+                          "formatVersion": "osmu.commercial-approval-evidence.v1",
+                          "generatedAt": "2026-06-20T03:30:00Z",
+                          "result": "failed",
+                          "productVersion": "osmu-mvp-0.1",
+                          "approvedBy": "commercial-board",
+                          "approvedAt": "2026-06-20T03:15:00Z",
+                          "evidenceRefs": {
+                            "approval": "commercial-approval-board-20260620",
+                            "pricing": "pricing-approval-20260620",
+                            "legal": "",
+                            "pilotContract": "pilot-contract-boundary-20260620",
+                            "pricingPolicyProposal": "pricing-policy-proposal-price-list-approved-20260620"
+                          },
+                          "confirmations": {
+                            "pricingApproved": true,
+                            "termsApproved": true,
+                            "supportSlaApproved": true,
+                            "licenseApproved": true,
+                            "legalApproved": false,
+                            "pricingPolicyProposalCommercialApproval": true,
+                            "noSecretValues": true
+                          },
+                          "summary": {
+                            "passedCount": 11,
+                            "failureCount": 1,
+                            "checkCount": 12,
+                            "pricingPolicyProposalCommercialApproved": true,
+                            "pricingPolicyProposalCommercialApprovedCount": 1,
+                            "pricingPolicyProposalApprovedPriceListCount": 1
+                          },
+                          "checks": [
+                            {
+                              "id": "legal-approval-confirmed",
+                              "name": "Legal approval confirmed",
+                              "status": "FAIL",
+                              "passed": false,
+                              "detail": "legalApprovalRef=",
+                              "evidenceRef": ""
+                            },
+                            {
+                              "id": "pricing-policy-proposal-commercial-approved",
+                              "name": "Billing pricing policy proposal commercial approval recorded",
+                              "status": "PASS",
+                              "passed": true,
+                              "detail": "commercialApprovedCount=1",
+                              "evidenceRef": "pricing-policy-proposal-price-list-approved-20260620"
+                            }
+                          ],
+                          "decisionRule": "Production/B2B sale commercial approval requires result=passed.",
+                          "scopePolicy": "This evidence records commercial/legal approval references and sanitized billing pricing policy proposal approval status only.",
+                          "secretPolicy": "Evidence stores only sanitized approval references and must not contain passwords, tokens, private keys, license keys, signing secrets, customer payment data, raw price tables, or raw contract text."
+                        }
+                        """
+        );
+        Files.writeString(
                 Path.of(".osmu-run/latest-data-flow-storage-plan.json"),
                 """
                         {
@@ -1340,6 +1442,18 @@ class AdminDashboardSummaryControllerTest {
                 .andExpect(jsonPath("$.data.operationsHandoffPackage.checks[0].id").value("runbook-reviewed"))
                 .andExpect(jsonPath("$.data.operationsHandoffPackage.checks[0].status").value("FAIL"))
                 .andExpect(jsonPath("$.data.operationsHandoffPackage.checks[1].evidenceRef").value("latest-commercial-integration-evidence-passed"))
+                .andExpect(jsonPath("$.data.commercialIntegrationEvidence.result").value("failed"))
+                .andExpect(jsonPath("$.data.commercialIntegrationEvidence.environmentName").value("pilot-prod"))
+                .andExpect(jsonPath("$.data.commercialIntegrationEvidence.requiredVerifiedCount").value(7))
+                .andExpect(jsonPath("$.data.commercialIntegrationEvidence.requiredCount").value(8))
+                .andExpect(jsonPath("$.data.commercialIntegrationEvidence.paymentProviderAdapterReadinessStatus").value("WEBHOOK_PROFILE_READY"))
+                .andExpect(jsonPath("$.data.commercialIntegrationEvidence.checks[0].id").value("integration-payment-erp"))
+                .andExpect(jsonPath("$.data.commercialApprovalEvidence.result").value("failed"))
+                .andExpect(jsonPath("$.data.commercialApprovalEvidence.productVersion").value("osmu-mvp-0.1"))
+                .andExpect(jsonPath("$.data.commercialApprovalEvidence.confirmations.legalApproved").value(false))
+                .andExpect(jsonPath("$.data.commercialApprovalEvidence.evidenceRefs.pricingPolicyProposal").value("pricing-policy-proposal-price-list-approved-20260620"))
+                .andExpect(jsonPath("$.data.commercialApprovalEvidence.pricingPolicyProposalApprovedPriceListCount").value(1))
+                .andExpect(jsonPath("$.data.commercialApprovalEvidence.checks[0].id").value("legal-approval-confirmed"))
                 .andExpect(jsonPath("$.data.dataFlowStoragePlan.result").value("plan-ready-execute-required"))
                 .andExpect(jsonPath("$.data.dataFlowStoragePlan.environmentName").value("pilot-prod"))
                 .andExpect(jsonPath("$.data.dataFlowStoragePlan.targetCluster").value("customer-cluster-a"))
@@ -1376,6 +1490,10 @@ class AdminDashboardSummaryControllerTest {
                 .andExpect(jsonPath("$.data.storageBackendTelemetryEvidence.scopePolicy", org.hamcrest.Matchers.containsString("not AWS S3 parity work")))
                 .andExpect(jsonPath("$.data.items[?(@.code == 'OPERATIONS_HANDOFF_PACKAGE')].evidencePath").value(hasItem(".osmu-run/latest-operations-handoff-package.json")))
                 .andExpect(jsonPath("$.data.items[?(@.code == 'OPERATIONS_HANDOFF_PACKAGE')].remediationCommand").value(hasItem("powershell -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\write-operations-handoff-package.ps1")))
+                .andExpect(jsonPath("$.data.items[?(@.code == 'COMMERCIAL_INTEGRATION_EVIDENCE')].evidencePath").value(hasItem(".osmu-run/latest-commercial-integration-evidence.json")))
+                .andExpect(jsonPath("$.data.items[?(@.code == 'COMMERCIAL_INTEGRATION_EVIDENCE')].remediationWorkflow").value(hasItem(".github/workflows/manual-commercial-integration-evidence.yml")))
+                .andExpect(jsonPath("$.data.items[?(@.code == 'COMMERCIAL_APPROVAL_EVIDENCE')].evidencePath").value(hasItem(".osmu-run/latest-commercial-approval-evidence.json")))
+                .andExpect(jsonPath("$.data.items[?(@.code == 'COMMERCIAL_APPROVAL_EVIDENCE')].remediationWorkflow").value(hasItem(".github/workflows/manual-commercial-approval-evidence.yml")))
                 .andExpect(jsonPath("$.data.operationsEvidenceHandoff.result").value("blocked"))
                 .andExpect(jsonPath("$.data.operationsEvidenceHandoff.nextStep.code").value("resolve-invocation-blockers"))
                 .andExpect(jsonPath("$.data.operationsEvidenceHandoff.nextStep.command").value("powershell -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\write-operations-invocation-unblock-plan.ps1"))

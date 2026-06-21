@@ -607,6 +607,77 @@
         </small>
       </div>
       <div
+        v-if="commercialIntegrationEvidence.result"
+        class="readiness-invocation-summary"
+        data-testid="readiness-commercial-integration-evidence-summary"
+      >
+        <strong>Commercial integration evidence: {{ commercialIntegrationEvidence.result }}</strong>
+        <small>
+          {{ commercialIntegrationEvidence.environmentName || 'unknown env' }} /
+          {{ commercialIntegrationEvidence.targetCluster || 'unknown cluster' }} /
+          required {{ commercialIntegrationEvidence.requiredVerifiedCount || 0 }} of {{ commercialIntegrationEvidence.requiredCount || 0 }} /
+          payment adapters {{ commercialIntegrationEvidence.paymentProviderAdapterReadinessStatus || 'unknown' }} /
+          failures {{ commercialIntegrationEvidence.failureCount || 0 }} /
+          planned {{ commercialIntegrationEvidence.plannedCount || 0 }}
+        </small>
+        <small v-if="commercialIntegrationEvidence.secretPolicy">
+          {{ commercialIntegrationEvidence.secretPolicy }}
+        </small>
+      </div>
+      <ol
+        v-if="commercialIntegrationEvidenceChecks.length > 0"
+        class="readiness-evidence-plan-actions readiness-commercial-integration-evidence-checks"
+        data-testid="readiness-commercial-integration-evidence-checks"
+      >
+        <li
+          v-for="check in commercialIntegrationEvidenceChecks.slice(0, 3)"
+          :key="check.id || check.name"
+        >
+          <span>
+            <strong>{{ check.status || 'UNKNOWN' }} / {{ check.name || check.id }}</strong>
+            <small>{{ check.detail || check.evidenceRef || 'detail unavailable' }}</small>
+          </span>
+        </li>
+      </ol>
+      <div
+        v-if="commercialApprovalEvidence.result"
+        class="readiness-invocation-summary"
+        data-testid="readiness-commercial-approval-evidence-summary"
+      >
+        <strong>Commercial approval evidence: {{ commercialApprovalEvidence.result }}</strong>
+        <small>
+          {{ commercialApprovalEvidence.productVersion || 'unknown version' }} /
+          approved by {{ commercialApprovalEvidence.approvedBy || 'unknown' }} /
+          failures {{ commercialApprovalEvidence.failureCount || 0 }} /
+          checks {{ commercialApprovalEvidence.checkCount || 0 }} /
+          price-list approvals {{ commercialApprovalEvidence.pricingPolicyProposalApprovedPriceListCount || 0 }}
+        </small>
+        <small
+          v-if="commercialApprovalEvidenceRefSummary"
+          data-testid="readiness-commercial-approval-evidence-refs"
+        >
+          Evidence refs: {{ commercialApprovalEvidenceRefSummary }}
+        </small>
+        <small v-if="commercialApprovalEvidence.secretPolicy">
+          {{ commercialApprovalEvidence.secretPolicy }}
+        </small>
+      </div>
+      <ol
+        v-if="commercialApprovalEvidenceChecks.length > 0"
+        class="readiness-evidence-plan-actions readiness-commercial-approval-evidence-checks"
+        data-testid="readiness-commercial-approval-evidence-checks"
+      >
+        <li
+          v-for="check in commercialApprovalEvidenceChecks.slice(0, 3)"
+          :key="check.id || check.name"
+        >
+          <span>
+            <strong>{{ check.status || 'UNKNOWN' }} / {{ check.name || check.id }}</strong>
+            <small>{{ check.detail || check.evidenceRef || 'detail unavailable' }}</small>
+          </span>
+        </li>
+      </ol>
+      <div
         v-if="dataFlowStoragePlan.result"
         class="readiness-invocation-summary"
         data-testid="readiness-data-flow-storage-plan-summary"
@@ -2417,6 +2488,36 @@ const operationsHandoffPackageConvergenceSnapshot = computed(() => (
 
 const operationsHandoffPackageChecks = computed(() => {
   const checks = operationsHandoffPackage.value?.checks
+  return Array.isArray(checks) ? checks : []
+})
+
+const commercialIntegrationEvidence = computed(() => (
+  props.dashboardReadiness.commercialIntegrationEvidence || {}
+))
+
+const commercialIntegrationEvidenceChecks = computed(() => {
+  const checks = commercialIntegrationEvidence.value?.checks
+  return Array.isArray(checks) ? checks : []
+})
+
+const commercialApprovalEvidence = computed(() => (
+  props.dashboardReadiness.commercialApprovalEvidence || {}
+))
+
+const commercialApprovalEvidenceRefSummary = computed(() => {
+  const refs = commercialApprovalEvidence.value?.evidenceRefs
+  if (!refs || typeof refs !== 'object') {
+    return ''
+  }
+  return Object.entries(refs)
+    .filter(([, value]) => value)
+    .slice(0, 5)
+    .map(([key, value]) => `${key}=${value}`)
+    .join(' / ')
+})
+
+const commercialApprovalEvidenceChecks = computed(() => {
+  const checks = commercialApprovalEvidence.value?.checks
   return Array.isArray(checks) ? checks : []
 })
 

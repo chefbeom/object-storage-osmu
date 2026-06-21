@@ -22,6 +22,8 @@ public record DashboardReadinessResponse(
         DashboardOperationsReadinessArtifactImportResponse operationsReadinessArtifactImport,
         DashboardOperationsReadinessFinalizeResponse operationsReadinessFinalize,
         DashboardOperationsHandoffPackageResponse operationsHandoffPackage,
+        DashboardCommercialIntegrationEvidenceResponse commercialIntegrationEvidence,
+        DashboardCommercialApprovalEvidenceResponse commercialApprovalEvidence,
         DashboardDataFlowStoragePlanResponse dataFlowStoragePlan,
         DashboardStorageBackendTelemetryEvidenceResponse storageBackendTelemetryEvidence,
         DashboardOperationsEvidenceHandoffResponse operationsEvidenceHandoff,

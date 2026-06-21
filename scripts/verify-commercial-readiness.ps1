@@ -68,6 +68,7 @@ Assert-Contains $content 'optional generic notification/payment webhook HMAC sig
 Assert-Contains $content 'payment provider handoff outbox/history with configured generic/CARD/BANK/TAX/ERP webhook profile handoff send and adapter result retry state' "Commercial readiness draft"
 Assert-Contains $content 'commercial integration evidence writer' "Commercial readiness draft"
 Assert-Contains $content 'commercial approval evidence writer' "Commercial readiness draft"
+Assert-Contains $content 'dashboard readiness visibility for commercial integration/approval evidence summaries' "Commercial readiness draft"
 Assert-Contains $content 'operations handoff package evidence writer/workflow implemented' "Commercial readiness draft"
 Assert-Contains $content 'concrete native card/bank/tax/ERP provider API adapters, target secret/certificate rotation `result=passed` evidence, target commercial integration `result=passed` evidence, target commercial approval `result=passed` evidence, and target operations handoff package `result=passed` evidence remain pending.' "Commercial readiness draft"
 Assert-Contains $content 'Final legal/commercial approval: evidence writer implemented; target `result=passed` approval evidence pending.' "Commercial readiness draft"

@@ -127,6 +127,8 @@ public class AdminController {
     private final String operationsArtifactCollectionPlanReportPath;
     private final String operationsEvidenceHandoffReportPath;
     private final String operationsHandoffPackageReportPath;
+    private final String commercialIntegrationEvidenceReportPath;
+    private final String commercialApprovalEvidenceReportPath;
     private final String dataFlowStoragePlanReportPath;
     private final String storageBackendTelemetryReportPath;
     private final String operationsReadinessConvergenceReportPath;
@@ -177,6 +179,8 @@ public class AdminController {
             @Value("${osmu.operations.readiness.artifact-collection-plan-report-path:.osmu-run/latest-operations-artifact-collection-plan.json}") String operationsArtifactCollectionPlanReportPath,
             @Value("${osmu.operations.readiness.evidence-handoff-report-path:.osmu-run/latest-operations-evidence-handoff.json}") String operationsEvidenceHandoffReportPath,
             @Value("${osmu.operations.readiness.handoff-package-report-path:.osmu-run/latest-operations-handoff-package.json}") String operationsHandoffPackageReportPath,
+            @Value("${osmu.operations.readiness.commercial-integration-evidence-report-path:.osmu-run/latest-commercial-integration-evidence.json}") String commercialIntegrationEvidenceReportPath,
+            @Value("${osmu.operations.readiness.commercial-approval-evidence-report-path:.osmu-run/latest-commercial-approval-evidence.json}") String commercialApprovalEvidenceReportPath,
             @Value("${osmu.operations.readiness.data-flow-storage-plan-report-path:.osmu-run/latest-data-flow-storage-plan.json}") String dataFlowStoragePlanReportPath,
             @Value("${osmu.operations.readiness.storage-backend-telemetry-report-path:.osmu-run/latest-storage-backend-telemetry.json}") String storageBackendTelemetryReportPath,
             @Value("${osmu.operations.readiness.convergence-report-path:.osmu-run/latest-operations-readiness-convergence.json}") String operationsReadinessConvergenceReportPath,
@@ -226,6 +230,8 @@ public class AdminController {
         this.operationsArtifactCollectionPlanReportPath = blankToNull(operationsArtifactCollectionPlanReportPath);
         this.operationsEvidenceHandoffReportPath = blankToNull(operationsEvidenceHandoffReportPath);
         this.operationsHandoffPackageReportPath = blankToNull(operationsHandoffPackageReportPath);
+        this.commercialIntegrationEvidenceReportPath = blankToNull(commercialIntegrationEvidenceReportPath);
+        this.commercialApprovalEvidenceReportPath = blankToNull(commercialApprovalEvidenceReportPath);
         this.dataFlowStoragePlanReportPath = blankToNull(dataFlowStoragePlanReportPath);
         this.storageBackendTelemetryReportPath = blankToNull(storageBackendTelemetryReportPath);
         this.operationsReadinessConvergenceReportPath = blankToNull(operationsReadinessConvergenceReportPath);
@@ -890,6 +896,8 @@ public class AdminController {
         DashboardOperationsReadinessArtifactImportResponse operationsReadinessArtifactImport = operationsReadinessArtifactImportSnapshot();
         DashboardOperationsReadinessFinalizeResponse operationsReadinessFinalize = operationsReadinessFinalizeSnapshot();
         DashboardOperationsHandoffPackageResponse operationsHandoffPackage = operationsHandoffPackageSnapshot();
+        DashboardCommercialIntegrationEvidenceResponse commercialIntegrationEvidence = commercialIntegrationEvidenceSnapshot();
+        DashboardCommercialApprovalEvidenceResponse commercialApprovalEvidence = commercialApprovalEvidenceSnapshot();
         DashboardDataFlowStoragePlanResponse dataFlowStoragePlan = dataFlowStoragePlanSnapshot();
         DashboardStorageBackendTelemetryEvidenceResponse storageBackendTelemetryEvidence = storageBackendTelemetryEvidenceSnapshot();
         DashboardOperationsEvidenceHandoffResponse operationsEvidenceHandoff = operationsEvidenceHandoffSnapshot();
@@ -917,6 +925,8 @@ public class AdminController {
                 operationsReadinessArtifactImport,
                 operationsReadinessFinalize,
                 operationsHandoffPackage,
+                commercialIntegrationEvidence,
+                commercialApprovalEvidence,
                 dataFlowStoragePlan,
                 storageBackendTelemetryEvidence,
                 operationsEvidenceHandoff,
@@ -1564,6 +1574,8 @@ public class AdminController {
 
         addOperationsEvidenceHandoffItem(items);
         addOperationsHandoffPackageItem(items);
+        addCommercialIntegrationEvidenceItem(items);
+        addCommercialApprovalEvidenceItem(items);
         addDataFlowStoragePlanItem(items);
         addStorageBackendTelemetryEvidenceItem(items);
 
@@ -2347,6 +2359,139 @@ public class AdminController {
         );
     }
 
+    private void addCommercialIntegrationEvidenceItem(java.util.ArrayList<DashboardReadinessItemResponse> items) {
+        DashboardCommercialIntegrationEvidenceResponse evidence = commercialIntegrationEvidenceSnapshot();
+        if (evidence.result().isBlank() || "passed".equalsIgnoreCase(evidence.result())) {
+            return;
+        }
+        addReadinessItem(
+                items,
+                "WARNING",
+                "OPERATIONS",
+                "COMMERCIAL_INTEGRATION_EVIDENCE",
+                "Commercial integration evidence is %s: requiredVerified=%d/%d, failures=%d, planned=%d.".formatted(
+                        evidence.result(),
+                        evidence.requiredVerifiedCount(),
+                        evidence.requiredCount(),
+                        evidence.failureCount(),
+                        evidence.plannedCount()
+                ),
+                "dashboard",
+                "dashboard-readiness-panel",
+                "Commercial integration",
+                commercialIntegrationEvidenceReportPath == null ? "" : commercialIntegrationEvidenceReportPath,
+                "powershell -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\write-commercial-integration-evidence.ps1",
+                ".github/workflows/manual-commercial-integration-evidence.yml",
+                "",
+                evidence.secretPolicy().isBlank()
+                        ? "Collect sanitized target commercial integration evidence before production/B2B readiness."
+                        : evidence.secretPolicy()
+        );
+    }
+
+    private DashboardCommercialIntegrationEvidenceResponse commercialIntegrationEvidenceSnapshot() {
+        JsonNode report = readOptionalJsonReport(commercialIntegrationEvidenceReportPath);
+        if (report == null) {
+            return DashboardCommercialIntegrationEvidenceResponse.empty();
+        }
+        JsonNode summary = report.path("summary");
+        return new DashboardCommercialIntegrationEvidenceResponse(
+                jsonText(report, "result"),
+                jsonText(report, "generatedAt"),
+                jsonText(report, "environmentName"),
+                jsonText(report, "targetCluster"),
+                jsonText(report, "operatorName"),
+                jsonInt(summary, "integrationCount"),
+                jsonInt(summary, "verifiedCount"),
+                jsonInt(summary, "requiredCount"),
+                jsonInt(summary, "requiredVerifiedCount"),
+                jsonBoolean(summary, "paymentProviderAdapterReadinessReviewed"),
+                jsonText(summary, "paymentProviderAdapterReadinessStatus"),
+                jsonInt(summary, "paymentProviderAdapterWebhookReadyProfileCount"),
+                jsonInt(summary, "paymentProviderAdapterNativeReadyProfileCount"),
+                jsonInt(summary, "failureCount"),
+                jsonInt(summary, "plannedCount"),
+                commercialEvidenceChecks(report.path("checks")),
+                jsonText(report, "decisionRule"),
+                jsonText(report, "scopePolicy"),
+                jsonText(report, "secretPolicy")
+        );
+    }
+
+    private void addCommercialApprovalEvidenceItem(java.util.ArrayList<DashboardReadinessItemResponse> items) {
+        DashboardCommercialApprovalEvidenceResponse evidence = commercialApprovalEvidenceSnapshot();
+        if (evidence.result().isBlank() || "passed".equalsIgnoreCase(evidence.result())) {
+            return;
+        }
+        addReadinessItem(
+                items,
+                "WARNING",
+                "OPERATIONS",
+                "COMMERCIAL_APPROVAL_EVIDENCE",
+                "Commercial approval evidence is %s: failures=%d, checks=%d, priceListApproved=%d.".formatted(
+                        evidence.result(),
+                        evidence.failureCount(),
+                        evidence.checkCount(),
+                        evidence.pricingPolicyProposalApprovedPriceListCount()
+                ),
+                "dashboard",
+                "dashboard-readiness-panel",
+                "Commercial approval",
+                commercialApprovalEvidenceReportPath == null ? "" : commercialApprovalEvidenceReportPath,
+                "powershell -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\write-commercial-approval-evidence.ps1",
+                ".github/workflows/manual-commercial-approval-evidence.yml",
+                "",
+                evidence.secretPolicy().isBlank()
+                        ? "Collect sanitized target commercial/legal approval evidence before production/B2B readiness."
+                        : evidence.secretPolicy()
+        );
+    }
+
+    private DashboardCommercialApprovalEvidenceResponse commercialApprovalEvidenceSnapshot() {
+        JsonNode report = readOptionalJsonReport(commercialApprovalEvidenceReportPath);
+        if (report == null) {
+            return DashboardCommercialApprovalEvidenceResponse.empty();
+        }
+        JsonNode summary = report.path("summary");
+        return new DashboardCommercialApprovalEvidenceResponse(
+                jsonText(report, "result"),
+                jsonText(report, "generatedAt"),
+                jsonText(report, "productVersion"),
+                jsonText(report, "approvedBy"),
+                jsonText(report, "approvedAt"),
+                jsonInt(summary, "passedCount"),
+                jsonInt(summary, "failureCount"),
+                jsonInt(summary, "checkCount"),
+                jsonBoolean(summary, "pricingPolicyProposalCommercialApproved"),
+                jsonInt(summary, "pricingPolicyProposalCommercialApprovedCount"),
+                jsonInt(summary, "pricingPolicyProposalApprovedPriceListCount"),
+                Map.copyOf(jsonBooleanMap(report.path("confirmations"))),
+                Map.copyOf(jsonTextMap(report.path("evidenceRefs"))),
+                commercialEvidenceChecks(report.path("checks")),
+                jsonText(report, "decisionRule"),
+                jsonText(report, "scopePolicy"),
+                jsonText(report, "secretPolicy")
+        );
+    }
+
+    private List<DashboardCommercialEvidenceCheckResponse> commercialEvidenceChecks(JsonNode checkNodes) {
+        if (!checkNodes.isArray()) {
+            return List.of();
+        }
+        java.util.ArrayList<DashboardCommercialEvidenceCheckResponse> checks = new java.util.ArrayList<>();
+        for (JsonNode check : checkNodes) {
+            checks.add(new DashboardCommercialEvidenceCheckResponse(
+                    jsonText(check, "id"),
+                    jsonText(check, "name"),
+                    jsonText(check, "status"),
+                    jsonBoolean(check, "passed"),
+                    jsonText(check, "detail"),
+                    jsonText(check, "evidenceRef")
+            ));
+        }
+        return List.copyOf(checks);
+    }
+
     private void addDataFlowStoragePlanItem(java.util.ArrayList<DashboardReadinessItemResponse> items) {
         DashboardDataFlowStoragePlanResponse plan = dataFlowStoragePlanSnapshot();
         if (plan.result().isBlank() || "passed".equalsIgnoreCase(plan.result())) {
@@ -2869,6 +3014,15 @@ public class AdminController {
                 values.put(entry.getKey(), text);
             }
         });
+        return values;
+    }
+
+    private java.util.LinkedHashMap<String, Boolean> jsonBooleanMap(JsonNode node) {
+        java.util.LinkedHashMap<String, Boolean> values = new java.util.LinkedHashMap<>();
+        if (node == null || !node.isObject()) {
+            return values;
+        }
+        node.fields().forEachRemaining(entry -> values.put(entry.getKey(), entry.getValue().asBoolean(false)));
         return values;
     }
 
