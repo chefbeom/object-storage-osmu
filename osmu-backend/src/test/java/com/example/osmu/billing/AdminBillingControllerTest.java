@@ -484,6 +484,23 @@ class AdminBillingControllerTest {
                 .andExpect(content().string(containsString("\"Billing Export Org 1\"")))
                 .andExpect(content().string(containsString("\"25.000000\"")));
 
+        mockMvc.perform(get("/api/admin/billing/chargeback-daily-rollup/export.csv")
+                        .header("Authorization", "Bearer " + adminToken)
+                        .param("storageGbMonthRate", "1073741824")
+                        .param("ingressGbRate", "1073741824")
+                        .param("operationThousandRate", "1000")
+                        .param("currency", "krw")
+                        .param("days", "7")
+                        .param("limit", "50"))
+                .andExpect(status().isOk())
+                .andExpect(content().contentTypeCompatibleWith("text/csv"))
+                .andExpect(header().string(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"osmu-chargeback-daily-rollup.csv\""))
+                .andExpect(content().string(containsString("rowType,currency,generatedAt,rollupSource,granularity")))
+                .andExpect(content().string(containsString("\"TOTAL\",\"KRW\"")))
+                .andExpect(content().string(containsString("\"DAILY_ORGANIZATION\",\"KRW\"")))
+                .andExpect(content().string(containsString("\"Billing Export Org 1\"")))
+                .andExpect(content().string(containsString("\"25.000000\"")));
+
         mockMvc.perform(get("/api/admin/billing/chargeback-invoice-draft/export.csv")
                         .header("Authorization", "Bearer " + adminToken)
                         .param("storageGbMonthRate", "1073741824")
@@ -537,6 +554,12 @@ class AdminBillingControllerTest {
                 .andExpect(jsonPath("$.data.organizations[*].organizationName", not(hasItem("Billing Hidden Org 1"))));
 
         mockMvc.perform(get("/api/admin/billing/chargeback-preview/export.csv")
+                        .header("Authorization", "Bearer " + orgAdminToken))
+                .andExpect(status().isOk())
+                .andExpect(content().string(containsString("Billing Visible Org 1")))
+                .andExpect(content().string(not(containsString("Billing Hidden Org 1"))));
+
+        mockMvc.perform(get("/api/admin/billing/chargeback-daily-rollup/export.csv")
                         .header("Authorization", "Bearer " + orgAdminToken))
                 .andExpect(status().isOk())
                 .andExpect(content().string(containsString("Billing Visible Org 1")))

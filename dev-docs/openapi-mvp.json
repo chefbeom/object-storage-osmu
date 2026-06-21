@@ -777,6 +777,80 @@
         }
       }
     },
+    "/api/admin/billing/chargeback-daily-rollup/export.csv": {
+      "get": {
+        "tags": ["Billing", "Admin"],
+        "operationId": "downloadChargebackDailyRollupCsv",
+        "summary": "Export scoped daily chargeback trend rows as CSV",
+        "parameters": [
+          {
+            "name": "from",
+            "in": "query",
+            "schema": { "type": "string", "format": "date-time" }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "schema": { "type": "string", "format": "date-time" }
+          },
+          {
+            "name": "currency",
+            "in": "query",
+            "schema": { "type": "string", "default": "USD" }
+          },
+          {
+            "name": "storageGbMonthRate",
+            "in": "query",
+            "schema": { "type": "number", "format": "double", "minimum": 0 }
+          },
+          {
+            "name": "ingressGbRate",
+            "in": "query",
+            "schema": { "type": "number", "format": "double", "minimum": 0 }
+          },
+          {
+            "name": "egressGbRate",
+            "in": "query",
+            "schema": { "type": "number", "format": "double", "minimum": 0 }
+          },
+          {
+            "name": "internalGbRate",
+            "in": "query",
+            "schema": { "type": "number", "format": "double", "minimum": 0 }
+          },
+          {
+            "name": "operationThousandRate",
+            "in": "query",
+            "schema": { "type": "number", "format": "double", "minimum": 0 }
+          },
+          {
+            "name": "eventScanLimit",
+            "in": "query",
+            "schema": { "type": "integer", "default": 10000, "maximum": 50000 }
+          },
+          {
+            "name": "days",
+            "in": "query",
+            "schema": { "type": "integer", "default": 30, "maximum": 366 }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": { "type": "integer", "default": 200, "maximum": 1000 }
+          },
+          {
+            "name": "materialized",
+            "in": "query",
+            "schema": { "type": "boolean", "default": false }
+          }
+        ],
+        "responses": {
+          "200": { "$ref": "#/components/responses/CsvOk" },
+          "400": { "$ref": "#/components/responses/Error" },
+          "403": { "$ref": "#/components/responses/Error" }
+        }
+      }
+    },
     "/api/admin/billing/chargeback-alerts": {
       "get": {
         "tags": ["Billing", "Admin"],

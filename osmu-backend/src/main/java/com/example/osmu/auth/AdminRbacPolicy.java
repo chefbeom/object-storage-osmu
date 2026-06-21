@@ -26,6 +26,7 @@ public class AdminRbacPolicy {
             RouteRule.exact("GET", "/api/admin/billing/chargeback-preview"),
             RouteRule.exact("GET", "/api/admin/billing/chargeback-daily-rollup"),
             RouteRule.exact("GET", "/api/admin/billing/chargeback-preview/export.csv"),
+            RouteRule.exact("GET", "/api/admin/billing/chargeback-daily-rollup/export.csv"),
             RouteRule.exact("GET", "/api/admin/billing/chargeback-invoice-draft/export.csv"),
             RouteRule.exact("GET", "/api/admin/teams"),
             RouteRule.exact("POST", "/api/admin/teams"),

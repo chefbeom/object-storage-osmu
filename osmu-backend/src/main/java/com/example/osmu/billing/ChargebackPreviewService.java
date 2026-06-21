@@ -308,6 +308,82 @@ public class ChargebackPreviewService {
         return csv.toString();
     }
 
+    public String exportDailyRollupCsv(
+            AuthenticatedUser actor,
+            ChargebackPreviewRequest request,
+            Integer days,
+            Integer limit,
+            boolean materialized
+    ) {
+        ChargebackDailyRollupResponse rollup = dailyRollup(actor, request, days, limit, materialized);
+        StringBuilder csv = new StringBuilder("rowType,currency,generatedAt,rollupSource,granularity,days,limit,inputPointCount,pointCount,day,organizationId,organizationName,bucketCount,objectCount,usedBytes,ingressBytes,egressBytes,internalBytes,billableOperationCount,failedOperationCount,cancelledOperationCount,projectedStorageCost,ingressCost,egressCost,internalCost,operationCost,estimatedTotalCost,note\n");
+        appendCsvRow(
+                csv,
+                "TOTAL",
+                rollup.currency(),
+                rollup.generatedAt(),
+                rollup.rollupSource(),
+                rollup.granularity(),
+                rollup.days(),
+                rollup.limit(),
+                rollup.inputPointCount(),
+                rollup.pointCount(),
+                "",
+                "",
+                "TOTAL",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                rollup.totalEstimatedCost(),
+                "Aggregate daily chargeback trend only - not a final invoice or AWS billing parity report."
+        );
+        for (ChargebackDailyRollupPointResponse point : rollup.points()) {
+            appendCsvRow(
+                    csv,
+                    "DAILY_ORGANIZATION",
+                    rollup.currency(),
+                    rollup.generatedAt(),
+                    rollup.rollupSource(),
+                    rollup.granularity(),
+                    rollup.days(),
+                    rollup.limit(),
+                    rollup.inputPointCount(),
+                    rollup.pointCount(),
+                    point.day(),
+                    point.organizationId(),
+                    point.organizationName(),
+                    point.bucketCount(),
+                    point.objectCount(),
+                    point.usedBytes(),
+                    point.ingressBytes(),
+                    point.egressBytes(),
+                    point.internalBytes(),
+                    point.billableOperationCount(),
+                    point.failedOperationCount(),
+                    point.cancelledOperationCount(),
+                    point.projectedStorageCost(),
+                    point.ingressCost(),
+                    point.egressCost(),
+                    point.internalCost(),
+                    point.operationCost(),
+                    point.estimatedTotalCost(),
+                    rollup.storageCostPolicy()
+            );
+        }
+        return csv.toString();
+    }
+
     public String exportInvoiceDraftCsv(AuthenticatedUser actor, ChargebackPreviewRequest request) {
         ChargebackPreviewResponse preview = preview(actor, request);
         StringBuilder csv = new StringBuilder("rowType,invoiceNumber,invoiceStatus,currency,from,to,generatedAt,organizationId,organizationName,bucketCount,objectCount,usedBytes,storageCost,trafficCost,operationCost,estimatedTotalCost,note\n");

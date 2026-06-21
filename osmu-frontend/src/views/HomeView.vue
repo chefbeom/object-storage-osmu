@@ -425,6 +425,7 @@
         @approve-billing-pricing-policy-proposal-price-list="handleApproveBillingPricingPolicyProposalPriceList"
         @queue-chargeback-alert-notifications="handleQueueChargebackAlertNotifications"
         @export-chargeback-csv="handleExportChargebackCsv"
+        @export-chargeback-daily-rollup-csv="handleExportChargebackDailyRollupCsv"
         @export-chargeback-invoice-draft-csv="handleExportChargebackInvoiceDraftCsv"
         @create-chargeback-invoice-drafts="handleCreateChargebackInvoiceDrafts"
         @approve-chargeback-invoice-draft="handleApproveChargebackInvoiceDraft"
@@ -569,6 +570,7 @@ import {
   deleteTeam,
   deleteQuotaPolicy,
   deleteStoredMultipartUploadSession,
+  downloadChargebackDailyRollupCsv,
   downloadChargebackInvoiceDraftCsv,
   downloadChargebackPreviewCsv,
   downloadStorageExpansionGitOpsArtifactBundle,
@@ -2787,6 +2789,18 @@ async function handleExportChargebackCsv() {
   if (blob) {
     downloadBlob(blob, `osmu-chargeback-preview-${new Date().toISOString().slice(0, 10)}.csv`)
     setStatusMessage('Chargeback CSV export complete.')
+  }
+}
+
+async function handleExportChargebackDailyRollupCsv() {
+  const blob = await runAction(() => downloadChargebackDailyRollupCsv({
+    ...chargebackPreviewPayload(),
+    days: 30,
+    limit: 200,
+  }))
+  if (blob) {
+    downloadBlob(blob, `osmu-chargeback-daily-rollup-${new Date().toISOString().slice(0, 10)}.csv`)
+    setStatusMessage('Chargeback daily rollup CSV export complete.')
   }
 }
 

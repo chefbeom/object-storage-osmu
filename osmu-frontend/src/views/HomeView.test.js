@@ -359,6 +359,7 @@ test('HomeView exposes stable selectors for browser E2E flows', () => {
     'chargeback-refresh-button',
     'chargeback-reset-button',
     'chargeback-export-button',
+    'chargeback-daily-rollup-export-button',
     'chargeback-invoice-draft-export-button',
     'chargeback-invoice-draft-save-button',
     'chargeback-notification-queue-button',

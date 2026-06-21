@@ -270,6 +270,7 @@
       @approve-billing-pricing-policy-proposal-price-list="$emit('approve-billing-pricing-policy-proposal-price-list', $event)"
       @queue-chargeback-alert-notifications="$emit('queue-chargeback-alert-notifications')"
       @export-chargeback-csv="$emit('export-chargeback-csv')"
+      @export-chargeback-daily-rollup-csv="$emit('export-chargeback-daily-rollup-csv')"
       @export-chargeback-invoice-draft-csv="$emit('export-chargeback-invoice-draft-csv')"
       @create-chargeback-invoice-drafts="$emit('create-chargeback-invoice-drafts')"
       @approve-chargeback-invoice-draft="$emit('approve-chargeback-invoice-draft', $event)"
@@ -681,6 +682,7 @@ defineEmits([
   'approve-billing-pricing-policy-proposal-price-list',
   'queue-chargeback-alert-notifications',
   'export-chargeback-csv',
+  'export-chargeback-daily-rollup-csv',
   'export-chargeback-invoice-draft-csv',
   'create-chargeback-invoice-drafts',
   'approve-chargeback-invoice-draft',

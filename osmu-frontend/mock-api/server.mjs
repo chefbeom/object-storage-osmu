@@ -573,6 +573,10 @@ function handleAdminRoute(request, response, path, jsonBody, url) {
     sendCsv(response, 'osmu-chargeback-preview.csv', chargebackPreviewCsv(url))
     return
   }
+  if (request.method === 'GET' && path === '/admin/billing/chargeback-daily-rollup/export.csv') {
+    sendCsv(response, 'osmu-chargeback-daily-rollup.csv', chargebackDailyRollupCsv(url))
+    return
+  }
   if (request.method === 'GET' && path === '/admin/billing/chargeback-invoice-draft/export.csv') {
     sendCsv(response, 'osmu-chargeback-invoice-draft.csv', chargebackInvoiceDraftCsv(url))
     return
@@ -2540,6 +2544,75 @@ function chargebackPreviewCsv(url) {
   return rows.map((row) => row.map(csvCell).join(',')).join('\n') + '\n'
 }
 
+function chargebackDailyRollupCsv(url) {
+  const rollup = chargebackDailyRollup(url)
+  const points = rollup.points || []
+  const rows = [
+    ['rowType', 'currency', 'generatedAt', 'rollupSource', 'granularity', 'days', 'limit', 'inputPointCount', 'pointCount', 'day', 'organizationId', 'organizationName', 'bucketCount', 'objectCount', 'usedBytes', 'ingressBytes', 'egressBytes', 'internalBytes', 'billableOperationCount', 'failedOperationCount', 'cancelledOperationCount', 'projectedStorageCost', 'ingressCost', 'egressCost', 'internalCost', 'operationCost', 'estimatedTotalCost', 'note'],
+    [
+      'TOTAL',
+      rollup.currency,
+      rollup.generatedAt,
+      rollup.rollupSource,
+      rollup.granularity,
+      rollup.days,
+      rollup.limit,
+      rollup.inputPointCount,
+      rollup.pointCount,
+      '',
+      '',
+      'TOTAL',
+      '',
+      '',
+      '',
+      '',
+      '',
+      '',
+      '',
+      '',
+      '',
+      '',
+      '',
+      '',
+      '',
+      '',
+      rollup.totalEstimatedCost,
+      'Aggregate daily chargeback trend only - not a final invoice or AWS billing parity report.',
+    ],
+    ...points.map((point) => [
+      'DAILY_ORGANIZATION',
+      rollup.currency,
+      rollup.generatedAt,
+      rollup.rollupSource,
+      rollup.granularity,
+      rollup.days,
+      rollup.limit,
+      rollup.inputPointCount,
+      rollup.pointCount,
+      point.day,
+      point.organizationId,
+      point.organizationName,
+      point.bucketCount,
+      point.objectCount,
+      point.usedBytes,
+      point.ingressBytes,
+      point.egressBytes,
+      point.internalBytes,
+      point.billableOperationCount,
+      point.failedOperationCount,
+      point.cancelledOperationCount,
+      point.projectedStorageCost,
+      point.ingressCost,
+      point.egressCost,
+      point.internalCost,
+      point.operationCost,
+      point.estimatedTotalCost,
+      rollup.storageCostPolicy,
+    ]),
+  ]
+  return rows.map((row) => row.map(csvCell).join(',')).join('\n') + '\n'
+}
+
 function chargebackInvoiceDraftCsv(url) {
   const preview = chargebackPreview(url)
   const generatedDate = String(preview.generatedAt || new Date().toISOString()).slice(0, 10).replace(/-/g, '')
@@ -3222,6 +3295,12 @@ async function runSelfTest() {
     })).json()
     if (!chargebackDailyRollup.data || chargebackDailyRollup.data.mode !== 'CHARGEBACK_DAILY_ROLLUP' || chargebackDailyRollup.data.rollupSource !== 'DATA_FLOW_DAILY_ROLLUP' || chargebackDailyRollup.data.pointCount < 1 || !chargebackDailyRollup.data.points?.length) {
       throw new Error('chargeback daily rollup self-test failed')
+    }
+    const chargebackDailyRollupCsv = await (await fetch(`${base}/admin/billing/chargeback-daily-rollup/export.csv?storageGbMonthRate=0.02&egressGbRate=0.01&operationThousandRate=0.004&days=30&limit=200`, {
+      headers: { Authorization: `Bearer ${login.data.accessToken}` },
+    })).text()
+    if (!chargebackDailyRollupCsv.includes('DAILY_ORGANIZATION') || !chargebackDailyRollupCsv.includes('Mock Organization')) {
+      throw new Error('chargeback daily rollup CSV self-test failed')
     }
     const chargebackAlerts = await (await fetch(`${base}/admin/billing/chargeback-alerts?operationThousandRate=0.004`, {
       headers: { Authorization: `Bearer ${login.data.accessToken}` },

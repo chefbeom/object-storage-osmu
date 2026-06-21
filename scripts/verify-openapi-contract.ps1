@@ -83,6 +83,7 @@ $requiredOperations = @(
     @("/api/admin/billing/pricing-policy-proposals/{proposalId}/commercial-approval", "post", "approveBillingPricingPolicyProposalPriceList"),
     @("/api/admin/billing/chargeback-preview", "get", "getChargebackPreview"),
     @("/api/admin/billing/chargeback-daily-rollup", "get", "getChargebackDailyRollup"),
+    @("/api/admin/billing/chargeback-daily-rollup/export.csv", "get", "downloadChargebackDailyRollupCsv"),
     @("/api/admin/billing/chargeback-alerts", "get", "getChargebackAlerts"),
     @("/api/admin/billing/chargeback-alert-notifications/preview", "get", "getChargebackAlertNotificationPreview"),
     @("/api/admin/billing/chargeback-alert-notifications/outbox", "get", "getChargebackAlertNotificationOutbox"),

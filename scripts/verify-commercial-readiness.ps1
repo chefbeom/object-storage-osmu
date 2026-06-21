@@ -36,6 +36,7 @@ Assert-Contains $content "Do not add hard runtime lockouts before product/legal 
 Assert-Contains $content "Final prices: pending market validation and legal/commercial approval." "Commercial readiness draft"
 Assert-Contains $content 'Internal chargeback preview and invoice workflow:' "Commercial readiness draft"
 Assert-Contains $content 'GET /api/admin/billing/chargeback-daily-rollup' "Commercial readiness draft"
+Assert-Contains $content 'GET /api/admin/billing/chargeback-daily-rollup/export.csv' "Commercial readiness draft"
 Assert-Contains $content 'data-flow daily rollup chargeback trend' "Commercial readiness draft"
 Assert-Contains $content 'POST /api/admin/billing/chargeback-adapter-retry-worker/run' "Commercial readiness draft"
 Assert-Contains $content 'GET /api/admin/billing/payment-provider-adapter-readiness' "Commercial readiness draft"

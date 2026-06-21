@@ -135,6 +135,14 @@
         CSV
       </button>
       <button
+        data-testid="chargeback-daily-rollup-export-button"
+        type="button"
+        class="ghost"
+        @click="$emit('export-chargeback-daily-rollup-csv')"
+      >
+        Trend CSV
+      </button>
+      <button
         data-testid="chargeback-invoice-draft-export-button"
         type="button"
         class="ghost"
@@ -703,6 +711,7 @@ const emit = defineEmits([
   'approve-billing-pricing-policy-proposal-price-list',
   'queue-chargeback-alert-notifications',
   'export-chargeback-csv',
+  'export-chargeback-daily-rollup-csv',
   'export-chargeback-invoice-draft-csv',
   'create-chargeback-invoice-drafts',
   'approve-chargeback-invoice-draft',

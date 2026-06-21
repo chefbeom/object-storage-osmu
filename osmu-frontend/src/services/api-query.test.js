@@ -17,6 +17,7 @@ import {
   deleteDashboardLayoutDefault,
   deleteDashboardLayoutPreset,
   deleteObjectShareLink,
+  downloadChargebackDailyRollupCsv,
   downloadChargebackInvoiceDraftCsv,
   downloadChargebackPreviewCsv,
   downloadAuditLogsCsv,
@@ -767,6 +768,51 @@ test('downloadChargebackPreviewCsv exports current admin billing preview query',
     assert.equal(url.searchParams.get('internalGbRate'), '0.05')
     assert.equal(url.searchParams.get('operationThousandRate'), '0.01')
     assert.equal(url.searchParams.get('eventScanLimit'), '2500')
+    assert.equal(fetchMock.calls[0].options.method, undefined)
+    assert.equal(await blob.text(), 'rowType,currency\nTOTAL,KRW\n')
+  } finally {
+    cleanupFetch(fetchMock)
+  }
+})
+
+test('downloadChargebackDailyRollupCsv exports current admin billing trend query', async () => {
+  const fetchMock = mockFetch([
+    () => new Response('rowType,currency\nTOTAL,KRW\n', {
+      status: 200,
+      headers: { 'Content-Type': 'text/csv' },
+    }),
+  ])
+
+  try {
+    const blob = await downloadChargebackDailyRollupCsv({
+      from: '2026-06-01T00:00:00.000Z',
+      to: '2026-06-30T23:59:59.000Z',
+      currency: 'krw',
+      storageGbMonthRate: '1.25',
+      ingressGbRate: '0.10',
+      egressGbRate: '0.20',
+      internalGbRate: '0.05',
+      operationThousandRate: '0.01',
+      eventScanLimit: 2500,
+      days: 30,
+      limit: 100,
+      materialized: true,
+    })
+
+    const url = new URL(fetchMock.calls[0].url)
+    assert.equal(url.pathname, '/api/admin/billing/chargeback-daily-rollup/export.csv')
+    assert.equal(url.searchParams.get('from'), '2026-06-01T00:00:00.000Z')
+    assert.equal(url.searchParams.get('to'), '2026-06-30T23:59:59.000Z')
+    assert.equal(url.searchParams.get('currency'), 'krw')
+    assert.equal(url.searchParams.get('storageGbMonthRate'), '1.25')
+    assert.equal(url.searchParams.get('ingressGbRate'), '0.10')
+    assert.equal(url.searchParams.get('egressGbRate'), '0.20')
+    assert.equal(url.searchParams.get('internalGbRate'), '0.05')
+    assert.equal(url.searchParams.get('operationThousandRate'), '0.01')
+    assert.equal(url.searchParams.get('eventScanLimit'), '2500')
+    assert.equal(url.searchParams.get('days'), '30')
+    assert.equal(url.searchParams.get('limit'), '100')
+    assert.equal(url.searchParams.get('materialized'), 'true')
     assert.equal(fetchMock.calls[0].options.method, undefined)
     assert.equal(await blob.text(), 'rowType,currency\nTOTAL,KRW\n')
   } finally {

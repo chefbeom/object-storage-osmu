@@ -681,6 +681,46 @@ public class AdminBillingController {
                 .body(csv);
     }
 
+    @GetMapping(value = "/chargeback-daily-rollup/export.csv", produces = "text/csv")
+    public ResponseEntity<String> exportChargebackDailyRollupCsv(
+            @RequestParam(name = "from", required = false) String from,
+            @RequestParam(name = "to", required = false) String to,
+            @RequestParam(name = "currency", required = false) String currency,
+            @RequestParam(name = "storageGbMonthRate", required = false) BigDecimal storageGbMonthRate,
+            @RequestParam(name = "ingressGbRate", required = false) BigDecimal ingressGbRate,
+            @RequestParam(name = "egressGbRate", required = false) BigDecimal egressGbRate,
+            @RequestParam(name = "internalGbRate", required = false) BigDecimal internalGbRate,
+            @RequestParam(name = "operationThousandRate", required = false) BigDecimal operationThousandRate,
+            @RequestParam(name = "eventScanLimit", required = false) Integer eventScanLimit,
+            @RequestParam(name = "days", required = false) Integer days,
+            @RequestParam(name = "limit", required = false) Integer limit,
+            @RequestParam(name = "materialized", required = false) Boolean materialized,
+            HttpServletRequest request
+    ) {
+        AuthenticatedUser actor = authContext.currentUser(request);
+        String csv = chargebackPreviewService.exportDailyRollupCsv(
+                actor,
+                chargebackRequest(
+                        from,
+                        to,
+                        currency,
+                        storageGbMonthRate,
+                        ingressGbRate,
+                        egressGbRate,
+                        internalGbRate,
+                        operationThousandRate,
+                        eventScanLimit
+                ),
+                days,
+                limit,
+                materialized != null && materialized
+        );
+        return ResponseEntity.ok()
+                .contentType(MediaType.parseMediaType("text/csv"))
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"osmu-chargeback-daily-rollup.csv\"")
+                .body(csv);
+    }
+
     @GetMapping(value = "/chargeback-invoice-draft/export.csv", produces = "text/csv")
     public ResponseEntity<String> exportChargebackInvoiceDraftCsv(
             @RequestParam(name = "from", required = false) String from,
