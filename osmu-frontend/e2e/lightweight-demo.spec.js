@@ -432,6 +432,10 @@ test('admin can complete lightweight storage portal click path', async ({ page }
   await expect(page.getByTestId('audit-list')).toContainText(/BUCKET|OBJECT|LOGIN/)
   await expect(page.getByTestId('audit-entry').first()).toContainText('SUCCESS')
   await expect(page.getByTestId('audit-next-button')).toBeVisible()
+  const auditDownloadPromise = page.waitForEvent('download')
+  await page.getByTestId('audit-export-button').click()
+  const auditDownload = await auditDownloadPromise
+  expect(auditDownload.suggestedFilename()).toBe('osmu-audit.csv')
   await page.getByTestId('audit-reset-button').click()
   await expect(page.getByTestId('audit-result-select')).toHaveValue('')
   await expect(page.getByTestId('audit-limit-input')).toHaveValue('50')

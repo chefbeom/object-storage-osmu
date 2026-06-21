@@ -1826,7 +1826,7 @@ ID:
 - 절차: AdminAuditLogView에서 감사 로그 필터를 적용하고 `nextCursor`가 있으면 다음 로그를 로드한다.
 - 기대 결과: `/api/admin/audit-logs`에 filter query가 전송되고 결과 목록이 갱신된다. 다음 로그 클릭 시 같은 filter와 cursor query가 전송되고 결과가 목록 뒤에 추가된다.
 - 우선순위: P1
-- 자동화 여부: Automated (`npm run test:unit` API filter/export wrapper, Browser E2E result/limit filter, reset, list, and next-button render path).
+- 자동화 여부: Automated (`npm run test:unit` API filter/export wrapper, Browser E2E result/limit filter, CSV download filename, reset, list, and next-button render path).
 
 ### TC-FE-011
 
