@@ -138,6 +138,22 @@
       </div>
 
       <section
+        v-if="uploadStorageRemediation"
+        class="object-storage-remediation"
+        data-testid="object-storage-remediation-panel"
+        aria-live="polite"
+      >
+        <div>
+          <p class="eyebrow">Storage remediation</p>
+          <strong data-testid="object-storage-remediation-title">{{ uploadStorageRemediation.title }}</strong>
+          <small data-testid="object-storage-remediation-code">{{ uploadStorageRemediation.codeLabel }}</small>
+        </div>
+        <ul data-testid="object-storage-remediation-steps">
+          <li v-for="step in uploadStorageRemediation.steps" :key="step">{{ step }}</li>
+        </ul>
+      </section>
+
+      <section
         v-if="visibleMultipartResumeSessions.length > 0"
         class="resume-panel"
         aria-label="Pending multipart uploads"
@@ -370,7 +386,9 @@
 </template>
 
 <script setup>
-defineProps({
+import { computed } from 'vue'
+
+const props = defineProps({
   selectedBucket: { type: String, required: true },
   objectPrefix: { type: String, required: true },
   objectSearch: { type: String, required: true },
@@ -406,6 +424,24 @@ defineProps({
   formatObjectTags: { type: Function, required: true },
   metadataStatusClass: { type: Function, required: true },
   metadataStatusLabel: { type: Function, required: true },
+})
+
+const uploadStorageRemediation = computed(() => {
+  const code = String(props.uploadState?.errorCode || '').toUpperCase()
+  const status = Number(props.uploadState?.errorStatus || 0)
+  if (!props.uploadState?.retryable || (code !== 'STORAGE_ERROR' && status !== 502)) {
+    return null
+  }
+  const requestId = props.uploadState?.requestId ? `Request ID: ${props.uploadState.requestId}` : 'Request ID unavailable'
+  return {
+    title: 'Object storage is unavailable.',
+    codeLabel: code && status ? `${code} / HTTP ${status} / ${requestId}` : `${code || 'STORAGE_ERROR'} / ${requestId}`,
+    steps: [
+      'Retry the upload after checking bucket selection and object key.',
+      'Check storage backend status before trying large or multipart uploads again.',
+      'Use the Request ID to correlate backend logs if the storage error repeats.',
+    ],
+  }
 })
 
 defineEmits([

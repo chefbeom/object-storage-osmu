@@ -1275,7 +1275,17 @@ const bucketLifecycleXml = reactive({ content: '', ruleCount: 0, savedCount: nul
 const bucketTags = reactive({ content: '', tagCount: 0, savedCount: null, pending: false })
 const auditFilter = reactive({ eventType: '', actorId: '', requestId: '', targetType: '', targetId: '', result: '', from: '', to: '', limit: 50 })
 const dataFlowFilter = reactive({ from: '', to: '', bucketName: '', actorId: '', source: '', operation: '', status: '', limit: 50, months: 12, monthlyMaterialized: false })
-const uploadState = reactive({ active: false, loadedBytes: 0, totalBytes: 0, percent: 0, message: '', retryable: false })
+const uploadState = reactive({
+  active: false,
+  loadedBytes: 0,
+  totalBytes: 0,
+  percent: 0,
+  message: '',
+  retryable: false,
+  errorCode: '',
+  errorStatus: 0,
+  requestId: '',
+})
 const dataFlowMonitoring = reactive({
   traffic: {
     uploadedBytes: 0,
@@ -3489,6 +3499,7 @@ function handleFileChange(event) {
   lastUploadRequest.value = null
   uploadState.retryable = false
   uploadState.message = ''
+  resetUploadErrorState()
   if (!objectForm.key && objectForm.file) {
     objectForm.key = objectForm.file.name
   }
@@ -3527,6 +3538,7 @@ async function startObjectUpload(request) {
   uploadState.percent = 0
   uploadState.message = ''
   uploadState.retryable = false
+  resetUploadErrorState()
   clearError()
 
   try {
@@ -3540,6 +3552,7 @@ async function startObjectUpload(request) {
     })
     uploadState.percent = 100
     uploadState.retryable = false
+    resetUploadErrorState()
     lastUploadRequest.value = null
     objectForm.key = ''
     objectForm.tags = ''
@@ -3553,6 +3566,9 @@ async function startObjectUpload(request) {
     aborted ? setErrorMessage(message) : setError(error)
     uploadState.message = message
     uploadState.retryable = true
+    uploadState.errorCode = aborted ? '' : error?.code || ''
+    uploadState.errorStatus = aborted ? 0 : Number(error?.status || 0)
+    uploadState.requestId = aborted ? '' : error?.requestId || ''
     refreshPendingMultipartUploads()
   } finally {
     uploadState.active = false
@@ -3560,6 +3576,12 @@ async function startObjectUpload(request) {
       uploadController.value = null
     }
   }
+}
+
+function resetUploadErrorState() {
+  uploadState.errorCode = ''
+  uploadState.errorStatus = 0
+  uploadState.requestId = ''
 }
 
 function updateUploadProgress(progress) {

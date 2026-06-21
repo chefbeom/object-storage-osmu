@@ -1882,6 +1882,43 @@ tbody tr.selected {
   background: var(--color-primary);
 }
 
+.object-storage-remediation {
+  display: grid;
+  gap: 10px;
+  margin: 0 18px 14px;
+  padding: 12px 14px;
+  border: 1px solid #fed7aa;
+  border-radius: 8px;
+  background: #fff7ed;
+  color: #7c2d12;
+}
+
+.object-storage-remediation div {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.object-storage-remediation strong {
+  color: #7c2d12;
+  font-size: 15px;
+}
+
+.object-storage-remediation small,
+.object-storage-remediation li {
+  color: #9a3412;
+  font-size: 12px;
+  font-weight: 800;
+  overflow-wrap: anywhere;
+}
+
+.object-storage-remediation ul {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding-left: 18px;
+}
+
 .resume-panel {
   display: grid;
   padding: 0 18px 14px;

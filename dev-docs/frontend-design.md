@@ -42,6 +42,7 @@
 - tab reload 후에도 pending multipart 목록을 sessionStorage에서 복구하고, 같은 bucket/key/tags/file fingerprint가 선택되면 Resume 버튼으로 이어 올린다.
 - Backend가 반환한 session `expiresAt`으로 pending multipart 만료 여부를 표시하고, 만료 후 24시간이 지난 local resume session은 자동 정리한다.
 - 사용자 취소는 abort API를 호출하고 resume session을 삭제한다.
+- object upload에서 Backend의 `STORAGE_ERROR` 또는 HTTP 502를 받으면 `object-storage-remediation-panel`을 표시한다. 패널은 오류 code/status, Request ID, bucket/key 확인, storage backend 상태 확인, 대용량/multipart 재시도 전 운영 로그 상관관계 확인 절차를 보여주며 기존 Retry 버튼은 유지한다.
 
 이 문서는 Vue 기반 OSMU Web Portal 설계를 정의한다.
 

@@ -464,6 +464,16 @@
 - Priority: P1
 - Automated: `npm run mock:api:self-test`, `scripts/verify-frontend-mock-demo.ps1`, `scripts/verify-local.ps1 -SkipDocker -SkipBackend`
 
+### TC-FE-034
+
+- 기능: object storage 장애 업로드 remediation UX
+- 조건: 선택된 bucket이 있고 object upload API가 `STORAGE_ERROR` 또는 HTTP 502를 반환한다.
+- 입력: 파일 선택 후 upload 실행.
+- 절차: Object Explorer에서 업로드 실패를 발생시키고 Retry 버튼과 remediation panel 상태를 확인한다.
+- 기대 결과: `object-upload-retry-button`은 유지되고 `object-storage-remediation-panel`이 표시된다. 패널은 `object-storage-remediation-title`, `object-storage-remediation-code`, `object-storage-remediation-steps`를 통해 오류 code/status, Request ID, bucket/key 확인, storage backend 상태 확인, 대용량/multipart 재시도 전 운영 로그 상관관계 확인 절차를 보여준다. 사용자가 새 파일을 선택하거나 업로드가 성공하면 remediation 상태는 초기화된다.
+- 우선순위: P1
+- 자동화 여부: Automated (`npm run test:unit` source contract for upload storage remediation selectors, error state, `STORAGE_ERROR`, and retry flow). Browser/MinIO failure E2E pending.
+
 ### TC-DEMO-001
 
 - Feature: Current-machine MVP demo readiness report.
@@ -2508,6 +2518,7 @@ MVP 완료 전 다음 테스트는 반드시 통과해야 한다.
 - TC-FE-022
 - TC-FE-023
 - TC-FE-033
+- TC-FE-034
 - TC-DEMO-001
 - TC-DEMO-002
 - TC-DEMO-003

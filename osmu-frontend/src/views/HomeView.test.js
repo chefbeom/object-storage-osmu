@@ -255,6 +255,10 @@ test('HomeView exposes stable selectors for browser E2E flows', () => {
     'object-upload-cancel-button',
     'object-upload-retry-button',
     'object-upload-progress',
+    'object-storage-remediation-panel',
+    'object-storage-remediation-title',
+    'object-storage-remediation-code',
+    'object-storage-remediation-steps',
     'object-presigned-upload-url-button',
     'object-presigned-upload-complete-button',
     'object-presigned-url',
@@ -620,6 +624,10 @@ test('HomeView exposes stable selectors for browser E2E flows', () => {
   assert.match(dashboardSource, /:data-testid="`dashboard-widget-config-\$\{widget\.id\}`"/)
   assert.match(dashboardSource, /:data-testid="`dashboard-widget-section-\$\{section\.id\}`"/)
   assert.match(dashboardSource, /:data-testid="`dashboard-widget-category-\$\{categoryTestId\(group\.category\)\}`"/)
+  assert.match(dashboardSource, /uploadState = reactive\(\{[\s\S]*errorCode: ''[\s\S]*errorStatus: 0[\s\S]*requestId: ''/)
+  assert.match(dashboardSource, /uploadStorageRemediation/)
+  assert.match(dashboardSource, /STORAGE_ERROR/)
+  assert.match(dashboardSource, /object-storage-remediation-panel/)
   assert.match(dashboardSource, /availableDashboardWidgetGroups/)
   assert.match(dashboardSource, /visibleDashboardWidgetSections/)
   assert.match(dashboardSource, /addDashboardWidgetById/)
