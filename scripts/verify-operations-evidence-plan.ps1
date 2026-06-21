@@ -43,8 +43,8 @@ $fixture = [ordered]@{
     generatedAt = [DateTimeOffset]::Now.ToString("o")
     result = "pending"
     passedCount = 1
-    pendingCount = 3
-    summary = "passed=1 pending=3"
+    pendingCount = 4
+    summary = "passed=1 pending=4"
     checks = @(
         [ordered]@{
             name = "Storage expansion finalizer live evidence"
@@ -86,6 +86,21 @@ $fixture = [ordered]@{
             requiredEvidence = "approved support and SLA sign-off"
         },
         [ordered]@{
+            name = "Enterprise auth target smoke evidence"
+            category = "enterprise-auth"
+            passed = $false
+            status = "PENDING"
+            detail = "report not found"
+            evidencePath = ".osmu-run/latest-enterprise-auth-smoke.json"
+            requiredEvidence = "enterprise auth smoke result=passed from target IdP/directory"
+            remediation = [ordered]@{
+                command = "powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\write-enterprise-auth-smoke-plan.ps1 -Execute -AdminLoginId <admin> -AdminPassword <secret> -RequireOidc -RequireLdap"
+                workflow = ".github/workflows/enterprise-auth-smoke-ci.yml"
+                workflowCommand = "gh workflow run enterprise-auth-smoke-ci.yml -f run_live=true -f api_base=<api-base> -f admin_login_id=<admin> -f require_oidc=true -f require_ldap=true -f fail_if_not_passed=true"
+                note = "Requires OSMU_ENTERPRISE_AUTH_ADMIN_PASSWORD and optional LDAP/OIDC secrets, not OSMU_KUBECONFIG_BASE64."
+            }
+        },
+        [ordered]@{
             name = "IAM/RBAC finalizer report"
             category = "iam-rbac"
             passed = $true
@@ -117,8 +132,8 @@ $report = $reportText | ConvertFrom-Json
 
 Assert-True ($report.formatVersion -eq "osmu.operations-evidence-plan.v1") "Unexpected operations evidence plan formatVersion."
 Assert-True ($report.result -eq "action-required") "Expected action-required result."
-Assert-True ($report.pendingCount -eq 3) "Expected three pending checks."
-Assert-True ($report.actionCount -eq 2) "Expected two planned remediation actions."
+Assert-True ($report.pendingCount -eq 4) "Expected four pending checks."
+Assert-True ($report.actionCount -eq 3) "Expected three planned remediation actions."
 Assert-True ($report.unplannedCount -eq 1) "Expected one unplanned check."
 
 $actions = @($report.actions)
@@ -129,6 +144,10 @@ Assert-True ($actions[1].name -eq "Kubernetes DR finalizer live evidence") "Expe
 Assert-True ($actions[1].requiresOperatorApproval) "Kubernetes DR action should require operator approval."
 Assert-True ($actions[1].hasPlaceholders) "Kubernetes DR action should keep placeholder markers."
 Assert-True (@($actions[1].operatorInputs) -contains "<YYYYMMDDTHHMMSSZ>") "Kubernetes DR action should list backup timestamp placeholder."
+Assert-True ($actions[2].name -eq "Enterprise auth target smoke evidence") "Expected enterprise auth as third action."
+Assert-True ($actions[2].workflowCommand -like "gh workflow run enterprise-auth-smoke-ci.yml*") "Expected enterprise auth workflow command."
+Assert-True (-not $actions[2].requiresKubeconfigSecret) "Enterprise auth workflow should not require kubeconfig just because it uses run_live=true."
+Assert-True (@($actions[2].operatorInputs) -contains "<api-base>") "Enterprise auth action should list API base placeholder."
 
 Assert-Contains $markdown "# OSMU Operations Evidence Plan" "Operations evidence plan markdown"
 Assert-Contains $markdown "## Execution Order" "Operations evidence plan markdown"

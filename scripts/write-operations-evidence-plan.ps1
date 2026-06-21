@@ -75,12 +75,27 @@ function Test-OperatorApprovalRequired([string[]] $Values) {
     )
 }
 
-function Test-KubeconfigRequired([string[]] $Values) {
+function Test-KubeconfigRequired([string] $Category, [string] $Name, [string[]] $Values) {
     $combined = ($Values -join " ").ToLowerInvariant()
+    $identity = "$Category $Name".ToLowerInvariant()
+    $kubernetesScoped = (
+        $identity.Contains("kubernetes") -or
+        $identity.Contains("ha-dr") -or
+        $identity.Contains("storage-expansion") -or
+        $combined.Contains("kubectl") -or
+        $combined.Contains("kubernetes-") -or
+        $combined.Contains("verify-kubernetes") -or
+        $combined.Contains("finalize-kubernetes") -or
+        $combined.Contains("storage-expansion-finalizer")
+    )
+    if (-not $kubernetesScoped) {
+        return $false
+    }
     return (
-        $combined.Contains("run_live=true") -or
         $combined.Contains("osmu_kubeconfig_base64") -or
         $combined.Contains("kubectl") -or
+        $combined.Contains("run_live=true") -or
+        $combined.Contains("target cluster") -or
         $combined.Contains("kubernetes")
     )
 }
@@ -151,7 +166,7 @@ foreach ($check in $selectedChecks) {
         operatorInputs = @($placeholders)
         hasPlaceholders = @($placeholders).Count -gt 0
         requiresOperatorApproval = (Test-OperatorApprovalRequired $values)
-        requiresKubeconfigSecret = (Test-KubeconfigRequired $values)
+        requiresKubeconfigSecret = (Test-KubeconfigRequired $category $name $values)
         note = $note
     })
     $order++

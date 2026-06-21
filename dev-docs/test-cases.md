@@ -2454,8 +2454,8 @@ TC-FE-023 보강: 사용자가 취소한 경우에는 abort API를 호출한다.
 - Feature: Operations evidence execution plan.
 - Preconditions: PowerShell is available and the repository contains the operations readiness scripts.
 - Input: `powershell -ExecutionPolicy Bypass -File .\scripts\verify-operations-evidence-plan.ps1`
-- Steps: Generate a fixture operations readiness report with passed, remediable pending, and unplanned pending checks. Run `scripts/write-operations-evidence-plan.ps1`, then verify the JSON and Markdown plan include ordered remediation actions, local commands, workflow paths, `gh workflow run` commands, placeholder inputs, operator approval flags, kubeconfig-secret requirements, and an unplanned-check section.
-- Expected: Operators get a deterministic evidence execution plan from readiness gaps before touching a live cluster or GitHub Actions, and the plan does not hide pending checks that lack remediation metadata.
+- Steps: Generate a fixture operations readiness report with passed, remediable pending, unplanned pending, Kubernetes live, and enterprise auth live workflow checks. Run `scripts/write-operations-evidence-plan.ps1`, then verify the JSON and Markdown plan include ordered remediation actions, local commands, workflow paths, `gh workflow run` commands, placeholder inputs, operator approval flags, kubeconfig-secret requirements for Kubernetes-scoped live actions, and an unplanned-check section.
+- Expected: Operators get a deterministic evidence execution plan from readiness gaps before touching a live cluster or GitHub Actions, the plan does not hide pending checks that lack remediation metadata, and non-Kubernetes workflows such as enterprise auth smoke are not blocked on kubeconfig just because their workflow uses `run_live=true`.
 - Priority: P1
 - Automated: `scripts/verify-operations-evidence-plan.ps1`
 
