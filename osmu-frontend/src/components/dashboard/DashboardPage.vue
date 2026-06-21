@@ -562,6 +562,14 @@
             offline {{ storageBackendTelemetryEvidence.offlineServerCount || 0 }}
           </small>
           <small
+            v-if="secretRotationEvidence.result"
+            data-testid="readiness-secret-rotation-evidence-item-summary"
+          >
+            Secret rotation: {{ secretRotationEvidence.result }} /
+            core {{ secretRotationEvidence.coreRotatedCount || 0 }}/{{ secretRotationEvidence.coreRequiredCount || 0 }} /
+            failures {{ secretRotationEvidence.failureCount || 0 }}
+          </small>
+          <small
             v-if="operationsReadinessConvergenceItem"
             data-testid="readiness-convergence-item-summary"
           >
@@ -606,6 +614,60 @@
           {{ storageBackendTelemetryEvidence.scopePolicy }}
         </small>
       </div>
+      <div
+        v-if="secretRotationEvidence.result"
+        class="readiness-invocation-summary"
+        data-testid="readiness-secret-rotation-evidence-summary"
+      >
+        <strong>Secret rotation evidence: {{ secretRotationEvidence.result }}</strong>
+        <small>
+          {{ secretRotationEvidence.environmentName || 'unknown env' }} /
+          {{ secretRotationEvidence.targetCluster || 'unknown cluster' }} /
+          core {{ secretRotationEvidence.coreRotatedCount || 0 }} of {{ secretRotationEvidence.coreRequiredCount || 0 }} /
+          rotated {{ secretRotationEvidence.rotatedCount || 0 }} /
+          failures {{ secretRotationEvidence.failureCount || 0 }} /
+          planned {{ secretRotationEvidence.plannedCount || 0 }}
+        </small>
+        <small
+          v-if="secretRotationEvidenceRefSummary"
+          data-testid="readiness-secret-rotation-evidence-refs"
+        >
+          Evidence refs: {{ secretRotationEvidenceRefSummary }}
+        </small>
+        <small v-if="secretRotationEvidence.secretPolicy">
+          {{ secretRotationEvidence.secretPolicy }}
+        </small>
+      </div>
+      <ol
+        v-if="secretRotationEvidenceRotations.length > 0"
+        class="readiness-evidence-plan-actions readiness-secret-rotation-evidence-rotations"
+        data-testid="readiness-secret-rotation-evidence-rotations"
+      >
+        <li
+          v-for="rotation in secretRotationEvidenceRotations.slice(0, 4)"
+          :key="rotation.id || rotation.name"
+        >
+          <span>
+            <strong>{{ rotation.rotated ? 'ROTATED' : 'PENDING' }} / {{ rotation.core ? 'core' : 'optional' }} / {{ rotation.name || rotation.id }}</strong>
+            <small>{{ rotation.note || 'detail unavailable' }}</small>
+          </span>
+        </li>
+      </ol>
+      <ol
+        v-if="secretRotationEvidenceChecks.length > 0"
+        class="readiness-evidence-plan-actions readiness-secret-rotation-evidence-checks"
+        data-testid="readiness-secret-rotation-evidence-checks"
+      >
+        <li
+          v-for="check in secretRotationEvidenceChecks.slice(0, 3)"
+          :key="check.id || check.name"
+        >
+          <span>
+            <strong>{{ check.status || 'UNKNOWN' }} / {{ check.name || check.id }}</strong>
+            <small>{{ check.detail || 'detail unavailable' }}</small>
+          </span>
+        </li>
+      </ol>
       <div
         v-if="commercialIntegrationEvidence.result"
         class="readiness-invocation-summary"
@@ -2529,6 +2591,32 @@ const operationsHandoffPackageConvergenceSnapshot = computed(() => (
 
 const operationsHandoffPackageChecks = computed(() => {
   const checks = operationsHandoffPackage.value?.checks
+  return Array.isArray(checks) ? checks : []
+})
+
+const secretRotationEvidence = computed(() => (
+  props.dashboardReadiness.secretRotationEvidence || {}
+))
+
+const secretRotationEvidenceRefSummary = computed(() => {
+  const refs = secretRotationEvidence.value?.evidenceRefs
+  if (!refs || typeof refs !== 'object') {
+    return ''
+  }
+  return Object.entries(refs)
+    .filter(([, value]) => value)
+    .slice(0, 4)
+    .map(([key, value]) => `${key}=${value}`)
+    .join(' / ')
+})
+
+const secretRotationEvidenceRotations = computed(() => {
+  const rotations = secretRotationEvidence.value?.rotations
+  return Array.isArray(rotations) ? rotations : []
+})
+
+const secretRotationEvidenceChecks = computed(() => {
+  const checks = secretRotationEvidence.value?.checks
   return Array.isArray(checks) ? checks : []
 })
 

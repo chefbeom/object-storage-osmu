@@ -1104,6 +1104,25 @@ const dashboardReadiness = reactive({
     scopePolicy: '',
     secretPolicy: '',
   },
+  secretRotationEvidence: {
+    result: '',
+    generatedAt: '',
+    environmentName: '',
+    targetCluster: '',
+    operatorName: '',
+    rotationWindow: {},
+    evidenceRefs: {},
+    confirmations: {},
+    rotatedCount: 0,
+    coreRotatedCount: 0,
+    coreRequiredCount: 0,
+    failureCount: 0,
+    plannedCount: 0,
+    rotations: [],
+    checks: [],
+    decisionRule: '',
+    secretPolicy: '',
+  },
   enterpriseAuthSmokeEvidence: {
     result: '',
     generatedAt: '',
@@ -5242,6 +5261,7 @@ function applyDashboardReadiness(data) {
     operationsReadinessArtifactImport: normalizeOperationsReadinessArtifactImport(data.operationsReadinessArtifactImport),
     operationsReadinessFinalize: normalizeOperationsReadinessFinalize(data.operationsReadinessFinalize),
     operationsHandoffPackage: normalizeOperationsHandoffPackage(data.operationsHandoffPackage),
+    secretRotationEvidence: normalizeSecretRotationEvidence(data.secretRotationEvidence),
     commercialIntegrationEvidence: normalizeCommercialIntegrationEvidence(data.commercialIntegrationEvidence),
     commercialApprovalEvidence: normalizeCommercialApprovalEvidence(data.commercialApprovalEvidence),
     enterpriseAuthSmokeEvidence: normalizeEnterpriseAuthSmokeEvidence(data.enterpriseAuthSmokeEvidence),
@@ -5456,6 +5476,28 @@ function normalizeCommercialIntegrationEvidence(report = {}) {
     checks: Array.isArray(report?.checks) ? report.checks : [],
     decisionRule: report?.decisionRule || '',
     scopePolicy: report?.scopePolicy || '',
+    secretPolicy: report?.secretPolicy || '',
+  }
+}
+
+function normalizeSecretRotationEvidence(report = {}) {
+  return {
+    result: report?.result || '',
+    generatedAt: report?.generatedAt || '',
+    environmentName: report?.environmentName || '',
+    targetCluster: report?.targetCluster || '',
+    operatorName: report?.operatorName || '',
+    rotationWindow: report?.rotationWindow && typeof report.rotationWindow === 'object' ? report.rotationWindow : {},
+    evidenceRefs: report?.evidenceRefs && typeof report.evidenceRefs === 'object' ? report.evidenceRefs : {},
+    confirmations: report?.confirmations && typeof report.confirmations === 'object' ? report.confirmations : {},
+    rotatedCount: Number(report?.rotatedCount || 0),
+    coreRotatedCount: Number(report?.coreRotatedCount || 0),
+    coreRequiredCount: Number(report?.coreRequiredCount || 0),
+    failureCount: Number(report?.failureCount || 0),
+    plannedCount: Number(report?.plannedCount || 0),
+    rotations: Array.isArray(report?.rotations) ? report.rotations : [],
+    checks: Array.isArray(report?.checks) ? report.checks : [],
+    decisionRule: report?.decisionRule || '',
     secretPolicy: report?.secretPolicy || '',
   }
 }

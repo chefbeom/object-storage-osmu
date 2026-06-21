@@ -543,6 +543,79 @@ class AdminDashboardSummaryControllerTest {
                         """
         );
         Files.writeString(
+                Path.of(".osmu-run/latest-secret-rotation-evidence.json"),
+                """
+                        {
+                          "formatVersion": "osmu.secret-rotation-evidence.v1",
+                          "generatedAt": "2026-06-20T00:30:00Z",
+                          "result": "failed",
+                          "environmentName": "pilot-prod",
+                          "targetCluster": "customer-cluster-a",
+                          "operatorName": "ops-admin",
+                          "rotationWindow": {
+                            "startedAt": "2026-06-20T00:00:00Z",
+                            "completedAt": "2026-06-20T00:30:00Z"
+                          },
+                          "evidenceRefs": {
+                            "changeApproval": "CHG-2026-SECRET-ROTATION",
+                            "secretManagerAudit": "vault-audit-run-20260620",
+                            "workloadRestart": "rollout-status-run-20260620",
+                            "smoke": "",
+                            "artifactLeakReview": "artifact-leak-review-20260620",
+                            "accessKeyEncryptionDecision": "access-key-encryption-key-reissue-deferred-20260620"
+                          },
+                          "confirmations": {
+                            "noSecretValues": true,
+                            "workloadRestart": true,
+                            "smokePassed": false,
+                            "artifactLeakReview": true,
+                            "requireAllCoreSecrets": true
+                          },
+                          "rotations": [
+                            {
+                              "id": "admin-password",
+                              "name": "Admin password",
+                              "core": true,
+                              "rotated": true,
+                              "note": "Rotate before shared demo, pilot handoff, suspected exposure, or owner change."
+                            },
+                            {
+                              "id": "tls-certificate",
+                              "name": "TLS certificate",
+                              "core": true,
+                              "rotated": false,
+                              "note": "Rotate or renew the osmu-tls Secret and verify HTTPS routing."
+                            }
+                          ],
+                          "summary": {
+                            "rotatedCount": 4,
+                            "coreRotatedCount": 4,
+                            "coreRequiredCount": 5,
+                            "failureCount": 2,
+                            "plannedCount": 0
+                          },
+                          "checks": [
+                            {
+                              "id": "smoke-passed-confirmed",
+                              "name": "Post-rotation smoke passed confirmation",
+                              "status": "FAIL",
+                              "passed": false,
+                              "detail": "Required smoke checks passed after rotation."
+                            },
+                            {
+                              "id": "core-secret-rotation-coverage",
+                              "name": "Core secret/certificate rotation coverage",
+                              "status": "FAIL",
+                              "passed": false,
+                              "detail": "rotatedCore=4/5"
+                            }
+                          ],
+                          "decisionRule": "Production/B2B readiness requires result=passed from the target environment after core secret/certificate rotation, workload restart, post-rotation smoke, and artifact leak review are confirmed.",
+                          "secretPolicy": "Evidence stores only environment labels, operator/change references, timestamps, booleans, and external evidence references; it does not contain password values, API keys, private keys, bearer tokens, kubeconfig, database credentials, MinIO credentials, OIDC/LDAP secrets, SMTP credentials, or webhook signing secrets."
+                        }
+                        """
+        );
+        Files.writeString(
                 Path.of(".osmu-run/latest-operations-readiness-finalize.json"),
                 """
                         {
@@ -1500,6 +1573,18 @@ class AdminDashboardSummaryControllerTest {
                 .andExpect(jsonPath("$.data.operationsHandoffPackage.checks[0].id").value("runbook-reviewed"))
                 .andExpect(jsonPath("$.data.operationsHandoffPackage.checks[0].status").value("FAIL"))
                 .andExpect(jsonPath("$.data.operationsHandoffPackage.checks[1].evidenceRef").value("latest-commercial-integration-evidence-passed"))
+                .andExpect(jsonPath("$.data.secretRotationEvidence.result").value("failed"))
+                .andExpect(jsonPath("$.data.secretRotationEvidence.environmentName").value("pilot-prod"))
+                .andExpect(jsonPath("$.data.secretRotationEvidence.rotationWindow.startedAt").value("2026-06-20T00:00:00Z"))
+                .andExpect(jsonPath("$.data.secretRotationEvidence.evidenceRefs.secretManagerAudit").value("vault-audit-run-20260620"))
+                .andExpect(jsonPath("$.data.secretRotationEvidence.confirmations.noSecretValues").value(true))
+                .andExpect(jsonPath("$.data.secretRotationEvidence.confirmations.smokePassed").value(false))
+                .andExpect(jsonPath("$.data.secretRotationEvidence.coreRotatedCount").value(4))
+                .andExpect(jsonPath("$.data.secretRotationEvidence.coreRequiredCount").value(5))
+                .andExpect(jsonPath("$.data.secretRotationEvidence.failureCount").value(2))
+                .andExpect(jsonPath("$.data.secretRotationEvidence.rotations[1].id").value("tls-certificate"))
+                .andExpect(jsonPath("$.data.secretRotationEvidence.rotations[1].rotated").value(false))
+                .andExpect(jsonPath("$.data.secretRotationEvidence.checks[0].id").value("smoke-passed-confirmed"))
                 .andExpect(jsonPath("$.data.commercialIntegrationEvidence.result").value("failed"))
                 .andExpect(jsonPath("$.data.commercialIntegrationEvidence.environmentName").value("pilot-prod"))
                 .andExpect(jsonPath("$.data.commercialIntegrationEvidence.requiredVerifiedCount").value(7))
@@ -1557,6 +1642,8 @@ class AdminDashboardSummaryControllerTest {
                 .andExpect(jsonPath("$.data.storageBackendTelemetryEvidence.scopePolicy", org.hamcrest.Matchers.containsString("not AWS S3 parity work")))
                 .andExpect(jsonPath("$.data.items[?(@.code == 'OPERATIONS_HANDOFF_PACKAGE')].evidencePath").value(hasItem(".osmu-run/latest-operations-handoff-package.json")))
                 .andExpect(jsonPath("$.data.items[?(@.code == 'OPERATIONS_HANDOFF_PACKAGE')].remediationCommand").value(hasItem("powershell -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\write-operations-handoff-package.ps1")))
+                .andExpect(jsonPath("$.data.items[?(@.code == 'SECRET_ROTATION_EVIDENCE')].evidencePath").value(hasItem(".osmu-run/latest-secret-rotation-evidence.json")))
+                .andExpect(jsonPath("$.data.items[?(@.code == 'SECRET_ROTATION_EVIDENCE')].remediationWorkflow").value(hasItem(".github/workflows/manual-secret-rotation-evidence.yml")))
                 .andExpect(jsonPath("$.data.items[?(@.code == 'COMMERCIAL_INTEGRATION_EVIDENCE')].evidencePath").value(hasItem(".osmu-run/latest-commercial-integration-evidence.json")))
                 .andExpect(jsonPath("$.data.items[?(@.code == 'COMMERCIAL_INTEGRATION_EVIDENCE')].remediationWorkflow").value(hasItem(".github/workflows/manual-commercial-integration-evidence.yml")))
                 .andExpect(jsonPath("$.data.items[?(@.code == 'COMMERCIAL_APPROVAL_EVIDENCE')].evidencePath").value(hasItem(".osmu-run/latest-commercial-approval-evidence.json")))

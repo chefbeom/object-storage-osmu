@@ -127,6 +127,7 @@ public class AdminController {
     private final String operationsArtifactCollectionPlanReportPath;
     private final String operationsEvidenceHandoffReportPath;
     private final String operationsHandoffPackageReportPath;
+    private final String secretRotationEvidenceReportPath;
     private final String commercialIntegrationEvidenceReportPath;
     private final String commercialApprovalEvidenceReportPath;
     private final String enterpriseAuthSmokeEvidenceReportPath;
@@ -180,6 +181,7 @@ public class AdminController {
             @Value("${osmu.operations.readiness.artifact-collection-plan-report-path:.osmu-run/latest-operations-artifact-collection-plan.json}") String operationsArtifactCollectionPlanReportPath,
             @Value("${osmu.operations.readiness.evidence-handoff-report-path:.osmu-run/latest-operations-evidence-handoff.json}") String operationsEvidenceHandoffReportPath,
             @Value("${osmu.operations.readiness.handoff-package-report-path:.osmu-run/latest-operations-handoff-package.json}") String operationsHandoffPackageReportPath,
+            @Value("${osmu.operations.readiness.secret-rotation-evidence-report-path:.osmu-run/latest-secret-rotation-evidence.json}") String secretRotationEvidenceReportPath,
             @Value("${osmu.operations.readiness.commercial-integration-evidence-report-path:.osmu-run/latest-commercial-integration-evidence.json}") String commercialIntegrationEvidenceReportPath,
             @Value("${osmu.operations.readiness.commercial-approval-evidence-report-path:.osmu-run/latest-commercial-approval-evidence.json}") String commercialApprovalEvidenceReportPath,
             @Value("${osmu.operations.readiness.enterprise-auth-smoke-evidence-report-path:.osmu-run/latest-enterprise-auth-smoke.json}") String enterpriseAuthSmokeEvidenceReportPath,
@@ -232,6 +234,7 @@ public class AdminController {
         this.operationsArtifactCollectionPlanReportPath = blankToNull(operationsArtifactCollectionPlanReportPath);
         this.operationsEvidenceHandoffReportPath = blankToNull(operationsEvidenceHandoffReportPath);
         this.operationsHandoffPackageReportPath = blankToNull(operationsHandoffPackageReportPath);
+        this.secretRotationEvidenceReportPath = blankToNull(secretRotationEvidenceReportPath);
         this.commercialIntegrationEvidenceReportPath = blankToNull(commercialIntegrationEvidenceReportPath);
         this.commercialApprovalEvidenceReportPath = blankToNull(commercialApprovalEvidenceReportPath);
         this.enterpriseAuthSmokeEvidenceReportPath = blankToNull(enterpriseAuthSmokeEvidenceReportPath);
@@ -899,6 +902,7 @@ public class AdminController {
         DashboardOperationsReadinessArtifactImportResponse operationsReadinessArtifactImport = operationsReadinessArtifactImportSnapshot();
         DashboardOperationsReadinessFinalizeResponse operationsReadinessFinalize = operationsReadinessFinalizeSnapshot();
         DashboardOperationsHandoffPackageResponse operationsHandoffPackage = operationsHandoffPackageSnapshot();
+        DashboardSecretRotationEvidenceResponse secretRotationEvidence = secretRotationEvidenceSnapshot();
         DashboardCommercialIntegrationEvidenceResponse commercialIntegrationEvidence = commercialIntegrationEvidenceSnapshot();
         DashboardCommercialApprovalEvidenceResponse commercialApprovalEvidence = commercialApprovalEvidenceSnapshot();
         DashboardEnterpriseAuthSmokeEvidenceResponse enterpriseAuthSmokeEvidence = enterpriseAuthSmokeEvidenceSnapshot();
@@ -929,6 +933,7 @@ public class AdminController {
                 operationsReadinessArtifactImport,
                 operationsReadinessFinalize,
                 operationsHandoffPackage,
+                secretRotationEvidence,
                 commercialIntegrationEvidence,
                 commercialApprovalEvidence,
                 enterpriseAuthSmokeEvidence,
@@ -1579,6 +1584,7 @@ public class AdminController {
 
         addOperationsEvidenceHandoffItem(items);
         addOperationsHandoffPackageItem(items);
+        addSecretRotationEvidenceItem(items);
         addCommercialIntegrationEvidenceItem(items);
         addCommercialApprovalEvidenceItem(items);
         addEnterpriseAuthSmokeEvidenceItem(items);
@@ -2363,6 +2369,97 @@ public class AdminController {
                 jsonText(snapshot, "currentBottleneckTitle"),
                 jsonInt(snapshot, "recommendedCommandCount")
         );
+    }
+
+    private void addSecretRotationEvidenceItem(java.util.ArrayList<DashboardReadinessItemResponse> items) {
+        DashboardSecretRotationEvidenceResponse evidence = secretRotationEvidenceSnapshot();
+        if (evidence.result().isBlank() || "passed".equalsIgnoreCase(evidence.result())) {
+            return;
+        }
+        addReadinessItem(
+                items,
+                "WARNING",
+                "OPERATIONS",
+                "SECRET_ROTATION_EVIDENCE",
+                "Secret rotation evidence is %s: coreRotated=%d/%d, failures=%d, planned=%d.".formatted(
+                        evidence.result(),
+                        evidence.coreRotatedCount(),
+                        evidence.coreRequiredCount(),
+                        evidence.failureCount(),
+                        evidence.plannedCount()
+                ),
+                "dashboard",
+                "dashboard-readiness-panel",
+                "Secret rotation",
+                secretRotationEvidenceReportPath == null ? "" : secretRotationEvidenceReportPath,
+                "powershell -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\write-secret-rotation-evidence.ps1",
+                ".github/workflows/manual-secret-rotation-evidence.yml",
+                "",
+                evidence.secretPolicy().isBlank()
+                        ? "Collect target secret/certificate rotation evidence before production/B2B readiness."
+                        : evidence.secretPolicy()
+        );
+    }
+
+    private DashboardSecretRotationEvidenceResponse secretRotationEvidenceSnapshot() {
+        JsonNode report = readOptionalJsonReport(secretRotationEvidenceReportPath);
+        if (report == null) {
+            return DashboardSecretRotationEvidenceResponse.empty();
+        }
+        JsonNode summary = report.path("summary");
+        return new DashboardSecretRotationEvidenceResponse(
+                jsonText(report, "result"),
+                jsonText(report, "generatedAt"),
+                jsonText(report, "environmentName"),
+                jsonText(report, "targetCluster"),
+                jsonText(report, "operatorName"),
+                Map.copyOf(jsonTextMap(report.path("rotationWindow"))),
+                Map.copyOf(jsonTextMap(report.path("evidenceRefs"))),
+                Map.copyOf(jsonBooleanMap(report.path("confirmations"))),
+                jsonInt(summary, "rotatedCount"),
+                jsonInt(summary, "coreRotatedCount"),
+                jsonInt(summary, "coreRequiredCount"),
+                jsonInt(summary, "failureCount"),
+                jsonInt(summary, "plannedCount"),
+                secretRotationItems(report.path("rotations")),
+                secretRotationChecks(report.path("checks")),
+                jsonText(report, "decisionRule"),
+                jsonText(report, "secretPolicy")
+        );
+    }
+
+    private List<DashboardSecretRotationItemResponse> secretRotationItems(JsonNode rotationNodes) {
+        if (!rotationNodes.isArray()) {
+            return List.of();
+        }
+        java.util.ArrayList<DashboardSecretRotationItemResponse> rotations = new java.util.ArrayList<>();
+        for (JsonNode rotation : rotationNodes) {
+            rotations.add(new DashboardSecretRotationItemResponse(
+                    jsonText(rotation, "id"),
+                    jsonText(rotation, "name"),
+                    jsonBoolean(rotation, "core"),
+                    jsonBoolean(rotation, "rotated"),
+                    jsonText(rotation, "note")
+            ));
+        }
+        return List.copyOf(rotations);
+    }
+
+    private List<DashboardSecretRotationCheckResponse> secretRotationChecks(JsonNode checkNodes) {
+        if (!checkNodes.isArray()) {
+            return List.of();
+        }
+        java.util.ArrayList<DashboardSecretRotationCheckResponse> checks = new java.util.ArrayList<>();
+        for (JsonNode check : checkNodes) {
+            checks.add(new DashboardSecretRotationCheckResponse(
+                    jsonText(check, "id"),
+                    jsonText(check, "name"),
+                    jsonText(check, "status"),
+                    jsonBoolean(check, "passed"),
+                    jsonText(check, "detail")
+            ));
+        }
+        return List.copyOf(checks);
     }
 
     private void addCommercialIntegrationEvidenceItem(java.util.ArrayList<DashboardReadinessItemResponse> items) {
