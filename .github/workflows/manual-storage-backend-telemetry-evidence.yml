@@ -23,6 +23,18 @@ on:
         description: External evidence or change reference
         required: true
         default: ""
+      collection_mode:
+        description: Telemetry source, prepared_base64 decodes the existing secret and live runs mc admin info against target MinIO
+        required: true
+        type: choice
+        options:
+          - prepared_base64
+          - live
+        default: prepared_base64
+      minio_endpoint:
+        description: Target MinIO endpoint for live mode, for example https://minio.example.com
+        required: false
+        default: ""
       fail_if_not_passed:
         description: Fail workflow when evidence result is not passed
         required: true
@@ -54,36 +66,64 @@ jobs:
           OSMU_OPERATOR: ${{ inputs.operator }}
           OSMU_MINIO_ALIAS: ${{ inputs.minio_alias }}
           OSMU_EVIDENCE_REF: ${{ inputs.evidence_ref }}
+          OSMU_COLLECTION_MODE: ${{ inputs.collection_mode }}
+          OSMU_MINIO_ENDPOINT: ${{ inputs.minio_endpoint }}
           OSMU_FAIL_IF_NOT_PASSED: ${{ inputs.fail_if_not_passed }}
           OSMU_MINIO_ADMIN_INFO_JSON_BASE64: ${{ secrets.OSMU_MINIO_ADMIN_INFO_JSON_BASE64 }}
+          OSMU_MINIO_ACCESS_KEY: ${{ secrets.OSMU_MINIO_ACCESS_KEY }}
+          OSMU_MINIO_SECRET_KEY: ${{ secrets.OSMU_MINIO_SECRET_KEY }}
         run: |
-          if (-not $env:OSMU_MINIO_ADMIN_INFO_JSON_BASE64) {
-            throw "OSMU_MINIO_ADMIN_INFO_JSON_BASE64 secret is required. Store base64-encoded mc admin info --json output as a GitHub secret; raw admin info is not uploaded."
-          }
-
           New-Item -ItemType Directory -Force -Path ".osmu-run" | Out-Null
-          $adminInfoPath = ".osmu-run/minio-admin-info.json"
-          [IO.File]::WriteAllBytes($adminInfoPath, [Convert]::FromBase64String($env:OSMU_MINIO_ADMIN_INFO_JSON_BASE64))
-
+          $collectionMode = $env:OSMU_COLLECTION_MODE
+          if ($collectionMode -notin @("prepared_base64", "live")) {
+            throw "collection_mode must be prepared_base64 or live."
+          }
           $evidenceArgs = @(
             "-EnvironmentName", $env:OSMU_ENVIRONMENT_NAME,
             "-TargetCluster", $env:OSMU_TARGET_CLUSTER,
             "-Operator", $env:OSMU_OPERATOR,
             "-MinioAlias", $env:OSMU_MINIO_ALIAS,
             "-EvidenceRef", $env:OSMU_EVIDENCE_REF,
-            "-AdminInfoJsonPath", $adminInfoPath,
             "-JsonOutputPath", ".osmu-run/latest-storage-backend-telemetry.json",
             "-MarkdownOutputPath", ".osmu-run/latest-storage-backend-telemetry.md"
           )
+
+          if ($collectionMode -eq "prepared_base64") {
+            if (-not $env:OSMU_MINIO_ADMIN_INFO_JSON_BASE64) {
+              throw "OSMU_MINIO_ADMIN_INFO_JSON_BASE64 secret is required for prepared_base64 mode. Store base64-encoded mc admin info --json output as a GitHub secret; raw admin info is not uploaded."
+            }
+            $adminInfoPath = ".osmu-run/minio-admin-info.json"
+            [IO.File]::WriteAllBytes($adminInfoPath, [Convert]::FromBase64String($env:OSMU_MINIO_ADMIN_INFO_JSON_BASE64))
+            $evidenceArgs += @("-AdminInfoJsonPath", $adminInfoPath)
+          }
+          else {
+            if (-not $env:OSMU_MINIO_ENDPOINT) { throw "minio_endpoint input is required for live mode." }
+            if (-not $env:OSMU_MINIO_ACCESS_KEY) { throw "OSMU_MINIO_ACCESS_KEY secret is required for live mode." }
+            if (-not $env:OSMU_MINIO_SECRET_KEY) { throw "OSMU_MINIO_SECRET_KEY secret is required for live mode." }
+
+            New-Item -ItemType Directory -Force -Path ".osmu-run/tools" | Out-Null
+            New-Item -ItemType Directory -Force -Path ".osmu-run/mc-config" | Out-Null
+            $mcPath = ".osmu-run/tools/mc"
+            Invoke-WebRequest -UseBasicParsing -Uri "https://dl.min.io/client/mc/release/linux-amd64/mc" -OutFile $mcPath
+            chmod +x $mcPath
+            $env:MC_CONFIG_DIR = (Resolve-Path ".osmu-run/mc-config").Path
+            & $mcPath alias set $env:OSMU_MINIO_ALIAS $env:OSMU_MINIO_ENDPOINT $env:OSMU_MINIO_ACCESS_KEY $env:OSMU_MINIO_SECRET_KEY | Out-Null
+            if ($LASTEXITCODE -ne 0) {
+              throw "mc alias set failed for target MinIO endpoint."
+            }
+            $evidenceArgs += @("-Execute", "-McCommand", $mcPath)
+          }
           if ($env:OSMU_FAIL_IF_NOT_PASSED -eq "true") { $evidenceArgs += "-FailIfNotPassed" }
 
           ./scripts/write-storage-backend-telemetry-evidence.ps1 @evidenceArgs
 
-      - name: Remove raw admin info input
+      - name: Remove raw admin info input and MinIO client config
         if: always()
         shell: pwsh
         run: |
           Remove-Item -LiteralPath ".osmu-run/minio-admin-info.json" -Force -ErrorAction SilentlyContinue
+          Remove-Item -LiteralPath ".osmu-run/mc-config" -Recurse -Force -ErrorAction SilentlyContinue
+          Remove-Item -LiteralPath ".osmu-run/tools" -Recurse -Force -ErrorAction SilentlyContinue
 
       - name: Upload storage backend telemetry evidence
         if: always()

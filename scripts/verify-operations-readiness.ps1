@@ -158,11 +158,23 @@ if (-not ([string] $storageBackendTelemetryCheck[0].remediation.workflow).Contai
 if (-not ([string] $storageBackendTelemetryCheck[0].remediation.workflowCommand).Contains("gh workflow run manual-storage-backend-telemetry-evidence.yml")) {
     throw "Storage backend telemetry target evidence remediation workflow command must dispatch manual-storage-backend-telemetry-evidence.yml."
 }
+if (-not ([string] $storageBackendTelemetryCheck[0].remediation.workflowCommand).Contains("collection_mode=live")) {
+    throw "Storage backend telemetry target evidence remediation workflow command must select live collection mode."
+}
+if (-not ([string] $storageBackendTelemetryCheck[0].remediation.workflowCommand).Contains("minio_endpoint=<minio-endpoint>")) {
+    throw "Storage backend telemetry target evidence remediation workflow command must include target MinIO endpoint input."
+}
 if (-not ([string] $storageBackendTelemetryCheck[0].requiredEvidence).Contains("target MinIO admin info evidence")) {
     throw "Storage backend telemetry target evidence must require target MinIO admin info evidence."
 }
 if (-not ([string] $storageBackendTelemetryCheck[0].remediation.note).Contains("mc admin info --json")) {
     throw "Storage backend telemetry target evidence remediation note must mention mc admin info --json."
+}
+if (-not ([string] $storageBackendTelemetryCheck[0].remediation.note).Contains("OSMU_MINIO_ACCESS_KEY")) {
+    throw "Storage backend telemetry target evidence remediation note must mention OSMU_MINIO_ACCESS_KEY."
+}
+if (-not ([string] $storageBackendTelemetryCheck[0].remediation.note).Contains("OSMU_MINIO_SECRET_KEY")) {
+    throw "Storage backend telemetry target evidence remediation note must mention OSMU_MINIO_SECRET_KEY."
 }
 if (-not ([string] $storageBackendTelemetryCheck[0].remediation.note).Contains("OSMU_MINIO_ADMIN_INFO_JSON_BASE64")) {
     throw "Storage backend telemetry target evidence remediation note must mention OSMU_MINIO_ADMIN_INFO_JSON_BASE64."

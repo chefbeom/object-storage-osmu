@@ -324,7 +324,7 @@ MVP 데모 기준 완료율은 약 90~95%입니다.
 - object storage failure frontend retry/remediation UX: upload failures carrying `STORAGE_ERROR` or HTTP 502 keep the retry action available and show Request ID based operator steps before reattempting large/multipart uploads.
 - bucket lifecycle storage sync: `/api/buckets/{bucketName}/lifecycle`와 `/api/s3/{bucketName}?lifecycle` PUT/DELETE가 repository 변경 전 object storage adapter에 lifecycle config를 동기화한다. MinIO mode는 `Expiration/Days`와 `NoncurrentVersionExpiration/NoncurrentDays` subset을 MinIO lifecycle로 적용하고 enabled noncurrent-version rule이 있으면 bucket versioning을 먼저 enable한다.
 - MinIO Admin info 기반 pool/server/drive telemetry evidence writer: `scripts/write-storage-backend-telemetry-evidence.ps1`가 `mc admin info --json` file input 또는 명시적 `-Execute` 결과를 요약해 `.osmu-run/latest-storage-backend-telemetry.*`에 저장하며 raw admin output과 secret 값은 저장하지 않는다.
-- Storage backend telemetry manual workflow: `.github/workflows/manual-storage-backend-telemetry-evidence.yml`가 준비된 `OSMU_MINIO_ADMIN_INFO_JSON_BASE64` admin-info JSON을 임시 파일로 디코드해 evidence writer를 실행하고 raw input 제거 후 요약 artifact만 업로드한다.
+- Storage backend telemetry manual workflow: `.github/workflows/manual-storage-backend-telemetry-evidence.yml`가 준비된 `OSMU_MINIO_ADMIN_INFO_JSON_BASE64` admin-info JSON을 임시 파일로 디코드하는 `prepared_base64` mode와, `collection_mode=live`에서 `OSMU_MINIO_ACCESS_KEY`/`OSMU_MINIO_SECRET_KEY`로 target MinIO에 직접 `mc admin info --json`을 실행하는 mode를 모두 지원한다. 두 mode 모두 raw input 또는 mc config를 제거하고 요약 artifact만 업로드한다.
 - Storage expansion finalizer는 `-RunStorageBackendTelemetryEvidence -StorageBackendTelemetryAdminInfoJsonPath <path>`를 받으면 같은 finalizer report 안에서 storage backend telemetry evidence writer를 실행하고 `.osmu-run/latest-storage-backend-telemetry.*` 경로를 report/evidence block에 연결한다.
 - MinIO bucket CORS live verification: `scripts/verify-minio-bucket-cors.ps1`가 `mc cors info <alias>/<bucket>` 실행 또는 operator가 수집한 CORS XML file input을 검증해 browser multipart upload에 필요한 `ETag`, `x-amz-request-id`, `x-amz-id-2`, `x-amz-version-id` expose header, allowed methods/header, max-age summary를 `.osmu-run/latest-minio-bucket-cors-verification.*`에 남긴다. raw CORS XML과 credential은 저장하지 않으며, `scripts/verify-minio-bucket-cors-self-test.ps1`가 fixture 기반 pass/fail/plan-only report를 검증한다.
 - explicit bucket versioning management API: `GET/PUT /api/buckets/{bucketName}/versioning`이 bucket 관리 권한으로 underlying storage bucket versioning을 `ENABLED` 또는 `SUSPENDED`로 조회/설정한다. MinIO mode는 `getBucketVersioning`/`setBucketVersioning`을 사용하고 in-memory mode는 runtime 상태를 보관한다. 이 API는 OSMU 운영 관리면이며 AWS S3 versioning 세부 parity가 아니다.
@@ -332,7 +332,6 @@ MVP 데모 기준 완료율은 약 90~95%입니다.
 남은 것:
 
 - target workflow run에서 `result=passed` storage backend telemetry evidence 확보
-- prepared secret 없이 workflow가 직접 target MinIO에서 `mc admin info --json`을 live collection하는 경로
 
 ### 4.9 용량 증설
 
