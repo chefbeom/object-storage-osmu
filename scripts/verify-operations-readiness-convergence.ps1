@@ -141,6 +141,9 @@ $readyHandoffPath = Join-Path $resolvedOutputDirectory "ready-handoff.json"
 $readyReadinessPath = Join-Path $resolvedOutputDirectory "ready-readiness.json"
 $readyFinalizePath = Join-Path $resolvedOutputDirectory "ready-finalize.json"
 $readySyncPath = Join-Path $resolvedOutputDirectory "ready-sync.json"
+$readyMissingFinalizePath = Join-Path $resolvedOutputDirectory "ready-missing-finalize.json"
+$finalizerRequiredPath = Join-Path $resolvedOutputDirectory "finalizer-required-convergence.json"
+$finalizerRequiredMarkdownPath = Join-Path $resolvedOutputDirectory "finalizer-required-convergence.md"
 $syncRequiredPath = Join-Path $resolvedOutputDirectory "sync-required-convergence.json"
 $syncRequiredMarkdownPath = Join-Path $resolvedOutputDirectory "sync-required-convergence.md"
 $readyJsonPath = Join-Path $resolvedOutputDirectory "ready-convergence.json"
@@ -179,6 +182,25 @@ Write-JsonFixture $readyHandoffPath ([ordered]@{
     finalizerGapCount = 0
     stages = @()
 })
+
+& powershell -NoProfile -ExecutionPolicy Bypass -File $scriptPath `
+    -HandoffReportPath $readyHandoffPath `
+    -ReadinessReportPath $readyReadinessPath `
+    -OperationsReadinessFinalizeReportPath $readyMissingFinalizePath `
+    -KubernetesOperationsReportSyncReportPath $readySyncPath `
+    -JsonOutputPath $finalizerRequiredPath `
+    -MarkdownOutputPath $finalizerRequiredMarkdownPath | Out-Host
+if ($LASTEXITCODE -ne 0) {
+    throw "write-operations-readiness-convergence.ps1 finalizer-required check failed with exit code $LASTEXITCODE."
+}
+
+$finalizerRequiredReport = Get-Content -Raw -LiteralPath $finalizerRequiredPath | ConvertFrom-Json
+$finalizerRequiredMarkdown = Get-Content -Raw -LiteralPath $finalizerRequiredMarkdownPath
+Assert-Equal $finalizerRequiredReport.result "action-required" "finalizer required result"
+Assert-Equal $finalizerRequiredReport.currentBottleneck.code "finalize-operations-readiness" "finalizer required bottleneck"
+Assert-Equal $finalizerRequiredReport.finalizerExists $false "finalizer required exists"
+Assert-Contains $finalizerRequiredReport.recommendedCommands[0].command "finalize-operations-readiness.ps1" "finalizer required command"
+Assert-Contains $finalizerRequiredMarkdown "Finalize operations readiness" "finalizer required markdown command"
 
 & powershell -NoProfile -ExecutionPolicy Bypass -File $scriptPath `
     -HandoffReportPath $readyHandoffPath `
@@ -243,5 +265,6 @@ Assert-True ($readyReport.safetyPolicy.Contains("does not execute")) "safety pol
 Write-Host "Operations readiness convergence verified."
 Write-Host "Missing report: $missingJsonPath"
 Write-Host "Action report: $actionJsonPath"
+Write-Host "Finalizer required report: $finalizerRequiredPath"
 Write-Host "Sync required report: $syncRequiredPath"
 Write-Host "Ready report: $readyJsonPath"

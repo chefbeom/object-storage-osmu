@@ -176,7 +176,7 @@ $kubernetesReportSyncCommand = Get-KubernetesReportSyncNextCommand $kubernetesRe
 $kubernetesReportSyncWorkflowCommand = Get-KubernetesReportSyncWorkflowCommand $kubernetesReportSync.json $kubernetesReportSync.exists
 $handoffReady = $handoff.exists -and (Is-ReadyResult $handoffResult) -and "none".Equals($nextCode, [System.StringComparison]::OrdinalIgnoreCase)
 $readinessReady = $readiness.exists -and (Is-ReadyResult $readinessResult)
-$finalizerReady = (-not $finalize.exists) -or ((Is-ReadyResult $finalizerResult) -and (Is-ReadyResult $finalizerReadinessResult))
+$finalizerReady = $finalize.exists -and (Is-ReadyResult $finalizerResult) -and (Is-ReadyResult $finalizerReadinessResult)
 $kubernetesReportSyncReady = $kubernetesReportSync.exists -and "applied".Equals($kubernetesReportSyncResult, [System.StringComparison]::OrdinalIgnoreCase) -and $kubernetesReportSyncFailedCount -eq 0
 
 $recommendedCommands = @()
