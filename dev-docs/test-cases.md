@@ -735,8 +735,8 @@ ID:
 - Feature: Storage backend operations status.
 - Preconditions: `ADMIN` or `AUDITOR` user is authenticated. Backend object storage adapter and access-key policy provisioner are configured.
 - Input: `GET /api/admin/storage/backend-status`, then render the dashboard health widget.
-- Steps: Verify the response includes `mode`, `metadataMode`, `storageHealthy`, `accessKeyProvisionerHealthy`, `bucketCount`, `objectCount`, `usedBytes`, `quotaBytes`, `remainingBytes`, `capacitySource=bucket_metadata_usage`, `directStorageMetricsEnabled=false`, `minioAdminMetricsEnabled=false`, `readiness`, `pendingGates`, and `generatedAt`. Verify `ORG_ADMIN` and `USER` are denied by RBAC. Verify the dashboard renders `dashboard-storage-backend-status`.
-- Expected: Operators can see object storage readiness and metadata usage without requiring direct MinIO Admin capacity telemetry. This test covers OSMU replacement-storage readiness, not AWS S3 edge parity.
+- Steps: Verify the response includes `mode`, `metadataMode`, `storageHealthy`, `accessKeyProvisionerHealthy`, `bucketCount`, `objectCount`, `usedBytes`, `quotaBytes`, `remainingBytes`, `directMetricTotalBytes`, `directMetricFreeBytes`, `capacitySource`, `directStorageMetricsEnabled`, `minioAdminMetricsEnabled`, `directStorageMetricsStatus`, `directStorageMetricsSource`, `directStorageMetricsDetail`, `directStorageMetricNames`, `readiness`, `pendingGates`, and `generatedAt`. Verify metadata fallback returns `capacitySource=bucket_metadata_usage` when direct metrics are disabled/unavailable, and direct MinIO Prometheus metrics can return `capacitySource=minio_prometheus_metrics` with `DIRECT_METRICS_READY` when MinIO mode and the metrics probe are ready. Verify `ORG_ADMIN` and `USER` are denied by RBAC. Verify the dashboard renders `dashboard-storage-backend-status`.
+- Expected: Operators can see object storage readiness, direct MinIO capacity metrics when configured, and honest metadata fallback when direct metrics are unavailable. This test covers OSMU replacement-storage readiness, not AWS S3 edge parity.
 - Priority: P1
 - Automation: Automated
 
