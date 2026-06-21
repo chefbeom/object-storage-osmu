@@ -85,18 +85,47 @@ Write-JsonFixture $dataFlowStoragePlanPath ([ordered]@{
     candidateStore = "MARIADB_PARTITION"
     expectedPeakEventsPerDay = 250000
     expectedQueryWindowDays = 180
-    checkCount = 1
+    checkCount = 3
     passedCount = 0
-    pendingCount = 1
+    pendingCount = 3
     checks = @(
+        [ordered]@{
+            id = "expected_peak_volume"
+            title = "Expected peak event volume captured"
+            status = "pending"
+            detail = "Fixture pending peak."
+            nextAction = "Set target sizing evidence."
+        },
         [ordered]@{
             id = "explain_or_store_evidence"
             title = "Query plan or target-store evidence exists"
             status = "pending"
             detail = "Fixture pending check."
             nextAction = "Attach target evidence."
+        },
+        [ordered]@{
+            id = "mariadb_query_plan_evidence"
+            title = "MariaDB query plan evidence passed"
+            status = "pending"
+            detail = "No MariaDB query plan evidence JSON supplied."
+            nextAction = "Run scripts/write-mariadb-query-plan-evidence.ps1 with -Execute or -ExplainInputDir until result=passed, then rerun this storage plan."
         }
     )
+    queryPlanEvidence = [ordered]@{
+        provided = $false
+        path = ""
+        parsed = $false
+        formatVersion = ""
+        expectedFormatVersion = "osmu.mariadb-query-plan-evidence.v1"
+        validFormatVersion = $false
+        result = ""
+        mode = ""
+        checkCount = 0
+        passedCount = 0
+        failedCount = 0
+        failedChecks = @()
+        detail = "No MariaDB query plan evidence JSON supplied."
+    }
     scopePolicy = "OSMU operations analytics only."
 })
 
@@ -159,6 +188,12 @@ Assert-Equal $plan.publishEvidenceToConfigMap $true "plan publish evidence flag"
 Assert-Equal $plan.publishDataFlowStoragePlanToConfigMap $true "plan data-flow storage plan publish flag"
 Assert-Equal $plan.dataFlowStoragePlanFormatVersion "osmu.data-flow-storage-plan.v1" "plan data-flow storage plan format"
 Assert-Equal $plan.dataFlowStoragePlanResult "plan-ready-execute-required" "plan data-flow storage plan result"
+Assert-Equal $plan.dataFlowStoragePlanCandidateStore "MARIADB_PARTITION" "plan data-flow storage plan candidate store"
+Assert-Equal $plan.dataFlowQueryPlanEvidencePresent $true "plan data-flow query plan summary present"
+Assert-Equal $plan.dataFlowQueryPlanEvidenceProvided $false "plan data-flow query plan summary provided"
+Assert-Equal $plan.dataFlowQueryPlanEvidenceResult "" "plan data-flow query plan summary result"
+Assert-Equal $plan.dataFlowQueryPlanEvidenceFailedCount 0 "plan data-flow query plan failed count"
+Assert-Equal $plan.dataFlowQueryPlanEvidenceExpectedFormatVersion "osmu.mariadb-query-plan-evidence.v1" "plan data-flow query plan expected format"
 Assert-Equal $plan.failedCount 0 "plan failed count"
 Assert-Contains $plan.serverDryRunCommand "--dry-run=server" "plan server dry-run command"
 Assert-Contains $plan.serverDryRunCommand "latest-data-flow-storage-plan.json" "plan server dry-run data-flow plan command"
@@ -202,6 +237,7 @@ Assert-Contains $apply.applyOutput "configured" "apply output"
 Assert-Contains $apply.publishEvidenceApplyOutput "configured" "publish evidence apply output"
 Assert-Contains ($apply.checks | ConvertTo-Json -Depth 10) "render-configmap-with-sync-evidence" "apply evidence render check"
 Assert-Contains ($apply.checks | ConvertTo-Json -Depth 10) "apply-configmap-with-sync-evidence" "apply evidence publish check"
+Assert-Equal $apply.dataFlowQueryPlanEvidencePresent $true "apply data-flow query plan summary present"
 
 Write-Host "Kubernetes operations report sync verified."
 Write-Host "Plan evidence: $planEvidencePath"

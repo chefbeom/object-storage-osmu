@@ -105,6 +105,18 @@ function Get-FileSha256([string] $PathValue) {
     return (Get-FileHash -LiteralPath $PathValue -Algorithm SHA256).Hash.ToLowerInvariant()
 }
 
+function Get-ObjectInt([object] $Value) {
+    if ($null -eq $Value -or "$Value" -eq "") {
+        return 0
+    }
+    try {
+        return [int] $Value
+    }
+    catch {
+        return 0
+    }
+}
+
 Assert-KubernetesName "Namespace" $Namespace
 Assert-KubernetesName "ConfigMapName" $ConfigMapName
 Assert-ConfigMapKey $ConfigMapKey
@@ -171,6 +183,13 @@ else {
 
 $dataFlowStoragePlanFormatVersion = ""
 $dataFlowStoragePlanResult = ""
+$dataFlowStoragePlanCandidateStore = ""
+$dataFlowQueryPlanEvidencePresent = $false
+$dataFlowQueryPlanEvidenceProvided = $false
+$dataFlowQueryPlanEvidenceResult = ""
+$dataFlowQueryPlanEvidenceFailedCount = 0
+$dataFlowQueryPlanEvidenceExpectedFormatVersion = ""
+$dataFlowQueryPlanEvidenceFormatVersion = ""
 if ($SkipDataFlowStoragePlanConfigMapPublish) {
     Add-Check "data-flow-storage-plan-publish-skipped" $true "Data-flow storage plan ConfigMap publish skipped by parameter."
 }
@@ -183,11 +202,34 @@ else {
         $dataFlowStoragePlanJson = Get-Content -Raw -LiteralPath $resolvedDataFlowStoragePlanPath | ConvertFrom-Json
         $dataFlowStoragePlanFormatVersion = [string] $dataFlowStoragePlanJson.formatVersion
         $dataFlowStoragePlanResult = [string] $dataFlowStoragePlanJson.result
+        $dataFlowStoragePlanCandidateStore = [string] $dataFlowStoragePlanJson.candidateStore
+        $queryPlanEvidence = $dataFlowStoragePlanJson.queryPlanEvidence
+        $dataFlowQueryPlanEvidencePresent = $null -ne $queryPlanEvidence
+        if ($dataFlowQueryPlanEvidencePresent) {
+            $dataFlowQueryPlanEvidenceProvided = [bool] $queryPlanEvidence.provided
+            $dataFlowQueryPlanEvidenceResult = [string] $queryPlanEvidence.result
+            $dataFlowQueryPlanEvidenceFailedCount = Get-ObjectInt $queryPlanEvidence.failedCount
+            $dataFlowQueryPlanEvidenceExpectedFormatVersion = [string] $queryPlanEvidence.expectedFormatVersion
+            $dataFlowQueryPlanEvidenceFormatVersion = [string] $queryPlanEvidence.formatVersion
+        }
+        $dataFlowQueryPlanEvidenceRequired = @("MARIADB_PARTITION", "DUAL_WRITE") -contains $dataFlowStoragePlanCandidateStore
         Add-Check "data-flow-storage-plan-json-valid" $true "Data-flow storage plan file is valid JSON."
         Add-Check `
             "data-flow-storage-plan-format-version" `
             ($dataFlowStoragePlanFormatVersion -eq "osmu.data-flow-storage-plan.v1") `
             "formatVersion=$dataFlowStoragePlanFormatVersion"
+        if ($dataFlowQueryPlanEvidenceRequired) {
+            Add-Check `
+                "data-flow-query-plan-evidence-summary-present" `
+                $dataFlowQueryPlanEvidencePresent `
+                "candidateStore=$dataFlowStoragePlanCandidateStore requires queryPlanEvidence summary before ConfigMap publish."
+        }
+        if ($dataFlowQueryPlanEvidencePresent) {
+            Add-Check `
+                "data-flow-query-plan-evidence-format-contract" `
+                ($dataFlowQueryPlanEvidenceExpectedFormatVersion -eq "osmu.mariadb-query-plan-evidence.v1") `
+                "queryPlanEvidence expectedFormatVersion=$dataFlowQueryPlanEvidenceExpectedFormatVersion."
+        }
     }
     catch {
         Add-Check "data-flow-storage-plan-json-valid" $false "Data-flow storage plan file is not valid JSON: $($_.Exception.Message)"
@@ -261,8 +303,15 @@ function New-ReportObject([string] $ResultValue) {
         dataFlowStoragePlanPath = $resolvedDataFlowStoragePlanPath
         dataFlowStoragePlanFormatVersion = $dataFlowStoragePlanFormatVersion
         dataFlowStoragePlanResult = $dataFlowStoragePlanResult
+        dataFlowStoragePlanCandidateStore = $dataFlowStoragePlanCandidateStore
         dataFlowStoragePlanBytes = $dataFlowStoragePlanBytes
         dataFlowStoragePlanSha256 = $dataFlowStoragePlanSha256
+        dataFlowQueryPlanEvidencePresent = [bool] $dataFlowQueryPlanEvidencePresent
+        dataFlowQueryPlanEvidenceProvided = [bool] $dataFlowQueryPlanEvidenceProvided
+        dataFlowQueryPlanEvidenceResult = $dataFlowQueryPlanEvidenceResult
+        dataFlowQueryPlanEvidenceFailedCount = $dataFlowQueryPlanEvidenceFailedCount
+        dataFlowQueryPlanEvidenceExpectedFormatVersion = $dataFlowQueryPlanEvidenceExpectedFormatVersion
+        dataFlowQueryPlanEvidenceFormatVersion = $dataFlowQueryPlanEvidenceFormatVersion
         clientDryRunCommand = $clientDryRunCommand
         serverDryRunCommand = $serverDryRunCommand
         applyCommand = $applyCommand
