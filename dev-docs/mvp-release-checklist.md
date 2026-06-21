@@ -179,6 +179,7 @@ Required before calling the current prototype demo-ready:
 - [x] Operations readiness frontend selector visibility test passes.
 - [x] Durable release artifact generator synthetic test passes.
 - [x] Test case evidence map separates PASS, PARTIAL, and PENDING items.
+- [x] S3 replacement boundary verifier passes and keeps compatibility claims scoped to `dev-docs/s3-compatibility.md`.
 
 Command:
 
@@ -191,6 +192,7 @@ powershell -ExecutionPolicy Bypass -File .\scripts\write-mvp-demo-package-notes.
 powershell -ExecutionPolicy Bypass -File .\scripts\verify-mvp-release-decision.ps1
 powershell -ExecutionPolicy Bypass -File .\scripts\verify-mvp-release-artifacts.ps1 -DurableGateReportPath .\.osmu-run\latest-durable-demo-gate.json
 powershell -ExecutionPolicy Bypass -File .\scripts\verify-mvp-demo-package-notes.ps1
+powershell -ExecutionPolicy Bypass -File .\scripts\verify-s3-compatibility-boundary.ps1
 powershell -ExecutionPolicy Bypass -File .\scripts\verify-mvp-completion.ps1 -FailIfLocalMvpNotReady
 ```
 
@@ -205,6 +207,7 @@ Required before calling MVP v0.1 durable/pilot-ready:
 - [x] Docker integration smoke passes.
 - [x] MariaDB object tag index smoke passes.
 - [x] MinIO-backed multipart checksum smoke passes.
+- [x] S3 replacement boundary verifier passes.
 - [x] Real S3 client smoke passes with Dockerized MinIO Client.
 - [x] Durable demo gate `scripts/verify-durable-demo-gate.ps1` passes and records `docker-durable-demo-verified`.
 - [ ] Real S3 client CI workflow has a successful GitHub-hosted run.
@@ -229,6 +232,7 @@ Push-Location .\osmu-backend
 Pop-Location
 powershell -ExecutionPolicy Bypass -File .\scripts\write-durable-release-artifacts.ps1 -DurableGateReportPath .\.osmu-run\latest-durable-demo-gate.json -BackendTestsIncluded
 powershell -ExecutionPolicy Bypass -File .\scripts\finalize-durable-mvp-demo.ps1 -S3Client docker-mc
+powershell -ExecutionPolicy Bypass -File .\scripts\verify-s3-compatibility-boundary.ps1
 powershell -ExecutionPolicy Bypass -File .\scripts\verify-mvp-completion.ps1 -FailIfLocalMvpNotReady
 ```
 

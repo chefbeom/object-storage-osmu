@@ -138,6 +138,8 @@ $featureInventory = Read-OptionalText ".\dev-docs\feature-inventory.md" "Feature
 $prototypeStatus = Read-OptionalText ".\dev-docs\prototype-status.md" "Prototype status"
 $releaseChecklist = Read-OptionalText ".\dev-docs\mvp-release-checklist.md" "MVP release checklist"
 $documentIndex = Read-OptionalText ".\dev-docs\document-index.md" "Document index"
+$s3Compatibility = Read-OptionalText ".\dev-docs\s3-compatibility.md" "S3 compatibility matrix"
+$s3BoundaryVerifierPath = Resolve-ProjectPath ".\scripts\verify-s3-compatibility-boundary.ps1"
 
 $demoStatus = Get-Text $demo.json "currentDemoStatus"
 $demoResult = Get-Text $demo.json "result"
@@ -157,6 +159,8 @@ Add-Check "Audit marks durable and frontend evidence passed" "release-artifact" 
 Add-Check "Release decision marks durable MVP pilot GO" "release-artifact" (Test-Contains $decision "- Durable MVP pilot: GO") "durable MVP pilot decision line checked" $decision.path
 Add-Check "Release notes preserve durable proof" "release-artifact" ((Test-Contains $releaseNotes "Durable MVP demo gate report: result=ready") -and (Test-Contains $releaseNotes "local durable MVP demo evidence")) "durable proof release note checked" $releaseNotes.path
 Add-Check "Demo package notes preserve pilot handoff" "release-artifact" ((Test-Contains $demoPackageNotes "Package status: local-durable-mvp-ready") -and (Test-Contains $demoPackageNotes "S3 Replacement Boundary") -and (Test-Contains $demoPackageNotes "dev-docs/s3-compatibility.md")) "demo package handoff checked" $demoPackageNotes.path
+Add-Check "S3 replacement boundary verifier available" "documentation" (Test-Path -LiteralPath $s3BoundaryVerifierPath) "path=$s3BoundaryVerifierPath" $s3BoundaryVerifierPath
+Add-Check "S3 compatibility matrix preserves replacement boundary" "documentation" ((Test-Contains $s3Compatibility "## Product Boundary") -and (Test-Contains $s3Compatibility "## Verification Rule") -and (Test-Contains $s3Compatibility "New S3 work should start from target-client replacement needs") -and (Test-Contains $s3Compatibility "New S3 behavior is accepted into the roadmap only when it protects replacement use") -and (Test-Contains $s3Compatibility "Detailed AWS checksum negotiation/client-option parity is out of scope unless needed for a supported real-client smoke.")) "S3 replacement boundary checked" $s3Compatibility.path
 Add-Check "Feature inventory local MVP state current" "documentation" ((Test-Contains $featureInventory "MVP demo current estimate: 90-95%") -and (Test-Contains $featureInventory "docker-durable-demo-verified") -and (Test-Contains $featureInventory "readiness-ready/finalizer-missing")) "feature inventory local MVP status checked" $featureInventory.path
 Add-Check "Prototype status local MVP state current" "documentation" ((Test-Contains $prototypeStatus "docker-durable-demo-verified") -and (Test-NotContains $prototypeStatus "full Docker runtime verification is still pending")) "prototype status stale blocker check" $prototypeStatus.path
 Add-Check "Release checklist local durable decision current" "documentation" ((Test-Contains $releaseChecklist "GO for local durable MVP demo") -and (Test-Contains $releaseChecklist 'operations readiness finalizer report exists with `result=ready` and `readinessResult=ready`') -and (Test-NotContains $releaseChecklist "NO-GO until every durable gate above passes")) "release checklist durable and convergence gate checked" $releaseChecklist.path

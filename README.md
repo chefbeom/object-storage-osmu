@@ -253,6 +253,7 @@ powershell -ExecutionPolicy Bypass -File .\scripts\verify-browser-e2e-local-demo
 S3 client smoke:
 
 ```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\verify-s3-compatibility-boundary.ps1
 powershell -ExecutionPolicy Bypass -File .\scripts\verify-s3-client-smoke.ps1 -Client auto -RequireClient
 powershell -ExecutionPolicy Bypass -File .\scripts\verify-s3-client-smoke.ps1 -Client boto3 -RequireClient
 powershell -ExecutionPolicy Bypass -File .\scripts\verify-s3-client-smoke.ps1 -Client aws-js -RequireClient

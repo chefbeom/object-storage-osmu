@@ -324,6 +324,16 @@
 - Priority: P1
 - Automated: backend S3 controller tests including `S3ObjectControllerTest.objectTaggingRejectsUnexpectedRootXml`, `S3ObjectControllerTest.multiDeleteRejectsUnexpectedRootXml`, and `verify-s3-client-smoke.ps1`; document consistency is reviewed through `git diff --check` and code review.
 
+### TC-S3-COMPATIBILITY-BOUNDARY
+
+- Feature: S3 replacement-layer compatibility boundary.
+- Preconditions: README, PRD, roadmap, prototype status, backend design, MVP checklist, demo package notes writer, MVP completion verifier, and `dev-docs/s3-compatibility.md` are available.
+- Input: `powershell -ExecutionPolicy Bypass -File .\scripts\verify-s3-compatibility-boundary.ps1`.
+- Steps: Run the verifier and review failures for missing replacement-boundary text, missing client matrix evidence, missing release-gate links, or overbroad AWS S3 parity claims.
+- Expected: The verifier exits successfully only when S3 support is documented as replacement-use compatibility, new S3 work is tied to real client smoke failures, migration blockers, or OSMU control-plane needs, and overbroad claims such as full AWS S3 parity or drop-in replacement are absent from current release-facing docs.
+- Priority: P1
+- Automated: `scripts/verify-s3-compatibility-boundary.ps1`, `scripts/verify-mvp-completion.ps1`
+
 ### TC-S3-OBJECT-006
 
 - Feature: S3 aws-chunked streaming chunk-signature validation.
