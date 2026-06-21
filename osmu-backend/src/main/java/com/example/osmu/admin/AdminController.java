@@ -2318,7 +2318,7 @@ public class AdminController {
                 "dashboard-readiness-panel",
                 "Data-flow plan",
                 dataFlowStoragePlanReportPath == null ? "" : dataFlowStoragePlanReportPath,
-                "powershell -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\write-data-flow-storage-plan.ps1 -CandidateStore <store> -ExpectedPeakEventsPerDay <n> -ExpectedQueryWindowDays <days> -ConfirmNoObjectKeyInAggregates -ConfirmBackfillPlan -ConfirmRollbackPlan -ConfirmDashboardCutoverPlan -ConfirmRetentionJobBudget -ConfirmExplainEvidence",
+                "powershell -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\write-data-flow-storage-plan.ps1 -CandidateStore <store> -ExpectedPeakEventsPerDay <n> -ExpectedQueryWindowDays <days> -ConfirmNoObjectKeyInAggregates -ConfirmBackfillPlan -ConfirmRollbackPlan -ConfirmDashboardCutoverPlan -ConfirmRetentionJobBudget -ConfirmExplainEvidence -QueryPlanEvidenceJsonPath .\\.osmu-run\\latest-mariadb-query-plan-evidence.json -RequireQueryPlanEvidence",
                 "",
                 "",
                 plan.scopePolicy()
@@ -2343,6 +2343,8 @@ public class AdminController {
                 ));
             }
         }
+        DashboardDataFlowQueryPlanEvidenceResponse queryPlanEvidence =
+                dataFlowQueryPlanEvidenceSnapshot(planReport.path("queryPlanEvidence"));
         return new DashboardDataFlowStoragePlanResponse(
                 jsonText(planReport, "result"),
                 jsonText(planReport, "recordedAt"),
@@ -2360,7 +2362,44 @@ public class AdminController {
                 jsonInt(planReport, "passedCount"),
                 jsonInt(planReport, "pendingCount"),
                 List.copyOf(checks),
+                queryPlanEvidence,
                 jsonText(planReport, "scopePolicy")
+        );
+    }
+
+    private DashboardDataFlowQueryPlanEvidenceResponse dataFlowQueryPlanEvidenceSnapshot(JsonNode evidence) {
+        if (evidence == null || evidence.isMissingNode() || evidence.isNull()) {
+            return DashboardDataFlowQueryPlanEvidenceResponse.empty();
+        }
+        java.util.ArrayList<DashboardDataFlowQueryPlanFailedCheckResponse> failedChecks = new java.util.ArrayList<>();
+        JsonNode failedCheckNodes = evidence.path("failedChecks");
+        if (failedCheckNodes.isArray()) {
+            for (JsonNode failedCheck : failedCheckNodes) {
+                failedChecks.add(new DashboardDataFlowQueryPlanFailedCheckResponse(
+                        jsonText(failedCheck, "id"),
+                        jsonText(failedCheck, "table"),
+                        jsonText(failedCheck, "queryPath"),
+                        jsonText(failedCheck, "expectedIndex"),
+                        jsonText(failedCheck, "status"),
+                        jsonBoolean(failedCheck, "usesExpectedIndex"),
+                        jsonText(failedCheck, "errorMessage")
+                ));
+            }
+        }
+        return new DashboardDataFlowQueryPlanEvidenceResponse(
+                jsonBoolean(evidence, "provided"),
+                jsonText(evidence, "path"),
+                jsonBoolean(evidence, "parsed"),
+                jsonText(evidence, "formatVersion"),
+                jsonText(evidence, "expectedFormatVersion"),
+                jsonBoolean(evidence, "validFormatVersion"),
+                jsonText(evidence, "result"),
+                jsonText(evidence, "mode"),
+                jsonInt(evidence, "checkCount"),
+                jsonInt(evidence, "passedCount"),
+                jsonInt(evidence, "failedCount"),
+                List.copyOf(failedChecks),
+                jsonText(evidence, "detail")
         );
     }
 

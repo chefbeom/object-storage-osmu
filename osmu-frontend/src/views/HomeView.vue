@@ -1077,6 +1077,21 @@ const dashboardReadiness = reactive({
     passedCount: 0,
     pendingCount: 0,
     checks: [],
+    queryPlanEvidence: {
+      provided: false,
+      path: '',
+      parsed: false,
+      formatVersion: '',
+      expectedFormatVersion: '',
+      validFormatVersion: false,
+      result: '',
+      mode: '',
+      checkCount: 0,
+      passedCount: 0,
+      failedCount: 0,
+      failedChecks: [],
+      detail: '',
+    },
     scopePolicy: '',
   },
   storageBackendTelemetryEvidence: {
@@ -5352,6 +5367,7 @@ function normalizeOperationsHandoffPackage(report = {}) {
 }
 
 function normalizeDataFlowStoragePlan(report = {}) {
+  const queryPlanEvidence = report?.queryPlanEvidence || {}
   return {
     result: report?.result || '',
     recordedAt: report?.recordedAt || '',
@@ -5369,6 +5385,21 @@ function normalizeDataFlowStoragePlan(report = {}) {
     passedCount: Number(report?.passedCount || 0),
     pendingCount: Number(report?.pendingCount || 0),
     checks: Array.isArray(report?.checks) ? report.checks : [],
+    queryPlanEvidence: {
+      provided: Boolean(queryPlanEvidence.provided),
+      path: queryPlanEvidence.path || '',
+      parsed: Boolean(queryPlanEvidence.parsed),
+      formatVersion: queryPlanEvidence.formatVersion || '',
+      expectedFormatVersion: queryPlanEvidence.expectedFormatVersion || '',
+      validFormatVersion: Boolean(queryPlanEvidence.validFormatVersion),
+      result: queryPlanEvidence.result || '',
+      mode: queryPlanEvidence.mode || '',
+      checkCount: Number(queryPlanEvidence.checkCount || 0),
+      passedCount: Number(queryPlanEvidence.passedCount || 0),
+      failedCount: Number(queryPlanEvidence.failedCount || 0),
+      failedChecks: Array.isArray(queryPlanEvidence.failedChecks) ? queryPlanEvidence.failedChecks : [],
+      detail: queryPlanEvidence.detail || '',
+    },
     scopePolicy: report?.scopePolicy || '',
   }
 }

@@ -5,7 +5,7 @@
 - Admin monitoring now includes long-term monthly data-flow aggregate JSON/CSV surfaces and monthly aggregate store refresh/read/export in addition to detailed event export, daily rollup, and materialized daily rollup read/export.
 - Monthly aggregate rows group by UTC month, bucket, source, and operation, and can be calculated from live event rows, from the materialized daily rollup store, or read from the compacted monthly aggregate store.
 - The monthly view is an OSMU operations analytics surface, not AWS billing parity. It excludes object keys and raw event messages.
-- `scripts/write-data-flow-storage-plan.ps1` records the sizing, no-object-key aggregate policy, backfill, rollback, dashboard cutover, retention budget, and query-plan/target-store evidence checklist for the future partition/time-series transition; dashboard readiness exposes the latest plan as `dataFlowStoragePlan` and `DATA_FLOW_STORAGE_PLAN` while checks remain pending.
+- `scripts/write-data-flow-storage-plan.ps1` records the sizing, no-object-key aggregate policy, backfill, rollback, dashboard cutover, retention budget, and query-plan/target-store evidence checklist for the future partition/time-series transition. MariaDB partition/dual-write candidates now consume the sanitized `scripts/write-mariadb-query-plan-evidence.ps1` JSON summary via `-QueryPlanEvidenceJsonPath`, and dashboard readiness exposes that summary under `dataFlowStoragePlan.queryPlanEvidence` while checks remain pending.
 - Remaining analytics scope is table partitioning or an external time-series repository for high-volume retention and faster long-window reads.
 
 ## Current Completion Correction

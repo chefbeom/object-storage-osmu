@@ -16,6 +16,8 @@ param(
     [switch] $ConfirmDashboardCutoverPlan,
     [switch] $ConfirmRetentionJobBudget,
     [switch] $ConfirmExplainEvidence,
+    [string] $QueryPlanEvidenceJsonPath = "",
+    [switch] $RequireQueryPlanEvidence,
     [string] $JsonOutputPath = ".\.osmu-run\latest-data-flow-storage-plan.json",
     [string] $MarkdownOutputPath = ".\.osmu-run\latest-data-flow-storage-plan.md",
     [switch] $FailIfNotPassed
@@ -37,6 +39,24 @@ function Assert-NoCredentialText([string] $value, [string] $label) {
     }
 }
 
+function Assert-NoCredentialJson([string] $value, [string] $label) {
+    if ([string]::IsNullOrWhiteSpace($value)) {
+        return
+    }
+    $patterns = @(
+        '(?i)"(password|passwd|secret|token|credential|apiKey|api_key|accessKey|access_key|privateKey|private_key)"\s*:\s*"[^"]+"',
+        '(?i)\b(password|passwd|secret|token|credential|api[_-]?key|access[_-]?key|private[_-]?key)\s*=\s*\S+',
+        "-----BEGIN [A-Z ]*PRIVATE KEY-----",
+        "\bBearer\s+[A-Za-z0-9._~+/=-]{12,}",
+        "\bA(KIA|SIA)[0-9A-Z]{16}\b"
+    )
+    foreach ($pattern in $patterns) {
+        if ($value -match $pattern) {
+            throw "$label must not contain credential-shaped text."
+        }
+    }
+}
+
 function New-Check([string] $id, [string] $title, [bool] $passed, [string] $detail, [string] $nextAction) {
     [ordered]@{
         id = $id
@@ -47,12 +67,153 @@ function New-Check([string] $id, [string] $title, [bool] $passed, [string] $deta
     }
 }
 
+function Get-PropertyValue([object] $object, [string] $name) {
+    if ($null -eq $object) {
+        return $null
+    }
+    $property = $object.PSObject.Properties[$name]
+    if ($null -eq $property) {
+        return $null
+    }
+    return $property.Value
+}
+
+function Get-PropertyText([object] $object, [string] $name) {
+    $value = Get-PropertyValue $object $name
+    if ($null -eq $value) {
+        return ""
+    }
+    return [string] $value
+}
+
+function Get-PropertyInt([object] $object, [string] $name) {
+    $value = Get-PropertyValue $object $name
+    if ($null -eq $value) {
+        return 0
+    }
+    $parsed = 0
+    if ([int]::TryParse(([string] $value), [ref] $parsed)) {
+        return $parsed
+    }
+    return 0
+}
+
+function Get-PropertyBool([object] $object, [string] $name) {
+    $value = Get-PropertyValue $object $name
+    if ($null -eq $value) {
+        return $false
+    }
+    if ($value -is [bool]) {
+        return [bool] $value
+    }
+    return ([string] $value).Equals("true", [System.StringComparison]::OrdinalIgnoreCase)
+}
+
+function Get-PropertyArray([object] $object, [string] $name) {
+    $value = Get-PropertyValue $object $name
+    if ($null -eq $value) {
+        return @()
+    }
+    if ($value -is [System.Array]) {
+        return @($value)
+    }
+    return @($value)
+}
+
+function Read-QueryPlanEvidenceSummary([string] $path) {
+    $summary = [ordered]@{
+        provided = $false
+        path = ""
+        parsed = $false
+        formatVersion = ""
+        expectedFormatVersion = "osmu.mariadb-query-plan-evidence.v1"
+        validFormatVersion = $false
+        result = ""
+        mode = ""
+        checkCount = 0
+        passedCount = 0
+        failedCount = 0
+        failedChecks = @()
+        detail = "No MariaDB query plan evidence JSON supplied."
+    }
+
+    if ([string]::IsNullOrWhiteSpace($path)) {
+        return $summary
+    }
+
+    $resolvedPath = Resolve-ProjectPath $path
+    $summary["provided"] = $true
+    $summary["path"] = $resolvedPath
+    if (-not (Test-Path -LiteralPath $resolvedPath)) {
+        $summary["detail"] = "MariaDB query plan evidence JSON not found."
+        return $summary
+    }
+
+    $raw = Get-Content -Raw -LiteralPath $resolvedPath
+    Assert-NoCredentialJson $raw "QueryPlanEvidenceJson"
+    try {
+        $payload = $raw | ConvertFrom-Json
+    }
+    catch {
+        $summary["detail"] = "MariaDB query plan evidence JSON parse failed: $($_.Exception.Message)"
+        return $summary
+    }
+
+    $failedRows = New-Object System.Collections.Generic.List[object]
+    foreach ($check in @(Get-PropertyArray $payload "checks")) {
+        $status = Get-PropertyText $check "status"
+        $passed = Get-PropertyBool $check "passed"
+        if ($status -eq "FAIL" -or -not $passed) {
+            [void] $failedRows.Add([ordered]@{
+                id = Get-PropertyText $check "id"
+                table = Get-PropertyText $check "table"
+                queryPath = Get-PropertyText $check "queryPath"
+                expectedIndex = Get-PropertyText $check "expectedIndex"
+                status = $status
+                usesExpectedIndex = Get-PropertyBool $check "usesExpectedIndex"
+                errorMessage = Get-PropertyText $check "errorMessage"
+            })
+        }
+        if ($failedRows.Count -ge 5) {
+            break
+        }
+    }
+
+    $formatVersion = Get-PropertyText $payload "formatVersion"
+    $result = Get-PropertyText $payload "result"
+    $summary["parsed"] = $true
+    $summary["formatVersion"] = $formatVersion
+    $summary["validFormatVersion"] = $formatVersion -eq $summary["expectedFormatVersion"]
+    $summary["result"] = $result
+    $summary["mode"] = Get-PropertyText $payload "mode"
+    $summary["checkCount"] = Get-PropertyInt $payload "checkCount"
+    $summary["passedCount"] = Get-PropertyInt $payload "passedCount"
+    $summary["failedCount"] = Get-PropertyInt $payload "failedCount"
+    $summary["failedChecks"] = @($failedRows.ToArray())
+    $summary["detail"] = "formatVersion=$formatVersion; result=$result; mode=$($summary["mode"]); passed=$($summary["passedCount"]); failed=$($summary["failedCount"]); checks=$($summary["checkCount"])"
+    return $summary
+}
+
 Assert-NoCredentialText $EnvironmentName "EnvironmentName"
 Assert-NoCredentialText $TargetCluster "TargetCluster"
 Assert-NoCredentialText $Operator "Operator"
 Assert-NoCredentialText $EvidenceRef "EvidenceRef"
 
-$checks = @(
+$queryPlanEvidence = Read-QueryPlanEvidenceSummary $QueryPlanEvidenceJsonPath
+$queryPlanEvidencePassed = [bool] $queryPlanEvidence["provided"] -and
+    [bool] $queryPlanEvidence["parsed"] -and
+    [bool] $queryPlanEvidence["validFormatVersion"] -and
+    "passed".Equals([string] $queryPlanEvidence["result"], [System.StringComparison]::OrdinalIgnoreCase) -and
+    [int] $queryPlanEvidence["failedCount"] -eq 0
+$candidateNeedsMariaDbQueryEvidence = @("MARIADB_PARTITION", "DUAL_WRITE") -contains $CandidateStore
+$queryPlanEvidenceRequired = [bool] $RequireQueryPlanEvidence -or $candidateNeedsMariaDbQueryEvidence
+$explainEvidencePassed = [bool] $ConfirmExplainEvidence
+if ($queryPlanEvidenceRequired -or [bool] $queryPlanEvidence["provided"]) {
+    $explainEvidencePassed = $explainEvidencePassed -and $queryPlanEvidencePassed
+}
+
+$checks = New-Object System.Collections.Generic.List[object]
+foreach ($check in @(
     (New-Check `
         "expected_peak_volume" `
         "Expected peak event volume captured" `
@@ -98,10 +259,21 @@ $checks = @(
     (New-Check `
         "explain_or_store_evidence" `
         "Query plan or target-store evidence exists" `
-        ([bool] $ConfirmExplainEvidence) `
-        "MariaDB partition path needs EXPLAIN evidence; external store path needs target query benchmark evidence." `
-        "Pass -ConfirmExplainEvidence after evidence is attached.")
-)
+        $explainEvidencePassed `
+        "candidateStore=$CandidateStore; confirmExplainEvidence=$([bool] $ConfirmExplainEvidence); queryPlanEvidenceRequired=$queryPlanEvidenceRequired; queryPlanEvidenceResult=$($queryPlanEvidence["result"])" `
+        "Pass -ConfirmExplainEvidence and, for MariaDB partition or dual-write, attach -QueryPlanEvidenceJsonPath .\.osmu-run\latest-mariadb-query-plan-evidence.json from a passed query-plan evidence run.")
+)) {
+    [void] $checks.Add($check)
+}
+
+if ($queryPlanEvidenceRequired -or [bool] $queryPlanEvidence["provided"]) {
+    [void] $checks.Add((New-Check `
+        "mariadb_query_plan_evidence" `
+        "MariaDB query plan evidence passed" `
+        $queryPlanEvidencePassed `
+        $queryPlanEvidence["detail"] `
+        "Run scripts/write-mariadb-query-plan-evidence.ps1 with -Execute or -ExplainInputDir until result=passed, then rerun this storage plan."))
+}
 
 $passedCount = @($checks | Where-Object { $_.status -eq "passed" }).Count
 $pendingCount = @($checks | Where-Object { $_.status -ne "passed" }).Count
@@ -123,6 +295,7 @@ $report = [ordered]@{
     eventRetentionDays = $EventRetentionDays
     dailyRollupRetentionDays = $DailyRollupRetentionDays
     monthlyRollupRetentionMonths = $MonthlyRollupRetentionMonths
+    queryPlanEvidence = $queryPlanEvidence
     scopePolicy = $scopePolicy
     checkCount = $checks.Count
     passedCount = $passedCount
@@ -156,6 +329,14 @@ $markdown = @(
     "- Daily rollup retention days: $DailyRollupRetentionDays"
     "- Monthly rollup retention months: $MonthlyRollupRetentionMonths"
     ""
+    "## Query Plan Evidence"
+    ""
+    "- Required: $queryPlanEvidenceRequired"
+    "- Provided: $($queryPlanEvidence["provided"])"
+    "- Result: $($queryPlanEvidence["result"])"
+    "- Mode: $($queryPlanEvidence["mode"])"
+    "- Checks: $($queryPlanEvidence["passedCount"])/$($queryPlanEvidence["checkCount"]) passed; failed=$($queryPlanEvidence["failedCount"])"
+    ""
     "## Checks"
     ""
 )
@@ -169,6 +350,7 @@ $markdown += ""
 $markdown += "## Execute"
 $markdown += ""
 $markdown += "Rerun this command with target sizing plus all confirmation switches only after target evidence exists."
+$markdown += "For MariaDB partition or dual-write, include -QueryPlanEvidenceJsonPath .\.osmu-run\latest-mariadb-query-plan-evidence.json -RequireQueryPlanEvidence after the query-plan evidence result is passed."
 $markdown | Set-Content -LiteralPath $resolvedMarkdownOutputPath -Encoding UTF8
 
 if ($FailIfNotPassed -and $result -ne "passed") {

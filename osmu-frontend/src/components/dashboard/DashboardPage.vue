@@ -620,6 +620,15 @@
           query {{ dataFlowStoragePlan.expectedQueryWindowDays || 0 }}d /
           passed {{ dataFlowStoragePlan.passedCount || 0 }} of {{ dataFlowStoragePlan.checkCount || 0 }}
         </small>
+        <small
+          v-if="dataFlowQueryPlanEvidence.provided || dataFlowQueryPlanEvidence.expectedFormatVersion"
+          data-testid="readiness-data-flow-query-plan-evidence-summary"
+        >
+          Query plan evidence:
+          {{ dataFlowQueryPlanEvidence.result || 'missing' }} /
+          passed {{ dataFlowQueryPlanEvidence.passedCount || 0 }} of {{ dataFlowQueryPlanEvidence.checkCount || 0 }} /
+          failed {{ dataFlowQueryPlanEvidence.failedCount || 0 }}
+        </small>
         <small v-if="dataFlowStoragePlan.scopePolicy">
           {{ dataFlowStoragePlan.scopePolicy }}
         </small>
@@ -2351,6 +2360,10 @@ const operationsHandoffPackageChecks = computed(() => {
 
 const dataFlowStoragePlan = computed(() => (
   props.dashboardReadiness.dataFlowStoragePlan || {}
+))
+
+const dataFlowQueryPlanEvidence = computed(() => (
+  dataFlowStoragePlan.value?.queryPlanEvidence || {}
 ))
 
 const dataFlowStoragePlanChecks = computed(() => {

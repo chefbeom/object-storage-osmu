@@ -149,8 +149,8 @@ This index points to the useful project documents for the current prototype. The
 - `../scripts/verify-lightweight-prototype.ps1` - smoke test a running Docker-free prototype.
 - `../scripts/seed-lightweight-demo.ps1` - seed a running Docker-free prototype with demo org, users, buckets, objects, lifecycle rules, and access key.
 - `../scripts/verify-lightweight-demo.ps1` - verify seeded portal data, frontend bundle, scoped permissions, tags, lifecycle, access key inventory, and S3 SigV4 access with the seeded key.
-- `../scripts/write-data-flow-storage-plan.ps1` - write target sizing and readiness evidence for future data-flow partition/time-series transition without storing object keys, raw event messages, or credentials.
-- `../scripts/verify-data-flow-storage-plan.ps1` - self-test the data-flow storage plan writer, including plan-required, passed fixture, and credential-shaped input rejection cases.
+- `../scripts/write-data-flow-storage-plan.ps1` - write target sizing and readiness evidence for future data-flow partition/time-series transition without storing object keys, raw event messages, credentials, or raw EXPLAIN SQL; MariaDB partition/dual-write candidates can require a passed `latest-mariadb-query-plan-evidence.json` summary.
+- `../scripts/verify-data-flow-storage-plan.ps1` - self-test the data-flow storage plan writer, including plan-required, passed query-plan fixture, failed query-plan fixture, and credential-shaped input rejection cases.
 - `../osmu-frontend/e2e/lightweight-demo.spec.js` - Browser E2E spec for stale session redirect, developer S3/API Key console, and admin storage portal click path. Run with `npm run test:e2e` from `osmu-frontend` after Playwright browsers are installed.
 - `../osmu-frontend/playwright.config.js` - Playwright config. It reads `OSMU_PLAYWRIGHT_CHANNEL` so local runs can use installed Chrome or Edge when bundled Chromium download is unavailable.
 - `../scripts/stop-local-prototype.ps1` - stop Docker-free prototype processes; use `-ForcePorts` to clean up stale child listeners on default ports.

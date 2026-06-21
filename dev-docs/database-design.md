@@ -878,6 +878,8 @@ erDiagram
 - `scripts/verify-mariadb-query-plan-evidence.ps1`는 plan-only output, expected-index fixture pass, wrong-index fixture failure를 self-test한다. `verify-local.ps1`는 이 verifier를 실행해 evidence contract가 깨지지 않는지 확인한다.
 - plan-only output은 live 성능 증거가 아니다. target-scale MariaDB readiness는 `-Execute` 또는 operator-collected explain files가 모든 expected index를 보여주고, slow-query log 검토가 각 query budget을 만족할 때 확보된다.
 
+- `scripts/write-data-flow-storage-plan.ps1`는 MariaDB partition 또는 dual-write 후보에서 이 evidence writer가 만든 `osmu.mariadb-query-plan-evidence.v1` JSON summary를 `-QueryPlanEvidenceJsonPath`로 받아 storage transition gate에 연결한다. Storage plan에는 result/count/failed check metadata만 저장하고 raw SQL, raw EXPLAIN JSON, DB password는 저장하지 않는다.
+
 ## 16.4 Object List Query Pushdown Gate
 
 - `scripts/verify-object-list-query-pushdown.ps1`는 `MariaDbObjectMetadataRepository`의 active/trash object list SQL이 escaped `LOWER(m.object_key) LIKE ?`, `m.object_key > ?`, `ORDER BY m.object_key LIMIT ?`, `object_metadata_tags` lookup path를 유지하는지 정적으로 검증한다.
