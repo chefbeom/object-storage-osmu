@@ -548,6 +548,14 @@
             Package: {{ operationsHandoffPackageItem.message }}
           </small>
           <small
+            v-if="storageBackendTelemetryEvidence.result"
+            data-testid="readiness-storage-telemetry-item-summary"
+          >
+            Storage telemetry: {{ storageBackendTelemetryEvidence.result }} /
+            pools {{ storageBackendTelemetryEvidence.poolCount || 0 }} /
+            offline {{ storageBackendTelemetryEvidence.offlineServerCount || 0 }}
+          </small>
+          <small
             v-if="operationsReadinessConvergenceItem"
             data-testid="readiness-convergence-item-summary"
           >
@@ -568,6 +576,29 @@
         >
           Operations
         </button>
+      </div>
+      <div
+        v-if="storageBackendTelemetryEvidence.result"
+        class="readiness-invocation-summary"
+        data-testid="readiness-storage-telemetry-summary"
+      >
+        <strong>Storage telemetry: {{ storageBackendTelemetryEvidence.result }}</strong>
+        <small>
+          {{ storageBackendTelemetryEvidence.environmentName || 'unknown env' }} /
+          {{ storageBackendTelemetryEvidence.targetCluster || 'unknown cluster' }} /
+          pools {{ storageBackendTelemetryEvidence.poolCount || 0 }} /
+          servers {{ storageBackendTelemetryEvidence.serverCount || 0 }} /
+          offline {{ storageBackendTelemetryEvidence.offlineServerCount || 0 }} /
+          drives {{ storageBackendTelemetryEvidence.driveCount || 0 }} /
+          used {{ formatBytes(storageBackendTelemetryEvidence.usedBytes || 0) }} /
+          total {{ formatBytes(storageBackendTelemetryEvidence.totalBytes || 0) }}
+        </small>
+        <small v-if="storageBackendTelemetryEvidence.adminInfoJsonSha256">
+          admin info sha256 {{ storageBackendTelemetryEvidence.adminInfoJsonSha256 }}
+        </small>
+        <small v-if="storageBackendTelemetryEvidence.scopePolicy">
+          {{ storageBackendTelemetryEvidence.scopePolicy }}
+        </small>
       </div>
       <div
         v-if="operationsHandoffPackage.result"
@@ -2259,6 +2290,10 @@ const operationsHandoffPackageChecks = computed(() => {
   const checks = operationsHandoffPackage.value?.checks
   return Array.isArray(checks) ? checks : []
 })
+
+const storageBackendTelemetryEvidence = computed(() => (
+  props.dashboardReadiness.storageBackendTelemetryEvidence || {}
+))
 
 const operationsReadinessConvergence = computed(() => (
   props.dashboardReadiness.operationsReadinessConvergence || {}

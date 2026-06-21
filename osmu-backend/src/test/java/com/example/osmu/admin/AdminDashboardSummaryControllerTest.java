@@ -507,6 +507,41 @@ class AdminDashboardSummaryControllerTest {
                         """
         );
         Files.writeString(
+                Path.of(".osmu-run/latest-storage-backend-telemetry.json"),
+                """
+                        {
+                          "formatVersion": "osmu.storage-backend-telemetry.v1",
+                          "generatedAt": "2026-06-21T08:03:05Z",
+                          "result": "passed",
+                          "environmentName": "pilot-prod",
+                          "targetCluster": "customer-cluster-a",
+                          "operatorName": "ops-admin",
+                          "source": {
+                            "mode": "admin-info-json-path",
+                            "minioAlias": "osmu-minio",
+                            "evidenceRef": "mc-admin-info-run-20260621",
+                            "adminInfoJsonSha256": "abc123storage",
+                            "rawAdminInfoStored": false
+                          },
+                          "summary": {
+                            "poolCount": 1,
+                            "serverCount": 2,
+                            "onlineServerCount": 2,
+                            "offlineServerCount": 0,
+                            "driveCount": 4,
+                            "totalBytes": 4398046511104,
+                            "usedBytes": 927712935936,
+                            "freeBytes": 3470333575168,
+                            "capacityKnown": true,
+                            "failureCount": 0,
+                            "plannedCount": 0
+                          },
+                          "decisionRule": "Storage backend telemetry evidence passes when target environment, cluster, operator, external evidence reference, MinIO admin-info JSON parsing, pool/server/drive summaries, online server state, and capacity totals are all present.",
+                          "scopePolicy": "This evidence captures MinIO pool/node operations telemetry for OSMU storage readiness. It is not AWS S3 parity work, and it does not store raw admin info, credentials, bearer tokens, private keys, kubeconfig, MinIO root credentials, or object data."
+                        }
+                        """
+        );
+        Files.writeString(
                 Path.of(".osmu-run/latest-operations-readiness-finalize.json"),
                 """
                         {
@@ -1192,6 +1227,18 @@ class AdminDashboardSummaryControllerTest {
                 .andExpect(jsonPath("$.data.operationsHandoffPackage.checks[0].id").value("runbook-reviewed"))
                 .andExpect(jsonPath("$.data.operationsHandoffPackage.checks[0].status").value("FAIL"))
                 .andExpect(jsonPath("$.data.operationsHandoffPackage.checks[1].evidenceRef").value("latest-commercial-integration-evidence-passed"))
+                .andExpect(jsonPath("$.data.storageBackendTelemetryEvidence.result").value("passed"))
+                .andExpect(jsonPath("$.data.storageBackendTelemetryEvidence.environmentName").value("pilot-prod"))
+                .andExpect(jsonPath("$.data.storageBackendTelemetryEvidence.targetCluster").value("customer-cluster-a"))
+                .andExpect(jsonPath("$.data.storageBackendTelemetryEvidence.sourceMode").value("admin-info-json-path"))
+                .andExpect(jsonPath("$.data.storageBackendTelemetryEvidence.minioAlias").value("osmu-minio"))
+                .andExpect(jsonPath("$.data.storageBackendTelemetryEvidence.rawAdminInfoStored").value(false))
+                .andExpect(jsonPath("$.data.storageBackendTelemetryEvidence.poolCount").value(1))
+                .andExpect(jsonPath("$.data.storageBackendTelemetryEvidence.serverCount").value(2))
+                .andExpect(jsonPath("$.data.storageBackendTelemetryEvidence.offlineServerCount").value(0))
+                .andExpect(jsonPath("$.data.storageBackendTelemetryEvidence.driveCount").value(4))
+                .andExpect(jsonPath("$.data.storageBackendTelemetryEvidence.totalBytes").value(4398046511104L))
+                .andExpect(jsonPath("$.data.storageBackendTelemetryEvidence.scopePolicy", org.hamcrest.Matchers.containsString("not AWS S3 parity work")))
                 .andExpect(jsonPath("$.data.items[?(@.code == 'OPERATIONS_HANDOFF_PACKAGE')].evidencePath").value(hasItem(".osmu-run/latest-operations-handoff-package.json")))
                 .andExpect(jsonPath("$.data.items[?(@.code == 'OPERATIONS_HANDOFF_PACKAGE')].remediationCommand").value(hasItem("powershell -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\write-operations-handoff-package.ps1")))
                 .andExpect(jsonPath("$.data.operationsEvidenceHandoff.result").value("blocked"))

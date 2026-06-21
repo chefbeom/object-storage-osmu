@@ -127,6 +127,7 @@ public class AdminController {
     private final String operationsArtifactCollectionPlanReportPath;
     private final String operationsEvidenceHandoffReportPath;
     private final String operationsHandoffPackageReportPath;
+    private final String storageBackendTelemetryReportPath;
     private final String operationsReadinessConvergenceReportPath;
     private final String kubernetesOperationsReportSyncReportPath;
 
@@ -175,6 +176,7 @@ public class AdminController {
             @Value("${osmu.operations.readiness.artifact-collection-plan-report-path:.osmu-run/latest-operations-artifact-collection-plan.json}") String operationsArtifactCollectionPlanReportPath,
             @Value("${osmu.operations.readiness.evidence-handoff-report-path:.osmu-run/latest-operations-evidence-handoff.json}") String operationsEvidenceHandoffReportPath,
             @Value("${osmu.operations.readiness.handoff-package-report-path:.osmu-run/latest-operations-handoff-package.json}") String operationsHandoffPackageReportPath,
+            @Value("${osmu.operations.readiness.storage-backend-telemetry-report-path:.osmu-run/latest-storage-backend-telemetry.json}") String storageBackendTelemetryReportPath,
             @Value("${osmu.operations.readiness.convergence-report-path:.osmu-run/latest-operations-readiness-convergence.json}") String operationsReadinessConvergenceReportPath,
             @Value("${osmu.operations.readiness.kubernetes-report-sync-report-path:.osmu-run/latest-kubernetes-operations-report-sync.json}") String kubernetesOperationsReportSyncReportPath
     ) {
@@ -222,6 +224,7 @@ public class AdminController {
         this.operationsArtifactCollectionPlanReportPath = blankToNull(operationsArtifactCollectionPlanReportPath);
         this.operationsEvidenceHandoffReportPath = blankToNull(operationsEvidenceHandoffReportPath);
         this.operationsHandoffPackageReportPath = blankToNull(operationsHandoffPackageReportPath);
+        this.storageBackendTelemetryReportPath = blankToNull(storageBackendTelemetryReportPath);
         this.operationsReadinessConvergenceReportPath = blankToNull(operationsReadinessConvergenceReportPath);
         this.kubernetesOperationsReportSyncReportPath = blankToNull(kubernetesOperationsReportSyncReportPath);
     }
@@ -868,6 +871,7 @@ public class AdminController {
         DashboardOperationsReadinessArtifactImportResponse operationsReadinessArtifactImport = operationsReadinessArtifactImportSnapshot();
         DashboardOperationsReadinessFinalizeResponse operationsReadinessFinalize = operationsReadinessFinalizeSnapshot();
         DashboardOperationsHandoffPackageResponse operationsHandoffPackage = operationsHandoffPackageSnapshot();
+        DashboardStorageBackendTelemetryEvidenceResponse storageBackendTelemetryEvidence = storageBackendTelemetryEvidenceSnapshot();
         DashboardOperationsEvidenceHandoffResponse operationsEvidenceHandoff = operationsEvidenceHandoffSnapshot();
         DashboardOperationsReadinessConvergenceResponse operationsReadinessConvergence = operationsReadinessConvergenceSnapshot();
         DashboardKubernetesOperationsReportSyncResponse kubernetesOperationsReportSync = kubernetesOperationsReportSyncSnapshot();
@@ -893,6 +897,7 @@ public class AdminController {
                 operationsReadinessArtifactImport,
                 operationsReadinessFinalize,
                 operationsHandoffPackage,
+                storageBackendTelemetryEvidence,
                 operationsEvidenceHandoff,
                 operationsReadinessConvergence,
                 kubernetesOperationsReportSync,
@@ -1538,6 +1543,7 @@ public class AdminController {
 
         addOperationsEvidenceHandoffItem(items);
         addOperationsHandoffPackageItem(items);
+        addStorageBackendTelemetryEvidenceItem(items);
 
         addOperationsReadinessArtifactImportItem(items);
         addOperationsReadinessFinalizeItem(items);
@@ -2267,6 +2273,68 @@ public class AdminController {
                 jsonText(packageReport, "decisionRule"),
                 jsonText(packageReport, "scopePolicy"),
                 jsonText(packageReport, "secretPolicy")
+        );
+    }
+
+    private void addStorageBackendTelemetryEvidenceItem(java.util.ArrayList<DashboardReadinessItemResponse> items) {
+        DashboardStorageBackendTelemetryEvidenceResponse telemetry = storageBackendTelemetryEvidenceSnapshot();
+        if (telemetry.result().isBlank() || "passed".equalsIgnoreCase(telemetry.result())) {
+            return;
+        }
+        addReadinessItem(
+                items,
+                "WARNING",
+                "OPERATIONS",
+                "STORAGE_BACKEND_TELEMETRY_EVIDENCE",
+                "Storage backend telemetry evidence is %s: pools=%d, servers=%d, offline=%d, drives=%d.".formatted(
+                        telemetry.result(),
+                        telemetry.poolCount(),
+                        telemetry.serverCount(),
+                        telemetry.offlineServerCount(),
+                        telemetry.driveCount()
+                ),
+                "dashboard",
+                "dashboard-readiness-panel",
+                "Storage telemetry",
+                storageBackendTelemetryReportPath == null ? "" : storageBackendTelemetryReportPath,
+                "powershell -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\write-storage-backend-telemetry-evidence.ps1 -EnvironmentName <env> -TargetCluster <cluster> -Operator <operator> -MinioAlias <alias> -EvidenceRef <run-ref> -AdminInfoJsonPath .\\.osmu-run\\minio-admin-info.json -FailIfNotPassed",
+                "",
+                "",
+                telemetry.scopePolicy()
+        );
+    }
+
+    private DashboardStorageBackendTelemetryEvidenceResponse storageBackendTelemetryEvidenceSnapshot() {
+        JsonNode telemetryReport = readOptionalJsonReport(storageBackendTelemetryReportPath);
+        if (telemetryReport == null) {
+            return DashboardStorageBackendTelemetryEvidenceResponse.empty();
+        }
+        JsonNode source = telemetryReport.path("source");
+        JsonNode summary = telemetryReport.path("summary");
+        return new DashboardStorageBackendTelemetryEvidenceResponse(
+                jsonText(telemetryReport, "result"),
+                jsonText(telemetryReport, "generatedAt"),
+                jsonText(telemetryReport, "environmentName"),
+                jsonText(telemetryReport, "targetCluster"),
+                jsonText(telemetryReport, "operatorName"),
+                jsonText(source, "mode"),
+                jsonText(source, "minioAlias"),
+                jsonText(source, "evidenceRef"),
+                jsonText(source, "adminInfoJsonSha256"),
+                jsonBoolean(source, "rawAdminInfoStored"),
+                jsonInt(summary, "poolCount"),
+                jsonInt(summary, "serverCount"),
+                jsonInt(summary, "onlineServerCount"),
+                jsonInt(summary, "offlineServerCount"),
+                jsonInt(summary, "driveCount"),
+                jsonLong(summary, "totalBytes"),
+                jsonLong(summary, "usedBytes"),
+                jsonLong(summary, "freeBytes"),
+                jsonBoolean(summary, "capacityKnown"),
+                jsonInt(summary, "failureCount"),
+                jsonInt(summary, "plannedCount"),
+                jsonText(telemetryReport, "decisionRule"),
+                jsonText(telemetryReport, "scopePolicy")
         );
     }
 

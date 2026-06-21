@@ -190,6 +190,8 @@ test('HomeView exposes stable selectors for browser E2E flows', () => {
     'readiness-evidence-handoff-command-copy-button',
     'readiness-evidence-handoff-stages',
     'readiness-evidence-handoff-stage-command-copy-button',
+    'readiness-storage-telemetry-item-summary',
+    'readiness-storage-telemetry-summary',
     'readiness-convergence-item-summary',
     'readiness-convergence-summary',
     'readiness-convergence-command-copy-button',
@@ -763,6 +765,9 @@ test('HomeView exposes stable selectors for browser E2E flows', () => {
   assert.match(dashboardSource, /operationsEvidenceHandoffStages/)
   assert.match(dashboardSource, /operationsHandoffPackage/)
   assert.match(dashboardSource, /operationsHandoffPackageChecks/)
+  assert.match(dashboardSource, /storageBackendTelemetryEvidence/)
+  assert.match(dashboardSource, /normalizeStorageBackendTelemetryEvidence/)
+  assert.match(dashboardSource, /readiness-storage-telemetry-summary/)
   assert.match(dashboardSource, /getDataFlowDailyRollup/)
   assert.match(dashboardSource, /getDataFlowMonthlyRollup/)
   assert.match(dashboardSource, /getDataFlowStorageStatus/)
@@ -837,6 +842,7 @@ test('HomeView exposes stable selectors for browser E2E flows', () => {
   assert.match(dashboardSource, /dashboardReadiness\.operationsReadinessFinalize/)
   assert.match(dashboardSource, /dashboardReadiness\.operationsEvidenceHandoff/)
   assert.match(dashboardSource, /dashboardReadiness\.operationsHandoffPackage/)
+  assert.match(dashboardSource, /dashboardReadiness\.storageBackendTelemetryEvidence/)
   assert.match(dashboardSource, /dashboardReadiness\.operationsReadinessConvergence/)
   assert.match(dashboardSource, /dashboardReadiness\.kubernetesOperationsReportSync/)
   assert.match(dashboardSource, /finalizerFailedCount/)

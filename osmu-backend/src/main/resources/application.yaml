@@ -116,6 +116,7 @@ osmu:
     readiness:
       report-path: ${OSMU_OPERATIONS_READINESS_REPORT_PATH:.osmu-run/latest-operations-readiness.json}
       artifact-import-report-path: ${OSMU_OPERATIONS_READINESS_ARTIFACT_IMPORT_REPORT_PATH:.osmu-run/latest-operations-readiness-artifact-import.json}
+      storage-backend-telemetry-report-path: ${OSMU_STORAGE_BACKEND_TELEMETRY_REPORT_PATH:.osmu-run/latest-storage-backend-telemetry.json}
   upload:
     cleanup:
       enabled: ${OSMU_UPLOAD_CLEANUP_ENABLED:true}
