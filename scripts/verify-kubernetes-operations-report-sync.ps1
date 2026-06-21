@@ -48,6 +48,7 @@ New-Item -ItemType Directory -Force -Path $resolvedOutputDirectory | Out-Null
 
 $scriptPath = Resolve-ProjectPath ".\scripts\sync-kubernetes-operations-reports.ps1"
 $fixturePath = Join-Path $resolvedOutputDirectory "latest-operations-readiness-convergence.json"
+$dataFlowStoragePlanPath = Join-Path $resolvedOutputDirectory "latest-data-flow-storage-plan.json"
 $planEvidencePath = Join-Path $resolvedOutputDirectory "plan.json"
 $serverDryRunEvidencePath = Join-Path $resolvedOutputDirectory "server-dry-run.json"
 $applyEvidencePath = Join-Path $resolvedOutputDirectory "apply.json"
@@ -72,6 +73,31 @@ Write-JsonFixture $fixturePath ([ordered]@{
         }
     )
     safetyPolicy = "fixture"
+})
+
+Write-JsonFixture $dataFlowStoragePlanPath ([ordered]@{
+    formatVersion = "osmu.data-flow-storage-plan.v1"
+    result = "plan-ready-execute-required"
+    recordedAt = "2026-06-16T00:05:00+09:00"
+    environmentName = "sync-self-test"
+    targetCluster = "sync-self-test"
+    operator = "sync-self-test"
+    candidateStore = "MARIADB_PARTITION"
+    expectedPeakEventsPerDay = 250000
+    expectedQueryWindowDays = 180
+    checkCount = 1
+    passedCount = 0
+    pendingCount = 1
+    checks = @(
+        [ordered]@{
+            id = "explain_or_store_evidence"
+            title = "Query plan or target-store evidence exists"
+            status = "pending"
+            detail = "Fixture pending check."
+            nextAction = "Attach target evidence."
+        }
+    )
+    scopePolicy = "OSMU operations analytics only."
 })
 
 $conflictExitCode = 0
@@ -117,6 +143,7 @@ exit 1
 & powershell -NoProfile -ExecutionPolicy Bypass -File $scriptPath `
     -PlanOnly `
     -ReportPath $fixturePath `
+    -DataFlowStoragePlanPath $dataFlowStoragePlanPath `
     -EvidencePath $planEvidencePath | Out-Host
 if ($LASTEXITCODE -ne 0) {
     throw "sync-kubernetes-operations-reports.ps1 plan check failed with exit code $LASTEXITCODE."
@@ -127,18 +154,27 @@ Assert-Equal $plan.formatVersion "osmu.kubernetes-operations-report-sync.v1" "pl
 Assert-Equal $plan.result "planned" "plan result"
 Assert-Equal $plan.sourceReportFormatVersion "osmu.operations-readiness-convergence.v1" "plan source format"
 Assert-Equal $plan.evidenceConfigMapKey "latest-kubernetes-operations-report-sync.json" "plan evidence ConfigMap key"
+Assert-Equal $plan.dataFlowStoragePlanConfigMapKey "latest-data-flow-storage-plan.json" "plan data-flow storage plan ConfigMap key"
 Assert-Equal $plan.publishEvidenceToConfigMap $true "plan publish evidence flag"
+Assert-Equal $plan.publishDataFlowStoragePlanToConfigMap $true "plan data-flow storage plan publish flag"
+Assert-Equal $plan.dataFlowStoragePlanFormatVersion "osmu.data-flow-storage-plan.v1" "plan data-flow storage plan format"
+Assert-Equal $plan.dataFlowStoragePlanResult "plan-ready-execute-required" "plan data-flow storage plan result"
 Assert-Equal $plan.failedCount 0 "plan failed count"
 Assert-Contains $plan.serverDryRunCommand "--dry-run=server" "plan server dry-run command"
+Assert-Contains $plan.serverDryRunCommand "latest-data-flow-storage-plan.json" "plan server dry-run data-flow plan command"
 Assert-Contains $plan.applyCommand "kubectl apply -f -" "plan apply command"
 Assert-Contains $plan.publishEvidenceApplyCommand "latest-kubernetes-operations-report-sync.json" "plan publish evidence command"
+Assert-Contains $plan.publishEvidenceApplyCommand "latest-data-flow-storage-plan.json" "plan publish evidence data-flow plan command"
 Assert-True ($plan.sourceReportBytes -gt 0) "plan source report byte count"
 Assert-True (-not [string]::IsNullOrWhiteSpace($plan.sourceReportSha256)) "plan source report hash"
+Assert-True ($plan.dataFlowStoragePlanBytes -gt 0) "plan data-flow storage plan byte count"
+Assert-True (-not [string]::IsNullOrWhiteSpace($plan.dataFlowStoragePlanSha256)) "plan data-flow storage plan hash"
 
 & powershell -NoProfile -ExecutionPolicy Bypass -File $scriptPath `
     -ServerDryRunOnly `
     -KubectlPath $fakeKubectlPath `
     -ReportPath $fixturePath `
+    -DataFlowStoragePlanPath $dataFlowStoragePlanPath `
     -EvidencePath $serverDryRunEvidencePath | Out-Host
 if ($LASTEXITCODE -ne 0) {
     throw "sync-kubernetes-operations-reports.ps1 server dry-run check failed with exit code $LASTEXITCODE."
@@ -153,6 +189,7 @@ Assert-Contains $serverDryRun.serverDryRunOutput "kind: ConfigMap" "server dry-r
     -Apply `
     -KubectlPath $fakeKubectlPath `
     -ReportPath $fixturePath `
+    -DataFlowStoragePlanPath $dataFlowStoragePlanPath `
     -EvidencePath $applyEvidencePath | Out-Host
 if ($LASTEXITCODE -ne 0) {
     throw "sync-kubernetes-operations-reports.ps1 apply check failed with exit code $LASTEXITCODE."

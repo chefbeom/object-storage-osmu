@@ -34,7 +34,10 @@ the chart mounts an optional read-only ConfigMap named
 `OSMU_OPERATIONS_READINESS_CONVERGENCE_REPORT_PATH` to
 `.osmu-run/latest-operations-readiness-convergence.json` and
 `OSMU_OPERATIONS_READINESS_KUBERNETES_REPORT_SYNC_REPORT_PATH` to
-`.osmu-run/latest-kubernetes-operations-report-sync.json`.
+`.osmu-run/latest-kubernetes-operations-report-sync.json`. It also sets
+`OSMU_OPERATIONS_READINESS_DATA_FLOW_STORAGE_PLAN_REPORT_PATH` to
+`.osmu-run/latest-data-flow-storage-plan.json` so the same mount can expose the
+data-flow analytics storage transition plan when that evidence exists.
 
 Create or refresh the ConfigMap after running the operations readiness
 convergence writer:
@@ -47,10 +50,15 @@ powershell -ExecutionPolicy Bypass -File .\scripts\sync-kubernetes-operations-re
 
 The apply path refreshes the convergence report and then republishes the same
 ConfigMap with the generated `latest-kubernetes-operations-report-sync.json`
-evidence included. That keeps
+evidence included. When `.osmu-run/latest-data-flow-storage-plan.json` exists,
+the helper includes it in both the initial and republished ConfigMap. That keeps
 `OSMU_OPERATIONS_READINESS_KUBERNETES_REPORT_SYNC_REPORT_PATH` readable from the
-running backend mount. Use `-SkipEvidenceConfigMapPublish` only when a separate
-PVC or GitOps delivery path publishes sync evidence.
+running backend mount and keeps
+`OSMU_OPERATIONS_READINESS_DATA_FLOW_STORAGE_PLAN_REPORT_PATH` visible for
+readiness plan checks. Use `-SkipEvidenceConfigMapPublish` only when a separate
+PVC or GitOps delivery path publishes sync evidence; use
+`-SkipDataFlowStoragePlanConfigMapPublish` only when another path owns the
+data-flow storage plan file.
 
 The same flow is available through the manual
 `kubernetes-operations-report-sync-ci.yml` workflow. Keep `run_live=false` for a

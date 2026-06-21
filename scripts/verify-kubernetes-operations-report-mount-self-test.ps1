@@ -53,6 +53,7 @@ New-Item -ItemType Directory -Force -Path $resolvedOutputDirectory | Out-Null
 $scriptPath = Resolve-ProjectPath ".\scripts\verify-kubernetes-operations-report-mount.ps1"
 $reportPath = Join-Path $resolvedOutputDirectory "latest-operations-readiness-convergence.json"
 $syncEvidencePath = Join-Path $resolvedOutputDirectory "latest-kubernetes-operations-report-sync.json"
+$dataFlowStoragePlanPath = Join-Path $resolvedOutputDirectory "latest-data-flow-storage-plan.json"
 $fakeKubectlPath = Join-Path $resolvedOutputDirectory "fake-kubectl.ps1"
 $evidencePath = Join-Path $resolvedOutputDirectory "mount-evidence.json"
 $planEvidencePath = Join-Path $resolvedOutputDirectory "mount-plan.json"
@@ -87,9 +88,35 @@ Write-JsonFixture $syncEvidencePath ([ordered]@{
     checkCount = 7
 })
 
+Write-JsonFixture $dataFlowStoragePlanPath ([ordered]@{
+    formatVersion = "osmu.data-flow-storage-plan.v1"
+    result = "plan-ready-execute-required"
+    recordedAt = "2026-06-16T00:05:00+09:00"
+    environmentName = "mount-self-test"
+    targetCluster = "mount-self-test"
+    operator = "mount-self-test"
+    candidateStore = "MARIADB_PARTITION"
+    expectedPeakEventsPerDay = 250000
+    expectedQueryWindowDays = 180
+    checkCount = 1
+    passedCount = 0
+    pendingCount = 1
+    checks = @(
+        [ordered]@{
+            id = "explain_or_store_evidence"
+            title = "Query plan or target-store evidence exists"
+            status = "pending"
+            detail = "Fixture pending check."
+            nextAction = "Attach target evidence."
+        }
+    )
+    scopePolicy = "OSMU operations analytics only."
+})
+
 $fakeKubectlTemplate = @'
 $reportPath = '__REPORT_PATH__'
 $syncPath = '__SYNC_PATH__'
+$dataFlowStoragePlanPath = '__DATA_FLOW_STORAGE_PLAN_PATH__'
 
 function Escape-JsonString([string] $Value) {
     return ($Value | ConvertTo-Json -Compress)
@@ -98,6 +125,7 @@ function Escape-JsonString([string] $Value) {
 if (($args -contains 'get') -and ($args -contains 'configmap')) {
     $reportText = Get-Content -Raw -Encoding UTF8 -LiteralPath $reportPath
     $syncText = Get-Content -Raw -Encoding UTF8 -LiteralPath $syncPath
+    $dataFlowStoragePlanText = Get-Content -Raw -Encoding UTF8 -LiteralPath $dataFlowStoragePlanPath
     Write-Output -NoEnumerate (
         '{' +
         '"apiVersion":"v1",' +
@@ -105,7 +133,8 @@ if (($args -contains 'get') -and ($args -contains 'configmap')) {
         '"metadata":{"name":"osmu-operations-reports","namespace":"osmu"},' +
         '"data":{' +
         '"latest-operations-readiness-convergence.json":' + (Escape-JsonString $reportText) + ',' +
-        '"latest-kubernetes-operations-report-sync.json":' + (Escape-JsonString $syncText) +
+        '"latest-kubernetes-operations-report-sync.json":' + (Escape-JsonString $syncText) + ',' +
+        '"latest-data-flow-storage-plan.json":' + (Escape-JsonString $dataFlowStoragePlanText) +
         '}' +
         '}'
     )
@@ -145,6 +174,10 @@ if ($args -contains 'exec') {
         Write-Output -NoEnumerate (Get-Content -Raw -Encoding UTF8 -LiteralPath $syncPath)
         exit 0
     }
+    if ($path.EndsWith('latest-data-flow-storage-plan.json')) {
+        Write-Output -NoEnumerate (Get-Content -Raw -Encoding UTF8 -LiteralPath $dataFlowStoragePlanPath)
+        exit 0
+    }
     Write-Error "Unexpected mounted path: $path"
     exit 1
 }
@@ -155,7 +188,8 @@ exit 1
 
 $fakeKubectlScript = $fakeKubectlTemplate.
     Replace("__REPORT_PATH__", (Escape-SingleQuotedPowerShellString $reportPath)).
-    Replace("__SYNC_PATH__", (Escape-SingleQuotedPowerShellString $syncEvidencePath))
+    Replace("__SYNC_PATH__", (Escape-SingleQuotedPowerShellString $syncEvidencePath)).
+    Replace("__DATA_FLOW_STORAGE_PLAN_PATH__", (Escape-SingleQuotedPowerShellString $dataFlowStoragePlanPath))
 $fakeKubectlScript | Set-Content -LiteralPath $fakeKubectlPath -Encoding UTF8
 
 & powershell -NoProfile -ExecutionPolicy Bypass -File $scriptPath `
@@ -163,6 +197,7 @@ $fakeKubectlScript | Set-Content -LiteralPath $fakeKubectlPath -Encoding UTF8
     -KubectlPath $fakeKubectlPath `
     -LocalReportPath $reportPath `
     -LocalSyncEvidencePath $syncEvidencePath `
+    -LocalDataFlowStoragePlanPath $dataFlowStoragePlanPath `
     -EvidencePath $planEvidencePath | Out-Host
 if ($LASTEXITCODE -ne 0) {
     throw "verify-kubernetes-operations-report-mount.ps1 plan check failed with exit code $LASTEXITCODE."
@@ -172,12 +207,14 @@ $plan = Get-Content -Raw -LiteralPath $planEvidencePath | ConvertFrom-Json
 Assert-Equal $plan.formatVersion "osmu.kubernetes-operations-report-mount.v1" "plan formatVersion"
 Assert-Equal $plan.result "planned" "plan result"
 Assert-Equal $plan.podMountChecked $false "plan pod mount checked"
+Assert-Equal $plan.dataFlowStoragePlanChecked $true "plan data-flow storage plan checked"
 Assert-Equal $plan.failedCount 0 "plan failed count"
 
 & powershell -NoProfile -ExecutionPolicy Bypass -File $scriptPath `
     -KubectlPath $fakeKubectlPath `
     -LocalReportPath $reportPath `
     -LocalSyncEvidencePath $syncEvidencePath `
+    -LocalDataFlowStoragePlanPath $dataFlowStoragePlanPath `
     -EvidencePath $evidencePath | Out-Host
 if ($LASTEXITCODE -ne 0) {
     throw "verify-kubernetes-operations-report-mount.ps1 mounted check failed with exit code $LASTEXITCODE."
@@ -188,13 +225,18 @@ $checksText = $evidence.checks | ConvertTo-Json -Depth 12
 Assert-Equal $evidence.result "passed" "mount evidence result"
 Assert-Equal $evidence.backendPodName "osmu-backend-fixture-0" "mount evidence backend pod"
 Assert-Equal $evidence.podMountChecked $true "mount evidence pod mount checked"
+Assert-Equal $evidence.dataFlowStoragePlanChecked $true "mount evidence data-flow storage plan checked"
 Assert-Equal $evidence.failedCount 0 "mount evidence failed count"
 Assert-True (-not [string]::IsNullOrWhiteSpace($evidence.configMapReportSha256)) "configmap report hash"
 Assert-Equal $evidence.configMapReportSha256 $evidence.mountedReportSha256 "mounted report hash match"
 Assert-Equal $evidence.configMapSyncEvidenceSha256 $evidence.mountedSyncEvidenceSha256 "mounted sync evidence hash match"
+Assert-Equal $evidence.configMapDataFlowStoragePlanSha256 $evidence.mountedDataFlowStoragePlanSha256 "mounted data-flow storage plan hash match"
 Assert-Contains $checksText "configmap-sync-evidence-key-present" "configmap sync evidence key check"
 Assert-Contains $checksText "mounted-sync-evidence-readable" "mounted sync evidence readable check"
 Assert-Contains $checksText "mounted-sync-evidence-matches-configmap" "mounted sync evidence match check"
+Assert-Contains $checksText "configmap-data-flow-storage-plan-key-present" "configmap data-flow storage plan key check"
+Assert-Contains $checksText "mounted-data-flow-storage-plan-readable" "mounted data-flow storage plan readable check"
+Assert-Contains $checksText "mounted-data-flow-storage-plan-matches-configmap" "mounted data-flow storage plan match check"
 Assert-True ($evidence.safetyPolicy.Contains("read-only")) "mount evidence safety policy"
 
 Write-Host "Kubernetes operations report mount verifier self-test passed."

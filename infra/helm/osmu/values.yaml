@@ -36,6 +36,7 @@ config:
   s3VirtualHostedStyleDomainSuffixes: localhost
   operationsReadinessConvergenceReportPath: .osmu-run/latest-operations-readiness-convergence.json
   kubernetesOperationsReportSyncReportPath: .osmu-run/latest-kubernetes-operations-report-sync.json
+  dataFlowStoragePlanReportPath: .osmu-run/latest-data-flow-storage-plan.json
 
 secrets:
   create: false

@@ -4,13 +4,16 @@ param(
     [string] $ConfigMapName = "osmu-operations-reports",
     [string] $ReportKey = "latest-operations-readiness-convergence.json",
     [string] $SyncEvidenceKey = "latest-kubernetes-operations-report-sync.json",
+    [string] $DataFlowStoragePlanKey = "latest-data-flow-storage-plan.json",
     [string] $LocalReportPath = ".\.osmu-run\latest-operations-readiness-convergence.json",
     [string] $LocalSyncEvidencePath = ".\.osmu-run\latest-kubernetes-operations-report-sync.json",
+    [string] $LocalDataFlowStoragePlanPath = ".\.osmu-run\latest-data-flow-storage-plan.json",
     [string] $BackendSelector = "app.kubernetes.io/name=osmu-backend",
     [string] $BackendContainer = "backend",
     [string] $MountPath = "/app/.osmu-run",
     [string] $EvidencePath = ".\.osmu-run\latest-kubernetes-operations-report-mount.json",
     [switch] $SkipPodMountCheck,
+    [switch] $SkipDataFlowStoragePlanCheck,
     [switch] $PlanOnly
 )
 
@@ -219,10 +222,22 @@ function Compare-SyncEvidenceJson([object] $Actual, [object] $Expected, [string]
     }
 }
 
+function Compare-DataFlowStoragePlanJson([object] $Actual, [object] $Expected, [string] $Label) {
+    if ($null -eq $Actual) {
+        return
+    }
+    Add-Check "$Label-format-version" ((Get-ObjectText $Actual.formatVersion) -eq "osmu.data-flow-storage-plan.v1") "$Label formatVersion=$(Get-ObjectText $Actual.formatVersion)."
+    if ($null -ne $Expected) {
+        Add-Check "$Label-result" ((Get-ObjectText $Actual.result) -eq (Get-ObjectText $Expected.result)) "$Label result=$(Get-ObjectText $Actual.result), expected=$(Get-ObjectText $Expected.result)."
+        Add-Check "$Label-candidate-store" ((Get-ObjectText $Actual.candidateStore) -eq (Get-ObjectText $Expected.candidateStore)) "$Label candidateStore=$(Get-ObjectText $Actual.candidateStore), expected=$(Get-ObjectText $Expected.candidateStore)."
+    }
+}
+
 Assert-KubernetesName "Namespace" $Namespace
 Assert-KubernetesName "ConfigMapName" $ConfigMapName
 Assert-ConfigMapKey $ReportKey
 Assert-ConfigMapKey $SyncEvidenceKey
+Assert-ConfigMapKey $DataFlowStoragePlanKey
 if ([string]::IsNullOrWhiteSpace($BackendSelector) -or $BackendSelector -notmatch "^[A-Za-z0-9_.\-/]+=[A-Za-z0-9_.\-/]+$") {
     throw "BackendSelector must be a simple label selector key=value: $BackendSelector"
 }
@@ -235,24 +250,33 @@ if ([string]::IsNullOrWhiteSpace($MountPath) -or -not $MountPath.StartsWith("/")
 
 $resolvedLocalReportPath = Resolve-ProjectPath $LocalReportPath
 $resolvedLocalSyncEvidencePath = Resolve-ProjectPath $LocalSyncEvidencePath
+$resolvedLocalDataFlowStoragePlanPath = Resolve-ProjectPath $LocalDataFlowStoragePlanPath
 $resolvedEvidencePath = Resolve-ProjectPath $EvidencePath
 $reportMountPath = ($MountPath.TrimEnd("/") + "/" + $ReportKey)
 $syncEvidenceMountPath = ($MountPath.TrimEnd("/") + "/" + $SyncEvidenceKey)
+$dataFlowStoragePlanMountPath = ($MountPath.TrimEnd("/") + "/" + $DataFlowStoragePlanKey)
+$shouldCheckDataFlowStoragePlan = [bool](-not $SkipDataFlowStoragePlanCheck -and (Test-Path -LiteralPath $resolvedLocalDataFlowStoragePlanPath))
 
 $localReportJson = $null
 $localSyncEvidenceJson = $null
+$localDataFlowStoragePlanJson = $null
 if (Test-Path -LiteralPath $resolvedLocalReportPath) {
     $localReportJson = Get-Content -Raw -Encoding UTF8 -LiteralPath $resolvedLocalReportPath | ConvertFrom-Json
 }
 if (Test-Path -LiteralPath $resolvedLocalSyncEvidencePath) {
     $localSyncEvidenceJson = Get-Content -Raw -Encoding UTF8 -LiteralPath $resolvedLocalSyncEvidencePath | ConvertFrom-Json
 }
+if ($shouldCheckDataFlowStoragePlan) {
+    $localDataFlowStoragePlanJson = Get-Content -Raw -Encoding UTF8 -LiteralPath $resolvedLocalDataFlowStoragePlanPath | ConvertFrom-Json
+}
 
 $configMapReportText = ""
 $configMapSyncText = ""
+$configMapDataFlowStoragePlanText = ""
 $backendPodName = ""
 $mountedReportText = ""
 $mountedSyncText = ""
+$mountedDataFlowStoragePlanText = ""
 
 if ($PlanOnly) {
     Add-Check "plan-only" $true "Plan-only mode does not call kubectl."
@@ -262,8 +286,15 @@ else {
     if ($null -ne $configMapSource) {
         $configMapReportText = Get-DataValue $configMapSource.json.data $ReportKey
         $configMapSyncText = Get-DataValue $configMapSource.json.data $SyncEvidenceKey
+        $configMapDataFlowStoragePlanText = Get-DataValue $configMapSource.json.data $DataFlowStoragePlanKey
         Add-Check "configmap-report-key-present" ($null -ne $configMapReportText) "ConfigMap report key present=$($null -ne $configMapReportText)." $configMapSource.command
         Add-Check "configmap-sync-evidence-key-present" ($null -ne $configMapSyncText) "ConfigMap sync evidence key present=$($null -ne $configMapSyncText)." $configMapSource.command
+        if ($shouldCheckDataFlowStoragePlan) {
+            Add-Check "configmap-data-flow-storage-plan-key-present" ($null -ne $configMapDataFlowStoragePlanText) "ConfigMap data-flow storage plan key present=$($null -ne $configMapDataFlowStoragePlanText)." $configMapSource.command
+        }
+        else {
+            Add-Check "data-flow-storage-plan-check-optional" $true "Local data-flow storage plan evidence is absent or skipped; ConfigMap key is optional."
+        }
 
         if ($null -ne $configMapReportText) {
             $configMapReportJson = Read-JsonText $configMapReportText "configmap-report"
@@ -272,6 +303,10 @@ else {
         if ($null -ne $configMapSyncText) {
             $configMapSyncJson = Read-JsonText $configMapSyncText "configmap-sync-evidence"
             Compare-SyncEvidenceJson $configMapSyncJson $localSyncEvidenceJson "configmap-sync-evidence"
+        }
+        if ($null -ne $configMapDataFlowStoragePlanText) {
+            $configMapDataFlowStoragePlanJson = Read-JsonText $configMapDataFlowStoragePlanText "configmap-data-flow-storage-plan"
+            Compare-DataFlowStoragePlanJson $configMapDataFlowStoragePlanJson $localDataFlowStoragePlanJson "configmap-data-flow-storage-plan"
         }
     }
 
@@ -306,6 +341,19 @@ else {
                     Add-Check "mounted-sync-evidence-matches-configmap" ((Get-TextSha256 $mountedSyncText) -eq (Get-TextSha256 $configMapSyncText)) "Mounted sync evidence content matches ConfigMap data."
                 }
             }
+
+            if ($shouldCheckDataFlowStoragePlan) {
+                $mountedDataFlowStoragePlan = Invoke-KubectlRaw "read-mounted-data-flow-storage-plan" @("-n", $Namespace, "exec", $backendPodName, "-c", $BackendContainer, "--", "cat", $dataFlowStoragePlanMountPath)
+                $mountedDataFlowStoragePlanText = $mountedDataFlowStoragePlan.output
+                Add-Check "mounted-data-flow-storage-plan-readable" ($mountedDataFlowStoragePlan.exitCode -eq 0) "Mounted data-flow storage plan is readable from backend pod." $mountedDataFlowStoragePlan.command $mountedDataFlowStoragePlan.exitCode $mountedDataFlowStoragePlan.output
+                if ($mountedDataFlowStoragePlan.exitCode -eq 0) {
+                    $mountedDataFlowStoragePlanJson = Read-JsonText $mountedDataFlowStoragePlanText "mounted-data-flow-storage-plan"
+                    Compare-DataFlowStoragePlanJson $mountedDataFlowStoragePlanJson $localDataFlowStoragePlanJson "mounted-data-flow-storage-plan"
+                    if ($configMapDataFlowStoragePlanText) {
+                        Add-Check "mounted-data-flow-storage-plan-matches-configmap" ((Get-TextSha256 $mountedDataFlowStoragePlanText) -eq (Get-TextSha256 $configMapDataFlowStoragePlanText)) "Mounted data-flow storage plan content matches ConfigMap data."
+                    }
+                }
+            }
         }
     }
     else {
@@ -328,18 +376,24 @@ $report = [ordered]@{
     configMapName = $ConfigMapName
     reportKey = $ReportKey
     syncEvidenceKey = $SyncEvidenceKey
+    dataFlowStoragePlanKey = $DataFlowStoragePlanKey
     backendSelector = $BackendSelector
     backendContainer = $BackendContainer
     backendPodName = $backendPodName
     mountPath = $MountPath
     reportMountPath = $reportMountPath
     syncEvidenceMountPath = $syncEvidenceMountPath
+    dataFlowStoragePlanMountPath = $dataFlowStoragePlanMountPath
     localReportPath = $resolvedLocalReportPath
     localSyncEvidencePath = $resolvedLocalSyncEvidencePath
+    localDataFlowStoragePlanPath = $resolvedLocalDataFlowStoragePlanPath
     configMapReportSha256 = if ($configMapReportText) { Get-TextSha256 $configMapReportText } else { "" }
     configMapSyncEvidenceSha256 = if ($configMapSyncText) { Get-TextSha256 $configMapSyncText } else { "" }
+    configMapDataFlowStoragePlanSha256 = if ($configMapDataFlowStoragePlanText) { Get-TextSha256 $configMapDataFlowStoragePlanText } else { "" }
     mountedReportSha256 = if ($mountedReportText) { Get-TextSha256 $mountedReportText } else { "" }
     mountedSyncEvidenceSha256 = if ($mountedSyncText) { Get-TextSha256 $mountedSyncText } else { "" }
+    mountedDataFlowStoragePlanSha256 = if ($mountedDataFlowStoragePlanText) { Get-TextSha256 $mountedDataFlowStoragePlanText } else { "" }
+    dataFlowStoragePlanChecked = [bool]$shouldCheckDataFlowStoragePlan
     podMountChecked = [bool](-not $SkipPodMountCheck -and -not $PlanOnly)
     checkCount = @($checks).Count
     failedCount = $failureCount

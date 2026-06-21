@@ -308,7 +308,7 @@ Docker local demo Browser E2E:
 
 This command starts the full Docker stack, seeds demo data, runs the seeded REST/S3 demo smoke, runs Playwright Browser E2E against the Docker frontend, and stops the stack by default. Use `-KeepRunning` when you want to inspect the demo after verification.
 
-The Docker local demo backend mounts project `.osmu-run` into `/app/.osmu-run` read-only. This lets the Spring Boot readiness API expose generated operations reports, including `.osmu-run/latest-operations-readiness-convergence.json`, from the full MariaDB/MinIO demo. `verify-browser-e2e-local-demo.ps1` writes a Docker-local convergence fixture under `.osmu-run/docker-local-demo/`, sets `OSMU_OPERATIONS_READINESS_CONVERGENCE_REPORT_PATH` for the backend container, and enables the Playwright convergence dashboard check.
+The Docker local demo backend mounts project `.osmu-run` into `/app/.osmu-run` read-only. This lets the Spring Boot readiness API expose generated operations reports, including `.osmu-run/latest-operations-readiness-convergence.json`, `.osmu-run/latest-kubernetes-operations-report-sync.json`, and `.osmu-run/latest-data-flow-storage-plan.json`, from the full MariaDB/MinIO demo. `verify-browser-e2e-local-demo.ps1` writes a Docker-local convergence fixture under `.osmu-run/docker-local-demo/`, sets `OSMU_OPERATIONS_READINESS_CONVERGENCE_REPORT_PATH` for the backend container, and enables the Playwright convergence dashboard check.
 
 Real S3 client smoke test:
 

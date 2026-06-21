@@ -100,6 +100,7 @@ Assert-Contains $configMap "OSMU_S3_PUBLIC_ENDPOINT: https://osmu.local/api/s3" 
 Assert-Contains $configMap "OSMU_S3_REGION: us-east-1" "configmap.yaml"
 Assert-Contains $configMap "OSMU_OPERATIONS_READINESS_CONVERGENCE_REPORT_PATH: .osmu-run/latest-operations-readiness-convergence.json" "configmap.yaml"
 Assert-Contains $configMap "OSMU_OPERATIONS_READINESS_KUBERNETES_REPORT_SYNC_REPORT_PATH: .osmu-run/latest-kubernetes-operations-report-sync.json" "configmap.yaml"
+Assert-Contains $configMap "OSMU_OPERATIONS_READINESS_DATA_FLOW_STORAGE_PLAN_REPORT_PATH: .osmu-run/latest-data-flow-storage-plan.json" "configmap.yaml"
 
 $secretExample = Read-Manifest "secret.example.yaml"
 Assert-Contains $secretExample "kind: Secret" "secret.example.yaml"

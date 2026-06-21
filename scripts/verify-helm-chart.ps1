@@ -86,6 +86,7 @@ Assert-Contains $values "s3PublicEndpoint: https://osmu.local/api/s3" "values.ya
 Assert-Contains $values "s3Region: us-east-1" "values.yaml"
 Assert-Contains $values "operationsReadinessConvergenceReportPath: .osmu-run/latest-operations-readiness-convergence.json" "values.yaml"
 Assert-Contains $values "kubernetesOperationsReportSyncReportPath: .osmu-run/latest-kubernetes-operations-report-sync.json" "values.yaml"
+Assert-Contains $values "dataFlowStoragePlanReportPath: .osmu-run/latest-data-flow-storage-plan.json" "values.yaml"
 Assert-Contains $values "metrics:" "values.yaml"
 Assert-Contains $values "path: /actuator/prometheus" "values.yaml"
 Assert-Contains $values "operationsReports:" "values.yaml"

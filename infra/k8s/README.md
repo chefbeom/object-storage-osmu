@@ -65,7 +65,10 @@ powershell -ExecutionPolicy Bypass -File .\scripts\verify-storage-expansion-serv
 `OSMU_OPERATIONS_READINESS_KUBERNETES_REPORT_SYNC_REPORT_PATH` to
 `.osmu-run/latest-kubernetes-operations-report-sync.json`, so the backend can
 read the same convergence and report-sync evidence that the local demo and
-prototype Browser E2E use for the admin dashboard.
+prototype Browser E2E use for the admin dashboard. It also sets
+`OSMU_OPERATIONS_READINESS_DATA_FLOW_STORAGE_PLAN_REPORT_PATH` to
+`.osmu-run/latest-data-flow-storage-plan.json` so target data-flow storage plan
+evidence can be surfaced from the same mount.
 
 After running `scripts/write-operations-readiness-convergence.ps1`, create or
 refresh the ConfigMap in the target namespace:
@@ -79,10 +82,13 @@ powershell -ExecutionPolicy Bypass -File .\scripts\sync-kubernetes-operations-re
 The apply path first refreshes the convergence report key, writes
 `latest-kubernetes-operations-report-sync.json`, and then republishes the
 ConfigMap with both `latest-operations-readiness-convergence.json` and
-`latest-kubernetes-operations-report-sync.json` so the running backend can read
-the same sync evidence from its mounted report directory. Use
-`-SkipEvidenceConfigMapPublish` only when another delivery path, such as a PVC,
-publishes sync evidence separately.
+`latest-kubernetes-operations-report-sync.json`. If
+`.osmu-run/latest-data-flow-storage-plan.json` exists, that key is included too
+so the running backend can read the same storage-plan evidence from its mounted
+report directory. Use `-SkipEvidenceConfigMapPublish` only when another delivery
+path, such as a PVC, publishes sync evidence separately; use
+`-SkipDataFlowStoragePlanConfigMapPublish` when another delivery path owns the
+data-flow storage plan.
 
 The same flow is available through the manual
 `kubernetes-operations-report-sync-ci.yml` workflow. Keep `run_live=false` for a

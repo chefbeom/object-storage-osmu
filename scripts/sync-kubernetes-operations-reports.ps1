@@ -6,7 +6,10 @@ param(
     [string] $ConfigMapKey = "latest-operations-readiness-convergence.json",
     [string] $EvidencePath = ".\.osmu-run\latest-kubernetes-operations-report-sync.json",
     [string] $EvidenceConfigMapKey = "latest-kubernetes-operations-report-sync.json",
+    [string] $DataFlowStoragePlanPath = ".\.osmu-run\latest-data-flow-storage-plan.json",
+    [string] $DataFlowStoragePlanConfigMapKey = "latest-data-flow-storage-plan.json",
     [switch] $SkipEvidenceConfigMapPublish,
+    [switch] $SkipDataFlowStoragePlanConfigMapPublish,
     [switch] $ServerDryRunOnly,
     [switch] $Apply,
     [switch] $PlanOnly
@@ -106,6 +109,7 @@ Assert-KubernetesName "Namespace" $Namespace
 Assert-KubernetesName "ConfigMapName" $ConfigMapName
 Assert-ConfigMapKey $ConfigMapKey
 Assert-ConfigMapKey $EvidenceConfigMapKey
+Assert-ConfigMapKey $DataFlowStoragePlanConfigMapKey
 
 $selectedModeCount = 0
 foreach ($selectedMode in @($PlanOnly.IsPresent, $ServerDryRunOnly.IsPresent, $Apply.IsPresent)) {
@@ -119,7 +123,9 @@ if ($selectedModeCount -gt 1) {
 
 $resolvedReportPath = Resolve-ProjectPath $ReportPath
 $resolvedEvidencePath = Resolve-ProjectPath $EvidencePath
+$resolvedDataFlowStoragePlanPath = Resolve-ProjectPath $DataFlowStoragePlanPath
 $publishEvidenceToConfigMap = [bool](-not $SkipEvidenceConfigMapPublish)
+$publishDataFlowStoragePlanToConfigMap = [bool](-not $SkipDataFlowStoragePlanConfigMapPublish -and (Test-Path -LiteralPath $resolvedDataFlowStoragePlanPath))
 
 if (-not (Test-Path -LiteralPath $resolvedReportPath)) {
     Add-Check "report-file-exists" $false "Report file is missing: $resolvedReportPath"
@@ -163,12 +169,53 @@ else {
     ""
 }
 
+$dataFlowStoragePlanFormatVersion = ""
+$dataFlowStoragePlanResult = ""
+if ($SkipDataFlowStoragePlanConfigMapPublish) {
+    Add-Check "data-flow-storage-plan-publish-skipped" $true "Data-flow storage plan ConfigMap publish skipped by parameter."
+}
+elseif (-not (Test-Path -LiteralPath $resolvedDataFlowStoragePlanPath)) {
+    Add-Check "data-flow-storage-plan-optional" $true "Optional data-flow storage plan file is missing; ConfigMap will not include it."
+}
+else {
+    Add-Check "data-flow-storage-plan-file-exists" $true "Data-flow storage plan file exists."
+    try {
+        $dataFlowStoragePlanJson = Get-Content -Raw -LiteralPath $resolvedDataFlowStoragePlanPath | ConvertFrom-Json
+        $dataFlowStoragePlanFormatVersion = [string] $dataFlowStoragePlanJson.formatVersion
+        $dataFlowStoragePlanResult = [string] $dataFlowStoragePlanJson.result
+        Add-Check "data-flow-storage-plan-json-valid" $true "Data-flow storage plan file is valid JSON."
+        Add-Check `
+            "data-flow-storage-plan-format-version" `
+            ($dataFlowStoragePlanFormatVersion -eq "osmu.data-flow-storage-plan.v1") `
+            "formatVersion=$dataFlowStoragePlanFormatVersion"
+    }
+    catch {
+        Add-Check "data-flow-storage-plan-json-valid" $false "Data-flow storage plan file is not valid JSON: $($_.Exception.Message)"
+    }
+}
+
+$dataFlowStoragePlanBytes = if ($publishDataFlowStoragePlanToConfigMap) {
+    (Get-Item -LiteralPath $resolvedDataFlowStoragePlanPath).Length
+}
+else {
+    0
+}
+$dataFlowStoragePlanSha256 = if ($publishDataFlowStoragePlanToConfigMap) {
+    Get-FileSha256 $resolvedDataFlowStoragePlanPath
+}
+else {
+    ""
+}
+
 function New-CreateConfigMapArguments([bool] $IncludeEvidence, [string] $DryRunMode) {
     $arguments = @(
         "-n", $Namespace,
         "create", "configmap", $ConfigMapName,
         "--from-file=$ConfigMapKey=$resolvedReportPath"
     )
+    if ($publishDataFlowStoragePlanToConfigMap) {
+        $arguments += "--from-file=$DataFlowStoragePlanConfigMapKey=$resolvedDataFlowStoragePlanPath"
+    }
     if ($IncludeEvidence) {
         $arguments += "--from-file=$EvidenceConfigMapKey=$resolvedEvidencePath"
     }
@@ -203,12 +250,19 @@ function New-ReportObject([string] $ResultValue) {
         configMapName = $ConfigMapName
         configMapKey = $ConfigMapKey
         evidenceConfigMapKey = $EvidenceConfigMapKey
+        dataFlowStoragePlanConfigMapKey = $DataFlowStoragePlanConfigMapKey
         publishEvidenceToConfigMap = [bool] $publishEvidenceToConfigMap
+        publishDataFlowStoragePlanToConfigMap = [bool] $publishDataFlowStoragePlanToConfigMap
         sourceReportPath = $resolvedReportPath
         sourceReportFormatVersion = $formatVersion
         sourceReportResult = $reportResult
         sourceReportBytes = $reportBytes
         sourceReportSha256 = $reportSha256
+        dataFlowStoragePlanPath = $resolvedDataFlowStoragePlanPath
+        dataFlowStoragePlanFormatVersion = $dataFlowStoragePlanFormatVersion
+        dataFlowStoragePlanResult = $dataFlowStoragePlanResult
+        dataFlowStoragePlanBytes = $dataFlowStoragePlanBytes
+        dataFlowStoragePlanSha256 = $dataFlowStoragePlanSha256
         clientDryRunCommand = $clientDryRunCommand
         serverDryRunCommand = $serverDryRunCommand
         applyCommand = $applyCommand
@@ -220,7 +274,7 @@ function New-ReportObject([string] $ResultValue) {
         checkCount = @($checks).Count
         failedCount = $failureCount
         checks = $checks
-        safetyPolicy = "This script writes to Kubernetes only when -Apply is supplied. -ServerDryRunOnly talks to the API server without persisting changes. The default and -PlanOnly modes do not execute kubectl. After a successful apply, the sync evidence file is also published into the same ConfigMap unless -SkipEvidenceConfigMapPublish is supplied."
+        safetyPolicy = "This script writes to Kubernetes only when -Apply is supplied. -ServerDryRunOnly talks to the API server without persisting changes. The default and -PlanOnly modes do not execute kubectl. When present, the data-flow storage plan is included in the same ConfigMap so dashboard readiness can expose target analytics-storage planning evidence. After a successful apply, the sync evidence file is also published into the same ConfigMap unless -SkipEvidenceConfigMapPublish is supplied."
     }
 }
 
