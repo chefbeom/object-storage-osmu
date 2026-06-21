@@ -3,6 +3,7 @@ package com.example.osmu.storage;
 import com.example.osmu.object.PresignedObjectUrl;
 import com.example.osmu.object.CompletedMultipartUploadPart;
 import com.example.osmu.object.MultipartUploadUploadedPart;
+import com.example.osmu.object.ObjectLifecycleRule;
 import com.example.osmu.object.StoredObjectData;
 import com.example.osmu.object.StoredObjectPage;
 import com.example.osmu.object.StoredObjectRecord;
@@ -21,6 +22,13 @@ public interface ObjectStorageAdapter {
     void createBucket(String bucketName);
 
     void deleteBucket(String bucketName);
+
+    default void applyBucketLifecycle(String bucketName, List<ObjectLifecycleRule> rules) {
+    }
+
+    default void deleteBucketLifecycle(String bucketName) {
+        applyBucketLifecycle(bucketName, List.of());
+    }
 
     List<StoredObjectRecord> listObjects(String bucketName, String prefix);
 

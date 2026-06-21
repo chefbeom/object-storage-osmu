@@ -44,9 +44,9 @@
 - Preconditions: ADMIN user is logged in. Target bucket exists.
 - Input: `PUT /api/buckets/{bucketName}/lifecycle`, `GET /api/buckets/{bucketName}/lifecycle`, `DELETE /api/buckets/{bucketName}/lifecycle`
 - Steps: Put LifecycleConfiguration XML for one bucket, get the bucket XML, replace it with another XML, then delete it.
-- Expected: Imported rules have `bucketName` equal to the path bucket. PUT replaces only that bucket's lifecycle rules. GET returns only bucket-scoped XML. DELETE removes the bucket-scoped rules and writes audit log.
+- Expected: Imported rules have `bucketName` equal to the path bucket. PUT replaces only that bucket's lifecycle rules after object storage lifecycle sync succeeds. GET returns only bucket-scoped XML. DELETE removes the bucket-scoped rules and writes audit log after object storage lifecycle delete sync succeeds. Storage sync failure leaves repository rules unchanged.
 - Priority: P1
-- Automated: `BucketLifecycleControllerTest.adminCanPutGetAndDeleteBucketLifecycleConfiguration`
+- Automated: `BucketLifecycleControllerTest.adminCanPutGetAndDeleteBucketLifecycleConfiguration`, `BucketLifecycleServiceStorageSyncTest`
 
 ### TC-OBJECT-004D-7
 

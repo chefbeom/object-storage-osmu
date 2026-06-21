@@ -11,7 +11,8 @@
 - `GET /api/admin/object-lifecycle/rules/{ruleId}/dry-run` previews matched candidates without deleting data.
 - `GET /api/admin/object-lifecycle/conflicts` reports enabled rules with overlapping bucket/target/prefix/tag scopes.
 - `ObjectLifecycleS3XmlService` exports/imports AWS S3 LifecycleConfiguration XML subset for lifecycle rule interoperability, emits exported rule children in `ID`/`Filter`/`Status`/action order, and validates the lifecycle root, 1000-rule limit, 255-character `Rule/ID` limit, required `Rule/Status` values (`Enabled` or `Disabled`), direct `Filter` predicate shape, lifecycle tag restrictions, unsupported object-size predicates, and unsupported lifecycle action combinations.
-- `BucketLifecycleController` exposes `GET/PUT/DELETE /api/buckets/{bucketName}/lifecycle`; PUT replaces only rules scoped to that bucket and stores imported XML rules with `bucketName`.
+- `BucketLifecycleController` exposes `GET/PUT/DELETE /api/buckets/{bucketName}/lifecycle`; PUT replaces only rules scoped to that bucket, stores imported XML rules with `bucketName`, and syncs the supported lifecycle subset to the object storage adapter before metadata replacement.
+- In MinIO mode, bucket lifecycle sync maps OSMU `TRASH_OBJECT` rules to MinIO `Expiration/Days`, maps `OBJECT_VERSION` rules to `NoncurrentVersionExpiration/NoncurrentDays`, and enables MinIO bucket versioning before applying enabled noncurrent-version lifecycle rules. DELETE removes the MinIO lifecycle configuration but does not suspend versioning.
 - Bucket lifecycle GET supports JSON wrapper by default and raw XML when `Accept` is `application/xml` or `text/xml`.
 - Bucket lifecycle PUT supports JSON wrapper and raw XML bodies via `Content-Type: application/xml` or `text/xml`.
 - `S3BucketLifecycleController` validates lifecycle PUT single `Content-MD5`, one explicit `x-amz-checksum-*` value header, and matching single `x-amz-sdk-checksum-algorithm` against the raw lifecycle XML body before replacing the bucket configuration; duplicate checksum value headers are rejected before replacement.
@@ -408,6 +409,7 @@ MVP 단계:
 MVP 보상 전략:
 
 - 버킷 생성: MinIO 생성 후 DB 저장 실패 시 MinIO 버킷 삭제 시도.
+- bucket lifecycle: MinIO lifecycle sync succeeds before metadata replacement; if metadata replacement/delete fails after storage sync, Backend attempts to restore the previous MinIO lifecycle configuration.
 - 파일 업로드: MinIO 업로드 성공 후 감사 로그 실패는 파일 업로드 성공으로 처리하고 로그 에러만 기록.
 - object metadata index: Backend upload/delete/tag/complete 성공 후 갱신한다. Backend를 거치지 않은 S3 직접 변경은 bucket sync로 재생성한다.
 - object tag index: object metadata와 같은 transaction에서 tag row를 replace해 JSON tag와 inverted index drift를 줄인다.

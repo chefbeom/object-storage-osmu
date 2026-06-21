@@ -5,6 +5,7 @@ import com.example.osmu.common.error.ApiException;
 import com.example.osmu.object.CompletedMultipartUploadPart;
 import com.example.osmu.object.MultipartUploadPartUrl;
 import com.example.osmu.object.MultipartUploadUploadedPart;
+import com.example.osmu.object.ObjectLifecycleRule;
 import com.example.osmu.object.PresignedObjectUrl;
 import com.example.osmu.object.StoredObjectData;
 import com.example.osmu.object.StoredObjectPage;
@@ -15,6 +16,7 @@ import com.example.osmu.storage.ObjectStorageAdapter;
 import com.google.common.collect.HashMultimap;
 import com.google.common.collect.Multimap;
 import io.minio.DeleteObjectTagsArgs;
+import io.minio.DeleteBucketLifecycleArgs;
 import io.minio.BucketExistsArgs;
 import io.minio.CreateMultipartUploadResponse;
 import io.minio.GetObjectArgs;
@@ -29,6 +31,8 @@ import io.minio.PutObjectArgs;
 import io.minio.RemoveBucketArgs;
 import io.minio.RemoveObjectArgs;
 import io.minio.Result;
+import io.minio.SetBucketLifecycleArgs;
+import io.minio.SetBucketVersioningArgs;
 import io.minio.SetObjectTagsArgs;
 import io.minio.StatObjectArgs;
 import io.minio.StatObjectResponse;
@@ -38,6 +42,7 @@ import io.minio.http.Method;
 import io.minio.messages.Item;
 import io.minio.messages.Part;
 import io.minio.messages.Tags;
+import io.minio.messages.VersioningConfiguration;
 import java.io.InputStream;
 import java.time.OffsetDateTime;
 import java.time.ZonedDateTime;
@@ -233,6 +238,47 @@ public class MinioObjectStorageAdapter implements ObjectStorageAdapter {
             }
             throw storageException(exception);
         }
+    }
+
+    @Override
+    public void applyBucketLifecycle(String bucketName, List<ObjectLifecycleRule> rules) {
+        List<ObjectLifecycleRule> safeRules = rules == null ? List.of() : List.copyOf(rules);
+        if (safeRules.isEmpty()) {
+            deleteBucketLifecycle(bucketName);
+            return;
+        }
+        try {
+            if (MinioBucketLifecycleMapper.requiresVersioning(safeRules)) {
+                enableBucketVersioning(bucketName);
+            }
+            minioClient.setBucketLifecycle(SetBucketLifecycleArgs.builder()
+                    .bucket(bucketName)
+                    .config(MinioBucketLifecycleMapper.toConfiguration(safeRules))
+                    .build());
+        } catch (Exception exception) {
+            throw storageException(exception);
+        }
+    }
+
+    @Override
+    public void deleteBucketLifecycle(String bucketName) {
+        try {
+            minioClient.deleteBucketLifecycle(DeleteBucketLifecycleArgs.builder()
+                    .bucket(bucketName)
+                    .build());
+        } catch (Exception exception) {
+            if (isMissingBucket(exception) || isErrorCode(exception, "NoSuchLifecycleConfiguration")) {
+                return;
+            }
+            throw storageException(exception);
+        }
+    }
+
+    private void enableBucketVersioning(String bucketName) throws Exception {
+        minioClient.setBucketVersioning(SetBucketVersioningArgs.builder()
+                .bucket(bucketName)
+                .config(new VersioningConfiguration(VersioningConfiguration.Status.ENABLED, false))
+                .build());
     }
 
     @Override

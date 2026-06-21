@@ -322,13 +322,14 @@ MVP 데모 기준 완료율은 약 90~95%입니다.
 - storage health endpoint
 - storage backend status API/UI (`GET /api/admin/storage/backend-status`) using health probes, bucket/object metadata counts, and optional MinIO Prometheus capacity metrics with metadata fallback.
 - object storage failure frontend retry/remediation UX: upload failures carrying `STORAGE_ERROR` or HTTP 502 keep the retry action available and show Request ID based operator steps before reattempting large/multipart uploads.
+- bucket lifecycle storage sync: `/api/buckets/{bucketName}/lifecycle`와 `/api/s3/{bucketName}?lifecycle` PUT/DELETE가 repository 변경 전 object storage adapter에 lifecycle config를 동기화한다. MinIO mode는 `Expiration/Days`와 `NoncurrentVersionExpiration/NoncurrentDays` subset을 MinIO lifecycle로 적용하고 enabled noncurrent-version rule이 있으면 bucket versioning을 먼저 enable한다.
 - MinIO Admin info 기반 pool/server/drive telemetry evidence writer: `scripts/write-storage-backend-telemetry-evidence.ps1`가 `mc admin info --json` file input 또는 명시적 `-Execute` 결과를 요약해 `.osmu-run/latest-storage-backend-telemetry.*`에 저장하며 raw admin output과 secret 값은 저장하지 않는다.
 - Storage backend telemetry manual workflow: `.github/workflows/manual-storage-backend-telemetry-evidence.yml`가 준비된 `OSMU_MINIO_ADMIN_INFO_JSON_BASE64` admin-info JSON을 임시 파일로 디코드해 evidence writer를 실행하고 raw input 제거 후 요약 artifact만 업로드한다.
 - Storage expansion finalizer는 `-RunStorageBackendTelemetryEvidence -StorageBackendTelemetryAdminInfoJsonPath <path>`를 받으면 같은 finalizer report 안에서 storage backend telemetry evidence writer를 실행하고 `.osmu-run/latest-storage-backend-telemetry.*` 경로를 report/evidence block에 연결한다.
 
 남은 것:
 
-- bucket CORS/versioning/lifecycle 실제 동기화
+- bucket CORS live verification과 explicit versioning management API
 - target workflow run에서 `result=passed` storage backend telemetry evidence 확보
 - prepared secret 없이 workflow가 직접 target MinIO에서 `mc admin info --json`을 live collection하는 경로
 

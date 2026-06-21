@@ -1359,6 +1359,7 @@ Response:
 ### PUT /api/buckets/{bucketName}/lifecycle
 
 버킷 lifecycle 설정을 XML로 교체한다. S3 `PutBucketLifecycleConfiguration`처럼 기존 해당 bucket rule을 삭제하고 새 rule을 저장한다. bucket 관리 권한이 필요하다.
+MinIO mode에서는 검증된 OSMU-supported subset을 object storage adapter에도 동기화한다. `NoncurrentVersionExpiration` rule이 enabled 상태이면 MinIO bucket versioning을 먼저 enabled로 설정한다. Storage sync가 실패하면 metadata rule은 교체하지 않는다.
 
 Content types:
 
@@ -1392,6 +1393,7 @@ Rules:
 ### DELETE /api/buckets/{bucketName}/lifecycle
 
 해당 bucket에 연결된 lifecycle rule을 모두 삭제한다. bucket 관리 권한이 필요하다. Success returns `204 No Content` and writes `BUCKET_LIFECYCLE_DELETE` audit log.
+MinIO mode에서는 bucket lifecycle configuration도 삭제한다. 삭제 경로는 versioning을 suspend하지 않는다.
 
 ### S3-style alias: /api/s3/{bucketName}?lifecycle
 
