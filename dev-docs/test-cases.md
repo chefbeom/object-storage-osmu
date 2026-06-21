@@ -1571,7 +1571,7 @@ ID:
 - Steps: Open Admin or Developer Access Key panel and select each filter.
 - Expected: List shows only keys matching the selected filter. `Expired` and `Expiring` are based on active key `expiresAt`; `Unused` includes active keys never used or last used more than 30 days ago; `Inactive` shows non-active keys.
 - Priority: P1
-- Automated: `accessKeys.test.js`, `HomeView.test.js`. Browser click E2E pending.
+- Automated: `accessKeys.test.js`, `HomeView.test.js`, Browser E2E `developer can filter access keys and inspect operational hints` seeded key filter clicks.
 
 ### TC-KEY-013
 
@@ -1581,7 +1581,7 @@ ID:
 - Steps: Open Admin or Developer Access Key panel and inspect each row action hint.
 - Expected: Expired active keys show a disable cleanup hint, expiring keys show a rotate-soon hint, never-used and stale-used keys show review/disable hints, healthy active keys show no immediate action, and inactive keys are marked as already blocked.
 - Priority: P1
-- Automated: `accessKeys.test.js`, `HomeView.test.js`. Browser row render E2E pending.
+- Automated: `accessKeys.test.js`, `HomeView.test.js`, Browser E2E `developer can filter access keys and inspect operational hints` row action hint assertions.
 
 ### TC-KEY-014
 

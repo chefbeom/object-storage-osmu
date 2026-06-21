@@ -16,14 +16,14 @@ async function expectAdminBucketContextReady(page) {
   ).toBeVisible()
 }
 
-async function installDeveloperApiMocks(page) {
+async function installDeveloperApiMocks(page, options = {}) {
   const developerUser = {
     id: 2001,
     loginId: developerLoginId,
     name: 'Developer User',
     role: 'USER',
   }
-  const accessKeys = []
+  const accessKeys = (options.accessKeys || []).map((key) => ({ ...key }))
 
   await page.route('**/api/**', async (route) => {
     const request = route.request()
@@ -286,6 +286,111 @@ test('developer login lands on S3 API console with access key controls', async (
   await page.getByTestId('confirm-submit-button').click()
   await expect(page.getByTestId('status-alert')).toContainText('비활성화 완료')
   await expect(page.getByTestId('access-key-list')).toContainText('INACTIVE')
+})
+
+test('developer can filter access keys and inspect operational hints', async ({ page }) => {
+  const now = Date.now()
+  const isoAfterDays = (days) => new Date(now + days * 24 * 60 * 60 * 1000).toISOString()
+  const isoBeforeDays = (days) => new Date(now - days * 24 * 60 * 60 * 1000).toISOString()
+  await installDeveloperApiMocks(page, {
+    accessKeys: [
+      {
+        id: 11,
+        name: 'expired-browser-key',
+        accessKey: 'OSMUEXPIRED',
+        status: 'ACTIVE',
+        bucketScopes: [{ bucketName: developerBucketName, permissions: ['READ'] }],
+        expiresAt: isoBeforeDays(1),
+        lastUsedAt: isoBeforeDays(1),
+        usageCount: 3,
+      },
+      {
+        id: 12,
+        name: 'expiring-browser-key',
+        accessKey: 'OSMUEXPIRING',
+        status: 'ACTIVE',
+        bucketScopes: [{ bucketName: developerBucketName, permissions: ['READ'] }],
+        expiresAt: isoAfterDays(2),
+        lastUsedAt: isoBeforeDays(1),
+        usageCount: 2,
+      },
+      {
+        id: 13,
+        name: 'unused-browser-key',
+        accessKey: 'OSMUUNUSED',
+        status: 'ACTIVE',
+        bucketScopes: [{ bucketName: developerBucketName, permissions: ['READ'] }],
+        expiresAt: isoAfterDays(30),
+        lastUsedAt: null,
+        usageCount: 0,
+      },
+      {
+        id: 14,
+        name: 'stale-browser-key',
+        accessKey: 'OSMUSTALE',
+        status: 'ACTIVE',
+        bucketScopes: [{ bucketName: developerBucketName, permissions: ['READ'] }],
+        expiresAt: isoAfterDays(30),
+        lastUsedAt: isoBeforeDays(45),
+        usageCount: 1,
+      },
+      {
+        id: 15,
+        name: 'healthy-browser-key',
+        accessKey: 'OSMUHEALTHY',
+        status: 'ACTIVE',
+        bucketScopes: [{ bucketName: developerBucketName, permissions: ['READ'] }],
+        expiresAt: isoAfterDays(30),
+        lastUsedAt: isoBeforeDays(1),
+        usageCount: 7,
+      },
+      {
+        id: 16,
+        name: 'inactive-browser-key',
+        accessKey: 'OSMUINACTIVE',
+        status: 'INACTIVE',
+        bucketScopes: [{ bucketName: developerBucketName, permissions: ['READ'] }],
+        expiresAt: isoAfterDays(30),
+        lastUsedAt: null,
+        usageCount: 0,
+      },
+    ],
+  })
+  await page.addInitScript(() => {
+    window.localStorage.removeItem('osmu.dashboard.widgets.v1')
+    window.localStorage.removeItem('osmu.auth.tokens')
+    window.localStorage.removeItem('osmu.login.rememberedId')
+    window.sessionStorage.removeItem('osmu.auth.tokens')
+  })
+
+  await page.goto(`${frontendBaseUrl}/login?mode=developer`)
+  await page.getByTestId('login-id-input').fill(developerLoginId)
+  await page.getByTestId('login-password-input').fill(developerPassword)
+  await page.getByTestId('login-submit-button').click()
+
+  await expect(page.getByTestId('access-key-cleanup-summary')).toContainText('3 selected / 3 cleanup candidates')
+  await expect(page.getByTestId('access-key-list')).toContainText('Disable expired')
+  await expect(page.getByTestId('access-key-list')).toContainText('Rotate soon')
+  await expect(page.getByTestId('access-key-list')).toContainText('Review unused')
+  await expect(page.getByTestId('access-key-list')).toContainText('Review stale')
+  await expect(page.getByTestId('access-key-list')).toContainText('Recent active usage detected')
+
+  await page.getByTestId('access-key-filter-expired').click()
+  await expect(page.getByTestId('access-key-list')).toContainText('expired-browser-key')
+  await expect(page.getByTestId('access-key-list')).not.toContainText('healthy-browser-key')
+
+  await page.getByTestId('access-key-filter-expiring').click()
+  await expect(page.getByTestId('access-key-list')).toContainText('expiring-browser-key')
+  await expect(page.getByTestId('access-key-list')).not.toContainText('expired-browser-key')
+
+  await page.getByTestId('access-key-filter-unused').click()
+  await expect(page.getByTestId('access-key-list')).toContainText('unused-browser-key')
+  await expect(page.getByTestId('access-key-list')).toContainText('stale-browser-key')
+  await expect(page.getByTestId('access-key-list')).not.toContainText('healthy-browser-key')
+
+  await page.getByTestId('access-key-filter-inactive').click()
+  await expect(page.getByTestId('access-key-list')).toContainText('inactive-browser-key')
+  await expect(page.getByTestId('access-key-list')).not.toContainText('unused-browser-key')
 })
 
 test('admin dashboard shows operations readiness convergence handoff', async ({ page }) => {
