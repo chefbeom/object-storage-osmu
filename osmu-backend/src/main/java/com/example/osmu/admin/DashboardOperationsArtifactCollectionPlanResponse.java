@@ -15,11 +15,12 @@ public record DashboardOperationsArtifactCollectionPlanResponse(
         int missingRequiredArtifactCount,
         String securityEvidenceFinalizerCommand,
         String operationsArtifactFinalizerCommand,
+        String dataFlowStoragePlanInputNote,
         String localImportCommand,
         String decisionRule,
         List<DashboardOperationsArtifactCollectionArtifactResponse> artifacts
 ) {
     public static DashboardOperationsArtifactCollectionPlanResponse empty() {
-        return new DashboardOperationsArtifactCollectionPlanResponse("", "", "", "", 0, 0, 0, 0, "", "", "", "", List.of());
+        return new DashboardOperationsArtifactCollectionPlanResponse("", "", "", "", 0, 0, 0, 0, "", "", "", "", "", List.of());
     }
 }

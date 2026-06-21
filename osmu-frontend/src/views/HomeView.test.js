@@ -850,6 +850,7 @@ test('HomeView exposes stable selectors for browser E2E flows', () => {
   assert.match(dashboardSource, /dashboardReadiness\.operationsDispatchPreflight/)
   assert.match(dashboardSource, /dashboardReadiness\.operationsWorkflowRunIdPlan/)
   assert.match(dashboardSource, /dashboardReadiness\.operationsArtifactCollectionPlan/)
+  assert.match(dashboardSource, /dataFlowStoragePlanInputNote/)
   assert.match(dashboardSource, /dashboardReadiness\.operationsReadinessArtifactImport/)
   assert.match(dashboardSource, /dashboardReadiness\.operationsReadinessFinalize/)
   assert.match(dashboardSource, /dashboardReadiness\.operationsEvidenceHandoff/)

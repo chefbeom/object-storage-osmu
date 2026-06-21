@@ -1183,6 +1183,22 @@
             Import
           </button>
         </div>
+        <small
+          v-if="operationsArtifactCollectionPlan.dataFlowStoragePlanInputNote"
+          data-testid="readiness-artifact-data-flow-note"
+        >
+          {{ operationsArtifactCollectionPlan.dataFlowStoragePlanInputNote }}
+        </small>
+        <button
+          v-if="operationsArtifactCollectionPlan.dataFlowStoragePlanInputNote"
+          data-testid="readiness-artifact-data-flow-note-copy-button"
+          type="button"
+          class="ghost"
+          title="Copy direct data-flow storage plan input note"
+          @click="copyReadinessRemediationCommand(operationsArtifactCollectionPlan.dataFlowStoragePlanInputNote)"
+        >
+          Copy data-flow note
+        </button>
       </div>
       <ol
         v-if="operationsArtifactCollectionArtifacts.length > 0"

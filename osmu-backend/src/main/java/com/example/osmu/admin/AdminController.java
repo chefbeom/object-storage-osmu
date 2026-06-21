@@ -2059,6 +2059,7 @@ public class AdminController {
                 jsonInt(collectionPlanReport, "missingRequiredArtifactCount"),
                 jsonText(collectionPlanReport, "securityEvidenceFinalizerCommand"),
                 jsonText(collectionPlanReport, "operationsArtifactFinalizerCommand"),
+                jsonText(collectionPlanReport, "dataFlowStoragePlanInputNote"),
                 jsonText(collectionPlanReport, "localImportCommand"),
                 jsonText(collectionPlanReport, "decisionRule"),
                 List.copyOf(artifacts)
