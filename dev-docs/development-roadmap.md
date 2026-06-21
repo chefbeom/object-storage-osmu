@@ -55,8 +55,8 @@ S3 호환성은 제품 차별화의 중심이 아니라 전환 호환성이다. 
 - secret/certificate rotation `result=passed`
 - Kubernetes HA/DR readiness `result=passed`
 - Kubernetes DR finalizer `result=ready`
-- security evidence finalizer `result=ready`
-- IAM/RBAC finalizer `result=ready`
+- security evidence finalizer `result=passed`
+- IAM/RBAC finalizer `result=passed`
 - enterprise auth smoke `result=passed` 또는 계약상 `scope-out`
 - commercial integration evidence `result=passed`
 - commercial approval evidence `result=passed`
