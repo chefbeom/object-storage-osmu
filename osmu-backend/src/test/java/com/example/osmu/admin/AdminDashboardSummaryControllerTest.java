@@ -85,6 +85,30 @@ class AdminDashboardSummaryControllerTest {
     }
 
     @Test
+    void adminCanReadStorageBackendStatus() throws Exception {
+        String adminToken = loginAndReturnAccessToken("admin", "password");
+
+        mockMvc.perform(get("/api/admin/storage/backend-status")
+                        .header("Authorization", "Bearer " + adminToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.mode").value("in-memory"))
+                .andExpect(jsonPath("$.data.metadataMode").value("in-memory"))
+                .andExpect(jsonPath("$.data.storageHealthy").value(true))
+                .andExpect(jsonPath("$.data.accessKeyProvisionerHealthy").value(true))
+                .andExpect(jsonPath("$.data.bucketCount").isNumber())
+                .andExpect(jsonPath("$.data.objectCount").isNumber())
+                .andExpect(jsonPath("$.data.usedBytes").isNumber())
+                .andExpect(jsonPath("$.data.quotaBytes").isNumber())
+                .andExpect(jsonPath("$.data.remainingBytes").isNumber())
+                .andExpect(jsonPath("$.data.capacitySource").value("bucket_metadata_usage"))
+                .andExpect(jsonPath("$.data.directStorageMetricsEnabled").value(false))
+                .andExpect(jsonPath("$.data.minioAdminMetricsEnabled").value(false))
+                .andExpect(jsonPath("$.data.readiness").value("DEMO_ONLY"))
+                .andExpect(jsonPath("$.data.pendingGates").isArray())
+                .andExpect(jsonPath("$.data.generatedAt").exists());
+    }
+
+    @Test
     void adminCanReadDataFlowMonitoring() throws Exception {
         String adminToken = loginAndReturnAccessToken("admin", "password");
 

@@ -19,9 +19,11 @@ Required endpoints:
 - `GET /api/database/health`
 - `GET /api/storage/health`
 - `GET /api/admin/system/status`
+- `GET /api/admin/storage/backend-status`
 - `GET /api/admin/backup/status`
 - `GET /actuator/prometheus`
 
+`/api/admin/storage/backend-status` returns object storage health, access-key provisioner health, and bucket metadata usage totals for `ADMIN` and `AUDITOR`. It intentionally reports `minioAdminMetricsEnabled=false` in the current MVP; direct MinIO Admin capacity telemetry is a future enhancement, while this surface is enough to show replacement-storage readiness without chasing full AWS parity.
 `/api/admin/backup/status` returns `DRILL_PENDING` in lightweight demo mode and lists durable pilot gaps in `pendingGates`.
 `/actuator/prometheus` is the Prometheus scrape endpoint.
 

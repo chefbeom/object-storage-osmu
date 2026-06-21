@@ -65,6 +65,7 @@ import {
   getObjects,
   getOidcAuthorizationRequest,
   getS3ClientConfig,
+  getStorageBackendStatus,
   getTeams,
   getUsers,
   importDashboardLayoutPreset,
@@ -109,6 +110,22 @@ test('getDashboardSummary reads admin dashboard aggregate endpoint', async () =>
     assert.equal(fetchMock.calls[0].url, 'http://localhost:8080/api/admin/dashboard/summary')
     assert.equal(fetchMock.calls[0].options.method, undefined)
     assert.equal(result.data.usage.usedBytes, 256)
+  } finally {
+    cleanupFetch(fetchMock)
+  }
+})
+
+test('getStorageBackendStatus reads admin storage backend status endpoint', async () => {
+  const fetchMock = mockFetch([
+    () => jsonResponse({ data: { readiness: 'DEMO_ONLY', minioAdminMetricsEnabled: false } }),
+  ])
+
+  try {
+    const result = await getStorageBackendStatus()
+
+    assert.equal(fetchMock.calls[0].url, 'http://localhost:8080/api/admin/storage/backend-status')
+    assert.equal(fetchMock.calls[0].options.method, undefined)
+    assert.equal(result.data.minioAdminMetricsEnabled, false)
   } finally {
     cleanupFetch(fetchMock)
   }

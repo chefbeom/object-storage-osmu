@@ -719,6 +719,16 @@ ID:
 - 우선순위: P0
 - 자동화 여부: Automated
 
+### TC-HEALTH-004
+
+- Feature: Storage backend operations status.
+- Preconditions: `ADMIN` or `AUDITOR` user is authenticated. Backend object storage adapter and access-key policy provisioner are configured.
+- Input: `GET /api/admin/storage/backend-status`, then render the dashboard health widget.
+- Steps: Verify the response includes `mode`, `metadataMode`, `storageHealthy`, `accessKeyProvisionerHealthy`, `bucketCount`, `objectCount`, `usedBytes`, `quotaBytes`, `remainingBytes`, `capacitySource=bucket_metadata_usage`, `directStorageMetricsEnabled=false`, `minioAdminMetricsEnabled=false`, `readiness`, `pendingGates`, and `generatedAt`. Verify `ORG_ADMIN` and `USER` are denied by RBAC. Verify the dashboard renders `dashboard-storage-backend-status`.
+- Expected: Operators can see object storage readiness and metadata usage without requiring direct MinIO Admin capacity telemetry. This test covers OSMU replacement-storage readiness, not AWS S3 edge parity.
+- Priority: P1
+- Automation: Automated
+
 ## 3. Auth
 
 ### TC-AUTH-001

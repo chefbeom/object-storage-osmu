@@ -608,6 +608,60 @@ public class AdminController {
         ));
     }
 
+    @GetMapping("/storage/backend-status")
+    public ApiResponse<StorageBackendStatusResponse> storageBackendStatus() {
+        return ApiResponse.of(storageBackendStatusSnapshot());
+    }
+
+    private StorageBackendStatusResponse storageBackendStatusSnapshot() {
+        String normalizedStorageMode = mode(storageMode);
+        String normalizedMetadataMode = mode(metadataMode);
+        boolean storageHealthy = storageAdapter.isHealthy();
+        boolean accessKeyProvisionerHealthy = policyProvisioner.isHealthy();
+        long quotaBytes = bucketService.totalQuotaBytes();
+        long usedBytes = bucketService.totalUsedBytes();
+        long bucketCount = bucketRepository.findAll().size();
+        long objectCount = bucketService.totalObjectCount();
+        List<String> pendingGates = new java.util.ArrayList<>();
+        if (!storageHealthy) {
+            pendingGates.add("Object storage health check is DOWN.");
+        }
+        if (!accessKeyProvisionerHealthy) {
+            pendingGates.add("Access key policy provisioner health check is DOWN.");
+        }
+        if (!"minio".equals(normalizedStorageMode)) {
+            pendingGates.add("MinIO object storage mode is not enabled.");
+        }
+        String readiness;
+        if (!storageHealthy) {
+            readiness = "UNHEALTHY";
+        } else if (!"minio".equals(normalizedStorageMode)) {
+            readiness = "DEMO_ONLY";
+        } else if (!accessKeyProvisionerHealthy) {
+            readiness = "PROVISIONER_ATTENTION";
+        } else {
+            readiness = "METADATA_USAGE_READY";
+        }
+        return new StorageBackendStatusResponse(
+                normalizedStorageMode,
+                normalizedMetadataMode,
+                storageHealthy,
+                accessKeyProvisionerHealthy,
+                bucketCount,
+                objectCount,
+                usedBytes,
+                quotaBytes,
+                Math.max(0L, quotaBytes - usedBytes),
+                "bucket_metadata_usage",
+                false,
+                false,
+                readiness,
+                List.copyOf(pendingGates),
+                OffsetDateTime.now(),
+                "OSMU storage backend status uses bucket metadata usage and health probes. Direct MinIO Admin capacity metrics are not enabled in this build."
+        );
+    }
+
     private DashboardSystemStatusResponse systemStatusSnapshot() {
         boolean databaseHealthy = bucketRepository.isHealthy()
                 && userRepository.isHealthy()

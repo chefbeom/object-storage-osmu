@@ -116,6 +116,7 @@
         :selected-bucket="selectedBucket"
         :object-view-mode="objectViewMode"
         :health="health"
+        :storage-backend-status="storageBackendStatus"
         :backup-status="backupStatus"
         :upload-state="uploadState"
         :data-flow-monitoring="dataFlowMonitoring"
@@ -642,6 +643,7 @@ import {
   getQuotaPolicies,
   getQuotaPolicyHistory,
   getS3ClientConfig,
+  getStorageBackendStatus,
   getStorageHealth,
   getStorageExpansionExecutionLogRetentionStatus,
   getStorageExpansionRequestManifest,
@@ -887,6 +889,7 @@ const health = reactive({
   storageEngine: '-',
 })
 const usage = reactive({ totalQuotaBytes: 0, usedBytes: 0, remainingBytes: 0, bucketCount: 0, objectCount: 0 })
+const storageBackendStatus = reactive(defaultStorageBackendStatus())
 const backupStatus = reactive({
   status: 'UNKNOWN',
   metadataStore: '-',
@@ -2023,6 +2026,17 @@ async function loadDashboardLayoutDefaults() {
   dashboardLayoutDefaults.value = Array.isArray(result?.data) ? result.data : []
 }
 
+async function loadStorageBackendStatus() {
+  if (!canUseAuditTools.value) {
+    resetStorageBackendStatus()
+    return
+  }
+  const result = await safeRequest(() => getStorageBackendStatus(), null)
+  if (result?.data) {
+    applyStorageBackendStatus(result.data)
+  }
+}
+
 async function saveDashboardLayoutRemote() {
   dashboardLayoutSync.pending = true
   const result = await safeRequest(() => saveDashboardLayout(dashboardWidgets.value, 'main', dashboardSections.value, DASHBOARD_LAYOUT_SCHEMA_VERSION), null)
@@ -2355,6 +2369,7 @@ async function loadDashboard(options = {}) {
     if (!dashboardSummaryLoaded) {
       await loadHealth()
     }
+    await loadStorageBackendStatus()
 
     const [bucketResult, keyResult] = await Promise.all([
       safeRequest(() => getBuckets(), { items: [] }),
@@ -3227,6 +3242,7 @@ function resetAdminOnlyState() {
   resetStorageExpansionExecutionLogRetention()
   resetStorageExpansionSummary()
   resetStorageExpansionRunnerPreflight()
+  resetStorageBackendStatus()
   resetLifecycleRuleForm()
   resetLifecycleRuleConflicts()
   resetLifecycleXml()
@@ -4355,6 +4371,27 @@ function defaultDataFlowStorageStatus() {
   }
 }
 
+function defaultStorageBackendStatus() {
+  return {
+    mode: '',
+    metadataMode: '',
+    storageHealthy: false,
+    accessKeyProvisionerHealthy: false,
+    bucketCount: 0,
+    objectCount: 0,
+    usedBytes: 0,
+    quotaBytes: 0,
+    remainingBytes: 0,
+    capacitySource: '',
+    directStorageMetricsEnabled: false,
+    minioAdminMetricsEnabled: false,
+    readiness: '',
+    pendingGates: [],
+    generatedAt: '',
+    note: '',
+  }
+}
+
 function normalizeDataFlowRetentionPolicy(policy = {}) {
   return {
     enabled: Boolean(policy.enabled),
@@ -4398,12 +4435,38 @@ function applyDataFlowStorageStatus(data = {}) {
   })
 }
 
+function applyStorageBackendStatus(data = {}) {
+  Object.assign(storageBackendStatus, {
+    ...defaultStorageBackendStatus(),
+    mode: data.mode || '',
+    metadataMode: data.metadataMode || '',
+    storageHealthy: Boolean(data.storageHealthy),
+    accessKeyProvisionerHealthy: Boolean(data.accessKeyProvisionerHealthy),
+    bucketCount: Number(data.bucketCount || 0),
+    objectCount: Number(data.objectCount || 0),
+    usedBytes: Number(data.usedBytes || 0),
+    quotaBytes: Number(data.quotaBytes || 0),
+    remainingBytes: Number(data.remainingBytes || 0),
+    capacitySource: data.capacitySource || '',
+    directStorageMetricsEnabled: Boolean(data.directStorageMetricsEnabled),
+    minioAdminMetricsEnabled: Boolean(data.minioAdminMetricsEnabled),
+    readiness: data.readiness || '',
+    pendingGates: Array.isArray(data.pendingGates) ? data.pendingGates : [],
+    generatedAt: data.generatedAt || '',
+    note: data.note || '',
+  })
+}
+
 function resetDataFlowRetention() {
   applyDataFlowRetention({})
 }
 
 function resetDataFlowStorageStatus() {
   applyDataFlowStorageStatus({})
+}
+
+function resetStorageBackendStatus() {
+  applyStorageBackendStatus({})
 }
 
 function resetDataFlowMonitoring() {

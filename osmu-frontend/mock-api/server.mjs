@@ -297,6 +297,10 @@ async function handleRequest(request, response) {
     sendJson(response, 200, apiData(readinessSummary()))
     return
   }
+  if (request.method === 'GET' && path === '/admin/storage/backend-status') {
+    sendJson(response, 200, apiData(storageBackendStatus()))
+    return
+  }
   if (request.method === 'GET' && path === '/admin/monitoring/data-flow') {
     sendJson(response, 200, apiData(dataFlowSummary(dataFlowFilters(url))))
     return
@@ -3254,6 +3258,28 @@ function systemStatus() {
   }
 }
 
+function storageBackendStatus() {
+  const usage = usageSummary()
+  return {
+    mode: 'mock-memory',
+    metadataMode: 'mock-memory',
+    storageHealthy: true,
+    accessKeyProvisionerHealthy: true,
+    bucketCount: usage.bucketCount,
+    objectCount: usage.objectCount,
+    usedBytes: usage.usedBytes,
+    quotaBytes: usage.totalBytes,
+    remainingBytes: Math.max(0, usage.totalBytes - usage.usedBytes),
+    capacitySource: 'bucket_metadata_usage',
+    directStorageMetricsEnabled: false,
+    minioAdminMetricsEnabled: false,
+    readiness: 'DEMO_ONLY',
+    pendingGates: ['MinIO object storage mode is not enabled.'],
+    generatedAt: new Date().toISOString(),
+    note: 'Mock storage backend status uses bucket metadata usage and health probes. Direct MinIO Admin capacity metrics are not enabled in this mock build.',
+  }
+}
+
 function backupStatus() {
   return {
     status: 'DRILL_PENDING',
@@ -3690,6 +3716,12 @@ async function runSelfTest() {
     }
     if (!readiness.data.items.some((item) => item.code === 'OPERATIONS_READINESS_CONVERGENCE')) {
       throw new Error('readiness convergence item self-test failed')
+    }
+    const storageBackendStatus = await (await fetch(`${base}/admin/storage/backend-status`, {
+      headers: { Authorization: `Bearer ${login.data.accessToken}` },
+    })).json()
+    if (storageBackendStatus.data?.capacitySource !== 'bucket_metadata_usage' || storageBackendStatus.data?.minioAdminMetricsEnabled !== false) {
+      throw new Error('storage backend status self-test failed')
     }
     const dataFlowMonthlyRollup = await (await fetch(`${base}/admin/monitoring/data-flow/monthly-rollup?months=12&limit=200`, {
       headers: { Authorization: `Bearer ${login.data.accessToken}` },

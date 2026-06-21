@@ -384,6 +384,7 @@
       <template v-else-if="widget.id === 'health'">
         <strong>{{ health.backend }}</strong>
         <small>Storage {{ health.storage }} / DB {{ health.database }}</small>
+        <small v-if="storageBackendStatus.mode" data-testid="dashboard-storage-backend-status">{{ storageBackendStatusLabel }}</small>
       </template>
       <template v-else-if="widget.id === 'runtime'">
         <strong>{{ runtimeReadinessLabel }}</strong>
@@ -1811,6 +1812,7 @@ const props = defineProps({
   selectedBucket: { type: String, required: true },
   objectViewMode: { type: String, required: true },
   health: { type: Object, required: true },
+  storageBackendStatus: { type: Object, required: true },
   backupStatus: { type: Object, required: true },
   uploadState: { type: Object, required: true },
   dataFlowMonitoring: { type: Object, required: true },
@@ -2010,6 +2012,7 @@ const dataFlowRetention = computed(() => props.dataFlowRetention || {})
 const dataFlowEventRetention = computed(() => dataFlowRetention.value.eventRetention || {})
 const dataFlowDailyRollupRetention = computed(() => dataFlowRetention.value.dailyRollupRetention || {})
 const dataFlowMonthlyRollupRetention = computed(() => dataFlowRetention.value.monthlyRollupRetention || {})
+const storageBackendStatus = computed(() => props.storageBackendStatus || {})
 const dataFlowStorageStatus = computed(() => props.dataFlowStorageStatus || {})
 const dataFlowRetentionEventLabel = computed(() => dataFlowRetentionPolicyLabel(dataFlowEventRetention.value))
 const dataFlowRetentionRollupLabel = computed(() => dataFlowRetentionPolicyLabel(dataFlowDailyRollupRetention.value))
@@ -2022,6 +2025,9 @@ const dataFlowRetentionFailureLabel = computed(() => (
 ))
 const dataFlowStorageStatusLabel = computed(() => (
   `${dataFlowStorageStatus.value.readiness || 'unknown'} / ${dataFlowStorageStatus.value.metadataMode || '-'} / ${dataFlowStorageStatus.value.repositoryHealthy ? 'healthy' : 'unhealthy'}`
+))
+const storageBackendStatusLabel = computed(() => (
+  `${storageBackendStatus.value.readiness || 'unknown'} / ${props.formatBytes(storageBackendStatus.value.usedBytes || 0)} used / ${props.formatCount(storageBackendStatus.value.objectCount || 0)} objects`
 ))
 const dataFlowStorageRowsLabel = computed(() => (
   `${props.formatCount(dataFlowStorageStatus.value.eventRowCount || 0)} events / ${props.formatCount(dataFlowStorageStatus.value.dailyRollupRowCount || 0)} daily / ${props.formatCount(dataFlowStorageStatus.value.monthlyRollupRowCount || 0)} monthly`

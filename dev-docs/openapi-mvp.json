@@ -3855,6 +3855,17 @@
         }
       }
     },
+    "/api/admin/storage/backend-status": {
+      "get": {
+        "tags": ["Admin"],
+        "operationId": "getStorageBackendStatus",
+        "summary": "Read storage backend health, metadata usage totals, and MinIO admin telemetry readiness",
+        "responses": {
+          "200": { "$ref": "#/components/responses/JsonOk" },
+          "403": { "$ref": "#/components/responses/Error" }
+        }
+      }
+    },
     "/api/admin/backup/status": {
       "get": {
         "tags": ["Admin", "Operations"],

@@ -25,7 +25,7 @@ Authorization: Bearer <accessToken>
 관리자 API인 `/api/admin/**`는 기본적으로 `ADMIN` role이 필요하다.
 예외적으로 `ORG_ADMIN`은 조직 스코프가 적용된 사용자/조직 조회 API만 접근할 수 있다.
 현재 허용 route는 `GET/POST /api/admin/users`, `PATCH /api/admin/users/{userId}/status`, `GET /api/admin/organizations`, `GET /api/admin/organizations/usage`, `GET /api/admin/billing/pricing-policy`, `GET /api/admin/billing/chargeback-preview`, `GET /api/admin/billing/chargeback-daily-rollup`, `GET /api/admin/billing/chargeback-alerts`, `GET /api/admin/billing/chargeback-alert-notifications/preview`, `GET/POST /api/admin/billing/chargeback-alert-notifications/outbox`, `GET /api/admin/billing/chargeback-preview/export.csv`, `GET /api/admin/billing/chargeback-daily-rollup/export.csv`, `GET /api/admin/billing/chargeback-invoice-draft/export.csv`, `GET/POST /api/admin/teams`, `PUT /api/admin/teams/{teamId}/members`, `DELETE /api/admin/teams/{teamId}`이다.
-`AUDITOR`는 read-only 감사/상태 조회 role이다. 허용 route는 `GET /api/admin/audit-logs`, `GET /api/admin/audit-logs/export.csv`, `GET /api/admin/usage`, `GET /api/admin/system/status`, `GET /api/admin/security/enterprise-auth-plan`, `GET /api/admin/dashboard/summary`, `GET /api/admin/dashboard/readiness`, `GET /api/admin/backup/status`, `GET /api/admin/backup/restore-drill-evidence`로 제한한다.
+`AUDITOR`는 read-only 감사/상태 조회 role이다. 허용 route는 `GET /api/admin/audit-logs`, `GET /api/admin/audit-logs/export.csv`, `GET /api/admin/usage`, `GET /api/admin/system/status`, `GET /api/admin/storage/backend-status`, `GET /api/admin/security/enterprise-auth-plan`, `GET /api/admin/dashboard/summary`, `GET /api/admin/dashboard/readiness`, `GET /api/admin/backup/status`, `GET /api/admin/backup/restore-drill-evidence`로 제한한다.
 
 일반 사용자는 본인이 소유한 bucket, object, access key만 접근할 수 있다. `ADMIN`은 전체 리소스에 접근할 수 있다.
 
@@ -4876,6 +4876,40 @@ Response:
   }
 }
 ```
+
+### GET /api/admin/storage/backend-status
+
+Returns read-only storage backend operations status for `ADMIN` and `AUDITOR`. It combines object storage health, access-key provisioner health, and bucket metadata usage totals. This is not direct MinIO Admin capacity telemetry yet.
+
+Response:
+
+```json
+{
+  "data": {
+    "mode": "minio",
+    "metadataMode": "mariadb",
+    "storageHealthy": true,
+    "accessKeyProvisionerHealthy": true,
+    "bucketCount": 12,
+    "objectCount": 240,
+    "usedBytes": 1048576,
+    "quotaBytes": 10737418240,
+    "remainingBytes": 10736369664,
+    "capacitySource": "bucket_metadata_usage",
+    "directStorageMetricsEnabled": false,
+    "minioAdminMetricsEnabled": false,
+    "readiness": "METADATA_USAGE_READY",
+    "pendingGates": [],
+    "generatedAt": "2026-06-18T10:40:00Z",
+    "note": "OSMU storage backend status uses bucket metadata usage and health probes. Direct MinIO Admin capacity metrics are not enabled in this build."
+  }
+}
+```
+
+Notes:
+
+- `readiness` is `DEMO_ONLY` outside MinIO mode, `UNHEALTHY` when the object store health probe fails, `PROVISIONER_ATTENTION` when key policy provisioning is unhealthy, and `METADATA_USAGE_READY` when MinIO mode and metadata usage health are ready.
+- `minioAdminMetricsEnabled=false` is intentional for the current MVP; future MinIO Admin/API telemetry can replace or augment `capacitySource`.
 
 ### GET /api/admin/dashboard/readiness
 

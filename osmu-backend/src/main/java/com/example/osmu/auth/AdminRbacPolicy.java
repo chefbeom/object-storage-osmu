@@ -38,6 +38,7 @@ public class AdminRbacPolicy {
             RouteRule.exact("GET", "/api/admin/audit-logs/export.csv"),
             RouteRule.exact("GET", "/api/admin/usage"),
             RouteRule.exact("GET", "/api/admin/system/status"),
+            RouteRule.exact("GET", "/api/admin/storage/backend-status"),
             RouteRule.exact("GET", "/api/admin/security/enterprise-auth-plan"),
             RouteRule.exact("GET", "/api/admin/dashboard/summary"),
             RouteRule.exact("GET", "/api/admin/dashboard/readiness"),

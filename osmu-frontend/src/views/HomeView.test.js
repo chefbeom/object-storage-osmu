@@ -59,6 +59,7 @@ test('HomeView exposes stable selectors for browser E2E flows', () => {
     'busy-alert',
     'status-alert',
     'metrics-grid',
+    'dashboard-storage-backend-status',
     'dashboard-config-panel',
     'dashboard-edit-mode-toggle',
     'dashboard-view-mode-summary',
@@ -700,6 +701,10 @@ test('HomeView exposes stable selectors for browser E2E flows', () => {
   assert.match(dashboardSource, /getDataFlowDailyRollup/)
   assert.match(dashboardSource, /getDataFlowMonthlyRollup/)
   assert.match(dashboardSource, /getDataFlowStorageStatus/)
+  assert.match(dashboardSource, /getStorageBackendStatus/)
+  assert.match(dashboardSource, /defaultStorageBackendStatus/)
+  assert.match(dashboardSource, /applyStorageBackendStatus/)
+  assert.match(dashboardSource, /storageBackendStatus/)
   assert.match(dashboardSource, /getMaterializedDataFlowDailyRollup/)
   assert.match(dashboardSource, /getMaterializedDataFlowMonthlyRollup/)
   assert.match(dashboardSource, /downloadDataFlowDailyRollupCsv/)
