@@ -12,6 +12,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 @Service
@@ -33,10 +34,16 @@ public class DataFlowMonitoringService {
 
     private final MeterRegistry meterRegistry;
     private final DataFlowEventRepository eventRepository;
+    private final String metadataMode;
 
-    public DataFlowMonitoringService(MeterRegistry meterRegistry, DataFlowEventRepository eventRepository) {
+    public DataFlowMonitoringService(
+            MeterRegistry meterRegistry,
+            DataFlowEventRepository eventRepository,
+            @Value("${osmu.metadata.mode:in-memory}") String metadataMode
+    ) {
         this.meterRegistry = meterRegistry;
         this.eventRepository = eventRepository;
+        this.metadataMode = metadataMode == null || metadataMode.isBlank() ? "in-memory" : metadataMode;
     }
 
     public void recordUpload(String bucketName, String objectKey, long sizeBytes, String actorId, String source) {
@@ -152,6 +159,45 @@ public class DataFlowMonitoringService {
                 trendPoints,
                 recentEvents,
                 OffsetDateTime.now()
+        );
+    }
+
+    public DataFlowStorageStatusResponse storageStatus() {
+        OffsetDateTime generatedAt = OffsetDateTime.now();
+        boolean repositoryHealthy = eventRepository.isHealthy();
+        long eventRowCount = safeCount(eventRepository::countEvents);
+        long dailyRollupRowCount = safeCount(eventRepository::countMaterializedRollups);
+        long monthlyRollupRowCount = safeCount(eventRepository::countMonthlyRollups);
+        boolean aggregateStoreReady = repositoryHealthy
+                && eventRowCount >= 0
+                && dailyRollupRowCount >= 0
+                && monthlyRollupRowCount >= 0;
+        boolean durableMetadata = "mariadb".equalsIgnoreCase(metadataMode);
+        String readiness;
+        if (!repositoryHealthy) {
+            readiness = "UNHEALTHY";
+        } else if (!durableMetadata) {
+            readiness = "DEMO_ONLY";
+        } else if (aggregateStoreReady) {
+            readiness = "AGGREGATE_STORE_READY";
+        } else {
+            readiness = "DETAIL_SCAN_ONLY";
+        }
+        return new DataFlowStorageStatusResponse(
+                "DATA_FLOW_STORAGE_STATUS",
+                metadataMode,
+                repositoryHealthy,
+                eventRowCount,
+                dailyRollupRowCount,
+                monthlyRollupRowCount,
+                SUMMARY_EVENT_SCAN_LIMIT,
+                MAX_DAILY_ROLLUP_DAYS,
+                MAX_MONTHLY_ROLLUP_MONTHS,
+                aggregateStoreReady,
+                false,
+                readiness,
+                generatedAt,
+                "OSMU data-flow storage status for detailed events, materialized daily rollups, and stored monthly rollups. Partitioned or external time-series storage is not enabled in this build."
         );
     }
 
@@ -505,6 +551,14 @@ public class DataFlowMonitoringService {
         return Math.max(0L, sizeBytes);
     }
 
+    private long safeCount(CountSupplier supplier) {
+        try {
+            return supplier.count();
+        } catch (RuntimeException ignored) {
+            return -1L;
+        }
+    }
+
     private String normalizeBucket(String bucketName) {
         return bucketName == null || bucketName.isBlank() ? "unknown" : bucketName;
     }
@@ -592,6 +646,11 @@ public class DataFlowMonitoringService {
                 failureCount += 1;
             }
         }
+    }
+
+    @FunctionalInterface
+    private interface CountSupplier {
+        long count();
     }
 
     private static final class BucketAccumulator {

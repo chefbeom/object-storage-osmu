@@ -447,6 +447,21 @@ public class MariaDbDataFlowEventRepository implements DataFlowEventRepository {
     }
 
     @Override
+    public long countEvents() {
+        return countRows("data_flow_events");
+    }
+
+    @Override
+    public long countMaterializedRollups() {
+        return countRows("data_flow_daily_rollups");
+    }
+
+    @Override
+    public long countMonthlyRollups() {
+        return countRows("data_flow_monthly_rollups");
+    }
+
+    @Override
     public int deleteBefore(OffsetDateTime cutoff, int limit) {
         ensureSchema();
         if (cutoff == null || limit <= 0) {
@@ -507,6 +522,21 @@ public class MariaDbDataFlowEventRepository implements DataFlowEventRepository {
             statement.setDate(1, Date.valueOf(cutoffMonth.withDayOfMonth(1)));
             statement.setInt(2, limit);
             return statement.executeUpdate();
+        } catch (SQLException exception) {
+            throw databaseException(exception);
+        }
+    }
+
+    private long countRows(String tableName) {
+        ensureSchema();
+        String sql = "SELECT COUNT(*) AS row_count FROM " + tableName;
+        try (Connection connection = connect();
+             PreparedStatement statement = connection.prepareStatement(sql);
+             ResultSet resultSet = statement.executeQuery()) {
+            if (resultSet.next()) {
+                return resultSet.getLong("row_count");
+            }
+            return 0L;
         } catch (SQLException exception) {
             throw databaseException(exception);
         }

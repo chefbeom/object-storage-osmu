@@ -3047,6 +3047,17 @@
         }
       }
     },
+    "/api/admin/monitoring/data-flow/storage-status": {
+      "get": {
+        "tags": ["Admin"],
+        "operationId": "getDataFlowStorageStatus",
+        "summary": "Read administrator data-flow repository row counts and aggregate storage readiness",
+        "responses": {
+          "200": { "$ref": "#/components/responses/JsonOk" },
+          "403": { "$ref": "#/components/responses/Error" }
+        }
+      }
+    },
     "/api/admin/monitoring/data-flow/retention/status": {
       "get": {
         "tags": ["Admin"],

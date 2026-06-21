@@ -12,7 +12,7 @@ class DataFlowMonitoringServiceTest {
 
     private final SimpleMeterRegistry meterRegistry = new SimpleMeterRegistry();
     private final InMemoryDataFlowEventRepository eventRepository = new InMemoryDataFlowEventRepository();
-    private final DataFlowMonitoringService service = new DataFlowMonitoringService(meterRegistry, eventRepository);
+    private final DataFlowMonitoringService service = new DataFlowMonitoringService(meterRegistry, eventRepository, "in-memory");
 
     @Test
     void recordsTrafficOperationsBucketsAndRecentEvents() {
@@ -343,6 +343,38 @@ class DataFlowMonitoringServiceTest {
         assertThat(csv).contains("\"media\",\"rest\",\"upload\",\"1\",\"0\",\"0\",\"1\",\"1024\",\"0\",\"0\",\"1024\"");
         assertThat(csv).doesNotContain("2048");
         assertThat(csv).doesNotContain("object.bin");
+    }
+
+    @Test
+    void storageStatusReportsRepositoryCountsAndReadinessBoundary() {
+        OffsetDateTime now = OffsetDateTime.now(ZoneOffset.UTC);
+        DataFlowEventFilter adminSuccessFilter = new DataFlowEventFilter(
+                "media",
+                "admin",
+                "rest",
+                "upload",
+                "SUCCESS",
+                now.minusMonths(1),
+                now.plusDays(1)
+        );
+        eventRepository.save(event("UPLOAD", "upload", "INGRESS", "media", "admin", "SUCCESS", 1024L, "rest", now.minusDays(1)));
+        service.materializeDailyRollup(adminSuccessFilter, 30, 10);
+        service.materializeMonthlyRollup(adminSuccessFilter, 12, 10);
+
+        DataFlowStorageStatusResponse status = service.storageStatus();
+
+        assertThat(status.mode()).isEqualTo("DATA_FLOW_STORAGE_STATUS");
+        assertThat(status.metadataMode()).isEqualTo("in-memory");
+        assertThat(status.repositoryHealthy()).isTrue();
+        assertThat(status.eventRowCount()).isEqualTo(1L);
+        assertThat(status.dailyRollupRowCount()).isEqualTo(1L);
+        assertThat(status.monthlyRollupRowCount()).isEqualTo(1L);
+        assertThat(status.summaryEventScanLimit()).isEqualTo(10_000);
+        assertThat(status.dailyRollupWindowLimitDays()).isEqualTo(366);
+        assertThat(status.monthlyRollupWindowLimitMonths()).isEqualTo(60);
+        assertThat(status.aggregateStoreReady()).isTrue();
+        assertThat(status.partitionedOrTimeSeriesStoreEnabled()).isFalse();
+        assertThat(status.readiness()).isEqualTo("DEMO_ONLY");
     }
 
     private static DataFlowEventRecord event(

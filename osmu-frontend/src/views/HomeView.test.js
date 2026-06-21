@@ -141,6 +141,10 @@ test('HomeView exposes stable selectors for browser E2E flows', () => {
     'data-flow-retention-failed',
     'data-flow-retention-refresh-button',
     'data-flow-retention-run-button',
+    'data-flow-storage-panel',
+    'data-flow-storage-status',
+    'data-flow-storage-rows',
+    'data-flow-storage-window',
     'data-flow-reset-button',
     'data-flow-total-bytes',
     'data-flow-failed-cancelled',
@@ -695,6 +699,7 @@ test('HomeView exposes stable selectors for browser E2E flows', () => {
   assert.match(dashboardSource, /operationsHandoffPackageChecks/)
   assert.match(dashboardSource, /getDataFlowDailyRollup/)
   assert.match(dashboardSource, /getDataFlowMonthlyRollup/)
+  assert.match(dashboardSource, /getDataFlowStorageStatus/)
   assert.match(dashboardSource, /getMaterializedDataFlowDailyRollup/)
   assert.match(dashboardSource, /getMaterializedDataFlowMonthlyRollup/)
   assert.match(dashboardSource, /downloadDataFlowDailyRollupCsv/)
@@ -714,8 +719,10 @@ test('HomeView exposes stable selectors for browser E2E flows', () => {
   assert.match(dashboardSource, /handleExportMaterializedDataFlowMonthlyRollupCsv/)
   assert.match(dashboardSource, /defaultDataFlowDailyRollup/)
   assert.match(dashboardSource, /defaultDataFlowMonthlyRollup/)
+  assert.match(dashboardSource, /defaultDataFlowStorageStatus/)
   assert.match(dashboardSource, /applyDataFlowDailyRollup/)
   assert.match(dashboardSource, /applyDataFlowMonthlyRollup/)
+  assert.match(dashboardSource, /applyDataFlowStorageStatus/)
   assert.match(dashboardSource, /chargebackPaymentProviderAdapterReadiness/)
   assert.match(dashboardSource, /getChargebackPaymentProviderAdapterReadiness/)
   assert.match(dashboardSource, /defaultChargebackPaymentProviderAdapterReadiness/)

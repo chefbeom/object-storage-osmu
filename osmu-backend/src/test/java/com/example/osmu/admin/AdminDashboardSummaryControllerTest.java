@@ -111,6 +111,28 @@ class AdminDashboardSummaryControllerTest {
     }
 
     @Test
+    void adminCanReadDataFlowStorageStatus() throws Exception {
+        String adminToken = loginAndReturnAccessToken("admin", "password");
+
+        mockMvc.perform(get("/api/admin/monitoring/data-flow/storage-status")
+                        .header("Authorization", "Bearer " + adminToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.mode").value("DATA_FLOW_STORAGE_STATUS"))
+                .andExpect(jsonPath("$.data.metadataMode").value("in-memory"))
+                .andExpect(jsonPath("$.data.repositoryHealthy").value(true))
+                .andExpect(jsonPath("$.data.eventRowCount").isNumber())
+                .andExpect(jsonPath("$.data.dailyRollupRowCount").isNumber())
+                .andExpect(jsonPath("$.data.monthlyRollupRowCount").isNumber())
+                .andExpect(jsonPath("$.data.summaryEventScanLimit").value(10000))
+                .andExpect(jsonPath("$.data.dailyRollupWindowLimitDays").value(366))
+                .andExpect(jsonPath("$.data.monthlyRollupWindowLimitMonths").value(60))
+                .andExpect(jsonPath("$.data.aggregateStoreReady").value(true))
+                .andExpect(jsonPath("$.data.partitionedOrTimeSeriesStoreEnabled").value(false))
+                .andExpect(jsonPath("$.data.readiness").value("DEMO_ONLY"))
+                .andExpect(jsonPath("$.data.generatedAt").exists());
+    }
+
+    @Test
     void adminCanExportDataFlowMonitoringCsv() throws Exception {
         String adminToken = loginAndReturnAccessToken("admin", "password");
 

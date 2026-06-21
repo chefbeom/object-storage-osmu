@@ -3508,6 +3508,38 @@ Persistence:
 - Micrometer counters are still emitted for Prometheus via `osmu.data.flow.operations` and `osmu.data.flow.bytes` with source/status/direction/bucket labels for starter alerting.
 - Scheduled retention deletes old data-flow event rows with `DATA_FLOW_EVENT_RETENTION` audit and `osmu.data.flow.retention.*` metrics. Defaults: enabled, 90 days, batch size 1000, fixed delay 6 hours.
 
+### GET /api/admin/monitoring/data-flow/storage-status
+
+Returns ADMIN-only data-flow storage readiness for detailed event rows, materialized daily rollups, and stored monthly rollups. This endpoint is a current-state operations surface; it does not enable partitioned tables or an external time-series store.
+
+Response:
+
+```json
+{
+  "data": {
+    "mode": "DATA_FLOW_STORAGE_STATUS",
+    "metadataMode": "mariadb",
+    "repositoryHealthy": true,
+    "eventRowCount": 1200,
+    "dailyRollupRowCount": 90,
+    "monthlyRollupRowCount": 12,
+    "summaryEventScanLimit": 10000,
+    "dailyRollupWindowLimitDays": 366,
+    "monthlyRollupWindowLimitMonths": 60,
+    "aggregateStoreReady": true,
+    "partitionedOrTimeSeriesStoreEnabled": false,
+    "readiness": "AGGREGATE_STORE_READY",
+    "generatedAt": "2026-06-18T10:24:00Z",
+    "note": "OSMU data-flow storage status for detailed events, materialized daily rollups, and stored monthly rollups. Partitioned or external time-series storage is not enabled in this build."
+  }
+}
+```
+
+Notes:
+
+- `readiness` is `DEMO_ONLY` in in-memory metadata mode, `UNHEALTHY` when the repository health check fails, and `AGGREGATE_STORE_READY` when MariaDB aggregate stores are available.
+- `partitionedOrTimeSeriesStoreEnabled=false` is intentional for the current MVP. The endpoint makes the boundary visible before a future partitioned/time-series repository is introduced.
+
 ### GET /api/admin/monitoring/data-flow/retention/status
 
 Returns ADMIN-only data-flow retention status for detailed event rows, materialized daily rollup rows, and stored monthly rollup rows.

@@ -41,6 +41,7 @@ import com.example.osmu.monitoring.DataFlowMonitoringResponse;
 import com.example.osmu.monitoring.DataFlowMonitoringService;
 import com.example.osmu.monitoring.DataFlowMonthlyRollupMaterializationResponse;
 import com.example.osmu.monitoring.DataFlowMonthlyRollupResponse;
+import com.example.osmu.monitoring.DataFlowStorageStatusResponse;
 import com.example.osmu.quota.QuotaPolicyResponse;
 import com.example.osmu.quota.QuotaPolicyService;
 import com.example.osmu.storage.ObjectStorageAdapter;
@@ -273,6 +274,11 @@ public class AdminController {
                 dataFlowFilter(bucketName, actorId, source, operation, status, from, to),
                 normalizeDataFlowLimit(limit)
         ));
+    }
+
+    @GetMapping("/monitoring/data-flow/storage-status")
+    public ApiResponse<DataFlowStorageStatusResponse> dataFlowStorageStatus() {
+        return ApiResponse.of(dataFlowMonitoringService.storageStatus());
     }
 
     @GetMapping(value = "/monitoring/data-flow/export.csv", produces = "text/csv")

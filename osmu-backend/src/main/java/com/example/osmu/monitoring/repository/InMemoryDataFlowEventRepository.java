@@ -192,6 +192,21 @@ public class InMemoryDataFlowEventRepository implements DataFlowEventRepository 
     }
 
     @Override
+    public long countEvents() {
+        return events.size();
+    }
+
+    @Override
+    public long countMaterializedRollups() {
+        return materializedRollups.size();
+    }
+
+    @Override
+    public long countMonthlyRollups() {
+        return storedMonthlyRollups.size();
+    }
+
+    @Override
     public int deleteBefore(OffsetDateTime cutoff, int limit) {
         if (cutoff == null || limit <= 0) {
             return 0;

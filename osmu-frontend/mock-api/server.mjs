@@ -342,6 +342,10 @@ async function handleRequest(request, response) {
     sendCsv(response, 'osmu-data-flow-monthly-rollup.csv', dataFlowMonthlyRollupCsv(dataFlowFilters(url)))
     return
   }
+  if (request.method === 'GET' && path === '/admin/monitoring/data-flow/storage-status') {
+    sendJson(response, 200, apiData(dataFlowStorageStatus()))
+    return
+  }
   if (request.method === 'GET' && path === '/admin/monitoring/data-flow/retention/status') {
     sendJson(response, 200, apiData(dataFlowRetentionStatus()))
     return
@@ -1480,6 +1484,25 @@ function dataFlowRetentionStatus(generatedAt = new Date().toISOString()) {
     monthlyRollupRetention: dataFlowRetentionPolicyStatus(1825, 1000, state.dataFlowRetentionMetrics.monthlyRollupsDeleted, state.dataFlowRetentionMetrics.monthlyRollupFailures),
     generatedAt,
     note: 'OSMU data-flow retention status for detailed events, materialized daily rollups, and stored monthly rollups. This is operational analytics retention, not AWS billing parity.',
+  }
+}
+
+function dataFlowStorageStatus() {
+  return {
+    mode: 'DATA_FLOW_STORAGE_STATUS',
+    metadataMode: 'in-memory',
+    repositoryHealthy: true,
+    eventRowCount: state.dataFlowEvents.length,
+    dailyRollupRowCount: state.dataFlowDailyRollups.length,
+    monthlyRollupRowCount: state.dataFlowMonthlyRollups.length,
+    summaryEventScanLimit: 10000,
+    dailyRollupWindowLimitDays: 366,
+    monthlyRollupWindowLimitMonths: 60,
+    aggregateStoreReady: true,
+    partitionedOrTimeSeriesStoreEnabled: false,
+    readiness: 'DEMO_ONLY',
+    generatedAt: new Date().toISOString(),
+    note: 'Mock data-flow storage status for detailed events, materialized daily rollups, and stored monthly rollups. Partitioned or external time-series storage is not enabled in this mock build.',
   }
 }
 
@@ -3711,6 +3734,12 @@ async function runSelfTest() {
     })).json()
     if (dataFlowRetentionStatus.data?.monthlyRollupRetention?.retentionDays !== 1825) {
       throw new Error('data flow retention status self-test failed')
+    }
+    const dataFlowStorageStatus = await (await fetch(`${base}/admin/monitoring/data-flow/storage-status`, {
+      headers: { Authorization: `Bearer ${login.data.accessToken}` },
+    })).json()
+    if (dataFlowStorageStatus.data?.mode !== 'DATA_FLOW_STORAGE_STATUS' || dataFlowStorageStatus.data?.partitionedOrTimeSeriesStoreEnabled !== false) {
+      throw new Error('data flow storage status self-test failed')
     }
     const dataFlowRetentionRun = await (await fetch(`${base}/admin/monitoring/data-flow/retention/run?includeEvents=true&includeDailyRollups=true&includeMonthlyRollups=true`, {
       method: 'POST',

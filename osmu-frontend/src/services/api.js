@@ -1237,6 +1237,10 @@ export function getMaterializedDataFlowMonthlyRollup(filters = {}) {
   return request(`/admin/monitoring/data-flow/monthly-rollup/materialized${suffix}`)
 }
 
+export function getDataFlowStorageStatus() {
+  return request('/admin/monitoring/data-flow/storage-status')
+}
+
 export function getDataFlowRetentionStatus() {
   return request('/admin/monitoring/data-flow/retention/status')
 }

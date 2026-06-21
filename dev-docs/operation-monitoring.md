@@ -129,6 +129,7 @@ MVP implementation:
 - `POST /api/admin/monitoring/data-flow/monthly-rollup/materialize` compacts refreshed daily rows into `data_flow_monthly_rollups` for long-window aggregate reads.
 - `GET /api/admin/monitoring/data-flow/monthly-rollup/materialized` reads stored monthly aggregate rows without regrouping detailed events or daily rows.
 - `GET /api/admin/monitoring/data-flow/retention/status` reports detailed-event, daily-rollup, and monthly-rollup retention enablement, job availability, configured retention days/batch size, and retention metrics.
+- `GET /api/admin/monitoring/data-flow/storage-status` reports data-flow repository health, detailed-event/daily-rollup/monthly-rollup row counts, scan/window limits, aggregate-store readiness, and the current `partitionedOrTimeSeriesStoreEnabled=false` boundary.
 - `POST /api/admin/monitoring/data-flow/retention/run` manually runs selected detailed-event, daily-rollup, and/or monthly-rollup retention targets and records `DATA_FLOW_RETENTION_RUN` audit.
 - `GET /api/admin/monitoring/data-flow/export.csv` exports the same filtered event window as newest-first CSV for audit handoff or offline analysis.
 - `GET /api/admin/monitoring/data-flow/daily-rollup/export.csv` exports the same filtered daily rollup as CSV without object keys or raw event messages for operations handoff and offline analytics.

@@ -120,6 +120,7 @@
         :upload-state="uploadState"
         :data-flow-monitoring="dataFlowMonitoring"
         :data-flow-retention="dataFlowRetention"
+        :data-flow-storage-status="dataFlowStorageStatus"
         :data-flow-filter="dataFlowFilter"
         :audit-logs="auditLogs"
         :audit-next-cursor="auditNextCursor"
@@ -620,6 +621,7 @@ import {
   getDataFlowDailyRollup,
   getDataFlowMonthlyRollup,
   getDataFlowRetentionStatus,
+  getDataFlowStorageStatus,
   getMaterializedDataFlowDailyRollup,
   getMaterializedDataFlowMonthlyRollup,
   getDataFlowMonitoring,
@@ -1133,6 +1135,7 @@ const dashboardReadiness = reactive({
   generatedAt: '',
 })
 const dataFlowRetention = reactive(defaultDataFlowRetention())
+const dataFlowStorageStatus = reactive(defaultDataFlowStorageStatus())
 const retentionPolicy = reactive({
   enabled: false,
   retentionDays: 0,
@@ -2408,6 +2411,7 @@ async function loadDashboard(options = {}) {
         dashboardSummaryLoaded ? Promise.resolve() : loadBackupStatus(),
         dashboardSummaryLoaded ? Promise.resolve() : loadRetentionStatus(),
         dashboardSummaryLoaded ? loadDataFlowDailyRollup() : loadDataFlowMonitoring(),
+        loadDataFlowStorageStatus(),
         loadDataFlowRetention(),
         loadStorageExpansionExecutionLogRetentionStatus(),
         refreshLifecycleRules(),
@@ -2549,6 +2553,17 @@ async function loadDataFlowRetention() {
   const result = await safeRequest(() => getDataFlowRetentionStatus(), null)
   if (result?.data) {
     applyDataFlowRetention(result.data)
+  }
+}
+
+async function loadDataFlowStorageStatus() {
+  if (!isAdmin.value) {
+    resetDataFlowStorageStatus()
+    return
+  }
+  const result = await safeRequest(() => getDataFlowStorageStatus(), null)
+  if (result?.data) {
+    applyDataFlowStorageStatus(result.data)
   }
 }
 
@@ -4321,6 +4336,25 @@ function defaultDataFlowRetention() {
   }
 }
 
+function defaultDataFlowStorageStatus() {
+  return {
+    mode: 'DATA_FLOW_STORAGE_STATUS',
+    metadataMode: '',
+    repositoryHealthy: false,
+    eventRowCount: 0,
+    dailyRollupRowCount: 0,
+    monthlyRollupRowCount: 0,
+    summaryEventScanLimit: 0,
+    dailyRollupWindowLimitDays: 0,
+    monthlyRollupWindowLimitMonths: 0,
+    aggregateStoreReady: false,
+    partitionedOrTimeSeriesStoreEnabled: false,
+    readiness: '',
+    generatedAt: '',
+    note: '',
+  }
+}
+
 function normalizeDataFlowRetentionPolicy(policy = {}) {
   return {
     enabled: Boolean(policy.enabled),
@@ -4344,8 +4378,32 @@ function applyDataFlowRetention(data = {}) {
   })
 }
 
+function applyDataFlowStorageStatus(data = {}) {
+  Object.assign(dataFlowStorageStatus, {
+    ...defaultDataFlowStorageStatus(),
+    mode: data.mode || 'DATA_FLOW_STORAGE_STATUS',
+    metadataMode: data.metadataMode || '',
+    repositoryHealthy: Boolean(data.repositoryHealthy),
+    eventRowCount: Number(data.eventRowCount || 0),
+    dailyRollupRowCount: Number(data.dailyRollupRowCount || 0),
+    monthlyRollupRowCount: Number(data.monthlyRollupRowCount || 0),
+    summaryEventScanLimit: Number(data.summaryEventScanLimit || 0),
+    dailyRollupWindowLimitDays: Number(data.dailyRollupWindowLimitDays || 0),
+    monthlyRollupWindowLimitMonths: Number(data.monthlyRollupWindowLimitMonths || 0),
+    aggregateStoreReady: Boolean(data.aggregateStoreReady),
+    partitionedOrTimeSeriesStoreEnabled: Boolean(data.partitionedOrTimeSeriesStoreEnabled),
+    readiness: data.readiness || '',
+    generatedAt: data.generatedAt || '',
+    note: data.note || '',
+  })
+}
+
 function resetDataFlowRetention() {
   applyDataFlowRetention({})
+}
+
+function resetDataFlowStorageStatus() {
+  applyDataFlowStorageStatus({})
 }
 
 function resetDataFlowMonitoring() {
@@ -4353,6 +4411,7 @@ function resetDataFlowMonitoring() {
   applyDataFlowDailyRollup({})
   applyDataFlowMonthlyRollup({})
   resetDataFlowRetention()
+  resetDataFlowStorageStatus()
 }
 
 function defaultBillingPricingPolicy() {

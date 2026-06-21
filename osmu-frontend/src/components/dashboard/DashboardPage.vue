@@ -1495,6 +1495,20 @@
           </dd>
         </div>
       </dl>
+      <dl class="status-dl compact data-flow-storage-strip" data-testid="data-flow-storage-panel">
+        <div>
+          <dt>Storage</dt>
+          <dd data-testid="data-flow-storage-status">{{ dataFlowStorageStatusLabel }}</dd>
+        </div>
+        <div>
+          <dt>Rows</dt>
+          <dd data-testid="data-flow-storage-rows">{{ dataFlowStorageRowsLabel }}</dd>
+        </div>
+        <div>
+          <dt>Window</dt>
+          <dd data-testid="data-flow-storage-window">{{ dataFlowStorageWindowLabel }}</dd>
+        </div>
+      </dl>
       <dl class="status-dl compact">
         <div>
           <dt>Total Traffic</dt>
@@ -1801,6 +1815,7 @@ const props = defineProps({
   uploadState: { type: Object, required: true },
   dataFlowMonitoring: { type: Object, required: true },
   dataFlowRetention: { type: Object, required: true },
+  dataFlowStorageStatus: { type: Object, required: true },
   dataFlowFilter: { type: Object, required: true },
   auditLogs: { type: Array, required: true },
   auditNextCursor: { type: String, required: true },
@@ -1995,6 +2010,7 @@ const dataFlowRetention = computed(() => props.dataFlowRetention || {})
 const dataFlowEventRetention = computed(() => dataFlowRetention.value.eventRetention || {})
 const dataFlowDailyRollupRetention = computed(() => dataFlowRetention.value.dailyRollupRetention || {})
 const dataFlowMonthlyRollupRetention = computed(() => dataFlowRetention.value.monthlyRollupRetention || {})
+const dataFlowStorageStatus = computed(() => props.dataFlowStorageStatus || {})
 const dataFlowRetentionEventLabel = computed(() => dataFlowRetentionPolicyLabel(dataFlowEventRetention.value))
 const dataFlowRetentionRollupLabel = computed(() => dataFlowRetentionPolicyLabel(dataFlowDailyRollupRetention.value))
 const dataFlowRetentionMonthlyRollupLabel = computed(() => dataFlowRetentionPolicyLabel(dataFlowMonthlyRollupRetention.value))
@@ -2003,6 +2019,15 @@ const dataFlowRetentionDeletedLabel = computed(() => (
 ))
 const dataFlowRetentionFailureLabel = computed(() => (
   `${props.formatCount(dataFlowEventRetention.value.failedRunCount || 0)} events / ${props.formatCount(dataFlowDailyRollupRetention.value.failedRunCount || 0)} daily / ${props.formatCount(dataFlowMonthlyRollupRetention.value.failedRunCount || 0)} monthly`
+))
+const dataFlowStorageStatusLabel = computed(() => (
+  `${dataFlowStorageStatus.value.readiness || 'unknown'} / ${dataFlowStorageStatus.value.metadataMode || '-'} / ${dataFlowStorageStatus.value.repositoryHealthy ? 'healthy' : 'unhealthy'}`
+))
+const dataFlowStorageRowsLabel = computed(() => (
+  `${props.formatCount(dataFlowStorageStatus.value.eventRowCount || 0)} events / ${props.formatCount(dataFlowStorageStatus.value.dailyRollupRowCount || 0)} daily / ${props.formatCount(dataFlowStorageStatus.value.monthlyRollupRowCount || 0)} monthly`
+))
+const dataFlowStorageWindowLabel = computed(() => (
+  `${props.formatCount(dataFlowStorageStatus.value.summaryEventScanLimit || 0)} scan / ${dataFlowStorageStatus.value.dailyRollupWindowLimitDays || '-'}d / ${dataFlowStorageStatus.value.monthlyRollupWindowLimitMonths || '-'}mo / ${dataFlowStorageStatus.value.partitionedOrTimeSeriesStoreEnabled ? 'partitioned' : 'aggregate store'}`
 ))
 
 function dataFlowRetentionPolicyLabel(policy = {}) {

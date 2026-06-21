@@ -30,6 +30,12 @@ public interface DataFlowEventRepository {
 
     DataFlowEventRecord save(DataFlowEventRecord event);
 
+    long countEvents();
+
+    long countMaterializedRollups();
+
+    long countMonthlyRollups();
+
     int deleteBefore(OffsetDateTime cutoff, int limit);
 
     int deleteMaterializedRollupsBefore(LocalDate cutoffDay, int limit);

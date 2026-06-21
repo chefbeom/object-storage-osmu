@@ -53,6 +53,7 @@ import {
   getDataFlowDailyRollup,
   getDataFlowMonthlyRollup,
   getDataFlowRetentionStatus,
+  getDataFlowStorageStatus,
   getMaterializedDataFlowDailyRollup,
   getMaterializedDataFlowMonthlyRollup,
   getDataFlowMonitoring,
@@ -347,6 +348,29 @@ test('getDataFlowMonitoring reads admin data flow endpoint', async () => {
     assert.equal(result.data.traffic.uploadedBytes, 1024)
     assert.equal(result.data.traffic.copiedBytes, 128)
     assert.equal(result.data.trendPoints[0].operation, 'upload')
+  } finally {
+    cleanupFetch(fetchMock)
+  }
+})
+
+test('getDataFlowStorageStatus reads admin data flow storage status endpoint', async () => {
+  const fetchMock = mockFetch([
+    () => jsonResponse({
+      data: {
+        mode: 'DATA_FLOW_STORAGE_STATUS',
+        readiness: 'DEMO_ONLY',
+        partitionedOrTimeSeriesStoreEnabled: false,
+      },
+    }),
+  ])
+
+  try {
+    const result = await getDataFlowStorageStatus()
+
+    assert.equal(fetchMock.calls[0].url, 'http://localhost:8080/api/admin/monitoring/data-flow/storage-status')
+    assert.equal(fetchMock.calls[0].options.method, undefined)
+    assert.equal(result.data.mode, 'DATA_FLOW_STORAGE_STATUS')
+    assert.equal(result.data.partitionedOrTimeSeriesStoreEnabled, false)
   } finally {
     cleanupFetch(fetchMock)
   }
