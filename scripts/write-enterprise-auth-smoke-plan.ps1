@@ -79,6 +79,7 @@ function Assert-SafeEvidenceText([string] $Value, [string] $Label) {
         "-----BEGIN [A-Z ]*PRIVATE KEY-----",
         "\bA(KIA|SIA)[0-9A-Z]{16}\b",
         "\bBearer\s+[A-Za-z0-9._~+/=-]{12,}",
+        "\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\b",
         "(?i)\b(password|passwd|secret|token|client_secret|ldap_password|oidc_code|oidc_state|refresh_token|access_token)\s*[=:]\s*\S+"
     )
 
@@ -86,6 +87,59 @@ function Assert-SafeEvidenceText([string] $Value, [string] $Label) {
         if ($Value -match $pattern) {
             throw "$Label appears to contain credential material. Store only a non-secret commercial approval reference or summary."
         }
+    }
+}
+
+function Assert-SafeEnterpriseAuthJsonPropertyName([string] $Name, [string] $Label, [string] $Path) {
+    $normalized = ($Name -replace "[-_]", "").ToLowerInvariant()
+    $unsafeNames = @(
+        "password",
+        "passwd",
+        "secret",
+        "clientsecret",
+        "idtoken",
+        "accesstoken",
+        "refreshtoken",
+        "ldappassword",
+        "oidccode",
+        "oidcstate",
+        "token",
+        "authorization"
+    )
+    if ($unsafeNames -contains $normalized) {
+        throw "$Label JSON contains token or credential-like property '$Path'. Provide sanitized claims only."
+    }
+}
+
+function Assert-SafeEnterpriseAuthJsonObject([object] $Value, [string] $Label, [string] $Path = "$") {
+    if ($null -eq $Value) {
+        return
+    }
+    if ($Value -is [string] -or $Value -is [ValueType]) {
+        return
+    }
+    if ($Value -is [System.Collections.IDictionary]) {
+        foreach ($key in $Value.Keys) {
+            $keyText = [string] $key
+            $childPath = "$Path.$keyText"
+            Assert-SafeEnterpriseAuthJsonPropertyName $keyText $Label $childPath
+            Assert-SafeEnterpriseAuthJsonObject $Value[$key] $Label $childPath
+        }
+        return
+    }
+    if ($Value -is [System.Collections.IEnumerable]) {
+        $index = 0
+        foreach ($item in $Value) {
+            Assert-SafeEnterpriseAuthJsonObject $item $Label "$Path[$index]"
+            $index++
+        }
+        return
+    }
+
+    foreach ($property in @($Value.PSObject.Properties)) {
+        $childPath = "$Path.$($property.Name)"
+        Assert-SafeEnterpriseAuthJsonPropertyName $property.Name $Label $childPath
+        Assert-SafeEnterpriseAuthJsonObject $property.Value $Label $childPath
     }
 }
 
@@ -142,7 +196,11 @@ function Read-JsonBodyFile([string] $Path, [string] $Label) {
     if (-not (Test-Path -LiteralPath $resolvedPath)) {
         throw "$Label JSON file not found: $resolvedPath"
     }
-    return Get-Content -Raw -LiteralPath $resolvedPath | ConvertFrom-Json
+    $raw = Get-Content -Raw -LiteralPath $resolvedPath
+    Assert-SafeEvidenceText $raw "${Label}Json"
+    $body = $raw | ConvertFrom-Json
+    Assert-SafeEnterpriseAuthJsonObject $body $Label
+    return $body
 }
 
 function Test-ExpectedEmail([object] $Data) {
@@ -178,9 +236,17 @@ function Add-ScopeOutChecks {
 $checks = New-Object System.Collections.Generic.List[object]
 $adminToken = ""
 $executedEventTypes = New-Object System.Collections.Generic.List[string]
+$claimPreviewBodyInput = $null
+$jitBodyInput = $null
 
 Assert-SafeEvidenceText $ScopeOutRef "ScopeOutRef"
 Assert-SafeEvidenceText $ScopeOutReason "ScopeOutReason"
+if (-not [string]::IsNullOrWhiteSpace($OidcClaimPreviewJsonPath)) {
+    $claimPreviewBodyInput = Read-JsonBodyFile $OidcClaimPreviewJsonPath "OIDC claim preview"
+}
+if (-not [string]::IsNullOrWhiteSpace($OidcJitProvisionJsonPath)) {
+    $jitBodyInput = Read-JsonBodyFile $OidcJitProvisionJsonPath "OIDC JIT provisioning"
+}
 
 if ($ConfirmScopeOut) {
     Add-ScopeOutChecks
@@ -275,8 +341,7 @@ else {
     }
     else {
         try {
-            $claimPreviewBody = Read-JsonBodyFile $OidcClaimPreviewJsonPath "OIDC claim preview"
-            $preview = Invoke-Json "POST" "$ApiBase/admin/security/enterprise-auth/claim-preview" $claimPreviewBody $adminToken
+            $preview = Invoke-Json "POST" "$ApiBase/admin/security/enterprise-auth/claim-preview" $claimPreviewBodyInput $adminToken
             $previewData = Get-ApiData $preview
             $status = Get-JsonProperty $previewData "status"
             $primaryRole = Get-JsonProperty $previewData "primaryRole"
@@ -302,8 +367,7 @@ else {
     }
     else {
         try {
-            $jitBody = Read-JsonBodyFile $OidcJitProvisionJsonPath "OIDC JIT provisioning"
-            $provision = Invoke-Json "POST" "$ApiBase/admin/security/enterprise-auth/jit-provision" $jitBody $adminToken
+            $provision = Invoke-Json "POST" "$ApiBase/admin/security/enterprise-auth/jit-provision" $jitBodyInput $adminToken
             $provisionData = Get-ApiData $provision
             $user = Get-JsonProperty $provisionData "user"
             $loginId = Get-JsonProperty $user "loginId"
@@ -449,7 +513,7 @@ $report = [ordered]@{
     }
     checks = $checkArray
     decisionRule = "Paid/production pilot requires result=passed from the target IdP/directory, or result=scope-out with an explicit non-secret commercial approval reference and reason. Default plan-only and scope-out modes perform no HTTP requests."
-    secretPolicy = "Admin password, LDAP password, access/refresh tokens, OIDC authorization code/state, client secrets, raw OIDC claim JSON, and credential-like scope-out references are never written to this evidence."
+    secretPolicy = "Admin password, LDAP password, access/refresh tokens, OIDC authorization code/state, client secrets, raw OIDC claim JSON, and credential-like scope-out references are never written to this evidence; token or credential-like OIDC claim/JIT JSON input fields are rejected before request execution."
 }
 
 $markdownLines = @(

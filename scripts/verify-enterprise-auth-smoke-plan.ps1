@@ -92,11 +92,36 @@ Assert-Contains $endpoints "GET /api/admin/audit-logs?eventType=<type>" "enterpr
 Assert-Contains $markdown "# OSMU Enterprise Auth Smoke Plan" "enterprise auth smoke markdown"
 Assert-Contains $markdown "Plan-only and scope-out modes perform no HTTP requests." "enterprise auth smoke markdown"
 Assert-Contains $markdown "Admin password, LDAP password, access/refresh tokens, OIDC authorization code/state" "enterprise auth smoke markdown"
+Assert-Contains $markdown "token or credential-like OIDC claim/JIT JSON input fields are rejected before request execution" "enterprise auth smoke markdown"
 
 foreach ($secret in @($adminSecret, $ldapSecret, $oidcCode, $oidcState)) {
     Assert-NotContains $reportText $secret "enterprise auth smoke JSON"
     Assert-NotContains $markdown $secret "enterprise auth smoke markdown"
 }
+
+$unsafeClaimPreviewPath = Join-Path $resolvedOutputDirectory "unsafe-claim-preview.json"
+[ordered]@{
+    claims = [ordered]@{
+        sub = "enterprise-auth-user"
+        email = "admin@example.com"
+        access_token = "unsafe-access-token-self-test"
+    }
+} | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $unsafeClaimPreviewPath -Encoding UTF8
+
+$previousErrorActionPreference = $ErrorActionPreference
+$ErrorActionPreference = "Continue"
+try {
+    $unsafeClaimOutput = & powershell -NoProfile -ExecutionPolicy Bypass -File $scriptPath `
+        -OidcClaimPreviewJsonPath $unsafeClaimPreviewPath `
+        -NoWrite 2>&1
+    $unsafeClaimExitCode = $LASTEXITCODE
+}
+finally {
+    $ErrorActionPreference = $previousErrorActionPreference
+}
+Assert-True ($unsafeClaimExitCode -ne 0) "Token-bearing OIDC claim preview input should be rejected."
+Assert-Contains ($unsafeClaimOutput | Out-String) "token or credential-like property" "unsafe OIDC claim preview output"
+Assert-NotContains ($unsafeClaimOutput | Out-String) "unsafe-access-token-self-test" "unsafe OIDC claim preview output"
 
 $scopeOutJsonOutputPath = Join-Path $resolvedOutputDirectory "latest-enterprise-auth-smoke-scope-out.json"
 $scopeOutMarkdownOutputPath = Join-Path $resolvedOutputDirectory "latest-enterprise-auth-smoke-scope-out.md"

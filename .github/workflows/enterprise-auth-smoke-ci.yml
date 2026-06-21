@@ -90,55 +90,62 @@ jobs:
           }
 
           $inputDir = ".osmu-run/enterprise-auth-inputs"
-          New-Item -ItemType Directory -Force -Path $inputDir | Out-Null
-          $claimPreviewPath = ""
-          $jitProvisionPath = ""
-          if ($env:OSMU_ENTERPRISE_AUTH_CLAIM_PREVIEW_JSON_BASE64) {
-            $claimPreviewPath = Join-Path $inputDir "claim-preview.json"
-            [IO.File]::WriteAllBytes($claimPreviewPath, [Convert]::FromBase64String($env:OSMU_ENTERPRISE_AUTH_CLAIM_PREVIEW_JSON_BASE64))
-          }
-          if ($env:OSMU_ENTERPRISE_AUTH_JIT_PROVISION_JSON_BASE64) {
-            $jitProvisionPath = Join-Path $inputDir "jit-provision.json"
-            [IO.File]::WriteAllBytes($jitProvisionPath, [Convert]::FromBase64String($env:OSMU_ENTERPRISE_AUTH_JIT_PROVISION_JSON_BASE64))
-          }
+          try {
+            New-Item -ItemType Directory -Force -Path $inputDir | Out-Null
+            $claimPreviewPath = ""
+            $jitProvisionPath = ""
+            if ($env:OSMU_ENTERPRISE_AUTH_CLAIM_PREVIEW_JSON_BASE64) {
+              $claimPreviewPath = Join-Path $inputDir "claim-preview.json"
+              [IO.File]::WriteAllBytes($claimPreviewPath, [Convert]::FromBase64String($env:OSMU_ENTERPRISE_AUTH_CLAIM_PREVIEW_JSON_BASE64))
+            }
+            if ($env:OSMU_ENTERPRISE_AUTH_JIT_PROVISION_JSON_BASE64) {
+              $jitProvisionPath = Join-Path $inputDir "jit-provision.json"
+              [IO.File]::WriteAllBytes($jitProvisionPath, [Convert]::FromBase64String($env:OSMU_ENTERPRISE_AUTH_JIT_PROVISION_JSON_BASE64))
+            }
 
-          $smokeArgs = @(
-            "-Execute",
-            "-ApiBase", "${{ inputs.api_base }}",
-            "-AdminLoginId", "${{ inputs.admin_login_id }}",
-            "-AdminPassword", $env:OSMU_ENTERPRISE_AUTH_ADMIN_PASSWORD,
-            "-JsonOutputPath", ".osmu-run/latest-enterprise-auth-smoke.json",
-            "-MarkdownOutputPath", ".osmu-run/latest-enterprise-auth-smoke.md"
-          )
-          if ("${{ inputs.require_oidc }}" -eq "true") {
-            $smokeArgs += "-RequireOidc"
-          }
-          if ("${{ inputs.require_ldap }}" -eq "true") {
-            $smokeArgs += "-RequireLdap"
-          }
-          if ("${{ inputs.fail_if_not_passed }}" -eq "true") {
-            $smokeArgs += "-FailIfNotPassed"
-          }
-          if ("${{ inputs.confirm_jit_provision }}" -eq "true") {
-            $smokeArgs += "-ConfirmJitProvision"
-          }
-          if ("${{ inputs.expected_email }}" -ne "") {
-            $smokeArgs += @("-ExpectedEmail", "${{ inputs.expected_email }}")
-          }
-          if ($env:OSMU_ENTERPRISE_AUTH_LDAP_LOGIN_ID -and $env:OSMU_ENTERPRISE_AUTH_LDAP_PASSWORD) {
-            $smokeArgs += @("-LdapLoginId", $env:OSMU_ENTERPRISE_AUTH_LDAP_LOGIN_ID, "-LdapPassword", $env:OSMU_ENTERPRISE_AUTH_LDAP_PASSWORD)
-          }
-          if ($env:OSMU_ENTERPRISE_AUTH_OIDC_CALLBACK_CODE -and $env:OSMU_ENTERPRISE_AUTH_OIDC_CALLBACK_STATE) {
-            $smokeArgs += @("-OidcCallbackCode", $env:OSMU_ENTERPRISE_AUTH_OIDC_CALLBACK_CODE, "-OidcCallbackState", $env:OSMU_ENTERPRISE_AUTH_OIDC_CALLBACK_STATE)
-          }
-          if ($claimPreviewPath) {
-            $smokeArgs += @("-OidcClaimPreviewJsonPath", $claimPreviewPath)
-          }
-          if ($jitProvisionPath) {
-            $smokeArgs += @("-OidcJitProvisionJsonPath", $jitProvisionPath)
-          }
+            $smokeArgs = @(
+              "-Execute",
+              "-ApiBase", "${{ inputs.api_base }}",
+              "-AdminLoginId", "${{ inputs.admin_login_id }}",
+              "-AdminPassword", $env:OSMU_ENTERPRISE_AUTH_ADMIN_PASSWORD,
+              "-JsonOutputPath", ".osmu-run/latest-enterprise-auth-smoke.json",
+              "-MarkdownOutputPath", ".osmu-run/latest-enterprise-auth-smoke.md"
+            )
+            if ("${{ inputs.require_oidc }}" -eq "true") {
+              $smokeArgs += "-RequireOidc"
+            }
+            if ("${{ inputs.require_ldap }}" -eq "true") {
+              $smokeArgs += "-RequireLdap"
+            }
+            if ("${{ inputs.fail_if_not_passed }}" -eq "true") {
+              $smokeArgs += "-FailIfNotPassed"
+            }
+            if ("${{ inputs.confirm_jit_provision }}" -eq "true") {
+              $smokeArgs += "-ConfirmJitProvision"
+            }
+            if ("${{ inputs.expected_email }}" -ne "") {
+              $smokeArgs += @("-ExpectedEmail", "${{ inputs.expected_email }}")
+            }
+            if ($env:OSMU_ENTERPRISE_AUTH_LDAP_LOGIN_ID -and $env:OSMU_ENTERPRISE_AUTH_LDAP_PASSWORD) {
+              $smokeArgs += @("-LdapLoginId", $env:OSMU_ENTERPRISE_AUTH_LDAP_LOGIN_ID, "-LdapPassword", $env:OSMU_ENTERPRISE_AUTH_LDAP_PASSWORD)
+            }
+            if ($env:OSMU_ENTERPRISE_AUTH_OIDC_CALLBACK_CODE -and $env:OSMU_ENTERPRISE_AUTH_OIDC_CALLBACK_STATE) {
+              $smokeArgs += @("-OidcCallbackCode", $env:OSMU_ENTERPRISE_AUTH_OIDC_CALLBACK_CODE, "-OidcCallbackState", $env:OSMU_ENTERPRISE_AUTH_OIDC_CALLBACK_STATE)
+            }
+            if ($claimPreviewPath) {
+              $smokeArgs += @("-OidcClaimPreviewJsonPath", $claimPreviewPath)
+            }
+            if ($jitProvisionPath) {
+              $smokeArgs += @("-OidcJitProvisionJsonPath", $jitProvisionPath)
+            }
 
-          ./scripts/write-enterprise-auth-smoke-plan.ps1 @smokeArgs
+            ./scripts/write-enterprise-auth-smoke-plan.ps1 @smokeArgs
+          }
+          finally {
+            if (Test-Path -LiteralPath $inputDir) {
+              Remove-Item -LiteralPath $inputDir -Recurse -Force
+            }
+          }
 
       - name: Promote plan-only enterprise auth smoke
         if: ${{ !inputs.run_live }}

@@ -689,6 +689,7 @@ Assert-Contains $enterpriseAuthSmokeWorkflowContent "OSMU_ENTERPRISE_AUTH_LDAP_P
 Assert-Contains $enterpriseAuthSmokeWorkflowContent "OSMU_ENTERPRISE_AUTH_CLAIM_PREVIEW_JSON_BASE64" "Enterprise Auth Smoke CI workflow"
 Assert-Contains $enterpriseAuthSmokeWorkflowContent "OSMU_ENTERPRISE_AUTH_JIT_PROVISION_JSON_BASE64" "Enterprise Auth Smoke CI workflow"
 Assert-Contains $enterpriseAuthSmokeWorkflowContent "OSMU_ENTERPRISE_AUTH_ADMIN_PASSWORD secret is required when run_live=true." "Enterprise Auth Smoke CI workflow"
+Assert-Contains $enterpriseAuthSmokeWorkflowContent "Remove-Item -LiteralPath `$inputDir -Recurse -Force" "Enterprise Auth Smoke CI workflow"
 Assert-Contains $enterpriseAuthSmokeWorkflowContent "actions/upload-artifact@v4" "Enterprise Auth Smoke CI workflow"
 Assert-Contains $enterpriseAuthSmokeWorkflowContent "enterprise-auth-smoke-" "Enterprise Auth Smoke CI workflow"
 Assert-Contains $enterpriseAuthSmokeWorkflowContent ".osmu-run/latest-enterprise-auth-smoke.json" "Enterprise Auth Smoke CI workflow"
