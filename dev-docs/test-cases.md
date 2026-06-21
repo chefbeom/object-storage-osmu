@@ -2289,6 +2289,16 @@ TC-FE-023 보강: 사용자가 취소한 경우에는 abort API를 호출한다.
 - Priority: P2
 - Automated: `scripts/verify-commercial-approval-evidence.ps1`, `scripts/verify-commercial-readiness.ps1`
 
+### TC-INFRA-008F
+
+- Feature: Development roadmap priority and S3 replacement boundary verification.
+- Preconditions: PowerShell is available.
+- Input: `powershell -ExecutionPolicy Bypass -File .\scripts\verify-development-roadmap.ps1`
+- Steps: Verify `dev-docs/development-roadmap.md` keeps the B2B operations evidence priority, current durable MVP baseline, data-flow storage transition plan, enterprise auth target smoke or scope-out path, and the rule that S3 work is limited to replacement-use smoke failures, migration blockers, or OSMU control-plane needs.
+- Expected: Roadmap changes cannot silently drift back toward AWS edge parity or hide the production operations evidence chain.
+- Priority: P2
+- Automated: `scripts/verify-development-roadmap.ps1`
+
 ### TC-INFRA-009
 
 - Feature: Backup restore drill draft verification.

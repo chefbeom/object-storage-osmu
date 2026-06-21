@@ -79,6 +79,9 @@ Run "powershell -ExecutionPolicy Bypass -File .\scripts\verify-security-evidence
 Step "Commercial readiness draft check"
 Run "powershell -ExecutionPolicy Bypass -File .\scripts\verify-commercial-readiness.ps1"
 
+Step "Development roadmap check"
+Run "powershell -ExecutionPolicy Bypass -File .\scripts\verify-development-roadmap.ps1"
+
 Step "OpenAPI MVP contract check"
 Run "powershell -ExecutionPolicy Bypass -File .\scripts\verify-openapi-contract.ps1"
 
