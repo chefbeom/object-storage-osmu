@@ -99,6 +99,10 @@ on:
         description: Optional Kubernetes Operations Report Sync CI artifact name
         required: false
         default: ""
+      data_flow_storage_plan_json_base64:
+        description: Optional base64-encoded latest-data-flow-storage-plan.json evidence to import directly. MariaDB/dual-write plans must include sanitized query-plan evidence summary.
+        required: false
+        default: ""
       fail_if_not_ready:
         description: Fail workflow when operations readiness remains pending
         required: true
@@ -122,6 +126,19 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Restore direct data-flow storage plan evidence
+        if: ${{ inputs.data_flow_storage_plan_json_base64 != '' }}
+        shell: pwsh
+        env:
+          OSMU_DATA_FLOW_STORAGE_PLAN_JSON_BASE64: ${{ inputs.data_flow_storage_plan_json_base64 }}
+        run: |
+          $artifactPath = ".osmu-run/operations-readiness-artifacts/data-flow-storage-plan"
+          New-Item -ItemType Directory -Force -Path $artifactPath | Out-Null
+          [IO.File]::WriteAllBytes(
+            (Join-Path $artifactPath "latest-data-flow-storage-plan.json"),
+            [Convert]::FromBase64String($env:OSMU_DATA_FLOW_STORAGE_PLAN_JSON_BASE64)
+          )
 
       - name: Download storage expansion evidence
         if: ${{ inputs.storage_expansion_run_id != '' && inputs.storage_expansion_artifact_name != '' }}
@@ -251,7 +268,8 @@ jobs:
             @("CommercialApprovalArtifactPath", ".osmu-run/operations-readiness-artifacts/commercial-approval"),
             @("EnterpriseAuthArtifactPath", ".osmu-run/operations-readiness-artifacts/enterprise-auth"),
             @("OperationsHandoffPackageArtifactPath", ".osmu-run/operations-readiness-artifacts/operations-handoff-package"),
-            @("KubernetesOperationsReportSyncArtifactPath", ".osmu-run/operations-readiness-artifacts/kubernetes-operations-report-sync")
+            @("KubernetesOperationsReportSyncArtifactPath", ".osmu-run/operations-readiness-artifacts/kubernetes-operations-report-sync"),
+            @("DataFlowStoragePlanArtifactPath", ".osmu-run/operations-readiness-artifacts/data-flow-storage-plan")
           )
           foreach ($artifactRoot in $artifactRoots) {
             if (Test-Path -LiteralPath $artifactRoot[1]) {

@@ -229,6 +229,7 @@ $operationsArtifactFinalizerCommand = if ($requiredArtifacts.Count -gt 0) {
 else {
     ""
 }
+$dataFlowStoragePlanInputNote = "Optional direct data-flow plan input: add -f data_flow_storage_plan_json_base64=<base64-latest-data-flow-storage-plan-json> to operations-readiness-artifact-finalizer-ci.yml when target data-flow storage transition evidence should be imported without waiting for a Kubernetes operations report sync artifact. MariaDB partition or dual-write plans must include the sanitized query-plan evidence summary."
 
 $securityFinalizerCommand = ""
 if ($workflows.Contains("security-evidence-finalizer-ci.yml") -or $workflows.Contains("image-publish-sign-ci.yml") -or $workflows.Contains("container-security-ci.yml")) {
@@ -309,6 +310,7 @@ $report = [ordered]@{
     missingRequiredArtifactCount = $missingRequiredArtifacts.Count
     securityEvidenceFinalizerCommand = $securityFinalizerCommand
     operationsArtifactFinalizerCommand = $operationsArtifactFinalizerCommand
+    dataFlowStoragePlanInputNote = $dataFlowStoragePlanInputNote
     localImportCommand = $localImportCommand
     decisionRule = "After evidence workflows finish, fill missing run ids, verify artifact names, then either dispatch operations-readiness-artifact-finalizer-ci.yml or download artifacts locally and run import-operations-readiness-artifacts.ps1."
     artifacts = $artifactArray
@@ -342,6 +344,7 @@ if (-not [string]::IsNullOrWhiteSpace($securityFinalizerCommand)) {
 }
 if (-not [string]::IsNullOrWhiteSpace($operationsArtifactFinalizerCommand)) {
     $markdownLines += "- Operations artifact finalizer: ``$operationsArtifactFinalizerCommand``"
+    $markdownLines += "- $dataFlowStoragePlanInputNote"
 }
 if (-not [string]::IsNullOrWhiteSpace($localImportCommand)) {
     $markdownLines += "- Local import after downloads: ``$localImportCommand``"

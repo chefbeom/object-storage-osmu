@@ -11,6 +11,7 @@ param(
     [string] $EnterpriseAuthArtifactPath = "",
     [string] $OperationsHandoffPackageArtifactPath = "",
     [string] $KubernetesOperationsReportSyncArtifactPath = "",
+    [string] $DataFlowStoragePlanArtifactPath = "",
     [string] $OutputDirectory = ".\.osmu-run",
     [string] $JsonOutputPath = ".\.osmu-run\latest-operations-readiness-artifact-import.json",
     [string] $MarkdownOutputPath = ".\.osmu-run\latest-operations-readiness-artifact-import.md"
@@ -285,22 +286,26 @@ Import-EvidenceFile "kubernetes-operations-report-sync" $KubernetesOperationsRep
 Import-EvidenceFile "kubernetes-operations-report-sync" $KubernetesOperationsReportSyncArtifactPath "latest-kubernetes-operations-report-sync-server-dry-run.json" $false
 Import-EvidenceFile "kubernetes-operations-report-sync" $KubernetesOperationsReportSyncArtifactPath "latest-data-flow-storage-plan.json" $false "" "" "data-flow-storage-plan"
 
+Import-EvidenceFile "data-flow-storage-plan" $DataFlowStoragePlanArtifactPath "latest-data-flow-storage-plan.json" $true "" "" "data-flow-storage-plan"
+
 $failedEntries = @($entries | Where-Object { $_.status -eq "failed" })
 $importedEntries = @($entries | Where-Object { $_.status -eq "imported" })
-$selectedGroups = @(
-    @("storage-expansion", $StorageExpansionArtifactPath),
-    @("ha-dr-readiness", $HaDrReadinessArtifactPath),
-    @("kubernetes-dr", $KubernetesDrArtifactPath),
-    @("iam-rbac", $IamRbacArtifactPath),
-    @("security-evidence", $SecurityEvidenceArtifactPath),
-    @("storage-backend-telemetry", $StorageBackendTelemetryArtifactPath),
-    @("secret-rotation", $SecretRotationArtifactPath),
-    @("commercial-integration", $CommercialIntegrationArtifactPath),
-    @("commercial-approval", $CommercialApprovalArtifactPath),
-    @("enterprise-auth", $EnterpriseAuthArtifactPath),
-    @("operations-handoff-package", $OperationsHandoffPackageArtifactPath),
-    @("kubernetes-operations-report-sync", $KubernetesOperationsReportSyncArtifactPath)
-) | Where-Object { -not [string]::IsNullOrWhiteSpace([string] $_[1]) }
+$selectedGroupCandidates = @(
+    [pscustomobject]@{ group = "storage-expansion"; path = $StorageExpansionArtifactPath },
+    [pscustomobject]@{ group = "ha-dr-readiness"; path = $HaDrReadinessArtifactPath },
+    [pscustomobject]@{ group = "kubernetes-dr"; path = $KubernetesDrArtifactPath },
+    [pscustomobject]@{ group = "iam-rbac"; path = $IamRbacArtifactPath },
+    [pscustomobject]@{ group = "security-evidence"; path = $SecurityEvidenceArtifactPath },
+    [pscustomobject]@{ group = "storage-backend-telemetry"; path = $StorageBackendTelemetryArtifactPath },
+    [pscustomobject]@{ group = "secret-rotation"; path = $SecretRotationArtifactPath },
+    [pscustomobject]@{ group = "commercial-integration"; path = $CommercialIntegrationArtifactPath },
+    [pscustomobject]@{ group = "commercial-approval"; path = $CommercialApprovalArtifactPath },
+    [pscustomobject]@{ group = "enterprise-auth"; path = $EnterpriseAuthArtifactPath },
+    [pscustomobject]@{ group = "operations-handoff-package"; path = $OperationsHandoffPackageArtifactPath },
+    [pscustomobject]@{ group = "kubernetes-operations-report-sync"; path = $KubernetesOperationsReportSyncArtifactPath },
+    [pscustomobject]@{ group = "data-flow-storage-plan"; path = $DataFlowStoragePlanArtifactPath }
+)
+$selectedGroups = @($selectedGroupCandidates | Where-Object { -not [string]::IsNullOrWhiteSpace([string] $_.path) })
 $result = if ($failedEntries.Count -eq 0) { "passed" } else { "failed" }
 $status = if ($failedEntries.Count -gt 0) {
     "artifact-import-failed"

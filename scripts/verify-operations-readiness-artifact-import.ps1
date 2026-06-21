@@ -54,6 +54,7 @@ $commercialApprovalSource = Join-Path $sourceRoot "commercial-approval"
 $enterpriseAuthSource = Join-Path $sourceRoot "enterprise-auth"
 $operationsHandoffPackageSource = Join-Path $sourceRoot "operations-handoff-package"
 $kubernetesOperationsReportSyncSource = Join-Path $sourceRoot "kubernetes-operations-report-sync"
+$directDataFlowStoragePlanSource = Join-Path $sourceRoot "data-flow-storage-plan"
 
 Write-JsonEvidence (Join-Path $storageSource "latest-storage-expansion-finalize.json") @{
     formatVersion = "osmu.storage-expansion-finalize.v1"
@@ -333,6 +334,32 @@ $unsafeDataFlowReport = Get-Content -Raw -LiteralPath $unsafeDataFlowJson | Conv
 Assert-True ($unsafeDataFlowReport.result -eq "failed") "Unsafe data-flow import report should be failed."
 Assert-True (-not (Test-Path -LiteralPath (Join-Path $unsafeDataFlowOutput "latest-data-flow-storage-plan.json"))) "Unsafe data-flow storage plan must not be promoted."
 Assert-True (($unsafeDataFlowReport.entries | ConvertTo-Json -Depth 8).Contains("raw SQL")) "Unsafe data-flow report should describe sanitized summary failure."
+
+Write-JsonEvidence (Join-Path $directDataFlowStoragePlanSource "latest-data-flow-storage-plan.json") @{
+    formatVersion = "osmu.data-flow-storage-plan.v1"
+    result = "passed"
+    candidateStore = "EXTERNAL_TIME_SERIES"
+    pendingCount = 0
+    queryPlanEvidence = $null
+}
+$directDataFlowOutput = Join-Path $resolvedOutputDirectory "direct-data-flow-promoted"
+$directDataFlowJson = Join-Path $resolvedOutputDirectory "direct-data-flow-import.json"
+$directDataFlowMarkdown = Join-Path $resolvedOutputDirectory "direct-data-flow-import.md"
+& powershell -NoProfile -ExecutionPolicy Bypass -File $importScript `
+    -DataFlowStoragePlanArtifactPath $directDataFlowStoragePlanSource `
+    -OutputDirectory $directDataFlowOutput `
+    -JsonOutputPath $directDataFlowJson `
+    -MarkdownOutputPath $directDataFlowMarkdown | Out-Host
+if ($LASTEXITCODE -ne 0) {
+    throw "Direct data-flow storage plan import failed with exit code $LASTEXITCODE."
+}
+$directDataFlowReport = Get-Content -Raw -LiteralPath $directDataFlowJson | ConvertFrom-Json
+Assert-True ($directDataFlowReport.result -eq "passed") "Direct data-flow import report should pass."
+Assert-True ($directDataFlowReport.selectedGroupCount -eq 1) "Direct data-flow import should select one group."
+Assert-True (Test-Path -LiteralPath (Join-Path $directDataFlowOutput "latest-data-flow-storage-plan.json")) "Direct data-flow storage plan must be promoted."
+$directDataFlowEntry = @($directDataFlowReport.entries | Where-Object { $_.group -eq "data-flow-storage-plan" -and $_.fileName -eq "latest-data-flow-storage-plan.json" })
+Assert-True ($directDataFlowEntry.Count -eq 1) "Direct data-flow import entry missing."
+Assert-True (([string] $directDataFlowEntry[0].detail).Contains("candidateStore=EXTERNAL_TIME_SERIES")) "Direct data-flow import entry should include candidate store validation detail."
 
 Write-Host "Operations readiness artifact import verified."
 Write-Host "Report: $reportPath"
