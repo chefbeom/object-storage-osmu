@@ -2,11 +2,18 @@ import { validateObjectTagInput, validateObjectTagMap } from '../utils/tags.js'
 
 const env = import.meta.env ?? {}
 const API_BASE_URL = env.VITE_API_BASE_URL ?? 'http://localhost:8080/api'
-export const MULTIPART_UPLOAD_THRESHOLD_BYTES = 128 * 1024 * 1024
-const MULTIPART_UPLOAD_PART_SIZE_BYTES = 64 * 1024 * 1024
+export const MULTIPART_UPLOAD_THRESHOLD_BYTES = normalizeByteSize(env.VITE_MULTIPART_UPLOAD_THRESHOLD_BYTES, 128 * 1024 * 1024, {
+  min: 1,
+  max: 5 * 1024 * 1024 * 1024,
+})
+export const MULTIPART_UPLOAD_PART_SIZE_BYTES = normalizeByteSize(env.VITE_MULTIPART_UPLOAD_PART_SIZE_BYTES, 64 * 1024 * 1024, {
+  min: 1,
+  max: 512 * 1024 * 1024,
+})
 export const MULTIPART_UPLOAD_CONCURRENCY = normalizeConcurrency(env.VITE_MULTIPART_UPLOAD_CONCURRENCY ?? 4)
 export const MULTIPART_UPLOAD_PART_RETRIES = normalizeRetryCount(env.VITE_MULTIPART_UPLOAD_PART_RETRIES ?? 2)
 export const MULTIPART_UPLOAD_RETRY_BASE_DELAY_MS = normalizeRetryDelay(env.VITE_MULTIPART_UPLOAD_RETRY_BASE_DELAY_MS ?? 500)
+export const MULTIPART_UPLOAD_RETRY_JITTER_RATIO = normalizeRetryJitterRatio(env.VITE_MULTIPART_UPLOAD_RETRY_JITTER_RATIO ?? 0.25)
 const MULTIPART_UPLOAD_SESSION_STORAGE_PREFIX = 'osmu.multipartUpload.'
 const MULTIPART_UPLOAD_EXPIRED_SESSION_GRACE_MS = 24 * 60 * 60 * 1000
 let accessToken = null
@@ -636,6 +643,7 @@ export async function uploadObjectMultipart(bucketName, key, file, tags, onProgr
   const concurrency = normalizeConcurrency(options.concurrency ?? MULTIPART_UPLOAD_CONCURRENCY)
   const partRetries = normalizeRetryCount(options.partRetries ?? MULTIPART_UPLOAD_PART_RETRIES)
   const retryBaseDelayMs = normalizeRetryDelay(options.retryBaseDelayMs ?? MULTIPART_UPLOAD_RETRY_BASE_DELAY_MS)
+  const retryJitterRatio = normalizeRetryJitterRatio(options.retryJitterRatio ?? MULTIPART_UPLOAD_RETRY_JITTER_RATIO)
   const requestedPartSizeBytes = options.partSizeBytes ?? MULTIPART_UPLOAD_PART_SIZE_BYTES
   const resumeStorageKey = multipartUploadSessionStorageKey(bucketName, key, file, tags, requestedPartSizeBytes)
   let resumeSession = options.resume === false
@@ -718,6 +726,7 @@ export async function uploadObjectMultipart(bucketName, key, file, tags, onProgr
         {
           maxRetries: partRetries,
           retryBaseDelayMs,
+          retryJitterRatio,
           onRetry: () => {
             partProgress.set(part.partNumber, 0)
             reportMultipartProgress()
@@ -2191,6 +2200,7 @@ function uploadPresignedPart(url, blob, onProgress, signal) {
 async function uploadPresignedPartWithRetry(url, blob, onProgress, signal, options = {}) {
   const maxRetries = normalizeRetryCount(options.maxRetries ?? MULTIPART_UPLOAD_PART_RETRIES)
   const retryBaseDelayMs = normalizeRetryDelay(options.retryBaseDelayMs ?? MULTIPART_UPLOAD_RETRY_BASE_DELAY_MS)
+  const retryJitterRatio = normalizeRetryJitterRatio(options.retryJitterRatio ?? MULTIPART_UPLOAD_RETRY_JITTER_RATIO)
   let attempt = 0
 
   while (true) {
@@ -2202,7 +2212,7 @@ async function uploadPresignedPartWithRetry(url, blob, onProgress, signal, optio
       }
       attempt += 1
       options.onRetry?.(attempt, error)
-      await waitForRetry(backoffDelayMs(attempt, retryBaseDelayMs), signal)
+      await waitForRetry(backoffDelayMs(attempt, retryBaseDelayMs, retryJitterRatio), signal)
     }
   }
 }
@@ -2225,8 +2235,13 @@ function isRetryablePartUploadError(error) {
   return error?.message === 'Network error'
 }
 
-function backoffDelayMs(attempt, baseDelayMs) {
-  return baseDelayMs * (2 ** Math.max(0, attempt - 1))
+function backoffDelayMs(attempt, baseDelayMs, jitterRatio = 0) {
+  const baseDelay = baseDelayMs * (2 ** Math.max(0, attempt - 1))
+  if (jitterRatio <= 0) {
+    return baseDelay
+  }
+  const spread = baseDelay * jitterRatio
+  return Math.max(0, Math.round(baseDelay - spread + (Math.random() * spread * 2)))
 }
 
 function waitForRetry(delayMs, signal) {
@@ -2281,6 +2296,25 @@ function normalizeRetryDelay(value) {
     return 500
   }
   return Math.min(5000, Math.max(100, Math.floor(parsed)))
+}
+
+function normalizeRetryJitterRatio(value) {
+  const parsed = Number(value)
+  if (!Number.isFinite(parsed)) {
+    return 0.25
+  }
+  return Math.min(1, Math.max(0, parsed))
+}
+
+function normalizeByteSize(value, fallback, { min, max }) {
+  if (value === undefined || value === null || value === '') {
+    return fallback
+  }
+  const parsed = Number(value)
+  if (!Number.isFinite(parsed)) {
+    return fallback
+  }
+  return Math.min(max, Math.max(min, Math.floor(parsed)))
 }
 
 function combineAbortSignals(...signals) {

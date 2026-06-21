@@ -18,6 +18,7 @@ param(
     [string] $ManualOperationsHandoffPackageWorkflowPath = ".\.github\workflows\manual-operations-handoff-package.yml",
     [string] $EnterpriseAuthSmokeWorkflowPath = ".\.github\workflows\enterprise-auth-smoke-ci.yml",
     [string] $BrowserE2ESpecPath = ".\osmu-frontend\e2e\lightweight-demo.spec.js",
+    [string] $FrontendApiPath = ".\osmu-frontend\src\services\api.js",
     [string] $FrontendPackagePath = ".\osmu-frontend\package.json",
     [string] $PlaywrightConfigPath = ".\osmu-frontend\playwright.config.js"
 )
@@ -627,6 +628,14 @@ if ($frontendPackageJson.scripts.'test:e2e' -ne "playwright test ./e2e/lightweig
 if (-not $frontendPackageJson.devDependencies.'@playwright/test') {
     throw "Frontend package manifest must include @playwright/test devDependency for Browser E2E."
 }
+
+$frontendApi = Read-RequiredFile $FrontendApiPath "Frontend API client"
+$frontendApiContent = $frontendApi.Content
+Assert-Contains $frontendApiContent "VITE_MULTIPART_UPLOAD_THRESHOLD_BYTES" "Frontend API client"
+Assert-Contains $frontendApiContent "VITE_MULTIPART_UPLOAD_PART_SIZE_BYTES" "Frontend API client"
+Assert-Contains $frontendApiContent "VITE_MULTIPART_UPLOAD_RETRY_JITTER_RATIO" "Frontend API client"
+Assert-Contains $frontendApiContent "MULTIPART_UPLOAD_PART_SIZE_BYTES" "Frontend API client"
+Assert-Contains $frontendApiContent "normalizeByteSize" "Frontend API client"
 
 $playwrightConfig = Read-RequiredFile $PlaywrightConfigPath "Playwright config"
 $playwrightConfigContent = $playwrightConfig.Content

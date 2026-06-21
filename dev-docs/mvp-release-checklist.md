@@ -107,7 +107,8 @@ This checklist turns the current prototype evidence into a repeatable MVP releas
 - Prometheus observability draft: `/actuator/prometheus` and backend scrape annotations verified, release report `scope.prometheusObservability=included`.
 - Monitoring artifacts draft: Prometheus alert rules and Grafana overview dashboard verified, including data-flow failure/cancel/egress/bucket anomaly and retention failure starter alerts; release report `scope.monitoringArtifacts=included`.
 - Prometheus Operator draft: optional ServiceMonitor and PrometheusRule resources verified, release report `scope.prometheusOperatorDraft=included`.
-- Frontend unit coverage: current local run reports 111 passing tests.
+- Frontend unit coverage: current local run reports 113 passing tests.
+- Frontend multipart upload tuning: `VITE_MULTIPART_UPLOAD_THRESHOLD_BYTES`, `VITE_MULTIPART_UPLOAD_PART_SIZE_BYTES`, `VITE_MULTIPART_UPLOAD_CONCURRENCY`, `VITE_MULTIPART_UPLOAD_PART_RETRIES`, `VITE_MULTIPART_UPLOAD_RETRY_BASE_DELAY_MS`, and `VITE_MULTIPART_UPLOAD_RETRY_JITTER_RATIO` keep production defaults while allowing small Browser/CI multipart resume fixtures.
 - Backend tests: included in release gate when JDK 17+ is available through `-JavaHome`, `JAVA_HOME`, `PATH`, or a known local JDK install path.
 - Backend-backed Browser E2E: current local Java prototype path passed with 3 Playwright scenarios on 2026-06-15 19:49 KST.
 - Runtime smoke: backend, frontend, health, lightweight API, seeded demo, built-in SigV4 smoke.

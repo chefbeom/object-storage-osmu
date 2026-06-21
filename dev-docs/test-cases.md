@@ -1944,12 +1944,12 @@ Evidence note: `npm run test:unit` covers stable bucket row cell selectors, and 
 ### TC-FE-022
 
 - 기능: Object Explorer multipart upload 자동 전환
-- 조건: 128 MiB 이상 파일을 업로드할 수 있고 MinIO storage mode가 활성화되어 있다.
-- 입력: 128 MiB 이상 파일 선택 후 업로드.
+- 조건: 기본 128 MiB 이상 파일을 업로드할 수 있고 MinIO storage mode가 활성화되어 있다. Browser/CI fixture에서는 `VITE_MULTIPART_UPLOAD_THRESHOLD_BYTES`와 `VITE_MULTIPART_UPLOAD_PART_SIZE_BYTES`를 낮춰 작은 파일로 같은 code path를 검증할 수 있다.
+- 입력: 128 MiB 이상 파일 선택 후 업로드, 또는 test 전용 낮은 threshold에서 threshold 이상 fixture 선택.
 - 절차: ObjectExplorer에서 업로드를 실행한다.
 - 기대 결과: Frontend가 multipart upload create API를 호출하고 part별 presigned PUT을 제한된 동시성으로 병렬 수행하며 ETag 목록으로 complete API를 호출한다. 진행률은 전체 파일 기준으로 표시된다.
 - 우선순위: P1
-- 자동화 여부: Automated (`npm run test:unit` multipart create/part PUT/complete wrapper flow). Browser/MinIO E2E pending.
+- 자동화 여부: Automated (`npm run test:unit` multipart create/part PUT/complete wrapper flow, default threshold/part-size/jitter contract). Browser/MinIO E2E pending.
 
 ### TC-FE-023
 
@@ -1969,7 +1969,7 @@ TC-FE-023 보강: 사용자가 취소한 경우에는 abort API를 호출한다.
 - 조건: multipart upload session이 생성되고 part PUT 중 network error, 408, 429, 5xx 응답이 발생한다.
 - 입력: 대용량 파일 업로드 중 일시적인 part PUT 실패
 - 절차: ObjectExplorer에서 multipart upload를 실행하고 특정 part PUT을 일시 실패시킨 뒤 다음 시도에서 성공하게 한다.
-- 기대 결과: Frontend가 해당 part PUT을 jitter가 적용된 exponential backoff로 재시도하고 성공 후 ETag 목록에 포함해 complete API를 호출한다. abort, 4xx, ETag 미노출 오류는 재시도하지 않고 업로드 실패로 처리한다.
+- 기대 결과: Frontend가 해당 part PUT을 `VITE_MULTIPART_UPLOAD_RETRY_JITTER_RATIO`가 적용된 exponential backoff로 재시도하고 성공 후 ETag 목록에 포함해 complete API를 호출한다. abort, 4xx, ETag 미노출 오류는 재시도하지 않고 업로드 실패로 처리한다.
 - 우선순위: P1
 - 자동화 여부: Automated (`npm run test:unit` transient 5xx part retry). Browser/MinIO E2E pending.
 

@@ -397,6 +397,7 @@ systemStore
 
 - 대용량 파일 업로드 상태를 표시한다.
 - 128 MiB 이상 파일은 part별 presigned URL을 받아 제한된 동시성으로 병렬 업로드한다.
+- multipart 자동 전환 기준은 기본 `VITE_MULTIPART_UPLOAD_THRESHOLD_BYTES=134217728`이고 part 크기는 기본 `VITE_MULTIPART_UPLOAD_PART_SIZE_BYTES=67108864`이다. Browser/CI resume execution fixture는 이 값을 낮춰 작은 파일로 같은 code path를 검증할 수 있다.
 - 기본 multipart part 동시 업로드 수는 `VITE_MULTIPART_UPLOAD_CONCURRENCY=4`이며 client에서 1~8 범위로 제한한다.
 - multipart part upload는 network error, 408, 429, 5xx 응답에 대해 jitter가 적용된 exponential backoff로 재시도한다. 기본값은 `VITE_MULTIPART_UPLOAD_PART_RETRIES=2`, `VITE_MULTIPART_UPLOAD_RETRY_BASE_DELAY_MS=500`, `VITE_MULTIPART_UPLOAD_RETRY_JITTER_RATIO=0.25`이다.
 - MinIO CORS가 `ETag`를 expose하지 않으면 multipart complete에 필요한 part ETag를 수집할 수 없으므로 업로드 실패로 처리한다.

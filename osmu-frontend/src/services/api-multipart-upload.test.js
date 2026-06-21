@@ -3,8 +3,75 @@ import test from 'node:test'
 import {
   clearAuthTokens,
   getStoredMultipartUploadSessions,
+  MULTIPART_UPLOAD_PART_SIZE_BYTES,
+  MULTIPART_UPLOAD_RETRY_JITTER_RATIO,
+  MULTIPART_UPLOAD_THRESHOLD_BYTES,
   uploadObjectMultipart,
 } from './api.js'
+
+test('multipart upload size defaults stay production-safe and env-tunable', () => {
+  assert.equal(MULTIPART_UPLOAD_THRESHOLD_BYTES, 128 * 1024 * 1024)
+  assert.equal(MULTIPART_UPLOAD_PART_SIZE_BYTES, 64 * 1024 * 1024)
+  assert.equal(MULTIPART_UPLOAD_RETRY_JITTER_RATIO, 0.25)
+})
+
+test('uploadObjectMultipart uses configured default part size when no override is supplied', async () => {
+  installSessionStorage()
+  const xhrMock = installMockXhr(['"etag-default-part-size"'])
+  const fetchMock = mockFetch([
+    (url, options) => {
+      assert.equal(url, 'http://localhost:8080/api/buckets/media/objects/multipart-upload')
+      assert.deepEqual(JSON.parse(options.body), {
+        key: 'large/default-part-size.bin',
+        tags: '',
+        contentType: 'application/octet-stream',
+        sizeBytes: 3,
+        partSizeBytes: MULTIPART_UPLOAD_PART_SIZE_BYTES,
+        expiresInSeconds: 900,
+      })
+      return jsonResponse({
+        data: {
+          uploadId: 'upload-default-part-size',
+          key: 'large/default-part-size.bin',
+          partSizeBytes: MULTIPART_UPLOAD_PART_SIZE_BYTES,
+          partCount: 1,
+          expiresAt: new Date(Date.now() + 900_000).toISOString(),
+          parts: [
+            { partNumber: 1, url: 'https://storage.local/default-part-size-1', startByte: 0, endByte: 2 },
+          ],
+        },
+      })
+    },
+    (url, options) => {
+      assert.equal(url, 'http://localhost:8080/api/buckets/media/objects/multipart-upload/complete')
+      assert.deepEqual(JSON.parse(options.body), {
+        uploadId: 'upload-default-part-size',
+        key: 'large/default-part-size.bin',
+        parts: [
+          { partNumber: 1, etag: '"etag-default-part-size"' },
+        ],
+      })
+      return jsonResponse({ data: { key: 'large/default-part-size.bin', sizeBytes: 3 } })
+    },
+  ])
+
+  try {
+    await uploadObjectMultipart(
+      'media',
+      'large/default-part-size.bin',
+      testFile({ name: 'default-part-size.bin', size: 3, type: 'application/octet-stream', lastModified: 987 }),
+      '',
+      null,
+      { concurrency: 1, partRetries: 0 },
+    )
+
+    assert.deepEqual(xhrMock.calls.map((call) => call.url), [
+      'https://storage.local/default-part-size-1',
+    ])
+  } finally {
+    cleanupRuntime(fetchMock, xhrMock)
+  }
+})
 
 test('uploadObjectMultipart creates, uploads parts, completes, and clears local resume session', async () => {
   const storage = installSessionStorage()
