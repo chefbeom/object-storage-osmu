@@ -11,6 +11,10 @@ on:
         description: Operations readiness convergence report path to sync
         required: true
         default: ./.osmu-run/latest-operations-readiness-convergence.json
+      data_flow_storage_plan_json_base64:
+        description: Optional base64-encoded latest-data-flow-storage-plan.json evidence to include in the ConfigMap
+        required: false
+        default: ""
       run_live:
         description: Run live kubectl evidence using OSMU_KUBECONFIG_BASE64
         required: true
@@ -52,6 +56,20 @@ jobs:
           ./scripts/write-operations-readiness-convergence.ps1 `
             -JsonOutputPath "${{ inputs.report_path }}" `
             -MarkdownOutputPath ./.osmu-run/latest-operations-readiness-convergence.md
+
+      - name: Restore data-flow storage plan evidence
+        if: ${{ inputs.data_flow_storage_plan_json_base64 != '' }}
+        shell: pwsh
+        env:
+          OSMU_DATA_FLOW_STORAGE_PLAN_JSON_BASE64: ${{ inputs.data_flow_storage_plan_json_base64 }}
+        run: |
+          New-Item -ItemType Directory -Force -Path ./.osmu-run | Out-Null
+          $planPath = ".osmu-run/latest-data-flow-storage-plan.json"
+          [IO.File]::WriteAllBytes($planPath, [Convert]::FromBase64String($env:OSMU_DATA_FLOW_STORAGE_PLAN_JSON_BASE64))
+          $plan = Get-Content -Raw -LiteralPath $planPath | ConvertFrom-Json
+          if ($plan.formatVersion -ne "osmu.data-flow-storage-plan.v1") {
+            throw "Unexpected data-flow storage plan formatVersion: $($plan.formatVersion)"
+          }
 
       - name: Plan Kubernetes operations report sync
         shell: pwsh
@@ -109,6 +127,7 @@ jobs:
           path: |
             .osmu-run/latest-operations-readiness-convergence.json
             .osmu-run/latest-operations-readiness-convergence.md
+            .osmu-run/latest-data-flow-storage-plan.json
             .osmu-run/latest-kubernetes-operations-report-sync-plan.json
             .osmu-run/latest-kubernetes-operations-report-sync-server-dry-run.json
             .osmu-run/latest-kubernetes-operations-report-sync.json

@@ -310,6 +310,7 @@ jobs:
             .osmu-run/latest-kubernetes-operations-report-sync.json
             .osmu-run/latest-kubernetes-operations-report-sync-plan.json
             .osmu-run/latest-kubernetes-operations-report-sync-server-dry-run.json
+            .osmu-run/latest-data-flow-storage-plan.json
             .osmu-run/operations-readiness-artifacts/**
           if-no-files-found: warn
           retention-days: 14

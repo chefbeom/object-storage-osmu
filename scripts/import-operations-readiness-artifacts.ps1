@@ -189,6 +189,7 @@ Import-EvidenceFile "operations-handoff-package" $OperationsHandoffPackageArtifa
 Import-EvidenceFile "kubernetes-operations-report-sync" $KubernetesOperationsReportSyncArtifactPath "latest-kubernetes-operations-report-sync.json" $true "result" "applied"
 Import-EvidenceFile "kubernetes-operations-report-sync" $KubernetesOperationsReportSyncArtifactPath "latest-kubernetes-operations-report-sync-plan.json" $false
 Import-EvidenceFile "kubernetes-operations-report-sync" $KubernetesOperationsReportSyncArtifactPath "latest-kubernetes-operations-report-sync-server-dry-run.json" $false
+Import-EvidenceFile "kubernetes-operations-report-sync" $KubernetesOperationsReportSyncArtifactPath "latest-data-flow-storage-plan.json" $false "formatVersion" "osmu.data-flow-storage-plan.v1"
 
 $failedEntries = @($entries | Where-Object { $_.status -eq "failed" })
 $importedEntries = @($entries | Where-Object { $_.status -eq "imported" })

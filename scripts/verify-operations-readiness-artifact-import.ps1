@@ -142,6 +142,12 @@ Write-JsonEvidence (Join-Path $kubernetesOperationsReportSyncSource "latest-kube
     formatVersion = "osmu.kubernetes-operations-report-sync.v1"
     result = "server-dry-run-passed"
 }
+Write-JsonEvidence (Join-Path $kubernetesOperationsReportSyncSource "latest-data-flow-storage-plan.json") @{
+    formatVersion = "osmu.data-flow-storage-plan.v1"
+    result = "plan-ready-execute-required"
+    candidateStore = "MARIADB_PARTITION"
+    pendingCount = 1
+}
 
 $importScript = Resolve-ProjectPath ".\scripts\import-operations-readiness-artifacts.ps1"
 & powershell -NoProfile -ExecutionPolicy Bypass -File $importScript `
@@ -169,7 +175,7 @@ $report = Get-Content -Raw -LiteralPath $reportPath | ConvertFrom-Json
 Assert-True ($report.formatVersion -eq "osmu.operations-readiness-artifact-import.v1") "Unexpected import report formatVersion."
 Assert-True ($report.result -eq "passed") "Expected import report result=passed."
 Assert-True ($report.status -eq "artifact-imported") "Expected import report status=artifact-imported."
-Assert-True ($report.importedCount -ge 16) "Expected imported evidence files."
+Assert-True ($report.importedCount -ge 17) "Expected imported evidence files."
 Assert-True (Test-Path -LiteralPath (Join-Path $promotedRoot "latest-storage-expansion-finalize.json")) "Promoted storage expansion evidence missing."
 Assert-True (Test-Path -LiteralPath (Join-Path $promotedRoot "latest-kubernetes-ha-dr-readiness.json")) "Promoted HA/DR readiness evidence missing."
 Assert-True (Test-Path -LiteralPath (Join-Path $promotedRoot "latest-kubernetes-dr-finalize.json")) "Promoted Kubernetes DR evidence missing."
@@ -189,6 +195,7 @@ Assert-True (Test-Path -LiteralPath (Join-Path $promotedRoot "latest-enterprise-
 Assert-True (Test-Path -LiteralPath (Join-Path $promotedRoot "latest-operations-handoff-package.json")) "Promoted operations handoff package evidence missing."
 Assert-True (Test-Path -LiteralPath (Join-Path $promotedRoot "latest-operations-handoff-package.md")) "Promoted operations handoff package markdown missing."
 Assert-True (Test-Path -LiteralPath (Join-Path $promotedRoot "latest-kubernetes-operations-report-sync.json")) "Promoted Kubernetes operations report sync evidence missing."
+Assert-True (Test-Path -LiteralPath (Join-Path $promotedRoot "latest-data-flow-storage-plan.json")) "Promoted data-flow storage plan evidence missing."
 $promotedCommercialApproval = Get-Content -Raw -LiteralPath (Join-Path $promotedRoot "latest-commercial-approval-evidence.json") | ConvertFrom-Json
 $promotedStorageBackendTelemetry = Get-Content -Raw -LiteralPath (Join-Path $promotedRoot "latest-storage-backend-telemetry.json") | ConvertFrom-Json
 $promotedSecretRotation = Get-Content -Raw -LiteralPath (Join-Path $promotedRoot "latest-secret-rotation-evidence.json") | ConvertFrom-Json
@@ -202,6 +209,9 @@ $promotedEnterpriseAuth = Get-Content -Raw -LiteralPath (Join-Path $promotedRoot
 Assert-True ($promotedEnterpriseAuth.result -eq "scope-out") "Promoted enterprise auth scope-out evidence should be preserved."
 $promotedOperationsHandoffPackage = Get-Content -Raw -LiteralPath (Join-Path $promotedRoot "latest-operations-handoff-package.json") | ConvertFrom-Json
 Assert-True ($promotedOperationsHandoffPackage.result -eq "passed") "Promoted operations handoff package evidence should preserve result=passed."
+$promotedDataFlowStoragePlan = Get-Content -Raw -LiteralPath (Join-Path $promotedRoot "latest-data-flow-storage-plan.json") | ConvertFrom-Json
+Assert-True ($promotedDataFlowStoragePlan.formatVersion -eq "osmu.data-flow-storage-plan.v1") "Promoted data-flow storage plan evidence should preserve formatVersion."
+Assert-True ($promotedDataFlowStoragePlan.candidateStore -eq "MARIADB_PARTITION") "Promoted data-flow storage plan evidence should preserve candidateStore."
 
 Write-JsonEvidence (Join-Path $invalidRoot "latest-kubernetes-ha-dr-readiness.json") @{
     formatVersion = "osmu.kubernetes-ha-dr-readiness.v1"

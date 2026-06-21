@@ -210,7 +210,7 @@ if ($hasOperationsHandoffPackage) {
     Add-Artifact $artifacts "operations-handoff-package" "manual-operations-handoff-package.yml" $operationsHandoffPackageRun "operations_handoff_package_run_id" "operations-handoff-package-$operationsHandoffPackageRun" "operations_handoff_package_artifact_name" ".osmu-run/operations-readiness-artifacts/operations-handoff-package" $true "Imports latest-operations-handoff-package.json from pilot or production handoff package evidence."
 }
 if ($workflows.Contains("kubernetes-operations-report-sync-ci.yml")) {
-    Add-Artifact $artifacts "kubernetes-operations-report-sync" "kubernetes-operations-report-sync-ci.yml" $kubernetesOperationsReportSyncRun "kubernetes_operations_report_sync_run_id" "kubernetes-operations-report-sync-$kubernetesOperationsReportSyncRun" "kubernetes_operations_report_sync_artifact_name" ".osmu-run/operations-readiness-artifacts/kubernetes-operations-report-sync" $true "Imports latest-kubernetes-operations-report-sync.json for convergence-level deployed dashboard sync evidence."
+    Add-Artifact $artifacts "kubernetes-operations-report-sync" "kubernetes-operations-report-sync-ci.yml" $kubernetesOperationsReportSyncRun "kubernetes_operations_report_sync_run_id" "kubernetes-operations-report-sync-$kubernetesOperationsReportSyncRun" "kubernetes_operations_report_sync_artifact_name" ".osmu-run/operations-readiness-artifacts/kubernetes-operations-report-sync" $true "Imports latest-kubernetes-operations-report-sync.json for convergence-level deployed dashboard sync evidence and optional latest-data-flow-storage-plan.json for dashboard plan visibility."
 }
 
 $artifactArray = @($artifacts | ForEach-Object { $_ })

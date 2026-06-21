@@ -121,6 +121,7 @@ Assert-Contains $missingMarkdown "commercial-approval-evidence-<commercial-appro
 Assert-Contains $missingMarkdown "enterprise-auth-smoke-<enterprise-auth-run-id>" "missing collection markdown"
 Assert-Contains $missingMarkdown "operations-handoff-package-<operations-handoff-package-run-id>" "missing collection markdown"
 Assert-Contains $missingMarkdown "operations-readiness-artifact-finalizer-ci.yml" "missing collection markdown"
+Assert-Contains $missingMarkdown "optional latest-data-flow-storage-plan.json" "missing collection markdown"
 Assert-Contains $missingMarkdown ".\.osmu-run\operations-readiness-artifacts\storage-expansion" "missing collection markdown"
 Assert-True (-not $missingMarkdown.Contains("OrderedDictionary.downloadPath")) "Local import command should render concrete download paths."
 
