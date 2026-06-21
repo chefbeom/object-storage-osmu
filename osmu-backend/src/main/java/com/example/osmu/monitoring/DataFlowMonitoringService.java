@@ -3,7 +3,9 @@ package com.example.osmu.monitoring;
 import com.example.osmu.monitoring.repository.DataFlowEventRepository;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
+import java.time.LocalDate;
 import java.time.OffsetDateTime;
+import java.time.YearMonth;
 import java.time.ZoneOffset;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
@@ -24,6 +26,10 @@ public class DataFlowMonitoringService {
     private static final int MAX_DAILY_ROLLUP_DAYS = 366;
     private static final int DEFAULT_DAILY_ROLLUP_LIMIT = 200;
     private static final int MAX_DAILY_ROLLUP_LIMIT = 1000;
+    private static final int DEFAULT_MONTHLY_ROLLUP_MONTHS = 12;
+    private static final int MAX_MONTHLY_ROLLUP_MONTHS = 60;
+    private static final int DEFAULT_MONTHLY_ROLLUP_LIMIT = 200;
+    private static final int MAX_MONTHLY_ROLLUP_LIMIT = 1000;
 
     private final MeterRegistry meterRegistry;
     private final DataFlowEventRepository eventRepository;
@@ -242,6 +248,59 @@ public class DataFlowMonitoringService {
         return dailyRollupCsv(materializedDailyRollup(filter, days, limit));
     }
 
+    public DataFlowMonthlyRollupResponse monthlyRollup(
+            DataFlowEventFilter filter,
+            Integer months,
+            Integer limit,
+            boolean materialized
+    ) {
+        OffsetDateTime generatedAt = OffsetDateTime.now();
+        int normalizedMonths = normalizeMonthlyRollupMonths(months);
+        int normalizedLimit = normalizeMonthlyRollupLimit(limit);
+        DataFlowEventFilter boundedFilter = boundedMonthlyRollupFilter(filter, normalizedMonths, generatedAt);
+        List<DataFlowMonthlyRollupPointResponse> points = materialized
+                ? eventRepository.materializedMonthlyRollup(boundedFilter, normalizedLimit)
+                : eventRepository.monthlyRollup(boundedFilter, normalizedLimit);
+        return new DataFlowMonthlyRollupResponse(
+                materialized ? "DATA_FLOW_MONTHLY_ROLLUP_MATERIALIZED" : "DATA_FLOW_MONTHLY_ROLLUP",
+                materialized ? "DATA_FLOW_DAILY_ROLLUP_MATERIALIZED" : "DATA_FLOW_EVENTS",
+                "UTC_MONTH",
+                normalizedMonths,
+                normalizedLimit,
+                points.size(),
+                points,
+                generatedAt,
+                "ADMIN-only long-term data-flow analytics rollup. Query filters are identical to the detailed data-flow monitoring endpoint.",
+                materialized
+                        ? "Aggregates stored data_flow_daily_rollups rows into UTC months for long-term operations analytics."
+                        : "Aggregates persisted data_flow_events in MariaDB mode and runtime events in in-memory mode into UTC months.",
+                "This is an OSMU operations analytics rollup, not AWS billing parity; object keys and raw event messages are not returned."
+        );
+    }
+
+    public String exportMonthlyRollupCsv(DataFlowEventFilter filter, Integer months, Integer limit, boolean materialized) {
+        StringBuilder csv = new StringBuilder("month,bucketName,source,operation,successCount,failureCount,cancelCount,totalCount,uploadedBytes,downloadedBytes,copiedBytes,totalBytes\n");
+        DataFlowMonthlyRollupResponse rollup = monthlyRollup(filter, months, limit, materialized);
+        for (DataFlowMonthlyRollupPointResponse point : rollup.points()) {
+            appendCsvRow(
+                    csv,
+                    point.month(),
+                    point.bucketName(),
+                    point.source(),
+                    point.operation(),
+                    point.successCount(),
+                    point.failureCount(),
+                    point.cancelCount(),
+                    point.totalCount(),
+                    point.uploadedBytes(),
+                    point.downloadedBytes(),
+                    point.copiedBytes(),
+                    point.totalBytes()
+            );
+        }
+        return csv.toString();
+    }
+
     private String dailyRollupCsv(DataFlowDailyRollupResponse rollup) {
         StringBuilder csv = new StringBuilder("day,bucketName,source,operation,successCount,failureCount,cancelCount,totalCount,uploadedBytes,downloadedBytes,copiedBytes,totalBytes\n");
         for (DataFlowDailyRollupPointResponse point : rollup.points()) {
@@ -276,6 +335,26 @@ public class DataFlowMonitoringService {
                 safeFilter.operation(),
                 safeFilter.status(),
                 generatedAt.minusDays(normalizedDays - 1L).toLocalDate().atStartOfDay().atOffset(ZoneOffset.UTC),
+                safeFilter.to()
+        );
+    }
+
+    private DataFlowEventFilter boundedMonthlyRollupFilter(DataFlowEventFilter filter, int normalizedMonths, OffsetDateTime generatedAt) {
+        DataFlowEventFilter safeFilter = filter == null ? DataFlowEventFilter.empty() : filter;
+        if (safeFilter.from() != null) {
+            return safeFilter;
+        }
+        LocalDate startDay = YearMonth
+                .from(generatedAt.withOffsetSameInstant(ZoneOffset.UTC))
+                .minusMonths(normalizedMonths - 1L)
+                .atDay(1);
+        return new DataFlowEventFilter(
+                safeFilter.bucketName(),
+                safeFilter.actorId(),
+                safeFilter.source(),
+                safeFilter.operation(),
+                safeFilter.status(),
+                startDay.atStartOfDay().atOffset(ZoneOffset.UTC),
                 safeFilter.to()
         );
     }
@@ -352,6 +431,20 @@ public class DataFlowMonitoringService {
             return DEFAULT_DAILY_ROLLUP_LIMIT;
         }
         return Math.min(MAX_DAILY_ROLLUP_LIMIT, limit);
+    }
+
+    private int normalizeMonthlyRollupMonths(Integer months) {
+        if (months == null || months <= 0) {
+            return DEFAULT_MONTHLY_ROLLUP_MONTHS;
+        }
+        return Math.min(MAX_MONTHLY_ROLLUP_MONTHS, months);
+    }
+
+    private int normalizeMonthlyRollupLimit(Integer limit) {
+        if (limit == null || limit <= 0) {
+            return DEFAULT_MONTHLY_ROLLUP_LIMIT;
+        }
+        return Math.min(MAX_MONTHLY_ROLLUP_LIMIT, limit);
     }
 
     private long positiveBytes(long sizeBytes) {

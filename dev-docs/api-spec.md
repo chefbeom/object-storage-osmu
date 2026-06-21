@@ -3757,6 +3757,70 @@ Response:
 - Columns: `day,bucketName,source,operation,successCount,failureCount,cancelCount,totalCount,uploadedBytes,downloadedBytes,copiedBytes,totalBytes`
 - Rows use the same UTC-day aggregation as the JSON daily rollup endpoint and do not include object keys or raw event messages.
 
+### GET /api/admin/monitoring/data-flow/monthly-rollup
+
+Returns an ADMIN-only UTC-month rollup for longer-term data-flow analytics. This is an operations analytics surface, not an AWS billing parity endpoint.
+
+Query parameters:
+
+- Same filters as `GET /api/admin/monitoring/data-flow`: `from`, `to`, `bucketName`, `actorId`, `source`, `operation`, and `status`.
+- `months`: default `12`, maximum `60`. When `from` is omitted, the API applies a UTC-month lower bound for the latest `months` window.
+- `limit`: rollup point limit. Default `200`, maximum `1000`.
+- `materialized`: optional boolean. `false` aggregates live `data_flow_events`; `true` aggregates refreshed `data_flow_daily_rollups`.
+
+Response:
+
+```json
+{
+  "data": {
+    "mode": "DATA_FLOW_MONTHLY_ROLLUP",
+    "rollupSource": "DATA_FLOW_EVENTS",
+    "granularity": "UTC_MONTH",
+    "monthWindow": 12,
+    "pointLimit": 200,
+    "pointCount": 1,
+    "points": [
+      {
+        "month": "2026-06",
+        "bucketName": "media",
+        "source": "s3",
+        "operation": "download",
+        "successCount": 32,
+        "failureCount": 2,
+        "cancelCount": 1,
+        "totalCount": 35,
+        "uploadedBytes": 0,
+        "downloadedBytes": 16777216,
+        "copiedBytes": 0,
+        "totalBytes": 16777216
+      }
+    ],
+    "generatedAt": "2026-06-18T10:30:00Z",
+    "scopePolicy": "ADMIN-only long-term data-flow analytics rollup. Query filters are identical to the detailed data-flow monitoring endpoint.",
+    "storagePolicy": "Aggregates persisted data_flow_events in MariaDB mode and runtime events in in-memory mode into UTC months.",
+    "note": "This is an OSMU operations analytics rollup, not AWS billing parity; object keys and raw event messages are not returned."
+  }
+}
+```
+
+Notes:
+
+- `materialized=true` reads aggregate-only `data_flow_daily_rollups` rows and groups them by UTC month, bucket, source, and operation.
+- The endpoint does not store a separate monthly table yet; it is a stable API bridge before a dedicated partitioned or time-series repository is introduced.
+
+### GET /api/admin/monitoring/data-flow/monthly-rollup/export.csv
+
+Exports the ADMIN-only monthly rollup window as CSV for long-term operations analysis and handoff.
+
+Query parameters are identical to `GET /api/admin/monitoring/data-flow/monthly-rollup`: `from`, `to`, `bucketName`, `actorId`, `source`, `operation`, `status`, `months`, `limit`, and `materialized`.
+
+Response:
+
+- `Content-Type: text/csv`
+- `Content-Disposition: attachment; filename="osmu-data-flow-monthly-rollup.csv"`
+- Columns: `month,bucketName,source,operation,successCount,failureCount,cancelCount,totalCount,uploadedBytes,downloadedBytes,copiedBytes,totalBytes`
+- Rows are aggregate-only and do not include object keys, raw event messages, provider payloads, or AWS billing parity fields.
+
 ### GET /api/admin/monitoring/data-flow/export.csv
 
 Exports the same administrator data-flow event window as CSV. `ADMIN` role required.

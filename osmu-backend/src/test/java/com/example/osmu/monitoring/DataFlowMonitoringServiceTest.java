@@ -240,6 +240,68 @@ class DataFlowMonitoringServiceTest {
         assertThat(csv).doesNotContain("object.bin");
     }
 
+    @Test
+    void buildsMonthlyRollupForLongTermAnalytics() {
+        OffsetDateTime now = OffsetDateTime.now(ZoneOffset.UTC).withDayOfMonth(15);
+        eventRepository.save(event("UPLOAD", "upload", "INGRESS", "media", "admin", "SUCCESS", 1024L, "rest", now.minusDays(1)));
+        eventRepository.save(event("DOWNLOAD", "download", "EGRESS", "media", "admin", "SUCCESS", 512L, "s3", now.minusMonths(1)));
+        eventRepository.save(event("FAILURE", "download", "CONTROL", "media", "admin", "FAILED", 0L, "rest", now.minusMonths(1)));
+        eventRepository.save(event("UPLOAD", "upload", "INGRESS", "archive", "admin", "SUCCESS", 2048L, "rest", now.minusDays(1)));
+
+        DataFlowMonthlyRollupResponse rollup = service.monthlyRollup(
+                new DataFlowEventFilter("media", null, null, null, null, now.minusMonths(2), now.plusDays(1)),
+                12,
+                10,
+                false
+        );
+
+        assertThat(rollup.mode()).isEqualTo("DATA_FLOW_MONTHLY_ROLLUP");
+        assertThat(rollup.rollupSource()).isEqualTo("DATA_FLOW_EVENTS");
+        assertThat(rollup.granularity()).isEqualTo("UTC_MONTH");
+        assertThat(rollup.monthWindow()).isEqualTo(12);
+        assertThat(rollup.pointLimit()).isEqualTo(10);
+        assertThat(rollup.storagePolicy()).contains("data_flow_events");
+        assertThat(rollup.points()).hasSize(3);
+        assertThat(rollup.points()).anySatisfy(point -> {
+            assertThat(point.month()).isEqualTo(now.toString().substring(0, 7));
+            assertThat(point.bucketName()).isEqualTo("media");
+            assertThat(point.source()).isEqualTo("rest");
+            assertThat(point.operation()).isEqualTo("upload");
+            assertThat(point.uploadedBytes()).isEqualTo(1024L);
+            assertThat(point.totalBytes()).isEqualTo(1024L);
+        });
+        assertThat(rollup.points()).anySatisfy(point -> {
+            assertThat(point.month()).isEqualTo(now.minusMonths(1).toString().substring(0, 7));
+            assertThat(point.operation()).isEqualTo("download");
+            assertThat(point.failureCount()).isEqualTo(1L);
+        });
+        assertThat(rollup.points()).noneSatisfy(point -> assertThat(point.bucketName()).isEqualTo("archive"));
+    }
+
+    @Test
+    void exportsMaterializedMonthlyRollupCsvFromStoredAggregateOnlyRows() {
+        OffsetDateTime now = OffsetDateTime.now(ZoneOffset.UTC);
+        DataFlowEventFilter adminSuccessFilter = new DataFlowEventFilter(
+                "media",
+                "admin",
+                "rest",
+                "upload",
+                "SUCCESS",
+                now.minusMonths(1),
+                now.plusDays(1)
+        );
+        eventRepository.save(event("UPLOAD", "upload", "INGRESS", "media", "admin", "SUCCESS", 1024L, "rest", now.minusDays(1)));
+        eventRepository.save(event("UPLOAD", "upload", "INGRESS", "media", "developer", "SUCCESS", 2048L, "rest", now.minusDays(1)));
+        service.materializeDailyRollup(adminSuccessFilter, 30, 10);
+
+        String csv = service.exportMonthlyRollupCsv(adminSuccessFilter, 12, 10, true);
+
+        assertThat(csv).startsWith("month,bucketName,source,operation,successCount,failureCount,cancelCount,totalCount,uploadedBytes,downloadedBytes,copiedBytes,totalBytes\n");
+        assertThat(csv).contains("\"media\",\"rest\",\"upload\",\"1\",\"0\",\"0\",\"1\",\"1024\",\"0\",\"0\",\"1024\"");
+        assertThat(csv).doesNotContain("2048");
+        assertThat(csv).doesNotContain("object.bin");
+    }
+
     private static DataFlowEventRecord event(
             String eventType,
             String operation,

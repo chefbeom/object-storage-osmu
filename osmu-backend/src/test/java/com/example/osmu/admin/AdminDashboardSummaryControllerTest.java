@@ -250,6 +250,56 @@ class AdminDashboardSummaryControllerTest {
     }
 
     @Test
+    void adminCanReadDataFlowMonthlyRollup() throws Exception {
+        String adminToken = loginAndReturnAccessToken("admin", "password");
+
+        mockMvc.perform(get("/api/admin/monitoring/data-flow/monthly-rollup")
+                        .param("bucketName", "media")
+                        .param("actorId", "admin")
+                        .param("source", "rest")
+                        .param("operation", "upload")
+                        .param("status", "SUCCESS")
+                        .param("from", "2026-01-01T00:00:00Z")
+                        .param("to", "2026-06-30T00:00:00Z")
+                        .param("months", "6")
+                        .param("limit", "25")
+                        .param("materialized", "true")
+                        .header("Authorization", "Bearer " + adminToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.mode").value("DATA_FLOW_MONTHLY_ROLLUP_MATERIALIZED"))
+                .andExpect(jsonPath("$.data.rollupSource").value("DATA_FLOW_DAILY_ROLLUP_MATERIALIZED"))
+                .andExpect(jsonPath("$.data.granularity").value("UTC_MONTH"))
+                .andExpect(jsonPath("$.data.monthWindow").value(6))
+                .andExpect(jsonPath("$.data.pointLimit").value(25))
+                .andExpect(jsonPath("$.data.pointCount").isNumber())
+                .andExpect(jsonPath("$.data.points").isArray())
+                .andExpect(jsonPath("$.data.note", org.hamcrest.Matchers.containsString("not AWS billing parity")))
+                .andExpect(jsonPath("$.data.generatedAt").exists());
+    }
+
+    @Test
+    void adminCanExportDataFlowMonthlyRollupCsv() throws Exception {
+        String adminToken = loginAndReturnAccessToken("admin", "password");
+
+        mockMvc.perform(get("/api/admin/monitoring/data-flow/monthly-rollup/export.csv")
+                        .param("bucketName", "media")
+                        .param("actorId", "admin")
+                        .param("source", "rest")
+                        .param("operation", "upload")
+                        .param("status", "SUCCESS")
+                        .param("from", "2026-01-01T00:00:00Z")
+                        .param("to", "2026-06-30T00:00:00Z")
+                        .param("months", "6")
+                        .param("limit", "25")
+                        .param("materialized", "true")
+                        .header("Authorization", "Bearer " + adminToken))
+                .andExpect(status().isOk())
+                .andExpect(header().string(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"osmu-data-flow-monthly-rollup.csv\""))
+                .andExpect(content().contentTypeCompatibleWith("text/csv"))
+                .andExpect(content().string(org.hamcrest.Matchers.startsWith("month,bucketName,source,operation,successCount,failureCount,cancelCount,totalCount,uploadedBytes,downloadedBytes,copiedBytes,totalBytes\n")));
+    }
+
+    @Test
     void dashboardSummaryReflectsRecordedRestoreDrillEvidence() throws Exception {
         String adminToken = loginAndReturnAccessToken("admin", "password");
 

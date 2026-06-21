@@ -1191,6 +1191,22 @@ export function getMaterializedDataFlowDailyRollup(filters = {}) {
   return request(`/admin/monitoring/data-flow/daily-rollup/materialized${suffix}`)
 }
 
+export function getDataFlowMonthlyRollup(filters = {}) {
+  const query = new URLSearchParams()
+  appendQuery(query, 'bucketName', filters.bucketName)
+  appendQuery(query, 'actorId', filters.actorId)
+  appendQuery(query, 'source', filters.source)
+  appendQuery(query, 'operation', filters.operation)
+  appendQuery(query, 'status', filters.status)
+  appendQuery(query, 'from', filters.from)
+  appendQuery(query, 'to', filters.to)
+  appendQuery(query, 'months', filters.months)
+  appendQuery(query, 'limit', filters.limit)
+  appendQuery(query, 'materialized', filters.materialized)
+  const suffix = query.toString() ? `?${query.toString()}` : ''
+  return request(`/admin/monitoring/data-flow/monthly-rollup${suffix}`)
+}
+
 export function getDataFlowRetentionStatus() {
   return request('/admin/monitoring/data-flow/retention/status')
 }
@@ -1245,6 +1261,22 @@ export function downloadMaterializedDataFlowDailyRollupCsv(filters = {}) {
   appendQuery(query, 'limit', filters.limit)
   const suffix = query.toString() ? `?${query.toString()}` : ''
   return download(`/admin/monitoring/data-flow/daily-rollup/materialized/export.csv${suffix}`)
+}
+
+export function downloadDataFlowMonthlyRollupCsv(filters = {}) {
+  const query = new URLSearchParams()
+  appendQuery(query, 'bucketName', filters.bucketName)
+  appendQuery(query, 'actorId', filters.actorId)
+  appendQuery(query, 'source', filters.source)
+  appendQuery(query, 'operation', filters.operation)
+  appendQuery(query, 'status', filters.status)
+  appendQuery(query, 'from', filters.from)
+  appendQuery(query, 'to', filters.to)
+  appendQuery(query, 'months', filters.months)
+  appendQuery(query, 'limit', filters.limit)
+  appendQuery(query, 'materialized', filters.materialized)
+  const suffix = query.toString() ? `?${query.toString()}` : ''
+  return download(`/admin/monitoring/data-flow/monthly-rollup/export.csv${suffix}`)
 }
 
 export function getChargebackPreview(options = {}) {

@@ -1,5 +1,12 @@
 # OSMU Feature Inventory
 
+## Latest Data-flow Analytics Status
+
+- Admin monitoring now includes long-term monthly data-flow aggregate JSON/CSV surfaces in addition to detailed event export, daily rollup, and materialized daily rollup read/export.
+- Monthly aggregate rows group by UTC month, bucket, source, and operation, and can be calculated from live event rows or from the materialized daily rollup store.
+- The monthly view is an OSMU operations analytics surface, not AWS billing parity. It excludes object keys and raw event messages.
+- Remaining analytics scope is a dedicated partitioned or time-series repository for high-volume retention and faster long-window reads.
+
 ## Current Completion Correction
 
 - MVP demo current estimate: 90-95% after the durable Docker/MariaDB/MinIO/Browser/real S3 client gate and hard readiness gate wrote `currentDemoStatus=docker-durable-demo-verified`.

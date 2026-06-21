@@ -124,7 +124,7 @@ Enterprise auth plan:
 - Payment-provider webhook handoff supports generic plus CARD/BANK/TAX/ERP endpoint profiles through `osmu.billing.payment-provider.card.webhook-url`, `bank.webhook-url`, `tax.webhook-url`, and `erp.webhook-url`. These profile URLs use the same endpoint validation, HMAC signing, payload cap, and no-secret persistence policy as the generic payment-provider webhook.
 - `GET/POST /api/admin/billing/pricing-policy-proposals`, `POST /api/admin/billing/pricing-policy-proposals/{proposalId}/approve`, `POST /api/admin/billing/pricing-policy-proposals/{proposalId}/commercial-approval`는 내부 chargeback 가격 정책 승인 기록과 상업 가격표 승인 참조를 남기므로 `ADMIN` 전용이다. `commercial-approval`은 참조/메모에서 credential-like 텍스트를 거부하며 외부 결제망이나 알림 adapter를 호출하지 않는다.
 - `ChargebackPreviewService`는 `ORG_ADMIN` 요청에서 actor의 organization id만 조회하고, user-owned bucket과 deleted/unknown bucket data-flow event는 chargeback preview, daily rollup trend, daily rollup CSV export에서 제외한다.
-- `ORG_ADMIN`은 감사 로그, 전체 시스템 usage, system status, storage expansion, backup/restore drill, quota policy 같은 global admin API에는 접근할 수 없다.
+- `ORG_ADMIN`은 감사 로그, 전체 시스템 usage, system status, storage expansion, backup/restore drill, quota policy, data-flow monthly rollup JSON/CSV 같은 global admin API에는 접근할 수 없다.
 - `AUDITOR`는 감사 로그, usage/status, enterprise auth plan, dashboard summary/readiness, backup status와 restore drill evidence 조회만 가능하다. 사용자/조직/쿼터/증설/복구 증거 기록 같은 변경성 admin API는 차단한다.
 - Dashboard widget catalog/layout/preset 응답은 role 기준으로 필터링한다. `requests` audit widget은 `ADMIN`과 `AUDITOR`에게 read-only로 노출되며, admin operation widget은 `ADMIN`에게만 노출된다. 현재 role의 `allowedRoles` 밖 widget을 직접 저장 요청에 넣으면 `AUTHORIZATION_FAILED`로 차단한다.
 
@@ -136,7 +136,7 @@ Enterprise auth plan:
 - 조직/사용자 단위 권한 부여.
 - `ORG_ADMIN`은 자기 조직 사용자, 조직 usage, billing pricing policy read-only 값, chargeback preview, threshold alerts, notification payload preview/outbox, scoped CSV export와 draft invoice CSV export만 볼 수 있다.
 - `ORG_ADMIN`은 자기 조직 일반 `USER` 생성/비활성화만 가능하다.
-- `ORG_ADMIN`은 감사 로그, 전체 시스템 usage, system status 같은 global admin API에는 접근할 수 없다.
+- `ORG_ADMIN`은 감사 로그, 전체 시스템 usage, system status, data-flow monthly rollup 같은 global admin API에는 접근할 수 없다.
 
 현재 구현:
 

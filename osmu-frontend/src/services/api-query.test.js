@@ -23,6 +23,7 @@ import {
   downloadAuditLogsCsv,
   downloadDataFlowDailyRollupCsv,
   downloadMaterializedDataFlowDailyRollupCsv,
+  downloadDataFlowMonthlyRollupCsv,
   downloadDataFlowMonitoringCsv,
   finalizeChargebackInvoiceDraft,
   exportDashboardLayoutPreset,
@@ -49,6 +50,7 @@ import {
   getDashboardSummary,
   getDashboardWidgetCatalog,
   getDataFlowDailyRollup,
+  getDataFlowMonthlyRollup,
   getDataFlowRetentionStatus,
   getMaterializedDataFlowDailyRollup,
   getDataFlowMonitoring,
@@ -392,6 +394,54 @@ test('getDataFlowDailyRollup reads admin daily data flow rollup endpoint', async
   }
 })
 
+test('getDataFlowMonthlyRollup reads admin monthly data flow rollup endpoint', async () => {
+  const fetchMock = mockFetch([
+    () => jsonResponse({
+      data: {
+        mode: 'DATA_FLOW_MONTHLY_ROLLUP_MATERIALIZED',
+        rollupSource: 'DATA_FLOW_DAILY_ROLLUP_MATERIALIZED',
+        granularity: 'UTC_MONTH',
+        monthWindow: 12,
+        pointLimit: 25,
+        points: [{ month: '2026-06', bucketName: 'media', source: 'rest', operation: 'upload', totalBytes: 1024 }],
+      },
+    }),
+  ])
+
+  try {
+    const result = await getDataFlowMonthlyRollup({
+      bucketName: 'media',
+      actorId: 'admin',
+      source: 'rest',
+      operation: 'upload',
+      status: 'SUCCESS',
+      from: '2026-01-01T00:00:00.000Z',
+      to: '2026-06-30T00:00:00.000Z',
+      months: 12,
+      limit: 25,
+      materialized: true,
+    })
+
+    const url = new URL(fetchMock.calls[0].url)
+    assert.equal(url.origin + url.pathname, 'http://localhost:8080/api/admin/monitoring/data-flow/monthly-rollup')
+    assert.equal(url.searchParams.get('bucketName'), 'media')
+    assert.equal(url.searchParams.get('actorId'), 'admin')
+    assert.equal(url.searchParams.get('source'), 'rest')
+    assert.equal(url.searchParams.get('operation'), 'upload')
+    assert.equal(url.searchParams.get('status'), 'SUCCESS')
+    assert.equal(url.searchParams.get('from'), '2026-01-01T00:00:00.000Z')
+    assert.equal(url.searchParams.get('to'), '2026-06-30T00:00:00.000Z')
+    assert.equal(url.searchParams.get('months'), '12')
+    assert.equal(url.searchParams.get('limit'), '25')
+    assert.equal(url.searchParams.get('materialized'), 'true')
+    assert.equal(fetchMock.calls[0].options.method, undefined)
+    assert.equal(result.data.mode, 'DATA_FLOW_MONTHLY_ROLLUP_MATERIALIZED')
+    assert.equal(result.data.points[0].month, '2026-06')
+  } finally {
+    cleanupFetch(fetchMock)
+  }
+})
+
 test('materializeDataFlowDailyRollup posts admin daily rollup refresh request', async () => {
   const fetchMock = mockFetch([
     () => jsonResponse({
@@ -638,6 +688,46 @@ test('downloadMaterializedDataFlowDailyRollupCsv uses stored rollup export endpo
     assert.equal(url.searchParams.get('days'), '30')
     assert.equal(url.searchParams.get('limit'), '25')
     assert.equal(await blob.text(), 'day,bucketName,totalBytes\n2026-06-18,media,1024\n')
+  } finally {
+    cleanupFetch(fetchMock)
+  }
+})
+
+test('downloadDataFlowMonthlyRollupCsv uses monthly rollup export endpoint and returns CSV blob', async () => {
+  const fetchMock = mockFetch([
+    () => new Response('month,bucketName,totalBytes\n2026-06,media,1024\n', {
+      status: 200,
+      headers: { 'Content-Type': 'text/csv' },
+    }),
+  ])
+
+  try {
+    const blob = await downloadDataFlowMonthlyRollupCsv({
+      bucketName: 'media',
+      actorId: 'admin',
+      source: 'rest',
+      operation: 'upload',
+      status: 'SUCCESS',
+      from: '2026-01-01T00:00:00.000Z',
+      to: '2026-06-30T00:00:00.000Z',
+      months: 12,
+      limit: 25,
+      materialized: true,
+    })
+
+    const url = new URL(fetchMock.calls[0].url)
+    assert.equal(url.pathname, '/api/admin/monitoring/data-flow/monthly-rollup/export.csv')
+    assert.equal(url.searchParams.get('bucketName'), 'media')
+    assert.equal(url.searchParams.get('actorId'), 'admin')
+    assert.equal(url.searchParams.get('source'), 'rest')
+    assert.equal(url.searchParams.get('operation'), 'upload')
+    assert.equal(url.searchParams.get('status'), 'SUCCESS')
+    assert.equal(url.searchParams.get('from'), '2026-01-01T00:00:00.000Z')
+    assert.equal(url.searchParams.get('to'), '2026-06-30T00:00:00.000Z')
+    assert.equal(url.searchParams.get('months'), '12')
+    assert.equal(url.searchParams.get('limit'), '25')
+    assert.equal(url.searchParams.get('materialized'), 'true')
+    assert.equal(await blob.text(), 'month,bucketName,totalBytes\n2026-06,media,1024\n')
   } finally {
     cleanupFetch(fetchMock)
   }

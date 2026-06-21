@@ -18034,3 +18034,12 @@ feat/bucket-management
 - Frontend/mock: added API wrappers, mock API behavior/self-test, and Admin billing panel worker metrics/actions/list selectors for dry-run/run visibility.
 - Docs/verifiers: updated OpenAPI, API/frontend/backend/security/commercial/IAM/test docs and contract verifiers to describe the no-send worker. Actual payment provider execution, external notification delivery, adapter secrets, and external-send retry execution remain follow-up work.
 - Verification: verify-openapi-contract.ps1, verify-commercial-readiness.ps1, verify-iam-rbac-matrix.ps1, verify-migrations.ps1, frontend unit tests, mock API self-test, frontend build, and node --check passed. Backend Gradle test was not completed because the wrapper attempted to fetch Gradle 9.5.1 even in offline mode.
+
+### 2026-06-21 - Data-flow monthly rollup analytics
+
+- Scope: shifted away from AWS compatibility expansion. S3 remains replacement-compatibility only; this slice adds OSMU operator analytics for long-term data-flow trends.
+- Backend: added `GET /api/admin/monitoring/data-flow/monthly-rollup` and `GET /api/admin/monitoring/data-flow/monthly-rollup/export.csv`. Live mode aggregates `data_flow_events`; materialized mode aggregates stored daily rollup rows from `data_flow_daily_rollups`. Responses use UTC month/bucket/source/operation grouping and omit object keys/raw messages.
+- Frontend/mock: added Admin dashboard monthly filter/source controls, monthly rollup list, load/export actions, API wrappers, and mock API JSON/CSV routes plus self-test coverage.
+- Docs/verifiers: updated README, API spec/OpenAPI, backend/frontend/security/IAM/commercial/test docs, feature inventory, and OpenAPI/IAM verifier scripts to include monthly rollup JSON/CSV and the remaining dedicated partitioned/time-series repository gap.
+- Verification: pending local checks before commit.
+- Verification final: git diff --check, node --check mock API, OpenAPI contract verifier, IAM/RBAC verifier, commercial readiness verifier, mock API self-test, frontend unit tests, and focused offline backend Gradle tests passed.

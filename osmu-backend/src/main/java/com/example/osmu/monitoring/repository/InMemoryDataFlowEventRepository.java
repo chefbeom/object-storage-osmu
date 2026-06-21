@@ -3,8 +3,10 @@ package com.example.osmu.monitoring.repository;
 import com.example.osmu.monitoring.DataFlowDailyRollupPointResponse;
 import com.example.osmu.monitoring.DataFlowEventFilter;
 import com.example.osmu.monitoring.DataFlowEventRecord;
+import com.example.osmu.monitoring.DataFlowMonthlyRollupPointResponse;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
+import java.time.YearMonth;
 import java.time.ZoneOffset;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
@@ -100,6 +102,48 @@ public class InMemoryDataFlowEventRepository implements DataFlowEventRepository 
     }
 
     @Override
+    public List<DataFlowMonthlyRollupPointResponse> monthlyRollup(DataFlowEventFilter filter, int limit) {
+        DataFlowEventFilter safeFilter = filter == null ? DataFlowEventFilter.empty() : filter;
+        Map<String, MonthlyRollupAccumulator> rollups = new LinkedHashMap<>();
+        events.stream()
+                .filter(safeFilter::matches)
+                .forEach(event -> {
+                    String month = event.createdAt() == null
+                            ? YearMonth.now(ZoneOffset.UTC).toString()
+                            : YearMonth.from(event.createdAt().withOffsetSameInstant(ZoneOffset.UTC)).toString();
+                    String bucketName = event.bucketName() == null || event.bucketName().isBlank()
+                            ? "unknown"
+                            : event.bucketName();
+                    String source = lowerOrUnknown(event.source());
+                    String operation = lowerOrUnknown(event.operation());
+                    String key = month + "|" + bucketName + "|" + source + "|" + operation;
+                    rollups.computeIfAbsent(
+                            key,
+                            ignored -> new MonthlyRollupAccumulator(month, bucketName, source, operation)
+                    ).record(event);
+                });
+        return sortedMonthlyRollups(rollups, limit);
+    }
+
+    @Override
+    public List<DataFlowMonthlyRollupPointResponse> materializedMonthlyRollup(DataFlowEventFilter filter, int limit) {
+        DataFlowEventFilter safeFilter = filter == null ? DataFlowEventFilter.empty() : filter;
+        Map<String, MonthlyRollupAccumulator> rollups = new LinkedHashMap<>();
+        materializedRollups.stream()
+                .filter(record -> record.matchesFilter(safeFilter))
+                .forEach(record -> {
+                    DataFlowDailyRollupPointResponse point = record.point();
+                    String month = YearMonth.from(point.day()).toString();
+                    String key = month + "|" + point.bucketName() + "|" + point.source() + "|" + point.operation();
+                    rollups.computeIfAbsent(
+                            key,
+                            ignored -> new MonthlyRollupAccumulator(month, point.bucketName(), point.source(), point.operation())
+                    ).record(point);
+                });
+        return sortedMonthlyRollups(rollups, limit);
+    }
+
+    @Override
     public long nextId() {
         return idSequence.getAndIncrement();
     }
@@ -164,6 +208,22 @@ public class InMemoryDataFlowEventRepository implements DataFlowEventRepository 
 
     private static String dimensionValue(String value) {
         return value == null || value.isBlank() ? "" : value;
+    }
+
+    private static List<DataFlowMonthlyRollupPointResponse> sortedMonthlyRollups(
+            Map<String, MonthlyRollupAccumulator> rollups,
+            int limit
+    ) {
+        return rollups.values().stream()
+                .map(MonthlyRollupAccumulator::snapshot)
+                .sorted(Comparator
+                        .comparing(DataFlowMonthlyRollupPointResponse::month, Comparator.reverseOrder())
+                        .thenComparing(Comparator.comparingLong(DataFlowMonthlyRollupPointResponse::totalCount).reversed())
+                        .thenComparing(DataFlowMonthlyRollupPointResponse::bucketName)
+                        .thenComparing(DataFlowMonthlyRollupPointResponse::source)
+                        .thenComparing(DataFlowMonthlyRollupPointResponse::operation))
+                .limit(Math.max(0, limit))
+                .toList();
     }
 
     private record MaterializedRollupRecord(String actorId, String status, DataFlowDailyRollupPointResponse point) {
@@ -234,6 +294,77 @@ public class InMemoryDataFlowEventRepository implements DataFlowEventRepository 
         private DataFlowDailyRollupPointResponse snapshot() {
             return new DataFlowDailyRollupPointResponse(
                     day,
+                    bucketName,
+                    source,
+                    operation,
+                    successCount,
+                    failureCount,
+                    cancelCount,
+                    totalCount,
+                    uploadedBytes,
+                    downloadedBytes,
+                    copiedBytes,
+                    uploadedBytes + downloadedBytes + copiedBytes
+            );
+        }
+    }
+
+    private static final class MonthlyRollupAccumulator {
+        private final String month;
+        private final String bucketName;
+        private final String source;
+        private final String operation;
+        private long successCount;
+        private long failureCount;
+        private long cancelCount;
+        private long totalCount;
+        private long uploadedBytes;
+        private long downloadedBytes;
+        private long copiedBytes;
+
+        private MonthlyRollupAccumulator(String month, String bucketName, String source, String operation) {
+            this.month = month;
+            this.bucketName = bucketName;
+            this.source = source;
+            this.operation = operation;
+        }
+
+        private void record(DataFlowEventRecord event) {
+            totalCount += 1;
+            boolean success = "SUCCESS".equalsIgnoreCase(event.status());
+            if (success) {
+                successCount += 1;
+                if ("UPLOAD".equalsIgnoreCase(event.eventType())) {
+                    uploadedBytes += Math.max(0L, event.sizeBytes());
+                }
+                if ("DOWNLOAD".equalsIgnoreCase(event.eventType())) {
+                    downloadedBytes += Math.max(0L, event.sizeBytes());
+                }
+                if ("COPY".equalsIgnoreCase(event.eventType())) {
+                    copiedBytes += Math.max(0L, event.sizeBytes());
+                }
+            }
+            if ("FAILURE".equalsIgnoreCase(event.eventType()) || "FAILED".equalsIgnoreCase(event.status())) {
+                failureCount += 1;
+            }
+            if ("CANCEL".equalsIgnoreCase(event.eventType()) || "CANCELLED".equalsIgnoreCase(event.status())) {
+                cancelCount += 1;
+            }
+        }
+
+        private void record(DataFlowDailyRollupPointResponse point) {
+            successCount += point.successCount();
+            failureCount += point.failureCount();
+            cancelCount += point.cancelCount();
+            totalCount += point.totalCount();
+            uploadedBytes += point.uploadedBytes();
+            downloadedBytes += point.downloadedBytes();
+            copiedBytes += point.copiedBytes();
+        }
+
+        private DataFlowMonthlyRollupPointResponse snapshot() {
+            return new DataFlowMonthlyRollupPointResponse(
+                    month,
                     bucketName,
                     source,
                     operation,

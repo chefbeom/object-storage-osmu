@@ -1429,6 +1429,28 @@
             @input="$emit('update-data-flow-filter', 'limit', Number($event.target.value || 50))"
           />
         </label>
+        <label>
+          <span>Months</span>
+          <input
+            data-testid="data-flow-filter-months"
+            type="number"
+            min="1"
+            max="60"
+            :value="dataFlowFilter.months"
+            @input="$emit('update-data-flow-filter', 'months', Number($event.target.value || 12))"
+          />
+        </label>
+        <label>
+          <span>Monthly Source</span>
+          <select
+            data-testid="data-flow-filter-monthly-materialized"
+            :value="dataFlowFilter.monthlyMaterialized ? 'true' : 'false'"
+            @change="$emit('update-data-flow-filter', 'monthlyMaterialized', $event.target.value === 'true')"
+          >
+            <option value="false">Live</option>
+            <option value="true">Store</option>
+          </select>
+        </label>
         <div class="data-flow-filter-actions">
           <button data-testid="data-flow-refresh-button" type="submit" class="ghost">Refresh</button>
           <button data-testid="data-flow-export-button" type="button" class="ghost" @click="$emit('export-data-flow-csv')">CSV</button>
@@ -1436,6 +1458,8 @@
           <button data-testid="data-flow-daily-rollup-materialize-button" type="button" class="ghost" @click="$emit('materialize-data-flow-daily-rollup')">Refresh Store</button>
           <button data-testid="data-flow-daily-rollup-materialized-load-button" type="button" class="ghost" @click="$emit('load-materialized-data-flow-daily-rollup')">Load Store</button>
           <button data-testid="data-flow-daily-rollup-materialized-export-button" type="button" class="ghost" @click="$emit('export-materialized-data-flow-daily-rollup-csv')">Store CSV</button>
+          <button data-testid="data-flow-monthly-rollup-load-button" type="button" class="ghost" @click="$emit('load-data-flow-monthly-rollup')">Monthly</button>
+          <button data-testid="data-flow-monthly-rollup-export-button" type="button" class="ghost" @click="$emit('export-data-flow-monthly-rollup-csv')">Monthly CSV</button>
           <button data-testid="data-flow-reset-button" type="button" class="ghost" @click="$emit('reset-data-flow-filter')">Reset</button>
         </div>
       </form>
@@ -1516,6 +1540,21 @@
             <small>{{ point.source || 'unknown' }} / {{ point.operation || 'unknown' }} / {{ formatCount(point.successCount || 0) }} ok / {{ formatCount(point.failureCount || 0) }} fail / {{ formatCount(point.cancelCount || 0) }} cancel</small>
           </span>
           <b data-testid="data-flow-daily-rollup-bytes">{{ formatBytes(point.totalBytes || 0) }}</b>
+        </li>
+      </ul>
+      <ul class="compact-list" data-testid="data-flow-monthly-rollup">
+        <li v-if="dataFlowMonthlyRollupPoints.length === 0">
+          <span>
+            <strong>No monthly rollup yet</strong>
+            <small>monthly bucket/source/operation aggregates will appear here</small>
+          </span>
+        </li>
+        <li v-for="point in dataFlowMonthlyRollupPoints" :key="`${point.month}-${point.bucketName}-${point.source}-${point.operation}`" data-testid="data-flow-monthly-rollup-row">
+          <span>
+            <strong>{{ point.month || '-' }} / {{ point.bucketName || 'unknown' }}</strong>
+            <small>{{ point.source || 'unknown' }} / {{ point.operation || 'unknown' }} / {{ formatCount(point.successCount || 0) }} ok / {{ formatCount(point.failureCount || 0) }} fail / {{ formatCount(point.cancelCount || 0) }} cancel</small>
+          </span>
+          <b data-testid="data-flow-monthly-rollup-bytes">{{ formatBytes(point.totalBytes || 0) }}</b>
         </li>
       </ul>
       <ul class="compact-list" data-testid="data-flow-top-buckets">
@@ -1849,6 +1888,8 @@ defineEmits([
   'materialize-data-flow-daily-rollup',
   'load-materialized-data-flow-daily-rollup',
   'export-materialized-data-flow-daily-rollup-csv',
+  'load-data-flow-monthly-rollup',
+  'export-data-flow-monthly-rollup-csv',
   'refresh-data-flow-retention',
   'run-data-flow-retention',
   'reset-data-flow-filter',
@@ -1932,6 +1973,10 @@ const dataFlowTrendMaxCount = computed(() => Math.max(
 const dataFlowDailyRollup = computed(() => props.dataFlowMonitoring?.dailyRollup || {})
 const dataFlowDailyRollupPoints = computed(() => (
   Array.isArray(dataFlowDailyRollup.value.points) ? dataFlowDailyRollup.value.points.slice(0, 8) : []
+))
+const dataFlowMonthlyRollup = computed(() => props.dataFlowMonitoring?.monthlyRollup || {})
+const dataFlowMonthlyRollupPoints = computed(() => (
+  Array.isArray(dataFlowMonthlyRollup.value.points) ? dataFlowMonthlyRollup.value.points.slice(0, 8) : []
 ))
 const dataFlowRecentEvents = computed(() => (
   Array.isArray(props.dataFlowMonitoring?.recentEvents) ? props.dataFlowMonitoring.recentEvents.slice(0, 5) : []

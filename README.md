@@ -18,7 +18,7 @@ OSMU(Object Storage Management Utility)는 기업 내부망 또는 전용 인프
 - Web Portal: 로그인, dashboard, bucket/object, admin/developer, audit, lifecycle, share, quota, storage expansion, operations readiness, data-flow monitoring 화면 제공.
 - Backend: REST API, S3 호환 API, SigV4, bucket/object, multipart, CopyObject, multi-delete, Access Key, dashboard/readiness, monitoring API 제공.
 - Operations: Kubernetes/Helm draft, monitoring artifact, backup/restore drill, storage expansion runner, secret rotation/commercial integration/commercial approval/operations handoff package evidence writer와 manual evidence workflow, security evidence writer/finalizer, operations readiness finalizer와 verifier 제공.
-- 남은 큰 축: 실제 운영 클러스터 evidence, GitHub-hosted durable gate evidence, 장기 analytics/time-series, target secret rotation/commercial integration/commercial approval과 운영 handoff package `result=passed` evidence 확보이다. S3 client smoke는 대체성 회귀 검증으로 유지한다.
+- 남은 큰 축: 실제 운영 클러스터 evidence, GitHub-hosted durable gate evidence, dedicated partitioned/time-series 저장소, target secret rotation/commercial integration/commercial approval과 운영 handoff package `result=passed` evidence 확보이다. Data-flow는 daily/materialized rollup과 monthly aggregate JSON/CSV surface까지 진행됐고, S3 client smoke는 대체성 회귀 검증으로 유지한다.
 
 ## 아키텍처 개요
 
@@ -295,7 +295,7 @@ Enterprise auth는 `scripts/write-enterprise-auth-smoke-plan.ps1` 또는 `.githu
 
 - 실제 Kubernetes cluster와 GitHub-hosted workflow evidence 수집.
 - 관리자/감사자/조직 관리자 워크플로우 보강, 실제 IdP/LDAP pilot smoke 실행과 `.osmu-run/latest-enterprise-auth-smoke.json` evidence 확보.
-- data-flow daily rollup과 materialized rollup store 기반 장기 analytics를 partition 또는 time-series 저장소로 확장하되, 현재 chargeback 일별 추세는 이 rollup을 활용해 먼저 제공한다.
+- data-flow daily rollup, materialized rollup store, monthly aggregate JSON/CSV 기반 장기 analytics를 운영 화면에서 제공하고, 다음 단계에서 partition 또는 전용 time-series 저장소로 확장한다.
 - tenant billing/chargeback: preview API, admin billing panel, data-flow daily rollup 기반 일별 chargeback trend와 CSV export, pricing policy 저장과 proposal/internal approval/commercial price-list reference, warning/critical threshold alert, alert notification preview/outbox/webhook/Slack/EMAIL SMTP relay send/adapter retry state, private/local webhook URL과 SMTP relay host 기본 차단, outbound payload size cap, generic notification/payment webhook HMAC signature header 옵션, payment provider generic/CARD/BANK/TAX/ERP webhook profile handoff/readiness, native payment provider adapter SPI/composite dispatch, 비용 리포트 CSV export, draft invoice CSV export/persistence/internal approval, final invoice/payment state workflow, payment provider handoff outbox/webhook send/adapter retry state, notification/payment adapter retry worker를 기반으로 실제 native provider API adapter, target commercial integration evidence, final commercial approval evidence를 보강.
 - S3 대체성 유지: host `aws`/`mc`, boto3, AWS SDK smoke에서 실제 사용 흐름이 깨지는 경우만 우선 보강하고, AWS 세부 parity 추적은 제품 영향이 확인될 때만 수행한다.
 - 운영 패키징: demo notes, release notes, troubleshooting, runbook, commercial approval evidence, operations handoff package target evidence 보강.

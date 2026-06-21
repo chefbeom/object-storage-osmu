@@ -47,6 +47,8 @@ class AdminRbacPolicyTest {
         assertFalse(policy.isAllowed("POST", "/api/admin/monitoring/data-flow/daily-rollup/materialize", "ORG_ADMIN"));
         assertFalse(policy.isAllowed("GET", "/api/admin/monitoring/data-flow/daily-rollup/materialized", "ORG_ADMIN"));
         assertFalse(policy.isAllowed("GET", "/api/admin/monitoring/data-flow/daily-rollup/materialized/export.csv", "ORG_ADMIN"));
+        assertFalse(policy.isAllowed("GET", "/api/admin/monitoring/data-flow/monthly-rollup", "ORG_ADMIN"));
+        assertFalse(policy.isAllowed("GET", "/api/admin/monitoring/data-flow/monthly-rollup/export.csv", "ORG_ADMIN"));
         assertFalse(policy.isAllowed("GET", "/api/admin/monitoring/data-flow/retention/status", "ORG_ADMIN"));
         assertFalse(policy.isAllowed("POST", "/api/admin/monitoring/data-flow/retention/run", "ORG_ADMIN"));
         assertFalse(policy.isAllowed("GET", "/api/admin/storage-expansion/summary", "ORG_ADMIN"));
@@ -100,6 +102,8 @@ class AdminRbacPolicyTest {
         assertFalse(policy.isAllowed("POST", "/api/admin/monitoring/data-flow/daily-rollup/materialize", "AUDITOR"));
         assertFalse(policy.isAllowed("GET", "/api/admin/monitoring/data-flow/daily-rollup/materialized", "AUDITOR"));
         assertFalse(policy.isAllowed("GET", "/api/admin/monitoring/data-flow/daily-rollup/materialized/export.csv", "AUDITOR"));
+        assertFalse(policy.isAllowed("GET", "/api/admin/monitoring/data-flow/monthly-rollup", "AUDITOR"));
+        assertFalse(policy.isAllowed("GET", "/api/admin/monitoring/data-flow/monthly-rollup/export.csv", "AUDITOR"));
         assertFalse(policy.isAllowed("GET", "/api/admin/monitoring/data-flow/retention/status", "AUDITOR"));
         assertFalse(policy.isAllowed("POST", "/api/admin/monitoring/data-flow/retention/run", "AUDITOR"));
         assertFalse(policy.isAllowed("GET", "/api/admin/storage-expansion/summary", "AUDITOR"));

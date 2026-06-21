@@ -39,6 +39,7 @@ import com.example.osmu.monitoring.DataFlowDailyRollupMaterializationResponse;
 import com.example.osmu.monitoring.DataFlowEventFilter;
 import com.example.osmu.monitoring.DataFlowMonitoringResponse;
 import com.example.osmu.monitoring.DataFlowMonitoringService;
+import com.example.osmu.monitoring.DataFlowMonthlyRollupResponse;
 import com.example.osmu.quota.QuotaPolicyResponse;
 import com.example.osmu.quota.QuotaPolicyService;
 import com.example.osmu.storage.ObjectStorageAdapter;
@@ -394,6 +395,52 @@ public class AdminController {
         return ResponseEntity.ok()
                 .contentType(MediaType.parseMediaType("text/csv"))
                 .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"osmu-data-flow-daily-rollup-materialized.csv\"")
+                .body(csv);
+    }
+
+    @GetMapping("/monitoring/data-flow/monthly-rollup")
+    public ApiResponse<DataFlowMonthlyRollupResponse> dataFlowMonthlyRollup(
+            @RequestParam(name = "bucketName", required = false) String bucketName,
+            @RequestParam(name = "actorId", required = false) String actorId,
+            @RequestParam(name = "source", required = false) String source,
+            @RequestParam(name = "operation", required = false) String operation,
+            @RequestParam(name = "status", required = false) String status,
+            @RequestParam(name = "from", required = false) String from,
+            @RequestParam(name = "to", required = false) String to,
+            @RequestParam(name = "months", required = false) Integer months,
+            @RequestParam(name = "limit", required = false) Integer limit,
+            @RequestParam(name = "materialized", required = false) Boolean materialized
+    ) {
+        return ApiResponse.of(dataFlowMonitoringService.monthlyRollup(
+                dataFlowFilter(bucketName, actorId, source, operation, status, from, to),
+                months,
+                limit,
+                Boolean.TRUE.equals(materialized)
+        ));
+    }
+
+    @GetMapping(value = "/monitoring/data-flow/monthly-rollup/export.csv", produces = "text/csv")
+    public ResponseEntity<String> exportDataFlowMonthlyRollupCsv(
+            @RequestParam(name = "bucketName", required = false) String bucketName,
+            @RequestParam(name = "actorId", required = false) String actorId,
+            @RequestParam(name = "source", required = false) String source,
+            @RequestParam(name = "operation", required = false) String operation,
+            @RequestParam(name = "status", required = false) String status,
+            @RequestParam(name = "from", required = false) String from,
+            @RequestParam(name = "to", required = false) String to,
+            @RequestParam(name = "months", required = false) Integer months,
+            @RequestParam(name = "limit", required = false) Integer limit,
+            @RequestParam(name = "materialized", required = false) Boolean materialized
+    ) {
+        String csv = dataFlowMonitoringService.exportMonthlyRollupCsv(
+                dataFlowFilter(bucketName, actorId, source, operation, status, from, to),
+                months,
+                limit,
+                Boolean.TRUE.equals(materialized)
+        );
+        return ResponseEntity.ok()
+                .contentType(MediaType.parseMediaType("text/csv"))
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"osmu-data-flow-monthly-rollup.csv\"")
                 .body(csv);
     }
 

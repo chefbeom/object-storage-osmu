@@ -211,6 +211,8 @@
         @materialize-data-flow-daily-rollup="handleMaterializeDataFlowDailyRollup"
         @load-materialized-data-flow-daily-rollup="handleLoadMaterializedDataFlowDailyRollup"
         @export-materialized-data-flow-daily-rollup-csv="handleExportMaterializedDataFlowDailyRollupCsv"
+        @load-data-flow-monthly-rollup="handleLoadDataFlowMonthlyRollup"
+        @export-data-flow-monthly-rollup-csv="handleExportDataFlowMonthlyRollupCsv"
         @refresh-data-flow-retention="loadDataFlowRetention"
         @run-data-flow-retention="handleRunDataFlowRetention"
         @reset-data-flow-filter="handleResetDataFlowFilter"
@@ -579,6 +581,7 @@ import {
   downloadObjectVersion,
   downloadDataFlowDailyRollupCsv,
   downloadMaterializedDataFlowDailyRollupCsv,
+  downloadDataFlowMonthlyRollupCsv,
   downloadDataFlowMonitoringCsv,
   dryRunObjectLifecycleRule,
   finalizeChargebackInvoiceDraft,
@@ -611,6 +614,7 @@ import {
   getDashboardSummary,
   getDashboardWidgetCatalog,
   getDataFlowDailyRollup,
+  getDataFlowMonthlyRollup,
   getDataFlowRetentionStatus,
   getMaterializedDataFlowDailyRollup,
   getDataFlowMonitoring,
@@ -1255,7 +1259,7 @@ const lifecycleXml = reactive({ content: '', importedCount: null, pending: false
 const bucketLifecycleXml = reactive({ content: '', ruleCount: 0, savedCount: null, pending: false })
 const bucketTags = reactive({ content: '', tagCount: 0, savedCount: null, pending: false })
 const auditFilter = reactive({ eventType: '', actorId: '', requestId: '', targetType: '', targetId: '', result: '', from: '', to: '', limit: 50 })
-const dataFlowFilter = reactive({ from: '', to: '', bucketName: '', actorId: '', source: '', operation: '', status: '', limit: 50 })
+const dataFlowFilter = reactive({ from: '', to: '', bucketName: '', actorId: '', source: '', operation: '', status: '', limit: 50, months: 12, monthlyMaterialized: false })
 const uploadState = reactive({ active: false, loadedBytes: 0, totalBytes: 0, percent: 0, message: '', retryable: false })
 const dataFlowMonitoring = reactive({
   traffic: {
@@ -1281,6 +1285,7 @@ const dataFlowMonitoring = reactive({
   trendPoints: [],
   recentEvents: [],
   dailyRollup: defaultDataFlowDailyRollup(),
+  monthlyRollup: defaultDataFlowMonthlyRollup(),
   generatedAt: '',
 })
 const confirmDialog = reactive({ open: false, title: '', message: '', confirmLabel: '확인', pending: false, action: null })
@@ -2500,9 +2505,10 @@ async function loadDashboardSummary() {
 
 async function loadDataFlowMonitoring() {
   const payload = dataFlowFilterPayload()
-  const [snapshotResult, rollupResult] = await Promise.all([
+  const [snapshotResult, rollupResult, monthlyRollupResult] = await Promise.all([
     safeRequest(() => getDataFlowMonitoring(payload), null),
     safeRequest(() => getDataFlowDailyRollup(payload), null),
+    safeRequest(() => getDataFlowMonthlyRollup(payload), null),
   ])
   if (snapshotResult?.data) {
     applyDataFlowMonitoring(snapshotResult.data)
@@ -2510,12 +2516,22 @@ async function loadDataFlowMonitoring() {
   if (rollupResult?.data) {
     applyDataFlowDailyRollup(rollupResult.data)
   }
+  if (monthlyRollupResult?.data) {
+    applyDataFlowMonthlyRollup(monthlyRollupResult.data)
+  }
 }
 
 async function loadDataFlowDailyRollup() {
   const result = await safeRequest(() => getDataFlowDailyRollup(dataFlowFilterPayload()), null)
   if (result?.data) {
     applyDataFlowDailyRollup(result.data)
+  }
+}
+
+async function loadDataFlowMonthlyRollup() {
+  const result = await safeRequest(() => getDataFlowMonthlyRollup(dataFlowFilterPayload()), null)
+  if (result?.data) {
+    applyDataFlowMonthlyRollup(result.data)
   }
 }
 
@@ -3007,6 +3023,22 @@ async function handleExportMaterializedDataFlowDailyRollupCsv() {
   if (blob) {
     downloadBlob(blob, `osmu-data-flow-daily-rollup-materialized-${new Date().toISOString().slice(0, 10)}.csv`)
     setStatusMessage('Materialized data flow daily rollup CSV export complete.')
+  }
+}
+
+async function handleLoadDataFlowMonthlyRollup() {
+  const result = await runAction(() => getDataFlowMonthlyRollup(dataFlowFilterPayload()))
+  if (result?.data) {
+    applyDataFlowMonthlyRollup(result.data)
+    setStatusMessage(`Data flow monthly rollup loaded: ${formatCount(result.data.pointCount || 0)} points.`)
+  }
+}
+
+async function handleExportDataFlowMonthlyRollupCsv() {
+  const blob = await runAction(() => downloadDataFlowMonthlyRollupCsv(dataFlowFilterPayload()))
+  if (blob) {
+    downloadBlob(blob, `osmu-data-flow-monthly-rollup-${new Date().toISOString().slice(0, 10)}.csv`)
+    setStatusMessage('Data flow monthly rollup CSV export complete.')
   }
 }
 
@@ -4151,9 +4183,42 @@ function defaultDataFlowDailyRollup() {
   }
 }
 
+function defaultDataFlowMonthlyRollup() {
+  return {
+    mode: 'DATA_FLOW_MONTHLY_ROLLUP',
+    rollupSource: 'DATA_FLOW_EVENTS',
+    granularity: 'UTC_MONTH',
+    monthWindow: 12,
+    pointLimit: 0,
+    pointCount: 0,
+    points: [],
+    generatedAt: '',
+    scopePolicy: '',
+    storagePolicy: '',
+    note: '',
+  }
+}
+
 function normalizeDataFlowDailyRollupPoint(point = {}) {
   return {
     day: point.day || '',
+    bucketName: point.bucketName || '',
+    source: point.source || '',
+    operation: point.operation || '',
+    successCount: Number(point.successCount || 0),
+    failureCount: Number(point.failureCount || 0),
+    cancelCount: Number(point.cancelCount || 0),
+    totalCount: Number(point.totalCount || 0),
+    uploadedBytes: Number(point.uploadedBytes || 0),
+    downloadedBytes: Number(point.downloadedBytes || 0),
+    copiedBytes: Number(point.copiedBytes || 0),
+    totalBytes: Number(point.totalBytes || 0),
+  }
+}
+
+function normalizeDataFlowMonthlyRollupPoint(point = {}) {
+  return {
+    month: point.month || '',
     bucketName: point.bucketName || '',
     source: point.source || '',
     operation: point.operation || '',
@@ -4176,6 +4241,24 @@ function applyDataFlowDailyRollup(data = {}) {
     ...defaultDataFlowDailyRollup(),
     ...data,
     dayWindow: Number(data.dayWindow || 30),
+    pointLimit: Number(data.pointLimit || 0),
+    pointCount: Number(data.pointCount ?? points.length),
+    points,
+    generatedAt: data.generatedAt || '',
+    scopePolicy: data.scopePolicy || '',
+    storagePolicy: data.storagePolicy || '',
+    note: data.note || '',
+  }
+}
+
+function applyDataFlowMonthlyRollup(data = {}) {
+  const points = Array.isArray(data.points)
+    ? data.points.map((point) => normalizeDataFlowMonthlyRollupPoint(point))
+    : []
+  dataFlowMonitoring.monthlyRollup = {
+    ...defaultDataFlowMonthlyRollup(),
+    ...data,
+    monthWindow: Number(data.monthWindow || 12),
     pointLimit: Number(data.pointLimit || 0),
     pointCount: Number(data.pointCount ?? points.length),
     points,
@@ -4236,6 +4319,7 @@ function resetDataFlowRetention() {
 function resetDataFlowMonitoring() {
   applyDataFlowMonitoring({})
   applyDataFlowDailyRollup({})
+  applyDataFlowMonthlyRollup({})
   resetDataFlowRetention()
 }
 
@@ -6200,6 +6284,8 @@ function handleResetDataFlowFilter() {
   dataFlowFilter.operation = ''
   dataFlowFilter.status = ''
   dataFlowFilter.limit = 50
+  dataFlowFilter.months = 12
+  dataFlowFilter.monthlyMaterialized = false
   loadDataFlowMonitoring()
 }
 
@@ -6230,6 +6316,8 @@ function dataFlowFilterPayload() {
     from: localDateTimeToIso(dataFlowFilter.from),
     to: localDateTimeToIso(dataFlowFilter.to),
     limit: dataFlowFilter.limit || 50,
+    months: dataFlowFilter.months || 12,
+    materialized: dataFlowFilter.monthlyMaterialized,
   }
 }
 

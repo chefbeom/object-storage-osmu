@@ -312,6 +312,15 @@ async function handleRequest(request, response) {
     sendCsv(response, 'osmu-data-flow-daily-rollup.csv', dataFlowDailyRollupCsv(dataFlowFilters(url)))
     return
   }
+  if (request.method === 'GET' && path === '/admin/monitoring/data-flow/monthly-rollup') {
+    const filters = dataFlowFilters(url)
+    sendJson(response, 200, apiData(filters.materialized ? materializedDataFlowMonthlyRollup(filters) : dataFlowMonthlyRollup(filters)))
+    return
+  }
+  if (request.method === 'GET' && path === '/admin/monitoring/data-flow/monthly-rollup/export.csv') {
+    sendCsv(response, 'osmu-data-flow-monthly-rollup.csv', dataFlowMonthlyRollupCsv(dataFlowFilters(url)))
+    return
+  }
   if (request.method === 'GET' && path === '/admin/monitoring/data-flow/export.csv') {
     sendCsv(response, 'osmu-data-flow.csv', dataFlowCsv(dataFlowFilters(url)))
     return
@@ -1034,7 +1043,9 @@ function dataFlowFilters(url) {
     from: url.searchParams.get('from') || '',
     to: url.searchParams.get('to') || '',
     days: url.searchParams.has('days') ? Number(url.searchParams.get('days')) : undefined,
+    months: url.searchParams.has('months') ? Number(url.searchParams.get('months')) : undefined,
     limit: url.searchParams.has('limit') ? Number(url.searchParams.get('limit')) : undefined,
+    materialized: url.searchParams.get('materialized') === 'true',
   }
 }
 
@@ -1256,6 +1267,148 @@ function materializedDataFlowDailyRollup(filters = {}) {
   }
 }
 
+function dataFlowMonthlyRollup(filters = {}) {
+  const months = Math.min(60, Math.max(1, Math.floor(Number(filters.months || 12))))
+  const limit = Math.min(1000, Math.max(1, Math.floor(Number(filters.limit || 200))))
+  const boundedFilters = { ...filters }
+  if (!boundedFilters.from) {
+    const from = new Date()
+    from.setUTCDate(1)
+    from.setUTCHours(0, 0, 0, 0)
+    from.setUTCMonth(from.getUTCMonth() - (months - 1))
+    boundedFilters.from = from.toISOString()
+  }
+  const buckets = new Map()
+  for (const event of filterDataFlowEvents(state.dataFlowEvents || [], boundedFilters)) {
+    const parsed = Date.parse(event.createdAt)
+    if (Number.isNaN(parsed)) continue
+    const month = new Date(parsed).toISOString().slice(0, 7)
+    const bucketName = event.bucketName || 'unknown'
+    const source = String(event.source || 'unknown').toLowerCase()
+    const operation = String(event.operation || 'unknown').toLowerCase()
+    const key = `${month}|${bucketName}|${source}|${operation}`
+    if (!buckets.has(key)) {
+      buckets.set(key, emptyMonthlyRollupPoint(month, bucketName, source, operation))
+    }
+    recordEventIntoMonthlyPoint(buckets.get(key), event)
+  }
+  const points = sortedMonthlyRollupPoints([...buckets.values()], limit)
+  return {
+    mode: 'DATA_FLOW_MONTHLY_ROLLUP',
+    rollupSource: 'DATA_FLOW_EVENTS',
+    granularity: 'UTC_MONTH',
+    monthWindow: months,
+    pointLimit: limit,
+    pointCount: points.length,
+    points,
+    generatedAt: new Date().toISOString(),
+    scopePolicy: 'ADMIN-only long-term data-flow analytics rollup. Query filters are identical to the detailed data-flow monitoring endpoint.',
+    storagePolicy: 'Aggregates mock runtime data-flow events into UTC months; MariaDB mode aggregates data_flow_events.',
+    note: 'This is an OSMU operations analytics rollup, not AWS billing parity; object keys and raw event messages are not returned.',
+  }
+}
+
+function materializedDataFlowMonthlyRollup(filters = {}) {
+  const months = Math.min(60, Math.max(1, Math.floor(Number(filters.months || 12))))
+  const limit = Math.min(1000, Math.max(1, Math.floor(Number(filters.limit || 200))))
+  const boundedFilters = { ...filters }
+  if (!boundedFilters.from) {
+    const from = new Date()
+    from.setUTCDate(1)
+    from.setUTCHours(0, 0, 0, 0)
+    from.setUTCMonth(from.getUTCMonth() - (months - 1))
+    boundedFilters.from = from.toISOString()
+  }
+  const actorId = materializedDimension(boundedFilters.actorId)
+  const status = materializedDimension(boundedFilters.status)
+  const fromDay = dataFlowFilterDay(boundedFilters.from)
+  const toDay = dataFlowFilterDay(boundedFilters.to)
+  const buckets = new Map()
+  for (const point of state.dataFlowDailyRollups) {
+    if (boundedFilters.bucketName && point.bucketName !== boundedFilters.bucketName) continue
+    if (point.actorId !== actorId) continue
+    if (boundedFilters.source && String(point.source || '').toLowerCase() !== String(boundedFilters.source).toLowerCase()) continue
+    if (boundedFilters.operation && String(point.operation || '').toLowerCase() !== String(boundedFilters.operation).toLowerCase()) continue
+    if (point.status !== status) continue
+    if (fromDay && point.day < fromDay) continue
+    if (toDay && point.day > toDay) continue
+    const month = String(point.day || '').slice(0, 7)
+    if (!month) continue
+    const key = `${month}|${point.bucketName}|${point.source}|${point.operation}`
+    if (!buckets.has(key)) {
+      buckets.set(key, emptyMonthlyRollupPoint(month, point.bucketName, point.source, point.operation))
+    }
+    recordDailyPointIntoMonthlyPoint(buckets.get(key), point)
+  }
+  const points = sortedMonthlyRollupPoints([...buckets.values()], limit)
+  return {
+    mode: 'DATA_FLOW_MONTHLY_ROLLUP_MATERIALIZED',
+    rollupSource: 'DATA_FLOW_DAILY_ROLLUP_MATERIALIZED',
+    granularity: 'UTC_MONTH',
+    monthWindow: months,
+    pointLimit: limit,
+    pointCount: points.length,
+    points,
+    generatedAt: new Date().toISOString(),
+    scopePolicy: 'ADMIN-only long-term data-flow analytics rollup. Query filters are identical to the detailed data-flow monitoring endpoint.',
+    storagePolicy: 'Aggregates mock materialized daily rollup rows into UTC months; MariaDB mode reads data_flow_daily_rollups.',
+    note: 'This is an OSMU operations analytics rollup, not AWS billing parity; object keys and raw event messages are not returned.',
+  }
+}
+
+function emptyMonthlyRollupPoint(month, bucketName, source, operation) {
+  return {
+    month,
+    bucketName,
+    source,
+    operation,
+    successCount: 0,
+    failureCount: 0,
+    cancelCount: 0,
+    totalCount: 0,
+    uploadedBytes: 0,
+    downloadedBytes: 0,
+    copiedBytes: 0,
+    totalBytes: 0,
+  }
+}
+
+function recordEventIntoMonthlyPoint(point, event) {
+  point.totalCount += 1
+  if (event.status === 'SUCCESS') {
+    point.successCount += 1
+    if (event.eventType === 'UPLOAD') point.uploadedBytes += Math.max(0, Number(event.sizeBytes || 0))
+    if (event.eventType === 'DOWNLOAD') point.downloadedBytes += Math.max(0, Number(event.sizeBytes || 0))
+    if (event.eventType === 'COPY') point.copiedBytes += Math.max(0, Number(event.sizeBytes || 0))
+  }
+  if (event.eventType === 'FAILURE' || event.status === 'FAILED') point.failureCount += 1
+  if (event.eventType === 'CANCEL' || event.status === 'CANCELLED') point.cancelCount += 1
+  point.totalBytes = point.uploadedBytes + point.downloadedBytes + point.copiedBytes
+}
+
+function recordDailyPointIntoMonthlyPoint(target, point) {
+  target.successCount += Number(point.successCount || 0)
+  target.failureCount += Number(point.failureCount || 0)
+  target.cancelCount += Number(point.cancelCount || 0)
+  target.totalCount += Number(point.totalCount || 0)
+  target.uploadedBytes += Number(point.uploadedBytes || 0)
+  target.downloadedBytes += Number(point.downloadedBytes || 0)
+  target.copiedBytes += Number(point.copiedBytes || 0)
+  target.totalBytes = target.uploadedBytes + target.downloadedBytes + target.copiedBytes
+}
+
+function sortedMonthlyRollupPoints(points, limit) {
+  return points
+    .sort((left, right) => (
+      right.month.localeCompare(left.month)
+      || right.totalCount - left.totalCount
+      || left.bucketName.localeCompare(right.bucketName)
+      || left.source.localeCompare(right.source)
+      || left.operation.localeCompare(right.operation)
+    ))
+    .slice(0, limit)
+}
+
 function materializedDimension(value) {
   return value ? String(value) : ''
 }
@@ -1334,6 +1487,28 @@ function dataFlowDailyRollupCsv(filters = {}) {
 
 function materializedDataFlowDailyRollupCsv(filters = {}) {
   return dataFlowDailyRollupPointsCsv(materializedDataFlowDailyRollup(filters).points)
+}
+
+function dataFlowMonthlyRollupCsv(filters = {}) {
+  const rollup = filters.materialized ? materializedDataFlowMonthlyRollup(filters) : dataFlowMonthlyRollup(filters)
+  const rows = [
+    ['month', 'bucketName', 'source', 'operation', 'successCount', 'failureCount', 'cancelCount', 'totalCount', 'uploadedBytes', 'downloadedBytes', 'copiedBytes', 'totalBytes'],
+    ...rollup.points.map((point) => [
+      point.month,
+      point.bucketName,
+      point.source,
+      point.operation,
+      point.successCount,
+      point.failureCount,
+      point.cancelCount,
+      point.totalCount,
+      point.uploadedBytes,
+      point.downloadedBytes,
+      point.copiedBytes,
+      point.totalBytes,
+    ]),
+  ]
+  return rows.map((row) => row.map(csvCell).join(',')).join('\n') + '\n'
 }
 
 function dataFlowDailyRollupPointsCsv(points = []) {
@@ -3241,6 +3416,18 @@ async function runSelfTest() {
     }
     if (!readiness.data.items.some((item) => item.code === 'OPERATIONS_READINESS_CONVERGENCE')) {
       throw new Error('readiness convergence item self-test failed')
+    }
+    const dataFlowMonthlyRollup = await (await fetch(`${base}/admin/monitoring/data-flow/monthly-rollup?months=12&limit=200`, {
+      headers: { Authorization: `Bearer ${login.data.accessToken}` },
+    })).json()
+    if (!dataFlowMonthlyRollup.data || dataFlowMonthlyRollup.data.granularity !== 'UTC_MONTH' || !Array.isArray(dataFlowMonthlyRollup.data.points)) {
+      throw new Error('data flow monthly rollup self-test failed')
+    }
+    const dataFlowMonthlyRollupCsv = await (await fetch(`${base}/admin/monitoring/data-flow/monthly-rollup/export.csv?months=12&limit=200`, {
+      headers: { Authorization: `Bearer ${login.data.accessToken}` },
+    })).text()
+    if (!dataFlowMonthlyRollupCsv.includes('"month","bucketName","source","operation"')) {
+      throw new Error('data flow monthly rollup CSV self-test failed')
     }
     const savedPricingPolicy = await (await fetch(`${base}/admin/billing/pricing-policy`, {
       method: 'PUT',

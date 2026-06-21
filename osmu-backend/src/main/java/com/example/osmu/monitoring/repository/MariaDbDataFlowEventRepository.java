@@ -5,6 +5,7 @@ import com.example.osmu.common.error.ApiException;
 import com.example.osmu.monitoring.DataFlowDailyRollupPointResponse;
 import com.example.osmu.monitoring.DataFlowEventFilter;
 import com.example.osmu.monitoring.DataFlowEventRecord;
+import com.example.osmu.monitoring.DataFlowMonthlyRollupPointResponse;
 import java.sql.Connection;
 import java.sql.Date;
 import java.sql.DriverManager;
@@ -228,6 +229,82 @@ public class MariaDbDataFlowEventRepository implements DataFlowEventRepository {
     }
 
     @Override
+    public List<DataFlowMonthlyRollupPointResponse> monthlyRollup(DataFlowEventFilter filter, int limit) {
+        ensureSchema();
+        DataFlowEventFilter safeFilter = filter == null ? DataFlowEventFilter.empty() : filter;
+        StringBuilder sql = new StringBuilder("""
+                SELECT
+                    CONCAT(YEAR(created_at), '-', LPAD(MONTH(created_at), 2, '0')) AS rollup_month,
+                    bucket_name,
+                    LOWER(source) AS source,
+                    LOWER(operation) AS operation,
+                    SUM(CASE WHEN status = 'SUCCESS' THEN 1 ELSE 0 END) AS success_count,
+                    SUM(CASE WHEN event_type = 'FAILURE' OR status = 'FAILED' THEN 1 ELSE 0 END) AS failure_count,
+                    SUM(CASE WHEN event_type = 'CANCEL' OR status = 'CANCELLED' THEN 1 ELSE 0 END) AS cancel_count,
+                    COUNT(*) AS total_count,
+                    SUM(CASE WHEN event_type = 'UPLOAD' AND status = 'SUCCESS' THEN size_bytes ELSE 0 END) AS uploaded_bytes,
+                    SUM(CASE WHEN event_type = 'DOWNLOAD' AND status = 'SUCCESS' THEN size_bytes ELSE 0 END) AS downloaded_bytes,
+                    SUM(CASE WHEN event_type = 'COPY' AND status = 'SUCCESS' THEN size_bytes ELSE 0 END) AS copied_bytes
+                FROM data_flow_events
+                WHERE 1 = 1
+                """);
+        List<Object> parameters = appendFilter(sql, safeFilter);
+        sql.append("""
+                GROUP BY YEAR(created_at), MONTH(created_at), bucket_name, LOWER(source), LOWER(operation)
+                ORDER BY YEAR(created_at) DESC, MONTH(created_at) DESC, total_count DESC, bucket_name ASC, source ASC, operation ASC
+                LIMIT ?
+                """);
+        parameters.add(Math.max(0, limit));
+        try (Connection connection = connect();
+             PreparedStatement statement = connection.prepareStatement(sql.toString())) {
+            bindParameters(statement, parameters);
+            try (ResultSet resultSet = statement.executeQuery()) {
+                return collectMonthlyRollup(resultSet);
+            }
+        } catch (SQLException exception) {
+            throw databaseException(exception);
+        }
+    }
+
+    @Override
+    public List<DataFlowMonthlyRollupPointResponse> materializedMonthlyRollup(DataFlowEventFilter filter, int limit) {
+        ensureSchema();
+        DataFlowEventFilter safeFilter = filter == null ? DataFlowEventFilter.empty() : filter;
+        StringBuilder sql = new StringBuilder("""
+                SELECT
+                    CONCAT(YEAR(rollup_day), '-', LPAD(MONTH(rollup_day), 2, '0')) AS rollup_month,
+                    bucket_name,
+                    source,
+                    operation,
+                    SUM(success_count) AS success_count,
+                    SUM(failure_count) AS failure_count,
+                    SUM(cancel_count) AS cancel_count,
+                    SUM(total_count) AS total_count,
+                    SUM(uploaded_bytes) AS uploaded_bytes,
+                    SUM(downloaded_bytes) AS downloaded_bytes,
+                    SUM(copied_bytes) AS copied_bytes
+                FROM data_flow_daily_rollups
+                WHERE 1 = 1
+                """);
+        List<Object> parameters = appendMaterializedFilter(sql, safeFilter);
+        sql.append("""
+                GROUP BY YEAR(rollup_day), MONTH(rollup_day), bucket_name, source, operation
+                ORDER BY YEAR(rollup_day) DESC, MONTH(rollup_day) DESC, total_count DESC, bucket_name ASC, source ASC, operation ASC
+                LIMIT ?
+                """);
+        parameters.add(Math.max(0, limit));
+        try (Connection connection = connect();
+             PreparedStatement statement = connection.prepareStatement(sql.toString())) {
+            bindParameters(statement, parameters);
+            try (ResultSet resultSet = statement.executeQuery()) {
+                return collectMonthlyRollup(resultSet);
+            }
+        } catch (SQLException exception) {
+            throw databaseException(exception);
+        }
+    }
+
+    @Override
     public long nextId() {
         ensureSchema();
         String sql = "SELECT COALESCE(MAX(id), 0) + 1 AS next_id FROM data_flow_events";
@@ -406,6 +483,30 @@ public class MariaDbDataFlowEventRepository implements DataFlowEventRepository {
         List<DataFlowEventRecord> records = new ArrayList<>();
         while (resultSet.next()) {
             records.add(mapRow(resultSet));
+        }
+        return records;
+    }
+
+    private List<DataFlowMonthlyRollupPointResponse> collectMonthlyRollup(ResultSet resultSet) throws SQLException {
+        List<DataFlowMonthlyRollupPointResponse> records = new ArrayList<>();
+        while (resultSet.next()) {
+            long uploadedBytes = resultSet.getLong("uploaded_bytes");
+            long downloadedBytes = resultSet.getLong("downloaded_bytes");
+            long copiedBytes = resultSet.getLong("copied_bytes");
+            records.add(new DataFlowMonthlyRollupPointResponse(
+                    resultSet.getString("rollup_month"),
+                    resultSet.getString("bucket_name"),
+                    resultSet.getString("source"),
+                    resultSet.getString("operation"),
+                    resultSet.getLong("success_count"),
+                    resultSet.getLong("failure_count"),
+                    resultSet.getLong("cancel_count"),
+                    resultSet.getLong("total_count"),
+                    uploadedBytes,
+                    downloadedBytes,
+                    copiedBytes,
+                    uploadedBytes + downloadedBytes + copiedBytes
+            ));
         }
         return records;
     }
