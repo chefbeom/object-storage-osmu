@@ -1766,7 +1766,7 @@ ID:
 - 절차: Access Key form에서 bucket별 permission scope를 추가하고 발급한다.
 - 기대 결과: 요청 payload가 `bucketScopes` 배열로 전송되고, 생성된 Access Key 목록에 bucket별 scope가 표시된다.
 - 우선순위: P1
-- 자동화 여부: Automated (`npm run test:unit` access key scope helper and API wrapper payload). Browser click/list render E2E pending.
+- 자동화 여부: Automated (`npm run test:unit` access key scope helper and API wrapper payload, Browser E2E scope add/remove/create and generated key list render).
 
 ### TC-FE-005
 

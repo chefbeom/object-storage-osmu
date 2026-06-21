@@ -230,9 +230,16 @@ test('developer login lands on S3 API console with access key controls', async (
   await page.getByTestId('access-key-bucket-select').selectOption(developerBucketName)
   await page.getByTestId('access-key-scope-add-button').click()
   await expect(page.getByTestId('access-key-scope-list')).toContainText(developerBucketName)
+  await page.getByTestId('access-key-scope-remove-button').click()
+  await expect(page.getByTestId('access-key-scope-list')).toHaveCount(0)
+  await expect(page.getByTestId('access-key-create-button')).toBeDisabled()
+  await page.getByTestId('access-key-scope-add-button').click()
+  await expect(page.getByTestId('access-key-scope-list')).toContainText(developerBucketName)
   await page.getByTestId('access-key-create-button').click()
   await expect(page.getByTestId('access-key-secret-box')).toContainText('developer-e2e-secret')
   await expect(page.getByTestId('status-alert')).toContainText('developer-browser-key Access Key 발급 완료')
+  await expect(page.getByTestId('access-key-list')).toContainText('developer-browser-key')
+  await expect(page.getByTestId('access-key-list')).toContainText(developerBucketName)
 })
 
 test('admin dashboard shows operations readiness convergence handoff', async ({ page }) => {
