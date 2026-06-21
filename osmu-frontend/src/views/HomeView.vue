@@ -1104,6 +1104,27 @@ const dashboardReadiness = reactive({
     scopePolicy: '',
     secretPolicy: '',
   },
+  securityEvidence: {
+    result: '',
+    generatedAt: '',
+    failureCount: 0,
+    allowSyntheticEvidence: false,
+    inputs: {},
+    promoted: {},
+    source: {},
+    images: {},
+    checks: [],
+    imageSigning: {
+      result: '',
+      failureCount: 0,
+    },
+    containerSecurity: {
+      result: '',
+      failureCount: 0,
+    },
+    decisionRule: '',
+    secretPolicy: '',
+  },
   secretRotationEvidence: {
     result: '',
     generatedAt: '',
@@ -5261,6 +5282,7 @@ function applyDashboardReadiness(data) {
     operationsReadinessArtifactImport: normalizeOperationsReadinessArtifactImport(data.operationsReadinessArtifactImport),
     operationsReadinessFinalize: normalizeOperationsReadinessFinalize(data.operationsReadinessFinalize),
     operationsHandoffPackage: normalizeOperationsHandoffPackage(data.operationsHandoffPackage),
+    securityEvidence: normalizeSecurityEvidence(data.securityEvidence),
     secretRotationEvidence: normalizeSecretRotationEvidence(data.secretRotationEvidence),
     commercialIntegrationEvidence: normalizeCommercialIntegrationEvidence(data.commercialIntegrationEvidence),
     commercialApprovalEvidence: normalizeCommercialApprovalEvidence(data.commercialApprovalEvidence),
@@ -5476,6 +5498,36 @@ function normalizeCommercialIntegrationEvidence(report = {}) {
     checks: Array.isArray(report?.checks) ? report.checks : [],
     decisionRule: report?.decisionRule || '',
     scopePolicy: report?.scopePolicy || '',
+    secretPolicy: report?.secretPolicy || '',
+  }
+}
+
+function normalizeSecurityEvidence(report = {}) {
+  const imageSigning = report?.imageSigning || {}
+  const containerSecurity = report?.containerSecurity || {}
+  return {
+    result: report?.result || '',
+    generatedAt: report?.generatedAt || '',
+    failureCount: Number(report?.failureCount || 0),
+    allowSyntheticEvidence: Boolean(report?.allowSyntheticEvidence),
+    inputs: report?.inputs && typeof report.inputs === 'object' ? report.inputs : {},
+    promoted: report?.promoted && typeof report.promoted === 'object' ? report.promoted : {},
+    source: report?.source && typeof report.source === 'object' ? report.source : {},
+    images: report?.images && typeof report.images === 'object' ? report.images : {},
+    checks: Array.isArray(report?.checks) ? report.checks : [],
+    imageSigning: {
+      ...imageSigning,
+      failureCount: Number(imageSigning?.failureCount || 0),
+    },
+    containerSecurity: {
+      ...containerSecurity,
+      failureCount: Number(containerSecurity?.failureCount || 0),
+      backendSbomPackageCount: Number(containerSecurity?.backendSbomPackageCount || 0),
+      backendSbomByteSize: Number(containerSecurity?.backendSbomByteSize || 0),
+      frontendSbomPackageCount: Number(containerSecurity?.frontendSbomPackageCount || 0),
+      frontendSbomByteSize: Number(containerSecurity?.frontendSbomByteSize || 0),
+    },
+    decisionRule: report?.decisionRule || '',
     secretPolicy: report?.secretPolicy || '',
   }
 }

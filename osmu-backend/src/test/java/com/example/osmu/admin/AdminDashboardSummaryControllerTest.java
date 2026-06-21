@@ -543,6 +543,119 @@ class AdminDashboardSummaryControllerTest {
                         """
         );
         Files.writeString(
+                Path.of(".osmu-run/latest-image-signing-evidence.json"),
+                """
+                        {
+                          "formatVersion": "osmu.image-signing-evidence.v1",
+                          "generatedAt": "2026-06-20T01:00:00Z",
+                          "result": "passed",
+                          "failureCount": 0,
+                          "version": "v0.1.0-rc.1",
+                          "commitSha": "abc123def456abc123def456abc123def456abcd",
+                          "sourceRunUrl": "https://github.example/osmu/actions/runs/104",
+                          "issuer": "https://token.actions.githubusercontent.com",
+                          "signingMode": "keyless-github-actions-oidc",
+                          "backend": {
+                            "versionRef": "registry.example/osmu-backend:v0.1.0-rc.1",
+                            "shaRef": "registry.example/osmu-backend:abc123def456abc123def456abc123def456abcd",
+                            "digest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+                            "versionSignatureVerified": true,
+                            "shaSignatureVerified": true
+                          },
+                          "frontend": {
+                            "versionRef": "registry.example/osmu-frontend:v0.1.0-rc.1",
+                            "shaRef": "registry.example/osmu-frontend:abc123def456abc123def456abc123def456abcd",
+                            "digest": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+                            "versionSignatureVerified": true,
+                            "shaSignatureVerified": true
+                          },
+                          "secretPolicy": "Evidence contains public image references, optional digests, workflow URL, and signature verification flags only; it does not contain registry credentials or tokens."
+                        }
+                        """
+        );
+        Files.writeString(
+                Path.of(".osmu-run/latest-container-security-evidence.json"),
+                """
+                        {
+                          "formatVersion": "osmu.container-security-evidence.v1",
+                          "generatedAt": "2026-06-20T01:05:00Z",
+                          "result": "failed",
+                          "failureCount": 1,
+                          "backendImage": "registry.example/osmu-backend:abc123def456abc123def456abc123def456abcd",
+                          "frontendImage": "registry.example/osmu-frontend:abc123def456abc123def456abc123def456abcd",
+                          "commitSha": "abc123def456abc123def456abc123def456abcd",
+                          "sourceRunUrl": "https://github.example/osmu/actions/runs/105",
+                          "artifactName": "osmu-container-security-abc123def456abc123def456abc123def456abcd",
+                          "scans": {
+                            "severity": "CRITICAL,HIGH",
+                            "ignoreUnfixed": true,
+                            "backendScanPassed": true,
+                            "frontendScanPassed": false
+                          },
+                          "sbom": {
+                            "format": "SPDX JSON",
+                            "backend": {
+                              "valid": true,
+                              "packageCount": 42,
+                              "byteSize": 4096,
+                              "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+                            },
+                            "frontend": {
+                              "valid": true,
+                              "packageCount": 38,
+                              "byteSize": 3072,
+                              "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+                            }
+                          },
+                          "secretPolicy": "Evidence contains image names, SBOM metadata, workflow URL, and scan pass flags only; it does not contain registry credentials or tokens."
+                        }
+                        """
+        );
+        Files.writeString(
+                Path.of(".osmu-run/latest-security-evidence-finalize.json"),
+                """
+                        {
+                          "formatVersion": "osmu.security-evidence-finalize.v1",
+                          "generatedAt": "2026-06-20T01:10:00Z",
+                          "result": "failed",
+                          "failureCount": 1,
+                          "allowSyntheticEvidence": false,
+                          "inputs": {
+                            "imageSigningEvidence": ".osmu-run/latest-image-signing-evidence.json",
+                            "containerSecurityEvidence": ".osmu-run/latest-container-security-evidence.json"
+                          },
+                          "promoted": {
+                            "imageSigningEvidence": ".osmu-run/latest-image-signing-evidence.json",
+                            "containerSecurityEvidence": ".osmu-run/latest-container-security-evidence.json",
+                            "actions": "promotion skipped because finalizer result is failed"
+                          },
+                          "source": {
+                            "imageSigningRunUrl": "https://github.example/osmu/actions/runs/104",
+                            "containerSecurityRunUrl": "https://github.example/osmu/actions/runs/105",
+                            "containerSecurityArtifactName": "osmu-container-security-abc123def456abc123def456abc123def456abcd"
+                          },
+                          "images": {
+                            "backendVersionRef": "registry.example/osmu-backend:v0.1.0-rc.1",
+                            "frontendVersionRef": "registry.example/osmu-frontend:v0.1.0-rc.1",
+                            "backendDigest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+                            "frontendDigest": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+                            "backendImage": "registry.example/osmu-backend:abc123def456abc123def456abc123def456abcd",
+                            "frontendImage": "registry.example/osmu-frontend:abc123def456abc123def456abc123def456abcd"
+                          },
+                          "checks": [
+                            {
+                              "name": "container security frontend scan",
+                              "passed": false,
+                              "detail": "frontend scan failed",
+                              "evidencePath": ".osmu-run/latest-container-security-evidence.json"
+                            }
+                          ],
+                          "decisionRule": "Security evidence finalization passes only when image signing evidence and container scan/SBOM evidence are present, parsed, passed, non-synthetic by default, and promotable to the standard latest evidence paths.",
+                          "secretPolicy": "Finalizer copies and summarizes existing evidence JSON only; it does not read or write registry credentials, signing keys, tokens, kubeconfig, or application secrets."
+                        }
+                        """
+        );
+        Files.writeString(
                 Path.of(".osmu-run/latest-secret-rotation-evidence.json"),
                 """
                         {
@@ -1573,6 +1686,19 @@ class AdminDashboardSummaryControllerTest {
                 .andExpect(jsonPath("$.data.operationsHandoffPackage.checks[0].id").value("runbook-reviewed"))
                 .andExpect(jsonPath("$.data.operationsHandoffPackage.checks[0].status").value("FAIL"))
                 .andExpect(jsonPath("$.data.operationsHandoffPackage.checks[1].evidenceRef").value("latest-commercial-integration-evidence-passed"))
+                .andExpect(jsonPath("$.data.securityEvidence.result").value("failed"))
+                .andExpect(jsonPath("$.data.securityEvidence.failureCount").value(1))
+                .andExpect(jsonPath("$.data.securityEvidence.inputs.imageSigningEvidence").value(".osmu-run/latest-image-signing-evidence.json"))
+                .andExpect(jsonPath("$.data.securityEvidence.source.containerSecurityArtifactName").value("osmu-container-security-abc123def456abc123def456abc123def456abcd"))
+                .andExpect(jsonPath("$.data.securityEvidence.images.backendDigest").value("sha256:1111111111111111111111111111111111111111111111111111111111111111"))
+                .andExpect(jsonPath("$.data.securityEvidence.checks[0].name").value("container security frontend scan"))
+                .andExpect(jsonPath("$.data.securityEvidence.imageSigning.result").value("passed"))
+                .andExpect(jsonPath("$.data.securityEvidence.imageSigning.version").value("v0.1.0-rc.1"))
+                .andExpect(jsonPath("$.data.securityEvidence.imageSigning.backendVersionSignatureVerified").value(true))
+                .andExpect(jsonPath("$.data.securityEvidence.containerSecurity.result").value("failed"))
+                .andExpect(jsonPath("$.data.securityEvidence.containerSecurity.frontendScanPassed").value(false))
+                .andExpect(jsonPath("$.data.securityEvidence.containerSecurity.backendSbomPackageCount").value(42))
+                .andExpect(jsonPath("$.data.securityEvidence.containerSecurity.frontendSbomSha256").value("bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"))
                 .andExpect(jsonPath("$.data.secretRotationEvidence.result").value("failed"))
                 .andExpect(jsonPath("$.data.secretRotationEvidence.environmentName").value("pilot-prod"))
                 .andExpect(jsonPath("$.data.secretRotationEvidence.rotationWindow.startedAt").value("2026-06-20T00:00:00Z"))
@@ -1642,6 +1768,8 @@ class AdminDashboardSummaryControllerTest {
                 .andExpect(jsonPath("$.data.storageBackendTelemetryEvidence.scopePolicy", org.hamcrest.Matchers.containsString("not AWS S3 parity work")))
                 .andExpect(jsonPath("$.data.items[?(@.code == 'OPERATIONS_HANDOFF_PACKAGE')].evidencePath").value(hasItem(".osmu-run/latest-operations-handoff-package.json")))
                 .andExpect(jsonPath("$.data.items[?(@.code == 'OPERATIONS_HANDOFF_PACKAGE')].remediationCommand").value(hasItem("powershell -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\write-operations-handoff-package.ps1")))
+                .andExpect(jsonPath("$.data.items[?(@.code == 'SECURITY_EVIDENCE_FINALIZE')].evidencePath").value(hasItem(".osmu-run/latest-security-evidence-finalize.json")))
+                .andExpect(jsonPath("$.data.items[?(@.code == 'SECURITY_EVIDENCE_FINALIZE')].remediationWorkflow").value(hasItem(".github/workflows/security-evidence-finalizer-ci.yml")))
                 .andExpect(jsonPath("$.data.items[?(@.code == 'SECRET_ROTATION_EVIDENCE')].evidencePath").value(hasItem(".osmu-run/latest-secret-rotation-evidence.json")))
                 .andExpect(jsonPath("$.data.items[?(@.code == 'SECRET_ROTATION_EVIDENCE')].remediationWorkflow").value(hasItem(".github/workflows/manual-secret-rotation-evidence.yml")))
                 .andExpect(jsonPath("$.data.items[?(@.code == 'COMMERCIAL_INTEGRATION_EVIDENCE')].evidencePath").value(hasItem(".osmu-run/latest-commercial-integration-evidence.json")))

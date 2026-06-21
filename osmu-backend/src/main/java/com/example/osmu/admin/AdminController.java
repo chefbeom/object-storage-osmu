@@ -127,6 +127,9 @@ public class AdminController {
     private final String operationsArtifactCollectionPlanReportPath;
     private final String operationsEvidenceHandoffReportPath;
     private final String operationsHandoffPackageReportPath;
+    private final String securityEvidenceFinalizeReportPath;
+    private final String imageSigningEvidenceReportPath;
+    private final String containerSecurityEvidenceReportPath;
     private final String secretRotationEvidenceReportPath;
     private final String commercialIntegrationEvidenceReportPath;
     private final String commercialApprovalEvidenceReportPath;
@@ -181,6 +184,9 @@ public class AdminController {
             @Value("${osmu.operations.readiness.artifact-collection-plan-report-path:.osmu-run/latest-operations-artifact-collection-plan.json}") String operationsArtifactCollectionPlanReportPath,
             @Value("${osmu.operations.readiness.evidence-handoff-report-path:.osmu-run/latest-operations-evidence-handoff.json}") String operationsEvidenceHandoffReportPath,
             @Value("${osmu.operations.readiness.handoff-package-report-path:.osmu-run/latest-operations-handoff-package.json}") String operationsHandoffPackageReportPath,
+            @Value("${osmu.operations.readiness.security-evidence-finalize-report-path:.osmu-run/latest-security-evidence-finalize.json}") String securityEvidenceFinalizeReportPath,
+            @Value("${osmu.operations.readiness.image-signing-evidence-report-path:.osmu-run/latest-image-signing-evidence.json}") String imageSigningEvidenceReportPath,
+            @Value("${osmu.operations.readiness.container-security-evidence-report-path:.osmu-run/latest-container-security-evidence.json}") String containerSecurityEvidenceReportPath,
             @Value("${osmu.operations.readiness.secret-rotation-evidence-report-path:.osmu-run/latest-secret-rotation-evidence.json}") String secretRotationEvidenceReportPath,
             @Value("${osmu.operations.readiness.commercial-integration-evidence-report-path:.osmu-run/latest-commercial-integration-evidence.json}") String commercialIntegrationEvidenceReportPath,
             @Value("${osmu.operations.readiness.commercial-approval-evidence-report-path:.osmu-run/latest-commercial-approval-evidence.json}") String commercialApprovalEvidenceReportPath,
@@ -234,6 +240,9 @@ public class AdminController {
         this.operationsArtifactCollectionPlanReportPath = blankToNull(operationsArtifactCollectionPlanReportPath);
         this.operationsEvidenceHandoffReportPath = blankToNull(operationsEvidenceHandoffReportPath);
         this.operationsHandoffPackageReportPath = blankToNull(operationsHandoffPackageReportPath);
+        this.securityEvidenceFinalizeReportPath = blankToNull(securityEvidenceFinalizeReportPath);
+        this.imageSigningEvidenceReportPath = blankToNull(imageSigningEvidenceReportPath);
+        this.containerSecurityEvidenceReportPath = blankToNull(containerSecurityEvidenceReportPath);
         this.secretRotationEvidenceReportPath = blankToNull(secretRotationEvidenceReportPath);
         this.commercialIntegrationEvidenceReportPath = blankToNull(commercialIntegrationEvidenceReportPath);
         this.commercialApprovalEvidenceReportPath = blankToNull(commercialApprovalEvidenceReportPath);
@@ -902,6 +911,7 @@ public class AdminController {
         DashboardOperationsReadinessArtifactImportResponse operationsReadinessArtifactImport = operationsReadinessArtifactImportSnapshot();
         DashboardOperationsReadinessFinalizeResponse operationsReadinessFinalize = operationsReadinessFinalizeSnapshot();
         DashboardOperationsHandoffPackageResponse operationsHandoffPackage = operationsHandoffPackageSnapshot();
+        DashboardSecurityEvidenceResponse securityEvidence = securityEvidenceSnapshot();
         DashboardSecretRotationEvidenceResponse secretRotationEvidence = secretRotationEvidenceSnapshot();
         DashboardCommercialIntegrationEvidenceResponse commercialIntegrationEvidence = commercialIntegrationEvidenceSnapshot();
         DashboardCommercialApprovalEvidenceResponse commercialApprovalEvidence = commercialApprovalEvidenceSnapshot();
@@ -933,6 +943,7 @@ public class AdminController {
                 operationsReadinessArtifactImport,
                 operationsReadinessFinalize,
                 operationsHandoffPackage,
+                securityEvidence,
                 secretRotationEvidence,
                 commercialIntegrationEvidence,
                 commercialApprovalEvidence,
@@ -1584,6 +1595,7 @@ public class AdminController {
 
         addOperationsEvidenceHandoffItem(items);
         addOperationsHandoffPackageItem(items);
+        addSecurityEvidenceItem(items);
         addSecretRotationEvidenceItem(items);
         addCommercialIntegrationEvidenceItem(items);
         addCommercialApprovalEvidenceItem(items);
@@ -2369,6 +2381,156 @@ public class AdminController {
                 jsonText(snapshot, "currentBottleneckTitle"),
                 jsonInt(snapshot, "recommendedCommandCount")
         );
+    }
+
+    private void addSecurityEvidenceItem(java.util.ArrayList<DashboardReadinessItemResponse> items) {
+        DashboardSecurityEvidenceResponse evidence = securityEvidenceSnapshot();
+        if (evidence.result().isBlank() || "passed".equalsIgnoreCase(evidence.result())) {
+            return;
+        }
+        addReadinessItem(
+                items,
+                "WARNING",
+                "OPERATIONS",
+                "SECURITY_EVIDENCE_FINALIZE",
+                "Security evidence finalizer is %s: failures=%d, image=%s, container=%s.".formatted(
+                        evidence.result(),
+                        evidence.failureCount(),
+                        evidence.imageSigning().result().isBlank() ? "missing" : evidence.imageSigning().result(),
+                        evidence.containerSecurity().result().isBlank() ? "missing" : evidence.containerSecurity().result()
+                ),
+                "dashboard",
+                "dashboard-readiness-panel",
+                "Security evidence",
+                securityEvidenceFinalizeReportPath == null ? "" : securityEvidenceFinalizeReportPath,
+                "powershell -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\finalize-security-evidence.ps1",
+                ".github/workflows/security-evidence-finalizer-ci.yml",
+                "",
+                evidence.secretPolicy().isBlank()
+                        ? "Promote non-synthetic image signing and container scan/SBOM evidence before production/B2B readiness."
+                        : evidence.secretPolicy()
+        );
+    }
+
+    private DashboardSecurityEvidenceResponse securityEvidenceSnapshot() {
+        JsonNode finalizeReport = readOptionalJsonReport(securityEvidenceFinalizeReportPath);
+        DashboardImageSigningEvidenceResponse imageSigning = imageSigningEvidenceSnapshot();
+        DashboardContainerSecurityEvidenceResponse containerSecurity = containerSecurityEvidenceSnapshot();
+        if (finalizeReport == null) {
+            if (imageSigning.result().isBlank() && containerSecurity.result().isBlank()) {
+                return DashboardSecurityEvidenceResponse.empty();
+            }
+            return new DashboardSecurityEvidenceResponse(
+                    "",
+                    "",
+                    0,
+                    false,
+                    Map.of(),
+                    Map.of(),
+                    Map.of(),
+                    Map.of(),
+                    List.of(),
+                    imageSigning,
+                    containerSecurity,
+                    "",
+                    ""
+            );
+        }
+        return new DashboardSecurityEvidenceResponse(
+                jsonText(finalizeReport, "result"),
+                jsonText(finalizeReport, "generatedAt"),
+                jsonInt(finalizeReport, "failureCount"),
+                jsonBoolean(finalizeReport, "allowSyntheticEvidence"),
+                Map.copyOf(jsonTextMap(finalizeReport.path("inputs"))),
+                Map.copyOf(jsonTextMap(finalizeReport.path("promoted"))),
+                Map.copyOf(jsonTextMap(finalizeReport.path("source"))),
+                Map.copyOf(jsonTextMap(finalizeReport.path("images"))),
+                securityEvidenceChecks(finalizeReport.path("checks")),
+                imageSigning,
+                containerSecurity,
+                jsonText(finalizeReport, "decisionRule"),
+                jsonText(finalizeReport, "secretPolicy")
+        );
+    }
+
+    private DashboardImageSigningEvidenceResponse imageSigningEvidenceSnapshot() {
+        JsonNode report = readOptionalJsonReport(imageSigningEvidenceReportPath);
+        if (report == null) {
+            return DashboardImageSigningEvidenceResponse.empty();
+        }
+        JsonNode backend = report.path("backend");
+        JsonNode frontend = report.path("frontend");
+        return new DashboardImageSigningEvidenceResponse(
+                jsonText(report, "result"),
+                jsonText(report, "generatedAt"),
+                jsonInt(report, "failureCount"),
+                jsonText(report, "version"),
+                jsonText(report, "commitSha"),
+                jsonText(report, "sourceRunUrl"),
+                jsonText(report, "issuer"),
+                jsonText(report, "signingMode"),
+                jsonText(backend, "versionRef"),
+                jsonText(backend, "shaRef"),
+                jsonText(backend, "digest"),
+                jsonBoolean(backend, "versionSignatureVerified"),
+                jsonBoolean(backend, "shaSignatureVerified"),
+                jsonText(frontend, "versionRef"),
+                jsonText(frontend, "shaRef"),
+                jsonText(frontend, "digest"),
+                jsonBoolean(frontend, "versionSignatureVerified"),
+                jsonBoolean(frontend, "shaSignatureVerified"),
+                jsonText(report, "secretPolicy")
+        );
+    }
+
+    private DashboardContainerSecurityEvidenceResponse containerSecurityEvidenceSnapshot() {
+        JsonNode report = readOptionalJsonReport(containerSecurityEvidenceReportPath);
+        if (report == null) {
+            return DashboardContainerSecurityEvidenceResponse.empty();
+        }
+        JsonNode scans = report.path("scans");
+        JsonNode sbom = report.path("sbom");
+        JsonNode backendSbom = sbom.path("backend");
+        JsonNode frontendSbom = sbom.path("frontend");
+        return new DashboardContainerSecurityEvidenceResponse(
+                jsonText(report, "result"),
+                jsonText(report, "generatedAt"),
+                jsonInt(report, "failureCount"),
+                jsonText(report, "backendImage"),
+                jsonText(report, "frontendImage"),
+                jsonText(report, "commitSha"),
+                jsonText(report, "sourceRunUrl"),
+                jsonText(report, "artifactName"),
+                jsonText(scans, "severity"),
+                jsonBoolean(scans, "ignoreUnfixed"),
+                jsonBoolean(scans, "backendScanPassed"),
+                jsonBoolean(scans, "frontendScanPassed"),
+                jsonBoolean(backendSbom, "valid"),
+                jsonInt(backendSbom, "packageCount"),
+                jsonLong(backendSbom, "byteSize"),
+                jsonText(backendSbom, "sha256"),
+                jsonBoolean(frontendSbom, "valid"),
+                jsonInt(frontendSbom, "packageCount"),
+                jsonLong(frontendSbom, "byteSize"),
+                jsonText(frontendSbom, "sha256"),
+                jsonText(report, "secretPolicy")
+        );
+    }
+
+    private List<DashboardSecurityEvidenceCheckResponse> securityEvidenceChecks(JsonNode checkNodes) {
+        if (!checkNodes.isArray()) {
+            return List.of();
+        }
+        java.util.ArrayList<DashboardSecurityEvidenceCheckResponse> checks = new java.util.ArrayList<>();
+        for (JsonNode check : checkNodes) {
+            checks.add(new DashboardSecurityEvidenceCheckResponse(
+                    jsonText(check, "name"),
+                    jsonBoolean(check, "passed"),
+                    jsonText(check, "detail"),
+                    jsonText(check, "evidencePath")
+            ));
+        }
+        return List.copyOf(checks);
     }
 
     private void addSecretRotationEvidenceItem(java.util.ArrayList<DashboardReadinessItemResponse> items) {

@@ -562,6 +562,14 @@
             offline {{ storageBackendTelemetryEvidence.offlineServerCount || 0 }}
           </small>
           <small
+            v-if="securityEvidence.result || securityEvidence.imageSigning?.result || securityEvidence.containerSecurity?.result"
+            data-testid="readiness-security-evidence-item-summary"
+          >
+            Security evidence: {{ securityEvidence.result || 'pending finalizer' }} /
+            image {{ securityEvidence.imageSigning?.result || 'missing' }} /
+            container {{ securityEvidence.containerSecurity?.result || 'missing' }}
+          </small>
+          <small
             v-if="secretRotationEvidence.result"
             data-testid="readiness-secret-rotation-evidence-item-summary"
           >
@@ -614,6 +622,44 @@
           {{ storageBackendTelemetryEvidence.scopePolicy }}
         </small>
       </div>
+      <div
+        v-if="securityEvidence.result || securityEvidence.imageSigning?.result || securityEvidence.containerSecurity?.result"
+        class="readiness-invocation-summary"
+        data-testid="readiness-security-evidence-summary"
+      >
+        <strong>Security evidence: {{ securityEvidence.result || 'pending finalizer' }}</strong>
+        <small>
+          failures {{ securityEvidence.failureCount || 0 }} /
+          image {{ securityEvidence.imageSigning?.result || 'missing' }} /
+          container {{ securityEvidence.containerSecurity?.result || 'missing' }} /
+          image failures {{ securityEvidence.imageSigning?.failureCount || 0 }} /
+          container failures {{ securityEvidence.containerSecurity?.failureCount || 0 }}
+        </small>
+        <small v-if="securityEvidenceImageSummary" data-testid="readiness-security-evidence-images">
+          Images: {{ securityEvidenceImageSummary }}
+        </small>
+        <small v-if="securityEvidenceContainerSummary" data-testid="readiness-security-evidence-container">
+          Container/SBOM: {{ securityEvidenceContainerSummary }}
+        </small>
+        <small v-if="securityEvidence.secretPolicy">
+          {{ securityEvidence.secretPolicy }}
+        </small>
+      </div>
+      <ol
+        v-if="securityEvidenceChecks.length > 0"
+        class="readiness-evidence-plan-actions readiness-security-evidence-checks"
+        data-testid="readiness-security-evidence-checks"
+      >
+        <li
+          v-for="check in securityEvidenceChecks.slice(0, 4)"
+          :key="check.name"
+        >
+          <span>
+            <strong>{{ check.passed ? 'PASS' : 'FAIL' }} / {{ check.name }}</strong>
+            <small>{{ check.detail || check.evidencePath || 'detail unavailable' }}</small>
+          </span>
+        </li>
+      </ol>
       <div
         v-if="secretRotationEvidence.result"
         class="readiness-invocation-summary"
@@ -2592,6 +2638,45 @@ const operationsHandoffPackageConvergenceSnapshot = computed(() => (
 const operationsHandoffPackageChecks = computed(() => {
   const checks = operationsHandoffPackage.value?.checks
   return Array.isArray(checks) ? checks : []
+})
+
+const securityEvidence = computed(() => (
+  props.dashboardReadiness.securityEvidence || {}
+))
+
+const securityEvidenceChecks = computed(() => {
+  const checks = securityEvidence.value?.checks
+  return Array.isArray(checks) ? checks : []
+})
+
+const securityEvidenceImageSummary = computed(() => {
+  const imageSigning = securityEvidence.value?.imageSigning || {}
+  const images = securityEvidence.value?.images || {}
+  const backend = imageSigning.backendDigest || images.backendDigest || ''
+  const frontend = imageSigning.frontendDigest || images.frontendDigest || ''
+  const version = imageSigning.version || ''
+  const parts = []
+  if (version) {
+    parts.push(`version ${version}`)
+  }
+  if (backend) {
+    parts.push(`backend ${backend}`)
+  }
+  if (frontend) {
+    parts.push(`frontend ${frontend}`)
+  }
+  return parts.join(' / ')
+})
+
+const securityEvidenceContainerSummary = computed(() => {
+  const container = securityEvidence.value?.containerSecurity || {}
+  if (!container.result && !container.artifactName && !container.backendImage && !container.frontendImage) {
+    return ''
+  }
+  const backendPackages = container.backendSbomPackageCount || 0
+  const frontendPackages = container.frontendSbomPackageCount || 0
+  const severity = container.severity || 'CRITICAL,HIGH'
+  return `scan ${severity} / backend packages ${backendPackages} / frontend packages ${frontendPackages}`
 })
 
 const secretRotationEvidence = computed(() => (
