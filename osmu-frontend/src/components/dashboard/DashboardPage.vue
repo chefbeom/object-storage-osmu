@@ -664,6 +664,32 @@
         <small v-if="operationsHandoffPackage.secretPolicy">
           {{ operationsHandoffPackage.secretPolicy }}
         </small>
+        <small
+          v-if="operationsHandoffPackageEvidenceRefSummary"
+          data-testid="readiness-handoff-package-evidence-refs"
+        >
+          Evidence refs: {{ operationsHandoffPackageEvidenceRefSummary }}
+        </small>
+        <small
+          v-if="operationsHandoffPackageReadinessSnapshot.result"
+          data-testid="readiness-handoff-package-readiness-snapshot-summary"
+        >
+          Readiness snapshot:
+          {{ operationsHandoffPackageReadinessSnapshot.result }} /
+          passed {{ operationsHandoffPackageReadinessSnapshot.passedCount || 0 }} /
+          pending {{ operationsHandoffPackageReadinessSnapshot.pendingCount || 0 }} /
+          checks {{ operationsHandoffPackageReadinessSnapshot.checkCount || 0 }}
+        </small>
+        <small
+          v-if="operationsHandoffPackageConvergenceSnapshot.result"
+          data-testid="readiness-handoff-package-convergence-snapshot-summary"
+        >
+          Convergence snapshot:
+          {{ operationsHandoffPackageConvergenceSnapshot.result }} /
+          readiness {{ operationsHandoffPackageConvergenceSnapshot.readinessResult || '-' }} /
+          sync {{ operationsHandoffPackageConvergenceSnapshot.kubernetesReportSyncReady ? 'ready' : 'not-ready' }} /
+          finalizer gaps {{ operationsHandoffPackageConvergenceSnapshot.finalizerGapCount || 0 }}
+        </small>
       </div>
       <ol
         v-if="operationsHandoffPackageChecks.length > 0"
@@ -2367,6 +2393,26 @@ const operationsEvidenceHandoffStages = computed(() => {
 
 const operationsHandoffPackage = computed(() => (
   props.dashboardReadiness.operationsHandoffPackage || {}
+))
+
+const operationsHandoffPackageEvidenceRefSummary = computed(() => {
+  const refs = operationsHandoffPackage.value?.evidenceRefs
+  if (!refs || typeof refs !== 'object') {
+    return ''
+  }
+  return Object.entries(refs)
+    .filter(([, value]) => value)
+    .slice(0, 5)
+    .map(([key, value]) => `${key}=${value}`)
+    .join(' / ')
+})
+
+const operationsHandoffPackageReadinessSnapshot = computed(() => (
+  operationsHandoffPackage.value?.operationsReadinessSnapshot || {}
+))
+
+const operationsHandoffPackageConvergenceSnapshot = computed(() => (
+  operationsHandoffPackage.value?.operationsConvergenceSnapshot || {}
 ))
 
 const operationsHandoffPackageChecks = computed(() => {

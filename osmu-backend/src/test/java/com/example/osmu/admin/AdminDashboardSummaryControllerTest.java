@@ -677,6 +677,42 @@ class AdminDashboardSummaryControllerTest {
                             "plannedCount": 1,
                             "checkCount": 23
                           },
+                          "evidenceRefs": {
+                            "operationsReadiness": "latest-operations-readiness-ready",
+                            "operationsConvergence": "latest-operations-readiness-convergence-ready",
+                            "commercialIntegration": "latest-commercial-integration-evidence-passed",
+                            "commercialApproval": "latest-commercial-approval-evidence-passed",
+                            "knownGaps": "known-gaps-acceptance-20260620"
+                          },
+                          "operationsSnapshots": {
+                            "readiness": {
+                              "provided": true,
+                              "parsed": true,
+                              "result": "ready",
+                              "ready": true,
+                              "summary": "passed=42 pending=0",
+                              "passedCount": 42,
+                              "pendingCount": 0,
+                              "checkCount": 42
+                            },
+                            "convergence": {
+                              "provided": true,
+                              "parsed": true,
+                              "result": "ready",
+                              "ready": true,
+                              "readinessResult": "ready",
+                              "readinessSummary": "passed=42 pending=0",
+                              "kubernetesReportSyncReady": true,
+                              "kubernetesReportSyncResult": "applied",
+                              "kubernetesReportSyncFailedCount": 0,
+                              "stageCount": 6,
+                              "readyStageCount": 6,
+                              "finalizerGapCount": 0,
+                              "currentBottleneckCode": "",
+                              "currentBottleneckTitle": "",
+                              "recommendedCommandCount": 1
+                            }
+                          },
                           "confirmations": {
                             "noSecretValues": true,
                             "runbookReviewed": false,
@@ -1296,6 +1332,11 @@ class AdminDashboardSummaryControllerTest {
                 .andExpect(jsonPath("$.data.operationsHandoffPackage.checkCount").value(23))
                 .andExpect(jsonPath("$.data.operationsHandoffPackage.confirmations.noSecretValues").value(true))
                 .andExpect(jsonPath("$.data.operationsHandoffPackage.confirmations.runbookReviewed").value(false))
+                .andExpect(jsonPath("$.data.operationsHandoffPackage.evidenceRefs.commercialApproval").value("latest-commercial-approval-evidence-passed"))
+                .andExpect(jsonPath("$.data.operationsHandoffPackage.operationsReadinessSnapshot.result").value("ready"))
+                .andExpect(jsonPath("$.data.operationsHandoffPackage.operationsReadinessSnapshot.pendingCount").value(0))
+                .andExpect(jsonPath("$.data.operationsHandoffPackage.operationsConvergenceSnapshot.kubernetesReportSyncReady").value(true))
+                .andExpect(jsonPath("$.data.operationsHandoffPackage.operationsConvergenceSnapshot.stageCount").value(6))
                 .andExpect(jsonPath("$.data.operationsHandoffPackage.checks[0].id").value("runbook-reviewed"))
                 .andExpect(jsonPath("$.data.operationsHandoffPackage.checks[0].status").value("FAIL"))
                 .andExpect(jsonPath("$.data.operationsHandoffPackage.checks[1].evidenceRef").value("latest-commercial-integration-evidence-passed"))

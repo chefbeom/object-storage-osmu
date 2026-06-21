@@ -2266,6 +2266,7 @@ public class AdminController {
         if (confirmationNodes.isObject()) {
             confirmationNodes.fields().forEachRemaining(entry -> confirmations.put(entry.getKey(), entry.getValue().asBoolean(false)));
         }
+        java.util.LinkedHashMap<String, String> evidenceRefs = jsonTextMap(packageReport.path("evidenceRefs"));
         java.util.ArrayList<DashboardOperationsHandoffPackageCheckResponse> checks = new java.util.ArrayList<>();
         JsonNode checkNodes = packageReport.path("checks");
         if (checkNodes.isArray()) {
@@ -2281,6 +2282,11 @@ public class AdminController {
             }
         }
         JsonNode summary = packageReport.path("summary");
+        JsonNode operationSnapshots = packageReport.path("operationsSnapshots");
+        DashboardOperationsHandoffPackageReadinessSnapshotResponse readinessSnapshot =
+                operationsHandoffPackageReadinessSnapshot(operationSnapshots.path("readiness"));
+        DashboardOperationsHandoffPackageConvergenceSnapshotResponse convergenceSnapshot =
+                operationsHandoffPackageConvergenceSnapshot(operationSnapshots.path("convergence"));
         return new DashboardOperationsHandoffPackageResponse(
                 jsonText(packageReport, "result"),
                 jsonText(packageReport, "generatedAt"),
@@ -2292,10 +2298,52 @@ public class AdminController {
                 jsonInt(summary, "plannedCount"),
                 jsonInt(summary, "checkCount"),
                 Map.copyOf(confirmations),
+                Map.copyOf(evidenceRefs),
+                readinessSnapshot,
+                convergenceSnapshot,
                 List.copyOf(checks),
                 jsonText(packageReport, "decisionRule"),
                 jsonText(packageReport, "scopePolicy"),
                 jsonText(packageReport, "secretPolicy")
+        );
+    }
+
+    private DashboardOperationsHandoffPackageReadinessSnapshotResponse operationsHandoffPackageReadinessSnapshot(JsonNode snapshot) {
+        if (snapshot == null || !snapshot.isObject()) {
+            return null;
+        }
+        return new DashboardOperationsHandoffPackageReadinessSnapshotResponse(
+                jsonBoolean(snapshot, "provided"),
+                jsonBoolean(snapshot, "parsed"),
+                jsonText(snapshot, "result"),
+                jsonBoolean(snapshot, "ready"),
+                jsonText(snapshot, "summary"),
+                jsonInt(snapshot, "passedCount"),
+                jsonInt(snapshot, "pendingCount"),
+                jsonInt(snapshot, "checkCount")
+        );
+    }
+
+    private DashboardOperationsHandoffPackageConvergenceSnapshotResponse operationsHandoffPackageConvergenceSnapshot(JsonNode snapshot) {
+        if (snapshot == null || !snapshot.isObject()) {
+            return null;
+        }
+        return new DashboardOperationsHandoffPackageConvergenceSnapshotResponse(
+                jsonBoolean(snapshot, "provided"),
+                jsonBoolean(snapshot, "parsed"),
+                jsonText(snapshot, "result"),
+                jsonBoolean(snapshot, "ready"),
+                jsonText(snapshot, "readinessResult"),
+                jsonText(snapshot, "readinessSummary"),
+                jsonBoolean(snapshot, "kubernetesReportSyncReady"),
+                jsonText(snapshot, "kubernetesReportSyncResult"),
+                jsonInt(snapshot, "kubernetesReportSyncFailedCount"),
+                jsonInt(snapshot, "stageCount"),
+                jsonInt(snapshot, "readyStageCount"),
+                jsonInt(snapshot, "finalizerGapCount"),
+                jsonText(snapshot, "currentBottleneckCode"),
+                jsonText(snapshot, "currentBottleneckTitle"),
+                jsonInt(snapshot, "recommendedCommandCount")
         );
     }
 
@@ -2808,6 +2856,20 @@ public class AdminController {
     private boolean jsonBoolean(JsonNode node, String fieldName) {
         JsonNode value = node.path(fieldName);
         return value.isBoolean() && value.asBoolean(false);
+    }
+
+    private java.util.LinkedHashMap<String, String> jsonTextMap(JsonNode node) {
+        java.util.LinkedHashMap<String, String> values = new java.util.LinkedHashMap<>();
+        if (node == null || !node.isObject()) {
+            return values;
+        }
+        node.fields().forEachRemaining(entry -> {
+            String text = entry.getValue().asText("");
+            if (!text.isBlank()) {
+                values.put(entry.getKey(), text);
+            }
+        });
+        return values;
     }
 
     private List<String> jsonTextList(JsonNode node, String fieldName) {
