@@ -432,7 +432,7 @@
 - Steps: Load bucket lifecycle XML, edit XML, save, then delete lifecycle config.
 - Expected: UI calls `GET/PUT/DELETE /api/buckets/{bucketName}/lifecycle`, shows rule count, shows saved count after save, and clears/reloads XML after delete.
 - Priority: P1
-- Automated: `npm run test:unit` covers bucket lifecycle REST API wrapper methods, XML payload, and stable selectors. Browser E2E spec now asserts `bucket-lifecycle-load-button`, `bucket-lifecycle-save-button`, `bucket-lifecycle-delete-button`, and `bucket-lifecycle-textarea`; live Browser execution remains environment-dependent.
+- Automated: `npm run test:unit` covers bucket lifecycle REST API wrapper methods, XML payload, and stable selectors. Browser E2E spec covers lifecycle XML save, rule count, saved count, reload, confirm delete, cleared textarea state, and reset rule count; live Browser execution remains environment-dependent.
 
 ### TC-FE-028
 

@@ -363,6 +363,31 @@ test('admin can complete lightweight storage portal click path', async ({ page }
   await expect(page.getByTestId('bucket-lifecycle-save-button')).toBeVisible()
   await expect(page.getByTestId('bucket-lifecycle-delete-button')).toBeVisible()
   await expect(page.getByTestId('bucket-lifecycle-textarea')).toBeVisible()
+  const lifecycleXml = [
+    '<LifecycleConfiguration>',
+    '  <Rule>',
+    '    <ID>Browser lifecycle</ID>',
+    '    <Status>Enabled</Status>',
+    '    <Filter><Prefix>e2e/raw/</Prefix></Filter>',
+    '    <Expiration><Days>7</Days></Expiration>',
+    '  </Rule>',
+    '</LifecycleConfiguration>',
+  ].join('\n')
+  await page.getByTestId('bucket-lifecycle-textarea').fill(lifecycleXml)
+  await page.getByTestId('bucket-lifecycle-save-button').click()
+  await expect(page.getByTestId('status-alert')).toContainText('bucket lifecycle')
+  await expect(page.getByTestId('bucket-lifecycle-rule-count')).toContainText('1 rules')
+  await expect(page.getByTestId('bucket-lifecycle-saved-count')).toContainText('saved 1 rules')
+  await page.getByTestId('bucket-lifecycle-textarea').fill('')
+  await page.getByTestId('bucket-lifecycle-load-button').click()
+  await expect(page.getByTestId('bucket-lifecycle-textarea')).toHaveValue(/Browser lifecycle/)
+  await expect(page.getByTestId('bucket-lifecycle-textarea')).toHaveValue(/e2e\/raw\//)
+  await page.getByTestId('bucket-lifecycle-delete-button').click()
+  await expect(page.getByTestId('confirm-dialog')).toContainText('Bucket lifecycle')
+  await page.getByTestId('confirm-submit-button').click()
+  await expect(page.getByTestId('status-alert')).toContainText('bucket lifecycle')
+  await expect(page.getByTestId('bucket-lifecycle-textarea')).toHaveValue('')
+  await expect(page.getByTestId('bucket-lifecycle-rule-count')).toContainText('0 rules')
   await expect(page.getByTestId('bucket-tags-panel')).toBeVisible()
   await expect(page.getByTestId('bucket-tags-load-button')).toBeVisible()
   await expect(page.getByTestId('bucket-tags-save-button')).toBeVisible()
