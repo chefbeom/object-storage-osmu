@@ -129,6 +129,7 @@ public class AdminController {
     private final String operationsHandoffPackageReportPath;
     private final String commercialIntegrationEvidenceReportPath;
     private final String commercialApprovalEvidenceReportPath;
+    private final String enterpriseAuthSmokeEvidenceReportPath;
     private final String dataFlowStoragePlanReportPath;
     private final String storageBackendTelemetryReportPath;
     private final String operationsReadinessConvergenceReportPath;
@@ -181,6 +182,7 @@ public class AdminController {
             @Value("${osmu.operations.readiness.handoff-package-report-path:.osmu-run/latest-operations-handoff-package.json}") String operationsHandoffPackageReportPath,
             @Value("${osmu.operations.readiness.commercial-integration-evidence-report-path:.osmu-run/latest-commercial-integration-evidence.json}") String commercialIntegrationEvidenceReportPath,
             @Value("${osmu.operations.readiness.commercial-approval-evidence-report-path:.osmu-run/latest-commercial-approval-evidence.json}") String commercialApprovalEvidenceReportPath,
+            @Value("${osmu.operations.readiness.enterprise-auth-smoke-evidence-report-path:.osmu-run/latest-enterprise-auth-smoke.json}") String enterpriseAuthSmokeEvidenceReportPath,
             @Value("${osmu.operations.readiness.data-flow-storage-plan-report-path:.osmu-run/latest-data-flow-storage-plan.json}") String dataFlowStoragePlanReportPath,
             @Value("${osmu.operations.readiness.storage-backend-telemetry-report-path:.osmu-run/latest-storage-backend-telemetry.json}") String storageBackendTelemetryReportPath,
             @Value("${osmu.operations.readiness.convergence-report-path:.osmu-run/latest-operations-readiness-convergence.json}") String operationsReadinessConvergenceReportPath,
@@ -232,6 +234,7 @@ public class AdminController {
         this.operationsHandoffPackageReportPath = blankToNull(operationsHandoffPackageReportPath);
         this.commercialIntegrationEvidenceReportPath = blankToNull(commercialIntegrationEvidenceReportPath);
         this.commercialApprovalEvidenceReportPath = blankToNull(commercialApprovalEvidenceReportPath);
+        this.enterpriseAuthSmokeEvidenceReportPath = blankToNull(enterpriseAuthSmokeEvidenceReportPath);
         this.dataFlowStoragePlanReportPath = blankToNull(dataFlowStoragePlanReportPath);
         this.storageBackendTelemetryReportPath = blankToNull(storageBackendTelemetryReportPath);
         this.operationsReadinessConvergenceReportPath = blankToNull(operationsReadinessConvergenceReportPath);
@@ -898,6 +901,7 @@ public class AdminController {
         DashboardOperationsHandoffPackageResponse operationsHandoffPackage = operationsHandoffPackageSnapshot();
         DashboardCommercialIntegrationEvidenceResponse commercialIntegrationEvidence = commercialIntegrationEvidenceSnapshot();
         DashboardCommercialApprovalEvidenceResponse commercialApprovalEvidence = commercialApprovalEvidenceSnapshot();
+        DashboardEnterpriseAuthSmokeEvidenceResponse enterpriseAuthSmokeEvidence = enterpriseAuthSmokeEvidenceSnapshot();
         DashboardDataFlowStoragePlanResponse dataFlowStoragePlan = dataFlowStoragePlanSnapshot();
         DashboardStorageBackendTelemetryEvidenceResponse storageBackendTelemetryEvidence = storageBackendTelemetryEvidenceSnapshot();
         DashboardOperationsEvidenceHandoffResponse operationsEvidenceHandoff = operationsEvidenceHandoffSnapshot();
@@ -927,6 +931,7 @@ public class AdminController {
                 operationsHandoffPackage,
                 commercialIntegrationEvidence,
                 commercialApprovalEvidence,
+                enterpriseAuthSmokeEvidence,
                 dataFlowStoragePlan,
                 storageBackendTelemetryEvidence,
                 operationsEvidenceHandoff,
@@ -1576,6 +1581,7 @@ public class AdminController {
         addOperationsHandoffPackageItem(items);
         addCommercialIntegrationEvidenceItem(items);
         addCommercialApprovalEvidenceItem(items);
+        addEnterpriseAuthSmokeEvidenceItem(items);
         addDataFlowStoragePlanItem(items);
         addStorageBackendTelemetryEvidenceItem(items);
 
@@ -2492,6 +2498,82 @@ public class AdminController {
         return List.copyOf(checks);
     }
 
+    private void addEnterpriseAuthSmokeEvidenceItem(java.util.ArrayList<DashboardReadinessItemResponse> items) {
+        DashboardEnterpriseAuthSmokeEvidenceResponse evidence = enterpriseAuthSmokeEvidenceSnapshot();
+        if (evidence.result().isBlank() || "passed".equalsIgnoreCase(evidence.result()) || "scope-out".equalsIgnoreCase(evidence.result())) {
+            return;
+        }
+        addReadinessItem(
+                items,
+                "WARNING",
+                "OPERATIONS",
+                "ENTERPRISE_AUTH_SMOKE_EVIDENCE",
+                "Enterprise auth smoke evidence is %s: pass=%d, fail=%d, blocked=%d, planned=%d.".formatted(
+                        evidence.result(),
+                        evidence.passCount(),
+                        evidence.failCount(),
+                        evidence.blockedCount(),
+                        evidence.plannedCount()
+                ),
+                "dashboard",
+                "dashboard-readiness-panel",
+                "Enterprise auth smoke",
+                enterpriseAuthSmokeEvidenceReportPath == null ? "" : enterpriseAuthSmokeEvidenceReportPath,
+                "powershell -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\write-enterprise-auth-smoke-plan.ps1",
+                ".github/workflows/enterprise-auth-smoke-ci.yml",
+                "",
+                evidence.secretPolicy().isBlank()
+                        ? "Collect target IdP/directory smoke evidence or record an explicit commercial scope-out."
+                        : evidence.secretPolicy()
+        );
+    }
+
+    private DashboardEnterpriseAuthSmokeEvidenceResponse enterpriseAuthSmokeEvidenceSnapshot() {
+        JsonNode report = readOptionalJsonReport(enterpriseAuthSmokeEvidenceReportPath);
+        if (report == null) {
+            return DashboardEnterpriseAuthSmokeEvidenceResponse.empty();
+        }
+        JsonNode summary = report.path("summary");
+        return new DashboardEnterpriseAuthSmokeEvidenceResponse(
+                jsonText(report, "result"),
+                jsonText(report, "generatedAt"),
+                jsonText(report, "executionMode"),
+                jsonText(report, "apiBase"),
+                jsonBoolean(report, "requireOidc"),
+                jsonBoolean(report, "requireLdap"),
+                jsonBoolean(report, "requireAuditEvents"),
+                Map.copyOf(jsonBooleanMap(report.path("inputs"))),
+                Map.copyOf(jsonTextMap(report.path("scopeOut"))),
+                jsonInt(summary, "passCount"),
+                jsonInt(summary, "failCount"),
+                jsonInt(summary, "blockedCount"),
+                jsonInt(summary, "plannedCount"),
+                jsonInt(summary, "skippedCount"),
+                enterpriseAuthSmokeChecks(report.path("checks")),
+                jsonText(report, "decisionRule"),
+                jsonText(report, "secretPolicy")
+        );
+    }
+
+    private List<DashboardEnterpriseAuthSmokeCheckResponse> enterpriseAuthSmokeChecks(JsonNode checkNodes) {
+        if (!checkNodes.isArray()) {
+            return List.of();
+        }
+        java.util.ArrayList<DashboardEnterpriseAuthSmokeCheckResponse> checks = new java.util.ArrayList<>();
+        for (JsonNode check : checkNodes) {
+            checks.add(new DashboardEnterpriseAuthSmokeCheckResponse(
+                    jsonText(check, "id"),
+                    jsonText(check, "name"),
+                    jsonText(check, "category"),
+                    jsonText(check, "endpoint"),
+                    jsonText(check, "status"),
+                    jsonText(check, "detail"),
+                    jsonTextList(check, "requiredInputs")
+            ));
+        }
+        return List.copyOf(checks);
+    }
+
     private void addDataFlowStoragePlanItem(java.util.ArrayList<DashboardReadinessItemResponse> items) {
         DashboardDataFlowStoragePlanResponse plan = dataFlowStoragePlanSnapshot();
         if (plan.result().isBlank() || "passed".equalsIgnoreCase(plan.result())) {
@@ -3022,7 +3104,11 @@ public class AdminController {
         if (node == null || !node.isObject()) {
             return values;
         }
-        node.fields().forEachRemaining(entry -> values.put(entry.getKey(), entry.getValue().asBoolean(false)));
+        node.fields().forEachRemaining(entry -> {
+            if (entry.getValue().isBoolean()) {
+                values.put(entry.getKey(), entry.getValue().asBoolean(false));
+            }
+        });
         return values;
     }
 

@@ -678,6 +678,47 @@
         </li>
       </ol>
       <div
+        v-if="enterpriseAuthSmokeEvidence.result"
+        class="readiness-invocation-summary"
+        data-testid="readiness-enterprise-auth-smoke-evidence-summary"
+      >
+        <strong>Enterprise auth smoke: {{ enterpriseAuthSmokeEvidence.result }}</strong>
+        <small>
+          mode {{ enterpriseAuthSmokeEvidence.executionMode || 'unknown' }} /
+          OIDC {{ enterpriseAuthSmokeEvidence.requireOidc ? 'required' : 'optional' }} /
+          LDAP {{ enterpriseAuthSmokeEvidence.requireLdap ? 'required' : 'optional' }} /
+          audit {{ enterpriseAuthSmokeEvidence.requireAuditEvents ? 'required' : 'optional' }} /
+          pass {{ enterpriseAuthSmokeEvidence.passCount || 0 }} /
+          fail {{ enterpriseAuthSmokeEvidence.failCount || 0 }} /
+          blocked {{ enterpriseAuthSmokeEvidence.blockedCount || 0 }} /
+          planned {{ enterpriseAuthSmokeEvidence.plannedCount || 0 }}
+        </small>
+        <small
+          v-if="enterpriseAuthSmokeScopeOutSummary"
+          data-testid="readiness-enterprise-auth-smoke-scope-out"
+        >
+          Scope-out: {{ enterpriseAuthSmokeScopeOutSummary }}
+        </small>
+        <small v-if="enterpriseAuthSmokeEvidence.secretPolicy">
+          {{ enterpriseAuthSmokeEvidence.secretPolicy }}
+        </small>
+      </div>
+      <ol
+        v-if="enterpriseAuthSmokeEvidenceChecks.length > 0"
+        class="readiness-evidence-plan-actions readiness-enterprise-auth-smoke-evidence-checks"
+        data-testid="readiness-enterprise-auth-smoke-evidence-checks"
+      >
+        <li
+          v-for="check in enterpriseAuthSmokeEvidenceChecks.slice(0, 3)"
+          :key="check.id || check.name"
+        >
+          <span>
+            <strong>{{ check.status || 'UNKNOWN' }} / {{ check.category || '-' }} / {{ check.name || check.id }}</strong>
+            <small>{{ check.detail || check.endpoint || 'detail unavailable' }}</small>
+          </span>
+        </li>
+      </ol>
+      <div
         v-if="dataFlowStoragePlan.result"
         class="readiness-invocation-summary"
         data-testid="readiness-data-flow-storage-plan-summary"
@@ -2518,6 +2559,26 @@ const commercialApprovalEvidenceRefSummary = computed(() => {
 
 const commercialApprovalEvidenceChecks = computed(() => {
   const checks = commercialApprovalEvidence.value?.checks
+  return Array.isArray(checks) ? checks : []
+})
+
+const enterpriseAuthSmokeEvidence = computed(() => (
+  props.dashboardReadiness.enterpriseAuthSmokeEvidence || {}
+))
+
+const enterpriseAuthSmokeScopeOutSummary = computed(() => {
+  const scopeOut = enterpriseAuthSmokeEvidence.value?.scopeOut
+  if (!scopeOut || typeof scopeOut !== 'object') {
+    return ''
+  }
+  if (scopeOut.accepted === 'true' || scopeOut.accepted === true) {
+    return `${scopeOut.reference || 'approval ref missing'} / ${scopeOut.reason || 'reason missing'}`
+  }
+  return ''
+})
+
+const enterpriseAuthSmokeEvidenceChecks = computed(() => {
+  const checks = enterpriseAuthSmokeEvidence.value?.checks
   return Array.isArray(checks) ? checks : []
 })
 

@@ -1104,6 +1104,25 @@ const dashboardReadiness = reactive({
     scopePolicy: '',
     secretPolicy: '',
   },
+  enterpriseAuthSmokeEvidence: {
+    result: '',
+    generatedAt: '',
+    executionMode: '',
+    apiBase: '',
+    requireOidc: false,
+    requireLdap: false,
+    requireAuditEvents: false,
+    inputs: {},
+    scopeOut: {},
+    passCount: 0,
+    failCount: 0,
+    blockedCount: 0,
+    plannedCount: 0,
+    skippedCount: 0,
+    checks: [],
+    decisionRule: '',
+    secretPolicy: '',
+  },
   dataFlowStoragePlan: {
     result: '',
     recordedAt: '',
@@ -5225,6 +5244,7 @@ function applyDashboardReadiness(data) {
     operationsHandoffPackage: normalizeOperationsHandoffPackage(data.operationsHandoffPackage),
     commercialIntegrationEvidence: normalizeCommercialIntegrationEvidence(data.commercialIntegrationEvidence),
     commercialApprovalEvidence: normalizeCommercialApprovalEvidence(data.commercialApprovalEvidence),
+    enterpriseAuthSmokeEvidence: normalizeEnterpriseAuthSmokeEvidence(data.enterpriseAuthSmokeEvidence),
     dataFlowStoragePlan: normalizeDataFlowStoragePlan(data.dataFlowStoragePlan),
     storageBackendTelemetryEvidence: normalizeStorageBackendTelemetryEvidence(data.storageBackendTelemetryEvidence),
     operationsEvidenceHandoff: normalizeOperationsEvidenceHandoff(data.operationsEvidenceHandoff),
@@ -5458,6 +5478,28 @@ function normalizeCommercialApprovalEvidence(report = {}) {
     checks: Array.isArray(report?.checks) ? report.checks : [],
     decisionRule: report?.decisionRule || '',
     scopePolicy: report?.scopePolicy || '',
+    secretPolicy: report?.secretPolicy || '',
+  }
+}
+
+function normalizeEnterpriseAuthSmokeEvidence(report = {}) {
+  return {
+    result: report?.result || '',
+    generatedAt: report?.generatedAt || '',
+    executionMode: report?.executionMode || '',
+    apiBase: report?.apiBase || '',
+    requireOidc: Boolean(report?.requireOidc),
+    requireLdap: Boolean(report?.requireLdap),
+    requireAuditEvents: Boolean(report?.requireAuditEvents),
+    inputs: report?.inputs && typeof report.inputs === 'object' ? report.inputs : {},
+    scopeOut: report?.scopeOut && typeof report.scopeOut === 'object' ? report.scopeOut : {},
+    passCount: Number(report?.passCount || 0),
+    failCount: Number(report?.failCount || 0),
+    blockedCount: Number(report?.blockedCount || 0),
+    plannedCount: Number(report?.plannedCount || 0),
+    skippedCount: Number(report?.skippedCount || 0),
+    checks: Array.isArray(report?.checks) ? report.checks : [],
+    decisionRule: report?.decisionRule || '',
     secretPolicy: report?.secretPolicy || '',
   }
 }

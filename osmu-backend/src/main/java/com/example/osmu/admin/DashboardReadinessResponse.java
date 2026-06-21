@@ -24,6 +24,7 @@ public record DashboardReadinessResponse(
         DashboardOperationsHandoffPackageResponse operationsHandoffPackage,
         DashboardCommercialIntegrationEvidenceResponse commercialIntegrationEvidence,
         DashboardCommercialApprovalEvidenceResponse commercialApprovalEvidence,
+        DashboardEnterpriseAuthSmokeEvidenceResponse enterpriseAuthSmokeEvidence,
         DashboardDataFlowStoragePlanResponse dataFlowStoragePlan,
         DashboardStorageBackendTelemetryEvidenceResponse storageBackendTelemetryEvidence,
         DashboardOperationsEvidenceHandoffResponse operationsEvidenceHandoff,

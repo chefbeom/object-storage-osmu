@@ -849,6 +849,64 @@ class AdminDashboardSummaryControllerTest {
                         """
         );
         Files.writeString(
+                Path.of(".osmu-run/latest-enterprise-auth-smoke.json"),
+                """
+                        {
+                          "formatVersion": "osmu.enterprise-auth-smoke.v1",
+                          "generatedAt": "2026-06-20T04:00:00Z",
+                          "result": "planned",
+                          "executionMode": "plan-only",
+                          "apiBase": "http://localhost:8080/api",
+                          "requireOidc": true,
+                          "requireLdap": true,
+                          "requireAuditEvents": false,
+                          "scopeOut": {
+                            "confirmed": false,
+                            "reference": "",
+                            "reason": "",
+                            "accepted": false
+                          },
+                          "inputs": {
+                            "adminLoginId": "admin",
+                            "adminPasswordProvided": false,
+                            "oidcCallbackCodeProvided": false,
+                            "oidcCallbackStateProvided": false,
+                            "ldapLoginIdProvided": false,
+                            "ldapPasswordProvided": false
+                          },
+                          "summary": {
+                            "passCount": 0,
+                            "failCount": 0,
+                            "blockedCount": 0,
+                            "plannedCount": 8,
+                            "skippedCount": 0
+                          },
+                          "checks": [
+                            {
+                              "id": "enterprise-auth-plan",
+                              "name": "Enterprise auth plan API",
+                              "category": "enterprise-auth",
+                              "endpoint": "GET /api/admin/security/enterprise-auth-plan",
+                              "status": "PLANNED",
+                              "detail": "Confirms current login mode, OIDC readiness, LDAP readiness, mapping, and cutover gates.",
+                              "requiredInputs": ["AdminPassword"]
+                            },
+                            {
+                              "id": "ldap-login",
+                              "name": "LDAP bind/search login for existing local user",
+                              "category": "ldap",
+                              "endpoint": "POST /api/auth/ldap/login",
+                              "status": "PLANNED",
+                              "detail": "LDAP password is never written to evidence.",
+                              "requiredInputs": ["LdapLoginId", "LdapPassword"]
+                            }
+                          ],
+                          "decisionRule": "Paid/production pilot requires result=passed from the target IdP/directory, or result=scope-out with an explicit non-secret commercial approval reference and reason.",
+                          "secretPolicy": "Admin password, LDAP password, access/refresh tokens, OIDC authorization code/state, client secrets, raw OIDC claim JSON, and credential-like scope-out references are never written to this evidence."
+                        }
+                        """
+        );
+        Files.writeString(
                 Path.of(".osmu-run/latest-data-flow-storage-plan.json"),
                 """
                         {
@@ -1454,6 +1512,15 @@ class AdminDashboardSummaryControllerTest {
                 .andExpect(jsonPath("$.data.commercialApprovalEvidence.evidenceRefs.pricingPolicyProposal").value("pricing-policy-proposal-price-list-approved-20260620"))
                 .andExpect(jsonPath("$.data.commercialApprovalEvidence.pricingPolicyProposalApprovedPriceListCount").value(1))
                 .andExpect(jsonPath("$.data.commercialApprovalEvidence.checks[0].id").value("legal-approval-confirmed"))
+                .andExpect(jsonPath("$.data.enterpriseAuthSmokeEvidence.result").value("planned"))
+                .andExpect(jsonPath("$.data.enterpriseAuthSmokeEvidence.executionMode").value("plan-only"))
+                .andExpect(jsonPath("$.data.enterpriseAuthSmokeEvidence.requireOidc").value(true))
+                .andExpect(jsonPath("$.data.enterpriseAuthSmokeEvidence.requireLdap").value(true))
+                .andExpect(jsonPath("$.data.enterpriseAuthSmokeEvidence.inputs.adminPasswordProvided").value(false))
+                .andExpect(jsonPath("$.data.enterpriseAuthSmokeEvidence.inputs.adminLoginId").doesNotExist())
+                .andExpect(jsonPath("$.data.enterpriseAuthSmokeEvidence.scopeOut.accepted").value("false"))
+                .andExpect(jsonPath("$.data.enterpriseAuthSmokeEvidence.plannedCount").value(8))
+                .andExpect(jsonPath("$.data.enterpriseAuthSmokeEvidence.checks[0].endpoint").value("GET /api/admin/security/enterprise-auth-plan"))
                 .andExpect(jsonPath("$.data.dataFlowStoragePlan.result").value("plan-ready-execute-required"))
                 .andExpect(jsonPath("$.data.dataFlowStoragePlan.environmentName").value("pilot-prod"))
                 .andExpect(jsonPath("$.data.dataFlowStoragePlan.targetCluster").value("customer-cluster-a"))
@@ -1494,6 +1561,8 @@ class AdminDashboardSummaryControllerTest {
                 .andExpect(jsonPath("$.data.items[?(@.code == 'COMMERCIAL_INTEGRATION_EVIDENCE')].remediationWorkflow").value(hasItem(".github/workflows/manual-commercial-integration-evidence.yml")))
                 .andExpect(jsonPath("$.data.items[?(@.code == 'COMMERCIAL_APPROVAL_EVIDENCE')].evidencePath").value(hasItem(".osmu-run/latest-commercial-approval-evidence.json")))
                 .andExpect(jsonPath("$.data.items[?(@.code == 'COMMERCIAL_APPROVAL_EVIDENCE')].remediationWorkflow").value(hasItem(".github/workflows/manual-commercial-approval-evidence.yml")))
+                .andExpect(jsonPath("$.data.items[?(@.code == 'ENTERPRISE_AUTH_SMOKE_EVIDENCE')].evidencePath").value(hasItem(".osmu-run/latest-enterprise-auth-smoke.json")))
+                .andExpect(jsonPath("$.data.items[?(@.code == 'ENTERPRISE_AUTH_SMOKE_EVIDENCE')].remediationWorkflow").value(hasItem(".github/workflows/enterprise-auth-smoke-ci.yml")))
                 .andExpect(jsonPath("$.data.operationsEvidenceHandoff.result").value("blocked"))
                 .andExpect(jsonPath("$.data.operationsEvidenceHandoff.nextStep.code").value("resolve-invocation-blockers"))
                 .andExpect(jsonPath("$.data.operationsEvidenceHandoff.nextStep.command").value("powershell -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\write-operations-invocation-unblock-plan.ps1"))
