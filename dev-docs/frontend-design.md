@@ -41,6 +41,7 @@
 - sessionStorage ETag와 server-side part ETag를 병합한 뒤 완료된 part는 skip하고 남은 part만 업로드한다.
 - tab reload 후에도 pending multipart 목록을 sessionStorage에서 복구하고, 같은 bucket/key/tags/file fingerprint가 선택되면 Resume 버튼으로 이어 올린다.
 - Backend가 반환한 session `expiresAt`으로 pending multipart 만료 여부를 표시하고, 만료 후 24시간이 지난 local resume session은 자동 정리한다.
+- 사용자가 Pause를 누르면 진행 중인 browser upload만 중단하고 resume session은 보존한다. Cancel은 abort API를 호출하고 resume session을 삭제한다.
 - 사용자 취소는 abort API를 호출하고 resume session을 삭제한다.
 - object upload에서 Backend의 `STORAGE_ERROR` 또는 HTTP 502를 받으면 `object-storage-remediation-panel`을 표시한다. 패널은 오류 code/status, Request ID, bucket/key 확인, storage backend 상태 확인, 대용량/multipart 재시도 전 운영 로그 상관관계 확인 절차를 보여주며 기존 Retry 버튼은 유지한다.
 
@@ -228,6 +229,7 @@ Web Portal은 관리자와 사용자가 OSMU를 브라우저에서 사용할 수
 - object metadata ETag/checksum index/storage 비교 표시
 - Object metadata detail rows render explicit `Synced`/`Drift`/`Missing` chips through `object-metadata-row-state` so operators can see index/storage mismatch without inspecting raw values only.
 - Object Explorer는 prefix breadcrumb/open, 검색 match highlight, tag edit form/button에 stable selector(`object-prefix-breadcrumb`, `object-prefix-open-button`, `object-key-match`, `object-tag-form`, `object-tag-edit-button`)를 제공해 Browser E2E가 prefix/search/tag 흐름을 직접 검증할 수 있게 한다.
+- Object Explorer multipart upload control은 `object-upload-pause-button`과 `object-upload-cancel-button`을 분리한다. Pause는 resume session을 유지하고, Cancel은 remote abort와 local cleanup을 수행한다.
 - object version 목록 패널과 version restore 버튼
 - object version 목록 패널과 version restore 버튼
 - presigned upload URL 생성 시 object tag 전달, `object-presigned-upload-url-button` URL 발급, `object-presigned-upload-complete-button` handoff 완료, `object-presigned-url` 표시와 complete 후 목록 refresh
@@ -403,8 +405,8 @@ systemStore
 - 기본 multipart part 동시 업로드 수는 `VITE_MULTIPART_UPLOAD_CONCURRENCY=4`이며 client에서 1~8 범위로 제한한다.
 - multipart part upload는 network error, 408, 429, 5xx 응답에 대해 jitter가 적용된 exponential backoff로 재시도한다. 기본값은 `VITE_MULTIPART_UPLOAD_PART_RETRIES=2`, `VITE_MULTIPART_UPLOAD_RETRY_BASE_DELAY_MS=500`, `VITE_MULTIPART_UPLOAD_RETRY_JITTER_RATIO=0.25`이다.
 - MinIO CORS가 `ETag`를 expose하지 않으면 multipart complete에 필요한 part ETag를 수집할 수 없으므로 업로드 실패로 처리한다.
-- 대용량 파일 업로드 중 취소할 수 있고, 실패 또는 취소된 마지막 업로드는 같은 bucket/key/file로 재시도할 수 있다.
-- multipart upload 실패/취소 시 미완료 part를 abort하도록 Backend에 정리 요청을 보낸다.
+- 대용량 파일 업로드 중 Pause 또는 Cancel을 선택할 수 있고, 실패 또는 Pause된 마지막 업로드는 같은 bucket/key/file로 재시도하거나 pending multipart 목록에서 Resume할 수 있다.
+- multipart upload 실패/Cancel 시 미완료 part를 abort하도록 Backend에 정리 요청을 보낸다. Pause는 abort API를 호출하지 않고 local resume session을 보존한다.
 - tab close나 네트워크 완전 단절로 abort 요청이 전송되지 못하면 Backend cleanup scheduler가 만료 session을 `EXPIRED`로 전환하고 MinIO multipart upload를 abort한다.
 - 버킷 삭제, 파일 삭제, 권한 회수, Access Key/사용자 비활성화는 확인 모달을 사용한다.
 - 권한 없는 작업은 숨기거나 비활성화한다.

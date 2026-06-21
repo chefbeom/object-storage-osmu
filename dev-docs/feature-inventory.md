@@ -204,6 +204,7 @@ MVP 데모 기준 완료율은 약 90~95%입니다.
 - prefix browse/search
 - presigned URL
 - multipart upload/resume 초안
+- Web Portal multipart Pause는 진행 중인 browser upload만 중단하고 `sessionStorage` resume session을 보존한다. Cancel은 기존처럼 Backend abort API를 호출하고 resume session을 삭제한다.
 - trash/restore/purge
 - versioning/retention/lifecycle 일부
 - S3 직접 업로드 이후 bucket sync 기반 metadata drift 보정과 add/update/remove reconciliation summary
@@ -211,7 +212,7 @@ MVP 데모 기준 완료율은 약 90~95%입니다.
 
 남은 것:
 
-- 대용량 업로드 중단/재개 E2E
+- 실제 Browser + MinIO multipart pause/resume 실행 E2E evidence
 - 실제 MinIO multipart resume 검증
 
 ### 4.6 S3 호환 API

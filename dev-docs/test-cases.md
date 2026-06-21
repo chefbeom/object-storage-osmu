@@ -2033,6 +2033,16 @@ TC-FE-023 보강: 사용자가 취소한 경우에는 abort API를 호출한다.
 - 우선순위: P1
 - 자동화 여부: Automated (`npm run test:unit` local session list/expired/prune/delete, Browser E2E pending multipart panel, matching Resume enable, Expired disable, and delete confirm path). Browser/MinIO resume execution E2E pending.
 
+### TC-FE-035
+
+- 기능: Object Explorer multipart Pause와 Cancel 분리
+- 조건: multipart upload session이 생성되고 Object Explorer upload progress가 표시된다.
+- 입력: `object-upload-pause-button` 또는 `object-upload-cancel-button`
+- 절차: 대용량 파일 upload 중 Pause를 누른 뒤 pending multipart 목록과 같은 파일 Resume 흐름을 확인한다. 별도 실행에서 Cancel을 누른다.
+- 기대 결과: Pause는 진행 중인 browser upload만 abort하고 `multipart-upload/abort` API를 호출하지 않는다. `sessionStorage` resume session은 유지되어 pending multipart 목록과 Retry/Resume 흐름에서 재사용된다. Cancel은 기존처럼 remote abort API를 호출하고 local resume session을 삭제한다.
+- 우선순위: P1
+- 자동화 여부: Automated (`api-multipart-upload.test.js` preserveSessionOnAbort/local session 보존, `HomeView.test.js` pause event/options/source wiring). Browser/MinIO pause/resume execution E2E pending.
+
 ## 11. Security
 
 ### TC-SEC-001
@@ -2607,6 +2617,7 @@ MVP 완료 전 다음 테스트는 반드시 통과해야 한다.
 - TC-FE-021
 - TC-FE-022
 - TC-FE-023
+- TC-FE-035
 - TC-FE-033
 - TC-FE-034
 - TC-DEMO-001

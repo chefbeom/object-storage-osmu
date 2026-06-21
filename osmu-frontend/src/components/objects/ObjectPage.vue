@@ -99,6 +99,9 @@
         <button data-testid="object-upload-cancel-button" type="button" class="ghost" :disabled="!uploadState.active" @click="$emit('cancel-upload')">
           취소
         </button>
+        <button data-testid="object-upload-pause-button" type="button" class="ghost" :disabled="!uploadState.active || !uploadState.multipart" @click="$emit('pause-upload')">
+          Pause
+        </button>
         <button data-testid="object-upload-retry-button" type="button" class="ghost" :disabled="!canRetryUpload" @click="$emit('retry-upload')">
           재시도
         </button>
@@ -459,6 +462,7 @@ defineEmits([
   'file-change',
   'upload-object',
   'cancel-upload',
+  'pause-upload',
   'retry-upload',
   'resume-matching-multipart-upload',
   'discard-multipart-resume',

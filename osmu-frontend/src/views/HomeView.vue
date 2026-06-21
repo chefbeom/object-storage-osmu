@@ -298,6 +298,7 @@
         @file-change="handleFileChange"
         @upload-object="handleUploadObject"
         @cancel-upload="handleCancelUpload"
+        @pause-upload="handlePauseUpload"
         @retry-upload="handleRetryUpload"
         @resume-matching-multipart-upload="handleResumeMatchingMultipartUpload"
         @discard-multipart-resume="handleDiscardMultipartResume"
@@ -1307,6 +1308,7 @@ const uploadState = reactive({
   percent: 0,
   message: '',
   retryable: false,
+  multipart: false,
   errorCode: '',
   errorStatus: 0,
   requestId: '',
@@ -1427,6 +1429,7 @@ const shareLinkPassword = ref('')
 const shareLinkAllowedIpCidrs = ref('')
 const pendingUploadId = ref('')
 const uploadController = ref(null)
+const uploadAbortMode = ref('')
 const lastUploadRequest = ref(null)
 const pendingMultipartUploads = ref([])
 const dashboardWidgets = ref(loadDashboardWidgets())
@@ -3557,26 +3560,31 @@ async function handleUploadObject() {
 async function startObjectUpload(request) {
   const controller = new AbortController()
   uploadController.value = controller
+  uploadAbortMode.value = ''
   uploadState.active = true
   uploadState.loadedBytes = 0
   uploadState.totalBytes = request.file.size || 0
   uploadState.percent = 0
   uploadState.message = ''
   uploadState.retryable = false
+  uploadState.multipart = false
   resetUploadErrorState()
   clearError()
 
   try {
     const uploadFn = request.file.size >= MULTIPART_UPLOAD_THRESHOLD_BYTES ? uploadObjectMultipart : uploadObject
+    uploadState.multipart = uploadFn === uploadObjectMultipart
     uploadState.message = uploadFn === uploadObjectMultipart ? 'Multipart upload' : ''
     await uploadFn(request.bucketName, request.key, request.file, request.tags, updateUploadProgress, {
       signal: controller.signal,
+      preserveSessionOnAbort: () => uploadAbortMode.value === 'pause',
       onResume: ({ completedBytes }) => {
         uploadState.message = completedBytes > 0 ? 'Multipart resume' : 'Multipart upload'
       },
     })
     uploadState.percent = 100
     uploadState.retryable = false
+    uploadState.multipart = false
     resetUploadErrorState()
     lastUploadRequest.value = null
     objectForm.key = ''
@@ -3587,9 +3595,11 @@ async function startObjectUpload(request) {
     setStatusMessage(`${request.key} 업로드 완료`)
   } catch (error) {
     const aborted = controller.signal.aborted
+    const paused = aborted && uploadAbortMode.value === 'pause'
     const message = aborted ? '업로드를 취소했습니다.' : error.message
-    aborted ? setErrorMessage(message) : setError(error)
-    uploadState.message = message
+    const resolvedMessage = paused ? 'Multipart upload paused. Resume from pending multipart.' : message
+    paused ? setStatusMessage(resolvedMessage) : aborted ? setErrorMessage(resolvedMessage) : setError(error)
+    uploadState.message = resolvedMessage
     uploadState.retryable = true
     uploadState.errorCode = aborted ? '' : error?.code || ''
     uploadState.errorStatus = aborted ? 0 : Number(error?.status || 0)
@@ -3597,6 +3607,8 @@ async function startObjectUpload(request) {
     refreshPendingMultipartUploads()
   } finally {
     uploadState.active = false
+    uploadState.multipart = false
+    uploadAbortMode.value = ''
     if (uploadController.value === controller) {
       uploadController.value = null
     }
@@ -3616,6 +3628,12 @@ function updateUploadProgress(progress) {
 }
 
 function handleCancelUpload() {
+  uploadAbortMode.value = 'cancel'
+  uploadController.value?.abort()
+}
+
+function handlePauseUpload() {
+  uploadAbortMode.value = 'pause'
   uploadController.value?.abort()
 }
 

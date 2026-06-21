@@ -91,7 +91,7 @@ Frontend는 MariaDB나 MinIO에 직접 접근하지 않습니다. Backend API만
 - 인증/세션: JWT login, refresh/logout, route guard.
 - 사용자/조직: 사용자 상태, 조직, 조직별 버킷 관리.
 - 버킷: 생성, 목록, 상세, 삭제, quota, tag, permission.
-- 오브젝트: 업로드, presigned URL handoff, 다운로드, 목록, 검색, prefix 탐색, tag, soft delete, restore, purge, multipart threshold/part-size/retry tuning.
+- 오브젝트: 업로드, presigned URL handoff, 다운로드, 목록, 검색, prefix 탐색, tag, soft delete, restore, purge, multipart threshold/part-size/retry tuning, 대용량 upload Pause/Resume.
 - S3 호환 API: SigV4, bucket/object 기본 동작, range/conditional GET, CopyObject, multipart, multi-delete, checksum header/trailer 및 multipart checksum negotiation 일부, aws-chunked body decode, S3 XML 오류 응답을 지원한다. 목표는 주요 S3 클라이언트 대체 사용 가능성이고, AWS의 모든 세부 edge parity는 목표가 아니다. 새 S3 작업은 실제 클라이언트 전환 흐름이 깨질 때만 보강한다. 전체 지원/부분지원/미지원 범위는 `dev-docs/s3-compatibility.md`에 정리한다.
 - Access Key: one-time secret, bucket scope, 권한 분리, revoke/bulk disable, MinIO policy 연동 초안.
 - 조직/팀 RBAC: `ADMIN`/`ORG_ADMIN`/`AUDITOR`/`USER` 역할, 조직별 사용자/팀 관리, `TEAM` bucket permission, 권한 회수 시 Access Key policy 재동기화.

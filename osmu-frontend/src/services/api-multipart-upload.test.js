@@ -245,6 +245,51 @@ test('uploadObjectMultipart aborts remote session and clears local session when 
   }
 })
 
+test('uploadObjectMultipart preserves local resume session when aborted with preserveSessionOnAbort', async () => {
+  const storage = installSessionStorage()
+  const xhrMock = installMockXhr([])
+  const controller = new AbortController()
+  controller.abort()
+  const fetchMock = mockFetch([
+    () => jsonResponse({
+      data: {
+        uploadId: 'upload-pause',
+        key: 'large/pause.bin',
+        partSizeBytes: 5,
+        partCount: 1,
+        expiresAt: new Date(Date.now() + 900_000).toISOString(),
+        parts: [
+          { partNumber: 1, url: 'https://storage.local/pause-part-1', startByte: 0, endByte: 4 },
+        ],
+      },
+    }),
+  ])
+
+  try {
+    await assert.rejects(
+      () => uploadObjectMultipart(
+        'media',
+        'large/pause.bin',
+        testFile({ name: 'pause.bin', size: 5, type: 'application/octet-stream', lastModified: 790 }),
+        '',
+        null,
+        { partSizeBytes: 5, signal: controller.signal, preserveSessionOnAbort: true },
+      ),
+      /Upload aborted/,
+    )
+
+    assert.equal(xhrMock.calls.length, 0)
+    assert.equal(fetchMock.calls.length, 1)
+    const sessions = getStoredMultipartUploadSessions({ bucketName: 'media' })
+    assert.equal(sessions.length, 1)
+    assert.equal(sessions[0].uploadId, 'upload-pause')
+    assert.deepEqual(sessions[0].completedParts, [])
+    assert.equal(storage.length, 1)
+  } finally {
+    cleanupRuntime(fetchMock, xhrMock)
+  }
+})
+
 test('uploadObjectMultipart resumes saved session and skips completed parts', async () => {
   const storage = installSessionStorage()
   const file = testFile({ name: 'resume.bin', size: 10, type: 'application/octet-stream', lastModified: 321 })

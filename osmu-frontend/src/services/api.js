@@ -763,8 +763,12 @@ export async function uploadObjectMultipart(bucketName, key, file, tags, onProgr
     const aborted = options.signal?.aborted || combinedSignal.signal?.aborted || error?.message === 'Upload aborted'
     partAbortController.abort()
     if (upload?.uploadId && aborted) {
-      await abortMultipartUpload(bucketName, { uploadId: upload.uploadId, key }).catch(() => null)
-      clearMultipartUploadSession(resumeStorageKey)
+      if (shouldPreserveMultipartSessionOnAbort(options)) {
+        persistMultipartProgress()
+      } else {
+        await abortMultipartUpload(bucketName, { uploadId: upload.uploadId, key }).catch(() => null)
+        clearMultipartUploadSession(resumeStorageKey)
+      }
     } else if (upload?.uploadId) {
       persistMultipartProgress()
     }
@@ -870,6 +874,11 @@ function browserSessionStorage() {
   } catch {
     return null
   }
+}
+
+function shouldPreserveMultipartSessionOnAbort(options) {
+  const policy = options?.preserveSessionOnAbort
+  return typeof policy === 'function' ? Boolean(policy()) : Boolean(policy)
 }
 
 function isMatchingMultipartUploadSession(session, bucketName, key, file, tags, partSizeBytes) {

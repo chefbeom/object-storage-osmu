@@ -255,6 +255,7 @@ test('HomeView exposes stable selectors for browser E2E flows', () => {
     'object-file-input',
     'object-upload-button',
     'object-upload-cancel-button',
+    'object-upload-pause-button',
     'object-upload-retry-button',
     'object-upload-progress',
     'object-storage-remediation-panel',
@@ -1055,6 +1056,10 @@ test('HomeView exposes stable selectors for browser E2E flows', () => {
   assert.match(dashboardSource, /id="storage-buckets"/)
   assert.match(dashboardSource, /:data-testid="`readiness-item-\$\{item\.code\}`"/)
   assert.match(dashboardSource, /openReadinessTarget/)
+  assert.match(dashboardSource, /@pause-upload="handlePauseUpload"/)
+  assert.match(dashboardSource, /preserveSessionOnAbort:\s*\(\) => uploadAbortMode\.value === 'pause'/)
+  assert.match(dashboardSource, /function handlePauseUpload\(\)/)
+  assert.match(dashboardSource, /Multipart upload paused\. Resume from pending multipart\./)
   assert.match(dashboardSource, /title: 'Multipart resume 삭제'/)
   assert.match(dashboardSource, /title: '공유 링크 해제'/)
   assert.match(dashboardSource, /title: '만료 공유 링크 정리'/)
