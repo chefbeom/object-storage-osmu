@@ -1896,7 +1896,7 @@ ID:
 - 절차: ObjectExplorer에서 object의 `태그` 버튼을 눌러 tag form을 채우고 저장한다.
 - 기대 결과: `PUT /api/buckets/{bucketName}/objects/tags` 요청이 전송되고, 목록 tag 열이 새 tag로 갱신된다.
 - 우선순위: P1
-- 자동화 여부: Automated (`npm run test:unit` object tag update API wrapper). Browser click E2E pending.
+- 자동화 여부: Automated (`npm run test:unit` object tag update API wrapper, Browser E2E tag edit/save/filter path with `object-tag-edit-button`, `object-tag-key-input`, and `object-tag-save-button` selectors).
 
 ### TC-FE-018
 

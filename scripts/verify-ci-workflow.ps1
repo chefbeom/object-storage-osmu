@@ -663,6 +663,8 @@ Assert-Contains $browserSpecContent "object-prefix-open-button" "Browser E2E spe
 Assert-Contains $browserSpecContent "object-key-match" "Browser E2E spec"
 Assert-Contains $browserSpecContent "object-tag-filter-input" "Browser E2E spec"
 Assert-Contains $browserSpecContent "object-tag-edit-button" "Browser E2E spec"
+Assert-Contains $browserSpecContent "object-tag-key-input" "Browser E2E spec"
+Assert-Contains $browserSpecContent "object-tag-save-button" "Browser E2E spec"
 Assert-Contains $browserSpecContent "audit-search-button" "Browser E2E spec"
 Assert-Contains $browserSpecContent "stale saved session returns to login redirect" "Browser E2E spec"
 Assert-Contains $browserSpecContent "redirect=(%2F|\/)dashboard" "Browser E2E spec"
