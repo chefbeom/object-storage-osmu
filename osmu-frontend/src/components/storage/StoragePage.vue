@@ -50,11 +50,11 @@
               @click="$emit('select-bucket', bucket.name)"
             >
               <td>
-                <strong>{{ bucket.name }}</strong>
+                <strong data-testid="bucket-row-name">{{ bucket.name }}</strong>
                 <small>{{ bucket.ownerType || 'USER' }} #{{ bucket.ownerId || '-' }}</small>
               </td>
-              <td>{{ bucket.usageLabel }}</td>
-              <td>{{ bucket.objectCount }}</td>
+              <td data-testid="bucket-row-usage">{{ bucket.usageLabel }}</td>
+              <td data-testid="bucket-row-object-count">{{ bucket.objectCount }}</td>
               <td class="actions">
                 <button data-testid="bucket-sync-button" type="button" class="ghost" @click.stop="$emit('sync-bucket', bucket.name)">
                   Sync

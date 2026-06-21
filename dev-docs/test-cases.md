@@ -563,6 +563,7 @@
 - Expected: All required selectors exist so future Browser/Chrome E2E can target stable UI hooks instead of brittle text or layout selectors, including dashboard view-mode summary, edit-mode toggle, loading state, error state, retry button, empty state, widget access mode badge, widget section bands, section move/toggle buttons, category groups, catalog chip buttons, drag handles, dynamic option selects, data-flow retention status/run controls, execution log retention panel controls, Storage Expansion dashboard summary controls, operations readiness summary/filter/remediation command and workflow-command copy controls, admin action failure remediation controls, admin approval workflow controls, admin security/audit policy controls, admin role-restricted panel list, and dashboard catalog widgets.
 - Priority: P1
 - Automated: `npm run test:unit`
+- Selector detail: bucket list rows include stable `bucket-row-name`, `bucket-row-usage`, and `bucket-row-object-count` cells for Browser/Chrome E2E value assertions.
 
 ### TC-FE-ADMIN-SECURITY-AUDIT-POLICY
 
@@ -1729,6 +1730,8 @@ ID:
 ## 10. Frontend
 
 ### TC-FE-001
+
+Evidence note: `npm run test:unit` covers stable bucket row cell selectors, and Browser E2E spec checks bucket name, usage, and object count cells after create.
 
 - 기능: 버킷 목록 화면
 - 조건: Backend가 실행 중이고 버킷이 존재한다.

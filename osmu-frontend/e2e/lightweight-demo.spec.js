@@ -352,6 +352,9 @@ test('admin can complete lightweight storage portal click path', async ({ page }
 
   const bucketRow = page.getByTestId(`bucket-row-${bucketName}`)
   await expect(bucketRow).toBeVisible()
+  await expect(bucketRow.getByTestId('bucket-row-name')).toHaveText(bucketName)
+  await expect(bucketRow.getByTestId('bucket-row-usage')).toContainText(/0 B \/ 1(?:\.0)? GB/)
+  await expect(bucketRow.getByTestId('bucket-row-object-count')).toHaveText('0')
   await bucketRow.click()
 
   await page.getByRole('link', { name: 'Objects' }).click()
