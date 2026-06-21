@@ -1175,6 +1175,26 @@
           pending {{ operationsHandoffPackageDataFlowStoragePlanSnapshot.pendingCount || 0 }} /
           query-plan {{ operationsHandoffPackageDataFlowQueryPlanSnapshot.result || '-' }}
         </small>
+        <small
+          v-if="operationsHandoffPackageCommercialIntegrationSnapshot.result"
+          data-testid="readiness-handoff-package-commercial-integration-snapshot-summary"
+        >
+          Commercial integration snapshot:
+          {{ operationsHandoffPackageCommercialIntegrationSnapshot.result }} /
+          required {{ operationsHandoffPackageCommercialIntegrationSnapshot.requiredVerifiedCount || 0 }} of {{ operationsHandoffPackageCommercialIntegrationSnapshot.requiredCount || 0 }} /
+          adapters {{ operationsHandoffPackageCommercialIntegrationSnapshot.paymentProviderAdapterReadinessStatus || '-' }} /
+          failures {{ operationsHandoffPackageCommercialIntegrationSnapshot.failureCount || 0 }}
+        </small>
+        <small
+          v-if="operationsHandoffPackageCommercialApprovalSnapshot.result"
+          data-testid="readiness-handoff-package-commercial-approval-snapshot-summary"
+        >
+          Commercial approval snapshot:
+          {{ operationsHandoffPackageCommercialApprovalSnapshot.result }} /
+          {{ operationsHandoffPackageCommercialApprovalSnapshot.productVersion || 'unknown version' }} /
+          price-list {{ operationsHandoffPackageCommercialApprovalSnapshot.pricingPolicyProposalApprovedPriceListCount || 0 }} /
+          failures {{ operationsHandoffPackageCommercialApprovalSnapshot.failureCount || 0 }}
+        </small>
       </div>
       <ol
         v-if="operationsHandoffPackageChecks.length > 0"
@@ -2910,6 +2930,14 @@ const operationsHandoffPackageDataFlowStoragePlanSnapshot = computed(() => (
 
 const operationsHandoffPackageDataFlowQueryPlanSnapshot = computed(() => (
   operationsHandoffPackageDataFlowStoragePlanSnapshot.value?.queryPlanEvidence || {}
+))
+
+const operationsHandoffPackageCommercialIntegrationSnapshot = computed(() => (
+  operationsHandoffPackage.value?.commercialIntegrationSnapshot || {}
+))
+
+const operationsHandoffPackageCommercialApprovalSnapshot = computed(() => (
+  operationsHandoffPackage.value?.commercialApprovalSnapshot || {}
 ))
 
 const operationsHandoffPackageChecks = computed(() => {

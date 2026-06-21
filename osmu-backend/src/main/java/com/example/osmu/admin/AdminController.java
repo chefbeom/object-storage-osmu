@@ -2356,6 +2356,10 @@ public class AdminController {
         JsonNode targetEvidenceSnapshots = packageReport.path("targetEvidenceSnapshots");
         DashboardDataFlowStoragePlanResponse dataFlowStoragePlanSnapshot =
                 dataFlowStoragePlanSnapshotFromNode(targetEvidenceSnapshots.path("dataFlowStoragePlan"), false);
+        DashboardCommercialIntegrationEvidenceResponse commercialIntegrationSnapshot =
+                commercialIntegrationEvidenceSnapshotFromNode(targetEvidenceSnapshots.path("commercialIntegration"), false);
+        DashboardCommercialApprovalEvidenceResponse commercialApprovalSnapshot =
+                commercialApprovalEvidenceSnapshotFromNode(targetEvidenceSnapshots.path("commercialApproval"), false);
         return new DashboardOperationsHandoffPackageResponse(
                 jsonText(packageReport, "result"),
                 jsonText(packageReport, "generatedAt"),
@@ -2371,6 +2375,8 @@ public class AdminController {
                 readinessSnapshot,
                 convergenceSnapshot,
                 dataFlowStoragePlanSnapshot,
+                commercialIntegrationSnapshot,
+                commercialApprovalSnapshot,
                 List.copyOf(checks),
                 jsonText(packageReport, "decisionRule"),
                 jsonText(packageReport, "scopePolicy"),
@@ -2981,10 +2987,17 @@ public class AdminController {
 
     private DashboardCommercialIntegrationEvidenceResponse commercialIntegrationEvidenceSnapshot() {
         JsonNode report = readOptionalJsonReport(commercialIntegrationEvidenceReportPath);
-        if (report == null) {
+        return commercialIntegrationEvidenceSnapshotFromNode(report, true);
+    }
+
+    private DashboardCommercialIntegrationEvidenceResponse commercialIntegrationEvidenceSnapshotFromNode(JsonNode report, boolean emptyWhenMissing) {
+        if (report == null || report.isMissingNode() || report.isNull() || !report.isObject()) {
+            if (!emptyWhenMissing) {
+                return null;
+            }
             return DashboardCommercialIntegrationEvidenceResponse.empty();
         }
-        JsonNode summary = report.path("summary");
+        JsonNode summary = summaryOrSelf(report);
         return new DashboardCommercialIntegrationEvidenceResponse(
                 jsonText(report, "result"),
                 jsonText(report, "generatedAt"),
@@ -3001,7 +3014,7 @@ public class AdminController {
                 jsonInt(summary, "paymentProviderAdapterNativeReadyProfileCount"),
                 jsonInt(summary, "failureCount"),
                 jsonInt(summary, "plannedCount"),
-                commercialEvidenceChecks(report.path("checks")),
+                commercialEvidenceChecks(firstArrayNode(report.path("checks"), report.path("topChecks"))),
                 jsonText(report, "decisionRule"),
                 jsonText(report, "scopePolicy"),
                 jsonText(report, "secretPolicy")
@@ -3039,10 +3052,17 @@ public class AdminController {
 
     private DashboardCommercialApprovalEvidenceResponse commercialApprovalEvidenceSnapshot() {
         JsonNode report = readOptionalJsonReport(commercialApprovalEvidenceReportPath);
-        if (report == null) {
+        return commercialApprovalEvidenceSnapshotFromNode(report, true);
+    }
+
+    private DashboardCommercialApprovalEvidenceResponse commercialApprovalEvidenceSnapshotFromNode(JsonNode report, boolean emptyWhenMissing) {
+        if (report == null || report.isMissingNode() || report.isNull() || !report.isObject()) {
+            if (!emptyWhenMissing) {
+                return null;
+            }
             return DashboardCommercialApprovalEvidenceResponse.empty();
         }
-        JsonNode summary = report.path("summary");
+        JsonNode summary = summaryOrSelf(report);
         return new DashboardCommercialApprovalEvidenceResponse(
                 jsonText(report, "result"),
                 jsonText(report, "generatedAt"),
@@ -3057,11 +3077,20 @@ public class AdminController {
                 jsonInt(summary, "pricingPolicyProposalApprovedPriceListCount"),
                 Map.copyOf(jsonBooleanMap(report.path("confirmations"))),
                 Map.copyOf(jsonTextMap(report.path("evidenceRefs"))),
-                commercialEvidenceChecks(report.path("checks")),
+                commercialEvidenceChecks(firstArrayNode(report.path("checks"), report.path("topChecks"))),
                 jsonText(report, "decisionRule"),
                 jsonText(report, "scopePolicy"),
                 jsonText(report, "secretPolicy")
         );
+    }
+
+    private JsonNode summaryOrSelf(JsonNode report) {
+        JsonNode summary = report.path("summary");
+        return summary.isObject() ? summary : report;
+    }
+
+    private JsonNode firstArrayNode(JsonNode first, JsonNode second) {
+        return first.isArray() ? first : second;
     }
 
     private List<DashboardCommercialEvidenceCheckResponse> commercialEvidenceChecks(JsonNode checkNodes) {

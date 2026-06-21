@@ -46,6 +46,8 @@ $scriptPath = Resolve-ProjectPath ".\scripts\write-operations-handoff-package.ps
 $readinessSnapshotPath = Join-Path $resolvedOutputDirectory "latest-operations-readiness.json"
 $convergenceSnapshotPath = Join-Path $resolvedOutputDirectory "latest-operations-readiness-convergence.json"
 $dataFlowStoragePlanPath = Join-Path $resolvedOutputDirectory "latest-data-flow-storage-plan.json"
+$commercialIntegrationPath = Join-Path $resolvedOutputDirectory "latest-commercial-integration-evidence.json"
+$commercialApprovalPath = Join-Path $resolvedOutputDirectory "latest-commercial-approval-evidence.json"
 
 [ordered]@{
     formatVersion = "osmu.operations-readiness.v1"
@@ -129,6 +131,89 @@ $dataFlowStoragePlanPath = Join-Path $resolvedOutputDirectory "latest-data-flow-
     )
 } | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath $dataFlowStoragePlanPath -Encoding UTF8
 
+[ordered]@{
+    formatVersion = "osmu.commercial-integration-evidence.v1"
+    generatedAt = "2026-06-20T02:10:00Z"
+    result = "passed"
+    environmentName = "pilot-prod-self-test"
+    targetCluster = "customer-cluster-a"
+    operatorName = "ops-self-test"
+    summary = [ordered]@{
+        integrationCount = 8
+        verifiedCount = 8
+        requiredCount = 8
+        requiredVerifiedCount = 8
+        paymentProviderAdapterReadinessReviewed = $true
+        paymentProviderAdapterReadinessStatus = "WEBHOOK_PROFILE_READY"
+        paymentProviderAdapterWebhookReadyProfileCount = 5
+        paymentProviderAdapterNativeReadyProfileCount = 0
+        failureCount = 0
+        plannedCount = 0
+    }
+    checks = @(
+        [ordered]@{
+            id = "integration-payment-erp"
+            name = "ERP payment webhook profile verified"
+            status = "PASS"
+            passed = $true
+            detail = "required=true verified=true evidenceRef=payment-erp-profile-20260620"
+            evidenceRef = "payment-erp-profile-20260620"
+        }
+    )
+    decisionRule = "Production/B2B commercial integration readiness requires result=passed."
+    scopePolicy = "This evidence covers configured webhook/Slack/EMAIL SMTP relay and payment webhook profile handoff verification without claiming native processor API support."
+    secretPolicy = "Evidence stores references only and does not contain webhook URLs with credentials, SMTP passwords, payment provider credentials, signing secrets, bearer tokens, private keys, raw provider responses, or customer payment data."
+} | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath $commercialIntegrationPath -Encoding UTF8
+
+[ordered]@{
+    formatVersion = "osmu.commercial-approval-evidence.v1"
+    generatedAt = "2026-06-20T02:20:00Z"
+    result = "passed"
+    productVersion = "osmu-mvp-0.1"
+    approvedBy = "commercial-board"
+    approvedAt = "2026-06-20T02:15:00Z"
+    evidenceRefs = [ordered]@{
+        approval = "commercial-approval-board-20260620"
+        pricing = "pricing-approval-20260620"
+        terms = "terms-approval-20260620"
+        supportSla = "support-sla-approval-20260620"
+        licenseAgreement = "license-approval-20260620"
+        legal = "legal-approval-20260620"
+        pilotContract = "pilot-contract-boundary-20260620"
+        pricingPolicyProposal = "pricing-policy-proposal-price-list-approved-20260620"
+    }
+    confirmations = [ordered]@{
+        pricingApproved = $true
+        termsApproved = $true
+        supportSlaApproved = $true
+        licenseApproved = $true
+        legalApproved = $true
+        pricingPolicyProposalCommercialApproval = $true
+        noSecretValues = $true
+    }
+    summary = [ordered]@{
+        passedCount = 12
+        failureCount = 0
+        checkCount = 12
+        pricingPolicyProposalCommercialApproved = $true
+        pricingPolicyProposalCommercialApprovedCount = 1
+        pricingPolicyProposalApprovedPriceListCount = 1
+    }
+    checks = @(
+        [ordered]@{
+            id = "legal-approval-confirmed"
+            name = "Legal approval confirmed"
+            status = "PASS"
+            passed = $true
+            detail = "legalApprovalRef=legal-approval-20260620"
+            evidenceRef = "legal-approval-20260620"
+        }
+    )
+    decisionRule = "Production/B2B sale commercial approval requires result=passed."
+    scopePolicy = "This evidence records commercial/legal approval references and sanitized billing pricing policy proposal approval status only."
+    secretPolicy = "Evidence stores only sanitized approval references and must not contain passwords, tokens, private keys, license keys, signing secrets, customer payment data, raw price tables, or raw contract text."
+} | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath $commercialApprovalPath -Encoding UTF8
+
 & powershell -NoProfile -ExecutionPolicy Bypass -File $scriptPath `
     -EnvironmentName "pilot-prod-self-test" `
     -TargetCluster "customer-cluster-a" `
@@ -146,6 +231,8 @@ $dataFlowStoragePlanPath = Join-Path $resolvedOutputDirectory "latest-data-flow-
     -SecretRotationEvidenceRef "latest-secret-rotation-evidence-passed-20260620" `
     -CommercialIntegrationEvidenceRef "latest-commercial-integration-evidence-passed-20260620" `
     -CommercialApprovalEvidenceRef "latest-commercial-approval-evidence-passed-20260620" `
+    -CommercialIntegrationJsonPath $commercialIntegrationPath `
+    -CommercialApprovalJsonPath $commercialApprovalPath `
     -EnterpriseAuthEvidenceRef "latest-enterprise-auth-smoke-passed-20260620" `
     -BackupRestoreEvidenceRef "latest-kubernetes-dr-finalize-ready-20260620" `
     -HaDrEvidenceRef "latest-kubernetes-ha-dr-readiness-passed-20260620" `
@@ -197,6 +284,10 @@ Assert-True (@($checks | Where-Object { $_.id -eq "data-flow-storage-plan-eviden
 Assert-True (@($checks | Where-Object { $_.id -eq "data-flow-storage-plan-snapshot-parsed" -and $_.passed }).Count -eq 1) "Expected data-flow storage plan snapshot parsed check to pass."
 Assert-True (@($checks | Where-Object { $_.id -eq "data-flow-storage-plan-snapshot-passed" -and $_.passed }).Count -eq 1) "Expected data-flow storage plan snapshot passed check to pass."
 Assert-True (@($checks | Where-Object { $_.id -eq "data-flow-storage-plan-reviewed" -and $_.passed }).Count -eq 1) "Expected data-flow storage plan reviewed check to pass."
+Assert-True (@($checks | Where-Object { $_.id -eq "commercial-integration-snapshot-parsed" -and $_.passed }).Count -eq 1) "Expected commercial integration snapshot parsed check to pass."
+Assert-True (@($checks | Where-Object { $_.id -eq "commercial-integration-snapshot-passed" -and $_.passed }).Count -eq 1) "Expected commercial integration snapshot passed check to pass."
+Assert-True (@($checks | Where-Object { $_.id -eq "commercial-approval-snapshot-parsed" -and $_.passed }).Count -eq 1) "Expected commercial approval snapshot parsed check to pass."
+Assert-True (@($checks | Where-Object { $_.id -eq "commercial-approval-snapshot-passed" -and $_.passed }).Count -eq 1) "Expected commercial approval snapshot passed check to pass."
 Assert-True ($report.confirmations.noSecretValues) "Expected no-secret-values confirmation."
 Assert-True ($report.confirmations.runbookReviewed) "Expected runbook reviewed confirmation."
 Assert-True ($report.confirmations.troubleshootingReviewed) "Expected troubleshooting reviewed confirmation."
@@ -213,6 +304,10 @@ Assert-True ($report.operationsSnapshots.convergence.result -eq "ready") "Expect
 Assert-True ($report.operationsSnapshots.convergence.kubernetesReportSyncReady) "Expected convergence snapshot Kubernetes report sync ready."
 Assert-True ($report.targetEvidenceSnapshots.dataFlowStoragePlan.result -eq "passed") "Expected data-flow storage plan snapshot result=passed."
 Assert-True ($report.targetEvidenceSnapshots.dataFlowStoragePlan.queryPlanEvidence.result -eq "passed") "Expected data-flow query-plan snapshot result=passed."
+Assert-True ($report.targetEvidenceSnapshots.commercialIntegration.result -eq "passed") "Expected commercial integration snapshot result=passed."
+Assert-True ($report.targetEvidenceSnapshots.commercialIntegration.requiredVerifiedCount -eq 8) "Expected commercial integration requiredVerifiedCount=8."
+Assert-True ($report.targetEvidenceSnapshots.commercialApproval.result -eq "passed") "Expected commercial approval snapshot result=passed."
+Assert-True ($report.targetEvidenceSnapshots.commercialApproval.pricingPolicyProposalApprovedPriceListCount -eq 1) "Expected commercial approval price-list approval count."
 Assert-True ($report.evidenceRefs.dataFlowStoragePlan -eq "latest-data-flow-storage-plan-passed-20260620") "Expected data-flow storage plan evidence reference."
 
 Assert-Contains $markdown "# OSMU Operations Handoff Package" "operations handoff package markdown"
@@ -222,6 +317,7 @@ Assert-Contains $markdown "Target Evidence Snapshots" "operations handoff packag
 Assert-Contains $report.decisionRule "Production/B2B operations handoff package readiness requires result=passed" "operations handoff package JSON"
 Assert-Contains $report.decisionRule "data-flow storage transition" "operations handoff package JSON"
 Assert-Contains $report.decisionRule "commercial approval" "operations handoff package JSON"
+Assert-Contains $report.decisionRule "commercial integration" "operations handoff package JSON"
 Assert-Contains $report.decisionRule "Kubernetes report sync ready" "operations handoff package JSON"
 Assert-Contains $report.scopePolicy "does not execute kubectl, gh, provider APIs" "operations handoff package JSON"
 Assert-Contains $report.secretPolicy "must not contain passwords, bearer tokens, kubeconfig values" "operations handoff package JSON"
@@ -310,6 +406,24 @@ finally {
 Assert-True ($unsafeDataFlowStoragePlanExitCode -ne 0) "Raw SQL data-flow storage plan snapshot should be rejected."
 Assert-Contains ($unsafeDataFlowStoragePlanOutput | Out-String) "raw SQL" "unsafe data-flow storage plan output"
 
+$unsafeCommercialApprovalPath = Join-Path $resolvedOutputDirectory "unsafe-commercial-approval.json"
+'{"formatVersion":"osmu.commercial-approval-evidence.v1","result":"passed","rawPriceTable":{"enterprise":"1000000"},"checks":[]}' | Set-Content -LiteralPath $unsafeCommercialApprovalPath -Encoding UTF8
+
+$previousErrorActionPreference = $ErrorActionPreference
+$ErrorActionPreference = "Continue"
+try {
+    $unsafeCommercialApprovalOutput = & powershell -NoProfile -ExecutionPolicy Bypass -File $scriptPath `
+        -CommercialApprovalEvidenceRef "latest-commercial-approval-evidence-passed-20260620" `
+        -CommercialApprovalJsonPath $unsafeCommercialApprovalPath `
+        -NoWrite 2>&1
+    $unsafeCommercialApprovalExitCode = $LASTEXITCODE
+}
+finally {
+    $ErrorActionPreference = $previousErrorActionPreference
+}
+Assert-True ($unsafeCommercialApprovalExitCode -ne 0) "Raw price table commercial approval snapshot should be rejected."
+Assert-Contains ($unsafeCommercialApprovalOutput | Out-String) "raw remediation, provider, customer" "unsafe commercial approval output"
+
 $previousErrorActionPreference = $ErrorActionPreference
 $ErrorActionPreference = "Continue"
 try {
@@ -363,6 +477,8 @@ try {
         -SecretRotationEvidenceRef "latest-secret-rotation-evidence-passed-20260620" `
         -CommercialIntegrationEvidenceRef "latest-commercial-integration-evidence-passed-20260620" `
         -CommercialApprovalEvidenceRef "latest-commercial-approval-evidence-passed-20260620" `
+        -CommercialIntegrationJsonPath $commercialIntegrationPath `
+        -CommercialApprovalJsonPath $commercialApprovalPath `
         -EnterpriseAuthEvidenceRef "latest-enterprise-auth-smoke-passed-20260620" `
         -BackupRestoreEvidenceRef "latest-kubernetes-dr-finalize-ready-20260620" `
         -HaDrEvidenceRef "latest-kubernetes-ha-dr-readiness-passed-20260620" `

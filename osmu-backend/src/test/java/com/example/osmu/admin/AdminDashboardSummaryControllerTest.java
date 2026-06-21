@@ -1108,6 +1108,51 @@ class AdminDashboardSummaryControllerTest {
                                 "detail": "formatVersion=osmu.mariadb-query-plan-evidence.v1; result=passed; mode=fixture; passed=3; failed=0; checks=3"
                               },
                               "topPendingChecks": []
+                            },
+                            "commercialIntegration": {
+                              "provided": true,
+                              "path": ".osmu-run/latest-commercial-integration-evidence.json",
+                              "parsed": true,
+                              "formatVersion": "osmu.commercial-integration-evidence.v1",
+                              "expectedFormatVersion": "osmu.commercial-integration-evidence.v1",
+                              "validFormatVersion": true,
+                              "result": "passed",
+                              "passed": true,
+                              "environmentName": "pilot-prod",
+                              "targetCluster": "customer-cluster-a",
+                              "operatorName": "commerce-ops",
+                              "integrationCount": 8,
+                              "verifiedCount": 8,
+                              "requiredCount": 8,
+                              "requiredVerifiedCount": 8,
+                              "paymentProviderAdapterReadinessReviewed": true,
+                              "paymentProviderAdapterReadinessStatus": "WEBHOOK_PROFILE_READY",
+                              "paymentProviderAdapterWebhookReadyProfileCount": 5,
+                              "paymentProviderAdapterNativeReadyProfileCount": 0,
+                              "failureCount": 0,
+                              "plannedCount": 0,
+                              "checkCount": 8,
+                              "topChecks": []
+                            },
+                            "commercialApproval": {
+                              "provided": true,
+                              "path": ".osmu-run/latest-commercial-approval-evidence.json",
+                              "parsed": true,
+                              "formatVersion": "osmu.commercial-approval-evidence.v1",
+                              "expectedFormatVersion": "osmu.commercial-approval-evidence.v1",
+                              "validFormatVersion": true,
+                              "result": "passed",
+                              "passed": true,
+                              "productVersion": "osmu-mvp-0.1",
+                              "approvedBy": "commercial-board",
+                              "approvedAt": "2026-06-20T03:15:00Z",
+                              "passedCount": 12,
+                              "failureCount": 0,
+                              "checkCount": 12,
+                              "pricingPolicyProposalCommercialApproved": true,
+                              "pricingPolicyProposalCommercialApprovedCount": 1,
+                              "pricingPolicyProposalApprovedPriceListCount": 1,
+                              "topChecks": []
                             }
                           },
                           "confirmations": {
@@ -1953,6 +1998,12 @@ class AdminDashboardSummaryControllerTest {
                 .andExpect(jsonPath("$.data.operationsHandoffPackage.dataFlowStoragePlanSnapshot.pendingCount").value(0))
                 .andExpect(jsonPath("$.data.operationsHandoffPackage.dataFlowStoragePlanSnapshot.queryPlanEvidence.result").value("passed"))
                 .andExpect(jsonPath("$.data.operationsHandoffPackage.dataFlowStoragePlanSnapshot.queryPlanEvidence.failedCount").value(0))
+                .andExpect(jsonPath("$.data.operationsHandoffPackage.commercialIntegrationSnapshot.result").value("passed"))
+                .andExpect(jsonPath("$.data.operationsHandoffPackage.commercialIntegrationSnapshot.requiredVerifiedCount").value(8))
+                .andExpect(jsonPath("$.data.operationsHandoffPackage.commercialIntegrationSnapshot.paymentProviderAdapterReadinessStatus").value("WEBHOOK_PROFILE_READY"))
+                .andExpect(jsonPath("$.data.operationsHandoffPackage.commercialApprovalSnapshot.result").value("passed"))
+                .andExpect(jsonPath("$.data.operationsHandoffPackage.commercialApprovalSnapshot.productVersion").value("osmu-mvp-0.1"))
+                .andExpect(jsonPath("$.data.operationsHandoffPackage.commercialApprovalSnapshot.pricingPolicyProposalApprovedPriceListCount").value(1))
                 .andExpect(jsonPath("$.data.operationsHandoffPackage.checks[0].id").value("runbook-reviewed"))
                 .andExpect(jsonPath("$.data.operationsHandoffPackage.checks[0].status").value("FAIL"))
                 .andExpect(jsonPath("$.data.operationsHandoffPackage.checks[1].evidenceRef").value("latest-commercial-integration-evidence-passed"))
