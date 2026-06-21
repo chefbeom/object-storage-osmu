@@ -39,6 +39,14 @@ on:
         description: External operations convergence evidence reference
         required: true
         default: ""
+      operations_readiness_json_base64:
+        description: Optional base64 latest operations readiness JSON snapshot
+        required: false
+        default: ""
+      operations_convergence_json_base64:
+        description: Optional base64 latest operations readiness convergence JSON snapshot
+        required: false
+        default: ""
       secret_rotation_evidence_ref:
         description: External secret rotation evidence reference
         required: true
@@ -120,6 +128,16 @@ on:
         required: true
         type: boolean
         default: false
+      confirm_operations_readiness_snapshot_reviewed:
+        description: Confirm operations readiness snapshot review
+        required: true
+        type: boolean
+        default: false
+      confirm_operations_convergence_snapshot_reviewed:
+        description: Confirm operations convergence snapshot review
+        required: true
+        type: boolean
+        default: false
       confirm_no_secret_values:
         description: Confirm inputs contain references only, not secret values
         required: true
@@ -127,6 +145,11 @@ on:
         default: false
       require_production_evidence:
         description: Require all production evidence references
+        required: true
+        type: boolean
+        default: true
+      require_operations_snapshot_evidence:
+        description: Require readiness and convergence JSON snapshots
         required: true
         type: boolean
         default: true
@@ -165,6 +188,8 @@ jobs:
           OSMU_DEPLOYMENT_EVIDENCE_REF: ${{ inputs.deployment_evidence_ref }}
           OSMU_OPERATIONS_READINESS_REF: ${{ inputs.operations_readiness_ref }}
           OSMU_OPERATIONS_CONVERGENCE_REF: ${{ inputs.operations_convergence_ref }}
+          OSMU_OPERATIONS_READINESS_JSON_BASE64: ${{ inputs.operations_readiness_json_base64 }}
+          OSMU_OPERATIONS_CONVERGENCE_JSON_BASE64: ${{ inputs.operations_convergence_json_base64 }}
           OSMU_SECRET_ROTATION_EVIDENCE_REF: ${{ inputs.secret_rotation_evidence_ref }}
           OSMU_COMMERCIAL_INTEGRATION_EVIDENCE_REF: ${{ inputs.commercial_integration_evidence_ref }}
           OSMU_COMMERCIAL_APPROVAL_EVIDENCE_REF: ${{ inputs.commercial_approval_evidence_ref }}
@@ -184,10 +209,24 @@ jobs:
           OSMU_CONFIRM_ROLLBACK_REVIEWED: ${{ inputs.confirm_rollback_reviewed }}
           OSMU_CONFIRM_SUPPORT_ESCALATION_REVIEWED: ${{ inputs.confirm_support_escalation_reviewed }}
           OSMU_CONFIRM_KNOWN_GAPS_ACCEPTED: ${{ inputs.confirm_known_gaps_accepted }}
+          OSMU_CONFIRM_OPERATIONS_READINESS_SNAPSHOT_REVIEWED: ${{ inputs.confirm_operations_readiness_snapshot_reviewed }}
+          OSMU_CONFIRM_OPERATIONS_CONVERGENCE_SNAPSHOT_REVIEWED: ${{ inputs.confirm_operations_convergence_snapshot_reviewed }}
           OSMU_CONFIRM_NO_SECRET_VALUES: ${{ inputs.confirm_no_secret_values }}
           OSMU_REQUIRE_PRODUCTION_EVIDENCE: ${{ inputs.require_production_evidence }}
+          OSMU_REQUIRE_OPERATIONS_SNAPSHOT_EVIDENCE: ${{ inputs.require_operations_snapshot_evidence }}
           OSMU_FAIL_IF_NOT_PASSED: ${{ inputs.fail_if_not_passed }}
         run: |
+          New-Item -ItemType Directory -Force -Path ".osmu-run" | Out-Null
+          $temporarySnapshotPaths = New-Object System.Collections.Generic.List[string]
+          function Add-Base64SnapshotArgument([string] $InputValue, [string] $Path, [string] $ArgumentName) {
+            if ([string]::IsNullOrWhiteSpace($InputValue)) {
+              return
+            }
+            [System.IO.File]::WriteAllBytes($Path, [Convert]::FromBase64String($InputValue))
+            [void] $temporarySnapshotPaths.Add($Path)
+            $script:packageArgs += @($ArgumentName, $Path)
+          }
+
           $packageArgs = @(
             "-EnvironmentName", $env:OSMU_ENVIRONMENT_NAME,
             "-TargetCluster", $env:OSMU_TARGET_CLUSTER,
@@ -216,16 +255,29 @@ jobs:
             "-MarkdownOutputPath", ".osmu-run/latest-operations-handoff-package.md"
           )
 
+          Add-Base64SnapshotArgument $env:OSMU_OPERATIONS_READINESS_JSON_BASE64 ".osmu-run/operations-readiness-handoff-snapshot.json" "-OperationsReadinessJsonPath"
+          Add-Base64SnapshotArgument $env:OSMU_OPERATIONS_CONVERGENCE_JSON_BASE64 ".osmu-run/operations-convergence-handoff-snapshot.json" "-OperationsConvergenceJsonPath"
+
           if ($env:OSMU_CONFIRM_RUNBOOK_REVIEWED -eq "true") { $packageArgs += "-ConfirmRunbookReviewed" }
           if ($env:OSMU_CONFIRM_TROUBLESHOOTING_REVIEWED -eq "true") { $packageArgs += "-ConfirmTroubleshootingReviewed" }
           if ($env:OSMU_CONFIRM_ROLLBACK_REVIEWED -eq "true") { $packageArgs += "-ConfirmRollbackReviewed" }
           if ($env:OSMU_CONFIRM_SUPPORT_ESCALATION_REVIEWED -eq "true") { $packageArgs += "-ConfirmSupportEscalationReviewed" }
           if ($env:OSMU_CONFIRM_KNOWN_GAPS_ACCEPTED -eq "true") { $packageArgs += "-ConfirmKnownGapsAccepted" }
+          if ($env:OSMU_CONFIRM_OPERATIONS_READINESS_SNAPSHOT_REVIEWED -eq "true") { $packageArgs += "-ConfirmOperationsReadinessSnapshotReviewed" }
+          if ($env:OSMU_CONFIRM_OPERATIONS_CONVERGENCE_SNAPSHOT_REVIEWED -eq "true") { $packageArgs += "-ConfirmOperationsConvergenceSnapshotReviewed" }
           if ($env:OSMU_CONFIRM_NO_SECRET_VALUES -eq "true") { $packageArgs += "-ConfirmNoSecretValues" }
           if ($env:OSMU_REQUIRE_PRODUCTION_EVIDENCE -eq "true") { $packageArgs += "-RequireProductionEvidence" }
+          if ($env:OSMU_REQUIRE_OPERATIONS_SNAPSHOT_EVIDENCE -eq "true") { $packageArgs += "-RequireOperationsSnapshotEvidence" }
           if ($env:OSMU_FAIL_IF_NOT_PASSED -eq "true") { $packageArgs += "-FailIfNotPassed" }
 
-          ./scripts/write-operations-handoff-package.ps1 @packageArgs
+          try {
+            ./scripts/write-operations-handoff-package.ps1 @packageArgs
+          }
+          finally {
+            foreach ($path in $temporarySnapshotPaths) {
+              Remove-Item -LiteralPath $path -Force -ErrorAction SilentlyContinue
+            }
+          }
 
       - name: Upload operations handoff package
         if: always()

@@ -230,7 +230,7 @@ Rotation:
 
 - Follow `secret-rotation-policy.md` before pilot handoff.
 - Follow `backup-restore-drill.md` before durable pilot handoff.
-- Generate `.osmu-run/latest-operations-handoff-package.json` with `scripts/write-operations-handoff-package.ps1` before production/B2B handoff so runbook, troubleshooting, rollback, support escalation, known gaps, and target evidence references are reviewed without storing secret values.
+- Generate `.osmu-run/latest-operations-handoff-package.json` with `scripts/write-operations-handoff-package.ps1` before production/B2B handoff so runbook, troubleshooting, rollback, support escalation, known gaps, target evidence references, and sanitized operations readiness/convergence snapshot summaries are reviewed without storing secret values.
 - Rotate admin password, MariaDB password, MinIO root password, user access keys, and TLS certificate through the environment secret manager.
 - `OSMU_JWT_SECRET` rotation invalidates active sessions and must use a maintenance window.
 - `OSMU_ACCESS_KEY_SECRET_ENCRYPTION_KEY` rotation requires access key re-issue or a re-encryption migration.

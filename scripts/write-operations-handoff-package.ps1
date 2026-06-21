@@ -8,6 +8,8 @@ param(
     [string] $DeploymentEvidenceRef = "",
     [string] $OperationsReadinessRef = "",
     [string] $OperationsConvergenceRef = "",
+    [string] $OperationsReadinessJsonPath = "",
+    [string] $OperationsConvergenceJsonPath = "",
     [string] $SecretRotationEvidenceRef = "",
     [string] $CommercialIntegrationEvidenceRef = "",
     [string] $CommercialApprovalEvidenceRef = "",
@@ -29,8 +31,11 @@ param(
     [switch] $ConfirmRollbackReviewed,
     [switch] $ConfirmSupportEscalationReviewed,
     [switch] $ConfirmKnownGapsAccepted,
+    [switch] $ConfirmOperationsReadinessSnapshotReviewed,
+    [switch] $ConfirmOperationsConvergenceSnapshotReviewed,
     [switch] $ConfirmNoSecretValues,
     [switch] $RequireProductionEvidence,
+    [switch] $RequireOperationsSnapshotEvidence,
     [switch] $FailIfNotPassed,
     [switch] $NoWrite
 )
@@ -46,7 +51,7 @@ function Resolve-ProjectPath([string] $path) {
     return [System.IO.Path]::GetFullPath((Join-Path $root $path))
 }
 
-function Assert-SafeReference([string] $Value, [string] $Label) {
+function Assert-SafeText([string] $Value, [string] $Label) {
     if ([string]::IsNullOrWhiteSpace($Value)) {
         return
     }
@@ -55,14 +60,19 @@ function Assert-SafeReference([string] $Value, [string] $Label) {
         "-----BEGIN [A-Z ]*PRIVATE KEY-----",
         "\bA(KIA|SIA)[0-9A-Z]{16}\b",
         "\bBearer\s+[A-Za-z0-9._~+/=-]{12,}",
-        "(?i)\b(password|passwd|secret|token|client_secret|x-amz-security-token|smtp_pass|webhook_secret|kubeconfig)\s*[=:]\s*\S+"
+        "(?i)\b(password|passwd|secret|token|client_secret|x-amz-security-token|smtp_pass|webhook_secret|kubeconfig)\s*[=:]\s*\S+",
+        "(?i)""?(password|passwd|secret|token|client_secret|x-amz-security-token|smtp_pass|webhook_secret|kubeconfig)""?\s*[:=]\s*""?[^""\s,}]+"
     )
 
     foreach ($pattern in $patterns) {
         if ($Value -match $pattern) {
-            throw "$Label appears to contain credential material. Store only an external evidence reference."
+            throw "$Label appears to contain credential material. Store only a sanitized evidence reference or summary snapshot."
         }
     }
+}
+
+function Assert-SafeReference([string] $Value, [string] $Label) {
+    Assert-SafeText $Value $Label
 }
 
 function Test-DateText([string] $Value) {
@@ -116,6 +126,221 @@ function Add-EvidenceCheck([string] $Id, [string] $Name, [bool] $Required, [stri
     }
 }
 
+function Get-PropertyValue([object] $Object, [string] $Name) {
+    if ($null -eq $Object) {
+        return $null
+    }
+    $property = $Object.PSObject.Properties[$Name]
+    if ($null -eq $property) {
+        return $null
+    }
+    return $property.Value
+}
+
+function Get-PropertyText([object] $Object, [string] $Name) {
+    $value = Get-PropertyValue $Object $Name
+    if ($null -eq $value) {
+        return ""
+    }
+    return [string] $value
+}
+
+function Get-PropertyBool([object] $Object, [string] $Name) {
+    $value = Get-PropertyValue $Object $Name
+    if ($null -eq $value) {
+        return $false
+    }
+    if ($value -is [bool]) {
+        return [bool] $value
+    }
+    return ([string] $value).Equals("true", [System.StringComparison]::OrdinalIgnoreCase)
+}
+
+function Get-PropertyInt([object] $Object, [string] $Name) {
+    $value = Get-PropertyValue $Object $Name
+    if ($null -eq $value) {
+        return 0
+    }
+    $parsed = 0
+    if ([int]::TryParse(([string] $value), [ref] $parsed)) {
+        return $parsed
+    }
+    return 0
+}
+
+function Get-PropertyArray([object] $Object, [string] $Name) {
+    $value = Get-PropertyValue $Object $Name
+    if ($null -eq $value) {
+        return @()
+    }
+    if ($value -is [System.Array]) {
+        return @($value)
+    }
+    return @($value)
+}
+
+function Read-JsonPayload([string] $Path, [string] $Label, [string] $MissingDetail) {
+    $snapshot = [ordered]@{
+        provided = $false
+        path = ""
+        parsed = $false
+        payload = $null
+        detail = $MissingDetail
+    }
+
+    if ([string]::IsNullOrWhiteSpace($Path)) {
+        return $snapshot
+    }
+
+    $resolvedPath = Resolve-ProjectPath $Path
+    $snapshot["provided"] = $true
+    $snapshot["path"] = $resolvedPath
+    if (-not (Test-Path -LiteralPath $resolvedPath)) {
+        $snapshot["detail"] = "$Label JSON not found."
+        return $snapshot
+    }
+
+    $raw = Get-Content -Raw -LiteralPath $resolvedPath
+    Assert-SafeText $raw "${Label}Json"
+    try {
+        $snapshot["payload"] = $raw | ConvertFrom-Json
+        $snapshot["parsed"] = $true
+        $snapshot["detail"] = "JSON parsed."
+    }
+    catch {
+        $snapshot["detail"] = "$Label JSON parse failed: $($_.Exception.Message)"
+    }
+    return $snapshot
+}
+
+function New-CheckSnapshotRow([object] $Check) {
+    return [ordered]@{
+        name = Get-PropertyText $Check "name"
+        category = Get-PropertyText $Check "category"
+        status = Get-PropertyText $Check "status"
+        passed = Get-PropertyBool $Check "passed"
+        detail = Get-PropertyText $Check "detail"
+        evidencePath = Get-PropertyText $Check "evidencePath"
+        requiredEvidence = Get-PropertyText $Check "requiredEvidence"
+    }
+}
+
+function Read-OperationsReadinessSnapshot([string] $Path) {
+    $snapshot = [ordered]@{
+        provided = $false
+        path = ""
+        parsed = $false
+        formatVersion = ""
+        expectedFormatVersion = "osmu.operations-readiness.v1"
+        validFormatVersion = $false
+        result = ""
+        ready = $false
+        summary = ""
+        passedCount = 0
+        pendingCount = 0
+        checkCount = 0
+        topPendingChecks = @()
+        detail = "No operations readiness JSON supplied."
+    }
+
+    $payloadResult = Read-JsonPayload $Path "OperationsReadiness" $snapshot["detail"]
+    $snapshot["provided"] = [bool] $payloadResult["provided"]
+    $snapshot["path"] = [string] $payloadResult["path"]
+    $snapshot["parsed"] = [bool] $payloadResult["parsed"]
+    if (-not $snapshot["parsed"]) {
+        $snapshot["detail"] = [string] $payloadResult["detail"]
+        return $snapshot
+    }
+
+    $payload = $payloadResult["payload"]
+    $formatVersion = Get-PropertyText $payload "formatVersion"
+    $result = Get-PropertyText $payload "result"
+    $checks = @(Get-PropertyArray $payload "checks")
+    $pendingRows = New-Object System.Collections.Generic.List[object]
+    foreach ($check in $checks) {
+        if (-not (Get-PropertyBool $check "passed")) {
+            [void] $pendingRows.Add((New-CheckSnapshotRow $check))
+        }
+        if ($pendingRows.Count -ge 5) {
+            break
+        }
+    }
+
+    $snapshot["formatVersion"] = $formatVersion
+    $snapshot["validFormatVersion"] = $formatVersion -eq $snapshot["expectedFormatVersion"]
+    $snapshot["result"] = $result
+    $snapshot["ready"] = "ready".Equals($result, [System.StringComparison]::OrdinalIgnoreCase)
+    $snapshot["summary"] = Get-PropertyText $payload "summary"
+    $snapshot["passedCount"] = Get-PropertyInt $payload "passedCount"
+    $snapshot["pendingCount"] = Get-PropertyInt $payload "pendingCount"
+    $snapshot["checkCount"] = $checks.Count
+    $snapshot["topPendingChecks"] = @($pendingRows.ToArray())
+    $snapshot["detail"] = "formatVersion=$formatVersion; result=$result; passed=$($snapshot["passedCount"]); pending=$($snapshot["pendingCount"]); checks=$($snapshot["checkCount"])"
+    return $snapshot
+}
+
+function Read-OperationsConvergenceSnapshot([string] $Path) {
+    $snapshot = [ordered]@{
+        provided = $false
+        path = ""
+        parsed = $false
+        formatVersion = ""
+        expectedFormatVersion = "osmu.operations-readiness-convergence.v1"
+        validFormatVersion = $false
+        result = ""
+        ready = $false
+        readinessResult = ""
+        readinessSummary = ""
+        finalizerResult = ""
+        finalizerReadinessResult = ""
+        kubernetesReportSyncReady = $false
+        kubernetesReportSyncResult = ""
+        kubernetesReportSyncFailedCount = 0
+        stageCount = 0
+        readyStageCount = 0
+        finalizerGapCount = 0
+        currentBottleneckCode = ""
+        currentBottleneckTitle = ""
+        recommendedCommandCount = 0
+        detail = "No operations readiness convergence JSON supplied."
+    }
+
+    $payloadResult = Read-JsonPayload $Path "OperationsReadinessConvergence" $snapshot["detail"]
+    $snapshot["provided"] = [bool] $payloadResult["provided"]
+    $snapshot["path"] = [string] $payloadResult["path"]
+    $snapshot["parsed"] = [bool] $payloadResult["parsed"]
+    if (-not $snapshot["parsed"]) {
+        $snapshot["detail"] = [string] $payloadResult["detail"]
+        return $snapshot
+    }
+
+    $payload = $payloadResult["payload"]
+    $formatVersion = Get-PropertyText $payload "formatVersion"
+    $result = Get-PropertyText $payload "result"
+    $currentBottleneck = Get-PropertyValue $payload "currentBottleneck"
+    $recommendedCommands = @(Get-PropertyArray $payload "recommendedCommands")
+
+    $snapshot["formatVersion"] = $formatVersion
+    $snapshot["validFormatVersion"] = $formatVersion -eq $snapshot["expectedFormatVersion"]
+    $snapshot["result"] = $result
+    $snapshot["ready"] = "ready".Equals($result, [System.StringComparison]::OrdinalIgnoreCase)
+    $snapshot["readinessResult"] = Get-PropertyText $payload "readinessResult"
+    $snapshot["readinessSummary"] = Get-PropertyText $payload "readinessSummary"
+    $snapshot["finalizerResult"] = Get-PropertyText $payload "finalizerResult"
+    $snapshot["finalizerReadinessResult"] = Get-PropertyText $payload "finalizerReadinessResult"
+    $snapshot["kubernetesReportSyncReady"] = Get-PropertyBool $payload "kubernetesReportSyncReady"
+    $snapshot["kubernetesReportSyncResult"] = Get-PropertyText $payload "kubernetesReportSyncResult"
+    $snapshot["kubernetesReportSyncFailedCount"] = Get-PropertyInt $payload "kubernetesReportSyncFailedCount"
+    $snapshot["stageCount"] = Get-PropertyInt $payload "stageCount"
+    $snapshot["readyStageCount"] = Get-PropertyInt $payload "readyStageCount"
+    $snapshot["finalizerGapCount"] = Get-PropertyInt $payload "finalizerGapCount"
+    $snapshot["currentBottleneckCode"] = Get-PropertyText $currentBottleneck "code"
+    $snapshot["currentBottleneckTitle"] = Get-PropertyText $currentBottleneck "title"
+    $snapshot["recommendedCommandCount"] = $recommendedCommands.Count
+    $snapshot["detail"] = "formatVersion=$formatVersion; result=$result; readinessResult=$($snapshot["readinessResult"]); kubernetesReportSyncReady=$($snapshot["kubernetesReportSyncReady"]); finalizerGaps=$($snapshot["finalizerGapCount"])"
+    return $snapshot
+}
+
 foreach ($entry in @(
     @("EnvironmentName", $EnvironmentName),
     @("TargetCluster", $TargetCluster),
@@ -142,8 +367,15 @@ foreach ($entry in @(
     Assert-SafeReference ([string] $entry[1]) ([string] $entry[0])
 }
 
+$operationsReadinessSnapshot = Read-OperationsReadinessSnapshot $OperationsReadinessJsonPath
+$operationsConvergenceSnapshot = Read-OperationsConvergenceSnapshot $OperationsConvergenceJsonPath
+$operationsReadinessSnapshotValid = [bool] $operationsReadinessSnapshot["provided"] -and [bool] $operationsReadinessSnapshot["parsed"] -and [bool] $operationsReadinessSnapshot["validFormatVersion"]
+$operationsConvergenceSnapshotValid = [bool] $operationsConvergenceSnapshot["provided"] -and [bool] $operationsConvergenceSnapshot["parsed"] -and [bool] $operationsConvergenceSnapshot["validFormatVersion"]
+$operationsReadinessSnapshotReady = $operationsReadinessSnapshotValid -and [bool] $operationsReadinessSnapshot["ready"]
+$operationsConvergenceSnapshotReady = $operationsConvergenceSnapshotValid -and [bool] $operationsConvergenceSnapshot["ready"] -and [bool] $operationsConvergenceSnapshot["kubernetesReportSyncReady"]
+
 $evidenceText = $DeploymentEvidenceRef + $OperationsReadinessRef + $OperationsConvergenceRef + $SecretRotationEvidenceRef + $CommercialIntegrationEvidenceRef + $CommercialApprovalEvidenceRef + $EnterpriseAuthEvidenceRef + $BackupRestoreEvidenceRef + $HaDrEvidenceRef + $MonitoringEvidenceRef + $SecurityEvidenceRef + $IamRbacEvidenceRef + $RunbookReviewRef + $TroubleshootingReviewRef + $SupportEscalationRef + $SupportSlaRef + $KnownGapsRef
-$hasAnyInput = -not [string]::IsNullOrWhiteSpace($EnvironmentName + $TargetCluster + $Operator + $HandoffStartedAt + $HandoffCompletedAt + $ChangeApprovalRef + $evidenceText) -or $ConfirmRunbookReviewed -or $ConfirmTroubleshootingReviewed -or $ConfirmRollbackReviewed -or $ConfirmSupportEscalationReviewed -or $ConfirmKnownGapsAccepted -or $ConfirmNoSecretValues
+$hasAnyInput = -not [string]::IsNullOrWhiteSpace($EnvironmentName + $TargetCluster + $Operator + $HandoffStartedAt + $HandoffCompletedAt + $ChangeApprovalRef + $evidenceText + $OperationsReadinessJsonPath + $OperationsConvergenceJsonPath) -or $ConfirmRunbookReviewed -or $ConfirmTroubleshootingReviewed -or $ConfirmRollbackReviewed -or $ConfirmSupportEscalationReviewed -or $ConfirmKnownGapsAccepted -or $ConfirmOperationsReadinessSnapshotReviewed -or $ConfirmOperationsConvergenceSnapshotReviewed -or $ConfirmNoSecretValues -or $RequireOperationsSnapshotEvidence
 $handoffStartedAtParsed = Get-ParsedDateText $HandoffStartedAt
 $handoffCompletedAtParsed = Get-ParsedDateText $HandoffCompletedAt
 $handoffWindowOrdered = $null -ne $handoffStartedAtParsed -and $null -ne $handoffCompletedAtParsed -and $handoffCompletedAtParsed -ge $handoffStartedAtParsed
@@ -164,6 +396,20 @@ Add-Check "known-gaps-accepted" "Known gaps accepted" ([bool] $ConfirmKnownGapsA
 
 Add-EvidenceCheck "operations-readiness-evidence" "Operations readiness target evidence" ([bool] $RequireProductionEvidence) $OperationsReadinessRef "latest operations readiness result=ready or accepted target report"
 Add-EvidenceCheck "operations-convergence-evidence" "Operations convergence target evidence" ([bool] $RequireProductionEvidence) $OperationsConvergenceRef "latest operations convergence and dashboard sync evidence"
+if ([bool] $RequireOperationsSnapshotEvidence -or [bool] $operationsReadinessSnapshot["provided"]) {
+    Add-Check "operations-readiness-snapshot-parsed" "Operations readiness snapshot parsed" $operationsReadinessSnapshotValid $operationsReadinessSnapshot["detail"] $OperationsReadinessRef
+    Add-Check "operations-readiness-snapshot-ready" "Operations readiness snapshot ready" $operationsReadinessSnapshotReady "result=$($operationsReadinessSnapshot["result"]); pending=$($operationsReadinessSnapshot["pendingCount"])" $OperationsReadinessRef
+}
+if ([bool] $RequireOperationsSnapshotEvidence -or [bool] $operationsReadinessSnapshot["provided"] -or [bool] $ConfirmOperationsReadinessSnapshotReviewed) {
+    Add-Check "operations-readiness-snapshot-reviewed" "Operations readiness snapshot reviewed" ([bool] $ConfirmOperationsReadinessSnapshotReviewed -and $operationsReadinessSnapshotValid) "confirmed=$([bool] $ConfirmOperationsReadinessSnapshotReviewed); snapshotValid=$operationsReadinessSnapshotValid" $OperationsReadinessRef
+}
+if ([bool] $RequireOperationsSnapshotEvidence -or [bool] $operationsConvergenceSnapshot["provided"]) {
+    Add-Check "operations-convergence-snapshot-parsed" "Operations convergence snapshot parsed" $operationsConvergenceSnapshotValid $operationsConvergenceSnapshot["detail"] $OperationsConvergenceRef
+    Add-Check "operations-convergence-snapshot-ready" "Operations convergence snapshot ready" $operationsConvergenceSnapshotReady "result=$($operationsConvergenceSnapshot["result"]); kubernetesReportSyncReady=$($operationsConvergenceSnapshot["kubernetesReportSyncReady"]); failedSyncChecks=$($operationsConvergenceSnapshot["kubernetesReportSyncFailedCount"])" $OperationsConvergenceRef
+}
+if ([bool] $RequireOperationsSnapshotEvidence -or [bool] $operationsConvergenceSnapshot["provided"] -or [bool] $ConfirmOperationsConvergenceSnapshotReviewed) {
+    Add-Check "operations-convergence-snapshot-reviewed" "Operations convergence snapshot reviewed" ([bool] $ConfirmOperationsConvergenceSnapshotReviewed -and $operationsConvergenceSnapshotValid) "confirmed=$([bool] $ConfirmOperationsConvergenceSnapshotReviewed); snapshotValid=$operationsConvergenceSnapshotValid" $OperationsConvergenceRef
+}
 Add-EvidenceCheck "secret-rotation-evidence" "Secret/certificate rotation target evidence" ([bool] $RequireProductionEvidence) $SecretRotationEvidenceRef "target secret/certificate rotation result=passed"
 Add-EvidenceCheck "commercial-integration-evidence" "Commercial integration target evidence" ([bool] $RequireProductionEvidence) $CommercialIntegrationEvidenceRef "target commercial integration result=passed without native processor API claims"
 Add-EvidenceCheck "commercial-approval-evidence" "Commercial approval target evidence" ([bool] $RequireProductionEvidence) $CommercialApprovalEvidenceRef "target commercial approval result=passed for final pricing, terms, support SLA, license agreement, legal approval, and pilot contract boundary"
@@ -225,6 +471,10 @@ $report = New-Object System.Collections.Specialized.OrderedDictionary
     completedAt = $HandoffCompletedAt
 })
 [void] $report.Add("evidenceRefs", $evidenceRefs)
+[void] $report.Add("operationsSnapshots", [ordered]@{
+    readiness = $operationsReadinessSnapshot
+    convergence = $operationsConvergenceSnapshot
+})
 [void] $report.Add("confirmations", [ordered]@{
     noSecretValues = [bool] $ConfirmNoSecretValues
     runbookReviewed = [bool] $ConfirmRunbookReviewed
@@ -232,18 +482,24 @@ $report = New-Object System.Collections.Specialized.OrderedDictionary
     rollbackReviewed = [bool] $ConfirmRollbackReviewed
     supportEscalationReviewed = [bool] $ConfirmSupportEscalationReviewed
     knownGapsAccepted = [bool] $ConfirmKnownGapsAccepted
+    operationsReadinessSnapshotReviewed = [bool] $ConfirmOperationsReadinessSnapshotReviewed
+    operationsConvergenceSnapshotReviewed = [bool] $ConfirmOperationsConvergenceSnapshotReviewed
     requireProductionEvidence = [bool] $RequireProductionEvidence
+    requireOperationsSnapshotEvidence = [bool] $RequireOperationsSnapshotEvidence
 })
 [void] $report.Add("summary", [ordered]@{
     passedCount = $passedCount
     failureCount = $failureCount
     plannedCount = $plannedCount
     checkCount = $checkArray.Count
+    operationsReadinessSnapshotResult = $operationsReadinessSnapshot["result"]
+    operationsConvergenceSnapshotResult = $operationsConvergenceSnapshot["result"]
+    operationsConvergenceKubernetesReportSyncReady = $operationsConvergenceSnapshot["kubernetesReportSyncReady"]
 })
 [void] $report.Add("checks", [object] $checkArray)
-[void] $report.Add("decisionRule", "Production/B2B operations handoff package readiness requires result=passed from the target environment, reviewed runbook/troubleshooting/rollback/support paths, accepted known gaps, no-secret confirmation, and references to target readiness, convergence, secret rotation, commercial integration, commercial approval, enterprise auth, backup/restore, HA/DR, monitoring, security, and IAM/RBAC evidence when production evidence is required.")
-[void] $report.Add("scopePolicy", "This package is a handoff wrapper for already-collected operations evidence. It does not execute kubectl, gh, provider APIs, notification adapters, payment adapters, or native card/bank/tax/ERP processor calls.")
-[void] $report.Add("secretPolicy", "Evidence stores only environment labels, operator/change references, timestamps, booleans, and external evidence references; it must not contain passwords, bearer tokens, kubeconfig values, private keys, SMTP credentials, webhook signing secrets, provider credentials, raw provider responses, or customer payment data.")
+[void] $report.Add("decisionRule", "Production/B2B operations handoff package readiness requires result=passed from the target environment, reviewed runbook/troubleshooting/rollback/support paths, accepted known gaps, no-secret confirmation, and references to target readiness, convergence, secret rotation, commercial integration, commercial approval, enterprise auth, backup/restore, HA/DR, monitoring, security, and IAM/RBAC evidence when production evidence is required. When operations snapshot evidence is required, the latest operations readiness snapshot must be result=ready and the latest operations readiness convergence snapshot must be result=ready with Kubernetes report sync ready.")
+[void] $report.Add("scopePolicy", "This package is a handoff wrapper for already-collected operations evidence. It can reduce sanitized operations readiness and convergence JSON snapshots to summary fields, but it does not execute kubectl, gh, provider APIs, notification adapters, payment adapters, or native card/bank/tax/ERP processor calls.")
+[void] $report.Add("secretPolicy", "Evidence stores only environment labels, operator/change references, timestamps, booleans, external evidence references, and reduced operations readiness/convergence snapshot summaries; it must not contain passwords, bearer tokens, kubeconfig values, private keys, SMTP credentials, webhook signing secrets, provider credentials, raw provider responses, raw remediation commands containing credentials, or customer payment data.")
 
 $markdownLines = @(
     "# OSMU Operations Handoff Package",
@@ -275,6 +531,15 @@ foreach ($key in $evidenceRefs.Keys) {
 }
 
 $markdownLines += ""
+$markdownLines += "## Operations Snapshots"
+$markdownLines += ""
+$markdownLines += "- Readiness: provided=$($operationsReadinessSnapshot["provided"]); parsed=$($operationsReadinessSnapshot["parsed"]); result=$($operationsReadinessSnapshot["result"]); passed=$($operationsReadinessSnapshot["passedCount"]); pending=$($operationsReadinessSnapshot["pendingCount"]); checks=$($operationsReadinessSnapshot["checkCount"])"
+$markdownLines += "- Convergence: provided=$($operationsConvergenceSnapshot["provided"]); parsed=$($operationsConvergenceSnapshot["parsed"]); result=$($operationsConvergenceSnapshot["result"]); readiness=$($operationsConvergenceSnapshot["readinessResult"]); kubernetesReportSyncReady=$($operationsConvergenceSnapshot["kubernetesReportSyncReady"]); finalizerGaps=$($operationsConvergenceSnapshot["finalizerGapCount"])"
+foreach ($pendingCheck in @($operationsReadinessSnapshot["topPendingChecks"])) {
+    $markdownLines += "- Readiness pending: [$($pendingCheck.status)] $($pendingCheck.category) / $($pendingCheck.name): $($pendingCheck.detail)"
+}
+
+$markdownLines += ""
 $markdownLines += "## Checks"
 $markdownLines += ""
 foreach ($check in $checks) {
@@ -284,7 +549,7 @@ foreach ($check in $checks) {
 $markdownLines += ""
 $markdownLines += "## Operator Command"
 $markdownLines += ""
-$markdownLines += "- Record passed target package: ``powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\write-operations-handoff-package.ps1 -EnvironmentName <env> -TargetCluster <cluster> -Operator <operator> -HandoffStartedAt <iso-time> -HandoffCompletedAt <iso-time> -ChangeApprovalRef <change-id> -DeploymentEvidenceRef <ref> -OperationsReadinessRef <ref> -OperationsConvergenceRef <ref> -SecretRotationEvidenceRef <ref> -CommercialIntegrationEvidenceRef <ref> -CommercialApprovalEvidenceRef <ref> -EnterpriseAuthEvidenceRef <ref> -BackupRestoreEvidenceRef <ref> -HaDrEvidenceRef <ref> -MonitoringEvidenceRef <ref> -SecurityEvidenceRef <ref> -IamRbacEvidenceRef <ref> -RunbookReviewRef <ref> -TroubleshootingReviewRef <ref> -SupportEscalationRef <ref> -SupportSlaRef <ref> -KnownGapsRef <ref> -ConfirmRunbookReviewed -ConfirmTroubleshootingReviewed -ConfirmRollbackReviewed -ConfirmSupportEscalationReviewed -ConfirmKnownGapsAccepted -ConfirmNoSecretValues -RequireProductionEvidence -FailIfNotPassed``"
+$markdownLines += "- Record passed target package: ``powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\write-operations-handoff-package.ps1 -EnvironmentName <env> -TargetCluster <cluster> -Operator <operator> -HandoffStartedAt <iso-time> -HandoffCompletedAt <iso-time> -ChangeApprovalRef <change-id> -DeploymentEvidenceRef <ref> -OperationsReadinessRef <ref> -OperationsConvergenceRef <ref> -OperationsReadinessJsonPath .\.osmu-run\latest-operations-readiness.json -OperationsConvergenceJsonPath .\.osmu-run\latest-operations-readiness-convergence.json -SecretRotationEvidenceRef <ref> -CommercialIntegrationEvidenceRef <ref> -CommercialApprovalEvidenceRef <ref> -EnterpriseAuthEvidenceRef <ref> -BackupRestoreEvidenceRef <ref> -HaDrEvidenceRef <ref> -MonitoringEvidenceRef <ref> -SecurityEvidenceRef <ref> -IamRbacEvidenceRef <ref> -RunbookReviewRef <ref> -TroubleshootingReviewRef <ref> -SupportEscalationRef <ref> -SupportSlaRef <ref> -KnownGapsRef <ref> -ConfirmRunbookReviewed -ConfirmTroubleshootingReviewed -ConfirmRollbackReviewed -ConfirmSupportEscalationReviewed -ConfirmKnownGapsAccepted -ConfirmOperationsReadinessSnapshotReviewed -ConfirmOperationsConvergenceSnapshotReviewed -ConfirmNoSecretValues -RequireProductionEvidence -RequireOperationsSnapshotEvidence -FailIfNotPassed``"
 
 if (-not $NoWrite) {
     New-Item -ItemType Directory -Force -Path (Split-Path -Parent $resolvedJsonOutputPath) | Out-Null
