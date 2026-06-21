@@ -1866,7 +1866,7 @@ ID:
 - 절차: ObjectExplorer에서 breadcrumb 버튼을 클릭한다.
 - 기대 결과: 선택한 breadcrumb prefix로 `objectPrefix`가 변경되고 cursor 없이 해당 prefix의 첫 페이지를 조회한다.
 - 우선순위: P1
-- 자동화 여부: Automated (`npm run test:unit` object explorer breadcrumb utility, Browser E2E stable selectors `object-prefix-breadcrumb`, `object-prefix-breadcrumb-button`). Browser prefix click E2E pending.
+- 자동화 여부: Automated (`npm run test:unit` object explorer breadcrumb utility, Browser E2E prefix open and breadcrumb reset path with `object-prefix-row`, `object-prefix-open-button`, and `object-prefix-breadcrumb-button` selectors).
 
 ### TC-FE-015
 

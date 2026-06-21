@@ -348,6 +348,15 @@ test('admin can complete lightweight storage portal click path', async ({ page }
   await expect(page.getByTestId('object-upload-button')).toBeEnabled()
   await page.getByTestId('object-upload-button').click()
 
+  await expect(page.getByTestId('object-prefix-row').first()).toContainText('e2e')
+  await page.getByTestId('object-prefix-open-button').first().click()
+  await expect(page.getByTestId('object-prefix-input')).toHaveValue('e2e/')
+  await expect(page.getByTestId('object-prefix-breadcrumb-button').filter({ hasText: 'e2e' })).toBeVisible()
+  await page.getByTestId('object-prefix-breadcrumb-button').filter({ hasText: '/' }).click()
+  await expect(page.getByTestId('object-prefix-input')).toHaveValue('')
+  await page.getByTestId('object-prefix-open-button').first().click()
+  await expect(page.getByTestId('object-prefix-input')).toHaveValue('e2e/')
+
   await page.getByTestId('object-search-input').fill('hello')
   await page.getByTestId('object-search-button').click()
   await expect(page.getByTestId('object-table')).toContainText(objectKey)
