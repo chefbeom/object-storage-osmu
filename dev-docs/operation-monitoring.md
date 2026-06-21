@@ -23,7 +23,7 @@ Required endpoints:
 - `GET /api/admin/backup/status`
 - `GET /actuator/prometheus`
 
-`/api/admin/storage/backend-status` returns object storage health, access-key provisioner health, and bucket metadata usage totals for `ADMIN` and `AUDITOR`. It intentionally reports `minioAdminMetricsEnabled=false` in the current MVP; direct MinIO Admin capacity telemetry is a future enhancement, while this surface is enough to show replacement-storage readiness without chasing full AWS parity.
+`/api/admin/storage/backend-status` returns object storage health, access-key provisioner health, bucket/object metadata counts, and optional MinIO Prometheus capacity metrics for `ADMIN` and `AUDITOR`. Enable the direct probe with `OSMU_STORAGE_METRICS_ENABLED=true`; if `OSMU_STORAGE_METRICS_ENDPOINT` is blank, Backend probes `<OSMU_STORAGE_ENDPOINT>/minio/v2/metrics/cluster`. When metrics are unavailable, capacity falls back to bucket metadata usage and `pendingGates` keeps the direct metrics gap visible. This is an OSMU operations readiness surface, not AWS S3 parity work.
 `/api/admin/backup/status` returns `DRILL_PENDING` in lightweight demo mode and lists durable pilot gaps in `pendingGates`.
 `/actuator/prometheus` is the Prometheus scrape endpoint.
 

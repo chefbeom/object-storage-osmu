@@ -320,13 +320,13 @@ MVP 데모 기준 완료율은 약 90~95%입니다.
 - access key provisioning recovery: create failure leaves no metadata, DB-save failure cleans up provisioned user/policy, and scope-sync cleanup failure marks metadata `INACTIVE` first so OSMU auth fails closed.
 - storage adapter runtime failure normalization: bucket/object service storage calls preserve intentional `ApiException` results and convert unexpected adapter runtime failures to `502 STORAGE_ERROR` before metadata/quota side effects.
 - storage health endpoint
-- storage backend status API/UI (`GET /api/admin/storage/backend-status`) using bucket metadata usage and health probes, with `minioAdminMetricsEnabled=false`
+- storage backend status API/UI (`GET /api/admin/storage/backend-status`) using health probes, bucket/object metadata counts, and optional MinIO Prometheus capacity metrics with metadata fallback.
 - object storage failure frontend retry/remediation UX: upload failures carrying `STORAGE_ERROR` or HTTP 502 keep the retry action available and show Request ID based operator steps before reattempting large/multipart uploads.
 
 남은 것:
 
 - bucket CORS/versioning/lifecycle 실제 동기화
-- Direct MinIO Admin API capacity/health telemetry replacement for the current metadata-usage status surface
+- Full MinIO Admin API pool/node telemetry beyond the current Prometheus capacity probe
 
 ### 4.9 용량 증설
 

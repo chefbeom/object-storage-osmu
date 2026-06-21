@@ -2027,7 +2027,12 @@ const dataFlowStorageStatusLabel = computed(() => (
   `${dataFlowStorageStatus.value.readiness || 'unknown'} / ${dataFlowStorageStatus.value.metadataMode || '-'} / ${dataFlowStorageStatus.value.repositoryHealthy ? 'healthy' : 'unhealthy'}`
 ))
 const storageBackendStatusLabel = computed(() => (
-  `${storageBackendStatus.value.readiness || 'unknown'} / ${props.formatBytes(storageBackendStatus.value.usedBytes || 0)} used / ${props.formatCount(storageBackendStatus.value.objectCount || 0)} objects`
+  `${storageBackendStatus.value.readiness || 'unknown'} / ${storageBackendCapacityLabel.value} / ${props.formatCount(storageBackendStatus.value.objectCount || 0)} objects`
+))
+const storageBackendCapacityLabel = computed(() => (
+  storageBackendStatus.value.directStorageMetricsEnabled
+    ? `${props.formatBytes(storageBackendStatus.value.usedBytes || 0)} used from direct metrics`
+    : `${props.formatBytes(storageBackendStatus.value.usedBytes || 0)} metadata used`
 ))
 const dataFlowStorageRowsLabel = computed(() => (
   `${props.formatCount(dataFlowStorageStatus.value.eventRowCount || 0)} events / ${props.formatCount(dataFlowStorageStatus.value.dailyRollupRowCount || 0)} daily / ${props.formatCount(dataFlowStorageStatus.value.monthlyRollupRowCount || 0)} monthly`

@@ -117,7 +117,7 @@ test('getDashboardSummary reads admin dashboard aggregate endpoint', async () =>
 
 test('getStorageBackendStatus reads admin storage backend status endpoint', async () => {
   const fetchMock = mockFetch([
-    () => jsonResponse({ data: { readiness: 'DEMO_ONLY', minioAdminMetricsEnabled: false } }),
+    () => jsonResponse({ data: { readiness: 'DIRECT_METRICS_READY', directStorageMetricsEnabled: true, minioAdminMetricsEnabled: true, directMetricTotalBytes: 1024, directMetricFreeBytes: 256 } }),
   ])
 
   try {
@@ -125,7 +125,11 @@ test('getStorageBackendStatus reads admin storage backend status endpoint', asyn
 
     assert.equal(fetchMock.calls[0].url, 'http://localhost:8080/api/admin/storage/backend-status')
     assert.equal(fetchMock.calls[0].options.method, undefined)
-    assert.equal(result.data.minioAdminMetricsEnabled, false)
+    assert.equal(result.data.readiness, 'DIRECT_METRICS_READY')
+    assert.equal(result.data.directStorageMetricsEnabled, true)
+    assert.equal(result.data.minioAdminMetricsEnabled, true)
+    assert.equal(result.data.directMetricTotalBytes, 1024)
+    assert.equal(result.data.directMetricFreeBytes, 256)
   } finally {
     cleanupFetch(fetchMock)
   }

@@ -3270,13 +3270,19 @@ function storageBackendStatus() {
     usedBytes: usage.usedBytes,
     quotaBytes: usage.totalBytes,
     remainingBytes: Math.max(0, usage.totalBytes - usage.usedBytes),
+    directMetricTotalBytes: 0,
+    directMetricFreeBytes: 0,
     capacitySource: 'bucket_metadata_usage',
     directStorageMetricsEnabled: false,
     minioAdminMetricsEnabled: false,
+    directStorageMetricsStatus: 'DISABLED',
+    directStorageMetricsSource: 'disabled',
+    directStorageMetricsDetail: 'Direct MinIO capacity metrics are disabled.',
+    directStorageMetricNames: [],
     readiness: 'DEMO_ONLY',
     pendingGates: ['MinIO object storage mode is not enabled.'],
     generatedAt: new Date().toISOString(),
-    note: 'Mock storage backend status uses bucket metadata usage and health probes. Direct MinIO Admin capacity metrics are not enabled in this mock build.',
+    note: 'Mock storage backend status uses bucket metadata usage and health probes until direct MinIO capacity metrics are ready.',
   }
 }
 
@@ -3720,7 +3726,7 @@ async function runSelfTest() {
     const storageBackendStatus = await (await fetch(`${base}/admin/storage/backend-status`, {
       headers: { Authorization: `Bearer ${login.data.accessToken}` },
     })).json()
-    if (storageBackendStatus.data?.capacitySource !== 'bucket_metadata_usage' || storageBackendStatus.data?.minioAdminMetricsEnabled !== false) {
+    if (storageBackendStatus.data?.capacitySource !== 'bucket_metadata_usage' || storageBackendStatus.data?.directStorageMetricsStatus !== 'DISABLED') {
       throw new Error('storage backend status self-test failed')
     }
     const dataFlowMonthlyRollup = await (await fetch(`${base}/admin/monitoring/data-flow/monthly-rollup?months=12&limit=200`, {

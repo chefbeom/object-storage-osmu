@@ -3859,7 +3859,7 @@
       "get": {
         "tags": ["Admin"],
         "operationId": "getStorageBackendStatus",
-        "summary": "Read storage backend health, metadata usage totals, and MinIO admin telemetry readiness",
+        "summary": "Read storage backend health, metadata fallback, and optional MinIO capacity metrics",
         "responses": {
           "200": { "$ref": "#/components/responses/JsonOk" },
           "403": { "$ref": "#/components/responses/Error" }

@@ -4882,7 +4882,7 @@ Response:
 
 ### GET /api/admin/storage/backend-status
 
-Returns read-only storage backend operations status for `ADMIN` and `AUDITOR`. It combines object storage health, access-key provisioner health, and bucket metadata usage totals. This is not direct MinIO Admin capacity telemetry yet.
+Returns read-only storage backend operations status for `ADMIN` and `AUDITOR`. It combines object storage health, access-key provisioner health, bucket metadata counts, and optional direct MinIO Prometheus capacity metrics. If `OSMU_STORAGE_METRICS_ENABLED=false` or the metrics endpoint is unavailable, capacity falls back to bucket metadata usage totals.
 
 Response:
 
@@ -4895,24 +4895,31 @@ Response:
     "accessKeyProvisionerHealthy": true,
     "bucketCount": 12,
     "objectCount": 240,
-    "usedBytes": 1048576,
+    "usedBytes": 7516192768,
     "quotaBytes": 10737418240,
-    "remainingBytes": 10736369664,
-    "capacitySource": "bucket_metadata_usage",
-    "directStorageMetricsEnabled": false,
-    "minioAdminMetricsEnabled": false,
-    "readiness": "METADATA_USAGE_READY",
+    "remainingBytes": 3221225472,
+    "directMetricTotalBytes": 10737418240,
+    "directMetricFreeBytes": 3221225472,
+    "capacitySource": "minio_prometheus_metrics",
+    "directStorageMetricsEnabled": true,
+    "minioAdminMetricsEnabled": true,
+    "directStorageMetricsStatus": "READY",
+    "directStorageMetricsSource": "minio_prometheus_metrics",
+    "directStorageMetricsDetail": "Direct MinIO capacity metrics collected from Prometheus-compatible metrics endpoint.",
+    "directStorageMetricNames": ["minio_cluster_capacity_raw_total_bytes", "minio_cluster_capacity_raw_free_bytes"],
+    "readiness": "DIRECT_METRICS_READY",
     "pendingGates": [],
     "generatedAt": "2026-06-18T10:40:00Z",
-    "note": "OSMU storage backend status uses bucket metadata usage and health probes. Direct MinIO Admin capacity metrics are not enabled in this build."
+    "note": "OSMU storage backend status uses direct MinIO capacity metrics with metadata counts for buckets and objects."
   }
 }
 ```
 
 Notes:
 
-- `readiness` is `DEMO_ONLY` outside MinIO mode, `UNHEALTHY` when the object store health probe fails, `PROVISIONER_ATTENTION` when key policy provisioning is unhealthy, and `METADATA_USAGE_READY` when MinIO mode and metadata usage health are ready.
-- `minioAdminMetricsEnabled=false` is intentional for the current MVP; future MinIO Admin/API telemetry can replace or augment `capacitySource`.
+- `readiness` is `DEMO_ONLY` outside MinIO mode, `UNHEALTHY` when the object store health probe fails, `PROVISIONER_ATTENTION` when key policy provisioning is unhealthy, `DIRECT_METRICS_READY` when MinIO Prometheus capacity metrics are collected, and `METADATA_USAGE_READY` when MinIO mode is healthy but capacity still comes from bucket metadata usage.
+- Optional metrics config: `OSMU_STORAGE_METRICS_ENABLED=true`, `OSMU_STORAGE_METRICS_ENDPOINT=<minio>/minio/v2/metrics/cluster`, optional `OSMU_STORAGE_METRICS_BEARER_TOKEN`, and `OSMU_STORAGE_METRICS_TIMEOUT_SECONDS`.
+- This is an OSMU operations capacity probe, not AWS S3 parity work. Full MinIO Admin API pool/node telemetry remains a future enhancement.
 
 ### GET /api/admin/dashboard/readiness
 

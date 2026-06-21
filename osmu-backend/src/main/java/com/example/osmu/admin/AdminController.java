@@ -108,6 +108,7 @@ public class AdminController {
     private final ObjectProvider<ObjectRetentionPurgeJob> retentionPurgeJobProvider;
     private final ObjectProvider<ObjectVersionRetentionPurgeJob> versionRetentionPurgeJobProvider;
     private final DataFlowMonitoringService dataFlowMonitoringService;
+    private final StorageBackendMetricsProvider storageBackendMetricsProvider;
     private final MeterRegistry meterRegistry;
     private final boolean objectRetentionEnabled;
     private final String storageMode;
@@ -155,6 +156,7 @@ public class AdminController {
             ObjectProvider<ObjectRetentionPurgeJob> retentionPurgeJobProvider,
             ObjectProvider<ObjectVersionRetentionPurgeJob> versionRetentionPurgeJobProvider,
             DataFlowMonitoringService dataFlowMonitoringService,
+            StorageBackendMetricsProvider storageBackendMetricsProvider,
             MeterRegistry meterRegistry,
             @Value("${osmu.object.retention.enabled:true}") boolean objectRetentionEnabled,
             @Value("${osmu.storage.mode:in-memory}") String storageMode,
@@ -201,6 +203,7 @@ public class AdminController {
         this.retentionPurgeJobProvider = retentionPurgeJobProvider;
         this.versionRetentionPurgeJobProvider = versionRetentionPurgeJobProvider;
         this.dataFlowMonitoringService = dataFlowMonitoringService;
+        this.storageBackendMetricsProvider = storageBackendMetricsProvider;
         this.meterRegistry = meterRegistry;
         this.objectRetentionEnabled = objectRetentionEnabled;
         this.storageMode = storageMode;
@@ -622,6 +625,14 @@ public class AdminController {
         long usedBytes = bucketService.totalUsedBytes();
         long bucketCount = bucketRepository.findAll().size();
         long objectCount = bucketService.totalObjectCount();
+        StorageBackendMetricsSnapshot directMetrics = storageBackendMetricsProvider.snapshot();
+        boolean directMetricsReady = directMetrics.ready();
+        long effectiveQuotaBytes = directMetricsReady ? directMetrics.totalBytes() : quotaBytes;
+        long effectiveRemainingBytes = directMetricsReady ? directMetrics.freeBytes() : Math.max(0L, quotaBytes - usedBytes);
+        long effectiveUsedBytes = directMetricsReady
+                ? Math.max(0L, directMetrics.totalBytes() - directMetrics.freeBytes())
+                : usedBytes;
+        String capacitySource = directMetricsReady ? directMetrics.source() : "bucket_metadata_usage";
         List<String> pendingGates = new java.util.ArrayList<>();
         if (!storageHealthy) {
             pendingGates.add("Object storage health check is DOWN.");
@@ -631,6 +642,8 @@ public class AdminController {
         }
         if (!"minio".equals(normalizedStorageMode)) {
             pendingGates.add("MinIO object storage mode is not enabled.");
+        } else if (!directMetrics.ready()) {
+            pendingGates.add("Direct MinIO capacity metrics are not ready: " + directMetrics.detail());
         }
         String readiness;
         if (!storageHealthy) {
@@ -639,6 +652,8 @@ public class AdminController {
             readiness = "DEMO_ONLY";
         } else if (!accessKeyProvisionerHealthy) {
             readiness = "PROVISIONER_ATTENTION";
+        } else if (directMetricsReady) {
+            readiness = "DIRECT_METRICS_READY";
         } else {
             readiness = "METADATA_USAGE_READY";
         }
@@ -649,16 +664,24 @@ public class AdminController {
                 accessKeyProvisionerHealthy,
                 bucketCount,
                 objectCount,
-                usedBytes,
-                quotaBytes,
-                Math.max(0L, quotaBytes - usedBytes),
-                "bucket_metadata_usage",
-                false,
-                false,
+                effectiveUsedBytes,
+                effectiveQuotaBytes,
+                effectiveRemainingBytes,
+                directMetrics.totalBytes(),
+                directMetrics.freeBytes(),
+                capacitySource,
+                directMetricsReady,
+                directMetricsReady && "minio_prometheus_metrics".equals(directMetrics.source()),
+                directMetrics.status(),
+                directMetrics.source(),
+                directMetrics.detail(),
+                directMetrics.metricNames(),
                 readiness,
                 List.copyOf(pendingGates),
                 OffsetDateTime.now(),
-                "OSMU storage backend status uses bucket metadata usage and health probes. Direct MinIO Admin capacity metrics are not enabled in this build."
+                directMetricsReady
+                        ? "OSMU storage backend status uses direct MinIO capacity metrics with metadata counts for buckets and objects."
+                        : "OSMU storage backend status uses bucket metadata usage and health probes until direct MinIO capacity metrics are ready."
         );
     }
 
