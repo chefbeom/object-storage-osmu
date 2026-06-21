@@ -1078,7 +1078,7 @@ ID:
 - Steps: Select a bucket, verify active profile details, submit a profile request, open Admin page, approve/reject/apply request.
 - Expected: User UI shows active profile, alias, risk, MinIO binding, and recent requests. Admin UI shows request queue with note input and approve/reject/apply actions.
 - Priority: P1
-- Automated: `api-storage-profile.test.js` covers API wrappers, `npm run test:unit` covers stable storage profile selectors, and Browser E2E spec covers bucket-side profile select/reason/request and request row/status render. Admin approval/apply Browser E2E remains pending.
+- Automated: `api-storage-profile.test.js` covers API wrappers, `npm run test:unit` covers stable storage profile selectors, and Browser E2E spec covers bucket-side profile select/reason/request, request row/status render, Admin approval, and Admin apply status transition.
 
 ## 6. Object
 

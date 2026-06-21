@@ -317,7 +317,11 @@
             </tr>
           </thead>
           <tbody>
-            <tr v-for="request in storageProfileRequests" :key="request.id">
+            <tr
+              v-for="request in storageProfileRequests"
+              :key="request.id"
+              data-testid="admin-storage-profile-request-row"
+            >
               <td>
                 <strong>{{ request.bucketName }}</strong>
                 <small>{{ request.reason || '-' }}</small>
@@ -327,16 +331,16 @@
                 <strong>{{ request.requestedProfile?.name || request.requestedProfile?.code }}</strong>
                 <small>{{ request.requestedProfile?.alias }} / {{ request.requestedProfile?.riskLevel }}</small>
               </td>
-              <td><strong :class="['status-pill', statusClass(request.status)]">{{ request.status }}</strong></td>
+              <td><strong data-testid="admin-storage-profile-request-status" :class="['status-pill', statusClass(request.status)]">{{ request.status }}</strong></td>
               <td>{{ request.requestedBy }}</td>
               <td class="actions">
-                <button type="button" class="ghost" :disabled="request.status !== 'PENDING'" @click="$emit('update-storage-profile-request-status', { request, status: 'APPROVED' })">
+                <button data-testid="admin-storage-profile-approve-button" type="button" class="ghost" :disabled="request.status !== 'PENDING'" @click="$emit('update-storage-profile-request-status', { request, status: 'APPROVED' })">
                   Approve
                 </button>
-                <button type="button" class="danger" :disabled="request.status !== 'PENDING'" @click="$emit('update-storage-profile-request-status', { request, status: 'REJECTED' })">
+                <button data-testid="admin-storage-profile-reject-button" type="button" class="danger" :disabled="request.status !== 'PENDING'" @click="$emit('update-storage-profile-request-status', { request, status: 'REJECTED' })">
                   Reject
                 </button>
-                <button type="button" :disabled="request.status !== 'APPROVED'" @click="$emit('apply-storage-profile-request', request)">
+                <button data-testid="admin-storage-profile-apply-button" type="button" :disabled="request.status !== 'APPROVED'" @click="$emit('apply-storage-profile-request', request)">
                   Apply
                 </button>
               </td>
