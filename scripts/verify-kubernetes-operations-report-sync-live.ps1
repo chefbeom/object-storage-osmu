@@ -118,6 +118,16 @@ function Get-ObjectInt([object] $Value) {
     }
 }
 
+function Get-ObjectBool([object] $Value) {
+    if ($null -eq $Value -or "$Value" -eq "") {
+        return $false
+    }
+    if ($Value -is [bool]) {
+        return [bool] $Value
+    }
+    return ([string] $Value).Equals("true", [System.StringComparison]::OrdinalIgnoreCase)
+}
+
 function New-SyncCommand([string] $Mode) {
     $arguments = @(
         "-NoProfile",
@@ -146,7 +156,11 @@ function Test-DashboardDataMatchesExpected(
     [bool] $ShouldCheckDataFlowStoragePlan,
     [string] $ExpectedDataFlowStoragePlanResult,
     [string] $ExpectedDataFlowStoragePlanCandidateStore,
-    [int] $ExpectedDataFlowStoragePlanPendingCount
+    [int] $ExpectedDataFlowStoragePlanPendingCount,
+    [bool] $ShouldCheckDataFlowQueryPlanEvidence,
+    [bool] $ExpectedDataFlowQueryPlanEvidenceProvided,
+    [string] $ExpectedDataFlowQueryPlanEvidenceResult,
+    [int] $ExpectedDataFlowQueryPlanEvidenceFailedCount
 ) {
     $details = @()
     if ($null -eq $Data) {
@@ -215,6 +229,26 @@ function Test-DashboardDataMatchesExpected(
             $dataFlowStoragePlanPendingCount = Get-ObjectInt $dataFlowStoragePlan.pendingCount
             if ($dataFlowStoragePlanPendingCount -ne $ExpectedDataFlowStoragePlanPendingCount) {
                 $details += "data-flow storage plan pendingCount=$dataFlowStoragePlanPendingCount expected=$ExpectedDataFlowStoragePlanPendingCount"
+            }
+            if ($ShouldCheckDataFlowQueryPlanEvidence) {
+                $queryPlanEvidence = $dataFlowStoragePlan.queryPlanEvidence
+                if ($null -eq $queryPlanEvidence) {
+                    $details += "data-flow query plan evidence missing"
+                }
+                else {
+                    $queryPlanProvided = Get-ObjectBool $queryPlanEvidence.provided
+                    if ($queryPlanProvided -ne $ExpectedDataFlowQueryPlanEvidenceProvided) {
+                        $details += "data-flow query plan provided=$queryPlanProvided expected=$ExpectedDataFlowQueryPlanEvidenceProvided"
+                    }
+                    $queryPlanResult = Get-ObjectText $queryPlanEvidence.result
+                    if ($queryPlanResult -ne $ExpectedDataFlowQueryPlanEvidenceResult) {
+                        $details += "data-flow query plan result=$queryPlanResult expected=$ExpectedDataFlowQueryPlanEvidenceResult"
+                    }
+                    $queryPlanFailedCount = Get-ObjectInt $queryPlanEvidence.failedCount
+                    if ($queryPlanFailedCount -ne $ExpectedDataFlowQueryPlanEvidenceFailedCount) {
+                        $details += "data-flow query plan failedCount=$queryPlanFailedCount expected=$ExpectedDataFlowQueryPlanEvidenceFailedCount"
+                    }
+                }
             }
         }
 
@@ -300,6 +334,10 @@ $dataFlowStoragePlanEvidence = $null
 $expectedDataFlowStoragePlanResult = ""
 $expectedDataFlowStoragePlanCandidateStore = ""
 $expectedDataFlowStoragePlanPendingCount = 0
+$expectedDataFlowQueryPlanEvidence = $false
+$expectedDataFlowQueryPlanEvidenceProvided = $false
+$expectedDataFlowQueryPlanEvidenceResult = ""
+$expectedDataFlowQueryPlanEvidenceFailedCount = 0
 if ($SkipDataFlowStoragePlanDashboardCheck) {
     Add-Check "data-flow-storage-plan-dashboard-skipped" $true "Dashboard data-flow storage plan check skipped by parameter."
 }
@@ -309,8 +347,18 @@ elseif ($shouldCheckDataFlowStoragePlanDashboard) {
         $expectedDataFlowStoragePlanResult = Get-ObjectText $dataFlowStoragePlanEvidence.result
         $expectedDataFlowStoragePlanCandidateStore = Get-ObjectText $dataFlowStoragePlanEvidence.candidateStore
         $expectedDataFlowStoragePlanPendingCount = Get-ObjectInt $dataFlowStoragePlanEvidence.pendingCount
+        $queryPlanEvidence = $dataFlowStoragePlanEvidence.queryPlanEvidence
+        if ($null -ne $queryPlanEvidence) {
+            $expectedDataFlowQueryPlanEvidence = $true
+            $expectedDataFlowQueryPlanEvidenceProvided = Get-ObjectBool $queryPlanEvidence.provided
+            $expectedDataFlowQueryPlanEvidenceResult = Get-ObjectText $queryPlanEvidence.result
+            $expectedDataFlowQueryPlanEvidenceFailedCount = Get-ObjectInt $queryPlanEvidence.failedCount
+        }
         Add-Check "data-flow-storage-plan-valid-json" $true "Local data-flow storage plan evidence is valid JSON."
         Add-Check "data-flow-storage-plan-format-version" ((Get-ObjectText $dataFlowStoragePlanEvidence.formatVersion) -eq "osmu.data-flow-storage-plan.v1") "Data-flow storage plan formatVersion=$(Get-ObjectText $dataFlowStoragePlanEvidence.formatVersion)."
+        if ($expectedDataFlowQueryPlanEvidence) {
+            Add-Check "data-flow-query-plan-evidence-summary" $true "Local data-flow storage plan includes query plan evidence summary result=$expectedDataFlowQueryPlanEvidenceResult, provided=$expectedDataFlowQueryPlanEvidenceProvided, failed=$expectedDataFlowQueryPlanEvidenceFailedCount."
+        }
         if ($PlanOnly) {
             Add-Check "data-flow-storage-plan-dashboard-plan" $true "Dashboard data-flow storage plan check planned from local evidence."
         }
@@ -356,7 +404,7 @@ elseif ($dashboardCheckRequested) {
             $dashboardData = Get-ResponseData (Read-JsonFile $resolvedDashboardFixturePath "Dashboard readiness fixture")
             $dashboardSource = $resolvedDashboardFixturePath
             $dashboardAttemptCount = 1
-            $dashboardMatch = Test-DashboardDataMatchesExpected $dashboardData $expectedSyncResult $syncConfigMapName $syncConfigMapKey $dataFlowStoragePlanDashboardExpected $expectedDataFlowStoragePlanResult $expectedDataFlowStoragePlanCandidateStore $expectedDataFlowStoragePlanPendingCount
+            $dashboardMatch = Test-DashboardDataMatchesExpected $dashboardData $expectedSyncResult $syncConfigMapName $syncConfigMapKey $dataFlowStoragePlanDashboardExpected $expectedDataFlowStoragePlanResult $expectedDataFlowStoragePlanCandidateStore $expectedDataFlowStoragePlanPendingCount $expectedDataFlowQueryPlanEvidence $expectedDataFlowQueryPlanEvidenceProvided $expectedDataFlowQueryPlanEvidenceResult $expectedDataFlowQueryPlanEvidenceFailedCount
             $dashboardMatchedExpected = [bool] $dashboardMatch.matched
             Add-Check "dashboard-fixture" $true "Loaded dashboard readiness fixture."
         }
@@ -388,7 +436,7 @@ elseif ($dashboardCheckRequested) {
                         try {
                             $dashboard = Invoke-Json "GET" "$ApiBase/admin/dashboard/readiness" $null $token
                             $dashboardData = Get-ResponseData $dashboard
-                            $dashboardMatch = Test-DashboardDataMatchesExpected $dashboardData $expectedSyncResult $syncConfigMapName $syncConfigMapKey $dataFlowStoragePlanDashboardExpected $expectedDataFlowStoragePlanResult $expectedDataFlowStoragePlanCandidateStore $expectedDataFlowStoragePlanPendingCount
+                            $dashboardMatch = Test-DashboardDataMatchesExpected $dashboardData $expectedSyncResult $syncConfigMapName $syncConfigMapKey $dataFlowStoragePlanDashboardExpected $expectedDataFlowStoragePlanResult $expectedDataFlowStoragePlanCandidateStore $expectedDataFlowStoragePlanPendingCount $expectedDataFlowQueryPlanEvidence $expectedDataFlowQueryPlanEvidenceProvided $expectedDataFlowQueryPlanEvidenceResult $expectedDataFlowQueryPlanEvidenceFailedCount
                             $dashboardMatchedExpected = [bool] $dashboardMatch.matched
                             $attemptSummaries += "attempt $attempt/$DashboardRetryCount`: $($dashboardMatch.summary) $(@($dashboardMatch.details) -join '; ')".Trim()
                             if ($dashboardMatchedExpected) {
@@ -427,6 +475,9 @@ $dashboardDataFlowStoragePlanResult = ""
 $dashboardDataFlowStoragePlanCandidateStore = ""
 $dashboardDataFlowStoragePlanPendingCount = 0
 $dashboardDataFlowStoragePlanItemPresent = $false
+$dashboardDataFlowQueryPlanEvidenceProvided = $false
+$dashboardDataFlowQueryPlanEvidenceResult = ""
+$dashboardDataFlowQueryPlanEvidenceFailedCount = 0
 if ($null -ne $dashboardData) {
     $convergence = $dashboardData.operationsReadinessConvergence
     $reportSync = $dashboardData.kubernetesOperationsReportSync
@@ -475,6 +526,21 @@ if ($null -ne $dashboardData) {
                 Add-Check "dashboard-data-flow-storage-plan-candidate-store" ($dashboardDataFlowStoragePlanCandidateStore -eq $expectedDataFlowStoragePlanCandidateStore) "Dashboard data-flow storage plan candidateStore=$dashboardDataFlowStoragePlanCandidateStore, expected=$expectedDataFlowStoragePlanCandidateStore."
             }
             Add-Check "dashboard-data-flow-storage-plan-pending-count" ($dashboardDataFlowStoragePlanPendingCount -eq $expectedDataFlowStoragePlanPendingCount) "Dashboard data-flow storage plan pendingCount=$dashboardDataFlowStoragePlanPendingCount, expected=$expectedDataFlowStoragePlanPendingCount."
+            if ($expectedDataFlowQueryPlanEvidence) {
+                $dashboardDataFlowQueryPlanEvidence = $dashboardDataFlowStoragePlan.queryPlanEvidence
+                if ($null -eq $dashboardDataFlowQueryPlanEvidence) {
+                    Add-Check "dashboard-data-flow-query-plan-evidence-present" $false "dataFlowStoragePlan.queryPlanEvidence is missing from dashboard readiness response."
+                }
+                else {
+                    $dashboardDataFlowQueryPlanEvidenceProvided = Get-ObjectBool $dashboardDataFlowQueryPlanEvidence.provided
+                    $dashboardDataFlowQueryPlanEvidenceResult = Get-ObjectText $dashboardDataFlowQueryPlanEvidence.result
+                    $dashboardDataFlowQueryPlanEvidenceFailedCount = Get-ObjectInt $dashboardDataFlowQueryPlanEvidence.failedCount
+                    Add-Check "dashboard-data-flow-query-plan-evidence-present" $true "dataFlowStoragePlan.queryPlanEvidence is present."
+                    Add-Check "dashboard-data-flow-query-plan-evidence-provided" ($dashboardDataFlowQueryPlanEvidenceProvided -eq $expectedDataFlowQueryPlanEvidenceProvided) "Dashboard query plan evidence provided=$dashboardDataFlowQueryPlanEvidenceProvided, expected=$expectedDataFlowQueryPlanEvidenceProvided."
+                    Add-Check "dashboard-data-flow-query-plan-evidence-result" ($dashboardDataFlowQueryPlanEvidenceResult -eq $expectedDataFlowQueryPlanEvidenceResult) "Dashboard query plan evidence result=$dashboardDataFlowQueryPlanEvidenceResult, expected=$expectedDataFlowQueryPlanEvidenceResult."
+                    Add-Check "dashboard-data-flow-query-plan-evidence-failed-count" ($dashboardDataFlowQueryPlanEvidenceFailedCount -eq $expectedDataFlowQueryPlanEvidenceFailedCount) "Dashboard query plan evidence failedCount=$dashboardDataFlowQueryPlanEvidenceFailedCount, expected=$expectedDataFlowQueryPlanEvidenceFailedCount."
+                }
+            }
             if ($expectedDataFlowStoragePlanResult -ne "passed") {
                 Add-Check "dashboard-data-flow-storage-plan-item" $dashboardDataFlowStoragePlanItemPresent "Dashboard DATA_FLOW_STORAGE_PLAN readiness item present=$dashboardDataFlowStoragePlanItemPresent."
             }
@@ -502,6 +568,10 @@ $report = [ordered]@{
     dataFlowStoragePlanExpectedResult = $expectedDataFlowStoragePlanResult
     dataFlowStoragePlanExpectedCandidateStore = $expectedDataFlowStoragePlanCandidateStore
     dataFlowStoragePlanExpectedPendingCount = $expectedDataFlowStoragePlanPendingCount
+    dataFlowQueryPlanEvidenceExpected = [bool] $expectedDataFlowQueryPlanEvidence
+    dataFlowQueryPlanEvidenceExpectedProvided = [bool] $expectedDataFlowQueryPlanEvidenceProvided
+    dataFlowQueryPlanEvidenceExpectedResult = $expectedDataFlowQueryPlanEvidenceResult
+    dataFlowQueryPlanEvidenceExpectedFailedCount = $expectedDataFlowQueryPlanEvidenceFailedCount
     syncResult = $syncResult
     syncFailedCount = $syncFailedCount
     syncConfigMapName = $syncConfigMapName
@@ -525,6 +595,9 @@ $report = [ordered]@{
     dashboardDataFlowStoragePlanCandidateStore = $dashboardDataFlowStoragePlanCandidateStore
     dashboardDataFlowStoragePlanPendingCount = $dashboardDataFlowStoragePlanPendingCount
     dashboardDataFlowStoragePlanItemPresent = [bool] $dashboardDataFlowStoragePlanItemPresent
+    dashboardDataFlowQueryPlanEvidenceProvided = [bool] $dashboardDataFlowQueryPlanEvidenceProvided
+    dashboardDataFlowQueryPlanEvidenceResult = $dashboardDataFlowQueryPlanEvidenceResult
+    dashboardDataFlowQueryPlanEvidenceFailedCount = $dashboardDataFlowQueryPlanEvidenceFailedCount
     checkCount = @($checks).Count
     failedCount = $failureCount
     checks = $checks

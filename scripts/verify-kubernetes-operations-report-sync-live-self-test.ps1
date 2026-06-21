@@ -91,9 +91,9 @@ Write-JsonFixture $dataFlowStoragePlanPath ([ordered]@{
     eventRetentionDays = 90
     dailyRollupRetentionDays = 730
     monthlyRollupRetentionMonths = 36
-    checkCount = 2
+    checkCount = 3
     passedCount = 1
-    pendingCount = 1
+    pendingCount = 2
     checks = @(
         [ordered]@{
             id = "aggregate_no_object_keys"
@@ -108,8 +108,30 @@ Write-JsonFixture $dataFlowStoragePlanPath ([ordered]@{
             status = "pending"
             detail = "Fixture pending check."
             nextAction = "Attach target evidence."
+        },
+        [ordered]@{
+            id = "mariadb_query_plan_evidence"
+            title = "MariaDB query plan evidence passed"
+            status = "pending"
+            detail = "No MariaDB query plan evidence JSON supplied."
+            nextAction = "Run scripts/write-mariadb-query-plan-evidence.ps1 with -Execute or -ExplainInputDir until result=passed, then rerun this storage plan."
         }
     )
+    queryPlanEvidence = [ordered]@{
+        provided = $false
+        path = ""
+        parsed = $false
+        formatVersion = ""
+        expectedFormatVersion = "osmu.mariadb-query-plan-evidence.v1"
+        validFormatVersion = $false
+        result = ""
+        mode = ""
+        checkCount = 0
+        passedCount = 0
+        failedCount = 0
+        failedChecks = @()
+        detail = "No MariaDB query plan evidence JSON supplied."
+    }
     scopePolicy = "OSMU operations analytics only. This plan is not AWS billing parity."
 })
 
@@ -155,9 +177,9 @@ Write-JsonFixture $dashboardFixturePath ([ordered]@{
             eventRetentionDays = 90
             dailyRollupRetentionDays = 730
             monthlyRollupRetentionMonths = 36
-            checkCount = 2
+            checkCount = 3
             passedCount = 1
-            pendingCount = 1
+            pendingCount = 2
             checks = @(
                 [ordered]@{
                     id = "aggregate_no_object_keys"
@@ -172,8 +194,30 @@ Write-JsonFixture $dashboardFixturePath ([ordered]@{
                     status = "pending"
                     detail = "Fixture pending check."
                     nextAction = "Attach target evidence."
+                },
+                [ordered]@{
+                    id = "mariadb_query_plan_evidence"
+                    title = "MariaDB query plan evidence passed"
+                    status = "pending"
+                    detail = "No MariaDB query plan evidence JSON supplied."
+                    nextAction = "Run scripts/write-mariadb-query-plan-evidence.ps1 with -Execute or -ExplainInputDir until result=passed, then rerun this storage plan."
                 }
             )
+            queryPlanEvidence = [ordered]@{
+                provided = $false
+                path = ""
+                parsed = $false
+                formatVersion = ""
+                expectedFormatVersion = "osmu.mariadb-query-plan-evidence.v1"
+                validFormatVersion = $false
+                result = ""
+                mode = ""
+                checkCount = 0
+                passedCount = 0
+                failedCount = 0
+                failedChecks = @()
+                detail = "No MariaDB query plan evidence JSON supplied."
+            }
             scopePolicy = "OSMU operations analytics only. This plan is not AWS billing parity."
         }
     }
@@ -205,11 +249,18 @@ Assert-Equal $evidence.dashboardSyncResult "applied" "live evidence dashboard sy
 Assert-Equal $evidence.dataFlowStoragePlanExpected $true "live evidence data-flow storage plan expected"
 Assert-Equal $evidence.dataFlowStoragePlanExpectedResult "plan-ready-execute-required" "live evidence expected data-flow storage plan result"
 Assert-Equal $evidence.dataFlowStoragePlanExpectedCandidateStore "MARIADB_PARTITION" "live evidence expected data-flow storage plan candidate store"
-Assert-Equal $evidence.dataFlowStoragePlanExpectedPendingCount 1 "live evidence expected data-flow storage plan pending count"
+Assert-Equal $evidence.dataFlowStoragePlanExpectedPendingCount 2 "live evidence expected data-flow storage plan pending count"
+Assert-Equal $evidence.dataFlowQueryPlanEvidenceExpected $true "live evidence query plan expected"
+Assert-Equal $evidence.dataFlowQueryPlanEvidenceExpectedProvided $false "live evidence query plan expected provided"
+Assert-Equal $evidence.dataFlowQueryPlanEvidenceExpectedResult "" "live evidence query plan expected result"
+Assert-Equal $evidence.dataFlowQueryPlanEvidenceExpectedFailedCount 0 "live evidence query plan expected failed count"
 Assert-Equal $evidence.dashboardDataFlowStoragePlanChecked $true "live evidence dashboard data-flow storage plan checked"
 Assert-Equal $evidence.dashboardDataFlowStoragePlanResult "plan-ready-execute-required" "live evidence dashboard data-flow storage plan result"
 Assert-Equal $evidence.dashboardDataFlowStoragePlanCandidateStore "MARIADB_PARTITION" "live evidence dashboard data-flow storage plan candidate store"
-Assert-Equal $evidence.dashboardDataFlowStoragePlanPendingCount 1 "live evidence dashboard data-flow storage plan pending count"
+Assert-Equal $evidence.dashboardDataFlowStoragePlanPendingCount 2 "live evidence dashboard data-flow storage plan pending count"
+Assert-Equal $evidence.dashboardDataFlowQueryPlanEvidenceProvided $false "live evidence dashboard query plan provided"
+Assert-Equal $evidence.dashboardDataFlowQueryPlanEvidenceResult "" "live evidence dashboard query plan result"
+Assert-Equal $evidence.dashboardDataFlowQueryPlanEvidenceFailedCount 0 "live evidence dashboard query plan failed count"
 Assert-Equal $evidence.dashboardDataFlowStoragePlanItemPresent $true "live evidence dashboard data-flow storage plan item"
 Assert-Equal $evidence.failedCount 0 "live evidence failed count"
 Assert-True ($evidence.safetyPolicy.Contains("does not store admin passwords")) "live evidence safety policy"
@@ -230,6 +281,7 @@ Assert-Equal $planEvidence.failedCount 0 "plan evidence failed count"
 Assert-Equal $planEvidence.dashboardRetryCount 2 "plan evidence dashboard retry count"
 Assert-Equal $planEvidence.dataFlowStoragePlanExpected $true "plan evidence data-flow storage plan expected"
 Assert-Equal $planEvidence.dataFlowStoragePlanExpectedResult "plan-ready-execute-required" "plan evidence expected data-flow storage plan result"
+Assert-Equal $planEvidence.dataFlowQueryPlanEvidenceExpected $true "plan evidence query plan expected"
 Assert-Equal $planEvidence.dashboardDataFlowStoragePlanChecked $false "plan evidence dashboard data-flow storage plan checked"
 
 Write-JsonFixture $failedDashboardFixturePath ([ordered]@{
