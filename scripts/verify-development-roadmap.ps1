@@ -49,6 +49,8 @@ Assert-Contains $content 'Kubernetes operations report sync `result=applied`' "D
 Assert-Contains $content "Data-flow storage transition plan" "Development roadmap"
 Assert-Contains $content "target query latency" "Development roadmap"
 Assert-Contains $content "target query-plan evidence" "Development roadmap"
+Assert-Contains $content "Alertmanager/Grafana threshold target contract" "Development roadmap"
+Assert-Contains $content "threshold value/receiver" "Development roadmap"
 Assert-Contains $content "Enterprise auth target smoke" "Development roadmap"
 Assert-Contains $content "scope-out evidence" "Development roadmap"
 Assert-Contains $content "S3 client smoke" "Development roadmap"

@@ -1,0 +1,104 @@
+formatVersion: osmu.monitoring.threshold-targets.v1
+profile: pilot-default
+scopePolicy: OSMU operations monitoring targets only. Tune these values against target tenant baselines before production SLO claims.
+grafanaDashboard:
+  uid: osmu-mvp-overview
+  panels:
+    - HTTP p95 Latency
+    - Data Flow Operations
+    - Data Flow Bytes By Bucket
+    - Threshold Target Contract
+alertmanagerRoutes:
+  - route: osmu-backend
+    matchLabels:
+      service: osmu-backend
+    receiver: osmu-ops
+    escalation: backend on-call during pilot windows
+  - route: osmu-data-flow
+    matchLabels:
+      service: osmu-data-flow
+    receiver: osmu-data-flow-ops
+    escalation: storage operations owner and tenant success owner
+  - route: osmu-backup
+    matchLabels:
+      service: osmu-backup
+    receiver: osmu-ops
+    escalation: backup and restore drill owner
+thresholdTargets:
+  - alert: OsmuBackendHighErrorRate
+    metric: http_server_requests_seconds_count
+    target: 5xx ratio <= 5% over 5m
+    prometheusExpression: sum(rate(http_server_requests_seconds_count{status=~"5.."}[5m])) / clamp_min(sum(rate(http_server_requests_seconds_count[5m])), 1) > 0.05
+    grafanaPanel: HTTP Requests
+    alertmanagerRoute: osmu-backend
+    tuningEvidence: target API error budget or pilot benchmark
+  - alert: OsmuBackendHighLatencyP95
+    metric: http_server_requests_seconds_bucket
+    target: p95 <= 2s over 10m
+    prometheusExpression: histogram_quantile(0.95, sum(rate(http_server_requests_seconds_bucket[5m])) by (le)) > 2
+    grafanaPanel: HTTP p95 Latency
+    alertmanagerRoute: osmu-backend
+    tuningEvidence: target API latency SLO or pilot benchmark
+  - alert: OsmuDataFlowFailureSpike
+    metric: osmu_data_flow_operations_total
+    target: failure increase <= 5 over 15m
+    prometheusExpression: sum(increase(osmu_data_flow_operations_total{status="failure"}[15m])) > 5
+    grafanaPanel: Data Flow Operations
+    alertmanagerRoute: osmu-data-flow
+    tuningEvidence: target tenant failed-operation baseline
+  - alert: OsmuDataFlowCancelSpike
+    metric: osmu_data_flow_operations_total
+    target: cancelled increase <= 10 over 15m
+    prometheusExpression: sum(increase(osmu_data_flow_operations_total{status="cancelled"}[15m])) > 10
+    grafanaPanel: Data Flow Operations
+    alertmanagerRoute: osmu-data-flow
+    tuningEvidence: target tenant user-cancel baseline
+  - alert: OsmuDataFlowAbnormalEgress
+    metric: osmu_data_flow_bytes_total
+    target: total egress <= 10 MiB/s over 10m
+    prometheusExpression: sum(rate(osmu_data_flow_bytes_total{direction="egress"}[15m])) > 10485760
+    grafanaPanel: Data Flow Bytes By Bucket
+    alertmanagerRoute: osmu-data-flow
+    tuningEvidence: target tenant egress capacity baseline
+  - alert: OsmuDataFlowBucketTrafficAnomaly
+    metric: osmu_data_flow_bytes_total
+    target: per-bucket ingress or egress <= 5 MiB/s over 10m
+    prometheusExpression: max by (bucket) (rate(osmu_data_flow_bytes_total{direction=~"ingress|egress"}[15m])) > 5242880
+    grafanaPanel: Data Flow Bytes By Bucket
+    alertmanagerRoute: osmu-data-flow
+    tuningEvidence: target bucket traffic baseline
+  - alert: OsmuDataFlowRetentionFailures
+    metric: osmu_data_flow_retention_runs_total
+    target: failures == 0 over 15m
+    prometheusExpression: increase(osmu_data_flow_retention_runs_total{result="failure"}[15m]) > 0
+    grafanaPanel: Retention Purge Failures
+    alertmanagerRoute: osmu-data-flow
+    tuningEvidence: retention job runbook and failed-row inspection
+  - alert: OsmuDataFlowDailyRollupRetentionFailures
+    metric: osmu_data_flow_daily_rollup_retention_runs_total
+    target: failures == 0 over 15m
+    prometheusExpression: increase(osmu_data_flow_daily_rollup_retention_runs_total{result="failure"}[15m]) > 0
+    grafanaPanel: Retention Purge Failures
+    alertmanagerRoute: osmu-data-flow
+    tuningEvidence: daily rollup retention runbook
+  - alert: OsmuDataFlowMonthlyRollupRetentionFailures
+    metric: osmu_data_flow_monthly_rollup_retention_runs_total
+    target: failures == 0 over 15m
+    prometheusExpression: increase(osmu_data_flow_monthly_rollup_retention_runs_total{result="failure"}[15m]) > 0
+    grafanaPanel: Retention Purge Failures
+    alertmanagerRoute: osmu-data-flow
+    tuningEvidence: monthly rollup retention runbook
+  - alert: OsmuBackupCronJobFailed
+    metric: kube_job_status_failed
+    target: failed backup jobs == 0 over 5m
+    prometheusExpression: kube_job_status_failed{job_name=~"osmu-(mariadb|minio)-backup.*"} > 0
+    grafanaPanel: MVP Durable Pilot Notes
+    alertmanagerRoute: osmu-backup
+    tuningEvidence: target backup job owner and incident route
+  - alert: OsmuBackupCronJobStale
+    metric: kube_cronjob_status_last_successful_time
+    target: last successful backup <= 26h
+    prometheusExpression: time() - max by (namespace, cronjob) (kube_cronjob_status_last_successful_time) > 93600
+    grafanaPanel: MVP Durable Pilot Notes
+    alertmanagerRoute: osmu-backup
+    tuningEvidence: target backup schedule and restore drill cadence

@@ -162,10 +162,20 @@
       "id": 6,
       "type": "text",
       "title": "MVP Durable Pilot Notes",
-      "gridPos": { "h": 6, "w": 24, "x": 0, "y": 28 },
+      "gridPos": { "h": 6, "w": 12, "x": 0, "y": 28 },
       "options": {
         "mode": "markdown",
         "content": "Durable pilot remains NO-GO until Docker/MariaDB/MinIO smoke, real S3 client smoke, Browser E2E, and restore drill execution all pass. Use `GET /api/admin/backup/status` for current backup readiness."
+      }
+    },
+    {
+      "id": 9,
+      "type": "text",
+      "title": "Threshold Target Contract",
+      "gridPos": { "h": 6, "w": 12, "x": 12, "y": 28 },
+      "options": {
+        "mode": "markdown",
+        "content": "Review `infra/monitoring/alert-threshold-targets.yaml` before pilot. It maps backend latency, data-flow failure/cancel/egress/bucket traffic, retention failure, and stale backup alerts to Alertmanager routes, Grafana panels, and target tuning evidence."
       }
     }
   ]

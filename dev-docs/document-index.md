@@ -30,7 +30,7 @@ This index points to the useful project documents for the current prototype. The
 - `iam-rbac-matrix.md` - role, endpoint, dashboard panel, and operation permission matrix.
 - `kubernetes-rbac-matrix.md` - Kubernetes ServiceAccount, token automount, storage expansion runner, and cluster RBAC boundary matrix.
 - `backup-recovery.md` - backup and recovery direction.
-- `operation-monitoring.md` - health checks, backup readiness status, logs, metrics, monitoring.
+- `operation-monitoring.md` - health checks, backup readiness status, logs, metrics, monitoring, and Alertmanager/Grafana threshold target contract.
 - `deployment-strategy.md` - Docker Compose, Kubernetes, Helm direction.
 - `minio-pool-expansion.md` - MinIO server pool-based capacity expansion strategy and Storage Expansion Manager direction.
 - `storage-profile.md` - MinIO pool/parity intent mapping for Storage Profile.

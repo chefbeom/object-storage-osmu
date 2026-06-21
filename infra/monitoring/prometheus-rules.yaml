@@ -22,6 +22,8 @@ groups:
         labels:
           severity: warning
           service: osmu-backend
+          target_profile: pilot-default
+          alertmanager_route: osmu-backend
         annotations:
           summary: OSMU backend 5xx error rate is high.
           description: Backend 5xx ratio is above 5 percent for 5 minutes.
@@ -36,6 +38,8 @@ groups:
         labels:
           severity: warning
           service: osmu-backend
+          target_profile: pilot-default
+          alertmanager_route: osmu-backend
         annotations:
           summary: OSMU backend p95 latency is high.
           description: Backend p95 latency is above 2 seconds for 10 minutes.
@@ -88,6 +92,8 @@ groups:
         labels:
           severity: warning
           service: osmu-data-flow
+          target_profile: pilot-default
+          alertmanager_route: osmu-data-flow
         annotations:
           summary: OSMU data-flow failure spike detected.
           description: More than 5 failed upload/download/list/delete operations were recorded in the last 15 minutes.
@@ -98,6 +104,8 @@ groups:
         labels:
           severity: warning
           service: osmu-data-flow
+          target_profile: pilot-default
+          alertmanager_route: osmu-data-flow
         annotations:
           summary: OSMU data-flow cancel spike detected.
           description: More than 10 cancelled transfer operations were recorded in the last 15 minutes.
@@ -108,6 +116,8 @@ groups:
         labels:
           severity: warning
           service: osmu-data-flow
+          target_profile: pilot-default
+          alertmanager_route: osmu-data-flow
         annotations:
           summary: OSMU data-flow egress rate is above the pilot threshold.
           description: Total egress is above 10 MiB/s for 10 minutes. Tune this threshold for the target tenant and workload.
@@ -118,6 +128,8 @@ groups:
         labels:
           severity: warning
           service: osmu-data-flow
+          target_profile: pilot-default
+          alertmanager_route: osmu-data-flow
         annotations:
           summary: OSMU bucket-level data-flow rate is above the pilot threshold.
           description: Bucket {{ $labels.bucket }} is above 5 MiB/s for 10 minutes. Tune this threshold or replace it with a tenant baseline before production.
@@ -128,6 +140,8 @@ groups:
         labels:
           severity: warning
           service: osmu-data-flow
+          target_profile: pilot-default
+          alertmanager_route: osmu-data-flow
         annotations:
           summary: OSMU data-flow event retention cleanup failed.
           description: Data-flow event retention cleanup failed in the last 15 minutes. Inspect backend logs and the data_flow_events repository.
@@ -138,6 +152,8 @@ groups:
         labels:
           severity: warning
           service: osmu-data-flow
+          target_profile: pilot-default
+          alertmanager_route: osmu-data-flow
         annotations:
           summary: OSMU data-flow daily rollup retention cleanup failed.
           description: Data-flow daily rollup retention cleanup failed in the last 15 minutes. Inspect backend logs and the data_flow_daily_rollups repository.
@@ -148,6 +164,8 @@ groups:
         labels:
           severity: warning
           service: osmu-data-flow
+          target_profile: pilot-default
+          alertmanager_route: osmu-data-flow
         annotations:
           summary: OSMU data-flow monthly rollup retention cleanup failed.
           description: Data-flow monthly rollup retention cleanup failed in the last 15 minutes. Inspect backend logs and the data_flow_monthly_rollups repository.
@@ -168,6 +186,8 @@ groups:
         labels:
           severity: warning
           service: osmu-backup
+          target_profile: pilot-default
+          alertmanager_route: osmu-backup
         annotations:
           summary: OSMU backup CronJob failed.
           description: A MariaDB or MinIO backup Job has failed in the target namespace. Inspect the Job logs and backup PVC.
@@ -185,6 +205,8 @@ groups:
         labels:
           severity: warning
           service: osmu-backup
+          target_profile: pilot-default
+          alertmanager_route: osmu-backup
         annotations:
           summary: OSMU backup CronJob has no recent successful run.
           description: A MariaDB or MinIO backup CronJob has not reported a successful run within 26 hours. Verify kube-state-metrics, CronJob status, and backup artifacts.

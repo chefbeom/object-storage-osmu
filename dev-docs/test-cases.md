@@ -2344,8 +2344,8 @@ TC-FE-023 보강: 사용자가 취소한 경우에는 abort API를 호출한다.
 - Feature: Monitoring artifacts draft verification.
 - Preconditions: PowerShell is available.
 - Input: `powershell -ExecutionPolicy Bypass -File .\scripts\verify-monitoring-artifacts.ps1`
-- Steps: Verify `infra/monitoring` contains the Prometheus alert rule draft and Grafana dashboard draft, validate key alert names including data-flow failure/cancel/egress/bucket anomaly alerts, parse the dashboard JSON, check required metric expressions, and ensure the operation monitoring document references the artifacts.
-- Expected: Pilot operators have a starter alert/dashboard contract for backend availability, error rate, latency, retention purge failures, multipart cleanup failures, data-flow operations/bytes anomalies, data-flow event and daily rollup retention failures, and backup readiness handoff.
+- Steps: Verify `infra/monitoring` contains the Prometheus alert rule draft, Grafana dashboard draft, and `alert-threshold-targets.yaml`, validate key alert names including data-flow failure/cancel/egress/bucket anomaly alerts, parse the dashboard JSON, check required metric expressions, verify Alertmanager route labels and threshold target mappings, and ensure the operation monitoring document references the artifacts.
+- Expected: Pilot operators have a starter alert/dashboard/threshold target contract for backend availability, error rate, latency, retention purge failures, multipart cleanup failures, data-flow operations/bytes anomalies, data-flow event/daily/monthly rollup retention failures, backup readiness handoff, Alertmanager routes, Grafana panels, and target tenant baseline tuning evidence.
 - Priority: P2
 - Automated: `scripts/verify-monitoring-artifacts.ps1`
 

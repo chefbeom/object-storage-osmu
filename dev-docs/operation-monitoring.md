@@ -144,7 +144,7 @@ MVP implementation:
 - S3-compatible APIs record list, put, multipart complete, copy, get, delete, multi-delete, and multipart abort events. CopyObject is counted as internal copy traffic, separate from external ingress and egress.
 - MariaDB mode stores detailed events in `data_flow_events`, materialized UTC-day aggregates in `data_flow_daily_rollups`, and compacted UTC-month aggregates in `data_flow_monthly_rollups`; in-memory mode keeps events and refreshed rollup rows in process for local/demo execution.
 - The admin dashboard shows a compact data I/O widget plus a detailed Data Flow Monitoring panel with upload/download/copy traffic, operations, source/operation trend chart, daily/monthly rollup rows, top buckets, recent events, filters, retention status/manual run controls, detailed CSV export, daily/monthly rollup CSV export, daily/monthly store refresh, materialized rollup load, and materialized rollup CSV export.
-- Prometheus/Grafana starter artifacts include `OsmuDataFlowFailureSpike`, `OsmuDataFlowCancelSpike`, `OsmuDataFlowAbnormalEgress`, `OsmuDataFlowBucketTrafficAnomaly`, `OsmuDataFlowRetentionFailures`, `OsmuDataFlowDailyRollupRetentionFailures`, and `OsmuDataFlowMonthlyRollupRetentionFailures` backed by `osmu_data_flow_operations_total`, `osmu_data_flow_bytes_total`, `osmu_data_flow_retention_runs_total`, `osmu_data_flow_daily_rollup_retention_runs_total`, and `osmu_data_flow_monthly_rollup_retention_runs_total`.
+- Prometheus/Grafana starter artifacts include `OsmuDataFlowFailureSpike`, `OsmuDataFlowCancelSpike`, `OsmuDataFlowAbnormalEgress`, `OsmuDataFlowBucketTrafficAnomaly`, `OsmuDataFlowRetentionFailures`, `OsmuDataFlowDailyRollupRetentionFailures`, and `OsmuDataFlowMonthlyRollupRetentionFailures` backed by `osmu_data_flow_operations_total`, `osmu_data_flow_bytes_total`, `osmu_data_flow_retention_runs_total`, `osmu_data_flow_daily_rollup_retention_runs_total`, and `osmu_data_flow_monthly_rollup_retention_runs_total`. `infra/monitoring/alert-threshold-targets.yaml` maps these pilot thresholds to Alertmanager routes, Grafana panels, and target tuning evidence.
 - `DataFlowEventRetentionJob` deletes events older than the configured retention window and records `DATA_FLOW_EVENT_RETENTION` audit plus `osmu.data.flow.retention.events` and `osmu.data.flow.retention.runs` metrics.
 - `DataFlowDailyRollupRetentionJob` deletes materialized daily rollup rows older than `osmu.monitoring.data-flow.daily-rollup.retention.retention-days` in bounded batches and records `DATA_FLOW_DAILY_ROLLUP_RETENTION` audit plus `osmu.data.flow.daily.rollup.retention.rows` and `osmu.data.flow.daily.rollup.retention.runs` metrics.
 - `DataFlowMonthlyRollupRetentionJob` deletes stored monthly rollup rows older than `osmu.monitoring.data-flow.monthly-rollup.retention.retention-days` in bounded batches and records `DATA_FLOW_MONTHLY_ROLLUP_RETENTION` audit plus `osmu.data.flow.monthly.rollup.retention.rows` and `osmu.data.flow.monthly.rollup.retention.runs` metrics. Default retention is `1825` days so monthly operations analytics survives detailed-event and daily-row cleanup.
@@ -173,7 +173,7 @@ Retention configuration:
 Production follow-up:
 
 - Add table partitioning or move the materialized daily/monthly rollup repositories to a time-series store when the event retention job, daily rollup retention job, `data_flow_daily_rollups`, `data_flow_monthly_rollups`, and query-time aggregation are not enough for target volume.
-- Tune data-flow alert thresholds and Alertmanager routes against target tenant baselines.
+- Tune data-flow alert thresholds and Alertmanager routes from `infra/monitoring/alert-threshold-targets.yaml` against target tenant baselines before production SLO claims.
 
 ## 7. Alerts
 
@@ -205,6 +205,7 @@ MVP:
 - Actuator Prometheus endpoint
 - Prometheus rule draft under `infra/monitoring`
 - Grafana dashboard draft under `infra/monitoring`
+- Alertmanager/Grafana threshold target contract under `infra/monitoring`
 - Optional Prometheus Operator draft under `infra/k8s` and `infra/helm/osmu`
 - MinIO Console
 - Application logs
@@ -320,6 +321,7 @@ Product:
 - `infra/monitoring/prometheus-rules.yaml` defines starter alerts, including data-flow failure/cancel/egress/bucket anomaly and event/daily/monthly-rollup retention cleanup failure alerts.
 - Backup CronJob alerts require kube-state-metrics metrics such as `kube_job_status_failed` and `kube_cronjob_status_last_successful_time`.
 - `infra/monitoring/grafana-dashboard-osmu.json` defines a starter overview dashboard.
+- `infra/monitoring/alert-threshold-targets.yaml` defines the pilot threshold target contract, including Alertmanager routes, Grafana panels, backend p95 latency, data-flow failure/cancel/egress/bucket anomaly, retention failure, and stale backup target evidence fields.
 - `infra/k8s/monitoring-operator.yaml` defines optional `ServiceMonitor` and `PrometheusRule` resources.
 - `infra/helm/osmu/templates/monitoring-operator.yaml` renders the same optional resources when `monitoring.operator.enabled=true`.
 - Product deployment can replace annotations with `ServiceMonitor` when Prometheus Operator is used, but only after `monitoring.coreos.com/v1` CRDs are installed.
