@@ -24,6 +24,10 @@ function Assert-NotContains([string] $Content, [string] $Unexpected, [string] $L
     }
 }
 
+function Decode-Utf8Base64([string] $Value) {
+    return [System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String($Value))
+}
+
 $resolvedPath = Resolve-ProjectPath $RoadmapPath
 if (-not (Test-Path -LiteralPath $resolvedPath)) {
     throw "Development roadmap missing: $resolvedPath"
@@ -35,6 +39,7 @@ Assert-Contains $content "OSMU Development Roadmap" "Development roadmap"
 Assert-Contains $content "S3-compatible replacement layer" "Development roadmap"
 Assert-Contains $content 'docker-durable-demo-verified' "Development roadmap"
 Assert-Contains $content "Production Operations Evidence" "Development roadmap"
+Assert-Contains $content (Decode-Utf8Base64 "S3ViZXJuZXRlcyBEUiBmaW5hbGl6ZXIgYHJlc3VsdD1yZWFkeWA=") "Development roadmap"
 Assert-Contains $content 'operations readiness convergence `result=ready`' "Development roadmap"
 Assert-Contains $content 'Kubernetes operations report sync `result=applied`' "Development roadmap"
 Assert-Contains $content "Data-flow storage transition plan" "Development roadmap"
