@@ -237,6 +237,8 @@ Run when Browser/Chrome automation works again:
 
 - [x] Manual Browser E2E CI workflow draft exists and is checked by `scripts/verify-ci-workflow.ps1`.
 - [x] Browser E2E spec includes developer mode login to `/developer`, S3 endpoint/snippet visibility, Admin nav hiding, and Access Key create UI contract.
+- [x] Browser E2E spec includes Access Key scope add/remove, disabled create without scope, cancel revoke, and confirmed revoke state.
+- [x] Browser E2E spec includes destructive confirm cancel/confirm paths for bucket delete.
 - [x] Browser E2E spec includes operations readiness convergence summary and recommended command row visibility.
 - [x] Browser E2E spec includes bucket list name, usage, and object count cell assertions.
 - [x] Browser E2E spec includes bucket lifecycle XML save/load/delete and bucket tags save/load/delete click paths.
