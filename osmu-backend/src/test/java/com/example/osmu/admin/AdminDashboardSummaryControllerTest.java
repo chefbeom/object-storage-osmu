@@ -1089,11 +1089,12 @@ class AdminDashboardSummaryControllerTest {
                               "candidateStore": "MARIADB_PARTITION",
                               "expectedPeakEventsPerDay": 250000,
                               "expectedQueryWindowDays": 180,
+                              "targetP95QueryLatencyMs": 500,
                               "eventRetentionDays": 90,
                               "dailyRollupRetentionDays": 730,
                               "monthlyRollupRetentionMonths": 36,
-                              "checkCount": 9,
-                              "passedCount": 9,
+                              "checkCount": 10,
+                              "passedCount": 10,
                               "pendingCount": 0,
                               "queryPlanEvidence": {
                                 "provided": true,
@@ -1454,12 +1455,13 @@ class AdminDashboardSummaryControllerTest {
                           "candidateStore": "MARIADB_PARTITION",
                           "expectedPeakEventsPerDay": 250000,
                           "expectedQueryWindowDays": 180,
+                          "targetP95QueryLatencyMs": 500,
                           "eventRetentionDays": 90,
                           "dailyRollupRetentionDays": 730,
                           "monthlyRollupRetentionMonths": 36,
                           "scopePolicy": "OSMU operations analytics only. This plan is not AWS billing parity and aggregate stores must not include object keys or raw event messages.",
-                          "checkCount": 3,
-                          "passedCount": 1,
+                          "checkCount": 4,
+                          "passedCount": 2,
                           "pendingCount": 2,
                           "checks": [
                             {
@@ -1467,6 +1469,13 @@ class AdminDashboardSummaryControllerTest {
                               "title": "Aggregate stores exclude object keys and raw event messages",
                               "status": "passed",
                               "detail": "Monthly/materialized aggregate scope stays bucket/source/operation/status/time only.",
+                              "nextAction": ""
+                            },
+                            {
+                              "id": "target_query_latency_budget",
+                              "title": "Target query latency budget captured",
+                              "status": "passed",
+                              "detail": "TargetP95QueryLatencyMs=500",
                               "nextAction": ""
                             },
                             {
@@ -1907,7 +1916,7 @@ class AdminDashboardSummaryControllerTest {
                 .andExpect(jsonPath("$.data.items[?(@.code == 'OPERATIONS_EVIDENCE_HANDOFF')].remediationCommand").value(hasItem("powershell -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\write-operations-invocation-unblock-plan.ps1")))
                 .andExpect(jsonPath("$.data.items[?(@.code == 'OPERATIONS_EVIDENCE_HANDOFF')].remediationNote").value(hasItem("The invocation report still has blocked actions. Generate the unblock plan, fill placeholders, confirm operator approvals, and confirm kubeconfig-secret readiness before dispatch.")))
                 .andExpect(jsonPath("$.data.items[?(@.code == 'DATA_FLOW_STORAGE_PLAN')].evidencePath").value(hasItem(".osmu-run/latest-data-flow-storage-plan.json")))
-                .andExpect(jsonPath("$.data.items[?(@.code == 'DATA_FLOW_STORAGE_PLAN')].remediationCommand").value(hasItem("powershell -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\write-data-flow-storage-plan.ps1 -CandidateStore <store> -ExpectedPeakEventsPerDay <n> -ExpectedQueryWindowDays <days> -ConfirmNoObjectKeyInAggregates -ConfirmBackfillPlan -ConfirmRollbackPlan -ConfirmDashboardCutoverPlan -ConfirmRetentionJobBudget -ConfirmExplainEvidence -QueryPlanEvidenceJsonPath .\\.osmu-run\\latest-mariadb-query-plan-evidence.json -RequireQueryPlanEvidence")))
+                .andExpect(jsonPath("$.data.items[?(@.code == 'DATA_FLOW_STORAGE_PLAN')].remediationCommand").value(hasItem("powershell -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\write-data-flow-storage-plan.ps1 -CandidateStore <store> -ExpectedPeakEventsPerDay <n> -ExpectedQueryWindowDays <days> -TargetP95QueryLatencyMs <p95-ms> -ConfirmNoObjectKeyInAggregates -ConfirmBackfillPlan -ConfirmRollbackPlan -ConfirmDashboardCutoverPlan -ConfirmRetentionJobBudget -ConfirmExplainEvidence -QueryPlanEvidenceJsonPath .\\.osmu-run\\latest-mariadb-query-plan-evidence.json -RequireQueryPlanEvidence")))
                 .andExpect(jsonPath("$.data.items[?(@.code == 'DATA_FLOW_STORAGE_PLAN')].remediationNote").value(hasItem("OSMU operations analytics only. This plan is not AWS billing parity and aggregate stores must not include object keys or raw event messages.")))
                 .andExpect(jsonPath("$.data.items[?(@.code == 'MINIO_BUCKET_CORS_VERIFICATION')].evidencePath").value(hasItem(".osmu-run/latest-minio-bucket-cors-verification.json")))
                 .andExpect(jsonPath("$.data.items[?(@.code == 'MINIO_BUCKET_CORS_VERIFICATION')].remediationCommand").value(hasItem("powershell -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\verify-minio-bucket-cors.ps1 -BucketName <bucket> -MinioAlias <alias> -Execute -FailIfNotPassed")))
@@ -2039,6 +2048,7 @@ class AdminDashboardSummaryControllerTest {
                 .andExpect(jsonPath("$.data.operationsHandoffPackage.dataFlowStoragePlanSnapshot.result").value("passed"))
                 .andExpect(jsonPath("$.data.operationsHandoffPackage.dataFlowStoragePlanSnapshot.candidateStore").value("MARIADB_PARTITION"))
                 .andExpect(jsonPath("$.data.operationsHandoffPackage.dataFlowStoragePlanSnapshot.expectedPeakEventsPerDay").value(250000))
+                .andExpect(jsonPath("$.data.operationsHandoffPackage.dataFlowStoragePlanSnapshot.targetP95QueryLatencyMs").value(500))
                 .andExpect(jsonPath("$.data.operationsHandoffPackage.dataFlowStoragePlanSnapshot.pendingCount").value(0))
                 .andExpect(jsonPath("$.data.operationsHandoffPackage.dataFlowStoragePlanSnapshot.queryPlanEvidence.result").value("passed"))
                 .andExpect(jsonPath("$.data.operationsHandoffPackage.dataFlowStoragePlanSnapshot.queryPlanEvidence.failedCount").value(0))
@@ -2157,16 +2167,18 @@ class AdminDashboardSummaryControllerTest {
                 .andExpect(jsonPath("$.data.dataFlowStoragePlan.candidateStore").value("MARIADB_PARTITION"))
                 .andExpect(jsonPath("$.data.dataFlowStoragePlan.expectedPeakEventsPerDay").value(250000))
                 .andExpect(jsonPath("$.data.dataFlowStoragePlan.expectedQueryWindowDays").value(180))
+                .andExpect(jsonPath("$.data.dataFlowStoragePlan.targetP95QueryLatencyMs").value(500))
                 .andExpect(jsonPath("$.data.dataFlowStoragePlan.eventRetentionDays").value(90))
                 .andExpect(jsonPath("$.data.dataFlowStoragePlan.dailyRollupRetentionDays").value(730))
                 .andExpect(jsonPath("$.data.dataFlowStoragePlan.monthlyRollupRetentionMonths").value(36))
-                .andExpect(jsonPath("$.data.dataFlowStoragePlan.checkCount").value(3))
-                .andExpect(jsonPath("$.data.dataFlowStoragePlan.passedCount").value(1))
+                .andExpect(jsonPath("$.data.dataFlowStoragePlan.checkCount").value(4))
+                .andExpect(jsonPath("$.data.dataFlowStoragePlan.passedCount").value(2))
                 .andExpect(jsonPath("$.data.dataFlowStoragePlan.pendingCount").value(2))
                 .andExpect(jsonPath("$.data.dataFlowStoragePlan.checks[0].id").value("aggregate_no_object_keys"))
-                .andExpect(jsonPath("$.data.dataFlowStoragePlan.checks[1].status").value("pending"))
-                .andExpect(jsonPath("$.data.dataFlowStoragePlan.checks[1].nextAction").value("Attach EXPLAIN evidence before enabling partitioned/time-series storage."))
-                .andExpect(jsonPath("$.data.dataFlowStoragePlan.checks[2].id").value("mariadb_query_plan_evidence"))
+                .andExpect(jsonPath("$.data.dataFlowStoragePlan.checks[1].id").value("target_query_latency_budget"))
+                .andExpect(jsonPath("$.data.dataFlowStoragePlan.checks[2].status").value("pending"))
+                .andExpect(jsonPath("$.data.dataFlowStoragePlan.checks[2].nextAction").value("Attach EXPLAIN evidence before enabling partitioned/time-series storage."))
+                .andExpect(jsonPath("$.data.dataFlowStoragePlan.checks[3].id").value("mariadb_query_plan_evidence"))
                 .andExpect(jsonPath("$.data.dataFlowStoragePlan.queryPlanEvidence.provided").value(false))
                 .andExpect(jsonPath("$.data.dataFlowStoragePlan.queryPlanEvidence.expectedFormatVersion").value("osmu.mariadb-query-plan-evidence.v1"))
                 .andExpect(jsonPath("$.data.dataFlowStoragePlan.queryPlanEvidence.detail").value("No MariaDB query plan evidence JSON supplied."))

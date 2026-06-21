@@ -101,6 +101,7 @@ $enterpriseAuthPath = Join-Path $resolvedOutputDirectory "latest-enterprise-auth
     candidateStore = "MARIADB_PARTITION"
     expectedPeakEventsPerDay = 100000
     expectedQueryWindowDays = 180
+    targetP95QueryLatencyMs = 500
     eventRetentionDays = 90
     dailyRollupRetentionDays = 730
     monthlyRollupRetentionMonths = 36
@@ -118,8 +119,8 @@ $enterpriseAuthPath = Join-Path $resolvedOutputDirectory "latest-enterprise-auth
         detail = "formatVersion=osmu.mariadb-query-plan-evidence.v1; result=passed; mode=fixture; passed=3; failed=0; checks=3"
     }
     scopePolicy = "OSMU operations analytics only. This plan is not AWS billing parity and aggregate stores must not include object keys or raw event messages."
-    checkCount = 9
-    passedCount = 9
+    checkCount = 10
+    passedCount = 10
     pendingCount = 0
     checks = @(
         [ordered]@{
@@ -355,6 +356,7 @@ Assert-True ($report.operationsSnapshots.readiness.result -eq "ready") "Expected
 Assert-True ($report.operationsSnapshots.convergence.result -eq "ready") "Expected operations convergence snapshot result=ready."
 Assert-True ($report.operationsSnapshots.convergence.kubernetesReportSyncReady) "Expected convergence snapshot Kubernetes report sync ready."
 Assert-True ($report.targetEvidenceSnapshots.dataFlowStoragePlan.result -eq "passed") "Expected data-flow storage plan snapshot result=passed."
+Assert-True ($report.targetEvidenceSnapshots.dataFlowStoragePlan.targetP95QueryLatencyMs -eq 500) "Expected data-flow storage plan snapshot target p95 query latency budget."
 Assert-True ($report.targetEvidenceSnapshots.dataFlowStoragePlan.queryPlanEvidence.result -eq "passed") "Expected data-flow query-plan snapshot result=passed."
 Assert-True ($report.targetEvidenceSnapshots.commercialIntegration.result -eq "passed") "Expected commercial integration snapshot result=passed."
 Assert-True ($report.targetEvidenceSnapshots.commercialIntegration.requiredVerifiedCount -eq 8) "Expected commercial integration requiredVerifiedCount=8."
@@ -368,6 +370,7 @@ Assert-Contains $markdown "# OSMU Operations Handoff Package" "operations handof
 Assert-Contains $markdown "Record passed target package" "operations handoff package markdown"
 Assert-Contains $markdown "Operations Snapshots" "operations handoff package markdown"
 Assert-Contains $markdown "Target Evidence Snapshots" "operations handoff package markdown"
+Assert-Contains $markdown "targetP95QueryLatencyMs=500" "operations handoff package markdown"
 Assert-Contains $report.decisionRule "Production/B2B operations handoff package readiness requires result=passed" "operations handoff package JSON"
 Assert-Contains $report.decisionRule "data-flow storage transition" "operations handoff package JSON"
 Assert-Contains $report.decisionRule "commercial approval" "operations handoff package JSON"

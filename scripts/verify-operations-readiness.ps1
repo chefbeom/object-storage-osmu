@@ -197,6 +197,9 @@ if (-not ([string] $dataFlowStoragePlanCheck[0].remediation.command).Contains("Q
 if (-not ([string] $dataFlowStoragePlanCheck[0].remediation.command).Contains("RequireQueryPlanEvidence")) {
     throw "Data-flow storage transition target evidence remediation must require query-plan evidence for the MariaDB candidate."
 }
+if (-not ([string] $dataFlowStoragePlanCheck[0].remediation.command).Contains("TargetP95QueryLatencyMs")) {
+    throw "Data-flow storage transition target evidence remediation must include TargetP95QueryLatencyMs."
+}
 if ($dataFlowStoragePlanCheck[0].remediation.workflow -ne ".github/workflows/manual-data-flow-storage-plan-evidence.yml") {
     throw "Data-flow storage transition target evidence remediation must point to the manual data-flow storage plan workflow."
 }
@@ -206,8 +209,14 @@ if (-not ([string] $dataFlowStoragePlanCheck[0].remediation.workflowCommand).Con
 if (-not ([string] $dataFlowStoragePlanCheck[0].remediation.workflowCommand).Contains("query_plan_evidence_json_base64")) {
     throw "Data-flow storage transition target evidence workflow command must include query_plan_evidence_json_base64."
 }
+if (-not ([string] $dataFlowStoragePlanCheck[0].remediation.workflowCommand).Contains("target_p95_query_latency_ms")) {
+    throw "Data-flow storage transition target evidence workflow command must include target_p95_query_latency_ms."
+}
 if (-not ([string] $dataFlowStoragePlanCheck[0].requiredEvidence).Contains("target query-plan evidence")) {
     throw "Data-flow storage transition target evidence must require target query-plan evidence."
+}
+if (-not ([string] $dataFlowStoragePlanCheck[0].requiredEvidence).Contains("target p95 query latency budget")) {
+    throw "Data-flow storage transition target evidence must require target p95 query latency budget."
 }
 if (-not ([string] $dataFlowStoragePlanCheck[0].remediation.note).Contains("write-mariadb-query-plan-evidence.ps1")) {
     throw "Data-flow storage transition target evidence remediation note must mention write-mariadb-query-plan-evidence.ps1."

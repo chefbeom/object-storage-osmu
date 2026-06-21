@@ -115,6 +115,7 @@ Assert-True ($planReport.pendingCount -gt 0) "Default data-flow storage plan sho
 Assert-Contains $planReport.scopePolicy "not AWS billing parity" "scopePolicy"
 Assert-Contains $planReport.scopePolicy "must not include object keys" "scopePolicy"
 Assert-Contains $planMarkdown "Expected peak events/day" "plan markdown"
+Assert-Contains $planMarkdown "Target p95 query latency ms" "plan markdown"
 
 & (Join-Path $PSScriptRoot "write-data-flow-storage-plan.ps1") `
     -EnvironmentName "target-fixture" `
@@ -123,6 +124,7 @@ Assert-Contains $planMarkdown "Expected peak events/day" "plan markdown"
     -CandidateStore "DUAL_WRITE" `
     -ExpectedPeakEventsPerDay 1000000 `
     -ExpectedQueryWindowDays 365 `
+    -TargetP95QueryLatencyMs 500 `
     -EvidenceRef "fixture-run-123" `
     -ConfirmNoObjectKeyInAggregates `
     -ConfirmBackfillPlan `
@@ -141,7 +143,9 @@ $passedMarkdown = Get-Content -Raw -LiteralPath $passedMarkdownPath
 Assert-True ($passedReport.result -eq "passed") "Confirmed data-flow storage plan should pass."
 Assert-True ($passedReport.pendingCount -eq 0) "Confirmed data-flow storage plan should have no pending checks."
 Assert-True ($passedReport.candidateStore -eq "DUAL_WRITE") "Confirmed data-flow storage plan should preserve candidate store."
+Assert-True ($passedReport.targetP95QueryLatencyMs -eq 500) "Confirmed data-flow storage plan should preserve target p95 query latency budget."
 Assert-True ($passedReport.queryPlanEvidence.result -eq "passed") "Confirmed data-flow storage plan should embed passed query plan evidence summary."
+Assert-True (@($passedReport.checks | Where-Object { $_.id -eq "target_query_latency_budget" -and $_.status -eq "passed" }).Count -eq 1) "Confirmed data-flow storage plan should include passed query latency budget check."
 Assert-True (@($passedReport.checks | Where-Object { $_.id -eq "mariadb_query_plan_evidence" -and $_.status -eq "passed" }).Count -eq 1) "Confirmed data-flow storage plan should include passed MariaDB query plan check."
 Assert-Contains $passedMarkdown "Query Plan Evidence" "passed markdown"
 
@@ -154,6 +158,7 @@ try {
         -CandidateStore "DUAL_WRITE" `
         -ExpectedPeakEventsPerDay 1000000 `
         -ExpectedQueryWindowDays 365 `
+        -TargetP95QueryLatencyMs 500 `
         -ConfirmNoObjectKeyInAggregates `
         -ConfirmBackfillPlan `
         -ConfirmRollbackPlan `
@@ -179,6 +184,7 @@ try {
         -CandidateStore "DUAL_WRITE" `
         -ExpectedPeakEventsPerDay 1000000 `
         -ExpectedQueryWindowDays 365 `
+        -TargetP95QueryLatencyMs 500 `
         -ConfirmNoObjectKeyInAggregates `
         -ConfirmBackfillPlan `
         -ConfirmRollbackPlan `

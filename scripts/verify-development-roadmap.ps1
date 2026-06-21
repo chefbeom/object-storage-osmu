@@ -47,6 +47,7 @@ Assert-NotContains $content 'IAM/RBAC finalizer `result=ready`' "Development roa
 Assert-Contains $content 'operations readiness convergence `result=ready`' "Development roadmap"
 Assert-Contains $content 'Kubernetes operations report sync `result=applied`' "Development roadmap"
 Assert-Contains $content "Data-flow storage transition plan" "Development roadmap"
+Assert-Contains $content "target query latency" "Development roadmap"
 Assert-Contains $content "target query-plan evidence" "Development roadmap"
 Assert-Contains $content "Enterprise auth target smoke" "Development roadmap"
 Assert-Contains $content "scope-out evidence" "Development roadmap"

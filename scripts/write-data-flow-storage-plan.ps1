@@ -6,6 +6,7 @@ param(
     [string] $CandidateStore = "MARIADB_PARTITION",
     [int] $ExpectedPeakEventsPerDay = 0,
     [int] $ExpectedQueryWindowDays = 0,
+    [int] $TargetP95QueryLatencyMs = 0,
     [int] $EventRetentionDays = 90,
     [int] $DailyRollupRetentionDays = 730,
     [int] $MonthlyRollupRetentionMonths = 36,
@@ -227,6 +228,12 @@ foreach ($check in @(
         "ExpectedQueryWindowDays=$ExpectedQueryWindowDays" `
         "Set -ExpectedQueryWindowDays from reporting requirements.")
     (New-Check `
+        "target_query_latency_budget" `
+        "Target query latency budget captured" `
+        ($TargetP95QueryLatencyMs -gt 0) `
+        "TargetP95QueryLatencyMs=$TargetP95QueryLatencyMs" `
+        "Set -TargetP95QueryLatencyMs from target SLO or benchmark requirements.")
+    (New-Check `
         "aggregate_no_object_keys" `
         "Aggregate stores exclude object keys and raw event messages" `
         ([bool] $ConfirmNoObjectKeyInAggregates) `
@@ -292,6 +299,7 @@ $report = [ordered]@{
     candidateStore = $CandidateStore
     expectedPeakEventsPerDay = $ExpectedPeakEventsPerDay
     expectedQueryWindowDays = $ExpectedQueryWindowDays
+    targetP95QueryLatencyMs = $TargetP95QueryLatencyMs
     eventRetentionDays = $EventRetentionDays
     dailyRollupRetentionDays = $DailyRollupRetentionDays
     monthlyRollupRetentionMonths = $MonthlyRollupRetentionMonths
@@ -325,6 +333,7 @@ $markdown = @(
     ""
     "- Expected peak events/day: $ExpectedPeakEventsPerDay"
     "- Expected query window days: $ExpectedQueryWindowDays"
+    "- Target p95 query latency ms: $TargetP95QueryLatencyMs"
     "- Detailed event retention days: $EventRetentionDays"
     "- Daily rollup retention days: $DailyRollupRetentionDays"
     "- Monthly rollup retention months: $MonthlyRollupRetentionMonths"

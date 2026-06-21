@@ -351,6 +351,7 @@ function Read-DataFlowStoragePlanSnapshot([string] $Path) {
         candidateStore = ""
         expectedPeakEventsPerDay = 0
         expectedQueryWindowDays = 0
+        targetP95QueryLatencyMs = 0
         eventRetentionDays = 0
         dailyRollupRetentionDays = 0
         monthlyRollupRetentionMonths = 0
@@ -410,6 +411,7 @@ function Read-DataFlowStoragePlanSnapshot([string] $Path) {
     $snapshot["candidateStore"] = Get-PropertyText $payload "candidateStore"
     $snapshot["expectedPeakEventsPerDay"] = Get-PropertyInt $payload "expectedPeakEventsPerDay"
     $snapshot["expectedQueryWindowDays"] = Get-PropertyInt $payload "expectedQueryWindowDays"
+    $snapshot["targetP95QueryLatencyMs"] = Get-PropertyInt $payload "targetP95QueryLatencyMs"
     $snapshot["eventRetentionDays"] = Get-PropertyInt $payload "eventRetentionDays"
     $snapshot["dailyRollupRetentionDays"] = Get-PropertyInt $payload "dailyRollupRetentionDays"
     $snapshot["monthlyRollupRetentionMonths"] = Get-PropertyInt $payload "monthlyRollupRetentionMonths"
@@ -1023,7 +1025,7 @@ foreach ($pendingCheck in @($operationsReadinessSnapshot["topPendingChecks"])) {
 $markdownLines += ""
 $markdownLines += "## Target Evidence Snapshots"
 $markdownLines += ""
-$markdownLines += "- Data-flow storage plan: provided=$($dataFlowStoragePlanSnapshot["provided"]); parsed=$($dataFlowStoragePlanSnapshot["parsed"]); result=$($dataFlowStoragePlanSnapshot["result"]); candidateStore=$($dataFlowStoragePlanSnapshot["candidateStore"]); passed=$($dataFlowStoragePlanSnapshot["passedCount"]); pending=$($dataFlowStoragePlanSnapshot["pendingCount"]); checks=$($dataFlowStoragePlanSnapshot["checkCount"])"
+$markdownLines += "- Data-flow storage plan: provided=$($dataFlowStoragePlanSnapshot["provided"]); parsed=$($dataFlowStoragePlanSnapshot["parsed"]); result=$($dataFlowStoragePlanSnapshot["result"]); candidateStore=$($dataFlowStoragePlanSnapshot["candidateStore"]); targetP95QueryLatencyMs=$($dataFlowStoragePlanSnapshot["targetP95QueryLatencyMs"]); passed=$($dataFlowStoragePlanSnapshot["passedCount"]); pending=$($dataFlowStoragePlanSnapshot["pendingCount"]); checks=$($dataFlowStoragePlanSnapshot["checkCount"])"
 $markdownLines += "- Commercial integration: provided=$($commercialIntegrationSnapshot["provided"]); parsed=$($commercialIntegrationSnapshot["parsed"]); result=$($commercialIntegrationSnapshot["result"]); requiredVerified=$($commercialIntegrationSnapshot["requiredVerifiedCount"])/$($commercialIntegrationSnapshot["requiredCount"]); failures=$($commercialIntegrationSnapshot["failureCount"]); planned=$($commercialIntegrationSnapshot["plannedCount"])"
 $markdownLines += "- Commercial approval: provided=$($commercialApprovalSnapshot["provided"]); parsed=$($commercialApprovalSnapshot["parsed"]); result=$($commercialApprovalSnapshot["result"]); failures=$($commercialApprovalSnapshot["failureCount"]); checks=$($commercialApprovalSnapshot["checkCount"]); priceListApproved=$($commercialApprovalSnapshot["pricingPolicyProposalApprovedPriceListCount"])"
 $markdownLines += "- Enterprise auth smoke: provided=$($enterpriseAuthSmokeSnapshot["provided"]); parsed=$($enterpriseAuthSmokeSnapshot["parsed"]); result=$($enterpriseAuthSmokeSnapshot["result"]); pass=$($enterpriseAuthSmokeSnapshot["passCount"]); fail=$($enterpriseAuthSmokeSnapshot["failCount"]); blocked=$($enterpriseAuthSmokeSnapshot["blockedCount"]); scopeOutAccepted=$($enterpriseAuthSmokeSnapshot["scopeOutAccepted"])"

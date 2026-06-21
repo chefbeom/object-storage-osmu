@@ -128,7 +128,7 @@ New-Item -ItemType Directory -Force -Path $runListDirectory | Out-Null
       "order": 13,
       "name": "Data-flow storage transition target evidence",
       "category": "data-flow",
-      "command": "gh workflow run manual-data-flow-storage-plan-evidence.yml -f environment_name=prod -f target_cluster=osmu-prod -f operator=ops-owner -f candidate_store=MARIADB_PARTITION -f expected_peak_events_per_day=100000 -f expected_query_window_days=180 -f evidence_ref=data-flow-plan-20260620 -f query_plan_evidence_json_base64=<base64-json> -f confirm_no_object_key_in_aggregates=true -f confirm_backfill_plan=true -f confirm_rollback_plan=true -f confirm_dashboard_cutover_plan=true -f confirm_retention_job_budget=true -f confirm_explain_evidence=true -f require_query_plan_evidence=true -f fail_if_not_passed=true"
+      "command": "gh workflow run manual-data-flow-storage-plan-evidence.yml -f environment_name=prod -f target_cluster=osmu-prod -f operator=ops-owner -f candidate_store=MARIADB_PARTITION -f expected_peak_events_per_day=100000 -f expected_query_window_days=180 -f target_p95_query_latency_ms=500 -f evidence_ref=data-flow-plan-20260620 -f query_plan_evidence_json_base64=<base64-json> -f confirm_no_object_key_in_aggregates=true -f confirm_backfill_plan=true -f confirm_rollback_plan=true -f confirm_dashboard_cutover_plan=true -f confirm_retention_job_budget=true -f confirm_explain_evidence=true -f require_query_plan_evidence=true -f fail_if_not_passed=true"
     },
     {
       "order": 14,

@@ -88,6 +88,7 @@ Write-JsonFixture $dataFlowStoragePlanPath ([ordered]@{
     candidateStore = "MARIADB_PARTITION"
     expectedPeakEventsPerDay = 250000
     expectedQueryWindowDays = 180
+    targetP95QueryLatencyMs = 500
     eventRetentionDays = 90
     dailyRollupRetentionDays = 730
     monthlyRollupRetentionMonths = 36
@@ -174,6 +175,7 @@ Write-JsonFixture $dashboardFixturePath ([ordered]@{
             candidateStore = "MARIADB_PARTITION"
             expectedPeakEventsPerDay = 250000
             expectedQueryWindowDays = 180
+            targetP95QueryLatencyMs = 500
             eventRetentionDays = 90
             dailyRollupRetentionDays = 730
             monthlyRollupRetentionMonths = 36

@@ -32,6 +32,10 @@ on:
         description: Target long-window query range in days
         required: true
         default: "0"
+      target_p95_query_latency_ms:
+        description: Target p95 query latency budget in milliseconds
+        required: true
+        default: "0"
       event_retention_days:
         description: Detailed event retention days
         required: true
@@ -119,6 +123,7 @@ jobs:
           OSMU_CANDIDATE_STORE: ${{ inputs.candidate_store }}
           OSMU_EXPECTED_PEAK_EVENTS_PER_DAY: ${{ inputs.expected_peak_events_per_day }}
           OSMU_EXPECTED_QUERY_WINDOW_DAYS: ${{ inputs.expected_query_window_days }}
+          OSMU_TARGET_P95_QUERY_LATENCY_MS: ${{ inputs.target_p95_query_latency_ms }}
           OSMU_EVENT_RETENTION_DAYS: ${{ inputs.event_retention_days }}
           OSMU_DAILY_ROLLUP_RETENTION_DAYS: ${{ inputs.daily_rollup_retention_days }}
           OSMU_MONTHLY_ROLLUP_RETENTION_MONTHS: ${{ inputs.monthly_rollup_retention_months }}
@@ -151,6 +156,7 @@ jobs:
               "-CandidateStore", $env:OSMU_CANDIDATE_STORE,
               "-ExpectedPeakEventsPerDay", $env:OSMU_EXPECTED_PEAK_EVENTS_PER_DAY,
               "-ExpectedQueryWindowDays", $env:OSMU_EXPECTED_QUERY_WINDOW_DAYS,
+              "-TargetP95QueryLatencyMs", $env:OSMU_TARGET_P95_QUERY_LATENCY_MS,
               "-EventRetentionDays", $env:OSMU_EVENT_RETENTION_DAYS,
               "-DailyRollupRetentionDays", $env:OSMU_DAILY_ROLLUP_RETENTION_DAYS,
               "-MonthlyRollupRetentionMonths", $env:OSMU_MONTHLY_ROLLUP_RETENTION_MONTHS,

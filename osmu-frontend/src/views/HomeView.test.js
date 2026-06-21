@@ -817,6 +817,7 @@ test('HomeView exposes stable selectors for browser E2E flows', () => {
   assert.match(dashboardSource, /minioBucketCorsExposeSummary/)
   assert.match(dashboardSource, /dataFlowStoragePlan/)
   assert.match(dashboardSource, /dataFlowStoragePlanChecks/)
+  assert.match(dashboardSource, /targetP95QueryLatencyMs/)
   assert.match(dashboardSource, /storageBackendTelemetryEvidence/)
   assert.match(dashboardSource, /normalizeDataFlowStoragePlan/)
   assert.match(dashboardSource, /normalizeStorageBackendTelemetryEvidence/)

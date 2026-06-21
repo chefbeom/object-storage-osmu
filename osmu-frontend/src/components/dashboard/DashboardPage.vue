@@ -1092,6 +1092,7 @@
           store {{ dataFlowStoragePlan.candidateStore || 'unknown' }} /
           peak {{ formatCount(dataFlowStoragePlan.expectedPeakEventsPerDay || 0) }}/day /
           query {{ dataFlowStoragePlan.expectedQueryWindowDays || 0 }}d /
+          p95 <= {{ dataFlowStoragePlan.targetP95QueryLatencyMs || 0 }}ms /
           passed {{ dataFlowStoragePlan.passedCount || 0 }} of {{ dataFlowStoragePlan.checkCount || 0 }}
         </small>
         <small

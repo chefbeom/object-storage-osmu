@@ -98,6 +98,7 @@ Write-JsonFixture $dataFlowStoragePlanPath ([ordered]@{
     candidateStore = "MARIADB_PARTITION"
     expectedPeakEventsPerDay = 250000
     expectedQueryWindowDays = 180
+    targetP95QueryLatencyMs = 500
     checkCount = 3
     passedCount = 0
     pendingCount = 3

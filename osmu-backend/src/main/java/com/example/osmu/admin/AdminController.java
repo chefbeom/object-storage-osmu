@@ -3217,7 +3217,7 @@ public class AdminController {
                 "dashboard-readiness-panel",
                 "Data-flow plan",
                 dataFlowStoragePlanReportPath == null ? "" : dataFlowStoragePlanReportPath,
-                "powershell -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\write-data-flow-storage-plan.ps1 -CandidateStore <store> -ExpectedPeakEventsPerDay <n> -ExpectedQueryWindowDays <days> -ConfirmNoObjectKeyInAggregates -ConfirmBackfillPlan -ConfirmRollbackPlan -ConfirmDashboardCutoverPlan -ConfirmRetentionJobBudget -ConfirmExplainEvidence -QueryPlanEvidenceJsonPath .\\.osmu-run\\latest-mariadb-query-plan-evidence.json -RequireQueryPlanEvidence",
+                "powershell -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\write-data-flow-storage-plan.ps1 -CandidateStore <store> -ExpectedPeakEventsPerDay <n> -ExpectedQueryWindowDays <days> -TargetP95QueryLatencyMs <p95-ms> -ConfirmNoObjectKeyInAggregates -ConfirmBackfillPlan -ConfirmRollbackPlan -ConfirmDashboardCutoverPlan -ConfirmRetentionJobBudget -ConfirmExplainEvidence -QueryPlanEvidenceJsonPath .\\.osmu-run\\latest-mariadb-query-plan-evidence.json -RequireQueryPlanEvidence",
                 "",
                 "",
                 plan.scopePolicy()
@@ -3264,6 +3264,7 @@ public class AdminController {
                 jsonText(planReport, "candidateStore"),
                 jsonInt(planReport, "expectedPeakEventsPerDay"),
                 jsonInt(planReport, "expectedQueryWindowDays"),
+                jsonInt(planReport, "targetP95QueryLatencyMs"),
                 jsonInt(planReport, "eventRetentionDays"),
                 jsonInt(planReport, "dailyRollupRetentionDays"),
                 jsonInt(planReport, "monthlyRollupRetentionMonths"),
