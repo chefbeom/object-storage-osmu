@@ -107,6 +107,10 @@ Assert-CheckExists $report "Image signing evidence writer" "security-hardening"
 Assert-CheckExists $report "Security evidence writer self-test" "security-hardening"
 Assert-CheckExists $report "Storage backend telemetry evidence writer" "storage-backend"
 Assert-CheckExists $report "Storage backend telemetry evidence writer self-test" "storage-backend"
+Assert-CheckExists $report "MariaDB query plan evidence writer" "data-flow"
+Assert-CheckExists $report "MariaDB query plan evidence self-test" "data-flow"
+Assert-CheckExists $report "Data-flow storage plan writer" "data-flow"
+Assert-CheckExists $report "Data-flow storage plan self-test" "data-flow"
 Assert-CheckExists $report "Secret rotation evidence writer" "security-hardening"
 Assert-CheckExists $report "Secret rotation evidence writer self-test" "security-hardening"
 Assert-CheckExists $report "Secret rotation evidence workflow" "security-hardening"
@@ -133,6 +137,7 @@ Assert-CheckExists $report "Security evidence finalizer report" "security-harden
 Assert-CheckExists $report "Signed image evidence" "security-hardening"
 Assert-CheckExists $report "Container scan/SBOM evidence" "security-hardening"
 Assert-CheckExists $report "Storage backend telemetry target evidence" "storage-backend"
+Assert-CheckExists $report "Data-flow storage transition target evidence" "data-flow"
 Assert-CheckExists $report "Secret/certificate rotation target evidence" "security-hardening"
 Assert-CheckExists $report "Commercial integration target evidence" "commercial-integration"
 Assert-CheckExists $report "Commercial approval target evidence" "commercial-approval"
@@ -178,6 +183,37 @@ if (-not ([string] $storageBackendTelemetryCheck[0].remediation.note).Contains("
 }
 if (-not ([string] $storageBackendTelemetryCheck[0].remediation.note).Contains("OSMU_MINIO_ADMIN_INFO_JSON_BASE64")) {
     throw "Storage backend telemetry target evidence remediation note must mention OSMU_MINIO_ADMIN_INFO_JSON_BASE64."
+}
+$dataFlowStoragePlanCheck = @($report.checks | Where-Object { $_.name -eq "Data-flow storage transition target evidence" })
+if ($dataFlowStoragePlanCheck.Count -ne 1) {
+    throw "Operations readiness report must contain one Data-flow storage transition target evidence check."
+}
+if (-not ([string] $dataFlowStoragePlanCheck[0].remediation.command).Contains("write-data-flow-storage-plan.ps1")) {
+    throw "Data-flow storage transition target evidence remediation must point to write-data-flow-storage-plan.ps1."
+}
+if (-not ([string] $dataFlowStoragePlanCheck[0].remediation.command).Contains("QueryPlanEvidenceJsonPath")) {
+    throw "Data-flow storage transition target evidence remediation must include QueryPlanEvidenceJsonPath."
+}
+if (-not ([string] $dataFlowStoragePlanCheck[0].remediation.command).Contains("RequireQueryPlanEvidence")) {
+    throw "Data-flow storage transition target evidence remediation must require query-plan evidence for the MariaDB candidate."
+}
+if (-not ([string] $dataFlowStoragePlanCheck[0].requiredEvidence).Contains("target query-plan evidence")) {
+    throw "Data-flow storage transition target evidence must require target query-plan evidence."
+}
+if (-not ([string] $dataFlowStoragePlanCheck[0].remediation.note).Contains("write-mariadb-query-plan-evidence.ps1")) {
+    throw "Data-flow storage transition target evidence remediation note must mention write-mariadb-query-plan-evidence.ps1."
+}
+if (-not ([string] $dataFlowStoragePlanCheck[0].remediation.note).Contains("raw SQL")) {
+    throw "Data-flow storage transition target evidence remediation note must mention raw SQL exclusion."
+}
+if (-not ([string] $dataFlowStoragePlanCheck[0].remediation.note).Contains("raw EXPLAIN")) {
+    throw "Data-flow storage transition target evidence remediation note must mention raw EXPLAIN exclusion."
+}
+if (-not ([string] $dataFlowStoragePlanCheck[0].remediation.note).Contains("credentials")) {
+    throw "Data-flow storage transition target evidence remediation note must mention credential exclusion."
+}
+if (-not ([string] $dataFlowStoragePlanCheck[0].remediation.note).Contains("object keys")) {
+    throw "Data-flow storage transition target evidence remediation note must mention object-key exclusion."
 }
 $secretRotationCheck = @($report.checks | Where-Object { $_.name -eq "Secret/certificate rotation target evidence" })
 if ($secretRotationCheck.Count -ne 1) {

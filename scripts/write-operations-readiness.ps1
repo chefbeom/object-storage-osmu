@@ -13,6 +13,7 @@ param(
     [string] $CommercialApprovalEvidencePath = ".\.osmu-run\latest-commercial-approval-evidence.json",
     [string] $EnterpriseAuthSmokeEvidencePath = ".\.osmu-run\latest-enterprise-auth-smoke.json",
     [string] $OperationsHandoffPackagePath = ".\.osmu-run\latest-operations-handoff-package.json",
+    [string] $DataFlowStoragePlanPath = ".\.osmu-run\latest-data-flow-storage-plan.json",
     [string] $JsonOutputPath = ".\.osmu-run\latest-operations-readiness.json",
     [string] $MarkdownOutputPath = ".\.osmu-run\latest-operations-readiness.md",
     [switch] $FailIfNotReady,
@@ -39,6 +40,18 @@ function Get-ObjectProperty($object, [string] $name) {
         return $null
     }
     return $property.Value
+}
+
+function Get-ObjectInt($object, [string] $name) {
+    $value = Get-ObjectProperty $object $name
+    if ($null -eq $value) {
+        return 0
+    }
+    $parsed = 0
+    if ([int]::TryParse(([string] $value), [ref] $parsed)) {
+        return $parsed
+    }
+    return 0
 }
 
 function Read-JsonReport([string] $path, [string] $label) {
@@ -173,6 +186,65 @@ function Get-StorageBackendTelemetryDetail([object] $Report) {
     return "result=$($Report.data.result), poolCount=$($summary.poolCount), serverCount=$($summary.serverCount), offlineServerCount=$($summary.offlineServerCount), driveCount=$($summary.driveCount), totalBytes=$($summary.totalBytes), usedBytes=$($summary.usedBytes), freeBytes=$($summary.freeBytes)"
 }
 
+function Test-SanitizedQueryPlanEvidenceSummary([object] $QueryPlanEvidence) {
+    if ($null -eq $QueryPlanEvidence) {
+        return $true
+    }
+    $summaryText = $QueryPlanEvidence | ConvertTo-Json -Depth 20 -Compress
+    $forbiddenPropertyPattern = '(?i)"(sql|rawSql|raw_sql|explain|explainJson|explain_json|rawExplain|raw_explain|password|passwd|secret|token|credential|apiKey|api_key|accessKey|access_key|privateKey|private_key)"\s*:'
+    $credentialPattern = '(?i)\b(password|passwd|secret|token|credential|api[_-]?key|access[_-]?key|private[_-]?key)\s*=\s*\S+'
+    $rawSqlPattern = '(?i)\bSELECT\b[\s\S]{0,200}\bFROM\b'
+    return -not ($summaryText -match $forbiddenPropertyPattern -or $summaryText -match $credentialPattern -or $summaryText -match $rawSqlPattern)
+}
+
+function Test-DataFlowStoragePlanEvidenceAccepted([object] $Report) {
+    if (-not ($Report.exists -and $Report.parsed)) {
+        return $false
+    }
+    if ([string] (Get-ObjectProperty $Report.data "formatVersion") -ne "osmu.data-flow-storage-plan.v1") {
+        return $false
+    }
+    if ([string] (Get-ObjectProperty $Report.data "result") -ne "passed") {
+        return $false
+    }
+    $candidateStore = [string] (Get-ObjectProperty $Report.data "candidateStore")
+    if ($candidateStore -notin @("MARIADB_PARTITION", "EXTERNAL_TIME_SERIES", "DUAL_WRITE")) {
+        return $false
+    }
+    $queryPlanEvidence = Get-ObjectProperty $Report.data "queryPlanEvidence"
+    if (-not (Test-SanitizedQueryPlanEvidenceSummary $queryPlanEvidence)) {
+        return $false
+    }
+    if (@("MARIADB_PARTITION", "DUAL_WRITE") -contains $candidateStore) {
+        if ($null -eq $queryPlanEvidence) {
+            return $false
+        }
+        if ([string] (Get-ObjectProperty $queryPlanEvidence "expectedFormatVersion") -ne "osmu.mariadb-query-plan-evidence.v1") {
+            return $false
+        }
+        if ([string] (Get-ObjectProperty $queryPlanEvidence "result") -ne "passed") {
+            return $false
+        }
+        if ((Get-ObjectInt $queryPlanEvidence "failedCount") -ne 0) {
+            return $false
+        }
+    }
+    return $true
+}
+
+function Get-DataFlowStoragePlanDetail([object] $Report) {
+    if (-not $Report.exists -or -not $Report.parsed) {
+        return $Report.detail
+    }
+    $queryPlanEvidence = Get-ObjectProperty $Report.data "queryPlanEvidence"
+    $queryPlanDetail = "queryPlanEvidence=absent"
+    if ($null -ne $queryPlanEvidence) {
+        $sanitized = Test-SanitizedQueryPlanEvidenceSummary $queryPlanEvidence
+        $queryPlanDetail = "queryPlanEvidence.result=$([string] (Get-ObjectProperty $queryPlanEvidence "result")), queryPlanEvidence.failedCount=$(Get-ObjectInt $queryPlanEvidence "failedCount"), sanitized=$sanitized"
+    }
+    return "result=$($Report.data.result), candidateStore=$($Report.data.candidateStore), pendingCount=$($Report.data.pendingCount), $queryPlanDetail"
+}
+
 function Test-EnterpriseAuthEvidenceAccepted([object] $Report) {
     if (-not ($Report.exists -and $Report.parsed)) {
         return $false
@@ -205,6 +277,7 @@ $commercialIntegrationReport = Read-JsonReport $CommercialIntegrationEvidencePat
 $commercialApprovalReport = Read-JsonReport $CommercialApprovalEvidencePath "Commercial approval evidence"
 $enterpriseAuthSmokeReport = Read-JsonReport $EnterpriseAuthSmokeEvidencePath "Enterprise auth smoke evidence"
 $operationsHandoffPackageReport = Read-JsonReport $OperationsHandoffPackagePath "Operations handoff package"
+$dataFlowStoragePlanReport = Read-JsonReport $DataFlowStoragePlanPath "Data-flow storage transition plan"
 
 $storageExpansionRemediation = New-Remediation `
     "powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\finalize-storage-expansion.ps1 -Namespace osmu -TenantName osmu-minio -ManifestPath .\infra\k8s\examples\minio-tenant-pool-expansion.example.yaml -ImpersonateRunner" `
@@ -241,6 +314,11 @@ $storageBackendTelemetryRemediation = New-Remediation `
     ".github/workflows/manual-storage-backend-telemetry-evidence.yml" `
     "gh workflow run manual-storage-backend-telemetry-evidence.yml -f collection_mode=live -f minio_endpoint=<minio-endpoint> -f environment_name=<env> -f target_cluster=<cluster> -f operator=<operator> -f minio_alias=<alias> -f evidence_ref=<run-ref> -f fail_if_not_passed=true" `
     "Run after collecting target MinIO pool/node telemetry with mc admin info --json, or dispatch the manual workflow in live mode with OSMU_MINIO_ACCESS_KEY and OSMU_MINIO_SECRET_KEY secrets plus a non-secret minio_endpoint input. The workflow still supports prepared_base64 mode with OSMU_MINIO_ADMIN_INFO_JSON_BASE64 when operators need offline evidence ingestion. The evidence stores summary counts, byte totals, server states, input SHA-256, and external references only; do not pass raw credentials, bearer tokens, private keys, kubeconfig, MinIO root credentials, or object data."
+$dataFlowStoragePlanRemediation = New-Remediation `
+    "powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\write-data-flow-storage-plan.ps1 -EnvironmentName <env> -TargetCluster <cluster> -Operator <operator> -CandidateStore MARIADB_PARTITION -ExpectedPeakEventsPerDay <events-per-day> -ExpectedQueryWindowDays <query-window-days> -EvidenceRef <run-ref> -ConfirmNoObjectKeyInAggregates -ConfirmBackfillPlan -ConfirmRollbackPlan -ConfirmDashboardCutoverPlan -ConfirmRetentionJobBudget -ConfirmExplainEvidence -QueryPlanEvidenceJsonPath .\.osmu-run\latest-mariadb-query-plan-evidence.json -RequireQueryPlanEvidence -FailIfNotPassed" `
+    "" `
+    "" `
+    "Run after target MariaDB query plan evidence passes with write-mariadb-query-plan-evidence.ps1 -Execute or operator-collected EXPLAIN input. For EXTERNAL_TIME_SERIES, change CandidateStore and use a target-store benchmark evidence reference. The plan stores result/count/failed-check metadata only; do not include raw SQL, raw EXPLAIN, credentials, object keys, or raw event messages."
 $secretRotationRemediation = New-Remediation `
     "powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\write-secret-rotation-evidence.ps1 -EnvironmentName <env> -TargetCluster <cluster> -Operator <operator> -RotationStartedAt <iso-time> -RotationCompletedAt <iso-time> -ChangeApprovalRef <change-id> -SecretManagerEvidenceRef <audit-ref> -WorkloadRestartEvidenceRef <rollout-ref> -SmokeEvidenceRef <smoke-ref> -ArtifactLeakReviewEvidenceRef <scan-ref> -AccessKeyEncryptionDecisionRef <decision-ref> -RotateAdminPassword -RotateJwtSigningSecret -RotateDatabaseCredentials -RotateMinioRootCredentials -RotateTlsCertificate -ConfirmNoSecretValues -ConfirmWorkloadRestart -ConfirmSmokePassed -ConfirmArtifactLeakReview -FailIfNotPassed" `
     ".github/workflows/manual-secret-rotation-evidence.yml" `
@@ -304,6 +382,10 @@ Add-FileCheck "Security evidence writer self-test" "security-hardening" ".\scrip
 Add-FileCheck "Storage backend telemetry evidence writer" "storage-backend" ".\scripts\write-storage-backend-telemetry-evidence.ps1" "storage backend telemetry evidence writer committed"
 Add-FileCheck "Storage backend telemetry evidence writer self-test" "storage-backend" ".\scripts\verify-storage-backend-telemetry-evidence.ps1" "storage backend telemetry evidence writer self-test committed"
 Add-FileCheck "Storage backend telemetry evidence workflow" "storage-backend" ".\.github\workflows\manual-storage-backend-telemetry-evidence.yml" "manual workflow for storage backend telemetry evidence"
+Add-FileCheck "MariaDB query plan evidence writer" "data-flow" ".\scripts\write-mariadb-query-plan-evidence.ps1" "MariaDB query plan evidence writer committed"
+Add-FileCheck "MariaDB query plan evidence self-test" "data-flow" ".\scripts\verify-mariadb-query-plan-evidence.ps1" "MariaDB query plan evidence self-test committed"
+Add-FileCheck "Data-flow storage plan writer" "data-flow" ".\scripts\write-data-flow-storage-plan.ps1" "data-flow storage transition plan writer committed"
+Add-FileCheck "Data-flow storage plan self-test" "data-flow" ".\scripts\verify-data-flow-storage-plan.ps1" "data-flow storage transition plan self-test committed"
 Add-FileCheck "Secret rotation evidence writer" "security-hardening" ".\scripts\write-secret-rotation-evidence.ps1" "secret rotation evidence writer committed"
 Add-FileCheck "Secret rotation evidence writer self-test" "security-hardening" ".\scripts\verify-secret-rotation-evidence.ps1" "secret rotation evidence writer self-test committed"
 Add-FileCheck "Secret rotation evidence workflow" "security-hardening" ".\.github\workflows\manual-secret-rotation-evidence.yml" "manual workflow for target secret/certificate rotation evidence"
@@ -331,6 +413,7 @@ Add-Check "Security evidence finalizer report" "security-hardening" ($securityFi
 Add-Check "Signed image evidence" "security-hardening" ($imageSigningReport.exists -and $imageSigningReport.parsed -and $imageSigningReport.data.result -eq "passed") (Get-GenericResultDetail $imageSigningReport) $imageSigningReport.path "published image digest and Cosign verification evidence" $imageSigningRemediation
 Add-Check "Container scan/SBOM evidence" "security-hardening" ($containerSecurityReport.exists -and $containerSecurityReport.parsed -and $containerSecurityReport.data.result -eq "passed") (Get-GenericResultDetail $containerSecurityReport) $containerSecurityReport.path "successful container scan and SBOM artifact evidence" $containerSecurityRemediation
 Add-Check "Storage backend telemetry target evidence" "storage-backend" ($storageBackendTelemetryReport.exists -and $storageBackendTelemetryReport.parsed -and $storageBackendTelemetryReport.data.result -eq "passed") (Get-StorageBackendTelemetryDetail $storageBackendTelemetryReport) $storageBackendTelemetryReport.path "storage backend telemetry result=passed from target MinIO admin info evidence" $storageBackendTelemetryRemediation
+Add-Check "Data-flow storage transition target evidence" "data-flow" (Test-DataFlowStoragePlanEvidenceAccepted $dataFlowStoragePlanReport) (Get-DataFlowStoragePlanDetail $dataFlowStoragePlanReport) $dataFlowStoragePlanReport.path "data-flow storage transition plan result=passed with target query-plan evidence for MariaDB partition or dual-write candidates" $dataFlowStoragePlanRemediation
 Add-Check "Secret/certificate rotation target evidence" "security-hardening" ($secretRotationReport.exists -and $secretRotationReport.parsed -and $secretRotationReport.data.result -eq "passed") (Get-GenericResultDetail $secretRotationReport) $secretRotationReport.path "secret/certificate rotation evidence result=passed from target environment" $secretRotationRemediation
 Add-Check "Commercial integration target evidence" "commercial-integration" ($commercialIntegrationReport.exists -and $commercialIntegrationReport.parsed -and $commercialIntegrationReport.data.result -eq "passed") (Get-GenericResultDetail $commercialIntegrationReport) $commercialIntegrationReport.path "commercial integration evidence result=passed from target environment" $commercialIntegrationRemediation
 Add-Check "Commercial approval target evidence" "commercial-approval" ($commercialApprovalReport.exists -and $commercialApprovalReport.parsed -and $commercialApprovalReport.data.result -eq "passed") (Get-GenericResultDetail $commercialApprovalReport) $commercialApprovalReport.path "commercial approval evidence result=passed for final pricing, terms, support SLA, license agreement, legal approval, and pilot contract boundary" $commercialApprovalRemediation
@@ -361,6 +444,7 @@ $report = [ordered]@{
         imageSigningEvidence = $imageSigningReport.path
         containerSecurityEvidence = $containerSecurityReport.path
         storageBackendTelemetryEvidence = $storageBackendTelemetryReport.path
+        dataFlowStoragePlan = $dataFlowStoragePlanReport.path
         secretRotationEvidence = $secretRotationReport.path
         commercialIntegrationEvidence = $commercialIntegrationReport.path
         commercialApprovalEvidence = $commercialApprovalReport.path
@@ -368,7 +452,7 @@ $report = [ordered]@{
         operationsHandoffPackage = $operationsHandoffPackageReport.path
     }
     checks = $checks
-    decisionRule = "Production/B2B operations readiness is ready only when every listed static, automation, live Kubernetes, storage expansion, storage backend telemetry, HA/DR, security, secret rotation, commercial integration, commercial approval, enterprise auth, and operations handoff package evidence check is PASS."
+    decisionRule = "Production/B2B operations readiness is ready only when every listed static, automation, live Kubernetes, storage expansion, storage backend telemetry, data-flow storage transition, HA/DR, security, secret rotation, commercial integration, commercial approval, enterprise auth, and operations handoff package evidence check is PASS."
 }
 
 $markdownLines = @(
