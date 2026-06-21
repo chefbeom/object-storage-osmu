@@ -253,6 +253,7 @@ Run when Browser/Chrome automation works again:
 - [x] Browser E2E spec includes bucket-side storage profile request and request status row assertions.
 - [x] Browser E2E spec includes admin storage profile approve/apply status transitions.
 - [x] Browser E2E spec includes object upload followed by prefix/list refresh and object detail render.
+- [x] Browser E2E spec includes pending multipart resume panel, matching Resume enable, Expired disable, and delete confirm paths.
 - [x] Browser E2E spec includes object metadata drift fixture with sync-status badge and index/storage row comparison.
 - [x] Browser E2E spec includes object prefix open/root breadcrumb navigation, search highlight, tag filter, tag edit, and invalid tag error paths.
 - [x] Browser E2E spec includes Object Explorer page size select, first-page cursor reset, and next-page limit retention paths.

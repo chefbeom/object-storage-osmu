@@ -119,13 +119,23 @@
         <p v-if="uploadState.message">{{ uploadState.message }}</p>
       </div>
 
-      <section v-if="visibleMultipartResumeSessions.length > 0" class="resume-panel" aria-label="Pending multipart uploads">
+      <section
+        v-if="visibleMultipartResumeSessions.length > 0"
+        class="resume-panel"
+        aria-label="Pending multipart uploads"
+        data-testid="object-multipart-resume-panel"
+      >
         <div class="resume-panel-head">
           <strong>Pending multipart</strong>
           <span>{{ visibleMultipartResumeSessions.length }}</span>
         </div>
         <ul>
-          <li v-for="session in visibleMultipartResumeSessions" :key="session.storageKey" :class="{ expired: session.expired }">
+          <li
+            v-for="session in visibleMultipartResumeSessions"
+            :key="session.storageKey"
+            :class="{ expired: session.expired }"
+            data-testid="object-multipart-resume-row"
+          >
             <span class="list-main">
               <b>{{ session.key }}</b>
               <small>
@@ -136,6 +146,7 @@
             </span>
             <span class="resume-actions">
               <button
+                data-testid="object-multipart-resume-button"
                 type="button"
                 class="ghost"
                 :disabled="session.expired || !isMatchingResumeSession(session)"
@@ -143,7 +154,7 @@
               >
                 Resume
               </button>
-              <button type="button" class="danger" @click="$emit('discard-multipart-resume', session.storageKey)">Delete</button>
+              <button data-testid="object-multipart-resume-delete-button" type="button" class="danger" @click="$emit('discard-multipart-resume', session.storageKey)">Delete</button>
             </span>
           </li>
         </ul>

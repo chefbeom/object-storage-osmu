@@ -1991,7 +1991,7 @@ TC-FE-023 보강: 사용자가 취소한 경우에는 abort API를 호출한다.
 - 절차: Object Explorer에서 pending multipart 목록을 확인하고 같은 파일을 선택한 뒤 Resume을 실행한다.
 - 기대 결과: Frontend가 pending multipart session을 표시하고 file fingerprint가 일치할 때 resume을 허용한다. session `expiresAt`이 지났으면 Expired 상태를 표시하고 Resume을 막는다. Resume 실행 시 parts list API와 refresh API를 호출하고, 완료된 part를 skip한 뒤 남은 part만 업로드한다. Delete 실행 시 해당 resume session이 sessionStorage에서 삭제된다. 만료 후 24시간이 지난 local session은 자동 정리된다.
 - 우선순위: P1
-- 자동화 여부: Automated (`npm run test:unit` local session list/expired/prune/delete). Browser resume E2E pending.
+- 자동화 여부: Automated (`npm run test:unit` local session list/expired/prune/delete, Browser E2E pending multipart panel, matching Resume enable, Expired disable, and delete confirm path). Browser/MinIO resume execution E2E pending.
 
 ## 11. Security
 

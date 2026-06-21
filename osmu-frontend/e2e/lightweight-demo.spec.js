@@ -698,6 +698,124 @@ test('developer object metadata detail shows drift fields from fixture', async (
   await expect(detailPanel.getByTestId('object-metadata-row-state').filter({ hasText: 'Drift' })).toHaveCount(12)
 })
 
+test('developer can inspect and delete pending multipart resume sessions', async ({ page }) => {
+  await installDeveloperApiMocks(page)
+  await page.addInitScript(() => {
+    window.localStorage.removeItem('osmu.dashboard.widgets.v1')
+    window.localStorage.removeItem('osmu.auth.tokens')
+    window.localStorage.removeItem('osmu.login.rememberedId')
+    window.sessionStorage.removeItem('osmu.auth.tokens')
+  })
+
+  await page.goto(`${frontendBaseUrl}/login?mode=developer`)
+  await page.getByTestId('login-id-input').fill(developerLoginId)
+  await page.getByTestId('login-password-input').fill(developerPassword)
+  await page.getByTestId('login-submit-button').click()
+
+  await expect(page).toHaveURL(/\/developer$/)
+  await page.getByRole('link', { name: 'Objects' }).click()
+  await page.getByTestId('object-key-input').fill('resume.bin')
+  await page.getByTestId('object-tags-input').fill('project=osmu')
+  await page.getByTestId('object-file-input').setInputFiles({
+    name: 'resume.bin',
+    mimeType: 'application/octet-stream',
+    buffer: Buffer.from('resume-fixture'),
+  })
+
+  const seededKeys = await page.evaluate(({ bucketName }) => {
+    const partSizeBytes = 64 * 1024 * 1024
+    const input = document.querySelector('[data-testid="object-file-input"]')
+    const file = input.files[0]
+    const hashString = (value) => {
+      let hash = 0
+      for (let index = 0; index < value.length; index += 1) {
+        hash = ((hash << 5) - hash + value.charCodeAt(index)) | 0
+      }
+      return Math.abs(hash).toString(36)
+    }
+    const storageKeyFor = ({ key, tags, fileName, fileSize, fileLastModified, contentType }) => {
+      const identity = JSON.stringify({
+        bucketName,
+        key,
+        tags,
+        fileName,
+        fileSize,
+        fileLastModified,
+        contentType,
+        partSizeBytes,
+      })
+      return `osmu.multipartUpload.${hashString(identity)}`
+    }
+    const now = Date.now()
+    const matchingStorageKey = storageKeyFor({
+      key: 'resume.bin',
+      tags: 'project=osmu',
+      fileName: file.name,
+      fileSize: file.size,
+      fileLastModified: file.lastModified,
+      contentType: file.type || 'application/octet-stream',
+    })
+    const expiredStorageKey = 'osmu.multipartUpload.expired-browser-e2e'
+    window.sessionStorage.setItem(matchingStorageKey, JSON.stringify({
+      uploadId: 'browser-resume-upload',
+      bucketName,
+      key: 'resume.bin',
+      tags: 'project=osmu',
+      fileName: file.name,
+      fileSize: file.size,
+      fileLastModified: file.lastModified,
+      contentType: file.type || 'application/octet-stream',
+      partSizeBytes,
+      completedParts: [{ partNumber: 1, etag: 'etag-1', sizeBytes: file.size }],
+      partCount: 3,
+      expiresAt: new Date(now + 60 * 60 * 1000).toISOString(),
+      updatedAt: new Date(now).toISOString(),
+    }))
+    window.sessionStorage.setItem(expiredStorageKey, JSON.stringify({
+      uploadId: 'browser-expired-upload',
+      bucketName,
+      key: 'expired.bin',
+      tags: '',
+      fileName: 'expired.bin',
+      fileSize: 4096,
+      fileLastModified: 0,
+      contentType: 'application/octet-stream',
+      partSizeBytes,
+      completedParts: [],
+      partCount: 2,
+      expiresAt: new Date(now - 60 * 60 * 1000).toISOString(),
+      updatedAt: new Date(now - 30 * 60 * 1000).toISOString(),
+    }))
+    return { matchingStorageKey, expiredStorageKey }
+  }, { bucketName: developerBucketName })
+
+  await page.getByTestId('refresh-button').click()
+  await expect(page.getByTestId('object-multipart-resume-panel')).toBeVisible()
+  await expect(page.getByTestId('object-multipart-resume-row')).toHaveCount(2)
+
+  const matchingRow = page.getByTestId('object-multipart-resume-row').filter({ hasText: 'resume.bin' })
+  await expect(matchingRow).toContainText('1 of 3 parts')
+  await expect(matchingRow.getByTestId('object-multipart-resume-button')).toBeEnabled()
+
+  const expiredRow = page.getByTestId('object-multipart-resume-row').filter({ hasText: 'expired.bin' })
+  await expect(expiredRow).toContainText('Expired')
+  await expect(expiredRow.getByTestId('object-multipart-resume-button')).toBeDisabled()
+  await expiredRow.getByTestId('object-multipart-resume-delete-button').click()
+  await expect(page.getByTestId('confirm-dialog')).toContainText('Multipart resume')
+  await page.getByTestId('confirm-submit-button').click()
+
+  await expect(page.getByTestId('status-alert')).toContainText('Multipart resume')
+  await expect(page.getByTestId('object-multipart-resume-row').filter({ hasText: 'expired.bin' })).toHaveCount(0)
+  await expect(page.getByTestId('object-multipart-resume-row').filter({ hasText: 'resume.bin' })).toHaveCount(1)
+  await expect.poll(() => page.evaluate((keys) => ({
+    matchingPresent: Boolean(window.sessionStorage.getItem(keys.matchingStorageKey)),
+    expiredPresent: Boolean(window.sessionStorage.getItem(keys.expiredStorageKey)),
+  }), seededKeys)).toEqual({
+    matchingPresent: true,
+    expiredPresent: false,
+  })
+})
+
 test('developer refresh failure clears session and redirects from portal click', async ({ page }) => {
   const authRefreshRequests = []
   const unauthorizedPaths = []
