@@ -3,6 +3,8 @@ param(
     [string] $ReadmePath = ".\README.md",
     [string] $ProductRequirementsPath = ".\PRODUCT_REQUIREMENTS.md",
     [string] $BackendDesignPath = ".\dev-docs\backend-design.md",
+    [string] $ApiSpecPath = ".\dev-docs\api-spec.md",
+    [string] $FeatureInventoryPath = ".\dev-docs\feature-inventory.md",
     [string] $RoadmapPath = ".\dev-docs\development-roadmap.md",
     [string] $PrototypeStatusPath = ".\dev-docs\prototype-status.md",
     [string] $MvpReleaseChecklistPath = ".\dev-docs\mvp-release-checklist.md",
@@ -29,7 +31,7 @@ function Read-RequiredText([string] $PathValue, [string] $Label) {
     return [pscustomobject]@{
         label = $Label
         path = $resolved
-        text = Get-Content -Raw -LiteralPath $resolved
+        text = Get-Content -Raw -Encoding UTF8 -LiteralPath $resolved
     }
 }
 
@@ -45,10 +47,16 @@ function Assert-NotContains([object] $File, [string] $Unexpected) {
     }
 }
 
+function Decode-Utf8Base64([string] $Value) {
+    return [System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String($Value))
+}
+
 $matrix = Read-RequiredText $MatrixPath "S3 compatibility matrix"
 $readme = Read-RequiredText $ReadmePath "README"
 $productRequirements = Read-RequiredText $ProductRequirementsPath "Product requirements"
 $backendDesign = Read-RequiredText $BackendDesignPath "Backend design"
+$apiSpec = Read-RequiredText $ApiSpecPath "API spec"
+$featureInventory = Read-RequiredText $FeatureInventoryPath "Feature inventory"
 $roadmap = Read-RequiredText $RoadmapPath "Development roadmap"
 $prototypeStatus = Read-RequiredText $PrototypeStatusPath "Prototype status"
 $releaseChecklist = Read-RequiredText $MvpReleaseChecklistPath "MVP release checklist"
@@ -70,6 +78,8 @@ Assert-Contains $matrix "New S3 behavior is accepted into the roadmap only when 
 Assert-Contains $readme "dev-docs/s3-compatibility.md"
 Assert-Contains $readme "verify-s3-client-smoke.ps1"
 Assert-Contains $readme "verify-s3-compatibility-boundary.ps1"
+Assert-Contains $readme (Decode-Utf8Base64 "64yA7LK07JqpIFMzLWNvbXBhdGlibGUgQVBJ")
+Assert-Contains $readme (Decode-Utf8Base64 "QVdTIFMzIOyghOyytCDsiqTtjpnsnZgg7IS467aAIO2YuO2ZmOydhCDsoJztkogg66qp7ZGc66GcIOyCvOyngOuKlCDslYrripTri6Q=")
 
 Assert-Contains $productRequirements "AWS SDK, boto3, AWS CLI, MinIO Client"
 Assert-Contains $productRequirements "AWS S3"
@@ -78,9 +88,15 @@ Assert-Contains $backendDesign "not AWS S3 behavioral cloning"
 Assert-Contains $backendDesign "real client smoke failures or OSMU product needs"
 Assert-Contains $backendDesign "authoritative matrix for supported, partial, and unsupported S3 behavior"
 
+Assert-Contains $apiSpec (Decode-Utf8Base64 "QVdTIFMzIOyghOyytCDrj5nsnpEg7Zi47ZmY7J2AIEFQSSDrqqntkZzqsIAg7JWE64uI64uk")
+
+Assert-Contains $featureInventory (Decode-Utf8Base64 "QVdTIFMz66W8IOyTsOyngCDslYrqs6Ag7J6Q7LK0IOyKpO2GoOumrOyngOulvCDsmrTsmIHtlZjroKTripQg7KGw7KeB7JeQIOuMgOyytCDqsIDriqXtlZwg7IiY7KSA7J2YIFMzIO2YuO2ZmCDsoJHqt7wg7KCc6rO1")
+Assert-Contains $featureInventory (Decode-Utf8Base64 "UzPripQgbWlncmF0aW9uIGNvbXBhdGliaWxpdHkgbGF5ZXI=")
+
 Assert-Contains $roadmap "S3-compatible replacement layer"
 Assert-Contains $roadmap "S3 client smoke"
 Assert-Contains $roadmap "S3 replacement layer"
+Assert-Contains $roadmap (Decode-Utf8Base64 "QVdTIFMzIOyghOyytCDrs7XsoJzqsIAg7JWE64uI6528")
 
 Assert-Contains $prototypeStatus "S3 compatibility role: replacement layer, not AWS edge parity"
 Assert-Contains $prototypeStatus "S3-compatible replacement layer"
@@ -102,6 +118,8 @@ $filesToScan = @(
     $readme,
     $productRequirements,
     $backendDesign,
+    $apiSpec,
+    $featureInventory,
     $roadmap,
     $prototypeStatus,
     $releaseChecklist,
@@ -115,7 +133,12 @@ $overbroadClaims = @(
     "complete AWS S3 compatibility",
     "full AWS S3 parity",
     "AWS S3 parity goal",
-    "AWS S3 parity as a goal"
+    "AWS S3 parity as a goal",
+    (Decode-Utf8Base64 "QVdTIFMz7JmAIDEwMCUg7Zi47ZmY"),
+    (Decode-Utf8Base64 "QVdTIFMzIOyZhOyghCDtmLjtmZjsnYQg67O07J6l"),
+    (Decode-Utf8Base64 "QVdTIFMzIOyghOyytCDsiqTtjpkg7Zi47ZmYIOuztOyepQ=="),
+    (Decode-Utf8Base64 "QVdTIFMzIOyghOyytCDrs7XsoJwg66qp7ZGc"),
+    (Decode-Utf8Base64 "QVdTIFMzIOyEuOu2gCBwYXJpdHnrpbwg7KCc7ZKIIOuqqe2RnA==")
 )
 
 foreach ($file in $filesToScan) {

@@ -179,7 +179,7 @@ Required before calling the current prototype demo-ready:
 - [x] Operations readiness frontend selector visibility test passes.
 - [x] Durable release artifact generator synthetic test passes.
 - [x] Test case evidence map separates PASS, PARTIAL, and PENDING items.
-- [x] S3 replacement boundary verifier passes and keeps compatibility claims scoped to `dev-docs/s3-compatibility.md`.
+- [x] S3 replacement boundary verifier passes and keeps English/Korean compatibility claims in README, API spec, feature inventory, status, and release-facing docs scoped to `dev-docs/s3-compatibility.md`.
 
 Command:
 

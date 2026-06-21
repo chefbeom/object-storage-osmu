@@ -327,10 +327,10 @@
 ### TC-S3-COMPATIBILITY-BOUNDARY
 
 - Feature: S3 replacement-layer compatibility boundary.
-- Preconditions: README, PRD, roadmap, prototype status, backend design, MVP checklist, demo package notes writer, MVP completion verifier, and `dev-docs/s3-compatibility.md` are available.
+- Preconditions: README, PRD, API spec, feature inventory, roadmap, prototype status, backend design, MVP checklist, demo package notes writer, MVP completion verifier, and `dev-docs/s3-compatibility.md` are available.
 - Input: `powershell -ExecutionPolicy Bypass -File .\scripts\verify-s3-compatibility-boundary.ps1`.
-- Steps: Run the verifier and review failures for missing replacement-boundary text, missing client matrix evidence, missing release-gate links, or overbroad AWS S3 parity claims.
-- Expected: The verifier exits successfully only when S3 support is documented as replacement-use compatibility, new S3 work is tied to real client smoke failures, migration blockers, or OSMU control-plane needs, and overbroad claims such as full AWS S3 parity or drop-in replacement are absent from current release-facing docs.
+- Steps: Run the verifier and review failures for missing replacement-boundary text, missing Korean README/API/feature-inventory boundary text, missing client matrix evidence, missing release-gate links, or overbroad English/Korean AWS S3 parity claims.
+- Expected: The verifier exits successfully only when S3 support is documented as replacement-use compatibility, new S3 work is tied to real client smoke failures, migration blockers, or OSMU control-plane needs, and overbroad claims such as full AWS S3 parity, drop-in replacement, or Korean 100%/full-S3-compatibility claims are absent from current release-facing docs.
 - Priority: P1
 - Automated: `scripts/verify-s3-compatibility-boundary.ps1`, `scripts/verify-mvp-completion.ps1`
 
