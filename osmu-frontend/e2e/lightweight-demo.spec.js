@@ -379,6 +379,12 @@ test('admin can complete lightweight storage portal click path', async ({ page }
   await expect(page.getByTestId('object-table')).toContainText('project=archive')
   await expect(page.getByTestId('object-table')).toContainText('stage=curated')
 
+  await page.getByTestId('object-tag-edit-button').first().click()
+  await page.getByTestId('object-tag-value-input').fill('bad key=value')
+  await page.getByTestId('object-tag-save-button').click()
+  await expect(page.getByTestId('error-alert')).toContainText('Tag keys can contain')
+  await expect(page.getByTestId('object-table')).toContainText('stage=curated')
+
   await page.getByRole('link', { name: 'Audit' }).click()
   await page.getByTestId('audit-search-button').click()
   await expect(page.getByTestId('audit-list')).toContainText(/BUCKET|OBJECT|LOGIN/)

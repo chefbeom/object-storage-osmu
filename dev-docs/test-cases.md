@@ -1926,7 +1926,7 @@ ID:
 - 절차: upload/tag update/presigned upload/tag filter 실행 전에 invalid tag를 입력한다.
 - 기대 결과: API 요청 전에 오류 메시지가 표시되고 요청이 전송되지 않는다.
 - 우선순위: P1
-- 자동화 여부: Automated (`npm run test:unit` tag utility and API client preflight validation; invalid upload/tag update/presigned/multipart/filter blocks network calls). Browser UI error display E2E pending.
+- 자동화 여부: Automated (`npm run test:unit` tag utility and API client preflight validation; invalid upload/tag update/presigned/multipart/filter blocks network calls, Browser E2E invalid tag edit displays `error-alert` before list state changes).
 
 ### TC-FE-021
 
