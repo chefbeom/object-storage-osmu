@@ -2063,7 +2063,9 @@ const storageBackendStatusLabel = computed(() => (
 const storageBackendCapacityLabel = computed(() => (
   storageBackendStatus.value.directStorageMetricsEnabled
     ? `${props.formatBytes(storageBackendStatus.value.usedBytes || 0)} used from direct metrics`
-    : `${props.formatBytes(storageBackendStatus.value.usedBytes || 0)} metadata used`
+    : storageBackendStatus.value.capacitySource === 'storage_backend_telemetry_evidence'
+      ? `${props.formatBytes(storageBackendStatus.value.usedBytes || 0)} used from telemetry evidence`
+      : `${props.formatBytes(storageBackendStatus.value.usedBytes || 0)} metadata used`
 ))
 const dataFlowStorageRowsLabel = computed(() => (
   `${props.formatCount(dataFlowStorageStatus.value.eventRowCount || 0)} events / ${props.formatCount(dataFlowStorageStatus.value.dailyRollupRowCount || 0)} daily / ${props.formatCount(dataFlowStorageStatus.value.monthlyRollupRowCount || 0)} monthly`

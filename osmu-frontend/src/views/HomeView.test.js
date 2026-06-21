@@ -780,6 +780,7 @@ test('HomeView exposes stable selectors for browser E2E flows', () => {
   assert.match(dashboardSource, /directStorageMetricsStatus/)
   assert.match(dashboardSource, /storageBackendCapacityLabel/)
   assert.match(dashboardSource, /used from direct metrics/)
+  assert.match(dashboardSource, /used from telemetry evidence/)
   assert.match(dashboardSource, /metadata used/)
   assert.match(dashboardSource, /getMaterializedDataFlowDailyRollup/)
   assert.match(dashboardSource, /getMaterializedDataFlowMonthlyRollup/)

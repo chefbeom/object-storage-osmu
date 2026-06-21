@@ -630,12 +630,24 @@ public class AdminController {
         long objectCount = bucketService.totalObjectCount();
         StorageBackendMetricsSnapshot directMetrics = storageBackendMetricsProvider.snapshot();
         boolean directMetricsReady = directMetrics.ready();
-        long effectiveQuotaBytes = directMetricsReady ? directMetrics.totalBytes() : quotaBytes;
-        long effectiveRemainingBytes = directMetricsReady ? directMetrics.freeBytes() : Math.max(0L, quotaBytes - usedBytes);
+        boolean minioMode = "minio".equals(normalizedStorageMode);
+        DashboardStorageBackendTelemetryEvidenceResponse telemetry = storageBackendTelemetryEvidenceSnapshot();
+        boolean telemetryCapacityReady = minioMode
+                && "passed".equalsIgnoreCase(telemetry.result())
+                && telemetry.capacityKnown()
+                && telemetry.totalBytes() > 0L;
+        long effectiveQuotaBytes = directMetricsReady
+                ? directMetrics.totalBytes()
+                : telemetryCapacityReady ? telemetry.totalBytes() : quotaBytes;
+        long effectiveRemainingBytes = directMetricsReady
+                ? directMetrics.freeBytes()
+                : telemetryCapacityReady ? telemetry.freeBytes() : Math.max(0L, quotaBytes - usedBytes);
         long effectiveUsedBytes = directMetricsReady
                 ? Math.max(0L, directMetrics.totalBytes() - directMetrics.freeBytes())
-                : usedBytes;
-        String capacitySource = directMetricsReady ? directMetrics.source() : "bucket_metadata_usage";
+                : telemetryCapacityReady ? telemetry.usedBytes() : usedBytes;
+        String capacitySource = directMetricsReady
+                ? directMetrics.source()
+                : telemetryCapacityReady ? "storage_backend_telemetry_evidence" : "bucket_metadata_usage";
         List<String> pendingGates = new java.util.ArrayList<>();
         if (!storageHealthy) {
             pendingGates.add("Object storage health check is DOWN.");
@@ -643,20 +655,22 @@ public class AdminController {
         if (!accessKeyProvisionerHealthy) {
             pendingGates.add("Access key policy provisioner health check is DOWN.");
         }
-        if (!"minio".equals(normalizedStorageMode)) {
+        if (!minioMode) {
             pendingGates.add("MinIO object storage mode is not enabled.");
-        } else if (!directMetrics.ready()) {
+        } else if (!directMetrics.ready() && !telemetryCapacityReady) {
             pendingGates.add("Direct MinIO capacity metrics are not ready: " + directMetrics.detail());
         }
         String readiness;
         if (!storageHealthy) {
             readiness = "UNHEALTHY";
-        } else if (!"minio".equals(normalizedStorageMode)) {
+        } else if (!minioMode) {
             readiness = "DEMO_ONLY";
         } else if (!accessKeyProvisionerHealthy) {
             readiness = "PROVISIONER_ATTENTION";
         } else if (directMetricsReady) {
             readiness = "DIRECT_METRICS_READY";
+        } else if (telemetryCapacityReady) {
+            readiness = "TELEMETRY_EVIDENCE_READY";
         } else {
             readiness = "METADATA_USAGE_READY";
         }
@@ -684,7 +698,9 @@ public class AdminController {
                 OffsetDateTime.now(),
                 directMetricsReady
                         ? "OSMU storage backend status uses direct MinIO capacity metrics with metadata counts for buckets and objects."
-                        : "OSMU storage backend status uses bucket metadata usage and health probes until direct MinIO capacity metrics are ready."
+                        : telemetryCapacityReady
+                        ? "OSMU storage backend status uses the latest passed MinIO admin info telemetry evidence for capacity with metadata counts for buckets and objects."
+                        : "OSMU storage backend status uses bucket metadata usage and health probes until direct MinIO capacity metrics or storage backend telemetry evidence are ready."
         );
     }
 

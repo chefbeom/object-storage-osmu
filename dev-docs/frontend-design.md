@@ -257,7 +257,7 @@ Soft delete UI:
 - Admin dashboard는 Storage Expansion execution output retention 상태(pending/redacted/failed)를 표시하고 수동 `Run retention`을 실행할 수 있다.
 - Admin dashboard는 `GET /api/admin/storage-expansion/summary` aggregate를 사용해 Storage Expansion 요청 open/applied/rejected 수, open capacity, 전체 execution 수, 실패/timeout 실행 수, 최근 요청/실행을 `storage-expansion` palette panel로 표시한다.
 
-- Dashboard health palette reads `GET /api/admin/storage/backend-status` through `getStorageBackendStatus` and shows `dashboard-storage-backend-status` with readiness, used capacity, source label, and object count. If direct MinIO metrics are ready it labels the line as `used from direct metrics`; otherwise it labels the fallback as `metadata used`.
+- Dashboard health palette reads `GET /api/admin/storage/backend-status` through `getStorageBackendStatus` and shows `dashboard-storage-backend-status` with readiness, used capacity, source label, and object count. If direct MinIO metrics are ready it labels the line as `used from direct metrics`; if the status falls back to passed storage backend telemetry evidence it labels the line as `used from telemetry evidence`; otherwise it labels the metadata fallback as `metadata used`.
 
 Version UI:
 
