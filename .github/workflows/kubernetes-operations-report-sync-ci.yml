@@ -70,6 +70,15 @@ jobs:
           if ($plan.formatVersion -ne "osmu.data-flow-storage-plan.v1") {
             throw "Unexpected data-flow storage plan formatVersion: $($plan.formatVersion)"
           }
+          $candidateStore = [string] $plan.candidateStore
+          if (@("MARIADB_PARTITION", "DUAL_WRITE") -contains $candidateStore) {
+            if ($null -eq $plan.queryPlanEvidence) {
+              throw "Data-flow storage plan candidateStore=$candidateStore requires queryPlanEvidence summary."
+            }
+            if ($plan.queryPlanEvidence.expectedFormatVersion -ne "osmu.mariadb-query-plan-evidence.v1") {
+              throw "Unexpected queryPlanEvidence expectedFormatVersion: $($plan.queryPlanEvidence.expectedFormatVersion)"
+            }
+          }
 
       - name: Plan Kubernetes operations report sync
         shell: pwsh

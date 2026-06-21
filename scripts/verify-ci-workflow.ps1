@@ -401,6 +401,8 @@ Assert-Contains $kubernetesOperationsReportSyncWorkflowContent "Write operations
 Assert-Contains $kubernetesOperationsReportSyncWorkflowContent "./scripts/write-operations-readiness-convergence.ps1" "Kubernetes Operations Report Sync CI workflow"
 Assert-Contains $kubernetesOperationsReportSyncWorkflowContent "Restore data-flow storage plan evidence" "Kubernetes Operations Report Sync CI workflow"
 Assert-Contains $kubernetesOperationsReportSyncWorkflowContent "osmu.data-flow-storage-plan.v1" "Kubernetes Operations Report Sync CI workflow"
+Assert-Contains $kubernetesOperationsReportSyncWorkflowContent 'candidateStore=$candidateStore requires queryPlanEvidence summary.' "Kubernetes Operations Report Sync CI workflow"
+Assert-Contains $kubernetesOperationsReportSyncWorkflowContent "osmu.mariadb-query-plan-evidence.v1" "Kubernetes Operations Report Sync CI workflow"
 Assert-Contains $kubernetesOperationsReportSyncWorkflowContent "Plan Kubernetes operations report sync" "Kubernetes Operations Report Sync CI workflow"
 Assert-Contains $kubernetesOperationsReportSyncWorkflowContent "./scripts/sync-kubernetes-operations-reports.ps1" "Kubernetes Operations Report Sync CI workflow"
 Assert-Contains $kubernetesOperationsReportSyncWorkflowContent "-PlanOnly" "Kubernetes Operations Report Sync CI workflow"
