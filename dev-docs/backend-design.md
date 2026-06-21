@@ -362,7 +362,7 @@ public interface ObjectStorageAdapter {
 - Multipart parts list는 MinIO `listParts`를 사용해 이미 업로드된 partNumber/ETag/size를 반환하고 frontend resume이 완료된 part를 skip할 수 있게 한다.
 - Presigned upload uses `.osmu/uploads/` staging keys and copies staged content to the active key on complete.
 - Presigned/multipart overwrite snapshots the previous active object into `.osmu/versions/` before active replacement.
-- Browser multipart upload는 part PUT 응답의 `ETag`를 읽어야 하므로 `MinioBucketCorsProvisioner`와 local Compose CORS JSON이 `ExposeHeaders`에 `ETag`를 포함한다.
+- Browser multipart upload는 part PUT 응답의 `ETag`를 읽어야 하므로 `MinioBucketCorsProvisioner`와 local Compose CORS JSON이 `ExposeHeaders`에 `ETag`, `x-amz-request-id`, `x-amz-id-2`, `x-amz-version-id`를 포함한다. 운영 검증은 `scripts/verify-minio-bucket-cors.ps1`가 `mc cors info <alias>/<bucket>` 또는 operator-provided CORS XML을 읽어 `.osmu-run/latest-minio-bucket-cors-verification.*`에 요약한다. 이는 browser upload 운영 조건 검증이며 AWS S3 세부 parity 확장이 아니다.
 - `MultipartUploadCleanupJob`은 만료된 `ACTIVE` multipart session을 주기적으로 찾아 MinIO multipart upload를 abort하고 session 상태를 `EXPIRED`로 변경한다. cleanup 성공/실패는 `OBJECT_MULTIPART_UPLOAD_CLEANUP` 감사 로그와 `osmu.multipart.cleanup.sessions{result=success|skipped|failure}` metric으로 기록한다.
 - in-memory mode는 테스트/개발 편의를 위해 stream을 byte array로 저장한다.
 

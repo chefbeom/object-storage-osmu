@@ -2109,6 +2109,16 @@ TC-FE-023 보강: 사용자가 취소한 경우에는 abort API를 호출한다.
 - 우선순위: P0
 - 자동화 여부: Backend unit test, integration smoke candidate
 
+### TC-INFRA-001B
+
+- 기능: MinIO bucket CORS 운영 검증
+- 조건: PowerShell이 가능하다. Live 검증은 `mc` alias가 target MinIO를 가리키고 bucket이 존재해야 한다.
+- 입력: `.\scripts\verify-minio-bucket-cors-self-test.ps1`, live path는 `.\scripts\verify-minio-bucket-cors.ps1 -BucketName <bucket> -MinioAlias <alias> -Execute -FailIfNotPassed`
+- 절차: self-test는 fixture 기반 plan-only, passed, failed report를 생성한다. Live path는 `mc cors info <alias>/<bucket>` 결과를 parsing한다. 수동 수집 XML은 `-CorsXmlPath .\.osmu-run\minio-bucket-cors.xml`로 검증한다.
+- 기대 결과: `osmu.minio-bucket-cors-verification.v1` report가 `ETag`, `x-amz-request-id`, `x-amz-id-2`, `x-amz-version-id` expose header, `GET/PUT/POST/DELETE/HEAD`, allowed header, max-age를 검증한다. raw CORS XML과 credential은 저장하지 않는다. 이 검증은 browser multipart upload 운영 조건 확인이며 AWS S3 세부 parity 확대가 아니다.
+- 우선순위: P1
+- 자동화 여부: `scripts/verify-minio-bucket-cors-self-test.ps1`
+
 ### TC-INFRA-002
 
 - Feature: Kubernetes manifest draft verification.

@@ -271,6 +271,15 @@ Docker 통합 smoke test:
 
 이 명령은 Docker Compose `up -d --build`, Backend health, storage/database health, admin login, bucket 생성, object upload/list, multipart upload, MinIO CORS `ETag` expose, multipart parts list, refresh URL 재발급, S3 SigV4 root HEAD/list, bucket tagging PUT/GET/DELETE, checksum object PUT/HEAD/GET, bucket sync 후 checksum 보존, S3 multipart checksum complete와 AWS-style multipart ETag, `x-amz-sdk-checksum-algorithm` 기반 UploadPart 자동 checksum/ListParts/stored-checksum complete, S3 multi-delete Quiet/Content-MD5/per-key Error, payload hash mismatch `BadDigest`, checksum mismatch `BadDigest`, virtual-hosted-style PUT/GET, frontend HTTP 200을 확인하고 기본값으로 `docker compose down`을 수행한다. 컨테이너를 유지하려면 `-KeepRunning`을 사용한다.
 
+MinIO bucket CORS만 별도 확인할 때:
+
+```powershell
+.\scripts\verify-minio-bucket-cors-self-test.ps1
+.\scripts\verify-minio-bucket-cors.ps1 -BucketName <bucket> -MinioAlias <alias> -Execute -FailIfNotPassed
+```
+
+`-Execute`는 `mc cors info <alias>/<bucket>`을 실행한다. 이미 저장한 XML을 검증하려면 `-CorsXmlPath .\.osmu-run\minio-bucket-cors.xml`을 사용한다. report는 raw CORS XML을 저장하지 않고 expose header와 allowed method/header 요약만 `.osmu-run/latest-minio-bucket-cors-verification.*`에 남긴다.
+
 Durable MVP demo gate:
 
 ```powershell
@@ -352,6 +361,7 @@ http://localhost:9001
 - Docker 통합 smoke test script
 - Local demo start/stop script
 - MinIO bucket CORS JSON과 Backend CORS provisioner
+- MinIO bucket CORS verification script와 self-test
 
 남은 항목:
 
