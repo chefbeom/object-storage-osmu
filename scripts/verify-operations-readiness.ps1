@@ -223,6 +223,9 @@ if (-not ([string] $commercialIntegrationCheck[0].remediation.note).Contains("GE
 if (-not ([string] $commercialIntegrationCheck[0].remediation.note).Contains("does not claim or require native card/bank/tax/ERP processor API support")) {
     throw "Commercial integration target evidence remediation note must preserve native provider scope boundary."
 }
+if (-not ([string] $commercialIntegrationCheck[0].remediation.note).Contains("decoded workflow input is deleted before artifact upload")) {
+    throw "Commercial integration target evidence remediation note must mention decoded workflow input cleanup."
+}
 if (-not ([string] $commercialIntegrationCheck[0].requiredEvidence).Contains("target environment")) {
     throw "Commercial integration target evidence must require target environment evidence."
 }
@@ -253,6 +256,9 @@ if (-not ([string] $commercialApprovalCheck[0].remediation.note).Contains("GET /
 }
 if (-not ([string] $commercialApprovalCheck[0].remediation.note).Contains("sanitized status/reference metadata")) {
     throw "Commercial approval target evidence remediation note must mention sanitized status/reference metadata."
+}
+if (-not ([string] $commercialApprovalCheck[0].remediation.note).Contains("decoded workflow input is deleted before artifact upload")) {
+    throw "Commercial approval target evidence remediation note must mention decoded workflow input cleanup."
 }
 if (-not ([string] $commercialApprovalCheck[0].requiredEvidence).Contains("final pricing") -or -not ([string] $commercialApprovalCheck[0].requiredEvidence).Contains("legal approval")) {
     throw "Commercial approval target evidence must require final pricing and legal approval evidence."

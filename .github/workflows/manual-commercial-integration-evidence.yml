@@ -228,57 +228,64 @@ jobs:
           OSMU_FAIL_IF_NOT_PASSED: ${{ inputs.fail_if_not_passed }}
         run: |
           $readinessJsonPath = ""
-          if (-not [string]::IsNullOrWhiteSpace($env:OSMU_PAYMENT_PROVIDER_ADAPTER_READINESS_JSON_BASE64)) {
-            New-Item -ItemType Directory -Force -Path ".osmu-run" | Out-Null
-            $readinessJsonPath = ".osmu-run/payment-provider-adapter-readiness.json"
-            $resolvedReadinessJsonPath = Join-Path (Resolve-Path ".").Path $readinessJsonPath
-            [System.IO.File]::WriteAllBytes($resolvedReadinessJsonPath, [Convert]::FromBase64String($env:OSMU_PAYMENT_PROVIDER_ADAPTER_READINESS_JSON_BASE64))
+          try {
+            if (-not [string]::IsNullOrWhiteSpace($env:OSMU_PAYMENT_PROVIDER_ADAPTER_READINESS_JSON_BASE64)) {
+              New-Item -ItemType Directory -Force -Path ".osmu-run" | Out-Null
+              $readinessJsonPath = ".osmu-run/payment-provider-adapter-readiness.json"
+              $resolvedReadinessJsonPath = Join-Path (Resolve-Path ".").Path $readinessJsonPath
+              [System.IO.File]::WriteAllBytes($resolvedReadinessJsonPath, [Convert]::FromBase64String($env:OSMU_PAYMENT_PROVIDER_ADAPTER_READINESS_JSON_BASE64))
+            }
+
+            $evidenceArgs = @(
+              "-EnvironmentName", $env:OSMU_ENVIRONMENT_NAME,
+              "-TargetCluster", $env:OSMU_TARGET_CLUSTER,
+              "-Operator", $env:OSMU_OPERATOR,
+              "-VerificationStartedAt", $env:OSMU_VERIFICATION_STARTED_AT,
+              "-VerificationCompletedAt", $env:OSMU_VERIFICATION_COMPLETED_AT,
+              "-ChangeApprovalRef", $env:OSMU_CHANGE_APPROVAL_REF,
+              "-NotificationWebhookEvidenceRef", $env:OSMU_NOTIFICATION_WEBHOOK_EVIDENCE_REF,
+              "-SlackWebhookEvidenceRef", $env:OSMU_SLACK_WEBHOOK_EVIDENCE_REF,
+              "-EmailSmtpEvidenceRef", $env:OSMU_EMAIL_SMTP_EVIDENCE_REF,
+              "-PaymentGenericWebhookEvidenceRef", $env:OSMU_PAYMENT_GENERIC_WEBHOOK_EVIDENCE_REF,
+              "-PaymentCardProfileEvidenceRef", $env:OSMU_PAYMENT_CARD_PROFILE_EVIDENCE_REF,
+              "-PaymentBankProfileEvidenceRef", $env:OSMU_PAYMENT_BANK_PROFILE_EVIDENCE_REF,
+              "-PaymentTaxProfileEvidenceRef", $env:OSMU_PAYMENT_TAX_PROFILE_EVIDENCE_REF,
+              "-PaymentErpProfileEvidenceRef", $env:OSMU_PAYMENT_ERP_PROFILE_EVIDENCE_REF,
+              "-PaymentProviderAdapterReadinessEvidenceRef", $env:OSMU_PAYMENT_PROVIDER_ADAPTER_READINESS_EVIDENCE_REF,
+              "-AdapterRetryWorkerEvidenceRef", $env:OSMU_ADAPTER_RETRY_WORKER_EVIDENCE_REF,
+              "-PayloadReviewEvidenceRef", $env:OSMU_PAYLOAD_REVIEW_EVIDENCE_REF,
+              "-PrivateNetworkBlockEvidenceRef", $env:OSMU_PRIVATE_NETWORK_BLOCK_EVIDENCE_REF,
+              "-HmacSignatureEvidenceRef", $env:OSMU_HMAC_SIGNATURE_EVIDENCE_REF,
+              "-JsonOutputPath", ".osmu-run/latest-commercial-integration-evidence.json",
+              "-MarkdownOutputPath", ".osmu-run/latest-commercial-integration-evidence.md"
+            )
+
+            if (-not [string]::IsNullOrWhiteSpace($readinessJsonPath)) { $evidenceArgs += @("-PaymentProviderAdapterReadinessJsonPath", $readinessJsonPath) }
+            if ($env:OSMU_VERIFIED_NOTIFICATION_WEBHOOK -eq "true") { $evidenceArgs += "-VerifiedNotificationWebhook" }
+            if ($env:OSMU_VERIFIED_SLACK_WEBHOOK -eq "true") { $evidenceArgs += "-VerifiedSlackWebhook" }
+            if ($env:OSMU_VERIFIED_EMAIL_SMTP -eq "true") { $evidenceArgs += "-VerifiedEmailSmtp" }
+            if ($env:OSMU_VERIFIED_PAYMENT_GENERIC_WEBHOOK -eq "true") { $evidenceArgs += "-VerifiedPaymentGenericWebhook" }
+            if ($env:OSMU_VERIFIED_PAYMENT_CARD_PROFILE -eq "true") { $evidenceArgs += "-VerifiedPaymentCardProfile" }
+            if ($env:OSMU_VERIFIED_PAYMENT_BANK_PROFILE -eq "true") { $evidenceArgs += "-VerifiedPaymentBankProfile" }
+            if ($env:OSMU_VERIFIED_PAYMENT_TAX_PROFILE -eq "true") { $evidenceArgs += "-VerifiedPaymentTaxProfile" }
+            if ($env:OSMU_VERIFIED_PAYMENT_ERP_PROFILE -eq "true") { $evidenceArgs += "-VerifiedPaymentErpProfile" }
+            if ($env:OSMU_CONFIRM_ADAPTER_RETRY_WORKER_RUN -eq "true") { $evidenceArgs += "-ConfirmAdapterRetryWorkerRun" }
+            if ($env:OSMU_CONFIRM_PAYLOAD_SIZE_CAPS -eq "true") { $evidenceArgs += "-ConfirmPayloadSizeCaps" }
+            if ($env:OSMU_CONFIRM_PRIVATE_NETWORK_BLOCKING -eq "true") { $evidenceArgs += "-ConfirmPrivateNetworkBlocking" }
+            if ($env:OSMU_CONFIRM_HMAC_SIGNATURE_HEADERS -eq "true") { $evidenceArgs += "-ConfirmHmacSignatureHeaders" }
+            if ($env:OSMU_CONFIRM_PAYMENT_PROVIDER_ADAPTER_READINESS_REVIEWED -eq "true") { $evidenceArgs += "-ConfirmPaymentProviderAdapterReadinessReviewed" }
+            if ($env:OSMU_CONFIRM_NO_SECRET_VALUES -eq "true") { $evidenceArgs += "-ConfirmNoSecretValues" }
+            if ($env:OSMU_CONFIRM_NO_RAW_PROVIDER_RESPONSES -eq "true") { $evidenceArgs += "-ConfirmNoRawProviderResponses" }
+            if ($env:OSMU_REQUIRE_ALL_IMPLEMENTED_ADAPTERS -eq "true") { $evidenceArgs += "-RequireAllImplementedAdapters" }
+            if ($env:OSMU_FAIL_IF_NOT_PASSED -eq "true") { $evidenceArgs += "-FailIfNotPassed" }
+
+            ./scripts/write-commercial-integration-evidence.ps1 @evidenceArgs
           }
-
-          $evidenceArgs = @(
-            "-EnvironmentName", $env:OSMU_ENVIRONMENT_NAME,
-            "-TargetCluster", $env:OSMU_TARGET_CLUSTER,
-            "-Operator", $env:OSMU_OPERATOR,
-            "-VerificationStartedAt", $env:OSMU_VERIFICATION_STARTED_AT,
-            "-VerificationCompletedAt", $env:OSMU_VERIFICATION_COMPLETED_AT,
-            "-ChangeApprovalRef", $env:OSMU_CHANGE_APPROVAL_REF,
-            "-NotificationWebhookEvidenceRef", $env:OSMU_NOTIFICATION_WEBHOOK_EVIDENCE_REF,
-            "-SlackWebhookEvidenceRef", $env:OSMU_SLACK_WEBHOOK_EVIDENCE_REF,
-            "-EmailSmtpEvidenceRef", $env:OSMU_EMAIL_SMTP_EVIDENCE_REF,
-            "-PaymentGenericWebhookEvidenceRef", $env:OSMU_PAYMENT_GENERIC_WEBHOOK_EVIDENCE_REF,
-            "-PaymentCardProfileEvidenceRef", $env:OSMU_PAYMENT_CARD_PROFILE_EVIDENCE_REF,
-            "-PaymentBankProfileEvidenceRef", $env:OSMU_PAYMENT_BANK_PROFILE_EVIDENCE_REF,
-            "-PaymentTaxProfileEvidenceRef", $env:OSMU_PAYMENT_TAX_PROFILE_EVIDENCE_REF,
-            "-PaymentErpProfileEvidenceRef", $env:OSMU_PAYMENT_ERP_PROFILE_EVIDENCE_REF,
-            "-PaymentProviderAdapterReadinessEvidenceRef", $env:OSMU_PAYMENT_PROVIDER_ADAPTER_READINESS_EVIDENCE_REF,
-            "-AdapterRetryWorkerEvidenceRef", $env:OSMU_ADAPTER_RETRY_WORKER_EVIDENCE_REF,
-            "-PayloadReviewEvidenceRef", $env:OSMU_PAYLOAD_REVIEW_EVIDENCE_REF,
-            "-PrivateNetworkBlockEvidenceRef", $env:OSMU_PRIVATE_NETWORK_BLOCK_EVIDENCE_REF,
-            "-HmacSignatureEvidenceRef", $env:OSMU_HMAC_SIGNATURE_EVIDENCE_REF,
-            "-JsonOutputPath", ".osmu-run/latest-commercial-integration-evidence.json",
-            "-MarkdownOutputPath", ".osmu-run/latest-commercial-integration-evidence.md"
-          )
-
-          if (-not [string]::IsNullOrWhiteSpace($readinessJsonPath)) { $evidenceArgs += @("-PaymentProviderAdapterReadinessJsonPath", $readinessJsonPath) }
-          if ($env:OSMU_VERIFIED_NOTIFICATION_WEBHOOK -eq "true") { $evidenceArgs += "-VerifiedNotificationWebhook" }
-          if ($env:OSMU_VERIFIED_SLACK_WEBHOOK -eq "true") { $evidenceArgs += "-VerifiedSlackWebhook" }
-          if ($env:OSMU_VERIFIED_EMAIL_SMTP -eq "true") { $evidenceArgs += "-VerifiedEmailSmtp" }
-          if ($env:OSMU_VERIFIED_PAYMENT_GENERIC_WEBHOOK -eq "true") { $evidenceArgs += "-VerifiedPaymentGenericWebhook" }
-          if ($env:OSMU_VERIFIED_PAYMENT_CARD_PROFILE -eq "true") { $evidenceArgs += "-VerifiedPaymentCardProfile" }
-          if ($env:OSMU_VERIFIED_PAYMENT_BANK_PROFILE -eq "true") { $evidenceArgs += "-VerifiedPaymentBankProfile" }
-          if ($env:OSMU_VERIFIED_PAYMENT_TAX_PROFILE -eq "true") { $evidenceArgs += "-VerifiedPaymentTaxProfile" }
-          if ($env:OSMU_VERIFIED_PAYMENT_ERP_PROFILE -eq "true") { $evidenceArgs += "-VerifiedPaymentErpProfile" }
-          if ($env:OSMU_CONFIRM_ADAPTER_RETRY_WORKER_RUN -eq "true") { $evidenceArgs += "-ConfirmAdapterRetryWorkerRun" }
-          if ($env:OSMU_CONFIRM_PAYLOAD_SIZE_CAPS -eq "true") { $evidenceArgs += "-ConfirmPayloadSizeCaps" }
-          if ($env:OSMU_CONFIRM_PRIVATE_NETWORK_BLOCKING -eq "true") { $evidenceArgs += "-ConfirmPrivateNetworkBlocking" }
-          if ($env:OSMU_CONFIRM_HMAC_SIGNATURE_HEADERS -eq "true") { $evidenceArgs += "-ConfirmHmacSignatureHeaders" }
-          if ($env:OSMU_CONFIRM_PAYMENT_PROVIDER_ADAPTER_READINESS_REVIEWED -eq "true") { $evidenceArgs += "-ConfirmPaymentProviderAdapterReadinessReviewed" }
-          if ($env:OSMU_CONFIRM_NO_SECRET_VALUES -eq "true") { $evidenceArgs += "-ConfirmNoSecretValues" }
-          if ($env:OSMU_CONFIRM_NO_RAW_PROVIDER_RESPONSES -eq "true") { $evidenceArgs += "-ConfirmNoRawProviderResponses" }
-          if ($env:OSMU_REQUIRE_ALL_IMPLEMENTED_ADAPTERS -eq "true") { $evidenceArgs += "-RequireAllImplementedAdapters" }
-          if ($env:OSMU_FAIL_IF_NOT_PASSED -eq "true") { $evidenceArgs += "-FailIfNotPassed" }
-
-          ./scripts/write-commercial-integration-evidence.ps1 @evidenceArgs
+          finally {
+            if (-not [string]::IsNullOrWhiteSpace($readinessJsonPath)) {
+              Remove-Item -LiteralPath $readinessJsonPath -Force -ErrorAction SilentlyContinue
+            }
+          }
 
       - name: Upload commercial integration evidence
         if: always()

@@ -139,44 +139,51 @@ jobs:
           OSMU_FAIL_IF_NOT_PASSED: ${{ inputs.fail_if_not_passed }}
         run: |
           $pricingPolicyProposalJsonPath = ""
-          if (-not [string]::IsNullOrWhiteSpace($env:OSMU_PRICING_POLICY_PROPOSAL_JSON_BASE64)) {
-            New-Item -ItemType Directory -Force -Path ".osmu-run" | Out-Null
-            $pricingPolicyProposalJsonPath = ".osmu-run/billing-pricing-policy-proposals.json"
-            $resolvedPricingPolicyProposalJsonPath = Join-Path (Resolve-Path ".").Path $pricingPolicyProposalJsonPath
-            [System.IO.File]::WriteAllBytes($resolvedPricingPolicyProposalJsonPath, [Convert]::FromBase64String($env:OSMU_PRICING_POLICY_PROPOSAL_JSON_BASE64))
+          try {
+            if (-not [string]::IsNullOrWhiteSpace($env:OSMU_PRICING_POLICY_PROPOSAL_JSON_BASE64)) {
+              New-Item -ItemType Directory -Force -Path ".osmu-run" | Out-Null
+              $pricingPolicyProposalJsonPath = ".osmu-run/billing-pricing-policy-proposals.json"
+              $resolvedPricingPolicyProposalJsonPath = Join-Path (Resolve-Path ".").Path $pricingPolicyProposalJsonPath
+              [System.IO.File]::WriteAllBytes($resolvedPricingPolicyProposalJsonPath, [Convert]::FromBase64String($env:OSMU_PRICING_POLICY_PROPOSAL_JSON_BASE64))
+            }
+
+            $evidenceArgs = @(
+              "-ProductVersion", $env:OSMU_PRODUCT_VERSION,
+              "-ApprovalRef", $env:OSMU_APPROVAL_REF,
+              "-ApprovedBy", $env:OSMU_APPROVED_BY,
+              "-ApprovedAt", $env:OSMU_APPROVED_AT,
+              "-PricingApprovalRef", $env:OSMU_PRICING_APPROVAL_REF,
+              "-TermsApprovalRef", $env:OSMU_TERMS_APPROVAL_REF,
+              "-SupportSlaApprovalRef", $env:OSMU_SUPPORT_SLA_APPROVAL_REF,
+              "-LicenseAgreementRef", $env:OSMU_LICENSE_AGREEMENT_REF,
+              "-LegalApprovalRef", $env:OSMU_LEGAL_APPROVAL_REF,
+              "-PilotContractRef", $env:OSMU_PILOT_CONTRACT_REF,
+              "-PricingPolicyProposalEvidenceRef", $env:OSMU_PRICING_POLICY_PROPOSAL_EVIDENCE_REF,
+              "-NotesRef", $env:OSMU_NOTES_REF,
+              "-JsonOutputPath", ".osmu-run/latest-commercial-approval-evidence.json",
+              "-MarkdownOutputPath", ".osmu-run/latest-commercial-approval-evidence.md"
+            )
+
+            if (-not [string]::IsNullOrWhiteSpace($pricingPolicyProposalJsonPath)) { $evidenceArgs += @("-PricingPolicyProposalJsonPath", $pricingPolicyProposalJsonPath) }
+            if ($env:OSMU_CONFIRM_PRICING_APPROVED -eq "true") { $evidenceArgs += "-ConfirmPricingApproved" }
+            if ($env:OSMU_CONFIRM_TERMS_APPROVED -eq "true") { $evidenceArgs += "-ConfirmTermsApproved" }
+            if ($env:OSMU_CONFIRM_SUPPORT_SLA_APPROVED -eq "true") { $evidenceArgs += "-ConfirmSupportSlaApproved" }
+            if ($env:OSMU_CONFIRM_LICENSE_APPROVED -eq "true") { $evidenceArgs += "-ConfirmLicenseApproved" }
+            if ($env:OSMU_CONFIRM_LEGAL_APPROVED -eq "true") { $evidenceArgs += "-ConfirmLegalApproved" }
+            if ($env:OSMU_CONFIRM_PRICING_POLICY_PROPOSAL_COMMERCIAL_APPROVAL -eq "true") {
+              $evidenceArgs += "-ConfirmPricingPolicyProposalCommercialApproval"
+              $evidenceArgs += "-RequirePricingPolicyProposalApprovalSnapshot"
+            }
+            if ($env:OSMU_CONFIRM_NO_SECRET_VALUES -eq "true") { $evidenceArgs += "-ConfirmNoSecretValues" }
+            if ($env:OSMU_FAIL_IF_NOT_PASSED -eq "true") { $evidenceArgs += "-FailIfNotPassed" }
+
+            ./scripts/write-commercial-approval-evidence.ps1 @evidenceArgs
           }
-
-          $evidenceArgs = @(
-            "-ProductVersion", $env:OSMU_PRODUCT_VERSION,
-            "-ApprovalRef", $env:OSMU_APPROVAL_REF,
-            "-ApprovedBy", $env:OSMU_APPROVED_BY,
-            "-ApprovedAt", $env:OSMU_APPROVED_AT,
-            "-PricingApprovalRef", $env:OSMU_PRICING_APPROVAL_REF,
-            "-TermsApprovalRef", $env:OSMU_TERMS_APPROVAL_REF,
-            "-SupportSlaApprovalRef", $env:OSMU_SUPPORT_SLA_APPROVAL_REF,
-            "-LicenseAgreementRef", $env:OSMU_LICENSE_AGREEMENT_REF,
-            "-LegalApprovalRef", $env:OSMU_LEGAL_APPROVAL_REF,
-            "-PilotContractRef", $env:OSMU_PILOT_CONTRACT_REF,
-            "-PricingPolicyProposalEvidenceRef", $env:OSMU_PRICING_POLICY_PROPOSAL_EVIDENCE_REF,
-            "-NotesRef", $env:OSMU_NOTES_REF,
-            "-JsonOutputPath", ".osmu-run/latest-commercial-approval-evidence.json",
-            "-MarkdownOutputPath", ".osmu-run/latest-commercial-approval-evidence.md"
-          )
-
-          if (-not [string]::IsNullOrWhiteSpace($pricingPolicyProposalJsonPath)) { $evidenceArgs += @("-PricingPolicyProposalJsonPath", $pricingPolicyProposalJsonPath) }
-          if ($env:OSMU_CONFIRM_PRICING_APPROVED -eq "true") { $evidenceArgs += "-ConfirmPricingApproved" }
-          if ($env:OSMU_CONFIRM_TERMS_APPROVED -eq "true") { $evidenceArgs += "-ConfirmTermsApproved" }
-          if ($env:OSMU_CONFIRM_SUPPORT_SLA_APPROVED -eq "true") { $evidenceArgs += "-ConfirmSupportSlaApproved" }
-          if ($env:OSMU_CONFIRM_LICENSE_APPROVED -eq "true") { $evidenceArgs += "-ConfirmLicenseApproved" }
-          if ($env:OSMU_CONFIRM_LEGAL_APPROVED -eq "true") { $evidenceArgs += "-ConfirmLegalApproved" }
-          if ($env:OSMU_CONFIRM_PRICING_POLICY_PROPOSAL_COMMERCIAL_APPROVAL -eq "true") {
-            $evidenceArgs += "-ConfirmPricingPolicyProposalCommercialApproval"
-            $evidenceArgs += "-RequirePricingPolicyProposalApprovalSnapshot"
+          finally {
+            if (-not [string]::IsNullOrWhiteSpace($pricingPolicyProposalJsonPath)) {
+              Remove-Item -LiteralPath $pricingPolicyProposalJsonPath -Force -ErrorAction SilentlyContinue
+            }
           }
-          if ($env:OSMU_CONFIRM_NO_SECRET_VALUES -eq "true") { $evidenceArgs += "-ConfirmNoSecretValues" }
-          if ($env:OSMU_FAIL_IF_NOT_PASSED -eq "true") { $evidenceArgs += "-FailIfNotPassed" }
-
-          ./scripts/write-commercial-approval-evidence.ps1 @evidenceArgs
 
       - name: Upload commercial approval evidence
         if: always()
