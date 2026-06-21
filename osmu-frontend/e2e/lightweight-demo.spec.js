@@ -325,7 +325,15 @@ test('admin can complete lightweight storage portal click path', async ({ page }
 
   await page.getByRole('link', { name: 'Admin' }).click()
   await expect(page.getByTestId('bucket-lifecycle-panel')).toBeVisible()
+  await expect(page.getByTestId('bucket-lifecycle-load-button')).toBeVisible()
+  await expect(page.getByTestId('bucket-lifecycle-save-button')).toBeVisible()
+  await expect(page.getByTestId('bucket-lifecycle-delete-button')).toBeVisible()
+  await expect(page.getByTestId('bucket-lifecycle-textarea')).toBeVisible()
   await expect(page.getByTestId('bucket-tags-panel')).toBeVisible()
+  await expect(page.getByTestId('bucket-tags-load-button')).toBeVisible()
+  await expect(page.getByTestId('bucket-tags-save-button')).toBeVisible()
+  await expect(page.getByTestId('bucket-tags-delete-button')).toBeVisible()
+  await expect(page.getByTestId('bucket-tags-input')).toBeVisible()
 
   await page.getByRole('link', { name: 'Objects' }).click()
   await page.getByTestId('object-key-input').fill(objectKey)

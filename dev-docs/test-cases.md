@@ -432,7 +432,7 @@
 - Steps: Load bucket lifecycle XML, edit XML, save, then delete lifecycle config.
 - Expected: UI calls `GET/PUT/DELETE /api/buckets/{bucketName}/lifecycle`, shows rule count, shows saved count after save, and clears/reloads XML after delete.
 - Priority: P1
-- Automated: `npm run test:unit` covers bucket lifecycle REST API wrapper methods and XML payload. Browser E2E pending.
+- Automated: `npm run test:unit` covers bucket lifecycle REST API wrapper methods, XML payload, and stable selectors. Browser E2E spec now asserts `bucket-lifecycle-load-button`, `bucket-lifecycle-save-button`, `bucket-lifecycle-delete-button`, and `bucket-lifecycle-textarea`; live Browser execution remains environment-dependent.
 
 ### TC-FE-028
 
@@ -442,7 +442,7 @@
 - Steps: Load bucket tags, save edited tags, delete tags, and try invalid duplicate or malformed tag input.
 - Expected: UI calls `GET/PUT/DELETE /api/buckets/{bucketName}/tags`, converts input to a JSON tag map on save, shows tag count and saved count, clears tags after delete, and blocks invalid input before sending the request.
 - Priority: P1
-- Automated: `npm run test:unit` covers tag parsing/validation, bucket tag REST API wrappers, and S3 XML tagging wrappers. Browser E2E pending.
+- Automated: `npm run test:unit` covers tag parsing/validation, bucket tag REST API wrappers, S3 XML tagging wrappers, and stable selectors. Browser E2E spec now asserts `bucket-tags-load-button`, `bucket-tags-save-button`, `bucket-tags-delete-button`, and `bucket-tags-input`; live Browser execution remains environment-dependent.
 
 ### TC-FE-029
 

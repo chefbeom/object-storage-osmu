@@ -9,17 +9,17 @@
     </div>
     <div class="lifecycle-xml">
       <div>
-        <strong>{{ bucketLifecycleXml.ruleCount ?? 0 }} rules</strong>
-        <small v-if="bucketLifecycleXml.savedCount !== null">saved {{ bucketLifecycleXml.savedCount }} rules</small>
+        <strong data-testid="bucket-lifecycle-rule-count">{{ bucketLifecycleXml.ruleCount ?? 0 }} rules</strong>
+        <small v-if="bucketLifecycleXml.savedCount !== null" data-testid="bucket-lifecycle-saved-count">saved {{ bucketLifecycleXml.savedCount }} rules</small>
       </div>
       <div class="rule-actions">
-        <button type="button" class="ghost" :disabled="bucketLifecycleXml.pending" @click="$emit('load-bucket-lifecycle-xml')">
+        <button data-testid="bucket-lifecycle-load-button" type="button" class="ghost" :disabled="bucketLifecycleXml.pending" @click="$emit('load-bucket-lifecycle-xml')">
           {{ bucketLifecycleXml.pending ? 'Loading' : 'Load' }}
         </button>
-        <button type="button" :disabled="bucketLifecycleXml.pending" @click="$emit('put-bucket-lifecycle-xml')">Save</button>
-        <button type="button" class="danger" :disabled="bucketLifecycleXml.pending" @click="$emit('delete-bucket-lifecycle-xml')">Delete</button>
+        <button data-testid="bucket-lifecycle-save-button" type="button" :disabled="bucketLifecycleXml.pending" @click="$emit('put-bucket-lifecycle-xml')">Save</button>
+        <button data-testid="bucket-lifecycle-delete-button" type="button" class="danger" :disabled="bucketLifecycleXml.pending" @click="$emit('delete-bucket-lifecycle-xml')">Delete</button>
       </div>
-      <textarea v-model="bucketLifecycleXml.content" placeholder="<LifecycleConfiguration>..." rows="6"></textarea>
+      <textarea data-testid="bucket-lifecycle-textarea" v-model="bucketLifecycleXml.content" placeholder="<LifecycleConfiguration>..." rows="6"></textarea>
     </div>
   </article>
 
@@ -33,17 +33,17 @@
     </div>
     <div class="lifecycle-xml">
       <div>
-        <strong>{{ bucketTags.tagCount ?? 0 }} tags</strong>
-        <small v-if="bucketTags.savedCount !== null">saved {{ bucketTags.savedCount }} tags</small>
+        <strong data-testid="bucket-tags-count">{{ bucketTags.tagCount ?? 0 }} tags</strong>
+        <small v-if="bucketTags.savedCount !== null" data-testid="bucket-tags-saved-count">saved {{ bucketTags.savedCount }} tags</small>
       </div>
       <div class="rule-actions">
-        <button type="button" class="ghost" :disabled="bucketTags.pending" @click="$emit('load-bucket-tags')">
+        <button data-testid="bucket-tags-load-button" type="button" class="ghost" :disabled="bucketTags.pending" @click="$emit('load-bucket-tags')">
           {{ bucketTags.pending ? 'Loading' : 'Load' }}
         </button>
-        <button type="button" :disabled="bucketTags.pending" @click="$emit('put-bucket-tags')">Save</button>
-        <button type="button" class="danger" :disabled="bucketTags.pending" @click="$emit('delete-bucket-tags')">Delete</button>
+        <button data-testid="bucket-tags-save-button" type="button" :disabled="bucketTags.pending" @click="$emit('put-bucket-tags')">Save</button>
+        <button data-testid="bucket-tags-delete-button" type="button" class="danger" :disabled="bucketTags.pending" @click="$emit('delete-bucket-tags')">Delete</button>
       </div>
-      <textarea v-model="bucketTags.content" placeholder="project=osmu,stage=raw" rows="4"></textarea>
+      <textarea data-testid="bucket-tags-input" v-model="bucketTags.content" placeholder="project=osmu,stage=raw" rows="4"></textarea>
     </div>
   </article>
 </template>

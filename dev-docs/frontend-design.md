@@ -9,8 +9,10 @@
 - S3 Lifecycle XML area exports current rules and imports compatible lifecycle XML into OSMU rules.
 - Bucket detail area has a Bucket Lifecycle panel for selected bucket S3 XML load/save/delete.
 - Bucket Lifecycle panel uses `getBucketLifecycleS3Xml`, `putBucketLifecycleS3Xml`, `deleteBucketLifecycleS3Xml`.
+- Bucket Lifecycle panel exposes stable selectors `bucket-lifecycle-load-button`, `bucket-lifecycle-save-button`, `bucket-lifecycle-delete-button`, and `bucket-lifecycle-textarea` for Browser E2E load/save/delete flows.
 - Bucket detail area has a Bucket Tags panel for selected bucket S3 tagging load/save/delete.
 - Bucket Tags panel accepts `key=value,key2=value2`, validates the same 50 bucket tag limit as Backend, converts input to a JSON tag map, and uses `GET/PUT/DELETE /api/buckets/{bucketName}/tags`.
+- Bucket Tags panel exposes stable selectors `bucket-tags-load-button`, `bucket-tags-save-button`, `bucket-tags-delete-button`, and `bucket-tags-input` for Browser E2E load/save/delete flows.
 - Tag parsing/formatting validation lives in `src/utils/tags.js` and is covered by `npm run test:unit`.
 # OSMU Frontend Design
 
