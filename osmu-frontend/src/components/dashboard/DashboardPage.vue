@@ -548,6 +548,12 @@
             Package: {{ operationsHandoffPackageItem.message }}
           </small>
           <small
+            v-if="dataFlowStoragePlanItem"
+            data-testid="readiness-data-flow-storage-plan-item-summary"
+          >
+            Data-flow plan: {{ dataFlowStoragePlanItem.message }}
+          </small>
+          <small
             v-if="storageBackendTelemetryEvidence.result"
             data-testid="readiness-storage-telemetry-item-summary"
           >
@@ -600,6 +606,39 @@
           {{ storageBackendTelemetryEvidence.scopePolicy }}
         </small>
       </div>
+      <div
+        v-if="dataFlowStoragePlan.result"
+        class="readiness-invocation-summary"
+        data-testid="readiness-data-flow-storage-plan-summary"
+      >
+        <strong>Data-flow storage plan: {{ dataFlowStoragePlan.result }}</strong>
+        <small>
+          {{ dataFlowStoragePlan.environmentName || 'unknown env' }} /
+          {{ dataFlowStoragePlan.targetCluster || 'unknown cluster' }} /
+          store {{ dataFlowStoragePlan.candidateStore || 'unknown' }} /
+          peak {{ formatCount(dataFlowStoragePlan.expectedPeakEventsPerDay || 0) }}/day /
+          query {{ dataFlowStoragePlan.expectedQueryWindowDays || 0 }}d /
+          passed {{ dataFlowStoragePlan.passedCount || 0 }} of {{ dataFlowStoragePlan.checkCount || 0 }}
+        </small>
+        <small v-if="dataFlowStoragePlan.scopePolicy">
+          {{ dataFlowStoragePlan.scopePolicy }}
+        </small>
+      </div>
+      <ol
+        v-if="dataFlowStoragePlanChecks.length > 0"
+        class="readiness-evidence-plan-actions readiness-data-flow-storage-plan-checks"
+        data-testid="readiness-data-flow-storage-plan-checks"
+      >
+        <li
+          v-for="check in dataFlowStoragePlanChecks.slice(0, 3)"
+          :key="check.id || check.title"
+        >
+          <span>
+            <strong>{{ check.status || 'UNKNOWN' }} / {{ check.title || check.id }}</strong>
+            <small>{{ check.detail || check.nextAction || 'detail unavailable' }}</small>
+          </span>
+        </li>
+      </ol>
       <div
         v-if="operationsHandoffPackage.result"
         class="readiness-invocation-summary"
@@ -2175,6 +2214,10 @@ const operationsHandoffPackageItem = computed(() => (
   operationsReadinessItems.value.find((item) => item.code === 'OPERATIONS_HANDOFF_PACKAGE') || null
 ))
 
+const dataFlowStoragePlanItem = computed(() => (
+  operationsReadinessItems.value.find((item) => item.code === 'DATA_FLOW_STORAGE_PLAN') || null
+))
+
 const operationsReadinessConvergenceItem = computed(() => (
   operationsReadinessItems.value.find((item) => item.code === 'OPERATIONS_READINESS_CONVERGENCE') || null
 ))
@@ -2290,6 +2333,15 @@ const operationsHandoffPackage = computed(() => (
 
 const operationsHandoffPackageChecks = computed(() => {
   const checks = operationsHandoffPackage.value?.checks
+  return Array.isArray(checks) ? checks : []
+})
+
+const dataFlowStoragePlan = computed(() => (
+  props.dashboardReadiness.dataFlowStoragePlan || {}
+))
+
+const dataFlowStoragePlanChecks = computed(() => {
+  const checks = dataFlowStoragePlan.value?.checks
   return Array.isArray(checks) ? checks : []
 })
 

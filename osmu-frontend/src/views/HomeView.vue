@@ -1060,6 +1060,25 @@ const dashboardReadiness = reactive({
     scopePolicy: '',
     secretPolicy: '',
   },
+  dataFlowStoragePlan: {
+    result: '',
+    recordedAt: '',
+    environmentName: '',
+    targetCluster: '',
+    operatorName: '',
+    evidenceRef: '',
+    candidateStore: '',
+    expectedPeakEventsPerDay: 0,
+    expectedQueryWindowDays: 0,
+    eventRetentionDays: 0,
+    dailyRollupRetentionDays: 0,
+    monthlyRollupRetentionMonths: 0,
+    checkCount: 0,
+    passedCount: 0,
+    pendingCount: 0,
+    checks: [],
+    scopePolicy: '',
+  },
   storageBackendTelemetryEvidence: {
     result: '',
     generatedAt: '',
@@ -5143,6 +5162,7 @@ function applyDashboardReadiness(data) {
     operationsReadinessArtifactImport: normalizeOperationsReadinessArtifactImport(data.operationsReadinessArtifactImport),
     operationsReadinessFinalize: normalizeOperationsReadinessFinalize(data.operationsReadinessFinalize),
     operationsHandoffPackage: normalizeOperationsHandoffPackage(data.operationsHandoffPackage),
+    dataFlowStoragePlan: normalizeDataFlowStoragePlan(data.dataFlowStoragePlan),
     storageBackendTelemetryEvidence: normalizeStorageBackendTelemetryEvidence(data.storageBackendTelemetryEvidence),
     operationsEvidenceHandoff: normalizeOperationsEvidenceHandoff(data.operationsEvidenceHandoff),
     operationsReadinessConvergence: normalizeOperationsReadinessConvergence(data.operationsReadinessConvergence),
@@ -5326,6 +5346,28 @@ function normalizeOperationsHandoffPackage(report = {}) {
     decisionRule: report?.decisionRule || '',
     scopePolicy: report?.scopePolicy || '',
     secretPolicy: report?.secretPolicy || '',
+  }
+}
+
+function normalizeDataFlowStoragePlan(report = {}) {
+  return {
+    result: report?.result || '',
+    recordedAt: report?.recordedAt || '',
+    environmentName: report?.environmentName || '',
+    targetCluster: report?.targetCluster || '',
+    operatorName: report?.operatorName || '',
+    evidenceRef: report?.evidenceRef || '',
+    candidateStore: report?.candidateStore || '',
+    expectedPeakEventsPerDay: Number(report?.expectedPeakEventsPerDay || 0),
+    expectedQueryWindowDays: Number(report?.expectedQueryWindowDays || 0),
+    eventRetentionDays: Number(report?.eventRetentionDays || 0),
+    dailyRollupRetentionDays: Number(report?.dailyRollupRetentionDays || 0),
+    monthlyRollupRetentionMonths: Number(report?.monthlyRollupRetentionMonths || 0),
+    checkCount: Number(report?.checkCount || 0),
+    passedCount: Number(report?.passedCount || 0),
+    pendingCount: Number(report?.pendingCount || 0),
+    checks: Array.isArray(report?.checks) ? report.checks : [],
+    scopePolicy: report?.scopePolicy || '',
   }
 }
 

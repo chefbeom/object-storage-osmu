@@ -127,6 +127,7 @@ public class AdminController {
     private final String operationsArtifactCollectionPlanReportPath;
     private final String operationsEvidenceHandoffReportPath;
     private final String operationsHandoffPackageReportPath;
+    private final String dataFlowStoragePlanReportPath;
     private final String storageBackendTelemetryReportPath;
     private final String operationsReadinessConvergenceReportPath;
     private final String kubernetesOperationsReportSyncReportPath;
@@ -176,6 +177,7 @@ public class AdminController {
             @Value("${osmu.operations.readiness.artifact-collection-plan-report-path:.osmu-run/latest-operations-artifact-collection-plan.json}") String operationsArtifactCollectionPlanReportPath,
             @Value("${osmu.operations.readiness.evidence-handoff-report-path:.osmu-run/latest-operations-evidence-handoff.json}") String operationsEvidenceHandoffReportPath,
             @Value("${osmu.operations.readiness.handoff-package-report-path:.osmu-run/latest-operations-handoff-package.json}") String operationsHandoffPackageReportPath,
+            @Value("${osmu.operations.readiness.data-flow-storage-plan-report-path:.osmu-run/latest-data-flow-storage-plan.json}") String dataFlowStoragePlanReportPath,
             @Value("${osmu.operations.readiness.storage-backend-telemetry-report-path:.osmu-run/latest-storage-backend-telemetry.json}") String storageBackendTelemetryReportPath,
             @Value("${osmu.operations.readiness.convergence-report-path:.osmu-run/latest-operations-readiness-convergence.json}") String operationsReadinessConvergenceReportPath,
             @Value("${osmu.operations.readiness.kubernetes-report-sync-report-path:.osmu-run/latest-kubernetes-operations-report-sync.json}") String kubernetesOperationsReportSyncReportPath
@@ -224,6 +226,7 @@ public class AdminController {
         this.operationsArtifactCollectionPlanReportPath = blankToNull(operationsArtifactCollectionPlanReportPath);
         this.operationsEvidenceHandoffReportPath = blankToNull(operationsEvidenceHandoffReportPath);
         this.operationsHandoffPackageReportPath = blankToNull(operationsHandoffPackageReportPath);
+        this.dataFlowStoragePlanReportPath = blankToNull(dataFlowStoragePlanReportPath);
         this.storageBackendTelemetryReportPath = blankToNull(storageBackendTelemetryReportPath);
         this.operationsReadinessConvergenceReportPath = blankToNull(operationsReadinessConvergenceReportPath);
         this.kubernetesOperationsReportSyncReportPath = blankToNull(kubernetesOperationsReportSyncReportPath);
@@ -887,6 +890,7 @@ public class AdminController {
         DashboardOperationsReadinessArtifactImportResponse operationsReadinessArtifactImport = operationsReadinessArtifactImportSnapshot();
         DashboardOperationsReadinessFinalizeResponse operationsReadinessFinalize = operationsReadinessFinalizeSnapshot();
         DashboardOperationsHandoffPackageResponse operationsHandoffPackage = operationsHandoffPackageSnapshot();
+        DashboardDataFlowStoragePlanResponse dataFlowStoragePlan = dataFlowStoragePlanSnapshot();
         DashboardStorageBackendTelemetryEvidenceResponse storageBackendTelemetryEvidence = storageBackendTelemetryEvidenceSnapshot();
         DashboardOperationsEvidenceHandoffResponse operationsEvidenceHandoff = operationsEvidenceHandoffSnapshot();
         DashboardOperationsReadinessConvergenceResponse operationsReadinessConvergence = operationsReadinessConvergenceSnapshot();
@@ -913,6 +917,7 @@ public class AdminController {
                 operationsReadinessArtifactImport,
                 operationsReadinessFinalize,
                 operationsHandoffPackage,
+                dataFlowStoragePlan,
                 storageBackendTelemetryEvidence,
                 operationsEvidenceHandoff,
                 operationsReadinessConvergence,
@@ -1559,6 +1564,7 @@ public class AdminController {
 
         addOperationsEvidenceHandoffItem(items);
         addOperationsHandoffPackageItem(items);
+        addDataFlowStoragePlanItem(items);
         addStorageBackendTelemetryEvidenceItem(items);
 
         addOperationsReadinessArtifactImportItem(items);
@@ -2289,6 +2295,72 @@ public class AdminController {
                 jsonText(packageReport, "decisionRule"),
                 jsonText(packageReport, "scopePolicy"),
                 jsonText(packageReport, "secretPolicy")
+        );
+    }
+
+    private void addDataFlowStoragePlanItem(java.util.ArrayList<DashboardReadinessItemResponse> items) {
+        DashboardDataFlowStoragePlanResponse plan = dataFlowStoragePlanSnapshot();
+        if (plan.result().isBlank() || "passed".equalsIgnoreCase(plan.result())) {
+            return;
+        }
+        addReadinessItem(
+                items,
+                "WARNING",
+                "OPERATIONS",
+                "DATA_FLOW_STORAGE_PLAN",
+                "Data-flow storage plan is %s: store=%s, pending=%d/%d.".formatted(
+                        plan.result(),
+                        plan.candidateStore().isBlank() ? "unknown" : plan.candidateStore(),
+                        plan.pendingCount(),
+                        plan.checkCount()
+                ),
+                "dashboard",
+                "dashboard-readiness-panel",
+                "Data-flow plan",
+                dataFlowStoragePlanReportPath == null ? "" : dataFlowStoragePlanReportPath,
+                "powershell -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\write-data-flow-storage-plan.ps1 -CandidateStore <store> -ExpectedPeakEventsPerDay <n> -ExpectedQueryWindowDays <days> -ConfirmNoObjectKeyInAggregates -ConfirmBackfillPlan -ConfirmRollbackPlan -ConfirmDashboardCutoverPlan -ConfirmRetentionJobBudget -ConfirmExplainEvidence",
+                "",
+                "",
+                plan.scopePolicy()
+        );
+    }
+
+    private DashboardDataFlowStoragePlanResponse dataFlowStoragePlanSnapshot() {
+        JsonNode planReport = readOptionalJsonReport(dataFlowStoragePlanReportPath);
+        if (planReport == null) {
+            return DashboardDataFlowStoragePlanResponse.empty();
+        }
+        java.util.ArrayList<DashboardDataFlowStoragePlanCheckResponse> checks = new java.util.ArrayList<>();
+        JsonNode checkNodes = planReport.path("checks");
+        if (checkNodes.isArray()) {
+            for (JsonNode check : checkNodes) {
+                checks.add(new DashboardDataFlowStoragePlanCheckResponse(
+                        jsonText(check, "id"),
+                        jsonText(check, "title"),
+                        jsonText(check, "status"),
+                        jsonText(check, "detail"),
+                        jsonText(check, "nextAction")
+                ));
+            }
+        }
+        return new DashboardDataFlowStoragePlanResponse(
+                jsonText(planReport, "result"),
+                jsonText(planReport, "recordedAt"),
+                jsonText(planReport, "environmentName"),
+                jsonText(planReport, "targetCluster"),
+                jsonText(planReport, "operator"),
+                jsonText(planReport, "evidenceRef"),
+                jsonText(planReport, "candidateStore"),
+                jsonInt(planReport, "expectedPeakEventsPerDay"),
+                jsonInt(planReport, "expectedQueryWindowDays"),
+                jsonInt(planReport, "eventRetentionDays"),
+                jsonInt(planReport, "dailyRollupRetentionDays"),
+                jsonInt(planReport, "monthlyRollupRetentionMonths"),
+                jsonInt(planReport, "checkCount"),
+                jsonInt(planReport, "passedCount"),
+                jsonInt(planReport, "pendingCount"),
+                List.copyOf(checks),
+                jsonText(planReport, "scopePolicy")
         );
     }
 

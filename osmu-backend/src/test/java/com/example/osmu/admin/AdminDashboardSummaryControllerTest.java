@@ -710,6 +710,46 @@ class AdminDashboardSummaryControllerTest {
                         """
         );
         Files.writeString(
+                Path.of(".osmu-run/latest-data-flow-storage-plan.json"),
+                """
+                        {
+                          "formatVersion": "osmu.data-flow-storage-plan.v1",
+                          "result": "plan-ready-execute-required",
+                          "recordedAt": "2026-06-21T09:15:00Z",
+                          "environmentName": "pilot-prod",
+                          "targetCluster": "customer-cluster-a",
+                          "operator": "ops-admin",
+                          "evidenceRef": "data-flow-sizing-run-20260621",
+                          "candidateStore": "MARIADB_PARTITION",
+                          "expectedPeakEventsPerDay": 250000,
+                          "expectedQueryWindowDays": 180,
+                          "eventRetentionDays": 90,
+                          "dailyRollupRetentionDays": 730,
+                          "monthlyRollupRetentionMonths": 36,
+                          "scopePolicy": "OSMU operations analytics only. This plan is not AWS billing parity and aggregate stores must not include object keys or raw event messages.",
+                          "checkCount": 2,
+                          "passedCount": 1,
+                          "pendingCount": 1,
+                          "checks": [
+                            {
+                              "id": "aggregate_no_object_keys",
+                              "title": "Aggregate stores exclude object keys and raw event messages",
+                              "status": "passed",
+                              "detail": "Monthly/materialized aggregate scope stays bucket/source/operation/status/time only.",
+                              "nextAction": ""
+                            },
+                            {
+                              "id": "explain_or_store_evidence",
+                              "title": "Query plan or target-store evidence exists",
+                              "status": "pending",
+                              "detail": "MariaDB partition path needs EXPLAIN evidence.",
+                              "nextAction": "Attach EXPLAIN evidence before enabling partitioned/time-series storage."
+                            }
+                          ]
+                        }
+                        """
+        );
+        Files.writeString(
                 Path.of(".osmu-run/latest-operations-evidence-plan-invocation.json"),
                 """
                         {
@@ -1071,6 +1111,7 @@ class AdminDashboardSummaryControllerTest {
                 .andExpect(jsonPath("$.data.items[*].code").value(hasItem("OPERATIONS_ARTIFACT_COLLECTION_PLAN")))
                 .andExpect(jsonPath("$.data.items[*].code").value(hasItem("OPERATIONS_READINESS_FINALIZER")))
                 .andExpect(jsonPath("$.data.items[*].code").value(hasItem("OPERATIONS_EVIDENCE_HANDOFF")))
+                .andExpect(jsonPath("$.data.items[*].code").value(hasItem("DATA_FLOW_STORAGE_PLAN")))
                 .andExpect(jsonPath("$.data.items[*].code").value(hasItem("OPERATIONS_READINESS_CONVERGENCE")))
                 .andExpect(jsonPath("$.data.items[*].code").value(hasItem("KUBERNETES_OPERATIONS_REPORT_SYNC")))
                 .andExpect(jsonPath("$.data.items[*].code").value(hasItem("OPERATIONS_READINESS_CHECK")))
@@ -1084,6 +1125,7 @@ class AdminDashboardSummaryControllerTest {
                 .andExpect(jsonPath("$.data.items[*].message").value(hasItem("Operations artifact collection plan is action-required: artifacts=7, missingRequired=5.")))
                 .andExpect(jsonPath("$.data.items[*].message").value(hasItem("Operations readiness finalizer is pending: readinessResult=pending, failedCount=0.")))
                 .andExpect(jsonPath("$.data.items[*].message").value(hasItem("Operations evidence handoff is blocked: next=resolve-invocation-blockers, blockedActions=5, missingRuns=6, missingArtifacts=5, finalizerGaps=1.")))
+                .andExpect(jsonPath("$.data.items[*].message").value(hasItem("Data-flow storage plan is plan-ready-execute-required: store=MARIADB_PARTITION, pending=1/2.")))
                 .andExpect(jsonPath("$.data.items[*].message").value(hasItem("Operations readiness convergence is action-required: bottleneck=resolve-invocation-blockers, stages=1/7, finalizerGaps=1.")))
                 .andExpect(jsonPath("$.data.items[*].message").value(hasItem("Kubernetes operations report sync is planned: namespace=osmu, configMap=osmu-operations-reports, failedCount=0.")))
                 .andExpect(jsonPath("$.data.items[*].message").value(hasItem("Operations readiness artifact import is failed: status=artifact-import-failed, failedCount=2.")))
@@ -1106,6 +1148,9 @@ class AdminDashboardSummaryControllerTest {
                 .andExpect(jsonPath("$.data.items[?(@.code == 'OPERATIONS_EVIDENCE_HANDOFF')].evidencePath").value(hasItem(".osmu-run/latest-operations-evidence-handoff.json")))
                 .andExpect(jsonPath("$.data.items[?(@.code == 'OPERATIONS_EVIDENCE_HANDOFF')].remediationCommand").value(hasItem("powershell -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\write-operations-invocation-unblock-plan.ps1")))
                 .andExpect(jsonPath("$.data.items[?(@.code == 'OPERATIONS_EVIDENCE_HANDOFF')].remediationNote").value(hasItem("The invocation report still has blocked actions. Generate the unblock plan, fill placeholders, confirm operator approvals, and confirm kubeconfig-secret readiness before dispatch.")))
+                .andExpect(jsonPath("$.data.items[?(@.code == 'DATA_FLOW_STORAGE_PLAN')].evidencePath").value(hasItem(".osmu-run/latest-data-flow-storage-plan.json")))
+                .andExpect(jsonPath("$.data.items[?(@.code == 'DATA_FLOW_STORAGE_PLAN')].remediationCommand").value(hasItem("powershell -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\write-data-flow-storage-plan.ps1 -CandidateStore <store> -ExpectedPeakEventsPerDay <n> -ExpectedQueryWindowDays <days> -ConfirmNoObjectKeyInAggregates -ConfirmBackfillPlan -ConfirmRollbackPlan -ConfirmDashboardCutoverPlan -ConfirmRetentionJobBudget -ConfirmExplainEvidence")))
+                .andExpect(jsonPath("$.data.items[?(@.code == 'DATA_FLOW_STORAGE_PLAN')].remediationNote").value(hasItem("OSMU operations analytics only. This plan is not AWS billing parity and aggregate stores must not include object keys or raw event messages.")))
                 .andExpect(jsonPath("$.data.items[?(@.code == 'OPERATIONS_READINESS_ARTIFACT_IMPORT')].evidencePath").value(hasItem(".osmu-run/latest-operations-readiness-artifact-import.json")))
                 .andExpect(jsonPath("$.data.items[?(@.code == 'OPERATIONS_READINESS_ARTIFACT_IMPORT')].remediationCommand").value(hasItem("powershell -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\import-operations-readiness-artifacts.ps1")))
                 .andExpect(jsonPath("$.data.items[?(@.code == 'OPERATIONS_READINESS_ARTIFACT_IMPORT')].remediationWorkflow").value(hasItem(".github/workflows/operations-readiness-artifact-finalizer-ci.yml")))
@@ -1227,6 +1272,24 @@ class AdminDashboardSummaryControllerTest {
                 .andExpect(jsonPath("$.data.operationsHandoffPackage.checks[0].id").value("runbook-reviewed"))
                 .andExpect(jsonPath("$.data.operationsHandoffPackage.checks[0].status").value("FAIL"))
                 .andExpect(jsonPath("$.data.operationsHandoffPackage.checks[1].evidenceRef").value("latest-commercial-integration-evidence-passed"))
+                .andExpect(jsonPath("$.data.dataFlowStoragePlan.result").value("plan-ready-execute-required"))
+                .andExpect(jsonPath("$.data.dataFlowStoragePlan.environmentName").value("pilot-prod"))
+                .andExpect(jsonPath("$.data.dataFlowStoragePlan.targetCluster").value("customer-cluster-a"))
+                .andExpect(jsonPath("$.data.dataFlowStoragePlan.operatorName").value("ops-admin"))
+                .andExpect(jsonPath("$.data.dataFlowStoragePlan.evidenceRef").value("data-flow-sizing-run-20260621"))
+                .andExpect(jsonPath("$.data.dataFlowStoragePlan.candidateStore").value("MARIADB_PARTITION"))
+                .andExpect(jsonPath("$.data.dataFlowStoragePlan.expectedPeakEventsPerDay").value(250000))
+                .andExpect(jsonPath("$.data.dataFlowStoragePlan.expectedQueryWindowDays").value(180))
+                .andExpect(jsonPath("$.data.dataFlowStoragePlan.eventRetentionDays").value(90))
+                .andExpect(jsonPath("$.data.dataFlowStoragePlan.dailyRollupRetentionDays").value(730))
+                .andExpect(jsonPath("$.data.dataFlowStoragePlan.monthlyRollupRetentionMonths").value(36))
+                .andExpect(jsonPath("$.data.dataFlowStoragePlan.checkCount").value(2))
+                .andExpect(jsonPath("$.data.dataFlowStoragePlan.passedCount").value(1))
+                .andExpect(jsonPath("$.data.dataFlowStoragePlan.pendingCount").value(1))
+                .andExpect(jsonPath("$.data.dataFlowStoragePlan.checks[0].id").value("aggregate_no_object_keys"))
+                .andExpect(jsonPath("$.data.dataFlowStoragePlan.checks[1].status").value("pending"))
+                .andExpect(jsonPath("$.data.dataFlowStoragePlan.checks[1].nextAction").value("Attach EXPLAIN evidence before enabling partitioned/time-series storage."))
+                .andExpect(jsonPath("$.data.dataFlowStoragePlan.scopePolicy", org.hamcrest.Matchers.containsString("not AWS billing parity")))
                 .andExpect(jsonPath("$.data.storageBackendTelemetryEvidence.result").value("passed"))
                 .andExpect(jsonPath("$.data.storageBackendTelemetryEvidence.environmentName").value("pilot-prod"))
                 .andExpect(jsonPath("$.data.storageBackendTelemetryEvidence.targetCluster").value("customer-cluster-a"))

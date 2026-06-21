@@ -190,6 +190,9 @@ test('HomeView exposes stable selectors for browser E2E flows', () => {
     'readiness-evidence-handoff-command-copy-button',
     'readiness-evidence-handoff-stages',
     'readiness-evidence-handoff-stage-command-copy-button',
+    'readiness-data-flow-storage-plan-item-summary',
+    'readiness-data-flow-storage-plan-summary',
+    'readiness-data-flow-storage-plan-checks',
     'readiness-storage-telemetry-item-summary',
     'readiness-storage-telemetry-summary',
     'readiness-convergence-item-summary',
@@ -740,6 +743,7 @@ test('HomeView exposes stable selectors for browser E2E flows', () => {
   assert.match(dashboardSource, /operationsReadinessFinalizeItem/)
   assert.match(dashboardSource, /operationsEvidenceHandoffItem/)
   assert.match(dashboardSource, /operationsHandoffPackageItem/)
+  assert.match(dashboardSource, /dataFlowStoragePlanItem/)
   assert.match(dashboardSource, /operationsReadinessConvergenceItem/)
   assert.match(dashboardSource, /kubernetesOperationsReportSyncItem/)
   assert.match(dashboardSource, /operationsEvidencePlanActions/)
@@ -766,8 +770,12 @@ test('HomeView exposes stable selectors for browser E2E flows', () => {
   assert.match(dashboardSource, /operationsEvidenceHandoffStages/)
   assert.match(dashboardSource, /operationsHandoffPackage/)
   assert.match(dashboardSource, /operationsHandoffPackageChecks/)
+  assert.match(dashboardSource, /dataFlowStoragePlan/)
+  assert.match(dashboardSource, /dataFlowStoragePlanChecks/)
   assert.match(dashboardSource, /storageBackendTelemetryEvidence/)
+  assert.match(dashboardSource, /normalizeDataFlowStoragePlan/)
   assert.match(dashboardSource, /normalizeStorageBackendTelemetryEvidence/)
+  assert.match(dashboardSource, /readiness-data-flow-storage-plan-summary/)
   assert.match(dashboardSource, /readiness-storage-telemetry-summary/)
   assert.match(dashboardSource, /getDataFlowDailyRollup/)
   assert.match(dashboardSource, /getDataFlowMonthlyRollup/)
@@ -844,6 +852,7 @@ test('HomeView exposes stable selectors for browser E2E flows', () => {
   assert.match(dashboardSource, /dashboardReadiness\.operationsReadinessFinalize/)
   assert.match(dashboardSource, /dashboardReadiness\.operationsEvidenceHandoff/)
   assert.match(dashboardSource, /dashboardReadiness\.operationsHandoffPackage/)
+  assert.match(dashboardSource, /dashboardReadiness\.dataFlowStoragePlan/)
   assert.match(dashboardSource, /dashboardReadiness\.storageBackendTelemetryEvidence/)
   assert.match(dashboardSource, /dashboardReadiness\.operationsReadinessConvergence/)
   assert.match(dashboardSource, /dashboardReadiness\.kubernetesOperationsReportSync/)
