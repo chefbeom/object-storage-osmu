@@ -2428,6 +2428,40 @@
         }
       }
     },
+    "/api/buckets/{bucketName}/versioning": {
+      "get": {
+        "tags": ["Buckets"],
+        "operationId": "getBucketVersioning",
+        "summary": "Read underlying storage bucket versioning status",
+        "description": "OSMU operations API, not AWS S3 versioning parity.",
+        "parameters": [
+          { "$ref": "#/components/parameters/BucketName" }
+        ],
+        "responses": {
+          "200": { "$ref": "#/components/responses/JsonOk" },
+          "403": { "$ref": "#/components/responses/Error" },
+          "404": { "$ref": "#/components/responses/Error" },
+          "502": { "$ref": "#/components/responses/Error" }
+        }
+      },
+      "put": {
+        "tags": ["Buckets"],
+        "operationId": "putBucketVersioning",
+        "summary": "Set underlying storage bucket versioning status",
+        "description": "Accepts ENABLED or SUSPENDED. This is an OSMU operations API, not AWS S3 versioning parity.",
+        "parameters": [
+          { "$ref": "#/components/parameters/BucketName" }
+        ],
+        "requestBody": { "$ref": "#/components/requestBodies/JsonObject" },
+        "responses": {
+          "200": { "$ref": "#/components/responses/JsonOk" },
+          "400": { "$ref": "#/components/responses/Error" },
+          "403": { "$ref": "#/components/responses/Error" },
+          "404": { "$ref": "#/components/responses/Error" },
+          "502": { "$ref": "#/components/responses/Error" }
+        }
+      }
+    },
     "/api/buckets/{bucketName}/objects": {
       "get": {
         "tags": ["Objects"],

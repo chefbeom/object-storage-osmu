@@ -10,6 +10,7 @@ import com.example.osmu.object.StoredObjectPage;
 import com.example.osmu.object.StoredObjectRecord;
 import com.example.osmu.object.StoredObjectStream;
 import com.example.osmu.object.StorageMultipartUpload;
+import com.example.osmu.storage.BucketVersioningStatus;
 import com.example.osmu.storage.ObjectStorageAdapter;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
@@ -35,6 +36,8 @@ public class InMemoryObjectStorageAdapter implements ObjectStorageAdapter {
 
     private final ConcurrentMap<String, ConcurrentMap<String, StoredObjectData>> objectsByBucket =
             new ConcurrentHashMap<>();
+    private final ConcurrentMap<String, BucketVersioningStatus> versioningByBucket =
+            new ConcurrentHashMap<>();
 
     @Override
     public boolean isHealthy() {
@@ -44,6 +47,7 @@ public class InMemoryObjectStorageAdapter implements ObjectStorageAdapter {
     @Override
     public void createBucket(String bucketName) {
         bucketObjects(bucketName);
+        versioningByBucket.putIfAbsent(bucketName, BucketVersioningStatus.SUSPENDED);
     }
 
     @Override
@@ -53,6 +57,18 @@ public class InMemoryObjectStorageAdapter implements ObjectStorageAdapter {
             throw new ApiException(ApiErrorCode.CONFLICT, "Bucket is not empty.");
         }
         objectsByBucket.remove(bucketName);
+        versioningByBucket.remove(bucketName);
+    }
+
+    @Override
+    public BucketVersioningStatus getBucketVersioning(String bucketName) {
+        return versioningByBucket.getOrDefault(bucketName, BucketVersioningStatus.SUSPENDED);
+    }
+
+    @Override
+    public void setBucketVersioning(String bucketName, BucketVersioningStatus status) {
+        bucketObjects(bucketName);
+        versioningByBucket.put(bucketName, status == null ? BucketVersioningStatus.SUSPENDED : status);
     }
 
     @Override

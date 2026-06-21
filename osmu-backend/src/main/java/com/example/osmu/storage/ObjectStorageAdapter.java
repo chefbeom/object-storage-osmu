@@ -30,6 +30,13 @@ public interface ObjectStorageAdapter {
         applyBucketLifecycle(bucketName, List.of());
     }
 
+    default BucketVersioningStatus getBucketVersioning(String bucketName) {
+        return BucketVersioningStatus.SUSPENDED;
+    }
+
+    default void setBucketVersioning(String bucketName, BucketVersioningStatus status) {
+    }
+
     List<StoredObjectRecord> listObjects(String bucketName, String prefix);
 
     StoredObjectPage listObjects(

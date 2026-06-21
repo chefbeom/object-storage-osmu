@@ -8,9 +8,11 @@ import {
   getBucketLifecycleS3Xml,
   getBucketTags,
   getBucketTagsS3Xml,
+  getBucketVersioning,
   putBucketLifecycleS3Xml,
   putBucketTags,
   putBucketTagsS3Xml,
+  putBucketVersioning,
 } from './api.js'
 
 test('bucket lifecycle REST wrappers preserve XML payload and methods', async () => {
@@ -61,6 +63,26 @@ test('bucket tag REST wrappers preserve tag map and methods', async () => {
 
     assert.equal(fetchMock.calls[2].url, 'http://localhost:8080/api/buckets/media%20bucket/tags')
     assert.equal(fetchMock.calls[2].options.method, 'DELETE')
+  } finally {
+    cleanupFetch(fetchMock)
+  }
+})
+
+test('bucket versioning REST wrappers preserve status and methods', async () => {
+  const fetchMock = mockFetch([
+    () => jsonResponse({ data: { bucketName: 'media bucket', status: 'SUSPENDED', storageBacked: true } }),
+    () => jsonResponse({ data: { bucketName: 'media bucket', status: 'ENABLED', storageBacked: true } }),
+  ])
+
+  try {
+    await getBucketVersioning('media bucket')
+    await putBucketVersioning('media bucket', 'ENABLED')
+
+    assert.equal(fetchMock.calls[0].url, 'http://localhost:8080/api/buckets/media%20bucket/versioning')
+
+    assert.equal(fetchMock.calls[1].url, 'http://localhost:8080/api/buckets/media%20bucket/versioning')
+    assert.equal(fetchMock.calls[1].options.method, 'PUT')
+    assert.deepEqual(JSON.parse(fetchMock.calls[1].options.body), { status: 'ENABLED' })
   } finally {
     cleanupFetch(fetchMock)
   }

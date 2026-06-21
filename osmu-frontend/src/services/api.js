@@ -411,6 +411,17 @@ export function deleteBucketLifecycleS3Xml(bucketName) {
   })
 }
 
+export function getBucketVersioning(bucketName) {
+  return request(`/buckets/${encodeURIComponent(bucketName)}/versioning`)
+}
+
+export function putBucketVersioning(bucketName, status) {
+  return request(`/buckets/${encodeURIComponent(bucketName)}/versioning`, {
+    method: 'PUT',
+    body: { status },
+  })
+}
+
 export function getBucketTags(bucketName) {
   return request(`/buckets/${encodeURIComponent(bucketName)}/tags`)
 }

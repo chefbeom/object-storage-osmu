@@ -12,6 +12,7 @@ import com.example.osmu.object.StoredObjectPage;
 import com.example.osmu.object.StoredObjectRecord;
 import com.example.osmu.object.StoredObjectStream;
 import com.example.osmu.object.StorageMultipartUpload;
+import com.example.osmu.storage.BucketVersioningStatus;
 import com.example.osmu.storage.ObjectStorageAdapter;
 import com.google.common.collect.HashMultimap;
 import com.google.common.collect.Multimap;
@@ -19,6 +20,7 @@ import io.minio.DeleteObjectTagsArgs;
 import io.minio.DeleteBucketLifecycleArgs;
 import io.minio.BucketExistsArgs;
 import io.minio.CreateMultipartUploadResponse;
+import io.minio.GetBucketVersioningArgs;
 import io.minio.GetObjectArgs;
 import io.minio.GetObjectResponse;
 import io.minio.GetObjectTagsArgs;
@@ -249,7 +251,7 @@ public class MinioObjectStorageAdapter implements ObjectStorageAdapter {
         }
         try {
             if (MinioBucketLifecycleMapper.requiresVersioning(safeRules)) {
-                enableBucketVersioning(bucketName);
+                setBucketVersioningRaw(bucketName, VersioningConfiguration.Status.ENABLED);
             }
             minioClient.setBucketLifecycle(SetBucketLifecycleArgs.builder()
                     .bucket(bucketName)
@@ -274,11 +276,45 @@ public class MinioObjectStorageAdapter implements ObjectStorageAdapter {
         }
     }
 
-    private void enableBucketVersioning(String bucketName) throws Exception {
+    @Override
+    public BucketVersioningStatus getBucketVersioning(String bucketName) {
+        try {
+            VersioningConfiguration configuration = minioClient.getBucketVersioning(GetBucketVersioningArgs.builder()
+                    .bucket(bucketName)
+                    .build());
+            return toBucketVersioningStatus(configuration == null ? null : configuration.status());
+        } catch (Exception exception) {
+            throw storageException(exception);
+        }
+    }
+
+    @Override
+    public void setBucketVersioning(String bucketName, BucketVersioningStatus status) {
+        try {
+            setBucketVersioningRaw(bucketName, toMinioVersioningStatus(status));
+        } catch (Exception exception) {
+            throw storageException(exception);
+        }
+    }
+
+    private void setBucketVersioningRaw(String bucketName, VersioningConfiguration.Status status) throws Exception {
         minioClient.setBucketVersioning(SetBucketVersioningArgs.builder()
                 .bucket(bucketName)
-                .config(new VersioningConfiguration(VersioningConfiguration.Status.ENABLED, false))
+                .config(new VersioningConfiguration(status, false))
                 .build());
+    }
+
+    private BucketVersioningStatus toBucketVersioningStatus(VersioningConfiguration.Status status) {
+        if (status == VersioningConfiguration.Status.ENABLED) {
+            return BucketVersioningStatus.ENABLED;
+        }
+        return BucketVersioningStatus.SUSPENDED;
+    }
+
+    private VersioningConfiguration.Status toMinioVersioningStatus(BucketVersioningStatus status) {
+        return status == BucketVersioningStatus.ENABLED
+                ? VersioningConfiguration.Status.ENABLED
+                : VersioningConfiguration.Status.SUSPENDED;
     }
 
     @Override

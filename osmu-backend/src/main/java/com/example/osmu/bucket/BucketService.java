@@ -15,6 +15,7 @@ import com.example.osmu.organization.TeamRecord;
 import com.example.osmu.organization.repository.OrganizationRepository;
 import com.example.osmu.organization.repository.TeamRepository;
 import com.example.osmu.quota.repository.QuotaPolicyRepository;
+import com.example.osmu.storage.BucketVersioningStatus;
 import com.example.osmu.storage.ObjectStorageAdapter;
 import com.example.osmu.storage.ObjectStorageFailures;
 import com.example.osmu.storageprofile.repository.StorageProfileAssignmentRepository;
@@ -221,6 +222,35 @@ public class BucketService {
                 metadataRemovedCount,
                 deletedObjectMetadataRetainedCount
         );
+    }
+
+    public BucketVersioningResponse getVersioning(String bucketName, AuthenticatedUser user) {
+        BucketRecord bucket = get(bucketName, user);
+        assertCanManage(user, bucket);
+        BucketVersioningStatus status = ObjectStorageFailures.run(
+                "bucket versioning read",
+                () -> storageAdapter.getBucketVersioning(bucket.name())
+        );
+        return BucketVersioningResponse.of(bucket.name(), status);
+    }
+
+    public synchronized BucketVersioningResponse setVersioning(
+            String bucketName,
+            BucketVersioningRequest request,
+            AuthenticatedUser user
+    ) {
+        BucketRecord bucket = get(bucketName, user);
+        assertCanManage(user, bucket);
+        BucketVersioningStatus requestedStatus = BucketVersioningStatus.fromRequest(request == null ? null : request.status());
+        ObjectStorageFailures.run(
+                "bucket versioning update",
+                () -> storageAdapter.setBucketVersioning(bucket.name(), requestedStatus)
+        );
+        BucketVersioningStatus confirmedStatus = ObjectStorageFailures.run(
+                "bucket versioning read",
+                () -> storageAdapter.getBucketVersioning(bucket.name())
+        );
+        return BucketVersioningResponse.of(bucket.name(), confirmedStatus);
     }
 
     private void cleanupCreatedStorageBucket(String bucketName, RuntimeException originalException) {

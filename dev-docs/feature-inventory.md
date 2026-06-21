@@ -327,10 +327,10 @@ MVP 데모 기준 완료율은 약 90~95%입니다.
 - Storage backend telemetry manual workflow: `.github/workflows/manual-storage-backend-telemetry-evidence.yml`가 준비된 `OSMU_MINIO_ADMIN_INFO_JSON_BASE64` admin-info JSON을 임시 파일로 디코드해 evidence writer를 실행하고 raw input 제거 후 요약 artifact만 업로드한다.
 - Storage expansion finalizer는 `-RunStorageBackendTelemetryEvidence -StorageBackendTelemetryAdminInfoJsonPath <path>`를 받으면 같은 finalizer report 안에서 storage backend telemetry evidence writer를 실행하고 `.osmu-run/latest-storage-backend-telemetry.*` 경로를 report/evidence block에 연결한다.
 - MinIO bucket CORS live verification: `scripts/verify-minio-bucket-cors.ps1`가 `mc cors info <alias>/<bucket>` 실행 또는 operator가 수집한 CORS XML file input을 검증해 browser multipart upload에 필요한 `ETag`, `x-amz-request-id`, `x-amz-id-2`, `x-amz-version-id` expose header, allowed methods/header, max-age summary를 `.osmu-run/latest-minio-bucket-cors-verification.*`에 남긴다. raw CORS XML과 credential은 저장하지 않으며, `scripts/verify-minio-bucket-cors-self-test.ps1`가 fixture 기반 pass/fail/plan-only report를 검증한다.
+- explicit bucket versioning management API: `GET/PUT /api/buckets/{bucketName}/versioning`이 bucket 관리 권한으로 underlying storage bucket versioning을 `ENABLED` 또는 `SUSPENDED`로 조회/설정한다. MinIO mode는 `getBucketVersioning`/`setBucketVersioning`을 사용하고 in-memory mode는 runtime 상태를 보관한다. 이 API는 OSMU 운영 관리면이며 AWS S3 versioning 세부 parity가 아니다.
 
 남은 것:
 
-- explicit versioning management API
 - target workflow run에서 `result=passed` storage backend telemetry evidence 확보
 - prepared secret 없이 workflow가 직접 target MinIO에서 `mc admin info --json`을 live collection하는 경로
 

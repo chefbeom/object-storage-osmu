@@ -66,6 +66,34 @@ public class BucketController {
         return ApiResponse.of(bucketService.get(bucketName, authContext.currentUser(request)));
     }
 
+    @GetMapping("/{bucketName}/versioning")
+    public ApiResponse<BucketVersioningResponse> getBucketVersioning(
+            @PathVariable("bucketName") String bucketName,
+            HttpServletRequest request
+    ) {
+        return ApiResponse.of(bucketService.getVersioning(bucketName, authContext.currentUser(request)));
+    }
+
+    @PutMapping("/{bucketName}/versioning")
+    public ApiResponse<BucketVersioningResponse> putBucketVersioning(
+            @PathVariable("bucketName") String bucketName,
+            @RequestBody BucketVersioningRequest versioningRequest,
+            HttpServletRequest request
+    ) {
+        AuthenticatedUser user = authContext.currentUser(request);
+        BucketVersioningResponse response = bucketService.setVersioning(bucketName, versioningRequest, user);
+        auditLogService.record(
+                "BUCKET_VERSIONING_UPDATE",
+                user.loginId(),
+                "BUCKET",
+                response.bucketName(),
+                "SUCCESS",
+                "Bucket versioning set to " + response.status(),
+                request
+        );
+        return ApiResponse.of(response);
+    }
+
     @PostMapping("/{bucketName}/sync")
     public ApiResponse<BucketSyncResponse> syncBucketUsage(
             @PathVariable("bucketName") String bucketName,

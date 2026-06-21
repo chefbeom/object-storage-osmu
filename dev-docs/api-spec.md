@@ -1395,6 +1395,42 @@ Rules:
 해당 bucket에 연결된 lifecycle rule을 모두 삭제한다. bucket 관리 권한이 필요하다. Success returns `204 No Content` and writes `BUCKET_LIFECYCLE_DELETE` audit log.
 MinIO mode에서는 bucket lifecycle configuration도 삭제한다. 삭제 경로는 versioning을 suspend하지 않는다.
 
+### GET /api/buckets/{bucketName}/versioning
+
+Underlying storage bucket versioning 상태를 조회한다. bucket 관리 권한이 필요하다.
+
+Response:
+
+```json
+{
+  "data": {
+    "bucketName": "media-prod",
+    "status": "ENABLED",
+    "storageBacked": true,
+    "scopePolicy": "OSMU bucket versioning management controls the underlying storage bucket state. It is not AWS S3 versioning parity."
+  }
+}
+```
+
+### PUT /api/buckets/{bucketName}/versioning
+
+Underlying storage bucket versioning 상태를 설정한다. bucket 관리 권한이 필요하다. Success writes `BUCKET_VERSIONING_UPDATE` audit log.
+
+Request:
+
+```json
+{
+  "status": "SUSPENDED"
+}
+```
+
+Rules:
+
+- `status` must be `ENABLED` or `SUSPENDED` case-insensitively.
+- MinIO mode maps the status to MinIO bucket versioning.
+- `in-memory` mode stores runtime status for lightweight verification.
+- This is an OSMU operations API. AWS S3 `?versioning` semantics, MFA delete, and version-id behavior parity are outside the current replacement-compatibility scope.
+
 ### S3-style alias: /api/s3/{bucketName}?lifecycle
 
 OSMU REST 인증을 사용하지만, path-style S3 lifecycle 문법에 가까운 raw XML alias를 제공한다. bucket 관리 권한이 필요하다.

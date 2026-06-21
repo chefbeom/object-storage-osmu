@@ -958,6 +958,16 @@ ID:
 - 우선순위: P0
 - 자동화 여부: Automated
 
+### TC-BUCKET-001A
+
+- 기능: Explicit bucket versioning management API
+- 조건: ADMIN이 로그인했고 bucket이 존재한다.
+- 입력: `GET /api/buckets/{bucketName}/versioning`, `PUT /api/buckets/{bucketName}/versioning`
+- 절차: 초기 versioning 상태를 조회하고, `ENABLED`로 설정한 뒤 다시 조회한다. 소문자 `suspended` 요청도 허용되는지 확인하고, `DISABLED` 같은 unsupported status를 요청한다. 관리 권한이 없는 사용자의 조회/수정도 시도한다.
+- 기대 결과: 초기 상태는 `SUSPENDED`, 설정 후 `ENABLED`, 재설정 후 `SUSPENDED`이다. response는 `storageBacked=true`와 AWS parity가 아님을 명시하는 `scopePolicy`를 포함한다. invalid status는 `400 VALIDATION_ERROR`, 권한 없는 사용자는 `403 AUTHORIZATION_FAILED`를 받는다. 성공한 PUT은 `BUCKET_VERSIONING_UPDATE` audit log를 기록한다.
+- 우선순위: P1
+- 자동화 여부: `BucketVersioningControllerTest`
+
 ### TC-BUCKET-002
 
 - 기능: 중복 버킷 생성 차단
