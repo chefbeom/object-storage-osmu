@@ -60,6 +60,17 @@ function Assert-SafeReference([string] $Value, [string] $Label) {
     Assert-SafeText $Value $Label
 }
 
+function Assert-SanitizedPricingPolicyProposalJson([string] $Value) {
+    if ([string]::IsNullOrWhiteSpace($Value)) {
+        return
+    }
+
+    $forbiddenPropertyPattern = '(?i)"(rawContractText|raw_contract_text|contractText|contract_text|legalTerms|legal_terms|termsText|terms_text|customerData|customer_data|customerEmail|customer_email|customerName|customer_name|licenseKey|license_key|licenseText|license_text|rawPriceTable|raw_price_table|paymentCard|payment_card|cardNumber|card_number|bankAccount|bank_account)"\s*:'
+    if ($Value -match $forbiddenPropertyPattern) {
+        throw "PricingPolicyProposalJson appears to contain raw contract, customer, license, payment, or raw price table content. Store only sanitized proposal approval metadata."
+    }
+}
+
 function Test-DateText([string] $Value) {
     if ([string]::IsNullOrWhiteSpace($Value)) {
         return $false
@@ -193,6 +204,7 @@ function Read-PricingPolicyProposalSnapshot([string] $Path) {
 
     $raw = Get-Content -Raw -LiteralPath $resolvedPath
     Assert-SafeText $raw "PricingPolicyProposalJson"
+    Assert-SanitizedPricingPolicyProposalJson $raw
     try {
         $payload = $raw | ConvertFrom-Json
     }

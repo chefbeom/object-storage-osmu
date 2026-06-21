@@ -168,6 +168,10 @@ Assert-NotContains $reportText "storageGbMonthRate" "commercial approval JSON"
 Assert-NotContains $markdown "storageGbMonthRate" "commercial approval markdown"
 Assert-NotContains $reportText "0.10" "commercial approval JSON"
 Assert-NotContains $markdown "0.10" "commercial approval markdown"
+foreach ($unexpected in @("contractText", "customer@example.com", "licenseKey")) {
+    Assert-NotContains $reportText $unexpected "commercial approval JSON"
+    Assert-NotContains $markdown $unexpected "commercial approval markdown"
+}
 
 foreach ($unexpected in @("password=super-secret", "Bearer abcdefghijklmnop", "-----BEGIN PRIVATE KEY-----")) {
     Assert-NotContains $reportText $unexpected "commercial approval JSON"
@@ -272,6 +276,36 @@ finally {
 }
 Assert-True ($unsafeSnapshotExitCode -ne 0) "Credential-like pricing proposal snapshot should be rejected."
 Assert-Contains ($unsafeSnapshotOutput | Out-String) "PricingPolicyProposalJson appears to contain credential material" "unsafe pricing proposal snapshot output"
+
+$unsafeRawProposalJsonPath = Join-Path $resolvedOutputDirectory "unsafe-raw-billing-pricing-policy-proposals.json"
+[ordered]@{
+    data = [ordered]@{
+        proposal = [ordered]@{
+            id = 13
+            status = "PRICE_LIST_APPROVED"
+            approvedPriceList = $true
+            commercialApprovalReference = "commercial-approval-board-20260620"
+            contractText = "Customer customer@example.com receives confidential terms."
+        }
+    }
+} | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $unsafeRawProposalJsonPath -Encoding UTF8
+
+$previousErrorActionPreference = $ErrorActionPreference
+$ErrorActionPreference = "Continue"
+try {
+    $unsafeRawSnapshotOutput = & powershell -NoProfile -ExecutionPolicy Bypass -File $scriptPath `
+        -ProductVersion "v0.1.0-rc.1" `
+        -PricingPolicyProposalEvidenceRef "pricing-policy-proposal-commercial-approval-20260620" `
+        -PricingPolicyProposalJsonPath $unsafeRawProposalJsonPath `
+        -ConfirmPricingPolicyProposalCommercialApproval `
+        -NoWrite 2>&1
+    $unsafeRawSnapshotExitCode = $LASTEXITCODE
+}
+finally {
+    $ErrorActionPreference = $previousErrorActionPreference
+}
+Assert-True ($unsafeRawSnapshotExitCode -ne 0) "Raw commercial proposal snapshot should be rejected."
+Assert-Contains ($unsafeRawSnapshotOutput | Out-String) "raw contract" "unsafe raw pricing proposal snapshot output"
 
 Write-Host "Commercial approval evidence writer verified."
 Write-Host "JSON: $jsonOutputPath"
