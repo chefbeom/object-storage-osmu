@@ -126,6 +126,23 @@ async function installDeveloperApiMocks(page) {
       return json({ data: created })
     }
 
+    const accessKeyDeleteMatch = path.match(/^\/access-keys\/(\d+)$/)
+    if (method === 'DELETE' && accessKeyDeleteMatch) {
+      const keyId = Number(accessKeyDeleteMatch[1])
+      const key = accessKeys.find((item) => item.id === keyId)
+      if (key) {
+        key.status = 'INACTIVE'
+      }
+      return json({
+        data: key
+          ? {
+            ...key,
+            secretKey: undefined,
+          }
+          : null,
+      })
+    }
+
     if (method === 'GET' && path === '/dashboard/layout/widgets') {
       return json({ data: [] })
     }
@@ -240,6 +257,15 @@ test('developer login lands on S3 API console with access key controls', async (
   await expect(page.getByTestId('status-alert')).toContainText('developer-browser-key Access Key 발급 완료')
   await expect(page.getByTestId('access-key-list')).toContainText('developer-browser-key')
   await expect(page.getByTestId('access-key-list')).toContainText(developerBucketName)
+  await page.getByTestId('access-key-delete-button').first().click()
+  await expect(page.getByTestId('confirm-dialog')).toContainText('Access Key')
+  await page.getByTestId('confirm-cancel-button').click()
+  await expect(page.getByTestId('confirm-dialog')).toHaveCount(0)
+  await expect(page.getByTestId('access-key-list')).toContainText('ACTIVE')
+  await page.getByTestId('access-key-delete-button').first().click()
+  await page.getByTestId('confirm-submit-button').click()
+  await expect(page.getByTestId('status-alert')).toContainText('비활성화 완료')
+  await expect(page.getByTestId('access-key-list')).toContainText('INACTIVE')
 })
 
 test('admin dashboard shows operations readiness convergence handoff', async ({ page }) => {

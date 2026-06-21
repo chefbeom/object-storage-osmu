@@ -1776,7 +1776,7 @@ ID:
 - 절차: 확인 모달에서 비활성화를 확정하고 목록을 새로고침한다.
 - 기대 결과: 확인 전에는 API가 호출되지 않고, 확정 후 `DELETE /api/access-keys/{keyId}`가 호출되며 해당 key 상태가 `INACTIVE`로 표시된다.
 - 우선순위: P1
-- 자동화 여부: Automated (`npm run test:unit` access key delete API wrapper). Confirm modal/browser refresh E2E pending.
+- 자동화 여부: Automated (`npm run test:unit` access key delete API wrapper, Browser E2E confirm cancel/submit path and inactive list render).
 
 ### TC-FE-006
 
