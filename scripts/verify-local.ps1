@@ -226,6 +226,9 @@ Run "powershell -ExecutionPolicy Bypass -File .\scripts\verify-prometheus-operat
 Step "Flyway migration version check"
 Run "powershell -ExecutionPolicy Bypass -File .\scripts\verify-migrations.ps1"
 
+Step "Metadata index coverage check"
+Run "powershell -ExecutionPolicy Bypass -File .\scripts\verify-metadata-index-coverage.ps1 -NoWrite"
+
 if (-not $SkipDocker) {
     Step "Docker Compose config check"
     Run "docker compose --env-file .\infra\local\.env.example -f .\infra\local\docker-compose.yml config --quiet"

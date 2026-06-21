@@ -859,6 +859,12 @@ erDiagram
 - `V58__data_flow_monthly_rollups.sql`은 daily rollup에서 compact한 UTC-month aggregate 저장소를 추가해 장기 조회가 전용 aggregate table을 사용할 수 있게 한다.
 - repository의 `CREATE TABLE IF NOT EXISTS`는 local fallback이다.
 
+## 16.1 Index Coverage Gate
+
+- `scripts/verify-metadata-index-coverage.ps1`는 migration SQL을 정적으로 읽어 high-volume metadata query path의 leading-column index coverage를 검증한다.
+- 현재 gate는 object list/tag/version/trash scan, audit request/result lookup, data-flow event/day/month aggregate windows, storage expansion summary/timeout, chargeback notification/payment retry worker index를 검사한다.
+- 이 gate는 migration-backed index가 존재하는지 확인하는 정적 검증이다. 실제 MariaDB `EXPLAIN`, cardinality, slow query log 검토는 target-scale 데이터가 준비된 뒤 별도 evidence로 남긴다.
+
 ## 17. 구현 순서
 
 1. `organizations`

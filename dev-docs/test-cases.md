@@ -2339,6 +2339,16 @@ TC-FE-023 보강: 사용자가 취소한 경우에는 abort API를 호출한다.
 - Priority: P2
 - Automated: `scripts/verify-k8s-manifests.ps1`, `scripts/verify-helm-chart.ps1`
 
+### TC-DB-001
+
+- Feature: MariaDB metadata index coverage static gate.
+- Preconditions: PowerShell is available and Flyway migrations exist under `osmu-backend/src/main/resources/db/migration`.
+- Input: `powershell -ExecutionPolicy Bypass -File .\scripts\verify-metadata-index-coverage.ps1`.
+- Steps: Verify the script reads migration SQL and checks expected leading index columns for object listing/tag filtering/version history/trash retention, audit request/result lookup, data-flow event and aggregate windows, storage expansion summary/timeout, and chargeback notification/payment retry worker query paths. Confirm the generated JSON/Markdown report states that this is static migration coverage and not a replacement for live MariaDB `EXPLAIN`/slow-query evidence.
+- Expected: The check fails if a listed high-volume query path loses its migration-backed index prefix, and passes when all expected indexes are present.
+- Priority: P1
+- Automated: `scripts/verify-metadata-index-coverage.ps1`, `scripts/verify-local.ps1`
+
 ### TC-OPS-001
 
 - Feature: Operations readiness pending evidence remediation metadata.
