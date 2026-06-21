@@ -189,6 +189,100 @@ function Get-WorkflowSecrets([string] $WorkflowPath) {
     return @($secrets)
 }
 
+function Test-WorkflowCommandFlag([string] $Command, [string] $FlagName) {
+    if ([string]::IsNullOrWhiteSpace($Command) -or [string]::IsNullOrWhiteSpace($FlagName)) {
+        return $false
+    }
+    return $Command.ToLowerInvariant().Contains("$($FlagName.ToLowerInvariant())=true")
+}
+
+function Test-WorkflowCommandValue([string] $Command, [string] $InputName, [string] $InputValue) {
+    if ([string]::IsNullOrWhiteSpace($Command) -or [string]::IsNullOrWhiteSpace($InputName) -or [string]::IsNullOrWhiteSpace($InputValue)) {
+        return $false
+    }
+    return $Command.ToLowerInvariant().Contains("$($InputName.ToLowerInvariant())=$($InputValue.ToLowerInvariant())")
+}
+
+function Get-RequiredWorkflowSecrets([string] $WorkflowName, [string] $Command, [object] $Action, [string] $WorkflowPath) {
+    $secrets = New-Object System.Collections.Generic.List[string]
+    $name = $WorkflowName.ToLowerInvariant()
+    $needsKubeconfig = Get-Bool $Action "needsKubeconfigSecretConfirmation"
+
+    switch ($name) {
+        "storage-expansion-finalizer-ci.yml" {
+            if ($needsKubeconfig -or (Test-WorkflowCommandFlag $Command "run_live")) {
+                Add-UniqueString $secrets "OSMU_KUBECONFIG_BASE64"
+            }
+            if ((Test-WorkflowCommandFlag $Command "run_backend_dry_run_runner") -or (Test-WorkflowCommandFlag $Command "run_backend_apply")) {
+                Add-UniqueString $secrets "OSMU_ADMIN_PASSWORD"
+            }
+        }
+        "kubernetes-ha-dr-readiness-ci.yml" {
+            if ($needsKubeconfig -or (Test-WorkflowCommandFlag $Command "run_live")) {
+                Add-UniqueString $secrets "OSMU_KUBECONFIG_BASE64"
+            }
+        }
+        "kubernetes-dr-finalizer-ci.yml" {
+            if ($needsKubeconfig -or (Test-WorkflowCommandFlag $Command "run_live")) {
+                Add-UniqueString $secrets "OSMU_KUBECONFIG_BASE64"
+            }
+            if ((Test-WorkflowCommandFlag $Command "confirm_restore") -and -not (Test-WorkflowCommandFlag $Command "skip_restore_smoke")) {
+                Add-UniqueString $secrets "OSMU_ADMIN_PASSWORD"
+            }
+        }
+        "operations-readiness-finalizer-ci.yml" {
+            if ($needsKubeconfig -or (Test-WorkflowCommandFlag $Command "run_live")) {
+                Add-UniqueString $secrets "OSMU_KUBECONFIG_BASE64"
+            }
+            if (Test-WorkflowCommandFlag $Command "confirm_restore") {
+                Add-UniqueString $secrets "OSMU_ADMIN_PASSWORD"
+            }
+        }
+        "iam-rbac-finalizer-ci.yml" {
+            if ($needsKubeconfig -or (Test-WorkflowCommandFlag $Command "run_live") -or (Test-WorkflowCommandFlag $Command "run_kubernetes_live_auth")) {
+                Add-UniqueString $secrets "OSMU_KUBECONFIG_BASE64"
+            }
+        }
+        "kubernetes-operations-report-sync-ci.yml" {
+            if ($needsKubeconfig -or (Test-WorkflowCommandFlag $Command "run_live") -or (Test-WorkflowCommandFlag $Command "apply")) {
+                Add-UniqueString $secrets "OSMU_KUBECONFIG_BASE64"
+            }
+        }
+        "enterprise-auth-smoke-ci.yml" {
+            if (Test-WorkflowCommandFlag $Command "run_live") {
+                Add-UniqueString $secrets "OSMU_ENTERPRISE_AUTH_ADMIN_PASSWORD"
+            }
+            if (Test-WorkflowCommandFlag $Command "require_ldap") {
+                Add-UniqueString $secrets "OSMU_ENTERPRISE_AUTH_LDAP_LOGIN_ID"
+                Add-UniqueString $secrets "OSMU_ENTERPRISE_AUTH_LDAP_PASSWORD"
+            }
+            if (Test-WorkflowCommandFlag $Command "require_oidc") {
+                Add-UniqueString $secrets "OSMU_ENTERPRISE_AUTH_OIDC_CALLBACK_CODE"
+                Add-UniqueString $secrets "OSMU_ENTERPRISE_AUTH_OIDC_CALLBACK_STATE"
+            }
+            if (Test-WorkflowCommandFlag $Command "confirm_jit_provision") {
+                Add-UniqueString $secrets "OSMU_ENTERPRISE_AUTH_JIT_PROVISION_JSON_BASE64"
+            }
+        }
+        "manual-storage-backend-telemetry-evidence.yml" {
+            if (Test-WorkflowCommandValue $Command "collection_mode" "live") {
+                Add-UniqueString $secrets "OSMU_MINIO_ACCESS_KEY"
+                Add-UniqueString $secrets "OSMU_MINIO_SECRET_KEY"
+            }
+            else {
+                Add-UniqueString $secrets "OSMU_MINIO_ADMIN_INFO_JSON_BASE64"
+            }
+        }
+        default {
+            foreach ($secret in @(Get-WorkflowSecrets $WorkflowPath)) {
+                Add-UniqueString $secrets $secret
+            }
+        }
+    }
+
+    return @($secrets)
+}
+
 $resolvedUnblockPlanPath = Resolve-ProjectPath $UnblockPlanPath
 if (-not (Test-Path -LiteralPath $resolvedUnblockPlanPath)) {
     throw "Operations invocation unblock plan not found: $resolvedUnblockPlanPath"
@@ -246,7 +340,7 @@ foreach ($action in @($selectedActions)) {
     if (-not [string]::IsNullOrWhiteSpace($workflowName)) {
         $workflowPath = Resolve-ProjectPath ".\.github\workflows\$workflowName"
         $workflowExists = Test-Path -LiteralPath $workflowPath
-        $secrets = @(Get-WorkflowSecrets $workflowPath)
+        $secrets = @(Get-RequiredWorkflowSecrets $workflowName (Get-Text $action "command") $action $workflowPath)
         foreach ($secret in $secrets) {
             Add-UniqueString $requiredSecrets $secret
         }

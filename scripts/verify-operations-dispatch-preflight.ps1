@@ -60,8 +60,8 @@ Write-JsonFixture $unblockPlanPath ([ordered]@{
     sourceInvocationReport = ".osmu-run/latest-operations-evidence-plan-invocation.json"
     sourceResult = "blocked"
     sourceSummary = "passed=36 pending=6"
-    selectedActionCount = 2
-    plannedCount = 0
+    selectedActionCount = 3
+    plannedCount = 1
     blockedCount = 2
     failedCount = 0
     needsKubeconfigSecretConfirmation = $true
@@ -69,10 +69,10 @@ Write-JsonFixture $unblockPlanPath ([ordered]@{
     requiredPlaceholderCount = 1
     ambiguousRepeatedPlaceholderCount = 0
     blockedActionOrders = @(1, 2)
-    plannedActionOrders = @()
-    confirmedPlanCommand = "powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\invoke-operations-evidence-plan.ps1 -ActionOrder 1,2 -KubeconfigSecretConfirmed -ConfirmOperatorApproval -BackupTimestamp <YYYYMMDDTHHMMSSZ>"
+    plannedActionOrders = @(3)
+    confirmedPlanCommand = "powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\invoke-operations-evidence-plan.ps1 -ActionOrder 1,2,3 -KubeconfigSecretConfirmed -ConfirmOperatorApproval -BackupTimestamp <YYYYMMDDTHHMMSSZ>"
     blockedOnlyPlanCommand = "powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\invoke-operations-evidence-plan.ps1 -ActionOrder 1,2 -KubeconfigSecretConfirmed -ConfirmOperatorApproval -BackupTimestamp <YYYYMMDDTHHMMSSZ>"
-    plannedOnlyCommand = ""
+    plannedOnlyCommand = "powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\invoke-operations-evidence-plan.ps1 -ActionOrder 3"
     decisionRule = "Resolve placeholders and confirmations before execution."
     actions = @(
         [ordered]@{
@@ -121,6 +121,25 @@ Write-JsonFixture $unblockPlanPath ([ordered]@{
             )
             ambiguousRepeatedPlaceholders = $false
             planCommand = "powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\invoke-operations-evidence-plan.ps1 -ActionOrder 2 -KubeconfigSecretConfirmed -ConfirmOperatorApproval -BackupTimestamp <YYYYMMDDTHHMMSSZ>"
+        },
+        [ordered]@{
+            order = 3
+            name = "Enterprise auth target smoke evidence"
+            category = "enterprise-auth"
+            actionType = "operator-remediation"
+            evidencePath = ".osmu-run/latest-enterprise-auth-smoke.json"
+            status = "planned"
+            commandMode = "Workflow"
+            command = "gh workflow run enterprise-auth-smoke-ci.yml -f run_live=true -f require_oidc=true -f require_ldap=true -f fail_if_not_passed=true"
+            blockReasons = @()
+            unresolvedPlaceholders = @()
+            requiresOperatorApproval = $false
+            requiresKubeconfigSecret = $false
+            needsOperatorApprovalConfirmation = $false
+            needsKubeconfigSecretConfirmation = $false
+            requiredInputs = @()
+            ambiguousRepeatedPlaceholders = $false
+            planCommand = "powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\invoke-operations-evidence-plan.ps1 -ActionOrder 3"
         }
     )
 })
@@ -137,7 +156,7 @@ $missingReport = Get-Content -Raw -LiteralPath $missingJsonPath | ConvertFrom-Js
 $missingMarkdown = Get-Content -Raw -LiteralPath $missingMarkdownPath
 Assert-Equal $missingReport.formatVersion "osmu.operations-dispatch-preflight.v1" "missing formatVersion"
 Assert-Equal $missingReport.result "action-required" "missing result"
-Assert-Equal $missingReport.selectedActionCount 2 "missing selected action count"
+Assert-Equal $missingReport.selectedActionCount 3 "missing selected action count"
 Assert-Equal $missingReport.missingInputCount 1 "missing input count"
 Assert-True ($missingReport.failedCheckCount -ge 3) "expected missing preflight failures"
 Assert-Contains ($missingReport.checks | ConvertTo-Json -Depth 8) "KUBECONFIG_SECRET_CONFIRMED" "missing checks"
@@ -167,6 +186,21 @@ Assert-Contains $readyReport.readyPlanCommand "-BackupTimestamp 20260616T010203Z
 Assert-Contains $readyReport.executeCommand "-Execute" "ready execute command"
 Assert-True (@($readyReport.workflowFiles | Where-Object { -not $_.exists }).Count -eq 0) "expected workflow files to exist"
 Assert-True (@($readyReport.requiredGitHubSecrets).Count -gt 0) "expected workflow secret references"
+Assert-True (@($readyReport.requiredGitHubSecrets) -contains "OSMU_KUBECONFIG_BASE64") "expected kubeconfig secret"
+Assert-True (@($readyReport.requiredGitHubSecrets) -contains "OSMU_ADMIN_PASSWORD") "expected admin password secret for confirmed DR restore"
+Assert-True (@($readyReport.requiredGitHubSecrets) -contains "OSMU_ENTERPRISE_AUTH_ADMIN_PASSWORD") "expected enterprise auth admin password secret"
+Assert-True (@($readyReport.requiredGitHubSecrets) -contains "OSMU_ENTERPRISE_AUTH_LDAP_LOGIN_ID") "expected enterprise auth LDAP login secret"
+Assert-True (@($readyReport.requiredGitHubSecrets) -contains "OSMU_ENTERPRISE_AUTH_LDAP_PASSWORD") "expected enterprise auth LDAP password secret"
+Assert-True (@($readyReport.requiredGitHubSecrets) -contains "OSMU_ENTERPRISE_AUTH_OIDC_CALLBACK_CODE") "expected enterprise auth OIDC code secret"
+Assert-True (@($readyReport.requiredGitHubSecrets) -contains "OSMU_ENTERPRISE_AUTH_OIDC_CALLBACK_STATE") "expected enterprise auth OIDC state secret"
+$storageWorkflow = @($readyReport.workflowFiles | Where-Object { $_.actionOrder -eq 1 })[0]
+$drWorkflow = @($readyReport.workflowFiles | Where-Object { $_.actionOrder -eq 2 })[0]
+$enterpriseAuthWorkflow = @($readyReport.workflowFiles | Where-Object { $_.actionOrder -eq 3 })[0]
+Assert-True (@($storageWorkflow.requiredSecrets) -contains "OSMU_KUBECONFIG_BASE64") "storage expansion workflow should require kubeconfig"
+Assert-True (-not (@($storageWorkflow.requiredSecrets) -contains "OSMU_ADMIN_PASSWORD")) "storage expansion workflow should not require admin password unless backend runner actions are selected"
+Assert-True (@($drWorkflow.requiredSecrets) -contains "OSMU_ADMIN_PASSWORD") "confirmed DR restore should require admin password"
+Assert-True (-not (@($enterpriseAuthWorkflow.requiredSecrets) -contains "OSMU_KUBECONFIG_BASE64")) "enterprise auth workflow should not require kubeconfig"
+Assert-True (@($enterpriseAuthWorkflow.requiredSecrets) -contains "OSMU_ENTERPRISE_AUTH_ADMIN_PASSWORD") "enterprise auth workflow should require admin password when run_live=true"
 Assert-Contains $readyMarkdown "Result: ready" "ready markdown"
 
 Write-Host "Operations dispatch preflight verified."
