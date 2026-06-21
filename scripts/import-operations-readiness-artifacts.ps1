@@ -210,12 +210,14 @@ function Import-EvidenceFile(
         return
     }
 
+    $validationDetails = New-Object System.Collections.Generic.List[string]
     if (-not [string]::IsNullOrWhiteSpace($ExpectedProperty)) {
         $validation = Test-EvidenceJson $sourcePath $ExpectedProperty $ExpectedValue
         if (-not $validation.passed) {
             Add-Entry $Group $FileName "failed" $validation.detail $sourcePath ""
             return
         }
+        [void] $validationDetails.Add($validation.detail)
     }
 
     if ($ValidationKind -eq "data-flow-storage-plan") {
@@ -224,13 +226,18 @@ function Import-EvidenceFile(
             Add-Entry $Group $FileName "failed" $validation.detail $sourcePath ""
             return
         }
+        [void] $validationDetails.Add($validation.detail)
     }
 
     $resolvedOutputDirectory = Resolve-ProjectPath $OutputDirectory
     New-Item -ItemType Directory -Force -Path $resolvedOutputDirectory | Out-Null
     $destinationPath = Join-Path $resolvedOutputDirectory $FileName
     Copy-Item -LiteralPath $sourcePath -Destination $destinationPath -Force
-    Add-Entry $Group $FileName "imported" "promoted to standard operations readiness path" $sourcePath $destinationPath
+    $detail = "promoted to standard operations readiness path"
+    if ($validationDetails.Count -gt 0) {
+        $detail = "$detail; validation=$($validationDetails -join '; ')"
+    }
+    Add-Entry $Group $FileName "imported" $detail $sourcePath $destinationPath
 }
 
 Import-EvidenceFile "storage-expansion" $StorageExpansionArtifactPath "latest-storage-expansion-finalize.json" $true "result" "passed"
