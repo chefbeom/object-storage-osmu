@@ -237,6 +237,7 @@ Run when Browser/Chrome automation works again:
 
 - [x] Manual Browser E2E CI workflow draft exists and is checked by `scripts/verify-ci-workflow.ps1`.
 - [x] Browser E2E spec includes developer mode login to `/developer`, S3 endpoint/snippet visibility, Admin nav hiding, and Access Key create UI contract.
+- [x] Browser E2E spec includes stored session restore without login plus stale stored session redirect cleanup.
 - [x] Browser E2E spec includes Access Key scope add/remove, disabled create without scope, cancel revoke, and confirmed revoke state.
 - [x] Browser E2E spec includes destructive confirm cancel/confirm paths for bucket delete.
 - [x] Browser E2E spec includes operations readiness convergence summary and recommended command row visibility.

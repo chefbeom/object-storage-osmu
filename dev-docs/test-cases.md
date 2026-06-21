@@ -1819,7 +1819,7 @@ Evidence note: `npm run test:unit` covers stable bucket row cell selectors, and 
 - 절차: authStore가 저장된 token을 API client에 적용하고 `/api/users/me`를 호출한다.
 - 기대 결과: user 정보와 role computed가 복구되고 dashboard가 자동 로드된다. `/api/users/me` 실패 시 token과 화면 데이터가 정리된다.
 - 우선순위: P1
-- 자동화 여부: Automated (`npm run test:unit` authStore restore unit). Browser reload E2E pending.
+- 자동화 여부: Automated (`npm run test:unit` authStore restore unit, Browser E2E stored developer session restore without login, and stale saved session redirect cleanup).
 
 ### TC-FE-010
 

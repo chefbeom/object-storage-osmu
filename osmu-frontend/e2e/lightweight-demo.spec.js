@@ -215,6 +215,26 @@ test('stale saved session returns to login redirect', async ({ page }) => {
   await expect(page).toHaveURL(/redirect=(%2F|\/)dashboard/)
 })
 
+test('stored developer session opens developer console without login', async ({ page }) => {
+  await installDeveloperApiMocks(page)
+  await page.addInitScript(() => {
+    window.localStorage.removeItem('osmu.dashboard.widgets.v1')
+    window.localStorage.setItem('osmu.auth.tokens', JSON.stringify({
+      accessToken: 'developer-stored-access',
+      refreshToken: 'developer-stored-refresh',
+    }))
+    window.sessionStorage.removeItem('osmu.auth.tokens')
+  })
+
+  await page.goto(`${frontendBaseUrl}/developer`)
+
+  await expect(page.getByTestId('login-form')).toHaveCount(0)
+  await expect(page).toHaveURL(/\/developer$/)
+  await expect(page.getByTestId('developer-page')).toBeVisible()
+  await expect(page.getByTestId('developer-s3-endpoint')).toContainText('/api/s3')
+  await expect(page.getByTestId('developer-client-aws-cli')).toContainText(`s3://${developerBucketName}`)
+})
+
 test('developer login lands on S3 API console with access key controls', async ({ page }) => {
   await installDeveloperApiMocks(page)
   await page.addInitScript(() => {
