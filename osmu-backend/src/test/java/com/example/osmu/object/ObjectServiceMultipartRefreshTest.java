@@ -36,6 +36,7 @@ import java.util.zip.CRC32;
 import java.util.zip.CRC32C;
 import java.util.zip.Checksum;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 
 class ObjectServiceMultipartRefreshTest {
 
@@ -182,13 +183,14 @@ class ObjectServiceMultipartRefreshTest {
     @Test
     void multipartOverwriteSnapshotsPreviousObjectBeforeComplete() {
         BucketRecord bucket = new BucketRecord(1L, "bucket", "USER", 1L, 1000000000L, 10L, 1L, OffsetDateTime.now());
+        OffsetDateTime previousModifiedAt = OffsetDateTime.now().minusMinutes(5);
         StoredObjectRecord previous = new StoredObjectRecord(
                 "videos/input.mp4",
                 10L,
                 "video/mp4",
-                OffsetDateTime.now().minusMinutes(5),
+                previousModifiedAt,
                 Map.of("version", "one")
-        );
+        ).withUserMetadata(Map.of("owner", "archive-team"));
         StoredObjectRecord uploaded = new StoredObjectRecord(
                 "videos/input.mp4",
                 5L * 1024L * 1024L,
@@ -264,7 +266,17 @@ class ObjectServiceMultipartRefreshTest {
         assertThat(session.previousExists()).isTrue();
         assertThat(session.previousSizeBytes()).isEqualTo(10L);
         assertThat(result).isEqualTo(uploaded);
-        verify(objectVersionRepository).save(eq("bucket"), any(ObjectVersionRecord.class));
+        ArgumentCaptor<ObjectVersionRecord> versionCaptor = ArgumentCaptor.forClass(ObjectVersionRecord.class);
+        verify(objectVersionRepository).save(eq("bucket"), versionCaptor.capture());
+        ObjectVersionRecord snapshot = versionCaptor.getValue();
+        assertThat(snapshot.versionId()).isNotBlank();
+        assertThat(snapshot.key()).isEqualTo("videos/input.mp4");
+        assertThat(snapshot.storageKey()).startsWith(ObjectVersionStorageKeys.PREFIX);
+        assertThat(snapshot.sizeBytes()).isEqualTo(10L);
+        assertThat(snapshot.contentType()).isEqualTo("video/mp4");
+        assertThat(snapshot.objectLastModifiedAt()).isEqualTo(previousModifiedAt);
+        assertThat(snapshot.tags()).containsEntry("version", "one");
+        assertThat(snapshot.userMetadata()).containsEntry("owner", "archive-team");
         verify(bucketService).applyObjectChange("bucket", 5L * 1024L * 1024L, 1L);
         verify(objectMetadataRepository).save("bucket", uploaded);
     }

@@ -1208,7 +1208,7 @@ ID:
 - Automated coverage: `BucketObjectFlowTest.bucketAndObjectFlowWorks`
 - Presigned/multipart overwrite extension:
 - Input: same-key presigned upload complete and same-key multipart upload complete.
-- Expected: previous active object is saved as a version before replacement; presigned upload uses `.osmu/uploads/` staging so active object remains unchanged until complete; multipart quota failure aborts upload before active replacement.
+- Expected: previous active object is saved as a version before replacement, preserving key, size, content type, tags, user metadata, and original last-modified time; presigned upload uses `.osmu/uploads/` staging so active object remains unchanged until complete; multipart quota failure aborts upload before active replacement.
 - Automated coverage: `ObjectServiceMultipartRefreshTest.presignedOverwriteUploadsToStagingKeyAndSnapshotsOnComplete`, `ObjectServiceMultipartRefreshTest.multipartOverwriteSnapshotsPreviousObjectBeforeComplete`
 
 ### TC-OBJECT-004F

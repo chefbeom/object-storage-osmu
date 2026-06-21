@@ -213,7 +213,6 @@ MVP 데모 기준 완료율은 약 90~95%입니다.
 - 대용량 업로드 중단/재개 E2E
 - 실제 MinIO multipart resume 검증
 - 대량 object search/filter
-- versioning + multipart overwrite edge case
 
 ### 4.6 S3 호환 API
 
