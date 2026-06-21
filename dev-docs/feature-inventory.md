@@ -207,6 +207,7 @@ MVP 데모 기준 완료율은 약 90~95%입니다.
 - multipart upload/resume 초안
 - Web Portal multipart Pause는 진행 중인 browser upload만 중단하고 `sessionStorage` resume session을 보존한다. Cancel은 기존처럼 Backend abort API를 호출하고 resume session을 삭제한다.
 - Mock Browser E2E는 small multipart fixture로 Pause -> pending resume -> complete click path를 검증한다.
+- Docker local demo Browser E2E는 `-EnableRealMultipartFixture` opt-in으로 seed demo user의 실제 writable bucket, MinIO-backed presigned part PUT, delayed PUT probe, `sessionStorage` resume, refresh/list-parts/complete backend 호출까지 검증할 수 있다.
 - trash/restore/purge
 - versioning/retention/lifecycle 일부
 - S3 직접 업로드 이후 bucket sync 기반 metadata drift 보정과 add/update/remove reconciliation summary
@@ -214,8 +215,8 @@ MVP 데모 기준 완료율은 약 90~95%입니다.
 
 남은 것:
 
-- 실제 Browser + MinIO multipart pause/resume 실행 E2E evidence
-- 실제 MinIO multipart resume 검증
+- 실제 Docker local demo 또는 hosted workflow run에서 real MinIO multipart pause/resume evidence를 확보하고 durable gate에 반영
+- target MinIO 환경에서 CORS verification과 real browser multipart resume evidence를 함께 운영 handoff에 포함
 
 ### 4.6 S3 호환 API
 

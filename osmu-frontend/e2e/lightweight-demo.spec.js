@@ -8,6 +8,11 @@ const developerLoginId = process.env.OSMU_DEVELOPER_LOGIN_ID || 'developer'
 const developerPassword = process.env.OSMU_DEVELOPER_PASSWORD || 'password'
 const developerBucketName = 'developer-e2e-bucket'
 const expectOperationsConvergence = process.env.OSMU_EXPECT_OPERATIONS_CONVERGENCE === 'true'
+const realMultipartFixtureEnabled = process.env.OSMU_BROWSER_REAL_MULTIPART_FIXTURE === 'true'
+const realMultipartBucketName = process.env.OSMU_BROWSER_REAL_MULTIPART_BUCKET || ''
+const realMultipartMinioPort = process.env.OSMU_MINIO_API_PORT || '9000'
+const realMultipartPartDelayMs = Number(process.env.OSMU_BROWSER_REAL_MULTIPART_PART_DELAY_MS || 1500)
+const realMultipartFileBytes = Number(process.env.OSMU_BROWSER_REAL_MULTIPART_FILE_BYTES || 12 * 1024 * 1024)
 
 function parseTagInput(tags = '') {
   return String(tags)
@@ -37,6 +42,40 @@ async function expectAdminBucketContextReady(page) {
       .or(page.getByTestId('bucket-lifecycle-panel'))
       .first(),
   ).toBeVisible()
+}
+
+async function clearStoredBrowserSession(page) {
+  await page.addInitScript(() => {
+    window.localStorage.removeItem('osmu.dashboard.widgets.v1')
+    window.localStorage.removeItem('osmu.auth.tokens')
+    window.localStorage.removeItem('osmu.login.rememberedId')
+    window.sessionStorage.removeItem('osmu.auth.tokens')
+    for (const key of Object.keys(window.sessionStorage)) {
+      if (key.startsWith('osmu.multipartUpload.')) {
+        window.sessionStorage.removeItem(key)
+      }
+    }
+  })
+}
+
+async function installRealMinioPartDelay(page) {
+  const probe = { putCount: 0 }
+  await page.route(`http://localhost:${realMultipartMinioPort}/**`, async (route) => {
+    if (route.request().method() === 'PUT') {
+      probe.putCount += 1
+      if (realMultipartPartDelayMs > 0) {
+        await new Promise((resolve) => setTimeout(resolve, realMultipartPartDelayMs))
+      }
+    }
+    try {
+      await route.continue()
+    } catch (error) {
+      if (!/abort|closed|Target/i.test(error?.message || '')) {
+        throw error
+      }
+    }
+  })
+  return probe
 }
 
 function buildOperationalAccessKeys(now = Date.now()) {
@@ -1029,6 +1068,79 @@ test('developer can pause and resume multipart object upload from pending sessio
   expect(multipartCompleteRequests).toHaveLength(1)
   expect(multipartAbortRequests).toHaveLength(0)
   expect(multipartPartUploadRequests.length).toBeGreaterThan(0)
+})
+
+test('developer can pause and resume real MinIO multipart object upload from pending session', async ({ page }) => {
+  test.skip(!realMultipartFixtureEnabled, 'Requires Docker local demo real multipart fixture env.')
+  test.skip(!realMultipartBucketName, 'Requires OSMU_BROWSER_REAL_MULTIPART_BUCKET.')
+  test.setTimeout(120_000)
+
+  const partProbe = await installRealMinioPartDelay(page)
+  const multipartKey = `browser-real-multipart-${Date.now()}.bin`
+  await clearStoredBrowserSession(page)
+
+  await page.goto(`${frontendBaseUrl}/login?mode=developer`)
+  await page.getByTestId('login-id-input').fill(developerLoginId)
+  await page.getByTestId('login-password-input').fill(developerPassword)
+  await page.getByTestId('login-submit-button').click()
+
+  await expect(page).toHaveURL(/\/developer$/)
+  await page.getByRole('link', { name: 'Storage' }).click()
+  const bucketRow = page.getByTestId(`bucket-row-${realMultipartBucketName}`)
+  await expect(bucketRow).toBeVisible()
+  await bucketRow.click()
+  await page.getByRole('link', { name: 'Objects' }).click()
+  await expect(page.getByTestId('object-panel')).toContainText(realMultipartBucketName)
+
+  await page.getByTestId('object-key-input').fill(multipartKey)
+  await page.getByTestId('object-tags-input').fill('project=osmu,stage=real-multipart')
+  await page.getByTestId('object-file-input').setInputFiles({
+    name: multipartKey,
+    mimeType: 'application/octet-stream',
+    buffer: Buffer.alloc(realMultipartFileBytes, 7),
+  })
+
+  const createResponse = page.waitForResponse((response) => (
+    response.status() === 200
+      && new URL(response.url()).pathname.endsWith(`/api/buckets/${realMultipartBucketName}/objects/multipart-upload`)
+  ))
+  await page.getByTestId('object-upload-button').click()
+  await createResponse
+  await expect(page.getByTestId('object-upload-pause-button')).toBeEnabled()
+  await page.getByTestId('object-upload-pause-button').click()
+
+  await expect(page.getByTestId('status-alert')).toContainText('Multipart upload paused')
+  await expect(page.getByTestId('object-upload-progress')).toContainText('Multipart upload paused')
+  const pausedRow = page.getByTestId('object-multipart-resume-row').filter({ hasText: multipartKey })
+  await expect(pausedRow).toBeVisible()
+  await expect(pausedRow.getByTestId('object-multipart-resume-button')).toBeEnabled()
+  await expect.poll(() => page.evaluate(() => (
+    Object.keys(window.sessionStorage).filter((key) => key.startsWith('osmu.multipartUpload.')).length
+  ))).toBe(1)
+
+  const refreshResponse = page.waitForResponse((response) => (
+    response.status() === 200
+      && new URL(response.url()).pathname.endsWith(`/api/buckets/${realMultipartBucketName}/objects/multipart-upload/refresh`)
+  ))
+  const partsResponse = page.waitForResponse((response) => (
+    response.status() === 200
+      && new URL(response.url()).pathname.endsWith(`/api/buckets/${realMultipartBucketName}/objects/multipart-upload/parts`)
+  ))
+  const completeResponse = page.waitForResponse((response) => (
+    response.status() === 200
+      && new URL(response.url()).pathname.endsWith(`/api/buckets/${realMultipartBucketName}/objects/multipart-upload/complete`)
+  ))
+  await pausedRow.getByTestId('object-multipart-resume-button').click()
+  await refreshResponse
+  await partsResponse
+  await completeResponse
+
+  await expect(page.getByTestId('status-alert')).toContainText(multipartKey)
+  await expect(page.getByTestId('object-table')).toContainText(multipartKey)
+  await expect.poll(() => page.evaluate(() => (
+    Object.keys(window.sessionStorage).filter((key) => key.startsWith('osmu.multipartUpload.')).length
+  ))).toBe(0)
+  expect(partProbe.putCount).toBeGreaterThan(0)
 })
 
 test('developer can create and complete presigned object upload handoff', async ({ page }) => {

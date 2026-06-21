@@ -1999,7 +1999,7 @@ Evidence note: `npm run test:unit` covers stable bucket row cell selectors, and 
 - 절차: ObjectExplorer에서 업로드를 실행한다.
 - 기대 결과: Frontend가 multipart upload create API를 호출하고 part별 presigned PUT을 제한된 동시성으로 병렬 수행하며 ETag 목록으로 complete API를 호출한다. 진행률은 전체 파일 기준으로 표시된다.
 - 우선순위: P1
-- 자동화 여부: Automated (`npm run test:unit` multipart create/part PUT/complete wrapper flow, default threshold/part-size/jitter contract). Browser/MinIO E2E pending.
+- 자동화 여부: Automated (`npm run test:unit` multipart create/part PUT/complete wrapper flow, default threshold/part-size/jitter contract). Mock Browser E2E covers small pause/resume. Docker/MinIO Browser E2E can be run with `scripts/verify-browser-e2e-local-demo.ps1 -EnableRealMultipartFixture -TestGrep "real MinIO multipart"`; latest durable gate evidence is still pending until that run is recorded.
 
 ### TC-FE-023
 

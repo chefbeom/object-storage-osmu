@@ -11,7 +11,14 @@ param(
     [string] $OperationsConvergenceFixturePath = ".\.osmu-run\docker-local-demo\latest-operations-readiness-convergence.json",
     [int] $WaitTimeoutSeconds = 240,
     [string] $BrowserChannel = $env:OSMU_PLAYWRIGHT_CHANNEL,
-    [switch] $SkipOperationsConvergenceFixture
+    [switch] $SkipOperationsConvergenceFixture,
+    [switch] $EnableRealMultipartFixture,
+    [int] $MultipartUploadThresholdBytes = 1048576,
+    [int] $MultipartUploadPartSizeBytes = 5242880,
+    [int] $MultipartUploadConcurrency = 1,
+    [int] $RealMultipartFixtureFileBytes = 12582912,
+    [int] $RealMultipartPartDelayMs = 1500,
+    [string] $TestGrep = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -180,12 +187,33 @@ function Assert-PlaywrightCli() {
     }
 }
 
+function Read-DemoCredential($Path) {
+    $resolvedPath = Resolve-ProjectPath $Path
+    if (-not (Test-Path -LiteralPath $resolvedPath)) {
+        throw "Demo credential file is required for real multipart Browser E2E: $resolvedPath"
+    }
+    return Get-Content -Raw -Encoding UTF8 -LiteralPath $resolvedPath | ConvertFrom-Json
+}
+
 $resolvedBrowserChannel = Resolve-DefaultBrowserChannel
 $resolvedEnvFile = Resolve-ProjectPath $EnvFile
 $resolvedEnvExample = Resolve-ProjectPath $EnvExample
 $previousBackendConvergenceReportPath = $env:OSMU_OPERATIONS_READINESS_CONVERGENCE_REPORT_PATH
+$previousMultipartThreshold = $env:VITE_MULTIPART_UPLOAD_THRESHOLD_BYTES
+$previousMultipartPartSize = $env:VITE_MULTIPART_UPLOAD_PART_SIZE_BYTES
+$previousMultipartConcurrency = $env:VITE_MULTIPART_UPLOAD_CONCURRENCY
 
 try {
+    if ($EnableRealMultipartFixture) {
+        $env:VITE_MULTIPART_UPLOAD_THRESHOLD_BYTES = "$MultipartUploadThresholdBytes"
+        $env:VITE_MULTIPART_UPLOAD_PART_SIZE_BYTES = "$MultipartUploadPartSizeBytes"
+        $env:VITE_MULTIPART_UPLOAD_CONCURRENCY = "$MultipartUploadConcurrency"
+        Write-Host "Real multipart fixture frontend build args: threshold=$MultipartUploadThresholdBytes partSize=$MultipartUploadPartSizeBytes concurrency=$MultipartUploadConcurrency"
+        if ($NoBuild) {
+            Write-Warning "Real multipart fixture needs a frontend image built with the same VITE_MULTIPART_UPLOAD_* values."
+        }
+    }
+
     $operationsConvergenceEnabled = -not $SkipOperationsConvergenceFixture
     if ($operationsConvergenceEnabled) {
         $fixturePath = Write-OperationsConvergenceFixture $OperationsConvergenceFixturePath
@@ -232,7 +260,21 @@ try {
     $frontendPort = Read-EnvValue $envPathForRead "FRONTEND_PORT" "5173"
     $adminLoginId = Read-EnvValue $envPathForRead "OSMU_ADMIN_LOGIN_ID" "admin"
     $adminPassword = Read-EnvValue $envPathForRead "OSMU_ADMIN_PASSWORD" "password"
+    $minioApiPort = Read-EnvValue $envPathForRead "MINIO_API_PORT" "9000"
     $frontendBase = "http://localhost:$frontendPort"
+    $developerLoginId = "developer"
+    $developerPassword = "password"
+    $realMultipartBucketName = ""
+    if ($EnableRealMultipartFixture) {
+        $demoCredential = Read-DemoCredential $DemoOutputPath
+        $developerLoginId = [string] $demoCredential.demoUserLoginId
+        $developerPassword = [string] $demoCredential.demoPassword
+        $realMultipartBucketName = [string] $demoCredential.mediaBucketName
+        if (-not $developerLoginId -or -not $developerPassword -or -not $realMultipartBucketName) {
+            throw "Demo credential file does not contain demoUserLoginId, demoPassword, and mediaBucketName."
+        }
+        Write-Host "Real multipart fixture bucket: $realMultipartBucketName"
+    }
 
     Step "Browser E2E against Docker local demo"
     $previousFrontendBase = $env:OSMU_FRONTEND_BASE_URL
@@ -242,20 +284,40 @@ try {
     $previousDeveloperPassword = $env:OSMU_DEVELOPER_PASSWORD
     $previousChannel = $env:OSMU_PLAYWRIGHT_CHANNEL
     $previousExpectOperationsConvergence = $env:OSMU_EXPECT_OPERATIONS_CONVERGENCE
+    $previousRealMultipartFixture = $env:OSMU_BROWSER_REAL_MULTIPART_FIXTURE
+    $previousRealMultipartBucket = $env:OSMU_BROWSER_REAL_MULTIPART_BUCKET
+    $previousRealMultipartFileBytes = $env:OSMU_BROWSER_REAL_MULTIPART_FILE_BYTES
+    $previousRealMultipartPartDelayMs = $env:OSMU_BROWSER_REAL_MULTIPART_PART_DELAY_MS
+    $previousMinioApiPort = $env:OSMU_MINIO_API_PORT
     try {
         $env:OSMU_FRONTEND_BASE_URL = $frontendBase
         $env:OSMU_ADMIN_LOGIN_ID = $adminLoginId
         $env:OSMU_ADMIN_PASSWORD = $adminPassword
-        $env:OSMU_DEVELOPER_LOGIN_ID = "developer"
-        $env:OSMU_DEVELOPER_PASSWORD = "password"
+        $env:OSMU_DEVELOPER_LOGIN_ID = $developerLoginId
+        $env:OSMU_DEVELOPER_PASSWORD = $developerPassword
         if ($operationsConvergenceEnabled) {
             $env:OSMU_EXPECT_OPERATIONS_CONVERGENCE = "true"
+        }
+        if ($EnableRealMultipartFixture) {
+            $env:OSMU_BROWSER_REAL_MULTIPART_FIXTURE = "true"
+            $env:OSMU_BROWSER_REAL_MULTIPART_BUCKET = $realMultipartBucketName
+            $env:OSMU_BROWSER_REAL_MULTIPART_FILE_BYTES = "$RealMultipartFixtureFileBytes"
+            $env:OSMU_BROWSER_REAL_MULTIPART_PART_DELAY_MS = "$RealMultipartPartDelayMs"
+            $env:OSMU_MINIO_API_PORT = "$minioApiPort"
         }
         if ($resolvedBrowserChannel) {
             $env:OSMU_PLAYWRIGHT_CHANNEL = $resolvedBrowserChannel
         }
 
-        Invoke-FrontendCommand @("run", "test:e2e")
+        $resolvedTestGrep = $TestGrep
+        if ($EnableRealMultipartFixture -and -not $resolvedTestGrep) {
+            $resolvedTestGrep = "real MinIO multipart"
+        }
+        if ($resolvedTestGrep) {
+            Invoke-FrontendCommand @("run", "test:e2e", "--", "-g", $resolvedTestGrep)
+        } else {
+            Invoke-FrontendCommand @("run", "test:e2e")
+        }
     }
     finally {
         $env:OSMU_FRONTEND_BASE_URL = $previousFrontendBase
@@ -265,12 +327,20 @@ try {
         $env:OSMU_DEVELOPER_PASSWORD = $previousDeveloperPassword
         $env:OSMU_PLAYWRIGHT_CHANNEL = $previousChannel
         $env:OSMU_EXPECT_OPERATIONS_CONVERGENCE = $previousExpectOperationsConvergence
+        $env:OSMU_BROWSER_REAL_MULTIPART_FIXTURE = $previousRealMultipartFixture
+        $env:OSMU_BROWSER_REAL_MULTIPART_BUCKET = $previousRealMultipartBucket
+        $env:OSMU_BROWSER_REAL_MULTIPART_FILE_BYTES = $previousRealMultipartFileBytes
+        $env:OSMU_BROWSER_REAL_MULTIPART_PART_DELAY_MS = $previousRealMultipartPartDelayMs
+        $env:OSMU_MINIO_API_PORT = $previousMinioApiPort
     }
 
     Write-Host "Docker local demo Browser E2E verified."
 }
 finally {
     $env:OSMU_OPERATIONS_READINESS_CONVERGENCE_REPORT_PATH = $previousBackendConvergenceReportPath
+    $env:VITE_MULTIPART_UPLOAD_THRESHOLD_BYTES = $previousMultipartThreshold
+    $env:VITE_MULTIPART_UPLOAD_PART_SIZE_BYTES = $previousMultipartPartSize
+    $env:VITE_MULTIPART_UPLOAD_CONCURRENCY = $previousMultipartConcurrency
     if (-not $KeepRunning) {
         Step "Stop Docker local demo"
         try {

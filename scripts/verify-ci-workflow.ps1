@@ -21,7 +21,10 @@ param(
     [string] $BrowserE2ESpecPath = ".\osmu-frontend\e2e\lightweight-demo.spec.js",
     [string] $FrontendApiPath = ".\osmu-frontend\src\services\api.js",
     [string] $FrontendPackagePath = ".\osmu-frontend\package.json",
-    [string] $PlaywrightConfigPath = ".\osmu-frontend\playwright.config.js"
+    [string] $PlaywrightConfigPath = ".\osmu-frontend\playwright.config.js",
+    [string] $FrontendDockerfilePath = ".\osmu-frontend\Dockerfile",
+    [string] $LocalDockerComposePath = ".\infra\local\docker-compose.yml",
+    [string] $BrowserE2ELocalDemoScriptPath = ".\scripts\verify-browser-e2e-local-demo.ps1"
 )
 
 $ErrorActionPreference = "Stop"
@@ -727,6 +730,22 @@ Assert-Contains $frontendApiContent "VITE_MULTIPART_UPLOAD_RETRY_JITTER_RATIO" "
 Assert-Contains $frontendApiContent "MULTIPART_UPLOAD_PART_SIZE_BYTES" "Frontend API client"
 Assert-Contains $frontendApiContent "normalizeByteSize" "Frontend API client"
 
+$frontendDockerfile = Read-RequiredFile $FrontendDockerfilePath "Frontend Dockerfile"
+$frontendDockerfileContent = $frontendDockerfile.Content
+Assert-Contains $frontendDockerfileContent "ARG VITE_MULTIPART_UPLOAD_THRESHOLD_BYTES" "Frontend Dockerfile"
+Assert-Contains $frontendDockerfileContent "ARG VITE_MULTIPART_UPLOAD_PART_SIZE_BYTES" "Frontend Dockerfile"
+
+$localDockerCompose = Read-RequiredFile $LocalDockerComposePath "local Docker Compose"
+$localDockerComposeContent = $localDockerCompose.Content
+Assert-Contains $localDockerComposeContent "VITE_MULTIPART_UPLOAD_THRESHOLD_BYTES" "local Docker Compose"
+Assert-Contains $localDockerComposeContent "VITE_MULTIPART_UPLOAD_PART_SIZE_BYTES" "local Docker Compose"
+
+$browserE2ELocalDemoScript = Read-RequiredFile $BrowserE2ELocalDemoScriptPath "Browser E2E local demo script"
+$browserE2ELocalDemoScriptContent = $browserE2ELocalDemoScript.Content
+Assert-Contains $browserE2ELocalDemoScriptContent "EnableRealMultipartFixture" "Browser E2E local demo script"
+Assert-Contains $browserE2ELocalDemoScriptContent "OSMU_BROWSER_REAL_MULTIPART_FIXTURE" "Browser E2E local demo script"
+Assert-Contains $browserE2ELocalDemoScriptContent "VITE_MULTIPART_UPLOAD_PART_SIZE_BYTES" "Browser E2E local demo script"
+
 $playwrightConfig = Read-RequiredFile $PlaywrightConfigPath "Playwright config"
 $playwrightConfigContent = $playwrightConfig.Content
 Assert-Contains $playwrightConfigContent "OSMU_PLAYWRIGHT_CHANNEL" "Playwright config"
@@ -740,6 +759,7 @@ Assert-Contains $browserSpecContent "developer login lands on S3 API console wit
 Assert-Contains $browserSpecContent "developer object page size selection resets cursor and keeps limit on next page" "Browser E2E spec"
 Assert-Contains $browserSpecContent "developer object download refreshes expired access token and retries once" "Browser E2E spec"
 Assert-Contains $browserSpecContent "developer can cancel and retry single object upload" "Browser E2E spec"
+Assert-Contains $browserSpecContent "developer can pause and resume real MinIO multipart object upload from pending session" "Browser E2E spec"
 Assert-Contains $browserSpecContent "developer can create and complete presigned object upload handoff" "Browser E2E spec"
 Assert-Contains $browserSpecContent "developer object metadata detail shows drift fields from fixture" "Browser E2E spec"
 Assert-Contains $browserSpecContent "developer can inspect and delete pending multipart resume sessions" "Browser E2E spec"

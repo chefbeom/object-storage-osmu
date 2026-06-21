@@ -153,6 +153,8 @@ VITE_MULTIPART_UPLOAD_RETRY_JITTER_RATIO=0.25
 
 Backend actuator는 `/actuator/health`, `/actuator/info`, `/actuator/metrics`, `/actuator/prometheus`를 노출한다. multipart cleanup metric은 `/actuator/metrics/osmu.multipart.cleanup.sessions`, retention purge metric은 `/actuator/metrics/osmu.object.retention.purge.objects`, version retention purge metric은 `/actuator/metrics/osmu.object.version.retention.purge.versions`, data-flow retention metric은 `/actuator/metrics/osmu.data.flow.retention.events`, `/actuator/metrics/osmu.data.flow.retention.runs`, `/actuator/metrics/osmu.data.flow.daily.rollup.retention.rows`, `/actuator/metrics/osmu.data.flow.daily.rollup.retention.runs`에서 확인한다.
 
+Docker local demo에서 실제 MinIO browser multipart pause/resume만 빠르게 확인하려면 `scripts/verify-browser-e2e-local-demo.ps1 -EnableRealMultipartFixture -TestGrep "real MinIO multipart"`를 사용한다. 이 모드는 frontend image build arg로 threshold를 1 MiB, part size를 5 MiB, concurrency를 1로 낮추고, seed demo credential의 writable bucket에 대해 real MinIO PUT을 지연시켜 pause/resume path를 검증한다.
+
 ## 5. 실행 순서
 
 ### 5.1 사전 점검
