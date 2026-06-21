@@ -37,6 +37,9 @@ New-Item -ItemType Directory -Force -Path $resolvedOutputDirectory | Out-Null
 $fixturePath = Join-Path $resolvedOutputDirectory "fixture-operations-evidence-plan-invocation.json"
 $missingJsonOutputPath = Join-Path $resolvedOutputDirectory "missing-operations-artifact-collection-plan.json"
 $missingMarkdownOutputPath = Join-Path $resolvedOutputDirectory "missing-operations-artifact-collection-plan.md"
+$directManualFixturePath = Join-Path $resolvedOutputDirectory "fixture-direct-manual-workflows-invocation.json"
+$directManualJsonOutputPath = Join-Path $resolvedOutputDirectory "direct-manual-operations-artifact-collection-plan.json"
+$directManualMarkdownOutputPath = Join-Path $resolvedOutputDirectory "direct-manual-operations-artifact-collection-plan.md"
 $readyJsonOutputPath = Join-Path $resolvedOutputDirectory "ready-operations-artifact-collection-plan.json"
 $readyMarkdownOutputPath = Join-Path $resolvedOutputDirectory "ready-operations-artifact-collection-plan.md"
 
@@ -130,6 +133,71 @@ Assert-Contains $missingMarkdown "data_flow_storage_plan_json_base64=<base64-lat
 Assert-Contains $missingMarkdown "sanitized query-plan evidence summary" "missing collection markdown"
 Assert-Contains $missingMarkdown ".\.osmu-run\operations-readiness-artifacts\storage-expansion" "missing collection markdown"
 Assert-True (-not $missingMarkdown.Contains("OrderedDictionary.downloadPath")) "Local import command should render concrete download paths."
+
+$directManualCommands = @(
+    "gh workflow run manual-secret-rotation-evidence.yml -f environment_name=prod -f target_cluster=osmu-prod -f operator=ops-owner -f fail_if_not_passed=true",
+    "gh workflow run manual-commercial-integration-evidence.yml -f environment_name=prod -f target_cluster=osmu-prod -f operator=ops-owner -f fail_if_not_passed=true",
+    "gh workflow run manual-commercial-approval-evidence.yml -f product_version=v0.1.0-rc.1 -f approval_ref=approval-20260620 -f approved_by=commercial-owner -f fail_if_not_passed=true",
+    "gh workflow run manual-operations-handoff-package.yml -f environment_name=prod -f target_cluster=osmu-prod -f operator=ops-owner -f fail_if_not_passed=true"
+)
+$directManualActions = New-Object System.Collections.Generic.List[object]
+$directManualOrder = 1
+foreach ($command in $directManualCommands) {
+    $directManualActions.Add([ordered]@{
+        order = $directManualOrder
+        name = "Direct manual workflow $directManualOrder"
+        category = "operations"
+        actionType = "workflow"
+        evidencePath = ".osmu-run/direct-manual-$directManualOrder.json"
+        commandMode = "Workflow"
+        command = $command
+        status = "planned"
+        blockReasons = @()
+        unresolvedPlaceholders = @()
+        requiresOperatorApproval = $false
+        requiresKubeconfigSecret = $false
+    })
+    $directManualOrder++
+}
+$directManualFixture = [ordered]@{
+    formatVersion = "osmu.operations-evidence-plan-invocation.v1"
+    generatedAt = [DateTimeOffset]::Now.ToString("o")
+    result = "planned"
+    sourcePlan = ".osmu-run/direct-manual-operations-evidence-plan.json"
+    sourceSummary = "passed=36 pending=4"
+    commandMode = "Workflow"
+    executionMode = "plan-only"
+    selectedActionCount = $directManualActions.Count
+    plannedCount = $directManualActions.Count
+    blockedCount = 0
+    executedCount = 0
+    failedCount = 0
+    actions = @($directManualActions | ForEach-Object { $_ })
+}
+$directManualFixture | ConvertTo-Json -Depth 16 | Set-Content -LiteralPath $directManualFixturePath -Encoding UTF8
+
+& powershell -NoProfile -ExecutionPolicy Bypass -File $scriptPath `
+    -InvocationReportPath $directManualFixturePath `
+    -JsonOutputPath $directManualJsonOutputPath `
+    -MarkdownOutputPath $directManualMarkdownOutputPath | Out-Host
+if ($LASTEXITCODE -ne 0) {
+    throw "write-operations-artifact-collection-plan.ps1 direct-manual-workflow check failed with exit code $LASTEXITCODE."
+}
+
+$directManualReport = Get-Content -Raw -LiteralPath $directManualJsonOutputPath | ConvertFrom-Json
+$directManualMarkdown = Get-Content -Raw -LiteralPath $directManualMarkdownOutputPath
+Assert-True ($directManualReport.result -eq "action-required") "Expected action-required result for direct manual workflow dispatches without run ids."
+Assert-True ($directManualReport.artifactCount -eq 4) "Expected four artifacts from direct manual workflow dispatches."
+Assert-True ($directManualReport.requiredArtifactCount -eq 4) "Expected four required artifacts from direct manual workflow dispatches."
+Assert-True ($directManualReport.missingRequiredArtifactCount -eq 4) "Expected four missing direct manual workflow artifacts."
+Assert-Contains $directManualMarkdown "manual-secret-rotation-evidence.yml" "direct manual collection markdown"
+Assert-Contains $directManualMarkdown "secret_rotation_run_id=<secret-rotation-run-id>" "direct manual collection markdown"
+Assert-Contains $directManualMarkdown "manual-commercial-integration-evidence.yml" "direct manual collection markdown"
+Assert-Contains $directManualMarkdown "commercial_integration_run_id=<commercial-integration-run-id>" "direct manual collection markdown"
+Assert-Contains $directManualMarkdown "manual-commercial-approval-evidence.yml" "direct manual collection markdown"
+Assert-Contains $directManualMarkdown "commercial_approval_run_id=<commercial-approval-run-id>" "direct manual collection markdown"
+Assert-Contains $directManualMarkdown "manual-operations-handoff-package.yml" "direct manual collection markdown"
+Assert-Contains $directManualMarkdown "operations_handoff_package_run_id=<operations-handoff-package-run-id>" "direct manual collection markdown"
 
 & powershell -NoProfile -ExecutionPolicy Bypass -File $scriptPath `
     -InvocationReportPath $fixturePath `

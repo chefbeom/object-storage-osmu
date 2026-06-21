@@ -200,19 +200,19 @@ if ($workflows.Contains("security-evidence-finalizer-ci.yml")) {
 if ($hasStorageBackendTelemetryEvidence -or $workflows.Contains("manual-storage-backend-telemetry-evidence.yml")) {
     Add-Artifact $artifacts "storage-backend-telemetry" "manual-storage-backend-telemetry-evidence.yml" $storageBackendTelemetryRun "storage_backend_telemetry_run_id" "storage-backend-telemetry-evidence-$storageBackendTelemetryRun" "storage_backend_telemetry_artifact_name" ".osmu-run/operations-readiness-artifacts/storage-backend-telemetry" $true "Imports latest-storage-backend-telemetry.json from target MinIO admin info telemetry evidence."
 }
-if ($hasSecretRotationEvidence) {
+if ($hasSecretRotationEvidence -or $workflows.Contains("manual-secret-rotation-evidence.yml")) {
     Add-Artifact $artifacts "secret-rotation" "manual-secret-rotation-evidence.yml" $secretRotationRun "secret_rotation_run_id" "secret-rotation-evidence-$secretRotationRun" "secret_rotation_artifact_name" ".osmu-run/operations-readiness-artifacts/secret-rotation" $true "Imports latest-secret-rotation-evidence.json from target secret/certificate rotation evidence."
 }
-if ($hasCommercialIntegrationEvidence) {
+if ($hasCommercialIntegrationEvidence -or $workflows.Contains("manual-commercial-integration-evidence.yml")) {
     Add-Artifact $artifacts "commercial-integration" "manual-commercial-integration-evidence.yml" $commercialIntegrationRun "commercial_integration_run_id" "commercial-integration-evidence-$commercialIntegrationRun" "commercial_integration_artifact_name" ".osmu-run/operations-readiness-artifacts/commercial-integration" $true "Imports latest-commercial-integration-evidence.json from target notification/payment handoff and payment-provider adapter readiness evidence."
 }
-if ($hasCommercialApprovalEvidence) {
+if ($hasCommercialApprovalEvidence -or $workflows.Contains("manual-commercial-approval-evidence.yml")) {
     Add-Artifact $artifacts "commercial-approval" "manual-commercial-approval-evidence.yml" $commercialApprovalRun "commercial_approval_run_id" "commercial-approval-evidence-$commercialApprovalRun" "commercial_approval_artifact_name" ".osmu-run/operations-readiness-artifacts/commercial-approval" $true "Imports latest-commercial-approval-evidence.json from final pricing, terms, support SLA, license, legal, pilot contract, and billing pricing proposal commercial approval evidence."
 }
 if ($hasEnterpriseAuthSmoke -or $workflows.Contains("enterprise-auth-smoke-ci.yml")) {
     Add-Artifact $artifacts "enterprise-auth" "enterprise-auth-smoke-ci.yml" $enterpriseAuthRun "enterprise_auth_run_id" "enterprise-auth-smoke-$enterpriseAuthRun" "enterprise_auth_artifact_name" ".osmu-run/operations-readiness-artifacts/enterprise-auth" $true "Imports latest-enterprise-auth-smoke.json from target IdP/directory smoke evidence or contractual scope-out evidence."
 }
-if ($hasOperationsHandoffPackage) {
+if ($hasOperationsHandoffPackage -or $workflows.Contains("manual-operations-handoff-package.yml")) {
     Add-Artifact $artifacts "operations-handoff-package" "manual-operations-handoff-package.yml" $operationsHandoffPackageRun "operations_handoff_package_run_id" "operations-handoff-package-$operationsHandoffPackageRun" "operations_handoff_package_artifact_name" ".osmu-run/operations-readiness-artifacts/operations-handoff-package" $true "Imports latest-operations-handoff-package.json from pilot or production handoff package evidence."
 }
 if ($hasDataFlowStoragePlan -or $workflows.Contains("manual-data-flow-storage-plan-evidence.yml")) {
