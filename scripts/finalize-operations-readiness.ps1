@@ -20,6 +20,7 @@ param(
     [string] $SecurityFinalizeSummaryPath = ".\.osmu-run\latest-security-evidence-finalize.md",
     [string] $OperationsReadinessJsonPath = ".\.osmu-run\latest-operations-readiness.json",
     [string] $OperationsReadinessMarkdownPath = ".\.osmu-run\latest-operations-readiness.md",
+    [string] $DataFlowStoragePlanPath = ".\.osmu-run\latest-data-flow-storage-plan.json",
     [string] $ReportPath = ".\.osmu-run\latest-operations-readiness-finalize.json",
     [string] $SummaryPath = ".\.osmu-run\latest-operations-readiness-finalize.md",
     [switch] $RunStorageExpansionFinalizer,
@@ -316,7 +317,8 @@ function New-IamRbacFinalizerArguments([bool] $ForPlan) {
 function New-OperationsReadinessArguments() {
     $arguments = @(
         "-JsonOutputPath", $OperationsReadinessJsonPath,
-        "-MarkdownOutputPath", $OperationsReadinessMarkdownPath
+        "-MarkdownOutputPath", $OperationsReadinessMarkdownPath,
+        "-DataFlowStoragePlanPath", $DataFlowStoragePlanPath
     )
     if ($FailIfNotReady) {
         $arguments += "-FailIfNotReady"
@@ -400,6 +402,7 @@ function Write-FinalReport([string] $ResultValue, [string] $Status, [object[]] $
             iamRbacFinalizeSummary = Resolve-ProjectPath $IamRbacFinalizeSummaryPath
             operationsReadinessJson = Resolve-ProjectPath $OperationsReadinessJsonPath
             operationsReadinessMarkdown = Resolve-ProjectPath $OperationsReadinessMarkdownPath
+            dataFlowStoragePlan = Resolve-ProjectPath $DataFlowStoragePlanPath
             report = $resolvedReportPath
             summary = $resolvedSummaryPath
         }
