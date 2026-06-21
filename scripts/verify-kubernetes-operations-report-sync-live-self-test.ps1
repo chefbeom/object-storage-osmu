@@ -48,6 +48,7 @@ New-Item -ItemType Directory -Force -Path $resolvedOutputDirectory | Out-Null
 
 $scriptPath = Resolve-ProjectPath ".\scripts\verify-kubernetes-operations-report-sync-live.ps1"
 $syncEvidencePath = Join-Path $resolvedOutputDirectory "latest-kubernetes-operations-report-sync.json"
+$dataFlowStoragePlanPath = Join-Path $resolvedOutputDirectory "latest-data-flow-storage-plan.json"
 $dashboardFixturePath = Join-Path $resolvedOutputDirectory "dashboard-readiness.json"
 $evidencePath = Join-Path $resolvedOutputDirectory "live-evidence.json"
 $planEvidencePath = Join-Path $resolvedOutputDirectory "plan-evidence.json"
@@ -76,8 +77,53 @@ Write-JsonFixture $syncEvidencePath ([ordered]@{
     )
 })
 
+Write-JsonFixture $dataFlowStoragePlanPath ([ordered]@{
+    formatVersion = "osmu.data-flow-storage-plan.v1"
+    result = "plan-ready-execute-required"
+    recordedAt = "2026-06-16T00:05:00+09:00"
+    environmentName = "sync-live-self-test"
+    targetCluster = "customer-cluster-a"
+    operator = "ops-admin"
+    evidenceRef = "data-flow-sizing-run-20260621"
+    candidateStore = "MARIADB_PARTITION"
+    expectedPeakEventsPerDay = 250000
+    expectedQueryWindowDays = 180
+    eventRetentionDays = 90
+    dailyRollupRetentionDays = 730
+    monthlyRollupRetentionMonths = 36
+    checkCount = 2
+    passedCount = 1
+    pendingCount = 1
+    checks = @(
+        [ordered]@{
+            id = "aggregate_no_object_keys"
+            title = "Aggregate stores omit object keys"
+            status = "passed"
+            detail = "Fixture passed check."
+            nextAction = ""
+        },
+        [ordered]@{
+            id = "explain_or_store_evidence"
+            title = "Query plan or target-store evidence exists"
+            status = "pending"
+            detail = "Fixture pending check."
+            nextAction = "Attach target evidence."
+        }
+    )
+    scopePolicy = "OSMU operations analytics only. This plan is not AWS billing parity."
+})
+
 Write-JsonFixture $dashboardFixturePath ([ordered]@{
     data = [ordered]@{
+        items = @(
+            [ordered]@{
+                code = "DATA_FLOW_STORAGE_PLAN"
+                category = "OPERATIONS"
+                severity = "WARN"
+                message = "Data-flow storage plan still needs target evidence."
+                evidencePath = ".osmu-run/latest-data-flow-storage-plan.json"
+            }
+        )
         operationsReadinessConvergence = [ordered]@{
             result = "ready"
             kubernetesReportSyncReady = $true
@@ -96,12 +142,47 @@ Write-JsonFixture $dashboardFixturePath ([ordered]@{
             checkCount = 3
             checks = @()
         }
+        dataFlowStoragePlan = [ordered]@{
+            result = "plan-ready-execute-required"
+            recordedAt = "2026-06-16T00:05:00+09:00"
+            environmentName = "sync-live-self-test"
+            targetCluster = "customer-cluster-a"
+            operatorName = "ops-admin"
+            evidenceRef = "data-flow-sizing-run-20260621"
+            candidateStore = "MARIADB_PARTITION"
+            expectedPeakEventsPerDay = 250000
+            expectedQueryWindowDays = 180
+            eventRetentionDays = 90
+            dailyRollupRetentionDays = 730
+            monthlyRollupRetentionMonths = 36
+            checkCount = 2
+            passedCount = 1
+            pendingCount = 1
+            checks = @(
+                [ordered]@{
+                    id = "aggregate_no_object_keys"
+                    title = "Aggregate stores omit object keys"
+                    status = "passed"
+                    detail = "Fixture passed check."
+                    nextAction = ""
+                },
+                [ordered]@{
+                    id = "explain_or_store_evidence"
+                    title = "Query plan or target-store evidence exists"
+                    status = "pending"
+                    detail = "Fixture pending check."
+                    nextAction = "Attach target evidence."
+                }
+            )
+            scopePolicy = "OSMU operations analytics only. This plan is not AWS billing parity."
+        }
     }
 })
 
 & powershell -NoProfile -ExecutionPolicy Bypass -File $scriptPath `
     -SkipSync `
     -SyncEvidencePath $syncEvidencePath `
+    -DataFlowStoragePlanPath $dataFlowStoragePlanPath `
     -DashboardReadinessFixturePath $dashboardFixturePath `
     -DashboardRetryCount 3 `
     -DashboardRetryDelaySeconds 0 `
@@ -121,11 +202,21 @@ Assert-Equal $evidence.dashboardAttemptCount 1 "live evidence dashboard attempt 
 Assert-Equal $evidence.dashboardMatchedExpected $true "live evidence dashboard matched expected"
 Assert-Equal $evidence.dashboardSyncReady $true "live evidence dashboard sync ready"
 Assert-Equal $evidence.dashboardSyncResult "applied" "live evidence dashboard sync result"
+Assert-Equal $evidence.dataFlowStoragePlanExpected $true "live evidence data-flow storage plan expected"
+Assert-Equal $evidence.dataFlowStoragePlanExpectedResult "plan-ready-execute-required" "live evidence expected data-flow storage plan result"
+Assert-Equal $evidence.dataFlowStoragePlanExpectedCandidateStore "MARIADB_PARTITION" "live evidence expected data-flow storage plan candidate store"
+Assert-Equal $evidence.dataFlowStoragePlanExpectedPendingCount 1 "live evidence expected data-flow storage plan pending count"
+Assert-Equal $evidence.dashboardDataFlowStoragePlanChecked $true "live evidence dashboard data-flow storage plan checked"
+Assert-Equal $evidence.dashboardDataFlowStoragePlanResult "plan-ready-execute-required" "live evidence dashboard data-flow storage plan result"
+Assert-Equal $evidence.dashboardDataFlowStoragePlanCandidateStore "MARIADB_PARTITION" "live evidence dashboard data-flow storage plan candidate store"
+Assert-Equal $evidence.dashboardDataFlowStoragePlanPendingCount 1 "live evidence dashboard data-flow storage plan pending count"
+Assert-Equal $evidence.dashboardDataFlowStoragePlanItemPresent $true "live evidence dashboard data-flow storage plan item"
 Assert-Equal $evidence.failedCount 0 "live evidence failed count"
 Assert-True ($evidence.safetyPolicy.Contains("does not store admin passwords")) "live evidence safety policy"
 
 & powershell -NoProfile -ExecutionPolicy Bypass -File $scriptPath `
     -PlanOnly `
+    -DataFlowStoragePlanPath $dataFlowStoragePlanPath `
     -DashboardReadinessFixturePath $dashboardFixturePath `
     -DashboardRetryCount 2 `
     -DashboardRetryDelaySeconds 0 `
@@ -137,6 +228,9 @@ $planEvidence = Get-Content -Raw -LiteralPath $planEvidencePath | ConvertFrom-Js
 Assert-Equal $planEvidence.result "planned" "plan evidence result"
 Assert-Equal $planEvidence.failedCount 0 "plan evidence failed count"
 Assert-Equal $planEvidence.dashboardRetryCount 2 "plan evidence dashboard retry count"
+Assert-Equal $planEvidence.dataFlowStoragePlanExpected $true "plan evidence data-flow storage plan expected"
+Assert-Equal $planEvidence.dataFlowStoragePlanExpectedResult "plan-ready-execute-required" "plan evidence expected data-flow storage plan result"
+Assert-Equal $planEvidence.dashboardDataFlowStoragePlanChecked $false "plan evidence dashboard data-flow storage plan checked"
 
 Write-JsonFixture $failedDashboardFixturePath ([ordered]@{
     data = [ordered]@{
@@ -158,6 +252,7 @@ Write-JsonFixture $failedDashboardFixturePath ([ordered]@{
 $failedOutputLines = & powershell -NoProfile -ExecutionPolicy Bypass -File $scriptPath `
     -SkipSync `
     -SyncEvidencePath $syncEvidencePath `
+    -DataFlowStoragePlanPath $dataFlowStoragePlanPath `
     -DashboardReadinessFixturePath $failedDashboardFixturePath `
     -DashboardRetryCount 2 `
     -DashboardRetryDelaySeconds 0 `

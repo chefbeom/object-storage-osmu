@@ -4,6 +4,7 @@ param(
     [string] $ConfigMapName = "osmu-operations-reports",
     [string] $ReportPath = ".\.osmu-run\latest-operations-readiness-convergence.json",
     [string] $SyncEvidencePath = ".\.osmu-run\latest-kubernetes-operations-report-sync.json",
+    [string] $DataFlowStoragePlanPath = ".\.osmu-run\latest-data-flow-storage-plan.json",
     [string] $EvidencePath = ".\.osmu-run\latest-kubernetes-operations-report-sync-live.json",
     [string] $ApiBase = "",
     [string] $AdminLoginId = "admin",
@@ -17,6 +18,7 @@ param(
     [switch] $RunSyncApply,
     [switch] $SkipSync,
     [switch] $SkipDashboardCheck,
+    [switch] $SkipDataFlowStoragePlanDashboardCheck,
     [switch] $PlanOnly
 )
 
@@ -140,7 +142,11 @@ function Test-DashboardDataMatchesExpected(
     [object] $Data,
     [string] $ExpectedResult,
     [string] $ExpectedConfigMapName,
-    [string] $ExpectedConfigMapKey
+    [string] $ExpectedConfigMapKey,
+    [bool] $ShouldCheckDataFlowStoragePlan,
+    [string] $ExpectedDataFlowStoragePlanResult,
+    [string] $ExpectedDataFlowStoragePlanCandidateStore,
+    [int] $ExpectedDataFlowStoragePlanPendingCount
 ) {
     $details = @()
     if ($null -eq $Data) {
@@ -153,6 +159,7 @@ function Test-DashboardDataMatchesExpected(
 
     $convergence = $Data.operationsReadinessConvergence
     $reportSync = $Data.kubernetesOperationsReportSync
+    $dataFlowStoragePlan = $Data.dataFlowStoragePlan
     if ($null -eq $convergence) {
         $details += "operationsReadinessConvergence missing"
     }
@@ -192,16 +199,43 @@ function Test-DashboardDataMatchesExpected(
         }
     }
 
+    if ($ShouldCheckDataFlowStoragePlan) {
+        if ($null -eq $dataFlowStoragePlan) {
+            $details += "dataFlowStoragePlan missing"
+        }
+        else {
+            $dataFlowStoragePlanResult = Get-ObjectText $dataFlowStoragePlan.result
+            if ($dataFlowStoragePlanResult -ne $ExpectedDataFlowStoragePlanResult) {
+                $details += "data-flow storage plan result=$dataFlowStoragePlanResult expected=$ExpectedDataFlowStoragePlanResult"
+            }
+            $dataFlowStoragePlanCandidateStore = Get-ObjectText $dataFlowStoragePlan.candidateStore
+            if ($ExpectedDataFlowStoragePlanCandidateStore -and $dataFlowStoragePlanCandidateStore -ne $ExpectedDataFlowStoragePlanCandidateStore) {
+                $details += "data-flow storage plan candidateStore=$dataFlowStoragePlanCandidateStore expected=$ExpectedDataFlowStoragePlanCandidateStore"
+            }
+            $dataFlowStoragePlanPendingCount = Get-ObjectInt $dataFlowStoragePlan.pendingCount
+            if ($dataFlowStoragePlanPendingCount -ne $ExpectedDataFlowStoragePlanPendingCount) {
+                $details += "data-flow storage plan pendingCount=$dataFlowStoragePlanPendingCount expected=$ExpectedDataFlowStoragePlanPendingCount"
+            }
+        }
+
+        if ($ExpectedDataFlowStoragePlanResult -and $ExpectedDataFlowStoragePlanResult -ne "passed") {
+            $hasDataFlowStoragePlanItem = @($Data.items | Where-Object { (Get-ObjectText $_.code) -eq "DATA_FLOW_STORAGE_PLAN" }).Count -gt 0
+            if (-not $hasDataFlowStoragePlanItem) {
+                $details += "DATA_FLOW_STORAGE_PLAN readiness item missing"
+            }
+        }
+    }
+
     if (@($details).Count -eq 0) {
         return [pscustomobject]@{
             matched = $true
-            summary = "Dashboard readiness reflects expected Kubernetes report sync result."
+            summary = "Dashboard readiness reflects expected Kubernetes report sync and data-flow storage plan state."
             details = @()
         }
     }
     return [pscustomobject]@{
         matched = $false
-        summary = "Dashboard readiness does not yet reflect expected Kubernetes report sync result."
+        summary = "Dashboard readiness does not yet reflect expected Kubernetes report sync and data-flow storage plan state."
         details = $details
     }
 }
@@ -221,9 +255,11 @@ if ($PlanOnly -and ($RunSyncServerDryRun -or $RunSyncApply)) {
 
 $resolvedReportPath = Resolve-ProjectPath $ReportPath
 $resolvedSyncEvidencePath = Resolve-ProjectPath $SyncEvidencePath
+$resolvedDataFlowStoragePlanPath = Resolve-ProjectPath $DataFlowStoragePlanPath
 $resolvedEvidencePath = Resolve-ProjectPath $EvidencePath
 $resolvedDashboardFixturePath = if ($DashboardReadinessFixturePath) { Resolve-ProjectPath $DashboardReadinessFixturePath } else { "" }
 $dashboardCheckRequested = [bool]((-not $SkipDashboardCheck) -and ($ApiBase -or $DashboardReadinessFixturePath))
+$shouldCheckDataFlowStoragePlanDashboard = [bool]((-not $SkipDataFlowStoragePlanDashboardCheck) -and (Test-Path -LiteralPath $resolvedDataFlowStoragePlanPath))
 
 if ($PlanOnly) {
     Add-Check "plan-only" $true "Plan-only mode does not call kubectl or the dashboard API."
@@ -260,6 +296,34 @@ if (-not $PlanOnly) {
     }
 }
 
+$dataFlowStoragePlanEvidence = $null
+$expectedDataFlowStoragePlanResult = ""
+$expectedDataFlowStoragePlanCandidateStore = ""
+$expectedDataFlowStoragePlanPendingCount = 0
+if ($SkipDataFlowStoragePlanDashboardCheck) {
+    Add-Check "data-flow-storage-plan-dashboard-skipped" $true "Dashboard data-flow storage plan check skipped by parameter."
+}
+elseif ($shouldCheckDataFlowStoragePlanDashboard) {
+    try {
+        $dataFlowStoragePlanEvidence = Get-Content -Raw -Encoding UTF8 -LiteralPath $resolvedDataFlowStoragePlanPath | ConvertFrom-Json
+        $expectedDataFlowStoragePlanResult = Get-ObjectText $dataFlowStoragePlanEvidence.result
+        $expectedDataFlowStoragePlanCandidateStore = Get-ObjectText $dataFlowStoragePlanEvidence.candidateStore
+        $expectedDataFlowStoragePlanPendingCount = Get-ObjectInt $dataFlowStoragePlanEvidence.pendingCount
+        Add-Check "data-flow-storage-plan-valid-json" $true "Local data-flow storage plan evidence is valid JSON."
+        Add-Check "data-flow-storage-plan-format-version" ((Get-ObjectText $dataFlowStoragePlanEvidence.formatVersion) -eq "osmu.data-flow-storage-plan.v1") "Data-flow storage plan formatVersion=$(Get-ObjectText $dataFlowStoragePlanEvidence.formatVersion)."
+        if ($PlanOnly) {
+            Add-Check "data-flow-storage-plan-dashboard-plan" $true "Dashboard data-flow storage plan check planned from local evidence."
+        }
+    }
+    catch {
+        Add-Check "data-flow-storage-plan-valid-json" $false "Data-flow storage plan JSON is invalid: $($_.Exception.Message)"
+    }
+}
+else {
+    Add-Check "data-flow-storage-plan-dashboard-optional" $true "Local data-flow storage plan evidence is absent; dashboard data-flow plan check is optional."
+}
+$dataFlowStoragePlanDashboardExpected = [bool]($shouldCheckDataFlowStoragePlanDashboard -and $null -ne $dataFlowStoragePlanEvidence)
+
 $expectedSyncResult = if ($RunSyncServerDryRun) { "server-dry-run-passed" } else { "applied" }
 $syncResult = ""
 $syncFailedCount = 0
@@ -292,7 +356,7 @@ elseif ($dashboardCheckRequested) {
             $dashboardData = Get-ResponseData (Read-JsonFile $resolvedDashboardFixturePath "Dashboard readiness fixture")
             $dashboardSource = $resolvedDashboardFixturePath
             $dashboardAttemptCount = 1
-            $dashboardMatch = Test-DashboardDataMatchesExpected $dashboardData $expectedSyncResult $syncConfigMapName $syncConfigMapKey
+            $dashboardMatch = Test-DashboardDataMatchesExpected $dashboardData $expectedSyncResult $syncConfigMapName $syncConfigMapKey $dataFlowStoragePlanDashboardExpected $expectedDataFlowStoragePlanResult $expectedDataFlowStoragePlanCandidateStore $expectedDataFlowStoragePlanPendingCount
             $dashboardMatchedExpected = [bool] $dashboardMatch.matched
             Add-Check "dashboard-fixture" $true "Loaded dashboard readiness fixture."
         }
@@ -324,7 +388,7 @@ elseif ($dashboardCheckRequested) {
                         try {
                             $dashboard = Invoke-Json "GET" "$ApiBase/admin/dashboard/readiness" $null $token
                             $dashboardData = Get-ResponseData $dashboard
-                            $dashboardMatch = Test-DashboardDataMatchesExpected $dashboardData $expectedSyncResult $syncConfigMapName $syncConfigMapKey
+                            $dashboardMatch = Test-DashboardDataMatchesExpected $dashboardData $expectedSyncResult $syncConfigMapName $syncConfigMapKey $dataFlowStoragePlanDashboardExpected $expectedDataFlowStoragePlanResult $expectedDataFlowStoragePlanCandidateStore $expectedDataFlowStoragePlanPendingCount
                             $dashboardMatchedExpected = [bool] $dashboardMatch.matched
                             $attemptSummaries += "attempt $attempt/$DashboardRetryCount`: $($dashboardMatch.summary) $(@($dashboardMatch.details) -join '; ')".Trim()
                             if ($dashboardMatchedExpected) {
@@ -359,6 +423,10 @@ $dashboardSyncResult = ""
 $dashboardSyncFailedCount = 0
 $dashboardSyncConfigMapName = ""
 $dashboardSyncConfigMapKey = ""
+$dashboardDataFlowStoragePlanResult = ""
+$dashboardDataFlowStoragePlanCandidateStore = ""
+$dashboardDataFlowStoragePlanPendingCount = 0
+$dashboardDataFlowStoragePlanItemPresent = $false
 if ($null -ne $dashboardData) {
     $convergence = $dashboardData.operationsReadinessConvergence
     $reportSync = $dashboardData.kubernetesOperationsReportSync
@@ -390,6 +458,28 @@ if ($null -ne $dashboardData) {
             Add-Check "dashboard-sync-configmap-key" ($dashboardSyncConfigMapKey -eq $syncConfigMapKey) "Dashboard sync configMapKey=$dashboardSyncConfigMapKey."
         }
     }
+
+    if ($dataFlowStoragePlanDashboardExpected) {
+        $dashboardDataFlowStoragePlan = $dashboardData.dataFlowStoragePlan
+        $dashboardDataFlowStoragePlanItemPresent = @($dashboardData.items | Where-Object { (Get-ObjectText $_.code) -eq "DATA_FLOW_STORAGE_PLAN" }).Count -gt 0
+        if ($null -eq $dashboardDataFlowStoragePlan) {
+            Add-Check "dashboard-data-flow-storage-plan-present" $false "dataFlowStoragePlan is missing from dashboard readiness response."
+        }
+        else {
+            $dashboardDataFlowStoragePlanResult = Get-ObjectText $dashboardDataFlowStoragePlan.result
+            $dashboardDataFlowStoragePlanCandidateStore = Get-ObjectText $dashboardDataFlowStoragePlan.candidateStore
+            $dashboardDataFlowStoragePlanPendingCount = Get-ObjectInt $dashboardDataFlowStoragePlan.pendingCount
+            Add-Check "dashboard-data-flow-storage-plan-present" $true "dataFlowStoragePlan is present."
+            Add-Check "dashboard-data-flow-storage-plan-result" ($dashboardDataFlowStoragePlanResult -eq $expectedDataFlowStoragePlanResult) "Dashboard data-flow storage plan result=$dashboardDataFlowStoragePlanResult, expected=$expectedDataFlowStoragePlanResult."
+            if ($expectedDataFlowStoragePlanCandidateStore) {
+                Add-Check "dashboard-data-flow-storage-plan-candidate-store" ($dashboardDataFlowStoragePlanCandidateStore -eq $expectedDataFlowStoragePlanCandidateStore) "Dashboard data-flow storage plan candidateStore=$dashboardDataFlowStoragePlanCandidateStore, expected=$expectedDataFlowStoragePlanCandidateStore."
+            }
+            Add-Check "dashboard-data-flow-storage-plan-pending-count" ($dashboardDataFlowStoragePlanPendingCount -eq $expectedDataFlowStoragePlanPendingCount) "Dashboard data-flow storage plan pendingCount=$dashboardDataFlowStoragePlanPendingCount, expected=$expectedDataFlowStoragePlanPendingCount."
+            if ($expectedDataFlowStoragePlanResult -ne "passed") {
+                Add-Check "dashboard-data-flow-storage-plan-item" $dashboardDataFlowStoragePlanItemPresent "Dashboard DATA_FLOW_STORAGE_PLAN readiness item present=$dashboardDataFlowStoragePlanItemPresent."
+            }
+        }
+    }
 }
 
 $result = if ($failureCount -eq 0) {
@@ -407,6 +497,11 @@ $report = [ordered]@{
     configMapName = $ConfigMapName
     sourceReportPath = $resolvedReportPath
     syncEvidencePath = $resolvedSyncEvidencePath
+    dataFlowStoragePlanPath = $resolvedDataFlowStoragePlanPath
+    dataFlowStoragePlanExpected = [bool] $dataFlowStoragePlanDashboardExpected
+    dataFlowStoragePlanExpectedResult = $expectedDataFlowStoragePlanResult
+    dataFlowStoragePlanExpectedCandidateStore = $expectedDataFlowStoragePlanCandidateStore
+    dataFlowStoragePlanExpectedPendingCount = $expectedDataFlowStoragePlanPendingCount
     syncResult = $syncResult
     syncFailedCount = $syncFailedCount
     syncConfigMapName = $syncConfigMapName
@@ -425,6 +520,11 @@ $report = [ordered]@{
     dashboardSyncFailedCount = $dashboardSyncFailedCount
     dashboardSyncConfigMapName = $dashboardSyncConfigMapName
     dashboardSyncConfigMapKey = $dashboardSyncConfigMapKey
+    dashboardDataFlowStoragePlanChecked = [bool]($dataFlowStoragePlanDashboardExpected -and $null -ne $dashboardData)
+    dashboardDataFlowStoragePlanResult = $dashboardDataFlowStoragePlanResult
+    dashboardDataFlowStoragePlanCandidateStore = $dashboardDataFlowStoragePlanCandidateStore
+    dashboardDataFlowStoragePlanPendingCount = $dashboardDataFlowStoragePlanPendingCount
+    dashboardDataFlowStoragePlanItemPresent = [bool] $dashboardDataFlowStoragePlanItemPresent
     checkCount = @($checks).Count
     failedCount = $failureCount
     checks = $checks
