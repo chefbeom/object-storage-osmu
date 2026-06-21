@@ -562,6 +562,27 @@
             offline {{ storageBackendTelemetryEvidence.offlineServerCount || 0 }}
           </small>
           <small
+            v-if="storageExpansionFinalize.result"
+            data-testid="readiness-storage-expansion-finalize-item-summary"
+          >
+            Storage expansion: {{ storageExpansionFinalize.result }} /
+            failures {{ storageExpansionFinalize.failedCount || 0 }}
+          </small>
+          <small
+            v-if="kubernetesHaDrReadiness.result"
+            data-testid="readiness-kubernetes-ha-dr-item-summary"
+          >
+            HA/DR: {{ kubernetesHaDrReadiness.result }} /
+            failures {{ kubernetesHaDrReadiness.failureCount || 0 }}
+          </small>
+          <small
+            v-if="kubernetesDrFinalize.result"
+            data-testid="readiness-kubernetes-dr-finalize-item-summary"
+          >
+            Kubernetes DR: {{ kubernetesDrFinalize.result }} /
+            gaps {{ kubernetesDrFinalize.gaps?.length || 0 }}
+          </small>
+          <small
             v-if="iamRbacEvidence.result"
             data-testid="readiness-iam-rbac-evidence-item-summary"
           >
@@ -630,6 +651,132 @@
           {{ storageBackendTelemetryEvidence.scopePolicy }}
         </small>
       </div>
+      <div
+        v-if="storageExpansionFinalize.result"
+        class="readiness-invocation-summary"
+        data-testid="readiness-storage-expansion-finalize-summary"
+      >
+        <strong>Storage expansion finalizer: {{ storageExpansionFinalize.result }}</strong>
+        <small>
+          {{ storageExpansionFinalize.namespace || 'unknown namespace' }} /
+          tenant {{ storageExpansionFinalize.tenantName || 'unknown tenant' }} /
+          failures {{ storageExpansionFinalize.failedCount || 0 }} /
+          backend dry-run {{ storageExpansionFinalize.runBackendDryRunRunner ? 'selected' : 'missing' }} /
+          apply {{ storageExpansionFinalize.runBackendApply ? 'selected' : 'missing' }} /
+          telemetry {{ storageExpansionFinalize.runStorageBackendTelemetry ? 'selected' : 'missing' }}
+        </small>
+        <small v-if="storageExpansionFinalizeEvidenceSummary" data-testid="readiness-storage-expansion-finalize-evidence">
+          Evidence: {{ storageExpansionFinalizeEvidenceSummary }}
+        </small>
+        <small v-if="storageExpansionFinalize.secretPolicy">
+          {{ storageExpansionFinalize.secretPolicy }}
+        </small>
+      </div>
+      <ol
+        v-if="storageExpansionFinalizeSteps.length > 0"
+        class="readiness-evidence-plan-actions readiness-storage-expansion-finalize-steps"
+        data-testid="readiness-storage-expansion-finalize-steps"
+      >
+        <li
+          v-for="step in storageExpansionFinalizeSteps.slice(0, 4)"
+          :key="step.name"
+        >
+          <span>
+            <strong>{{ step.result || 'unknown' }} / {{ step.name }}</strong>
+            <small>{{ step.notes || 'exit code ' + (step.exitCode || 0) }}</small>
+          </span>
+        </li>
+      </ol>
+      <ol
+        v-if="storageExpansionFinalizeGaps.length > 0"
+        class="readiness-evidence-plan-actions readiness-storage-expansion-finalize-gaps"
+        data-testid="readiness-storage-expansion-finalize-gaps"
+      >
+        <li
+          v-for="gap in storageExpansionFinalizeGaps.slice(0, 3)"
+          :key="gap"
+        >
+          <span>
+            <strong>Gap</strong>
+            <small>{{ gap }}</small>
+          </span>
+        </li>
+      </ol>
+      <div
+        v-if="kubernetesHaDrReadiness.result"
+        class="readiness-invocation-summary"
+        data-testid="readiness-kubernetes-ha-dr-summary"
+      >
+        <strong>Kubernetes HA/DR readiness: {{ kubernetesHaDrReadiness.result }}</strong>
+        <small>
+          {{ kubernetesHaDrReadiness.namespace || 'unknown namespace' }} /
+          failures {{ kubernetesHaDrReadiness.failureCount || 0 }} /
+          checks {{ kubernetesHaDrChecks.length }}
+        </small>
+      </div>
+      <ol
+        v-if="kubernetesHaDrChecks.length > 0"
+        class="readiness-evidence-plan-actions readiness-kubernetes-ha-dr-checks"
+        data-testid="readiness-kubernetes-ha-dr-checks"
+      >
+        <li
+          v-for="check in kubernetesHaDrChecks.slice(0, 5)"
+          :key="check.name"
+        >
+          <span>
+            <strong>{{ check.passed ? 'PASS' : 'FAIL' }} / {{ check.name }}</strong>
+            <small>{{ check.summary || 'detail unavailable' }}</small>
+          </span>
+        </li>
+      </ol>
+      <div
+        v-if="kubernetesDrFinalize.result"
+        class="readiness-invocation-summary"
+        data-testid="readiness-kubernetes-dr-finalize-summary"
+      >
+        <strong>Kubernetes DR finalizer: {{ kubernetesDrFinalize.result }}</strong>
+        <small>
+          {{ kubernetesDrFinalize.sourceNamespace || 'unknown source' }} ->
+          {{ kubernetesDrFinalize.restoreNamespace || 'unknown restore' }} /
+          status {{ kubernetesDrFinalize.status || 'unknown' }} /
+          backup {{ kubernetesDrFinalize.backupTimestamp || 'unset' }} /
+          confirmed {{ kubernetesDrFinalize.confirmRestore ? 'yes' : 'no' }} /
+          failed steps {{ kubernetesDrFinalize.failedStepCount || 0 }}
+        </small>
+        <small v-if="kubernetesDrFinalize.secretPolicy">
+          {{ kubernetesDrFinalize.secretPolicy }}
+        </small>
+      </div>
+      <ol
+        v-if="kubernetesDrFinalizeSteps.length > 0"
+        class="readiness-evidence-plan-actions readiness-kubernetes-dr-finalize-steps"
+        data-testid="readiness-kubernetes-dr-finalize-steps"
+      >
+        <li
+          v-for="step in kubernetesDrFinalizeSteps.slice(0, 4)"
+          :key="step.name"
+        >
+          <span>
+            <strong>{{ step.result || 'unknown' }} / {{ step.name }}</strong>
+            <small>{{ step.notes || 'exit code ' + (step.exitCode || 0) }}</small>
+          </span>
+        </li>
+      </ol>
+      <ol
+        v-if="kubernetesDrFinalizeGaps.length > 0"
+        class="readiness-evidence-plan-actions readiness-kubernetes-dr-finalize-gaps"
+        data-testid="readiness-kubernetes-dr-finalize-gaps"
+      >
+        <li
+          v-for="gap in kubernetesDrFinalizeGaps.slice(0, 3)"
+          :key="gap"
+        >
+          <span>
+            <strong>Gap</strong>
+            <small>{{ gap }}</small>
+          </span>
+        </li>
+      </ol>
       <div
         v-if="iamRbacEvidence.result"
         class="readiness-invocation-summary"
@@ -2697,6 +2844,55 @@ const operationsHandoffPackageConvergenceSnapshot = computed(() => (
 const operationsHandoffPackageChecks = computed(() => {
   const checks = operationsHandoffPackage.value?.checks
   return Array.isArray(checks) ? checks : []
+})
+
+const storageExpansionFinalize = computed(() => (
+  props.dashboardReadiness.storageExpansionFinalize || {}
+))
+
+const storageExpansionFinalizeSteps = computed(() => {
+  const steps = storageExpansionFinalize.value?.steps
+  return Array.isArray(steps) ? steps : []
+})
+
+const storageExpansionFinalizeGaps = computed(() => {
+  const gaps = storageExpansionFinalize.value?.gaps
+  return Array.isArray(gaps) ? gaps : []
+})
+
+const storageExpansionFinalizeEvidenceSummary = computed(() => {
+  const evidence = storageExpansionFinalize.value?.evidence
+  if (!evidence || typeof evidence !== 'object') {
+    return ''
+  }
+  return Object.entries(evidence)
+    .filter(([, value]) => value)
+    .slice(0, 4)
+    .map(([key, value]) => `${key}=${value}`)
+    .join(' / ')
+})
+
+const kubernetesHaDrReadiness = computed(() => (
+  props.dashboardReadiness.kubernetesHaDrReadiness || {}
+))
+
+const kubernetesHaDrChecks = computed(() => {
+  const checks = kubernetesHaDrReadiness.value?.checks
+  return Array.isArray(checks) ? checks : []
+})
+
+const kubernetesDrFinalize = computed(() => (
+  props.dashboardReadiness.kubernetesDrFinalize || {}
+))
+
+const kubernetesDrFinalizeSteps = computed(() => {
+  const steps = kubernetesDrFinalize.value?.steps
+  return Array.isArray(steps) ? steps : []
+})
+
+const kubernetesDrFinalizeGaps = computed(() => {
+  const gaps = kubernetesDrFinalize.value?.gaps
+  return Array.isArray(gaps) ? gaps : []
 })
 
 const iamRbacEvidence = computed(() => (

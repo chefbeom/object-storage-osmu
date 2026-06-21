@@ -127,6 +127,9 @@ public class AdminController {
     private final String operationsArtifactCollectionPlanReportPath;
     private final String operationsEvidenceHandoffReportPath;
     private final String operationsHandoffPackageReportPath;
+    private final String storageExpansionFinalizeReportPath;
+    private final String kubernetesHaDrReadinessReportPath;
+    private final String kubernetesDrFinalizeReportPath;
     private final String iamRbacEvidenceReportPath;
     private final String securityEvidenceFinalizeReportPath;
     private final String imageSigningEvidenceReportPath;
@@ -185,6 +188,9 @@ public class AdminController {
             @Value("${osmu.operations.readiness.artifact-collection-plan-report-path:.osmu-run/latest-operations-artifact-collection-plan.json}") String operationsArtifactCollectionPlanReportPath,
             @Value("${osmu.operations.readiness.evidence-handoff-report-path:.osmu-run/latest-operations-evidence-handoff.json}") String operationsEvidenceHandoffReportPath,
             @Value("${osmu.operations.readiness.handoff-package-report-path:.osmu-run/latest-operations-handoff-package.json}") String operationsHandoffPackageReportPath,
+            @Value("${osmu.operations.readiness.storage-expansion-finalize-report-path:.osmu-run/latest-storage-expansion-finalize.json}") String storageExpansionFinalizeReportPath,
+            @Value("${osmu.operations.readiness.kubernetes-ha-dr-readiness-report-path:.osmu-run/latest-kubernetes-ha-dr-readiness.json}") String kubernetesHaDrReadinessReportPath,
+            @Value("${osmu.operations.readiness.kubernetes-dr-finalize-report-path:.osmu-run/latest-kubernetes-dr-finalize.json}") String kubernetesDrFinalizeReportPath,
             @Value("${osmu.operations.readiness.iam-rbac-evidence-report-path:.osmu-run/latest-iam-rbac-finalize.json}") String iamRbacEvidenceReportPath,
             @Value("${osmu.operations.readiness.security-evidence-finalize-report-path:.osmu-run/latest-security-evidence-finalize.json}") String securityEvidenceFinalizeReportPath,
             @Value("${osmu.operations.readiness.image-signing-evidence-report-path:.osmu-run/latest-image-signing-evidence.json}") String imageSigningEvidenceReportPath,
@@ -242,6 +248,9 @@ public class AdminController {
         this.operationsArtifactCollectionPlanReportPath = blankToNull(operationsArtifactCollectionPlanReportPath);
         this.operationsEvidenceHandoffReportPath = blankToNull(operationsEvidenceHandoffReportPath);
         this.operationsHandoffPackageReportPath = blankToNull(operationsHandoffPackageReportPath);
+        this.storageExpansionFinalizeReportPath = blankToNull(storageExpansionFinalizeReportPath);
+        this.kubernetesHaDrReadinessReportPath = blankToNull(kubernetesHaDrReadinessReportPath);
+        this.kubernetesDrFinalizeReportPath = blankToNull(kubernetesDrFinalizeReportPath);
         this.iamRbacEvidenceReportPath = blankToNull(iamRbacEvidenceReportPath);
         this.securityEvidenceFinalizeReportPath = blankToNull(securityEvidenceFinalizeReportPath);
         this.imageSigningEvidenceReportPath = blankToNull(imageSigningEvidenceReportPath);
@@ -914,6 +923,9 @@ public class AdminController {
         DashboardOperationsReadinessArtifactImportResponse operationsReadinessArtifactImport = operationsReadinessArtifactImportSnapshot();
         DashboardOperationsReadinessFinalizeResponse operationsReadinessFinalize = operationsReadinessFinalizeSnapshot();
         DashboardOperationsHandoffPackageResponse operationsHandoffPackage = operationsHandoffPackageSnapshot();
+        DashboardStorageExpansionFinalizeResponse storageExpansionFinalize = storageExpansionFinalizeSnapshot();
+        DashboardKubernetesHaDrReadinessResponse kubernetesHaDrReadiness = kubernetesHaDrReadinessSnapshot();
+        DashboardKubernetesDrFinalizeResponse kubernetesDrFinalize = kubernetesDrFinalizeSnapshot();
         DashboardIamRbacEvidenceResponse iamRbacEvidence = iamRbacEvidenceSnapshot();
         DashboardSecurityEvidenceResponse securityEvidence = securityEvidenceSnapshot();
         DashboardSecretRotationEvidenceResponse secretRotationEvidence = secretRotationEvidenceSnapshot();
@@ -947,6 +959,9 @@ public class AdminController {
                 operationsReadinessArtifactImport,
                 operationsReadinessFinalize,
                 operationsHandoffPackage,
+                storageExpansionFinalize,
+                kubernetesHaDrReadiness,
+                kubernetesDrFinalize,
                 iamRbacEvidence,
                 securityEvidence,
                 secretRotationEvidence,
@@ -1600,6 +1615,9 @@ public class AdminController {
 
         addOperationsEvidenceHandoffItem(items);
         addOperationsHandoffPackageItem(items);
+        addStorageExpansionFinalizeItem(items);
+        addKubernetesHaDrReadinessItem(items);
+        addKubernetesDrFinalizeItem(items);
         addIamRbacEvidenceItem(items);
         addSecurityEvidenceItem(items);
         addSecretRotationEvidenceItem(items);
@@ -2387,6 +2405,211 @@ public class AdminController {
                 jsonText(snapshot, "currentBottleneckTitle"),
                 jsonInt(snapshot, "recommendedCommandCount")
         );
+    }
+
+    private void addStorageExpansionFinalizeItem(java.util.ArrayList<DashboardReadinessItemResponse> items) {
+        DashboardStorageExpansionFinalizeResponse evidence = storageExpansionFinalizeSnapshot();
+        if (evidence.result().isBlank() || "passed".equalsIgnoreCase(evidence.result())) {
+            return;
+        }
+        addReadinessItem(
+                items,
+                "WARNING",
+                "OPERATIONS",
+                "STORAGE_EXPANSION_FINALIZE",
+                "Storage expansion finalizer is %s: failures=%d, gaps=%d, telemetry=%s.".formatted(
+                        evidence.result(),
+                        evidence.failedCount(),
+                        evidence.gaps().size(),
+                        evidence.runStorageBackendTelemetry() ? "selected" : "missing"
+                ),
+                "dashboard",
+                "dashboard-readiness-panel",
+                "Storage expansion",
+                storageExpansionFinalizeReportPath == null ? "" : storageExpansionFinalizeReportPath,
+                "powershell -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\finalize-storage-expansion.ps1",
+                ".github/workflows/storage-expansion-finalizer-ci.yml",
+                "",
+                evidence.secretPolicy().isBlank()
+                        ? "Run target storage expansion finalizer evidence before production/B2B readiness."
+                        : evidence.secretPolicy()
+        );
+    }
+
+    private DashboardStorageExpansionFinalizeResponse storageExpansionFinalizeSnapshot() {
+        JsonNode report = readOptionalJsonReport(storageExpansionFinalizeReportPath);
+        if (report == null) {
+            return DashboardStorageExpansionFinalizeResponse.empty();
+        }
+        JsonNode backend = report.path("backend");
+        JsonNode telemetry = report.path("storageBackendTelemetry");
+        return new DashboardStorageExpansionFinalizeResponse(
+                jsonText(report, "result"),
+                jsonText(report, "generatedAt"),
+                jsonText(report, "startedAt"),
+                jsonText(report, "completedAt"),
+                jsonText(report, "namespace"),
+                jsonText(report, "tenantName"),
+                jsonText(report, "serviceAccount"),
+                jsonBoolean(report, "impersonateRunner"),
+                jsonBoolean(backend, "runDryRunRunner"),
+                jsonBoolean(backend, "runApply"),
+                jsonBoolean(backend, "confirmApply"),
+                jsonBoolean(telemetry, "runEvidence"),
+                jsonInt(report, "failedCount"),
+                Map.copyOf(jsonTextMap(report.path("evidence"))),
+                jsonTextList(report, "gaps"),
+                operationsGateSteps(report.path("steps")),
+                jsonText(report, "secretPolicy")
+        );
+    }
+
+    private void addKubernetesHaDrReadinessItem(java.util.ArrayList<DashboardReadinessItemResponse> items) {
+        DashboardKubernetesHaDrReadinessResponse evidence = kubernetesHaDrReadinessSnapshot();
+        if (evidence.result().isBlank() || "passed".equalsIgnoreCase(evidence.result())) {
+            return;
+        }
+        addReadinessItem(
+                items,
+                "WARNING",
+                "OPERATIONS",
+                "KUBERNETES_HA_DR_READINESS",
+                "Kubernetes HA/DR readiness is %s: failures=%d, checks=%d.".formatted(
+                        evidence.result(),
+                        evidence.failureCount(),
+                        evidence.checks().size()
+                ),
+                "dashboard",
+                "dashboard-readiness-panel",
+                "Kubernetes HA/DR",
+                kubernetesHaDrReadinessReportPath == null ? "" : kubernetesHaDrReadinessReportPath,
+                "powershell -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\verify-kubernetes-ha-dr-readiness.ps1 -Namespace osmu -RestoreManifestPath .\\infra\\k8s\\examples\\restore-from-backup.example.yaml",
+                ".github/workflows/kubernetes-ha-dr-readiness-ci.yml",
+                "",
+                "Run target cluster HA/DR readiness evidence before production/B2B readiness."
+        );
+    }
+
+    private DashboardKubernetesHaDrReadinessResponse kubernetesHaDrReadinessSnapshot() {
+        JsonNode report = readOptionalJsonReport(kubernetesHaDrReadinessReportPath);
+        if (report == null) {
+            return DashboardKubernetesHaDrReadinessResponse.empty();
+        }
+        return new DashboardKubernetesHaDrReadinessResponse(
+                jsonText(report, "result"),
+                jsonText(report, "generatedAt"),
+                jsonText(report, "namespace"),
+                jsonText(report, "kubectlPath"),
+                jsonText(report, "restoreManifestPath"),
+                jsonInt(report, "failureCount"),
+                operationsGateChecks(report.path("checks"))
+        );
+    }
+
+    private void addKubernetesDrFinalizeItem(java.util.ArrayList<DashboardReadinessItemResponse> items) {
+        DashboardKubernetesDrFinalizeResponse evidence = kubernetesDrFinalizeSnapshot();
+        if (evidence.result().isBlank() || "ready".equalsIgnoreCase(evidence.result())) {
+            return;
+        }
+        addReadinessItem(
+                items,
+                "WARNING",
+                "OPERATIONS",
+                "KUBERNETES_DR_FINALIZE",
+                "Kubernetes DR finalizer is %s: status=%s, gaps=%d, failedSteps=%d.".formatted(
+                        evidence.result(),
+                        evidence.status().isBlank() ? "unknown" : evidence.status(),
+                        evidence.gaps().size(),
+                        evidence.failedStepCount()
+                ),
+                "dashboard",
+                "dashboard-readiness-panel",
+                "Kubernetes DR",
+                kubernetesDrFinalizeReportPath == null ? "" : kubernetesDrFinalizeReportPath,
+                "powershell -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\finalize-kubernetes-dr-drill.ps1 -BackupTimestamp <YYYYMMDDTHHMMSSZ> -ConfirmRestore",
+                ".github/workflows/kubernetes-dr-finalizer-ci.yml",
+                "",
+                evidence.secretPolicy().isBlank()
+                        ? "Run target Kubernetes DR finalizer evidence before production/B2B readiness."
+                        : evidence.secretPolicy()
+        );
+    }
+
+    private DashboardKubernetesDrFinalizeResponse kubernetesDrFinalizeSnapshot() {
+        JsonNode report = readOptionalJsonReport(kubernetesDrFinalizeReportPath);
+        if (report == null) {
+            return DashboardKubernetesDrFinalizeResponse.empty();
+        }
+        List<DashboardOperationsGateStepResponse> steps = operationsGateSteps(report.path("steps"));
+        return new DashboardKubernetesDrFinalizeResponse(
+                jsonText(report, "result"),
+                jsonText(report, "status"),
+                jsonText(report, "generatedAt"),
+                jsonText(report, "startedAt"),
+                jsonText(report, "completedAt"),
+                jsonText(report, "sourceNamespace"),
+                jsonText(report, "restoreNamespace"),
+                jsonText(report, "backupTimestamp"),
+                jsonBoolean(report, "serverDryRunOnly"),
+                jsonBoolean(report, "confirmRestore"),
+                jsonBoolean(report, "runBackupDrill"),
+                jsonBoolean(report, "runRestoreSmoke"),
+                jsonBoolean(report, "writeEvidenceRequest"),
+                jsonBoolean(report, "submitEvidence"),
+                jsonBoolean(report, "runS3ClientSmoke"),
+                (int) steps.stream().filter(step -> "failed".equalsIgnoreCase(step.result())).count(),
+                jsonTextList(report, "gaps"),
+                operationsGateCommands(report.path("commands")),
+                steps,
+                jsonText(report, "secretPolicy")
+        );
+    }
+
+    private List<DashboardOperationsGateCommandResponse> operationsGateCommands(JsonNode commandNodes) {
+        if (!commandNodes.isArray()) {
+            return List.of();
+        }
+        java.util.ArrayList<DashboardOperationsGateCommandResponse> commands = new java.util.ArrayList<>();
+        for (JsonNode command : commandNodes) {
+            commands.add(new DashboardOperationsGateCommandResponse(
+                    jsonText(command, "name"),
+                    jsonText(command, "command")
+            ));
+        }
+        return List.copyOf(commands);
+    }
+
+    private List<DashboardOperationsGateStepResponse> operationsGateSteps(JsonNode stepNodes) {
+        if (!stepNodes.isArray()) {
+            return List.of();
+        }
+        java.util.ArrayList<DashboardOperationsGateStepResponse> steps = new java.util.ArrayList<>();
+        for (JsonNode step : stepNodes) {
+            steps.add(new DashboardOperationsGateStepResponse(
+                    jsonText(step, "name"),
+                    jsonText(step, "result"),
+                    jsonInt(step, "exitCode"),
+                    jsonText(step, "notes")
+            ));
+        }
+        return List.copyOf(steps);
+    }
+
+    private List<DashboardOperationsGateCheckResponse> operationsGateChecks(JsonNode checkNodes) {
+        if (!checkNodes.isArray()) {
+            return List.of();
+        }
+        java.util.ArrayList<DashboardOperationsGateCheckResponse> checks = new java.util.ArrayList<>();
+        for (JsonNode check : checkNodes) {
+            checks.add(new DashboardOperationsGateCheckResponse(
+                    jsonText(check, "name"),
+                    jsonText(check, "category"),
+                    jsonBoolean(check, "passed"),
+                    jsonText(check, "summary"),
+                    jsonInt(check, "exitCode")
+            ));
+        }
+        return List.copyOf(checks);
     }
 
     private void addIamRbacEvidenceItem(java.util.ArrayList<DashboardReadinessItemResponse> items) {

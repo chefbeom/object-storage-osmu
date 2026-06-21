@@ -4967,7 +4967,7 @@ Notes:
 
 Admin dashboard readiness snapshot. `ADMIN` required.
 
-The response combines runtime, backup, quota, sharing, and operations-readiness gates. When the configured files exist, the backend reads `.osmu-run/latest-operations-readiness.json`, `.osmu-run/latest-operations-evidence-plan.json`, `.osmu-run/latest-operations-evidence-plan-invocation.json`, `.osmu-run/latest-operations-invocation-unblock-plan.json`, `.osmu-run/latest-operations-dispatch-preflight.json`, `.osmu-run/latest-operations-workflow-run-ids.json`, `.osmu-run/latest-operations-artifact-collection-plan.json`, `.osmu-run/latest-operations-readiness-artifact-import.json`, `.osmu-run/latest-operations-readiness-finalize.json`, `.osmu-run/latest-operations-evidence-handoff.json`, `.osmu-run/latest-operations-handoff-package.json`, `.osmu-run/latest-iam-rbac-finalize.json`, `.osmu-run/latest-security-evidence-finalize.json`, `.osmu-run/latest-image-signing-evidence.json`, `.osmu-run/latest-container-security-evidence.json`, `.osmu-run/latest-secret-rotation-evidence.json`, `.osmu-run/latest-commercial-integration-evidence.json`, `.osmu-run/latest-commercial-approval-evidence.json`, `.osmu-run/latest-enterprise-auth-smoke.json`, `.osmu-run/latest-data-flow-storage-plan.json`, `.osmu-run/latest-operations-readiness-convergence.json`, and `.osmu-run/latest-kubernetes-operations-report-sync.json`. Non-ready operations evidence is returned as `OPERATIONS` items, usually targeting `dashboard-readiness-panel`. Individual pending operations checks can include optional `evidencePath`, `remediationCommand`, `remediationWorkflow`, `remediationWorkflowCommand`, and `remediationNote` fields copied from the operations readiness report. The generated operations evidence plan is exposed as an `OPERATIONS_EVIDENCE_PLAN` item with its plan path and regeneration command, and as a structured `operationsEvidencePlan` object with ordered executable actions. The guarded invocation report is exposed as an `OPERATIONS_EVIDENCE_PLAN_INVOCATION` item and as `operationsEvidenceInvocation`, showing planned/blocked/executed counts plus action block reasons before live workflow dispatch. The invocation unblock plan is exposed as an `OPERATIONS_INVOCATION_UNBLOCK_PLAN` item and as `operationsInvocationUnblockPlan`, showing required confirmations, placeholders, ambiguous repeated placeholders, action order lists, and copyable follow-up plan commands before live dispatch. The dispatch preflight is exposed as an `OPERATIONS_DISPATCH_PREFLIGHT` item and as `operationsDispatchPreflight`, showing failed checks, missing inputs, required GitHub secrets, workflow file presence, and plan/execute command previews when ready. The workflow run id plan is exposed as an `OPERATIONS_WORKFLOW_RUN_ID_PLAN` item and as `operationsWorkflowRunIdPlan`, showing query commands and recommended run-id handoff state after workflow dispatch. The artifact collection plan is exposed as an `OPERATIONS_ARTIFACT_COLLECTION_PLAN` item and as `operationsArtifactCollectionPlan`, showing missing run ids, expected artifact names, `gh run download` commands, finalizer dispatch commands, optional direct `data_flow_storage_plan_json_base64` guidance, and the local import command before readiness artifact import. The readiness artifact import report is exposed as an `OPERATIONS_READINESS_ARTIFACT_IMPORT` item and as `operationsReadinessArtifactImport`, showing import status, imported/failed counts, source/destination paths, and the no-secret import policy. The readiness finalizer report is exposed as an `OPERATIONS_READINESS_FINALIZER` item and as `operationsReadinessFinalize`, showing selected finalizer steps, final readiness result, gaps, commands, step results, and the secret masking policy. The evidence handoff is exposed as an `OPERATIONS_EVIDENCE_HANDOFF` item and as `operationsEvidenceHandoff`, showing the current bottleneck, next command, stage readiness, missing evidence counts, and finalizer failed/gap counts. The handoff package is exposed as an `OPERATIONS_HANDOFF_PACKAGE` item and as `operationsHandoffPackage`, showing target environment, cluster, operator, confirmation flags, target evidence refs, failed/planned/check counts, top checks, readiness snapshot result/count summary, convergence snapshot readiness/sync/finalizer gap summary, and no-secret policy. IAM/RBAC finalizer evidence is exposed as an `IAM_RBAC_EVIDENCE` item and as `iamRbacEvidence`, showing finalizer result/status, target namespace/service account, selected backend/live auth flags, failed count, sanitized gap list, command names, step results, and no-secret policy. Security evidence finalizer/image signing/container scan evidence is exposed as a `SECURITY_EVIDENCE_FINALIZE` item and as `securityEvidence`, showing finalizer result, image signing result/digests/signature flags, container scan/SBOM result, SBOM package/hash summaries, top finalizer checks, and no-secret policy. Secret/certificate rotation evidence is exposed as a `SECRET_ROTATION_EVIDENCE` item and as `secretRotationEvidence`, showing target labels, rotation window, sanitized external evidence refs, confirmation flags, rotated/core counts, failed/planned checks, top rotations, top checks, and no-secret policy. Commercial integration/approval evidence is exposed as `COMMERCIAL_INTEGRATION_EVIDENCE`/`COMMERCIAL_APPROVAL_EVIDENCE` items and as `commercialIntegrationEvidence`/`commercialApprovalEvidence`, showing target integration coverage, payment-provider adapter readiness summary, approval references, pricing proposal approval counts, failed/planned checks, and no-secret policy before production/B2B readiness is claimed. Enterprise auth smoke evidence is exposed as an `ENTERPRISE_AUTH_SMOKE_EVIDENCE` item and as `enterpriseAuthSmokeEvidence`, showing result, execution mode, OIDC/LDAP/audit requirements, pass/fail/blocked/planned counts, scope-out reference/reason when accepted, top checks, and the secret policy. The data-flow storage plan is exposed as a `DATA_FLOW_STORAGE_PLAN` item and as `dataFlowStoragePlan`, showing candidate store, target sizing, retention windows, pending checks, the sanitized `queryPlanEvidence` summary for MariaDB partition/dual-write candidates, and the OSMU operations analytics scope policy before partitioned/time-series storage is enabled. The convergence report is exposed as an `OPERATIONS_READINESS_CONVERGENCE` item and as `operationsReadinessConvergence`, showing the final ready/action-required decision, current bottleneck, recommended command chain, stage counts, Kubernetes report sync readiness/result/failure count, optional `kubernetesReportSyncWorkflowCommand` for Actions handoff with `data_flow_storage_plan_json_base64`, and no-execute safety policy.
+The response combines runtime, backup, quota, sharing, and operations-readiness gates. When the configured files exist, the backend reads `.osmu-run/latest-operations-readiness.json`, `.osmu-run/latest-operations-evidence-plan.json`, `.osmu-run/latest-operations-evidence-plan-invocation.json`, `.osmu-run/latest-operations-invocation-unblock-plan.json`, `.osmu-run/latest-operations-dispatch-preflight.json`, `.osmu-run/latest-operations-workflow-run-ids.json`, `.osmu-run/latest-operations-artifact-collection-plan.json`, `.osmu-run/latest-operations-readiness-artifact-import.json`, `.osmu-run/latest-operations-readiness-finalize.json`, `.osmu-run/latest-operations-evidence-handoff.json`, `.osmu-run/latest-operations-handoff-package.json`, `.osmu-run/latest-storage-expansion-finalize.json`, `.osmu-run/latest-kubernetes-ha-dr-readiness.json`, `.osmu-run/latest-kubernetes-dr-finalize.json`, `.osmu-run/latest-iam-rbac-finalize.json`, `.osmu-run/latest-security-evidence-finalize.json`, `.osmu-run/latest-image-signing-evidence.json`, `.osmu-run/latest-container-security-evidence.json`, `.osmu-run/latest-secret-rotation-evidence.json`, `.osmu-run/latest-commercial-integration-evidence.json`, `.osmu-run/latest-commercial-approval-evidence.json`, `.osmu-run/latest-enterprise-auth-smoke.json`, `.osmu-run/latest-data-flow-storage-plan.json`, `.osmu-run/latest-operations-readiness-convergence.json`, and `.osmu-run/latest-kubernetes-operations-report-sync.json`. Non-ready operations evidence is returned as `OPERATIONS` items, usually targeting `dashboard-readiness-panel`. Individual pending operations checks can include optional `evidencePath`, `remediationCommand`, `remediationWorkflow`, `remediationWorkflowCommand`, and `remediationNote` fields copied from the operations readiness report. The generated operations evidence plan is exposed as an `OPERATIONS_EVIDENCE_PLAN` item with its plan path and regeneration command, and as a structured `operationsEvidencePlan` object with ordered executable actions. The guarded invocation report is exposed as an `OPERATIONS_EVIDENCE_PLAN_INVOCATION` item and as `operationsEvidenceInvocation`, showing planned/blocked/executed counts plus action block reasons before live workflow dispatch. The invocation unblock plan is exposed as an `OPERATIONS_INVOCATION_UNBLOCK_PLAN` item and as `operationsInvocationUnblockPlan`, showing required confirmations, placeholders, ambiguous repeated placeholders, action order lists, and copyable follow-up plan commands before live dispatch. The dispatch preflight is exposed as an `OPERATIONS_DISPATCH_PREFLIGHT` item and as `operationsDispatchPreflight`, showing failed checks, missing inputs, required GitHub secrets, workflow file presence, and plan/execute command previews when ready. The workflow run id plan is exposed as an `OPERATIONS_WORKFLOW_RUN_ID_PLAN` item and as `operationsWorkflowRunIdPlan`, showing query commands and recommended run-id handoff state after workflow dispatch. The artifact collection plan is exposed as an `OPERATIONS_ARTIFACT_COLLECTION_PLAN` item and as `operationsArtifactCollectionPlan`, showing missing run ids, expected artifact names, `gh run download` commands, finalizer dispatch commands, optional direct `data_flow_storage_plan_json_base64` guidance, and the local import command before readiness artifact import. The readiness artifact import report is exposed as an `OPERATIONS_READINESS_ARTIFACT_IMPORT` item and as `operationsReadinessArtifactImport`, showing import status, imported/failed counts, source/destination paths, and the no-secret import policy. The readiness finalizer report is exposed as an `OPERATIONS_READINESS_FINALIZER` item and as `operationsReadinessFinalize`, showing selected finalizer steps, final readiness result, gaps, commands, step results, and the secret masking policy. The evidence handoff is exposed as an `OPERATIONS_EVIDENCE_HANDOFF` item and as `operationsEvidenceHandoff`, showing the current bottleneck, next command, stage readiness, missing evidence counts, and finalizer failed/gap counts. The handoff package is exposed as an `OPERATIONS_HANDOFF_PACKAGE` item and as `operationsHandoffPackage`, showing target environment, cluster, operator, confirmation flags, target evidence refs, failed/planned/check counts, top checks, readiness snapshot result/count summary, convergence snapshot readiness/sync/finalizer gap summary, and no-secret policy. Storage expansion, Kubernetes HA/DR, and Kubernetes DR evidence are exposed as `STORAGE_EXPANSION_FINALIZE`, `KUBERNETES_HA_DR_READINESS`, and `KUBERNETES_DR_FINALIZE` items plus `storageExpansionFinalize`, `kubernetesHaDrReadiness`, and `kubernetesDrFinalize`, showing target namespace/tenant/service account or restore namespace labels, result/status, failed count, gaps, top checks/steps, and no-secret policy. IAM/RBAC finalizer evidence is exposed as an `IAM_RBAC_EVIDENCE` item and as `iamRbacEvidence`, showing finalizer result/status, target namespace/service account, selected backend/live auth flags, failed count, sanitized gap list, command names, step results, and no-secret policy. Security evidence finalizer/image signing/container scan evidence is exposed as a `SECURITY_EVIDENCE_FINALIZE` item and as `securityEvidence`, showing finalizer result, image signing result/digests/signature flags, container scan/SBOM result, SBOM package/hash summaries, top finalizer checks, and no-secret policy. Secret/certificate rotation evidence is exposed as a `SECRET_ROTATION_EVIDENCE` item and as `secretRotationEvidence`, showing target labels, rotation window, sanitized external evidence refs, confirmation flags, rotated/core counts, failed/planned checks, top rotations, top checks, and no-secret policy. Commercial integration/approval evidence is exposed as `COMMERCIAL_INTEGRATION_EVIDENCE`/`COMMERCIAL_APPROVAL_EVIDENCE` items and as `commercialIntegrationEvidence`/`commercialApprovalEvidence`, showing target integration coverage, payment-provider adapter readiness summary, approval references, pricing proposal approval counts, failed/planned checks, and no-secret policy before production/B2B readiness is claimed. Enterprise auth smoke evidence is exposed as an `ENTERPRISE_AUTH_SMOKE_EVIDENCE` item and as `enterpriseAuthSmokeEvidence`, showing result, execution mode, OIDC/LDAP/audit requirements, pass/fail/blocked/planned counts, scope-out reference/reason when accepted, top checks, and the secret policy. The data-flow storage plan is exposed as a `DATA_FLOW_STORAGE_PLAN` item and as `dataFlowStoragePlan`, showing candidate store, target sizing, retention windows, pending checks, the sanitized `queryPlanEvidence` summary for MariaDB partition/dual-write candidates, and the OSMU operations analytics scope policy before partitioned/time-series storage is enabled. The convergence report is exposed as an `OPERATIONS_READINESS_CONVERGENCE` item and as `operationsReadinessConvergence`, showing the final ready/action-required decision, current bottleneck, recommended command chain, stage counts, Kubernetes report sync readiness/result/failure count, optional `kubernetesReportSyncWorkflowCommand` for Actions handoff with `data_flow_storage_plan_json_base64`, and no-execute safety policy.
 
 `dataFlowStoragePlan.queryPlanEvidence` is a summary only: it exposes format/result/mode/counts and at most failed check metadata, but not raw SQL, raw `EXPLAIN FORMAT=JSON`, passwords, bearer tokens, or provider credentials.
 
@@ -5493,6 +5493,81 @@ Response:
       "decisionRule": "Production/B2B operations handoff package readiness requires result=passed and, when required, ready operations readiness/convergence snapshots.",
       "scopePolicy": "This package is a handoff wrapper and does not execute kubectl, gh, provider APIs, notification adapters, or payment adapters.",
       "secretPolicy": "Evidence stores references and reduced readiness/convergence snapshot summaries only and must not contain passwords, bearer tokens, kubeconfig values, private keys, provider credentials, raw provider responses, raw remediation commands containing credentials, or customer payment data."
+    },
+    "storageExpansionFinalize": {
+      "result": "failed",
+      "generatedAt": "2026-06-20T00:10:00Z",
+      "namespace": "pilot-osmu",
+      "tenantName": "osmu-minio",
+      "serviceAccount": "osmu-storage-expansion-runner",
+      "runBackendDryRunRunner": true,
+      "runBackendApply": false,
+      "runStorageBackendTelemetry": false,
+      "failedCount": 1,
+      "evidence": {
+        "rbacAuth": ".osmu-run/latest-storage-expansion-rbac-auth.json",
+        "serverDryRun": ".osmu-run/latest-storage-expansion-server-dry-run.json"
+      },
+      "gaps": [
+        "Backend apply runner was not executed."
+      ],
+      "steps": [
+        {
+          "name": "Storage expansion server-side dry-run",
+          "result": "failed",
+          "exitCode": 1,
+          "notes": "Tenant patch denied"
+        }
+      ],
+      "secretPolicy": "Secret values, bearer tokens, and raw MinIO admin info are not written to storage expansion finalizer evidence."
+    },
+    "kubernetesHaDrReadiness": {
+      "result": "failed",
+      "generatedAt": "2026-06-20T00:12:00Z",
+      "namespace": "pilot-osmu",
+      "failureCount": 1,
+      "checks": [
+        {
+          "name": "pdb-osmu-minio-effective",
+          "category": "ha",
+          "passed": false,
+          "summary": "minAvailable=1 currentHealthy=0 disruptionsAllowed=0 expectedDisruptionsAllowedAtLeast=0",
+          "exitCode": 0
+        }
+      ]
+    },
+    "kubernetesDrFinalize": {
+      "result": "partial",
+      "status": "kubernetes-dr-finalize-partial",
+      "generatedAt": "2026-06-20T00:20:00Z",
+      "sourceNamespace": "pilot-osmu",
+      "restoreNamespace": "pilot-osmu-restore",
+      "backupTimestamp": "20260620T001500Z",
+      "serverDryRunOnly": true,
+      "confirmRestore": false,
+      "runBackupDrill": true,
+      "runRestoreSmoke": false,
+      "writeEvidenceRequest": false,
+      "failedStepCount": 0,
+      "gaps": [
+        "Server-side dry-run only; no restore was executed.",
+        "Restore was not confirmed."
+      ],
+      "commands": [
+        {
+          "name": "Kubernetes DR drill wrapper",
+          "command": "pwsh -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\run-kubernetes-dr-drill.ps1 -ServerDryRunOnly"
+        }
+      ],
+      "steps": [
+        {
+          "name": "Kubernetes restore smoke",
+          "result": "skipped",
+          "exitCode": 0,
+          "notes": "Skipped because -SkipRestoreSmoke or -ServerDryRunOnly was set."
+        }
+      ],
+      "secretPolicy": "Admin password and DR secret values are not written to this finalize report; displayed commands mask -AdminPassword."
     },
     "iamRbacEvidence": {
       "result": "failed",

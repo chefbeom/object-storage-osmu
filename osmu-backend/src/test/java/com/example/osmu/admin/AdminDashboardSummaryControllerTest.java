@@ -543,6 +543,129 @@ class AdminDashboardSummaryControllerTest {
                         """
         );
         Files.writeString(
+                Path.of(".osmu-run/latest-storage-expansion-finalize.json"),
+                """
+                        {
+                          "generatedAt": "2026-06-20T00:10:00Z",
+                          "startedAt": "2026-06-20T00:00:00Z",
+                          "completedAt": "2026-06-20T00:10:00Z",
+                          "result": "failed",
+                          "namespace": "pilot-osmu",
+                          "tenantName": "osmu-minio",
+                          "serviceAccount": "osmu-storage-expansion-runner",
+                          "impersonateRunner": true,
+                          "backend": {
+                            "apiBase": "https://api.example/osmu",
+                            "requestId": 17,
+                            "runDryRunRunner": true,
+                            "dryRunType": "KUBECTL_DIFF",
+                            "runApply": false,
+                            "applyType": "KUBECTL_APPLY",
+                            "confirmApply": false
+                          },
+                          "storageBackendTelemetry": {
+                            "runEvidence": false,
+                            "executeRequested": false,
+                            "targetCluster": "customer-cluster-a"
+                          },
+                          "evidence": {
+                            "rbacAuth": ".osmu-run/latest-storage-expansion-rbac-auth.json",
+                            "serverDryRun": ".osmu-run/latest-storage-expansion-server-dry-run.json",
+                            "storageBackendTelemetry": "",
+                            "report": ".osmu-run/latest-storage-expansion-finalize.json"
+                          },
+                          "failedCount": 1,
+                          "gaps": [
+                            "Backend apply runner was not executed."
+                          ],
+                          "steps": [
+                            {
+                              "name": "Storage expansion server-side dry-run",
+                              "result": "failed",
+                              "exitCode": 1,
+                              "notes": "Tenant patch denied"
+                            }
+                          ],
+                          "secretPolicy": "Secret values, bearer tokens, and raw MinIO admin info are not written to storage expansion finalizer evidence."
+                        }
+                        """
+        );
+        Files.writeString(
+                Path.of(".osmu-run/latest-kubernetes-ha-dr-readiness.json"),
+                """
+                        {
+                          "formatVersion": "osmu.kubernetes-ha-dr-readiness.v1",
+                          "generatedAt": "2026-06-20T00:12:00Z",
+                          "namespace": "pilot-osmu",
+                          "kubectlPath": "kubectl",
+                          "restoreManifestPath": "C:/project/object-storage-osmu/infra/k8s/examples/restore-from-backup.example.yaml",
+                          "result": "failed",
+                          "failureCount": 1,
+                          "checks": [
+                            {
+                              "name": "deployment-osmu-backend-ready",
+                              "category": "ha",
+                              "passed": true,
+                              "summary": "desired=2 ready=2 available=2 minimum=2 topologySpread=True",
+                              "exitCode": 0
+                            },
+                            {
+                              "name": "pdb-osmu-minio-effective",
+                              "category": "ha",
+                              "passed": false,
+                              "summary": "minAvailable=1 currentHealthy=0 disruptionsAllowed=0 expectedDisruptionsAllowedAtLeast=0",
+                              "exitCode": 0
+                            }
+                          ]
+                        }
+                        """
+        );
+        Files.writeString(
+                Path.of(".osmu-run/latest-kubernetes-dr-finalize.json"),
+                """
+                        {
+                          "formatVersion": "osmu.kubernetes-dr-finalize.v1",
+                          "generatedAt": "2026-06-20T00:20:00Z",
+                          "startedAt": "2026-06-20T00:15:00Z",
+                          "completedAt": "2026-06-20T00:20:00Z",
+                          "result": "partial",
+                          "status": "kubernetes-dr-finalize-partial",
+                          "sourceNamespace": "pilot-osmu",
+                          "restoreNamespace": "pilot-osmu-restore",
+                          "runId": "20260620002000",
+                          "backupTimestamp": "20260620T001500Z",
+                          "powerShellCommand": "pwsh",
+                          "serverDryRunOnly": true,
+                          "confirmRestore": false,
+                          "runBackupDrill": true,
+                          "runRestoreSmoke": false,
+                          "writeEvidenceRequest": false,
+                          "submitEvidence": false,
+                          "runS3ClientSmoke": false,
+                          "commands": [
+                            {
+                              "name": "Kubernetes DR drill wrapper",
+                              "script": ".\\\\scripts\\\\run-kubernetes-dr-drill.ps1",
+                              "command": "pwsh -NoProfile -ExecutionPolicy Bypass -File .\\\\scripts\\\\run-kubernetes-dr-drill.ps1 -ServerDryRunOnly"
+                            }
+                          ],
+                          "steps": [
+                            {
+                              "name": "Kubernetes restore smoke",
+                              "result": "skipped",
+                              "exitCode": 0,
+                              "notes": "Skipped because -SkipRestoreSmoke or -ServerDryRunOnly was set."
+                            }
+                          ],
+                          "gaps": [
+                            "Server-side dry-run only; no restore was executed.",
+                            "Restore was not confirmed."
+                          ],
+                          "secretPolicy": "Admin password and DR secret values are not written to this finalize report; displayed commands mask -AdminPassword."
+                        }
+                        """
+        );
+        Files.writeString(
                 Path.of(".osmu-run/latest-iam-rbac-finalize.json"),
                 """
                         {
@@ -1737,6 +1860,30 @@ class AdminDashboardSummaryControllerTest {
                 .andExpect(jsonPath("$.data.operationsHandoffPackage.checks[0].id").value("runbook-reviewed"))
                 .andExpect(jsonPath("$.data.operationsHandoffPackage.checks[0].status").value("FAIL"))
                 .andExpect(jsonPath("$.data.operationsHandoffPackage.checks[1].evidenceRef").value("latest-commercial-integration-evidence-passed"))
+                .andExpect(jsonPath("$.data.storageExpansionFinalize.result").value("failed"))
+                .andExpect(jsonPath("$.data.storageExpansionFinalize.namespace").value("pilot-osmu"))
+                .andExpect(jsonPath("$.data.storageExpansionFinalize.tenantName").value("osmu-minio"))
+                .andExpect(jsonPath("$.data.storageExpansionFinalize.runBackendDryRunRunner").value(true))
+                .andExpect(jsonPath("$.data.storageExpansionFinalize.runBackendApply").value(false))
+                .andExpect(jsonPath("$.data.storageExpansionFinalize.runStorageBackendTelemetry").value(false))
+                .andExpect(jsonPath("$.data.storageExpansionFinalize.failedCount").value(1))
+                .andExpect(jsonPath("$.data.storageExpansionFinalize.evidence.rbacAuth").value(".osmu-run/latest-storage-expansion-rbac-auth.json"))
+                .andExpect(jsonPath("$.data.storageExpansionFinalize.gaps[0]").value("Backend apply runner was not executed."))
+                .andExpect(jsonPath("$.data.storageExpansionFinalize.steps[0].result").value("failed"))
+                .andExpect(jsonPath("$.data.kubernetesHaDrReadiness.result").value("failed"))
+                .andExpect(jsonPath("$.data.kubernetesHaDrReadiness.namespace").value("pilot-osmu"))
+                .andExpect(jsonPath("$.data.kubernetesHaDrReadiness.failureCount").value(1))
+                .andExpect(jsonPath("$.data.kubernetesHaDrReadiness.checks[1].name").value("pdb-osmu-minio-effective"))
+                .andExpect(jsonPath("$.data.kubernetesHaDrReadiness.checks[1].passed").value(false))
+                .andExpect(jsonPath("$.data.kubernetesDrFinalize.result").value("partial"))
+                .andExpect(jsonPath("$.data.kubernetesDrFinalize.status").value("kubernetes-dr-finalize-partial"))
+                .andExpect(jsonPath("$.data.kubernetesDrFinalize.sourceNamespace").value("pilot-osmu"))
+                .andExpect(jsonPath("$.data.kubernetesDrFinalize.restoreNamespace").value("pilot-osmu-restore"))
+                .andExpect(jsonPath("$.data.kubernetesDrFinalize.serverDryRunOnly").value(true))
+                .andExpect(jsonPath("$.data.kubernetesDrFinalize.confirmRestore").value(false))
+                .andExpect(jsonPath("$.data.kubernetesDrFinalize.commands[0].name").value("Kubernetes DR drill wrapper"))
+                .andExpect(jsonPath("$.data.kubernetesDrFinalize.steps[0].result").value("skipped"))
+                .andExpect(jsonPath("$.data.kubernetesDrFinalize.gaps[0]").value("Server-side dry-run only; no restore was executed."))
                 .andExpect(jsonPath("$.data.iamRbacEvidence.result").value("failed"))
                 .andExpect(jsonPath("$.data.iamRbacEvidence.status").value("iam-rbac-finalize-failed"))
                 .andExpect(jsonPath("$.data.iamRbacEvidence.namespace").value("pilot-osmu"))
@@ -1829,6 +1976,12 @@ class AdminDashboardSummaryControllerTest {
                 .andExpect(jsonPath("$.data.storageBackendTelemetryEvidence.scopePolicy", org.hamcrest.Matchers.containsString("not AWS S3 parity work")))
                 .andExpect(jsonPath("$.data.items[?(@.code == 'OPERATIONS_HANDOFF_PACKAGE')].evidencePath").value(hasItem(".osmu-run/latest-operations-handoff-package.json")))
                 .andExpect(jsonPath("$.data.items[?(@.code == 'OPERATIONS_HANDOFF_PACKAGE')].remediationCommand").value(hasItem("powershell -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\write-operations-handoff-package.ps1")))
+                .andExpect(jsonPath("$.data.items[?(@.code == 'STORAGE_EXPANSION_FINALIZE')].evidencePath").value(hasItem(".osmu-run/latest-storage-expansion-finalize.json")))
+                .andExpect(jsonPath("$.data.items[?(@.code == 'STORAGE_EXPANSION_FINALIZE')].remediationWorkflow").value(hasItem(".github/workflows/storage-expansion-finalizer-ci.yml")))
+                .andExpect(jsonPath("$.data.items[?(@.code == 'KUBERNETES_HA_DR_READINESS')].evidencePath").value(hasItem(".osmu-run/latest-kubernetes-ha-dr-readiness.json")))
+                .andExpect(jsonPath("$.data.items[?(@.code == 'KUBERNETES_HA_DR_READINESS')].remediationWorkflow").value(hasItem(".github/workflows/kubernetes-ha-dr-readiness-ci.yml")))
+                .andExpect(jsonPath("$.data.items[?(@.code == 'KUBERNETES_DR_FINALIZE')].evidencePath").value(hasItem(".osmu-run/latest-kubernetes-dr-finalize.json")))
+                .andExpect(jsonPath("$.data.items[?(@.code == 'KUBERNETES_DR_FINALIZE')].remediationWorkflow").value(hasItem(".github/workflows/kubernetes-dr-finalizer-ci.yml")))
                 .andExpect(jsonPath("$.data.items[?(@.code == 'IAM_RBAC_EVIDENCE')].evidencePath").value(hasItem(".osmu-run/latest-iam-rbac-finalize.json")))
                 .andExpect(jsonPath("$.data.items[?(@.code == 'IAM_RBAC_EVIDENCE')].remediationWorkflow").value(hasItem(".github/workflows/iam-rbac-finalizer-ci.yml")))
                 .andExpect(jsonPath("$.data.items[?(@.code == 'SECURITY_EVIDENCE_FINALIZE')].evidencePath").value(hasItem(".osmu-run/latest-security-evidence-finalize.json")))
