@@ -2429,6 +2429,16 @@ TC-FE-023 보강: 사용자가 취소한 경우에는 abort API를 호출한다.
 - Priority: P1
 - Automated: `scripts/verify-storage-backend-telemetry-evidence.ps1`
 
+### TC-OPS-011
+
+- Feature: Storage expansion finalizer storage backend telemetry handoff.
+- Preconditions: PowerShell is available and operators have a saved post-expansion `mc admin info --json` output file.
+- Input: `powershell -ExecutionPolicy Bypass -File .\scripts\verify-storage-expansion-finalizer.ps1`, then `powershell -ExecutionPolicy Bypass -File .\scripts\finalize-storage-expansion.ps1 -Namespace <namespace> -TenantName <tenant> -ImpersonateRunner -RunStorageBackendTelemetryEvidence -StorageBackendTelemetryAdminInfoJsonPath <json> -StorageBackendTelemetryEnvironmentName <env> -StorageBackendTelemetryTargetCluster <cluster> -StorageBackendTelemetryOperator <operator> -StorageBackendTelemetryMinioAlias <alias> -StorageBackendTelemetryEvidenceRef <ref>`.
+- Steps: Run the self-test fixture and verify plan output includes the storage backend telemetry evidence step. Verify the finalizer rejects `-RunStorageBackendTelemetryEvidence` without file input or explicit execute mode. Verify a fixture finalizer run writes both `.osmu-run/latest-storage-expansion-finalize.*` and `.osmu-run/latest-storage-backend-telemetry.*`, links telemetry paths in `storageBackendTelemetry` and `evidence.storageBackendTelemetry`, records a passed `Storage backend telemetry evidence` step, and does not store raw admin info.
+- Expected: Post-expansion MinIO pool/node/capacity evidence can be captured from the same guarded finalizer flow without broadening AWS S3 parity scope or storing secrets/raw admin output.
+- Priority: P1
+- Automated: `scripts/verify-storage-expansion-finalizer.ps1`
+
 ## 14. MVP 완료 기준 테스트
 
 MVP 완료 전 다음 테스트는 반드시 통과해야 한다.

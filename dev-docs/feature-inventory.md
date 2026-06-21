@@ -110,7 +110,7 @@ MVP 데모 기준 완료율은 약 90~95%입니다.
 - Storage Expansion runner 전용 namespace-scoped ServiceAccount/Role/RoleBinding 초안. `Tenant/osmu-minio` patch/update와 legacy `StatefulSet/osmu-minio` rollback에 필요한 최소 권한만 허용하며 Secret read, Pod exec, create/delete, cluster-scoped RBAC는 차단
 - `verify-storage-expansion-rbac-auth.ps1` 기반 live `kubectl auth can-i` evidence 수집 스크립트. cluster 없이 `-PlanOnly`로 실행 계획 확인 가능
 - `verify-storage-expansion-server-dry-run.ps1` 기반 MinIO Operator Tenant CRD, 기존 Tenant, server-side dry-run evidence 수집 스크립트. `-ImpersonateRunner`와 `-PlanOnly` 지원
-- `finalize-storage-expansion.ps1` 기반 storage expansion finalization wrapper. RBAC auth, server-side dry-run, optional backend dry-run/apply runner 호출을 하나의 증거 JSON/Markdown으로 묶고, 실제 apply는 `-RunBackendApply -ConfirmApply`가 있을 때만 수행
+- `finalize-storage-expansion.ps1` 기반 storage expansion finalization wrapper. RBAC auth, server-side dry-run, optional backend dry-run/apply runner, optional storage backend telemetry evidence writer 호출을 하나의 증거 JSON/Markdown으로 묶고, 실제 apply는 `-RunBackendApply -ConfirmApply`가 있을 때만 수행
 - `.github/workflows/storage-expansion-finalizer-ci.yml` 기반 수동 CI workflow. plan-only가 기본이며, live evidence는 `run_live=true`와 `OSMU_KUBECONFIG_BASE64` secret이 있을 때만 수행
 - 관리자 계정도 작업 가능하도록 admin route 구성
 - 실제 운영용 계정 bootstrap 정책: `OSMU_BOOTSTRAP_ADMIN_ENABLED`, `OSMU_BOOTSTRAP_ADMIN_ALLOW_DEFAULT_CREDENTIALS`, 필수 admin 필드 검증, 기본 비밀번호 운영 차단
@@ -323,11 +323,12 @@ MVP 데모 기준 완료율은 약 90~95%입니다.
 - storage backend status API/UI (`GET /api/admin/storage/backend-status`) using health probes, bucket/object metadata counts, and optional MinIO Prometheus capacity metrics with metadata fallback.
 - object storage failure frontend retry/remediation UX: upload failures carrying `STORAGE_ERROR` or HTTP 502 keep the retry action available and show Request ID based operator steps before reattempting large/multipart uploads.
 - MinIO Admin info 기반 pool/server/drive telemetry evidence writer: `scripts/write-storage-backend-telemetry-evidence.ps1`가 `mc admin info --json` file input 또는 명시적 `-Execute` 결과를 요약해 `.osmu-run/latest-storage-backend-telemetry.*`에 저장하며 raw admin output과 secret 값은 저장하지 않는다.
+- Storage expansion finalizer는 `-RunStorageBackendTelemetryEvidence -StorageBackendTelemetryAdminInfoJsonPath <path>`를 받으면 같은 finalizer report 안에서 storage backend telemetry evidence writer를 실행하고 `.osmu-run/latest-storage-backend-telemetry.*` 경로를 report/evidence block에 연결한다.
 
 남은 것:
 
 - bucket CORS/versioning/lifecycle 실제 동기화
-- MinIO Admin pool/node telemetry의 backend API/dashboard 자동 ingestion과 storage expansion finalizer 자동 연결
+- MinIO Admin pool/node telemetry의 완전 자동 live collection 전용 workflow 또는 운영 절차
 
 ### 4.9 용량 증설
 

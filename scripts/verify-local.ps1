@@ -127,6 +127,9 @@ Run "powershell -ExecutionPolicy Bypass -File .\scripts\verify-storage-expansion
 Step "Storage Expansion finalize plan check"
 Run "powershell -ExecutionPolicy Bypass -File .\scripts\finalize-storage-expansion.ps1 -PlanOnly"
 
+Step "Storage Expansion finalizer self-test"
+Run "powershell -ExecutionPolicy Bypass -File .\scripts\verify-storage-expansion-finalizer.ps1"
+
 Step "Kubernetes HA/DR readiness plan check"
 Run "powershell -ExecutionPolicy Bypass -File .\scripts\verify-kubernetes-ha-dr-readiness.ps1 -PlanOnly"
 

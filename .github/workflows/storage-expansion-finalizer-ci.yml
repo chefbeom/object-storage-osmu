@@ -52,6 +52,35 @@ on:
         description: Approved storage expansion request id when backend runner calls are enabled
         required: false
         default: "0"
+      record_storage_backend_telemetry:
+        description: Record storage backend telemetry evidence from a prepared mc admin info JSON file
+        required: true
+        type: boolean
+        default: false
+      storage_backend_telemetry_admin_info_json_path:
+        description: Path to prepared mc admin info --json output when recording telemetry evidence
+        required: false
+        default: .osmu-run/minio-admin-info.json
+      storage_backend_telemetry_environment:
+        description: Non-secret environment label for storage backend telemetry evidence
+        required: false
+        default: ""
+      storage_backend_telemetry_target_cluster:
+        description: Non-secret target cluster label for storage backend telemetry evidence
+        required: false
+        default: ""
+      storage_backend_telemetry_operator:
+        description: Non-secret operator label for storage backend telemetry evidence
+        required: false
+        default: github-actions
+      storage_backend_telemetry_minio_alias:
+        description: Non-secret MinIO alias label for storage backend telemetry evidence
+        required: false
+        default: osmu-minio
+      storage_backend_telemetry_evidence_ref:
+        description: Non-secret external evidence reference for storage backend telemetry evidence
+        required: false
+        default: ""
 
 permissions:
   contents: read
@@ -73,12 +102,29 @@ jobs:
       - name: Plan storage expansion finalizer
         shell: pwsh
         run: |
-          ./scripts/finalize-storage-expansion.ps1 `
-            -PlanOnly `
-            -Namespace "${{ inputs.namespace }}" `
-            -TenantName "${{ inputs.tenant_name }}" `
-            -ManifestPath "${{ inputs.manifest_path }}" `
-            -PowerShellCommand "pwsh"
+          $planArgs = @(
+            "-PlanOnly",
+            "-Namespace", "${{ inputs.namespace }}",
+            "-TenantName", "${{ inputs.tenant_name }}",
+            "-ManifestPath", "${{ inputs.manifest_path }}",
+            "-PowerShellCommand", "pwsh"
+          )
+          if ("${{ inputs.record_storage_backend_telemetry }}" -eq "true") {
+            $telemetryEvidenceRef = "${{ inputs.storage_backend_telemetry_evidence_ref }}"
+            if (-not $telemetryEvidenceRef) {
+              $telemetryEvidenceRef = "storage-expansion-finalizer-${{ github.run_id }}"
+            }
+            $planArgs += @(
+              "-RunStorageBackendTelemetryEvidence",
+              "-StorageBackendTelemetryAdminInfoJsonPath", "${{ inputs.storage_backend_telemetry_admin_info_json_path }}",
+              "-StorageBackendTelemetryEnvironmentName", "${{ inputs.storage_backend_telemetry_environment }}",
+              "-StorageBackendTelemetryTargetCluster", "${{ inputs.storage_backend_telemetry_target_cluster }}",
+              "-StorageBackendTelemetryOperator", "${{ inputs.storage_backend_telemetry_operator }}",
+              "-StorageBackendTelemetryMinioAlias", "${{ inputs.storage_backend_telemetry_minio_alias }}",
+              "-StorageBackendTelemetryEvidenceRef", $telemetryEvidenceRef
+            )
+          }
+          ./scripts/finalize-storage-expansion.ps1 @planArgs
 
       - name: Prepare kubeconfig
         if: ${{ inputs.run_live }}
@@ -133,6 +179,21 @@ jobs:
               "-RequestId", "${{ inputs.request_id }}"
             )
           }
+          if ("${{ inputs.record_storage_backend_telemetry }}" -eq "true") {
+            $telemetryEvidenceRef = "${{ inputs.storage_backend_telemetry_evidence_ref }}"
+            if (-not $telemetryEvidenceRef) {
+              $telemetryEvidenceRef = "storage-expansion-finalizer-${{ github.run_id }}"
+            }
+            $finalizerArgs += @(
+              "-RunStorageBackendTelemetryEvidence",
+              "-StorageBackendTelemetryAdminInfoJsonPath", "${{ inputs.storage_backend_telemetry_admin_info_json_path }}",
+              "-StorageBackendTelemetryEnvironmentName", "${{ inputs.storage_backend_telemetry_environment }}",
+              "-StorageBackendTelemetryTargetCluster", "${{ inputs.storage_backend_telemetry_target_cluster }}",
+              "-StorageBackendTelemetryOperator", "${{ inputs.storage_backend_telemetry_operator }}",
+              "-StorageBackendTelemetryMinioAlias", "${{ inputs.storage_backend_telemetry_minio_alias }}",
+              "-StorageBackendTelemetryEvidenceRef", $telemetryEvidenceRef
+            )
+          }
 
           ./scripts/finalize-storage-expansion.ps1 @finalizerArgs
 
@@ -146,5 +207,7 @@ jobs:
             .osmu-run/latest-storage-expansion-finalize.md
             .osmu-run/latest-storage-expansion-rbac-auth.json
             .osmu-run/latest-storage-expansion-server-dry-run.json
+            .osmu-run/latest-storage-backend-telemetry.json
+            .osmu-run/latest-storage-backend-telemetry.md
           if-no-files-found: warn
           retention-days: 14

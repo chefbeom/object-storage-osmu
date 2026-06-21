@@ -9,6 +9,16 @@ param(
     [string] $ServerDryRunEvidencePath = ".\.osmu-run\latest-storage-expansion-server-dry-run.json",
     [string] $ReportPath = ".\.osmu-run\latest-storage-expansion-finalize.json",
     [string] $SummaryPath = ".\.osmu-run\latest-storage-expansion-finalize.md",
+    [string] $StorageBackendTelemetryAdminInfoJsonPath = "",
+    [string] $StorageBackendTelemetryEnvironmentName = "",
+    [string] $StorageBackendTelemetryTargetCluster = "",
+    [string] $StorageBackendTelemetryOperator = "",
+    [string] $StorageBackendTelemetryMinioAlias = "",
+    [string] $StorageBackendTelemetryEvidenceRef = "",
+    [string] $StorageBackendTelemetryJsonOutputPath = ".\.osmu-run\latest-storage-backend-telemetry.json",
+    [string] $StorageBackendTelemetryMarkdownOutputPath = ".\.osmu-run\latest-storage-backend-telemetry.md",
+    [string] $StorageBackendTelemetryMcCommand = "mc",
+    [int] $StorageBackendTelemetryMcTimeoutSeconds = 30,
     [string] $ApiBase = "",
     [string] $AdminLoginId = "admin",
     [string] $AdminPassword = "",
@@ -23,6 +33,8 @@ param(
     [switch] $RunBackendDryRunRunner,
     [switch] $RunBackendApply,
     [switch] $ConfirmApply,
+    [switch] $RunStorageBackendTelemetryEvidence,
+    [switch] $StorageBackendTelemetryExecute,
     [switch] $PlanOnly,
     [switch] $NoReport
 )
@@ -48,6 +60,33 @@ function Format-Value([string] $value) {
         return '"' + ($value -replace '"', '\"') + '"'
     }
     return $value
+}
+
+function Test-UnsafeEvidenceText([string] $Value) {
+    if ([string]::IsNullOrWhiteSpace($Value)) {
+        return $false
+    }
+    $patterns = @(
+        "-----BEGIN [A-Z ]*PRIVATE KEY-----",
+        "\bA(KIA|SIA)[0-9A-Z]{16}\b",
+        "\bBearer\s+[A-Za-z0-9._~+/=-]{12,}",
+        "(?i)\b(password|passwd|secret|token|client_secret|x-amz-security-token|authorization)\s*[""':=]\s*\S+",
+        "(?i)\b(secretKey|accessKey|sessionToken)\s*[""':=]\s*\S+",
+        "(?i)Credential=[^,\s]+"
+    )
+    foreach ($pattern in $patterns) {
+        if ($Value -match $pattern) {
+            return $true
+        }
+    }
+    return $false
+}
+
+function Redact-UnsafeEvidenceText([string] $Value) {
+    if (Test-UnsafeEvidenceText $Value) {
+        return "<redacted>"
+    }
+    return $Value
 }
 
 function Get-PowerShellExecutable() {
@@ -79,7 +118,7 @@ function Mask-Arguments([string[]] $Arguments) {
             $maskNext = $false
             continue
         }
-        $masked += $argument
+        $masked += (Redact-UnsafeEvidenceText $argument)
         if ($argument -in @("-AdminPassword")) {
             $maskNext = $true
         }
@@ -173,6 +212,15 @@ function Assert-BackendInputs() {
     }
 }
 
+function Assert-StorageBackendTelemetryInputs() {
+    if (-not $RunStorageBackendTelemetryEvidence) {
+        return
+    }
+    if ([string]::IsNullOrWhiteSpace($StorageBackendTelemetryAdminInfoJsonPath) -and -not $StorageBackendTelemetryExecute) {
+        throw "-RunStorageBackendTelemetryEvidence requires -StorageBackendTelemetryAdminInfoJsonPath or -StorageBackendTelemetryExecute."
+    }
+}
+
 function Invoke-BackendLogin() {
     $url = "$ApiBase/auth/login"
     $command = "POST $url loginId=$AdminLoginId password=<secret>"
@@ -224,6 +272,8 @@ function Write-FinalReport([string] $Result, [string] $ErrorMessage) {
     $resolvedServerDryRunEvidencePath = Resolve-ProjectPath $ServerDryRunEvidencePath
     $resolvedReportPath = Resolve-ProjectPath $ReportPath
     $resolvedSummaryPath = Resolve-ProjectPath $SummaryPath
+    $resolvedStorageBackendTelemetryJsonPath = Resolve-ProjectPath $StorageBackendTelemetryJsonOutputPath
+    $resolvedStorageBackendTelemetryMarkdownPath = Resolve-ProjectPath $StorageBackendTelemetryMarkdownOutputPath
     $completedAt = [DateTimeOffset]::UtcNow
 
     $gaps = @()
@@ -241,6 +291,9 @@ function Write-FinalReport([string] $Result, [string] $ErrorMessage) {
     }
     elseif (-not $ConfirmApply) {
         $gaps += "Backend apply runner was requested without ConfirmApply."
+    }
+    if (-not $RunStorageBackendTelemetryEvidence) {
+        $gaps += "Storage backend telemetry evidence was not recorded by the finalizer."
     }
     if ($ErrorMessage) {
         $gaps += $ErrorMessage
@@ -267,16 +320,29 @@ function Write-FinalReport([string] $Result, [string] $ErrorMessage) {
             applyType = $ApplyType
             confirmApply = [bool] $ConfirmApply
         }
+        storageBackendTelemetry = [ordered]@{
+            runEvidence = [bool] $RunStorageBackendTelemetryEvidence
+            executeRequested = [bool] $StorageBackendTelemetryExecute
+            adminInfoJsonPath = Redact-UnsafeEvidenceText $StorageBackendTelemetryAdminInfoJsonPath
+            environmentName = Redact-UnsafeEvidenceText $StorageBackendTelemetryEnvironmentName
+            targetCluster = Redact-UnsafeEvidenceText $StorageBackendTelemetryTargetCluster
+            operatorName = Redact-UnsafeEvidenceText $StorageBackendTelemetryOperator
+            minioAlias = Redact-UnsafeEvidenceText $StorageBackendTelemetryMinioAlias
+            evidenceRef = Redact-UnsafeEvidenceText $StorageBackendTelemetryEvidenceRef
+            jsonOutputPath = if ($RunStorageBackendTelemetryEvidence) { $resolvedStorageBackendTelemetryJsonPath } else { "" }
+            markdownOutputPath = if ($RunStorageBackendTelemetryEvidence) { $resolvedStorageBackendTelemetryMarkdownPath } else { "" }
+        }
         evidence = [ordered]@{
             rbacAuth = if ($SkipRbacAuth) { "" } else { $resolvedRbacEvidencePath }
             serverDryRun = if ($SkipServerDryRun) { "" } else { $resolvedServerDryRunEvidencePath }
+            storageBackendTelemetry = if ($RunStorageBackendTelemetryEvidence) { $resolvedStorageBackendTelemetryJsonPath } else { "" }
             report = $resolvedReportPath
             summary = $resolvedSummaryPath
         }
         failedCount = $failureCount
         gaps = $gaps
         steps = $steps
-        secretPolicy = "Secret values and bearer tokens are not written to storage expansion finalizer evidence."
+        secretPolicy = "Secret values, bearer tokens, and raw MinIO admin info are not written to storage expansion finalizer evidence."
     }
 
     New-Item -ItemType Directory -Force -Path (Split-Path -Parent $resolvedReportPath) | Out-Null
@@ -292,6 +358,7 @@ function Write-FinalReport([string] $Result, [string] $ErrorMessage) {
         "- Backend dry-run runner: $RunBackendDryRunRunner",
         "- Backend apply runner: $RunBackendApply",
         "- Confirm apply: $ConfirmApply",
+        "- Storage backend telemetry evidence: $RunStorageBackendTelemetryEvidence",
         "- Report: $resolvedReportPath",
         "",
         "## Steps"
@@ -344,6 +411,16 @@ if ($PlanOnly) {
         Write-Host "[STEP] Backend apply runner: POST $ApiBase/admin/storage-expansion/requests/$RequestId/apply-runner applyType=$ApplyType"
         Write-Host "[GUARD] Requires -ConfirmApply. Without it, this script fails before any apply request."
     }
+    if ($RunStorageBackendTelemetryEvidence) {
+        $telemetryPlan = "$psCommand -NoProfile -ExecutionPolicy Bypass -File .\scripts\write-storage-backend-telemetry-evidence.ps1 -EnvironmentName $(Format-Value $StorageBackendTelemetryEnvironmentName) -TargetCluster $(Format-Value $StorageBackendTelemetryTargetCluster) -Operator $(Format-Value $StorageBackendTelemetryOperator) -MinioAlias $(Format-Value $StorageBackendTelemetryMinioAlias) -EvidenceRef $(Format-Value $StorageBackendTelemetryEvidenceRef) -JsonOutputPath $(Format-Value $StorageBackendTelemetryJsonOutputPath) -MarkdownOutputPath $(Format-Value $StorageBackendTelemetryMarkdownOutputPath) -FailIfNotPassed"
+        if ($StorageBackendTelemetryExecute) {
+            $telemetryPlan += " -Execute -McCommand $(Format-Value $StorageBackendTelemetryMcCommand) -McTimeoutSeconds $StorageBackendTelemetryMcTimeoutSeconds"
+        }
+        else {
+            $telemetryPlan += " -AdminInfoJsonPath $(Format-Value $StorageBackendTelemetryAdminInfoJsonPath)"
+        }
+        Write-Host "[STEP] Storage backend telemetry evidence: $telemetryPlan"
+    }
     Write-Host "Plan only; no Kubernetes command, HTTP request, evidence file, or report is written."
     return
 }
@@ -356,6 +433,7 @@ try {
     if ($RunBackendApply -and ($SkipRbacAuth -or $SkipServerDryRun)) {
         throw "-RunBackendApply requires RBAC auth and server-side dry-run evidence in the same finalizer run."
     }
+    Assert-StorageBackendTelemetryInputs
 
     if (-not $SkipRbacAuth) {
         $rbacArgs = @(
@@ -402,6 +480,32 @@ try {
                 @{ applyType = $ApplyType } `
                 $token | Out-Null
         }
+    }
+
+    if ($RunStorageBackendTelemetryEvidence) {
+        $telemetryArgs = @(
+            "-EnvironmentName", $StorageBackendTelemetryEnvironmentName,
+            "-TargetCluster", $StorageBackendTelemetryTargetCluster,
+            "-Operator", $StorageBackendTelemetryOperator,
+            "-MinioAlias", $StorageBackendTelemetryMinioAlias,
+            "-EvidenceRef", $StorageBackendTelemetryEvidenceRef,
+            "-JsonOutputPath", $StorageBackendTelemetryJsonOutputPath,
+            "-MarkdownOutputPath", $StorageBackendTelemetryMarkdownOutputPath,
+            "-FailIfNotPassed"
+        )
+        if ($StorageBackendTelemetryExecute) {
+            $telemetryArgs += @(
+                "-Execute",
+                "-McCommand", $StorageBackendTelemetryMcCommand,
+                "-McTimeoutSeconds", ([string] $StorageBackendTelemetryMcTimeoutSeconds)
+            )
+        }
+        else {
+            $telemetryArgs += @(
+                "-AdminInfoJsonPath", $StorageBackendTelemetryAdminInfoJsonPath
+            )
+        }
+        Invoke-ProjectScript "Storage backend telemetry evidence" ".\scripts\write-storage-backend-telemetry-evidence.ps1" $telemetryArgs
     }
 
     Write-FinalReport "passed" ""
