@@ -110,6 +110,7 @@ async function installDeveloperApiMocks(page, options = {}) {
   const objectDownloadAttempts = new Map()
   const authRefreshRequests = options.authRefreshRequests
   const unauthorizedPaths = options.unauthorizedPaths || []
+  const objectMetadataByKey = options.objectMetadataByKey || {}
   let adminActionFailureIndex = 0
 
   await page.route('**/api/**', async (route) => {
@@ -231,6 +232,29 @@ async function installDeveloperApiMocks(page, options = {}) {
         items: page.items || [],
         prefixes: page.prefixes || [],
         nextCursor: page.nextCursor || '',
+      })
+    }
+
+    const objectMetadataPathPrefix = `/buckets/${developerBucketName}/objects/metadata/`
+    if (method === 'GET' && path.startsWith(objectMetadataPathPrefix)) {
+      const key = decodeURIComponent(path.slice(objectMetadataPathPrefix.length))
+      return json({
+        data: objectMetadataByKey[key] || {
+          key,
+          sizeBytes: 0,
+          storageSizeBytes: 0,
+          contentType: 'application/octet-stream',
+          storageContentType: 'application/octet-stream',
+          etag: 'mock-etag',
+          storageEtag: 'mock-etag',
+          checksums: {},
+          storageChecksums: {},
+          lastModifiedAt: '2026-06-21T00:00:00Z',
+          storageLastModifiedAt: '2026-06-21T00:00:00Z',
+          tags: {},
+          storageTags: {},
+          syncStatus: 'SYNCED',
+        },
       })
     }
 
@@ -610,6 +634,68 @@ test('developer object download refreshes expired access token and retries once'
     authorization: 'Bearer developer-e2e-access-refreshed',
     attempt: 2,
   })
+})
+
+test('developer object metadata detail shows drift fields from fixture', async ({ page }) => {
+  const driftKey = 'metadata-drift.txt'
+  await installDeveloperApiMocks(page, {
+    objectPages: [{
+      items: [{
+        key: driftKey,
+        sizeBytes: 64,
+        contentType: 'text/plain',
+        tags: { project: 'osmu' },
+      }],
+      prefixes: [],
+      nextCursor: '',
+    }],
+    objectMetadataByKey: {
+      [driftKey]: {
+        key: driftKey,
+        sizeBytes: 64,
+        storageSizeBytes: 128,
+        contentType: 'text/plain',
+        storageContentType: 'application/octet-stream',
+        etag: 'index-etag',
+        storageEtag: 'storage-etag',
+        checksums: { SHA256: 'index-sha256' },
+        storageChecksums: { SHA256: 'storage-sha256' },
+        lastModifiedAt: '2026-06-20T00:00:00Z',
+        storageLastModifiedAt: '2026-06-21T00:00:00Z',
+        tags: { project: 'osmu' },
+        storageTags: { project: 'archive' },
+        syncStatus: 'STALE',
+      },
+    },
+  })
+  await page.addInitScript(() => {
+    window.localStorage.removeItem('osmu.dashboard.widgets.v1')
+    window.localStorage.removeItem('osmu.auth.tokens')
+    window.localStorage.removeItem('osmu.login.rememberedId')
+    window.sessionStorage.removeItem('osmu.auth.tokens')
+  })
+
+  await page.goto(`${frontendBaseUrl}/login?mode=developer`)
+  await page.getByTestId('login-id-input').fill(developerLoginId)
+  await page.getByTestId('login-password-input').fill(developerPassword)
+  await page.getByTestId('login-submit-button').click()
+
+  await expect(page).toHaveURL(/\/developer$/)
+  await page.getByRole('link', { name: 'Objects' }).click()
+  await expect(page.getByTestId('object-table')).toContainText(driftKey)
+  await page.getByTestId('object-detail-button').first().click()
+
+  const detailPanel = page.getByTestId('object-detail-panel')
+  await expect(detailPanel).toContainText(driftKey)
+  await expect(page.getByTestId('object-metadata-sync-status')).toHaveClass(/mock/)
+  await expect(detailPanel).toContainText('Index size')
+  await expect(detailPanel).toContainText('64 B')
+  await expect(detailPanel).toContainText('Storage size')
+  await expect(detailPanel).toContainText('128 B')
+  await expect(detailPanel).toContainText('index-etag')
+  await expect(detailPanel).toContainText('storage-etag')
+  await expect(detailPanel).toContainText('project=archive')
+  await expect(detailPanel.getByTestId('object-metadata-row-state').filter({ hasText: 'Drift' })).toHaveCount(12)
 })
 
 test('developer refresh failure clears session and redirects from portal click', async ({ page }) => {

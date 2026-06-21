@@ -1939,7 +1939,7 @@ Evidence note: `npm run test:unit` covers stable bucket row cell selectors, and 
 - 절차: ObjectExplorer에서 object 상세를 열고 sync status badge와 index/storage 값을 확인한다.
 - 기대 결과: `SYNCED`, `STALE`, `MISSING_IN_STORAGE` 상태가 각각 다른 badge 색으로 표시되고 index/storage size/type/tag/ETag/checksum이 비교 가능하다.
 - 우선순위: P1
-- 자동화 여부: Automated (`npm run test:unit` metadata status/detail row helper, Browser E2E row state render). Drift-specific backend fixture E2E pending.
+- 자동화 여부: Automated (`npm run test:unit` metadata status/detail row helper, Browser E2E row state render and drift fixture with `object-metadata-sync-status` plus `object-metadata-row-state`).
 
 ### TC-FE-022
 

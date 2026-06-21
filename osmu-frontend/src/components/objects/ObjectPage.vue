@@ -249,7 +249,7 @@
             <h3>{{ objectMetadata.key }}</h3>
           </div>
           <div class="detail-actions">
-            <span :class="['status-pill', metadataStatusClass(objectMetadata.syncStatus)]">
+            <span data-testid="object-metadata-sync-status" :class="['status-pill', metadataStatusClass(objectMetadata.syncStatus)]">
               {{ metadataStatusLabel(objectMetadata.syncStatus) }}
             </span>
             <button type="button" class="ghost" @click="$emit('close-object-metadata')">닫기</button>
