@@ -8,8 +8,10 @@ param(
     [string] $DeploymentEvidenceRef = "",
     [string] $OperationsReadinessRef = "",
     [string] $OperationsConvergenceRef = "",
+    [string] $DataFlowStoragePlanEvidenceRef = "",
     [string] $OperationsReadinessJsonPath = "",
     [string] $OperationsConvergenceJsonPath = "",
+    [string] $DataFlowStoragePlanJsonPath = "",
     [string] $SecretRotationEvidenceRef = "",
     [string] $CommercialIntegrationEvidenceRef = "",
     [string] $CommercialApprovalEvidenceRef = "",
@@ -33,6 +35,7 @@ param(
     [switch] $ConfirmKnownGapsAccepted,
     [switch] $ConfirmOperationsReadinessSnapshotReviewed,
     [switch] $ConfirmOperationsConvergenceSnapshotReviewed,
+    [switch] $ConfirmDataFlowStoragePlanReviewed,
     [switch] $ConfirmNoSecretValues,
     [switch] $RequireProductionEvidence,
     [switch] $RequireOperationsSnapshotEvidence,
@@ -83,6 +86,19 @@ function Assert-SanitizedOperationsSnapshotJson([string] $Value, [string] $Label
     $forbiddenPropertyPattern = '(?i)"(rawProviderResponse|raw_provider_response|providerResponse|provider_response|responseBody|response_body|responseHeaders|response_headers|customerData|customer_data|customerEmail|customer_email|customerName|customer_name|customerPaymentData|customer_payment_data|cardNumber|card_number|bankAccount|bank_account|rawContractText|raw_contract_text|contractText|contract_text|licenseKey|license_key|rawRemediation|raw_remediation|rawCommand|raw_command)"\s*:'
     if ($Value -match $forbiddenPropertyPattern) {
         throw "$Label appears to contain raw remediation, provider, customer, contract, license, or payment content. Store only sanitized operations snapshot summary fields."
+    }
+}
+
+function Assert-SanitizedDataFlowStoragePlanJson([string] $Value, [string] $Label) {
+    if ([string]::IsNullOrWhiteSpace($Value)) {
+        return
+    }
+
+    $forbiddenPropertyPattern = '(?i)"(sql|rawSql|raw_sql|explain|explainJson|explain_json|rawExplain|raw_explain|password|passwd|secret|token|credential|apiKey|api_key|accessKey|access_key|privateKey|private_key)"\s*:'
+    $credentialPattern = '(?i)\b(password|passwd|secret|token|credential|api[_-]?key|access[_-]?key|private[_-]?key)\s*=\s*\S+'
+    $rawSqlPattern = '(?i)\bSELECT\b[\s\S]{0,200}\bFROM\b'
+    if ($Value -match $forbiddenPropertyPattern -or $Value -match $credentialPattern -or $Value -match $rawSqlPattern) {
+        throw "$Label appears to contain raw SQL, raw EXPLAIN, or credential-shaped content. Store only sanitized data-flow storage plan summary fields."
     }
 }
 
@@ -237,6 +253,141 @@ function New-CheckSnapshotRow([object] $Check) {
     }
 }
 
+function New-DataFlowStoragePlanCheckSnapshotRow([object] $Check) {
+    return [ordered]@{
+        id = Get-PropertyText $Check "id"
+        title = Get-PropertyText $Check "title"
+        status = Get-PropertyText $Check "status"
+        detail = Get-PropertyText $Check "detail"
+        nextAction = Get-PropertyText $Check "nextAction"
+    }
+}
+
+function New-QueryPlanFailedCheckSnapshotRow([object] $Check) {
+    return [ordered]@{
+        id = Get-PropertyText $Check "id"
+        table = Get-PropertyText $Check "table"
+        queryPath = Get-PropertyText $Check "queryPath"
+        expectedIndex = Get-PropertyText $Check "expectedIndex"
+        status = Get-PropertyText $Check "status"
+        usesExpectedIndex = Get-PropertyBool $Check "usesExpectedIndex"
+    }
+}
+
+function New-QueryPlanEvidenceSummarySnapshot([object] $QueryPlanEvidence) {
+    if ($null -eq $QueryPlanEvidence) {
+        return $null
+    }
+
+    $failedRows = New-Object System.Collections.Generic.List[object]
+    foreach ($failedCheck in @(Get-PropertyArray $QueryPlanEvidence "failedChecks")) {
+        [void] $failedRows.Add((New-QueryPlanFailedCheckSnapshotRow $failedCheck))
+        if ($failedRows.Count -ge 5) {
+            break
+        }
+    }
+
+    return [ordered]@{
+        provided = Get-PropertyBool $QueryPlanEvidence "provided"
+        formatVersion = Get-PropertyText $QueryPlanEvidence "formatVersion"
+        expectedFormatVersion = Get-PropertyText $QueryPlanEvidence "expectedFormatVersion"
+        validFormatVersion = Get-PropertyBool $QueryPlanEvidence "validFormatVersion"
+        result = Get-PropertyText $QueryPlanEvidence "result"
+        mode = Get-PropertyText $QueryPlanEvidence "mode"
+        checkCount = Get-PropertyInt $QueryPlanEvidence "checkCount"
+        passedCount = Get-PropertyInt $QueryPlanEvidence "passedCount"
+        failedCount = Get-PropertyInt $QueryPlanEvidence "failedCount"
+        failedChecks = @($failedRows.ToArray())
+        detail = Get-PropertyText $QueryPlanEvidence "detail"
+    }
+}
+
+function Read-DataFlowStoragePlanSnapshot([string] $Path) {
+    $snapshot = [ordered]@{
+        provided = $false
+        path = ""
+        parsed = $false
+        formatVersion = ""
+        expectedFormatVersion = "osmu.data-flow-storage-plan.v1"
+        validFormatVersion = $false
+        result = ""
+        passed = $false
+        environmentName = ""
+        targetCluster = ""
+        candidateStore = ""
+        expectedPeakEventsPerDay = 0
+        expectedQueryWindowDays = 0
+        eventRetentionDays = 0
+        dailyRollupRetentionDays = 0
+        monthlyRollupRetentionMonths = 0
+        checkCount = 0
+        passedCount = 0
+        pendingCount = 0
+        queryPlanEvidence = $null
+        topPendingChecks = @()
+        detail = "No data-flow storage plan JSON supplied."
+    }
+
+    if ([string]::IsNullOrWhiteSpace($Path)) {
+        return $snapshot
+    }
+
+    $resolvedPath = Resolve-ProjectPath $Path
+    $snapshot["provided"] = $true
+    $snapshot["path"] = $resolvedPath
+    if (-not (Test-Path -LiteralPath $resolvedPath)) {
+        $snapshot["detail"] = "Data-flow storage plan JSON not found."
+        return $snapshot
+    }
+
+    $raw = Get-Content -Raw -LiteralPath $resolvedPath
+    Assert-SafeText $raw "DataFlowStoragePlanJson"
+    Assert-SanitizedOperationsSnapshotJson $raw "DataFlowStoragePlanJson"
+    Assert-SanitizedDataFlowStoragePlanJson $raw "DataFlowStoragePlanJson"
+    try {
+        $payload = $raw | ConvertFrom-Json
+    }
+    catch {
+        $snapshot["detail"] = "Data-flow storage plan JSON parse failed: $($_.Exception.Message)"
+        return $snapshot
+    }
+
+    $checks = @(Get-PropertyArray $payload "checks")
+    $pendingRows = New-Object System.Collections.Generic.List[object]
+    foreach ($check in $checks) {
+        $status = Get-PropertyText $check "status"
+        if (-not "passed".Equals($status, [System.StringComparison]::OrdinalIgnoreCase)) {
+            [void] $pendingRows.Add((New-DataFlowStoragePlanCheckSnapshotRow $check))
+        }
+        if ($pendingRows.Count -ge 5) {
+            break
+        }
+    }
+
+    $formatVersion = Get-PropertyText $payload "formatVersion"
+    $result = Get-PropertyText $payload "result"
+    $snapshot["parsed"] = $true
+    $snapshot["formatVersion"] = $formatVersion
+    $snapshot["validFormatVersion"] = $formatVersion -eq $snapshot["expectedFormatVersion"]
+    $snapshot["result"] = $result
+    $snapshot["passed"] = "passed".Equals($result, [System.StringComparison]::OrdinalIgnoreCase)
+    $snapshot["environmentName"] = Get-PropertyText $payload "environmentName"
+    $snapshot["targetCluster"] = Get-PropertyText $payload "targetCluster"
+    $snapshot["candidateStore"] = Get-PropertyText $payload "candidateStore"
+    $snapshot["expectedPeakEventsPerDay"] = Get-PropertyInt $payload "expectedPeakEventsPerDay"
+    $snapshot["expectedQueryWindowDays"] = Get-PropertyInt $payload "expectedQueryWindowDays"
+    $snapshot["eventRetentionDays"] = Get-PropertyInt $payload "eventRetentionDays"
+    $snapshot["dailyRollupRetentionDays"] = Get-PropertyInt $payload "dailyRollupRetentionDays"
+    $snapshot["monthlyRollupRetentionMonths"] = Get-PropertyInt $payload "monthlyRollupRetentionMonths"
+    $snapshot["checkCount"] = Get-PropertyInt $payload "checkCount"
+    $snapshot["passedCount"] = Get-PropertyInt $payload "passedCount"
+    $snapshot["pendingCount"] = Get-PropertyInt $payload "pendingCount"
+    $snapshot["queryPlanEvidence"] = New-QueryPlanEvidenceSummarySnapshot (Get-PropertyValue $payload "queryPlanEvidence")
+    $snapshot["topPendingChecks"] = @($pendingRows.ToArray())
+    $snapshot["detail"] = "formatVersion=$formatVersion; result=$result; candidateStore=$($snapshot["candidateStore"]); pending=$($snapshot["pendingCount"]); checks=$($snapshot["checkCount"])"
+    return $snapshot
+}
+
 function Read-OperationsReadinessSnapshot([string] $Path) {
     $snapshot = [ordered]@{
         provided = $false
@@ -361,6 +512,7 @@ foreach ($entry in @(
     @("DeploymentEvidenceRef", $DeploymentEvidenceRef),
     @("OperationsReadinessRef", $OperationsReadinessRef),
     @("OperationsConvergenceRef", $OperationsConvergenceRef),
+    @("DataFlowStoragePlanEvidenceRef", $DataFlowStoragePlanEvidenceRef),
     @("SecretRotationEvidenceRef", $SecretRotationEvidenceRef),
     @("CommercialIntegrationEvidenceRef", $CommercialIntegrationEvidenceRef),
     @("CommercialApprovalEvidenceRef", $CommercialApprovalEvidenceRef),
@@ -381,13 +533,16 @@ foreach ($entry in @(
 
 $operationsReadinessSnapshot = Read-OperationsReadinessSnapshot $OperationsReadinessJsonPath
 $operationsConvergenceSnapshot = Read-OperationsConvergenceSnapshot $OperationsConvergenceJsonPath
+$dataFlowStoragePlanSnapshot = Read-DataFlowStoragePlanSnapshot $DataFlowStoragePlanJsonPath
 $operationsReadinessSnapshotValid = [bool] $operationsReadinessSnapshot["provided"] -and [bool] $operationsReadinessSnapshot["parsed"] -and [bool] $operationsReadinessSnapshot["validFormatVersion"]
 $operationsConvergenceSnapshotValid = [bool] $operationsConvergenceSnapshot["provided"] -and [bool] $operationsConvergenceSnapshot["parsed"] -and [bool] $operationsConvergenceSnapshot["validFormatVersion"]
+$dataFlowStoragePlanSnapshotValid = [bool] $dataFlowStoragePlanSnapshot["provided"] -and [bool] $dataFlowStoragePlanSnapshot["parsed"] -and [bool] $dataFlowStoragePlanSnapshot["validFormatVersion"]
 $operationsReadinessSnapshotReady = $operationsReadinessSnapshotValid -and [bool] $operationsReadinessSnapshot["ready"]
 $operationsConvergenceSnapshotReady = $operationsConvergenceSnapshotValid -and [bool] $operationsConvergenceSnapshot["ready"] -and [bool] $operationsConvergenceSnapshot["kubernetesReportSyncReady"]
+$dataFlowStoragePlanSnapshotPassed = $dataFlowStoragePlanSnapshotValid -and [bool] $dataFlowStoragePlanSnapshot["passed"]
 
-$evidenceText = $DeploymentEvidenceRef + $OperationsReadinessRef + $OperationsConvergenceRef + $SecretRotationEvidenceRef + $CommercialIntegrationEvidenceRef + $CommercialApprovalEvidenceRef + $EnterpriseAuthEvidenceRef + $BackupRestoreEvidenceRef + $HaDrEvidenceRef + $MonitoringEvidenceRef + $SecurityEvidenceRef + $IamRbacEvidenceRef + $RunbookReviewRef + $TroubleshootingReviewRef + $SupportEscalationRef + $SupportSlaRef + $KnownGapsRef
-$hasAnyInput = -not [string]::IsNullOrWhiteSpace($EnvironmentName + $TargetCluster + $Operator + $HandoffStartedAt + $HandoffCompletedAt + $ChangeApprovalRef + $evidenceText + $OperationsReadinessJsonPath + $OperationsConvergenceJsonPath) -or $ConfirmRunbookReviewed -or $ConfirmTroubleshootingReviewed -or $ConfirmRollbackReviewed -or $ConfirmSupportEscalationReviewed -or $ConfirmKnownGapsAccepted -or $ConfirmOperationsReadinessSnapshotReviewed -or $ConfirmOperationsConvergenceSnapshotReviewed -or $ConfirmNoSecretValues -or $RequireOperationsSnapshotEvidence
+$evidenceText = $DeploymentEvidenceRef + $OperationsReadinessRef + $OperationsConvergenceRef + $DataFlowStoragePlanEvidenceRef + $SecretRotationEvidenceRef + $CommercialIntegrationEvidenceRef + $CommercialApprovalEvidenceRef + $EnterpriseAuthEvidenceRef + $BackupRestoreEvidenceRef + $HaDrEvidenceRef + $MonitoringEvidenceRef + $SecurityEvidenceRef + $IamRbacEvidenceRef + $RunbookReviewRef + $TroubleshootingReviewRef + $SupportEscalationRef + $SupportSlaRef + $KnownGapsRef
+$hasAnyInput = -not [string]::IsNullOrWhiteSpace($EnvironmentName + $TargetCluster + $Operator + $HandoffStartedAt + $HandoffCompletedAt + $ChangeApprovalRef + $evidenceText + $OperationsReadinessJsonPath + $OperationsConvergenceJsonPath + $DataFlowStoragePlanJsonPath) -or $ConfirmRunbookReviewed -or $ConfirmTroubleshootingReviewed -or $ConfirmRollbackReviewed -or $ConfirmSupportEscalationReviewed -or $ConfirmKnownGapsAccepted -or $ConfirmOperationsReadinessSnapshotReviewed -or $ConfirmOperationsConvergenceSnapshotReviewed -or $ConfirmDataFlowStoragePlanReviewed -or $ConfirmNoSecretValues -or $RequireOperationsSnapshotEvidence
 $handoffStartedAtParsed = Get-ParsedDateText $HandoffStartedAt
 $handoffCompletedAtParsed = Get-ParsedDateText $HandoffCompletedAt
 $handoffWindowOrdered = $null -ne $handoffStartedAtParsed -and $null -ne $handoffCompletedAtParsed -and $handoffCompletedAtParsed -ge $handoffStartedAtParsed
@@ -422,6 +577,14 @@ if ([bool] $RequireOperationsSnapshotEvidence -or [bool] $operationsConvergenceS
 if ([bool] $RequireOperationsSnapshotEvidence -or [bool] $operationsConvergenceSnapshot["provided"] -or [bool] $ConfirmOperationsConvergenceSnapshotReviewed) {
     Add-Check "operations-convergence-snapshot-reviewed" "Operations convergence snapshot reviewed" ([bool] $ConfirmOperationsConvergenceSnapshotReviewed -and $operationsConvergenceSnapshotValid) "confirmed=$([bool] $ConfirmOperationsConvergenceSnapshotReviewed); snapshotValid=$operationsConvergenceSnapshotValid" $OperationsConvergenceRef
 }
+Add-EvidenceCheck "data-flow-storage-plan-evidence" "Data-flow storage transition target evidence" ([bool] $RequireProductionEvidence) $DataFlowStoragePlanEvidenceRef "target data-flow storage plan result=passed with sanitized query-plan summary"
+if ([bool] $RequireProductionEvidence -or [bool] $dataFlowStoragePlanSnapshot["provided"]) {
+    Add-Check "data-flow-storage-plan-snapshot-parsed" "Data-flow storage plan snapshot parsed" $dataFlowStoragePlanSnapshotValid $dataFlowStoragePlanSnapshot["detail"] $DataFlowStoragePlanEvidenceRef
+    Add-Check "data-flow-storage-plan-snapshot-passed" "Data-flow storage plan snapshot passed" $dataFlowStoragePlanSnapshotPassed "result=$($dataFlowStoragePlanSnapshot["result"]); pending=$($dataFlowStoragePlanSnapshot["pendingCount"]); candidateStore=$($dataFlowStoragePlanSnapshot["candidateStore"])" $DataFlowStoragePlanEvidenceRef
+}
+if ([bool] $RequireProductionEvidence -or [bool] $dataFlowStoragePlanSnapshot["provided"] -or [bool] $ConfirmDataFlowStoragePlanReviewed) {
+    Add-Check "data-flow-storage-plan-reviewed" "Data-flow storage plan reviewed" ([bool] $ConfirmDataFlowStoragePlanReviewed -and $dataFlowStoragePlanSnapshotValid) "confirmed=$([bool] $ConfirmDataFlowStoragePlanReviewed); snapshotValid=$dataFlowStoragePlanSnapshotValid" $DataFlowStoragePlanEvidenceRef
+}
 Add-EvidenceCheck "secret-rotation-evidence" "Secret/certificate rotation target evidence" ([bool] $RequireProductionEvidence) $SecretRotationEvidenceRef "target secret/certificate rotation result=passed"
 Add-EvidenceCheck "commercial-integration-evidence" "Commercial integration target evidence" ([bool] $RequireProductionEvidence) $CommercialIntegrationEvidenceRef "target commercial integration result=passed without native processor API claims"
 Add-EvidenceCheck "commercial-approval-evidence" "Commercial approval target evidence" ([bool] $RequireProductionEvidence) $CommercialApprovalEvidenceRef "target commercial approval result=passed for final pricing, terms, support SLA, license agreement, legal approval, and pilot contract boundary"
@@ -455,6 +618,7 @@ $evidenceRefs = [ordered]@{
     deployment = $DeploymentEvidenceRef
     operationsReadiness = $OperationsReadinessRef
     operationsConvergence = $OperationsConvergenceRef
+    dataFlowStoragePlan = $DataFlowStoragePlanEvidenceRef
     secretRotation = $SecretRotationEvidenceRef
     commercialIntegration = $CommercialIntegrationEvidenceRef
     commercialApproval = $CommercialApprovalEvidenceRef
@@ -487,6 +651,9 @@ $report = New-Object System.Collections.Specialized.OrderedDictionary
     readiness = $operationsReadinessSnapshot
     convergence = $operationsConvergenceSnapshot
 })
+[void] $report.Add("targetEvidenceSnapshots", [ordered]@{
+    dataFlowStoragePlan = $dataFlowStoragePlanSnapshot
+})
 [void] $report.Add("confirmations", [ordered]@{
     noSecretValues = [bool] $ConfirmNoSecretValues
     runbookReviewed = [bool] $ConfirmRunbookReviewed
@@ -496,6 +663,7 @@ $report = New-Object System.Collections.Specialized.OrderedDictionary
     knownGapsAccepted = [bool] $ConfirmKnownGapsAccepted
     operationsReadinessSnapshotReviewed = [bool] $ConfirmOperationsReadinessSnapshotReviewed
     operationsConvergenceSnapshotReviewed = [bool] $ConfirmOperationsConvergenceSnapshotReviewed
+    dataFlowStoragePlanReviewed = [bool] $ConfirmDataFlowStoragePlanReviewed
     requireProductionEvidence = [bool] $RequireProductionEvidence
     requireOperationsSnapshotEvidence = [bool] $RequireOperationsSnapshotEvidence
 })
@@ -507,11 +675,12 @@ $report = New-Object System.Collections.Specialized.OrderedDictionary
     operationsReadinessSnapshotResult = $operationsReadinessSnapshot["result"]
     operationsConvergenceSnapshotResult = $operationsConvergenceSnapshot["result"]
     operationsConvergenceKubernetesReportSyncReady = $operationsConvergenceSnapshot["kubernetesReportSyncReady"]
+    dataFlowStoragePlanSnapshotResult = $dataFlowStoragePlanSnapshot["result"]
 })
 [void] $report.Add("checks", [object] $checkArray)
-[void] $report.Add("decisionRule", "Production/B2B operations handoff package readiness requires result=passed from the target environment, reviewed runbook/troubleshooting/rollback/support paths, accepted known gaps, no-secret confirmation, and references to target readiness, convergence, secret rotation, commercial integration, commercial approval, enterprise auth, backup/restore, HA/DR, monitoring, security, and IAM/RBAC evidence when production evidence is required. When operations snapshot evidence is required, the latest operations readiness snapshot must be result=ready and the latest operations readiness convergence snapshot must be result=ready with Kubernetes report sync ready.")
-[void] $report.Add("scopePolicy", "This package is a handoff wrapper for already-collected operations evidence. It can reduce sanitized operations readiness and convergence JSON snapshots to summary fields, but it does not execute kubectl, gh, provider APIs, notification adapters, payment adapters, or native card/bank/tax/ERP processor calls.")
-[void] $report.Add("secretPolicy", "Evidence stores only environment labels, operator/change references, timestamps, booleans, external evidence references, and reduced operations readiness/convergence snapshot summaries; it must not contain passwords, bearer tokens, kubeconfig values, private keys, SMTP credentials, webhook signing secrets, provider credentials, raw provider responses, raw remediation commands containing credentials, or customer payment data.")
+[void] $report.Add("decisionRule", "Production/B2B operations handoff package readiness requires result=passed from the target environment, reviewed runbook/troubleshooting/rollback/support paths, accepted known gaps, no-secret confirmation, and references to target readiness, convergence, data-flow storage transition, secret rotation, commercial integration, commercial approval, enterprise auth, backup/restore, HA/DR, monitoring, security, and IAM/RBAC evidence when production evidence is required. When operations snapshot evidence is required, the latest operations readiness snapshot must be result=ready and the latest operations readiness convergence snapshot must be result=ready with Kubernetes report sync ready. When production evidence is required, the data-flow storage plan snapshot must be result=passed and reviewed.")
+[void] $report.Add("scopePolicy", "This package is a handoff wrapper for already-collected operations evidence. It can reduce sanitized operations readiness, convergence, and data-flow storage plan JSON snapshots to summary fields, but it does not execute kubectl, gh, provider APIs, notification adapters, payment adapters, storage migrations, or native card/bank/tax/ERP processor calls.")
+[void] $report.Add("secretPolicy", "Evidence stores only environment labels, operator/change references, timestamps, booleans, external evidence references, reduced operations readiness/convergence snapshot summaries, and reduced data-flow storage plan summaries; it must not contain passwords, bearer tokens, kubeconfig values, private keys, SMTP credentials, webhook signing secrets, provider credentials, raw SQL, raw EXPLAIN JSON, raw provider responses, raw remediation commands containing credentials, or customer payment data.")
 
 $markdownLines = @(
     "# OSMU Operations Handoff Package",
@@ -552,6 +721,14 @@ foreach ($pendingCheck in @($operationsReadinessSnapshot["topPendingChecks"])) {
 }
 
 $markdownLines += ""
+$markdownLines += "## Target Evidence Snapshots"
+$markdownLines += ""
+$markdownLines += "- Data-flow storage plan: provided=$($dataFlowStoragePlanSnapshot["provided"]); parsed=$($dataFlowStoragePlanSnapshot["parsed"]); result=$($dataFlowStoragePlanSnapshot["result"]); candidateStore=$($dataFlowStoragePlanSnapshot["candidateStore"]); passed=$($dataFlowStoragePlanSnapshot["passedCount"]); pending=$($dataFlowStoragePlanSnapshot["pendingCount"]); checks=$($dataFlowStoragePlanSnapshot["checkCount"])"
+foreach ($pendingCheck in @($dataFlowStoragePlanSnapshot["topPendingChecks"])) {
+    $markdownLines += "- Data-flow pending: [$($pendingCheck.status)] $($pendingCheck.id) / $($pendingCheck.title): $($pendingCheck.detail)"
+}
+
+$markdownLines += ""
 $markdownLines += "## Checks"
 $markdownLines += ""
 foreach ($check in $checks) {
@@ -561,7 +738,7 @@ foreach ($check in $checks) {
 $markdownLines += ""
 $markdownLines += "## Operator Command"
 $markdownLines += ""
-$markdownLines += "- Record passed target package: ``powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\write-operations-handoff-package.ps1 -EnvironmentName <env> -TargetCluster <cluster> -Operator <operator> -HandoffStartedAt <iso-time> -HandoffCompletedAt <iso-time> -ChangeApprovalRef <change-id> -DeploymentEvidenceRef <ref> -OperationsReadinessRef <ref> -OperationsConvergenceRef <ref> -OperationsReadinessJsonPath .\.osmu-run\latest-operations-readiness.json -OperationsConvergenceJsonPath .\.osmu-run\latest-operations-readiness-convergence.json -SecretRotationEvidenceRef <ref> -CommercialIntegrationEvidenceRef <ref> -CommercialApprovalEvidenceRef <ref> -EnterpriseAuthEvidenceRef <ref> -BackupRestoreEvidenceRef <ref> -HaDrEvidenceRef <ref> -MonitoringEvidenceRef <ref> -SecurityEvidenceRef <ref> -IamRbacEvidenceRef <ref> -RunbookReviewRef <ref> -TroubleshootingReviewRef <ref> -SupportEscalationRef <ref> -SupportSlaRef <ref> -KnownGapsRef <ref> -ConfirmRunbookReviewed -ConfirmTroubleshootingReviewed -ConfirmRollbackReviewed -ConfirmSupportEscalationReviewed -ConfirmKnownGapsAccepted -ConfirmOperationsReadinessSnapshotReviewed -ConfirmOperationsConvergenceSnapshotReviewed -ConfirmNoSecretValues -RequireProductionEvidence -RequireOperationsSnapshotEvidence -FailIfNotPassed``"
+$markdownLines += "- Record passed target package: ``powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\write-operations-handoff-package.ps1 -EnvironmentName <env> -TargetCluster <cluster> -Operator <operator> -HandoffStartedAt <iso-time> -HandoffCompletedAt <iso-time> -ChangeApprovalRef <change-id> -DeploymentEvidenceRef <ref> -OperationsReadinessRef <ref> -OperationsConvergenceRef <ref> -DataFlowStoragePlanEvidenceRef <ref> -OperationsReadinessJsonPath .\.osmu-run\latest-operations-readiness.json -OperationsConvergenceJsonPath .\.osmu-run\latest-operations-readiness-convergence.json -DataFlowStoragePlanJsonPath .\.osmu-run\latest-data-flow-storage-plan.json -SecretRotationEvidenceRef <ref> -CommercialIntegrationEvidenceRef <ref> -CommercialApprovalEvidenceRef <ref> -EnterpriseAuthEvidenceRef <ref> -BackupRestoreEvidenceRef <ref> -HaDrEvidenceRef <ref> -MonitoringEvidenceRef <ref> -SecurityEvidenceRef <ref> -IamRbacEvidenceRef <ref> -RunbookReviewRef <ref> -TroubleshootingReviewRef <ref> -SupportEscalationRef <ref> -SupportSlaRef <ref> -KnownGapsRef <ref> -ConfirmRunbookReviewed -ConfirmTroubleshootingReviewed -ConfirmRollbackReviewed -ConfirmSupportEscalationReviewed -ConfirmKnownGapsAccepted -ConfirmOperationsReadinessSnapshotReviewed -ConfirmOperationsConvergenceSnapshotReviewed -ConfirmDataFlowStoragePlanReviewed -ConfirmNoSecretValues -RequireProductionEvidence -RequireOperationsSnapshotEvidence -FailIfNotPassed``"
 
 if (-not $NoWrite) {
     New-Item -ItemType Directory -Force -Path (Split-Path -Parent $resolvedJsonOutputPath) | Out-Null

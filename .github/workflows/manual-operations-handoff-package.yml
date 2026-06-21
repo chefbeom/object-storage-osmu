@@ -39,12 +39,20 @@ on:
         description: External operations convergence evidence reference
         required: true
         default: ""
+      data_flow_storage_plan_evidence_ref:
+        description: External data-flow storage transition evidence reference
+        required: true
+        default: ""
       operations_readiness_json_base64:
         description: Optional base64 latest operations readiness JSON snapshot
         required: false
         default: ""
       operations_convergence_json_base64:
         description: Optional base64 latest operations readiness convergence JSON snapshot
+        required: false
+        default: ""
+      data_flow_storage_plan_json_base64:
+        description: Optional base64 latest data-flow storage plan JSON snapshot
         required: false
         default: ""
       secret_rotation_evidence_ref:
@@ -138,6 +146,11 @@ on:
         required: true
         type: boolean
         default: false
+      confirm_data_flow_storage_plan_reviewed:
+        description: Confirm data-flow storage plan snapshot review
+        required: true
+        type: boolean
+        default: false
       confirm_no_secret_values:
         description: Confirm inputs contain references only, not secret values
         required: true
@@ -188,8 +201,10 @@ jobs:
           OSMU_DEPLOYMENT_EVIDENCE_REF: ${{ inputs.deployment_evidence_ref }}
           OSMU_OPERATIONS_READINESS_REF: ${{ inputs.operations_readiness_ref }}
           OSMU_OPERATIONS_CONVERGENCE_REF: ${{ inputs.operations_convergence_ref }}
+          OSMU_DATA_FLOW_STORAGE_PLAN_EVIDENCE_REF: ${{ inputs.data_flow_storage_plan_evidence_ref }}
           OSMU_OPERATIONS_READINESS_JSON_BASE64: ${{ inputs.operations_readiness_json_base64 }}
           OSMU_OPERATIONS_CONVERGENCE_JSON_BASE64: ${{ inputs.operations_convergence_json_base64 }}
+          OSMU_DATA_FLOW_STORAGE_PLAN_JSON_BASE64: ${{ inputs.data_flow_storage_plan_json_base64 }}
           OSMU_SECRET_ROTATION_EVIDENCE_REF: ${{ inputs.secret_rotation_evidence_ref }}
           OSMU_COMMERCIAL_INTEGRATION_EVIDENCE_REF: ${{ inputs.commercial_integration_evidence_ref }}
           OSMU_COMMERCIAL_APPROVAL_EVIDENCE_REF: ${{ inputs.commercial_approval_evidence_ref }}
@@ -211,6 +226,7 @@ jobs:
           OSMU_CONFIRM_KNOWN_GAPS_ACCEPTED: ${{ inputs.confirm_known_gaps_accepted }}
           OSMU_CONFIRM_OPERATIONS_READINESS_SNAPSHOT_REVIEWED: ${{ inputs.confirm_operations_readiness_snapshot_reviewed }}
           OSMU_CONFIRM_OPERATIONS_CONVERGENCE_SNAPSHOT_REVIEWED: ${{ inputs.confirm_operations_convergence_snapshot_reviewed }}
+          OSMU_CONFIRM_DATA_FLOW_STORAGE_PLAN_REVIEWED: ${{ inputs.confirm_data_flow_storage_plan_reviewed }}
           OSMU_CONFIRM_NO_SECRET_VALUES: ${{ inputs.confirm_no_secret_values }}
           OSMU_REQUIRE_PRODUCTION_EVIDENCE: ${{ inputs.require_production_evidence }}
           OSMU_REQUIRE_OPERATIONS_SNAPSHOT_EVIDENCE: ${{ inputs.require_operations_snapshot_evidence }}
@@ -237,6 +253,7 @@ jobs:
             "-DeploymentEvidenceRef", $env:OSMU_DEPLOYMENT_EVIDENCE_REF,
             "-OperationsReadinessRef", $env:OSMU_OPERATIONS_READINESS_REF,
             "-OperationsConvergenceRef", $env:OSMU_OPERATIONS_CONVERGENCE_REF,
+            "-DataFlowStoragePlanEvidenceRef", $env:OSMU_DATA_FLOW_STORAGE_PLAN_EVIDENCE_REF,
             "-SecretRotationEvidenceRef", $env:OSMU_SECRET_ROTATION_EVIDENCE_REF,
             "-CommercialIntegrationEvidenceRef", $env:OSMU_COMMERCIAL_INTEGRATION_EVIDENCE_REF,
             "-CommercialApprovalEvidenceRef", $env:OSMU_COMMERCIAL_APPROVAL_EVIDENCE_REF,
@@ -257,6 +274,7 @@ jobs:
 
           Add-Base64SnapshotArgument $env:OSMU_OPERATIONS_READINESS_JSON_BASE64 ".osmu-run/operations-readiness-handoff-snapshot.json" "-OperationsReadinessJsonPath"
           Add-Base64SnapshotArgument $env:OSMU_OPERATIONS_CONVERGENCE_JSON_BASE64 ".osmu-run/operations-convergence-handoff-snapshot.json" "-OperationsConvergenceJsonPath"
+          Add-Base64SnapshotArgument $env:OSMU_DATA_FLOW_STORAGE_PLAN_JSON_BASE64 ".osmu-run/data-flow-storage-plan-handoff-snapshot.json" "-DataFlowStoragePlanJsonPath"
 
           if ($env:OSMU_CONFIRM_RUNBOOK_REVIEWED -eq "true") { $packageArgs += "-ConfirmRunbookReviewed" }
           if ($env:OSMU_CONFIRM_TROUBLESHOOTING_REVIEWED -eq "true") { $packageArgs += "-ConfirmTroubleshootingReviewed" }
@@ -265,6 +283,7 @@ jobs:
           if ($env:OSMU_CONFIRM_KNOWN_GAPS_ACCEPTED -eq "true") { $packageArgs += "-ConfirmKnownGapsAccepted" }
           if ($env:OSMU_CONFIRM_OPERATIONS_READINESS_SNAPSHOT_REVIEWED -eq "true") { $packageArgs += "-ConfirmOperationsReadinessSnapshotReviewed" }
           if ($env:OSMU_CONFIRM_OPERATIONS_CONVERGENCE_SNAPSHOT_REVIEWED -eq "true") { $packageArgs += "-ConfirmOperationsConvergenceSnapshotReviewed" }
+          if ($env:OSMU_CONFIRM_DATA_FLOW_STORAGE_PLAN_REVIEWED -eq "true") { $packageArgs += "-ConfirmDataFlowStoragePlanReviewed" }
           if ($env:OSMU_CONFIRM_NO_SECRET_VALUES -eq "true") { $packageArgs += "-ConfirmNoSecretValues" }
           if ($env:OSMU_REQUIRE_PRODUCTION_EVIDENCE -eq "true") { $packageArgs += "-RequireProductionEvidence" }
           if ($env:OSMU_REQUIRE_OPERATIONS_SNAPSHOT_EVIDENCE -eq "true") { $packageArgs += "-RequireOperationsSnapshotEvidence" }

@@ -346,6 +346,12 @@ if (-not ([string] $operationsHandoffPackageCheck[0].remediation.command).Contai
 if (-not ([string] $operationsHandoffPackageCheck[0].remediation.command).Contains("OperationsConvergenceJsonPath")) {
     throw "Operations handoff package target evidence remediation must include operations convergence JSON snapshot input."
 }
+if (-not ([string] $operationsHandoffPackageCheck[0].remediation.command).Contains("DataFlowStoragePlanEvidenceRef")) {
+    throw "Operations handoff package target evidence remediation must include data-flow storage plan evidence reference."
+}
+if (-not ([string] $operationsHandoffPackageCheck[0].remediation.command).Contains("DataFlowStoragePlanJsonPath")) {
+    throw "Operations handoff package target evidence remediation must include data-flow storage plan JSON snapshot input."
+}
 if (-not ([string] $operationsHandoffPackageCheck[0].remediation.command).Contains("RequireOperationsSnapshotEvidence")) {
     throw "Operations handoff package target evidence remediation must require operations snapshot evidence."
 }
@@ -355,19 +361,28 @@ if (-not ([string] $operationsHandoffPackageCheck[0].remediation.workflowCommand
 if (-not ([string] $operationsHandoffPackageCheck[0].remediation.workflowCommand).Contains("operations_convergence_json_base64=<base64-json>")) {
     throw "Operations handoff package target evidence workflow command must include operations convergence snapshot base64 input."
 }
+if (-not ([string] $operationsHandoffPackageCheck[0].remediation.workflowCommand).Contains("data_flow_storage_plan_evidence_ref=<ref>")) {
+    throw "Operations handoff package target evidence workflow command must include data-flow storage plan evidence reference input."
+}
+if (-not ([string] $operationsHandoffPackageCheck[0].remediation.workflowCommand).Contains("data_flow_storage_plan_json_base64=<base64-latest-data-flow-storage-plan-json>")) {
+    throw "Operations handoff package target evidence workflow command must include data-flow storage plan snapshot base64 input."
+}
 if (-not ([string] $operationsHandoffPackageCheck[0].remediation.workflowCommand).Contains("confirm_operations_readiness_snapshot_reviewed=true")) {
     throw "Operations handoff package target evidence workflow command must confirm operations readiness snapshot review."
 }
 if (-not ([string] $operationsHandoffPackageCheck[0].remediation.workflowCommand).Contains("confirm_operations_convergence_snapshot_reviewed=true")) {
     throw "Operations handoff package target evidence workflow command must confirm operations convergence snapshot review."
 }
+if (-not ([string] $operationsHandoffPackageCheck[0].remediation.workflowCommand).Contains("confirm_data_flow_storage_plan_reviewed=true")) {
+    throw "Operations handoff package target evidence workflow command must confirm data-flow storage plan review."
+}
 if (-not ([string] $operationsHandoffPackageCheck[0].remediation.workflowCommand).Contains("require_operations_snapshot_evidence=true")) {
     throw "Operations handoff package target evidence workflow command must require operations snapshot evidence."
 }
-if (-not ([string] $operationsHandoffPackageCheck[0].remediation.note).Contains("latest-operations-readiness.json") -or -not ([string] $operationsHandoffPackageCheck[0].remediation.note).Contains("latest-operations-readiness-convergence.json")) {
-    throw "Operations handoff package target evidence remediation note must mention readiness/convergence snapshots."
+if (-not ([string] $operationsHandoffPackageCheck[0].remediation.note).Contains("latest-operations-readiness.json") -or -not ([string] $operationsHandoffPackageCheck[0].remediation.note).Contains("latest-operations-readiness-convergence.json") -or -not ([string] $operationsHandoffPackageCheck[0].remediation.note).Contains("latest-data-flow-storage-plan.json")) {
+    throw "Operations handoff package target evidence remediation note must mention readiness/convergence/data-flow snapshots."
 }
-if (-not ([string] $operationsHandoffPackageCheck[0].remediation.note).Contains("reduced to sanitized result/count/sync summary fields")) {
+if (-not ([string] $operationsHandoffPackageCheck[0].remediation.note).Contains("reduced to sanitized result/count/sync/query-plan summary fields")) {
     throw "Operations handoff package target evidence remediation note must describe sanitized snapshot reduction."
 }
 if (-not ([string] $operationsHandoffPackageCheck[0].requiredEvidence).Contains("target environment")) {
