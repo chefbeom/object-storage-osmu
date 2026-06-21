@@ -70,10 +70,11 @@
         </button>
       </div>
 
-      <nav class="prefix-breadcrumb" aria-label="Object prefix">
+      <nav class="prefix-breadcrumb" data-testid="object-prefix-breadcrumb" aria-label="Object prefix">
         <button
           v-for="crumb in objectPrefixBreadcrumbs"
           :key="crumb.prefix"
+          data-testid="object-prefix-breadcrumb-button"
           type="button"
           class="ghost"
           :disabled="crumb.prefix === objectPrefix"
@@ -148,11 +149,12 @@
         </ul>
       </section>
 
-      <form class="inline-form tag-form" @submit.prevent="$emit('update-object-tags')">
-        <input v-model="objectTagForm.key" placeholder="tag target key" :disabled="!selectedBucket" />
-        <input v-model="objectTagForm.tags" placeholder="tags: project=osmu,stage=raw" :disabled="!selectedBucket" />
-        <button type="submit" :disabled="!selectedBucket || !objectTagForm.key">태그 저장</button>
+      <form class="inline-form tag-form" data-testid="object-tag-form" @submit.prevent="$emit('update-object-tags')">
+        <input data-testid="object-tag-key-input" v-model="objectTagForm.key" placeholder="tag target key" :disabled="!selectedBucket" />
+        <input data-testid="object-tag-value-input" v-model="objectTagForm.tags" placeholder="tags: project=osmu,stage=raw" :disabled="!selectedBucket" />
+        <button data-testid="object-tag-save-button" type="submit" :disabled="!selectedBucket || !objectTagForm.key">태그 저장</button>
         <button
+          data-testid="object-tag-reset-button"
           type="button"
           class="ghost"
           :disabled="!objectTagForm.key && !objectTagForm.tags"
@@ -176,13 +178,13 @@
             </tr>
           </thead>
           <tbody>
-            <tr v-for="prefix in objectPrefixes" :key="`prefix-${prefix}`" class="folder-row">
+            <tr v-for="prefix in objectPrefixes" :key="`prefix-${prefix}`" class="folder-row" data-testid="object-prefix-row">
               <td>{{ formatPrefixName(prefix) }}</td>
               <td>-</td>
               <td>prefix</td>
               <td>-</td>
               <td class="actions">
-                <button type="button" class="ghost" @click="$emit('open-object-prefix', prefix)">열기</button>
+                <button data-testid="object-prefix-open-button" type="button" class="ghost" @click="$emit('open-object-prefix', prefix)">열기</button>
               </td>
             </tr>
             <tr v-for="object in objects" :key="object.key">
@@ -190,6 +192,7 @@
                 <span
                   v-for="(part, index) in objectKeyParts(object.key)"
                   :key="`${object.key}-${index}`"
+                  :data-testid="part.match ? 'object-key-match' : undefined"
                   :class="{ 'key-match': part.match }"
                 >
                   {{ part.text }}
@@ -204,7 +207,7 @@
               <td class="actions">
                 <button v-if="objectViewMode === 'active'" type="button" class="ghost" @click="$emit('download-object', object.key)">다운로드</button>
                 <button v-if="objectViewMode === 'active'" type="button" class="ghost" @click="$emit('create-presigned-download-url', object.key)">URL</button>
-                <button v-if="objectViewMode === 'active'" type="button" class="ghost" @click="$emit('start-object-tag-edit', object)">태그</button>
+                <button data-testid="object-tag-edit-button" v-if="objectViewMode === 'active'" type="button" class="ghost" @click="$emit('start-object-tag-edit', object)">태그</button>
                 <button
                   data-testid="object-detail-button"
                   v-if="objectViewMode === 'active'"

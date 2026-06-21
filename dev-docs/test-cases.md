@@ -1866,7 +1866,7 @@ ID:
 - 절차: ObjectExplorer에서 breadcrumb 버튼을 클릭한다.
 - 기대 결과: 선택한 breadcrumb prefix로 `objectPrefix`가 변경되고 cursor 없이 해당 prefix의 첫 페이지를 조회한다.
 - 우선순위: P1
-- 자동화 여부: Automated (`npm run test:unit` object explorer breadcrumb utility). Browser click E2E pending.
+- 자동화 여부: Automated (`npm run test:unit` object explorer breadcrumb utility, Browser E2E stable selectors `object-prefix-breadcrumb`, `object-prefix-breadcrumb-button`). Browser prefix click E2E pending.
 
 ### TC-FE-015
 
@@ -1876,7 +1876,7 @@ ID:
 - 절차: ObjectExplorer에서 검색어를 입력하고 조회한다.
 - 기대 결과: 검색 결과 object key 안의 `report` 문자열이 강조 표시되고, 원본 key 문자열은 손상되지 않는다.
 - 우선순위: P1
-- 자동화 여부: Automated (`npm run test:unit` object key search highlight utility). Browser render E2E pending.
+- 자동화 여부: Automated (`npm run test:unit` object key search highlight utility, Browser E2E assertion `object-key-match`).
 
 ### TC-FE-016
 
@@ -1886,7 +1886,7 @@ ID:
 - 절차: ObjectExplorer에서 tag와 함께 업로드하고 tag filter로 조회한다.
 - 기대 결과: 업로드 요청에 `tags` form field가 포함되고 목록 태그 열에 `project=osmu, stage=raw`가 표시된다. tag filter 조회 시 `tag=project=osmu` query가 전송된다.
 - 우선순위: P1
-- 자동화 여부: Automated (`npm run test:unit` tag parser and object list tag query wrapper). Browser upload/filter E2E pending.
+- 자동화 여부: Automated (`npm run test:unit` tag parser and object list tag query wrapper, Browser E2E tag upload path and `object-tag-edit-button` selector). Browser tag filter E2E pending.
 
 ### TC-FE-017
 

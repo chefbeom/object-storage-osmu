@@ -221,6 +221,10 @@ test('HomeView exposes stable selectors for browser E2E flows', () => {
     'object-empty-state',
     'object-filter-form',
     'object-prefix-input',
+    'object-prefix-breadcrumb',
+    'object-prefix-breadcrumb-button',
+    'object-prefix-row',
+    'object-prefix-open-button',
     'object-search-input',
     'object-tag-filter-input',
     'object-list-limit-select',
@@ -228,6 +232,12 @@ test('HomeView exposes stable selectors for browser E2E flows', () => {
     'object-upload-form',
     'object-key-input',
     'object-tags-input',
+    'object-tag-form',
+    'object-tag-key-input',
+    'object-tag-value-input',
+    'object-tag-save-button',
+    'object-tag-reset-button',
+    'object-tag-edit-button',
     'object-file-input',
     'object-upload-button',
     'object-upload-cancel-button',
@@ -571,6 +581,7 @@ test('HomeView exposes stable selectors for browser E2E flows', () => {
     assert.match(dashboardSource, new RegExp(`data-testid="${testId}"`), `Missing data-testid="${testId}"`)
   }
 
+  assert.match(dashboardSource, /:data-testid="part\.match \? 'object-key-match' : undefined"/)
   assert.match(dashboardSource, /:data-testid="`bucket-row-\$\{bucket\.name\}`"/)
   assert.match(dashboardSource, /:data-testid="`dashboard-widget-\$\{widget\.id\}`"/)
   assert.match(dashboardSource, /:data-testid="`dashboard-widget-config-\$\{widget\.id\}`"/)

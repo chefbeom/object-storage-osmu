@@ -225,6 +225,7 @@ Web Portal은 관리자와 사용자가 OSMU를 브라우저에서 사용할 수
 - object metadata index/storage drift 상태 표시
 - object metadata ETag/checksum index/storage 비교 표시
 - Object metadata detail rows render explicit `Synced`/`Drift`/`Missing` chips through `object-metadata-row-state` so operators can see index/storage mismatch without inspecting raw values only.
+- Object Explorer는 prefix breadcrumb/open, 검색 match highlight, tag edit form/button에 stable selector(`object-prefix-breadcrumb`, `object-prefix-open-button`, `object-key-match`, `object-tag-form`, `object-tag-edit-button`)를 제공해 Browser E2E가 prefix/search/tag 흐름을 직접 검증할 수 있게 한다.
 - object version 목록 패널과 version restore 버튼
 - object version 목록 패널과 version restore 버튼
 - presigned upload URL 생성 시 object tag 전달

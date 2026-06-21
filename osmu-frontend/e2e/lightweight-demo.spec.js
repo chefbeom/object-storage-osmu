@@ -336,6 +336,8 @@ test('admin can complete lightweight storage portal click path', async ({ page }
   await expect(page.getByTestId('bucket-tags-input')).toBeVisible()
 
   await page.getByRole('link', { name: 'Objects' }).click()
+  await expect(page.getByTestId('object-prefix-breadcrumb')).toBeVisible()
+  await expect(page.getByTestId('object-prefix-breadcrumb-button').first()).toBeVisible()
   await page.getByTestId('object-key-input').fill(objectKey)
   await page.getByTestId('object-tags-input').fill('project=osmu,stage=e2e')
   await page.getByTestId('object-file-input').setInputFiles({
@@ -349,6 +351,8 @@ test('admin can complete lightweight storage portal click path', async ({ page }
   await page.getByTestId('object-search-input').fill('hello')
   await page.getByTestId('object-search-button').click()
   await expect(page.getByTestId('object-table')).toContainText(objectKey)
+  await expect(page.getByTestId('object-key-match').first()).toContainText(/hello/i)
+  await expect(page.getByTestId('object-tag-edit-button').first()).toBeVisible()
 
   await page.getByRole('link', { name: 'Audit' }).click()
   await page.getByTestId('audit-search-button').click()
