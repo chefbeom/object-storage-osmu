@@ -98,18 +98,46 @@ Write-JsonFixture $dataFlowStoragePlanPath ([ordered]@{
     candidateStore = "MARIADB_PARTITION"
     expectedPeakEventsPerDay = 250000
     expectedQueryWindowDays = 180
-    checkCount = 1
+    checkCount = 3
     passedCount = 0
-    pendingCount = 1
+    pendingCount = 3
     checks = @(
+        [ordered]@{
+            id = "expected_peak_volume"
+            title = "Expected peak event volume captured"
+            status = "pending"
+            detail = "Fixture pending peak."
+            nextAction = "Set target sizing evidence."
+        },
         [ordered]@{
             id = "explain_or_store_evidence"
             title = "Query plan or target-store evidence exists"
             status = "pending"
             detail = "Fixture pending check."
             nextAction = "Attach target evidence."
+        },
+        [ordered]@{
+            id = "mariadb_query_plan_evidence"
+            title = "MariaDB query plan evidence passed"
+            status = "pending"
+            detail = "No MariaDB query plan evidence JSON supplied."
+            nextAction = "Run scripts/write-mariadb-query-plan-evidence.ps1 with -Execute or -ExplainInputDir until result=passed, then rerun this storage plan."
         }
     )
+    queryPlanEvidence = [ordered]@{
+        provided = $false
+        parsed = $false
+        formatVersion = ""
+        expectedFormatVersion = "osmu.mariadb-query-plan-evidence.v1"
+        validFormatVersion = $false
+        result = ""
+        mode = ""
+        checkCount = 0
+        passedCount = 0
+        failedCount = 0
+        failedChecks = @()
+        detail = "No MariaDB query plan evidence JSON supplied."
+    }
     scopePolicy = "OSMU operations analytics only."
 })
 
@@ -235,7 +263,11 @@ Assert-Contains $checksText "configmap-sync-evidence-key-present" "configmap syn
 Assert-Contains $checksText "mounted-sync-evidence-readable" "mounted sync evidence readable check"
 Assert-Contains $checksText "mounted-sync-evidence-matches-configmap" "mounted sync evidence match check"
 Assert-Contains $checksText "configmap-data-flow-storage-plan-key-present" "configmap data-flow storage plan key check"
+Assert-Contains $checksText "configmap-data-flow-storage-plan-query-plan-evidence-present" "configmap data-flow query plan summary present check"
+Assert-Contains $checksText "configmap-data-flow-storage-plan-query-plan-expected-format-version" "configmap data-flow query plan format check"
 Assert-Contains $checksText "mounted-data-flow-storage-plan-readable" "mounted data-flow storage plan readable check"
+Assert-Contains $checksText "mounted-data-flow-storage-plan-query-plan-evidence-present" "mounted data-flow query plan summary present check"
+Assert-Contains $checksText "mounted-data-flow-storage-plan-query-plan-failed-count" "mounted data-flow query plan failed count check"
 Assert-Contains $checksText "mounted-data-flow-storage-plan-matches-configmap" "mounted data-flow storage plan match check"
 Assert-True ($evidence.safetyPolicy.Contains("read-only")) "mount evidence safety policy"
 

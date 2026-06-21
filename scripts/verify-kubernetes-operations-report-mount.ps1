@@ -162,6 +162,18 @@ function Get-ObjectInt([object] $Value) {
     }
 }
 
+function Get-ObjectBool([object] $Value) {
+    if ($null -eq $Value -or "$Value" -eq "") {
+        return $false
+    }
+    try {
+        return [bool] $Value
+    }
+    catch {
+        return $false
+    }
+}
+
 function Get-TextSha256([string] $Text) {
     $bytes = [System.Text.Encoding]::UTF8.GetBytes($Text)
     $sha = [System.Security.Cryptography.SHA256]::Create()
@@ -226,10 +238,24 @@ function Compare-DataFlowStoragePlanJson([object] $Actual, [object] $Expected, [
     if ($null -eq $Actual) {
         return
     }
+    $actualCandidateStore = Get-ObjectText $Actual.candidateStore
+    $actualQueryPlanEvidence = if ($Actual.PSObject.Properties.Name -contains "queryPlanEvidence") { $Actual.queryPlanEvidence } else { $null }
     Add-Check "$Label-format-version" ((Get-ObjectText $Actual.formatVersion) -eq "osmu.data-flow-storage-plan.v1") "$Label formatVersion=$(Get-ObjectText $Actual.formatVersion)."
+    if (@("MARIADB_PARTITION", "DUAL_WRITE") -contains $actualCandidateStore) {
+        Add-Check "$Label-query-plan-evidence-present" ($null -ne $actualQueryPlanEvidence) "$Label candidateStore=$actualCandidateStore requires queryPlanEvidence summary."
+    }
+    if ($null -ne $actualQueryPlanEvidence) {
+        Add-Check "$Label-query-plan-expected-format-version" ((Get-ObjectText $actualQueryPlanEvidence.expectedFormatVersion) -eq "osmu.mariadb-query-plan-evidence.v1") "$Label queryPlanEvidence expectedFormatVersion=$(Get-ObjectText $actualQueryPlanEvidence.expectedFormatVersion)."
+    }
     if ($null -ne $Expected) {
+        $expectedQueryPlanEvidence = if ($Expected.PSObject.Properties.Name -contains "queryPlanEvidence") { $Expected.queryPlanEvidence } else { $null }
         Add-Check "$Label-result" ((Get-ObjectText $Actual.result) -eq (Get-ObjectText $Expected.result)) "$Label result=$(Get-ObjectText $Actual.result), expected=$(Get-ObjectText $Expected.result)."
-        Add-Check "$Label-candidate-store" ((Get-ObjectText $Actual.candidateStore) -eq (Get-ObjectText $Expected.candidateStore)) "$Label candidateStore=$(Get-ObjectText $Actual.candidateStore), expected=$(Get-ObjectText $Expected.candidateStore)."
+        Add-Check "$Label-candidate-store" ($actualCandidateStore -eq (Get-ObjectText $Expected.candidateStore)) "$Label candidateStore=$actualCandidateStore, expected=$(Get-ObjectText $Expected.candidateStore)."
+        if ($null -ne $expectedQueryPlanEvidence -and $null -ne $actualQueryPlanEvidence) {
+            Add-Check "$Label-query-plan-provided" ((Get-ObjectBool $actualQueryPlanEvidence.provided) -eq (Get-ObjectBool $expectedQueryPlanEvidence.provided)) "$Label queryPlanEvidence provided=$(Get-ObjectBool $actualQueryPlanEvidence.provided), expected=$(Get-ObjectBool $expectedQueryPlanEvidence.provided)."
+            Add-Check "$Label-query-plan-result" ((Get-ObjectText $actualQueryPlanEvidence.result) -eq (Get-ObjectText $expectedQueryPlanEvidence.result)) "$Label queryPlanEvidence result=$(Get-ObjectText $actualQueryPlanEvidence.result), expected=$(Get-ObjectText $expectedQueryPlanEvidence.result)."
+            Add-Check "$Label-query-plan-failed-count" ((Get-ObjectInt $actualQueryPlanEvidence.failedCount) -eq (Get-ObjectInt $expectedQueryPlanEvidence.failedCount)) "$Label queryPlanEvidence failedCount=$(Get-ObjectInt $actualQueryPlanEvidence.failedCount), expected=$(Get-ObjectInt $expectedQueryPlanEvidence.failedCount)."
+        }
     }
 }
 
