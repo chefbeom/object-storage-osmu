@@ -84,6 +84,17 @@ function Assert-SafeReference([string] $Value, [string] $Label) {
     Assert-SafeText $Value $Label
 }
 
+function Assert-SanitizedPaymentProviderAdapterReadinessJson([string] $Value) {
+    if ([string]::IsNullOrWhiteSpace($Value)) {
+        return
+    }
+
+    $forbiddenPropertyPattern = '(?i)"(rawProviderResponse|raw_provider_response|providerResponse|provider_response|responseBody|response_body|responseHeaders|response_headers|webhookUrl|webhook_url|endpointUrl|endpoint_url|callbackUrl|callback_url|customerPaymentData|customer_payment_data|customerEmail|customer_email|customerName|customer_name|cardNumber|card_number|pan|bankAccount|bank_account|routingNumber|routing_number|taxId|tax_id|paymentTargetAccount|payment_target_account)"\s*:'
+    if ($Value -match $forbiddenPropertyPattern) {
+        throw "PaymentProviderAdapterReadinessJson appears to contain raw provider response, endpoint URL, or customer payment data. Store only sanitized profile metadata."
+    }
+}
+
 function Test-DateText([string] $Value) {
     if ([string]::IsNullOrWhiteSpace($Value)) {
         return $false
@@ -209,6 +220,7 @@ function Read-PaymentProviderAdapterReadinessSnapshot([string] $Path) {
 
     $raw = Get-Content -Raw -LiteralPath $resolvedPath
     Assert-SafeText $raw "PaymentProviderAdapterReadinessJson"
+    Assert-SanitizedPaymentProviderAdapterReadinessJson $raw
     try {
         $payload = $raw | ConvertFrom-Json
     }

@@ -162,6 +162,10 @@ foreach ($unexpected in @("password=super-secret", "Bearer abcdefghijklmnop", "-
     Assert-NotContains $reportText $unexpected "commercial integration evidence JSON"
     Assert-NotContains $markdown $unexpected "commercial integration evidence markdown"
 }
+foreach ($unexpected in @("rawProviderResponse", "customer@example.com", "https://pay.example")) {
+    Assert-NotContains $reportText $unexpected "commercial integration evidence JSON"
+    Assert-NotContains $markdown $unexpected "commercial integration evidence markdown"
+}
 
 $previousErrorActionPreference = $ErrorActionPreference
 $ErrorActionPreference = "Continue"
@@ -253,6 +257,35 @@ finally {
 }
 Assert-True ($invalidReadinessExitCode -ne 0) "Credential-like readiness snapshot should be rejected."
 Assert-Contains ($invalidReadinessOutput | Out-String) "PaymentProviderAdapterReadinessJson appears to contain credential material" "invalid readiness snapshot output"
+
+$unsafeRawReadinessJsonPath = Join-Path $resolvedOutputDirectory "unsafe-raw-payment-provider-adapter-readiness.json"
+[ordered]@{
+    mode = "PAYMENT_PROVIDER_ADAPTER_READINESS"
+    status = "WEBHOOK_PROFILE_READY"
+    rawProviderResponse = @{
+        statusCode = 200
+        body = "customer@example.com approved through https://pay.example/provider"
+    }
+} | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $unsafeRawReadinessJsonPath -Encoding UTF8
+
+$previousErrorActionPreference = $ErrorActionPreference
+$ErrorActionPreference = "Continue"
+try {
+    $unsafeRawReadinessOutput = & powershell -NoProfile -ExecutionPolicy Bypass -File $scriptPath `
+        -EnvironmentName "pilot-prod-self-test" `
+        -TargetCluster "customer-cluster-a" `
+        -Operator "ops-self-test" `
+        -PaymentProviderAdapterReadinessEvidenceRef "payment-adapter-readiness-run-20260620" `
+        -PaymentProviderAdapterReadinessJsonPath $unsafeRawReadinessJsonPath `
+        -ConfirmPaymentProviderAdapterReadinessReviewed `
+        -NoWrite 2>&1
+    $unsafeRawReadinessExitCode = $LASTEXITCODE
+}
+finally {
+    $ErrorActionPreference = $previousErrorActionPreference
+}
+Assert-True ($unsafeRawReadinessExitCode -ne 0) "Raw provider readiness snapshot should be rejected."
+Assert-Contains ($unsafeRawReadinessOutput | Out-String) "raw provider response" "unsafe raw readiness snapshot output"
 
 Write-Host "Commercial integration evidence writer verified."
 Write-Host "JSON: $jsonOutputPath"
