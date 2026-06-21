@@ -1749,7 +1749,7 @@ Evidence note: `npm run test:unit` covers stable bucket row cell selectors, and 
 - 절차: ObjectExplorer에서 업로드 실행.
 - 기대 결과: 업로드 중 진행률과 전송 bytes가 표시되고 중복 업로드가 차단되며, 완료 후 목록에 파일이 나타난다.
 - 우선순위: P1
-- 자동화 여부: Automated (`npm run test:unit` object metadata drift status/detail row helpers, Browser E2E object detail panel render).
+- 자동화 여부: Automated (`npm run test:unit` upload state/progress guard helpers and object metadata detail helpers, Browser E2E object upload followed by prefix/list refresh and detail panel render).
 
 ### TC-FE-003
 

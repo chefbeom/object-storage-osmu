@@ -241,6 +241,8 @@ Run when Browser/Chrome automation works again:
 - [x] Browser E2E spec includes destructive confirm cancel/confirm paths for bucket delete.
 - [x] Browser E2E spec includes operations readiness convergence summary and recommended command row visibility.
 - [x] Browser E2E spec includes bucket list name, usage, and object count cell assertions.
+- [x] Browser E2E spec includes object upload followed by prefix/list refresh and object detail render.
+- [x] Browser E2E spec includes object prefix open/root breadcrumb navigation, search highlight, tag filter, tag edit, and invalid tag error paths.
 - [x] Browser E2E spec includes bucket lifecycle XML save/load/delete and bucket tags save/load/delete click paths.
 - [x] Browser E2E spec includes audit filter, next-page click, CSV download filename, and reset click paths.
 - [x] Backend-backed Browser E2E prototype passes locally.
