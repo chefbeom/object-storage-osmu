@@ -1761,6 +1761,9 @@ Query:
 
 - `prefix`
 - `delimiter`: 폴더형 탐색 시 `/`
+- `search`: object key contains 검색. `delimiter`와 함께 들어와도 검색 결과는 recursive object result로 반환하고 `prefixes`는 비운다.
+- `tag`: exact tag filter. `key=value` 또는 `key` 형식을 받으며 값이 없으면 빈 값 exact match로 처리한다.
+- `deleted`: `true`면 trash object 목록을 조회한다.
 - `limit`: 기본 100, 최대 1000
 - `cursor`: 이전 응답의 `nextCursor`
 
@@ -1789,10 +1792,11 @@ Query:
 정책:
 
 - `cursor`는 마지막으로 반환된 object key다.
-- 다음 페이지는 같은 `prefix` 조건에서 cursor key보다 뒤의 object부터 조회한다.
-- `prefix`가 바뀌면 cursor는 새로 발급받아야 한다.
+- 다음 페이지는 같은 `prefix`/`search`/`tag`/`deleted` 조건에서 cursor key보다 뒤의 object부터 조회한다.
+- 검색/필터 조건이 바뀌면 cursor는 새로 발급받아야 한다.
 - `delimiter=/`를 사용하면 현재 prefix 바로 아래의 object와 하위 prefix를 분리해 반환한다.
-- `delimiter=/`를 사용하면 현재 prefix 바로 아래의 object와 하위 prefix를 분리해 반환한다.
+- MariaDB metadata mode에서는 recursive list/search/tag/trash page가 `prefix`, `search`, `tag`, `cursor`, `limit` 조건을 SQL로 pushdown한다. 이 API는 OSMU object explorer 성능 경로이며 AWS S3 list parity 확장이 아니다.
+- `prefix`와 `search` 안의 `%`, `_`, `!`는 SQL wildcard가 아니라 literal object key 문자로 처리한다.
 
 Deleted object 조회:
 

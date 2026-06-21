@@ -164,6 +164,7 @@ Controller -> Service -> StorageAdapter
 - MariaDB 접근
 - metadata record 조회/저장
 - object list/search/tag index 조회
+- recursive object list/search/tag/trash page의 prefix/search/tag/cursor/limit 조건 SQL pushdown
 - object tag inverted index 갱신/조회
 
 ### 4.4 StorageAdapter
@@ -414,6 +415,7 @@ MVP 보상 전략:
 - 파일 업로드: MinIO 업로드 성공 후 감사 로그 실패는 파일 업로드 성공으로 처리하고 로그 에러만 기록.
 - object metadata index: Backend upload/delete/tag/complete 성공 후 갱신한다. Backend를 거치지 않은 S3 직접 변경은 bucket sync로 재생성한다.
 - object tag index: object metadata와 같은 transaction에서 tag row를 replace해 JSON tag와 inverted index drift를 줄인다.
+- object list/search/filter: MariaDB mode는 active/trash recursive page에서 search, cursor, limit를 SQL에 적용하고 tag 조건은 `object_metadata_tags` lookup path로 줄인다. `delimiter=/` prefix browse만 common prefix 산출 때문에 prefix 범위 후보를 모아 그룹화한다.
 - object delete는 soft delete로 `object_metadata.deleted_at`을 기록한다. restore는 `deleted_at`을 제거하고, purge는 MinIO object와 metadata를 영구 삭제하며 quota/objectCount를 감소시킨다.
 - object versioning MVP는 REST upload overwrite와 version restore 전에 기존 active object를 `.osmu/versions/` hidden key로 snapshot한다.
 - `ObjectVersionRepository`는 version metadata를 저장하고, purge/retention purge 시 active object와 version snapshot을 함께 정리한다.

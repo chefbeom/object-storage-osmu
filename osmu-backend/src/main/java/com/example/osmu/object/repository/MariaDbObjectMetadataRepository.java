@@ -66,29 +66,26 @@ public class MariaDbObjectMetadataRepository implements ObjectMetadataRepository
         Map<String, String> normalizedTagFilter = tagFilter == null ? Map.of() : tagFilter;
         String normalizedCursor = cursor == null ? "" : cursor;
 
-        List<StoredObjectRecord> objects = findCandidates(
-                bucketName,
-                normalizedPrefix,
-                normalizedSearch,
-                normalizedTagFilter
-        )
-                .stream()
-                .filter(object -> object.key().startsWith(normalizedPrefix))
-                .filter(object -> normalizedSearch.isBlank()
-                        || object.key().toLowerCase().contains(normalizedSearch))
-                .filter(object -> matchesTags(object, normalizedTagFilter))
-                .toList();
-
         if (normalizedDelimiter.isBlank() || !normalizedSearch.isBlank() || !normalizedTagFilter.isEmpty()) {
-            List<StoredObjectRecord> pageObjects = objects.stream()
-                    .filter(object -> normalizedCursor.isBlank() || object.key().compareTo(normalizedCursor) > 0)
-                    .limit((long) limit + 1)
-                    .toList();
-            return toPage(pageObjects, limit);
+            return toPage(findCandidates(
+                    bucketName,
+                    normalizedPrefix,
+                    normalizedSearch,
+                    normalizedTagFilter,
+                    normalizedCursor,
+                    limit + 1
+            ), limit);
         }
 
         Map<String, ListedObjectEntry> entries = new TreeMap<>();
-        for (StoredObjectRecord object : objects) {
+        for (StoredObjectRecord object : findCandidates(
+                bucketName,
+                normalizedPrefix,
+                normalizedSearch,
+                normalizedTagFilter,
+                "",
+                Integer.MAX_VALUE
+        )) {
             addDelimitedEntry(entries, object, normalizedPrefix, normalizedDelimiter);
         }
         List<ListedObjectEntry> pageEntries = entries.values().stream()
@@ -162,12 +159,10 @@ public class MariaDbObjectMetadataRepository implements ObjectMetadataRepository
                 bucketName,
                 normalizedPrefix,
                 normalizedSearch,
-                normalizedTagFilter
-        )
-                .stream()
-                .filter(object -> normalizedCursor.isBlank() || object.key().compareTo(normalizedCursor) > 0)
-                .limit((long) limit + 1)
-                .toList();
+                normalizedTagFilter,
+                normalizedCursor,
+                limit + 1
+        );
         return toPage(pageObjects, limit);
     }
 
@@ -201,7 +196,7 @@ public class MariaDbObjectMetadataRepository implements ObjectMetadataRepository
         StringBuilder sql = new StringBuilder("""
                 SELECT bucket_name, object_key, size_bytes, deleted_at
                 FROM object_metadata m
-                WHERE deleted_at IS NOT NULL AND deleted_at <= ? AND object_key LIKE ?
+                WHERE deleted_at IS NOT NULL AND deleted_at <= ? AND object_key LIKE ? ESCAPE '!'
                 """);
         if (!normalizedBucketName.isBlank()) {
             sql.append("AND bucket_name = ?\n");
@@ -222,7 +217,7 @@ public class MariaDbObjectMetadataRepository implements ObjectMetadataRepository
         try (Connection connection = connect();
              PreparedStatement statement = connection.prepareStatement(sql.toString())) {
             statement.setTimestamp(1, Timestamp.from(cutoff.toInstant()));
-            statement.setString(2, normalizedPrefix + "%");
+            statement.setString(2, likePrefixPattern(normalizedPrefix));
             int parameterIndex = 3;
             if (!normalizedBucketName.isBlank()) {
                 statement.setString(parameterIndex++, normalizedBucketName);
@@ -368,14 +363,22 @@ public class MariaDbObjectMetadataRepository implements ObjectMetadataRepository
             String bucketName,
             String prefix,
             String search,
-            Map<String, String> tagFilter
+            Map<String, String> tagFilter,
+            String cursor,
+            int rowLimit
     ) {
         ensureSchema();
         StringBuilder sql = new StringBuilder("""
                 SELECT m.object_key, m.size_bytes, m.content_type, m.last_modified_at, m.tags, m.deleted_at, m.etag, m.checksums, m.user_metadata
                 FROM object_metadata m
-                WHERE m.bucket_name = ? AND m.object_key LIKE ? AND m.deleted_at IS NULL
+                WHERE m.bucket_name = ? AND m.object_key LIKE ? ESCAPE '!' AND m.deleted_at IS NULL
                 """);
+        if (!search.isBlank()) {
+            sql.append("AND LOWER(m.object_key) LIKE ? ESCAPE '!'\n");
+        }
+        if (!cursor.isBlank()) {
+            sql.append("AND m.object_key > ?\n");
+        }
         for (int index = 0; index < tagFilter.size(); index++) {
             sql.append("""
                     AND EXISTS (
@@ -388,16 +391,23 @@ public class MariaDbObjectMetadataRepository implements ObjectMetadataRepository
                     )
                     """);
         }
-        sql.append("ORDER BY m.object_key");
+        sql.append("ORDER BY m.object_key LIMIT ?");
         try (Connection connection = connect();
              PreparedStatement statement = connection.prepareStatement(sql.toString())) {
             statement.setString(1, bucketName);
-            statement.setString(2, prefix + "%");
+            statement.setString(2, likePrefixPattern(prefix));
             int parameterIndex = 3;
+            if (!search.isBlank()) {
+                statement.setString(parameterIndex++, likeContainsPattern(search));
+            }
+            if (!cursor.isBlank()) {
+                statement.setString(parameterIndex++, cursor);
+            }
             for (Map.Entry<String, String> entry : tagFilter.entrySet()) {
                 statement.setString(parameterIndex++, entry.getKey());
                 statement.setString(parameterIndex++, entry.getValue());
             }
+            statement.setInt(parameterIndex, Math.max(1, rowLimit));
             try (ResultSet resultSet = statement.executeQuery()) {
                 List<StoredObjectRecord> objects = new ArrayList<>();
                 while (resultSet.next()) {
@@ -414,16 +424,21 @@ public class MariaDbObjectMetadataRepository implements ObjectMetadataRepository
             String bucketName,
             String prefix,
             String search,
-            Map<String, String> tagFilter
+            Map<String, String> tagFilter,
+            String cursor,
+            int rowLimit
     ) {
         ensureSchema();
         StringBuilder sql = new StringBuilder("""
                 SELECT m.object_key, m.size_bytes, m.content_type, m.last_modified_at, m.tags, m.deleted_at, m.etag, m.checksums, m.user_metadata
                 FROM object_metadata m
-                WHERE m.bucket_name = ? AND m.object_key LIKE ? AND m.deleted_at IS NOT NULL
+                WHERE m.bucket_name = ? AND m.object_key LIKE ? ESCAPE '!' AND m.deleted_at IS NOT NULL
                 """);
         if (!search.isBlank()) {
-            sql.append("AND LOWER(m.object_key) LIKE ?\n");
+            sql.append("AND LOWER(m.object_key) LIKE ? ESCAPE '!'\n");
+        }
+        if (!cursor.isBlank()) {
+            sql.append("AND m.object_key > ?\n");
         }
         for (int index = 0; index < tagFilter.size(); index++) {
             sql.append("""
@@ -437,19 +452,23 @@ public class MariaDbObjectMetadataRepository implements ObjectMetadataRepository
                     )
                     """);
         }
-        sql.append("ORDER BY m.object_key");
+        sql.append("ORDER BY m.object_key LIMIT ?");
         try (Connection connection = connect();
              PreparedStatement statement = connection.prepareStatement(sql.toString())) {
             statement.setString(1, bucketName);
-            statement.setString(2, prefix + "%");
+            statement.setString(2, likePrefixPattern(prefix));
             int parameterIndex = 3;
             if (!search.isBlank()) {
-                statement.setString(parameterIndex++, "%" + search + "%");
+                statement.setString(parameterIndex++, likeContainsPattern(search));
+            }
+            if (!cursor.isBlank()) {
+                statement.setString(parameterIndex++, cursor);
             }
             for (Map.Entry<String, String> entry : tagFilter.entrySet()) {
                 statement.setString(parameterIndex++, entry.getKey());
                 statement.setString(parameterIndex++, entry.getValue());
             }
+            statement.setInt(parameterIndex, Math.max(1, rowLimit));
             try (ResultSet resultSet = statement.executeQuery()) {
                 List<StoredObjectRecord> objects = new ArrayList<>();
                 while (resultSet.next()) {
@@ -695,14 +714,6 @@ public class MariaDbObjectMetadataRepository implements ObjectMetadataRepository
         );
     }
 
-    private boolean matchesTags(StoredObjectRecord object, Map<String, String> tagFilter) {
-        if (tagFilter.isEmpty()) {
-            return true;
-        }
-        return tagFilter.entrySet().stream()
-                .allMatch(entry -> entry.getValue().equals(object.tags().get(entry.getKey())));
-    }
-
     private StoredObjectPage toPage(List<StoredObjectRecord> objects, int limit) {
         if (objects.size() <= limit) {
             return StoredObjectPage.recursive(objects, null);
@@ -741,6 +752,20 @@ public class MariaDbObjectMetadataRepository implements ObjectMetadataRepository
         }
         String nextCursor = hasNext ? pageEntries.get(pageEntries.size() - 1).key() : null;
         return new StoredObjectPage(objects, prefixes, nextCursor);
+    }
+
+    private String likePrefixPattern(String prefix) {
+        return escapeLike(prefix) + "%";
+    }
+
+    private String likeContainsPattern(String search) {
+        return "%" + escapeLike(search) + "%";
+    }
+
+    private String escapeLike(String value) {
+        return value.replace("!", "!!")
+                .replace("%", "!%")
+                .replace("_", "!_");
     }
 
     private String keyHash(String objectKey) {

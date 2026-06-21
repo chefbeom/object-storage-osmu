@@ -1307,7 +1307,7 @@ ID:
 - 조건: 같은 버킷에 `docs/sample.txt`, `docs/2026/report.txt`가 존재한다.
 - 입력: `GET /api/buckets/{bucketName}/objects?prefix=docs/&delimiter=/&search=report`
 - 절차: Object API를 search query와 함께 호출하고 Web Portal ObjectExplorer에서 검색어를 입력해 조회한다.
-- 기대 결과: 현재 prefix 아래 object key 중 `report`를 포함한 `docs/2026/report.txt`만 `items`에 표시되고 `prefixes`는 비어 있다.
+- 기대 결과: 현재 prefix 아래 object key 중 `report`를 포함한 `docs/2026/report.txt`만 `items`에 표시되고 `prefixes`는 비어 있다. MariaDB mode에서는 search/cursor/limit 조건이 SQL에 pushdown되어 bounded page로 조회된다.
 - 우선순위: P0
 - 자동화 여부: Automated
 
@@ -2364,10 +2364,20 @@ TC-FE-023 보강: 사용자가 취소한 경우에는 abort API를 호출한다.
 - Feature: MariaDB query plan evidence gate.
 - Preconditions: PowerShell is available. For live mode, target MariaDB is reachable and the password is provided through `OSMU_MARIADB_PASSWORD` or the selected `-PasswordEnvVar`.
 - Input: `powershell -ExecutionPolicy Bypass -File .\scripts\verify-mariadb-query-plan-evidence.ps1`; live collection uses `powershell -ExecutionPolicy Bypass -File .\scripts\write-mariadb-query-plan-evidence.ps1 -Execute -HostName <host> -Port <port> -Database <db> -User <user> -PasswordEnvVar OSMU_MARIADB_PASSWORD -FailIfNotPassed`.
-- Steps: Generate plan-only evidence, verify expected-index fixtures, verify wrong-index fixtures fail, then in a target environment collect `EXPLAIN FORMAT=JSON` for object list/tag/trash/version, audit, data-flow, storage expansion, and chargeback retry worker query paths.
+- Steps: Generate plan-only evidence, verify expected-index fixtures, verify wrong-index fixtures fail, then in a target environment collect `EXPLAIN FORMAT=JSON` for object list/search/tag/trash/version, audit, data-flow, storage expansion, and chargeback retry worker query paths.
 - Expected: Plan-only mode is marked `plan-ready-execute-required`; fixture/live evidence passes only when every checked path uses the expected migration-backed index and no database password is written to JSON or Markdown. Target-scale readiness still requires slow-query log review when query duration exceeds the listed budget.
 - Priority: P1
 - Automated: `scripts/write-mariadb-query-plan-evidence.ps1`, `scripts/verify-mariadb-query-plan-evidence.ps1`, `scripts/verify-local.ps1`
+
+### TC-DB-004
+
+- Feature: Object list search/filter SQL pushdown gate.
+- Preconditions: PowerShell is available and `MariaDbObjectMetadataRepository.java` exists.
+- Input: `powershell -ExecutionPolicy Bypass -File .\scripts\verify-object-list-query-pushdown.ps1`.
+- Steps: Verify active and trash object list queries keep SQL-level escaped `LOWER(m.object_key) LIKE ?`, `m.object_key > ?`, `ORDER BY m.object_key LIMIT ?`, rowLimit binding, escaped LIKE helper usage, and `object_metadata_tags` lookup path.
+- Expected: The gate fails if object search/filter/cursor pagination regresses to unbounded JVM-side filtering. It passes when recursive object search/tag/trash pages remain SQL-bounded.
+- Priority: P1
+- Automated: `scripts/verify-object-list-query-pushdown.ps1`, `scripts/verify-local.ps1`
 
 ### TC-OPS-001
 

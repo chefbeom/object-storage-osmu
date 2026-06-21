@@ -204,7 +204,7 @@ powershell -ExecutionPolicy Bypass -File .\scripts\verify-prototype-prerequisite
 powershell -ExecutionPolicy Bypass -File .\scripts\verify-local.ps1 -JavaHome C:\jdk-17
 ```
 
-`verify-local.ps1`는 Flyway migration version, `scripts/write-migration-rollback-plan.ps1`/`scripts/verify-migration-rollback-plan.ps1` 기반 rollback plan, `scripts/verify-metadata-index-coverage.ps1` 기반 metadata/data-flow/audit/storage expansion/chargeback retry 주요 index prefix, `scripts/write-mariadb-query-plan-evidence.ps1`/`scripts/verify-mariadb-query-plan-evidence.ps1` 기반 MariaDB EXPLAIN evidence contract를 확인한다.
+`verify-local.ps1`는 Flyway migration version, `scripts/write-migration-rollback-plan.ps1`/`scripts/verify-migration-rollback-plan.ps1` 기반 rollback plan, `scripts/verify-metadata-index-coverage.ps1` 기반 metadata/data-flow/audit/storage expansion/chargeback retry 주요 index prefix, `scripts/write-mariadb-query-plan-evidence.ps1`/`scripts/verify-mariadb-query-plan-evidence.ps1` 기반 MariaDB EXPLAIN evidence contract, `scripts/verify-object-list-query-pushdown.ps1` 기반 object search/filter SQL pushdown 회귀를 확인한다.
 
 프론트엔드 unit test:
 

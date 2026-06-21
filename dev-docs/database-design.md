@@ -546,7 +546,8 @@ CREATE TABLE object_metadata (
 - retention purge scheduler는 `deleted_at <= now - osmu.object.retention.days`인 object를 purge 후보로 조회한다.
 - Backend upload/delete/tag update/presigned complete는 index를 즉시 갱신한다.
 - Backend를 거치지 않은 S3 직접 변경은 `POST /api/buckets/{bucketName}/sync`로 storage 실제 상태를 읽어 index를 재생성한다.
-- tag exact filter는 `object_metadata_tags` inverted index로 후보를 줄인 뒤 `object_metadata.tags`와 최종 대조한다.
+- active/trash object list의 `prefix`, `search`, `tag`, `cursor`, `limit` 조건은 MariaDB SQL에 pushdown한다. Recursive list/search/filter page는 `ORDER BY object_key LIMIT limit+1`로 nextCursor를 판정해 대량 metadata 후보를 JVM으로 모두 읽지 않는다. `LIKE` pattern은 사용자 입력의 `%`, `_`, `!`를 literal로 escape한다.
+- tag exact filter는 `object_metadata_tags` inverted index로 후보를 줄인다.
 
 ## 11.0 object_retention_policy
 
@@ -873,9 +874,14 @@ erDiagram
 
 ## 16.3 MariaDB Query Plan Evidence
 
-- `scripts/write-mariadb-query-plan-evidence.ps1`는 high-volume metadata query path의 `EXPLAIN FORMAT=JSON` evidence를 작성한다. 대상은 object prefix list, tag exact lookup, trash/version scan, audit request/result lookup, data-flow event/day/month windows, storage expansion summary/timeout, chargeback notification/payment retry worker다.
+- `scripts/write-mariadb-query-plan-evidence.ps1`는 high-volume metadata query path의 `EXPLAIN FORMAT=JSON` evidence를 작성한다. 대상은 object prefix list, object search/cursor page, tag exact lookup, trash/version scan, audit request/result lookup, data-flow event/day/month windows, storage expansion summary/timeout, chargeback notification/payment retry worker다.
 - `scripts/verify-mariadb-query-plan-evidence.ps1`는 plan-only output, expected-index fixture pass, wrong-index fixture failure를 self-test한다. `verify-local.ps1`는 이 verifier를 실행해 evidence contract가 깨지지 않는지 확인한다.
 - plan-only output은 live 성능 증거가 아니다. target-scale MariaDB readiness는 `-Execute` 또는 operator-collected explain files가 모든 expected index를 보여주고, slow-query log 검토가 각 query budget을 만족할 때 확보된다.
+
+## 16.4 Object List Query Pushdown Gate
+
+- `scripts/verify-object-list-query-pushdown.ps1`는 `MariaDbObjectMetadataRepository`의 active/trash object list SQL이 escaped `LOWER(m.object_key) LIKE ?`, `m.object_key > ?`, `ORDER BY m.object_key LIMIT ?`, `object_metadata_tags` lookup path를 유지하는지 정적으로 검증한다.
+- 이 gate는 실제 row cardinality 성능 증거가 아니라 코드 회귀 방지다. target-scale 성능 판단은 `write-mariadb-query-plan-evidence.ps1 -Execute` 또는 operator-collected EXPLAIN과 slow-query log로 확인한다.
 
 ## 17. 구현 순서
 
