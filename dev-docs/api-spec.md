@@ -80,8 +80,10 @@ X-Request-Id: <request id>
 | `NOT_FOUND` | 404 | 리소스 없음 |
 | `CONFLICT` | 409 | 중복 또는 상태 충돌 |
 | `QUOTA_EXCEEDED` | 413 | 용량 제한 초과 |
-| `STORAGE_ERROR` | 502 | MinIO 연동 오류 |
+| `STORAGE_ERROR` | 502 | object storage 연동 오류 |
 | `INTERNAL_ERROR` | 500 | 내부 서버 오류 |
+
+Storage adapter가 의도된 `ApiException`을 반환하면 해당 code를 유지한다. 그 외 bucket/object service 경계에서 발생한 예기치 않은 storage runtime failure는 REST API에서 `502 STORAGE_ERROR`로 정규화하며, 객체 업로드 실패 시 metadata/quota side effect는 남기지 않는다.
 
 ## 2. Health API
 

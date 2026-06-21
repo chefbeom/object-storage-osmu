@@ -10,6 +10,7 @@ import com.example.osmu.object.repository.ObjectMetadataRepository;
 import com.example.osmu.object.repository.ObjectVersionRepository;
 import com.example.osmu.object.repository.PresignedUploadSessionRepository;
 import com.example.osmu.storage.ObjectStorageAdapter;
+import com.example.osmu.storage.ObjectStorageFailures;
 import java.io.IOException;
 import java.io.InputStream;
 import java.security.MessageDigest;
@@ -186,7 +187,10 @@ public class ObjectService {
         String normalizedBucketName = bucketService.get(bucketName, user).name();
         String normalizedKey = normalizeRequiredKey(key);
 
-        StoredObjectRecord previous = storageAdapter.statObject(normalizedBucketName, normalizedKey)
+        StoredObjectRecord previous = ObjectStorageFailures.run(
+                        "object stat",
+                        () -> storageAdapter.statObject(normalizedBucketName, normalizedKey)
+                )
                 .map(actual -> indexedMetadataOrActual(normalizedBucketName, normalizedKey, actual))
                 .orElse(null);
         ObjectVersionRecord snapshot = null;
@@ -196,13 +200,16 @@ public class ObjectService {
             if (previous != null) {
                 snapshot = snapshotActiveObject(normalizedBucketName, normalizedKey, previous);
             }
-            StoredObjectRecord storedObject = storageAdapter.putObject(
-                    normalizedBucketName,
-                    normalizedKey,
-                    content,
-                    sizeBytes,
-                    contentType,
-                    parseTags(tags)
+            StoredObjectRecord storedObject = ObjectStorageFailures.run(
+                    "object upload",
+                    () -> storageAdapter.putObject(
+                            normalizedBucketName,
+                            normalizedKey,
+                            content,
+                            sizeBytes,
+                            contentType,
+                            parseTags(tags)
+                    )
             );
             storedObject = storedObject.withChecksums(normalizeChecksums(checksums));
             storedObject = storedObject.withUserMetadata(normalizeUserMetadata(userMetadata));
@@ -220,7 +227,10 @@ public class ObjectService {
         String normalizedBucketName = bucketService.get(bucketName, user).name();
         String normalizedKey = normalizeRequiredKey(key);
         assertObjectNotDeleted(normalizedBucketName, normalizedKey);
-        StoredObjectData object = storageAdapter.getObject(normalizedBucketName, normalizedKey);
+        StoredObjectData object = ObjectStorageFailures.run(
+                "object download",
+                () -> storageAdapter.getObject(normalizedBucketName, normalizedKey)
+        );
         return new StoredObjectData(
                 indexedMetadataOrActual(normalizedBucketName, normalizedKey, object.metadata()),
                 object.content()
@@ -232,7 +242,10 @@ public class ObjectService {
         String normalizedBucketName = bucketService.get(bucketName, user).name();
         String normalizedKey = normalizeRequiredKey(key);
         assertObjectNotDeleted(normalizedBucketName, normalizedKey);
-        StoredObjectStream object = storageAdapter.openObject(normalizedBucketName, normalizedKey);
+        StoredObjectStream object = ObjectStorageFailures.run(
+                "object stream open",
+                () -> storageAdapter.openObject(normalizedBucketName, normalizedKey)
+        );
         return new StoredObjectStream(
                 indexedMetadataOrActual(normalizedBucketName, normalizedKey, object.metadata()),
                 object.content()
@@ -243,7 +256,10 @@ public class ObjectService {
         String normalizedBucketName = bucketService.get(bucketName).name();
         String normalizedKey = normalizeRequiredKey(key);
         assertObjectNotDeleted(normalizedBucketName, normalizedKey);
-        StoredObjectStream object = storageAdapter.openObject(normalizedBucketName, normalizedKey);
+        StoredObjectStream object = ObjectStorageFailures.run(
+                "shared object stream open",
+                () -> storageAdapter.openObject(normalizedBucketName, normalizedKey)
+        );
         return new StoredObjectStream(
                 indexedMetadataOrActual(normalizedBucketName, normalizedKey, object.metadata()),
                 object.content()
@@ -261,7 +277,10 @@ public class ObjectService {
                         normalizedVersionId
                 )
                 .orElseThrow(() -> new ApiException(ApiErrorCode.NOT_FOUND, "Object version not found."));
-        StoredObjectStream stream = storageAdapter.openObject(normalizedBucketName, version.storageKey());
+        StoredObjectStream stream = ObjectStorageFailures.run(
+                "object version stream open",
+                () -> storageAdapter.openObject(normalizedBucketName, version.storageKey())
+        );
         StoredObjectRecord metadata = new StoredObjectRecord(
                 version.key(),
                 version.sizeBytes(),
@@ -288,7 +307,10 @@ public class ObjectService {
         if (indexed.isDeleted()) {
             throw new ApiException(ApiErrorCode.NOT_FOUND, "Object is deleted.");
         }
-        StoredObjectRecord actual = storageAdapter.statObject(normalizedBucketName, normalizedKey).orElse(null);
+        StoredObjectRecord actual = ObjectStorageFailures.run(
+                "object metadata stat",
+                () -> storageAdapter.statObject(normalizedBucketName, normalizedKey)
+        ).orElse(null);
         return ObjectMetadataDetail.of(indexed, actual, metadataSyncStatus(indexed, actual));
     }
 
@@ -296,7 +318,10 @@ public class ObjectService {
         bucketService.assertCanWrite(bucketName, user);
         String normalizedBucketName = bucketService.get(bucketName, user).name();
         String normalizedKey = normalizeRequiredKey(key);
-        StoredObjectRecord actual = storageAdapter.statObject(normalizedBucketName, normalizedKey).orElse(null);
+        StoredObjectRecord actual = ObjectStorageFailures.run(
+                "object write stat",
+                () -> storageAdapter.statObject(normalizedBucketName, normalizedKey)
+        ).orElse(null);
         if (actual == null) {
             return Optional.empty();
         }
@@ -327,7 +352,10 @@ public class ObjectService {
         String normalizedKey = normalizeRequiredKey(key);
         String normalizedVersionId = normalizeVersionId(versionId);
         assertObjectNotDeleted(normalizedBucketName, normalizedKey);
-        StoredObjectRecord current = storageAdapter.statObject(normalizedBucketName, normalizedKey)
+        StoredObjectRecord current = ObjectStorageFailures.run(
+                        "object restore current stat",
+                        () -> storageAdapter.statObject(normalizedBucketName, normalizedKey)
+                )
                 .map(actual -> indexedMetadataOrActual(normalizedBucketName, normalizedKey, actual))
                 .orElseThrow(() -> new ApiException(ApiErrorCode.NOT_FOUND, "Object not found."));
         ObjectVersionRecord version = objectVersionRepository.findByVersionId(
@@ -376,7 +404,10 @@ public class ObjectService {
             return indexed;
         }
         StoredObjectRecord current = indexed == null
-                ? storageAdapter.statObject(normalizedBucketName, normalizedKey)
+                ? ObjectStorageFailures.run(
+                        "object delete stat",
+                        () -> storageAdapter.statObject(normalizedBucketName, normalizedKey)
+                )
                 .orElseThrow(() -> new ApiException(ApiErrorCode.NOT_FOUND, "Object not found."))
                 : indexed;
         StoredObjectRecord deleted = current.withDeletedAt(OffsetDateTime.now());
@@ -393,7 +424,10 @@ public class ObjectService {
         if (!indexed.isDeleted()) {
             throw new ApiException(ApiErrorCode.CONFLICT, "Object is not deleted.");
         }
-        if (storageAdapter.statObject(normalizedBucketName, normalizedKey).isEmpty()) {
+        if (ObjectStorageFailures.run(
+                "deleted object restore stat",
+                () -> storageAdapter.statObject(normalizedBucketName, normalizedKey)
+        ).isEmpty()) {
             objectMetadataRepository.delete(normalizedBucketName, normalizedKey);
             bucketService.applyObjectChange(normalizedBucketName, -indexed.sizeBytes(), -1L);
             throw new ApiException(ApiErrorCode.NOT_FOUND, "Deleted object is missing in storage.");
@@ -415,7 +449,10 @@ public class ObjectService {
         long purgedSizeBytes = indexed.sizeBytes();
         long purgedObjectCount = 1L;
         try {
-            StoredObjectRecord removed = storageAdapter.deleteObject(normalizedBucketName, normalizedKey);
+            StoredObjectRecord removed = ObjectStorageFailures.run(
+                    "object purge",
+                    () -> storageAdapter.deleteObject(normalizedBucketName, normalizedKey)
+            );
             purgedSizeBytes = removed.sizeBytes();
         } catch (ApiException exception) {
             if (exception.code() != ApiErrorCode.NOT_FOUND) {
@@ -444,7 +481,10 @@ public class ObjectService {
         String normalizedKey = normalizeRequiredKey(key);
         assertObjectNotDeleted(normalizedBucketName, normalizedKey);
         StoredObjectRecord indexed = objectMetadataRepository.findByKey(normalizedBucketName, normalizedKey).orElse(null);
-        StoredObjectRecord updatedObject = storageAdapter.setObjectTags(normalizedBucketName, normalizedKey, parseTags(tags));
+        StoredObjectRecord updatedObject = ObjectStorageFailures.run(
+                "object tag update",
+                () -> storageAdapter.setObjectTags(normalizedBucketName, normalizedKey, parseTags(tags))
+        );
         if (indexed != null) {
             updatedObject = updatedObject.withChecksums(indexed.checksums());
             updatedObject = updatedObject.withUserMetadata(indexed.userMetadata());
@@ -461,7 +501,10 @@ public class ObjectService {
         bucketService.assertCanWrite(bucketName, user);
         String normalizedBucketName = bucketService.get(bucketName, user).name();
         String normalizedKey = normalizeRequiredKey(request.key());
-        StoredObjectRecord previous = storageAdapter.statObject(normalizedBucketName, normalizedKey).orElse(null);
+        StoredObjectRecord previous = ObjectStorageFailures.run(
+                "multipart upload previous stat",
+                () -> storageAdapter.statObject(normalizedBucketName, normalizedKey)
+        ).orElse(null);
         String tags = normalizeTags(request.tags());
 
         int expiresInSeconds = expiresInSeconds(request.expiresInSeconds());
@@ -488,11 +531,14 @@ public class ObjectService {
         ));
 
         try {
-            PresignedObjectUrl url = storageAdapter.createPresignedPutUrl(
-                    normalizedBucketName,
-                    storageKey,
-                    request.contentType(),
-                    expiresInSeconds
+            PresignedObjectUrl url = ObjectStorageFailures.run(
+                    "presigned upload URL create",
+                    () -> storageAdapter.createPresignedPutUrl(
+                            normalizedBucketName,
+                            storageKey,
+                            request.contentType(),
+                            expiresInSeconds
+                    )
             );
             return new PresignedObjectUrl(url.url(), url.method(), url.expiresInSeconds(), uploadId);
         } catch (RuntimeException exception) {
@@ -539,7 +585,10 @@ public class ObjectService {
         long sizeBytes = hasExpectedSize ? normalizeMultipartSize(request.sizeBytes()) : 0L;
         long partSizeBytes = hasExpectedSize ? normalizeMultipartPartSize(request.partSizeBytes(), sizeBytes) : 0L;
         int partCount = hasExpectedSize ? multipartPartCount(sizeBytes, partSizeBytes) : 0;
-        StoredObjectRecord previous = storageAdapter.statObject(normalizedBucketName, normalizedKey).orElse(null);
+        StoredObjectRecord previous = ObjectStorageFailures.run(
+                "presigned upload previous stat",
+                () -> storageAdapter.statObject(normalizedBucketName, normalizedKey)
+        ).orElse(null);
         String tags = normalizeTags(request.tags());
         String checksumAlgorithm = normalizeChecksumNegotiation(request.checksumAlgorithm());
         String checksumType = normalizeChecksumNegotiation(request.checksumType());
@@ -550,12 +599,15 @@ public class ObjectService {
         }
         int expiresInSeconds = expiresInSeconds(request.expiresInSeconds());
         List<Integer> partNumbers = partNumbers(partCount);
-        StorageMultipartUpload storageUpload = storageAdapter.createMultipartUpload(
-                normalizedBucketName,
-                normalizedKey,
-                request.contentType(),
-                expiresInSeconds,
-                partNumbers
+        StorageMultipartUpload storageUpload = ObjectStorageFailures.run(
+                "multipart upload create",
+                () -> storageAdapter.createMultipartUpload(
+                        normalizedBucketName,
+                        normalizedKey,
+                        request.contentType(),
+                        expiresInSeconds,
+                        partNumbers
+                )
         );
 
         String uploadId = UUID.randomUUID().toString();
@@ -583,7 +635,7 @@ public class ObjectService {
                     null
             ));
         } catch (RuntimeException exception) {
-            storageAdapter.abortMultipartUpload(normalizedBucketName, normalizedKey, storageUpload.storageUploadId());
+            cleanupMultipartUploadAfterFailure(normalizedBucketName, normalizedKey, storageUpload.storageUploadId(), exception);
             throw exception;
         }
 
@@ -616,12 +668,15 @@ public class ObjectService {
         }
 
         int expiresInSeconds = expiresInSeconds(request.expiresInSeconds());
-        StorageMultipartUpload storageUpload = storageAdapter.refreshMultipartUploadParts(
-                normalizedBucketName,
-                normalizedKey,
-                session.storageUploadId(),
-                expiresInSeconds,
-                partNumbers(session.partCount())
+        StorageMultipartUpload storageUpload = ObjectStorageFailures.run(
+                "multipart upload refresh",
+                () -> storageAdapter.refreshMultipartUploadParts(
+                        normalizedBucketName,
+                        normalizedKey,
+                        session.storageUploadId(),
+                        expiresInSeconds,
+                        partNumbers(session.partCount())
+                )
         );
         return new MultipartUploadCreateResponse(
                 session.uploadId(),
@@ -647,10 +702,13 @@ public class ObjectService {
                 .orElseThrow(() -> new ApiException(ApiErrorCode.NOT_FOUND, "Upload session not found."));
         validateUploadSession(session, user, normalizedBucketName, normalizedKey);
         validateUploadMode(session, UPLOAD_MODE_MULTIPART);
-        List<MultipartUploadUploadedPart> uploadedParts = storageAdapter.listMultipartUploadParts(
-                normalizedBucketName,
-                normalizedKey,
-                session.storageUploadId()
+        List<MultipartUploadUploadedPart> uploadedParts = ObjectStorageFailures.run(
+                "multipart upload parts list",
+                () -> storageAdapter.listMultipartUploadParts(
+                        normalizedBucketName,
+                        normalizedKey,
+                        session.storageUploadId()
+                )
         );
         Map<Integer, Map<String, String>> partChecksums =
                 multipartPartChecksumRepository.findByUploadId(session.uploadId());
@@ -724,13 +782,16 @@ public class ObjectService {
         if (sizeBytes <= 0) {
             throw new ApiException(ApiErrorCode.VALIDATION_ERROR, "Content-Length is required for multipart part upload.");
         }
-        return storageAdapter.uploadMultipartUploadPart(
-                normalizedBucketName,
-                normalizedKey,
-                session.storageUploadId(),
-                partNumber,
-                content,
-                sizeBytes
+        return ObjectStorageFailures.run(
+                "multipart part upload",
+                () -> storageAdapter.uploadMultipartUploadPart(
+                        normalizedBucketName,
+                        normalizedKey,
+                        session.storageUploadId(),
+                        partNumber,
+                        content,
+                        sizeBytes
+                )
         );
     }
 
@@ -817,10 +878,13 @@ public class ObjectService {
         String normalizedBucketName = bucketService.get(bucketName, user).name();
         String normalizedKey = normalizeRequiredKey(request.key());
         assertObjectNotDeleted(normalizedBucketName, normalizedKey);
-        return storageAdapter.createPresignedGetUrl(
-                normalizedBucketName,
-                normalizedKey,
-                expiresInSeconds(request.expiresInSeconds())
+        return ObjectStorageFailures.run(
+                "presigned download URL create",
+                () -> storageAdapter.createPresignedGetUrl(
+                        normalizedBucketName,
+                        normalizedKey,
+                        expiresInSeconds(request.expiresInSeconds())
+                )
         );
     }
 
@@ -838,7 +902,10 @@ public class ObjectService {
         validateUploadMode(session, UPLOAD_MODE_PRESIGNED_PUT);
 
         String storageKey = requireUploadStorageKey(session);
-        StoredObjectRecord stagedObject = storageAdapter.statObject(normalizedBucketName, storageKey)
+        StoredObjectRecord stagedObject = ObjectStorageFailures.run(
+                        "presigned uploaded object stat",
+                        () -> storageAdapter.statObject(normalizedBucketName, storageKey)
+                )
                 .orElseThrow(() -> new ApiException(ApiErrorCode.NOT_FOUND, "Uploaded object not found."));
 
         try {
@@ -853,7 +920,10 @@ public class ObjectService {
         ObjectVersionRecord snapshot = null;
         try {
             if (session.previousExists()) {
-                StoredObjectRecord current = storageAdapter.statObject(normalizedBucketName, normalizedKey)
+                StoredObjectRecord current = ObjectStorageFailures.run(
+                                "presigned previous object stat",
+                                () -> storageAdapter.statObject(normalizedBucketName, normalizedKey)
+                        )
                         .map(actual -> indexedMetadataOrActual(normalizedBucketName, normalizedKey, actual))
                         .orElseThrow(() -> new ApiException(ApiErrorCode.NOT_FOUND, "Previous object not found."));
                 snapshot = snapshotActiveObject(normalizedBucketName, normalizedKey, current);
@@ -937,7 +1007,7 @@ public class ObjectService {
             try {
                 bucketService.assertObjectChangeAllowed(normalizedBucketName, session.expectedSizeBytes(), 1L);
             } catch (ApiException exception) {
-                storageAdapter.abortMultipartUpload(normalizedBucketName, normalizedKey, session.storageUploadId());
+                cleanupMultipartUploadAfterFailure(normalizedBucketName, normalizedKey, session.storageUploadId(), exception);
                 uploadSessionRepository.updateStatus(session.uploadId(), "FAILED", OffsetDateTime.now());
                 throw exception;
             }
@@ -946,20 +1016,29 @@ public class ObjectService {
         ObjectVersionRecord snapshot = null;
         try {
             if (session.previousExists()) {
-                StoredObjectRecord current = storageAdapter.statObject(normalizedBucketName, normalizedKey)
+                StoredObjectRecord current = ObjectStorageFailures.run(
+                                "multipart previous object stat",
+                                () -> storageAdapter.statObject(normalizedBucketName, normalizedKey)
+                        )
                         .map(actual -> indexedMetadataOrActual(normalizedBucketName, normalizedKey, actual))
                         .orElseThrow(() -> new ApiException(ApiErrorCode.NOT_FOUND, "Previous object not found."));
                 snapshot = snapshotActiveObject(normalizedBucketName, normalizedKey, current);
             }
-            StoredObjectRecord uploadedObject = storageAdapter.completeMultipartUpload(
-                    normalizedBucketName,
-                    normalizedKey,
-                    session.storageUploadId(),
-                    completedParts
+            StoredObjectRecord uploadedObject = ObjectStorageFailures.run(
+                    "multipart upload complete",
+                    () -> storageAdapter.completeMultipartUpload(
+                            normalizedBucketName,
+                            normalizedKey,
+                            session.storageUploadId(),
+                            completedParts
+                    )
             );
             Map<String, String> tags = parseTags(session.tags());
             if (!tags.isEmpty()) {
-                uploadedObject = storageAdapter.setObjectTags(normalizedBucketName, normalizedKey, tags);
+                uploadedObject = ObjectStorageFailures.run(
+                        "multipart completed object tag update",
+                        () -> storageAdapter.setObjectTags(normalizedBucketName, normalizedKey, tags)
+                );
             }
             try {
                 validateMultipartObjectSize(uploadedObject, expectedObjectSize);
@@ -985,12 +1064,31 @@ public class ObjectService {
     private void rollbackCompletedMultipartObject(String bucketName, String objectKey, ObjectVersionRecord snapshot) {
         try {
             if (snapshot == null) {
-                storageAdapter.deleteObject(bucketName, objectKey);
+                ObjectStorageFailures.run(
+                        "multipart completion rollback delete",
+                        () -> storageAdapter.deleteObject(bucketName, objectKey)
+                );
                 return;
             }
             restoreVersionContent(bucketName, objectKey, snapshot);
         } catch (RuntimeException ignored) {
             // Best effort cleanup. Original checksum error must stay visible to caller.
+        }
+    }
+
+    private void cleanupMultipartUploadAfterFailure(
+            String bucketName,
+            String objectKey,
+            String storageUploadId,
+            RuntimeException originalException
+    ) {
+        try {
+            ObjectStorageFailures.run(
+                    "multipart upload failure cleanup",
+                    () -> storageAdapter.abortMultipartUpload(bucketName, objectKey, storageUploadId)
+            );
+        } catch (RuntimeException cleanupException) {
+            originalException.addSuppressed(cleanupException);
         }
     }
 
@@ -1006,7 +1104,10 @@ public class ObjectService {
                 .orElseThrow(() -> new ApiException(ApiErrorCode.NOT_FOUND, "Upload session not found."));
         validateUploadSession(session, user, normalizedBucketName, normalizedKey);
         validateUploadMode(session, UPLOAD_MODE_MULTIPART);
-        storageAdapter.abortMultipartUpload(normalizedBucketName, normalizedKey, session.storageUploadId());
+        ObjectStorageFailures.run(
+                "multipart upload abort",
+                () -> storageAdapter.abortMultipartUpload(normalizedBucketName, normalizedKey, session.storageUploadId())
+        );
         uploadSessionRepository.updateStatus(session.uploadId(), "ABORTED", OffsetDateTime.now());
         deleteMultipartPartChecksums(session.uploadId());
     }
@@ -1141,7 +1242,10 @@ public class ObjectService {
         Map.Entry<String, String> checksum = checksums.entrySet().iterator().next();
         byte[] expected = decodeChecksum(checksum.getKey(), checksum.getValue(), expectedChecksumLength(checksum.getKey()));
         byte[] actual;
-        try (InputStream content = storageAdapter.openObject(bucketName, objectKey).content()) {
+        try (InputStream content = ObjectStorageFailures.run(
+                "completed multipart checksum object open",
+                () -> storageAdapter.openObject(bucketName, objectKey)
+        ).content()) {
             actual = objectChecksum(checksum.getKey(), content);
         } catch (IOException exception) {
             throw new ApiException(ApiErrorCode.STORAGE_ERROR, "Completed multipart checksum validation failed: " + exception.getMessage());
@@ -1647,15 +1751,21 @@ public class ObjectService {
     ) {
         String versionId = UUID.randomUUID().toString();
         String storageKey = ObjectVersionStorageKeys.PREFIX + keyHash(objectKey) + "/" + versionId;
-        StoredObjectStream stream = storageAdapter.openObject(bucketName, objectKey);
+        StoredObjectStream stream = ObjectStorageFailures.run(
+                "object version snapshot source open",
+                () -> storageAdapter.openObject(bucketName, objectKey)
+        );
         try (InputStream content = stream.content()) {
-            storageAdapter.putObject(
-                    bucketName,
-                    storageKey,
-                    content,
-                    current.sizeBytes(),
-                    current.contentType(),
-                    current.tags()
+            ObjectStorageFailures.run(
+                    "object version snapshot write",
+                    () -> storageAdapter.putObject(
+                            bucketName,
+                            storageKey,
+                            content,
+                            current.sizeBytes(),
+                            current.contentType(),
+                            current.tags()
+                    )
             );
         } catch (java.io.IOException exception) {
             throw new ApiException(ApiErrorCode.STORAGE_ERROR, "Object version snapshot failed: " + exception.getMessage());
@@ -1686,15 +1796,21 @@ public class ObjectService {
             String objectKey,
             ObjectVersionRecord version
     ) {
-        StoredObjectStream versionStream = storageAdapter.openObject(bucketName, version.storageKey());
+        StoredObjectStream versionStream = ObjectStorageFailures.run(
+                "object version restore source open",
+                () -> storageAdapter.openObject(bucketName, version.storageKey())
+        );
         try (InputStream content = versionStream.content()) {
-            return storageAdapter.putObject(
-                    bucketName,
-                    objectKey,
-                    content,
-                    version.sizeBytes(),
-                    version.contentType(),
-                    version.tags()
+            return ObjectStorageFailures.run(
+                    "object version restore write",
+                    () -> storageAdapter.putObject(
+                            bucketName,
+                            objectKey,
+                            content,
+                            version.sizeBytes(),
+                            version.contentType(),
+                            version.tags()
+                    )
             ).withUserMetadata(version.userMetadata());
         } catch (java.io.IOException exception) {
             throw new ApiException(ApiErrorCode.STORAGE_ERROR, "Object version restore failed: " + exception.getMessage());
@@ -1709,15 +1825,21 @@ public class ObjectService {
             Map<String, String> tags
     ) {
         Map<String, String> appliedTags = tags.isEmpty() ? stagedObject.tags() : tags;
-        StoredObjectStream stagedStream = storageAdapter.openObject(bucketName, storageKey);
+        StoredObjectStream stagedStream = ObjectStorageFailures.run(
+                "presigned staging object open",
+                () -> storageAdapter.openObject(bucketName, storageKey)
+        );
         try (InputStream content = stagedStream.content()) {
-            StoredObjectRecord storedObject = storageAdapter.putObject(
-                    bucketName,
-                    objectKey,
-                    content,
-                    stagedObject.sizeBytes(),
-                    stagedObject.contentType(),
-                    appliedTags
+            StoredObjectRecord storedObject = ObjectStorageFailures.run(
+                    "presigned staging copy",
+                    () -> storageAdapter.putObject(
+                            bucketName,
+                            objectKey,
+                            content,
+                            stagedObject.sizeBytes(),
+                            stagedObject.contentType(),
+                            appliedTags
+                    )
             );
             deleteUploadStagingStorage(bucketName, storageKey);
             return storedObject.withUserMetadata(stagedObject.userMetadata());
@@ -1728,7 +1850,10 @@ public class ObjectService {
 
     private boolean deleteVersionStorage(String bucketName, ObjectVersionRecord version) {
         try {
-            storageAdapter.deleteObject(bucketName, version.storageKey());
+            ObjectStorageFailures.run(
+                    "object version storage delete",
+                    () -> storageAdapter.deleteObject(bucketName, version.storageKey())
+            );
             return true;
         } catch (ApiException exception) {
             if (exception.code() == ApiErrorCode.NOT_FOUND) {
@@ -1740,7 +1865,10 @@ public class ObjectService {
 
     private boolean deleteUploadStagingStorage(String bucketName, String storageKey) {
         try {
-            storageAdapter.deleteObject(bucketName, storageKey);
+            ObjectStorageFailures.run(
+                    "presigned staging object delete",
+                    () -> storageAdapter.deleteObject(bucketName, storageKey)
+            );
             return true;
         } catch (ApiException exception) {
             if (exception.code() == ApiErrorCode.NOT_FOUND) {
@@ -1803,8 +1931,10 @@ public class ObjectService {
             String storageUploadId,
             List<CompletedMultipartUploadPart> completedParts
     ) {
-        List<MultipartUploadUploadedPart> uploadedParts =
-                storageAdapter.listMultipartUploadParts(bucketName, objectKey, storageUploadId);
+        List<MultipartUploadUploadedPart> uploadedParts = ObjectStorageFailures.run(
+                "multipart completed parts verification list",
+                () -> storageAdapter.listMultipartUploadParts(bucketName, objectKey, storageUploadId)
+        );
         Map<Integer, MultipartUploadUploadedPart> uploadedByPartNumber = new TreeMap<>();
         for (MultipartUploadUploadedPart uploadedPart : uploadedParts) {
             uploadedByPartNumber.put(uploadedPart.partNumber(), uploadedPart);

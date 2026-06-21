@@ -60,6 +60,39 @@ class ObjectServiceMultipartRefreshTest {
     private final AuthenticatedUser user = new AuthenticatedUser(1L, "admin", "ADMIN", null);
 
     @Test
+    void uploadStorageRuntimeFailureReturnsStorageErrorWithoutMetadataSideEffects() {
+        BucketRecord bucket = new BucketRecord(1L, "bucket", "USER", 1L, 1000000000L, 0L, 0L, OffsetDateTime.now());
+        when(bucketService.get("bucket", user)).thenReturn(bucket);
+        when(storageAdapter.statObject("bucket", "docs/fail.txt")).thenReturn(Optional.empty());
+        when(storageAdapter.putObject(
+                eq("bucket"),
+                eq("docs/fail.txt"),
+                any(InputStream.class),
+                eq(4L),
+                eq("text/plain"),
+                eq(Map.of())
+        )).thenThrow(new IllegalStateException("disk offline"));
+
+        assertThatThrownBy(() -> objectService.upload(
+                "bucket",
+                "docs/fail.txt",
+                null,
+                new ByteArrayInputStream("fail".getBytes(StandardCharsets.UTF_8)),
+                4L,
+                "text/plain",
+                user
+        ))
+                .isInstanceOf(ApiException.class)
+                .satisfies(exception -> {
+                    ApiException apiException = (ApiException) exception;
+                    assertThat(apiException.code()).isEqualTo(ApiErrorCode.STORAGE_ERROR);
+                    assertThat(apiException.getMessage()).contains("Object storage object upload failed: disk offline");
+                });
+        verify(bucketService, never()).applyObjectChange(any(String.class), anyLong(), anyLong());
+        verify(objectMetadataRepository, never()).save(any(String.class), any(StoredObjectRecord.class));
+    }
+
+    @Test
     void presignedOverwriteUploadsToStagingKeyAndSnapshotsOnComplete() {
         BucketRecord bucket = new BucketRecord(1L, "bucket", "USER", 1L, 1000000000L, 10L, 1L, OffsetDateTime.now());
         StoredObjectRecord previous = new StoredObjectRecord(

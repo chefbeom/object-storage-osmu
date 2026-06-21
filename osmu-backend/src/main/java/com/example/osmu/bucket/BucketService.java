@@ -16,6 +16,7 @@ import com.example.osmu.organization.repository.OrganizationRepository;
 import com.example.osmu.organization.repository.TeamRepository;
 import com.example.osmu.quota.repository.QuotaPolicyRepository;
 import com.example.osmu.storage.ObjectStorageAdapter;
+import com.example.osmu.storage.ObjectStorageFailures;
 import com.example.osmu.storageprofile.repository.StorageProfileAssignmentRepository;
 import com.example.osmu.user.UserAccount;
 import com.example.osmu.user.repository.UserRepository;
@@ -108,11 +109,11 @@ public class BucketService {
                 0L,
                 OffsetDateTime.now()
         );
-        storageAdapter.createBucket(bucketName);
+        ObjectStorageFailures.run("bucket create", () -> storageAdapter.createBucket(bucketName));
         try {
             return bucketRepository.save(bucket);
         } catch (RuntimeException exception) {
-            storageAdapter.deleteBucket(bucketName);
+            cleanupCreatedStorageBucket(bucketName, exception);
             throw exception;
         }
     }
@@ -137,7 +138,7 @@ public class BucketService {
         if (objectVersionRepository.existsByBucketName(bucket.name())) {
             throw new ApiException(ApiErrorCode.CONFLICT, "Bucket is not empty.");
         }
-        storageAdapter.deleteBucket(bucket.name());
+        ObjectStorageFailures.run("bucket delete", () -> storageAdapter.deleteBucket(bucket.name()));
         objectMetadataRepository.deleteByBucketName(bucket.name());
         objectVersionRepository.deleteByBucketName(bucket.name());
         bucketPermissionRepository.deleteByBucketId(bucket.id());
@@ -154,7 +155,10 @@ public class BucketService {
         for (StoredObjectRecord object : indexedObjects) {
             indexedByKey.put(object.key(), object);
         }
-        List<StoredObjectRecord> storageObjects = storageAdapter.listObjects(current.name(), "");
+        List<StoredObjectRecord> storageObjects = ObjectStorageFailures.run(
+                "bucket sync list",
+                () -> storageAdapter.listObjects(current.name(), "")
+        );
         List<StoredObjectRecord> visibleObjects = new ArrayList<>();
         Set<String> visibleKeys = new LinkedHashSet<>();
         long metadataAddedCount = 0L;
@@ -217,6 +221,14 @@ public class BucketService {
                 metadataRemovedCount,
                 deletedObjectMetadataRetainedCount
         );
+    }
+
+    private void cleanupCreatedStorageBucket(String bucketName, RuntimeException originalException) {
+        try {
+            ObjectStorageFailures.run("bucket create cleanup", () -> storageAdapter.deleteBucket(bucketName));
+        } catch (RuntimeException cleanupException) {
+            originalException.addSuppressed(cleanupException);
+        }
     }
 
     private StoredObjectRecord reconcileSyncedObject(StoredObjectRecord actual, StoredObjectRecord existing) {

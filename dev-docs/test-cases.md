@@ -1391,6 +1391,16 @@ ID:
 - 우선순위: P0
 - 자동화 여부: Automated
 
+### TC-OBJECT-020A
+
+- 기능: object storage runtime failure API normalization
+- 조건: bucket/object service가 storage adapter 호출 중 예상하지 못한 runtime failure를 받는다.
+- 입력: bucket create 또는 direct object upload 중 storage adapter가 `RuntimeException`을 던진다.
+- 절차: bucket create storage failure와 object upload storage failure를 각각 발생시킨다.
+- 기대 결과: API/service boundary는 `502 STORAGE_ERROR`로 정규화한다. object upload 실패는 bucket quota와 object metadata를 갱신하지 않고, bucket create 실패는 bucket metadata를 저장하지 않는다. storage adapter가 이미 의미 있는 `ApiException`을 던진 경우에는 기존 code를 유지한다.
+- 우선순위: P1
+- 자동화 여부: `BucketServiceStorageFailureTest.createBucketStorageRuntimeFailureReturnsStorageErrorBeforeSavingMetadata`, `ObjectServiceMultipartRefreshTest.uploadStorageRuntimeFailureReturnsStorageErrorWithoutMetadataSideEffects`
+
 ### TC-OBJECT-021
 
 - 기능: multipart upload presigned URL 발급과 complete

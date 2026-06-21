@@ -403,6 +403,7 @@ MVP 단계:
 - MariaDB 변경은 Service 단위 트랜잭션.
 - MinIO와 MariaDB는 분산 트랜잭션으로 묶지 않는다.
 - MinIO 성공 후 DB 실패, DB 성공 후 MinIO 실패 보상 전략 필요.
+- Bucket/Object service 경계는 storage adapter가 던진 의도적 `ApiException`을 유지하고, 그 외 예상하지 못한 runtime failure를 `STORAGE_ERROR`로 정규화한다. object upload storage 실패는 metadata/quota 반영 전에 중단한다.
 
 MVP 보상 전략:
 
