@@ -33,6 +33,7 @@ public record DashboardReadinessResponse(
         DashboardEnterpriseAuthSmokeEvidenceResponse enterpriseAuthSmokeEvidence,
         DashboardDataFlowStoragePlanResponse dataFlowStoragePlan,
         DashboardStorageBackendTelemetryEvidenceResponse storageBackendTelemetryEvidence,
+        DashboardMinioBucketCorsVerificationResponse minioBucketCorsVerification,
         DashboardOperationsEvidenceHandoffResponse operationsEvidenceHandoff,
         DashboardOperationsReadinessConvergenceResponse operationsReadinessConvergence,
         DashboardKubernetesOperationsReportSyncResponse kubernetesOperationsReportSync,

@@ -140,6 +140,7 @@ public class AdminController {
     private final String enterpriseAuthSmokeEvidenceReportPath;
     private final String dataFlowStoragePlanReportPath;
     private final String storageBackendTelemetryReportPath;
+    private final String minioBucketCorsVerificationReportPath;
     private final String operationsReadinessConvergenceReportPath;
     private final String kubernetesOperationsReportSyncReportPath;
 
@@ -201,6 +202,7 @@ public class AdminController {
             @Value("${osmu.operations.readiness.enterprise-auth-smoke-evidence-report-path:.osmu-run/latest-enterprise-auth-smoke.json}") String enterpriseAuthSmokeEvidenceReportPath,
             @Value("${osmu.operations.readiness.data-flow-storage-plan-report-path:.osmu-run/latest-data-flow-storage-plan.json}") String dataFlowStoragePlanReportPath,
             @Value("${osmu.operations.readiness.storage-backend-telemetry-report-path:.osmu-run/latest-storage-backend-telemetry.json}") String storageBackendTelemetryReportPath,
+            @Value("${osmu.operations.readiness.minio-bucket-cors-verification-report-path:.osmu-run/latest-minio-bucket-cors-verification.json}") String minioBucketCorsVerificationReportPath,
             @Value("${osmu.operations.readiness.convergence-report-path:.osmu-run/latest-operations-readiness-convergence.json}") String operationsReadinessConvergenceReportPath,
             @Value("${osmu.operations.readiness.kubernetes-report-sync-report-path:.osmu-run/latest-kubernetes-operations-report-sync.json}") String kubernetesOperationsReportSyncReportPath
     ) {
@@ -261,6 +263,7 @@ public class AdminController {
         this.enterpriseAuthSmokeEvidenceReportPath = blankToNull(enterpriseAuthSmokeEvidenceReportPath);
         this.dataFlowStoragePlanReportPath = blankToNull(dataFlowStoragePlanReportPath);
         this.storageBackendTelemetryReportPath = blankToNull(storageBackendTelemetryReportPath);
+        this.minioBucketCorsVerificationReportPath = blankToNull(minioBucketCorsVerificationReportPath);
         this.operationsReadinessConvergenceReportPath = blankToNull(operationsReadinessConvergenceReportPath);
         this.kubernetesOperationsReportSyncReportPath = blankToNull(kubernetesOperationsReportSyncReportPath);
     }
@@ -934,6 +937,7 @@ public class AdminController {
         DashboardEnterpriseAuthSmokeEvidenceResponse enterpriseAuthSmokeEvidence = enterpriseAuthSmokeEvidenceSnapshot();
         DashboardDataFlowStoragePlanResponse dataFlowStoragePlan = dataFlowStoragePlanSnapshot();
         DashboardStorageBackendTelemetryEvidenceResponse storageBackendTelemetryEvidence = storageBackendTelemetryEvidenceSnapshot();
+        DashboardMinioBucketCorsVerificationResponse minioBucketCorsVerification = minioBucketCorsVerificationSnapshot();
         DashboardOperationsEvidenceHandoffResponse operationsEvidenceHandoff = operationsEvidenceHandoffSnapshot();
         DashboardOperationsReadinessConvergenceResponse operationsReadinessConvergence = operationsReadinessConvergenceSnapshot();
         DashboardKubernetesOperationsReportSyncResponse kubernetesOperationsReportSync = kubernetesOperationsReportSyncSnapshot();
@@ -970,6 +974,7 @@ public class AdminController {
                 enterpriseAuthSmokeEvidence,
                 dataFlowStoragePlan,
                 storageBackendTelemetryEvidence,
+                minioBucketCorsVerification,
                 operationsEvidenceHandoff,
                 operationsReadinessConvergence,
                 kubernetesOperationsReportSync,
@@ -1626,6 +1631,7 @@ public class AdminController {
         addEnterpriseAuthSmokeEvidenceItem(items);
         addDataFlowStoragePlanItem(items);
         addStorageBackendTelemetryEvidenceItem(items);
+        addMinioBucketCorsVerificationItem(items);
 
         addOperationsReadinessArtifactImportItem(items);
         addOperationsReadinessFinalizeItem(items);
@@ -3313,6 +3319,90 @@ public class AdminController {
                 jsonText(telemetryReport, "decisionRule"),
                 jsonText(telemetryReport, "scopePolicy")
         );
+    }
+
+    private void addMinioBucketCorsVerificationItem(java.util.ArrayList<DashboardReadinessItemResponse> items) {
+        DashboardMinioBucketCorsVerificationResponse evidence = minioBucketCorsVerificationSnapshot();
+        if (evidence.result().isBlank() || "passed".equalsIgnoreCase(evidence.result())) {
+            return;
+        }
+        addReadinessItem(
+                items,
+                "WARNING",
+                "OPERATIONS",
+                "MINIO_BUCKET_CORS_VERIFICATION",
+                "MinIO bucket CORS verification is %s: rules=%d, exposedHeaders=%d, failures=%d, planned=%d.".formatted(
+                        evidence.result(),
+                        evidence.ruleCount(),
+                        evidence.exposedHeaderCount(),
+                        evidence.failureCount(),
+                        evidence.plannedCount()
+                ),
+                "dashboard",
+                "dashboard-readiness-panel",
+                "Bucket CORS",
+                minioBucketCorsVerificationReportPath == null ? "" : minioBucketCorsVerificationReportPath,
+                evidence.operatorCommands().collectAndVerify().isBlank()
+                        ? "powershell -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\verify-minio-bucket-cors.ps1 -BucketName <bucket> -MinioAlias <alias> -Execute -FailIfNotPassed"
+                        : evidence.operatorCommands().collectAndVerify(),
+                "",
+                "",
+                evidence.scopePolicy()
+        );
+    }
+
+    private DashboardMinioBucketCorsVerificationResponse minioBucketCorsVerificationSnapshot() {
+        JsonNode report = readOptionalJsonReport(minioBucketCorsVerificationReportPath);
+        if (report == null) {
+            return DashboardMinioBucketCorsVerificationResponse.empty();
+        }
+        JsonNode source = report.path("source");
+        JsonNode summary = report.path("summary");
+        JsonNode cors = report.path("cors");
+        JsonNode commands = report.path("operatorCommands");
+        return new DashboardMinioBucketCorsVerificationResponse(
+                jsonText(report, "result"),
+                jsonText(report, "generatedAt"),
+                jsonText(source, "mode"),
+                jsonText(source, "bucketName"),
+                jsonText(source, "minioAlias"),
+                jsonText(source, "sourceRef"),
+                jsonBoolean(source, "executeRequested"),
+                jsonBoolean(source, "rawCorsXmlStored"),
+                jsonInt(summary, "ruleCount"),
+                jsonInt(summary, "exposedHeaderCount"),
+                jsonInt(summary, "failureCount"),
+                jsonInt(summary, "plannedCount"),
+                jsonTextList(cors, "allowedOrigins"),
+                jsonTextList(cors, "allowedMethods"),
+                jsonTextList(cors, "allowedHeaders"),
+                jsonTextList(cors, "exposeHeaders"),
+                jsonIntList(cors, "maxAgeSeconds"),
+                minioBucketCorsChecks(report.path("checks")),
+                jsonText(report, "decisionRule"),
+                jsonText(report, "scopePolicy"),
+                new DashboardMinioBucketCorsCommandsResponse(
+                        jsonText(commands, "collectWithMc"),
+                        jsonText(commands, "verifyFromFile"),
+                        jsonText(commands, "collectAndVerify")
+                )
+        );
+    }
+
+    private List<DashboardMinioBucketCorsCheckResponse> minioBucketCorsChecks(JsonNode checkNodes) {
+        if (checkNodes == null || !checkNodes.isArray()) {
+            return List.of();
+        }
+        java.util.ArrayList<DashboardMinioBucketCorsCheckResponse> checks = new java.util.ArrayList<>();
+        for (JsonNode check : checkNodes) {
+            checks.add(new DashboardMinioBucketCorsCheckResponse(
+                    jsonText(check, "id"),
+                    jsonText(check, "name"),
+                    jsonBoolean(check, "passed"),
+                    jsonText(check, "detail")
+            ));
+        }
+        return List.copyOf(checks);
     }
 
     private void addOperationsEvidenceHandoffItem(java.util.ArrayList<DashboardReadinessItemResponse> items) {

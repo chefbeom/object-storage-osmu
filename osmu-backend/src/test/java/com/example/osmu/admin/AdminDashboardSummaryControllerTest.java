@@ -1267,6 +1267,54 @@ class AdminDashboardSummaryControllerTest {
                         """
         );
         Files.writeString(
+                Path.of(".osmu-run/latest-minio-bucket-cors-verification.json"),
+                """
+                        {
+                          "formatVersion": "osmu.minio-bucket-cors-verification.v1",
+                          "generatedAt": "2026-06-20T05:00:00Z",
+                          "result": "failed",
+                          "source": {
+                            "mode": "cors-xml-path",
+                            "bucketName": "uploads",
+                            "minioAlias": "osmu-minio",
+                            "sourceRef": ".osmu-run/minio-bucket-cors.xml",
+                            "executeRequested": false,
+                            "mcTimeoutSeconds": 30,
+                            "rawCorsXmlStored": false
+                          },
+                          "summary": {
+                            "ruleCount": 1,
+                            "exposedHeaderCount": 2,
+                            "failureCount": 1,
+                            "plannedCount": 0
+                          },
+                          "cors": {
+                            "ruleCount": 1,
+                            "allowedOrigins": ["http://localhost:5173"],
+                            "allowedMethods": ["GET", "PUT", "POST", "DELETE", "HEAD"],
+                            "allowedHeaders": ["*"],
+                            "exposeHeaders": ["x-amz-request-id", "x-amz-id-2"],
+                            "maxAgeSeconds": [3000]
+                          },
+                          "checks": [
+                            {
+                              "id": "expose-headers",
+                              "name": "Required response headers are exposed",
+                              "passed": false,
+                              "detail": "Missing expose headers: ETag, x-amz-version-id."
+                            }
+                          ],
+                          "decisionRule": "MinIO bucket CORS verification passes when browser upload headers are exposed.",
+                          "scopePolicy": "This evidence verifies MinIO bucket CORS needed by OSMU browser multipart upload and traceability. It is not AWS S3 parity work, and it does not store raw CORS XML, credentials, bearer tokens, private keys, MinIO root credentials, or object data.",
+                          "operatorCommands": {
+                            "collectWithMc": "mc cors info <alias>/<bucket> > .\\\\.osmu-run\\\\minio-bucket-cors.xml",
+                            "verifyFromFile": "powershell -NoProfile -ExecutionPolicy Bypass -File .\\\\scripts\\\\verify-minio-bucket-cors.ps1 -CorsXmlPath .\\\\.osmu-run\\\\minio-bucket-cors.xml -FailIfNotPassed",
+                            "collectAndVerify": "powershell -NoProfile -ExecutionPolicy Bypass -File .\\\\scripts\\\\verify-minio-bucket-cors.ps1 -BucketName <bucket> -MinioAlias <alias> -Execute -FailIfNotPassed"
+                          }
+                        }
+                        """
+        );
+        Files.writeString(
                 Path.of(".osmu-run/latest-data-flow-storage-plan.json"),
                 """
                         {
@@ -1694,6 +1742,7 @@ class AdminDashboardSummaryControllerTest {
                 .andExpect(jsonPath("$.data.items[*].code").value(hasItem("OPERATIONS_READINESS_FINALIZER")))
                 .andExpect(jsonPath("$.data.items[*].code").value(hasItem("OPERATIONS_EVIDENCE_HANDOFF")))
                 .andExpect(jsonPath("$.data.items[*].code").value(hasItem("DATA_FLOW_STORAGE_PLAN")))
+                .andExpect(jsonPath("$.data.items[*].code").value(hasItem("MINIO_BUCKET_CORS_VERIFICATION")))
                 .andExpect(jsonPath("$.data.items[*].code").value(hasItem("OPERATIONS_READINESS_CONVERGENCE")))
                 .andExpect(jsonPath("$.data.items[*].code").value(hasItem("KUBERNETES_OPERATIONS_REPORT_SYNC")))
                 .andExpect(jsonPath("$.data.items[*].code").value(hasItem("OPERATIONS_READINESS_CHECK")))
@@ -1708,6 +1757,7 @@ class AdminDashboardSummaryControllerTest {
                 .andExpect(jsonPath("$.data.items[*].message").value(hasItem("Operations readiness finalizer is pending: readinessResult=pending, failedCount=0.")))
                 .andExpect(jsonPath("$.data.items[*].message").value(hasItem("Operations evidence handoff is blocked: next=resolve-invocation-blockers, blockedActions=5, missingRuns=6, missingArtifacts=5, finalizerGaps=1.")))
                 .andExpect(jsonPath("$.data.items[*].message").value(hasItem("Data-flow storage plan is plan-ready-execute-required: store=MARIADB_PARTITION, pending=2/3.")))
+                .andExpect(jsonPath("$.data.items[*].message").value(hasItem("MinIO bucket CORS verification is failed: rules=1, exposedHeaders=2, failures=1, planned=0.")))
                 .andExpect(jsonPath("$.data.items[*].message").value(hasItem("Operations readiness convergence is action-required: bottleneck=resolve-invocation-blockers, stages=1/7, finalizerGaps=1.")))
                 .andExpect(jsonPath("$.data.items[*].message").value(hasItem("Kubernetes operations report sync is planned: namespace=osmu, configMap=osmu-operations-reports, failedCount=0.")))
                 .andExpect(jsonPath("$.data.items[*].message").value(hasItem("Operations readiness artifact import is failed: status=artifact-import-failed, failedCount=2.")))
@@ -1733,6 +1783,9 @@ class AdminDashboardSummaryControllerTest {
                 .andExpect(jsonPath("$.data.items[?(@.code == 'DATA_FLOW_STORAGE_PLAN')].evidencePath").value(hasItem(".osmu-run/latest-data-flow-storage-plan.json")))
                 .andExpect(jsonPath("$.data.items[?(@.code == 'DATA_FLOW_STORAGE_PLAN')].remediationCommand").value(hasItem("powershell -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\write-data-flow-storage-plan.ps1 -CandidateStore <store> -ExpectedPeakEventsPerDay <n> -ExpectedQueryWindowDays <days> -ConfirmNoObjectKeyInAggregates -ConfirmBackfillPlan -ConfirmRollbackPlan -ConfirmDashboardCutoverPlan -ConfirmRetentionJobBudget -ConfirmExplainEvidence -QueryPlanEvidenceJsonPath .\\.osmu-run\\latest-mariadb-query-plan-evidence.json -RequireQueryPlanEvidence")))
                 .andExpect(jsonPath("$.data.items[?(@.code == 'DATA_FLOW_STORAGE_PLAN')].remediationNote").value(hasItem("OSMU operations analytics only. This plan is not AWS billing parity and aggregate stores must not include object keys or raw event messages.")))
+                .andExpect(jsonPath("$.data.items[?(@.code == 'MINIO_BUCKET_CORS_VERIFICATION')].evidencePath").value(hasItem(".osmu-run/latest-minio-bucket-cors-verification.json")))
+                .andExpect(jsonPath("$.data.items[?(@.code == 'MINIO_BUCKET_CORS_VERIFICATION')].remediationCommand").value(hasItem("powershell -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\verify-minio-bucket-cors.ps1 -BucketName <bucket> -MinioAlias <alias> -Execute -FailIfNotPassed")))
+                .andExpect(jsonPath("$.data.items[?(@.code == 'MINIO_BUCKET_CORS_VERIFICATION')].remediationNote").value(hasItem("This evidence verifies MinIO bucket CORS needed by OSMU browser multipart upload and traceability. It is not AWS S3 parity work, and it does not store raw CORS XML, credentials, bearer tokens, private keys, MinIO root credentials, or object data.")))
                 .andExpect(jsonPath("$.data.items[?(@.code == 'OPERATIONS_READINESS_ARTIFACT_IMPORT')].evidencePath").value(hasItem(".osmu-run/latest-operations-readiness-artifact-import.json")))
                 .andExpect(jsonPath("$.data.items[?(@.code == 'OPERATIONS_READINESS_ARTIFACT_IMPORT')].remediationCommand").value(hasItem("powershell -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\import-operations-readiness-artifacts.ps1")))
                 .andExpect(jsonPath("$.data.items[?(@.code == 'OPERATIONS_READINESS_ARTIFACT_IMPORT')].remediationWorkflow").value(hasItem(".github/workflows/operations-readiness-artifact-finalizer-ci.yml")))
@@ -1940,6 +1993,20 @@ class AdminDashboardSummaryControllerTest {
                 .andExpect(jsonPath("$.data.enterpriseAuthSmokeEvidence.scopeOut.accepted").value("false"))
                 .andExpect(jsonPath("$.data.enterpriseAuthSmokeEvidence.plannedCount").value(8))
                 .andExpect(jsonPath("$.data.enterpriseAuthSmokeEvidence.checks[0].endpoint").value("GET /api/admin/security/enterprise-auth-plan"))
+                .andExpect(jsonPath("$.data.minioBucketCorsVerification.result").value("failed"))
+                .andExpect(jsonPath("$.data.minioBucketCorsVerification.sourceMode").value("cors-xml-path"))
+                .andExpect(jsonPath("$.data.minioBucketCorsVerification.bucketName").value("uploads"))
+                .andExpect(jsonPath("$.data.minioBucketCorsVerification.minioAlias").value("osmu-minio"))
+                .andExpect(jsonPath("$.data.minioBucketCorsVerification.rawCorsXmlStored").value(false))
+                .andExpect(jsonPath("$.data.minioBucketCorsVerification.ruleCount").value(1))
+                .andExpect(jsonPath("$.data.minioBucketCorsVerification.exposedHeaderCount").value(2))
+                .andExpect(jsonPath("$.data.minioBucketCorsVerification.failureCount").value(1))
+                .andExpect(jsonPath("$.data.minioBucketCorsVerification.allowedMethods[1]").value("PUT"))
+                .andExpect(jsonPath("$.data.minioBucketCorsVerification.exposeHeaders[0]").value("x-amz-request-id"))
+                .andExpect(jsonPath("$.data.minioBucketCorsVerification.maxAgeSeconds[0]").value(3000))
+                .andExpect(jsonPath("$.data.minioBucketCorsVerification.checks[0].id").value("expose-headers"))
+                .andExpect(jsonPath("$.data.minioBucketCorsVerification.checks[0].passed").value(false))
+                .andExpect(jsonPath("$.data.minioBucketCorsVerification.operatorCommands.collectAndVerify").value("powershell -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\verify-minio-bucket-cors.ps1 -BucketName <bucket> -MinioAlias <alias> -Execute -FailIfNotPassed"))
                 .andExpect(jsonPath("$.data.dataFlowStoragePlan.result").value("plan-ready-execute-required"))
                 .andExpect(jsonPath("$.data.dataFlowStoragePlan.environmentName").value("pilot-prod"))
                 .andExpect(jsonPath("$.data.dataFlowStoragePlan.targetCluster").value("customer-cluster-a"))

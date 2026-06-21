@@ -562,6 +562,14 @@
             offline {{ storageBackendTelemetryEvidence.offlineServerCount || 0 }}
           </small>
           <small
+            v-if="minioBucketCorsVerification.result"
+            data-testid="readiness-minio-bucket-cors-item-summary"
+          >
+            Bucket CORS: {{ minioBucketCorsVerification.result }} /
+            exposed {{ minioBucketCorsVerification.exposedHeaderCount || 0 }} /
+            failures {{ minioBucketCorsVerification.failureCount || 0 }}
+          </small>
+          <small
             v-if="storageExpansionFinalize.result"
             data-testid="readiness-storage-expansion-finalize-item-summary"
           >
@@ -651,6 +659,46 @@
           {{ storageBackendTelemetryEvidence.scopePolicy }}
         </small>
       </div>
+      <div
+        v-if="minioBucketCorsVerification.result"
+        class="readiness-invocation-summary"
+        data-testid="readiness-minio-bucket-cors-summary"
+      >
+        <strong>MinIO bucket CORS: {{ minioBucketCorsVerification.result }}</strong>
+        <small>
+          bucket {{ minioBucketCorsVerification.bucketName || 'unknown' }} /
+          alias {{ minioBucketCorsVerification.minioAlias || 'unknown' }} /
+          mode {{ minioBucketCorsVerification.sourceMode || 'unknown' }} /
+          rules {{ minioBucketCorsVerification.ruleCount || 0 }} /
+          exposed headers {{ minioBucketCorsVerification.exposedHeaderCount || 0 }} /
+          failures {{ minioBucketCorsVerification.failureCount || 0 }} /
+          raw XML stored {{ minioBucketCorsVerification.rawCorsXmlStored ? 'yes' : 'no' }}
+        </small>
+        <small
+          v-if="minioBucketCorsExposeSummary"
+          data-testid="readiness-minio-bucket-cors-expose-headers"
+        >
+          Expose headers: {{ minioBucketCorsExposeSummary }}
+        </small>
+        <small v-if="minioBucketCorsVerification.scopePolicy">
+          {{ minioBucketCorsVerification.scopePolicy }}
+        </small>
+      </div>
+      <ol
+        v-if="minioBucketCorsChecks.length > 0"
+        class="readiness-evidence-plan-actions readiness-minio-bucket-cors-checks"
+        data-testid="readiness-minio-bucket-cors-checks"
+      >
+        <li
+          v-for="check in minioBucketCorsChecks.slice(0, 4)"
+          :key="check.id || check.name"
+        >
+          <span>
+            <strong>{{ check.passed ? 'PASS' : 'FAIL' }} / {{ check.name || check.id }}</strong>
+            <small>{{ check.detail || 'detail unavailable' }}</small>
+          </span>
+        </li>
+      </ol>
       <div
         v-if="storageExpansionFinalize.result"
         class="readiness-invocation-summary"
@@ -2708,6 +2756,10 @@ const dataFlowStoragePlanItem = computed(() => (
   operationsReadinessItems.value.find((item) => item.code === 'DATA_FLOW_STORAGE_PLAN') || null
 ))
 
+const minioBucketCorsVerificationItem = computed(() => (
+  operationsReadinessItems.value.find((item) => item.code === 'MINIO_BUCKET_CORS_VERIFICATION') || null
+))
+
 const operationsReadinessConvergenceItem = computed(() => (
   operationsReadinessItems.value.find((item) => item.code === 'OPERATIONS_READINESS_CONVERGENCE') || null
 ))
@@ -3053,6 +3105,20 @@ const dataFlowStoragePlanChecks = computed(() => {
 const storageBackendTelemetryEvidence = computed(() => (
   props.dashboardReadiness.storageBackendTelemetryEvidence || {}
 ))
+
+const minioBucketCorsVerification = computed(() => (
+  props.dashboardReadiness.minioBucketCorsVerification || {}
+))
+
+const minioBucketCorsChecks = computed(() => {
+  const checks = minioBucketCorsVerification.value?.checks
+  return Array.isArray(checks) ? checks : []
+})
+
+const minioBucketCorsExposeSummary = computed(() => {
+  const exposeHeaders = minioBucketCorsVerification.value?.exposeHeaders
+  return Array.isArray(exposeHeaders) ? exposeHeaders.slice(0, 6).join(' / ') : ''
+})
 
 const operationsReadinessConvergence = computed(() => (
   props.dashboardReadiness.operationsReadinessConvergence || {}

@@ -1291,6 +1291,33 @@ const dashboardReadiness = reactive({
     decisionRule: '',
     scopePolicy: '',
   },
+  minioBucketCorsVerification: {
+    result: '',
+    generatedAt: '',
+    sourceMode: '',
+    bucketName: '',
+    minioAlias: '',
+    sourceRef: '',
+    executeRequested: false,
+    rawCorsXmlStored: false,
+    ruleCount: 0,
+    exposedHeaderCount: 0,
+    failureCount: 0,
+    plannedCount: 0,
+    allowedOrigins: [],
+    allowedMethods: [],
+    allowedHeaders: [],
+    exposeHeaders: [],
+    maxAgeSeconds: [],
+    checks: [],
+    decisionRule: '',
+    scopePolicy: '',
+    operatorCommands: {
+      collectWithMc: '',
+      verifyFromFile: '',
+      collectAndVerify: '',
+    },
+  },
   operationsEvidenceHandoff: {
     result: '',
     generatedAt: '',
@@ -5362,6 +5389,7 @@ function applyDashboardReadiness(data) {
     enterpriseAuthSmokeEvidence: normalizeEnterpriseAuthSmokeEvidence(data.enterpriseAuthSmokeEvidence),
     dataFlowStoragePlan: normalizeDataFlowStoragePlan(data.dataFlowStoragePlan),
     storageBackendTelemetryEvidence: normalizeStorageBackendTelemetryEvidence(data.storageBackendTelemetryEvidence),
+    minioBucketCorsVerification: normalizeMinioBucketCorsVerification(data.minioBucketCorsVerification),
     operationsEvidenceHandoff: normalizeOperationsEvidenceHandoff(data.operationsEvidenceHandoff),
     operationsReadinessConvergence: normalizeOperationsReadinessConvergence(data.operationsReadinessConvergence),
     kubernetesOperationsReportSync: normalizeKubernetesOperationsReportSync(data.kubernetesOperationsReportSync),
@@ -5815,6 +5843,37 @@ function normalizeStorageBackendTelemetryEvidence(report = {}) {
     plannedCount: Number(report?.plannedCount || 0),
     decisionRule: report?.decisionRule || '',
     scopePolicy: report?.scopePolicy || '',
+  }
+}
+
+function normalizeMinioBucketCorsVerification(report = {}) {
+  const commands = report?.operatorCommands || {}
+  return {
+    result: report?.result || '',
+    generatedAt: report?.generatedAt || '',
+    sourceMode: report?.sourceMode || '',
+    bucketName: report?.bucketName || '',
+    minioAlias: report?.minioAlias || '',
+    sourceRef: report?.sourceRef || '',
+    executeRequested: Boolean(report?.executeRequested),
+    rawCorsXmlStored: Boolean(report?.rawCorsXmlStored),
+    ruleCount: Number(report?.ruleCount || 0),
+    exposedHeaderCount: Number(report?.exposedHeaderCount || 0),
+    failureCount: Number(report?.failureCount || 0),
+    plannedCount: Number(report?.plannedCount || 0),
+    allowedOrigins: Array.isArray(report?.allowedOrigins) ? report.allowedOrigins : [],
+    allowedMethods: Array.isArray(report?.allowedMethods) ? report.allowedMethods : [],
+    allowedHeaders: Array.isArray(report?.allowedHeaders) ? report.allowedHeaders : [],
+    exposeHeaders: Array.isArray(report?.exposeHeaders) ? report.exposeHeaders : [],
+    maxAgeSeconds: Array.isArray(report?.maxAgeSeconds) ? report.maxAgeSeconds : [],
+    checks: Array.isArray(report?.checks) ? report.checks : [],
+    decisionRule: report?.decisionRule || '',
+    scopePolicy: report?.scopePolicy || '',
+    operatorCommands: {
+      collectWithMc: commands.collectWithMc || '',
+      verifyFromFile: commands.verifyFromFile || '',
+      collectAndVerify: commands.collectAndVerify || '',
+    },
   }
 }
 
