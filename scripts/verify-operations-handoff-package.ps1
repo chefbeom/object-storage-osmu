@@ -171,7 +171,7 @@ Assert-Contains $report.decisionRule "Kubernetes report sync ready" "operations 
 Assert-Contains $report.scopePolicy "does not execute kubectl, gh, provider APIs" "operations handoff package JSON"
 Assert-Contains $report.secretPolicy "must not contain passwords, bearer tokens, kubeconfig values" "operations handoff package JSON"
 
-foreach ($unexpected in @("password=super-secret", "Bearer abcdefghijklmnop", "-----BEGIN PRIVATE KEY-----")) {
+foreach ($unexpected in @("password=super-secret", "Bearer abcdefghijklmnop", "-----BEGIN PRIVATE KEY-----", "rawProviderResponse", "customer@example.com", "contractText")) {
     Assert-NotContains $reportText $unexpected "operations handoff package JSON"
     Assert-NotContains $markdown $unexpected "operations handoff package markdown"
 }
@@ -209,6 +209,31 @@ finally {
 }
 Assert-True ($unsafeSnapshotExitCode -ne 0) "Credential-like operations readiness snapshot should be rejected."
 Assert-Contains ($unsafeSnapshotOutput | Out-String) "credential material" "unsafe snapshot output"
+
+$unsafeRawReadinessSnapshotPath = Join-Path $resolvedOutputDirectory "unsafe-raw-operations-readiness.json"
+[ordered]@{
+    formatVersion = "osmu.operations-readiness.v1"
+    result = "ready"
+    rawProviderResponse = [ordered]@{
+        statusCode = 200
+        body = "customer@example.com approved contractText"
+    }
+} | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $unsafeRawReadinessSnapshotPath -Encoding UTF8
+
+$previousErrorActionPreference = $ErrorActionPreference
+$ErrorActionPreference = "Continue"
+try {
+    $unsafeRawSnapshotOutput = & powershell -NoProfile -ExecutionPolicy Bypass -File $scriptPath `
+        -OperationsReadinessJsonPath $unsafeRawReadinessSnapshotPath `
+        -RequireOperationsSnapshotEvidence `
+        -NoWrite 2>&1
+    $unsafeRawSnapshotExitCode = $LASTEXITCODE
+}
+finally {
+    $ErrorActionPreference = $previousErrorActionPreference
+}
+Assert-True ($unsafeRawSnapshotExitCode -ne 0) "Raw provider/customer operations readiness snapshot should be rejected."
+Assert-Contains ($unsafeRawSnapshotOutput | Out-String) "raw remediation, provider, customer" "unsafe raw snapshot output"
 
 $previousErrorActionPreference = $ErrorActionPreference
 $ErrorActionPreference = "Continue"

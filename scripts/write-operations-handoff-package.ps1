@@ -75,6 +75,17 @@ function Assert-SafeReference([string] $Value, [string] $Label) {
     Assert-SafeText $Value $Label
 }
 
+function Assert-SanitizedOperationsSnapshotJson([string] $Value, [string] $Label) {
+    if ([string]::IsNullOrWhiteSpace($Value)) {
+        return
+    }
+
+    $forbiddenPropertyPattern = '(?i)"(rawProviderResponse|raw_provider_response|providerResponse|provider_response|responseBody|response_body|responseHeaders|response_headers|customerData|customer_data|customerEmail|customer_email|customerName|customer_name|customerPaymentData|customer_payment_data|cardNumber|card_number|bankAccount|bank_account|rawContractText|raw_contract_text|contractText|contract_text|licenseKey|license_key|rawRemediation|raw_remediation|rawCommand|raw_command)"\s*:'
+    if ($Value -match $forbiddenPropertyPattern) {
+        throw "$Label appears to contain raw remediation, provider, customer, contract, license, or payment content. Store only sanitized operations snapshot summary fields."
+    }
+}
+
 function Test-DateText([string] $Value) {
     if ([string]::IsNullOrWhiteSpace($Value)) {
         return $false
@@ -202,6 +213,7 @@ function Read-JsonPayload([string] $Path, [string] $Label, [string] $MissingDeta
 
     $raw = Get-Content -Raw -LiteralPath $resolvedPath
     Assert-SafeText $raw "${Label}Json"
+    Assert-SanitizedOperationsSnapshotJson $raw "${Label}Json"
     try {
         $snapshot["payload"] = $raw | ConvertFrom-Json
         $snapshot["parsed"] = $true
