@@ -129,6 +129,8 @@ $importResult = Get-Text $import.json "result"
 $finalizeResult = Get-Text $finalize.json "result"
 $finalizeReadinessResult = Get-Text $finalize.json "readinessResult"
 $finalizeGapCount = Get-ArrayCount (Get-JsonProperty $finalize.json "gaps")
+$readinessReady = $readiness.exists -and (Is-ReadyResult $readinessResult)
+$finalizerReady = $finalize.exists -and (Is-ReadyResult $finalizeResult) -and (Is-ReadyResult $finalizeReadinessResult)
 
 $stages = @(
     (New-Stage "operations-readiness" $readiness.path $readiness.exists $readinessResult (Get-Text $readiness.json "summary") (Is-ReadyResult $readinessResult) "powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\write-operations-readiness.ps1" "Production/B2B readiness gate summary."),
@@ -143,9 +145,15 @@ $stages = @(
 $nextStep = $null
 $handoffResult = "action-required"
 
-if ($readiness.exists -and (Is-ReadyResult $readinessResult)) {
+if ($readinessReady -and $finalizerReady) {
     $handoffResult = "ready"
-    $nextStep = New-NextStep "none" "Operations readiness is ready" "" "The latest operations readiness report is ready." "No handoff action is required."
+    $nextStep = New-NextStep "none" "Operations readiness is ready" "" "The latest operations readiness and operations finalizer reports are ready." "No handoff action is required."
+}
+elseif ($readinessReady -and -not $finalize.exists) {
+    $nextStep = New-NextStep "run-operations-finalizer" "Run operations readiness finalizer" "powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\finalize-operations-readiness.ps1" "The latest operations readiness report is ready, but the operations readiness finalizer report is missing." "Run the combined finalizer so final readiness evidence is recorded before convergence."
+}
+elseif ($readinessReady -and -not $finalizerReady) {
+    $nextStep = New-NextStep "fix-operations-finalizer" "Fix operations readiness finalizer" "powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\finalize-operations-readiness.ps1" "Operations readiness is ready, but the finalizer is not ready: result=$finalizeResult, readiness=$finalizeReadinessResult." "Inspect finalizer gaps, rerun missing evidence finalizers, then rerun the combined finalizer."
 }
 elseif (-not $readiness.exists) {
     $nextStep = New-NextStep "write-readiness" "Generate operations readiness report" "powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\write-operations-readiness.ps1" "The operations readiness report is missing." "Generate the gate report before planning evidence collection."

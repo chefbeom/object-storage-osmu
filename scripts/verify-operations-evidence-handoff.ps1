@@ -332,9 +332,75 @@ Assert-Equal $pendingReport.nextStep.code "fix-operations-finalizer" "pending fi
 Assert-Equal $pendingReport.finalizerGapCount 1 "pending finalizer gap count"
 Assert-Contains $pendingReport.nextStep.reason "readiness=pending" "pending finalizer reason"
 
+$readyReadinessPath = Join-Path $resolvedOutputDirectory "ready-readiness.json"
+$readyMissingFinalizePath = Join-Path $resolvedOutputDirectory "ready-missing-finalize.json"
+$readyMissingFinalizeHandoffPath = Join-Path $resolvedOutputDirectory "ready-missing-finalize-handoff.json"
+$readyMissingFinalizeMarkdownPath = Join-Path $resolvedOutputDirectory "ready-missing-finalize-handoff.md"
+$readyFinalizePath = Join-Path $resolvedOutputDirectory "ready-finalize.json"
+$readyHandoffPath = Join-Path $resolvedOutputDirectory "ready-handoff.json"
+$readyMarkdownPath = Join-Path $resolvedOutputDirectory "ready-handoff.md"
+
+Write-JsonFixture $readyReadinessPath ([ordered]@{
+    formatVersion = "osmu.operations-readiness.v1"
+    result = "ready"
+    summary = "passed=54 pending=0"
+})
+
+& powershell -NoProfile -ExecutionPolicy Bypass -File $scriptPath `
+    -ReadinessReportPath $readyReadinessPath `
+    -EvidencePlanPath $missingPlanPath `
+    -InvocationReportPath $missingInvocationPath `
+    -WorkflowRunIdPlanPath $missingRunIdPath `
+    -ArtifactCollectionPlanPath $missingCollectionPath `
+    -ArtifactImportReportPath $missingImportPath `
+    -OperationsReadinessFinalizeReportPath $readyMissingFinalizePath `
+    -JsonOutputPath $readyMissingFinalizeHandoffPath `
+    -MarkdownOutputPath $readyMissingFinalizeMarkdownPath | Out-Host
+if ($LASTEXITCODE -ne 0) {
+    throw "write-operations-evidence-handoff.ps1 ready-without-finalizer check failed with exit code $LASTEXITCODE."
+}
+
+$readyMissingFinalizeReport = Get-Content -Raw -LiteralPath $readyMissingFinalizeHandoffPath | ConvertFrom-Json
+$readyMissingFinalizeMarkdown = Get-Content -Raw -LiteralPath $readyMissingFinalizeMarkdownPath
+Assert-Equal $readyMissingFinalizeReport.result "action-required" "ready missing finalizer result"
+Assert-Equal $readyMissingFinalizeReport.nextStep.code "run-operations-finalizer" "ready missing finalizer next step"
+Assert-Contains $readyMissingFinalizeReport.nextStep.reason "finalizer report is missing" "ready missing finalizer reason"
+Assert-Contains $readyMissingFinalizeMarkdown "Run operations readiness finalizer" "ready missing finalizer markdown next step"
+
+Write-JsonFixture $readyFinalizePath ([ordered]@{
+    formatVersion = "osmu.operations-readiness-finalize.v1"
+    result = "ready"
+    status = "operations-readiness-finalize-ready"
+    readinessResult = "ready"
+    failedCount = 0
+    gaps = @()
+})
+
+& powershell -NoProfile -ExecutionPolicy Bypass -File $scriptPath `
+    -ReadinessReportPath $readyReadinessPath `
+    -EvidencePlanPath $missingPlanPath `
+    -InvocationReportPath $missingInvocationPath `
+    -WorkflowRunIdPlanPath $missingRunIdPath `
+    -ArtifactCollectionPlanPath $missingCollectionPath `
+    -ArtifactImportReportPath $missingImportPath `
+    -OperationsReadinessFinalizeReportPath $readyFinalizePath `
+    -JsonOutputPath $readyHandoffPath `
+    -MarkdownOutputPath $readyMarkdownPath | Out-Host
+if ($LASTEXITCODE -ne 0) {
+    throw "write-operations-evidence-handoff.ps1 ready-with-finalizer check failed with exit code $LASTEXITCODE."
+}
+
+$readyReport = Get-Content -Raw -LiteralPath $readyHandoffPath | ConvertFrom-Json
+Assert-Equal $readyReport.result "ready" "ready handoff result"
+Assert-Equal $readyReport.nextStep.code "none" "ready handoff next step"
+Assert-Equal $readyReport.readyStageCount 2 "ready handoff stage count"
+Assert-Contains $readyReport.nextStep.reason "operations finalizer reports are ready" "ready handoff reason"
+
 Write-Host "Operations evidence handoff verified."
 Write-Host "Missing report: $missingJsonPath"
 Write-Host "Blocked report: $blockedJsonPath"
 Write-Host "Finalizer report: $finalizerJsonPath"
 Write-Host "Operations finalizer report: $operationsFinalizeJsonPath"
 Write-Host "Pending finalizer report: $pendingHandoffPath"
+Write-Host "Ready missing finalizer report: $readyMissingFinalizeHandoffPath"
+Write-Host "Ready report: $readyHandoffPath"
