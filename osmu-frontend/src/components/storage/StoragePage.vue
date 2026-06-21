@@ -130,10 +130,14 @@
             </tr>
           </thead>
           <tbody>
-            <tr v-for="request in visibleStorageProfileRequests" :key="request.id">
+            <tr
+              v-for="request in visibleStorageProfileRequests"
+              :key="request.id"
+              data-testid="storage-profile-request-row"
+            >
               <td>{{ request.bucketName }}</td>
               <td>{{ request.requestedProfile?.name || request.requestedProfile?.code }}</td>
-              <td><strong :class="['status-pill', statusClass(request.status)]">{{ request.status }}</strong></td>
+              <td><strong data-testid="storage-profile-request-status" :class="['status-pill', statusClass(request.status)]">{{ request.status }}</strong></td>
               <td>{{ formatDateTime(request.updatedAt) }}</td>
             </tr>
             <tr v-if="visibleStorageProfileRequests.length === 0">
