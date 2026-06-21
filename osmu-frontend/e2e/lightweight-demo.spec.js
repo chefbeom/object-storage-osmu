@@ -337,6 +337,7 @@ test('admin can complete lightweight storage portal click path', async ({ page }
   await page.getByTestId('confirm-cancel-button').click()
   await expect(page.getByTestId('confirm-dialog')).toHaveCount(0)
   await expect(deleteBucketRow).toBeVisible()
+  await expect(page.getByTestId('status-alert')).not.toContainText('버킷 삭제 완료')
   await deleteBucketRow.getByTestId('bucket-delete-button').click()
   await expect(page.getByTestId('confirm-dialog')).toContainText(deleteBucketName)
   await page.getByTestId('confirm-submit-button').click()

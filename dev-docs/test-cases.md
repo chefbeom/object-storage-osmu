@@ -1756,7 +1756,7 @@ ID:
 - 절차: 확인 모달에서 취소 후 재시도하고 확인한다.
 - 기대 결과: 취소 전에는 API가 호출되지 않고, 확인 후 삭제/회수 API가 호출된다.
 - 우선순위: P1
-- 자동화 여부: Automated (`npm run test:unit` confirm dialog state helper; cancel does not run action, confirm runs action once, false result keeps modal open, pending blocks close). Browser click E2E pending.
+- 자동화 여부: Automated (`npm run test:unit` confirm dialog state helper; cancel does not run action, confirm runs action once, false result keeps modal open, pending blocks close; Browser E2E bucket delete/access-key revoke cancel and confirm paths).
 
 ### TC-FE-004
 
