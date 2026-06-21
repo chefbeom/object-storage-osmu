@@ -2284,7 +2284,7 @@ TC-FE-023 보강: 사용자가 취소한 경우에는 abort API를 호출한다.
 - Feature: Commercial/legal approval evidence writer verification.
 - Preconditions: PowerShell is available.
 - Input: `powershell -ExecutionPolicy Bypass -File .\scripts\verify-commercial-approval-evidence.ps1`
-- Steps: Generate synthetic passed commercial approval evidence, verify `osmu.commercial-approval-evidence.v1`, `result=passed`, final pricing approval, final terms approval, support SLA approval, license agreement approval, legal approval, pilot contract boundary reference, approval timestamp, decision rule, scope policy, and no-secret policy. Verify credential-shaped approval references such as `password=...` are rejected and incomplete approval evidence fails with `-FailIfNotPassed`.
+- Steps: Generate synthetic passed commercial approval evidence, verify `osmu.commercial-approval-evidence.v1`, `result=passed`, final pricing approval, final terms approval, support SLA approval, license agreement approval, legal approval, pilot contract boundary reference, sanitized billing pricing proposal `PRICE_LIST_APPROVED` snapshot, approval timestamp, decision rule, scope policy, and no-secret/no-raw-price policy. Verify credential-shaped approval references such as `password=...`, secret-shaped pricing proposal JSON, missing required proposal snapshot, and incomplete approval evidence fail with `-FailIfNotPassed`.
 - Expected: Operators have a repeatable evidence writer for final pricing/licensing/legal approval that stores only approval references, timestamps, and booleans, not prices, raw contracts, customer payment data, license keys, or credentials.
 - Priority: P2
 - Automated: `scripts/verify-commercial-approval-evidence.ps1`, `scripts/verify-commercial-readiness.ps1`

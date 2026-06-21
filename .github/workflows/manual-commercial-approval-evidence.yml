@@ -43,6 +43,14 @@ on:
         description: External pilot contract boundary reference
         required: true
         default: ""
+      pricing_policy_proposal_evidence_ref:
+        description: External billing pricing policy proposal commercial approval evidence reference
+        required: false
+        default: ""
+      pricing_policy_proposal_json_base64:
+        description: Base64 JSON from GET /api/admin/billing/pricing-policy-proposals?status=PRICE_LIST_APPROVED
+        required: false
+        default: ""
       notes_ref:
         description: Optional external notes reference
         required: false
@@ -69,6 +77,11 @@ on:
         default: false
       confirm_legal_approved:
         description: Confirm legal approval
+        required: true
+        type: boolean
+        default: false
+      confirm_pricing_policy_proposal_commercial_approval:
+        description: Confirm billing pricing policy proposal commercial approval snapshot was reviewed
         required: true
         type: boolean
         default: false
@@ -113,15 +126,26 @@ jobs:
           OSMU_LICENSE_AGREEMENT_REF: ${{ inputs.license_agreement_ref }}
           OSMU_LEGAL_APPROVAL_REF: ${{ inputs.legal_approval_ref }}
           OSMU_PILOT_CONTRACT_REF: ${{ inputs.pilot_contract_ref }}
+          OSMU_PRICING_POLICY_PROPOSAL_EVIDENCE_REF: ${{ inputs.pricing_policy_proposal_evidence_ref }}
+          OSMU_PRICING_POLICY_PROPOSAL_JSON_BASE64: ${{ inputs.pricing_policy_proposal_json_base64 }}
           OSMU_NOTES_REF: ${{ inputs.notes_ref }}
           OSMU_CONFIRM_PRICING_APPROVED: ${{ inputs.confirm_pricing_approved }}
           OSMU_CONFIRM_TERMS_APPROVED: ${{ inputs.confirm_terms_approved }}
           OSMU_CONFIRM_SUPPORT_SLA_APPROVED: ${{ inputs.confirm_support_sla_approved }}
           OSMU_CONFIRM_LICENSE_APPROVED: ${{ inputs.confirm_license_approved }}
           OSMU_CONFIRM_LEGAL_APPROVED: ${{ inputs.confirm_legal_approved }}
+          OSMU_CONFIRM_PRICING_POLICY_PROPOSAL_COMMERCIAL_APPROVAL: ${{ inputs.confirm_pricing_policy_proposal_commercial_approval }}
           OSMU_CONFIRM_NO_SECRET_VALUES: ${{ inputs.confirm_no_secret_values }}
           OSMU_FAIL_IF_NOT_PASSED: ${{ inputs.fail_if_not_passed }}
         run: |
+          $pricingPolicyProposalJsonPath = ""
+          if (-not [string]::IsNullOrWhiteSpace($env:OSMU_PRICING_POLICY_PROPOSAL_JSON_BASE64)) {
+            New-Item -ItemType Directory -Force -Path ".osmu-run" | Out-Null
+            $pricingPolicyProposalJsonPath = ".osmu-run/billing-pricing-policy-proposals.json"
+            $resolvedPricingPolicyProposalJsonPath = Join-Path (Resolve-Path ".").Path $pricingPolicyProposalJsonPath
+            [System.IO.File]::WriteAllBytes($resolvedPricingPolicyProposalJsonPath, [Convert]::FromBase64String($env:OSMU_PRICING_POLICY_PROPOSAL_JSON_BASE64))
+          }
+
           $evidenceArgs = @(
             "-ProductVersion", $env:OSMU_PRODUCT_VERSION,
             "-ApprovalRef", $env:OSMU_APPROVAL_REF,
@@ -133,16 +157,22 @@ jobs:
             "-LicenseAgreementRef", $env:OSMU_LICENSE_AGREEMENT_REF,
             "-LegalApprovalRef", $env:OSMU_LEGAL_APPROVAL_REF,
             "-PilotContractRef", $env:OSMU_PILOT_CONTRACT_REF,
+            "-PricingPolicyProposalEvidenceRef", $env:OSMU_PRICING_POLICY_PROPOSAL_EVIDENCE_REF,
             "-NotesRef", $env:OSMU_NOTES_REF,
             "-JsonOutputPath", ".osmu-run/latest-commercial-approval-evidence.json",
             "-MarkdownOutputPath", ".osmu-run/latest-commercial-approval-evidence.md"
           )
 
+          if (-not [string]::IsNullOrWhiteSpace($pricingPolicyProposalJsonPath)) { $evidenceArgs += @("-PricingPolicyProposalJsonPath", $pricingPolicyProposalJsonPath) }
           if ($env:OSMU_CONFIRM_PRICING_APPROVED -eq "true") { $evidenceArgs += "-ConfirmPricingApproved" }
           if ($env:OSMU_CONFIRM_TERMS_APPROVED -eq "true") { $evidenceArgs += "-ConfirmTermsApproved" }
           if ($env:OSMU_CONFIRM_SUPPORT_SLA_APPROVED -eq "true") { $evidenceArgs += "-ConfirmSupportSlaApproved" }
           if ($env:OSMU_CONFIRM_LICENSE_APPROVED -eq "true") { $evidenceArgs += "-ConfirmLicenseApproved" }
           if ($env:OSMU_CONFIRM_LEGAL_APPROVED -eq "true") { $evidenceArgs += "-ConfirmLegalApproved" }
+          if ($env:OSMU_CONFIRM_PRICING_POLICY_PROPOSAL_COMMERCIAL_APPROVAL -eq "true") {
+            $evidenceArgs += "-ConfirmPricingPolicyProposalCommercialApproval"
+            $evidenceArgs += "-RequirePricingPolicyProposalApprovalSnapshot"
+          }
           if ($env:OSMU_CONFIRM_NO_SECRET_VALUES -eq "true") { $evidenceArgs += "-ConfirmNoSecretValues" }
           if ($env:OSMU_FAIL_IF_NOT_PASSED -eq "true") { $evidenceArgs += "-FailIfNotPassed" }
 

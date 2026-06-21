@@ -190,7 +190,7 @@ function New-WorkflowMetadata([string] $Workflow) {
             runIdParameter = "CommercialApprovalRunId"
             artifactNameTemplate = "commercial-approval-evidence-{runId}"
             requiredForReadiness = $true
-            note = "Required by operations readiness artifact import when final commercial approval evidence is part of the invocation."
+            note = "Required by operations readiness artifact import when final commercial approval and billing pricing proposal approval evidence is part of the invocation."
         }
         "enterprise-auth-smoke-ci.yml" = [ordered]@{
             group = "enterprise-auth"

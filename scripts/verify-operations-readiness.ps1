@@ -239,6 +239,21 @@ if ($commercialApprovalCheck[0].remediation.workflow -ne ".github/workflows/manu
 if (-not ([string] $commercialApprovalCheck[0].remediation.workflowCommand).Contains("gh workflow run manual-commercial-approval-evidence.yml")) {
     throw "Commercial approval target evidence remediation workflow command must dispatch manual-commercial-approval-evidence.yml."
 }
+if (-not ([string] $commercialApprovalCheck[0].remediation.command).Contains("PricingPolicyProposalJsonPath")) {
+    throw "Commercial approval target evidence remediation must include pricing policy proposal JSON input."
+}
+if (-not ([string] $commercialApprovalCheck[0].remediation.workflowCommand).Contains("pricing_policy_proposal_json_base64=<base64-json>")) {
+    throw "Commercial approval target evidence workflow command must include pricing policy proposal base64 input."
+}
+if (-not ([string] $commercialApprovalCheck[0].remediation.workflowCommand).Contains("confirm_pricing_policy_proposal_commercial_approval=true")) {
+    throw "Commercial approval target evidence workflow command must confirm pricing policy proposal commercial approval."
+}
+if (-not ([string] $commercialApprovalCheck[0].remediation.note).Contains("GET /api/admin/billing/pricing-policy-proposals?status=PRICE_LIST_APPROVED")) {
+    throw "Commercial approval target evidence remediation note must mention the pricing policy proposal API."
+}
+if (-not ([string] $commercialApprovalCheck[0].remediation.note).Contains("sanitized status/reference metadata")) {
+    throw "Commercial approval target evidence remediation note must mention sanitized status/reference metadata."
+}
 if (-not ([string] $commercialApprovalCheck[0].requiredEvidence).Contains("final pricing") -or -not ([string] $commercialApprovalCheck[0].requiredEvidence).Contains("legal approval")) {
     throw "Commercial approval target evidence must require final pricing and legal approval evidence."
 }
