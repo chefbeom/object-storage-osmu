@@ -3316,20 +3316,21 @@ function readinessSummary() {
     status: 'REVIEW',
     runtimeProfile: 'Frontend mock API demo',
     blockerCount: 0,
-    warningCount: 3,
+    warningCount: 4,
     blockers: [],
     warnings: [
       'Java backend tests pending',
       'Docker MariaDB/MinIO smoke pending',
       'Operations readiness convergence action required',
+      'Data-flow storage plan target evidence pending',
     ],
     severitySummaries: [
-      { severity: 'WARNING', count: 3 },
+      { severity: 'WARNING', count: 4 },
     ],
     categorySummaries: [
       { category: 'RUNTIME', count: 1 },
       { category: 'STORAGE', count: 1 },
-      { category: 'OPERATIONS', count: 1 },
+      { category: 'OPERATIONS', count: 2 },
     ],
     items: [
       { code: 'METADATA_ENGINE', category: 'RUNTIME', severity: 'WARNING', title: 'Mock metadata engine', message: 'Java/MariaDB gate is pending.', targetPage: 'dashboard', targetPanel: 'overview' },
@@ -3346,7 +3347,53 @@ function readinessSummary() {
         remediationCommand: 'powershell -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\write-operations-invocation-unblock-plan.ps1',
         remediationNote: 'The invocation report still has blocked actions. This mock report does not execute kubectl, gh, workflow dispatch, or finalizer commands.',
       },
+      {
+        code: 'DATA_FLOW_STORAGE_PLAN',
+        category: 'OPERATIONS',
+        severity: 'WARNING',
+        title: 'Data-flow storage plan',
+        message: 'Data-flow storage plan is plan-ready-execute-required: store=MARIADB_PARTITION, pending=1/2.',
+        targetPage: 'dashboard',
+        targetPanel: 'dashboard-readiness-panel',
+        evidencePath: '.osmu-run/latest-data-flow-storage-plan.json',
+        remediationCommand: 'powershell -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\write-data-flow-storage-plan.ps1 -CandidateStore <store> -ExpectedPeakEventsPerDay <n> -ExpectedQueryWindowDays <days> -ConfirmNoObjectKeyInAggregates -ConfirmBackfillPlan -ConfirmRollbackPlan -ConfirmDashboardCutoverPlan -ConfirmRetentionJobBudget -ConfirmExplainEvidence',
+        remediationNote: 'OSMU operations analytics only. This mock plan is not AWS billing parity and aggregate stores must not include object keys or raw event messages.',
+      },
     ],
+    dataFlowStoragePlan: {
+      result: 'plan-ready-execute-required',
+      recordedAt: '2026-06-21T09:15:00Z',
+      environmentName: 'frontend-mock',
+      targetCluster: 'mock-analytics',
+      operatorName: 'mock-admin',
+      evidenceRef: 'mock-data-flow-sizing',
+      candidateStore: 'MARIADB_PARTITION',
+      expectedPeakEventsPerDay: 250000,
+      expectedQueryWindowDays: 180,
+      eventRetentionDays: 90,
+      dailyRollupRetentionDays: 730,
+      monthlyRollupRetentionMonths: 36,
+      checkCount: 2,
+      passedCount: 1,
+      pendingCount: 1,
+      checks: [
+        {
+          id: 'aggregate_no_object_keys',
+          title: 'Aggregate stores exclude object keys and raw event messages',
+          status: 'passed',
+          detail: 'Monthly/materialized aggregate scope stays bucket/source/operation/status/time only.',
+          nextAction: '',
+        },
+        {
+          id: 'explain_or_store_evidence',
+          title: 'Query plan or target-store evidence exists',
+          status: 'pending',
+          detail: 'MariaDB partition path needs EXPLAIN evidence.',
+          nextAction: 'Attach EXPLAIN evidence before enabling partitioned/time-series storage.',
+        },
+      ],
+      scopePolicy: 'OSMU operations analytics only. This mock plan is not AWS billing parity and aggregate stores must not include object keys or raw event messages.',
+    },
     storageBackendTelemetryEvidence: {
       result: 'passed',
       generatedAt: '2026-06-21T08:03:05Z',
@@ -3747,6 +3794,12 @@ async function runSelfTest() {
     }
     if (!readiness.data.items.some((item) => item.code === 'OPERATIONS_READINESS_CONVERGENCE')) {
       throw new Error('readiness convergence item self-test failed')
+    }
+    if (readiness.data.dataFlowStoragePlan?.result !== 'plan-ready-execute-required') {
+      throw new Error('readiness data-flow storage plan self-test failed')
+    }
+    if (!readiness.data.items.some((item) => item.code === 'DATA_FLOW_STORAGE_PLAN')) {
+      throw new Error('readiness data-flow storage plan item self-test failed')
     }
     const storageBackendStatus = await (await fetch(`${base}/admin/storage/backend-status`, {
       headers: { Authorization: `Bearer ${login.data.accessToken}` },
