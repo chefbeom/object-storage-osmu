@@ -583,7 +583,7 @@
 - Steps: Open `/admin`, inspect `admin-approval-workflow-panel`, approve/reject pending profile requests, apply approved profile requests, approve planned expansion requests, create dry-run plan for approved expansion requests, and apply/reject approved expansion requests with evidence.
 - Expected: The panel shows profile pending count, expansion planned count, expansion approved count, a unified queue of `PENDING/APPROVED/PLANNED` approvals, and stable buttons `admin-approval-profile-*` and `admin-approval-expansion-*` that reuse the existing admin APIs without exposing the workflow to non-ADMIN roles.
 - Priority: P1
-- Automated: `npm run test:unit` selector/source contract. Browser role/action E2E is pending.
+- Automated: `npm run test:unit` selector/source contract, Browser E2E `admin can complete lightweight storage portal click path` approval workflow profile and expansion action assertions.
 
 ### TC-FE-ADMIN-PANEL-RBAC
 

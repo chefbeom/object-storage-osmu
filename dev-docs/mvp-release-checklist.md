@@ -242,6 +242,7 @@ Run when Browser/Chrome automation works again:
 - [x] Browser E2E spec includes Access Key operational filters, cleanup candidate count, and action hint render paths.
 - [x] Browser E2E spec includes Access Key cleanup preview export, candidate exclusion, and bulk disable confirm paths.
 - [x] Browser E2E spec includes Admin security/audit policy panel render and Audit link navigation.
+- [x] Browser E2E spec includes Admin approval workflow profile approve/apply and storage expansion approve/dry-run/apply paths.
 - [x] Browser E2E spec includes destructive confirm cancel/confirm paths for bucket delete.
 - [x] Browser E2E spec includes operations readiness convergence summary and recommended command row visibility.
 - [x] Browser E2E spec includes bucket list name, usage, and object count cell assertions.
