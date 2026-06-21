@@ -208,6 +208,7 @@ Enterprise auth plan:
 - MinIO provisioning 성공 후에만 metadata 저장을 완료한다.
 - metadata 저장 실패 시 이미 만든 MinIO user/policy를 제거한다.
 - MinIO secret rotation 후 metadata 저장 실패 시, 기존 secret ciphertext가 있으면 provisioner secret rollback을 시도한다.
+- Access Key 비활성화나 bucket permission 재동기화 중 MinIO cleanup이 실패해도 metadata status를 먼저 `INACTIVE`로 바꿔 OSMU 인증 경로는 fail-closed로 닫는다.
 - 기본 `noop` 모드는 개발/테스트용이며 policy document만 생성한다.
 - 운영 환경에서는 secret이 process argument에 노출되지 않는 native Admin API 또는 별도 provisioning worker로 교체하는 것이 목표다.
 

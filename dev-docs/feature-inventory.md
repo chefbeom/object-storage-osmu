@@ -317,12 +317,12 @@ MVP 데모 기준 완료율은 약 90~95%입니다.
 - in-memory adapter
 - local Docker MinIO compose
 - access policy provisioner 초안
+- access key provisioning recovery: create failure leaves no metadata, DB-save failure cleans up provisioned user/policy, and scope-sync cleanup failure marks metadata `INACTIVE` first so OSMU auth fails closed.
 - storage health endpoint
 - storage backend status API/UI (`GET /api/admin/storage/backend-status`) using bucket metadata usage and health probes, with `minioAdminMetricsEnabled=false`
 
 남은 것:
 
-- MinIO user/policy provisioning 실패 복구
 - bucket CORS/versioning/lifecycle 실제 동기화
 - object storage 장애 시 UX/API error 정리
 - Direct MinIO Admin API capacity/health telemetry replacement for the current metadata-usage status surface

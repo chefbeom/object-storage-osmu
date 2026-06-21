@@ -369,9 +369,9 @@ sequenceDiagram
     participant C as S3 Client
 
     U->>B: Access Key 발급 요청(bucket scope, permission)
-    B->>M: access key metadata/scope 저장
     B->>B: S3 IAM policy document 생성
     B->>S: MinIO user/policy 설정
+    B->>M: access key metadata/scope 저장
     B-->>U: accessKey + secretKey 1회 반환
     C->>S: S3 API request
     S-->>C: S3 response
@@ -387,6 +387,7 @@ sequenceDiagram
 - 기본값은 `noop`이며, 로컬 Docker Compose는 `OSMU_ACCESS_KEY_PROVISIONING_MODE=minio`로 MinIO provisioner를 사용한다.
 - 현재 MinIO provisioner는 backend container 안의 `mc` CLI로 `policy create`, `user add`, `policy attach`, `user rm`, `policy rm`을 실행한다.
 - Access Key metadata는 provision 성공 후 저장하며, metadata 저장 실패 시 provisioned user/policy를 보상 삭제한다.
+- Access Key 비활성화와 scope 재동기화 실패 복구는 metadata를 먼저 `INACTIVE`로 닫아 OSMU 인증을 차단하고, 이후 MinIO user/policy cleanup을 시도한다.
 - S3 직접 업로드/삭제는 Backend upload API를 거치지 않으므로 bucket usage/object metadata index가 일시적으로 stale할 수 있다.
 - `POST /api/buckets/{bucketName}/sync`는 storage object list를 기준으로 usedBytes/objectCount와 object metadata index를 재생성한다.
 - Object metadata detail API는 index와 storage actual metadata를 비교해 `SYNCED`, `STALE`, `MISSING_IN_STORAGE` 상태를 반환한다.

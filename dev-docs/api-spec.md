@@ -2456,6 +2456,7 @@ Access Key 생성.
 - `policyDocument`는 생성 응답에서 운영/디버깅용으로 반환한다. Secret 값은 포함하지 않는다.
 - MinIO provisioning mode에서는 user/policy 적용이 성공한 뒤 access key metadata를 저장한다.
 - provisioning 실패 시 access key와 secret key는 발급되지 않는다.
+- Access Key 비활성화 또는 bucket permission 재동기화 중 provisioner cleanup이 실패해도 metadata status를 먼저 `INACTIVE`로 저장해 OSMU 인증 경로를 차단한다.
 - bucket permission 회수 시 기존 active key의 `bucketScopes`를 현재 권한 범위로 축소하고 S3 policy를 다시 적용한다.
 - `allowedBuckets`와 `permissions`는 `bucketScopes`에서 파생한 호환 필드다.
 - 더 이상 허용 가능한 scope가 없는 key는 `INACTIVE`로 변경하고 S3 user/policy를 제거한다.

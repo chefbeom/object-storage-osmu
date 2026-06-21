@@ -1503,6 +1503,16 @@ ID:
 - 우선순위: P1
 - 자동화 여부: Automated
 
+### TC-KEY-006A
+
+- 기능: Access Key policy 재동기화 실패 시 fail-closed 복구
+- 조건: Bucket permission 변경으로 active Access Key scope를 줄여야 하고, S3 policy sync와 cleanup이 모두 실패한다.
+- 입력: bucket permission revoke 또는 team membership 변경으로 `reconcileActiveKeysForOwners`가 실행된다.
+- 절차: 기존 active key의 scope가 현재 권한보다 넓은 상태에서 policy sync 실패를 발생시키고, cleanup 실패도 함께 발생시킨다.
+- 기대 결과: 원래 policy sync 실패가 호출자에게 유지되고 cleanup 실패는 suppressed exception으로 보존된다. Access Key metadata status는 먼저 `INACTIVE`가 되어 OSMU 인증 경로에서 사용할 수 없다.
+- 우선순위: P1
+- 자동화 여부: `AccessKeyProvisioningRecoveryTest.reconcileMarksKeyInactiveWhenPolicySyncAndCleanupFail`
+
 ### TC-KEY-007
 
 - 기능: 사용자 비활성화 시 Access Key 자동 비활성화

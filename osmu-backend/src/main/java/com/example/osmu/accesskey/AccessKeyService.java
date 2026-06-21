@@ -344,8 +344,8 @@ public class AccessKeyService {
     }
 
     private void deactivate(AccessKeyRecord accessKey) {
-        policyProvisioner.deactivate(accessKey);
         accessKeyRepository.updateStatus(accessKey.id(), "INACTIVE");
+        policyProvisioner.deactivate(accessKey);
     }
 
     public synchronized int reconcileActiveKeysForSubject(String subjectType, long subjectId) {
@@ -401,12 +401,20 @@ public class AccessKeyService {
                     accessKeyRepository.updateScope(scopedRecord.id(), scopedAllowedBuckets, scopedPermissions, scope.bucketScopes());
                     changed++;
                 } catch (RuntimeException exception) {
-                    deactivate(accessKey);
+                    deactivateAfterPolicySyncFailure(accessKey, exception);
                     throw exception;
                 }
             }
         }
         return changed;
+    }
+
+    private void deactivateAfterPolicySyncFailure(AccessKeyRecord accessKey, RuntimeException originalException) {
+        try {
+            deactivate(accessKey);
+        } catch (RuntimeException deactivateException) {
+            originalException.addSuppressed(deactivateException);
+        }
     }
 
     private List<Long> ownerIdsForSubject(String subjectType, long subjectId) {
