@@ -1104,6 +1104,25 @@ const dashboardReadiness = reactive({
     scopePolicy: '',
     secretPolicy: '',
   },
+  iamRbacEvidence: {
+    result: '',
+    status: '',
+    generatedAt: '',
+    startedAt: '',
+    completedAt: '',
+    namespace: '',
+    serviceAccount: '',
+    powerShellCommand: '',
+    gradleCommand: '',
+    runBackendPolicyTests: false,
+    runKubernetesLiveAuth: false,
+    failedCount: 0,
+    gaps: [],
+    commands: [],
+    steps: [],
+    decisionRule: '',
+    secretPolicy: '',
+  },
   securityEvidence: {
     result: '',
     generatedAt: '',
@@ -5282,6 +5301,7 @@ function applyDashboardReadiness(data) {
     operationsReadinessArtifactImport: normalizeOperationsReadinessArtifactImport(data.operationsReadinessArtifactImport),
     operationsReadinessFinalize: normalizeOperationsReadinessFinalize(data.operationsReadinessFinalize),
     operationsHandoffPackage: normalizeOperationsHandoffPackage(data.operationsHandoffPackage),
+    iamRbacEvidence: normalizeIamRbacEvidence(data.iamRbacEvidence),
     securityEvidence: normalizeSecurityEvidence(data.securityEvidence),
     secretRotationEvidence: normalizeSecretRotationEvidence(data.secretRotationEvidence),
     commercialIntegrationEvidence: normalizeCommercialIntegrationEvidence(data.commercialIntegrationEvidence),
@@ -5498,6 +5518,28 @@ function normalizeCommercialIntegrationEvidence(report = {}) {
     checks: Array.isArray(report?.checks) ? report.checks : [],
     decisionRule: report?.decisionRule || '',
     scopePolicy: report?.scopePolicy || '',
+    secretPolicy: report?.secretPolicy || '',
+  }
+}
+
+function normalizeIamRbacEvidence(report = {}) {
+  return {
+    result: report?.result || '',
+    status: report?.status || '',
+    generatedAt: report?.generatedAt || '',
+    startedAt: report?.startedAt || '',
+    completedAt: report?.completedAt || '',
+    namespace: report?.namespace || '',
+    serviceAccount: report?.serviceAccount || '',
+    powerShellCommand: report?.powerShellCommand || '',
+    gradleCommand: report?.gradleCommand || '',
+    runBackendPolicyTests: Boolean(report?.runBackendPolicyTests),
+    runKubernetesLiveAuth: Boolean(report?.runKubernetesLiveAuth),
+    failedCount: Number(report?.failedCount || 0),
+    gaps: Array.isArray(report?.gaps) ? report.gaps : [],
+    commands: Array.isArray(report?.commands) ? report.commands : [],
+    steps: Array.isArray(report?.steps) ? report.steps : [],
+    decisionRule: report?.decisionRule || '',
     secretPolicy: report?.secretPolicy || '',
   }
 }

@@ -543,6 +543,57 @@ class AdminDashboardSummaryControllerTest {
                         """
         );
         Files.writeString(
+                Path.of(".osmu-run/latest-iam-rbac-finalize.json"),
+                """
+                        {
+                          "formatVersion": "osmu.iam-rbac-finalize.v1",
+                          "generatedAt": "2026-06-20T00:45:00Z",
+                          "startedAt": "2026-06-20T00:40:00Z",
+                          "completedAt": "2026-06-20T00:45:00Z",
+                          "result": "failed",
+                          "status": "iam-rbac-finalize-failed",
+                          "namespace": "pilot-osmu",
+                          "serviceAccount": "osmu-storage-expansion-runner",
+                          "powerShellCommand": "pwsh",
+                          "gradleCommand": "./gradlew",
+                          "runBackendPolicyTests": true,
+                          "runKubernetesLiveAuth": true,
+                          "commands": [
+                            {
+                              "name": "IAM/RBAC matrix verifier",
+                              "command": "pwsh -NoProfile -ExecutionPolicy Bypass -File ./scripts/verify-iam-rbac-matrix.ps1",
+                              "workingDirectory": "C:/project/object-storage-osmu"
+                            },
+                            {
+                              "name": "Storage expansion live RBAC auth",
+                              "command": "pwsh -NoProfile -ExecutionPolicy Bypass -File ./scripts/verify-storage-expansion-rbac-auth.ps1 -Namespace pilot-osmu",
+                              "workingDirectory": "C:/project/object-storage-osmu"
+                            }
+                          ],
+                          "steps": [
+                            {
+                              "name": "IAM/RBAC matrix verifier",
+                              "result": "passed",
+                              "exitCode": 0,
+                              "notes": ""
+                            },
+                            {
+                              "name": "Storage expansion live RBAC auth",
+                              "result": "failed",
+                              "exitCode": 1,
+                              "notes": "kubectl auth can-i denied patch tenant"
+                            }
+                          ],
+                          "failedCount": 1,
+                          "gaps": [
+                            "Storage expansion live RBAC auth failed with exit code 1."
+                          ],
+                          "decisionRule": "IAM/RBAC finalization passes when the application IAM/RBAC matrix and Kubernetes RBAC matrix verifiers pass. Backend focused tests and live kubectl auth can-i evidence are optional stronger evidence selected by flags.",
+                          "secretPolicy": "IAM/RBAC finalizer does not read or write passwords, API keys, kubeconfig contents, bearer tokens, or object storage credentials."
+                        }
+                        """
+        );
+        Files.writeString(
                 Path.of(".osmu-run/latest-image-signing-evidence.json"),
                 """
                         {
@@ -1686,6 +1737,16 @@ class AdminDashboardSummaryControllerTest {
                 .andExpect(jsonPath("$.data.operationsHandoffPackage.checks[0].id").value("runbook-reviewed"))
                 .andExpect(jsonPath("$.data.operationsHandoffPackage.checks[0].status").value("FAIL"))
                 .andExpect(jsonPath("$.data.operationsHandoffPackage.checks[1].evidenceRef").value("latest-commercial-integration-evidence-passed"))
+                .andExpect(jsonPath("$.data.iamRbacEvidence.result").value("failed"))
+                .andExpect(jsonPath("$.data.iamRbacEvidence.status").value("iam-rbac-finalize-failed"))
+                .andExpect(jsonPath("$.data.iamRbacEvidence.namespace").value("pilot-osmu"))
+                .andExpect(jsonPath("$.data.iamRbacEvidence.serviceAccount").value("osmu-storage-expansion-runner"))
+                .andExpect(jsonPath("$.data.iamRbacEvidence.runBackendPolicyTests").value(true))
+                .andExpect(jsonPath("$.data.iamRbacEvidence.runKubernetesLiveAuth").value(true))
+                .andExpect(jsonPath("$.data.iamRbacEvidence.failedCount").value(1))
+                .andExpect(jsonPath("$.data.iamRbacEvidence.gaps[0]").value("Storage expansion live RBAC auth failed with exit code 1."))
+                .andExpect(jsonPath("$.data.iamRbacEvidence.commands[0].name").value("IAM/RBAC matrix verifier"))
+                .andExpect(jsonPath("$.data.iamRbacEvidence.steps[1].result").value("failed"))
                 .andExpect(jsonPath("$.data.securityEvidence.result").value("failed"))
                 .andExpect(jsonPath("$.data.securityEvidence.failureCount").value(1))
                 .andExpect(jsonPath("$.data.securityEvidence.inputs.imageSigningEvidence").value(".osmu-run/latest-image-signing-evidence.json"))
@@ -1768,6 +1829,8 @@ class AdminDashboardSummaryControllerTest {
                 .andExpect(jsonPath("$.data.storageBackendTelemetryEvidence.scopePolicy", org.hamcrest.Matchers.containsString("not AWS S3 parity work")))
                 .andExpect(jsonPath("$.data.items[?(@.code == 'OPERATIONS_HANDOFF_PACKAGE')].evidencePath").value(hasItem(".osmu-run/latest-operations-handoff-package.json")))
                 .andExpect(jsonPath("$.data.items[?(@.code == 'OPERATIONS_HANDOFF_PACKAGE')].remediationCommand").value(hasItem("powershell -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\write-operations-handoff-package.ps1")))
+                .andExpect(jsonPath("$.data.items[?(@.code == 'IAM_RBAC_EVIDENCE')].evidencePath").value(hasItem(".osmu-run/latest-iam-rbac-finalize.json")))
+                .andExpect(jsonPath("$.data.items[?(@.code == 'IAM_RBAC_EVIDENCE')].remediationWorkflow").value(hasItem(".github/workflows/iam-rbac-finalizer-ci.yml")))
                 .andExpect(jsonPath("$.data.items[?(@.code == 'SECURITY_EVIDENCE_FINALIZE')].evidencePath").value(hasItem(".osmu-run/latest-security-evidence-finalize.json")))
                 .andExpect(jsonPath("$.data.items[?(@.code == 'SECURITY_EVIDENCE_FINALIZE')].remediationWorkflow").value(hasItem(".github/workflows/security-evidence-finalizer-ci.yml")))
                 .andExpect(jsonPath("$.data.items[?(@.code == 'SECRET_ROTATION_EVIDENCE')].evidencePath").value(hasItem(".osmu-run/latest-secret-rotation-evidence.json")))

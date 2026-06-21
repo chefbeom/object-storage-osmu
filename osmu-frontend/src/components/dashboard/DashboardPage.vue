@@ -562,6 +562,14 @@
             offline {{ storageBackendTelemetryEvidence.offlineServerCount || 0 }}
           </small>
           <small
+            v-if="iamRbacEvidence.result"
+            data-testid="readiness-iam-rbac-evidence-item-summary"
+          >
+            IAM/RBAC: {{ iamRbacEvidence.result }} /
+            status {{ iamRbacEvidence.status || 'unknown' }} /
+            failures {{ iamRbacEvidence.failedCount || 0 }}
+          </small>
+          <small
             v-if="securityEvidence.result || securityEvidence.imageSigning?.result || securityEvidence.containerSecurity?.result"
             data-testid="readiness-security-evidence-item-summary"
           >
@@ -622,6 +630,57 @@
           {{ storageBackendTelemetryEvidence.scopePolicy }}
         </small>
       </div>
+      <div
+        v-if="iamRbacEvidence.result"
+        class="readiness-invocation-summary"
+        data-testid="readiness-iam-rbac-evidence-summary"
+      >
+        <strong>IAM/RBAC evidence: {{ iamRbacEvidence.result }}</strong>
+        <small>
+          {{ iamRbacEvidence.namespace || 'unknown namespace' }} /
+          {{ iamRbacEvidence.serviceAccount || 'unknown service account' }} /
+          status {{ iamRbacEvidence.status || 'unknown' }} /
+          failures {{ iamRbacEvidence.failedCount || 0 }} /
+          backend tests {{ iamRbacEvidence.runBackendPolicyTests ? 'selected' : 'not selected' }} /
+          live auth {{ iamRbacEvidence.runKubernetesLiveAuth ? 'selected' : 'not selected' }}
+        </small>
+        <small v-if="iamRbacEvidenceCommandSummary" data-testid="readiness-iam-rbac-evidence-commands">
+          Commands: {{ iamRbacEvidenceCommandSummary }}
+        </small>
+        <small v-if="iamRbacEvidence.secretPolicy">
+          {{ iamRbacEvidence.secretPolicy }}
+        </small>
+      </div>
+      <ol
+        v-if="iamRbacEvidenceSteps.length > 0"
+        class="readiness-evidence-plan-actions readiness-iam-rbac-evidence-steps"
+        data-testid="readiness-iam-rbac-evidence-steps"
+      >
+        <li
+          v-for="step in iamRbacEvidenceSteps.slice(0, 4)"
+          :key="step.name"
+        >
+          <span>
+            <strong>{{ step.result || 'unknown' }} / {{ step.name }}</strong>
+            <small>{{ step.notes || 'exit code ' + (step.exitCode || 0) }}</small>
+          </span>
+        </li>
+      </ol>
+      <ol
+        v-if="iamRbacEvidenceGaps.length > 0"
+        class="readiness-evidence-plan-actions readiness-iam-rbac-evidence-gaps"
+        data-testid="readiness-iam-rbac-evidence-gaps"
+      >
+        <li
+          v-for="gap in iamRbacEvidenceGaps.slice(0, 3)"
+          :key="gap"
+        >
+          <span>
+            <strong>Gap</strong>
+            <small>{{ gap }}</small>
+          </span>
+        </li>
+      </ol>
       <div
         v-if="securityEvidence.result || securityEvidence.imageSigning?.result || securityEvidence.containerSecurity?.result"
         class="readiness-invocation-summary"
@@ -2639,6 +2698,33 @@ const operationsHandoffPackageChecks = computed(() => {
   const checks = operationsHandoffPackage.value?.checks
   return Array.isArray(checks) ? checks : []
 })
+
+const iamRbacEvidence = computed(() => (
+  props.dashboardReadiness.iamRbacEvidence || {}
+))
+
+const iamRbacEvidenceCommands = computed(() => {
+  const commands = iamRbacEvidence.value?.commands
+  return Array.isArray(commands) ? commands : []
+})
+
+const iamRbacEvidenceSteps = computed(() => {
+  const steps = iamRbacEvidence.value?.steps
+  return Array.isArray(steps) ? steps : []
+})
+
+const iamRbacEvidenceGaps = computed(() => {
+  const gaps = iamRbacEvidence.value?.gaps
+  return Array.isArray(gaps) ? gaps : []
+})
+
+const iamRbacEvidenceCommandSummary = computed(() => (
+  iamRbacEvidenceCommands.value
+    .filter((command) => command?.name)
+    .slice(0, 3)
+    .map((command) => command.name)
+    .join(' / ')
+))
 
 const securityEvidence = computed(() => (
   props.dashboardReadiness.securityEvidence || {}

@@ -127,6 +127,7 @@ public class AdminController {
     private final String operationsArtifactCollectionPlanReportPath;
     private final String operationsEvidenceHandoffReportPath;
     private final String operationsHandoffPackageReportPath;
+    private final String iamRbacEvidenceReportPath;
     private final String securityEvidenceFinalizeReportPath;
     private final String imageSigningEvidenceReportPath;
     private final String containerSecurityEvidenceReportPath;
@@ -184,6 +185,7 @@ public class AdminController {
             @Value("${osmu.operations.readiness.artifact-collection-plan-report-path:.osmu-run/latest-operations-artifact-collection-plan.json}") String operationsArtifactCollectionPlanReportPath,
             @Value("${osmu.operations.readiness.evidence-handoff-report-path:.osmu-run/latest-operations-evidence-handoff.json}") String operationsEvidenceHandoffReportPath,
             @Value("${osmu.operations.readiness.handoff-package-report-path:.osmu-run/latest-operations-handoff-package.json}") String operationsHandoffPackageReportPath,
+            @Value("${osmu.operations.readiness.iam-rbac-evidence-report-path:.osmu-run/latest-iam-rbac-finalize.json}") String iamRbacEvidenceReportPath,
             @Value("${osmu.operations.readiness.security-evidence-finalize-report-path:.osmu-run/latest-security-evidence-finalize.json}") String securityEvidenceFinalizeReportPath,
             @Value("${osmu.operations.readiness.image-signing-evidence-report-path:.osmu-run/latest-image-signing-evidence.json}") String imageSigningEvidenceReportPath,
             @Value("${osmu.operations.readiness.container-security-evidence-report-path:.osmu-run/latest-container-security-evidence.json}") String containerSecurityEvidenceReportPath,
@@ -240,6 +242,7 @@ public class AdminController {
         this.operationsArtifactCollectionPlanReportPath = blankToNull(operationsArtifactCollectionPlanReportPath);
         this.operationsEvidenceHandoffReportPath = blankToNull(operationsEvidenceHandoffReportPath);
         this.operationsHandoffPackageReportPath = blankToNull(operationsHandoffPackageReportPath);
+        this.iamRbacEvidenceReportPath = blankToNull(iamRbacEvidenceReportPath);
         this.securityEvidenceFinalizeReportPath = blankToNull(securityEvidenceFinalizeReportPath);
         this.imageSigningEvidenceReportPath = blankToNull(imageSigningEvidenceReportPath);
         this.containerSecurityEvidenceReportPath = blankToNull(containerSecurityEvidenceReportPath);
@@ -911,6 +914,7 @@ public class AdminController {
         DashboardOperationsReadinessArtifactImportResponse operationsReadinessArtifactImport = operationsReadinessArtifactImportSnapshot();
         DashboardOperationsReadinessFinalizeResponse operationsReadinessFinalize = operationsReadinessFinalizeSnapshot();
         DashboardOperationsHandoffPackageResponse operationsHandoffPackage = operationsHandoffPackageSnapshot();
+        DashboardIamRbacEvidenceResponse iamRbacEvidence = iamRbacEvidenceSnapshot();
         DashboardSecurityEvidenceResponse securityEvidence = securityEvidenceSnapshot();
         DashboardSecretRotationEvidenceResponse secretRotationEvidence = secretRotationEvidenceSnapshot();
         DashboardCommercialIntegrationEvidenceResponse commercialIntegrationEvidence = commercialIntegrationEvidenceSnapshot();
@@ -943,6 +947,7 @@ public class AdminController {
                 operationsReadinessArtifactImport,
                 operationsReadinessFinalize,
                 operationsHandoffPackage,
+                iamRbacEvidence,
                 securityEvidence,
                 secretRotationEvidence,
                 commercialIntegrationEvidence,
@@ -1595,6 +1600,7 @@ public class AdminController {
 
         addOperationsEvidenceHandoffItem(items);
         addOperationsHandoffPackageItem(items);
+        addIamRbacEvidenceItem(items);
         addSecurityEvidenceItem(items);
         addSecretRotationEvidenceItem(items);
         addCommercialIntegrationEvidenceItem(items);
@@ -2381,6 +2387,92 @@ public class AdminController {
                 jsonText(snapshot, "currentBottleneckTitle"),
                 jsonInt(snapshot, "recommendedCommandCount")
         );
+    }
+
+    private void addIamRbacEvidenceItem(java.util.ArrayList<DashboardReadinessItemResponse> items) {
+        DashboardIamRbacEvidenceResponse evidence = iamRbacEvidenceSnapshot();
+        if (evidence.result().isBlank() || "passed".equalsIgnoreCase(evidence.result())) {
+            return;
+        }
+        addReadinessItem(
+                items,
+                "WARNING",
+                "OPERATIONS",
+                "IAM_RBAC_EVIDENCE",
+                "IAM/RBAC evidence is %s: status=%s, failures=%d, gaps=%d.".formatted(
+                        evidence.result(),
+                        evidence.status().isBlank() ? "unknown" : evidence.status(),
+                        evidence.failedCount(),
+                        evidence.gaps().size()
+                ),
+                "dashboard",
+                "dashboard-readiness-panel",
+                "IAM/RBAC evidence",
+                iamRbacEvidenceReportPath == null ? "" : iamRbacEvidenceReportPath,
+                "powershell -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\finalize-iam-rbac-readiness.ps1 -FailIfNotPassed",
+                ".github/workflows/iam-rbac-finalizer-ci.yml",
+                "",
+                evidence.secretPolicy().isBlank()
+                        ? "Run IAM/RBAC finalizer evidence before production/B2B readiness."
+                        : evidence.secretPolicy()
+        );
+    }
+
+    private DashboardIamRbacEvidenceResponse iamRbacEvidenceSnapshot() {
+        JsonNode report = readOptionalJsonReport(iamRbacEvidenceReportPath);
+        if (report == null) {
+            return DashboardIamRbacEvidenceResponse.empty();
+        }
+        return new DashboardIamRbacEvidenceResponse(
+                jsonText(report, "result"),
+                jsonText(report, "status"),
+                jsonText(report, "generatedAt"),
+                jsonText(report, "startedAt"),
+                jsonText(report, "completedAt"),
+                jsonText(report, "namespace"),
+                jsonText(report, "serviceAccount"),
+                jsonText(report, "powerShellCommand"),
+                jsonText(report, "gradleCommand"),
+                jsonBoolean(report, "runBackendPolicyTests"),
+                jsonBoolean(report, "runKubernetesLiveAuth"),
+                jsonInt(report, "failedCount"),
+                jsonTextList(report, "gaps"),
+                iamRbacEvidenceCommands(report.path("commands")),
+                iamRbacEvidenceSteps(report.path("steps")),
+                jsonText(report, "decisionRule"),
+                jsonText(report, "secretPolicy")
+        );
+    }
+
+    private List<DashboardIamRbacEvidenceCommandResponse> iamRbacEvidenceCommands(JsonNode commandNodes) {
+        if (!commandNodes.isArray()) {
+            return List.of();
+        }
+        java.util.ArrayList<DashboardIamRbacEvidenceCommandResponse> commands = new java.util.ArrayList<>();
+        for (JsonNode command : commandNodes) {
+            commands.add(new DashboardIamRbacEvidenceCommandResponse(
+                    jsonText(command, "name"),
+                    jsonText(command, "command"),
+                    jsonText(command, "workingDirectory")
+            ));
+        }
+        return List.copyOf(commands);
+    }
+
+    private List<DashboardIamRbacEvidenceStepResponse> iamRbacEvidenceSteps(JsonNode stepNodes) {
+        if (!stepNodes.isArray()) {
+            return List.of();
+        }
+        java.util.ArrayList<DashboardIamRbacEvidenceStepResponse> steps = new java.util.ArrayList<>();
+        for (JsonNode step : stepNodes) {
+            steps.add(new DashboardIamRbacEvidenceStepResponse(
+                    jsonText(step, "name"),
+                    jsonText(step, "result"),
+                    jsonInt(step, "exitCode"),
+                    jsonText(step, "notes")
+            ));
+        }
+        return List.copyOf(steps);
     }
 
     private void addSecurityEvidenceItem(java.util.ArrayList<DashboardReadinessItemResponse> items) {
