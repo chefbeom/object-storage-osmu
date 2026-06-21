@@ -7,6 +7,7 @@ param(
     [string] $SecurityEvidenceFinalizeReportPath = ".\.osmu-run\latest-security-evidence-finalize.json",
     [string] $ImageSigningEvidencePath = ".\.osmu-run\latest-image-signing-evidence.json",
     [string] $ContainerSecurityEvidencePath = ".\.osmu-run\latest-container-security-evidence.json",
+    [string] $StorageBackendTelemetryEvidencePath = ".\.osmu-run\latest-storage-backend-telemetry.json",
     [string] $SecretRotationEvidencePath = ".\.osmu-run\latest-secret-rotation-evidence.json",
     [string] $CommercialIntegrationEvidencePath = ".\.osmu-run\latest-commercial-integration-evidence.json",
     [string] $CommercialApprovalEvidencePath = ".\.osmu-run\latest-commercial-approval-evidence.json",
@@ -164,6 +165,14 @@ function Get-GenericResultDetail([object] $Report) {
     return "result=$result"
 }
 
+function Get-StorageBackendTelemetryDetail([object] $Report) {
+    if (-not $Report.exists -or -not $Report.parsed) {
+        return $Report.detail
+    }
+    $summary = Get-ObjectProperty $Report.data "summary"
+    return "result=$($Report.data.result), poolCount=$($summary.poolCount), serverCount=$($summary.serverCount), offlineServerCount=$($summary.offlineServerCount), driveCount=$($summary.driveCount), totalBytes=$($summary.totalBytes), usedBytes=$($summary.usedBytes), freeBytes=$($summary.freeBytes)"
+}
+
 function Test-EnterpriseAuthEvidenceAccepted([object] $Report) {
     if (-not ($Report.exists -and $Report.parsed)) {
         return $false
@@ -190,6 +199,7 @@ $iamRbacFinalizeReport = Read-JsonReport $IamRbacFinalizeReportPath "IAM/RBAC fi
 $securityFinalizeReport = Read-JsonReport $SecurityEvidenceFinalizeReportPath "Security evidence finalizer"
 $imageSigningReport = Read-JsonReport $ImageSigningEvidencePath "Image signing evidence"
 $containerSecurityReport = Read-JsonReport $ContainerSecurityEvidencePath "Container security evidence"
+$storageBackendTelemetryReport = Read-JsonReport $StorageBackendTelemetryEvidencePath "Storage backend telemetry evidence"
 $secretRotationReport = Read-JsonReport $SecretRotationEvidencePath "Secret rotation evidence"
 $commercialIntegrationReport = Read-JsonReport $CommercialIntegrationEvidencePath "Commercial integration evidence"
 $commercialApprovalReport = Read-JsonReport $CommercialApprovalEvidencePath "Commercial approval evidence"
@@ -226,6 +236,11 @@ $containerSecurityRemediation = New-Remediation `
     ".github/workflows/container-security-ci.yml" `
     "gh workflow run container-security-ci.yml" `
     "The workflow writes .osmu-run/latest-container-security-evidence.json after Trivy high/critical scans and SPDX SBOM generation."
+$storageBackendTelemetryRemediation = New-Remediation `
+    "powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\write-storage-backend-telemetry-evidence.ps1 -EnvironmentName <env> -TargetCluster <cluster> -Operator <operator> -MinioAlias <alias> -EvidenceRef <run-ref> -AdminInfoJsonPath .\.osmu-run\minio-admin-info.json -FailIfNotPassed" `
+    "" `
+    "" `
+    "Run after collecting target MinIO pool/node telemetry with mc admin info --json. The evidence stores summary counts, byte totals, server states, input SHA-256, and external references only; do not pass raw credentials, bearer tokens, private keys, kubeconfig, MinIO root credentials, or object data."
 $secretRotationRemediation = New-Remediation `
     "powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\write-secret-rotation-evidence.ps1 -EnvironmentName <env> -TargetCluster <cluster> -Operator <operator> -RotationStartedAt <iso-time> -RotationCompletedAt <iso-time> -ChangeApprovalRef <change-id> -SecretManagerEvidenceRef <audit-ref> -WorkloadRestartEvidenceRef <rollout-ref> -SmokeEvidenceRef <smoke-ref> -ArtifactLeakReviewEvidenceRef <scan-ref> -AccessKeyEncryptionDecisionRef <decision-ref> -RotateAdminPassword -RotateJwtSigningSecret -RotateDatabaseCredentials -RotateMinioRootCredentials -RotateTlsCertificate -ConfirmNoSecretValues -ConfirmWorkloadRestart -ConfirmSmokePassed -ConfirmArtifactLeakReview -FailIfNotPassed" `
     ".github/workflows/manual-secret-rotation-evidence.yml" `
@@ -286,6 +301,8 @@ Add-FileCheck "Operations readiness artifact finalizer workflow" "automation" ".
 Add-FileCheck "Container security evidence writer" "security-hardening" ".\scripts\write-container-security-evidence.ps1" "container security evidence writer committed"
 Add-FileCheck "Image signing evidence writer" "security-hardening" ".\scripts\write-image-signing-evidence.ps1" "image signing evidence writer committed"
 Add-FileCheck "Security evidence writer self-test" "security-hardening" ".\scripts\verify-security-evidence-writers.ps1" "security evidence writer self-test committed"
+Add-FileCheck "Storage backend telemetry evidence writer" "storage-backend" ".\scripts\write-storage-backend-telemetry-evidence.ps1" "storage backend telemetry evidence writer committed"
+Add-FileCheck "Storage backend telemetry evidence writer self-test" "storage-backend" ".\scripts\verify-storage-backend-telemetry-evidence.ps1" "storage backend telemetry evidence writer self-test committed"
 Add-FileCheck "Secret rotation evidence writer" "security-hardening" ".\scripts\write-secret-rotation-evidence.ps1" "secret rotation evidence writer committed"
 Add-FileCheck "Secret rotation evidence writer self-test" "security-hardening" ".\scripts\verify-secret-rotation-evidence.ps1" "secret rotation evidence writer self-test committed"
 Add-FileCheck "Secret rotation evidence workflow" "security-hardening" ".\.github\workflows\manual-secret-rotation-evidence.yml" "manual workflow for target secret/certificate rotation evidence"
@@ -312,6 +329,7 @@ Add-Check "IAM/RBAC finalizer report" "iam-rbac" ($iamRbacFinalizeReport.exists 
 Add-Check "Security evidence finalizer report" "security-hardening" ($securityFinalizeReport.exists -and $securityFinalizeReport.parsed -and $securityFinalizeReport.data.result -eq "passed") (Get-GenericResultDetail $securityFinalizeReport) $securityFinalizeReport.path "security evidence finalizer result=passed from promoted CI artifacts" $securityFinalizeRemediation
 Add-Check "Signed image evidence" "security-hardening" ($imageSigningReport.exists -and $imageSigningReport.parsed -and $imageSigningReport.data.result -eq "passed") (Get-GenericResultDetail $imageSigningReport) $imageSigningReport.path "published image digest and Cosign verification evidence" $imageSigningRemediation
 Add-Check "Container scan/SBOM evidence" "security-hardening" ($containerSecurityReport.exists -and $containerSecurityReport.parsed -and $containerSecurityReport.data.result -eq "passed") (Get-GenericResultDetail $containerSecurityReport) $containerSecurityReport.path "successful container scan and SBOM artifact evidence" $containerSecurityRemediation
+Add-Check "Storage backend telemetry target evidence" "storage-backend" ($storageBackendTelemetryReport.exists -and $storageBackendTelemetryReport.parsed -and $storageBackendTelemetryReport.data.result -eq "passed") (Get-StorageBackendTelemetryDetail $storageBackendTelemetryReport) $storageBackendTelemetryReport.path "storage backend telemetry result=passed from target MinIO admin info evidence" $storageBackendTelemetryRemediation
 Add-Check "Secret/certificate rotation target evidence" "security-hardening" ($secretRotationReport.exists -and $secretRotationReport.parsed -and $secretRotationReport.data.result -eq "passed") (Get-GenericResultDetail $secretRotationReport) $secretRotationReport.path "secret/certificate rotation evidence result=passed from target environment" $secretRotationRemediation
 Add-Check "Commercial integration target evidence" "commercial-integration" ($commercialIntegrationReport.exists -and $commercialIntegrationReport.parsed -and $commercialIntegrationReport.data.result -eq "passed") (Get-GenericResultDetail $commercialIntegrationReport) $commercialIntegrationReport.path "commercial integration evidence result=passed from target environment" $commercialIntegrationRemediation
 Add-Check "Commercial approval target evidence" "commercial-approval" ($commercialApprovalReport.exists -and $commercialApprovalReport.parsed -and $commercialApprovalReport.data.result -eq "passed") (Get-GenericResultDetail $commercialApprovalReport) $commercialApprovalReport.path "commercial approval evidence result=passed for final pricing, terms, support SLA, license agreement, legal approval, and pilot contract boundary" $commercialApprovalRemediation
@@ -341,6 +359,7 @@ $report = [ordered]@{
         securityEvidenceFinalizeReport = $securityFinalizeReport.path
         imageSigningEvidence = $imageSigningReport.path
         containerSecurityEvidence = $containerSecurityReport.path
+        storageBackendTelemetryEvidence = $storageBackendTelemetryReport.path
         secretRotationEvidence = $secretRotationReport.path
         commercialIntegrationEvidence = $commercialIntegrationReport.path
         commercialApprovalEvidence = $commercialApprovalReport.path
@@ -348,7 +367,7 @@ $report = [ordered]@{
         operationsHandoffPackage = $operationsHandoffPackageReport.path
     }
     checks = $checks
-    decisionRule = "Production/B2B operations readiness is ready only when every listed static, automation, live Kubernetes, storage expansion, HA/DR, security, secret rotation, commercial integration, commercial approval, enterprise auth, and operations handoff package evidence check is PASS."
+    decisionRule = "Production/B2B operations readiness is ready only when every listed static, automation, live Kubernetes, storage expansion, storage backend telemetry, HA/DR, security, secret rotation, commercial integration, commercial approval, enterprise auth, and operations handoff package evidence check is PASS."
 }
 
 $markdownLines = @(

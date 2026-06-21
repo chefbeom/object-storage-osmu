@@ -105,6 +105,8 @@ Assert-CheckExists $report "Operations readiness artifact finalizer workflow" "a
 Assert-CheckExists $report "Container security evidence writer" "security-hardening"
 Assert-CheckExists $report "Image signing evidence writer" "security-hardening"
 Assert-CheckExists $report "Security evidence writer self-test" "security-hardening"
+Assert-CheckExists $report "Storage backend telemetry evidence writer" "storage-backend"
+Assert-CheckExists $report "Storage backend telemetry evidence writer self-test" "storage-backend"
 Assert-CheckExists $report "Secret rotation evidence writer" "security-hardening"
 Assert-CheckExists $report "Secret rotation evidence writer self-test" "security-hardening"
 Assert-CheckExists $report "Secret rotation evidence workflow" "security-hardening"
@@ -130,6 +132,7 @@ Assert-CheckExists $report "IAM/RBAC finalizer report" "iam-rbac"
 Assert-CheckExists $report "Security evidence finalizer report" "security-hardening"
 Assert-CheckExists $report "Signed image evidence" "security-hardening"
 Assert-CheckExists $report "Container scan/SBOM evidence" "security-hardening"
+Assert-CheckExists $report "Storage backend telemetry target evidence" "storage-backend"
 Assert-CheckExists $report "Secret/certificate rotation target evidence" "security-hardening"
 Assert-CheckExists $report "Commercial integration target evidence" "commercial-integration"
 Assert-CheckExists $report "Commercial approval target evidence" "commercial-approval"
@@ -142,6 +145,25 @@ Assert-CheckRemediation $report "Kubernetes DR finalizer live evidence" "finaliz
 Assert-CheckRemediation $report "Security evidence finalizer report" "finalize-security-evidence.ps1" ".github/workflows/security-evidence-finalizer-ci.yml" "gh workflow run security-evidence-finalizer-ci.yml"
 Assert-CheckRemediation $report "Signed image evidence" "image-publish-sign-ci.yml" ".github/workflows/image-publish-sign-ci.yml" "gh workflow run image-publish-sign-ci.yml"
 Assert-CheckRemediation $report "Container scan/SBOM evidence" "container-security-ci.yml" ".github/workflows/container-security-ci.yml" "gh workflow run container-security-ci.yml"
+$storageBackendTelemetryCheck = @($report.checks | Where-Object { $_.name -eq "Storage backend telemetry target evidence" })
+if ($storageBackendTelemetryCheck.Count -ne 1) {
+    throw "Operations readiness report must contain one Storage backend telemetry target evidence check."
+}
+if (-not ([string] $storageBackendTelemetryCheck[0].remediation.command).Contains("write-storage-backend-telemetry-evidence.ps1")) {
+    throw "Storage backend telemetry target evidence remediation must point to write-storage-backend-telemetry-evidence.ps1."
+}
+if (-not [string]::IsNullOrWhiteSpace([string] $storageBackendTelemetryCheck[0].remediation.workflow)) {
+    throw "Storage backend telemetry target evidence remediation workflow should be blank until a dedicated workflow exists."
+}
+if (-not [string]::IsNullOrWhiteSpace([string] $storageBackendTelemetryCheck[0].remediation.workflowCommand)) {
+    throw "Storage backend telemetry target evidence remediation workflow command should be blank until a dedicated workflow exists."
+}
+if (-not ([string] $storageBackendTelemetryCheck[0].requiredEvidence).Contains("target MinIO admin info evidence")) {
+    throw "Storage backend telemetry target evidence must require target MinIO admin info evidence."
+}
+if (-not ([string] $storageBackendTelemetryCheck[0].remediation.note).Contains("mc admin info --json")) {
+    throw "Storage backend telemetry target evidence remediation note must mention mc admin info --json."
+}
 $secretRotationCheck = @($report.checks | Where-Object { $_.name -eq "Secret/certificate rotation target evidence" })
 if ($secretRotationCheck.Count -ne 1) {
     throw "Operations readiness report must contain one Secret/certificate rotation target evidence check."
@@ -231,6 +253,7 @@ Assert-Contains $markdown "Production/B2B operations readiness" "Operations read
 Assert-Contains $markdown "Storage expansion finalizer live evidence" "Operations readiness markdown"
 Assert-Contains $markdown "Kubernetes DR finalizer live evidence" "Operations readiness markdown"
 Assert-Contains $markdown "Security evidence finalizer report" "Operations readiness markdown"
+Assert-Contains $markdown "Storage backend telemetry target evidence" "Operations readiness markdown"
 Assert-Contains $markdown "Secret/certificate rotation target evidence" "Operations readiness markdown"
 Assert-Contains $markdown "Commercial integration target evidence" "Operations readiness markdown"
 Assert-Contains $markdown "Commercial approval target evidence" "Operations readiness markdown"
