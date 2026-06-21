@@ -107,13 +107,59 @@ function Test-EvidenceJson([string] $Path, [string] $ExpectedProperty, [string] 
     }
 }
 
+function Test-DataFlowStoragePlanEvidenceJson([string] $Path) {
+    try {
+        $json = Get-Content -Raw -LiteralPath $Path | ConvertFrom-Json
+    }
+    catch {
+        return [pscustomobject]@{
+            passed = $false
+            detail = "invalid JSON: $($_.Exception.Message)"
+        }
+    }
+
+    $formatVersion = [string] (Get-JsonProperty $json "formatVersion")
+    if ($formatVersion -ne "osmu.data-flow-storage-plan.v1") {
+        return [pscustomobject]@{
+            passed = $false
+            detail = "formatVersion=$formatVersion expected=osmu.data-flow-storage-plan.v1"
+        }
+    }
+
+    $candidateStore = [string] (Get-JsonProperty $json "candidateStore")
+    $queryPlanEvidence = Get-JsonProperty $json "queryPlanEvidence"
+    $queryPlanEvidenceRequired = @("MARIADB_PARTITION", "DUAL_WRITE") -contains $candidateStore
+    if ($queryPlanEvidenceRequired -and $null -eq $queryPlanEvidence) {
+        return [pscustomobject]@{
+            passed = $false
+            detail = "candidateStore=$candidateStore requires queryPlanEvidence summary before import"
+        }
+    }
+
+    if ($null -ne $queryPlanEvidence) {
+        $expectedFormatVersion = [string] (Get-JsonProperty $queryPlanEvidence "expectedFormatVersion")
+        if ($expectedFormatVersion -ne "osmu.mariadb-query-plan-evidence.v1") {
+            return [pscustomobject]@{
+                passed = $false
+                detail = "queryPlanEvidence expectedFormatVersion=$expectedFormatVersion expected=osmu.mariadb-query-plan-evidence.v1"
+            }
+        }
+    }
+
+    return [pscustomobject]@{
+        passed = $true
+        detail = "formatVersion=$formatVersion candidateStore=$candidateStore queryPlanEvidencePresent=$($null -ne $queryPlanEvidence)"
+    }
+}
+
 function Import-EvidenceFile(
     [string] $Group,
     [string] $SourceRoot,
     [string] $FileName,
     [bool] $Required,
     [string] $ExpectedProperty = "",
-    [string] $ExpectedValue = ""
+    [string] $ExpectedValue = "",
+    [string] $ValidationKind = ""
 ) {
     if ([string]::IsNullOrWhiteSpace($SourceRoot)) {
         Add-Entry $Group $FileName "skipped" "artifact path not selected" "" ""
@@ -133,6 +179,14 @@ function Import-EvidenceFile(
 
     if (-not [string]::IsNullOrWhiteSpace($ExpectedProperty)) {
         $validation = Test-EvidenceJson $sourcePath $ExpectedProperty $ExpectedValue
+        if (-not $validation.passed) {
+            Add-Entry $Group $FileName "failed" $validation.detail $sourcePath ""
+            return
+        }
+    }
+
+    if ($ValidationKind -eq "data-flow-storage-plan") {
+        $validation = Test-DataFlowStoragePlanEvidenceJson $sourcePath
         if (-not $validation.passed) {
             Add-Entry $Group $FileName "failed" $validation.detail $sourcePath ""
             return
@@ -189,7 +243,7 @@ Import-EvidenceFile "operations-handoff-package" $OperationsHandoffPackageArtifa
 Import-EvidenceFile "kubernetes-operations-report-sync" $KubernetesOperationsReportSyncArtifactPath "latest-kubernetes-operations-report-sync.json" $true "result" "applied"
 Import-EvidenceFile "kubernetes-operations-report-sync" $KubernetesOperationsReportSyncArtifactPath "latest-kubernetes-operations-report-sync-plan.json" $false
 Import-EvidenceFile "kubernetes-operations-report-sync" $KubernetesOperationsReportSyncArtifactPath "latest-kubernetes-operations-report-sync-server-dry-run.json" $false
-Import-EvidenceFile "kubernetes-operations-report-sync" $KubernetesOperationsReportSyncArtifactPath "latest-data-flow-storage-plan.json" $false "formatVersion" "osmu.data-flow-storage-plan.v1"
+Import-EvidenceFile "kubernetes-operations-report-sync" $KubernetesOperationsReportSyncArtifactPath "latest-data-flow-storage-plan.json" $false "" "" "data-flow-storage-plan"
 
 $failedEntries = @($entries | Where-Object { $_.status -eq "failed" })
 $importedEntries = @($entries | Where-Object { $_.status -eq "imported" })
