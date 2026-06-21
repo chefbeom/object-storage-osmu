@@ -111,6 +111,10 @@ async function installDeveloperApiMocks(page, options = {}) {
   const authRefreshRequests = options.authRefreshRequests
   const unauthorizedPaths = options.unauthorizedPaths || []
   const objectMetadataByKey = options.objectMetadataByKey || {}
+  const objectUploadRequests = options.objectUploadRequests
+  const objectUploadAttempts = new Map()
+  const objectUploadDelays = options.objectUploadDelays || []
+  const objectUploadKey = options.objectUploadKey || ''
   let adminActionFailureIndex = 0
 
   await page.route('**/api/**', async (route) => {
@@ -233,6 +237,36 @@ async function installDeveloperApiMocks(page, options = {}) {
         prefixes: page.prefixes || [],
         nextCursor: page.nextCursor || '',
       })
+    }
+
+    if (method === 'POST' && path === `/buckets/${developerBucketName}/objects`) {
+      const attempt = (objectUploadAttempts.get(path) || 0) + 1
+      objectUploadAttempts.set(path, attempt)
+      if (Array.isArray(objectUploadRequests)) {
+        objectUploadRequests.push({ attempt })
+      }
+      const delayMs = Number(objectUploadDelays[attempt - 1] || 0)
+      if (delayMs > 0) {
+        await new Promise((resolve) => setTimeout(resolve, delayMs))
+      }
+      const uploadedKey = objectUploadKey || `browser-upload-${attempt}.txt`
+      const firstPage = objectPages[0]
+      if (firstPage && !firstPage.items?.some((item) => item.key === uploadedKey)) {
+        firstPage.items = [
+          ...(firstPage.items || []),
+          {
+            key: uploadedKey,
+            sizeBytes: 13,
+            contentType: 'text/plain',
+            tags: { project: 'osmu' },
+          },
+        ]
+      }
+      try {
+        return await json({ data: { key: uploadedKey } })
+      } catch {
+        return undefined
+      }
     }
 
     const objectMetadataPathPrefix = `/buckets/${developerBucketName}/objects/metadata/`
@@ -634,6 +668,60 @@ test('developer object download refreshes expired access token and retries once'
     authorization: 'Bearer developer-e2e-access-refreshed',
     attempt: 2,
   })
+})
+
+test('developer can cancel and retry single object upload', async ({ page }) => {
+  const objectUploadRequests = []
+  const retryKey = 'browser-retry.txt'
+  await installDeveloperApiMocks(page, {
+    objectUploadRequests,
+    objectUploadDelays: [2000, 0],
+    objectUploadKey: retryKey,
+  })
+  await page.addInitScript(() => {
+    window.localStorage.removeItem('osmu.dashboard.widgets.v1')
+    window.localStorage.removeItem('osmu.auth.tokens')
+    window.localStorage.removeItem('osmu.login.rememberedId')
+    window.sessionStorage.removeItem('osmu.auth.tokens')
+  })
+
+  await page.goto(`${frontendBaseUrl}/login?mode=developer`)
+  await page.getByTestId('login-id-input').fill(developerLoginId)
+  await page.getByTestId('login-password-input').fill(developerPassword)
+  await page.getByTestId('login-submit-button').click()
+
+  await expect(page).toHaveURL(/\/developer$/)
+  await page.getByRole('link', { name: 'Objects' }).click()
+  await page.getByTestId('object-key-input').fill(retryKey)
+  await page.getByTestId('object-tags-input').fill('project=osmu')
+  await page.getByTestId('object-file-input').setInputFiles({
+    name: retryKey,
+    mimeType: 'text/plain',
+    buffer: Buffer.from('retry payload'),
+  })
+
+  const firstUploadRequest = page.waitForRequest((request) => (
+    request.method() === 'POST'
+      && new URL(request.url()).pathname.endsWith(`/api/buckets/${developerBucketName}/objects`)
+  ))
+  await page.getByTestId('object-upload-button').click()
+  await firstUploadRequest
+  await expect(page.getByTestId('object-upload-cancel-button')).toBeEnabled()
+  await page.getByTestId('object-upload-cancel-button').click()
+
+  await expect(page.getByTestId('object-upload-progress')).toBeVisible()
+  await expect(page.getByTestId('object-upload-retry-button')).toBeEnabled()
+
+  const retryUploadResponse = page.waitForResponse((response) => (
+    response.status() === 200
+      && new URL(response.url()).pathname.endsWith(`/api/buckets/${developerBucketName}/objects`)
+  ))
+  await page.getByTestId('object-upload-retry-button').click()
+  await retryUploadResponse
+
+  await expect(page.getByTestId('status-alert')).toContainText(retryKey)
+  await expect(page.getByTestId('object-table')).toContainText(retryKey)
+  expect(objectUploadRequests).toHaveLength(2)
 })
 
 test('developer object metadata detail shows drift fields from fixture', async ({ page }) => {

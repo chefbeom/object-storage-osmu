@@ -1839,7 +1839,7 @@ Evidence note: `npm run test:unit` covers stable bucket row cell selectors, and 
 - 절차: ObjectExplorer에서 업로드를 시작한 뒤 취소하고, 같은 파일을 재시도한다.
 - 기대 결과: 취소 시 진행 중인 XHR 요청이 abort되고 중복 업로드가 풀린다. 재시도 시 마지막 bucket/key/file로 업로드가 다시 실행되고 성공 후 object 목록이 갱신된다.
 - 우선순위: P1
-- 자동화 여부: Automated (`npm run test:unit` single-object XHR abort and same-file retry API path). Browser button/list refresh E2E pending.
+- 자동화 여부: Automated (`npm run test:unit` single-object XHR abort and same-file retry API path, Browser E2E cancel/retry button path and object list refresh with `object-upload-cancel-button`, `object-upload-retry-button`, and `object-table`).
 
 ### TC-FE-012
 
