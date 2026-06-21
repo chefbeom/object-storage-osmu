@@ -103,6 +103,8 @@ async function installDeveloperApiMocks(page, options = {}) {
     ...failure,
     remainingResponses: failure.remainingResponses ?? (failure.status === 401 ? 2 : 1),
   }))
+  const objectPages = options.objectPages || [{ items: [], prefixes: [], nextCursor: '' }]
+  const objectListRequests = options.objectListRequests
   let adminActionFailureIndex = 0
 
   await page.route('**/api/**', async (route) => {
@@ -186,7 +188,25 @@ async function installDeveloperApiMocks(page, options = {}) {
     }
 
     if (method === 'GET' && path === `/buckets/${developerBucketName}/objects`) {
-      return json({ items: [], prefixes: [], nextCursor: '' })
+      const requestDetails = {
+        prefix: url.searchParams.get('prefix') || '',
+        delimiter: url.searchParams.get('delimiter') || '',
+        search: url.searchParams.get('search') || '',
+        tag: url.searchParams.get('tag') || '',
+        cursor: url.searchParams.get('cursor') || '',
+        limit: url.searchParams.get('limit') || '',
+        deleted: url.searchParams.get('deleted') || '',
+      }
+      if (Array.isArray(objectListRequests)) {
+        objectListRequests.push(requestDetails)
+      }
+      const pageIndex = requestDetails.cursor ? Math.min(1, objectPages.length - 1) : 0
+      const page = objectPages[pageIndex] || objectPages[0] || { items: [], prefixes: [], nextCursor: '' }
+      return json({
+        items: page.items || [],
+        prefixes: page.prefixes || [],
+        nextCursor: page.nextCursor || '',
+      })
     }
 
     if (method === 'GET' && path === `/buckets/${developerBucketName}/permissions`) {
@@ -406,6 +426,83 @@ test('developer login lands on S3 API console with access key controls', async (
   await page.getByTestId('confirm-submit-button').click()
   await expect(page.getByTestId('status-alert')).toContainText('비활성화 완료')
   await expect(page.getByTestId('access-key-list')).toContainText('INACTIVE')
+})
+
+test('developer object page size selection resets cursor and keeps limit on next page', async ({ page }) => {
+  const objectListRequests = []
+  await installDeveloperApiMocks(page, {
+    objectListRequests,
+    objectPages: [
+      {
+        items: [{
+          key: 'page-size-first.txt',
+          sizeBytes: 128,
+          contentType: 'text/plain',
+          tags: { project: 'osmu' },
+        }],
+        prefixes: ['page-size/'],
+        nextCursor: 'page-size-cursor-2',
+      },
+      {
+        items: [{
+          key: 'page-size-second.txt',
+          sizeBytes: 256,
+          contentType: 'text/plain',
+          tags: { project: 'osmu', stage: 'next' },
+        }],
+        prefixes: [],
+        nextCursor: '',
+      },
+    ],
+  })
+  await page.addInitScript(() => {
+    window.localStorage.removeItem('osmu.dashboard.widgets.v1')
+    window.localStorage.removeItem('osmu.auth.tokens')
+    window.localStorage.removeItem('osmu.login.rememberedId')
+    window.sessionStorage.removeItem('osmu.auth.tokens')
+  })
+
+  await page.goto(`${frontendBaseUrl}/login?mode=developer`)
+  await page.getByTestId('login-id-input').fill(developerLoginId)
+  await page.getByTestId('login-password-input').fill(developerPassword)
+  await page.getByTestId('login-submit-button').click()
+
+  await expect(page).toHaveURL(/\/developer$/)
+  await page.getByRole('link', { name: 'Objects' }).click()
+  await expect(page).toHaveURL(/\/objects$/)
+  await expect(page.getByTestId('object-table')).toContainText('page-size-first.txt')
+
+  objectListRequests.length = 0
+  const firstPageLimitResponse = page.waitForResponse((response) => {
+    const url = new URL(response.url())
+    return url.pathname.endsWith(`/api/buckets/${developerBucketName}/objects`)
+      && url.searchParams.get('limit') === '50'
+      && !url.searchParams.has('cursor')
+  })
+  await page.getByTestId('object-list-limit-select').selectOption('50')
+  await firstPageLimitResponse
+  await expect(page.getByTestId('object-list-limit-select')).toHaveValue('50')
+  await expect(page.getByTestId('object-table')).toContainText('page-size-first.txt')
+  expect(objectListRequests[objectListRequests.length - 1]).toMatchObject({
+    limit: '50',
+    cursor: '',
+  })
+
+  const objectNextButton = page.getByTestId('object-next-button')
+  await expect(objectNextButton).toBeEnabled()
+  const nextPageLimitResponse = page.waitForResponse((response) => {
+    const url = new URL(response.url())
+    return url.pathname.endsWith(`/api/buckets/${developerBucketName}/objects`)
+      && url.searchParams.get('limit') === '50'
+      && url.searchParams.get('cursor') === 'page-size-cursor-2'
+  })
+  await objectNextButton.click()
+  await nextPageLimitResponse
+  await expect(page.getByTestId('object-table')).toContainText('page-size-second.txt')
+  expect(objectListRequests[objectListRequests.length - 1]).toMatchObject({
+    limit: '50',
+    cursor: 'page-size-cursor-2',
+  })
 })
 
 test('org admin can open scoped admin page without global operation panels', async ({ page }) => {
@@ -873,6 +970,8 @@ test('admin can complete lightweight storage portal click path', async ({ page }
   await expect(page.getByTestId('object-upload-button')).toBeEnabled()
   await page.getByTestId('object-upload-button').click()
 
+  await page.getByTestId('object-list-limit-select').selectOption('50')
+  await expect(page.getByTestId('object-list-limit-select')).toHaveValue('50')
   await expect(page.getByTestId('object-prefix-row').first()).toContainText('e2e')
   await page.getByTestId('object-prefix-open-button').first().click()
   await expect(page.getByTestId('object-prefix-input')).toHaveValue('e2e/')

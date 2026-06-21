@@ -638,6 +638,7 @@ $browserSpecContent = $browserSpec.Content
 
 Assert-Contains $browserSpecContent "admin can complete lightweight storage portal click path" "Browser E2E spec"
 Assert-Contains $browserSpecContent "developer login lands on S3 API console with access key controls" "Browser E2E spec"
+Assert-Contains $browserSpecContent "developer object page size selection resets cursor and keeps limit on next page" "Browser E2E spec"
 Assert-Contains $browserSpecContent "org admin can open scoped admin page without global operation panels" "Browser E2E spec"
 Assert-Contains $browserSpecContent "user is redirected away from admin page" "Browser E2E spec"
 Assert-Contains $browserSpecContent "ORG_ADMIN" "Browser E2E spec"
@@ -759,6 +760,9 @@ Assert-Contains $browserSpecContent "object-prefix-breadcrumb-button" "Browser E
 Assert-Contains $browserSpecContent "object-prefix-row" "Browser E2E spec"
 Assert-Contains $browserSpecContent "object-prefix-open-button" "Browser E2E spec"
 Assert-Contains $browserSpecContent "filter({ hasText: '/' }).click()" "Browser E2E spec"
+Assert-Contains $browserSpecContent "object-list-limit-select" "Browser E2E spec"
+Assert-Contains $browserSpecContent "object-next-button" "Browser E2E spec"
+Assert-Contains $browserSpecContent "page-size-cursor-2" "Browser E2E spec"
 Assert-Contains $browserSpecContent "object-search-button" "Browser E2E spec"
 Assert-Contains $browserSpecContent "object-key-match" "Browser E2E spec"
 Assert-Contains $browserSpecContent "object-detail-button" "Browser E2E spec"

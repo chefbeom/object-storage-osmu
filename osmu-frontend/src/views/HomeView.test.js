@@ -239,6 +239,7 @@ test('HomeView exposes stable selectors for browser E2E flows', () => {
     'object-tag-filter-input',
     'object-list-limit-select',
     'object-search-button',
+    'object-next-button',
     'object-upload-form',
     'object-key-input',
     'object-tags-input',

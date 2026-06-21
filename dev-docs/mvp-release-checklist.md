@@ -253,6 +253,7 @@ Run when Browser/Chrome automation works again:
 - [x] Browser E2E spec includes admin storage profile approve/apply status transitions.
 - [x] Browser E2E spec includes object upload followed by prefix/list refresh and object detail render.
 - [x] Browser E2E spec includes object prefix open/root breadcrumb navigation, search highlight, tag filter, tag edit, and invalid tag error paths.
+- [x] Browser E2E spec includes Object Explorer page size select, first-page cursor reset, and next-page limit retention paths.
 - [x] Browser E2E spec includes bucket lifecycle XML save/load/delete and bucket tags save/load/delete click paths.
 - [x] Browser E2E spec includes audit filter, next-page click, CSV download filename, and reset click paths.
 - [x] Backend-backed Browser E2E prototype passes locally.

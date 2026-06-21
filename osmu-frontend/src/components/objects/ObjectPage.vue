@@ -239,7 +239,7 @@
         </table>
       </div>
       <div class="panel-actions" v-if="objects.length > 0 || objectPrefixes.length > 0">
-        <button type="button" class="ghost" :disabled="!objectNextCursor" @click="$emit('load-next-objects')">다음 항목</button>
+        <button data-testid="object-next-button" type="button" class="ghost" :disabled="!objectNextCursor" @click="$emit('load-next-objects')">다음 항목</button>
       </div>
 
       <section v-if="objectMetadata" class="object-detail-panel" data-testid="object-detail-panel">

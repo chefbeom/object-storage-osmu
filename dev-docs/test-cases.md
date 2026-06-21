@@ -1859,7 +1859,7 @@ Evidence note: `npm run test:unit` covers stable bucket row cell selectors, and 
 - 절차: ObjectExplorer에서 page size를 변경하고 목록을 조회한 뒤 `다음 항목`을 클릭한다.
 - 기대 결과: 첫 목록 조회와 다음 항목 조회 모두 선택한 `limit` 값으로 API를 호출하고, page size 변경 시 cursor 없이 첫 페이지부터 다시 조회한다.
 - 우선순위: P1
-- 자동화 여부: Automated (`npm run test:unit` object list query wrapper). Browser click E2E pending.
+- 자동화 여부: Automated (`npm run test:unit` object list query wrapper, Browser E2E page-size select cursor reset and next-page limit retention with `object-list-limit-select` and `object-next-button`).
 
 ### TC-FE-014
 
