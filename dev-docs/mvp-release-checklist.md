@@ -249,7 +249,7 @@ Run when Browser/Chrome automation works again:
 - [ ] Object prefix breadcrumb navigation works.
 - [ ] Object search highlight renders.
 - [ ] Object tag edit, filter, and invalid-input UI paths work.
-- [ ] Object metadata detail panel shows sync status, index fields, storage fields, drift, and missing values.
+- [x] Object metadata detail panel shows sync status, index fields, storage fields, drift, and missing values.
 - [ ] Bucket lifecycle XML load/save/delete panel works.
 - [ ] Bucket tags load/save/delete panel works.
 - [ ] Audit log filter, pagination, and CSV export UI paths work.

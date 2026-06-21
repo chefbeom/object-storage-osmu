@@ -1914,9 +1914,9 @@ ID:
 - 조건: object 목록에 파일이 표시된다.
 - 입력: 목록 row의 `상세` 버튼
 - 절차: ObjectExplorer에서 object 상세 버튼을 클릭한다.
-- 기대 결과: `GET /api/buckets/{bucketName}/objects/metadata/{objectKey}` 요청이 전송되고 key, size, contentType, ETag, checksums, lastModifiedAt, tags가 패널에 표시된다.
+- 기대 결과: `GET /api/buckets/{bucketName}/objects/metadata/{objectKey}` 요청이 전송되고 key, size, contentType, ETag, checksums, lastModifiedAt, tags가 패널에 표시된다. Index/storage detail row는 `object-metadata-row-state`로 `Synced`, `Drift`, `Missing` 상태를 표시한다.
 - 우선순위: P1
-- 자동화 여부: Automated (`npm run test:unit` object metadata API wrapper). Browser panel E2E pending.
+- 자동화 여부: Automated (`npm run test:unit` object metadata API wrapper, row state helper, stable selector).
 
 ### TC-FE-020
 

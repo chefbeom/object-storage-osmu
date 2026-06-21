@@ -1802,9 +1802,38 @@ tbody tr.selected {
 }
 
 .detail-grid dt {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
   color: var(--color-muted);
   font-size: 12px;
   font-weight: 900;
+}
+
+.metadata-row-state {
+  flex: 0 0 auto;
+  border-radius: 999px;
+  padding: 2px 7px;
+  background: #e5e7eb;
+  color: #374151;
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.metadata-row-state-synced {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.metadata-row-state-drift {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.metadata-row-state-missing {
+  background: #fee2e2;
+  color: #991b1b;
 }
 
 .detail-grid dd {

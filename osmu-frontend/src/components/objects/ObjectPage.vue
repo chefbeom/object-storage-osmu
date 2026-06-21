@@ -254,7 +254,15 @@
         </div>
         <dl class="detail-grid">
           <div v-for="row in objectMetadataRows" :key="row.label">
-            <dt>{{ row.label }}</dt>
+            <dt>
+              <span>{{ row.label }}</span>
+              <small
+                :class="['metadata-row-state', `metadata-row-state-${row.state || 'unknown'}`]"
+                data-testid="object-metadata-row-state"
+              >
+                {{ objectMetadataRowStateLabel(row.state) }}
+              </small>
+            </dt>
             <dd>{{ row.value }}</dd>
           </div>
         </dl>
@@ -406,4 +414,11 @@ defineEmits([
   'restore-object-version',
   'delete-object-version',
 ])
+
+function objectMetadataRowStateLabel(state) {
+  if (state === 'synced') return 'Synced'
+  if (state === 'drift') return 'Drift'
+  if (state === 'missing') return 'Missing'
+  return 'Unknown'
+}
 </script>

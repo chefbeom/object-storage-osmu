@@ -301,6 +301,7 @@ test('HomeView exposes stable selectors for browser E2E flows', () => {
     'access-key-delete-button',
     'object-detail-button',
     'object-detail-panel',
+    'object-metadata-row-state',
     'object-share-link-button',
     'object-share-link-url',
     'object-share-link-password-input',
