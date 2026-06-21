@@ -354,6 +354,11 @@ test('admin can complete lightweight storage portal click path', async ({ page }
   await expect(page.getByTestId('object-key-match').first()).toContainText(/hello/i)
   await expect(page.getByTestId('object-tag-edit-button').first()).toBeVisible()
 
+  await page.getByTestId('object-tag-filter-input').fill('project=osmu')
+  await page.getByTestId('object-search-button').click()
+  await expect(page.getByTestId('object-table')).toContainText(objectKey)
+  await expect(page.getByTestId('object-table')).toContainText('project=osmu')
+
   await page.getByRole('link', { name: 'Audit' }).click()
   await page.getByTestId('audit-search-button').click()
   await expect(page.getByTestId('audit-list')).toContainText(/BUCKET|OBJECT|LOGIN/)

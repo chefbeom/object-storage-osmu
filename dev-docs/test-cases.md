@@ -1886,7 +1886,7 @@ ID:
 - 절차: ObjectExplorer에서 tag와 함께 업로드하고 tag filter로 조회한다.
 - 기대 결과: 업로드 요청에 `tags` form field가 포함되고 목록 태그 열에 `project=osmu, stage=raw`가 표시된다. tag filter 조회 시 `tag=project=osmu` query가 전송된다.
 - 우선순위: P1
-- 자동화 여부: Automated (`npm run test:unit` tag parser and object list tag query wrapper, Browser E2E tag upload path and `object-tag-edit-button` selector). Browser tag filter E2E pending.
+- 자동화 여부: Automated (`npm run test:unit` tag parser and object list tag query wrapper, Browser E2E tag upload/filter path with `object-tag-filter-input` and `object-tag-edit-button` selectors).
 
 ### TC-FE-017
 
