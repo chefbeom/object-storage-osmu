@@ -240,6 +240,7 @@ Run when Browser/Chrome automation works again:
 - [x] Browser E2E spec includes stored session restore without login plus stale stored session redirect cleanup.
 - [x] Browser E2E spec includes Access Key scope add/remove, disabled create without scope, cancel revoke, and confirmed revoke state.
 - [x] Browser E2E spec includes Access Key operational filters, cleanup candidate count, and action hint render paths.
+- [x] Browser E2E spec includes Access Key cleanup preview export, candidate exclusion, and bulk disable confirm paths.
 - [x] Browser E2E spec includes destructive confirm cancel/confirm paths for bucket delete.
 - [x] Browser E2E spec includes operations readiness convergence summary and recommended command row visibility.
 - [x] Browser E2E spec includes bucket list name, usage, and object count cell assertions.

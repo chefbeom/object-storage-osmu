@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test'
+import { readFile } from 'node:fs/promises'
 
 const frontendBaseUrl = process.env.OSMU_FRONTEND_BASE_URL || 'http://localhost:5173'
 const adminLoginId = process.env.OSMU_ADMIN_LOGIN_ID || 'admin'
@@ -14,6 +15,79 @@ async function expectAdminBucketContextReady(page) {
       .or(page.getByTestId('bucket-lifecycle-panel'))
       .first(),
   ).toBeVisible()
+}
+
+function buildOperationalAccessKeys(now = Date.now()) {
+  const isoAfterDays = (days) => new Date(now + days * 24 * 60 * 60 * 1000).toISOString()
+  const isoBeforeDays = (days) => new Date(now - days * 24 * 60 * 60 * 1000).toISOString()
+  return [
+    {
+      id: 11,
+      name: 'expired-browser-key',
+      accessKey: 'OSMUEXPIRED',
+      secretKey: 'developer-e2e-super-secret',
+      status: 'ACTIVE',
+      bucketScopes: [{ bucketName: developerBucketName, permissions: ['READ'] }],
+      expiresAt: isoBeforeDays(1),
+      lastUsedAt: isoBeforeDays(1),
+      usageCount: 3,
+    },
+    {
+      id: 12,
+      name: 'expiring-browser-key',
+      accessKey: 'OSMUEXPIRING',
+      secretKey: 'developer-e2e-super-secret',
+      status: 'ACTIVE',
+      bucketScopes: [{ bucketName: developerBucketName, permissions: ['READ'] }],
+      expiresAt: isoAfterDays(2),
+      lastUsedAt: isoBeforeDays(1),
+      usageCount: 2,
+    },
+    {
+      id: 13,
+      name: 'unused-browser-key',
+      accessKey: 'OSMUUNUSED',
+      secretKey: 'developer-e2e-super-secret',
+      status: 'ACTIVE',
+      bucketScopes: [{ bucketName: developerBucketName, permissions: ['READ'] }],
+      expiresAt: isoAfterDays(30),
+      lastUsedAt: null,
+      usageCount: 0,
+    },
+    {
+      id: 14,
+      name: 'stale-browser-key',
+      accessKey: 'OSMUSTALE',
+      secretKey: 'developer-e2e-super-secret',
+      status: 'ACTIVE',
+      bucketScopes: [{ bucketName: developerBucketName, permissions: ['READ'] }],
+      expiresAt: isoAfterDays(30),
+      lastUsedAt: isoBeforeDays(45),
+      usageCount: 1,
+    },
+    {
+      id: 15,
+      name: 'healthy-browser-key',
+      accessKey: 'OSMUHEALTHY',
+      secretKey: 'developer-e2e-super-secret',
+      status: 'ACTIVE',
+      bucketScopes: [{ bucketName: developerBucketName, permissions: ['READ'] }],
+      expiresAt: isoAfterDays(30),
+      lastUsedAt: isoBeforeDays(1),
+      usageCount: 7,
+    },
+    {
+      id: 16,
+      name: 'inactive-browser-key',
+      accessKey: 'OSMUINACTIVE',
+      secretKey: 'developer-e2e-super-secret',
+      status: 'INACTIVE',
+      bucketScopes: [{ bucketName: developerBucketName, permissions: ['READ'] }],
+      expiresAt: isoAfterDays(30),
+      lastUsedAt: null,
+      usageCount: 0,
+    },
+  ]
 }
 
 async function installDeveloperApiMocks(page, options = {}) {
@@ -124,6 +198,31 @@ async function installDeveloperApiMocks(page, options = {}) {
       }
       accessKeys.push(created)
       return json({ data: created })
+    }
+
+    if (method === 'POST' && path === '/access-keys/bulk-disable') {
+      const body = await request.postDataJSON()
+      const keyIds = Array.isArray(body.keyIds) ? body.keyIds.map((id) => Number(id)) : []
+      const disabledKeyIds = []
+      const skippedKeyIds = []
+      for (const keyId of keyIds) {
+        const key = accessKeys.find((item) => item.id === keyId)
+        if (key?.status === 'ACTIVE') {
+          key.status = 'INACTIVE'
+          disabledKeyIds.push(keyId)
+        } else {
+          skippedKeyIds.push(keyId)
+        }
+      }
+      return json({
+        data: {
+          requestedCount: keyIds.length,
+          disabledCount: disabledKeyIds.length,
+          skippedCount: skippedKeyIds.length,
+          disabledKeyIds,
+          skippedKeyIds,
+        },
+      })
     }
 
     const accessKeyDeleteMatch = path.match(/^\/access-keys\/(\d+)$/)
@@ -289,72 +388,8 @@ test('developer login lands on S3 API console with access key controls', async (
 })
 
 test('developer can filter access keys and inspect operational hints', async ({ page }) => {
-  const now = Date.now()
-  const isoAfterDays = (days) => new Date(now + days * 24 * 60 * 60 * 1000).toISOString()
-  const isoBeforeDays = (days) => new Date(now - days * 24 * 60 * 60 * 1000).toISOString()
   await installDeveloperApiMocks(page, {
-    accessKeys: [
-      {
-        id: 11,
-        name: 'expired-browser-key',
-        accessKey: 'OSMUEXPIRED',
-        status: 'ACTIVE',
-        bucketScopes: [{ bucketName: developerBucketName, permissions: ['READ'] }],
-        expiresAt: isoBeforeDays(1),
-        lastUsedAt: isoBeforeDays(1),
-        usageCount: 3,
-      },
-      {
-        id: 12,
-        name: 'expiring-browser-key',
-        accessKey: 'OSMUEXPIRING',
-        status: 'ACTIVE',
-        bucketScopes: [{ bucketName: developerBucketName, permissions: ['READ'] }],
-        expiresAt: isoAfterDays(2),
-        lastUsedAt: isoBeforeDays(1),
-        usageCount: 2,
-      },
-      {
-        id: 13,
-        name: 'unused-browser-key',
-        accessKey: 'OSMUUNUSED',
-        status: 'ACTIVE',
-        bucketScopes: [{ bucketName: developerBucketName, permissions: ['READ'] }],
-        expiresAt: isoAfterDays(30),
-        lastUsedAt: null,
-        usageCount: 0,
-      },
-      {
-        id: 14,
-        name: 'stale-browser-key',
-        accessKey: 'OSMUSTALE',
-        status: 'ACTIVE',
-        bucketScopes: [{ bucketName: developerBucketName, permissions: ['READ'] }],
-        expiresAt: isoAfterDays(30),
-        lastUsedAt: isoBeforeDays(45),
-        usageCount: 1,
-      },
-      {
-        id: 15,
-        name: 'healthy-browser-key',
-        accessKey: 'OSMUHEALTHY',
-        status: 'ACTIVE',
-        bucketScopes: [{ bucketName: developerBucketName, permissions: ['READ'] }],
-        expiresAt: isoAfterDays(30),
-        lastUsedAt: isoBeforeDays(1),
-        usageCount: 7,
-      },
-      {
-        id: 16,
-        name: 'inactive-browser-key',
-        accessKey: 'OSMUINACTIVE',
-        status: 'INACTIVE',
-        bucketScopes: [{ bucketName: developerBucketName, permissions: ['READ'] }],
-        expiresAt: isoAfterDays(30),
-        lastUsedAt: null,
-        usageCount: 0,
-      },
-    ],
+    accessKeys: buildOperationalAccessKeys(),
   })
   await page.addInitScript(() => {
     window.localStorage.removeItem('osmu.dashboard.widgets.v1')
@@ -391,6 +426,64 @@ test('developer can filter access keys and inspect operational hints', async ({ 
   await page.getByTestId('access-key-filter-inactive').click()
   await expect(page.getByTestId('access-key-list')).toContainText('inactive-browser-key')
   await expect(page.getByTestId('access-key-list')).not.toContainText('unused-browser-key')
+})
+
+test('developer can export and confirm access key bulk cleanup', async ({ page }) => {
+  await installDeveloperApiMocks(page, {
+    accessKeys: buildOperationalAccessKeys(),
+  })
+  await page.addInitScript(() => {
+    window.localStorage.removeItem('osmu.dashboard.widgets.v1')
+    window.localStorage.removeItem('osmu.auth.tokens')
+    window.localStorage.removeItem('osmu.login.rememberedId')
+    window.sessionStorage.removeItem('osmu.auth.tokens')
+  })
+
+  await page.goto(`${frontendBaseUrl}/login?mode=developer`)
+  await page.getByTestId('login-id-input').fill(developerLoginId)
+  await page.getByTestId('login-password-input').fill(developerPassword)
+  await page.getByTestId('login-submit-button').click()
+
+  await expect(page.getByTestId('access-key-cleanup-summary')).toContainText('3 selected / 3 cleanup candidates')
+  await expect(page.getByTestId('access-key-cleanup-candidate')).toHaveCount(3)
+  await expect(page.getByTestId('access-key-cleanup-preview')).toContainText('expired-browser-key')
+  await expect(page.getByTestId('access-key-cleanup-preview')).toContainText('unused-browser-key')
+  await expect(page.getByTestId('access-key-cleanup-preview')).toContainText('stale-browser-key')
+  await expect(page.getByTestId('access-key-cleanup-preview')).not.toContainText('expiring-browser-key')
+
+  await page
+    .getByTestId('access-key-cleanup-candidate')
+    .filter({ hasText: 'stale-browser-key' })
+    .getByTestId('access-key-cleanup-candidate-checkbox')
+    .uncheck()
+  await expect(page.getByTestId('access-key-cleanup-summary')).toContainText('2 selected / 3 cleanup candidates')
+
+  const downloadPromise = page.waitForEvent('download')
+  await page.getByTestId('access-key-cleanup-export-button').click()
+  const download = await downloadPromise
+  expect(download.suggestedFilename()).toMatch(/^osmu-access-key-cleanup-\d{4}-\d{2}-\d{2}\.json$/)
+  const downloadPath = await download.path()
+  expect(downloadPath).toBeTruthy()
+  const payload = JSON.parse(await readFile(downloadPath, 'utf8'))
+  expect(payload.schemaVersion).toBe('osmu.access-key-cleanup-preview.v1')
+  expect(payload.candidateCount).toBe(3)
+  expect(payload.selectedCount).toBe(2)
+  expect(payload.excludedCount).toBe(1)
+  expect(payload.selectedCandidateIds).toEqual([11, 13])
+  expect(payload.excludedCandidateIds).toEqual([14])
+  expect(JSON.stringify(payload)).not.toContain('developer-e2e-super-secret')
+
+  await page.getByTestId('access-key-cleanup-button').click()
+  await expect(page.getByTestId('confirm-dialog')).toContainText('Access Key Bulk Cleanup')
+  await page.getByTestId('confirm-submit-button').click()
+  await expect(page.getByTestId('status-alert')).toContainText('Access Key')
+  await expect(page.getByTestId('access-key-cleanup-summary')).toContainText('1 selected / 1 cleanup candidates')
+
+  await page.getByTestId('access-key-filter-inactive').click()
+  await expect(page.getByTestId('access-key-list')).toContainText('expired-browser-key')
+  await expect(page.getByTestId('access-key-list')).toContainText('unused-browser-key')
+  await expect(page.getByTestId('access-key-list')).toContainText('inactive-browser-key')
+  await expect(page.getByTestId('access-key-list')).not.toContainText('stale-browser-key')
 })
 
 test('admin dashboard shows operations readiness convergence handoff', async ({ page }) => {

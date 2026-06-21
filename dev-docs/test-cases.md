@@ -1591,7 +1591,7 @@ ID:
 - Steps: Open Admin or Developer Access Key panel, verify cleanup candidate count, inspect candidate names/reasons, exclude one candidate with its checkbox, export the preview JSON, click bulk disable, confirm the dialog.
 - Expected: Candidate ids include expired active keys and unused active keys only. The preview list shows each candidate key name, id, action label, and reason before execution. Exported JSON uses `schemaVersion = osmu.access-key-cleanup-preview.v1`, includes generated time, candidate count, selected/excluded counts, selected/excluded ids, labels, and reasons, and excludes secret values. Expiring-but-recent, healthy active, and inactive keys are excluded. Confirming calls `POST /api/access-keys/bulk-disable` with selected ids only, refreshes the dashboard/access key list, and shows disabled/skipped counts.
 - Priority: P1
-- Automated: `AccessKeyControllerTest.bulkDisableAccessKeysDisablesActiveKeysAndSkipsInactiveKeys`, `api-access-key.test.js`, `accessKeys.test.js`, `HomeView.test.js`. Browser confirm E2E pending.
+- Automated: `AccessKeyControllerTest.bulkDisableAccessKeysDisablesActiveKeysAndSkipsInactiveKeys`, `api-access-key.test.js`, `accessKeys.test.js`, `HomeView.test.js`, Browser E2E `developer can export and confirm access key bulk cleanup`.
 
 ## 8. Quota
 
