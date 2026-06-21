@@ -2360,6 +2360,8 @@ public class AdminController {
                 commercialIntegrationEvidenceSnapshotFromNode(targetEvidenceSnapshots.path("commercialIntegration"), false);
         DashboardCommercialApprovalEvidenceResponse commercialApprovalSnapshot =
                 commercialApprovalEvidenceSnapshotFromNode(targetEvidenceSnapshots.path("commercialApproval"), false);
+        DashboardEnterpriseAuthSmokeEvidenceResponse enterpriseAuthSmokeSnapshot =
+                enterpriseAuthSmokeEvidenceSnapshotFromNode(targetEvidenceSnapshots.path("enterpriseAuthSmoke"), false);
         return new DashboardOperationsHandoffPackageResponse(
                 jsonText(packageReport, "result"),
                 jsonText(packageReport, "generatedAt"),
@@ -2377,6 +2379,7 @@ public class AdminController {
                 dataFlowStoragePlanSnapshot,
                 commercialIntegrationSnapshot,
                 commercialApprovalSnapshot,
+                enterpriseAuthSmokeSnapshot,
                 List.copyOf(checks),
                 jsonText(packageReport, "decisionRule"),
                 jsonText(packageReport, "scopePolicy"),
@@ -3143,10 +3146,17 @@ public class AdminController {
 
     private DashboardEnterpriseAuthSmokeEvidenceResponse enterpriseAuthSmokeEvidenceSnapshot() {
         JsonNode report = readOptionalJsonReport(enterpriseAuthSmokeEvidenceReportPath);
-        if (report == null) {
+        return enterpriseAuthSmokeEvidenceSnapshotFromNode(report, true);
+    }
+
+    private DashboardEnterpriseAuthSmokeEvidenceResponse enterpriseAuthSmokeEvidenceSnapshotFromNode(JsonNode report, boolean emptyWhenMissing) {
+        if (report == null || report.isMissingNode() || report.isNull() || !report.isObject()) {
+            if (!emptyWhenMissing) {
+                return null;
+            }
             return DashboardEnterpriseAuthSmokeEvidenceResponse.empty();
         }
-        JsonNode summary = report.path("summary");
+        JsonNode summary = summaryOrSelf(report);
         return new DashboardEnterpriseAuthSmokeEvidenceResponse(
                 jsonText(report, "result"),
                 jsonText(report, "generatedAt"),
@@ -3162,7 +3172,7 @@ public class AdminController {
                 jsonInt(summary, "blockedCount"),
                 jsonInt(summary, "plannedCount"),
                 jsonInt(summary, "skippedCount"),
-                enterpriseAuthSmokeChecks(report.path("checks")),
+                enterpriseAuthSmokeChecks(firstArrayNode(report.path("checks"), report.path("topChecks"))),
                 jsonText(report, "decisionRule"),
                 jsonText(report, "secretPolicy")
         );

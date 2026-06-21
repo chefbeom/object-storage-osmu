@@ -346,6 +346,9 @@ if (-not ([string] $operationsHandoffPackageCheck[0].remediation.command).Contai
 if (-not ([string] $operationsHandoffPackageCheck[0].remediation.command).Contains("CommercialApprovalJsonPath")) {
     throw "Operations handoff package target evidence remediation must include commercial approval JSON snapshot input."
 }
+if (-not ([string] $operationsHandoffPackageCheck[0].remediation.command).Contains("EnterpriseAuthJsonPath")) {
+    throw "Operations handoff package target evidence remediation must include enterprise auth smoke JSON snapshot input."
+}
 if (-not ([string] $operationsHandoffPackageCheck[0].remediation.command).Contains("OperationsReadinessJsonPath")) {
     throw "Operations handoff package target evidence remediation must include operations readiness JSON snapshot input."
 }
@@ -379,6 +382,9 @@ if (-not ([string] $operationsHandoffPackageCheck[0].remediation.workflowCommand
 if (-not ([string] $operationsHandoffPackageCheck[0].remediation.workflowCommand).Contains("commercial_approval_json_base64=<base64-latest-commercial-approval-evidence-json>")) {
     throw "Operations handoff package target evidence workflow command must include commercial approval snapshot base64 input."
 }
+if (-not ([string] $operationsHandoffPackageCheck[0].remediation.workflowCommand).Contains("enterprise_auth_json_base64=<base64-latest-enterprise-auth-smoke-json>")) {
+    throw "Operations handoff package target evidence workflow command must include enterprise auth smoke snapshot base64 input."
+}
 if (-not ([string] $operationsHandoffPackageCheck[0].remediation.workflowCommand).Contains("confirm_operations_readiness_snapshot_reviewed=true")) {
     throw "Operations handoff package target evidence workflow command must confirm operations readiness snapshot review."
 }
@@ -391,10 +397,10 @@ if (-not ([string] $operationsHandoffPackageCheck[0].remediation.workflowCommand
 if (-not ([string] $operationsHandoffPackageCheck[0].remediation.workflowCommand).Contains("require_operations_snapshot_evidence=true")) {
     throw "Operations handoff package target evidence workflow command must require operations snapshot evidence."
 }
-if (-not ([string] $operationsHandoffPackageCheck[0].remediation.note).Contains("latest-operations-readiness.json") -or -not ([string] $operationsHandoffPackageCheck[0].remediation.note).Contains("latest-operations-readiness-convergence.json") -or -not ([string] $operationsHandoffPackageCheck[0].remediation.note).Contains("latest-data-flow-storage-plan.json") -or -not ([string] $operationsHandoffPackageCheck[0].remediation.note).Contains("latest-commercial-integration-evidence.json") -or -not ([string] $operationsHandoffPackageCheck[0].remediation.note).Contains("latest-commercial-approval-evidence.json")) {
-    throw "Operations handoff package target evidence remediation note must mention readiness/convergence/data-flow/commercial snapshots."
+if (-not ([string] $operationsHandoffPackageCheck[0].remediation.note).Contains("latest-operations-readiness.json") -or -not ([string] $operationsHandoffPackageCheck[0].remediation.note).Contains("latest-operations-readiness-convergence.json") -or -not ([string] $operationsHandoffPackageCheck[0].remediation.note).Contains("latest-data-flow-storage-plan.json") -or -not ([string] $operationsHandoffPackageCheck[0].remediation.note).Contains("latest-commercial-integration-evidence.json") -or -not ([string] $operationsHandoffPackageCheck[0].remediation.note).Contains("latest-commercial-approval-evidence.json") -or -not ([string] $operationsHandoffPackageCheck[0].remediation.note).Contains("latest-enterprise-auth-smoke.json")) {
+    throw "Operations handoff package target evidence remediation note must mention readiness/convergence/data-flow/commercial/enterprise auth snapshots."
 }
-if (-not ([string] $operationsHandoffPackageCheck[0].remediation.note).Contains("reduced to sanitized result/count/sync/query-plan/commercial summary fields")) {
+if (-not ([string] $operationsHandoffPackageCheck[0].remediation.note).Contains("reduced to sanitized result/count/sync/query-plan/commercial/enterprise auth scope-out summary fields")) {
     throw "Operations handoff package target evidence remediation note must describe sanitized snapshot reduction."
 }
 if (-not ([string] $operationsHandoffPackageCheck[0].requiredEvidence).Contains("target environment")) {

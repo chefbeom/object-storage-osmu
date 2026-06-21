@@ -79,6 +79,10 @@ on:
         description: External enterprise auth evidence reference
         required: true
         default: ""
+      enterprise_auth_json_base64:
+        description: Optional base64 latest enterprise auth smoke JSON snapshot
+        required: false
+        default: ""
       backup_restore_evidence_ref:
         description: External backup or restore evidence reference
         required: true
@@ -219,6 +223,7 @@ jobs:
           OSMU_COMMERCIAL_INTEGRATION_JSON_BASE64: ${{ inputs.commercial_integration_json_base64 }}
           OSMU_COMMERCIAL_APPROVAL_JSON_BASE64: ${{ inputs.commercial_approval_json_base64 }}
           OSMU_ENTERPRISE_AUTH_EVIDENCE_REF: ${{ inputs.enterprise_auth_evidence_ref }}
+          OSMU_ENTERPRISE_AUTH_JSON_BASE64: ${{ inputs.enterprise_auth_json_base64 }}
           OSMU_BACKUP_RESTORE_EVIDENCE_REF: ${{ inputs.backup_restore_evidence_ref }}
           OSMU_HA_DR_EVIDENCE_REF: ${{ inputs.ha_dr_evidence_ref }}
           OSMU_MONITORING_EVIDENCE_REF: ${{ inputs.monitoring_evidence_ref }}
@@ -287,6 +292,7 @@ jobs:
           Add-Base64SnapshotArgument $env:OSMU_DATA_FLOW_STORAGE_PLAN_JSON_BASE64 ".osmu-run/data-flow-storage-plan-handoff-snapshot.json" "-DataFlowStoragePlanJsonPath"
           Add-Base64SnapshotArgument $env:OSMU_COMMERCIAL_INTEGRATION_JSON_BASE64 ".osmu-run/commercial-integration-handoff-snapshot.json" "-CommercialIntegrationJsonPath"
           Add-Base64SnapshotArgument $env:OSMU_COMMERCIAL_APPROVAL_JSON_BASE64 ".osmu-run/commercial-approval-handoff-snapshot.json" "-CommercialApprovalJsonPath"
+          Add-Base64SnapshotArgument $env:OSMU_ENTERPRISE_AUTH_JSON_BASE64 ".osmu-run/enterprise-auth-handoff-snapshot.json" "-EnterpriseAuthJsonPath"
 
           if ($env:OSMU_CONFIRM_RUNBOOK_REVIEWED -eq "true") { $packageArgs += "-ConfirmRunbookReviewed" }
           if ($env:OSMU_CONFIRM_TROUBLESHOOTING_REVIEWED -eq "true") { $packageArgs += "-ConfirmTroubleshootingReviewed" }

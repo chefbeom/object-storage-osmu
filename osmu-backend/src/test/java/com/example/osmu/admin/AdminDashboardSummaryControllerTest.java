@@ -1042,6 +1042,7 @@ class AdminDashboardSummaryControllerTest {
                             "operationsConvergence": "latest-operations-readiness-convergence-ready",
                             "commercialIntegration": "latest-commercial-integration-evidence-passed",
                             "commercialApproval": "latest-commercial-approval-evidence-passed",
+                            "enterpriseAuth": "latest-enterprise-auth-smoke-scope-out",
                             "knownGaps": "known-gaps-acceptance-20260620"
                           },
                           "operationsSnapshots": {
@@ -1153,6 +1154,49 @@ class AdminDashboardSummaryControllerTest {
                               "pricingPolicyProposalCommercialApprovedCount": 1,
                               "pricingPolicyProposalApprovedPriceListCount": 1,
                               "topChecks": []
+                            },
+                            "enterpriseAuthSmoke": {
+                              "provided": true,
+                              "path": ".osmu-run/latest-enterprise-auth-smoke.json",
+                              "parsed": true,
+                              "formatVersion": "osmu.enterprise-auth-smoke.v1",
+                              "expectedFormatVersion": "osmu.enterprise-auth-smoke.v1",
+                              "validFormatVersion": true,
+                              "result": "scope-out",
+                              "passed": false,
+                              "scopeOutAccepted": true,
+                              "accepted": true,
+                              "executionMode": "scope-out",
+                              "apiBase": "http://localhost:8080/api",
+                              "requireOidc": true,
+                              "requireLdap": true,
+                              "requireAuditEvents": false,
+                              "inputs": {
+                                "adminPasswordProvided": false,
+                                "oidcCallbackCodeProvided": false,
+                                "oidcCallbackStateProvided": false,
+                                "oidcClaimPreviewJsonPathProvided": false,
+                                "oidcJitProvisionJsonPathProvided": false,
+                                "confirmJitProvision": false,
+                                "ldapLoginIdProvided": false,
+                                "ldapPasswordProvided": false,
+                                "expectedEmailProvided": false
+                              },
+                              "scopeOut": {
+                                "confirmed": true,
+                                "reference": "enterprise-auth-contract-scope-out-20260620",
+                                "reason": "Pilot contract excludes SSO until customer IdP onboarding.",
+                                "accepted": true
+                              },
+                              "passCount": 0,
+                              "failCount": 0,
+                              "blockedCount": 0,
+                              "plannedCount": 0,
+                              "skippedCount": 6,
+                              "checkCount": 1,
+                              "topChecks": [],
+                              "decisionRule": "Paid/production pilot requires result=passed from the target IdP/directory, or result=scope-out with an explicit non-secret commercial approval reference and reason.",
+                              "secretPolicy": "Admin password, LDAP password, access/refresh tokens, OIDC authorization code/state, client secrets, and raw OIDC claim JSON are never written to this evidence."
                             }
                           },
                           "confirmations": {
@@ -2004,6 +2048,10 @@ class AdminDashboardSummaryControllerTest {
                 .andExpect(jsonPath("$.data.operationsHandoffPackage.commercialApprovalSnapshot.result").value("passed"))
                 .andExpect(jsonPath("$.data.operationsHandoffPackage.commercialApprovalSnapshot.productVersion").value("osmu-mvp-0.1"))
                 .andExpect(jsonPath("$.data.operationsHandoffPackage.commercialApprovalSnapshot.pricingPolicyProposalApprovedPriceListCount").value(1))
+                .andExpect(jsonPath("$.data.operationsHandoffPackage.enterpriseAuthSmokeSnapshot.result").value("scope-out"))
+                .andExpect(jsonPath("$.data.operationsHandoffPackage.enterpriseAuthSmokeSnapshot.executionMode").value("scope-out"))
+                .andExpect(jsonPath("$.data.operationsHandoffPackage.enterpriseAuthSmokeSnapshot.scopeOut.accepted").value("true"))
+                .andExpect(jsonPath("$.data.operationsHandoffPackage.enterpriseAuthSmokeSnapshot.skippedCount").value(6))
                 .andExpect(jsonPath("$.data.operationsHandoffPackage.checks[0].id").value("runbook-reviewed"))
                 .andExpect(jsonPath("$.data.operationsHandoffPackage.checks[0].status").value("FAIL"))
                 .andExpect(jsonPath("$.data.operationsHandoffPackage.checks[1].evidenceRef").value("latest-commercial-integration-evidence-passed"))

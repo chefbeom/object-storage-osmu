@@ -4971,6 +4971,8 @@ The response combines runtime, backup, quota, sharing, and operations-readiness 
 
 `dataFlowStoragePlan.queryPlanEvidence` is a summary only: it exposes format/result/mode/counts and at most failed check metadata, but not raw SQL, raw `EXPLAIN FORMAT=JSON`, passwords, bearer tokens, or provider credentials.
 
+`operationsHandoffPackage.enterpriseAuthSmokeSnapshot` is also a reduced summary only: it exposes `passed` or accepted `scope-out` result, execution mode, requirement booleans, counts, and scope-out reference/reason, but not raw identity claims, OIDC codes/states/tokens, LDAP/admin passwords, or client secrets.
+
 Response:
 
 ```json
@@ -5453,6 +5455,7 @@ Response:
         "operationsConvergence": "latest-operations-readiness-convergence-ready",
         "commercialIntegration": "latest-commercial-integration-evidence-passed",
         "commercialApproval": "latest-commercial-approval-evidence-passed",
+        "enterpriseAuth": "latest-enterprise-auth-smoke-scope-out",
         "knownGaps": "known-gaps-acceptance-20260620"
       },
       "operationsReadinessSnapshot": {
@@ -5524,6 +5527,24 @@ Response:
         "pricingPolicyProposalCommercialApproved": true,
         "pricingPolicyProposalCommercialApprovedCount": 1,
         "pricingPolicyProposalApprovedPriceListCount": 1
+      },
+      "enterpriseAuthSmokeSnapshot": {
+        "result": "scope-out",
+        "executionMode": "scope-out",
+        "requireOidc": true,
+        "requireLdap": true,
+        "requireAuditEvents": false,
+        "scopeOut": {
+          "confirmed": "true",
+          "reference": "enterprise-auth-contract-scope-out-20260620",
+          "reason": "Pilot contract excludes SSO until customer IdP onboarding.",
+          "accepted": "true"
+        },
+        "passCount": 0,
+        "failCount": 0,
+        "blockedCount": 0,
+        "plannedCount": 0,
+        "skippedCount": 6
       },
       "checks": [
         {

@@ -48,6 +48,7 @@ $convergenceSnapshotPath = Join-Path $resolvedOutputDirectory "latest-operations
 $dataFlowStoragePlanPath = Join-Path $resolvedOutputDirectory "latest-data-flow-storage-plan.json"
 $commercialIntegrationPath = Join-Path $resolvedOutputDirectory "latest-commercial-integration-evidence.json"
 $commercialApprovalPath = Join-Path $resolvedOutputDirectory "latest-commercial-approval-evidence.json"
+$enterpriseAuthPath = Join-Path $resolvedOutputDirectory "latest-enterprise-auth-smoke.json"
 
 [ordered]@{
     formatVersion = "osmu.operations-readiness.v1"
@@ -214,6 +215,54 @@ $commercialApprovalPath = Join-Path $resolvedOutputDirectory "latest-commercial-
     secretPolicy = "Evidence stores only sanitized approval references and must not contain passwords, tokens, private keys, license keys, signing secrets, customer payment data, raw price tables, or raw contract text."
 } | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath $commercialApprovalPath -Encoding UTF8
 
+[ordered]@{
+    formatVersion = "osmu.enterprise-auth-smoke.v1"
+    generatedAt = "2026-06-20T02:25:00Z"
+    result = "scope-out"
+    executionMode = "scope-out"
+    apiBase = "http://localhost:8080/api"
+    requireOidc = $true
+    requireLdap = $true
+    requireAuditEvents = $false
+    scopeOut = [ordered]@{
+        confirmed = $true
+        reference = "enterprise-auth-contract-scope-out-20260620"
+        reason = "Pilot contract excludes SSO until customer IdP onboarding."
+        accepted = $true
+    }
+    inputs = [ordered]@{
+        adminPasswordProvided = $false
+        oidcCallbackCodeProvided = $false
+        oidcCallbackStateProvided = $false
+        oidcClaimPreviewJsonPathProvided = $false
+        oidcJitProvisionJsonPathProvided = $false
+        confirmJitProvision = $false
+        ldapLoginIdProvided = $false
+        ldapPasswordProvided = $false
+        expectedEmailProvided = $false
+    }
+    summary = [ordered]@{
+        passCount = 0
+        failCount = 0
+        blockedCount = 0
+        plannedCount = 0
+        skippedCount = 6
+    }
+    checks = @(
+        [ordered]@{
+            id = "enterprise-auth-scope-out"
+            name = "Enterprise auth commercial scope-out"
+            category = "scope-out"
+            endpoint = ""
+            status = "SKIPPED"
+            detail = "Accepted commercial scope-out reference recorded."
+            requiredInputs = @()
+        }
+    )
+    decisionRule = "Paid/production pilot requires result=passed from the target IdP/directory, or result=scope-out with an explicit non-secret commercial approval reference and reason."
+    secretPolicy = "Admin password, LDAP password, access/refresh tokens, OIDC authorization code/state, client secrets, and raw OIDC claim JSON are never written to this evidence."
+} | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath $enterpriseAuthPath -Encoding UTF8
+
 & powershell -NoProfile -ExecutionPolicy Bypass -File $scriptPath `
     -EnvironmentName "pilot-prod-self-test" `
     -TargetCluster "customer-cluster-a" `
@@ -234,6 +283,7 @@ $commercialApprovalPath = Join-Path $resolvedOutputDirectory "latest-commercial-
     -CommercialIntegrationJsonPath $commercialIntegrationPath `
     -CommercialApprovalJsonPath $commercialApprovalPath `
     -EnterpriseAuthEvidenceRef "latest-enterprise-auth-smoke-passed-20260620" `
+    -EnterpriseAuthJsonPath $enterpriseAuthPath `
     -BackupRestoreEvidenceRef "latest-kubernetes-dr-finalize-ready-20260620" `
     -HaDrEvidenceRef "latest-kubernetes-ha-dr-readiness-passed-20260620" `
     -MonitoringEvidenceRef "prometheus-alertmanager-grafana-review-20260620" `
@@ -288,6 +338,8 @@ Assert-True (@($checks | Where-Object { $_.id -eq "commercial-integration-snapsh
 Assert-True (@($checks | Where-Object { $_.id -eq "commercial-integration-snapshot-passed" -and $_.passed }).Count -eq 1) "Expected commercial integration snapshot passed check to pass."
 Assert-True (@($checks | Where-Object { $_.id -eq "commercial-approval-snapshot-parsed" -and $_.passed }).Count -eq 1) "Expected commercial approval snapshot parsed check to pass."
 Assert-True (@($checks | Where-Object { $_.id -eq "commercial-approval-snapshot-passed" -and $_.passed }).Count -eq 1) "Expected commercial approval snapshot passed check to pass."
+Assert-True (@($checks | Where-Object { $_.id -eq "enterprise-auth-smoke-snapshot-parsed" -and $_.passed }).Count -eq 1) "Expected enterprise auth smoke snapshot parsed check to pass."
+Assert-True (@($checks | Where-Object { $_.id -eq "enterprise-auth-smoke-snapshot-accepted" -and $_.passed }).Count -eq 1) "Expected enterprise auth smoke snapshot accepted check to pass."
 Assert-True ($report.confirmations.noSecretValues) "Expected no-secret-values confirmation."
 Assert-True ($report.confirmations.runbookReviewed) "Expected runbook reviewed confirmation."
 Assert-True ($report.confirmations.troubleshootingReviewed) "Expected troubleshooting reviewed confirmation."
@@ -308,6 +360,8 @@ Assert-True ($report.targetEvidenceSnapshots.commercialIntegration.result -eq "p
 Assert-True ($report.targetEvidenceSnapshots.commercialIntegration.requiredVerifiedCount -eq 8) "Expected commercial integration requiredVerifiedCount=8."
 Assert-True ($report.targetEvidenceSnapshots.commercialApproval.result -eq "passed") "Expected commercial approval snapshot result=passed."
 Assert-True ($report.targetEvidenceSnapshots.commercialApproval.pricingPolicyProposalApprovedPriceListCount -eq 1) "Expected commercial approval price-list approval count."
+Assert-True ($report.targetEvidenceSnapshots.enterpriseAuthSmoke.result -eq "scope-out") "Expected enterprise auth smoke snapshot result=scope-out."
+Assert-True ($report.targetEvidenceSnapshots.enterpriseAuthSmoke.scopeOutAccepted) "Expected enterprise auth scope-out accepted."
 Assert-True ($report.evidenceRefs.dataFlowStoragePlan -eq "latest-data-flow-storage-plan-passed-20260620") "Expected data-flow storage plan evidence reference."
 
 Assert-Contains $markdown "# OSMU Operations Handoff Package" "operations handoff package markdown"
@@ -318,12 +372,14 @@ Assert-Contains $report.decisionRule "Production/B2B operations handoff package 
 Assert-Contains $report.decisionRule "data-flow storage transition" "operations handoff package JSON"
 Assert-Contains $report.decisionRule "commercial approval" "operations handoff package JSON"
 Assert-Contains $report.decisionRule "commercial integration" "operations handoff package JSON"
+Assert-Contains $report.decisionRule "enterprise auth smoke snapshot" "operations handoff package JSON"
 Assert-Contains $report.decisionRule "Kubernetes report sync ready" "operations handoff package JSON"
 Assert-Contains $report.scopePolicy "does not execute kubectl, gh, provider APIs" "operations handoff package JSON"
 Assert-Contains $report.secretPolicy "must not contain passwords, bearer tokens, kubeconfig values" "operations handoff package JSON"
 Assert-Contains $report.secretPolicy "raw SQL, raw EXPLAIN JSON" "operations handoff package JSON"
+Assert-Contains $report.secretPolicy "raw identity claims" "operations handoff package JSON"
 
-foreach ($unexpected in @("password=super-secret", "Bearer abcdefghijklmnop", "-----BEGIN PRIVATE KEY-----", "rawProviderResponse", "customer@example.com", "contractText")) {
+foreach ($unexpected in @("password=super-secret", "Bearer abcdefghijklmnop", "-----BEGIN PRIVATE KEY-----", "rawProviderResponse", "customer@example.com", "contractText", "rawClaimJson")) {
     Assert-NotContains $reportText $unexpected "operations handoff package JSON"
     Assert-NotContains $markdown $unexpected "operations handoff package markdown"
 }
@@ -424,6 +480,24 @@ finally {
 Assert-True ($unsafeCommercialApprovalExitCode -ne 0) "Raw price table commercial approval snapshot should be rejected."
 Assert-Contains ($unsafeCommercialApprovalOutput | Out-String) "raw remediation, provider, customer" "unsafe commercial approval output"
 
+$unsafeEnterpriseAuthPath = Join-Path $resolvedOutputDirectory "unsafe-enterprise-auth-smoke.json"
+'{"formatVersion":"osmu.enterprise-auth-smoke.v1","result":"passed","rawClaimJson":{"email":"user@example.com"},"summary":{"passCount":1},"checks":[]}' | Set-Content -LiteralPath $unsafeEnterpriseAuthPath -Encoding UTF8
+
+$previousErrorActionPreference = $ErrorActionPreference
+$ErrorActionPreference = "Continue"
+try {
+    $unsafeEnterpriseAuthOutput = & powershell -NoProfile -ExecutionPolicy Bypass -File $scriptPath `
+        -EnterpriseAuthEvidenceRef "latest-enterprise-auth-smoke-passed-20260620" `
+        -EnterpriseAuthJsonPath $unsafeEnterpriseAuthPath `
+        -NoWrite 2>&1
+    $unsafeEnterpriseAuthExitCode = $LASTEXITCODE
+}
+finally {
+    $ErrorActionPreference = $previousErrorActionPreference
+}
+Assert-True ($unsafeEnterpriseAuthExitCode -ne 0) "Raw claim enterprise auth smoke snapshot should be rejected."
+Assert-Contains ($unsafeEnterpriseAuthOutput | Out-String) "identity, or credential" "unsafe enterprise auth output"
+
 $previousErrorActionPreference = $ErrorActionPreference
 $ErrorActionPreference = "Continue"
 try {
@@ -480,6 +554,7 @@ try {
         -CommercialIntegrationJsonPath $commercialIntegrationPath `
         -CommercialApprovalJsonPath $commercialApprovalPath `
         -EnterpriseAuthEvidenceRef "latest-enterprise-auth-smoke-passed-20260620" `
+        -EnterpriseAuthJsonPath $enterpriseAuthPath `
         -BackupRestoreEvidenceRef "latest-kubernetes-dr-finalize-ready-20260620" `
         -HaDrEvidenceRef "latest-kubernetes-ha-dr-readiness-passed-20260620" `
         -MonitoringEvidenceRef "prometheus-alertmanager-grafana-review-20260620" `

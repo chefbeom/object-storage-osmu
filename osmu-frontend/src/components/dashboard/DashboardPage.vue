@@ -1195,6 +1195,18 @@
           price-list {{ operationsHandoffPackageCommercialApprovalSnapshot.pricingPolicyProposalApprovedPriceListCount || 0 }} /
           failures {{ operationsHandoffPackageCommercialApprovalSnapshot.failureCount || 0 }}
         </small>
+        <small
+          v-if="operationsHandoffPackageEnterpriseAuthSmokeSnapshot.result"
+          data-testid="readiness-handoff-package-enterprise-auth-snapshot-summary"
+        >
+          Enterprise auth snapshot:
+          {{ operationsHandoffPackageEnterpriseAuthSmokeSnapshot.result }} /
+          mode {{ operationsHandoffPackageEnterpriseAuthSmokeSnapshot.executionMode || '-' }} /
+          pass {{ operationsHandoffPackageEnterpriseAuthSmokeSnapshot.passCount || 0 }} /
+          fail {{ operationsHandoffPackageEnterpriseAuthSmokeSnapshot.failCount || 0 }} /
+          blocked {{ operationsHandoffPackageEnterpriseAuthSmokeSnapshot.blockedCount || 0 }} /
+          scope-out {{ operationsHandoffPackageEnterpriseAuthSmokeScopeOutSummary || '-' }}
+        </small>
       </div>
       <ol
         v-if="operationsHandoffPackageChecks.length > 0"
@@ -2939,6 +2951,21 @@ const operationsHandoffPackageCommercialIntegrationSnapshot = computed(() => (
 const operationsHandoffPackageCommercialApprovalSnapshot = computed(() => (
   operationsHandoffPackage.value?.commercialApprovalSnapshot || {}
 ))
+
+const operationsHandoffPackageEnterpriseAuthSmokeSnapshot = computed(() => (
+  operationsHandoffPackage.value?.enterpriseAuthSmokeSnapshot || {}
+))
+
+const operationsHandoffPackageEnterpriseAuthSmokeScopeOutSummary = computed(() => {
+  const scopeOut = operationsHandoffPackageEnterpriseAuthSmokeSnapshot.value?.scopeOut
+  if (!scopeOut || typeof scopeOut !== 'object') {
+    return ''
+  }
+  if (scopeOut.accepted === 'true' || scopeOut.accepted === true) {
+    return `${scopeOut.reference || 'approval ref missing'} / ${scopeOut.reason || 'reason missing'}`
+  }
+  return ''
+})
 
 const operationsHandoffPackageChecks = computed(() => {
   const checks = operationsHandoffPackage.value?.checks
