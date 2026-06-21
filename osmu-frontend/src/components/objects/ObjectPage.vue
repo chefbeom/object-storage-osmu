@@ -205,7 +205,7 @@
               <td>{{ object.contentType || '-' }}</td>
               <td>{{ formatObjectTags(object.tags) }}</td>
               <td class="actions">
-                <button v-if="objectViewMode === 'active'" type="button" class="ghost" @click="$emit('download-object', object.key)">다운로드</button>
+                <button data-testid="object-download-button" v-if="objectViewMode === 'active'" type="button" class="ghost" @click="$emit('download-object', object.key)">다운로드</button>
                 <button v-if="objectViewMode === 'active'" type="button" class="ghost" @click="$emit('create-presigned-download-url', object.key)">URL</button>
                 <button data-testid="object-tag-edit-button" v-if="objectViewMode === 'active'" type="button" class="ghost" @click="$emit('start-object-tag-edit', object)">태그</button>
                 <button

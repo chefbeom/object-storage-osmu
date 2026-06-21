@@ -1789,7 +1789,7 @@ Evidence note: `npm run test:unit` covers stable bucket row cell selectors, and 
 - 절차: Web Portal에서 파일 다운로드를 요청한다.
 - 기대 결과: 최초 다운로드 요청이 401이면 refresh API를 1회 호출하고 새 access token으로 다운로드를 재시도한다.
 - 우선순위: P1
-- 자동화 여부: Automated (`npm run test:unit` API client unit). Browser click E2E pending.
+- 자동화 여부: Automated (`npm run test:unit` API client unit, Browser E2E object download 401 refresh retry with `object-download-button`).
 
 ### TC-FE-007
 
@@ -1799,7 +1799,7 @@ Evidence note: `npm run test:unit` covers stable bucket row cell selectors, and 
 - 절차: Web Portal에서 API 요청 후 refresh API 실패 응답을 받는다.
 - 기대 결과: API client token과 화면 session이 모두 정리되고 dashboard/bucket/object/access key/admin 목록이 비워진다.
 - 우선순위: P1
-- 자동화 여부: Automated (`npm run test:unit` authStore/API client unit). Browser click E2E pending.
+- 자동화 여부: Automated (`npm run test:unit` authStore/API client unit, Browser E2E refresh failure cleanup and login redirect from `refresh-button`).
 
 ### TC-FE-008
 
@@ -1809,7 +1809,7 @@ Evidence note: `npm run test:unit` covers stable bucket row cell selectors, and 
 - 절차: API client token 변경 이벤트를 authStore가 수신한다.
 - 기대 결과: authStore의 access token, refresh token, role computed가 화면 권한 제어와 일관되게 반영된다.
 - 우선순위: P1
-- 자동화 여부: Automated (`npm run test:unit` authStore unit). Browser click E2E pending.
+- 자동화 여부: Automated (`npm run test:unit` authStore unit, Browser E2E login/logout stored token cleanup and route transition).
 
 ### TC-FE-009
 

@@ -105,6 +105,11 @@ async function installDeveloperApiMocks(page, options = {}) {
   }))
   const objectPages = options.objectPages || [{ items: [], prefixes: [], nextCursor: '' }]
   const objectListRequests = options.objectListRequests
+  const objectDownloadRequests = options.objectDownloadRequests
+  const objectDownloadAuthFailures = new Set(options.objectDownloadAuthFailures || [])
+  const objectDownloadAttempts = new Map()
+  const authRefreshRequests = options.authRefreshRequests
+  const unauthorizedPaths = options.unauthorizedPaths || []
   let adminActionFailureIndex = 0
 
   await page.route('**/api/**', async (route) => {
@@ -129,6 +134,17 @@ async function installDeveloperApiMocks(page, options = {}) {
     }
 
     if (method === 'POST' && path === '/auth/refresh') {
+      if (Array.isArray(authRefreshRequests)) {
+        authRefreshRequests.push(await request.postDataJSON().catch(() => ({})))
+      }
+      if (options.authRefreshFails) {
+        return json({
+          error: {
+            code: 'AUTHENTICATION_REQUIRED',
+            message: 'refresh token expired',
+          },
+        }, 401)
+      }
       return json({
         data: {
           accessToken: 'developer-e2e-access-refreshed',
@@ -155,6 +171,15 @@ async function installDeveloperApiMocks(page, options = {}) {
 
     if (method === 'GET' && path === '/users/me') {
       return json({ data: developerUser })
+    }
+
+    if (unauthorizedPaths.includes(path)) {
+      return json({
+        error: {
+          code: 'AUTHENTICATION_REQUIRED',
+          message: 'access token expired',
+        },
+      }, 401)
     }
 
     if (method === 'GET' && ['/health', '/storage/health', '/database/health'].includes(path)) {
@@ -206,6 +231,30 @@ async function installDeveloperApiMocks(page, options = {}) {
         items: page.items || [],
         prefixes: page.prefixes || [],
         nextCursor: page.nextCursor || '',
+      })
+    }
+
+    const objectDownloadPathPrefix = `/buckets/${developerBucketName}/objects/`
+    if (method === 'GET' && path.startsWith(objectDownloadPathPrefix)) {
+      const key = decodeURIComponent(path.slice(objectDownloadPathPrefix.length))
+      const authorization = request.headers().authorization || ''
+      const attempt = (objectDownloadAttempts.get(key) || 0) + 1
+      objectDownloadAttempts.set(key, attempt)
+      if (Array.isArray(objectDownloadRequests)) {
+        objectDownloadRequests.push({ key, authorization, attempt })
+      }
+      if (objectDownloadAuthFailures.has(key) && attempt === 1) {
+        return json({
+          error: {
+            code: 'AUTHENTICATION_REQUIRED',
+            message: 'download token expired',
+          },
+        }, 401)
+      }
+      return route.fulfill({
+        status: 200,
+        contentType: 'text/plain',
+        body: `download:${key}`,
       })
     }
 
@@ -503,6 +552,129 @@ test('developer object page size selection resets cursor and keeps limit on next
     limit: '50',
     cursor: 'page-size-cursor-2',
   })
+})
+
+test('developer object download refreshes expired access token and retries once', async ({ page }) => {
+  const authRefreshRequests = []
+  const objectDownloadRequests = []
+  const downloadKey = 'auth-refresh-download.txt'
+  await installDeveloperApiMocks(page, {
+    authRefreshRequests,
+    objectDownloadRequests,
+    objectDownloadAuthFailures: [downloadKey],
+    objectPages: [{
+      items: [{
+        key: downloadKey,
+        sizeBytes: 64,
+        contentType: 'text/plain',
+        tags: { project: 'osmu' },
+      }],
+      prefixes: [],
+      nextCursor: '',
+    }],
+  })
+  await page.addInitScript(() => {
+    window.localStorage.removeItem('osmu.dashboard.widgets.v1')
+    window.localStorage.removeItem('osmu.auth.tokens')
+    window.localStorage.removeItem('osmu.login.rememberedId')
+    window.sessionStorage.removeItem('osmu.auth.tokens')
+  })
+
+  await page.goto(`${frontendBaseUrl}/login?mode=developer`)
+  await page.getByTestId('login-id-input').fill(developerLoginId)
+  await page.getByTestId('login-password-input').fill(developerPassword)
+  await page.getByTestId('login-submit-button').click()
+
+  await expect(page).toHaveURL(/\/developer$/)
+  await page.getByRole('link', { name: 'Objects' }).click()
+  await expect(page.getByTestId('object-table')).toContainText(downloadKey)
+
+  const retriedDownloadResponse = page.waitForResponse((response) => (
+    response.status() === 200
+      && new URL(response.url()).pathname.endsWith(`/api/buckets/${developerBucketName}/objects/${downloadKey}`)
+  ))
+  await page.getByTestId('object-download-button').first().click()
+  await retriedDownloadResponse
+
+  await expect(page.getByTestId('status-alert')).toContainText(downloadKey)
+  expect(authRefreshRequests).toHaveLength(1)
+  expect(authRefreshRequests[0]).toMatchObject({ refreshToken: 'developer-e2e-refresh' })
+  expect(objectDownloadRequests).toHaveLength(2)
+  expect(objectDownloadRequests[0]).toMatchObject({
+    key: downloadKey,
+    authorization: 'Bearer developer-e2e-access',
+    attempt: 1,
+  })
+  expect(objectDownloadRequests[1]).toMatchObject({
+    key: downloadKey,
+    authorization: 'Bearer developer-e2e-access-refreshed',
+    attempt: 2,
+  })
+})
+
+test('developer refresh failure clears session and redirects from portal click', async ({ page }) => {
+  const authRefreshRequests = []
+  const unauthorizedPaths = []
+  await installDeveloperApiMocks(page, {
+    authRefreshFails: true,
+    authRefreshRequests,
+    unauthorizedPaths,
+  })
+  await page.addInitScript(() => {
+    window.localStorage.removeItem('osmu.dashboard.widgets.v1')
+    window.localStorage.removeItem('osmu.auth.tokens')
+    window.localStorage.removeItem('osmu.login.rememberedId')
+    window.sessionStorage.removeItem('osmu.auth.tokens')
+  })
+
+  await page.goto(`${frontendBaseUrl}/login?mode=developer`)
+  await page.getByTestId('login-id-input').fill(developerLoginId)
+  await page.getByTestId('login-password-input').fill(developerPassword)
+  await page.getByTestId('login-submit-button').click()
+
+  await expect(page).toHaveURL(/\/developer$/)
+  await expect(page.getByTestId('logout-button')).toBeVisible()
+  unauthorizedPaths.push('/buckets')
+  await page.getByTestId('refresh-button').click()
+
+  await expect(page).toHaveURL(/\/login\?/)
+  await expect(page).toHaveURL(/reason=session-expired/)
+  await expect(page.getByTestId('login-form')).toBeVisible()
+  await expect(page.getByTestId('logout-button')).toHaveCount(0)
+  expect(authRefreshRequests).toHaveLength(1)
+  await expect.poll(() => page.evaluate(() => ({
+    local: window.localStorage.getItem('osmu.auth.tokens'),
+    session: window.sessionStorage.getItem('osmu.auth.tokens'),
+  }))).toEqual({ local: null, session: null })
+})
+
+test('developer logout clears stored tokens and returns to login', async ({ page }) => {
+  await installDeveloperApiMocks(page)
+  await page.addInitScript(() => {
+    window.localStorage.removeItem('osmu.dashboard.widgets.v1')
+    window.localStorage.removeItem('osmu.auth.tokens')
+    window.localStorage.removeItem('osmu.login.rememberedId')
+    window.sessionStorage.removeItem('osmu.auth.tokens')
+  })
+
+  await page.goto(`${frontendBaseUrl}/login?mode=developer`)
+  await page.getByTestId('login-id-input').fill(developerLoginId)
+  await page.getByTestId('login-password-input').fill(developerPassword)
+  await page.getByTestId('login-submit-button').click()
+
+  await expect(page).toHaveURL(/\/developer$/)
+  await expect(page.getByTestId('developer-page')).toBeVisible()
+  await expect.poll(() => page.evaluate(() => window.sessionStorage.getItem('osmu.auth.tokens'))).toContain('developer-e2e-access')
+
+  await page.getByTestId('logout-button').click()
+
+  await expect(page).toHaveURL(/\/login$/)
+  await expect(page.getByTestId('login-form')).toBeVisible()
+  await expect(page.getByTestId('logout-button')).toHaveCount(0)
+  await expect.poll(() => page.evaluate(() => ({
+    local: window.localStorage.getItem('osmu.auth.tokens'),
+    session: window.sessionStorage.getItem('osmu.auth.tokens'),
+  }))).toEqual({ local: null, session: null })
 })
 
 test('org admin can open scoped admin page without global operation panels', async ({ page }) => {
