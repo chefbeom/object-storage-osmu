@@ -42,7 +42,33 @@ New-Item -ItemType Directory -Force -Path $resolvedOutputDirectory | Out-Null
 
 $jsonOutputPath = Join-Path $resolvedOutputDirectory "latest-commercial-integration-evidence.json"
 $markdownOutputPath = Join-Path $resolvedOutputDirectory "latest-commercial-integration-evidence.md"
+$readinessJsonPath = Join-Path $resolvedOutputDirectory "payment-provider-adapter-readiness.json"
 $scriptPath = Resolve-ProjectPath ".\scripts\write-commercial-integration-evidence.ps1"
+
+$readinessFixture = [ordered]@{
+    success = $true
+    data = [ordered]@{
+        mode = "PAYMENT_PROVIDER_ADAPTER_READINESS"
+        status = "WEBHOOK_PROFILE_READY"
+        nativeApiSupported = $false
+        nativeApiReady = $false
+        profileCount = 5
+        webhookReadyProfileCount = 5
+        nativeApiReadyProfileCount = 0
+        generatedAt = "2026-06-20T01:30:00Z"
+        scopePolicy = "Readiness view checks OSMU payment-provider handoff adapter configuration only."
+        secretPolicy = "Only sanitized profile metadata is exposed."
+        note = "Webhook handoff profiles are ready; native card/bank/tax/ERP API adapters remain out of scope for this evidence."
+        profiles = @(
+            [ordered]@{ providerProfile = "GENERIC"; adapterMode = "WEBHOOK"; status = "WEBHOOK_READY"; webhookProfileConfigured = $true; nativeApiSupported = $false; nativeApiReady = $false },
+            [ordered]@{ providerProfile = "CARD"; adapterMode = "WEBHOOK"; status = "WEBHOOK_READY"; webhookProfileConfigured = $true; nativeApiSupported = $false; nativeApiReady = $false },
+            [ordered]@{ providerProfile = "BANK"; adapterMode = "WEBHOOK"; status = "WEBHOOK_READY"; webhookProfileConfigured = $true; nativeApiSupported = $false; nativeApiReady = $false },
+            [ordered]@{ providerProfile = "TAX"; adapterMode = "WEBHOOK"; status = "WEBHOOK_READY"; webhookProfileConfigured = $true; nativeApiSupported = $false; nativeApiReady = $false },
+            [ordered]@{ providerProfile = "ERP"; adapterMode = "WEBHOOK"; status = "WEBHOOK_READY"; webhookProfileConfigured = $true; nativeApiSupported = $false; nativeApiReady = $false }
+        )
+    }
+}
+$readinessFixture | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath $readinessJsonPath -Encoding UTF8
 
 & powershell -NoProfile -ExecutionPolicy Bypass -File $scriptPath `
     -EnvironmentName "pilot-prod-self-test" `
@@ -59,6 +85,8 @@ $scriptPath = Resolve-ProjectPath ".\scripts\write-commercial-integration-eviden
     -PaymentBankProfileEvidenceRef "payment-bank-profile-run-20260620" `
     -PaymentTaxProfileEvidenceRef "payment-tax-profile-run-20260620" `
     -PaymentErpProfileEvidenceRef "payment-erp-profile-run-20260620" `
+    -PaymentProviderAdapterReadinessEvidenceRef "payment-adapter-readiness-run-20260620" `
+    -PaymentProviderAdapterReadinessJsonPath $readinessJsonPath `
     -AdapterRetryWorkerEvidenceRef "adapter-retry-worker-run-20260620" `
     -PayloadReviewEvidenceRef "payload-cap-review-20260620" `
     -PrivateNetworkBlockEvidenceRef "private-network-block-review-20260620" `
@@ -77,6 +105,7 @@ $scriptPath = Resolve-ProjectPath ".\scripts\write-commercial-integration-eviden
     -ConfirmPayloadSizeCaps `
     -ConfirmPrivateNetworkBlocking `
     -ConfirmHmacSignatureHeaders `
+    -ConfirmPaymentProviderAdapterReadinessReviewed `
     -ConfirmNoSecretValues `
     -ConfirmNoRawProviderResponses `
     -RequireAllImplementedAdapters `
@@ -99,22 +128,35 @@ Assert-True ($report.result -eq "passed") "Expected result=passed."
 Assert-True ($report.summary.failureCount -eq 0) "Expected zero failed checks."
 Assert-True ($report.summary.requiredCount -eq 8) "Expected all eight implemented integration profiles required."
 Assert-True ($report.summary.requiredVerifiedCount -eq 8) "Expected all required integration profiles verified."
+Assert-True ($report.summary.paymentProviderAdapterReadinessReviewed) "Expected payment-provider adapter readiness review."
+Assert-True ($report.summary.paymentProviderAdapterReadinessStatus -eq "WEBHOOK_PROFILE_READY") "Expected readiness status from snapshot."
+Assert-True ($report.summary.paymentProviderAdapterWebhookReadyProfileCount -eq 5) "Expected five webhook-ready payment profiles."
+Assert-True ($report.summary.paymentProviderAdapterNativeReadyProfileCount -eq 0) "Expected no native payment API adapters ready."
 Assert-True ($integrations.Count -eq 8) "Expected eight integration entries."
-Assert-True ($checks.Count -ge 20) "Expected commercial integration checks."
+Assert-True ($checks.Count -ge 23) "Expected commercial integration checks."
 Assert-True (@($checks | Where-Object { $_.id -eq "verification-window-order" -and $_.passed }).Count -eq 1) "Expected verification window order check to pass."
+Assert-True (@($checks | Where-Object { $_.id -eq "payment-provider-adapter-readiness-snapshot" -and $_.passed }).Count -eq 1) "Expected payment adapter readiness snapshot check to pass."
+Assert-True (@($checks | Where-Object { $_.id -eq "payment-provider-adapter-readiness-profile-coverage" -and $_.passed }).Count -eq 1) "Expected payment adapter readiness profile coverage check to pass."
+Assert-True (@($checks | Where-Object { $_.id -eq "payment-provider-adapter-readiness-reviewed" -and $_.passed }).Count -eq 1) "Expected payment adapter readiness review check to pass."
 Assert-True ($report.confirmations.noSecretValues) "Expected no-secret-values confirmation."
 Assert-True ($report.confirmations.noRawProviderResponses) "Expected no-raw-provider-responses confirmation."
 Assert-True ($report.confirmations.payloadSizeCaps) "Expected payload size caps confirmation."
 Assert-True ($report.confirmations.privateNetworkBlocking) "Expected private network blocking confirmation."
 Assert-True ($report.confirmations.hmacSignatureHeaders) "Expected HMAC signature confirmation."
+Assert-True ($report.confirmations.paymentProviderAdapterReadinessReviewed) "Expected payment adapter readiness confirmation."
 Assert-True ($report.confirmations.adapterRetryWorkerRun) "Expected adapter retry worker confirmation."
+Assert-True ($report.paymentProviderAdapterReadiness.reviewed) "Expected payment adapter readiness section reviewed."
+Assert-True ($report.paymentProviderAdapterReadiness.snapshot.validMode) "Expected valid payment adapter readiness mode."
+Assert-True (@($report.paymentProviderAdapterReadiness.snapshot.profiles).Count -eq 5) "Expected sanitized payment adapter readiness profiles."
 
 Assert-Contains $markdown "# OSMU Commercial Integration Evidence" "commercial integration evidence markdown"
 Assert-Contains $markdown "Scope Policy" "commercial integration evidence markdown"
+Assert-Contains $markdown "Payment Provider Adapter Readiness" "commercial integration evidence markdown"
 Assert-Contains $markdown "Record passed target evidence" "commercial integration evidence markdown"
-Assert-Contains $report.scopePolicy "does not claim native card, bank, tax invoice, or ERP processor API support" "commercial integration evidence JSON"
+Assert-Contains $report.scopePolicy "does not claim or require native card, bank, tax invoice, or ERP processor API support" "commercial integration evidence JSON"
 Assert-Contains $report.secretPolicy "does not contain webhook URLs with credentials" "commercial integration evidence JSON"
 Assert-Contains $report.decisionRule "Production/B2B commercial integration readiness requires result=passed" "commercial integration evidence JSON"
+Assert-Contains $report.decisionRule "payment-provider adapter readiness review" "commercial integration evidence JSON"
 
 foreach ($unexpected in @("password=super-secret", "Bearer abcdefghijklmnop", "-----BEGIN PRIVATE KEY-----")) {
     Assert-NotContains $reportText $unexpected "commercial integration evidence JSON"
@@ -155,6 +197,8 @@ try {
         -PaymentBankProfileEvidenceRef "payment-bank-profile-run-20260620" `
         -PaymentTaxProfileEvidenceRef "payment-tax-profile-run-20260620" `
         -PaymentErpProfileEvidenceRef "payment-erp-profile-run-20260620" `
+        -PaymentProviderAdapterReadinessEvidenceRef "payment-adapter-readiness-run-20260620" `
+        -PaymentProviderAdapterReadinessJsonPath $readinessJsonPath `
         -AdapterRetryWorkerEvidenceRef "adapter-retry-worker-run-20260620" `
         -PayloadReviewEvidenceRef "payload-cap-review-20260620" `
         -PrivateNetworkBlockEvidenceRef "private-network-block-review-20260620" `
@@ -171,6 +215,7 @@ try {
         -ConfirmPayloadSizeCaps `
         -ConfirmPrivateNetworkBlocking `
         -ConfirmHmacSignatureHeaders `
+        -ConfirmPaymentProviderAdapterReadinessReviewed `
         -ConfirmNoSecretValues `
         -ConfirmNoRawProviderResponses `
         -RequireAllImplementedAdapters `
@@ -183,6 +228,31 @@ finally {
 }
 Assert-True ($invalidWindowExitCode -ne 0) "Reversed verification window should be rejected."
 Assert-Contains ($invalidWindowOutput | Out-String) "Verification window order valid" "invalid verification window output"
+
+$unsafeReadinessJsonPath = Join-Path $resolvedOutputDirectory "unsafe-payment-provider-adapter-readiness.json"
+[ordered]@{
+    mode = "PAYMENT_PROVIDER_ADAPTER_READINESS"
+    webhook_secret = "secret=super-secret"
+} | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath $unsafeReadinessJsonPath -Encoding UTF8
+
+$previousErrorActionPreference = $ErrorActionPreference
+$ErrorActionPreference = "Continue"
+try {
+    $invalidReadinessOutput = & powershell -NoProfile -ExecutionPolicy Bypass -File $scriptPath `
+        -EnvironmentName "pilot-prod-self-test" `
+        -TargetCluster "customer-cluster-a" `
+        -Operator "ops-self-test" `
+        -PaymentProviderAdapterReadinessEvidenceRef "payment-adapter-readiness-run-20260620" `
+        -PaymentProviderAdapterReadinessJsonPath $unsafeReadinessJsonPath `
+        -ConfirmPaymentProviderAdapterReadinessReviewed `
+        -NoWrite 2>&1
+    $invalidReadinessExitCode = $LASTEXITCODE
+}
+finally {
+    $ErrorActionPreference = $previousErrorActionPreference
+}
+Assert-True ($invalidReadinessExitCode -ne 0) "Credential-like readiness snapshot should be rejected."
+Assert-Contains ($invalidReadinessOutput | Out-String) "PaymentProviderAdapterReadinessJson appears to contain credential material" "invalid readiness snapshot output"
 
 Write-Host "Commercial integration evidence writer verified."
 Write-Host "JSON: $jsonOutputPath"

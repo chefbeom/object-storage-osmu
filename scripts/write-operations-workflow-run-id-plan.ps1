@@ -183,7 +183,7 @@ function New-WorkflowMetadata([string] $Workflow) {
             runIdParameter = "CommercialIntegrationRunId"
             artifactNameTemplate = "commercial-integration-evidence-{runId}"
             requiredForReadiness = $true
-            note = "Required by operations readiness artifact import when target notification/payment handoff evidence is part of the invocation."
+            note = "Required by operations readiness artifact import when target notification/payment handoff and payment-provider adapter readiness evidence is part of the invocation."
         }
         "manual-commercial-approval-evidence.yml" = [ordered]@{
             group = "commercial-approval"

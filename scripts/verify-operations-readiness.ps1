@@ -208,6 +208,21 @@ if ($commercialIntegrationCheck[0].remediation.workflow -ne ".github/workflows/m
 if (-not ([string] $commercialIntegrationCheck[0].remediation.workflowCommand).Contains("gh workflow run manual-commercial-integration-evidence.yml")) {
     throw "Commercial integration target evidence remediation workflow command must dispatch manual-commercial-integration-evidence.yml."
 }
+if (-not ([string] $commercialIntegrationCheck[0].remediation.command).Contains("PaymentProviderAdapterReadinessJsonPath")) {
+    throw "Commercial integration target evidence remediation must include payment-provider adapter readiness JSON input."
+}
+if (-not ([string] $commercialIntegrationCheck[0].remediation.workflowCommand).Contains("payment_provider_adapter_readiness_json_base64=<base64-json>")) {
+    throw "Commercial integration target evidence workflow command must include payment-provider adapter readiness base64 input."
+}
+if (-not ([string] $commercialIntegrationCheck[0].remediation.workflowCommand).Contains("confirm_payment_provider_adapter_readiness_reviewed=true")) {
+    throw "Commercial integration target evidence workflow command must confirm payment-provider adapter readiness review."
+}
+if (-not ([string] $commercialIntegrationCheck[0].remediation.note).Contains("GET /api/admin/billing/payment-provider-adapter-readiness")) {
+    throw "Commercial integration target evidence remediation note must mention the payment-provider adapter readiness API."
+}
+if (-not ([string] $commercialIntegrationCheck[0].remediation.note).Contains("does not claim or require native card/bank/tax/ERP processor API support")) {
+    throw "Commercial integration target evidence remediation note must preserve native provider scope boundary."
+}
 if (-not ([string] $commercialIntegrationCheck[0].requiredEvidence).Contains("target environment")) {
     throw "Commercial integration target evidence must require target environment evidence."
 }

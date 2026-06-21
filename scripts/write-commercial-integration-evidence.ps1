@@ -13,6 +13,8 @@ param(
     [string] $PaymentBankProfileEvidenceRef = "",
     [string] $PaymentTaxProfileEvidenceRef = "",
     [string] $PaymentErpProfileEvidenceRef = "",
+    [string] $PaymentProviderAdapterReadinessEvidenceRef = "",
+    [string] $PaymentProviderAdapterReadinessJsonPath = "",
     [string] $AdapterRetryWorkerEvidenceRef = "",
     [string] $PayloadReviewEvidenceRef = "",
     [string] $PrivateNetworkBlockEvidenceRef = "",
@@ -31,6 +33,7 @@ param(
     [switch] $ConfirmPayloadSizeCaps,
     [switch] $ConfirmPrivateNetworkBlocking,
     [switch] $ConfirmHmacSignatureHeaders,
+    [switch] $ConfirmPaymentProviderAdapterReadinessReviewed,
     [switch] $ConfirmNoSecretValues,
     [switch] $ConfirmNoRawProviderResponses,
     [switch] $RequireNotificationWebhook,
@@ -41,6 +44,7 @@ param(
     [switch] $RequirePaymentBankProfile,
     [switch] $RequirePaymentTaxProfile,
     [switch] $RequirePaymentErpProfile,
+    [switch] $RequirePaymentProviderAdapterReadinessReview,
     [switch] $RequireAllImplementedAdapters,
     [switch] $FailIfNotPassed,
     [switch] $NoWrite
@@ -57,7 +61,7 @@ function Resolve-ProjectPath([string] $path) {
     return [System.IO.Path]::GetFullPath((Join-Path $root $path))
 }
 
-function Assert-SafeReference([string] $Value, [string] $Label) {
+function Assert-SafeText([string] $Value, [string] $Label) {
     if ([string]::IsNullOrWhiteSpace($Value)) {
         return
     }
@@ -74,6 +78,10 @@ function Assert-SafeReference([string] $Value, [string] $Label) {
             throw "$Label appears to contain credential material. Store only an external evidence reference."
         }
     }
+}
+
+function Assert-SafeReference([string] $Value, [string] $Label) {
+    Assert-SafeText $Value $Label
 }
 
 function Test-DateText([string] $Value) {
@@ -112,6 +120,140 @@ function Add-Check([string] $Id, [string] $Name, [bool] $Passed, [string] $Detai
 
 function Add-PlannedCheck([string] $Id, [string] $Name, [string] $Detail) {
     [void] $script:checks.Add((New-Check $Id $Name "PLANNED" $Detail))
+}
+
+function Get-PropertyValue([object] $Object, [string] $Name) {
+    if ($null -eq $Object) {
+        return $null
+    }
+    $property = $Object.PSObject.Properties[$Name]
+    if ($null -eq $property) {
+        return $null
+    }
+    return $property.Value
+}
+
+function Get-PropertyText([object] $Object, [string] $Name) {
+    $value = Get-PropertyValue $Object $Name
+    if ($null -eq $value) {
+        return ""
+    }
+    return [string] $value
+}
+
+function Get-PropertyBool([object] $Object, [string] $Name) {
+    $value = Get-PropertyValue $Object $Name
+    if ($null -eq $value) {
+        return $false
+    }
+    if ($value -is [bool]) {
+        return [bool] $value
+    }
+    return ([string] $value).Equals("true", [System.StringComparison]::OrdinalIgnoreCase)
+}
+
+function Get-PropertyInt([object] $Object, [string] $Name) {
+    $value = Get-PropertyValue $Object $Name
+    if ($null -eq $value) {
+        return 0
+    }
+    $parsed = 0
+    if ([int]::TryParse(([string] $value), [ref] $parsed)) {
+        return $parsed
+    }
+    return 0
+}
+
+function Get-PropertyArray([object] $Object, [string] $Name) {
+    $value = Get-PropertyValue $Object $Name
+    if ($null -eq $value) {
+        return @()
+    }
+    if ($value -is [System.Array]) {
+        return @($value)
+    }
+    return @($value)
+}
+
+function Read-PaymentProviderAdapterReadinessSnapshot([string] $Path) {
+    $snapshot = [ordered]@{
+        provided = $false
+        path = ""
+        parsed = $false
+        validMode = $false
+        status = ""
+        nativeApiSupported = $false
+        nativeApiReady = $false
+        profileCount = 0
+        webhookReadyProfileCount = 0
+        nativeApiReadyProfileCount = 0
+        generatedAt = ""
+        profiles = @()
+        scopePolicy = ""
+        secretPolicy = ""
+        note = ""
+        detail = "No payment-provider adapter readiness JSON supplied."
+    }
+
+    if ([string]::IsNullOrWhiteSpace($Path)) {
+        return $snapshot
+    }
+
+    $resolvedPath = Resolve-ProjectPath $Path
+    $snapshot["provided"] = $true
+    $snapshot["path"] = $resolvedPath
+    if (-not (Test-Path -LiteralPath $resolvedPath)) {
+        $snapshot["detail"] = "Payment-provider adapter readiness JSON not found."
+        return $snapshot
+    }
+
+    $raw = Get-Content -Raw -LiteralPath $resolvedPath
+    Assert-SafeText $raw "PaymentProviderAdapterReadinessJson"
+    try {
+        $payload = $raw | ConvertFrom-Json
+    }
+    catch {
+        $snapshot["detail"] = "Payment-provider adapter readiness JSON parse failed: $($_.Exception.Message)"
+        return $snapshot
+    }
+
+    if ([string]::IsNullOrWhiteSpace((Get-PropertyText $payload "mode")) -and $null -ne (Get-PropertyValue $payload "data")) {
+        $payload = Get-PropertyValue $payload "data"
+    }
+
+    $profiles = New-Object System.Collections.Generic.List[object]
+    foreach ($profile in @(Get-PropertyArray $payload "profiles")) {
+        [void] $profiles.Add([ordered]@{
+            providerProfile = Get-PropertyText $profile "providerProfile"
+            adapterMode = Get-PropertyText $profile "adapterMode"
+            status = Get-PropertyText $profile "status"
+            webhookProfileConfigured = Get-PropertyBool $profile "webhookProfileConfigured"
+            nativeApiSupported = Get-PropertyBool $profile "nativeApiSupported"
+            nativeApiReady = Get-PropertyBool $profile "nativeApiReady"
+        })
+    }
+
+    $mode = Get-PropertyText $payload "mode"
+    $snapshot["parsed"] = $true
+    $snapshot["validMode"] = $mode -eq "PAYMENT_PROVIDER_ADAPTER_READINESS"
+    $snapshot["status"] = Get-PropertyText $payload "status"
+    $snapshot["nativeApiSupported"] = Get-PropertyBool $payload "nativeApiSupported"
+    $snapshot["nativeApiReady"] = Get-PropertyBool $payload "nativeApiReady"
+    $snapshot["profileCount"] = Get-PropertyInt $payload "profileCount"
+    $snapshot["webhookReadyProfileCount"] = Get-PropertyInt $payload "webhookReadyProfileCount"
+    $snapshot["nativeApiReadyProfileCount"] = Get-PropertyInt $payload "nativeApiReadyProfileCount"
+    $snapshot["generatedAt"] = Get-PropertyText $payload "generatedAt"
+    $snapshot["profiles"] = @($profiles.ToArray())
+    $snapshot["scopePolicy"] = Get-PropertyText $payload "scopePolicy"
+    $snapshot["secretPolicy"] = Get-PropertyText $payload "secretPolicy"
+    $snapshot["note"] = Get-PropertyText $payload "note"
+    $snapshot["detail"] = if ($snapshot["validMode"]) {
+        "status=$($snapshot["status"]); webhookReadyProfileCount=$($snapshot["webhookReadyProfileCount"]); nativeApiReadyProfileCount=$($snapshot["nativeApiReadyProfileCount"])"
+    }
+    else {
+        "Unexpected readiness mode: $mode"
+    }
+    return $snapshot
 }
 
 function New-Integration(
@@ -157,6 +299,7 @@ foreach ($entry in @(
     @("PaymentBankProfileEvidenceRef", $PaymentBankProfileEvidenceRef),
     @("PaymentTaxProfileEvidenceRef", $PaymentTaxProfileEvidenceRef),
     @("PaymentErpProfileEvidenceRef", $PaymentErpProfileEvidenceRef),
+    @("PaymentProviderAdapterReadinessEvidenceRef", $PaymentProviderAdapterReadinessEvidenceRef),
     @("AdapterRetryWorkerEvidenceRef", $AdapterRetryWorkerEvidenceRef),
     @("PayloadReviewEvidenceRef", $PayloadReviewEvidenceRef),
     @("PrivateNetworkBlockEvidenceRef", $PrivateNetworkBlockEvidenceRef),
@@ -173,6 +316,7 @@ $requirePaymentCardProfile = [bool] ($RequireAllImplementedAdapters -or $Require
 $requirePaymentBankProfile = [bool] ($RequireAllImplementedAdapters -or $RequirePaymentBankProfile)
 $requirePaymentTaxProfile = [bool] ($RequireAllImplementedAdapters -or $RequirePaymentTaxProfile)
 $requirePaymentErpProfile = [bool] ($RequireAllImplementedAdapters -or $RequirePaymentErpProfile)
+$requirePaymentProviderAdapterReadinessReview = [bool] ($RequireAllImplementedAdapters -or $RequirePaymentProviderAdapterReadinessReview)
 
 $integrations = @(
     (New-Integration "notification-webhook" "Generic notification webhook delivery" $requireNotificationWebhook ([bool] $VerifiedNotificationWebhook) $NotificationWebhookEvidenceRef "Chargeback notification outbox adapter-send or retry worker path."),
@@ -188,7 +332,11 @@ $integrations = @(
 $verifiedCount = @($integrations | Where-Object { $_.verified -and -not [string]::IsNullOrWhiteSpace([string] $_.evidenceRef) }).Count
 $requiredIntegrations = @($integrations | Where-Object { $_.required })
 $requiredVerifiedCount = @($requiredIntegrations | Where-Object { $_.verified -and -not [string]::IsNullOrWhiteSpace([string] $_.evidenceRef) }).Count
-$hasAnyInput = -not [string]::IsNullOrWhiteSpace($EnvironmentName + $TargetCluster + $Operator + $ChangeApprovalRef + $NotificationWebhookEvidenceRef + $SlackWebhookEvidenceRef + $EmailSmtpEvidenceRef + $PaymentGenericWebhookEvidenceRef + $PaymentCardProfileEvidenceRef + $PaymentBankProfileEvidenceRef + $PaymentTaxProfileEvidenceRef + $PaymentErpProfileEvidenceRef + $AdapterRetryWorkerEvidenceRef + $PayloadReviewEvidenceRef + $PrivateNetworkBlockEvidenceRef + $HmacSignatureEvidenceRef + $VerificationStartedAt + $VerificationCompletedAt) -or $verifiedCount -gt 0
+$paymentProviderAdapterReadinessSnapshot = Read-PaymentProviderAdapterReadinessSnapshot $PaymentProviderAdapterReadinessJsonPath
+$paymentProviderAdapterReadinessSnapshotValid = $paymentProviderAdapterReadinessSnapshot.provided -and $paymentProviderAdapterReadinessSnapshot.parsed -and $paymentProviderAdapterReadinessSnapshot.validMode
+$paymentProviderAdapterReadinessEvidenceRecorded = -not [string]::IsNullOrWhiteSpace($PaymentProviderAdapterReadinessEvidenceRef)
+$paymentProviderAdapterReadinessReviewed = [bool] $ConfirmPaymentProviderAdapterReadinessReviewed -and $paymentProviderAdapterReadinessEvidenceRecorded -and $paymentProviderAdapterReadinessSnapshotValid
+$hasAnyInput = -not [string]::IsNullOrWhiteSpace($EnvironmentName + $TargetCluster + $Operator + $ChangeApprovalRef + $NotificationWebhookEvidenceRef + $SlackWebhookEvidenceRef + $EmailSmtpEvidenceRef + $PaymentGenericWebhookEvidenceRef + $PaymentCardProfileEvidenceRef + $PaymentBankProfileEvidenceRef + $PaymentTaxProfileEvidenceRef + $PaymentErpProfileEvidenceRef + $PaymentProviderAdapterReadinessEvidenceRef + $PaymentProviderAdapterReadinessJsonPath + $AdapterRetryWorkerEvidenceRef + $PayloadReviewEvidenceRef + $PrivateNetworkBlockEvidenceRef + $HmacSignatureEvidenceRef + $VerificationStartedAt + $VerificationCompletedAt) -or $verifiedCount -gt 0 -or [bool] $ConfirmPaymentProviderAdapterReadinessReviewed
 $verificationStartedAtParsed = Get-ParsedDateText $VerificationStartedAt
 $verificationCompletedAtParsed = Get-ParsedDateText $VerificationCompletedAt
 $verificationWindowOrdered = $null -ne $verificationStartedAtParsed -and $null -ne $verificationCompletedAtParsed -and $verificationCompletedAtParsed -ge $verificationStartedAtParsed
@@ -206,6 +354,36 @@ Add-Check "payload-size-caps-confirmed" "Outbound payload size caps verified" ([
 Add-Check "private-network-blocking-confirmed" "Private/local endpoint blocking verified" ([bool] $ConfirmPrivateNetworkBlocking -and -not [string]::IsNullOrWhiteSpace($PrivateNetworkBlockEvidenceRef)) "privateNetworkBlockEvidenceRef=$PrivateNetworkBlockEvidenceRef"
 Add-Check "hmac-signature-confirmed" "Webhook HMAC signature headers verified or reviewed" ([bool] $ConfirmHmacSignatureHeaders -and -not [string]::IsNullOrWhiteSpace($HmacSignatureEvidenceRef)) "hmacSignatureEvidenceRef=$HmacSignatureEvidenceRef"
 Add-Check "adapter-retry-worker-confirmed" "Adapter retry worker target run verified" ([bool] $ConfirmAdapterRetryWorkerRun -and -not [string]::IsNullOrWhiteSpace($AdapterRetryWorkerEvidenceRef)) "adapterRetryWorkerEvidenceRef=$AdapterRetryWorkerEvidenceRef"
+
+if ($paymentProviderAdapterReadinessSnapshot.provided) {
+    Add-Check "payment-provider-adapter-readiness-snapshot" "Payment-provider adapter readiness snapshot parsed" $paymentProviderAdapterReadinessSnapshotValid $paymentProviderAdapterReadinessSnapshot.detail
+}
+elseif ($requirePaymentProviderAdapterReadinessReview) {
+    Add-Check "payment-provider-adapter-readiness-snapshot" "Payment-provider adapter readiness snapshot parsed" $false $paymentProviderAdapterReadinessSnapshot.detail
+}
+else {
+    Add-PlannedCheck "payment-provider-adapter-readiness-snapshot" "Payment-provider adapter readiness snapshot planned" $paymentProviderAdapterReadinessSnapshot.detail
+}
+
+if ($paymentProviderAdapterReadinessSnapshotValid) {
+    $expectedProfiles = @("GENERIC", "CARD", "BANK", "TAX", "ERP")
+    $observedProfiles = @($paymentProviderAdapterReadinessSnapshot.profiles | ForEach-Object { [string] $_.providerProfile })
+    $expectedProfileCount = @($expectedProfiles | Where-Object { $observedProfiles -contains $_ }).Count
+    Add-Check "payment-provider-adapter-readiness-profile-coverage" "Payment-provider adapter readiness profile coverage" ($expectedProfileCount -eq $expectedProfiles.Count) "profiles=$($observedProfiles -join ','); expected=GENERIC,CARD,BANK,TAX,ERP"
+}
+elseif ($requirePaymentProviderAdapterReadinessReview) {
+    Add-Check "payment-provider-adapter-readiness-profile-coverage" "Payment-provider adapter readiness profile coverage" $false "No valid readiness snapshot available."
+}
+else {
+    Add-PlannedCheck "payment-provider-adapter-readiness-profile-coverage" "Payment-provider adapter readiness profile coverage planned" "No readiness snapshot required for this run."
+}
+
+if ($requirePaymentProviderAdapterReadinessReview -or $paymentProviderAdapterReadinessEvidenceRecorded -or [bool] $ConfirmPaymentProviderAdapterReadinessReviewed) {
+    Add-Check "payment-provider-adapter-readiness-reviewed" "Payment-provider adapter readiness reviewed" $paymentProviderAdapterReadinessReviewed "required=$requirePaymentProviderAdapterReadinessReview confirmed=$([bool] $ConfirmPaymentProviderAdapterReadinessReviewed) evidenceRef=$PaymentProviderAdapterReadinessEvidenceRef snapshotValid=$paymentProviderAdapterReadinessSnapshotValid"
+}
+else {
+    Add-PlannedCheck "payment-provider-adapter-readiness-reviewed" "Payment-provider adapter readiness review planned" "No readiness evidence reference or confirmation recorded."
+}
 
 foreach ($integration in $integrations) {
     Add-IntegrationCheck $integration
@@ -249,6 +427,7 @@ $report = New-Object System.Collections.Specialized.OrderedDictionary
 })
 [void] $report.Add("evidenceRefs", [ordered]@{
     changeApproval = $ChangeApprovalRef
+    paymentProviderAdapterReadiness = $PaymentProviderAdapterReadinessEvidenceRef
     adapterRetryWorker = $AdapterRetryWorkerEvidenceRef
     payloadReview = $PayloadReviewEvidenceRef
     privateNetworkBlocking = $PrivateNetworkBlockEvidenceRef
@@ -260,21 +439,33 @@ $report = New-Object System.Collections.Specialized.OrderedDictionary
     payloadSizeCaps = [bool] $ConfirmPayloadSizeCaps
     privateNetworkBlocking = [bool] $ConfirmPrivateNetworkBlocking
     hmacSignatureHeaders = [bool] $ConfirmHmacSignatureHeaders
+    paymentProviderAdapterReadinessReviewed = [bool] $ConfirmPaymentProviderAdapterReadinessReviewed
     adapterRetryWorkerRun = [bool] $ConfirmAdapterRetryWorkerRun
     requireAllImplementedAdapters = [bool] $RequireAllImplementedAdapters
+    requirePaymentProviderAdapterReadinessReview = $requirePaymentProviderAdapterReadinessReview
 })
 [void] $report.Add("integrations", [object] $integrationArray)
+[void] $report.Add("paymentProviderAdapterReadiness", [ordered]@{
+    required = $requirePaymentProviderAdapterReadinessReview
+    reviewed = $paymentProviderAdapterReadinessReviewed
+    evidenceRef = $PaymentProviderAdapterReadinessEvidenceRef
+    snapshot = $paymentProviderAdapterReadinessSnapshot
+})
 [void] $report.Add("summary", [ordered]@{
     integrationCount = $integrationArray.Count
     verifiedCount = $verifiedCount
     requiredCount = $requiredIntegrations.Count
     requiredVerifiedCount = $requiredVerifiedCount
+    paymentProviderAdapterReadinessReviewed = $paymentProviderAdapterReadinessReviewed
+    paymentProviderAdapterReadinessStatus = $paymentProviderAdapterReadinessSnapshot.status
+    paymentProviderAdapterWebhookReadyProfileCount = $paymentProviderAdapterReadinessSnapshot.webhookReadyProfileCount
+    paymentProviderAdapterNativeReadyProfileCount = $paymentProviderAdapterReadinessSnapshot.nativeApiReadyProfileCount
     failureCount = $failureCount
     plannedCount = $plannedCount
 })
 [void] $report.Add("checks", [object] $checkArray)
-[void] $report.Add("decisionRule", "Production/B2B commercial integration readiness requires result=passed from the target environment for every required notification/payment handoff adapter profile, adapter retry worker evidence, payload cap check, private/local endpoint blocking check, HMAC signature review, no-secret confirmation, and no-raw-provider-response confirmation.")
-[void] $report.Add("scopePolicy", "This evidence covers configured webhook/Slack/EMAIL SMTP relay and generic/CARD/BANK/TAX/ERP payment webhook profile handoff verification. It does not claim native card, bank, tax invoice, or ERP processor API support.")
+[void] $report.Add("decisionRule", "Production/B2B commercial integration readiness requires result=passed from the target environment for every required notification/payment handoff adapter profile, payment-provider adapter readiness review, adapter retry worker evidence, payload cap check, private/local endpoint blocking check, HMAC signature review, no-secret confirmation, and no-raw-provider-response confirmation.")
+[void] $report.Add("scopePolicy", "This evidence covers configured webhook/Slack/EMAIL SMTP relay, generic/CARD/BANK/TAX/ERP payment webhook profile handoff verification, and the sanitized payment-provider adapter readiness snapshot. It does not claim or require native card, bank, tax invoice, or ERP processor API support.")
 [void] $report.Add("secretPolicy", "Evidence stores only environment labels, operator/change references, timestamps, booleans, and external evidence references; it does not contain webhook URLs with credentials, SMTP passwords, payment provider credentials, signing secrets, bearer tokens, private keys, raw provider responses, or customer payment data.")
 
 $markdownLines = @(
@@ -308,6 +499,17 @@ foreach ($integration in $integrations) {
 }
 
 $markdownLines += ""
+$markdownLines += "## Payment Provider Adapter Readiness"
+$markdownLines += ""
+$markdownLines += "- Required: $requirePaymentProviderAdapterReadinessReview"
+$markdownLines += "- Reviewed: $paymentProviderAdapterReadinessReviewed"
+$markdownLines += "- Evidence: $PaymentProviderAdapterReadinessEvidenceRef"
+$markdownLines += "- Snapshot: provided=$($paymentProviderAdapterReadinessSnapshot.provided); parsed=$($paymentProviderAdapterReadinessSnapshot.parsed); validMode=$($paymentProviderAdapterReadinessSnapshot.validMode); status=$($paymentProviderAdapterReadinessSnapshot.status); webhookReady=$($paymentProviderAdapterReadinessSnapshot.webhookReadyProfileCount); nativeReady=$($paymentProviderAdapterReadinessSnapshot.nativeApiReadyProfileCount)"
+foreach ($profile in @($paymentProviderAdapterReadinessSnapshot.profiles)) {
+    $markdownLines += "  - $($profile.providerProfile): status=$($profile.status); webhook=$($profile.webhookProfileConfigured); nativeSupported=$($profile.nativeApiSupported); nativeReady=$($profile.nativeApiReady)"
+}
+
+$markdownLines += ""
 $markdownLines += "## Checks"
 $markdownLines += ""
 foreach ($check in $checks) {
@@ -317,7 +519,7 @@ foreach ($check in $checks) {
 $markdownLines += ""
 $markdownLines += "## Operator Command"
 $markdownLines += ""
-$markdownLines += "- Record passed target evidence: ``powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\write-commercial-integration-evidence.ps1 -EnvironmentName <env> -TargetCluster <cluster> -Operator <operator> -VerificationStartedAt <iso-time> -VerificationCompletedAt <iso-time> -ChangeApprovalRef <change-id> -NotificationWebhookEvidenceRef <ref> -SlackWebhookEvidenceRef <ref> -EmailSmtpEvidenceRef <ref> -PaymentGenericWebhookEvidenceRef <ref> -PaymentCardProfileEvidenceRef <ref> -PaymentBankProfileEvidenceRef <ref> -PaymentTaxProfileEvidenceRef <ref> -PaymentErpProfileEvidenceRef <ref> -AdapterRetryWorkerEvidenceRef <ref> -PayloadReviewEvidenceRef <ref> -PrivateNetworkBlockEvidenceRef <ref> -HmacSignatureEvidenceRef <ref> -VerifiedNotificationWebhook -VerifiedSlackWebhook -VerifiedEmailSmtp -VerifiedPaymentGenericWebhook -VerifiedPaymentCardProfile -VerifiedPaymentBankProfile -VerifiedPaymentTaxProfile -VerifiedPaymentErpProfile -ConfirmAdapterRetryWorkerRun -ConfirmPayloadSizeCaps -ConfirmPrivateNetworkBlocking -ConfirmHmacSignatureHeaders -ConfirmNoSecretValues -ConfirmNoRawProviderResponses -RequireAllImplementedAdapters -FailIfNotPassed``"
+$markdownLines += "- Record passed target evidence: ``powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\write-commercial-integration-evidence.ps1 -EnvironmentName <env> -TargetCluster <cluster> -Operator <operator> -VerificationStartedAt <iso-time> -VerificationCompletedAt <iso-time> -ChangeApprovalRef <change-id> -NotificationWebhookEvidenceRef <ref> -SlackWebhookEvidenceRef <ref> -EmailSmtpEvidenceRef <ref> -PaymentGenericWebhookEvidenceRef <ref> -PaymentCardProfileEvidenceRef <ref> -PaymentBankProfileEvidenceRef <ref> -PaymentTaxProfileEvidenceRef <ref> -PaymentErpProfileEvidenceRef <ref> -PaymentProviderAdapterReadinessEvidenceRef <ref> -PaymentProviderAdapterReadinessJsonPath .\.osmu-run\payment-provider-adapter-readiness.json -AdapterRetryWorkerEvidenceRef <ref> -PayloadReviewEvidenceRef <ref> -PrivateNetworkBlockEvidenceRef <ref> -HmacSignatureEvidenceRef <ref> -VerifiedNotificationWebhook -VerifiedSlackWebhook -VerifiedEmailSmtp -VerifiedPaymentGenericWebhook -VerifiedPaymentCardProfile -VerifiedPaymentBankProfile -VerifiedPaymentTaxProfile -VerifiedPaymentErpProfile -ConfirmPaymentProviderAdapterReadinessReviewed -ConfirmAdapterRetryWorkerRun -ConfirmPayloadSizeCaps -ConfirmPrivateNetworkBlocking -ConfirmHmacSignatureHeaders -ConfirmNoSecretValues -ConfirmNoRawProviderResponses -RequireAllImplementedAdapters -FailIfNotPassed``"
 
 if (-not $NoWrite) {
     New-Item -ItemType Directory -Force -Path (Split-Path -Parent $resolvedJsonOutputPath) | Out-Null

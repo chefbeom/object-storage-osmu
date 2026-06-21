@@ -59,6 +59,14 @@ on:
         description: External ERP payment profile evidence reference
         required: false
         default: ""
+      payment_provider_adapter_readiness_evidence_ref:
+        description: External payment-provider adapter readiness evidence reference
+        required: true
+        default: ""
+      payment_provider_adapter_readiness_json_base64:
+        description: Base64 JSON from GET /api/admin/billing/payment-provider-adapter-readiness
+        required: false
+        default: ""
       adapter_retry_worker_evidence_ref:
         description: External adapter retry worker evidence reference
         required: true
@@ -135,6 +143,11 @@ on:
         required: true
         type: boolean
         default: false
+      confirm_payment_provider_adapter_readiness_reviewed:
+        description: Confirm payment-provider adapter readiness snapshot was reviewed
+        required: true
+        type: boolean
+        default: false
       confirm_no_secret_values:
         description: Confirm inputs contain references only, not secret values
         required: true
@@ -190,6 +203,8 @@ jobs:
           OSMU_PAYMENT_BANK_PROFILE_EVIDENCE_REF: ${{ inputs.payment_bank_profile_evidence_ref }}
           OSMU_PAYMENT_TAX_PROFILE_EVIDENCE_REF: ${{ inputs.payment_tax_profile_evidence_ref }}
           OSMU_PAYMENT_ERP_PROFILE_EVIDENCE_REF: ${{ inputs.payment_erp_profile_evidence_ref }}
+          OSMU_PAYMENT_PROVIDER_ADAPTER_READINESS_EVIDENCE_REF: ${{ inputs.payment_provider_adapter_readiness_evidence_ref }}
+          OSMU_PAYMENT_PROVIDER_ADAPTER_READINESS_JSON_BASE64: ${{ inputs.payment_provider_adapter_readiness_json_base64 }}
           OSMU_ADAPTER_RETRY_WORKER_EVIDENCE_REF: ${{ inputs.adapter_retry_worker_evidence_ref }}
           OSMU_PAYLOAD_REVIEW_EVIDENCE_REF: ${{ inputs.payload_review_evidence_ref }}
           OSMU_PRIVATE_NETWORK_BLOCK_EVIDENCE_REF: ${{ inputs.private_network_block_evidence_ref }}
@@ -206,11 +221,20 @@ jobs:
           OSMU_CONFIRM_PAYLOAD_SIZE_CAPS: ${{ inputs.confirm_payload_size_caps }}
           OSMU_CONFIRM_PRIVATE_NETWORK_BLOCKING: ${{ inputs.confirm_private_network_blocking }}
           OSMU_CONFIRM_HMAC_SIGNATURE_HEADERS: ${{ inputs.confirm_hmac_signature_headers }}
+          OSMU_CONFIRM_PAYMENT_PROVIDER_ADAPTER_READINESS_REVIEWED: ${{ inputs.confirm_payment_provider_adapter_readiness_reviewed }}
           OSMU_CONFIRM_NO_SECRET_VALUES: ${{ inputs.confirm_no_secret_values }}
           OSMU_CONFIRM_NO_RAW_PROVIDER_RESPONSES: ${{ inputs.confirm_no_raw_provider_responses }}
           OSMU_REQUIRE_ALL_IMPLEMENTED_ADAPTERS: ${{ inputs.require_all_implemented_adapters }}
           OSMU_FAIL_IF_NOT_PASSED: ${{ inputs.fail_if_not_passed }}
         run: |
+          $readinessJsonPath = ""
+          if (-not [string]::IsNullOrWhiteSpace($env:OSMU_PAYMENT_PROVIDER_ADAPTER_READINESS_JSON_BASE64)) {
+            New-Item -ItemType Directory -Force -Path ".osmu-run" | Out-Null
+            $readinessJsonPath = ".osmu-run/payment-provider-adapter-readiness.json"
+            $resolvedReadinessJsonPath = Join-Path (Resolve-Path ".").Path $readinessJsonPath
+            [System.IO.File]::WriteAllBytes($resolvedReadinessJsonPath, [Convert]::FromBase64String($env:OSMU_PAYMENT_PROVIDER_ADAPTER_READINESS_JSON_BASE64))
+          }
+
           $evidenceArgs = @(
             "-EnvironmentName", $env:OSMU_ENVIRONMENT_NAME,
             "-TargetCluster", $env:OSMU_TARGET_CLUSTER,
@@ -226,6 +250,7 @@ jobs:
             "-PaymentBankProfileEvidenceRef", $env:OSMU_PAYMENT_BANK_PROFILE_EVIDENCE_REF,
             "-PaymentTaxProfileEvidenceRef", $env:OSMU_PAYMENT_TAX_PROFILE_EVIDENCE_REF,
             "-PaymentErpProfileEvidenceRef", $env:OSMU_PAYMENT_ERP_PROFILE_EVIDENCE_REF,
+            "-PaymentProviderAdapterReadinessEvidenceRef", $env:OSMU_PAYMENT_PROVIDER_ADAPTER_READINESS_EVIDENCE_REF,
             "-AdapterRetryWorkerEvidenceRef", $env:OSMU_ADAPTER_RETRY_WORKER_EVIDENCE_REF,
             "-PayloadReviewEvidenceRef", $env:OSMU_PAYLOAD_REVIEW_EVIDENCE_REF,
             "-PrivateNetworkBlockEvidenceRef", $env:OSMU_PRIVATE_NETWORK_BLOCK_EVIDENCE_REF,
@@ -234,6 +259,7 @@ jobs:
             "-MarkdownOutputPath", ".osmu-run/latest-commercial-integration-evidence.md"
           )
 
+          if (-not [string]::IsNullOrWhiteSpace($readinessJsonPath)) { $evidenceArgs += @("-PaymentProviderAdapterReadinessJsonPath", $readinessJsonPath) }
           if ($env:OSMU_VERIFIED_NOTIFICATION_WEBHOOK -eq "true") { $evidenceArgs += "-VerifiedNotificationWebhook" }
           if ($env:OSMU_VERIFIED_SLACK_WEBHOOK -eq "true") { $evidenceArgs += "-VerifiedSlackWebhook" }
           if ($env:OSMU_VERIFIED_EMAIL_SMTP -eq "true") { $evidenceArgs += "-VerifiedEmailSmtp" }
@@ -246,6 +272,7 @@ jobs:
           if ($env:OSMU_CONFIRM_PAYLOAD_SIZE_CAPS -eq "true") { $evidenceArgs += "-ConfirmPayloadSizeCaps" }
           if ($env:OSMU_CONFIRM_PRIVATE_NETWORK_BLOCKING -eq "true") { $evidenceArgs += "-ConfirmPrivateNetworkBlocking" }
           if ($env:OSMU_CONFIRM_HMAC_SIGNATURE_HEADERS -eq "true") { $evidenceArgs += "-ConfirmHmacSignatureHeaders" }
+          if ($env:OSMU_CONFIRM_PAYMENT_PROVIDER_ADAPTER_READINESS_REVIEWED -eq "true") { $evidenceArgs += "-ConfirmPaymentProviderAdapterReadinessReviewed" }
           if ($env:OSMU_CONFIRM_NO_SECRET_VALUES -eq "true") { $evidenceArgs += "-ConfirmNoSecretValues" }
           if ($env:OSMU_CONFIRM_NO_RAW_PROVIDER_RESPONSES -eq "true") { $evidenceArgs += "-ConfirmNoRawProviderResponses" }
           if ($env:OSMU_REQUIRE_ALL_IMPLEMENTED_ADAPTERS -eq "true") { $evidenceArgs += "-RequireAllImplementedAdapters" }
