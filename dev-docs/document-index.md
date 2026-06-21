@@ -44,6 +44,8 @@ This index points to the useful project documents for the current prototype. The
 - `../scripts/write-migration-rollback-plan.ps1` - write a Flyway forward-only migration rollback plan with backup, restore, smoke, and compensating-migration stages.
 - `../scripts/verify-migration-rollback-plan.ps1` - verify the migration rollback plan shape, required stages, backup-artifact requirement, and no-secret reference policy.
 - `../scripts/verify-metadata-index-coverage.ps1` - statically verify migration-backed index prefixes for high-volume metadata, data-flow, audit, storage expansion, and chargeback retry query paths.
+- `../scripts/write-mariadb-query-plan-evidence.ps1` - write plan-only, operator-collected, or live `EXPLAIN FORMAT=JSON` evidence for high-volume MariaDB query paths without storing database passwords.
+- `../scripts/verify-mariadb-query-plan-evidence.ps1` - self-test MariaDB query plan evidence shape, expected-index pass fixtures, and wrong-index failure fixtures.
 - `../scripts/verify-prototype-prerequisites.ps1` - check Java, Node/npm, Docker, real S3 clients, and runtime/frontend/database/storage endpoints before deeper prototype verification.
 - `../scripts/verify-prototype-release.ps1` - one-command MVP release gate that combines prerequisites, build verification, backend tests, runtime smoke, seeded demo smoke, and S3 smoke.
 - `../scripts/write-mvp-audit.ps1` - write a human-readable MVP audit from the latest release evidence report and optional durable gate report.

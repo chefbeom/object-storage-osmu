@@ -871,6 +871,12 @@ erDiagram
 - `scripts/verify-migration-rollback-plan.ps1`는 rollback plan format, required stages, backup-artifact requirement, forward-only Flyway scope policy, no-secret reference policy를 검증하며 `verify-local.ps1`에 포함된다.
 - 이 전략은 Flyway undo migration을 도입하지 않는다. live migration 전에는 backup artifact reference가 필요하고, migration 후 새 write를 받은 상태에서는 backup restore로 live data를 덮지 않고 data-preserving compensating migration을 추가한다.
 
+## 16.3 MariaDB Query Plan Evidence
+
+- `scripts/write-mariadb-query-plan-evidence.ps1`는 high-volume metadata query path의 `EXPLAIN FORMAT=JSON` evidence를 작성한다. 대상은 object prefix list, tag exact lookup, trash/version scan, audit request/result lookup, data-flow event/day/month windows, storage expansion summary/timeout, chargeback notification/payment retry worker다.
+- `scripts/verify-mariadb-query-plan-evidence.ps1`는 plan-only output, expected-index fixture pass, wrong-index fixture failure를 self-test한다. `verify-local.ps1`는 이 verifier를 실행해 evidence contract가 깨지지 않는지 확인한다.
+- plan-only output은 live 성능 증거가 아니다. target-scale MariaDB readiness는 `-Execute` 또는 operator-collected explain files가 모든 expected index를 보여주고, slow-query log 검토가 각 query budget을 만족할 때 확보된다.
+
 ## 17. 구현 순서
 
 1. `organizations`

@@ -2359,6 +2359,16 @@ TC-FE-023 보강: 사용자가 취소한 경우에는 abort API를 호출한다.
 - Priority: P1
 - Automated: `scripts/write-migration-rollback-plan.ps1`, `scripts/verify-migration-rollback-plan.ps1`, `scripts/verify-local.ps1`
 
+### TC-DB-003
+
+- Feature: MariaDB query plan evidence gate.
+- Preconditions: PowerShell is available. For live mode, target MariaDB is reachable and the password is provided through `OSMU_MARIADB_PASSWORD` or the selected `-PasswordEnvVar`.
+- Input: `powershell -ExecutionPolicy Bypass -File .\scripts\verify-mariadb-query-plan-evidence.ps1`; live collection uses `powershell -ExecutionPolicy Bypass -File .\scripts\write-mariadb-query-plan-evidence.ps1 -Execute -HostName <host> -Port <port> -Database <db> -User <user> -PasswordEnvVar OSMU_MARIADB_PASSWORD -FailIfNotPassed`.
+- Steps: Generate plan-only evidence, verify expected-index fixtures, verify wrong-index fixtures fail, then in a target environment collect `EXPLAIN FORMAT=JSON` for object list/tag/trash/version, audit, data-flow, storage expansion, and chargeback retry worker query paths.
+- Expected: Plan-only mode is marked `plan-ready-execute-required`; fixture/live evidence passes only when every checked path uses the expected migration-backed index and no database password is written to JSON or Markdown. Target-scale readiness still requires slow-query log review when query duration exceeds the listed budget.
+- Priority: P1
+- Automated: `scripts/write-mariadb-query-plan-evidence.ps1`, `scripts/verify-mariadb-query-plan-evidence.ps1`, `scripts/verify-local.ps1`
+
 ### TC-OPS-001
 
 - Feature: Operations readiness pending evidence remediation metadata.

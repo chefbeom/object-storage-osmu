@@ -232,6 +232,9 @@ Run "powershell -ExecutionPolicy Bypass -File .\scripts\verify-migration-rollbac
 Step "Metadata index coverage check"
 Run "powershell -ExecutionPolicy Bypass -File .\scripts\verify-metadata-index-coverage.ps1 -NoWrite"
 
+Step "MariaDB query plan evidence check"
+Run "powershell -ExecutionPolicy Bypass -File .\scripts\verify-mariadb-query-plan-evidence.ps1"
+
 if (-not $SkipDocker) {
     Step "Docker Compose config check"
     Run "docker compose --env-file .\infra\local\.env.example -f .\infra\local\docker-compose.yml config --quiet"
