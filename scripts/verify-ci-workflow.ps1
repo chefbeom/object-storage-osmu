@@ -391,6 +391,7 @@ Assert-Contains $kubernetesOperationsReportSyncWorkflowContent "timeout-minutes:
 Assert-Contains $kubernetesOperationsReportSyncWorkflowContent "namespace:" "Kubernetes Operations Report Sync CI workflow"
 Assert-Contains $kubernetesOperationsReportSyncWorkflowContent "report_path:" "Kubernetes Operations Report Sync CI workflow"
 Assert-Contains $kubernetesOperationsReportSyncWorkflowContent "data_flow_storage_plan_json_base64:" "Kubernetes Operations Report Sync CI workflow"
+Assert-Contains $kubernetesOperationsReportSyncWorkflowContent "MariaDB/dual-write plans must include query-plan evidence summary." "Kubernetes Operations Report Sync CI workflow"
 Assert-Contains $kubernetesOperationsReportSyncWorkflowContent "run_live:" "Kubernetes Operations Report Sync CI workflow"
 Assert-Contains $kubernetesOperationsReportSyncWorkflowContent "apply:" "Kubernetes Operations Report Sync CI workflow"
 Assert-Contains $kubernetesOperationsReportSyncWorkflowContent "OSMU_KUBECONFIG_BASE64" "Kubernetes Operations Report Sync CI workflow"

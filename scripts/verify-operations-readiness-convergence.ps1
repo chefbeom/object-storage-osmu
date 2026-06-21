@@ -200,7 +200,8 @@ Assert-Equal $syncRequiredReport.kubernetesReportSyncReady $false "sync required
 Assert-Contains $syncRequiredReport.recommendedCommands[0].command "sync-kubernetes-operations-reports.ps1" "sync required command"
 Assert-Contains $syncRequiredReport.kubernetesReportSyncWorkflowCommand "kubernetes-operations-report-sync-ci.yml" "sync required workflow command"
 Assert-Contains $syncRequiredReport.kubernetesReportSyncWorkflowCommand "data_flow_storage_plan_json_base64=<base64-latest-data-flow-storage-plan-json>" "sync required data-flow workflow input"
-Assert-Contains $syncRequiredReport.kubernetesReportSyncWorkflowNote "omit the input" "sync required workflow note"
+Assert-Contains $syncRequiredReport.kubernetesReportSyncWorkflowNote "sanitized query-plan evidence summary" "sync required workflow note"
+Assert-Contains $syncRequiredReport.kubernetesReportSyncWorkflowNote "Omit the input" "sync required workflow note"
 Assert-Contains $syncRequiredMarkdown "Kubernetes report sync: " "sync required markdown status"
 Assert-Contains $syncRequiredMarkdown "Kubernetes report sync workflow:" "sync required markdown workflow command"
 

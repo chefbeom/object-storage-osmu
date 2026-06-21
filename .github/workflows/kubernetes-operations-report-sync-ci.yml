@@ -12,7 +12,7 @@ on:
         required: true
         default: ./.osmu-run/latest-operations-readiness-convergence.json
       data_flow_storage_plan_json_base64:
-        description: Optional base64-encoded latest-data-flow-storage-plan.json evidence to include in the ConfigMap
+        description: Optional base64-encoded latest-data-flow-storage-plan.json evidence to include in the ConfigMap. MariaDB/dual-write plans must include query-plan evidence summary.
         required: false
         default: ""
       run_live:
