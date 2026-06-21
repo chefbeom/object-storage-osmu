@@ -573,7 +573,7 @@
 - Steps: Open `/admin`, inspect `admin-security-audit-policy-panel`, then follow `admin-security-audit-open-audit-link` to `/audit`.
 - Expected: The panel summarizes access key cleanup/rotation review count, share password/IP controls, audit failure count, quota policy coverage, lifecycle overlap count, and audit evidence rows with stable `admin-security-policy-*` selectors. `/audit` remains the detailed filter/export view.
 - Priority: P1
-- Automated: `npm run test:unit` selector/source contract. Browser navigation E2E is pending.
+- Automated: `npm run test:unit` selector/source contract, Browser E2E `admin can complete lightweight storage portal click path` security/audit navigation assertions.
 
 ### TC-FE-ADMIN-APPROVAL-WORKFLOW
 
