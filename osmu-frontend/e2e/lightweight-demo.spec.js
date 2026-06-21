@@ -525,7 +525,7 @@ test('admin action failures show remediation guidance', async ({ page }) => {
   await expect(page.getByTestId('storage-expansion-panel')).toBeVisible()
 
   const expectRemediation = async ({ code, status, requestId, hasPrimary = true }) => {
-    await expect(page.getByTestId('error-alert')).toContainText(requestId)
+    await expect(page.getByTestId('error-alert')).toContainText(`Request ID ${requestId}`)
     await expect(page.getByTestId('admin-action-remediation-panel')).toBeVisible()
     await expect(page.getByTestId('admin-action-remediation-code')).toContainText(`${code} / HTTP ${status}`)
     await expect(page.getByTestId('admin-action-remediation-detail')).toBeVisible()

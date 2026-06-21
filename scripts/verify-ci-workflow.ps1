@@ -662,6 +662,7 @@ Assert-Contains $browserSpecContent "admin-action-remediation-code" "Browser E2E
 Assert-Contains $browserSpecContent "admin-action-remediation-detail" "Browser E2E spec"
 Assert-Contains $browserSpecContent "admin-action-remediation-steps" "Browser E2E spec"
 Assert-Contains $browserSpecContent "admin-action-remediation-primary" "Browser E2E spec"
+Assert-Contains $browserSpecContent 'Request ID ${requestId}' "Browser E2E spec"
 Assert-Contains $browserSpecContent "login-submit-button" "Browser E2E spec"
 Assert-Contains $browserSpecContent "login-mode-developer" "Browser E2E spec"
 Assert-Contains $browserSpecContent "developer-page" "Browser E2E spec"

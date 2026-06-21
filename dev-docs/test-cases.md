@@ -1849,7 +1849,7 @@ Evidence note: `npm run test:unit` covers stable bucket row cell selectors, and 
 - 절차: Web Portal에서 오류가 발생하는 작업을 수행한다.
 - 기대 결과: alert에 사용자용 오류 메시지와 `Request ID`가 함께 표시된다.
 - 우선순위: P1
-- 자동화 여부: Automated (`npm run test:unit` API client `error.requestId`, `X-Request-Id`, S3 XML `RequestId` extraction). Browser alert E2E는 pending.
+- 자동화 여부: Automated (`npm run test:unit` API client `error.requestId`, `X-Request-Id`, S3 XML `RequestId` extraction, Browser E2E `admin action failures show remediation guidance` request-id alert assertions).
 
 ### TC-FE-013
 
