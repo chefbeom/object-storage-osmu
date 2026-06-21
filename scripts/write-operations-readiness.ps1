@@ -238,9 +238,9 @@ $containerSecurityRemediation = New-Remediation `
     "The workflow writes .osmu-run/latest-container-security-evidence.json after Trivy high/critical scans and SPDX SBOM generation."
 $storageBackendTelemetryRemediation = New-Remediation `
     "powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\write-storage-backend-telemetry-evidence.ps1 -EnvironmentName <env> -TargetCluster <cluster> -Operator <operator> -MinioAlias <alias> -EvidenceRef <run-ref> -AdminInfoJsonPath .\.osmu-run\minio-admin-info.json -FailIfNotPassed" `
-    "" `
-    "" `
-    "Run after collecting target MinIO pool/node telemetry with mc admin info --json. The evidence stores summary counts, byte totals, server states, input SHA-256, and external references only; do not pass raw credentials, bearer tokens, private keys, kubeconfig, MinIO root credentials, or object data."
+    ".github/workflows/manual-storage-backend-telemetry-evidence.yml" `
+    "gh workflow run manual-storage-backend-telemetry-evidence.yml -f environment_name=<env> -f target_cluster=<cluster> -f operator=<operator> -f minio_alias=<alias> -f evidence_ref=<run-ref> -f fail_if_not_passed=true" `
+    "Run after collecting target MinIO pool/node telemetry with mc admin info --json, or dispatch the manual workflow after setting OSMU_MINIO_ADMIN_INFO_JSON_BASE64 to base64-encoded admin-info JSON. The evidence stores summary counts, byte totals, server states, input SHA-256, and external references only; do not pass raw credentials, bearer tokens, private keys, kubeconfig, MinIO root credentials, or object data."
 $secretRotationRemediation = New-Remediation `
     "powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\write-secret-rotation-evidence.ps1 -EnvironmentName <env> -TargetCluster <cluster> -Operator <operator> -RotationStartedAt <iso-time> -RotationCompletedAt <iso-time> -ChangeApprovalRef <change-id> -SecretManagerEvidenceRef <audit-ref> -WorkloadRestartEvidenceRef <rollout-ref> -SmokeEvidenceRef <smoke-ref> -ArtifactLeakReviewEvidenceRef <scan-ref> -AccessKeyEncryptionDecisionRef <decision-ref> -RotateAdminPassword -RotateJwtSigningSecret -RotateDatabaseCredentials -RotateMinioRootCredentials -RotateTlsCertificate -ConfirmNoSecretValues -ConfirmWorkloadRestart -ConfirmSmokePassed -ConfirmArtifactLeakReview -FailIfNotPassed" `
     ".github/workflows/manual-secret-rotation-evidence.yml" `
@@ -303,6 +303,7 @@ Add-FileCheck "Image signing evidence writer" "security-hardening" ".\scripts\wr
 Add-FileCheck "Security evidence writer self-test" "security-hardening" ".\scripts\verify-security-evidence-writers.ps1" "security evidence writer self-test committed"
 Add-FileCheck "Storage backend telemetry evidence writer" "storage-backend" ".\scripts\write-storage-backend-telemetry-evidence.ps1" "storage backend telemetry evidence writer committed"
 Add-FileCheck "Storage backend telemetry evidence writer self-test" "storage-backend" ".\scripts\verify-storage-backend-telemetry-evidence.ps1" "storage backend telemetry evidence writer self-test committed"
+Add-FileCheck "Storage backend telemetry evidence workflow" "storage-backend" ".\.github\workflows\manual-storage-backend-telemetry-evidence.yml" "manual workflow for storage backend telemetry evidence"
 Add-FileCheck "Secret rotation evidence writer" "security-hardening" ".\scripts\write-secret-rotation-evidence.ps1" "secret rotation evidence writer committed"
 Add-FileCheck "Secret rotation evidence writer self-test" "security-hardening" ".\scripts\verify-secret-rotation-evidence.ps1" "secret rotation evidence writer self-test committed"
 Add-FileCheck "Secret rotation evidence workflow" "security-hardening" ".\.github\workflows\manual-secret-rotation-evidence.yml" "manual workflow for target secret/certificate rotation evidence"

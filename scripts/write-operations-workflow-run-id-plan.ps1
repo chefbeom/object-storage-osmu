@@ -56,6 +56,9 @@ function Get-ManualEvidenceWorkflowName([string] $Command) {
     if ([string]::IsNullOrWhiteSpace($Command)) {
         return ""
     }
+    if ($Command.Contains("write-storage-backend-telemetry-evidence.ps1")) {
+        return "manual-storage-backend-telemetry-evidence.yml"
+    }
     if ($Command.Contains("write-secret-rotation-evidence.ps1")) {
         return "manual-secret-rotation-evidence.yml"
     }
@@ -160,6 +163,13 @@ function New-WorkflowMetadata([string] $Workflow) {
             artifactNameTemplate = "security-evidence-finalizer-{runId}"
             requiredForReadiness = $true
             note = "Required by operations readiness artifact import."
+        }
+        "manual-storage-backend-telemetry-evidence.yml" = [ordered]@{
+            group = "storage-backend-telemetry"
+            runIdParameter = "StorageBackendTelemetryRunId"
+            artifactNameTemplate = "storage-backend-telemetry-evidence-{runId}"
+            requiredForReadiness = $true
+            note = "Required by operations readiness artifact import when target MinIO admin info telemetry evidence is part of the invocation."
         }
         "manual-secret-rotation-evidence.yml" = [ordered]@{
             group = "secret-rotation"

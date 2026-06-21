@@ -4,6 +4,7 @@ param(
     [string] $KubernetesDrArtifactPath = "",
     [string] $IamRbacArtifactPath = "",
     [string] $SecurityEvidenceArtifactPath = "",
+    [string] $StorageBackendTelemetryArtifactPath = "",
     [string] $SecretRotationArtifactPath = "",
     [string] $CommercialIntegrationArtifactPath = "",
     [string] $CommercialApprovalArtifactPath = "",
@@ -167,6 +168,9 @@ Import-EvidenceFile "security-evidence" $SecurityEvidenceArtifactPath "latest-se
 Import-EvidenceFile "security-evidence" $SecurityEvidenceArtifactPath "latest-image-signing-evidence.json" $true "result" "passed"
 Import-EvidenceFile "security-evidence" $SecurityEvidenceArtifactPath "latest-container-security-evidence.json" $true "result" "passed"
 
+Import-EvidenceFile "storage-backend-telemetry" $StorageBackendTelemetryArtifactPath "latest-storage-backend-telemetry.json" $true "result" "passed"
+Import-EvidenceFile "storage-backend-telemetry" $StorageBackendTelemetryArtifactPath "latest-storage-backend-telemetry.md" $false
+
 Import-EvidenceFile "secret-rotation" $SecretRotationArtifactPath "latest-secret-rotation-evidence.json" $true "result" "passed"
 Import-EvidenceFile "secret-rotation" $SecretRotationArtifactPath "latest-secret-rotation-evidence.md" $false
 
@@ -194,6 +198,7 @@ $selectedGroups = @(
     @("kubernetes-dr", $KubernetesDrArtifactPath),
     @("iam-rbac", $IamRbacArtifactPath),
     @("security-evidence", $SecurityEvidenceArtifactPath),
+    @("storage-backend-telemetry", $StorageBackendTelemetryArtifactPath),
     @("secret-rotation", $SecretRotationArtifactPath),
     @("commercial-integration", $CommercialIntegrationArtifactPath),
     @("commercial-approval", $CommercialApprovalArtifactPath),

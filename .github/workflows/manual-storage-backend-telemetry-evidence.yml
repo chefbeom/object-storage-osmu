@@ -1,0 +1,97 @@
+name: Manual Storage Backend Telemetry Evidence
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment_name:
+        description: Target environment label
+        required: true
+        default: prod
+      target_cluster:
+        description: Target cluster label
+        required: true
+        default: osmu-prod
+      operator:
+        description: Operator or team recording the evidence
+        required: true
+        default: ""
+      minio_alias:
+        description: Non-secret MinIO alias label
+        required: true
+        default: osmu-minio
+      evidence_ref:
+        description: External evidence or change reference
+        required: true
+        default: ""
+      fail_if_not_passed:
+        description: Fail workflow when evidence result is not passed
+        required: true
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: manual-storage-backend-telemetry-evidence-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  storage-backend-telemetry-evidence:
+    name: Manual storage backend telemetry evidence
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Record storage backend telemetry evidence
+        shell: pwsh
+        env:
+          OSMU_ENVIRONMENT_NAME: ${{ inputs.environment_name }}
+          OSMU_TARGET_CLUSTER: ${{ inputs.target_cluster }}
+          OSMU_OPERATOR: ${{ inputs.operator }}
+          OSMU_MINIO_ALIAS: ${{ inputs.minio_alias }}
+          OSMU_EVIDENCE_REF: ${{ inputs.evidence_ref }}
+          OSMU_FAIL_IF_NOT_PASSED: ${{ inputs.fail_if_not_passed }}
+          OSMU_MINIO_ADMIN_INFO_JSON_BASE64: ${{ secrets.OSMU_MINIO_ADMIN_INFO_JSON_BASE64 }}
+        run: |
+          if (-not $env:OSMU_MINIO_ADMIN_INFO_JSON_BASE64) {
+            throw "OSMU_MINIO_ADMIN_INFO_JSON_BASE64 secret is required. Store base64-encoded mc admin info --json output as a GitHub secret; raw admin info is not uploaded."
+          }
+
+          New-Item -ItemType Directory -Force -Path ".osmu-run" | Out-Null
+          $adminInfoPath = ".osmu-run/minio-admin-info.json"
+          [IO.File]::WriteAllBytes($adminInfoPath, [Convert]::FromBase64String($env:OSMU_MINIO_ADMIN_INFO_JSON_BASE64))
+
+          $evidenceArgs = @(
+            "-EnvironmentName", $env:OSMU_ENVIRONMENT_NAME,
+            "-TargetCluster", $env:OSMU_TARGET_CLUSTER,
+            "-Operator", $env:OSMU_OPERATOR,
+            "-MinioAlias", $env:OSMU_MINIO_ALIAS,
+            "-EvidenceRef", $env:OSMU_EVIDENCE_REF,
+            "-AdminInfoJsonPath", $adminInfoPath,
+            "-JsonOutputPath", ".osmu-run/latest-storage-backend-telemetry.json",
+            "-MarkdownOutputPath", ".osmu-run/latest-storage-backend-telemetry.md"
+          )
+          if ($env:OSMU_FAIL_IF_NOT_PASSED -eq "true") { $evidenceArgs += "-FailIfNotPassed" }
+
+          ./scripts/write-storage-backend-telemetry-evidence.ps1 @evidenceArgs
+
+      - name: Remove raw admin info input
+        if: always()
+        shell: pwsh
+        run: |
+          Remove-Item -LiteralPath ".osmu-run/minio-admin-info.json" -Force -ErrorAction SilentlyContinue
+
+      - name: Upload storage backend telemetry evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: storage-backend-telemetry-evidence-${{ github.run_id }}
+          path: |
+            .osmu-run/latest-storage-backend-telemetry.json
+            .osmu-run/latest-storage-backend-telemetry.md
+          if-no-files-found: error
+          retention-days: 14

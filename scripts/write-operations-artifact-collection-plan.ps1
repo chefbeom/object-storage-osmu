@@ -9,6 +9,7 @@ param(
     [string] $ImageSigningRunId = "",
     [string] $ContainerSecurityRunId = "",
     [string] $SecurityEvidenceRunId = "",
+    [string] $StorageBackendTelemetryRunId = "",
     [string] $SecretRotationRunId = "",
     [string] $CommercialIntegrationRunId = "",
     [string] $CommercialApprovalRunId = "",
@@ -124,6 +125,7 @@ if ($invocation.formatVersion -ne "osmu.operations-evidence-plan-invocation.v1")
 }
 
 $workflows = New-Object System.Collections.Generic.HashSet[string]
+$hasStorageBackendTelemetryEvidence = $false
 $hasSecretRotationEvidence = $false
 $hasCommercialIntegrationEvidence = $false
 $hasCommercialApprovalEvidence = $false
@@ -134,6 +136,9 @@ foreach ($action in @($invocation.actions)) {
     Add-UniqueWorkflow $workflows (Get-WorkflowName $command)
     if (Test-CommandMentions $command "write-secret-rotation-evidence.ps1") {
         $hasSecretRotationEvidence = $true
+    }
+    if (Test-CommandMentions $command "write-storage-backend-telemetry-evidence.ps1") {
+        $hasStorageBackendTelemetryEvidence = $true
     }
     if (Test-CommandMentions $command "write-commercial-integration-evidence.ps1") {
         $hasCommercialIntegrationEvidence = $true
@@ -157,6 +162,7 @@ $iamRbacRun = Get-RunIdOrPlaceholder $IamRbacRunId "iam-rbac-run-id"
 $imageSigningRun = Get-RunIdOrPlaceholder $ImageSigningRunId "image-signing-run-id"
 $containerSecurityRun = Get-RunIdOrPlaceholder $ContainerSecurityRunId "container-security-run-id"
 $securityEvidenceRun = Get-RunIdOrPlaceholder $SecurityEvidenceRunId "security-evidence-run-id"
+$storageBackendTelemetryRun = Get-RunIdOrPlaceholder $StorageBackendTelemetryRunId "storage-backend-telemetry-run-id"
 $secretRotationRun = Get-RunIdOrPlaceholder $SecretRotationRunId "secret-rotation-run-id"
 $commercialIntegrationRun = Get-RunIdOrPlaceholder $CommercialIntegrationRunId "commercial-integration-run-id"
 $commercialApprovalRun = Get-RunIdOrPlaceholder $CommercialApprovalRunId "commercial-approval-run-id"
@@ -184,6 +190,9 @@ if ($workflows.Contains("container-security-ci.yml")) {
 }
 if ($workflows.Contains("security-evidence-finalizer-ci.yml")) {
     Add-Artifact $artifacts "security-evidence" "security-evidence-finalizer-ci.yml" $securityEvidenceRun "security_evidence_run_id" "security-evidence-finalizer-$securityEvidenceRun" "security_evidence_artifact_name" ".osmu-run/operations-readiness-artifacts/security-evidence" $true "Imports latest-security-evidence-finalize.json, image signing evidence, and container security evidence."
+}
+if ($hasStorageBackendTelemetryEvidence -or $workflows.Contains("manual-storage-backend-telemetry-evidence.yml")) {
+    Add-Artifact $artifacts "storage-backend-telemetry" "manual-storage-backend-telemetry-evidence.yml" $storageBackendTelemetryRun "storage_backend_telemetry_run_id" "storage-backend-telemetry-evidence-$storageBackendTelemetryRun" "storage_backend_telemetry_artifact_name" ".osmu-run/operations-readiness-artifacts/storage-backend-telemetry" $true "Imports latest-storage-backend-telemetry.json from target MinIO admin info telemetry evidence."
 }
 if ($hasSecretRotationEvidence) {
     Add-Artifact $artifacts "secret-rotation" "manual-secret-rotation-evidence.yml" $secretRotationRun "secret_rotation_run_id" "secret-rotation-evidence-$secretRotationRun" "secret_rotation_artifact_name" ".osmu-run/operations-readiness-artifacts/secret-rotation" $true "Imports latest-secret-rotation-evidence.json from target secret/certificate rotation evidence."
@@ -244,6 +253,9 @@ foreach ($artifact in $requiredArtifacts) {
     }
     elseif ($group -eq "security-evidence") {
         $localImportArgs.Add("-SecurityEvidenceArtifactPath $downloadPath")
+    }
+    elseif ($group -eq "storage-backend-telemetry") {
+        $localImportArgs.Add("-StorageBackendTelemetryArtifactPath $downloadPath")
     }
     elseif ($group -eq "secret-rotation") {
         $localImportArgs.Add("-SecretRotationArtifactPath $downloadPath")

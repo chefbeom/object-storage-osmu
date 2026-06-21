@@ -43,6 +43,14 @@ on:
         description: Optional Security Evidence Finalizer CI artifact name
         required: false
         default: ""
+      storage_backend_telemetry_run_id:
+        description: Optional storage backend telemetry evidence run id
+        required: false
+        default: ""
+      storage_backend_telemetry_artifact_name:
+        description: Optional storage backend telemetry evidence artifact name
+        required: false
+        default: ""
       secret_rotation_run_id:
         description: Optional secret rotation evidence run id
         required: false
@@ -160,6 +168,15 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           path: .osmu-run/operations-readiness-artifacts/security-evidence
 
+      - name: Download storage backend telemetry evidence
+        if: ${{ inputs.storage_backend_telemetry_run_id != '' && inputs.storage_backend_telemetry_artifact_name != '' }}
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ inputs.storage_backend_telemetry_artifact_name }}
+          run-id: ${{ inputs.storage_backend_telemetry_run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: .osmu-run/operations-readiness-artifacts/storage-backend-telemetry
+
       - name: Download secret rotation evidence
         if: ${{ inputs.secret_rotation_run_id != '' && inputs.secret_rotation_artifact_name != '' }}
         uses: actions/download-artifact@v4
@@ -228,6 +245,7 @@ jobs:
             @("KubernetesDrArtifactPath", ".osmu-run/operations-readiness-artifacts/kubernetes-dr"),
             @("IamRbacArtifactPath", ".osmu-run/operations-readiness-artifacts/iam-rbac"),
             @("SecurityEvidenceArtifactPath", ".osmu-run/operations-readiness-artifacts/security-evidence"),
+            @("StorageBackendTelemetryArtifactPath", ".osmu-run/operations-readiness-artifacts/storage-backend-telemetry"),
             @("SecretRotationArtifactPath", ".osmu-run/operations-readiness-artifacts/secret-rotation"),
             @("CommercialIntegrationArtifactPath", ".osmu-run/operations-readiness-artifacts/commercial-integration"),
             @("CommercialApprovalArtifactPath", ".osmu-run/operations-readiness-artifacts/commercial-approval"),
@@ -277,6 +295,8 @@ jobs:
             .osmu-run/latest-security-evidence-finalize.md
             .osmu-run/latest-image-signing-evidence.json
             .osmu-run/latest-container-security-evidence.json
+            .osmu-run/latest-storage-backend-telemetry.json
+            .osmu-run/latest-storage-backend-telemetry.md
             .osmu-run/latest-secret-rotation-evidence.json
             .osmu-run/latest-secret-rotation-evidence.md
             .osmu-run/latest-commercial-integration-evidence.json

@@ -45,6 +45,7 @@ $haDrSource = Join-Path $sourceRoot "ha-dr-readiness"
 $kubernetesDrSource = Join-Path $sourceRoot "kubernetes-dr"
 $iamSource = Join-Path $sourceRoot "iam-rbac"
 $securitySource = Join-Path $sourceRoot "security-evidence"
+$storageBackendTelemetrySource = Join-Path $sourceRoot "storage-backend-telemetry"
 $secretRotationSource = Join-Path $sourceRoot "secret-rotation"
 $commercialIntegrationSource = Join-Path $sourceRoot "commercial-integration"
 $commercialApprovalSource = Join-Path $sourceRoot "commercial-approval"
@@ -83,6 +84,20 @@ Write-JsonEvidence (Join-Path $securitySource "latest-container-security-evidenc
     formatVersion = "osmu.container-security-evidence.v1"
     result = "passed"
 }
+Write-JsonEvidence (Join-Path $storageBackendTelemetrySource "latest-storage-backend-telemetry.json") @{
+    formatVersion = "osmu.storage-backend-telemetry.v1"
+    result = "passed"
+    source = @{
+        rawAdminInfoStored = $false
+    }
+    summary = @{
+        capacityKnown = $true
+        totalBytes = 1024
+        usedBytes = 256
+        freeBytes = 768
+    }
+}
+Write-TextEvidence (Join-Path $storageBackendTelemetrySource "latest-storage-backend-telemetry.md") "# Storage backend telemetry"
 Write-JsonEvidence (Join-Path $secretRotationSource "latest-secret-rotation-evidence.json") @{
     formatVersion = "osmu.secret-rotation-evidence.v1"
     result = "passed"
@@ -135,6 +150,7 @@ $importScript = Resolve-ProjectPath ".\scripts\import-operations-readiness-artif
     -KubernetesDrArtifactPath $kubernetesDrSource `
     -IamRbacArtifactPath $iamSource `
     -SecurityEvidenceArtifactPath $securitySource `
+    -StorageBackendTelemetryArtifactPath $storageBackendTelemetrySource `
     -SecretRotationArtifactPath $secretRotationSource `
     -CommercialIntegrationArtifactPath $commercialIntegrationSource `
     -CommercialApprovalArtifactPath $commercialApprovalSource `
@@ -161,6 +177,8 @@ Assert-True (Test-Path -LiteralPath (Join-Path $promotedRoot "latest-iam-rbac-fi
 Assert-True (Test-Path -LiteralPath (Join-Path $promotedRoot "latest-security-evidence-finalize.json")) "Promoted security finalizer evidence missing."
 Assert-True (Test-Path -LiteralPath (Join-Path $promotedRoot "latest-image-signing-evidence.json")) "Promoted image signing evidence missing."
 Assert-True (Test-Path -LiteralPath (Join-Path $promotedRoot "latest-container-security-evidence.json")) "Promoted container security evidence missing."
+Assert-True (Test-Path -LiteralPath (Join-Path $promotedRoot "latest-storage-backend-telemetry.json")) "Promoted storage backend telemetry evidence missing."
+Assert-True (Test-Path -LiteralPath (Join-Path $promotedRoot "latest-storage-backend-telemetry.md")) "Promoted storage backend telemetry markdown missing."
 Assert-True (Test-Path -LiteralPath (Join-Path $promotedRoot "latest-secret-rotation-evidence.json")) "Promoted secret rotation evidence missing."
 Assert-True (Test-Path -LiteralPath (Join-Path $promotedRoot "latest-secret-rotation-evidence.md")) "Promoted secret rotation markdown missing."
 Assert-True (Test-Path -LiteralPath (Join-Path $promotedRoot "latest-commercial-integration-evidence.json")) "Promoted commercial integration evidence missing."
@@ -172,8 +190,11 @@ Assert-True (Test-Path -LiteralPath (Join-Path $promotedRoot "latest-operations-
 Assert-True (Test-Path -LiteralPath (Join-Path $promotedRoot "latest-operations-handoff-package.md")) "Promoted operations handoff package markdown missing."
 Assert-True (Test-Path -LiteralPath (Join-Path $promotedRoot "latest-kubernetes-operations-report-sync.json")) "Promoted Kubernetes operations report sync evidence missing."
 $promotedCommercialApproval = Get-Content -Raw -LiteralPath (Join-Path $promotedRoot "latest-commercial-approval-evidence.json") | ConvertFrom-Json
+$promotedStorageBackendTelemetry = Get-Content -Raw -LiteralPath (Join-Path $promotedRoot "latest-storage-backend-telemetry.json") | ConvertFrom-Json
 $promotedSecretRotation = Get-Content -Raw -LiteralPath (Join-Path $promotedRoot "latest-secret-rotation-evidence.json") | ConvertFrom-Json
 $promotedCommercialIntegration = Get-Content -Raw -LiteralPath (Join-Path $promotedRoot "latest-commercial-integration-evidence.json") | ConvertFrom-Json
+Assert-True ($promotedStorageBackendTelemetry.result -eq "passed") "Promoted storage backend telemetry evidence should preserve result=passed."
+Assert-True ($promotedStorageBackendTelemetry.source.rawAdminInfoStored -eq $false) "Promoted storage backend telemetry evidence should preserve rawAdminInfoStored=false."
 Assert-True ($promotedSecretRotation.result -eq "passed") "Promoted secret rotation evidence should preserve result=passed."
 Assert-True ($promotedCommercialIntegration.result -eq "passed") "Promoted commercial integration evidence should preserve result=passed."
 Assert-True ($promotedCommercialApproval.result -eq "passed") "Promoted commercial approval evidence should preserve result=passed."

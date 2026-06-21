@@ -12,6 +12,7 @@ param(
     [string] $KubernetesOperationsReportSyncWorkflowPath = ".\.github\workflows\kubernetes-operations-report-sync-ci.yml",
     [string] $OperationsReadinessFinalizerWorkflowPath = ".\.github\workflows\operations-readiness-finalizer-ci.yml",
     [string] $OperationsReadinessArtifactFinalizerWorkflowPath = ".\.github\workflows\operations-readiness-artifact-finalizer-ci.yml",
+    [string] $ManualStorageBackendTelemetryEvidenceWorkflowPath = ".\.github\workflows\manual-storage-backend-telemetry-evidence.yml",
     [string] $ManualSecretRotationEvidenceWorkflowPath = ".\.github\workflows\manual-secret-rotation-evidence.yml",
     [string] $ManualCommercialIntegrationEvidenceWorkflowPath = ".\.github\workflows\manual-commercial-integration-evidence.yml",
     [string] $ManualCommercialApprovalEvidenceWorkflowPath = ".\.github\workflows\manual-commercial-approval-evidence.yml",
@@ -488,6 +489,7 @@ Assert-Contains $operationsReadinessArtifactWorkflowContent "Download enterprise
 Assert-Contains $operationsReadinessArtifactWorkflowContent "Download operations handoff package evidence" "Operations Readiness Artifact Finalizer CI workflow"
 Assert-Contains $operationsReadinessArtifactWorkflowContent "Download Kubernetes operations report sync evidence" "Operations Readiness Artifact Finalizer CI workflow"
 Assert-Contains $operationsReadinessArtifactWorkflowContent "SecretRotationArtifactPath" "Operations Readiness Artifact Finalizer CI workflow"
+Assert-Contains $operationsReadinessArtifactWorkflowContent "StorageBackendTelemetryArtifactPath" "Operations Readiness Artifact Finalizer CI workflow"
 Assert-Contains $operationsReadinessArtifactWorkflowContent "CommercialIntegrationArtifactPath" "Operations Readiness Artifact Finalizer CI workflow"
 Assert-Contains $operationsReadinessArtifactWorkflowContent "CommercialApprovalArtifactPath" "Operations Readiness Artifact Finalizer CI workflow"
 Assert-Contains $operationsReadinessArtifactWorkflowContent "EnterpriseAuthArtifactPath" "Operations Readiness Artifact Finalizer CI workflow"
@@ -510,6 +512,7 @@ Assert-Contains $operationsReadinessArtifactWorkflowContent "Download Kubernetes
 Assert-Contains $operationsReadinessArtifactWorkflowContent "Download Kubernetes DR finalizer evidence" "Operations Readiness Artifact Finalizer CI workflow"
 Assert-Contains $operationsReadinessArtifactWorkflowContent "Download IAM RBAC finalizer evidence" "Operations Readiness Artifact Finalizer CI workflow"
 Assert-Contains $operationsReadinessArtifactWorkflowContent "Download security evidence finalizer artifact" "Operations Readiness Artifact Finalizer CI workflow"
+Assert-Contains $operationsReadinessArtifactWorkflowContent "Download storage backend telemetry evidence" "Operations Readiness Artifact Finalizer CI workflow"
 Assert-Contains $operationsReadinessArtifactWorkflowContent "Import downloaded evidence artifacts" "Operations Readiness Artifact Finalizer CI workflow"
 Assert-Contains $operationsReadinessArtifactWorkflowContent "./scripts/import-operations-readiness-artifacts.ps1" "Operations Readiness Artifact Finalizer CI workflow"
 Assert-Contains $operationsReadinessArtifactWorkflowContent "Write operations readiness report" "Operations Readiness Artifact Finalizer CI workflow"
@@ -523,6 +526,26 @@ Assert-Contains $operationsReadinessArtifactWorkflowContent ".osmu-run/latest-st
 Assert-Contains $operationsReadinessArtifactWorkflowContent ".osmu-run/latest-kubernetes-ha-dr-readiness.json" "Operations Readiness Artifact Finalizer CI workflow"
 Assert-Contains $operationsReadinessArtifactWorkflowContent ".osmu-run/latest-kubernetes-dr-finalize.json" "Operations Readiness Artifact Finalizer CI workflow"
 Assert-Contains $operationsReadinessArtifactWorkflowContent ".osmu-run/latest-security-evidence-finalize.json" "Operations Readiness Artifact Finalizer CI workflow"
+Assert-Contains $operationsReadinessArtifactWorkflowContent ".osmu-run/latest-storage-backend-telemetry.json" "Operations Readiness Artifact Finalizer CI workflow"
+
+$manualStorageBackendTelemetryWorkflow = Read-Workflow $ManualStorageBackendTelemetryEvidenceWorkflowPath "Manual Storage Backend Telemetry Evidence workflow"
+$manualStorageBackendTelemetryWorkflowContent = $manualStorageBackendTelemetryWorkflow.Content
+
+Assert-Contains $manualStorageBackendTelemetryWorkflowContent "name: Manual Storage Backend Telemetry Evidence" "Manual Storage Backend Telemetry Evidence workflow"
+Assert-Contains $manualStorageBackendTelemetryWorkflowContent "workflow_dispatch:" "Manual Storage Backend Telemetry Evidence workflow"
+Assert-NotContains $manualStorageBackendTelemetryWorkflowContent "pull_request:" "Manual Storage Backend Telemetry Evidence workflow"
+Assert-NotContains $manualStorageBackendTelemetryWorkflowContent "push:" "Manual Storage Backend Telemetry Evidence workflow"
+Assert-Contains $manualStorageBackendTelemetryWorkflowContent "contents: read" "Manual Storage Backend Telemetry Evidence workflow"
+Assert-Contains $manualStorageBackendTelemetryWorkflowContent "runs-on: ubuntu-latest" "Manual Storage Backend Telemetry Evidence workflow"
+Assert-Contains $manualStorageBackendTelemetryWorkflowContent "timeout-minutes: 15" "Manual Storage Backend Telemetry Evidence workflow"
+Assert-Contains $manualStorageBackendTelemetryWorkflowContent "OSMU_MINIO_ADMIN_INFO_JSON_BASE64" "Manual Storage Backend Telemetry Evidence workflow"
+Assert-Contains $manualStorageBackendTelemetryWorkflowContent "Record storage backend telemetry evidence" "Manual Storage Backend Telemetry Evidence workflow"
+Assert-Contains $manualStorageBackendTelemetryWorkflowContent "./scripts/write-storage-backend-telemetry-evidence.ps1" "Manual Storage Backend Telemetry Evidence workflow"
+Assert-Contains $manualStorageBackendTelemetryWorkflowContent "Remove raw admin info input" "Manual Storage Backend Telemetry Evidence workflow"
+Assert-Contains $manualStorageBackendTelemetryWorkflowContent "actions/upload-artifact@v4" "Manual Storage Backend Telemetry Evidence workflow"
+Assert-Contains $manualStorageBackendTelemetryWorkflowContent "storage-backend-telemetry-evidence-" "Manual Storage Backend Telemetry Evidence workflow"
+Assert-Contains $manualStorageBackendTelemetryWorkflowContent ".osmu-run/latest-storage-backend-telemetry.json" "Manual Storage Backend Telemetry Evidence workflow"
+Assert-Contains $manualStorageBackendTelemetryWorkflowContent ".osmu-run/latest-storage-backend-telemetry.md" "Manual Storage Backend Telemetry Evidence workflow"
 
 $manualSecretRotationWorkflow = Read-Workflow $ManualSecretRotationEvidenceWorkflowPath "Manual Secret Rotation Evidence workflow"
 $manualSecretRotationWorkflowContent = $manualSecretRotationWorkflow.Content
@@ -850,6 +873,7 @@ Write-Host "Kubernetes DR Finalizer workflow: $($kubernetesDrWorkflow.Path)"
 Write-Host "Kubernetes Operations Report Sync workflow: $($kubernetesOperationsReportSyncWorkflow.Path)"
 Write-Host "Operations Readiness Finalizer workflow: $($operationsReadinessWorkflow.Path)"
 Write-Host "Operations Readiness Artifact Finalizer workflow: $($operationsReadinessArtifactWorkflow.Path)"
+Write-Host "Manual Storage Backend Telemetry Evidence workflow: $($manualStorageBackendTelemetryWorkflow.Path)"
 Write-Host "Manual Secret Rotation Evidence workflow: $($manualSecretRotationWorkflow.Path)"
 Write-Host "Manual Commercial Integration Evidence workflow: $($manualCommercialIntegrationWorkflow.Path)"
 Write-Host "Manual Commercial Approval Evidence workflow: $($manualCommercialApprovalWorkflow.Path)"
