@@ -41,7 +41,7 @@ OSMU는 기업 내부에서 대용량 파일, 이미지, 영상, 로그, 비정�
 | 기획/요구사항/문서 | 70% | 목표, API, DB, 배포, 보안, 테스트 문서가 있음 |
 | 프론트엔드 콘솔 | 55% | 로그인, 페이지 분리, 대시보드 palette, data-flow monitoring 패널과 daily rollup 표시/daily rollup CSV export/materialized rollup refresh/read/export, chargeback daily rollup trend 표시/export, operations readiness 요약/remediation/evidence plan/invocation/invocation unblock/dispatch preflight/workflow run id/artifact collection/artifact import/finalizer/evidence handoff action 표시, 관리자 작업 실패 remediation UX, admin/developer 화면 뼈대가 있음 |
 | 백엔드 REST API | 57% | auth, bucket, object, access key, admin, dashboard, data-flow monitoring/daily rollup/materialized rollup refresh/read/export/retention cleanup/detailed CSV/daily rollup CSV, billing pricing policy/proposal approval, chargeback preview/daily rollup trend/export/daily trend CSV export/threshold alerts/notification preview/outbox/webhook send/adapter retry state/draft invoice export/persistence/internal approval/final invoice/payment state workflow/payment provider handoff outbox/webhook handoff send/adapter retry state/payment provider adapter readiness, storage expansion, restore drill evidence history, operations readiness dashboard evidence/remediation/evidence plan/invocation/invocation unblock/dispatch preflight/workflow run id/artifact collection/artifact import/finalizer/evidence handoff API가 있음 |
-| MariaDB metadata | 38% | Flyway migration 58개, repository 구현, metadata index coverage static gate가 있음 |
+| MariaDB metadata | 39% | Flyway migration 58개, repository 구현, migration rollback plan gate, metadata index coverage static gate가 있음 |
 | MinIO/S3 호환 | 35% | S3 API 일부, SigV4, MinIO adapter, smoke script가 있음. 목표는 AWS 완전 호환이 아니라 주요 클라이언트 대체 사용 가능성 |
 | Docker/local demo | 90% | Docker/MariaDB/MinIO/backend/frontend durable gate, Browser E2E, Docker integration smoke, Dockerized real S3 client smoke가 `docker-mc` 기준 통과 |
 | Kubernetes/Helm | 75% | Draft manifests/Helm chart, ServiceAccount hardening, storage expansion RBAC, backup CronJobs, backup drill evidence script, restore namespace preparation helper, external DR bucket bootstrap, external DR bucket immutability preflight, bounded and hardened external DR artifact transfer helper, backup artifact preflight helper, isolated restore drill helper, DR drill orchestration wrapper, restore smoke helper, DR evidence API request helper, Kubernetes DR finalization wrapper, Kubernetes DR Finalizer CI workflow, storage expansion finalization wrapper, Storage Expansion Finalizer CI workflow, dedicated Kubernetes HA/DR Readiness CI workflow, Operations Readiness Finalizer CI workflow, Operations Readiness Artifact Finalizer CI workflow, operations readiness artifact gate, PDB, topology spread, and live HA/DR evidence script exist; actual cluster verification is still needed |
@@ -301,11 +301,11 @@ MVP 데모 기준 완료율은 약 90~95%입니다.
 - in-memory repository와 MariaDB repository 병행 구조
 - object metadata drift reconciliation을 위한 bucket 단위 metadata scan과 sync summary
 - metadata index coverage static gate: `scripts/verify-metadata-index-coverage.ps1`가 object/tag/version/trash, audit, data-flow, storage expansion, chargeback retry worker index prefix를 migration SQL에서 검증한다.
+- migration rollback plan gate: `scripts/write-migration-rollback-plan.ps1`와 `scripts/verify-migration-rollback-plan.ps1`가 Flyway forward-only 경계를 명시하고 backup-before-migration, restore rollback, post-write compensating migration 절차를 evidence로 남긴다.
 
 남은 것:
 
 - 실제 MariaDB integration test
-- migration rollback 전략
 - 실제 MariaDB EXPLAIN/slow query 검증
 - backup/restore drill 실검증
 

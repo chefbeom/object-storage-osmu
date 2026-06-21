@@ -204,7 +204,7 @@ powershell -ExecutionPolicy Bypass -File .\scripts\verify-prototype-prerequisite
 powershell -ExecutionPolicy Bypass -File .\scripts\verify-local.ps1 -JavaHome C:\jdk-17
 ```
 
-`verify-local.ps1`는 Flyway migration version과 함께 `scripts/verify-metadata-index-coverage.ps1`로 metadata/data-flow/audit/storage expansion/chargeback retry 주요 index prefix도 정적으로 확인한다.
+`verify-local.ps1`는 Flyway migration version, `scripts/write-migration-rollback-plan.ps1`/`scripts/verify-migration-rollback-plan.ps1` 기반 rollback plan, `scripts/verify-metadata-index-coverage.ps1` 기반 metadata/data-flow/audit/storage expansion/chargeback retry 주요 index prefix를 정적으로 확인한다.
 
 프론트엔드 unit test:
 

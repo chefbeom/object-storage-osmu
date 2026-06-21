@@ -2349,6 +2349,16 @@ TC-FE-023 보강: 사용자가 취소한 경우에는 abort API를 호출한다.
 - Priority: P1
 - Automated: `scripts/verify-metadata-index-coverage.ps1`, `scripts/verify-local.ps1`
 
+### TC-DB-002
+
+- Feature: Flyway migration rollback plan gate.
+- Preconditions: PowerShell is available and Flyway migrations exist under `osmu-backend/src/main/resources/db/migration`.
+- Input: `powershell -ExecutionPolicy Bypass -File .\scripts\verify-migration-rollback-plan.ps1`.
+- Steps: Generate a rollback plan from the current migration directory, then verify format version, migration count/latest migration, backup-artifact requirement, preflight/backup/forward-migrate/post-migrate-smoke/rollback-restore/compensating-migration stages, forward-only Flyway scope policy, and no-secret reference policy.
+- Expected: The generated plan makes rollback explicit before live migration: restore from a verified backup before new writes, or ship a reviewed compensating forward migration after new writes. The verifier fails if the plan loses required stages or starts embedding credential-shaped values.
+- Priority: P1
+- Automated: `scripts/write-migration-rollback-plan.ps1`, `scripts/verify-migration-rollback-plan.ps1`, `scripts/verify-local.ps1`
+
 ### TC-OPS-001
 
 - Feature: Operations readiness pending evidence remediation metadata.

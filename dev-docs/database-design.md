@@ -865,6 +865,12 @@ erDiagram
 - 현재 gate는 object list/tag/version/trash scan, audit request/result lookup, data-flow event/day/month aggregate windows, storage expansion summary/timeout, chargeback notification/payment retry worker index를 검사한다.
 - 이 gate는 migration-backed index가 존재하는지 확인하는 정적 검증이다. 실제 MariaDB `EXPLAIN`, cardinality, slow query log 검토는 target-scale 데이터가 준비된 뒤 별도 evidence로 남긴다.
 
+## 16.2 Migration Rollback Plan
+
+- `scripts/write-migration-rollback-plan.ps1`는 현재 Flyway migration 목록, 최신 migration, risk flag, preflight, backup, forward migration, post-migration smoke, restore rollback, compensating forward migration 단계를 `.osmu-run/latest-migration-rollback-plan.*`로 작성한다.
+- `scripts/verify-migration-rollback-plan.ps1`는 rollback plan format, required stages, backup-artifact requirement, forward-only Flyway scope policy, no-secret reference policy를 검증하며 `verify-local.ps1`에 포함된다.
+- 이 전략은 Flyway undo migration을 도입하지 않는다. live migration 전에는 backup artifact reference가 필요하고, migration 후 새 write를 받은 상태에서는 backup restore로 live data를 덮지 않고 data-preserving compensating migration을 추가한다.
+
 ## 17. 구현 순서
 
 1. `organizations`
