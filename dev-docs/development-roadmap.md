@@ -84,14 +84,14 @@ S3 호환성은 제품 차별화의 중심이 아니라 전환 호환성이다. 
 - monthly rollup JSON/CSV
 - stored monthly aggregate refresh/read/export
 - event/daily/monthly retention job
-- MariaDB query-plan evidence, data-flow storage transition plan, manual data-flow storage plan evidence workflow/artifact import path, and Alertmanager/Grafana threshold target contract
+- MariaDB query-plan evidence, data-flow storage transition plan, manual data-flow storage plan evidence workflow/artifact import path, Alertmanager/Grafana threshold target contract, and monitoring threshold evidence writer/verifier
 
 남은 범위:
 
 - target 규모 기준 table partitioning 또는 external time-series repository 선택
 - backfill/dual-write/rollback runbook 검증
 - target query latency와 retention budget evidence `result=passed` workflow artifact
-- target tenant baseline 기반 Alertmanager/Grafana threshold value/receiver 튜닝 evidence
+- target tenant baseline 기반 Alertmanager/Grafana threshold value/receiver tuning `result=passed` evidence run
 
 ## 6. Phase 4 - Commercial Readiness
 

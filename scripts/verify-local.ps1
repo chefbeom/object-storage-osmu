@@ -226,6 +226,9 @@ Run "powershell -ExecutionPolicy Bypass -File .\scripts\verify-prometheus-observ
 Step "Monitoring artifacts draft check"
 Run "powershell -ExecutionPolicy Bypass -File .\scripts\verify-monitoring-artifacts.ps1"
 
+Step "Monitoring threshold evidence writer check"
+Run "powershell -ExecutionPolicy Bypass -File .\scripts\verify-monitoring-threshold-evidence.ps1"
+
 Step "Prometheus Operator draft check"
 Run "powershell -ExecutionPolicy Bypass -File .\scripts\verify-prometheus-operator-draft.ps1"
 

@@ -73,6 +73,7 @@ MVP 데모 기준 완료율은 약 90~95%입니다.
 - backup restore drill draft check
 - Prometheus observability draft check
 - monitoring artifacts draft check, including Alertmanager/Grafana threshold target contract
+- monitoring threshold evidence writer check
 - Prometheus Operator draft check
 - Flyway migration version check: 58 migrations
 - frontend unit tests: 95 passed

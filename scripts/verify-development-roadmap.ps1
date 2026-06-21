@@ -50,6 +50,7 @@ Assert-Contains $content "Data-flow storage transition plan" "Development roadma
 Assert-Contains $content "target query latency" "Development roadmap"
 Assert-Contains $content "target query-plan evidence" "Development roadmap"
 Assert-Contains $content "Alertmanager/Grafana threshold target contract" "Development roadmap"
+Assert-Contains $content "monitoring threshold evidence writer" "Development roadmap"
 Assert-Contains $content "threshold value/receiver" "Development roadmap"
 Assert-Contains $content "Enterprise auth target smoke" "Development roadmap"
 Assert-Contains $content "scope-out evidence" "Development roadmap"

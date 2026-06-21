@@ -16,7 +16,8 @@ This directory contains productization-ready monitoring starter artifacts for th
 2. Load `prometheus-rules.yaml` into Prometheus or convert it into a `PrometheusRule` resource when using Prometheus Operator.
 3. Import `grafana-dashboard-osmu.json` into Grafana.
 4. Review `alert-threshold-targets.yaml`, replace receiver names with the target Alertmanager routes, and attach target tenant baseline evidence before production SLO claims.
-5. Replace draft job labels with the target environment's scrape labels if needed.
+5. Record the target review with `scripts/write-monitoring-threshold-evidence.ps1` and pass its reference to operations handoff as `-MonitoringEvidenceRef`.
+6. Replace draft job labels with the target environment's scrape labels if needed.
 
 Prometheus Operator:
 

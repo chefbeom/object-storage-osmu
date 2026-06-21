@@ -173,7 +173,7 @@ Retention configuration:
 Production follow-up:
 
 - Add table partitioning or move the materialized daily/monthly rollup repositories to a time-series store when the event retention job, daily rollup retention job, `data_flow_daily_rollups`, `data_flow_monthly_rollups`, and query-time aggregation are not enough for target volume.
-- Tune data-flow alert thresholds and Alertmanager routes from `infra/monitoring/alert-threshold-targets.yaml` against target tenant baselines before production SLO claims.
+- Tune data-flow alert thresholds and Alertmanager routes from `infra/monitoring/alert-threshold-targets.yaml` against target tenant baselines before production SLO claims, then record the review with `scripts/write-monitoring-threshold-evidence.ps1` and feed the evidence ref into `write-operations-handoff-package.ps1 -MonitoringEvidenceRef`.
 
 ## 7. Alerts
 
@@ -206,6 +206,7 @@ MVP:
 - Prometheus rule draft under `infra/monitoring`
 - Grafana dashboard draft under `infra/monitoring`
 - Alertmanager/Grafana threshold target contract under `infra/monitoring`
+- Monitoring threshold evidence writer under `scripts`
 - Optional Prometheus Operator draft under `infra/k8s` and `infra/helm/osmu`
 - MinIO Console
 - Application logs
@@ -322,6 +323,7 @@ Product:
 - Backup CronJob alerts require kube-state-metrics metrics such as `kube_job_status_failed` and `kube_cronjob_status_last_successful_time`.
 - `infra/monitoring/grafana-dashboard-osmu.json` defines a starter overview dashboard.
 - `infra/monitoring/alert-threshold-targets.yaml` defines the pilot threshold target contract, including Alertmanager routes, Grafana panels, backend p95 latency, data-flow failure/cancel/egress/bucket anomaly, retention failure, and stale backup target evidence fields.
+- `scripts/write-monitoring-threshold-evidence.ps1` records target Prometheus rule load, Grafana import, Alertmanager route review, incident routing review, and target tenant baseline tuning evidence as `.osmu-run/latest-monitoring-threshold-evidence.json` plus `.md` without storing receiver secrets.
 - `infra/k8s/monitoring-operator.yaml` defines optional `ServiceMonitor` and `PrometheusRule` resources.
 - `infra/helm/osmu/templates/monitoring-operator.yaml` renders the same optional resources when `monitoring.operator.enabled=true`.
 - Product deployment can replace annotations with `ServiceMonitor` when Prometheus Operator is used, but only after `monitoring.coreos.com/v1` CRDs are installed.

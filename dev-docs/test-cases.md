@@ -2349,6 +2349,16 @@ TC-FE-023 보강: 사용자가 취소한 경우에는 abort API를 호출한다.
 - Priority: P2
 - Automated: `scripts/verify-monitoring-artifacts.ps1`
 
+### TC-INFRA-011A
+
+- Feature: Monitoring threshold target evidence writer.
+- Preconditions: PowerShell is available.
+- Input: `powershell -ExecutionPolicy Bypass -File .\scripts\verify-monitoring-threshold-evidence.ps1`; target evidence uses `powershell -ExecutionPolicy Bypass -File .\scripts\write-monitoring-threshold-evidence.ps1 -EnvironmentName <env> -TargetCluster <cluster> -Operator <operator> -ReviewStartedAt <iso-time> -ReviewCompletedAt <iso-time> -ChangeApprovalRef <change-id> -EvidenceRef <run-ref> -PrometheusRulesEvidenceRef <ref> -GrafanaDashboardEvidenceRef <ref> -AlertmanagerRouteEvidenceRef <ref> -TargetBaselineEvidenceRef <ref> -IncidentRoutingEvidenceRef <ref> -ConfirmPrometheusRulesLoaded -ConfirmGrafanaDashboardImported -ConfirmAlertmanagerRoutesReviewed -ConfirmTargetBaselinesReviewed -ConfirmIncidentRoutingReviewed -ConfirmNoSecretValues -FailIfNotPassed`.
+- Steps: Generate passed monitoring threshold evidence from `infra/monitoring/alert-threshold-targets.yaml`, verify the report includes required alert mappings, Alertmanager routes, Grafana panel mappings, tuning evidence fields, target baseline confirmation, incident routing confirmation, and no-secret policy. Try credential-shaped evidence references, reversed review windows, and a contract missing required alerts.
+- Expected: Operators can produce `.osmu-run/latest-monitoring-threshold-evidence.json` and `.md` for operations handoff `-MonitoringEvidenceRef` after target Prometheus rules, Grafana dashboard, Alertmanager routes, incident routing, and tenant baseline thresholds are reviewed. The writer rejects secret-shaped refs, reversed windows, and incomplete threshold target contracts.
+- Priority: P2
+- Automated: `scripts/verify-monitoring-threshold-evidence.ps1`
+
 ### TC-INFRA-012
 
 - Feature: Prometheus Operator draft verification.
