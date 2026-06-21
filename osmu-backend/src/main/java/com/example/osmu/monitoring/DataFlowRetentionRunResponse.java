@@ -6,6 +6,7 @@ public record DataFlowRetentionRunResponse(
         String mode,
         int deletedEventCount,
         int deletedDailyRollupCount,
+        int deletedMonthlyRollupCount,
         DataFlowRetentionStatusResponse status,
         OffsetDateTime generatedAt,
         String note

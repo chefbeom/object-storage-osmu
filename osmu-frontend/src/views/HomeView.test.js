@@ -136,6 +136,7 @@ test('HomeView exposes stable selectors for browser E2E flows', () => {
     'data-flow-retention-panel',
     'data-flow-retention-event-days',
     'data-flow-retention-rollup-days',
+    'data-flow-retention-monthly-rollup-days',
     'data-flow-retention-deleted',
     'data-flow-retention-failed',
     'data-flow-retention-refresh-button',

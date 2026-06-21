@@ -491,6 +491,28 @@ public class MariaDbDataFlowEventRepository implements DataFlowEventRepository {
     }
 
     @Override
+    public int deleteMonthlyRollupsBefore(LocalDate cutoffMonth, int limit) {
+        ensureSchema();
+        if (cutoffMonth == null || limit <= 0) {
+            return 0;
+        }
+        String sql = """
+                DELETE FROM data_flow_monthly_rollups
+                WHERE rollup_month < ?
+                ORDER BY rollup_month ASC, bucket_name ASC, actor_id ASC, source ASC, operation ASC, status ASC
+                LIMIT ?
+                """;
+        try (Connection connection = connect();
+             PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setDate(1, Date.valueOf(cutoffMonth.withDayOfMonth(1)));
+            statement.setInt(2, limit);
+            return statement.executeUpdate();
+        } catch (SQLException exception) {
+            throw databaseException(exception);
+        }
+    }
+
+    @Override
     public boolean isHealthy() {
         try (Connection connection = connect();
              PreparedStatement statement = connection.prepareStatement("SELECT 1");

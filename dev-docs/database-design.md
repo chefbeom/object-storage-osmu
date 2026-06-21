@@ -778,7 +778,7 @@ CREATE TABLE data_flow_daily_rollups (
 
 ## 13.3. data_flow_monthly_rollups
 
-Stored UTC-month data-flow aggregate rows are compacted from `data_flow_daily_rollups`. This table is the first dedicated long-window analytics store before table partitioning or an external time-series repository is introduced. It keeps aggregate counts and bytes only; it does not store object keys, raw event messages, credentials, provider responses, or AWS billing parity fields. `actor_id` and `status` remain materialized filter dimensions so scoped monthly refreshes do not overwrite unscoped monthly aggregate rows.
+Stored UTC-month data-flow aggregate rows are compacted from `data_flow_daily_rollups`. This table is the first dedicated long-window analytics store before table partitioning or an external time-series repository is introduced. It keeps aggregate counts and bytes only; it does not store object keys, raw event messages, credentials, provider responses, or AWS billing parity fields. `actor_id` and `status` remain materialized filter dimensions so scoped monthly refreshes do not overwrite unscoped monthly aggregate rows. `DataFlowMonthlyRollupRetentionJob` deletes rows older than the configured monthly rollup retention window in bounded batches.
 
 ```sql
 CREATE TABLE data_flow_monthly_rollups (

@@ -3051,7 +3051,7 @@
       "get": {
         "tags": ["Admin"],
         "operationId": "getDataFlowRetentionStatus",
-        "summary": "Read administrator data-flow event and materialized daily rollup retention status",
+        "summary": "Read administrator data-flow event, daily rollup, and monthly rollup retention status",
         "responses": {
           "200": { "$ref": "#/components/responses/JsonOk" },
           "403": { "$ref": "#/components/responses/Error" }
@@ -3062,7 +3062,7 @@
       "post": {
         "tags": ["Admin"],
         "operationId": "runDataFlowRetention",
-        "summary": "Run selected data-flow event and materialized daily rollup retention targets now",
+        "summary": "Run selected data-flow event, daily rollup, and monthly rollup retention targets now",
         "parameters": [
           {
             "name": "includeEvents",
@@ -3072,6 +3072,12 @@
           },
           {
             "name": "includeDailyRollups",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "boolean", "default": true }
+          },
+          {
+            "name": "includeMonthlyRollups",
             "in": "query",
             "required": false,
             "schema": { "type": "boolean", "default": true }

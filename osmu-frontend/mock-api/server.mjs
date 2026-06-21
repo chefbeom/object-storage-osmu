@@ -39,6 +39,14 @@ function createInitialState() {
     dataFlowEvents: [],
     dataFlowDailyRollups: [],
     dataFlowMonthlyRollups: [],
+    dataFlowRetentionMetrics: {
+      eventsDeleted: 0,
+      dailyRollupsDeleted: 0,
+      monthlyRollupsDeleted: 0,
+      eventFailures: 0,
+      dailyRollupFailures: 0,
+      monthlyRollupFailures: 0,
+    },
     teams: [
       {
         id: 1,
@@ -332,6 +340,19 @@ async function handleRequest(request, response) {
   }
   if (request.method === 'GET' && path === '/admin/monitoring/data-flow/monthly-rollup/export.csv') {
     sendCsv(response, 'osmu-data-flow-monthly-rollup.csv', dataFlowMonthlyRollupCsv(dataFlowFilters(url)))
+    return
+  }
+  if (request.method === 'GET' && path === '/admin/monitoring/data-flow/retention/status') {
+    sendJson(response, 200, apiData(dataFlowRetentionStatus()))
+    return
+  }
+  if (request.method === 'POST' && path === '/admin/monitoring/data-flow/retention/run') {
+    const run = dataFlowRetentionRun(url)
+    if (run.error) {
+      sendJson(response, 400, { error: run.error })
+      return
+    }
+    sendJson(response, 200, apiData(run))
     return
   }
   if (request.method === 'GET' && path === '/admin/monitoring/data-flow/export.csv') {
@@ -1449,6 +1470,127 @@ function storedDataFlowMonthlyRollup(filters = {}) {
     storagePolicy: 'Reads mock data_flow_monthly_rollups rows; MariaDB mode reads the dedicated monthly aggregate table.',
     note: 'This reads OSMU stored monthly operations analytics rows; it does not expose object keys, raw event messages, or AWS billing parity fields.',
   }
+}
+
+function dataFlowRetentionStatus(generatedAt = new Date().toISOString()) {
+  return {
+    mode: 'DATA_FLOW_RETENTION',
+    eventRetention: dataFlowRetentionPolicyStatus(90, 1000, state.dataFlowRetentionMetrics.eventsDeleted, state.dataFlowRetentionMetrics.eventFailures),
+    dailyRollupRetention: dataFlowRetentionPolicyStatus(1095, 1000, state.dataFlowRetentionMetrics.dailyRollupsDeleted, state.dataFlowRetentionMetrics.dailyRollupFailures),
+    monthlyRollupRetention: dataFlowRetentionPolicyStatus(1825, 1000, state.dataFlowRetentionMetrics.monthlyRollupsDeleted, state.dataFlowRetentionMetrics.monthlyRollupFailures),
+    generatedAt,
+    note: 'OSMU data-flow retention status for detailed events, materialized daily rollups, and stored monthly rollups. This is operational analytics retention, not AWS billing parity.',
+  }
+}
+
+function dataFlowRetentionPolicyStatus(retentionDays, batchSize, deletedCount, failedRunCount) {
+  return {
+    enabled: true,
+    jobAvailable: true,
+    retentionDays,
+    batchSize,
+    deletedCount,
+    failedRunCount,
+  }
+}
+
+function dataFlowRetentionRun(url) {
+  const includeEvents = queryBoolean(url, 'includeEvents', true)
+  const includeDailyRollups = queryBoolean(url, 'includeDailyRollups', true)
+  const includeMonthlyRollups = queryBoolean(url, 'includeMonthlyRollups', true)
+  if (!includeEvents && !includeDailyRollups && !includeMonthlyRollups) {
+    return {
+      error: {
+        code: 'VALIDATION_ERROR',
+        message: 'At least one data-flow retention target must be selected.',
+      },
+    }
+  }
+  const deletedEventCount = includeEvents ? deleteExpiredDataFlowEvents(90, 1000) : 0
+  const deletedDailyRollupCount = includeDailyRollups ? deleteExpiredDailyRollups(1095, 1000) : 0
+  const deletedMonthlyRollupCount = includeMonthlyRollups ? deleteExpiredMonthlyRollups(1825, 1000) : 0
+  state.dataFlowRetentionMetrics.eventsDeleted += deletedEventCount
+  state.dataFlowRetentionMetrics.dailyRollupsDeleted += deletedDailyRollupCount
+  state.dataFlowRetentionMetrics.monthlyRollupsDeleted += deletedMonthlyRollupCount
+  state.auditLogs.unshift(auditLog('DATA_FLOW_RETENTION_RUN', 'DATA_FLOW_RETENTION', 'all-targets'))
+  const generatedAt = new Date().toISOString()
+  return {
+    mode: 'DATA_FLOW_RETENTION',
+    deletedEventCount,
+    deletedDailyRollupCount,
+    deletedMonthlyRollupCount,
+    status: dataFlowRetentionStatus(generatedAt),
+    generatedAt,
+    note: 'Manual ADMIN data-flow retention run. Detailed event retention is shorter; materialized daily and monthly rollup retention is longer for aggregate analytics.',
+  }
+}
+
+function queryBoolean(url, name, defaultValue) {
+  if (!url.searchParams.has(name)) return defaultValue
+  return String(url.searchParams.get(name)).toLowerCase() === 'true'
+}
+
+function deleteExpiredDataFlowEvents(retentionDays, batchSize) {
+  const cutoff = Date.now() - retentionDays * 24 * 60 * 60 * 1000
+  const candidates = state.dataFlowEvents
+    .filter((event) => {
+      const createdAt = Date.parse(event.createdAt)
+      return !Number.isNaN(createdAt) && createdAt < cutoff
+    })
+    .sort((left, right) => Date.parse(left.createdAt) - Date.parse(right.createdAt))
+    .slice(0, batchSize)
+  const candidateSet = new Set(candidates)
+  state.dataFlowEvents = state.dataFlowEvents.filter((event) => !candidateSet.has(event))
+  return candidates.length
+}
+
+function deleteExpiredDailyRollups(retentionDays, batchSize) {
+  const cutoffDay = dataFlowRetentionCutoffDay(retentionDays)
+  const candidates = state.dataFlowDailyRollups
+    .filter((point) => String(point.day || '') < cutoffDay)
+    .sort((left, right) => (
+      String(left.day || '').localeCompare(String(right.day || ''))
+      || String(left.bucketName || '').localeCompare(String(right.bucketName || ''))
+      || String(left.actorId || '').localeCompare(String(right.actorId || ''))
+      || String(left.source || '').localeCompare(String(right.source || ''))
+      || String(left.operation || '').localeCompare(String(right.operation || ''))
+      || String(left.status || '').localeCompare(String(right.status || ''))
+    ))
+    .slice(0, batchSize)
+  const candidateSet = new Set(candidates)
+  state.dataFlowDailyRollups = state.dataFlowDailyRollups.filter((point) => !candidateSet.has(point))
+  return candidates.length
+}
+
+function deleteExpiredMonthlyRollups(retentionDays, batchSize) {
+  const cutoffMonth = dataFlowRetentionCutoffMonth(retentionDays)
+  const candidates = state.dataFlowMonthlyRollups
+    .filter((point) => String(point.month || '') < cutoffMonth)
+    .sort((left, right) => (
+      String(left.month || '').localeCompare(String(right.month || ''))
+      || String(left.bucketName || '').localeCompare(String(right.bucketName || ''))
+      || String(left.actorId || '').localeCompare(String(right.actorId || ''))
+      || String(left.source || '').localeCompare(String(right.source || ''))
+      || String(left.operation || '').localeCompare(String(right.operation || ''))
+      || String(left.status || '').localeCompare(String(right.status || ''))
+    ))
+    .slice(0, batchSize)
+  const candidateSet = new Set(candidates)
+  state.dataFlowMonthlyRollups = state.dataFlowMonthlyRollups.filter((point) => !candidateSet.has(point))
+  return candidates.length
+}
+
+function dataFlowRetentionCutoffDay(retentionDays) {
+  const cutoff = new Date()
+  cutoff.setUTCDate(cutoff.getUTCDate() - retentionDays)
+  return cutoff.toISOString().slice(0, 10)
+}
+
+function dataFlowRetentionCutoffMonth(retentionDays) {
+  const cutoff = new Date()
+  cutoff.setUTCDate(cutoff.getUTCDate() - retentionDays)
+  cutoff.setUTCDate(1)
+  return cutoff.toISOString().slice(0, 7)
 }
 
 function emptyMonthlyRollupPoint(month, bucketName, source, operation) {
@@ -3563,6 +3705,19 @@ async function runSelfTest() {
     })).text()
     if (!dataFlowStoredMonthlyRollupCsv.includes('"month","bucketName","source","operation"')) {
       throw new Error('stored data flow monthly rollup CSV self-test failed')
+    }
+    const dataFlowRetentionStatus = await (await fetch(`${base}/admin/monitoring/data-flow/retention/status`, {
+      headers: { Authorization: `Bearer ${login.data.accessToken}` },
+    })).json()
+    if (dataFlowRetentionStatus.data?.monthlyRollupRetention?.retentionDays !== 1825) {
+      throw new Error('data flow retention status self-test failed')
+    }
+    const dataFlowRetentionRun = await (await fetch(`${base}/admin/monitoring/data-flow/retention/run?includeEvents=true&includeDailyRollups=true&includeMonthlyRollups=true`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${login.data.accessToken}` },
+    })).json()
+    if (typeof dataFlowRetentionRun.data?.deletedMonthlyRollupCount !== 'number') {
+      throw new Error('data flow retention run self-test failed')
     }
     const savedPricingPolicy = await (await fetch(`${base}/admin/billing/pricing-policy`, {
       method: 'PUT',

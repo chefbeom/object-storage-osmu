@@ -1245,6 +1245,7 @@ export function runDataFlowRetention(options = {}) {
   const query = new URLSearchParams()
   appendQuery(query, 'includeEvents', options.includeEvents)
   appendQuery(query, 'includeDailyRollups', options.includeDailyRollups)
+  appendQuery(query, 'includeMonthlyRollups', options.includeMonthlyRollups)
   const suffix = query.toString() ? `?${query.toString()}` : ''
   return request(`/admin/monitoring/data-flow/retention/run${suffix}`, { method: 'POST' })
 }

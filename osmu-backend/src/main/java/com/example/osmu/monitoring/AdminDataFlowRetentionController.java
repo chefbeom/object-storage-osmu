@@ -26,6 +26,7 @@ public class AdminDataFlowRetentionController {
 
     private final ObjectProvider<DataFlowEventRetentionJob> eventRetentionJobProvider;
     private final ObjectProvider<DataFlowDailyRollupRetentionJob> dailyRollupRetentionJobProvider;
+    private final ObjectProvider<DataFlowMonthlyRollupRetentionJob> monthlyRollupRetentionJobProvider;
     private final MeterRegistry meterRegistry;
     private final AuthContext authContext;
     private final AuditLogService auditLogService;
@@ -35,10 +36,14 @@ public class AdminDataFlowRetentionController {
     private final boolean dailyRollupRetentionEnabled;
     private final int dailyRollupRetentionDays;
     private final int dailyRollupRetentionBatchSize;
+    private final boolean monthlyRollupRetentionEnabled;
+    private final int monthlyRollupRetentionDays;
+    private final int monthlyRollupRetentionBatchSize;
 
     public AdminDataFlowRetentionController(
             ObjectProvider<DataFlowEventRetentionJob> eventRetentionJobProvider,
             ObjectProvider<DataFlowDailyRollupRetentionJob> dailyRollupRetentionJobProvider,
+            ObjectProvider<DataFlowMonthlyRollupRetentionJob> monthlyRollupRetentionJobProvider,
             MeterRegistry meterRegistry,
             AuthContext authContext,
             AuditLogService auditLogService,
@@ -47,10 +52,14 @@ public class AdminDataFlowRetentionController {
             @Value("${osmu.monitoring.data-flow.retention.batch-size:1000}") int eventRetentionBatchSize,
             @Value("${osmu.monitoring.data-flow.daily-rollup.retention.enabled:true}") boolean dailyRollupRetentionEnabled,
             @Value("${osmu.monitoring.data-flow.daily-rollup.retention.retention-days:1095}") int dailyRollupRetentionDays,
-            @Value("${osmu.monitoring.data-flow.daily-rollup.retention.batch-size:1000}") int dailyRollupRetentionBatchSize
+            @Value("${osmu.monitoring.data-flow.daily-rollup.retention.batch-size:1000}") int dailyRollupRetentionBatchSize,
+            @Value("${osmu.monitoring.data-flow.monthly-rollup.retention.enabled:true}") boolean monthlyRollupRetentionEnabled,
+            @Value("${osmu.monitoring.data-flow.monthly-rollup.retention.retention-days:1825}") int monthlyRollupRetentionDays,
+            @Value("${osmu.monitoring.data-flow.monthly-rollup.retention.batch-size:1000}") int monthlyRollupRetentionBatchSize
     ) {
         this.eventRetentionJobProvider = eventRetentionJobProvider;
         this.dailyRollupRetentionJobProvider = dailyRollupRetentionJobProvider;
+        this.monthlyRollupRetentionJobProvider = monthlyRollupRetentionJobProvider;
         this.meterRegistry = meterRegistry;
         this.authContext = authContext;
         this.auditLogService = auditLogService;
@@ -60,6 +69,9 @@ public class AdminDataFlowRetentionController {
         this.dailyRollupRetentionEnabled = dailyRollupRetentionEnabled;
         this.dailyRollupRetentionDays = clamp(dailyRollupRetentionDays, 1, 3650);
         this.dailyRollupRetentionBatchSize = clamp(dailyRollupRetentionBatchSize, 1, 10_000);
+        this.monthlyRollupRetentionEnabled = monthlyRollupRetentionEnabled;
+        this.monthlyRollupRetentionDays = clamp(monthlyRollupRetentionDays, 1, 3650);
+        this.monthlyRollupRetentionBatchSize = clamp(monthlyRollupRetentionBatchSize, 1, 10_000);
     }
 
     @GetMapping("/status")
@@ -71,25 +83,29 @@ public class AdminDataFlowRetentionController {
     public ApiResponse<DataFlowRetentionRunResponse> run(
             @RequestParam(name = "includeEvents", defaultValue = "true") boolean includeEvents,
             @RequestParam(name = "includeDailyRollups", defaultValue = "true") boolean includeDailyRollups,
+            @RequestParam(name = "includeMonthlyRollups", defaultValue = "true") boolean includeMonthlyRollups,
             HttpServletRequest request
     ) {
-        if (!includeEvents && !includeDailyRollups) {
+        if (!includeEvents && !includeDailyRollups && !includeMonthlyRollups) {
             throw new ApiException(ApiErrorCode.VALIDATION_ERROR, "At least one data-flow retention target must be selected.");
         }
         DataFlowEventRetentionJob eventJob = includeEvents ? availableEventJob() : null;
         DataFlowDailyRollupRetentionJob dailyRollupJob = includeDailyRollups ? availableDailyRollupJob() : null;
+        DataFlowMonthlyRollupRetentionJob monthlyRollupJob = includeMonthlyRollups ? availableMonthlyRollupJob() : null;
 
         OffsetDateTime now = OffsetDateTime.now();
         int deletedEventCount = eventJob == null ? 0 : eventJob.runNow(now);
         int deletedDailyRollupCount = dailyRollupJob == null ? 0 : dailyRollupJob.runNow(now);
+        int deletedMonthlyRollupCount = monthlyRollupJob == null ? 0 : monthlyRollupJob.runNow(now);
         DataFlowRetentionStatusResponse status = status(now);
         DataFlowRetentionRunResponse response = new DataFlowRetentionRunResponse(
                 MODE,
                 deletedEventCount,
                 deletedDailyRollupCount,
+                deletedMonthlyRollupCount,
                 status,
                 now,
-                "Manual ADMIN data-flow retention run. Detailed event retention is shorter; materialized rollup retention is longer for aggregate analytics."
+                "Manual ADMIN data-flow retention run. Detailed event retention is shorter; materialized daily and monthly rollup retention is longer for aggregate analytics."
         );
         AuthenticatedUser user = authContext.currentUser(request);
         auditLogService.record(
@@ -98,7 +114,8 @@ public class AdminDataFlowRetentionController {
                 "DATA_FLOW_RETENTION",
                 "all-targets",
                 "SUCCESS",
-                "Data-flow retention manual run: events=" + deletedEventCount + ", dailyRollups=" + deletedDailyRollupCount,
+                "Data-flow retention manual run: events=" + deletedEventCount + ", dailyRollups=" + deletedDailyRollupCount
+                        + ", monthlyRollups=" + deletedMonthlyRollupCount,
                 request
         );
         return ApiResponse.of(response);
@@ -120,15 +137,25 @@ public class AdminDataFlowRetentionController {
         return job;
     }
 
+    private DataFlowMonthlyRollupRetentionJob availableMonthlyRollupJob() {
+        DataFlowMonthlyRollupRetentionJob job = monthlyRollupRetentionJobProvider.getIfAvailable();
+        if (!monthlyRollupRetentionEnabled || job == null) {
+            throw new ApiException(ApiErrorCode.CONFLICT, "Data-flow monthly rollup retention is disabled.");
+        }
+        return job;
+    }
+
     private DataFlowRetentionStatusResponse status(OffsetDateTime generatedAt) {
         DataFlowEventRetentionJob eventJob = eventRetentionJobProvider.getIfAvailable();
         DataFlowDailyRollupRetentionJob dailyRollupJob = dailyRollupRetentionJobProvider.getIfAvailable();
+        DataFlowMonthlyRollupRetentionJob monthlyRollupJob = monthlyRollupRetentionJobProvider.getIfAvailable();
         return new DataFlowRetentionStatusResponse(
                 MODE,
                 eventRetentionStatus(eventJob),
                 dailyRollupRetentionStatus(dailyRollupJob),
+                monthlyRollupRetentionStatus(monthlyRollupJob),
                 generatedAt,
-                "OSMU data-flow retention status for detailed events and materialized daily rollups. This is operational analytics retention, not AWS billing parity."
+                "OSMU data-flow retention status for detailed events, materialized daily rollups, and stored monthly rollups. This is operational analytics retention, not AWS billing parity."
         );
     }
 
@@ -151,6 +178,17 @@ public class AdminDataFlowRetentionController {
                 job == null ? dailyRollupRetentionBatchSize : job.batchSize(),
                 counterValue("osmu.data.flow.daily.rollup.retention.rows", "success"),
                 counterValue("osmu.data.flow.daily.rollup.retention.runs", "failure")
+        );
+    }
+
+    private DataFlowRetentionPolicyStatusResponse monthlyRollupRetentionStatus(DataFlowMonthlyRollupRetentionJob job) {
+        return new DataFlowRetentionPolicyStatusResponse(
+                monthlyRollupRetentionEnabled,
+                job != null,
+                job == null ? monthlyRollupRetentionDays : job.retentionDays(),
+                job == null ? monthlyRollupRetentionBatchSize : job.batchSize(),
+                counterValue("osmu.data.flow.monthly.rollup.retention.rows", "success"),
+                counterValue("osmu.data.flow.monthly.rollup.retention.runs", "failure")
         );
     }
 

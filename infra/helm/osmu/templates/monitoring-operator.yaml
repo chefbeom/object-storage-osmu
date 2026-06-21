@@ -136,6 +136,15 @@ spec:
           annotations:
             summary: OSMU data-flow daily rollup retention cleanup failed.
             description: Data-flow daily rollup retention cleanup failed in the last 15 minutes. Inspect backend logs and the data_flow_daily_rollups repository.
+        - alert: OsmuDataFlowMonthlyRollupRetentionFailures
+          expr: increase(osmu_data_flow_monthly_rollup_retention_runs_total{job=~"osmu-backend.*",result="failure"}[15m]) > 0
+          for: 1m
+          labels:
+            severity: warning
+            service: osmu-data-flow
+          annotations:
+            summary: OSMU data-flow monthly rollup retention cleanup failed.
+            description: Data-flow monthly rollup retention cleanup failed in the last 15 minutes. Inspect backend logs and the data_flow_monthly_rollups repository.
         - alert: OsmuBackupCronJobFailed
           expr: kube_job_status_failed{namespace=~"osmu.*",job_name=~"osmu-(mariadb|minio)-backup.*"} > 0
           for: 5m

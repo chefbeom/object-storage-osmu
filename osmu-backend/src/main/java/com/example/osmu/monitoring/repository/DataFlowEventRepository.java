@@ -34,5 +34,7 @@ public interface DataFlowEventRepository {
 
     int deleteMaterializedRollupsBefore(LocalDate cutoffDay, int limit);
 
+    int deleteMonthlyRollupsBefore(LocalDate cutoffMonth, int limit);
+
     boolean isHealthy();
 }

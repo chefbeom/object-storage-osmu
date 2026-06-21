@@ -42,6 +42,12 @@ class AdminDataFlowRetentionControllerTest {
                 .andExpect(jsonPath("$.data.dailyRollupRetention.batchSize").value(1000))
                 .andExpect(jsonPath("$.data.dailyRollupRetention.deletedCount").isNumber())
                 .andExpect(jsonPath("$.data.dailyRollupRetention.failedRunCount").isNumber())
+                .andExpect(jsonPath("$.data.monthlyRollupRetention.enabled").value(true))
+                .andExpect(jsonPath("$.data.monthlyRollupRetention.jobAvailable").value(true))
+                .andExpect(jsonPath("$.data.monthlyRollupRetention.retentionDays").value(1825))
+                .andExpect(jsonPath("$.data.monthlyRollupRetention.batchSize").value(1000))
+                .andExpect(jsonPath("$.data.monthlyRollupRetention.deletedCount").isNumber())
+                .andExpect(jsonPath("$.data.monthlyRollupRetention.failedRunCount").isNumber())
                 .andExpect(jsonPath("$.data.generatedAt").exists());
     }
 
@@ -55,9 +61,11 @@ class AdminDataFlowRetentionControllerTest {
                 .andExpect(jsonPath("$.data.mode").value("DATA_FLOW_RETENTION"))
                 .andExpect(jsonPath("$.data.deletedEventCount").isNumber())
                 .andExpect(jsonPath("$.data.deletedDailyRollupCount").isNumber())
+                .andExpect(jsonPath("$.data.deletedMonthlyRollupCount").isNumber())
                 .andExpect(jsonPath("$.data.status.mode").value("DATA_FLOW_RETENTION"))
                 .andExpect(jsonPath("$.data.status.eventRetention.enabled").value(true))
                 .andExpect(jsonPath("$.data.status.dailyRollupRetention.enabled").value(true))
+                .andExpect(jsonPath("$.data.status.monthlyRollupRetention.enabled").value(true))
                 .andExpect(jsonPath("$.data.generatedAt").exists());
     }
 
@@ -68,11 +76,29 @@ class AdminDataFlowRetentionControllerTest {
         mockMvc.perform(post("/api/admin/monitoring/data-flow/retention/run")
                         .param("includeEvents", "false")
                         .param("includeDailyRollups", "true")
+                        .param("includeMonthlyRollups", "false")
                         .header("Authorization", "Bearer " + token))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.deletedEventCount").value(0))
+                .andExpect(jsonPath("$.data.deletedMonthlyRollupCount").value(0))
                 .andExpect(jsonPath("$.data.deletedDailyRollupCount").isNumber())
                 .andExpect(jsonPath("$.data.status.dailyRollupRetention.jobAvailable").value(true));
+    }
+
+    @Test
+    void adminCanRunOnlyMonthlyRollupRetention() throws Exception {
+        String token = loginAndReturnAccessToken("admin", "password");
+
+        mockMvc.perform(post("/api/admin/monitoring/data-flow/retention/run")
+                        .param("includeEvents", "false")
+                        .param("includeDailyRollups", "false")
+                        .param("includeMonthlyRollups", "true")
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.deletedEventCount").value(0))
+                .andExpect(jsonPath("$.data.deletedDailyRollupCount").value(0))
+                .andExpect(jsonPath("$.data.deletedMonthlyRollupCount").isNumber())
+                .andExpect(jsonPath("$.data.status.monthlyRollupRetention.jobAvailable").value(true));
     }
 
     @Test
@@ -82,6 +108,7 @@ class AdminDataFlowRetentionControllerTest {
         mockMvc.perform(post("/api/admin/monitoring/data-flow/retention/run")
                         .param("includeEvents", "false")
                         .param("includeDailyRollups", "false")
+                        .param("includeMonthlyRollups", "false")
                         .header("Authorization", "Bearer " + token))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.error.code").value("VALIDATION_ERROR"));

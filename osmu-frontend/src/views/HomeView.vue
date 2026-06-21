@@ -3073,14 +3073,14 @@ async function handleExportMaterializedDataFlowMonthlyRollupCsv() {
 }
 
 async function handleRunDataFlowRetention() {
-  const result = await runAction(() => runDataFlowRetention({ includeEvents: true, includeDailyRollups: true }))
+  const result = await runAction(() => runDataFlowRetention({ includeEvents: true, includeDailyRollups: true, includeMonthlyRollups: true }))
   if (result?.data) {
     if (result.data.status) {
       applyDataFlowRetention(result.data.status)
     } else {
       await loadDataFlowRetention()
     }
-    setStatusMessage(`Data flow retention completed: events ${formatCount(result.data.deletedEventCount || 0)}, rollups ${formatCount(result.data.deletedDailyRollupCount || 0)}.`)
+    setStatusMessage(`Data flow retention completed: events ${formatCount(result.data.deletedEventCount || 0)}, daily rollups ${formatCount(result.data.deletedDailyRollupCount || 0)}, monthly rollups ${formatCount(result.data.deletedMonthlyRollupCount || 0)}.`)
   }
 }
 
@@ -4315,6 +4315,7 @@ function defaultDataFlowRetention() {
     mode: 'DATA_FLOW_RETENTION',
     eventRetention: defaultDataFlowRetentionPolicy(),
     dailyRollupRetention: defaultDataFlowRetentionPolicy(),
+    monthlyRollupRetention: defaultDataFlowRetentionPolicy(),
     generatedAt: '',
     note: '',
   }
@@ -4337,6 +4338,7 @@ function applyDataFlowRetention(data = {}) {
     mode: data.mode || 'DATA_FLOW_RETENTION',
     eventRetention: normalizeDataFlowRetentionPolicy(data.eventRetention),
     dailyRollupRetention: normalizeDataFlowRetentionPolicy(data.dailyRollupRetention),
+    monthlyRollupRetention: normalizeDataFlowRetentionPolicy(data.monthlyRollupRetention),
     generatedAt: data.generatedAt || '',
     note: data.note || '',
   })

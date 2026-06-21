@@ -6,6 +6,7 @@ public record DataFlowRetentionStatusResponse(
         String mode,
         DataFlowRetentionPolicyStatusResponse eventRetention,
         DataFlowRetentionPolicyStatusResponse dailyRollupRetention,
+        DataFlowRetentionPolicyStatusResponse monthlyRollupRetention,
         OffsetDateTime generatedAt,
         String note
 ) {

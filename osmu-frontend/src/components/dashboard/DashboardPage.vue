@@ -1476,6 +1476,10 @@
           <dd data-testid="data-flow-retention-rollup-days">{{ dataFlowRetentionRollupLabel }}</dd>
         </div>
         <div>
+          <dt>Monthly Rollup</dt>
+          <dd data-testid="data-flow-retention-monthly-rollup-days">{{ dataFlowRetentionMonthlyRollupLabel }}</dd>
+        </div>
+        <div>
           <dt>Deleted</dt>
           <dd data-testid="data-flow-retention-deleted">{{ dataFlowRetentionDeletedLabel }}</dd>
         </div>
@@ -1990,13 +1994,15 @@ const dataFlowRecentEvents = computed(() => (
 const dataFlowRetention = computed(() => props.dataFlowRetention || {})
 const dataFlowEventRetention = computed(() => dataFlowRetention.value.eventRetention || {})
 const dataFlowDailyRollupRetention = computed(() => dataFlowRetention.value.dailyRollupRetention || {})
+const dataFlowMonthlyRollupRetention = computed(() => dataFlowRetention.value.monthlyRollupRetention || {})
 const dataFlowRetentionEventLabel = computed(() => dataFlowRetentionPolicyLabel(dataFlowEventRetention.value))
 const dataFlowRetentionRollupLabel = computed(() => dataFlowRetentionPolicyLabel(dataFlowDailyRollupRetention.value))
+const dataFlowRetentionMonthlyRollupLabel = computed(() => dataFlowRetentionPolicyLabel(dataFlowMonthlyRollupRetention.value))
 const dataFlowRetentionDeletedLabel = computed(() => (
-  `${props.formatCount(dataFlowEventRetention.value.deletedCount || 0)} events / ${props.formatCount(dataFlowDailyRollupRetention.value.deletedCount || 0)} rollups`
+  `${props.formatCount(dataFlowEventRetention.value.deletedCount || 0)} events / ${props.formatCount(dataFlowDailyRollupRetention.value.deletedCount || 0)} daily / ${props.formatCount(dataFlowMonthlyRollupRetention.value.deletedCount || 0)} monthly`
 ))
 const dataFlowRetentionFailureLabel = computed(() => (
-  `${props.formatCount(dataFlowEventRetention.value.failedRunCount || 0)} events / ${props.formatCount(dataFlowDailyRollupRetention.value.failedRunCount || 0)} rollups`
+  `${props.formatCount(dataFlowEventRetention.value.failedRunCount || 0)} events / ${props.formatCount(dataFlowDailyRollupRetention.value.failedRunCount || 0)} daily / ${props.formatCount(dataFlowMonthlyRollupRetention.value.failedRunCount || 0)} monthly`
 ))
 
 function dataFlowRetentionPolicyLabel(policy = {}) {

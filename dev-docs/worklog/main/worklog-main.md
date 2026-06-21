@@ -18051,3 +18051,12 @@ feat/bucket-management
 - Frontend/mock: added monthly store refresh/load/export buttons, API wrappers, HomeView handlers, mock API state/routes, and self-test coverage.
 - Docs/verifiers: updated README, API/OpenAPI, backend/frontend/database/security/IAM/operation/test/MVP docs, OpenAPI verifier, IAM/RBAC verifier, and migration docs for the monthly aggregate store.
 - Verification: git diff --check, node --check mock API, OpenAPI contract verifier, IAM/RBAC verifier, commercial readiness verifier, Flyway migration verifier, mock API self-test, frontend unit tests, and focused offline backend Gradle tests passed.
+
+### 2026-06-21 - Data-flow monthly rollup retention
+
+- Scope: continued OSMU operations analytics work, not AWS compatibility expansion. S3 remains replacement-compatibility only.
+- Backend: added stored monthly rollup retention for `data_flow_monthly_rollups`, including repository delete support, `DataFlowMonthlyRollupRetentionJob`, ADMIN status/manual run fields, audit, and Micrometer counters.
+- Frontend/mock: added monthly retention status display, `includeMonthlyRollups` run option, mock API status/run behavior, and self-test coverage.
+- Docs/verifiers: updated README, API/OpenAPI, backend/frontend/database/operation/IAM/test/MVP docs, Prometheus/Grafana artifacts, and verifier scripts for monthly rollup retention.
+- Verification: pending local checks before commit.
+- Verification final: git diff --check, node --check mock API, OpenAPI/IAM/RBAC/commercial/migration/monitoring/k8s/Prometheus Operator verifiers, mock API self-test, frontend unit tests, and focused offline backend Gradle tests passed. Initial sandboxed Gradle wrapper attempt tried to fetch its distribution and was stopped before any download completed.

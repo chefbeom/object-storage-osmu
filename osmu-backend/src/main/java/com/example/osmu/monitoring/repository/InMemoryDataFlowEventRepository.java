@@ -228,6 +228,27 @@ public class InMemoryDataFlowEventRepository implements DataFlowEventRepository 
     }
 
     @Override
+    public int deleteMonthlyRollupsBefore(LocalDate cutoffMonth, int limit) {
+        if (cutoffMonth == null || limit <= 0) {
+            return 0;
+        }
+        LocalDate normalizedCutoff = cutoffMonth.withDayOfMonth(1);
+        List<StoredMonthlyRollupRecord> candidates = storedMonthlyRollups.stream()
+                .filter(record -> YearMonth.parse(record.point().month()).atDay(1).isBefore(normalizedCutoff))
+                .sorted(Comparator
+                        .comparing((StoredMonthlyRollupRecord record) -> record.point().month())
+                        .thenComparing(record -> record.point().bucketName())
+                        .thenComparing(StoredMonthlyRollupRecord::actorId)
+                        .thenComparing(record -> record.point().source())
+                        .thenComparing(record -> record.point().operation())
+                        .thenComparing(StoredMonthlyRollupRecord::status))
+                .limit(limit)
+                .toList();
+        storedMonthlyRollups.removeAll(candidates);
+        return candidates.size();
+    }
+
+    @Override
     public boolean isHealthy() {
         return true;
     }

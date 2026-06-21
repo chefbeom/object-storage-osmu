@@ -630,6 +630,7 @@ test('getDataFlowRetentionStatus reads admin data flow retention status endpoint
         mode: 'DATA_FLOW_RETENTION',
         eventRetention: { enabled: true, jobAvailable: true, retentionDays: 90, batchSize: 1000 },
         dailyRollupRetention: { enabled: true, jobAvailable: true, retentionDays: 1095, batchSize: 1000 },
+        monthlyRollupRetention: { enabled: true, jobAvailable: true, retentionDays: 1825, batchSize: 1000 },
       },
     }),
   ])
@@ -641,6 +642,7 @@ test('getDataFlowRetentionStatus reads admin data flow retention status endpoint
     assert.equal(fetchMock.calls[0].options.method, undefined)
     assert.equal(result.data.mode, 'DATA_FLOW_RETENTION')
     assert.equal(result.data.dailyRollupRetention.retentionDays, 1095)
+    assert.equal(result.data.monthlyRollupRetention.retentionDays, 1825)
   } finally {
     cleanupFetch(fetchMock)
   }
@@ -653,6 +655,7 @@ test('runDataFlowRetention posts selected retention targets', async () => {
         mode: 'DATA_FLOW_RETENTION',
         deletedEventCount: 0,
         deletedDailyRollupCount: 1,
+        deletedMonthlyRollupCount: 2,
       },
     }),
   ])
@@ -661,14 +664,17 @@ test('runDataFlowRetention posts selected retention targets', async () => {
     const result = await runDataFlowRetention({
       includeEvents: false,
       includeDailyRollups: true,
+      includeMonthlyRollups: true,
     })
 
     const url = new URL(fetchMock.calls[0].url)
     assert.equal(url.origin + url.pathname, 'http://localhost:8080/api/admin/monitoring/data-flow/retention/run')
     assert.equal(url.searchParams.get('includeEvents'), 'false')
     assert.equal(url.searchParams.get('includeDailyRollups'), 'true')
+    assert.equal(url.searchParams.get('includeMonthlyRollups'), 'true')
     assert.equal(fetchMock.calls[0].options.method, 'POST')
     assert.equal(result.data.deletedDailyRollupCount, 1)
+    assert.equal(result.data.deletedMonthlyRollupCount, 2)
   } finally {
     cleanupFetch(fetchMock)
   }
