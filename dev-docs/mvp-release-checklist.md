@@ -244,6 +244,7 @@ Run when Browser/Chrome automation works again:
 - [x] Browser E2E spec includes Admin security/audit policy panel render and Audit link navigation.
 - [x] Browser E2E spec includes Admin approval workflow profile approve/apply and storage expansion approve/dry-run/apply paths.
 - [x] Browser E2E spec includes Admin role-based panel visibility for ADMIN, ORG_ADMIN, and USER redirect paths.
+- [x] Browser E2E spec includes Admin action failure remediation for 401, 403, 400, 404, and 409 responses.
 - [x] Browser E2E spec includes destructive confirm cancel/confirm paths for bucket delete.
 - [x] Browser E2E spec includes operations readiness convergence summary and recommended command row visibility.
 - [x] Browser E2E spec includes bucket list name, usage, and object count cell assertions.

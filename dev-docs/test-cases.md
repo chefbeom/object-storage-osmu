@@ -603,7 +603,7 @@
 - Steps: Trigger representative `401 AUTHENTICATION_REQUIRED`, `403 AUTHORIZATION_FAILED`, `400 VALIDATION_ERROR`, `404 NOT_FOUND`, and `409 CONFLICT` failures from admin actions.
 - Expected: The global error remains visible, `admin-action-remediation-panel` appears only on `/admin`, error code/status/request id context is preserved, and the panel shows next actions for session renewal, role/scope review, input correction, list refresh, conflict refresh, and audit-log lookup.
 - Priority: P1
-- Automated: `npm run test:unit` selector/source contract. Browser failure-injection E2E is pending.
+- Automated: `npm run test:unit` selector/source contract, Browser E2E `admin action failures show remediation guidance`.
 
 ### TC-FE-031
 

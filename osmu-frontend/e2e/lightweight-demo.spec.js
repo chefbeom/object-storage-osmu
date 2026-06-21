@@ -99,6 +99,11 @@ async function installDeveloperApiMocks(page, options = {}) {
     ...(options.user || {}),
   }
   const accessKeys = (options.accessKeys || []).map((key) => ({ ...key }))
+  const adminActionFailures = (options.adminActionFailures || []).map((failure) => ({
+    ...failure,
+    remainingResponses: failure.remainingResponses ?? (failure.status === 401 ? 2 : 1),
+  }))
+  let adminActionFailureIndex = 0
 
   await page.route('**/api/**', async (route) => {
     const request = route.request()
@@ -129,6 +134,21 @@ async function installDeveloperApiMocks(page, options = {}) {
           user: developerUser,
         },
       })
+    }
+
+    if (method === 'POST' && path === '/admin/storage-expansion/requests' && adminActionFailureIndex < adminActionFailures.length) {
+      const failure = adminActionFailures[adminActionFailureIndex]
+      failure.remainingResponses -= 1
+      if (failure.remainingResponses <= 0) {
+        adminActionFailureIndex += 1
+      }
+      return json({
+        error: {
+          code: failure.code,
+          message: failure.message || failure.code,
+          requestId: failure.requestId,
+        },
+      }, failure.status)
     }
 
     if (method === 'GET' && path === '/users/me') {
@@ -447,6 +467,86 @@ test('user is redirected away from admin page', async ({ page }) => {
   await expect(page.getByTestId('developer-page')).toBeVisible()
   await expect(page.getByRole('link', { name: 'Admin' })).toHaveCount(0)
   await expect(page.locator('#admin-access-keys')).toHaveCount(0)
+})
+
+test('admin action failures show remediation guidance', async ({ page }) => {
+  await installDeveloperApiMocks(page, {
+    user: {
+      id: 2101,
+      loginId: 'admin-remediation-browser',
+      name: 'Admin Remediation Browser',
+      role: 'ADMIN',
+    },
+    adminActionFailures: [
+      {
+        status: 401,
+        code: 'AUTHENTICATION_REQUIRED',
+        requestId: 'remediation-401',
+        message: 'admin session expired',
+      },
+      {
+        status: 403,
+        code: 'AUTHORIZATION_FAILED',
+        requestId: 'remediation-403',
+        message: 'admin scope denied',
+      },
+      {
+        status: 400,
+        code: 'VALIDATION_ERROR',
+        requestId: 'remediation-400',
+        message: 'invalid admin request',
+      },
+      {
+        status: 404,
+        code: 'NOT_FOUND',
+        requestId: 'remediation-404',
+        message: 'target missing',
+      },
+      {
+        status: 409,
+        code: 'STATE_CONFLICT',
+        requestId: 'remediation-409',
+        message: 'state conflict',
+      },
+    ],
+  })
+  await page.addInitScript(() => {
+    window.localStorage.removeItem('osmu.dashboard.widgets.v1')
+    window.localStorage.removeItem('osmu.auth.tokens')
+    window.localStorage.removeItem('osmu.login.rememberedId')
+    window.sessionStorage.removeItem('osmu.auth.tokens')
+  })
+
+  await page.goto(`${frontendBaseUrl}/login?mode=admin`)
+  await page.getByTestId('login-id-input').fill('admin-remediation-browser')
+  await page.getByTestId('login-password-input').fill(adminPassword)
+  await page.getByTestId('login-submit-button').click()
+  await expect(page).toHaveURL(/\/admin$/)
+  await expect(page.getByTestId('storage-expansion-panel')).toBeVisible()
+
+  const expectRemediation = async ({ code, status, requestId, hasPrimary = true }) => {
+    await expect(page.getByTestId('error-alert')).toContainText(requestId)
+    await expect(page.getByTestId('admin-action-remediation-panel')).toBeVisible()
+    await expect(page.getByTestId('admin-action-remediation-code')).toContainText(`${code} / HTTP ${status}`)
+    await expect(page.getByTestId('admin-action-remediation-detail')).toBeVisible()
+    await expect(page.getByTestId('admin-action-remediation-steps').locator('li')).toHaveCount(3)
+    await expect(page.getByTestId('admin-action-remediation-primary')).toHaveCount(hasPrimary ? 1 : 0)
+  }
+
+  await page.getByTestId('storage-expansion-create-button').click()
+  await expectRemediation({ code: 'AUTHENTICATION_REQUIRED', status: 401, requestId: 'remediation-401' })
+
+  await page.getByTestId('storage-expansion-create-button').click()
+  await expectRemediation({ code: 'AUTHORIZATION_FAILED', status: 403, requestId: 'remediation-403' })
+
+  await page.getByTestId('storage-expansion-create-button').click()
+  await expectRemediation({ code: 'VALIDATION_ERROR', status: 400, requestId: 'remediation-400', hasPrimary: false })
+
+  await page.getByTestId('storage-expansion-create-button').click()
+  await expectRemediation({ code: 'NOT_FOUND', status: 404, requestId: 'remediation-404' })
+
+  await page.getByTestId('storage-expansion-create-button').click()
+  await expectRemediation({ code: 'STATE_CONFLICT', status: 409, requestId: 'remediation-409' })
 })
 
 test('developer can filter access keys and inspect operational hints', async ({ page }) => {
