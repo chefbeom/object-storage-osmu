@@ -322,11 +322,12 @@ MVP 데모 기준 완료율은 약 90~95%입니다.
 - storage health endpoint
 - storage backend status API/UI (`GET /api/admin/storage/backend-status`) using health probes, bucket/object metadata counts, and optional MinIO Prometheus capacity metrics with metadata fallback.
 - object storage failure frontend retry/remediation UX: upload failures carrying `STORAGE_ERROR` or HTTP 502 keep the retry action available and show Request ID based operator steps before reattempting large/multipart uploads.
+- MinIO Admin info 기반 pool/server/drive telemetry evidence writer: `scripts/write-storage-backend-telemetry-evidence.ps1`가 `mc admin info --json` file input 또는 명시적 `-Execute` 결과를 요약해 `.osmu-run/latest-storage-backend-telemetry.*`에 저장하며 raw admin output과 secret 값은 저장하지 않는다.
 
 남은 것:
 
 - bucket CORS/versioning/lifecycle 실제 동기화
-- Full MinIO Admin API pool/node telemetry beyond the current Prometheus capacity probe
+- MinIO Admin pool/node telemetry의 backend API/dashboard 자동 ingestion과 storage expansion finalizer 자동 연결
 
 ### 4.9 용량 증설
 
@@ -343,6 +344,7 @@ MVP 데모 기준 완료율은 약 90~95%입니다.
 - GitOps artifact bundle
 - GitOps PR runner 초안
 - summary/dashboard 연동
+- 증설 후 운영자가 `mc admin info --json` 결과를 evidence writer로 수집해 pool/server/drive capacity와 health를 남기는 경로
 
 목표 구조:
 
@@ -355,7 +357,7 @@ MVP 데모 기준 완료율은 약 90~95%입니다.
 - 실제 Kubernetes cluster에서 finalizer 기반 dry-run/apply 검증
 - 실제 MinIO Operator Tenant CRD 검증
 - 증설 승인 workflow
-- 증설 후 capacity/health evidence 자동 수집
+- 증설 후 capacity/health evidence의 finalizer 자동 수집과 dashboard/backend 상태 API 노출
 - 실패 원인별 rollback/remediation UX
 
 ### 4.10 배포와 운영

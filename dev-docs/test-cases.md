@@ -2419,6 +2419,16 @@ TC-FE-023 보강: 사용자가 취소한 경우에는 abort API를 호출한다.
 - Priority: P1
 - Automated: `scripts/verify-operations-dispatch-preflight.ps1`
 
+### TC-OPS-010
+
+- Feature: Storage backend telemetry evidence writer.
+- Preconditions: PowerShell is available. Operators have either a saved `mc admin info --json` output file or a reviewed plan to run the writer with `-Execute`.
+- Input: `powershell -ExecutionPolicy Bypass -File .\scripts\verify-storage-backend-telemetry-evidence.ps1`, then `powershell -ExecutionPolicy Bypass -File .\scripts\write-storage-backend-telemetry-evidence.ps1 -EnvironmentName <env> -TargetCluster <cluster> -Operator <operator> -MinioAlias <alias> -EvidenceRef <run-ref> -AdminInfoJsonPath <json> -FailIfNotPassed`.
+- Steps: Run the self-test fixture. Then record target MinIO admin-info evidence from file input after storage expansion or capacity review. Verify the JSON/Markdown evidence includes environment, target cluster, operator, external evidence ref, source mode, admin-info input SHA-256, pool count, server count, online/offline server count, drive count, total/used/free bytes, checks, decision rule, and scope policy. Verify raw admin output and credential-shaped values are not stored.
+- Expected: Operators can capture MinIO pool/node/capacity readiness evidence without expanding AWS S3 parity scope and without storing secrets. Missing telemetry, offline servers, missing refs, or parse failures make the evidence fail when `-FailIfNotPassed` is used.
+- Priority: P1
+- Automated: `scripts/verify-storage-backend-telemetry-evidence.ps1`
+
 ## 14. MVP 완료 기준 테스트
 
 MVP 완료 전 다음 테스트는 반드시 통과해야 한다.

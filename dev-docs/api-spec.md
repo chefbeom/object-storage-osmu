@@ -4919,7 +4919,7 @@ Notes:
 
 - `readiness` is `DEMO_ONLY` outside MinIO mode, `UNHEALTHY` when the object store health probe fails, `PROVISIONER_ATTENTION` when key policy provisioning is unhealthy, `DIRECT_METRICS_READY` when MinIO Prometheus capacity metrics are collected, and `METADATA_USAGE_READY` when MinIO mode is healthy but capacity still comes from bucket metadata usage.
 - Optional metrics config: `OSMU_STORAGE_METRICS_ENABLED=true`, `OSMU_STORAGE_METRICS_ENDPOINT=<minio>/minio/v2/metrics/cluster`, optional `OSMU_STORAGE_METRICS_BEARER_TOKEN`, and `OSMU_STORAGE_METRICS_TIMEOUT_SECONDS`.
-- This is an OSMU operations capacity probe, not AWS S3 parity work. Full MinIO Admin API pool/node telemetry remains a future enhancement.
+- This is an OSMU operations capacity probe, not AWS S3 parity work. MinIO Admin `mc admin info --json` pool/node telemetry is currently captured through `scripts/write-storage-backend-telemetry-evidence.ps1`; automatic backend/dashboard ingestion remains a future enhancement.
 
 ### GET /api/admin/dashboard/readiness
 
