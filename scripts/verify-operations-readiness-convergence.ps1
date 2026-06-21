@@ -199,6 +199,7 @@ $finalizerRequiredMarkdown = Get-Content -Raw -LiteralPath $finalizerRequiredMar
 Assert-Equal $finalizerRequiredReport.result "action-required" "finalizer required result"
 Assert-Equal $finalizerRequiredReport.currentBottleneck.code "finalize-operations-readiness" "finalizer required bottleneck"
 Assert-Equal $finalizerRequiredReport.finalizerExists $false "finalizer required exists"
+Assert-Contains $finalizerRequiredReport.decisionRule "finalizer report exists" "finalizer required decision rule"
 Assert-Contains $finalizerRequiredReport.recommendedCommands[0].command "finalize-operations-readiness.ps1" "finalizer required command"
 Assert-Contains $finalizerRequiredMarkdown "Finalize operations readiness" "finalizer required markdown command"
 

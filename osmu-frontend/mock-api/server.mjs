@@ -3345,7 +3345,8 @@ function readinessSummary() {
         targetPanel: 'dashboard-readiness-panel',
         evidencePath: '.osmu-run/latest-operations-readiness-convergence.json',
         remediationCommand: 'powershell -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\write-operations-invocation-unblock-plan.ps1',
-        remediationNote: 'The invocation report still has blocked actions. This mock report does not execute kubectl, gh, workflow dispatch, or finalizer commands.',
+        remediationNote:
+          'The invocation report still has blocked actions. This mock report does not execute kubectl, gh, workflow dispatch, finalizer, or ConfigMap sync commands.',
       },
       {
         code: 'DATA_FLOW_STORAGE_PLAN',
@@ -3477,8 +3478,10 @@ function readinessSummary() {
           reason: 'The invocation report still has blocked actions.',
         },
       ],
-      decisionRule: 'Operations readiness convergence is ready only when handoff, readiness, and finalizer reports are ready.',
-      safetyPolicy: 'This convergence writer does not execute kubectl, gh, workflow dispatch, or finalizer commands; it only reads local reports and writes JSON/Markdown guidance.',
+      decisionRule:
+        'Operations readiness convergence is ready only when the handoff result is ready/none, the readiness report is ready, the operations readiness finalizer report exists with result=ready and readinessResult=ready, and the Kubernetes operations report sync evidence confirms result=applied with zero failed checks.',
+      safetyPolicy:
+        'This convergence writer does not execute kubectl, gh, workflow dispatch, finalizer, or ConfigMap sync commands; it only reads local reports and writes JSON/Markdown guidance.',
     },
     generatedAt: new Date().toISOString(),
   }
