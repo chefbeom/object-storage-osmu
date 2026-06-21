@@ -442,7 +442,7 @@
 - Steps: Load bucket tags, save edited tags, delete tags, and try invalid duplicate or malformed tag input.
 - Expected: UI calls `GET/PUT/DELETE /api/buckets/{bucketName}/tags`, converts input to a JSON tag map on save, shows tag count and saved count, clears tags after delete, and blocks invalid input before sending the request.
 - Priority: P1
-- Automated: `npm run test:unit` covers tag parsing/validation, bucket tag REST API wrappers, S3 XML tagging wrappers, and stable selectors. Browser E2E spec now asserts `bucket-tags-load-button`, `bucket-tags-save-button`, `bucket-tags-delete-button`, and `bucket-tags-input`; live Browser execution remains environment-dependent.
+- Automated: `npm run test:unit` covers tag parsing/validation, bucket tag REST API wrappers, S3 XML tagging wrappers, stable selectors, and the frontend parsed tag-map handoff. Browser E2E spec covers bucket tag save, load, confirm delete, and cleared input state; live Browser execution remains environment-dependent.
 
 ### TC-FE-029
 

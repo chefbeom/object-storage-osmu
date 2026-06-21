@@ -4072,13 +4072,13 @@ async function loadBucketTags() {
 
 async function handlePutBucketTags() {
   if (!selectedBucket.value) return
-  const tagError = validateBucketTagInput(bucketTags.content)
-  if (tagError) {
-    setErrorMessage(tagError)
+  const parsedTags = validateBucketTagInput(bucketTags.content)
+  if (parsedTags.error) {
+    setErrorMessage(parsedTags.error)
     return
   }
   bucketTags.pending = true
-  const result = await runAction(() => putBucketTags(selectedBucket.value, tagPairsToMap(bucketTags.content)))
+  const result = await runAction(() => putBucketTags(selectedBucket.value, tagPairsToMap(parsedTags.tags)))
   bucketTags.pending = false
   if (result?.data) {
     bucketTags.content = tagsToInput(result.data.tags)

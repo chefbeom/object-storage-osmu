@@ -1011,4 +1011,6 @@ test('HomeView exposes stable selectors for browser E2E flows', () => {
   assert.match(dashboardSource, /title: '만료 공유 링크 정리'/)
   assert.match(dashboardSource, /title: 'Bucket lifecycle 삭제'/)
   assert.match(dashboardSource, /title: 'Bucket tags 삭제'/)
+  assert.match(dashboardSource, /const parsedTags = validateBucketTagInput\(bucketTags\.content\)/)
+  assert.match(dashboardSource, /tagPairsToMap\(parsedTags\.tags\)/)
 })
