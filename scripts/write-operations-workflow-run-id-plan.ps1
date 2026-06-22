@@ -59,6 +59,9 @@ function Get-ManualEvidenceWorkflowName([string] $Command) {
     if ($Command.Contains("write-storage-backend-telemetry-evidence.ps1")) {
         return "manual-storage-backend-telemetry-evidence.yml"
     }
+    if ($Command.Contains("write-monitoring-threshold-evidence.ps1")) {
+        return "manual-monitoring-threshold-evidence.yml"
+    }
     if ($Command.Contains("write-secret-rotation-evidence.ps1")) {
         return "manual-secret-rotation-evidence.yml"
     }
@@ -176,6 +179,13 @@ function New-WorkflowMetadata([string] $Workflow) {
             artifactNameTemplate = "storage-backend-telemetry-evidence-{runId}"
             requiredForReadiness = $true
             note = "Required by operations readiness artifact import when target MinIO admin info telemetry evidence is part of the invocation."
+        }
+        "manual-monitoring-threshold-evidence.yml" = [ordered]@{
+            group = "monitoring-threshold"
+            runIdParameter = "MonitoringThresholdRunId"
+            artifactNameTemplate = "monitoring-threshold-evidence-{runId}"
+            requiredForReadiness = $true
+            note = "Required by operations readiness artifact import when target Prometheus, Grafana, Alertmanager, incident routing, and tenant baseline review evidence is part of the invocation."
         }
         "manual-secret-rotation-evidence.yml" = [ordered]@{
             group = "secret-rotation"

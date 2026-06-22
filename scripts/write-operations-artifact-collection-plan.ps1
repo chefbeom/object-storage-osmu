@@ -10,6 +10,7 @@ param(
     [string] $ContainerSecurityRunId = "",
     [string] $SecurityEvidenceRunId = "",
     [string] $StorageBackendTelemetryRunId = "",
+    [string] $MonitoringThresholdRunId = "",
     [string] $SecretRotationRunId = "",
     [string] $CommercialIntegrationRunId = "",
     [string] $CommercialApprovalRunId = "",
@@ -135,6 +136,7 @@ $hasEnterpriseAuthSmoke = $false
 $hasOperationsHandoffPackage = $false
 $hasDataFlowStoragePlan = $false
 $hasDataFlowStorageTransitionRunbook = $false
+$hasMonitoringThresholdEvidence = $false
 foreach ($action in @($invocation.actions)) {
     $command = Get-Text $action "command"
     Add-UniqueWorkflow $workflows (Get-WorkflowName $command)
@@ -162,6 +164,9 @@ foreach ($action in @($invocation.actions)) {
     if (Test-CommandMentions $command "write-data-flow-storage-transition-runbook-evidence.ps1") {
         $hasDataFlowStorageTransitionRunbook = $true
     }
+    if (Test-CommandMentions $command "write-monitoring-threshold-evidence.ps1") {
+        $hasMonitoringThresholdEvidence = $true
+    }
 }
 
 $artifacts = New-Object System.Collections.Generic.List[object]
@@ -173,6 +178,7 @@ $imageSigningRun = Get-RunIdOrPlaceholder $ImageSigningRunId "image-signing-run-
 $containerSecurityRun = Get-RunIdOrPlaceholder $ContainerSecurityRunId "container-security-run-id"
 $securityEvidenceRun = Get-RunIdOrPlaceholder $SecurityEvidenceRunId "security-evidence-run-id"
 $storageBackendTelemetryRun = Get-RunIdOrPlaceholder $StorageBackendTelemetryRunId "storage-backend-telemetry-run-id"
+$monitoringThresholdRun = Get-RunIdOrPlaceholder $MonitoringThresholdRunId "monitoring-threshold-run-id"
 $secretRotationRun = Get-RunIdOrPlaceholder $SecretRotationRunId "secret-rotation-run-id"
 $commercialIntegrationRun = Get-RunIdOrPlaceholder $CommercialIntegrationRunId "commercial-integration-run-id"
 $commercialApprovalRun = Get-RunIdOrPlaceholder $CommercialApprovalRunId "commercial-approval-run-id"
@@ -205,6 +211,9 @@ if ($workflows.Contains("security-evidence-finalizer-ci.yml")) {
 }
 if ($hasStorageBackendTelemetryEvidence -or $workflows.Contains("manual-storage-backend-telemetry-evidence.yml")) {
     Add-Artifact $artifacts "storage-backend-telemetry" "manual-storage-backend-telemetry-evidence.yml" $storageBackendTelemetryRun "storage_backend_telemetry_run_id" "storage-backend-telemetry-evidence-$storageBackendTelemetryRun" "storage_backend_telemetry_artifact_name" ".osmu-run/operations-readiness-artifacts/storage-backend-telemetry" $true "Imports latest-storage-backend-telemetry.json from target MinIO admin info telemetry evidence."
+}
+if ($hasMonitoringThresholdEvidence -or $workflows.Contains("manual-monitoring-threshold-evidence.yml")) {
+    Add-Artifact $artifacts "monitoring-threshold" "manual-monitoring-threshold-evidence.yml" $monitoringThresholdRun "monitoring_threshold_run_id" "monitoring-threshold-evidence-$monitoringThresholdRun" "monitoring_threshold_artifact_name" ".osmu-run/operations-readiness-artifacts/monitoring-threshold" $true "Imports latest-monitoring-threshold-evidence.json from target Prometheus rule, Grafana dashboard, Alertmanager route, incident routing, and tenant baseline review evidence."
 }
 if ($hasSecretRotationEvidence -or $workflows.Contains("manual-secret-rotation-evidence.yml")) {
     Add-Artifact $artifacts "secret-rotation" "manual-secret-rotation-evidence.yml" $secretRotationRun "secret_rotation_run_id" "secret-rotation-evidence-$secretRotationRun" "secret_rotation_artifact_name" ".osmu-run/operations-readiness-artifacts/secret-rotation" $true "Imports latest-secret-rotation-evidence.json from target secret/certificate rotation evidence."
@@ -276,6 +285,9 @@ foreach ($artifact in $requiredArtifacts) {
     }
     elseif ($group -eq "storage-backend-telemetry") {
         $localImportArgs.Add("-StorageBackendTelemetryArtifactPath $downloadPath")
+    }
+    elseif ($group -eq "monitoring-threshold") {
+        $localImportArgs.Add("-MonitoringThresholdArtifactPath $downloadPath")
     }
     elseif ($group -eq "secret-rotation") {
         $localImportArgs.Add("-SecretRotationArtifactPath $downloadPath")

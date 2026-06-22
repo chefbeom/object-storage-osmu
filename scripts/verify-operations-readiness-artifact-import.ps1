@@ -42,6 +42,7 @@ $invalidRoot = Join-Path $resolvedOutputDirectory "invalid-source"
 $invalidDataFlowRoot = Join-Path $resolvedOutputDirectory "invalid-data-flow-source"
 $unsafeDataFlowRoot = Join-Path $resolvedOutputDirectory "unsafe-data-flow-source"
 $unsafeDataFlowRunbookRoot = Join-Path $resolvedOutputDirectory "unsafe-data-flow-runbook-source"
+$unsafeMonitoringThresholdRoot = Join-Path $resolvedOutputDirectory "unsafe-monitoring-threshold-source"
 
 $storageSource = Join-Path $sourceRoot "storage-expansion"
 $haDrSource = Join-Path $sourceRoot "ha-dr-readiness"
@@ -49,6 +50,7 @@ $kubernetesDrSource = Join-Path $sourceRoot "kubernetes-dr"
 $iamSource = Join-Path $sourceRoot "iam-rbac"
 $securitySource = Join-Path $sourceRoot "security-evidence"
 $storageBackendTelemetrySource = Join-Path $sourceRoot "storage-backend-telemetry"
+$monitoringThresholdSource = Join-Path $sourceRoot "monitoring-threshold"
 $secretRotationSource = Join-Path $sourceRoot "secret-rotation"
 $commercialIntegrationSource = Join-Path $sourceRoot "commercial-integration"
 $commercialApprovalSource = Join-Path $sourceRoot "commercial-approval"
@@ -103,6 +105,28 @@ Write-JsonEvidence (Join-Path $storageBackendTelemetrySource "latest-storage-bac
     }
 }
 Write-TextEvidence (Join-Path $storageBackendTelemetrySource "latest-storage-backend-telemetry.md") "# Storage backend telemetry"
+Write-JsonEvidence (Join-Path $monitoringThresholdSource "latest-monitoring-threshold-evidence.json") @{
+    formatVersion = "osmu.monitoring-threshold-evidence.v1"
+    result = "passed"
+    thresholdTargetSummary = @{
+        requiredAlertCount = 11
+        mappedAlertCount = 11
+        missingAlerts = @()
+        routeCount = 3
+        routes = @("osmu-backend", "osmu-data-flow", "osmu-backup")
+        grafanaPanelCount = 11
+        tuningEvidenceCount = 11
+    }
+    confirmations = @{
+        prometheusRulesLoaded = $true
+        grafanaDashboardImported = $true
+        alertmanagerRoutesReviewed = $true
+        targetBaselinesReviewed = $true
+        incidentRoutingReviewed = $true
+        noSecretValues = $true
+    }
+}
+Write-TextEvidence (Join-Path $monitoringThresholdSource "latest-monitoring-threshold-evidence.md") "# Monitoring threshold"
 Write-JsonEvidence (Join-Path $secretRotationSource "latest-secret-rotation-evidence.json") @{
     formatVersion = "osmu.secret-rotation-evidence.v1"
     result = "passed"
@@ -196,6 +220,7 @@ $importScript = Resolve-ProjectPath ".\scripts\import-operations-readiness-artif
     -IamRbacArtifactPath $iamSource `
     -SecurityEvidenceArtifactPath $securitySource `
     -StorageBackendTelemetryArtifactPath $storageBackendTelemetrySource `
+    -MonitoringThresholdArtifactPath $monitoringThresholdSource `
     -SecretRotationArtifactPath $secretRotationSource `
     -CommercialIntegrationArtifactPath $commercialIntegrationSource `
     -CommercialApprovalArtifactPath $commercialApprovalSource `
@@ -225,6 +250,8 @@ Assert-True (Test-Path -LiteralPath (Join-Path $promotedRoot "latest-image-signi
 Assert-True (Test-Path -LiteralPath (Join-Path $promotedRoot "latest-container-security-evidence.json")) "Promoted container security evidence missing."
 Assert-True (Test-Path -LiteralPath (Join-Path $promotedRoot "latest-storage-backend-telemetry.json")) "Promoted storage backend telemetry evidence missing."
 Assert-True (Test-Path -LiteralPath (Join-Path $promotedRoot "latest-storage-backend-telemetry.md")) "Promoted storage backend telemetry markdown missing."
+Assert-True (Test-Path -LiteralPath (Join-Path $promotedRoot "latest-monitoring-threshold-evidence.json")) "Promoted monitoring threshold evidence missing."
+Assert-True (Test-Path -LiteralPath (Join-Path $promotedRoot "latest-monitoring-threshold-evidence.md")) "Promoted monitoring threshold markdown missing."
 Assert-True (Test-Path -LiteralPath (Join-Path $promotedRoot "latest-secret-rotation-evidence.json")) "Promoted secret rotation evidence missing."
 Assert-True (Test-Path -LiteralPath (Join-Path $promotedRoot "latest-secret-rotation-evidence.md")) "Promoted secret rotation markdown missing."
 Assert-True (Test-Path -LiteralPath (Join-Path $promotedRoot "latest-commercial-integration-evidence.json")) "Promoted commercial integration evidence missing."
@@ -240,10 +267,13 @@ Assert-True (Test-Path -LiteralPath (Join-Path $promotedRoot "latest-kubernetes-
 Assert-True (Test-Path -LiteralPath (Join-Path $promotedRoot "latest-data-flow-storage-plan.json")) "Promoted data-flow storage plan evidence missing."
 $promotedCommercialApproval = Get-Content -Raw -LiteralPath (Join-Path $promotedRoot "latest-commercial-approval-evidence.json") | ConvertFrom-Json
 $promotedStorageBackendTelemetry = Get-Content -Raw -LiteralPath (Join-Path $promotedRoot "latest-storage-backend-telemetry.json") | ConvertFrom-Json
+$promotedMonitoringThreshold = Get-Content -Raw -LiteralPath (Join-Path $promotedRoot "latest-monitoring-threshold-evidence.json") | ConvertFrom-Json
 $promotedSecretRotation = Get-Content -Raw -LiteralPath (Join-Path $promotedRoot "latest-secret-rotation-evidence.json") | ConvertFrom-Json
 $promotedCommercialIntegration = Get-Content -Raw -LiteralPath (Join-Path $promotedRoot "latest-commercial-integration-evidence.json") | ConvertFrom-Json
 Assert-True ($promotedStorageBackendTelemetry.result -eq "passed") "Promoted storage backend telemetry evidence should preserve result=passed."
 Assert-True ($promotedStorageBackendTelemetry.source.rawAdminInfoStored -eq $false) "Promoted storage backend telemetry evidence should preserve rawAdminInfoStored=false."
+Assert-True ($promotedMonitoringThreshold.result -eq "passed") "Promoted monitoring threshold evidence should preserve result=passed."
+Assert-True ($promotedMonitoringThreshold.confirmations.noSecretValues) "Promoted monitoring threshold evidence should preserve no-secret confirmation."
 Assert-True ($promotedSecretRotation.result -eq "passed") "Promoted secret rotation evidence should preserve result=passed."
 Assert-True ($promotedCommercialIntegration.result -eq "passed") "Promoted commercial integration evidence should preserve result=passed."
 Assert-True ($promotedCommercialApproval.result -eq "passed") "Promoted commercial approval evidence should preserve result=passed."
@@ -260,6 +290,9 @@ Assert-True ($promotedDataFlowRunbook.dataFlowStoragePlanSnapshot.result -eq "pa
 $dataFlowRunbookEntry = @($report.entries | Where-Object { $_.group -eq "data-flow-storage-transition-runbook" -and $_.fileName -eq "latest-data-flow-storage-transition-runbook-evidence.json" })
 Assert-True ($dataFlowRunbookEntry.Count -eq 1) "Data-flow storage transition runbook import entry missing."
 Assert-True (([string] $dataFlowRunbookEntry[0].detail).Contains("storagePlanResult=passed")) "Data-flow storage transition runbook import entry should include storage plan validation detail."
+$monitoringThresholdEntry = @($report.entries | Where-Object { $_.group -eq "monitoring-threshold" -and $_.fileName -eq "latest-monitoring-threshold-evidence.json" })
+Assert-True ($monitoringThresholdEntry.Count -eq 1) "Monitoring threshold import entry missing."
+Assert-True (([string] $monitoringThresholdEntry[0].detail).Contains("requiredAlerts=11")) "Monitoring threshold import entry should include threshold mapping validation detail."
 $promotedDataFlowStoragePlan = Get-Content -Raw -LiteralPath (Join-Path $promotedRoot "latest-data-flow-storage-plan.json") | ConvertFrom-Json
 Assert-True ($promotedDataFlowStoragePlan.formatVersion -eq "osmu.data-flow-storage-plan.v1") "Promoted data-flow storage plan evidence should preserve formatVersion."
 Assert-True ($promotedDataFlowStoragePlan.candidateStore -eq "MARIADB_PARTITION") "Promoted data-flow storage plan evidence should preserve candidateStore."
@@ -397,6 +430,47 @@ $unsafeDataFlowRunbookReport = Get-Content -Raw -LiteralPath $unsafeDataFlowRunb
 Assert-True ($unsafeDataFlowRunbookReport.result -eq "failed") "Unsafe data-flow runbook import report should be failed."
 Assert-True (-not (Test-Path -LiteralPath (Join-Path $unsafeDataFlowRunbookOutput "latest-data-flow-storage-transition-runbook-evidence.json"))) "Unsafe data-flow storage transition runbook must not be promoted."
 Assert-True (($unsafeDataFlowRunbookReport.entries | ConvertTo-Json -Depth 8).Contains("raw SQL")) "Unsafe data-flow runbook report should describe sanitized summary failure."
+
+Write-JsonEvidence (Join-Path $unsafeMonitoringThresholdRoot "latest-monitoring-threshold-evidence.json") @{
+    formatVersion = "osmu.monitoring-threshold-evidence.v1"
+    result = "passed"
+    webhookSecret = "password=super-secret"
+    thresholdTargetSummary = @{
+        requiredAlertCount = 11
+        mappedAlertCount = 11
+        missingAlerts = @()
+    }
+    confirmations = @{
+        prometheusRulesLoaded = $true
+        grafanaDashboardImported = $true
+        alertmanagerRoutesReviewed = $true
+        targetBaselinesReviewed = $true
+        incidentRoutingReviewed = $true
+        noSecretValues = $true
+    }
+}
+$unsafeMonitoringThresholdOutput = Join-Path $resolvedOutputDirectory "unsafe-monitoring-threshold-promoted"
+$unsafeMonitoringThresholdJson = Join-Path $resolvedOutputDirectory "unsafe-monitoring-threshold-import.json"
+$unsafeMonitoringThresholdMarkdown = Join-Path $resolvedOutputDirectory "unsafe-monitoring-threshold-import.md"
+$previousErrorActionPreference = $ErrorActionPreference
+$ErrorActionPreference = "Continue"
+try {
+    $unsafeMonitoringThresholdOutputLines = & powershell -NoProfile -ExecutionPolicy Bypass -File $importScript `
+        -MonitoringThresholdArtifactPath $unsafeMonitoringThresholdRoot `
+        -OutputDirectory $unsafeMonitoringThresholdOutput `
+        -JsonOutputPath $unsafeMonitoringThresholdJson `
+        -MarkdownOutputPath $unsafeMonitoringThresholdMarkdown 2>&1
+    $unsafeMonitoringThresholdExitCode = $LASTEXITCODE
+}
+finally {
+    $ErrorActionPreference = $previousErrorActionPreference
+}
+Assert-True ($unsafeMonitoringThresholdExitCode -ne 0) "Monitoring threshold evidence with credential-shaped content should fail import."
+Assert-True (Test-Path -LiteralPath $unsafeMonitoringThresholdJson) "Unsafe monitoring threshold import report should still be written."
+$unsafeMonitoringThresholdReport = Get-Content -Raw -LiteralPath $unsafeMonitoringThresholdJson | ConvertFrom-Json
+Assert-True ($unsafeMonitoringThresholdReport.result -eq "failed") "Unsafe monitoring threshold import report should be failed."
+Assert-True (-not (Test-Path -LiteralPath (Join-Path $unsafeMonitoringThresholdOutput "latest-monitoring-threshold-evidence.json"))) "Unsafe monitoring threshold evidence must not be promoted."
+Assert-True (($unsafeMonitoringThresholdReport.entries | ConvertTo-Json -Depth 8).Contains("credential-shaped content")) "Unsafe monitoring threshold report should describe credential-shaped content."
 
 Write-JsonEvidence (Join-Path $directDataFlowStoragePlanSource "latest-data-flow-storage-plan.json") @{
     formatVersion = "osmu.data-flow-storage-plan.v1"

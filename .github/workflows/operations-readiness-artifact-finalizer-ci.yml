@@ -51,6 +51,14 @@ on:
         description: Optional storage backend telemetry evidence artifact name
         required: false
         default: ""
+      monitoring_threshold_run_id:
+        description: Optional monitoring threshold evidence run id
+        required: false
+        default: ""
+      monitoring_threshold_artifact_name:
+        description: Optional monitoring threshold evidence artifact name
+        required: false
+        default: ""
       secret_rotation_run_id:
         description: Optional secret rotation evidence run id
         required: false
@@ -227,6 +235,15 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           path: .osmu-run/operations-readiness-artifacts/storage-backend-telemetry
 
+      - name: Download monitoring threshold evidence
+        if: ${{ inputs.monitoring_threshold_run_id != '' && inputs.monitoring_threshold_artifact_name != '' }}
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ inputs.monitoring_threshold_artifact_name }}
+          run-id: ${{ inputs.monitoring_threshold_run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: .osmu-run/operations-readiness-artifacts/monitoring-threshold
+
       - name: Download secret rotation evidence
         if: ${{ inputs.secret_rotation_run_id != '' && inputs.secret_rotation_artifact_name != '' }}
         uses: actions/download-artifact@v4
@@ -314,6 +331,7 @@ jobs:
             @("IamRbacArtifactPath", ".osmu-run/operations-readiness-artifacts/iam-rbac"),
             @("SecurityEvidenceArtifactPath", ".osmu-run/operations-readiness-artifacts/security-evidence"),
             @("StorageBackendTelemetryArtifactPath", ".osmu-run/operations-readiness-artifacts/storage-backend-telemetry"),
+            @("MonitoringThresholdArtifactPath", ".osmu-run/operations-readiness-artifacts/monitoring-threshold"),
             @("SecretRotationArtifactPath", ".osmu-run/operations-readiness-artifacts/secret-rotation"),
             @("CommercialIntegrationArtifactPath", ".osmu-run/operations-readiness-artifacts/commercial-integration"),
             @("CommercialApprovalArtifactPath", ".osmu-run/operations-readiness-artifacts/commercial-approval"),
@@ -367,6 +385,8 @@ jobs:
             .osmu-run/latest-container-security-evidence.json
             .osmu-run/latest-storage-backend-telemetry.json
             .osmu-run/latest-storage-backend-telemetry.md
+            .osmu-run/latest-monitoring-threshold-evidence.json
+            .osmu-run/latest-monitoring-threshold-evidence.md
             .osmu-run/latest-secret-rotation-evidence.json
             .osmu-run/latest-secret-rotation-evidence.md
             .osmu-run/latest-commercial-integration-evidence.json

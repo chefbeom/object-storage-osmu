@@ -13,6 +13,7 @@ param(
     [string] $OperationsReadinessFinalizerWorkflowPath = ".\.github\workflows\operations-readiness-finalizer-ci.yml",
     [string] $OperationsReadinessArtifactFinalizerWorkflowPath = ".\.github\workflows\operations-readiness-artifact-finalizer-ci.yml",
     [string] $ManualStorageBackendTelemetryEvidenceWorkflowPath = ".\.github\workflows\manual-storage-backend-telemetry-evidence.yml",
+    [string] $ManualMonitoringThresholdEvidenceWorkflowPath = ".\.github\workflows\manual-monitoring-threshold-evidence.yml",
     [string] $ManualSecretRotationEvidenceWorkflowPath = ".\.github\workflows\manual-secret-rotation-evidence.yml",
     [string] $ManualCommercialIntegrationEvidenceWorkflowPath = ".\.github\workflows\manual-commercial-integration-evidence.yml",
     [string] $ManualCommercialApprovalEvidenceWorkflowPath = ".\.github\workflows\manual-commercial-approval-evidence.yml",
@@ -493,6 +494,8 @@ Assert-Contains $operationsReadinessArtifactWorkflowContent "ha_dr_readiness_run
 Assert-Contains $operationsReadinessArtifactWorkflowContent "kubernetes_dr_run_id:" "Operations Readiness Artifact Finalizer CI workflow"
 Assert-Contains $operationsReadinessArtifactWorkflowContent "iam_rbac_run_id:" "Operations Readiness Artifact Finalizer CI workflow"
 Assert-Contains $operationsReadinessArtifactWorkflowContent "security_evidence_run_id:" "Operations Readiness Artifact Finalizer CI workflow"
+Assert-Contains $operationsReadinessArtifactWorkflowContent "monitoring_threshold_run_id:" "Operations Readiness Artifact Finalizer CI workflow"
+Assert-Contains $operationsReadinessArtifactWorkflowContent "monitoring_threshold_artifact_name:" "Operations Readiness Artifact Finalizer CI workflow"
 Assert-Contains $operationsReadinessArtifactWorkflowContent "secret_rotation_run_id:" "Operations Readiness Artifact Finalizer CI workflow"
 Assert-Contains $operationsReadinessArtifactWorkflowContent "secret_rotation_artifact_name:" "Operations Readiness Artifact Finalizer CI workflow"
 Assert-Contains $operationsReadinessArtifactWorkflowContent "commercial_integration_run_id:" "Operations Readiness Artifact Finalizer CI workflow"
@@ -527,6 +530,7 @@ Assert-Contains $operationsReadinessArtifactWorkflowContent "Download data-flow 
 Assert-Contains $operationsReadinessArtifactWorkflowContent "Download Kubernetes operations report sync evidence" "Operations Readiness Artifact Finalizer CI workflow"
 Assert-Contains $operationsReadinessArtifactWorkflowContent "SecretRotationArtifactPath" "Operations Readiness Artifact Finalizer CI workflow"
 Assert-Contains $operationsReadinessArtifactWorkflowContent "StorageBackendTelemetryArtifactPath" "Operations Readiness Artifact Finalizer CI workflow"
+Assert-Contains $operationsReadinessArtifactWorkflowContent "MonitoringThresholdArtifactPath" "Operations Readiness Artifact Finalizer CI workflow"
 Assert-Contains $operationsReadinessArtifactWorkflowContent "CommercialIntegrationArtifactPath" "Operations Readiness Artifact Finalizer CI workflow"
 Assert-Contains $operationsReadinessArtifactWorkflowContent "CommercialApprovalArtifactPath" "Operations Readiness Artifact Finalizer CI workflow"
 Assert-Contains $operationsReadinessArtifactWorkflowContent "EnterpriseAuthArtifactPath" "Operations Readiness Artifact Finalizer CI workflow"
@@ -545,6 +549,8 @@ Assert-Contains $operationsReadinessArtifactWorkflowContent ".osmu-run/latest-ku
 Assert-Contains $operationsReadinessArtifactWorkflowContent ".osmu-run/latest-data-flow-storage-plan.json" "Operations Readiness Artifact Finalizer CI workflow"
 Assert-Contains $operationsReadinessArtifactWorkflowContent ".osmu-run/latest-data-flow-storage-transition-runbook-evidence.json" "Operations Readiness Artifact Finalizer CI workflow"
 Assert-Contains $operationsReadinessArtifactWorkflowContent ".osmu-run/latest-data-flow-storage-transition-runbook-evidence.md" "Operations Readiness Artifact Finalizer CI workflow"
+Assert-Contains $operationsReadinessArtifactWorkflowContent ".osmu-run/latest-monitoring-threshold-evidence.json" "Operations Readiness Artifact Finalizer CI workflow"
+Assert-Contains $operationsReadinessArtifactWorkflowContent ".osmu-run/latest-monitoring-threshold-evidence.md" "Operations Readiness Artifact Finalizer CI workflow"
 Assert-Contains $operationsReadinessArtifactWorkflowContent "actions/download-artifact@v4" "Operations Readiness Artifact Finalizer CI workflow"
 Assert-Contains $operationsReadinessArtifactWorkflowContent "github-token: `${{ secrets.GITHUB_TOKEN }}" "Operations Readiness Artifact Finalizer CI workflow"
 Assert-Contains $operationsReadinessArtifactWorkflowContent "Download storage expansion evidence" "Operations Readiness Artifact Finalizer CI workflow"
@@ -553,6 +559,7 @@ Assert-Contains $operationsReadinessArtifactWorkflowContent "Download Kubernetes
 Assert-Contains $operationsReadinessArtifactWorkflowContent "Download IAM RBAC finalizer evidence" "Operations Readiness Artifact Finalizer CI workflow"
 Assert-Contains $operationsReadinessArtifactWorkflowContent "Download security evidence finalizer artifact" "Operations Readiness Artifact Finalizer CI workflow"
 Assert-Contains $operationsReadinessArtifactWorkflowContent "Download storage backend telemetry evidence" "Operations Readiness Artifact Finalizer CI workflow"
+Assert-Contains $operationsReadinessArtifactWorkflowContent "Download monitoring threshold evidence" "Operations Readiness Artifact Finalizer CI workflow"
 Assert-Contains $operationsReadinessArtifactWorkflowContent "Import downloaded evidence artifacts" "Operations Readiness Artifact Finalizer CI workflow"
 Assert-Contains $operationsReadinessArtifactWorkflowContent "./scripts/import-operations-readiness-artifacts.ps1" "Operations Readiness Artifact Finalizer CI workflow"
 Assert-Contains $operationsReadinessArtifactWorkflowContent "Write operations readiness report" "Operations Readiness Artifact Finalizer CI workflow"
@@ -597,6 +604,35 @@ Assert-Contains $manualStorageBackendTelemetryWorkflowContent "actions/upload-ar
 Assert-Contains $manualStorageBackendTelemetryWorkflowContent "storage-backend-telemetry-evidence-" "Manual Storage Backend Telemetry Evidence workflow"
 Assert-Contains $manualStorageBackendTelemetryWorkflowContent ".osmu-run/latest-storage-backend-telemetry.json" "Manual Storage Backend Telemetry Evidence workflow"
 Assert-Contains $manualStorageBackendTelemetryWorkflowContent ".osmu-run/latest-storage-backend-telemetry.md" "Manual Storage Backend Telemetry Evidence workflow"
+
+$manualMonitoringThresholdWorkflow = Read-Workflow $ManualMonitoringThresholdEvidenceWorkflowPath "Manual Monitoring Threshold Evidence workflow"
+$manualMonitoringThresholdWorkflowContent = $manualMonitoringThresholdWorkflow.Content
+
+Assert-Contains $manualMonitoringThresholdWorkflowContent "name: Manual Monitoring Threshold Evidence" "Manual Monitoring Threshold Evidence workflow"
+Assert-Contains $manualMonitoringThresholdWorkflowContent "workflow_dispatch:" "Manual Monitoring Threshold Evidence workflow"
+Assert-NotContains $manualMonitoringThresholdWorkflowContent "pull_request:" "Manual Monitoring Threshold Evidence workflow"
+Assert-NotContains $manualMonitoringThresholdWorkflowContent "push:" "Manual Monitoring Threshold Evidence workflow"
+Assert-Contains $manualMonitoringThresholdWorkflowContent "contents: read" "Manual Monitoring Threshold Evidence workflow"
+Assert-Contains $manualMonitoringThresholdWorkflowContent "runs-on: ubuntu-latest" "Manual Monitoring Threshold Evidence workflow"
+Assert-Contains $manualMonitoringThresholdWorkflowContent "timeout-minutes: 15" "Manual Monitoring Threshold Evidence workflow"
+Assert-Contains $manualMonitoringThresholdWorkflowContent "prometheus_rules_evidence_ref:" "Manual Monitoring Threshold Evidence workflow"
+Assert-Contains $manualMonitoringThresholdWorkflowContent "grafana_dashboard_evidence_ref:" "Manual Monitoring Threshold Evidence workflow"
+Assert-Contains $manualMonitoringThresholdWorkflowContent "alertmanager_route_evidence_ref:" "Manual Monitoring Threshold Evidence workflow"
+Assert-Contains $manualMonitoringThresholdWorkflowContent "target_baseline_evidence_ref:" "Manual Monitoring Threshold Evidence workflow"
+Assert-Contains $manualMonitoringThresholdWorkflowContent "incident_routing_evidence_ref:" "Manual Monitoring Threshold Evidence workflow"
+Assert-Contains $manualMonitoringThresholdWorkflowContent "confirm_no_secret_values:" "Manual Monitoring Threshold Evidence workflow"
+Assert-Contains $manualMonitoringThresholdWorkflowContent "Record monitoring threshold evidence" "Manual Monitoring Threshold Evidence workflow"
+Assert-Contains $manualMonitoringThresholdWorkflowContent "./scripts/write-monitoring-threshold-evidence.ps1" "Manual Monitoring Threshold Evidence workflow"
+Assert-Contains $manualMonitoringThresholdWorkflowContent "-ConfirmPrometheusRulesLoaded" "Manual Monitoring Threshold Evidence workflow"
+Assert-Contains $manualMonitoringThresholdWorkflowContent "-ConfirmGrafanaDashboardImported" "Manual Monitoring Threshold Evidence workflow"
+Assert-Contains $manualMonitoringThresholdWorkflowContent "-ConfirmAlertmanagerRoutesReviewed" "Manual Monitoring Threshold Evidence workflow"
+Assert-Contains $manualMonitoringThresholdWorkflowContent "-ConfirmTargetBaselinesReviewed" "Manual Monitoring Threshold Evidence workflow"
+Assert-Contains $manualMonitoringThresholdWorkflowContent "-ConfirmIncidentRoutingReviewed" "Manual Monitoring Threshold Evidence workflow"
+Assert-Contains $manualMonitoringThresholdWorkflowContent "-FailIfNotPassed" "Manual Monitoring Threshold Evidence workflow"
+Assert-Contains $manualMonitoringThresholdWorkflowContent "actions/upload-artifact@v4" "Manual Monitoring Threshold Evidence workflow"
+Assert-Contains $manualMonitoringThresholdWorkflowContent "monitoring-threshold-evidence-" "Manual Monitoring Threshold Evidence workflow"
+Assert-Contains $manualMonitoringThresholdWorkflowContent ".osmu-run/latest-monitoring-threshold-evidence.json" "Manual Monitoring Threshold Evidence workflow"
+Assert-Contains $manualMonitoringThresholdWorkflowContent ".osmu-run/latest-monitoring-threshold-evidence.md" "Manual Monitoring Threshold Evidence workflow"
 
 $manualSecretRotationWorkflow = Read-Workflow $ManualSecretRotationEvidenceWorkflowPath "Manual Secret Rotation Evidence workflow"
 $manualSecretRotationWorkflowContent = $manualSecretRotationWorkflow.Content
@@ -1050,6 +1086,7 @@ Write-Host "Kubernetes Operations Report Sync workflow: $($kubernetesOperationsR
 Write-Host "Operations Readiness Finalizer workflow: $($operationsReadinessWorkflow.Path)"
 Write-Host "Operations Readiness Artifact Finalizer workflow: $($operationsReadinessArtifactWorkflow.Path)"
 Write-Host "Manual Storage Backend Telemetry Evidence workflow: $($manualStorageBackendTelemetryWorkflow.Path)"
+Write-Host "Manual Monitoring Threshold Evidence workflow: $($manualMonitoringThresholdWorkflow.Path)"
 Write-Host "Manual Secret Rotation Evidence workflow: $($manualSecretRotationWorkflow.Path)"
 Write-Host "Manual Commercial Integration Evidence workflow: $($manualCommercialIntegrationWorkflow.Path)"
 Write-Host "Manual Commercial Approval Evidence workflow: $($manualCommercialApprovalWorkflow.Path)"

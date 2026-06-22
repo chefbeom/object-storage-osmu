@@ -46,8 +46,8 @@ New-Item -ItemType Directory -Force -Path $runListDirectory | Out-Null
   "formatVersion": "osmu.operations-evidence-plan-invocation.v1",
   "result": "planned",
   "sourceSummary": "passed=36 pending=6",
-  "selectedActionCount": 15,
-  "plannedCount": 15,
+  "selectedActionCount": 16,
+  "plannedCount": 16,
   "blockedCount": 0,
   "executedCount": 0,
   "failedCount": 0,
@@ -141,6 +141,12 @@ New-Item -ItemType Directory -Force -Path $runListDirectory | Out-Null
       "name": "Kubernetes operations report sync evidence",
       "category": "operations",
       "command": "gh workflow run kubernetes-operations-report-sync-ci.yml -f run_live=true -f apply=true"
+    },
+    {
+      "order": 16,
+      "name": "Monitoring threshold target evidence",
+      "category": "monitoring",
+      "command": "gh workflow run manual-monitoring-threshold-evidence.yml -f environment_name=prod -f target_cluster=osmu-prod -f operator=ops-owner -f review_started_at=2026-06-20T03:00:00Z -f review_completed_at=2026-06-20T03:20:00Z -f change_approval_ref=monitoring-threshold-change-20260620 -f prometheus_rules_evidence_ref=prometheus-rules-20260620 -f grafana_dashboard_evidence_ref=grafana-dashboard-20260620 -f alertmanager_route_evidence_ref=alertmanager-route-20260620 -f target_baseline_evidence_ref=target-baseline-20260620 -f incident_routing_evidence_ref=incident-routing-20260620 -f evidence_ref=monitoring-threshold-20260620 -f confirm_prometheus_rules_loaded=true -f confirm_grafana_dashboard_imported=true -f confirm_alertmanager_routes_reviewed=true -f confirm_target_baselines_reviewed=true -f confirm_incident_routing_reviewed=true -f confirm_no_secret_values=true -f fail_if_not_passed=true"
     }
   ]
 }
@@ -162,6 +168,7 @@ Write-RunListFixture "manual-operations-handoff-package.yml" 112 $sha
 Write-RunListFixture "manual-data-flow-storage-plan-evidence.yml" 113 $sha
 Write-RunListFixture "manual-data-flow-storage-transition-runbook-evidence.yml" 114 $sha
 Write-RunListFixture "kubernetes-operations-report-sync-ci.yml" 115 $sha
+Write-RunListFixture "manual-monitoring-threshold-evidence.yml" 116 $sha
 
 & (Join-Path $PSScriptRoot "write-operations-workflow-run-id-plan.ps1") `
     -InvocationReportPath $invocationPath `
@@ -174,8 +181,8 @@ $planOnly = Get-Content -Raw -LiteralPath $planOnlyJsonPath | ConvertFrom-Json
 $planOnlyMarkdown = Get-Content -Raw -LiteralPath $planOnlyMarkdownPath
 Assert-Equal $planOnly.formatVersion "osmu.operations-workflow-run-id-plan.v1" "plan-only formatVersion"
 Assert-Equal $planOnly.result "query-required" "plan-only result"
-Assert-Equal $planOnly.workflowCount 15 "plan-only workflow count"
-Assert-Equal $planOnly.missingWorkflowCount 15 "plan-only missing workflow count"
+Assert-Equal $planOnly.workflowCount 16 "plan-only workflow count"
+Assert-Equal $planOnly.missingWorkflowCount 16 "plan-only missing workflow count"
 Assert-Contains $planOnly.workflows[0].queryCommand "gh run list --workflow storage-expansion-finalizer-ci.yml" "plan-only query command"
 Assert-Contains $planOnly.workflows[0].artifactName "storage-expansion-finalizer-<run-id>" "plan-only artifact placeholder"
 Assert-Contains ($planOnly.workflows | ConvertTo-Json -Depth 8) "manual-secret-rotation-evidence.yml" "plan-only manual secret rotation workflow"
@@ -185,6 +192,7 @@ Assert-Contains ($planOnly.workflows | ConvertTo-Json -Depth 8) "manual-commerci
 Assert-Contains ($planOnly.workflows | ConvertTo-Json -Depth 8) "manual-operations-handoff-package.yml" "plan-only manual handoff workflow"
 Assert-Contains ($planOnly.workflows | ConvertTo-Json -Depth 8) "manual-data-flow-storage-plan-evidence.yml" "plan-only manual data-flow storage plan workflow"
 Assert-Contains ($planOnly.workflows | ConvertTo-Json -Depth 8) "manual-data-flow-storage-transition-runbook-evidence.yml" "plan-only manual data-flow storage transition runbook workflow"
+Assert-Contains ($planOnly.workflows | ConvertTo-Json -Depth 8) "manual-monitoring-threshold-evidence.yml" "plan-only manual monitoring threshold workflow"
 Assert-Contains $planOnlyMarkdown "Artifact collection plan" "plan-only markdown command section"
 
 & (Join-Path $PSScriptRoot "write-operations-workflow-run-id-plan.ps1") `
@@ -198,7 +206,7 @@ Assert-Contains $planOnlyMarkdown "Artifact collection plan" "plan-only markdown
 $ready = Get-Content -Raw -LiteralPath $readyJsonPath | ConvertFrom-Json
 $readyMarkdown = Get-Content -Raw -LiteralPath $readyMarkdownPath
 Assert-Equal $ready.result "ready" "ready result"
-Assert-Equal $ready.readyWorkflowCount 15 "ready workflow count"
+Assert-Equal $ready.readyWorkflowCount 16 "ready workflow count"
 Assert-Equal $ready.missingWorkflowCount 0 "ready missing workflow count"
 Assert-Equal $ready.commitSha $sha "ready commit sha from run headSha"
 Assert-Contains $ready.artifactCollectionPlanCommand "-StorageExpansionRunId 101" "storage expansion run id argument"
@@ -216,6 +224,7 @@ Assert-Contains $ready.artifactCollectionPlanCommand "-OperationsHandoffPackageR
 Assert-Contains $ready.artifactCollectionPlanCommand "-DataFlowStoragePlanRunId 113" "data-flow storage plan run id argument"
 Assert-Contains $ready.artifactCollectionPlanCommand "-DataFlowStorageTransitionRunbookRunId 114" "data-flow storage transition runbook run id argument"
 Assert-Contains $ready.artifactCollectionPlanCommand "-KubernetesOperationsReportSyncRunId 115" "Kubernetes operations report sync run id argument"
+Assert-Contains $ready.artifactCollectionPlanCommand "-MonitoringThresholdRunId 116" "monitoring threshold run id argument"
 Assert-Contains $ready.securityEvidenceFinalizerCommand "image_signing_run_id=104" "security finalizer image signing run id"
 Assert-Contains $ready.securityEvidenceFinalizerCommand "container_security_run_id=105" "security finalizer container security run id"
 Assert-Contains $ready.securityEvidenceFinalizerCommand "osmu-image-signing-v0.1.0-rc.1-$sha" "security finalizer image artifact"
@@ -230,6 +239,7 @@ Assert-Contains $readyMarkdown "operations-handoff-package-112" "ready markdown 
 Assert-Contains $readyMarkdown "data-flow-storage-plan-evidence-113" "ready markdown data-flow storage plan artifact"
 Assert-Contains $readyMarkdown "data-flow-storage-transition-runbook-evidence-114" "ready markdown data-flow storage transition runbook artifact"
 Assert-Contains $readyMarkdown "kubernetes-operations-report-sync-115" "ready markdown Kubernetes operations report sync artifact"
+Assert-Contains $readyMarkdown "monitoring-threshold-evidence-116" "ready markdown monitoring threshold artifact"
 Assert-Contains $readyMarkdown "Recommended run id: 106" "ready markdown security evidence run id"
 
 Write-Host "Operations workflow run id plan verified."

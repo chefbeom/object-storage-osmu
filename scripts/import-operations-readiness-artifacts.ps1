@@ -5,6 +5,7 @@ param(
     [string] $IamRbacArtifactPath = "",
     [string] $SecurityEvidenceArtifactPath = "",
     [string] $StorageBackendTelemetryArtifactPath = "",
+    [string] $MonitoringThresholdArtifactPath = "",
     [string] $SecretRotationArtifactPath = "",
     [string] $CommercialIntegrationArtifactPath = "",
     [string] $CommercialApprovalArtifactPath = "",
@@ -248,6 +249,76 @@ function Test-DataFlowStorageTransitionRunbookEvidenceJson([string] $Path) {
     }
 }
 
+function Test-MonitoringThresholdEvidenceJson([string] $Path) {
+    try {
+        $raw = Get-Content -Raw -LiteralPath $Path
+        $json = $raw | ConvertFrom-Json
+    }
+    catch {
+        return [pscustomobject]@{
+            passed = $false
+            detail = "invalid JSON: $($_.Exception.Message)"
+        }
+    }
+
+    $formatVersion = [string] (Get-JsonProperty $json "formatVersion")
+    if ($formatVersion -ne "osmu.monitoring-threshold-evidence.v1") {
+        return [pscustomobject]@{
+            passed = $false
+            detail = "formatVersion=$formatVersion expected=osmu.monitoring-threshold-evidence.v1"
+        }
+    }
+
+    $result = [string] (Get-JsonProperty $json "result")
+    if ($result -ne "passed") {
+        return [pscustomobject]@{
+            passed = $false
+            detail = "result=$result expected=passed"
+        }
+    }
+
+    $patterns = @(
+        '(?i)"(password|passwd|secret|token|credential|apiKey|api_key|accessKey|access_key|privateKey|private_key|webhookSecret|webhook_secret|smtpPass|smtp_pass)"\s*:',
+        '(?i)\b(password|passwd|secret|token|credential|api[_-]?key|access[_-]?key|private[_-]?key|webhook[_-]?secret|smtp[_-]?pass)\s*=\s*\S+',
+        '(?i)\bBearer\s+[A-Za-z0-9._~+/=-]{12,}',
+        '-----BEGIN [A-Z ]*PRIVATE KEY-----'
+    )
+    foreach ($pattern in $patterns) {
+        if ($raw -match $pattern) {
+            return [pscustomobject]@{
+                passed = $false
+                detail = "monitoring threshold evidence contains credential-shaped content"
+            }
+        }
+    }
+
+    $summary = Get-JsonProperty $json "thresholdTargetSummary"
+    $requiredAlertCount = [int] (Get-JsonProperty $summary "requiredAlertCount")
+    $mappedAlertCount = [int] (Get-JsonProperty $summary "mappedAlertCount")
+    $missingAlerts = @(Get-JsonProperty $summary "missingAlerts")
+    if ($requiredAlertCount -le 0 -or $mappedAlertCount -lt $requiredAlertCount -or $missingAlerts.Count -gt 0) {
+        return [pscustomobject]@{
+            passed = $false
+            detail = "threshold target mapping incomplete required=$requiredAlertCount mapped=$mappedAlertCount missing=$($missingAlerts -join ',')"
+        }
+    }
+
+    $confirmations = Get-JsonProperty $json "confirmations"
+    foreach ($confirmationName in @("prometheusRulesLoaded", "grafanaDashboardImported", "alertmanagerRoutesReviewed", "targetBaselinesReviewed", "incidentRoutingReviewed", "noSecretValues")) {
+        if (-not [bool] (Get-JsonProperty $confirmations $confirmationName)) {
+            return [pscustomobject]@{
+                passed = $false
+                detail = "confirmation $confirmationName expected=true"
+            }
+        }
+    }
+
+    return [pscustomobject]@{
+        passed = $true
+        detail = "formatVersion=$formatVersion result=$result requiredAlerts=$requiredAlertCount mappedAlerts=$mappedAlertCount"
+    }
+}
+
 function Import-EvidenceFile(
     [string] $Group,
     [string] $SourceRoot,
@@ -299,6 +370,14 @@ function Import-EvidenceFile(
         }
         [void] $validationDetails.Add($validation.detail)
     }
+    elseif ($ValidationKind -eq "monitoring-threshold") {
+        $validation = Test-MonitoringThresholdEvidenceJson $sourcePath
+        if (-not $validation.passed) {
+            Add-Entry $Group $FileName "failed" $validation.detail $sourcePath ""
+            return
+        }
+        [void] $validationDetails.Add($validation.detail)
+    }
 
     $resolvedOutputDirectory = Resolve-ProjectPath $OutputDirectory
     New-Item -ItemType Directory -Force -Path $resolvedOutputDirectory | Out-Null
@@ -336,6 +415,9 @@ Import-EvidenceFile "security-evidence" $SecurityEvidenceArtifactPath "latest-co
 Import-EvidenceFile "storage-backend-telemetry" $StorageBackendTelemetryArtifactPath "latest-storage-backend-telemetry.json" $true "result" "passed"
 Import-EvidenceFile "storage-backend-telemetry" $StorageBackendTelemetryArtifactPath "latest-storage-backend-telemetry.md" $false
 
+Import-EvidenceFile "monitoring-threshold" $MonitoringThresholdArtifactPath "latest-monitoring-threshold-evidence.json" $true "" "" "monitoring-threshold"
+Import-EvidenceFile "monitoring-threshold" $MonitoringThresholdArtifactPath "latest-monitoring-threshold-evidence.md" $false
+
 Import-EvidenceFile "secret-rotation" $SecretRotationArtifactPath "latest-secret-rotation-evidence.json" $true "result" "passed"
 Import-EvidenceFile "secret-rotation" $SecretRotationArtifactPath "latest-secret-rotation-evidence.md" $false
 
@@ -369,6 +451,7 @@ $selectedGroupCandidates = @(
     [pscustomobject]@{ group = "iam-rbac"; path = $IamRbacArtifactPath },
     [pscustomobject]@{ group = "security-evidence"; path = $SecurityEvidenceArtifactPath },
     [pscustomobject]@{ group = "storage-backend-telemetry"; path = $StorageBackendTelemetryArtifactPath },
+    [pscustomobject]@{ group = "monitoring-threshold"; path = $MonitoringThresholdArtifactPath },
     [pscustomobject]@{ group = "secret-rotation"; path = $SecretRotationArtifactPath },
     [pscustomobject]@{ group = "commercial-integration"; path = $CommercialIntegrationArtifactPath },
     [pscustomobject]@{ group = "commercial-approval"; path = $CommercialApprovalArtifactPath },

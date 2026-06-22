@@ -1,0 +1,166 @@
+name: Manual Monitoring Threshold Evidence
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment_name:
+        description: Target environment label
+        required: true
+        default: prod
+      target_cluster:
+        description: Target cluster label
+        required: true
+        default: osmu-prod
+      operator:
+        description: Operator or team recording the evidence
+        required: true
+        default: ""
+      review_started_at:
+        description: Monitoring threshold review start timestamp
+        required: true
+        default: ""
+      review_completed_at:
+        description: Monitoring threshold review completion timestamp
+        required: true
+        default: ""
+      change_approval_ref:
+        description: External change approval reference
+        required: true
+        default: ""
+      prometheus_rules_evidence_ref:
+        description: External Prometheus rule load evidence reference
+        required: true
+        default: ""
+      grafana_dashboard_evidence_ref:
+        description: External Grafana dashboard import evidence reference
+        required: true
+        default: ""
+      alertmanager_route_evidence_ref:
+        description: External Alertmanager route review evidence reference
+        required: true
+        default: ""
+      target_baseline_evidence_ref:
+        description: External target tenant baseline review evidence reference
+        required: true
+        default: ""
+      incident_routing_evidence_ref:
+        description: External incident routing review evidence reference
+        required: true
+        default: ""
+      evidence_ref:
+        description: External monitoring threshold evidence reference
+        required: true
+        default: ""
+      confirm_prometheus_rules_loaded:
+        description: Confirm Prometheus rules loaded in target
+        required: true
+        type: boolean
+        default: false
+      confirm_grafana_dashboard_imported:
+        description: Confirm Grafana dashboard imported or provisioned
+        required: true
+        type: boolean
+        default: false
+      confirm_alertmanager_routes_reviewed:
+        description: Confirm Alertmanager routes and receivers reviewed
+        required: true
+        type: boolean
+        default: false
+      confirm_target_baselines_reviewed:
+        description: Confirm target tenant baselines reviewed
+        required: true
+        type: boolean
+        default: false
+      confirm_incident_routing_reviewed:
+        description: Confirm incident routing ownership reviewed
+        required: true
+        type: boolean
+        default: false
+      confirm_no_secret_values:
+        description: Confirm inputs contain references only, not secret values
+        required: true
+        type: boolean
+        default: false
+      fail_if_not_passed:
+        description: Fail workflow when evidence result is not passed
+        required: true
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: manual-monitoring-threshold-evidence-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  monitoring-threshold-evidence:
+    name: Manual monitoring threshold evidence
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Record monitoring threshold evidence
+        shell: pwsh
+        env:
+          OSMU_ENVIRONMENT_NAME: ${{ inputs.environment_name }}
+          OSMU_TARGET_CLUSTER: ${{ inputs.target_cluster }}
+          OSMU_OPERATOR: ${{ inputs.operator }}
+          OSMU_REVIEW_STARTED_AT: ${{ inputs.review_started_at }}
+          OSMU_REVIEW_COMPLETED_AT: ${{ inputs.review_completed_at }}
+          OSMU_CHANGE_APPROVAL_REF: ${{ inputs.change_approval_ref }}
+          OSMU_PROMETHEUS_RULES_EVIDENCE_REF: ${{ inputs.prometheus_rules_evidence_ref }}
+          OSMU_GRAFANA_DASHBOARD_EVIDENCE_REF: ${{ inputs.grafana_dashboard_evidence_ref }}
+          OSMU_ALERTMANAGER_ROUTE_EVIDENCE_REF: ${{ inputs.alertmanager_route_evidence_ref }}
+          OSMU_TARGET_BASELINE_EVIDENCE_REF: ${{ inputs.target_baseline_evidence_ref }}
+          OSMU_INCIDENT_ROUTING_EVIDENCE_REF: ${{ inputs.incident_routing_evidence_ref }}
+          OSMU_EVIDENCE_REF: ${{ inputs.evidence_ref }}
+          OSMU_CONFIRM_PROMETHEUS_RULES_LOADED: ${{ inputs.confirm_prometheus_rules_loaded }}
+          OSMU_CONFIRM_GRAFANA_DASHBOARD_IMPORTED: ${{ inputs.confirm_grafana_dashboard_imported }}
+          OSMU_CONFIRM_ALERTMANAGER_ROUTES_REVIEWED: ${{ inputs.confirm_alertmanager_routes_reviewed }}
+          OSMU_CONFIRM_TARGET_BASELINES_REVIEWED: ${{ inputs.confirm_target_baselines_reviewed }}
+          OSMU_CONFIRM_INCIDENT_ROUTING_REVIEWED: ${{ inputs.confirm_incident_routing_reviewed }}
+          OSMU_CONFIRM_NO_SECRET_VALUES: ${{ inputs.confirm_no_secret_values }}
+          OSMU_FAIL_IF_NOT_PASSED: ${{ inputs.fail_if_not_passed }}
+        run: |
+          $evidenceArgs = @(
+            "-EnvironmentName", $env:OSMU_ENVIRONMENT_NAME,
+            "-TargetCluster", $env:OSMU_TARGET_CLUSTER,
+            "-Operator", $env:OSMU_OPERATOR,
+            "-ReviewStartedAt", $env:OSMU_REVIEW_STARTED_AT,
+            "-ReviewCompletedAt", $env:OSMU_REVIEW_COMPLETED_AT,
+            "-ChangeApprovalRef", $env:OSMU_CHANGE_APPROVAL_REF,
+            "-EvidenceRef", $env:OSMU_EVIDENCE_REF,
+            "-PrometheusRulesEvidenceRef", $env:OSMU_PROMETHEUS_RULES_EVIDENCE_REF,
+            "-GrafanaDashboardEvidenceRef", $env:OSMU_GRAFANA_DASHBOARD_EVIDENCE_REF,
+            "-AlertmanagerRouteEvidenceRef", $env:OSMU_ALERTMANAGER_ROUTE_EVIDENCE_REF,
+            "-TargetBaselineEvidenceRef", $env:OSMU_TARGET_BASELINE_EVIDENCE_REF,
+            "-IncidentRoutingEvidenceRef", $env:OSMU_INCIDENT_ROUTING_EVIDENCE_REF,
+            "-JsonOutputPath", ".osmu-run/latest-monitoring-threshold-evidence.json",
+            "-MarkdownOutputPath", ".osmu-run/latest-monitoring-threshold-evidence.md"
+          )
+
+          if ($env:OSMU_CONFIRM_PROMETHEUS_RULES_LOADED -eq "true") { $evidenceArgs += "-ConfirmPrometheusRulesLoaded" }
+          if ($env:OSMU_CONFIRM_GRAFANA_DASHBOARD_IMPORTED -eq "true") { $evidenceArgs += "-ConfirmGrafanaDashboardImported" }
+          if ($env:OSMU_CONFIRM_ALERTMANAGER_ROUTES_REVIEWED -eq "true") { $evidenceArgs += "-ConfirmAlertmanagerRoutesReviewed" }
+          if ($env:OSMU_CONFIRM_TARGET_BASELINES_REVIEWED -eq "true") { $evidenceArgs += "-ConfirmTargetBaselinesReviewed" }
+          if ($env:OSMU_CONFIRM_INCIDENT_ROUTING_REVIEWED -eq "true") { $evidenceArgs += "-ConfirmIncidentRoutingReviewed" }
+          if ($env:OSMU_CONFIRM_NO_SECRET_VALUES -eq "true") { $evidenceArgs += "-ConfirmNoSecretValues" }
+          if ($env:OSMU_FAIL_IF_NOT_PASSED -eq "true") { $evidenceArgs += "-FailIfNotPassed" }
+
+          ./scripts/write-monitoring-threshold-evidence.ps1 @evidenceArgs
+
+      - name: Upload monitoring threshold evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: monitoring-threshold-evidence-${{ github.run_id }}
+          path: |
+            .osmu-run/latest-monitoring-threshold-evidence.json
+            .osmu-run/latest-monitoring-threshold-evidence.md
+          if-no-files-found: error
+          retention-days: 14
