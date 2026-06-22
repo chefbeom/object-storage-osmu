@@ -146,6 +146,18 @@ $finalizerRequiredPath = Join-Path $resolvedOutputDirectory "finalizer-required-
 $finalizerRequiredMarkdownPath = Join-Path $resolvedOutputDirectory "finalizer-required-convergence.md"
 $syncRequiredPath = Join-Path $resolvedOutputDirectory "sync-required-convergence.json"
 $syncRequiredMarkdownPath = Join-Path $resolvedOutputDirectory "sync-required-convergence.md"
+$stringFinalizerCountPath = Join-Path $resolvedOutputDirectory "string-finalizer-count.json"
+$stringFinalizerCountJsonPath = Join-Path $resolvedOutputDirectory "string-finalizer-count-convergence.json"
+$stringFinalizerCountMarkdownPath = Join-Path $resolvedOutputDirectory "string-finalizer-count-convergence.md"
+$missingFinalizerCountPath = Join-Path $resolvedOutputDirectory "missing-finalizer-count.json"
+$missingFinalizerCountJsonPath = Join-Path $resolvedOutputDirectory "missing-finalizer-count-convergence.json"
+$missingFinalizerCountMarkdownPath = Join-Path $resolvedOutputDirectory "missing-finalizer-count-convergence.md"
+$stringSyncCountPath = Join-Path $resolvedOutputDirectory "string-sync-count.json"
+$stringSyncCountJsonPath = Join-Path $resolvedOutputDirectory "string-sync-count-convergence.json"
+$stringSyncCountMarkdownPath = Join-Path $resolvedOutputDirectory "string-sync-count-convergence.md"
+$missingSyncCountPath = Join-Path $resolvedOutputDirectory "missing-sync-count.json"
+$missingSyncCountJsonPath = Join-Path $resolvedOutputDirectory "missing-sync-count-convergence.json"
+$missingSyncCountMarkdownPath = Join-Path $resolvedOutputDirectory "missing-sync-count-convergence.md"
 $readyJsonPath = Join-Path $resolvedOutputDirectory "ready-convergence.json"
 $readyMarkdownPath = Join-Path $resolvedOutputDirectory "ready-convergence.md"
 
@@ -200,7 +212,7 @@ Assert-Equal $finalizerRequiredReport.result "action-required" "finalizer requir
 Assert-Equal $finalizerRequiredReport.currentBottleneck.code "finalize-operations-readiness" "finalizer required bottleneck"
 Assert-Equal $finalizerRequiredReport.finalizerExists $false "finalizer required exists"
 Assert-Contains $finalizerRequiredReport.decisionRule "finalizer report exists" "finalizer required decision rule"
-Assert-Contains $finalizerRequiredReport.decisionRule "failedCount=0" "finalizer required decision rule"
+Assert-Contains $finalizerRequiredReport.decisionRule "typed integer failedCount=0" "finalizer required decision rule"
 Assert-Contains $finalizerRequiredReport.decisionRule "sourceReportResult=ready" "finalizer required decision rule"
 Assert-Contains $finalizerRequiredReport.recommendedCommands[0].command "finalize-operations-readiness.ps1" "finalizer required command"
 Assert-Contains $finalizerRequiredMarkdown "Finalize operations readiness" "finalizer required markdown command"
@@ -240,6 +252,120 @@ Write-JsonFixture $readySyncPath ([ordered]@{
     failedCount = 0
     checkCount = 5
 })
+
+Write-JsonFixture $stringFinalizerCountPath ([ordered]@{
+    formatVersion = "osmu.operations-readiness-finalize.v1"
+    result = "ready"
+    status = "operations-readiness-finalize-ready"
+    readinessResult = "ready"
+    failedCount = "0"
+    gaps = @()
+})
+
+& powershell -NoProfile -ExecutionPolicy Bypass -File $scriptPath `
+    -HandoffReportPath $readyHandoffPath `
+    -ReadinessReportPath $readyReadinessPath `
+    -OperationsReadinessFinalizeReportPath $stringFinalizerCountPath `
+    -KubernetesOperationsReportSyncReportPath $readySyncPath `
+    -JsonOutputPath $stringFinalizerCountJsonPath `
+    -MarkdownOutputPath $stringFinalizerCountMarkdownPath | Out-Host
+if ($LASTEXITCODE -ne 0) {
+    throw "write-operations-readiness-convergence.ps1 string-finalizer-count check failed with exit code $LASTEXITCODE."
+}
+
+$stringFinalizerCountReport = Get-Content -Raw -LiteralPath $stringFinalizerCountJsonPath | ConvertFrom-Json
+Assert-Equal $stringFinalizerCountReport.result "action-required" "string finalizer count result"
+Assert-Equal $stringFinalizerCountReport.currentBottleneck.code "finalize-operations-readiness" "string finalizer count bottleneck"
+Assert-Equal $stringFinalizerCountReport.finalizerFailedCount 0 "string finalizer count value"
+Assert-Equal $stringFinalizerCountReport.finalizerFailedCountValid $false "string finalizer count valid"
+Assert-Equal $stringFinalizerCountReport.finalizerFailedCountRaw "0" "string finalizer count raw"
+Assert-Contains $stringFinalizerCountReport.decisionRule "typed integer failedCount=0" "string finalizer count decision rule"
+
+Write-JsonFixture $missingFinalizerCountPath ([ordered]@{
+    formatVersion = "osmu.operations-readiness-finalize.v1"
+    result = "ready"
+    status = "operations-readiness-finalize-ready"
+    readinessResult = "ready"
+    gaps = @()
+})
+
+& powershell -NoProfile -ExecutionPolicy Bypass -File $scriptPath `
+    -HandoffReportPath $readyHandoffPath `
+    -ReadinessReportPath $readyReadinessPath `
+    -OperationsReadinessFinalizeReportPath $missingFinalizerCountPath `
+    -KubernetesOperationsReportSyncReportPath $readySyncPath `
+    -JsonOutputPath $missingFinalizerCountJsonPath `
+    -MarkdownOutputPath $missingFinalizerCountMarkdownPath | Out-Host
+if ($LASTEXITCODE -ne 0) {
+    throw "write-operations-readiness-convergence.ps1 missing-finalizer-count check failed with exit code $LASTEXITCODE."
+}
+
+$missingFinalizerCountReport = Get-Content -Raw -LiteralPath $missingFinalizerCountJsonPath | ConvertFrom-Json
+Assert-Equal $missingFinalizerCountReport.result "action-required" "missing finalizer count result"
+Assert-Equal $missingFinalizerCountReport.currentBottleneck.code "finalize-operations-readiness" "missing finalizer count bottleneck"
+Assert-Equal $missingFinalizerCountReport.finalizerFailedCount 0 "missing finalizer count value"
+Assert-Equal $missingFinalizerCountReport.finalizerFailedCountValid $false "missing finalizer count valid"
+Assert-Equal $missingFinalizerCountReport.finalizerFailedCountRaw "<missing>" "missing finalizer count raw"
+Assert-Contains $missingFinalizerCountReport.decisionRule "typed integer failedCount=0" "missing finalizer count decision rule"
+
+Write-JsonFixture $stringSyncCountPath ([ordered]@{
+    formatVersion = "osmu.kubernetes-operations-report-sync.v1"
+    result = "applied"
+    namespace = "osmu"
+    configMapName = "osmu-operations-reports"
+    configMapKey = "latest-operations-readiness-convergence.json"
+    sourceReportResult = "ready"
+    failedCount = "0"
+    checkCount = 5
+})
+
+& powershell -NoProfile -ExecutionPolicy Bypass -File $scriptPath `
+    -HandoffReportPath $readyHandoffPath `
+    -ReadinessReportPath $readyReadinessPath `
+    -OperationsReadinessFinalizeReportPath $readyFinalizePath `
+    -KubernetesOperationsReportSyncReportPath $stringSyncCountPath `
+    -JsonOutputPath $stringSyncCountJsonPath `
+    -MarkdownOutputPath $stringSyncCountMarkdownPath | Out-Host
+if ($LASTEXITCODE -ne 0) {
+    throw "write-operations-readiness-convergence.ps1 string-sync-count check failed with exit code $LASTEXITCODE."
+}
+
+$stringSyncCountReport = Get-Content -Raw -LiteralPath $stringSyncCountJsonPath | ConvertFrom-Json
+Assert-Equal $stringSyncCountReport.result "action-required" "string sync count result"
+Assert-Equal $stringSyncCountReport.currentBottleneck.code "sync-kubernetes-operations-report" "string sync count bottleneck"
+Assert-Equal $stringSyncCountReport.kubernetesReportSyncFailedCount 0 "string sync count value"
+Assert-Equal $stringSyncCountReport.kubernetesReportSyncFailedCountValid $false "string sync count valid"
+Assert-Equal $stringSyncCountReport.kubernetesReportSyncFailedCountRaw "0" "string sync count raw"
+Assert-Equal $stringSyncCountReport.kubernetesReportSyncReady $false "string sync count ready"
+
+Write-JsonFixture $missingSyncCountPath ([ordered]@{
+    formatVersion = "osmu.kubernetes-operations-report-sync.v1"
+    result = "applied"
+    namespace = "osmu"
+    configMapName = "osmu-operations-reports"
+    configMapKey = "latest-operations-readiness-convergence.json"
+    sourceReportResult = "ready"
+    checkCount = 5
+})
+
+& powershell -NoProfile -ExecutionPolicy Bypass -File $scriptPath `
+    -HandoffReportPath $readyHandoffPath `
+    -ReadinessReportPath $readyReadinessPath `
+    -OperationsReadinessFinalizeReportPath $readyFinalizePath `
+    -KubernetesOperationsReportSyncReportPath $missingSyncCountPath `
+    -JsonOutputPath $missingSyncCountJsonPath `
+    -MarkdownOutputPath $missingSyncCountMarkdownPath | Out-Host
+if ($LASTEXITCODE -ne 0) {
+    throw "write-operations-readiness-convergence.ps1 missing-sync-count check failed with exit code $LASTEXITCODE."
+}
+
+$missingSyncCountReport = Get-Content -Raw -LiteralPath $missingSyncCountJsonPath | ConvertFrom-Json
+Assert-Equal $missingSyncCountReport.result "action-required" "missing sync count result"
+Assert-Equal $missingSyncCountReport.currentBottleneck.code "sync-kubernetes-operations-report" "missing sync count bottleneck"
+Assert-Equal $missingSyncCountReport.kubernetesReportSyncFailedCount 0 "missing sync count value"
+Assert-Equal $missingSyncCountReport.kubernetesReportSyncFailedCountValid $false "missing sync count valid"
+Assert-Equal $missingSyncCountReport.kubernetesReportSyncFailedCountRaw "<missing>" "missing sync count raw"
+Assert-Equal $missingSyncCountReport.kubernetesReportSyncReady $false "missing sync count ready"
 
 $gapFinalizePath = Join-Path $resolvedOutputDirectory "gap-finalize.json"
 $gapFinalizeJsonPath = Join-Path $resolvedOutputDirectory "gap-finalize-convergence.json"

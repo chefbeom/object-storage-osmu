@@ -66,6 +66,39 @@ function Get-Int([object] $Object, [string] $Name) {
     }
 }
 
+function Get-RequiredInt([object] $Object, [string] $Name) {
+    $value = Get-JsonProperty $Object $Name
+    if ($null -eq $value) {
+        return [pscustomobject]@{
+            valid = $false
+            value = $null
+            raw = "<missing>"
+        }
+    }
+    $integerTypeNames = @("Byte", "SByte", "Int16", "UInt16", "Int32", "UInt32", "Int64", "UInt64")
+    if ($integerTypeNames -notcontains $value.GetType().Name) {
+        return [pscustomobject]@{
+            valid = $false
+            value = $null
+            raw = [string] $value
+        }
+    }
+    try {
+        return [pscustomobject]@{
+            valid = $true
+            value = [int64] $value
+            raw = [string] $value
+        }
+    }
+    catch {
+        return [pscustomobject]@{
+            valid = $false
+            value = $null
+            raw = [string] $value
+        }
+    }
+}
+
 function Get-ArrayCount([object] $Value) {
     if ($null -eq $Value) {
         return 0
@@ -174,10 +207,12 @@ $handoffResult = Get-Text $handoff.json "result"
 $readinessResult = Get-Text $readiness.json "result"
 $finalizerResult = Get-Text $finalize.json "result"
 $finalizerReadinessResult = Get-Text $finalize.json "readinessResult"
-$finalizerFailedCount = Get-Int $finalize.json "failedCount"
+$finalizerFailedCountResult = Get-RequiredInt $finalize.json "failedCount"
+$finalizerFailedCount = if ($null -eq $finalizerFailedCountResult.value) { 0 } else { [int64] $finalizerFailedCountResult.value }
 $finalizerGapCount = Get-ArrayCount (Get-JsonProperty $finalize.json "gaps")
 $kubernetesReportSyncResult = Get-Text $kubernetesReportSync.json "result"
-$kubernetesReportSyncFailedCount = Get-Int $kubernetesReportSync.json "failedCount"
+$kubernetesReportSyncFailedCountResult = Get-RequiredInt $kubernetesReportSync.json "failedCount"
+$kubernetesReportSyncFailedCount = if ($null -eq $kubernetesReportSyncFailedCountResult.value) { 0 } else { [int64] $kubernetesReportSyncFailedCountResult.value }
 $kubernetesReportSyncSourceReportResult = Get-Text $kubernetesReportSync.json "sourceReportResult"
 $nextStep = Get-JsonProperty $handoff.json "nextStep"
 $nextCode = Get-Text $nextStep "code"
@@ -186,8 +221,8 @@ $kubernetesReportSyncCommand = Get-KubernetesReportSyncNextCommand $kubernetesRe
 $kubernetesReportSyncWorkflowCommand = Get-KubernetesReportSyncWorkflowCommand $kubernetesReportSync.json $kubernetesReportSync.exists
 $handoffReady = $handoff.exists -and (Is-ReadyResult $handoffResult) -and "none".Equals($nextCode, [System.StringComparison]::OrdinalIgnoreCase)
 $readinessReady = $readiness.exists -and (Is-ReadyResult $readinessResult)
-$finalizerReady = $finalize.exists -and (Is-ReadyResult $finalizerResult) -and (Is-ReadyResult $finalizerReadinessResult) -and $finalizerFailedCount -eq 0 -and $finalizerGapCount -eq 0
-$kubernetesReportSyncReady = $kubernetesReportSync.exists -and "applied".Equals($kubernetesReportSyncResult, [System.StringComparison]::OrdinalIgnoreCase) -and $kubernetesReportSyncFailedCount -eq 0 -and (Is-ReadyResult $kubernetesReportSyncSourceReportResult)
+$finalizerReady = $finalize.exists -and (Is-ReadyResult $finalizerResult) -and (Is-ReadyResult $finalizerReadinessResult) -and $finalizerFailedCountResult.valid -and $finalizerFailedCount -eq 0 -and $finalizerGapCount -eq 0
+$kubernetesReportSyncReady = $kubernetesReportSync.exists -and "applied".Equals($kubernetesReportSyncResult, [System.StringComparison]::OrdinalIgnoreCase) -and $kubernetesReportSyncFailedCountResult.valid -and $kubernetesReportSyncFailedCount -eq 0 -and (Is-ReadyResult $kubernetesReportSyncSourceReportResult)
 
 $recommendedCommands = @()
 $seenCommands = @{}
@@ -306,10 +341,14 @@ $report = [ordered]@{
     finalizerResult = $finalizerResult
     finalizerReadinessResult = $finalizerReadinessResult
     finalizerFailedCount = $finalizerFailedCount
+    finalizerFailedCountValid = [bool] $finalizerFailedCountResult.valid
+    finalizerFailedCountRaw = [string] $finalizerFailedCountResult.raw
     finalizerGapCount = $finalizerGapCount
     kubernetesReportSyncExists = [bool] $kubernetesReportSync.exists
     kubernetesReportSyncResult = $kubernetesReportSyncResult
     kubernetesReportSyncFailedCount = $kubernetesReportSyncFailedCount
+    kubernetesReportSyncFailedCountValid = [bool] $kubernetesReportSyncFailedCountResult.valid
+    kubernetesReportSyncFailedCountRaw = [string] $kubernetesReportSyncFailedCountResult.raw
     kubernetesReportSyncConfigMapName = Get-Text $kubernetesReportSync.json "configMapName"
     kubernetesReportSyncConfigMapKey = Get-Text $kubernetesReportSync.json "configMapKey"
     kubernetesReportSyncSourceReportResult = $kubernetesReportSyncSourceReportResult
@@ -325,7 +364,7 @@ $report = [ordered]@{
     failedImportCount = Get-Int $handoff.json "failedImportCount"
     currentBottleneck = $currentBottleneck
     recommendedCommands = $recommendedCommands
-    decisionRule = "Operations readiness convergence is ready only when the handoff result is ready/none, the readiness report is ready, the operations readiness finalizer report exists with result=ready, readinessResult=ready, failedCount=0, and no gaps, and the Kubernetes operations report sync evidence confirms result=applied, failedCount=0, and sourceReportResult=ready."
+    decisionRule = "Operations readiness convergence is ready only when the handoff result is ready/none, the readiness report is ready, the operations readiness finalizer report exists with result=ready, readinessResult=ready, typed integer failedCount=0, and no gaps, and the Kubernetes operations report sync evidence confirms result=applied, typed integer failedCount=0, and sourceReportResult=ready."
     safetyPolicy = "This convergence writer does not execute kubectl, gh, workflow dispatch, finalizer, or ConfigMap sync commands; it only reads local reports and writes JSON/Markdown guidance."
 }
 
