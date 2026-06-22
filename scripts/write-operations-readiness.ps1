@@ -701,6 +701,7 @@ $report = [ordered]@{
         containerSecurityEvidence = $containerSecurityReport.path
         storageBackendTelemetryEvidence = $storageBackendTelemetryReport.path
         dataFlowStoragePlan = $dataFlowStoragePlanReport.path
+        monitoringThresholdEvidence = $monitoringThresholdReport.path
         secretRotationEvidence = $secretRotationReport.path
         commercialIntegrationEvidence = $commercialIntegrationReport.path
         commercialApprovalEvidence = $commercialApprovalReport.path

@@ -43,8 +43,8 @@ $fixture = [ordered]@{
     generatedAt = [DateTimeOffset]::Now.ToString("o")
     result = "pending"
     passedCount = 1
-    pendingCount = 4
-    summary = "passed=1 pending=4"
+    pendingCount = 5
+    summary = "passed=1 pending=5"
     checks = @(
         [ordered]@{
             name = "Storage expansion finalizer live evidence"
@@ -84,6 +84,21 @@ $fixture = [ordered]@{
             detail = "not approved"
             evidencePath = ".osmu-run/latest-commercial-signoff.json"
             requiredEvidence = "approved support and SLA sign-off"
+        },
+        [ordered]@{
+            name = "Monitoring threshold target evidence"
+            category = "monitoring"
+            passed = $false
+            status = "PENDING"
+            detail = "report not found"
+            evidencePath = ".osmu-run/latest-monitoring-threshold-evidence.json"
+            requiredEvidence = "monitoring threshold evidence result=passed from target Prometheus/Grafana/Alertmanager/tenant baseline review"
+            remediation = [ordered]@{
+                command = "powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\write-monitoring-threshold-evidence.ps1 -EnvironmentName <env> -TargetCluster <cluster> -Operator <operator> -ReviewStartedAt <iso-time> -ReviewCompletedAt <iso-time> -PrometheusRuleEvidenceRef <ref> -GrafanaDashboardEvidenceRef <ref> -AlertmanagerRouteEvidenceRef <ref> -IncidentRoutingEvidenceRef <ref> -TenantBaselineEvidenceRef <ref> -ConfirmPrometheusRulesReviewed -ConfirmGrafanaDashboardsReviewed -ConfirmAlertmanagerRoutesReviewed -ConfirmIncidentRoutingReviewed -ConfirmTargetBaselinesReviewed -ConfirmNoAlertmanagerReceiverSecrets -ConfirmNoRawTenantObjectKeys -FailIfNotPassed"
+                workflow = ".github/workflows/manual-monitoring-threshold-evidence.yml"
+                workflowCommand = "gh workflow run manual-monitoring-threshold-evidence.yml -f environment_name=<env> -f target_cluster=<cluster> -f operator=<operator> -f review_started_at=<iso-time> -f review_completed_at=<iso-time> -f prometheus_rule_evidence_ref=<ref> -f grafana_dashboard_evidence_ref=<ref> -f alertmanager_route_evidence_ref=<ref> -f incident_routing_evidence_ref=<ref> -f tenant_baseline_evidence_ref=<ref> -f confirm_prometheus_rules_reviewed=true -f confirm_grafana_dashboards_reviewed=true -f confirm_alertmanager_routes_reviewed=true -f confirm_incident_routing_reviewed=true -f confirm_target_baselines_reviewed=true -f confirm_no_alertmanager_receiver_secrets=true -f confirm_no_raw_tenant_object_keys=true -f fail_if_not_passed=true"
+                note = "Run after target Prometheus rules, Grafana dashboards, Alertmanager routes, incident routing, and tenant baselines are reviewed."
+            }
         },
         [ordered]@{
             name = "Enterprise auth target smoke evidence"
@@ -132,8 +147,8 @@ $report = $reportText | ConvertFrom-Json
 
 Assert-True ($report.formatVersion -eq "osmu.operations-evidence-plan.v1") "Unexpected operations evidence plan formatVersion."
 Assert-True ($report.result -eq "action-required") "Expected action-required result."
-Assert-True ($report.pendingCount -eq 4) "Expected four pending checks."
-Assert-True ($report.actionCount -eq 3) "Expected three planned remediation actions."
+Assert-True ($report.pendingCount -eq 5) "Expected five pending checks."
+Assert-True ($report.actionCount -eq 4) "Expected four planned remediation actions."
 Assert-True ($report.unplannedCount -eq 1) "Expected one unplanned check."
 
 $actions = @($report.actions)
@@ -144,14 +159,20 @@ Assert-True ($actions[1].name -eq "Kubernetes DR finalizer live evidence") "Expe
 Assert-True ($actions[1].requiresOperatorApproval) "Kubernetes DR action should require operator approval."
 Assert-True ($actions[1].hasPlaceholders) "Kubernetes DR action should keep placeholder markers."
 Assert-True (@($actions[1].operatorInputs) -contains "<YYYYMMDDTHHMMSSZ>") "Kubernetes DR action should list backup timestamp placeholder."
-Assert-True ($actions[2].name -eq "Enterprise auth target smoke evidence") "Expected enterprise auth as third action."
-Assert-True ($actions[2].workflowCommand -like "gh workflow run enterprise-auth-smoke-ci.yml*") "Expected enterprise auth workflow command."
-Assert-True (-not $actions[2].requiresKubeconfigSecret) "Enterprise auth workflow should not require kubeconfig just because it uses run_live=true."
-Assert-True (@($actions[2].operatorInputs) -contains "<api-base>") "Enterprise auth action should list API base placeholder."
+Assert-True ($actions[2].name -eq "Monitoring threshold target evidence") "Expected monitoring threshold as third action."
+Assert-True ($actions[2].workflowCommand -like "gh workflow run manual-monitoring-threshold-evidence.yml*") "Expected monitoring threshold workflow command."
+Assert-True ($actions[2].requiresOperatorApproval) "Monitoring threshold action should require operator approval confirmations."
+Assert-True (-not $actions[2].requiresKubeconfigSecret) "Monitoring threshold workflow should not require kubeconfig."
+Assert-True (@($actions[2].operatorInputs) -contains "<env>") "Monitoring threshold action should list environment placeholder."
+Assert-True ($actions[3].name -eq "Enterprise auth target smoke evidence") "Expected enterprise auth as fourth action."
+Assert-True ($actions[3].workflowCommand -like "gh workflow run enterprise-auth-smoke-ci.yml*") "Expected enterprise auth workflow command."
+Assert-True (-not $actions[3].requiresKubeconfigSecret) "Enterprise auth workflow should not require kubeconfig just because it uses run_live=true."
+Assert-True (@($actions[3].operatorInputs) -contains "<api-base>") "Enterprise auth action should list API base placeholder."
 
 Assert-Contains $markdown "# OSMU Operations Evidence Plan" "Operations evidence plan markdown"
 Assert-Contains $markdown "## Execution Order" "Operations evidence plan markdown"
 Assert-Contains $markdown "gh workflow run kubernetes-dr-finalizer-ci.yml" "Operations evidence plan markdown"
+Assert-Contains $markdown "gh workflow run manual-monitoring-threshold-evidence.yml" "Operations evidence plan markdown"
 Assert-Contains $markdown "Operator approval: required" "Operations evidence plan markdown"
 Assert-Contains $markdown "## Unplanned Checks" "Operations evidence plan markdown"
 

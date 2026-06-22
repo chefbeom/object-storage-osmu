@@ -298,6 +298,9 @@ $monitoringThresholdCheck = @($report.checks | Where-Object { $_.name -eq "Monit
 if ($monitoringThresholdCheck.Count -ne 1) {
     throw "Operations readiness report must contain one Monitoring threshold target evidence check."
 }
+if (-not ([string] $report.inputs.monitoringThresholdEvidence).Contains("latest-monitoring-threshold-evidence.json")) {
+    throw "Operations readiness report inputs must include monitoring threshold evidence path."
+}
 if (-not ([string] $monitoringThresholdCheck[0].remediation.command).Contains("write-monitoring-threshold-evidence.ps1")) {
     throw "Monitoring threshold target evidence remediation must point to write-monitoring-threshold-evidence.ps1."
 }
