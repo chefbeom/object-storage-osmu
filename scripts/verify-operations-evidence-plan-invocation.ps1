@@ -39,6 +39,8 @@ $blockedJsonOutputPath = Join-Path $resolvedOutputDirectory "blocked-operations-
 $blockedMarkdownOutputPath = Join-Path $resolvedOutputDirectory "blocked-operations-evidence-plan-invocation.md"
 $plannedJsonOutputPath = Join-Path $resolvedOutputDirectory "planned-operations-evidence-plan-invocation.json"
 $plannedMarkdownOutputPath = Join-Path $resolvedOutputDirectory "planned-operations-evidence-plan-invocation.md"
+$unsafeJsonOutputPath = Join-Path $resolvedOutputDirectory "unsafe-operations-evidence-plan-invocation.json"
+$unsafeMarkdownOutputPath = Join-Path $resolvedOutputDirectory "unsafe-operations-evidence-plan-invocation.md"
 $selectedJsonOutputPath = Join-Path $resolvedOutputDirectory "selected-operations-evidence-plan-invocation.json"
 $selectedMarkdownOutputPath = Join-Path $resolvedOutputDirectory "selected-operations-evidence-plan-invocation.md"
 
@@ -156,6 +158,24 @@ Assert-Contains $plannedMarkdown "gh workflow run kubernetes-dr-finalizer-ci.yml
 
 & powershell -NoProfile -ExecutionPolicy Bypass -File $scriptPath `
     -PlanPath $fixturePath `
+    -JsonOutputPath $unsafeJsonOutputPath `
+    -MarkdownOutputPath $unsafeMarkdownOutputPath `
+    -ActionOrder 2 `
+    -KubeconfigSecretConfirmed `
+    -ConfirmOperatorApproval `
+    -BackupTimestamp "20260615T010203Z | Write-Host unsafe" | Out-Host
+if ($LASTEXITCODE -ne 0) {
+    throw "invoke-operations-evidence-plan.ps1 unsafe placeholder check failed with exit code $LASTEXITCODE."
+}
+
+$unsafeReport = Get-Content -Raw -LiteralPath $unsafeJsonOutputPath | ConvertFrom-Json
+$unsafeAction = @($unsafeReport.actions)[0]
+Assert-True ($unsafeReport.result -eq "blocked") "Expected unsafe placeholder command to be blocked."
+Assert-True (@($unsafeAction.blockReasons) -contains "command failed allowlist/shell metacharacter check") "Expected unsafe placeholder command to fail shell metacharacter check."
+Assert-True ($unsafeAction.command -like "*| Write-Host unsafe*") "Expected unsafe command to preserve rejected pipe for audit."
+
+& powershell -NoProfile -ExecutionPolicy Bypass -File $scriptPath `
+    -PlanPath $fixturePath `
     -JsonOutputPath $selectedJsonOutputPath `
     -MarkdownOutputPath $selectedMarkdownOutputPath `
     -ActionOrder 2 `
@@ -174,4 +194,5 @@ Assert-True (@($selectedReport.actions)[0].order -eq 2) "Expected action order 2
 Write-Host "Operations evidence plan invocation verified."
 Write-Host "Blocked report: $blockedJsonOutputPath"
 Write-Host "Planned report: $plannedJsonOutputPath"
+Write-Host "Unsafe report: $unsafeJsonOutputPath"
 Write-Host "Selected report: $selectedJsonOutputPath"

@@ -184,7 +184,13 @@ function Test-SafeCommand([string] $Command) {
     }
     $trimmed = $Command.Trim()
     $lower = $trimmed.ToLowerInvariant()
-    if ($trimmed.Contains("`r") -or $trimmed.Contains("`n") -or $trimmed.Contains(";") -or $trimmed.Contains("&&") -or $trimmed.Contains("||")) {
+    $unsafeFragments = @("`r", "`n", ";", "&&", "||", "|", '`', '$(', '@(')
+    foreach ($fragment in $unsafeFragments) {
+        if ($trimmed.Contains($fragment)) {
+            return $false
+        }
+    }
+    if ($trimmed -match '(^|\s)(\d|\*)?>{1,2}(\s|$)') {
         return $false
     }
     return (
