@@ -483,6 +483,7 @@ $stringBoolMonitoringThresholdRoot = Join-Path $resolvedOutputDirectory "string-
 $stringCountMonitoringThresholdRoot = Join-Path $resolvedOutputDirectory "string-count-monitoring-threshold-source"
 $missingCountMonitoringThresholdRoot = Join-Path $resolvedOutputDirectory "missing-count-monitoring-threshold-source"
 $weakSecretRotationRoot = Join-Path $resolvedOutputDirectory "weak-secret-rotation-source"
+$weakSecretRotationChecksRoot = Join-Path $resolvedOutputDirectory "weak-secret-rotation-checks-source"
 $weakCommercialIntegrationRoot = Join-Path $resolvedOutputDirectory "weak-commercial-integration-source"
 $weakCommercialApprovalRoot = Join-Path $resolvedOutputDirectory "weak-commercial-approval-source"
 $invalidEnterpriseAuthRoot = Join-Path $resolvedOutputDirectory "invalid-enterprise-auth-source"
@@ -654,7 +655,23 @@ Write-JsonEvidence (Join-Path $monitoringThresholdSource "latest-monitoring-thre
 Write-TextEvidence (Join-Path $monitoringThresholdSource "latest-monitoring-threshold-evidence.md") "# Monitoring threshold"
 Write-JsonEvidence (Join-Path $secretRotationSource "latest-secret-rotation-evidence.json") @{
     formatVersion = "osmu.secret-rotation-evidence.v1"
+    generatedAt = "2026-06-22T00:00:00Z"
     result = "passed"
+    environmentName = "prod"
+    targetCluster = "osmu-prod"
+    operatorName = "ops-owner"
+    rotationWindow = @{
+        startedAt = "2026-06-20T00:00:00Z"
+        completedAt = "2026-06-20T00:30:00Z"
+    }
+    evidenceRefs = @{
+        changeApproval = "secret-rotation-20260620"
+        secretManagerAudit = "vault-audit-20260620"
+        workloadRestart = "rollout-20260620"
+        smoke = "smoke-20260620"
+        artifactLeakReview = "leak-review-20260620"
+        accessKeyEncryptionDecision = "access-key-decision-20260620"
+    }
     confirmations = @{
         noSecretValues = $true
         workloadRestart = $true
@@ -676,6 +693,26 @@ Write-JsonEvidence (Join-Path $secretRotationSource "latest-secret-rotation-evid
         failureCount = 0
         plannedCount = 0
     }
+    checks = @(
+        @{ id = "environment-name"; status = "PASS"; passed = $true },
+        @{ id = "target-cluster"; status = "PASS"; passed = $true },
+        @{ id = "operator"; status = "PASS"; passed = $true },
+        @{ id = "rotation-started-at"; status = "PASS"; passed = $true },
+        @{ id = "rotation-completed-at"; status = "PASS"; passed = $true },
+        @{ id = "rotation-window-order"; status = "PASS"; passed = $true },
+        @{ id = "change-approval-ref"; status = "PASS"; passed = $true },
+        @{ id = "secret-manager-evidence-ref"; status = "PASS"; passed = $true },
+        @{ id = "workload-restart-evidence-ref"; status = "PASS"; passed = $true },
+        @{ id = "smoke-evidence-ref"; status = "PASS"; passed = $true },
+        @{ id = "artifact-leak-review-evidence-ref"; status = "PASS"; passed = $true },
+        @{ id = "no-secret-values-confirmed"; status = "PASS"; passed = $true },
+        @{ id = "workload-restart-confirmed"; status = "PASS"; passed = $true },
+        @{ id = "smoke-passed-confirmed"; status = "PASS"; passed = $true },
+        @{ id = "artifact-leak-review-confirmed"; status = "PASS"; passed = $true },
+        @{ id = "core-secret-rotation-coverage"; status = "PASS"; passed = $true }
+    )
+    decisionRule = "Production/B2B readiness requires result=passed from the target environment after core secret/certificate rotation, workload restart, post-rotation smoke, and artifact leak review are confirmed."
+    secretPolicy = "Evidence stores only environment labels, operator/change references, timestamps, booleans, and external evidence references; it does not contain password values, API keys, private keys, bearer tokens, kubeconfig, database credentials, MinIO credentials, OIDC/LDAP secrets, SMTP credentials, or webhook signing secrets."
 }
 Write-TextEvidence (Join-Path $secretRotationSource "latest-secret-rotation-evidence.md") "# Secret rotation"
 Write-JsonEvidence (Join-Path $commercialIntegrationSource "latest-commercial-integration-evidence.json") @{
@@ -1008,7 +1045,7 @@ Assert-True ($promotedCommercialIntegration.result -eq "passed") "Promoted comme
 Assert-True ($promotedCommercialApproval.result -eq "passed") "Promoted commercial approval evidence should preserve result=passed."
 $secretRotationEntry = @($report.entries | Where-Object { $_.group -eq "secret-rotation" -and $_.fileName -eq "latest-secret-rotation-evidence.json" })
 Assert-True ($secretRotationEntry.Count -eq 1) "Secret rotation import entry missing."
-Assert-True (([string] $secretRotationEntry[0].detail).Contains("coreRotated=5/5")) "Secret rotation import entry should include core rotation validation detail."
+Assert-True (([string] $secretRotationEntry[0].detail).Contains("targetCluster=osmu-prod") -and ([string] $secretRotationEntry[0].detail).Contains("coreRotated=5/5") -and ([string] $secretRotationEntry[0].detail).Contains("checkCount=16")) "Secret rotation import entry should include target metadata and core rotation validation detail."
 $commercialIntegrationEntry = @($report.entries | Where-Object { $_.group -eq "commercial-integration" -and $_.fileName -eq "latest-commercial-integration-evidence.json" })
 Assert-True ($commercialIntegrationEntry.Count -eq 1) "Commercial integration import entry missing."
 Assert-True (([string] $commercialIntegrationEntry[0].detail).Contains("requiredVerified=8/8")) "Commercial integration import entry should include required adapter validation detail."
@@ -1952,7 +1989,12 @@ Assert-True (([string] $missingCountMonitoringThresholdEntry[0].detail).Contains
 
 Write-JsonEvidence (Join-Path $weakSecretRotationRoot "latest-secret-rotation-evidence.json") @{
     formatVersion = "osmu.secret-rotation-evidence.v1"
+    generatedAt = "2026-06-22T00:00:00Z"
     result = "passed"
+    targetCluster = "osmu-prod"
+    operatorName = "ops-owner"
+    decisionRule = "Production/B2B readiness requires passed target secret rotation evidence."
+    secretPolicy = "Evidence stores only references and booleans, not secret values."
 }
 $weakSecretRotationOutput = Join-Path $resolvedOutputDirectory "weak-secret-rotation-promoted"
 $weakSecretRotationJson = Join-Path $resolvedOutputDirectory "weak-secret-rotation-import.json"
@@ -1970,14 +2012,81 @@ try {
 finally {
     $ErrorActionPreference = $previousErrorActionPreference
 }
-Assert-True ($weakSecretRotationExitCode -ne 0) "Secret rotation evidence without typed summary and confirmations should fail import."
+Assert-True ($weakSecretRotationExitCode -ne 0) "Secret rotation evidence without required target metadata should fail import."
 Assert-True (Test-Path -LiteralPath $weakSecretRotationJson) "Weak secret rotation import report should still be written."
 $weakSecretRotationReport = Get-Content -Raw -LiteralPath $weakSecretRotationJson | ConvertFrom-Json
 Assert-True ($weakSecretRotationReport.result -eq "failed") "Weak secret rotation import report should be failed."
 Assert-True (-not (Test-Path -LiteralPath (Join-Path $weakSecretRotationOutput "latest-secret-rotation-evidence.json"))) "Weak secret rotation evidence must not be promoted."
 $weakSecretRotationEntry = @($weakSecretRotationReport.entries | Where-Object { $_.group -eq "secret-rotation" -and $_.fileName -eq "latest-secret-rotation-evidence.json" })
 Assert-True ($weakSecretRotationEntry.Count -eq 1) "Weak secret rotation failed entry missing."
-Assert-True (([string] $weakSecretRotationEntry[0].detail).Contains("rotatedCount=<missing>(valid=False) expected integer")) "Weak secret rotation report should describe missing typed summary count."
+Assert-True (([string] $weakSecretRotationEntry[0].detail).Contains("environmentName missing")) "Weak secret rotation report should describe missing target environment metadata."
+
+Write-JsonEvidence (Join-Path $weakSecretRotationChecksRoot "latest-secret-rotation-evidence.json") @{
+    formatVersion = "osmu.secret-rotation-evidence.v1"
+    generatedAt = "2026-06-22T00:00:00Z"
+    result = "passed"
+    environmentName = "prod"
+    targetCluster = "osmu-prod"
+    operatorName = "ops-owner"
+    rotationWindow = @{
+        startedAt = "2026-06-20T00:00:00Z"
+        completedAt = "2026-06-20T00:30:00Z"
+    }
+    evidenceRefs = @{
+        changeApproval = "secret-rotation-20260620"
+        secretManagerAudit = "vault-audit-20260620"
+        workloadRestart = "rollout-20260620"
+        smoke = "smoke-20260620"
+        artifactLeakReview = "leak-review-20260620"
+    }
+    confirmations = @{
+        noSecretValues = $true
+        workloadRestart = $true
+        smokePassed = $true
+        artifactLeakReview = $true
+    }
+    rotations = @(
+        @{ id = "admin-password"; core = $true; rotated = $true },
+        @{ id = "jwt-signing-secret"; core = $true; rotated = $true },
+        @{ id = "database-credentials"; core = $true; rotated = $true },
+        @{ id = "minio-root-credentials"; core = $true; rotated = $true },
+        @{ id = "tls-certificate"; core = $true; rotated = $true }
+    )
+    summary = @{
+        rotatedCount = 5
+        coreRotatedCount = 5
+        coreRequiredCount = 5
+        failureCount = 0
+        plannedCount = 0
+    }
+    checks = @(
+        @{ id = "environment-name"; status = "PASS"; passed = $true }
+    )
+    decisionRule = "Production/B2B readiness requires result=passed from the target environment after core secret/certificate rotation, workload restart, post-rotation smoke, and artifact leak review are confirmed."
+    secretPolicy = "Evidence stores only environment labels, operator/change references, timestamps, booleans, and external evidence references; it does not contain password values, API keys, private keys, bearer tokens, kubeconfig, database credentials, MinIO credentials, OIDC/LDAP secrets, SMTP credentials, or webhook signing secrets."
+}
+$weakSecretRotationChecksOutput = Join-Path $resolvedOutputDirectory "weak-secret-rotation-checks-promoted"
+$weakSecretRotationChecksJson = Join-Path $resolvedOutputDirectory "weak-secret-rotation-checks-import.json"
+$weakSecretRotationChecksMarkdown = Join-Path $resolvedOutputDirectory "weak-secret-rotation-checks-import.md"
+$previousErrorActionPreference = $ErrorActionPreference
+$ErrorActionPreference = "Continue"
+try {
+    $weakSecretRotationChecksOutputLines = & powershell -NoProfile -ExecutionPolicy Bypass -File $importScript `
+        -SecretRotationArtifactPath $weakSecretRotationChecksRoot `
+        -OutputDirectory $weakSecretRotationChecksOutput `
+        -JsonOutputPath $weakSecretRotationChecksJson `
+        -MarkdownOutputPath $weakSecretRotationChecksMarkdown 2>&1
+    $weakSecretRotationChecksExitCode = $LASTEXITCODE
+}
+finally {
+    $ErrorActionPreference = $previousErrorActionPreference
+}
+Assert-True ($weakSecretRotationChecksExitCode -ne 0) "Secret rotation evidence without complete check rows should fail import."
+Assert-True (Test-Path -LiteralPath $weakSecretRotationChecksJson) "Weak secret rotation checks import report should still be written."
+$weakSecretRotationChecksReport = Get-Content -Raw -LiteralPath $weakSecretRotationChecksJson | ConvertFrom-Json
+Assert-True ($weakSecretRotationChecksReport.result -eq "failed") "Weak secret rotation checks import report should be failed."
+Assert-True (-not (Test-Path -LiteralPath (Join-Path $weakSecretRotationChecksOutput "latest-secret-rotation-evidence.json"))) "Weak secret rotation checks evidence must not be promoted."
+Assert-True (($weakSecretRotationChecksReport.entries | ConvertTo-Json -Depth 8).Contains("checks.target-cluster missing")) "Weak secret rotation checks report should describe missing target check row."
 
 Write-JsonEvidence (Join-Path $weakCommercialIntegrationRoot "latest-commercial-integration-evidence.json") @{
     formatVersion = "osmu.commercial-integration-evidence.v1"

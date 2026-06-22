@@ -1530,6 +1530,60 @@ function Test-SecretRotationEvidenceJson([string] $Path) {
         }
     }
 
+    $generatedAt = [string] (Get-JsonProperty $json "generatedAt")
+    $parsedGeneratedAt = [DateTimeOffset]::MinValue
+    if ([string]::IsNullOrWhiteSpace($generatedAt) -or -not [DateTimeOffset]::TryParse($generatedAt, [ref] $parsedGeneratedAt)) {
+        return [pscustomobject]@{
+            passed = $false
+            detail = "generatedAt=$generatedAt expected ISO timestamp"
+        }
+    }
+
+    foreach ($field in @("environmentName", "targetCluster", "operatorName", "decisionRule", "secretPolicy")) {
+        $value = [string] (Get-JsonProperty $json $field)
+        if ([string]::IsNullOrWhiteSpace($value)) {
+            return [pscustomobject]@{
+                passed = $false
+                detail = "$field missing"
+            }
+        }
+    }
+
+    $rotationWindow = Get-JsonProperty $json "rotationWindow"
+    $rotationStartedAt = [string] (Get-JsonProperty $rotationWindow "startedAt")
+    $rotationCompletedAt = [string] (Get-JsonProperty $rotationWindow "completedAt")
+    $parsedRotationStartedAt = [DateTimeOffset]::MinValue
+    $parsedRotationCompletedAt = [DateTimeOffset]::MinValue
+    if ([string]::IsNullOrWhiteSpace($rotationStartedAt) -or -not [DateTimeOffset]::TryParse($rotationStartedAt, [ref] $parsedRotationStartedAt)) {
+        return [pscustomobject]@{
+            passed = $false
+            detail = "rotationWindow.startedAt=$rotationStartedAt expected ISO timestamp"
+        }
+    }
+    if ([string]::IsNullOrWhiteSpace($rotationCompletedAt) -or -not [DateTimeOffset]::TryParse($rotationCompletedAt, [ref] $parsedRotationCompletedAt)) {
+        return [pscustomobject]@{
+            passed = $false
+            detail = "rotationWindow.completedAt=$rotationCompletedAt expected ISO timestamp"
+        }
+    }
+    if ($parsedRotationCompletedAt -lt $parsedRotationStartedAt) {
+        return [pscustomobject]@{
+            passed = $false
+            detail = "rotationWindow completedAt must be same as or later than startedAt"
+        }
+    }
+
+    $evidenceRefs = Get-JsonProperty $json "evidenceRefs"
+    foreach ($refName in @("changeApproval", "secretManagerAudit", "workloadRestart", "smoke", "artifactLeakReview")) {
+        $refValue = [string] (Get-JsonProperty $evidenceRefs $refName)
+        if ([string]::IsNullOrWhiteSpace($refValue)) {
+            return [pscustomobject]@{
+                passed = $false
+                detail = "evidenceRefs.$refName missing"
+            }
+        }
+    }
+
     $patterns = @(
         '(?i)"(password|passwd|secretValue|secret_value|token|credential|apiKey|api_key|accessKey|access_key|privateKey|private_key|kubeconfig|databasePassword|database_password|minioSecret|minio_secret|ldapPassword|ldap_password|smtpPass|smtp_pass|webhookSecret|webhook_secret)"\s*:',
         '(?i)\b(password|passwd|secret|token|credential|api[_-]?key|access[_-]?key|private[_-]?key|smtp[_-]?pass|webhook[_-]?secret)\s*=\s*\S+',
@@ -1586,9 +1640,68 @@ function Test-SecretRotationEvidenceJson([string] $Path) {
         }
     }
 
+    $rotationsObject = Get-JsonProperty $json "rotations"
+    $rotations = if ($null -eq $rotationsObject) { @() } else { @($rotationsObject) }
+    foreach ($requiredRotation in @("admin-password", "jwt-signing-secret", "database-credentials", "minio-root-credentials", "tls-certificate")) {
+        $match = @($rotations | Where-Object { [string] (Get-JsonProperty $_ "id") -eq $requiredRotation })
+        if ($match.Count -ne 1) {
+            return [pscustomobject]@{
+                passed = $false
+                detail = "rotations.$requiredRotation missing"
+            }
+        }
+
+        $rotationCore = Get-RequiredJsonBool $match[0] "core"
+        $rotationRotated = Get-RequiredJsonBool $match[0] "rotated"
+        if (-not $rotationCore.valid -or -not $rotationCore.value -or -not $rotationRotated.valid -or -not $rotationRotated.value) {
+            return [pscustomobject]@{
+                passed = $false
+                detail = "rotations.$requiredRotation core=$($rotationCore.raw) rotated=$($rotationRotated.raw) expected booleans true"
+            }
+        }
+    }
+
+    $checksObject = Get-JsonProperty $json "checks"
+    $checks = if ($null -eq $checksObject) { @() } else { @($checksObject) }
+    foreach ($requiredCheck in @(
+        "environment-name",
+        "target-cluster",
+        "operator",
+        "rotation-started-at",
+        "rotation-completed-at",
+        "rotation-window-order",
+        "change-approval-ref",
+        "secret-manager-evidence-ref",
+        "workload-restart-evidence-ref",
+        "smoke-evidence-ref",
+        "artifact-leak-review-evidence-ref",
+        "no-secret-values-confirmed",
+        "workload-restart-confirmed",
+        "smoke-passed-confirmed",
+        "artifact-leak-review-confirmed",
+        "core-secret-rotation-coverage"
+    )) {
+        $match = @($checks | Where-Object { [string] (Get-JsonProperty $_ "id") -eq $requiredCheck })
+        if ($match.Count -ne 1) {
+            return [pscustomobject]@{
+                passed = $false
+                detail = "checks.$requiredCheck missing"
+            }
+        }
+
+        $checkPassed = Get-RequiredJsonBool $match[0] "passed"
+        $checkStatus = [string] (Get-JsonProperty $match[0] "status")
+        if (-not $checkPassed.valid -or -not $checkPassed.value -or $checkStatus -ne "PASS") {
+            return [pscustomobject]@{
+                passed = $false
+                detail = "checks.$requiredCheck status=$checkStatus passed=$($checkPassed.raw) expected PASS and boolean true"
+            }
+        }
+    }
+
     return [pscustomobject]@{
         passed = $true
-        detail = "formatVersion=$formatVersion result=$result coreRotated=$($coreRotatedCount.value)/$($coreRequiredCount.value) failures=$($failureCount.value) planned=$($plannedCount.value)"
+        detail = "formatVersion=$formatVersion result=$result environmentName=$($json.environmentName) targetCluster=$($json.targetCluster) coreRotated=$($coreRotatedCount.value)/$($coreRequiredCount.value) rotations=$($rotations.Count) failures=$($failureCount.value) planned=$($plannedCount.value) checkCount=$($checks.Count)"
     }
 }
 
