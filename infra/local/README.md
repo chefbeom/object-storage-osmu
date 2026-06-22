@@ -51,8 +51,8 @@ docker compose --env-file .\infra\local\.env -f .\infra\local\docker-compose.yml
 ## Operations Report Mount
 
 - The backend container mounts project `.osmu-run` at `/app/.osmu-run` read-only.
-- Dashboard readiness can surface local operations reports such as `.osmu-run/latest-operations-readiness-convergence.json`, `.osmu-run/latest-kubernetes-operations-report-sync.json`, and `.osmu-run/latest-data-flow-storage-plan.json` without rebuilding the backend image.
-- Override `OSMU_OPERATIONS_READINESS_CONVERGENCE_REPORT_PATH`, `OSMU_OPERATIONS_READINESS_KUBERNETES_REPORT_SYNC_REPORT_PATH`, or `OSMU_OPERATIONS_READINESS_DATA_FLOW_STORAGE_PLAN_REPORT_PATH` in `infra/local/.env` when a fixture or collected report lives under a subdirectory such as `.osmu-run/docker-local-demo/latest-operations-readiness-convergence.json`.
+- Dashboard readiness can surface local operations reports such as `.osmu-run/latest-operations-readiness-convergence.json`, `.osmu-run/latest-kubernetes-operations-report-sync.json`, `.osmu-run/latest-data-flow-storage-plan.json`, and `.osmu-run/latest-data-flow-storage-transition-runbook-evidence.json` without rebuilding the backend image.
+- Override `OSMU_OPERATIONS_READINESS_CONVERGENCE_REPORT_PATH`, `OSMU_OPERATIONS_READINESS_KUBERNETES_REPORT_SYNC_REPORT_PATH`, `OSMU_OPERATIONS_READINESS_DATA_FLOW_STORAGE_PLAN_REPORT_PATH`, or `OSMU_OPERATIONS_READINESS_DATA_FLOW_STORAGE_TRANSITION_RUNBOOK_REPORT_PATH` in `infra/local/.env` when a fixture or collected report lives under a subdirectory such as `.osmu-run/docker-local-demo/latest-operations-readiness-convergence.json`.
 
 ## MinIO CORS
 

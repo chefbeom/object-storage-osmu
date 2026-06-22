@@ -5,6 +5,7 @@ param(
     [string] $ReportPath = ".\.osmu-run\latest-operations-readiness-convergence.json",
     [string] $SyncEvidencePath = ".\.osmu-run\latest-kubernetes-operations-report-sync.json",
     [string] $DataFlowStoragePlanPath = ".\.osmu-run\latest-data-flow-storage-plan.json",
+    [string] $DataFlowStorageTransitionRunbookPath = ".\.osmu-run\latest-data-flow-storage-transition-runbook-evidence.json",
     [string] $EvidencePath = ".\.osmu-run\latest-kubernetes-operations-report-sync-live.json",
     [string] $ApiBase = "",
     [string] $AdminLoginId = "admin",
@@ -19,6 +20,7 @@ param(
     [switch] $SkipSync,
     [switch] $SkipDashboardCheck,
     [switch] $SkipDataFlowStoragePlanDashboardCheck,
+    [switch] $SkipDataFlowStorageTransitionRunbookDashboardCheck,
     [switch] $PlanOnly
 )
 
@@ -137,6 +139,8 @@ function New-SyncCommand([string] $Mode) {
         "-KubectlPath", $KubectlPath,
         "-ConfigMapName", $ConfigMapName,
         "-ReportPath", $ReportPath,
+        "-DataFlowStoragePlanPath", $DataFlowStoragePlanPath,
+        "-DataFlowStorageTransitionRunbookPath", $DataFlowStorageTransitionRunbookPath,
         "-EvidencePath", $SyncEvidencePath
     )
     if ($Mode -eq "server-dry-run") {
@@ -160,7 +164,13 @@ function Test-DashboardDataMatchesExpected(
     [bool] $ShouldCheckDataFlowQueryPlanEvidence,
     [bool] $ExpectedDataFlowQueryPlanEvidenceProvided,
     [string] $ExpectedDataFlowQueryPlanEvidenceResult,
-    [int] $ExpectedDataFlowQueryPlanEvidenceFailedCount
+    [int] $ExpectedDataFlowQueryPlanEvidenceFailedCount,
+    [bool] $ShouldCheckDataFlowStorageTransitionRunbook,
+    [string] $ExpectedDataFlowStorageTransitionRunbookResult,
+    [string] $ExpectedDataFlowStorageTransitionRunbookStoragePlanResult,
+    [string] $ExpectedDataFlowStorageTransitionRunbookCandidateStore,
+    [int] $ExpectedDataFlowStorageTransitionRunbookFailureCount,
+    [int] $ExpectedDataFlowStorageTransitionRunbookCheckCount
 ) {
     $details = @()
     if ($null -eq $Data) {
@@ -174,6 +184,7 @@ function Test-DashboardDataMatchesExpected(
     $convergence = $Data.operationsReadinessConvergence
     $reportSync = $Data.kubernetesOperationsReportSync
     $dataFlowStoragePlan = $Data.dataFlowStoragePlan
+    $dataFlowStorageTransitionRunbook = $Data.dataFlowStorageTransitionRunbook
     if ($null -eq $convergence) {
         $details += "operationsReadinessConvergence missing"
     }
@@ -260,16 +271,51 @@ function Test-DashboardDataMatchesExpected(
         }
     }
 
+    if ($ShouldCheckDataFlowStorageTransitionRunbook) {
+        if ($null -eq $dataFlowStorageTransitionRunbook) {
+            $details += "dataFlowStorageTransitionRunbook missing"
+        }
+        else {
+            $runbookResult = Get-ObjectText $dataFlowStorageTransitionRunbook.result
+            if ($runbookResult -ne $ExpectedDataFlowStorageTransitionRunbookResult) {
+                $details += "data-flow storage transition runbook result=$runbookResult expected=$ExpectedDataFlowStorageTransitionRunbookResult"
+            }
+            $runbookStoragePlanResult = Get-ObjectText $dataFlowStorageTransitionRunbook.storagePlanResult
+            if ($runbookStoragePlanResult -ne $ExpectedDataFlowStorageTransitionRunbookStoragePlanResult) {
+                $details += "data-flow storage transition runbook storagePlanResult=$runbookStoragePlanResult expected=$ExpectedDataFlowStorageTransitionRunbookStoragePlanResult"
+            }
+            $runbookCandidateStore = Get-ObjectText $dataFlowStorageTransitionRunbook.candidateStore
+            if ($ExpectedDataFlowStorageTransitionRunbookCandidateStore -and $runbookCandidateStore -ne $ExpectedDataFlowStorageTransitionRunbookCandidateStore) {
+                $details += "data-flow storage transition runbook candidateStore=$runbookCandidateStore expected=$ExpectedDataFlowStorageTransitionRunbookCandidateStore"
+            }
+            $runbookFailureCount = Get-ObjectInt $dataFlowStorageTransitionRunbook.failureCount
+            if ($runbookFailureCount -ne $ExpectedDataFlowStorageTransitionRunbookFailureCount) {
+                $details += "data-flow storage transition runbook failureCount=$runbookFailureCount expected=$ExpectedDataFlowStorageTransitionRunbookFailureCount"
+            }
+            $runbookCheckCount = Get-ObjectInt $dataFlowStorageTransitionRunbook.checkCount
+            if ($runbookCheckCount -ne $ExpectedDataFlowStorageTransitionRunbookCheckCount) {
+                $details += "data-flow storage transition runbook checkCount=$runbookCheckCount expected=$ExpectedDataFlowStorageTransitionRunbookCheckCount"
+            }
+        }
+
+        if ($ExpectedDataFlowStorageTransitionRunbookResult -and $ExpectedDataFlowStorageTransitionRunbookResult -ne "passed") {
+            $hasRunbookItem = @($Data.items | Where-Object { (Get-ObjectText $_.code) -eq "DATA_FLOW_STORAGE_TRANSITION_RUNBOOK" }).Count -gt 0
+            if (-not $hasRunbookItem) {
+                $details += "DATA_FLOW_STORAGE_TRANSITION_RUNBOOK readiness item missing"
+            }
+        }
+    }
+
     if (@($details).Count -eq 0) {
         return [pscustomobject]@{
             matched = $true
-            summary = "Dashboard readiness reflects expected Kubernetes report sync and data-flow storage plan state."
+            summary = "Dashboard readiness reflects expected Kubernetes report sync, data-flow storage plan, and transition runbook state."
             details = @()
         }
     }
     return [pscustomobject]@{
         matched = $false
-        summary = "Dashboard readiness does not yet reflect expected Kubernetes report sync and data-flow storage plan state."
+        summary = "Dashboard readiness does not yet reflect expected Kubernetes report sync, data-flow storage plan, and transition runbook state."
         details = $details
     }
 }
@@ -290,10 +336,12 @@ if ($PlanOnly -and ($RunSyncServerDryRun -or $RunSyncApply)) {
 $resolvedReportPath = Resolve-ProjectPath $ReportPath
 $resolvedSyncEvidencePath = Resolve-ProjectPath $SyncEvidencePath
 $resolvedDataFlowStoragePlanPath = Resolve-ProjectPath $DataFlowStoragePlanPath
+$resolvedDataFlowStorageTransitionRunbookPath = Resolve-ProjectPath $DataFlowStorageTransitionRunbookPath
 $resolvedEvidencePath = Resolve-ProjectPath $EvidencePath
 $resolvedDashboardFixturePath = if ($DashboardReadinessFixturePath) { Resolve-ProjectPath $DashboardReadinessFixturePath } else { "" }
 $dashboardCheckRequested = [bool]((-not $SkipDashboardCheck) -and ($ApiBase -or $DashboardReadinessFixturePath))
 $shouldCheckDataFlowStoragePlanDashboard = [bool]((-not $SkipDataFlowStoragePlanDashboardCheck) -and (Test-Path -LiteralPath $resolvedDataFlowStoragePlanPath))
+$shouldCheckDataFlowStorageTransitionRunbookDashboard = [bool]((-not $SkipDataFlowStorageTransitionRunbookDashboardCheck) -and (Test-Path -LiteralPath $resolvedDataFlowStorageTransitionRunbookPath))
 
 if ($PlanOnly) {
     Add-Check "plan-only" $true "Plan-only mode does not call kubectl or the dashboard API."
@@ -372,6 +420,38 @@ else {
 }
 $dataFlowStoragePlanDashboardExpected = [bool]($shouldCheckDataFlowStoragePlanDashboard -and $null -ne $dataFlowStoragePlanEvidence)
 
+$dataFlowStorageTransitionRunbookEvidence = $null
+$expectedDataFlowStorageTransitionRunbookResult = ""
+$expectedDataFlowStorageTransitionRunbookStoragePlanResult = ""
+$expectedDataFlowStorageTransitionRunbookCandidateStore = ""
+$expectedDataFlowStorageTransitionRunbookFailureCount = 0
+$expectedDataFlowStorageTransitionRunbookCheckCount = 0
+if ($SkipDataFlowStorageTransitionRunbookDashboardCheck) {
+    Add-Check "data-flow-storage-transition-runbook-dashboard-skipped" $true "Dashboard data-flow storage transition runbook check skipped by parameter."
+}
+elseif ($shouldCheckDataFlowStorageTransitionRunbookDashboard) {
+    try {
+        $dataFlowStorageTransitionRunbookEvidence = Get-Content -Raw -Encoding UTF8 -LiteralPath $resolvedDataFlowStorageTransitionRunbookPath | ConvertFrom-Json
+        $expectedDataFlowStorageTransitionRunbookResult = Get-ObjectText $dataFlowStorageTransitionRunbookEvidence.result
+        $expectedDataFlowStorageTransitionRunbookStoragePlanResult = Get-ObjectText $dataFlowStorageTransitionRunbookEvidence.dataFlowStoragePlanSnapshot.result
+        $expectedDataFlowStorageTransitionRunbookCandidateStore = Get-ObjectText $dataFlowStorageTransitionRunbookEvidence.dataFlowStoragePlanSnapshot.candidateStore
+        $expectedDataFlowStorageTransitionRunbookFailureCount = Get-ObjectInt $dataFlowStorageTransitionRunbookEvidence.summary.failureCount
+        $expectedDataFlowStorageTransitionRunbookCheckCount = Get-ObjectInt $dataFlowStorageTransitionRunbookEvidence.summary.checkCount
+        Add-Check "data-flow-storage-transition-runbook-valid-json" $true "Local data-flow storage transition runbook evidence is valid JSON."
+        Add-Check "data-flow-storage-transition-runbook-format-version" ((Get-ObjectText $dataFlowStorageTransitionRunbookEvidence.formatVersion) -eq "osmu.data-flow-storage-transition-runbook-evidence.v1") "Data-flow storage transition runbook formatVersion=$(Get-ObjectText $dataFlowStorageTransitionRunbookEvidence.formatVersion)."
+        if ($PlanOnly) {
+            Add-Check "data-flow-storage-transition-runbook-dashboard-plan" $true "Dashboard data-flow storage transition runbook check planned from local evidence."
+        }
+    }
+    catch {
+        Add-Check "data-flow-storage-transition-runbook-valid-json" $false "Data-flow storage transition runbook JSON is invalid: $($_.Exception.Message)"
+    }
+}
+else {
+    Add-Check "data-flow-storage-transition-runbook-dashboard-optional" $true "Local data-flow storage transition runbook evidence is absent; dashboard data-flow runbook check is optional."
+}
+$dataFlowStorageTransitionRunbookDashboardExpected = [bool]($shouldCheckDataFlowStorageTransitionRunbookDashboard -and $null -ne $dataFlowStorageTransitionRunbookEvidence)
+
 $expectedSyncResult = if ($RunSyncServerDryRun) { "server-dry-run-passed" } else { "applied" }
 $syncResult = ""
 $syncFailedCount = 0
@@ -404,7 +484,7 @@ elseif ($dashboardCheckRequested) {
             $dashboardData = Get-ResponseData (Read-JsonFile $resolvedDashboardFixturePath "Dashboard readiness fixture")
             $dashboardSource = $resolvedDashboardFixturePath
             $dashboardAttemptCount = 1
-            $dashboardMatch = Test-DashboardDataMatchesExpected $dashboardData $expectedSyncResult $syncConfigMapName $syncConfigMapKey $dataFlowStoragePlanDashboardExpected $expectedDataFlowStoragePlanResult $expectedDataFlowStoragePlanCandidateStore $expectedDataFlowStoragePlanPendingCount $expectedDataFlowQueryPlanEvidence $expectedDataFlowQueryPlanEvidenceProvided $expectedDataFlowQueryPlanEvidenceResult $expectedDataFlowQueryPlanEvidenceFailedCount
+            $dashboardMatch = Test-DashboardDataMatchesExpected $dashboardData $expectedSyncResult $syncConfigMapName $syncConfigMapKey $dataFlowStoragePlanDashboardExpected $expectedDataFlowStoragePlanResult $expectedDataFlowStoragePlanCandidateStore $expectedDataFlowStoragePlanPendingCount $expectedDataFlowQueryPlanEvidence $expectedDataFlowQueryPlanEvidenceProvided $expectedDataFlowQueryPlanEvidenceResult $expectedDataFlowQueryPlanEvidenceFailedCount $dataFlowStorageTransitionRunbookDashboardExpected $expectedDataFlowStorageTransitionRunbookResult $expectedDataFlowStorageTransitionRunbookStoragePlanResult $expectedDataFlowStorageTransitionRunbookCandidateStore $expectedDataFlowStorageTransitionRunbookFailureCount $expectedDataFlowStorageTransitionRunbookCheckCount
             $dashboardMatchedExpected = [bool] $dashboardMatch.matched
             Add-Check "dashboard-fixture" $true "Loaded dashboard readiness fixture."
         }
@@ -436,7 +516,7 @@ elseif ($dashboardCheckRequested) {
                         try {
                             $dashboard = Invoke-Json "GET" "$ApiBase/admin/dashboard/readiness" $null $token
                             $dashboardData = Get-ResponseData $dashboard
-                            $dashboardMatch = Test-DashboardDataMatchesExpected $dashboardData $expectedSyncResult $syncConfigMapName $syncConfigMapKey $dataFlowStoragePlanDashboardExpected $expectedDataFlowStoragePlanResult $expectedDataFlowStoragePlanCandidateStore $expectedDataFlowStoragePlanPendingCount $expectedDataFlowQueryPlanEvidence $expectedDataFlowQueryPlanEvidenceProvided $expectedDataFlowQueryPlanEvidenceResult $expectedDataFlowQueryPlanEvidenceFailedCount
+                            $dashboardMatch = Test-DashboardDataMatchesExpected $dashboardData $expectedSyncResult $syncConfigMapName $syncConfigMapKey $dataFlowStoragePlanDashboardExpected $expectedDataFlowStoragePlanResult $expectedDataFlowStoragePlanCandidateStore $expectedDataFlowStoragePlanPendingCount $expectedDataFlowQueryPlanEvidence $expectedDataFlowQueryPlanEvidenceProvided $expectedDataFlowQueryPlanEvidenceResult $expectedDataFlowQueryPlanEvidenceFailedCount $dataFlowStorageTransitionRunbookDashboardExpected $expectedDataFlowStorageTransitionRunbookResult $expectedDataFlowStorageTransitionRunbookStoragePlanResult $expectedDataFlowStorageTransitionRunbookCandidateStore $expectedDataFlowStorageTransitionRunbookFailureCount $expectedDataFlowStorageTransitionRunbookCheckCount
                             $dashboardMatchedExpected = [bool] $dashboardMatch.matched
                             $attemptSummaries += "attempt $attempt/$DashboardRetryCount`: $($dashboardMatch.summary) $(@($dashboardMatch.details) -join '; ')".Trim()
                             if ($dashboardMatchedExpected) {
@@ -478,6 +558,12 @@ $dashboardDataFlowStoragePlanItemPresent = $false
 $dashboardDataFlowQueryPlanEvidenceProvided = $false
 $dashboardDataFlowQueryPlanEvidenceResult = ""
 $dashboardDataFlowQueryPlanEvidenceFailedCount = 0
+$dashboardDataFlowStorageTransitionRunbookResult = ""
+$dashboardDataFlowStorageTransitionRunbookStoragePlanResult = ""
+$dashboardDataFlowStorageTransitionRunbookCandidateStore = ""
+$dashboardDataFlowStorageTransitionRunbookFailureCount = 0
+$dashboardDataFlowStorageTransitionRunbookCheckCount = 0
+$dashboardDataFlowStorageTransitionRunbookItemPresent = $false
 if ($null -ne $dashboardData) {
     $convergence = $dashboardData.operationsReadinessConvergence
     $reportSync = $dashboardData.kubernetesOperationsReportSync
@@ -546,6 +632,32 @@ if ($null -ne $dashboardData) {
             }
         }
     }
+
+    if ($dataFlowStorageTransitionRunbookDashboardExpected) {
+        $dashboardDataFlowStorageTransitionRunbook = $dashboardData.dataFlowStorageTransitionRunbook
+        $dashboardDataFlowStorageTransitionRunbookItemPresent = @($dashboardData.items | Where-Object { (Get-ObjectText $_.code) -eq "DATA_FLOW_STORAGE_TRANSITION_RUNBOOK" }).Count -gt 0
+        if ($null -eq $dashboardDataFlowStorageTransitionRunbook) {
+            Add-Check "dashboard-data-flow-storage-transition-runbook-present" $false "dataFlowStorageTransitionRunbook is missing from dashboard readiness response."
+        }
+        else {
+            $dashboardDataFlowStorageTransitionRunbookResult = Get-ObjectText $dashboardDataFlowStorageTransitionRunbook.result
+            $dashboardDataFlowStorageTransitionRunbookStoragePlanResult = Get-ObjectText $dashboardDataFlowStorageTransitionRunbook.storagePlanResult
+            $dashboardDataFlowStorageTransitionRunbookCandidateStore = Get-ObjectText $dashboardDataFlowStorageTransitionRunbook.candidateStore
+            $dashboardDataFlowStorageTransitionRunbookFailureCount = Get-ObjectInt $dashboardDataFlowStorageTransitionRunbook.failureCount
+            $dashboardDataFlowStorageTransitionRunbookCheckCount = Get-ObjectInt $dashboardDataFlowStorageTransitionRunbook.checkCount
+            Add-Check "dashboard-data-flow-storage-transition-runbook-present" $true "dataFlowStorageTransitionRunbook is present."
+            Add-Check "dashboard-data-flow-storage-transition-runbook-result" ($dashboardDataFlowStorageTransitionRunbookResult -eq $expectedDataFlowStorageTransitionRunbookResult) "Dashboard runbook result=$dashboardDataFlowStorageTransitionRunbookResult, expected=$expectedDataFlowStorageTransitionRunbookResult."
+            Add-Check "dashboard-data-flow-storage-transition-runbook-storage-plan-result" ($dashboardDataFlowStorageTransitionRunbookStoragePlanResult -eq $expectedDataFlowStorageTransitionRunbookStoragePlanResult) "Dashboard runbook storagePlanResult=$dashboardDataFlowStorageTransitionRunbookStoragePlanResult, expected=$expectedDataFlowStorageTransitionRunbookStoragePlanResult."
+            if ($expectedDataFlowStorageTransitionRunbookCandidateStore) {
+                Add-Check "dashboard-data-flow-storage-transition-runbook-candidate-store" ($dashboardDataFlowStorageTransitionRunbookCandidateStore -eq $expectedDataFlowStorageTransitionRunbookCandidateStore) "Dashboard runbook candidateStore=$dashboardDataFlowStorageTransitionRunbookCandidateStore, expected=$expectedDataFlowStorageTransitionRunbookCandidateStore."
+            }
+            Add-Check "dashboard-data-flow-storage-transition-runbook-failure-count" ($dashboardDataFlowStorageTransitionRunbookFailureCount -eq $expectedDataFlowStorageTransitionRunbookFailureCount) "Dashboard runbook failureCount=$dashboardDataFlowStorageTransitionRunbookFailureCount, expected=$expectedDataFlowStorageTransitionRunbookFailureCount."
+            Add-Check "dashboard-data-flow-storage-transition-runbook-check-count" ($dashboardDataFlowStorageTransitionRunbookCheckCount -eq $expectedDataFlowStorageTransitionRunbookCheckCount) "Dashboard runbook checkCount=$dashboardDataFlowStorageTransitionRunbookCheckCount, expected=$expectedDataFlowStorageTransitionRunbookCheckCount."
+            if ($expectedDataFlowStorageTransitionRunbookResult -ne "passed") {
+                Add-Check "dashboard-data-flow-storage-transition-runbook-item" $dashboardDataFlowStorageTransitionRunbookItemPresent "Dashboard DATA_FLOW_STORAGE_TRANSITION_RUNBOOK readiness item present=$dashboardDataFlowStorageTransitionRunbookItemPresent."
+            }
+        }
+    }
 }
 
 $result = if ($failureCount -eq 0) {
@@ -564,6 +676,7 @@ $report = [ordered]@{
     sourceReportPath = $resolvedReportPath
     syncEvidencePath = $resolvedSyncEvidencePath
     dataFlowStoragePlanPath = $resolvedDataFlowStoragePlanPath
+    dataFlowStorageTransitionRunbookPath = $resolvedDataFlowStorageTransitionRunbookPath
     dataFlowStoragePlanExpected = [bool] $dataFlowStoragePlanDashboardExpected
     dataFlowStoragePlanExpectedResult = $expectedDataFlowStoragePlanResult
     dataFlowStoragePlanExpectedCandidateStore = $expectedDataFlowStoragePlanCandidateStore
@@ -572,6 +685,12 @@ $report = [ordered]@{
     dataFlowQueryPlanEvidenceExpectedProvided = [bool] $expectedDataFlowQueryPlanEvidenceProvided
     dataFlowQueryPlanEvidenceExpectedResult = $expectedDataFlowQueryPlanEvidenceResult
     dataFlowQueryPlanEvidenceExpectedFailedCount = $expectedDataFlowQueryPlanEvidenceFailedCount
+    dataFlowStorageTransitionRunbookExpected = [bool] $dataFlowStorageTransitionRunbookDashboardExpected
+    dataFlowStorageTransitionRunbookExpectedResult = $expectedDataFlowStorageTransitionRunbookResult
+    dataFlowStorageTransitionRunbookExpectedStoragePlanResult = $expectedDataFlowStorageTransitionRunbookStoragePlanResult
+    dataFlowStorageTransitionRunbookExpectedCandidateStore = $expectedDataFlowStorageTransitionRunbookCandidateStore
+    dataFlowStorageTransitionRunbookExpectedFailureCount = $expectedDataFlowStorageTransitionRunbookFailureCount
+    dataFlowStorageTransitionRunbookExpectedCheckCount = $expectedDataFlowStorageTransitionRunbookCheckCount
     syncResult = $syncResult
     syncFailedCount = $syncFailedCount
     syncConfigMapName = $syncConfigMapName
@@ -598,6 +717,13 @@ $report = [ordered]@{
     dashboardDataFlowQueryPlanEvidenceProvided = [bool] $dashboardDataFlowQueryPlanEvidenceProvided
     dashboardDataFlowQueryPlanEvidenceResult = $dashboardDataFlowQueryPlanEvidenceResult
     dashboardDataFlowQueryPlanEvidenceFailedCount = $dashboardDataFlowQueryPlanEvidenceFailedCount
+    dashboardDataFlowStorageTransitionRunbookChecked = [bool]($dataFlowStorageTransitionRunbookDashboardExpected -and $null -ne $dashboardData)
+    dashboardDataFlowStorageTransitionRunbookResult = $dashboardDataFlowStorageTransitionRunbookResult
+    dashboardDataFlowStorageTransitionRunbookStoragePlanResult = $dashboardDataFlowStorageTransitionRunbookStoragePlanResult
+    dashboardDataFlowStorageTransitionRunbookCandidateStore = $dashboardDataFlowStorageTransitionRunbookCandidateStore
+    dashboardDataFlowStorageTransitionRunbookFailureCount = $dashboardDataFlowStorageTransitionRunbookFailureCount
+    dashboardDataFlowStorageTransitionRunbookCheckCount = $dashboardDataFlowStorageTransitionRunbookCheckCount
+    dashboardDataFlowStorageTransitionRunbookItemPresent = [bool] $dashboardDataFlowStorageTransitionRunbookItemPresent
     checkCount = @($checks).Count
     failedCount = $failureCount
     checks = $checks

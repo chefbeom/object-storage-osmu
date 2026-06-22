@@ -68,7 +68,10 @@ read the same convergence and report-sync evidence that the local demo and
 prototype Browser E2E use for the admin dashboard. It also sets
 `OSMU_OPERATIONS_READINESS_DATA_FLOW_STORAGE_PLAN_REPORT_PATH` to
 `.osmu-run/latest-data-flow-storage-plan.json` so target data-flow storage plan
-evidence can be surfaced from the same mount.
+evidence can be surfaced from the same mount, and
+`OSMU_OPERATIONS_READINESS_DATA_FLOW_STORAGE_TRANSITION_RUNBOOK_REPORT_PATH` to
+`.osmu-run/latest-data-flow-storage-transition-runbook-evidence.json` so target
+transition rehearsal evidence uses the same mounted report contract.
 
 After running `scripts/write-operations-readiness-convergence.ps1`, create or
 refresh the ConfigMap in the target namespace:
@@ -85,10 +88,14 @@ ConfigMap with both `latest-operations-readiness-convergence.json` and
 `latest-kubernetes-operations-report-sync.json`. If
 `.osmu-run/latest-data-flow-storage-plan.json` exists, that key is included too
 so the running backend can read the same storage-plan evidence from its mounted
-report directory. Use `-SkipEvidenceConfigMapPublish` only when another delivery
+report directory. If
+`.osmu-run/latest-data-flow-storage-transition-runbook-evidence.json` exists,
+that key is included as well so the dashboard can expose the target transition
+runbook summary. Use `-SkipEvidenceConfigMapPublish` only when another delivery
 path, such as a PVC, publishes sync evidence separately; use
-`-SkipDataFlowStoragePlanConfigMapPublish` when another delivery path owns the
-data-flow storage plan.
+`-SkipDataFlowStoragePlanConfigMapPublish` or
+`-SkipDataFlowStorageTransitionRunbookConfigMapPublish` when another delivery
+path owns the data-flow plan or runbook file.
 
 The same flow is available through the manual
 `kubernetes-operations-report-sync-ci.yml` workflow. Keep `run_live=false` for a

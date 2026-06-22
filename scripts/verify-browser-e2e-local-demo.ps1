@@ -151,8 +151,8 @@ function Write-OperationsConvergenceFixture([string] $Path) {
         kubernetesReportSyncConfigMapName = "osmu-operations-reports"
         kubernetesReportSyncConfigMapKey = "latest-operations-readiness-convergence.json"
         kubernetesReportSyncSourceReportResult = "action-required"
-        kubernetesReportSyncWorkflowCommand = "gh workflow run kubernetes-operations-report-sync-ci.yml -f namespace=osmu -f report_path=./.osmu-run/latest-operations-readiness-convergence.json -f run_live=true -f apply=false"
-        kubernetesReportSyncWorkflowNote = "For GitHub Actions sync, include data_flow_storage_plan_json_base64 only when .osmu-run/latest-data-flow-storage-plan.json should be carried into the operations report ConfigMap; MariaDB partition or dual-write plans must include the sanitized query-plan evidence summary."
+        kubernetesReportSyncWorkflowCommand = "gh workflow run kubernetes-operations-report-sync-ci.yml -f namespace=osmu -f report_path=./.osmu-run/latest-operations-readiness-convergence.json -f run_live=true -f apply=false -f data_flow_storage_plan_json_base64=<base64-latest-data-flow-storage-plan-json> -f data_flow_storage_transition_runbook_json_base64=<base64-latest-data-flow-storage-transition-runbook-json>"
+        kubernetesReportSyncWorkflowNote = "For GitHub Actions sync, include data_flow_storage_plan_json_base64 only when .osmu-run/latest-data-flow-storage-plan.json should be carried into the operations report ConfigMap, and include data_flow_storage_transition_runbook_json_base64 only when .osmu-run/latest-data-flow-storage-transition-runbook-evidence.json should be carried into the same ConfigMap. MariaDB partition or dual-write plans must include the sanitized query-plan evidence summary, and transition runbook evidence must be result=passed with no raw SQL, raw EXPLAIN, object keys, raw event messages, or credential-shaped content. Omit inputs when no target analytics-storage evidence is ready."
         kubernetesReportSyncReady = $false
         finalizerGapCount = 1
         stageCount = 7

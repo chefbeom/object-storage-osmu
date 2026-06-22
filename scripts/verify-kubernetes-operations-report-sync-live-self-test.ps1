@@ -49,6 +49,7 @@ New-Item -ItemType Directory -Force -Path $resolvedOutputDirectory | Out-Null
 $scriptPath = Resolve-ProjectPath ".\scripts\verify-kubernetes-operations-report-sync-live.ps1"
 $syncEvidencePath = Join-Path $resolvedOutputDirectory "latest-kubernetes-operations-report-sync.json"
 $dataFlowStoragePlanPath = Join-Path $resolvedOutputDirectory "latest-data-flow-storage-plan.json"
+$dataFlowStorageTransitionRunbookPath = Join-Path $resolvedOutputDirectory "latest-data-flow-storage-transition-runbook-evidence.json"
 $dashboardFixturePath = Join-Path $resolvedOutputDirectory "dashboard-readiness.json"
 $evidencePath = Join-Path $resolvedOutputDirectory "live-evidence.json"
 $planEvidencePath = Join-Path $resolvedOutputDirectory "plan-evidence.json"
@@ -134,6 +135,37 @@ Write-JsonFixture $dataFlowStoragePlanPath ([ordered]@{
         detail = "No MariaDB query plan evidence JSON supplied."
     }
     scopePolicy = "OSMU operations analytics only. This plan is not AWS billing parity."
+})
+
+Write-JsonFixture $dataFlowStorageTransitionRunbookPath ([ordered]@{
+    formatVersion = "osmu.data-flow-storage-transition-runbook-evidence.v1"
+    generatedAt = "2026-06-16T00:06:00+09:00"
+    result = "passed"
+    environmentName = "sync-live-self-test"
+    targetCluster = "customer-cluster-a"
+    operator = "ops-admin"
+    evidenceRef = "data-flow-runbook-20260621"
+    dataFlowStoragePlanSnapshot = [ordered]@{
+        result = "passed"
+        candidateStore = "MARIADB_PARTITION"
+        targetP95QueryLatencyMs = 500
+    }
+    summary = [ordered]@{
+        failureCount = 0
+        checkCount = 8
+    }
+    confirmations = [ordered]@{
+        backfillRehearsed = $true
+        dualWriteOrPartitionToggleReviewed = $true
+        rollbackRehearsed = $true
+        reconciliationPassed = $true
+        dashboardCutoverReviewed = $true
+        retentionDryRunReviewed = $true
+        noObjectKeysInAggregates = $true
+        noSecretValues = $true
+    }
+    topFailedChecks = @()
+    scopePolicy = "OSMU operations analytics transition runbook only."
 })
 
 Write-JsonFixture $dashboardFixturePath ([ordered]@{
@@ -222,6 +254,30 @@ Write-JsonFixture $dashboardFixturePath ([ordered]@{
             }
             scopePolicy = "OSMU operations analytics only. This plan is not AWS billing parity."
         }
+        dataFlowStorageTransitionRunbook = [ordered]@{
+            result = "passed"
+            environmentName = "sync-live-self-test"
+            targetCluster = "customer-cluster-a"
+            operatorName = "ops-admin"
+            evidenceRef = "data-flow-runbook-20260621"
+            storagePlanResult = "passed"
+            candidateStore = "MARIADB_PARTITION"
+            targetP95QueryLatencyMs = 500
+            failureCount = 0
+            checkCount = 8
+            confirmations = [ordered]@{
+                backfillRehearsed = $true
+                dualWriteOrPartitionToggleReviewed = $true
+                rollbackRehearsed = $true
+                reconciliationPassed = $true
+                dashboardCutoverReviewed = $true
+                retentionDryRunReviewed = $true
+                noObjectKeysInAggregates = $true
+                noSecretValues = $true
+            }
+            topFailedChecks = @()
+            scopePolicy = "OSMU operations analytics transition runbook only."
+        }
     }
 })
 
@@ -229,6 +285,7 @@ Write-JsonFixture $dashboardFixturePath ([ordered]@{
     -SkipSync `
     -SyncEvidencePath $syncEvidencePath `
     -DataFlowStoragePlanPath $dataFlowStoragePlanPath `
+    -DataFlowStorageTransitionRunbookPath $dataFlowStorageTransitionRunbookPath `
     -DashboardReadinessFixturePath $dashboardFixturePath `
     -DashboardRetryCount 3 `
     -DashboardRetryDelaySeconds 0 `
@@ -264,12 +321,26 @@ Assert-Equal $evidence.dashboardDataFlowQueryPlanEvidenceProvided $false "live e
 Assert-Equal $evidence.dashboardDataFlowQueryPlanEvidenceResult "" "live evidence dashboard query plan result"
 Assert-Equal $evidence.dashboardDataFlowQueryPlanEvidenceFailedCount 0 "live evidence dashboard query plan failed count"
 Assert-Equal $evidence.dashboardDataFlowStoragePlanItemPresent $true "live evidence dashboard data-flow storage plan item"
+Assert-Equal $evidence.dataFlowStorageTransitionRunbookExpected $true "live evidence data-flow storage transition runbook expected"
+Assert-Equal $evidence.dataFlowStorageTransitionRunbookExpectedResult "passed" "live evidence expected data-flow storage transition runbook result"
+Assert-Equal $evidence.dataFlowStorageTransitionRunbookExpectedStoragePlanResult "passed" "live evidence expected data-flow storage transition runbook storage plan result"
+Assert-Equal $evidence.dataFlowStorageTransitionRunbookExpectedCandidateStore "MARIADB_PARTITION" "live evidence expected data-flow storage transition runbook candidate store"
+Assert-Equal $evidence.dataFlowStorageTransitionRunbookExpectedFailureCount 0 "live evidence expected data-flow storage transition runbook failure count"
+Assert-Equal $evidence.dataFlowStorageTransitionRunbookExpectedCheckCount 8 "live evidence expected data-flow storage transition runbook check count"
+Assert-Equal $evidence.dashboardDataFlowStorageTransitionRunbookChecked $true "live evidence dashboard data-flow storage transition runbook checked"
+Assert-Equal $evidence.dashboardDataFlowStorageTransitionRunbookResult "passed" "live evidence dashboard data-flow storage transition runbook result"
+Assert-Equal $evidence.dashboardDataFlowStorageTransitionRunbookStoragePlanResult "passed" "live evidence dashboard data-flow storage transition runbook storage plan result"
+Assert-Equal $evidence.dashboardDataFlowStorageTransitionRunbookCandidateStore "MARIADB_PARTITION" "live evidence dashboard data-flow storage transition runbook candidate store"
+Assert-Equal $evidence.dashboardDataFlowStorageTransitionRunbookFailureCount 0 "live evidence dashboard data-flow storage transition runbook failure count"
+Assert-Equal $evidence.dashboardDataFlowStorageTransitionRunbookCheckCount 8 "live evidence dashboard data-flow storage transition runbook check count"
+Assert-Equal $evidence.dashboardDataFlowStorageTransitionRunbookItemPresent $false "live evidence dashboard data-flow storage transition runbook item"
 Assert-Equal $evidence.failedCount 0 "live evidence failed count"
 Assert-True ($evidence.safetyPolicy.Contains("does not store admin passwords")) "live evidence safety policy"
 
 & powershell -NoProfile -ExecutionPolicy Bypass -File $scriptPath `
     -PlanOnly `
     -DataFlowStoragePlanPath $dataFlowStoragePlanPath `
+    -DataFlowStorageTransitionRunbookPath $dataFlowStorageTransitionRunbookPath `
     -DashboardReadinessFixturePath $dashboardFixturePath `
     -DashboardRetryCount 2 `
     -DashboardRetryDelaySeconds 0 `
@@ -285,6 +356,9 @@ Assert-Equal $planEvidence.dataFlowStoragePlanExpected $true "plan evidence data
 Assert-Equal $planEvidence.dataFlowStoragePlanExpectedResult "plan-ready-execute-required" "plan evidence expected data-flow storage plan result"
 Assert-Equal $planEvidence.dataFlowQueryPlanEvidenceExpected $true "plan evidence query plan expected"
 Assert-Equal $planEvidence.dashboardDataFlowStoragePlanChecked $false "plan evidence dashboard data-flow storage plan checked"
+Assert-Equal $planEvidence.dataFlowStorageTransitionRunbookExpected $true "plan evidence data-flow storage transition runbook expected"
+Assert-Equal $planEvidence.dataFlowStorageTransitionRunbookExpectedResult "passed" "plan evidence expected data-flow storage transition runbook result"
+Assert-Equal $planEvidence.dashboardDataFlowStorageTransitionRunbookChecked $false "plan evidence dashboard data-flow storage transition runbook checked"
 
 Write-JsonFixture $failedDashboardFixturePath ([ordered]@{
     data = [ordered]@{
@@ -307,6 +381,7 @@ $failedOutputLines = & powershell -NoProfile -ExecutionPolicy Bypass -File $scri
     -SkipSync `
     -SyncEvidencePath $syncEvidencePath `
     -DataFlowStoragePlanPath $dataFlowStoragePlanPath `
+    -DataFlowStorageTransitionRunbookPath $dataFlowStorageTransitionRunbookPath `
     -DashboardReadinessFixturePath $failedDashboardFixturePath `
     -DashboardRetryCount 2 `
     -DashboardRetryDelaySeconds 0 `

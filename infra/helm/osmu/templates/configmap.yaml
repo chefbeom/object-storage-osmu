@@ -40,3 +40,4 @@ data:
   OSMU_OPERATIONS_READINESS_CONVERGENCE_REPORT_PATH: {{ .Values.config.operationsReadinessConvergenceReportPath | quote }}
   OSMU_OPERATIONS_READINESS_KUBERNETES_REPORT_SYNC_REPORT_PATH: {{ .Values.config.kubernetesOperationsReportSyncReportPath | quote }}
   OSMU_OPERATIONS_READINESS_DATA_FLOW_STORAGE_PLAN_REPORT_PATH: {{ .Values.config.dataFlowStoragePlanReportPath | quote }}
+  OSMU_OPERATIONS_READINESS_DATA_FLOW_STORAGE_TRANSITION_RUNBOOK_REPORT_PATH: {{ .Values.config.dataFlowStorageTransitionRunbookReportPath | quote }}

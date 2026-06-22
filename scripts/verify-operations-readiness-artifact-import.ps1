@@ -279,6 +279,30 @@ Write-JsonEvidence (Join-Path $kubernetesOperationsReportSyncSource "latest-data
         detail = "No MariaDB query plan evidence JSON supplied."
     }
 }
+Write-JsonEvidence (Join-Path $kubernetesOperationsReportSyncSource "latest-data-flow-storage-transition-runbook-evidence.json") @{
+    formatVersion = "osmu.data-flow-storage-transition-runbook-evidence.v1"
+    result = "passed"
+    dataFlowStoragePlanSnapshot = @{
+        result = "passed"
+        candidateStore = "MARIADB_PARTITION"
+        targetP95QueryLatencyMs = 500
+    }
+    summary = @{
+        failureCount = 0
+        checkCount = 8
+    }
+    confirmations = @{
+        backfillRehearsed = $true
+        dualWriteOrPartitionToggleReviewed = $true
+        rollbackRehearsed = $true
+        reconciliationPassed = $true
+        dashboardCutoverReviewed = $true
+        retentionDryRunReviewed = $true
+        noObjectKeysInAggregates = $true
+        noSecretValues = $true
+    }
+    topFailedChecks = @()
+}
 
 $importScript = Resolve-ProjectPath ".\scripts\import-operations-readiness-artifacts.ps1"
 & powershell -NoProfile -ExecutionPolicy Bypass -File $importScript `
@@ -333,6 +357,7 @@ Assert-True (Test-Path -LiteralPath (Join-Path $promotedRoot "latest-data-flow-s
 Assert-True (Test-Path -LiteralPath (Join-Path $promotedRoot "latest-data-flow-storage-transition-runbook-evidence.md")) "Promoted data-flow storage transition runbook markdown missing."
 Assert-True (Test-Path -LiteralPath (Join-Path $promotedRoot "latest-kubernetes-operations-report-sync.json")) "Promoted Kubernetes operations report sync evidence missing."
 Assert-True (Test-Path -LiteralPath (Join-Path $promotedRoot "latest-data-flow-storage-plan.json")) "Promoted data-flow storage plan evidence missing."
+Assert-True (Test-Path -LiteralPath (Join-Path $promotedRoot "latest-data-flow-storage-transition-runbook-evidence.json")) "Promoted data-flow storage transition runbook evidence missing."
 $promotedCommercialApproval = Get-Content -Raw -LiteralPath (Join-Path $promotedRoot "latest-commercial-approval-evidence.json") | ConvertFrom-Json
 $promotedStorageBackendTelemetry = Get-Content -Raw -LiteralPath (Join-Path $promotedRoot "latest-storage-backend-telemetry.json") | ConvertFrom-Json
 $promotedMonitoringThreshold = Get-Content -Raw -LiteralPath (Join-Path $promotedRoot "latest-monitoring-threshold-evidence.json") | ConvertFrom-Json
@@ -365,6 +390,9 @@ Assert-True ($promotedDataFlowRunbook.dataFlowStoragePlanSnapshot.result -eq "pa
 $dataFlowRunbookEntry = @($report.entries | Where-Object { $_.group -eq "data-flow-storage-transition-runbook" -and $_.fileName -eq "latest-data-flow-storage-transition-runbook-evidence.json" })
 Assert-True ($dataFlowRunbookEntry.Count -eq 1) "Data-flow storage transition runbook import entry missing."
 Assert-True (([string] $dataFlowRunbookEntry[0].detail).Contains("storagePlanResult=passed")) "Data-flow storage transition runbook import entry should include storage plan validation detail."
+$kubernetesSyncRunbookEntry = @($report.entries | Where-Object { $_.group -eq "kubernetes-operations-report-sync" -and $_.fileName -eq "latest-data-flow-storage-transition-runbook-evidence.json" })
+Assert-True ($kubernetesSyncRunbookEntry.Count -eq 1) "Kubernetes sync data-flow storage transition runbook import entry missing."
+Assert-True (([string] $kubernetesSyncRunbookEntry[0].detail).Contains("storagePlanResult=passed")) "Kubernetes sync runbook import entry should include storage plan validation detail."
 $monitoringThresholdEntry = @($report.entries | Where-Object { $_.group -eq "monitoring-threshold" -and $_.fileName -eq "latest-monitoring-threshold-evidence.json" })
 Assert-True ($monitoringThresholdEntry.Count -eq 1) "Monitoring threshold import entry missing."
 Assert-True (([string] $monitoringThresholdEntry[0].detail).Contains("requiredAlerts=11")) "Monitoring threshold import entry should include threshold mapping validation detail."

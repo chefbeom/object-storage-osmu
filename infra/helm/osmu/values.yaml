@@ -37,6 +37,7 @@ config:
   operationsReadinessConvergenceReportPath: .osmu-run/latest-operations-readiness-convergence.json
   kubernetesOperationsReportSyncReportPath: .osmu-run/latest-kubernetes-operations-report-sync.json
   dataFlowStoragePlanReportPath: .osmu-run/latest-data-flow-storage-plan.json
+  dataFlowStorageTransitionRunbookReportPath: .osmu-run/latest-data-flow-storage-transition-runbook-evidence.json
 
 secrets:
   create: false
