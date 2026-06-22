@@ -281,6 +281,28 @@ function Get-RequiredPropertyBool([object] $Object, [string] $Name) {
     }
 }
 
+function Get-RequiredBoolSetSnapshot([object] $Object, [string[]] $Names) {
+    $values = [ordered]@{}
+    $validation = [ordered]@{}
+    $allValidAndTrue = $true
+    foreach ($name in $Names) {
+        $required = Get-RequiredPropertyBool $Object $name
+        $values[$name] = [bool] $required.value
+        $validation[$name] = [ordered]@{
+            valid = [bool] $required.valid
+            raw = [string] $required.raw
+        }
+        if (-not ([bool] $required.valid) -or -not ([bool] $required.value)) {
+            $allValidAndTrue = $false
+        }
+    }
+    return [pscustomobject]@{
+        values = $values
+        validation = $validation
+        allValidAndTrue = $allValidAndTrue
+    }
+}
+
 function Get-PropertyArray([object] $Object, [string] $Name) {
     $value = Get-PropertyValue $Object $Name
     if ($null -eq $value) {
@@ -556,6 +578,8 @@ function Read-DataFlowStorageTransitionRunbookSnapshot([string] $Path) {
             noObjectKeysInAggregates = $false
             noSecretValues = $false
         }
+        confirmationsValid = $false
+        confirmationValidation = [ordered]@{}
         topFailedChecks = @()
         detail = "No data-flow storage transition runbook evidence JSON supplied."
     }
@@ -614,18 +638,21 @@ function Read-DataFlowStorageTransitionRunbookSnapshot([string] $Path) {
     $snapshot["targetP95QueryLatencyMs"] = Get-PropertyInt $planSnapshot "targetP95QueryLatencyMs"
     $snapshot["failureCount"] = Get-PropertyInt $summary "failureCount"
     $snapshot["checkCount"] = Get-PropertyInt $summary "checkCount"
-    $snapshot["confirmations"] = [ordered]@{
-        backfillRehearsed = Get-PropertyBool $confirmations "backfillRehearsed"
-        dualWriteOrPartitionToggleReviewed = Get-PropertyBool $confirmations "dualWriteOrPartitionToggleReviewed"
-        rollbackRehearsed = Get-PropertyBool $confirmations "rollbackRehearsed"
-        reconciliationPassed = Get-PropertyBool $confirmations "reconciliationPassed"
-        dashboardCutoverReviewed = Get-PropertyBool $confirmations "dashboardCutoverReviewed"
-        retentionDryRunReviewed = Get-PropertyBool $confirmations "retentionDryRunReviewed"
-        noObjectKeysInAggregates = Get-PropertyBool $confirmations "noObjectKeysInAggregates"
-        noSecretValues = Get-PropertyBool $confirmations "noSecretValues"
-    }
+    $confirmationResult = Get-RequiredBoolSetSnapshot $confirmations @(
+        "backfillRehearsed",
+        "dualWriteOrPartitionToggleReviewed",
+        "rollbackRehearsed",
+        "reconciliationPassed",
+        "dashboardCutoverReviewed",
+        "retentionDryRunReviewed",
+        "noObjectKeysInAggregates",
+        "noSecretValues"
+    )
+    $snapshot["confirmations"] = $confirmationResult.values
+    $snapshot["confirmationsValid"] = [bool] $confirmationResult.allValidAndTrue
+    $snapshot["confirmationValidation"] = $confirmationResult.validation
     $snapshot["topFailedChecks"] = @($failedRows.ToArray())
-    $snapshot["detail"] = "formatVersion=$formatVersion; result=$result; storagePlanResult=$($snapshot["storagePlanResult"]); candidateStore=$($snapshot["candidateStore"]); failures=$($snapshot["failureCount"]); checks=$($snapshot["checkCount"])"
+    $snapshot["detail"] = "formatVersion=$formatVersion; result=$result; storagePlanResult=$($snapshot["storagePlanResult"]); candidateStore=$($snapshot["candidateStore"]); failures=$($snapshot["failureCount"]); checks=$($snapshot["checkCount"]); confirmationsValid=$($snapshot["confirmationsValid"])"
     return $snapshot
 }
 
@@ -726,6 +753,8 @@ function Read-SecretRotationEvidenceSnapshot([string] $Path) {
             artifactLeakReview = $false
             requireAllCoreSecrets = $false
         }
+        confirmationsValid = $false
+        confirmationValidation = [ordered]@{}
         rotatedCount = 0
         coreRotatedCount = 0
         coreRequiredCount = 0
@@ -812,13 +841,16 @@ function Read-SecretRotationEvidenceSnapshot([string] $Path) {
         artifactLeakReview = Get-PropertyText (Get-PropertyValue $payload "evidenceRefs") "artifactLeakReview"
         accessKeyEncryptionDecision = Get-PropertyText (Get-PropertyValue $payload "evidenceRefs") "accessKeyEncryptionDecision"
     }
-    $snapshot["confirmations"] = [ordered]@{
-        noSecretValues = Get-PropertyBool $confirmations "noSecretValues"
-        workloadRestart = Get-PropertyBool $confirmations "workloadRestart"
-        smokePassed = Get-PropertyBool $confirmations "smokePassed"
-        artifactLeakReview = Get-PropertyBool $confirmations "artifactLeakReview"
-        requireAllCoreSecrets = Get-PropertyBool $confirmations "requireAllCoreSecrets"
-    }
+    $confirmationResult = Get-RequiredBoolSetSnapshot $confirmations @(
+        "noSecretValues",
+        "workloadRestart",
+        "smokePassed",
+        "artifactLeakReview",
+        "requireAllCoreSecrets"
+    )
+    $snapshot["confirmations"] = $confirmationResult.values
+    $snapshot["confirmationsValid"] = [bool] $confirmationResult.allValidAndTrue
+    $snapshot["confirmationValidation"] = $confirmationResult.validation
     $snapshot["rotatedCount"] = Get-PropertyInt $summary "rotatedCount"
     $snapshot["coreRotatedCount"] = Get-PropertyInt $summary "coreRotatedCount"
     $snapshot["coreRequiredCount"] = Get-PropertyInt $summary "coreRequiredCount"
@@ -827,7 +859,7 @@ function Read-SecretRotationEvidenceSnapshot([string] $Path) {
     $snapshot["checkCount"] = $checks.Count
     $snapshot["rotations"] = @($rotationRows.ToArray())
     $snapshot["topChecks"] = @($topRows.ToArray())
-    $snapshot["detail"] = "formatVersion=$formatVersion; result=$result; core=$($snapshot["coreRotatedCount"])/$($snapshot["coreRequiredCount"]); failures=$($snapshot["failureCount"]); planned=$($snapshot["plannedCount"])"
+    $snapshot["detail"] = "formatVersion=$formatVersion; result=$result; core=$($snapshot["coreRotatedCount"])/$($snapshot["coreRequiredCount"]); failures=$($snapshot["failureCount"]); planned=$($snapshot["plannedCount"]); confirmationsValid=$($snapshot["confirmationsValid"])"
     return $snapshot
 }
 
@@ -910,6 +942,8 @@ function Read-EnterpriseAuthSmokeEvidenceSnapshot([string] $Path) {
         result = ""
         passed = $false
         scopeOutAccepted = $false
+        scopeOutAcceptedValid = $false
+        scopeOutAcceptedRaw = "<missing>"
         accepted = $false
         executionMode = ""
         apiBase = ""
@@ -955,13 +989,21 @@ function Read-EnterpriseAuthSmokeEvidenceSnapshot([string] $Path) {
 
     $formatVersion = Get-PropertyText $payload "formatVersion"
     $result = Get-PropertyText $payload "result"
-    $scopeOutAccepted = Get-PropertyBool $scopeOut "accepted"
+    $scopeOutAccepted = Get-RequiredPropertyBool $scopeOut "accepted"
+    $scopeOutReference = Get-PropertyText $scopeOut "reference"
+    $scopeOutReason = Get-PropertyText $scopeOut "reason"
+    $scopeOutApproved = [bool] $scopeOutAccepted.valid `
+        -and [bool] $scopeOutAccepted.value `
+        -and -not [string]::IsNullOrWhiteSpace($scopeOutReference) `
+        -and -not [string]::IsNullOrWhiteSpace($scopeOutReason)
     $snapshot["formatVersion"] = $formatVersion
     $snapshot["validFormatVersion"] = $formatVersion -eq $snapshot["expectedFormatVersion"]
     $snapshot["result"] = $result
     $snapshot["passed"] = "passed".Equals($result, [System.StringComparison]::OrdinalIgnoreCase)
-    $snapshot["scopeOutAccepted"] = $scopeOutAccepted
-    $snapshot["accepted"] = [bool] $snapshot["passed"] -or ("scope-out".Equals($result, [System.StringComparison]::OrdinalIgnoreCase) -and $scopeOutAccepted)
+    $snapshot["scopeOutAccepted"] = [bool] $scopeOutAccepted.value
+    $snapshot["scopeOutAcceptedValid"] = [bool] $scopeOutAccepted.valid
+    $snapshot["scopeOutAcceptedRaw"] = [string] $scopeOutAccepted.raw
+    $snapshot["accepted"] = [bool] $snapshot["passed"] -or ("scope-out".Equals($result, [System.StringComparison]::OrdinalIgnoreCase) -and $scopeOutApproved)
     $snapshot["executionMode"] = Get-PropertyText $payload "executionMode"
     $snapshot["apiBase"] = Get-PropertyText $payload "apiBase"
     $snapshot["requireOidc"] = Get-PropertyBool $payload "requireOidc"
@@ -980,9 +1022,11 @@ function Read-EnterpriseAuthSmokeEvidenceSnapshot([string] $Path) {
     }
     $snapshot["scopeOut"] = [ordered]@{
         confirmed = Get-PropertyBool $scopeOut "confirmed"
-        reference = Get-PropertyText $scopeOut "reference"
-        reason = Get-PropertyText $scopeOut "reason"
-        accepted = $scopeOutAccepted
+        reference = $scopeOutReference
+        reason = $scopeOutReason
+        accepted = [bool] $scopeOutAccepted.value
+        acceptedValid = [bool] $scopeOutAccepted.valid
+        acceptedRaw = [string] $scopeOutAccepted.raw
     }
     $snapshot["passCount"] = Get-PropertyInt $summary "passCount"
     $snapshot["failCount"] = Get-PropertyInt $summary "failCount"
@@ -991,7 +1035,7 @@ function Read-EnterpriseAuthSmokeEvidenceSnapshot([string] $Path) {
     $snapshot["skippedCount"] = Get-PropertyInt $summary "skippedCount"
     $snapshot["checkCount"] = $checks.Count
     $snapshot["topChecks"] = @($topRows.ToArray())
-    $snapshot["detail"] = "formatVersion=$formatVersion; result=$result; pass=$($snapshot["passCount"]); fail=$($snapshot["failCount"]); blocked=$($snapshot["blockedCount"]); planned=$($snapshot["plannedCount"]); scopeOutAccepted=$scopeOutAccepted"
+    $snapshot["detail"] = "formatVersion=$formatVersion; result=$result; pass=$($snapshot["passCount"]); fail=$($snapshot["failCount"]); blocked=$($snapshot["blockedCount"]); planned=$($snapshot["plannedCount"]); scopeOutAccepted=$($snapshot["scopeOutAcceptedRaw"])(valid=$($snapshot["scopeOutAcceptedValid"])); scopeOutReference=$scopeOutReference"
     return $snapshot
 }
 
@@ -1024,6 +1068,8 @@ function Read-MonitoringThresholdEvidenceSnapshot([string] $Path) {
             incidentRoutingReviewed = $false
             noSecretValues = $false
         }
+        confirmationsValid = $false
+        confirmationValidation = [ordered]@{}
         complete = $false
         failureCount = 0
         checkCount = 0
@@ -1078,12 +1124,15 @@ function Read-MonitoringThresholdEvidenceSnapshot([string] $Path) {
     $grafanaPanelCount = Get-PropertyInt $thresholdSummary "grafanaPanelCount"
     $tuningEvidenceCount = Get-PropertyInt $thresholdSummary "tuningEvidenceCount"
     $failureCount = Get-PropertyInt $summary "failureCount"
-    $allConfirmationsPassed = (Get-PropertyBool $confirmations "prometheusRulesLoaded") `
-        -and (Get-PropertyBool $confirmations "grafanaDashboardImported") `
-        -and (Get-PropertyBool $confirmations "alertmanagerRoutesReviewed") `
-        -and (Get-PropertyBool $confirmations "targetBaselinesReviewed") `
-        -and (Get-PropertyBool $confirmations "incidentRoutingReviewed") `
-        -and (Get-PropertyBool $confirmations "noSecretValues")
+    $confirmationResult = Get-RequiredBoolSetSnapshot $confirmations @(
+        "prometheusRulesLoaded",
+        "grafanaDashboardImported",
+        "alertmanagerRoutesReviewed",
+        "targetBaselinesReviewed",
+        "incidentRoutingReviewed",
+        "noSecretValues"
+    )
+    $allConfirmationsPassed = [bool] $confirmationResult.allValidAndTrue
     $complete = $requiredAlertCount -gt 0 `
         -and $mappedAlertCount -ge $requiredAlertCount `
         -and $grafanaPanelCount -ge $requiredAlertCount `
@@ -1108,14 +1157,9 @@ function Read-MonitoringThresholdEvidenceSnapshot([string] $Path) {
     $snapshot["routes"] = $routes
     $snapshot["grafanaPanelCount"] = $grafanaPanelCount
     $snapshot["tuningEvidenceCount"] = $tuningEvidenceCount
-    $snapshot["confirmations"] = [ordered]@{
-        prometheusRulesLoaded = Get-PropertyBool $confirmations "prometheusRulesLoaded"
-        grafanaDashboardImported = Get-PropertyBool $confirmations "grafanaDashboardImported"
-        alertmanagerRoutesReviewed = Get-PropertyBool $confirmations "alertmanagerRoutesReviewed"
-        targetBaselinesReviewed = Get-PropertyBool $confirmations "targetBaselinesReviewed"
-        incidentRoutingReviewed = Get-PropertyBool $confirmations "incidentRoutingReviewed"
-        noSecretValues = Get-PropertyBool $confirmations "noSecretValues"
-    }
+    $snapshot["confirmations"] = $confirmationResult.values
+    $snapshot["confirmationsValid"] = [bool] $confirmationResult.allValidAndTrue
+    $snapshot["confirmationValidation"] = $confirmationResult.validation
     $snapshot["complete"] = $complete
     $snapshot["failureCount"] = $failureCount
     $snapshot["checkCount"] = Get-PropertyInt $summary "checkCount"
@@ -1123,7 +1167,7 @@ function Read-MonitoringThresholdEvidenceSnapshot([string] $Path) {
         $snapshot["checkCount"] = $checks.Count
     }
     $snapshot["topFailedChecks"] = @($failedRows.ToArray())
-    $snapshot["detail"] = "formatVersion=$formatVersion; result=$result; alerts=$mappedAlertCount/$requiredAlertCount; routes=$($snapshot["routeCount"]); failures=$failureCount; complete=$complete"
+    $snapshot["detail"] = "formatVersion=$formatVersion; result=$result; alerts=$mappedAlertCount/$requiredAlertCount; routes=$($snapshot["routeCount"]); failures=$failureCount; complete=$complete; confirmationsValid=$($snapshot["confirmationsValid"])"
     return $snapshot
 }
 
@@ -1329,8 +1373,8 @@ $operationsConvergenceSnapshotReady = $operationsConvergenceSnapshotValid `
     -and ([int] $operationsConvergenceSnapshot["kubernetesReportSyncFailedCount"]) -eq 0 `
     -and "ready".Equals([string] $operationsConvergenceSnapshot["kubernetesReportSyncSourceReportResult"], [System.StringComparison]::OrdinalIgnoreCase)
 $dataFlowStoragePlanSnapshotPassed = $dataFlowStoragePlanSnapshotValid -and [bool] $dataFlowStoragePlanSnapshot["passed"]
-$dataFlowStorageTransitionRunbookSnapshotPassed = $dataFlowStorageTransitionRunbookSnapshotValid -and [bool] $dataFlowStorageTransitionRunbookSnapshot["passed"]
-$secretRotationSnapshotPassed = $secretRotationSnapshotValid -and [bool] $secretRotationSnapshot["passed"]
+$dataFlowStorageTransitionRunbookSnapshotPassed = $dataFlowStorageTransitionRunbookSnapshotValid -and [bool] $dataFlowStorageTransitionRunbookSnapshot["passed"] -and [bool] $dataFlowStorageTransitionRunbookSnapshot["confirmationsValid"]
+$secretRotationSnapshotPassed = $secretRotationSnapshotValid -and [bool] $secretRotationSnapshot["passed"] -and [bool] $secretRotationSnapshot["confirmationsValid"]
 $commercialIntegrationSnapshotPassed = $commercialIntegrationSnapshotValid -and [bool] $commercialIntegrationSnapshot["passed"]
 $commercialApprovalSnapshotPassed = $commercialApprovalSnapshotValid -and [bool] $commercialApprovalSnapshot["passed"]
 $enterpriseAuthSmokeSnapshotAccepted = $enterpriseAuthSmokeSnapshotValid -and [bool] $enterpriseAuthSmokeSnapshot["accepted"]

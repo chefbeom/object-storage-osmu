@@ -629,6 +629,94 @@ foreach ($unexpected in @("password=super-secret", "Bearer abcdefghijklmnop", "-
     Assert-NotContains $markdown $unexpected "operations handoff package markdown"
 }
 
+$stringBoolDataFlowRunbookPath = Join-Path $resolvedOutputDirectory "string-bool-data-flow-storage-transition-runbook.json"
+$stringBoolDataFlowRunbook = Get-Content -Raw -LiteralPath $dataFlowStorageTransitionRunbookPath | ConvertFrom-Json
+$stringBoolDataFlowRunbook.confirmations.backfillRehearsed = "true"
+$stringBoolDataFlowRunbook | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath $stringBoolDataFlowRunbookPath -Encoding UTF8
+
+$previousErrorActionPreference = $ErrorActionPreference
+$ErrorActionPreference = "Continue"
+try {
+    $stringBoolDataFlowRunbookOutput = & powershell -NoProfile -ExecutionPolicy Bypass -File $scriptPath `
+        -DataFlowStorageTransitionRunbookEvidenceRef "latest-data-flow-storage-transition-runbook-passed-20260620" `
+        -DataFlowStorageTransitionRunbookJsonPath $stringBoolDataFlowRunbookPath `
+        -ConfirmDataFlowStorageTransitionRunbookReviewed `
+        -FailIfNotPassed `
+        -NoWrite 2>&1
+    $stringBoolDataFlowRunbookExitCode = $LASTEXITCODE
+}
+finally {
+    $ErrorActionPreference = $previousErrorActionPreference
+}
+Assert-True ($stringBoolDataFlowRunbookExitCode -ne 0) "Data-flow storage transition runbook string confirmation boolean should be rejected."
+Assert-Contains ($stringBoolDataFlowRunbookOutput | Out-String) "confirmationsValid=False" "string data-flow runbook confirmation output"
+
+$stringBoolSecretRotationPath = Join-Path $resolvedOutputDirectory "string-bool-secret-rotation.json"
+$stringBoolSecretRotation = Get-Content -Raw -LiteralPath $secretRotationPath | ConvertFrom-Json
+$stringBoolSecretRotation.confirmations.smokePassed = "true"
+$stringBoolSecretRotation | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath $stringBoolSecretRotationPath -Encoding UTF8
+
+$previousErrorActionPreference = $ErrorActionPreference
+$ErrorActionPreference = "Continue"
+try {
+    $stringBoolSecretRotationOutput = & powershell -NoProfile -ExecutionPolicy Bypass -File $scriptPath `
+        -SecretRotationEvidenceRef "latest-secret-rotation-evidence-passed-20260620" `
+        -SecretRotationJsonPath $stringBoolSecretRotationPath `
+        -ConfirmSecretRotationSnapshotReviewed `
+        -FailIfNotPassed `
+        -NoWrite 2>&1
+    $stringBoolSecretRotationExitCode = $LASTEXITCODE
+}
+finally {
+    $ErrorActionPreference = $previousErrorActionPreference
+}
+Assert-True ($stringBoolSecretRotationExitCode -ne 0) "Secret rotation string confirmation boolean should be rejected."
+Assert-Contains ($stringBoolSecretRotationOutput | Out-String) "confirmationsValid=False" "string secret rotation confirmation output"
+
+$stringBoolEnterpriseAuthPath = Join-Path $resolvedOutputDirectory "string-bool-enterprise-auth-scope-out.json"
+$stringBoolEnterpriseAuth = Get-Content -Raw -LiteralPath $enterpriseAuthPath | ConvertFrom-Json
+$stringBoolEnterpriseAuth.scopeOut.accepted = "true"
+$stringBoolEnterpriseAuth | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath $stringBoolEnterpriseAuthPath -Encoding UTF8
+
+$previousErrorActionPreference = $ErrorActionPreference
+$ErrorActionPreference = "Continue"
+try {
+    $stringBoolEnterpriseAuthOutput = & powershell -NoProfile -ExecutionPolicy Bypass -File $scriptPath `
+        -EnterpriseAuthEvidenceRef "latest-enterprise-auth-smoke-passed-20260620" `
+        -EnterpriseAuthJsonPath $stringBoolEnterpriseAuthPath `
+        -ConfirmEnterpriseAuthSmokeSnapshotReviewed `
+        -FailIfNotPassed `
+        -NoWrite 2>&1
+    $stringBoolEnterpriseAuthExitCode = $LASTEXITCODE
+}
+finally {
+    $ErrorActionPreference = $previousErrorActionPreference
+}
+Assert-True ($stringBoolEnterpriseAuthExitCode -ne 0) "Enterprise auth scope-out string accepted boolean should be rejected."
+Assert-Contains ($stringBoolEnterpriseAuthOutput | Out-String) "scopeOutAccepted=true(valid=False)" "string enterprise auth scope-out output"
+
+$stringBoolMonitoringThresholdPath = Join-Path $resolvedOutputDirectory "string-bool-monitoring-threshold.json"
+$stringBoolMonitoringThreshold = Get-Content -Raw -LiteralPath $monitoringThresholdPath | ConvertFrom-Json
+$stringBoolMonitoringThreshold.confirmations.prometheusRulesLoaded = "true"
+$stringBoolMonitoringThreshold | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath $stringBoolMonitoringThresholdPath -Encoding UTF8
+
+$previousErrorActionPreference = $ErrorActionPreference
+$ErrorActionPreference = "Continue"
+try {
+    $stringBoolMonitoringThresholdOutput = & powershell -NoProfile -ExecutionPolicy Bypass -File $scriptPath `
+        -MonitoringEvidenceRef "prometheus-alertmanager-grafana-review-20260620" `
+        -MonitoringThresholdJsonPath $stringBoolMonitoringThresholdPath `
+        -ConfirmMonitoringThresholdReviewed `
+        -FailIfNotPassed `
+        -NoWrite 2>&1
+    $stringBoolMonitoringThresholdExitCode = $LASTEXITCODE
+}
+finally {
+    $ErrorActionPreference = $previousErrorActionPreference
+}
+Assert-True ($stringBoolMonitoringThresholdExitCode -ne 0) "Monitoring threshold string confirmation boolean should be rejected."
+Assert-Contains ($stringBoolMonitoringThresholdOutput | Out-String) "confirmationsValid=False" "string monitoring threshold confirmation output"
+
 $failedFinalizerConvergenceSnapshotPath = Join-Path $resolvedOutputDirectory "failed-finalizer-operations-readiness-convergence.json"
 [ordered]@{
     formatVersion = "osmu.operations-readiness-convergence.v1"
