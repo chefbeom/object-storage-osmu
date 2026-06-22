@@ -215,6 +215,72 @@ Assert-CheckRemediation $report "Kubernetes DR finalizer live evidence" "finaliz
 Assert-CheckRemediation $report "Security evidence finalizer report" "finalize-security-evidence.ps1" ".github/workflows/security-evidence-finalizer-ci.yml" "gh workflow run security-evidence-finalizer-ci.yml"
 Assert-CheckRemediation $report "Signed image evidence" "image-publish-sign-ci.yml" ".github/workflows/image-publish-sign-ci.yml" "gh workflow run image-publish-sign-ci.yml"
 Assert-CheckRemediation $report "Container scan/SBOM evidence" "container-security-ci.yml" ".github/workflows/container-security-ci.yml" "gh workflow run container-security-ci.yml"
+$securityFinalizeCheck = @($report.checks | Where-Object { $_.name -eq "Security evidence finalizer report" })
+if ($securityFinalizeCheck.Count -ne 1) {
+    throw "Operations readiness report must contain one Security evidence finalizer report check."
+}
+if (-not ([string] $securityFinalizeCheck[0].remediation.workflowCommand).Contains("image_signing_artifact_name=<artifact-name>")) {
+    throw "Security evidence finalizer workflow command must include image signing artifact name input."
+}
+if (-not ([string] $securityFinalizeCheck[0].remediation.workflowCommand).Contains("container_security_artifact_name=<artifact-name>")) {
+    throw "Security evidence finalizer workflow command must include container security artifact name input."
+}
+if (-not ([string] $securityFinalizeCheck[0].remediation.workflowCommand).Contains("fail_if_not_passed=true")) {
+    throw "Security evidence finalizer workflow command must fail if promoted evidence is not passed."
+}
+if (-not ([string] $securityFinalizeCheck[0].requiredEvidence).Contains("strict image signing and container SBOM import validation")) {
+    throw "Security evidence finalizer required evidence must mention strict image signing and container SBOM import validation."
+}
+if (-not ([string] $securityFinalizeCheck[0].remediation.note).Contains("GitHub OIDC keyless signing")) {
+    throw "Security evidence finalizer remediation note must mention GitHub OIDC keyless signing."
+}
+if (-not ([string] $securityFinalizeCheck[0].remediation.note).Contains("SPDX SBOM")) {
+    throw "Security evidence finalizer remediation note must mention SPDX SBOM validation."
+}
+$imageSigningCheck = @($report.checks | Where-Object { $_.name -eq "Signed image evidence" })
+if ($imageSigningCheck.Count -ne 1) {
+    throw "Operations readiness report must contain one Signed image evidence check."
+}
+if (-not ([string] $imageSigningCheck[0].remediation.command).Contains("publish=true")) {
+    throw "Signed image evidence remediation command must require publish=true."
+}
+if (-not ([string] $imageSigningCheck[0].remediation.workflowCommand).Contains("-f version=v0.1.0-rc.1")) {
+    throw "Signed image evidence workflow command must include a release version input example."
+}
+if (-not ([string] $imageSigningCheck[0].remediation.workflowCommand).Contains("-f publish=true")) {
+    throw "Signed image evidence workflow command must publish images."
+}
+if (-not ([string] $imageSigningCheck[0].requiredEvidence).Contains("GitHub OIDC keyless Cosign verification")) {
+    throw "Signed image evidence must require GitHub OIDC keyless Cosign verification."
+}
+if (-not ([string] $imageSigningCheck[0].requiredEvidence).Contains("release-version and commit-SHA tags")) {
+    throw "Signed image evidence must require release-version and commit-SHA tags."
+}
+if (-not ([string] $imageSigningCheck[0].remediation.note).Contains("commit-SHA tag verification")) {
+    throw "Signed image evidence remediation note must mention commit-SHA tag verification."
+}
+$containerSecurityCheck = @($report.checks | Where-Object { $_.name -eq "Container scan/SBOM evidence" })
+if ($containerSecurityCheck.Count -ne 1) {
+    throw "Operations readiness report must contain one Container scan/SBOM evidence check."
+}
+if (-not ([string] $containerSecurityCheck[0].requiredEvidence).Contains("Trivy CRITICAL,HIGH")) {
+    throw "Container scan/SBOM evidence must require Trivy CRITICAL,HIGH scan evidence."
+}
+if (-not ([string] $containerSecurityCheck[0].requiredEvidence).Contains("commit-SHA image tag")) {
+    throw "Container scan/SBOM evidence must require commit-SHA image tag evidence."
+}
+if (-not ([string] $containerSecurityCheck[0].requiredEvidence).Contains("backend/frontend SPDX SBOM")) {
+    throw "Container scan/SBOM evidence must require backend/frontend SPDX SBOM evidence."
+}
+if (-not ([string] $containerSecurityCheck[0].remediation.note).Contains("ignore-unfixed policy")) {
+    throw "Container scan/SBOM remediation note must mention ignore-unfixed policy recording."
+}
+if (-not ([string] $containerSecurityCheck[0].remediation.note).Contains("commit-SHA image tag")) {
+    throw "Container scan/SBOM remediation note must mention commit-SHA image tag capture."
+}
+if (-not ([string] $containerSecurityCheck[0].remediation.note).Contains("SPDX SBOM metadata")) {
+    throw "Container scan/SBOM remediation note must mention SPDX SBOM metadata generation."
+}
 $storageBackendTelemetryCheck = @($report.checks | Where-Object { $_.name -eq "Storage backend telemetry target evidence" })
 if ($storageBackendTelemetryCheck.Count -ne 1) {
     throw "Operations readiness report must contain one Storage backend telemetry target evidence check."
