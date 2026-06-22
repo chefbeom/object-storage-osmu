@@ -808,7 +808,7 @@ function Test-SanitizedQueryPlanEvidenceSummary([object] $QueryPlanEvidence) {
     }
 }
 
-function Test-DataFlowStoragePlanEvidenceJson([string] $Path) {
+function Test-DataFlowStoragePlanEvidenceJson([string] $Path, [bool] $RequirePassed = $false) {
     try {
         $json = Get-Content -Raw -LiteralPath $Path | ConvertFrom-Json
     }
@@ -827,7 +827,30 @@ function Test-DataFlowStoragePlanEvidenceJson([string] $Path) {
         }
     }
 
+    $result = [string] (Get-JsonProperty $json "result")
+    if ($RequirePassed -and $result -ne "passed") {
+        return [pscustomobject]@{
+            passed = $false
+            detail = "result=$result expected=passed"
+        }
+    }
+
     $candidateStore = [string] (Get-JsonProperty $json "candidateStore")
+    if ($candidateStore -notin @("MARIADB_PARTITION", "EXTERNAL_TIME_SERIES", "DUAL_WRITE")) {
+        return [pscustomobject]@{
+            passed = $false
+            detail = "candidateStore=$candidateStore expected=MARIADB_PARTITION|EXTERNAL_TIME_SERIES|DUAL_WRITE"
+        }
+    }
+
+    $pendingCountResult = Get-RequiredJsonInt $json "pendingCount"
+    if ($RequirePassed -and (-not $pendingCountResult.valid -or [int64] $pendingCountResult.value -ne 0)) {
+        return [pscustomobject]@{
+            passed = $false
+            detail = "pendingCount=$($pendingCountResult.raw)(valid=$($pendingCountResult.valid)) expected integer 0"
+        }
+    }
+
     $queryPlanEvidence = Get-JsonProperty $json "queryPlanEvidence"
     $queryPlanEvidenceRequired = @("MARIADB_PARTITION", "DUAL_WRITE") -contains $candidateStore
     if ($queryPlanEvidenceRequired -and $null -eq $queryPlanEvidence) {
@@ -849,11 +872,29 @@ function Test-DataFlowStoragePlanEvidenceJson([string] $Path) {
         if (-not $sanitized.passed) {
             return $sanitized
         }
+        if ($RequirePassed -and $queryPlanEvidenceRequired) {
+            $queryPlanResult = [string] (Get-JsonProperty $queryPlanEvidence "result")
+            if ($queryPlanResult -ne "passed") {
+                return [pscustomobject]@{
+                    passed = $false
+                    detail = "queryPlanEvidence.result=$queryPlanResult expected=passed"
+                }
+            }
+
+            $queryPlanFailedCount = Get-RequiredJsonInt $queryPlanEvidence "failedCount"
+            if (-not $queryPlanFailedCount.valid -or [int64] $queryPlanFailedCount.value -ne 0) {
+                return [pscustomobject]@{
+                    passed = $false
+                    detail = "queryPlanEvidence.failedCount=$($queryPlanFailedCount.raw)(valid=$($queryPlanFailedCount.valid)) expected integer 0"
+                }
+            }
+        }
     }
 
+    $pendingCountDetail = if ($pendingCountResult.valid) { [string] $pendingCountResult.value } else { $pendingCountResult.raw }
     return [pscustomobject]@{
         passed = $true
-        detail = "formatVersion=$formatVersion candidateStore=$candidateStore queryPlanEvidencePresent=$($null -ne $queryPlanEvidence)"
+        detail = "formatVersion=$formatVersion result=$result candidateStore=$candidateStore pendingCount=$pendingCountDetail queryPlanEvidencePresent=$($null -ne $queryPlanEvidence)"
     }
 }
 
@@ -1234,6 +1275,14 @@ function Import-EvidenceFile(
         }
         [void] $validationDetails.Add($validation.detail)
     }
+    elseif ($ValidationKind -eq "data-flow-storage-plan-passed") {
+        $validation = Test-DataFlowStoragePlanEvidenceJson $sourcePath $true
+        if (-not $validation.passed) {
+            Add-Entry $Group $FileName "failed" $validation.detail $sourcePath ""
+            return
+        }
+        [void] $validationDetails.Add($validation.detail)
+    }
     elseif ($ValidationKind -eq "data-flow-storage-transition-runbook") {
         $validation = Test-DataFlowStorageTransitionRunbookEvidenceJson $sourcePath
         if (-not $validation.passed) {
@@ -1367,7 +1416,7 @@ Import-EvidenceFile "kubernetes-operations-report-sync" $KubernetesOperationsRep
 Import-EvidenceFile "kubernetes-operations-report-sync" $KubernetesOperationsReportSyncArtifactPath "latest-data-flow-storage-plan.json" $false "" "" "data-flow-storage-plan"
 Import-EvidenceFile "kubernetes-operations-report-sync" $KubernetesOperationsReportSyncArtifactPath "latest-data-flow-storage-transition-runbook-evidence.json" $false "" "" "data-flow-storage-transition-runbook"
 
-Import-EvidenceFile "data-flow-storage-plan" $DataFlowStoragePlanArtifactPath "latest-data-flow-storage-plan.json" $true "" "" "data-flow-storage-plan"
+Import-EvidenceFile "data-flow-storage-plan" $DataFlowStoragePlanArtifactPath "latest-data-flow-storage-plan.json" $true "" "" "data-flow-storage-plan-passed"
 Import-EvidenceFile "data-flow-storage-transition-runbook" $DataFlowStorageTransitionRunbookArtifactPath "latest-data-flow-storage-transition-runbook-evidence.json" $true "" "" "data-flow-storage-transition-runbook"
 Import-EvidenceFile "data-flow-storage-transition-runbook" $DataFlowStorageTransitionRunbookArtifactPath "latest-data-flow-storage-transition-runbook-evidence.md" $false
 

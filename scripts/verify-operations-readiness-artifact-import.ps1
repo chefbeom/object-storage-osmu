@@ -82,6 +82,8 @@ $nonReadyKubernetesOperationsReportSyncRoot = Join-Path $resolvedOutputDirectory
 $invalidDataFlowRoot = Join-Path $resolvedOutputDirectory "invalid-data-flow-source"
 $unsafeDataFlowRoot = Join-Path $resolvedOutputDirectory "unsafe-data-flow-source"
 $unsafeDataFlowRunbookRoot = Join-Path $resolvedOutputDirectory "unsafe-data-flow-runbook-source"
+$weakDirectDataFlowStoragePlanRoot = Join-Path $resolvedOutputDirectory "weak-direct-data-flow-storage-plan-source"
+$stringCountDirectDataFlowStoragePlanRoot = Join-Path $resolvedOutputDirectory "string-count-direct-data-flow-storage-plan-source"
 $unsafeMonitoringThresholdRoot = Join-Path $resolvedOutputDirectory "unsafe-monitoring-threshold-source"
 $stringBoolMonitoringThresholdRoot = Join-Path $resolvedOutputDirectory "string-bool-monitoring-threshold-source"
 $stringCountMonitoringThresholdRoot = Join-Path $resolvedOutputDirectory "string-count-monitoring-threshold-source"
@@ -1402,9 +1404,75 @@ Write-JsonEvidence (Join-Path $directDataFlowStoragePlanSource "latest-data-flow
     formatVersion = "osmu.data-flow-storage-plan.v1"
     result = "passed"
     candidateStore = "EXTERNAL_TIME_SERIES"
+    checkCount = 8
+    passedCount = 8
     pendingCount = 0
     queryPlanEvidence = $null
 }
+
+Write-JsonEvidence (Join-Path $weakDirectDataFlowStoragePlanRoot "latest-data-flow-storage-plan.json") @{
+    formatVersion = "osmu.data-flow-storage-plan.v1"
+    result = "plan-ready-execute-required"
+    candidateStore = "EXTERNAL_TIME_SERIES"
+    pendingCount = 1
+}
+$weakDirectDataFlowOutput = Join-Path $resolvedOutputDirectory "weak-direct-data-flow-promoted"
+$weakDirectDataFlowJson = Join-Path $resolvedOutputDirectory "weak-direct-data-flow-import.json"
+$weakDirectDataFlowMarkdown = Join-Path $resolvedOutputDirectory "weak-direct-data-flow-import.md"
+$previousErrorActionPreference = $ErrorActionPreference
+$ErrorActionPreference = "Continue"
+try {
+    $weakDirectDataFlowOutputLines = & powershell -NoProfile -ExecutionPolicy Bypass -File $importScript `
+        -DataFlowStoragePlanArtifactPath $weakDirectDataFlowStoragePlanRoot `
+        -OutputDirectory $weakDirectDataFlowOutput `
+        -JsonOutputPath $weakDirectDataFlowJson `
+        -MarkdownOutputPath $weakDirectDataFlowMarkdown 2>&1
+    $weakDirectDataFlowExitCode = $LASTEXITCODE
+}
+finally {
+    $ErrorActionPreference = $previousErrorActionPreference
+}
+Assert-True ($weakDirectDataFlowExitCode -ne 0) "Direct data-flow storage plan with non-passed result should fail import."
+Assert-True (Test-Path -LiteralPath $weakDirectDataFlowJson) "Weak direct data-flow import report should still be written."
+$weakDirectDataFlowReport = Get-Content -Raw -LiteralPath $weakDirectDataFlowJson | ConvertFrom-Json
+Assert-True ($weakDirectDataFlowReport.result -eq "failed") "Weak direct data-flow import report should be failed."
+Assert-True (-not (Test-Path -LiteralPath (Join-Path $weakDirectDataFlowOutput "latest-data-flow-storage-plan.json"))) "Weak direct data-flow storage plan must not be promoted."
+Assert-True (($weakDirectDataFlowReport.entries | ConvertTo-Json -Depth 8).Contains("result=plan-ready-execute-required expected=passed")) "Weak direct data-flow report should describe non-passed result."
+
+Write-JsonEvidence (Join-Path $stringCountDirectDataFlowStoragePlanRoot "latest-data-flow-storage-plan.json") @{
+    formatVersion = "osmu.data-flow-storage-plan.v1"
+    result = "passed"
+    candidateStore = "MARIADB_PARTITION"
+    pendingCount = 0
+    queryPlanEvidence = @{
+        expectedFormatVersion = "osmu.mariadb-query-plan-evidence.v1"
+        result = "passed"
+        failedCount = "0"
+    }
+}
+$stringCountDirectDataFlowOutput = Join-Path $resolvedOutputDirectory "string-count-direct-data-flow-promoted"
+$stringCountDirectDataFlowJson = Join-Path $resolvedOutputDirectory "string-count-direct-data-flow-import.json"
+$stringCountDirectDataFlowMarkdown = Join-Path $resolvedOutputDirectory "string-count-direct-data-flow-import.md"
+$previousErrorActionPreference = $ErrorActionPreference
+$ErrorActionPreference = "Continue"
+try {
+    $stringCountDirectDataFlowOutputLines = & powershell -NoProfile -ExecutionPolicy Bypass -File $importScript `
+        -DataFlowStoragePlanArtifactPath $stringCountDirectDataFlowStoragePlanRoot `
+        -OutputDirectory $stringCountDirectDataFlowOutput `
+        -JsonOutputPath $stringCountDirectDataFlowJson `
+        -MarkdownOutputPath $stringCountDirectDataFlowMarkdown 2>&1
+    $stringCountDirectDataFlowExitCode = $LASTEXITCODE
+}
+finally {
+    $ErrorActionPreference = $previousErrorActionPreference
+}
+Assert-True ($stringCountDirectDataFlowExitCode -ne 0) "Direct data-flow storage plan with string query-plan failedCount should fail import."
+Assert-True (Test-Path -LiteralPath $stringCountDirectDataFlowJson) "String-count direct data-flow import report should still be written."
+$stringCountDirectDataFlowReport = Get-Content -Raw -LiteralPath $stringCountDirectDataFlowJson | ConvertFrom-Json
+Assert-True ($stringCountDirectDataFlowReport.result -eq "failed") "String-count direct data-flow import report should be failed."
+Assert-True (-not (Test-Path -LiteralPath (Join-Path $stringCountDirectDataFlowOutput "latest-data-flow-storage-plan.json"))) "String-count direct data-flow storage plan must not be promoted."
+Assert-True (($stringCountDirectDataFlowReport.entries | ConvertTo-Json -Depth 8).Contains("queryPlanEvidence.failedCount=0(valid=False)")) "String-count direct data-flow report should describe invalid typed query-plan failed count."
+
 $directDataFlowOutput = Join-Path $resolvedOutputDirectory "direct-data-flow-promoted"
 $directDataFlowJson = Join-Path $resolvedOutputDirectory "direct-data-flow-import.json"
 $directDataFlowMarkdown = Join-Path $resolvedOutputDirectory "direct-data-flow-import.md"
