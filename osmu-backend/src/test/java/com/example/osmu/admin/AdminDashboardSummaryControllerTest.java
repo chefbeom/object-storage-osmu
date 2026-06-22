@@ -1712,6 +1712,7 @@ class AdminDashboardSummaryControllerTest {
                               "status": "blocked",
                               "blockReasons": ["kubeconfig secret not confirmed"],
                               "unresolvedPlaceholders": ["<YYYYMMDDTHHMMSSZ>"],
+                              "invalidPlaceholders": ["<restore-api-base>"],
                               "requiresOperatorApproval": true,
                               "requiresKubeconfigSecret": true
                             }
@@ -1754,6 +1755,7 @@ class AdminDashboardSummaryControllerTest {
                               "command": "gh workflow run kubernetes-dr-finalizer-ci.yml -f run_live=true -f confirm_restore=true",
                               "blockReasons": ["kubeconfig secret not confirmed"],
                               "unresolvedPlaceholders": ["<YYYYMMDDTHHMMSSZ>"],
+                              "invalidPlaceholders": ["<restore-api-base>"],
                               "requiresOperatorApproval": true,
                               "requiresKubeconfigSecret": true,
                               "needsOperatorApprovalConfirmation": true,
@@ -1790,6 +1792,8 @@ class AdminDashboardSummaryControllerTest {
                           "requiredInputCount": 6,
                           "missingInputCount": 6,
                           "ambiguousInputCount": 2,
+                          "unsafeInputCount": 1,
+                          "invalidInputCount": 1,
                           "failedCheckCount": 3,
                           "warningCheckCount": 2,
                           "requiredGitHubSecrets": ["OSMU_KUBECONFIG_BASE64", "OSMU_ADMIN_PASSWORD", "GITHUB_TOKEN"],
@@ -1817,6 +1821,8 @@ class AdminDashboardSummaryControllerTest {
                               "placeholder": "<YYYYMMDDTHHMMSSZ>",
                               "parameter": "BackupTimestamp",
                               "supplied": false,
+                              "safeValue": true,
+                              "validValue": true,
                               "valuePreview": "",
                               "ambiguousRepeatedPlaceholder": false,
                               "note": "Provide a concrete value before planning or executing this action."
@@ -2066,7 +2072,7 @@ class AdminDashboardSummaryControllerTest {
                 .andExpect(jsonPath("$.data.items[*].message").value(hasItem("Operations evidence plan is action-required: actionCount=6, unplannedCount=0.")))
                 .andExpect(jsonPath("$.data.items[*].message").value(hasItem("Operations evidence invocation is blocked: selectedActionCount=6, plannedCount=1, blockedCount=5.")))
                 .andExpect(jsonPath("$.data.items[*].message").value(hasItem("Operations invocation unblock plan is action-required: blockedActions=5, requiredPlaceholders=6, ambiguousPlaceholders=2.")))
-                .andExpect(jsonPath("$.data.items[*].message").value(hasItem("Operations dispatch preflight is action-required: failedChecks=3, missingInputs=6, warnings=2.")))
+                .andExpect(jsonPath("$.data.items[*].message").value(hasItem("Operations dispatch preflight is action-required: failedChecks=3, missingInputs=6, invalidInputs=1, warnings=2.")))
                 .andExpect(jsonPath("$.data.items[*].message").value(hasItem("Operations workflow run id plan is query-required: workflows=7, missingRuns=7.")))
                 .andExpect(jsonPath("$.data.items[*].message").value(hasItem("Operations artifact collection plan is action-required: artifacts=7, missingRequired=5.")))
                 .andExpect(jsonPath("$.data.items[*].message").value(hasItem("Operations readiness finalizer is pending: readinessResult=pending, failedCount=0.")))
@@ -2135,6 +2141,7 @@ class AdminDashboardSummaryControllerTest {
                 .andExpect(jsonPath("$.data.operationsEvidenceInvocation.actions[0].command").value("gh workflow run kubernetes-dr-finalizer-ci.yml -f run_live=true -f confirm_restore=true"))
                 .andExpect(jsonPath("$.data.operationsEvidenceInvocation.actions[0].blockReasons").value(hasItem("kubeconfig secret not confirmed")))
                 .andExpect(jsonPath("$.data.operationsEvidenceInvocation.actions[0].unresolvedPlaceholders").value(hasItem("<YYYYMMDDTHHMMSSZ>")))
+                .andExpect(jsonPath("$.data.operationsEvidenceInvocation.actions[0].invalidPlaceholders").value(hasItem("<restore-api-base>")))
                 .andExpect(jsonPath("$.data.operationsInvocationUnblockPlan.result").value("action-required"))
                 .andExpect(jsonPath("$.data.operationsInvocationUnblockPlan.sourceResult").value("blocked"))
                 .andExpect(jsonPath("$.data.operationsInvocationUnblockPlan.selectedActionCount").value(6))
@@ -2147,6 +2154,7 @@ class AdminDashboardSummaryControllerTest {
                 .andExpect(jsonPath("$.data.operationsInvocationUnblockPlan.plannedActionOrders").value(hasItem(6)))
                 .andExpect(jsonPath("$.data.operationsInvocationUnblockPlan.confirmedPlanCommand").value("powershell -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\invoke-operations-evidence-plan.ps1 -ActionOrder 1,2,3,4,5,6 -KubeconfigSecretConfirmed -ConfirmOperatorApproval -BackupTimestamp <YYYYMMDDTHHMMSSZ>"))
                 .andExpect(jsonPath("$.data.operationsInvocationUnblockPlan.actions[0].requiredInputs[0].parameter").value("BackupTimestamp"))
+                .andExpect(jsonPath("$.data.operationsInvocationUnblockPlan.actions[0].invalidPlaceholders").value(hasItem("<restore-api-base>")))
                 .andExpect(jsonPath("$.data.operationsInvocationUnblockPlan.actions[0].planCommand").value("powershell -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\invoke-operations-evidence-plan.ps1 -ActionOrder 1 -KubeconfigSecretConfirmed -ConfirmOperatorApproval -BackupTimestamp <YYYYMMDDTHHMMSSZ>"))
                 .andExpect(jsonPath("$.data.operationsDispatchPreflight.result").value("action-required"))
                 .andExpect(jsonPath("$.data.operationsDispatchPreflight.sourceResult").value("action-required"))
@@ -2154,6 +2162,8 @@ class AdminDashboardSummaryControllerTest {
                 .andExpect(jsonPath("$.data.operationsDispatchPreflight.selectedActionOrders").value(hasItem(1)))
                 .andExpect(jsonPath("$.data.operationsDispatchPreflight.requiredInputCount").value(6))
                 .andExpect(jsonPath("$.data.operationsDispatchPreflight.missingInputCount").value(6))
+                .andExpect(jsonPath("$.data.operationsDispatchPreflight.unsafeInputCount").value(1))
+                .andExpect(jsonPath("$.data.operationsDispatchPreflight.invalidInputCount").value(1))
                 .andExpect(jsonPath("$.data.operationsDispatchPreflight.failedCheckCount").value(3))
                 .andExpect(jsonPath("$.data.operationsDispatchPreflight.warningCheckCount").value(2))
                 .andExpect(jsonPath("$.data.operationsDispatchPreflight.requiredGitHubSecrets").value(hasItem("OSMU_KUBECONFIG_BASE64")))
@@ -2163,6 +2173,8 @@ class AdminDashboardSummaryControllerTest {
                 .andExpect(jsonPath("$.data.operationsDispatchPreflight.checks[0].status").value("fail"))
                 .andExpect(jsonPath("$.data.operationsDispatchPreflight.requiredInputs[0].parameter").value("BackupTimestamp"))
                 .andExpect(jsonPath("$.data.operationsDispatchPreflight.requiredInputs[0].supplied").value(false))
+                .andExpect(jsonPath("$.data.operationsDispatchPreflight.requiredInputs[0].safeValue").value(true))
+                .andExpect(jsonPath("$.data.operationsDispatchPreflight.requiredInputs[0].validValue").value(true))
                 .andExpect(jsonPath("$.data.operationsDispatchPreflight.executeCommand").doesNotExist())
                 .andExpect(jsonPath("$.data.operationsWorkflowRunIdPlan.result").value("query-required"))
                 .andExpect(jsonPath("$.data.operationsWorkflowRunIdPlan.branch").value("main"))

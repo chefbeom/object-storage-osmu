@@ -15,6 +15,7 @@ public record DashboardOperationsEvidenceInvocationActionResponse(
         String status,
         List<String> blockReasons,
         List<String> unresolvedPlaceholders,
+        List<String> invalidPlaceholders,
         boolean requiresOperatorApproval,
         boolean requiresKubeconfigSecret,
         Integer exitCode

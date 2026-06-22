@@ -15,6 +15,7 @@ public record DashboardOperationsInvocationUnblockActionResponse(
         String command,
         List<String> blockReasons,
         List<String> unresolvedPlaceholders,
+        List<String> invalidPlaceholders,
         boolean requiresOperatorApproval,
         boolean requiresKubeconfigSecret,
         boolean needsOperatorApprovalConfirmation,

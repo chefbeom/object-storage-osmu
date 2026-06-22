@@ -1765,6 +1765,7 @@ public class AdminController {
                         jsonText(action, "status"),
                         jsonTextList(action, "blockReasons"),
                         jsonTextList(action, "unresolvedPlaceholders"),
+                        jsonTextList(action, "invalidPlaceholders"),
                         jsonBoolean(action, "requiresOperatorApproval"),
                         jsonBoolean(action, "requiresKubeconfigSecret"),
                         jsonNullableInt(action, "exitCode")
@@ -1851,6 +1852,7 @@ public class AdminController {
                         jsonText(action, "command"),
                         jsonTextList(action, "blockReasons"),
                         jsonTextList(action, "unresolvedPlaceholders"),
+                        jsonTextList(action, "invalidPlaceholders"),
                         jsonBoolean(action, "requiresOperatorApproval"),
                         jsonBoolean(action, "requiresKubeconfigSecret"),
                         jsonBoolean(action, "needsOperatorApprovalConfirmation"),
@@ -1898,10 +1900,11 @@ public class AdminController {
                 "WARNING",
                 "OPERATIONS",
                 "OPERATIONS_DISPATCH_PREFLIGHT",
-                "Operations dispatch preflight is %s%s%s%s.".formatted(
+                "Operations dispatch preflight is %s%s%s%s%s.".formatted(
                         result.isBlank() ? "available" : result,
                         ": failedChecks=" + preflight.failedCheckCount(),
                         ", missingInputs=" + preflight.missingInputCount(),
+                        ", invalidInputs=" + preflight.invalidInputCount(),
                         ", warnings=" + preflight.warningCheckCount()
                 ),
                 "dashboard",
@@ -1953,6 +1956,8 @@ public class AdminController {
                         jsonText(input, "placeholder"),
                         jsonText(input, "parameter"),
                         jsonBoolean(input, "supplied"),
+                        jsonBoolean(input, "safeValue"),
+                        jsonBoolean(input, "validValue"),
                         jsonText(input, "valuePreview"),
                         jsonBoolean(input, "ambiguousRepeatedPlaceholder"),
                         jsonText(input, "note")
@@ -1970,6 +1975,8 @@ public class AdminController {
                 jsonInt(preflightReport, "requiredInputCount"),
                 jsonInt(preflightReport, "missingInputCount"),
                 jsonInt(preflightReport, "ambiguousInputCount"),
+                jsonInt(preflightReport, "unsafeInputCount"),
+                jsonInt(preflightReport, "invalidInputCount"),
                 jsonInt(preflightReport, "failedCheckCount"),
                 jsonInt(preflightReport, "warningCheckCount"),
                 jsonTextList(preflightReport, "requiredGitHubSecrets"),

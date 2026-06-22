@@ -8,6 +8,8 @@ public record DashboardOperationsDispatchPreflightInputResponse(
         String placeholder,
         String parameter,
         boolean supplied,
+        boolean safeValue,
+        boolean validValue,
         String valuePreview,
         boolean ambiguousRepeatedPlaceholder,
         String note

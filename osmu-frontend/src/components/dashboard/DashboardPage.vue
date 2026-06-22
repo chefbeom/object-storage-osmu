@@ -1834,6 +1834,8 @@
           {{ operationsDispatchPreflight.selectedActionCount }} selected /
           {{ operationsDispatchPreflight.failedCheckCount }} failed /
           {{ operationsDispatchPreflight.missingInputCount }} missing inputs /
+          {{ operationsDispatchPreflight.unsafeInputCount || 0 }} unsafe /
+          {{ operationsDispatchPreflight.invalidInputCount || 0 }} invalid /
           {{ operationsDispatchPreflight.ambiguousInputCount || 0 }} ambiguous /
           {{ operationsDispatchPreflight.warningCheckCount }} warnings
         </small>
@@ -3943,12 +3945,15 @@ function formatEvidencePlanActionMeta(action) {
 }
 
 function formatEvidenceInvocationActionMeta(action) {
-  const placeholders = Array.isArray(action?.unresolvedPlaceholders) && action.unresolvedPlaceholders.length > 0
+  const unresolved = Array.isArray(action?.unresolvedPlaceholders) && action.unresolvedPlaceholders.length > 0
     ? `unresolved ${action.unresolvedPlaceholders.join(', ')}`
     : 'unresolved none'
+  const invalid = Array.isArray(action?.invalidPlaceholders) && action.invalidPlaceholders.length > 0
+    ? `invalid ${action.invalidPlaceholders.join(', ')}`
+    : 'invalid none'
   const approval = action?.requiresOperatorApproval ? 'approval required' : 'approval not flagged'
   const kubeconfig = action?.requiresKubeconfigSecret ? 'kubeconfig required' : 'kubeconfig not detected'
-  return `${action?.category || 'operations'} / ${action?.commandMode || 'command'} / ${placeholders} / ${approval} / ${kubeconfig}`
+  return `${action?.category || 'operations'} / ${action?.commandMode || 'command'} / ${unresolved} / ${invalid} / ${approval} / ${kubeconfig}`
 }
 
 function formatInvocationBlockReasons(action) {
@@ -3974,7 +3979,10 @@ function formatInvocationUnblockActionMeta(action) {
   const approval = action?.needsOperatorApprovalConfirmation ? 'approval required' : 'approval not flagged'
   const kubeconfig = action?.needsKubeconfigSecretConfirmation ? 'kubeconfig required' : 'kubeconfig not detected'
   const ambiguous = action?.ambiguousRepeatedPlaceholders ? 'ambiguous placeholders' : 'placeholders mapped'
-  return `${action?.category || 'operations'} / ${approval} / ${kubeconfig} / ${ambiguous}`
+  const invalid = Array.isArray(action?.invalidPlaceholders) && action.invalidPlaceholders.length > 0
+    ? `invalid ${action.invalidPlaceholders.join(', ')}`
+    : 'invalid none'
+  return `${action?.category || 'operations'} / ${approval} / ${kubeconfig} / ${ambiguous} / ${invalid}`
 }
 
 function formatInvocationUnblockInputs(action) {
@@ -3998,7 +4006,9 @@ function formatDispatchPreflightInputMeta(input) {
   const placeholder = input?.placeholder || 'placeholder unknown'
   const preview = input?.valuePreview ? `value ${input.valuePreview}` : 'value required'
   const ambiguous = input?.ambiguousRepeatedPlaceholder ? 'ambiguous repeated placeholder' : 'single placeholder'
-  return `${action} / ${placeholder} / ${preview} / ${ambiguous}`
+  const safety = input?.safeValue === false ? 'unsafe value' : 'safe value'
+  const validity = input?.validValue === false ? 'invalid shape' : 'valid shape'
+  return `${action} / ${placeholder} / ${preview} / ${ambiguous} / ${safety} / ${validity}`
 }
 
 function formatDispatchPreflightWorkflowMeta(workflow) {
