@@ -2005,6 +2005,45 @@ function Test-CommercialApprovalEvidenceJson([string] $Path) {
         }
     }
 
+    $generatedAt = [string] (Get-JsonProperty $json "generatedAt")
+    $parsedGeneratedAt = [DateTimeOffset]::MinValue
+    if ([string]::IsNullOrWhiteSpace($generatedAt) -or -not [DateTimeOffset]::TryParse($generatedAt, [ref] $parsedGeneratedAt)) {
+        return [pscustomobject]@{
+            passed = $false
+            detail = "generatedAt=$generatedAt expected ISO timestamp"
+        }
+    }
+
+    foreach ($field in @("productVersion", "approvedBy", "approvedAt", "decisionRule", "scopePolicy", "secretPolicy")) {
+        $value = [string] (Get-JsonProperty $json $field)
+        if ([string]::IsNullOrWhiteSpace($value)) {
+            return [pscustomobject]@{
+                passed = $false
+                detail = "$field missing"
+            }
+        }
+    }
+
+    $approvedAt = [string] (Get-JsonProperty $json "approvedAt")
+    $parsedApprovedAt = [DateTimeOffset]::MinValue
+    if (-not [DateTimeOffset]::TryParse($approvedAt, [ref] $parsedApprovedAt)) {
+        return [pscustomobject]@{
+            passed = $false
+            detail = "approvedAt=$approvedAt expected ISO timestamp"
+        }
+    }
+
+    $evidenceRefs = Get-JsonProperty $json "evidenceRefs"
+    foreach ($refName in @("approval", "pricing", "terms", "supportSla", "licenseAgreement", "legal", "pilotContract", "pricingPolicyProposal")) {
+        $refValue = [string] (Get-JsonProperty $evidenceRefs $refName)
+        if ([string]::IsNullOrWhiteSpace($refValue)) {
+            return [pscustomobject]@{
+                passed = $false
+                detail = "evidenceRefs.$refName missing"
+            }
+        }
+    }
+
     $patterns = @(
         '(?i)"(rawContractText|raw_contract_text|contractText|contract_text|legalTerms|legal_terms|termsText|terms_text|customerData|customer_data|customerEmail|customer_email|customerName|customer_name|licenseKey|license_key|licenseText|license_text|rawPriceTable|raw_price_table|paymentCard|payment_card|cardNumber|card_number|bankAccount|bank_account|password|passwd|secret|token|credential|apiKey|api_key|accessKey|access_key|privateKey|private_key)"\s*:',
         '(?i)\b(password|passwd|secret|token|credential|api[_-]?key|access[_-]?key|private[_-]?key|license[_-]?key)\s*=\s*\S+',
@@ -2032,11 +2071,13 @@ function Test-CommercialApprovalEvidenceJson([string] $Path) {
     }
 
     $summary = Get-JsonProperty $json "summary"
+    $passedCount = Get-RequiredJsonInt $summary "passedCount"
     $failureCount = Get-RequiredJsonInt $summary "failureCount"
     $checkCount = Get-RequiredJsonInt $summary "checkCount"
     $commercialApprovedCount = Get-RequiredJsonInt $summary "pricingPolicyProposalCommercialApprovedCount"
     $approvedPriceListCount = Get-RequiredJsonInt $summary "pricingPolicyProposalApprovedPriceListCount"
     foreach ($countResult in @(
+        @{ name = "passedCount"; value = $passedCount },
         @{ name = "failureCount"; value = $failureCount },
         @{ name = "checkCount"; value = $checkCount },
         @{ name = "pricingPolicyProposalCommercialApprovedCount"; value = $commercialApprovedCount },
@@ -2066,19 +2107,33 @@ function Test-CommercialApprovalEvidenceJson([string] $Path) {
             }
         }
     }
-    if ($failureCount.value -ne 0 -or $checkCount.value -le 0 -or $commercialApprovedCount.value -le 0 -or $approvedPriceListCount.value -le 0) {
+    if ($failureCount.value -ne 0 -or $checkCount.value -ne 14 -or $passedCount.value -ne 14 -or $commercialApprovedCount.value -le 0 -or $approvedPriceListCount.value -le 0) {
         return [pscustomobject]@{
             passed = $false
-            detail = "commercial approval incomplete commercialApproved=$($commercialApprovedCount.value) approvedPriceList=$($approvedPriceListCount.value) failures=$($failureCount.value) checks=$($checkCount.value)"
+            detail = "commercial approval incomplete commercialApproved=$($commercialApprovedCount.value) approvedPriceList=$($approvedPriceListCount.value) failures=$($failureCount.value) passed=$($passedCount.value) checks=$($checkCount.value)"
         }
     }
 
     $approval = Get-JsonProperty $json "pricingPolicyProposalApproval"
+    $required = Get-RequiredJsonBool $approval "required"
+    if (-not $required.valid -or -not $required.value) {
+        return [pscustomobject]@{
+            passed = $false
+            detail = "pricingPolicyProposalApproval.required=$($required.raw) expected boolean true"
+        }
+    }
     $reviewed = Get-RequiredJsonBool $approval "reviewed"
     if (-not $reviewed.valid -or -not $reviewed.value) {
         return [pscustomobject]@{
             passed = $false
             detail = "pricingPolicyProposalApproval.reviewed=$($reviewed.raw) expected boolean true"
+        }
+    }
+    $proposalEvidenceRef = [string] (Get-JsonProperty $approval "evidenceRef")
+    if ([string]::IsNullOrWhiteSpace($proposalEvidenceRef)) {
+        return [pscustomobject]@{
+            passed = $false
+            detail = "pricingPolicyProposalApproval.evidenceRef missing"
         }
     }
     $snapshot = Get-JsonProperty $approval "snapshot"
@@ -2112,9 +2167,68 @@ function Test-CommercialApprovalEvidenceJson([string] $Path) {
         }
     }
 
+    $proposalRowsObject = Get-JsonProperty $snapshot "proposals"
+    $proposalRows = if ($null -eq $proposalRowsObject) { @() } else { @($proposalRowsObject) }
+    $approvedRows = @($proposalRows | Where-Object {
+        [string] (Get-JsonProperty $_ "status") -eq "PRICE_LIST_APPROVED" `
+            -and (Get-RequiredJsonBool $_ "approvedPriceList").valid `
+            -and (Get-RequiredJsonBool $_ "approvedPriceList").value `
+            -and -not [string]::IsNullOrWhiteSpace([string] (Get-JsonProperty $_ "commercialApprovalReference"))
+    })
+    if ($approvedRows.Count -le 0) {
+        return [pscustomobject]@{
+            passed = $false
+            detail = "pricingPolicyProposalApproval.snapshot.proposals missing PRICE_LIST_APPROVED approved price-list row"
+        }
+    }
+    $approvedRowTimestamp = [string] (Get-JsonProperty $approvedRows[0] "commercialApprovedAt")
+    $parsedApprovedRowTimestamp = [DateTimeOffset]::MinValue
+    if ([string]::IsNullOrWhiteSpace($approvedRowTimestamp) -or -not [DateTimeOffset]::TryParse($approvedRowTimestamp, [ref] $parsedApprovedRowTimestamp)) {
+        return [pscustomobject]@{
+            passed = $false
+            detail = "pricingPolicyProposalApproval.snapshot.proposals.commercialApprovedAt=$approvedRowTimestamp expected ISO timestamp"
+        }
+    }
+
+    $checksObject = Get-JsonProperty $json "checks"
+    $checks = if ($null -eq $checksObject) { @() } else { @($checksObject) }
+    foreach ($requiredCheck in @(
+        "product-version",
+        "approval-ref",
+        "approved-by",
+        "approved-at",
+        "pricing-approved",
+        "terms-approved",
+        "support-sla-approved",
+        "license-agreement-approved",
+        "legal-approval-confirmed",
+        "pilot-contract-boundary-recorded",
+        "no-secret-values-confirmed",
+        "pricing-policy-proposal-snapshot",
+        "pricing-policy-proposal-approval-fields-typed",
+        "pricing-policy-proposal-commercial-approved"
+    )) {
+        $match = @($checks | Where-Object { [string] (Get-JsonProperty $_ "id") -eq $requiredCheck })
+        if ($match.Count -ne 1) {
+            return [pscustomobject]@{
+                passed = $false
+                detail = "checks.$requiredCheck missing"
+            }
+        }
+
+        $checkPassed = Get-RequiredJsonBool $match[0] "passed"
+        $checkStatus = [string] (Get-JsonProperty $match[0] "status")
+        if (-not $checkPassed.valid -or -not $checkPassed.value -or $checkStatus -ne "PASS") {
+            return [pscustomobject]@{
+                passed = $false
+                detail = "checks.$requiredCheck status=$checkStatus passed=$($checkPassed.raw) expected PASS and boolean true"
+            }
+        }
+    }
+
     return [pscustomobject]@{
         passed = $true
-        detail = "formatVersion=$formatVersion result=$result commercialApproved=$($commercialApprovedCount.value) approvedPriceList=$($approvedPriceListCount.value) failures=$($failureCount.value)"
+        detail = "formatVersion=$formatVersion result=$result productVersion=$($json.productVersion) approvedBy=$($json.approvedBy) commercialApproved=$($commercialApprovedCount.value) approvedPriceList=$($approvedPriceListCount.value) failures=$($failureCount.value) checkCount=$($checks.Count)"
     }
 }
 

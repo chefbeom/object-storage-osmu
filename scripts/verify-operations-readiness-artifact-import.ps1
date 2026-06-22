@@ -487,6 +487,7 @@ $weakSecretRotationChecksRoot = Join-Path $resolvedOutputDirectory "weak-secret-
 $weakCommercialIntegrationRoot = Join-Path $resolvedOutputDirectory "weak-commercial-integration-source"
 $weakCommercialIntegrationChecksRoot = Join-Path $resolvedOutputDirectory "weak-commercial-integration-checks-source"
 $weakCommercialApprovalRoot = Join-Path $resolvedOutputDirectory "weak-commercial-approval-source"
+$weakCommercialApprovalChecksRoot = Join-Path $resolvedOutputDirectory "weak-commercial-approval-checks-source"
 $invalidEnterpriseAuthRoot = Join-Path $resolvedOutputDirectory "invalid-enterprise-auth-source"
 $stringCountEnterpriseAuthRoot = Join-Path $resolvedOutputDirectory "string-count-enterprise-auth-source"
 $staleOperationsHandoffPackageRoot = Join-Path $resolvedOutputDirectory "stale-operations-handoff-package-source"
@@ -829,7 +830,22 @@ Write-JsonEvidence (Join-Path $commercialIntegrationSource "latest-commercial-in
 Write-TextEvidence (Join-Path $commercialIntegrationSource "latest-commercial-integration-evidence.md") "# Commercial integration"
 Write-JsonEvidence (Join-Path $commercialApprovalSource "latest-commercial-approval-evidence.json") @{
     formatVersion = "osmu.commercial-approval-evidence.v1"
+    generatedAt = "2026-06-22T00:00:00Z"
     result = "passed"
+    productVersion = "v0.1.0-rc.1"
+    approvedBy = "commercial-review-board"
+    approvedAt = "2026-06-20T03:00:00Z"
+    evidenceRefs = @{
+        approval = "commercial-approval-board-20260620"
+        pricing = "pricing-approval-20260620"
+        terms = "terms-approval-20260620"
+        supportSla = "support-sla-approval-20260620"
+        licenseAgreement = "license-agreement-approval-20260620"
+        legal = "legal-approval-20260620"
+        pilotContract = "pilot-contract-template-20260620"
+        pricingPolicyProposal = "pricing-policy-proposal-commercial-approval-20260620"
+        notes = "commercial-readiness-review-20260620"
+    }
     confirmations = @{
         pricingApproved = $true
         termsApproved = $true
@@ -863,14 +879,33 @@ Write-JsonEvidence (Join-Path $commercialApprovalSource "latest-commercial-appro
         }
     }
     summary = @{
-        passedCount = 13
+        passedCount = 14
         failureCount = 0
-        checkCount = 13
+        checkCount = 14
         pricingPolicyProposalCommercialApproved = $true
         pricingPolicyProposalCommercialApprovedCount = 1
         pricingPolicyProposalApprovedPriceListCount = 1
         pricingPolicyProposalApprovalFlagsValid = $true
     }
+    checks = @(
+        @{ id = "product-version"; status = "PASS"; passed = $true },
+        @{ id = "approval-ref"; status = "PASS"; passed = $true },
+        @{ id = "approved-by"; status = "PASS"; passed = $true },
+        @{ id = "approved-at"; status = "PASS"; passed = $true },
+        @{ id = "pricing-approved"; status = "PASS"; passed = $true },
+        @{ id = "terms-approved"; status = "PASS"; passed = $true },
+        @{ id = "support-sla-approved"; status = "PASS"; passed = $true },
+        @{ id = "license-agreement-approved"; status = "PASS"; passed = $true },
+        @{ id = "legal-approval-confirmed"; status = "PASS"; passed = $true },
+        @{ id = "pilot-contract-boundary-recorded"; status = "PASS"; passed = $true },
+        @{ id = "no-secret-values-confirmed"; status = "PASS"; passed = $true },
+        @{ id = "pricing-policy-proposal-snapshot"; status = "PASS"; passed = $true },
+        @{ id = "pricing-policy-proposal-approval-fields-typed"; status = "PASS"; passed = $true },
+        @{ id = "pricing-policy-proposal-commercial-approved"; status = "PASS"; passed = $true }
+    )
+    decisionRule = "Production/B2B sale commercial approval requires result=passed, final pricing approval, final terms approval, support SLA approval, license agreement approval, legal approval, a pilot contract boundary reference, required billing pricing policy proposal commercial approval evidence, and no-secret confirmation."
+    scopePolicy = "This evidence records commercial/legal approval references and sanitized billing pricing policy proposal approval status only. It does not publish prices, legal terms, contracts, customer data, or native payment processor credentials."
+    secretPolicy = "Evidence stores only product version, approver identity, timestamps, booleans, sanitized pricing proposal status/reference metadata, and external approval references; it must not contain passwords, tokens, private keys, license keys, signing secrets, customer payment data, raw price tables, or raw contract text."
 }
 Write-TextEvidence (Join-Path $commercialApprovalSource "latest-commercial-approval-evidence.md") "# Commercial approval"
 Write-JsonEvidence (Join-Path $enterpriseAuthSource "latest-enterprise-auth-smoke.json") @{
@@ -1110,7 +1145,7 @@ Assert-True ($commercialIntegrationEntry.Count -eq 1) "Commercial integration im
 Assert-True (([string] $commercialIntegrationEntry[0].detail).Contains("targetCluster=osmu-prod") -and ([string] $commercialIntegrationEntry[0].detail).Contains("requiredVerified=8/8") -and ([string] $commercialIntegrationEntry[0].detail).Contains("checkCount=27")) "Commercial integration import entry should include target metadata and required adapter validation detail."
 $commercialApprovalEntry = @($report.entries | Where-Object { $_.group -eq "commercial-approval" -and $_.fileName -eq "latest-commercial-approval-evidence.json" })
 Assert-True ($commercialApprovalEntry.Count -eq 1) "Commercial approval import entry missing."
-Assert-True (([string] $commercialApprovalEntry[0].detail).Contains("commercialApproved=1")) "Commercial approval import entry should include commercial approval validation detail."
+Assert-True (([string] $commercialApprovalEntry[0].detail).Contains("productVersion=v0.1.0-rc.1") -and ([string] $commercialApprovalEntry[0].detail).Contains("commercialApproved=1") -and ([string] $commercialApprovalEntry[0].detail).Contains("checkCount=14")) "Commercial approval import entry should include target approval metadata and validation detail."
 $promotedEnterpriseAuth = Get-Content -Raw -LiteralPath (Join-Path $promotedRoot "latest-enterprise-auth-smoke.json") | ConvertFrom-Json
 Assert-True ($promotedEnterpriseAuth.result -eq "scope-out") "Promoted enterprise auth scope-out evidence should be preserved."
 $enterpriseAuthImportEntry = @($report.entries | Where-Object { $_.group -eq "enterprise-auth" -and $_.fileName -eq "latest-enterprise-auth-smoke.json" })
@@ -2291,7 +2326,13 @@ Assert-True (($weakCommercialIntegrationChecksReport.entries | ConvertTo-Json -D
 
 Write-JsonEvidence (Join-Path $weakCommercialApprovalRoot "latest-commercial-approval-evidence.json") @{
     formatVersion = "osmu.commercial-approval-evidence.v1"
+    generatedAt = "2026-06-22T00:00:00Z"
     result = "passed"
+    approvedBy = "commercial-review-board"
+    approvedAt = "2026-06-20T03:00:00Z"
+    decisionRule = "Production/B2B sale commercial approval requires result=passed."
+    scopePolicy = "This evidence records commercial/legal approval references only."
+    secretPolicy = "Evidence stores no secret values or raw price tables."
 }
 $weakCommercialApprovalOutput = Join-Path $resolvedOutputDirectory "weak-commercial-approval-promoted"
 $weakCommercialApprovalJson = Join-Path $resolvedOutputDirectory "weak-commercial-approval-import.json"
@@ -2309,14 +2350,102 @@ try {
 finally {
     $ErrorActionPreference = $previousErrorActionPreference
 }
-Assert-True ($weakCommercialApprovalExitCode -ne 0) "Commercial approval evidence without typed approval summary and confirmations should fail import."
+Assert-True ($weakCommercialApprovalExitCode -ne 0) "Commercial approval evidence without required approval metadata should fail import."
 Assert-True (Test-Path -LiteralPath $weakCommercialApprovalJson) "Weak commercial approval import report should still be written."
 $weakCommercialApprovalReport = Get-Content -Raw -LiteralPath $weakCommercialApprovalJson | ConvertFrom-Json
 Assert-True ($weakCommercialApprovalReport.result -eq "failed") "Weak commercial approval import report should be failed."
 Assert-True (-not (Test-Path -LiteralPath (Join-Path $weakCommercialApprovalOutput "latest-commercial-approval-evidence.json"))) "Weak commercial approval evidence must not be promoted."
 $weakCommercialApprovalEntry = @($weakCommercialApprovalReport.entries | Where-Object { $_.group -eq "commercial-approval" -and $_.fileName -eq "latest-commercial-approval-evidence.json" })
 Assert-True ($weakCommercialApprovalEntry.Count -eq 1) "Weak commercial approval failed entry missing."
-Assert-True (([string] $weakCommercialApprovalEntry[0].detail).Contains("confirmation pricingApproved=<missing> expected boolean true")) "Weak commercial approval report should describe missing approval confirmations."
+Assert-True (([string] $weakCommercialApprovalEntry[0].detail).Contains("productVersion missing")) "Weak commercial approval report should describe missing product approval metadata."
+
+Write-JsonEvidence (Join-Path $weakCommercialApprovalChecksRoot "latest-commercial-approval-evidence.json") @{
+    formatVersion = "osmu.commercial-approval-evidence.v1"
+    generatedAt = "2026-06-22T00:00:00Z"
+    result = "passed"
+    productVersion = "v0.1.0-rc.1"
+    approvedBy = "commercial-review-board"
+    approvedAt = "2026-06-20T03:00:00Z"
+    evidenceRefs = @{
+        approval = "commercial-approval-board-20260620"
+        pricing = "pricing-approval-20260620"
+        terms = "terms-approval-20260620"
+        supportSla = "support-sla-approval-20260620"
+        licenseAgreement = "license-agreement-approval-20260620"
+        legal = "legal-approval-20260620"
+        pilotContract = "pilot-contract-template-20260620"
+        pricingPolicyProposal = "pricing-policy-proposal-commercial-approval-20260620"
+    }
+    confirmations = @{
+        pricingApproved = $true
+        termsApproved = $true
+        supportSlaApproved = $true
+        licenseApproved = $true
+        legalApproved = $true
+        pricingPolicyProposalCommercialApproval = $true
+        requirePricingPolicyProposalApprovalSnapshot = $true
+        noSecretValues = $true
+    }
+    pricingPolicyProposalApproval = @{
+        required = $true
+        reviewed = $true
+        evidenceRef = "pricing-policy-proposal-commercial-approval-20260620"
+        snapshot = @{
+            provided = $true
+            parsed = $true
+            proposalCount = 1
+            approvedPriceListCount = 1
+            commercialApprovedCount = 1
+            approvalFlagsValid = $true
+            proposals = @(
+                @{
+                    id = 101
+                    status = "PRICE_LIST_APPROVED"
+                    approvedPriceList = $true
+                    commercialApprovalReference = "commercial-approval-board-20260620"
+                    commercialApprovedAt = "2026-06-20T05:10:00Z"
+                }
+            )
+        }
+    }
+    summary = @{
+        passedCount = 14
+        failureCount = 0
+        checkCount = 14
+        pricingPolicyProposalCommercialApproved = $true
+        pricingPolicyProposalCommercialApprovedCount = 1
+        pricingPolicyProposalApprovedPriceListCount = 1
+        pricingPolicyProposalApprovalFlagsValid = $true
+    }
+    checks = @(
+        @{ id = "product-version"; status = "PASS"; passed = $true }
+    )
+    decisionRule = "Production/B2B sale commercial approval requires result=passed, final pricing approval, final terms approval, support SLA approval, license agreement approval, legal approval, a pilot contract boundary reference, required billing pricing policy proposal commercial approval evidence, and no-secret confirmation."
+    scopePolicy = "This evidence records commercial/legal approval references and sanitized billing pricing policy proposal approval status only. It does not publish prices, legal terms, contracts, customer data, or native payment processor credentials."
+    secretPolicy = "Evidence stores only product version, approver identity, timestamps, booleans, sanitized pricing proposal status/reference metadata, and external approval references; it must not contain passwords, tokens, private keys, license keys, signing secrets, customer payment data, raw price tables, or raw contract text."
+}
+$weakCommercialApprovalChecksOutput = Join-Path $resolvedOutputDirectory "weak-commercial-approval-checks-promoted"
+$weakCommercialApprovalChecksJson = Join-Path $resolvedOutputDirectory "weak-commercial-approval-checks-import.json"
+$weakCommercialApprovalChecksMarkdown = Join-Path $resolvedOutputDirectory "weak-commercial-approval-checks-import.md"
+$previousErrorActionPreference = $ErrorActionPreference
+$ErrorActionPreference = "Continue"
+try {
+    $weakCommercialApprovalChecksOutputLines = & powershell -NoProfile -ExecutionPolicy Bypass -File $importScript `
+        -CommercialApprovalArtifactPath $weakCommercialApprovalChecksRoot `
+        -OutputDirectory $weakCommercialApprovalChecksOutput `
+        -JsonOutputPath $weakCommercialApprovalChecksJson `
+        -MarkdownOutputPath $weakCommercialApprovalChecksMarkdown 2>&1
+    $weakCommercialApprovalChecksExitCode = $LASTEXITCODE
+}
+finally {
+    $ErrorActionPreference = $previousErrorActionPreference
+}
+Assert-True ($weakCommercialApprovalChecksExitCode -ne 0) "Commercial approval evidence without complete check rows should fail import."
+Assert-True (Test-Path -LiteralPath $weakCommercialApprovalChecksJson) "Weak commercial approval checks import report should still be written."
+$weakCommercialApprovalChecksReport = Get-Content -Raw -LiteralPath $weakCommercialApprovalChecksJson | ConvertFrom-Json
+Assert-True ($weakCommercialApprovalChecksReport.result -eq "failed") "Weak commercial approval checks import report should be failed."
+Assert-True (-not (Test-Path -LiteralPath (Join-Path $weakCommercialApprovalChecksOutput "latest-commercial-approval-evidence.json"))) "Weak commercial approval checks evidence must not be promoted."
+Assert-True (($weakCommercialApprovalChecksReport.entries | ConvertTo-Json -Depth 8).Contains("checks.approval-ref missing")) "Weak commercial approval checks report should describe missing approval check row."
 
 Write-JsonEvidence (Join-Path $invalidEnterpriseAuthRoot "latest-enterprise-auth-smoke.json") @{
     formatVersion = "osmu.enterprise-auth-smoke.v1"
