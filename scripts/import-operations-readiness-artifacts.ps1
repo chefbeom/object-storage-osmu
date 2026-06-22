@@ -918,6 +918,95 @@ function Test-DataFlowStorageTransitionRunbookEvidenceJson([string] $Path) {
     }
 }
 
+function Test-KubernetesOperationsReportSyncEvidenceJson([string] $Path) {
+    try {
+        $raw = Get-Content -Raw -LiteralPath $Path
+        $json = $raw | ConvertFrom-Json
+    }
+    catch {
+        return [pscustomobject]@{
+            passed = $false
+            detail = "invalid JSON: $($_.Exception.Message)"
+        }
+    }
+
+    $formatVersion = [string] (Get-JsonProperty $json "formatVersion")
+    if ($formatVersion -ne "osmu.kubernetes-operations-report-sync.v1") {
+        return [pscustomobject]@{
+            passed = $false
+            detail = "formatVersion=$formatVersion expected=osmu.kubernetes-operations-report-sync.v1"
+        }
+    }
+
+    $result = [string] (Get-JsonProperty $json "result")
+    if ($result -ne "applied") {
+        return [pscustomobject]@{
+            passed = $false
+            detail = "result=$result expected=applied"
+        }
+    }
+
+    $patterns = @(
+        '(?i)"(kubeconfig|password|passwd|secret|token|credential|apiKey|api_key|accessKey|access_key|privateKey|private_key|clientSecret|client_secret|adminPassword|admin_password)"\s*:',
+        '(?i)\b(password|passwd|secret|token|credential|api[_-]?key|access[_-]?key|private[_-]?key|client[_-]?secret|admin[_-]?password)\s*=\s*\S+',
+        '(?i)\bBearer\s+[A-Za-z0-9._~+/=-]{12,}',
+        '-----BEGIN [A-Z ]*PRIVATE KEY-----'
+    )
+    foreach ($pattern in $patterns) {
+        if ($raw -match $pattern) {
+            return [pscustomobject]@{
+                passed = $false
+                detail = "kubernetes operations report sync contains kubeconfig or credential-shaped content"
+            }
+        }
+    }
+
+    $failedCountResult = Get-RequiredJsonInt $json "failedCount"
+    if (-not $failedCountResult.valid -or [int64] $failedCountResult.value -ne 0) {
+        return [pscustomobject]@{
+            passed = $false
+            detail = "failedCount=$($failedCountResult.raw)(valid=$($failedCountResult.valid)) expected integer 0"
+        }
+    }
+
+    $sourceReportFormatVersion = [string] (Get-JsonProperty $json "sourceReportFormatVersion")
+    if ($sourceReportFormatVersion -ne "osmu.operations-readiness-convergence.v1") {
+        return [pscustomobject]@{
+            passed = $false
+            detail = "sourceReportFormatVersion=$sourceReportFormatVersion expected=osmu.operations-readiness-convergence.v1"
+        }
+    }
+
+    $sourceReportResult = [string] (Get-JsonProperty $json "sourceReportResult")
+    if ($sourceReportResult -ne "ready") {
+        return [pscustomobject]@{
+            passed = $false
+            detail = "sourceReportResult=$sourceReportResult expected=ready"
+        }
+    }
+
+    $sourceReportBytesResult = Get-RequiredJsonInt $json "sourceReportBytes"
+    if (-not $sourceReportBytesResult.valid -or [int64] $sourceReportBytesResult.value -le 0) {
+        return [pscustomobject]@{
+            passed = $false
+            detail = "sourceReportBytes=$($sourceReportBytesResult.raw)(valid=$($sourceReportBytesResult.valid)) expected positive integer"
+        }
+    }
+
+    $sourceReportSha256 = [string] (Get-JsonProperty $json "sourceReportSha256")
+    if ($sourceReportSha256 -notmatch '^[a-fA-F0-9]{64}$') {
+        return [pscustomobject]@{
+            passed = $false
+            detail = "sourceReportSha256 missing or invalid"
+        }
+    }
+
+    return [pscustomobject]@{
+        passed = $true
+        detail = "formatVersion=$formatVersion result=$result failedCount=$($failedCountResult.value) sourceReportResult=$sourceReportResult sourceReportBytes=$($sourceReportBytesResult.value)"
+    }
+}
+
 function Test-MonitoringThresholdEvidenceJson([string] $Path) {
     try {
         $raw = Get-Content -Raw -LiteralPath $Path
@@ -1209,6 +1298,14 @@ function Import-EvidenceFile(
         }
         [void] $validationDetails.Add($validation.detail)
     }
+    elseif ($ValidationKind -eq "kubernetes-operations-report-sync") {
+        $validation = Test-KubernetesOperationsReportSyncEvidenceJson $sourcePath
+        if (-not $validation.passed) {
+            Add-Entry $Group $FileName "failed" $validation.detail $sourcePath ""
+            return
+        }
+        [void] $validationDetails.Add($validation.detail)
+    }
 
     $resolvedOutputDirectory = Resolve-ProjectPath $OutputDirectory
     New-Item -ItemType Directory -Force -Path $resolvedOutputDirectory | Out-Null
@@ -1264,7 +1361,7 @@ Import-EvidenceFile "enterprise-auth" $EnterpriseAuthArtifactPath "latest-enterp
 Import-EvidenceFile "operations-handoff-package" $OperationsHandoffPackageArtifactPath "latest-operations-handoff-package.json" $true "" "" "operations-handoff-package"
 Import-EvidenceFile "operations-handoff-package" $OperationsHandoffPackageArtifactPath "latest-operations-handoff-package.md" $false
 
-Import-EvidenceFile "kubernetes-operations-report-sync" $KubernetesOperationsReportSyncArtifactPath "latest-kubernetes-operations-report-sync.json" $true "result" "applied"
+Import-EvidenceFile "kubernetes-operations-report-sync" $KubernetesOperationsReportSyncArtifactPath "latest-kubernetes-operations-report-sync.json" $true "" "" "kubernetes-operations-report-sync"
 Import-EvidenceFile "kubernetes-operations-report-sync" $KubernetesOperationsReportSyncArtifactPath "latest-kubernetes-operations-report-sync-plan.json" $false
 Import-EvidenceFile "kubernetes-operations-report-sync" $KubernetesOperationsReportSyncArtifactPath "latest-kubernetes-operations-report-sync-server-dry-run.json" $false
 Import-EvidenceFile "kubernetes-operations-report-sync" $KubernetesOperationsReportSyncArtifactPath "latest-data-flow-storage-plan.json" $false "" "" "data-flow-storage-plan"

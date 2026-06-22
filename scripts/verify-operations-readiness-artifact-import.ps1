@@ -76,6 +76,9 @@ $promotedRoot = Join-Path $resolvedOutputDirectory "promoted"
 $invalidRoot = Join-Path $resolvedOutputDirectory "invalid-source"
 $weakStorageBackendTelemetryRoot = Join-Path $resolvedOutputDirectory "weak-storage-backend-telemetry-source"
 $unsafeStorageBackendTelemetryRoot = Join-Path $resolvedOutputDirectory "unsafe-storage-backend-telemetry-source"
+$weakKubernetesOperationsReportSyncRoot = Join-Path $resolvedOutputDirectory "weak-kubernetes-operations-report-sync-source"
+$stringCountKubernetesOperationsReportSyncRoot = Join-Path $resolvedOutputDirectory "string-count-kubernetes-operations-report-sync-source"
+$nonReadyKubernetesOperationsReportSyncRoot = Join-Path $resolvedOutputDirectory "non-ready-kubernetes-operations-report-sync-source"
 $invalidDataFlowRoot = Join-Path $resolvedOutputDirectory "invalid-data-flow-source"
 $unsafeDataFlowRoot = Join-Path $resolvedOutputDirectory "unsafe-data-flow-source"
 $unsafeDataFlowRunbookRoot = Join-Path $resolvedOutputDirectory "unsafe-data-flow-runbook-source"
@@ -376,6 +379,10 @@ Write-JsonEvidence (Join-Path $kubernetesOperationsReportSyncSource "latest-kube
     formatVersion = "osmu.kubernetes-operations-report-sync.v1"
     result = "applied"
     failedCount = 0
+    sourceReportFormatVersion = "osmu.operations-readiness-convergence.v1"
+    sourceReportResult = "ready"
+    sourceReportBytes = 2048
+    sourceReportSha256 = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
 }
 Write-JsonEvidence (Join-Path $kubernetesOperationsReportSyncSource "latest-kubernetes-operations-report-sync-plan.json") @{
     formatVersion = "osmu.kubernetes-operations-report-sync.v1"
@@ -525,6 +532,12 @@ Assert-True (([string] $operationsHandoffPackageEntry[0].detail).Contains("requi
 $promotedDataFlowRunbook = Get-Content -Raw -LiteralPath (Join-Path $promotedRoot "latest-data-flow-storage-transition-runbook-evidence.json") | ConvertFrom-Json
 Assert-True ($promotedDataFlowRunbook.result -eq "passed") "Promoted data-flow storage transition runbook evidence should preserve result=passed."
 Assert-True ($promotedDataFlowRunbook.dataFlowStoragePlanSnapshot.result -eq "passed") "Promoted data-flow storage transition runbook evidence should preserve passed storage plan snapshot."
+$promotedKubernetesOperationsReportSync = Get-Content -Raw -LiteralPath (Join-Path $promotedRoot "latest-kubernetes-operations-report-sync.json") | ConvertFrom-Json
+Assert-True ($promotedKubernetesOperationsReportSync.result -eq "applied") "Promoted Kubernetes operations report sync evidence should preserve result=applied."
+Assert-True ($promotedKubernetesOperationsReportSync.sourceReportResult -eq "ready") "Promoted Kubernetes operations report sync evidence should preserve ready source report."
+$kubernetesOperationsReportSyncEntry = @($report.entries | Where-Object { $_.group -eq "kubernetes-operations-report-sync" -and $_.fileName -eq "latest-kubernetes-operations-report-sync.json" })
+Assert-True ($kubernetesOperationsReportSyncEntry.Count -eq 1) "Kubernetes operations report sync import entry missing."
+Assert-True (([string] $kubernetesOperationsReportSyncEntry[0].detail).Contains("failedCount=0") -and ([string] $kubernetesOperationsReportSyncEntry[0].detail).Contains("sourceReportResult=ready")) "Kubernetes operations report sync import entry should include strict sync validation detail."
 $dataFlowRunbookEntry = @($report.entries | Where-Object { $_.group -eq "data-flow-storage-transition-runbook" -and $_.fileName -eq "latest-data-flow-storage-transition-runbook-evidence.json" })
 Assert-True ($dataFlowRunbookEntry.Count -eq 1) "Data-flow storage transition runbook import entry missing."
 Assert-True (([string] $dataFlowRunbookEntry[0].detail).Contains("storagePlanResult=passed")) "Data-flow storage transition runbook import entry should include storage plan validation detail."
@@ -642,10 +655,106 @@ Assert-True ($unsafeStorageBackendTelemetryReport.result -eq "failed") "Unsafe s
 Assert-True (-not (Test-Path -LiteralPath (Join-Path $unsafeStorageBackendTelemetryOutput "latest-storage-backend-telemetry.json"))) "Unsafe storage backend telemetry evidence must not be promoted."
 Assert-True (($unsafeStorageBackendTelemetryReport.entries | ConvertTo-Json -Depth 8).Contains("credential-shaped content")) "Unsafe storage backend telemetry report should describe credential-shaped content."
 
+Write-JsonEvidence (Join-Path $weakKubernetesOperationsReportSyncRoot "latest-kubernetes-operations-report-sync.json") @{
+    formatVersion = "osmu.kubernetes-operations-report-sync.v1"
+    result = "applied"
+    failedCount = 0
+}
+$weakKubernetesOperationsReportSyncOutput = Join-Path $resolvedOutputDirectory "weak-kubernetes-operations-report-sync-promoted"
+$weakKubernetesOperationsReportSyncJson = Join-Path $resolvedOutputDirectory "weak-kubernetes-operations-report-sync-import.json"
+$weakKubernetesOperationsReportSyncMarkdown = Join-Path $resolvedOutputDirectory "weak-kubernetes-operations-report-sync-import.md"
+$previousErrorActionPreference = $ErrorActionPreference
+$ErrorActionPreference = "Continue"
+try {
+    $weakKubernetesOperationsReportSyncOutputLines = & powershell -NoProfile -ExecutionPolicy Bypass -File $importScript `
+        -KubernetesOperationsReportSyncArtifactPath $weakKubernetesOperationsReportSyncRoot `
+        -OutputDirectory $weakKubernetesOperationsReportSyncOutput `
+        -JsonOutputPath $weakKubernetesOperationsReportSyncJson `
+        -MarkdownOutputPath $weakKubernetesOperationsReportSyncMarkdown 2>&1
+    $weakKubernetesOperationsReportSyncExitCode = $LASTEXITCODE
+}
+finally {
+    $ErrorActionPreference = $previousErrorActionPreference
+}
+Assert-True ($weakKubernetesOperationsReportSyncExitCode -ne 0) "Kubernetes operations report sync without ready source metadata should fail import."
+Assert-True (Test-Path -LiteralPath $weakKubernetesOperationsReportSyncJson) "Weak Kubernetes operations report sync import report should still be written."
+$weakKubernetesOperationsReportSyncReport = Get-Content -Raw -LiteralPath $weakKubernetesOperationsReportSyncJson | ConvertFrom-Json
+Assert-True ($weakKubernetesOperationsReportSyncReport.result -eq "failed") "Weak Kubernetes operations report sync import report should be failed."
+Assert-True (-not (Test-Path -LiteralPath (Join-Path $weakKubernetesOperationsReportSyncOutput "latest-kubernetes-operations-report-sync.json"))) "Weak Kubernetes operations report sync evidence must not be promoted."
+Assert-True (($weakKubernetesOperationsReportSyncReport.entries | ConvertTo-Json -Depth 8).Contains("sourceReportFormatVersion=")) "Weak Kubernetes operations report sync report should describe missing source report format."
+
+Write-JsonEvidence (Join-Path $stringCountKubernetesOperationsReportSyncRoot "latest-kubernetes-operations-report-sync.json") @{
+    formatVersion = "osmu.kubernetes-operations-report-sync.v1"
+    result = "applied"
+    failedCount = "0"
+    sourceReportFormatVersion = "osmu.operations-readiness-convergence.v1"
+    sourceReportResult = "ready"
+    sourceReportBytes = 2048
+    sourceReportSha256 = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+}
+$stringCountKubernetesOperationsReportSyncOutput = Join-Path $resolvedOutputDirectory "string-count-kubernetes-operations-report-sync-promoted"
+$stringCountKubernetesOperationsReportSyncJson = Join-Path $resolvedOutputDirectory "string-count-kubernetes-operations-report-sync-import.json"
+$stringCountKubernetesOperationsReportSyncMarkdown = Join-Path $resolvedOutputDirectory "string-count-kubernetes-operations-report-sync-import.md"
+$previousErrorActionPreference = $ErrorActionPreference
+$ErrorActionPreference = "Continue"
+try {
+    $stringCountKubernetesOperationsReportSyncOutputLines = & powershell -NoProfile -ExecutionPolicy Bypass -File $importScript `
+        -KubernetesOperationsReportSyncArtifactPath $stringCountKubernetesOperationsReportSyncRoot `
+        -OutputDirectory $stringCountKubernetesOperationsReportSyncOutput `
+        -JsonOutputPath $stringCountKubernetesOperationsReportSyncJson `
+        -MarkdownOutputPath $stringCountKubernetesOperationsReportSyncMarkdown 2>&1
+    $stringCountKubernetesOperationsReportSyncExitCode = $LASTEXITCODE
+}
+finally {
+    $ErrorActionPreference = $previousErrorActionPreference
+}
+Assert-True ($stringCountKubernetesOperationsReportSyncExitCode -ne 0) "Kubernetes operations report sync with string failedCount should fail import."
+Assert-True (Test-Path -LiteralPath $stringCountKubernetesOperationsReportSyncJson) "String-count Kubernetes operations report sync import report should still be written."
+$stringCountKubernetesOperationsReportSyncReport = Get-Content -Raw -LiteralPath $stringCountKubernetesOperationsReportSyncJson | ConvertFrom-Json
+Assert-True ($stringCountKubernetesOperationsReportSyncReport.result -eq "failed") "String-count Kubernetes operations report sync import report should be failed."
+Assert-True (-not (Test-Path -LiteralPath (Join-Path $stringCountKubernetesOperationsReportSyncOutput "latest-kubernetes-operations-report-sync.json"))) "String-count Kubernetes operations report sync evidence must not be promoted."
+Assert-True (($stringCountKubernetesOperationsReportSyncReport.entries | ConvertTo-Json -Depth 8).Contains("failedCount=0(valid=False)")) "String-count Kubernetes operations report sync report should describe invalid typed failed count."
+
+Write-JsonEvidence (Join-Path $nonReadyKubernetesOperationsReportSyncRoot "latest-kubernetes-operations-report-sync.json") @{
+    formatVersion = "osmu.kubernetes-operations-report-sync.v1"
+    result = "applied"
+    failedCount = 0
+    sourceReportFormatVersion = "osmu.operations-readiness-convergence.v1"
+    sourceReportResult = "action-required"
+    sourceReportBytes = 2048
+    sourceReportSha256 = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+}
+$nonReadyKubernetesOperationsReportSyncOutput = Join-Path $resolvedOutputDirectory "non-ready-kubernetes-operations-report-sync-promoted"
+$nonReadyKubernetesOperationsReportSyncJson = Join-Path $resolvedOutputDirectory "non-ready-kubernetes-operations-report-sync-import.json"
+$nonReadyKubernetesOperationsReportSyncMarkdown = Join-Path $resolvedOutputDirectory "non-ready-kubernetes-operations-report-sync-import.md"
+$previousErrorActionPreference = $ErrorActionPreference
+$ErrorActionPreference = "Continue"
+try {
+    $nonReadyKubernetesOperationsReportSyncOutputLines = & powershell -NoProfile -ExecutionPolicy Bypass -File $importScript `
+        -KubernetesOperationsReportSyncArtifactPath $nonReadyKubernetesOperationsReportSyncRoot `
+        -OutputDirectory $nonReadyKubernetesOperationsReportSyncOutput `
+        -JsonOutputPath $nonReadyKubernetesOperationsReportSyncJson `
+        -MarkdownOutputPath $nonReadyKubernetesOperationsReportSyncMarkdown 2>&1
+    $nonReadyKubernetesOperationsReportSyncExitCode = $LASTEXITCODE
+}
+finally {
+    $ErrorActionPreference = $previousErrorActionPreference
+}
+Assert-True ($nonReadyKubernetesOperationsReportSyncExitCode -ne 0) "Kubernetes operations report sync with non-ready source report should fail import."
+Assert-True (Test-Path -LiteralPath $nonReadyKubernetesOperationsReportSyncJson) "Non-ready Kubernetes operations report sync import report should still be written."
+$nonReadyKubernetesOperationsReportSyncReport = Get-Content -Raw -LiteralPath $nonReadyKubernetesOperationsReportSyncJson | ConvertFrom-Json
+Assert-True ($nonReadyKubernetesOperationsReportSyncReport.result -eq "failed") "Non-ready Kubernetes operations report sync import report should be failed."
+Assert-True (-not (Test-Path -LiteralPath (Join-Path $nonReadyKubernetesOperationsReportSyncOutput "latest-kubernetes-operations-report-sync.json"))) "Non-ready Kubernetes operations report sync evidence must not be promoted."
+Assert-True (($nonReadyKubernetesOperationsReportSyncReport.entries | ConvertTo-Json -Depth 8).Contains("sourceReportResult=action-required")) "Non-ready Kubernetes operations report sync report should describe non-ready source report."
+
 Write-JsonEvidence (Join-Path $invalidDataFlowRoot "latest-kubernetes-operations-report-sync.json") @{
     formatVersion = "osmu.kubernetes-operations-report-sync.v1"
     result = "applied"
     failedCount = 0
+    sourceReportFormatVersion = "osmu.operations-readiness-convergence.v1"
+    sourceReportResult = "ready"
+    sourceReportBytes = 2048
+    sourceReportSha256 = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
 }
 Write-JsonEvidence (Join-Path $invalidDataFlowRoot "latest-data-flow-storage-plan.json") @{
     formatVersion = "osmu.data-flow-storage-plan.v1"
@@ -680,6 +789,10 @@ Write-JsonEvidence (Join-Path $unsafeDataFlowRoot "latest-kubernetes-operations-
     formatVersion = "osmu.kubernetes-operations-report-sync.v1"
     result = "applied"
     failedCount = 0
+    sourceReportFormatVersion = "osmu.operations-readiness-convergence.v1"
+    sourceReportResult = "ready"
+    sourceReportBytes = 2048
+    sourceReportSha256 = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
 }
 Write-JsonEvidence (Join-Path $unsafeDataFlowRoot "latest-data-flow-storage-plan.json") @{
     formatVersion = "osmu.data-flow-storage-plan.v1"
