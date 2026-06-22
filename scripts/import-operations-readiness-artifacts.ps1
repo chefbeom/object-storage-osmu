@@ -2517,6 +2517,431 @@ function Test-OperationsHandoffPackageSnapshots([object] $Json) {
     }
 }
 
+function Test-HandoffRequiredBoolTrue([object] $Object, [string] $Name, [string] $Label) {
+    $value = Get-RequiredJsonBool $Object $Name
+    if (-not $value.valid -or -not $value.value) {
+        return [pscustomobject]@{
+            passed = $false
+            detail = "$Label.$Name=$($value.raw) expected boolean true"
+        }
+    }
+    return [pscustomobject]@{ passed = $true; detail = "$Label.$Name=true" }
+}
+
+function Test-HandoffRequiredIntEquals([object] $Object, [string] $Name, [int64] $Expected, [string] $Label) {
+    $value = Get-RequiredJsonInt $Object $Name
+    if (-not $value.valid -or [int64] $value.value -ne $Expected) {
+        return [pscustomobject]@{
+            passed = $false
+            detail = "$Label.$Name=$($value.raw)(valid=$($value.valid)) expected integer $Expected"
+        }
+    }
+    return [pscustomobject]@{ passed = $true; value = [int64] $value.value; detail = "$Label.$Name=$Expected" }
+}
+
+function Test-HandoffRequiredIntAtLeast([object] $Object, [string] $Name, [int64] $Minimum, [string] $Label) {
+    $value = Get-RequiredJsonInt $Object $Name
+    if (-not $value.valid -or [int64] $value.value -lt $Minimum) {
+        return [pscustomobject]@{
+            passed = $false
+            detail = "$Label.$Name=$($value.raw)(valid=$($value.valid)) expected integer >= $Minimum"
+        }
+    }
+    return [pscustomobject]@{ passed = $true; value = [int64] $value.value; detail = "$Label.$Name=$($value.value)" }
+}
+
+function Test-HandoffSnapshotBase([object] $Snapshot, [string] $Label, [string[]] $AllowedResults, [bool] $RequirePassedFlag) {
+    if ($null -eq $Snapshot) {
+        return [pscustomobject]@{
+            passed = $false
+            detail = "$Label missing"
+        }
+    }
+
+    foreach ($field in @("provided", "parsed", "validFormatVersion")) {
+        $fieldValidation = Test-HandoffRequiredBoolTrue $Snapshot $field $Label
+        if (-not $fieldValidation.passed) {
+            return $fieldValidation
+        }
+    }
+
+    $result = [string] (Get-JsonProperty $Snapshot "result")
+    $allowed = $false
+    foreach ($allowedResult in $AllowedResults) {
+        if ($allowedResult.Equals($result, [System.StringComparison]::OrdinalIgnoreCase)) {
+            $allowed = $true
+            break
+        }
+    }
+    if (-not $allowed) {
+        return [pscustomobject]@{
+            passed = $false
+            detail = "$Label.result=$result expected=$($AllowedResults -join '|')"
+        }
+    }
+
+    if ($RequirePassedFlag) {
+        $passedValidation = Test-HandoffRequiredBoolTrue $Snapshot "passed" $Label
+        if (-not $passedValidation.passed) {
+            return $passedValidation
+        }
+    }
+
+    return [pscustomobject]@{
+        passed = $true
+        detail = "$Label.result=$result"
+    }
+}
+
+function Test-OperationsHandoffPackageEvidenceRefs([object] $Json) {
+    $evidenceRefs = Get-JsonProperty $Json "evidenceRefs"
+    if ($null -eq $evidenceRefs) {
+        return [pscustomobject]@{
+            passed = $false
+            detail = "evidenceRefs expected"
+        }
+    }
+
+    $requiredRefs = @(
+        "changeApproval",
+        "deployment",
+        "operationsReadiness",
+        "operationsConvergence",
+        "dataFlowStoragePlan",
+        "dataFlowStorageTransitionRunbook",
+        "secretRotation",
+        "commercialIntegration",
+        "commercialApproval",
+        "enterpriseAuth",
+        "backupRestore",
+        "haDr",
+        "monitoring",
+        "security",
+        "iamRbac",
+        "runbookReview",
+        "troubleshootingReview",
+        "supportEscalation",
+        "supportSla",
+        "knownGaps"
+    )
+    foreach ($refName in $requiredRefs) {
+        $refValue = [string] (Get-JsonProperty $evidenceRefs $refName)
+        if ([string]::IsNullOrWhiteSpace($refValue)) {
+            return [pscustomobject]@{
+                passed = $false
+                detail = "evidenceRefs.$refName missing"
+            }
+        }
+    }
+
+    return [pscustomobject]@{
+        passed = $true
+        detail = "evidenceRefs=$($requiredRefs.Count)/$($requiredRefs.Count)"
+    }
+}
+
+function Test-OperationsHandoffPackageTargetSnapshots([object] $Json) {
+    $targetSnapshots = Get-JsonProperty $Json "targetEvidenceSnapshots"
+    if ($null -eq $targetSnapshots) {
+        return [pscustomobject]@{
+            passed = $false
+            detail = "targetEvidenceSnapshots expected"
+        }
+    }
+
+    $plan = Get-JsonProperty $targetSnapshots "dataFlowStoragePlan"
+    $base = Test-HandoffSnapshotBase $plan "targetEvidenceSnapshots.dataFlowStoragePlan" @("passed") $true
+    if (-not $base.passed) { return $base }
+    $candidateStore = [string] (Get-JsonProperty $plan "candidateStore")
+    if ($candidateStore -notin @("MARIADB_PARTITION", "EXTERNAL_TIME_SERIES", "DUAL_WRITE")) {
+        return [pscustomobject]@{ passed = $false; detail = "targetEvidenceSnapshots.dataFlowStoragePlan.candidateStore=$candidateStore expected=MARIADB_PARTITION|EXTERNAL_TIME_SERIES|DUAL_WRITE" }
+    }
+    foreach ($field in @("queryPlanEvidencePassed")) {
+        $validation = Test-HandoffRequiredBoolTrue $plan $field "targetEvidenceSnapshots.dataFlowStoragePlan"
+        if (-not $validation.passed) { return $validation }
+    }
+    foreach ($field in @("checkCount", "passedCount")) {
+        $validation = Test-HandoffRequiredIntAtLeast $plan $field 1 "targetEvidenceSnapshots.dataFlowStoragePlan"
+        if (-not $validation.passed) { return $validation }
+    }
+    $validation = Test-HandoffRequiredIntEquals $plan "pendingCount" 0 "targetEvidenceSnapshots.dataFlowStoragePlan"
+    if (-not $validation.passed) { return $validation }
+
+    $runbook = Get-JsonProperty $targetSnapshots "dataFlowStorageTransitionRunbook"
+    $base = Test-HandoffSnapshotBase $runbook "targetEvidenceSnapshots.dataFlowStorageTransitionRunbook" @("passed") $true
+    if (-not $base.passed) { return $base }
+    foreach ($field in @("confirmationsValid")) {
+        $validation = Test-HandoffRequiredBoolTrue $runbook $field "targetEvidenceSnapshots.dataFlowStorageTransitionRunbook"
+        if (-not $validation.passed) { return $validation }
+    }
+    foreach ($field in @("failureCount")) {
+        $validation = Test-HandoffRequiredIntEquals $runbook $field 0 "targetEvidenceSnapshots.dataFlowStorageTransitionRunbook"
+        if (-not $validation.passed) { return $validation }
+    }
+    $validation = Test-HandoffRequiredIntAtLeast $runbook "checkCount" 1 "targetEvidenceSnapshots.dataFlowStorageTransitionRunbook"
+    if (-not $validation.passed) { return $validation }
+
+    $secretRotation = Get-JsonProperty $targetSnapshots "secretRotation"
+    $base = Test-HandoffSnapshotBase $secretRotation "targetEvidenceSnapshots.secretRotation" @("passed") $true
+    if (-not $base.passed) { return $base }
+    $validation = Test-HandoffRequiredBoolTrue $secretRotation "confirmationsValid" "targetEvidenceSnapshots.secretRotation"
+    if (-not $validation.passed) { return $validation }
+    $coreRequiredCount = Get-RequiredJsonInt $secretRotation "coreRequiredCount"
+    $coreRotatedCount = Get-RequiredJsonInt $secretRotation "coreRotatedCount"
+    if (-not $coreRequiredCount.valid -or -not $coreRotatedCount.valid -or [int64] $coreRequiredCount.value -le 0 -or [int64] $coreRotatedCount.value -lt [int64] $coreRequiredCount.value) {
+        return [pscustomobject]@{ passed = $false; detail = "targetEvidenceSnapshots.secretRotation coreRotated=$($coreRotatedCount.raw)(valid=$($coreRotatedCount.valid))/coreRequired=$($coreRequiredCount.raw)(valid=$($coreRequiredCount.valid)) expected coreRotated>=coreRequired>0" }
+    }
+    foreach ($field in @("failureCount", "plannedCount")) {
+        $validation = Test-HandoffRequiredIntEquals $secretRotation $field 0 "targetEvidenceSnapshots.secretRotation"
+        if (-not $validation.passed) { return $validation }
+    }
+
+    $commercialIntegration = Get-JsonProperty $targetSnapshots "commercialIntegration"
+    $base = Test-HandoffSnapshotBase $commercialIntegration "targetEvidenceSnapshots.commercialIntegration" @("passed") $true
+    if (-not $base.passed) { return $base }
+    foreach ($field in @("countsValid", "paymentProviderAdapterReadinessReviewed", "paymentProviderAdapterReadinessReviewedValid")) {
+        $validation = Test-HandoffRequiredBoolTrue $commercialIntegration $field "targetEvidenceSnapshots.commercialIntegration"
+        if (-not $validation.passed) { return $validation }
+    }
+    $requiredCount = Get-RequiredJsonInt $commercialIntegration "requiredCount"
+    $requiredVerifiedCount = Get-RequiredJsonInt $commercialIntegration "requiredVerifiedCount"
+    $verifiedCount = Get-RequiredJsonInt $commercialIntegration "verifiedCount"
+    $integrationCount = Get-RequiredJsonInt $commercialIntegration "integrationCount"
+    if (-not $requiredCount.valid -or -not $requiredVerifiedCount.valid -or -not $verifiedCount.valid -or -not $integrationCount.valid -or [int64] $requiredCount.value -le 0 -or [int64] $requiredVerifiedCount.value -lt [int64] $requiredCount.value -or [int64] $verifiedCount.value -lt [int64] $requiredVerifiedCount.value -or [int64] $integrationCount.value -lt [int64] $requiredCount.value) {
+        return [pscustomobject]@{ passed = $false; detail = "targetEvidenceSnapshots.commercialIntegration counts invalid required=$($requiredCount.raw) requiredVerified=$($requiredVerifiedCount.raw) verified=$($verifiedCount.raw) integration=$($integrationCount.raw)" }
+    }
+    foreach ($field in @("failureCount", "plannedCount")) {
+        $validation = Test-HandoffRequiredIntEquals $commercialIntegration $field 0 "targetEvidenceSnapshots.commercialIntegration"
+        if (-not $validation.passed) { return $validation }
+    }
+
+    $commercialApproval = Get-JsonProperty $targetSnapshots "commercialApproval"
+    $base = Test-HandoffSnapshotBase $commercialApproval "targetEvidenceSnapshots.commercialApproval" @("passed") $true
+    if (-not $base.passed) { return $base }
+    foreach ($field in @("countsValid", "pricingPolicyProposalCommercialApproved", "pricingPolicyProposalCommercialApprovedValid")) {
+        $validation = Test-HandoffRequiredBoolTrue $commercialApproval $field "targetEvidenceSnapshots.commercialApproval"
+        if (-not $validation.passed) { return $validation }
+    }
+    foreach ($field in @("passedCount", "checkCount", "pricingPolicyProposalCommercialApprovedCount", "pricingPolicyProposalApprovedPriceListCount")) {
+        $validation = Test-HandoffRequiredIntAtLeast $commercialApproval $field 1 "targetEvidenceSnapshots.commercialApproval"
+        if (-not $validation.passed) { return $validation }
+    }
+    $validation = Test-HandoffRequiredIntEquals $commercialApproval "failureCount" 0 "targetEvidenceSnapshots.commercialApproval"
+    if (-not $validation.passed) { return $validation }
+
+    $enterpriseAuth = Get-JsonProperty $targetSnapshots "enterpriseAuthSmoke"
+    $base = Test-HandoffSnapshotBase $enterpriseAuth "targetEvidenceSnapshots.enterpriseAuthSmoke" @("passed", "scope-out") $false
+    if (-not $base.passed) { return $base }
+    $enterpriseAuthResult = [string] (Get-JsonProperty $enterpriseAuth "result")
+    if ("scope-out".Equals($enterpriseAuthResult, [System.StringComparison]::OrdinalIgnoreCase)) {
+        foreach ($field in @("scopeOutAccepted", "scopeOutAcceptedValid")) {
+            $validation = Test-HandoffRequiredBoolTrue $enterpriseAuth $field "targetEvidenceSnapshots.enterpriseAuthSmoke"
+            if (-not $validation.passed) { return $validation }
+        }
+    }
+    else {
+        foreach ($field in @("passed", "countsValid")) {
+            $validation = Test-HandoffRequiredBoolTrue $enterpriseAuth $field "targetEvidenceSnapshots.enterpriseAuthSmoke"
+            if (-not $validation.passed) { return $validation }
+        }
+        $validation = Test-HandoffRequiredIntAtLeast $enterpriseAuth "passCount" 1 "targetEvidenceSnapshots.enterpriseAuthSmoke"
+        if (-not $validation.passed) { return $validation }
+        foreach ($field in @("failCount", "blockedCount", "plannedCount")) {
+            $validation = Test-HandoffRequiredIntEquals $enterpriseAuth $field 0 "targetEvidenceSnapshots.enterpriseAuthSmoke"
+            if (-not $validation.passed) { return $validation }
+        }
+    }
+
+    $monitoring = Get-JsonProperty $targetSnapshots "monitoringThreshold"
+    $base = Test-HandoffSnapshotBase $monitoring "targetEvidenceSnapshots.monitoringThreshold" @("passed") $true
+    if (-not $base.passed) { return $base }
+    $validation = Test-HandoffRequiredBoolTrue $monitoring "complete" "targetEvidenceSnapshots.monitoringThreshold"
+    if (-not $validation.passed) { return $validation }
+    $requiredAlertCount = Get-RequiredJsonInt $monitoring "requiredAlertCount"
+    $mappedAlertCount = Get-RequiredJsonInt $monitoring "mappedAlertCount"
+    $grafanaPanelCount = Get-RequiredJsonInt $monitoring "grafanaPanelCount"
+    $tuningEvidenceCount = Get-RequiredJsonInt $monitoring "tuningEvidenceCount"
+    if (-not $requiredAlertCount.valid -or -not $mappedAlertCount.valid -or -not $grafanaPanelCount.valid -or -not $tuningEvidenceCount.valid -or [int64] $requiredAlertCount.value -le 0 -or [int64] $mappedAlertCount.value -lt [int64] $requiredAlertCount.value -or [int64] $grafanaPanelCount.value -lt [int64] $requiredAlertCount.value -or [int64] $tuningEvidenceCount.value -lt [int64] $requiredAlertCount.value) {
+        return [pscustomobject]@{ passed = $false; detail = "targetEvidenceSnapshots.monitoringThreshold counts invalid required=$($requiredAlertCount.raw) mapped=$($mappedAlertCount.raw) grafana=$($grafanaPanelCount.raw) tuning=$($tuningEvidenceCount.raw)" }
+    }
+    foreach ($field in @("missingAlertCount", "failureCount")) {
+        $validation = Test-HandoffRequiredIntEquals $monitoring $field 0 "targetEvidenceSnapshots.monitoringThreshold"
+        if (-not $validation.passed) { return $validation }
+    }
+
+    return [pscustomobject]@{
+        passed = $true
+        detail = "targetSnapshots=7/7"
+    }
+}
+
+function Test-OperationsHandoffPackageSummary([object] $Json) {
+    $summary = Get-JsonProperty $Json "summary"
+    if ($null -eq $summary) {
+        return [pscustomobject]@{
+            passed = $false
+            detail = "summary expected"
+        }
+    }
+
+    $passedCount = Get-RequiredJsonInt $summary "passedCount"
+    $failureCount = Get-RequiredJsonInt $summary "failureCount"
+    $plannedCount = Get-RequiredJsonInt $summary "plannedCount"
+    $checkCount = Get-RequiredJsonInt $summary "checkCount"
+    if (-not $passedCount.valid -or -not $failureCount.valid -or -not $plannedCount.valid -or -not $checkCount.valid) {
+        return [pscustomobject]@{ passed = $false; detail = "summary counts invalid passed=$($passedCount.raw) failure=$($failureCount.raw) planned=$($plannedCount.raw) check=$($checkCount.raw)" }
+    }
+    if ([int64] $failureCount.value -ne 0 -or [int64] $plannedCount.value -ne 0 -or [int64] $checkCount.value -le 0 -or [int64] $passedCount.value -ne [int64] $checkCount.value) {
+        return [pscustomobject]@{ passed = $false; detail = "summary passed=$($passedCount.value) failure=$($failureCount.value) planned=$($plannedCount.value) check=$($checkCount.value) expected passed=check>0 and failure/planned=0" }
+    }
+
+    foreach ($field in @("operationsReadinessSnapshotResult", "operationsConvergenceSnapshotResult")) {
+        $value = [string] (Get-JsonProperty $summary $field)
+        if (-not (Test-ReadyText $value)) {
+            return [pscustomobject]@{ passed = $false; detail = "summary.$field=$value expected=ready" }
+        }
+    }
+    foreach ($field in @("operationsConvergenceFinalizerFailedCount", "operationsConvergenceFinalizerGapCount")) {
+        $validation = Test-HandoffRequiredIntEquals $summary $field 0 "summary"
+        if (-not $validation.passed) { return $validation }
+    }
+    $syncReady = Get-RequiredJsonBool $summary "operationsConvergenceKubernetesReportSyncReady"
+    if (-not $syncReady.valid -or -not $syncReady.value) {
+        return [pscustomobject]@{ passed = $false; detail = "summary.operationsConvergenceKubernetesReportSyncReady=$($syncReady.raw) expected boolean true" }
+    }
+    $sourceReportResult = [string] (Get-JsonProperty $summary "operationsConvergenceKubernetesReportSyncSourceReportResult")
+    if (-not (Test-ReadyText $sourceReportResult)) {
+        return [pscustomobject]@{ passed = $false; detail = "summary.operationsConvergenceKubernetesReportSyncSourceReportResult=$sourceReportResult expected=ready" }
+    }
+
+    foreach ($field in @(
+        "dataFlowStoragePlanSnapshotResult",
+        "dataFlowStorageTransitionRunbookSnapshotResult",
+        "secretRotationSnapshotResult",
+        "commercialIntegrationSnapshotResult",
+        "commercialApprovalSnapshotResult",
+        "monitoringThresholdSnapshotResult"
+    )) {
+        $value = [string] (Get-JsonProperty $summary $field)
+        if (-not "passed".Equals($value, [System.StringComparison]::OrdinalIgnoreCase)) {
+            return [pscustomobject]@{ passed = $false; detail = "summary.$field=$value expected=passed" }
+        }
+    }
+
+    $enterpriseAuthResult = [string] (Get-JsonProperty $summary "enterpriseAuthSmokeSnapshotResult")
+    if (-not ("passed".Equals($enterpriseAuthResult, [System.StringComparison]::OrdinalIgnoreCase) -or "scope-out".Equals($enterpriseAuthResult, [System.StringComparison]::OrdinalIgnoreCase))) {
+        return [pscustomobject]@{ passed = $false; detail = "summary.enterpriseAuthSmokeSnapshotResult=$enterpriseAuthResult expected=passed|scope-out" }
+    }
+
+    return [pscustomobject]@{
+        passed = $true
+        detail = "summaryCheckCount=$($checkCount.value) targetSnapshotResults=passed"
+    }
+}
+
+function Test-OperationsHandoffPackageChecks([object] $Json) {
+    $summary = Get-JsonProperty $Json "summary"
+    $expectedCount = Get-RequiredJsonInt $summary "checkCount"
+    if (-not $expectedCount.valid) {
+        return [pscustomobject]@{
+            passed = $false
+            detail = "summary.checkCount=$($expectedCount.raw) expected integer"
+        }
+    }
+
+    $checksRaw = Get-JsonProperty $Json "checks"
+    if ($null -eq $checksRaw) {
+        return [pscustomobject]@{
+            passed = $false
+            detail = "checks expected"
+        }
+    }
+    [object[]] $checks = @($checksRaw)
+    if ($checks.Count -le 0) {
+        return [pscustomobject]@{
+            passed = $false
+            detail = "checkCount=$($checks.Count) expected >0"
+        }
+    }
+    if ($checks.Count -ne [int64] $expectedCount.value) {
+        return [pscustomobject]@{
+            passed = $false
+            detail = "checks.Count=$($checks.Count) summary.checkCount=$($expectedCount.value) expected equal"
+        }
+    }
+
+    foreach ($check in $checks) {
+        $id = [string] (Get-JsonProperty $check "id")
+        $status = [string] (Get-JsonProperty $check "status")
+        $passed = Get-RequiredJsonBool $check "passed"
+        if ([string]::IsNullOrWhiteSpace($id)) {
+            return [pscustomobject]@{ passed = $false; detail = "checks row missing id" }
+        }
+        if (-not "PASS".Equals($status, [System.StringComparison]::OrdinalIgnoreCase) -or -not $passed.valid -or -not $passed.value) {
+            return [pscustomobject]@{ passed = $false; detail = "checks.$id status=$status passed=$($passed.raw) expected PASS and boolean true" }
+        }
+    }
+
+    $requiredCheckIds = @(
+        "environment-name",
+        "target-cluster",
+        "operator",
+        "handoff-started-at",
+        "handoff-completed-at",
+        "handoff-window-order",
+        "change-approval-ref",
+        "no-secret-values-confirmed",
+        "runbook-reviewed",
+        "troubleshooting-reviewed",
+        "rollback-reviewed",
+        "support-escalation-reviewed",
+        "known-gaps-accepted",
+        "operations-readiness-evidence",
+        "operations-convergence-evidence",
+        "operations-readiness-snapshot-ready",
+        "operations-convergence-snapshot-ready",
+        "data-flow-storage-plan-evidence",
+        "data-flow-storage-plan-snapshot-passed",
+        "data-flow-storage-plan-reviewed",
+        "data-flow-storage-transition-runbook-evidence",
+        "data-flow-storage-transition-runbook-snapshot-passed",
+        "data-flow-storage-transition-runbook-reviewed",
+        "secret-rotation-evidence",
+        "secret-rotation-snapshot-passed",
+        "secret-rotation-snapshot-reviewed",
+        "commercial-integration-evidence",
+        "commercial-integration-snapshot-passed",
+        "commercial-integration-snapshot-reviewed",
+        "commercial-approval-evidence",
+        "commercial-approval-snapshot-passed",
+        "commercial-approval-snapshot-reviewed",
+        "enterprise-auth-evidence",
+        "enterprise-auth-smoke-snapshot-accepted",
+        "enterprise-auth-smoke-snapshot-reviewed",
+        "backup-restore-evidence",
+        "ha-dr-evidence",
+        "monitoring-evidence",
+        "monitoring-threshold-snapshot-passed",
+        "monitoring-threshold-reviewed",
+        "security-evidence",
+        "iam-rbac-evidence"
+    )
+    foreach ($requiredCheckId in $requiredCheckIds) {
+        [object[]] $match = @($checks | Where-Object { [string] (Get-JsonProperty $_ "id") -eq $requiredCheckId -and "PASS".Equals([string] (Get-JsonProperty $_ "status"), [System.StringComparison]::OrdinalIgnoreCase) })
+        if ($match.Count -ne 1) {
+            return [pscustomobject]@{
+                passed = $false
+                detail = "checks.$requiredCheckId missing PASS"
+            }
+        }
+    }
+
+    return [pscustomobject]@{
+        passed = $true
+        detail = "checkRows=$($checks.Count) requiredChecks=$($requiredCheckIds.Count)"
+    }
+}
+
 function Test-SanitizedQueryPlanEvidenceSummary([object] $QueryPlanEvidence) {
     if ($null -eq $QueryPlanEvidence) {
         return [pscustomobject]@{
@@ -2985,6 +3410,26 @@ function Test-OperationsHandoffPackageEvidenceJson([string] $Path) {
         return $snapshotValidation
     }
 
+    $evidenceRefsValidation = Test-OperationsHandoffPackageEvidenceRefs $json
+    if (-not $evidenceRefsValidation.passed) {
+        return $evidenceRefsValidation
+    }
+
+    $targetSnapshotValidation = Test-OperationsHandoffPackageTargetSnapshots $json
+    if (-not $targetSnapshotValidation.passed) {
+        return $targetSnapshotValidation
+    }
+
+    $summaryValidation = Test-OperationsHandoffPackageSummary $json
+    if (-not $summaryValidation.passed) {
+        return $summaryValidation
+    }
+
+    $checksValidation = Test-OperationsHandoffPackageChecks $json
+    if (-not $checksValidation.passed) {
+        return $checksValidation
+    }
+
     $patterns = @(
         '(?i)"(rawClaimJson|raw_claim_json|idToken|id_token|accessToken|access_token|refreshToken|refresh_token|authorizationCode|authorization_code|oidcCode|oidc_code|oidcState|oidc_state|ldapPassword|ldap_password|adminPassword|admin_password|clientSecret|client_secret)"\s*:',
         '(?i)\b(password|passwd|credential|api[_-]?key|private[_-]?key|client[_-]?secret|ldap[_-]?password|admin[_-]?password)\s*=\s*\S+',
@@ -3002,7 +3447,7 @@ function Test-OperationsHandoffPackageEvidenceJson([string] $Path) {
 
     return [pscustomobject]@{
         passed = $true
-        detail = "formatVersion=$formatVersion result=$result requiredConfirmations=$($requiredConfirmations.Count) $($snapshotValidation.detail)"
+        detail = "formatVersion=$formatVersion result=$result requiredConfirmations=$($requiredConfirmations.Count) $($snapshotValidation.detail); $($evidenceRefsValidation.detail); $($targetSnapshotValidation.detail); $($summaryValidation.detail); $($checksValidation.detail)"
     }
 }
 

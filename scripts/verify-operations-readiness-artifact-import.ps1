@@ -59,6 +59,234 @@ function New-PassedOperationsHandoffPackageSnapshots(
     }
 }
 
+function New-PassedOperationsHandoffPackageEvidenceRefs {
+    return [ordered]@{
+        changeApproval = "CAB-2026-06-22"
+        deployment = "deploy/2026-06-22"
+        operationsReadiness = "evidence/operations-readiness.json"
+        operationsConvergence = "evidence/operations-convergence.json"
+        dataFlowStoragePlan = "evidence/data-flow-storage-plan.json"
+        dataFlowStorageTransitionRunbook = "evidence/data-flow-storage-transition-runbook.json"
+        secretRotation = "evidence/secret-rotation.json"
+        commercialIntegration = "evidence/commercial-integration.json"
+        commercialApproval = "evidence/commercial-approval.json"
+        enterpriseAuth = "evidence/enterprise-auth-smoke.json"
+        backupRestore = "evidence/backup-restore.json"
+        haDr = "evidence/ha-dr.json"
+        monitoring = "evidence/monitoring-threshold.json"
+        security = "evidence/security.json"
+        iamRbac = "evidence/iam-rbac.json"
+        runbookReview = "review/runbook"
+        troubleshootingReview = "review/troubleshooting"
+        supportEscalation = "support/escalation"
+        supportSla = "support/sla"
+        knownGaps = "review/known-gaps"
+    }
+}
+
+function New-PassedOperationsHandoffPackageConfirmations {
+    return [ordered]@{
+        noSecretValues = $true
+        runbookReviewed = $true
+        troubleshootingReviewed = $true
+        rollbackReviewed = $true
+        supportEscalationReviewed = $true
+        knownGapsAccepted = $true
+        operationsReadinessSnapshotReviewed = $true
+        operationsConvergenceSnapshotReviewed = $true
+        dataFlowStoragePlanReviewed = $true
+        dataFlowStorageTransitionRunbookReviewed = $true
+        secretRotationSnapshotReviewed = $true
+        commercialIntegrationSnapshotReviewed = $true
+        commercialApprovalSnapshotReviewed = $true
+        enterpriseAuthSmokeSnapshotReviewed = $true
+        monitoringThresholdReviewed = $true
+        requireProductionEvidence = $true
+        requireOperationsSnapshotEvidence = $true
+    }
+}
+
+function New-PassedOperationsHandoffPackageTargetSnapshots {
+    return [ordered]@{
+        dataFlowStoragePlan = [ordered]@{
+            provided = $true
+            parsed = $true
+            validFormatVersion = $true
+            result = "passed"
+            passed = $true
+            candidateStore = "EXTERNAL_TIME_SERIES"
+            checkCount = 8
+            passedCount = 8
+            pendingCount = 0
+            queryPlanEvidencePassed = $true
+        }
+        dataFlowStorageTransitionRunbook = [ordered]@{
+            provided = $true
+            parsed = $true
+            validFormatVersion = $true
+            result = "passed"
+            passed = $true
+            candidateStore = "EXTERNAL_TIME_SERIES"
+            failureCount = 0
+            checkCount = 8
+            confirmationsValid = $true
+        }
+        secretRotation = [ordered]@{
+            provided = $true
+            parsed = $true
+            validFormatVersion = $true
+            result = "passed"
+            passed = $true
+            confirmationsValid = $true
+            coreRequiredCount = 5
+            coreRotatedCount = 5
+            failureCount = 0
+            plannedCount = 0
+            checkCount = 9
+        }
+        commercialIntegration = [ordered]@{
+            provided = $true
+            parsed = $true
+            validFormatVersion = $true
+            result = "passed"
+            passed = $true
+            countsValid = $true
+            integrationCount = 4
+            verifiedCount = 4
+            requiredCount = 4
+            requiredVerifiedCount = 4
+            failureCount = 0
+            plannedCount = 0
+            paymentProviderAdapterReadinessReviewed = $true
+            paymentProviderAdapterReadinessReviewedValid = $true
+        }
+        commercialApproval = [ordered]@{
+            provided = $true
+            parsed = $true
+            validFormatVersion = $true
+            result = "passed"
+            passed = $true
+            countsValid = $true
+            passedCount = 14
+            failureCount = 0
+            checkCount = 14
+            pricingPolicyProposalCommercialApproved = $true
+            pricingPolicyProposalCommercialApprovedValid = $true
+            pricingPolicyProposalCommercialApprovedCount = 1
+            pricingPolicyProposalApprovedPriceListCount = 1
+        }
+        enterpriseAuthSmoke = [ordered]@{
+            provided = $true
+            parsed = $true
+            validFormatVersion = $true
+            result = "scope-out"
+            passed = $false
+            scopeOutAccepted = $true
+            scopeOutAcceptedValid = $true
+            countsValid = $true
+            passCount = 3
+            failCount = 0
+            blockedCount = 0
+            plannedCount = 0
+        }
+        monitoringThreshold = [ordered]@{
+            provided = $true
+            parsed = $true
+            validFormatVersion = $true
+            result = "passed"
+            passed = $true
+            complete = $true
+            requiredAlertCount = 4
+            mappedAlertCount = 4
+            missingAlertCount = 0
+            routeCount = 2
+            grafanaPanelCount = 4
+            tuningEvidenceCount = 4
+            failureCount = 0
+            checkCount = 10
+        }
+    }
+}
+
+function New-PassedOperationsHandoffPackageChecks {
+    $ids = @(
+        "environment-name",
+        "target-cluster",
+        "operator",
+        "handoff-started-at",
+        "handoff-completed-at",
+        "handoff-window-order",
+        "change-approval-ref",
+        "no-secret-values-confirmed",
+        "runbook-reviewed",
+        "troubleshooting-reviewed",
+        "rollback-reviewed",
+        "support-escalation-reviewed",
+        "known-gaps-accepted",
+        "operations-readiness-evidence",
+        "operations-convergence-evidence",
+        "operations-readiness-snapshot-ready",
+        "operations-convergence-snapshot-ready",
+        "data-flow-storage-plan-evidence",
+        "data-flow-storage-plan-snapshot-passed",
+        "data-flow-storage-plan-reviewed",
+        "data-flow-storage-transition-runbook-evidence",
+        "data-flow-storage-transition-runbook-snapshot-passed",
+        "data-flow-storage-transition-runbook-reviewed",
+        "secret-rotation-evidence",
+        "secret-rotation-snapshot-passed",
+        "secret-rotation-snapshot-reviewed",
+        "commercial-integration-evidence",
+        "commercial-integration-snapshot-passed",
+        "commercial-integration-snapshot-reviewed",
+        "commercial-approval-evidence",
+        "commercial-approval-snapshot-passed",
+        "commercial-approval-snapshot-reviewed",
+        "enterprise-auth-evidence",
+        "enterprise-auth-smoke-snapshot-accepted",
+        "enterprise-auth-smoke-snapshot-reviewed",
+        "backup-restore-evidence",
+        "ha-dr-evidence",
+        "monitoring-evidence",
+        "monitoring-threshold-snapshot-passed",
+        "monitoring-threshold-reviewed",
+        "security-evidence",
+        "iam-rbac-evidence"
+    )
+    return @($ids | ForEach-Object {
+        [ordered]@{
+            id = $_
+            name = $_
+            status = "PASS"
+            passed = $true
+            detail = "verified"
+            evidenceRef = "self-test"
+        }
+    })
+}
+
+function New-PassedOperationsHandoffPackageSummary([int] $CheckCount) {
+    return [ordered]@{
+        passedCount = $CheckCount
+        failureCount = 0
+        plannedCount = 0
+        checkCount = $CheckCount
+        operationsReadinessSnapshotResult = "ready"
+        operationsConvergenceSnapshotResult = "ready"
+        operationsConvergenceFinalizerFailedCount = 0
+        operationsConvergenceFinalizerGapCount = 0
+        operationsConvergenceKubernetesReportSyncReady = $true
+        operationsConvergenceKubernetesReportSyncSourceReportResult = "ready"
+        dataFlowStoragePlanSnapshotResult = "passed"
+        dataFlowStorageTransitionRunbookSnapshotResult = "passed"
+        secretRotationSnapshotResult = "passed"
+        commercialIntegrationSnapshotResult = "passed"
+        commercialApprovalSnapshotResult = "passed"
+        enterpriseAuthSmokeSnapshotResult = "scope-out"
+        monitoringThresholdSnapshotResult = "passed"
+    }
+}
+
 function New-PassedStorageExpansionFinalize(
     [object] $FailedCount = 0,
     [bool] $SkipRbacGap = $false
@@ -593,6 +821,7 @@ $staleOperationsHandoffPackageRoot = Join-Path $resolvedOutputDirectory "stale-o
 $badConvergenceOperationsHandoffPackageRoot = Join-Path $resolvedOutputDirectory "bad-convergence-operations-handoff-package-source"
 $stringBoolOperationsHandoffPackageRoot = Join-Path $resolvedOutputDirectory "string-bool-operations-handoff-package-source"
 $missingCountOperationsHandoffPackageRoot = Join-Path $resolvedOutputDirectory "missing-count-operations-handoff-package-source"
+$weakTargetOperationsHandoffPackageRoot = Join-Path $resolvedOutputDirectory "weak-target-operations-handoff-package-source"
 
 $storageSource = Join-Path $sourceRoot "storage-expansion"
 $haDrSource = Join-Path $sourceRoot "ha-dr-readiness"
@@ -1009,29 +1238,16 @@ Write-JsonEvidence (Join-Path $commercialApprovalSource "latest-commercial-appro
 Write-TextEvidence (Join-Path $commercialApprovalSource "latest-commercial-approval-evidence.md") "# Commercial approval"
 Write-JsonEvidence (Join-Path $enterpriseAuthSource "latest-enterprise-auth-smoke.json") (New-ScopeOutEnterpriseAuthEvidence)
 Write-TextEvidence (Join-Path $enterpriseAuthSource "latest-enterprise-auth-smoke.md") "# Enterprise auth smoke"
+$passedOperationsHandoffPackageChecks = New-PassedOperationsHandoffPackageChecks
 Write-JsonEvidence (Join-Path $operationsHandoffPackageSource "latest-operations-handoff-package.json") @{
     formatVersion = "osmu.operations-handoff-package.v1"
     result = "passed"
     operationsSnapshots = (New-PassedOperationsHandoffPackageSnapshots)
-    confirmations = [ordered]@{
-        noSecretValues = $true
-        runbookReviewed = $true
-        troubleshootingReviewed = $true
-        rollbackReviewed = $true
-        supportEscalationReviewed = $true
-        knownGapsAccepted = $true
-        operationsReadinessSnapshotReviewed = $true
-        operationsConvergenceSnapshotReviewed = $true
-        dataFlowStoragePlanReviewed = $true
-        dataFlowStorageTransitionRunbookReviewed = $true
-        secretRotationSnapshotReviewed = $true
-        commercialIntegrationSnapshotReviewed = $true
-        commercialApprovalSnapshotReviewed = $true
-        enterpriseAuthSmokeSnapshotReviewed = $true
-        monitoringThresholdReviewed = $true
-        requireProductionEvidence = $true
-        requireOperationsSnapshotEvidence = $true
-    }
+    evidenceRefs = (New-PassedOperationsHandoffPackageEvidenceRefs)
+    targetEvidenceSnapshots = (New-PassedOperationsHandoffPackageTargetSnapshots)
+    confirmations = (New-PassedOperationsHandoffPackageConfirmations)
+    summary = (New-PassedOperationsHandoffPackageSummary -CheckCount $passedOperationsHandoffPackageChecks.Count)
+    checks = $passedOperationsHandoffPackageChecks
 }
 Write-TextEvidence (Join-Path $operationsHandoffPackageSource "latest-operations-handoff-package.md") "# Operations handoff package"
 Write-JsonEvidence (Join-Path $dataFlowStorageTransitionRunbookSource "latest-data-flow-storage-transition-runbook-evidence.json") @{
@@ -1249,7 +1465,7 @@ Assert-True ($promotedOperationsHandoffPackage.confirmations.commercialApprovalS
 Assert-True ($promotedOperationsHandoffPackage.confirmations.enterpriseAuthSmokeSnapshotReviewed) "Promoted operations handoff package should preserve enterprise auth smoke snapshot review confirmation."
 $operationsHandoffPackageEntry = @($report.entries | Where-Object { $_.group -eq "operations-handoff-package" -and $_.fileName -eq "latest-operations-handoff-package.json" })
 Assert-True ($operationsHandoffPackageEntry.Count -eq 1) "Operations handoff package import entry missing."
-Assert-True (([string] $operationsHandoffPackageEntry[0].detail).Contains("requiredConfirmations=17") -and ([string] $operationsHandoffPackageEntry[0].detail).Contains("sourceReportResult=ready")) "Operations handoff package import entry should include required confirmation and strict snapshot validation detail."
+Assert-True (([string] $operationsHandoffPackageEntry[0].detail).Contains("requiredConfirmations=17") -and ([string] $operationsHandoffPackageEntry[0].detail).Contains("sourceReportResult=ready") -and ([string] $operationsHandoffPackageEntry[0].detail).Contains("targetSnapshots=7/7")) "Operations handoff package import entry should include required confirmation, strict snapshot validation, and target snapshot validation detail."
 $promotedDataFlowRunbook = Get-Content -Raw -LiteralPath (Join-Path $promotedRoot "latest-data-flow-storage-transition-runbook-evidence.json") | ConvertFrom-Json
 Assert-True ($promotedDataFlowRunbook.result -eq "passed") "Promoted data-flow storage transition runbook evidence should preserve result=passed."
 Assert-True ($promotedDataFlowRunbook.dataFlowStoragePlanSnapshot.result -eq "passed") "Promoted data-flow storage transition runbook evidence should preserve passed storage plan snapshot."
@@ -2806,6 +3022,42 @@ Assert-True (-not (Test-Path -LiteralPath (Join-Path $missingCountOperationsHand
 $missingCountOperationsHandoffPackageEntry = @($missingCountOperationsHandoffPackageReport.entries | Where-Object { $_.group -eq "operations-handoff-package" -and $_.fileName -eq "latest-operations-handoff-package.json" })
 Assert-True ($missingCountOperationsHandoffPackageEntry.Count -eq 1) "Missing-count handoff package failed entry missing."
 Assert-True (([string] $missingCountOperationsHandoffPackageEntry[0].detail).Contains("finalizerGapCount=<missing>")) "Missing-count handoff package report should describe missing finalizer gap count."
+
+$weakTargetOperationsHandoffChecks = New-PassedOperationsHandoffPackageChecks
+$weakTargetOperationsHandoffSnapshots = New-PassedOperationsHandoffPackageTargetSnapshots
+$weakTargetOperationsHandoffSnapshots["commercialApproval"]["failureCount"] = 1
+Write-JsonEvidence (Join-Path $weakTargetOperationsHandoffPackageRoot "latest-operations-handoff-package.json") @{
+    formatVersion = "osmu.operations-handoff-package.v1"
+    result = "passed"
+    operationsSnapshots = (New-PassedOperationsHandoffPackageSnapshots)
+    evidenceRefs = (New-PassedOperationsHandoffPackageEvidenceRefs)
+    targetEvidenceSnapshots = $weakTargetOperationsHandoffSnapshots
+    confirmations = (New-PassedOperationsHandoffPackageConfirmations)
+    summary = (New-PassedOperationsHandoffPackageSummary -CheckCount $weakTargetOperationsHandoffChecks.Count)
+    checks = $weakTargetOperationsHandoffChecks
+}
+$weakTargetOperationsHandoffPackageOutput = Join-Path $resolvedOutputDirectory "weak-target-operations-handoff-package-promoted"
+$weakTargetOperationsHandoffPackageJson = Join-Path $resolvedOutputDirectory "weak-target-operations-handoff-package-import.json"
+$weakTargetOperationsHandoffPackageMarkdown = Join-Path $resolvedOutputDirectory "weak-target-operations-handoff-package-import.md"
+$previousErrorActionPreference = $ErrorActionPreference
+$ErrorActionPreference = "Continue"
+try {
+    $weakTargetOperationsHandoffPackageOutputLines = & powershell -NoProfile -ExecutionPolicy Bypass -File $importScript `
+        -OperationsHandoffPackageArtifactPath $weakTargetOperationsHandoffPackageRoot `
+        -OutputDirectory $weakTargetOperationsHandoffPackageOutput `
+        -JsonOutputPath $weakTargetOperationsHandoffPackageJson `
+        -MarkdownOutputPath $weakTargetOperationsHandoffPackageMarkdown 2>&1
+    $weakTargetOperationsHandoffPackageExitCode = $LASTEXITCODE
+}
+finally {
+    $ErrorActionPreference = $previousErrorActionPreference
+}
+Assert-True ($weakTargetOperationsHandoffPackageExitCode -ne 0) "Operations handoff package with weak target snapshot should fail import."
+Assert-True (Test-Path -LiteralPath $weakTargetOperationsHandoffPackageJson) "Weak-target handoff package import report should still be written."
+$weakTargetOperationsHandoffPackageReport = Get-Content -Raw -LiteralPath $weakTargetOperationsHandoffPackageJson | ConvertFrom-Json
+Assert-True ($weakTargetOperationsHandoffPackageReport.result -eq "failed") "Weak-target handoff package import report should be failed."
+Assert-True (-not (Test-Path -LiteralPath (Join-Path $weakTargetOperationsHandoffPackageOutput "latest-operations-handoff-package.json"))) "Weak-target handoff package must not be promoted."
+Assert-True (($weakTargetOperationsHandoffPackageReport.entries | ConvertTo-Json -Depth 8).Contains("targetEvidenceSnapshots.commercialApproval.failureCount=1")) "Weak-target handoff package report should describe failing commercial approval target snapshot."
 
 Write-JsonEvidence (Join-Path $directDataFlowStoragePlanSource "latest-data-flow-storage-plan.json") @{
     formatVersion = "osmu.data-flow-storage-plan.v1"
