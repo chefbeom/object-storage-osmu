@@ -653,12 +653,21 @@
         <small>
           {{ storageBackendTelemetryEvidence.environmentName || 'unknown env' }} /
           {{ storageBackendTelemetryEvidence.targetCluster || 'unknown cluster' }} /
+          operator {{ storageBackendTelemetryEvidence.operatorName || 'unknown' }} /
+          source {{ storageBackendTelemetryEvidence.sourceMode || 'unknown' }} /
+          alias {{ storageBackendTelemetryEvidence.minioAlias || 'unknown' }} /
           pools {{ storageBackendTelemetryEvidence.poolCount || 0 }} /
           servers {{ storageBackendTelemetryEvidence.serverCount || 0 }} /
+          online {{ storageBackendTelemetryEvidence.onlineServerCount || 0 }} /
           offline {{ storageBackendTelemetryEvidence.offlineServerCount || 0 }} /
           drives {{ storageBackendTelemetryEvidence.driveCount || 0 }} /
           used {{ formatBytes(storageBackendTelemetryEvidence.usedBytes || 0) }} /
-          total {{ formatBytes(storageBackendTelemetryEvidence.totalBytes || 0) }}
+          free {{ formatBytes(storageBackendTelemetryEvidence.freeBytes || 0) }} /
+          total {{ formatBytes(storageBackendTelemetryEvidence.totalBytes || 0) }} /
+          capacity {{ storageBackendTelemetryEvidence.capacityKnown ? 'known' : 'unknown' }}
+        </small>
+        <small v-if="storageBackendTelemetryEvidence.evidenceRef">
+          evidence {{ storageBackendTelemetryEvidence.evidenceRef }}
         </small>
         <small v-if="storageBackendTelemetryEvidence.adminInfoJsonSha256">
           admin info sha256 {{ storageBackendTelemetryEvidence.adminInfoJsonSha256 }}
