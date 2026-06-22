@@ -387,7 +387,7 @@ $requirePaymentCardProfile = [bool] ($RequireAllImplementedAdapters -or $Require
 $requirePaymentBankProfile = [bool] ($RequireAllImplementedAdapters -or $RequirePaymentBankProfile)
 $requirePaymentTaxProfile = [bool] ($RequireAllImplementedAdapters -or $RequirePaymentTaxProfile)
 $requirePaymentErpProfile = [bool] ($RequireAllImplementedAdapters -or $RequirePaymentErpProfile)
-$requirePaymentProviderAdapterReadinessReview = [bool] ($RequireAllImplementedAdapters -or $RequirePaymentProviderAdapterReadinessReview)
+$requirePaymentProviderAdapterReadinessReview = [bool] $RequireAllImplementedAdapters -or [bool] $RequirePaymentProviderAdapterReadinessReview
 
 $integrations = @(
     (New-Integration "notification-webhook" "Generic notification webhook delivery" $requireNotificationWebhook ([bool] $VerifiedNotificationWebhook) $NotificationWebhookEvidenceRef "Chargeback notification outbox adapter-send or retry worker path."),
@@ -526,7 +526,7 @@ $report = New-Object System.Collections.Specialized.OrderedDictionary
     paymentProviderAdapterReadinessReviewed = [bool] $ConfirmPaymentProviderAdapterReadinessReviewed
     adapterRetryWorkerRun = [bool] $ConfirmAdapterRetryWorkerRun
     requireAllImplementedAdapters = [bool] $RequireAllImplementedAdapters
-    requirePaymentProviderAdapterReadinessReview = $requirePaymentProviderAdapterReadinessReview
+    requirePaymentProviderAdapterReadinessReview = [bool] $requirePaymentProviderAdapterReadinessReview
 })
 [void] $report.Add("integrations", [object] $integrationArray)
 [void] $report.Add("paymentProviderAdapterReadiness", [ordered]@{

@@ -175,6 +175,375 @@ function Test-EvidenceJson([string] $Path, [string] $ExpectedProperty, [string] 
     }
 }
 
+function Test-SecretRotationEvidenceJson([string] $Path) {
+    try {
+        $raw = Get-Content -Raw -LiteralPath $Path
+        $json = $raw | ConvertFrom-Json
+    }
+    catch {
+        return [pscustomobject]@{
+            passed = $false
+            detail = "invalid JSON: $($_.Exception.Message)"
+        }
+    }
+
+    $formatVersion = [string] (Get-JsonProperty $json "formatVersion")
+    if ($formatVersion -ne "osmu.secret-rotation-evidence.v1") {
+        return [pscustomobject]@{
+            passed = $false
+            detail = "formatVersion=$formatVersion expected=osmu.secret-rotation-evidence.v1"
+        }
+    }
+
+    $result = [string] (Get-JsonProperty $json "result")
+    if ($result -ne "passed") {
+        return [pscustomobject]@{
+            passed = $false
+            detail = "result=$result expected=passed"
+        }
+    }
+
+    $patterns = @(
+        '(?i)"(password|passwd|secretValue|secret_value|token|credential|apiKey|api_key|accessKey|access_key|privateKey|private_key|kubeconfig|databasePassword|database_password|minioSecret|minio_secret|ldapPassword|ldap_password|smtpPass|smtp_pass|webhookSecret|webhook_secret)"\s*:',
+        '(?i)\b(password|passwd|secret|token|credential|api[_-]?key|access[_-]?key|private[_-]?key|smtp[_-]?pass|webhook[_-]?secret)\s*=\s*\S+',
+        '(?i)\bBearer\s+[A-Za-z0-9._~+/=-]{12,}',
+        '-----BEGIN [A-Z ]*PRIVATE KEY-----'
+    )
+    foreach ($pattern in $patterns) {
+        if ($raw -match $pattern) {
+            return [pscustomobject]@{
+                passed = $false
+                detail = "secret rotation evidence contains credential-shaped content"
+            }
+        }
+    }
+
+    $summary = Get-JsonProperty $json "summary"
+    $rotatedCount = Get-RequiredJsonInt $summary "rotatedCount"
+    $coreRotatedCount = Get-RequiredJsonInt $summary "coreRotatedCount"
+    $coreRequiredCount = Get-RequiredJsonInt $summary "coreRequiredCount"
+    $failureCount = Get-RequiredJsonInt $summary "failureCount"
+    $plannedCount = Get-RequiredJsonInt $summary "plannedCount"
+    foreach ($countResult in @(
+        @{ name = "rotatedCount"; value = $rotatedCount },
+        @{ name = "coreRotatedCount"; value = $coreRotatedCount },
+        @{ name = "coreRequiredCount"; value = $coreRequiredCount },
+        @{ name = "failureCount"; value = $failureCount },
+        @{ name = "plannedCount"; value = $plannedCount }
+    )) {
+        $name = [string] $countResult["name"]
+        $value = $countResult["value"]
+        if (-not $value.valid) {
+            return [pscustomobject]@{
+                passed = $false
+                detail = "$name=$($value.raw)(valid=False) expected integer"
+            }
+        }
+    }
+
+    if ($coreRequiredCount.value -le 0 -or $coreRotatedCount.value -ne $coreRequiredCount.value -or $rotatedCount.value -lt $coreRequiredCount.value -or $failureCount.value -ne 0 -or $plannedCount.value -ne 0) {
+        return [pscustomobject]@{
+            passed = $false
+            detail = "core rotation incomplete rotated=$($rotatedCount.value) coreRotated=$($coreRotatedCount.value)/$($coreRequiredCount.value) failures=$($failureCount.value) planned=$($plannedCount.value)"
+        }
+    }
+
+    $confirmations = Get-JsonProperty $json "confirmations"
+    foreach ($confirmationName in @("noSecretValues", "workloadRestart", "smokePassed", "artifactLeakReview")) {
+        $confirmation = Get-RequiredJsonBool $confirmations $confirmationName
+        if (-not $confirmation.valid -or -not $confirmation.value) {
+            return [pscustomobject]@{
+                passed = $false
+                detail = "confirmation $confirmationName=$($confirmation.raw) expected boolean true"
+            }
+        }
+    }
+
+    return [pscustomobject]@{
+        passed = $true
+        detail = "formatVersion=$formatVersion result=$result coreRotated=$($coreRotatedCount.value)/$($coreRequiredCount.value) failures=$($failureCount.value) planned=$($plannedCount.value)"
+    }
+}
+
+function Test-CommercialIntegrationEvidenceJson([string] $Path) {
+    try {
+        $raw = Get-Content -Raw -LiteralPath $Path
+        $json = $raw | ConvertFrom-Json
+    }
+    catch {
+        return [pscustomobject]@{
+            passed = $false
+            detail = "invalid JSON: $($_.Exception.Message)"
+        }
+    }
+
+    $formatVersion = [string] (Get-JsonProperty $json "formatVersion")
+    if ($formatVersion -ne "osmu.commercial-integration-evidence.v1") {
+        return [pscustomobject]@{
+            passed = $false
+            detail = "formatVersion=$formatVersion expected=osmu.commercial-integration-evidence.v1"
+        }
+    }
+
+    $result = [string] (Get-JsonProperty $json "result")
+    if ($result -ne "passed") {
+        return [pscustomobject]@{
+            passed = $false
+            detail = "result=$result expected=passed"
+        }
+    }
+
+    $patterns = @(
+        '(?i)"(rawProviderResponse|raw_provider_response|providerResponse|provider_response|responseBody|response_body|responseHeaders|response_headers|webhookUrl|webhook_url|endpointUrl|endpoint_url|callbackUrl|callback_url|customerPaymentData|customer_payment_data|customerEmail|customer_email|customerName|customer_name|cardNumber|card_number|pan|bankAccount|bank_account|routingNumber|routing_number|taxId|tax_id|paymentTargetAccount|payment_target_account|password|passwd|secret|token|credential|apiKey|api_key|accessKey|access_key|privateKey|private_key)"\s*:',
+        '(?i)\b(password|passwd|secret|token|credential|api[_-]?key|access[_-]?key|private[_-]?key|webhook[_-]?secret|smtp[_-]?pass)\s*=\s*\S+',
+        '(?i)\bBearer\s+[A-Za-z0-9._~+/=-]{12,}',
+        '-----BEGIN [A-Z ]*PRIVATE KEY-----'
+    )
+    foreach ($pattern in $patterns) {
+        if ($raw -match $pattern) {
+            return [pscustomobject]@{
+                passed = $false
+                detail = "commercial integration evidence contains raw provider/customer/payment or credential-shaped content"
+            }
+        }
+    }
+
+    $summary = Get-JsonProperty $json "summary"
+    $integrationCount = Get-RequiredJsonInt $summary "integrationCount"
+    $verifiedCount = Get-RequiredJsonInt $summary "verifiedCount"
+    $requiredCount = Get-RequiredJsonInt $summary "requiredCount"
+    $requiredVerifiedCount = Get-RequiredJsonInt $summary "requiredVerifiedCount"
+    $webhookReadyProfileCount = Get-RequiredJsonInt $summary "paymentProviderAdapterWebhookReadyProfileCount"
+    $nativeReadyProfileCount = Get-RequiredJsonInt $summary "paymentProviderAdapterNativeReadyProfileCount"
+    $failureCount = Get-RequiredJsonInt $summary "failureCount"
+    $plannedCount = Get-RequiredJsonInt $summary "plannedCount"
+    foreach ($countResult in @(
+        @{ name = "integrationCount"; value = $integrationCount },
+        @{ name = "verifiedCount"; value = $verifiedCount },
+        @{ name = "requiredCount"; value = $requiredCount },
+        @{ name = "requiredVerifiedCount"; value = $requiredVerifiedCount },
+        @{ name = "paymentProviderAdapterWebhookReadyProfileCount"; value = $webhookReadyProfileCount },
+        @{ name = "paymentProviderAdapterNativeReadyProfileCount"; value = $nativeReadyProfileCount },
+        @{ name = "failureCount"; value = $failureCount },
+        @{ name = "plannedCount"; value = $plannedCount }
+    )) {
+        $name = [string] $countResult["name"]
+        $value = $countResult["value"]
+        if (-not $value.valid) {
+            return [pscustomobject]@{
+                passed = $false
+                detail = "$name=$($value.raw)(valid=False) expected integer"
+            }
+        }
+    }
+
+    if ($requiredCount.value -le 0 -or $requiredVerifiedCount.value -ne $requiredCount.value -or $verifiedCount.value -lt $requiredCount.value -or $failureCount.value -ne 0 -or $plannedCount.value -ne 0) {
+        return [pscustomobject]@{
+            passed = $false
+            detail = "required integration coverage incomplete requiredVerified=$($requiredVerifiedCount.value)/$($requiredCount.value) verified=$($verifiedCount.value) failures=$($failureCount.value) planned=$($plannedCount.value)"
+        }
+    }
+
+    $confirmations = Get-JsonProperty $json "confirmations"
+    foreach ($confirmationName in @("noSecretValues", "noRawProviderResponses", "payloadSizeCaps", "privateNetworkBlocking", "hmacSignatureHeaders", "paymentProviderAdapterReadinessReviewed", "adapterRetryWorkerRun", "requireAllImplementedAdapters", "requirePaymentProviderAdapterReadinessReview")) {
+        $confirmation = Get-RequiredJsonBool $confirmations $confirmationName
+        if (-not $confirmation.valid -or -not $confirmation.value) {
+            return [pscustomobject]@{
+                passed = $false
+                detail = "confirmation $confirmationName=$($confirmation.raw) expected boolean true"
+            }
+        }
+    }
+
+    $readiness = Get-JsonProperty $json "paymentProviderAdapterReadiness"
+    $readinessReviewed = Get-RequiredJsonBool $readiness "reviewed"
+    if (-not $readinessReviewed.valid -or -not $readinessReviewed.value) {
+        return [pscustomobject]@{
+            passed = $false
+            detail = "paymentProviderAdapterReadiness.reviewed=$($readinessReviewed.raw) expected boolean true"
+        }
+    }
+    $snapshot = Get-JsonProperty $readiness "snapshot"
+    foreach ($snapshotBoolName in @("provided", "parsed", "validMode", "countsValid", "booleansValid")) {
+        $snapshotBool = Get-RequiredJsonBool $snapshot $snapshotBoolName
+        if (-not $snapshotBool.valid -or -not $snapshotBool.value) {
+            return [pscustomobject]@{
+                passed = $false
+                detail = "paymentProviderAdapterReadiness.snapshot.$snapshotBoolName=$($snapshotBool.raw) expected boolean true"
+            }
+        }
+    }
+    $snapshotProfileCount = Get-RequiredJsonInt $snapshot "profileCount"
+    $snapshotWebhookReadyProfileCount = Get-RequiredJsonInt $snapshot "webhookReadyProfileCount"
+    $snapshotNativeReadyProfileCount = Get-RequiredJsonInt $snapshot "nativeApiReadyProfileCount"
+    foreach ($countResult in @(
+        @{ name = "paymentProviderAdapterReadiness.snapshot.profileCount"; value = $snapshotProfileCount },
+        @{ name = "paymentProviderAdapterReadiness.snapshot.webhookReadyProfileCount"; value = $snapshotWebhookReadyProfileCount },
+        @{ name = "paymentProviderAdapterReadiness.snapshot.nativeApiReadyProfileCount"; value = $snapshotNativeReadyProfileCount }
+    )) {
+        $name = [string] $countResult["name"]
+        $value = $countResult["value"]
+        if (-not $value.valid) {
+            return [pscustomobject]@{
+                passed = $false
+                detail = "$name=$($value.raw)(valid=False) expected integer"
+            }
+        }
+    }
+    if ($snapshotProfileCount.value -le 0 -or $snapshotWebhookReadyProfileCount.value -le 0 -or $webhookReadyProfileCount.value -ne $snapshotWebhookReadyProfileCount.value -or $nativeReadyProfileCount.value -ne $snapshotNativeReadyProfileCount.value) {
+        return [pscustomobject]@{
+            passed = $false
+            detail = "payment provider adapter readiness incomplete profiles=$($snapshotProfileCount.value) webhookReady=$($snapshotWebhookReadyProfileCount.value) nativeReady=$($snapshotNativeReadyProfileCount.value)"
+        }
+    }
+
+    return [pscustomobject]@{
+        passed = $true
+        detail = "formatVersion=$formatVersion result=$result requiredVerified=$($requiredVerifiedCount.value)/$($requiredCount.value) webhookReadyProfiles=$($webhookReadyProfileCount.value) nativeReadyProfiles=$($nativeReadyProfileCount.value) failures=$($failureCount.value)"
+    }
+}
+
+function Test-CommercialApprovalEvidenceJson([string] $Path) {
+    try {
+        $raw = Get-Content -Raw -LiteralPath $Path
+        $json = $raw | ConvertFrom-Json
+    }
+    catch {
+        return [pscustomobject]@{
+            passed = $false
+            detail = "invalid JSON: $($_.Exception.Message)"
+        }
+    }
+
+    $formatVersion = [string] (Get-JsonProperty $json "formatVersion")
+    if ($formatVersion -ne "osmu.commercial-approval-evidence.v1") {
+        return [pscustomobject]@{
+            passed = $false
+            detail = "formatVersion=$formatVersion expected=osmu.commercial-approval-evidence.v1"
+        }
+    }
+
+    $result = [string] (Get-JsonProperty $json "result")
+    if ($result -ne "passed") {
+        return [pscustomobject]@{
+            passed = $false
+            detail = "result=$result expected=passed"
+        }
+    }
+
+    $patterns = @(
+        '(?i)"(rawContractText|raw_contract_text|contractText|contract_text|legalTerms|legal_terms|termsText|terms_text|customerData|customer_data|customerEmail|customer_email|customerName|customer_name|licenseKey|license_key|licenseText|license_text|rawPriceTable|raw_price_table|paymentCard|payment_card|cardNumber|card_number|bankAccount|bank_account|password|passwd|secret|token|credential|apiKey|api_key|accessKey|access_key|privateKey|private_key)"\s*:',
+        '(?i)\b(password|passwd|secret|token|credential|api[_-]?key|access[_-]?key|private[_-]?key|license[_-]?key)\s*=\s*\S+',
+        '(?i)\bBearer\s+[A-Za-z0-9._~+/=-]{12,}',
+        '-----BEGIN [A-Z ]*PRIVATE KEY-----'
+    )
+    foreach ($pattern in $patterns) {
+        if ($raw -match $pattern) {
+            return [pscustomobject]@{
+                passed = $false
+                detail = "commercial approval evidence contains raw contract/customer/payment/price or credential-shaped content"
+            }
+        }
+    }
+
+    $confirmations = Get-JsonProperty $json "confirmations"
+    foreach ($confirmationName in @("pricingApproved", "termsApproved", "supportSlaApproved", "licenseApproved", "legalApproved", "pricingPolicyProposalCommercialApproval", "requirePricingPolicyProposalApprovalSnapshot", "noSecretValues")) {
+        $confirmation = Get-RequiredJsonBool $confirmations $confirmationName
+        if (-not $confirmation.valid -or -not $confirmation.value) {
+            return [pscustomobject]@{
+                passed = $false
+                detail = "confirmation $confirmationName=$($confirmation.raw) expected boolean true"
+            }
+        }
+    }
+
+    $summary = Get-JsonProperty $json "summary"
+    $failureCount = Get-RequiredJsonInt $summary "failureCount"
+    $checkCount = Get-RequiredJsonInt $summary "checkCount"
+    $commercialApprovedCount = Get-RequiredJsonInt $summary "pricingPolicyProposalCommercialApprovedCount"
+    $approvedPriceListCount = Get-RequiredJsonInt $summary "pricingPolicyProposalApprovedPriceListCount"
+    foreach ($countResult in @(
+        @{ name = "failureCount"; value = $failureCount },
+        @{ name = "checkCount"; value = $checkCount },
+        @{ name = "pricingPolicyProposalCommercialApprovedCount"; value = $commercialApprovedCount },
+        @{ name = "pricingPolicyProposalApprovedPriceListCount"; value = $approvedPriceListCount }
+    )) {
+        $name = [string] $countResult["name"]
+        $value = $countResult["value"]
+        if (-not $value.valid) {
+            return [pscustomobject]@{
+                passed = $false
+                detail = "$name=$($value.raw)(valid=False) expected integer"
+            }
+        }
+    }
+    $proposalCommercialApproved = Get-RequiredJsonBool $summary "pricingPolicyProposalCommercialApproved"
+    $approvalFlagsValid = Get-RequiredJsonBool $summary "pricingPolicyProposalApprovalFlagsValid"
+    foreach ($boolResult in @(
+        @{ name = "pricingPolicyProposalCommercialApproved"; value = $proposalCommercialApproved },
+        @{ name = "pricingPolicyProposalApprovalFlagsValid"; value = $approvalFlagsValid }
+    )) {
+        $name = [string] $boolResult["name"]
+        $value = $boolResult["value"]
+        if (-not $value.valid -or -not $value.value) {
+            return [pscustomobject]@{
+                passed = $false
+                detail = "$name=$($value.raw) expected boolean true"
+            }
+        }
+    }
+    if ($failureCount.value -ne 0 -or $checkCount.value -le 0 -or $commercialApprovedCount.value -le 0 -or $approvedPriceListCount.value -le 0) {
+        return [pscustomobject]@{
+            passed = $false
+            detail = "commercial approval incomplete commercialApproved=$($commercialApprovedCount.value) approvedPriceList=$($approvedPriceListCount.value) failures=$($failureCount.value) checks=$($checkCount.value)"
+        }
+    }
+
+    $approval = Get-JsonProperty $json "pricingPolicyProposalApproval"
+    $reviewed = Get-RequiredJsonBool $approval "reviewed"
+    if (-not $reviewed.valid -or -not $reviewed.value) {
+        return [pscustomobject]@{
+            passed = $false
+            detail = "pricingPolicyProposalApproval.reviewed=$($reviewed.raw) expected boolean true"
+        }
+    }
+    $snapshot = Get-JsonProperty $approval "snapshot"
+    foreach ($snapshotBoolName in @("provided", "parsed", "approvalFlagsValid")) {
+        $snapshotBool = Get-RequiredJsonBool $snapshot $snapshotBoolName
+        if (-not $snapshotBool.valid -or -not $snapshotBool.value) {
+            return [pscustomobject]@{
+                passed = $false
+                detail = "pricingPolicyProposalApproval.snapshot.$snapshotBoolName=$($snapshotBool.raw) expected boolean true"
+            }
+        }
+    }
+    foreach ($countResult in @(
+        @{ name = "pricingPolicyProposalApproval.snapshot.proposalCount"; value = Get-RequiredJsonInt $snapshot "proposalCount" },
+        @{ name = "pricingPolicyProposalApproval.snapshot.approvedPriceListCount"; value = Get-RequiredJsonInt $snapshot "approvedPriceListCount" },
+        @{ name = "pricingPolicyProposalApproval.snapshot.commercialApprovedCount"; value = Get-RequiredJsonInt $snapshot "commercialApprovedCount" }
+    )) {
+        $name = [string] $countResult["name"]
+        $value = $countResult["value"]
+        if (-not $value.valid) {
+            return [pscustomobject]@{
+                passed = $false
+                detail = "$name=$($value.raw)(valid=False) expected integer"
+            }
+        }
+        if ($value.value -le 0) {
+            return [pscustomobject]@{
+                passed = $false
+                detail = "$name=$($value.value) expected >0"
+            }
+        }
+    }
+
+    return [pscustomobject]@{
+        passed = $true
+        detail = "formatVersion=$formatVersion result=$result commercialApproved=$($commercialApprovedCount.value) approvedPriceList=$($approvedPriceListCount.value) failures=$($failureCount.value)"
+    }
+}
+
 function Test-EnterpriseAuthEvidenceJson([string] $Path) {
     try {
         $json = Get-Content -Raw -LiteralPath $Path | ConvertFrom-Json
@@ -678,6 +1047,30 @@ function Import-EvidenceFile(
         }
         [void] $validationDetails.Add($validation.detail)
     }
+    elseif ($ValidationKind -eq "secret-rotation") {
+        $validation = Test-SecretRotationEvidenceJson $sourcePath
+        if (-not $validation.passed) {
+            Add-Entry $Group $FileName "failed" $validation.detail $sourcePath ""
+            return
+        }
+        [void] $validationDetails.Add($validation.detail)
+    }
+    elseif ($ValidationKind -eq "commercial-integration") {
+        $validation = Test-CommercialIntegrationEvidenceJson $sourcePath
+        if (-not $validation.passed) {
+            Add-Entry $Group $FileName "failed" $validation.detail $sourcePath ""
+            return
+        }
+        [void] $validationDetails.Add($validation.detail)
+    }
+    elseif ($ValidationKind -eq "commercial-approval") {
+        $validation = Test-CommercialApprovalEvidenceJson $sourcePath
+        if (-not $validation.passed) {
+            Add-Entry $Group $FileName "failed" $validation.detail $sourcePath ""
+            return
+        }
+        [void] $validationDetails.Add($validation.detail)
+    }
     elseif ($ValidationKind -eq "enterprise-auth") {
         $validation = Test-EnterpriseAuthEvidenceJson $sourcePath
         if (-not $validation.passed) {
@@ -734,13 +1127,13 @@ Import-EvidenceFile "storage-backend-telemetry" $StorageBackendTelemetryArtifact
 Import-EvidenceFile "monitoring-threshold" $MonitoringThresholdArtifactPath "latest-monitoring-threshold-evidence.json" $true "" "" "monitoring-threshold"
 Import-EvidenceFile "monitoring-threshold" $MonitoringThresholdArtifactPath "latest-monitoring-threshold-evidence.md" $false
 
-Import-EvidenceFile "secret-rotation" $SecretRotationArtifactPath "latest-secret-rotation-evidence.json" $true "result" "passed"
+Import-EvidenceFile "secret-rotation" $SecretRotationArtifactPath "latest-secret-rotation-evidence.json" $true "" "" "secret-rotation"
 Import-EvidenceFile "secret-rotation" $SecretRotationArtifactPath "latest-secret-rotation-evidence.md" $false
 
-Import-EvidenceFile "commercial-integration" $CommercialIntegrationArtifactPath "latest-commercial-integration-evidence.json" $true "result" "passed"
+Import-EvidenceFile "commercial-integration" $CommercialIntegrationArtifactPath "latest-commercial-integration-evidence.json" $true "" "" "commercial-integration"
 Import-EvidenceFile "commercial-integration" $CommercialIntegrationArtifactPath "latest-commercial-integration-evidence.md" $false
 
-Import-EvidenceFile "commercial-approval" $CommercialApprovalArtifactPath "latest-commercial-approval-evidence.json" $true "result" "passed"
+Import-EvidenceFile "commercial-approval" $CommercialApprovalArtifactPath "latest-commercial-approval-evidence.json" $true "" "" "commercial-approval"
 Import-EvidenceFile "commercial-approval" $CommercialApprovalArtifactPath "latest-commercial-approval-evidence.md" $false
 
 Import-EvidenceFile "enterprise-auth" $EnterpriseAuthArtifactPath "latest-enterprise-auth-smoke.json" $true "" "" "enterprise-auth"

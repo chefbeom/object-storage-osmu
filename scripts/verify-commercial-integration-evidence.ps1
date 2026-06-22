@@ -147,6 +147,8 @@ Assert-True ($report.confirmations.privateNetworkBlocking) "Expected private net
 Assert-True ($report.confirmations.hmacSignatureHeaders) "Expected HMAC signature confirmation."
 Assert-True ($report.confirmations.paymentProviderAdapterReadinessReviewed) "Expected payment adapter readiness confirmation."
 Assert-True ($report.confirmations.adapterRetryWorkerRun) "Expected adapter retry worker confirmation."
+Assert-True ($report.confirmations.requirePaymentProviderAdapterReadinessReview -is [bool]) "Expected payment adapter readiness requirement to be a JSON boolean."
+Assert-True ($report.confirmations.requirePaymentProviderAdapterReadinessReview) "Expected payment adapter readiness requirement confirmation."
 Assert-True ($report.paymentProviderAdapterReadiness.reviewed) "Expected payment adapter readiness section reviewed."
 Assert-True ($report.paymentProviderAdapterReadiness.snapshot.validMode) "Expected valid payment adapter readiness mode."
 Assert-True (@($report.paymentProviderAdapterReadiness.snapshot.profiles).Count -eq 5) "Expected sanitized payment adapter readiness profiles."

@@ -81,6 +81,9 @@ $unsafeMonitoringThresholdRoot = Join-Path $resolvedOutputDirectory "unsafe-moni
 $stringBoolMonitoringThresholdRoot = Join-Path $resolvedOutputDirectory "string-bool-monitoring-threshold-source"
 $stringCountMonitoringThresholdRoot = Join-Path $resolvedOutputDirectory "string-count-monitoring-threshold-source"
 $missingCountMonitoringThresholdRoot = Join-Path $resolvedOutputDirectory "missing-count-monitoring-threshold-source"
+$weakSecretRotationRoot = Join-Path $resolvedOutputDirectory "weak-secret-rotation-source"
+$weakCommercialIntegrationRoot = Join-Path $resolvedOutputDirectory "weak-commercial-integration-source"
+$weakCommercialApprovalRoot = Join-Path $resolvedOutputDirectory "weak-commercial-approval-source"
 $invalidEnterpriseAuthRoot = Join-Path $resolvedOutputDirectory "invalid-enterprise-auth-source"
 $stringCountEnterpriseAuthRoot = Join-Path $resolvedOutputDirectory "string-count-enterprise-auth-source"
 $staleOperationsHandoffPackageRoot = Join-Path $resolvedOutputDirectory "stale-operations-handoff-package-source"
@@ -178,16 +181,126 @@ Write-TextEvidence (Join-Path $monitoringThresholdSource "latest-monitoring-thre
 Write-JsonEvidence (Join-Path $secretRotationSource "latest-secret-rotation-evidence.json") @{
     formatVersion = "osmu.secret-rotation-evidence.v1"
     result = "passed"
+    confirmations = @{
+        noSecretValues = $true
+        workloadRestart = $true
+        smokePassed = $true
+        artifactLeakReview = $true
+        requireAllCoreSecrets = $false
+    }
+    rotations = @(
+        @{ id = "admin-password"; core = $true; rotated = $true },
+        @{ id = "jwt-signing-secret"; core = $true; rotated = $true },
+        @{ id = "database-credentials"; core = $true; rotated = $true },
+        @{ id = "minio-root-credentials"; core = $true; rotated = $true },
+        @{ id = "tls-certificate"; core = $true; rotated = $true }
+    )
+    summary = @{
+        rotatedCount = 5
+        coreRotatedCount = 5
+        coreRequiredCount = 5
+        failureCount = 0
+        plannedCount = 0
+    }
 }
 Write-TextEvidence (Join-Path $secretRotationSource "latest-secret-rotation-evidence.md") "# Secret rotation"
 Write-JsonEvidence (Join-Path $commercialIntegrationSource "latest-commercial-integration-evidence.json") @{
     formatVersion = "osmu.commercial-integration-evidence.v1"
     result = "passed"
+    confirmations = @{
+        noSecretValues = $true
+        noRawProviderResponses = $true
+        payloadSizeCaps = $true
+        privateNetworkBlocking = $true
+        hmacSignatureHeaders = $true
+        paymentProviderAdapterReadinessReviewed = $true
+        adapterRetryWorkerRun = $true
+        requireAllImplementedAdapters = $true
+        requirePaymentProviderAdapterReadinessReview = $true
+    }
+    paymentProviderAdapterReadiness = @{
+        required = $true
+        reviewed = $true
+        evidenceRef = "payment-adapter-readiness-run-20260620"
+        snapshot = @{
+            provided = $true
+            parsed = $true
+            validMode = $true
+            status = "WEBHOOK_PROFILE_READY"
+            nativeApiSupported = $false
+            nativeApiReady = $false
+            profileCount = 5
+            webhookReadyProfileCount = 5
+            nativeApiReadyProfileCount = 0
+            countsValid = $true
+            booleansValid = $true
+            profiles = @(
+                @{ providerProfile = "GENERIC"; webhookProfileConfigured = $true; nativeApiSupported = $false; nativeApiReady = $false },
+                @{ providerProfile = "CARD"; webhookProfileConfigured = $true; nativeApiSupported = $false; nativeApiReady = $false },
+                @{ providerProfile = "BANK"; webhookProfileConfigured = $true; nativeApiSupported = $false; nativeApiReady = $false },
+                @{ providerProfile = "TAX"; webhookProfileConfigured = $true; nativeApiSupported = $false; nativeApiReady = $false },
+                @{ providerProfile = "ERP"; webhookProfileConfigured = $true; nativeApiSupported = $false; nativeApiReady = $false }
+            )
+        }
+    }
+    summary = @{
+        integrationCount = 8
+        verifiedCount = 8
+        requiredCount = 8
+        requiredVerifiedCount = 8
+        paymentProviderAdapterReadinessReviewed = $true
+        paymentProviderAdapterReadinessStatus = "WEBHOOK_PROFILE_READY"
+        paymentProviderAdapterWebhookReadyProfileCount = 5
+        paymentProviderAdapterNativeReadyProfileCount = 0
+        failureCount = 0
+        plannedCount = 0
+    }
 }
 Write-TextEvidence (Join-Path $commercialIntegrationSource "latest-commercial-integration-evidence.md") "# Commercial integration"
 Write-JsonEvidence (Join-Path $commercialApprovalSource "latest-commercial-approval-evidence.json") @{
     formatVersion = "osmu.commercial-approval-evidence.v1"
     result = "passed"
+    confirmations = @{
+        pricingApproved = $true
+        termsApproved = $true
+        supportSlaApproved = $true
+        licenseApproved = $true
+        legalApproved = $true
+        pricingPolicyProposalCommercialApproval = $true
+        requirePricingPolicyProposalApprovalSnapshot = $true
+        noSecretValues = $true
+    }
+    pricingPolicyProposalApproval = @{
+        required = $true
+        reviewed = $true
+        evidenceRef = "pricing-policy-proposal-commercial-approval-20260620"
+        snapshot = @{
+            provided = $true
+            parsed = $true
+            proposalCount = 2
+            approvedPriceListCount = 1
+            commercialApprovedCount = 1
+            approvalFlagsValid = $true
+            proposals = @(
+                @{
+                    id = 101
+                    status = "PRICE_LIST_APPROVED"
+                    approvedPriceList = $true
+                    commercialApprovalReference = "commercial-approval-board-20260620"
+                    commercialApprovedAt = "2026-06-20T05:10:00Z"
+                }
+            )
+        }
+    }
+    summary = @{
+        passedCount = 13
+        failureCount = 0
+        checkCount = 13
+        pricingPolicyProposalCommercialApproved = $true
+        pricingPolicyProposalCommercialApprovedCount = 1
+        pricingPolicyProposalApprovedPriceListCount = 1
+        pricingPolicyProposalApprovalFlagsValid = $true
+    }
 }
 Write-TextEvidence (Join-Path $commercialApprovalSource "latest-commercial-approval-evidence.md") "# Commercial approval"
 Write-JsonEvidence (Join-Path $enterpriseAuthSource "latest-enterprise-auth-smoke.json") @{
@@ -370,6 +483,15 @@ Assert-True ($promotedMonitoringThreshold.confirmations.noSecretValues) "Promote
 Assert-True ($promotedSecretRotation.result -eq "passed") "Promoted secret rotation evidence should preserve result=passed."
 Assert-True ($promotedCommercialIntegration.result -eq "passed") "Promoted commercial integration evidence should preserve result=passed."
 Assert-True ($promotedCommercialApproval.result -eq "passed") "Promoted commercial approval evidence should preserve result=passed."
+$secretRotationEntry = @($report.entries | Where-Object { $_.group -eq "secret-rotation" -and $_.fileName -eq "latest-secret-rotation-evidence.json" })
+Assert-True ($secretRotationEntry.Count -eq 1) "Secret rotation import entry missing."
+Assert-True (([string] $secretRotationEntry[0].detail).Contains("coreRotated=5/5")) "Secret rotation import entry should include core rotation validation detail."
+$commercialIntegrationEntry = @($report.entries | Where-Object { $_.group -eq "commercial-integration" -and $_.fileName -eq "latest-commercial-integration-evidence.json" })
+Assert-True ($commercialIntegrationEntry.Count -eq 1) "Commercial integration import entry missing."
+Assert-True (([string] $commercialIntegrationEntry[0].detail).Contains("requiredVerified=8/8")) "Commercial integration import entry should include required adapter validation detail."
+$commercialApprovalEntry = @($report.entries | Where-Object { $_.group -eq "commercial-approval" -and $_.fileName -eq "latest-commercial-approval-evidence.json" })
+Assert-True ($commercialApprovalEntry.Count -eq 1) "Commercial approval import entry missing."
+Assert-True (([string] $commercialApprovalEntry[0].detail).Contains("commercialApproved=1")) "Commercial approval import entry should include commercial approval validation detail."
 $promotedEnterpriseAuth = Get-Content -Raw -LiteralPath (Join-Path $promotedRoot "latest-enterprise-auth-smoke.json") | ConvertFrom-Json
 Assert-True ($promotedEnterpriseAuth.result -eq "scope-out") "Promoted enterprise auth scope-out evidence should be preserved."
 $enterpriseAuthImportEntry = @($report.entries | Where-Object { $_.group -eq "enterprise-auth" -and $_.fileName -eq "latest-enterprise-auth-smoke.json" })
@@ -719,6 +841,93 @@ Assert-True (-not (Test-Path -LiteralPath (Join-Path $missingCountMonitoringThre
 $missingCountMonitoringThresholdEntry = @($missingCountMonitoringThresholdReport.entries | Where-Object { $_.group -eq "monitoring-threshold" -and $_.fileName -eq "latest-monitoring-threshold-evidence.json" })
 Assert-True ($missingCountMonitoringThresholdEntry.Count -eq 1) "Missing-count monitoring threshold failed entry missing."
 Assert-True (([string] $missingCountMonitoringThresholdEntry[0].detail).Contains("tuningEvidenceCount=<missing>(valid=False) expected integer")) "Missing-count monitoring threshold report should describe missing typed count."
+
+Write-JsonEvidence (Join-Path $weakSecretRotationRoot "latest-secret-rotation-evidence.json") @{
+    formatVersion = "osmu.secret-rotation-evidence.v1"
+    result = "passed"
+}
+$weakSecretRotationOutput = Join-Path $resolvedOutputDirectory "weak-secret-rotation-promoted"
+$weakSecretRotationJson = Join-Path $resolvedOutputDirectory "weak-secret-rotation-import.json"
+$weakSecretRotationMarkdown = Join-Path $resolvedOutputDirectory "weak-secret-rotation-import.md"
+$previousErrorActionPreference = $ErrorActionPreference
+$ErrorActionPreference = "Continue"
+try {
+    $weakSecretRotationOutputLines = & powershell -NoProfile -ExecutionPolicy Bypass -File $importScript `
+        -SecretRotationArtifactPath $weakSecretRotationRoot `
+        -OutputDirectory $weakSecretRotationOutput `
+        -JsonOutputPath $weakSecretRotationJson `
+        -MarkdownOutputPath $weakSecretRotationMarkdown 2>&1
+    $weakSecretRotationExitCode = $LASTEXITCODE
+}
+finally {
+    $ErrorActionPreference = $previousErrorActionPreference
+}
+Assert-True ($weakSecretRotationExitCode -ne 0) "Secret rotation evidence without typed summary and confirmations should fail import."
+Assert-True (Test-Path -LiteralPath $weakSecretRotationJson) "Weak secret rotation import report should still be written."
+$weakSecretRotationReport = Get-Content -Raw -LiteralPath $weakSecretRotationJson | ConvertFrom-Json
+Assert-True ($weakSecretRotationReport.result -eq "failed") "Weak secret rotation import report should be failed."
+Assert-True (-not (Test-Path -LiteralPath (Join-Path $weakSecretRotationOutput "latest-secret-rotation-evidence.json"))) "Weak secret rotation evidence must not be promoted."
+$weakSecretRotationEntry = @($weakSecretRotationReport.entries | Where-Object { $_.group -eq "secret-rotation" -and $_.fileName -eq "latest-secret-rotation-evidence.json" })
+Assert-True ($weakSecretRotationEntry.Count -eq 1) "Weak secret rotation failed entry missing."
+Assert-True (([string] $weakSecretRotationEntry[0].detail).Contains("rotatedCount=<missing>(valid=False) expected integer")) "Weak secret rotation report should describe missing typed summary count."
+
+Write-JsonEvidence (Join-Path $weakCommercialIntegrationRoot "latest-commercial-integration-evidence.json") @{
+    formatVersion = "osmu.commercial-integration-evidence.v1"
+    result = "passed"
+}
+$weakCommercialIntegrationOutput = Join-Path $resolvedOutputDirectory "weak-commercial-integration-promoted"
+$weakCommercialIntegrationJson = Join-Path $resolvedOutputDirectory "weak-commercial-integration-import.json"
+$weakCommercialIntegrationMarkdown = Join-Path $resolvedOutputDirectory "weak-commercial-integration-import.md"
+$previousErrorActionPreference = $ErrorActionPreference
+$ErrorActionPreference = "Continue"
+try {
+    $weakCommercialIntegrationOutputLines = & powershell -NoProfile -ExecutionPolicy Bypass -File $importScript `
+        -CommercialIntegrationArtifactPath $weakCommercialIntegrationRoot `
+        -OutputDirectory $weakCommercialIntegrationOutput `
+        -JsonOutputPath $weakCommercialIntegrationJson `
+        -MarkdownOutputPath $weakCommercialIntegrationMarkdown 2>&1
+    $weakCommercialIntegrationExitCode = $LASTEXITCODE
+}
+finally {
+    $ErrorActionPreference = $previousErrorActionPreference
+}
+Assert-True ($weakCommercialIntegrationExitCode -ne 0) "Commercial integration evidence without typed adapter summary and confirmations should fail import."
+Assert-True (Test-Path -LiteralPath $weakCommercialIntegrationJson) "Weak commercial integration import report should still be written."
+$weakCommercialIntegrationReport = Get-Content -Raw -LiteralPath $weakCommercialIntegrationJson | ConvertFrom-Json
+Assert-True ($weakCommercialIntegrationReport.result -eq "failed") "Weak commercial integration import report should be failed."
+Assert-True (-not (Test-Path -LiteralPath (Join-Path $weakCommercialIntegrationOutput "latest-commercial-integration-evidence.json"))) "Weak commercial integration evidence must not be promoted."
+$weakCommercialIntegrationEntry = @($weakCommercialIntegrationReport.entries | Where-Object { $_.group -eq "commercial-integration" -and $_.fileName -eq "latest-commercial-integration-evidence.json" })
+Assert-True ($weakCommercialIntegrationEntry.Count -eq 1) "Weak commercial integration failed entry missing."
+Assert-True (([string] $weakCommercialIntegrationEntry[0].detail).Contains("integrationCount=<missing>(valid=False) expected integer")) "Weak commercial integration report should describe missing typed summary count."
+
+Write-JsonEvidence (Join-Path $weakCommercialApprovalRoot "latest-commercial-approval-evidence.json") @{
+    formatVersion = "osmu.commercial-approval-evidence.v1"
+    result = "passed"
+}
+$weakCommercialApprovalOutput = Join-Path $resolvedOutputDirectory "weak-commercial-approval-promoted"
+$weakCommercialApprovalJson = Join-Path $resolvedOutputDirectory "weak-commercial-approval-import.json"
+$weakCommercialApprovalMarkdown = Join-Path $resolvedOutputDirectory "weak-commercial-approval-import.md"
+$previousErrorActionPreference = $ErrorActionPreference
+$ErrorActionPreference = "Continue"
+try {
+    $weakCommercialApprovalOutputLines = & powershell -NoProfile -ExecutionPolicy Bypass -File $importScript `
+        -CommercialApprovalArtifactPath $weakCommercialApprovalRoot `
+        -OutputDirectory $weakCommercialApprovalOutput `
+        -JsonOutputPath $weakCommercialApprovalJson `
+        -MarkdownOutputPath $weakCommercialApprovalMarkdown 2>&1
+    $weakCommercialApprovalExitCode = $LASTEXITCODE
+}
+finally {
+    $ErrorActionPreference = $previousErrorActionPreference
+}
+Assert-True ($weakCommercialApprovalExitCode -ne 0) "Commercial approval evidence without typed approval summary and confirmations should fail import."
+Assert-True (Test-Path -LiteralPath $weakCommercialApprovalJson) "Weak commercial approval import report should still be written."
+$weakCommercialApprovalReport = Get-Content -Raw -LiteralPath $weakCommercialApprovalJson | ConvertFrom-Json
+Assert-True ($weakCommercialApprovalReport.result -eq "failed") "Weak commercial approval import report should be failed."
+Assert-True (-not (Test-Path -LiteralPath (Join-Path $weakCommercialApprovalOutput "latest-commercial-approval-evidence.json"))) "Weak commercial approval evidence must not be promoted."
+$weakCommercialApprovalEntry = @($weakCommercialApprovalReport.entries | Where-Object { $_.group -eq "commercial-approval" -and $_.fileName -eq "latest-commercial-approval-evidence.json" })
+Assert-True ($weakCommercialApprovalEntry.Count -eq 1) "Weak commercial approval failed entry missing."
+Assert-True (([string] $weakCommercialApprovalEntry[0].detail).Contains("confirmation pricingApproved=<missing> expected boolean true")) "Weak commercial approval report should describe missing approval confirmations."
 
 Write-JsonEvidence (Join-Path $invalidEnterpriseAuthRoot "latest-enterprise-auth-smoke.json") @{
     formatVersion = "osmu.enterprise-auth-smoke.v1"
