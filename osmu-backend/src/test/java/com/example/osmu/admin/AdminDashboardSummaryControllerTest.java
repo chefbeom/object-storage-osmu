@@ -1091,10 +1091,10 @@ class AdminDashboardSummaryControllerTest {
                           "targetCluster": "customer-cluster-a",
                           "operatorName": "ops-admin",
                           "summary": {
-                            "passedCount": 20,
+                            "passedCount": 22,
                             "failureCount": 2,
                             "plannedCount": 1,
-                            "checkCount": 23
+                            "checkCount": 25
                           },
                           "evidenceRefs": {
                             "operationsReadiness": "latest-operations-readiness-ready",
@@ -1325,6 +1325,8 @@ class AdminDashboardSummaryControllerTest {
                             "rollbackReviewed": true,
                             "supportEscalationReviewed": false,
                             "knownGapsAccepted": true,
+                            "commercialIntegrationSnapshotReviewed": true,
+                            "commercialApprovalSnapshotReviewed": true,
                             "monitoringThresholdReviewed": true,
                             "requireProductionEvidence": true
                           },
@@ -2158,9 +2160,11 @@ class AdminDashboardSummaryControllerTest {
                 .andExpect(jsonPath("$.data.operationsHandoffPackage.operatorName").value("ops-admin"))
                 .andExpect(jsonPath("$.data.operationsHandoffPackage.failureCount").value(2))
                 .andExpect(jsonPath("$.data.operationsHandoffPackage.plannedCount").value(1))
-                .andExpect(jsonPath("$.data.operationsHandoffPackage.checkCount").value(23))
+                .andExpect(jsonPath("$.data.operationsHandoffPackage.checkCount").value(25))
                 .andExpect(jsonPath("$.data.operationsHandoffPackage.confirmations.noSecretValues").value(true))
                 .andExpect(jsonPath("$.data.operationsHandoffPackage.confirmations.runbookReviewed").value(false))
+                .andExpect(jsonPath("$.data.operationsHandoffPackage.confirmations.commercialIntegrationSnapshotReviewed").value(true))
+                .andExpect(jsonPath("$.data.operationsHandoffPackage.confirmations.commercialApprovalSnapshotReviewed").value(true))
                 .andExpect(jsonPath("$.data.operationsHandoffPackage.confirmations.monitoringThresholdReviewed").value(true))
                 .andExpect(jsonPath("$.data.operationsHandoffPackage.evidenceRefs.commercialApproval").value("latest-commercial-approval-evidence-passed"))
                 .andExpect(jsonPath("$.data.operationsHandoffPackage.operationsReadinessSnapshot.result").value("ready"))

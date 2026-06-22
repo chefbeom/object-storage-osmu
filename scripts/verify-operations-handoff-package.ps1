@@ -409,6 +409,8 @@ $monitoringThresholdPath = Join-Path $resolvedOutputDirectory "latest-monitoring
     -ConfirmOperationsConvergenceSnapshotReviewed `
     -ConfirmDataFlowStoragePlanReviewed `
     -ConfirmDataFlowStorageTransitionRunbookReviewed `
+    -ConfirmCommercialIntegrationSnapshotReviewed `
+    -ConfirmCommercialApprovalSnapshotReviewed `
     -ConfirmMonitoringThresholdReviewed `
     -ConfirmNoSecretValues `
     -RequireProductionEvidence `
@@ -446,8 +448,10 @@ Assert-True (@($checks | Where-Object { $_.id -eq "data-flow-storage-transition-
 Assert-True (@($checks | Where-Object { $_.id -eq "data-flow-storage-transition-runbook-reviewed" -and $_.passed }).Count -eq 1) "Expected data-flow storage transition runbook reviewed check to pass."
 Assert-True (@($checks | Where-Object { $_.id -eq "commercial-integration-snapshot-parsed" -and $_.passed }).Count -eq 1) "Expected commercial integration snapshot parsed check to pass."
 Assert-True (@($checks | Where-Object { $_.id -eq "commercial-integration-snapshot-passed" -and $_.passed }).Count -eq 1) "Expected commercial integration snapshot passed check to pass."
+Assert-True (@($checks | Where-Object { $_.id -eq "commercial-integration-snapshot-reviewed" -and $_.passed }).Count -eq 1) "Expected commercial integration snapshot reviewed check to pass."
 Assert-True (@($checks | Where-Object { $_.id -eq "commercial-approval-snapshot-parsed" -and $_.passed }).Count -eq 1) "Expected commercial approval snapshot parsed check to pass."
 Assert-True (@($checks | Where-Object { $_.id -eq "commercial-approval-snapshot-passed" -and $_.passed }).Count -eq 1) "Expected commercial approval snapshot passed check to pass."
+Assert-True (@($checks | Where-Object { $_.id -eq "commercial-approval-snapshot-reviewed" -and $_.passed }).Count -eq 1) "Expected commercial approval snapshot reviewed check to pass."
 Assert-True (@($checks | Where-Object { $_.id -eq "enterprise-auth-smoke-snapshot-parsed" -and $_.passed }).Count -eq 1) "Expected enterprise auth smoke snapshot parsed check to pass."
 Assert-True (@($checks | Where-Object { $_.id -eq "enterprise-auth-smoke-snapshot-accepted" -and $_.passed }).Count -eq 1) "Expected enterprise auth smoke snapshot accepted check to pass."
 Assert-True (@($checks | Where-Object { $_.id -eq "monitoring-threshold-snapshot-parsed" -and $_.passed }).Count -eq 1) "Expected monitoring threshold snapshot parsed check to pass."
@@ -463,6 +467,8 @@ Assert-True ($report.confirmations.operationsReadinessSnapshotReviewed) "Expecte
 Assert-True ($report.confirmations.operationsConvergenceSnapshotReviewed) "Expected operations convergence snapshot reviewed confirmation."
 Assert-True ($report.confirmations.dataFlowStoragePlanReviewed) "Expected data-flow storage plan reviewed confirmation."
 Assert-True ($report.confirmations.dataFlowStorageTransitionRunbookReviewed) "Expected data-flow storage transition runbook reviewed confirmation."
+Assert-True ($report.confirmations.commercialIntegrationSnapshotReviewed) "Expected commercial integration snapshot reviewed confirmation."
+Assert-True ($report.confirmations.commercialApprovalSnapshotReviewed) "Expected commercial approval snapshot reviewed confirmation."
 Assert-True ($report.confirmations.monitoringThresholdReviewed) "Expected monitoring threshold reviewed confirmation."
 Assert-True ($report.confirmations.requireProductionEvidence) "Expected production evidence requirement."
 Assert-True ($report.confirmations.requireOperationsSnapshotEvidence) "Expected operations snapshot evidence requirement."
@@ -743,6 +749,8 @@ try {
         -ConfirmKnownGapsAccepted `
         -ConfirmDataFlowStoragePlanReviewed `
         -ConfirmDataFlowStorageTransitionRunbookReviewed `
+        -ConfirmCommercialIntegrationSnapshotReviewed `
+        -ConfirmCommercialApprovalSnapshotReviewed `
         -ConfirmMonitoringThresholdReviewed `
         -ConfirmNoSecretValues `
         -RequireProductionEvidence `

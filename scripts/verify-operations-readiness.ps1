@@ -361,6 +361,12 @@ if (-not ([string] $operationsHandoffPackageCheck[0].remediation.command).Contai
 if (-not ([string] $operationsHandoffPackageCheck[0].remediation.command).Contains("MonitoringThresholdJsonPath")) {
     throw "Operations handoff package target evidence remediation must include monitoring threshold JSON snapshot input."
 }
+if (-not ([string] $operationsHandoffPackageCheck[0].remediation.command).Contains("ConfirmCommercialIntegrationSnapshotReviewed")) {
+    throw "Operations handoff package target evidence remediation must confirm commercial integration snapshot review."
+}
+if (-not ([string] $operationsHandoffPackageCheck[0].remediation.command).Contains("ConfirmCommercialApprovalSnapshotReviewed")) {
+    throw "Operations handoff package target evidence remediation must confirm commercial approval snapshot review."
+}
 if (-not ([string] $operationsHandoffPackageCheck[0].remediation.command).Contains("ConfirmMonitoringThresholdReviewed")) {
     throw "Operations handoff package target evidence remediation must confirm monitoring threshold review."
 }
@@ -426,6 +432,12 @@ if (-not ([string] $operationsHandoffPackageCheck[0].remediation.workflowCommand
 }
 if (-not ([string] $operationsHandoffPackageCheck[0].remediation.workflowCommand).Contains("confirm_data_flow_storage_transition_runbook_reviewed=true")) {
     throw "Operations handoff package target evidence workflow command must confirm data-flow storage transition runbook review."
+}
+if (-not ([string] $operationsHandoffPackageCheck[0].remediation.workflowCommand).Contains("confirm_commercial_integration_snapshot_reviewed=true")) {
+    throw "Operations handoff package target evidence workflow command must confirm commercial integration snapshot review."
+}
+if (-not ([string] $operationsHandoffPackageCheck[0].remediation.workflowCommand).Contains("confirm_commercial_approval_snapshot_reviewed=true")) {
+    throw "Operations handoff package target evidence workflow command must confirm commercial approval snapshot review."
 }
 if (-not ([string] $operationsHandoffPackageCheck[0].remediation.workflowCommand).Contains("confirm_monitoring_threshold_reviewed=true")) {
     throw "Operations handoff package target evidence workflow command must confirm monitoring threshold review."
