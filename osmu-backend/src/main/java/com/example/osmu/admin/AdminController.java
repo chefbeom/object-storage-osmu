@@ -2374,6 +2374,8 @@ public class AdminController {
                 commercialApprovalEvidenceSnapshotFromNode(targetEvidenceSnapshots.path("commercialApproval"), false);
         DashboardEnterpriseAuthSmokeEvidenceResponse enterpriseAuthSmokeSnapshot =
                 enterpriseAuthSmokeEvidenceSnapshotFromNode(targetEvidenceSnapshots.path("enterpriseAuthSmoke"), false);
+        DashboardMonitoringThresholdEvidenceResponse monitoringThresholdSnapshot =
+                monitoringThresholdEvidenceSnapshotFromNode(targetEvidenceSnapshots.path("monitoringThreshold"), false);
         return new DashboardOperationsHandoffPackageResponse(
                 jsonText(packageReport, "result"),
                 jsonText(packageReport, "generatedAt"),
@@ -2393,6 +2395,7 @@ public class AdminController {
                 commercialIntegrationSnapshot,
                 commercialApprovalSnapshot,
                 enterpriseAuthSmokeSnapshot,
+                monitoringThresholdSnapshot,
                 List.copyOf(checks),
                 jsonText(packageReport, "decisionRule"),
                 jsonText(packageReport, "scopePolicy"),
@@ -3467,10 +3470,20 @@ public class AdminController {
 
     private DashboardMonitoringThresholdEvidenceResponse monitoringThresholdEvidenceSnapshot() {
         JsonNode report = readOptionalJsonReport(monitoringThresholdEvidenceReportPath);
+        return monitoringThresholdEvidenceSnapshotFromNode(report, true);
+    }
+
+    private DashboardMonitoringThresholdEvidenceResponse monitoringThresholdEvidenceSnapshotFromNode(JsonNode report, boolean emptyWhenMissing) {
         if (report == null || report.isMissingNode() || report.isNull() || !report.isObject()) {
+            if (!emptyWhenMissing) {
+                return null;
+            }
             return DashboardMonitoringThresholdEvidenceResponse.empty();
         }
         JsonNode thresholdSummary = report.path("thresholdTargetSummary");
+        if (!thresholdSummary.isObject()) {
+            thresholdSummary = report;
+        }
         JsonNode summary = summaryOrSelf(report);
         return new DashboardMonitoringThresholdEvidenceResponse(
                 jsonText(report, "result"),

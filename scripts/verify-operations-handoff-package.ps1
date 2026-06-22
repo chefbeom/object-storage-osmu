@@ -50,6 +50,7 @@ $dataFlowStorageTransitionRunbookPath = Join-Path $resolvedOutputDirectory "late
 $commercialIntegrationPath = Join-Path $resolvedOutputDirectory "latest-commercial-integration-evidence.json"
 $commercialApprovalPath = Join-Path $resolvedOutputDirectory "latest-commercial-approval-evidence.json"
 $enterpriseAuthPath = Join-Path $resolvedOutputDirectory "latest-enterprise-auth-smoke.json"
+$monitoringThresholdPath = Join-Path $resolvedOutputDirectory "latest-monitoring-threshold-evidence.json"
 
 [ordered]@{
     formatVersion = "osmu.operations-readiness.v1"
@@ -321,6 +322,48 @@ $enterpriseAuthPath = Join-Path $resolvedOutputDirectory "latest-enterprise-auth
     secretPolicy = "Admin password, LDAP password, access/refresh tokens, OIDC authorization code/state, client secrets, and raw OIDC claim JSON are never written to this evidence."
 } | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath $enterpriseAuthPath -Encoding UTF8
 
+[ordered]@{
+    formatVersion = "osmu.monitoring-threshold-evidence.v1"
+    generatedAt = "2026-06-20T02:28:00Z"
+    result = "passed"
+    environmentName = "pilot-prod-self-test"
+    targetCluster = "customer-cluster-a"
+    operatorName = "ops-self-test"
+    evidenceRef = "prometheus-alertmanager-grafana-review-20260620"
+    thresholdTargetSummary = [ordered]@{
+        requiredAlertCount = 11
+        mappedAlertCount = 11
+        missingAlerts = @()
+        routeCount = 3
+        routes = @("osmu-backend", "osmu-data-flow", "osmu-backup")
+        grafanaPanelCount = 11
+        tuningEvidenceCount = 11
+    }
+    confirmations = [ordered]@{
+        prometheusRulesLoaded = $true
+        grafanaDashboardImported = $true
+        alertmanagerRoutesReviewed = $true
+        targetBaselinesReviewed = $true
+        incidentRoutingReviewed = $true
+        noSecretValues = $true
+    }
+    summary = [ordered]@{
+        failureCount = 0
+        checkCount = 24
+    }
+    checks = @(
+        [ordered]@{
+            id = "prometheus-rules-loaded-confirmed"
+            name = "Prometheus rules loaded confirmation"
+            status = "PASS"
+            passed = $true
+            detail = "Rules were loaded into target Prometheus or PrometheusRule."
+        }
+    )
+    decisionRule = "Production/B2B monitoring readiness requires result=passed."
+    secretPolicy = "Evidence stores only references and booleans."
+} | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath $monitoringThresholdPath -Encoding UTF8
+
 & powershell -NoProfile -ExecutionPolicy Bypass -File $scriptPath `
     -EnvironmentName "pilot-prod-self-test" `
     -TargetCluster "customer-cluster-a" `
@@ -347,6 +390,7 @@ $enterpriseAuthPath = Join-Path $resolvedOutputDirectory "latest-enterprise-auth
     -BackupRestoreEvidenceRef "latest-kubernetes-dr-finalize-ready-20260620" `
     -HaDrEvidenceRef "latest-kubernetes-ha-dr-readiness-passed-20260620" `
     -MonitoringEvidenceRef "prometheus-alertmanager-grafana-review-20260620" `
+    -MonitoringThresholdJsonPath $monitoringThresholdPath `
     -SecurityEvidenceRef "latest-security-evidence-finalize-passed-20260620" `
     -IamRbacEvidenceRef "latest-iam-rbac-finalize-passed-20260620" `
     -RunbookReviewRef "operator-runbook-review-20260620" `
@@ -385,7 +429,7 @@ Assert-True ($report.formatVersion -eq "osmu.operations-handoff-package.v1") "Un
 Assert-True ($report.result -eq "passed") "Expected result=passed."
 Assert-True ($report.summary.failureCount -eq 0) "Expected zero failed checks."
 Assert-True ($report.summary.plannedCount -eq 0) "Expected zero planned checks when production evidence is required."
-Assert-True ($checks.Count -ge 33) "Expected operations handoff package checks."
+Assert-True ($checks.Count -ge 35) "Expected operations handoff package checks."
 Assert-True (@($checks | Where-Object { $_.id -eq "handoff-window-order" -and $_.passed }).Count -eq 1) "Expected handoff window order check to pass."
 Assert-True (@($checks | Where-Object { $_.id -eq "commercial-approval-evidence" -and $_.passed }).Count -eq 1) "Expected commercial approval evidence check to pass."
 Assert-True (@($checks | Where-Object { $_.id -eq "operations-readiness-snapshot-parsed" -and $_.passed }).Count -eq 1) "Expected operations readiness snapshot parsed check to pass."
@@ -405,6 +449,8 @@ Assert-True (@($checks | Where-Object { $_.id -eq "commercial-approval-snapshot-
 Assert-True (@($checks | Where-Object { $_.id -eq "commercial-approval-snapshot-passed" -and $_.passed }).Count -eq 1) "Expected commercial approval snapshot passed check to pass."
 Assert-True (@($checks | Where-Object { $_.id -eq "enterprise-auth-smoke-snapshot-parsed" -and $_.passed }).Count -eq 1) "Expected enterprise auth smoke snapshot parsed check to pass."
 Assert-True (@($checks | Where-Object { $_.id -eq "enterprise-auth-smoke-snapshot-accepted" -and $_.passed }).Count -eq 1) "Expected enterprise auth smoke snapshot accepted check to pass."
+Assert-True (@($checks | Where-Object { $_.id -eq "monitoring-threshold-snapshot-parsed" -and $_.passed }).Count -eq 1) "Expected monitoring threshold snapshot parsed check to pass."
+Assert-True (@($checks | Where-Object { $_.id -eq "monitoring-threshold-snapshot-passed" -and $_.passed }).Count -eq 1) "Expected monitoring threshold snapshot passed check to pass."
 Assert-True ($report.confirmations.noSecretValues) "Expected no-secret-values confirmation."
 Assert-True ($report.confirmations.runbookReviewed) "Expected runbook reviewed confirmation."
 Assert-True ($report.confirmations.troubleshootingReviewed) "Expected troubleshooting reviewed confirmation."
@@ -433,6 +479,9 @@ Assert-True ($report.targetEvidenceSnapshots.commercialApproval.result -eq "pass
 Assert-True ($report.targetEvidenceSnapshots.commercialApproval.pricingPolicyProposalApprovedPriceListCount -eq 1) "Expected commercial approval price-list approval count."
 Assert-True ($report.targetEvidenceSnapshots.enterpriseAuthSmoke.result -eq "scope-out") "Expected enterprise auth smoke snapshot result=scope-out."
 Assert-True ($report.targetEvidenceSnapshots.enterpriseAuthSmoke.scopeOutAccepted) "Expected enterprise auth scope-out accepted."
+Assert-True ($report.targetEvidenceSnapshots.monitoringThreshold.result -eq "passed") "Expected monitoring threshold snapshot result=passed."
+Assert-True ($report.targetEvidenceSnapshots.monitoringThreshold.mappedAlertCount -eq 11) "Expected monitoring threshold mapped alert count."
+Assert-True ($report.targetEvidenceSnapshots.monitoringThreshold.complete) "Expected monitoring threshold complete snapshot."
 Assert-True ($report.evidenceRefs.dataFlowStoragePlan -eq "latest-data-flow-storage-plan-passed-20260620") "Expected data-flow storage plan evidence reference."
 Assert-True ($report.evidenceRefs.dataFlowStorageTransitionRunbook -eq "latest-data-flow-storage-transition-runbook-passed-20260620") "Expected data-flow storage transition runbook evidence reference."
 
@@ -442,18 +491,21 @@ Assert-Contains $markdown "Operations Snapshots" "operations handoff package mar
 Assert-Contains $markdown "Target Evidence Snapshots" "operations handoff package markdown"
 Assert-Contains $markdown "targetP95QueryLatencyMs=500" "operations handoff package markdown"
 Assert-Contains $markdown "Data-flow storage transition runbook" "operations handoff package markdown"
+Assert-Contains $markdown "Monitoring threshold" "operations handoff package markdown"
 Assert-Contains $report.decisionRule "Production/B2B operations handoff package readiness requires result=passed" "operations handoff package JSON"
 Assert-Contains $report.decisionRule "data-flow storage transition" "operations handoff package JSON"
 Assert-Contains $report.decisionRule "data-flow storage transition runbook" "operations handoff package JSON"
 Assert-Contains $report.decisionRule "commercial approval" "operations handoff package JSON"
 Assert-Contains $report.decisionRule "commercial integration" "operations handoff package JSON"
 Assert-Contains $report.decisionRule "enterprise auth smoke snapshot" "operations handoff package JSON"
+Assert-Contains $report.decisionRule "monitoring threshold snapshots" "operations handoff package JSON"
 Assert-Contains $report.decisionRule "Kubernetes report sync ready" "operations handoff package JSON"
 Assert-Contains $report.scopePolicy "does not execute kubectl, gh, provider APIs" "operations handoff package JSON"
 Assert-Contains $report.secretPolicy "must not contain passwords, bearer tokens, kubeconfig values" "operations handoff package JSON"
 Assert-Contains $report.secretPolicy "raw SQL, raw EXPLAIN JSON" "operations handoff package JSON"
 Assert-Contains $report.secretPolicy "object keys, raw event messages" "operations handoff package JSON"
 Assert-Contains $report.secretPolicy "raw identity claims" "operations handoff package JSON"
+Assert-Contains $report.secretPolicy "raw Alertmanager receiver secrets" "operations handoff package JSON"
 
 foreach ($unexpected in @("password=super-secret", "Bearer abcdefghijklmnop", "-----BEGIN PRIVATE KEY-----", "rawProviderResponse", "customer@example.com", "contractText", "rawClaimJson")) {
     Assert-NotContains $reportText $unexpected "operations handoff package JSON"
@@ -593,6 +645,24 @@ finally {
 Assert-True ($unsafeEnterpriseAuthExitCode -ne 0) "Raw claim enterprise auth smoke snapshot should be rejected."
 Assert-Contains ($unsafeEnterpriseAuthOutput | Out-String) "identity, or credential" "unsafe enterprise auth output"
 
+$unsafeMonitoringThresholdPath = Join-Path $resolvedOutputDirectory "unsafe-monitoring-threshold.json"
+'{"formatVersion":"osmu.monitoring-threshold-evidence.v1","result":"passed","receiverSecret":"webhook_secret=super-secret","summary":{"failureCount":0},"checks":[]}' | Set-Content -LiteralPath $unsafeMonitoringThresholdPath -Encoding UTF8
+
+$previousErrorActionPreference = $ErrorActionPreference
+$ErrorActionPreference = "Continue"
+try {
+    $unsafeMonitoringThresholdOutput = & powershell -NoProfile -ExecutionPolicy Bypass -File $scriptPath `
+        -MonitoringEvidenceRef "prometheus-alertmanager-grafana-review-20260620" `
+        -MonitoringThresholdJsonPath $unsafeMonitoringThresholdPath `
+        -NoWrite 2>&1
+    $unsafeMonitoringThresholdExitCode = $LASTEXITCODE
+}
+finally {
+    $ErrorActionPreference = $previousErrorActionPreference
+}
+Assert-True ($unsafeMonitoringThresholdExitCode -ne 0) "Raw receiver secret monitoring threshold snapshot should be rejected."
+Assert-Contains ($unsafeMonitoringThresholdOutput | Out-String) "credential material" "unsafe monitoring threshold output"
+
 $previousErrorActionPreference = $ErrorActionPreference
 $ErrorActionPreference = "Continue"
 try {
@@ -655,6 +725,7 @@ try {
         -BackupRestoreEvidenceRef "latest-kubernetes-dr-finalize-ready-20260620" `
         -HaDrEvidenceRef "latest-kubernetes-ha-dr-readiness-passed-20260620" `
         -MonitoringEvidenceRef "prometheus-alertmanager-grafana-review-20260620" `
+        -MonitoringThresholdJsonPath $monitoringThresholdPath `
         -SecurityEvidenceRef "latest-security-evidence-finalize-passed-20260620" `
         -IamRbacEvidenceRef "latest-iam-rbac-finalize-passed-20260620" `
         -RunbookReviewRef "operator-runbook-review-20260620" `

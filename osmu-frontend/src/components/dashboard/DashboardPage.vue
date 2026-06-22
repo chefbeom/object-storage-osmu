@@ -1266,6 +1266,16 @@
           blocked {{ operationsHandoffPackageEnterpriseAuthSmokeSnapshot.blockedCount || 0 }} /
           scope-out {{ operationsHandoffPackageEnterpriseAuthSmokeScopeOutSummary || '-' }}
         </small>
+        <small
+          v-if="operationsHandoffPackageMonitoringThresholdSnapshot.result"
+          data-testid="readiness-handoff-package-monitoring-threshold-snapshot-summary"
+        >
+          Monitoring threshold snapshot:
+          {{ operationsHandoffPackageMonitoringThresholdSnapshot.result }} /
+          alerts {{ operationsHandoffPackageMonitoringThresholdSnapshot.mappedAlertCount || 0 }} of {{ operationsHandoffPackageMonitoringThresholdSnapshot.requiredAlertCount || 0 }} /
+          routes {{ operationsHandoffPackageMonitoringThresholdSnapshot.routeCount || 0 }} /
+          failures {{ operationsHandoffPackageMonitoringThresholdSnapshot.failureCount || 0 }}
+        </small>
       </div>
       <ol
         v-if="operationsHandoffPackageChecks.length > 0"
@@ -3033,6 +3043,10 @@ const operationsHandoffPackageCommercialApprovalSnapshot = computed(() => (
 
 const operationsHandoffPackageEnterpriseAuthSmokeSnapshot = computed(() => (
   operationsHandoffPackage.value?.enterpriseAuthSmokeSnapshot || {}
+))
+
+const operationsHandoffPackageMonitoringThresholdSnapshot = computed(() => (
+  operationsHandoffPackage.value?.monitoringThresholdSnapshot || {}
 ))
 
 const operationsHandoffPackageEnterpriseAuthSmokeScopeOutSummary = computed(() => {

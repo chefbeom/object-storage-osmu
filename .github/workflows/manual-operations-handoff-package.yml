@@ -103,6 +103,10 @@ on:
         description: External monitoring evidence reference
         required: true
         default: ""
+      monitoring_threshold_json_base64:
+        description: Optional base64 latest monitoring threshold evidence JSON snapshot
+        required: false
+        default: ""
       security_evidence_ref:
         description: External security evidence reference
         required: true
@@ -242,6 +246,7 @@ jobs:
           OSMU_BACKUP_RESTORE_EVIDENCE_REF: ${{ inputs.backup_restore_evidence_ref }}
           OSMU_HA_DR_EVIDENCE_REF: ${{ inputs.ha_dr_evidence_ref }}
           OSMU_MONITORING_EVIDENCE_REF: ${{ inputs.monitoring_evidence_ref }}
+          OSMU_MONITORING_THRESHOLD_JSON_BASE64: ${{ inputs.monitoring_threshold_json_base64 }}
           OSMU_SECURITY_EVIDENCE_REF: ${{ inputs.security_evidence_ref }}
           OSMU_IAM_RBAC_EVIDENCE_REF: ${{ inputs.iam_rbac_evidence_ref }}
           OSMU_RUNBOOK_REVIEW_REF: ${{ inputs.runbook_review_ref }}
@@ -311,6 +316,7 @@ jobs:
           Add-Base64SnapshotArgument $env:OSMU_COMMERCIAL_INTEGRATION_JSON_BASE64 ".osmu-run/commercial-integration-handoff-snapshot.json" "-CommercialIntegrationJsonPath"
           Add-Base64SnapshotArgument $env:OSMU_COMMERCIAL_APPROVAL_JSON_BASE64 ".osmu-run/commercial-approval-handoff-snapshot.json" "-CommercialApprovalJsonPath"
           Add-Base64SnapshotArgument $env:OSMU_ENTERPRISE_AUTH_JSON_BASE64 ".osmu-run/enterprise-auth-handoff-snapshot.json" "-EnterpriseAuthJsonPath"
+          Add-Base64SnapshotArgument $env:OSMU_MONITORING_THRESHOLD_JSON_BASE64 ".osmu-run/monitoring-threshold-handoff-snapshot.json" "-MonitoringThresholdJsonPath"
 
           if ($env:OSMU_CONFIRM_RUNBOOK_REVIEWED -eq "true") { $packageArgs += "-ConfirmRunbookReviewed" }
           if ($env:OSMU_CONFIRM_TROUBLESHOOTING_REVIEWED -eq "true") { $packageArgs += "-ConfirmTroubleshootingReviewed" }

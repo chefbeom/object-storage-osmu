@@ -1283,6 +1283,39 @@ class AdminDashboardSummaryControllerTest {
                               "topChecks": [],
                               "decisionRule": "Paid/production pilot requires result=passed from the target IdP/directory, or result=scope-out with an explicit non-secret commercial approval reference and reason.",
                               "secretPolicy": "Admin password, LDAP password, access/refresh tokens, OIDC authorization code/state, client secrets, and raw OIDC claim JSON are never written to this evidence."
+                            },
+                            "monitoringThreshold": {
+                              "provided": true,
+                              "path": ".osmu-run/latest-monitoring-threshold-evidence.json",
+                              "parsed": true,
+                              "formatVersion": "osmu.monitoring-threshold-evidence.v1",
+                              "expectedFormatVersion": "osmu.monitoring-threshold-evidence.v1",
+                              "validFormatVersion": true,
+                              "result": "passed",
+                              "passed": true,
+                              "environmentName": "pilot-prod",
+                              "targetCluster": "customer-cluster-a",
+                              "operatorName": "ops-admin",
+                              "evidenceRef": "monitoring-threshold-run-20260621",
+                              "requiredAlertCount": 11,
+                              "mappedAlertCount": 11,
+                              "missingAlertCount": 0,
+                              "routeCount": 3,
+                              "routes": ["osmu-backend", "osmu-data-flow", "osmu-backup"],
+                              "grafanaPanelCount": 11,
+                              "tuningEvidenceCount": 11,
+                              "confirmations": {
+                                "prometheusRulesLoaded": true,
+                                "grafanaDashboardImported": true,
+                                "alertmanagerRoutesReviewed": true,
+                                "targetBaselinesReviewed": true,
+                                "incidentRoutingReviewed": true,
+                                "noSecretValues": true
+                              },
+                              "complete": true,
+                              "failureCount": 0,
+                              "checkCount": 24,
+                              "topFailedChecks": []
                             }
                           },
                           "confirmations": {
@@ -2156,6 +2189,12 @@ class AdminDashboardSummaryControllerTest {
                 .andExpect(jsonPath("$.data.operationsHandoffPackage.enterpriseAuthSmokeSnapshot.executionMode").value("scope-out"))
                 .andExpect(jsonPath("$.data.operationsHandoffPackage.enterpriseAuthSmokeSnapshot.scopeOut.accepted").value("true"))
                 .andExpect(jsonPath("$.data.operationsHandoffPackage.enterpriseAuthSmokeSnapshot.skippedCount").value(6))
+                .andExpect(jsonPath("$.data.operationsHandoffPackage.monitoringThresholdSnapshot.result").value("passed"))
+                .andExpect(jsonPath("$.data.operationsHandoffPackage.monitoringThresholdSnapshot.mappedAlertCount").value(11))
+                .andExpect(jsonPath("$.data.operationsHandoffPackage.monitoringThresholdSnapshot.requiredAlertCount").value(11))
+                .andExpect(jsonPath("$.data.operationsHandoffPackage.monitoringThresholdSnapshot.routeCount").value(3))
+                .andExpect(jsonPath("$.data.operationsHandoffPackage.monitoringThresholdSnapshot.routes[1]").value("osmu-data-flow"))
+                .andExpect(jsonPath("$.data.operationsHandoffPackage.monitoringThresholdSnapshot.confirmations.noSecretValues").value(true))
                 .andExpect(jsonPath("$.data.operationsHandoffPackage.checks[0].id").value("runbook-reviewed"))
                 .andExpect(jsonPath("$.data.operationsHandoffPackage.checks[0].status").value("FAIL"))
                 .andExpect(jsonPath("$.data.operationsHandoffPackage.checks[1].evidenceRef").value("latest-commercial-integration-evidence-passed"))
