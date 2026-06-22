@@ -614,7 +614,8 @@ Assert-Contains $report.decisionRule "commercial approval" "operations handoff p
 Assert-Contains $report.decisionRule "commercial integration" "operations handoff package JSON"
 Assert-Contains $report.decisionRule "enterprise auth smoke snapshot" "operations handoff package JSON"
 Assert-Contains $report.decisionRule "monitoring threshold snapshots" "operations handoff package JSON"
-Assert-Contains $report.decisionRule "Kubernetes report sync ready" "operations handoff package JSON"
+Assert-Contains $report.decisionRule "typed boolean Kubernetes report sync ready=true" "operations handoff package JSON"
+Assert-Contains $report.decisionRule "typed integer finalizer failed/gap counts at zero" "operations handoff package JSON"
 Assert-Contains $report.decisionRule "sourceReportResult=ready" "operations handoff package JSON"
 Assert-Contains $report.scopePolicy "does not execute kubectl, gh, provider APIs" "operations handoff package JSON"
 Assert-Contains $report.secretPolicy "must not contain passwords, bearer tokens, kubeconfig values" "operations handoff package JSON"
@@ -753,6 +754,134 @@ finally {
 }
 Assert-True ($notReadySyncExitCode -ne 0) "Convergence snapshot with non-ready sync source should be rejected."
 Assert-Contains ($notReadySyncOutput | Out-String) "sourceReportResult=action-required" "not-ready sync convergence output"
+
+$stringBoolSyncConvergenceSnapshotPath = Join-Path $resolvedOutputDirectory "string-bool-sync-operations-readiness-convergence.json"
+[ordered]@{
+    formatVersion = "osmu.operations-readiness-convergence.v1"
+    result = "ready"
+    readinessResult = "ready"
+    readinessSummary = "passed=66 pending=0"
+    finalizerResult = "ready"
+    finalizerReadinessResult = "ready"
+    finalizerFailedCount = 0
+    kubernetesReportSyncReady = "true"
+    kubernetesReportSyncResult = "applied"
+    kubernetesReportSyncFailedCount = 0
+    kubernetesReportSyncSourceReportResult = "ready"
+    stageCount = 7
+    readyStageCount = 7
+    finalizerGapCount = 0
+    currentBottleneck = [ordered]@{
+        code = "none"
+        title = "None"
+        reason = "Tampered fixture uses string sync boolean."
+    }
+    recommendedCommands = @()
+} | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath $stringBoolSyncConvergenceSnapshotPath -Encoding UTF8
+
+$previousErrorActionPreference = $ErrorActionPreference
+$ErrorActionPreference = "Continue"
+try {
+    $stringBoolSyncOutput = & powershell -NoProfile -ExecutionPolicy Bypass -File $scriptPath `
+        -EnvironmentName "pilot-prod-self-test" `
+        -TargetCluster "customer-cluster-a" `
+        -Operator "ops-self-test" `
+        -HandoffStartedAt "2026-06-20T02:00:00Z" `
+        -HandoffCompletedAt "2026-06-20T02:30:00Z" `
+        -ChangeApprovalRef "CHG-2026-OPERATIONS-HANDOFF-SELF-TEST" `
+        -DeploymentEvidenceRef "deployment-release-run-20260620" `
+        -OperationsReadinessRef "latest-operations-readiness-ready-20260620" `
+        -OperationsConvergenceRef "latest-operations-readiness-convergence-ready-20260620" `
+        -OperationsReadinessJsonPath $readinessSnapshotPath `
+        -OperationsConvergenceJsonPath $stringBoolSyncConvergenceSnapshotPath `
+        -RunbookReviewRef "operator-runbook-review-20260620" `
+        -TroubleshootingReviewRef "troubleshooting-review-20260620" `
+        -SupportEscalationRef "support-escalation-ticket-20260620" `
+        -SupportSlaRef "support-sla-contract-20260620" `
+        -KnownGapsRef "known-gaps-acceptance-20260620" `
+        -ConfirmRunbookReviewed `
+        -ConfirmTroubleshootingReviewed `
+        -ConfirmRollbackReviewed `
+        -ConfirmSupportEscalationReviewed `
+        -ConfirmKnownGapsAccepted `
+        -ConfirmOperationsReadinessSnapshotReviewed `
+        -ConfirmOperationsConvergenceSnapshotReviewed `
+        -ConfirmNoSecretValues `
+        -RequireOperationsSnapshotEvidence `
+        -FailIfNotPassed `
+        -NoWrite 2>&1
+    $stringBoolSyncExitCode = $LASTEXITCODE
+}
+finally {
+    $ErrorActionPreference = $previousErrorActionPreference
+}
+Assert-True ($stringBoolSyncExitCode -ne 0) "Convergence snapshot with string Kubernetes sync boolean should be rejected."
+Assert-Contains ($stringBoolSyncOutput | Out-String) "kubernetesReportSyncReady=true(valid=False)" "string sync boolean convergence output"
+
+$missingGapConvergencePayload = [ordered]@{
+    formatVersion = "osmu.operations-readiness-convergence.v1"
+    result = "ready"
+    readinessResult = "ready"
+    readinessSummary = "passed=66 pending=0"
+    finalizerResult = "ready"
+    finalizerReadinessResult = "ready"
+    finalizerFailedCount = 0
+    kubernetesReportSyncReady = $true
+    kubernetesReportSyncResult = "applied"
+    kubernetesReportSyncFailedCount = 0
+    kubernetesReportSyncSourceReportResult = "ready"
+    stageCount = 7
+    readyStageCount = 7
+    finalizerGapCount = 0
+    currentBottleneck = [ordered]@{
+        code = "none"
+        title = "None"
+        reason = "Tampered fixture omits finalizer gap count after object creation."
+    }
+    recommendedCommands = @()
+}
+$missingGapConvergencePayload.Remove("finalizerGapCount")
+$missingGapConvergenceSnapshotPath = Join-Path $resolvedOutputDirectory "missing-gap-operations-readiness-convergence.json"
+$missingGapConvergencePayload | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath $missingGapConvergenceSnapshotPath -Encoding UTF8
+
+$previousErrorActionPreference = $ErrorActionPreference
+$ErrorActionPreference = "Continue"
+try {
+    $missingGapOutput = & powershell -NoProfile -ExecutionPolicy Bypass -File $scriptPath `
+        -EnvironmentName "pilot-prod-self-test" `
+        -TargetCluster "customer-cluster-a" `
+        -Operator "ops-self-test" `
+        -HandoffStartedAt "2026-06-20T02:00:00Z" `
+        -HandoffCompletedAt "2026-06-20T02:30:00Z" `
+        -ChangeApprovalRef "CHG-2026-OPERATIONS-HANDOFF-SELF-TEST" `
+        -DeploymentEvidenceRef "deployment-release-run-20260620" `
+        -OperationsReadinessRef "latest-operations-readiness-ready-20260620" `
+        -OperationsConvergenceRef "latest-operations-readiness-convergence-ready-20260620" `
+        -OperationsReadinessJsonPath $readinessSnapshotPath `
+        -OperationsConvergenceJsonPath $missingGapConvergenceSnapshotPath `
+        -RunbookReviewRef "operator-runbook-review-20260620" `
+        -TroubleshootingReviewRef "troubleshooting-review-20260620" `
+        -SupportEscalationRef "support-escalation-ticket-20260620" `
+        -SupportSlaRef "support-sla-contract-20260620" `
+        -KnownGapsRef "known-gaps-acceptance-20260620" `
+        -ConfirmRunbookReviewed `
+        -ConfirmTroubleshootingReviewed `
+        -ConfirmRollbackReviewed `
+        -ConfirmSupportEscalationReviewed `
+        -ConfirmKnownGapsAccepted `
+        -ConfirmOperationsReadinessSnapshotReviewed `
+        -ConfirmOperationsConvergenceSnapshotReviewed `
+        -ConfirmNoSecretValues `
+        -RequireOperationsSnapshotEvidence `
+        -FailIfNotPassed `
+        -NoWrite 2>&1
+    $missingGapExitCode = $LASTEXITCODE
+}
+finally {
+    $ErrorActionPreference = $previousErrorActionPreference
+}
+Assert-True ($missingGapExitCode -ne 0) "Convergence snapshot with missing finalizer gap count should be rejected."
+Assert-Contains ($missingGapOutput | Out-String) "finalizerGaps=<missing>(valid=False)" "missing finalizer gap convergence output"
 
 $previousErrorActionPreference = $ErrorActionPreference
 $ErrorActionPreference = "Continue"
