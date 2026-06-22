@@ -47,6 +47,7 @@ $readinessSnapshotPath = Join-Path $resolvedOutputDirectory "latest-operations-r
 $convergenceSnapshotPath = Join-Path $resolvedOutputDirectory "latest-operations-readiness-convergence.json"
 $dataFlowStoragePlanPath = Join-Path $resolvedOutputDirectory "latest-data-flow-storage-plan.json"
 $dataFlowStorageTransitionRunbookPath = Join-Path $resolvedOutputDirectory "latest-data-flow-storage-transition-runbook-evidence.json"
+$secretRotationPath = Join-Path $resolvedOutputDirectory "latest-secret-rotation-evidence.json"
 $commercialIntegrationPath = Join-Path $resolvedOutputDirectory "latest-commercial-integration-evidence.json"
 $commercialApprovalPath = Join-Path $resolvedOutputDirectory "latest-commercial-approval-evidence.json"
 $enterpriseAuthPath = Join-Path $resolvedOutputDirectory "latest-enterprise-auth-smoke.json"
@@ -190,6 +191,89 @@ $monitoringThresholdPath = Join-Path $resolvedOutputDirectory "latest-monitoring
     scopePolicy = "OSMU operations analytics storage transition only. This is not AWS billing parity."
     secretPolicy = "Evidence stores only external references and reduced summaries."
 } | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath $dataFlowStorageTransitionRunbookPath -Encoding UTF8
+
+[ordered]@{
+    formatVersion = "osmu.secret-rotation-evidence.v1"
+    generatedAt = "2026-06-20T02:08:00Z"
+    result = "passed"
+    environmentName = "pilot-prod-self-test"
+    targetCluster = "customer-cluster-a"
+    operatorName = "ops-self-test"
+    rotationWindow = [ordered]@{
+        startedAt = "2026-06-20T01:00:00Z"
+        completedAt = "2026-06-20T01:30:00Z"
+    }
+    evidenceRefs = [ordered]@{
+        changeApproval = "CHG-2026-SECRET-ROTATION-SELF-TEST"
+        secretManagerAudit = "vault-audit-run-20260620"
+        workloadRestart = "rollout-status-run-20260620"
+        smoke = "post-rotation-smoke-20260620"
+        artifactLeakReview = "artifact-leak-review-20260620"
+        accessKeyEncryptionDecision = "access-key-encryption-key-reissue-deferred-20260620"
+    }
+    confirmations = [ordered]@{
+        noSecretValues = $true
+        workloadRestart = $true
+        smokePassed = $true
+        artifactLeakReview = $true
+        requireAllCoreSecrets = $true
+    }
+    rotations = @(
+        [ordered]@{
+            id = "admin-password"
+            name = "Admin password"
+            core = $true
+            rotated = $true
+            note = "rotated"
+        },
+        [ordered]@{
+            id = "jwt-signing-secret"
+            name = "JWT signing secret"
+            core = $true
+            rotated = $true
+            note = "rotated"
+        },
+        [ordered]@{
+            id = "database-credentials"
+            name = "MariaDB credentials"
+            core = $true
+            rotated = $true
+            note = "rotated"
+        },
+        [ordered]@{
+            id = "minio-root-credentials"
+            name = "MinIO root credentials"
+            core = $true
+            rotated = $true
+            note = "rotated"
+        },
+        [ordered]@{
+            id = "tls-certificate"
+            name = "TLS certificate"
+            core = $true
+            rotated = $true
+            note = "rotated"
+        }
+    )
+    summary = [ordered]@{
+        rotatedCount = 5
+        coreRotatedCount = 5
+        coreRequiredCount = 5
+        failureCount = 0
+        plannedCount = 0
+    }
+    checks = @(
+        [ordered]@{
+            id = "core-secret-rotation-coverage"
+            name = "Core secret/certificate rotation coverage"
+            status = "PASS"
+            passed = $true
+            detail = "rotatedCore=5/5"
+        }
+    )
+    decisionRule = "Production/B2B readiness requires result=passed from the target environment after core secret/certificate rotation, workload restart, post-rotation smoke, and artifact leak review are confirmed."
+    secretPolicy = "Evidence stores only environment labels, operator/change references, timestamps, booleans, and external evidence references."
+} | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath $secretRotationPath -Encoding UTF8
 
 [ordered]@{
     formatVersion = "osmu.commercial-integration-evidence.v1"
@@ -381,6 +465,7 @@ $monitoringThresholdPath = Join-Path $resolvedOutputDirectory "latest-monitoring
     -DataFlowStoragePlanJsonPath $dataFlowStoragePlanPath `
     -DataFlowStorageTransitionRunbookJsonPath $dataFlowStorageTransitionRunbookPath `
     -SecretRotationEvidenceRef "latest-secret-rotation-evidence-passed-20260620" `
+    -SecretRotationJsonPath $secretRotationPath `
     -CommercialIntegrationEvidenceRef "latest-commercial-integration-evidence-passed-20260620" `
     -CommercialApprovalEvidenceRef "latest-commercial-approval-evidence-passed-20260620" `
     -CommercialIntegrationJsonPath $commercialIntegrationPath `
@@ -409,6 +494,7 @@ $monitoringThresholdPath = Join-Path $resolvedOutputDirectory "latest-monitoring
     -ConfirmOperationsConvergenceSnapshotReviewed `
     -ConfirmDataFlowStoragePlanReviewed `
     -ConfirmDataFlowStorageTransitionRunbookReviewed `
+    -ConfirmSecretRotationSnapshotReviewed `
     -ConfirmCommercialIntegrationSnapshotReviewed `
     -ConfirmCommercialApprovalSnapshotReviewed `
     -ConfirmMonitoringThresholdReviewed `
@@ -446,6 +532,9 @@ Assert-True (@($checks | Where-Object { $_.id -eq "data-flow-storage-transition-
 Assert-True (@($checks | Where-Object { $_.id -eq "data-flow-storage-transition-runbook-snapshot-parsed" -and $_.passed }).Count -eq 1) "Expected data-flow storage transition runbook snapshot parsed check to pass."
 Assert-True (@($checks | Where-Object { $_.id -eq "data-flow-storage-transition-runbook-snapshot-passed" -and $_.passed }).Count -eq 1) "Expected data-flow storage transition runbook snapshot passed check to pass."
 Assert-True (@($checks | Where-Object { $_.id -eq "data-flow-storage-transition-runbook-reviewed" -and $_.passed }).Count -eq 1) "Expected data-flow storage transition runbook reviewed check to pass."
+Assert-True (@($checks | Where-Object { $_.id -eq "secret-rotation-snapshot-parsed" -and $_.passed }).Count -eq 1) "Expected secret rotation snapshot parsed check to pass."
+Assert-True (@($checks | Where-Object { $_.id -eq "secret-rotation-snapshot-passed" -and $_.passed }).Count -eq 1) "Expected secret rotation snapshot passed check to pass."
+Assert-True (@($checks | Where-Object { $_.id -eq "secret-rotation-snapshot-reviewed" -and $_.passed }).Count -eq 1) "Expected secret rotation snapshot reviewed check to pass."
 Assert-True (@($checks | Where-Object { $_.id -eq "commercial-integration-snapshot-parsed" -and $_.passed }).Count -eq 1) "Expected commercial integration snapshot parsed check to pass."
 Assert-True (@($checks | Where-Object { $_.id -eq "commercial-integration-snapshot-passed" -and $_.passed }).Count -eq 1) "Expected commercial integration snapshot passed check to pass."
 Assert-True (@($checks | Where-Object { $_.id -eq "commercial-integration-snapshot-reviewed" -and $_.passed }).Count -eq 1) "Expected commercial integration snapshot reviewed check to pass."
@@ -467,6 +556,7 @@ Assert-True ($report.confirmations.operationsReadinessSnapshotReviewed) "Expecte
 Assert-True ($report.confirmations.operationsConvergenceSnapshotReviewed) "Expected operations convergence snapshot reviewed confirmation."
 Assert-True ($report.confirmations.dataFlowStoragePlanReviewed) "Expected data-flow storage plan reviewed confirmation."
 Assert-True ($report.confirmations.dataFlowStorageTransitionRunbookReviewed) "Expected data-flow storage transition runbook reviewed confirmation."
+Assert-True ($report.confirmations.secretRotationSnapshotReviewed) "Expected secret rotation snapshot reviewed confirmation."
 Assert-True ($report.confirmations.commercialIntegrationSnapshotReviewed) "Expected commercial integration snapshot reviewed confirmation."
 Assert-True ($report.confirmations.commercialApprovalSnapshotReviewed) "Expected commercial approval snapshot reviewed confirmation."
 Assert-True ($report.confirmations.monitoringThresholdReviewed) "Expected monitoring threshold reviewed confirmation."
@@ -482,6 +572,9 @@ Assert-True ($report.targetEvidenceSnapshots.dataFlowStorageTransitionRunbook.re
 Assert-True ($report.targetEvidenceSnapshots.dataFlowStorageTransitionRunbook.storagePlanResult -eq "passed") "Expected data-flow storage transition runbook storage plan result=passed."
 Assert-True ($report.targetEvidenceSnapshots.dataFlowStorageTransitionRunbook.confirmations.backfillRehearsed) "Expected data-flow storage transition runbook backfill confirmation."
 Assert-True ($report.targetEvidenceSnapshots.dataFlowStorageTransitionRunbook.confirmations.rollbackRehearsed) "Expected data-flow storage transition runbook rollback confirmation."
+Assert-True ($report.targetEvidenceSnapshots.secretRotation.result -eq "passed") "Expected secret rotation snapshot result=passed."
+Assert-True ($report.targetEvidenceSnapshots.secretRotation.coreRotatedCount -eq 5) "Expected secret rotation coreRotatedCount=5."
+Assert-True ($report.targetEvidenceSnapshots.secretRotation.confirmations.smokePassed) "Expected secret rotation smoke confirmation."
 Assert-True ($report.targetEvidenceSnapshots.commercialIntegration.result -eq "passed") "Expected commercial integration snapshot result=passed."
 Assert-True ($report.targetEvidenceSnapshots.commercialIntegration.requiredVerifiedCount -eq 8) "Expected commercial integration requiredVerifiedCount=8."
 Assert-True ($report.targetEvidenceSnapshots.commercialApproval.result -eq "passed") "Expected commercial approval snapshot result=passed."
@@ -618,6 +711,25 @@ finally {
 Assert-True ($unsafeDataFlowStorageTransitionRunbookExitCode -ne 0) "Raw SQL data-flow storage transition runbook snapshot should be rejected."
 Assert-Contains ($unsafeDataFlowStorageTransitionRunbookOutput | Out-String) "raw SQL" "unsafe data-flow storage transition runbook output"
 
+$unsafeSecretRotationPath = Join-Path $resolvedOutputDirectory "unsafe-secret-rotation.json"
+'{"formatVersion":"osmu.secret-rotation-evidence.v1","result":"passed","secretValue":"super-secret"}' | Set-Content -LiteralPath $unsafeSecretRotationPath -Encoding UTF8
+
+$previousErrorActionPreference = $ErrorActionPreference
+$ErrorActionPreference = "Continue"
+try {
+    $unsafeSecretRotationOutput = & powershell -NoProfile -ExecutionPolicy Bypass -File $scriptPath `
+        -SecretRotationEvidenceRef "latest-secret-rotation-evidence-passed-20260620" `
+        -SecretRotationJsonPath $unsafeSecretRotationPath `
+        -ConfirmSecretRotationSnapshotReviewed `
+        -NoWrite 2>&1
+    $unsafeSecretRotationExitCode = $LASTEXITCODE
+}
+finally {
+    $ErrorActionPreference = $previousErrorActionPreference
+}
+Assert-True ($unsafeSecretRotationExitCode -ne 0) "Raw secret rotation snapshot should be rejected."
+Assert-Contains ($unsafeSecretRotationOutput | Out-String) "raw secret" "unsafe secret rotation output"
+
 $unsafeCommercialApprovalPath = Join-Path $resolvedOutputDirectory "unsafe-commercial-approval.json"
 '{"formatVersion":"osmu.commercial-approval-evidence.v1","result":"passed","rawPriceTable":{"enterprise":"1000000"},"checks":[]}' | Set-Content -LiteralPath $unsafeCommercialApprovalPath -Encoding UTF8
 
@@ -725,6 +837,7 @@ try {
         -DataFlowStoragePlanJsonPath $dataFlowStoragePlanPath `
         -DataFlowStorageTransitionRunbookJsonPath $dataFlowStorageTransitionRunbookPath `
         -SecretRotationEvidenceRef "latest-secret-rotation-evidence-passed-20260620" `
+        -SecretRotationJsonPath $secretRotationPath `
         -CommercialIntegrationEvidenceRef "latest-commercial-integration-evidence-passed-20260620" `
         -CommercialApprovalEvidenceRef "latest-commercial-approval-evidence-passed-20260620" `
         -CommercialIntegrationJsonPath $commercialIntegrationPath `
@@ -749,6 +862,7 @@ try {
         -ConfirmKnownGapsAccepted `
         -ConfirmDataFlowStoragePlanReviewed `
         -ConfirmDataFlowStorageTransitionRunbookReviewed `
+        -ConfirmSecretRotationSnapshotReviewed `
         -ConfirmCommercialIntegrationSnapshotReviewed `
         -ConfirmCommercialApprovalSnapshotReviewed `
         -ConfirmMonitoringThresholdReviewed `

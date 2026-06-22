@@ -1235,6 +1235,15 @@
           failures {{ operationsHandoffPackageDataFlowStorageTransitionRunbookSnapshot.failureCount || 0 }}
         </small>
         <small
+          v-if="operationsHandoffPackageSecretRotationSnapshot.result"
+          data-testid="readiness-handoff-package-secret-rotation-snapshot-summary"
+        >
+          Secret rotation snapshot:
+          {{ operationsHandoffPackageSecretRotationSnapshot.result }} /
+          core {{ operationsHandoffPackageSecretRotationSnapshot.coreRotatedCount || 0 }} of {{ operationsHandoffPackageSecretRotationSnapshot.coreRequiredCount || 0 }} /
+          failures {{ operationsHandoffPackageSecretRotationSnapshot.failureCount || 0 }}
+        </small>
+        <small
           v-if="operationsHandoffPackageCommercialIntegrationSnapshot.result"
           data-testid="readiness-handoff-package-commercial-integration-snapshot-summary"
         >
@@ -3031,6 +3040,10 @@ const operationsHandoffPackageDataFlowQueryPlanSnapshot = computed(() => (
 
 const operationsHandoffPackageDataFlowStorageTransitionRunbookSnapshot = computed(() => (
   operationsHandoffPackage.value?.dataFlowStorageTransitionRunbookSnapshot || {}
+))
+
+const operationsHandoffPackageSecretRotationSnapshot = computed(() => (
+  operationsHandoffPackage.value?.secretRotationSnapshot || {}
 ))
 
 const operationsHandoffPackageCommercialIntegrationSnapshot = computed(() => (

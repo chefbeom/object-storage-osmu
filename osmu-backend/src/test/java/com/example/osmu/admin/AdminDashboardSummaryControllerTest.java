@@ -1091,10 +1091,10 @@ class AdminDashboardSummaryControllerTest {
                           "targetCluster": "customer-cluster-a",
                           "operatorName": "ops-admin",
                           "summary": {
-                            "passedCount": 22,
+                            "passedCount": 25,
                             "failureCount": 2,
                             "plannedCount": 1,
-                            "checkCount": 25
+                            "checkCount": 28
                           },
                           "evidenceRefs": {
                             "operationsReadiness": "latest-operations-readiness-ready",
@@ -1195,6 +1195,46 @@ class AdminDashboardSummaryControllerTest {
                                 "noSecretValues": true
                               },
                               "topFailedChecks": []
+                            },
+                            "secretRotation": {
+                              "provided": true,
+                              "path": ".osmu-run/latest-secret-rotation-evidence.json",
+                              "parsed": true,
+                              "formatVersion": "osmu.secret-rotation-evidence.v1",
+                              "expectedFormatVersion": "osmu.secret-rotation-evidence.v1",
+                              "validFormatVersion": true,
+                              "result": "passed",
+                              "passed": true,
+                              "environmentName": "pilot-prod",
+                              "targetCluster": "customer-cluster-a",
+                              "operatorName": "ops-admin",
+                              "rotationWindow": {
+                                "startedAt": "2026-06-20T00:00:00Z",
+                                "completedAt": "2026-06-20T00:30:00Z"
+                              },
+                              "evidenceRefs": {
+                                "changeApproval": "CHG-2026-SECRET-ROTATION",
+                                "secretManagerAudit": "vault-audit-run-20260620",
+                                "workloadRestart": "rollout-status-run-20260620",
+                                "smoke": "post-rotation-smoke-20260620",
+                                "artifactLeakReview": "artifact-leak-review-20260620",
+                                "accessKeyEncryptionDecision": "access-key-encryption-key-reissue-deferred-20260620"
+                              },
+                              "confirmations": {
+                                "noSecretValues": true,
+                                "workloadRestart": true,
+                                "smokePassed": true,
+                                "artifactLeakReview": true,
+                                "requireAllCoreSecrets": true
+                              },
+                              "rotatedCount": 5,
+                              "coreRotatedCount": 5,
+                              "coreRequiredCount": 5,
+                              "failureCount": 0,
+                              "plannedCount": 0,
+                              "checkCount": 16,
+                              "rotations": [],
+                              "topChecks": []
                             },
                             "commercialIntegration": {
                               "provided": true,
@@ -1325,6 +1365,7 @@ class AdminDashboardSummaryControllerTest {
                             "rollbackReviewed": true,
                             "supportEscalationReviewed": false,
                             "knownGapsAccepted": true,
+                            "secretRotationSnapshotReviewed": true,
                             "commercialIntegrationSnapshotReviewed": true,
                             "commercialApprovalSnapshotReviewed": true,
                             "monitoringThresholdReviewed": true,
@@ -2160,9 +2201,10 @@ class AdminDashboardSummaryControllerTest {
                 .andExpect(jsonPath("$.data.operationsHandoffPackage.operatorName").value("ops-admin"))
                 .andExpect(jsonPath("$.data.operationsHandoffPackage.failureCount").value(2))
                 .andExpect(jsonPath("$.data.operationsHandoffPackage.plannedCount").value(1))
-                .andExpect(jsonPath("$.data.operationsHandoffPackage.checkCount").value(25))
+                .andExpect(jsonPath("$.data.operationsHandoffPackage.checkCount").value(28))
                 .andExpect(jsonPath("$.data.operationsHandoffPackage.confirmations.noSecretValues").value(true))
                 .andExpect(jsonPath("$.data.operationsHandoffPackage.confirmations.runbookReviewed").value(false))
+                .andExpect(jsonPath("$.data.operationsHandoffPackage.confirmations.secretRotationSnapshotReviewed").value(true))
                 .andExpect(jsonPath("$.data.operationsHandoffPackage.confirmations.commercialIntegrationSnapshotReviewed").value(true))
                 .andExpect(jsonPath("$.data.operationsHandoffPackage.confirmations.commercialApprovalSnapshotReviewed").value(true))
                 .andExpect(jsonPath("$.data.operationsHandoffPackage.confirmations.monitoringThresholdReviewed").value(true))
@@ -2185,6 +2227,10 @@ class AdminDashboardSummaryControllerTest {
                 .andExpect(jsonPath("$.data.operationsHandoffPackage.dataFlowStorageTransitionRunbookSnapshot.failureCount").value(0))
                 .andExpect(jsonPath("$.data.operationsHandoffPackage.dataFlowStorageTransitionRunbookSnapshot.confirmations.backfillRehearsed").value(true))
                 .andExpect(jsonPath("$.data.operationsHandoffPackage.dataFlowStorageTransitionRunbookSnapshot.confirmations.rollbackRehearsed").value(true))
+                .andExpect(jsonPath("$.data.operationsHandoffPackage.secretRotationSnapshot.result").value("passed"))
+                .andExpect(jsonPath("$.data.operationsHandoffPackage.secretRotationSnapshot.coreRotatedCount").value(5))
+                .andExpect(jsonPath("$.data.operationsHandoffPackage.secretRotationSnapshot.coreRequiredCount").value(5))
+                .andExpect(jsonPath("$.data.operationsHandoffPackage.secretRotationSnapshot.confirmations.smokePassed").value(true))
                 .andExpect(jsonPath("$.data.operationsHandoffPackage.commercialIntegrationSnapshot.result").value("passed"))
                 .andExpect(jsonPath("$.data.operationsHandoffPackage.commercialIntegrationSnapshot.requiredVerifiedCount").value(8))
                 .andExpect(jsonPath("$.data.operationsHandoffPackage.commercialIntegrationSnapshot.paymentProviderAdapterReadinessStatus").value("WEBHOOK_PROFILE_READY"))

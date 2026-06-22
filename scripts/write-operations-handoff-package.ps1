@@ -15,6 +15,7 @@ param(
     [string] $DataFlowStoragePlanJsonPath = "",
     [string] $DataFlowStorageTransitionRunbookJsonPath = "",
     [string] $SecretRotationEvidenceRef = "",
+    [string] $SecretRotationJsonPath = "",
     [string] $CommercialIntegrationEvidenceRef = "",
     [string] $CommercialApprovalEvidenceRef = "",
     [string] $CommercialIntegrationJsonPath = "",
@@ -43,6 +44,7 @@ param(
     [switch] $ConfirmOperationsConvergenceSnapshotReviewed,
     [switch] $ConfirmDataFlowStoragePlanReviewed,
     [switch] $ConfirmDataFlowStorageTransitionRunbookReviewed,
+    [switch] $ConfirmSecretRotationSnapshotReviewed,
     [switch] $ConfirmCommercialIntegrationSnapshotReviewed,
     [switch] $ConfirmCommercialApprovalSnapshotReviewed,
     [switch] $ConfirmMonitoringThresholdReviewed,
@@ -121,6 +123,18 @@ function Assert-SanitizedMonitoringThresholdJson([string] $Value, [string] $Labe
     $credentialPattern = '(?i)\b(password|passwd|secret|token|credential|api[_-]?key|access[_-]?key|private[_-]?key|webhook[_-]?secret|smtp[_-]?pass)\s*=\s*\S+'
     if ($Value -match $forbiddenPropertyPattern -or $Value -match $credentialPattern) {
         throw "$Label appears to contain raw Alertmanager receiver, customer, or credential-shaped content. Store only sanitized monitoring threshold summary fields."
+    }
+}
+
+function Assert-SanitizedSecretRotationJson([string] $Value, [string] $Label) {
+    if ([string]::IsNullOrWhiteSpace($Value)) {
+        return
+    }
+
+    $forbiddenPropertyPattern = '(?i)"(rawSecret|raw_secret|secretValue|secret_value|oldSecret|old_secret|newSecret|new_secret|databasePassword|database_password|minioRootPassword|minio_root_password|jwtSigningSecret|jwt_signing_secret|oidcClientSecret|oidc_client_secret|ldapPassword|ldap_password|smtpPassword|smtp_password|webhookSecret|webhook_secret|password|passwd|token|credential|apiKey|api_key|accessKey|access_key|privateKey|private_key|kubeconfig)"\s*:'
+    $credentialPattern = '(?i)\b(password|passwd|secret|token|credential|api[_-]?key|access[_-]?key|private[_-]?key|webhook[_-]?secret|smtp[_-]?pass)\s*=\s*\S+'
+    if ($Value -match $forbiddenPropertyPattern -or $Value -match $credentialPattern) {
+        throw "$Label appears to contain raw secret or credential-shaped content. Store only sanitized secret rotation summary fields."
     }
 }
 
@@ -640,6 +654,133 @@ function Read-CommercialIntegrationEvidenceSnapshot([string] $Path) {
     return $snapshot
 }
 
+function Read-SecretRotationEvidenceSnapshot([string] $Path) {
+    $snapshot = [ordered]@{
+        provided = $false
+        path = ""
+        parsed = $false
+        formatVersion = ""
+        expectedFormatVersion = "osmu.secret-rotation-evidence.v1"
+        validFormatVersion = $false
+        result = ""
+        passed = $false
+        environmentName = ""
+        targetCluster = ""
+        operatorName = ""
+        rotationWindow = [ordered]@{}
+        evidenceRefs = [ordered]@{}
+        confirmations = [ordered]@{
+            noSecretValues = $false
+            workloadRestart = $false
+            smokePassed = $false
+            artifactLeakReview = $false
+            requireAllCoreSecrets = $false
+        }
+        rotatedCount = 0
+        coreRotatedCount = 0
+        coreRequiredCount = 0
+        failureCount = 0
+        plannedCount = 0
+        checkCount = 0
+        rotations = @()
+        topChecks = @()
+        detail = "No secret rotation evidence JSON supplied."
+    }
+
+    if ([string]::IsNullOrWhiteSpace($Path)) {
+        return $snapshot
+    }
+
+    $resolvedPath = Resolve-ProjectPath $Path
+    $snapshot["provided"] = $true
+    $snapshot["path"] = $resolvedPath
+    if (-not (Test-Path -LiteralPath $resolvedPath)) {
+        $snapshot["detail"] = "Secret rotation evidence JSON not found."
+        return $snapshot
+    }
+
+    $raw = Get-Content -Raw -LiteralPath $resolvedPath
+    Assert-SafeText $raw "SecretRotationJson"
+    Assert-SanitizedOperationsSnapshotJson $raw "SecretRotationJson"
+    Assert-SanitizedSecretRotationJson $raw "SecretRotationJson"
+    try {
+        $payload = $raw | ConvertFrom-Json
+    }
+    catch {
+        $snapshot["detail"] = "Secret rotation evidence JSON parse failed: $($_.Exception.Message)"
+        return $snapshot
+    }
+
+    $summary = Get-SummaryOrSelf $payload
+    $confirmations = Get-PropertyValue $payload "confirmations"
+    $rotationWindow = Get-PropertyValue $payload "rotationWindow"
+    $checks = @(Get-PropertyArray $payload "checks")
+    $rotations = @(Get-PropertyArray $payload "rotations")
+    $topRows = New-Object System.Collections.Generic.List[object]
+    foreach ($check in $checks) {
+        if (-not (Get-PropertyBool $check "passed")) {
+            [void] $topRows.Add((New-CommercialEvidenceCheckSnapshotRow $check))
+        }
+        if ($topRows.Count -ge 5) {
+            break
+        }
+    }
+
+    $rotationRows = New-Object System.Collections.Generic.List[object]
+    foreach ($rotation in $rotations) {
+        [void] $rotationRows.Add([ordered]@{
+            id = Get-PropertyText $rotation "id"
+            name = Get-PropertyText $rotation "name"
+            core = Get-PropertyBool $rotation "core"
+            rotated = Get-PropertyBool $rotation "rotated"
+            note = Get-PropertyText $rotation "note"
+        })
+        if ($rotationRows.Count -ge 8) {
+            break
+        }
+    }
+
+    $formatVersion = Get-PropertyText $payload "formatVersion"
+    $result = Get-PropertyText $payload "result"
+    $snapshot["parsed"] = $true
+    $snapshot["formatVersion"] = $formatVersion
+    $snapshot["validFormatVersion"] = $formatVersion -eq $snapshot["expectedFormatVersion"]
+    $snapshot["result"] = $result
+    $snapshot["passed"] = "passed".Equals($result, [System.StringComparison]::OrdinalIgnoreCase)
+    $snapshot["environmentName"] = Get-PropertyText $payload "environmentName"
+    $snapshot["targetCluster"] = Get-PropertyText $payload "targetCluster"
+    $snapshot["operatorName"] = Get-PropertyText $payload "operatorName"
+    $snapshot["rotationWindow"] = [ordered]@{
+        startedAt = Get-PropertyText $rotationWindow "startedAt"
+        completedAt = Get-PropertyText $rotationWindow "completedAt"
+    }
+    $snapshot["evidenceRefs"] = [ordered]@{
+        changeApproval = Get-PropertyText (Get-PropertyValue $payload "evidenceRefs") "changeApproval"
+        secretManagerAudit = Get-PropertyText (Get-PropertyValue $payload "evidenceRefs") "secretManagerAudit"
+        workloadRestart = Get-PropertyText (Get-PropertyValue $payload "evidenceRefs") "workloadRestart"
+        smoke = Get-PropertyText (Get-PropertyValue $payload "evidenceRefs") "smoke"
+        artifactLeakReview = Get-PropertyText (Get-PropertyValue $payload "evidenceRefs") "artifactLeakReview"
+        accessKeyEncryptionDecision = Get-PropertyText (Get-PropertyValue $payload "evidenceRefs") "accessKeyEncryptionDecision"
+    }
+    $snapshot["confirmations"] = [ordered]@{
+        noSecretValues = Get-PropertyBool $confirmations "noSecretValues"
+        workloadRestart = Get-PropertyBool $confirmations "workloadRestart"
+        smokePassed = Get-PropertyBool $confirmations "smokePassed"
+        artifactLeakReview = Get-PropertyBool $confirmations "artifactLeakReview"
+        requireAllCoreSecrets = Get-PropertyBool $confirmations "requireAllCoreSecrets"
+    }
+    $snapshot["rotatedCount"] = Get-PropertyInt $summary "rotatedCount"
+    $snapshot["coreRotatedCount"] = Get-PropertyInt $summary "coreRotatedCount"
+    $snapshot["coreRequiredCount"] = Get-PropertyInt $summary "coreRequiredCount"
+    $snapshot["failureCount"] = Get-PropertyInt $summary "failureCount"
+    $snapshot["plannedCount"] = Get-PropertyInt $summary "plannedCount"
+    $snapshot["checkCount"] = $checks.Count
+    $snapshot["rotations"] = @($rotationRows.ToArray())
+    $snapshot["topChecks"] = @($topRows.ToArray())
+    $snapshot["detail"] = "formatVersion=$formatVersion; result=$result; core=$($snapshot["coreRotatedCount"])/$($snapshot["coreRequiredCount"]); failures=$($snapshot["failureCount"]); planned=$($snapshot["plannedCount"])"
+    return $snapshot
+}
+
 function Read-CommercialApprovalEvidenceSnapshot([string] $Path) {
     $snapshot = [ordered]@{
         provided = $false
@@ -1084,6 +1225,7 @@ $operationsReadinessSnapshot = Read-OperationsReadinessSnapshot $OperationsReadi
 $operationsConvergenceSnapshot = Read-OperationsConvergenceSnapshot $OperationsConvergenceJsonPath
 $dataFlowStoragePlanSnapshot = Read-DataFlowStoragePlanSnapshot $DataFlowStoragePlanJsonPath
 $dataFlowStorageTransitionRunbookSnapshot = Read-DataFlowStorageTransitionRunbookSnapshot $DataFlowStorageTransitionRunbookJsonPath
+$secretRotationSnapshot = Read-SecretRotationEvidenceSnapshot $SecretRotationJsonPath
 $commercialIntegrationSnapshot = Read-CommercialIntegrationEvidenceSnapshot $CommercialIntegrationJsonPath
 $commercialApprovalSnapshot = Read-CommercialApprovalEvidenceSnapshot $CommercialApprovalJsonPath
 $enterpriseAuthSmokeSnapshot = Read-EnterpriseAuthSmokeEvidenceSnapshot $EnterpriseAuthJsonPath
@@ -1092,6 +1234,7 @@ $operationsReadinessSnapshotValid = [bool] $operationsReadinessSnapshot["provide
 $operationsConvergenceSnapshotValid = [bool] $operationsConvergenceSnapshot["provided"] -and [bool] $operationsConvergenceSnapshot["parsed"] -and [bool] $operationsConvergenceSnapshot["validFormatVersion"]
 $dataFlowStoragePlanSnapshotValid = [bool] $dataFlowStoragePlanSnapshot["provided"] -and [bool] $dataFlowStoragePlanSnapshot["parsed"] -and [bool] $dataFlowStoragePlanSnapshot["validFormatVersion"]
 $dataFlowStorageTransitionRunbookSnapshotValid = [bool] $dataFlowStorageTransitionRunbookSnapshot["provided"] -and [bool] $dataFlowStorageTransitionRunbookSnapshot["parsed"] -and [bool] $dataFlowStorageTransitionRunbookSnapshot["validFormatVersion"]
+$secretRotationSnapshotValid = [bool] $secretRotationSnapshot["provided"] -and [bool] $secretRotationSnapshot["parsed"] -and [bool] $secretRotationSnapshot["validFormatVersion"]
 $commercialIntegrationSnapshotValid = [bool] $commercialIntegrationSnapshot["provided"] -and [bool] $commercialIntegrationSnapshot["parsed"] -and [bool] $commercialIntegrationSnapshot["validFormatVersion"]
 $commercialApprovalSnapshotValid = [bool] $commercialApprovalSnapshot["provided"] -and [bool] $commercialApprovalSnapshot["parsed"] -and [bool] $commercialApprovalSnapshot["validFormatVersion"]
 $enterpriseAuthSmokeSnapshotValid = [bool] $enterpriseAuthSmokeSnapshot["provided"] -and [bool] $enterpriseAuthSmokeSnapshot["parsed"] -and [bool] $enterpriseAuthSmokeSnapshot["validFormatVersion"]
@@ -1100,13 +1243,14 @@ $operationsReadinessSnapshotReady = $operationsReadinessSnapshotValid -and [bool
 $operationsConvergenceSnapshotReady = $operationsConvergenceSnapshotValid -and [bool] $operationsConvergenceSnapshot["ready"] -and [bool] $operationsConvergenceSnapshot["kubernetesReportSyncReady"]
 $dataFlowStoragePlanSnapshotPassed = $dataFlowStoragePlanSnapshotValid -and [bool] $dataFlowStoragePlanSnapshot["passed"]
 $dataFlowStorageTransitionRunbookSnapshotPassed = $dataFlowStorageTransitionRunbookSnapshotValid -and [bool] $dataFlowStorageTransitionRunbookSnapshot["passed"]
+$secretRotationSnapshotPassed = $secretRotationSnapshotValid -and [bool] $secretRotationSnapshot["passed"]
 $commercialIntegrationSnapshotPassed = $commercialIntegrationSnapshotValid -and [bool] $commercialIntegrationSnapshot["passed"]
 $commercialApprovalSnapshotPassed = $commercialApprovalSnapshotValid -and [bool] $commercialApprovalSnapshot["passed"]
 $enterpriseAuthSmokeSnapshotAccepted = $enterpriseAuthSmokeSnapshotValid -and [bool] $enterpriseAuthSmokeSnapshot["accepted"]
 $monitoringThresholdSnapshotPassed = $monitoringThresholdSnapshotValid -and [bool] $monitoringThresholdSnapshot["passed"] -and [bool] $monitoringThresholdSnapshot["complete"]
 
 $evidenceText = $DeploymentEvidenceRef + $OperationsReadinessRef + $OperationsConvergenceRef + $DataFlowStoragePlanEvidenceRef + $DataFlowStorageTransitionRunbookEvidenceRef + $SecretRotationEvidenceRef + $CommercialIntegrationEvidenceRef + $CommercialApprovalEvidenceRef + $EnterpriseAuthEvidenceRef + $BackupRestoreEvidenceRef + $HaDrEvidenceRef + $MonitoringEvidenceRef + $SecurityEvidenceRef + $IamRbacEvidenceRef + $RunbookReviewRef + $TroubleshootingReviewRef + $SupportEscalationRef + $SupportSlaRef + $KnownGapsRef
-$hasAnyInput = -not [string]::IsNullOrWhiteSpace($EnvironmentName + $TargetCluster + $Operator + $HandoffStartedAt + $HandoffCompletedAt + $ChangeApprovalRef + $evidenceText + $OperationsReadinessJsonPath + $OperationsConvergenceJsonPath + $DataFlowStoragePlanJsonPath + $DataFlowStorageTransitionRunbookJsonPath + $CommercialIntegrationJsonPath + $CommercialApprovalJsonPath + $EnterpriseAuthJsonPath + $MonitoringThresholdJsonPath) -or $ConfirmRunbookReviewed -or $ConfirmTroubleshootingReviewed -or $ConfirmRollbackReviewed -or $ConfirmSupportEscalationReviewed -or $ConfirmKnownGapsAccepted -or $ConfirmOperationsReadinessSnapshotReviewed -or $ConfirmOperationsConvergenceSnapshotReviewed -or $ConfirmDataFlowStoragePlanReviewed -or $ConfirmDataFlowStorageTransitionRunbookReviewed -or $ConfirmCommercialIntegrationSnapshotReviewed -or $ConfirmCommercialApprovalSnapshotReviewed -or $ConfirmMonitoringThresholdReviewed -or $ConfirmNoSecretValues -or $RequireOperationsSnapshotEvidence
+$hasAnyInput = -not [string]::IsNullOrWhiteSpace($EnvironmentName + $TargetCluster + $Operator + $HandoffStartedAt + $HandoffCompletedAt + $ChangeApprovalRef + $evidenceText + $OperationsReadinessJsonPath + $OperationsConvergenceJsonPath + $DataFlowStoragePlanJsonPath + $DataFlowStorageTransitionRunbookJsonPath + $SecretRotationJsonPath + $CommercialIntegrationJsonPath + $CommercialApprovalJsonPath + $EnterpriseAuthJsonPath + $MonitoringThresholdJsonPath) -or $ConfirmRunbookReviewed -or $ConfirmTroubleshootingReviewed -or $ConfirmRollbackReviewed -or $ConfirmSupportEscalationReviewed -or $ConfirmKnownGapsAccepted -or $ConfirmOperationsReadinessSnapshotReviewed -or $ConfirmOperationsConvergenceSnapshotReviewed -or $ConfirmDataFlowStoragePlanReviewed -or $ConfirmDataFlowStorageTransitionRunbookReviewed -or $ConfirmSecretRotationSnapshotReviewed -or $ConfirmCommercialIntegrationSnapshotReviewed -or $ConfirmCommercialApprovalSnapshotReviewed -or $ConfirmMonitoringThresholdReviewed -or $ConfirmNoSecretValues -or $RequireOperationsSnapshotEvidence
 $handoffStartedAtParsed = Get-ParsedDateText $HandoffStartedAt
 $handoffCompletedAtParsed = Get-ParsedDateText $HandoffCompletedAt
 $handoffWindowOrdered = $null -ne $handoffStartedAtParsed -and $null -ne $handoffCompletedAtParsed -and $handoffCompletedAtParsed -ge $handoffStartedAtParsed
@@ -1158,6 +1302,13 @@ if ([bool] $RequireProductionEvidence -or [bool] $dataFlowStorageTransitionRunbo
     Add-Check "data-flow-storage-transition-runbook-reviewed" "Data-flow storage transition runbook reviewed" ([bool] $ConfirmDataFlowStorageTransitionRunbookReviewed -and $dataFlowStorageTransitionRunbookSnapshotValid) "confirmed=$([bool] $ConfirmDataFlowStorageTransitionRunbookReviewed); snapshotValid=$dataFlowStorageTransitionRunbookSnapshotValid" $DataFlowStorageTransitionRunbookEvidenceRef
 }
 Add-EvidenceCheck "secret-rotation-evidence" "Secret/certificate rotation target evidence" ([bool] $RequireProductionEvidence) $SecretRotationEvidenceRef "target secret/certificate rotation result=passed"
+if ([bool] $RequireProductionEvidence -or [bool] $secretRotationSnapshot["provided"]) {
+    Add-Check "secret-rotation-snapshot-parsed" "Secret/certificate rotation snapshot parsed" $secretRotationSnapshotValid $secretRotationSnapshot["detail"] $SecretRotationEvidenceRef
+    Add-Check "secret-rotation-snapshot-passed" "Secret/certificate rotation snapshot passed" $secretRotationSnapshotPassed "result=$($secretRotationSnapshot["result"]); core=$($secretRotationSnapshot["coreRotatedCount"])/$($secretRotationSnapshot["coreRequiredCount"]); failures=$($secretRotationSnapshot["failureCount"]); planned=$($secretRotationSnapshot["plannedCount"])" $SecretRotationEvidenceRef
+}
+if ([bool] $RequireProductionEvidence -or [bool] $secretRotationSnapshot["provided"] -or [bool] $ConfirmSecretRotationSnapshotReviewed) {
+    Add-Check "secret-rotation-snapshot-reviewed" "Secret/certificate rotation snapshot reviewed" ([bool] $ConfirmSecretRotationSnapshotReviewed -and $secretRotationSnapshotValid) "confirmed=$([bool] $ConfirmSecretRotationSnapshotReviewed); snapshotValid=$secretRotationSnapshotValid" $SecretRotationEvidenceRef
+}
 Add-EvidenceCheck "commercial-integration-evidence" "Commercial integration target evidence" ([bool] $RequireProductionEvidence) $CommercialIntegrationEvidenceRef "target commercial integration result=passed without native processor API claims"
 if ([bool] $RequireProductionEvidence -or [bool] $commercialIntegrationSnapshot["provided"]) {
     Add-Check "commercial-integration-snapshot-parsed" "Commercial integration snapshot parsed" $commercialIntegrationSnapshotValid $commercialIntegrationSnapshot["detail"] $CommercialIntegrationEvidenceRef
@@ -1252,6 +1403,7 @@ $report = New-Object System.Collections.Specialized.OrderedDictionary
 [void] $report.Add("targetEvidenceSnapshots", [ordered]@{
     dataFlowStoragePlan = $dataFlowStoragePlanSnapshot
     dataFlowStorageTransitionRunbook = $dataFlowStorageTransitionRunbookSnapshot
+    secretRotation = $secretRotationSnapshot
     commercialIntegration = $commercialIntegrationSnapshot
     commercialApproval = $commercialApprovalSnapshot
     enterpriseAuthSmoke = $enterpriseAuthSmokeSnapshot
@@ -1268,6 +1420,7 @@ $report = New-Object System.Collections.Specialized.OrderedDictionary
     operationsConvergenceSnapshotReviewed = [bool] $ConfirmOperationsConvergenceSnapshotReviewed
     dataFlowStoragePlanReviewed = [bool] $ConfirmDataFlowStoragePlanReviewed
     dataFlowStorageTransitionRunbookReviewed = [bool] $ConfirmDataFlowStorageTransitionRunbookReviewed
+    secretRotationSnapshotReviewed = [bool] $ConfirmSecretRotationSnapshotReviewed
     commercialIntegrationSnapshotReviewed = [bool] $ConfirmCommercialIntegrationSnapshotReviewed
     commercialApprovalSnapshotReviewed = [bool] $ConfirmCommercialApprovalSnapshotReviewed
     monitoringThresholdReviewed = [bool] $ConfirmMonitoringThresholdReviewed
@@ -1284,15 +1437,16 @@ $report = New-Object System.Collections.Specialized.OrderedDictionary
     operationsConvergenceKubernetesReportSyncReady = $operationsConvergenceSnapshot["kubernetesReportSyncReady"]
     dataFlowStoragePlanSnapshotResult = $dataFlowStoragePlanSnapshot["result"]
     dataFlowStorageTransitionRunbookSnapshotResult = $dataFlowStorageTransitionRunbookSnapshot["result"]
+    secretRotationSnapshotResult = $secretRotationSnapshot["result"]
     commercialIntegrationSnapshotResult = $commercialIntegrationSnapshot["result"]
     commercialApprovalSnapshotResult = $commercialApprovalSnapshot["result"]
     enterpriseAuthSmokeSnapshotResult = $enterpriseAuthSmokeSnapshot["result"]
     monitoringThresholdSnapshotResult = $monitoringThresholdSnapshot["result"]
 })
 [void] $report.Add("checks", [object] $checkArray)
-[void] $report.Add("decisionRule", "Production/B2B operations handoff package readiness requires result=passed from the target environment, reviewed runbook/troubleshooting/rollback/support paths, accepted known gaps, no-secret confirmation, and references to target readiness, convergence, data-flow storage transition, data-flow storage transition runbook, secret rotation, commercial integration, commercial approval, enterprise auth, backup/restore, HA/DR, monitoring, security, and IAM/RBAC evidence when production evidence is required. When operations snapshot evidence is required, the latest operations readiness snapshot must be result=ready and the latest operations readiness convergence snapshot must be result=ready with Kubernetes report sync ready. When production evidence is required, the data-flow storage plan, data-flow storage transition runbook, commercial integration, commercial approval, and monitoring threshold snapshots must be result=passed, the enterprise auth smoke snapshot must be result=passed or result=scope-out with accepted=true, and the data-flow storage plan, data-flow storage transition runbook, commercial integration, commercial approval, and monitoring threshold snapshots must be reviewed.")
-[void] $report.Add("scopePolicy", "This package is a handoff wrapper for already-collected operations evidence. It can reduce sanitized operations readiness, convergence, data-flow storage plan, data-flow storage transition runbook, commercial integration, commercial approval, enterprise auth smoke, and monitoring threshold JSON snapshots to summary fields, but it does not execute kubectl, gh, provider APIs, notification adapters, payment adapters, storage migrations, IdP/directory login flows, Prometheus/Grafana/Alertmanager API calls, or native card/bank/tax/ERP processor calls.")
-[void] $report.Add("secretPolicy", "Evidence stores only environment labels, operator/change references, timestamps, booleans, external evidence references, reduced operations readiness/convergence snapshot summaries, reduced data-flow storage plan/runbook summaries, reduced commercial evidence summaries, reduced enterprise auth smoke summaries, and reduced monitoring threshold summaries; it must not contain passwords, bearer tokens, kubeconfig values, private keys, SMTP credentials, webhook signing secrets, provider credentials, raw SQL, raw EXPLAIN JSON, object keys, raw event messages, raw provider responses, raw identity claims, OIDC codes/states/tokens, LDAP/admin passwords, raw remediation commands containing credentials, raw Alertmanager receiver secrets, raw price tables, raw contract text, or customer payment data.")
+[void] $report.Add("decisionRule", "Production/B2B operations handoff package readiness requires result=passed from the target environment, reviewed runbook/troubleshooting/rollback/support paths, accepted known gaps, no-secret confirmation, and references to target readiness, convergence, data-flow storage transition, data-flow storage transition runbook, secret rotation, commercial integration, commercial approval, enterprise auth, backup/restore, HA/DR, monitoring, security, and IAM/RBAC evidence when production evidence is required. When operations snapshot evidence is required, the latest operations readiness snapshot must be result=ready and the latest operations readiness convergence snapshot must be result=ready with Kubernetes report sync ready. When production evidence is required, the data-flow storage plan, data-flow storage transition runbook, secret rotation, commercial integration, commercial approval, and monitoring threshold snapshots must be result=passed, the enterprise auth smoke snapshot must be result=passed or result=scope-out with accepted=true, and the data-flow storage plan, data-flow storage transition runbook, secret rotation, commercial integration, commercial approval, and monitoring threshold snapshots must be reviewed.")
+[void] $report.Add("scopePolicy", "This package is a handoff wrapper for already-collected operations evidence. It can reduce sanitized operations readiness, convergence, data-flow storage plan, data-flow storage transition runbook, secret rotation, commercial integration, commercial approval, enterprise auth smoke, and monitoring threshold JSON snapshots to summary fields, but it does not execute kubectl, gh, provider APIs, notification adapters, payment adapters, storage migrations, IdP/directory login flows, Prometheus/Grafana/Alertmanager API calls, or native card/bank/tax/ERP processor calls.")
+[void] $report.Add("secretPolicy", "Evidence stores only environment labels, operator/change references, timestamps, booleans, external evidence references, reduced operations readiness/convergence snapshot summaries, reduced data-flow storage plan/runbook summaries, reduced secret rotation summaries, reduced commercial evidence summaries, reduced enterprise auth smoke summaries, and reduced monitoring threshold summaries; it must not contain passwords, bearer tokens, kubeconfig values, private keys, SMTP credentials, webhook signing secrets, provider credentials, raw SQL, raw EXPLAIN JSON, object keys, raw event messages, raw provider responses, raw identity claims, OIDC codes/states/tokens, LDAP/admin passwords, raw remediation commands containing credentials, raw Alertmanager receiver secrets, raw price tables, raw contract text, or customer payment data.")
 
 $markdownLines = @(
     "# OSMU Operations Handoff Package",
@@ -1337,6 +1491,7 @@ $markdownLines += "## Target Evidence Snapshots"
 $markdownLines += ""
 $markdownLines += "- Data-flow storage plan: provided=$($dataFlowStoragePlanSnapshot["provided"]); parsed=$($dataFlowStoragePlanSnapshot["parsed"]); result=$($dataFlowStoragePlanSnapshot["result"]); candidateStore=$($dataFlowStoragePlanSnapshot["candidateStore"]); targetP95QueryLatencyMs=$($dataFlowStoragePlanSnapshot["targetP95QueryLatencyMs"]); passed=$($dataFlowStoragePlanSnapshot["passedCount"]); pending=$($dataFlowStoragePlanSnapshot["pendingCount"]); checks=$($dataFlowStoragePlanSnapshot["checkCount"])"
 $markdownLines += "- Data-flow storage transition runbook: provided=$($dataFlowStorageTransitionRunbookSnapshot["provided"]); parsed=$($dataFlowStorageTransitionRunbookSnapshot["parsed"]); result=$($dataFlowStorageTransitionRunbookSnapshot["result"]); storagePlanResult=$($dataFlowStorageTransitionRunbookSnapshot["storagePlanResult"]); candidateStore=$($dataFlowStorageTransitionRunbookSnapshot["candidateStore"]); failures=$($dataFlowStorageTransitionRunbookSnapshot["failureCount"]); checks=$($dataFlowStorageTransitionRunbookSnapshot["checkCount"])"
+$markdownLines += "- Secret rotation: provided=$($secretRotationSnapshot["provided"]); parsed=$($secretRotationSnapshot["parsed"]); result=$($secretRotationSnapshot["result"]); core=$($secretRotationSnapshot["coreRotatedCount"])/$($secretRotationSnapshot["coreRequiredCount"]); failures=$($secretRotationSnapshot["failureCount"]); planned=$($secretRotationSnapshot["plannedCount"])"
 $markdownLines += "- Commercial integration: provided=$($commercialIntegrationSnapshot["provided"]); parsed=$($commercialIntegrationSnapshot["parsed"]); result=$($commercialIntegrationSnapshot["result"]); requiredVerified=$($commercialIntegrationSnapshot["requiredVerifiedCount"])/$($commercialIntegrationSnapshot["requiredCount"]); failures=$($commercialIntegrationSnapshot["failureCount"]); planned=$($commercialIntegrationSnapshot["plannedCount"])"
 $markdownLines += "- Commercial approval: provided=$($commercialApprovalSnapshot["provided"]); parsed=$($commercialApprovalSnapshot["parsed"]); result=$($commercialApprovalSnapshot["result"]); failures=$($commercialApprovalSnapshot["failureCount"]); checks=$($commercialApprovalSnapshot["checkCount"]); priceListApproved=$($commercialApprovalSnapshot["pricingPolicyProposalApprovedPriceListCount"])"
 $markdownLines += "- Enterprise auth smoke: provided=$($enterpriseAuthSmokeSnapshot["provided"]); parsed=$($enterpriseAuthSmokeSnapshot["parsed"]); result=$($enterpriseAuthSmokeSnapshot["result"]); pass=$($enterpriseAuthSmokeSnapshot["passCount"]); fail=$($enterpriseAuthSmokeSnapshot["failCount"]); blocked=$($enterpriseAuthSmokeSnapshot["blockedCount"]); scopeOutAccepted=$($enterpriseAuthSmokeSnapshot["scopeOutAccepted"])"
@@ -1346,6 +1501,9 @@ foreach ($pendingCheck in @($dataFlowStoragePlanSnapshot["topPendingChecks"])) {
 }
 foreach ($pendingCheck in @($dataFlowStorageTransitionRunbookSnapshot["topFailedChecks"])) {
     $markdownLines += "- Data-flow transition runbook failed: [$($pendingCheck.status)] $($pendingCheck.id) / $($pendingCheck.name): $($pendingCheck.detail)"
+}
+foreach ($pendingCheck in @($secretRotationSnapshot["topChecks"])) {
+    $markdownLines += "- Secret rotation pending: [$($pendingCheck.status)] $($pendingCheck.id) / $($pendingCheck.name): $($pendingCheck.detail)"
 }
 foreach ($pendingCheck in @($commercialIntegrationSnapshot["topChecks"])) {
     $markdownLines += "- Commercial integration pending: [$($pendingCheck.status)] $($pendingCheck.id) / $($pendingCheck.name): $($pendingCheck.detail)"
@@ -1370,7 +1528,7 @@ foreach ($check in $checks) {
 $markdownLines += ""
 $markdownLines += "## Operator Command"
 $markdownLines += ""
-$markdownLines += "- Record passed target package: ``powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\write-operations-handoff-package.ps1 -EnvironmentName <env> -TargetCluster <cluster> -Operator <operator> -HandoffStartedAt <iso-time> -HandoffCompletedAt <iso-time> -ChangeApprovalRef <change-id> -DeploymentEvidenceRef <ref> -OperationsReadinessRef <ref> -OperationsConvergenceRef <ref> -DataFlowStoragePlanEvidenceRef <ref> -DataFlowStorageTransitionRunbookEvidenceRef <ref> -OperationsReadinessJsonPath .\.osmu-run\latest-operations-readiness.json -OperationsConvergenceJsonPath .\.osmu-run\latest-operations-readiness-convergence.json -DataFlowStoragePlanJsonPath .\.osmu-run\latest-data-flow-storage-plan.json -DataFlowStorageTransitionRunbookJsonPath .\.osmu-run\latest-data-flow-storage-transition-runbook-evidence.json -SecretRotationEvidenceRef <ref> -CommercialIntegrationEvidenceRef <ref> -CommercialApprovalEvidenceRef <ref> -CommercialIntegrationJsonPath .\.osmu-run\latest-commercial-integration-evidence.json -CommercialApprovalJsonPath .\.osmu-run\latest-commercial-approval-evidence.json -EnterpriseAuthEvidenceRef <ref> -EnterpriseAuthJsonPath .\.osmu-run\latest-enterprise-auth-smoke.json -BackupRestoreEvidenceRef <ref> -HaDrEvidenceRef <ref> -MonitoringEvidenceRef <ref> -MonitoringThresholdJsonPath .\.osmu-run\latest-monitoring-threshold-evidence.json -SecurityEvidenceRef <ref> -IamRbacEvidenceRef <ref> -RunbookReviewRef <ref> -TroubleshootingReviewRef <ref> -SupportEscalationRef <ref> -SupportSlaRef <ref> -KnownGapsRef <ref> -ConfirmRunbookReviewed -ConfirmTroubleshootingReviewed -ConfirmRollbackReviewed -ConfirmSupportEscalationReviewed -ConfirmKnownGapsAccepted -ConfirmOperationsReadinessSnapshotReviewed -ConfirmOperationsConvergenceSnapshotReviewed -ConfirmDataFlowStoragePlanReviewed -ConfirmDataFlowStorageTransitionRunbookReviewed -ConfirmCommercialIntegrationSnapshotReviewed -ConfirmCommercialApprovalSnapshotReviewed -ConfirmMonitoringThresholdReviewed -ConfirmNoSecretValues -RequireProductionEvidence -RequireOperationsSnapshotEvidence -FailIfNotPassed``"
+$markdownLines += "- Record passed target package: ``powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\write-operations-handoff-package.ps1 -EnvironmentName <env> -TargetCluster <cluster> -Operator <operator> -HandoffStartedAt <iso-time> -HandoffCompletedAt <iso-time> -ChangeApprovalRef <change-id> -DeploymentEvidenceRef <ref> -OperationsReadinessRef <ref> -OperationsConvergenceRef <ref> -DataFlowStoragePlanEvidenceRef <ref> -DataFlowStorageTransitionRunbookEvidenceRef <ref> -OperationsReadinessJsonPath .\.osmu-run\latest-operations-readiness.json -OperationsConvergenceJsonPath .\.osmu-run\latest-operations-readiness-convergence.json -DataFlowStoragePlanJsonPath .\.osmu-run\latest-data-flow-storage-plan.json -DataFlowStorageTransitionRunbookJsonPath .\.osmu-run\latest-data-flow-storage-transition-runbook-evidence.json -SecretRotationEvidenceRef <ref> -SecretRotationJsonPath .\.osmu-run\latest-secret-rotation-evidence.json -CommercialIntegrationEvidenceRef <ref> -CommercialApprovalEvidenceRef <ref> -CommercialIntegrationJsonPath .\.osmu-run\latest-commercial-integration-evidence.json -CommercialApprovalJsonPath .\.osmu-run\latest-commercial-approval-evidence.json -EnterpriseAuthEvidenceRef <ref> -EnterpriseAuthJsonPath .\.osmu-run\latest-enterprise-auth-smoke.json -BackupRestoreEvidenceRef <ref> -HaDrEvidenceRef <ref> -MonitoringEvidenceRef <ref> -MonitoringThresholdJsonPath .\.osmu-run\latest-monitoring-threshold-evidence.json -SecurityEvidenceRef <ref> -IamRbacEvidenceRef <ref> -RunbookReviewRef <ref> -TroubleshootingReviewRef <ref> -SupportEscalationRef <ref> -SupportSlaRef <ref> -KnownGapsRef <ref> -ConfirmRunbookReviewed -ConfirmTroubleshootingReviewed -ConfirmRollbackReviewed -ConfirmSupportEscalationReviewed -ConfirmKnownGapsAccepted -ConfirmOperationsReadinessSnapshotReviewed -ConfirmOperationsConvergenceSnapshotReviewed -ConfirmDataFlowStoragePlanReviewed -ConfirmDataFlowStorageTransitionRunbookReviewed -ConfirmSecretRotationSnapshotReviewed -ConfirmCommercialIntegrationSnapshotReviewed -ConfirmCommercialApprovalSnapshotReviewed -ConfirmMonitoringThresholdReviewed -ConfirmNoSecretValues -RequireProductionEvidence -RequireOperationsSnapshotEvidence -FailIfNotPassed``"
 
 if (-not $NoWrite) {
     New-Item -ItemType Directory -Force -Path (Split-Path -Parent $resolvedJsonOutputPath) | Out-Null

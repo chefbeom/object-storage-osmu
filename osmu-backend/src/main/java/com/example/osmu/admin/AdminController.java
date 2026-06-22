@@ -2368,6 +2368,8 @@ public class AdminController {
                         targetEvidenceSnapshots.path("dataFlowStorageTransitionRunbook"),
                         false
                 );
+        DashboardSecretRotationEvidenceResponse secretRotationSnapshot =
+                secretRotationEvidenceSnapshotFromNode(targetEvidenceSnapshots.path("secretRotation"), false);
         DashboardCommercialIntegrationEvidenceResponse commercialIntegrationSnapshot =
                 commercialIntegrationEvidenceSnapshotFromNode(targetEvidenceSnapshots.path("commercialIntegration"), false);
         DashboardCommercialApprovalEvidenceResponse commercialApprovalSnapshot =
@@ -2392,6 +2394,7 @@ public class AdminController {
                 convergenceSnapshot,
                 dataFlowStoragePlanSnapshot,
                 dataFlowStorageTransitionRunbookSnapshot,
+                secretRotationSnapshot,
                 commercialIntegrationSnapshot,
                 commercialApprovalSnapshot,
                 enterpriseAuthSmokeSnapshot,
@@ -2964,7 +2967,18 @@ public class AdminController {
         if (report == null) {
             return DashboardSecretRotationEvidenceResponse.empty();
         }
+        return secretRotationEvidenceSnapshotFromNode(report, true);
+    }
+
+    private DashboardSecretRotationEvidenceResponse secretRotationEvidenceSnapshotFromNode(JsonNode report, boolean includePolicies) {
+        if (report == null || report.isMissingNode() || report.isNull() || !report.isObject()) {
+            return null;
+        }
         JsonNode summary = report.path("summary");
+        JsonNode checkNodes = report.path("checks");
+        if (!checkNodes.isArray()) {
+            checkNodes = report.path("topChecks");
+        }
         return new DashboardSecretRotationEvidenceResponse(
                 jsonText(report, "result"),
                 jsonText(report, "generatedAt"),
@@ -2974,15 +2988,15 @@ public class AdminController {
                 Map.copyOf(jsonTextMap(report.path("rotationWindow"))),
                 Map.copyOf(jsonTextMap(report.path("evidenceRefs"))),
                 Map.copyOf(jsonBooleanMap(report.path("confirmations"))),
-                jsonInt(summary, "rotatedCount"),
-                jsonInt(summary, "coreRotatedCount"),
-                jsonInt(summary, "coreRequiredCount"),
-                jsonInt(summary, "failureCount"),
-                jsonInt(summary, "plannedCount"),
+                Math.max(jsonInt(report, "rotatedCount"), jsonInt(summary, "rotatedCount")),
+                Math.max(jsonInt(report, "coreRotatedCount"), jsonInt(summary, "coreRotatedCount")),
+                Math.max(jsonInt(report, "coreRequiredCount"), jsonInt(summary, "coreRequiredCount")),
+                Math.max(jsonInt(report, "failureCount"), jsonInt(summary, "failureCount")),
+                Math.max(jsonInt(report, "plannedCount"), jsonInt(summary, "plannedCount")),
                 secretRotationItems(report.path("rotations")),
-                secretRotationChecks(report.path("checks")),
-                jsonText(report, "decisionRule"),
-                jsonText(report, "secretPolicy")
+                secretRotationChecks(checkNodes),
+                includePolicies ? jsonText(report, "decisionRule") : "",
+                includePolicies ? jsonText(report, "secretPolicy") : ""
         );
     }
 
