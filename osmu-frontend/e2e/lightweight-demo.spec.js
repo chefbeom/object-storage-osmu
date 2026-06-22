@@ -1711,6 +1711,8 @@ test('admin dashboard shows operations readiness convergence handoff', async ({ 
   await expect(page.getByTestId('readiness-convergence-item-summary')).toContainText('action-required')
   await expect(page.getByTestId('readiness-convergence-summary')).toContainText('resolve-invocation-blockers')
   await expect(page.getByTestId('readiness-convergence-summary')).toContainText('1 of 7 stages ready')
+  await expect(page.getByTestId('readiness-convergence-summary')).toContainText('sync not-ready')
+  await expect(page.getByTestId('readiness-convergence-summary')).toContainText('source action-required')
   await expect(page.getByTestId('readiness-convergence-commands')).toContainText('Resolve invocation blockers')
   await expect(page.getByTestId('readiness-convergence-commands')).toContainText('write-operations-invocation-unblock-plan.ps1')
   await expect(page.getByTestId('readiness-convergence-command-copy-button')).toBeVisible()

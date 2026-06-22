@@ -1372,7 +1372,8 @@
         </small>
         <small v-if="operationsReadinessConvergence.kubernetesReportSyncConfigMapName">
           report sync {{ operationsReadinessConvergence.kubernetesReportSyncConfigMapName }} /
-          {{ operationsReadinessConvergence.kubernetesReportSyncReady ? 'applied' : 'not applied' }}
+          {{ operationsReadinessConvergence.kubernetesReportSyncReady ? 'sync ready' : 'sync not-ready' }} /
+          source {{ operationsReadinessConvergence.kubernetesReportSyncSourceReportResult || 'unknown' }}
         </small>
         <small v-if="operationsReadinessConvergenceBottleneck.reason">
           {{ operationsReadinessConvergenceBottleneck.reason }}
