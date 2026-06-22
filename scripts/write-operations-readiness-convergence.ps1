@@ -66,6 +66,13 @@ function Get-Int([object] $Object, [string] $Name) {
     }
 }
 
+function Get-ArrayCount([object] $Value) {
+    if ($null -eq $Value) {
+        return 0
+    }
+    return @($Value).Count
+}
+
 function Is-ReadyResult([string] $Result) {
     return @("ready", "passed", "go") -contains $Result.ToLowerInvariant()
 }
@@ -167,8 +174,11 @@ $handoffResult = Get-Text $handoff.json "result"
 $readinessResult = Get-Text $readiness.json "result"
 $finalizerResult = Get-Text $finalize.json "result"
 $finalizerReadinessResult = Get-Text $finalize.json "readinessResult"
+$finalizerFailedCount = Get-Int $finalize.json "failedCount"
+$finalizerGapCount = Get-ArrayCount (Get-JsonProperty $finalize.json "gaps")
 $kubernetesReportSyncResult = Get-Text $kubernetesReportSync.json "result"
 $kubernetesReportSyncFailedCount = Get-Int $kubernetesReportSync.json "failedCount"
+$kubernetesReportSyncSourceReportResult = Get-Text $kubernetesReportSync.json "sourceReportResult"
 $nextStep = Get-JsonProperty $handoff.json "nextStep"
 $nextCode = Get-Text $nextStep "code"
 $nextCommand = Get-Text $nextStep "command"
@@ -176,8 +186,8 @@ $kubernetesReportSyncCommand = Get-KubernetesReportSyncNextCommand $kubernetesRe
 $kubernetesReportSyncWorkflowCommand = Get-KubernetesReportSyncWorkflowCommand $kubernetesReportSync.json $kubernetesReportSync.exists
 $handoffReady = $handoff.exists -and (Is-ReadyResult $handoffResult) -and "none".Equals($nextCode, [System.StringComparison]::OrdinalIgnoreCase)
 $readinessReady = $readiness.exists -and (Is-ReadyResult $readinessResult)
-$finalizerReady = $finalize.exists -and (Is-ReadyResult $finalizerResult) -and (Is-ReadyResult $finalizerReadinessResult)
-$kubernetesReportSyncReady = $kubernetesReportSync.exists -and "applied".Equals($kubernetesReportSyncResult, [System.StringComparison]::OrdinalIgnoreCase) -and $kubernetesReportSyncFailedCount -eq 0
+$finalizerReady = $finalize.exists -and (Is-ReadyResult $finalizerResult) -and (Is-ReadyResult $finalizerReadinessResult) -and $finalizerFailedCount -eq 0 -and $finalizerGapCount -eq 0
+$kubernetesReportSyncReady = $kubernetesReportSync.exists -and "applied".Equals($kubernetesReportSyncResult, [System.StringComparison]::OrdinalIgnoreCase) -and $kubernetesReportSyncFailedCount -eq 0 -and (Is-ReadyResult $kubernetesReportSyncSourceReportResult)
 
 $recommendedCommands = @()
 $seenCommands = @{}
@@ -295,17 +305,18 @@ $report = [ordered]@{
     finalizerExists = [bool] $finalize.exists
     finalizerResult = $finalizerResult
     finalizerReadinessResult = $finalizerReadinessResult
-    finalizerFailedCount = Get-Int $finalize.json "failedCount"
+    finalizerFailedCount = $finalizerFailedCount
+    finalizerGapCount = $finalizerGapCount
     kubernetesReportSyncExists = [bool] $kubernetesReportSync.exists
     kubernetesReportSyncResult = $kubernetesReportSyncResult
     kubernetesReportSyncFailedCount = $kubernetesReportSyncFailedCount
     kubernetesReportSyncConfigMapName = Get-Text $kubernetesReportSync.json "configMapName"
     kubernetesReportSyncConfigMapKey = Get-Text $kubernetesReportSync.json "configMapKey"
-    kubernetesReportSyncSourceReportResult = Get-Text $kubernetesReportSync.json "sourceReportResult"
+    kubernetesReportSyncSourceReportResult = $kubernetesReportSyncSourceReportResult
     kubernetesReportSyncWorkflowCommand = $kubernetesReportSyncWorkflowCommand
     kubernetesReportSyncWorkflowNote = "For GitHub Actions sync, include data_flow_storage_plan_json_base64 only when .osmu-run/latest-data-flow-storage-plan.json should be carried into the operations report ConfigMap; MariaDB partition or dual-write plans must include the sanitized query-plan evidence summary. Omit the input when no target analytics-storage plan evidence is ready."
     kubernetesReportSyncReady = [bool] $kubernetesReportSyncReady
-    finalizerGapCount = Get-Int $handoff.json "finalizerGapCount"
+    handoffFinalizerGapCount = Get-Int $handoff.json "finalizerGapCount"
     stageCount = Get-Int $handoff.json "stageCount"
     readyStageCount = Get-Int $handoff.json "readyStageCount"
     blockedActionCount = Get-Int $handoff.json "blockedActionCount"
@@ -314,7 +325,7 @@ $report = [ordered]@{
     failedImportCount = Get-Int $handoff.json "failedImportCount"
     currentBottleneck = $currentBottleneck
     recommendedCommands = $recommendedCommands
-    decisionRule = "Operations readiness convergence is ready only when the handoff result is ready/none, the readiness report is ready, the operations readiness finalizer report exists with result=ready and readinessResult=ready, and the Kubernetes operations report sync evidence confirms result=applied with zero failed checks."
+    decisionRule = "Operations readiness convergence is ready only when the handoff result is ready/none, the readiness report is ready, the operations readiness finalizer report exists with result=ready, readinessResult=ready, failedCount=0, and no gaps, and the Kubernetes operations report sync evidence confirms result=applied, failedCount=0, and sourceReportResult=ready."
     safetyPolicy = "This convergence writer does not execute kubectl, gh, workflow dispatch, finalizer, or ConfigMap sync commands; it only reads local reports and writes JSON/Markdown guidance."
 }
 

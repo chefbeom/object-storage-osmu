@@ -200,6 +200,8 @@ Assert-Equal $finalizerRequiredReport.result "action-required" "finalizer requir
 Assert-Equal $finalizerRequiredReport.currentBottleneck.code "finalize-operations-readiness" "finalizer required bottleneck"
 Assert-Equal $finalizerRequiredReport.finalizerExists $false "finalizer required exists"
 Assert-Contains $finalizerRequiredReport.decisionRule "finalizer report exists" "finalizer required decision rule"
+Assert-Contains $finalizerRequiredReport.decisionRule "failedCount=0" "finalizer required decision rule"
+Assert-Contains $finalizerRequiredReport.decisionRule "sourceReportResult=ready" "finalizer required decision rule"
 Assert-Contains $finalizerRequiredReport.recommendedCommands[0].command "finalize-operations-readiness.ps1" "finalizer required command"
 Assert-Contains $finalizerRequiredMarkdown "Finalize operations readiness" "finalizer required markdown command"
 
@@ -238,6 +240,70 @@ Write-JsonFixture $readySyncPath ([ordered]@{
     failedCount = 0
     checkCount = 5
 })
+
+$gapFinalizePath = Join-Path $resolvedOutputDirectory "gap-finalize.json"
+$gapFinalizeJsonPath = Join-Path $resolvedOutputDirectory "gap-finalize-convergence.json"
+$gapFinalizeMarkdownPath = Join-Path $resolvedOutputDirectory "gap-finalize-convergence.md"
+Write-JsonFixture $gapFinalizePath ([ordered]@{
+    formatVersion = "osmu.operations-readiness-finalize.v1"
+    result = "ready"
+    status = "operations-readiness-finalize-ready"
+    readinessResult = "ready"
+    failedCount = 1
+    gaps = @("Finalizer gap should block convergence.")
+})
+
+& powershell -NoProfile -ExecutionPolicy Bypass -File $scriptPath `
+    -HandoffReportPath $readyHandoffPath `
+    -ReadinessReportPath $readyReadinessPath `
+    -OperationsReadinessFinalizeReportPath $gapFinalizePath `
+    -KubernetesOperationsReportSyncReportPath $readySyncPath `
+    -JsonOutputPath $gapFinalizeJsonPath `
+    -MarkdownOutputPath $gapFinalizeMarkdownPath | Out-Host
+if ($LASTEXITCODE -ne 0) {
+    throw "write-operations-readiness-convergence.ps1 gap-finalize check failed with exit code $LASTEXITCODE."
+}
+
+$gapFinalizeReport = Get-Content -Raw -LiteralPath $gapFinalizeJsonPath | ConvertFrom-Json
+Assert-Equal $gapFinalizeReport.result "action-required" "gap finalizer result"
+Assert-Equal $gapFinalizeReport.currentBottleneck.code "finalize-operations-readiness" "gap finalizer bottleneck"
+Assert-Equal $gapFinalizeReport.finalizerFailedCount 1 "gap finalizer failed count"
+Assert-Equal $gapFinalizeReport.finalizerGapCount 1 "gap finalizer gap count"
+Assert-Contains $gapFinalizeReport.recommendedCommands[0].command "finalize-operations-readiness.ps1" "gap finalizer command"
+
+$notReadySyncPath = Join-Path $resolvedOutputDirectory "not-ready-sync.json"
+$notReadySyncJsonPath = Join-Path $resolvedOutputDirectory "not-ready-sync-convergence.json"
+$notReadySyncMarkdownPath = Join-Path $resolvedOutputDirectory "not-ready-sync-convergence.md"
+Write-JsonFixture $notReadySyncPath ([ordered]@{
+    formatVersion = "osmu.kubernetes-operations-report-sync.v1"
+    result = "applied"
+    namespace = "osmu"
+    configMapName = "osmu-operations-reports"
+    configMapKey = "latest-operations-readiness-convergence.json"
+    sourceReportResult = "action-required"
+    failedCount = 0
+    checkCount = 5
+})
+
+& powershell -NoProfile -ExecutionPolicy Bypass -File $scriptPath `
+    -HandoffReportPath $readyHandoffPath `
+    -ReadinessReportPath $readyReadinessPath `
+    -OperationsReadinessFinalizeReportPath $readyFinalizePath `
+    -KubernetesOperationsReportSyncReportPath $notReadySyncPath `
+    -JsonOutputPath $notReadySyncJsonPath `
+    -MarkdownOutputPath $notReadySyncMarkdownPath | Out-Host
+if ($LASTEXITCODE -ne 0) {
+    throw "write-operations-readiness-convergence.ps1 not-ready-sync check failed with exit code $LASTEXITCODE."
+}
+
+$notReadySyncReport = Get-Content -Raw -LiteralPath $notReadySyncJsonPath | ConvertFrom-Json
+$notReadySyncMarkdown = Get-Content -Raw -LiteralPath $notReadySyncMarkdownPath
+Assert-Equal $notReadySyncReport.result "action-required" "not-ready sync result"
+Assert-Equal $notReadySyncReport.currentBottleneck.code "sync-kubernetes-operations-report" "not-ready sync bottleneck"
+Assert-Equal $notReadySyncReport.kubernetesReportSyncReady $false "not-ready sync ready"
+Assert-Equal $notReadySyncReport.kubernetesReportSyncSourceReportResult "action-required" "not-ready sync source result"
+Assert-Contains $notReadySyncReport.decisionRule "sourceReportResult=ready" "not-ready sync decision rule"
+Assert-Contains $notReadySyncMarkdown "Kubernetes report sync: applied" "not-ready sync markdown status"
 
 & powershell -NoProfile -ExecutionPolicy Bypass -File $scriptPath `
     -HandoffReportPath $readyHandoffPath `
