@@ -74,6 +74,8 @@ New-Item -ItemType Directory -Force -Path $resolvedOutputDirectory | Out-Null
 $sourceRoot = Join-Path $resolvedOutputDirectory "source"
 $promotedRoot = Join-Path $resolvedOutputDirectory "promoted"
 $invalidRoot = Join-Path $resolvedOutputDirectory "invalid-source"
+$weakStorageBackendTelemetryRoot = Join-Path $resolvedOutputDirectory "weak-storage-backend-telemetry-source"
+$unsafeStorageBackendTelemetryRoot = Join-Path $resolvedOutputDirectory "unsafe-storage-backend-telemetry-source"
 $invalidDataFlowRoot = Join-Path $resolvedOutputDirectory "invalid-data-flow-source"
 $unsafeDataFlowRoot = Join-Path $resolvedOutputDirectory "unsafe-data-flow-source"
 $unsafeDataFlowRunbookRoot = Join-Path $resolvedOutputDirectory "unsafe-data-flow-runbook-source"
@@ -142,13 +144,24 @@ Write-JsonEvidence (Join-Path $storageBackendTelemetrySource "latest-storage-bac
     formatVersion = "osmu.storage-backend-telemetry.v1"
     result = "passed"
     source = @{
+        mode = "admin-info-json-path"
+        minioAlias = "target-minio"
+        evidenceRef = "mc-admin-info-run-20260621"
+        adminInfoJsonSha256 = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
         rawAdminInfoStored = $false
     }
     summary = @{
+        poolCount = 1
+        serverCount = 2
+        onlineServerCount = 2
+        offlineServerCount = 0
+        driveCount = 4
         capacityKnown = $true
         totalBytes = 1024
         usedBytes = 256
         freeBytes = 768
+        failureCount = 0
+        plannedCount = 0
     }
 }
 Write-TextEvidence (Join-Path $storageBackendTelemetrySource "latest-storage-backend-telemetry.md") "# Storage backend telemetry"
@@ -478,6 +491,9 @@ $promotedSecretRotation = Get-Content -Raw -LiteralPath (Join-Path $promotedRoot
 $promotedCommercialIntegration = Get-Content -Raw -LiteralPath (Join-Path $promotedRoot "latest-commercial-integration-evidence.json") | ConvertFrom-Json
 Assert-True ($promotedStorageBackendTelemetry.result -eq "passed") "Promoted storage backend telemetry evidence should preserve result=passed."
 Assert-True ($promotedStorageBackendTelemetry.source.rawAdminInfoStored -eq $false) "Promoted storage backend telemetry evidence should preserve rawAdminInfoStored=false."
+$storageBackendTelemetryEntry = @($report.entries | Where-Object { $_.group -eq "storage-backend-telemetry" -and $_.fileName -eq "latest-storage-backend-telemetry.json" })
+Assert-True ($storageBackendTelemetryEntry.Count -eq 1) "Storage backend telemetry import entry missing."
+Assert-True (([string] $storageBackendTelemetryEntry[0].detail).Contains("servers=2/2") -and ([string] $storageBackendTelemetryEntry[0].detail).Contains("rawAdminInfoStored=False")) "Storage backend telemetry import entry should include strict telemetry validation detail."
 Assert-True ($promotedMonitoringThreshold.result -eq "passed") "Promoted monitoring threshold evidence should preserve result=passed."
 Assert-True ($promotedMonitoringThreshold.confirmations.noSecretValues) "Promoted monitoring threshold evidence should preserve no-secret confirmation."
 Assert-True ($promotedSecretRotation.result -eq "passed") "Promoted secret rotation evidence should preserve result=passed."
@@ -548,6 +564,83 @@ Assert-True (Test-Path -LiteralPath $invalidJson) "Invalid import report should 
 $invalidReport = Get-Content -Raw -LiteralPath $invalidJson | ConvertFrom-Json
 Assert-True ($invalidReport.result -eq "failed") "Invalid import report should be failed."
 Assert-True (-not (Test-Path -LiteralPath (Join-Path $invalidOutput "latest-kubernetes-ha-dr-readiness.json"))) "Invalid evidence must not be promoted."
+
+Write-JsonEvidence (Join-Path $weakStorageBackendTelemetryRoot "latest-storage-backend-telemetry.json") @{
+    formatVersion = "osmu.storage-backend-telemetry.v1"
+    result = "passed"
+}
+$weakStorageBackendTelemetryOutput = Join-Path $resolvedOutputDirectory "weak-storage-backend-telemetry-promoted"
+$weakStorageBackendTelemetryJson = Join-Path $resolvedOutputDirectory "weak-storage-backend-telemetry-import.json"
+$weakStorageBackendTelemetryMarkdown = Join-Path $resolvedOutputDirectory "weak-storage-backend-telemetry-import.md"
+$previousErrorActionPreference = $ErrorActionPreference
+$ErrorActionPreference = "Continue"
+try {
+    $weakStorageBackendTelemetryOutputLines = & powershell -NoProfile -ExecutionPolicy Bypass -File $importScript `
+        -StorageBackendTelemetryArtifactPath $weakStorageBackendTelemetryRoot `
+        -OutputDirectory $weakStorageBackendTelemetryOutput `
+        -JsonOutputPath $weakStorageBackendTelemetryJson `
+        -MarkdownOutputPath $weakStorageBackendTelemetryMarkdown 2>&1
+    $weakStorageBackendTelemetryExitCode = $LASTEXITCODE
+}
+finally {
+    $ErrorActionPreference = $previousErrorActionPreference
+}
+Assert-True ($weakStorageBackendTelemetryExitCode -ne 0) "Storage backend telemetry without typed source and summary should fail import."
+Assert-True (Test-Path -LiteralPath $weakStorageBackendTelemetryJson) "Weak storage backend telemetry import report should still be written."
+$weakStorageBackendTelemetryReport = Get-Content -Raw -LiteralPath $weakStorageBackendTelemetryJson | ConvertFrom-Json
+Assert-True ($weakStorageBackendTelemetryReport.result -eq "failed") "Weak storage backend telemetry import report should be failed."
+Assert-True (-not (Test-Path -LiteralPath (Join-Path $weakStorageBackendTelemetryOutput "latest-storage-backend-telemetry.json"))) "Weak storage backend telemetry evidence must not be promoted."
+$weakStorageBackendTelemetryEntry = @($weakStorageBackendTelemetryReport.entries | Where-Object { $_.group -eq "storage-backend-telemetry" -and $_.fileName -eq "latest-storage-backend-telemetry.json" })
+Assert-True ($weakStorageBackendTelemetryEntry.Count -eq 1) "Weak storage backend telemetry failed entry missing."
+Assert-True (([string] $weakStorageBackendTelemetryEntry[0].detail).Contains("source.rawAdminInfoStored=<missing> expected boolean false")) "Weak storage backend telemetry report should describe missing raw-admin-info policy."
+
+Write-JsonEvidence (Join-Path $unsafeStorageBackendTelemetryRoot "latest-storage-backend-telemetry.json") @{
+    formatVersion = "osmu.storage-backend-telemetry.v1"
+    result = "passed"
+    source = @{
+        mode = "admin-info-json-path"
+        minioAlias = "target-minio"
+        evidenceRef = "mc-admin-info-run-20260621"
+        adminInfoJsonSha256 = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+        rawAdminInfoStored = $false
+    }
+    summary = @{
+        poolCount = 1
+        serverCount = 1
+        onlineServerCount = 1
+        offlineServerCount = 0
+        driveCount = 1
+        capacityKnown = $true
+        totalBytes = 1024
+        usedBytes = 256
+        freeBytes = 768
+        failureCount = 0
+        plannedCount = 0
+    }
+    secretKey = "password=super-secret"
+}
+$unsafeStorageBackendTelemetryOutput = Join-Path $resolvedOutputDirectory "unsafe-storage-backend-telemetry-promoted"
+$unsafeStorageBackendTelemetryJson = Join-Path $resolvedOutputDirectory "unsafe-storage-backend-telemetry-import.json"
+$unsafeStorageBackendTelemetryMarkdown = Join-Path $resolvedOutputDirectory "unsafe-storage-backend-telemetry-import.md"
+$previousErrorActionPreference = $ErrorActionPreference
+$ErrorActionPreference = "Continue"
+try {
+    $unsafeStorageBackendTelemetryOutputLines = & powershell -NoProfile -ExecutionPolicy Bypass -File $importScript `
+        -StorageBackendTelemetryArtifactPath $unsafeStorageBackendTelemetryRoot `
+        -OutputDirectory $unsafeStorageBackendTelemetryOutput `
+        -JsonOutputPath $unsafeStorageBackendTelemetryJson `
+        -MarkdownOutputPath $unsafeStorageBackendTelemetryMarkdown 2>&1
+    $unsafeStorageBackendTelemetryExitCode = $LASTEXITCODE
+}
+finally {
+    $ErrorActionPreference = $previousErrorActionPreference
+}
+Assert-True ($unsafeStorageBackendTelemetryExitCode -ne 0) "Storage backend telemetry with raw credential-shaped content should fail import."
+Assert-True (Test-Path -LiteralPath $unsafeStorageBackendTelemetryJson) "Unsafe storage backend telemetry import report should still be written."
+$unsafeStorageBackendTelemetryReport = Get-Content -Raw -LiteralPath $unsafeStorageBackendTelemetryJson | ConvertFrom-Json
+Assert-True ($unsafeStorageBackendTelemetryReport.result -eq "failed") "Unsafe storage backend telemetry import report should be failed."
+Assert-True (-not (Test-Path -LiteralPath (Join-Path $unsafeStorageBackendTelemetryOutput "latest-storage-backend-telemetry.json"))) "Unsafe storage backend telemetry evidence must not be promoted."
+Assert-True (($unsafeStorageBackendTelemetryReport.entries | ConvertTo-Json -Depth 8).Contains("credential-shaped content")) "Unsafe storage backend telemetry report should describe credential-shaped content."
 
 Write-JsonEvidence (Join-Path $invalidDataFlowRoot "latest-kubernetes-operations-report-sync.json") @{
     formatVersion = "osmu.kubernetes-operations-report-sync.v1"

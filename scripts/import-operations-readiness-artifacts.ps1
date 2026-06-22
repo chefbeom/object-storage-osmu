@@ -175,6 +175,120 @@ function Test-EvidenceJson([string] $Path, [string] $ExpectedProperty, [string] 
     }
 }
 
+function Test-StorageBackendTelemetryEvidenceJson([string] $Path) {
+    try {
+        $raw = Get-Content -Raw -LiteralPath $Path
+        $json = $raw | ConvertFrom-Json
+    }
+    catch {
+        return [pscustomobject]@{
+            passed = $false
+            detail = "invalid JSON: $($_.Exception.Message)"
+        }
+    }
+
+    $formatVersion = [string] (Get-JsonProperty $json "formatVersion")
+    if ($formatVersion -ne "osmu.storage-backend-telemetry.v1") {
+        return [pscustomobject]@{
+            passed = $false
+            detail = "formatVersion=$formatVersion expected=osmu.storage-backend-telemetry.v1"
+        }
+    }
+
+    $result = [string] (Get-JsonProperty $json "result")
+    if ($result -ne "passed") {
+        return [pscustomobject]@{
+            passed = $false
+            detail = "result=$result expected=passed"
+        }
+    }
+
+    $patterns = @(
+        '(?i)"(password|passwd|secretKey|secret_key|secretValue|secret_value|token|credential|apiKey|api_key|accessKey|access_key|privateKey|private_key|kubeconfig|minioSecret|minio_secret|rootUser|root_user|rootPassword|root_password)"\s*:',
+        '(?i)\b(password|passwd|secret|token|credential|api[_-]?key|access[_-]?key|private[_-]?key|root[_-]?password)\s*=\s*\S+',
+        '(?i)\bBearer\s+[A-Za-z0-9._~+/=-]{12,}',
+        '-----BEGIN [A-Z ]*PRIVATE KEY-----'
+    )
+    foreach ($pattern in $patterns) {
+        if ($raw -match $pattern) {
+            return [pscustomobject]@{
+                passed = $false
+                detail = "storage backend telemetry contains raw admin info or credential-shaped content"
+            }
+        }
+    }
+
+    $source = Get-JsonProperty $json "source"
+    $rawAdminInfoStored = Get-RequiredJsonBool $source "rawAdminInfoStored"
+    if (-not $rawAdminInfoStored.valid -or $rawAdminInfoStored.value) {
+        return [pscustomobject]@{
+            passed = $false
+            detail = "source.rawAdminInfoStored=$($rawAdminInfoStored.raw) expected boolean false"
+        }
+    }
+    foreach ($sourceField in @("mode", "minioAlias", "evidenceRef", "adminInfoJsonSha256")) {
+        $value = [string] (Get-JsonProperty $source $sourceField)
+        if ([string]::IsNullOrWhiteSpace($value)) {
+            return [pscustomobject]@{
+                passed = $false
+                detail = "source.$sourceField missing"
+            }
+        }
+    }
+
+    $summary = Get-JsonProperty $json "summary"
+    $poolCount = Get-RequiredJsonInt $summary "poolCount"
+    $serverCount = Get-RequiredJsonInt $summary "serverCount"
+    $onlineServerCount = Get-RequiredJsonInt $summary "onlineServerCount"
+    $offlineServerCount = Get-RequiredJsonInt $summary "offlineServerCount"
+    $driveCount = Get-RequiredJsonInt $summary "driveCount"
+    $totalBytes = Get-RequiredJsonInt $summary "totalBytes"
+    $usedBytes = Get-RequiredJsonInt $summary "usedBytes"
+    $freeBytes = Get-RequiredJsonInt $summary "freeBytes"
+    $failureCount = Get-RequiredJsonInt $summary "failureCount"
+    $plannedCount = Get-RequiredJsonInt $summary "plannedCount"
+    foreach ($countResult in @(
+        @{ name = "poolCount"; value = $poolCount },
+        @{ name = "serverCount"; value = $serverCount },
+        @{ name = "onlineServerCount"; value = $onlineServerCount },
+        @{ name = "offlineServerCount"; value = $offlineServerCount },
+        @{ name = "driveCount"; value = $driveCount },
+        @{ name = "totalBytes"; value = $totalBytes },
+        @{ name = "usedBytes"; value = $usedBytes },
+        @{ name = "freeBytes"; value = $freeBytes },
+        @{ name = "failureCount"; value = $failureCount },
+        @{ name = "plannedCount"; value = $plannedCount }
+    )) {
+        $name = [string] $countResult["name"]
+        $value = $countResult["value"]
+        if (-not $value.valid) {
+            return [pscustomobject]@{
+                passed = $false
+                detail = "$name=$($value.raw)(valid=False) expected integer"
+            }
+        }
+    }
+
+    $capacityKnown = Get-RequiredJsonBool $summary "capacityKnown"
+    if (-not $capacityKnown.valid -or -not $capacityKnown.value) {
+        return [pscustomobject]@{
+            passed = $false
+            detail = "capacityKnown=$($capacityKnown.raw) expected boolean true"
+        }
+    }
+    if ($poolCount.value -le 0 -or $serverCount.value -le 0 -or $onlineServerCount.value -ne $serverCount.value -or $offlineServerCount.value -ne 0 -or $driveCount.value -le 0 -or $totalBytes.value -le 0 -or $usedBytes.value -lt 0 -or $freeBytes.value -lt 0 -or $failureCount.value -ne 0 -or $plannedCount.value -ne 0) {
+        return [pscustomobject]@{
+            passed = $false
+            detail = "storage telemetry incomplete pools=$($poolCount.value) servers=$($onlineServerCount.value)/$($serverCount.value) offline=$($offlineServerCount.value) drives=$($driveCount.value) total=$($totalBytes.value) used=$($usedBytes.value) free=$($freeBytes.value) failures=$($failureCount.value) planned=$($plannedCount.value)"
+        }
+    }
+
+    return [pscustomobject]@{
+        passed = $true
+        detail = "formatVersion=$formatVersion result=$result pools=$($poolCount.value) servers=$($onlineServerCount.value)/$($serverCount.value) drives=$($driveCount.value) totalBytes=$($totalBytes.value) rawAdminInfoStored=False failures=$($failureCount.value)"
+    }
+}
+
 function Test-SecretRotationEvidenceJson([string] $Path) {
     try {
         $raw = Get-Content -Raw -LiteralPath $Path
@@ -1047,6 +1161,14 @@ function Import-EvidenceFile(
         }
         [void] $validationDetails.Add($validation.detail)
     }
+    elseif ($ValidationKind -eq "storage-backend-telemetry") {
+        $validation = Test-StorageBackendTelemetryEvidenceJson $sourcePath
+        if (-not $validation.passed) {
+            Add-Entry $Group $FileName "failed" $validation.detail $sourcePath ""
+            return
+        }
+        [void] $validationDetails.Add($validation.detail)
+    }
     elseif ($ValidationKind -eq "secret-rotation") {
         $validation = Test-SecretRotationEvidenceJson $sourcePath
         if (-not $validation.passed) {
@@ -1121,7 +1243,7 @@ Import-EvidenceFile "security-evidence" $SecurityEvidenceArtifactPath "latest-se
 Import-EvidenceFile "security-evidence" $SecurityEvidenceArtifactPath "latest-image-signing-evidence.json" $true "result" "passed"
 Import-EvidenceFile "security-evidence" $SecurityEvidenceArtifactPath "latest-container-security-evidence.json" $true "result" "passed"
 
-Import-EvidenceFile "storage-backend-telemetry" $StorageBackendTelemetryArtifactPath "latest-storage-backend-telemetry.json" $true "result" "passed"
+Import-EvidenceFile "storage-backend-telemetry" $StorageBackendTelemetryArtifactPath "latest-storage-backend-telemetry.json" $true "" "" "storage-backend-telemetry"
 Import-EvidenceFile "storage-backend-telemetry" $StorageBackendTelemetryArtifactPath "latest-storage-backend-telemetry.md" $false
 
 Import-EvidenceFile "monitoring-threshold" $MonitoringThresholdArtifactPath "latest-monitoring-threshold-evidence.json" $true "" "" "monitoring-threshold"
