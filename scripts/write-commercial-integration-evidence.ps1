@@ -163,6 +163,17 @@ function Get-PropertyBool([object] $Object, [string] $Name) {
     return ([string] $value).Equals("true", [System.StringComparison]::OrdinalIgnoreCase)
 }
 
+function Get-RequiredPropertyBool([object] $Object, [string] $Name) {
+    $value = Get-PropertyValue $Object $Name
+    if ($null -eq $value) {
+        return [pscustomobject]@{ value = $false; valid = $false; raw = "<missing>" }
+    }
+    if ($value -is [bool]) {
+        return [pscustomobject]@{ value = [bool] $value; valid = $true; raw = [string] $value }
+    }
+    return [pscustomobject]@{ value = $false; valid = $false; raw = [string] $value }
+}
+
 function Get-PropertyInt([object] $Object, [string] $Name) {
     $value = Get-PropertyValue $Object $Name
     if ($null -eq $value) {
@@ -173,6 +184,27 @@ function Get-PropertyInt([object] $Object, [string] $Name) {
         return $parsed
     }
     return 0
+}
+
+function Get-RequiredPropertyInt([object] $Object, [string] $Name) {
+    $value = Get-PropertyValue $Object $Name
+    if ($null -eq $value) {
+        return [pscustomobject]@{ value = 0; valid = $false; raw = "<missing>" }
+    }
+
+    $isIntegerType = $value -is [byte] `
+        -or $value -is [sbyte] `
+        -or $value -is [int16] `
+        -or $value -is [uint16] `
+        -or $value -is [int] `
+        -or $value -is [uint32] `
+        -or $value -is [long] `
+        -or $value -is [uint64]
+    if ($isIntegerType) {
+        return [pscustomobject]@{ value = [long] $value; valid = $true; raw = [string] $value }
+    }
+
+    return [pscustomobject]@{ value = 0; valid = $false; raw = [string] $value }
 }
 
 function Get-PropertyArray([object] $Object, [string] $Name) {
@@ -200,6 +232,10 @@ function Read-PaymentProviderAdapterReadinessSnapshot([string] $Path) {
         nativeApiReadyProfileCount = 0
         generatedAt = ""
         profiles = @()
+        countsValid = $false
+        countValidation = [ordered]@{}
+        booleansValid = $false
+        booleanValidation = [ordered]@{}
         scopePolicy = ""
         secretPolicy = ""
         note = ""
@@ -233,34 +269,57 @@ function Read-PaymentProviderAdapterReadinessSnapshot([string] $Path) {
         $payload = Get-PropertyValue $payload "data"
     }
 
+    $countValidation = [ordered]@{}
+    foreach ($name in @("profileCount", "webhookReadyProfileCount", "nativeApiReadyProfileCount")) {
+        $countValidation[$name] = Get-RequiredPropertyInt $payload $name
+    }
+    $booleanValidation = [ordered]@{}
+    foreach ($name in @("nativeApiSupported", "nativeApiReady")) {
+        $booleanValidation[$name] = Get-RequiredPropertyBool $payload $name
+    }
+
     $profiles = New-Object System.Collections.Generic.List[object]
+    $profileIndex = 0
     foreach ($profile in @(Get-PropertyArray $payload "profiles")) {
+        $webhookConfigured = Get-RequiredPropertyBool $profile "webhookProfileConfigured"
+        $nativeSupported = Get-RequiredPropertyBool $profile "nativeApiSupported"
+        $nativeReady = Get-RequiredPropertyBool $profile "nativeApiReady"
+        $booleanValidation["profiles[$profileIndex].webhookProfileConfigured"] = $webhookConfigured
+        $booleanValidation["profiles[$profileIndex].nativeApiSupported"] = $nativeSupported
+        $booleanValidation["profiles[$profileIndex].nativeApiReady"] = $nativeReady
         [void] $profiles.Add([ordered]@{
             providerProfile = Get-PropertyText $profile "providerProfile"
             adapterMode = Get-PropertyText $profile "adapterMode"
             status = Get-PropertyText $profile "status"
-            webhookProfileConfigured = Get-PropertyBool $profile "webhookProfileConfigured"
-            nativeApiSupported = Get-PropertyBool $profile "nativeApiSupported"
-            nativeApiReady = Get-PropertyBool $profile "nativeApiReady"
+            webhookProfileConfigured = [bool] $webhookConfigured.value
+            nativeApiSupported = [bool] $nativeSupported.value
+            nativeApiReady = [bool] $nativeReady.value
         })
+        $profileIndex += 1
     }
 
     $mode = Get-PropertyText $payload "mode"
+    $countsValid = @($countValidation.GetEnumerator() | Where-Object { -not [bool] $_.Value.valid }).Count -eq 0
+    $booleansValid = @($booleanValidation.GetEnumerator() | Where-Object { -not [bool] $_.Value.valid }).Count -eq 0
     $snapshot["parsed"] = $true
     $snapshot["validMode"] = $mode -eq "PAYMENT_PROVIDER_ADAPTER_READINESS"
     $snapshot["status"] = Get-PropertyText $payload "status"
-    $snapshot["nativeApiSupported"] = Get-PropertyBool $payload "nativeApiSupported"
-    $snapshot["nativeApiReady"] = Get-PropertyBool $payload "nativeApiReady"
-    $snapshot["profileCount"] = Get-PropertyInt $payload "profileCount"
-    $snapshot["webhookReadyProfileCount"] = Get-PropertyInt $payload "webhookReadyProfileCount"
-    $snapshot["nativeApiReadyProfileCount"] = Get-PropertyInt $payload "nativeApiReadyProfileCount"
+    $snapshot["nativeApiSupported"] = [bool] $booleanValidation["nativeApiSupported"].value
+    $snapshot["nativeApiReady"] = [bool] $booleanValidation["nativeApiReady"].value
+    $snapshot["profileCount"] = [long] $countValidation["profileCount"].value
+    $snapshot["webhookReadyProfileCount"] = [long] $countValidation["webhookReadyProfileCount"].value
+    $snapshot["nativeApiReadyProfileCount"] = [long] $countValidation["nativeApiReadyProfileCount"].value
     $snapshot["generatedAt"] = Get-PropertyText $payload "generatedAt"
     $snapshot["profiles"] = @($profiles.ToArray())
+    $snapshot["countsValid"] = [bool] $countsValid
+    $snapshot["countValidation"] = $countValidation
+    $snapshot["booleansValid"] = [bool] $booleansValid
+    $snapshot["booleanValidation"] = $booleanValidation
     $snapshot["scopePolicy"] = Get-PropertyText $payload "scopePolicy"
     $snapshot["secretPolicy"] = Get-PropertyText $payload "secretPolicy"
     $snapshot["note"] = Get-PropertyText $payload "note"
     $snapshot["detail"] = if ($snapshot["validMode"]) {
-        "status=$($snapshot["status"]); webhookReadyProfileCount=$($snapshot["webhookReadyProfileCount"]); nativeApiReadyProfileCount=$($snapshot["nativeApiReadyProfileCount"])"
+        "status=$($snapshot["status"]); webhookReadyProfileCount=$($snapshot["webhookReadyProfileCount"]); nativeApiReadyProfileCount=$($snapshot["nativeApiReadyProfileCount"]); countsValid=$($snapshot["countsValid"]); booleansValid=$($snapshot["booleansValid"])"
     }
     else {
         "Unexpected readiness mode: $mode"
@@ -345,7 +404,7 @@ $verifiedCount = @($integrations | Where-Object { $_.verified -and -not [string]
 $requiredIntegrations = @($integrations | Where-Object { $_.required })
 $requiredVerifiedCount = @($requiredIntegrations | Where-Object { $_.verified -and -not [string]::IsNullOrWhiteSpace([string] $_.evidenceRef) }).Count
 $paymentProviderAdapterReadinessSnapshot = Read-PaymentProviderAdapterReadinessSnapshot $PaymentProviderAdapterReadinessJsonPath
-$paymentProviderAdapterReadinessSnapshotValid = $paymentProviderAdapterReadinessSnapshot.provided -and $paymentProviderAdapterReadinessSnapshot.parsed -and $paymentProviderAdapterReadinessSnapshot.validMode
+$paymentProviderAdapterReadinessSnapshotValid = $paymentProviderAdapterReadinessSnapshot.provided -and $paymentProviderAdapterReadinessSnapshot.parsed -and $paymentProviderAdapterReadinessSnapshot.validMode -and $paymentProviderAdapterReadinessSnapshot.countsValid -and $paymentProviderAdapterReadinessSnapshot.booleansValid
 $paymentProviderAdapterReadinessEvidenceRecorded = -not [string]::IsNullOrWhiteSpace($PaymentProviderAdapterReadinessEvidenceRef)
 $paymentProviderAdapterReadinessReviewed = [bool] $ConfirmPaymentProviderAdapterReadinessReviewed -and $paymentProviderAdapterReadinessEvidenceRecorded -and $paymentProviderAdapterReadinessSnapshotValid
 $hasAnyInput = -not [string]::IsNullOrWhiteSpace($EnvironmentName + $TargetCluster + $Operator + $ChangeApprovalRef + $NotificationWebhookEvidenceRef + $SlackWebhookEvidenceRef + $EmailSmtpEvidenceRef + $PaymentGenericWebhookEvidenceRef + $PaymentCardProfileEvidenceRef + $PaymentBankProfileEvidenceRef + $PaymentTaxProfileEvidenceRef + $PaymentErpProfileEvidenceRef + $PaymentProviderAdapterReadinessEvidenceRef + $PaymentProviderAdapterReadinessJsonPath + $AdapterRetryWorkerEvidenceRef + $PayloadReviewEvidenceRef + $PrivateNetworkBlockEvidenceRef + $HmacSignatureEvidenceRef + $VerificationStartedAt + $VerificationCompletedAt) -or $verifiedCount -gt 0 -or [bool] $ConfirmPaymentProviderAdapterReadinessReviewed
@@ -375,6 +434,19 @@ elseif ($requirePaymentProviderAdapterReadinessReview) {
 }
 else {
     Add-PlannedCheck "payment-provider-adapter-readiness-snapshot" "Payment-provider adapter readiness snapshot planned" $paymentProviderAdapterReadinessSnapshot.detail
+}
+
+if ($paymentProviderAdapterReadinessSnapshot.provided) {
+    Add-Check "payment-provider-adapter-readiness-counts-typed" "Payment-provider adapter readiness counts are typed integers" $paymentProviderAdapterReadinessSnapshot.countsValid "profileCount=$($paymentProviderAdapterReadinessSnapshot.countValidation["profileCount"].raw); webhookReadyProfileCount=$($paymentProviderAdapterReadinessSnapshot.countValidation["webhookReadyProfileCount"].raw); nativeApiReadyProfileCount=$($paymentProviderAdapterReadinessSnapshot.countValidation["nativeApiReadyProfileCount"].raw)"
+    Add-Check "payment-provider-adapter-readiness-booleans-typed" "Payment-provider adapter readiness booleans are typed" $paymentProviderAdapterReadinessSnapshot.booleansValid "nativeApiSupported=$($paymentProviderAdapterReadinessSnapshot.booleanValidation["nativeApiSupported"].raw); nativeApiReady=$($paymentProviderAdapterReadinessSnapshot.booleanValidation["nativeApiReady"].raw); profileBooleanFieldsValid=$($paymentProviderAdapterReadinessSnapshot.booleansValid)"
+}
+elseif ($requirePaymentProviderAdapterReadinessReview) {
+    Add-Check "payment-provider-adapter-readiness-counts-typed" "Payment-provider adapter readiness counts are typed integers" $false "No readiness snapshot available."
+    Add-Check "payment-provider-adapter-readiness-booleans-typed" "Payment-provider adapter readiness booleans are typed" $false "No readiness snapshot available."
+}
+else {
+    Add-PlannedCheck "payment-provider-adapter-readiness-counts-typed" "Payment-provider adapter readiness typed counts planned" "No readiness snapshot required for this run."
+    Add-PlannedCheck "payment-provider-adapter-readiness-booleans-typed" "Payment-provider adapter readiness typed booleans planned" "No readiness snapshot required for this run."
 }
 
 if ($paymentProviderAdapterReadinessSnapshotValid) {

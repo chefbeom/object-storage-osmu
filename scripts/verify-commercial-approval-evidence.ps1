@@ -152,6 +152,7 @@ Assert-True ($report.confirmations.pricingPolicyProposalCommercialApproval) "Exp
 Assert-True ($report.confirmations.noSecretValues) "Expected no-secret-values confirmation."
 Assert-True (@($checks | Where-Object { $_.id -eq "legal-approval-confirmed" -and $_.passed }).Count -eq 1) "Expected legal approval check to pass."
 Assert-True (@($checks | Where-Object { $_.id -eq "pricing-policy-proposal-snapshot" -and $_.passed }).Count -eq 1) "Expected pricing proposal snapshot check to pass."
+Assert-True (@($checks | Where-Object { $_.id -eq "pricing-policy-proposal-approval-fields-typed" -and $_.passed }).Count -eq 1) "Expected pricing proposal typed approval fields check to pass."
 Assert-True (@($checks | Where-Object { $_.id -eq "pricing-policy-proposal-commercial-approved" -and $_.passed }).Count -eq 1) "Expected pricing proposal commercial approval check to pass."
 Assert-True ($report.pricingPolicyProposalApproval.reviewed) "Expected pricing proposal approval section reviewed."
 Assert-True (@($report.pricingPolicyProposalApproval.snapshot.proposals).Count -eq 2) "Expected sanitized proposal rows."
@@ -306,6 +307,55 @@ finally {
 }
 Assert-True ($unsafeRawSnapshotExitCode -ne 0) "Raw commercial proposal snapshot should be rejected."
 Assert-Contains ($unsafeRawSnapshotOutput | Out-String) "raw contract" "unsafe raw pricing proposal snapshot output"
+
+$stringBoolProposalJsonPath = Join-Path $resolvedOutputDirectory "string-bool-billing-pricing-policy-proposals.json"
+[ordered]@{
+    data = [ordered]@{
+        proposal = [ordered]@{
+            id = 14
+            status = "PRICE_LIST_APPROVED"
+            approvedPriceList = "true"
+            commercialApprovedBy = "commercial-review-board"
+            commercialApprovalReference = "commercial-approval-board-20260620"
+            commercialApprovedAt = "2026-06-20T03:00:00Z"
+            commercialEffectiveFrom = "2026-07-01T00:00:00Z"
+        }
+    }
+} | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $stringBoolProposalJsonPath -Encoding UTF8
+
+$previousErrorActionPreference = $ErrorActionPreference
+$ErrorActionPreference = "Continue"
+try {
+    $stringBoolSnapshotOutput = & powershell -NoProfile -ExecutionPolicy Bypass -File $scriptPath `
+        -ProductVersion "v0.1.0-rc.1" `
+        -ApprovalRef "commercial-approval-board-20260620" `
+        -ApprovedBy "commercial-review-board" `
+        -ApprovedAt "2026-06-20T03:00:00Z" `
+        -PricingApprovalRef "pricing-approval-20260620" `
+        -TermsApprovalRef "terms-approval-20260620" `
+        -SupportSlaApprovalRef "support-sla-approval-20260620" `
+        -LicenseAgreementRef "license-agreement-approval-20260620" `
+        -LegalApprovalRef "legal-approval-20260620" `
+        -PilotContractRef "pilot-contract-template-20260620" `
+        -PricingPolicyProposalEvidenceRef "pricing-policy-proposal-commercial-approval-20260620" `
+        -PricingPolicyProposalJsonPath $stringBoolProposalJsonPath `
+        -ConfirmPricingApproved `
+        -ConfirmTermsApproved `
+        -ConfirmSupportSlaApproved `
+        -ConfirmLicenseApproved `
+        -ConfirmLegalApproved `
+        -ConfirmPricingPolicyProposalCommercialApproval `
+        -RequirePricingPolicyProposalApprovalSnapshot `
+        -ConfirmNoSecretValues `
+        -FailIfNotPassed `
+        -NoWrite 2>&1
+    $stringBoolSnapshotExitCode = $LASTEXITCODE
+}
+finally {
+    $ErrorActionPreference = $previousErrorActionPreference
+}
+Assert-True ($stringBoolSnapshotExitCode -ne 0) "String-typed pricing proposal approval flag should be rejected."
+Assert-Contains ($stringBoolSnapshotOutput | Out-String) "Billing pricing policy proposal approval fields are typed" "string bool pricing proposal snapshot output"
 
 Write-Host "Commercial approval evidence writer verified."
 Write-Host "JSON: $jsonOutputPath"

@@ -136,6 +136,8 @@ Assert-True ($integrations.Count -eq 8) "Expected eight integration entries."
 Assert-True ($checks.Count -ge 23) "Expected commercial integration checks."
 Assert-True (@($checks | Where-Object { $_.id -eq "verification-window-order" -and $_.passed }).Count -eq 1) "Expected verification window order check to pass."
 Assert-True (@($checks | Where-Object { $_.id -eq "payment-provider-adapter-readiness-snapshot" -and $_.passed }).Count -eq 1) "Expected payment adapter readiness snapshot check to pass."
+Assert-True (@($checks | Where-Object { $_.id -eq "payment-provider-adapter-readiness-counts-typed" -and $_.passed }).Count -eq 1) "Expected payment adapter readiness typed counts check to pass."
+Assert-True (@($checks | Where-Object { $_.id -eq "payment-provider-adapter-readiness-booleans-typed" -and $_.passed }).Count -eq 1) "Expected payment adapter readiness typed booleans check to pass."
 Assert-True (@($checks | Where-Object { $_.id -eq "payment-provider-adapter-readiness-profile-coverage" -and $_.passed }).Count -eq 1) "Expected payment adapter readiness profile coverage check to pass."
 Assert-True (@($checks | Where-Object { $_.id -eq "payment-provider-adapter-readiness-reviewed" -and $_.passed }).Count -eq 1) "Expected payment adapter readiness review check to pass."
 Assert-True ($report.confirmations.noSecretValues) "Expected no-secret-values confirmation."
@@ -286,6 +288,51 @@ finally {
 }
 Assert-True ($unsafeRawReadinessExitCode -ne 0) "Raw provider readiness snapshot should be rejected."
 Assert-Contains ($unsafeRawReadinessOutput | Out-String) "raw provider response" "unsafe raw readiness snapshot output"
+
+$stringTypedReadinessJsonPath = Join-Path $resolvedOutputDirectory "string-typed-payment-provider-adapter-readiness.json"
+[ordered]@{
+    mode = "PAYMENT_PROVIDER_ADAPTER_READINESS"
+    status = "WEBHOOK_PROFILE_READY"
+    nativeApiSupported = "false"
+    nativeApiReady = $false
+    profileCount = "5"
+    webhookReadyProfileCount = 5
+    nativeApiReadyProfileCount = 0
+    profiles = @(
+        [ordered]@{ providerProfile = "GENERIC"; adapterMode = "WEBHOOK"; status = "WEBHOOK_READY"; webhookProfileConfigured = "true"; nativeApiSupported = $false; nativeApiReady = $false },
+        [ordered]@{ providerProfile = "CARD"; adapterMode = "WEBHOOK"; status = "WEBHOOK_READY"; webhookProfileConfigured = $true; nativeApiSupported = $false; nativeApiReady = $false },
+        [ordered]@{ providerProfile = "BANK"; adapterMode = "WEBHOOK"; status = "WEBHOOK_READY"; webhookProfileConfigured = $true; nativeApiSupported = $false; nativeApiReady = $false },
+        [ordered]@{ providerProfile = "TAX"; adapterMode = "WEBHOOK"; status = "WEBHOOK_READY"; webhookProfileConfigured = $true; nativeApiSupported = $false; nativeApiReady = $false },
+        [ordered]@{ providerProfile = "ERP"; adapterMode = "WEBHOOK"; status = "WEBHOOK_READY"; webhookProfileConfigured = $true; nativeApiSupported = $false; nativeApiReady = $false }
+    )
+} | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $stringTypedReadinessJsonPath -Encoding UTF8
+
+$previousErrorActionPreference = $ErrorActionPreference
+$ErrorActionPreference = "Continue"
+try {
+    $stringTypedReadinessOutput = & powershell -NoProfile -ExecutionPolicy Bypass -File $scriptPath `
+        -EnvironmentName "pilot-prod-self-test" `
+        -TargetCluster "customer-cluster-a" `
+        -Operator "ops-self-test" `
+        -VerificationStartedAt "2026-06-20T01:00:00Z" `
+        -VerificationCompletedAt "2026-06-20T01:45:00Z" `
+        -ChangeApprovalRef "CHG-2026-COMMERCIAL-INTEGRATION-SELF-TEST" `
+        -PaymentProviderAdapterReadinessEvidenceRef "payment-adapter-readiness-run-20260620" `
+        -PaymentProviderAdapterReadinessJsonPath $stringTypedReadinessJsonPath `
+        -ConfirmPaymentProviderAdapterReadinessReviewed `
+        -RequirePaymentProviderAdapterReadinessReview `
+        -ConfirmNoSecretValues `
+        -ConfirmNoRawProviderResponses `
+        -FailIfNotPassed `
+        -NoWrite 2>&1
+    $stringTypedReadinessExitCode = $LASTEXITCODE
+}
+finally {
+    $ErrorActionPreference = $previousErrorActionPreference
+}
+Assert-True ($stringTypedReadinessExitCode -ne 0) "String-typed readiness counts/booleans should be rejected."
+Assert-Contains ($stringTypedReadinessOutput | Out-String) "Payment-provider adapter readiness counts are typed integers" "string-typed readiness snapshot output"
+Assert-Contains ($stringTypedReadinessOutput | Out-String) "Payment-provider adapter readiness booleans are typed" "string-typed readiness snapshot output"
 
 Write-Host "Commercial integration evidence writer verified."
 Write-Host "JSON: $jsonOutputPath"

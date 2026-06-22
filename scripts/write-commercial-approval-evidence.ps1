@@ -129,6 +129,17 @@ function Get-PropertyBool([object] $Object, [string] $Name) {
     return ([string] $value).Equals("true", [System.StringComparison]::OrdinalIgnoreCase)
 }
 
+function Get-RequiredPropertyBool([object] $Object, [string] $Name) {
+    $value = Get-PropertyValue $Object $Name
+    if ($null -eq $value) {
+        return [pscustomobject]@{ value = $false; valid = $false; raw = "<missing>" }
+    }
+    if ($value -is [bool]) {
+        return [pscustomobject]@{ value = [bool] $value; valid = $true; raw = [string] $value }
+    }
+    return [pscustomobject]@{ value = $false; valid = $false; raw = [string] $value }
+}
+
 function Get-PropertyLong([object] $Object, [string] $Name) {
     $value = Get-PropertyValue $Object $Name
     if ($null -eq $value) {
@@ -187,6 +198,8 @@ function Read-PricingPolicyProposalSnapshot([string] $Path) {
         commercialApprovedCount = 0
         latestCommercialApprovedAt = ""
         proposals = @()
+        approvalFlagsValid = $false
+        approvalFlagValidation = [ordered]@{}
         detail = "No billing pricing policy proposal JSON supplied."
     }
 
@@ -214,11 +227,16 @@ function Read-PricingPolicyProposalSnapshot([string] $Path) {
     }
 
     $proposalRows = New-Object System.Collections.Generic.List[object]
+    $approvalFlagValidation = [ordered]@{}
+    $proposalIndex = 0
     foreach ($proposal in @(Get-ProposalArray $payload)) {
+        $approvedPriceList = Get-RequiredPropertyBool $proposal "approvedPriceList"
+        $approvalFlagValidation["proposals[$proposalIndex].approvedPriceList"] = $approvedPriceList
         [void] $proposalRows.Add([ordered]@{
             id = Get-PropertyLong $proposal "id"
             status = Get-PropertyText $proposal "status"
-            approvedPriceList = Get-PropertyBool $proposal "approvedPriceList"
+            approvedPriceList = [bool] $approvedPriceList.value
+            approvedPriceListValid = [bool] $approvedPriceList.valid
             currency = Get-PropertyText $proposal "currency"
             requestedBy = Get-PropertyText $proposal "requestedBy"
             approvedBy = Get-PropertyText $proposal "approvedBy"
@@ -231,8 +249,10 @@ function Read-PricingPolicyProposalSnapshot([string] $Path) {
             commercialApprovedAt = Get-PropertyText $proposal "commercialApprovedAt"
             commercialEffectiveFrom = Get-PropertyText $proposal "commercialEffectiveFrom"
         })
+        $proposalIndex += 1
     }
 
+    $approvalFlagsValid = @($approvalFlagValidation.GetEnumerator() | Where-Object { -not [bool] $_.Value.valid }).Count -eq 0
     $approvedPriceListCount = @($proposalRows | Where-Object { $_.approvedPriceList }).Count
     $commercialApprovedRows = @($proposalRows | Where-Object {
         $_.approvedPriceList `
@@ -251,7 +271,9 @@ function Read-PricingPolicyProposalSnapshot([string] $Path) {
     $snapshot["commercialApprovedCount"] = $commercialApprovedRows.Count
     $snapshot["latestCommercialApprovedAt"] = if ($latestCommercialApprovedAt.Count -gt 0) { $latestCommercialApprovedAt[0] } else { "" }
     $snapshot["proposals"] = @($proposalRows.ToArray())
-    $snapshot["detail"] = "proposalCount=$($proposalRows.Count); approvedPriceListCount=$approvedPriceListCount; commercialApprovedCount=$($commercialApprovedRows.Count)"
+    $snapshot["approvalFlagsValid"] = [bool] $approvalFlagsValid
+    $snapshot["approvalFlagValidation"] = $approvalFlagValidation
+    $snapshot["detail"] = "proposalCount=$($proposalRows.Count); approvedPriceListCount=$approvedPriceListCount; commercialApprovedCount=$($commercialApprovedRows.Count); approvalFlagsValid=$approvalFlagsValid"
     return $snapshot
 }
 
@@ -272,7 +294,7 @@ foreach ($entry in @(
 }
 
 $pricingPolicyProposalSnapshot = Read-PricingPolicyProposalSnapshot $PricingPolicyProposalJsonPath
-$pricingPolicyProposalSnapshotValid = $pricingPolicyProposalSnapshot.provided -and $pricingPolicyProposalSnapshot.parsed
+$pricingPolicyProposalSnapshotValid = $pricingPolicyProposalSnapshot.provided -and $pricingPolicyProposalSnapshot.parsed -and $pricingPolicyProposalSnapshot.approvalFlagsValid
 $pricingPolicyProposalCommercialApproved = $pricingPolicyProposalSnapshotValid -and $pricingPolicyProposalSnapshot.commercialApprovedCount -gt 0
 $pricingPolicyProposalEvidenceRecorded = -not [string]::IsNullOrWhiteSpace($PricingPolicyProposalEvidenceRef)
 $pricingPolicyProposalCommercialApprovalReviewed = [bool] $ConfirmPricingPolicyProposalCommercialApproval -and $pricingPolicyProposalEvidenceRecorded -and $pricingPolicyProposalCommercialApproved
@@ -298,6 +320,16 @@ elseif ($RequirePricingPolicyProposalApprovalSnapshot) {
 }
 else {
     Add-PlannedCheck "pricing-policy-proposal-snapshot" "Billing pricing policy proposal snapshot planned" $pricingPolicyProposalSnapshot.detail $PricingPolicyProposalEvidenceRef
+}
+
+if ($pricingPolicyProposalSnapshot.provided) {
+    Add-Check "pricing-policy-proposal-approval-fields-typed" "Billing pricing policy proposal approval fields are typed" $pricingPolicyProposalSnapshot.approvalFlagsValid "approvedPriceList fields must be JSON booleans; approvalFlagsValid=$($pricingPolicyProposalSnapshot.approvalFlagsValid)" $PricingPolicyProposalEvidenceRef
+}
+elseif ($RequirePricingPolicyProposalApprovalSnapshot) {
+    Add-Check "pricing-policy-proposal-approval-fields-typed" "Billing pricing policy proposal approval fields are typed" $false "No pricing proposal snapshot available." $PricingPolicyProposalEvidenceRef
+}
+else {
+    Add-PlannedCheck "pricing-policy-proposal-approval-fields-typed" "Billing pricing policy proposal typed approval fields planned" "No pricing proposal snapshot required for this run." $PricingPolicyProposalEvidenceRef
 }
 
 if ($RequirePricingPolicyProposalApprovalSnapshot -or $pricingPolicyProposalEvidenceRecorded -or [bool] $ConfirmPricingPolicyProposalCommercialApproval) {
@@ -365,6 +397,7 @@ $report = [ordered]@{
         pricingPolicyProposalCommercialApproved = $pricingPolicyProposalCommercialApproved
         pricingPolicyProposalCommercialApprovedCount = $pricingPolicyProposalSnapshot.commercialApprovedCount
         pricingPolicyProposalApprovedPriceListCount = $pricingPolicyProposalSnapshot.approvedPriceListCount
+        pricingPolicyProposalApprovalFlagsValid = $pricingPolicyProposalSnapshot.approvalFlagsValid
     }
     checks = $checkArray
     decisionRule = "Production/B2B sale commercial approval requires result=passed, final pricing approval, final terms approval, support SLA approval, license agreement approval, legal approval, a pilot contract boundary reference, required billing pricing policy proposal commercial approval evidence, and no-secret confirmation."
