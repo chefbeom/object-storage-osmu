@@ -59,6 +59,130 @@ function New-PassedOperationsHandoffPackageSnapshots(
     }
 }
 
+function New-PassedStorageExpansionFinalize(
+    [object] $FailedCount = 0,
+    [bool] $SkipRbacGap = $false
+) {
+    $gaps = @(
+        "Backend dry-run runner was not executed.",
+        "Backend apply runner was not executed.",
+        "Storage backend telemetry evidence was not recorded by the finalizer."
+    )
+    if ($SkipRbacGap) {
+        $gaps = @("RBAC authorization evidence was skipped.") + $gaps
+    }
+
+    return [ordered]@{
+        formatVersion = "osmu.storage-expansion-finalize.v1"
+        generatedAt = "2026-06-22T00:00:00Z"
+        startedAt = "2026-06-22T00:00:00Z"
+        completedAt = "2026-06-22T00:01:00Z"
+        result = "passed"
+        namespace = "osmu"
+        tenantName = "osmu-minio"
+        manifestPath = "C:\evidence\minio-tenant-pool-expansion.example.yaml"
+        kubectlPath = "kubectl"
+        powerShellCommand = "pwsh"
+        serviceAccount = "osmu-storage-expansion-runner"
+        impersonateRunner = $true
+        backend = [ordered]@{
+            apiBase = ""
+            requestId = 0
+            runDryRunRunner = $false
+            dryRunType = "KUBECTL_DIFF"
+            runApply = $false
+            applyType = "KUBECTL_APPLY"
+            confirmApply = $false
+        }
+        storageBackendTelemetry = [ordered]@{
+            runEvidence = $false
+            executeRequested = $false
+            adminInfoJsonPath = ""
+            environmentName = ""
+            targetCluster = ""
+            operatorName = ""
+            minioAlias = ""
+            evidenceRef = ""
+            jsonOutputPath = ""
+            markdownOutputPath = ""
+        }
+        evidence = [ordered]@{
+            rbacAuth = "C:\evidence\latest-storage-expansion-rbac-auth.json"
+            serverDryRun = "C:\evidence\latest-storage-expansion-server-dry-run.json"
+            storageBackendTelemetry = ""
+            report = "C:\evidence\latest-storage-expansion-finalize.json"
+            summary = "C:\evidence\latest-storage-expansion-finalize.md"
+        }
+        failedCount = $FailedCount
+        gaps = $gaps
+        steps = @(
+            [ordered]@{
+                name = "Storage Expansion RBAC auth evidence"
+                command = "pwsh -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-storage-expansion-rbac-auth.ps1"
+                result = "passed"
+                exitCode = 0
+                output = "Storage Expansion RBAC auth check passed."
+                notes = ""
+            },
+            [ordered]@{
+                name = "Storage Expansion server-side dry-run evidence"
+                command = "pwsh -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-storage-expansion-server-dry-run.ps1 -ImpersonateRunner"
+                result = "passed"
+                exitCode = 0
+                output = "Storage Expansion server-side dry-run passed."
+                notes = ""
+            }
+        )
+        secretPolicy = "Secret values, bearer tokens, and raw MinIO admin info are not written to storage expansion finalizer evidence."
+    }
+}
+
+function New-PassedStorageExpansionRbacAuth {
+    return [ordered]@{
+        generatedAt = "2026-06-22T00:00:00Z"
+        namespace = "osmu"
+        serviceAccount = "osmu-storage-expansion-runner"
+        subject = "system:serviceaccount:osmu:osmu-storage-expansion-runner"
+        kubectlPath = "kubectl"
+        expectedAllowedCount = 7
+        expectedDeniedCount = 9
+        passed = $true
+        failedCount = 0
+        results = @(
+            [ordered]@{ id = "tenant-get"; expectedAllowed = $true; actualAllowed = $true; passed = $true; command = "kubectl auth can-i get tenants.minio.min.io/osmu-minio"; exitCode = 0; output = "yes" },
+            [ordered]@{ id = "tenant-patch"; expectedAllowed = $true; actualAllowed = $true; passed = $true; command = "kubectl auth can-i patch tenants.minio.min.io/osmu-minio"; exitCode = 0; output = "yes" },
+            [ordered]@{ id = "tenant-update"; expectedAllowed = $true; actualAllowed = $true; passed = $true; command = "kubectl auth can-i update tenants.minio.min.io/osmu-minio"; exitCode = 0; output = "yes" },
+            [ordered]@{ id = "statefulset-get"; expectedAllowed = $true; actualAllowed = $true; passed = $true; command = "kubectl auth can-i get statefulsets.apps/osmu-minio"; exitCode = 0; output = "yes" },
+            [ordered]@{ id = "secret-get-denied"; expectedAllowed = $false; actualAllowed = $false; passed = $true; command = "kubectl auth can-i get secrets/osmu-secret"; exitCode = 0; output = "no" },
+            [ordered]@{ id = "pod-exec-denied"; expectedAllowed = $false; actualAllowed = $false; passed = $true; command = "kubectl auth can-i create pods --subresource=exec"; exitCode = 0; output = "no" }
+        )
+    }
+}
+
+function New-PassedStorageExpansionServerDryRun(
+    [object] $ImpersonateRunner = $true
+) {
+    return [ordered]@{
+        generatedAt = "2026-06-22T00:00:00Z"
+        namespace = "osmu"
+        tenantName = "osmu-minio"
+        manifestPath = "C:\evidence\minio-tenant-pool-expansion.example.yaml"
+        manifestSha256 = "5555555555555555555555555555555555555555555555555555555555555555"
+        effectiveManifestSha256 = "6666666666666666666666666666666666666666666666666666666666666666"
+        kubectlPath = "kubectl"
+        impersonateRunner = $ImpersonateRunner
+        serviceAccount = "osmu-storage-expansion-runner"
+        subject = "system:serviceaccount:osmu:osmu-storage-expansion-runner"
+        passed = $true
+        failedCount = 0
+        results = @(
+            [ordered]@{ id = "tenant-crd-present"; command = "kubectl get crd tenants.minio.min.io -o name"; exitCode = 0; output = "customresourcedefinition.apiextensions.k8s.io/tenants.minio.min.io"; passed = $true },
+            [ordered]@{ id = "existing-tenant-present"; command = "kubectl --as=system:serviceaccount:osmu:osmu-storage-expansion-runner -n osmu get tenants.minio.min.io osmu-minio -o name"; exitCode = 0; output = "tenant.minio.min.io/osmu-minio"; passed = $true },
+            [ordered]@{ id = "server-side-dry-run"; command = "kubectl --as=system:serviceaccount:osmu:osmu-storage-expansion-runner -n osmu apply --server-side --dry-run=server -f C:\evidence\manifest.yaml"; exitCode = 0; output = "tenant.minio.min.io/osmu-minio serverside-applied (server dry run)"; passed = $true }
+        )
+    }
+}
+
 function New-PassedSecurityEvidenceFinalizer(
     [object] $FailureCount = 0,
     [object] $AllowSyntheticEvidence = $false
@@ -131,6 +255,7 @@ New-Item -ItemType Directory -Force -Path $resolvedOutputDirectory | Out-Null
 $sourceRoot = Join-Path $resolvedOutputDirectory "source"
 $promotedRoot = Join-Path $resolvedOutputDirectory "promoted"
 $invalidRoot = Join-Path $resolvedOutputDirectory "invalid-source"
+$weakStorageExpansionRoot = Join-Path $resolvedOutputDirectory "weak-storage-expansion-source"
 $weakSecurityFinalizerRoot = Join-Path $resolvedOutputDirectory "weak-security-finalizer-source"
 $weakImageSigningRoot = Join-Path $resolvedOutputDirectory "weak-image-signing-source"
 $weakContainerSecurityRoot = Join-Path $resolvedOutputDirectory "weak-container-security-source"
@@ -176,11 +301,10 @@ $kubernetesOperationsReportSyncSource = Join-Path $sourceRoot "kubernetes-operat
 $directDataFlowStoragePlanSource = Join-Path $sourceRoot "data-flow-storage-plan"
 $dataFlowStorageTransitionRunbookSource = Join-Path $sourceRoot "data-flow-storage-transition-runbook"
 
-Write-JsonEvidence (Join-Path $storageSource "latest-storage-expansion-finalize.json") @{
-    formatVersion = "osmu.storage-expansion-finalize.v1"
-    result = "passed"
-}
+Write-JsonEvidence (Join-Path $storageSource "latest-storage-expansion-finalize.json") (New-PassedStorageExpansionFinalize)
 Write-TextEvidence (Join-Path $storageSource "latest-storage-expansion-finalize.md") "# Storage expansion"
+Write-JsonEvidence (Join-Path $storageSource "latest-storage-expansion-rbac-auth.json") (New-PassedStorageExpansionRbacAuth)
+Write-JsonEvidence (Join-Path $storageSource "latest-storage-expansion-server-dry-run.json") (New-PassedStorageExpansionServerDryRun)
 Write-JsonEvidence (Join-Path $haDrSource "latest-kubernetes-ha-dr-readiness.json") @{
     formatVersion = "osmu.kubernetes-ha-dr-readiness.v1"
     result = "passed"
@@ -587,6 +711,8 @@ Assert-True ($report.result -eq "passed") "Expected import report result=passed.
 Assert-True ($report.status -eq "artifact-imported") "Expected import report status=artifact-imported."
 Assert-True ($report.importedCount -ge 19) "Expected imported evidence files."
 Assert-True (Test-Path -LiteralPath (Join-Path $promotedRoot "latest-storage-expansion-finalize.json")) "Promoted storage expansion evidence missing."
+Assert-True (Test-Path -LiteralPath (Join-Path $promotedRoot "latest-storage-expansion-rbac-auth.json")) "Promoted storage expansion RBAC evidence missing."
+Assert-True (Test-Path -LiteralPath (Join-Path $promotedRoot "latest-storage-expansion-server-dry-run.json")) "Promoted storage expansion server dry-run evidence missing."
 Assert-True (Test-Path -LiteralPath (Join-Path $promotedRoot "latest-kubernetes-ha-dr-readiness.json")) "Promoted HA/DR readiness evidence missing."
 Assert-True (Test-Path -LiteralPath (Join-Path $promotedRoot "latest-kubernetes-dr-finalize.json")) "Promoted Kubernetes DR evidence missing."
 Assert-True (Test-Path -LiteralPath (Join-Path $promotedRoot "latest-iam-rbac-finalize.json")) "Promoted IAM/RBAC evidence missing."
@@ -613,6 +739,7 @@ Assert-True (Test-Path -LiteralPath (Join-Path $promotedRoot "latest-data-flow-s
 Assert-True (Test-Path -LiteralPath (Join-Path $promotedRoot "latest-data-flow-storage-transition-runbook-evidence.json")) "Promoted data-flow storage transition runbook evidence missing."
 $promotedImageSigning = Get-Content -Raw -LiteralPath (Join-Path $promotedRoot "latest-image-signing-evidence.json") | ConvertFrom-Json
 $promotedContainerSecurity = Get-Content -Raw -LiteralPath (Join-Path $promotedRoot "latest-container-security-evidence.json") | ConvertFrom-Json
+$promotedStorageExpansion = Get-Content -Raw -LiteralPath (Join-Path $promotedRoot "latest-storage-expansion-finalize.json") | ConvertFrom-Json
 $promotedCommercialApproval = Get-Content -Raw -LiteralPath (Join-Path $promotedRoot "latest-commercial-approval-evidence.json") | ConvertFrom-Json
 $promotedStorageBackendTelemetry = Get-Content -Raw -LiteralPath (Join-Path $promotedRoot "latest-storage-backend-telemetry.json") | ConvertFrom-Json
 $promotedMonitoringThreshold = Get-Content -Raw -LiteralPath (Join-Path $promotedRoot "latest-monitoring-threshold-evidence.json") | ConvertFrom-Json
@@ -620,8 +747,18 @@ $promotedSecretRotation = Get-Content -Raw -LiteralPath (Join-Path $promotedRoot
 $promotedCommercialIntegration = Get-Content -Raw -LiteralPath (Join-Path $promotedRoot "latest-commercial-integration-evidence.json") | ConvertFrom-Json
 Assert-True ($promotedImageSigning.backend.versionSignatureVerified -eq $true -and $promotedImageSigning.frontend.shaSignatureVerified -eq $true) "Promoted image signing evidence should preserve signature verification flags."
 Assert-True ($promotedContainerSecurity.scans.backendScanPassed -eq $true -and $promotedContainerSecurity.sbom.backend.valid -eq $true) "Promoted container security evidence should preserve scan and SBOM flags."
+Assert-True ($promotedStorageExpansion.impersonateRunner -eq $true -and $promotedStorageExpansion.failedCount -eq 0) "Promoted storage expansion finalizer should preserve typed runner and failure fields."
 Assert-True ($promotedStorageBackendTelemetry.result -eq "passed") "Promoted storage backend telemetry evidence should preserve result=passed."
 Assert-True ($promotedStorageBackendTelemetry.source.rawAdminInfoStored -eq $false) "Promoted storage backend telemetry evidence should preserve rawAdminInfoStored=false."
+$storageExpansionEntry = @($report.entries | Where-Object { $_.group -eq "storage-expansion" -and $_.fileName -eq "latest-storage-expansion-finalize.json" })
+Assert-True ($storageExpansionEntry.Count -eq 1) "Storage expansion finalizer import entry missing."
+Assert-True (([string] $storageExpansionEntry[0].detail).Contains("stepCount=2")) "Storage expansion finalizer import entry should include strict step validation detail."
+$storageExpansionRbacEntry = @($report.entries | Where-Object { $_.group -eq "storage-expansion" -and $_.fileName -eq "latest-storage-expansion-rbac-auth.json" })
+Assert-True ($storageExpansionRbacEntry.Count -eq 1) "Storage expansion RBAC import entry missing."
+Assert-True (([string] $storageExpansionRbacEntry[0].detail).Contains("allowed=7") -and ([string] $storageExpansionRbacEntry[0].detail).Contains("denied=9")) "Storage expansion RBAC import entry should include allow/deny validation detail."
+$storageExpansionServerDryRunEntry = @($report.entries | Where-Object { $_.group -eq "storage-expansion" -and $_.fileName -eq "latest-storage-expansion-server-dry-run.json" })
+Assert-True ($storageExpansionServerDryRunEntry.Count -eq 1) "Storage expansion server dry-run import entry missing."
+Assert-True (([string] $storageExpansionServerDryRunEntry[0].detail).Contains("manifestSha256=")) "Storage expansion server dry-run import entry should include manifest hash validation detail."
 $imageSigningEntry = @($report.entries | Where-Object { $_.group -eq "security-evidence" -and $_.fileName -eq "latest-image-signing-evidence.json" })
 Assert-True ($imageSigningEntry.Count -eq 1) "Image signing import entry missing."
 Assert-True (([string] $imageSigningEntry[0].detail).Contains("backendDigest=sha256:")) "Image signing import entry should include digest validation detail."
@@ -681,6 +818,33 @@ $promotedDataFlowStoragePlan = Get-Content -Raw -LiteralPath (Join-Path $promote
 Assert-True ($promotedDataFlowStoragePlan.formatVersion -eq "osmu.data-flow-storage-plan.v1") "Promoted data-flow storage plan evidence should preserve formatVersion."
 Assert-True ($promotedDataFlowStoragePlan.candidateStore -eq "MARIADB_PARTITION") "Promoted data-flow storage plan evidence should preserve candidateStore."
 Assert-True ($promotedDataFlowStoragePlan.queryPlanEvidence.expectedFormatVersion -eq "osmu.mariadb-query-plan-evidence.v1") "Promoted data-flow storage plan evidence should preserve query plan expected format."
+
+Write-JsonEvidence (Join-Path $weakStorageExpansionRoot "latest-storage-expansion-finalize.json") (New-PassedStorageExpansionFinalize -SkipRbacGap $true)
+Write-TextEvidence (Join-Path $weakStorageExpansionRoot "latest-storage-expansion-finalize.md") "# Weak storage expansion"
+Write-JsonEvidence (Join-Path $weakStorageExpansionRoot "latest-storage-expansion-rbac-auth.json") (New-PassedStorageExpansionRbacAuth)
+Write-JsonEvidence (Join-Path $weakStorageExpansionRoot "latest-storage-expansion-server-dry-run.json") (New-PassedStorageExpansionServerDryRun)
+$weakStorageExpansionOutput = Join-Path $resolvedOutputDirectory "weak-storage-expansion-promoted"
+$weakStorageExpansionJson = Join-Path $resolvedOutputDirectory "weak-storage-expansion-import.json"
+$weakStorageExpansionMarkdown = Join-Path $resolvedOutputDirectory "weak-storage-expansion-import.md"
+$previousErrorActionPreference = $ErrorActionPreference
+$ErrorActionPreference = "Continue"
+try {
+    $weakStorageExpansionOutputLines = & powershell -NoProfile -ExecutionPolicy Bypass -File $importScript `
+        -StorageExpansionArtifactPath $weakStorageExpansionRoot `
+        -OutputDirectory $weakStorageExpansionOutput `
+        -JsonOutputPath $weakStorageExpansionJson `
+        -MarkdownOutputPath $weakStorageExpansionMarkdown 2>&1
+    $weakStorageExpansionExitCode = $LASTEXITCODE
+}
+finally {
+    $ErrorActionPreference = $previousErrorActionPreference
+}
+Assert-True ($weakStorageExpansionExitCode -ne 0) "Storage expansion finalizer with skipped RBAC gap should fail import."
+Assert-True (Test-Path -LiteralPath $weakStorageExpansionJson) "Weak storage expansion import report should still be written."
+$weakStorageExpansionReport = Get-Content -Raw -LiteralPath $weakStorageExpansionJson | ConvertFrom-Json
+Assert-True ($weakStorageExpansionReport.result -eq "failed") "Weak storage expansion import report should be failed."
+Assert-True (-not (Test-Path -LiteralPath (Join-Path $weakStorageExpansionOutput "latest-storage-expansion-finalize.json"))) "Weak storage expansion evidence must not be promoted."
+Assert-True (($weakStorageExpansionReport.entries | ConvertTo-Json -Depth 8).Contains("RBAC authorization evidence was skipped")) "Weak storage expansion report should describe skipped RBAC evidence."
 
 Write-JsonEvidence (Join-Path $invalidRoot "latest-kubernetes-ha-dr-readiness.json") @{
     formatVersion = "osmu.kubernetes-ha-dr-readiness.v1"

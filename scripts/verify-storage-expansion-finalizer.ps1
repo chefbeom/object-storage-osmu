@@ -139,6 +139,7 @@ $report = Get-Content -Raw -LiteralPath $reportPath | ConvertFrom-Json
 $telemetry = Get-Content -Raw -LiteralPath $telemetryJsonPath | ConvertFrom-Json
 $summaryText = Get-Content -Raw -LiteralPath $summaryPath
 
+Assert-True ($report.formatVersion -eq "osmu.storage-expansion-finalize.v1") "Expected storage expansion finalizer formatVersion."
 Assert-True ($report.result -eq "passed") "Expected finalizer result=passed."
 Assert-True ($report.storageBackendTelemetry.runEvidence -eq $true) "Expected telemetry runEvidence=true."
 Assert-True ($report.storageBackendTelemetry.jsonOutputPath -eq $telemetryJsonPath) "Expected telemetry JSON path in finalizer report."

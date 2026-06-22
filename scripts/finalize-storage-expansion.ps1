@@ -300,6 +300,7 @@ function Write-FinalReport([string] $Result, [string] $ErrorMessage) {
     }
 
     $report = [ordered]@{
+        formatVersion = "osmu.storage-expansion-finalize.v1"
         generatedAt = $completedAt.ToString("o")
         startedAt = $startedAt.ToString("o")
         completedAt = $completedAt.ToString("o")

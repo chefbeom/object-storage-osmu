@@ -172,6 +172,30 @@ function Test-Sha256([string] $Value) {
     return -not [string]::IsNullOrWhiteSpace($Value) -and $Value -match "^[0-9a-fA-F]{64}$" -and $Value -notmatch "^0{64}$"
 }
 
+function Test-OperationsEvidenceRawContent([string] $Raw, [string] $Label) {
+    $patterns = @(
+        '(?i)"(password|passwd|secret|token|credential|clientSecret|client_secret|authorization|kubeconfig|privateKey|private_key)"\s*:',
+        '(?i)\b(password|passwd|token|credential|client[_-]?secret|authorization|kubeconfig|private[_-]?key)\s*=\s*\S+',
+        '(?i)\bBearer\s+[A-Za-z0-9._~+/=-]{12,}',
+        '-----BEGIN [A-Z ]*PRIVATE KEY-----',
+        '(?i)client-certificate-data\s*:',
+        '(?i)client-key-data\s*:'
+    )
+    foreach ($pattern in $patterns) {
+        if ($Raw -match $pattern) {
+            return [pscustomobject]@{
+                passed = $false
+                detail = "$Label evidence contains credential-shaped or kubeconfig content"
+            }
+        }
+    }
+
+    return [pscustomobject]@{
+        passed = $true
+        detail = "$Label evidence has no credential-shaped content"
+    }
+}
+
 function Test-EvidenceJson([string] $Path, [string] $ExpectedProperty, [string] $ExpectedValue) {
     try {
         $json = Get-Content -Raw -LiteralPath $Path | ConvertFrom-Json
@@ -188,6 +212,308 @@ function Test-EvidenceJson([string] $Path, [string] $ExpectedProperty, [string] 
     return [pscustomobject]@{
         passed = $expectedValues -contains $actual
         detail = "$ExpectedProperty=$actual expected=$($expectedValues -join '|')"
+    }
+}
+
+function Test-StorageExpansionRbacAuthEvidenceJson([string] $Path) {
+    try {
+        $raw = Get-Content -Raw -LiteralPath $Path
+        $json = $raw | ConvertFrom-Json
+    }
+    catch {
+        return [pscustomobject]@{
+            passed = $false
+            detail = "invalid JSON: $($_.Exception.Message)"
+        }
+    }
+
+    $rawValidation = Test-OperationsEvidenceRawContent $raw "storage expansion RBAC"
+    if (-not $rawValidation.passed) {
+        return $rawValidation
+    }
+
+    $passed = Get-RequiredJsonBool $json "passed"
+    if (-not $passed.valid -or -not $passed.value) {
+        return [pscustomobject]@{
+            passed = $false
+            detail = "passed=$($passed.raw) expected boolean true"
+        }
+    }
+
+    $failedCount = Get-RequiredJsonInt $json "failedCount"
+    if (-not $failedCount.valid -or [int64] $failedCount.value -ne 0) {
+        return [pscustomobject]@{
+            passed = $false
+            detail = "failedCount=$($failedCount.raw)(valid=$($failedCount.valid)) expected integer 0"
+        }
+    }
+
+    foreach ($field in @("namespace", "serviceAccount", "subject", "kubectlPath")) {
+        $value = [string] (Get-JsonProperty $json $field)
+        if ([string]::IsNullOrWhiteSpace($value)) {
+            return [pscustomobject]@{
+                passed = $false
+                detail = "$field missing"
+            }
+        }
+    }
+
+    $expectedAllowedCount = Get-RequiredJsonInt $json "expectedAllowedCount"
+    $expectedDeniedCount = Get-RequiredJsonInt $json "expectedDeniedCount"
+    if (-not $expectedAllowedCount.valid -or [int64] $expectedAllowedCount.value -le 0 -or -not $expectedDeniedCount.valid -or [int64] $expectedDeniedCount.value -le 0) {
+        return [pscustomobject]@{
+            passed = $false
+            detail = "expectedAllowedCount=$($expectedAllowedCount.raw) expectedDeniedCount=$($expectedDeniedCount.raw) expected positive integers"
+        }
+    }
+
+    $resultsObject = Get-JsonProperty $json "results"
+    $results = if ($null -eq $resultsObject) { @() } else { @($resultsObject) }
+    if ($results.Count -le 0) {
+        return [pscustomobject]@{
+            passed = $false
+            detail = "results missing"
+        }
+    }
+
+    foreach ($requiredId in @("tenant-get", "tenant-patch", "tenant-update", "secret-get-denied", "pod-exec-denied")) {
+        $match = @($results | Where-Object { [string] (Get-JsonProperty $_ "id") -eq $requiredId })
+        if ($match.Count -ne 1) {
+            return [pscustomobject]@{
+                passed = $false
+                detail = "results.$requiredId missing"
+            }
+        }
+    }
+
+    for ($i = 0; $i -lt $results.Count; $i++) {
+        $result = $results[$i]
+        $resultPassed = Get-RequiredJsonBool $result "passed"
+        if (-not $resultPassed.valid -or -not $resultPassed.value) {
+            return [pscustomobject]@{
+                passed = $false
+                detail = "results[$i].passed=$($resultPassed.raw) expected boolean true"
+            }
+        }
+
+        $expectedAllowed = Get-RequiredJsonBool $result "expectedAllowed"
+        $actualAllowed = Get-RequiredJsonBool $result "actualAllowed"
+        if (-not $expectedAllowed.valid -or -not $actualAllowed.valid -or $expectedAllowed.value -ne $actualAllowed.value) {
+            return [pscustomobject]@{
+                passed = $false
+                detail = "results[$i] expectedAllowed=$($expectedAllowed.raw) actualAllowed=$($actualAllowed.raw) expected matching booleans"
+            }
+        }
+    }
+
+    return [pscustomobject]@{
+        passed = $true
+        detail = "passed=$($passed.value) failedCount=$($failedCount.value) allowed=$($expectedAllowedCount.value) denied=$($expectedDeniedCount.value) resultCount=$($results.Count)"
+    }
+}
+
+function Test-StorageExpansionServerDryRunEvidenceJson([string] $Path) {
+    try {
+        $raw = Get-Content -Raw -LiteralPath $Path
+        $json = $raw | ConvertFrom-Json
+    }
+    catch {
+        return [pscustomobject]@{
+            passed = $false
+            detail = "invalid JSON: $($_.Exception.Message)"
+        }
+    }
+
+    $rawValidation = Test-OperationsEvidenceRawContent $raw "storage expansion server dry-run"
+    if (-not $rawValidation.passed) {
+        return $rawValidation
+    }
+
+    $passed = Get-RequiredJsonBool $json "passed"
+    if (-not $passed.valid -or -not $passed.value) {
+        return [pscustomobject]@{
+            passed = $false
+            detail = "passed=$($passed.raw) expected boolean true"
+        }
+    }
+
+    $failedCount = Get-RequiredJsonInt $json "failedCount"
+    if (-not $failedCount.valid -or [int64] $failedCount.value -ne 0) {
+        return [pscustomobject]@{
+            passed = $false
+            detail = "failedCount=$($failedCount.raw)(valid=$($failedCount.valid)) expected integer 0"
+        }
+    }
+
+    foreach ($field in @("namespace", "tenantName", "manifestPath", "kubectlPath", "serviceAccount")) {
+        $value = [string] (Get-JsonProperty $json $field)
+        if ([string]::IsNullOrWhiteSpace($value)) {
+            return [pscustomobject]@{
+                passed = $false
+                detail = "$field missing"
+            }
+        }
+    }
+
+    foreach ($field in @("manifestSha256", "effectiveManifestSha256")) {
+        $sha = [string] (Get-JsonProperty $json $field)
+        if (-not (Test-Sha256 $sha)) {
+            return [pscustomobject]@{
+                passed = $false
+                detail = "$field=$sha expected nonzero sha256"
+            }
+        }
+    }
+
+    $impersonateRunner = Get-RequiredJsonBool $json "impersonateRunner"
+    if (-not $impersonateRunner.valid -or -not $impersonateRunner.value) {
+        return [pscustomobject]@{
+            passed = $false
+            detail = "impersonateRunner=$($impersonateRunner.raw) expected boolean true"
+        }
+    }
+
+    $subject = [string] (Get-JsonProperty $json "subject")
+    if ([string]::IsNullOrWhiteSpace($subject)) {
+        return [pscustomobject]@{
+            passed = $false
+            detail = "subject missing"
+        }
+    }
+
+    $resultsObject = Get-JsonProperty $json "results"
+    $results = if ($null -eq $resultsObject) { @() } else { @($resultsObject) }
+    foreach ($requiredId in @("tenant-crd-present", "existing-tenant-present", "server-side-dry-run")) {
+        $match = @($results | Where-Object { [string] (Get-JsonProperty $_ "id") -eq $requiredId })
+        if ($match.Count -ne 1) {
+            return [pscustomobject]@{
+                passed = $false
+                detail = "results.$requiredId missing"
+            }
+        }
+
+        $resultPassed = Get-RequiredJsonBool $match[0] "passed"
+        $exitCode = Get-RequiredJsonInt $match[0] "exitCode"
+        if (-not $resultPassed.valid -or -not $resultPassed.value -or -not $exitCode.valid -or [int64] $exitCode.value -ne 0) {
+            return [pscustomobject]@{
+                passed = $false
+                detail = "results.$requiredId passed=$($resultPassed.raw) exitCode=$($exitCode.raw) expected boolean true and integer 0"
+            }
+        }
+    }
+
+    return [pscustomobject]@{
+        passed = $true
+        detail = "passed=$($passed.value) failedCount=$($failedCount.value) manifestSha256=$($json.manifestSha256) resultCount=$($results.Count)"
+    }
+}
+
+function Test-StorageExpansionFinalizeJson([string] $Path) {
+    try {
+        $raw = Get-Content -Raw -LiteralPath $Path
+        $json = $raw | ConvertFrom-Json
+    }
+    catch {
+        return [pscustomobject]@{
+            passed = $false
+            detail = "invalid JSON: $($_.Exception.Message)"
+        }
+    }
+
+    $formatVersion = [string] (Get-JsonProperty $json "formatVersion")
+    if ($formatVersion -ne "osmu.storage-expansion-finalize.v1") {
+        return [pscustomobject]@{
+            passed = $false
+            detail = "formatVersion=$formatVersion expected=osmu.storage-expansion-finalize.v1"
+        }
+    }
+
+    $result = [string] (Get-JsonProperty $json "result")
+    if ($result -ne "passed") {
+        return [pscustomobject]@{
+            passed = $false
+            detail = "result=$result expected=passed"
+        }
+    }
+
+    $failedCount = Get-RequiredJsonInt $json "failedCount"
+    if (-not $failedCount.valid -or [int64] $failedCount.value -ne 0) {
+        return [pscustomobject]@{
+            passed = $false
+            detail = "failedCount=$($failedCount.raw)(valid=$($failedCount.valid)) expected integer 0"
+        }
+    }
+
+    $rawValidation = Test-OperationsEvidenceRawContent $raw "storage expansion finalizer"
+    if (-not $rawValidation.passed) {
+        return $rawValidation
+    }
+
+    foreach ($field in @("namespace", "tenantName", "manifestPath", "kubectlPath", "serviceAccount", "secretPolicy")) {
+        $value = [string] (Get-JsonProperty $json $field)
+        if ([string]::IsNullOrWhiteSpace($value)) {
+            return [pscustomobject]@{
+                passed = $false
+                detail = "$field missing"
+            }
+        }
+    }
+
+    $impersonateRunner = Get-RequiredJsonBool $json "impersonateRunner"
+    if (-not $impersonateRunner.valid -or -not $impersonateRunner.value) {
+        return [pscustomobject]@{
+            passed = $false
+            detail = "impersonateRunner=$($impersonateRunner.raw) expected boolean true"
+        }
+    }
+
+    $evidence = Get-JsonProperty $json "evidence"
+    foreach ($field in @("rbacAuth", "serverDryRun", "report", "summary")) {
+        $value = [string] (Get-JsonProperty $evidence $field)
+        if ([string]::IsNullOrWhiteSpace($value)) {
+            return [pscustomobject]@{
+                passed = $false
+                detail = "evidence.$field missing"
+            }
+        }
+    }
+
+    $gapsObject = Get-JsonProperty $json "gaps"
+    $gaps = if ($null -eq $gapsObject) { @() } else { @($gapsObject) }
+    foreach ($gap in $gaps) {
+        $gapText = [string] $gap
+        if ($gapText -match "RBAC authorization evidence was skipped" -or $gapText -match "Server-side dry-run evidence was skipped") {
+            return [pscustomobject]@{
+                passed = $false
+                detail = "gaps contains required evidence skip: $gapText"
+            }
+        }
+    }
+
+    $stepsObject = Get-JsonProperty $json "steps"
+    $steps = if ($null -eq $stepsObject) { @() } else { @($stepsObject) }
+    foreach ($requiredStep in @("Storage Expansion RBAC auth evidence", "Storage Expansion server-side dry-run evidence")) {
+        $match = @($steps | Where-Object { [string] (Get-JsonProperty $_ "name") -eq $requiredStep })
+        if ($match.Count -ne 1) {
+            return [pscustomobject]@{
+                passed = $false
+                detail = "steps.$requiredStep missing"
+            }
+        }
+
+        $stepResult = [string] (Get-JsonProperty $match[0] "result")
+        $exitCode = Get-RequiredJsonInt $match[0] "exitCode"
+        if ($stepResult -ne "passed" -or -not $exitCode.valid -or [int64] $exitCode.value -ne 0) {
+            return [pscustomobject]@{
+                passed = $false
+                detail = "steps.$requiredStep result=$stepResult exitCode=$($exitCode.raw) expected passed and integer 0"
+            }
+        }
+    }
+
+    return [pscustomobject]@{
+        passed = $true
+        detail = "formatVersion=$formatVersion result=$result failedCount=$($failedCount.value) stepCount=$($steps.Count) namespace=$($json.namespace) tenant=$($json.tenantName)"
     }
 }
 
@@ -1733,7 +2059,31 @@ function Import-EvidenceFile(
         [void] $validationDetails.Add($validation.detail)
     }
 
-    if ($ValidationKind -eq "data-flow-storage-plan") {
+    if ($ValidationKind -eq "storage-expansion-finalizer") {
+        $validation = Test-StorageExpansionFinalizeJson $sourcePath
+        if (-not $validation.passed) {
+            Add-Entry $Group $FileName "failed" $validation.detail $sourcePath ""
+            return
+        }
+        [void] $validationDetails.Add($validation.detail)
+    }
+    elseif ($ValidationKind -eq "storage-expansion-rbac-auth") {
+        $validation = Test-StorageExpansionRbacAuthEvidenceJson $sourcePath
+        if (-not $validation.passed) {
+            Add-Entry $Group $FileName "failed" $validation.detail $sourcePath ""
+            return
+        }
+        [void] $validationDetails.Add($validation.detail)
+    }
+    elseif ($ValidationKind -eq "storage-expansion-server-dry-run") {
+        $validation = Test-StorageExpansionServerDryRunEvidenceJson $sourcePath
+        if (-not $validation.passed) {
+            Add-Entry $Group $FileName "failed" $validation.detail $sourcePath ""
+            return
+        }
+        [void] $validationDetails.Add($validation.detail)
+    }
+    elseif ($ValidationKind -eq "data-flow-storage-plan") {
         $validation = Test-DataFlowStoragePlanEvidenceJson $sourcePath
         if (-not $validation.passed) {
             Add-Entry $Group $FileName "failed" $validation.detail $sourcePath ""
@@ -1857,10 +2207,10 @@ function Import-EvidenceFile(
     Add-Entry $Group $FileName "imported" $detail $sourcePath $destinationPath
 }
 
-Import-EvidenceFile "storage-expansion" $StorageExpansionArtifactPath "latest-storage-expansion-finalize.json" $true "result" "passed"
+Import-EvidenceFile "storage-expansion" $StorageExpansionArtifactPath "latest-storage-expansion-finalize.json" $true "" "" "storage-expansion-finalizer"
 Import-EvidenceFile "storage-expansion" $StorageExpansionArtifactPath "latest-storage-expansion-finalize.md" $false
-Import-EvidenceFile "storage-expansion" $StorageExpansionArtifactPath "latest-storage-expansion-rbac-auth.json" $false
-Import-EvidenceFile "storage-expansion" $StorageExpansionArtifactPath "latest-storage-expansion-server-dry-run.json" $false
+Import-EvidenceFile "storage-expansion" $StorageExpansionArtifactPath "latest-storage-expansion-rbac-auth.json" $true "" "" "storage-expansion-rbac-auth"
+Import-EvidenceFile "storage-expansion" $StorageExpansionArtifactPath "latest-storage-expansion-server-dry-run.json" $true "" "" "storage-expansion-server-dry-run"
 
 Import-EvidenceFile "ha-dr-readiness" $HaDrReadinessArtifactPath "latest-kubernetes-ha-dr-readiness.json" $true "result" "passed"
 
