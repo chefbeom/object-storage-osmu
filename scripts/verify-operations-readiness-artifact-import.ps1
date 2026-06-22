@@ -325,6 +325,43 @@ function New-PassedMonitoringThresholdChecks {
     })
 }
 
+function New-PassedDataFlowStorageTransitionRunbookChecks {
+    $ids = @(
+        "environment-name",
+        "target-cluster",
+        "operator",
+        "review-started-at",
+        "review-completed-at",
+        "review-window-order",
+        "change-approval-ref",
+        "data-flow-storage-plan-evidence-ref",
+        "data-flow-storage-plan-passed",
+        "backfill-evidence-ref",
+        "dual-write-or-partition-toggle-evidence-ref",
+        "rollback-evidence-ref",
+        "reconciliation-evidence-ref",
+        "dashboard-cutover-evidence-ref",
+        "retention-dry-run-evidence-ref",
+        "backfill-rehearsed-confirmed",
+        "dual-write-or-partition-toggle-reviewed-confirmed",
+        "rollback-rehearsed-confirmed",
+        "reconciliation-passed-confirmed",
+        "dashboard-cutover-reviewed-confirmed",
+        "retention-dry-run-reviewed-confirmed",
+        "no-object-keys-in-aggregates-confirmed",
+        "no-secret-values-confirmed"
+    )
+    return @($ids | ForEach-Object {
+        [ordered]@{
+            id = $_
+            name = $_
+            status = "PASS"
+            passed = $true
+            detail = "verified"
+        }
+    })
+}
+
 function New-PassedStorageExpansionFinalize(
     [object] $FailedCount = 0,
     [bool] $SkipRbacGap = $false
@@ -840,6 +877,7 @@ $unsafeDataFlowRoot = Join-Path $resolvedOutputDirectory "unsafe-data-flow-sourc
 $unsafeDataFlowRunbookRoot = Join-Path $resolvedOutputDirectory "unsafe-data-flow-runbook-source"
 $weakDataFlowRunbookRoot = Join-Path $resolvedOutputDirectory "weak-data-flow-runbook-source"
 $stringBoolDataFlowRunbookRoot = Join-Path $resolvedOutputDirectory "string-bool-data-flow-runbook-source"
+$weakDataFlowRunbookChecksRoot = Join-Path $resolvedOutputDirectory "weak-data-flow-runbook-checks-source"
 $weakDirectDataFlowStoragePlanRoot = Join-Path $resolvedOutputDirectory "weak-direct-data-flow-storage-plan-source"
 $stringCountDirectDataFlowStoragePlanRoot = Join-Path $resolvedOutputDirectory "string-count-direct-data-flow-storage-plan-source"
 $unsafeMonitoringThresholdRoot = Join-Path $resolvedOutputDirectory "unsafe-monitoring-threshold-source"
@@ -1308,17 +1346,41 @@ Write-JsonEvidence (Join-Path $operationsHandoffPackageSource "latest-operations
     checks = $passedOperationsHandoffPackageChecks
 }
 Write-TextEvidence (Join-Path $operationsHandoffPackageSource "latest-operations-handoff-package.md") "# Operations handoff package"
+$passedDataFlowRunbookChecks = New-PassedDataFlowStorageTransitionRunbookChecks
 Write-JsonEvidence (Join-Path $dataFlowStorageTransitionRunbookSource "latest-data-flow-storage-transition-runbook-evidence.json") @{
     formatVersion = "osmu.data-flow-storage-transition-runbook-evidence.v1"
+    generatedAt = "2026-06-22T00:00:00Z"
     result = "passed"
+    environmentName = "prod"
+    targetCluster = "osmu-prod"
+    operatorName = "ops-owner"
+    evidenceRef = "data-flow-storage-transition-runbook-20260622"
+    reviewWindow = @{
+        startedAt = "2026-06-22T00:00:00Z"
+        completedAt = "2026-06-22T00:20:00Z"
+    }
     dataFlowStoragePlanSnapshot = @{
+        formatVersion = "osmu.data-flow-storage-plan.v1"
         result = "passed"
         candidateStore = "MARIADB_PARTITION"
         targetP95QueryLatencyMs = 500
+        pendingCount = 0
+        checkCount = 10
+        queryPlanEvidenceResult = "passed"
+    }
+    evidenceRefs = @{
+        changeApproval = "CHG-2026-DATA-FLOW-RUNBOOK"
+        dataFlowStoragePlan = "data-flow-storage-plan-passed-20260622"
+        backfill = "backfill-rehearsal-20260622"
+        dualWriteOrPartitionToggle = "dual-write-toggle-review-20260622"
+        rollback = "rollback-rehearsal-20260622"
+        reconciliation = "reconciliation-20260622"
+        dashboardCutover = "dashboard-cutover-20260622"
+        retentionDryRun = "retention-dry-run-20260622"
     }
     summary = @{
         failureCount = 0
-        checkCount = 24
+        checkCount = $passedDataFlowRunbookChecks.Count
     }
     confirmations = @{
         backfillRehearsed = $true
@@ -1330,6 +1392,7 @@ Write-JsonEvidence (Join-Path $dataFlowStorageTransitionRunbookSource "latest-da
         noObjectKeysInAggregates = $true
         noSecretValues = $true
     }
+    checks = $passedDataFlowRunbookChecks
 }
 Write-TextEvidence (Join-Path $dataFlowStorageTransitionRunbookSource "latest-data-flow-storage-transition-runbook-evidence.md") "# Data-flow storage transition runbook"
 Write-JsonEvidence (Join-Path $kubernetesOperationsReportSyncSource "latest-kubernetes-operations-report-sync.json") @{
@@ -1371,15 +1434,38 @@ Write-JsonEvidence (Join-Path $kubernetesOperationsReportSyncSource "latest-data
 }
 Write-JsonEvidence (Join-Path $kubernetesOperationsReportSyncSource "latest-data-flow-storage-transition-runbook-evidence.json") @{
     formatVersion = "osmu.data-flow-storage-transition-runbook-evidence.v1"
+    generatedAt = "2026-06-22T00:00:00Z"
     result = "passed"
+    environmentName = "prod"
+    targetCluster = "osmu-prod"
+    operatorName = "ops-owner"
+    evidenceRef = "data-flow-storage-transition-runbook-20260622"
+    reviewWindow = @{
+        startedAt = "2026-06-22T00:00:00Z"
+        completedAt = "2026-06-22T00:20:00Z"
+    }
     dataFlowStoragePlanSnapshot = @{
+        formatVersion = "osmu.data-flow-storage-plan.v1"
         result = "passed"
         candidateStore = "MARIADB_PARTITION"
         targetP95QueryLatencyMs = 500
+        pendingCount = 0
+        checkCount = 10
+        queryPlanEvidenceResult = "passed"
+    }
+    evidenceRefs = @{
+        changeApproval = "CHG-2026-DATA-FLOW-RUNBOOK"
+        dataFlowStoragePlan = "data-flow-storage-plan-passed-20260622"
+        backfill = "backfill-rehearsal-20260622"
+        dualWriteOrPartitionToggle = "dual-write-toggle-review-20260622"
+        rollback = "rollback-rehearsal-20260622"
+        reconciliation = "reconciliation-20260622"
+        dashboardCutover = "dashboard-cutover-20260622"
+        retentionDryRun = "retention-dry-run-20260622"
     }
     summary = @{
         failureCount = 0
-        checkCount = 8
+        checkCount = $passedDataFlowRunbookChecks.Count
     }
     confirmations = @{
         backfillRehearsed = $true
@@ -1391,6 +1477,7 @@ Write-JsonEvidence (Join-Path $kubernetesOperationsReportSyncSource "latest-data
         noObjectKeysInAggregates = $true
         noSecretValues = $true
     }
+    checks = $passedDataFlowRunbookChecks
     topFailedChecks = @()
 }
 
@@ -1538,10 +1625,10 @@ Assert-True ($kubernetesOperationsReportSyncEntry.Count -eq 1) "Kubernetes opera
 Assert-True (([string] $kubernetesOperationsReportSyncEntry[0].detail).Contains("failedCount=0") -and ([string] $kubernetesOperationsReportSyncEntry[0].detail).Contains("sourceReportResult=ready")) "Kubernetes operations report sync import entry should include strict sync validation detail."
 $dataFlowRunbookEntry = @($report.entries | Where-Object { $_.group -eq "data-flow-storage-transition-runbook" -and $_.fileName -eq "latest-data-flow-storage-transition-runbook-evidence.json" })
 Assert-True ($dataFlowRunbookEntry.Count -eq 1) "Data-flow storage transition runbook import entry missing."
-Assert-True (([string] $dataFlowRunbookEntry[0].detail).Contains("storagePlanResult=passed")) "Data-flow storage transition runbook import entry should include storage plan validation detail."
+Assert-True (([string] $dataFlowRunbookEntry[0].detail).Contains("targetCluster=osmu-prod") -and ([string] $dataFlowRunbookEntry[0].detail).Contains("storagePlanResult=passed") -and ([string] $dataFlowRunbookEntry[0].detail).Contains("checkRows=23")) "Data-flow storage transition runbook import entry should include target metadata, storage plan, and check row validation detail."
 $kubernetesSyncRunbookEntry = @($report.entries | Where-Object { $_.group -eq "kubernetes-operations-report-sync" -and $_.fileName -eq "latest-data-flow-storage-transition-runbook-evidence.json" })
 Assert-True ($kubernetesSyncRunbookEntry.Count -eq 1) "Kubernetes sync data-flow storage transition runbook import entry missing."
-Assert-True (([string] $kubernetesSyncRunbookEntry[0].detail).Contains("storagePlanResult=passed")) "Kubernetes sync runbook import entry should include storage plan validation detail."
+Assert-True (([string] $kubernetesSyncRunbookEntry[0].detail).Contains("targetCluster=osmu-prod") -and ([string] $kubernetesSyncRunbookEntry[0].detail).Contains("storagePlanResult=passed") -and ([string] $kubernetesSyncRunbookEntry[0].detail).Contains("checkRows=23")) "Kubernetes sync runbook import entry should include target metadata, storage plan, and check row validation detail."
 $monitoringThresholdEntry = @($report.entries | Where-Object { $_.group -eq "monitoring-threshold" -and $_.fileName -eq "latest-monitoring-threshold-evidence.json" })
 Assert-True ($monitoringThresholdEntry.Count -eq 1) "Monitoring threshold import entry missing."
 Assert-True (([string] $monitoringThresholdEntry[0].detail).Contains("requiredAlerts=11")) "Monitoring threshold import entry should include threshold mapping validation detail."
@@ -2146,6 +2233,9 @@ Write-JsonEvidence (Join-Path $unsafeDataFlowRunbookRoot "latest-data-flow-stora
     dataFlowStoragePlanSnapshot = @{
         result = "passed"
         candidateStore = "MARIADB_PARTITION"
+        pendingCount = 0
+        checkCount = 10
+        queryPlanEvidenceResult = "passed"
     }
     rawSql = "SELECT id FROM data_flow_events"
 }
@@ -2178,6 +2268,9 @@ Write-JsonEvidence (Join-Path $weakDataFlowRunbookRoot "latest-data-flow-storage
     dataFlowStoragePlanSnapshot = @{
         result = "passed"
         candidateStore = "MARIADB_PARTITION"
+        pendingCount = 0
+        checkCount = 10
+        queryPlanEvidenceResult = "passed"
     }
     summary = @{
         failureCount = "0"
@@ -2223,6 +2316,9 @@ Write-JsonEvidence (Join-Path $stringBoolDataFlowRunbookRoot "latest-data-flow-s
     dataFlowStoragePlanSnapshot = @{
         result = "passed"
         candidateStore = "MARIADB_PARTITION"
+        pendingCount = 0
+        checkCount = 10
+        queryPlanEvidenceResult = "passed"
     }
     summary = @{
         failureCount = 0
@@ -2261,6 +2357,77 @@ $stringBoolDataFlowRunbookReport = Get-Content -Raw -LiteralPath $stringBoolData
 Assert-True ($stringBoolDataFlowRunbookReport.result -eq "failed") "String-bool data-flow runbook import report should be failed."
 Assert-True (-not (Test-Path -LiteralPath (Join-Path $stringBoolDataFlowRunbookOutput "latest-data-flow-storage-transition-runbook-evidence.json"))) "String-bool data-flow storage transition runbook must not be promoted."
 Assert-True (($stringBoolDataFlowRunbookReport.entries | ConvertTo-Json -Depth 8).Contains("confirmation backfillRehearsed=true expected boolean true")) "String-bool data-flow runbook report should describe invalid typed confirmation."
+
+$weakDataFlowRunbookChecks = @((New-PassedDataFlowStorageTransitionRunbookChecks) | Where-Object { $_.id -ne "rollback-rehearsed-confirmed" })
+Write-JsonEvidence (Join-Path $weakDataFlowRunbookChecksRoot "latest-data-flow-storage-transition-runbook-evidence.json") @{
+    formatVersion = "osmu.data-flow-storage-transition-runbook-evidence.v1"
+    generatedAt = "2026-06-22T00:00:00Z"
+    result = "passed"
+    environmentName = "prod"
+    targetCluster = "osmu-prod"
+    operatorName = "ops-owner"
+    evidenceRef = "data-flow-storage-transition-runbook-20260622"
+    reviewWindow = @{
+        startedAt = "2026-06-22T00:00:00Z"
+        completedAt = "2026-06-22T00:20:00Z"
+    }
+    dataFlowStoragePlanSnapshot = @{
+        formatVersion = "osmu.data-flow-storage-plan.v1"
+        result = "passed"
+        candidateStore = "MARIADB_PARTITION"
+        targetP95QueryLatencyMs = 500
+        pendingCount = 0
+        checkCount = 10
+        queryPlanEvidenceResult = "passed"
+    }
+    evidenceRefs = @{
+        changeApproval = "CHG-2026-DATA-FLOW-RUNBOOK"
+        dataFlowStoragePlan = "data-flow-storage-plan-passed-20260622"
+        backfill = "backfill-rehearsal-20260622"
+        dualWriteOrPartitionToggle = "dual-write-toggle-review-20260622"
+        rollback = "rollback-rehearsal-20260622"
+        reconciliation = "reconciliation-20260622"
+        dashboardCutover = "dashboard-cutover-20260622"
+        retentionDryRun = "retention-dry-run-20260622"
+    }
+    summary = @{
+        failureCount = 0
+        checkCount = $weakDataFlowRunbookChecks.Count
+    }
+    confirmations = @{
+        backfillRehearsed = $true
+        dualWriteOrPartitionToggleReviewed = $true
+        rollbackRehearsed = $true
+        reconciliationPassed = $true
+        dashboardCutoverReviewed = $true
+        retentionDryRunReviewed = $true
+        noObjectKeysInAggregates = $true
+        noSecretValues = $true
+    }
+    checks = $weakDataFlowRunbookChecks
+}
+$weakDataFlowRunbookChecksOutput = Join-Path $resolvedOutputDirectory "weak-data-flow-runbook-checks-promoted"
+$weakDataFlowRunbookChecksJson = Join-Path $resolvedOutputDirectory "weak-data-flow-runbook-checks-import.json"
+$weakDataFlowRunbookChecksMarkdown = Join-Path $resolvedOutputDirectory "weak-data-flow-runbook-checks-import.md"
+$previousErrorActionPreference = $ErrorActionPreference
+$ErrorActionPreference = "Continue"
+try {
+    $weakDataFlowRunbookChecksOutputLines = & powershell -NoProfile -ExecutionPolicy Bypass -File $importScript `
+        -DataFlowStorageTransitionRunbookArtifactPath $weakDataFlowRunbookChecksRoot `
+        -OutputDirectory $weakDataFlowRunbookChecksOutput `
+        -JsonOutputPath $weakDataFlowRunbookChecksJson `
+        -MarkdownOutputPath $weakDataFlowRunbookChecksMarkdown 2>&1
+    $weakDataFlowRunbookChecksExitCode = $LASTEXITCODE
+}
+finally {
+    $ErrorActionPreference = $previousErrorActionPreference
+}
+Assert-True ($weakDataFlowRunbookChecksExitCode -ne 0) "Data-flow storage transition runbook without complete PASS check rows should fail import."
+Assert-True (Test-Path -LiteralPath $weakDataFlowRunbookChecksJson) "Weak data-flow runbook checks import report should still be written."
+$weakDataFlowRunbookChecksReport = Get-Content -Raw -LiteralPath $weakDataFlowRunbookChecksJson | ConvertFrom-Json
+Assert-True ($weakDataFlowRunbookChecksReport.result -eq "failed") "Weak data-flow runbook checks import report should be failed."
+Assert-True (-not (Test-Path -LiteralPath (Join-Path $weakDataFlowRunbookChecksOutput "latest-data-flow-storage-transition-runbook-evidence.json"))) "Weak data-flow storage transition runbook checks evidence must not be promoted."
+Assert-True (($weakDataFlowRunbookChecksReport.entries | ConvertTo-Json -Depth 8).Contains("checks.rollback-rehearsed-confirmed missing PASS")) "Weak data-flow runbook checks report should describe missing PASS check row."
 
 Write-JsonEvidence (Join-Path $unsafeMonitoringThresholdRoot "latest-monitoring-threshold-evidence.json") @{
     formatVersion = "osmu.monitoring-threshold-evidence.v1"

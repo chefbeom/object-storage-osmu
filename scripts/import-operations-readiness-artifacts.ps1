@@ -3122,12 +3122,41 @@ function Test-DataFlowStorageTransitionRunbookEvidenceJson([string] $Path) {
         }
     }
 
+    $planPendingCount = Get-RequiredJsonInt $planSnapshot "pendingCount"
+    $planCheckCount = Get-RequiredJsonInt $planSnapshot "checkCount"
+    if (-not $planPendingCount.valid -or [int64] $planPendingCount.value -ne 0) {
+        return [pscustomobject]@{
+            passed = $false
+            detail = "dataFlowStoragePlanSnapshot.pendingCount=$($planPendingCount.raw)(valid=$($planPendingCount.valid)) expected integer 0"
+        }
+    }
+    if (-not $planCheckCount.valid -or [int64] $planCheckCount.value -le 0) {
+        return [pscustomobject]@{
+            passed = $false
+            detail = "dataFlowStoragePlanSnapshot.checkCount=$($planCheckCount.raw)(valid=$($planCheckCount.valid)) expected integer >0"
+        }
+    }
+    $queryPlanEvidenceResult = [string] (Get-JsonProperty $planSnapshot "queryPlanEvidenceResult")
+    if ($candidateStore -in @("MARIADB_PARTITION", "DUAL_WRITE") -and -not "passed".Equals($queryPlanEvidenceResult, [System.StringComparison]::OrdinalIgnoreCase)) {
+        return [pscustomobject]@{
+            passed = $false
+            detail = "dataFlowStoragePlanSnapshot.queryPlanEvidenceResult=$queryPlanEvidenceResult expected=passed for $candidateStore"
+        }
+    }
+
     $summary = Get-JsonProperty $json "summary"
     $failureCountResult = Get-RequiredJsonInt $summary "failureCount"
     if (-not $failureCountResult.valid -or [int64] $failureCountResult.value -ne 0) {
         return [pscustomobject]@{
             passed = $false
             detail = "failureCount=$($failureCountResult.raw)(valid=$($failureCountResult.valid)) expected integer 0"
+        }
+    }
+    $checkCountResult = Get-RequiredJsonInt $summary "checkCount"
+    if (-not $checkCountResult.valid -or [int64] $checkCountResult.value -le 0) {
+        return [pscustomobject]@{
+            passed = $false
+            detail = "checkCount=$($checkCountResult.raw)(valid=$($checkCountResult.valid)) expected integer >0"
         }
     }
 
@@ -3152,9 +3181,124 @@ function Test-DataFlowStorageTransitionRunbookEvidenceJson([string] $Path) {
         }
     }
 
+    foreach ($metadataName in @("environmentName", "targetCluster", "operatorName", "evidenceRef")) {
+        $metadataValue = [string] (Get-JsonProperty $json $metadataName)
+        if ([string]::IsNullOrWhiteSpace($metadataValue)) {
+            return [pscustomobject]@{
+                passed = $false
+                detail = "$metadataName missing"
+            }
+        }
+    }
+
+    $generatedAt = [string] (Get-JsonProperty $json "generatedAt")
+    $parsedGeneratedAt = [DateTimeOffset]::MinValue
+    if ([string]::IsNullOrWhiteSpace($generatedAt) -or -not [DateTimeOffset]::TryParse($generatedAt, [ref] $parsedGeneratedAt)) {
+        return [pscustomobject]@{
+            passed = $false
+            detail = "generatedAt=$generatedAt expected ISO timestamp"
+        }
+    }
+
+    $reviewWindow = Get-JsonProperty $json "reviewWindow"
+    $startedAt = [string] (Get-JsonProperty $reviewWindow "startedAt")
+    $completedAt = [string] (Get-JsonProperty $reviewWindow "completedAt")
+    $parsedStartedAt = [DateTimeOffset]::MinValue
+    $parsedCompletedAt = [DateTimeOffset]::MinValue
+    if ([string]::IsNullOrWhiteSpace($startedAt) -or -not [DateTimeOffset]::TryParse($startedAt, [ref] $parsedStartedAt)) {
+        return [pscustomobject]@{
+            passed = $false
+            detail = "reviewWindow.startedAt=$startedAt expected ISO timestamp"
+        }
+    }
+    if ([string]::IsNullOrWhiteSpace($completedAt) -or -not [DateTimeOffset]::TryParse($completedAt, [ref] $parsedCompletedAt)) {
+        return [pscustomobject]@{
+            passed = $false
+            detail = "reviewWindow.completedAt=$completedAt expected ISO timestamp"
+        }
+    }
+    if ($parsedCompletedAt -lt $parsedStartedAt) {
+        return [pscustomobject]@{
+            passed = $false
+            detail = "reviewWindow completedAt must be same as or later than startedAt"
+        }
+    }
+
+    $evidenceRefs = Get-JsonProperty $json "evidenceRefs"
+    foreach ($refName in @("changeApproval", "dataFlowStoragePlan", "backfill", "dualWriteOrPartitionToggle", "rollback", "reconciliation", "dashboardCutover", "retentionDryRun")) {
+        $refValue = [string] (Get-JsonProperty $evidenceRefs $refName)
+        if ([string]::IsNullOrWhiteSpace($refValue)) {
+            return [pscustomobject]@{
+                passed = $false
+                detail = "evidenceRefs.$refName missing"
+            }
+        }
+    }
+
+    $checksRaw = Get-JsonProperty $json "checks"
+    if ($null -eq $checksRaw) {
+        return [pscustomobject]@{
+            passed = $false
+            detail = "checks expected"
+        }
+    }
+    [object[]] $checks = @($checksRaw)
+    if ($checks.Count -ne [int64] $checkCountResult.value) {
+        return [pscustomobject]@{
+            passed = $false
+            detail = "checks.Count=$($checks.Count) summary.checkCount=$($checkCountResult.value) expected equal"
+        }
+    }
+    foreach ($check in $checks) {
+        $id = [string] (Get-JsonProperty $check "id")
+        $status = [string] (Get-JsonProperty $check "status")
+        $passed = Get-RequiredJsonBool $check "passed"
+        if ([string]::IsNullOrWhiteSpace($id)) {
+            return [pscustomobject]@{ passed = $false; detail = "checks row missing id" }
+        }
+        if (-not "PASS".Equals($status, [System.StringComparison]::OrdinalIgnoreCase) -or -not $passed.valid -or -not $passed.value) {
+            return [pscustomobject]@{ passed = $false; detail = "checks.$id status=$status passed=$($passed.raw) expected PASS and boolean true" }
+        }
+    }
+
+    $requiredCheckIds = @(
+        "environment-name",
+        "target-cluster",
+        "operator",
+        "review-started-at",
+        "review-completed-at",
+        "review-window-order",
+        "change-approval-ref",
+        "data-flow-storage-plan-evidence-ref",
+        "data-flow-storage-plan-passed",
+        "backfill-evidence-ref",
+        "dual-write-or-partition-toggle-evidence-ref",
+        "rollback-evidence-ref",
+        "reconciliation-evidence-ref",
+        "dashboard-cutover-evidence-ref",
+        "retention-dry-run-evidence-ref",
+        "backfill-rehearsed-confirmed",
+        "dual-write-or-partition-toggle-reviewed-confirmed",
+        "rollback-rehearsed-confirmed",
+        "reconciliation-passed-confirmed",
+        "dashboard-cutover-reviewed-confirmed",
+        "retention-dry-run-reviewed-confirmed",
+        "no-object-keys-in-aggregates-confirmed",
+        "no-secret-values-confirmed"
+    )
+    foreach ($requiredCheckId in $requiredCheckIds) {
+        [object[]] $match = @($checks | Where-Object { [string] (Get-JsonProperty $_ "id") -eq $requiredCheckId -and "PASS".Equals([string] (Get-JsonProperty $_ "status"), [System.StringComparison]::OrdinalIgnoreCase) })
+        if ($match.Count -ne 1) {
+            return [pscustomobject]@{
+                passed = $false
+                detail = "checks.$requiredCheckId missing PASS"
+            }
+        }
+    }
+
     return [pscustomobject]@{
         passed = $true
-        detail = "formatVersion=$formatVersion result=$result storagePlanResult=$planResult candidateStore=$candidateStore failureCount=$($failureCountResult.value) confirmations=$($requiredConfirmations.Count)/$($requiredConfirmations.Count)"
+        detail = "formatVersion=$formatVersion result=$result environmentName=$($json.environmentName) targetCluster=$($json.targetCluster) storagePlanResult=$planResult candidateStore=$candidateStore failureCount=$($failureCountResult.value) planChecks=$($planCheckCount.value) checkRows=$($checks.Count) confirmations=$($requiredConfirmations.Count)/$($requiredConfirmations.Count)"
     }
 }
 
