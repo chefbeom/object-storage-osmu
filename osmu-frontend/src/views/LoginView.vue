@@ -51,7 +51,7 @@
             />
             <span>
               <strong>개발자</strong>
-              <small>API Key로 AWS S3 bucket처럼 데이터 저장과 조회</small>
+              <small>API Key로 S3 호환 bucket에 데이터 저장과 조회</small>
             </span>
           </label>
         </div>

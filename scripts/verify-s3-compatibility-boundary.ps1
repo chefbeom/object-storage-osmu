@@ -11,6 +11,8 @@ param(
     [string] $TestCasesPath = ".\dev-docs\test-cases.md",
     [string] $MvpReleaseChecklistPath = ".\dev-docs\mvp-release-checklist.md",
     [string] $DocumentIndexPath = ".\dev-docs\document-index.md",
+    [string] $FrontendDesignPath = ".\dev-docs\frontend-design.md",
+    [string] $LoginViewPath = ".\osmu-frontend\src\views\LoginView.vue",
     [string] $DemoPackageNotesWriterPath = ".\scripts\write-mvp-demo-package-notes.ps1",
     [string] $MvpCompletionVerifierPath = ".\scripts\verify-mvp-completion.ps1"
 )
@@ -65,6 +67,8 @@ $prototypeStatus = Read-RequiredText $PrototypeStatusPath "Prototype status"
 $testCases = Read-RequiredText $TestCasesPath "Test cases"
 $releaseChecklist = Read-RequiredText $MvpReleaseChecklistPath "MVP release checklist"
 $documentIndex = Read-RequiredText $DocumentIndexPath "Document index"
+$frontendDesign = Read-RequiredText $FrontendDesignPath "Frontend design"
+$loginView = Read-RequiredText $LoginViewPath "Login view"
 $demoPackageNotesWriter = Read-RequiredText $DemoPackageNotesWriterPath "MVP demo package notes writer"
 $mvpCompletionVerifier = Read-RequiredText $MvpCompletionVerifierPath "MVP completion verifier"
 
@@ -126,6 +130,10 @@ Assert-Contains $testCases "remaining broader checksum negotiation gap explicitl
 
 Assert-Contains $releaseChecklist "verify-s3-compatibility-boundary.ps1"
 Assert-Contains $documentIndex "verify-s3-compatibility-boundary.ps1"
+Assert-Contains $frontendDesign "replacement-use setup, not AWS S3 parity positioning"
+Assert-Contains $frontendDesign "dev-docs/s3-compatibility.md"
+Assert-Contains $loginView (Decode-Utf8Base64 "UzMg7Zi47ZmYIEFQSSBLZXk=")
+Assert-Contains $loginView (Decode-Utf8Base64 "QVBJIEtleeuhnCBTMyDtmLjtmZggYnVja2V07JeQIOuNsOydtO2EsCDsoIDsnqXqs7wg7KGw7ZqM")
 
 Assert-Contains $demoPackageNotesWriter "## S3 Replacement Boundary"
 Assert-Contains $demoPackageNotesWriter "It is not AWS S3 full behavioral parity"
@@ -148,6 +156,8 @@ $filesToScan = @(
     $testCases,
     $releaseChecklist,
     $documentIndex,
+    $frontendDesign,
+    $loginView,
     $demoPackageNotesWriter
 )
 
@@ -158,6 +168,7 @@ $overbroadClaims = @(
     "full AWS S3 parity",
     "AWS S3 parity goal",
     "AWS S3 parity as a goal",
+    (Decode-Utf8Base64 "QVdTIFMzIGJ1Y2tldOyymOufvA=="),
     (Decode-Utf8Base64 "QVdTIFMz7JmAIDEwMCUg7Zi47ZmY"),
     (Decode-Utf8Base64 "QVdTIFMzIOyZhOyghCDtmLjtmZjsnYQg67O07J6l"),
     (Decode-Utf8Base64 "QVdTIFMzIOyghOyytCDsiqTtjpkg7Zi47ZmYIOuztOyepQ=="),

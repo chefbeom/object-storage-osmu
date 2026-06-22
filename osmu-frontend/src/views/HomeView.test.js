@@ -1181,7 +1181,7 @@ test('HomeView exposes stable selectors for browser E2E flows', () => {
   assert.match(dashboardSource, /RAID 0-9/)
   assert.match(dashboardSource, /JBOD/)
   assert.match(dashboardSource, /IAM User/)
-  assert.match(dashboardSource, /API Key로 AWS S3 bucket처럼 데이터 저장과 조회/)
+  assert.match(dashboardSource, /API Key로 S3 호환 bucket에 데이터 저장과 조회/)
   assert.match(dashboardSource, /API 접속 정보/)
   assert.match(dashboardSource, /개발자 시작 checklist/)
   assert.match(dashboardSource, /developerOnboardingSteps/)

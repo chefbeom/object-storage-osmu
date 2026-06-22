@@ -192,8 +192,8 @@ Web Portal은 관리자와 사용자가 OSMU를 브라우저에서 사용할 수
 - 개발자 시작 checklist로 endpoint, bucket, access key, SDK 예제 준비 상태와 진행률 표시.
 - S3 compatible endpoint summary.
 - S3 compatible endpoint summary는 `GET /api/developer/s3-client-config` 응답을 사용해 endpoint, region, signature version, virtual-hosted-style domain suffix를 표시한다.
-- AWS CLI, AWS SDK JavaScript, boto3 Python, AWS SDK Java, MinIO Client snippets are generated from endpoint, region, and selected bucket for replacement-use setup.
-- Real S3 client compatibility matrix는 AWS CLI, MinIO Client, boto3, AWS SDK JavaScript/Java를 기본 대상으로 하고, s3fs-fuse/goofys, s3cmd는 고객 전환 시나리오가 있을 때 후보 상태, 인증 방식, 검증 operation, 필수 option을 표시한다.
+- AWS CLI, AWS SDK JavaScript, boto3 Python, AWS SDK Java, MinIO Client snippets are generated from endpoint, region, and selected bucket for replacement-use setup, not AWS S3 parity positioning.
+- Real S3 client compatibility matrix는 AWS CLI, MinIO Client, boto3, AWS SDK JavaScript/Java를 기본 대상으로 하고, s3fs-fuse/goofys, s3cmd는 고객 전환 시나리오가 있을 때 후보 상태, 인증 방식, 검증 operation, 필수 option을 표시한다. 로그인/개발자 화면의 S3 설명은 AWS S3 자체가 아니라 `dev-docs/s3-compatibility.md`의 대체 가능 범위를 따른다.
 - 선택 bucket context.
 
 접근:
