@@ -685,6 +685,7 @@
         <small>
           {{ monitoringThresholdEvidence.environmentName || 'unknown env' }} /
           {{ monitoringThresholdEvidence.targetCluster || 'unknown cluster' }} /
+          {{ monitoringThresholdEvidence.operatorName || 'unknown operator' }} /
           alerts {{ monitoringThresholdEvidence.mappedAlertCount || 0 }} of {{ monitoringThresholdEvidence.requiredAlertCount || 0 }} /
           routes {{ monitoringThresholdEvidence.routeCount || 0 }} /
           panels {{ monitoringThresholdEvidence.grafanaPanelCount || 0 }} /
@@ -692,10 +693,40 @@
           failures {{ monitoringThresholdEvidence.failureCount || 0 }} of {{ monitoringThresholdEvidence.checkCount || 0 }}
         </small>
         <small
+          v-if="monitoringThresholdReviewWindowSummary"
+          data-testid="readiness-monitoring-threshold-review-window"
+        >
+          Review window: {{ monitoringThresholdReviewWindowSummary }}
+        </small>
+        <small
+          v-if="monitoringThresholdEvidence.thresholdTargetsPath"
+          data-testid="readiness-monitoring-threshold-targets-path"
+        >
+          Targets: {{ monitoringThresholdEvidence.thresholdTargetsPath }}
+        </small>
+        <small
+          v-if="monitoringThresholdRouteSummary"
+          data-testid="readiness-monitoring-threshold-routes"
+        >
+          Routes: {{ monitoringThresholdRouteSummary }}
+        </small>
+        <small
+          v-if="monitoringThresholdMissingAlertSummary"
+          data-testid="readiness-monitoring-threshold-missing-alerts"
+        >
+          Missing alerts: {{ monitoringThresholdMissingAlertSummary }}
+        </small>
+        <small
           v-if="monitoringThresholdEvidenceRefSummary"
           data-testid="readiness-monitoring-threshold-evidence-refs"
         >
           Evidence refs: {{ monitoringThresholdEvidenceRefSummary }}
+        </small>
+        <small
+          v-if="monitoringThresholdConfirmationSummary"
+          data-testid="readiness-monitoring-threshold-confirmations"
+        >
+          Confirmations: {{ monitoringThresholdConfirmationSummary }}
         </small>
         <small v-if="monitoringThresholdEvidence.secretPolicy">
           {{ monitoringThresholdEvidence.secretPolicy }}
@@ -3359,6 +3390,40 @@ const monitoringThresholdEvidenceRefSummary = computed(() => {
     .filter(([, value]) => value)
     .slice(0, 5)
     .map(([key, value]) => `${key}=${value}`)
+    .join(' / ')
+})
+
+const monitoringThresholdReviewWindowSummary = computed(() => {
+  const reviewWindow = monitoringThresholdEvidence.value?.reviewWindow
+  if (!reviewWindow || typeof reviewWindow !== 'object') {
+    return ''
+  }
+  return Object.entries(reviewWindow)
+    .filter(([, value]) => value)
+    .slice(0, 5)
+    .map(([key, value]) => `${key}=${value}`)
+    .join(' / ')
+})
+
+const monitoringThresholdRouteSummary = computed(() => {
+  const routes = monitoringThresholdEvidence.value?.routes
+  return Array.isArray(routes) ? routes.filter(Boolean).slice(0, 5).join(' / ') : ''
+})
+
+const monitoringThresholdMissingAlertSummary = computed(() => {
+  const missingAlerts = monitoringThresholdEvidence.value?.missingAlerts
+  return Array.isArray(missingAlerts) ? missingAlerts.filter(Boolean).slice(0, 5).join(' / ') : ''
+})
+
+const monitoringThresholdConfirmationSummary = computed(() => {
+  const confirmations = monitoringThresholdEvidence.value?.confirmations
+  if (!confirmations || typeof confirmations !== 'object') {
+    return ''
+  }
+  return Object.entries(confirmations)
+    .filter(([, value]) => typeof value === 'boolean')
+    .slice(0, 6)
+    .map(([key, value]) => `${key}=${value ? 'yes' : 'no'}`)
     .join(' / ')
 })
 
