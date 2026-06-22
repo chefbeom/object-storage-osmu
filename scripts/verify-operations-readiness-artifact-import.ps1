@@ -466,6 +466,7 @@ $weakSecurityFinalizerRoot = Join-Path $resolvedOutputDirectory "weak-security-f
 $weakImageSigningRoot = Join-Path $resolvedOutputDirectory "weak-image-signing-source"
 $weakContainerSecurityRoot = Join-Path $resolvedOutputDirectory "weak-container-security-source"
 $weakStorageBackendTelemetryRoot = Join-Path $resolvedOutputDirectory "weak-storage-backend-telemetry-source"
+$weakStorageBackendTelemetryChecksRoot = Join-Path $resolvedOutputDirectory "weak-storage-backend-telemetry-checks-source"
 $unsafeStorageBackendTelemetryRoot = Join-Path $resolvedOutputDirectory "unsafe-storage-backend-telemetry-source"
 $weakKubernetesOperationsReportSyncRoot = Join-Path $resolvedOutputDirectory "weak-kubernetes-operations-report-sync-source"
 $stringCountKubernetesOperationsReportSyncRoot = Join-Path $resolvedOutputDirectory "string-count-kubernetes-operations-report-sync-source"
@@ -582,11 +583,16 @@ Write-JsonEvidence (Join-Path $securitySource "latest-container-security-evidenc
 }
 Write-JsonEvidence (Join-Path $storageBackendTelemetrySource "latest-storage-backend-telemetry.json") @{
     formatVersion = "osmu.storage-backend-telemetry.v1"
+    generatedAt = "2026-06-22T00:00:00Z"
     result = "passed"
+    environmentName = "prod"
+    targetCluster = "osmu-prod"
+    operatorName = "ops-owner"
     source = @{
         mode = "admin-info-json-path"
         minioAlias = "target-minio"
         evidenceRef = "mc-admin-info-run-20260621"
+        sourceRef = "artifact://mc-admin-info-run-20260621/minio-admin-info.json"
         adminInfoJsonSha256 = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
         rawAdminInfoStored = $false
     }
@@ -603,6 +609,21 @@ Write-JsonEvidence (Join-Path $storageBackendTelemetrySource "latest-storage-bac
         failureCount = 0
         plannedCount = 0
     }
+    checks = @(
+        @{ id = "environment-name"; status = "PASS"; passed = $true },
+        @{ id = "target-cluster"; status = "PASS"; passed = $true },
+        @{ id = "operator"; status = "PASS"; passed = $true },
+        @{ id = "evidence-ref"; status = "PASS"; passed = $true },
+        @{ id = "admin-info-json-parse"; status = "PASS"; passed = $true },
+        @{ id = "server-telemetry"; status = "PASS"; passed = $true },
+        @{ id = "pool-telemetry"; status = "PASS"; passed = $true },
+        @{ id = "drive-telemetry"; status = "PASS"; passed = $true },
+        @{ id = "server-health"; status = "PASS"; passed = $true },
+        @{ id = "capacity-telemetry"; status = "PASS"; passed = $true },
+        @{ id = "raw-admin-info-policy"; status = "PASS"; passed = $true }
+    )
+    decisionRule = "Storage backend telemetry evidence passes when target environment, cluster, operator, external evidence reference, MinIO admin-info JSON parsing, pool/server/drive summaries, online server state, and capacity totals are all present."
+    scopePolicy = "This evidence captures MinIO pool/node operations telemetry for OSMU storage readiness. It is not AWS S3 parity work, and it does not store raw admin info, credentials, bearer tokens, private keys, kubeconfig, MinIO root credentials, or object data."
 }
 Write-TextEvidence (Join-Path $storageBackendTelemetrySource "latest-storage-backend-telemetry.md") "# Storage backend telemetry"
 Write-JsonEvidence (Join-Path $monitoringThresholdSource "latest-monitoring-threshold-evidence.json") @{
@@ -979,7 +1000,7 @@ Assert-True ($containerSecurityEntry.Count -eq 1) "Container security import ent
 Assert-True (([string] $containerSecurityEntry[0].detail).Contains("backendPackages=42")) "Container security import entry should include SBOM package validation detail."
 $storageBackendTelemetryEntry = @($report.entries | Where-Object { $_.group -eq "storage-backend-telemetry" -and $_.fileName -eq "latest-storage-backend-telemetry.json" })
 Assert-True ($storageBackendTelemetryEntry.Count -eq 1) "Storage backend telemetry import entry missing."
-Assert-True (([string] $storageBackendTelemetryEntry[0].detail).Contains("servers=2/2") -and ([string] $storageBackendTelemetryEntry[0].detail).Contains("rawAdminInfoStored=False")) "Storage backend telemetry import entry should include strict telemetry validation detail."
+Assert-True (([string] $storageBackendTelemetryEntry[0].detail).Contains("targetCluster=osmu-prod") -and ([string] $storageBackendTelemetryEntry[0].detail).Contains("servers=2/2") -and ([string] $storageBackendTelemetryEntry[0].detail).Contains("checkCount=11")) "Storage backend telemetry import entry should include strict target metadata and telemetry validation detail."
 Assert-True ($promotedMonitoringThreshold.result -eq "passed") "Promoted monitoring threshold evidence should preserve result=passed."
 Assert-True ($promotedMonitoringThreshold.confirmations.noSecretValues) "Promoted monitoring threshold evidence should preserve no-secret confirmation."
 Assert-True ($promotedSecretRotation.result -eq "passed") "Promoted secret rotation evidence should preserve result=passed."
@@ -1289,7 +1310,12 @@ Assert-True (($weakContainerSecurityReport.entries | ConvertTo-Json -Depth 8).Co
 
 Write-JsonEvidence (Join-Path $weakStorageBackendTelemetryRoot "latest-storage-backend-telemetry.json") @{
     formatVersion = "osmu.storage-backend-telemetry.v1"
+    generatedAt = "2026-06-22T00:00:00Z"
     result = "passed"
+    targetCluster = "osmu-prod"
+    operatorName = "ops-owner"
+    decisionRule = "Storage backend telemetry evidence passes when target metadata and MinIO admin info summaries are present."
+    scopePolicy = "This evidence captures MinIO operations telemetry for OSMU storage readiness, not AWS S3 parity work."
 }
 $weakStorageBackendTelemetryOutput = Join-Path $resolvedOutputDirectory "weak-storage-backend-telemetry-promoted"
 $weakStorageBackendTelemetryJson = Join-Path $resolvedOutputDirectory "weak-storage-backend-telemetry-import.json"
@@ -1307,22 +1333,27 @@ try {
 finally {
     $ErrorActionPreference = $previousErrorActionPreference
 }
-Assert-True ($weakStorageBackendTelemetryExitCode -ne 0) "Storage backend telemetry without typed source and summary should fail import."
+Assert-True ($weakStorageBackendTelemetryExitCode -ne 0) "Storage backend telemetry without required target metadata should fail import."
 Assert-True (Test-Path -LiteralPath $weakStorageBackendTelemetryJson) "Weak storage backend telemetry import report should still be written."
 $weakStorageBackendTelemetryReport = Get-Content -Raw -LiteralPath $weakStorageBackendTelemetryJson | ConvertFrom-Json
 Assert-True ($weakStorageBackendTelemetryReport.result -eq "failed") "Weak storage backend telemetry import report should be failed."
 Assert-True (-not (Test-Path -LiteralPath (Join-Path $weakStorageBackendTelemetryOutput "latest-storage-backend-telemetry.json"))) "Weak storage backend telemetry evidence must not be promoted."
 $weakStorageBackendTelemetryEntry = @($weakStorageBackendTelemetryReport.entries | Where-Object { $_.group -eq "storage-backend-telemetry" -and $_.fileName -eq "latest-storage-backend-telemetry.json" })
 Assert-True ($weakStorageBackendTelemetryEntry.Count -eq 1) "Weak storage backend telemetry failed entry missing."
-Assert-True (([string] $weakStorageBackendTelemetryEntry[0].detail).Contains("source.rawAdminInfoStored=<missing> expected boolean false")) "Weak storage backend telemetry report should describe missing raw-admin-info policy."
+Assert-True (([string] $weakStorageBackendTelemetryEntry[0].detail).Contains("environmentName missing")) "Weak storage backend telemetry report should describe missing target environment metadata."
 
-Write-JsonEvidence (Join-Path $unsafeStorageBackendTelemetryRoot "latest-storage-backend-telemetry.json") @{
+Write-JsonEvidence (Join-Path $weakStorageBackendTelemetryChecksRoot "latest-storage-backend-telemetry.json") @{
     formatVersion = "osmu.storage-backend-telemetry.v1"
+    generatedAt = "2026-06-22T00:00:00Z"
     result = "passed"
+    environmentName = "prod"
+    targetCluster = "osmu-prod"
+    operatorName = "ops-owner"
     source = @{
         mode = "admin-info-json-path"
         minioAlias = "target-minio"
         evidenceRef = "mc-admin-info-run-20260621"
+        sourceRef = "artifact://mc-admin-info-run-20260621/minio-admin-info.json"
         adminInfoJsonSha256 = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
         rawAdminInfoStored = $false
     }
@@ -1339,6 +1370,78 @@ Write-JsonEvidence (Join-Path $unsafeStorageBackendTelemetryRoot "latest-storage
         failureCount = 0
         plannedCount = 0
     }
+    checks = @(
+        @{ id = "environment-name"; status = "PASS"; passed = $true }
+    )
+    decisionRule = "Storage backend telemetry evidence passes when target environment, cluster, operator, external evidence reference, MinIO admin-info JSON parsing, pool/server/drive summaries, online server state, and capacity totals are all present."
+    scopePolicy = "This evidence captures MinIO pool/node operations telemetry for OSMU storage readiness. It is not AWS S3 parity work, and it does not store raw admin info, credentials, bearer tokens, private keys, kubeconfig, MinIO root credentials, or object data."
+}
+$weakStorageBackendTelemetryChecksOutput = Join-Path $resolvedOutputDirectory "weak-storage-backend-telemetry-checks-promoted"
+$weakStorageBackendTelemetryChecksJson = Join-Path $resolvedOutputDirectory "weak-storage-backend-telemetry-checks-import.json"
+$weakStorageBackendTelemetryChecksMarkdown = Join-Path $resolvedOutputDirectory "weak-storage-backend-telemetry-checks-import.md"
+$previousErrorActionPreference = $ErrorActionPreference
+$ErrorActionPreference = "Continue"
+try {
+    $weakStorageBackendTelemetryChecksOutputLines = & powershell -NoProfile -ExecutionPolicy Bypass -File $importScript `
+        -StorageBackendTelemetryArtifactPath $weakStorageBackendTelemetryChecksRoot `
+        -OutputDirectory $weakStorageBackendTelemetryChecksOutput `
+        -JsonOutputPath $weakStorageBackendTelemetryChecksJson `
+        -MarkdownOutputPath $weakStorageBackendTelemetryChecksMarkdown 2>&1
+    $weakStorageBackendTelemetryChecksExitCode = $LASTEXITCODE
+}
+finally {
+    $ErrorActionPreference = $previousErrorActionPreference
+}
+Assert-True ($weakStorageBackendTelemetryChecksExitCode -ne 0) "Storage backend telemetry without complete check rows should fail import."
+Assert-True (Test-Path -LiteralPath $weakStorageBackendTelemetryChecksJson) "Weak storage backend telemetry checks import report should still be written."
+$weakStorageBackendTelemetryChecksReport = Get-Content -Raw -LiteralPath $weakStorageBackendTelemetryChecksJson | ConvertFrom-Json
+Assert-True ($weakStorageBackendTelemetryChecksReport.result -eq "failed") "Weak storage backend telemetry checks import report should be failed."
+Assert-True (-not (Test-Path -LiteralPath (Join-Path $weakStorageBackendTelemetryChecksOutput "latest-storage-backend-telemetry.json"))) "Weak storage backend telemetry checks evidence must not be promoted."
+Assert-True (($weakStorageBackendTelemetryChecksReport.entries | ConvertTo-Json -Depth 8).Contains("checks.target-cluster missing")) "Weak storage backend telemetry checks report should describe missing target check row."
+
+Write-JsonEvidence (Join-Path $unsafeStorageBackendTelemetryRoot "latest-storage-backend-telemetry.json") @{
+    formatVersion = "osmu.storage-backend-telemetry.v1"
+    generatedAt = "2026-06-22T00:00:00Z"
+    result = "passed"
+    environmentName = "prod"
+    targetCluster = "osmu-prod"
+    operatorName = "ops-owner"
+    source = @{
+        mode = "admin-info-json-path"
+        minioAlias = "target-minio"
+        evidenceRef = "mc-admin-info-run-20260621"
+        sourceRef = "artifact://mc-admin-info-run-20260621/minio-admin-info.json"
+        adminInfoJsonSha256 = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+        rawAdminInfoStored = $false
+    }
+    summary = @{
+        poolCount = 1
+        serverCount = 1
+        onlineServerCount = 1
+        offlineServerCount = 0
+        driveCount = 1
+        capacityKnown = $true
+        totalBytes = 1024
+        usedBytes = 256
+        freeBytes = 768
+        failureCount = 0
+        plannedCount = 0
+    }
+    checks = @(
+        @{ id = "environment-name"; status = "PASS"; passed = $true },
+        @{ id = "target-cluster"; status = "PASS"; passed = $true },
+        @{ id = "operator"; status = "PASS"; passed = $true },
+        @{ id = "evidence-ref"; status = "PASS"; passed = $true },
+        @{ id = "admin-info-json-parse"; status = "PASS"; passed = $true },
+        @{ id = "server-telemetry"; status = "PASS"; passed = $true },
+        @{ id = "pool-telemetry"; status = "PASS"; passed = $true },
+        @{ id = "drive-telemetry"; status = "PASS"; passed = $true },
+        @{ id = "server-health"; status = "PASS"; passed = $true },
+        @{ id = "capacity-telemetry"; status = "PASS"; passed = $true },
+        @{ id = "raw-admin-info-policy"; status = "PASS"; passed = $true }
+    )
+    decisionRule = "Storage backend telemetry evidence passes when target environment, cluster, operator, external evidence reference, MinIO admin-info JSON parsing, pool/server/drive summaries, online server state, and capacity totals are all present."
+    scopePolicy = "This evidence captures MinIO pool/node operations telemetry for OSMU storage readiness. It is not AWS S3 parity work, and it does not store raw admin info, credentials, bearer tokens, private keys, kubeconfig, MinIO root credentials, or object data."
     secretKey = "password=super-secret"
 }
 $unsafeStorageBackendTelemetryOutput = Join-Path $resolvedOutputDirectory "unsafe-storage-backend-telemetry-promoted"

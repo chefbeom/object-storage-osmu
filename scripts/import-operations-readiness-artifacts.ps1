@@ -1349,6 +1349,25 @@ function Test-StorageBackendTelemetryEvidenceJson([string] $Path) {
         }
     }
 
+    $generatedAt = [string] (Get-JsonProperty $json "generatedAt")
+    $parsedGeneratedAt = [DateTimeOffset]::MinValue
+    if ([string]::IsNullOrWhiteSpace($generatedAt) -or -not [DateTimeOffset]::TryParse($generatedAt, [ref] $parsedGeneratedAt)) {
+        return [pscustomobject]@{
+            passed = $false
+            detail = "generatedAt=$generatedAt expected ISO timestamp"
+        }
+    }
+
+    foreach ($field in @("environmentName", "targetCluster", "operatorName", "decisionRule", "scopePolicy")) {
+        $value = [string] (Get-JsonProperty $json $field)
+        if ([string]::IsNullOrWhiteSpace($value)) {
+            return [pscustomobject]@{
+                passed = $false
+                detail = "$field missing"
+            }
+        }
+    }
+
     $patterns = @(
         '(?i)"(password|passwd|secretKey|secret_key|secretValue|secret_value|token|credential|apiKey|api_key|accessKey|access_key|privateKey|private_key|kubeconfig|minioSecret|minio_secret|rootUser|root_user|rootPassword|root_password)"\s*:',
         '(?i)\b(password|passwd|secret|token|credential|api[_-]?key|access[_-]?key|private[_-]?key|root[_-]?password)\s*=\s*\S+',
@@ -1372,13 +1391,28 @@ function Test-StorageBackendTelemetryEvidenceJson([string] $Path) {
             detail = "source.rawAdminInfoStored=$($rawAdminInfoStored.raw) expected boolean false"
         }
     }
-    foreach ($sourceField in @("mode", "minioAlias", "evidenceRef", "adminInfoJsonSha256")) {
+    foreach ($sourceField in @("mode", "minioAlias", "evidenceRef", "sourceRef", "adminInfoJsonSha256")) {
         $value = [string] (Get-JsonProperty $source $sourceField)
         if ([string]::IsNullOrWhiteSpace($value)) {
             return [pscustomobject]@{
                 passed = $false
                 detail = "source.$sourceField missing"
             }
+        }
+    }
+    $sourceMode = [string] (Get-JsonProperty $source "mode")
+    $allowedSourceModes = @("admin-info-json-path", "inline-admin-info-json", "mc-admin-info-execute")
+    if ($allowedSourceModes -notcontains $sourceMode) {
+        return [pscustomobject]@{
+            passed = $false
+            detail = "source.mode=$sourceMode expected=$($allowedSourceModes -join '|')"
+        }
+    }
+    $adminInfoJsonSha256 = [string] (Get-JsonProperty $source "adminInfoJsonSha256")
+    if (-not (Test-Sha256 $adminInfoJsonSha256)) {
+        return [pscustomobject]@{
+            passed = $false
+            detail = "source.adminInfoJsonSha256=$adminInfoJsonSha256 expected nonzero sha256"
         }
     }
 
@@ -1429,9 +1463,42 @@ function Test-StorageBackendTelemetryEvidenceJson([string] $Path) {
         }
     }
 
+    $checksObject = Get-JsonProperty $json "checks"
+    $checks = if ($null -eq $checksObject) { @() } else { @($checksObject) }
+    foreach ($requiredCheck in @(
+        "environment-name",
+        "target-cluster",
+        "operator",
+        "evidence-ref",
+        "admin-info-json-parse",
+        "server-telemetry",
+        "pool-telemetry",
+        "drive-telemetry",
+        "server-health",
+        "capacity-telemetry",
+        "raw-admin-info-policy"
+    )) {
+        $match = @($checks | Where-Object { [string] (Get-JsonProperty $_ "id") -eq $requiredCheck })
+        if ($match.Count -ne 1) {
+            return [pscustomobject]@{
+                passed = $false
+                detail = "checks.$requiredCheck missing"
+            }
+        }
+
+        $checkPassed = Get-RequiredJsonBool $match[0] "passed"
+        $checkStatus = [string] (Get-JsonProperty $match[0] "status")
+        if (-not $checkPassed.valid -or -not $checkPassed.value -or $checkStatus -ne "PASS") {
+            return [pscustomobject]@{
+                passed = $false
+                detail = "checks.$requiredCheck status=$checkStatus passed=$($checkPassed.raw) expected PASS and boolean true"
+            }
+        }
+    }
+
     return [pscustomobject]@{
         passed = $true
-        detail = "formatVersion=$formatVersion result=$result pools=$($poolCount.value) servers=$($onlineServerCount.value)/$($serverCount.value) drives=$($driveCount.value) totalBytes=$($totalBytes.value) rawAdminInfoStored=False failures=$($failureCount.value)"
+        detail = "formatVersion=$formatVersion result=$result environmentName=$($json.environmentName) targetCluster=$($json.targetCluster) sourceMode=$sourceMode pools=$($poolCount.value) servers=$($onlineServerCount.value)/$($serverCount.value) drives=$($driveCount.value) totalBytes=$($totalBytes.value) rawAdminInfoStored=False failures=$($failureCount.value) checkCount=$($checks.Count)"
     }
 }
 
