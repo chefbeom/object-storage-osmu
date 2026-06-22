@@ -279,6 +279,113 @@ function New-ReadyKubernetesDrFinalize(
     }
 }
 
+function New-PassedIamRbacFinalize(
+    [string] $Status = "iam-rbac-static-passed",
+    [object] $FailedCount = 0,
+    [bool] $RunBackendPolicyTests = $false,
+    [bool] $RunKubernetesLiveAuth = $false,
+    [bool] $OmitKubernetesStep = $false
+) {
+    $commands = @(
+        [ordered]@{
+            name = "IAM/RBAC matrix verifier"
+            executable = "pwsh"
+            arguments = @("-NoProfile", "-ExecutionPolicy", "Bypass", "-File", ".\scripts\verify-iam-rbac-matrix.ps1")
+            workingDirectory = "C:\project\object-storage-osmu"
+            command = "pwsh -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-iam-rbac-matrix.ps1"
+        },
+        [ordered]@{
+            name = "Kubernetes RBAC matrix verifier"
+            executable = "pwsh"
+            arguments = @("-NoProfile", "-ExecutionPolicy", "Bypass", "-File", ".\scripts\verify-kubernetes-rbac-matrix.ps1")
+            workingDirectory = "C:\project\object-storage-osmu"
+            command = "pwsh -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-kubernetes-rbac-matrix.ps1"
+        }
+    )
+    $steps = @(
+        [ordered]@{
+            name = "IAM/RBAC matrix verifier"
+            command = "pwsh -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-iam-rbac-matrix.ps1"
+            workingDirectory = "C:\project\object-storage-osmu"
+            result = "passed"
+            exitCode = 0
+            output = "IAM/RBAC matrix verified."
+            notes = ""
+        }
+    )
+    if (-not $OmitKubernetesStep) {
+        $steps += [ordered]@{
+            name = "Kubernetes RBAC matrix verifier"
+            command = "pwsh -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-kubernetes-rbac-matrix.ps1"
+            workingDirectory = "C:\project\object-storage-osmu"
+            result = "passed"
+            exitCode = 0
+            output = "Kubernetes RBAC matrix verified."
+            notes = ""
+        }
+    }
+    if ($RunBackendPolicyTests) {
+        $commands += [ordered]@{
+            name = "Backend focused RBAC tests"
+            executable = ".\gradlew.bat"
+            arguments = @("test", "--tests", "com.example.osmu.auth.AdminRbacPolicyTest")
+            workingDirectory = "C:\project\object-storage-osmu\osmu-backend"
+            command = ".\gradlew.bat test --tests com.example.osmu.auth.AdminRbacPolicyTest"
+        }
+        $steps += [ordered]@{
+            name = "Backend focused RBAC tests"
+            command = ".\gradlew.bat test --tests com.example.osmu.auth.AdminRbacPolicyTest"
+            workingDirectory = "C:\project\object-storage-osmu\osmu-backend"
+            result = "passed"
+            exitCode = 0
+            output = "BUILD SUCCESSFUL"
+            notes = ""
+        }
+    }
+    if ($RunKubernetesLiveAuth) {
+        $commands += [ordered]@{
+            name = "Storage expansion live RBAC auth"
+            executable = "pwsh"
+            arguments = @("-NoProfile", "-ExecutionPolicy", "Bypass", "-File", ".\scripts\verify-storage-expansion-rbac-auth.ps1")
+            workingDirectory = "C:\project\object-storage-osmu"
+            command = "pwsh -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-storage-expansion-rbac-auth.ps1"
+        }
+        $steps += [ordered]@{
+            name = "Storage expansion live RBAC auth"
+            command = "pwsh -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-storage-expansion-rbac-auth.ps1"
+            workingDirectory = "C:\project\object-storage-osmu"
+            result = "passed"
+            exitCode = 0
+            output = "Storage Expansion RBAC auth check passed."
+            notes = ""
+        }
+    }
+
+    return [ordered]@{
+        formatVersion = "osmu.iam-rbac-finalize.v1"
+        generatedAt = "2026-06-22T00:00:00Z"
+        startedAt = "2026-06-22T00:00:00Z"
+        completedAt = "2026-06-22T00:01:00Z"
+        result = "passed"
+        status = $Status
+        namespace = "osmu"
+        serviceAccount = "osmu-storage-expansion-runner"
+        powerShellCommand = "pwsh"
+        gradleCommand = ".\gradlew.bat"
+        runBackendPolicyTests = $RunBackendPolicyTests
+        runKubernetesLiveAuth = $RunKubernetesLiveAuth
+        commands = $commands
+        steps = $steps
+        failedCount = $FailedCount
+        gaps = @(
+            "Backend focused RBAC JUnit tests were not selected.",
+            "Live kubectl auth can-i evidence was not selected."
+        )
+        decisionRule = "IAM/RBAC finalization passes when the application IAM/RBAC matrix and Kubernetes RBAC matrix verifiers pass. Backend focused tests and live kubectl auth can-i evidence are optional stronger evidence selected by flags."
+        secretPolicy = "IAM/RBAC finalizer does not read or write passwords, API keys, kubeconfig contents, bearer tokens, or object storage credentials."
+    }
+}
+
 function New-PassedSecurityEvidenceFinalizer(
     [object] $FailureCount = 0,
     [object] $AllowSyntheticEvidence = $false
@@ -353,6 +460,8 @@ $promotedRoot = Join-Path $resolvedOutputDirectory "promoted"
 $invalidRoot = Join-Path $resolvedOutputDirectory "invalid-source"
 $weakStorageExpansionRoot = Join-Path $resolvedOutputDirectory "weak-storage-expansion-source"
 $weakKubernetesDrRoot = Join-Path $resolvedOutputDirectory "weak-kubernetes-dr-source"
+$weakIamRbacRoot = Join-Path $resolvedOutputDirectory "weak-iam-rbac-source"
+$weakIamRbacStatusRoot = Join-Path $resolvedOutputDirectory "weak-iam-rbac-status-source"
 $weakSecurityFinalizerRoot = Join-Path $resolvedOutputDirectory "weak-security-finalizer-source"
 $weakImageSigningRoot = Join-Path $resolvedOutputDirectory "weak-image-signing-source"
 $weakContainerSecurityRoot = Join-Path $resolvedOutputDirectory "weak-container-security-source"
@@ -405,10 +514,7 @@ Write-JsonEvidence (Join-Path $storageSource "latest-storage-expansion-server-dr
 Write-JsonEvidence (Join-Path $haDrSource "latest-kubernetes-ha-dr-readiness.json") (New-PassedKubernetesHaDrReadiness)
 Write-JsonEvidence (Join-Path $kubernetesDrSource "nested\latest-kubernetes-dr-finalize.json") (New-ReadyKubernetesDrFinalize)
 Write-TextEvidence (Join-Path $kubernetesDrSource "latest-kubernetes-dr-finalize.md") "# Kubernetes DR"
-Write-JsonEvidence (Join-Path $iamSource "latest-iam-rbac-finalize.json") @{
-    formatVersion = "osmu.iam-rbac-finalize.v1"
-    result = "passed"
-}
+Write-JsonEvidence (Join-Path $iamSource "latest-iam-rbac-finalize.json") (New-PassedIamRbacFinalize)
 Write-TextEvidence (Join-Path $iamSource "latest-iam-rbac-finalize.md") "# IAM/RBAC"
 Write-JsonEvidence (Join-Path $securitySource "latest-security-evidence-finalize.json") (New-PassedSecurityEvidenceFinalizer)
 Write-JsonEvidence (Join-Path $securitySource "latest-image-signing-evidence.json") @{
@@ -833,6 +939,7 @@ $promotedContainerSecurity = Get-Content -Raw -LiteralPath (Join-Path $promotedR
 $promotedStorageExpansion = Get-Content -Raw -LiteralPath (Join-Path $promotedRoot "latest-storage-expansion-finalize.json") | ConvertFrom-Json
 $promotedHaDrReadiness = Get-Content -Raw -LiteralPath (Join-Path $promotedRoot "latest-kubernetes-ha-dr-readiness.json") | ConvertFrom-Json
 $promotedKubernetesDrFinalize = Get-Content -Raw -LiteralPath (Join-Path $promotedRoot "latest-kubernetes-dr-finalize.json") | ConvertFrom-Json
+$promotedIamRbac = Get-Content -Raw -LiteralPath (Join-Path $promotedRoot "latest-iam-rbac-finalize.json") | ConvertFrom-Json
 $promotedCommercialApproval = Get-Content -Raw -LiteralPath (Join-Path $promotedRoot "latest-commercial-approval-evidence.json") | ConvertFrom-Json
 $promotedStorageBackendTelemetry = Get-Content -Raw -LiteralPath (Join-Path $promotedRoot "latest-storage-backend-telemetry.json") | ConvertFrom-Json
 $promotedMonitoringThreshold = Get-Content -Raw -LiteralPath (Join-Path $promotedRoot "latest-monitoring-threshold-evidence.json") | ConvertFrom-Json
@@ -843,6 +950,7 @@ Assert-True ($promotedContainerSecurity.scans.backendScanPassed -eq $true -and $
 Assert-True ($promotedStorageExpansion.impersonateRunner -eq $true -and $promotedStorageExpansion.failedCount -eq 0) "Promoted storage expansion finalizer should preserve typed runner and failure fields."
 Assert-True ($promotedHaDrReadiness.failureCount -eq 0 -and @($promotedHaDrReadiness.checks).Count -ge 12) "Promoted HA/DR readiness evidence should preserve typed check summary."
 Assert-True ($promotedKubernetesDrFinalize.confirmRestore -eq $true -and $promotedKubernetesDrFinalize.serverDryRunOnly -eq $false) "Promoted Kubernetes DR finalizer should preserve confirmed restore flags."
+Assert-True ($promotedIamRbac.status -eq "iam-rbac-static-passed" -and $promotedIamRbac.failedCount -eq 0) "Promoted IAM/RBAC finalizer should preserve strict status and failed count."
 Assert-True ($promotedStorageBackendTelemetry.result -eq "passed") "Promoted storage backend telemetry evidence should preserve result=passed."
 Assert-True ($promotedStorageBackendTelemetry.source.rawAdminInfoStored -eq $false) "Promoted storage backend telemetry evidence should preserve rawAdminInfoStored=false."
 $storageExpansionEntry = @($report.entries | Where-Object { $_.group -eq "storage-expansion" -and $_.fileName -eq "latest-storage-expansion-finalize.json" })
@@ -860,6 +968,9 @@ Assert-True (([string] $haDrReadinessEntry[0].detail).Contains("checkCount=12"))
 $kubernetesDrEntry = @($report.entries | Where-Object { $_.group -eq "kubernetes-dr" -and $_.fileName -eq "latest-kubernetes-dr-finalize.json" })
 Assert-True ($kubernetesDrEntry.Count -eq 1) "Kubernetes DR finalizer import entry missing."
 Assert-True (([string] $kubernetesDrEntry[0].detail).Contains("kubernetes-dr-finalize-verified") -and ([string] $kubernetesDrEntry[0].detail).Contains("backupTimestamp=20260622T010203Z")) "Kubernetes DR finalizer import entry should include strict ready validation detail."
+$iamRbacEntry = @($report.entries | Where-Object { $_.group -eq "iam-rbac" -and $_.fileName -eq "latest-iam-rbac-finalize.json" })
+Assert-True ($iamRbacEntry.Count -eq 1) "IAM/RBAC finalizer import entry missing."
+Assert-True (([string] $iamRbacEntry[0].detail).Contains("iam-rbac-static-passed") -and ([string] $iamRbacEntry[0].detail).Contains("stepCount=2")) "IAM/RBAC finalizer import entry should include strict status and step validation detail."
 $imageSigningEntry = @($report.entries | Where-Object { $_.group -eq "security-evidence" -and $_.fileName -eq "latest-image-signing-evidence.json" })
 Assert-True ($imageSigningEntry.Count -eq 1) "Image signing import entry missing."
 Assert-True (([string] $imageSigningEntry[0].detail).Contains("backendDigest=sha256:")) "Image signing import entry should include digest validation detail."
@@ -997,6 +1108,56 @@ $weakKubernetesDrReport = Get-Content -Raw -LiteralPath $weakKubernetesDrJson | 
 Assert-True ($weakKubernetesDrReport.result -eq "failed") "Weak Kubernetes DR import report should be failed."
 Assert-True (-not (Test-Path -LiteralPath (Join-Path $weakKubernetesDrOutput "latest-kubernetes-dr-finalize.json"))) "Weak Kubernetes DR evidence must not be promoted."
 Assert-True (($weakKubernetesDrReport.entries | ConvertTo-Json -Depth 8).Contains("backupTimestamp=YYYYMMDDTHHMMSSZ")) "Weak Kubernetes DR report should describe placeholder backup timestamp."
+
+Write-JsonEvidence (Join-Path $weakIamRbacRoot "latest-iam-rbac-finalize.json") (New-PassedIamRbacFinalize -OmitKubernetesStep $true)
+Write-TextEvidence (Join-Path $weakIamRbacRoot "latest-iam-rbac-finalize.md") "# Weak IAM/RBAC"
+$weakIamRbacOutput = Join-Path $resolvedOutputDirectory "weak-iam-rbac-promoted"
+$weakIamRbacJson = Join-Path $resolvedOutputDirectory "weak-iam-rbac-import.json"
+$weakIamRbacMarkdown = Join-Path $resolvedOutputDirectory "weak-iam-rbac-import.md"
+$previousErrorActionPreference = $ErrorActionPreference
+$ErrorActionPreference = "Continue"
+try {
+    $weakIamRbacOutputLines = & powershell -NoProfile -ExecutionPolicy Bypass -File $importScript `
+        -IamRbacArtifactPath $weakIamRbacRoot `
+        -OutputDirectory $weakIamRbacOutput `
+        -JsonOutputPath $weakIamRbacJson `
+        -MarkdownOutputPath $weakIamRbacMarkdown 2>&1
+    $weakIamRbacExitCode = $LASTEXITCODE
+}
+finally {
+    $ErrorActionPreference = $previousErrorActionPreference
+}
+Assert-True ($weakIamRbacExitCode -ne 0) "IAM/RBAC finalizer without Kubernetes verifier step should fail import."
+Assert-True (Test-Path -LiteralPath $weakIamRbacJson) "Weak IAM/RBAC import report should still be written."
+$weakIamRbacReport = Get-Content -Raw -LiteralPath $weakIamRbacJson | ConvertFrom-Json
+Assert-True ($weakIamRbacReport.result -eq "failed") "Weak IAM/RBAC import report should be failed."
+Assert-True (-not (Test-Path -LiteralPath (Join-Path $weakIamRbacOutput "latest-iam-rbac-finalize.json"))) "Weak IAM/RBAC evidence must not be promoted."
+Assert-True (($weakIamRbacReport.entries | ConvertTo-Json -Depth 8).Contains("steps.Kubernetes RBAC matrix verifier missing")) "Weak IAM/RBAC report should describe missing Kubernetes verifier step."
+
+Write-JsonEvidence (Join-Path $weakIamRbacStatusRoot "latest-iam-rbac-finalize.json") (New-PassedIamRbacFinalize -Status "iam-rbac-static-passed" -RunBackendPolicyTests $true)
+Write-TextEvidence (Join-Path $weakIamRbacStatusRoot "latest-iam-rbac-finalize.md") "# Weak IAM/RBAC Status"
+$weakIamRbacStatusOutput = Join-Path $resolvedOutputDirectory "weak-iam-rbac-status-promoted"
+$weakIamRbacStatusJson = Join-Path $resolvedOutputDirectory "weak-iam-rbac-status-import.json"
+$weakIamRbacStatusMarkdown = Join-Path $resolvedOutputDirectory "weak-iam-rbac-status-import.md"
+$previousErrorActionPreference = $ErrorActionPreference
+$ErrorActionPreference = "Continue"
+try {
+    $weakIamRbacStatusOutputLines = & powershell -NoProfile -ExecutionPolicy Bypass -File $importScript `
+        -IamRbacArtifactPath $weakIamRbacStatusRoot `
+        -OutputDirectory $weakIamRbacStatusOutput `
+        -JsonOutputPath $weakIamRbacStatusJson `
+        -MarkdownOutputPath $weakIamRbacStatusMarkdown 2>&1
+    $weakIamRbacStatusExitCode = $LASTEXITCODE
+}
+finally {
+    $ErrorActionPreference = $previousErrorActionPreference
+}
+Assert-True ($weakIamRbacStatusExitCode -ne 0) "IAM/RBAC finalizer with mismatched status and backend flag should fail import."
+Assert-True (Test-Path -LiteralPath $weakIamRbacStatusJson) "Weak IAM/RBAC status import report should still be written."
+$weakIamRbacStatusReport = Get-Content -Raw -LiteralPath $weakIamRbacStatusJson | ConvertFrom-Json
+Assert-True ($weakIamRbacStatusReport.result -eq "failed") "Weak IAM/RBAC status import report should be failed."
+Assert-True (-not (Test-Path -LiteralPath (Join-Path $weakIamRbacStatusOutput "latest-iam-rbac-finalize.json"))) "Weak IAM/RBAC status evidence must not be promoted."
+Assert-True (($weakIamRbacStatusReport.entries | ConvertTo-Json -Depth 8).Contains("status=iam-rbac-static-passed expected=iam-rbac-backend-passed")) "Weak IAM/RBAC status report should describe status/flag mismatch."
 
 Write-JsonEvidence (Join-Path $weakSecurityFinalizerRoot "latest-security-evidence-finalize.json") (New-PassedSecurityEvidenceFinalizer -AllowSyntheticEvidence $true)
 Copy-Item -LiteralPath (Join-Path $securitySource "latest-image-signing-evidence.json") -Destination (Join-Path $weakSecurityFinalizerRoot "latest-image-signing-evidence.json") -Force

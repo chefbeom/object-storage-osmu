@@ -756,6 +756,157 @@ function Test-KubernetesDrFinalizeJson([string] $Path) {
     }
 }
 
+function Test-IamRbacFinalizeJson([string] $Path) {
+    try {
+        $raw = Get-Content -Raw -LiteralPath $Path
+        $json = $raw | ConvertFrom-Json
+    }
+    catch {
+        return [pscustomobject]@{
+            passed = $false
+            detail = "invalid JSON: $($_.Exception.Message)"
+        }
+    }
+
+    $formatVersion = [string] (Get-JsonProperty $json "formatVersion")
+    if ($formatVersion -ne "osmu.iam-rbac-finalize.v1") {
+        return [pscustomobject]@{
+            passed = $false
+            detail = "formatVersion=$formatVersion expected=osmu.iam-rbac-finalize.v1"
+        }
+    }
+
+    $result = [string] (Get-JsonProperty $json "result")
+    if ($result -ne "passed") {
+        return [pscustomobject]@{
+            passed = $false
+            detail = "result=$result expected=passed"
+        }
+    }
+
+    $allowedStatuses = @(
+        "iam-rbac-static-passed",
+        "iam-rbac-backend-passed",
+        "iam-rbac-live-passed",
+        "iam-rbac-live-and-backend-passed"
+    )
+    $status = [string] (Get-JsonProperty $json "status")
+    if ($allowedStatuses -notcontains $status) {
+        return [pscustomobject]@{
+            passed = $false
+            detail = "status=$status expected=$($allowedStatuses -join '|')"
+        }
+    }
+
+    $failedCount = Get-RequiredJsonInt $json "failedCount"
+    if (-not $failedCount.valid -or [int64] $failedCount.value -ne 0) {
+        return [pscustomobject]@{
+            passed = $false
+            detail = "failedCount=$($failedCount.raw)(valid=$($failedCount.valid)) expected integer 0"
+        }
+    }
+
+    $rawValidation = Test-OperationsEvidenceRawContent $raw "IAM/RBAC finalizer"
+    if (-not $rawValidation.passed) {
+        return $rawValidation
+    }
+
+    foreach ($field in @("namespace", "serviceAccount", "powerShellCommand", "gradleCommand", "decisionRule", "secretPolicy")) {
+        $value = [string] (Get-JsonProperty $json $field)
+        if ([string]::IsNullOrWhiteSpace($value)) {
+            return [pscustomobject]@{
+                passed = $false
+                detail = "$field missing"
+            }
+        }
+    }
+
+    $runBackendPolicyTests = Get-RequiredJsonBool $json "runBackendPolicyTests"
+    $runKubernetesLiveAuth = Get-RequiredJsonBool $json "runKubernetesLiveAuth"
+    if (-not $runBackendPolicyTests.valid -or -not $runKubernetesLiveAuth.valid) {
+        return [pscustomobject]@{
+            passed = $false
+            detail = "runBackendPolicyTests=$($runBackendPolicyTests.raw) runKubernetesLiveAuth=$($runKubernetesLiveAuth.raw) expected booleans"
+        }
+    }
+
+    $expectedStatus = if ($runBackendPolicyTests.value -and $runKubernetesLiveAuth.value) {
+        "iam-rbac-live-and-backend-passed"
+    }
+    elseif ($runBackendPolicyTests.value) {
+        "iam-rbac-backend-passed"
+    }
+    elseif ($runKubernetesLiveAuth.value) {
+        "iam-rbac-live-passed"
+    }
+    else {
+        "iam-rbac-static-passed"
+    }
+    if ($status -ne $expectedStatus) {
+        return [pscustomobject]@{
+            passed = $false
+            detail = "status=$status expected=$expectedStatus from backend/live flags"
+        }
+    }
+
+    $commandsObject = Get-JsonProperty $json "commands"
+    $commands = if ($null -eq $commandsObject) { @() } else { @($commandsObject) }
+    foreach ($requiredCommand in @("IAM/RBAC matrix verifier", "Kubernetes RBAC matrix verifier")) {
+        $match = @($commands | Where-Object { [string] (Get-JsonProperty $_ "name") -eq $requiredCommand })
+        if ($match.Count -ne 1) {
+            return [pscustomobject]@{
+                passed = $false
+                detail = "commands.$requiredCommand missing"
+            }
+        }
+    }
+
+    $stepsObject = Get-JsonProperty $json "steps"
+    $steps = if ($null -eq $stepsObject) { @() } else { @($stepsObject) }
+    foreach ($requiredStep in @("IAM/RBAC matrix verifier", "Kubernetes RBAC matrix verifier")) {
+        $match = @($steps | Where-Object { [string] (Get-JsonProperty $_ "name") -eq $requiredStep })
+        if ($match.Count -ne 1) {
+            return [pscustomobject]@{
+                passed = $false
+                detail = "steps.$requiredStep missing"
+            }
+        }
+
+        $stepResult = [string] (Get-JsonProperty $match[0] "result")
+        $exitCode = Get-RequiredJsonInt $match[0] "exitCode"
+        if ($stepResult -ne "passed" -or -not $exitCode.valid -or [int64] $exitCode.value -ne 0) {
+            return [pscustomobject]@{
+                passed = $false
+                detail = "steps.$requiredStep result=$stepResult exitCode=$($exitCode.raw) expected passed and integer 0"
+            }
+        }
+    }
+
+    if ($runBackendPolicyTests.value) {
+        $backendStep = @($steps | Where-Object { [string] (Get-JsonProperty $_ "name") -eq "Backend focused RBAC tests" })
+        if ($backendStep.Count -ne 1) {
+            return [pscustomobject]@{
+                passed = $false
+                detail = "steps.Backend focused RBAC tests missing while runBackendPolicyTests=true"
+            }
+        }
+    }
+    if ($runKubernetesLiveAuth.value) {
+        $liveStep = @($steps | Where-Object { [string] (Get-JsonProperty $_ "name") -eq "Storage expansion live RBAC auth" })
+        if ($liveStep.Count -ne 1) {
+            return [pscustomobject]@{
+                passed = $false
+                detail = "steps.Storage expansion live RBAC auth missing while runKubernetesLiveAuth=true"
+            }
+        }
+    }
+
+    return [pscustomobject]@{
+        passed = $true
+        detail = "formatVersion=$formatVersion result=$result status=$status failedCount=$($failedCount.value) commandCount=$($commands.Count) stepCount=$($steps.Count)"
+    }
+}
+
 function Test-SecurityEvidenceRawContent([string] $Raw, [string] $Label) {
     $patterns = @(
         '(?i)"(password|passwd|secret|token|credential|apiKey|api_key|accessKey|access_key|privateKey|private_key|registryPassword|registry_password|signingKey|signing_key|cosignPrivateKey|cosign_private_key)"\s*:',
@@ -2338,6 +2489,14 @@ function Import-EvidenceFile(
         }
         [void] $validationDetails.Add($validation.detail)
     }
+    elseif ($ValidationKind -eq "iam-rbac-finalizer") {
+        $validation = Test-IamRbacFinalizeJson $sourcePath
+        if (-not $validation.passed) {
+            Add-Entry $Group $FileName "failed" $validation.detail $sourcePath ""
+            return
+        }
+        [void] $validationDetails.Add($validation.detail)
+    }
     elseif ($ValidationKind -eq "data-flow-storage-plan") {
         $validation = Test-DataFlowStoragePlanEvidenceJson $sourcePath
         if (-not $validation.passed) {
@@ -2475,9 +2634,9 @@ Import-EvidenceFile "kubernetes-dr" $KubernetesDrArtifactPath "latest-kubernetes
 Import-EvidenceFile "kubernetes-dr" $KubernetesDrArtifactPath "latest-kubernetes-restore-smoke.json" $false
 Import-EvidenceFile "kubernetes-dr" $KubernetesDrArtifactPath "latest-kubernetes-dr-evidence-request.json" $false
 
-Import-EvidenceFile "iam-rbac" $IamRbacArtifactPath "latest-iam-rbac-finalize.json" $true "result" "passed"
+Import-EvidenceFile "iam-rbac" $IamRbacArtifactPath "latest-iam-rbac-finalize.json" $true "" "" "iam-rbac-finalizer"
 Import-EvidenceFile "iam-rbac" $IamRbacArtifactPath "latest-iam-rbac-finalize.md" $false
-Import-EvidenceFile "iam-rbac" $IamRbacArtifactPath "latest-storage-expansion-rbac-auth.json" $false
+Import-EvidenceFile "iam-rbac" $IamRbacArtifactPath "latest-storage-expansion-rbac-auth.json" $false "" "" "storage-expansion-rbac-auth"
 
 Import-EvidenceFile "security-evidence" $SecurityEvidenceArtifactPath "latest-security-evidence-finalize.json" $true "" "" "security-finalizer"
 Import-EvidenceFile "security-evidence" $SecurityEvidenceArtifactPath "latest-security-evidence-finalize.md" $false
