@@ -1987,7 +1987,7 @@ class AdminDashboardSummaryControllerTest {
                               "reason": "The invocation report still has blocked actions."
                             }
                           ],
-                          "decisionRule": "Operations readiness convergence is ready only when the handoff result is ready/none, the readiness report is ready, the operations readiness finalizer report exists with result=ready and readinessResult=ready, and the Kubernetes operations report sync evidence confirms result=applied with zero failed checks.",
+                          "decisionRule": "Operations readiness convergence is ready only when the handoff result is ready/none, the readiness report is ready, the operations readiness finalizer report exists with result=ready, readinessResult=ready, failedCount=0, and no gaps, and the Kubernetes operations report sync evidence confirms result=applied, failedCount=0, and sourceReportResult=ready.",
                           "safetyPolicy": "This convergence writer does not execute kubectl, gh, workflow dispatch, finalizer, or ConfigMap sync commands; it only reads local reports and writes JSON/Markdown guidance."
                         }
                         """
@@ -2058,7 +2058,7 @@ class AdminDashboardSummaryControllerTest {
                 .andExpect(jsonPath("$.data.items[*].message").value(hasItem("Data-flow storage plan is plan-ready-execute-required: store=MARIADB_PARTITION, pending=2/4.")))
                 .andExpect(jsonPath("$.data.items[*].message").value(hasItem("MinIO bucket CORS verification is failed: rules=1, exposedHeaders=2, failures=1, planned=0.")))
                 .andExpect(jsonPath("$.data.items[*].message").value(hasItem("Operations readiness convergence is action-required: bottleneck=resolve-invocation-blockers, stages=1/7, finalizerGaps=1.")))
-                .andExpect(jsonPath("$.data.items[*].message").value(hasItem("Kubernetes operations report sync is planned: namespace=osmu, configMap=osmu-operations-reports, failedCount=0.")))
+                .andExpect(jsonPath("$.data.items[*].message").value(hasItem("Kubernetes operations report sync is planned: namespace=osmu, configMap=osmu-operations-reports, failedCount=0. sourceReportResult=action-required.")))
                 .andExpect(jsonPath("$.data.items[*].message").value(hasItem("Operations readiness artifact import is failed: status=artifact-import-failed, failedCount=2.")))
                 .andExpect(jsonPath("$.data.items[?(@.code == 'OPERATIONS_EVIDENCE_PLAN')].evidencePath").value(hasItem(".osmu-run/latest-operations-evidence-plan.json")))
                 .andExpect(jsonPath("$.data.items[?(@.code == 'OPERATIONS_EVIDENCE_PLAN')].remediationCommand").value(hasItem("powershell -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\write-operations-evidence-plan.ps1")))
@@ -2466,6 +2466,96 @@ class AdminDashboardSummaryControllerTest {
                 .andExpect(jsonPath("$.data.items[?(@.code == 'OPERATIONS_READINESS_CHECK')].remediationWorkflowCommand").value(hasItem("gh workflow run kubernetes-dr-finalizer-ci.yml -f run_live=true -f confirm_restore=true")))
                 .andExpect(jsonPath("$.data.items[?(@.code == 'OPERATIONS_READINESS_CHECK')].remediationNote").value(hasItem("Use confirmed restore evidence.")))
                 .andExpect(jsonPath("$.data.items[*].targetPanel").value(hasItem("dashboard-readiness-panel")));
+    }
+
+    @Test
+    void dashboardReadinessKeepsKubernetesSyncWarningUntilSourceReportReady() throws Exception {
+        String adminToken = loginAndReturnAccessToken("admin", "password");
+        Files.createDirectories(Path.of(".osmu-run"));
+        Files.writeString(
+                Path.of(".osmu-run/latest-kubernetes-operations-report-sync.json"),
+                """
+                        {
+                          "formatVersion": "osmu.kubernetes-operations-report-sync.v1",
+                          "generatedAt": "2026-06-16T08:50:40+09:00",
+                          "result": "applied",
+                          "namespace": "osmu",
+                          "configMapName": "osmu-operations-reports",
+                          "configMapKey": "latest-operations-readiness-convergence.json",
+                          "sourceReportPath": ".osmu-run/latest-operations-readiness-convergence.json",
+                          "sourceReportFormatVersion": "osmu.operations-readiness-convergence.v1",
+                          "sourceReportResult": "action-required",
+                          "sourceReportBytes": 5249,
+                          "sourceReportSha256": "abc123",
+                          "clientDryRunCommand": "kubectl -n osmu create configmap osmu-operations-reports --dry-run=client -o yaml",
+                          "serverDryRunCommand": "kubectl -n osmu create configmap osmu-operations-reports --dry-run=server -o yaml",
+                          "applyCommand": "kubectl apply -f -",
+                          "checkCount": 1,
+                          "failedCount": 0,
+                          "checks": [
+                            {
+                              "name": "report-file-exists",
+                              "passed": true,
+                              "summary": "Report file exists.",
+                              "command": "",
+                              "exitCode": 0
+                            }
+                          ],
+                          "safetyPolicy": "No implicit Kubernetes writes."
+                        }
+                        """
+        );
+
+        mockMvc.perform(get("/api/admin/dashboard/readiness")
+                        .header("Authorization", "Bearer " + adminToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.items[*].code").value(hasItem("KUBERNETES_OPERATIONS_REPORT_SYNC")))
+                .andExpect(jsonPath("$.data.items[*].message").value(hasItem("Kubernetes operations report sync is applied: namespace=osmu, configMap=osmu-operations-reports, failedCount=0. sourceReportResult=action-required.")))
+                .andExpect(jsonPath("$.data.kubernetesOperationsReportSync.result").value("applied"))
+                .andExpect(jsonPath("$.data.kubernetesOperationsReportSync.failedCount").value(0))
+                .andExpect(jsonPath("$.data.kubernetesOperationsReportSync.sourceReportResult").value("action-required"));
+
+        Files.writeString(
+                Path.of(".osmu-run/latest-kubernetes-operations-report-sync.json"),
+                """
+                        {
+                          "formatVersion": "osmu.kubernetes-operations-report-sync.v1",
+                          "generatedAt": "2026-06-16T08:55:40+09:00",
+                          "result": "applied",
+                          "namespace": "osmu",
+                          "configMapName": "osmu-operations-reports",
+                          "configMapKey": "latest-operations-readiness-convergence.json",
+                          "sourceReportPath": ".osmu-run/latest-operations-readiness-convergence.json",
+                          "sourceReportFormatVersion": "osmu.operations-readiness-convergence.v1",
+                          "sourceReportResult": "ready",
+                          "sourceReportBytes": 5249,
+                          "sourceReportSha256": "def456",
+                          "clientDryRunCommand": "kubectl -n osmu create configmap osmu-operations-reports --dry-run=client -o yaml",
+                          "serverDryRunCommand": "kubectl -n osmu create configmap osmu-operations-reports --dry-run=server -o yaml",
+                          "applyCommand": "kubectl apply -f -",
+                          "checkCount": 1,
+                          "failedCount": 0,
+                          "checks": [
+                            {
+                              "name": "report-file-exists",
+                              "passed": true,
+                              "summary": "Report file exists.",
+                              "command": "",
+                              "exitCode": 0
+                            }
+                          ],
+                          "safetyPolicy": "No implicit Kubernetes writes."
+                        }
+                        """
+        );
+
+        mockMvc.perform(get("/api/admin/dashboard/readiness")
+                        .header("Authorization", "Bearer " + adminToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.items[*].code").value(not(hasItem("KUBERNETES_OPERATIONS_REPORT_SYNC"))))
+                .andExpect(jsonPath("$.data.kubernetesOperationsReportSync.result").value("applied"))
+                .andExpect(jsonPath("$.data.kubernetesOperationsReportSync.failedCount").value(0))
+                .andExpect(jsonPath("$.data.kubernetesOperationsReportSync.sourceReportResult").value("ready"));
     }
 
     private String loginAndReturnAccessToken(String loginId, String password) throws Exception {

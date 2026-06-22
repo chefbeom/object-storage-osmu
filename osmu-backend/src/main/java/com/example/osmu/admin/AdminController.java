@@ -3810,7 +3810,7 @@ public class AdminController {
             return;
         }
         String result = reportSync.result();
-        if ("applied".equalsIgnoreCase(result) && reportSync.failedCount() == 0) {
+        if (kubernetesOperationsReportSyncReady(reportSync)) {
             return;
         }
         String remediationCommand = switch (result.toLowerCase(Locale.ROOT)) {
@@ -3828,7 +3828,7 @@ public class AdminController {
                         reportSync.namespace().isBlank() ? "unknown" : reportSync.namespace(),
                         reportSync.configMapName().isBlank() ? "unknown" : reportSync.configMapName(),
                         reportSync.failedCount()
-                ),
+                ) + (reportSync.sourceReportResult().isBlank() ? "" : " sourceReportResult=" + reportSync.sourceReportResult() + "."),
                 "dashboard",
                 "dashboard-readiness-panel",
                 "Kubernetes sync",
@@ -3838,6 +3838,12 @@ public class AdminController {
                 reportSync.applyCommand(),
                 reportSync.safetyPolicy()
         );
+    }
+
+    private boolean kubernetesOperationsReportSyncReady(DashboardKubernetesOperationsReportSyncResponse reportSync) {
+        return "applied".equalsIgnoreCase(reportSync.result())
+                && reportSync.failedCount() == 0
+                && "ready".equalsIgnoreCase(reportSync.sourceReportResult());
     }
 
     private DashboardKubernetesOperationsReportSyncResponse kubernetesOperationsReportSyncSnapshot() {
