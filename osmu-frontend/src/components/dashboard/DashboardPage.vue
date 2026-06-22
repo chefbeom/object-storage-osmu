@@ -1834,7 +1834,24 @@
           {{ operationsDispatchPreflight.selectedActionCount }} selected /
           {{ operationsDispatchPreflight.failedCheckCount }} failed /
           {{ operationsDispatchPreflight.missingInputCount }} missing inputs /
+          {{ operationsDispatchPreflight.ambiguousInputCount || 0 }} ambiguous /
           {{ operationsDispatchPreflight.warningCheckCount }} warnings
+        </small>
+        <small
+          v-if="operationsDispatchPreflightSourceSummary"
+          data-testid="readiness-dispatch-preflight-source"
+        >
+          Source: {{ operationsDispatchPreflightSourceSummary }}
+        </small>
+        <small data-testid="readiness-dispatch-preflight-confirmations">
+          Confirmations: kubeconfig {{ operationsDispatchPreflight.needsKubeconfigSecretConfirmation ? 'required' : 'not required' }} /
+          operator approval {{ operationsDispatchPreflight.needsOperatorApprovalConfirmation ? 'required' : 'not required' }}
+        </small>
+        <small
+          v-if="operationsDispatchPreflightSelectedOrderSummary"
+          data-testid="readiness-dispatch-preflight-selected-orders"
+        >
+          Selected actions: {{ operationsDispatchPreflightSelectedOrderSummary }}
         </small>
         <small v-if="formatDispatchPreflightSecrets()">
           {{ formatDispatchPreflightSecrets() }}
@@ -1916,7 +1933,20 @@
         <small>
           {{ operationsWorkflowRunIdPlan.readyWorkflowCount }} ready /
           {{ operationsWorkflowRunIdPlan.workflowCount }} workflows /
-          {{ operationsWorkflowRunIdPlan.missingWorkflowCount }} missing
+          {{ operationsWorkflowRunIdPlan.missingWorkflowCount }} missing /
+          {{ operationsWorkflowRunIdPlan.staleWorkflowCount || 0 }} stale
+        </small>
+        <small
+          v-if="operationsWorkflowRunIdPlanSourceSummary"
+          data-testid="readiness-workflow-run-id-source"
+        >
+          Source: {{ operationsWorkflowRunIdPlanSourceSummary }}
+        </small>
+        <small
+          v-if="operationsWorkflowRunIdPlanTargetSummary"
+          data-testid="readiness-workflow-run-id-target"
+        >
+          Target: {{ operationsWorkflowRunIdPlanTargetSummary }}
         </small>
         <div class="readiness-artifact-command-row">
           <button
@@ -1976,9 +2006,32 @@
         <small>
           {{ operationsArtifactCollectionPlan.readyArtifactCount }} ready /
           {{ operationsArtifactCollectionPlan.artifactCount }} artifacts /
+          {{ operationsArtifactCollectionPlan.requiredArtifactCount || 0 }} required /
           {{ operationsArtifactCollectionPlan.missingRequiredArtifactCount }} missing required
         </small>
+        <small
+          v-if="operationsArtifactCollectionPlanSourceSummary"
+          data-testid="readiness-artifact-collection-source"
+        >
+          Source: {{ operationsArtifactCollectionPlanSourceSummary }}
+        </small>
+        <small
+          v-if="operationsArtifactCollectionPlan.securityEvidenceFinalizerCommand"
+          data-testid="readiness-artifact-collection-security-command"
+        >
+          Security finalizer ready
+        </small>
         <div class="readiness-artifact-command-row">
+          <button
+            v-if="operationsArtifactCollectionPlan.securityEvidenceFinalizerCommand"
+            data-testid="readiness-artifact-security-finalizer-command-copy-button"
+            type="button"
+            class="ghost"
+            title="Copy security evidence finalizer command"
+            @click="copyReadinessRemediationCommand(operationsArtifactCollectionPlan.securityEvidenceFinalizerCommand)"
+          >
+            Security
+          </button>
           <button
             v-if="operationsArtifactCollectionPlan.operationsArtifactFinalizerCommand"
             data-testid="readiness-artifact-finalizer-command-copy-button"
@@ -2066,9 +2119,16 @@
       >
         <strong>Artifact import: {{ operationsReadinessArtifactImport.result }}</strong>
         <small>
+          status {{ operationsReadinessArtifactImport.status || 'unknown' }} /
           {{ operationsReadinessArtifactImport.importedCount }} imported /
           {{ operationsReadinessArtifactImport.failedCount }} failed /
           {{ operationsReadinessArtifactImport.selectedGroupCount }} groups
+        </small>
+        <small
+          v-if="operationsReadinessArtifactImport.outputDirectory"
+          data-testid="readiness-artifact-import-output"
+        >
+          Output: {{ operationsReadinessArtifactImport.outputDirectory }}
         </small>
         <small v-if="operationsReadinessArtifactImport.secretPolicy">
           {{ operationsReadinessArtifactImport.secretPolicy }}
@@ -2096,9 +2156,28 @@
       >
         <strong>Operations finalizer: {{ operationsReadinessFinalize.result }}</strong>
         <small>
+          status {{ operationsReadinessFinalize.status || 'unknown' }} /
           readiness {{ operationsReadinessFinalize.readinessResult || 'unknown' }} /
           failed {{ operationsReadinessFinalize.failedCount }} /
           gaps {{ operationsReadinessFinalizeGaps.length }}
+        </small>
+        <small
+          v-if="operationsReadinessFinalizeContextSummary"
+          data-testid="readiness-finalizer-context"
+        >
+          Context: {{ operationsReadinessFinalizeContextSummary }}
+        </small>
+        <small
+          v-if="operationsReadinessFinalizeSelectedStepSummary"
+          data-testid="readiness-finalizer-selected-steps"
+        >
+          Selected: {{ operationsReadinessFinalizeSelectedStepSummary }}
+        </small>
+        <small
+          v-if="operationsReadinessFinalizePathSummary"
+          data-testid="readiness-finalizer-paths"
+        >
+          Paths: {{ operationsReadinessFinalizePathSummary }}
         </small>
         <small v-if="operationsReadinessFinalize.secretPolicy">
           {{ operationsReadinessFinalize.secretPolicy }}
@@ -3143,6 +3222,20 @@ const operationsDispatchPreflightWorkflowFiles = computed(() => {
   return Array.isArray(workflows) ? workflows : []
 })
 
+const operationsDispatchPreflightSelectedOrderSummary = computed(() => {
+  const orders = operationsDispatchPreflight.value?.selectedActionOrders
+  return Array.isArray(orders) && orders.length > 0 ? orders.slice(0, 8).join(', ') : ''
+})
+
+const operationsDispatchPreflightSourceSummary = computed(() => {
+  const preflight = operationsDispatchPreflight.value || {}
+  return [
+    preflight.sourceResult && `result=${preflight.sourceResult}`,
+    preflight.sourceUnblockPlan && `plan=${preflight.sourceUnblockPlan}`,
+    preflight.requiredInputCount && `inputs=${preflight.requiredInputCount}`,
+  ].filter(Boolean).join(' / ')
+})
+
 const operationsWorkflowRunIdPlan = computed(() => (
   props.dashboardReadiness.operationsWorkflowRunIdPlan || {}
 ))
@@ -3152,6 +3245,25 @@ const operationsWorkflowRunIdPlanWorkflows = computed(() => {
   return Array.isArray(workflows) ? workflows : []
 })
 
+const operationsWorkflowRunIdPlanSourceSummary = computed(() => {
+  const plan = operationsWorkflowRunIdPlan.value || {}
+  return [
+    plan.invocationResult && `invocation=${plan.invocationResult}`,
+    plan.sourceInvocationReport && `source=${plan.sourceInvocationReport}`,
+    plan.queryMode && `query=${plan.queryMode}`,
+    plan.limit && `limit=${plan.limit}`,
+  ].filter(Boolean).join(' / ')
+})
+
+const operationsWorkflowRunIdPlanTargetSummary = computed(() => {
+  const plan = operationsWorkflowRunIdPlan.value || {}
+  return [
+    plan.branch && `branch=${plan.branch}`,
+    plan.imageSigningVersion && `image=${plan.imageSigningVersion}`,
+    plan.commitSha && `commit=${plan.commitSha}`,
+  ].filter(Boolean).join(' / ')
+})
+
 const operationsArtifactCollectionPlan = computed(() => (
   props.dashboardReadiness.operationsArtifactCollectionPlan || {}
 ))
@@ -3159,6 +3271,15 @@ const operationsArtifactCollectionPlan = computed(() => (
 const operationsArtifactCollectionArtifacts = computed(() => {
   const artifacts = operationsArtifactCollectionPlan.value?.artifacts
   return Array.isArray(artifacts) ? artifacts : []
+})
+
+const operationsArtifactCollectionPlanSourceSummary = computed(() => {
+  const plan = operationsArtifactCollectionPlan.value || {}
+  return [
+    plan.invocationResult && `invocation=${plan.invocationResult}`,
+    plan.invocationSummary && `summary=${plan.invocationSummary}`,
+    plan.sourceInvocationReport && `source=${plan.sourceInvocationReport}`,
+  ].filter(Boolean).join(' / ')
 })
 
 const operationsReadinessArtifactImport = computed(() => (
@@ -3187,6 +3308,41 @@ const operationsReadinessFinalizeSteps = computed(() => {
 const operationsReadinessFinalizeGaps = computed(() => {
   const gaps = operationsReadinessFinalize.value?.gaps
   return Array.isArray(gaps) ? gaps : []
+})
+
+const operationsReadinessFinalizeContextSummary = computed(() => {
+  const finalizer = operationsReadinessFinalize.value || {}
+  return [
+    finalizer.namespace && `namespace=${finalizer.namespace}`,
+    finalizer.sourceNamespace && `source=${finalizer.sourceNamespace}`,
+    finalizer.restoreNamespace && `restore=${finalizer.restoreNamespace}`,
+    finalizer.backupTimestamp && `backup=${finalizer.backupTimestamp}`,
+    finalizer.readinessSummary && `readiness=${finalizer.readinessSummary}`,
+  ].filter(Boolean).join(' / ')
+})
+
+const operationsReadinessFinalizeSelectedStepSummary = computed(() => {
+  const selected = operationsReadinessFinalize.value?.selectedSteps
+  if (!selected || typeof selected !== 'object') {
+    return ''
+  }
+  return Object.entries(selected)
+    .filter(([, value]) => typeof value === 'boolean')
+    .slice(0, 8)
+    .map(([key, value]) => `${key}=${value ? 'yes' : 'no'}`)
+    .join(' / ')
+})
+
+const operationsReadinessFinalizePathSummary = computed(() => {
+  const paths = operationsReadinessFinalize.value?.paths
+  if (!paths || typeof paths !== 'object') {
+    return ''
+  }
+  return Object.entries(paths)
+    .filter(([, value]) => value)
+    .slice(0, 5)
+    .map(([key, value]) => `${key}=${value}`)
+    .join(' / ')
 })
 
 const operationsEvidenceHandoff = computed(() => (
