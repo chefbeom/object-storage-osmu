@@ -347,11 +347,32 @@ function Test-OperationsHandoffPackageEvidenceJson([string] $Path) {
         }
     }
 
+    $requiredConfirmations = @(
+        "noSecretValues",
+        "runbookReviewed",
+        "troubleshootingReviewed",
+        "rollbackReviewed",
+        "supportEscalationReviewed",
+        "knownGapsAccepted",
+        "operationsReadinessSnapshotReviewed",
+        "operationsConvergenceSnapshotReviewed",
+        "dataFlowStoragePlanReviewed",
+        "dataFlowStorageTransitionRunbookReviewed",
+        "secretRotationSnapshotReviewed",
+        "commercialIntegrationSnapshotReviewed",
+        "commercialApprovalSnapshotReviewed",
+        "enterpriseAuthSmokeSnapshotReviewed",
+        "monitoringThresholdReviewed",
+        "requireProductionEvidence",
+        "requireOperationsSnapshotEvidence"
+    )
     $confirmations = Get-JsonProperty $json "confirmations"
-    if (-not [bool] (Get-JsonProperty $confirmations "enterpriseAuthSmokeSnapshotReviewed")) {
-        return [pscustomobject]@{
-            passed = $false
-            detail = "confirmation enterpriseAuthSmokeSnapshotReviewed expected=true"
+    foreach ($confirmationName in $requiredConfirmations) {
+        if (-not [bool] (Get-JsonProperty $confirmations $confirmationName)) {
+            return [pscustomobject]@{
+                passed = $false
+                detail = "confirmation $confirmationName expected=true"
+            }
         }
     }
 
@@ -372,7 +393,7 @@ function Test-OperationsHandoffPackageEvidenceJson([string] $Path) {
 
     return [pscustomobject]@{
         passed = $true
-        detail = "formatVersion=$formatVersion result=$result enterpriseAuthSmokeSnapshotReviewed=true"
+        detail = "formatVersion=$formatVersion result=$result requiredConfirmations=$($requiredConfirmations.Count)"
     }
 }
 

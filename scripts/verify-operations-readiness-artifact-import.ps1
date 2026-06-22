@@ -157,8 +157,24 @@ Write-TextEvidence (Join-Path $enterpriseAuthSource "latest-enterprise-auth-smok
 Write-JsonEvidence (Join-Path $operationsHandoffPackageSource "latest-operations-handoff-package.json") @{
     formatVersion = "osmu.operations-handoff-package.v1"
     result = "passed"
-    confirmations = @{
+    confirmations = [ordered]@{
+        noSecretValues = $true
+        runbookReviewed = $true
+        troubleshootingReviewed = $true
+        rollbackReviewed = $true
+        supportEscalationReviewed = $true
+        knownGapsAccepted = $true
+        operationsReadinessSnapshotReviewed = $true
+        operationsConvergenceSnapshotReviewed = $true
+        dataFlowStoragePlanReviewed = $true
+        dataFlowStorageTransitionRunbookReviewed = $true
+        secretRotationSnapshotReviewed = $true
+        commercialIntegrationSnapshotReviewed = $true
+        commercialApprovalSnapshotReviewed = $true
         enterpriseAuthSmokeSnapshotReviewed = $true
+        monitoringThresholdReviewed = $true
+        requireProductionEvidence = $true
+        requireOperationsSnapshotEvidence = $true
     }
 }
 Write-TextEvidence (Join-Path $operationsHandoffPackageSource "latest-operations-handoff-package.md") "# Operations handoff package"
@@ -288,10 +304,13 @@ Assert-True ($enterpriseAuthImportEntry.Count -eq 1) "Enterprise auth import ent
 Assert-True (([string] $enterpriseAuthImportEntry[0].detail).Contains("expected=passed|scope-out")) "Enterprise auth import entry should document passed or scope-out acceptance."
 $promotedOperationsHandoffPackage = Get-Content -Raw -LiteralPath (Join-Path $promotedRoot "latest-operations-handoff-package.json") | ConvertFrom-Json
 Assert-True ($promotedOperationsHandoffPackage.result -eq "passed") "Promoted operations handoff package evidence should preserve result=passed."
+Assert-True ($promotedOperationsHandoffPackage.confirmations.noSecretValues) "Promoted operations handoff package should preserve no-secret confirmation."
+Assert-True ($promotedOperationsHandoffPackage.confirmations.secretRotationSnapshotReviewed) "Promoted operations handoff package should preserve secret rotation snapshot review confirmation."
+Assert-True ($promotedOperationsHandoffPackage.confirmations.commercialApprovalSnapshotReviewed) "Promoted operations handoff package should preserve commercial approval snapshot review confirmation."
 Assert-True ($promotedOperationsHandoffPackage.confirmations.enterpriseAuthSmokeSnapshotReviewed) "Promoted operations handoff package should preserve enterprise auth smoke snapshot review confirmation."
 $operationsHandoffPackageEntry = @($report.entries | Where-Object { $_.group -eq "operations-handoff-package" -and $_.fileName -eq "latest-operations-handoff-package.json" })
 Assert-True ($operationsHandoffPackageEntry.Count -eq 1) "Operations handoff package import entry missing."
-Assert-True (([string] $operationsHandoffPackageEntry[0].detail).Contains("enterpriseAuthSmokeSnapshotReviewed=true")) "Operations handoff package import entry should include enterprise auth review validation detail."
+Assert-True (([string] $operationsHandoffPackageEntry[0].detail).Contains("requiredConfirmations=17")) "Operations handoff package import entry should include required confirmation validation detail."
 $promotedDataFlowRunbook = Get-Content -Raw -LiteralPath (Join-Path $promotedRoot "latest-data-flow-storage-transition-runbook-evidence.json") | ConvertFrom-Json
 Assert-True ($promotedDataFlowRunbook.result -eq "passed") "Promoted data-flow storage transition runbook evidence should preserve result=passed."
 Assert-True ($promotedDataFlowRunbook.dataFlowStoragePlanSnapshot.result -eq "passed") "Promoted data-flow storage transition runbook evidence should preserve passed storage plan snapshot."
@@ -483,8 +502,24 @@ Assert-True (($unsafeMonitoringThresholdReport.entries | ConvertTo-Json -Depth 8
 Write-JsonEvidence (Join-Path $staleOperationsHandoffPackageRoot "latest-operations-handoff-package.json") @{
     formatVersion = "osmu.operations-handoff-package.v1"
     result = "passed"
-    confirmations = @{
-        enterpriseAuthSmokeSnapshotReviewed = $false
+    confirmations = [ordered]@{
+        noSecretValues = $true
+        runbookReviewed = $true
+        troubleshootingReviewed = $true
+        rollbackReviewed = $true
+        supportEscalationReviewed = $true
+        knownGapsAccepted = $true
+        operationsReadinessSnapshotReviewed = $true
+        operationsConvergenceSnapshotReviewed = $true
+        dataFlowStoragePlanReviewed = $true
+        dataFlowStorageTransitionRunbookReviewed = $true
+        secretRotationSnapshotReviewed = $true
+        commercialIntegrationSnapshotReviewed = $true
+        commercialApprovalSnapshotReviewed = $false
+        enterpriseAuthSmokeSnapshotReviewed = $true
+        monitoringThresholdReviewed = $true
+        requireProductionEvidence = $true
+        requireOperationsSnapshotEvidence = $true
     }
 }
 $staleOperationsHandoffPackageOutput = Join-Path $resolvedOutputDirectory "stale-operations-handoff-package-promoted"
@@ -503,12 +538,12 @@ try {
 finally {
     $ErrorActionPreference = $previousErrorActionPreference
 }
-Assert-True ($staleOperationsHandoffPackageExitCode -ne 0) "Operations handoff package without enterprise auth review confirmation should fail import."
+Assert-True ($staleOperationsHandoffPackageExitCode -ne 0) "Operations handoff package without required review confirmations should fail import."
 Assert-True (Test-Path -LiteralPath $staleOperationsHandoffPackageJson) "Stale operations handoff package import report should still be written."
 $staleOperationsHandoffPackageReport = Get-Content -Raw -LiteralPath $staleOperationsHandoffPackageJson | ConvertFrom-Json
 Assert-True ($staleOperationsHandoffPackageReport.result -eq "failed") "Stale operations handoff package import report should be failed."
 Assert-True (-not (Test-Path -LiteralPath (Join-Path $staleOperationsHandoffPackageOutput "latest-operations-handoff-package.json"))) "Stale operations handoff package must not be promoted."
-Assert-True (($staleOperationsHandoffPackageReport.entries | ConvertTo-Json -Depth 8).Contains("enterpriseAuthSmokeSnapshotReviewed")) "Stale operations handoff package report should describe missing enterprise auth review confirmation."
+Assert-True (($staleOperationsHandoffPackageReport.entries | ConvertTo-Json -Depth 8).Contains("commercialApprovalSnapshotReviewed")) "Stale operations handoff package report should describe missing required review confirmation."
 
 Write-JsonEvidence (Join-Path $directDataFlowStoragePlanSource "latest-data-flow-storage-plan.json") @{
     formatVersion = "osmu.data-flow-storage-plan.v1"
