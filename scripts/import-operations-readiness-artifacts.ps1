@@ -220,6 +220,167 @@ function Test-SecurityEvidenceRawContent([string] $Raw, [string] $Label) {
     }
 }
 
+function Test-SecurityEvidenceFinalizerJson([string] $Path) {
+    try {
+        $raw = Get-Content -Raw -LiteralPath $Path
+        $json = $raw | ConvertFrom-Json
+    }
+    catch {
+        return [pscustomobject]@{
+            passed = $false
+            detail = "invalid JSON: $($_.Exception.Message)"
+        }
+    }
+
+    $formatVersion = [string] (Get-JsonProperty $json "formatVersion")
+    if ($formatVersion -ne "osmu.security-evidence-finalize.v1") {
+        return [pscustomobject]@{
+            passed = $false
+            detail = "formatVersion=$formatVersion expected=osmu.security-evidence-finalize.v1"
+        }
+    }
+
+    $result = [string] (Get-JsonProperty $json "result")
+    if ($result -ne "passed") {
+        return [pscustomobject]@{
+            passed = $false
+            detail = "result=$result expected=passed"
+        }
+    }
+
+    $failureCount = Get-RequiredJsonInt $json "failureCount"
+    if (-not $failureCount.valid -or [int64] $failureCount.value -ne 0) {
+        return [pscustomobject]@{
+            passed = $false
+            detail = "failureCount=$($failureCount.raw)(valid=$($failureCount.valid)) expected integer 0"
+        }
+    }
+
+    $allowSyntheticEvidence = Get-RequiredJsonBool $json "allowSyntheticEvidence"
+    if (-not $allowSyntheticEvidence.valid -or $allowSyntheticEvidence.value) {
+        return [pscustomobject]@{
+            passed = $false
+            detail = "allowSyntheticEvidence=$($allowSyntheticEvidence.raw) expected boolean false"
+        }
+    }
+
+    $rawValidation = Test-SecurityEvidenceRawContent $raw "security finalizer"
+    if (-not $rawValidation.passed) {
+        return $rawValidation
+    }
+
+    foreach ($field in @("decisionRule", "secretPolicy")) {
+        $value = [string] (Get-JsonProperty $json $field)
+        if ([string]::IsNullOrWhiteSpace($value)) {
+            return [pscustomobject]@{
+                passed = $false
+                detail = "$field missing"
+            }
+        }
+    }
+
+    $source = Get-JsonProperty $json "source"
+    foreach ($urlField in @("imageSigningRunUrl", "containerSecurityRunUrl")) {
+        $url = [string] (Get-JsonProperty $source $urlField)
+        if (-not (Test-HttpUrl $url)) {
+            return [pscustomobject]@{
+                passed = $false
+                detail = "source.$urlField=$url expected http(s) URL"
+            }
+        }
+    }
+
+    $artifactName = [string] (Get-JsonProperty $source "containerSecurityArtifactName")
+    if ([string]::IsNullOrWhiteSpace($artifactName)) {
+        return [pscustomobject]@{
+            passed = $false
+            detail = "source.containerSecurityArtifactName missing"
+        }
+    }
+
+    $images = Get-JsonProperty $json "images"
+    foreach ($field in @("backendVersionRef", "backendShaRef", "frontendVersionRef", "frontendShaRef", "backendImage", "frontendImage")) {
+        $value = [string] (Get-JsonProperty $images $field)
+        if ([string]::IsNullOrWhiteSpace($value)) {
+            return [pscustomobject]@{
+                passed = $false
+                detail = "images.$field missing"
+            }
+        }
+    }
+
+    foreach ($field in @("backendDigest", "frontendDigest")) {
+        $digest = [string] (Get-JsonProperty $images $field)
+        if (-not (Test-Digest $digest)) {
+            return [pscustomobject]@{
+                passed = $false
+                detail = "images.$field=$digest expected nonzero sha256 digest"
+            }
+        }
+    }
+
+    $promoted = Get-JsonProperty $json "promoted"
+    foreach ($field in @("imageSigningEvidence", "containerSecurityEvidence")) {
+        $value = [string] (Get-JsonProperty $promoted $field)
+        if ([string]::IsNullOrWhiteSpace($value)) {
+            return [pscustomobject]@{
+                passed = $false
+                detail = "promoted.$field missing"
+            }
+        }
+    }
+
+    $actionsObject = Get-JsonProperty $promoted "actions"
+    $actions = if ($null -eq $actionsObject) { @() } else { @($actionsObject) }
+    if ($actions.Count -le 0) {
+        return [pscustomobject]@{
+            passed = $false
+            detail = "promoted.actions missing"
+        }
+    }
+    foreach ($action in $actions) {
+        $actionText = [string] $action
+        if ([string]::IsNullOrWhiteSpace($actionText) -or $actionText -match "promotion disabled" -or $actionText -match "promotion skipped") {
+            return [pscustomobject]@{
+                passed = $false
+                detail = "promoted.actions contains invalid promotion action: $actionText"
+            }
+        }
+    }
+
+    $checksObject = Get-JsonProperty $json "checks"
+    $checks = if ($null -eq $checksObject) { @() } else { @($checksObject) }
+    if ($checks.Count -le 0) {
+        return [pscustomobject]@{
+            passed = $false
+            detail = "checks missing"
+        }
+    }
+    for ($i = 0; $i -lt $checks.Count; $i++) {
+        $check = $checks[$i]
+        $passed = Get-RequiredJsonBool $check "passed"
+        if (-not $passed.valid -or -not $passed.value) {
+            return [pscustomobject]@{
+                passed = $false
+                detail = "checks[$i].passed=$($passed.raw) expected boolean true"
+            }
+        }
+
+        $status = [string] (Get-JsonProperty $check "status")
+        if ($status -ne "PASS") {
+            return [pscustomobject]@{
+                passed = $false
+                detail = "checks[$i].status=$status expected PASS"
+            }
+        }
+    }
+
+    return [pscustomobject]@{
+        passed = $true
+        detail = "formatVersion=$formatVersion result=$result failureCount=$($failureCount.value) checkCount=$($checks.Count) backendDigest=$($images.backendDigest) frontendDigest=$($images.frontendDigest)"
+    }
+}
+
 function Test-ImageSigningEvidenceJson([string] $Path) {
     try {
         $raw = Get-Content -Raw -LiteralPath $Path
@@ -1612,6 +1773,14 @@ function Import-EvidenceFile(
         }
         [void] $validationDetails.Add($validation.detail)
     }
+    elseif ($ValidationKind -eq "security-finalizer") {
+        $validation = Test-SecurityEvidenceFinalizerJson $sourcePath
+        if (-not $validation.passed) {
+            Add-Entry $Group $FileName "failed" $validation.detail $sourcePath ""
+            return
+        }
+        [void] $validationDetails.Add($validation.detail)
+    }
     elseif ($ValidationKind -eq "image-signing") {
         $validation = Test-ImageSigningEvidenceJson $sourcePath
         if (-not $validation.passed) {
@@ -1705,7 +1874,7 @@ Import-EvidenceFile "iam-rbac" $IamRbacArtifactPath "latest-iam-rbac-finalize.js
 Import-EvidenceFile "iam-rbac" $IamRbacArtifactPath "latest-iam-rbac-finalize.md" $false
 Import-EvidenceFile "iam-rbac" $IamRbacArtifactPath "latest-storage-expansion-rbac-auth.json" $false
 
-Import-EvidenceFile "security-evidence" $SecurityEvidenceArtifactPath "latest-security-evidence-finalize.json" $true "result" "passed"
+Import-EvidenceFile "security-evidence" $SecurityEvidenceArtifactPath "latest-security-evidence-finalize.json" $true "" "" "security-finalizer"
 Import-EvidenceFile "security-evidence" $SecurityEvidenceArtifactPath "latest-security-evidence-finalize.md" $false
 Import-EvidenceFile "security-evidence" $SecurityEvidenceArtifactPath "latest-image-signing-evidence.json" $true "" "" "image-signing"
 Import-EvidenceFile "security-evidence" $SecurityEvidenceArtifactPath "latest-container-security-evidence.json" $true "" "" "container-security"

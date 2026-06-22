@@ -59,6 +59,63 @@ function New-PassedOperationsHandoffPackageSnapshots(
     }
 }
 
+function New-PassedSecurityEvidenceFinalizer(
+    [object] $FailureCount = 0,
+    [object] $AllowSyntheticEvidence = $false
+) {
+    return [ordered]@{
+        formatVersion = "osmu.security-evidence-finalize.v1"
+        result = "passed"
+        failureCount = $FailureCount
+        allowSyntheticEvidence = $AllowSyntheticEvidence
+        inputs = [ordered]@{
+            imageSigningEvidence = "C:\evidence\latest-image-signing-evidence.json"
+            containerSecurityEvidence = "C:\evidence\latest-container-security-evidence.json"
+        }
+        promoted = [ordered]@{
+            imageSigningEvidence = "C:\evidence\latest-image-signing-evidence.json"
+            containerSecurityEvidence = "C:\evidence\latest-container-security-evidence.json"
+            actions = @(
+                "promoted image signing evidence to C:\evidence\latest-image-signing-evidence.json",
+                "promoted container security evidence to C:\evidence\latest-container-security-evidence.json"
+            )
+        }
+        source = [ordered]@{
+            imageSigningRunUrl = "https://github.com/osmu/object-storage-osmu/actions/runs/123456"
+            containerSecurityRunUrl = "https://github.com/osmu/object-storage-osmu/actions/runs/123457"
+            containerSecurityArtifactName = "container-security-1234567890abcdef1234567890abcdef12345678"
+        }
+        images = [ordered]@{
+            backendVersionRef = "ghcr.io/osmu/object-storage-osmu-backend:v1.2.3"
+            backendShaRef = "ghcr.io/osmu/object-storage-osmu-backend:1234567890abcdef1234567890abcdef12345678"
+            frontendVersionRef = "ghcr.io/osmu/object-storage-osmu-frontend:v1.2.3"
+            frontendShaRef = "ghcr.io/osmu/object-storage-osmu-frontend:1234567890abcdef1234567890abcdef12345678"
+            backendDigest = "sha256:1111111111111111111111111111111111111111111111111111111111111111"
+            frontendDigest = "sha256:2222222222222222222222222222222222222222222222222222222222222222"
+            backendImage = "ghcr.io/osmu/object-storage-osmu-backend:1234567890abcdef1234567890abcdef12345678"
+            frontendImage = "ghcr.io/osmu/object-storage-osmu-frontend:1234567890abcdef1234567890abcdef12345678"
+        }
+        checks = @(
+            [ordered]@{
+                name = "image signing evidence result"
+                passed = $true
+                status = "PASS"
+                detail = "result=passed"
+                evidencePath = "C:\evidence\latest-image-signing-evidence.json"
+            },
+            [ordered]@{
+                name = "container security evidence result"
+                passed = $true
+                status = "PASS"
+                detail = "result=passed"
+                evidencePath = "C:\evidence\latest-container-security-evidence.json"
+            }
+        )
+        decisionRule = "Security evidence finalization passes only when image signing evidence and container scan/SBOM evidence are present, parsed, passed, non-synthetic by default, and promotable to the standard latest evidence paths."
+        secretPolicy = "Finalizer copies and summarizes existing evidence JSON only; it does not read or write registry auth material, signing keys, kubeconfig, or application secrets."
+    }
+}
+
 function Write-TextEvidence([string] $Path, [string] $Content) {
     $resolvedPath = Resolve-ProjectPath $Path
     New-Item -ItemType Directory -Force -Path (Split-Path -Parent $resolvedPath) | Out-Null
@@ -74,6 +131,7 @@ New-Item -ItemType Directory -Force -Path $resolvedOutputDirectory | Out-Null
 $sourceRoot = Join-Path $resolvedOutputDirectory "source"
 $promotedRoot = Join-Path $resolvedOutputDirectory "promoted"
 $invalidRoot = Join-Path $resolvedOutputDirectory "invalid-source"
+$weakSecurityFinalizerRoot = Join-Path $resolvedOutputDirectory "weak-security-finalizer-source"
 $weakImageSigningRoot = Join-Path $resolvedOutputDirectory "weak-image-signing-source"
 $weakContainerSecurityRoot = Join-Path $resolvedOutputDirectory "weak-container-security-source"
 $weakStorageBackendTelemetryRoot = Join-Path $resolvedOutputDirectory "weak-storage-backend-telemetry-source"
@@ -137,10 +195,7 @@ Write-JsonEvidence (Join-Path $iamSource "latest-iam-rbac-finalize.json") @{
     result = "passed"
 }
 Write-TextEvidence (Join-Path $iamSource "latest-iam-rbac-finalize.md") "# IAM/RBAC"
-Write-JsonEvidence (Join-Path $securitySource "latest-security-evidence-finalize.json") @{
-    formatVersion = "osmu.security-evidence-finalize.v1"
-    result = "passed"
-}
+Write-JsonEvidence (Join-Path $securitySource "latest-security-evidence-finalize.json") (New-PassedSecurityEvidenceFinalizer)
 Write-JsonEvidence (Join-Path $securitySource "latest-image-signing-evidence.json") @{
     formatVersion = "osmu.image-signing-evidence.v1"
     result = "passed"
@@ -653,10 +708,33 @@ $invalidReport = Get-Content -Raw -LiteralPath $invalidJson | ConvertFrom-Json
 Assert-True ($invalidReport.result -eq "failed") "Invalid import report should be failed."
 Assert-True (-not (Test-Path -LiteralPath (Join-Path $invalidOutput "latest-kubernetes-ha-dr-readiness.json"))) "Invalid evidence must not be promoted."
 
-Write-JsonEvidence (Join-Path $weakImageSigningRoot "latest-security-evidence-finalize.json") @{
-    formatVersion = "osmu.security-evidence-finalize.v1"
-    result = "passed"
+Write-JsonEvidence (Join-Path $weakSecurityFinalizerRoot "latest-security-evidence-finalize.json") (New-PassedSecurityEvidenceFinalizer -AllowSyntheticEvidence $true)
+Copy-Item -LiteralPath (Join-Path $securitySource "latest-image-signing-evidence.json") -Destination (Join-Path $weakSecurityFinalizerRoot "latest-image-signing-evidence.json") -Force
+Copy-Item -LiteralPath (Join-Path $securitySource "latest-container-security-evidence.json") -Destination (Join-Path $weakSecurityFinalizerRoot "latest-container-security-evidence.json") -Force
+$weakSecurityFinalizerOutput = Join-Path $resolvedOutputDirectory "weak-security-finalizer-promoted"
+$weakSecurityFinalizerJson = Join-Path $resolvedOutputDirectory "weak-security-finalizer-import.json"
+$weakSecurityFinalizerMarkdown = Join-Path $resolvedOutputDirectory "weak-security-finalizer-import.md"
+$previousErrorActionPreference = $ErrorActionPreference
+$ErrorActionPreference = "Continue"
+try {
+    $weakSecurityFinalizerOutputLines = & powershell -NoProfile -ExecutionPolicy Bypass -File $importScript `
+        -SecurityEvidenceArtifactPath $weakSecurityFinalizerRoot `
+        -OutputDirectory $weakSecurityFinalizerOutput `
+        -JsonOutputPath $weakSecurityFinalizerJson `
+        -MarkdownOutputPath $weakSecurityFinalizerMarkdown 2>&1
+    $weakSecurityFinalizerExitCode = $LASTEXITCODE
 }
+finally {
+    $ErrorActionPreference = $previousErrorActionPreference
+}
+Assert-True ($weakSecurityFinalizerExitCode -ne 0) "Security finalizer allowing synthetic evidence should fail import."
+Assert-True (Test-Path -LiteralPath $weakSecurityFinalizerJson) "Weak security finalizer import report should still be written."
+$weakSecurityFinalizerReport = Get-Content -Raw -LiteralPath $weakSecurityFinalizerJson | ConvertFrom-Json
+Assert-True ($weakSecurityFinalizerReport.result -eq "failed") "Weak security finalizer import report should be failed."
+Assert-True (-not (Test-Path -LiteralPath (Join-Path $weakSecurityFinalizerOutput "latest-security-evidence-finalize.json"))) "Weak security finalizer evidence must not be promoted."
+Assert-True (($weakSecurityFinalizerReport.entries | ConvertTo-Json -Depth 8).Contains("allowSyntheticEvidence=True expected boolean false")) "Weak security finalizer report should describe synthetic evidence flag."
+
+Write-JsonEvidence (Join-Path $weakImageSigningRoot "latest-security-evidence-finalize.json") (New-PassedSecurityEvidenceFinalizer)
 Write-JsonEvidence (Join-Path $weakImageSigningRoot "latest-image-signing-evidence.json") @{
     formatVersion = "osmu.image-signing-evidence.v1"
     result = "passed"
@@ -704,10 +782,7 @@ Assert-True ($weakImageSigningReport.result -eq "failed") "Weak image signing im
 Assert-True (-not (Test-Path -LiteralPath (Join-Path $weakImageSigningOutput "latest-image-signing-evidence.json"))) "Weak image signing evidence must not be promoted."
 Assert-True (($weakImageSigningReport.entries | ConvertTo-Json -Depth 8).Contains("backend.digest=")) "Weak image signing report should describe missing digest."
 
-Write-JsonEvidence (Join-Path $weakContainerSecurityRoot "latest-security-evidence-finalize.json") @{
-    formatVersion = "osmu.security-evidence-finalize.v1"
-    result = "passed"
-}
+Write-JsonEvidence (Join-Path $weakContainerSecurityRoot "latest-security-evidence-finalize.json") (New-PassedSecurityEvidenceFinalizer)
 Copy-Item -LiteralPath (Join-Path $securitySource "latest-image-signing-evidence.json") -Destination (Join-Path $weakContainerSecurityRoot "latest-image-signing-evidence.json") -Force
 Write-JsonEvidence (Join-Path $weakContainerSecurityRoot "latest-container-security-evidence.json") @{
     formatVersion = "osmu.container-security-evidence.v1"
