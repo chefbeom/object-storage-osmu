@@ -5461,6 +5461,7 @@ Response:
         "runbookReviewed": false,
         "supportEscalationReviewed": false,
         "knownGapsAccepted": true,
+        "monitoringThresholdReviewed": true,
         "requireProductionEvidence": true
       },
       "evidenceRefs": {
@@ -5611,7 +5612,7 @@ Response:
           "evidenceRef": ""
         }
       ],
-      "decisionRule": "Production/B2B operations handoff package readiness requires result=passed and, when required, ready operations readiness/convergence plus passed data-flow/monitoring threshold/commercial snapshots.",
+      "decisionRule": "Production/B2B operations handoff package readiness requires result=passed and, when required, ready operations readiness/convergence plus passed and reviewed data-flow/monitoring threshold/commercial snapshots.",
       "scopePolicy": "This package is a handoff wrapper and does not execute kubectl, gh, provider APIs, notification adapters, or payment adapters.",
       "secretPolicy": "Evidence stores references and reduced readiness/convergence/data-flow/monitoring threshold snapshot summaries only and must not contain passwords, bearer tokens, kubeconfig values, private keys, provider credentials, raw provider responses, raw Alertmanager receiver secrets, raw remediation commands containing credentials, or customer payment data."
     },

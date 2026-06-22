@@ -409,6 +409,7 @@ $monitoringThresholdPath = Join-Path $resolvedOutputDirectory "latest-monitoring
     -ConfirmOperationsConvergenceSnapshotReviewed `
     -ConfirmDataFlowStoragePlanReviewed `
     -ConfirmDataFlowStorageTransitionRunbookReviewed `
+    -ConfirmMonitoringThresholdReviewed `
     -ConfirmNoSecretValues `
     -RequireProductionEvidence `
     -RequireOperationsSnapshotEvidence `
@@ -451,6 +452,7 @@ Assert-True (@($checks | Where-Object { $_.id -eq "enterprise-auth-smoke-snapsho
 Assert-True (@($checks | Where-Object { $_.id -eq "enterprise-auth-smoke-snapshot-accepted" -and $_.passed }).Count -eq 1) "Expected enterprise auth smoke snapshot accepted check to pass."
 Assert-True (@($checks | Where-Object { $_.id -eq "monitoring-threshold-snapshot-parsed" -and $_.passed }).Count -eq 1) "Expected monitoring threshold snapshot parsed check to pass."
 Assert-True (@($checks | Where-Object { $_.id -eq "monitoring-threshold-snapshot-passed" -and $_.passed }).Count -eq 1) "Expected monitoring threshold snapshot passed check to pass."
+Assert-True (@($checks | Where-Object { $_.id -eq "monitoring-threshold-reviewed" -and $_.passed }).Count -eq 1) "Expected monitoring threshold reviewed check to pass."
 Assert-True ($report.confirmations.noSecretValues) "Expected no-secret-values confirmation."
 Assert-True ($report.confirmations.runbookReviewed) "Expected runbook reviewed confirmation."
 Assert-True ($report.confirmations.troubleshootingReviewed) "Expected troubleshooting reviewed confirmation."
@@ -461,6 +463,7 @@ Assert-True ($report.confirmations.operationsReadinessSnapshotReviewed) "Expecte
 Assert-True ($report.confirmations.operationsConvergenceSnapshotReviewed) "Expected operations convergence snapshot reviewed confirmation."
 Assert-True ($report.confirmations.dataFlowStoragePlanReviewed) "Expected data-flow storage plan reviewed confirmation."
 Assert-True ($report.confirmations.dataFlowStorageTransitionRunbookReviewed) "Expected data-flow storage transition runbook reviewed confirmation."
+Assert-True ($report.confirmations.monitoringThresholdReviewed) "Expected monitoring threshold reviewed confirmation."
 Assert-True ($report.confirmations.requireProductionEvidence) "Expected production evidence requirement."
 Assert-True ($report.confirmations.requireOperationsSnapshotEvidence) "Expected operations snapshot evidence requirement."
 Assert-True ($report.operationsSnapshots.readiness.result -eq "ready") "Expected operations readiness snapshot result=ready."
@@ -740,6 +743,7 @@ try {
         -ConfirmKnownGapsAccepted `
         -ConfirmDataFlowStoragePlanReviewed `
         -ConfirmDataFlowStorageTransitionRunbookReviewed `
+        -ConfirmMonitoringThresholdReviewed `
         -ConfirmNoSecretValues `
         -RequireProductionEvidence `
         -FailIfNotPassed `

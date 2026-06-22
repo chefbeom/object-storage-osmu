@@ -1325,6 +1325,7 @@ class AdminDashboardSummaryControllerTest {
                             "rollbackReviewed": true,
                             "supportEscalationReviewed": false,
                             "knownGapsAccepted": true,
+                            "monitoringThresholdReviewed": true,
                             "requireProductionEvidence": true
                           },
                           "checks": [
@@ -2160,6 +2161,7 @@ class AdminDashboardSummaryControllerTest {
                 .andExpect(jsonPath("$.data.operationsHandoffPackage.checkCount").value(23))
                 .andExpect(jsonPath("$.data.operationsHandoffPackage.confirmations.noSecretValues").value(true))
                 .andExpect(jsonPath("$.data.operationsHandoffPackage.confirmations.runbookReviewed").value(false))
+                .andExpect(jsonPath("$.data.operationsHandoffPackage.confirmations.monitoringThresholdReviewed").value(true))
                 .andExpect(jsonPath("$.data.operationsHandoffPackage.evidenceRefs.commercialApproval").value("latest-commercial-approval-evidence-passed"))
                 .andExpect(jsonPath("$.data.operationsHandoffPackage.operationsReadinessSnapshot.result").value("ready"))
                 .andExpect(jsonPath("$.data.operationsHandoffPackage.operationsReadinessSnapshot.pendingCount").value(0))

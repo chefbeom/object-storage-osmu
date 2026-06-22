@@ -180,6 +180,11 @@ on:
         required: true
         type: boolean
         default: false
+      confirm_monitoring_threshold_reviewed:
+        description: Confirm monitoring threshold snapshot review
+        required: true
+        type: boolean
+        default: false
       confirm_no_secret_values:
         description: Confirm inputs contain references only, not secret values
         required: true
@@ -263,6 +268,7 @@ jobs:
           OSMU_CONFIRM_OPERATIONS_CONVERGENCE_SNAPSHOT_REVIEWED: ${{ inputs.confirm_operations_convergence_snapshot_reviewed }}
           OSMU_CONFIRM_DATA_FLOW_STORAGE_PLAN_REVIEWED: ${{ inputs.confirm_data_flow_storage_plan_reviewed }}
           OSMU_CONFIRM_DATA_FLOW_STORAGE_TRANSITION_RUNBOOK_REVIEWED: ${{ inputs.confirm_data_flow_storage_transition_runbook_reviewed }}
+          OSMU_CONFIRM_MONITORING_THRESHOLD_REVIEWED: ${{ inputs.confirm_monitoring_threshold_reviewed }}
           OSMU_CONFIRM_NO_SECRET_VALUES: ${{ inputs.confirm_no_secret_values }}
           OSMU_REQUIRE_PRODUCTION_EVIDENCE: ${{ inputs.require_production_evidence }}
           OSMU_REQUIRE_OPERATIONS_SNAPSHOT_EVIDENCE: ${{ inputs.require_operations_snapshot_evidence }}
@@ -327,6 +333,7 @@ jobs:
           if ($env:OSMU_CONFIRM_OPERATIONS_CONVERGENCE_SNAPSHOT_REVIEWED -eq "true") { $packageArgs += "-ConfirmOperationsConvergenceSnapshotReviewed" }
           if ($env:OSMU_CONFIRM_DATA_FLOW_STORAGE_PLAN_REVIEWED -eq "true") { $packageArgs += "-ConfirmDataFlowStoragePlanReviewed" }
           if ($env:OSMU_CONFIRM_DATA_FLOW_STORAGE_TRANSITION_RUNBOOK_REVIEWED -eq "true") { $packageArgs += "-ConfirmDataFlowStorageTransitionRunbookReviewed" }
+          if ($env:OSMU_CONFIRM_MONITORING_THRESHOLD_REVIEWED -eq "true") { $packageArgs += "-ConfirmMonitoringThresholdReviewed" }
           if ($env:OSMU_CONFIRM_NO_SECRET_VALUES -eq "true") { $packageArgs += "-ConfirmNoSecretValues" }
           if ($env:OSMU_REQUIRE_PRODUCTION_EVIDENCE -eq "true") { $packageArgs += "-RequireProductionEvidence" }
           if ($env:OSMU_REQUIRE_OPERATIONS_SNAPSHOT_EVIDENCE -eq "true") { $packageArgs += "-RequireOperationsSnapshotEvidence" }
