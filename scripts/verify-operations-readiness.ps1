@@ -168,6 +168,9 @@ Assert-CheckExists $report "MariaDB query plan evidence writer" "data-flow"
 Assert-CheckExists $report "MariaDB query plan evidence self-test" "data-flow"
 Assert-CheckExists $report "Data-flow storage plan writer" "data-flow"
 Assert-CheckExists $report "Data-flow storage plan self-test" "data-flow"
+Assert-CheckExists $report "Monitoring threshold evidence writer" "monitoring"
+Assert-CheckExists $report "Monitoring threshold evidence writer self-test" "monitoring"
+Assert-CheckExists $report "Monitoring threshold evidence workflow" "monitoring"
 Assert-CheckExists $report "Secret rotation evidence writer" "security-hardening"
 Assert-CheckExists $report "Secret rotation evidence writer self-test" "security-hardening"
 Assert-CheckExists $report "Secret rotation evidence workflow" "security-hardening"
@@ -195,6 +198,7 @@ Assert-CheckExists $report "Signed image evidence" "security-hardening"
 Assert-CheckExists $report "Container scan/SBOM evidence" "security-hardening"
 Assert-CheckExists $report "Storage backend telemetry target evidence" "storage-backend"
 Assert-CheckExists $report "Data-flow storage transition target evidence" "data-flow"
+Assert-CheckExists $report "Monitoring threshold target evidence" "monitoring"
 Assert-CheckExists $report "Secret/certificate rotation target evidence" "security-hardening"
 Assert-CheckExists $report "Commercial integration target evidence" "commercial-integration"
 Assert-CheckExists $report "Commercial approval target evidence" "commercial-approval"
@@ -289,6 +293,40 @@ if (-not ([string] $dataFlowStoragePlanCheck[0].remediation.note).Contains("cred
 }
 if (-not ([string] $dataFlowStoragePlanCheck[0].remediation.note).Contains("object keys")) {
     throw "Data-flow storage transition target evidence remediation note must mention object-key exclusion."
+}
+$monitoringThresholdCheck = @($report.checks | Where-Object { $_.name -eq "Monitoring threshold target evidence" })
+if ($monitoringThresholdCheck.Count -ne 1) {
+    throw "Operations readiness report must contain one Monitoring threshold target evidence check."
+}
+if (-not ([string] $monitoringThresholdCheck[0].remediation.command).Contains("write-monitoring-threshold-evidence.ps1")) {
+    throw "Monitoring threshold target evidence remediation must point to write-monitoring-threshold-evidence.ps1."
+}
+if ($monitoringThresholdCheck[0].remediation.workflow -ne ".github/workflows/manual-monitoring-threshold-evidence.yml") {
+    throw "Monitoring threshold target evidence remediation workflow must point to manual-monitoring-threshold-evidence.yml."
+}
+if (-not ([string] $monitoringThresholdCheck[0].remediation.workflowCommand).Contains("gh workflow run manual-monitoring-threshold-evidence.yml")) {
+    throw "Monitoring threshold target evidence remediation workflow command must dispatch manual-monitoring-threshold-evidence.yml."
+}
+if (-not ([string] $monitoringThresholdCheck[0].remediation.workflowCommand).Contains("confirm_alertmanager_routes_reviewed=true")) {
+    throw "Monitoring threshold target evidence workflow command must confirm Alertmanager route review."
+}
+if (-not ([string] $monitoringThresholdCheck[0].remediation.workflowCommand).Contains("confirm_target_baselines_reviewed=true")) {
+    throw "Monitoring threshold target evidence workflow command must confirm target baseline review."
+}
+if (-not ([string] $monitoringThresholdCheck[0].requiredEvidence).Contains("target Prometheus/Grafana/Alertmanager/tenant baseline review")) {
+    throw "Monitoring threshold target evidence must require target monitoring stack review."
+}
+if (-not ([string] $monitoringThresholdCheck[0].remediation.note).Contains("ReviewCompletedAt")) {
+    throw "Monitoring threshold target evidence remediation note must mention review window ordering."
+}
+if (-not ([string] $monitoringThresholdCheck[0].remediation.note).Contains("typed counts")) {
+    throw "Monitoring threshold target evidence remediation note must mention typed counts."
+}
+if (-not ([string] $monitoringThresholdCheck[0].remediation.note).Contains("Alertmanager receiver secrets")) {
+    throw "Monitoring threshold target evidence remediation note must mention Alertmanager receiver secret exclusion."
+}
+if (-not ([string] $monitoringThresholdCheck[0].remediation.note).Contains("raw tenant object keys")) {
+    throw "Monitoring threshold target evidence remediation note must mention raw tenant object key exclusion."
 }
 $secretRotationCheck = @($report.checks | Where-Object { $_.name -eq "Secret/certificate rotation target evidence" })
 if ($secretRotationCheck.Count -ne 1) {
@@ -554,6 +592,7 @@ Assert-Contains $markdown "Storage expansion finalizer live evidence" "Operation
 Assert-Contains $markdown "Kubernetes DR finalizer live evidence" "Operations readiness markdown"
 Assert-Contains $markdown "Security evidence finalizer report" "Operations readiness markdown"
 Assert-Contains $markdown "Storage backend telemetry target evidence" "Operations readiness markdown"
+Assert-Contains $markdown "Monitoring threshold target evidence" "Operations readiness markdown"
 Assert-Contains $markdown "Secret/certificate rotation target evidence" "Operations readiness markdown"
 Assert-Contains $markdown "Commercial integration target evidence" "Operations readiness markdown"
 Assert-Contains $markdown "Commercial approval target evidence" "Operations readiness markdown"

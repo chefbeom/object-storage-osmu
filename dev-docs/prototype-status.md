@@ -38,12 +38,13 @@ Last updated: 2026-06-21 KST
 - Enterprise auth implemented locally: enterprise auth plan, OIDC callback, LDAP bind/search, claim preview, admin-approved JIT, and scope-out evidence path.
 - Data-flow analytics implemented locally: detailed/daily/materialized/monthly/stored monthly flows, chargeback rollup, retention/run controls, and data-flow storage transition plan with target query-plan evidence contract.
 - Commercial workflow implemented locally: pricing policy proposal, internal chargeback preview, payment-provider handoff outbox/history, adapter retry state, webhook/Slack/EMAIL SMTP relay safeguards, commercial integration evidence writer, and commercial approval evidence writer.
-- Operations evidence chain implemented locally: storage backend telemetry, secret rotation, commercial integration, commercial approval, enterprise auth smoke or scope-out, operations handoff package, readiness artifact import, evidence plan, guarded invocation, workflow run id plan, artifact collection plan, dispatch preflight, readiness convergence, Kubernetes operations report sync, and finalizer handoff.
+- Operations evidence chain implemented locally: storage backend telemetry, monitoring threshold evidence, secret rotation, commercial integration, commercial approval, enterprise auth smoke or scope-out, operations handoff package, readiness artifact import, evidence plan, guarded invocation, workflow run id plan, artifact collection plan, dispatch preflight, readiness convergence, Kubernetes operations report sync, and finalizer handoff.
 - Deployment draft: Docker Compose, Kubernetes manifests, Helm chart, NetworkPolicy, non-root security contexts, TLS ingress, Prometheus scrape/dashboards/alerts, ServiceMonitor/PrometheusRule drafts, secret/certificate rotation policy, and backup/restore drill draft.
 
 ## Known External Blockers
 
 - Target-environment storage backend telemetry evidence must be collected from the real MinIO/Kubernetes environment.
+- Target monitoring threshold evidence must be collected after Prometheus rules, Grafana dashboards, Alertmanager routes, incident routing, and tenant baselines are reviewed.
 - Target secret/certificate rotation evidence must be collected from the real environment.
 - Target commercial integration and commercial approval evidence must be collected before production/B2B readiness can be claimed.
 - Enterprise auth target smoke evidence must pass, or an approved scope-out must be recorded.
@@ -62,7 +63,7 @@ Last updated: 2026-06-21 KST
 
 ## Next Best Work
 
-1. Production operations evidence chain: close storage backend telemetry, secret rotation, commercial integration, commercial approval, enterprise auth smoke or scope-out, operations handoff package, convergence, and Kubernetes operations report sync.
+1. Production operations evidence chain: close storage backend telemetry, monitoring threshold, secret rotation, commercial integration, commercial approval, enterprise auth smoke or scope-out, operations handoff package, convergence, and Kubernetes operations report sync.
 2. Data-flow storage transition plan: connect MariaDB partition or dual-write candidate decisions to target query-plan evidence, without storing raw SQL, raw EXPLAIN, credentials, or customer data.
 3. Commercial integration/approval target evidence: collect sanitized target snapshots and final approval references.
 4. Enterprise auth target smoke: collect target IdP/directory smoke evidence or explicit approved scope-out.

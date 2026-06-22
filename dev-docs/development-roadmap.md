@@ -62,6 +62,7 @@ AWS 문서의 세부 checksum negotiation, 드문 header 조합, 정확한 오�
 필수 evidence:
 
 - storage backend telemetry `result=passed`
+- monitoring threshold evidence `result=passed`
 - secret/certificate rotation `result=passed`
 - Kubernetes HA/DR readiness `result=passed`
 - Kubernetes DR finalizer `result=ready`
