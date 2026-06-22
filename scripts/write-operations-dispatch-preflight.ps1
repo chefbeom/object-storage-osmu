@@ -147,6 +147,19 @@ function Get-InputValuePreview([string] $Parameter, [string] $Value) {
     return $Value
 }
 
+function Test-SafeInputValue([string] $Value) {
+    if ([string]::IsNullOrWhiteSpace($Value)) {
+        return $true
+    }
+    $unsafeFragments = @("`r", "`n", ";", "&&", "||", "|", "'", '"', '`', '$(', '@(')
+    foreach ($fragment in $unsafeFragments) {
+        if ($Value.Contains($fragment)) {
+            return $false
+        }
+    }
+    return -not ($Value -match '(^|\s)(\d|\*)?>{1,2}(\s|$)')
+}
+
 function Get-InputCommandPart([string] $Parameter, [string] $PlaceholderName, [string] $Value) {
     $valueForCommand = if ($Parameter -eq "AdminPassword") { "<redacted>" } else { $Value }
     if ($Parameter -eq "Placeholder") {
@@ -320,6 +333,7 @@ $needsKubeconfig = $false
 $needsApproval = $false
 $missingInputCount = 0
 $ambiguousInputCount = 0
+$unsafeInputCount = 0
 $selectedOrders = New-Object System.Collections.Generic.List[int]
 $commandParts = New-Object System.Collections.Generic.List[string]
 $commandParts.Add("powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\invoke-operations-evidence-plan.ps1")
@@ -361,6 +375,10 @@ foreach ($action in @($selectedActions)) {
         if (-not $supplied) {
             $missingInputCount++
         }
+        $safeValue = (-not $supplied) -or (Test-SafeInputValue $value)
+        if (-not $safeValue) {
+            $unsafeInputCount++
+        }
         if (Get-Bool $input "ambiguousRepeatedPlaceholder") {
             $ambiguousInputCount++
         }
@@ -369,6 +387,7 @@ foreach ($action in @($selectedActions)) {
             placeholder = $placeholderName
             parameter = $parameter
             supplied = $supplied
+            safeValue = $safeValue
             valuePreview = Get-InputValuePreview $parameter $value
             ambiguousRepeatedPlaceholder = Get-Bool $input "ambiguousRepeatedPlaceholder"
             note = Get-Text $input "note"
@@ -410,6 +429,13 @@ if ($missingInputCount -eq 0) {
 }
 else {
     Add-Check $checks "REQUIRED_INPUTS_SUPPLIED" "fail" "$missingInputCount required placeholder value(s) are missing."
+}
+
+if ($unsafeInputCount -eq 0) {
+    Add-Check $checks "SAFE_INPUT_VALUES" "pass" "All supplied placeholder values pass the invocation command guard."
+}
+else {
+    Add-Check $checks "SAFE_INPUT_VALUES" "fail" "$unsafeInputCount supplied placeholder value(s) would fail the invocation command guard."
 }
 
 foreach ($input in @($requiredInputs)) {
@@ -467,6 +493,7 @@ $report = [ordered]@{
     requiredInputCount = $requiredInputs.Count
     missingInputCount = $missingInputCount
     ambiguousInputCount = $ambiguousInputCount
+    unsafeInputCount = $unsafeInputCount
     requiredGitHubSecrets = @($requiredSecrets)
     workflowFiles = @($workflowFiles)
     checks = @($checks)
@@ -489,6 +516,7 @@ $markdownLines = @(
     "",
     "- Selected actions: $($report.selectedActionCount)",
     "- Missing inputs: $missingInputCount",
+    "- Unsafe inputs: $unsafeInputCount",
     "- Failed checks: $failedCheckCount",
     "- Warning checks: $warningCheckCount",
     "- Required GitHub secrets: $(if ($requiredSecrets.Count -gt 0) { @($requiredSecrets) -join ', ' } else { 'none detected' })",
@@ -518,7 +546,7 @@ if ($requiredInputs.Count -eq 0) {
 }
 else {
     foreach ($input in $requiredInputs) {
-        $markdownLines += "- action $($input.actionOrder): $($input.parameter) for $($input.placeholder) supplied=$($input.supplied)"
+        $markdownLines += "- action $($input.actionOrder): $($input.parameter) for $($input.placeholder) supplied=$($input.supplied) safe=$($input.safeValue)"
     }
 }
 

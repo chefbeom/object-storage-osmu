@@ -184,7 +184,7 @@ function Test-SafeCommand([string] $Command) {
     }
     $trimmed = $Command.Trim()
     $lower = $trimmed.ToLowerInvariant()
-    $unsafeFragments = @("`r", "`n", ";", "&&", "||", "|", '`', '$(', '@(')
+    $unsafeFragments = @("`r", "`n", ";", "&&", "||", "|", "'", '"', '`', '$(', '@(')
     foreach ($fragment in $unsafeFragments) {
         if ($trimmed.Contains($fragment)) {
             return $false

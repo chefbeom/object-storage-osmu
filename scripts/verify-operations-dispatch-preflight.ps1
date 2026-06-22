@@ -52,6 +52,8 @@ $missingJsonPath = Join-Path $resolvedOutputDirectory "missing-preflight.json"
 $missingMarkdownPath = Join-Path $resolvedOutputDirectory "missing-preflight.md"
 $readyJsonPath = Join-Path $resolvedOutputDirectory "ready-preflight.json"
 $readyMarkdownPath = Join-Path $resolvedOutputDirectory "ready-preflight.md"
+$unsafeJsonPath = Join-Path $resolvedOutputDirectory "unsafe-preflight.json"
+$unsafeMarkdownPath = Join-Path $resolvedOutputDirectory "unsafe-preflight.md"
 
 Write-JsonFixture $unblockPlanPath ([ordered]@{
     formatVersion = "osmu.operations-invocation-unblock-plan.v1"
@@ -158,6 +160,7 @@ Assert-Equal $missingReport.formatVersion "osmu.operations-dispatch-preflight.v1
 Assert-Equal $missingReport.result "action-required" "missing result"
 Assert-Equal $missingReport.selectedActionCount 3 "missing selected action count"
 Assert-Equal $missingReport.missingInputCount 1 "missing input count"
+Assert-Equal $missingReport.unsafeInputCount 0 "missing unsafe input count"
 Assert-True ($missingReport.failedCheckCount -ge 3) "expected missing preflight failures"
 Assert-Contains ($missingReport.checks | ConvertTo-Json -Depth 8) "KUBECONFIG_SECRET_CONFIRMED" "missing checks"
 Assert-Contains $missingMarkdown "Result: action-required" "missing markdown"
@@ -178,6 +181,7 @@ $readyMarkdown = Get-Content -Raw -LiteralPath $readyMarkdownPath
 Assert-Equal $readyReport.result "ready" "ready result"
 Assert-Equal $readyReport.failedCheckCount 0 "ready failed checks"
 Assert-Equal $readyReport.missingInputCount 0 "ready missing inputs"
+Assert-Equal $readyReport.unsafeInputCount 0 "ready unsafe inputs"
 Assert-True $readyReport.needsKubeconfigSecretConfirmation "ready kubeconfig requirement"
 Assert-True $readyReport.needsOperatorApprovalConfirmation "ready approval requirement"
 Assert-Contains $readyReport.readyPlanCommand "-KubeconfigSecretConfirmed" "ready plan command"
@@ -203,6 +207,27 @@ Assert-True (-not (@($enterpriseAuthWorkflow.requiredSecrets) -contains "OSMU_KU
 Assert-True (@($enterpriseAuthWorkflow.requiredSecrets) -contains "OSMU_ENTERPRISE_AUTH_ADMIN_PASSWORD") "enterprise auth workflow should require admin password when run_live=true"
 Assert-Contains $readyMarkdown "Result: ready" "ready markdown"
 
+& powershell -NoProfile -ExecutionPolicy Bypass -File $scriptPath `
+    -UnblockPlanPath $unblockPlanPath `
+    -JsonOutputPath $unsafeJsonPath `
+    -MarkdownOutputPath $unsafeMarkdownPath `
+    -KubeconfigSecretConfirmed `
+    -ConfirmOperatorApproval `
+    -BackupTimestamp "20260616T010203Z | Write-Host unsafe" | Out-Host
+if ($LASTEXITCODE -ne 0) {
+    throw "write-operations-dispatch-preflight.ps1 unsafe fixture failed with exit code $LASTEXITCODE."
+}
+
+$unsafeReport = Get-Content -Raw -LiteralPath $unsafeJsonPath | ConvertFrom-Json
+$unsafeMarkdown = Get-Content -Raw -LiteralPath $unsafeMarkdownPath
+Assert-Equal $unsafeReport.result "action-required" "unsafe result"
+Assert-Equal $unsafeReport.unsafeInputCount 1 "unsafe input count"
+Assert-True ($unsafeReport.failedCheckCount -ge 1) "unsafe preflight should fail"
+Assert-True ([string]::IsNullOrWhiteSpace($unsafeReport.readyPlanCommand)) "unsafe ready plan command should be blank"
+Assert-Contains ($unsafeReport.checks | ConvertTo-Json -Depth 8) "SAFE_INPUT_VALUES" "unsafe checks"
+Assert-Contains $unsafeMarkdown "Unsafe inputs: 1" "unsafe markdown"
+
 Write-Host "Operations dispatch preflight verified."
 Write-Host "Missing report: $missingJsonPath"
 Write-Host "Ready report: $readyJsonPath"
+Write-Host "Unsafe report: $unsafeJsonPath"
