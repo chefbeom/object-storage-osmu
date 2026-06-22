@@ -861,6 +861,7 @@ $promotedRoot = Join-Path $resolvedOutputDirectory "promoted"
 $invalidRoot = Join-Path $resolvedOutputDirectory "invalid-source"
 $weakStorageExpansionRoot = Join-Path $resolvedOutputDirectory "weak-storage-expansion-source"
 $weakKubernetesDrRoot = Join-Path $resolvedOutputDirectory "weak-kubernetes-dr-source"
+$weakKubernetesDrStepsRoot = Join-Path $resolvedOutputDirectory "weak-kubernetes-dr-steps-source"
 $weakIamRbacRoot = Join-Path $resolvedOutputDirectory "weak-iam-rbac-source"
 $weakIamRbacStatusRoot = Join-Path $resolvedOutputDirectory "weak-iam-rbac-status-source"
 $weakSecurityFinalizerRoot = Join-Path $resolvedOutputDirectory "weak-security-finalizer-source"
@@ -1570,7 +1571,7 @@ Assert-True ($haDrReadinessEntry.Count -eq 1) "HA/DR readiness import entry miss
 Assert-True (([string] $haDrReadinessEntry[0].detail).Contains("checkCount=12")) "HA/DR readiness import entry should include strict check validation detail."
 $kubernetesDrEntry = @($report.entries | Where-Object { $_.group -eq "kubernetes-dr" -and $_.fileName -eq "latest-kubernetes-dr-finalize.json" })
 Assert-True ($kubernetesDrEntry.Count -eq 1) "Kubernetes DR finalizer import entry missing."
-Assert-True (([string] $kubernetesDrEntry[0].detail).Contains("kubernetes-dr-finalize-verified") -and ([string] $kubernetesDrEntry[0].detail).Contains("backupTimestamp=20260622T010203Z")) "Kubernetes DR finalizer import entry should include strict ready validation detail."
+Assert-True (([string] $kubernetesDrEntry[0].detail).Contains("kubernetes-dr-finalize-verified") -and ([string] $kubernetesDrEntry[0].detail).Contains("commandCount=3") -and ([string] $kubernetesDrEntry[0].detail).Contains("stepCount=3") -and ([string] $kubernetesDrEntry[0].detail).Contains("backupTimestamp=20260622T010203Z")) "Kubernetes DR finalizer import entry should include strict ready command, step, and timestamp validation detail."
 $iamRbacEntry = @($report.entries | Where-Object { $_.group -eq "iam-rbac" -and $_.fileName -eq "latest-iam-rbac-finalize.json" })
 Assert-True ($iamRbacEntry.Count -eq 1) "IAM/RBAC finalizer import entry missing."
 Assert-True (([string] $iamRbacEntry[0].detail).Contains("iam-rbac-static-passed") -and ([string] $iamRbacEntry[0].detail).Contains("stepCount=2")) "IAM/RBAC finalizer import entry should include strict status and step validation detail."
@@ -1714,6 +1715,42 @@ $weakKubernetesDrReport = Get-Content -Raw -LiteralPath $weakKubernetesDrJson | 
 Assert-True ($weakKubernetesDrReport.result -eq "failed") "Weak Kubernetes DR import report should be failed."
 Assert-True (-not (Test-Path -LiteralPath (Join-Path $weakKubernetesDrOutput "latest-kubernetes-dr-finalize.json"))) "Weak Kubernetes DR evidence must not be promoted."
 Assert-True (($weakKubernetesDrReport.entries | ConvertTo-Json -Depth 8).Contains("backupTimestamp=YYYYMMDDTHHMMSSZ")) "Weak Kubernetes DR report should describe placeholder backup timestamp."
+
+$weakKubernetesDrStepsEvidence = New-ReadyKubernetesDrFinalize
+$weakKubernetesDrStepsEvidence["steps"] = @($weakKubernetesDrStepsEvidence["steps"]) + [ordered]@{
+    name = "Unexpected Kubernetes DR cleanup"
+    script = ".\scripts\cleanup-kubernetes-dr-drill.ps1"
+    arguments = @()
+    command = "pwsh -NoProfile -ExecutionPolicy Bypass -File .\scripts\cleanup-kubernetes-dr-drill.ps1"
+    result = "failed"
+    exitCode = 1
+    output = "cleanup failed"
+    notes = "failed extra finalizer step must not be ignored"
+}
+Write-JsonEvidence (Join-Path $weakKubernetesDrStepsRoot "latest-kubernetes-dr-finalize.json") $weakKubernetesDrStepsEvidence
+Write-TextEvidence (Join-Path $weakKubernetesDrStepsRoot "latest-kubernetes-dr-finalize.md") "# Weak Kubernetes DR steps"
+$weakKubernetesDrStepsOutput = Join-Path $resolvedOutputDirectory "weak-kubernetes-dr-steps-promoted"
+$weakKubernetesDrStepsJson = Join-Path $resolvedOutputDirectory "weak-kubernetes-dr-steps-import.json"
+$weakKubernetesDrStepsMarkdown = Join-Path $resolvedOutputDirectory "weak-kubernetes-dr-steps-import.md"
+$previousErrorActionPreference = $ErrorActionPreference
+$ErrorActionPreference = "Continue"
+try {
+    $weakKubernetesDrStepsOutputLines = & powershell -NoProfile -ExecutionPolicy Bypass -File $importScript `
+        -KubernetesDrArtifactPath $weakKubernetesDrStepsRoot `
+        -OutputDirectory $weakKubernetesDrStepsOutput `
+        -JsonOutputPath $weakKubernetesDrStepsJson `
+        -MarkdownOutputPath $weakKubernetesDrStepsMarkdown 2>&1
+    $weakKubernetesDrStepsExitCode = $LASTEXITCODE
+}
+finally {
+    $ErrorActionPreference = $previousErrorActionPreference
+}
+Assert-True ($weakKubernetesDrStepsExitCode -ne 0) "Kubernetes DR finalizer with a failed extra step should fail import."
+Assert-True (Test-Path -LiteralPath $weakKubernetesDrStepsJson) "Weak Kubernetes DR steps import report should still be written."
+$weakKubernetesDrStepsReport = Get-Content -Raw -LiteralPath $weakKubernetesDrStepsJson | ConvertFrom-Json
+Assert-True ($weakKubernetesDrStepsReport.result -eq "failed") "Weak Kubernetes DR steps import report should be failed."
+Assert-True (-not (Test-Path -LiteralPath (Join-Path $weakKubernetesDrStepsOutput "latest-kubernetes-dr-finalize.json"))) "Weak Kubernetes DR steps evidence must not be promoted."
+Assert-True (($weakKubernetesDrStepsReport.entries | ConvertTo-Json -Depth 8).Contains("steps.Unexpected Kubernetes DR cleanup result=failed exitCode=1")) "Weak Kubernetes DR steps report should describe the failed extra step."
 
 Write-JsonEvidence (Join-Path $weakIamRbacRoot "latest-iam-rbac-finalize.json") (New-PassedIamRbacFinalize -OmitKubernetesStep $true)
 Write-TextEvidence (Join-Path $weakIamRbacRoot "latest-iam-rbac-finalize.md") "# Weak IAM/RBAC"

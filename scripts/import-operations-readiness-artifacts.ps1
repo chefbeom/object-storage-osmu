@@ -692,6 +692,37 @@ function Test-KubernetesDrFinalizeJson([string] $Path) {
         }
     }
 
+    $generatedAt = [string] (Get-JsonProperty $json "generatedAt")
+    $startedAt = [string] (Get-JsonProperty $json "startedAt")
+    $completedAt = [string] (Get-JsonProperty $json "completedAt")
+    $parsedGeneratedAt = [DateTimeOffset]::MinValue
+    $parsedStartedAt = [DateTimeOffset]::MinValue
+    $parsedCompletedAt = [DateTimeOffset]::MinValue
+    if ([string]::IsNullOrWhiteSpace($generatedAt) -or -not [DateTimeOffset]::TryParse($generatedAt, [ref] $parsedGeneratedAt)) {
+        return [pscustomobject]@{
+            passed = $false
+            detail = "generatedAt=$generatedAt expected ISO timestamp"
+        }
+    }
+    if ([string]::IsNullOrWhiteSpace($startedAt) -or -not [DateTimeOffset]::TryParse($startedAt, [ref] $parsedStartedAt)) {
+        return [pscustomobject]@{
+            passed = $false
+            detail = "startedAt=$startedAt expected ISO timestamp"
+        }
+    }
+    if ([string]::IsNullOrWhiteSpace($completedAt) -or -not [DateTimeOffset]::TryParse($completedAt, [ref] $parsedCompletedAt)) {
+        return [pscustomobject]@{
+            passed = $false
+            detail = "completedAt=$completedAt expected ISO timestamp"
+        }
+    }
+    if ($parsedCompletedAt -lt $parsedStartedAt) {
+        return [pscustomobject]@{
+            passed = $false
+            detail = "completedAt must be same as or later than startedAt"
+        }
+    }
+
     foreach ($flagName in @("serverDryRunOnly", "confirmRestore", "bootstrapDrBucket", "verifyDrBucketImmutability", "transferArtifacts", "runRestoreSmoke", "writeEvidenceRequest", "submitEvidence", "runS3ClientSmoke")) {
         $flag = Get-RequiredJsonBool $json $flagName
         if (-not $flag.valid) {
@@ -729,30 +760,90 @@ function Test-KubernetesDrFinalizeJson([string] $Path) {
         }
     }
 
-    $stepsObject = Get-JsonProperty $json "steps"
-    $steps = if ($null -eq $stepsObject) { @() } else { @($stepsObject) }
-    foreach ($requiredStep in @("Kubernetes DR drill wrapper", "Kubernetes restore smoke", "Kubernetes DR evidence request")) {
-        $match = @($steps | Where-Object { [string] (Get-JsonProperty $_ "name") -eq $requiredStep })
-        if ($match.Count -ne 1) {
+    $requiredStepContracts = @(
+        [pscustomobject]@{ name = "Kubernetes DR drill wrapper"; script = ".\scripts\run-kubernetes-dr-drill.ps1"; flag = "-ConfirmRestore" },
+        [pscustomobject]@{ name = "Kubernetes restore smoke"; script = ".\scripts\verify-kubernetes-restore-smoke.ps1"; flag = "-RunS3ClientSmoke" },
+        [pscustomobject]@{ name = "Kubernetes DR evidence request"; script = ".\scripts\write-kubernetes-dr-evidence-request.ps1"; flag = "-Submit" }
+    )
+
+    $commandsObject = Get-JsonProperty $json "commands"
+    $commands = if ($null -eq $commandsObject) { @() } else { @($commandsObject) }
+    if ($commands.Count -lt $requiredStepContracts.Count) {
+        return [pscustomobject]@{
+            passed = $false
+            detail = "commandCount=$($commands.Count) expected at least $($requiredStepContracts.Count)"
+        }
+    }
+    foreach ($requiredStep in $requiredStepContracts) {
+        $commandMatch = @($commands | Where-Object { [string] (Get-JsonProperty $_ "name") -eq $requiredStep.name })
+        if ($commandMatch.Count -ne 1) {
             return [pscustomobject]@{
                 passed = $false
-                detail = "steps.$requiredStep missing"
+                detail = "commands.$($requiredStep.name) missing"
             }
         }
 
-        $stepResult = [string] (Get-JsonProperty $match[0] "result")
-        $exitCode = Get-RequiredJsonInt $match[0] "exitCode"
+        $script = [string] (Get-JsonProperty $commandMatch[0] "script")
+        $command = [string] (Get-JsonProperty $commandMatch[0] "command")
+        $arguments = @((Get-JsonProperty $commandMatch[0] "arguments"))
+        if ($script -ne $requiredStep.script -or [string]::IsNullOrWhiteSpace($command) -or -not ($arguments -contains $requiredStep.flag) -or -not $command.Contains($requiredStep.flag)) {
+            return [pscustomobject]@{
+                passed = $false
+                detail = "commands.$($requiredStep.name) script=$script flag=$($requiredStep.flag) expected command and arguments"
+            }
+        }
+    }
+
+    $stepsObject = Get-JsonProperty $json "steps"
+    $steps = if ($null -eq $stepsObject) { @() } else { @($stepsObject) }
+    if ($steps.Count -lt $requiredStepContracts.Count) {
+        return [pscustomobject]@{
+            passed = $false
+            detail = "stepCount=$($steps.Count) expected at least $($requiredStepContracts.Count)"
+        }
+    }
+    foreach ($step in $steps) {
+        $name = [string] (Get-JsonProperty $step "name")
+        $script = [string] (Get-JsonProperty $step "script")
+        $command = [string] (Get-JsonProperty $step "command")
+        $stepResult = [string] (Get-JsonProperty $step "result")
+        $exitCode = Get-RequiredJsonInt $step "exitCode"
+        if ([string]::IsNullOrWhiteSpace($name) -or [string]::IsNullOrWhiteSpace($script) -or [string]::IsNullOrWhiteSpace($command)) {
+            return [pscustomobject]@{
+                passed = $false
+                detail = "steps row missing name/script/command"
+            }
+        }
         if ($stepResult -ne "passed" -or -not $exitCode.valid -or [int64] $exitCode.value -ne 0) {
             return [pscustomobject]@{
                 passed = $false
-                detail = "steps.$requiredStep result=$stepResult exitCode=$($exitCode.raw) expected passed and integer 0"
+                detail = "steps.$name result=$stepResult exitCode=$($exitCode.raw) expected passed and integer 0"
+            }
+        }
+    }
+    foreach ($requiredStep in $requiredStepContracts) {
+        $match = @($steps | Where-Object { [string] (Get-JsonProperty $_ "name") -eq $requiredStep.name })
+        if ($match.Count -ne 1) {
+            return [pscustomobject]@{
+                passed = $false
+                detail = "steps.$($requiredStep.name) missing"
+            }
+        }
+
+        $script = [string] (Get-JsonProperty $match[0] "script")
+        $command = [string] (Get-JsonProperty $match[0] "command")
+        $arguments = @((Get-JsonProperty $match[0] "arguments"))
+        if ($script -ne $requiredStep.script -or -not ($arguments -contains $requiredStep.flag) -or -not $command.Contains($requiredStep.flag)) {
+            return [pscustomobject]@{
+                passed = $false
+                detail = "steps.$($requiredStep.name) script=$script flag=$($requiredStep.flag) expected command and arguments"
             }
         }
     }
 
     return [pscustomobject]@{
         passed = $true
-        detail = "formatVersion=$formatVersion result=$result status=$status stepCount=$($steps.Count) backupTimestamp=$backupTimestamp"
+        detail = "formatVersion=$formatVersion result=$result status=$status commandCount=$($commands.Count) stepCount=$($steps.Count) backupTimestamp=$backupTimestamp"
     }
 }
 
