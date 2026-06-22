@@ -1177,6 +1177,16 @@
           query-plan {{ operationsHandoffPackageDataFlowQueryPlanSnapshot.result || '-' }}
         </small>
         <small
+          v-if="operationsHandoffPackageDataFlowStorageTransitionRunbookSnapshot.result"
+          data-testid="readiness-handoff-package-data-flow-transition-runbook-snapshot-summary"
+        >
+          Data-flow runbook snapshot:
+          {{ operationsHandoffPackageDataFlowStorageTransitionRunbookSnapshot.result }} /
+          plan {{ operationsHandoffPackageDataFlowStorageTransitionRunbookSnapshot.storagePlanResult || '-' }} /
+          store {{ operationsHandoffPackageDataFlowStorageTransitionRunbookSnapshot.candidateStore || '-' }} /
+          failures {{ operationsHandoffPackageDataFlowStorageTransitionRunbookSnapshot.failureCount || 0 }}
+        </small>
+        <small
           v-if="operationsHandoffPackageCommercialIntegrationSnapshot.result"
           data-testid="readiness-handoff-package-commercial-integration-snapshot-summary"
         >
@@ -2943,6 +2953,10 @@ const operationsHandoffPackageDataFlowStoragePlanSnapshot = computed(() => (
 
 const operationsHandoffPackageDataFlowQueryPlanSnapshot = computed(() => (
   operationsHandoffPackageDataFlowStoragePlanSnapshot.value?.queryPlanEvidence || {}
+))
+
+const operationsHandoffPackageDataFlowStorageTransitionRunbookSnapshot = computed(() => (
+  operationsHandoffPackage.value?.dataFlowStorageTransitionRunbookSnapshot || {}
 ))
 
 const operationsHandoffPackageCommercialIntegrationSnapshot = computed(() => (

@@ -1111,6 +1111,32 @@ class AdminDashboardSummaryControllerTest {
                               },
                               "topPendingChecks": []
                             },
+                            "dataFlowStorageTransitionRunbook": {
+                              "provided": true,
+                              "path": ".osmu-run/latest-data-flow-storage-transition-runbook-evidence.json",
+                              "parsed": true,
+                              "formatVersion": "osmu.data-flow-storage-transition-runbook-evidence.v1",
+                              "expectedFormatVersion": "osmu.data-flow-storage-transition-runbook-evidence.v1",
+                              "validFormatVersion": true,
+                              "result": "passed",
+                              "passed": true,
+                              "environmentName": "pilot-prod",
+                              "targetCluster": "customer-cluster-a",
+                              "operatorName": "ops-admin",
+                              "evidenceRef": "latest-data-flow-storage-transition-runbook-passed",
+                              "storagePlanResult": "passed",
+                              "candidateStore": "MARIADB_PARTITION",
+                              "targetP95QueryLatencyMs": 500,
+                              "failureCount": 0,
+                              "checkCount": 24,
+                              "confirmations": {
+                                "backfillRehearsed": true,
+                                "rollbackRehearsed": true,
+                                "reconciliationPassed": true,
+                                "noSecretValues": true
+                              },
+                              "topFailedChecks": []
+                            },
                             "commercialIntegration": {
                               "provided": true,
                               "path": ".osmu-run/latest-commercial-integration-evidence.json",
@@ -1891,7 +1917,7 @@ class AdminDashboardSummaryControllerTest {
                 .andExpect(jsonPath("$.data.items[*].message").value(hasItem("Operations artifact collection plan is action-required: artifacts=7, missingRequired=5.")))
                 .andExpect(jsonPath("$.data.items[*].message").value(hasItem("Operations readiness finalizer is pending: readinessResult=pending, failedCount=0.")))
                 .andExpect(jsonPath("$.data.items[*].message").value(hasItem("Operations evidence handoff is blocked: next=resolve-invocation-blockers, blockedActions=5, missingRuns=6, missingArtifacts=5, finalizerGaps=1.")))
-                .andExpect(jsonPath("$.data.items[*].message").value(hasItem("Data-flow storage plan is plan-ready-execute-required: store=MARIADB_PARTITION, pending=2/3.")))
+                .andExpect(jsonPath("$.data.items[*].message").value(hasItem("Data-flow storage plan is plan-ready-execute-required: store=MARIADB_PARTITION, pending=2/4.")))
                 .andExpect(jsonPath("$.data.items[*].message").value(hasItem("MinIO bucket CORS verification is failed: rules=1, exposedHeaders=2, failures=1, planned=0.")))
                 .andExpect(jsonPath("$.data.items[*].message").value(hasItem("Operations readiness convergence is action-required: bottleneck=resolve-invocation-blockers, stages=1/7, finalizerGaps=1.")))
                 .andExpect(jsonPath("$.data.items[*].message").value(hasItem("Kubernetes operations report sync is planned: namespace=osmu, configMap=osmu-operations-reports, failedCount=0.")))
@@ -2052,6 +2078,13 @@ class AdminDashboardSummaryControllerTest {
                 .andExpect(jsonPath("$.data.operationsHandoffPackage.dataFlowStoragePlanSnapshot.pendingCount").value(0))
                 .andExpect(jsonPath("$.data.operationsHandoffPackage.dataFlowStoragePlanSnapshot.queryPlanEvidence.result").value("passed"))
                 .andExpect(jsonPath("$.data.operationsHandoffPackage.dataFlowStoragePlanSnapshot.queryPlanEvidence.failedCount").value(0))
+                .andExpect(jsonPath("$.data.operationsHandoffPackage.dataFlowStorageTransitionRunbookSnapshot.result").value("passed"))
+                .andExpect(jsonPath("$.data.operationsHandoffPackage.dataFlowStorageTransitionRunbookSnapshot.storagePlanResult").value("passed"))
+                .andExpect(jsonPath("$.data.operationsHandoffPackage.dataFlowStorageTransitionRunbookSnapshot.candidateStore").value("MARIADB_PARTITION"))
+                .andExpect(jsonPath("$.data.operationsHandoffPackage.dataFlowStorageTransitionRunbookSnapshot.targetP95QueryLatencyMs").value(500))
+                .andExpect(jsonPath("$.data.operationsHandoffPackage.dataFlowStorageTransitionRunbookSnapshot.failureCount").value(0))
+                .andExpect(jsonPath("$.data.operationsHandoffPackage.dataFlowStorageTransitionRunbookSnapshot.confirmations.backfillRehearsed").value(true))
+                .andExpect(jsonPath("$.data.operationsHandoffPackage.dataFlowStorageTransitionRunbookSnapshot.confirmations.rollbackRehearsed").value(true))
                 .andExpect(jsonPath("$.data.operationsHandoffPackage.commercialIntegrationSnapshot.result").value("passed"))
                 .andExpect(jsonPath("$.data.operationsHandoffPackage.commercialIntegrationSnapshot.requiredVerifiedCount").value(8))
                 .andExpect(jsonPath("$.data.operationsHandoffPackage.commercialIntegrationSnapshot.paymentProviderAdapterReadinessStatus").value("WEBHOOK_PROFILE_READY"))

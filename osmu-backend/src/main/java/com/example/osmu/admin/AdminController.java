@@ -2356,6 +2356,11 @@ public class AdminController {
         JsonNode targetEvidenceSnapshots = packageReport.path("targetEvidenceSnapshots");
         DashboardDataFlowStoragePlanResponse dataFlowStoragePlanSnapshot =
                 dataFlowStoragePlanSnapshotFromNode(targetEvidenceSnapshots.path("dataFlowStoragePlan"), false);
+        DashboardDataFlowStorageTransitionRunbookResponse dataFlowStorageTransitionRunbookSnapshot =
+                dataFlowStorageTransitionRunbookSnapshotFromNode(
+                        targetEvidenceSnapshots.path("dataFlowStorageTransitionRunbook"),
+                        false
+                );
         DashboardCommercialIntegrationEvidenceResponse commercialIntegrationSnapshot =
                 commercialIntegrationEvidenceSnapshotFromNode(targetEvidenceSnapshots.path("commercialIntegration"), false);
         DashboardCommercialApprovalEvidenceResponse commercialApprovalSnapshot =
@@ -2377,6 +2382,7 @@ public class AdminController {
                 readinessSnapshot,
                 convergenceSnapshot,
                 dataFlowStoragePlanSnapshot,
+                dataFlowStorageTransitionRunbookSnapshot,
                 commercialIntegrationSnapshot,
                 commercialApprovalSnapshot,
                 enterpriseAuthSmokeSnapshot,
@@ -2423,6 +2429,52 @@ public class AdminController {
                 jsonText(snapshot, "currentBottleneckCode"),
                 jsonText(snapshot, "currentBottleneckTitle"),
                 jsonInt(snapshot, "recommendedCommandCount")
+        );
+    }
+
+    private DashboardDataFlowStorageTransitionRunbookResponse dataFlowStorageTransitionRunbookSnapshotFromNode(
+            JsonNode snapshot,
+            boolean emptyWhenMissing
+    ) {
+        if (snapshot == null || snapshot.isMissingNode() || snapshot.isNull() || !snapshot.isObject()) {
+            if (!emptyWhenMissing) {
+                return null;
+            }
+            return DashboardDataFlowStorageTransitionRunbookResponse.empty();
+        }
+        java.util.ArrayList<DashboardDataFlowStorageTransitionRunbookCheckResponse> checks = new java.util.ArrayList<>();
+        JsonNode checkNodes = snapshot.path("topFailedChecks");
+        if (!checkNodes.isArray()) {
+            checkNodes = snapshot.path("checks");
+        }
+        if (checkNodes.isArray()) {
+            for (JsonNode check : checkNodes) {
+                checks.add(new DashboardDataFlowStorageTransitionRunbookCheckResponse(
+                        jsonText(check, "id"),
+                        jsonText(check, "name"),
+                        jsonText(check, "status"),
+                        jsonBoolean(check, "passed"),
+                        jsonText(check, "detail")
+                ));
+            }
+        }
+        JsonNode summary = snapshot.path("summary");
+        JsonNode planSnapshot = snapshot.path("dataFlowStoragePlanSnapshot");
+        return new DashboardDataFlowStorageTransitionRunbookResponse(
+                jsonText(snapshot, "result"),
+                jsonText(snapshot, "generatedAt"),
+                jsonText(snapshot, "environmentName"),
+                jsonText(snapshot, "targetCluster"),
+                jsonText(snapshot, "operatorName"),
+                jsonText(snapshot, "evidenceRef"),
+                firstNonBlank(jsonText(snapshot, "storagePlanResult"), jsonText(planSnapshot, "result")),
+                firstNonBlank(jsonText(snapshot, "candidateStore"), jsonText(planSnapshot, "candidateStore")),
+                Math.max(jsonInt(snapshot, "targetP95QueryLatencyMs"), jsonInt(planSnapshot, "targetP95QueryLatencyMs")),
+                Math.max(jsonInt(snapshot, "failureCount"), jsonInt(summary, "failureCount")),
+                Math.max(jsonInt(snapshot, "checkCount"), jsonInt(summary, "checkCount")),
+                Map.copyOf(jsonBooleanMap(snapshot.path("confirmations"))),
+                List.copyOf(checks),
+                jsonText(snapshot, "scopePolicy")
         );
     }
 

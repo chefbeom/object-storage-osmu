@@ -46,6 +46,7 @@ $scriptPath = Resolve-ProjectPath ".\scripts\write-operations-handoff-package.ps
 $readinessSnapshotPath = Join-Path $resolvedOutputDirectory "latest-operations-readiness.json"
 $convergenceSnapshotPath = Join-Path $resolvedOutputDirectory "latest-operations-readiness-convergence.json"
 $dataFlowStoragePlanPath = Join-Path $resolvedOutputDirectory "latest-data-flow-storage-plan.json"
+$dataFlowStorageTransitionRunbookPath = Join-Path $resolvedOutputDirectory "latest-data-flow-storage-transition-runbook-evidence.json"
 $commercialIntegrationPath = Join-Path $resolvedOutputDirectory "latest-commercial-integration-evidence.json"
 $commercialApprovalPath = Join-Path $resolvedOutputDirectory "latest-commercial-approval-evidence.json"
 $enterpriseAuthPath = Join-Path $resolvedOutputDirectory "latest-enterprise-auth-smoke.json"
@@ -132,6 +133,62 @@ $enterpriseAuthPath = Join-Path $resolvedOutputDirectory "latest-enterprise-auth
         }
     )
 } | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath $dataFlowStoragePlanPath -Encoding UTF8
+
+[ordered]@{
+    formatVersion = "osmu.data-flow-storage-transition-runbook-evidence.v1"
+    generatedAt = "2026-06-20T02:05:00Z"
+    result = "passed"
+    environmentName = "pilot-prod-self-test"
+    targetCluster = "customer-cluster-a"
+    operatorName = "ops-self-test"
+    evidenceRef = "latest-data-flow-storage-transition-runbook-passed-20260620"
+    dataFlowStoragePlanSnapshot = [ordered]@{
+        provided = $true
+        parsed = $true
+        formatVersion = "osmu.data-flow-storage-plan.v1"
+        result = "passed"
+        candidateStore = "MARIADB_PARTITION"
+        targetP95QueryLatencyMs = 500
+        pendingCount = 0
+        checkCount = 10
+    }
+    evidenceRefs = [ordered]@{
+        changeApproval = "CHG-2026-DATA-FLOW-STORAGE-RUNBOOK"
+        dataFlowStoragePlan = "latest-data-flow-storage-plan-passed-20260620"
+        backfill = "data-flow-backfill-rehearsal-20260620"
+        dualWriteOrPartitionToggle = "data-flow-dual-write-toggle-review-20260620"
+        rollback = "data-flow-rollback-rehearsal-20260620"
+        reconciliation = "data-flow-reconciliation-20260620"
+        dashboardCutover = "dashboard-cutover-review-20260620"
+        retentionDryRun = "retention-dry-run-20260620"
+    }
+    confirmations = [ordered]@{
+        backfillRehearsed = $true
+        dualWriteOrPartitionToggleReviewed = $true
+        rollbackRehearsed = $true
+        reconciliationPassed = $true
+        dashboardCutoverReviewed = $true
+        retentionDryRunReviewed = $true
+        noObjectKeysInAggregates = $true
+        noSecretValues = $true
+    }
+    summary = [ordered]@{
+        failureCount = 0
+        checkCount = 24
+    }
+    checks = @(
+        [ordered]@{
+            id = "data-flow-storage-plan-passed"
+            name = "Data-flow storage plan snapshot passed"
+            status = "PASS"
+            passed = $true
+            detail = "formatVersion=osmu.data-flow-storage-plan.v1; result=passed; candidateStore=MARIADB_PARTITION; pending=0; targetP95QueryLatencyMs=500"
+        }
+    )
+    decisionRule = "Production/B2B analytics storage transition requires result=passed."
+    scopePolicy = "OSMU operations analytics storage transition only. This is not AWS billing parity."
+    secretPolicy = "Evidence stores only external references and reduced summaries."
+} | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath $dataFlowStorageTransitionRunbookPath -Encoding UTF8
 
 [ordered]@{
     formatVersion = "osmu.commercial-integration-evidence.v1"
@@ -275,9 +332,11 @@ $enterpriseAuthPath = Join-Path $resolvedOutputDirectory "latest-enterprise-auth
     -OperationsReadinessRef "latest-operations-readiness-ready-20260620" `
     -OperationsConvergenceRef "latest-operations-readiness-convergence-ready-20260620" `
     -DataFlowStoragePlanEvidenceRef "latest-data-flow-storage-plan-passed-20260620" `
+    -DataFlowStorageTransitionRunbookEvidenceRef "latest-data-flow-storage-transition-runbook-passed-20260620" `
     -OperationsReadinessJsonPath $readinessSnapshotPath `
     -OperationsConvergenceJsonPath $convergenceSnapshotPath `
     -DataFlowStoragePlanJsonPath $dataFlowStoragePlanPath `
+    -DataFlowStorageTransitionRunbookJsonPath $dataFlowStorageTransitionRunbookPath `
     -SecretRotationEvidenceRef "latest-secret-rotation-evidence-passed-20260620" `
     -CommercialIntegrationEvidenceRef "latest-commercial-integration-evidence-passed-20260620" `
     -CommercialApprovalEvidenceRef "latest-commercial-approval-evidence-passed-20260620" `
@@ -305,6 +364,7 @@ $enterpriseAuthPath = Join-Path $resolvedOutputDirectory "latest-enterprise-auth
     -ConfirmOperationsReadinessSnapshotReviewed `
     -ConfirmOperationsConvergenceSnapshotReviewed `
     -ConfirmDataFlowStoragePlanReviewed `
+    -ConfirmDataFlowStorageTransitionRunbookReviewed `
     -ConfirmNoSecretValues `
     -RequireProductionEvidence `
     -RequireOperationsSnapshotEvidence `
@@ -335,6 +395,10 @@ Assert-True (@($checks | Where-Object { $_.id -eq "data-flow-storage-plan-eviden
 Assert-True (@($checks | Where-Object { $_.id -eq "data-flow-storage-plan-snapshot-parsed" -and $_.passed }).Count -eq 1) "Expected data-flow storage plan snapshot parsed check to pass."
 Assert-True (@($checks | Where-Object { $_.id -eq "data-flow-storage-plan-snapshot-passed" -and $_.passed }).Count -eq 1) "Expected data-flow storage plan snapshot passed check to pass."
 Assert-True (@($checks | Where-Object { $_.id -eq "data-flow-storage-plan-reviewed" -and $_.passed }).Count -eq 1) "Expected data-flow storage plan reviewed check to pass."
+Assert-True (@($checks | Where-Object { $_.id -eq "data-flow-storage-transition-runbook-evidence" -and $_.passed }).Count -eq 1) "Expected data-flow storage transition runbook evidence check to pass."
+Assert-True (@($checks | Where-Object { $_.id -eq "data-flow-storage-transition-runbook-snapshot-parsed" -and $_.passed }).Count -eq 1) "Expected data-flow storage transition runbook snapshot parsed check to pass."
+Assert-True (@($checks | Where-Object { $_.id -eq "data-flow-storage-transition-runbook-snapshot-passed" -and $_.passed }).Count -eq 1) "Expected data-flow storage transition runbook snapshot passed check to pass."
+Assert-True (@($checks | Where-Object { $_.id -eq "data-flow-storage-transition-runbook-reviewed" -and $_.passed }).Count -eq 1) "Expected data-flow storage transition runbook reviewed check to pass."
 Assert-True (@($checks | Where-Object { $_.id -eq "commercial-integration-snapshot-parsed" -and $_.passed }).Count -eq 1) "Expected commercial integration snapshot parsed check to pass."
 Assert-True (@($checks | Where-Object { $_.id -eq "commercial-integration-snapshot-passed" -and $_.passed }).Count -eq 1) "Expected commercial integration snapshot passed check to pass."
 Assert-True (@($checks | Where-Object { $_.id -eq "commercial-approval-snapshot-parsed" -and $_.passed }).Count -eq 1) "Expected commercial approval snapshot parsed check to pass."
@@ -350,6 +414,7 @@ Assert-True ($report.confirmations.knownGapsAccepted) "Expected known gaps accep
 Assert-True ($report.confirmations.operationsReadinessSnapshotReviewed) "Expected operations readiness snapshot reviewed confirmation."
 Assert-True ($report.confirmations.operationsConvergenceSnapshotReviewed) "Expected operations convergence snapshot reviewed confirmation."
 Assert-True ($report.confirmations.dataFlowStoragePlanReviewed) "Expected data-flow storage plan reviewed confirmation."
+Assert-True ($report.confirmations.dataFlowStorageTransitionRunbookReviewed) "Expected data-flow storage transition runbook reviewed confirmation."
 Assert-True ($report.confirmations.requireProductionEvidence) "Expected production evidence requirement."
 Assert-True ($report.confirmations.requireOperationsSnapshotEvidence) "Expected operations snapshot evidence requirement."
 Assert-True ($report.operationsSnapshots.readiness.result -eq "ready") "Expected operations readiness snapshot result=ready."
@@ -358,6 +423,10 @@ Assert-True ($report.operationsSnapshots.convergence.kubernetesReportSyncReady) 
 Assert-True ($report.targetEvidenceSnapshots.dataFlowStoragePlan.result -eq "passed") "Expected data-flow storage plan snapshot result=passed."
 Assert-True ($report.targetEvidenceSnapshots.dataFlowStoragePlan.targetP95QueryLatencyMs -eq 500) "Expected data-flow storage plan snapshot target p95 query latency budget."
 Assert-True ($report.targetEvidenceSnapshots.dataFlowStoragePlan.queryPlanEvidence.result -eq "passed") "Expected data-flow query-plan snapshot result=passed."
+Assert-True ($report.targetEvidenceSnapshots.dataFlowStorageTransitionRunbook.result -eq "passed") "Expected data-flow storage transition runbook snapshot result=passed."
+Assert-True ($report.targetEvidenceSnapshots.dataFlowStorageTransitionRunbook.storagePlanResult -eq "passed") "Expected data-flow storage transition runbook storage plan result=passed."
+Assert-True ($report.targetEvidenceSnapshots.dataFlowStorageTransitionRunbook.confirmations.backfillRehearsed) "Expected data-flow storage transition runbook backfill confirmation."
+Assert-True ($report.targetEvidenceSnapshots.dataFlowStorageTransitionRunbook.confirmations.rollbackRehearsed) "Expected data-flow storage transition runbook rollback confirmation."
 Assert-True ($report.targetEvidenceSnapshots.commercialIntegration.result -eq "passed") "Expected commercial integration snapshot result=passed."
 Assert-True ($report.targetEvidenceSnapshots.commercialIntegration.requiredVerifiedCount -eq 8) "Expected commercial integration requiredVerifiedCount=8."
 Assert-True ($report.targetEvidenceSnapshots.commercialApproval.result -eq "passed") "Expected commercial approval snapshot result=passed."
@@ -365,14 +434,17 @@ Assert-True ($report.targetEvidenceSnapshots.commercialApproval.pricingPolicyPro
 Assert-True ($report.targetEvidenceSnapshots.enterpriseAuthSmoke.result -eq "scope-out") "Expected enterprise auth smoke snapshot result=scope-out."
 Assert-True ($report.targetEvidenceSnapshots.enterpriseAuthSmoke.scopeOutAccepted) "Expected enterprise auth scope-out accepted."
 Assert-True ($report.evidenceRefs.dataFlowStoragePlan -eq "latest-data-flow-storage-plan-passed-20260620") "Expected data-flow storage plan evidence reference."
+Assert-True ($report.evidenceRefs.dataFlowStorageTransitionRunbook -eq "latest-data-flow-storage-transition-runbook-passed-20260620") "Expected data-flow storage transition runbook evidence reference."
 
 Assert-Contains $markdown "# OSMU Operations Handoff Package" "operations handoff package markdown"
 Assert-Contains $markdown "Record passed target package" "operations handoff package markdown"
 Assert-Contains $markdown "Operations Snapshots" "operations handoff package markdown"
 Assert-Contains $markdown "Target Evidence Snapshots" "operations handoff package markdown"
 Assert-Contains $markdown "targetP95QueryLatencyMs=500" "operations handoff package markdown"
+Assert-Contains $markdown "Data-flow storage transition runbook" "operations handoff package markdown"
 Assert-Contains $report.decisionRule "Production/B2B operations handoff package readiness requires result=passed" "operations handoff package JSON"
 Assert-Contains $report.decisionRule "data-flow storage transition" "operations handoff package JSON"
+Assert-Contains $report.decisionRule "data-flow storage transition runbook" "operations handoff package JSON"
 Assert-Contains $report.decisionRule "commercial approval" "operations handoff package JSON"
 Assert-Contains $report.decisionRule "commercial integration" "operations handoff package JSON"
 Assert-Contains $report.decisionRule "enterprise auth smoke snapshot" "operations handoff package JSON"
@@ -380,6 +452,7 @@ Assert-Contains $report.decisionRule "Kubernetes report sync ready" "operations 
 Assert-Contains $report.scopePolicy "does not execute kubectl, gh, provider APIs" "operations handoff package JSON"
 Assert-Contains $report.secretPolicy "must not contain passwords, bearer tokens, kubeconfig values" "operations handoff package JSON"
 Assert-Contains $report.secretPolicy "raw SQL, raw EXPLAIN JSON" "operations handoff package JSON"
+Assert-Contains $report.secretPolicy "object keys, raw event messages" "operations handoff package JSON"
 Assert-Contains $report.secretPolicy "raw identity claims" "operations handoff package JSON"
 
 foreach ($unexpected in @("password=super-secret", "Bearer abcdefghijklmnop", "-----BEGIN PRIVATE KEY-----", "rawProviderResponse", "customer@example.com", "contractText", "rawClaimJson")) {
@@ -464,6 +537,25 @@ finally {
 }
 Assert-True ($unsafeDataFlowStoragePlanExitCode -ne 0) "Raw SQL data-flow storage plan snapshot should be rejected."
 Assert-Contains ($unsafeDataFlowStoragePlanOutput | Out-String) "raw SQL" "unsafe data-flow storage plan output"
+
+$unsafeDataFlowStorageTransitionRunbookPath = Join-Path $resolvedOutputDirectory "unsafe-data-flow-storage-transition-runbook.json"
+'{"formatVersion":"osmu.data-flow-storage-transition-runbook-evidence.v1","result":"passed","summary":{"failureCount":0},"rawSql":"SELECT * FROM data_flow_events"}' | Set-Content -LiteralPath $unsafeDataFlowStorageTransitionRunbookPath -Encoding UTF8
+
+$previousErrorActionPreference = $ErrorActionPreference
+$ErrorActionPreference = "Continue"
+try {
+    $unsafeDataFlowStorageTransitionRunbookOutput = & powershell -NoProfile -ExecutionPolicy Bypass -File $scriptPath `
+        -DataFlowStorageTransitionRunbookEvidenceRef "latest-data-flow-storage-transition-runbook-passed-20260620" `
+        -DataFlowStorageTransitionRunbookJsonPath $unsafeDataFlowStorageTransitionRunbookPath `
+        -ConfirmDataFlowStorageTransitionRunbookReviewed `
+        -NoWrite 2>&1
+    $unsafeDataFlowStorageTransitionRunbookExitCode = $LASTEXITCODE
+}
+finally {
+    $ErrorActionPreference = $previousErrorActionPreference
+}
+Assert-True ($unsafeDataFlowStorageTransitionRunbookExitCode -ne 0) "Raw SQL data-flow storage transition runbook snapshot should be rejected."
+Assert-Contains ($unsafeDataFlowStorageTransitionRunbookOutput | Out-String) "raw SQL" "unsafe data-flow storage transition runbook output"
 
 $unsafeCommercialApprovalPath = Join-Path $resolvedOutputDirectory "unsafe-commercial-approval.json"
 '{"formatVersion":"osmu.commercial-approval-evidence.v1","result":"passed","rawPriceTable":{"enterprise":"1000000"},"checks":[]}' | Set-Content -LiteralPath $unsafeCommercialApprovalPath -Encoding UTF8
@@ -550,7 +642,9 @@ try {
         -OperationsReadinessRef "latest-operations-readiness-ready-20260620" `
         -OperationsConvergenceRef "latest-operations-readiness-convergence-ready-20260620" `
         -DataFlowStoragePlanEvidenceRef "latest-data-flow-storage-plan-passed-20260620" `
+        -DataFlowStorageTransitionRunbookEvidenceRef "latest-data-flow-storage-transition-runbook-passed-20260620" `
         -DataFlowStoragePlanJsonPath $dataFlowStoragePlanPath `
+        -DataFlowStorageTransitionRunbookJsonPath $dataFlowStorageTransitionRunbookPath `
         -SecretRotationEvidenceRef "latest-secret-rotation-evidence-passed-20260620" `
         -CommercialIntegrationEvidenceRef "latest-commercial-integration-evidence-passed-20260620" `
         -CommercialApprovalEvidenceRef "latest-commercial-approval-evidence-passed-20260620" `
@@ -574,6 +668,7 @@ try {
         -ConfirmSupportEscalationReviewed `
         -ConfirmKnownGapsAccepted `
         -ConfirmDataFlowStoragePlanReviewed `
+        -ConfirmDataFlowStorageTransitionRunbookReviewed `
         -ConfirmNoSecretValues `
         -RequireProductionEvidence `
         -FailIfNotPassed `
