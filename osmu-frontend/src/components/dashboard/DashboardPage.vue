@@ -1217,6 +1217,12 @@
           <template v-if="operationsHandoffPackageConvergenceSnapshot.finalizerFailedCountValid === false">
             / finalizer count invalid {{ operationsHandoffPackageConvergenceSnapshot.finalizerFailedCountRaw || 'missing' }}
           </template>
+          <template v-if="operationsHandoffPackageConvergenceSnapshot.finalizerGapCountValid === false">
+            / finalizer gap invalid {{ operationsHandoffPackageConvergenceSnapshot.finalizerGapCountRaw || 'missing' }}
+          </template>
+          <template v-if="operationsHandoffPackageConvergenceSnapshot.kubernetesReportSyncReadyValid === false">
+            / sync ready invalid {{ operationsHandoffPackageConvergenceSnapshot.kubernetesReportSyncReadyRaw || 'missing' }}
+          </template>
           <template v-if="operationsHandoffPackageConvergenceSnapshot.kubernetesReportSyncFailedCountValid === false">
             / sync count invalid {{ operationsHandoffPackageConvergenceSnapshot.kubernetesReportSyncFailedCountRaw || 'missing' }}
           </template>
