@@ -965,6 +965,8 @@ test('HomeView exposes stable selectors for browser E2E flows', () => {
   assert.match(dashboardSource, /kubernetesReportSyncReady/)
   assert.match(dashboardSource, /kubernetesOperationsReportSync/)
   assert.match(dashboardSource, /kubernetesOperationsReportSyncChecks/)
+  assert.match(dashboardSource, /dataFlowStorageTransitionRunbookConfigMapKey/)
+  assert.match(dashboardSource, /readiness-kubernetes-report-sync-runbook-summary/)
   assert.match(dashboardSource, /evidencePlanActionCommand/)
   assert.match(dashboardSource, /formatEvidencePlanActionMeta/)
   assert.match(dashboardSource, /formatEvidenceInvocationActionMeta/)

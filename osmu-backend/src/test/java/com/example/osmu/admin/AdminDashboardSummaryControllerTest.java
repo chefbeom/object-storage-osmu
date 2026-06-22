@@ -2047,8 +2047,8 @@ class AdminDashboardSummaryControllerTest {
                           "kubernetesReportSyncConfigMapName": "osmu-operations-reports",
                           "kubernetesReportSyncConfigMapKey": "latest-operations-readiness-convergence.json",
                           "kubernetesReportSyncSourceReportResult": "action-required",
-                          "kubernetesReportSyncWorkflowCommand": "gh workflow run kubernetes-operations-report-sync-ci.yml -f namespace=osmu -f report_path=./.osmu-run/latest-operations-readiness-convergence.json -f run_live=true -f apply=false -f data_flow_storage_plan_json_base64=<base64-latest-data-flow-storage-plan-json>",
-                          "kubernetesReportSyncWorkflowNote": "For GitHub Actions sync, include data_flow_storage_plan_json_base64 only when .osmu-run/latest-data-flow-storage-plan.json should be carried into the operations report ConfigMap; omit the input when no target analytics-storage plan evidence is ready.",
+                          "kubernetesReportSyncWorkflowCommand": "gh workflow run kubernetes-operations-report-sync-ci.yml -f namespace=osmu -f report_path=./.osmu-run/latest-operations-readiness-convergence.json -f run_live=true -f apply=false -f data_flow_storage_plan_json_base64=<base64-latest-data-flow-storage-plan-json> -f data_flow_storage_transition_runbook_json_base64=<base64-latest-data-flow-storage-transition-runbook-json>",
+                          "kubernetesReportSyncWorkflowNote": "For GitHub Actions sync, include data_flow_storage_plan_json_base64 only when .osmu-run/latest-data-flow-storage-plan.json should be carried into the operations report ConfigMap, and include data_flow_storage_transition_runbook_json_base64 only when .osmu-run/latest-data-flow-storage-transition-runbook-evidence.json should be carried into the same ConfigMap. MariaDB partition or dual-write plans must include the sanitized query-plan evidence summary, and transition runbook evidence must be result=passed with no raw SQL, raw EXPLAIN, object keys, raw event messages, or credential-shaped content. Omit inputs when no target analytics-storage evidence is ready.",
                           "kubernetesReportSyncReady": false,
                           "finalizerGapCount": 1,
                           "stageCount": 7,
@@ -2086,14 +2086,26 @@ class AdminDashboardSummaryControllerTest {
                           "namespace": "osmu",
                           "configMapName": "osmu-operations-reports",
                           "configMapKey": "latest-operations-readiness-convergence.json",
+                          "evidenceConfigMapKey": "latest-kubernetes-operations-report-sync.json",
+                          "dataFlowStoragePlanConfigMapKey": "latest-data-flow-storage-plan.json",
+                          "dataFlowStorageTransitionRunbookConfigMapKey": "latest-data-flow-storage-transition-runbook-evidence.json",
+                          "publishDataFlowStoragePlanToConfigMap": true,
+                          "publishDataFlowStorageTransitionRunbookToConfigMap": true,
                           "sourceReportPath": ".osmu-run/latest-operations-readiness-convergence.json",
                           "sourceReportFormatVersion": "osmu.operations-readiness-convergence.v1",
                           "sourceReportResult": "action-required",
                           "sourceReportBytes": 5249,
                           "sourceReportSha256": "abc123",
-                          "clientDryRunCommand": "kubectl -n osmu create configmap osmu-operations-reports --from-file=latest-operations-readiness-convergence.json=.osmu-run/latest-operations-readiness-convergence.json --dry-run=client -o yaml",
-                          "serverDryRunCommand": "kubectl -n osmu create configmap osmu-operations-reports --from-file=latest-operations-readiness-convergence.json=.osmu-run/latest-operations-readiness-convergence.json --dry-run=server -o yaml",
-                          "applyCommand": "kubectl -n osmu create configmap osmu-operations-reports --from-file=latest-operations-readiness-convergence.json=.osmu-run/latest-operations-readiness-convergence.json --dry-run=client -o yaml | kubectl apply -f -",
+                          "dataFlowStorageTransitionRunbookResult": "failed",
+                          "dataFlowStorageTransitionRunbookStoragePlanResult": "plan-ready-execute-required",
+                          "dataFlowStorageTransitionRunbookCandidateStore": "MARIADB_PARTITION",
+                          "dataFlowStorageTransitionRunbookFailureCount": 2,
+                          "dataFlowStorageTransitionRunbookCheckCount": 10,
+                          "dataFlowStorageTransitionRunbookBytes": 2048,
+                          "dataFlowStorageTransitionRunbookSha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+                          "clientDryRunCommand": "kubectl -n osmu create configmap osmu-operations-reports --from-file=latest-operations-readiness-convergence.json=.osmu-run/latest-operations-readiness-convergence.json --from-file=latest-data-flow-storage-plan.json=.osmu-run/latest-data-flow-storage-plan.json --from-file=latest-data-flow-storage-transition-runbook-evidence.json=.osmu-run/latest-data-flow-storage-transition-runbook-evidence.json --dry-run=client -o yaml",
+                          "serverDryRunCommand": "kubectl -n osmu create configmap osmu-operations-reports --from-file=latest-operations-readiness-convergence.json=.osmu-run/latest-operations-readiness-convergence.json --from-file=latest-data-flow-storage-plan.json=.osmu-run/latest-data-flow-storage-plan.json --from-file=latest-data-flow-storage-transition-runbook-evidence.json=.osmu-run/latest-data-flow-storage-transition-runbook-evidence.json --dry-run=server -o yaml",
+                          "applyCommand": "kubectl -n osmu create configmap osmu-operations-reports --from-file=latest-operations-readiness-convergence.json=.osmu-run/latest-operations-readiness-convergence.json --from-file=latest-data-flow-storage-plan.json=.osmu-run/latest-data-flow-storage-plan.json --from-file=latest-data-flow-storage-transition-runbook-evidence.json=.osmu-run/latest-data-flow-storage-transition-runbook-evidence.json --dry-run=client -o yaml | kubectl apply -f -",
                           "checkCount": 3,
                           "failedCount": 0,
                           "checks": [
@@ -2185,9 +2197,9 @@ class AdminDashboardSummaryControllerTest {
                 .andExpect(jsonPath("$.data.items[?(@.code == 'OPERATIONS_READINESS_CONVERGENCE')].remediationCommand").value(hasItem("powershell -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\write-operations-invocation-unblock-plan.ps1")))
                 .andExpect(jsonPath("$.data.items[?(@.code == 'OPERATIONS_READINESS_CONVERGENCE')].remediationNote").value(hasItem("The invocation report still has blocked actions. This convergence writer does not execute kubectl, gh, workflow dispatch, finalizer, or ConfigMap sync commands; it only reads local reports and writes JSON/Markdown guidance.")))
                 .andExpect(jsonPath("$.data.items[?(@.code == 'KUBERNETES_OPERATIONS_REPORT_SYNC')].evidencePath").value(hasItem(".osmu-run/latest-kubernetes-operations-report-sync.json")))
-                .andExpect(jsonPath("$.data.items[?(@.code == 'KUBERNETES_OPERATIONS_REPORT_SYNC')].remediationCommand").value(hasItem("kubectl -n osmu create configmap osmu-operations-reports --from-file=latest-operations-readiness-convergence.json=.osmu-run/latest-operations-readiness-convergence.json --dry-run=server -o yaml")))
+                .andExpect(jsonPath("$.data.items[?(@.code == 'KUBERNETES_OPERATIONS_REPORT_SYNC')].remediationCommand").value(hasItem("kubectl -n osmu create configmap osmu-operations-reports --from-file=latest-operations-readiness-convergence.json=.osmu-run/latest-operations-readiness-convergence.json --from-file=latest-data-flow-storage-plan.json=.osmu-run/latest-data-flow-storage-plan.json --from-file=latest-data-flow-storage-transition-runbook-evidence.json=.osmu-run/latest-data-flow-storage-transition-runbook-evidence.json --dry-run=server -o yaml")))
                 .andExpect(jsonPath("$.data.items[?(@.code == 'KUBERNETES_OPERATIONS_REPORT_SYNC')].remediationWorkflow").value(hasItem(".github/workflows/kubernetes-operations-report-sync-ci.yml")))
-                .andExpect(jsonPath("$.data.items[?(@.code == 'KUBERNETES_OPERATIONS_REPORT_SYNC')].remediationWorkflowCommand").value(hasItem("kubectl -n osmu create configmap osmu-operations-reports --from-file=latest-operations-readiness-convergence.json=.osmu-run/latest-operations-readiness-convergence.json --dry-run=client -o yaml | kubectl apply -f -")))
+                .andExpect(jsonPath("$.data.items[?(@.code == 'KUBERNETES_OPERATIONS_REPORT_SYNC')].remediationWorkflowCommand").value(hasItem("kubectl -n osmu create configmap osmu-operations-reports --from-file=latest-operations-readiness-convergence.json=.osmu-run/latest-operations-readiness-convergence.json --from-file=latest-data-flow-storage-plan.json=.osmu-run/latest-data-flow-storage-plan.json --from-file=latest-data-flow-storage-transition-runbook-evidence.json=.osmu-run/latest-data-flow-storage-transition-runbook-evidence.json --dry-run=client -o yaml | kubectl apply -f -")))
                 .andExpect(jsonPath("$.data.items[?(@.code == 'KUBERNETES_OPERATIONS_REPORT_SYNC')].remediationNote").value(hasItem("This script writes to Kubernetes only when -Apply is supplied. -ServerDryRunOnly talks to the API server without persisting changes. The default and -PlanOnly modes do not execute kubectl.")))
                 .andExpect(jsonPath("$.data.operationsEvidencePlan.result").value("action-required"))
                 .andExpect(jsonPath("$.data.operationsEvidencePlan.sourceSummary").value("passed=36 pending=6"))
@@ -2567,8 +2579,8 @@ class AdminDashboardSummaryControllerTest {
                 .andExpect(jsonPath("$.data.operationsReadinessConvergence.kubernetesReportSyncFailedCountValid").value(false))
                 .andExpect(jsonPath("$.data.operationsReadinessConvergence.kubernetesReportSyncFailedCountRaw").value("0"))
                 .andExpect(jsonPath("$.data.operationsReadinessConvergence.kubernetesReportSyncConfigMapName").value("osmu-operations-reports"))
-                .andExpect(jsonPath("$.data.operationsReadinessConvergence.kubernetesReportSyncWorkflowCommand").value("gh workflow run kubernetes-operations-report-sync-ci.yml -f namespace=osmu -f report_path=./.osmu-run/latest-operations-readiness-convergence.json -f run_live=true -f apply=false -f data_flow_storage_plan_json_base64=<base64-latest-data-flow-storage-plan-json>"))
-                .andExpect(jsonPath("$.data.operationsReadinessConvergence.kubernetesReportSyncWorkflowNote").value(containsString("omit the input")))
+                .andExpect(jsonPath("$.data.operationsReadinessConvergence.kubernetesReportSyncWorkflowCommand").value("gh workflow run kubernetes-operations-report-sync-ci.yml -f namespace=osmu -f report_path=./.osmu-run/latest-operations-readiness-convergence.json -f run_live=true -f apply=false -f data_flow_storage_plan_json_base64=<base64-latest-data-flow-storage-plan-json> -f data_flow_storage_transition_runbook_json_base64=<base64-latest-data-flow-storage-transition-runbook-json>"))
+                .andExpect(jsonPath("$.data.operationsReadinessConvergence.kubernetesReportSyncWorkflowNote").value(containsString("Omit inputs")))
                 .andExpect(jsonPath("$.data.operationsReadinessConvergence.kubernetesReportSyncReady").value(false))
                 .andExpect(jsonPath("$.data.operationsReadinessConvergence.finalizerGapCount").value(1))
                 .andExpect(jsonPath("$.data.operationsReadinessConvergence.safetyPolicy").value("This convergence writer does not execute kubectl, gh, workflow dispatch, finalizer, or ConfigMap sync commands; it only reads local reports and writes JSON/Markdown guidance."))
@@ -2579,8 +2591,15 @@ class AdminDashboardSummaryControllerTest {
                 .andExpect(jsonPath("$.data.kubernetesOperationsReportSync.sourceReportResult").value("action-required"))
                 .andExpect(jsonPath("$.data.kubernetesOperationsReportSync.sourceReportBytes").value(5249))
                 .andExpect(jsonPath("$.data.kubernetesOperationsReportSync.sourceReportSha256").value("abc123"))
-                .andExpect(jsonPath("$.data.kubernetesOperationsReportSync.serverDryRunCommand").value("kubectl -n osmu create configmap osmu-operations-reports --from-file=latest-operations-readiness-convergence.json=.osmu-run/latest-operations-readiness-convergence.json --dry-run=server -o yaml"))
-                .andExpect(jsonPath("$.data.kubernetesOperationsReportSync.applyCommand").value("kubectl -n osmu create configmap osmu-operations-reports --from-file=latest-operations-readiness-convergence.json=.osmu-run/latest-operations-readiness-convergence.json --dry-run=client -o yaml | kubectl apply -f -"))
+                .andExpect(jsonPath("$.data.kubernetesOperationsReportSync.dataFlowStorageTransitionRunbookConfigMapKey").value("latest-data-flow-storage-transition-runbook-evidence.json"))
+                .andExpect(jsonPath("$.data.kubernetesOperationsReportSync.publishDataFlowStorageTransitionRunbookToConfigMap").value(true))
+                .andExpect(jsonPath("$.data.kubernetesOperationsReportSync.dataFlowStorageTransitionRunbookResult").value("failed"))
+                .andExpect(jsonPath("$.data.kubernetesOperationsReportSync.dataFlowStorageTransitionRunbookStoragePlanResult").value("plan-ready-execute-required"))
+                .andExpect(jsonPath("$.data.kubernetesOperationsReportSync.dataFlowStorageTransitionRunbookCandidateStore").value("MARIADB_PARTITION"))
+                .andExpect(jsonPath("$.data.kubernetesOperationsReportSync.dataFlowStorageTransitionRunbookFailureCount").value(2))
+                .andExpect(jsonPath("$.data.kubernetesOperationsReportSync.dataFlowStorageTransitionRunbookCheckCount").value(10))
+                .andExpect(jsonPath("$.data.kubernetesOperationsReportSync.serverDryRunCommand").value("kubectl -n osmu create configmap osmu-operations-reports --from-file=latest-operations-readiness-convergence.json=.osmu-run/latest-operations-readiness-convergence.json --from-file=latest-data-flow-storage-plan.json=.osmu-run/latest-data-flow-storage-plan.json --from-file=latest-data-flow-storage-transition-runbook-evidence.json=.osmu-run/latest-data-flow-storage-transition-runbook-evidence.json --dry-run=server -o yaml"))
+                .andExpect(jsonPath("$.data.kubernetesOperationsReportSync.applyCommand").value("kubectl -n osmu create configmap osmu-operations-reports --from-file=latest-operations-readiness-convergence.json=.osmu-run/latest-operations-readiness-convergence.json --from-file=latest-data-flow-storage-plan.json=.osmu-run/latest-data-flow-storage-plan.json --from-file=latest-data-flow-storage-transition-runbook-evidence.json=.osmu-run/latest-data-flow-storage-transition-runbook-evidence.json --dry-run=client -o yaml | kubectl apply -f -"))
                 .andExpect(jsonPath("$.data.kubernetesOperationsReportSync.checkCount").value(3))
                 .andExpect(jsonPath("$.data.kubernetesOperationsReportSync.failedCount").value(0))
                 .andExpect(jsonPath("$.data.kubernetesOperationsReportSync.checks[0].name").value("report-file-exists"))

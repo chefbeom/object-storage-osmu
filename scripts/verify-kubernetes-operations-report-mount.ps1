@@ -5,15 +5,18 @@ param(
     [string] $ReportKey = "latest-operations-readiness-convergence.json",
     [string] $SyncEvidenceKey = "latest-kubernetes-operations-report-sync.json",
     [string] $DataFlowStoragePlanKey = "latest-data-flow-storage-plan.json",
+    [string] $DataFlowStorageTransitionRunbookKey = "latest-data-flow-storage-transition-runbook-evidence.json",
     [string] $LocalReportPath = ".\.osmu-run\latest-operations-readiness-convergence.json",
     [string] $LocalSyncEvidencePath = ".\.osmu-run\latest-kubernetes-operations-report-sync.json",
     [string] $LocalDataFlowStoragePlanPath = ".\.osmu-run\latest-data-flow-storage-plan.json",
+    [string] $LocalDataFlowStorageTransitionRunbookPath = ".\.osmu-run\latest-data-flow-storage-transition-runbook-evidence.json",
     [string] $BackendSelector = "app.kubernetes.io/name=osmu-backend",
     [string] $BackendContainer = "backend",
     [string] $MountPath = "/app/.osmu-run",
     [string] $EvidencePath = ".\.osmu-run\latest-kubernetes-operations-report-mount.json",
     [switch] $SkipPodMountCheck,
     [switch] $SkipDataFlowStoragePlanCheck,
+    [switch] $SkipDataFlowStorageTransitionRunbookCheck,
     [switch] $PlanOnly
 )
 
@@ -259,11 +262,30 @@ function Compare-DataFlowStoragePlanJson([object] $Actual, [object] $Expected, [
     }
 }
 
+function Compare-DataFlowStorageTransitionRunbookJson([object] $Actual, [object] $Expected, [string] $Label) {
+    if ($null -eq $Actual) {
+        return
+    }
+    Add-Check "$Label-format-version" ((Get-ObjectText $Actual.formatVersion) -eq "osmu.data-flow-storage-transition-runbook-evidence.v1") "$Label formatVersion=$(Get-ObjectText $Actual.formatVersion)."
+    Add-Check "$Label-result" ((Get-ObjectText $Actual.result) -eq "passed") "$Label result=$(Get-ObjectText $Actual.result), expected=passed."
+    Add-Check "$Label-storage-plan-result" ((Get-ObjectText $Actual.dataFlowStoragePlanSnapshot.result) -eq "passed") "$Label dataFlowStoragePlanSnapshot.result=$(Get-ObjectText $Actual.dataFlowStoragePlanSnapshot.result), expected=passed."
+    Add-Check "$Label-failure-count" ((Get-ObjectInt $Actual.summary.failureCount) -eq 0) "$Label failureCount=$(Get-ObjectInt $Actual.summary.failureCount)."
+    foreach ($confirmationName in @("backfillRehearsed", "dualWriteOrPartitionToggleReviewed", "rollbackRehearsed", "reconciliationPassed", "dashboardCutoverReviewed", "retentionDryRunReviewed", "noObjectKeysInAggregates", "noSecretValues")) {
+        $confirmationValue = if ($null -ne $Actual.confirmations -and $Actual.confirmations.PSObject.Properties.Name -contains $confirmationName) { $Actual.confirmations.PSObject.Properties[$confirmationName].Value } else { $null }
+        Add-Check "$Label-$confirmationName" (($confirmationValue -is [bool]) -and [bool] $confirmationValue) "$Label confirmation $confirmationName=$confirmationValue expected boolean true."
+    }
+    if ($null -ne $Expected) {
+        Add-Check "$Label-candidate-store" ((Get-ObjectText $Actual.dataFlowStoragePlanSnapshot.candidateStore) -eq (Get-ObjectText $Expected.dataFlowStoragePlanSnapshot.candidateStore)) "$Label candidateStore=$(Get-ObjectText $Actual.dataFlowStoragePlanSnapshot.candidateStore), expected=$(Get-ObjectText $Expected.dataFlowStoragePlanSnapshot.candidateStore)."
+        Add-Check "$Label-check-count" ((Get-ObjectInt $Actual.summary.checkCount) -eq (Get-ObjectInt $Expected.summary.checkCount)) "$Label checkCount=$(Get-ObjectInt $Actual.summary.checkCount), expected=$(Get-ObjectInt $Expected.summary.checkCount)."
+    }
+}
+
 Assert-KubernetesName "Namespace" $Namespace
 Assert-KubernetesName "ConfigMapName" $ConfigMapName
 Assert-ConfigMapKey $ReportKey
 Assert-ConfigMapKey $SyncEvidenceKey
 Assert-ConfigMapKey $DataFlowStoragePlanKey
+Assert-ConfigMapKey $DataFlowStorageTransitionRunbookKey
 if ([string]::IsNullOrWhiteSpace($BackendSelector) -or $BackendSelector -notmatch "^[A-Za-z0-9_.\-/]+=[A-Za-z0-9_.\-/]+$") {
     throw "BackendSelector must be a simple label selector key=value: $BackendSelector"
 }
@@ -277,15 +299,19 @@ if ([string]::IsNullOrWhiteSpace($MountPath) -or -not $MountPath.StartsWith("/")
 $resolvedLocalReportPath = Resolve-ProjectPath $LocalReportPath
 $resolvedLocalSyncEvidencePath = Resolve-ProjectPath $LocalSyncEvidencePath
 $resolvedLocalDataFlowStoragePlanPath = Resolve-ProjectPath $LocalDataFlowStoragePlanPath
+$resolvedLocalDataFlowStorageTransitionRunbookPath = Resolve-ProjectPath $LocalDataFlowStorageTransitionRunbookPath
 $resolvedEvidencePath = Resolve-ProjectPath $EvidencePath
 $reportMountPath = ($MountPath.TrimEnd("/") + "/" + $ReportKey)
 $syncEvidenceMountPath = ($MountPath.TrimEnd("/") + "/" + $SyncEvidenceKey)
 $dataFlowStoragePlanMountPath = ($MountPath.TrimEnd("/") + "/" + $DataFlowStoragePlanKey)
+$dataFlowStorageTransitionRunbookMountPath = ($MountPath.TrimEnd("/") + "/" + $DataFlowStorageTransitionRunbookKey)
 $shouldCheckDataFlowStoragePlan = [bool](-not $SkipDataFlowStoragePlanCheck -and (Test-Path -LiteralPath $resolvedLocalDataFlowStoragePlanPath))
+$shouldCheckDataFlowStorageTransitionRunbook = [bool](-not $SkipDataFlowStorageTransitionRunbookCheck -and (Test-Path -LiteralPath $resolvedLocalDataFlowStorageTransitionRunbookPath))
 
 $localReportJson = $null
 $localSyncEvidenceJson = $null
 $localDataFlowStoragePlanJson = $null
+$localDataFlowStorageTransitionRunbookJson = $null
 if (Test-Path -LiteralPath $resolvedLocalReportPath) {
     $localReportJson = Get-Content -Raw -Encoding UTF8 -LiteralPath $resolvedLocalReportPath | ConvertFrom-Json
 }
@@ -295,14 +321,19 @@ if (Test-Path -LiteralPath $resolvedLocalSyncEvidencePath) {
 if ($shouldCheckDataFlowStoragePlan) {
     $localDataFlowStoragePlanJson = Get-Content -Raw -Encoding UTF8 -LiteralPath $resolvedLocalDataFlowStoragePlanPath | ConvertFrom-Json
 }
+if ($shouldCheckDataFlowStorageTransitionRunbook) {
+    $localDataFlowStorageTransitionRunbookJson = Get-Content -Raw -Encoding UTF8 -LiteralPath $resolvedLocalDataFlowStorageTransitionRunbookPath | ConvertFrom-Json
+}
 
 $configMapReportText = ""
 $configMapSyncText = ""
 $configMapDataFlowStoragePlanText = ""
+$configMapDataFlowStorageTransitionRunbookText = ""
 $backendPodName = ""
 $mountedReportText = ""
 $mountedSyncText = ""
 $mountedDataFlowStoragePlanText = ""
+$mountedDataFlowStorageTransitionRunbookText = ""
 
 if ($PlanOnly) {
     Add-Check "plan-only" $true "Plan-only mode does not call kubectl."
@@ -313,6 +344,7 @@ else {
         $configMapReportText = Get-DataValue $configMapSource.json.data $ReportKey
         $configMapSyncText = Get-DataValue $configMapSource.json.data $SyncEvidenceKey
         $configMapDataFlowStoragePlanText = Get-DataValue $configMapSource.json.data $DataFlowStoragePlanKey
+        $configMapDataFlowStorageTransitionRunbookText = Get-DataValue $configMapSource.json.data $DataFlowStorageTransitionRunbookKey
         Add-Check "configmap-report-key-present" ($null -ne $configMapReportText) "ConfigMap report key present=$($null -ne $configMapReportText)." $configMapSource.command
         Add-Check "configmap-sync-evidence-key-present" ($null -ne $configMapSyncText) "ConfigMap sync evidence key present=$($null -ne $configMapSyncText)." $configMapSource.command
         if ($shouldCheckDataFlowStoragePlan) {
@@ -320,6 +352,12 @@ else {
         }
         else {
             Add-Check "data-flow-storage-plan-check-optional" $true "Local data-flow storage plan evidence is absent or skipped; ConfigMap key is optional."
+        }
+        if ($shouldCheckDataFlowStorageTransitionRunbook) {
+            Add-Check "configmap-data-flow-storage-transition-runbook-key-present" ($null -ne $configMapDataFlowStorageTransitionRunbookText) "ConfigMap data-flow storage transition runbook key present=$($null -ne $configMapDataFlowStorageTransitionRunbookText)." $configMapSource.command
+        }
+        else {
+            Add-Check "data-flow-storage-transition-runbook-check-optional" $true "Local data-flow storage transition runbook evidence is absent or skipped; ConfigMap key is optional."
         }
 
         if ($null -ne $configMapReportText) {
@@ -333,6 +371,10 @@ else {
         if ($null -ne $configMapDataFlowStoragePlanText) {
             $configMapDataFlowStoragePlanJson = Read-JsonText $configMapDataFlowStoragePlanText "configmap-data-flow-storage-plan"
             Compare-DataFlowStoragePlanJson $configMapDataFlowStoragePlanJson $localDataFlowStoragePlanJson "configmap-data-flow-storage-plan"
+        }
+        if ($null -ne $configMapDataFlowStorageTransitionRunbookText) {
+            $configMapDataFlowStorageTransitionRunbookJson = Read-JsonText $configMapDataFlowStorageTransitionRunbookText "configmap-data-flow-storage-transition-runbook"
+            Compare-DataFlowStorageTransitionRunbookJson $configMapDataFlowStorageTransitionRunbookJson $localDataFlowStorageTransitionRunbookJson "configmap-data-flow-storage-transition-runbook"
         }
     }
 
@@ -380,6 +422,19 @@ else {
                     }
                 }
             }
+
+            if ($shouldCheckDataFlowStorageTransitionRunbook) {
+                $mountedDataFlowStorageTransitionRunbook = Invoke-KubectlRaw "read-mounted-data-flow-storage-transition-runbook" @("-n", $Namespace, "exec", $backendPodName, "-c", $BackendContainer, "--", "cat", $dataFlowStorageTransitionRunbookMountPath)
+                $mountedDataFlowStorageTransitionRunbookText = $mountedDataFlowStorageTransitionRunbook.output
+                Add-Check "mounted-data-flow-storage-transition-runbook-readable" ($mountedDataFlowStorageTransitionRunbook.exitCode -eq 0) "Mounted data-flow storage transition runbook evidence is readable from backend pod." $mountedDataFlowStorageTransitionRunbook.command $mountedDataFlowStorageTransitionRunbook.exitCode $mountedDataFlowStorageTransitionRunbook.output
+                if ($mountedDataFlowStorageTransitionRunbook.exitCode -eq 0) {
+                    $mountedDataFlowStorageTransitionRunbookJson = Read-JsonText $mountedDataFlowStorageTransitionRunbookText "mounted-data-flow-storage-transition-runbook"
+                    Compare-DataFlowStorageTransitionRunbookJson $mountedDataFlowStorageTransitionRunbookJson $localDataFlowStorageTransitionRunbookJson "mounted-data-flow-storage-transition-runbook"
+                    if ($configMapDataFlowStorageTransitionRunbookText) {
+                        Add-Check "mounted-data-flow-storage-transition-runbook-matches-configmap" ((Get-TextSha256 $mountedDataFlowStorageTransitionRunbookText) -eq (Get-TextSha256 $configMapDataFlowStorageTransitionRunbookText)) "Mounted data-flow storage transition runbook content matches ConfigMap data."
+                    }
+                }
+            }
         }
     }
     else {
@@ -403,6 +458,7 @@ $report = [ordered]@{
     reportKey = $ReportKey
     syncEvidenceKey = $SyncEvidenceKey
     dataFlowStoragePlanKey = $DataFlowStoragePlanKey
+    dataFlowStorageTransitionRunbookKey = $DataFlowStorageTransitionRunbookKey
     backendSelector = $BackendSelector
     backendContainer = $BackendContainer
     backendPodName = $backendPodName
@@ -410,21 +466,26 @@ $report = [ordered]@{
     reportMountPath = $reportMountPath
     syncEvidenceMountPath = $syncEvidenceMountPath
     dataFlowStoragePlanMountPath = $dataFlowStoragePlanMountPath
+    dataFlowStorageTransitionRunbookMountPath = $dataFlowStorageTransitionRunbookMountPath
     localReportPath = $resolvedLocalReportPath
     localSyncEvidencePath = $resolvedLocalSyncEvidencePath
     localDataFlowStoragePlanPath = $resolvedLocalDataFlowStoragePlanPath
+    localDataFlowStorageTransitionRunbookPath = $resolvedLocalDataFlowStorageTransitionRunbookPath
     configMapReportSha256 = if ($configMapReportText) { Get-TextSha256 $configMapReportText } else { "" }
     configMapSyncEvidenceSha256 = if ($configMapSyncText) { Get-TextSha256 $configMapSyncText } else { "" }
     configMapDataFlowStoragePlanSha256 = if ($configMapDataFlowStoragePlanText) { Get-TextSha256 $configMapDataFlowStoragePlanText } else { "" }
+    configMapDataFlowStorageTransitionRunbookSha256 = if ($configMapDataFlowStorageTransitionRunbookText) { Get-TextSha256 $configMapDataFlowStorageTransitionRunbookText } else { "" }
     mountedReportSha256 = if ($mountedReportText) { Get-TextSha256 $mountedReportText } else { "" }
     mountedSyncEvidenceSha256 = if ($mountedSyncText) { Get-TextSha256 $mountedSyncText } else { "" }
     mountedDataFlowStoragePlanSha256 = if ($mountedDataFlowStoragePlanText) { Get-TextSha256 $mountedDataFlowStoragePlanText } else { "" }
+    mountedDataFlowStorageTransitionRunbookSha256 = if ($mountedDataFlowStorageTransitionRunbookText) { Get-TextSha256 $mountedDataFlowStorageTransitionRunbookText } else { "" }
     dataFlowStoragePlanChecked = [bool]$shouldCheckDataFlowStoragePlan
+    dataFlowStorageTransitionRunbookChecked = [bool]$shouldCheckDataFlowStorageTransitionRunbook
     podMountChecked = [bool](-not $SkipPodMountCheck -and -not $PlanOnly)
     checkCount = @($checks).Count
     failedCount = $failureCount
     checks = $checks
-    safetyPolicy = "This verifier is read-only. It does not create, update, or delete Kubernetes resources and it does not read Kubernetes Secret values."
+    safetyPolicy = "This verifier is read-only. It does not create, update, or delete Kubernetes resources and it does not read Kubernetes Secret values. Optional data-flow storage plan and transition runbook evidence are read only as reduced JSON summaries from ConfigMap and backend mounts."
 }
 
 New-Item -ItemType Directory -Force -Path (Split-Path -Parent $resolvedEvidencePath) | Out-Null

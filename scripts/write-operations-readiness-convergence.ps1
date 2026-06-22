@@ -195,7 +195,7 @@ function Get-KubernetesReportSyncWorkflowCommand([object] $Report, [bool] $Exist
         }
     }
 
-    return "gh workflow run kubernetes-operations-report-sync-ci.yml -f namespace=$namespace -f report_path=$reportPath -f run_live=$runLive -f apply=$apply -f data_flow_storage_plan_json_base64=<base64-latest-data-flow-storage-plan-json>"
+    return "gh workflow run kubernetes-operations-report-sync-ci.yml -f namespace=$namespace -f report_path=$reportPath -f run_live=$runLive -f apply=$apply -f data_flow_storage_plan_json_base64=<base64-latest-data-flow-storage-plan-json> -f data_flow_storage_transition_runbook_json_base64=<base64-latest-data-flow-storage-transition-runbook-json>"
 }
 
 $handoff = Read-OptionalJson $HandoffReportPath
@@ -353,7 +353,7 @@ $report = [ordered]@{
     kubernetesReportSyncConfigMapKey = Get-Text $kubernetesReportSync.json "configMapKey"
     kubernetesReportSyncSourceReportResult = $kubernetesReportSyncSourceReportResult
     kubernetesReportSyncWorkflowCommand = $kubernetesReportSyncWorkflowCommand
-    kubernetesReportSyncWorkflowNote = "For GitHub Actions sync, include data_flow_storage_plan_json_base64 only when .osmu-run/latest-data-flow-storage-plan.json should be carried into the operations report ConfigMap; MariaDB partition or dual-write plans must include the sanitized query-plan evidence summary. Omit the input when no target analytics-storage plan evidence is ready."
+    kubernetesReportSyncWorkflowNote = "For GitHub Actions sync, include data_flow_storage_plan_json_base64 only when .osmu-run/latest-data-flow-storage-plan.json should be carried into the operations report ConfigMap, and include data_flow_storage_transition_runbook_json_base64 only when .osmu-run/latest-data-flow-storage-transition-runbook-evidence.json should be carried into the same ConfigMap. MariaDB partition or dual-write plans must include the sanitized query-plan evidence summary, and transition runbook evidence must be result=passed with no raw SQL, raw EXPLAIN, object keys, raw event messages, or credential-shaped content. Omit inputs when no target analytics-storage evidence is ready."
     kubernetesReportSyncReady = [bool] $kubernetesReportSyncReady
     handoffFinalizerGapCount = Get-Int $handoff.json "finalizerGapCount"
     stageCount = Get-Int $handoff.json "stageCount"

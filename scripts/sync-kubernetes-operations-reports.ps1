@@ -8,8 +8,11 @@ param(
     [string] $EvidenceConfigMapKey = "latest-kubernetes-operations-report-sync.json",
     [string] $DataFlowStoragePlanPath = ".\.osmu-run\latest-data-flow-storage-plan.json",
     [string] $DataFlowStoragePlanConfigMapKey = "latest-data-flow-storage-plan.json",
+    [string] $DataFlowStorageTransitionRunbookPath = ".\.osmu-run\latest-data-flow-storage-transition-runbook-evidence.json",
+    [string] $DataFlowStorageTransitionRunbookConfigMapKey = "latest-data-flow-storage-transition-runbook-evidence.json",
     [switch] $SkipEvidenceConfigMapPublish,
     [switch] $SkipDataFlowStoragePlanConfigMapPublish,
+    [switch] $SkipDataFlowStorageTransitionRunbookConfigMapPublish,
     [switch] $ServerDryRunOnly,
     [switch] $Apply,
     [switch] $PlanOnly
@@ -151,6 +154,7 @@ Assert-KubernetesName "ConfigMapName" $ConfigMapName
 Assert-ConfigMapKey $ConfigMapKey
 Assert-ConfigMapKey $EvidenceConfigMapKey
 Assert-ConfigMapKey $DataFlowStoragePlanConfigMapKey
+Assert-ConfigMapKey $DataFlowStorageTransitionRunbookConfigMapKey
 
 $selectedModeCount = 0
 foreach ($selectedMode in @($PlanOnly.IsPresent, $ServerDryRunOnly.IsPresent, $Apply.IsPresent)) {
@@ -165,8 +169,10 @@ if ($selectedModeCount -gt 1) {
 $resolvedReportPath = Resolve-ProjectPath $ReportPath
 $resolvedEvidencePath = Resolve-ProjectPath $EvidencePath
 $resolvedDataFlowStoragePlanPath = Resolve-ProjectPath $DataFlowStoragePlanPath
+$resolvedDataFlowStorageTransitionRunbookPath = Resolve-ProjectPath $DataFlowStorageTransitionRunbookPath
 $publishEvidenceToConfigMap = [bool](-not $SkipEvidenceConfigMapPublish)
 $publishDataFlowStoragePlanToConfigMap = [bool](-not $SkipDataFlowStoragePlanConfigMapPublish -and (Test-Path -LiteralPath $resolvedDataFlowStoragePlanPath))
+$publishDataFlowStorageTransitionRunbookToConfigMap = [bool](-not $SkipDataFlowStorageTransitionRunbookConfigMapPublish -and (Test-Path -LiteralPath $resolvedDataFlowStorageTransitionRunbookPath))
 
 if (-not (Test-Path -LiteralPath $resolvedReportPath)) {
     Add-Check "report-file-exists" $false "Report file is missing: $resolvedReportPath"
@@ -270,6 +276,76 @@ else {
     }
 }
 
+$dataFlowStorageTransitionRunbookFormatVersion = ""
+$dataFlowStorageTransitionRunbookResult = ""
+$dataFlowStorageTransitionRunbookStoragePlanResult = ""
+$dataFlowStorageTransitionRunbookCandidateStore = ""
+$dataFlowStorageTransitionRunbookFailureCount = 0
+$dataFlowStorageTransitionRunbookCheckCount = 0
+if ($SkipDataFlowStorageTransitionRunbookConfigMapPublish) {
+    Add-Check "data-flow-storage-transition-runbook-publish-skipped" $true "Data-flow storage transition runbook ConfigMap publish skipped by parameter."
+}
+elseif (-not (Test-Path -LiteralPath $resolvedDataFlowStorageTransitionRunbookPath)) {
+    Add-Check "data-flow-storage-transition-runbook-optional" $true "Optional data-flow storage transition runbook file is missing; ConfigMap will not include it."
+}
+else {
+    Add-Check "data-flow-storage-transition-runbook-file-exists" $true "Data-flow storage transition runbook file exists."
+    try {
+        $runbookRaw = Get-Content -Raw -LiteralPath $resolvedDataFlowStorageTransitionRunbookPath
+        $runbookJson = $runbookRaw | ConvertFrom-Json
+        $dataFlowStorageTransitionRunbookFormatVersion = [string] $runbookJson.formatVersion
+        $dataFlowStorageTransitionRunbookResult = [string] $runbookJson.result
+        $dataFlowStorageTransitionRunbookStoragePlanResult = [string] $runbookJson.dataFlowStoragePlanSnapshot.result
+        $dataFlowStorageTransitionRunbookCandidateStore = [string] $runbookJson.dataFlowStoragePlanSnapshot.candidateStore
+        $dataFlowStorageTransitionRunbookFailureCount = Get-ObjectInt $runbookJson.summary.failureCount
+        $dataFlowStorageTransitionRunbookCheckCount = Get-ObjectInt $runbookJson.summary.checkCount
+        Add-Check "data-flow-storage-transition-runbook-json-valid" $true "Data-flow storage transition runbook file is valid JSON."
+        Add-Check `
+            "data-flow-storage-transition-runbook-format-version" `
+            ($dataFlowStorageTransitionRunbookFormatVersion -eq "osmu.data-flow-storage-transition-runbook-evidence.v1") `
+            "formatVersion=$dataFlowStorageTransitionRunbookFormatVersion"
+        Add-Check `
+            "data-flow-storage-transition-runbook-result" `
+            ($dataFlowStorageTransitionRunbookResult -eq "passed") `
+            "result=$dataFlowStorageTransitionRunbookResult expected=passed before ConfigMap publish."
+        Add-Check `
+            "data-flow-storage-transition-runbook-plan-result" `
+            ($dataFlowStorageTransitionRunbookStoragePlanResult -eq "passed") `
+            "dataFlowStoragePlanSnapshot.result=$dataFlowStorageTransitionRunbookStoragePlanResult expected=passed."
+        Add-Check `
+            "data-flow-storage-transition-runbook-failure-count" `
+            ($dataFlowStorageTransitionRunbookFailureCount -eq 0) `
+            "failureCount=$dataFlowStorageTransitionRunbookFailureCount expected=0."
+        foreach ($confirmationName in @("backfillRehearsed", "dualWriteOrPartitionToggleReviewed", "rollbackRehearsed", "reconciliationPassed", "dashboardCutoverReviewed", "retentionDryRunReviewed", "noObjectKeysInAggregates", "noSecretValues")) {
+            $confirmationValue = $runbookJson.confirmations.PSObject.Properties[$confirmationName].Value
+            Add-Check `
+                "data-flow-storage-transition-runbook-$confirmationName" `
+                (($confirmationValue -is [bool]) -and [bool] $confirmationValue) `
+                "confirmation $confirmationName=$confirmationValue expected boolean true."
+        }
+        $patterns = @(
+            '(?i)"(sql|rawSql|raw_sql|queryText|query_text|explain|explainJson|explain_json|rawExplain|raw_explain|rawEventMessage|raw_event_message|objectKey|object_key|password|passwd|token|credential|apiKey|api_key|accessKey|access_key|privateKey|private_key)"\s*:',
+            '(?i)\b(password|passwd|credential|api[_-]?key|access[_-]?key|private[_-]?key)\s*=\s*\S+',
+            '(?i)\bBearer\s+[A-Za-z0-9._~+/=-]{12,}',
+            '(?i)\bSELECT\b[\s\S]{0,200}\bFROM\b',
+            '(?i)\bEXPLAIN\b[\s\S]{0,200}\bFORMAT\b'
+        )
+        $sanitized = $true
+        foreach ($pattern in $patterns) {
+            if ($runbookRaw -match $pattern) {
+                $sanitized = $false
+            }
+        }
+        Add-Check `
+            "data-flow-storage-transition-runbook-sanitized" `
+            $sanitized `
+            "Runbook evidence contains no raw SQL, raw EXPLAIN, object keys, raw event messages, or credential-shaped content."
+    }
+    catch {
+        Add-Check "data-flow-storage-transition-runbook-json-valid" $false "Data-flow storage transition runbook file is not valid JSON: $($_.Exception.Message)"
+    }
+}
+
 $dataFlowStoragePlanBytes = if ($publishDataFlowStoragePlanToConfigMap) {
     (Get-Item -LiteralPath $resolvedDataFlowStoragePlanPath).Length
 }
@@ -278,6 +354,18 @@ else {
 }
 $dataFlowStoragePlanSha256 = if ($publishDataFlowStoragePlanToConfigMap) {
     Get-FileSha256 $resolvedDataFlowStoragePlanPath
+}
+else {
+    ""
+}
+$dataFlowStorageTransitionRunbookBytes = if ($publishDataFlowStorageTransitionRunbookToConfigMap) {
+    (Get-Item -LiteralPath $resolvedDataFlowStorageTransitionRunbookPath).Length
+}
+else {
+    0
+}
+$dataFlowStorageTransitionRunbookSha256 = if ($publishDataFlowStorageTransitionRunbookToConfigMap) {
+    Get-FileSha256 $resolvedDataFlowStorageTransitionRunbookPath
 }
 else {
     ""
@@ -291,6 +379,9 @@ function New-CreateConfigMapArguments([bool] $IncludeEvidence, [string] $DryRunM
     )
     if ($publishDataFlowStoragePlanToConfigMap) {
         $arguments += "--from-file=$DataFlowStoragePlanConfigMapKey=$resolvedDataFlowStoragePlanPath"
+    }
+    if ($publishDataFlowStorageTransitionRunbookToConfigMap) {
+        $arguments += "--from-file=$DataFlowStorageTransitionRunbookConfigMapKey=$resolvedDataFlowStorageTransitionRunbookPath"
     }
     if ($IncludeEvidence) {
         $arguments += "--from-file=$EvidenceConfigMapKey=$resolvedEvidencePath"
@@ -327,8 +418,10 @@ function New-ReportObject([string] $ResultValue) {
         configMapKey = $ConfigMapKey
         evidenceConfigMapKey = $EvidenceConfigMapKey
         dataFlowStoragePlanConfigMapKey = $DataFlowStoragePlanConfigMapKey
+        dataFlowStorageTransitionRunbookConfigMapKey = $DataFlowStorageTransitionRunbookConfigMapKey
         publishEvidenceToConfigMap = [bool] $publishEvidenceToConfigMap
         publishDataFlowStoragePlanToConfigMap = [bool] $publishDataFlowStoragePlanToConfigMap
+        publishDataFlowStorageTransitionRunbookToConfigMap = [bool] $publishDataFlowStorageTransitionRunbookToConfigMap
         sourceReportPath = $resolvedReportPath
         sourceReportFormatVersion = $formatVersion
         sourceReportResult = $reportResult
@@ -346,6 +439,15 @@ function New-ReportObject([string] $ResultValue) {
         dataFlowQueryPlanEvidenceFailedCount = $dataFlowQueryPlanEvidenceFailedCount
         dataFlowQueryPlanEvidenceExpectedFormatVersion = $dataFlowQueryPlanEvidenceExpectedFormatVersion
         dataFlowQueryPlanEvidenceFormatVersion = $dataFlowQueryPlanEvidenceFormatVersion
+        dataFlowStorageTransitionRunbookPath = $resolvedDataFlowStorageTransitionRunbookPath
+        dataFlowStorageTransitionRunbookFormatVersion = $dataFlowStorageTransitionRunbookFormatVersion
+        dataFlowStorageTransitionRunbookResult = $dataFlowStorageTransitionRunbookResult
+        dataFlowStorageTransitionRunbookStoragePlanResult = $dataFlowStorageTransitionRunbookStoragePlanResult
+        dataFlowStorageTransitionRunbookCandidateStore = $dataFlowStorageTransitionRunbookCandidateStore
+        dataFlowStorageTransitionRunbookFailureCount = $dataFlowStorageTransitionRunbookFailureCount
+        dataFlowStorageTransitionRunbookCheckCount = $dataFlowStorageTransitionRunbookCheckCount
+        dataFlowStorageTransitionRunbookBytes = $dataFlowStorageTransitionRunbookBytes
+        dataFlowStorageTransitionRunbookSha256 = $dataFlowStorageTransitionRunbookSha256
         clientDryRunCommand = $clientDryRunCommand
         serverDryRunCommand = $serverDryRunCommand
         applyCommand = $applyCommand
@@ -357,7 +459,7 @@ function New-ReportObject([string] $ResultValue) {
         checkCount = @($checks).Count
         failedCount = $failureCount
         checks = $checks
-        safetyPolicy = "This script writes to Kubernetes only when -Apply is supplied. -ServerDryRunOnly talks to the API server without persisting changes. The default and -PlanOnly modes do not execute kubectl. When present, the data-flow storage plan is included in the same ConfigMap so dashboard readiness can expose target analytics-storage planning evidence. After a successful apply, the sync evidence file is also published into the same ConfigMap unless -SkipEvidenceConfigMapPublish is supplied."
+        safetyPolicy = "This script writes to Kubernetes only when -Apply is supplied. -ServerDryRunOnly talks to the API server without persisting changes. The default and -PlanOnly modes do not execute kubectl. When present, the data-flow storage plan and transition runbook evidence are included in the same ConfigMap so dashboard readiness can expose target analytics-storage planning and rehearsal evidence. After a successful apply, the sync evidence file is also published into the same ConfigMap unless -SkipEvidenceConfigMapPublish is supplied."
     }
 }
 

@@ -15,6 +15,10 @@ on:
         description: Optional base64-encoded latest-data-flow-storage-plan.json evidence to include in the ConfigMap. MariaDB/dual-write plans must include query-plan evidence summary.
         required: false
         default: ""
+      data_flow_storage_transition_runbook_json_base64:
+        description: Optional base64-encoded latest-data-flow-storage-transition-runbook-evidence.json evidence to include in the ConfigMap. Must be sanitized and result=passed.
+        required: false
+        default: ""
       run_live:
         description: Run live kubectl evidence using OSMU_KUBECONFIG_BASE64
         required: true
@@ -82,9 +86,46 @@ jobs:
             $forbiddenPropertyPattern = '(?i)"(sql|rawSql|raw_sql|explain|explainJson|explain_json|rawExplain|raw_explain|password|passwd|secret|token|credential|apiKey|api_key|accessKey|access_key|privateKey|private_key)"\s*:'
             $credentialPattern = '(?i)\b(password|passwd|secret|token|credential|api[_-]?key|access[_-]?key|private[_-]?key)\s*=\s*\S+'
             $rawSqlPattern = '(?i)\bSELECT\b[\s\S]{0,200}\bFROM\b'
-            if ($summaryText -match $forbiddenPropertyPattern -or $summaryText -match $credentialPattern -or $summaryText -match $rawSqlPattern) {
-              throw "queryPlanEvidence summary must not contain raw SQL, raw EXPLAIN, or credential-shaped content."
+          if ($summaryText -match $forbiddenPropertyPattern -or $summaryText -match $credentialPattern -or $summaryText -match $rawSqlPattern) {
+            throw "queryPlanEvidence summary must not contain raw SQL, raw EXPLAIN, or credential-shaped content."
+          }
+        }
+
+      - name: Restore data-flow storage transition runbook evidence
+        if: ${{ inputs.data_flow_storage_transition_runbook_json_base64 != '' }}
+        shell: pwsh
+        env:
+          OSMU_DATA_FLOW_STORAGE_TRANSITION_RUNBOOK_JSON_BASE64: ${{ inputs.data_flow_storage_transition_runbook_json_base64 }}
+        run: |
+          New-Item -ItemType Directory -Force -Path ./.osmu-run | Out-Null
+          $runbookPath = ".osmu-run/latest-data-flow-storage-transition-runbook-evidence.json"
+          [IO.File]::WriteAllBytes($runbookPath, [Convert]::FromBase64String($env:OSMU_DATA_FLOW_STORAGE_TRANSITION_RUNBOOK_JSON_BASE64))
+          $raw = Get-Content -Raw -LiteralPath $runbookPath
+          $runbook = $raw | ConvertFrom-Json
+          if ($runbook.formatVersion -ne "osmu.data-flow-storage-transition-runbook-evidence.v1") {
+            throw "Unexpected data-flow storage transition runbook formatVersion: $($runbook.formatVersion)"
+          }
+          if ($runbook.result -ne "passed") {
+            throw "data-flow storage transition runbook evidence must be result=passed for Kubernetes operations report sync input."
+          }
+          if ($runbook.dataFlowStoragePlanSnapshot.result -ne "passed") {
+            throw "data-flow storage transition runbook must embed dataFlowStoragePlanSnapshot.result=passed."
+          }
+          if (-not ($runbook.summary.failureCount -is [int] -or $runbook.summary.failureCount -is [long]) -or [int64] $runbook.summary.failureCount -ne 0) {
+            throw "data-flow storage transition runbook summary.failureCount must be typed integer 0."
+          }
+          foreach ($confirmationName in @("backfillRehearsed", "dualWriteOrPartitionToggleReviewed", "rollbackRehearsed", "reconciliationPassed", "dashboardCutoverReviewed", "retentionDryRunReviewed", "noObjectKeysInAggregates", "noSecretValues")) {
+            $value = $runbook.confirmations.$confirmationName
+            if (-not ($value -is [bool]) -or -not $value) {
+              throw "data-flow storage transition runbook confirmation $confirmationName must be boolean true."
             }
+          }
+          $forbiddenPropertyPattern = '(?i)"(sql|rawSql|raw_sql|queryText|query_text|explain|explainJson|explain_json|rawExplain|raw_explain|rawEventMessage|raw_event_message|objectKey|object_key|password|passwd|token|credential|apiKey|api_key|accessKey|access_key|privateKey|private_key)"\s*:'
+          $credentialPattern = '(?i)\b(password|passwd|credential|api[_-]?key|access[_-]?key|private[_-]?key)\s*=\s*\S+'
+          $rawSqlPattern = '(?i)\bSELECT\b[\s\S]{0,200}\bFROM\b'
+          $rawExplainPattern = '(?i)\bEXPLAIN\b[\s\S]{0,200}\bFORMAT\b'
+          if ($raw -match $forbiddenPropertyPattern -or $raw -match $credentialPattern -or $raw -match $rawSqlPattern -or $raw -match $rawExplainPattern) {
+            throw "runbook evidence must not contain raw SQL, raw EXPLAIN, object keys, raw event messages, or credential-shaped content."
           }
 
       - name: Plan Kubernetes operations report sync
@@ -94,6 +135,7 @@ jobs:
             -PlanOnly `
             -Namespace "${{ inputs.namespace }}" `
             -ReportPath "${{ inputs.report_path }}" `
+            -DataFlowStorageTransitionRunbookPath ./.osmu-run/latest-data-flow-storage-transition-runbook-evidence.json `
             -EvidencePath ./.osmu-run/latest-kubernetes-operations-report-sync-plan.json
 
       - name: Prepare kubeconfig
@@ -124,6 +166,7 @@ jobs:
             -ServerDryRunOnly `
             -Namespace "${{ inputs.namespace }}" `
             -ReportPath "${{ inputs.report_path }}" `
+            -DataFlowStorageTransitionRunbookPath ./.osmu-run/latest-data-flow-storage-transition-runbook-evidence.json `
             -EvidencePath ./.osmu-run/latest-kubernetes-operations-report-sync-server-dry-run.json
 
       - name: Apply Kubernetes operations report sync
@@ -133,7 +176,8 @@ jobs:
           ./scripts/sync-kubernetes-operations-reports.ps1 `
             -Apply `
             -Namespace "${{ inputs.namespace }}" `
-            -ReportPath "${{ inputs.report_path }}"
+            -ReportPath "${{ inputs.report_path }}" `
+            -DataFlowStorageTransitionRunbookPath ./.osmu-run/latest-data-flow-storage-transition-runbook-evidence.json
 
       - name: Upload Kubernetes operations report sync evidence
         if: always()
@@ -144,6 +188,7 @@ jobs:
             .osmu-run/latest-operations-readiness-convergence.json
             .osmu-run/latest-operations-readiness-convergence.md
             .osmu-run/latest-data-flow-storage-plan.json
+            .osmu-run/latest-data-flow-storage-transition-runbook-evidence.json
             .osmu-run/latest-kubernetes-operations-report-sync-plan.json
             .osmu-run/latest-kubernetes-operations-report-sync-server-dry-run.json
             .osmu-run/latest-kubernetes-operations-report-sync.json

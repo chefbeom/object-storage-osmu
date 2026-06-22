@@ -54,6 +54,7 @@ $scriptPath = Resolve-ProjectPath ".\scripts\verify-kubernetes-operations-report
 $reportPath = Join-Path $resolvedOutputDirectory "latest-operations-readiness-convergence.json"
 $syncEvidencePath = Join-Path $resolvedOutputDirectory "latest-kubernetes-operations-report-sync.json"
 $dataFlowStoragePlanPath = Join-Path $resolvedOutputDirectory "latest-data-flow-storage-plan.json"
+$dataFlowStorageTransitionRunbookPath = Join-Path $resolvedOutputDirectory "latest-data-flow-storage-transition-runbook-evidence.json"
 $fakeKubectlPath = Join-Path $resolvedOutputDirectory "fake-kubectl.ps1"
 $evidencePath = Join-Path $resolvedOutputDirectory "mount-evidence.json"
 $planEvidencePath = Join-Path $resolvedOutputDirectory "mount-plan.json"
@@ -142,10 +143,37 @@ Write-JsonFixture $dataFlowStoragePlanPath ([ordered]@{
     scopePolicy = "OSMU operations analytics only."
 })
 
+Write-JsonFixture $dataFlowStorageTransitionRunbookPath ([ordered]@{
+    formatVersion = "osmu.data-flow-storage-transition-runbook-evidence.v1"
+    generatedAt = "2026-06-16T00:06:00+09:00"
+    result = "passed"
+    dataFlowStoragePlanSnapshot = [ordered]@{
+        result = "passed"
+        candidateStore = "MARIADB_PARTITION"
+    }
+    summary = [ordered]@{
+        failureCount = 0
+        checkCount = 8
+    }
+    confirmations = [ordered]@{
+        backfillRehearsed = $true
+        dualWriteOrPartitionToggleReviewed = $true
+        rollbackRehearsed = $true
+        reconciliationPassed = $true
+        dashboardCutoverReviewed = $true
+        retentionDryRunReviewed = $true
+        noObjectKeysInAggregates = $true
+        noSecretValues = $true
+    }
+    topFailedChecks = @()
+    scopePolicy = "OSMU operations analytics transition runbook only."
+})
+
 $fakeKubectlTemplate = @'
 $reportPath = '__REPORT_PATH__'
 $syncPath = '__SYNC_PATH__'
 $dataFlowStoragePlanPath = '__DATA_FLOW_STORAGE_PLAN_PATH__'
+$dataFlowStorageTransitionRunbookPath = '__DATA_FLOW_STORAGE_TRANSITION_RUNBOOK_PATH__'
 
 function Escape-JsonString([string] $Value) {
     return ($Value | ConvertTo-Json -Compress)
@@ -155,6 +183,7 @@ if (($args -contains 'get') -and ($args -contains 'configmap')) {
     $reportText = Get-Content -Raw -Encoding UTF8 -LiteralPath $reportPath
     $syncText = Get-Content -Raw -Encoding UTF8 -LiteralPath $syncPath
     $dataFlowStoragePlanText = Get-Content -Raw -Encoding UTF8 -LiteralPath $dataFlowStoragePlanPath
+    $dataFlowStorageTransitionRunbookText = Get-Content -Raw -Encoding UTF8 -LiteralPath $dataFlowStorageTransitionRunbookPath
     Write-Output -NoEnumerate (
         '{' +
         '"apiVersion":"v1",' +
@@ -163,7 +192,8 @@ if (($args -contains 'get') -and ($args -contains 'configmap')) {
         '"data":{' +
         '"latest-operations-readiness-convergence.json":' + (Escape-JsonString $reportText) + ',' +
         '"latest-kubernetes-operations-report-sync.json":' + (Escape-JsonString $syncText) + ',' +
-        '"latest-data-flow-storage-plan.json":' + (Escape-JsonString $dataFlowStoragePlanText) +
+        '"latest-data-flow-storage-plan.json":' + (Escape-JsonString $dataFlowStoragePlanText) + ',' +
+        '"latest-data-flow-storage-transition-runbook-evidence.json":' + (Escape-JsonString $dataFlowStorageTransitionRunbookText) +
         '}' +
         '}'
     )
@@ -207,6 +237,10 @@ if ($args -contains 'exec') {
         Write-Output -NoEnumerate (Get-Content -Raw -Encoding UTF8 -LiteralPath $dataFlowStoragePlanPath)
         exit 0
     }
+    if ($path.EndsWith('latest-data-flow-storage-transition-runbook-evidence.json')) {
+        Write-Output -NoEnumerate (Get-Content -Raw -Encoding UTF8 -LiteralPath $dataFlowStorageTransitionRunbookPath)
+        exit 0
+    }
     Write-Error "Unexpected mounted path: $path"
     exit 1
 }
@@ -218,7 +252,8 @@ exit 1
 $fakeKubectlScript = $fakeKubectlTemplate.
     Replace("__REPORT_PATH__", (Escape-SingleQuotedPowerShellString $reportPath)).
     Replace("__SYNC_PATH__", (Escape-SingleQuotedPowerShellString $syncEvidencePath)).
-    Replace("__DATA_FLOW_STORAGE_PLAN_PATH__", (Escape-SingleQuotedPowerShellString $dataFlowStoragePlanPath))
+    Replace("__DATA_FLOW_STORAGE_PLAN_PATH__", (Escape-SingleQuotedPowerShellString $dataFlowStoragePlanPath)).
+    Replace("__DATA_FLOW_STORAGE_TRANSITION_RUNBOOK_PATH__", (Escape-SingleQuotedPowerShellString $dataFlowStorageTransitionRunbookPath))
 $fakeKubectlScript | Set-Content -LiteralPath $fakeKubectlPath -Encoding UTF8
 
 & powershell -NoProfile -ExecutionPolicy Bypass -File $scriptPath `
@@ -227,6 +262,7 @@ $fakeKubectlScript | Set-Content -LiteralPath $fakeKubectlPath -Encoding UTF8
     -LocalReportPath $reportPath `
     -LocalSyncEvidencePath $syncEvidencePath `
     -LocalDataFlowStoragePlanPath $dataFlowStoragePlanPath `
+    -LocalDataFlowStorageTransitionRunbookPath $dataFlowStorageTransitionRunbookPath `
     -EvidencePath $planEvidencePath | Out-Host
 if ($LASTEXITCODE -ne 0) {
     throw "verify-kubernetes-operations-report-mount.ps1 plan check failed with exit code $LASTEXITCODE."
@@ -237,6 +273,7 @@ Assert-Equal $plan.formatVersion "osmu.kubernetes-operations-report-mount.v1" "p
 Assert-Equal $plan.result "planned" "plan result"
 Assert-Equal $plan.podMountChecked $false "plan pod mount checked"
 Assert-Equal $plan.dataFlowStoragePlanChecked $true "plan data-flow storage plan checked"
+Assert-Equal $plan.dataFlowStorageTransitionRunbookChecked $true "plan data-flow storage transition runbook checked"
 Assert-Equal $plan.failedCount 0 "plan failed count"
 
 & powershell -NoProfile -ExecutionPolicy Bypass -File $scriptPath `
@@ -244,6 +281,7 @@ Assert-Equal $plan.failedCount 0 "plan failed count"
     -LocalReportPath $reportPath `
     -LocalSyncEvidencePath $syncEvidencePath `
     -LocalDataFlowStoragePlanPath $dataFlowStoragePlanPath `
+    -LocalDataFlowStorageTransitionRunbookPath $dataFlowStorageTransitionRunbookPath `
     -EvidencePath $evidencePath | Out-Host
 if ($LASTEXITCODE -ne 0) {
     throw "verify-kubernetes-operations-report-mount.ps1 mounted check failed with exit code $LASTEXITCODE."
@@ -255,11 +293,13 @@ Assert-Equal $evidence.result "passed" "mount evidence result"
 Assert-Equal $evidence.backendPodName "osmu-backend-fixture-0" "mount evidence backend pod"
 Assert-Equal $evidence.podMountChecked $true "mount evidence pod mount checked"
 Assert-Equal $evidence.dataFlowStoragePlanChecked $true "mount evidence data-flow storage plan checked"
+Assert-Equal $evidence.dataFlowStorageTransitionRunbookChecked $true "mount evidence data-flow storage transition runbook checked"
 Assert-Equal $evidence.failedCount 0 "mount evidence failed count"
 Assert-True (-not [string]::IsNullOrWhiteSpace($evidence.configMapReportSha256)) "configmap report hash"
 Assert-Equal $evidence.configMapReportSha256 $evidence.mountedReportSha256 "mounted report hash match"
 Assert-Equal $evidence.configMapSyncEvidenceSha256 $evidence.mountedSyncEvidenceSha256 "mounted sync evidence hash match"
 Assert-Equal $evidence.configMapDataFlowStoragePlanSha256 $evidence.mountedDataFlowStoragePlanSha256 "mounted data-flow storage plan hash match"
+Assert-Equal $evidence.configMapDataFlowStorageTransitionRunbookSha256 $evidence.mountedDataFlowStorageTransitionRunbookSha256 "mounted data-flow storage transition runbook hash match"
 Assert-Contains $checksText "configmap-sync-evidence-key-present" "configmap sync evidence key check"
 Assert-Contains $checksText "mounted-sync-evidence-readable" "mounted sync evidence readable check"
 Assert-Contains $checksText "mounted-sync-evidence-matches-configmap" "mounted sync evidence match check"
@@ -270,6 +310,11 @@ Assert-Contains $checksText "mounted-data-flow-storage-plan-readable" "mounted d
 Assert-Contains $checksText "mounted-data-flow-storage-plan-query-plan-evidence-present" "mounted data-flow query plan summary present check"
 Assert-Contains $checksText "mounted-data-flow-storage-plan-query-plan-failed-count" "mounted data-flow query plan failed count check"
 Assert-Contains $checksText "mounted-data-flow-storage-plan-matches-configmap" "mounted data-flow storage plan match check"
+Assert-Contains $checksText "configmap-data-flow-storage-transition-runbook-key-present" "configmap data-flow runbook key check"
+Assert-Contains $checksText "configmap-data-flow-storage-transition-runbook-result" "configmap data-flow runbook result check"
+Assert-Contains $checksText "mounted-data-flow-storage-transition-runbook-readable" "mounted data-flow runbook readable check"
+Assert-Contains $checksText "mounted-data-flow-storage-transition-runbook-noSecretValues" "mounted data-flow runbook no-secret check"
+Assert-Contains $checksText "mounted-data-flow-storage-transition-runbook-matches-configmap" "mounted data-flow runbook match check"
 Assert-True ($evidence.safetyPolicy.Contains("read-only")) "mount evidence safety policy"
 
 Write-Host "Kubernetes operations report mount verifier self-test passed."

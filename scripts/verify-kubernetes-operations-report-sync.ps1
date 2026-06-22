@@ -49,7 +49,9 @@ New-Item -ItemType Directory -Force -Path $resolvedOutputDirectory | Out-Null
 $scriptPath = Resolve-ProjectPath ".\scripts\sync-kubernetes-operations-reports.ps1"
 $fixturePath = Join-Path $resolvedOutputDirectory "latest-operations-readiness-convergence.json"
 $dataFlowStoragePlanPath = Join-Path $resolvedOutputDirectory "latest-data-flow-storage-plan.json"
+$dataFlowStorageTransitionRunbookPath = Join-Path $resolvedOutputDirectory "latest-data-flow-storage-transition-runbook-evidence.json"
 $unsafeDataFlowStoragePlanPath = Join-Path $resolvedOutputDirectory "unsafe-data-flow-storage-plan.json"
+$unsafeDataFlowStorageTransitionRunbookPath = Join-Path $resolvedOutputDirectory "unsafe-data-flow-storage-transition-runbook-evidence.json"
 $planEvidencePath = Join-Path $resolvedOutputDirectory "plan.json"
 $serverDryRunEvidencePath = Join-Path $resolvedOutputDirectory "server-dry-run.json"
 $applyEvidencePath = Join-Path $resolvedOutputDirectory "apply.json"
@@ -132,6 +134,37 @@ Write-JsonFixture $dataFlowStoragePlanPath ([ordered]@{
     scopePolicy = "OSMU operations analytics only."
 })
 
+Write-JsonFixture $dataFlowStorageTransitionRunbookPath ([ordered]@{
+    formatVersion = "osmu.data-flow-storage-transition-runbook-evidence.v1"
+    generatedAt = "2026-06-16T00:06:00+09:00"
+    result = "passed"
+    environmentName = "sync-self-test"
+    targetCluster = "sync-self-test"
+    operatorName = "sync-self-test"
+    evidenceRef = "runbook-sync-self-test"
+    dataFlowStoragePlanSnapshot = [ordered]@{
+        result = "passed"
+        candidateStore = "MARIADB_PARTITION"
+        targetP95QueryLatencyMs = 500
+    }
+    summary = [ordered]@{
+        failureCount = 0
+        checkCount = 8
+    }
+    confirmations = [ordered]@{
+        backfillRehearsed = $true
+        dualWriteOrPartitionToggleReviewed = $true
+        rollbackRehearsed = $true
+        reconciliationPassed = $true
+        dashboardCutoverReviewed = $true
+        retentionDryRunReviewed = $true
+        noObjectKeysInAggregates = $true
+        noSecretValues = $true
+    }
+    topFailedChecks = @()
+    scopePolicy = "OSMU operations analytics transition runbook only."
+})
+
 $conflictExitCode = 0
 $conflictOutput = ""
 try {
@@ -176,6 +209,7 @@ exit 1
     -PlanOnly `
     -ReportPath $fixturePath `
     -DataFlowStoragePlanPath $dataFlowStoragePlanPath `
+    -DataFlowStorageTransitionRunbookPath $dataFlowStorageTransitionRunbookPath `
     -EvidencePath $planEvidencePath | Out-Host
 if ($LASTEXITCODE -ne 0) {
     throw "sync-kubernetes-operations-reports.ps1 plan check failed with exit code $LASTEXITCODE."
@@ -187,8 +221,10 @@ Assert-Equal $plan.result "planned" "plan result"
 Assert-Equal $plan.sourceReportFormatVersion "osmu.operations-readiness-convergence.v1" "plan source format"
 Assert-Equal $plan.evidenceConfigMapKey "latest-kubernetes-operations-report-sync.json" "plan evidence ConfigMap key"
 Assert-Equal $plan.dataFlowStoragePlanConfigMapKey "latest-data-flow-storage-plan.json" "plan data-flow storage plan ConfigMap key"
+Assert-Equal $plan.dataFlowStorageTransitionRunbookConfigMapKey "latest-data-flow-storage-transition-runbook-evidence.json" "plan data-flow storage transition runbook ConfigMap key"
 Assert-Equal $plan.publishEvidenceToConfigMap $true "plan publish evidence flag"
 Assert-Equal $plan.publishDataFlowStoragePlanToConfigMap $true "plan data-flow storage plan publish flag"
+Assert-Equal $plan.publishDataFlowStorageTransitionRunbookToConfigMap $true "plan data-flow storage transition runbook publish flag"
 Assert-Equal $plan.dataFlowStoragePlanFormatVersion "osmu.data-flow-storage-plan.v1" "plan data-flow storage plan format"
 Assert-Equal $plan.dataFlowStoragePlanResult "plan-ready-execute-required" "plan data-flow storage plan result"
 Assert-Equal $plan.dataFlowStoragePlanCandidateStore "MARIADB_PARTITION" "plan data-flow storage plan candidate store"
@@ -198,22 +234,33 @@ Assert-Equal $plan.dataFlowQueryPlanEvidenceResult "" "plan data-flow query plan
 Assert-Equal $plan.dataFlowQueryPlanEvidenceFailedCount 0 "plan data-flow query plan failed count"
 Assert-Equal $plan.dataFlowQueryPlanEvidenceExpectedFormatVersion "osmu.mariadb-query-plan-evidence.v1" "plan data-flow query plan expected format"
 Assert-Contains ($plan.checks | ConvertTo-Json -Depth 10) "data-flow-query-plan-evidence-sanitized" "plan data-flow query plan sanitized check"
+Assert-Equal $plan.dataFlowStorageTransitionRunbookFormatVersion "osmu.data-flow-storage-transition-runbook-evidence.v1" "plan data-flow runbook format"
+Assert-Equal $plan.dataFlowStorageTransitionRunbookResult "passed" "plan data-flow runbook result"
+Assert-Equal $plan.dataFlowStorageTransitionRunbookStoragePlanResult "passed" "plan data-flow runbook storage plan result"
+Assert-Equal $plan.dataFlowStorageTransitionRunbookCandidateStore "MARIADB_PARTITION" "plan data-flow runbook candidate store"
+Assert-Equal $plan.dataFlowStorageTransitionRunbookFailureCount 0 "plan data-flow runbook failure count"
+Assert-Contains ($plan.checks | ConvertTo-Json -Depth 10) "data-flow-storage-transition-runbook-sanitized" "plan data-flow runbook sanitized check"
 Assert-Equal $plan.failedCount 0 "plan failed count"
 Assert-Contains $plan.serverDryRunCommand "--dry-run=server" "plan server dry-run command"
 Assert-Contains $plan.serverDryRunCommand "latest-data-flow-storage-plan.json" "plan server dry-run data-flow plan command"
+Assert-Contains $plan.serverDryRunCommand "latest-data-flow-storage-transition-runbook-evidence.json" "plan server dry-run data-flow runbook command"
 Assert-Contains $plan.applyCommand "kubectl apply -f -" "plan apply command"
 Assert-Contains $plan.publishEvidenceApplyCommand "latest-kubernetes-operations-report-sync.json" "plan publish evidence command"
 Assert-Contains $plan.publishEvidenceApplyCommand "latest-data-flow-storage-plan.json" "plan publish evidence data-flow plan command"
+Assert-Contains $plan.publishEvidenceApplyCommand "latest-data-flow-storage-transition-runbook-evidence.json" "plan publish evidence data-flow runbook command"
 Assert-True ($plan.sourceReportBytes -gt 0) "plan source report byte count"
 Assert-True (-not [string]::IsNullOrWhiteSpace($plan.sourceReportSha256)) "plan source report hash"
 Assert-True ($plan.dataFlowStoragePlanBytes -gt 0) "plan data-flow storage plan byte count"
 Assert-True (-not [string]::IsNullOrWhiteSpace($plan.dataFlowStoragePlanSha256)) "plan data-flow storage plan hash"
+Assert-True ($plan.dataFlowStorageTransitionRunbookBytes -gt 0) "plan data-flow storage transition runbook byte count"
+Assert-True (-not [string]::IsNullOrWhiteSpace($plan.dataFlowStorageTransitionRunbookSha256)) "plan data-flow storage transition runbook hash"
 
 & powershell -NoProfile -ExecutionPolicy Bypass -File $scriptPath `
     -ServerDryRunOnly `
     -KubectlPath $fakeKubectlPath `
     -ReportPath $fixturePath `
     -DataFlowStoragePlanPath $dataFlowStoragePlanPath `
+    -DataFlowStorageTransitionRunbookPath $dataFlowStorageTransitionRunbookPath `
     -EvidencePath $serverDryRunEvidencePath | Out-Host
 if ($LASTEXITCODE -ne 0) {
     throw "sync-kubernetes-operations-reports.ps1 server dry-run check failed with exit code $LASTEXITCODE."
@@ -229,6 +276,7 @@ Assert-Contains $serverDryRun.serverDryRunOutput "kind: ConfigMap" "server dry-r
     -KubectlPath $fakeKubectlPath `
     -ReportPath $fixturePath `
     -DataFlowStoragePlanPath $dataFlowStoragePlanPath `
+    -DataFlowStorageTransitionRunbookPath $dataFlowStorageTransitionRunbookPath `
     -EvidencePath $applyEvidencePath | Out-Host
 if ($LASTEXITCODE -ne 0) {
     throw "sync-kubernetes-operations-reports.ps1 apply check failed with exit code $LASTEXITCODE."
@@ -242,6 +290,7 @@ Assert-Contains $apply.publishEvidenceApplyOutput "configured" "publish evidence
 Assert-Contains ($apply.checks | ConvertTo-Json -Depth 10) "render-configmap-with-sync-evidence" "apply evidence render check"
 Assert-Contains ($apply.checks | ConvertTo-Json -Depth 10) "apply-configmap-with-sync-evidence" "apply evidence publish check"
 Assert-Equal $apply.dataFlowQueryPlanEvidencePresent $true "apply data-flow query plan summary present"
+Assert-Equal $apply.dataFlowStorageTransitionRunbookResult "passed" "apply data-flow runbook result"
 
 Write-JsonFixture $unsafeDataFlowStoragePlanPath ([ordered]@{
     formatVersion = "osmu.data-flow-storage-plan.v1"
@@ -267,6 +316,43 @@ Assert-True (Test-Path -LiteralPath $unsafeEvidencePath) "Unsafe sync evidence s
 $unsafePlan = Get-Content -Raw -LiteralPath $unsafeEvidencePath | ConvertFrom-Json
 Assert-Equal $unsafePlan.result "failed" "unsafe plan result"
 Assert-Contains ($unsafePlan.checks | ConvertTo-Json -Depth 10) "raw SQL" "unsafe plan sanitized detail"
+
+Write-JsonFixture $unsafeDataFlowStorageTransitionRunbookPath ([ordered]@{
+    formatVersion = "osmu.data-flow-storage-transition-runbook-evidence.v1"
+    result = "passed"
+    dataFlowStoragePlanSnapshot = [ordered]@{
+        result = "passed"
+        candidateStore = "MARIADB_PARTITION"
+    }
+    summary = [ordered]@{
+        failureCount = 0
+        checkCount = 8
+    }
+    confirmations = [ordered]@{
+        backfillRehearsed = $true
+        dualWriteOrPartitionToggleReviewed = $true
+        rollbackRehearsed = $true
+        reconciliationPassed = $true
+        dashboardCutoverReviewed = $true
+        retentionDryRunReviewed = $true
+        noObjectKeysInAggregates = $true
+        noSecretValues = $true
+    }
+    rawEventMessage = "objectKey=tenant-a/private-object"
+})
+$unsafeRunbookEvidencePath = Join-Path $resolvedOutputDirectory "unsafe-runbook.json"
+$unsafeRunbookOutput = & powershell -NoProfile -ExecutionPolicy Bypass -File $scriptPath `
+    -PlanOnly `
+    -ReportPath $fixturePath `
+    -DataFlowStoragePlanPath $dataFlowStoragePlanPath `
+    -DataFlowStorageTransitionRunbookPath $unsafeDataFlowStorageTransitionRunbookPath `
+    -EvidencePath $unsafeRunbookEvidencePath 2>&1
+$unsafeRunbookExitCode = $LASTEXITCODE
+Assert-True ($unsafeRunbookExitCode -ne 0) "Unsafe data-flow transition runbook must fail sync plan."
+Assert-True (Test-Path -LiteralPath $unsafeRunbookEvidencePath) "Unsafe runbook sync evidence should still be written."
+$unsafeRunbookPlan = Get-Content -Raw -LiteralPath $unsafeRunbookEvidencePath | ConvertFrom-Json
+Assert-Equal $unsafeRunbookPlan.result "failed" "unsafe runbook plan result"
+Assert-Contains ($unsafeRunbookPlan.checks | ConvertTo-Json -Depth 10) "object keys" "unsafe runbook sanitized detail"
 
 Write-Host "Kubernetes operations report sync verified."
 Write-Host "Plan evidence: $planEvidencePath"

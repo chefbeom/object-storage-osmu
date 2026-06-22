@@ -1687,8 +1687,19 @@
           configmap {{ kubernetesOperationsReportSync.configMapName || 'unknown' }} /
           key {{ kubernetesOperationsReportSync.configMapKey || 'unknown' }} /
           source {{ kubernetesOperationsReportSync.sourceReportResult || 'unknown' }} /
+          plan {{ kubernetesOperationsReportSync.publishDataFlowStoragePlanToConfigMap ? 'mounted' : 'optional' }} /
+          runbook {{ kubernetesOperationsReportSync.publishDataFlowStorageTransitionRunbookToConfigMap ? (kubernetesOperationsReportSync.dataFlowStorageTransitionRunbookResult || 'mounted') : 'optional' }} /
           checks {{ kubernetesOperationsReportSync.checkCount || 0 }} /
           failed {{ kubernetesOperationsReportSync.failedCount || 0 }}
+        </small>
+        <small
+          v-if="kubernetesOperationsReportSync.dataFlowStorageTransitionRunbookConfigMapKey"
+          data-testid="readiness-kubernetes-report-sync-runbook-summary"
+        >
+          runbook key {{ kubernetesOperationsReportSync.dataFlowStorageTransitionRunbookConfigMapKey }} /
+          store {{ kubernetesOperationsReportSync.dataFlowStorageTransitionRunbookCandidateStore || 'unknown' }} /
+          plan {{ kubernetesOperationsReportSync.dataFlowStorageTransitionRunbookStoragePlanResult || 'unknown' }} /
+          failures {{ kubernetesOperationsReportSync.dataFlowStorageTransitionRunbookFailureCount || 0 }}/{{ kubernetesOperationsReportSync.dataFlowStorageTransitionRunbookCheckCount || 0 }}
         </small>
         <small v-if="kubernetesOperationsReportSync.sourceReportSha256">
           sha256 {{ kubernetesOperationsReportSync.sourceReportSha256 }}
