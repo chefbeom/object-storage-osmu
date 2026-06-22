@@ -53,6 +53,9 @@ $blockedMarkdownPath = Join-Path $resolvedOutputDirectory "blocked-unblock-plan.
 $readyInvocationPath = Join-Path $resolvedOutputDirectory "ready-invocation.json"
 $readyJsonPath = Join-Path $resolvedOutputDirectory "ready-unblock-plan.json"
 $readyMarkdownPath = Join-Path $resolvedOutputDirectory "ready-unblock-plan.md"
+$invalidInvocationPath = Join-Path $resolvedOutputDirectory "invalid-invocation.json"
+$invalidJsonPath = Join-Path $resolvedOutputDirectory "invalid-unblock-plan.json"
+$invalidMarkdownPath = Join-Path $resolvedOutputDirectory "invalid-unblock-plan.md"
 
 Write-JsonFixture $blockedInvocationPath ([ordered]@{
     formatVersion = "osmu.operations-evidence-plan-invocation.v1"
@@ -79,6 +82,7 @@ Write-JsonFixture $blockedInvocationPath ([ordered]@{
             status = "blocked"
             blockReasons = @("kubeconfig secret not confirmed")
             unresolvedPlaceholders = @()
+            invalidPlaceholders = @()
             requiresOperatorApproval = $false
             requiresKubeconfigSecret = $true
         },
@@ -93,6 +97,7 @@ Write-JsonFixture $blockedInvocationPath ([ordered]@{
             status = "blocked"
             blockReasons = @("unresolved placeholders: <YYYYMMDDTHHMMSSZ>, <restore-api-base>, <admin>, <count>", "operator approval not confirmed", "kubeconfig secret not confirmed")
             unresolvedPlaceholders = @("<YYYYMMDDTHHMMSSZ>", "<restore-api-base>", "<admin>", "<count>")
+            invalidPlaceholders = @()
             requiresOperatorApproval = $true
             requiresKubeconfigSecret = $true
         },
@@ -107,6 +112,7 @@ Write-JsonFixture $blockedInvocationPath ([ordered]@{
             status = "blocked"
             blockReasons = @("unresolved placeholders: <run-id>, <artifact-name>")
             unresolvedPlaceholders = @("<run-id>", "<artifact-name>")
+            invalidPlaceholders = @()
             requiresOperatorApproval = $false
             requiresKubeconfigSecret = $false
         },
@@ -121,6 +127,7 @@ Write-JsonFixture $blockedInvocationPath ([ordered]@{
             status = "planned"
             blockReasons = @()
             unresolvedPlaceholders = @()
+            invalidPlaceholders = @()
             requiresOperatorApproval = $false
             requiresKubeconfigSecret = $false
         }
@@ -179,6 +186,7 @@ Write-JsonFixture $readyInvocationPath ([ordered]@{
             status = "planned"
             blockReasons = @()
             unresolvedPlaceholders = @()
+            invalidPlaceholders = @()
             requiresOperatorApproval = $false
             requiresKubeconfigSecret = $false
         }
@@ -201,6 +209,55 @@ Assert-Equal $readyReport.requiredPlaceholderCount 0 "ready placeholder count"
 Assert-Contains $readyReport.plannedOnlyCommand "-ActionOrder 1" "ready planned-only command"
 Assert-Contains $readyMarkdown "Result: ready" "ready markdown"
 
+Write-JsonFixture $invalidInvocationPath ([ordered]@{
+    formatVersion = "osmu.operations-evidence-plan-invocation.v1"
+    generatedAt = "2026-06-16T07:30:00+09:00"
+    result = "blocked"
+    sourcePlan = ".osmu-run/latest-operations-evidence-plan.json"
+    sourceSummary = "passed=36 pending=6"
+    commandMode = "Workflow"
+    executionMode = "plan-only"
+    selectedActionCount = 1
+    plannedCount = 0
+    blockedCount = 1
+    executedCount = 0
+    failedCount = 0
+    actions = @(
+        [ordered]@{
+            order = 1
+            name = "Kubernetes DR finalizer live evidence"
+            category = "ha-dr"
+            actionType = "kubernetes-live"
+            evidencePath = ".osmu-run/latest-kubernetes-dr-finalize.json"
+            commandMode = "Workflow"
+            command = "gh workflow run kubernetes-dr-finalizer-ci.yml -f run_live=true -f backup_timestamp=not-a-timestamp -f confirm_restore=true"
+            status = "blocked"
+            blockReasons = @("invalid placeholder value for <YYYYMMDDTHHMMSSZ>")
+            unresolvedPlaceholders = @()
+            invalidPlaceholders = @("<YYYYMMDDTHHMMSSZ>")
+            requiresOperatorApproval = $true
+            requiresKubeconfigSecret = $true
+        }
+    )
+})
+
+& powershell -NoProfile -ExecutionPolicy Bypass -File $scriptPath `
+    -InvocationReportPath $invalidInvocationPath `
+    -JsonOutputPath $invalidJsonPath `
+    -MarkdownOutputPath $invalidMarkdownPath | Out-Host
+if ($LASTEXITCODE -ne 0) {
+    throw "write-operations-invocation-unblock-plan.ps1 invalid fixture failed with exit code $LASTEXITCODE."
+}
+
+$invalidReport = Get-Content -Raw -LiteralPath $invalidJsonPath | ConvertFrom-Json
+$invalidMarkdown = Get-Content -Raw -LiteralPath $invalidMarkdownPath
+Assert-Equal $invalidReport.result "action-required" "invalid result"
+Assert-Equal $invalidReport.requiredPlaceholderCount 1 "invalid required placeholder count"
+Assert-Contains $invalidReport.confirmedPlanCommand "-BackupTimestamp <YYYYMMDDTHHMMSSZ>" "invalid confirmed command"
+Assert-True (@($invalidReport.actions)[0].invalidPlaceholders -contains "<YYYYMMDDTHHMMSSZ>") "invalid action should carry invalid placeholder"
+Assert-Contains $invalidMarkdown "<YYYYMMDDTHHMMSSZ> via BackupTimestamp" "invalid markdown"
+
 Write-Host "Operations invocation unblock plan verified."
 Write-Host "Blocked report: $blockedJsonPath"
 Write-Host "Ready report: $readyJsonPath"
+Write-Host "Invalid report: $invalidJsonPath"

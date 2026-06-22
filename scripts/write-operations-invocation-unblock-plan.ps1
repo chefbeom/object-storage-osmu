@@ -188,6 +188,7 @@ foreach ($action in @($invocation.actions)) {
     $command = Get-Text $action "command"
     $blockReasons = @(Get-TextArray $action "blockReasons")
     $placeholders = @(Get-TextArray $action "unresolvedPlaceholders")
+    $invalidPlaceholders = @(Get-TextArray $action "invalidPlaceholders")
     $requiresOperatorApproval = Get-Bool $action "requiresOperatorApproval"
     $requiresKubeconfigSecret = Get-Bool $action "requiresKubeconfigSecret"
     $needsActionKubeconfig = $requiresKubeconfigSecret -and ($blockReasons -contains "kubeconfig secret not confirmed")
@@ -221,9 +222,21 @@ foreach ($action in @($invocation.actions)) {
         }
         $requiredInputs.Add($input) | Out-Null
     }
+    foreach ($placeholder in $invalidPlaceholders) {
+        Add-UniqueString $allRequiredPlaceholders $placeholder
+        $input = New-RequiredInput $placeholder $command $name
+        if ($input.ambiguousRepeatedPlaceholder) {
+            $actionHasAmbiguousPlaceholders = $true
+            $ambiguousRepeatedPlaceholderCount++
+        }
+        $requiredInputs.Add($input) | Out-Null
+    }
 
     $actionPlaceholderValues = New-Object System.Collections.Generic.List[string]
     foreach ($placeholder in $placeholders) {
+        Add-UniqueString $actionPlaceholderValues $placeholder
+    }
+    foreach ($placeholder in $invalidPlaceholders) {
         Add-UniqueString $actionPlaceholderValues $placeholder
     }
     $actionPlanCommand = New-InvokeCommand `
@@ -243,6 +256,7 @@ foreach ($action in @($invocation.actions)) {
         command = $command
         blockReasons = $blockReasons
         unresolvedPlaceholders = $placeholders
+        invalidPlaceholders = $invalidPlaceholders
         requiresOperatorApproval = $requiresOperatorApproval
         requiresKubeconfigSecret = $requiresKubeconfigSecret
         needsOperatorApprovalConfirmation = $needsActionApproval

@@ -192,6 +192,7 @@ $invalidReport = Get-Content -Raw -LiteralPath $invalidJsonOutputPath | ConvertF
 $invalidAction = @($invalidReport.actions)[0]
 Assert-True ($invalidReport.result -eq "blocked") "Expected invalid known placeholder command to be blocked."
 Assert-True (@($invalidAction.blockReasons) -contains "invalid placeholder value for <YYYYMMDDTHHMMSSZ>") "Expected invalid backup timestamp to fail known placeholder validation."
+Assert-True (@($invalidAction.invalidPlaceholders) -contains "<YYYYMMDDTHHMMSSZ>") "Expected invalid backup timestamp to be exposed for unblock planning."
 Assert-True ($invalidAction.command -like "*not-a-timestamp*") "Expected invalid command to preserve rejected timestamp for audit."
 
 & powershell -NoProfile -ExecutionPolicy Bypass -File $scriptPath `

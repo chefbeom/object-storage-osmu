@@ -147,18 +147,18 @@ function Test-KnownPlaceholderValue([string] $Placeholder, [string] $Value) {
     }
 }
 
-function Get-InvalidReplacementReasons([string] $Command, [hashtable] $Map) {
-    $reasons = New-Object System.Collections.Generic.List[string]
+function Get-InvalidReplacementPlaceholders([string] $Command, [hashtable] $Map) {
+    $invalid = New-Object System.Collections.Generic.List[string]
     foreach ($placeholder in @(Get-UnresolvedPlaceholders $Command)) {
         if (-not $Map.ContainsKey($placeholder)) {
             continue
         }
         $value = [string] $Map[$placeholder]
         if (-not (Test-KnownPlaceholderValue $placeholder $value)) {
-            $reasons.Add("invalid placeholder value for $placeholder")
+            $invalid.Add($placeholder)
         }
     }
-    return @($reasons)
+    return @($invalid)
 }
 
 function Select-ActionCommand([object] $Action) {
@@ -270,7 +270,7 @@ foreach ($action in $selectedActions) {
     $command = Select-ActionCommand $action
     $resolvedCommand = Apply-Replacements $command $replacementMap
     $unresolvedPlaceholders = @(Get-UnresolvedPlaceholders $resolvedCommand)
-    $invalidReplacementReasons = @(Get-InvalidReplacementReasons $command $replacementMap)
+    $invalidPlaceholders = @(Get-InvalidReplacementPlaceholders $command $replacementMap)
     $blockReasons = New-Object System.Collections.Generic.List[string]
     $requiresOperatorApproval = Get-Bool $action "requiresOperatorApproval"
     $requiresKubeconfigSecret = Get-Bool $action "requiresKubeconfigSecret"
@@ -282,8 +282,8 @@ foreach ($action in $selectedActions) {
     if ($unresolvedPlaceholders.Count -gt 0) {
         $blockReasons.Add("unresolved placeholders: $($unresolvedPlaceholders -join ', ')")
     }
-    foreach ($reason in $invalidReplacementReasons) {
-        $blockReasons.Add($reason)
+    foreach ($placeholder in $invalidPlaceholders) {
+        $blockReasons.Add("invalid placeholder value for $placeholder")
     }
     if ($requiresOperatorApproval -and -not $ConfirmOperatorApproval) {
         $blockReasons.Add("operator approval not confirmed")
@@ -323,6 +323,7 @@ foreach ($action in $selectedActions) {
                     status = $status
                     blockReasons = @($blockReasons)
                     unresolvedPlaceholders = @($unresolvedPlaceholders)
+                    invalidPlaceholders = @($invalidPlaceholders)
                     requiresOperatorApproval = $requiresOperatorApproval
                     requiresKubeconfigSecret = $requiresKubeconfigSecret
                     exitCode = $exitCode
@@ -344,6 +345,7 @@ foreach ($action in $selectedActions) {
         status = $status
         blockReasons = @($blockReasons)
         unresolvedPlaceholders = @($unresolvedPlaceholders)
+        invalidPlaceholders = @($invalidPlaceholders)
         requiresOperatorApproval = $requiresOperatorApproval
         requiresKubeconfigSecret = $requiresKubeconfigSecret
         exitCode = $exitCode
