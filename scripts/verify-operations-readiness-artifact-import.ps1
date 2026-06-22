@@ -78,6 +78,8 @@ $invalidDataFlowRoot = Join-Path $resolvedOutputDirectory "invalid-data-flow-sou
 $unsafeDataFlowRoot = Join-Path $resolvedOutputDirectory "unsafe-data-flow-source"
 $unsafeDataFlowRunbookRoot = Join-Path $resolvedOutputDirectory "unsafe-data-flow-runbook-source"
 $unsafeMonitoringThresholdRoot = Join-Path $resolvedOutputDirectory "unsafe-monitoring-threshold-source"
+$stringBoolMonitoringThresholdRoot = Join-Path $resolvedOutputDirectory "string-bool-monitoring-threshold-source"
+$invalidEnterpriseAuthRoot = Join-Path $resolvedOutputDirectory "invalid-enterprise-auth-source"
 $staleOperationsHandoffPackageRoot = Join-Path $resolvedOutputDirectory "stale-operations-handoff-package-source"
 $badConvergenceOperationsHandoffPackageRoot = Join-Path $resolvedOutputDirectory "bad-convergence-operations-handoff-package-source"
 $stringBoolOperationsHandoffPackageRoot = Join-Path $resolvedOutputDirectory "string-bool-operations-handoff-package-source"
@@ -537,6 +539,84 @@ $unsafeMonitoringThresholdReport = Get-Content -Raw -LiteralPath $unsafeMonitori
 Assert-True ($unsafeMonitoringThresholdReport.result -eq "failed") "Unsafe monitoring threshold import report should be failed."
 Assert-True (-not (Test-Path -LiteralPath (Join-Path $unsafeMonitoringThresholdOutput "latest-monitoring-threshold-evidence.json"))) "Unsafe monitoring threshold evidence must not be promoted."
 Assert-True (($unsafeMonitoringThresholdReport.entries | ConvertTo-Json -Depth 8).Contains("credential-shaped content")) "Unsafe monitoring threshold report should describe credential-shaped content."
+
+Write-JsonEvidence (Join-Path $stringBoolMonitoringThresholdRoot "latest-monitoring-threshold-evidence.json") @{
+    formatVersion = "osmu.monitoring-threshold-evidence.v1"
+    result = "passed"
+    thresholdTargetSummary = @{
+        requiredAlertCount = 11
+        mappedAlertCount = 11
+        missingAlerts = @()
+    }
+    summary = @{
+        failureCount = 0
+    }
+    confirmations = @{
+        prometheusRulesLoaded = "false"
+        grafanaDashboardImported = $true
+        alertmanagerRoutesReviewed = $true
+        targetBaselinesReviewed = $true
+        incidentRoutingReviewed = $true
+        noSecretValues = $true
+    }
+}
+$stringBoolMonitoringThresholdOutput = Join-Path $resolvedOutputDirectory "string-bool-monitoring-threshold-promoted"
+$stringBoolMonitoringThresholdJson = Join-Path $resolvedOutputDirectory "string-bool-monitoring-threshold-import.json"
+$stringBoolMonitoringThresholdMarkdown = Join-Path $resolvedOutputDirectory "string-bool-monitoring-threshold-import.md"
+$previousErrorActionPreference = $ErrorActionPreference
+$ErrorActionPreference = "Continue"
+try {
+    $stringBoolMonitoringThresholdOutputLines = & powershell -NoProfile -ExecutionPolicy Bypass -File $importScript `
+        -MonitoringThresholdArtifactPath $stringBoolMonitoringThresholdRoot `
+        -OutputDirectory $stringBoolMonitoringThresholdOutput `
+        -JsonOutputPath $stringBoolMonitoringThresholdJson `
+        -MarkdownOutputPath $stringBoolMonitoringThresholdMarkdown 2>&1
+    $stringBoolMonitoringThresholdExitCode = $LASTEXITCODE
+}
+finally {
+    $ErrorActionPreference = $previousErrorActionPreference
+}
+Assert-True ($stringBoolMonitoringThresholdExitCode -ne 0) "Monitoring threshold evidence with string confirmation should fail import."
+Assert-True (Test-Path -LiteralPath $stringBoolMonitoringThresholdJson) "String-bool monitoring threshold import report should still be written."
+$stringBoolMonitoringThresholdReport = Get-Content -Raw -LiteralPath $stringBoolMonitoringThresholdJson | ConvertFrom-Json
+Assert-True ($stringBoolMonitoringThresholdReport.result -eq "failed") "String-bool monitoring threshold import report should be failed."
+Assert-True (-not (Test-Path -LiteralPath (Join-Path $stringBoolMonitoringThresholdOutput "latest-monitoring-threshold-evidence.json"))) "String-bool monitoring threshold evidence must not be promoted."
+Assert-True (($stringBoolMonitoringThresholdReport.entries | ConvertTo-Json -Depth 8).Contains("confirmation prometheusRulesLoaded=false expected boolean true")) "String-bool monitoring threshold report should describe invalid confirmation."
+
+Write-JsonEvidence (Join-Path $invalidEnterpriseAuthRoot "latest-enterprise-auth-smoke.json") @{
+    formatVersion = "osmu.enterprise-auth-smoke.v1"
+    result = "scope-out"
+    scopeOut = @{
+        confirmed = $true
+        reference = "pilot-contract-enterprise-auth-deferred-20260620"
+        reason = "Pilot phase uses local password login."
+        accepted = "false"
+    }
+}
+$invalidEnterpriseAuthOutput = Join-Path $resolvedOutputDirectory "invalid-enterprise-auth-promoted"
+$invalidEnterpriseAuthJson = Join-Path $resolvedOutputDirectory "invalid-enterprise-auth-import.json"
+$invalidEnterpriseAuthMarkdown = Join-Path $resolvedOutputDirectory "invalid-enterprise-auth-import.md"
+$previousErrorActionPreference = $ErrorActionPreference
+$ErrorActionPreference = "Continue"
+try {
+    $invalidEnterpriseAuthOutputLines = & powershell -NoProfile -ExecutionPolicy Bypass -File $importScript `
+        -EnterpriseAuthArtifactPath $invalidEnterpriseAuthRoot `
+        -OutputDirectory $invalidEnterpriseAuthOutput `
+        -JsonOutputPath $invalidEnterpriseAuthJson `
+        -MarkdownOutputPath $invalidEnterpriseAuthMarkdown 2>&1
+    $invalidEnterpriseAuthExitCode = $LASTEXITCODE
+}
+finally {
+    $ErrorActionPreference = $previousErrorActionPreference
+}
+Assert-True ($invalidEnterpriseAuthExitCode -ne 0) "Enterprise auth scope-out evidence with string accepted=false should fail import."
+Assert-True (Test-Path -LiteralPath $invalidEnterpriseAuthJson) "Invalid enterprise auth import report should still be written."
+$invalidEnterpriseAuthReport = Get-Content -Raw -LiteralPath $invalidEnterpriseAuthJson | ConvertFrom-Json
+Assert-True ($invalidEnterpriseAuthReport.result -eq "failed") "Invalid enterprise auth import report should be failed."
+Assert-True (-not (Test-Path -LiteralPath (Join-Path $invalidEnterpriseAuthOutput "latest-enterprise-auth-smoke.json"))) "Invalid enterprise auth evidence must not be promoted."
+$invalidEnterpriseAuthEntry = @($invalidEnterpriseAuthReport.entries | Where-Object { $_.group -eq "enterprise-auth" -and $_.fileName -eq "latest-enterprise-auth-smoke.json" })
+Assert-True ($invalidEnterpriseAuthEntry.Count -eq 1) "Invalid enterprise auth import entry missing."
+Assert-True (([string] $invalidEnterpriseAuthEntry[0].detail).Contains("accepted=false(valid=False)")) "Invalid enterprise auth report should describe invalid accepted value."
 
 Write-JsonEvidence (Join-Path $staleOperationsHandoffPackageRoot "latest-operations-handoff-package.json") @{
     formatVersion = "osmu.operations-handoff-package.v1"

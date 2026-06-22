@@ -593,6 +593,36 @@ if (-not ([string] $scopeOutEnterpriseAuthCheck[0].detail).Contains("result=scop
     throw "Enterprise auth scope-out readiness detail must preserve result=scope-out."
 }
 
+$stringAcceptedScopeOutEvidencePath = Join-Path $scopeOutFixtureDirectory "latest-enterprise-auth-smoke-string-accepted.json"
+$stringAcceptedScopeOutJsonOutputPath = Join-Path $scopeOutFixtureDirectory "latest-operations-readiness-string-accepted.json"
+$stringAcceptedScopeOutMarkdownOutputPath = Join-Path $scopeOutFixtureDirectory "latest-operations-readiness-string-accepted.md"
+@{
+    formatVersion = "osmu.enterprise-auth-smoke.v1"
+    result = "scope-out"
+    scopeOut = @{
+        confirmed = $true
+        reference = "pilot-contract-enterprise-auth-deferred-20260620"
+        reason = "Pilot phase uses local password login."
+        accepted = "false"
+    }
+} | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $stringAcceptedScopeOutEvidencePath -Encoding UTF8
+
+& powershell -NoProfile -ExecutionPolicy Bypass -File $scriptPath `
+    -EnterpriseAuthSmokeEvidencePath $stringAcceptedScopeOutEvidencePath `
+    -JsonOutputPath $stringAcceptedScopeOutJsonOutputPath `
+    -MarkdownOutputPath $stringAcceptedScopeOutMarkdownOutputPath | Out-Host
+if ($LASTEXITCODE -ne 0) {
+    throw "write-operations-readiness.ps1 failed for string-accepted enterprise auth scope-out fixture with exit code $LASTEXITCODE."
+}
+$stringAcceptedScopeOutReport = Get-Content -Raw -LiteralPath $stringAcceptedScopeOutJsonOutputPath | ConvertFrom-Json
+$stringAcceptedEnterpriseAuthCheck = @($stringAcceptedScopeOutReport.checks | Where-Object { $_.name -eq "Enterprise auth target smoke evidence" })
+if ($stringAcceptedEnterpriseAuthCheck.Count -ne 1 -or $stringAcceptedEnterpriseAuthCheck[0].passed) {
+    throw "Enterprise auth scope-out evidence with string accepted=false must not satisfy the operations readiness enterprise-auth check."
+}
+if (-not ([string] $stringAcceptedEnterpriseAuthCheck[0].detail).Contains("scopeOut.accepted=false(valid=False)")) {
+    throw "Enterprise auth string accepted readiness detail must name invalid accepted value."
+}
+
 $handoffFixtureDirectory = Resolve-ProjectPath ".\.osmu-run\operations-readiness-handoff-package-self-test"
 New-Item -ItemType Directory -Force -Path $handoffFixtureDirectory | Out-Null
 $validHandoffEvidencePath = Join-Path $handoffFixtureDirectory "valid-operations-handoff-package.json"

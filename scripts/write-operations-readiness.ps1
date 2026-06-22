@@ -306,10 +306,25 @@ function Test-EnterpriseAuthEvidenceAccepted([object] $Report) {
         return $false
     }
     $scopeOut = Get-ObjectProperty $Report.data "scopeOut"
-    $accepted = [bool] (Get-ObjectProperty $scopeOut "accepted")
+    $accepted = Get-RequiredObjectBool $scopeOut "accepted"
     $reference = [string] (Get-ObjectProperty $scopeOut "reference")
     $reason = [string] (Get-ObjectProperty $scopeOut "reason")
-    return $accepted -and -not [string]::IsNullOrWhiteSpace($reference) -and -not [string]::IsNullOrWhiteSpace($reason)
+    return $accepted.valid -and $accepted.value -and -not [string]::IsNullOrWhiteSpace($reference) -and -not [string]::IsNullOrWhiteSpace($reason)
+}
+
+function Get-EnterpriseAuthEvidenceDetail([object] $Report) {
+    if (-not $Report.exists -or -not $Report.parsed) {
+        return $Report.detail
+    }
+    $result = [string] (Get-ObjectProperty $Report.data "result")
+    if ($result -ne "scope-out") {
+        return "result=$result"
+    }
+    $scopeOut = Get-ObjectProperty $Report.data "scopeOut"
+    $accepted = Get-RequiredObjectBool $scopeOut "accepted"
+    $reference = [string] (Get-ObjectProperty $scopeOut "reference")
+    $reason = [string] (Get-ObjectProperty $scopeOut "reason")
+    return "result=$result, scopeOut.accepted=$($accepted.raw)(valid=$($accepted.valid)), referencePresent=$(-not [string]::IsNullOrWhiteSpace($reference)), reasonPresent=$(-not [string]::IsNullOrWhiteSpace($reason))"
 }
 
 function Get-OperationsHandoffPackageRequiredConfirmations() {
@@ -627,7 +642,7 @@ Add-Check "Data-flow storage transition target evidence" "data-flow" (Test-DataF
 Add-Check "Secret/certificate rotation target evidence" "security-hardening" ($secretRotationReport.exists -and $secretRotationReport.parsed -and $secretRotationReport.data.result -eq "passed") (Get-GenericResultDetail $secretRotationReport) $secretRotationReport.path "secret/certificate rotation evidence result=passed from target environment" $secretRotationRemediation
 Add-Check "Commercial integration target evidence" "commercial-integration" ($commercialIntegrationReport.exists -and $commercialIntegrationReport.parsed -and $commercialIntegrationReport.data.result -eq "passed") (Get-GenericResultDetail $commercialIntegrationReport) $commercialIntegrationReport.path "commercial integration evidence result=passed from target environment" $commercialIntegrationRemediation
 Add-Check "Commercial approval target evidence" "commercial-approval" ($commercialApprovalReport.exists -and $commercialApprovalReport.parsed -and $commercialApprovalReport.data.result -eq "passed") (Get-GenericResultDetail $commercialApprovalReport) $commercialApprovalReport.path "commercial approval evidence result=passed for final pricing, terms, support SLA, license agreement, legal approval, and pilot contract boundary" $commercialApprovalRemediation
-Add-Check "Enterprise auth target smoke evidence" "enterprise-auth" (Test-EnterpriseAuthEvidenceAccepted $enterpriseAuthSmokeReport) (Get-GenericResultDetail $enterpriseAuthSmokeReport) $enterpriseAuthSmokeReport.path "enterprise auth smoke result=passed from target IdP/directory, or result=scope-out with explicit commercial approval reference and reason" $enterpriseAuthSmokeRemediation
+Add-Check "Enterprise auth target smoke evidence" "enterprise-auth" (Test-EnterpriseAuthEvidenceAccepted $enterpriseAuthSmokeReport) (Get-EnterpriseAuthEvidenceDetail $enterpriseAuthSmokeReport) $enterpriseAuthSmokeReport.path "enterprise auth smoke result=passed from target IdP/directory, or result=scope-out with explicit commercial approval reference and reason" $enterpriseAuthSmokeRemediation
 Add-Check "Operations handoff package target evidence" "operations-handoff-package" $operationsHandoffPackageValidation.passed $operationsHandoffPackageValidation.detail $operationsHandoffPackageReport.path "operations handoff package result=passed from target environment with required handoff review/production/snapshot confirmations" $operationsHandoffPackageRemediation
 
 $passedCount = @($checks | Where-Object { $_.passed }).Count

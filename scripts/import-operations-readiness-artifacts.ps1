@@ -175,6 +175,48 @@ function Test-EvidenceJson([string] $Path, [string] $ExpectedProperty, [string] 
     }
 }
 
+function Test-EnterpriseAuthEvidenceJson([string] $Path) {
+    try {
+        $json = Get-Content -Raw -LiteralPath $Path | ConvertFrom-Json
+    }
+    catch {
+        return [pscustomobject]@{
+            passed = $false
+            detail = "invalid JSON: $($_.Exception.Message)"
+        }
+    }
+
+    $result = [string] (Get-JsonProperty $json "result")
+    if ($result -eq "passed") {
+        return [pscustomobject]@{
+            passed = $true
+            detail = "result=passed expected=passed|scope-out"
+        }
+    }
+    if ($result -ne "scope-out") {
+        return [pscustomobject]@{
+            passed = $false
+            detail = "result=$result expected=passed|scope-out"
+        }
+    }
+
+    $scopeOut = Get-JsonProperty $json "scopeOut"
+    $accepted = Get-RequiredJsonBool $scopeOut "accepted"
+    $reference = [string] (Get-JsonProperty $scopeOut "reference")
+    $reason = [string] (Get-JsonProperty $scopeOut "reason")
+    if (-not $accepted.valid -or -not $accepted.value -or [string]::IsNullOrWhiteSpace($reference) -or [string]::IsNullOrWhiteSpace($reason)) {
+        return [pscustomobject]@{
+            passed = $false
+            detail = "result=scope-out accepted=$($accepted.raw)(valid=$($accepted.valid)) referencePresent=$(-not [string]::IsNullOrWhiteSpace($reference)) reasonPresent=$(-not [string]::IsNullOrWhiteSpace($reason)) expected accepted boolean true with reference and reason"
+        }
+    }
+
+    return [pscustomobject]@{
+        passed = $true
+        detail = "result=scope-out accepted=true expected=passed|scope-out"
+    }
+}
+
 function Test-OperationsHandoffPackageSnapshots([object] $Json) {
     $operationsSnapshots = Get-JsonProperty $Json "operationsSnapshots"
     if ($null -eq $operationsSnapshots) {
@@ -430,10 +472,11 @@ function Test-MonitoringThresholdEvidenceJson([string] $Path) {
 
     $confirmations = Get-JsonProperty $json "confirmations"
     foreach ($confirmationName in @("prometheusRulesLoaded", "grafanaDashboardImported", "alertmanagerRoutesReviewed", "targetBaselinesReviewed", "incidentRoutingReviewed", "noSecretValues")) {
-        if (-not [bool] (Get-JsonProperty $confirmations $confirmationName)) {
+        $confirmation = Get-RequiredJsonBool $confirmations $confirmationName
+        if (-not $confirmation.valid -or -not $confirmation.value) {
             return [pscustomobject]@{
                 passed = $false
-                detail = "confirmation $confirmationName expected=true"
+                detail = "confirmation $confirmationName=$($confirmation.raw) expected boolean true"
             }
         }
     }
@@ -587,6 +630,14 @@ function Import-EvidenceFile(
         }
         [void] $validationDetails.Add($validation.detail)
     }
+    elseif ($ValidationKind -eq "enterprise-auth") {
+        $validation = Test-EnterpriseAuthEvidenceJson $sourcePath
+        if (-not $validation.passed) {
+            Add-Entry $Group $FileName "failed" $validation.detail $sourcePath ""
+            return
+        }
+        [void] $validationDetails.Add($validation.detail)
+    }
     elseif ($ValidationKind -eq "operations-handoff-package") {
         $validation = Test-OperationsHandoffPackageEvidenceJson $sourcePath
         if (-not $validation.passed) {
@@ -644,7 +695,7 @@ Import-EvidenceFile "commercial-integration" $CommercialIntegrationArtifactPath 
 Import-EvidenceFile "commercial-approval" $CommercialApprovalArtifactPath "latest-commercial-approval-evidence.json" $true "result" "passed"
 Import-EvidenceFile "commercial-approval" $CommercialApprovalArtifactPath "latest-commercial-approval-evidence.md" $false
 
-Import-EvidenceFile "enterprise-auth" $EnterpriseAuthArtifactPath "latest-enterprise-auth-smoke.json" $true "result" "passed|scope-out"
+Import-EvidenceFile "enterprise-auth" $EnterpriseAuthArtifactPath "latest-enterprise-auth-smoke.json" $true "" "" "enterprise-auth"
 Import-EvidenceFile "enterprise-auth" $EnterpriseAuthArtifactPath "latest-enterprise-auth-smoke.md" $false
 
 Import-EvidenceFile "operations-handoff-package" $OperationsHandoffPackageArtifactPath "latest-operations-handoff-package.json" $true "" "" "operations-handoff-package"
