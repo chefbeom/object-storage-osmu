@@ -103,6 +103,55 @@ function Get-JsonInt([object] $Object, [string] $Name) {
     return 0
 }
 
+function Get-RequiredJsonInt([object] $Object, [string] $Name) {
+    $value = Get-JsonProperty $Object $Name
+    if ($null -eq $value) {
+        return [pscustomobject]@{
+            valid = $false
+            value = $null
+            raw = "<missing>"
+        }
+    }
+    $integerTypeNames = @("Byte", "SByte", "Int16", "UInt16", "Int32", "UInt32", "Int64", "UInt64")
+    if ($integerTypeNames -notcontains $value.GetType().Name) {
+        return [pscustomobject]@{
+            valid = $false
+            value = $null
+            raw = [string] $value
+        }
+    }
+    try {
+        return [pscustomobject]@{
+            valid = $true
+            value = [int64] $value
+            raw = [string] $value
+        }
+    }
+    catch {
+        return [pscustomobject]@{
+            valid = $false
+            value = $null
+            raw = [string] $value
+        }
+    }
+}
+
+function Get-RequiredJsonBool([object] $Object, [string] $Name) {
+    $value = Get-JsonProperty $Object $Name
+    if ($value -is [bool]) {
+        return [pscustomobject]@{
+            valid = $true
+            value = [bool] $value
+            raw = [string] $value
+        }
+    }
+    return [pscustomobject]@{
+        valid = $false
+        value = $false
+        raw = if ($null -eq $value) { "<missing>" } else { [string] $value }
+    }
+}
+
 function Test-ReadyText($Value) {
     return "ready".Equals([string] $Value, [System.StringComparison]::OrdinalIgnoreCase)
 }
@@ -149,10 +198,10 @@ function Test-OperationsHandoffPackageSnapshots([object] $Json) {
     $convergenceReadinessResult = [string] (Get-JsonProperty $convergence "readinessResult")
     $finalizerResult = [string] (Get-JsonProperty $convergence "finalizerResult")
     $finalizerReadinessResult = [string] (Get-JsonProperty $convergence "finalizerReadinessResult")
-    $finalizerFailedCount = Get-JsonInt $convergence "finalizerFailedCount"
-    $finalizerGapCount = Get-JsonInt $convergence "finalizerGapCount"
-    $syncReady = [bool] (Get-JsonProperty $convergence "kubernetesReportSyncReady")
-    $syncFailedCount = Get-JsonInt $convergence "kubernetesReportSyncFailedCount"
+    $finalizerFailedCount = Get-RequiredJsonInt $convergence "finalizerFailedCount"
+    $finalizerGapCount = Get-RequiredJsonInt $convergence "finalizerGapCount"
+    $syncReady = Get-RequiredJsonBool $convergence "kubernetesReportSyncReady"
+    $syncFailedCount = Get-RequiredJsonInt $convergence "kubernetesReportSyncFailedCount"
     $sourceReportResult = [string] (Get-JsonProperty $convergence "kubernetesReportSyncSourceReportResult")
 
     if (-not (Test-ReadyText $convergenceResult)) {
@@ -164,11 +213,17 @@ function Test-OperationsHandoffPackageSnapshots([object] $Json) {
     if (-not (Test-ReadyText $finalizerResult) -or -not (Test-ReadyText $finalizerReadinessResult)) {
         return [pscustomobject]@{ passed = $false; detail = "operations convergence finalizerResult=$finalizerResult finalizerReadinessResult=$finalizerReadinessResult expected=ready" }
     }
-    if ($finalizerFailedCount -ne 0 -or $finalizerGapCount -ne 0) {
-        return [pscustomobject]@{ passed = $false; detail = "operations convergence finalizerFailedCount=$finalizerFailedCount finalizerGapCount=$finalizerGapCount expected=0" }
+    if (-not $finalizerFailedCount.valid -or -not $finalizerGapCount.valid) {
+        return [pscustomobject]@{ passed = $false; detail = "operations convergence finalizerFailedCount=$($finalizerFailedCount.raw) finalizerGapCount=$($finalizerGapCount.raw) expected integer 0" }
     }
-    if (-not $syncReady -or $syncFailedCount -ne 0) {
-        return [pscustomobject]@{ passed = $false; detail = "operations convergence kubernetesReportSyncReady=$syncReady failedSyncChecks=$syncFailedCount expected ready/0" }
+    if ($finalizerFailedCount.value -ne 0 -or $finalizerGapCount.value -ne 0) {
+        return [pscustomobject]@{ passed = $false; detail = "operations convergence finalizerFailedCount=$($finalizerFailedCount.value) finalizerGapCount=$($finalizerGapCount.value) expected=0" }
+    }
+    if (-not $syncReady.valid -or -not $syncFailedCount.valid) {
+        return [pscustomobject]@{ passed = $false; detail = "operations convergence kubernetesReportSyncReady=$($syncReady.raw) failedSyncChecks=$($syncFailedCount.raw) expected boolean true and integer 0" }
+    }
+    if (-not $syncReady.value -or $syncFailedCount.value -ne 0) {
+        return [pscustomobject]@{ passed = $false; detail = "operations convergence kubernetesReportSyncReady=$($syncReady.value) failedSyncChecks=$($syncFailedCount.value) expected ready/0" }
     }
     if (-not (Test-ReadyText $sourceReportResult)) {
         return [pscustomobject]@{ passed = $false; detail = "operations convergence sourceReportResult=$sourceReportResult expected=ready" }
@@ -438,10 +493,11 @@ function Test-OperationsHandoffPackageEvidenceJson([string] $Path) {
     )
     $confirmations = Get-JsonProperty $json "confirmations"
     foreach ($confirmationName in $requiredConfirmations) {
-        if (-not [bool] (Get-JsonProperty $confirmations $confirmationName)) {
+        $confirmation = Get-RequiredJsonBool $confirmations $confirmationName
+        if (-not $confirmation.valid -or -not $confirmation.value) {
             return [pscustomobject]@{
                 passed = $false
-                detail = "confirmation $confirmationName expected=true"
+                detail = "confirmation $confirmationName=$($confirmation.raw) expected boolean true"
             }
         }
     }

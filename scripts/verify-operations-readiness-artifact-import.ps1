@@ -26,7 +26,9 @@ function Write-JsonEvidence([string] $Path, [hashtable] $Data) {
 
 function New-PassedOperationsHandoffPackageSnapshots(
     [string] $ConvergenceSourceReportResult = "ready",
-    [int] $FinalizerFailedCount = 0
+    [object] $FinalizerFailedCount = 0,
+    [object] $FinalizerGapCount = 0,
+    [object] $KubernetesReportSyncReady = $true
 ) {
     return [ordered]@{
         readiness = [ordered]@{
@@ -48,8 +50,8 @@ function New-PassedOperationsHandoffPackageSnapshots(
             finalizerResult = "ready"
             finalizerReadinessResult = "ready"
             finalizerFailedCount = $FinalizerFailedCount
-            finalizerGapCount = 0
-            kubernetesReportSyncReady = $true
+            finalizerGapCount = $FinalizerGapCount
+            kubernetesReportSyncReady = $KubernetesReportSyncReady
             kubernetesReportSyncResult = "applied"
             kubernetesReportSyncFailedCount = 0
             kubernetesReportSyncSourceReportResult = $ConvergenceSourceReportResult
@@ -78,6 +80,8 @@ $unsafeDataFlowRunbookRoot = Join-Path $resolvedOutputDirectory "unsafe-data-flo
 $unsafeMonitoringThresholdRoot = Join-Path $resolvedOutputDirectory "unsafe-monitoring-threshold-source"
 $staleOperationsHandoffPackageRoot = Join-Path $resolvedOutputDirectory "stale-operations-handoff-package-source"
 $badConvergenceOperationsHandoffPackageRoot = Join-Path $resolvedOutputDirectory "bad-convergence-operations-handoff-package-source"
+$stringBoolOperationsHandoffPackageRoot = Join-Path $resolvedOutputDirectory "string-bool-operations-handoff-package-source"
+$missingCountOperationsHandoffPackageRoot = Join-Path $resolvedOutputDirectory "missing-count-operations-handoff-package-source"
 
 $storageSource = Join-Path $sourceRoot "storage-expansion"
 $haDrSource = Join-Path $sourceRoot "ha-dr-readiness"
@@ -627,6 +631,104 @@ $badConvergenceOperationsHandoffPackageReport = Get-Content -Raw -LiteralPath $b
 Assert-True ($badConvergenceOperationsHandoffPackageReport.result -eq "failed") "Bad convergence handoff package import report should be failed."
 Assert-True (-not (Test-Path -LiteralPath (Join-Path $badConvergenceOperationsHandoffPackageOutput "latest-operations-handoff-package.json"))) "Bad convergence handoff package must not be promoted."
 Assert-True (($badConvergenceOperationsHandoffPackageReport.entries | ConvertTo-Json -Depth 8).Contains("sourceReportResult=action-required")) "Bad convergence handoff package report should describe non-ready source report result."
+
+Write-JsonEvidence (Join-Path $stringBoolOperationsHandoffPackageRoot "latest-operations-handoff-package.json") @{
+    formatVersion = "osmu.operations-handoff-package.v1"
+    result = "passed"
+    operationsSnapshots = (New-PassedOperationsHandoffPackageSnapshots -KubernetesReportSyncReady "false")
+    confirmations = [ordered]@{
+        noSecretValues = $true
+        runbookReviewed = $true
+        troubleshootingReviewed = $true
+        rollbackReviewed = $true
+        supportEscalationReviewed = $true
+        knownGapsAccepted = $true
+        operationsReadinessSnapshotReviewed = $true
+        operationsConvergenceSnapshotReviewed = $true
+        dataFlowStoragePlanReviewed = $true
+        dataFlowStorageTransitionRunbookReviewed = $true
+        secretRotationSnapshotReviewed = $true
+        commercialIntegrationSnapshotReviewed = $true
+        commercialApprovalSnapshotReviewed = $true
+        enterpriseAuthSmokeSnapshotReviewed = $true
+        monitoringThresholdReviewed = $true
+        requireProductionEvidence = $true
+        requireOperationsSnapshotEvidence = $true
+    }
+}
+$stringBoolOperationsHandoffPackageOutput = Join-Path $resolvedOutputDirectory "string-bool-operations-handoff-package-promoted"
+$stringBoolOperationsHandoffPackageJson = Join-Path $resolvedOutputDirectory "string-bool-operations-handoff-package-import.json"
+$stringBoolOperationsHandoffPackageMarkdown = Join-Path $resolvedOutputDirectory "string-bool-operations-handoff-package-import.md"
+$previousErrorActionPreference = $ErrorActionPreference
+$ErrorActionPreference = "Continue"
+try {
+    $stringBoolOperationsHandoffPackageOutputLines = & powershell -NoProfile -ExecutionPolicy Bypass -File $importScript `
+        -OperationsHandoffPackageArtifactPath $stringBoolOperationsHandoffPackageRoot `
+        -OutputDirectory $stringBoolOperationsHandoffPackageOutput `
+        -JsonOutputPath $stringBoolOperationsHandoffPackageJson `
+        -MarkdownOutputPath $stringBoolOperationsHandoffPackageMarkdown 2>&1
+    $stringBoolOperationsHandoffPackageExitCode = $LASTEXITCODE
+}
+finally {
+    $ErrorActionPreference = $previousErrorActionPreference
+}
+Assert-True ($stringBoolOperationsHandoffPackageExitCode -ne 0) "Operations handoff package with string sync boolean should fail import."
+Assert-True (Test-Path -LiteralPath $stringBoolOperationsHandoffPackageJson) "String-bool handoff package import report should still be written."
+$stringBoolOperationsHandoffPackageReport = Get-Content -Raw -LiteralPath $stringBoolOperationsHandoffPackageJson | ConvertFrom-Json
+Assert-True ($stringBoolOperationsHandoffPackageReport.result -eq "failed") "String-bool handoff package import report should be failed."
+Assert-True (-not (Test-Path -LiteralPath (Join-Path $stringBoolOperationsHandoffPackageOutput "latest-operations-handoff-package.json"))) "String-bool handoff package must not be promoted."
+Assert-True (($stringBoolOperationsHandoffPackageReport.entries | ConvertTo-Json -Depth 8).Contains("kubernetesReportSyncReady=false")) "String-bool handoff package report should describe invalid sync ready value."
+
+$missingCountSnapshots = New-PassedOperationsHandoffPackageSnapshots
+$missingCountSnapshots["convergence"].Remove("finalizerGapCount")
+Write-JsonEvidence (Join-Path $missingCountOperationsHandoffPackageRoot "latest-operations-handoff-package.json") @{
+    formatVersion = "osmu.operations-handoff-package.v1"
+    result = "passed"
+    operationsSnapshots = $missingCountSnapshots
+    confirmations = [ordered]@{
+        noSecretValues = $true
+        runbookReviewed = $true
+        troubleshootingReviewed = $true
+        rollbackReviewed = $true
+        supportEscalationReviewed = $true
+        knownGapsAccepted = $true
+        operationsReadinessSnapshotReviewed = $true
+        operationsConvergenceSnapshotReviewed = $true
+        dataFlowStoragePlanReviewed = $true
+        dataFlowStorageTransitionRunbookReviewed = $true
+        secretRotationSnapshotReviewed = $true
+        commercialIntegrationSnapshotReviewed = $true
+        commercialApprovalSnapshotReviewed = $true
+        enterpriseAuthSmokeSnapshotReviewed = $true
+        monitoringThresholdReviewed = $true
+        requireProductionEvidence = $true
+        requireOperationsSnapshotEvidence = $true
+    }
+}
+$missingCountOperationsHandoffPackageOutput = Join-Path $resolvedOutputDirectory "missing-count-operations-handoff-package-promoted"
+$missingCountOperationsHandoffPackageJson = Join-Path $resolvedOutputDirectory "missing-count-operations-handoff-package-import.json"
+$missingCountOperationsHandoffPackageMarkdown = Join-Path $resolvedOutputDirectory "missing-count-operations-handoff-package-import.md"
+$previousErrorActionPreference = $ErrorActionPreference
+$ErrorActionPreference = "Continue"
+try {
+    $missingCountOperationsHandoffPackageOutputLines = & powershell -NoProfile -ExecutionPolicy Bypass -File $importScript `
+        -OperationsHandoffPackageArtifactPath $missingCountOperationsHandoffPackageRoot `
+        -OutputDirectory $missingCountOperationsHandoffPackageOutput `
+        -JsonOutputPath $missingCountOperationsHandoffPackageJson `
+        -MarkdownOutputPath $missingCountOperationsHandoffPackageMarkdown 2>&1
+    $missingCountOperationsHandoffPackageExitCode = $LASTEXITCODE
+}
+finally {
+    $ErrorActionPreference = $previousErrorActionPreference
+}
+Assert-True ($missingCountOperationsHandoffPackageExitCode -ne 0) "Operations handoff package with missing finalizer gap count should fail import."
+Assert-True (Test-Path -LiteralPath $missingCountOperationsHandoffPackageJson) "Missing-count handoff package import report should still be written."
+$missingCountOperationsHandoffPackageReport = Get-Content -Raw -LiteralPath $missingCountOperationsHandoffPackageJson | ConvertFrom-Json
+Assert-True ($missingCountOperationsHandoffPackageReport.result -eq "failed") "Missing-count handoff package import report should be failed."
+Assert-True (-not (Test-Path -LiteralPath (Join-Path $missingCountOperationsHandoffPackageOutput "latest-operations-handoff-package.json"))) "Missing-count handoff package must not be promoted."
+$missingCountOperationsHandoffPackageEntry = @($missingCountOperationsHandoffPackageReport.entries | Where-Object { $_.group -eq "operations-handoff-package" -and $_.fileName -eq "latest-operations-handoff-package.json" })
+Assert-True ($missingCountOperationsHandoffPackageEntry.Count -eq 1) "Missing-count handoff package failed entry missing."
+Assert-True (([string] $missingCountOperationsHandoffPackageEntry[0].detail).Contains("finalizerGapCount=<missing>")) "Missing-count handoff package report should describe missing finalizer gap count."
 
 Write-JsonEvidence (Join-Path $directDataFlowStoragePlanSource "latest-data-flow-storage-plan.json") @{
     formatVersion = "osmu.data-flow-storage-plan.v1"

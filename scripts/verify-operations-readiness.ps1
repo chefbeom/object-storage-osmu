@@ -76,7 +76,9 @@ function New-PassedOperationsHandoffPackageConfirmations() {
 
 function New-PassedOperationsHandoffPackageSnapshots(
     [string] $ConvergenceSourceReportResult = "ready",
-    [int] $FinalizerFailedCount = 0
+    [object] $FinalizerFailedCount = 0,
+    [object] $FinalizerGapCount = 0,
+    [object] $KubernetesReportSyncReady = $true
 ) {
     return [ordered]@{
         readiness = [ordered]@{
@@ -98,8 +100,8 @@ function New-PassedOperationsHandoffPackageSnapshots(
             finalizerResult = "ready"
             finalizerReadinessResult = "ready"
             finalizerFailedCount = $FinalizerFailedCount
-            finalizerGapCount = 0
-            kubernetesReportSyncReady = $true
+            finalizerGapCount = $FinalizerGapCount
+            kubernetesReportSyncReady = $KubernetesReportSyncReady
             kubernetesReportSyncResult = "applied"
             kubernetesReportSyncFailedCount = 0
             kubernetesReportSyncSourceReportResult = $ConvergenceSourceReportResult
@@ -671,6 +673,60 @@ if ($badConvergenceCheck.Count -ne 1 -or $badConvergenceCheck[0].passed) {
 }
 if (-not ([string] $badConvergenceCheck[0].detail).Contains("sourceReportResult=action-required")) {
     throw "Operations readiness bad convergence handoff detail must name the non-ready source report result."
+}
+
+$stringBoolHandoffEvidencePath = Join-Path $handoffFixtureDirectory "string-bool-operations-handoff-package.json"
+$stringBoolJsonOutputPath = Join-Path $handoffFixtureDirectory "string-bool-operations-readiness.json"
+$stringBoolMarkdownOutputPath = Join-Path $handoffFixtureDirectory "string-bool-operations-readiness.md"
+@{
+    formatVersion = "osmu.operations-handoff-package.v1"
+    result = "passed"
+    confirmations = (New-PassedOperationsHandoffPackageConfirmations)
+    operationsSnapshots = (New-PassedOperationsHandoffPackageSnapshots -KubernetesReportSyncReady "false")
+} | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $stringBoolHandoffEvidencePath -Encoding UTF8
+
+& powershell -NoProfile -ExecutionPolicy Bypass -File $scriptPath `
+    -OperationsHandoffPackagePath $stringBoolHandoffEvidencePath `
+    -JsonOutputPath $stringBoolJsonOutputPath `
+    -MarkdownOutputPath $stringBoolMarkdownOutputPath | Out-Host
+if ($LASTEXITCODE -ne 0) {
+    throw "write-operations-readiness.ps1 failed for string-bool handoff package fixture with exit code $LASTEXITCODE."
+}
+$stringBoolReport = Get-Content -Raw -LiteralPath $stringBoolJsonOutputPath | ConvertFrom-Json
+$stringBoolCheck = @($stringBoolReport.checks | Where-Object { $_.name -eq "Operations handoff package target evidence" })
+if ($stringBoolCheck.Count -ne 1 -or $stringBoolCheck[0].passed) {
+    throw "Operations readiness must reject a handoff package whose convergence sync boolean is a string."
+}
+if (-not ([string] $stringBoolCheck[0].detail).Contains("kubernetesReportSyncReady=false")) {
+    throw "Operations readiness string-bool handoff detail must name the invalid sync ready value."
+}
+
+$missingCountHandoffEvidencePath = Join-Path $handoffFixtureDirectory "missing-count-operations-handoff-package.json"
+$missingCountJsonOutputPath = Join-Path $handoffFixtureDirectory "missing-count-operations-readiness.json"
+$missingCountMarkdownOutputPath = Join-Path $handoffFixtureDirectory "missing-count-operations-readiness.md"
+$missingCountSnapshots = New-PassedOperationsHandoffPackageSnapshots
+$missingCountSnapshots["convergence"].Remove("finalizerGapCount")
+@{
+    formatVersion = "osmu.operations-handoff-package.v1"
+    result = "passed"
+    confirmations = (New-PassedOperationsHandoffPackageConfirmations)
+    operationsSnapshots = $missingCountSnapshots
+} | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $missingCountHandoffEvidencePath -Encoding UTF8
+
+& powershell -NoProfile -ExecutionPolicy Bypass -File $scriptPath `
+    -OperationsHandoffPackagePath $missingCountHandoffEvidencePath `
+    -JsonOutputPath $missingCountJsonOutputPath `
+    -MarkdownOutputPath $missingCountMarkdownOutputPath | Out-Host
+if ($LASTEXITCODE -ne 0) {
+    throw "write-operations-readiness.ps1 failed for missing-count handoff package fixture with exit code $LASTEXITCODE."
+}
+$missingCountReport = Get-Content -Raw -LiteralPath $missingCountJsonOutputPath | ConvertFrom-Json
+$missingCountCheck = @($missingCountReport.checks | Where-Object { $_.name -eq "Operations handoff package target evidence" })
+if ($missingCountCheck.Count -ne 1 -or $missingCountCheck[0].passed) {
+    throw "Operations readiness must reject a handoff package whose convergence finalizer gap count is missing."
+}
+if (-not ([string] $missingCountCheck[0].detail).Contains("finalizerGapCount=<missing>")) {
+    throw "Operations readiness missing-count handoff detail must name the missing finalizer gap count."
 }
 
 Write-Host "Operations readiness artifact verified."
