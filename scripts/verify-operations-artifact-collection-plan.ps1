@@ -57,6 +57,7 @@ $commands = @(
     "gh workflow run enterprise-auth-smoke-ci.yml -f run_live=true -f require_oidc=true -f require_ldap=true",
     "powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\write-operations-handoff-package.ps1 -EnvironmentName prod -TargetCluster osmu-prod -Operator ops-owner -HandoffStartedAt 2026-06-20T01:00:00Z -HandoffCompletedAt 2026-06-20T02:00:00Z -ChangeApprovalRef change-20260620 -DeploymentEvidenceRef deploy-20260620 -OperationsReadinessRef readiness-20260620 -OperationsConvergenceRef convergence-20260620 -OperationsReadinessJsonPath .\.osmu-run\latest-operations-readiness.json -OperationsConvergenceJsonPath .\.osmu-run\latest-operations-readiness-convergence.json -SecretRotationEvidenceRef secret-rotation-20260620 -CommercialIntegrationEvidenceRef commercial-integration-20260620 -CommercialApprovalEvidenceRef commercial-approval-20260620 -EnterpriseAuthEvidenceRef enterprise-auth-20260620 -BackupRestoreEvidenceRef backup-restore-20260620 -HaDrEvidenceRef ha-dr-20260620 -MonitoringEvidenceRef monitoring-20260620 -SecurityEvidenceRef security-20260620 -IamRbacEvidenceRef iam-rbac-20260620 -RunbookReviewRef runbook-20260620 -TroubleshootingReviewRef troubleshooting-20260620 -SupportEscalationRef support-escalation-20260620 -SupportSlaRef support-sla-20260620 -KnownGapsRef known-gaps-20260620 -ConfirmRunbookReviewed -ConfirmTroubleshootingReviewed -ConfirmRollbackReviewed -ConfirmSupportEscalationReviewed -ConfirmKnownGapsAccepted -ConfirmOperationsReadinessSnapshotReviewed -ConfirmOperationsConvergenceSnapshotReviewed -ConfirmNoSecretValues -RequireProductionEvidence -RequireOperationsSnapshotEvidence -FailIfNotPassed",
     "powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\write-data-flow-storage-plan.ps1 -EnvironmentName prod -TargetCluster osmu-prod -Operator ops-owner -CandidateStore MARIADB_PARTITION -ExpectedPeakEventsPerDay 100000 -ExpectedQueryWindowDays 180 -TargetP95QueryLatencyMs 500 -EvidenceRef data-flow-plan-20260620 -ConfirmNoObjectKeyInAggregates -ConfirmBackfillPlan -ConfirmRollbackPlan -ConfirmDashboardCutoverPlan -ConfirmRetentionJobBudget -ConfirmExplainEvidence -QueryPlanEvidenceJsonPath .\.osmu-run\latest-mariadb-query-plan-evidence.json -RequireQueryPlanEvidence -FailIfNotPassed",
+    "powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\write-data-flow-storage-transition-runbook-evidence.ps1 -EnvironmentName prod -TargetCluster osmu-prod -Operator ops-owner -ReviewStartedAt 2026-06-20T02:00:00Z -ReviewCompletedAt 2026-06-20T02:30:00Z -ChangeApprovalRef data-flow-runbook-change-20260620 -DataFlowStoragePlanJsonPath .\.osmu-run\latest-data-flow-storage-plan.json -DataFlowStoragePlanEvidenceRef data-flow-plan-20260620 -BackfillEvidenceRef backfill-20260620 -DualWriteOrPartitionToggleEvidenceRef dual-write-20260620 -RollbackEvidenceRef rollback-20260620 -ReconciliationEvidenceRef reconciliation-20260620 -DashboardCutoverEvidenceRef dashboard-cutover-20260620 -RetentionDryRunEvidenceRef retention-dry-run-20260620 -EvidenceRef data-flow-runbook-20260620 -ConfirmBackfillRehearsed -ConfirmDualWriteOrPartitionToggleReviewed -ConfirmRollbackRehearsed -ConfirmReconciliationPassed -ConfirmDashboardCutoverReviewed -ConfirmRetentionDryRunReviewed -ConfirmNoObjectKeysInAggregates -ConfirmNoSecretValues -FailIfNotPassed",
     "gh workflow run kubernetes-operations-report-sync-ci.yml -f run_live=true -f apply=true"
 )
 $actions = New-Object System.Collections.Generic.List[object]
@@ -109,9 +110,9 @@ $missingReport = Get-Content -Raw -LiteralPath $missingJsonOutputPath | ConvertF
 $missingMarkdown = Get-Content -Raw -LiteralPath $missingMarkdownOutputPath
 Assert-True ($missingReport.formatVersion -eq "osmu.operations-artifact-collection-plan.v1") "Unexpected collection plan formatVersion."
 Assert-True ($missingReport.result -eq "action-required") "Expected action-required result without run ids."
-Assert-True ($missingReport.artifactCount -eq 14) "Expected fourteen inferred artifacts."
-Assert-True ($missingReport.requiredArtifactCount -eq 12) "Expected twelve required readiness/convergence artifacts."
-Assert-True ($missingReport.missingRequiredArtifactCount -eq 12) "Expected twelve missing required artifacts."
+Assert-True ($missingReport.artifactCount -eq 15) "Expected fifteen inferred artifacts."
+Assert-True ($missingReport.requiredArtifactCount -eq 13) "Expected thirteen required readiness/convergence artifacts."
+Assert-True ($missingReport.missingRequiredArtifactCount -eq 13) "Expected thirteen missing required artifacts."
 Assert-Contains $missingMarkdown "storage-expansion-finalizer-<storage-expansion-run-id>" "missing collection markdown"
 Assert-Contains $missingMarkdown "storage-backend-telemetry-evidence-<storage-backend-telemetry-run-id>" "missing collection markdown"
 Assert-Contains $missingMarkdown "manual-storage-backend-telemetry-evidence.yml" "missing collection markdown"
@@ -127,9 +128,12 @@ Assert-Contains $missingMarkdown "contractual scope-out evidence" "missing colle
 Assert-Contains $missingMarkdown "operations-handoff-package-<operations-handoff-package-run-id>" "missing collection markdown"
 Assert-Contains $missingMarkdown "data-flow-storage-plan-evidence-<data-flow-storage-plan-run-id>" "missing collection markdown"
 Assert-Contains $missingMarkdown "manual-data-flow-storage-plan-evidence.yml" "missing collection markdown"
+Assert-Contains $missingMarkdown "data-flow-storage-transition-runbook-evidence-<data-flow-storage-transition-runbook-run-id>" "missing collection markdown"
+Assert-Contains $missingMarkdown "manual-data-flow-storage-transition-runbook-evidence.yml" "missing collection markdown"
 Assert-Contains $missingMarkdown "operations-readiness-artifact-finalizer-ci.yml" "missing collection markdown"
 Assert-Contains $missingMarkdown "optional latest-data-flow-storage-plan.json" "missing collection markdown"
 Assert-Contains $missingMarkdown "data_flow_storage_plan_json_base64=<base64-latest-data-flow-storage-plan-json>" "missing collection markdown"
+Assert-Contains $missingMarkdown "data_flow_storage_transition_runbook_json_base64=<base64-latest-data-flow-storage-transition-runbook-json>" "missing collection markdown"
 Assert-Contains $missingMarkdown "sanitized query-plan evidence summary" "missing collection markdown"
 Assert-Contains $missingMarkdown ".\.osmu-run\operations-readiness-artifacts\storage-expansion" "missing collection markdown"
 Assert-True (-not $missingMarkdown.Contains("OrderedDictionary.downloadPath")) "Local import command should render concrete download paths."
@@ -138,7 +142,8 @@ $directManualCommands = @(
     "gh workflow run manual-secret-rotation-evidence.yml -f environment_name=prod -f target_cluster=osmu-prod -f operator=ops-owner -f fail_if_not_passed=true",
     "gh workflow run manual-commercial-integration-evidence.yml -f environment_name=prod -f target_cluster=osmu-prod -f operator=ops-owner -f fail_if_not_passed=true",
     "gh workflow run manual-commercial-approval-evidence.yml -f product_version=v0.1.0-rc.1 -f approval_ref=approval-20260620 -f approved_by=commercial-owner -f fail_if_not_passed=true",
-    "gh workflow run manual-operations-handoff-package.yml -f environment_name=prod -f target_cluster=osmu-prod -f operator=ops-owner -f fail_if_not_passed=true"
+    "gh workflow run manual-operations-handoff-package.yml -f environment_name=prod -f target_cluster=osmu-prod -f operator=ops-owner -f fail_if_not_passed=true",
+    "gh workflow run manual-data-flow-storage-transition-runbook-evidence.yml -f environment_name=prod -f target_cluster=osmu-prod -f operator=ops-owner -f fail_if_not_passed=true"
 )
 $directManualActions = New-Object System.Collections.Generic.List[object]
 $directManualOrder = 1
@@ -187,9 +192,9 @@ if ($LASTEXITCODE -ne 0) {
 $directManualReport = Get-Content -Raw -LiteralPath $directManualJsonOutputPath | ConvertFrom-Json
 $directManualMarkdown = Get-Content -Raw -LiteralPath $directManualMarkdownOutputPath
 Assert-True ($directManualReport.result -eq "action-required") "Expected action-required result for direct manual workflow dispatches without run ids."
-Assert-True ($directManualReport.artifactCount -eq 4) "Expected four artifacts from direct manual workflow dispatches."
-Assert-True ($directManualReport.requiredArtifactCount -eq 4) "Expected four required artifacts from direct manual workflow dispatches."
-Assert-True ($directManualReport.missingRequiredArtifactCount -eq 4) "Expected four missing direct manual workflow artifacts."
+Assert-True ($directManualReport.artifactCount -eq 5) "Expected five artifacts from direct manual workflow dispatches."
+Assert-True ($directManualReport.requiredArtifactCount -eq 5) "Expected five required artifacts from direct manual workflow dispatches."
+Assert-True ($directManualReport.missingRequiredArtifactCount -eq 5) "Expected five missing direct manual workflow artifacts."
 Assert-Contains $directManualMarkdown "manual-secret-rotation-evidence.yml" "direct manual collection markdown"
 Assert-Contains $directManualMarkdown "secret_rotation_run_id=<secret-rotation-run-id>" "direct manual collection markdown"
 Assert-Contains $directManualMarkdown "manual-commercial-integration-evidence.yml" "direct manual collection markdown"
@@ -198,6 +203,8 @@ Assert-Contains $directManualMarkdown "manual-commercial-approval-evidence.yml" 
 Assert-Contains $directManualMarkdown "commercial_approval_run_id=<commercial-approval-run-id>" "direct manual collection markdown"
 Assert-Contains $directManualMarkdown "manual-operations-handoff-package.yml" "direct manual collection markdown"
 Assert-Contains $directManualMarkdown "operations_handoff_package_run_id=<operations-handoff-package-run-id>" "direct manual collection markdown"
+Assert-Contains $directManualMarkdown "manual-data-flow-storage-transition-runbook-evidence.yml" "direct manual collection markdown"
+Assert-Contains $directManualMarkdown "data_flow_storage_transition_runbook_run_id=<data-flow-storage-transition-runbook-run-id>" "direct manual collection markdown"
 
 & powershell -NoProfile -ExecutionPolicy Bypass -File $scriptPath `
     -InvocationReportPath $fixturePath `
@@ -216,7 +223,8 @@ Assert-Contains $directManualMarkdown "operations_handoff_package_run_id=<operat
     -EnterpriseAuthRunId "111" `
     -OperationsHandoffPackageRunId "112" `
     -DataFlowStoragePlanRunId "113" `
-    -KubernetesOperationsReportSyncRunId "114" `
+    -DataFlowStorageTransitionRunbookRunId "114" `
+    -KubernetesOperationsReportSyncRunId "115" `
     -ImageSigningVersion "v0.1.0-rc.1" `
     -CommitSha "abc123" | Out-Host
 if ($LASTEXITCODE -ne 0) {
@@ -227,7 +235,7 @@ $readyReport = Get-Content -Raw -LiteralPath $readyJsonOutputPath | ConvertFrom-
 $readyMarkdown = Get-Content -Raw -LiteralPath $readyMarkdownOutputPath
 Assert-True ($readyReport.result -eq "ready") "Expected ready result when all required run ids are supplied."
 Assert-True ($readyReport.missingRequiredArtifactCount -eq 0) "Expected no missing required artifacts."
-Assert-True ($readyReport.readyArtifactCount -eq 14) "Expected all artifacts to be concrete."
+Assert-True ($readyReport.readyArtifactCount -eq 15) "Expected all artifacts to be concrete."
 Assert-Contains $readyMarkdown "storage_expansion_run_id=101" "ready collection markdown"
 Assert-Contains $readyMarkdown "security_evidence_run_id=106" "ready collection markdown"
 Assert-Contains $readyMarkdown "storage_backend_telemetry_run_id=107" "ready collection markdown"
@@ -237,8 +245,10 @@ Assert-Contains $readyMarkdown "commercial_approval_run_id=110" "ready collectio
 Assert-Contains $readyMarkdown "enterprise_auth_run_id=111" "ready collection markdown"
 Assert-Contains $readyMarkdown "operations_handoff_package_run_id=112" "ready collection markdown"
 Assert-Contains $readyMarkdown "data_flow_storage_plan_run_id=113" "ready collection markdown"
-Assert-Contains $readyMarkdown "kubernetes_operations_report_sync_run_id=114" "ready collection markdown"
+Assert-Contains $readyMarkdown "data_flow_storage_transition_runbook_run_id=114" "ready collection markdown"
+Assert-Contains $readyMarkdown "kubernetes_operations_report_sync_run_id=115" "ready collection markdown"
 Assert-Contains $readyMarkdown "data_flow_storage_plan_json_base64=<base64-latest-data-flow-storage-plan-json>" "ready collection markdown"
+Assert-Contains $readyMarkdown "data_flow_storage_transition_runbook_json_base64=<base64-latest-data-flow-storage-transition-runbook-json>" "ready collection markdown"
 Assert-Contains $readyMarkdown "osmu-image-signing-v0.1.0-rc.1-abc123" "ready collection markdown"
 Assert-Contains $readyMarkdown "osmu-container-security-abc123" "ready collection markdown"
 Assert-Contains $readyMarkdown "gh run download 106 -n security-evidence-finalizer-106" "ready collection markdown"
@@ -250,13 +260,15 @@ Assert-Contains $readyMarkdown "gh run download 111 -n enterprise-auth-smoke-111
 Assert-Contains $readyMarkdown "contractual scope-out evidence" "ready collection markdown"
 Assert-Contains $readyMarkdown "gh run download 112 -n operations-handoff-package-112" "ready collection markdown"
 Assert-Contains $readyMarkdown "gh run download 113 -n data-flow-storage-plan-evidence-113" "ready collection markdown"
-Assert-Contains $readyMarkdown "gh run download 114 -n kubernetes-operations-report-sync-114" "ready collection markdown"
+Assert-Contains $readyMarkdown "gh run download 114 -n data-flow-storage-transition-runbook-evidence-114" "ready collection markdown"
+Assert-Contains $readyMarkdown "gh run download 115 -n kubernetes-operations-report-sync-115" "ready collection markdown"
 Assert-Contains $readyMarkdown "-StorageBackendTelemetryArtifactPath .\.osmu-run\operations-readiness-artifacts\storage-backend-telemetry" "ready collection markdown"
 Assert-Contains $readyMarkdown "-SecretRotationArtifactPath .\.osmu-run\operations-readiness-artifacts\secret-rotation" "ready collection markdown"
 Assert-Contains $readyMarkdown "-CommercialIntegrationArtifactPath .\.osmu-run\operations-readiness-artifacts\commercial-integration" "ready collection markdown"
 Assert-Contains $readyMarkdown "-CommercialApprovalArtifactPath .\.osmu-run\operations-readiness-artifacts\commercial-approval" "ready collection markdown"
 Assert-Contains $readyMarkdown "-OperationsHandoffPackageArtifactPath .\.osmu-run\operations-readiness-artifacts\operations-handoff-package" "ready collection markdown"
 Assert-Contains $readyMarkdown "-DataFlowStoragePlanArtifactPath .\.osmu-run\operations-readiness-artifacts\data-flow-storage-plan" "ready collection markdown"
+Assert-Contains $readyMarkdown "-DataFlowStorageTransitionRunbookArtifactPath .\.osmu-run\operations-readiness-artifacts\data-flow-storage-transition-runbook" "ready collection markdown"
 
 Write-Host "Operations artifact collection plan verified."
 Write-Host "Missing report: $missingJsonOutputPath"

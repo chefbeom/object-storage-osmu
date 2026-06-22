@@ -74,6 +74,9 @@ function Get-ManualEvidenceWorkflowName([string] $Command) {
     if ($Command.Contains("write-data-flow-storage-plan.ps1")) {
         return "manual-data-flow-storage-plan-evidence.yml"
     }
+    if ($Command.Contains("write-data-flow-storage-transition-runbook-evidence.ps1")) {
+        return "manual-data-flow-storage-transition-runbook-evidence.yml"
+    }
     return ""
 }
 
@@ -215,6 +218,13 @@ function New-WorkflowMetadata([string] $Workflow) {
             artifactNameTemplate = "data-flow-storage-plan-evidence-{runId}"
             requiredForReadiness = $true
             note = "Required by operations readiness artifact import when target data-flow partition/time-series transition evidence is part of the invocation."
+        }
+        "manual-data-flow-storage-transition-runbook-evidence.yml" = [ordered]@{
+            group = "data-flow-storage-transition-runbook"
+            runIdParameter = "DataFlowStorageTransitionRunbookRunId"
+            artifactNameTemplate = "data-flow-storage-transition-runbook-evidence-{runId}"
+            requiredForReadiness = $true
+            note = "Required by operations readiness artifact import when target data-flow backfill, rollback, reconciliation, dashboard cutover, and retention dry-run rehearsal evidence is part of the invocation."
         }
         "kubernetes-operations-report-sync-ci.yml" = [ordered]@{
             group = "kubernetes-operations-report-sync"

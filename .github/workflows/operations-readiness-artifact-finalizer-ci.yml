@@ -99,6 +99,14 @@ on:
         description: Optional data-flow storage plan evidence artifact name
         required: false
         default: ""
+      data_flow_storage_transition_runbook_run_id:
+        description: Optional data-flow storage transition runbook evidence run id
+        required: false
+        default: ""
+      data_flow_storage_transition_runbook_artifact_name:
+        description: Optional data-flow storage transition runbook evidence artifact name
+        required: false
+        default: ""
       kubernetes_operations_report_sync_run_id:
         description: Optional Kubernetes Operations Report Sync CI run id
         required: false
@@ -109,6 +117,10 @@ on:
         default: ""
       data_flow_storage_plan_json_base64:
         description: Optional base64-encoded latest-data-flow-storage-plan.json evidence to import directly. MariaDB/dual-write plans must include sanitized query-plan evidence summary.
+        required: false
+        default: ""
+      data_flow_storage_transition_runbook_json_base64:
+        description: Optional base64-encoded latest-data-flow-storage-transition-runbook-evidence.json evidence to import directly. Must be sanitized and result=passed.
         required: false
         default: ""
       fail_if_not_ready:
@@ -146,6 +158,19 @@ jobs:
           [IO.File]::WriteAllBytes(
             (Join-Path $artifactPath "latest-data-flow-storage-plan.json"),
             [Convert]::FromBase64String($env:OSMU_DATA_FLOW_STORAGE_PLAN_JSON_BASE64)
+          )
+
+      - name: Restore direct data-flow storage transition runbook evidence
+        if: ${{ inputs.data_flow_storage_transition_runbook_json_base64 != '' }}
+        shell: pwsh
+        env:
+          OSMU_DATA_FLOW_STORAGE_TRANSITION_RUNBOOK_JSON_BASE64: ${{ inputs.data_flow_storage_transition_runbook_json_base64 }}
+        run: |
+          $artifactPath = ".osmu-run/operations-readiness-artifacts/data-flow-storage-transition-runbook"
+          New-Item -ItemType Directory -Force -Path $artifactPath | Out-Null
+          [IO.File]::WriteAllBytes(
+            (Join-Path $artifactPath "latest-data-flow-storage-transition-runbook-evidence.json"),
+            [Convert]::FromBase64String($env:OSMU_DATA_FLOW_STORAGE_TRANSITION_RUNBOOK_JSON_BASE64)
           )
 
       - name: Download storage expansion evidence
@@ -256,6 +281,15 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           path: .osmu-run/operations-readiness-artifacts/data-flow-storage-plan
 
+      - name: Download data-flow storage transition runbook evidence
+        if: ${{ inputs.data_flow_storage_transition_runbook_run_id != '' && inputs.data_flow_storage_transition_runbook_artifact_name != '' }}
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ inputs.data_flow_storage_transition_runbook_artifact_name }}
+          run-id: ${{ inputs.data_flow_storage_transition_runbook_run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: .osmu-run/operations-readiness-artifacts/data-flow-storage-transition-runbook
+
       - name: Download Kubernetes operations report sync evidence
         if: ${{ inputs.kubernetes_operations_report_sync_run_id != '' && inputs.kubernetes_operations_report_sync_artifact_name != '' }}
         uses: actions/download-artifact@v4
@@ -286,7 +320,8 @@ jobs:
             @("EnterpriseAuthArtifactPath", ".osmu-run/operations-readiness-artifacts/enterprise-auth"),
             @("OperationsHandoffPackageArtifactPath", ".osmu-run/operations-readiness-artifacts/operations-handoff-package"),
             @("KubernetesOperationsReportSyncArtifactPath", ".osmu-run/operations-readiness-artifacts/kubernetes-operations-report-sync"),
-            @("DataFlowStoragePlanArtifactPath", ".osmu-run/operations-readiness-artifacts/data-flow-storage-plan")
+            @("DataFlowStoragePlanArtifactPath", ".osmu-run/operations-readiness-artifacts/data-flow-storage-plan"),
+            @("DataFlowStorageTransitionRunbookArtifactPath", ".osmu-run/operations-readiness-artifacts/data-flow-storage-transition-runbook")
           )
           foreach ($artifactRoot in $artifactRoots) {
             if (Test-Path -LiteralPath $artifactRoot[1]) {
@@ -346,6 +381,8 @@ jobs:
             .osmu-run/latest-kubernetes-operations-report-sync-plan.json
             .osmu-run/latest-kubernetes-operations-report-sync-server-dry-run.json
             .osmu-run/latest-data-flow-storage-plan.json
+            .osmu-run/latest-data-flow-storage-transition-runbook-evidence.json
+            .osmu-run/latest-data-flow-storage-transition-runbook-evidence.md
             .osmu-run/operations-readiness-artifacts/**
           if-no-files-found: warn
           retention-days: 14

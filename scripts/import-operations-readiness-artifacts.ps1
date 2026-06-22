@@ -12,6 +12,7 @@ param(
     [string] $OperationsHandoffPackageArtifactPath = "",
     [string] $KubernetesOperationsReportSyncArtifactPath = "",
     [string] $DataFlowStoragePlanArtifactPath = "",
+    [string] $DataFlowStorageTransitionRunbookArtifactPath = "",
     [string] $OutputDirectory = ".\.osmu-run",
     [string] $JsonOutputPath = ".\.osmu-run\latest-operations-readiness-artifact-import.json",
     [string] $MarkdownOutputPath = ".\.osmu-run\latest-operations-readiness-artifact-import.md"
@@ -186,6 +187,67 @@ function Test-DataFlowStoragePlanEvidenceJson([string] $Path) {
     }
 }
 
+function Test-DataFlowStorageTransitionRunbookEvidenceJson([string] $Path) {
+    try {
+        $raw = Get-Content -Raw -LiteralPath $Path
+        $json = $raw | ConvertFrom-Json
+    }
+    catch {
+        return [pscustomobject]@{
+            passed = $false
+            detail = "invalid JSON: $($_.Exception.Message)"
+        }
+    }
+
+    $formatVersion = [string] (Get-JsonProperty $json "formatVersion")
+    if ($formatVersion -ne "osmu.data-flow-storage-transition-runbook-evidence.v1") {
+        return [pscustomobject]@{
+            passed = $false
+            detail = "formatVersion=$formatVersion expected=osmu.data-flow-storage-transition-runbook-evidence.v1"
+        }
+    }
+
+    $result = [string] (Get-JsonProperty $json "result")
+    if ($result -ne "passed") {
+        return [pscustomobject]@{
+            passed = $false
+            detail = "result=$result expected=passed"
+        }
+    }
+
+    $patterns = @(
+        '(?i)"(sql|rawSql|raw_sql|queryText|query_text|explain|explainJson|explain_json|rawExplain|raw_explain|rawEventMessage|raw_event_message|objectKey|object_key|password|passwd|token|credential|apiKey|api_key|accessKey|access_key|privateKey|private_key)"\s*:',
+        '(?i)\b(password|passwd|credential|api[_-]?key|access[_-]?key|private[_-]?key)\s*=\s*\S+',
+        '(?i)\bBearer\s+[A-Za-z0-9._~+/=-]{12,}',
+        '(?i)\bSELECT\b[\s\S]{0,200}\bFROM\b',
+        '(?i)\bEXPLAIN\b[\s\S]{0,200}\bFORMAT\b'
+    )
+    foreach ($pattern in $patterns) {
+        if ($raw -match $pattern) {
+            return [pscustomobject]@{
+                passed = $false
+                detail = "runbook evidence contains raw SQL, raw EXPLAIN, object keys, raw event messages, or credential-shaped content"
+            }
+        }
+    }
+
+    $planSnapshot = Get-JsonProperty $json "dataFlowStoragePlanSnapshot"
+    $planResult = [string] (Get-JsonProperty $planSnapshot "result")
+    if ($planResult -ne "passed") {
+        return [pscustomobject]@{
+            passed = $false
+            detail = "dataFlowStoragePlanSnapshot.result=$planResult expected=passed"
+        }
+    }
+
+    $summary = Get-JsonProperty $json "summary"
+    $failureCount = [string] (Get-JsonProperty $summary "failureCount")
+    return [pscustomobject]@{
+        passed = $true
+        detail = "formatVersion=$formatVersion result=$result storagePlanResult=$planResult failureCount=$failureCount"
+    }
+}
+
 function Import-EvidenceFile(
     [string] $Group,
     [string] $SourceRoot,
@@ -223,6 +285,14 @@ function Import-EvidenceFile(
 
     if ($ValidationKind -eq "data-flow-storage-plan") {
         $validation = Test-DataFlowStoragePlanEvidenceJson $sourcePath
+        if (-not $validation.passed) {
+            Add-Entry $Group $FileName "failed" $validation.detail $sourcePath ""
+            return
+        }
+        [void] $validationDetails.Add($validation.detail)
+    }
+    elseif ($ValidationKind -eq "data-flow-storage-transition-runbook") {
+        $validation = Test-DataFlowStorageTransitionRunbookEvidenceJson $sourcePath
         if (-not $validation.passed) {
             Add-Entry $Group $FileName "failed" $validation.detail $sourcePath ""
             return
@@ -287,6 +357,8 @@ Import-EvidenceFile "kubernetes-operations-report-sync" $KubernetesOperationsRep
 Import-EvidenceFile "kubernetes-operations-report-sync" $KubernetesOperationsReportSyncArtifactPath "latest-data-flow-storage-plan.json" $false "" "" "data-flow-storage-plan"
 
 Import-EvidenceFile "data-flow-storage-plan" $DataFlowStoragePlanArtifactPath "latest-data-flow-storage-plan.json" $true "" "" "data-flow-storage-plan"
+Import-EvidenceFile "data-flow-storage-transition-runbook" $DataFlowStorageTransitionRunbookArtifactPath "latest-data-flow-storage-transition-runbook-evidence.json" $true "" "" "data-flow-storage-transition-runbook"
+Import-EvidenceFile "data-flow-storage-transition-runbook" $DataFlowStorageTransitionRunbookArtifactPath "latest-data-flow-storage-transition-runbook-evidence.md" $false
 
 $failedEntries = @($entries | Where-Object { $_.status -eq "failed" })
 $importedEntries = @($entries | Where-Object { $_.status -eq "imported" })
@@ -303,7 +375,8 @@ $selectedGroupCandidates = @(
     [pscustomobject]@{ group = "enterprise-auth"; path = $EnterpriseAuthArtifactPath },
     [pscustomobject]@{ group = "operations-handoff-package"; path = $OperationsHandoffPackageArtifactPath },
     [pscustomobject]@{ group = "kubernetes-operations-report-sync"; path = $KubernetesOperationsReportSyncArtifactPath },
-    [pscustomobject]@{ group = "data-flow-storage-plan"; path = $DataFlowStoragePlanArtifactPath }
+    [pscustomobject]@{ group = "data-flow-storage-plan"; path = $DataFlowStoragePlanArtifactPath },
+    [pscustomobject]@{ group = "data-flow-storage-transition-runbook"; path = $DataFlowStorageTransitionRunbookArtifactPath }
 )
 $selectedGroups = @($selectedGroupCandidates | Where-Object { -not [string]::IsNullOrWhiteSpace([string] $_.path) })
 $result = if ($failedEntries.Count -eq 0) { "passed" } else { "failed" }

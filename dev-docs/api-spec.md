@@ -4977,6 +4977,8 @@ The response combines runtime, backup, quota, sharing, and operations-readiness 
 
 `operationsHandoffPackage.dataFlowStorageTransitionRunbookSnapshot` is reduced summary only: it exposes runbook result, storage-plan result, candidate store, target p95 query latency, failure/check counts, and transition confirmations, but not raw SQL, raw EXPLAIN JSON, object keys, raw event messages, credentials, or full operational command output.
 
+`operationsArtifactCollectionPlan.dataFlowStorageTransitionRunbookInputNote` carries the optional direct `data_flow_storage_transition_runbook_json_base64` handoff for artifact finalizer runs, parallel to `dataFlowStoragePlanInputNote`, so operators can promote sanitized transition rehearsal evidence without waiting for a manual workflow artifact.
+
 Response:
 
 ```json
@@ -5344,6 +5346,7 @@ Response:
       "missingRequiredArtifactCount": 5,
       "operationsArtifactFinalizerCommand": "gh workflow run operations-readiness-artifact-finalizer-ci.yml -f storage_expansion_run_id=<storage-expansion-run-id> -f kubernetes_operations_report_sync_run_id=<kubernetes-operations-report-sync-run-id>",
       "dataFlowStoragePlanInputNote": "Optional direct data-flow plan input: add -f data_flow_storage_plan_json_base64=<base64-latest-data-flow-storage-plan-json> to operations-readiness-artifact-finalizer-ci.yml when target data-flow storage transition evidence should be imported without waiting for a Kubernetes operations report sync artifact. MariaDB partition or dual-write plans must include the sanitized query-plan evidence summary.",
+      "dataFlowStorageTransitionRunbookInputNote": "Optional direct data-flow transition runbook input: add -f data_flow_storage_transition_runbook_json_base64=<base64-latest-data-flow-storage-transition-runbook-json> to operations-readiness-artifact-finalizer-ci.yml when target transition rehearsal evidence should be imported without waiting for a manual workflow artifact. The snapshot must be sanitized and result=passed.",
       "localImportCommand": "powershell -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\import-operations-readiness-artifacts.ps1 -StorageExpansionArtifactPath .\\.osmu-run\\operations-readiness-artifacts\\storage-expansion -KubernetesOperationsReportSyncArtifactPath .\\.osmu-run\\operations-readiness-artifacts\\kubernetes-operations-report-sync",
       "artifacts": [
         {

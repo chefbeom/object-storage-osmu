@@ -1,0 +1,210 @@
+name: Manual Data-flow Storage Transition Runbook Evidence
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment_name:
+        description: Target environment label
+        required: true
+        default: prod
+      target_cluster:
+        description: Target cluster label
+        required: true
+        default: osmu-prod
+      operator:
+        description: Operator or team recording the evidence
+        required: true
+        default: ""
+      review_started_at:
+        description: Transition runbook review start timestamp
+        required: true
+        default: ""
+      review_completed_at:
+        description: Transition runbook review completion timestamp
+        required: true
+        default: ""
+      change_approval_ref:
+        description: External change approval reference
+        required: true
+        default: ""
+      data_flow_storage_plan_evidence_ref:
+        description: External passed data-flow storage plan evidence reference
+        required: true
+        default: ""
+      data_flow_storage_plan_json_base64:
+        description: Base64 latest-data-flow-storage-plan.json snapshot. Must be sanitized and result=passed.
+        required: true
+        default: ""
+      backfill_evidence_ref:
+        description: External backfill rehearsal evidence reference
+        required: true
+        default: ""
+      dual_write_or_partition_toggle_evidence_ref:
+        description: External dual-write or partition toggle review evidence reference
+        required: true
+        default: ""
+      rollback_evidence_ref:
+        description: External rollback rehearsal evidence reference
+        required: true
+        default: ""
+      reconciliation_evidence_ref:
+        description: External reconciliation evidence reference
+        required: true
+        default: ""
+      dashboard_cutover_evidence_ref:
+        description: External dashboard cutover evidence reference
+        required: true
+        default: ""
+      retention_dry_run_evidence_ref:
+        description: External retention dry-run evidence reference
+        required: true
+        default: ""
+      evidence_ref:
+        description: External runbook evidence reference
+        required: true
+        default: ""
+      confirm_backfill_rehearsed:
+        description: Confirm backfill rehearsal completed
+        required: true
+        type: boolean
+        default: false
+      confirm_dual_write_or_partition_toggle_reviewed:
+        description: Confirm dual-write or partition toggle review completed
+        required: true
+        type: boolean
+        default: false
+      confirm_rollback_rehearsed:
+        description: Confirm rollback rehearsal completed
+        required: true
+        type: boolean
+        default: false
+      confirm_reconciliation_passed:
+        description: Confirm reconciliation passed
+        required: true
+        type: boolean
+        default: false
+      confirm_dashboard_cutover_reviewed:
+        description: Confirm dashboard cutover reviewed
+        required: true
+        type: boolean
+        default: false
+      confirm_retention_dry_run_reviewed:
+        description: Confirm retention dry-run reviewed
+        required: true
+        type: boolean
+        default: false
+      confirm_no_object_keys_in_aggregates:
+        description: Confirm aggregates exclude object keys and raw event messages
+        required: true
+        type: boolean
+        default: false
+      confirm_no_secret_values:
+        description: Confirm no secret values are stored
+        required: true
+        type: boolean
+        default: false
+      fail_if_not_passed:
+        description: Fail workflow when evidence result is not passed
+        required: true
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: manual-data-flow-storage-transition-runbook-evidence-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  data-flow-storage-transition-runbook-evidence:
+    name: Manual data-flow storage transition runbook evidence
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Record data-flow storage transition runbook evidence
+        shell: pwsh
+        env:
+          OSMU_ENVIRONMENT_NAME: ${{ inputs.environment_name }}
+          OSMU_TARGET_CLUSTER: ${{ inputs.target_cluster }}
+          OSMU_OPERATOR: ${{ inputs.operator }}
+          OSMU_REVIEW_STARTED_AT: ${{ inputs.review_started_at }}
+          OSMU_REVIEW_COMPLETED_AT: ${{ inputs.review_completed_at }}
+          OSMU_CHANGE_APPROVAL_REF: ${{ inputs.change_approval_ref }}
+          OSMU_DATA_FLOW_STORAGE_PLAN_EVIDENCE_REF: ${{ inputs.data_flow_storage_plan_evidence_ref }}
+          OSMU_DATA_FLOW_STORAGE_PLAN_JSON_BASE64: ${{ inputs.data_flow_storage_plan_json_base64 }}
+          OSMU_BACKFILL_EVIDENCE_REF: ${{ inputs.backfill_evidence_ref }}
+          OSMU_DUAL_WRITE_OR_PARTITION_TOGGLE_EVIDENCE_REF: ${{ inputs.dual_write_or_partition_toggle_evidence_ref }}
+          OSMU_ROLLBACK_EVIDENCE_REF: ${{ inputs.rollback_evidence_ref }}
+          OSMU_RECONCILIATION_EVIDENCE_REF: ${{ inputs.reconciliation_evidence_ref }}
+          OSMU_DASHBOARD_CUTOVER_EVIDENCE_REF: ${{ inputs.dashboard_cutover_evidence_ref }}
+          OSMU_RETENTION_DRY_RUN_EVIDENCE_REF: ${{ inputs.retention_dry_run_evidence_ref }}
+          OSMU_EVIDENCE_REF: ${{ inputs.evidence_ref }}
+          OSMU_CONFIRM_BACKFILL_REHEARSED: ${{ inputs.confirm_backfill_rehearsed }}
+          OSMU_CONFIRM_DUAL_WRITE_OR_PARTITION_TOGGLE_REVIEWED: ${{ inputs.confirm_dual_write_or_partition_toggle_reviewed }}
+          OSMU_CONFIRM_ROLLBACK_REHEARSED: ${{ inputs.confirm_rollback_rehearsed }}
+          OSMU_CONFIRM_RECONCILIATION_PASSED: ${{ inputs.confirm_reconciliation_passed }}
+          OSMU_CONFIRM_DASHBOARD_CUTOVER_REVIEWED: ${{ inputs.confirm_dashboard_cutover_reviewed }}
+          OSMU_CONFIRM_RETENTION_DRY_RUN_REVIEWED: ${{ inputs.confirm_retention_dry_run_reviewed }}
+          OSMU_CONFIRM_NO_OBJECT_KEYS_IN_AGGREGATES: ${{ inputs.confirm_no_object_keys_in_aggregates }}
+          OSMU_CONFIRM_NO_SECRET_VALUES: ${{ inputs.confirm_no_secret_values }}
+          OSMU_FAIL_IF_NOT_PASSED: ${{ inputs.fail_if_not_passed }}
+        run: |
+          $planPath = ".osmu-run/latest-data-flow-storage-plan.json"
+          try {
+            New-Item -ItemType Directory -Force -Path ".osmu-run" | Out-Null
+            [System.IO.File]::WriteAllBytes(
+              (Join-Path (Resolve-Path ".").Path $planPath),
+              [Convert]::FromBase64String($env:OSMU_DATA_FLOW_STORAGE_PLAN_JSON_BASE64)
+            )
+
+            $evidenceArgs = @(
+              "-EnvironmentName", $env:OSMU_ENVIRONMENT_NAME,
+              "-TargetCluster", $env:OSMU_TARGET_CLUSTER,
+              "-Operator", $env:OSMU_OPERATOR,
+              "-ReviewStartedAt", $env:OSMU_REVIEW_STARTED_AT,
+              "-ReviewCompletedAt", $env:OSMU_REVIEW_COMPLETED_AT,
+              "-ChangeApprovalRef", $env:OSMU_CHANGE_APPROVAL_REF,
+              "-DataFlowStoragePlanJsonPath", $planPath,
+              "-DataFlowStoragePlanEvidenceRef", $env:OSMU_DATA_FLOW_STORAGE_PLAN_EVIDENCE_REF,
+              "-BackfillEvidenceRef", $env:OSMU_BACKFILL_EVIDENCE_REF,
+              "-DualWriteOrPartitionToggleEvidenceRef", $env:OSMU_DUAL_WRITE_OR_PARTITION_TOGGLE_EVIDENCE_REF,
+              "-RollbackEvidenceRef", $env:OSMU_ROLLBACK_EVIDENCE_REF,
+              "-ReconciliationEvidenceRef", $env:OSMU_RECONCILIATION_EVIDENCE_REF,
+              "-DashboardCutoverEvidenceRef", $env:OSMU_DASHBOARD_CUTOVER_EVIDENCE_REF,
+              "-RetentionDryRunEvidenceRef", $env:OSMU_RETENTION_DRY_RUN_EVIDENCE_REF,
+              "-EvidenceRef", $env:OSMU_EVIDENCE_REF,
+              "-JsonOutputPath", ".osmu-run/latest-data-flow-storage-transition-runbook-evidence.json",
+              "-MarkdownOutputPath", ".osmu-run/latest-data-flow-storage-transition-runbook-evidence.md"
+            )
+
+            if ($env:OSMU_CONFIRM_BACKFILL_REHEARSED -eq "true") { $evidenceArgs += "-ConfirmBackfillRehearsed" }
+            if ($env:OSMU_CONFIRM_DUAL_WRITE_OR_PARTITION_TOGGLE_REVIEWED -eq "true") { $evidenceArgs += "-ConfirmDualWriteOrPartitionToggleReviewed" }
+            if ($env:OSMU_CONFIRM_ROLLBACK_REHEARSED -eq "true") { $evidenceArgs += "-ConfirmRollbackRehearsed" }
+            if ($env:OSMU_CONFIRM_RECONCILIATION_PASSED -eq "true") { $evidenceArgs += "-ConfirmReconciliationPassed" }
+            if ($env:OSMU_CONFIRM_DASHBOARD_CUTOVER_REVIEWED -eq "true") { $evidenceArgs += "-ConfirmDashboardCutoverReviewed" }
+            if ($env:OSMU_CONFIRM_RETENTION_DRY_RUN_REVIEWED -eq "true") { $evidenceArgs += "-ConfirmRetentionDryRunReviewed" }
+            if ($env:OSMU_CONFIRM_NO_OBJECT_KEYS_IN_AGGREGATES -eq "true") { $evidenceArgs += "-ConfirmNoObjectKeysInAggregates" }
+            if ($env:OSMU_CONFIRM_NO_SECRET_VALUES -eq "true") { $evidenceArgs += "-ConfirmNoSecretValues" }
+            if ($env:OSMU_FAIL_IF_NOT_PASSED -eq "true") { $evidenceArgs += "-FailIfNotPassed" }
+
+            ./scripts/write-data-flow-storage-transition-runbook-evidence.ps1 @evidenceArgs
+          }
+          finally {
+            Remove-Item -LiteralPath $planPath -Force -ErrorAction SilentlyContinue
+          }
+
+      - name: Upload data-flow storage transition runbook evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: data-flow-storage-transition-runbook-evidence-${{ github.run_id }}
+          path: |
+            .osmu-run/latest-data-flow-storage-transition-runbook-evidence.json
+            .osmu-run/latest-data-flow-storage-transition-runbook-evidence.md
+          if-no-files-found: error
+          retention-days: 14

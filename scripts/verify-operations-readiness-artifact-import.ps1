@@ -41,6 +41,7 @@ $promotedRoot = Join-Path $resolvedOutputDirectory "promoted"
 $invalidRoot = Join-Path $resolvedOutputDirectory "invalid-source"
 $invalidDataFlowRoot = Join-Path $resolvedOutputDirectory "invalid-data-flow-source"
 $unsafeDataFlowRoot = Join-Path $resolvedOutputDirectory "unsafe-data-flow-source"
+$unsafeDataFlowRunbookRoot = Join-Path $resolvedOutputDirectory "unsafe-data-flow-runbook-source"
 
 $storageSource = Join-Path $sourceRoot "storage-expansion"
 $haDrSource = Join-Path $sourceRoot "ha-dr-readiness"
@@ -55,6 +56,7 @@ $enterpriseAuthSource = Join-Path $sourceRoot "enterprise-auth"
 $operationsHandoffPackageSource = Join-Path $sourceRoot "operations-handoff-package"
 $kubernetesOperationsReportSyncSource = Join-Path $sourceRoot "kubernetes-operations-report-sync"
 $directDataFlowStoragePlanSource = Join-Path $sourceRoot "data-flow-storage-plan"
+$dataFlowStorageTransitionRunbookSource = Join-Path $sourceRoot "data-flow-storage-transition-runbook"
 
 Write-JsonEvidence (Join-Path $storageSource "latest-storage-expansion-finalize.json") @{
     formatVersion = "osmu.storage-expansion-finalize.v1"
@@ -132,6 +134,26 @@ Write-JsonEvidence (Join-Path $operationsHandoffPackageSource "latest-operations
     result = "passed"
 }
 Write-TextEvidence (Join-Path $operationsHandoffPackageSource "latest-operations-handoff-package.md") "# Operations handoff package"
+Write-JsonEvidence (Join-Path $dataFlowStorageTransitionRunbookSource "latest-data-flow-storage-transition-runbook-evidence.json") @{
+    formatVersion = "osmu.data-flow-storage-transition-runbook-evidence.v1"
+    result = "passed"
+    dataFlowStoragePlanSnapshot = @{
+        result = "passed"
+        candidateStore = "MARIADB_PARTITION"
+        targetP95QueryLatencyMs = 500
+    }
+    summary = @{
+        failureCount = 0
+        checkCount = 24
+    }
+    confirmations = @{
+        backfillRehearsed = $true
+        rollbackRehearsed = $true
+        noObjectKeysInAggregates = $true
+        noSecretValues = $true
+    }
+}
+Write-TextEvidence (Join-Path $dataFlowStorageTransitionRunbookSource "latest-data-flow-storage-transition-runbook-evidence.md") "# Data-flow storage transition runbook"
 Write-JsonEvidence (Join-Path $kubernetesOperationsReportSyncSource "latest-kubernetes-operations-report-sync.json") @{
     formatVersion = "osmu.kubernetes-operations-report-sync.v1"
     result = "applied"
@@ -179,6 +201,7 @@ $importScript = Resolve-ProjectPath ".\scripts\import-operations-readiness-artif
     -CommercialApprovalArtifactPath $commercialApprovalSource `
     -EnterpriseAuthArtifactPath $enterpriseAuthSource `
     -OperationsHandoffPackageArtifactPath $operationsHandoffPackageSource `
+    -DataFlowStorageTransitionRunbookArtifactPath $dataFlowStorageTransitionRunbookSource `
     -KubernetesOperationsReportSyncArtifactPath $kubernetesOperationsReportSyncSource `
     -OutputDirectory $promotedRoot `
     -JsonOutputPath (Join-Path $resolvedOutputDirectory "latest-operations-readiness-artifact-import.json") `
@@ -192,7 +215,7 @@ $report = Get-Content -Raw -LiteralPath $reportPath | ConvertFrom-Json
 Assert-True ($report.formatVersion -eq "osmu.operations-readiness-artifact-import.v1") "Unexpected import report formatVersion."
 Assert-True ($report.result -eq "passed") "Expected import report result=passed."
 Assert-True ($report.status -eq "artifact-imported") "Expected import report status=artifact-imported."
-Assert-True ($report.importedCount -ge 17) "Expected imported evidence files."
+Assert-True ($report.importedCount -ge 19) "Expected imported evidence files."
 Assert-True (Test-Path -LiteralPath (Join-Path $promotedRoot "latest-storage-expansion-finalize.json")) "Promoted storage expansion evidence missing."
 Assert-True (Test-Path -LiteralPath (Join-Path $promotedRoot "latest-kubernetes-ha-dr-readiness.json")) "Promoted HA/DR readiness evidence missing."
 Assert-True (Test-Path -LiteralPath (Join-Path $promotedRoot "latest-kubernetes-dr-finalize.json")) "Promoted Kubernetes DR evidence missing."
@@ -211,6 +234,8 @@ Assert-True (Test-Path -LiteralPath (Join-Path $promotedRoot "latest-commercial-
 Assert-True (Test-Path -LiteralPath (Join-Path $promotedRoot "latest-enterprise-auth-smoke.json")) "Promoted enterprise auth smoke evidence missing."
 Assert-True (Test-Path -LiteralPath (Join-Path $promotedRoot "latest-operations-handoff-package.json")) "Promoted operations handoff package evidence missing."
 Assert-True (Test-Path -LiteralPath (Join-Path $promotedRoot "latest-operations-handoff-package.md")) "Promoted operations handoff package markdown missing."
+Assert-True (Test-Path -LiteralPath (Join-Path $promotedRoot "latest-data-flow-storage-transition-runbook-evidence.json")) "Promoted data-flow storage transition runbook evidence missing."
+Assert-True (Test-Path -LiteralPath (Join-Path $promotedRoot "latest-data-flow-storage-transition-runbook-evidence.md")) "Promoted data-flow storage transition runbook markdown missing."
 Assert-True (Test-Path -LiteralPath (Join-Path $promotedRoot "latest-kubernetes-operations-report-sync.json")) "Promoted Kubernetes operations report sync evidence missing."
 Assert-True (Test-Path -LiteralPath (Join-Path $promotedRoot "latest-data-flow-storage-plan.json")) "Promoted data-flow storage plan evidence missing."
 $promotedCommercialApproval = Get-Content -Raw -LiteralPath (Join-Path $promotedRoot "latest-commercial-approval-evidence.json") | ConvertFrom-Json
@@ -229,6 +254,12 @@ Assert-True ($enterpriseAuthImportEntry.Count -eq 1) "Enterprise auth import ent
 Assert-True (([string] $enterpriseAuthImportEntry[0].detail).Contains("expected=passed|scope-out")) "Enterprise auth import entry should document passed or scope-out acceptance."
 $promotedOperationsHandoffPackage = Get-Content -Raw -LiteralPath (Join-Path $promotedRoot "latest-operations-handoff-package.json") | ConvertFrom-Json
 Assert-True ($promotedOperationsHandoffPackage.result -eq "passed") "Promoted operations handoff package evidence should preserve result=passed."
+$promotedDataFlowRunbook = Get-Content -Raw -LiteralPath (Join-Path $promotedRoot "latest-data-flow-storage-transition-runbook-evidence.json") | ConvertFrom-Json
+Assert-True ($promotedDataFlowRunbook.result -eq "passed") "Promoted data-flow storage transition runbook evidence should preserve result=passed."
+Assert-True ($promotedDataFlowRunbook.dataFlowStoragePlanSnapshot.result -eq "passed") "Promoted data-flow storage transition runbook evidence should preserve passed storage plan snapshot."
+$dataFlowRunbookEntry = @($report.entries | Where-Object { $_.group -eq "data-flow-storage-transition-runbook" -and $_.fileName -eq "latest-data-flow-storage-transition-runbook-evidence.json" })
+Assert-True ($dataFlowRunbookEntry.Count -eq 1) "Data-flow storage transition runbook import entry missing."
+Assert-True (([string] $dataFlowRunbookEntry[0].detail).Contains("storagePlanResult=passed")) "Data-flow storage transition runbook import entry should include storage plan validation detail."
 $promotedDataFlowStoragePlan = Get-Content -Raw -LiteralPath (Join-Path $promotedRoot "latest-data-flow-storage-plan.json") | ConvertFrom-Json
 Assert-True ($promotedDataFlowStoragePlan.formatVersion -eq "osmu.data-flow-storage-plan.v1") "Promoted data-flow storage plan evidence should preserve formatVersion."
 Assert-True ($promotedDataFlowStoragePlan.candidateStore -eq "MARIADB_PARTITION") "Promoted data-flow storage plan evidence should preserve candidateStore."
@@ -334,6 +365,38 @@ $unsafeDataFlowReport = Get-Content -Raw -LiteralPath $unsafeDataFlowJson | Conv
 Assert-True ($unsafeDataFlowReport.result -eq "failed") "Unsafe data-flow import report should be failed."
 Assert-True (-not (Test-Path -LiteralPath (Join-Path $unsafeDataFlowOutput "latest-data-flow-storage-plan.json"))) "Unsafe data-flow storage plan must not be promoted."
 Assert-True (($unsafeDataFlowReport.entries | ConvertTo-Json -Depth 8).Contains("raw SQL")) "Unsafe data-flow report should describe sanitized summary failure."
+
+Write-JsonEvidence (Join-Path $unsafeDataFlowRunbookRoot "latest-data-flow-storage-transition-runbook-evidence.json") @{
+    formatVersion = "osmu.data-flow-storage-transition-runbook-evidence.v1"
+    result = "passed"
+    dataFlowStoragePlanSnapshot = @{
+        result = "passed"
+        candidateStore = "MARIADB_PARTITION"
+    }
+    rawSql = "SELECT id FROM data_flow_events"
+}
+$unsafeDataFlowRunbookOutput = Join-Path $resolvedOutputDirectory "unsafe-data-flow-runbook-promoted"
+$unsafeDataFlowRunbookJson = Join-Path $resolvedOutputDirectory "unsafe-data-flow-runbook-import.json"
+$unsafeDataFlowRunbookMarkdown = Join-Path $resolvedOutputDirectory "unsafe-data-flow-runbook-import.md"
+$previousErrorActionPreference = $ErrorActionPreference
+$ErrorActionPreference = "Continue"
+try {
+    $unsafeDataFlowRunbookOutputLines = & powershell -NoProfile -ExecutionPolicy Bypass -File $importScript `
+        -DataFlowStorageTransitionRunbookArtifactPath $unsafeDataFlowRunbookRoot `
+        -OutputDirectory $unsafeDataFlowRunbookOutput `
+        -JsonOutputPath $unsafeDataFlowRunbookJson `
+        -MarkdownOutputPath $unsafeDataFlowRunbookMarkdown 2>&1
+    $unsafeDataFlowRunbookExitCode = $LASTEXITCODE
+}
+finally {
+    $ErrorActionPreference = $previousErrorActionPreference
+}
+Assert-True ($unsafeDataFlowRunbookExitCode -ne 0) "Data-flow storage transition runbook with unsafe raw SQL should fail import."
+Assert-True (Test-Path -LiteralPath $unsafeDataFlowRunbookJson) "Unsafe data-flow runbook import report should still be written."
+$unsafeDataFlowRunbookReport = Get-Content -Raw -LiteralPath $unsafeDataFlowRunbookJson | ConvertFrom-Json
+Assert-True ($unsafeDataFlowRunbookReport.result -eq "failed") "Unsafe data-flow runbook import report should be failed."
+Assert-True (-not (Test-Path -LiteralPath (Join-Path $unsafeDataFlowRunbookOutput "latest-data-flow-storage-transition-runbook-evidence.json"))) "Unsafe data-flow storage transition runbook must not be promoted."
+Assert-True (($unsafeDataFlowRunbookReport.entries | ConvertTo-Json -Depth 8).Contains("raw SQL")) "Unsafe data-flow runbook report should describe sanitized summary failure."
 
 Write-JsonEvidence (Join-Path $directDataFlowStoragePlanSource "latest-data-flow-storage-plan.json") @{
     formatVersion = "osmu.data-flow-storage-plan.v1"

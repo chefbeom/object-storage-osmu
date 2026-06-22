@@ -16,6 +16,7 @@ param(
     [string] $EnterpriseAuthRunId = "",
     [string] $OperationsHandoffPackageRunId = "",
     [string] $DataFlowStoragePlanRunId = "",
+    [string] $DataFlowStorageTransitionRunbookRunId = "",
     [string] $KubernetesOperationsReportSyncRunId = "",
     [string] $ImageSigningVersion = "v0.1.0-rc.1",
     [string] $CommitSha = "<commit-sha>",
@@ -133,6 +134,7 @@ $hasCommercialApprovalEvidence = $false
 $hasEnterpriseAuthSmoke = $false
 $hasOperationsHandoffPackage = $false
 $hasDataFlowStoragePlan = $false
+$hasDataFlowStorageTransitionRunbook = $false
 foreach ($action in @($invocation.actions)) {
     $command = Get-Text $action "command"
     Add-UniqueWorkflow $workflows (Get-WorkflowName $command)
@@ -157,6 +159,9 @@ foreach ($action in @($invocation.actions)) {
     if (Test-CommandMentions $command "write-data-flow-storage-plan.ps1") {
         $hasDataFlowStoragePlan = $true
     }
+    if (Test-CommandMentions $command "write-data-flow-storage-transition-runbook-evidence.ps1") {
+        $hasDataFlowStorageTransitionRunbook = $true
+    }
 }
 
 $artifacts = New-Object System.Collections.Generic.List[object]
@@ -174,6 +179,7 @@ $commercialApprovalRun = Get-RunIdOrPlaceholder $CommercialApprovalRunId "commer
 $enterpriseAuthRun = Get-RunIdOrPlaceholder $EnterpriseAuthRunId "enterprise-auth-run-id"
 $operationsHandoffPackageRun = Get-RunIdOrPlaceholder $OperationsHandoffPackageRunId "operations-handoff-package-run-id"
 $dataFlowStoragePlanRun = Get-RunIdOrPlaceholder $DataFlowStoragePlanRunId "data-flow-storage-plan-run-id"
+$dataFlowStorageTransitionRunbookRun = Get-RunIdOrPlaceholder $DataFlowStorageTransitionRunbookRunId "data-flow-storage-transition-runbook-run-id"
 $kubernetesOperationsReportSyncRun = Get-RunIdOrPlaceholder $KubernetesOperationsReportSyncRunId "kubernetes-operations-report-sync-run-id"
 
 if ($workflows.Contains("storage-expansion-finalizer-ci.yml")) {
@@ -218,6 +224,9 @@ if ($hasOperationsHandoffPackage -or $workflows.Contains("manual-operations-hand
 if ($hasDataFlowStoragePlan -or $workflows.Contains("manual-data-flow-storage-plan-evidence.yml")) {
     Add-Artifact $artifacts "data-flow-storage-plan" "manual-data-flow-storage-plan-evidence.yml" $dataFlowStoragePlanRun "data_flow_storage_plan_run_id" "data-flow-storage-plan-evidence-$dataFlowStoragePlanRun" "data_flow_storage_plan_artifact_name" ".osmu-run/operations-readiness-artifacts/data-flow-storage-plan" $true "Imports latest-data-flow-storage-plan.json from target analytics storage sizing, backfill, rollback, retention budget, and sanitized query-plan evidence."
 }
+if ($hasDataFlowStorageTransitionRunbook -or $workflows.Contains("manual-data-flow-storage-transition-runbook-evidence.yml")) {
+    Add-Artifact $artifacts "data-flow-storage-transition-runbook" "manual-data-flow-storage-transition-runbook-evidence.yml" $dataFlowStorageTransitionRunbookRun "data_flow_storage_transition_runbook_run_id" "data-flow-storage-transition-runbook-evidence-$dataFlowStorageTransitionRunbookRun" "data_flow_storage_transition_runbook_artifact_name" ".osmu-run/operations-readiness-artifacts/data-flow-storage-transition-runbook" $true "Imports latest-data-flow-storage-transition-runbook-evidence.json from target backfill, dual-write or partition toggle, rollback, reconciliation, dashboard cutover, and retention dry-run rehearsal evidence."
+}
 if ($workflows.Contains("kubernetes-operations-report-sync-ci.yml")) {
     Add-Artifact $artifacts "kubernetes-operations-report-sync" "kubernetes-operations-report-sync-ci.yml" $kubernetesOperationsReportSyncRun "kubernetes_operations_report_sync_run_id" "kubernetes-operations-report-sync-$kubernetesOperationsReportSyncRun" "kubernetes_operations_report_sync_artifact_name" ".osmu-run/operations-readiness-artifacts/kubernetes-operations-report-sync" $true "Imports latest-kubernetes-operations-report-sync.json for convergence-level deployed dashboard sync evidence and optional latest-data-flow-storage-plan.json for dashboard plan visibility. MariaDB partition or dual-write plans must include the sanitized query-plan evidence summary."
 }
@@ -239,6 +248,7 @@ else {
     ""
 }
 $dataFlowStoragePlanInputNote = "Optional direct data-flow plan input: add -f data_flow_storage_plan_json_base64=<base64-latest-data-flow-storage-plan-json> to operations-readiness-artifact-finalizer-ci.yml when target data-flow storage transition evidence should be imported without waiting for a Kubernetes operations report sync artifact. MariaDB partition or dual-write plans must include the sanitized query-plan evidence summary."
+$dataFlowStorageTransitionRunbookInputNote = "Optional direct data-flow transition runbook input: add -f data_flow_storage_transition_runbook_json_base64=<base64-latest-data-flow-storage-transition-runbook-json> to operations-readiness-artifact-finalizer-ci.yml when target transition rehearsal evidence should be imported without waiting for a manual workflow artifact. The snapshot must be sanitized and result=passed."
 
 $securityFinalizerCommand = ""
 if ($workflows.Contains("security-evidence-finalizer-ci.yml") -or $workflows.Contains("image-publish-sign-ci.yml") -or $workflows.Contains("container-security-ci.yml")) {
@@ -285,6 +295,9 @@ foreach ($artifact in $requiredArtifacts) {
     elseif ($group -eq "data-flow-storage-plan") {
         $localImportArgs.Add("-DataFlowStoragePlanArtifactPath $downloadPath")
     }
+    elseif ($group -eq "data-flow-storage-transition-runbook") {
+        $localImportArgs.Add("-DataFlowStorageTransitionRunbookArtifactPath $downloadPath")
+    }
     elseif ($group -eq "kubernetes-operations-report-sync") {
         $localImportArgs.Add("-KubernetesOperationsReportSyncArtifactPath $downloadPath")
     }
@@ -323,6 +336,7 @@ $report = [ordered]@{
     securityEvidenceFinalizerCommand = $securityFinalizerCommand
     operationsArtifactFinalizerCommand = $operationsArtifactFinalizerCommand
     dataFlowStoragePlanInputNote = $dataFlowStoragePlanInputNote
+    dataFlowStorageTransitionRunbookInputNote = $dataFlowStorageTransitionRunbookInputNote
     localImportCommand = $localImportCommand
     decisionRule = "After evidence workflows finish, fill missing run ids, verify artifact names, then either dispatch operations-readiness-artifact-finalizer-ci.yml or download artifacts locally and run import-operations-readiness-artifacts.ps1."
     artifacts = $artifactArray
@@ -357,6 +371,7 @@ if (-not [string]::IsNullOrWhiteSpace($securityFinalizerCommand)) {
 if (-not [string]::IsNullOrWhiteSpace($operationsArtifactFinalizerCommand)) {
     $markdownLines += "- Operations artifact finalizer: ``$operationsArtifactFinalizerCommand``"
     $markdownLines += "- $dataFlowStoragePlanInputNote"
+    $markdownLines += "- $dataFlowStorageTransitionRunbookInputNote"
 }
 if (-not [string]::IsNullOrWhiteSpace($localImportCommand)) {
     $markdownLines += "- Local import after downloads: ``$localImportCommand``"

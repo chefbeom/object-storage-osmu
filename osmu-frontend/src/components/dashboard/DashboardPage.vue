@@ -1753,6 +1753,22 @@
         >
           Copy data-flow note
         </button>
+        <small
+          v-if="operationsArtifactCollectionPlan.dataFlowStorageTransitionRunbookInputNote"
+          data-testid="readiness-artifact-data-flow-runbook-note"
+        >
+          {{ operationsArtifactCollectionPlan.dataFlowStorageTransitionRunbookInputNote }}
+        </small>
+        <button
+          v-if="operationsArtifactCollectionPlan.dataFlowStorageTransitionRunbookInputNote"
+          data-testid="readiness-artifact-data-flow-runbook-note-copy-button"
+          type="button"
+          class="ghost"
+          title="Copy direct data-flow transition runbook input note"
+          @click="copyReadinessRemediationCommand(operationsArtifactCollectionPlan.dataFlowStorageTransitionRunbookInputNote)"
+        >
+          Copy runbook note
+        </button>
       </div>
       <ol
         v-if="operationsArtifactCollectionArtifacts.length > 0"

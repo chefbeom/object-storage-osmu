@@ -2126,6 +2126,7 @@ public class AdminController {
                 jsonText(collectionPlanReport, "securityEvidenceFinalizerCommand"),
                 jsonText(collectionPlanReport, "operationsArtifactFinalizerCommand"),
                 jsonText(collectionPlanReport, "dataFlowStoragePlanInputNote"),
+                jsonText(collectionPlanReport, "dataFlowStorageTransitionRunbookInputNote"),
                 jsonText(collectionPlanReport, "localImportCommand"),
                 jsonText(collectionPlanReport, "decisionRule"),
                 List.copyOf(artifacts)

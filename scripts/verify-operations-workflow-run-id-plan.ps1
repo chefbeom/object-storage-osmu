@@ -46,8 +46,8 @@ New-Item -ItemType Directory -Force -Path $runListDirectory | Out-Null
   "formatVersion": "osmu.operations-evidence-plan-invocation.v1",
   "result": "planned",
   "sourceSummary": "passed=36 pending=6",
-  "selectedActionCount": 13,
-  "plannedCount": 13,
+  "selectedActionCount": 15,
+  "plannedCount": 15,
   "blockedCount": 0,
   "executedCount": 0,
   "failedCount": 0,
@@ -132,6 +132,12 @@ New-Item -ItemType Directory -Force -Path $runListDirectory | Out-Null
     },
     {
       "order": 14,
+      "name": "Data-flow storage transition runbook evidence",
+      "category": "data-flow",
+      "command": "gh workflow run manual-data-flow-storage-transition-runbook-evidence.yml -f environment_name=prod -f target_cluster=osmu-prod -f operator=ops-owner -f review_started_at=2026-06-20T02:00:00Z -f review_completed_at=2026-06-20T02:30:00Z -f change_approval_ref=data-flow-runbook-change-20260620 -f data_flow_storage_plan_evidence_ref=data-flow-plan-20260620 -f data_flow_storage_plan_json_base64=<base64-latest-data-flow-storage-plan-json> -f backfill_evidence_ref=backfill-20260620 -f dual_write_or_partition_toggle_evidence_ref=dual-write-20260620 -f rollback_evidence_ref=rollback-20260620 -f reconciliation_evidence_ref=reconciliation-20260620 -f dashboard_cutover_evidence_ref=dashboard-cutover-20260620 -f retention_dry_run_evidence_ref=retention-dry-run-20260620 -f evidence_ref=data-flow-runbook-20260620 -f confirm_backfill_rehearsed=true -f confirm_dual_write_or_partition_toggle_reviewed=true -f confirm_rollback_rehearsed=true -f confirm_reconciliation_passed=true -f confirm_dashboard_cutover_reviewed=true -f confirm_retention_dry_run_reviewed=true -f confirm_no_object_keys_in_aggregates=true -f confirm_no_secret_values=true -f fail_if_not_passed=true"
+    },
+    {
+      "order": 15,
       "name": "Kubernetes operations report sync evidence",
       "category": "operations",
       "command": "gh workflow run kubernetes-operations-report-sync-ci.yml -f run_live=true -f apply=true"
@@ -154,7 +160,8 @@ Write-RunListFixture "manual-commercial-approval-evidence.yml" 110 $sha
 Write-RunListFixture "enterprise-auth-smoke-ci.yml" 111 $sha
 Write-RunListFixture "manual-operations-handoff-package.yml" 112 $sha
 Write-RunListFixture "manual-data-flow-storage-plan-evidence.yml" 113 $sha
-Write-RunListFixture "kubernetes-operations-report-sync-ci.yml" 114 $sha
+Write-RunListFixture "manual-data-flow-storage-transition-runbook-evidence.yml" 114 $sha
+Write-RunListFixture "kubernetes-operations-report-sync-ci.yml" 115 $sha
 
 & (Join-Path $PSScriptRoot "write-operations-workflow-run-id-plan.ps1") `
     -InvocationReportPath $invocationPath `
@@ -167,8 +174,8 @@ $planOnly = Get-Content -Raw -LiteralPath $planOnlyJsonPath | ConvertFrom-Json
 $planOnlyMarkdown = Get-Content -Raw -LiteralPath $planOnlyMarkdownPath
 Assert-Equal $planOnly.formatVersion "osmu.operations-workflow-run-id-plan.v1" "plan-only formatVersion"
 Assert-Equal $planOnly.result "query-required" "plan-only result"
-Assert-Equal $planOnly.workflowCount 14 "plan-only workflow count"
-Assert-Equal $planOnly.missingWorkflowCount 14 "plan-only missing workflow count"
+Assert-Equal $planOnly.workflowCount 15 "plan-only workflow count"
+Assert-Equal $planOnly.missingWorkflowCount 15 "plan-only missing workflow count"
 Assert-Contains $planOnly.workflows[0].queryCommand "gh run list --workflow storage-expansion-finalizer-ci.yml" "plan-only query command"
 Assert-Contains $planOnly.workflows[0].artifactName "storage-expansion-finalizer-<run-id>" "plan-only artifact placeholder"
 Assert-Contains ($planOnly.workflows | ConvertTo-Json -Depth 8) "manual-secret-rotation-evidence.yml" "plan-only manual secret rotation workflow"
@@ -177,6 +184,7 @@ Assert-Contains ($planOnly.workflows | ConvertTo-Json -Depth 8) "manual-commerci
 Assert-Contains ($planOnly.workflows | ConvertTo-Json -Depth 8) "manual-commercial-approval-evidence.yml" "plan-only manual commercial approval workflow"
 Assert-Contains ($planOnly.workflows | ConvertTo-Json -Depth 8) "manual-operations-handoff-package.yml" "plan-only manual handoff workflow"
 Assert-Contains ($planOnly.workflows | ConvertTo-Json -Depth 8) "manual-data-flow-storage-plan-evidence.yml" "plan-only manual data-flow storage plan workflow"
+Assert-Contains ($planOnly.workflows | ConvertTo-Json -Depth 8) "manual-data-flow-storage-transition-runbook-evidence.yml" "plan-only manual data-flow storage transition runbook workflow"
 Assert-Contains $planOnlyMarkdown "Artifact collection plan" "plan-only markdown command section"
 
 & (Join-Path $PSScriptRoot "write-operations-workflow-run-id-plan.ps1") `
@@ -190,7 +198,7 @@ Assert-Contains $planOnlyMarkdown "Artifact collection plan" "plan-only markdown
 $ready = Get-Content -Raw -LiteralPath $readyJsonPath | ConvertFrom-Json
 $readyMarkdown = Get-Content -Raw -LiteralPath $readyMarkdownPath
 Assert-Equal $ready.result "ready" "ready result"
-Assert-Equal $ready.readyWorkflowCount 14 "ready workflow count"
+Assert-Equal $ready.readyWorkflowCount 15 "ready workflow count"
 Assert-Equal $ready.missingWorkflowCount 0 "ready missing workflow count"
 Assert-Equal $ready.commitSha $sha "ready commit sha from run headSha"
 Assert-Contains $ready.artifactCollectionPlanCommand "-StorageExpansionRunId 101" "storage expansion run id argument"
@@ -206,7 +214,8 @@ Assert-Contains $ready.artifactCollectionPlanCommand "-CommercialApprovalRunId 1
 Assert-Contains $ready.artifactCollectionPlanCommand "-EnterpriseAuthRunId 111" "enterprise auth run id argument"
 Assert-Contains $ready.artifactCollectionPlanCommand "-OperationsHandoffPackageRunId 112" "operations handoff package run id argument"
 Assert-Contains $ready.artifactCollectionPlanCommand "-DataFlowStoragePlanRunId 113" "data-flow storage plan run id argument"
-Assert-Contains $ready.artifactCollectionPlanCommand "-KubernetesOperationsReportSyncRunId 114" "Kubernetes operations report sync run id argument"
+Assert-Contains $ready.artifactCollectionPlanCommand "-DataFlowStorageTransitionRunbookRunId 114" "data-flow storage transition runbook run id argument"
+Assert-Contains $ready.artifactCollectionPlanCommand "-KubernetesOperationsReportSyncRunId 115" "Kubernetes operations report sync run id argument"
 Assert-Contains $ready.securityEvidenceFinalizerCommand "image_signing_run_id=104" "security finalizer image signing run id"
 Assert-Contains $ready.securityEvidenceFinalizerCommand "container_security_run_id=105" "security finalizer container security run id"
 Assert-Contains $ready.securityEvidenceFinalizerCommand "osmu-image-signing-v0.1.0-rc.1-$sha" "security finalizer image artifact"
@@ -219,7 +228,8 @@ Assert-Contains $readyMarkdown "commercial-approval-evidence-110" "ready markdow
 Assert-Contains $readyMarkdown "enterprise-auth-smoke-111" "ready markdown enterprise auth artifact"
 Assert-Contains $readyMarkdown "operations-handoff-package-112" "ready markdown operations handoff package artifact"
 Assert-Contains $readyMarkdown "data-flow-storage-plan-evidence-113" "ready markdown data-flow storage plan artifact"
-Assert-Contains $readyMarkdown "kubernetes-operations-report-sync-114" "ready markdown Kubernetes operations report sync artifact"
+Assert-Contains $readyMarkdown "data-flow-storage-transition-runbook-evidence-114" "ready markdown data-flow storage transition runbook artifact"
+Assert-Contains $readyMarkdown "kubernetes-operations-report-sync-115" "ready markdown Kubernetes operations report sync artifact"
 Assert-Contains $readyMarkdown "Recommended run id: 106" "ready markdown security evidence run id"
 
 Write-Host "Operations workflow run id plan verified."

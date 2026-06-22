@@ -18,6 +18,7 @@ param(
     [string] $ManualCommercialApprovalEvidenceWorkflowPath = ".\.github\workflows\manual-commercial-approval-evidence.yml",
     [string] $ManualOperationsHandoffPackageWorkflowPath = ".\.github\workflows\manual-operations-handoff-package.yml",
     [string] $ManualDataFlowStoragePlanEvidenceWorkflowPath = ".\.github\workflows\manual-data-flow-storage-plan-evidence.yml",
+    [string] $ManualDataFlowStorageTransitionRunbookEvidenceWorkflowPath = ".\.github\workflows\manual-data-flow-storage-transition-runbook-evidence.yml",
     [string] $EnterpriseAuthSmokeWorkflowPath = ".\.github\workflows\enterprise-auth-smoke-ci.yml",
     [string] $BrowserE2ESpecPath = ".\osmu-frontend\e2e\lightweight-demo.spec.js",
     [string] $FrontendApiPath = ".\osmu-frontend\src\services\api.js",
@@ -503,18 +504,26 @@ Assert-Contains $operationsReadinessArtifactWorkflowContent "operations_handoff_
 Assert-Contains $operationsReadinessArtifactWorkflowContent "operations_handoff_package_artifact_name:" "Operations Readiness Artifact Finalizer CI workflow"
 Assert-Contains $operationsReadinessArtifactWorkflowContent "data_flow_storage_plan_run_id:" "Operations Readiness Artifact Finalizer CI workflow"
 Assert-Contains $operationsReadinessArtifactWorkflowContent "data_flow_storage_plan_artifact_name:" "Operations Readiness Artifact Finalizer CI workflow"
+Assert-Contains $operationsReadinessArtifactWorkflowContent "data_flow_storage_transition_runbook_run_id:" "Operations Readiness Artifact Finalizer CI workflow"
+Assert-Contains $operationsReadinessArtifactWorkflowContent "data_flow_storage_transition_runbook_artifact_name:" "Operations Readiness Artifact Finalizer CI workflow"
 Assert-Contains $operationsReadinessArtifactWorkflowContent "kubernetes_operations_report_sync_run_id:" "Operations Readiness Artifact Finalizer CI workflow"
 Assert-Contains $operationsReadinessArtifactWorkflowContent "data_flow_storage_plan_json_base64:" "Operations Readiness Artifact Finalizer CI workflow"
+Assert-Contains $operationsReadinessArtifactWorkflowContent "data_flow_storage_transition_runbook_json_base64:" "Operations Readiness Artifact Finalizer CI workflow"
 Assert-Contains $operationsReadinessArtifactWorkflowContent "Restore direct data-flow storage plan evidence" "Operations Readiness Artifact Finalizer CI workflow"
 Assert-Contains $operationsReadinessArtifactWorkflowContent "OSMU_DATA_FLOW_STORAGE_PLAN_JSON_BASE64" "Operations Readiness Artifact Finalizer CI workflow"
+Assert-Contains $operationsReadinessArtifactWorkflowContent "Restore direct data-flow storage transition runbook evidence" "Operations Readiness Artifact Finalizer CI workflow"
+Assert-Contains $operationsReadinessArtifactWorkflowContent "OSMU_DATA_FLOW_STORAGE_TRANSITION_RUNBOOK_JSON_BASE64" "Operations Readiness Artifact Finalizer CI workflow"
 Assert-Contains $operationsReadinessArtifactWorkflowContent "DataFlowStoragePlanArtifactPath" "Operations Readiness Artifact Finalizer CI workflow"
+Assert-Contains $operationsReadinessArtifactWorkflowContent "DataFlowStorageTransitionRunbookArtifactPath" "Operations Readiness Artifact Finalizer CI workflow"
 Assert-Contains $operationsReadinessArtifactWorkflowContent ".osmu-run/operations-readiness-artifacts/data-flow-storage-plan" "Operations Readiness Artifact Finalizer CI workflow"
+Assert-Contains $operationsReadinessArtifactWorkflowContent ".osmu-run/operations-readiness-artifacts/data-flow-storage-transition-runbook" "Operations Readiness Artifact Finalizer CI workflow"
 Assert-Contains $operationsReadinessArtifactWorkflowContent "Download secret rotation evidence" "Operations Readiness Artifact Finalizer CI workflow"
 Assert-Contains $operationsReadinessArtifactWorkflowContent "Download commercial integration evidence" "Operations Readiness Artifact Finalizer CI workflow"
 Assert-Contains $operationsReadinessArtifactWorkflowContent "Download commercial approval evidence" "Operations Readiness Artifact Finalizer CI workflow"
 Assert-Contains $operationsReadinessArtifactWorkflowContent "Download enterprise auth smoke evidence" "Operations Readiness Artifact Finalizer CI workflow"
 Assert-Contains $operationsReadinessArtifactWorkflowContent "Download operations handoff package evidence" "Operations Readiness Artifact Finalizer CI workflow"
 Assert-Contains $operationsReadinessArtifactWorkflowContent "Download data-flow storage plan evidence" "Operations Readiness Artifact Finalizer CI workflow"
+Assert-Contains $operationsReadinessArtifactWorkflowContent "Download data-flow storage transition runbook evidence" "Operations Readiness Artifact Finalizer CI workflow"
 Assert-Contains $operationsReadinessArtifactWorkflowContent "Download Kubernetes operations report sync evidence" "Operations Readiness Artifact Finalizer CI workflow"
 Assert-Contains $operationsReadinessArtifactWorkflowContent "SecretRotationArtifactPath" "Operations Readiness Artifact Finalizer CI workflow"
 Assert-Contains $operationsReadinessArtifactWorkflowContent "StorageBackendTelemetryArtifactPath" "Operations Readiness Artifact Finalizer CI workflow"
@@ -534,6 +543,8 @@ Assert-Contains $operationsReadinessArtifactWorkflowContent ".osmu-run/latest-op
 Assert-Contains $operationsReadinessArtifactWorkflowContent ".osmu-run/latest-operations-handoff-package.md" "Operations Readiness Artifact Finalizer CI workflow"
 Assert-Contains $operationsReadinessArtifactWorkflowContent ".osmu-run/latest-kubernetes-operations-report-sync.json" "Operations Readiness Artifact Finalizer CI workflow"
 Assert-Contains $operationsReadinessArtifactWorkflowContent ".osmu-run/latest-data-flow-storage-plan.json" "Operations Readiness Artifact Finalizer CI workflow"
+Assert-Contains $operationsReadinessArtifactWorkflowContent ".osmu-run/latest-data-flow-storage-transition-runbook-evidence.json" "Operations Readiness Artifact Finalizer CI workflow"
+Assert-Contains $operationsReadinessArtifactWorkflowContent ".osmu-run/latest-data-flow-storage-transition-runbook-evidence.md" "Operations Readiness Artifact Finalizer CI workflow"
 Assert-Contains $operationsReadinessArtifactWorkflowContent "actions/download-artifact@v4" "Operations Readiness Artifact Finalizer CI workflow"
 Assert-Contains $operationsReadinessArtifactWorkflowContent "github-token: `${{ secrets.GITHUB_TOKEN }}" "Operations Readiness Artifact Finalizer CI workflow"
 Assert-Contains $operationsReadinessArtifactWorkflowContent "Download storage expansion evidence" "Operations Readiness Artifact Finalizer CI workflow"
@@ -739,6 +750,34 @@ Assert-Contains $manualDataFlowStoragePlanWorkflowContent "actions/upload-artifa
 Assert-Contains $manualDataFlowStoragePlanWorkflowContent "data-flow-storage-plan-evidence-" "Manual Data-flow Storage Plan Evidence workflow"
 Assert-Contains $manualDataFlowStoragePlanWorkflowContent ".osmu-run/latest-data-flow-storage-plan.json" "Manual Data-flow Storage Plan Evidence workflow"
 Assert-Contains $manualDataFlowStoragePlanWorkflowContent ".osmu-run/latest-data-flow-storage-plan.md" "Manual Data-flow Storage Plan Evidence workflow"
+
+$manualDataFlowStorageTransitionRunbookWorkflow = Read-Workflow $ManualDataFlowStorageTransitionRunbookEvidenceWorkflowPath "Manual Data-flow Storage Transition Runbook Evidence workflow"
+$manualDataFlowStorageTransitionRunbookWorkflowContent = $manualDataFlowStorageTransitionRunbookWorkflow.Content
+
+Assert-Contains $manualDataFlowStorageTransitionRunbookWorkflowContent "name: Manual Data-flow Storage Transition Runbook Evidence" "Manual Data-flow Storage Transition Runbook Evidence workflow"
+Assert-Contains $manualDataFlowStorageTransitionRunbookWorkflowContent "workflow_dispatch:" "Manual Data-flow Storage Transition Runbook Evidence workflow"
+Assert-NotContains $manualDataFlowStorageTransitionRunbookWorkflowContent "pull_request:" "Manual Data-flow Storage Transition Runbook Evidence workflow"
+Assert-NotContains $manualDataFlowStorageTransitionRunbookWorkflowContent "push:" "Manual Data-flow Storage Transition Runbook Evidence workflow"
+Assert-Contains $manualDataFlowStorageTransitionRunbookWorkflowContent "contents: read" "Manual Data-flow Storage Transition Runbook Evidence workflow"
+Assert-Contains $manualDataFlowStorageTransitionRunbookWorkflowContent "runs-on: ubuntu-latest" "Manual Data-flow Storage Transition Runbook Evidence workflow"
+Assert-Contains $manualDataFlowStorageTransitionRunbookWorkflowContent "timeout-minutes: 15" "Manual Data-flow Storage Transition Runbook Evidence workflow"
+Assert-Contains $manualDataFlowStorageTransitionRunbookWorkflowContent "data_flow_storage_plan_json_base64:" "Manual Data-flow Storage Transition Runbook Evidence workflow"
+Assert-Contains $manualDataFlowStorageTransitionRunbookWorkflowContent "backfill_evidence_ref:" "Manual Data-flow Storage Transition Runbook Evidence workflow"
+Assert-Contains $manualDataFlowStorageTransitionRunbookWorkflowContent "dual_write_or_partition_toggle_evidence_ref:" "Manual Data-flow Storage Transition Runbook Evidence workflow"
+Assert-Contains $manualDataFlowStorageTransitionRunbookWorkflowContent "confirm_no_object_keys_in_aggregates:" "Manual Data-flow Storage Transition Runbook Evidence workflow"
+Assert-Contains $manualDataFlowStorageTransitionRunbookWorkflowContent "OSMU_DATA_FLOW_STORAGE_PLAN_JSON_BASE64" "Manual Data-flow Storage Transition Runbook Evidence workflow"
+Assert-Contains $manualDataFlowStorageTransitionRunbookWorkflowContent "Record data-flow storage transition runbook evidence" "Manual Data-flow Storage Transition Runbook Evidence workflow"
+Assert-Contains $manualDataFlowStorageTransitionRunbookWorkflowContent "./scripts/write-data-flow-storage-transition-runbook-evidence.ps1" "Manual Data-flow Storage Transition Runbook Evidence workflow"
+Assert-Contains $manualDataFlowStorageTransitionRunbookWorkflowContent "-DataFlowStoragePlanJsonPath" "Manual Data-flow Storage Transition Runbook Evidence workflow"
+Assert-Contains $manualDataFlowStorageTransitionRunbookWorkflowContent "-ConfirmBackfillRehearsed" "Manual Data-flow Storage Transition Runbook Evidence workflow"
+Assert-Contains $manualDataFlowStorageTransitionRunbookWorkflowContent "-ConfirmDualWriteOrPartitionToggleReviewed" "Manual Data-flow Storage Transition Runbook Evidence workflow"
+Assert-Contains $manualDataFlowStorageTransitionRunbookWorkflowContent "-ConfirmNoObjectKeysInAggregates" "Manual Data-flow Storage Transition Runbook Evidence workflow"
+Assert-Contains $manualDataFlowStorageTransitionRunbookWorkflowContent "-FailIfNotPassed" "Manual Data-flow Storage Transition Runbook Evidence workflow"
+Assert-Contains $manualDataFlowStorageTransitionRunbookWorkflowContent "Remove-Item -LiteralPath `$planPath -Force -ErrorAction SilentlyContinue" "Manual Data-flow Storage Transition Runbook Evidence workflow"
+Assert-Contains $manualDataFlowStorageTransitionRunbookWorkflowContent "actions/upload-artifact@v4" "Manual Data-flow Storage Transition Runbook Evidence workflow"
+Assert-Contains $manualDataFlowStorageTransitionRunbookWorkflowContent "data-flow-storage-transition-runbook-evidence-" "Manual Data-flow Storage Transition Runbook Evidence workflow"
+Assert-Contains $manualDataFlowStorageTransitionRunbookWorkflowContent ".osmu-run/latest-data-flow-storage-transition-runbook-evidence.json" "Manual Data-flow Storage Transition Runbook Evidence workflow"
+Assert-Contains $manualDataFlowStorageTransitionRunbookWorkflowContent ".osmu-run/latest-data-flow-storage-transition-runbook-evidence.md" "Manual Data-flow Storage Transition Runbook Evidence workflow"
 
 $enterpriseAuthSmokeWorkflow = Read-Workflow $EnterpriseAuthSmokeWorkflowPath "Enterprise Auth Smoke CI workflow"
 $enterpriseAuthSmokeWorkflowContent = $enterpriseAuthSmokeWorkflow.Content
@@ -1016,6 +1055,7 @@ Write-Host "Manual Commercial Integration Evidence workflow: $($manualCommercial
 Write-Host "Manual Commercial Approval Evidence workflow: $($manualCommercialApprovalWorkflow.Path)"
 Write-Host "Manual Operations Handoff Package workflow: $($manualOperationsHandoffPackageWorkflow.Path)"
 Write-Host "Manual Data-flow Storage Plan Evidence workflow: $($manualDataFlowStoragePlanWorkflow.Path)"
+Write-Host "Manual Data-flow Storage Transition Runbook Evidence workflow: $($manualDataFlowStorageTransitionRunbookWorkflow.Path)"
 Write-Host "Enterprise Auth Smoke workflow: $($enterpriseAuthSmokeWorkflow.Path)"
 Write-Host "Playwright config: $($playwrightConfig.Path)"
 Write-Host "Browser E2E spec: $($browserSpec.Path)"
