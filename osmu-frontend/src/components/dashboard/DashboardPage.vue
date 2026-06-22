@@ -1039,16 +1039,29 @@
         <small>
           {{ secretRotationEvidence.environmentName || 'unknown env' }} /
           {{ secretRotationEvidence.targetCluster || 'unknown cluster' }} /
+          {{ secretRotationEvidence.operatorName || 'unknown operator' }} /
           core {{ secretRotationEvidence.coreRotatedCount || 0 }} of {{ secretRotationEvidence.coreRequiredCount || 0 }} /
           rotated {{ secretRotationEvidence.rotatedCount || 0 }} /
           failures {{ secretRotationEvidence.failureCount || 0 }} /
           planned {{ secretRotationEvidence.plannedCount || 0 }}
         </small>
         <small
+          v-if="secretRotationWindowSummary"
+          data-testid="readiness-secret-rotation-window"
+        >
+          Rotation window: {{ secretRotationWindowSummary }}
+        </small>
+        <small
           v-if="secretRotationEvidenceRefSummary"
           data-testid="readiness-secret-rotation-evidence-refs"
         >
           Evidence refs: {{ secretRotationEvidenceRefSummary }}
+        </small>
+        <small
+          v-if="secretRotationConfirmationSummary"
+          data-testid="readiness-secret-rotation-confirmations"
+        >
+          Confirmations: {{ secretRotationConfirmationSummary }}
         </small>
         <small v-if="secretRotationEvidence.secretPolicy">
           {{ secretRotationEvidence.secretPolicy }}
@@ -1093,10 +1106,21 @@
         <small>
           {{ commercialIntegrationEvidence.environmentName || 'unknown env' }} /
           {{ commercialIntegrationEvidence.targetCluster || 'unknown cluster' }} /
+          {{ commercialIntegrationEvidence.operatorName || 'unknown operator' }} /
+          verified {{ commercialIntegrationEvidence.verifiedCount || 0 }} of {{ commercialIntegrationEvidence.integrationCount || 0 }} /
           required {{ commercialIntegrationEvidence.requiredVerifiedCount || 0 }} of {{ commercialIntegrationEvidence.requiredCount || 0 }} /
           payment adapters {{ commercialIntegrationEvidence.paymentProviderAdapterReadinessStatus || 'unknown' }} /
           failures {{ commercialIntegrationEvidence.failureCount || 0 }} /
           planned {{ commercialIntegrationEvidence.plannedCount || 0 }}
+        </small>
+        <small
+          v-if="commercialIntegrationAdapterSummary"
+          data-testid="readiness-commercial-integration-adapters"
+        >
+          Adapter readiness: {{ commercialIntegrationAdapterSummary }}
+        </small>
+        <small v-if="commercialIntegrationEvidence.scopePolicy">
+          {{ commercialIntegrationEvidence.scopePolicy }}
         </small>
         <small v-if="commercialIntegrationEvidence.secretPolicy">
           {{ commercialIntegrationEvidence.secretPolicy }}
@@ -1126,8 +1150,11 @@
         <small>
           {{ commercialApprovalEvidence.productVersion || 'unknown version' }} /
           approved by {{ commercialApprovalEvidence.approvedBy || 'unknown' }} /
+          approved at {{ commercialApprovalEvidence.approvedAt || 'unknown time' }} /
+          passed {{ commercialApprovalEvidence.passedCount || 0 }} /
           failures {{ commercialApprovalEvidence.failureCount || 0 }} /
           checks {{ commercialApprovalEvidence.checkCount || 0 }} /
+          commercial proposal approvals {{ commercialApprovalEvidence.pricingPolicyProposalCommercialApprovedCount || 0 }} /
           price-list approvals {{ commercialApprovalEvidence.pricingPolicyProposalApprovedPriceListCount || 0 }}
         </small>
         <small
@@ -1135,6 +1162,15 @@
           data-testid="readiness-commercial-approval-evidence-refs"
         >
           Evidence refs: {{ commercialApprovalEvidenceRefSummary }}
+        </small>
+        <small
+          v-if="commercialApprovalConfirmationSummary"
+          data-testid="readiness-commercial-approval-confirmations"
+        >
+          Confirmations: {{ commercialApprovalConfirmationSummary }}
+        </small>
+        <small v-if="commercialApprovalEvidence.scopePolicy">
+          {{ commercialApprovalEvidence.scopePolicy }}
         </small>
         <small v-if="commercialApprovalEvidence.secretPolicy">
           {{ commercialApprovalEvidence.secretPolicy }}
@@ -1169,7 +1205,20 @@
           pass {{ enterpriseAuthSmokeEvidence.passCount || 0 }} /
           fail {{ enterpriseAuthSmokeEvidence.failCount || 0 }} /
           blocked {{ enterpriseAuthSmokeEvidence.blockedCount || 0 }} /
-          planned {{ enterpriseAuthSmokeEvidence.plannedCount || 0 }}
+          planned {{ enterpriseAuthSmokeEvidence.plannedCount || 0 }} /
+          skipped {{ enterpriseAuthSmokeEvidence.skippedCount || 0 }}
+        </small>
+        <small
+          v-if="enterpriseAuthSmokeEvidence.apiBase"
+          data-testid="readiness-enterprise-auth-smoke-api-base"
+        >
+          API base: {{ enterpriseAuthSmokeEvidence.apiBase }}
+        </small>
+        <small
+          v-if="enterpriseAuthSmokeInputSummary"
+          data-testid="readiness-enterprise-auth-smoke-inputs"
+        >
+          Inputs: {{ enterpriseAuthSmokeInputSummary }}
         </small>
         <small
           v-if="enterpriseAuthSmokeScopeOutSummary"
@@ -3300,6 +3349,30 @@ const secretRotationEvidenceRefSummary = computed(() => {
     .join(' / ')
 })
 
+const secretRotationWindowSummary = computed(() => {
+  const window = secretRotationEvidence.value?.rotationWindow
+  if (!window || typeof window !== 'object') {
+    return ''
+  }
+  return Object.entries(window)
+    .filter(([, value]) => value)
+    .slice(0, 5)
+    .map(([key, value]) => `${key}=${value}`)
+    .join(' / ')
+})
+
+const secretRotationConfirmationSummary = computed(() => {
+  const confirmations = secretRotationEvidence.value?.confirmations
+  if (!confirmations || typeof confirmations !== 'object') {
+    return ''
+  }
+  return Object.entries(confirmations)
+    .filter(([, value]) => typeof value === 'boolean')
+    .slice(0, 6)
+    .map(([key, value]) => `${key}=${value ? 'yes' : 'no'}`)
+    .join(' / ')
+})
+
 const secretRotationEvidenceRotations = computed(() => {
   const rotations = secretRotationEvidence.value?.rotations
   return Array.isArray(rotations) ? rotations : []
@@ -3313,6 +3386,14 @@ const secretRotationEvidenceChecks = computed(() => {
 const commercialIntegrationEvidence = computed(() => (
   props.dashboardReadiness.commercialIntegrationEvidence || {}
 ))
+
+const commercialIntegrationAdapterSummary = computed(() => {
+  const evidence = commercialIntegrationEvidence.value || {}
+  const reviewed = evidence.paymentProviderAdapterReadinessReviewed ? 'yes' : 'no'
+  const webhookCount = evidence.paymentProviderAdapterWebhookReadyProfileCount || 0
+  const nativeCount = evidence.paymentProviderAdapterNativeReadyProfileCount || 0
+  return `reviewed=${reviewed} / webhook-ready ${webhookCount} / native-ready ${nativeCount}`
+})
 
 const commercialIntegrationEvidenceChecks = computed(() => {
   const checks = commercialIntegrationEvidence.value?.checks
@@ -3335,6 +3416,18 @@ const commercialApprovalEvidenceRefSummary = computed(() => {
     .join(' / ')
 })
 
+const commercialApprovalConfirmationSummary = computed(() => {
+  const confirmations = commercialApprovalEvidence.value?.confirmations
+  if (!confirmations || typeof confirmations !== 'object') {
+    return ''
+  }
+  return Object.entries(confirmations)
+    .filter(([, value]) => typeof value === 'boolean')
+    .slice(0, 6)
+    .map(([key, value]) => `${key}=${value ? 'yes' : 'no'}`)
+    .join(' / ')
+})
+
 const commercialApprovalEvidenceChecks = computed(() => {
   const checks = commercialApprovalEvidence.value?.checks
   return Array.isArray(checks) ? checks : []
@@ -3343,6 +3436,18 @@ const commercialApprovalEvidenceChecks = computed(() => {
 const enterpriseAuthSmokeEvidence = computed(() => (
   props.dashboardReadiness.enterpriseAuthSmokeEvidence || {}
 ))
+
+const enterpriseAuthSmokeInputSummary = computed(() => {
+  const inputs = enterpriseAuthSmokeEvidence.value?.inputs
+  if (!inputs || typeof inputs !== 'object') {
+    return ''
+  }
+  return Object.entries(inputs)
+    .filter(([, value]) => typeof value === 'boolean')
+    .slice(0, 6)
+    .map(([key, value]) => `${key}=${value ? 'yes' : 'no'}`)
+    .join(' / ')
+})
 
 const enterpriseAuthSmokeScopeOutSummary = computed(() => {
   const scopeOut = enterpriseAuthSmokeEvidence.value?.scopeOut
