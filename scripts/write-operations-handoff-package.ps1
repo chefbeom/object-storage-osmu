@@ -303,6 +303,28 @@ function Get-RequiredBoolSetSnapshot([object] $Object, [string[]] $Names) {
     }
 }
 
+function Get-RequiredIntSetSnapshot([object] $Object, [string[]] $Names) {
+    $values = [ordered]@{}
+    $validation = [ordered]@{}
+    $allValid = $true
+    foreach ($name in $Names) {
+        $required = Get-RequiredPropertyInt $Object $name
+        $values[$name] = if ($null -eq $required.value) { 0 } else { [int64] $required.value }
+        $validation[$name] = [ordered]@{
+            valid = [bool] $required.valid
+            raw = [string] $required.raw
+        }
+        if (-not ([bool] $required.valid)) {
+            $allValid = $false
+        }
+    }
+    return [pscustomobject]@{
+        values = $values
+        validation = $validation
+        allValid = $allValid
+    }
+}
+
 function Get-PropertyArray([object] $Object, [string] $Name) {
     $value = Get-PropertyValue $Object $Name
     if ($null -eq $value) {
@@ -679,6 +701,10 @@ function Read-CommercialIntegrationEvidenceSnapshot([string] $Path) {
         paymentProviderAdapterNativeReadyProfileCount = 0
         failureCount = 0
         plannedCount = 0
+        countsValid = $false
+        countValidation = [ordered]@{}
+        paymentProviderAdapterReadinessReviewedValid = $false
+        paymentProviderAdapterReadinessReviewedRaw = "<missing>"
         checkCount = 0
         topChecks = @()
         detail = "No commercial integration evidence JSON supplied."
@@ -715,19 +741,34 @@ function Read-CommercialIntegrationEvidenceSnapshot([string] $Path) {
     $snapshot["environmentName"] = Get-PropertyText $payload "environmentName"
     $snapshot["targetCluster"] = Get-PropertyText $payload "targetCluster"
     $snapshot["operatorName"] = Get-PropertyText $payload "operatorName"
-    $snapshot["integrationCount"] = Get-PropertyInt $summary "integrationCount"
-    $snapshot["verifiedCount"] = Get-PropertyInt $summary "verifiedCount"
-    $snapshot["requiredCount"] = Get-PropertyInt $summary "requiredCount"
-    $snapshot["requiredVerifiedCount"] = Get-PropertyInt $summary "requiredVerifiedCount"
-    $snapshot["paymentProviderAdapterReadinessReviewed"] = Get-PropertyBool $summary "paymentProviderAdapterReadinessReviewed"
+    $countResult = Get-RequiredIntSetSnapshot $summary @(
+        "integrationCount",
+        "verifiedCount",
+        "requiredCount",
+        "requiredVerifiedCount",
+        "paymentProviderAdapterWebhookReadyProfileCount",
+        "paymentProviderAdapterNativeReadyProfileCount",
+        "failureCount",
+        "plannedCount"
+    )
+    $snapshot["integrationCount"] = $countResult.values["integrationCount"]
+    $snapshot["verifiedCount"] = $countResult.values["verifiedCount"]
+    $snapshot["requiredCount"] = $countResult.values["requiredCount"]
+    $snapshot["requiredVerifiedCount"] = $countResult.values["requiredVerifiedCount"]
+    $snapshot["paymentProviderAdapterWebhookReadyProfileCount"] = $countResult.values["paymentProviderAdapterWebhookReadyProfileCount"]
+    $snapshot["paymentProviderAdapterNativeReadyProfileCount"] = $countResult.values["paymentProviderAdapterNativeReadyProfileCount"]
+    $snapshot["failureCount"] = $countResult.values["failureCount"]
+    $snapshot["plannedCount"] = $countResult.values["plannedCount"]
+    $snapshot["countsValid"] = [bool] $countResult.allValid
+    $snapshot["countValidation"] = $countResult.validation
+    $reviewedResult = Get-RequiredPropertyBool $summary "paymentProviderAdapterReadinessReviewed"
+    $snapshot["paymentProviderAdapterReadinessReviewed"] = [bool] $reviewedResult.value
+    $snapshot["paymentProviderAdapterReadinessReviewedValid"] = [bool] $reviewedResult.valid
+    $snapshot["paymentProviderAdapterReadinessReviewedRaw"] = [string] $reviewedResult.raw
     $snapshot["paymentProviderAdapterReadinessStatus"] = Get-PropertyText $summary "paymentProviderAdapterReadinessStatus"
-    $snapshot["paymentProviderAdapterWebhookReadyProfileCount"] = Get-PropertyInt $summary "paymentProviderAdapterWebhookReadyProfileCount"
-    $snapshot["paymentProviderAdapterNativeReadyProfileCount"] = Get-PropertyInt $summary "paymentProviderAdapterNativeReadyProfileCount"
-    $snapshot["failureCount"] = Get-PropertyInt $summary "failureCount"
-    $snapshot["plannedCount"] = Get-PropertyInt $summary "plannedCount"
     $snapshot["checkCount"] = $checks.Count
     $snapshot["topChecks"] = @($topRows.ToArray())
-    $snapshot["detail"] = "formatVersion=$formatVersion; result=$result; requiredVerified=$($snapshot["requiredVerifiedCount"])/$($snapshot["requiredCount"]); failures=$($snapshot["failureCount"]); planned=$($snapshot["plannedCount"])"
+    $snapshot["detail"] = "formatVersion=$formatVersion; result=$result; requiredVerified=$($snapshot["requiredVerifiedCount"])/$($snapshot["requiredCount"]); failures=$($snapshot["failureCount"]); planned=$($snapshot["plannedCount"]); countsValid=$($snapshot["countsValid"]); paymentProviderAdapterReadinessReviewed=$($snapshot["paymentProviderAdapterReadinessReviewedRaw"])(valid=$($snapshot["paymentProviderAdapterReadinessReviewedValid"]))"
     return $snapshot
 }
 
@@ -882,6 +923,10 @@ function Read-CommercialApprovalEvidenceSnapshot([string] $Path) {
         pricingPolicyProposalCommercialApproved = $false
         pricingPolicyProposalCommercialApprovedCount = 0
         pricingPolicyProposalApprovedPriceListCount = 0
+        countsValid = $false
+        countValidation = [ordered]@{}
+        pricingPolicyProposalCommercialApprovedValid = $false
+        pricingPolicyProposalCommercialApprovedRaw = "<missing>"
         topChecks = @()
         detail = "No commercial approval evidence JSON supplied."
     }
@@ -917,17 +962,29 @@ function Read-CommercialApprovalEvidenceSnapshot([string] $Path) {
     $snapshot["productVersion"] = Get-PropertyText $payload "productVersion"
     $snapshot["approvedBy"] = Get-PropertyText $payload "approvedBy"
     $snapshot["approvedAt"] = Get-PropertyText $payload "approvedAt"
-    $snapshot["passedCount"] = Get-PropertyInt $summary "passedCount"
-    $snapshot["failureCount"] = Get-PropertyInt $summary "failureCount"
-    $snapshot["checkCount"] = Get-PropertyInt $summary "checkCount"
+    $countResult = Get-RequiredIntSetSnapshot $summary @(
+        "passedCount",
+        "failureCount",
+        "checkCount",
+        "pricingPolicyProposalCommercialApprovedCount",
+        "pricingPolicyProposalApprovedPriceListCount"
+    )
+    $snapshot["passedCount"] = $countResult.values["passedCount"]
+    $snapshot["failureCount"] = $countResult.values["failureCount"]
+    $snapshot["checkCount"] = $countResult.values["checkCount"]
+    $snapshot["pricingPolicyProposalCommercialApprovedCount"] = $countResult.values["pricingPolicyProposalCommercialApprovedCount"]
+    $snapshot["pricingPolicyProposalApprovedPriceListCount"] = $countResult.values["pricingPolicyProposalApprovedPriceListCount"]
+    $snapshot["countsValid"] = [bool] $countResult.allValid
+    $snapshot["countValidation"] = $countResult.validation
     if ($snapshot["checkCount"] -eq 0) {
         $snapshot["checkCount"] = $checks.Count
     }
-    $snapshot["pricingPolicyProposalCommercialApproved"] = Get-PropertyBool $summary "pricingPolicyProposalCommercialApproved"
-    $snapshot["pricingPolicyProposalCommercialApprovedCount"] = Get-PropertyInt $summary "pricingPolicyProposalCommercialApprovedCount"
-    $snapshot["pricingPolicyProposalApprovedPriceListCount"] = Get-PropertyInt $summary "pricingPolicyProposalApprovedPriceListCount"
+    $approvedResult = Get-RequiredPropertyBool $summary "pricingPolicyProposalCommercialApproved"
+    $snapshot["pricingPolicyProposalCommercialApproved"] = [bool] $approvedResult.value
+    $snapshot["pricingPolicyProposalCommercialApprovedValid"] = [bool] $approvedResult.valid
+    $snapshot["pricingPolicyProposalCommercialApprovedRaw"] = [string] $approvedResult.raw
     $snapshot["topChecks"] = @($topRows.ToArray())
-    $snapshot["detail"] = "formatVersion=$formatVersion; result=$result; failures=$($snapshot["failureCount"]); checks=$($snapshot["checkCount"]); priceListApproved=$($snapshot["pricingPolicyProposalApprovedPriceListCount"])"
+    $snapshot["detail"] = "formatVersion=$formatVersion; result=$result; failures=$($snapshot["failureCount"]); checks=$($snapshot["checkCount"]); priceListApproved=$($snapshot["pricingPolicyProposalApprovedPriceListCount"]); countsValid=$($snapshot["countsValid"]); pricingPolicyProposalCommercialApproved=$($snapshot["pricingPolicyProposalCommercialApprovedRaw"])(valid=$($snapshot["pricingPolicyProposalCommercialApprovedValid"]))"
     return $snapshot
 }
 
@@ -1375,8 +1432,27 @@ $operationsConvergenceSnapshotReady = $operationsConvergenceSnapshotValid `
 $dataFlowStoragePlanSnapshotPassed = $dataFlowStoragePlanSnapshotValid -and [bool] $dataFlowStoragePlanSnapshot["passed"]
 $dataFlowStorageTransitionRunbookSnapshotPassed = $dataFlowStorageTransitionRunbookSnapshotValid -and [bool] $dataFlowStorageTransitionRunbookSnapshot["passed"] -and [bool] $dataFlowStorageTransitionRunbookSnapshot["confirmationsValid"]
 $secretRotationSnapshotPassed = $secretRotationSnapshotValid -and [bool] $secretRotationSnapshot["passed"] -and [bool] $secretRotationSnapshot["confirmationsValid"]
-$commercialIntegrationSnapshotPassed = $commercialIntegrationSnapshotValid -and [bool] $commercialIntegrationSnapshot["passed"]
-$commercialApprovalSnapshotPassed = $commercialApprovalSnapshotValid -and [bool] $commercialApprovalSnapshot["passed"]
+$commercialIntegrationSnapshotPassed = $commercialIntegrationSnapshotValid `
+    -and [bool] $commercialIntegrationSnapshot["passed"] `
+    -and [bool] $commercialIntegrationSnapshot["countsValid"] `
+    -and ([int64] $commercialIntegrationSnapshot["requiredCount"]) -gt 0 `
+    -and ([int64] $commercialIntegrationSnapshot["requiredVerifiedCount"]) -ge ([int64] $commercialIntegrationSnapshot["requiredCount"]) `
+    -and ([int64] $commercialIntegrationSnapshot["verifiedCount"]) -ge ([int64] $commercialIntegrationSnapshot["requiredVerifiedCount"]) `
+    -and ([int64] $commercialIntegrationSnapshot["integrationCount"]) -ge ([int64] $commercialIntegrationSnapshot["requiredCount"]) `
+    -and ([int64] $commercialIntegrationSnapshot["failureCount"]) -eq 0 `
+    -and ([int64] $commercialIntegrationSnapshot["plannedCount"]) -eq 0 `
+    -and [bool] $commercialIntegrationSnapshot["paymentProviderAdapterReadinessReviewedValid"] `
+    -and [bool] $commercialIntegrationSnapshot["paymentProviderAdapterReadinessReviewed"]
+$commercialApprovalSnapshotPassed = $commercialApprovalSnapshotValid `
+    -and [bool] $commercialApprovalSnapshot["passed"] `
+    -and [bool] $commercialApprovalSnapshot["countsValid"] `
+    -and ([int64] $commercialApprovalSnapshot["passedCount"]) -gt 0 `
+    -and ([int64] $commercialApprovalSnapshot["checkCount"]) -gt 0 `
+    -and ([int64] $commercialApprovalSnapshot["failureCount"]) -eq 0 `
+    -and [bool] $commercialApprovalSnapshot["pricingPolicyProposalCommercialApprovedValid"] `
+    -and [bool] $commercialApprovalSnapshot["pricingPolicyProposalCommercialApproved"] `
+    -and ([int64] $commercialApprovalSnapshot["pricingPolicyProposalCommercialApprovedCount"]) -gt 0 `
+    -and ([int64] $commercialApprovalSnapshot["pricingPolicyProposalApprovedPriceListCount"]) -gt 0
 $enterpriseAuthSmokeSnapshotAccepted = $enterpriseAuthSmokeSnapshotValid -and [bool] $enterpriseAuthSmokeSnapshot["accepted"]
 $monitoringThresholdSnapshotPassed = $monitoringThresholdSnapshotValid -and [bool] $monitoringThresholdSnapshot["passed"] -and [bool] $monitoringThresholdSnapshot["complete"]
 

@@ -717,6 +717,94 @@ finally {
 Assert-True ($stringBoolMonitoringThresholdExitCode -ne 0) "Monitoring threshold string confirmation boolean should be rejected."
 Assert-Contains ($stringBoolMonitoringThresholdOutput | Out-String) "confirmationsValid=False" "string monitoring threshold confirmation output"
 
+$stringCountCommercialIntegrationPath = Join-Path $resolvedOutputDirectory "string-count-commercial-integration.json"
+$stringCountCommercialIntegration = Get-Content -Raw -LiteralPath $commercialIntegrationPath | ConvertFrom-Json
+$stringCountCommercialIntegration.summary.requiredCount = "8"
+$stringCountCommercialIntegration | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath $stringCountCommercialIntegrationPath -Encoding UTF8
+
+$previousErrorActionPreference = $ErrorActionPreference
+$ErrorActionPreference = "Continue"
+try {
+    $stringCountCommercialIntegrationOutput = & powershell -NoProfile -ExecutionPolicy Bypass -File $scriptPath `
+        -CommercialIntegrationEvidenceRef "latest-commercial-integration-evidence-passed-20260620" `
+        -CommercialIntegrationJsonPath $stringCountCommercialIntegrationPath `
+        -ConfirmCommercialIntegrationSnapshotReviewed `
+        -FailIfNotPassed `
+        -NoWrite 2>&1
+    $stringCountCommercialIntegrationExitCode = $LASTEXITCODE
+}
+finally {
+    $ErrorActionPreference = $previousErrorActionPreference
+}
+Assert-True ($stringCountCommercialIntegrationExitCode -ne 0) "Commercial integration string count should be rejected."
+Assert-Contains ($stringCountCommercialIntegrationOutput | Out-String) "countsValid=False" "string commercial integration count output"
+
+$stringBoolCommercialIntegrationPath = Join-Path $resolvedOutputDirectory "string-bool-commercial-integration.json"
+$stringBoolCommercialIntegration = Get-Content -Raw -LiteralPath $commercialIntegrationPath | ConvertFrom-Json
+$stringBoolCommercialIntegration.summary.paymentProviderAdapterReadinessReviewed = "true"
+$stringBoolCommercialIntegration | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath $stringBoolCommercialIntegrationPath -Encoding UTF8
+
+$previousErrorActionPreference = $ErrorActionPreference
+$ErrorActionPreference = "Continue"
+try {
+    $stringBoolCommercialIntegrationOutput = & powershell -NoProfile -ExecutionPolicy Bypass -File $scriptPath `
+        -CommercialIntegrationEvidenceRef "latest-commercial-integration-evidence-passed-20260620" `
+        -CommercialIntegrationJsonPath $stringBoolCommercialIntegrationPath `
+        -ConfirmCommercialIntegrationSnapshotReviewed `
+        -FailIfNotPassed `
+        -NoWrite 2>&1
+    $stringBoolCommercialIntegrationExitCode = $LASTEXITCODE
+}
+finally {
+    $ErrorActionPreference = $previousErrorActionPreference
+}
+Assert-True ($stringBoolCommercialIntegrationExitCode -ne 0) "Commercial integration string readiness-review boolean should be rejected."
+Assert-Contains ($stringBoolCommercialIntegrationOutput | Out-String) "paymentProviderAdapterReadinessReviewed=true(valid=False)" "string commercial integration boolean output"
+
+$stringBoolCommercialApprovalPath = Join-Path $resolvedOutputDirectory "string-bool-commercial-approval.json"
+$stringBoolCommercialApproval = Get-Content -Raw -LiteralPath $commercialApprovalPath | ConvertFrom-Json
+$stringBoolCommercialApproval.summary.pricingPolicyProposalCommercialApproved = "true"
+$stringBoolCommercialApproval | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath $stringBoolCommercialApprovalPath -Encoding UTF8
+
+$previousErrorActionPreference = $ErrorActionPreference
+$ErrorActionPreference = "Continue"
+try {
+    $stringBoolCommercialApprovalOutput = & powershell -NoProfile -ExecutionPolicy Bypass -File $scriptPath `
+        -CommercialApprovalEvidenceRef "latest-commercial-approval-evidence-passed-20260620" `
+        -CommercialApprovalJsonPath $stringBoolCommercialApprovalPath `
+        -ConfirmCommercialApprovalSnapshotReviewed `
+        -FailIfNotPassed `
+        -NoWrite 2>&1
+    $stringBoolCommercialApprovalExitCode = $LASTEXITCODE
+}
+finally {
+    $ErrorActionPreference = $previousErrorActionPreference
+}
+Assert-True ($stringBoolCommercialApprovalExitCode -ne 0) "Commercial approval string pricing approval boolean should be rejected."
+Assert-Contains ($stringBoolCommercialApprovalOutput | Out-String) "pricingPolicyProposalCommercialApproved=true(valid=False)" "string commercial approval boolean output"
+
+$missingCountCommercialApprovalPath = Join-Path $resolvedOutputDirectory "missing-count-commercial-approval.json"
+$missingCountCommercialApproval = Get-Content -Raw -LiteralPath $commercialApprovalPath | ConvertFrom-Json
+$missingCountCommercialApproval.summary.PSObject.Properties.Remove("pricingPolicyProposalApprovedPriceListCount")
+$missingCountCommercialApproval | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath $missingCountCommercialApprovalPath -Encoding UTF8
+
+$previousErrorActionPreference = $ErrorActionPreference
+$ErrorActionPreference = "Continue"
+try {
+    $missingCountCommercialApprovalOutput = & powershell -NoProfile -ExecutionPolicy Bypass -File $scriptPath `
+        -CommercialApprovalEvidenceRef "latest-commercial-approval-evidence-passed-20260620" `
+        -CommercialApprovalJsonPath $missingCountCommercialApprovalPath `
+        -ConfirmCommercialApprovalSnapshotReviewed `
+        -FailIfNotPassed `
+        -NoWrite 2>&1
+    $missingCountCommercialApprovalExitCode = $LASTEXITCODE
+}
+finally {
+    $ErrorActionPreference = $previousErrorActionPreference
+}
+Assert-True ($missingCountCommercialApprovalExitCode -ne 0) "Commercial approval missing price-list count should be rejected."
+Assert-Contains ($missingCountCommercialApprovalOutput | Out-String) "countsValid=False" "missing commercial approval count output"
+
 $failedFinalizerConvergenceSnapshotPath = Join-Path $resolvedOutputDirectory "failed-finalizer-operations-readiness-convergence.json"
 [ordered]@{
     formatVersion = "osmu.operations-readiness-convergence.v1"
