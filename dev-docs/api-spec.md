@@ -5793,6 +5793,54 @@ Response:
       ],
       "secretPolicy": "Evidence stores only environment labels, operator/change references, timestamps, booleans, and external evidence references; it does not contain password values, API keys, private keys, bearer tokens, kubeconfig, database credentials, MinIO credentials, OIDC/LDAP secrets, SMTP credentials, or webhook signing secrets."
     },
+    "monitoringThresholdEvidence": {
+      "result": "passed",
+      "generatedAt": "2026-06-21T09:05:00Z",
+      "environmentName": "pilot-prod",
+      "targetCluster": "customer-cluster-a",
+      "operatorName": "ops-admin",
+      "evidenceRef": "monitoring-threshold-run-20260621",
+      "reviewWindow": {
+        "startedAt": "2026-06-21T08:40:00Z",
+        "completedAt": "2026-06-21T09:00:00Z"
+      },
+      "thresholdTargetsPath": "infra/monitoring/alert-threshold-targets.yaml",
+      "requiredAlertCount": 11,
+      "mappedAlertCount": 11,
+      "missingAlerts": [],
+      "routeCount": 3,
+      "routes": ["osmu-backend", "osmu-data-flow", "osmu-backup"],
+      "grafanaPanelCount": 11,
+      "tuningEvidenceCount": 11,
+      "evidenceRefs": {
+        "changeApproval": "CHG-2026-MONITORING",
+        "prometheusRules": "prom-rules-run-20260621",
+        "grafanaDashboard": "grafana-import-run-20260621",
+        "alertmanagerRoute": "alertmanager-route-review-20260621",
+        "targetBaseline": "tenant-baseline-review-20260621",
+        "incidentRouting": "incident-routing-review-20260621"
+      },
+      "confirmations": {
+        "prometheusRulesLoaded": true,
+        "grafanaDashboardImported": true,
+        "alertmanagerRoutesReviewed": true,
+        "targetBaselinesReviewed": true,
+        "incidentRoutingReviewed": true,
+        "noSecretValues": true
+      },
+      "failureCount": 0,
+      "checkCount": 24,
+      "checks": [
+        {
+          "id": "prometheus-rules-loaded-confirmed",
+          "name": "Prometheus rules loaded confirmation",
+          "status": "PASS",
+          "passed": true,
+          "detail": "Rules were loaded into target Prometheus or PrometheusRule."
+        }
+      ],
+      "secretPolicy": "Evidence stores only labels, refs, timestamps, booleans, and target threshold metadata; it does not contain credentials or raw receiver secrets."
+    },
     "commercialIntegrationEvidence": {
       "result": "failed",
       "generatedAt": "2026-06-20T03:00:00Z",

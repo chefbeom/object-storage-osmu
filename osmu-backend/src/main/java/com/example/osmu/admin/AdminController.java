@@ -140,6 +140,7 @@ public class AdminController {
     private final String enterpriseAuthSmokeEvidenceReportPath;
     private final String dataFlowStoragePlanReportPath;
     private final String storageBackendTelemetryReportPath;
+    private final String monitoringThresholdEvidenceReportPath;
     private final String minioBucketCorsVerificationReportPath;
     private final String operationsReadinessConvergenceReportPath;
     private final String kubernetesOperationsReportSyncReportPath;
@@ -202,6 +203,7 @@ public class AdminController {
             @Value("${osmu.operations.readiness.enterprise-auth-smoke-evidence-report-path:.osmu-run/latest-enterprise-auth-smoke.json}") String enterpriseAuthSmokeEvidenceReportPath,
             @Value("${osmu.operations.readiness.data-flow-storage-plan-report-path:.osmu-run/latest-data-flow-storage-plan.json}") String dataFlowStoragePlanReportPath,
             @Value("${osmu.operations.readiness.storage-backend-telemetry-report-path:.osmu-run/latest-storage-backend-telemetry.json}") String storageBackendTelemetryReportPath,
+            @Value("${osmu.operations.readiness.monitoring-threshold-evidence-report-path:.osmu-run/latest-monitoring-threshold-evidence.json}") String monitoringThresholdEvidenceReportPath,
             @Value("${osmu.operations.readiness.minio-bucket-cors-verification-report-path:.osmu-run/latest-minio-bucket-cors-verification.json}") String minioBucketCorsVerificationReportPath,
             @Value("${osmu.operations.readiness.convergence-report-path:.osmu-run/latest-operations-readiness-convergence.json}") String operationsReadinessConvergenceReportPath,
             @Value("${osmu.operations.readiness.kubernetes-report-sync-report-path:.osmu-run/latest-kubernetes-operations-report-sync.json}") String kubernetesOperationsReportSyncReportPath
@@ -263,6 +265,7 @@ public class AdminController {
         this.enterpriseAuthSmokeEvidenceReportPath = blankToNull(enterpriseAuthSmokeEvidenceReportPath);
         this.dataFlowStoragePlanReportPath = blankToNull(dataFlowStoragePlanReportPath);
         this.storageBackendTelemetryReportPath = blankToNull(storageBackendTelemetryReportPath);
+        this.monitoringThresholdEvidenceReportPath = blankToNull(monitoringThresholdEvidenceReportPath);
         this.minioBucketCorsVerificationReportPath = blankToNull(minioBucketCorsVerificationReportPath);
         this.operationsReadinessConvergenceReportPath = blankToNull(operationsReadinessConvergenceReportPath);
         this.kubernetesOperationsReportSyncReportPath = blankToNull(kubernetesOperationsReportSyncReportPath);
@@ -937,6 +940,7 @@ public class AdminController {
         DashboardEnterpriseAuthSmokeEvidenceResponse enterpriseAuthSmokeEvidence = enterpriseAuthSmokeEvidenceSnapshot();
         DashboardDataFlowStoragePlanResponse dataFlowStoragePlan = dataFlowStoragePlanSnapshot();
         DashboardStorageBackendTelemetryEvidenceResponse storageBackendTelemetryEvidence = storageBackendTelemetryEvidenceSnapshot();
+        DashboardMonitoringThresholdEvidenceResponse monitoringThresholdEvidence = monitoringThresholdEvidenceSnapshot();
         DashboardMinioBucketCorsVerificationResponse minioBucketCorsVerification = minioBucketCorsVerificationSnapshot();
         DashboardOperationsEvidenceHandoffResponse operationsEvidenceHandoff = operationsEvidenceHandoffSnapshot();
         DashboardOperationsReadinessConvergenceResponse operationsReadinessConvergence = operationsReadinessConvergenceSnapshot();
@@ -974,6 +978,7 @@ public class AdminController {
                 enterpriseAuthSmokeEvidence,
                 dataFlowStoragePlan,
                 storageBackendTelemetryEvidence,
+                monitoringThresholdEvidence,
                 minioBucketCorsVerification,
                 operationsEvidenceHandoff,
                 operationsReadinessConvergence,
@@ -1631,6 +1636,7 @@ public class AdminController {
         addEnterpriseAuthSmokeEvidenceItem(items);
         addDataFlowStoragePlanItem(items);
         addStorageBackendTelemetryEvidenceItem(items);
+        addMonitoringThresholdEvidenceItem(items);
         addMinioBucketCorsVerificationItem(items);
 
         addOperationsReadinessArtifactImportItem(items);
@@ -3426,6 +3432,87 @@ public class AdminController {
                 jsonText(telemetryReport, "decisionRule"),
                 jsonText(telemetryReport, "scopePolicy")
         );
+    }
+
+    private void addMonitoringThresholdEvidenceItem(java.util.ArrayList<DashboardReadinessItemResponse> items) {
+        DashboardMonitoringThresholdEvidenceResponse evidence = monitoringThresholdEvidenceSnapshot();
+        if (evidence.result().isBlank() || "passed".equalsIgnoreCase(evidence.result())) {
+            return;
+        }
+        addReadinessItem(
+                items,
+                "WARNING",
+                "OPERATIONS",
+                "MONITORING_THRESHOLD_EVIDENCE",
+                "Monitoring threshold evidence is %s: alerts=%d/%d, routes=%d, failures=%d/%d.".formatted(
+                        evidence.result(),
+                        evidence.mappedAlertCount(),
+                        evidence.requiredAlertCount(),
+                        evidence.routeCount(),
+                        evidence.failureCount(),
+                        evidence.checkCount()
+                ),
+                "dashboard",
+                "dashboard-readiness-panel",
+                "Monitoring thresholds",
+                monitoringThresholdEvidenceReportPath == null ? "" : monitoringThresholdEvidenceReportPath,
+                "powershell -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\write-monitoring-threshold-evidence.ps1 -EnvironmentName <env> -TargetCluster <cluster> -Operator <operator> -ReviewStartedAt <iso-time> -ReviewCompletedAt <iso-time> -ChangeApprovalRef <change-id> -EvidenceRef <run-ref> -PrometheusRulesEvidenceRef <ref> -GrafanaDashboardEvidenceRef <ref> -AlertmanagerRouteEvidenceRef <ref> -TargetBaselineEvidenceRef <ref> -IncidentRoutingEvidenceRef <ref> -ConfirmPrometheusRulesLoaded -ConfirmGrafanaDashboardImported -ConfirmAlertmanagerRoutesReviewed -ConfirmTargetBaselinesReviewed -ConfirmIncidentRoutingReviewed -ConfirmNoSecretValues -FailIfNotPassed",
+                ".github/workflows/manual-monitoring-threshold-evidence.yml",
+                "",
+                evidence.secretPolicy().isBlank()
+                        ? "Collect target monitoring threshold evidence before production/B2B readiness."
+                        : evidence.secretPolicy()
+        );
+    }
+
+    private DashboardMonitoringThresholdEvidenceResponse monitoringThresholdEvidenceSnapshot() {
+        JsonNode report = readOptionalJsonReport(monitoringThresholdEvidenceReportPath);
+        if (report == null || report.isMissingNode() || report.isNull() || !report.isObject()) {
+            return DashboardMonitoringThresholdEvidenceResponse.empty();
+        }
+        JsonNode thresholdSummary = report.path("thresholdTargetSummary");
+        JsonNode summary = summaryOrSelf(report);
+        return new DashboardMonitoringThresholdEvidenceResponse(
+                jsonText(report, "result"),
+                jsonText(report, "generatedAt"),
+                jsonText(report, "environmentName"),
+                jsonText(report, "targetCluster"),
+                jsonText(report, "operatorName"),
+                jsonText(report, "evidenceRef"),
+                Map.copyOf(jsonTextMap(report.path("reviewWindow"))),
+                jsonText(report, "thresholdTargetsPath"),
+                jsonInt(thresholdSummary, "requiredAlertCount"),
+                jsonInt(thresholdSummary, "mappedAlertCount"),
+                jsonTextList(thresholdSummary, "missingAlerts"),
+                jsonInt(thresholdSummary, "routeCount"),
+                jsonTextList(thresholdSummary, "routes"),
+                jsonInt(thresholdSummary, "grafanaPanelCount"),
+                jsonInt(thresholdSummary, "tuningEvidenceCount"),
+                Map.copyOf(jsonTextMap(report.path("evidenceRefs"))),
+                Map.copyOf(jsonBooleanMap(report.path("confirmations"))),
+                jsonInt(summary, "failureCount"),
+                jsonInt(summary, "checkCount"),
+                monitoringThresholdChecks(report.path("checks")),
+                jsonText(report, "decisionRule"),
+                jsonText(report, "secretPolicy")
+        );
+    }
+
+    private List<DashboardMonitoringThresholdCheckResponse> monitoringThresholdChecks(JsonNode checkNodes) {
+        if (!checkNodes.isArray()) {
+            return List.of();
+        }
+        java.util.ArrayList<DashboardMonitoringThresholdCheckResponse> checks = new java.util.ArrayList<>();
+        for (JsonNode check : checkNodes) {
+            checks.add(new DashboardMonitoringThresholdCheckResponse(
+                    jsonText(check, "id"),
+                    jsonText(check, "name"),
+                    jsonText(check, "status"),
+                    jsonBoolean(check, "passed"),
+                    jsonText(check, "detail")
+            ));
+        }
+        return List.copyOf(checks);
     }
 
     private void addMinioBucketCorsVerificationItem(java.util.ArrayList<DashboardReadinessItemResponse> items) {

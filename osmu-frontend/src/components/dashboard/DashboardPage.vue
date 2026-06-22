@@ -562,6 +562,14 @@
             offline {{ storageBackendTelemetryEvidence.offlineServerCount || 0 }}
           </small>
           <small
+            v-if="monitoringThresholdEvidence.result"
+            data-testid="readiness-monitoring-threshold-evidence-item-summary"
+          >
+            Monitoring thresholds: {{ monitoringThresholdEvidence.result }} /
+            alerts {{ monitoringThresholdEvidence.mappedAlertCount || 0 }}/{{ monitoringThresholdEvidence.requiredAlertCount || 0 }} /
+            failures {{ monitoringThresholdEvidence.failureCount || 0 }}
+          </small>
+          <small
             v-if="minioBucketCorsVerification.result"
             data-testid="readiness-minio-bucket-cors-item-summary"
           >
@@ -659,6 +667,46 @@
           {{ storageBackendTelemetryEvidence.scopePolicy }}
         </small>
       </div>
+      <div
+        v-if="monitoringThresholdEvidence.result"
+        class="readiness-invocation-summary"
+        data-testid="readiness-monitoring-threshold-evidence-summary"
+      >
+        <strong>Monitoring thresholds: {{ monitoringThresholdEvidence.result }}</strong>
+        <small>
+          {{ monitoringThresholdEvidence.environmentName || 'unknown env' }} /
+          {{ monitoringThresholdEvidence.targetCluster || 'unknown cluster' }} /
+          alerts {{ monitoringThresholdEvidence.mappedAlertCount || 0 }} of {{ monitoringThresholdEvidence.requiredAlertCount || 0 }} /
+          routes {{ monitoringThresholdEvidence.routeCount || 0 }} /
+          panels {{ monitoringThresholdEvidence.grafanaPanelCount || 0 }} /
+          tuning refs {{ monitoringThresholdEvidence.tuningEvidenceCount || 0 }} /
+          failures {{ monitoringThresholdEvidence.failureCount || 0 }} of {{ monitoringThresholdEvidence.checkCount || 0 }}
+        </small>
+        <small
+          v-if="monitoringThresholdEvidenceRefSummary"
+          data-testid="readiness-monitoring-threshold-evidence-refs"
+        >
+          Evidence refs: {{ monitoringThresholdEvidenceRefSummary }}
+        </small>
+        <small v-if="monitoringThresholdEvidence.secretPolicy">
+          {{ monitoringThresholdEvidence.secretPolicy }}
+        </small>
+      </div>
+      <ol
+        v-if="monitoringThresholdEvidenceChecks.length > 0"
+        class="readiness-evidence-plan-actions readiness-monitoring-threshold-evidence-checks"
+        data-testid="readiness-monitoring-threshold-evidence-checks"
+      >
+        <li
+          v-for="check in monitoringThresholdEvidenceChecks.slice(0, 3)"
+          :key="check.id || check.name"
+        >
+          <span>
+            <strong>{{ check.status || 'UNKNOWN' }} / {{ check.name || check.id }}</strong>
+            <small>{{ check.detail || 'detail unavailable' }}</small>
+          </span>
+        </li>
+      </ol>
       <div
         v-if="minioBucketCorsVerification.result"
         class="readiness-invocation-summary"
@@ -3210,6 +3258,27 @@ const dataFlowStoragePlanChecks = computed(() => {
 const storageBackendTelemetryEvidence = computed(() => (
   props.dashboardReadiness.storageBackendTelemetryEvidence || {}
 ))
+
+const monitoringThresholdEvidence = computed(() => (
+  props.dashboardReadiness.monitoringThresholdEvidence || {}
+))
+
+const monitoringThresholdEvidenceRefSummary = computed(() => {
+  const refs = monitoringThresholdEvidence.value?.evidenceRefs
+  if (!refs || typeof refs !== 'object') {
+    return ''
+  }
+  return Object.entries(refs)
+    .filter(([, value]) => value)
+    .slice(0, 5)
+    .map(([key, value]) => `${key}=${value}`)
+    .join(' / ')
+})
+
+const monitoringThresholdEvidenceChecks = computed(() => {
+  const checks = monitoringThresholdEvidence.value?.checks
+  return Array.isArray(checks) ? checks : []
+})
 
 const minioBucketCorsVerification = computed(() => (
   props.dashboardReadiness.minioBucketCorsVerification || {}

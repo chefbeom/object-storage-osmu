@@ -540,6 +540,65 @@ class AdminDashboardSummaryControllerTest {
                           "decisionRule": "Storage backend telemetry evidence passes when target environment, cluster, operator, external evidence reference, MinIO admin-info JSON parsing, pool/server/drive summaries, online server state, and capacity totals are all present.",
                           "scopePolicy": "This evidence captures MinIO pool/node operations telemetry for OSMU storage readiness. It is not AWS S3 parity work, and it does not store raw admin info, credentials, bearer tokens, private keys, kubeconfig, MinIO root credentials, or object data."
                         }
+                """
+        );
+        Files.writeString(
+                Path.of(".osmu-run/latest-monitoring-threshold-evidence.json"),
+                """
+                        {
+                          "formatVersion": "osmu.monitoring-threshold-evidence.v1",
+                          "generatedAt": "2026-06-21T09:05:00Z",
+                          "result": "passed",
+                          "environmentName": "pilot-prod",
+                          "targetCluster": "customer-cluster-a",
+                          "operatorName": "ops-admin",
+                          "evidenceRef": "monitoring-threshold-run-20260621",
+                          "reviewWindow": {
+                            "startedAt": "2026-06-21T08:40:00Z",
+                            "completedAt": "2026-06-21T09:00:00Z"
+                          },
+                          "thresholdTargetsPath": ".\\\\infra\\\\monitoring\\\\alert-threshold-targets.yaml",
+                          "thresholdTargetSummary": {
+                            "requiredAlertCount": 11,
+                            "mappedAlertCount": 11,
+                            "missingAlerts": [],
+                            "routeCount": 3,
+                            "routes": ["osmu-backend", "osmu-data-flow", "osmu-backup"],
+                            "grafanaPanelCount": 11,
+                            "tuningEvidenceCount": 11
+                          },
+                          "evidenceRefs": {
+                            "changeApproval": "CHG-2026-MONITORING",
+                            "prometheusRules": "prom-rules-run-20260621",
+                            "grafanaDashboard": "grafana-import-run-20260621",
+                            "alertmanagerRoute": "alertmanager-route-review-20260621",
+                            "targetBaseline": "tenant-baseline-review-20260621",
+                            "incidentRouting": "incident-routing-review-20260621"
+                          },
+                          "confirmations": {
+                            "prometheusRulesLoaded": true,
+                            "grafanaDashboardImported": true,
+                            "alertmanagerRoutesReviewed": true,
+                            "targetBaselinesReviewed": true,
+                            "incidentRoutingReviewed": true,
+                            "noSecretValues": true
+                          },
+                          "summary": {
+                            "failureCount": 0,
+                            "checkCount": 24
+                          },
+                          "checks": [
+                            {
+                              "id": "prometheus-rules-loaded-confirmed",
+                              "name": "Prometheus rules loaded confirmation",
+                              "status": "PASS",
+                              "passed": true,
+                              "detail": "Rules were loaded into target Prometheus or PrometheusRule."
+                            }
+                          ],
+                          "decisionRule": "Production/B2B monitoring readiness requires result=passed after the target Prometheus rules, Grafana dashboard, Alertmanager routes, incident routing, and tenant baseline threshold values are reviewed.",
+                          "secretPolicy": "Evidence stores only environment labels, operator/change references, timestamps, booleans, target threshold metadata, and external evidence references; it does not contain passwords."
+                        }
                         """
         );
         Files.writeString(
@@ -2230,6 +2289,22 @@ class AdminDashboardSummaryControllerTest {
                 .andExpect(jsonPath("$.data.storageBackendTelemetryEvidence.driveCount").value(4))
                 .andExpect(jsonPath("$.data.storageBackendTelemetryEvidence.totalBytes").value(4398046511104L))
                 .andExpect(jsonPath("$.data.storageBackendTelemetryEvidence.scopePolicy", org.hamcrest.Matchers.containsString("not AWS S3 parity work")))
+                .andExpect(jsonPath("$.data.monitoringThresholdEvidence.result").value("passed"))
+                .andExpect(jsonPath("$.data.monitoringThresholdEvidence.environmentName").value("pilot-prod"))
+                .andExpect(jsonPath("$.data.monitoringThresholdEvidence.targetCluster").value("customer-cluster-a"))
+                .andExpect(jsonPath("$.data.monitoringThresholdEvidence.evidenceRef").value("monitoring-threshold-run-20260621"))
+                .andExpect(jsonPath("$.data.monitoringThresholdEvidence.reviewWindow.startedAt").value("2026-06-21T08:40:00Z"))
+                .andExpect(jsonPath("$.data.monitoringThresholdEvidence.requiredAlertCount").value(11))
+                .andExpect(jsonPath("$.data.monitoringThresholdEvidence.mappedAlertCount").value(11))
+                .andExpect(jsonPath("$.data.monitoringThresholdEvidence.routeCount").value(3))
+                .andExpect(jsonPath("$.data.monitoringThresholdEvidence.routes[1]").value("osmu-data-flow"))
+                .andExpect(jsonPath("$.data.monitoringThresholdEvidence.grafanaPanelCount").value(11))
+                .andExpect(jsonPath("$.data.monitoringThresholdEvidence.tuningEvidenceCount").value(11))
+                .andExpect(jsonPath("$.data.monitoringThresholdEvidence.evidenceRefs.incidentRouting").value("incident-routing-review-20260621"))
+                .andExpect(jsonPath("$.data.monitoringThresholdEvidence.confirmations.noSecretValues").value(true))
+                .andExpect(jsonPath("$.data.monitoringThresholdEvidence.failureCount").value(0))
+                .andExpect(jsonPath("$.data.monitoringThresholdEvidence.checkCount").value(24))
+                .andExpect(jsonPath("$.data.monitoringThresholdEvidence.checks[0].id").value("prometheus-rules-loaded-confirmed"))
                 .andExpect(jsonPath("$.data.items[?(@.code == 'OPERATIONS_HANDOFF_PACKAGE')].evidencePath").value(hasItem(".osmu-run/latest-operations-handoff-package.json")))
                 .andExpect(jsonPath("$.data.items[?(@.code == 'OPERATIONS_HANDOFF_PACKAGE')].remediationCommand").value(hasItem("powershell -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\write-operations-handoff-package.ps1")))
                 .andExpect(jsonPath("$.data.items[?(@.code == 'STORAGE_EXPANSION_FINALIZE')].evidencePath").value(hasItem(".osmu-run/latest-storage-expansion-finalize.json")))
