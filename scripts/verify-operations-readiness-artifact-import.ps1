@@ -449,6 +449,104 @@ function Write-TextEvidence([string] $Path, [string] $Content) {
     $Content | Set-Content -LiteralPath $resolvedPath -Encoding UTF8
 }
 
+function New-ScopeOutEnterpriseAuthEvidence(
+    [object] $Accepted = $true,
+    [object[]] $Checks = @(
+        @{ id = "enterprise-auth-scope-out-confirmed"; name = "Enterprise auth commercial scope-out confirmed"; category = "enterprise-auth"; endpoint = "commercial approval"; status = "PASS"; detail = "ConfirmScopeOut=True."; requiredInputs = @("ConfirmScopeOut") },
+        @{ id = "enterprise-auth-scope-out-ref"; name = "Enterprise auth scope-out approval reference recorded"; category = "enterprise-auth"; endpoint = "commercial approval"; status = "PASS"; detail = "scopeOutRef=pilot-contract-enterprise-auth-deferred-20260620."; requiredInputs = @("ScopeOutRef") },
+        @{ id = "enterprise-auth-scope-out-reason"; name = "Enterprise auth scope-out reason recorded"; category = "enterprise-auth"; endpoint = "commercial approval"; status = "PASS"; detail = "scopeOutReason=Pilot phase uses local password login."; requiredInputs = @("ScopeOutReason") }
+    )
+) {
+    return @{
+        formatVersion = "osmu.enterprise-auth-smoke.v1"
+        generatedAt = "2026-06-22T00:00:00Z"
+        result = "scope-out"
+        executionMode = "scope-out"
+        apiBase = ""
+        requireOidc = $false
+        requireLdap = $false
+        requireAuditEvents = $false
+        scopeOut = @{
+            confirmed = $true
+            reference = "pilot-contract-enterprise-auth-deferred-20260620"
+            reason = "Pilot phase uses local password login."
+            accepted = $Accepted
+        }
+        inputs = @{
+            adminLoginId = ""
+            adminPasswordProvided = $false
+            oidcCallbackCodeProvided = $false
+            oidcCallbackStateProvided = $false
+            oidcClaimPreviewJsonPathProvided = $false
+            oidcJitProvisionJsonPathProvided = $false
+            confirmJitProvision = $false
+            ldapLoginIdProvided = $false
+            ldapPasswordProvided = $false
+            expectedEmailProvided = $false
+        }
+        summary = @{
+            passCount = 3
+            failCount = 0
+            blockedCount = 0
+            plannedCount = 0
+            skippedCount = 0
+        }
+        checks = @($Checks)
+        decisionRule = "Paid/production pilot requires result=passed from the target IdP/directory, or result=scope-out with an explicit non-secret commercial approval reference and reason. Default plan-only and scope-out modes perform no HTTP requests."
+        secretPolicy = "Admin password, LDAP password, access/refresh tokens, OIDC authorization code/state, client secrets, raw OIDC claim JSON, and credential-like scope-out references are never written to this evidence; token or credential-like OIDC claim/JIT JSON input fields are rejected before request execution."
+    }
+}
+
+function New-PassedEnterpriseAuthEvidence(
+    [object] $FailCount = 0
+) {
+    return @{
+        formatVersion = "osmu.enterprise-auth-smoke.v1"
+        generatedAt = "2026-06-22T00:00:00Z"
+        result = "passed"
+        executionMode = "execute"
+        apiBase = "https://osmu.example.test"
+        requireOidc = $true
+        requireLdap = $true
+        requireAuditEvents = $true
+        scopeOut = @{
+            confirmed = $false
+            reference = ""
+            reason = ""
+            accepted = $false
+        }
+        inputs = @{
+            adminLoginId = "admin"
+            adminPasswordProvided = $true
+            oidcCallbackCodeProvided = $true
+            oidcCallbackStateProvided = $true
+            oidcClaimPreviewJsonPathProvided = $true
+            oidcJitProvisionJsonPathProvided = $false
+            confirmJitProvision = $false
+            ldapLoginIdProvided = $true
+            ldapPasswordProvided = $true
+            expectedEmailProvided = $true
+        }
+        summary = @{
+            passCount = 6
+            failCount = $FailCount
+            blockedCount = 0
+            plannedCount = 0
+            skippedCount = 0
+        }
+        checks = @(
+            @{ id = "admin-login"; name = "Admin login for enterprise auth evidence"; category = "auth"; endpoint = "POST /api/auth/login"; status = "PASS"; detail = "Admin access token acquired in memory only."; requiredInputs = @() },
+            @{ id = "enterprise-auth-plan"; name = "Enterprise auth plan API"; category = "enterprise-auth"; endpoint = "GET /api/admin/security/enterprise-auth-plan"; status = "PASS"; detail = "Plan returned. activeLoginMode=LOCAL_PASSWORD."; requiredInputs = @() },
+            @{ id = "oidc-authorize"; name = "OIDC authorization request start"; category = "oidc"; endpoint = "GET /api/auth/oidc/authorize"; status = "PASS"; detail = "Authorization request produced URL, state, nonce, and PKCE challenge."; requiredInputs = @() },
+            @{ id = "oidc-callback"; name = "OIDC callback login for existing local user"; category = "oidc"; endpoint = "GET /api/auth/oidc/callback"; status = "PASS"; detail = "OIDC callback issued OSMU tokens; tokens kept in memory only."; requiredInputs = @() },
+            @{ id = "ldap-login"; name = "LDAP bind/search login for existing local user"; category = "ldap"; endpoint = "POST /api/auth/ldap/login"; status = "PASS"; detail = "LDAP login issued OSMU tokens; LDAP password and tokens are not stored."; requiredInputs = @() },
+            @{ id = "audit-log-LOGIN_LDAP"; name = "Enterprise auth audit evidence: LOGIN_LDAP"; category = "audit"; endpoint = "GET /api/admin/audit-logs?eventType=LOGIN_LDAP"; status = "PASS"; detail = "Found recent audit entries for LOGIN_LDAP."; requiredInputs = @() }
+        )
+        decisionRule = "Paid/production pilot requires result=passed from the target IdP/directory, or result=scope-out with an explicit non-secret commercial approval reference and reason. Default plan-only and scope-out modes perform no HTTP requests."
+        secretPolicy = "Admin password, LDAP password, access/refresh tokens, OIDC authorization code/state, client secrets, raw OIDC claim JSON, and credential-like scope-out references are never written to this evidence; token or credential-like OIDC claim/JIT JSON input fields are rejected before request execution."
+    }
+}
+
 $resolvedOutputDirectory = Resolve-ProjectPath $OutputDirectory
 if (Test-Path -LiteralPath $resolvedOutputDirectory) {
     Remove-Item -LiteralPath $resolvedOutputDirectory -Recurse -Force
@@ -490,6 +588,7 @@ $weakCommercialApprovalRoot = Join-Path $resolvedOutputDirectory "weak-commercia
 $weakCommercialApprovalChecksRoot = Join-Path $resolvedOutputDirectory "weak-commercial-approval-checks-source"
 $invalidEnterpriseAuthRoot = Join-Path $resolvedOutputDirectory "invalid-enterprise-auth-source"
 $stringCountEnterpriseAuthRoot = Join-Path $resolvedOutputDirectory "string-count-enterprise-auth-source"
+$weakEnterpriseAuthChecksRoot = Join-Path $resolvedOutputDirectory "weak-enterprise-auth-checks-source"
 $staleOperationsHandoffPackageRoot = Join-Path $resolvedOutputDirectory "stale-operations-handoff-package-source"
 $badConvergenceOperationsHandoffPackageRoot = Join-Path $resolvedOutputDirectory "bad-convergence-operations-handoff-package-source"
 $stringBoolOperationsHandoffPackageRoot = Join-Path $resolvedOutputDirectory "string-bool-operations-handoff-package-source"
@@ -908,16 +1007,7 @@ Write-JsonEvidence (Join-Path $commercialApprovalSource "latest-commercial-appro
     secretPolicy = "Evidence stores only product version, approver identity, timestamps, booleans, sanitized pricing proposal status/reference metadata, and external approval references; it must not contain passwords, tokens, private keys, license keys, signing secrets, customer payment data, raw price tables, or raw contract text."
 }
 Write-TextEvidence (Join-Path $commercialApprovalSource "latest-commercial-approval-evidence.md") "# Commercial approval"
-Write-JsonEvidence (Join-Path $enterpriseAuthSource "latest-enterprise-auth-smoke.json") @{
-    formatVersion = "osmu.enterprise-auth-smoke.v1"
-    result = "scope-out"
-    scopeOut = @{
-        confirmed = $true
-        reference = "pilot-contract-enterprise-auth-deferred-20260620"
-        reason = "Pilot phase uses local password login."
-        accepted = $true
-    }
-}
+Write-JsonEvidence (Join-Path $enterpriseAuthSource "latest-enterprise-auth-smoke.json") (New-ScopeOutEnterpriseAuthEvidence)
 Write-TextEvidence (Join-Path $enterpriseAuthSource "latest-enterprise-auth-smoke.md") "# Enterprise auth smoke"
 Write-JsonEvidence (Join-Path $operationsHandoffPackageSource "latest-operations-handoff-package.json") @{
     formatVersion = "osmu.operations-handoff-package.v1"
@@ -1150,7 +1240,7 @@ $promotedEnterpriseAuth = Get-Content -Raw -LiteralPath (Join-Path $promotedRoot
 Assert-True ($promotedEnterpriseAuth.result -eq "scope-out") "Promoted enterprise auth scope-out evidence should be preserved."
 $enterpriseAuthImportEntry = @($report.entries | Where-Object { $_.group -eq "enterprise-auth" -and $_.fileName -eq "latest-enterprise-auth-smoke.json" })
 Assert-True ($enterpriseAuthImportEntry.Count -eq 1) "Enterprise auth import entry missing."
-Assert-True (([string] $enterpriseAuthImportEntry[0].detail).Contains("expected=passed|scope-out")) "Enterprise auth import entry should document passed or scope-out acceptance."
+Assert-True (([string] $enterpriseAuthImportEntry[0].detail).Contains("executionMode=scope-out") -and ([string] $enterpriseAuthImportEntry[0].detail).Contains("accepted=true") -and ([string] $enterpriseAuthImportEntry[0].detail).Contains("passCount=3")) "Enterprise auth import entry should document strict scope-out acceptance."
 $promotedOperationsHandoffPackage = Get-Content -Raw -LiteralPath (Join-Path $promotedRoot "latest-operations-handoff-package.json") | ConvertFrom-Json
 Assert-True ($promotedOperationsHandoffPackage.result -eq "passed") "Promoted operations handoff package evidence should preserve result=passed."
 Assert-True ($promotedOperationsHandoffPackage.confirmations.noSecretValues) "Promoted operations handoff package should preserve no-secret confirmation."
@@ -2447,16 +2537,7 @@ Assert-True ($weakCommercialApprovalChecksReport.result -eq "failed") "Weak comm
 Assert-True (-not (Test-Path -LiteralPath (Join-Path $weakCommercialApprovalChecksOutput "latest-commercial-approval-evidence.json"))) "Weak commercial approval checks evidence must not be promoted."
 Assert-True (($weakCommercialApprovalChecksReport.entries | ConvertTo-Json -Depth 8).Contains("checks.approval-ref missing")) "Weak commercial approval checks report should describe missing approval check row."
 
-Write-JsonEvidence (Join-Path $invalidEnterpriseAuthRoot "latest-enterprise-auth-smoke.json") @{
-    formatVersion = "osmu.enterprise-auth-smoke.v1"
-    result = "scope-out"
-    scopeOut = @{
-        confirmed = $true
-        reference = "pilot-contract-enterprise-auth-deferred-20260620"
-        reason = "Pilot phase uses local password login."
-        accepted = "false"
-    }
-}
+Write-JsonEvidence (Join-Path $invalidEnterpriseAuthRoot "latest-enterprise-auth-smoke.json") (New-ScopeOutEnterpriseAuthEvidence -Accepted "false")
 $invalidEnterpriseAuthOutput = Join-Path $resolvedOutputDirectory "invalid-enterprise-auth-promoted"
 $invalidEnterpriseAuthJson = Join-Path $resolvedOutputDirectory "invalid-enterprise-auth-import.json"
 $invalidEnterpriseAuthMarkdown = Join-Path $resolvedOutputDirectory "invalid-enterprise-auth-import.md"
@@ -2482,17 +2563,7 @@ $invalidEnterpriseAuthEntry = @($invalidEnterpriseAuthReport.entries | Where-Obj
 Assert-True ($invalidEnterpriseAuthEntry.Count -eq 1) "Invalid enterprise auth import entry missing."
 Assert-True (([string] $invalidEnterpriseAuthEntry[0].detail).Contains("accepted=false(valid=False)")) "Invalid enterprise auth report should describe invalid accepted value."
 
-Write-JsonEvidence (Join-Path $stringCountEnterpriseAuthRoot "latest-enterprise-auth-smoke.json") @{
-    formatVersion = "osmu.enterprise-auth-smoke.v1"
-    result = "passed"
-    summary = @{
-        passCount = 4
-        failCount = "0"
-        blockedCount = 0
-        plannedCount = 0
-        skippedCount = 0
-    }
-}
+Write-JsonEvidence (Join-Path $stringCountEnterpriseAuthRoot "latest-enterprise-auth-smoke.json") (New-PassedEnterpriseAuthEvidence -FailCount "0")
 $stringCountEnterpriseAuthOutput = Join-Path $resolvedOutputDirectory "string-count-enterprise-auth-promoted"
 $stringCountEnterpriseAuthJson = Join-Path $resolvedOutputDirectory "string-count-enterprise-auth-import.json"
 $stringCountEnterpriseAuthMarkdown = Join-Path $resolvedOutputDirectory "string-count-enterprise-auth-import.md"
@@ -2517,6 +2588,32 @@ Assert-True (-not (Test-Path -LiteralPath (Join-Path $stringCountEnterpriseAuthO
 $stringCountEnterpriseAuthEntry = @($stringCountEnterpriseAuthReport.entries | Where-Object { $_.group -eq "enterprise-auth" -and $_.fileName -eq "latest-enterprise-auth-smoke.json" })
 Assert-True ($stringCountEnterpriseAuthEntry.Count -eq 1) "String-count enterprise auth import entry missing."
 Assert-True (([string] $stringCountEnterpriseAuthEntry[0].detail).Contains("failCount=0(valid=False)")) "String-count enterprise auth report should describe invalid typed count."
+
+Write-JsonEvidence (Join-Path $weakEnterpriseAuthChecksRoot "latest-enterprise-auth-smoke.json") (New-ScopeOutEnterpriseAuthEvidence -Checks @(
+    @{ id = "enterprise-auth-scope-out-confirmed"; name = "Enterprise auth commercial scope-out confirmed"; category = "enterprise-auth"; endpoint = "commercial approval"; status = "PASS"; detail = "ConfirmScopeOut=True."; requiredInputs = @("ConfirmScopeOut") }
+))
+$weakEnterpriseAuthChecksOutput = Join-Path $resolvedOutputDirectory "weak-enterprise-auth-checks-promoted"
+$weakEnterpriseAuthChecksJson = Join-Path $resolvedOutputDirectory "weak-enterprise-auth-checks-import.json"
+$weakEnterpriseAuthChecksMarkdown = Join-Path $resolvedOutputDirectory "weak-enterprise-auth-checks-import.md"
+$previousErrorActionPreference = $ErrorActionPreference
+$ErrorActionPreference = "Continue"
+try {
+    $weakEnterpriseAuthChecksOutputLines = & powershell -NoProfile -ExecutionPolicy Bypass -File $importScript `
+        -EnterpriseAuthArtifactPath $weakEnterpriseAuthChecksRoot `
+        -OutputDirectory $weakEnterpriseAuthChecksOutput `
+        -JsonOutputPath $weakEnterpriseAuthChecksJson `
+        -MarkdownOutputPath $weakEnterpriseAuthChecksMarkdown 2>&1
+    $weakEnterpriseAuthChecksExitCode = $LASTEXITCODE
+}
+finally {
+    $ErrorActionPreference = $previousErrorActionPreference
+}
+Assert-True ($weakEnterpriseAuthChecksExitCode -ne 0) "Enterprise auth scope-out evidence without complete check rows should fail import."
+Assert-True (Test-Path -LiteralPath $weakEnterpriseAuthChecksJson) "Weak enterprise auth checks import report should still be written."
+$weakEnterpriseAuthChecksReport = Get-Content -Raw -LiteralPath $weakEnterpriseAuthChecksJson | ConvertFrom-Json
+Assert-True ($weakEnterpriseAuthChecksReport.result -eq "failed") "Weak enterprise auth checks import report should be failed."
+Assert-True (-not (Test-Path -LiteralPath (Join-Path $weakEnterpriseAuthChecksOutput "latest-enterprise-auth-smoke.json"))) "Weak enterprise auth checks evidence must not be promoted."
+Assert-True (($weakEnterpriseAuthChecksReport.entries | ConvertTo-Json -Depth 8).Contains("checks.enterprise-auth-scope-out-ref missing PASS")) "Weak enterprise auth checks report should describe missing scope-out check row."
 
 Write-JsonEvidence (Join-Path $staleOperationsHandoffPackageRoot "latest-operations-handoff-package.json") @{
     formatVersion = "osmu.operations-handoff-package.v1"

@@ -569,7 +569,7 @@ function Test-KubernetesHaDrReadinessEvidenceJson([string] $Path) {
     }
 
     $checksObject = Get-JsonProperty $json "checks"
-    $checks = if ($null -eq $checksObject) { @() } else { @($checksObject) }
+    [object[]] $checks = if ($null -eq $checksObject) { @() } else { @($checksObject | ForEach-Object { $_ }) }
     if ($checks.Count -lt 12) {
         return [pscustomobject]@{
             passed = $false
@@ -1065,7 +1065,7 @@ function Test-SecurityEvidenceFinalizerJson([string] $Path) {
     }
 
     $checksObject = Get-JsonProperty $json "checks"
-    $checks = if ($null -eq $checksObject) { @() } else { @($checksObject) }
+    [object[]] $checks = if ($null -eq $checksObject) { @() } else { @($checksObject | ForEach-Object { $_ }) }
     if ($checks.Count -le 0) {
         return [pscustomobject]@{
             passed = $false
@@ -2234,7 +2234,8 @@ function Test-CommercialApprovalEvidenceJson([string] $Path) {
 
 function Test-EnterpriseAuthEvidenceJson([string] $Path) {
     try {
-        $json = Get-Content -Raw -LiteralPath $Path | ConvertFrom-Json
+        $raw = Get-Content -Raw -LiteralPath $Path
+        $json = $raw | ConvertFrom-Json
     }
     catch {
         return [pscustomobject]@{
@@ -2243,19 +2244,102 @@ function Test-EnterpriseAuthEvidenceJson([string] $Path) {
         }
     }
 
-    $result = [string] (Get-JsonProperty $json "result")
-    if ($result -eq "passed") {
-        $summary = Get-JsonProperty $json "summary"
-        $passCount = Get-RequiredJsonInt $summary "passCount"
-        $failCount = Get-RequiredJsonInt $summary "failCount"
-        $blockedCount = Get-RequiredJsonInt $summary "blockedCount"
-        $plannedCount = Get-RequiredJsonInt $summary "plannedCount"
-        $skippedCount = Get-RequiredJsonInt $summary "skippedCount"
-        $countsValid = $passCount.valid -and $failCount.valid -and $blockedCount.valid -and $plannedCount.valid -and $skippedCount.valid
-        if (-not $countsValid) {
+    $formatVersion = [string] (Get-JsonProperty $json "formatVersion")
+    if ($formatVersion -ne "osmu.enterprise-auth-smoke.v1") {
+        return [pscustomobject]@{
+            passed = $false
+            detail = "formatVersion=$formatVersion expected=osmu.enterprise-auth-smoke.v1"
+        }
+    }
+
+    $generatedAt = [string] (Get-JsonProperty $json "generatedAt")
+    $parsedGeneratedAt = [DateTimeOffset]::MinValue
+    if ([string]::IsNullOrWhiteSpace($generatedAt) -or -not [DateTimeOffset]::TryParse($generatedAt, [ref] $parsedGeneratedAt)) {
+        return [pscustomobject]@{
+            passed = $false
+            detail = "generatedAt=$generatedAt expected ISO timestamp"
+        }
+    }
+
+    foreach ($field in @("executionMode", "decisionRule", "secretPolicy")) {
+        $value = [string] (Get-JsonProperty $json $field)
+        if ([string]::IsNullOrWhiteSpace($value)) {
             return [pscustomobject]@{
                 passed = $false
-                detail = "result=passed passCount=$($passCount.raw)(valid=$($passCount.valid)) failCount=$($failCount.raw)(valid=$($failCount.valid)) blockedCount=$($blockedCount.raw)(valid=$($blockedCount.valid)) plannedCount=$($plannedCount.raw)(valid=$($plannedCount.valid)) skippedCount=$($skippedCount.raw)(valid=$($skippedCount.valid)) expected typed integer counts"
+                detail = "$field missing"
+            }
+        }
+    }
+
+    $patterns = @(
+        '(?i)"(adminPassword|ldapPassword|accessToken|access_token|refreshToken|refresh_token|idToken|id_token|oidcCallbackCode|oidcCallbackState|clientSecret|client_secret|rawClaims|raw_claims|claims|authorizationCode|authorization_code|password|passwd|token|credential|privateKey|private_key)"\s*:',
+        '(?i)\b(password|passwd|secret|token|credential|client[_-]?secret|private[_-]?key)\s*=\s*\S+',
+        '(?i)\bBearer\s+[A-Za-z0-9._~+/=-]{12,}',
+        '-----BEGIN [A-Z ]*PRIVATE KEY-----'
+    )
+    foreach ($pattern in $patterns) {
+        if ($raw -match $pattern) {
+            return [pscustomobject]@{
+                passed = $false
+                detail = "enterprise auth evidence contains raw password/token/claim or credential-shaped content"
+            }
+        }
+    }
+
+    $executionMode = [string] (Get-JsonProperty $json "executionMode")
+    $summary = Get-JsonProperty $json "summary"
+    $passCount = Get-RequiredJsonInt $summary "passCount"
+    $failCount = Get-RequiredJsonInt $summary "failCount"
+    $blockedCount = Get-RequiredJsonInt $summary "blockedCount"
+    $plannedCount = Get-RequiredJsonInt $summary "plannedCount"
+    $skippedCount = Get-RequiredJsonInt $summary "skippedCount"
+    $countsValid = $passCount.valid -and $failCount.valid -and $blockedCount.valid -and $plannedCount.valid -and $skippedCount.valid
+    if (-not $countsValid) {
+        return [pscustomobject]@{
+            passed = $false
+            detail = "result=$([string] (Get-JsonProperty $json "result")) passCount=$($passCount.raw)(valid=$($passCount.valid)) failCount=$($failCount.raw)(valid=$($failCount.valid)) blockedCount=$($blockedCount.raw)(valid=$($blockedCount.valid)) plannedCount=$($plannedCount.raw)(valid=$($plannedCount.valid)) skippedCount=$($skippedCount.raw)(valid=$($skippedCount.valid)) expected typed integer counts"
+        }
+    }
+
+    $checksObject = Get-JsonProperty $json "checks"
+    [object[]] $checks = if ($null -eq $checksObject) { @() } else { @($checksObject | ForEach-Object { $_ }) }
+    if ($checks.Count -le 0) {
+        return [pscustomobject]@{
+            passed = $false
+            detail = "checks missing"
+        }
+    }
+
+    $result = [string] (Get-JsonProperty $json "result")
+    if ($result -eq "passed") {
+        if ($executionMode -ne "execute") {
+            return [pscustomobject]@{
+                passed = $false
+                detail = "result=passed executionMode=$executionMode expected=execute"
+            }
+        }
+
+        $apiBase = [string] (Get-JsonProperty $json "apiBase")
+        if ([string]::IsNullOrWhiteSpace($apiBase)) {
+            return [pscustomobject]@{
+                passed = $false
+                detail = "result=passed apiBase missing"
+            }
+        }
+
+        $requireOidc = Get-RequiredJsonBool $json "requireOidc"
+        $requireLdap = Get-RequiredJsonBool $json "requireLdap"
+        $requireAuditEvents = Get-RequiredJsonBool $json "requireAuditEvents"
+        if (-not $requireOidc.valid -or -not $requireLdap.valid -or -not $requireAuditEvents.valid) {
+            return [pscustomobject]@{
+                passed = $false
+                detail = "result=passed requireOidc=$($requireOidc.raw)(valid=$($requireOidc.valid)) requireLdap=$($requireLdap.raw)(valid=$($requireLdap.valid)) requireAuditEvents=$($requireAuditEvents.raw)(valid=$($requireAuditEvents.valid)) expected typed booleans"
+            }
+        }
+        if (-not $requireOidc.value -and -not $requireLdap.value) {
+            return [pscustomobject]@{
+                passed = $false
+                detail = "result=passed requires OIDC or LDAP target smoke selection"
             }
         }
         if ($passCount.value -le 0 -or $failCount.value -ne 0 -or $blockedCount.value -ne 0 -or $plannedCount.value -ne 0) {
@@ -2264,9 +2348,67 @@ function Test-EnterpriseAuthEvidenceJson([string] $Path) {
                 detail = "result=passed passCount=$($passCount.value) failCount=$($failCount.value) blockedCount=$($blockedCount.value) plannedCount=$($plannedCount.value) expected passCount>0 and fail/block/planned=0"
             }
         }
+
+        foreach ($statusName in @("FAIL", "BLOCKED", "PLANNED")) {
+            if (@($checks | Where-Object { [string] (Get-JsonProperty $_ "status") -eq $statusName }).Count -gt 0) {
+                return [pscustomobject]@{
+                    passed = $false
+                    detail = "result=passed contains $statusName check"
+                }
+            }
+        }
+
+        [object[]] $passRows = @($checks | Where-Object { [string] (Get-JsonProperty $_ "status") -eq "PASS" })
+        [object[]] $skippedRows = @($checks | Where-Object { [string] (Get-JsonProperty $_ "status") -eq "SKIPPED" })
+        if ($passRows.Count -ne $passCount.value -or $skippedRows.Count -ne $skippedCount.value) {
+            return [pscustomobject]@{
+                passed = $false
+                detail = "result=passed check status counts mismatch passRows=$($passRows.Count)/$($passCount.value) skippedRows=$($skippedRows.Count)/$($skippedCount.value)"
+            }
+        }
+
+        foreach ($requiredCheck in @("admin-login", "enterprise-auth-plan")) {
+            [object[]] $match = @($checks | Where-Object { [string] (Get-JsonProperty $_ "id") -eq $requiredCheck -and [string] (Get-JsonProperty $_ "status") -eq "PASS" })
+            if ($match.Count -ne 1) {
+                return [pscustomobject]@{
+                    passed = $false
+                    detail = "checks.$requiredCheck missing PASS"
+                }
+            }
+        }
+        if ($requireOidc.value) {
+            foreach ($requiredCheck in @("oidc-authorize", "oidc-callback")) {
+                [object[]] $match = @($checks | Where-Object { [string] (Get-JsonProperty $_ "id") -eq $requiredCheck -and [string] (Get-JsonProperty $_ "status") -eq "PASS" })
+                if ($match.Count -ne 1) {
+                    return [pscustomobject]@{
+                        passed = $false
+                        detail = "checks.$requiredCheck missing PASS"
+                    }
+                }
+            }
+        }
+        if ($requireLdap.value) {
+            [object[]] $ldapCheck = @($checks | Where-Object { [string] (Get-JsonProperty $_ "id") -eq "ldap-login" -and [string] (Get-JsonProperty $_ "status") -eq "PASS" })
+            if ($ldapCheck.Count -ne 1) {
+                return [pscustomobject]@{
+                    passed = $false
+                    detail = "checks.ldap-login missing PASS"
+                }
+            }
+        }
+        if ($requireAuditEvents.value) {
+            [object[]] $auditChecks = @($checks | Where-Object { ([string] (Get-JsonProperty $_ "id")).StartsWith("audit-log") -and [string] (Get-JsonProperty $_ "status") -eq "PASS" })
+            if ($auditChecks.Count -le 0) {
+                return [pscustomobject]@{
+                    passed = $false
+                    detail = "checks.audit-log missing PASS"
+                }
+            }
+        }
+
         return [pscustomobject]@{
             passed = $true
-            detail = "result=passed passCount=$($passCount.value) failCount=0 blockedCount=0 plannedCount=0 expected=passed|scope-out"
+            detail = "formatVersion=$formatVersion result=passed executionMode=$executionMode passCount=$($passCount.value) skippedCount=$($skippedCount.value) expected=passed|scope-out"
         }
     }
     if ($result -ne "scope-out") {
@@ -2275,21 +2417,43 @@ function Test-EnterpriseAuthEvidenceJson([string] $Path) {
             detail = "result=$result expected=passed|scope-out"
         }
     }
+    if ($executionMode -ne "scope-out") {
+        return [pscustomobject]@{
+            passed = $false
+            detail = "result=scope-out executionMode=$executionMode expected=scope-out"
+        }
+    }
 
     $scopeOut = Get-JsonProperty $json "scopeOut"
+    $confirmed = Get-RequiredJsonBool $scopeOut "confirmed"
     $accepted = Get-RequiredJsonBool $scopeOut "accepted"
     $reference = [string] (Get-JsonProperty $scopeOut "reference")
     $reason = [string] (Get-JsonProperty $scopeOut "reason")
-    if (-not $accepted.valid -or -not $accepted.value -or [string]::IsNullOrWhiteSpace($reference) -or [string]::IsNullOrWhiteSpace($reason)) {
+    if (-not $confirmed.valid -or -not $confirmed.value -or -not $accepted.valid -or -not $accepted.value -or [string]::IsNullOrWhiteSpace($reference) -or [string]::IsNullOrWhiteSpace($reason)) {
         return [pscustomobject]@{
             passed = $false
-            detail = "result=scope-out accepted=$($accepted.raw)(valid=$($accepted.valid)) referencePresent=$(-not [string]::IsNullOrWhiteSpace($reference)) reasonPresent=$(-not [string]::IsNullOrWhiteSpace($reason)) expected accepted boolean true with reference and reason"
+            detail = "result=scope-out confirmed=$($confirmed.raw)(valid=$($confirmed.valid)) accepted=$($accepted.raw)(valid=$($accepted.valid)) referencePresent=$(-not [string]::IsNullOrWhiteSpace($reference)) reasonPresent=$(-not [string]::IsNullOrWhiteSpace($reason)) expected confirmed/accepted boolean true with reference and reason"
+        }
+    }
+    if ($passCount.value -ne 3 -or $failCount.value -ne 0 -or $blockedCount.value -ne 0 -or $plannedCount.value -ne 0 -or $skippedCount.value -ne 0) {
+        return [pscustomobject]@{
+            passed = $false
+            detail = "result=scope-out passCount=$($passCount.value) failCount=$($failCount.value) blockedCount=$($blockedCount.value) plannedCount=$($plannedCount.value) skippedCount=$($skippedCount.value) expected pass=3 and fail/block/planned/skipped=0"
+        }
+    }
+    foreach ($requiredCheck in @("enterprise-auth-scope-out-confirmed", "enterprise-auth-scope-out-ref", "enterprise-auth-scope-out-reason")) {
+        [object[]] $match = @($checks | Where-Object { [string] (Get-JsonProperty $_ "id") -eq $requiredCheck -and [string] (Get-JsonProperty $_ "status") -eq "PASS" })
+        if ($match.Count -ne 1) {
+            return [pscustomobject]@{
+                passed = $false
+                detail = "checks.$requiredCheck missing PASS"
+            }
         }
     }
 
     return [pscustomobject]@{
         passed = $true
-        detail = "result=scope-out accepted=true expected=passed|scope-out"
+        detail = "formatVersion=$formatVersion result=scope-out executionMode=$executionMode accepted=true passCount=$($passCount.value) expected=passed|scope-out"
     }
 }
 
