@@ -1733,6 +1733,60 @@ function Test-CommercialIntegrationEvidenceJson([string] $Path) {
         }
     }
 
+    $generatedAt = [string] (Get-JsonProperty $json "generatedAt")
+    $parsedGeneratedAt = [DateTimeOffset]::MinValue
+    if ([string]::IsNullOrWhiteSpace($generatedAt) -or -not [DateTimeOffset]::TryParse($generatedAt, [ref] $parsedGeneratedAt)) {
+        return [pscustomobject]@{
+            passed = $false
+            detail = "generatedAt=$generatedAt expected ISO timestamp"
+        }
+    }
+
+    foreach ($field in @("environmentName", "targetCluster", "operatorName", "decisionRule", "scopePolicy", "secretPolicy")) {
+        $value = [string] (Get-JsonProperty $json $field)
+        if ([string]::IsNullOrWhiteSpace($value)) {
+            return [pscustomobject]@{
+                passed = $false
+                detail = "$field missing"
+            }
+        }
+    }
+
+    $verificationWindow = Get-JsonProperty $json "verificationWindow"
+    $verificationStartedAt = [string] (Get-JsonProperty $verificationWindow "startedAt")
+    $verificationCompletedAt = [string] (Get-JsonProperty $verificationWindow "completedAt")
+    $parsedVerificationStartedAt = [DateTimeOffset]::MinValue
+    $parsedVerificationCompletedAt = [DateTimeOffset]::MinValue
+    if ([string]::IsNullOrWhiteSpace($verificationStartedAt) -or -not [DateTimeOffset]::TryParse($verificationStartedAt, [ref] $parsedVerificationStartedAt)) {
+        return [pscustomobject]@{
+            passed = $false
+            detail = "verificationWindow.startedAt=$verificationStartedAt expected ISO timestamp"
+        }
+    }
+    if ([string]::IsNullOrWhiteSpace($verificationCompletedAt) -or -not [DateTimeOffset]::TryParse($verificationCompletedAt, [ref] $parsedVerificationCompletedAt)) {
+        return [pscustomobject]@{
+            passed = $false
+            detail = "verificationWindow.completedAt=$verificationCompletedAt expected ISO timestamp"
+        }
+    }
+    if ($parsedVerificationCompletedAt -lt $parsedVerificationStartedAt) {
+        return [pscustomobject]@{
+            passed = $false
+            detail = "verificationWindow completedAt must be same as or later than startedAt"
+        }
+    }
+
+    $evidenceRefs = Get-JsonProperty $json "evidenceRefs"
+    foreach ($refName in @("changeApproval", "paymentProviderAdapterReadiness", "adapterRetryWorker", "payloadReview", "privateNetworkBlocking", "hmacSignature")) {
+        $refValue = [string] (Get-JsonProperty $evidenceRefs $refName)
+        if ([string]::IsNullOrWhiteSpace($refValue)) {
+            return [pscustomobject]@{
+                passed = $false
+                detail = "evidenceRefs.$refName missing"
+            }
+        }
+    }
+
     $patterns = @(
         '(?i)"(rawProviderResponse|raw_provider_response|providerResponse|provider_response|responseBody|response_body|responseHeaders|response_headers|webhookUrl|webhook_url|endpointUrl|endpoint_url|callbackUrl|callback_url|customerPaymentData|customer_payment_data|customerEmail|customer_email|customerName|customer_name|cardNumber|card_number|pan|bankAccount|bank_account|routingNumber|routing_number|taxId|tax_id|paymentTargetAccount|payment_target_account|password|passwd|secret|token|credential|apiKey|api_key|accessKey|access_key|privateKey|private_key)"\s*:',
         '(?i)\b(password|passwd|secret|token|credential|api[_-]?key|access[_-]?key|private[_-]?key|webhook[_-]?secret|smtp[_-]?pass)\s*=\s*\S+',
@@ -1777,10 +1831,10 @@ function Test-CommercialIntegrationEvidenceJson([string] $Path) {
         }
     }
 
-    if ($requiredCount.value -le 0 -or $requiredVerifiedCount.value -ne $requiredCount.value -or $verifiedCount.value -lt $requiredCount.value -or $failureCount.value -ne 0 -or $plannedCount.value -ne 0) {
+    if ($integrationCount.value -ne 8 -or $requiredCount.value -ne 8 -or $requiredVerifiedCount.value -ne $requiredCount.value -or $verifiedCount.value -lt $requiredCount.value -or $failureCount.value -ne 0 -or $plannedCount.value -ne 0) {
         return [pscustomobject]@{
             passed = $false
-            detail = "required integration coverage incomplete requiredVerified=$($requiredVerifiedCount.value)/$($requiredCount.value) verified=$($verifiedCount.value) failures=$($failureCount.value) planned=$($plannedCount.value)"
+            detail = "required integration coverage incomplete integrations=$($integrationCount.value) requiredVerified=$($requiredVerifiedCount.value)/$($requiredCount.value) verified=$($verifiedCount.value) failures=$($failureCount.value) planned=$($plannedCount.value)"
         }
     }
 
@@ -1837,9 +1891,89 @@ function Test-CommercialIntegrationEvidenceJson([string] $Path) {
         }
     }
 
+    $integrationsObject = Get-JsonProperty $json "integrations"
+    $integrations = if ($null -eq $integrationsObject) { @() } else { @($integrationsObject) }
+    foreach ($requiredIntegration in @(
+        "notification-webhook",
+        "notification-slack",
+        "notification-email-smtp",
+        "payment-generic-webhook",
+        "payment-card-profile",
+        "payment-bank-profile",
+        "payment-tax-profile",
+        "payment-erp-profile"
+    )) {
+        $match = @($integrations | Where-Object { [string] (Get-JsonProperty $_ "id") -eq $requiredIntegration })
+        if ($match.Count -ne 1) {
+            return [pscustomobject]@{
+                passed = $false
+                detail = "integrations.$requiredIntegration missing"
+            }
+        }
+
+        $integrationRequired = Get-RequiredJsonBool $match[0] "required"
+        $integrationVerified = Get-RequiredJsonBool $match[0] "verified"
+        $integrationEvidenceRef = [string] (Get-JsonProperty $match[0] "evidenceRef")
+        if (-not $integrationRequired.valid -or -not $integrationRequired.value -or -not $integrationVerified.valid -or -not $integrationVerified.value -or [string]::IsNullOrWhiteSpace($integrationEvidenceRef)) {
+            return [pscustomobject]@{
+                passed = $false
+                detail = "integrations.$requiredIntegration required=$($integrationRequired.raw) verified=$($integrationVerified.raw) evidenceRefPresent=$(-not [string]::IsNullOrWhiteSpace($integrationEvidenceRef)) expected required/verified true with evidence ref"
+            }
+        }
+    }
+
+    $checksObject = Get-JsonProperty $json "checks"
+    $checks = if ($null -eq $checksObject) { @() } else { @($checksObject) }
+    foreach ($requiredCheck in @(
+        "environment-name",
+        "target-cluster",
+        "operator",
+        "verification-started-at",
+        "verification-completed-at",
+        "verification-window-order",
+        "change-approval-ref",
+        "no-secret-values-confirmed",
+        "no-raw-provider-responses-confirmed",
+        "payload-size-caps-confirmed",
+        "private-network-blocking-confirmed",
+        "hmac-signature-confirmed",
+        "adapter-retry-worker-confirmed",
+        "payment-provider-adapter-readiness-snapshot",
+        "payment-provider-adapter-readiness-counts-typed",
+        "payment-provider-adapter-readiness-booleans-typed",
+        "payment-provider-adapter-readiness-profile-coverage",
+        "payment-provider-adapter-readiness-reviewed",
+        "integration-notification-webhook",
+        "integration-notification-slack",
+        "integration-notification-email-smtp",
+        "integration-payment-generic-webhook",
+        "integration-payment-card-profile",
+        "integration-payment-bank-profile",
+        "integration-payment-tax-profile",
+        "integration-payment-erp-profile",
+        "required-integration-coverage"
+    )) {
+        $match = @($checks | Where-Object { [string] (Get-JsonProperty $_ "id") -eq $requiredCheck })
+        if ($match.Count -ne 1) {
+            return [pscustomobject]@{
+                passed = $false
+                detail = "checks.$requiredCheck missing"
+            }
+        }
+
+        $checkPassed = Get-RequiredJsonBool $match[0] "passed"
+        $checkStatus = [string] (Get-JsonProperty $match[0] "status")
+        if (-not $checkPassed.valid -or -not $checkPassed.value -or $checkStatus -ne "PASS") {
+            return [pscustomobject]@{
+                passed = $false
+                detail = "checks.$requiredCheck status=$checkStatus passed=$($checkPassed.raw) expected PASS and boolean true"
+            }
+        }
+    }
+
     return [pscustomobject]@{
         passed = $true
-        detail = "formatVersion=$formatVersion result=$result requiredVerified=$($requiredVerifiedCount.value)/$($requiredCount.value) webhookReadyProfiles=$($webhookReadyProfileCount.value) nativeReadyProfiles=$($nativeReadyProfileCount.value) failures=$($failureCount.value)"
+        detail = "formatVersion=$formatVersion result=$result environmentName=$($json.environmentName) targetCluster=$($json.targetCluster) requiredVerified=$($requiredVerifiedCount.value)/$($requiredCount.value) webhookReadyProfiles=$($webhookReadyProfileCount.value) nativeReadyProfiles=$($nativeReadyProfileCount.value) failures=$($failureCount.value) integrations=$($integrations.Count) checkCount=$($checks.Count)"
     }
 }
 

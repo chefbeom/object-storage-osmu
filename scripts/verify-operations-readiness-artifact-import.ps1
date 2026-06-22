@@ -485,6 +485,7 @@ $missingCountMonitoringThresholdRoot = Join-Path $resolvedOutputDirectory "missi
 $weakSecretRotationRoot = Join-Path $resolvedOutputDirectory "weak-secret-rotation-source"
 $weakSecretRotationChecksRoot = Join-Path $resolvedOutputDirectory "weak-secret-rotation-checks-source"
 $weakCommercialIntegrationRoot = Join-Path $resolvedOutputDirectory "weak-commercial-integration-source"
+$weakCommercialIntegrationChecksRoot = Join-Path $resolvedOutputDirectory "weak-commercial-integration-checks-source"
 $weakCommercialApprovalRoot = Join-Path $resolvedOutputDirectory "weak-commercial-approval-source"
 $invalidEnterpriseAuthRoot = Join-Path $resolvedOutputDirectory "invalid-enterprise-auth-source"
 $stringCountEnterpriseAuthRoot = Join-Path $resolvedOutputDirectory "string-count-enterprise-auth-source"
@@ -717,7 +718,23 @@ Write-JsonEvidence (Join-Path $secretRotationSource "latest-secret-rotation-evid
 Write-TextEvidence (Join-Path $secretRotationSource "latest-secret-rotation-evidence.md") "# Secret rotation"
 Write-JsonEvidence (Join-Path $commercialIntegrationSource "latest-commercial-integration-evidence.json") @{
     formatVersion = "osmu.commercial-integration-evidence.v1"
+    generatedAt = "2026-06-22T00:00:00Z"
     result = "passed"
+    environmentName = "prod"
+    targetCluster = "osmu-prod"
+    operatorName = "ops-owner"
+    verificationWindow = @{
+        startedAt = "2026-06-20T00:30:00Z"
+        completedAt = "2026-06-20T01:00:00Z"
+    }
+    evidenceRefs = @{
+        changeApproval = "commercial-integration-20260620"
+        paymentProviderAdapterReadiness = "payment-adapter-readiness-20260620"
+        adapterRetryWorker = "adapter-retry-20260620"
+        payloadReview = "payload-review-20260620"
+        privateNetworkBlocking = "private-block-20260620"
+        hmacSignature = "hmac-review-20260620"
+    }
     confirmations = @{
         noSecretValues = $true
         noRawProviderResponses = $true
@@ -729,6 +746,16 @@ Write-JsonEvidence (Join-Path $commercialIntegrationSource "latest-commercial-in
         requireAllImplementedAdapters = $true
         requirePaymentProviderAdapterReadinessReview = $true
     }
+    integrations = @(
+        @{ id = "notification-webhook"; required = $true; verified = $true; evidenceRef = "notification-webhook-20260620" },
+        @{ id = "notification-slack"; required = $true; verified = $true; evidenceRef = "slack-webhook-20260620" },
+        @{ id = "notification-email-smtp"; required = $true; verified = $true; evidenceRef = "email-smtp-20260620" },
+        @{ id = "payment-generic-webhook"; required = $true; verified = $true; evidenceRef = "payment-generic-20260620" },
+        @{ id = "payment-card-profile"; required = $true; verified = $true; evidenceRef = "payment-card-20260620" },
+        @{ id = "payment-bank-profile"; required = $true; verified = $true; evidenceRef = "payment-bank-20260620" },
+        @{ id = "payment-tax-profile"; required = $true; verified = $true; evidenceRef = "payment-tax-20260620" },
+        @{ id = "payment-erp-profile"; required = $true; verified = $true; evidenceRef = "payment-erp-20260620" }
+    )
     paymentProviderAdapterReadiness = @{
         required = $true
         reviewed = $true
@@ -766,6 +793,38 @@ Write-JsonEvidence (Join-Path $commercialIntegrationSource "latest-commercial-in
         failureCount = 0
         plannedCount = 0
     }
+    checks = @(
+        @{ id = "environment-name"; status = "PASS"; passed = $true },
+        @{ id = "target-cluster"; status = "PASS"; passed = $true },
+        @{ id = "operator"; status = "PASS"; passed = $true },
+        @{ id = "verification-started-at"; status = "PASS"; passed = $true },
+        @{ id = "verification-completed-at"; status = "PASS"; passed = $true },
+        @{ id = "verification-window-order"; status = "PASS"; passed = $true },
+        @{ id = "change-approval-ref"; status = "PASS"; passed = $true },
+        @{ id = "no-secret-values-confirmed"; status = "PASS"; passed = $true },
+        @{ id = "no-raw-provider-responses-confirmed"; status = "PASS"; passed = $true },
+        @{ id = "payload-size-caps-confirmed"; status = "PASS"; passed = $true },
+        @{ id = "private-network-blocking-confirmed"; status = "PASS"; passed = $true },
+        @{ id = "hmac-signature-confirmed"; status = "PASS"; passed = $true },
+        @{ id = "adapter-retry-worker-confirmed"; status = "PASS"; passed = $true },
+        @{ id = "payment-provider-adapter-readiness-snapshot"; status = "PASS"; passed = $true },
+        @{ id = "payment-provider-adapter-readiness-counts-typed"; status = "PASS"; passed = $true },
+        @{ id = "payment-provider-adapter-readiness-booleans-typed"; status = "PASS"; passed = $true },
+        @{ id = "payment-provider-adapter-readiness-profile-coverage"; status = "PASS"; passed = $true },
+        @{ id = "payment-provider-adapter-readiness-reviewed"; status = "PASS"; passed = $true },
+        @{ id = "integration-notification-webhook"; status = "PASS"; passed = $true },
+        @{ id = "integration-notification-slack"; status = "PASS"; passed = $true },
+        @{ id = "integration-notification-email-smtp"; status = "PASS"; passed = $true },
+        @{ id = "integration-payment-generic-webhook"; status = "PASS"; passed = $true },
+        @{ id = "integration-payment-card-profile"; status = "PASS"; passed = $true },
+        @{ id = "integration-payment-bank-profile"; status = "PASS"; passed = $true },
+        @{ id = "integration-payment-tax-profile"; status = "PASS"; passed = $true },
+        @{ id = "integration-payment-erp-profile"; status = "PASS"; passed = $true },
+        @{ id = "required-integration-coverage"; status = "PASS"; passed = $true }
+    )
+    decisionRule = "Production/B2B commercial integration readiness requires result=passed from the target environment for every required notification/payment handoff adapter profile, payment-provider adapter readiness review, adapter retry worker evidence, payload cap check, private/local endpoint blocking check, HMAC signature review, no-secret confirmation, and no-raw-provider-response confirmation."
+    scopePolicy = "This evidence covers configured webhook/Slack/EMAIL SMTP relay, generic/CARD/BANK/TAX/ERP payment webhook profile handoff verification, and the sanitized payment-provider adapter readiness snapshot. It does not claim or require native card, bank, tax invoice, or ERP processor API support."
+    secretPolicy = "Evidence stores only environment labels, operator/change references, timestamps, booleans, and external evidence references; it does not contain webhook URLs with credentials, SMTP passwords, payment provider credentials, signing secrets, bearer tokens, private keys, raw provider responses, or customer payment data."
 }
 Write-TextEvidence (Join-Path $commercialIntegrationSource "latest-commercial-integration-evidence.md") "# Commercial integration"
 Write-JsonEvidence (Join-Path $commercialApprovalSource "latest-commercial-approval-evidence.json") @{
@@ -1048,7 +1107,7 @@ Assert-True ($secretRotationEntry.Count -eq 1) "Secret rotation import entry mis
 Assert-True (([string] $secretRotationEntry[0].detail).Contains("targetCluster=osmu-prod") -and ([string] $secretRotationEntry[0].detail).Contains("coreRotated=5/5") -and ([string] $secretRotationEntry[0].detail).Contains("checkCount=16")) "Secret rotation import entry should include target metadata and core rotation validation detail."
 $commercialIntegrationEntry = @($report.entries | Where-Object { $_.group -eq "commercial-integration" -and $_.fileName -eq "latest-commercial-integration-evidence.json" })
 Assert-True ($commercialIntegrationEntry.Count -eq 1) "Commercial integration import entry missing."
-Assert-True (([string] $commercialIntegrationEntry[0].detail).Contains("requiredVerified=8/8")) "Commercial integration import entry should include required adapter validation detail."
+Assert-True (([string] $commercialIntegrationEntry[0].detail).Contains("targetCluster=osmu-prod") -and ([string] $commercialIntegrationEntry[0].detail).Contains("requiredVerified=8/8") -and ([string] $commercialIntegrationEntry[0].detail).Contains("checkCount=27")) "Commercial integration import entry should include target metadata and required adapter validation detail."
 $commercialApprovalEntry = @($report.entries | Where-Object { $_.group -eq "commercial-approval" -and $_.fileName -eq "latest-commercial-approval-evidence.json" })
 Assert-True ($commercialApprovalEntry.Count -eq 1) "Commercial approval import entry missing."
 Assert-True (([string] $commercialApprovalEntry[0].detail).Contains("commercialApproved=1")) "Commercial approval import entry should include commercial approval validation detail."
@@ -2090,7 +2149,13 @@ Assert-True (($weakSecretRotationChecksReport.entries | ConvertTo-Json -Depth 8)
 
 Write-JsonEvidence (Join-Path $weakCommercialIntegrationRoot "latest-commercial-integration-evidence.json") @{
     formatVersion = "osmu.commercial-integration-evidence.v1"
+    generatedAt = "2026-06-22T00:00:00Z"
     result = "passed"
+    targetCluster = "osmu-prod"
+    operatorName = "ops-owner"
+    decisionRule = "Production/B2B commercial integration readiness requires passed target evidence."
+    scopePolicy = "This evidence covers configured webhook profiles and sanitized payment adapter readiness."
+    secretPolicy = "Evidence stores only references and booleans, not raw provider responses or credentials."
 }
 $weakCommercialIntegrationOutput = Join-Path $resolvedOutputDirectory "weak-commercial-integration-promoted"
 $weakCommercialIntegrationJson = Join-Path $resolvedOutputDirectory "weak-commercial-integration-import.json"
@@ -2108,14 +2173,121 @@ try {
 finally {
     $ErrorActionPreference = $previousErrorActionPreference
 }
-Assert-True ($weakCommercialIntegrationExitCode -ne 0) "Commercial integration evidence without typed adapter summary and confirmations should fail import."
+Assert-True ($weakCommercialIntegrationExitCode -ne 0) "Commercial integration evidence without required target metadata should fail import."
 Assert-True (Test-Path -LiteralPath $weakCommercialIntegrationJson) "Weak commercial integration import report should still be written."
 $weakCommercialIntegrationReport = Get-Content -Raw -LiteralPath $weakCommercialIntegrationJson | ConvertFrom-Json
 Assert-True ($weakCommercialIntegrationReport.result -eq "failed") "Weak commercial integration import report should be failed."
 Assert-True (-not (Test-Path -LiteralPath (Join-Path $weakCommercialIntegrationOutput "latest-commercial-integration-evidence.json"))) "Weak commercial integration evidence must not be promoted."
 $weakCommercialIntegrationEntry = @($weakCommercialIntegrationReport.entries | Where-Object { $_.group -eq "commercial-integration" -and $_.fileName -eq "latest-commercial-integration-evidence.json" })
 Assert-True ($weakCommercialIntegrationEntry.Count -eq 1) "Weak commercial integration failed entry missing."
-Assert-True (([string] $weakCommercialIntegrationEntry[0].detail).Contains("integrationCount=<missing>(valid=False) expected integer")) "Weak commercial integration report should describe missing typed summary count."
+Assert-True (([string] $weakCommercialIntegrationEntry[0].detail).Contains("environmentName missing")) "Weak commercial integration report should describe missing target environment metadata."
+
+Write-JsonEvidence (Join-Path $weakCommercialIntegrationChecksRoot "latest-commercial-integration-evidence.json") @{
+    formatVersion = "osmu.commercial-integration-evidence.v1"
+    generatedAt = "2026-06-22T00:00:00Z"
+    result = "passed"
+    environmentName = "prod"
+    targetCluster = "osmu-prod"
+    operatorName = "ops-owner"
+    verificationWindow = @{
+        startedAt = "2026-06-20T00:30:00Z"
+        completedAt = "2026-06-20T01:00:00Z"
+    }
+    evidenceRefs = @{
+        changeApproval = "commercial-integration-20260620"
+        paymentProviderAdapterReadiness = "payment-adapter-readiness-20260620"
+        adapterRetryWorker = "adapter-retry-20260620"
+        payloadReview = "payload-review-20260620"
+        privateNetworkBlocking = "private-block-20260620"
+        hmacSignature = "hmac-review-20260620"
+    }
+    confirmations = @{
+        noSecretValues = $true
+        noRawProviderResponses = $true
+        payloadSizeCaps = $true
+        privateNetworkBlocking = $true
+        hmacSignatureHeaders = $true
+        paymentProviderAdapterReadinessReviewed = $true
+        adapterRetryWorkerRun = $true
+        requireAllImplementedAdapters = $true
+        requirePaymentProviderAdapterReadinessReview = $true
+    }
+    integrations = @(
+        @{ id = "notification-webhook"; required = $true; verified = $true; evidenceRef = "notification-webhook-20260620" },
+        @{ id = "notification-slack"; required = $true; verified = $true; evidenceRef = "slack-webhook-20260620" },
+        @{ id = "notification-email-smtp"; required = $true; verified = $true; evidenceRef = "email-smtp-20260620" },
+        @{ id = "payment-generic-webhook"; required = $true; verified = $true; evidenceRef = "payment-generic-20260620" },
+        @{ id = "payment-card-profile"; required = $true; verified = $true; evidenceRef = "payment-card-20260620" },
+        @{ id = "payment-bank-profile"; required = $true; verified = $true; evidenceRef = "payment-bank-20260620" },
+        @{ id = "payment-tax-profile"; required = $true; verified = $true; evidenceRef = "payment-tax-20260620" },
+        @{ id = "payment-erp-profile"; required = $true; verified = $true; evidenceRef = "payment-erp-20260620" }
+    )
+    paymentProviderAdapterReadiness = @{
+        required = $true
+        reviewed = $true
+        evidenceRef = "payment-adapter-readiness-run-20260620"
+        snapshot = @{
+            provided = $true
+            parsed = $true
+            validMode = $true
+            status = "WEBHOOK_PROFILE_READY"
+            nativeApiSupported = $false
+            nativeApiReady = $false
+            profileCount = 5
+            webhookReadyProfileCount = 5
+            nativeApiReadyProfileCount = 0
+            countsValid = $true
+            booleansValid = $true
+            profiles = @(
+                @{ providerProfile = "GENERIC"; webhookProfileConfigured = $true; nativeApiSupported = $false; nativeApiReady = $false },
+                @{ providerProfile = "CARD"; webhookProfileConfigured = $true; nativeApiSupported = $false; nativeApiReady = $false },
+                @{ providerProfile = "BANK"; webhookProfileConfigured = $true; nativeApiSupported = $false; nativeApiReady = $false },
+                @{ providerProfile = "TAX"; webhookProfileConfigured = $true; nativeApiSupported = $false; nativeApiReady = $false },
+                @{ providerProfile = "ERP"; webhookProfileConfigured = $true; nativeApiSupported = $false; nativeApiReady = $false }
+            )
+        }
+    }
+    summary = @{
+        integrationCount = 8
+        verifiedCount = 8
+        requiredCount = 8
+        requiredVerifiedCount = 8
+        paymentProviderAdapterReadinessReviewed = $true
+        paymentProviderAdapterReadinessStatus = "WEBHOOK_PROFILE_READY"
+        paymentProviderAdapterWebhookReadyProfileCount = 5
+        paymentProviderAdapterNativeReadyProfileCount = 0
+        failureCount = 0
+        plannedCount = 0
+    }
+    checks = @(
+        @{ id = "environment-name"; status = "PASS"; passed = $true }
+    )
+    decisionRule = "Production/B2B commercial integration readiness requires result=passed from the target environment for every required notification/payment handoff adapter profile, payment-provider adapter readiness review, adapter retry worker evidence, payload cap check, private/local endpoint blocking check, HMAC signature review, no-secret confirmation, and no-raw-provider-response confirmation."
+    scopePolicy = "This evidence covers configured webhook/Slack/EMAIL SMTP relay, generic/CARD/BANK/TAX/ERP payment webhook profile handoff verification, and the sanitized payment-provider adapter readiness snapshot. It does not claim or require native card, bank, tax invoice, or ERP processor API support."
+    secretPolicy = "Evidence stores only environment labels, operator/change references, timestamps, booleans, and external evidence references; it does not contain webhook URLs with credentials, SMTP passwords, payment provider credentials, signing secrets, bearer tokens, private keys, raw provider responses, or customer payment data."
+}
+$weakCommercialIntegrationChecksOutput = Join-Path $resolvedOutputDirectory "weak-commercial-integration-checks-promoted"
+$weakCommercialIntegrationChecksJson = Join-Path $resolvedOutputDirectory "weak-commercial-integration-checks-import.json"
+$weakCommercialIntegrationChecksMarkdown = Join-Path $resolvedOutputDirectory "weak-commercial-integration-checks-import.md"
+$previousErrorActionPreference = $ErrorActionPreference
+$ErrorActionPreference = "Continue"
+try {
+    $weakCommercialIntegrationChecksOutputLines = & powershell -NoProfile -ExecutionPolicy Bypass -File $importScript `
+        -CommercialIntegrationArtifactPath $weakCommercialIntegrationChecksRoot `
+        -OutputDirectory $weakCommercialIntegrationChecksOutput `
+        -JsonOutputPath $weakCommercialIntegrationChecksJson `
+        -MarkdownOutputPath $weakCommercialIntegrationChecksMarkdown 2>&1
+    $weakCommercialIntegrationChecksExitCode = $LASTEXITCODE
+}
+finally {
+    $ErrorActionPreference = $previousErrorActionPreference
+}
+Assert-True ($weakCommercialIntegrationChecksExitCode -ne 0) "Commercial integration evidence without complete check rows should fail import."
+Assert-True (Test-Path -LiteralPath $weakCommercialIntegrationChecksJson) "Weak commercial integration checks import report should still be written."
+$weakCommercialIntegrationChecksReport = Get-Content -Raw -LiteralPath $weakCommercialIntegrationChecksJson | ConvertFrom-Json
+Assert-True ($weakCommercialIntegrationChecksReport.result -eq "failed") "Weak commercial integration checks import report should be failed."
+Assert-True (-not (Test-Path -LiteralPath (Join-Path $weakCommercialIntegrationChecksOutput "latest-commercial-integration-evidence.json"))) "Weak commercial integration checks evidence must not be promoted."
+Assert-True (($weakCommercialIntegrationChecksReport.entries | ConvertTo-Json -Depth 8).Contains("checks.target-cluster missing")) "Weak commercial integration checks report should describe missing target check row."
 
 Write-JsonEvidence (Join-Path $weakCommercialApprovalRoot "latest-commercial-approval-evidence.json") @{
     formatVersion = "osmu.commercial-approval-evidence.v1"
