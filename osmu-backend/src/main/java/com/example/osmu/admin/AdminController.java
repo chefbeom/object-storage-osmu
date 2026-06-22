@@ -139,6 +139,7 @@ public class AdminController {
     private final String commercialApprovalEvidenceReportPath;
     private final String enterpriseAuthSmokeEvidenceReportPath;
     private final String dataFlowStoragePlanReportPath;
+    private final String dataFlowStorageTransitionRunbookReportPath;
     private final String storageBackendTelemetryReportPath;
     private final String monitoringThresholdEvidenceReportPath;
     private final String minioBucketCorsVerificationReportPath;
@@ -202,6 +203,7 @@ public class AdminController {
             @Value("${osmu.operations.readiness.commercial-approval-evidence-report-path:.osmu-run/latest-commercial-approval-evidence.json}") String commercialApprovalEvidenceReportPath,
             @Value("${osmu.operations.readiness.enterprise-auth-smoke-evidence-report-path:.osmu-run/latest-enterprise-auth-smoke.json}") String enterpriseAuthSmokeEvidenceReportPath,
             @Value("${osmu.operations.readiness.data-flow-storage-plan-report-path:.osmu-run/latest-data-flow-storage-plan.json}") String dataFlowStoragePlanReportPath,
+            @Value("${osmu.operations.readiness.data-flow-storage-transition-runbook-report-path:.osmu-run/latest-data-flow-storage-transition-runbook-evidence.json}") String dataFlowStorageTransitionRunbookReportPath,
             @Value("${osmu.operations.readiness.storage-backend-telemetry-report-path:.osmu-run/latest-storage-backend-telemetry.json}") String storageBackendTelemetryReportPath,
             @Value("${osmu.operations.readiness.monitoring-threshold-evidence-report-path:.osmu-run/latest-monitoring-threshold-evidence.json}") String monitoringThresholdEvidenceReportPath,
             @Value("${osmu.operations.readiness.minio-bucket-cors-verification-report-path:.osmu-run/latest-minio-bucket-cors-verification.json}") String minioBucketCorsVerificationReportPath,
@@ -264,6 +266,7 @@ public class AdminController {
         this.commercialApprovalEvidenceReportPath = blankToNull(commercialApprovalEvidenceReportPath);
         this.enterpriseAuthSmokeEvidenceReportPath = blankToNull(enterpriseAuthSmokeEvidenceReportPath);
         this.dataFlowStoragePlanReportPath = blankToNull(dataFlowStoragePlanReportPath);
+        this.dataFlowStorageTransitionRunbookReportPath = blankToNull(dataFlowStorageTransitionRunbookReportPath);
         this.storageBackendTelemetryReportPath = blankToNull(storageBackendTelemetryReportPath);
         this.monitoringThresholdEvidenceReportPath = blankToNull(monitoringThresholdEvidenceReportPath);
         this.minioBucketCorsVerificationReportPath = blankToNull(minioBucketCorsVerificationReportPath);
@@ -939,6 +942,8 @@ public class AdminController {
         DashboardCommercialApprovalEvidenceResponse commercialApprovalEvidence = commercialApprovalEvidenceSnapshot();
         DashboardEnterpriseAuthSmokeEvidenceResponse enterpriseAuthSmokeEvidence = enterpriseAuthSmokeEvidenceSnapshot();
         DashboardDataFlowStoragePlanResponse dataFlowStoragePlan = dataFlowStoragePlanSnapshot();
+        DashboardDataFlowStorageTransitionRunbookResponse dataFlowStorageTransitionRunbook =
+                dataFlowStorageTransitionRunbookSnapshot();
         DashboardStorageBackendTelemetryEvidenceResponse storageBackendTelemetryEvidence = storageBackendTelemetryEvidenceSnapshot();
         DashboardMonitoringThresholdEvidenceResponse monitoringThresholdEvidence = monitoringThresholdEvidenceSnapshot();
         DashboardMinioBucketCorsVerificationResponse minioBucketCorsVerification = minioBucketCorsVerificationSnapshot();
@@ -977,6 +982,7 @@ public class AdminController {
                 commercialApprovalEvidence,
                 enterpriseAuthSmokeEvidence,
                 dataFlowStoragePlan,
+                dataFlowStorageTransitionRunbook,
                 storageBackendTelemetryEvidence,
                 monitoringThresholdEvidence,
                 minioBucketCorsVerification,
@@ -1635,6 +1641,7 @@ public class AdminController {
         addCommercialApprovalEvidenceItem(items);
         addEnterpriseAuthSmokeEvidenceItem(items);
         addDataFlowStoragePlanItem(items);
+        addDataFlowStorageTransitionRunbookItem(items);
         addStorageBackendTelemetryEvidenceItem(items);
         addMonitoringThresholdEvidenceItem(items);
         addMinioBucketCorsVerificationItem(items);
@@ -3322,6 +3329,40 @@ public class AdminController {
     private DashboardDataFlowStoragePlanResponse dataFlowStoragePlanSnapshot() {
         JsonNode planReport = readOptionalJsonReport(dataFlowStoragePlanReportPath);
         return dataFlowStoragePlanSnapshotFromNode(planReport, true);
+    }
+
+    private void addDataFlowStorageTransitionRunbookItem(java.util.ArrayList<DashboardReadinessItemResponse> items) {
+        DashboardDataFlowStorageTransitionRunbookResponse evidence = dataFlowStorageTransitionRunbookSnapshot();
+        if (evidence.result().isBlank() || "passed".equalsIgnoreCase(evidence.result())) {
+            return;
+        }
+        addReadinessItem(
+                items,
+                "WARNING",
+                "OPERATIONS",
+                "DATA_FLOW_STORAGE_TRANSITION_RUNBOOK",
+                "Data-flow transition runbook evidence is %s: store=%s, failures=%d/%d.".formatted(
+                        evidence.result(),
+                        evidence.candidateStore().isBlank() ? "unknown" : evidence.candidateStore(),
+                        evidence.failureCount(),
+                        evidence.checkCount()
+                ),
+                "dashboard",
+                "dashboard-readiness-panel",
+                "Data-flow runbook",
+                dataFlowStorageTransitionRunbookReportPath == null ? "" : dataFlowStorageTransitionRunbookReportPath,
+                "powershell -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\write-data-flow-storage-transition-runbook-evidence.ps1 -EnvironmentName <env> -TargetCluster <cluster> -Operator <operator> -ReviewStartedAt <iso-time> -ReviewCompletedAt <iso-time> -ChangeApprovalRef <change-id> -DataFlowStoragePlanJsonPath .\\.osmu-run\\latest-data-flow-storage-plan.json -DataFlowStoragePlanEvidenceRef <ref> -BackfillEvidenceRef <ref> -DualWriteOrPartitionToggleEvidenceRef <ref> -RollbackEvidenceRef <ref> -ReconciliationEvidenceRef <ref> -DashboardCutoverEvidenceRef <ref> -RetentionDryRunEvidenceRef <ref> -EvidenceRef <run-ref> -ConfirmBackfillRehearsed -ConfirmDualWriteOrPartitionToggleReviewed -ConfirmRollbackRehearsed -ConfirmReconciliationPassed -ConfirmDashboardCutoverReviewed -ConfirmRetentionDryRunReviewed -ConfirmNoObjectKeysInAggregates -ConfirmNoSecretValues -FailIfNotPassed",
+                ".github/workflows/manual-data-flow-storage-transition-runbook-evidence.yml",
+                "",
+                evidence.scopePolicy().isBlank()
+                        ? "Collect target transition runbook evidence before production/B2B readiness."
+                        : evidence.scopePolicy()
+        );
+    }
+
+    private DashboardDataFlowStorageTransitionRunbookResponse dataFlowStorageTransitionRunbookSnapshot() {
+        JsonNode report = readOptionalJsonReport(dataFlowStorageTransitionRunbookReportPath);
+        return dataFlowStorageTransitionRunbookSnapshotFromNode(report, true);
     }
 
     private DashboardDataFlowStoragePlanResponse dataFlowStoragePlanSnapshotFromNode(JsonNode planReport, boolean emptyWhenMissing) {

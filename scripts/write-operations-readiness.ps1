@@ -15,6 +15,7 @@ param(
     [string] $EnterpriseAuthSmokeEvidencePath = ".\.osmu-run\latest-enterprise-auth-smoke.json",
     [string] $OperationsHandoffPackagePath = ".\.osmu-run\latest-operations-handoff-package.json",
     [string] $DataFlowStoragePlanPath = ".\.osmu-run\latest-data-flow-storage-plan.json",
+    [string] $DataFlowStorageTransitionRunbookEvidencePath = ".\.osmu-run\latest-data-flow-storage-transition-runbook-evidence.json",
     [string] $JsonOutputPath = ".\.osmu-run\latest-operations-readiness.json",
     [string] $MarkdownOutputPath = ".\.osmu-run\latest-operations-readiness.md",
     [switch] $FailIfNotReady,
@@ -295,6 +296,75 @@ function Get-DataFlowStoragePlanDetail([object] $Report) {
     return "result=$($Report.data.result), candidateStore=$($Report.data.candidateStore), pendingCount=$($Report.data.pendingCount), $queryPlanDetail"
 }
 
+function Test-DataFlowStorageTransitionRunbookEvidenceAccepted([object] $Report) {
+    if (-not ($Report.exists -and $Report.parsed)) {
+        return $false
+    }
+    if ([string] (Get-ObjectProperty $Report.data "formatVersion") -ne "osmu.data-flow-storage-transition-runbook-evidence.v1") {
+        return $false
+    }
+    if ([string] (Get-ObjectProperty $Report.data "result") -ne "passed") {
+        return $false
+    }
+    $planSnapshot = Get-ObjectProperty $Report.data "dataFlowStoragePlanSnapshot"
+    if ([string] (Get-ObjectProperty $planSnapshot "result") -ne "passed") {
+        return $false
+    }
+    if (-not (Test-SanitizedQueryPlanEvidenceSummary (Get-ObjectProperty $planSnapshot "queryPlanEvidence"))) {
+        return $false
+    }
+    $summary = Get-ObjectProperty $Report.data "summary"
+    if ((Get-ObjectInt $summary "failureCount") -ne 0) {
+        return $false
+    }
+    $confirmations = Get-ObjectProperty $Report.data "confirmations"
+    $requiredConfirmations = @(
+        "backfillRehearsed",
+        "dualWriteOrPartitionToggleReviewed",
+        "rollbackRehearsed",
+        "reconciliationPassed",
+        "dashboardCutoverReviewed",
+        "retentionDryRunReviewed",
+        "noObjectKeysInAggregates",
+        "noSecretValues"
+    )
+    foreach ($confirmation in $requiredConfirmations) {
+        $value = Get-RequiredObjectBool $confirmations $confirmation
+        if (-not ($value.valid -and $value.value)) {
+            return $false
+        }
+    }
+    return $true
+}
+
+function Get-DataFlowStorageTransitionRunbookDetail([object] $Report) {
+    if (-not $Report.exists -or -not $Report.parsed) {
+        return $Report.detail
+    }
+    $planSnapshot = Get-ObjectProperty $Report.data "dataFlowStoragePlanSnapshot"
+    $summary = Get-ObjectProperty $Report.data "summary"
+    $confirmations = Get-ObjectProperty $Report.data "confirmations"
+    $confirmationNames = @(
+        "backfillRehearsed",
+        "dualWriteOrPartitionToggleReviewed",
+        "rollbackRehearsed",
+        "reconciliationPassed",
+        "dashboardCutoverReviewed",
+        "retentionDryRunReviewed",
+        "noObjectKeysInAggregates",
+        "noSecretValues"
+    )
+    $confirmedCount = 0
+    foreach ($confirmationName in $confirmationNames) {
+        $value = Get-RequiredObjectBool $confirmations $confirmationName
+        if ($value.valid -and $value.value) {
+            $confirmedCount += 1
+        }
+    }
+    $failureCount = Get-ObjectInt $summary "failureCount"
+    return "result=$($Report.data.result), storagePlanResult=$($planSnapshot.result), candidateStore=$($planSnapshot.candidateStore), failureCount=$failureCount, confirmed=$confirmedCount/$($confirmationNames.Count)"
+}
+
 function Test-EnterpriseAuthEvidenceAccepted([object] $Report) {
     if (-not ($Report.exists -and $Report.parsed)) {
         return $false
@@ -523,6 +593,7 @@ $commercialApprovalReport = Read-JsonReport $CommercialApprovalEvidencePath "Com
 $enterpriseAuthSmokeReport = Read-JsonReport $EnterpriseAuthSmokeEvidencePath "Enterprise auth smoke evidence"
 $operationsHandoffPackageReport = Read-JsonReport $OperationsHandoffPackagePath "Operations handoff package"
 $dataFlowStoragePlanReport = Read-JsonReport $DataFlowStoragePlanPath "Data-flow storage transition plan"
+$dataFlowStorageTransitionRunbookReport = Read-JsonReport $DataFlowStorageTransitionRunbookEvidencePath "Data-flow storage transition runbook evidence"
 $operationsHandoffPackageValidation = Get-OperationsHandoffPackageValidation $operationsHandoffPackageReport
 
 $storageExpansionRemediation = New-Remediation `
@@ -565,6 +636,11 @@ $dataFlowStoragePlanRemediation = New-Remediation `
     ".github/workflows/manual-data-flow-storage-plan-evidence.yml" `
     "gh workflow run manual-data-flow-storage-plan-evidence.yml -f environment_name=<env> -f target_cluster=<cluster> -f operator=<operator> -f candidate_store=MARIADB_PARTITION -f expected_peak_events_per_day=<events-per-day> -f expected_query_window_days=<query-window-days> -f target_p95_query_latency_ms=<p95-ms> -f evidence_ref=<run-ref> -f query_plan_evidence_json_base64=<base64-latest-mariadb-query-plan-evidence-json> -f confirm_no_object_key_in_aggregates=true -f confirm_backfill_plan=true -f confirm_rollback_plan=true -f confirm_dashboard_cutover_plan=true -f confirm_retention_job_budget=true -f confirm_explain_evidence=true -f require_query_plan_evidence=true -f fail_if_not_passed=true" `
     "Run after target MariaDB query plan evidence passes with write-mariadb-query-plan-evidence.ps1 -Execute or operator-collected EXPLAIN input, or dispatch the manual workflow with a sanitized base64 latest-mariadb-query-plan-evidence.json summary. For EXTERNAL_TIME_SERIES, change CandidateStore and use a target-store benchmark evidence reference. The plan stores result/count/failed-check metadata only; do not include raw SQL, raw EXPLAIN, credentials, object keys, or raw event messages."
+$dataFlowStorageTransitionRunbookRemediation = New-Remediation `
+    "powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\write-data-flow-storage-transition-runbook-evidence.ps1 -EnvironmentName <env> -TargetCluster <cluster> -Operator <operator> -ReviewStartedAt <iso-time> -ReviewCompletedAt <iso-time> -ChangeApprovalRef <change-id> -DataFlowStoragePlanJsonPath .\.osmu-run\latest-data-flow-storage-plan.json -DataFlowStoragePlanEvidenceRef <ref> -BackfillEvidenceRef <ref> -DualWriteOrPartitionToggleEvidenceRef <ref> -RollbackEvidenceRef <ref> -ReconciliationEvidenceRef <ref> -DashboardCutoverEvidenceRef <ref> -RetentionDryRunEvidenceRef <ref> -EvidenceRef <run-ref> -ConfirmBackfillRehearsed -ConfirmDualWriteOrPartitionToggleReviewed -ConfirmRollbackRehearsed -ConfirmReconciliationPassed -ConfirmDashboardCutoverReviewed -ConfirmRetentionDryRunReviewed -ConfirmNoObjectKeysInAggregates -ConfirmNoSecretValues -FailIfNotPassed" `
+    ".github/workflows/manual-data-flow-storage-transition-runbook-evidence.yml" `
+    "gh workflow run manual-data-flow-storage-transition-runbook-evidence.yml -f environment_name=<env> -f target_cluster=<cluster> -f operator=<operator> -f review_started_at=<iso-time> -f review_completed_at=<iso-time> -f change_approval_ref=<change-id> -f data_flow_storage_plan_evidence_ref=<ref> -f data_flow_storage_plan_json_base64=<base64-latest-data-flow-storage-plan-json> -f backfill_evidence_ref=<ref> -f dual_write_or_partition_toggle_evidence_ref=<ref> -f rollback_evidence_ref=<ref> -f reconciliation_evidence_ref=<ref> -f dashboard_cutover_evidence_ref=<ref> -f retention_dry_run_evidence_ref=<ref> -f evidence_ref=<run-ref> -f confirm_backfill_rehearsed=true -f confirm_dual_write_or_partition_toggle_reviewed=true -f confirm_rollback_rehearsed=true -f confirm_reconciliation_passed=true -f confirm_dashboard_cutover_reviewed=true -f confirm_retention_dry_run_reviewed=true -f confirm_no_object_keys_in_aggregates=true -f confirm_no_secret_values=true -f fail_if_not_passed=true" `
+    "Run after a passed target data-flow storage plan and target backfill, dual-write or partition toggle, rollback, reconciliation, dashboard cutover, and retention dry-run rehearsal evidence. The runbook evidence stores only reduced plan summary, references, booleans, and counts; do not include raw SQL, raw EXPLAIN, credentials, object keys, or raw event messages."
 $monitoringThresholdRemediation = New-Remediation `
     "powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\write-monitoring-threshold-evidence.ps1 -EnvironmentName <env> -TargetCluster <cluster> -Operator <operator> -ReviewStartedAt <iso-time> -ReviewCompletedAt <iso-time> -ChangeApprovalRef <change-id> -EvidenceRef <run-ref> -PrometheusRulesEvidenceRef <ref> -GrafanaDashboardEvidenceRef <ref> -AlertmanagerRouteEvidenceRef <ref> -TargetBaselineEvidenceRef <ref> -IncidentRoutingEvidenceRef <ref> -ConfirmPrometheusRulesLoaded -ConfirmGrafanaDashboardImported -ConfirmAlertmanagerRoutesReviewed -ConfirmTargetBaselinesReviewed -ConfirmIncidentRoutingReviewed -ConfirmNoSecretValues -FailIfNotPassed" `
     ".github/workflows/manual-monitoring-threshold-evidence.yml" `
@@ -638,6 +714,9 @@ Add-FileCheck "MariaDB query plan evidence self-test" "data-flow" ".\scripts\ver
 Add-FileCheck "Data-flow storage plan writer" "data-flow" ".\scripts\write-data-flow-storage-plan.ps1" "data-flow storage transition plan writer committed"
 Add-FileCheck "Data-flow storage plan self-test" "data-flow" ".\scripts\verify-data-flow-storage-plan.ps1" "data-flow storage transition plan self-test committed"
 Add-FileCheck "Data-flow storage plan evidence workflow" "data-flow" ".\.github\workflows\manual-data-flow-storage-plan-evidence.yml" "manual workflow for target data-flow storage transition evidence"
+Add-FileCheck "Data-flow storage transition runbook writer" "data-flow" ".\scripts\write-data-flow-storage-transition-runbook-evidence.ps1" "data-flow storage transition runbook evidence writer committed"
+Add-FileCheck "Data-flow storage transition runbook self-test" "data-flow" ".\scripts\verify-data-flow-storage-transition-runbook-evidence.ps1" "data-flow storage transition runbook evidence self-test committed"
+Add-FileCheck "Data-flow storage transition runbook workflow" "data-flow" ".\.github\workflows\manual-data-flow-storage-transition-runbook-evidence.yml" "manual workflow for target data-flow storage transition runbook evidence"
 Add-FileCheck "Monitoring threshold evidence writer" "monitoring" ".\scripts\write-monitoring-threshold-evidence.ps1" "monitoring threshold evidence writer committed"
 Add-FileCheck "Monitoring threshold evidence writer self-test" "monitoring" ".\scripts\verify-monitoring-threshold-evidence.ps1" "monitoring threshold evidence writer self-test committed"
 Add-FileCheck "Monitoring threshold evidence workflow" "monitoring" ".\.github\workflows\manual-monitoring-threshold-evidence.yml" "manual workflow for target monitoring threshold evidence"
@@ -669,6 +748,7 @@ Add-Check "Signed image evidence" "security-hardening" ($imageSigningReport.exis
 Add-Check "Container scan/SBOM evidence" "security-hardening" ($containerSecurityReport.exists -and $containerSecurityReport.parsed -and $containerSecurityReport.data.result -eq "passed") (Get-GenericResultDetail $containerSecurityReport) $containerSecurityReport.path "successful container scan and SBOM artifact evidence" $containerSecurityRemediation
 Add-Check "Storage backend telemetry target evidence" "storage-backend" ($storageBackendTelemetryReport.exists -and $storageBackendTelemetryReport.parsed -and $storageBackendTelemetryReport.data.result -eq "passed") (Get-StorageBackendTelemetryDetail $storageBackendTelemetryReport) $storageBackendTelemetryReport.path "storage backend telemetry result=passed from target MinIO admin info evidence" $storageBackendTelemetryRemediation
 Add-Check "Data-flow storage transition target evidence" "data-flow" (Test-DataFlowStoragePlanEvidenceAccepted $dataFlowStoragePlanReport) (Get-DataFlowStoragePlanDetail $dataFlowStoragePlanReport) $dataFlowStoragePlanReport.path "data-flow storage transition plan result=passed with target p95 query latency budget and target query-plan evidence for MariaDB partition or dual-write candidates" $dataFlowStoragePlanRemediation
+Add-Check "Data-flow storage transition runbook target evidence" "data-flow" (Test-DataFlowStorageTransitionRunbookEvidenceAccepted $dataFlowStorageTransitionRunbookReport) (Get-DataFlowStorageTransitionRunbookDetail $dataFlowStorageTransitionRunbookReport) $dataFlowStorageTransitionRunbookReport.path "data-flow storage transition runbook result=passed with target backfill, toggle, rollback, reconciliation, dashboard cutover, retention dry-run, no-object-key, and no-secret confirmations" $dataFlowStorageTransitionRunbookRemediation
 Add-Check "Monitoring threshold target evidence" "monitoring" ($monitoringThresholdReport.exists -and $monitoringThresholdReport.parsed -and $monitoringThresholdReport.data.result -eq "passed") (Get-GenericResultDetail $monitoringThresholdReport) $monitoringThresholdReport.path "monitoring threshold evidence result=passed from target Prometheus/Grafana/Alertmanager/tenant baseline review" $monitoringThresholdRemediation
 Add-Check "Secret/certificate rotation target evidence" "security-hardening" ($secretRotationReport.exists -and $secretRotationReport.parsed -and $secretRotationReport.data.result -eq "passed") (Get-GenericResultDetail $secretRotationReport) $secretRotationReport.path "secret/certificate rotation evidence result=passed from target environment" $secretRotationRemediation
 Add-Check "Commercial integration target evidence" "commercial-integration" ($commercialIntegrationReport.exists -and $commercialIntegrationReport.parsed -and $commercialIntegrationReport.data.result -eq "passed") (Get-GenericResultDetail $commercialIntegrationReport) $commercialIntegrationReport.path "commercial integration evidence result=passed from target environment" $commercialIntegrationRemediation
@@ -701,6 +781,7 @@ $report = [ordered]@{
         containerSecurityEvidence = $containerSecurityReport.path
         storageBackendTelemetryEvidence = $storageBackendTelemetryReport.path
         dataFlowStoragePlan = $dataFlowStoragePlanReport.path
+        dataFlowStorageTransitionRunbookEvidence = $dataFlowStorageTransitionRunbookReport.path
         monitoringThresholdEvidence = $monitoringThresholdReport.path
         secretRotationEvidence = $secretRotationReport.path
         commercialIntegrationEvidence = $commercialIntegrationReport.path
@@ -709,7 +790,7 @@ $report = [ordered]@{
         operationsHandoffPackage = $operationsHandoffPackageReport.path
     }
     checks = $checks
-    decisionRule = "Production/B2B operations readiness is ready only when every listed static, automation, live Kubernetes, storage expansion, storage backend telemetry, data-flow storage transition, monitoring threshold, HA/DR, security, secret rotation, commercial integration, commercial approval, enterprise auth, and operations handoff package evidence check is PASS."
+    decisionRule = "Production/B2B operations readiness is ready only when every listed static, automation, live Kubernetes, storage expansion, storage backend telemetry, data-flow storage transition plan, data-flow storage transition runbook, monitoring threshold, HA/DR, security, secret rotation, commercial integration, commercial approval, enterprise auth, and operations handoff package evidence check is PASS."
 }
 
 $markdownLines = @(

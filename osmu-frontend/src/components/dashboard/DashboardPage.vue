@@ -554,6 +554,14 @@
             Data-flow plan: {{ dataFlowStoragePlanItem.message }}
           </small>
           <small
+            v-if="dataFlowStorageTransitionRunbook.result"
+            data-testid="readiness-data-flow-storage-transition-runbook-item-summary"
+          >
+            Data-flow runbook: {{ dataFlowStorageTransitionRunbook.result }} /
+            store {{ dataFlowStorageTransitionRunbook.candidateStore || 'unknown' }} /
+            failures {{ dataFlowStorageTransitionRunbook.failureCount || 0 }}
+          </small>
+          <small
             v-if="storageBackendTelemetryEvidence.result"
             data-testid="readiness-storage-telemetry-item-summary"
           >
@@ -1341,6 +1349,49 @@
           <span>
             <strong>{{ check.status || 'UNKNOWN' }} / {{ check.title || check.id }}</strong>
             <small>{{ check.detail || check.nextAction || 'detail unavailable' }}</small>
+          </span>
+        </li>
+      </ol>
+      <div
+        v-if="dataFlowStorageTransitionRunbook.result"
+        class="readiness-invocation-summary"
+        data-testid="readiness-data-flow-storage-transition-runbook-summary"
+      >
+        <strong>Data-flow transition runbook: {{ dataFlowStorageTransitionRunbook.result }}</strong>
+        <small>
+          {{ dataFlowStorageTransitionRunbook.environmentName || 'unknown env' }} /
+          {{ dataFlowStorageTransitionRunbook.targetCluster || 'unknown cluster' }} /
+          {{ dataFlowStorageTransitionRunbook.operatorName || 'unknown operator' }} /
+          plan {{ dataFlowStorageTransitionRunbook.storagePlanResult || '-' }} /
+          store {{ dataFlowStorageTransitionRunbook.candidateStore || '-' }} /
+          p95 <= {{ dataFlowStorageTransitionRunbook.targetP95QueryLatencyMs || 0 }}ms /
+          failures {{ dataFlowStorageTransitionRunbook.failureCount || 0 }} of {{ dataFlowStorageTransitionRunbook.checkCount || 0 }}
+        </small>
+        <small
+          v-if="dataFlowStorageTransitionRunbookConfirmationSummary"
+          data-testid="readiness-data-flow-storage-transition-runbook-confirmations"
+        >
+          Confirmations: {{ dataFlowStorageTransitionRunbookConfirmationSummary }}
+        </small>
+        <small v-if="dataFlowStorageTransitionRunbook.evidenceRef">
+          evidence {{ dataFlowStorageTransitionRunbook.evidenceRef }}
+        </small>
+        <small v-if="dataFlowStorageTransitionRunbook.scopePolicy">
+          {{ dataFlowStorageTransitionRunbook.scopePolicy }}
+        </small>
+      </div>
+      <ol
+        v-if="dataFlowStorageTransitionRunbookChecks.length > 0"
+        class="readiness-evidence-plan-actions readiness-data-flow-storage-transition-runbook-checks"
+        data-testid="readiness-data-flow-storage-transition-runbook-checks"
+      >
+        <li
+          v-for="check in dataFlowStorageTransitionRunbookChecks.slice(0, 3)"
+          :key="check.id || check.name"
+        >
+          <span>
+            <strong>{{ check.status || 'UNKNOWN' }} / {{ check.name || check.id }}</strong>
+            <small>{{ check.detail || 'detail unavailable' }}</small>
           </span>
         </li>
       </ol>
@@ -3804,6 +3855,27 @@ const dataFlowQueryPlanEvidence = computed(() => (
 
 const dataFlowStoragePlanChecks = computed(() => {
   const checks = dataFlowStoragePlan.value?.checks
+  return Array.isArray(checks) ? checks : []
+})
+
+const dataFlowStorageTransitionRunbook = computed(() => (
+  props.dashboardReadiness.dataFlowStorageTransitionRunbook || {}
+))
+
+const dataFlowStorageTransitionRunbookConfirmationSummary = computed(() => {
+  const confirmations = dataFlowStorageTransitionRunbook.value?.confirmations
+  if (!confirmations || typeof confirmations !== 'object') {
+    return ''
+  }
+  return Object.entries(confirmations)
+    .filter(([, value]) => typeof value === 'boolean')
+    .slice(0, 8)
+    .map(([key, value]) => `${key}=${value ? 'yes' : 'no'}`)
+    .join(' / ')
+})
+
+const dataFlowStorageTransitionRunbookChecks = computed(() => {
+  const checks = dataFlowStorageTransitionRunbook.value?.topFailedChecks
   return Array.isArray(checks) ? checks : []
 })
 

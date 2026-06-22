@@ -168,6 +168,9 @@ Assert-CheckExists $report "MariaDB query plan evidence writer" "data-flow"
 Assert-CheckExists $report "MariaDB query plan evidence self-test" "data-flow"
 Assert-CheckExists $report "Data-flow storage plan writer" "data-flow"
 Assert-CheckExists $report "Data-flow storage plan self-test" "data-flow"
+Assert-CheckExists $report "Data-flow storage transition runbook writer" "data-flow"
+Assert-CheckExists $report "Data-flow storage transition runbook self-test" "data-flow"
+Assert-CheckExists $report "Data-flow storage transition runbook workflow" "data-flow"
 Assert-CheckExists $report "Monitoring threshold evidence writer" "monitoring"
 Assert-CheckExists $report "Monitoring threshold evidence writer self-test" "monitoring"
 Assert-CheckExists $report "Monitoring threshold evidence workflow" "monitoring"
@@ -198,6 +201,7 @@ Assert-CheckExists $report "Signed image evidence" "security-hardening"
 Assert-CheckExists $report "Container scan/SBOM evidence" "security-hardening"
 Assert-CheckExists $report "Storage backend telemetry target evidence" "storage-backend"
 Assert-CheckExists $report "Data-flow storage transition target evidence" "data-flow"
+Assert-CheckExists $report "Data-flow storage transition runbook target evidence" "data-flow"
 Assert-CheckExists $report "Monitoring threshold target evidence" "monitoring"
 Assert-CheckExists $report "Secret/certificate rotation target evidence" "security-hardening"
 Assert-CheckExists $report "Commercial integration target evidence" "commercial-integration"
@@ -293,6 +297,52 @@ if (-not ([string] $dataFlowStoragePlanCheck[0].remediation.note).Contains("cred
 }
 if (-not ([string] $dataFlowStoragePlanCheck[0].remediation.note).Contains("object keys")) {
     throw "Data-flow storage transition target evidence remediation note must mention object-key exclusion."
+}
+$dataFlowStorageTransitionRunbookCheck = @($report.checks | Where-Object { $_.name -eq "Data-flow storage transition runbook target evidence" })
+if ($dataFlowStorageTransitionRunbookCheck.Count -ne 1) {
+    throw "Operations readiness report must contain one Data-flow storage transition runbook target evidence check."
+}
+if (-not ([string] $report.inputs.dataFlowStorageTransitionRunbookEvidence).Contains("latest-data-flow-storage-transition-runbook-evidence.json")) {
+    throw "Operations readiness report inputs must include data-flow storage transition runbook evidence path."
+}
+if (-not ([string] $dataFlowStorageTransitionRunbookCheck[0].remediation.command).Contains("write-data-flow-storage-transition-runbook-evidence.ps1")) {
+    throw "Data-flow storage transition runbook target evidence remediation must point to write-data-flow-storage-transition-runbook-evidence.ps1."
+}
+if (-not ([string] $dataFlowStorageTransitionRunbookCheck[0].remediation.command).Contains("DataFlowStoragePlanJsonPath")) {
+    throw "Data-flow storage transition runbook target evidence remediation must include data-flow storage plan JSON input."
+}
+if (-not ([string] $dataFlowStorageTransitionRunbookCheck[0].remediation.command).Contains("ConfirmBackfillRehearsed")) {
+    throw "Data-flow storage transition runbook target evidence remediation must confirm backfill rehearsal."
+}
+if (-not ([string] $dataFlowStorageTransitionRunbookCheck[0].remediation.command).Contains("ConfirmReconciliationPassed")) {
+    throw "Data-flow storage transition runbook target evidence remediation must confirm reconciliation."
+}
+if ($dataFlowStorageTransitionRunbookCheck[0].remediation.workflow -ne ".github/workflows/manual-data-flow-storage-transition-runbook-evidence.yml") {
+    throw "Data-flow storage transition runbook target evidence remediation must point to the manual data-flow transition runbook workflow."
+}
+if (-not ([string] $dataFlowStorageTransitionRunbookCheck[0].remediation.workflowCommand).Contains("manual-data-flow-storage-transition-runbook-evidence.yml")) {
+    throw "Data-flow storage transition runbook target evidence remediation workflow command must dispatch manual-data-flow-storage-transition-runbook-evidence.yml."
+}
+if (-not ([string] $dataFlowStorageTransitionRunbookCheck[0].remediation.workflowCommand).Contains("data_flow_storage_plan_json_base64")) {
+    throw "Data-flow storage transition runbook target evidence workflow command must include data_flow_storage_plan_json_base64."
+}
+if (-not ([string] $dataFlowStorageTransitionRunbookCheck[0].remediation.workflowCommand).Contains("confirm_rollback_rehearsed=true")) {
+    throw "Data-flow storage transition runbook target evidence workflow command must confirm rollback rehearsal."
+}
+if (-not ([string] $dataFlowStorageTransitionRunbookCheck[0].requiredEvidence).Contains("target backfill")) {
+    throw "Data-flow storage transition runbook target evidence must require target backfill evidence."
+}
+if (-not ([string] $dataFlowStorageTransitionRunbookCheck[0].requiredEvidence).Contains("retention dry-run")) {
+    throw "Data-flow storage transition runbook target evidence must require retention dry-run evidence."
+}
+if (-not ([string] $dataFlowStorageTransitionRunbookCheck[0].remediation.note).Contains("raw SQL")) {
+    throw "Data-flow storage transition runbook remediation note must mention raw SQL exclusion."
+}
+if (-not ([string] $dataFlowStorageTransitionRunbookCheck[0].remediation.note).Contains("raw EXPLAIN")) {
+    throw "Data-flow storage transition runbook remediation note must mention raw EXPLAIN exclusion."
+}
+if (-not ([string] $dataFlowStorageTransitionRunbookCheck[0].remediation.note).Contains("object keys")) {
+    throw "Data-flow storage transition runbook remediation note must mention object-key exclusion."
 }
 $monitoringThresholdCheck = @($report.checks | Where-Object { $_.name -eq "Monitoring threshold target evidence" })
 if ($monitoringThresholdCheck.Count -ne 1) {

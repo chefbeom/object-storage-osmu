@@ -1687,6 +1687,66 @@ class AdminDashboardSummaryControllerTest {
                         """
         );
         Files.writeString(
+                Path.of(".osmu-run/latest-data-flow-storage-transition-runbook-evidence.json"),
+                """
+                        {
+                          "formatVersion": "osmu.data-flow-storage-transition-runbook-evidence.v1",
+                          "generatedAt": "2026-06-21T09:30:00Z",
+                          "result": "failed",
+                          "environmentName": "pilot-prod",
+                          "targetCluster": "customer-cluster-a",
+                          "operatorName": "ops-admin",
+                          "evidenceRef": "data-flow-runbook-rehearsal-20260621",
+                          "dataFlowStoragePlanSnapshot": {
+                            "provided": true,
+                            "path": ".osmu-run/latest-data-flow-storage-plan.json",
+                            "parsed": true,
+                            "formatVersion": "osmu.data-flow-storage-plan.v1",
+                            "result": "plan-ready-execute-required",
+                            "candidateStore": "MARIADB_PARTITION",
+                            "targetP95QueryLatencyMs": 500,
+                            "expectedPeakEventsPerDay": 250000,
+                            "expectedQueryWindowDays": 180,
+                            "pendingCount": 2,
+                            "checkCount": 4,
+                            "queryPlanEvidenceResult": "",
+                            "detail": "formatVersion=osmu.data-flow-storage-plan.v1; result=plan-ready-execute-required; candidateStore=MARIADB_PARTITION; pending=2; targetP95QueryLatencyMs=500"
+                          },
+                          "confirmations": {
+                            "backfillRehearsed": true,
+                            "dualWriteOrPartitionToggleReviewed": false,
+                            "rollbackRehearsed": true,
+                            "reconciliationPassed": false,
+                            "dashboardCutoverReviewed": true,
+                            "retentionDryRunReviewed": true,
+                            "noObjectKeysInAggregates": true,
+                            "noSecretValues": true
+                          },
+                          "summary": {
+                            "failureCount": 2,
+                            "checkCount": 10
+                          },
+                          "checks": [
+                            {
+                              "id": "storage-plan-passed",
+                              "name": "Data-flow storage plan passed",
+                              "status": "FAIL",
+                              "passed": false,
+                              "detail": "storagePlanResult=plan-ready-execute-required"
+                            },
+                            {
+                              "id": "reconciliation-passed",
+                              "name": "Reconciliation passed",
+                              "status": "FAIL",
+                              "passed": false,
+                              "detail": "Reconciliation evidence is missing."
+                            }
+                          ],
+                          "scopePolicy": "OSMU operations analytics storage transition only. This is not AWS billing parity, and aggregate stores must not include object keys, raw messages, raw SQL, raw EXPLAIN JSON, or credentials."
+                        }
+                        """
+        );
+        Files.writeString(
                 Path.of(".osmu-run/latest-operations-evidence-plan-invocation.json"),
                 """
                         {
@@ -2068,6 +2128,7 @@ class AdminDashboardSummaryControllerTest {
                 .andExpect(jsonPath("$.data.items[*].code").value(hasItem("KUBERNETES_OPERATIONS_REPORT_SYNC")))
                 .andExpect(jsonPath("$.data.items[*].code").value(hasItem("OPERATIONS_READINESS_CHECK")))
                 .andExpect(jsonPath("$.data.items[*].code").value(hasItem("OPERATIONS_READINESS_ARTIFACT_IMPORT")))
+                .andExpect(jsonPath("$.data.items[*].code").value(hasItem("DATA_FLOW_STORAGE_TRANSITION_RUNBOOK")))
                 .andExpect(jsonPath("$.data.items[*].message").value(hasItem("Operations readiness remains pending: passed=36 pending=6.")))
                 .andExpect(jsonPath("$.data.items[*].message").value(hasItem("Operations evidence plan is action-required: actionCount=6, unplannedCount=0.")))
                 .andExpect(jsonPath("$.data.items[*].message").value(hasItem("Operations evidence invocation is blocked: selectedActionCount=6, plannedCount=1, blockedCount=5.")))
@@ -2078,6 +2139,7 @@ class AdminDashboardSummaryControllerTest {
                 .andExpect(jsonPath("$.data.items[*].message").value(hasItem("Operations readiness finalizer is pending: readinessResult=pending, failedCount=0.")))
                 .andExpect(jsonPath("$.data.items[*].message").value(hasItem("Operations evidence handoff is blocked: next=resolve-invocation-blockers, blockedActions=5, missingRuns=6, missingArtifacts=5, finalizerGaps=1.")))
                 .andExpect(jsonPath("$.data.items[*].message").value(hasItem("Data-flow storage plan is plan-ready-execute-required: store=MARIADB_PARTITION, pending=2/4.")))
+                .andExpect(jsonPath("$.data.items[*].message").value(hasItem("Data-flow transition runbook evidence is failed: store=MARIADB_PARTITION, failures=2/10.")))
                 .andExpect(jsonPath("$.data.items[*].message").value(hasItem("MinIO bucket CORS verification is failed: rules=1, exposedHeaders=2, failures=1, planned=0.")))
                 .andExpect(jsonPath("$.data.items[*].message").value(hasItem("Operations readiness convergence is action-required: bottleneck=resolve-invocation-blockers, stages=1/7, finalizerGaps=1.")))
                 .andExpect(jsonPath("$.data.items[*].message").value(hasItem("Kubernetes operations report sync is planned: namespace=osmu, configMap=osmu-operations-reports, failedCount=0. sourceReportResult=action-required.")))
@@ -2104,6 +2166,8 @@ class AdminDashboardSummaryControllerTest {
                 .andExpect(jsonPath("$.data.items[?(@.code == 'DATA_FLOW_STORAGE_PLAN')].evidencePath").value(hasItem(".osmu-run/latest-data-flow-storage-plan.json")))
                 .andExpect(jsonPath("$.data.items[?(@.code == 'DATA_FLOW_STORAGE_PLAN')].remediationCommand").value(hasItem("powershell -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\write-data-flow-storage-plan.ps1 -CandidateStore <store> -ExpectedPeakEventsPerDay <n> -ExpectedQueryWindowDays <days> -TargetP95QueryLatencyMs <p95-ms> -ConfirmNoObjectKeyInAggregates -ConfirmBackfillPlan -ConfirmRollbackPlan -ConfirmDashboardCutoverPlan -ConfirmRetentionJobBudget -ConfirmExplainEvidence -QueryPlanEvidenceJsonPath .\\.osmu-run\\latest-mariadb-query-plan-evidence.json -RequireQueryPlanEvidence")))
                 .andExpect(jsonPath("$.data.items[?(@.code == 'DATA_FLOW_STORAGE_PLAN')].remediationNote").value(hasItem("OSMU operations analytics only. This plan is not AWS billing parity and aggregate stores must not include object keys or raw event messages.")))
+                .andExpect(jsonPath("$.data.items[?(@.code == 'DATA_FLOW_STORAGE_TRANSITION_RUNBOOK')].evidencePath").value(hasItem(".osmu-run/latest-data-flow-storage-transition-runbook-evidence.json")))
+                .andExpect(jsonPath("$.data.items[?(@.code == 'DATA_FLOW_STORAGE_TRANSITION_RUNBOOK')].remediationWorkflow").value(hasItem(".github/workflows/manual-data-flow-storage-transition-runbook-evidence.yml")))
                 .andExpect(jsonPath("$.data.items[?(@.code == 'MINIO_BUCKET_CORS_VERIFICATION')].evidencePath").value(hasItem(".osmu-run/latest-minio-bucket-cors-verification.json")))
                 .andExpect(jsonPath("$.data.items[?(@.code == 'MINIO_BUCKET_CORS_VERIFICATION')].remediationCommand").value(hasItem("powershell -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\verify-minio-bucket-cors.ps1 -BucketName <bucket> -MinioAlias <alias> -Execute -FailIfNotPassed")))
                 .andExpect(jsonPath("$.data.items[?(@.code == 'MINIO_BUCKET_CORS_VERIFICATION')].remediationNote").value(hasItem("This evidence verifies MinIO bucket CORS needed by OSMU browser multipart upload and traceability. It is not AWS S3 parity work, and it does not store raw CORS XML, credentials, bearer tokens, private keys, MinIO root credentials, or object data.")))
@@ -2411,6 +2475,18 @@ class AdminDashboardSummaryControllerTest {
                 .andExpect(jsonPath("$.data.dataFlowStoragePlan.queryPlanEvidence.expectedFormatVersion").value("osmu.mariadb-query-plan-evidence.v1"))
                 .andExpect(jsonPath("$.data.dataFlowStoragePlan.queryPlanEvidence.detail").value("No MariaDB query plan evidence JSON supplied."))
                 .andExpect(jsonPath("$.data.dataFlowStoragePlan.scopePolicy", org.hamcrest.Matchers.containsString("not AWS billing parity")))
+                .andExpect(jsonPath("$.data.dataFlowStorageTransitionRunbook.result").value("failed"))
+                .andExpect(jsonPath("$.data.dataFlowStorageTransitionRunbook.environmentName").value("pilot-prod"))
+                .andExpect(jsonPath("$.data.dataFlowStorageTransitionRunbook.targetCluster").value("customer-cluster-a"))
+                .andExpect(jsonPath("$.data.dataFlowStorageTransitionRunbook.evidenceRef").value("data-flow-runbook-rehearsal-20260621"))
+                .andExpect(jsonPath("$.data.dataFlowStorageTransitionRunbook.storagePlanResult").value("plan-ready-execute-required"))
+                .andExpect(jsonPath("$.data.dataFlowStorageTransitionRunbook.candidateStore").value("MARIADB_PARTITION"))
+                .andExpect(jsonPath("$.data.dataFlowStorageTransitionRunbook.targetP95QueryLatencyMs").value(500))
+                .andExpect(jsonPath("$.data.dataFlowStorageTransitionRunbook.failureCount").value(2))
+                .andExpect(jsonPath("$.data.dataFlowStorageTransitionRunbook.checkCount").value(10))
+                .andExpect(jsonPath("$.data.dataFlowStorageTransitionRunbook.confirmations.dualWriteOrPartitionToggleReviewed").value(false))
+                .andExpect(jsonPath("$.data.dataFlowStorageTransitionRunbook.topFailedChecks[0].id").value("storage-plan-passed"))
+                .andExpect(jsonPath("$.data.dataFlowStorageTransitionRunbook.scopePolicy", org.hamcrest.Matchers.containsString("not AWS billing parity")))
                 .andExpect(jsonPath("$.data.storageBackendTelemetryEvidence.result").value("passed"))
                 .andExpect(jsonPath("$.data.storageBackendTelemetryEvidence.environmentName").value("pilot-prod"))
                 .andExpect(jsonPath("$.data.storageBackendTelemetryEvidence.targetCluster").value("customer-cluster-a"))

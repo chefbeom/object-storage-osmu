@@ -32,6 +32,7 @@ public record DashboardReadinessResponse(
         DashboardCommercialApprovalEvidenceResponse commercialApprovalEvidence,
         DashboardEnterpriseAuthSmokeEvidenceResponse enterpriseAuthSmokeEvidence,
         DashboardDataFlowStoragePlanResponse dataFlowStoragePlan,
+        DashboardDataFlowStorageTransitionRunbookResponse dataFlowStorageTransitionRunbook,
         DashboardStorageBackendTelemetryEvidenceResponse storageBackendTelemetryEvidence,
         DashboardMonitoringThresholdEvidenceResponse monitoringThresholdEvidence,
         DashboardMinioBucketCorsVerificationResponse minioBucketCorsVerification,

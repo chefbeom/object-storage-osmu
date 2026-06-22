@@ -1277,6 +1277,22 @@ const dashboardReadiness = reactive({
     },
     scopePolicy: '',
   },
+  dataFlowStorageTransitionRunbook: {
+    result: '',
+    generatedAt: '',
+    environmentName: '',
+    targetCluster: '',
+    operatorName: '',
+    evidenceRef: '',
+    storagePlanResult: '',
+    candidateStore: '',
+    targetP95QueryLatencyMs: 0,
+    failureCount: 0,
+    checkCount: 0,
+    confirmations: {},
+    topFailedChecks: [],
+    scopePolicy: '',
+  },
   storageBackendTelemetryEvidence: {
     result: '',
     generatedAt: '',
@@ -5423,6 +5439,7 @@ function applyDashboardReadiness(data) {
     commercialApprovalEvidence: normalizeCommercialApprovalEvidence(data.commercialApprovalEvidence),
     enterpriseAuthSmokeEvidence: normalizeEnterpriseAuthSmokeEvidence(data.enterpriseAuthSmokeEvidence),
     dataFlowStoragePlan: normalizeDataFlowStoragePlan(data.dataFlowStoragePlan),
+    dataFlowStorageTransitionRunbook: normalizeDataFlowStorageTransitionRunbook(data.dataFlowStorageTransitionRunbook),
     storageBackendTelemetryEvidence: normalizeStorageBackendTelemetryEvidence(data.storageBackendTelemetryEvidence),
     monitoringThresholdEvidence: normalizeMonitoringThresholdEvidence(data.monitoringThresholdEvidence),
     minioBucketCorsVerification: normalizeMinioBucketCorsVerification(data.minioBucketCorsVerification),
@@ -5861,6 +5878,25 @@ function normalizeDataFlowStoragePlan(report = {}) {
       failedChecks: Array.isArray(queryPlanEvidence.failedChecks) ? queryPlanEvidence.failedChecks : [],
       detail: queryPlanEvidence.detail || '',
     },
+    scopePolicy: report?.scopePolicy || '',
+  }
+}
+
+function normalizeDataFlowStorageTransitionRunbook(report = {}) {
+  return {
+    result: report?.result || '',
+    generatedAt: report?.generatedAt || '',
+    environmentName: report?.environmentName || '',
+    targetCluster: report?.targetCluster || '',
+    operatorName: report?.operatorName || '',
+    evidenceRef: report?.evidenceRef || '',
+    storagePlanResult: report?.storagePlanResult || '',
+    candidateStore: report?.candidateStore || '',
+    targetP95QueryLatencyMs: Number(report?.targetP95QueryLatencyMs || 0),
+    failureCount: Number(report?.failureCount || 0),
+    checkCount: Number(report?.checkCount || 0),
+    confirmations: report?.confirmations && typeof report.confirmations === 'object' ? report.confirmations : {},
+    topFailedChecks: Array.isArray(report?.topFailedChecks) ? report.topFailedChecks : [],
     scopePolicy: report?.scopePolicy || '',
   }
 }
