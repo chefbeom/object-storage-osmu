@@ -327,10 +327,10 @@
 ### TC-S3-COMPATIBILITY-BOUNDARY
 
 - Feature: S3 replacement-layer compatibility boundary.
-- Preconditions: README, PRD, API spec, feature inventory, roadmap, prototype status, backend design, MVP checklist, demo package notes writer, MVP completion verifier, and `dev-docs/s3-compatibility.md` are available.
+- Preconditions: README, root PRD, dev-docs PRD, API spec, feature inventory, roadmap, prototype status, backend design, MVP checklist, demo package notes writer, MVP completion verifier, and `dev-docs/s3-compatibility.md` are available.
 - Input: `powershell -ExecutionPolicy Bypass -File .\scripts\verify-s3-compatibility-boundary.ps1`.
-- Steps: Run the verifier and review failures for missing replacement-boundary text, missing Korean README/API/feature-inventory boundary text, missing client matrix evidence, missing release-gate links, or overbroad English/Korean AWS S3 parity claims.
-- Expected: The verifier exits successfully only when S3 support is documented as replacement-use compatibility, new S3 work is tied to real client smoke failures, migration blockers, or OSMU control-plane needs, the roadmap contains the S3 intake gate, broader checksum/client-option parity remains out of scope unless supported smoke fails, and overbroad full-parity, drop-in, or Korean 100% compatibility claims are absent from current release-facing docs.
+- Steps: Run the verifier and review failures for missing replacement-boundary text, missing Korean README/PRD/API/feature-inventory boundary text, missing dev-docs PRD scope text, missing client matrix evidence, missing release-gate links, or overbroad English/Korean AWS S3 parity claims.
+- Expected: The verifier exits successfully only when S3 support is documented as replacement-use compatibility across root and dev-docs PRDs, new S3 work is tied to real client smoke failures, migration blockers, or OSMU control-plane needs, the roadmap contains the S3 intake gate, broader checksum/client-option parity remains out of scope unless supported smoke fails, and overbroad full-parity, drop-in, or Korean 100% compatibility claims are absent from current release-facing docs.
 - Priority: P1
 - Automated: `scripts/verify-s3-compatibility-boundary.ps1`, `scripts/verify-mvp-completion.ps1`
 

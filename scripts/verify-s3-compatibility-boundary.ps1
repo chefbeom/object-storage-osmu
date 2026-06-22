@@ -2,6 +2,7 @@ param(
     [string] $MatrixPath = ".\dev-docs\s3-compatibility.md",
     [string] $ReadmePath = ".\README.md",
     [string] $ProductRequirementsPath = ".\PRODUCT_REQUIREMENTS.md",
+    [string] $DevProductRequirementsPath = ".\dev-docs\PRODUCT_REQUIREMENTS.md",
     [string] $BackendDesignPath = ".\dev-docs\backend-design.md",
     [string] $ApiSpecPath = ".\dev-docs\api-spec.md",
     [string] $FeatureInventoryPath = ".\dev-docs\feature-inventory.md",
@@ -55,6 +56,7 @@ function Decode-Utf8Base64([string] $Value) {
 $matrix = Read-RequiredText $MatrixPath "S3 compatibility matrix"
 $readme = Read-RequiredText $ReadmePath "README"
 $productRequirements = Read-RequiredText $ProductRequirementsPath "Product requirements"
+$devProductRequirements = Read-RequiredText $DevProductRequirementsPath "dev-docs Product requirements"
 $backendDesign = Read-RequiredText $BackendDesignPath "Backend design"
 $apiSpec = Read-RequiredText $ApiSpecPath "API spec"
 $featureInventory = Read-RequiredText $FeatureInventoryPath "Feature inventory"
@@ -85,6 +87,14 @@ Assert-Contains $readme (Decode-Utf8Base64 "QVdTIFMzIOyghOyytCDsiqTtjpnsnZgg7IS4
 
 Assert-Contains $productRequirements "AWS SDK, boto3, AWS CLI, MinIO Client"
 Assert-Contains $productRequirements "AWS S3"
+Assert-Contains $productRequirements (Decode-Utf8Base64 "QVdTIFMzIOyghOyytCDrj5nsnpEg67O17KCc6rCAIOyVhOuLiOudvCDrgrTrtoAg7Iqk7Yag66as7KeAIOyghO2ZmOyXkCDtlYTsmpTtlZwg64yA7LK0IOqwgOuKpeyEseydhCDrqqntkZzroZwg7ZWc64ukLg==")
+Assert-Contains $productRequirements (Decode-Utf8Base64 "7IOIIFMzIOyEuOu2gCDrj5nsnpHsnYAg7KeA7JuQIO2BtOudvOydtOyWuO2KuCBzbW9rZSDsi6TtjKjrgpgg6rOg6rCdIOyghO2ZmCBibG9ja2Vy6rCAIO2ZleyduOuQoCDrlYzrp4wg7LaU6rCA7ZWc64ukLg==")
+
+Assert-Contains $devProductRequirements "S3 compatibility is scoped to replacement use for common clients and SDKs"
+Assert-Contains $devProductRequirements "AWS edge behavior is only expanded when a supported real-client smoke or target migration scenario proves product impact."
+Assert-Contains $devProductRequirements "dev-docs/s3-compatibility.md"
+Assert-Contains $devProductRequirements (Decode-Utf8Base64 "QVdTIFMzIOyghOyytCDrj5nsnpEg67O17KCc6rCAIOyVhOuLiOudvCDrgrTrtoAg7Iqk7Yag66as7KeAIOyghO2ZmOyXkCDtlYTsmpTtlZwg64yA7LK0IOqwgOuKpeyEseydhCDrqqntkZzroZwg7ZWc64ukLg==")
+Assert-Contains $devProductRequirements (Decode-Utf8Base64 "7IOIIFMzIOyEuOu2gCDrj5nsnpHsnYAg7KeA7JuQIO2BtOudvOydtOyWuO2KuCBzbW9rZSDsi6TtjKjrgpgg6rOg6rCdIOyghO2ZmCBibG9ja2Vy6rCAIO2ZleyduOuQoCDrlYzrp4wg7LaU6rCA7ZWc64ukLg==")
 
 Assert-Contains $backendDesign "not AWS S3 behavioral cloning"
 Assert-Contains $backendDesign "real client smoke failures or OSMU product needs"
@@ -129,6 +139,7 @@ $filesToScan = @(
     $matrix,
     $readme,
     $productRequirements,
+    $devProductRequirements,
     $backendDesign,
     $apiSpec,
     $featureInventory,
