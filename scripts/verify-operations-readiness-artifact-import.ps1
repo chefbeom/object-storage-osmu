@@ -287,6 +287,44 @@ function New-PassedOperationsHandoffPackageSummary([int] $CheckCount) {
     }
 }
 
+function New-PassedMonitoringThresholdChecks {
+    $ids = @(
+        "environment-name",
+        "target-cluster",
+        "operator",
+        "review-started-at",
+        "review-completed-at",
+        "review-window-order",
+        "change-approval-ref",
+        "threshold-targets-file-exists",
+        "threshold-targets-format",
+        "threshold-alert-targets-complete",
+        "alertmanager-routes-mapped",
+        "grafana-panels-mapped",
+        "target-tuning-evidence-fields",
+        "prometheus-rules-evidence-ref",
+        "grafana-dashboard-evidence-ref",
+        "alertmanager-route-evidence-ref",
+        "target-baseline-evidence-ref",
+        "incident-routing-evidence-ref",
+        "prometheus-rules-loaded-confirmed",
+        "grafana-dashboard-imported-confirmed",
+        "alertmanager-routes-reviewed-confirmed",
+        "target-baselines-reviewed-confirmed",
+        "incident-routing-reviewed-confirmed",
+        "no-secret-values-confirmed"
+    )
+    return @($ids | ForEach-Object {
+        [ordered]@{
+            id = $_
+            name = $_
+            status = "PASS"
+            passed = $true
+            detail = "verified"
+        }
+    })
+}
+
 function New-PassedStorageExpansionFinalize(
     [object] $FailedCount = 0,
     [bool] $SkipRbacGap = $false
@@ -808,6 +846,7 @@ $unsafeMonitoringThresholdRoot = Join-Path $resolvedOutputDirectory "unsafe-moni
 $stringBoolMonitoringThresholdRoot = Join-Path $resolvedOutputDirectory "string-bool-monitoring-threshold-source"
 $stringCountMonitoringThresholdRoot = Join-Path $resolvedOutputDirectory "string-count-monitoring-threshold-source"
 $missingCountMonitoringThresholdRoot = Join-Path $resolvedOutputDirectory "missing-count-monitoring-threshold-source"
+$weakMonitoringThresholdChecksRoot = Join-Path $resolvedOutputDirectory "weak-monitoring-threshold-checks-source"
 $weakSecretRotationRoot = Join-Path $resolvedOutputDirectory "weak-secret-rotation-source"
 $weakSecretRotationChecksRoot = Join-Path $resolvedOutputDirectory "weak-secret-rotation-checks-source"
 $weakCommercialIntegrationRoot = Join-Path $resolvedOutputDirectory "weak-commercial-integration-source"
@@ -957,9 +996,19 @@ Write-JsonEvidence (Join-Path $storageBackendTelemetrySource "latest-storage-bac
     scopePolicy = "This evidence captures MinIO pool/node operations telemetry for OSMU storage readiness. It is not AWS S3 parity work, and it does not store raw admin info, credentials, bearer tokens, private keys, kubeconfig, MinIO root credentials, or object data."
 }
 Write-TextEvidence (Join-Path $storageBackendTelemetrySource "latest-storage-backend-telemetry.md") "# Storage backend telemetry"
+$passedMonitoringThresholdChecks = New-PassedMonitoringThresholdChecks
 Write-JsonEvidence (Join-Path $monitoringThresholdSource "latest-monitoring-threshold-evidence.json") @{
     formatVersion = "osmu.monitoring-threshold-evidence.v1"
+    generatedAt = "2026-06-22T00:00:00Z"
     result = "passed"
+    environmentName = "prod"
+    targetCluster = "osmu-prod"
+    operatorName = "ops-owner"
+    evidenceRef = "monitoring-threshold-evidence-20260622"
+    reviewWindow = @{
+        startedAt = "2026-06-22T00:00:00Z"
+        completedAt = "2026-06-22T00:15:00Z"
+    }
     thresholdTargetSummary = @{
         requiredAlertCount = 11
         mappedAlertCount = 11
@@ -968,6 +1017,14 @@ Write-JsonEvidence (Join-Path $monitoringThresholdSource "latest-monitoring-thre
         routes = @("osmu-backend", "osmu-data-flow", "osmu-backup")
         grafanaPanelCount = 11
         tuningEvidenceCount = 11
+    }
+    evidenceRefs = @{
+        changeApproval = "CHG-2026-MONITORING"
+        prometheusRules = "prometheus-rules-loaded-20260622"
+        grafanaDashboard = "grafana-dashboard-imported-20260622"
+        alertmanagerRoute = "alertmanager-routes-reviewed-20260622"
+        targetBaseline = "tenant-baseline-reviewed-20260622"
+        incidentRouting = "incident-routing-reviewed-20260622"
     }
     confirmations = @{
         prometheusRulesLoaded = $true
@@ -979,8 +1036,9 @@ Write-JsonEvidence (Join-Path $monitoringThresholdSource "latest-monitoring-thre
     }
     summary = @{
         failureCount = 0
-        checkCount = 24
+        checkCount = $passedMonitoringThresholdChecks.Count
     }
+    checks = $passedMonitoringThresholdChecks
 }
 Write-TextEvidence (Join-Path $monitoringThresholdSource "latest-monitoring-threshold-evidence.md") "# Monitoring threshold"
 Write-JsonEvidence (Join-Path $secretRotationSource "latest-secret-rotation-evidence.json") @{
@@ -1440,6 +1498,9 @@ Assert-True ($storageBackendTelemetryEntry.Count -eq 1) "Storage backend telemet
 Assert-True (([string] $storageBackendTelemetryEntry[0].detail).Contains("targetCluster=osmu-prod") -and ([string] $storageBackendTelemetryEntry[0].detail).Contains("servers=2/2") -and ([string] $storageBackendTelemetryEntry[0].detail).Contains("checkCount=11")) "Storage backend telemetry import entry should include strict target metadata and telemetry validation detail."
 Assert-True ($promotedMonitoringThreshold.result -eq "passed") "Promoted monitoring threshold evidence should preserve result=passed."
 Assert-True ($promotedMonitoringThreshold.confirmations.noSecretValues) "Promoted monitoring threshold evidence should preserve no-secret confirmation."
+$monitoringThresholdEntry = @($report.entries | Where-Object { $_.group -eq "monitoring-threshold" -and $_.fileName -eq "latest-monitoring-threshold-evidence.json" })
+Assert-True ($monitoringThresholdEntry.Count -eq 1) "Monitoring threshold import entry missing."
+Assert-True (([string] $monitoringThresholdEntry[0].detail).Contains("targetCluster=osmu-prod") -and ([string] $monitoringThresholdEntry[0].detail).Contains("requiredAlerts=11") -and ([string] $monitoringThresholdEntry[0].detail).Contains("checkRows=24")) "Monitoring threshold import entry should include strict target metadata and check row validation detail."
 Assert-True ($promotedSecretRotation.result -eq "passed") "Promoted secret rotation evidence should preserve result=passed."
 Assert-True ($promotedCommercialIntegration.result -eq "passed") "Promoted commercial integration evidence should preserve result=passed."
 Assert-True ($promotedCommercialApproval.result -eq "passed") "Promoted commercial approval evidence should preserve result=passed."
@@ -2386,6 +2447,73 @@ Assert-True (-not (Test-Path -LiteralPath (Join-Path $missingCountMonitoringThre
 $missingCountMonitoringThresholdEntry = @($missingCountMonitoringThresholdReport.entries | Where-Object { $_.group -eq "monitoring-threshold" -and $_.fileName -eq "latest-monitoring-threshold-evidence.json" })
 Assert-True ($missingCountMonitoringThresholdEntry.Count -eq 1) "Missing-count monitoring threshold failed entry missing."
 Assert-True (([string] $missingCountMonitoringThresholdEntry[0].detail).Contains("tuningEvidenceCount=<missing>(valid=False) expected integer")) "Missing-count monitoring threshold report should describe missing typed count."
+
+$weakMonitoringThresholdChecks = @((New-PassedMonitoringThresholdChecks) | Where-Object { $_.id -ne "grafana-panels-mapped" })
+Write-JsonEvidence (Join-Path $weakMonitoringThresholdChecksRoot "latest-monitoring-threshold-evidence.json") @{
+    formatVersion = "osmu.monitoring-threshold-evidence.v1"
+    generatedAt = "2026-06-22T00:00:00Z"
+    result = "passed"
+    environmentName = "prod"
+    targetCluster = "osmu-prod"
+    operatorName = "ops-owner"
+    evidenceRef = "monitoring-threshold-evidence-20260622"
+    reviewWindow = @{
+        startedAt = "2026-06-22T00:00:00Z"
+        completedAt = "2026-06-22T00:15:00Z"
+    }
+    thresholdTargetSummary = @{
+        requiredAlertCount = 11
+        mappedAlertCount = 11
+        missingAlerts = @()
+        routeCount = 3
+        routes = @("osmu-backend", "osmu-data-flow", "osmu-backup")
+        grafanaPanelCount = 11
+        tuningEvidenceCount = 11
+    }
+    evidenceRefs = @{
+        changeApproval = "CHG-2026-MONITORING"
+        prometheusRules = "prometheus-rules-loaded-20260622"
+        grafanaDashboard = "grafana-dashboard-imported-20260622"
+        alertmanagerRoute = "alertmanager-routes-reviewed-20260622"
+        targetBaseline = "tenant-baseline-reviewed-20260622"
+        incidentRouting = "incident-routing-reviewed-20260622"
+    }
+    confirmations = @{
+        prometheusRulesLoaded = $true
+        grafanaDashboardImported = $true
+        alertmanagerRoutesReviewed = $true
+        targetBaselinesReviewed = $true
+        incidentRoutingReviewed = $true
+        noSecretValues = $true
+    }
+    summary = @{
+        failureCount = 0
+        checkCount = $weakMonitoringThresholdChecks.Count
+    }
+    checks = $weakMonitoringThresholdChecks
+}
+$weakMonitoringThresholdChecksOutput = Join-Path $resolvedOutputDirectory "weak-monitoring-threshold-checks-promoted"
+$weakMonitoringThresholdChecksJson = Join-Path $resolvedOutputDirectory "weak-monitoring-threshold-checks-import.json"
+$weakMonitoringThresholdChecksMarkdown = Join-Path $resolvedOutputDirectory "weak-monitoring-threshold-checks-import.md"
+$previousErrorActionPreference = $ErrorActionPreference
+$ErrorActionPreference = "Continue"
+try {
+    $weakMonitoringThresholdChecksOutputLines = & powershell -NoProfile -ExecutionPolicy Bypass -File $importScript `
+        -MonitoringThresholdArtifactPath $weakMonitoringThresholdChecksRoot `
+        -OutputDirectory $weakMonitoringThresholdChecksOutput `
+        -JsonOutputPath $weakMonitoringThresholdChecksJson `
+        -MarkdownOutputPath $weakMonitoringThresholdChecksMarkdown 2>&1
+    $weakMonitoringThresholdChecksExitCode = $LASTEXITCODE
+}
+finally {
+    $ErrorActionPreference = $previousErrorActionPreference
+}
+Assert-True ($weakMonitoringThresholdChecksExitCode -ne 0) "Monitoring threshold evidence without complete PASS check rows should fail import."
+Assert-True (Test-Path -LiteralPath $weakMonitoringThresholdChecksJson) "Weak monitoring threshold checks import report should still be written."
+$weakMonitoringThresholdChecksReport = Get-Content -Raw -LiteralPath $weakMonitoringThresholdChecksJson | ConvertFrom-Json
+Assert-True ($weakMonitoringThresholdChecksReport.result -eq "failed") "Weak monitoring threshold checks import report should be failed."
+Assert-True (-not (Test-Path -LiteralPath (Join-Path $weakMonitoringThresholdChecksOutput "latest-monitoring-threshold-evidence.json"))) "Weak monitoring threshold checks evidence must not be promoted."
+Assert-True (($weakMonitoringThresholdChecksReport.entries | ConvertTo-Json -Depth 8).Contains("checks.grafana-panels-mapped missing PASS")) "Weak monitoring threshold checks report should describe missing PASS check row."
 
 Write-JsonEvidence (Join-Path $weakSecretRotationRoot "latest-secret-rotation-evidence.json") @{
     formatVersion = "osmu.secret-rotation-evidence.v1"

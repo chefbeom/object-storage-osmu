@@ -3298,13 +3298,15 @@ function Test-MonitoringThresholdEvidenceJson([string] $Path) {
     $grafanaPanelCountResult = Get-RequiredJsonInt $summary "grafanaPanelCount"
     $tuningEvidenceCountResult = Get-RequiredJsonInt $summary "tuningEvidenceCount"
     $failureCountResult = Get-RequiredJsonInt $reportSummary "failureCount"
+    $checkCountResult = Get-RequiredJsonInt $reportSummary "checkCount"
     foreach ($countResult in @(
         @{ name = "requiredAlertCount"; value = $requiredAlertCountResult },
         @{ name = "mappedAlertCount"; value = $mappedAlertCountResult },
         @{ name = "routeCount"; value = $routeCountResult },
         @{ name = "grafanaPanelCount"; value = $grafanaPanelCountResult },
         @{ name = "tuningEvidenceCount"; value = $tuningEvidenceCountResult },
-        @{ name = "failureCount"; value = $failureCountResult }
+        @{ name = "failureCount"; value = $failureCountResult },
+        @{ name = "checkCount"; value = $checkCountResult }
     )) {
         $name = [string] $countResult["name"]
         $value = $countResult["value"]
@@ -3322,11 +3324,12 @@ function Test-MonitoringThresholdEvidenceJson([string] $Path) {
     $grafanaPanelCount = [int64] $grafanaPanelCountResult.value
     $tuningEvidenceCount = [int64] $tuningEvidenceCountResult.value
     $failureCount = [int64] $failureCountResult.value
+    $checkCount = [int64] $checkCountResult.value
     $missingAlerts = @(Get-JsonProperty $summary "missingAlerts")
-    if ($requiredAlertCount -le 0 -or $mappedAlertCount -lt $requiredAlertCount -or $routeCount -le 0 -or $grafanaPanelCount -lt $requiredAlertCount -or $tuningEvidenceCount -lt $requiredAlertCount -or $missingAlerts.Count -gt 0 -or $failureCount -ne 0) {
+    if ($requiredAlertCount -le 0 -or $mappedAlertCount -lt $requiredAlertCount -or $routeCount -le 0 -or $grafanaPanelCount -lt $requiredAlertCount -or $tuningEvidenceCount -lt $requiredAlertCount -or $missingAlerts.Count -gt 0 -or $failureCount -ne 0 -or $checkCount -le 0) {
         return [pscustomobject]@{
             passed = $false
-            detail = "threshold target mapping incomplete required=$requiredAlertCount mapped=$mappedAlertCount routes=$routeCount grafanaPanels=$grafanaPanelCount tuningEvidence=$tuningEvidenceCount failures=$failureCount missing=$($missingAlerts -join ',')"
+            detail = "threshold target mapping incomplete required=$requiredAlertCount mapped=$mappedAlertCount routes=$routeCount grafanaPanels=$grafanaPanelCount tuningEvidence=$tuningEvidenceCount failures=$failureCount checks=$checkCount missing=$($missingAlerts -join ',')"
         }
     }
 
@@ -3341,9 +3344,125 @@ function Test-MonitoringThresholdEvidenceJson([string] $Path) {
         }
     }
 
+    foreach ($metadataName in @("environmentName", "targetCluster", "operatorName", "evidenceRef")) {
+        $metadataValue = [string] (Get-JsonProperty $json $metadataName)
+        if ([string]::IsNullOrWhiteSpace($metadataValue)) {
+            return [pscustomobject]@{
+                passed = $false
+                detail = "$metadataName missing"
+            }
+        }
+    }
+
+    $generatedAt = [string] (Get-JsonProperty $json "generatedAt")
+    $parsedGeneratedAt = [DateTimeOffset]::MinValue
+    if ([string]::IsNullOrWhiteSpace($generatedAt) -or -not [DateTimeOffset]::TryParse($generatedAt, [ref] $parsedGeneratedAt)) {
+        return [pscustomobject]@{
+            passed = $false
+            detail = "generatedAt=$generatedAt expected ISO timestamp"
+        }
+    }
+
+    $reviewWindow = Get-JsonProperty $json "reviewWindow"
+    $startedAt = [string] (Get-JsonProperty $reviewWindow "startedAt")
+    $completedAt = [string] (Get-JsonProperty $reviewWindow "completedAt")
+    $parsedStartedAt = [DateTimeOffset]::MinValue
+    $parsedCompletedAt = [DateTimeOffset]::MinValue
+    if ([string]::IsNullOrWhiteSpace($startedAt) -or -not [DateTimeOffset]::TryParse($startedAt, [ref] $parsedStartedAt)) {
+        return [pscustomobject]@{
+            passed = $false
+            detail = "reviewWindow.startedAt=$startedAt expected ISO timestamp"
+        }
+    }
+    if ([string]::IsNullOrWhiteSpace($completedAt) -or -not [DateTimeOffset]::TryParse($completedAt, [ref] $parsedCompletedAt)) {
+        return [pscustomobject]@{
+            passed = $false
+            detail = "reviewWindow.completedAt=$completedAt expected ISO timestamp"
+        }
+    }
+    if ($parsedCompletedAt -lt $parsedStartedAt) {
+        return [pscustomobject]@{
+            passed = $false
+            detail = "reviewWindow completedAt must be same as or later than startedAt"
+        }
+    }
+
+    $evidenceRefs = Get-JsonProperty $json "evidenceRefs"
+    foreach ($refName in @("changeApproval", "prometheusRules", "grafanaDashboard", "alertmanagerRoute", "targetBaseline", "incidentRouting")) {
+        $refValue = [string] (Get-JsonProperty $evidenceRefs $refName)
+        if ([string]::IsNullOrWhiteSpace($refValue)) {
+            return [pscustomobject]@{
+                passed = $false
+                detail = "evidenceRefs.$refName missing"
+            }
+        }
+    }
+
+    $checksRaw = Get-JsonProperty $json "checks"
+    if ($null -eq $checksRaw) {
+        return [pscustomobject]@{
+            passed = $false
+            detail = "checks expected"
+        }
+    }
+    [object[]] $checks = @($checksRaw)
+    if ($checks.Count -ne $checkCount) {
+        return [pscustomobject]@{
+            passed = $false
+            detail = "checks.Count=$($checks.Count) summary.checkCount=$checkCount expected equal"
+        }
+    }
+    foreach ($check in $checks) {
+        $id = [string] (Get-JsonProperty $check "id")
+        $status = [string] (Get-JsonProperty $check "status")
+        $passed = Get-RequiredJsonBool $check "passed"
+        if ([string]::IsNullOrWhiteSpace($id)) {
+            return [pscustomobject]@{ passed = $false; detail = "checks row missing id" }
+        }
+        if (-not "PASS".Equals($status, [System.StringComparison]::OrdinalIgnoreCase) -or -not $passed.valid -or -not $passed.value) {
+            return [pscustomobject]@{ passed = $false; detail = "checks.$id status=$status passed=$($passed.raw) expected PASS and boolean true" }
+        }
+    }
+
+    $requiredCheckIds = @(
+        "environment-name",
+        "target-cluster",
+        "operator",
+        "review-started-at",
+        "review-completed-at",
+        "review-window-order",
+        "change-approval-ref",
+        "threshold-targets-file-exists",
+        "threshold-targets-format",
+        "threshold-alert-targets-complete",
+        "alertmanager-routes-mapped",
+        "grafana-panels-mapped",
+        "target-tuning-evidence-fields",
+        "prometheus-rules-evidence-ref",
+        "grafana-dashboard-evidence-ref",
+        "alertmanager-route-evidence-ref",
+        "target-baseline-evidence-ref",
+        "incident-routing-evidence-ref",
+        "prometheus-rules-loaded-confirmed",
+        "grafana-dashboard-imported-confirmed",
+        "alertmanager-routes-reviewed-confirmed",
+        "target-baselines-reviewed-confirmed",
+        "incident-routing-reviewed-confirmed",
+        "no-secret-values-confirmed"
+    )
+    foreach ($requiredCheckId in $requiredCheckIds) {
+        [object[]] $match = @($checks | Where-Object { [string] (Get-JsonProperty $_ "id") -eq $requiredCheckId -and "PASS".Equals([string] (Get-JsonProperty $_ "status"), [System.StringComparison]::OrdinalIgnoreCase) })
+        if ($match.Count -ne 1) {
+            return [pscustomobject]@{
+                passed = $false
+                detail = "checks.$requiredCheckId missing PASS"
+            }
+        }
+    }
+
     return [pscustomobject]@{
         passed = $true
-        detail = "formatVersion=$formatVersion result=$result requiredAlerts=$requiredAlertCount mappedAlerts=$mappedAlertCount routes=$routeCount grafanaPanels=$grafanaPanelCount tuningEvidence=$tuningEvidenceCount failures=$failureCount"
+        detail = "formatVersion=$formatVersion result=$result environmentName=$($json.environmentName) targetCluster=$($json.targetCluster) requiredAlerts=$requiredAlertCount mappedAlerts=$mappedAlertCount routes=$routeCount grafanaPanels=$grafanaPanelCount tuningEvidence=$tuningEvidenceCount failures=$failureCount checkRows=$($checks.Count)"
     }
 }
 
