@@ -172,6 +172,10 @@ function Test-Sha256([string] $Value) {
     return -not [string]::IsNullOrWhiteSpace($Value) -and $Value -match "^[0-9a-fA-F]{64}$" -and $Value -notmatch "^0{64}$"
 }
 
+function Test-ImageRefTag([string] $Value, [string] $Tag) {
+    return -not [string]::IsNullOrWhiteSpace($Value) -and -not [string]::IsNullOrWhiteSpace($Tag) -and $Value.EndsWith(":$Tag", [System.StringComparison]::Ordinal)
+}
+
 function Test-OperationsEvidenceRawContent([string] $Raw, [string] $Label) {
     $patterns = @(
         '(?i)"(password|passwd|secret|token|credential|clientSecret|client_secret|authorization|kubeconfig|privateKey|private_key)"\s*:',
@@ -1245,13 +1249,28 @@ function Test-ImageSigningEvidenceJson([string] $Path) {
         }
     }
 
-    foreach ($field in @("version", "secretPolicy")) {
+    foreach ($field in @("version", "issuer", "signingMode", "secretPolicy")) {
         $value = [string] (Get-JsonProperty $json $field)
         if ([string]::IsNullOrWhiteSpace($value)) {
             return [pscustomobject]@{
                 passed = $false
                 detail = "$field missing"
             }
+        }
+    }
+    $version = [string] (Get-JsonProperty $json "version")
+    $issuer = [string] (Get-JsonProperty $json "issuer")
+    if ($issuer -ne "https://token.actions.githubusercontent.com") {
+        return [pscustomobject]@{
+            passed = $false
+            detail = "issuer=$issuer expected=https://token.actions.githubusercontent.com"
+        }
+    }
+    $signingMode = [string] (Get-JsonProperty $json "signingMode")
+    if ($signingMode -ne "keyless-github-actions-oidc") {
+        return [pscustomobject]@{
+            passed = $false
+            detail = "signingMode=$signingMode expected=keyless-github-actions-oidc"
         }
     }
 
@@ -1264,6 +1283,20 @@ function Test-ImageSigningEvidenceJson([string] $Path) {
                     passed = $false
                     detail = "$imageName.$refField missing"
                 }
+            }
+        }
+        $versionRef = [string] (Get-JsonProperty $image "versionRef")
+        if (-not (Test-ImageRefTag $versionRef $version)) {
+            return [pscustomobject]@{
+                passed = $false
+                detail = "$imageName.versionRef=$versionRef expected tag $version"
+            }
+        }
+        $shaRef = [string] (Get-JsonProperty $image "shaRef")
+        if (-not (Test-ImageRefTag $shaRef $commitSha)) {
+            return [pscustomobject]@{
+                passed = $false
+                detail = "$imageName.shaRef=$shaRef expected tag $commitSha"
             }
         }
 
@@ -1288,7 +1321,7 @@ function Test-ImageSigningEvidenceJson([string] $Path) {
 
     return [pscustomobject]@{
         passed = $true
-        detail = "formatVersion=$formatVersion result=$result failureCount=$($failureCount.value) backendDigest=$($json.backend.digest) frontendDigest=$($json.frontend.digest)"
+        detail = "formatVersion=$formatVersion result=$result failureCount=$($failureCount.value) version=$version signingMode=$signingMode backendDigest=$($json.backend.digest) frontendDigest=$($json.frontend.digest)"
     }
 }
 
@@ -1358,8 +1391,38 @@ function Test-ContainerSecurityEvidenceJson([string] $Path) {
             }
         }
     }
+    foreach ($imageField in @("backendImage", "frontendImage")) {
+        $imageRef = [string] (Get-JsonProperty $json $imageField)
+        if (-not (Test-ImageRefTag $imageRef $commitSha)) {
+            return [pscustomobject]@{
+                passed = $false
+                detail = "$imageField=$imageRef expected commit SHA tag $commitSha"
+            }
+        }
+    }
+    $artifactName = [string] (Get-JsonProperty $json "artifactName")
+    if (-not $artifactName.Contains($commitSha)) {
+        return [pscustomobject]@{
+            passed = $false
+            detail = "artifactName=$artifactName expected to contain commit SHA $commitSha"
+        }
+    }
 
     $scans = Get-JsonProperty $json "scans"
+    $severity = [string] (Get-JsonProperty $scans "severity")
+    if ($severity -ne "CRITICAL,HIGH") {
+        return [pscustomobject]@{
+            passed = $false
+            detail = "scans.severity=$severity expected=CRITICAL,HIGH"
+        }
+    }
+    $ignoreUnfixed = Get-RequiredJsonBool $scans "ignoreUnfixed"
+    if (-not $ignoreUnfixed.valid -or -not $ignoreUnfixed.value) {
+        return [pscustomobject]@{
+            passed = $false
+            detail = "scans.ignoreUnfixed=$($ignoreUnfixed.raw) expected boolean true"
+        }
+    }
     foreach ($flagName in @("backendScanPassed", "frontendScanPassed")) {
         $flag = Get-RequiredJsonBool $scans $flagName
         if (-not $flag.valid -or -not $flag.value) {
@@ -1371,8 +1434,29 @@ function Test-ContainerSecurityEvidenceJson([string] $Path) {
     }
 
     $sbom = Get-JsonProperty $json "sbom"
+    $sbomFormat = [string] (Get-JsonProperty $sbom "format")
+    if ($sbomFormat -ne "SPDX JSON") {
+        return [pscustomobject]@{
+            passed = $false
+            detail = "sbom.format=$sbomFormat expected=SPDX JSON"
+        }
+    }
     foreach ($label in @("backend", "frontend")) {
         $summary = Get-JsonProperty $sbom $label
+        $summaryLabel = [string] (Get-JsonProperty $summary "label")
+        if ($summaryLabel -ne $label) {
+            return [pscustomobject]@{
+                passed = $false
+                detail = "sbom.$label.label=$summaryLabel expected=$label"
+            }
+        }
+        $spdxVersion = [string] (Get-JsonProperty $summary "spdxVersion")
+        if ([string]::IsNullOrWhiteSpace($spdxVersion) -or -not $spdxVersion.StartsWith("SPDX-", [System.StringComparison]::Ordinal)) {
+            return [pscustomobject]@{
+                passed = $false
+                detail = "sbom.$label.spdxVersion=$spdxVersion expected SPDX-*"
+            }
+        }
         $valid = Get-RequiredJsonBool $summary "valid"
         if (-not $valid.valid -or -not $valid.value) {
             return [pscustomobject]@{
@@ -1408,7 +1492,7 @@ function Test-ContainerSecurityEvidenceJson([string] $Path) {
 
     return [pscustomobject]@{
         passed = $true
-        detail = "formatVersion=$formatVersion result=$result failureCount=$($failureCount.value) backendPackages=$($json.sbom.backend.packageCount) frontendPackages=$($json.sbom.frontend.packageCount)"
+        detail = "formatVersion=$formatVersion result=$result failureCount=$($failureCount.value) commitSha=$commitSha backendPackages=$($json.sbom.backend.packageCount) frontendPackages=$($json.sbom.frontend.packageCount)"
     }
 }
 

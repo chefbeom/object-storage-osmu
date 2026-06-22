@@ -866,7 +866,9 @@ $weakIamRbacRoot = Join-Path $resolvedOutputDirectory "weak-iam-rbac-source"
 $weakIamRbacStatusRoot = Join-Path $resolvedOutputDirectory "weak-iam-rbac-status-source"
 $weakSecurityFinalizerRoot = Join-Path $resolvedOutputDirectory "weak-security-finalizer-source"
 $weakImageSigningRoot = Join-Path $resolvedOutputDirectory "weak-image-signing-source"
+$weakImageSigningRefsRoot = Join-Path $resolvedOutputDirectory "weak-image-signing-refs-source"
 $weakContainerSecurityRoot = Join-Path $resolvedOutputDirectory "weak-container-security-source"
+$weakContainerSecuritySbomRoot = Join-Path $resolvedOutputDirectory "weak-container-security-sbom-source"
 $weakStorageBackendTelemetryRoot = Join-Path $resolvedOutputDirectory "weak-storage-backend-telemetry-source"
 $weakStorageBackendTelemetryChecksRoot = Join-Path $resolvedOutputDirectory "weak-storage-backend-telemetry-checks-source"
 $unsafeStorageBackendTelemetryRoot = Join-Path $resolvedOutputDirectory "unsafe-storage-backend-telemetry-source"
@@ -1577,10 +1579,10 @@ Assert-True ($iamRbacEntry.Count -eq 1) "IAM/RBAC finalizer import entry missing
 Assert-True (([string] $iamRbacEntry[0].detail).Contains("iam-rbac-static-passed") -and ([string] $iamRbacEntry[0].detail).Contains("stepCount=2")) "IAM/RBAC finalizer import entry should include strict status and step validation detail."
 $imageSigningEntry = @($report.entries | Where-Object { $_.group -eq "security-evidence" -and $_.fileName -eq "latest-image-signing-evidence.json" })
 Assert-True ($imageSigningEntry.Count -eq 1) "Image signing import entry missing."
-Assert-True (([string] $imageSigningEntry[0].detail).Contains("backendDigest=sha256:")) "Image signing import entry should include digest validation detail."
+Assert-True (([string] $imageSigningEntry[0].detail).Contains("version=v1.2.3") -and ([string] $imageSigningEntry[0].detail).Contains("signingMode=keyless-github-actions-oidc") -and ([string] $imageSigningEntry[0].detail).Contains("backendDigest=sha256:")) "Image signing import entry should include version, signing mode, and digest validation detail."
 $containerSecurityEntry = @($report.entries | Where-Object { $_.group -eq "security-evidence" -and $_.fileName -eq "latest-container-security-evidence.json" })
 Assert-True ($containerSecurityEntry.Count -eq 1) "Container security import entry missing."
-Assert-True (([string] $containerSecurityEntry[0].detail).Contains("backendPackages=42")) "Container security import entry should include SBOM package validation detail."
+Assert-True (([string] $containerSecurityEntry[0].detail).Contains("commitSha=1234567890abcdef1234567890abcdef12345678") -and ([string] $containerSecurityEntry[0].detail).Contains("backendPackages=42")) "Container security import entry should include commit and SBOM package validation detail."
 $storageBackendTelemetryEntry = @($report.entries | Where-Object { $_.group -eq "storage-backend-telemetry" -and $_.fileName -eq "latest-storage-backend-telemetry.json" })
 Assert-True ($storageBackendTelemetryEntry.Count -eq 1) "Storage backend telemetry import entry missing."
 Assert-True (([string] $storageBackendTelemetryEntry[0].detail).Contains("targetCluster=osmu-prod") -and ([string] $storageBackendTelemetryEntry[0].detail).Contains("servers=2/2") -and ([string] $storageBackendTelemetryEntry[0].detail).Contains("checkCount=11")) "Storage backend telemetry import entry should include strict target metadata and telemetry validation detail."
@@ -1836,6 +1838,8 @@ Write-JsonEvidence (Join-Path $weakImageSigningRoot "latest-image-signing-eviden
     version = "v1.2.3"
     commitSha = "1234567890abcdef1234567890abcdef12345678"
     sourceRunUrl = "https://github.com/osmu/object-storage-osmu/actions/runs/223456"
+    issuer = "https://token.actions.githubusercontent.com"
+    signingMode = "keyless-github-actions-oidc"
     backend = @{
         versionRef = "ghcr.io/osmu/object-storage-osmu-backend:v1.2.3"
         shaRef = "ghcr.io/osmu/object-storage-osmu-backend:1234567890abcdef1234567890abcdef12345678"
@@ -1876,6 +1880,56 @@ Assert-True ($weakImageSigningReport.result -eq "failed") "Weak image signing im
 Assert-True (-not (Test-Path -LiteralPath (Join-Path $weakImageSigningOutput "latest-image-signing-evidence.json"))) "Weak image signing evidence must not be promoted."
 Assert-True (($weakImageSigningReport.entries | ConvertTo-Json -Depth 8).Contains("backend.digest=")) "Weak image signing report should describe missing digest."
 
+Write-JsonEvidence (Join-Path $weakImageSigningRefsRoot "latest-security-evidence-finalize.json") (New-PassedSecurityEvidenceFinalizer)
+Write-JsonEvidence (Join-Path $weakImageSigningRefsRoot "latest-image-signing-evidence.json") @{
+    formatVersion = "osmu.image-signing-evidence.v1"
+    result = "passed"
+    failureCount = 0
+    version = "v1.2.3"
+    commitSha = "1234567890abcdef1234567890abcdef12345678"
+    sourceRunUrl = "https://github.com/osmu/object-storage-osmu/actions/runs/223458"
+    issuer = "https://token.actions.githubusercontent.com"
+    signingMode = "keyless-github-actions-oidc"
+    backend = @{
+        versionRef = "ghcr.io/osmu/object-storage-osmu-backend:v1.2.3"
+        shaRef = "ghcr.io/osmu/object-storage-osmu-backend:v1.2.2"
+        digest = "sha256:1111111111111111111111111111111111111111111111111111111111111111"
+        versionSignatureVerified = $true
+        shaSignatureVerified = $true
+    }
+    frontend = @{
+        versionRef = "ghcr.io/osmu/object-storage-osmu-frontend:v1.2.3"
+        shaRef = "ghcr.io/osmu/object-storage-osmu-frontend:1234567890abcdef1234567890abcdef12345678"
+        digest = "sha256:2222222222222222222222222222222222222222222222222222222222222222"
+        versionSignatureVerified = $true
+        shaSignatureVerified = $true
+    }
+    secretPolicy = "Evidence contains public image references only."
+}
+Copy-Item -LiteralPath (Join-Path $securitySource "latest-container-security-evidence.json") -Destination (Join-Path $weakImageSigningRefsRoot "latest-container-security-evidence.json") -Force
+$weakImageSigningRefsOutput = Join-Path $resolvedOutputDirectory "weak-image-signing-refs-promoted"
+$weakImageSigningRefsJson = Join-Path $resolvedOutputDirectory "weak-image-signing-refs-import.json"
+$weakImageSigningRefsMarkdown = Join-Path $resolvedOutputDirectory "weak-image-signing-refs-import.md"
+$previousErrorActionPreference = $ErrorActionPreference
+$ErrorActionPreference = "Continue"
+try {
+    $weakImageSigningRefsOutputLines = & powershell -NoProfile -ExecutionPolicy Bypass -File $importScript `
+        -SecurityEvidenceArtifactPath $weakImageSigningRefsRoot `
+        -OutputDirectory $weakImageSigningRefsOutput `
+        -JsonOutputPath $weakImageSigningRefsJson `
+        -MarkdownOutputPath $weakImageSigningRefsMarkdown 2>&1
+    $weakImageSigningRefsExitCode = $LASTEXITCODE
+}
+finally {
+    $ErrorActionPreference = $previousErrorActionPreference
+}
+Assert-True ($weakImageSigningRefsExitCode -ne 0) "Image signing evidence with mismatched SHA ref should fail import."
+Assert-True (Test-Path -LiteralPath $weakImageSigningRefsJson) "Weak image signing refs import report should still be written."
+$weakImageSigningRefsReport = Get-Content -Raw -LiteralPath $weakImageSigningRefsJson | ConvertFrom-Json
+Assert-True ($weakImageSigningRefsReport.result -eq "failed") "Weak image signing refs import report should be failed."
+Assert-True (-not (Test-Path -LiteralPath (Join-Path $weakImageSigningRefsOutput "latest-image-signing-evidence.json"))) "Weak image signing refs evidence must not be promoted."
+Assert-True (($weakImageSigningRefsReport.entries | ConvertTo-Json -Depth 8).Contains("backend.shaRef=ghcr.io/osmu/object-storage-osmu-backend:v1.2.2 expected tag 1234567890abcdef1234567890abcdef12345678")) "Weak image signing refs report should describe mismatched SHA ref."
+
 Write-JsonEvidence (Join-Path $weakContainerSecurityRoot "latest-security-evidence-finalize.json") (New-PassedSecurityEvidenceFinalizer)
 Copy-Item -LiteralPath (Join-Path $securitySource "latest-image-signing-evidence.json") -Destination (Join-Path $weakContainerSecurityRoot "latest-image-signing-evidence.json") -Force
 Write-JsonEvidence (Join-Path $weakContainerSecurityRoot "latest-container-security-evidence.json") @{
@@ -1888,18 +1942,25 @@ Write-JsonEvidence (Join-Path $weakContainerSecurityRoot "latest-container-secur
     sourceRunUrl = "https://github.com/osmu/object-storage-osmu/actions/runs/223457"
     artifactName = "container-security-1234567890abcdef1234567890abcdef12345678"
     scans = @{
+        severity = "CRITICAL,HIGH"
+        ignoreUnfixed = $true
         backendScanPassed = "true"
         frontendScanPassed = $true
     }
     sbom = @{
+        format = "SPDX JSON"
         backend = @{
+            label = "backend"
             valid = $true
+            spdxVersion = "SPDX-2.3"
             packageCount = 42
             byteSize = 4096
             sha256 = "3333333333333333333333333333333333333333333333333333333333333333"
         }
         frontend = @{
+            label = "frontend"
             valid = $true
+            spdxVersion = "SPDX-2.3"
             packageCount = 84
             byteSize = 8192
             sha256 = "4444444444444444444444444444444444444444444444444444444444444444"
@@ -1929,6 +1990,67 @@ $weakContainerSecurityReport = Get-Content -Raw -LiteralPath $weakContainerSecur
 Assert-True ($weakContainerSecurityReport.result -eq "failed") "Weak container security import report should be failed."
 Assert-True (-not (Test-Path -LiteralPath (Join-Path $weakContainerSecurityOutput "latest-container-security-evidence.json"))) "Weak container security evidence must not be promoted."
 Assert-True (($weakContainerSecurityReport.entries | ConvertTo-Json -Depth 8).Contains("scans.backendScanPassed=true expected boolean true")) "Weak container security report should describe invalid typed scan flag."
+
+Write-JsonEvidence (Join-Path $weakContainerSecuritySbomRoot "latest-security-evidence-finalize.json") (New-PassedSecurityEvidenceFinalizer)
+Copy-Item -LiteralPath (Join-Path $securitySource "latest-image-signing-evidence.json") -Destination (Join-Path $weakContainerSecuritySbomRoot "latest-image-signing-evidence.json") -Force
+Write-JsonEvidence (Join-Path $weakContainerSecuritySbomRoot "latest-container-security-evidence.json") @{
+    formatVersion = "osmu.container-security-evidence.v1"
+    result = "passed"
+    failureCount = 0
+    backendImage = "ghcr.io/osmu/object-storage-osmu-backend:1234567890abcdef1234567890abcdef12345678"
+    frontendImage = "ghcr.io/osmu/object-storage-osmu-frontend:1234567890abcdef1234567890abcdef12345678"
+    commitSha = "1234567890abcdef1234567890abcdef12345678"
+    sourceRunUrl = "https://github.com/osmu/object-storage-osmu/actions/runs/223459"
+    artifactName = "container-security-1234567890abcdef1234567890abcdef12345678"
+    scans = @{
+        severity = "CRITICAL,HIGH"
+        ignoreUnfixed = $true
+        backendScanPassed = $true
+        frontendScanPassed = $true
+    }
+    sbom = @{
+        format = "SPDX JSON"
+        backend = @{
+            label = "backend"
+            valid = $true
+            spdxVersion = ""
+            packageCount = 42
+            byteSize = 4096
+            sha256 = "3333333333333333333333333333333333333333333333333333333333333333"
+        }
+        frontend = @{
+            label = "frontend"
+            valid = $true
+            spdxVersion = "SPDX-2.3"
+            packageCount = 84
+            byteSize = 8192
+            sha256 = "4444444444444444444444444444444444444444444444444444444444444444"
+        }
+    }
+    secretPolicy = "Evidence contains image names and SBOM metadata only."
+}
+$weakContainerSecuritySbomOutput = Join-Path $resolvedOutputDirectory "weak-container-security-sbom-promoted"
+$weakContainerSecuritySbomJson = Join-Path $resolvedOutputDirectory "weak-container-security-sbom-import.json"
+$weakContainerSecuritySbomMarkdown = Join-Path $resolvedOutputDirectory "weak-container-security-sbom-import.md"
+$previousErrorActionPreference = $ErrorActionPreference
+$ErrorActionPreference = "Continue"
+try {
+    $weakContainerSecuritySbomOutputLines = & powershell -NoProfile -ExecutionPolicy Bypass -File $importScript `
+        -SecurityEvidenceArtifactPath $weakContainerSecuritySbomRoot `
+        -OutputDirectory $weakContainerSecuritySbomOutput `
+        -JsonOutputPath $weakContainerSecuritySbomJson `
+        -MarkdownOutputPath $weakContainerSecuritySbomMarkdown 2>&1
+    $weakContainerSecuritySbomExitCode = $LASTEXITCODE
+}
+finally {
+    $ErrorActionPreference = $previousErrorActionPreference
+}
+Assert-True ($weakContainerSecuritySbomExitCode -ne 0) "Container security evidence with weak SBOM metadata should fail import."
+Assert-True (Test-Path -LiteralPath $weakContainerSecuritySbomJson) "Weak container security SBOM import report should still be written."
+$weakContainerSecuritySbomReport = Get-Content -Raw -LiteralPath $weakContainerSecuritySbomJson | ConvertFrom-Json
+Assert-True ($weakContainerSecuritySbomReport.result -eq "failed") "Weak container security SBOM import report should be failed."
+Assert-True (-not (Test-Path -LiteralPath (Join-Path $weakContainerSecuritySbomOutput "latest-container-security-evidence.json"))) "Weak container security SBOM evidence must not be promoted."
+Assert-True (($weakContainerSecuritySbomReport.entries | ConvertTo-Json -Depth 8).Contains("sbom.backend.spdxVersion= expected SPDX-*")) "Weak container security SBOM report should describe invalid SPDX metadata."
 
 Write-JsonEvidence (Join-Path $weakStorageBackendTelemetryRoot "latest-storage-backend-telemetry.json") @{
     formatVersion = "osmu.storage-backend-telemetry.v1"
