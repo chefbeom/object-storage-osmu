@@ -517,6 +517,245 @@ function Test-StorageExpansionFinalizeJson([string] $Path) {
     }
 }
 
+function Test-KubernetesHaDrReadinessEvidenceJson([string] $Path) {
+    try {
+        $raw = Get-Content -Raw -LiteralPath $Path
+        $json = $raw | ConvertFrom-Json
+    }
+    catch {
+        return [pscustomobject]@{
+            passed = $false
+            detail = "invalid JSON: $($_.Exception.Message)"
+        }
+    }
+
+    $formatVersion = [string] (Get-JsonProperty $json "formatVersion")
+    if ($formatVersion -ne "osmu.kubernetes-ha-dr-readiness.v1") {
+        return [pscustomobject]@{
+            passed = $false
+            detail = "formatVersion=$formatVersion expected=osmu.kubernetes-ha-dr-readiness.v1"
+        }
+    }
+
+    $result = [string] (Get-JsonProperty $json "result")
+    if ($result -ne "passed") {
+        return [pscustomobject]@{
+            passed = $false
+            detail = "result=$result expected=passed"
+        }
+    }
+
+    $failureCount = Get-RequiredJsonInt $json "failureCount"
+    if (-not $failureCount.valid -or [int64] $failureCount.value -ne 0) {
+        return [pscustomobject]@{
+            passed = $false
+            detail = "failureCount=$($failureCount.raw)(valid=$($failureCount.valid)) expected integer 0"
+        }
+    }
+
+    $rawValidation = Test-OperationsEvidenceRawContent $raw "Kubernetes HA/DR readiness"
+    if (-not $rawValidation.passed) {
+        return $rawValidation
+    }
+
+    foreach ($field in @("namespace", "kubectlPath", "restoreManifestPath")) {
+        $value = [string] (Get-JsonProperty $json $field)
+        if ([string]::IsNullOrWhiteSpace($value)) {
+            return [pscustomobject]@{
+                passed = $false
+                detail = "$field missing"
+            }
+        }
+    }
+
+    $checksObject = Get-JsonProperty $json "checks"
+    $checks = if ($null -eq $checksObject) { @() } else { @($checksObject) }
+    if ($checks.Count -lt 12) {
+        return [pscustomobject]@{
+            passed = $false
+            detail = "checkCount=$($checks.Count) expected at least 12"
+        }
+    }
+
+    foreach ($requiredCheck in @(
+        "deployment-osmu-backend-ready",
+        "deployment-osmu-frontend-ready",
+        "statefulset-osmu-mariadb-ready",
+        "statefulset-osmu-minio-ready",
+        "pdb-osmu-backend-effective",
+        "pdb-osmu-frontend-effective",
+        "pvc-osmu-backup-data-bound",
+        "cronjob-osmu-mariadb-backup-scheduled",
+        "cronjob-osmu-minio-backup-scheduled",
+        "restore-job-server-dry-run"
+    )) {
+        $match = @($checks | Where-Object { [string] (Get-JsonProperty $_ "name") -eq $requiredCheck })
+        if ($match.Count -ne 1) {
+            return [pscustomobject]@{
+                passed = $false
+                detail = "checks.$requiredCheck missing"
+            }
+        }
+    }
+
+    for ($i = 0; $i -lt $checks.Count; $i++) {
+        $check = $checks[$i]
+        $passed = Get-RequiredJsonBool $check "passed"
+        if (-not $passed.valid -or -not $passed.value) {
+            return [pscustomobject]@{
+                passed = $false
+                detail = "checks[$i].passed=$($passed.raw) expected boolean true"
+            }
+        }
+
+        $exitCode = Get-RequiredJsonInt $check "exitCode"
+        if (-not $exitCode.valid -or [int64] $exitCode.value -ne 0) {
+            return [pscustomobject]@{
+                passed = $false
+                detail = "checks[$i].exitCode=$($exitCode.raw)(valid=$($exitCode.valid)) expected integer 0"
+            }
+        }
+
+        foreach ($field in @("name", "category", "summary", "command")) {
+            $value = [string] (Get-JsonProperty $check $field)
+            if ([string]::IsNullOrWhiteSpace($value)) {
+                return [pscustomobject]@{
+                    passed = $false
+                    detail = "checks[$i].$field missing"
+                }
+            }
+        }
+    }
+
+    return [pscustomobject]@{
+        passed = $true
+        detail = "formatVersion=$formatVersion result=$result failureCount=$($failureCount.value) checkCount=$($checks.Count) namespace=$($json.namespace)"
+    }
+}
+
+function Test-KubernetesDrFinalizeJson([string] $Path) {
+    try {
+        $raw = Get-Content -Raw -LiteralPath $Path
+        $json = $raw | ConvertFrom-Json
+    }
+    catch {
+        return [pscustomobject]@{
+            passed = $false
+            detail = "invalid JSON: $($_.Exception.Message)"
+        }
+    }
+
+    $formatVersion = [string] (Get-JsonProperty $json "formatVersion")
+    if ($formatVersion -ne "osmu.kubernetes-dr-finalize.v1") {
+        return [pscustomobject]@{
+            passed = $false
+            detail = "formatVersion=$formatVersion expected=osmu.kubernetes-dr-finalize.v1"
+        }
+    }
+
+    $result = [string] (Get-JsonProperty $json "result")
+    if ($result -ne "ready") {
+        return [pscustomobject]@{
+            passed = $false
+            detail = "result=$result expected=ready"
+        }
+    }
+
+    $status = [string] (Get-JsonProperty $json "status")
+    if ($status -ne "kubernetes-dr-finalize-verified") {
+        return [pscustomobject]@{
+            passed = $false
+            detail = "status=$status expected=kubernetes-dr-finalize-verified"
+        }
+    }
+
+    $rawValidation = Test-OperationsEvidenceRawContent $raw "Kubernetes DR finalizer"
+    if (-not $rawValidation.passed) {
+        return $rawValidation
+    }
+
+    foreach ($field in @("sourceNamespace", "restoreNamespace", "runId", "backupTimestamp", "powerShellCommand", "secretPolicy")) {
+        $value = [string] (Get-JsonProperty $json $field)
+        if ([string]::IsNullOrWhiteSpace($value)) {
+            return [pscustomobject]@{
+                passed = $false
+                detail = "$field missing"
+            }
+        }
+    }
+
+    $backupTimestamp = [string] (Get-JsonProperty $json "backupTimestamp")
+    if ($backupTimestamp -eq "YYYYMMDDTHHMMSSZ" -or $backupTimestamp -notmatch "^\d{8}T\d{6}Z$") {
+        return [pscustomobject]@{
+            passed = $false
+            detail = "backupTimestamp=$backupTimestamp expected concrete YYYYMMDDTHHMMSSZ"
+        }
+    }
+
+    foreach ($flagName in @("serverDryRunOnly", "confirmRestore", "bootstrapDrBucket", "verifyDrBucketImmutability", "transferArtifacts", "runRestoreSmoke", "writeEvidenceRequest", "submitEvidence", "runS3ClientSmoke")) {
+        $flag = Get-RequiredJsonBool $json $flagName
+        if (-not $flag.valid) {
+            return [pscustomobject]@{
+                passed = $false
+                detail = "$flagName=$($flag.raw) expected boolean"
+            }
+        }
+        if (($flagName -eq "serverDryRunOnly" -and $flag.value) -or ($flagName -ne "serverDryRunOnly" -and -not $flag.value)) {
+            $expectedFlagValue = if ($flagName -eq "serverDryRunOnly") { "False" } else { "True" }
+            return [pscustomobject]@{
+                passed = $false
+                detail = "$flagName=$($flag.raw) expected $expectedFlagValue"
+            }
+        }
+    }
+
+    $paths = Get-JsonProperty $json "paths"
+    foreach ($field in @("drDrillEvidence", "restoreSmokeEvidence", "drEvidenceRequest", "report", "summary")) {
+        $value = [string] (Get-JsonProperty $paths $field)
+        if ([string]::IsNullOrWhiteSpace($value)) {
+            return [pscustomobject]@{
+                passed = $false
+                detail = "paths.$field missing"
+            }
+        }
+    }
+
+    $gapsObject = Get-JsonProperty $json "gaps"
+    $gaps = if ($null -eq $gapsObject) { @() } else { @($gapsObject) }
+    if ($gaps.Count -ne 0) {
+        return [pscustomobject]@{
+            passed = $false
+            detail = "gapCount=$($gaps.Count) expected 0"
+        }
+    }
+
+    $stepsObject = Get-JsonProperty $json "steps"
+    $steps = if ($null -eq $stepsObject) { @() } else { @($stepsObject) }
+    foreach ($requiredStep in @("Kubernetes DR drill wrapper", "Kubernetes restore smoke", "Kubernetes DR evidence request")) {
+        $match = @($steps | Where-Object { [string] (Get-JsonProperty $_ "name") -eq $requiredStep })
+        if ($match.Count -ne 1) {
+            return [pscustomobject]@{
+                passed = $false
+                detail = "steps.$requiredStep missing"
+            }
+        }
+
+        $stepResult = [string] (Get-JsonProperty $match[0] "result")
+        $exitCode = Get-RequiredJsonInt $match[0] "exitCode"
+        if ($stepResult -ne "passed" -or -not $exitCode.valid -or [int64] $exitCode.value -ne 0) {
+            return [pscustomobject]@{
+                passed = $false
+                detail = "steps.$requiredStep result=$stepResult exitCode=$($exitCode.raw) expected passed and integer 0"
+            }
+        }
+    }
+
+    return [pscustomobject]@{
+        passed = $true
+        detail = "formatVersion=$formatVersion result=$result status=$status stepCount=$($steps.Count) backupTimestamp=$backupTimestamp"
+    }
+}
+
 function Test-SecurityEvidenceRawContent([string] $Raw, [string] $Label) {
     $patterns = @(
         '(?i)"(password|passwd|secret|token|credential|apiKey|api_key|accessKey|access_key|privateKey|private_key|registryPassword|registry_password|signingKey|signing_key|cosignPrivateKey|cosign_private_key)"\s*:',
@@ -2083,6 +2322,22 @@ function Import-EvidenceFile(
         }
         [void] $validationDetails.Add($validation.detail)
     }
+    elseif ($ValidationKind -eq "kubernetes-ha-dr-readiness") {
+        $validation = Test-KubernetesHaDrReadinessEvidenceJson $sourcePath
+        if (-not $validation.passed) {
+            Add-Entry $Group $FileName "failed" $validation.detail $sourcePath ""
+            return
+        }
+        [void] $validationDetails.Add($validation.detail)
+    }
+    elseif ($ValidationKind -eq "kubernetes-dr-finalizer") {
+        $validation = Test-KubernetesDrFinalizeJson $sourcePath
+        if (-not $validation.passed) {
+            Add-Entry $Group $FileName "failed" $validation.detail $sourcePath ""
+            return
+        }
+        [void] $validationDetails.Add($validation.detail)
+    }
     elseif ($ValidationKind -eq "data-flow-storage-plan") {
         $validation = Test-DataFlowStoragePlanEvidenceJson $sourcePath
         if (-not $validation.passed) {
@@ -2212,9 +2467,9 @@ Import-EvidenceFile "storage-expansion" $StorageExpansionArtifactPath "latest-st
 Import-EvidenceFile "storage-expansion" $StorageExpansionArtifactPath "latest-storage-expansion-rbac-auth.json" $true "" "" "storage-expansion-rbac-auth"
 Import-EvidenceFile "storage-expansion" $StorageExpansionArtifactPath "latest-storage-expansion-server-dry-run.json" $true "" "" "storage-expansion-server-dry-run"
 
-Import-EvidenceFile "ha-dr-readiness" $HaDrReadinessArtifactPath "latest-kubernetes-ha-dr-readiness.json" $true "result" "passed"
+Import-EvidenceFile "ha-dr-readiness" $HaDrReadinessArtifactPath "latest-kubernetes-ha-dr-readiness.json" $true "" "" "kubernetes-ha-dr-readiness"
 
-Import-EvidenceFile "kubernetes-dr" $KubernetesDrArtifactPath "latest-kubernetes-dr-finalize.json" $true "result" "ready"
+Import-EvidenceFile "kubernetes-dr" $KubernetesDrArtifactPath "latest-kubernetes-dr-finalize.json" $true "" "" "kubernetes-dr-finalizer"
 Import-EvidenceFile "kubernetes-dr" $KubernetesDrArtifactPath "latest-kubernetes-dr-finalize.md" $false
 Import-EvidenceFile "kubernetes-dr" $KubernetesDrArtifactPath "latest-kubernetes-dr-drill.json" $false
 Import-EvidenceFile "kubernetes-dr" $KubernetesDrArtifactPath "latest-kubernetes-restore-smoke.json" $false

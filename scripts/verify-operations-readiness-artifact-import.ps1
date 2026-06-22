@@ -183,6 +183,102 @@ function New-PassedStorageExpansionServerDryRun(
     }
 }
 
+function New-PassedKubernetesHaDrReadiness {
+    $checkNames = @(
+        @("deployment-osmu-backend-ready", "ha", "desired=2 ready=2 available=2 minimum=2 topologySpread=True"),
+        @("deployment-osmu-frontend-ready", "ha", "desired=2 ready=2 available=2 minimum=2 topologySpread=True"),
+        @("statefulset-osmu-mariadb-ready", "ha", "desired=1 ready=1 current=1"),
+        @("statefulset-osmu-minio-ready", "ha", "desired=4 ready=4 current=4"),
+        @("pdb-osmu-backend-effective", "ha", "minAvailable=1 currentHealthy=2 desiredHealthy=1 disruptionsAllowed=1 expectedDisruptionsAllowedAtLeast=1"),
+        @("pdb-osmu-frontend-effective", "ha", "minAvailable=1 currentHealthy=2 desiredHealthy=1 disruptionsAllowed=1 expectedDisruptionsAllowedAtLeast=1"),
+        @("pdb-osmu-mariadb-effective", "ha", "minAvailable=1 currentHealthy=1 desiredHealthy=1 disruptionsAllowed=0 expectedDisruptionsAllowedAtLeast=0"),
+        @("pdb-osmu-minio-effective", "ha", "minAvailable=1 currentHealthy=4 desiredHealthy=1 disruptionsAllowed=3 expectedDisruptionsAllowedAtLeast=0"),
+        @("pvc-osmu-backup-data-bound", "dr", "phase=Bound storage=10Gi"),
+        @("cronjob-osmu-mariadb-backup-scheduled", "dr", "schedule=0 2 * * * concurrencyPolicy=Forbid suspend=False"),
+        @("cronjob-osmu-minio-backup-scheduled", "dr", "schedule=15 2 * * * concurrencyPolicy=Forbid suspend=False"),
+        @("restore-job-server-dry-run", "dr", "kubectl apply --server-side --dry-run=server for restore Job example.")
+    )
+
+    $checks = foreach ($check in $checkNames) {
+        [ordered]@{
+            name = $check[0]
+            category = $check[1]
+            passed = $true
+            summary = $check[2]
+            command = "kubectl -n osmu get evidence-for-$($check[0]) -o json"
+            exitCode = 0
+            output = ""
+        }
+    }
+
+    return [ordered]@{
+        formatVersion = "osmu.kubernetes-ha-dr-readiness.v1"
+        generatedAt = "2026-06-22T00:00:00Z"
+        namespace = "osmu"
+        kubectlPath = "kubectl"
+        restoreManifestPath = "C:\evidence\restore-from-backup.example.yaml"
+        result = "passed"
+        failureCount = 0
+        checks = $checks
+    }
+}
+
+function New-ReadyKubernetesDrFinalize(
+    [string] $BackupTimestamp = "20260622T010203Z",
+    [string] $Result = "ready",
+    [string] $Status = "kubernetes-dr-finalize-verified",
+    [bool] $ConfirmRestore = $true
+) {
+    return [ordered]@{
+        formatVersion = "osmu.kubernetes-dr-finalize.v1"
+        generatedAt = "2026-06-22T00:00:00Z"
+        startedAt = "2026-06-22T00:00:00Z"
+        completedAt = "2026-06-22T00:20:00Z"
+        result = $Result
+        status = $Status
+        sourceNamespace = "osmu"
+        restoreNamespace = "osmu-restore-drill"
+        runId = "20260622010203"
+        backupTimestamp = $BackupTimestamp
+        powerShellCommand = "pwsh"
+        serverDryRunOnly = $false
+        confirmRestore = $ConfirmRestore
+        runBackupDrill = $false
+        bootstrapDrBucket = $true
+        verifyDrBucketImmutability = $true
+        transferArtifacts = $true
+        runRestoreSmoke = $true
+        writeEvidenceRequest = $true
+        submitEvidence = $true
+        apiBase = "https://restore-api.example.com/api"
+        adminLoginId = "admin"
+        adminPasswordProvided = $true
+        expectedBucketName = "restored-bucket"
+        expectedObjectKey = "restored-object.txt"
+        runS3ClientSmoke = $true
+        requireS3Client = $false
+        paths = [ordered]@{
+            drDrillEvidence = "C:\evidence\latest-kubernetes-dr-drill.json"
+            restoreSmokeEvidence = "C:\evidence\latest-kubernetes-restore-smoke.json"
+            drEvidenceRequest = "C:\evidence\latest-kubernetes-dr-evidence-request.json"
+            report = "C:\evidence\latest-kubernetes-dr-finalize.json"
+            summary = "C:\evidence\latest-kubernetes-dr-finalize.md"
+        }
+        commands = @(
+            [ordered]@{ name = "Kubernetes DR drill wrapper"; script = ".\scripts\run-kubernetes-dr-drill.ps1"; arguments = @("-ConfirmRestore"); command = "pwsh -NoProfile -ExecutionPolicy Bypass -File .\scripts\run-kubernetes-dr-drill.ps1 -ConfirmRestore" },
+            [ordered]@{ name = "Kubernetes restore smoke"; script = ".\scripts\verify-kubernetes-restore-smoke.ps1"; arguments = @("-RunS3ClientSmoke"); command = "pwsh -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-kubernetes-restore-smoke.ps1 -RunS3ClientSmoke" },
+            [ordered]@{ name = "Kubernetes DR evidence request"; script = ".\scripts\write-kubernetes-dr-evidence-request.ps1"; arguments = @("-Submit"); command = "pwsh -NoProfile -ExecutionPolicy Bypass -File .\scripts\write-kubernetes-dr-evidence-request.ps1 -Submit -AdminPassword <secret>" }
+        )
+        steps = @(
+            [ordered]@{ name = "Kubernetes DR drill wrapper"; script = ".\scripts\run-kubernetes-dr-drill.ps1"; arguments = @("-ConfirmRestore"); command = "pwsh -NoProfile -ExecutionPolicy Bypass -File .\scripts\run-kubernetes-dr-drill.ps1 -ConfirmRestore"; result = "passed"; exitCode = 0; output = "Kubernetes DR drill passed."; notes = "" },
+            [ordered]@{ name = "Kubernetes restore smoke"; script = ".\scripts\verify-kubernetes-restore-smoke.ps1"; arguments = @("-RunS3ClientSmoke"); command = "pwsh -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-kubernetes-restore-smoke.ps1 -RunS3ClientSmoke"; result = "passed"; exitCode = 0; output = "Restore smoke passed."; notes = "" },
+            [ordered]@{ name = "Kubernetes DR evidence request"; script = ".\scripts\write-kubernetes-dr-evidence-request.ps1"; arguments = @("-Submit"); command = "pwsh -NoProfile -ExecutionPolicy Bypass -File .\scripts\write-kubernetes-dr-evidence-request.ps1 -Submit -AdminPassword <secret>"; result = "passed"; exitCode = 0; output = "DR evidence request submitted."; notes = "" }
+        )
+        gaps = @()
+        secretPolicy = "Admin password and DR secret values are not written to this finalize report; displayed commands mask -AdminPassword."
+    }
+}
+
 function New-PassedSecurityEvidenceFinalizer(
     [object] $FailureCount = 0,
     [object] $AllowSyntheticEvidence = $false
@@ -256,6 +352,7 @@ $sourceRoot = Join-Path $resolvedOutputDirectory "source"
 $promotedRoot = Join-Path $resolvedOutputDirectory "promoted"
 $invalidRoot = Join-Path $resolvedOutputDirectory "invalid-source"
 $weakStorageExpansionRoot = Join-Path $resolvedOutputDirectory "weak-storage-expansion-source"
+$weakKubernetesDrRoot = Join-Path $resolvedOutputDirectory "weak-kubernetes-dr-source"
 $weakSecurityFinalizerRoot = Join-Path $resolvedOutputDirectory "weak-security-finalizer-source"
 $weakImageSigningRoot = Join-Path $resolvedOutputDirectory "weak-image-signing-source"
 $weakContainerSecurityRoot = Join-Path $resolvedOutputDirectory "weak-container-security-source"
@@ -305,14 +402,8 @@ Write-JsonEvidence (Join-Path $storageSource "latest-storage-expansion-finalize.
 Write-TextEvidence (Join-Path $storageSource "latest-storage-expansion-finalize.md") "# Storage expansion"
 Write-JsonEvidence (Join-Path $storageSource "latest-storage-expansion-rbac-auth.json") (New-PassedStorageExpansionRbacAuth)
 Write-JsonEvidence (Join-Path $storageSource "latest-storage-expansion-server-dry-run.json") (New-PassedStorageExpansionServerDryRun)
-Write-JsonEvidence (Join-Path $haDrSource "latest-kubernetes-ha-dr-readiness.json") @{
-    formatVersion = "osmu.kubernetes-ha-dr-readiness.v1"
-    result = "passed"
-}
-Write-JsonEvidence (Join-Path $kubernetesDrSource "nested\latest-kubernetes-dr-finalize.json") @{
-    formatVersion = "osmu.kubernetes-dr-finalize.v1"
-    result = "ready"
-}
+Write-JsonEvidence (Join-Path $haDrSource "latest-kubernetes-ha-dr-readiness.json") (New-PassedKubernetesHaDrReadiness)
+Write-JsonEvidence (Join-Path $kubernetesDrSource "nested\latest-kubernetes-dr-finalize.json") (New-ReadyKubernetesDrFinalize)
 Write-TextEvidence (Join-Path $kubernetesDrSource "latest-kubernetes-dr-finalize.md") "# Kubernetes DR"
 Write-JsonEvidence (Join-Path $iamSource "latest-iam-rbac-finalize.json") @{
     formatVersion = "osmu.iam-rbac-finalize.v1"
@@ -740,6 +831,8 @@ Assert-True (Test-Path -LiteralPath (Join-Path $promotedRoot "latest-data-flow-s
 $promotedImageSigning = Get-Content -Raw -LiteralPath (Join-Path $promotedRoot "latest-image-signing-evidence.json") | ConvertFrom-Json
 $promotedContainerSecurity = Get-Content -Raw -LiteralPath (Join-Path $promotedRoot "latest-container-security-evidence.json") | ConvertFrom-Json
 $promotedStorageExpansion = Get-Content -Raw -LiteralPath (Join-Path $promotedRoot "latest-storage-expansion-finalize.json") | ConvertFrom-Json
+$promotedHaDrReadiness = Get-Content -Raw -LiteralPath (Join-Path $promotedRoot "latest-kubernetes-ha-dr-readiness.json") | ConvertFrom-Json
+$promotedKubernetesDrFinalize = Get-Content -Raw -LiteralPath (Join-Path $promotedRoot "latest-kubernetes-dr-finalize.json") | ConvertFrom-Json
 $promotedCommercialApproval = Get-Content -Raw -LiteralPath (Join-Path $promotedRoot "latest-commercial-approval-evidence.json") | ConvertFrom-Json
 $promotedStorageBackendTelemetry = Get-Content -Raw -LiteralPath (Join-Path $promotedRoot "latest-storage-backend-telemetry.json") | ConvertFrom-Json
 $promotedMonitoringThreshold = Get-Content -Raw -LiteralPath (Join-Path $promotedRoot "latest-monitoring-threshold-evidence.json") | ConvertFrom-Json
@@ -748,6 +841,8 @@ $promotedCommercialIntegration = Get-Content -Raw -LiteralPath (Join-Path $promo
 Assert-True ($promotedImageSigning.backend.versionSignatureVerified -eq $true -and $promotedImageSigning.frontend.shaSignatureVerified -eq $true) "Promoted image signing evidence should preserve signature verification flags."
 Assert-True ($promotedContainerSecurity.scans.backendScanPassed -eq $true -and $promotedContainerSecurity.sbom.backend.valid -eq $true) "Promoted container security evidence should preserve scan and SBOM flags."
 Assert-True ($promotedStorageExpansion.impersonateRunner -eq $true -and $promotedStorageExpansion.failedCount -eq 0) "Promoted storage expansion finalizer should preserve typed runner and failure fields."
+Assert-True ($promotedHaDrReadiness.failureCount -eq 0 -and @($promotedHaDrReadiness.checks).Count -ge 12) "Promoted HA/DR readiness evidence should preserve typed check summary."
+Assert-True ($promotedKubernetesDrFinalize.confirmRestore -eq $true -and $promotedKubernetesDrFinalize.serverDryRunOnly -eq $false) "Promoted Kubernetes DR finalizer should preserve confirmed restore flags."
 Assert-True ($promotedStorageBackendTelemetry.result -eq "passed") "Promoted storage backend telemetry evidence should preserve result=passed."
 Assert-True ($promotedStorageBackendTelemetry.source.rawAdminInfoStored -eq $false) "Promoted storage backend telemetry evidence should preserve rawAdminInfoStored=false."
 $storageExpansionEntry = @($report.entries | Where-Object { $_.group -eq "storage-expansion" -and $_.fileName -eq "latest-storage-expansion-finalize.json" })
@@ -759,6 +854,12 @@ Assert-True (([string] $storageExpansionRbacEntry[0].detail).Contains("allowed=7
 $storageExpansionServerDryRunEntry = @($report.entries | Where-Object { $_.group -eq "storage-expansion" -and $_.fileName -eq "latest-storage-expansion-server-dry-run.json" })
 Assert-True ($storageExpansionServerDryRunEntry.Count -eq 1) "Storage expansion server dry-run import entry missing."
 Assert-True (([string] $storageExpansionServerDryRunEntry[0].detail).Contains("manifestSha256=")) "Storage expansion server dry-run import entry should include manifest hash validation detail."
+$haDrReadinessEntry = @($report.entries | Where-Object { $_.group -eq "ha-dr-readiness" -and $_.fileName -eq "latest-kubernetes-ha-dr-readiness.json" })
+Assert-True ($haDrReadinessEntry.Count -eq 1) "HA/DR readiness import entry missing."
+Assert-True (([string] $haDrReadinessEntry[0].detail).Contains("checkCount=12")) "HA/DR readiness import entry should include strict check validation detail."
+$kubernetesDrEntry = @($report.entries | Where-Object { $_.group -eq "kubernetes-dr" -and $_.fileName -eq "latest-kubernetes-dr-finalize.json" })
+Assert-True ($kubernetesDrEntry.Count -eq 1) "Kubernetes DR finalizer import entry missing."
+Assert-True (([string] $kubernetesDrEntry[0].detail).Contains("kubernetes-dr-finalize-verified") -and ([string] $kubernetesDrEntry[0].detail).Contains("backupTimestamp=20260622T010203Z")) "Kubernetes DR finalizer import entry should include strict ready validation detail."
 $imageSigningEntry = @($report.entries | Where-Object { $_.group -eq "security-evidence" -and $_.fileName -eq "latest-image-signing-evidence.json" })
 Assert-True ($imageSigningEntry.Count -eq 1) "Image signing import entry missing."
 Assert-True (([string] $imageSigningEntry[0].detail).Contains("backendDigest=sha256:")) "Image signing import entry should include digest validation detail."
@@ -871,6 +972,31 @@ Assert-True (Test-Path -LiteralPath $invalidJson) "Invalid import report should 
 $invalidReport = Get-Content -Raw -LiteralPath $invalidJson | ConvertFrom-Json
 Assert-True ($invalidReport.result -eq "failed") "Invalid import report should be failed."
 Assert-True (-not (Test-Path -LiteralPath (Join-Path $invalidOutput "latest-kubernetes-ha-dr-readiness.json"))) "Invalid evidence must not be promoted."
+
+Write-JsonEvidence (Join-Path $weakKubernetesDrRoot "latest-kubernetes-dr-finalize.json") (New-ReadyKubernetesDrFinalize -BackupTimestamp "YYYYMMDDTHHMMSSZ")
+Write-TextEvidence (Join-Path $weakKubernetesDrRoot "latest-kubernetes-dr-finalize.md") "# Weak Kubernetes DR"
+$weakKubernetesDrOutput = Join-Path $resolvedOutputDirectory "weak-kubernetes-dr-promoted"
+$weakKubernetesDrJson = Join-Path $resolvedOutputDirectory "weak-kubernetes-dr-import.json"
+$weakKubernetesDrMarkdown = Join-Path $resolvedOutputDirectory "weak-kubernetes-dr-import.md"
+$previousErrorActionPreference = $ErrorActionPreference
+$ErrorActionPreference = "Continue"
+try {
+    $weakKubernetesDrOutputLines = & powershell -NoProfile -ExecutionPolicy Bypass -File $importScript `
+        -KubernetesDrArtifactPath $weakKubernetesDrRoot `
+        -OutputDirectory $weakKubernetesDrOutput `
+        -JsonOutputPath $weakKubernetesDrJson `
+        -MarkdownOutputPath $weakKubernetesDrMarkdown 2>&1
+    $weakKubernetesDrExitCode = $LASTEXITCODE
+}
+finally {
+    $ErrorActionPreference = $previousErrorActionPreference
+}
+Assert-True ($weakKubernetesDrExitCode -ne 0) "Kubernetes DR finalizer with placeholder timestamp should fail import."
+Assert-True (Test-Path -LiteralPath $weakKubernetesDrJson) "Weak Kubernetes DR import report should still be written."
+$weakKubernetesDrReport = Get-Content -Raw -LiteralPath $weakKubernetesDrJson | ConvertFrom-Json
+Assert-True ($weakKubernetesDrReport.result -eq "failed") "Weak Kubernetes DR import report should be failed."
+Assert-True (-not (Test-Path -LiteralPath (Join-Path $weakKubernetesDrOutput "latest-kubernetes-dr-finalize.json"))) "Weak Kubernetes DR evidence must not be promoted."
+Assert-True (($weakKubernetesDrReport.entries | ConvertTo-Json -Depth 8).Contains("backupTimestamp=YYYYMMDDTHHMMSSZ")) "Weak Kubernetes DR report should describe placeholder backup timestamp."
 
 Write-JsonEvidence (Join-Path $weakSecurityFinalizerRoot "latest-security-evidence-finalize.json") (New-PassedSecurityEvidenceFinalizer -AllowSyntheticEvidence $true)
 Copy-Item -LiteralPath (Join-Path $securitySource "latest-image-signing-evidence.json") -Destination (Join-Path $weakSecurityFinalizerRoot "latest-image-signing-evidence.json") -Force
