@@ -1211,6 +1211,8 @@
           {{ operationsHandoffPackageConvergenceSnapshot.result }} /
           readiness {{ operationsHandoffPackageConvergenceSnapshot.readinessResult || '-' }} /
           sync {{ operationsHandoffPackageConvergenceSnapshot.kubernetesReportSyncReady ? 'ready' : 'not-ready' }} /
+          source {{ operationsHandoffPackageConvergenceSnapshot.kubernetesReportSyncSourceReportResult || 'unknown' }} /
+          finalizer failed {{ operationsHandoffPackageConvergenceSnapshot.finalizerFailedCount || 0 }} /
           finalizer gaps {{ operationsHandoffPackageConvergenceSnapshot.finalizerGapCount || 0 }}
         </small>
         <small

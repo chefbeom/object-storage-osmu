@@ -1122,9 +1122,13 @@ class AdminDashboardSummaryControllerTest {
                               "ready": true,
                               "readinessResult": "ready",
                               "readinessSummary": "passed=42 pending=0",
+                              "finalizerResult": "ready",
+                              "finalizerReadinessResult": "ready",
+                              "finalizerFailedCount": 0,
                               "kubernetesReportSyncReady": true,
                               "kubernetesReportSyncResult": "applied",
                               "kubernetesReportSyncFailedCount": 0,
+                              "kubernetesReportSyncSourceReportResult": "ready",
                               "stageCount": 6,
                               "readyStageCount": 6,
                               "finalizerGapCount": 0,
@@ -2214,6 +2218,11 @@ class AdminDashboardSummaryControllerTest {
                 .andExpect(jsonPath("$.data.operationsHandoffPackage.operationsReadinessSnapshot.result").value("ready"))
                 .andExpect(jsonPath("$.data.operationsHandoffPackage.operationsReadinessSnapshot.pendingCount").value(0))
                 .andExpect(jsonPath("$.data.operationsHandoffPackage.operationsConvergenceSnapshot.kubernetesReportSyncReady").value(true))
+                .andExpect(jsonPath("$.data.operationsHandoffPackage.operationsConvergenceSnapshot.kubernetesReportSyncSourceReportResult").value("ready"))
+                .andExpect(jsonPath("$.data.operationsHandoffPackage.operationsConvergenceSnapshot.finalizerResult").value("ready"))
+                .andExpect(jsonPath("$.data.operationsHandoffPackage.operationsConvergenceSnapshot.finalizerReadinessResult").value("ready"))
+                .andExpect(jsonPath("$.data.operationsHandoffPackage.operationsConvergenceSnapshot.finalizerFailedCount").value(0))
+                .andExpect(jsonPath("$.data.operationsHandoffPackage.operationsConvergenceSnapshot.finalizerGapCount").value(0))
                 .andExpect(jsonPath("$.data.operationsHandoffPackage.operationsConvergenceSnapshot.stageCount").value(6))
                 .andExpect(jsonPath("$.data.operationsHandoffPackage.dataFlowStoragePlanSnapshot.result").value("passed"))
                 .andExpect(jsonPath("$.data.operationsHandoffPackage.dataFlowStoragePlanSnapshot.candidateStore").value("MARIADB_PARTITION"))
