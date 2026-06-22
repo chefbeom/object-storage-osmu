@@ -20,6 +20,16 @@ OSMU는 기업 내부 또는 고객이 통제하는 인프라에서 대용량 �
 
 S3 호환성은 제품 차별화의 중심이 아니라 전환 호환성이다. 새 S3 세부 동작은 지원 대상 클라이언트 smoke 실패, 고객 전환 blocker, 또는 OSMU control-plane 기능에 필요한 경우에만 roadmap에 넣는다.
 
+### S3 Intake Gate
+
+새 S3 작업은 다음 중 하나가 증거로 있을 때만 착수한다.
+
+- 지원 대상 real client smoke가 실패한다.
+- 고객 migration 또는 사내 서비스 전환 흐름이 막힌다.
+- OSMU control-plane 기능에 필요한 S3-compatible subset이다.
+
+AWS 문서의 세부 checksum negotiation, 드문 header 조합, 정확한 오류 문구 parity, versioning nuance는 위 조건이 없으면 구현하지 않는다. S3는 대체 사용을 가능하게 하는 보조 계층이며, 운영/권한/감사/관리 경험보다 우선하지 않는다.
+
 ## 2. 현재 기준선
 
 - 로컬 durable MVP demo는 Docker/MariaDB/MinIO/backend/frontend/Browser E2E/Dockerized MinIO Client 기준 `docker-durable-demo-verified` 상태다.

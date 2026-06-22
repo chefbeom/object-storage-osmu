@@ -7,6 +7,7 @@ param(
     [string] $FeatureInventoryPath = ".\dev-docs\feature-inventory.md",
     [string] $RoadmapPath = ".\dev-docs\development-roadmap.md",
     [string] $PrototypeStatusPath = ".\dev-docs\prototype-status.md",
+    [string] $TestCasesPath = ".\dev-docs\test-cases.md",
     [string] $MvpReleaseChecklistPath = ".\dev-docs\mvp-release-checklist.md",
     [string] $DocumentIndexPath = ".\dev-docs\document-index.md",
     [string] $DemoPackageNotesWriterPath = ".\scripts\write-mvp-demo-package-notes.ps1",
@@ -59,6 +60,7 @@ $apiSpec = Read-RequiredText $ApiSpecPath "API spec"
 $featureInventory = Read-RequiredText $FeatureInventoryPath "Feature inventory"
 $roadmap = Read-RequiredText $RoadmapPath "Development roadmap"
 $prototypeStatus = Read-RequiredText $PrototypeStatusPath "Prototype status"
+$testCases = Read-RequiredText $TestCasesPath "Test cases"
 $releaseChecklist = Read-RequiredText $MvpReleaseChecklistPath "MVP release checklist"
 $documentIndex = Read-RequiredText $DocumentIndexPath "Document index"
 $demoPackageNotesWriter = Read-RequiredText $DemoPackageNotesWriterPath "MVP demo package notes writer"
@@ -96,11 +98,21 @@ Assert-Contains $featureInventory (Decode-Utf8Base64 "UzPripQgbWlncmF0aW9uIGNvbX
 Assert-Contains $roadmap "S3-compatible replacement layer"
 Assert-Contains $roadmap "S3 client smoke"
 Assert-Contains $roadmap "S3 replacement layer"
+Assert-Contains $roadmap "### S3 Intake Gate"
+Assert-Contains $roadmap (Decode-Utf8Base64 "7KeA7JuQIOuMgOyDgSByZWFsIGNsaWVudCBzbW9rZeqwgCDsi6TtjKjtlZzri6Qu")
+Assert-Contains $roadmap (Decode-Utf8Base64 "6rOg6rCdIG1pZ3JhdGlvbiDrmJDripQg7IKs64K0IOyEnOu5hOyKpCDsoITtmZgg7Z2Q66aE7J20IOunie2ejOuLpC4=")
+Assert-Contains $roadmap (Decode-Utf8Base64 "QVdTIOusuOyEnOydmCDshLjrtoAgY2hlY2tzdW0gbmVnb3RpYXRpb24=")
+Assert-Contains $roadmap (Decode-Utf8Base64 "UzPripQg64yA7LK0IOyCrOyaqeydhCDqsIDriqXtlZjqsowg7ZWY64qUIOuztOyhsCDqs4TsuLU=")
 Assert-Contains $roadmap (Decode-Utf8Base64 "QVdTIFMzIOyghOyytCDrs7XsoJzqsIAg7JWE64uI6528")
 
 Assert-Contains $prototypeStatus "S3 compatibility role: replacement layer, not AWS edge parity"
 Assert-Contains $prototypeStatus "S3-compatible replacement layer"
 Assert-Contains $prototypeStatus "S3 replacement layer"
+
+Assert-Contains $testCases "### TC-S3-COMPATIBILITY-BOUNDARY"
+Assert-Contains $testCases "the roadmap contains the S3 intake gate"
+Assert-Contains $testCases "broader checksum/client-option parity remains out of scope unless supported smoke fails"
+Assert-Contains $testCases "remaining broader checksum negotiation gap explicitly kept out of scope unless supported real-client smoke fails"
 
 Assert-Contains $releaseChecklist "verify-s3-compatibility-boundary.ps1"
 Assert-Contains $documentIndex "verify-s3-compatibility-boundary.ps1"
@@ -122,6 +134,7 @@ $filesToScan = @(
     $featureInventory,
     $roadmap,
     $prototypeStatus,
+    $testCases,
     $releaseChecklist,
     $documentIndex,
     $demoPackageNotesWriter
