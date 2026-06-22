@@ -156,6 +156,22 @@ function Test-ReadyText($Value) {
     return "ready".Equals([string] $Value, [System.StringComparison]::OrdinalIgnoreCase)
 }
 
+function Test-HttpUrl([string] $Value) {
+    return -not [string]::IsNullOrWhiteSpace($Value) -and $Value -match "^https?://"
+}
+
+function Test-CommitSha([string] $Value) {
+    return -not [string]::IsNullOrWhiteSpace($Value) -and $Value -match "^[0-9a-fA-F]{40}$" -and $Value -notmatch "^0{40}$"
+}
+
+function Test-Digest([string] $Value) {
+    return -not [string]::IsNullOrWhiteSpace($Value) -and $Value -match "^sha256:[0-9a-fA-F]{64}$" -and $Value -notmatch "^sha256:0{64}$"
+}
+
+function Test-Sha256([string] $Value) {
+    return -not [string]::IsNullOrWhiteSpace($Value) -and $Value -match "^[0-9a-fA-F]{64}$" -and $Value -notmatch "^0{64}$"
+}
+
 function Test-EvidenceJson([string] $Path, [string] $ExpectedProperty, [string] $ExpectedValue) {
     try {
         $json = Get-Content -Raw -LiteralPath $Path | ConvertFrom-Json
@@ -172,6 +188,259 @@ function Test-EvidenceJson([string] $Path, [string] $ExpectedProperty, [string] 
     return [pscustomobject]@{
         passed = $expectedValues -contains $actual
         detail = "$ExpectedProperty=$actual expected=$($expectedValues -join '|')"
+    }
+}
+
+function Test-SecurityEvidenceRawContent([string] $Raw, [string] $Label) {
+    $patterns = @(
+        '(?i)"(password|passwd|secret|token|credential|apiKey|api_key|accessKey|access_key|privateKey|private_key|registryPassword|registry_password|signingKey|signing_key|cosignPrivateKey|cosign_private_key)"\s*:',
+        '(?i)\b(password|passwd|secret|token|credential|api[_-]?key|access[_-]?key|private[_-]?key|registry[_-]?password|signing[_-]?key)\s*=\s*\S+',
+        '(?i)\bBearer\s+[A-Za-z0-9._~+/=-]{12,}',
+        '-----BEGIN [A-Z ]*PRIVATE KEY-----'
+    )
+    foreach ($pattern in $patterns) {
+        if ($Raw -match $pattern) {
+            return [pscustomobject]@{
+                passed = $false
+                detail = "$Label evidence contains registry credential, signing key, token, or credential-shaped content"
+            }
+        }
+    }
+
+    if ($Raw -match "example\.invalid" -or $Raw -match "self-test") {
+        return [pscustomobject]@{
+            passed = $false
+            detail = "$Label evidence appears synthetic or self-test"
+        }
+    }
+
+    return [pscustomobject]@{
+        passed = $true
+        detail = "$Label evidence has no credential-shaped content"
+    }
+}
+
+function Test-ImageSigningEvidenceJson([string] $Path) {
+    try {
+        $raw = Get-Content -Raw -LiteralPath $Path
+        $json = $raw | ConvertFrom-Json
+    }
+    catch {
+        return [pscustomobject]@{
+            passed = $false
+            detail = "invalid JSON: $($_.Exception.Message)"
+        }
+    }
+
+    $formatVersion = [string] (Get-JsonProperty $json "formatVersion")
+    if ($formatVersion -ne "osmu.image-signing-evidence.v1") {
+        return [pscustomobject]@{
+            passed = $false
+            detail = "formatVersion=$formatVersion expected=osmu.image-signing-evidence.v1"
+        }
+    }
+
+    $result = [string] (Get-JsonProperty $json "result")
+    if ($result -ne "passed") {
+        return [pscustomobject]@{
+            passed = $false
+            detail = "result=$result expected=passed"
+        }
+    }
+
+    $failureCount = Get-RequiredJsonInt $json "failureCount"
+    if (-not $failureCount.valid -or [int64] $failureCount.value -ne 0) {
+        return [pscustomobject]@{
+            passed = $false
+            detail = "failureCount=$($failureCount.raw)(valid=$($failureCount.valid)) expected integer 0"
+        }
+    }
+
+    $rawValidation = Test-SecurityEvidenceRawContent $raw "image signing"
+    if (-not $rawValidation.passed) {
+        return $rawValidation
+    }
+
+    $sourceRunUrl = [string] (Get-JsonProperty $json "sourceRunUrl")
+    if (-not (Test-HttpUrl $sourceRunUrl)) {
+        return [pscustomobject]@{
+            passed = $false
+            detail = "sourceRunUrl=$sourceRunUrl expected http(s) URL"
+        }
+    }
+
+    $commitSha = [string] (Get-JsonProperty $json "commitSha")
+    if (-not (Test-CommitSha $commitSha)) {
+        return [pscustomobject]@{
+            passed = $false
+            detail = "commitSha=$commitSha expected nonzero 40-char SHA"
+        }
+    }
+
+    foreach ($field in @("version", "secretPolicy")) {
+        $value = [string] (Get-JsonProperty $json $field)
+        if ([string]::IsNullOrWhiteSpace($value)) {
+            return [pscustomobject]@{
+                passed = $false
+                detail = "$field missing"
+            }
+        }
+    }
+
+    foreach ($imageName in @("backend", "frontend")) {
+        $image = Get-JsonProperty $json $imageName
+        foreach ($refField in @("versionRef", "shaRef")) {
+            $ref = [string] (Get-JsonProperty $image $refField)
+            if ([string]::IsNullOrWhiteSpace($ref)) {
+                return [pscustomobject]@{
+                    passed = $false
+                    detail = "$imageName.$refField missing"
+                }
+            }
+        }
+
+        $digest = [string] (Get-JsonProperty $image "digest")
+        if (-not (Test-Digest $digest)) {
+            return [pscustomobject]@{
+                passed = $false
+                detail = "$imageName.digest=$digest expected nonzero sha256 digest"
+            }
+        }
+
+        foreach ($flagName in @("versionSignatureVerified", "shaSignatureVerified")) {
+            $flag = Get-RequiredJsonBool $image $flagName
+            if (-not $flag.valid -or -not $flag.value) {
+                return [pscustomobject]@{
+                    passed = $false
+                    detail = "$imageName.$flagName=$($flag.raw) expected boolean true"
+                }
+            }
+        }
+    }
+
+    return [pscustomobject]@{
+        passed = $true
+        detail = "formatVersion=$formatVersion result=$result failureCount=$($failureCount.value) backendDigest=$($json.backend.digest) frontendDigest=$($json.frontend.digest)"
+    }
+}
+
+function Test-ContainerSecurityEvidenceJson([string] $Path) {
+    try {
+        $raw = Get-Content -Raw -LiteralPath $Path
+        $json = $raw | ConvertFrom-Json
+    }
+    catch {
+        return [pscustomobject]@{
+            passed = $false
+            detail = "invalid JSON: $($_.Exception.Message)"
+        }
+    }
+
+    $formatVersion = [string] (Get-JsonProperty $json "formatVersion")
+    if ($formatVersion -ne "osmu.container-security-evidence.v1") {
+        return [pscustomobject]@{
+            passed = $false
+            detail = "formatVersion=$formatVersion expected=osmu.container-security-evidence.v1"
+        }
+    }
+
+    $result = [string] (Get-JsonProperty $json "result")
+    if ($result -ne "passed") {
+        return [pscustomobject]@{
+            passed = $false
+            detail = "result=$result expected=passed"
+        }
+    }
+
+    $failureCount = Get-RequiredJsonInt $json "failureCount"
+    if (-not $failureCount.valid -or [int64] $failureCount.value -ne 0) {
+        return [pscustomobject]@{
+            passed = $false
+            detail = "failureCount=$($failureCount.raw)(valid=$($failureCount.valid)) expected integer 0"
+        }
+    }
+
+    $rawValidation = Test-SecurityEvidenceRawContent $raw "container security"
+    if (-not $rawValidation.passed) {
+        return $rawValidation
+    }
+
+    $sourceRunUrl = [string] (Get-JsonProperty $json "sourceRunUrl")
+    if (-not (Test-HttpUrl $sourceRunUrl)) {
+        return [pscustomobject]@{
+            passed = $false
+            detail = "sourceRunUrl=$sourceRunUrl expected http(s) URL"
+        }
+    }
+
+    $commitSha = [string] (Get-JsonProperty $json "commitSha")
+    if (-not (Test-CommitSha $commitSha)) {
+        return [pscustomobject]@{
+            passed = $false
+            detail = "commitSha=$commitSha expected nonzero 40-char SHA"
+        }
+    }
+
+    foreach ($field in @("backendImage", "frontendImage", "artifactName", "secretPolicy")) {
+        $value = [string] (Get-JsonProperty $json $field)
+        if ([string]::IsNullOrWhiteSpace($value)) {
+            return [pscustomobject]@{
+                passed = $false
+                detail = "$field missing"
+            }
+        }
+    }
+
+    $scans = Get-JsonProperty $json "scans"
+    foreach ($flagName in @("backendScanPassed", "frontendScanPassed")) {
+        $flag = Get-RequiredJsonBool $scans $flagName
+        if (-not $flag.valid -or -not $flag.value) {
+            return [pscustomobject]@{
+                passed = $false
+                detail = "scans.$flagName=$($flag.raw) expected boolean true"
+            }
+        }
+    }
+
+    $sbom = Get-JsonProperty $json "sbom"
+    foreach ($label in @("backend", "frontend")) {
+        $summary = Get-JsonProperty $sbom $label
+        $valid = Get-RequiredJsonBool $summary "valid"
+        if (-not $valid.valid -or -not $valid.value) {
+            return [pscustomobject]@{
+                passed = $false
+                detail = "sbom.$label.valid=$($valid.raw) expected boolean true"
+            }
+        }
+
+        $packageCount = Get-RequiredJsonInt $summary "packageCount"
+        if (-not $packageCount.valid -or [int64] $packageCount.value -le 0) {
+            return [pscustomobject]@{
+                passed = $false
+                detail = "sbom.$label.packageCount=$($packageCount.raw)(valid=$($packageCount.valid)) expected positive integer"
+            }
+        }
+
+        $byteSize = Get-RequiredJsonInt $summary "byteSize"
+        if (-not $byteSize.valid -or [int64] $byteSize.value -le 0) {
+            return [pscustomobject]@{
+                passed = $false
+                detail = "sbom.$label.byteSize=$($byteSize.raw)(valid=$($byteSize.valid)) expected positive integer"
+            }
+        }
+
+        $sha256 = [string] (Get-JsonProperty $summary "sha256")
+        if (-not (Test-Sha256 $sha256)) {
+            return [pscustomobject]@{
+                passed = $false
+                detail = "sbom.$label.sha256=$sha256 expected nonzero sha256"
+            }
+        }
+    }
+
+    return [pscustomobject]@{
+        passed = $true
+        detail = "formatVersion=$formatVersion result=$result failureCount=$($failureCount.value) backendPackages=$($json.sbom.backend.packageCount) frontendPackages=$($json.sbom.frontend.packageCount)"
     }
 }
 
@@ -1343,6 +1612,22 @@ function Import-EvidenceFile(
         }
         [void] $validationDetails.Add($validation.detail)
     }
+    elseif ($ValidationKind -eq "image-signing") {
+        $validation = Test-ImageSigningEvidenceJson $sourcePath
+        if (-not $validation.passed) {
+            Add-Entry $Group $FileName "failed" $validation.detail $sourcePath ""
+            return
+        }
+        [void] $validationDetails.Add($validation.detail)
+    }
+    elseif ($ValidationKind -eq "container-security") {
+        $validation = Test-ContainerSecurityEvidenceJson $sourcePath
+        if (-not $validation.passed) {
+            Add-Entry $Group $FileName "failed" $validation.detail $sourcePath ""
+            return
+        }
+        [void] $validationDetails.Add($validation.detail)
+    }
     elseif ($ValidationKind -eq "secret-rotation") {
         $validation = Test-SecretRotationEvidenceJson $sourcePath
         if (-not $validation.passed) {
@@ -1422,8 +1707,8 @@ Import-EvidenceFile "iam-rbac" $IamRbacArtifactPath "latest-storage-expansion-rb
 
 Import-EvidenceFile "security-evidence" $SecurityEvidenceArtifactPath "latest-security-evidence-finalize.json" $true "result" "passed"
 Import-EvidenceFile "security-evidence" $SecurityEvidenceArtifactPath "latest-security-evidence-finalize.md" $false
-Import-EvidenceFile "security-evidence" $SecurityEvidenceArtifactPath "latest-image-signing-evidence.json" $true "result" "passed"
-Import-EvidenceFile "security-evidence" $SecurityEvidenceArtifactPath "latest-container-security-evidence.json" $true "result" "passed"
+Import-EvidenceFile "security-evidence" $SecurityEvidenceArtifactPath "latest-image-signing-evidence.json" $true "" "" "image-signing"
+Import-EvidenceFile "security-evidence" $SecurityEvidenceArtifactPath "latest-container-security-evidence.json" $true "" "" "container-security"
 
 Import-EvidenceFile "storage-backend-telemetry" $StorageBackendTelemetryArtifactPath "latest-storage-backend-telemetry.json" $true "" "" "storage-backend-telemetry"
 Import-EvidenceFile "storage-backend-telemetry" $StorageBackendTelemetryArtifactPath "latest-storage-backend-telemetry.md" $false
