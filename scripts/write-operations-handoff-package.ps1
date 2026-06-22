@@ -1146,9 +1146,11 @@ function Read-OperationsConvergenceSnapshot([string] $Path) {
         readinessSummary = ""
         finalizerResult = ""
         finalizerReadinessResult = ""
+        finalizerFailedCount = 0
         kubernetesReportSyncReady = $false
         kubernetesReportSyncResult = ""
         kubernetesReportSyncFailedCount = 0
+        kubernetesReportSyncSourceReportResult = ""
         stageCount = 0
         readyStageCount = 0
         finalizerGapCount = 0
@@ -1181,16 +1183,18 @@ function Read-OperationsConvergenceSnapshot([string] $Path) {
     $snapshot["readinessSummary"] = Get-PropertyText $payload "readinessSummary"
     $snapshot["finalizerResult"] = Get-PropertyText $payload "finalizerResult"
     $snapshot["finalizerReadinessResult"] = Get-PropertyText $payload "finalizerReadinessResult"
+    $snapshot["finalizerFailedCount"] = Get-PropertyInt $payload "finalizerFailedCount"
     $snapshot["kubernetesReportSyncReady"] = Get-PropertyBool $payload "kubernetesReportSyncReady"
     $snapshot["kubernetesReportSyncResult"] = Get-PropertyText $payload "kubernetesReportSyncResult"
     $snapshot["kubernetesReportSyncFailedCount"] = Get-PropertyInt $payload "kubernetesReportSyncFailedCount"
+    $snapshot["kubernetesReportSyncSourceReportResult"] = Get-PropertyText $payload "kubernetesReportSyncSourceReportResult"
     $snapshot["stageCount"] = Get-PropertyInt $payload "stageCount"
     $snapshot["readyStageCount"] = Get-PropertyInt $payload "readyStageCount"
     $snapshot["finalizerGapCount"] = Get-PropertyInt $payload "finalizerGapCount"
     $snapshot["currentBottleneckCode"] = Get-PropertyText $currentBottleneck "code"
     $snapshot["currentBottleneckTitle"] = Get-PropertyText $currentBottleneck "title"
     $snapshot["recommendedCommandCount"] = $recommendedCommands.Count
-    $snapshot["detail"] = "formatVersion=$formatVersion; result=$result; readinessResult=$($snapshot["readinessResult"]); kubernetesReportSyncReady=$($snapshot["kubernetesReportSyncReady"]); finalizerGaps=$($snapshot["finalizerGapCount"])"
+    $snapshot["detail"] = "formatVersion=$formatVersion; result=$result; readinessResult=$($snapshot["readinessResult"]); finalizerFailed=$($snapshot["finalizerFailedCount"]); finalizerGaps=$($snapshot["finalizerGapCount"]); kubernetesReportSyncReady=$($snapshot["kubernetesReportSyncReady"]); sourceReportResult=$($snapshot["kubernetesReportSyncSourceReportResult"])"
     return $snapshot
 }
 
@@ -1241,7 +1245,16 @@ $commercialApprovalSnapshotValid = [bool] $commercialApprovalSnapshot["provided"
 $enterpriseAuthSmokeSnapshotValid = [bool] $enterpriseAuthSmokeSnapshot["provided"] -and [bool] $enterpriseAuthSmokeSnapshot["parsed"] -and [bool] $enterpriseAuthSmokeSnapshot["validFormatVersion"]
 $monitoringThresholdSnapshotValid = [bool] $monitoringThresholdSnapshot["provided"] -and [bool] $monitoringThresholdSnapshot["parsed"] -and [bool] $monitoringThresholdSnapshot["validFormatVersion"]
 $operationsReadinessSnapshotReady = $operationsReadinessSnapshotValid -and [bool] $operationsReadinessSnapshot["ready"]
-$operationsConvergenceSnapshotReady = $operationsConvergenceSnapshotValid -and [bool] $operationsConvergenceSnapshot["ready"] -and [bool] $operationsConvergenceSnapshot["kubernetesReportSyncReady"]
+$operationsConvergenceSnapshotReady = $operationsConvergenceSnapshotValid `
+    -and [bool] $operationsConvergenceSnapshot["ready"] `
+    -and "ready".Equals([string] $operationsConvergenceSnapshot["readinessResult"], [System.StringComparison]::OrdinalIgnoreCase) `
+    -and "ready".Equals([string] $operationsConvergenceSnapshot["finalizerResult"], [System.StringComparison]::OrdinalIgnoreCase) `
+    -and "ready".Equals([string] $operationsConvergenceSnapshot["finalizerReadinessResult"], [System.StringComparison]::OrdinalIgnoreCase) `
+    -and ([int] $operationsConvergenceSnapshot["finalizerFailedCount"]) -eq 0 `
+    -and ([int] $operationsConvergenceSnapshot["finalizerGapCount"]) -eq 0 `
+    -and [bool] $operationsConvergenceSnapshot["kubernetesReportSyncReady"] `
+    -and ([int] $operationsConvergenceSnapshot["kubernetesReportSyncFailedCount"]) -eq 0 `
+    -and "ready".Equals([string] $operationsConvergenceSnapshot["kubernetesReportSyncSourceReportResult"], [System.StringComparison]::OrdinalIgnoreCase)
 $dataFlowStoragePlanSnapshotPassed = $dataFlowStoragePlanSnapshotValid -and [bool] $dataFlowStoragePlanSnapshot["passed"]
 $dataFlowStorageTransitionRunbookSnapshotPassed = $dataFlowStorageTransitionRunbookSnapshotValid -and [bool] $dataFlowStorageTransitionRunbookSnapshot["passed"]
 $secretRotationSnapshotPassed = $secretRotationSnapshotValid -and [bool] $secretRotationSnapshot["passed"]
@@ -1281,7 +1294,7 @@ if ([bool] $RequireOperationsSnapshotEvidence -or [bool] $operationsReadinessSna
 }
 if ([bool] $RequireOperationsSnapshotEvidence -or [bool] $operationsConvergenceSnapshot["provided"]) {
     Add-Check "operations-convergence-snapshot-parsed" "Operations convergence snapshot parsed" $operationsConvergenceSnapshotValid $operationsConvergenceSnapshot["detail"] $OperationsConvergenceRef
-    Add-Check "operations-convergence-snapshot-ready" "Operations convergence snapshot ready" $operationsConvergenceSnapshotReady "result=$($operationsConvergenceSnapshot["result"]); kubernetesReportSyncReady=$($operationsConvergenceSnapshot["kubernetesReportSyncReady"]); failedSyncChecks=$($operationsConvergenceSnapshot["kubernetesReportSyncFailedCount"])" $OperationsConvergenceRef
+    Add-Check "operations-convergence-snapshot-ready" "Operations convergence snapshot ready" $operationsConvergenceSnapshotReady "result=$($operationsConvergenceSnapshot["result"]); readinessResult=$($operationsConvergenceSnapshot["readinessResult"]); finalizerResult=$($operationsConvergenceSnapshot["finalizerResult"]); finalizerReadinessResult=$($operationsConvergenceSnapshot["finalizerReadinessResult"]); finalizerFailed=$($operationsConvergenceSnapshot["finalizerFailedCount"]); finalizerGaps=$($operationsConvergenceSnapshot["finalizerGapCount"]); kubernetesReportSyncReady=$($operationsConvergenceSnapshot["kubernetesReportSyncReady"]); failedSyncChecks=$($operationsConvergenceSnapshot["kubernetesReportSyncFailedCount"]); sourceReportResult=$($operationsConvergenceSnapshot["kubernetesReportSyncSourceReportResult"])" $OperationsConvergenceRef
 }
 if ([bool] $RequireOperationsSnapshotEvidence -or [bool] $operationsConvergenceSnapshot["provided"] -or [bool] $ConfirmOperationsConvergenceSnapshotReviewed) {
     Add-Check "operations-convergence-snapshot-reviewed" "Operations convergence snapshot reviewed" ([bool] $ConfirmOperationsConvergenceSnapshotReviewed -and $operationsConvergenceSnapshotValid) "confirmed=$([bool] $ConfirmOperationsConvergenceSnapshotReviewed); snapshotValid=$operationsConvergenceSnapshotValid" $OperationsConvergenceRef
@@ -1439,7 +1452,10 @@ $report = New-Object System.Collections.Specialized.OrderedDictionary
     checkCount = $checkArray.Count
     operationsReadinessSnapshotResult = $operationsReadinessSnapshot["result"]
     operationsConvergenceSnapshotResult = $operationsConvergenceSnapshot["result"]
+    operationsConvergenceFinalizerFailedCount = $operationsConvergenceSnapshot["finalizerFailedCount"]
+    operationsConvergenceFinalizerGapCount = $operationsConvergenceSnapshot["finalizerGapCount"]
     operationsConvergenceKubernetesReportSyncReady = $operationsConvergenceSnapshot["kubernetesReportSyncReady"]
+    operationsConvergenceKubernetesReportSyncSourceReportResult = $operationsConvergenceSnapshot["kubernetesReportSyncSourceReportResult"]
     dataFlowStoragePlanSnapshotResult = $dataFlowStoragePlanSnapshot["result"]
     dataFlowStorageTransitionRunbookSnapshotResult = $dataFlowStorageTransitionRunbookSnapshot["result"]
     secretRotationSnapshotResult = $secretRotationSnapshot["result"]
@@ -1449,7 +1465,7 @@ $report = New-Object System.Collections.Specialized.OrderedDictionary
     monitoringThresholdSnapshotResult = $monitoringThresholdSnapshot["result"]
 })
 [void] $report.Add("checks", [object] $checkArray)
-[void] $report.Add("decisionRule", "Production/B2B operations handoff package readiness requires result=passed from the target environment, reviewed runbook/troubleshooting/rollback/support paths, accepted known gaps, no-secret confirmation, and references to target readiness, convergence, data-flow storage transition, data-flow storage transition runbook, secret rotation, commercial integration, commercial approval, enterprise auth, backup/restore, HA/DR, monitoring, security, and IAM/RBAC evidence when production evidence is required. When operations snapshot evidence is required, the latest operations readiness snapshot must be result=ready and the latest operations readiness convergence snapshot must be result=ready with Kubernetes report sync ready. When production evidence is required, the data-flow storage plan, data-flow storage transition runbook, secret rotation, commercial integration, commercial approval, and monitoring threshold snapshots must be result=passed, the enterprise auth smoke snapshot must be result=passed or result=scope-out with accepted=true, and the data-flow storage plan, data-flow storage transition runbook, secret rotation, commercial integration, commercial approval, enterprise auth smoke, and monitoring threshold snapshots must be reviewed.")
+[void] $report.Add("decisionRule", "Production/B2B operations handoff package readiness requires result=passed from the target environment, reviewed runbook/troubleshooting/rollback/support paths, accepted known gaps, no-secret confirmation, and references to target readiness, convergence, data-flow storage transition, data-flow storage transition runbook, secret rotation, commercial integration, commercial approval, enterprise auth, backup/restore, HA/DR, monitoring, security, and IAM/RBAC evidence when production evidence is required. When operations snapshot evidence is required, the latest operations readiness snapshot must be result=ready and the latest operations readiness convergence snapshot must be result=ready with readinessResult=ready, finalizer result=ready, finalizer failed/gap counts at zero, Kubernetes report sync ready, failedSyncChecks=0, and sourceReportResult=ready. When production evidence is required, the data-flow storage plan, data-flow storage transition runbook, secret rotation, commercial integration, commercial approval, and monitoring threshold snapshots must be result=passed, the enterprise auth smoke snapshot must be result=passed or result=scope-out with accepted=true, and the data-flow storage plan, data-flow storage transition runbook, secret rotation, commercial integration, commercial approval, enterprise auth smoke, and monitoring threshold snapshots must be reviewed.")
 [void] $report.Add("scopePolicy", "This package is a handoff wrapper for already-collected operations evidence. It can reduce sanitized operations readiness, convergence, data-flow storage plan, data-flow storage transition runbook, secret rotation, commercial integration, commercial approval, enterprise auth smoke, and monitoring threshold JSON snapshots to summary fields, but it does not execute kubectl, gh, provider APIs, notification adapters, payment adapters, storage migrations, IdP/directory login flows, Prometheus/Grafana/Alertmanager API calls, or native card/bank/tax/ERP processor calls.")
 [void] $report.Add("secretPolicy", "Evidence stores only environment labels, operator/change references, timestamps, booleans, external evidence references, reduced operations readiness/convergence snapshot summaries, reduced data-flow storage plan/runbook summaries, reduced secret rotation summaries, reduced commercial evidence summaries, reduced enterprise auth smoke summaries, and reduced monitoring threshold summaries; it must not contain passwords, bearer tokens, kubeconfig values, private keys, SMTP credentials, webhook signing secrets, provider credentials, raw SQL, raw EXPLAIN JSON, object keys, raw event messages, raw provider responses, raw identity claims, OIDC codes/states/tokens, LDAP/admin passwords, raw remediation commands containing credentials, raw Alertmanager receiver secrets, raw price tables, raw contract text, or customer payment data.")
 
@@ -1486,7 +1502,7 @@ $markdownLines += ""
 $markdownLines += "## Operations Snapshots"
 $markdownLines += ""
 $markdownLines += "- Readiness: provided=$($operationsReadinessSnapshot["provided"]); parsed=$($operationsReadinessSnapshot["parsed"]); result=$($operationsReadinessSnapshot["result"]); passed=$($operationsReadinessSnapshot["passedCount"]); pending=$($operationsReadinessSnapshot["pendingCount"]); checks=$($operationsReadinessSnapshot["checkCount"])"
-$markdownLines += "- Convergence: provided=$($operationsConvergenceSnapshot["provided"]); parsed=$($operationsConvergenceSnapshot["parsed"]); result=$($operationsConvergenceSnapshot["result"]); readiness=$($operationsConvergenceSnapshot["readinessResult"]); kubernetesReportSyncReady=$($operationsConvergenceSnapshot["kubernetesReportSyncReady"]); finalizerGaps=$($operationsConvergenceSnapshot["finalizerGapCount"])"
+$markdownLines += "- Convergence: provided=$($operationsConvergenceSnapshot["provided"]); parsed=$($operationsConvergenceSnapshot["parsed"]); result=$($operationsConvergenceSnapshot["result"]); readiness=$($operationsConvergenceSnapshot["readinessResult"]); finalizerFailed=$($operationsConvergenceSnapshot["finalizerFailedCount"]); finalizerGaps=$($operationsConvergenceSnapshot["finalizerGapCount"]); kubernetesReportSyncReady=$($operationsConvergenceSnapshot["kubernetesReportSyncReady"]); sourceReportResult=$($operationsConvergenceSnapshot["kubernetesReportSyncSourceReportResult"])"
 foreach ($pendingCheck in @($operationsReadinessSnapshot["topPendingChecks"])) {
     $markdownLines += "- Readiness pending: [$($pendingCheck.status)] $($pendingCheck.category) / $($pendingCheck.name): $($pendingCheck.detail)"
 }

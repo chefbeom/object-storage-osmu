@@ -78,11 +78,13 @@ $monitoringThresholdPath = Join-Path $resolvedOutputDirectory "latest-monitoring
     result = "ready"
     readinessResult = "ready"
     readinessSummary = "passed=66 pending=0"
-    finalizerResult = "passed"
+    finalizerResult = "ready"
     finalizerReadinessResult = "ready"
+    finalizerFailedCount = 0
     kubernetesReportSyncReady = $true
     kubernetesReportSyncResult = "applied"
     kubernetesReportSyncFailedCount = 0
+    kubernetesReportSyncSourceReportResult = "ready"
     stageCount = 7
     readyStageCount = 7
     finalizerGapCount = 0
@@ -567,7 +569,13 @@ Assert-True ($report.confirmations.requireProductionEvidence) "Expected producti
 Assert-True ($report.confirmations.requireOperationsSnapshotEvidence) "Expected operations snapshot evidence requirement."
 Assert-True ($report.operationsSnapshots.readiness.result -eq "ready") "Expected operations readiness snapshot result=ready."
 Assert-True ($report.operationsSnapshots.convergence.result -eq "ready") "Expected operations convergence snapshot result=ready."
+Assert-True ($report.operationsSnapshots.convergence.finalizerFailedCount -eq 0) "Expected convergence snapshot finalizerFailedCount=0."
+Assert-True ($report.operationsSnapshots.convergence.finalizerGapCount -eq 0) "Expected convergence snapshot finalizerGapCount=0."
 Assert-True ($report.operationsSnapshots.convergence.kubernetesReportSyncReady) "Expected convergence snapshot Kubernetes report sync ready."
+Assert-True ($report.operationsSnapshots.convergence.kubernetesReportSyncSourceReportResult -eq "ready") "Expected convergence snapshot Kubernetes report sync source result=ready."
+Assert-True ($report.summary.operationsConvergenceFinalizerFailedCount -eq 0) "Expected summary convergence finalizer failed count."
+Assert-True ($report.summary.operationsConvergenceFinalizerGapCount -eq 0) "Expected summary convergence finalizer gap count."
+Assert-True ($report.summary.operationsConvergenceKubernetesReportSyncSourceReportResult -eq "ready") "Expected summary convergence sync source report result."
 Assert-True ($report.targetEvidenceSnapshots.dataFlowStoragePlan.result -eq "passed") "Expected data-flow storage plan snapshot result=passed."
 Assert-True ($report.targetEvidenceSnapshots.dataFlowStoragePlan.targetP95QueryLatencyMs -eq 500) "Expected data-flow storage plan snapshot target p95 query latency budget."
 Assert-True ($report.targetEvidenceSnapshots.dataFlowStoragePlan.queryPlanEvidence.result -eq "passed") "Expected data-flow query-plan snapshot result=passed."
@@ -594,6 +602,8 @@ Assert-Contains $markdown "# OSMU Operations Handoff Package" "operations handof
 Assert-Contains $markdown "Record passed target package" "operations handoff package markdown"
 Assert-Contains $markdown "Operations Snapshots" "operations handoff package markdown"
 Assert-Contains $markdown "Target Evidence Snapshots" "operations handoff package markdown"
+Assert-Contains $markdown "finalizerFailed=0" "operations handoff package markdown"
+Assert-Contains $markdown "sourceReportResult=ready" "operations handoff package markdown"
 Assert-Contains $markdown "targetP95QueryLatencyMs=500" "operations handoff package markdown"
 Assert-Contains $markdown "Data-flow storage transition runbook" "operations handoff package markdown"
 Assert-Contains $markdown "Monitoring threshold" "operations handoff package markdown"
@@ -605,6 +615,7 @@ Assert-Contains $report.decisionRule "commercial integration" "operations handof
 Assert-Contains $report.decisionRule "enterprise auth smoke snapshot" "operations handoff package JSON"
 Assert-Contains $report.decisionRule "monitoring threshold snapshots" "operations handoff package JSON"
 Assert-Contains $report.decisionRule "Kubernetes report sync ready" "operations handoff package JSON"
+Assert-Contains $report.decisionRule "sourceReportResult=ready" "operations handoff package JSON"
 Assert-Contains $report.scopePolicy "does not execute kubectl, gh, provider APIs" "operations handoff package JSON"
 Assert-Contains $report.secretPolicy "must not contain passwords, bearer tokens, kubeconfig values" "operations handoff package JSON"
 Assert-Contains $report.secretPolicy "raw SQL, raw EXPLAIN JSON" "operations handoff package JSON"
@@ -616,6 +627,132 @@ foreach ($unexpected in @("password=super-secret", "Bearer abcdefghijklmnop", "-
     Assert-NotContains $reportText $unexpected "operations handoff package JSON"
     Assert-NotContains $markdown $unexpected "operations handoff package markdown"
 }
+
+$failedFinalizerConvergenceSnapshotPath = Join-Path $resolvedOutputDirectory "failed-finalizer-operations-readiness-convergence.json"
+[ordered]@{
+    formatVersion = "osmu.operations-readiness-convergence.v1"
+    result = "ready"
+    readinessResult = "ready"
+    readinessSummary = "passed=66 pending=0"
+    finalizerResult = "ready"
+    finalizerReadinessResult = "ready"
+    finalizerFailedCount = 1
+    kubernetesReportSyncReady = $true
+    kubernetesReportSyncResult = "applied"
+    kubernetesReportSyncFailedCount = 0
+    kubernetesReportSyncSourceReportResult = "ready"
+    stageCount = 7
+    readyStageCount = 7
+    finalizerGapCount = 0
+    currentBottleneck = [ordered]@{
+        code = "none"
+        title = "None"
+        reason = "Tampered fixture claims ready despite finalizer failure."
+    }
+    recommendedCommands = @()
+} | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath $failedFinalizerConvergenceSnapshotPath -Encoding UTF8
+
+$previousErrorActionPreference = $ErrorActionPreference
+$ErrorActionPreference = "Continue"
+try {
+    $failedFinalizerOutput = & powershell -NoProfile -ExecutionPolicy Bypass -File $scriptPath `
+        -EnvironmentName "pilot-prod-self-test" `
+        -TargetCluster "customer-cluster-a" `
+        -Operator "ops-self-test" `
+        -HandoffStartedAt "2026-06-20T02:00:00Z" `
+        -HandoffCompletedAt "2026-06-20T02:30:00Z" `
+        -ChangeApprovalRef "CHG-2026-OPERATIONS-HANDOFF-SELF-TEST" `
+        -DeploymentEvidenceRef "deployment-release-run-20260620" `
+        -OperationsReadinessRef "latest-operations-readiness-ready-20260620" `
+        -OperationsConvergenceRef "latest-operations-readiness-convergence-ready-20260620" `
+        -OperationsReadinessJsonPath $readinessSnapshotPath `
+        -OperationsConvergenceJsonPath $failedFinalizerConvergenceSnapshotPath `
+        -RunbookReviewRef "operator-runbook-review-20260620" `
+        -TroubleshootingReviewRef "troubleshooting-review-20260620" `
+        -SupportEscalationRef "support-escalation-ticket-20260620" `
+        -SupportSlaRef "support-sla-contract-20260620" `
+        -KnownGapsRef "known-gaps-acceptance-20260620" `
+        -ConfirmRunbookReviewed `
+        -ConfirmTroubleshootingReviewed `
+        -ConfirmRollbackReviewed `
+        -ConfirmSupportEscalationReviewed `
+        -ConfirmKnownGapsAccepted `
+        -ConfirmOperationsReadinessSnapshotReviewed `
+        -ConfirmOperationsConvergenceSnapshotReviewed `
+        -ConfirmNoSecretValues `
+        -RequireOperationsSnapshotEvidence `
+        -FailIfNotPassed `
+        -NoWrite 2>&1
+    $failedFinalizerExitCode = $LASTEXITCODE
+}
+finally {
+    $ErrorActionPreference = $previousErrorActionPreference
+}
+Assert-True ($failedFinalizerExitCode -ne 0) "Convergence snapshot with finalizer failures should be rejected."
+Assert-Contains ($failedFinalizerOutput | Out-String) "finalizerFailed=1" "failed finalizer convergence output"
+
+$notReadySyncConvergenceSnapshotPath = Join-Path $resolvedOutputDirectory "not-ready-sync-operations-readiness-convergence.json"
+[ordered]@{
+    formatVersion = "osmu.operations-readiness-convergence.v1"
+    result = "ready"
+    readinessResult = "ready"
+    readinessSummary = "passed=66 pending=0"
+    finalizerResult = "ready"
+    finalizerReadinessResult = "ready"
+    finalizerFailedCount = 0
+    kubernetesReportSyncReady = $true
+    kubernetesReportSyncResult = "applied"
+    kubernetesReportSyncFailedCount = 0
+    kubernetesReportSyncSourceReportResult = "action-required"
+    stageCount = 7
+    readyStageCount = 7
+    finalizerGapCount = 0
+    currentBottleneck = [ordered]@{
+        code = "none"
+        title = "None"
+        reason = "Tampered fixture claims ready despite non-ready sync source."
+    }
+    recommendedCommands = @()
+} | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath $notReadySyncConvergenceSnapshotPath -Encoding UTF8
+
+$previousErrorActionPreference = $ErrorActionPreference
+$ErrorActionPreference = "Continue"
+try {
+    $notReadySyncOutput = & powershell -NoProfile -ExecutionPolicy Bypass -File $scriptPath `
+        -EnvironmentName "pilot-prod-self-test" `
+        -TargetCluster "customer-cluster-a" `
+        -Operator "ops-self-test" `
+        -HandoffStartedAt "2026-06-20T02:00:00Z" `
+        -HandoffCompletedAt "2026-06-20T02:30:00Z" `
+        -ChangeApprovalRef "CHG-2026-OPERATIONS-HANDOFF-SELF-TEST" `
+        -DeploymentEvidenceRef "deployment-release-run-20260620" `
+        -OperationsReadinessRef "latest-operations-readiness-ready-20260620" `
+        -OperationsConvergenceRef "latest-operations-readiness-convergence-ready-20260620" `
+        -OperationsReadinessJsonPath $readinessSnapshotPath `
+        -OperationsConvergenceJsonPath $notReadySyncConvergenceSnapshotPath `
+        -RunbookReviewRef "operator-runbook-review-20260620" `
+        -TroubleshootingReviewRef "troubleshooting-review-20260620" `
+        -SupportEscalationRef "support-escalation-ticket-20260620" `
+        -SupportSlaRef "support-sla-contract-20260620" `
+        -KnownGapsRef "known-gaps-acceptance-20260620" `
+        -ConfirmRunbookReviewed `
+        -ConfirmTroubleshootingReviewed `
+        -ConfirmRollbackReviewed `
+        -ConfirmSupportEscalationReviewed `
+        -ConfirmKnownGapsAccepted `
+        -ConfirmOperationsReadinessSnapshotReviewed `
+        -ConfirmOperationsConvergenceSnapshotReviewed `
+        -ConfirmNoSecretValues `
+        -RequireOperationsSnapshotEvidence `
+        -FailIfNotPassed `
+        -NoWrite 2>&1
+    $notReadySyncExitCode = $LASTEXITCODE
+}
+finally {
+    $ErrorActionPreference = $previousErrorActionPreference
+}
+Assert-True ($notReadySyncExitCode -ne 0) "Convergence snapshot with non-ready sync source should be rejected."
+Assert-Contains ($notReadySyncOutput | Out-String) "sourceReportResult=action-required" "not-ready sync convergence output"
 
 $previousErrorActionPreference = $ErrorActionPreference
 $ErrorActionPreference = "Continue"
