@@ -24,6 +24,39 @@ function Write-JsonEvidence([string] $Path, [hashtable] $Data) {
     $Data | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath $resolvedPath -Encoding UTF8
 }
 
+function New-PassedOperationsHandoffPackageSnapshots(
+    [string] $ConvergenceSourceReportResult = "ready",
+    [int] $FinalizerFailedCount = 0
+) {
+    return [ordered]@{
+        readiness = [ordered]@{
+            provided = $true
+            parsed = $true
+            result = "ready"
+            ready = $true
+            passedCount = 42
+            pendingCount = 0
+            checkCount = 42
+        }
+        convergence = [ordered]@{
+            provided = $true
+            parsed = $true
+            result = "ready"
+            ready = $true
+            readinessResult = "ready"
+            readinessSummary = "passed=42 pending=0"
+            finalizerResult = "ready"
+            finalizerReadinessResult = "ready"
+            finalizerFailedCount = $FinalizerFailedCount
+            finalizerGapCount = 0
+            kubernetesReportSyncReady = $true
+            kubernetesReportSyncResult = "applied"
+            kubernetesReportSyncFailedCount = 0
+            kubernetesReportSyncSourceReportResult = $ConvergenceSourceReportResult
+        }
+    }
+}
+
 function Write-TextEvidence([string] $Path, [string] $Content) {
     $resolvedPath = Resolve-ProjectPath $Path
     New-Item -ItemType Directory -Force -Path (Split-Path -Parent $resolvedPath) | Out-Null
@@ -44,6 +77,7 @@ $unsafeDataFlowRoot = Join-Path $resolvedOutputDirectory "unsafe-data-flow-sourc
 $unsafeDataFlowRunbookRoot = Join-Path $resolvedOutputDirectory "unsafe-data-flow-runbook-source"
 $unsafeMonitoringThresholdRoot = Join-Path $resolvedOutputDirectory "unsafe-monitoring-threshold-source"
 $staleOperationsHandoffPackageRoot = Join-Path $resolvedOutputDirectory "stale-operations-handoff-package-source"
+$badConvergenceOperationsHandoffPackageRoot = Join-Path $resolvedOutputDirectory "bad-convergence-operations-handoff-package-source"
 
 $storageSource = Join-Path $sourceRoot "storage-expansion"
 $haDrSource = Join-Path $sourceRoot "ha-dr-readiness"
@@ -157,6 +191,7 @@ Write-TextEvidence (Join-Path $enterpriseAuthSource "latest-enterprise-auth-smok
 Write-JsonEvidence (Join-Path $operationsHandoffPackageSource "latest-operations-handoff-package.json") @{
     formatVersion = "osmu.operations-handoff-package.v1"
     result = "passed"
+    operationsSnapshots = (New-PassedOperationsHandoffPackageSnapshots)
     confirmations = [ordered]@{
         noSecretValues = $true
         runbookReviewed = $true
@@ -310,7 +345,7 @@ Assert-True ($promotedOperationsHandoffPackage.confirmations.commercialApprovalS
 Assert-True ($promotedOperationsHandoffPackage.confirmations.enterpriseAuthSmokeSnapshotReviewed) "Promoted operations handoff package should preserve enterprise auth smoke snapshot review confirmation."
 $operationsHandoffPackageEntry = @($report.entries | Where-Object { $_.group -eq "operations-handoff-package" -and $_.fileName -eq "latest-operations-handoff-package.json" })
 Assert-True ($operationsHandoffPackageEntry.Count -eq 1) "Operations handoff package import entry missing."
-Assert-True (([string] $operationsHandoffPackageEntry[0].detail).Contains("requiredConfirmations=17")) "Operations handoff package import entry should include required confirmation validation detail."
+Assert-True (([string] $operationsHandoffPackageEntry[0].detail).Contains("requiredConfirmations=17") -and ([string] $operationsHandoffPackageEntry[0].detail).Contains("sourceReportResult=ready")) "Operations handoff package import entry should include required confirmation and strict snapshot validation detail."
 $promotedDataFlowRunbook = Get-Content -Raw -LiteralPath (Join-Path $promotedRoot "latest-data-flow-storage-transition-runbook-evidence.json") | ConvertFrom-Json
 Assert-True ($promotedDataFlowRunbook.result -eq "passed") "Promoted data-flow storage transition runbook evidence should preserve result=passed."
 Assert-True ($promotedDataFlowRunbook.dataFlowStoragePlanSnapshot.result -eq "passed") "Promoted data-flow storage transition runbook evidence should preserve passed storage plan snapshot."
@@ -502,6 +537,7 @@ Assert-True (($unsafeMonitoringThresholdReport.entries | ConvertTo-Json -Depth 8
 Write-JsonEvidence (Join-Path $staleOperationsHandoffPackageRoot "latest-operations-handoff-package.json") @{
     formatVersion = "osmu.operations-handoff-package.v1"
     result = "passed"
+    operationsSnapshots = (New-PassedOperationsHandoffPackageSnapshots)
     confirmations = [ordered]@{
         noSecretValues = $true
         runbookReviewed = $true
@@ -544,6 +580,53 @@ $staleOperationsHandoffPackageReport = Get-Content -Raw -LiteralPath $staleOpera
 Assert-True ($staleOperationsHandoffPackageReport.result -eq "failed") "Stale operations handoff package import report should be failed."
 Assert-True (-not (Test-Path -LiteralPath (Join-Path $staleOperationsHandoffPackageOutput "latest-operations-handoff-package.json"))) "Stale operations handoff package must not be promoted."
 Assert-True (($staleOperationsHandoffPackageReport.entries | ConvertTo-Json -Depth 8).Contains("commercialApprovalSnapshotReviewed")) "Stale operations handoff package report should describe missing required review confirmation."
+
+Write-JsonEvidence (Join-Path $badConvergenceOperationsHandoffPackageRoot "latest-operations-handoff-package.json") @{
+    formatVersion = "osmu.operations-handoff-package.v1"
+    result = "passed"
+    operationsSnapshots = (New-PassedOperationsHandoffPackageSnapshots -ConvergenceSourceReportResult "action-required")
+    confirmations = [ordered]@{
+        noSecretValues = $true
+        runbookReviewed = $true
+        troubleshootingReviewed = $true
+        rollbackReviewed = $true
+        supportEscalationReviewed = $true
+        knownGapsAccepted = $true
+        operationsReadinessSnapshotReviewed = $true
+        operationsConvergenceSnapshotReviewed = $true
+        dataFlowStoragePlanReviewed = $true
+        dataFlowStorageTransitionRunbookReviewed = $true
+        secretRotationSnapshotReviewed = $true
+        commercialIntegrationSnapshotReviewed = $true
+        commercialApprovalSnapshotReviewed = $true
+        enterpriseAuthSmokeSnapshotReviewed = $true
+        monitoringThresholdReviewed = $true
+        requireProductionEvidence = $true
+        requireOperationsSnapshotEvidence = $true
+    }
+}
+$badConvergenceOperationsHandoffPackageOutput = Join-Path $resolvedOutputDirectory "bad-convergence-operations-handoff-package-promoted"
+$badConvergenceOperationsHandoffPackageJson = Join-Path $resolvedOutputDirectory "bad-convergence-operations-handoff-package-import.json"
+$badConvergenceOperationsHandoffPackageMarkdown = Join-Path $resolvedOutputDirectory "bad-convergence-operations-handoff-package-import.md"
+$previousErrorActionPreference = $ErrorActionPreference
+$ErrorActionPreference = "Continue"
+try {
+    $badConvergenceOperationsHandoffPackageOutputLines = & powershell -NoProfile -ExecutionPolicy Bypass -File $importScript `
+        -OperationsHandoffPackageArtifactPath $badConvergenceOperationsHandoffPackageRoot `
+        -OutputDirectory $badConvergenceOperationsHandoffPackageOutput `
+        -JsonOutputPath $badConvergenceOperationsHandoffPackageJson `
+        -MarkdownOutputPath $badConvergenceOperationsHandoffPackageMarkdown 2>&1
+    $badConvergenceOperationsHandoffPackageExitCode = $LASTEXITCODE
+}
+finally {
+    $ErrorActionPreference = $previousErrorActionPreference
+}
+Assert-True ($badConvergenceOperationsHandoffPackageExitCode -ne 0) "Operations handoff package with non-ready convergence source should fail import."
+Assert-True (Test-Path -LiteralPath $badConvergenceOperationsHandoffPackageJson) "Bad convergence handoff package import report should still be written."
+$badConvergenceOperationsHandoffPackageReport = Get-Content -Raw -LiteralPath $badConvergenceOperationsHandoffPackageJson | ConvertFrom-Json
+Assert-True ($badConvergenceOperationsHandoffPackageReport.result -eq "failed") "Bad convergence handoff package import report should be failed."
+Assert-True (-not (Test-Path -LiteralPath (Join-Path $badConvergenceOperationsHandoffPackageOutput "latest-operations-handoff-package.json"))) "Bad convergence handoff package must not be promoted."
+Assert-True (($badConvergenceOperationsHandoffPackageReport.entries | ConvertTo-Json -Depth 8).Contains("sourceReportResult=action-required")) "Bad convergence handoff package report should describe non-ready source report result."
 
 Write-JsonEvidence (Join-Path $directDataFlowStoragePlanSource "latest-data-flow-storage-plan.json") @{
     formatVersion = "osmu.data-flow-storage-plan.v1"

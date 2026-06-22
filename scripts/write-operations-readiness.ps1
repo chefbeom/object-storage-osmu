@@ -304,6 +304,64 @@ function Test-OperationsHandoffPackageContentSafe([object] $Data) {
     return $true
 }
 
+function Test-ReadyText($Value) {
+    return "ready".Equals([string] $Value, [System.StringComparison]::OrdinalIgnoreCase)
+}
+
+function Get-OperationsHandoffPackageSnapshotValidation([object] $Data) {
+    $operationsSnapshots = Get-ObjectProperty $Data "operationsSnapshots"
+    if ($null -eq $operationsSnapshots) {
+        return [pscustomobject]@{
+            passed = $false
+            detail = "operationsSnapshots expected"
+        }
+    }
+
+    $readiness = Get-ObjectProperty $operationsSnapshots "readiness"
+    $readinessResult = [string] (Get-ObjectProperty $readiness "result")
+    if (-not (Test-ReadyText $readinessResult)) {
+        return [pscustomobject]@{
+            passed = $false
+            detail = "operations readiness snapshot result=$readinessResult expected=ready"
+        }
+    }
+
+    $convergence = Get-ObjectProperty $operationsSnapshots "convergence"
+    $convergenceResult = [string] (Get-ObjectProperty $convergence "result")
+    $convergenceReadinessResult = [string] (Get-ObjectProperty $convergence "readinessResult")
+    $finalizerResult = [string] (Get-ObjectProperty $convergence "finalizerResult")
+    $finalizerReadinessResult = [string] (Get-ObjectProperty $convergence "finalizerReadinessResult")
+    $finalizerFailedCount = Get-ObjectInt $convergence "finalizerFailedCount"
+    $finalizerGapCount = Get-ObjectInt $convergence "finalizerGapCount"
+    $syncReady = [bool] (Get-ObjectProperty $convergence "kubernetesReportSyncReady")
+    $syncFailedCount = Get-ObjectInt $convergence "kubernetesReportSyncFailedCount"
+    $sourceReportResult = [string] (Get-ObjectProperty $convergence "kubernetesReportSyncSourceReportResult")
+
+    if (-not (Test-ReadyText $convergenceResult)) {
+        return [pscustomobject]@{ passed = $false; detail = "operations convergence snapshot result=$convergenceResult expected=ready" }
+    }
+    if (-not (Test-ReadyText $convergenceReadinessResult)) {
+        return [pscustomobject]@{ passed = $false; detail = "operations convergence readinessResult=$convergenceReadinessResult expected=ready" }
+    }
+    if (-not (Test-ReadyText $finalizerResult) -or -not (Test-ReadyText $finalizerReadinessResult)) {
+        return [pscustomobject]@{ passed = $false; detail = "operations convergence finalizerResult=$finalizerResult finalizerReadinessResult=$finalizerReadinessResult expected=ready" }
+    }
+    if ($finalizerFailedCount -ne 0 -or $finalizerGapCount -ne 0) {
+        return [pscustomobject]@{ passed = $false; detail = "operations convergence finalizerFailedCount=$finalizerFailedCount finalizerGapCount=$finalizerGapCount expected=0" }
+    }
+    if (-not $syncReady -or $syncFailedCount -ne 0) {
+        return [pscustomobject]@{ passed = $false; detail = "operations convergence kubernetesReportSyncReady=$syncReady failedSyncChecks=$syncFailedCount expected ready/0" }
+    }
+    if (-not (Test-ReadyText $sourceReportResult)) {
+        return [pscustomobject]@{ passed = $false; detail = "operations convergence sourceReportResult=$sourceReportResult expected=ready" }
+    }
+
+    return [pscustomobject]@{
+        passed = $true
+        detail = "snapshotReadiness=ready, convergence=ready, finalizerFailed=0, finalizerGaps=0, sourceReportResult=ready"
+    }
+}
+
 function Get-OperationsHandoffPackageValidation([object] $Report) {
     if (-not $Report.exists -or -not $Report.parsed) {
         return [pscustomobject]@{
@@ -339,6 +397,11 @@ function Get-OperationsHandoffPackageValidation([object] $Report) {
         }
     }
 
+    $snapshotValidation = Get-OperationsHandoffPackageSnapshotValidation $Report.data
+    if (-not $snapshotValidation.passed) {
+        return $snapshotValidation
+    }
+
     if (-not (Test-OperationsHandoffPackageContentSafe $Report.data)) {
         return [pscustomobject]@{
             passed = $false
@@ -348,7 +411,7 @@ function Get-OperationsHandoffPackageValidation([object] $Report) {
 
     return [pscustomobject]@{
         passed = $true
-        detail = "formatVersion=$formatVersion, result=$result, requiredConfirmations=$($requiredConfirmations.Count)"
+        detail = "formatVersion=$formatVersion, result=$result, requiredConfirmations=$($requiredConfirmations.Count), $($snapshotValidation.detail)"
     }
 }
 

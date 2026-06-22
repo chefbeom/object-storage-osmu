@@ -74,6 +74,39 @@ function New-PassedOperationsHandoffPackageConfirmations() {
     }
 }
 
+function New-PassedOperationsHandoffPackageSnapshots(
+    [string] $ConvergenceSourceReportResult = "ready",
+    [int] $FinalizerFailedCount = 0
+) {
+    return [ordered]@{
+        readiness = [ordered]@{
+            provided = $true
+            parsed = $true
+            result = "ready"
+            ready = $true
+            passedCount = 42
+            pendingCount = 0
+            checkCount = 42
+        }
+        convergence = [ordered]@{
+            provided = $true
+            parsed = $true
+            result = "ready"
+            ready = $true
+            readinessResult = "ready"
+            readinessSummary = "passed=42 pending=0"
+            finalizerResult = "ready"
+            finalizerReadinessResult = "ready"
+            finalizerFailedCount = $FinalizerFailedCount
+            finalizerGapCount = 0
+            kubernetesReportSyncReady = $true
+            kubernetesReportSyncResult = "applied"
+            kubernetesReportSyncFailedCount = 0
+            kubernetesReportSyncSourceReportResult = $ConvergenceSourceReportResult
+        }
+    }
+}
+
 $resolvedJsonOutputPath = Resolve-ProjectPath $JsonOutputPath
 $resolvedMarkdownOutputPath = Resolve-ProjectPath $MarkdownOutputPath
 $scriptPath = Resolve-ProjectPath ".\scripts\write-operations-readiness.ps1"
@@ -567,6 +600,7 @@ $validHandoffMarkdownOutputPath = Join-Path $handoffFixtureDirectory "valid-oper
     formatVersion = "osmu.operations-handoff-package.v1"
     result = "passed"
     confirmations = (New-PassedOperationsHandoffPackageConfirmations)
+    operationsSnapshots = (New-PassedOperationsHandoffPackageSnapshots)
 } | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $validHandoffEvidencePath -Encoding UTF8
 
 & powershell -NoProfile -ExecutionPolicy Bypass -File $scriptPath `
@@ -581,8 +615,8 @@ $validHandoffCheck = @($validHandoffReport.checks | Where-Object { $_.name -eq "
 if ($validHandoffCheck.Count -ne 1 -or -not $validHandoffCheck[0].passed) {
     throw "Operations readiness must accept a passed handoff package only when required confirmations are present."
 }
-if (-not ([string] $validHandoffCheck[0].detail).Contains("requiredConfirmations=17")) {
-    throw "Operations handoff package readiness detail must record required confirmation validation."
+if (-not ([string] $validHandoffCheck[0].detail).Contains("requiredConfirmations=17") -or -not ([string] $validHandoffCheck[0].detail).Contains("sourceReportResult=ready")) {
+    throw "Operations handoff package readiness detail must record required confirmation and strict snapshot validation."
 }
 
 $staleHandoffEvidencePath = Join-Path $handoffFixtureDirectory "stale-operations-handoff-package.json"
@@ -594,6 +628,7 @@ $staleConfirmations["commercialApprovalSnapshotReviewed"] = $false
     formatVersion = "osmu.operations-handoff-package.v1"
     result = "passed"
     confirmations = $staleConfirmations
+    operationsSnapshots = (New-PassedOperationsHandoffPackageSnapshots)
 } | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $staleHandoffEvidencePath -Encoding UTF8
 
 & powershell -NoProfile -ExecutionPolicy Bypass -File $scriptPath `
@@ -610,6 +645,32 @@ if ($staleHandoffCheck.Count -ne 1 -or $staleHandoffCheck[0].passed) {
 }
 if (-not ([string] $staleHandoffCheck[0].detail).Contains("commercialApprovalSnapshotReviewed")) {
     throw "Operations readiness stale handoff package detail must name the missing confirmation."
+}
+
+$badConvergenceHandoffEvidencePath = Join-Path $handoffFixtureDirectory "bad-convergence-operations-handoff-package.json"
+$badConvergenceJsonOutputPath = Join-Path $handoffFixtureDirectory "bad-convergence-operations-readiness.json"
+$badConvergenceMarkdownOutputPath = Join-Path $handoffFixtureDirectory "bad-convergence-operations-readiness.md"
+@{
+    formatVersion = "osmu.operations-handoff-package.v1"
+    result = "passed"
+    confirmations = (New-PassedOperationsHandoffPackageConfirmations)
+    operationsSnapshots = (New-PassedOperationsHandoffPackageSnapshots -ConvergenceSourceReportResult "action-required")
+} | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $badConvergenceHandoffEvidencePath -Encoding UTF8
+
+& powershell -NoProfile -ExecutionPolicy Bypass -File $scriptPath `
+    -OperationsHandoffPackagePath $badConvergenceHandoffEvidencePath `
+    -JsonOutputPath $badConvergenceJsonOutputPath `
+    -MarkdownOutputPath $badConvergenceMarkdownOutputPath | Out-Host
+if ($LASTEXITCODE -ne 0) {
+    throw "write-operations-readiness.ps1 failed for bad convergence handoff package fixture with exit code $LASTEXITCODE."
+}
+$badConvergenceReport = Get-Content -Raw -LiteralPath $badConvergenceJsonOutputPath | ConvertFrom-Json
+$badConvergenceCheck = @($badConvergenceReport.checks | Where-Object { $_.name -eq "Operations handoff package target evidence" })
+if ($badConvergenceCheck.Count -ne 1 -or $badConvergenceCheck[0].passed) {
+    throw "Operations readiness must reject a handoff package whose convergence sync source is not ready."
+}
+if (-not ([string] $badConvergenceCheck[0].detail).Contains("sourceReportResult=action-required")) {
+    throw "Operations readiness bad convergence handoff detail must name the non-ready source report result."
 }
 
 Write-Host "Operations readiness artifact verified."
