@@ -728,9 +728,37 @@
         >
           Expose headers: {{ minioBucketCorsExposeSummary }}
         </small>
+        <small
+          v-if="minioBucketCorsAllowedHeadersSummary"
+          data-testid="readiness-minio-bucket-cors-allowed-headers"
+        >
+          Allowed headers: {{ minioBucketCorsAllowedHeadersSummary }}
+        </small>
+        <small
+          v-if="minioBucketCorsMaxAgeSummary"
+          data-testid="readiness-minio-bucket-cors-max-age"
+        >
+          Max age seconds: {{ minioBucketCorsMaxAgeSummary }}
+        </small>
         <small v-if="minioBucketCorsVerification.scopePolicy">
           {{ minioBucketCorsVerification.scopePolicy }}
         </small>
+        <div
+          v-if="minioBucketCorsOperatorCommands.length > 0"
+          class="readiness-artifact-command-row"
+          data-testid="readiness-minio-bucket-cors-operator-commands"
+        >
+          <button
+            v-for="command in minioBucketCorsOperatorCommands"
+            :key="command.name"
+            type="button"
+            class="ghost"
+            :title="`Copy ${command.label}`"
+            @click="copyReadinessRemediationCommand(command.command)"
+          >
+            {{ command.label }}
+          </button>
+        </div>
       </div>
       <ol
         v-if="minioBucketCorsChecks.length > 0"
@@ -3342,6 +3370,25 @@ const minioBucketCorsChecks = computed(() => {
 const minioBucketCorsExposeSummary = computed(() => {
   const exposeHeaders = minioBucketCorsVerification.value?.exposeHeaders
   return Array.isArray(exposeHeaders) ? exposeHeaders.slice(0, 6).join(' / ') : ''
+})
+
+const minioBucketCorsAllowedHeadersSummary = computed(() => {
+  const allowedHeaders = minioBucketCorsVerification.value?.allowedHeaders
+  return Array.isArray(allowedHeaders) ? allowedHeaders.slice(0, 6).join(' / ') : ''
+})
+
+const minioBucketCorsMaxAgeSummary = computed(() => {
+  const maxAgeSeconds = minioBucketCorsVerification.value?.maxAgeSeconds
+  return Array.isArray(maxAgeSeconds) ? maxAgeSeconds.slice(0, 6).join(' / ') : ''
+})
+
+const minioBucketCorsOperatorCommands = computed(() => {
+  const commands = minioBucketCorsVerification.value?.operatorCommands || {}
+  return [
+    { name: 'collectAndVerify', label: 'Collect Verify', command: commands.collectAndVerify },
+    { name: 'collectWithMc', label: 'Collect with mc', command: commands.collectWithMc },
+    { name: 'verifyFromFile', label: 'Verify File', command: commands.verifyFromFile },
+  ].filter((command) => command.command)
 })
 
 const operationsReadinessConvergence = computed(() => (
