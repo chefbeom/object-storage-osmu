@@ -54,6 +54,8 @@ $readyJsonPath = Join-Path $resolvedOutputDirectory "ready-preflight.json"
 $readyMarkdownPath = Join-Path $resolvedOutputDirectory "ready-preflight.md"
 $unsafeJsonPath = Join-Path $resolvedOutputDirectory "unsafe-preflight.json"
 $unsafeMarkdownPath = Join-Path $resolvedOutputDirectory "unsafe-preflight.md"
+$invalidJsonPath = Join-Path $resolvedOutputDirectory "invalid-preflight.json"
+$invalidMarkdownPath = Join-Path $resolvedOutputDirectory "invalid-preflight.md"
 
 Write-JsonFixture $unblockPlanPath ([ordered]@{
     formatVersion = "osmu.operations-invocation-unblock-plan.v1"
@@ -161,6 +163,7 @@ Assert-Equal $missingReport.result "action-required" "missing result"
 Assert-Equal $missingReport.selectedActionCount 3 "missing selected action count"
 Assert-Equal $missingReport.missingInputCount 1 "missing input count"
 Assert-Equal $missingReport.unsafeInputCount 0 "missing unsafe input count"
+Assert-Equal $missingReport.invalidInputCount 0 "missing invalid input count"
 Assert-True ($missingReport.failedCheckCount -ge 3) "expected missing preflight failures"
 Assert-Contains ($missingReport.checks | ConvertTo-Json -Depth 8) "KUBECONFIG_SECRET_CONFIRMED" "missing checks"
 Assert-Contains $missingMarkdown "Result: action-required" "missing markdown"
@@ -182,6 +185,7 @@ Assert-Equal $readyReport.result "ready" "ready result"
 Assert-Equal $readyReport.failedCheckCount 0 "ready failed checks"
 Assert-Equal $readyReport.missingInputCount 0 "ready missing inputs"
 Assert-Equal $readyReport.unsafeInputCount 0 "ready unsafe inputs"
+Assert-Equal $readyReport.invalidInputCount 0 "ready invalid inputs"
 Assert-True $readyReport.needsKubeconfigSecretConfirmation "ready kubeconfig requirement"
 Assert-True $readyReport.needsOperatorApprovalConfirmation "ready approval requirement"
 Assert-Contains $readyReport.readyPlanCommand "-KubeconfigSecretConfirmed" "ready plan command"
@@ -227,7 +231,28 @@ Assert-True ([string]::IsNullOrWhiteSpace($unsafeReport.readyPlanCommand)) "unsa
 Assert-Contains ($unsafeReport.checks | ConvertTo-Json -Depth 8) "SAFE_INPUT_VALUES" "unsafe checks"
 Assert-Contains $unsafeMarkdown "Unsafe inputs: 1" "unsafe markdown"
 
+& powershell -NoProfile -ExecutionPolicy Bypass -File $scriptPath `
+    -UnblockPlanPath $unblockPlanPath `
+    -JsonOutputPath $invalidJsonPath `
+    -MarkdownOutputPath $invalidMarkdownPath `
+    -KubeconfigSecretConfirmed `
+    -ConfirmOperatorApproval `
+    -BackupTimestamp "not-a-timestamp" | Out-Host
+if ($LASTEXITCODE -ne 0) {
+    throw "write-operations-dispatch-preflight.ps1 invalid fixture failed with exit code $LASTEXITCODE."
+}
+
+$invalidReport = Get-Content -Raw -LiteralPath $invalidJsonPath | ConvertFrom-Json
+$invalidMarkdown = Get-Content -Raw -LiteralPath $invalidMarkdownPath
+Assert-Equal $invalidReport.result "action-required" "invalid result"
+Assert-Equal $invalidReport.invalidInputCount 1 "invalid input count"
+Assert-True ($invalidReport.failedCheckCount -ge 1) "invalid preflight should fail"
+Assert-True ([string]::IsNullOrWhiteSpace($invalidReport.readyPlanCommand)) "invalid ready plan command should be blank"
+Assert-Contains ($invalidReport.checks | ConvertTo-Json -Depth 8) "KNOWN_INPUT_VALUE_SHAPES" "invalid checks"
+Assert-Contains $invalidMarkdown "Invalid inputs: 1" "invalid markdown"
+
 Write-Host "Operations dispatch preflight verified."
 Write-Host "Missing report: $missingJsonPath"
 Write-Host "Ready report: $readyJsonPath"
 Write-Host "Unsafe report: $unsafeJsonPath"
+Write-Host "Invalid report: $invalidJsonPath"

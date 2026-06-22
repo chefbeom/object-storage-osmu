@@ -41,6 +41,8 @@ $plannedJsonOutputPath = Join-Path $resolvedOutputDirectory "planned-operations-
 $plannedMarkdownOutputPath = Join-Path $resolvedOutputDirectory "planned-operations-evidence-plan-invocation.md"
 $unsafeJsonOutputPath = Join-Path $resolvedOutputDirectory "unsafe-operations-evidence-plan-invocation.json"
 $unsafeMarkdownOutputPath = Join-Path $resolvedOutputDirectory "unsafe-operations-evidence-plan-invocation.md"
+$invalidJsonOutputPath = Join-Path $resolvedOutputDirectory "invalid-operations-evidence-plan-invocation.json"
+$invalidMarkdownOutputPath = Join-Path $resolvedOutputDirectory "invalid-operations-evidence-plan-invocation.md"
 $selectedJsonOutputPath = Join-Path $resolvedOutputDirectory "selected-operations-evidence-plan-invocation.json"
 $selectedMarkdownOutputPath = Join-Path $resolvedOutputDirectory "selected-operations-evidence-plan-invocation.md"
 
@@ -176,6 +178,24 @@ Assert-True ($unsafeAction.command -like "*| Write-Host unsafe*") "Expected unsa
 
 & powershell -NoProfile -ExecutionPolicy Bypass -File $scriptPath `
     -PlanPath $fixturePath `
+    -JsonOutputPath $invalidJsonOutputPath `
+    -MarkdownOutputPath $invalidMarkdownOutputPath `
+    -ActionOrder 2 `
+    -KubeconfigSecretConfirmed `
+    -ConfirmOperatorApproval `
+    -BackupTimestamp "not-a-timestamp" | Out-Host
+if ($LASTEXITCODE -ne 0) {
+    throw "invoke-operations-evidence-plan.ps1 invalid placeholder check failed with exit code $LASTEXITCODE."
+}
+
+$invalidReport = Get-Content -Raw -LiteralPath $invalidJsonOutputPath | ConvertFrom-Json
+$invalidAction = @($invalidReport.actions)[0]
+Assert-True ($invalidReport.result -eq "blocked") "Expected invalid known placeholder command to be blocked."
+Assert-True (@($invalidAction.blockReasons) -contains "invalid placeholder value for <YYYYMMDDTHHMMSSZ>") "Expected invalid backup timestamp to fail known placeholder validation."
+Assert-True ($invalidAction.command -like "*not-a-timestamp*") "Expected invalid command to preserve rejected timestamp for audit."
+
+& powershell -NoProfile -ExecutionPolicy Bypass -File $scriptPath `
+    -PlanPath $fixturePath `
     -JsonOutputPath $selectedJsonOutputPath `
     -MarkdownOutputPath $selectedMarkdownOutputPath `
     -ActionOrder 2 `
@@ -195,4 +215,5 @@ Write-Host "Operations evidence plan invocation verified."
 Write-Host "Blocked report: $blockedJsonOutputPath"
 Write-Host "Planned report: $plannedJsonOutputPath"
 Write-Host "Unsafe report: $unsafeJsonOutputPath"
+Write-Host "Invalid report: $invalidJsonOutputPath"
 Write-Host "Selected report: $selectedJsonOutputPath"
