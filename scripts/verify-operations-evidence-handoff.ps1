@@ -332,10 +332,48 @@ Assert-Equal $pendingReport.nextStep.code "fix-operations-finalizer" "pending fi
 Assert-Equal $pendingReport.finalizerGapCount 1 "pending finalizer gap count"
 Assert-Contains $pendingReport.nextStep.reason "readiness=pending" "pending finalizer reason"
 
+$gapReadyFinalizePath = Join-Path $resolvedOutputDirectory "gap-ready-finalize.json"
+$gapReadyHandoffPath = Join-Path $resolvedOutputDirectory "gap-ready-finalize-handoff.json"
+$gapReadyMarkdownPath = Join-Path $resolvedOutputDirectory "gap-ready-finalize-handoff.md"
+Write-JsonFixture $gapReadyFinalizePath ([ordered]@{
+    formatVersion = "osmu.operations-readiness-finalize.v1"
+    result = "ready"
+    status = "operations-readiness-finalize-ready"
+    readinessResult = "ready"
+    failedCount = 1
+    gaps = @("Security evidence finalizer report is missing.")
+})
+
+& powershell -NoProfile -ExecutionPolicy Bypass -File $scriptPath `
+    -ReadinessReportPath $operationsFinalizeReadinessPath `
+    -EvidencePlanPath $operationsFinalizePlanPath `
+    -InvocationReportPath $operationsFinalizeInvocationPath `
+    -WorkflowRunIdPlanPath $operationsFinalizeRunIdPath `
+    -ArtifactCollectionPlanPath $operationsFinalizeCollectionPath `
+    -ArtifactImportReportPath $operationsFinalizeImportPath `
+    -OperationsReadinessFinalizeReportPath $gapReadyFinalizePath `
+    -JsonOutputPath $gapReadyHandoffPath `
+    -MarkdownOutputPath $gapReadyMarkdownPath | Out-Host
+if ($LASTEXITCODE -ne 0) {
+    throw "write-operations-evidence-handoff.ps1 operations-finalizer gap-ready check failed with exit code $LASTEXITCODE."
+}
+
+$gapReadyReport = Get-Content -Raw -LiteralPath $gapReadyHandoffPath | ConvertFrom-Json
+$gapReadyStage = @($gapReadyReport.stages | Where-Object { $_.name -eq "operations-finalizer" })[0]
+Assert-Equal $gapReadyReport.result "action-required" "gap-ready finalizer result"
+Assert-Equal $gapReadyReport.nextStep.code "fix-operations-finalizer" "gap-ready finalizer next step"
+Assert-Equal $gapReadyReport.finalizerFailedCount 1 "gap-ready finalizer failed count"
+Assert-Equal $gapReadyReport.finalizerGapCount 1 "gap-ready finalizer gap count"
+Assert-Equal $gapReadyStage.ready $false "gap-ready finalizer stage ready"
+Assert-Contains $gapReadyReport.nextStep.reason "failed=1, gaps=1" "gap-ready finalizer reason"
+
 $readyReadinessPath = Join-Path $resolvedOutputDirectory "ready-readiness.json"
 $readyMissingFinalizePath = Join-Path $resolvedOutputDirectory "ready-missing-finalize.json"
 $readyMissingFinalizeHandoffPath = Join-Path $resolvedOutputDirectory "ready-missing-finalize-handoff.json"
 $readyMissingFinalizeMarkdownPath = Join-Path $resolvedOutputDirectory "ready-missing-finalize-handoff.md"
+$readyGapFinalizePath = Join-Path $resolvedOutputDirectory "ready-gap-finalize.json"
+$readyGapHandoffPath = Join-Path $resolvedOutputDirectory "ready-gap-finalize-handoff.json"
+$readyGapMarkdownPath = Join-Path $resolvedOutputDirectory "ready-gap-finalize-handoff.md"
 $readyFinalizePath = Join-Path $resolvedOutputDirectory "ready-finalize.json"
 $readyHandoffPath = Join-Path $resolvedOutputDirectory "ready-handoff.json"
 $readyMarkdownPath = Join-Path $resolvedOutputDirectory "ready-handoff.md"
@@ -366,6 +404,38 @@ Assert-Equal $readyMissingFinalizeReport.result "action-required" "ready missing
 Assert-Equal $readyMissingFinalizeReport.nextStep.code "run-operations-finalizer" "ready missing finalizer next step"
 Assert-Contains $readyMissingFinalizeReport.nextStep.reason "finalizer report is missing" "ready missing finalizer reason"
 Assert-Contains $readyMissingFinalizeMarkdown "Run operations readiness finalizer" "ready missing finalizer markdown next step"
+
+Write-JsonFixture $readyGapFinalizePath ([ordered]@{
+    formatVersion = "osmu.operations-readiness-finalize.v1"
+    result = "ready"
+    status = "operations-readiness-finalize-ready"
+    readinessResult = "ready"
+    failedCount = 1
+    gaps = @("Operations readiness finalizer retained a gap.")
+})
+
+& powershell -NoProfile -ExecutionPolicy Bypass -File $scriptPath `
+    -ReadinessReportPath $readyReadinessPath `
+    -EvidencePlanPath $missingPlanPath `
+    -InvocationReportPath $missingInvocationPath `
+    -WorkflowRunIdPlanPath $missingRunIdPath `
+    -ArtifactCollectionPlanPath $missingCollectionPath `
+    -ArtifactImportReportPath $missingImportPath `
+    -OperationsReadinessFinalizeReportPath $readyGapFinalizePath `
+    -JsonOutputPath $readyGapHandoffPath `
+    -MarkdownOutputPath $readyGapMarkdownPath | Out-Host
+if ($LASTEXITCODE -ne 0) {
+    throw "write-operations-evidence-handoff.ps1 ready-with-gap-finalizer check failed with exit code $LASTEXITCODE."
+}
+
+$readyGapReport = Get-Content -Raw -LiteralPath $readyGapHandoffPath | ConvertFrom-Json
+$readyGapStage = @($readyGapReport.stages | Where-Object { $_.name -eq "operations-finalizer" })[0]
+Assert-Equal $readyGapReport.result "action-required" "ready gap finalizer result"
+Assert-Equal $readyGapReport.nextStep.code "fix-operations-finalizer" "ready gap finalizer next step"
+Assert-Equal $readyGapReport.finalizerFailedCount 1 "ready gap finalizer failed count"
+Assert-Equal $readyGapReport.finalizerGapCount 1 "ready gap finalizer gap count"
+Assert-Equal $readyGapStage.ready $false "ready gap finalizer stage ready"
+Assert-Contains $readyGapReport.nextStep.reason "failed=1, gaps=1" "ready gap finalizer reason"
 
 Write-JsonFixture $readyFinalizePath ([ordered]@{
     formatVersion = "osmu.operations-readiness-finalize.v1"

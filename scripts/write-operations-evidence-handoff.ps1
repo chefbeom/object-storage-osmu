@@ -128,9 +128,10 @@ $collectionResult = Get-Text $collection.json "result"
 $importResult = Get-Text $import.json "result"
 $finalizeResult = Get-Text $finalize.json "result"
 $finalizeReadinessResult = Get-Text $finalize.json "readinessResult"
+$finalizeFailedCount = Get-Int $finalize.json "failedCount"
 $finalizeGapCount = Get-ArrayCount (Get-JsonProperty $finalize.json "gaps")
 $readinessReady = $readiness.exists -and (Is-ReadyResult $readinessResult)
-$finalizerReady = $finalize.exists -and (Is-ReadyResult $finalizeResult) -and (Is-ReadyResult $finalizeReadinessResult)
+$finalizerReady = $finalize.exists -and (Is-ReadyResult $finalizeResult) -and (Is-ReadyResult $finalizeReadinessResult) -and $finalizeFailedCount -eq 0 -and $finalizeGapCount -eq 0
 
 $stages = @(
     (New-Stage "operations-readiness" $readiness.path $readiness.exists $readinessResult (Get-Text $readiness.json "summary") (Is-ReadyResult $readinessResult) "powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\write-operations-readiness.ps1" "Production/B2B readiness gate summary."),
@@ -139,7 +140,7 @@ $stages = @(
     (New-Stage "workflow-run-ids" $runIds.path $runIds.exists $runIdResult "workflows=$((Get-Int $runIds.json "workflowCount")) ready=$((Get-Int $runIds.json "readyWorkflowCount")) missing=$((Get-Int $runIds.json "missingWorkflowCount")) stale=$((Get-Int $runIds.json "staleWorkflowCount"))" ($runIds.exists -and (Is-ReadyResult $runIdResult)) "powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\write-operations-workflow-run-id-plan.ps1 -Execute" "GitHub workflow run id handoff."),
     (New-Stage "artifact-collection" $collection.path $collection.exists $collectionResult "artifacts=$((Get-Int $collection.json "artifactCount")) ready=$((Get-Int $collection.json "readyArtifactCount")) missingRequired=$((Get-Int $collection.json "missingRequiredArtifactCount"))" ($collection.exists -and (Is-ReadyResult $collectionResult)) (Get-Text $collection.json "operationsArtifactFinalizerCommand") "Artifact download/import or finalizer plan."),
     (New-Stage "artifact-import" $import.path $import.exists $importResult "failed=$((Get-Int $import.json "failedCount"))" ($import.exists -and (Is-ReadyResult $importResult)) "powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\import-operations-readiness-artifacts.ps1" "Promotion of downloaded evidence artifacts into latest readiness paths."),
-    (New-Stage "operations-finalizer" $finalize.path $finalize.exists $finalizeResult "readiness=$finalizeReadinessResult failed=$((Get-Int $finalize.json "failedCount")) gaps=$finalizeGapCount" ($finalize.exists -and (Is-ReadyResult $finalizeResult) -and (Is-ReadyResult $finalizeReadinessResult)) "powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\finalize-operations-readiness.ps1" "Combined finalizer and final readiness regeneration.")
+    (New-Stage "operations-finalizer" $finalize.path $finalize.exists $finalizeResult "readiness=$finalizeReadinessResult failed=$finalizeFailedCount gaps=$finalizeGapCount" $finalizerReady "powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\finalize-operations-readiness.ps1" "Combined finalizer and final readiness regeneration.")
 )
 
 $nextStep = $null
@@ -153,7 +154,7 @@ elseif ($readinessReady -and -not $finalize.exists) {
     $nextStep = New-NextStep "run-operations-finalizer" "Run operations readiness finalizer" "powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\finalize-operations-readiness.ps1" "The latest operations readiness report is ready, but the operations readiness finalizer report is missing." "Run the combined finalizer so final readiness evidence is recorded before convergence."
 }
 elseif ($readinessReady -and -not $finalizerReady) {
-    $nextStep = New-NextStep "fix-operations-finalizer" "Fix operations readiness finalizer" "powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\finalize-operations-readiness.ps1" "Operations readiness is ready, but the finalizer is not ready: result=$finalizeResult, readiness=$finalizeReadinessResult." "Inspect finalizer gaps, rerun missing evidence finalizers, then rerun the combined finalizer."
+    $nextStep = New-NextStep "fix-operations-finalizer" "Fix operations readiness finalizer" "powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\finalize-operations-readiness.ps1" "Operations readiness is ready, but the finalizer is not ready: result=$finalizeResult, readiness=$finalizeReadinessResult, failed=$finalizeFailedCount, gaps=$finalizeGapCount." "Inspect finalizer gaps, rerun missing evidence finalizers, then rerun the combined finalizer."
 }
 elseif (-not $readiness.exists) {
     $nextStep = New-NextStep "write-readiness" "Generate operations readiness report" "powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\write-operations-readiness.ps1" "The operations readiness report is missing." "Generate the gate report before planning evidence collection."
@@ -192,8 +193,8 @@ elseif (-not (Is-ReadyResult $importResult)) {
 elseif (-not $finalize.exists) {
     $nextStep = New-NextStep "run-operations-finalizer" "Run operations readiness finalizer" "powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\finalize-operations-readiness.ps1" "Evidence import has passed but the operations readiness finalizer report is missing." "Run the combined finalizer so selected evidence finalizers and the final readiness regeneration are recorded together."
 }
-elseif (-not (Is-ReadyResult $finalizeResult) -or -not (Is-ReadyResult $finalizeReadinessResult)) {
-    $nextStep = New-NextStep "fix-operations-finalizer" "Fix operations readiness finalizer" "powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\finalize-operations-readiness.ps1" "Operations readiness finalizer is not ready: result=$finalizeResult, readiness=$finalizeReadinessResult." "Inspect finalizer gaps, rerun missing evidence finalizers, then rerun the combined finalizer."
+elseif (-not $finalizerReady) {
+    $nextStep = New-NextStep "fix-operations-finalizer" "Fix operations readiness finalizer" "powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\finalize-operations-readiness.ps1" "Operations readiness finalizer is not ready: result=$finalizeResult, readiness=$finalizeReadinessResult, failed=$finalizeFailedCount, gaps=$finalizeGapCount." "Inspect finalizer gaps, rerun missing evidence finalizers, then rerun the combined finalizer."
 }
 else {
     $nextStep = New-NextStep "regenerate-readiness" "Regenerate operations readiness" "powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\write-operations-readiness.ps1" "Evidence import has passed but readiness is still not ready." "Refresh the operations readiness report from imported evidence."
@@ -211,7 +212,7 @@ $report = [ordered]@{
     missingWorkflowRunCount = Get-Int $runIds.json "missingWorkflowCount"
     missingRequiredArtifactCount = Get-Int $collection.json "missingRequiredArtifactCount"
     failedImportCount = Get-Int $import.json "failedCount"
-    finalizerFailedCount = Get-Int $finalize.json "failedCount"
+    finalizerFailedCount = $finalizeFailedCount
     finalizerGapCount = $finalizeGapCount
     stages = $stages
 }
