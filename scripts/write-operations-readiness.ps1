@@ -263,6 +263,95 @@ function Test-EnterpriseAuthEvidenceAccepted([object] $Report) {
     return $accepted -and -not [string]::IsNullOrWhiteSpace($reference) -and -not [string]::IsNullOrWhiteSpace($reason)
 }
 
+function Get-OperationsHandoffPackageRequiredConfirmations() {
+    return @(
+        "noSecretValues",
+        "runbookReviewed",
+        "troubleshootingReviewed",
+        "rollbackReviewed",
+        "supportEscalationReviewed",
+        "knownGapsAccepted",
+        "operationsReadinessSnapshotReviewed",
+        "operationsConvergenceSnapshotReviewed",
+        "dataFlowStoragePlanReviewed",
+        "dataFlowStorageTransitionRunbookReviewed",
+        "secretRotationSnapshotReviewed",
+        "commercialIntegrationSnapshotReviewed",
+        "commercialApprovalSnapshotReviewed",
+        "enterpriseAuthSmokeSnapshotReviewed",
+        "monitoringThresholdReviewed",
+        "requireProductionEvidence",
+        "requireOperationsSnapshotEvidence"
+    )
+}
+
+function Test-OperationsHandoffPackageContentSafe([object] $Data) {
+    if ($null -eq $Data) {
+        return $true
+    }
+    $reportText = $Data | ConvertTo-Json -Depth 40 -Compress
+    $patterns = @(
+        '(?i)"(rawClaimJson|raw_claim_json|idToken|id_token|accessToken|access_token|refreshToken|refresh_token|authorizationCode|authorization_code|oidcCode|oidc_code|oidcState|oidc_state|ldapPassword|ldap_password|adminPassword|admin_password|clientSecret|client_secret)"\s*:',
+        '(?i)\b(password|passwd|credential|api[_-]?key|private[_-]?key|client[_-]?secret|ldap[_-]?password|admin[_-]?password)\s*=\s*\S+',
+        '(?i)\bBearer\s+[A-Za-z0-9._~+/=-]{12,}',
+        '-----BEGIN [A-Z ]*PRIVATE KEY-----'
+    )
+    foreach ($pattern in $patterns) {
+        if ($reportText -match $pattern) {
+            return $false
+        }
+    }
+    return $true
+}
+
+function Get-OperationsHandoffPackageValidation([object] $Report) {
+    if (-not $Report.exists -or -not $Report.parsed) {
+        return [pscustomobject]@{
+            passed = $false
+            detail = $Report.detail
+        }
+    }
+
+    $formatVersion = [string] (Get-ObjectProperty $Report.data "formatVersion")
+    if ($formatVersion -ne "osmu.operations-handoff-package.v1") {
+        return [pscustomobject]@{
+            passed = $false
+            detail = "formatVersion=$formatVersion expected=osmu.operations-handoff-package.v1"
+        }
+    }
+
+    $result = [string] (Get-ObjectProperty $Report.data "result")
+    if ($result -ne "passed") {
+        return [pscustomobject]@{
+            passed = $false
+            detail = "result=$result expected=passed"
+        }
+    }
+
+    $confirmations = Get-ObjectProperty $Report.data "confirmations"
+    $requiredConfirmations = Get-OperationsHandoffPackageRequiredConfirmations
+    foreach ($confirmationName in $requiredConfirmations) {
+        if (-not [bool] (Get-ObjectProperty $confirmations $confirmationName)) {
+            return [pscustomobject]@{
+                passed = $false
+                detail = "confirmation $confirmationName expected=true"
+            }
+        }
+    }
+
+    if (-not (Test-OperationsHandoffPackageContentSafe $Report.data)) {
+        return [pscustomobject]@{
+            passed = $false
+            detail = "operations handoff package contains raw identity or credential-shaped content"
+        }
+    }
+
+    return [pscustomobject]@{
+        passed = $true
+        detail = "formatVersion=$formatVersion, result=$result, requiredConfirmations=$($requiredConfirmations.Count)"
+    }
+}
+
 $releaseReport = Read-JsonReport $ReleaseReportPath "MVP release report"
 $storageExpansionReport = Read-JsonReport $StorageExpansionFinalizeReportPath "Storage expansion finalizer"
 $haDrReadinessReport = Read-JsonReport $KubernetesHaDrReadinessReportPath "Kubernetes HA/DR readiness"
@@ -278,6 +367,7 @@ $commercialApprovalReport = Read-JsonReport $CommercialApprovalEvidencePath "Com
 $enterpriseAuthSmokeReport = Read-JsonReport $EnterpriseAuthSmokeEvidencePath "Enterprise auth smoke evidence"
 $operationsHandoffPackageReport = Read-JsonReport $OperationsHandoffPackagePath "Operations handoff package"
 $dataFlowStoragePlanReport = Read-JsonReport $DataFlowStoragePlanPath "Data-flow storage transition plan"
+$operationsHandoffPackageValidation = Get-OperationsHandoffPackageValidation $operationsHandoffPackageReport
 
 $storageExpansionRemediation = New-Remediation `
     "powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\finalize-storage-expansion.ps1 -Namespace osmu -TenantName osmu-minio -ManifestPath .\infra\k8s\examples\minio-tenant-pool-expansion.example.yaml -ImpersonateRunner" `
@@ -419,7 +509,7 @@ Add-Check "Secret/certificate rotation target evidence" "security-hardening" ($s
 Add-Check "Commercial integration target evidence" "commercial-integration" ($commercialIntegrationReport.exists -and $commercialIntegrationReport.parsed -and $commercialIntegrationReport.data.result -eq "passed") (Get-GenericResultDetail $commercialIntegrationReport) $commercialIntegrationReport.path "commercial integration evidence result=passed from target environment" $commercialIntegrationRemediation
 Add-Check "Commercial approval target evidence" "commercial-approval" ($commercialApprovalReport.exists -and $commercialApprovalReport.parsed -and $commercialApprovalReport.data.result -eq "passed") (Get-GenericResultDetail $commercialApprovalReport) $commercialApprovalReport.path "commercial approval evidence result=passed for final pricing, terms, support SLA, license agreement, legal approval, and pilot contract boundary" $commercialApprovalRemediation
 Add-Check "Enterprise auth target smoke evidence" "enterprise-auth" (Test-EnterpriseAuthEvidenceAccepted $enterpriseAuthSmokeReport) (Get-GenericResultDetail $enterpriseAuthSmokeReport) $enterpriseAuthSmokeReport.path "enterprise auth smoke result=passed from target IdP/directory, or result=scope-out with explicit commercial approval reference and reason" $enterpriseAuthSmokeRemediation
-Add-Check "Operations handoff package target evidence" "operations-handoff-package" ($operationsHandoffPackageReport.exists -and $operationsHandoffPackageReport.parsed -and $operationsHandoffPackageReport.data.result -eq "passed") (Get-GenericResultDetail $operationsHandoffPackageReport) $operationsHandoffPackageReport.path "operations handoff package result=passed from target environment" $operationsHandoffPackageRemediation
+Add-Check "Operations handoff package target evidence" "operations-handoff-package" $operationsHandoffPackageValidation.passed $operationsHandoffPackageValidation.detail $operationsHandoffPackageReport.path "operations handoff package result=passed from target environment with required handoff review/production/snapshot confirmations" $operationsHandoffPackageRemediation
 
 $passedCount = @($checks | Where-Object { $_.passed }).Count
 $pendingCount = @($checks | Where-Object { -not $_.passed }).Count

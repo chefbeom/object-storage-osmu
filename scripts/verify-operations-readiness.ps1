@@ -52,6 +52,28 @@ function Assert-CheckRemediation(
     }
 }
 
+function New-PassedOperationsHandoffPackageConfirmations() {
+    return [ordered]@{
+        noSecretValues = $true
+        runbookReviewed = $true
+        troubleshootingReviewed = $true
+        rollbackReviewed = $true
+        supportEscalationReviewed = $true
+        knownGapsAccepted = $true
+        operationsReadinessSnapshotReviewed = $true
+        operationsConvergenceSnapshotReviewed = $true
+        dataFlowStoragePlanReviewed = $true
+        dataFlowStorageTransitionRunbookReviewed = $true
+        secretRotationSnapshotReviewed = $true
+        commercialIntegrationSnapshotReviewed = $true
+        commercialApprovalSnapshotReviewed = $true
+        enterpriseAuthSmokeSnapshotReviewed = $true
+        monitoringThresholdReviewed = $true
+        requireProductionEvidence = $true
+        requireOperationsSnapshotEvidence = $true
+    }
+}
+
 $resolvedJsonOutputPath = Resolve-ProjectPath $JsonOutputPath
 $resolvedMarkdownOutputPath = Resolve-ProjectPath $MarkdownOutputPath
 $scriptPath = Resolve-ProjectPath ".\scripts\write-operations-readiness.ps1"
@@ -484,6 +506,9 @@ if (-not ([string] $operationsHandoffPackageCheck[0].remediation.note).Contains(
 if (-not ([string] $operationsHandoffPackageCheck[0].requiredEvidence).Contains("target environment")) {
     throw "Operations handoff package target evidence must require target environment evidence."
 }
+if (-not ([string] $operationsHandoffPackageCheck[0].requiredEvidence).Contains("required handoff review/production/snapshot confirmations")) {
+    throw "Operations handoff package target evidence must require handoff review/production/snapshot confirmations."
+}
 
 Assert-Contains $markdown "# OSMU Operations Readiness" "Operations readiness markdown"
 Assert-Contains $markdown "Production/B2B operations readiness" "Operations readiness markdown"
@@ -531,6 +556,60 @@ if ($scopeOutEnterpriseAuthCheck.Count -ne 1 -or -not $scopeOutEnterpriseAuthChe
 }
 if (-not ([string] $scopeOutEnterpriseAuthCheck[0].detail).Contains("result=scope-out")) {
     throw "Enterprise auth scope-out readiness detail must preserve result=scope-out."
+}
+
+$handoffFixtureDirectory = Resolve-ProjectPath ".\.osmu-run\operations-readiness-handoff-package-self-test"
+New-Item -ItemType Directory -Force -Path $handoffFixtureDirectory | Out-Null
+$validHandoffEvidencePath = Join-Path $handoffFixtureDirectory "valid-operations-handoff-package.json"
+$validHandoffJsonOutputPath = Join-Path $handoffFixtureDirectory "valid-operations-readiness.json"
+$validHandoffMarkdownOutputPath = Join-Path $handoffFixtureDirectory "valid-operations-readiness.md"
+@{
+    formatVersion = "osmu.operations-handoff-package.v1"
+    result = "passed"
+    confirmations = (New-PassedOperationsHandoffPackageConfirmations)
+} | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $validHandoffEvidencePath -Encoding UTF8
+
+& powershell -NoProfile -ExecutionPolicy Bypass -File $scriptPath `
+    -OperationsHandoffPackagePath $validHandoffEvidencePath `
+    -JsonOutputPath $validHandoffJsonOutputPath `
+    -MarkdownOutputPath $validHandoffMarkdownOutputPath | Out-Host
+if ($LASTEXITCODE -ne 0) {
+    throw "write-operations-readiness.ps1 failed for valid operations handoff package fixture with exit code $LASTEXITCODE."
+}
+$validHandoffReport = Get-Content -Raw -LiteralPath $validHandoffJsonOutputPath | ConvertFrom-Json
+$validHandoffCheck = @($validHandoffReport.checks | Where-Object { $_.name -eq "Operations handoff package target evidence" })
+if ($validHandoffCheck.Count -ne 1 -or -not $validHandoffCheck[0].passed) {
+    throw "Operations readiness must accept a passed handoff package only when required confirmations are present."
+}
+if (-not ([string] $validHandoffCheck[0].detail).Contains("requiredConfirmations=17")) {
+    throw "Operations handoff package readiness detail must record required confirmation validation."
+}
+
+$staleHandoffEvidencePath = Join-Path $handoffFixtureDirectory "stale-operations-handoff-package.json"
+$staleHandoffJsonOutputPath = Join-Path $handoffFixtureDirectory "stale-operations-readiness.json"
+$staleHandoffMarkdownOutputPath = Join-Path $handoffFixtureDirectory "stale-operations-readiness.md"
+$staleConfirmations = New-PassedOperationsHandoffPackageConfirmations
+$staleConfirmations["commercialApprovalSnapshotReviewed"] = $false
+@{
+    formatVersion = "osmu.operations-handoff-package.v1"
+    result = "passed"
+    confirmations = $staleConfirmations
+} | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $staleHandoffEvidencePath -Encoding UTF8
+
+& powershell -NoProfile -ExecutionPolicy Bypass -File $scriptPath `
+    -OperationsHandoffPackagePath $staleHandoffEvidencePath `
+    -JsonOutputPath $staleHandoffJsonOutputPath `
+    -MarkdownOutputPath $staleHandoffMarkdownOutputPath | Out-Host
+if ($LASTEXITCODE -ne 0) {
+    throw "write-operations-readiness.ps1 failed for stale operations handoff package fixture with exit code $LASTEXITCODE."
+}
+$staleHandoffReport = Get-Content -Raw -LiteralPath $staleHandoffJsonOutputPath | ConvertFrom-Json
+$staleHandoffCheck = @($staleHandoffReport.checks | Where-Object { $_.name -eq "Operations handoff package target evidence" })
+if ($staleHandoffCheck.Count -ne 1 -or $staleHandoffCheck[0].passed) {
+    throw "Operations readiness must not accept a passed handoff package when required confirmations are missing."
+}
+if (-not ([string] $staleHandoffCheck[0].detail).Contains("commercialApprovalSnapshotReviewed")) {
+    throw "Operations readiness stale handoff package detail must name the missing confirmation."
 }
 
 Write-Host "Operations readiness artifact verified."
