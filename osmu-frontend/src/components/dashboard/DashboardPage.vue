@@ -1382,6 +1382,8 @@
           readiness {{ operationsReadinessConvergence.readinessResult || 'unknown' }} /
           finalizer {{ operationsReadinessConvergence.finalizerResult || 'unknown' }} /
           k8s sync {{ operationsReadinessConvergence.kubernetesReportSyncResult || 'unknown' }} /
+          finalizer failed {{ operationsReadinessConvergence.finalizerFailedCount || 0 }} /
+          finalizer gaps {{ operationsReadinessConvergence.finalizerGapCount || 0 }} /
           {{ operationsReadinessConvergence.readyStageCount }} of {{ operationsReadinessConvergence.stageCount }} stages ready
           <template v-if="operationsReadinessConvergence.finalizerFailedCountValid === false">
             / finalizer count invalid {{ operationsReadinessConvergence.finalizerFailedCountRaw || 'missing' }}
