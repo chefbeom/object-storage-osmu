@@ -121,6 +121,8 @@ finally {
 }
 Assert-True ($invalidExitCode -ne 0) "Secret-like evidence reference should be rejected."
 
+$invalidWindowJsonOutputPath = Join-Path $resolvedOutputDirectory "invalid-window-monitoring-threshold-evidence.json"
+$invalidWindowMarkdownOutputPath = Join-Path $resolvedOutputDirectory "invalid-window-monitoring-threshold-evidence.md"
 $previousErrorActionPreference = $ErrorActionPreference
 $ErrorActionPreference = "Continue"
 try {
@@ -137,6 +139,8 @@ try {
         -AlertmanagerRouteEvidenceRef "alertmanager-route-review-20260620" `
         -TargetBaselineEvidenceRef "tenant-baseline-review-20260620" `
         -IncidentRoutingEvidenceRef "incident-routing-review-20260620" `
+        -JsonOutputPath $invalidWindowJsonOutputPath `
+        -MarkdownOutputPath $invalidWindowMarkdownOutputPath `
         -ConfirmPrometheusRulesLoaded `
         -ConfirmGrafanaDashboardImported `
         -ConfirmAlertmanagerRoutesReviewed `
@@ -151,8 +155,11 @@ finally {
 }
 Assert-True ($invalidWindowExitCode -ne 0) "Reversed review window should be rejected."
 Assert-Contains ($invalidWindowOutput | Out-String) "review-window-order" "invalid review window output"
+Assert-True (Test-Path -LiteralPath $invalidWindowJsonOutputPath) "Invalid review window JSON should stay isolated under the self-test output directory."
 
 $missingTargetPath = Join-Path $resolvedOutputDirectory "missing-targets.yaml"
+$missingTargetJsonOutputPath = Join-Path $resolvedOutputDirectory "missing-target-monitoring-threshold-evidence.json"
+$missingTargetMarkdownOutputPath = Join-Path $resolvedOutputDirectory "missing-target-monitoring-threshold-evidence.md"
 @"
 formatVersion: osmu.monitoring.threshold-targets.v1
 profile: missing-targets
@@ -178,6 +185,8 @@ try {
         -ReviewCompletedAt "2026-06-20T03:20:00Z" `
         -ChangeApprovalRef "CHG-2026-MONITORING-THRESHOLDS" `
         -ThresholdTargetsPath $missingTargetPath `
+        -JsonOutputPath $missingTargetJsonOutputPath `
+        -MarkdownOutputPath $missingTargetMarkdownOutputPath `
         -EvidenceRef "monitoring-threshold-evidence-20260620" `
         -PrometheusRulesEvidenceRef "prometheus-rule-load-20260620" `
         -GrafanaDashboardEvidenceRef "grafana-dashboard-import-20260620" `
@@ -198,6 +207,7 @@ finally {
 }
 Assert-True ($missingTargetExitCode -ne 0) "Missing required alert targets should be rejected."
 Assert-Contains ($missingTargetOutput | Out-String) "threshold-alert-targets-complete" "missing target output"
+Assert-True (Test-Path -LiteralPath $missingTargetJsonOutputPath) "Missing target JSON should stay isolated under the self-test output directory."
 
 Write-Host "Monitoring threshold evidence writer verified."
 Write-Host "JSON: $jsonOutputPath"
