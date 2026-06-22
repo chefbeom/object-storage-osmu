@@ -951,11 +951,47 @@ function Test-DataFlowStorageTransitionRunbookEvidenceJson([string] $Path) {
         }
     }
 
+    $candidateStore = [string] (Get-JsonProperty $planSnapshot "candidateStore")
+    if ($candidateStore -notin @("MARIADB_PARTITION", "EXTERNAL_TIME_SERIES", "DUAL_WRITE")) {
+        return [pscustomobject]@{
+            passed = $false
+            detail = "dataFlowStoragePlanSnapshot.candidateStore=$candidateStore expected=MARIADB_PARTITION|EXTERNAL_TIME_SERIES|DUAL_WRITE"
+        }
+    }
+
     $summary = Get-JsonProperty $json "summary"
-    $failureCount = [string] (Get-JsonProperty $summary "failureCount")
+    $failureCountResult = Get-RequiredJsonInt $summary "failureCount"
+    if (-not $failureCountResult.valid -or [int64] $failureCountResult.value -ne 0) {
+        return [pscustomobject]@{
+            passed = $false
+            detail = "failureCount=$($failureCountResult.raw)(valid=$($failureCountResult.valid)) expected integer 0"
+        }
+    }
+
+    $confirmations = Get-JsonProperty $json "confirmations"
+    $requiredConfirmations = @(
+        "backfillRehearsed",
+        "dualWriteOrPartitionToggleReviewed",
+        "rollbackRehearsed",
+        "reconciliationPassed",
+        "dashboardCutoverReviewed",
+        "retentionDryRunReviewed",
+        "noObjectKeysInAggregates",
+        "noSecretValues"
+    )
+    foreach ($confirmationName in $requiredConfirmations) {
+        $confirmation = Get-RequiredJsonBool $confirmations $confirmationName
+        if (-not $confirmation.valid -or -not $confirmation.value) {
+            return [pscustomobject]@{
+                passed = $false
+                detail = "confirmation $confirmationName=$($confirmation.raw) expected boolean true"
+            }
+        }
+    }
+
     return [pscustomobject]@{
         passed = $true
-        detail = "formatVersion=$formatVersion result=$result storagePlanResult=$planResult failureCount=$failureCount"
+        detail = "formatVersion=$formatVersion result=$result storagePlanResult=$planResult candidateStore=$candidateStore failureCount=$($failureCountResult.value) confirmations=$($requiredConfirmations.Count)/$($requiredConfirmations.Count)"
     }
 }
 

@@ -82,6 +82,8 @@ $nonReadyKubernetesOperationsReportSyncRoot = Join-Path $resolvedOutputDirectory
 $invalidDataFlowRoot = Join-Path $resolvedOutputDirectory "invalid-data-flow-source"
 $unsafeDataFlowRoot = Join-Path $resolvedOutputDirectory "unsafe-data-flow-source"
 $unsafeDataFlowRunbookRoot = Join-Path $resolvedOutputDirectory "unsafe-data-flow-runbook-source"
+$weakDataFlowRunbookRoot = Join-Path $resolvedOutputDirectory "weak-data-flow-runbook-source"
+$stringBoolDataFlowRunbookRoot = Join-Path $resolvedOutputDirectory "string-bool-data-flow-runbook-source"
 $weakDirectDataFlowStoragePlanRoot = Join-Path $resolvedOutputDirectory "weak-direct-data-flow-storage-plan-source"
 $stringCountDirectDataFlowStoragePlanRoot = Join-Path $resolvedOutputDirectory "string-count-direct-data-flow-storage-plan-source"
 $unsafeMonitoringThresholdRoot = Join-Path $resolvedOutputDirectory "unsafe-monitoring-threshold-source"
@@ -371,7 +373,11 @@ Write-JsonEvidence (Join-Path $dataFlowStorageTransitionRunbookSource "latest-da
     }
     confirmations = @{
         backfillRehearsed = $true
+        dualWriteOrPartitionToggleReviewed = $true
         rollbackRehearsed = $true
+        reconciliationPassed = $true
+        dashboardCutoverReviewed = $true
+        retentionDryRunReviewed = $true
         noObjectKeysInAggregates = $true
         noSecretValues = $true
     }
@@ -863,6 +869,96 @@ $unsafeDataFlowRunbookReport = Get-Content -Raw -LiteralPath $unsafeDataFlowRunb
 Assert-True ($unsafeDataFlowRunbookReport.result -eq "failed") "Unsafe data-flow runbook import report should be failed."
 Assert-True (-not (Test-Path -LiteralPath (Join-Path $unsafeDataFlowRunbookOutput "latest-data-flow-storage-transition-runbook-evidence.json"))) "Unsafe data-flow storage transition runbook must not be promoted."
 Assert-True (($unsafeDataFlowRunbookReport.entries | ConvertTo-Json -Depth 8).Contains("raw SQL")) "Unsafe data-flow runbook report should describe sanitized summary failure."
+
+Write-JsonEvidence (Join-Path $weakDataFlowRunbookRoot "latest-data-flow-storage-transition-runbook-evidence.json") @{
+    formatVersion = "osmu.data-flow-storage-transition-runbook-evidence.v1"
+    result = "passed"
+    dataFlowStoragePlanSnapshot = @{
+        result = "passed"
+        candidateStore = "MARIADB_PARTITION"
+    }
+    summary = @{
+        failureCount = "0"
+        checkCount = 8
+    }
+    confirmations = @{
+        backfillRehearsed = $true
+        dualWriteOrPartitionToggleReviewed = $true
+        rollbackRehearsed = $true
+        reconciliationPassed = $true
+        dashboardCutoverReviewed = $true
+        retentionDryRunReviewed = $true
+        noObjectKeysInAggregates = $true
+        noSecretValues = $true
+    }
+}
+$weakDataFlowRunbookOutput = Join-Path $resolvedOutputDirectory "weak-data-flow-runbook-promoted"
+$weakDataFlowRunbookJson = Join-Path $resolvedOutputDirectory "weak-data-flow-runbook-import.json"
+$weakDataFlowRunbookMarkdown = Join-Path $resolvedOutputDirectory "weak-data-flow-runbook-import.md"
+$previousErrorActionPreference = $ErrorActionPreference
+$ErrorActionPreference = "Continue"
+try {
+    $weakDataFlowRunbookOutputLines = & powershell -NoProfile -ExecutionPolicy Bypass -File $importScript `
+        -DataFlowStorageTransitionRunbookArtifactPath $weakDataFlowRunbookRoot `
+        -OutputDirectory $weakDataFlowRunbookOutput `
+        -JsonOutputPath $weakDataFlowRunbookJson `
+        -MarkdownOutputPath $weakDataFlowRunbookMarkdown 2>&1
+    $weakDataFlowRunbookExitCode = $LASTEXITCODE
+}
+finally {
+    $ErrorActionPreference = $previousErrorActionPreference
+}
+Assert-True ($weakDataFlowRunbookExitCode -ne 0) "Data-flow storage transition runbook with string failureCount should fail import."
+Assert-True (Test-Path -LiteralPath $weakDataFlowRunbookJson) "Weak data-flow runbook import report should still be written."
+$weakDataFlowRunbookReport = Get-Content -Raw -LiteralPath $weakDataFlowRunbookJson | ConvertFrom-Json
+Assert-True ($weakDataFlowRunbookReport.result -eq "failed") "Weak data-flow runbook import report should be failed."
+Assert-True (-not (Test-Path -LiteralPath (Join-Path $weakDataFlowRunbookOutput "latest-data-flow-storage-transition-runbook-evidence.json"))) "Weak data-flow storage transition runbook must not be promoted."
+Assert-True (($weakDataFlowRunbookReport.entries | ConvertTo-Json -Depth 8).Contains("failureCount=0(valid=False)")) "Weak data-flow runbook report should describe invalid typed failure count."
+
+Write-JsonEvidence (Join-Path $stringBoolDataFlowRunbookRoot "latest-data-flow-storage-transition-runbook-evidence.json") @{
+    formatVersion = "osmu.data-flow-storage-transition-runbook-evidence.v1"
+    result = "passed"
+    dataFlowStoragePlanSnapshot = @{
+        result = "passed"
+        candidateStore = "MARIADB_PARTITION"
+    }
+    summary = @{
+        failureCount = 0
+        checkCount = 8
+    }
+    confirmations = @{
+        backfillRehearsed = "true"
+        dualWriteOrPartitionToggleReviewed = $true
+        rollbackRehearsed = $true
+        reconciliationPassed = $true
+        dashboardCutoverReviewed = $true
+        retentionDryRunReviewed = $true
+        noObjectKeysInAggregates = $true
+        noSecretValues = $true
+    }
+}
+$stringBoolDataFlowRunbookOutput = Join-Path $resolvedOutputDirectory "string-bool-data-flow-runbook-promoted"
+$stringBoolDataFlowRunbookJson = Join-Path $resolvedOutputDirectory "string-bool-data-flow-runbook-import.json"
+$stringBoolDataFlowRunbookMarkdown = Join-Path $resolvedOutputDirectory "string-bool-data-flow-runbook-import.md"
+$previousErrorActionPreference = $ErrorActionPreference
+$ErrorActionPreference = "Continue"
+try {
+    $stringBoolDataFlowRunbookOutputLines = & powershell -NoProfile -ExecutionPolicy Bypass -File $importScript `
+        -DataFlowStorageTransitionRunbookArtifactPath $stringBoolDataFlowRunbookRoot `
+        -OutputDirectory $stringBoolDataFlowRunbookOutput `
+        -JsonOutputPath $stringBoolDataFlowRunbookJson `
+        -MarkdownOutputPath $stringBoolDataFlowRunbookMarkdown 2>&1
+    $stringBoolDataFlowRunbookExitCode = $LASTEXITCODE
+}
+finally {
+    $ErrorActionPreference = $previousErrorActionPreference
+}
+Assert-True ($stringBoolDataFlowRunbookExitCode -ne 0) "Data-flow storage transition runbook with string confirmation should fail import."
+Assert-True (Test-Path -LiteralPath $stringBoolDataFlowRunbookJson) "String-bool data-flow runbook import report should still be written."
+$stringBoolDataFlowRunbookReport = Get-Content -Raw -LiteralPath $stringBoolDataFlowRunbookJson | ConvertFrom-Json
+Assert-True ($stringBoolDataFlowRunbookReport.result -eq "failed") "String-bool data-flow runbook import report should be failed."
+Assert-True (-not (Test-Path -LiteralPath (Join-Path $stringBoolDataFlowRunbookOutput "latest-data-flow-storage-transition-runbook-evidence.json"))) "String-bool data-flow storage transition runbook must not be promoted."
+Assert-True (($stringBoolDataFlowRunbookReport.entries | ConvertTo-Json -Depth 8).Contains("confirmation backfillRehearsed=true expected boolean true")) "String-bool data-flow runbook report should describe invalid typed confirmation."
 
 Write-JsonEvidence (Join-Path $unsafeMonitoringThresholdRoot "latest-monitoring-threshold-evidence.json") @{
     formatVersion = "osmu.monitoring-threshold-evidence.v1"
