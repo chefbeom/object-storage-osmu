@@ -497,6 +497,7 @@ $monitoringThresholdPath = Join-Path $resolvedOutputDirectory "latest-monitoring
     -ConfirmSecretRotationSnapshotReviewed `
     -ConfirmCommercialIntegrationSnapshotReviewed `
     -ConfirmCommercialApprovalSnapshotReviewed `
+    -ConfirmEnterpriseAuthSmokeSnapshotReviewed `
     -ConfirmMonitoringThresholdReviewed `
     -ConfirmNoSecretValues `
     -RequireProductionEvidence `
@@ -543,6 +544,7 @@ Assert-True (@($checks | Where-Object { $_.id -eq "commercial-approval-snapshot-
 Assert-True (@($checks | Where-Object { $_.id -eq "commercial-approval-snapshot-reviewed" -and $_.passed }).Count -eq 1) "Expected commercial approval snapshot reviewed check to pass."
 Assert-True (@($checks | Where-Object { $_.id -eq "enterprise-auth-smoke-snapshot-parsed" -and $_.passed }).Count -eq 1) "Expected enterprise auth smoke snapshot parsed check to pass."
 Assert-True (@($checks | Where-Object { $_.id -eq "enterprise-auth-smoke-snapshot-accepted" -and $_.passed }).Count -eq 1) "Expected enterprise auth smoke snapshot accepted check to pass."
+Assert-True (@($checks | Where-Object { $_.id -eq "enterprise-auth-smoke-snapshot-reviewed" -and $_.passed }).Count -eq 1) "Expected enterprise auth smoke snapshot reviewed check to pass."
 Assert-True (@($checks | Where-Object { $_.id -eq "monitoring-threshold-snapshot-parsed" -and $_.passed }).Count -eq 1) "Expected monitoring threshold snapshot parsed check to pass."
 Assert-True (@($checks | Where-Object { $_.id -eq "monitoring-threshold-snapshot-passed" -and $_.passed }).Count -eq 1) "Expected monitoring threshold snapshot passed check to pass."
 Assert-True (@($checks | Where-Object { $_.id -eq "monitoring-threshold-reviewed" -and $_.passed }).Count -eq 1) "Expected monitoring threshold reviewed check to pass."
@@ -559,6 +561,7 @@ Assert-True ($report.confirmations.dataFlowStorageTransitionRunbookReviewed) "Ex
 Assert-True ($report.confirmations.secretRotationSnapshotReviewed) "Expected secret rotation snapshot reviewed confirmation."
 Assert-True ($report.confirmations.commercialIntegrationSnapshotReviewed) "Expected commercial integration snapshot reviewed confirmation."
 Assert-True ($report.confirmations.commercialApprovalSnapshotReviewed) "Expected commercial approval snapshot reviewed confirmation."
+Assert-True ($report.confirmations.enterpriseAuthSmokeSnapshotReviewed) "Expected enterprise auth smoke snapshot reviewed confirmation."
 Assert-True ($report.confirmations.monitoringThresholdReviewed) "Expected monitoring threshold reviewed confirmation."
 Assert-True ($report.confirmations.requireProductionEvidence) "Expected production evidence requirement."
 Assert-True ($report.confirmations.requireOperationsSnapshotEvidence) "Expected operations snapshot evidence requirement."
@@ -865,6 +868,7 @@ try {
         -ConfirmSecretRotationSnapshotReviewed `
         -ConfirmCommercialIntegrationSnapshotReviewed `
         -ConfirmCommercialApprovalSnapshotReviewed `
+        -ConfirmEnterpriseAuthSmokeSnapshotReviewed `
         -ConfirmMonitoringThresholdReviewed `
         -ConfirmNoSecretValues `
         -RequireProductionEvidence `

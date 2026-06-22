@@ -1368,6 +1368,7 @@ class AdminDashboardSummaryControllerTest {
                             "secretRotationSnapshotReviewed": true,
                             "commercialIntegrationSnapshotReviewed": true,
                             "commercialApprovalSnapshotReviewed": true,
+                            "enterpriseAuthSmokeSnapshotReviewed": true,
                             "monitoringThresholdReviewed": true,
                             "requireProductionEvidence": true
                           },
@@ -2207,6 +2208,7 @@ class AdminDashboardSummaryControllerTest {
                 .andExpect(jsonPath("$.data.operationsHandoffPackage.confirmations.secretRotationSnapshotReviewed").value(true))
                 .andExpect(jsonPath("$.data.operationsHandoffPackage.confirmations.commercialIntegrationSnapshotReviewed").value(true))
                 .andExpect(jsonPath("$.data.operationsHandoffPackage.confirmations.commercialApprovalSnapshotReviewed").value(true))
+                .andExpect(jsonPath("$.data.operationsHandoffPackage.confirmations.enterpriseAuthSmokeSnapshotReviewed").value(true))
                 .andExpect(jsonPath("$.data.operationsHandoffPackage.confirmations.monitoringThresholdReviewed").value(true))
                 .andExpect(jsonPath("$.data.operationsHandoffPackage.evidenceRefs.commercialApproval").value("latest-commercial-approval-evidence-passed"))
                 .andExpect(jsonPath("$.data.operationsHandoffPackage.operationsReadinessSnapshot.result").value("ready"))
