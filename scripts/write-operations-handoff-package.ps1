@@ -468,16 +468,26 @@ function New-QueryPlanEvidenceSummarySnapshot([object] $QueryPlanEvidence) {
         }
     }
 
+    $provided = Get-RequiredPropertyBool $QueryPlanEvidence "provided"
+    $validFormatVersion = Get-RequiredPropertyBool $QueryPlanEvidence "validFormatVersion"
+    $counts = Get-RequiredIntSetSnapshot $QueryPlanEvidence @("checkCount", "passedCount", "failedCount")
+
     return [ordered]@{
-        provided = Get-PropertyBool $QueryPlanEvidence "provided"
+        provided = [bool] $provided.value
+        providedValid = [bool] $provided.valid
+        providedRaw = [string] $provided.raw
         formatVersion = Get-PropertyText $QueryPlanEvidence "formatVersion"
         expectedFormatVersion = Get-PropertyText $QueryPlanEvidence "expectedFormatVersion"
-        validFormatVersion = Get-PropertyBool $QueryPlanEvidence "validFormatVersion"
+        validFormatVersion = [bool] $validFormatVersion.value
+        validFormatVersionValid = [bool] $validFormatVersion.valid
+        validFormatVersionRaw = [string] $validFormatVersion.raw
         result = Get-PropertyText $QueryPlanEvidence "result"
         mode = Get-PropertyText $QueryPlanEvidence "mode"
-        checkCount = Get-PropertyInt $QueryPlanEvidence "checkCount"
-        passedCount = Get-PropertyInt $QueryPlanEvidence "passedCount"
-        failedCount = Get-PropertyInt $QueryPlanEvidence "failedCount"
+        checkCount = $counts.values["checkCount"]
+        passedCount = $counts.values["passedCount"]
+        failedCount = $counts.values["failedCount"]
+        countsValid = [bool] $counts.allValid
+        countValidation = $counts.validation
         failedChecks = @($failedRows.ToArray())
         detail = Get-PropertyText $QueryPlanEvidence "detail"
     }
@@ -506,6 +516,8 @@ function Read-DataFlowStoragePlanSnapshot([string] $Path) {
         passedCount = 0
         pendingCount = 0
         queryPlanEvidence = $null
+        queryPlanEvidenceRequired = $false
+        queryPlanEvidencePassed = $false
         topPendingChecks = @()
         detail = "No data-flow storage plan JSON supplied."
     }
@@ -565,9 +577,27 @@ function Read-DataFlowStoragePlanSnapshot([string] $Path) {
     $snapshot["checkCount"] = Get-PropertyInt $payload "checkCount"
     $snapshot["passedCount"] = Get-PropertyInt $payload "passedCount"
     $snapshot["pendingCount"] = Get-PropertyInt $payload "pendingCount"
-    $snapshot["queryPlanEvidence"] = New-QueryPlanEvidenceSummarySnapshot (Get-PropertyValue $payload "queryPlanEvidence")
+    $queryPlanEvidence = New-QueryPlanEvidenceSummarySnapshot (Get-PropertyValue $payload "queryPlanEvidence")
+    $queryPlanEvidenceRequired = @("MARIADB_PARTITION", "DUAL_WRITE") -contains $snapshot["candidateStore"]
+    $queryPlanEvidenceProvided = $null -ne $queryPlanEvidence
+    $queryPlanEvidencePassed = -not $queryPlanEvidenceRequired -and -not $queryPlanEvidenceProvided
+    if ($queryPlanEvidenceProvided) {
+        $queryPlanEvidencePassed = [bool] $queryPlanEvidence["provided"] `
+            -and [bool] $queryPlanEvidence["providedValid"] `
+            -and "osmu.mariadb-query-plan-evidence.v1".Equals([string] $queryPlanEvidence["expectedFormatVersion"], [System.StringComparison]::OrdinalIgnoreCase) `
+            -and [bool] $queryPlanEvidence["validFormatVersion"] `
+            -and [bool] $queryPlanEvidence["validFormatVersionValid"] `
+            -and "passed".Equals([string] $queryPlanEvidence["result"], [System.StringComparison]::OrdinalIgnoreCase) `
+            -and [bool] $queryPlanEvidence["countsValid"] `
+            -and ([int64] $queryPlanEvidence["checkCount"]) -gt 0 `
+            -and ([int64] $queryPlanEvidence["passedCount"]) -ge ([int64] $queryPlanEvidence["checkCount"]) `
+            -and ([int64] $queryPlanEvidence["failedCount"]) -eq 0
+    }
+    $snapshot["queryPlanEvidence"] = $queryPlanEvidence
+    $snapshot["queryPlanEvidenceRequired"] = $queryPlanEvidenceRequired
+    $snapshot["queryPlanEvidencePassed"] = $queryPlanEvidencePassed
     $snapshot["topPendingChecks"] = @($pendingRows.ToArray())
-    $snapshot["detail"] = "formatVersion=$formatVersion; result=$result; candidateStore=$($snapshot["candidateStore"]); pending=$($snapshot["pendingCount"]); checks=$($snapshot["checkCount"])"
+    $snapshot["detail"] = "formatVersion=$formatVersion; result=$result; candidateStore=$($snapshot["candidateStore"]); pending=$($snapshot["pendingCount"]); checks=$($snapshot["checkCount"]); queryPlanEvidenceRequired=$queryPlanEvidenceRequired; queryPlanEvidencePassed=$queryPlanEvidencePassed"
     return $snapshot
 }
 
@@ -1429,7 +1459,7 @@ $operationsConvergenceSnapshotReady = $operationsConvergenceSnapshotValid `
     -and [bool] $operationsConvergenceSnapshot["kubernetesReportSyncReady"] `
     -and ([int] $operationsConvergenceSnapshot["kubernetesReportSyncFailedCount"]) -eq 0 `
     -and "ready".Equals([string] $operationsConvergenceSnapshot["kubernetesReportSyncSourceReportResult"], [System.StringComparison]::OrdinalIgnoreCase)
-$dataFlowStoragePlanSnapshotPassed = $dataFlowStoragePlanSnapshotValid -and [bool] $dataFlowStoragePlanSnapshot["passed"]
+$dataFlowStoragePlanSnapshotPassed = $dataFlowStoragePlanSnapshotValid -and [bool] $dataFlowStoragePlanSnapshot["passed"] -and [bool] $dataFlowStoragePlanSnapshot["queryPlanEvidencePassed"]
 $dataFlowStorageTransitionRunbookSnapshotPassed = $dataFlowStorageTransitionRunbookSnapshotValid -and [bool] $dataFlowStorageTransitionRunbookSnapshot["passed"] -and [bool] $dataFlowStorageTransitionRunbookSnapshot["confirmationsValid"]
 $secretRotationSnapshotPassed = $secretRotationSnapshotValid -and [bool] $secretRotationSnapshot["passed"] -and [bool] $secretRotationSnapshot["confirmationsValid"]
 $commercialIntegrationSnapshotPassed = $commercialIntegrationSnapshotValid `
@@ -1495,7 +1525,7 @@ if ([bool] $RequireOperationsSnapshotEvidence -or [bool] $operationsConvergenceS
 Add-EvidenceCheck "data-flow-storage-plan-evidence" "Data-flow storage transition target evidence" ([bool] $RequireProductionEvidence) $DataFlowStoragePlanEvidenceRef "target data-flow storage plan result=passed with sanitized query-plan summary"
 if ([bool] $RequireProductionEvidence -or [bool] $dataFlowStoragePlanSnapshot["provided"]) {
     Add-Check "data-flow-storage-plan-snapshot-parsed" "Data-flow storage plan snapshot parsed" $dataFlowStoragePlanSnapshotValid $dataFlowStoragePlanSnapshot["detail"] $DataFlowStoragePlanEvidenceRef
-    Add-Check "data-flow-storage-plan-snapshot-passed" "Data-flow storage plan snapshot passed" $dataFlowStoragePlanSnapshotPassed "result=$($dataFlowStoragePlanSnapshot["result"]); pending=$($dataFlowStoragePlanSnapshot["pendingCount"]); candidateStore=$($dataFlowStoragePlanSnapshot["candidateStore"])" $DataFlowStoragePlanEvidenceRef
+    Add-Check "data-flow-storage-plan-snapshot-passed" "Data-flow storage plan snapshot passed" $dataFlowStoragePlanSnapshotPassed "result=$($dataFlowStoragePlanSnapshot["result"]); pending=$($dataFlowStoragePlanSnapshot["pendingCount"]); candidateStore=$($dataFlowStoragePlanSnapshot["candidateStore"]); queryPlanEvidenceRequired=$($dataFlowStoragePlanSnapshot["queryPlanEvidenceRequired"]); queryPlanEvidencePassed=$($dataFlowStoragePlanSnapshot["queryPlanEvidencePassed"])" $DataFlowStoragePlanEvidenceRef
 }
 if ([bool] $RequireProductionEvidence -or [bool] $dataFlowStoragePlanSnapshot["provided"] -or [bool] $ConfirmDataFlowStoragePlanReviewed) {
     Add-Check "data-flow-storage-plan-reviewed" "Data-flow storage plan reviewed" ([bool] $ConfirmDataFlowStoragePlanReviewed -and $dataFlowStoragePlanSnapshotValid) "confirmed=$([bool] $ConfirmDataFlowStoragePlanReviewed); snapshotValid=$dataFlowStoragePlanSnapshotValid" $DataFlowStoragePlanEvidenceRef

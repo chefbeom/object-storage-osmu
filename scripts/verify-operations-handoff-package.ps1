@@ -629,6 +629,50 @@ foreach ($unexpected in @("password=super-secret", "Bearer abcdefghijklmnop", "-
     Assert-NotContains $markdown $unexpected "operations handoff package markdown"
 }
 
+$missingQueryPlanDataFlowStoragePlanPath = Join-Path $resolvedOutputDirectory "missing-query-plan-data-flow-storage-plan.json"
+$missingQueryPlanDataFlowStoragePlan = Get-Content -Raw -LiteralPath $dataFlowStoragePlanPath | ConvertFrom-Json
+$missingQueryPlanDataFlowStoragePlan.PSObject.Properties.Remove("queryPlanEvidence")
+$missingQueryPlanDataFlowStoragePlan | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath $missingQueryPlanDataFlowStoragePlanPath -Encoding UTF8
+
+$previousErrorActionPreference = $ErrorActionPreference
+$ErrorActionPreference = "Continue"
+try {
+    $missingQueryPlanOutput = & powershell -NoProfile -ExecutionPolicy Bypass -File $scriptPath `
+        -DataFlowStoragePlanEvidenceRef "latest-data-flow-storage-plan-passed-20260620" `
+        -DataFlowStoragePlanJsonPath $missingQueryPlanDataFlowStoragePlanPath `
+        -ConfirmDataFlowStoragePlanReviewed `
+        -FailIfNotPassed `
+        -NoWrite 2>&1
+    $missingQueryPlanExitCode = $LASTEXITCODE
+}
+finally {
+    $ErrorActionPreference = $previousErrorActionPreference
+}
+Assert-True ($missingQueryPlanExitCode -ne 0) "MariaDB data-flow storage plan without query-plan evidence should be rejected."
+Assert-Contains ($missingQueryPlanOutput | Out-String) "queryPlanEvidenceRequired=True; queryPlanEvidencePassed=False" "missing query-plan data-flow storage plan output"
+
+$stringCountQueryPlanDataFlowStoragePlanPath = Join-Path $resolvedOutputDirectory "string-count-query-plan-data-flow-storage-plan.json"
+$stringCountQueryPlanDataFlowStoragePlan = Get-Content -Raw -LiteralPath $dataFlowStoragePlanPath | ConvertFrom-Json
+$stringCountQueryPlanDataFlowStoragePlan.queryPlanEvidence.checkCount = "3"
+$stringCountQueryPlanDataFlowStoragePlan | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath $stringCountQueryPlanDataFlowStoragePlanPath -Encoding UTF8
+
+$previousErrorActionPreference = $ErrorActionPreference
+$ErrorActionPreference = "Continue"
+try {
+    $stringCountQueryPlanOutput = & powershell -NoProfile -ExecutionPolicy Bypass -File $scriptPath `
+        -DataFlowStoragePlanEvidenceRef "latest-data-flow-storage-plan-passed-20260620" `
+        -DataFlowStoragePlanJsonPath $stringCountQueryPlanDataFlowStoragePlanPath `
+        -ConfirmDataFlowStoragePlanReviewed `
+        -FailIfNotPassed `
+        -NoWrite 2>&1
+    $stringCountQueryPlanExitCode = $LASTEXITCODE
+}
+finally {
+    $ErrorActionPreference = $previousErrorActionPreference
+}
+Assert-True ($stringCountQueryPlanExitCode -ne 0) "Data-flow query-plan evidence string count should be rejected."
+Assert-Contains ($stringCountQueryPlanOutput | Out-String) "queryPlanEvidenceRequired=True; queryPlanEvidencePassed=False" "string query-plan count output"
+
 $stringBoolDataFlowRunbookPath = Join-Path $resolvedOutputDirectory "string-bool-data-flow-storage-transition-runbook.json"
 $stringBoolDataFlowRunbook = Get-Content -Raw -LiteralPath $dataFlowStorageTransitionRunbookPath | ConvertFrom-Json
 $stringBoolDataFlowRunbook.confirmations.backfillRehearsed = "true"
