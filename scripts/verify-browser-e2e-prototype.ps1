@@ -144,7 +144,7 @@ function Write-OperationsConvergenceFixture([string] $Path) {
                 reason = "The invocation report still has blocked actions."
             }
         )
-        decisionRule = "Operations readiness convergence is ready only when the handoff result is ready/none, the readiness report is ready, the operations readiness finalizer report exists with result=ready, readinessResult=ready, failedCount=0, and no gaps, and the Kubernetes operations report sync evidence confirms result=applied, failedCount=0, and sourceReportResult=ready."
+        decisionRule = "Operations readiness convergence is ready only when the handoff result is ready/none, the readiness report is ready, the operations readiness finalizer report exists with result=ready, readinessResult=ready, typed integer failedCount=0, and no gaps, and the Kubernetes operations report sync evidence confirms result=applied, typed integer failedCount=0, and sourceReportResult=ready."
         safetyPolicy = "This convergence writer does not execute kubectl, gh, workflow dispatch, finalizer, or ConfigMap sync commands; it only reads local reports and writes JSON/Markdown guidance."
     }
 
