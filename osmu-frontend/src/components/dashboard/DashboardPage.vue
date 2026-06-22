@@ -824,10 +824,19 @@
         <small>
           {{ storageExpansionFinalize.namespace || 'unknown namespace' }} /
           tenant {{ storageExpansionFinalize.tenantName || 'unknown tenant' }} /
+          service account {{ storageExpansionFinalize.serviceAccount || 'unknown service account' }} /
           failures {{ storageExpansionFinalize.failedCount || 0 }} /
           backend dry-run {{ storageExpansionFinalize.runBackendDryRunRunner ? 'selected' : 'missing' }} /
           apply {{ storageExpansionFinalize.runBackendApply ? 'selected' : 'missing' }} /
-          telemetry {{ storageExpansionFinalize.runStorageBackendTelemetry ? 'selected' : 'missing' }}
+          confirm apply {{ storageExpansionFinalize.confirmApply ? 'yes' : 'no' }} /
+          telemetry {{ storageExpansionFinalize.runStorageBackendTelemetry ? 'selected' : 'missing' }} /
+          impersonate {{ storageExpansionFinalize.impersonateRunner ? 'yes' : 'no' }}
+        </small>
+        <small
+          v-if="storageExpansionFinalizeWindowSummary"
+          data-testid="readiness-storage-expansion-finalize-window"
+        >
+          Window: {{ storageExpansionFinalizeWindowSummary }}
         </small>
         <small v-if="storageExpansionFinalizeEvidenceSummary" data-testid="readiness-storage-expansion-finalize-evidence">
           Evidence: {{ storageExpansionFinalizeEvidenceSummary }}
@@ -877,6 +886,12 @@
           failures {{ kubernetesHaDrReadiness.failureCount || 0 }} /
           checks {{ kubernetesHaDrChecks.length }}
         </small>
+        <small
+          v-if="kubernetesHaDrInputSummary"
+          data-testid="readiness-kubernetes-ha-dr-inputs"
+        >
+          Inputs: {{ kubernetesHaDrInputSummary }}
+        </small>
       </div>
       <ol
         v-if="kubernetesHaDrChecks.length > 0"
@@ -906,6 +921,23 @@
           backup {{ kubernetesDrFinalize.backupTimestamp || 'unset' }} /
           confirmed {{ kubernetesDrFinalize.confirmRestore ? 'yes' : 'no' }} /
           failed steps {{ kubernetesDrFinalize.failedStepCount || 0 }}
+        </small>
+        <small
+          v-if="kubernetesDrFinalizeWindowSummary"
+          data-testid="readiness-kubernetes-dr-finalize-window"
+        >
+          Window: {{ kubernetesDrFinalizeWindowSummary }}
+        </small>
+        <small
+          data-testid="readiness-kubernetes-dr-finalize-options"
+        >
+          Options: {{ kubernetesDrFinalizeOptionSummary }}
+        </small>
+        <small
+          v-if="kubernetesDrFinalizeCommandSummary"
+          data-testid="readiness-kubernetes-dr-finalize-commands"
+        >
+          Commands: {{ kubernetesDrFinalizeCommandSummary }}
         </small>
         <small v-if="kubernetesDrFinalize.secretPolicy">
           {{ kubernetesDrFinalize.secretPolicy }}
@@ -954,6 +986,18 @@
           failures {{ iamRbacEvidence.failedCount || 0 }} /
           backend tests {{ iamRbacEvidence.runBackendPolicyTests ? 'selected' : 'not selected' }} /
           live auth {{ iamRbacEvidence.runKubernetesLiveAuth ? 'selected' : 'not selected' }}
+        </small>
+        <small
+          v-if="iamRbacEvidenceWindowSummary"
+          data-testid="readiness-iam-rbac-evidence-window"
+        >
+          Window: {{ iamRbacEvidenceWindowSummary }}
+        </small>
+        <small
+          v-if="iamRbacEvidenceRunCommandSummary"
+          data-testid="readiness-iam-rbac-evidence-run-commands"
+        >
+          Run commands: {{ iamRbacEvidenceRunCommandSummary }}
         </small>
         <small v-if="iamRbacEvidenceCommandSummary" data-testid="readiness-iam-rbac-evidence-commands">
           Commands: {{ iamRbacEvidenceCommandSummary }}
@@ -1005,11 +1049,23 @@
           image failures {{ securityEvidence.imageSigning?.failureCount || 0 }} /
           container failures {{ securityEvidence.containerSecurity?.failureCount || 0 }}
         </small>
+        <small data-testid="readiness-security-evidence-mode">
+          Mode: synthetic {{ securityEvidence.allowSyntheticEvidence ? 'allowed' : 'blocked' }}
+        </small>
         <small v-if="securityEvidenceImageSummary" data-testid="readiness-security-evidence-images">
           Images: {{ securityEvidenceImageSummary }}
         </small>
+        <small v-if="securityEvidenceSignatureSummary" data-testid="readiness-security-evidence-signatures">
+          Signatures: {{ securityEvidenceSignatureSummary }}
+        </small>
         <small v-if="securityEvidenceContainerSummary" data-testid="readiness-security-evidence-container">
           Container/SBOM: {{ securityEvidenceContainerSummary }}
+        </small>
+        <small v-if="securityEvidenceSourceSummary" data-testid="readiness-security-evidence-source">
+          Source: {{ securityEvidenceSourceSummary }}
+        </small>
+        <small v-if="securityEvidencePromotedSummary" data-testid="readiness-security-evidence-promoted">
+          Promoted: {{ securityEvidencePromotedSummary }}
         </small>
         <small v-if="securityEvidence.secretPolicy">
           {{ securityEvidence.secretPolicy }}
@@ -3244,9 +3300,32 @@ const storageExpansionFinalizeEvidenceSummary = computed(() => {
     .join(' / ')
 })
 
+const storageExpansionFinalizeWindowSummary = computed(() => {
+  const startedAt = storageExpansionFinalize.value?.startedAt || ''
+  const completedAt = storageExpansionFinalize.value?.completedAt || ''
+  return [startedAt && `start=${startedAt}`, completedAt && `complete=${completedAt}`]
+    .filter(Boolean)
+    .join(' / ')
+})
+
 const kubernetesHaDrReadiness = computed(() => (
   props.dashboardReadiness.kubernetesHaDrReadiness || {}
 ))
+
+const kubernetesHaDrInputSummary = computed(() => {
+  const readiness = kubernetesHaDrReadiness.value || {}
+  const parts = []
+  if (readiness.kubectlPath) {
+    parts.push(`kubectl=${readiness.kubectlPath}`)
+  }
+  if (readiness.restoreManifestPath) {
+    parts.push(`restoreManifest=${readiness.restoreManifestPath}`)
+  }
+  if (readiness.generatedAt) {
+    parts.push(`generated=${readiness.generatedAt}`)
+  }
+  return parts.join(' / ')
+})
 
 const kubernetesHaDrChecks = computed(() => {
   const checks = kubernetesHaDrReadiness.value?.checks
@@ -3265,6 +3344,39 @@ const kubernetesDrFinalizeSteps = computed(() => {
 const kubernetesDrFinalizeGaps = computed(() => {
   const gaps = kubernetesDrFinalize.value?.gaps
   return Array.isArray(gaps) ? gaps : []
+})
+
+const kubernetesDrFinalizeCommands = computed(() => {
+  const commands = kubernetesDrFinalize.value?.commands
+  return Array.isArray(commands) ? commands : []
+})
+
+const kubernetesDrFinalizeCommandSummary = computed(() => (
+  kubernetesDrFinalizeCommands.value
+    .filter((command) => command?.name)
+    .slice(0, 3)
+    .map((command) => command.name)
+    .join(' / ')
+))
+
+const kubernetesDrFinalizeWindowSummary = computed(() => {
+  const startedAt = kubernetesDrFinalize.value?.startedAt || ''
+  const completedAt = kubernetesDrFinalize.value?.completedAt || ''
+  return [startedAt && `start=${startedAt}`, completedAt && `complete=${completedAt}`]
+    .filter(Boolean)
+    .join(' / ')
+})
+
+const kubernetesDrFinalizeOptionSummary = computed(() => {
+  const finalize = kubernetesDrFinalize.value || {}
+  return [
+    `serverDryRun=${finalize.serverDryRunOnly ? 'yes' : 'no'}`,
+    `backupDrill=${finalize.runBackupDrill ? 'yes' : 'no'}`,
+    `restoreSmoke=${finalize.runRestoreSmoke ? 'yes' : 'no'}`,
+    `evidenceRequest=${finalize.writeEvidenceRequest ? 'yes' : 'no'}`,
+    `submitEvidence=${finalize.submitEvidence ? 'yes' : 'no'}`,
+    `s3Smoke=${finalize.runS3ClientSmoke ? 'yes' : 'no'}`,
+  ].join(' / ')
 })
 
 const iamRbacEvidence = computed(() => (
@@ -3294,6 +3406,20 @@ const iamRbacEvidenceCommandSummary = computed(() => (
     .join(' / ')
 ))
 
+const iamRbacEvidenceWindowSummary = computed(() => {
+  const startedAt = iamRbacEvidence.value?.startedAt || ''
+  const completedAt = iamRbacEvidence.value?.completedAt || ''
+  return [startedAt && `start=${startedAt}`, completedAt && `complete=${completedAt}`]
+    .filter(Boolean)
+    .join(' / ')
+})
+
+const iamRbacEvidenceRunCommandSummary = computed(() => {
+  const powerShell = iamRbacEvidence.value?.powerShellCommand ? 'PowerShell ready' : ''
+  const gradle = iamRbacEvidence.value?.gradleCommand ? 'Gradle ready' : ''
+  return [powerShell, gradle].filter(Boolean).join(' / ')
+})
+
 const securityEvidence = computed(() => (
   props.dashboardReadiness.securityEvidence || {}
 ))
@@ -3322,6 +3448,20 @@ const securityEvidenceImageSummary = computed(() => {
   return parts.join(' / ')
 })
 
+const securityEvidenceSignatureSummary = computed(() => {
+  const imageSigning = securityEvidence.value?.imageSigning || {}
+  if (!imageSigning.result) {
+    return ''
+  }
+  return [
+    `backend version=${imageSigning.backendVersionSignatureVerified ? 'yes' : 'no'}`,
+    `backend sha=${imageSigning.backendShaSignatureVerified ? 'yes' : 'no'}`,
+    `frontend version=${imageSigning.frontendVersionSignatureVerified ? 'yes' : 'no'}`,
+    `frontend sha=${imageSigning.frontendShaSignatureVerified ? 'yes' : 'no'}`,
+    imageSigning.signingMode && `mode=${imageSigning.signingMode}`,
+  ].filter(Boolean).join(' / ')
+})
+
 const securityEvidenceContainerSummary = computed(() => {
   const container = securityEvidence.value?.containerSecurity || {}
   if (!container.result && !container.artifactName && !container.backendImage && !container.frontendImage) {
@@ -3330,7 +3470,38 @@ const securityEvidenceContainerSummary = computed(() => {
   const backendPackages = container.backendSbomPackageCount || 0
   const frontendPackages = container.frontendSbomPackageCount || 0
   const severity = container.severity || 'CRITICAL,HIGH'
-  return `scan ${severity} / backend packages ${backendPackages} / frontend packages ${frontendPackages}`
+  return [
+    `scan ${severity}`,
+    `ignore-unfixed ${container.ignoreUnfixed ? 'yes' : 'no'}`,
+    `backend scan ${container.backendScanPassed ? 'pass' : 'pending'}`,
+    `frontend scan ${container.frontendScanPassed ? 'pass' : 'pending'}`,
+    `backend SBOM ${container.backendSbomValid ? 'valid' : 'pending'} (${backendPackages})`,
+    `frontend SBOM ${container.frontendSbomValid ? 'valid' : 'pending'} (${frontendPackages})`,
+  ].join(' / ')
+})
+
+const securityEvidenceSourceSummary = computed(() => {
+  const source = securityEvidence.value?.source
+  if (!source || typeof source !== 'object') {
+    return ''
+  }
+  return Object.entries(source)
+    .filter(([, value]) => value)
+    .slice(0, 5)
+    .map(([key, value]) => `${key}=${value}`)
+    .join(' / ')
+})
+
+const securityEvidencePromotedSummary = computed(() => {
+  const promoted = securityEvidence.value?.promoted
+  if (!promoted || typeof promoted !== 'object') {
+    return ''
+  }
+  return Object.entries(promoted)
+    .filter(([, value]) => value)
+    .slice(0, 5)
+    .map(([key, value]) => `${key}=${value}`)
+    .join(' / ')
 })
 
 const secretRotationEvidence = computed(() => (
