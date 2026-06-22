@@ -5440,6 +5440,8 @@ Response:
       "paths": {
         "operationsReadinessJson": ".osmu-run/latest-operations-readiness.json",
         "operationsReadinessMarkdown": ".osmu-run/latest-operations-readiness.md",
+        "dataFlowStoragePlan": ".osmu-run/latest-data-flow-storage-plan.json",
+        "dataFlowStorageTransitionRunbookEvidence": ".osmu-run/latest-data-flow-storage-transition-runbook-evidence.json",
         "report": ".osmu-run/latest-operations-readiness-finalize.json",
         "summary": ".osmu-run/latest-operations-readiness-finalize.md"
       },
@@ -5447,8 +5449,8 @@ Response:
         {
           "name": "Operations readiness report",
           "script": ".\\scripts\\write-operations-readiness.ps1",
-          "arguments": ["-JsonOutputPath", ".osmu-run/latest-operations-readiness.json"],
-          "command": "pwsh -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\write-operations-readiness.ps1"
+          "arguments": ["-JsonOutputPath", ".osmu-run/latest-operations-readiness.json", "-DataFlowStoragePlanPath", ".osmu-run/latest-data-flow-storage-plan.json", "-DataFlowStorageTransitionRunbookEvidencePath", ".osmu-run/latest-data-flow-storage-transition-runbook-evidence.json"],
+          "command": "pwsh -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\write-operations-readiness.ps1 -JsonOutputPath .osmu-run/latest-operations-readiness.json -DataFlowStoragePlanPath .osmu-run/latest-data-flow-storage-plan.json -DataFlowStorageTransitionRunbookEvidencePath .osmu-run/latest-data-flow-storage-transition-runbook-evidence.json"
         }
       ],
       "steps": [

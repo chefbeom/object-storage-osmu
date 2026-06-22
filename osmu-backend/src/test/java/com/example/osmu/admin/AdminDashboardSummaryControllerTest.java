@@ -985,6 +985,8 @@ class AdminDashboardSummaryControllerTest {
                           "paths": {
                             "operationsReadinessJson": ".osmu-run/latest-operations-readiness.json",
                             "operationsReadinessMarkdown": ".osmu-run/latest-operations-readiness.md",
+                            "dataFlowStoragePlan": ".osmu-run/latest-data-flow-storage-plan.json",
+                            "dataFlowStorageTransitionRunbookEvidence": ".osmu-run/latest-data-flow-storage-transition-runbook-evidence.json",
                             "report": ".osmu-run/latest-operations-readiness-finalize.json",
                             "summary": ".osmu-run/latest-operations-readiness-finalize.md"
                           },
@@ -992,16 +994,16 @@ class AdminDashboardSummaryControllerTest {
                             {
                               "name": "Operations readiness report",
                               "script": ".\\\\scripts\\\\write-operations-readiness.ps1",
-                              "arguments": ["-JsonOutputPath", ".osmu-run/latest-operations-readiness.json"],
-                              "command": "pwsh -NoProfile -ExecutionPolicy Bypass -File .\\\\scripts\\\\write-operations-readiness.ps1"
+                              "arguments": ["-JsonOutputPath", ".osmu-run/latest-operations-readiness.json", "-DataFlowStoragePlanPath", ".osmu-run/latest-data-flow-storage-plan.json", "-DataFlowStorageTransitionRunbookEvidencePath", ".osmu-run/latest-data-flow-storage-transition-runbook-evidence.json"],
+                              "command": "pwsh -NoProfile -ExecutionPolicy Bypass -File .\\\\scripts\\\\write-operations-readiness.ps1 -JsonOutputPath .osmu-run/latest-operations-readiness.json -DataFlowStoragePlanPath .osmu-run/latest-data-flow-storage-plan.json -DataFlowStorageTransitionRunbookEvidencePath .osmu-run/latest-data-flow-storage-transition-runbook-evidence.json"
                             }
                           ],
                           "steps": [
                             {
                               "name": "Operations readiness report",
                               "script": ".\\\\scripts\\\\write-operations-readiness.ps1",
-                              "arguments": ["-JsonOutputPath", ".osmu-run/latest-operations-readiness.json"],
-                              "command": "pwsh -NoProfile -ExecutionPolicy Bypass -File .\\\\scripts\\\\write-operations-readiness.ps1",
+                              "arguments": ["-JsonOutputPath", ".osmu-run/latest-operations-readiness.json", "-DataFlowStoragePlanPath", ".osmu-run/latest-data-flow-storage-plan.json", "-DataFlowStorageTransitionRunbookEvidencePath", ".osmu-run/latest-data-flow-storage-transition-runbook-evidence.json"],
+                              "command": "pwsh -NoProfile -ExecutionPolicy Bypass -File .\\\\scripts\\\\write-operations-readiness.ps1 -JsonOutputPath .osmu-run/latest-operations-readiness.json -DataFlowStoragePlanPath .osmu-run/latest-data-flow-storage-plan.json -DataFlowStorageTransitionRunbookEvidencePath .osmu-run/latest-data-flow-storage-transition-runbook-evidence.json",
                               "result": "passed",
                               "exitCode": 0,
                               "output": "Operations readiness result pending.",
@@ -2283,8 +2285,11 @@ class AdminDashboardSummaryControllerTest {
                 .andExpect(jsonPath("$.data.operationsReadinessFinalize.failedCount").value(0))
                 .andExpect(jsonPath("$.data.operationsReadinessFinalize.selectedSteps.storageExpansionFinalizer").value(true))
                 .andExpect(jsonPath("$.data.operationsReadinessFinalize.paths.operationsReadinessJson").value(".osmu-run/latest-operations-readiness.json"))
+                .andExpect(jsonPath("$.data.operationsReadinessFinalize.paths.dataFlowStoragePlan").value(".osmu-run/latest-data-flow-storage-plan.json"))
+                .andExpect(jsonPath("$.data.operationsReadinessFinalize.paths.dataFlowStorageTransitionRunbookEvidence").value(".osmu-run/latest-data-flow-storage-transition-runbook-evidence.json"))
                 .andExpect(jsonPath("$.data.operationsReadinessFinalize.commands[0].name").value("Operations readiness report"))
                 .andExpect(jsonPath("$.data.operationsReadinessFinalize.commands[0].arguments").value(hasItem("-JsonOutputPath")))
+                .andExpect(jsonPath("$.data.operationsReadinessFinalize.commands[0].arguments").value(hasItem("-DataFlowStorageTransitionRunbookEvidencePath")))
                 .andExpect(jsonPath("$.data.operationsReadinessFinalize.steps[0].result").value("passed"))
                 .andExpect(jsonPath("$.data.operationsReadinessFinalize.gaps").value(hasItem("Operations readiness result is pending: passed=36 pending=6.")))
                 .andExpect(jsonPath("$.data.operationsReadinessFinalize.secretPolicy").value("Operations readiness finalizer masks admin passwords in recorded commands and does not write kubeconfig, registry tokens, DR secrets, or bearer tokens."))

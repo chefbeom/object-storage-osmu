@@ -29,6 +29,7 @@ function Assert-NotContains([string] $text, [string] $unexpected, [string] $labe
 $resolvedJsonOutputPath = Resolve-ProjectPath $JsonOutputPath
 $resolvedMarkdownOutputPath = Resolve-ProjectPath $MarkdownOutputPath
 $dataFlowStoragePlanPath = Resolve-ProjectPath ".\.osmu-run\operations-readiness-finalizer-self-test\custom-data-flow-storage-plan.json"
+$dataFlowStorageTransitionRunbookPath = Resolve-ProjectPath ".\.osmu-run\operations-readiness-finalizer-self-test\custom-data-flow-storage-transition-runbook-evidence.json"
 $scriptPath = Resolve-ProjectPath ".\scripts\finalize-operations-readiness.ps1"
 
 & powershell -NoProfile -ExecutionPolicy Bypass -File $scriptPath `
@@ -45,6 +46,7 @@ $scriptPath = Resolve-ProjectPath ".\scripts\finalize-operations-readiness.ps1"
     -AdminPassword $SecretProbe `
     -ServerDryRunOnly `
     -DataFlowStoragePlanPath $dataFlowStoragePlanPath `
+    -DataFlowStorageTransitionRunbookEvidencePath $dataFlowStorageTransitionRunbookPath `
     -ReportPath $resolvedJsonOutputPath `
     -SummaryPath $resolvedMarkdownOutputPath | Out-Host
 if ($LASTEXITCODE -ne 0) {
@@ -80,14 +82,20 @@ Assert-Contains $reportText "Security evidence finalizer" "Operations readiness 
 Assert-Contains $reportText "Operations readiness report" "Operations readiness finalizer JSON"
 Assert-Contains $reportText "DataFlowStoragePlanPath" "Operations readiness finalizer JSON"
 Assert-Contains $reportText "custom-data-flow-storage-plan.json" "Operations readiness finalizer JSON"
+Assert-Contains $reportText "DataFlowStorageTransitionRunbookEvidencePath" "Operations readiness finalizer JSON"
+Assert-Contains $reportText "custom-data-flow-storage-transition-runbook-evidence.json" "Operations readiness finalizer JSON"
 if ($report.paths.dataFlowStoragePlan -ne $dataFlowStoragePlanPath) {
     throw "Operations readiness finalizer must preserve DataFlowStoragePlanPath: $($report.paths.dataFlowStoragePlan)"
+}
+if ($report.paths.dataFlowStorageTransitionRunbookEvidence -ne $dataFlowStorageTransitionRunbookPath) {
+    throw "Operations readiness finalizer must preserve DataFlowStorageTransitionRunbookEvidencePath: $($report.paths.dataFlowStorageTransitionRunbookEvidence)"
 }
 if ($report.powerShellCommand -ne "pwsh") {
     throw "Operations readiness finalizer must preserve PowerShellCommand override: $($report.powerShellCommand)"
 }
 Assert-Contains $markdown "pwsh -NoProfile -ExecutionPolicy Bypass" "Operations readiness finalizer markdown"
 Assert-Contains $markdown "custom-data-flow-storage-plan.json" "Operations readiness finalizer markdown"
+Assert-Contains $markdown "custom-data-flow-storage-transition-runbook-evidence.json" "Operations readiness finalizer markdown"
 Assert-NotContains $reportText $SecretProbe "Operations readiness finalizer JSON"
 Assert-NotContains $markdown $SecretProbe "Operations readiness finalizer markdown"
 Assert-Contains $markdown "# OSMU Operations Readiness Finalize" "Operations readiness finalizer markdown"

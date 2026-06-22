@@ -21,6 +21,7 @@ param(
     [string] $OperationsReadinessJsonPath = ".\.osmu-run\latest-operations-readiness.json",
     [string] $OperationsReadinessMarkdownPath = ".\.osmu-run\latest-operations-readiness.md",
     [string] $DataFlowStoragePlanPath = ".\.osmu-run\latest-data-flow-storage-plan.json",
+    [string] $DataFlowStorageTransitionRunbookEvidencePath = ".\.osmu-run\latest-data-flow-storage-transition-runbook-evidence.json",
     [string] $ReportPath = ".\.osmu-run\latest-operations-readiness-finalize.json",
     [string] $SummaryPath = ".\.osmu-run\latest-operations-readiness-finalize.md",
     [switch] $RunStorageExpansionFinalizer,
@@ -318,7 +319,8 @@ function New-OperationsReadinessArguments() {
     $arguments = @(
         "-JsonOutputPath", $OperationsReadinessJsonPath,
         "-MarkdownOutputPath", $OperationsReadinessMarkdownPath,
-        "-DataFlowStoragePlanPath", $DataFlowStoragePlanPath
+        "-DataFlowStoragePlanPath", $DataFlowStoragePlanPath,
+        "-DataFlowStorageTransitionRunbookEvidencePath", $DataFlowStorageTransitionRunbookEvidencePath
     )
     if ($FailIfNotReady) {
         $arguments += "-FailIfNotReady"
@@ -403,6 +405,7 @@ function Write-FinalReport([string] $ResultValue, [string] $Status, [object[]] $
             operationsReadinessJson = Resolve-ProjectPath $OperationsReadinessJsonPath
             operationsReadinessMarkdown = Resolve-ProjectPath $OperationsReadinessMarkdownPath
             dataFlowStoragePlan = Resolve-ProjectPath $DataFlowStoragePlanPath
+            dataFlowStorageTransitionRunbookEvidence = Resolve-ProjectPath $DataFlowStorageTransitionRunbookEvidencePath
             report = $resolvedReportPath
             summary = $resolvedSummaryPath
         }
