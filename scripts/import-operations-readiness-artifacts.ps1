@@ -188,9 +188,28 @@ function Test-EnterpriseAuthEvidenceJson([string] $Path) {
 
     $result = [string] (Get-JsonProperty $json "result")
     if ($result -eq "passed") {
+        $summary = Get-JsonProperty $json "summary"
+        $passCount = Get-RequiredJsonInt $summary "passCount"
+        $failCount = Get-RequiredJsonInt $summary "failCount"
+        $blockedCount = Get-RequiredJsonInt $summary "blockedCount"
+        $plannedCount = Get-RequiredJsonInt $summary "plannedCount"
+        $skippedCount = Get-RequiredJsonInt $summary "skippedCount"
+        $countsValid = $passCount.valid -and $failCount.valid -and $blockedCount.valid -and $plannedCount.valid -and $skippedCount.valid
+        if (-not $countsValid) {
+            return [pscustomobject]@{
+                passed = $false
+                detail = "result=passed passCount=$($passCount.raw)(valid=$($passCount.valid)) failCount=$($failCount.raw)(valid=$($failCount.valid)) blockedCount=$($blockedCount.raw)(valid=$($blockedCount.valid)) plannedCount=$($plannedCount.raw)(valid=$($plannedCount.valid)) skippedCount=$($skippedCount.raw)(valid=$($skippedCount.valid)) expected typed integer counts"
+            }
+        }
+        if ($passCount.value -le 0 -or $failCount.value -ne 0 -or $blockedCount.value -ne 0 -or $plannedCount.value -ne 0) {
+            return [pscustomobject]@{
+                passed = $false
+                detail = "result=passed passCount=$($passCount.value) failCount=$($failCount.value) blockedCount=$($blockedCount.value) plannedCount=$($plannedCount.value) expected passCount>0 and fail/block/planned=0"
+            }
+        }
         return [pscustomobject]@{
             passed = $true
-            detail = "result=passed expected=passed|scope-out"
+            detail = "result=passed passCount=$($passCount.value) failCount=0 blockedCount=0 plannedCount=0 expected=passed|scope-out"
         }
     }
     if ($result -ne "scope-out") {

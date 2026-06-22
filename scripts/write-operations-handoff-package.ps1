@@ -1044,6 +1044,8 @@ function Read-EnterpriseAuthSmokeEvidenceSnapshot([string] $Path) {
         blockedCount = 0
         plannedCount = 0
         skippedCount = 0
+        countsValid = $false
+        countValidation = [ordered]@{}
         checkCount = 0
         topChecks = @()
         detail = "No enterprise auth smoke JSON supplied."
@@ -1090,7 +1092,6 @@ function Read-EnterpriseAuthSmokeEvidenceSnapshot([string] $Path) {
     $snapshot["scopeOutAccepted"] = [bool] $scopeOutAccepted.value
     $snapshot["scopeOutAcceptedValid"] = [bool] $scopeOutAccepted.valid
     $snapshot["scopeOutAcceptedRaw"] = [string] $scopeOutAccepted.raw
-    $snapshot["accepted"] = [bool] $snapshot["passed"] -or ("scope-out".Equals($result, [System.StringComparison]::OrdinalIgnoreCase) -and $scopeOutApproved)
     $snapshot["executionMode"] = Get-PropertyText $payload "executionMode"
     $snapshot["apiBase"] = Get-PropertyText $payload "apiBase"
     $snapshot["requireOidc"] = Get-PropertyBool $payload "requireOidc"
@@ -1115,14 +1116,30 @@ function Read-EnterpriseAuthSmokeEvidenceSnapshot([string] $Path) {
         acceptedValid = [bool] $scopeOutAccepted.valid
         acceptedRaw = [string] $scopeOutAccepted.raw
     }
-    $snapshot["passCount"] = Get-PropertyInt $summary "passCount"
-    $snapshot["failCount"] = Get-PropertyInt $summary "failCount"
-    $snapshot["blockedCount"] = Get-PropertyInt $summary "blockedCount"
-    $snapshot["plannedCount"] = Get-PropertyInt $summary "plannedCount"
-    $snapshot["skippedCount"] = Get-PropertyInt $summary "skippedCount"
+    $countResult = Get-RequiredIntSetSnapshot $summary @(
+        "passCount",
+        "failCount",
+        "blockedCount",
+        "plannedCount",
+        "skippedCount"
+    )
+    $snapshot["passCount"] = $countResult.values["passCount"]
+    $snapshot["failCount"] = $countResult.values["failCount"]
+    $snapshot["blockedCount"] = $countResult.values["blockedCount"]
+    $snapshot["plannedCount"] = $countResult.values["plannedCount"]
+    $snapshot["skippedCount"] = $countResult.values["skippedCount"]
+    $snapshot["countsValid"] = [bool] $countResult.allValid
+    $snapshot["countValidation"] = $countResult.validation
+    $snapshot["accepted"] = ([bool] $snapshot["passed"] `
+            -and [bool] $snapshot["countsValid"] `
+            -and ([int64] $snapshot["passCount"]) -gt 0 `
+            -and ([int64] $snapshot["failCount"]) -eq 0 `
+            -and ([int64] $snapshot["blockedCount"]) -eq 0 `
+            -and ([int64] $snapshot["plannedCount"]) -eq 0) `
+        -or ("scope-out".Equals($result, [System.StringComparison]::OrdinalIgnoreCase) -and $scopeOutApproved)
     $snapshot["checkCount"] = $checks.Count
     $snapshot["topChecks"] = @($topRows.ToArray())
-    $snapshot["detail"] = "formatVersion=$formatVersion; result=$result; pass=$($snapshot["passCount"]); fail=$($snapshot["failCount"]); blocked=$($snapshot["blockedCount"]); planned=$($snapshot["plannedCount"]); scopeOutAccepted=$($snapshot["scopeOutAcceptedRaw"])(valid=$($snapshot["scopeOutAcceptedValid"])); scopeOutReference=$scopeOutReference"
+    $snapshot["detail"] = "formatVersion=$formatVersion; result=$result; pass=$($snapshot["passCount"]); fail=$($snapshot["failCount"]); blocked=$($snapshot["blockedCount"]); planned=$($snapshot["plannedCount"]); countsValid=$($snapshot["countsValid"]); scopeOutAccepted=$($snapshot["scopeOutAcceptedRaw"])(valid=$($snapshot["scopeOutAcceptedValid"])); scopeOutReference=$scopeOutReference"
     return $snapshot
 }
 
@@ -1483,7 +1500,18 @@ $commercialApprovalSnapshotPassed = $commercialApprovalSnapshotValid `
     -and [bool] $commercialApprovalSnapshot["pricingPolicyProposalCommercialApproved"] `
     -and ([int64] $commercialApprovalSnapshot["pricingPolicyProposalCommercialApprovedCount"]) -gt 0 `
     -and ([int64] $commercialApprovalSnapshot["pricingPolicyProposalApprovedPriceListCount"]) -gt 0
-$enterpriseAuthSmokeSnapshotAccepted = $enterpriseAuthSmokeSnapshotValid -and [bool] $enterpriseAuthSmokeSnapshot["accepted"]
+$enterpriseAuthSmokeSnapshotPassed = $enterpriseAuthSmokeSnapshotValid `
+    -and [bool] $enterpriseAuthSmokeSnapshot["passed"] `
+    -and [bool] $enterpriseAuthSmokeSnapshot["countsValid"] `
+    -and ([int64] $enterpriseAuthSmokeSnapshot["passCount"]) -gt 0 `
+    -and ([int64] $enterpriseAuthSmokeSnapshot["failCount"]) -eq 0 `
+    -and ([int64] $enterpriseAuthSmokeSnapshot["blockedCount"]) -eq 0 `
+    -and ([int64] $enterpriseAuthSmokeSnapshot["plannedCount"]) -eq 0
+$enterpriseAuthSmokeSnapshotScopeOutAccepted = $enterpriseAuthSmokeSnapshotValid `
+    -and "scope-out".Equals([string] $enterpriseAuthSmokeSnapshot["result"], [System.StringComparison]::OrdinalIgnoreCase) `
+    -and [bool] $enterpriseAuthSmokeSnapshot["scopeOutAcceptedValid"] `
+    -and [bool] $enterpriseAuthSmokeSnapshot["scopeOutAccepted"]
+$enterpriseAuthSmokeSnapshotAccepted = $enterpriseAuthSmokeSnapshotPassed -or $enterpriseAuthSmokeSnapshotScopeOutAccepted
 $monitoringThresholdSnapshotPassed = $monitoringThresholdSnapshotValid -and [bool] $monitoringThresholdSnapshot["passed"] -and [bool] $monitoringThresholdSnapshot["complete"]
 
 $evidenceText = $DeploymentEvidenceRef + $OperationsReadinessRef + $OperationsConvergenceRef + $DataFlowStoragePlanEvidenceRef + $DataFlowStorageTransitionRunbookEvidenceRef + $SecretRotationEvidenceRef + $CommercialIntegrationEvidenceRef + $CommercialApprovalEvidenceRef + $EnterpriseAuthEvidenceRef + $BackupRestoreEvidenceRef + $HaDrEvidenceRef + $MonitoringEvidenceRef + $SecurityEvidenceRef + $IamRbacEvidenceRef + $RunbookReviewRef + $TroubleshootingReviewRef + $SupportEscalationRef + $SupportSlaRef + $KnownGapsRef
@@ -1565,7 +1593,7 @@ if ([bool] $RequireProductionEvidence -or [bool] $commercialApprovalSnapshot["pr
 Add-EvidenceCheck "enterprise-auth-evidence" "Enterprise auth target evidence" ([bool] $RequireProductionEvidence) $EnterpriseAuthEvidenceRef "target IdP/directory smoke result=passed or contracted scope-out"
 if ([bool] $RequireProductionEvidence -or [bool] $enterpriseAuthSmokeSnapshot["provided"]) {
     Add-Check "enterprise-auth-smoke-snapshot-parsed" "Enterprise auth smoke snapshot parsed" $enterpriseAuthSmokeSnapshotValid $enterpriseAuthSmokeSnapshot["detail"] $EnterpriseAuthEvidenceRef
-    Add-Check "enterprise-auth-smoke-snapshot-accepted" "Enterprise auth smoke snapshot accepted" $enterpriseAuthSmokeSnapshotAccepted "result=$($enterpriseAuthSmokeSnapshot["result"]); scopeOutAccepted=$($enterpriseAuthSmokeSnapshot["scopeOutAccepted"]); pass=$($enterpriseAuthSmokeSnapshot["passCount"]); fail=$($enterpriseAuthSmokeSnapshot["failCount"]); blocked=$($enterpriseAuthSmokeSnapshot["blockedCount"])" $EnterpriseAuthEvidenceRef
+    Add-Check "enterprise-auth-smoke-snapshot-accepted" "Enterprise auth smoke snapshot accepted" $enterpriseAuthSmokeSnapshotAccepted "result=$($enterpriseAuthSmokeSnapshot["result"]); scopeOutAccepted=$($enterpriseAuthSmokeSnapshot["scopeOutAccepted"]); pass=$($enterpriseAuthSmokeSnapshot["passCount"]); fail=$($enterpriseAuthSmokeSnapshot["failCount"]); blocked=$($enterpriseAuthSmokeSnapshot["blockedCount"]); planned=$($enterpriseAuthSmokeSnapshot["plannedCount"]); countsValid=$($enterpriseAuthSmokeSnapshot["countsValid"])" $EnterpriseAuthEvidenceRef
 }
 if ([bool] $RequireProductionEvidence -or [bool] $enterpriseAuthSmokeSnapshot["provided"] -or [bool] $ConfirmEnterpriseAuthSmokeSnapshotReviewed) {
     Add-Check "enterprise-auth-smoke-snapshot-reviewed" "Enterprise auth smoke snapshot reviewed" ([bool] $ConfirmEnterpriseAuthSmokeSnapshotReviewed -and $enterpriseAuthSmokeSnapshotValid) "confirmed=$([bool] $ConfirmEnterpriseAuthSmokeSnapshotReviewed); snapshotValid=$enterpriseAuthSmokeSnapshotValid" $EnterpriseAuthEvidenceRef
@@ -1688,7 +1716,7 @@ $report = New-Object System.Collections.Specialized.OrderedDictionary
     monitoringThresholdSnapshotResult = $monitoringThresholdSnapshot["result"]
 })
 [void] $report.Add("checks", [object] $checkArray)
-[void] $report.Add("decisionRule", "Production/B2B operations handoff package readiness requires result=passed from the target environment, reviewed runbook/troubleshooting/rollback/support paths, accepted known gaps, no-secret confirmation, and references to target readiness, convergence, data-flow storage transition, data-flow storage transition runbook, secret rotation, commercial integration, commercial approval, enterprise auth, backup/restore, HA/DR, monitoring, security, and IAM/RBAC evidence when production evidence is required. When operations snapshot evidence is required, the latest operations readiness snapshot must be result=ready and the latest operations readiness convergence snapshot must be result=ready with readinessResult=ready, finalizer result=ready, typed integer finalizer failed/gap counts at zero, typed boolean Kubernetes report sync ready=true, typed integer failedSyncChecks=0, and sourceReportResult=ready. When production evidence is required, the data-flow storage plan, data-flow storage transition runbook, secret rotation, commercial integration, commercial approval, and monitoring threshold snapshots must be result=passed, the enterprise auth smoke snapshot must be result=passed or result=scope-out with accepted=true, and the data-flow storage plan, data-flow storage transition runbook, secret rotation, commercial integration, commercial approval, enterprise auth smoke, and monitoring threshold snapshots must be reviewed.")
+[void] $report.Add("decisionRule", "Production/B2B operations handoff package readiness requires result=passed from the target environment, reviewed runbook/troubleshooting/rollback/support paths, accepted known gaps, no-secret confirmation, and references to target readiness, convergence, data-flow storage transition, data-flow storage transition runbook, secret rotation, commercial integration, commercial approval, enterprise auth, backup/restore, HA/DR, monitoring, security, and IAM/RBAC evidence when production evidence is required. When operations snapshot evidence is required, the latest operations readiness snapshot must be result=ready and the latest operations readiness convergence snapshot must be result=ready with readinessResult=ready, finalizer result=ready, typed integer finalizer failed/gap counts at zero, typed boolean Kubernetes report sync ready=true, typed integer failedSyncChecks=0, and sourceReportResult=ready. When production evidence is required, the data-flow storage plan, data-flow storage transition runbook, secret rotation, commercial integration, commercial approval, and monitoring threshold snapshots must be result=passed; the enterprise auth smoke snapshot must be result=passed with typed integer summary counts, passCount>0, failCount=0, blockedCount=0, plannedCount=0, or result=scope-out with accepted=true; and the data-flow storage plan, data-flow storage transition runbook, secret rotation, commercial integration, commercial approval, enterprise auth smoke, and monitoring threshold snapshots must be reviewed.")
 [void] $report.Add("scopePolicy", "This package is a handoff wrapper for already-collected operations evidence. It can reduce sanitized operations readiness, convergence, data-flow storage plan, data-flow storage transition runbook, secret rotation, commercial integration, commercial approval, enterprise auth smoke, and monitoring threshold JSON snapshots to summary fields, but it does not execute kubectl, gh, provider APIs, notification adapters, payment adapters, storage migrations, IdP/directory login flows, Prometheus/Grafana/Alertmanager API calls, or native card/bank/tax/ERP processor calls.")
 [void] $report.Add("secretPolicy", "Evidence stores only environment labels, operator/change references, timestamps, booleans, external evidence references, reduced operations readiness/convergence snapshot summaries, reduced data-flow storage plan/runbook summaries, reduced secret rotation summaries, reduced commercial evidence summaries, reduced enterprise auth smoke summaries, and reduced monitoring threshold summaries; it must not contain passwords, bearer tokens, kubeconfig values, private keys, SMTP credentials, webhook signing secrets, provider credentials, raw SQL, raw EXPLAIN JSON, object keys, raw event messages, raw provider responses, raw identity claims, OIDC codes/states/tokens, LDAP/admin passwords, raw remediation commands containing credentials, raw Alertmanager receiver secrets, raw price tables, raw contract text, or customer payment data.")
 

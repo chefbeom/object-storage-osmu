@@ -739,6 +739,72 @@ finally {
 Assert-True ($stringBoolEnterpriseAuthExitCode -ne 0) "Enterprise auth scope-out string accepted boolean should be rejected."
 Assert-Contains ($stringBoolEnterpriseAuthOutput | Out-String) "scopeOutAccepted=true(valid=False)" "string enterprise auth scope-out output"
 
+$stringCountPassedEnterpriseAuthPath = Join-Path $resolvedOutputDirectory "string-count-enterprise-auth-passed.json"
+[ordered]@{
+    formatVersion = "osmu.enterprise-auth-smoke.v1"
+    generatedAt = "2026-06-20T02:25:00Z"
+    result = "passed"
+    executionMode = "execute"
+    apiBase = "https://pilot.example.invalid/api"
+    requireOidc = $true
+    requireLdap = $true
+    requireAuditEvents = $true
+    scopeOut = [ordered]@{
+        confirmed = $false
+        reference = ""
+        reason = ""
+        accepted = $false
+    }
+    inputs = [ordered]@{
+        adminPasswordProvided = $true
+        oidcCallbackCodeProvided = $true
+        oidcCallbackStateProvided = $true
+        oidcClaimPreviewJsonPathProvided = $true
+        oidcJitProvisionJsonPathProvided = $true
+        confirmJitProvision = $true
+        ldapLoginIdProvided = $true
+        ldapPasswordProvided = $true
+        expectedEmailProvided = $true
+    }
+    summary = [ordered]@{
+        passCount = 8
+        failCount = "0"
+        blockedCount = 0
+        plannedCount = 0
+        skippedCount = 0
+    }
+    checks = @(
+        [ordered]@{
+            id = "ldap-login"
+            name = "LDAP bind/search login for existing local user"
+            category = "ldap"
+            endpoint = "POST /api/auth/ldap/login"
+            status = "PASS"
+            detail = "LDAP login issued OSMU tokens for loginId=directory-user role=USER; tokens are not stored."
+            requiredInputs = @()
+        }
+    )
+    decisionRule = "Paid/production pilot requires result=passed from the target IdP/directory, or result=scope-out with an explicit non-secret commercial approval reference and reason."
+    secretPolicy = "Admin password, LDAP password, access/refresh tokens, OIDC authorization code/state, client secrets, and raw OIDC claim JSON are never written to this evidence."
+} | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath $stringCountPassedEnterpriseAuthPath -Encoding UTF8
+
+$previousErrorActionPreference = $ErrorActionPreference
+$ErrorActionPreference = "Continue"
+try {
+    $stringCountPassedEnterpriseAuthOutput = & powershell -NoProfile -ExecutionPolicy Bypass -File $scriptPath `
+        -EnterpriseAuthEvidenceRef "latest-enterprise-auth-smoke-passed-20260620" `
+        -EnterpriseAuthJsonPath $stringCountPassedEnterpriseAuthPath `
+        -ConfirmEnterpriseAuthSmokeSnapshotReviewed `
+        -FailIfNotPassed `
+        -NoWrite 2>&1
+    $stringCountPassedEnterpriseAuthExitCode = $LASTEXITCODE
+}
+finally {
+    $ErrorActionPreference = $previousErrorActionPreference
+}
+Assert-True ($stringCountPassedEnterpriseAuthExitCode -ne 0) "Enterprise auth passed evidence string count should be rejected."
+Assert-Contains ($stringCountPassedEnterpriseAuthOutput | Out-String) "countsValid=False" "string enterprise auth passed count output"
+
 $stringBoolMonitoringThresholdPath = Join-Path $resolvedOutputDirectory "string-bool-monitoring-threshold.json"
 $stringBoolMonitoringThreshold = Get-Content -Raw -LiteralPath $monitoringThresholdPath | ConvertFrom-Json
 $stringBoolMonitoringThreshold.confirmations.prometheusRulesLoaded = "true"

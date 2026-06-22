@@ -82,6 +82,7 @@ $stringBoolMonitoringThresholdRoot = Join-Path $resolvedOutputDirectory "string-
 $stringCountMonitoringThresholdRoot = Join-Path $resolvedOutputDirectory "string-count-monitoring-threshold-source"
 $missingCountMonitoringThresholdRoot = Join-Path $resolvedOutputDirectory "missing-count-monitoring-threshold-source"
 $invalidEnterpriseAuthRoot = Join-Path $resolvedOutputDirectory "invalid-enterprise-auth-source"
+$stringCountEnterpriseAuthRoot = Join-Path $resolvedOutputDirectory "string-count-enterprise-auth-source"
 $staleOperationsHandoffPackageRoot = Join-Path $resolvedOutputDirectory "stale-operations-handoff-package-source"
 $badConvergenceOperationsHandoffPackageRoot = Join-Path $resolvedOutputDirectory "bad-convergence-operations-handoff-package-source"
 $stringBoolOperationsHandoffPackageRoot = Join-Path $resolvedOutputDirectory "string-bool-operations-handoff-package-source"
@@ -725,6 +726,42 @@ Assert-True (-not (Test-Path -LiteralPath (Join-Path $invalidEnterpriseAuthOutpu
 $invalidEnterpriseAuthEntry = @($invalidEnterpriseAuthReport.entries | Where-Object { $_.group -eq "enterprise-auth" -and $_.fileName -eq "latest-enterprise-auth-smoke.json" })
 Assert-True ($invalidEnterpriseAuthEntry.Count -eq 1) "Invalid enterprise auth import entry missing."
 Assert-True (([string] $invalidEnterpriseAuthEntry[0].detail).Contains("accepted=false(valid=False)")) "Invalid enterprise auth report should describe invalid accepted value."
+
+Write-JsonEvidence (Join-Path $stringCountEnterpriseAuthRoot "latest-enterprise-auth-smoke.json") @{
+    formatVersion = "osmu.enterprise-auth-smoke.v1"
+    result = "passed"
+    summary = @{
+        passCount = 4
+        failCount = "0"
+        blockedCount = 0
+        plannedCount = 0
+        skippedCount = 0
+    }
+}
+$stringCountEnterpriseAuthOutput = Join-Path $resolvedOutputDirectory "string-count-enterprise-auth-promoted"
+$stringCountEnterpriseAuthJson = Join-Path $resolvedOutputDirectory "string-count-enterprise-auth-import.json"
+$stringCountEnterpriseAuthMarkdown = Join-Path $resolvedOutputDirectory "string-count-enterprise-auth-import.md"
+$previousErrorActionPreference = $ErrorActionPreference
+$ErrorActionPreference = "Continue"
+try {
+    $stringCountEnterpriseAuthOutputLines = & powershell -NoProfile -ExecutionPolicy Bypass -File $importScript `
+        -EnterpriseAuthArtifactPath $stringCountEnterpriseAuthRoot `
+        -OutputDirectory $stringCountEnterpriseAuthOutput `
+        -JsonOutputPath $stringCountEnterpriseAuthJson `
+        -MarkdownOutputPath $stringCountEnterpriseAuthMarkdown 2>&1
+    $stringCountEnterpriseAuthExitCode = $LASTEXITCODE
+}
+finally {
+    $ErrorActionPreference = $previousErrorActionPreference
+}
+Assert-True ($stringCountEnterpriseAuthExitCode -ne 0) "Enterprise auth passed evidence with string count should fail import."
+Assert-True (Test-Path -LiteralPath $stringCountEnterpriseAuthJson) "String-count enterprise auth import report should still be written."
+$stringCountEnterpriseAuthReport = Get-Content -Raw -LiteralPath $stringCountEnterpriseAuthJson | ConvertFrom-Json
+Assert-True ($stringCountEnterpriseAuthReport.result -eq "failed") "String-count enterprise auth import report should be failed."
+Assert-True (-not (Test-Path -LiteralPath (Join-Path $stringCountEnterpriseAuthOutput "latest-enterprise-auth-smoke.json"))) "String-count enterprise auth evidence must not be promoted."
+$stringCountEnterpriseAuthEntry = @($stringCountEnterpriseAuthReport.entries | Where-Object { $_.group -eq "enterprise-auth" -and $_.fileName -eq "latest-enterprise-auth-smoke.json" })
+Assert-True ($stringCountEnterpriseAuthEntry.Count -eq 1) "String-count enterprise auth import entry missing."
+Assert-True (([string] $stringCountEnterpriseAuthEntry[0].detail).Contains("failCount=0(valid=False)")) "String-count enterprise auth report should describe invalid typed count."
 
 Write-JsonEvidence (Join-Path $staleOperationsHandoffPackageRoot "latest-operations-handoff-package.json") @{
     formatVersion = "osmu.operations-handoff-package.v1"

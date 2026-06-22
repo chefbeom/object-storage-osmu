@@ -300,7 +300,17 @@ function Test-EnterpriseAuthEvidenceAccepted([object] $Report) {
     }
     $result = [string] (Get-ObjectProperty $Report.data "result")
     if ($result -eq "passed") {
-        return $true
+        $summary = Get-ObjectProperty $Report.data "summary"
+        $passCount = Get-RequiredObjectInt $summary "passCount"
+        $failCount = Get-RequiredObjectInt $summary "failCount"
+        $blockedCount = Get-RequiredObjectInt $summary "blockedCount"
+        $plannedCount = Get-RequiredObjectInt $summary "plannedCount"
+        $skippedCount = Get-RequiredObjectInt $summary "skippedCount"
+        return $passCount.valid -and $failCount.valid -and $blockedCount.valid -and $plannedCount.valid -and $skippedCount.valid `
+            -and $passCount.value -gt 0 `
+            -and $failCount.value -eq 0 `
+            -and $blockedCount.value -eq 0 `
+            -and $plannedCount.value -eq 0
     }
     if ($result -ne "scope-out") {
         return $false
@@ -317,6 +327,16 @@ function Get-EnterpriseAuthEvidenceDetail([object] $Report) {
         return $Report.detail
     }
     $result = [string] (Get-ObjectProperty $Report.data "result")
+    if ($result -eq "passed") {
+        $summary = Get-ObjectProperty $Report.data "summary"
+        $passCount = Get-RequiredObjectInt $summary "passCount"
+        $failCount = Get-RequiredObjectInt $summary "failCount"
+        $blockedCount = Get-RequiredObjectInt $summary "blockedCount"
+        $plannedCount = Get-RequiredObjectInt $summary "plannedCount"
+        $skippedCount = Get-RequiredObjectInt $summary "skippedCount"
+        $countsValid = $passCount.valid -and $failCount.valid -and $blockedCount.valid -and $plannedCount.valid -and $skippedCount.valid
+        return "result=passed, passCount=$($passCount.raw)(valid=$($passCount.valid)), failCount=$($failCount.raw)(valid=$($failCount.valid)), blockedCount=$($blockedCount.raw)(valid=$($blockedCount.valid)), plannedCount=$($plannedCount.raw)(valid=$($plannedCount.valid)), skippedCount=$($skippedCount.raw)(valid=$($skippedCount.valid)), countsValid=$countsValid"
+    }
     if ($result -ne "scope-out") {
         return "result=$result"
     }
@@ -562,7 +582,7 @@ $enterpriseAuthSmokeRemediation = New-Remediation `
     "powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\write-enterprise-auth-smoke-plan.ps1 -Execute -AdminLoginId <admin> -AdminPassword <secret> -RequireOidc -RequireLdap" `
     ".github/workflows/enterprise-auth-smoke-ci.yml" `
     "gh workflow run enterprise-auth-smoke-ci.yml -f run_live=true -f api_base=<api-base> -f admin_login_id=<admin> -f require_oidc=true -f require_ldap=true -f fail_if_not_passed=true" `
-    "Run against the target pilot IdP/directory only after OIDC/LDAP provider flags and local user mapping are configured, or record an explicit commercial scope-out with write-enterprise-auth-smoke-plan.ps1 -ConfirmScopeOut -ScopeOutRef <approval-ref> -ScopeOutReason <reason>. The workflow requires OSMU_ENTERPRISE_AUTH_ADMIN_PASSWORD and, when LDAP is required, OSMU_ENTERPRISE_AUTH_LDAP_LOGIN_ID/OSMU_ENTERPRISE_AUTH_LDAP_PASSWORD secrets. Evidence does not include passwords, tokens, OIDC code/state, raw claim JSON, or credential-like scope-out references."
+    "Run against the target pilot IdP/directory only after OIDC/LDAP provider flags and local user mapping are configured. Passed promotion requires typed integer summary counts with passCount>0 and fail/block/planned counts at zero, or record an explicit commercial scope-out with write-enterprise-auth-smoke-plan.ps1 -ConfirmScopeOut -ScopeOutRef <approval-ref> -ScopeOutReason <reason>. The workflow requires OSMU_ENTERPRISE_AUTH_ADMIN_PASSWORD and, when LDAP is required, OSMU_ENTERPRISE_AUTH_LDAP_LOGIN_ID/OSMU_ENTERPRISE_AUTH_LDAP_PASSWORD secrets. Evidence does not include passwords, tokens, OIDC code/state, raw claim JSON, or credential-like scope-out references."
 $operationsHandoffPackageRemediation = New-Remediation `
     "powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\write-operations-handoff-package.ps1 -EnvironmentName <env> -TargetCluster <cluster> -Operator <operator> -HandoffStartedAt <iso-time> -HandoffCompletedAt <iso-time> -ChangeApprovalRef <change-id> -DeploymentEvidenceRef <ref> -OperationsReadinessRef <ref> -OperationsConvergenceRef <ref> -DataFlowStoragePlanEvidenceRef <ref> -DataFlowStorageTransitionRunbookEvidenceRef <ref> -OperationsReadinessJsonPath .\.osmu-run\latest-operations-readiness.json -OperationsConvergenceJsonPath .\.osmu-run\latest-operations-readiness-convergence.json -DataFlowStoragePlanJsonPath .\.osmu-run\latest-data-flow-storage-plan.json -DataFlowStorageTransitionRunbookJsonPath .\.osmu-run\latest-data-flow-storage-transition-runbook-evidence.json -SecretRotationEvidenceRef <ref> -SecretRotationJsonPath .\.osmu-run\latest-secret-rotation-evidence.json -CommercialIntegrationEvidenceRef <ref> -CommercialApprovalEvidenceRef <ref> -CommercialIntegrationJsonPath .\.osmu-run\latest-commercial-integration-evidence.json -CommercialApprovalJsonPath .\.osmu-run\latest-commercial-approval-evidence.json -EnterpriseAuthEvidenceRef <ref> -EnterpriseAuthJsonPath .\.osmu-run\latest-enterprise-auth-smoke.json -BackupRestoreEvidenceRef <ref> -HaDrEvidenceRef <ref> -MonitoringEvidenceRef <ref> -MonitoringThresholdJsonPath .\.osmu-run\latest-monitoring-threshold-evidence.json -SecurityEvidenceRef <ref> -IamRbacEvidenceRef <ref> -RunbookReviewRef <ref> -TroubleshootingReviewRef <ref> -SupportEscalationRef <ref> -SupportSlaRef <ref> -KnownGapsRef <ref> -ConfirmRunbookReviewed -ConfirmTroubleshootingReviewed -ConfirmRollbackReviewed -ConfirmSupportEscalationReviewed -ConfirmKnownGapsAccepted -ConfirmOperationsReadinessSnapshotReviewed -ConfirmOperationsConvergenceSnapshotReviewed -ConfirmDataFlowStoragePlanReviewed -ConfirmDataFlowStorageTransitionRunbookReviewed -ConfirmSecretRotationSnapshotReviewed -ConfirmCommercialIntegrationSnapshotReviewed -ConfirmCommercialApprovalSnapshotReviewed -ConfirmEnterpriseAuthSmokeSnapshotReviewed -ConfirmMonitoringThresholdReviewed -ConfirmNoSecretValues -RequireProductionEvidence -RequireOperationsSnapshotEvidence -FailIfNotPassed" `
     ".github/workflows/manual-operations-handoff-package.yml" `

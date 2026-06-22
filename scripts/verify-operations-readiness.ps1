@@ -390,6 +390,9 @@ if (-not ([string] $enterpriseAuthCheck[0].remediation.workflowCommand).Contains
 if (-not ([string] $enterpriseAuthCheck[0].requiredEvidence).Contains("target IdP/directory") -or -not ([string] $enterpriseAuthCheck[0].requiredEvidence).Contains("scope-out")) {
     throw "Enterprise auth target smoke evidence must require target IdP/directory evidence or scope-out evidence."
 }
+if (-not ([string] $enterpriseAuthCheck[0].remediation.note).Contains("typed integer summary counts")) {
+    throw "Enterprise auth target smoke remediation note must mention typed integer summary counts."
+}
 $operationsHandoffPackageCheck = @($report.checks | Where-Object { $_.name -eq "Operations handoff package target evidence" })
 if ($operationsHandoffPackageCheck.Count -ne 1) {
     throw "Operations readiness report must contain one Operations handoff package target evidence check."
@@ -621,6 +624,37 @@ if ($stringAcceptedEnterpriseAuthCheck.Count -ne 1 -or $stringAcceptedEnterprise
 }
 if (-not ([string] $stringAcceptedEnterpriseAuthCheck[0].detail).Contains("scopeOut.accepted=false(valid=False)")) {
     throw "Enterprise auth string accepted readiness detail must name invalid accepted value."
+}
+
+$stringCountPassedEnterpriseAuthEvidencePath = Join-Path $scopeOutFixtureDirectory "latest-enterprise-auth-smoke-passed-string-count.json"
+$stringCountPassedEnterpriseAuthJsonOutputPath = Join-Path $scopeOutFixtureDirectory "latest-operations-readiness-passed-string-count.json"
+$stringCountPassedEnterpriseAuthMarkdownOutputPath = Join-Path $scopeOutFixtureDirectory "latest-operations-readiness-passed-string-count.md"
+@{
+    formatVersion = "osmu.enterprise-auth-smoke.v1"
+    result = "passed"
+    summary = @{
+        passCount = 4
+        failCount = "0"
+        blockedCount = 0
+        plannedCount = 0
+        skippedCount = 0
+    }
+} | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $stringCountPassedEnterpriseAuthEvidencePath -Encoding UTF8
+
+& powershell -NoProfile -ExecutionPolicy Bypass -File $scriptPath `
+    -EnterpriseAuthSmokeEvidencePath $stringCountPassedEnterpriseAuthEvidencePath `
+    -JsonOutputPath $stringCountPassedEnterpriseAuthJsonOutputPath `
+    -MarkdownOutputPath $stringCountPassedEnterpriseAuthMarkdownOutputPath | Out-Host
+if ($LASTEXITCODE -ne 0) {
+    throw "write-operations-readiness.ps1 failed for string-count passed enterprise auth fixture with exit code $LASTEXITCODE."
+}
+$stringCountPassedEnterpriseAuthReport = Get-Content -Raw -LiteralPath $stringCountPassedEnterpriseAuthJsonOutputPath | ConvertFrom-Json
+$stringCountPassedEnterpriseAuthCheck = @($stringCountPassedEnterpriseAuthReport.checks | Where-Object { $_.name -eq "Enterprise auth target smoke evidence" })
+if ($stringCountPassedEnterpriseAuthCheck.Count -ne 1 -or $stringCountPassedEnterpriseAuthCheck[0].passed) {
+    throw "Enterprise auth passed evidence with string count must not satisfy the operations readiness enterprise-auth check."
+}
+if (-not ([string] $stringCountPassedEnterpriseAuthCheck[0].detail).Contains("failCount=0(valid=False)")) {
+    throw "Enterprise auth string count readiness detail must name invalid count value."
 }
 
 $handoffFixtureDirectory = Resolve-ProjectPath ".\.osmu-run\operations-readiness-handoff-package-self-test"
