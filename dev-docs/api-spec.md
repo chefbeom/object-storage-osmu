@@ -4975,7 +4975,7 @@ Admin dashboard readiness snapshot. `ADMIN` required.
 
 `operationsHandoffPackage.commercialIntegrationSnapshot` and `operationsHandoffPackage.commercialApprovalSnapshot` include reduced commercial handoff summaries plus explicit review confirmation flags, without raw provider responses, customer payment data, raw price tables, contract text, or license keys.
 
-`operationsHandoffPackage.operationsConvergenceSnapshot` includes reduced convergence gate fields: readiness/finalizer results, finalizer failed/gap counts, Kubernetes report sync result/failed count/readiness, and sync `sourceReportResult`. This lets the dashboard distinguish a truly ready handoff snapshot from a stale or tampered snapshot that only reports `result=ready`.
+`operationsHandoffPackage.operationsConvergenceSnapshot` includes reduced convergence gate fields: readiness/finalizer results, finalizer failed/gap counts, typed count validity/raw markers, Kubernetes report sync result/failed count/readiness, typed sync readiness/count validity/raw markers, and sync `sourceReportResult`. This lets the dashboard distinguish a truly ready handoff snapshot from a stale or tampered snapshot that only reports `result=ready`.
 
 The backend also reads `.osmu-run/latest-monitoring-threshold-evidence.json` as `monitoringThresholdEvidence` when present.
 
@@ -5505,9 +5505,17 @@ Response:
         "finalizerResult": "ready",
         "finalizerReadinessResult": "ready",
         "finalizerFailedCount": 0,
+        "finalizerFailedCountValid": true,
+        "finalizerFailedCountRaw": "0",
+        "finalizerGapCountValid": true,
+        "finalizerGapCountRaw": "0",
         "kubernetesReportSyncReady": true,
+        "kubernetesReportSyncReadyValid": true,
+        "kubernetesReportSyncReadyRaw": "True",
         "kubernetesReportSyncResult": "applied",
         "kubernetesReportSyncFailedCount": 0,
+        "kubernetesReportSyncFailedCountValid": true,
+        "kubernetesReportSyncFailedCountRaw": "0",
         "kubernetesReportSyncSourceReportResult": "ready",
         "stageCount": 6,
         "readyStageCount": 6,
@@ -6142,9 +6150,13 @@ Response:
       "finalizerResult": "pending",
       "finalizerReadinessResult": "pending",
       "finalizerFailedCount": 0,
+      "finalizerFailedCountValid": false,
+      "finalizerFailedCountRaw": "0",
       "kubernetesReportSyncExists": true,
       "kubernetesReportSyncResult": "planned",
       "kubernetesReportSyncFailedCount": 0,
+      "kubernetesReportSyncFailedCountValid": false,
+      "kubernetesReportSyncFailedCountRaw": "0",
       "kubernetesReportSyncConfigMapName": "osmu-operations-reports",
       "kubernetesReportSyncConfigMapKey": "latest-operations-readiness-convergence.json",
       "kubernetesReportSyncSourceReportResult": "action-required",

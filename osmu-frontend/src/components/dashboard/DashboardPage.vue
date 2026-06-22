@@ -1214,6 +1214,12 @@
           source {{ operationsHandoffPackageConvergenceSnapshot.kubernetesReportSyncSourceReportResult || 'unknown' }} /
           finalizer failed {{ operationsHandoffPackageConvergenceSnapshot.finalizerFailedCount || 0 }} /
           finalizer gaps {{ operationsHandoffPackageConvergenceSnapshot.finalizerGapCount || 0 }}
+          <template v-if="operationsHandoffPackageConvergenceSnapshot.finalizerFailedCountValid === false">
+            / finalizer count invalid {{ operationsHandoffPackageConvergenceSnapshot.finalizerFailedCountRaw || 'missing' }}
+          </template>
+          <template v-if="operationsHandoffPackageConvergenceSnapshot.kubernetesReportSyncFailedCountValid === false">
+            / sync count invalid {{ operationsHandoffPackageConvergenceSnapshot.kubernetesReportSyncFailedCountRaw || 'missing' }}
+          </template>
         </small>
         <small
           v-if="operationsHandoffPackageDataFlowStoragePlanSnapshot.result"
@@ -1371,11 +1377,17 @@
           finalizer {{ operationsReadinessConvergence.finalizerResult || 'unknown' }} /
           k8s sync {{ operationsReadinessConvergence.kubernetesReportSyncResult || 'unknown' }} /
           {{ operationsReadinessConvergence.readyStageCount }} of {{ operationsReadinessConvergence.stageCount }} stages ready
+          <template v-if="operationsReadinessConvergence.finalizerFailedCountValid === false">
+            / finalizer count invalid {{ operationsReadinessConvergence.finalizerFailedCountRaw || 'missing' }}
+          </template>
         </small>
         <small v-if="operationsReadinessConvergence.kubernetesReportSyncConfigMapName">
           report sync {{ operationsReadinessConvergence.kubernetesReportSyncConfigMapName }} /
           {{ operationsReadinessConvergence.kubernetesReportSyncReady ? 'sync ready' : 'sync not-ready' }} /
           source {{ operationsReadinessConvergence.kubernetesReportSyncSourceReportResult || 'unknown' }}
+          <template v-if="operationsReadinessConvergence.kubernetesReportSyncFailedCountValid === false">
+            / sync count invalid {{ operationsReadinessConvergence.kubernetesReportSyncFailedCountRaw || 'missing' }}
+          </template>
         </small>
         <small v-if="operationsReadinessConvergenceBottleneck.reason">
           {{ operationsReadinessConvergenceBottleneck.reason }}

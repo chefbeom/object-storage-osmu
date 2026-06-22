@@ -1125,9 +1125,17 @@ class AdminDashboardSummaryControllerTest {
                               "finalizerResult": "ready",
                               "finalizerReadinessResult": "ready",
                               "finalizerFailedCount": 0,
+                              "finalizerFailedCountValid": true,
+                              "finalizerFailedCountRaw": "0",
+                              "finalizerGapCountValid": true,
+                              "finalizerGapCountRaw": "0",
                               "kubernetesReportSyncReady": true,
+                              "kubernetesReportSyncReadyValid": true,
+                              "kubernetesReportSyncReadyRaw": "True",
                               "kubernetesReportSyncResult": "applied",
                               "kubernetesReportSyncFailedCount": 0,
+                              "kubernetesReportSyncFailedCountValid": true,
+                              "kubernetesReportSyncFailedCountRaw": "0",
                               "kubernetesReportSyncSourceReportResult": "ready",
                               "stageCount": 6,
                               "readyStageCount": 6,
@@ -1960,10 +1968,14 @@ class AdminDashboardSummaryControllerTest {
                           "finalizerResult": "pending",
                           "finalizerReadinessResult": "pending",
                           "finalizerFailedCount": 0,
+                          "finalizerFailedCountValid": false,
+                          "finalizerFailedCountRaw": "0",
                           "kubernetesOperationsReportSyncReportPath": ".osmu-run/latest-kubernetes-operations-report-sync.json",
                           "kubernetesReportSyncExists": true,
                           "kubernetesReportSyncResult": "planned",
                           "kubernetesReportSyncFailedCount": 0,
+                          "kubernetesReportSyncFailedCountValid": false,
+                          "kubernetesReportSyncFailedCountRaw": "0",
                           "kubernetesReportSyncConfigMapName": "osmu-operations-reports",
                           "kubernetesReportSyncConfigMapKey": "latest-operations-readiness-convergence.json",
                           "kubernetesReportSyncSourceReportResult": "action-required",
@@ -2222,6 +2234,14 @@ class AdminDashboardSummaryControllerTest {
                 .andExpect(jsonPath("$.data.operationsHandoffPackage.operationsConvergenceSnapshot.finalizerResult").value("ready"))
                 .andExpect(jsonPath("$.data.operationsHandoffPackage.operationsConvergenceSnapshot.finalizerReadinessResult").value("ready"))
                 .andExpect(jsonPath("$.data.operationsHandoffPackage.operationsConvergenceSnapshot.finalizerFailedCount").value(0))
+                .andExpect(jsonPath("$.data.operationsHandoffPackage.operationsConvergenceSnapshot.finalizerFailedCountValid").value(true))
+                .andExpect(jsonPath("$.data.operationsHandoffPackage.operationsConvergenceSnapshot.finalizerFailedCountRaw").value("0"))
+                .andExpect(jsonPath("$.data.operationsHandoffPackage.operationsConvergenceSnapshot.finalizerGapCountValid").value(true))
+                .andExpect(jsonPath("$.data.operationsHandoffPackage.operationsConvergenceSnapshot.finalizerGapCountRaw").value("0"))
+                .andExpect(jsonPath("$.data.operationsHandoffPackage.operationsConvergenceSnapshot.kubernetesReportSyncReadyValid").value(true))
+                .andExpect(jsonPath("$.data.operationsHandoffPackage.operationsConvergenceSnapshot.kubernetesReportSyncReadyRaw").value("True"))
+                .andExpect(jsonPath("$.data.operationsHandoffPackage.operationsConvergenceSnapshot.kubernetesReportSyncFailedCountValid").value(true))
+                .andExpect(jsonPath("$.data.operationsHandoffPackage.operationsConvergenceSnapshot.kubernetesReportSyncFailedCountRaw").value("0"))
                 .andExpect(jsonPath("$.data.operationsHandoffPackage.operationsConvergenceSnapshot.finalizerGapCount").value(0))
                 .andExpect(jsonPath("$.data.operationsHandoffPackage.operationsConvergenceSnapshot.stageCount").value(6))
                 .andExpect(jsonPath("$.data.operationsHandoffPackage.dataFlowStoragePlanSnapshot.result").value("passed"))
@@ -2449,6 +2469,10 @@ class AdminDashboardSummaryControllerTest {
                 .andExpect(jsonPath("$.data.operationsReadinessConvergence.kubernetesReportSyncExists").value(true))
                 .andExpect(jsonPath("$.data.operationsReadinessConvergence.kubernetesReportSyncResult").value("planned"))
                 .andExpect(jsonPath("$.data.operationsReadinessConvergence.kubernetesReportSyncFailedCount").value(0))
+                .andExpect(jsonPath("$.data.operationsReadinessConvergence.finalizerFailedCountValid").value(false))
+                .andExpect(jsonPath("$.data.operationsReadinessConvergence.finalizerFailedCountRaw").value("0"))
+                .andExpect(jsonPath("$.data.operationsReadinessConvergence.kubernetesReportSyncFailedCountValid").value(false))
+                .andExpect(jsonPath("$.data.operationsReadinessConvergence.kubernetesReportSyncFailedCountRaw").value("0"))
                 .andExpect(jsonPath("$.data.operationsReadinessConvergence.kubernetesReportSyncConfigMapName").value("osmu-operations-reports"))
                 .andExpect(jsonPath("$.data.operationsReadinessConvergence.kubernetesReportSyncWorkflowCommand").value("gh workflow run kubernetes-operations-report-sync-ci.yml -f namespace=osmu -f report_path=./.osmu-run/latest-operations-readiness-convergence.json -f run_live=true -f apply=false -f data_flow_storage_plan_json_base64=<base64-latest-data-flow-storage-plan-json>"))
                 .andExpect(jsonPath("$.data.operationsReadinessConvergence.kubernetesReportSyncWorkflowNote").value(containsString("omit the input")))

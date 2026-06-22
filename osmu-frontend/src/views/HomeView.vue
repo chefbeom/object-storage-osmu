@@ -5988,10 +5988,18 @@ function normalizeOperationsReadinessConvergence(report = {}) {
     finalizerResult: report?.finalizerResult || '',
     finalizerReadinessResult: report?.finalizerReadinessResult || '',
     finalizerFailedCount: Number(report?.finalizerFailedCount || 0),
+    finalizerFailedCountValid: typeof report?.finalizerFailedCountValid === 'boolean'
+      ? report.finalizerFailedCountValid
+      : null,
+    finalizerFailedCountRaw: report?.finalizerFailedCountRaw || '',
     kubernetesOperationsReportSyncReportPath: report?.kubernetesOperationsReportSyncReportPath || '',
     kubernetesReportSyncExists: Boolean(report?.kubernetesReportSyncExists),
     kubernetesReportSyncResult: report?.kubernetesReportSyncResult || '',
     kubernetesReportSyncFailedCount: Number(report?.kubernetesReportSyncFailedCount || 0),
+    kubernetesReportSyncFailedCountValid: typeof report?.kubernetesReportSyncFailedCountValid === 'boolean'
+      ? report.kubernetesReportSyncFailedCountValid
+      : null,
+    kubernetesReportSyncFailedCountRaw: report?.kubernetesReportSyncFailedCountRaw || '',
     kubernetesReportSyncConfigMapName: report?.kubernetesReportSyncConfigMapName || '',
     kubernetesReportSyncConfigMapKey: report?.kubernetesReportSyncConfigMapKey || '',
     kubernetesReportSyncSourceReportResult: report?.kubernetesReportSyncSourceReportResult || '',
