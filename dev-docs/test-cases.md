@@ -499,8 +499,8 @@
 - Feature: Backend-backed lightweight Browser E2E prototype.
 - Preconditions: PowerShell, Node/npm, Playwright CLI, and JDK 17+ are available.
 - Input: `powershell -ExecutionPolicy Bypass -File .\scripts\verify-browser-e2e-prototype.ps1 -JavaHome <jdk17>`.
-- Steps: Start the Spring Boot in-memory backend and Vite frontend, run `verify-lightweight-prototype.ps1` against the backend API, run Playwright Browser E2E against the frontend, and stop the started processes.
-- Expected: Backend health and system health are `UP`, API smoke passes through auth, bucket, object, quota, permission, lifecycle, dashboard layout, and audit paths, Browser E2E passes the stale session redirect, developer console, and admin storage portal click path, and the verifier stops the prototype ports after completion. This test proves the Java in-memory prototype path and does not replace Docker/MariaDB/MinIO or real S3 client gates.
+- Steps: Start the Spring Boot in-memory backend and Vite frontend, seed an operations convergence fixture with finalizer failed/gap counts and Kubernetes report sync source-result readiness, run `verify-lightweight-prototype.ps1` against the backend API, run Playwright Browser E2E against the frontend, and stop the started processes.
+- Expected: Backend health and system health are `UP`, API smoke passes through auth, bucket, object, quota, permission, lifecycle, dashboard layout, and audit paths, Browser E2E passes the stale session redirect, developer console, operations convergence/source-sync readiness summary, and admin storage portal click path, and the verifier stops the prototype ports after completion. This test proves the Java in-memory prototype path and does not replace Docker/MariaDB/MinIO or real S3 client gates.
 - Priority: P1
 - Automated: `scripts/verify-browser-e2e-prototype.ps1`
 
@@ -509,8 +509,8 @@
 - Feature: Docker-backed full local demo Browser E2E.
 - Preconditions: Docker Desktop, PowerShell, Node/npm, and Playwright CLI are available; local ports for Backend, Frontend, MariaDB, and MinIO are free.
 - Input: `powershell -ExecutionPolicy Bypass -File .\scripts\verify-browser-e2e-local-demo.ps1`.
-- Steps: Start the Docker Compose stack, seed demo data, verify REST portal smoke, verify seeded S3 access-key smoke unless skipped, run Playwright Browser E2E against the Docker frontend, and stop the Docker stack unless `-KeepRunning` is set.
-- Expected: MariaDB, MinIO, Backend, and Frontend become healthy; demo organization/users/buckets/objects/lifecycle/access key are created and verified; S3 SigV4 seeded access-key read/write/permission-boundary smoke passes; Browser E2E passes stale session redirect, developer console, operations readiness convergence dashboard visibility through the backend `.osmu-run` report mount, and admin storage portal click path against the Docker-served frontend.
+- Steps: Start the Docker Compose stack, seed demo data, seed an operations convergence fixture with finalizer failed/gap counts and Kubernetes report sync source-result readiness, verify REST portal smoke, verify seeded S3 access-key smoke unless skipped, run Playwright Browser E2E against the Docker frontend, and stop the Docker stack unless `-KeepRunning` is set.
+- Expected: MariaDB, MinIO, Backend, and Frontend become healthy; demo organization/users/buckets/objects/lifecycle/access key are created and verified; S3 SigV4 seeded access-key read/write/permission-boundary smoke passes; Browser E2E passes stale session redirect, developer console, operations readiness convergence/source-sync dashboard visibility through the backend `.osmu-run` report mount, and admin storage portal click path against the Docker-served frontend.
 - Priority: P0
 - Automated: `scripts/verify-browser-e2e-local-demo.ps1`, `scripts/verify-mvp-demo-readiness.ps1` when Docker daemon is available.
 

@@ -144,6 +144,16 @@ function Write-OperationsConvergenceFixture([string] $Path) {
         finalizerResult = "pending"
         finalizerReadinessResult = "pending"
         finalizerFailedCount = 0
+        kubernetesOperationsReportSyncReportPath = ".osmu-run/latest-kubernetes-operations-report-sync.json"
+        kubernetesReportSyncExists = $true
+        kubernetesReportSyncResult = "applied"
+        kubernetesReportSyncFailedCount = 0
+        kubernetesReportSyncConfigMapName = "osmu-operations-reports"
+        kubernetesReportSyncConfigMapKey = "latest-operations-readiness-convergence.json"
+        kubernetesReportSyncSourceReportResult = "action-required"
+        kubernetesReportSyncWorkflowCommand = "gh workflow run kubernetes-operations-report-sync-ci.yml -f namespace=osmu -f report_path=./.osmu-run/latest-operations-readiness-convergence.json -f run_live=true -f apply=false"
+        kubernetesReportSyncWorkflowNote = "For GitHub Actions sync, include data_flow_storage_plan_json_base64 only when .osmu-run/latest-data-flow-storage-plan.json should be carried into the operations report ConfigMap; MariaDB partition or dual-write plans must include the sanitized query-plan evidence summary."
+        kubernetesReportSyncReady = $false
         finalizerGapCount = 1
         stageCount = 7
         readyStageCount = 1
@@ -165,7 +175,7 @@ function Write-OperationsConvergenceFixture([string] $Path) {
                 reason = "The invocation report still has blocked actions."
             }
         )
-        decisionRule = "Operations readiness convergence is ready only when the handoff result is ready/none, the readiness report is ready, the operations readiness finalizer report exists with result=ready and readinessResult=ready, and the Kubernetes operations report sync evidence confirms result=applied with zero failed checks."
+        decisionRule = "Operations readiness convergence is ready only when the handoff result is ready/none, the readiness report is ready, the operations readiness finalizer report exists with result=ready, readinessResult=ready, failedCount=0, and no gaps, and the Kubernetes operations report sync evidence confirms result=applied, failedCount=0, and sourceReportResult=ready."
         safetyPolicy = "This convergence writer does not execute kubectl, gh, workflow dispatch, finalizer, or ConfigMap sync commands; it only reads local reports and writes JSON/Markdown guidance."
     }
 
