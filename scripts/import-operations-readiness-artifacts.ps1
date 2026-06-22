@@ -460,13 +460,42 @@ function Test-MonitoringThresholdEvidenceJson([string] $Path) {
     }
 
     $summary = Get-JsonProperty $json "thresholdTargetSummary"
-    $requiredAlertCount = [int] (Get-JsonProperty $summary "requiredAlertCount")
-    $mappedAlertCount = [int] (Get-JsonProperty $summary "mappedAlertCount")
+    $reportSummary = Get-JsonProperty $json "summary"
+    $requiredAlertCountResult = Get-RequiredJsonInt $summary "requiredAlertCount"
+    $mappedAlertCountResult = Get-RequiredJsonInt $summary "mappedAlertCount"
+    $routeCountResult = Get-RequiredJsonInt $summary "routeCount"
+    $grafanaPanelCountResult = Get-RequiredJsonInt $summary "grafanaPanelCount"
+    $tuningEvidenceCountResult = Get-RequiredJsonInt $summary "tuningEvidenceCount"
+    $failureCountResult = Get-RequiredJsonInt $reportSummary "failureCount"
+    foreach ($countResult in @(
+        @{ name = "requiredAlertCount"; value = $requiredAlertCountResult },
+        @{ name = "mappedAlertCount"; value = $mappedAlertCountResult },
+        @{ name = "routeCount"; value = $routeCountResult },
+        @{ name = "grafanaPanelCount"; value = $grafanaPanelCountResult },
+        @{ name = "tuningEvidenceCount"; value = $tuningEvidenceCountResult },
+        @{ name = "failureCount"; value = $failureCountResult }
+    )) {
+        $name = [string] $countResult["name"]
+        $value = $countResult["value"]
+        if (-not $value.valid) {
+            return [pscustomobject]@{
+                passed = $false
+                detail = "$name=$($value.raw)(valid=False) expected integer"
+            }
+        }
+    }
+
+    $requiredAlertCount = [int64] $requiredAlertCountResult.value
+    $mappedAlertCount = [int64] $mappedAlertCountResult.value
+    $routeCount = [int64] $routeCountResult.value
+    $grafanaPanelCount = [int64] $grafanaPanelCountResult.value
+    $tuningEvidenceCount = [int64] $tuningEvidenceCountResult.value
+    $failureCount = [int64] $failureCountResult.value
     $missingAlerts = @(Get-JsonProperty $summary "missingAlerts")
-    if ($requiredAlertCount -le 0 -or $mappedAlertCount -lt $requiredAlertCount -or $missingAlerts.Count -gt 0) {
+    if ($requiredAlertCount -le 0 -or $mappedAlertCount -lt $requiredAlertCount -or $routeCount -le 0 -or $grafanaPanelCount -lt $requiredAlertCount -or $tuningEvidenceCount -lt $requiredAlertCount -or $missingAlerts.Count -gt 0 -or $failureCount -ne 0) {
         return [pscustomobject]@{
             passed = $false
-            detail = "threshold target mapping incomplete required=$requiredAlertCount mapped=$mappedAlertCount missing=$($missingAlerts -join ',')"
+            detail = "threshold target mapping incomplete required=$requiredAlertCount mapped=$mappedAlertCount routes=$routeCount grafanaPanels=$grafanaPanelCount tuningEvidence=$tuningEvidenceCount failures=$failureCount missing=$($missingAlerts -join ',')"
         }
     }
 
@@ -483,7 +512,7 @@ function Test-MonitoringThresholdEvidenceJson([string] $Path) {
 
     return [pscustomobject]@{
         passed = $true
-        detail = "formatVersion=$formatVersion result=$result requiredAlerts=$requiredAlertCount mappedAlerts=$mappedAlertCount"
+        detail = "formatVersion=$formatVersion result=$result requiredAlerts=$requiredAlertCount mappedAlerts=$mappedAlertCount routes=$routeCount grafanaPanels=$grafanaPanelCount tuningEvidence=$tuningEvidenceCount failures=$failureCount"
     }
 }
 

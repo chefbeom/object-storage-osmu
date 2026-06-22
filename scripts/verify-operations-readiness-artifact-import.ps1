@@ -79,6 +79,8 @@ $unsafeDataFlowRoot = Join-Path $resolvedOutputDirectory "unsafe-data-flow-sourc
 $unsafeDataFlowRunbookRoot = Join-Path $resolvedOutputDirectory "unsafe-data-flow-runbook-source"
 $unsafeMonitoringThresholdRoot = Join-Path $resolvedOutputDirectory "unsafe-monitoring-threshold-source"
 $stringBoolMonitoringThresholdRoot = Join-Path $resolvedOutputDirectory "string-bool-monitoring-threshold-source"
+$stringCountMonitoringThresholdRoot = Join-Path $resolvedOutputDirectory "string-count-monitoring-threshold-source"
+$missingCountMonitoringThresholdRoot = Join-Path $resolvedOutputDirectory "missing-count-monitoring-threshold-source"
 $invalidEnterpriseAuthRoot = Join-Path $resolvedOutputDirectory "invalid-enterprise-auth-source"
 $staleOperationsHandoffPackageRoot = Join-Path $resolvedOutputDirectory "stale-operations-handoff-package-source"
 $badConvergenceOperationsHandoffPackageRoot = Join-Path $resolvedOutputDirectory "bad-convergence-operations-handoff-package-source"
@@ -165,6 +167,10 @@ Write-JsonEvidence (Join-Path $monitoringThresholdSource "latest-monitoring-thre
         targetBaselinesReviewed = $true
         incidentRoutingReviewed = $true
         noSecretValues = $true
+    }
+    summary = @{
+        failureCount = 0
+        checkCount = 24
     }
 }
 Write-TextEvidence (Join-Path $monitoringThresholdSource "latest-monitoring-threshold-evidence.md") "# Monitoring threshold"
@@ -547,9 +553,14 @@ Write-JsonEvidence (Join-Path $stringBoolMonitoringThresholdRoot "latest-monitor
         requiredAlertCount = 11
         mappedAlertCount = 11
         missingAlerts = @()
+        routeCount = 3
+        routes = @("osmu-backend", "osmu-data-flow", "osmu-backup")
+        grafanaPanelCount = 11
+        tuningEvidenceCount = 11
     }
     summary = @{
         failureCount = 0
+        checkCount = 24
     }
     confirmations = @{
         prometheusRulesLoaded = "false"
@@ -582,6 +593,103 @@ $stringBoolMonitoringThresholdReport = Get-Content -Raw -LiteralPath $stringBool
 Assert-True ($stringBoolMonitoringThresholdReport.result -eq "failed") "String-bool monitoring threshold import report should be failed."
 Assert-True (-not (Test-Path -LiteralPath (Join-Path $stringBoolMonitoringThresholdOutput "latest-monitoring-threshold-evidence.json"))) "String-bool monitoring threshold evidence must not be promoted."
 Assert-True (($stringBoolMonitoringThresholdReport.entries | ConvertTo-Json -Depth 8).Contains("confirmation prometheusRulesLoaded=false expected boolean true")) "String-bool monitoring threshold report should describe invalid confirmation."
+
+Write-JsonEvidence (Join-Path $stringCountMonitoringThresholdRoot "latest-monitoring-threshold-evidence.json") @{
+    formatVersion = "osmu.monitoring-threshold-evidence.v1"
+    result = "passed"
+    thresholdTargetSummary = @{
+        requiredAlertCount = "11"
+        mappedAlertCount = 11
+        missingAlerts = @()
+        routeCount = 3
+        routes = @("osmu-backend", "osmu-data-flow", "osmu-backup")
+        grafanaPanelCount = 11
+        tuningEvidenceCount = 11
+    }
+    summary = @{
+        failureCount = 0
+        checkCount = 24
+    }
+    confirmations = @{
+        prometheusRulesLoaded = $true
+        grafanaDashboardImported = $true
+        alertmanagerRoutesReviewed = $true
+        targetBaselinesReviewed = $true
+        incidentRoutingReviewed = $true
+        noSecretValues = $true
+    }
+}
+$stringCountMonitoringThresholdOutput = Join-Path $resolvedOutputDirectory "string-count-monitoring-threshold-promoted"
+$stringCountMonitoringThresholdJson = Join-Path $resolvedOutputDirectory "string-count-monitoring-threshold-import.json"
+$stringCountMonitoringThresholdMarkdown = Join-Path $resolvedOutputDirectory "string-count-monitoring-threshold-import.md"
+$previousErrorActionPreference = $ErrorActionPreference
+$ErrorActionPreference = "Continue"
+try {
+    $stringCountMonitoringThresholdOutputLines = & powershell -NoProfile -ExecutionPolicy Bypass -File $importScript `
+        -MonitoringThresholdArtifactPath $stringCountMonitoringThresholdRoot `
+        -OutputDirectory $stringCountMonitoringThresholdOutput `
+        -JsonOutputPath $stringCountMonitoringThresholdJson `
+        -MarkdownOutputPath $stringCountMonitoringThresholdMarkdown 2>&1
+    $stringCountMonitoringThresholdExitCode = $LASTEXITCODE
+}
+finally {
+    $ErrorActionPreference = $previousErrorActionPreference
+}
+Assert-True ($stringCountMonitoringThresholdExitCode -ne 0) "Monitoring threshold evidence with string count should fail import."
+Assert-True (Test-Path -LiteralPath $stringCountMonitoringThresholdJson) "String-count monitoring threshold import report should still be written."
+$stringCountMonitoringThresholdReport = Get-Content -Raw -LiteralPath $stringCountMonitoringThresholdJson | ConvertFrom-Json
+Assert-True ($stringCountMonitoringThresholdReport.result -eq "failed") "String-count monitoring threshold import report should be failed."
+Assert-True (-not (Test-Path -LiteralPath (Join-Path $stringCountMonitoringThresholdOutput "latest-monitoring-threshold-evidence.json"))) "String-count monitoring threshold evidence must not be promoted."
+Assert-True (($stringCountMonitoringThresholdReport.entries | ConvertTo-Json -Depth 8).Contains("requiredAlertCount=11(valid=False) expected integer")) "String-count monitoring threshold report should describe invalid typed count."
+
+Write-JsonEvidence (Join-Path $missingCountMonitoringThresholdRoot "latest-monitoring-threshold-evidence.json") @{
+    formatVersion = "osmu.monitoring-threshold-evidence.v1"
+    result = "passed"
+    thresholdTargetSummary = @{
+        requiredAlertCount = 11
+        mappedAlertCount = 11
+        missingAlerts = @()
+        routeCount = 3
+        routes = @("osmu-backend", "osmu-data-flow", "osmu-backup")
+        grafanaPanelCount = 11
+    }
+    summary = @{
+        failureCount = 0
+        checkCount = 24
+    }
+    confirmations = @{
+        prometheusRulesLoaded = $true
+        grafanaDashboardImported = $true
+        alertmanagerRoutesReviewed = $true
+        targetBaselinesReviewed = $true
+        incidentRoutingReviewed = $true
+        noSecretValues = $true
+    }
+}
+$missingCountMonitoringThresholdOutput = Join-Path $resolvedOutputDirectory "missing-count-monitoring-threshold-promoted"
+$missingCountMonitoringThresholdJson = Join-Path $resolvedOutputDirectory "missing-count-monitoring-threshold-import.json"
+$missingCountMonitoringThresholdMarkdown = Join-Path $resolvedOutputDirectory "missing-count-monitoring-threshold-import.md"
+$previousErrorActionPreference = $ErrorActionPreference
+$ErrorActionPreference = "Continue"
+try {
+    $missingCountMonitoringThresholdOutputLines = & powershell -NoProfile -ExecutionPolicy Bypass -File $importScript `
+        -MonitoringThresholdArtifactPath $missingCountMonitoringThresholdRoot `
+        -OutputDirectory $missingCountMonitoringThresholdOutput `
+        -JsonOutputPath $missingCountMonitoringThresholdJson `
+        -MarkdownOutputPath $missingCountMonitoringThresholdMarkdown 2>&1
+    $missingCountMonitoringThresholdExitCode = $LASTEXITCODE
+}
+finally {
+    $ErrorActionPreference = $previousErrorActionPreference
+}
+Assert-True ($missingCountMonitoringThresholdExitCode -ne 0) "Monitoring threshold evidence with missing count should fail import."
+Assert-True (Test-Path -LiteralPath $missingCountMonitoringThresholdJson) "Missing-count monitoring threshold import report should still be written."
+$missingCountMonitoringThresholdReport = Get-Content -Raw -LiteralPath $missingCountMonitoringThresholdJson | ConvertFrom-Json
+Assert-True ($missingCountMonitoringThresholdReport.result -eq "failed") "Missing-count monitoring threshold import report should be failed."
+Assert-True (-not (Test-Path -LiteralPath (Join-Path $missingCountMonitoringThresholdOutput "latest-monitoring-threshold-evidence.json"))) "Missing-count monitoring threshold evidence must not be promoted."
+$missingCountMonitoringThresholdEntry = @($missingCountMonitoringThresholdReport.entries | Where-Object { $_.group -eq "monitoring-threshold" -and $_.fileName -eq "latest-monitoring-threshold-evidence.json" })
+Assert-True ($missingCountMonitoringThresholdEntry.Count -eq 1) "Missing-count monitoring threshold failed entry missing."
+Assert-True (([string] $missingCountMonitoringThresholdEntry[0].detail).Contains("tuningEvidenceCount=<missing>(valid=False) expected integer")) "Missing-count monitoring threshold report should describe missing typed count."
 
 Write-JsonEvidence (Join-Path $invalidEnterpriseAuthRoot "latest-enterprise-auth-smoke.json") @{
     formatVersion = "osmu.enterprise-auth-smoke.v1"
