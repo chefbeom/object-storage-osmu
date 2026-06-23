@@ -17,11 +17,12 @@ public record DashboardOperationsArtifactCollectionPlanResponse(
         String operationsArtifactFinalizerCommand,
         String dataFlowStoragePlanInputNote,
         String dataFlowStorageTransitionRunbookInputNote,
+        String minioBucketCorsInputNote,
         String localImportCommand,
         String decisionRule,
         List<DashboardOperationsArtifactCollectionArtifactResponse> artifacts
 ) {
     public static DashboardOperationsArtifactCollectionPlanResponse empty() {
-        return new DashboardOperationsArtifactCollectionPlanResponse("", "", "", "", 0, 0, 0, 0, "", "", "", "", "", "", List.of());
+        return new DashboardOperationsArtifactCollectionPlanResponse("", "", "", "", 0, 0, 0, 0, "", "", "", "", "", "", "", List.of());
     }
 }

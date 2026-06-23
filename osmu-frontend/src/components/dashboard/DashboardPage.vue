@@ -2149,6 +2149,22 @@
         >
           Copy runbook note
         </button>
+        <small
+          v-if="operationsArtifactCollectionPlan.minioBucketCorsInputNote"
+          data-testid="readiness-artifact-minio-cors-note"
+        >
+          {{ operationsArtifactCollectionPlan.minioBucketCorsInputNote }}
+        </small>
+        <button
+          v-if="operationsArtifactCollectionPlan.minioBucketCorsInputNote"
+          data-testid="readiness-artifact-minio-cors-note-copy-button"
+          type="button"
+          class="ghost"
+          title="Copy optional MinIO bucket CORS input note"
+          @click="copyReadinessRemediationCommand(operationsArtifactCollectionPlan.minioBucketCorsInputNote)"
+        >
+          Copy CORS note
+        </button>
       </div>
       <ol
         v-if="operationsArtifactCollectionArtifacts.length > 0"
@@ -2156,7 +2172,7 @@
         data-testid="readiness-artifact-collection-actions"
       >
         <li
-          v-for="artifact in operationsArtifactCollectionArtifacts.slice(0, 3)"
+          v-for="artifact in operationsArtifactCollectionArtifacts"
           :key="`${artifact.group}-${artifact.workflow}`"
         >
           <span>
@@ -4110,7 +4126,8 @@ function formatWorkflowRunIdMeta(workflow) {
 }
 
 function formatArtifactCollectionMeta(artifact) {
-  const required = artifact?.requiredForReadiness ? 'required' : 'source'
+  const group = artifact?.group || ''
+  const required = artifact?.requiredForReadiness ? 'required' : (group.endsWith('-source') ? 'source' : 'optional')
   const runId = artifact?.runId ? `run ${artifact.runId}` : 'run id missing'
   const workflow = artifact?.workflow || 'workflow unknown'
   return `${workflow} / ${required} / ${runId}`

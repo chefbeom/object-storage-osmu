@@ -4995,6 +4995,8 @@ The response combines runtime, backup, quota, sharing, and operations-readiness 
 
 `operationsArtifactCollectionPlan.dataFlowStorageTransitionRunbookInputNote` carries the optional direct `data_flow_storage_transition_runbook_json_base64` handoff for artifact finalizer runs, parallel to `dataFlowStoragePlanInputNote`, so operators can promote sanitized transition rehearsal evidence without waiting for a manual workflow artifact.
 
+`operationsArtifactCollectionPlan.minioBucketCorsInputNote` carries the optional `minio_bucket_cors_*` artifact-finalizer handoff for dashboard browser multipart upload CORS visibility only. It is not a readiness gate and is not AWS S3 parity work.
+
 Response:
 
 ```json
@@ -5369,6 +5371,7 @@ Response:
       "operationsArtifactFinalizerCommand": "gh workflow run operations-readiness-artifact-finalizer-ci.yml -f storage_expansion_run_id=<storage-expansion-run-id> -f kubernetes_operations_report_sync_run_id=<kubernetes-operations-report-sync-run-id>",
       "dataFlowStoragePlanInputNote": "Optional direct data-flow plan input: add -f data_flow_storage_plan_json_base64=<base64-latest-data-flow-storage-plan-json> to operations-readiness-artifact-finalizer-ci.yml when target data-flow storage transition evidence should be imported without waiting for a Kubernetes operations report sync artifact. MariaDB partition or dual-write plans must include the sanitized query-plan evidence summary.",
       "dataFlowStorageTransitionRunbookInputNote": "Optional direct data-flow transition runbook input: add -f data_flow_storage_transition_runbook_json_base64=<base64-latest-data-flow-storage-transition-runbook-json> to operations-readiness-artifact-finalizer-ci.yml when target transition rehearsal evidence should be imported without waiting for a manual workflow artifact. The snapshot must be sanitized and result=passed.",
+      "minioBucketCorsInputNote": "Optional MinIO bucket CORS input: add -f minio_bucket_cors_run_id=<minio-bucket-cors-run-id> -f minio_bucket_cors_artifact_name=minio-bucket-cors-verification-<minio-bucket-cors-run-id> to operations-readiness-artifact-finalizer-ci.yml to promote browser multipart upload CORS verification for dashboard visibility. This is not a readiness gate or AWS S3 parity work.",
       "localImportCommand": "powershell -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\import-operations-readiness-artifacts.ps1 -StorageExpansionArtifactPath .\\.osmu-run\\operations-readiness-artifacts\\storage-expansion -KubernetesOperationsReportSyncArtifactPath .\\.osmu-run\\operations-readiness-artifacts\\kubernetes-operations-report-sync",
       "artifacts": [
         {
@@ -5387,6 +5390,15 @@ Response:
           "artifactName": "kubernetes-operations-report-sync-<kubernetes-operations-report-sync-run-id>",
           "downloadCommand": "gh run download <kubernetes-operations-report-sync-run-id> -n kubernetes-operations-report-sync-<kubernetes-operations-report-sync-run-id> -D .osmu-run/operations-readiness-artifacts/kubernetes-operations-report-sync",
           "requiredForReadiness": true,
+          "ready": false
+        },
+        {
+          "group": "minio-bucket-cors",
+          "workflow": "manual-minio-bucket-cors-verification.yml",
+          "runId": "<minio-bucket-cors-run-id>",
+          "artifactName": "minio-bucket-cors-verification-<minio-bucket-cors-run-id>",
+          "downloadCommand": "gh run download <minio-bucket-cors-run-id> -n minio-bucket-cors-verification-<minio-bucket-cors-run-id> -D .osmu-run/operations-readiness-artifacts/minio-bucket-cors",
+          "requiredForReadiness": false,
           "ready": false
         }
       ]

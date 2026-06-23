@@ -1947,6 +1947,7 @@ class AdminDashboardSummaryControllerTest {
                           "operationsArtifactFinalizerCommand": "gh workflow run operations-readiness-artifact-finalizer-ci.yml -f storage_expansion_run_id=<storage-expansion-run-id> -f kubernetes_operations_report_sync_run_id=<kubernetes-operations-report-sync-run-id>",
                           "dataFlowStoragePlanInputNote": "Optional direct data-flow plan input: add -f data_flow_storage_plan_json_base64=<base64-latest-data-flow-storage-plan-json> to operations-readiness-artifact-finalizer-ci.yml when target data-flow storage transition evidence should be imported without waiting for a Kubernetes operations report sync artifact. MariaDB partition or dual-write plans must include the sanitized query-plan evidence summary.",
                           "dataFlowStorageTransitionRunbookInputNote": "Optional direct data-flow transition runbook input: add -f data_flow_storage_transition_runbook_json_base64=<base64-latest-data-flow-storage-transition-runbook-json> to operations-readiness-artifact-finalizer-ci.yml when target transition rehearsal evidence should be imported without waiting for a manual workflow artifact. The snapshot must be sanitized and result=passed.",
+                          "minioBucketCorsInputNote": "Optional MinIO bucket CORS input: add -f minio_bucket_cors_run_id=<minio-bucket-cors-run-id> -f minio_bucket_cors_artifact_name=minio-bucket-cors-verification-<minio-bucket-cors-run-id> to operations-readiness-artifact-finalizer-ci.yml to promote browser multipart upload CORS verification for dashboard visibility. This is not a readiness gate or AWS S3 parity work.",
                           "localImportCommand": "powershell -NoProfile -ExecutionPolicy Bypass -File .\\\\scripts\\\\import-operations-readiness-artifacts.ps1 -StorageExpansionArtifactPath .\\\\.osmu-run\\\\operations-readiness-artifacts\\\\storage-expansion -KubernetesOperationsReportSyncArtifactPath .\\\\.osmu-run\\\\operations-readiness-artifacts\\\\kubernetes-operations-report-sync",
                           "decisionRule": "Fill missing run ids before importing artifacts.",
                           "artifacts": [
@@ -1975,6 +1976,19 @@ class AdminDashboardSummaryControllerTest {
                               "requiredForReadiness": true,
                               "ready": false,
                               "note": "Imports latest-kubernetes-operations-report-sync.json for convergence-level deployed dashboard sync evidence."
+                            },
+                            {
+                              "group": "minio-bucket-cors",
+                              "workflow": "manual-minio-bucket-cors-verification.yml",
+                              "runId": "<minio-bucket-cors-run-id>",
+                              "runIdInput": "minio_bucket_cors_run_id",
+                              "artifactName": "minio-bucket-cors-verification-<minio-bucket-cors-run-id>",
+                              "artifactNameInput": "minio_bucket_cors_artifact_name",
+                              "downloadPath": ".osmu-run/operations-readiness-artifacts/minio-bucket-cors",
+                              "downloadCommand": "gh run download <minio-bucket-cors-run-id> -n minio-bucket-cors-verification-<minio-bucket-cors-run-id> -D .osmu-run/operations-readiness-artifacts/minio-bucket-cors",
+                              "requiredForReadiness": false,
+                              "ready": false,
+                              "note": "Imports latest-minio-bucket-cors-verification.json for dashboard browser multipart upload readiness. This is not a readiness gate or AWS S3 parity work."
                             }
                           ]
                         }
@@ -2270,12 +2284,16 @@ class AdminDashboardSummaryControllerTest {
                 .andExpect(jsonPath("$.data.operationsArtifactCollectionPlan.operationsArtifactFinalizerCommand").value("gh workflow run operations-readiness-artifact-finalizer-ci.yml -f storage_expansion_run_id=<storage-expansion-run-id> -f kubernetes_operations_report_sync_run_id=<kubernetes-operations-report-sync-run-id>"))
                 .andExpect(jsonPath("$.data.operationsArtifactCollectionPlan.dataFlowStoragePlanInputNote").value("Optional direct data-flow plan input: add -f data_flow_storage_plan_json_base64=<base64-latest-data-flow-storage-plan-json> to operations-readiness-artifact-finalizer-ci.yml when target data-flow storage transition evidence should be imported without waiting for a Kubernetes operations report sync artifact. MariaDB partition or dual-write plans must include the sanitized query-plan evidence summary."))
                 .andExpect(jsonPath("$.data.operationsArtifactCollectionPlan.dataFlowStorageTransitionRunbookInputNote").value("Optional direct data-flow transition runbook input: add -f data_flow_storage_transition_runbook_json_base64=<base64-latest-data-flow-storage-transition-runbook-json> to operations-readiness-artifact-finalizer-ci.yml when target transition rehearsal evidence should be imported without waiting for a manual workflow artifact. The snapshot must be sanitized and result=passed."))
+                .andExpect(jsonPath("$.data.operationsArtifactCollectionPlan.minioBucketCorsInputNote").value("Optional MinIO bucket CORS input: add -f minio_bucket_cors_run_id=<minio-bucket-cors-run-id> -f minio_bucket_cors_artifact_name=minio-bucket-cors-verification-<minio-bucket-cors-run-id> to operations-readiness-artifact-finalizer-ci.yml to promote browser multipart upload CORS verification for dashboard visibility. This is not a readiness gate or AWS S3 parity work."))
                 .andExpect(jsonPath("$.data.operationsArtifactCollectionPlan.artifacts[0].group").value("storage-expansion"))
                 .andExpect(jsonPath("$.data.operationsArtifactCollectionPlan.artifacts[0].downloadCommand").value("gh run download <storage-expansion-run-id> -n storage-expansion-finalizer-<storage-expansion-run-id> -D .osmu-run/operations-readiness-artifacts/storage-expansion"))
                 .andExpect(jsonPath("$.data.operationsArtifactCollectionPlan.artifacts[0].requiredForReadiness").value(true))
                 .andExpect(jsonPath("$.data.operationsArtifactCollectionPlan.artifacts[0].ready").value(false))
                 .andExpect(jsonPath("$.data.operationsArtifactCollectionPlan.artifacts[1].group").value("kubernetes-operations-report-sync"))
                 .andExpect(jsonPath("$.data.operationsArtifactCollectionPlan.artifacts[1].downloadCommand").value("gh run download <kubernetes-operations-report-sync-run-id> -n kubernetes-operations-report-sync-<kubernetes-operations-report-sync-run-id> -D .osmu-run/operations-readiness-artifacts/kubernetes-operations-report-sync"))
+                .andExpect(jsonPath("$.data.operationsArtifactCollectionPlan.artifacts[2].group").value("minio-bucket-cors"))
+                .andExpect(jsonPath("$.data.operationsArtifactCollectionPlan.artifacts[2].requiredForReadiness").value(false))
+                .andExpect(jsonPath("$.data.operationsArtifactCollectionPlan.artifacts[2].note").value("Imports latest-minio-bucket-cors-verification.json for dashboard browser multipart upload readiness. This is not a readiness gate or AWS S3 parity work."))
                 .andExpect(jsonPath("$.data.operationsReadinessArtifactImport.result").value("failed"))
                 .andExpect(jsonPath("$.data.operationsReadinessArtifactImport.status").value("artifact-import-failed"))
                 .andExpect(jsonPath("$.data.operationsReadinessArtifactImport.selectedGroupCount").value(2))

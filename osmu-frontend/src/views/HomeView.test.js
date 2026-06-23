@@ -185,6 +185,8 @@ test('HomeView exposes stable selectors for browser E2E flows', () => {
     'readiness-artifact-finalizer-command-copy-button',
     'readiness-artifact-local-import-command-copy-button',
     'readiness-artifact-download-command-copy-button',
+    'readiness-artifact-minio-cors-note',
+    'readiness-artifact-minio-cors-note-copy-button',
     'readiness-evidence-handoff-item-summary',
     'readiness-evidence-handoff-summary',
     'readiness-evidence-handoff-command-copy-button',
@@ -991,7 +993,10 @@ test('HomeView exposes stable selectors for browser E2E flows', () => {
   assert.match(dashboardSource, /dashboardReadiness\.operationsArtifactCollectionPlan/)
   assert.match(dashboardSource, /dataFlowStoragePlanInputNote/)
   assert.match(dashboardSource, /dataFlowStorageTransitionRunbookInputNote/)
+  assert.match(dashboardSource, /minioBucketCorsInputNote/)
   assert.match(dashboardSource, /readiness-artifact-data-flow-runbook-note/)
+  assert.match(dashboardSource, /readiness-artifact-minio-cors-note/)
+  assert.doesNotMatch(dashboardSource, /operationsArtifactCollectionArtifacts\.slice\(0, 3\)/)
   assert.match(dashboardSource, /dashboardReadiness\.operationsReadinessArtifactImport/)
   assert.match(dashboardSource, /dashboardReadiness\.operationsReadinessFinalize/)
   assert.match(dashboardSource, /dashboardReadiness\.operationsEvidenceHandoff/)
