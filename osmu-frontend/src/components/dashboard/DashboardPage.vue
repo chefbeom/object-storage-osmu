@@ -2246,7 +2246,7 @@
         data-testid="readiness-artifact-import-entries"
       >
         <li
-          v-for="entry in operationsReadinessArtifactImportEntries.slice(0, 4)"
+          v-for="entry in operationsReadinessArtifactImportEntries"
           :key="`${entry.group}-${entry.fileName}`"
         >
           <span>

@@ -1006,6 +1006,7 @@ test('HomeView exposes stable selectors for browser E2E flows', () => {
   assert.match(dashboardSource, /readiness-artifact-minio-cors-note/)
   assert.doesNotMatch(dashboardSource, /operationsArtifactCollectionArtifacts\.slice\(0, 3\)/)
   assert.match(dashboardSource, /dashboardReadiness\.operationsReadinessArtifactImport/)
+  assert.doesNotMatch(dashboardSource, /operationsReadinessArtifactImportEntries\.slice\(0, 4\)/)
   assert.match(dashboardSource, /dashboardReadiness\.operationsReadinessFinalize/)
   assert.match(dashboardSource, /dashboardReadiness\.operationsEvidenceHandoff/)
   assert.match(dashboardSource, /dashboardReadiness\.operationsHandoffPackage/)
