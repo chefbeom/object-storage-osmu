@@ -71,7 +71,7 @@ $fixture = [ordered]@{
             recommendedCommand = "gh workflow run storage-expansion-finalizer-ci.yml -f run_live=true -f namespace=osmu -f tenant_name=osmu-minio -f impersonate_runner=true"
             operatorInputs = @()
             hasPlaceholders = $false
-            requiresOperatorApproval = $false
+            requiresOperatorApproval = $true
             requiresKubeconfigSecret = $true
             note = "Run live against target cluster."
         },
@@ -131,6 +131,7 @@ Assert-True ($blockedReport.result -eq "blocked") "Expected blocked result witho
 Assert-True ($blockedReport.selectedActionCount -eq 3) "Expected three selected actions."
 Assert-True ($blockedReport.blockedCount -eq 2) "Expected two blocked actions without confirmations."
 Assert-True ($blockedReport.plannedCount -eq 1) "Expected one planned action without confirmations."
+Assert-True (@(@($blockedReport.actions)[0].blockReasons) -contains "operator approval not confirmed") "Storage expansion run_live action should be blocked on operator approval."
 Assert-Contains $blockedMarkdown "kubeconfig secret not confirmed" "blocked invocation markdown"
 Assert-Contains $blockedMarkdown "unresolved placeholders: <YYYYMMDDTHHMMSSZ>" "blocked invocation markdown"
 Assert-Contains $blockedMarkdown "operator approval not confirmed" "blocked invocation markdown"

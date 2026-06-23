@@ -65,18 +65,18 @@ Write-JsonFixture $unblockPlanPath ([ordered]@{
     sourceResult = "blocked"
     sourceSummary = "passed=36 pending=6"
     selectedActionCount = 3
-    plannedCount = 1
-    blockedCount = 2
+    plannedCount = 0
+    blockedCount = 3
     failedCount = 0
     needsKubeconfigSecretConfirmation = $true
     needsOperatorApprovalConfirmation = $true
     requiredPlaceholderCount = 1
     ambiguousRepeatedPlaceholderCount = 0
-    blockedActionOrders = @(1, 2)
-    plannedActionOrders = @(3)
+    blockedActionOrders = @(1, 2, 3)
+    plannedActionOrders = @()
     confirmedPlanCommand = "powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\invoke-operations-evidence-plan.ps1 -ActionOrder 1,2,3 -KubeconfigSecretConfirmed -ConfirmOperatorApproval -BackupTimestamp <YYYYMMDDTHHMMSSZ>"
     blockedOnlyPlanCommand = "powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\invoke-operations-evidence-plan.ps1 -ActionOrder 1,2 -KubeconfigSecretConfirmed -ConfirmOperatorApproval -BackupTimestamp <YYYYMMDDTHHMMSSZ>"
-    plannedOnlyCommand = "powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\invoke-operations-evidence-plan.ps1 -ActionOrder 3"
+    plannedOnlyCommand = ""
     decisionRule = "Resolve placeholders and confirmations before execution."
     actions = @(
         [ordered]@{
@@ -88,15 +88,15 @@ Write-JsonFixture $unblockPlanPath ([ordered]@{
             status = "blocked"
             commandMode = "Workflow"
             command = "gh workflow run storage-expansion-finalizer-ci.yml -f run_live=true"
-            blockReasons = @("kubeconfig secret not confirmed")
+            blockReasons = @("operator approval not confirmed", "kubeconfig secret not confirmed")
             unresolvedPlaceholders = @()
-            requiresOperatorApproval = $false
+            requiresOperatorApproval = $true
             requiresKubeconfigSecret = $true
-            needsOperatorApprovalConfirmation = $false
+            needsOperatorApprovalConfirmation = $true
             needsKubeconfigSecretConfirmation = $true
             requiredInputs = @()
             ambiguousRepeatedPlaceholders = $false
-            planCommand = "powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\invoke-operations-evidence-plan.ps1 -ActionOrder 1 -KubeconfigSecretConfirmed"
+            planCommand = "powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\invoke-operations-evidence-plan.ps1 -ActionOrder 1 -KubeconfigSecretConfirmed -ConfirmOperatorApproval"
         },
         [ordered]@{
             order = 2
@@ -132,18 +132,18 @@ Write-JsonFixture $unblockPlanPath ([ordered]@{
             category = "enterprise-auth"
             actionType = "operator-remediation"
             evidencePath = ".osmu-run/latest-enterprise-auth-smoke.json"
-            status = "planned"
+            status = "blocked"
             commandMode = "Workflow"
             command = "gh workflow run enterprise-auth-smoke-ci.yml -f run_live=true -f require_oidc=true -f require_ldap=true -f fail_if_not_passed=true"
-            blockReasons = @()
+            blockReasons = @("operator approval not confirmed")
             unresolvedPlaceholders = @()
-            requiresOperatorApproval = $false
+            requiresOperatorApproval = $true
             requiresKubeconfigSecret = $false
-            needsOperatorApprovalConfirmation = $false
+            needsOperatorApprovalConfirmation = $true
             needsKubeconfigSecretConfirmation = $false
             requiredInputs = @()
             ambiguousRepeatedPlaceholders = $false
-            planCommand = "powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\invoke-operations-evidence-plan.ps1 -ActionOrder 3"
+            planCommand = "powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\invoke-operations-evidence-plan.ps1 -ActionOrder 3 -ConfirmOperatorApproval"
         }
     )
 })

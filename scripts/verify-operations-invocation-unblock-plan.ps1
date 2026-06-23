@@ -80,10 +80,10 @@ Write-JsonFixture $blockedInvocationPath ([ordered]@{
             commandMode = "Workflow"
             command = "gh workflow run storage-expansion-finalizer-ci.yml -f run_live=true"
             status = "blocked"
-            blockReasons = @("kubeconfig secret not confirmed")
+            blockReasons = @("operator approval not confirmed", "kubeconfig secret not confirmed")
             unresolvedPlaceholders = @()
             invalidPlaceholders = @()
-            requiresOperatorApproval = $false
+            requiresOperatorApproval = $true
             requiresKubeconfigSecret = $true
         },
         [ordered]@{
@@ -158,6 +158,7 @@ Assert-Contains $blockedReport.confirmedPlanCommand "-BackupTimestamp <YYYYMMDDT
 Assert-Contains $blockedReport.confirmedPlanCommand "-RestoreApiBase <restore-api-base>" "confirmed command"
 Assert-Contains $blockedReport.confirmedPlanCommand "-Placeholder '<run-id>=<run-id>'" "confirmed command"
 Assert-Contains $blockedReport.plannedOnlyCommand "-ActionOrder 4" "planned-only command"
+Assert-True $blockedReport.actions[0].requiresOperatorApproval "storage expansion live action should require operator approval"
 Assert-True $blockedReport.actions[2].ambiguousRepeatedPlaceholders "expected repeated placeholders on security finalizer"
 Assert-Contains $blockedMarkdown "repeated generic placeholders" "blocked markdown"
 
