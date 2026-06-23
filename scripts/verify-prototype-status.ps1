@@ -1,5 +1,8 @@
 param(
-    [string] $StatusPath = ".\dev-docs\prototype-status.md"
+    [string] $StatusPath = ".\dev-docs\prototype-status.md",
+    [string] $MvpCompletionReportPath = ".\.osmu-run\latest-mvp-completion.json",
+    [string] $OperationsReadinessReportPath = ".\.osmu-run\latest-operations-readiness.json",
+    [switch] $RequireEvidenceReports
 )
 
 $ErrorActionPreference = "Stop"
@@ -18,6 +21,12 @@ function Assert-Contains([string] $Content, [string] $Expected, [string] $Label)
     }
 }
 
+function Assert-True([bool] $Condition, [string] $Message) {
+    if (-not $Condition) {
+        throw $Message
+    }
+}
+
 function Assert-NotContains([string] $Content, [string] $Unexpected, [string] $Label) {
     if ($Content.Contains($Unexpected)) {
         throw "$Label contains unexpected text: $Unexpected"
@@ -29,6 +38,36 @@ function Assert-OccurrenceCount([string] $Content, [string] $Expected, [int] $Co
     if ($actual -ne $Count) {
         throw "$Label contains '$Expected' $actual time(s), expected $Count."
     }
+}
+
+function Read-OptionalJsonReport([string] $PathValue, [string] $Label) {
+    $resolved = Resolve-ProjectPath $PathValue
+    if (-not (Test-Path -LiteralPath $resolved)) {
+        if ($RequireEvidenceReports) {
+            throw "$Label missing: $resolved"
+        }
+        return $null
+    }
+
+    try {
+        return [pscustomobject]@{
+            path = $resolved
+            data = Get-Content -Raw -LiteralPath $resolved | ConvertFrom-Json
+        }
+    }
+    catch {
+        throw "$Label could not be parsed as JSON: $resolved. $($_.Exception.Message)"
+    }
+}
+
+function Format-BoolLower([object] $Value) {
+    if ($Value -eq $true) {
+        return "true"
+    }
+    if ($Value -eq $false) {
+        return "false"
+    }
+    return [string] $Value
 }
 
 $resolvedPath = Resolve-ProjectPath $StatusPath
@@ -82,6 +121,31 @@ Assert-NotContains $content "Current sellable state: local lightweight demo only
 Assert-NotContains $content "SSO/LDAP, final billing/licensing approval" "Prototype status"
 Assert-NotContains $content "Backup/replication, production monitoring/alert validation, SSO/LDAP" "Prototype status"
 Assert-OccurrenceCount $content "- Commercial readiness: B2B positioning, pilot packaging, licensing, and pricing draft with final approval still pending." 0 "Prototype status"
+
+$mvpCompletion = Read-OptionalJsonReport $MvpCompletionReportPath "MVP completion report"
+if ($null -ne $mvpCompletion) {
+    $mvp = $mvpCompletion.data
+    Assert-True ($mvp.formatVersion -eq "osmu.mvp-completion.v1") "Unexpected MVP completion formatVersion in $($mvpCompletion.path)."
+    Assert-True ($mvp.result -eq "ready") "Prototype status expects MVP completion result=ready, but report has result=$($mvp.result)."
+    Assert-True ($mvp.classification -eq "local-durable-mvp-ready") "Prototype status expects classification=local-durable-mvp-ready, but report has classification=$($mvp.classification)."
+    Assert-True ($mvp.localDurableMvpReady -eq $true) "Prototype status expects localDurableMvpReady=true."
+
+    $expectedMvpLine = "MVP completion latest verification: result=$($mvp.result), classification=$($mvp.classification), localDurableMvpReady=$(Format-BoolLower $mvp.localDurableMvpReady)."
+    Assert-Contains $content $expectedMvpLine "Prototype status"
+}
+
+$operationsReadiness = Read-OptionalJsonReport $OperationsReadinessReportPath "Operations readiness report"
+if ($null -ne $operationsReadiness) {
+    $operations = $operationsReadiness.data
+    $checks = @($operations.checks)
+    Assert-True ($operations.formatVersion -eq "osmu.operations-readiness.v1") "Unexpected operations readiness formatVersion in $($operationsReadiness.path)."
+    Assert-True ($operations.result -eq "pending") "Prototype status expects operations readiness result=pending, but report has result=$($operations.result)."
+    Assert-True ($operations.summary -eq "passed=$($operations.passedCount) pending=$($operations.pendingCount)") "Operations readiness summary does not match passed/pending counts."
+    Assert-True (($operations.passedCount + $operations.pendingCount) -eq $checks.Count) "Operations readiness passed+pending count does not match check count."
+
+    $expectedOperationsLine = "Operations readiness latest verification: result=$($operations.result), passed=$($operations.passedCount), pending=$($operations.pendingCount), total=$($checks.Count)."
+    Assert-Contains $content $expectedOperationsLine "Prototype status"
+}
 
 Write-Host "Prototype status verified."
 Write-Host "Prototype status: $resolvedPath"
