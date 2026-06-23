@@ -1330,13 +1330,39 @@
         >
           Query plan evidence:
           {{ dataFlowQueryPlanEvidence.result || 'missing' }} /
+          mode {{ dataFlowQueryPlanEvidence.mode || '-' }} /
+          format {{ dataFlowQueryPlanEvidence.formatVersion || dataFlowQueryPlanEvidence.expectedFormatVersion || '-' }} /
+          {{ dataFlowQueryPlanEvidence.parsed ? 'parsed' : 'not parsed' }} /
+          source {{ dataFlowQueryPlanEvidence.path || 'not attached' }} /
           passed {{ dataFlowQueryPlanEvidence.passedCount || 0 }} of {{ dataFlowQueryPlanEvidence.checkCount || 0 }} /
           failed {{ dataFlowQueryPlanEvidence.failedCount || 0 }}
+        </small>
+        <small
+          v-if="dataFlowQueryPlanEvidence.detail"
+          data-testid="readiness-data-flow-query-plan-evidence-detail"
+        >
+          {{ dataFlowQueryPlanEvidence.detail }}
         </small>
         <small v-if="dataFlowStoragePlan.scopePolicy">
           {{ dataFlowStoragePlan.scopePolicy }}
         </small>
       </div>
+      <ol
+        v-if="dataFlowQueryPlanFailedChecks.length > 0"
+        class="readiness-evidence-plan-actions readiness-data-flow-query-plan-failed-checks"
+        data-testid="readiness-data-flow-query-plan-failed-checks"
+      >
+        <li
+          v-for="check in dataFlowQueryPlanFailedChecks"
+          :key="check.id || check.queryPath || check.table"
+        >
+          <span>
+            <strong>{{ check.status || 'FAILED' }} / {{ check.id || check.table || 'query-plan-check' }}</strong>
+            <small>{{ formatDataFlowQueryPlanFailedCheckMeta(check) }}</small>
+            <small v-if="check.errorMessage">{{ check.errorMessage }}</small>
+          </span>
+        </li>
+      </ol>
       <ol
         v-if="dataFlowStoragePlanChecks.length > 0"
         class="readiness-evidence-plan-actions readiness-data-flow-storage-plan-checks"
@@ -3880,6 +3906,11 @@ const dataFlowQueryPlanEvidence = computed(() => (
   dataFlowStoragePlan.value?.queryPlanEvidence || {}
 ))
 
+const dataFlowQueryPlanFailedChecks = computed(() => {
+  const checks = dataFlowQueryPlanEvidence.value?.failedChecks
+  return Array.isArray(checks) ? checks : []
+})
+
 const dataFlowStoragePlanChecks = computed(() => {
   const checks = dataFlowStoragePlan.value?.checks
   return Array.isArray(checks) ? checks : []
@@ -4138,6 +4169,13 @@ function formatArtifactImportEntryMeta(entry) {
   const detail = entry?.detail || 'detail unavailable'
   const destination = entry?.destinationPath ? `dest ${entry.destinationPath}` : 'not promoted'
   return `${file} / ${detail} / ${destination}`
+}
+
+function formatDataFlowQueryPlanFailedCheckMeta(check) {
+  const query = check?.queryPath || check?.table || 'query path unknown'
+  const expected = check?.expectedIndex ? `expected ${check.expectedIndex}` : 'expected index unknown'
+  const usage = check?.usesExpectedIndex ? 'uses expected index' : 'expected index missing'
+  return `${query} / ${expected} / ${usage}`
 }
 
 function formatReadinessFinalizeCommandMeta(command) {

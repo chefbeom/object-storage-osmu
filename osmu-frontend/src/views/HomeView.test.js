@@ -194,6 +194,9 @@ test('HomeView exposes stable selectors for browser E2E flows', () => {
     'readiness-evidence-handoff-stage-command-copy-button',
     'readiness-data-flow-storage-plan-item-summary',
     'readiness-data-flow-storage-plan-summary',
+    'readiness-data-flow-query-plan-evidence-summary',
+    'readiness-data-flow-query-plan-evidence-detail',
+    'readiness-data-flow-query-plan-failed-checks',
     'readiness-data-flow-storage-plan-checks',
     'readiness-storage-telemetry-item-summary',
     'readiness-storage-telemetry-summary',
@@ -858,6 +861,8 @@ test('HomeView exposes stable selectors for browser E2E flows', () => {
   assert.match(dashboardSource, /minioBucketCorsMaxAgeSummary/)
   assert.match(dashboardSource, /minioBucketCorsOperatorCommands/)
   assert.match(dashboardSource, /dataFlowStoragePlan/)
+  assert.match(dashboardSource, /dataFlowQueryPlanEvidence/)
+  assert.match(dashboardSource, /dataFlowQueryPlanFailedChecks/)
   assert.match(dashboardSource, /dataFlowStoragePlanChecks/)
   assert.match(dashboardSource, /targetP95QueryLatencyMs/)
   assert.match(dashboardSource, /dataFlowStorageTransitionRunbook/)
@@ -879,6 +884,8 @@ test('HomeView exposes stable selectors for browser E2E flows', () => {
   assert.match(dashboardSource, /normalizeMonitoringThresholdEvidence/)
   assert.match(dashboardSource, /normalizeMinioBucketCorsVerification/)
   assert.match(dashboardSource, /readiness-data-flow-storage-plan-summary/)
+  assert.match(dashboardSource, /readiness-data-flow-query-plan-evidence-summary/)
+  assert.match(dashboardSource, /readiness-data-flow-query-plan-failed-checks/)
   assert.match(dashboardSource, /readiness-storage-telemetry-summary/)
   assert.match(dashboardSource, /readiness-dispatch-preflight-source/)
   assert.match(dashboardSource, /readiness-dispatch-preflight-confirmations/)
@@ -981,6 +988,7 @@ test('HomeView exposes stable selectors for browser E2E flows', () => {
   assert.match(dashboardSource, /formatDispatchPreflightWorkflowMeta/)
   assert.match(dashboardSource, /formatWorkflowRunIdMeta/)
   assert.match(dashboardSource, /formatArtifactCollectionMeta/)
+  assert.match(dashboardSource, /formatDataFlowQueryPlanFailedCheckMeta/)
   assert.match(dashboardSource, /formatArtifactImportEntryMeta/)
   assert.match(dashboardSource, /formatReadinessFinalizeCommandMeta/)
   assert.match(dashboardSource, /formatReadinessFinalizeStepMeta/)
