@@ -1369,7 +1369,7 @@
         data-testid="readiness-data-flow-storage-plan-checks"
       >
         <li
-          v-for="check in dataFlowStoragePlanChecks.slice(0, 3)"
+          v-for="check in dataFlowStoragePlanChecks"
           :key="check.id || check.title"
         >
           <span>
