@@ -1,0 +1,139 @@
+name: Manual MinIO Bucket CORS Verification
+
+on:
+  workflow_dispatch:
+    inputs:
+      bucket_name:
+        description: Target bucket name to verify
+        required: true
+        default: uploads
+      minio_alias:
+        description: Non-secret MinIO alias label
+        required: true
+        default: osmu-minio
+      collection_mode:
+        description: CORS source, prepared_base64 decodes an existing secret and live runs mc cors info against target MinIO
+        required: true
+        type: choice
+        options:
+          - prepared_base64
+          - live
+        default: prepared_base64
+      minio_endpoint:
+        description: Target MinIO endpoint for live mode, for example https://minio.example.com
+        required: false
+        default: ""
+      expected_allowed_origins:
+        description: Comma-separated browser origins expected in bucket CORS
+        required: false
+        default: http://localhost:5173,http://127.0.0.1:5173
+      fail_if_not_passed:
+        description: Fail workflow when verification result is not passed
+        required: true
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: manual-minio-bucket-cors-verification-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  minio-bucket-cors-verification:
+    name: Manual MinIO bucket CORS verification
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Verify MinIO bucket CORS
+        shell: pwsh
+        env:
+          OSMU_BUCKET_NAME: ${{ inputs.bucket_name }}
+          OSMU_MINIO_ALIAS: ${{ inputs.minio_alias }}
+          OSMU_COLLECTION_MODE: ${{ inputs.collection_mode }}
+          OSMU_MINIO_ENDPOINT: ${{ inputs.minio_endpoint }}
+          OSMU_EXPECTED_ALLOWED_ORIGINS: ${{ inputs.expected_allowed_origins }}
+          OSMU_FAIL_IF_NOT_PASSED: ${{ inputs.fail_if_not_passed }}
+          OSMU_MINIO_BUCKET_CORS_XML_BASE64: ${{ secrets.OSMU_MINIO_BUCKET_CORS_XML_BASE64 }}
+          OSMU_MINIO_ACCESS_KEY: ${{ secrets.OSMU_MINIO_ACCESS_KEY }}
+          OSMU_MINIO_SECRET_KEY: ${{ secrets.OSMU_MINIO_SECRET_KEY }}
+        run: |
+          New-Item -ItemType Directory -Force -Path ".osmu-run" | Out-Null
+          $collectionMode = $env:OSMU_COLLECTION_MODE
+          if ($collectionMode -notin @("prepared_base64", "live")) {
+            throw "collection_mode must be prepared_base64 or live."
+          }
+          if (-not $env:OSMU_BUCKET_NAME) {
+            throw "bucket_name input is required."
+          }
+          if (-not $env:OSMU_MINIO_ALIAS) {
+            throw "minio_alias input is required."
+          }
+
+          $expectedOrigins = @()
+          if ($env:OSMU_EXPECTED_ALLOWED_ORIGINS) {
+            $expectedOrigins = @($env:OSMU_EXPECTED_ALLOWED_ORIGINS -split "," | ForEach-Object { $_.Trim() } | Where-Object { $_ })
+          }
+
+          $verificationArgs = @(
+            "-BucketName", $env:OSMU_BUCKET_NAME,
+            "-MinioAlias", $env:OSMU_MINIO_ALIAS,
+            "-JsonOutputPath", ".osmu-run/latest-minio-bucket-cors-verification.json",
+            "-MarkdownOutputPath", ".osmu-run/latest-minio-bucket-cors-verification.md"
+          )
+          if ($expectedOrigins.Count -gt 0) {
+            $verificationArgs += @("-ExpectedAllowedOrigins", $expectedOrigins)
+          }
+
+          if ($collectionMode -eq "prepared_base64") {
+            if (-not $env:OSMU_MINIO_BUCKET_CORS_XML_BASE64) {
+              throw "OSMU_MINIO_BUCKET_CORS_XML_BASE64 secret is required for prepared_base64 mode. Store base64-encoded mc cors info output as a GitHub secret; raw CORS XML is not uploaded."
+            }
+            $corsXmlPath = ".osmu-run/minio-bucket-cors.xml"
+            [IO.File]::WriteAllBytes($corsXmlPath, [Convert]::FromBase64String($env:OSMU_MINIO_BUCKET_CORS_XML_BASE64))
+            $verificationArgs += @("-CorsXmlPath", $corsXmlPath)
+          }
+          else {
+            if (-not $env:OSMU_MINIO_ENDPOINT) { throw "minio_endpoint input is required for live mode." }
+            if (-not $env:OSMU_MINIO_ACCESS_KEY) { throw "OSMU_MINIO_ACCESS_KEY secret is required for live mode." }
+            if (-not $env:OSMU_MINIO_SECRET_KEY) { throw "OSMU_MINIO_SECRET_KEY secret is required for live mode." }
+
+            New-Item -ItemType Directory -Force -Path ".osmu-run/tools" | Out-Null
+            New-Item -ItemType Directory -Force -Path ".osmu-run/mc-config" | Out-Null
+            $mcPath = ".osmu-run/tools/mc"
+            Invoke-WebRequest -UseBasicParsing -Uri "https://dl.min.io/client/mc/release/linux-amd64/mc" -OutFile $mcPath
+            chmod +x $mcPath
+            $env:MC_CONFIG_DIR = (Resolve-Path ".osmu-run/mc-config").Path
+            & $mcPath alias set $env:OSMU_MINIO_ALIAS $env:OSMU_MINIO_ENDPOINT $env:OSMU_MINIO_ACCESS_KEY $env:OSMU_MINIO_SECRET_KEY | Out-Null
+            if ($LASTEXITCODE -ne 0) {
+              throw "mc alias set failed for target MinIO endpoint."
+            }
+            $verificationArgs += @("-Execute", "-McCommand", $mcPath)
+          }
+          if ($env:OSMU_FAIL_IF_NOT_PASSED -eq "true") { $verificationArgs += "-FailIfNotPassed" }
+
+          ./scripts/verify-minio-bucket-cors.ps1 @verificationArgs
+
+      - name: Remove raw CORS input and MinIO client config
+        if: always()
+        shell: pwsh
+        run: |
+          Remove-Item -LiteralPath ".osmu-run/minio-bucket-cors.xml" -Force -ErrorAction SilentlyContinue
+          Remove-Item -LiteralPath ".osmu-run/mc-config" -Recurse -Force -ErrorAction SilentlyContinue
+          Remove-Item -LiteralPath ".osmu-run/tools" -Recurse -Force -ErrorAction SilentlyContinue
+
+      - name: Upload MinIO bucket CORS verification
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: minio-bucket-cors-verification-${{ github.run_id }}
+          path: |
+            .osmu-run/latest-minio-bucket-cors-verification.json
+            .osmu-run/latest-minio-bucket-cors-verification.md
+          if-no-files-found: error
+          retention-days: 14

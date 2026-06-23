@@ -13,6 +13,7 @@ param(
     [string] $OperationsReadinessFinalizerWorkflowPath = ".\.github\workflows\operations-readiness-finalizer-ci.yml",
     [string] $OperationsReadinessArtifactFinalizerWorkflowPath = ".\.github\workflows\operations-readiness-artifact-finalizer-ci.yml",
     [string] $ManualStorageBackendTelemetryEvidenceWorkflowPath = ".\.github\workflows\manual-storage-backend-telemetry-evidence.yml",
+    [string] $ManualMinioBucketCorsVerificationWorkflowPath = ".\.github\workflows\manual-minio-bucket-cors-verification.yml",
     [string] $ManualMonitoringThresholdEvidenceWorkflowPath = ".\.github\workflows\manual-monitoring-threshold-evidence.yml",
     [string] $ManualSecretRotationEvidenceWorkflowPath = ".\.github\workflows\manual-secret-rotation-evidence.yml",
     [string] $ManualCommercialIntegrationEvidenceWorkflowPath = ".\.github\workflows\manual-commercial-integration-evidence.yml",
@@ -852,6 +853,34 @@ Assert-Contains $manualDataFlowStorageTransitionRunbookWorkflowContent "data-flo
 Assert-Contains $manualDataFlowStorageTransitionRunbookWorkflowContent ".osmu-run/latest-data-flow-storage-transition-runbook-evidence.json" "Manual Data-flow Storage Transition Runbook Evidence workflow"
 Assert-Contains $manualDataFlowStorageTransitionRunbookWorkflowContent ".osmu-run/latest-data-flow-storage-transition-runbook-evidence.md" "Manual Data-flow Storage Transition Runbook Evidence workflow"
 
+$manualMinioBucketCorsVerificationWorkflow = Read-Workflow $ManualMinioBucketCorsVerificationWorkflowPath "Manual MinIO Bucket CORS Verification workflow"
+$manualMinioBucketCorsVerificationWorkflowContent = $manualMinioBucketCorsVerificationWorkflow.Content
+
+Assert-Contains $manualMinioBucketCorsVerificationWorkflowContent "name: Manual MinIO Bucket CORS Verification" "Manual MinIO Bucket CORS Verification workflow"
+Assert-Contains $manualMinioBucketCorsVerificationWorkflowContent "workflow_dispatch:" "Manual MinIO Bucket CORS Verification workflow"
+Assert-NotContains $manualMinioBucketCorsVerificationWorkflowContent "pull_request:" "Manual MinIO Bucket CORS Verification workflow"
+Assert-NotContains $manualMinioBucketCorsVerificationWorkflowContent "push:" "Manual MinIO Bucket CORS Verification workflow"
+Assert-Contains $manualMinioBucketCorsVerificationWorkflowContent "contents: read" "Manual MinIO Bucket CORS Verification workflow"
+Assert-Contains $manualMinioBucketCorsVerificationWorkflowContent "runs-on: ubuntu-latest" "Manual MinIO Bucket CORS Verification workflow"
+Assert-Contains $manualMinioBucketCorsVerificationWorkflowContent "timeout-minutes: 15" "Manual MinIO Bucket CORS Verification workflow"
+Assert-Contains $manualMinioBucketCorsVerificationWorkflowContent "collection_mode:" "Manual MinIO Bucket CORS Verification workflow"
+Assert-Contains $manualMinioBucketCorsVerificationWorkflowContent "prepared_base64" "Manual MinIO Bucket CORS Verification workflow"
+Assert-Contains $manualMinioBucketCorsVerificationWorkflowContent "OSMU_MINIO_BUCKET_CORS_XML_BASE64" "Manual MinIO Bucket CORS Verification workflow"
+Assert-Contains $manualMinioBucketCorsVerificationWorkflowContent "OSMU_MINIO_ACCESS_KEY" "Manual MinIO Bucket CORS Verification workflow"
+Assert-Contains $manualMinioBucketCorsVerificationWorkflowContent "OSMU_MINIO_SECRET_KEY" "Manual MinIO Bucket CORS Verification workflow"
+Assert-Contains $manualMinioBucketCorsVerificationWorkflowContent "Verify MinIO bucket CORS" "Manual MinIO Bucket CORS Verification workflow"
+Assert-Contains $manualMinioBucketCorsVerificationWorkflowContent "./scripts/verify-minio-bucket-cors.ps1" "Manual MinIO Bucket CORS Verification workflow"
+Assert-Contains $manualMinioBucketCorsVerificationWorkflowContent "-ExpectedAllowedOrigins" "Manual MinIO Bucket CORS Verification workflow"
+Assert-Contains $manualMinioBucketCorsVerificationWorkflowContent "-CorsXmlPath" "Manual MinIO Bucket CORS Verification workflow"
+Assert-Contains $manualMinioBucketCorsVerificationWorkflowContent "-Execute" "Manual MinIO Bucket CORS Verification workflow"
+Assert-Contains $manualMinioBucketCorsVerificationWorkflowContent "-FailIfNotPassed" "Manual MinIO Bucket CORS Verification workflow"
+Assert-Contains $manualMinioBucketCorsVerificationWorkflowContent "Remove-Item -LiteralPath `\".osmu-run/minio-bucket-cors.xml`\" -Force -ErrorAction SilentlyContinue" "Manual MinIO Bucket CORS Verification workflow"
+Assert-Contains $manualMinioBucketCorsVerificationWorkflowContent "Remove-Item -LiteralPath `\".osmu-run/mc-config`\" -Recurse -Force -ErrorAction SilentlyContinue" "Manual MinIO Bucket CORS Verification workflow"
+Assert-Contains $manualMinioBucketCorsVerificationWorkflowContent "actions/upload-artifact@v4" "Manual MinIO Bucket CORS Verification workflow"
+Assert-Contains $manualMinioBucketCorsVerificationWorkflowContent "minio-bucket-cors-verification-" "Manual MinIO Bucket CORS Verification workflow"
+Assert-Contains $manualMinioBucketCorsVerificationWorkflowContent ".osmu-run/latest-minio-bucket-cors-verification.json" "Manual MinIO Bucket CORS Verification workflow"
+Assert-Contains $manualMinioBucketCorsVerificationWorkflowContent ".osmu-run/latest-minio-bucket-cors-verification.md" "Manual MinIO Bucket CORS Verification workflow"
+
 $enterpriseAuthSmokeWorkflow = Read-Workflow $EnterpriseAuthSmokeWorkflowPath "Enterprise Auth Smoke CI workflow"
 $enterpriseAuthSmokeWorkflowContent = $enterpriseAuthSmokeWorkflow.Content
 
@@ -1123,6 +1152,7 @@ Write-Host "Kubernetes Operations Report Sync workflow: $($kubernetesOperationsR
 Write-Host "Operations Readiness Finalizer workflow: $($operationsReadinessWorkflow.Path)"
 Write-Host "Operations Readiness Artifact Finalizer workflow: $($operationsReadinessArtifactWorkflow.Path)"
 Write-Host "Manual Storage Backend Telemetry Evidence workflow: $($manualStorageBackendTelemetryWorkflow.Path)"
+Write-Host "Manual MinIO Bucket CORS Verification workflow: $($manualMinioBucketCorsVerificationWorkflow.Path)"
 Write-Host "Manual Monitoring Threshold Evidence workflow: $($manualMonitoringThresholdWorkflow.Path)"
 Write-Host "Manual Secret Rotation Evidence workflow: $($manualSecretRotationWorkflow.Path)"
 Write-Host "Manual Commercial Integration Evidence workflow: $($manualCommercialIntegrationWorkflow.Path)"
