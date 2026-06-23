@@ -1,4 +1,4 @@
-param(
+﻿param(
     [string] $LightweightWorkflowPath = ".\.github\workflows\prototype-ci.yml",
     [string] $DurableDockerWorkflowPath = ".\.github\workflows\durable-docker-ci.yml",
     [string] $RealS3ClientWorkflowPath = ".\.github\workflows\real-s3-client-ci.yml",
@@ -52,7 +52,7 @@ function Read-RequiredFile([string] $path, [string] $label) {
     if (-not (Test-Path -LiteralPath $resolvedPath)) {
         throw "$label missing: $resolvedPath"
     }
-    $content = Get-Content -Raw -LiteralPath $resolvedPath
+    $content = Get-Content -Raw -Encoding UTF8 -LiteralPath $resolvedPath
     return [pscustomobject]@{
         Path = $resolvedPath
         Content = $content
@@ -70,13 +70,39 @@ function Read-Workflow([string] $path, [string] $label) {
     if (-not (Test-Path -LiteralPath $resolvedPath)) {
         throw "$label missing: $resolvedPath"
     }
-    $content = Get-Content -Raw -LiteralPath $resolvedPath
+    $content = Get-Content -Raw -Encoding UTF8 -LiteralPath $resolvedPath
     if ($content.Contains("`t")) {
         throw "Tabs are not allowed in $label`: $resolvedPath"
     }
     return [pscustomobject]@{
         Path = $resolvedPath
         Content = $content
+    }
+}
+
+function Get-WorkflowDispatchInputCount([string] $content) {
+    $lines = $content -split "`r?`n"
+    $inInputs = $false
+    $count = 0
+    foreach ($line in $lines) {
+        if ($line -match '^    inputs:\s*$') {
+            $inInputs = $true
+            continue
+        }
+        if ($inInputs -and $line -match '^[A-Za-z_][A-Za-z0-9_-]*:') {
+            break
+        }
+        if ($inInputs -and $line -match '^      [A-Za-z_][A-Za-z0-9_-]*:\s*$') {
+            $count++
+        }
+    }
+    return $count
+}
+
+function Assert-WorkflowDispatchInputLimit([object] $workflow, [string] $label) {
+    $count = Get-WorkflowDispatchInputCount $workflow.Content
+    if ($count -gt 25) {
+        throw "$label defines $count workflow_dispatch inputs; GitHub Actions supports at most 25 top-level inputs. Use a JSON payload input for grouped evidence."
     }
 }
 
@@ -499,6 +525,9 @@ $operationsReadinessArtifactWorkflow = Read-Workflow $OperationsReadinessArtifac
 $operationsReadinessArtifactWorkflowContent = $operationsReadinessArtifactWorkflow.Content
 
 Assert-Contains $operationsReadinessArtifactWorkflowContent "name: Operations Readiness Artifact Finalizer CI" "Operations Readiness Artifact Finalizer CI workflow"
+Assert-Contains $operationsReadinessArtifactWorkflowContent "artifact_sources_json_base64:" "Operations Readiness Artifact Finalizer CI workflow"
+Assert-Contains $operationsReadinessArtifactWorkflowContent "Resolve artifact dispatch inputs" "Operations Readiness Artifact Finalizer CI workflow"
+Assert-Contains $operationsReadinessArtifactWorkflowContent "steps.artifact_inputs.outputs.storage_expansion_run_id" "Operations Readiness Artifact Finalizer CI workflow"
 Assert-Contains $operationsReadinessArtifactWorkflowContent "workflow_dispatch:" "Operations Readiness Artifact Finalizer CI workflow"
 Assert-NotContains $operationsReadinessArtifactWorkflowContent "pull_request:" "Operations Readiness Artifact Finalizer CI workflow"
 Assert-NotContains $operationsReadinessArtifactWorkflowContent "push:" "Operations Readiness Artifact Finalizer CI workflow"
@@ -506,29 +535,29 @@ Assert-Contains $operationsReadinessArtifactWorkflowContent "contents: read" "Op
 Assert-Contains $operationsReadinessArtifactWorkflowContent "actions: read" "Operations Readiness Artifact Finalizer CI workflow"
 Assert-Contains $operationsReadinessArtifactWorkflowContent "runs-on: ubuntu-latest" "Operations Readiness Artifact Finalizer CI workflow"
 Assert-Contains $operationsReadinessArtifactWorkflowContent "timeout-minutes: 30" "Operations Readiness Artifact Finalizer CI workflow"
-Assert-Contains $operationsReadinessArtifactWorkflowContent "storage_expansion_run_id:" "Operations Readiness Artifact Finalizer CI workflow"
-Assert-Contains $operationsReadinessArtifactWorkflowContent "ha_dr_readiness_run_id:" "Operations Readiness Artifact Finalizer CI workflow"
-Assert-Contains $operationsReadinessArtifactWorkflowContent "kubernetes_dr_run_id:" "Operations Readiness Artifact Finalizer CI workflow"
-Assert-Contains $operationsReadinessArtifactWorkflowContent "iam_rbac_run_id:" "Operations Readiness Artifact Finalizer CI workflow"
-Assert-Contains $operationsReadinessArtifactWorkflowContent "security_evidence_run_id:" "Operations Readiness Artifact Finalizer CI workflow"
-Assert-Contains $operationsReadinessArtifactWorkflowContent "minio_bucket_cors_run_id:" "Operations Readiness Artifact Finalizer CI workflow"
-Assert-Contains $operationsReadinessArtifactWorkflowContent "minio_bucket_cors_artifact_name:" "Operations Readiness Artifact Finalizer CI workflow"
-Assert-Contains $operationsReadinessArtifactWorkflowContent "monitoring_threshold_run_id:" "Operations Readiness Artifact Finalizer CI workflow"
-Assert-Contains $operationsReadinessArtifactWorkflowContent "monitoring_threshold_artifact_name:" "Operations Readiness Artifact Finalizer CI workflow"
-Assert-Contains $operationsReadinessArtifactWorkflowContent "secret_rotation_run_id:" "Operations Readiness Artifact Finalizer CI workflow"
-Assert-Contains $operationsReadinessArtifactWorkflowContent "secret_rotation_artifact_name:" "Operations Readiness Artifact Finalizer CI workflow"
-Assert-Contains $operationsReadinessArtifactWorkflowContent "commercial_integration_run_id:" "Operations Readiness Artifact Finalizer CI workflow"
-Assert-Contains $operationsReadinessArtifactWorkflowContent "commercial_integration_artifact_name:" "Operations Readiness Artifact Finalizer CI workflow"
-Assert-Contains $operationsReadinessArtifactWorkflowContent "commercial_approval_run_id:" "Operations Readiness Artifact Finalizer CI workflow"
-Assert-Contains $operationsReadinessArtifactWorkflowContent "commercial_approval_artifact_name:" "Operations Readiness Artifact Finalizer CI workflow"
-Assert-Contains $operationsReadinessArtifactWorkflowContent "enterprise_auth_run_id:" "Operations Readiness Artifact Finalizer CI workflow"
-Assert-Contains $operationsReadinessArtifactWorkflowContent "operations_handoff_package_run_id:" "Operations Readiness Artifact Finalizer CI workflow"
-Assert-Contains $operationsReadinessArtifactWorkflowContent "operations_handoff_package_artifact_name:" "Operations Readiness Artifact Finalizer CI workflow"
-Assert-Contains $operationsReadinessArtifactWorkflowContent "data_flow_storage_plan_run_id:" "Operations Readiness Artifact Finalizer CI workflow"
-Assert-Contains $operationsReadinessArtifactWorkflowContent "data_flow_storage_plan_artifact_name:" "Operations Readiness Artifact Finalizer CI workflow"
-Assert-Contains $operationsReadinessArtifactWorkflowContent "data_flow_storage_transition_runbook_run_id:" "Operations Readiness Artifact Finalizer CI workflow"
-Assert-Contains $operationsReadinessArtifactWorkflowContent "data_flow_storage_transition_runbook_artifact_name:" "Operations Readiness Artifact Finalizer CI workflow"
-Assert-Contains $operationsReadinessArtifactWorkflowContent "kubernetes_operations_report_sync_run_id:" "Operations Readiness Artifact Finalizer CI workflow"
+Assert-Contains $operationsReadinessArtifactWorkflowContent "storage_expansion_run_id" "Operations Readiness Artifact Finalizer CI workflow"
+Assert-Contains $operationsReadinessArtifactWorkflowContent "ha_dr_readiness_run_id" "Operations Readiness Artifact Finalizer CI workflow"
+Assert-Contains $operationsReadinessArtifactWorkflowContent "kubernetes_dr_run_id" "Operations Readiness Artifact Finalizer CI workflow"
+Assert-Contains $operationsReadinessArtifactWorkflowContent "iam_rbac_run_id" "Operations Readiness Artifact Finalizer CI workflow"
+Assert-Contains $operationsReadinessArtifactWorkflowContent "security_evidence_run_id" "Operations Readiness Artifact Finalizer CI workflow"
+Assert-Contains $operationsReadinessArtifactWorkflowContent "minio_bucket_cors_run_id" "Operations Readiness Artifact Finalizer CI workflow"
+Assert-Contains $operationsReadinessArtifactWorkflowContent "minio_bucket_cors_artifact_name" "Operations Readiness Artifact Finalizer CI workflow"
+Assert-Contains $operationsReadinessArtifactWorkflowContent "monitoring_threshold_run_id" "Operations Readiness Artifact Finalizer CI workflow"
+Assert-Contains $operationsReadinessArtifactWorkflowContent "monitoring_threshold_artifact_name" "Operations Readiness Artifact Finalizer CI workflow"
+Assert-Contains $operationsReadinessArtifactWorkflowContent "secret_rotation_run_id" "Operations Readiness Artifact Finalizer CI workflow"
+Assert-Contains $operationsReadinessArtifactWorkflowContent "secret_rotation_artifact_name" "Operations Readiness Artifact Finalizer CI workflow"
+Assert-Contains $operationsReadinessArtifactWorkflowContent "commercial_integration_run_id" "Operations Readiness Artifact Finalizer CI workflow"
+Assert-Contains $operationsReadinessArtifactWorkflowContent "commercial_integration_artifact_name" "Operations Readiness Artifact Finalizer CI workflow"
+Assert-Contains $operationsReadinessArtifactWorkflowContent "commercial_approval_run_id" "Operations Readiness Artifact Finalizer CI workflow"
+Assert-Contains $operationsReadinessArtifactWorkflowContent "commercial_approval_artifact_name" "Operations Readiness Artifact Finalizer CI workflow"
+Assert-Contains $operationsReadinessArtifactWorkflowContent "enterprise_auth_run_id" "Operations Readiness Artifact Finalizer CI workflow"
+Assert-Contains $operationsReadinessArtifactWorkflowContent "operations_handoff_package_run_id" "Operations Readiness Artifact Finalizer CI workflow"
+Assert-Contains $operationsReadinessArtifactWorkflowContent "operations_handoff_package_artifact_name" "Operations Readiness Artifact Finalizer CI workflow"
+Assert-Contains $operationsReadinessArtifactWorkflowContent "data_flow_storage_plan_run_id" "Operations Readiness Artifact Finalizer CI workflow"
+Assert-Contains $operationsReadinessArtifactWorkflowContent "data_flow_storage_plan_artifact_name" "Operations Readiness Artifact Finalizer CI workflow"
+Assert-Contains $operationsReadinessArtifactWorkflowContent "data_flow_storage_transition_runbook_run_id" "Operations Readiness Artifact Finalizer CI workflow"
+Assert-Contains $operationsReadinessArtifactWorkflowContent "data_flow_storage_transition_runbook_artifact_name" "Operations Readiness Artifact Finalizer CI workflow"
+Assert-Contains $operationsReadinessArtifactWorkflowContent "kubernetes_operations_report_sync_run_id" "Operations Readiness Artifact Finalizer CI workflow"
 Assert-Contains $operationsReadinessArtifactWorkflowContent "data_flow_storage_plan_json_base64:" "Operations Readiness Artifact Finalizer CI workflow"
 Assert-Contains $operationsReadinessArtifactWorkflowContent "data_flow_storage_transition_runbook_json_base64:" "Operations Readiness Artifact Finalizer CI workflow"
 Assert-Contains $operationsReadinessArtifactWorkflowContent "Restore direct data-flow storage plan evidence" "Operations Readiness Artifact Finalizer CI workflow"
@@ -737,8 +766,8 @@ Assert-Contains $manualOperationsHandoffPackageWorkflowContent "runs-on: ubuntu-
 Assert-Contains $manualOperationsHandoffPackageWorkflowContent "timeout-minutes: 15" "Manual Operations Handoff Package workflow"
 Assert-Contains $manualOperationsHandoffPackageWorkflowContent "Record operations handoff package" "Manual Operations Handoff Package workflow"
 Assert-Contains $manualOperationsHandoffPackageWorkflowContent "./scripts/write-operations-handoff-package.ps1" "Manual Operations Handoff Package workflow"
-Assert-Contains $manualOperationsHandoffPackageWorkflowContent "data_flow_storage_plan_evidence_ref:" "Manual Operations Handoff Package workflow"
-Assert-Contains $manualOperationsHandoffPackageWorkflowContent "data_flow_storage_transition_runbook_evidence_ref:" "Manual Operations Handoff Package workflow"
+Assert-Contains $manualOperationsHandoffPackageWorkflowContent "data_flow_storage_plan_evidence_ref" "Manual Operations Handoff Package workflow"
+Assert-Contains $manualOperationsHandoffPackageWorkflowContent "data_flow_storage_transition_runbook_evidence_ref" "Manual Operations Handoff Package workflow"
 Assert-Contains $manualOperationsHandoffPackageWorkflowContent "operations_readiness_json_base64:" "Manual Operations Handoff Package workflow"
 Assert-Contains $manualOperationsHandoffPackageWorkflowContent "operations_convergence_json_base64:" "Manual Operations Handoff Package workflow"
 Assert-Contains $manualOperationsHandoffPackageWorkflowContent "data_flow_storage_plan_json_base64:" "Manual Operations Handoff Package workflow"
@@ -748,18 +777,18 @@ Assert-Contains $manualOperationsHandoffPackageWorkflowContent "commercial_integ
 Assert-Contains $manualOperationsHandoffPackageWorkflowContent "commercial_approval_json_base64:" "Manual Operations Handoff Package workflow"
 Assert-Contains $manualOperationsHandoffPackageWorkflowContent "enterprise_auth_json_base64:" "Manual Operations Handoff Package workflow"
 Assert-Contains $manualOperationsHandoffPackageWorkflowContent "monitoring_threshold_json_base64:" "Manual Operations Handoff Package workflow"
-Assert-Contains $manualOperationsHandoffPackageWorkflowContent "confirm_operations_readiness_snapshot_reviewed:" "Manual Operations Handoff Package workflow"
-Assert-Contains $manualOperationsHandoffPackageWorkflowContent "confirm_operations_convergence_snapshot_reviewed:" "Manual Operations Handoff Package workflow"
-Assert-Contains $manualOperationsHandoffPackageWorkflowContent "confirm_data_flow_storage_plan_reviewed:" "Manual Operations Handoff Package workflow"
-Assert-Contains $manualOperationsHandoffPackageWorkflowContent "confirm_data_flow_storage_transition_runbook_reviewed:" "Manual Operations Handoff Package workflow"
-Assert-Contains $manualOperationsHandoffPackageWorkflowContent "confirm_secret_rotation_snapshot_reviewed:" "Manual Operations Handoff Package workflow"
-Assert-Contains $manualOperationsHandoffPackageWorkflowContent "confirm_commercial_integration_snapshot_reviewed:" "Manual Operations Handoff Package workflow"
-Assert-Contains $manualOperationsHandoffPackageWorkflowContent "confirm_commercial_approval_snapshot_reviewed:" "Manual Operations Handoff Package workflow"
-Assert-Contains $manualOperationsHandoffPackageWorkflowContent "confirm_enterprise_auth_smoke_snapshot_reviewed:" "Manual Operations Handoff Package workflow"
-Assert-Contains $manualOperationsHandoffPackageWorkflowContent "confirm_monitoring_threshold_reviewed:" "Manual Operations Handoff Package workflow"
+Assert-Contains $manualOperationsHandoffPackageWorkflowContent "confirm_operations_readiness_snapshot_reviewed" "Manual Operations Handoff Package workflow"
+Assert-Contains $manualOperationsHandoffPackageWorkflowContent "confirm_operations_convergence_snapshot_reviewed" "Manual Operations Handoff Package workflow"
+Assert-Contains $manualOperationsHandoffPackageWorkflowContent "confirm_data_flow_storage_plan_reviewed" "Manual Operations Handoff Package workflow"
+Assert-Contains $manualOperationsHandoffPackageWorkflowContent "confirm_data_flow_storage_transition_runbook_reviewed" "Manual Operations Handoff Package workflow"
+Assert-Contains $manualOperationsHandoffPackageWorkflowContent "confirm_secret_rotation_snapshot_reviewed" "Manual Operations Handoff Package workflow"
+Assert-Contains $manualOperationsHandoffPackageWorkflowContent "confirm_commercial_integration_snapshot_reviewed" "Manual Operations Handoff Package workflow"
+Assert-Contains $manualOperationsHandoffPackageWorkflowContent "confirm_commercial_approval_snapshot_reviewed" "Manual Operations Handoff Package workflow"
+Assert-Contains $manualOperationsHandoffPackageWorkflowContent "confirm_enterprise_auth_smoke_snapshot_reviewed" "Manual Operations Handoff Package workflow"
+Assert-Contains $manualOperationsHandoffPackageWorkflowContent "confirm_monitoring_threshold_reviewed" "Manual Operations Handoff Package workflow"
 Assert-Contains $manualOperationsHandoffPackageWorkflowContent "require_operations_snapshot_evidence:" "Manual Operations Handoff Package workflow"
-Assert-Contains $manualOperationsHandoffPackageWorkflowContent "OSMU_DATA_FLOW_STORAGE_PLAN_EVIDENCE_REF" "Manual Operations Handoff Package workflow"
-Assert-Contains $manualOperationsHandoffPackageWorkflowContent "OSMU_DATA_FLOW_STORAGE_TRANSITION_RUNBOOK_EVIDENCE_REF" "Manual Operations Handoff Package workflow"
+Assert-Contains $manualOperationsHandoffPackageWorkflowContent "handoff_evidence_payload_json_base64:" "Manual Operations Handoff Package workflow"
+Assert-Contains $manualOperationsHandoffPackageWorkflowContent "Get-DispatchString" "Manual Operations Handoff Package workflow"
 Assert-Contains $manualOperationsHandoffPackageWorkflowContent "OSMU_OPERATIONS_READINESS_JSON_BASE64" "Manual Operations Handoff Package workflow"
 Assert-Contains $manualOperationsHandoffPackageWorkflowContent "OSMU_OPERATIONS_CONVERGENCE_JSON_BASE64" "Manual Operations Handoff Package workflow"
 Assert-Contains $manualOperationsHandoffPackageWorkflowContent "OSMU_DATA_FLOW_STORAGE_PLAN_JSON_BASE64" "Manual Operations Handoff Package workflow"
@@ -769,11 +798,11 @@ Assert-Contains $manualOperationsHandoffPackageWorkflowContent "OSMU_COMMERCIAL_
 Assert-Contains $manualOperationsHandoffPackageWorkflowContent "OSMU_COMMERCIAL_APPROVAL_JSON_BASE64" "Manual Operations Handoff Package workflow"
 Assert-Contains $manualOperationsHandoffPackageWorkflowContent "OSMU_ENTERPRISE_AUTH_JSON_BASE64" "Manual Operations Handoff Package workflow"
 Assert-Contains $manualOperationsHandoffPackageWorkflowContent "OSMU_MONITORING_THRESHOLD_JSON_BASE64" "Manual Operations Handoff Package workflow"
-Assert-Contains $manualOperationsHandoffPackageWorkflowContent "OSMU_CONFIRM_SECRET_ROTATION_SNAPSHOT_REVIEWED" "Manual Operations Handoff Package workflow"
-Assert-Contains $manualOperationsHandoffPackageWorkflowContent "OSMU_CONFIRM_COMMERCIAL_INTEGRATION_SNAPSHOT_REVIEWED" "Manual Operations Handoff Package workflow"
-Assert-Contains $manualOperationsHandoffPackageWorkflowContent "OSMU_CONFIRM_COMMERCIAL_APPROVAL_SNAPSHOT_REVIEWED" "Manual Operations Handoff Package workflow"
-Assert-Contains $manualOperationsHandoffPackageWorkflowContent "OSMU_CONFIRM_ENTERPRISE_AUTH_SMOKE_SNAPSHOT_REVIEWED" "Manual Operations Handoff Package workflow"
-Assert-Contains $manualOperationsHandoffPackageWorkflowContent "OSMU_CONFIRM_MONITORING_THRESHOLD_REVIEWED" "Manual Operations Handoff Package workflow"
+Assert-Contains $manualOperationsHandoffPackageWorkflowContent "Test-DispatchTrue" "Manual Operations Handoff Package workflow"
+Assert-Contains $manualOperationsHandoffPackageWorkflowContent "Test-DispatchTrue" "Manual Operations Handoff Package workflow"
+Assert-Contains $manualOperationsHandoffPackageWorkflowContent "Test-DispatchTrue" "Manual Operations Handoff Package workflow"
+Assert-Contains $manualOperationsHandoffPackageWorkflowContent "Test-DispatchTrue" "Manual Operations Handoff Package workflow"
+Assert-Contains $manualOperationsHandoffPackageWorkflowContent "Test-DispatchTrue" "Manual Operations Handoff Package workflow"
 Assert-Contains $manualOperationsHandoffPackageWorkflowContent "FromBase64String" "Manual Operations Handoff Package workflow"
 Assert-Contains $manualOperationsHandoffPackageWorkflowContent "-DataFlowStoragePlanEvidenceRef" "Manual Operations Handoff Package workflow"
 Assert-Contains $manualOperationsHandoffPackageWorkflowContent "-DataFlowStorageTransitionRunbookEvidenceRef" "Manual Operations Handoff Package workflow"
@@ -1143,6 +1172,34 @@ Assert-Contains $browserSpecContent "developer-stored-access" "Browser E2E spec"
 Assert-Contains $browserSpecContent "login-form')).toHaveCount(0)" "Browser E2E spec"
 Assert-Contains $browserSpecContent "redirect=(%2F|\/)dashboard" "Browser E2E spec"
 
+$workflowDispatchInputLimitChecks = @(
+    @($lightweightWorkflow, "Lightweight CI workflow"),
+    @($durableWorkflow, "Durable Docker CI workflow"),
+    @($realS3Workflow, "Real S3 client CI workflow"),
+    @($containerSecurityWorkflow, "Container Security CI workflow"),
+    @($securityEvidenceFinalizerWorkflow, "Security Evidence Finalizer CI workflow"),
+    @($browserWorkflow, "Browser E2E CI workflow"),
+    @($iamRbacWorkflow, "IAM/RBAC Finalizer CI workflow"),
+    @($storageExpansionWorkflow, "Storage Expansion Finalizer CI workflow"),
+    @($kubernetesHaDrWorkflow, "Kubernetes HA DR Readiness CI workflow"),
+    @($kubernetesDrWorkflow, "Kubernetes DR Finalizer CI workflow"),
+    @($kubernetesOperationsReportSyncWorkflow, "Kubernetes Operations Report Sync CI workflow"),
+    @($operationsReadinessWorkflow, "Operations Readiness Finalizer CI workflow"),
+    @($operationsReadinessArtifactWorkflow, "Operations Readiness Artifact Finalizer CI workflow"),
+    @($manualStorageBackendTelemetryWorkflow, "Manual Storage Backend Telemetry Evidence workflow"),
+    @($manualMinioBucketCorsVerificationWorkflow, "Manual MinIO Bucket CORS Verification workflow"),
+    @($manualMonitoringThresholdWorkflow, "Manual Monitoring Threshold Evidence workflow"),
+    @($manualSecretRotationWorkflow, "Manual Secret Rotation Evidence workflow"),
+    @($manualCommercialIntegrationWorkflow, "Manual Commercial Integration Evidence workflow"),
+    @($manualCommercialApprovalWorkflow, "Manual Commercial Approval Evidence workflow"),
+    @($manualOperationsHandoffPackageWorkflow, "Manual Operations Handoff Package workflow"),
+    @($manualDataFlowStoragePlanWorkflow, "Manual Data-flow Storage Plan Evidence workflow"),
+    @($manualDataFlowStorageTransitionRunbookWorkflow, "Manual Data-flow Storage Transition Runbook Evidence workflow"),
+    @($enterpriseAuthSmokeWorkflow, "Enterprise Auth Smoke CI workflow")
+)
+foreach ($workflowDispatchInputLimitCheck in $workflowDispatchInputLimitChecks) {
+    Assert-WorkflowDispatchInputLimit $workflowDispatchInputLimitCheck[0] $workflowDispatchInputLimitCheck[1]
+}
 Write-Host "CI workflows verified."
 Write-Host "Lightweight workflow: $($lightweightWorkflow.Path)"
 Write-Host "Durable Docker workflow: $($durableWorkflow.Path)"

@@ -1,4 +1,4 @@
-param(
+﻿param(
     [string] $CommercialReadinessPath = ".\dev-docs\commercial-readiness.md"
 )
 
@@ -23,7 +23,7 @@ if (-not (Test-Path -LiteralPath $resolvedPath)) {
     throw "Commercial readiness draft missing: $resolvedPath"
 }
 
-$content = Get-Content -Raw -LiteralPath $resolvedPath
+$content = Get-Content -Raw -Encoding UTF8 -LiteralPath $resolvedPath
 
 Assert-Contains $content "private S3-compatible object storage platform" "Commercial readiness draft"
 Assert-Contains $content "streaming/media teams" "Commercial readiness draft"
@@ -58,9 +58,9 @@ Assert-Contains $content 'IAM/RBAC finalizer report is generated as `.osmu-run/l
 Assert-Contains $content 'Kubernetes HA/DR readiness report is generated as `.osmu-run/latest-kubernetes-ha-dr-readiness.json` from the target namespace through `.github/workflows/kubernetes-ha-dr-readiness-ci.yml` or the operations readiness finalizer.' "Commercial readiness draft"
 Assert-Contains $content 'Secret/certificate rotation evidence is generated as `.osmu-run/latest-secret-rotation-evidence.json` with `result=passed` from the target environment through `scripts/write-secret-rotation-evidence.ps1` or `.github/workflows/manual-secret-rotation-evidence.yml`; the evidence stores external references and booleans only, never secret values.' "Commercial readiness draft"
 Assert-Contains $content 'Enterprise auth target smoke evidence is generated as `.osmu-run/latest-enterprise-auth-smoke.json` with `result=passed` from the customer or pilot IdP/directory through `scripts/write-enterprise-auth-smoke-plan.ps1` or `.github/workflows/enterprise-auth-smoke-ci.yml`' "Commercial readiness draft"
-Assert-Contains $content 'promoted passed evidence must include typed integer summary counts with `passCount>0`, `failCount=0`, `blockedCount=0`, and `plannedCount=0`' "Commercial readiness draft"
+Assert-Contains $content 'promoted passed evidence must include `executionMode=execute`, typed integer summary counts with `passCount>0`, `failCount=0`, `blockedCount=0`, and `plannedCount=0`' "Commercial readiness draft"
 Assert-Contains $content 'Operations readiness artifact import report is generated as `.osmu-run/latest-operations-readiness-artifact-import.json` when evidence is assembled from prior workflow or manual evidence artifacts, including storage backend telemetry, monitoring threshold, secret rotation, commercial integration, commercial approval, enterprise auth `result=passed` smoke or `result=scope-out` evidence, and operations handoff package evidence when provided' "Commercial readiness draft"
-Assert-Contains $content 'monitoring threshold promotion requires typed integer alert/route/Grafana/tuning/failure counts plus typed boolean confirmations' "Commercial readiness draft"
+Assert-Contains $content 'monitoring threshold promotion requires target metadata, chronological review window, evidence refs, typed integer alert/route/Grafana/tuning/failure/check counts, typed boolean confirmations' "Commercial readiness draft"
 Assert-Contains $content 'Commercial integration evidence is generated as `.osmu-run/latest-commercial-integration-evidence.json` with `result=passed` from the target environment through `scripts/write-commercial-integration-evidence.ps1` or `.github/workflows/manual-commercial-integration-evidence.yml`' "Commercial readiness draft"
 Assert-Contains $content 'requires typed integer count fields and typed boolean readiness/profile fields' "Commercial readiness draft"
 Assert-Contains $content 'Commercial approval evidence is generated as `.osmu-run/latest-commercial-approval-evidence.json` with `result=passed` through `scripts/write-commercial-approval-evidence.ps1` or `.github/workflows/manual-commercial-approval-evidence.yml`' "Commercial readiness draft"

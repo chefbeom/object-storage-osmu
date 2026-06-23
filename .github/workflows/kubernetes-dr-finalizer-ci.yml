@@ -71,12 +71,7 @@ on:
         type: boolean
         default: false
       run_s3_client_smoke:
-        description: Run real S3 client smoke against the restored endpoint
-        required: true
-        type: boolean
-        default: false
-      require_s3_client:
-        description: Fail restore smoke when the requested S3 client is unavailable
+        description: Run real S3 client smoke against the restored endpoint and require the client to be available
         required: true
         type: boolean
         default: false
@@ -184,7 +179,7 @@ jobs:
           if ("${{ inputs.run_s3_client_smoke }}" -eq "true") {
             $planArgs += "-RunS3ClientSmoke"
           }
-          if ("${{ inputs.require_s3_client }}" -eq "true") {
+          if ("${{ inputs.run_s3_client_smoke }}" -eq "true") {
             $planArgs += "-RequireS3Client"
           }
           if ("${{ inputs.skip_restore_smoke }}" -eq "true") {
@@ -287,7 +282,7 @@ jobs:
           if ("${{ inputs.run_s3_client_smoke }}" -eq "true") {
             $finalizerArgs += "-RunS3ClientSmoke"
           }
-          if ("${{ inputs.require_s3_client }}" -eq "true") {
+          if ("${{ inputs.run_s3_client_smoke }}" -eq "true") {
             $finalizerArgs += "-RequireS3Client"
           }
           if ("${{ inputs.skip_restore_smoke }}" -eq "true") {

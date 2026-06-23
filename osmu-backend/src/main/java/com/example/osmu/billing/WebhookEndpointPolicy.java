@@ -32,6 +32,9 @@ final class WebhookEndpointPolicy {
 
     static boolean isPrivateOrLocalHost(String host) {
         String normalized = host == null ? "" : host.trim().toLowerCase(Locale.ROOT);
+        if (normalized.startsWith("[") && normalized.endsWith("]")) {
+            normalized = normalized.substring(1, normalized.length() - 1);
+        }
         while (normalized.endsWith(".")) {
             normalized = normalized.substring(0, normalized.length() - 1);
         }

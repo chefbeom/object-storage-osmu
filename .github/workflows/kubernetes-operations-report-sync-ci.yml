@@ -86,10 +86,10 @@ jobs:
             $forbiddenPropertyPattern = '(?i)"(sql|rawSql|raw_sql|explain|explainJson|explain_json|rawExplain|raw_explain|password|passwd|secret|token|credential|apiKey|api_key|accessKey|access_key|privateKey|private_key)"\s*:'
             $credentialPattern = '(?i)\b(password|passwd|secret|token|credential|api[_-]?key|access[_-]?key|private[_-]?key)\s*=\s*\S+'
             $rawSqlPattern = '(?i)\bSELECT\b[\s\S]{0,200}\bFROM\b'
-          if ($summaryText -match $forbiddenPropertyPattern -or $summaryText -match $credentialPattern -or $summaryText -match $rawSqlPattern) {
-            throw "queryPlanEvidence summary must not contain raw SQL, raw EXPLAIN, or credential-shaped content."
+            if ($summaryText -match $forbiddenPropertyPattern -or $summaryText -match $credentialPattern -or $summaryText -match $rawSqlPattern) {
+              throw "queryPlanEvidence summary must not contain raw SQL, raw EXPLAIN, or credential-shaped content."
+            }
           }
-        }
 
       - name: Restore data-flow storage transition runbook evidence
         if: ${{ inputs.data_flow_storage_transition_runbook_json_base64 != '' }}
