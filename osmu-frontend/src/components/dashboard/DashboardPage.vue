@@ -1556,7 +1556,7 @@
         data-testid="readiness-handoff-package-checks"
       >
         <li
-          v-for="check in operationsHandoffPackageChecks.slice(0, 3)"
+          v-for="check in operationsHandoffPackageChecks"
           :key="check.id || check.name"
         >
           <span>

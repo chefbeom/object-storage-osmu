@@ -788,6 +788,7 @@ test('HomeView exposes stable selectors for browser E2E flows', () => {
   assert.match(dashboardSource, /operationsEvidenceHandoffStages/)
   assert.match(dashboardSource, /operationsHandoffPackage/)
   assert.match(dashboardSource, /operationsHandoffPackageChecks/)
+  assert.doesNotMatch(dashboardSource, /operationsHandoffPackageChecks\.slice\(0, 3\)/)
   assert.match(dashboardSource, /operationsHandoffPackageEvidenceRefSummary/)
   assert.match(dashboardSource, /operationsHandoffPackageReadinessSnapshot/)
   assert.match(dashboardSource, /operationsHandoffPackageConvergenceSnapshot/)
