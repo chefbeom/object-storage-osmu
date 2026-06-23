@@ -881,6 +881,7 @@ test('HomeView exposes stable selectors for browser E2E flows', () => {
   assert.match(dashboardSource, /monitoringThresholdMissingAlertSummary/)
   assert.match(dashboardSource, /monitoringThresholdConfirmationSummary/)
   assert.match(dashboardSource, /monitoringThresholdEvidenceChecks/)
+  assert.doesNotMatch(dashboardSource, /monitoringThresholdEvidenceChecks\.slice\(0, 3\)/)
   assert.match(dashboardSource, /normalizeDataFlowStoragePlan/)
   assert.match(dashboardSource, /normalizeStorageBackendTelemetryEvidence/)
   assert.match(dashboardSource, /normalizeMonitoringThresholdEvidence/)

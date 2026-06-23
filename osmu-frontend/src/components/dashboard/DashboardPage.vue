@@ -746,7 +746,7 @@
         data-testid="readiness-monitoring-threshold-evidence-checks"
       >
         <li
-          v-for="check in monitoringThresholdEvidenceChecks.slice(0, 3)"
+          v-for="check in monitoringThresholdEvidenceChecks"
           :key="check.id || check.name"
         >
           <span>
