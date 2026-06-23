@@ -1137,7 +1137,7 @@
         data-testid="readiness-secret-rotation-evidence-rotations"
       >
         <li
-          v-for="rotation in secretRotationEvidenceRotations.slice(0, 4)"
+          v-for="rotation in secretRotationEvidenceRotations"
           :key="rotation.id || rotation.name"
         >
           <span>
@@ -1152,7 +1152,7 @@
         data-testid="readiness-secret-rotation-evidence-checks"
       >
         <li
-          v-for="check in secretRotationEvidenceChecks.slice(0, 3)"
+          v-for="check in secretRotationEvidenceChecks"
           :key="check.id || check.name"
         >
           <span>
@@ -1196,7 +1196,7 @@
         data-testid="readiness-commercial-integration-evidence-checks"
       >
         <li
-          v-for="check in commercialIntegrationEvidenceChecks.slice(0, 3)"
+          v-for="check in commercialIntegrationEvidenceChecks"
           :key="check.id || check.name"
         >
           <span>
@@ -1246,7 +1246,7 @@
         data-testid="readiness-commercial-approval-evidence-checks"
       >
         <li
-          v-for="check in commercialApprovalEvidenceChecks.slice(0, 3)"
+          v-for="check in commercialApprovalEvidenceChecks"
           :key="check.id || check.name"
         >
           <span>
@@ -1300,7 +1300,7 @@
         data-testid="readiness-enterprise-auth-smoke-evidence-checks"
       >
         <li
-          v-for="check in enterpriseAuthSmokeEvidenceChecks.slice(0, 3)"
+          v-for="check in enterpriseAuthSmokeEvidenceChecks"
           :key="check.id || check.name"
         >
           <span>
@@ -1412,7 +1412,7 @@
         data-testid="readiness-data-flow-storage-transition-runbook-checks"
       >
         <li
-          v-for="check in dataFlowStorageTransitionRunbookChecks.slice(0, 3)"
+          v-for="check in dataFlowStorageTransitionRunbookChecks"
           :key="check.id || check.name"
         >
           <span>
