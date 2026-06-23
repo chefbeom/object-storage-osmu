@@ -1,6 +1,6 @@
 # OSMU Development Roadmap
 
-작성일: 2026-06-21 KST
+작성일: 2026-06-23 KST
 
 이 문서는 OSMU를 로컬 MVP 데모에서 B2B 운영형 제품으로 끌어올리기 위한 개발 순서를 고정한다. 현재 제품 방향은 AWS S3 전체 복제가 아니라, 주요 S3 클라이언트가 자체 스토리지로 전환할 수 있는 대체 호환 계층과 운영 가능한 control plane을 완성하는 것이다.
 
@@ -32,6 +32,10 @@ AWS 문서의 세부 checksum negotiation, 드문 header 조합, 정확한 오�
 
 ## 2. 현재 기준선
 
+- 기준 snapshot: 2026-06-23 KST.
+- MVP completion latest verification: result=ready, classification=local-durable-mvp-ready, localDurableMvpReady=true.
+- Operations readiness latest verification: result=pending, passed=65, pending=15, total=80.
+- S3 boundary latest verification: verify-s3-compatibility-boundary.ps1 passed.
 - 로컬 durable MVP demo는 Docker/MariaDB/MinIO/backend/frontend/Browser E2E/Dockerized MinIO Client 기준 `docker-durable-demo-verified` 상태다.
 - MVP demo 완성도는 `90-95%`이며, 로컬 demo GO와 production/B2B readiness는 분리한다.
 - B2B 제품 완성도는 약 `45%`다. 운영 evidence, target 환경 검증, commercial/legal approval, live security evidence가 아직 남아 있다.

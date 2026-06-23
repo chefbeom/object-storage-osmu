@@ -41,7 +41,7 @@ This index points to the useful project documents for the current prototype. The
 - `test-strategy.md` - test strategy and quality gates.
 - `test-cases.md` - detailed test cases.
 - `../scripts/verify-local.ps1` - local static/unit/build/backend verification.
-- `../scripts/verify-development-roadmap.ps1` - verify the roadmap keeps the current B2B operations priority, S3 replacement boundary, and next implementation order.
+- `../scripts/verify-development-roadmap.ps1` - verify the roadmap keeps the current B2B operations priority, S3 replacement boundary, next implementation order, and 2026-06-23 readiness snapshot; when latest `.osmu-run` MVP completion or operations readiness JSON exists, the verifier cross-checks the snapshot line against that evidence.
 - `../scripts/verify-prototype-status.ps1` - verify the prototype status document stays current on local durable MVP readiness, the 2026-06-23 operations readiness snapshot, production/B2B target-evidence gaps, S3 replacement boundary, enterprise auth, data-flow, commercial, and operations evidence chain scope; when latest `.osmu-run` MVP completion or operations readiness JSON exists, the verifier cross-checks the snapshot line against that evidence.
 - `../scripts/write-migration-rollback-plan.ps1` - write a Flyway forward-only migration rollback plan with backup, restore, smoke, and compensating-migration stages.
 - `../scripts/verify-migration-rollback-plan.ps1` - verify the migration rollback plan shape, required stages, backup-artifact requirement, and no-secret reference policy.

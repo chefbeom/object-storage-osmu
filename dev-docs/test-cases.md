@@ -2314,8 +2314,8 @@ TC-FE-023 보강: 사용자가 취소한 경우에는 abort API를 호출한다.
 - Feature: Development roadmap priority and S3 replacement boundary verification.
 - Preconditions: PowerShell is available.
 - Input: `powershell -ExecutionPolicy Bypass -File .\scripts\verify-development-roadmap.ps1`
-- Steps: Verify `dev-docs/development-roadmap.md` keeps the B2B operations evidence priority, current durable MVP baseline, Kubernetes DR finalizer `result=ready` contract, security/IAM finalizer `result=passed` contracts, data-flow storage transition plan, enterprise auth target smoke or scope-out path, and the rule that S3 work is limited to replacement-use smoke failures, migration blockers, or OSMU control-plane needs.
-- Expected: Roadmap changes cannot silently drift back toward AWS edge parity, downgrade the Kubernetes DR finalizer ready contract to a generic passed check, drift security/IAM finalizers to generic ready checks, or hide the production operations evidence chain.
+- Steps: Verify `dev-docs/development-roadmap.md` keeps the B2B operations evidence priority, current durable MVP baseline, 2026-06-23 snapshot, Kubernetes DR finalizer `result=ready` contract, security/IAM finalizer `result=passed` contracts, data-flow storage transition plan, enterprise auth target smoke or scope-out path, and the rule that S3 work is limited to replacement-use smoke failures, migration blockers, or OSMU control-plane needs. When latest `.osmu-run` MVP completion or operations readiness JSON exists, compare the roadmap snapshot lines against the JSON result/classification/count fields.
+- Expected: Roadmap changes cannot silently drift back toward AWS edge parity, downgrade the Kubernetes DR finalizer ready contract to a generic passed check, drift security/IAM finalizers to generic ready checks, hide the production operations evidence chain, or carry stale readiness snapshot counts that disagree with current evidence.
 - Priority: P2
 - Automated: `scripts/verify-development-roadmap.ps1`
 
