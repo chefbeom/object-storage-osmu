@@ -69,6 +69,7 @@ function Test-OperatorApprovalRequired([string[]] $Values) {
     return (
         $combined.Contains("confirm") -or
         $combined.Contains("operator approval") -or
+        $combined.Contains("run_live=true") -or
         $combined.Contains("publish=true") -or
         $combined.Contains("submit_evidence=true") -or
         $combined.Contains("-submitevidence")

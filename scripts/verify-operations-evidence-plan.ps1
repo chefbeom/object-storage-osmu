@@ -155,6 +155,7 @@ $actions = @($report.actions)
 Assert-True ($actions[0].name -eq "Storage expansion finalizer live evidence") "Expected storage expansion as first action."
 Assert-True ($actions[0].workflowCommand -like "gh workflow run storage-expansion-finalizer-ci.yml*") "Expected storage workflow command."
 Assert-True ($actions[0].requiresKubeconfigSecret) "Storage expansion action should require kubeconfig."
+Assert-True ($actions[0].requiresOperatorApproval) "Storage expansion run_live action should require operator approval."
 Assert-True ($actions[1].name -eq "Kubernetes DR finalizer live evidence") "Expected Kubernetes DR as second action."
 Assert-True ($actions[1].requiresOperatorApproval) "Kubernetes DR action should require operator approval."
 Assert-True ($actions[1].hasPlaceholders) "Kubernetes DR action should keep placeholder markers."
@@ -166,6 +167,7 @@ Assert-True (-not $actions[2].requiresKubeconfigSecret) "Monitoring threshold wo
 Assert-True (@($actions[2].operatorInputs) -contains "<env>") "Monitoring threshold action should list environment placeholder."
 Assert-True ($actions[3].name -eq "Enterprise auth target smoke evidence") "Expected enterprise auth as fourth action."
 Assert-True ($actions[3].workflowCommand -like "gh workflow run enterprise-auth-smoke-ci.yml*") "Expected enterprise auth workflow command."
+Assert-True ($actions[3].requiresOperatorApproval) "Enterprise auth run_live action should require operator approval."
 Assert-True (-not $actions[3].requiresKubeconfigSecret) "Enterprise auth workflow should not require kubeconfig just because it uses run_live=true."
 Assert-True (@($actions[3].operatorInputs) -contains "<api-base>") "Enterprise auth action should list API base placeholder."
 
