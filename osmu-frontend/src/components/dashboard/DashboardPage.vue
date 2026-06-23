@@ -1762,7 +1762,7 @@
         data-testid="readiness-kubernetes-report-sync-checks"
       >
         <li
-          v-for="check in kubernetesOperationsReportSyncChecks.slice(0, 3)"
+          v-for="check in kubernetesOperationsReportSyncChecks"
           :key="check.name"
         >
           <span>
