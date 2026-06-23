@@ -580,7 +580,7 @@
 - Preconditions: PowerShell is available.
 - Input: `powershell -ExecutionPolicy Bypass -File .\scripts\verify-prototype-status.ps1`
 - Steps: Parse `dev-docs/prototype-status.md`, verify local durable MVP readiness, production/B2B target-evidence pending state, S3 replacement boundary, enterprise auth/data-flow/commercial/operations evidence chain scope, and next implementation priorities.
-- Expected: The script exits successfully only when the status document says `docker-durable-demo-verified`, `MVP demo estimate: 90-95%`, `Production/B2B readiness: pending target evidence`, `S3 compatibility role: replacement layer, not AWS edge parity`, and includes monitoring threshold target evidence in the production operations chain, while rejecting stale 2026-06-18 and old SSO/LDAP pending wording.
+- Expected: The script exits successfully only when the status document says `docker-durable-demo-verified`, `MVP demo estimate: 90-95%`, `Production/B2B readiness: pending target evidence`, `S3 compatibility role: replacement layer, not AWS edge parity`, the 2026-06-23 snapshot with MVP completion `local-durable-mvp-ready`, operations readiness `passed=65, pending=15, total=80`, S3 boundary verifier pass, and monitoring threshold target evidence in the production operations chain, while rejecting stale 2026-06-18/2026-06-21 and old SSO/LDAP pending wording.
 - Priority: P1
 - Automated: `scripts/verify-prototype-status.ps1`
 

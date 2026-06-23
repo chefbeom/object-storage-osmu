@@ -1,6 +1,6 @@
 # OSMU Prototype Status
 
-Last updated: 2026-06-21 KST
+Last updated: 2026-06-23 KST
 
 이 문서는 세션 사이에서 현재 구현 상태와 다음 개발 방향이 흐려지지 않게 고정하는 상태 문서다. 실행 증거는 `.osmu-run/`에 남고, 이 파일은 그 증거를 해석하는 기준이다.
 
@@ -12,6 +12,15 @@ Last updated: 2026-06-21 KST
 - Production/B2B readiness: pending target evidence, not blocked by local MVP demo status.
 - S3 compatibility role: replacement layer, not AWS edge parity.
 - S3-compatible replacement layer means common S3 clients can replace basic bucket/object flows, while AWS-specific edge behavior remains out of scope unless real client smoke fails.
+
+## Latest Verification Snapshot
+
+- Snapshot date: 2026-06-23 KST.
+- MVP completion latest verification: result=ready, classification=local-durable-mvp-ready, localDurableMvpReady=true.
+- Operations readiness latest verification: result=pending, passed=65, pending=15, total=80.
+- S3 boundary latest verification: verify-s3-compatibility-boundary.ps1 passed.
+- B2B product estimate remains about 45% because the remaining work is target evidence, not local feature wiring.
+- Current direction: keep closing target operations evidence; do not expand AWS S3 parity unless a supported replacement-client smoke or migration blocker proves product impact.
 
 ## Current Goal
 
