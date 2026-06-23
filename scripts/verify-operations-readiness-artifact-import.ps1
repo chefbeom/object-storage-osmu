@@ -325,6 +325,83 @@ function New-PassedMonitoringThresholdChecks {
     })
 }
 
+function New-MinioBucketCorsChecks([bool] $Passed = $true) {
+    $required = @(
+        "cors-xml-parse",
+        "cors-rule",
+        "allowed-origin",
+        "allowed-methods",
+        "allowed-headers",
+        "expose-headers",
+        "max-age",
+        "raw-cors-policy"
+    )
+    return @($required | ForEach-Object {
+        [ordered]@{
+            id = $_
+            name = $_
+            status = if ($Passed) { "PASS" } else { "FAIL" }
+            passed = $Passed
+            detail = "verified"
+        }
+    })
+}
+
+function New-MinioBucketCorsVerification([bool] $Passed = $true, [object] $FailureCount = 0, [bool] $RawCorsXmlStored = $false) {
+    return [ordered]@{
+        formatVersion = "osmu.minio-bucket-cors-verification.v1"
+        generatedAt = "2026-06-22T00:00:00Z"
+        result = if ($Passed) { "passed" } else { "failed" }
+        source = [ordered]@{
+            mode = "cors-xml-path"
+            bucketName = "uploads"
+            minioAlias = "osmu-minio"
+            sourceRef = ".osmu-run/minio-bucket-cors.xml"
+            executeRequested = $false
+            mcTimeoutSeconds = 30
+            rawCorsXmlStored = $RawCorsXmlStored
+        }
+        expected = [ordered]@{
+            allowedOrigins = @("http://localhost:5173")
+            methods = @("GET", "PUT", "POST", "DELETE", "HEAD")
+            allowedHeaders = @("*")
+            exposeHeaders = @("ETag", "x-amz-request-id", "x-amz-id-2", "x-amz-version-id")
+            maxAgeSeconds = 3000
+        }
+        summary = [ordered]@{
+            ruleCount = 1
+            exposedHeaderCount = 4
+            failureCount = $FailureCount
+            plannedCount = 0
+        }
+        cors = [ordered]@{
+            ruleCount = 1
+            allowedOrigins = @("http://localhost:5173")
+            allowedMethods = @("DELETE", "GET", "HEAD", "POST", "PUT")
+            allowedHeaders = @("*")
+            exposeHeaders = @("ETag", "x-amz-id-2", "x-amz-request-id", "x-amz-version-id")
+            maxAgeSeconds = @(3000)
+            rules = @(
+                [ordered]@{
+                    allowedOrigins = @("http://localhost:5173")
+                    allowedMethods = @("DELETE", "GET", "HEAD", "POST", "PUT")
+                    allowedHeaders = @("*")
+                    exposeHeaders = @("ETag", "x-amz-id-2", "x-amz-request-id", "x-amz-version-id")
+                    maxAgeSeconds = @(3000)
+                }
+            )
+        }
+        checks = New-MinioBucketCorsChecks -Passed $Passed
+        decisionRule = "MinIO bucket CORS verification passes when browser upload headers are exposed."
+        scopePolicy = "This evidence verifies MinIO bucket CORS needed by OSMU browser multipart upload and traceability. It is not AWS S3 parity work, and it does not store raw CORS XML, credentials, bearer tokens, private keys, MinIO root credentials, or object data."
+        operatorCommands = [ordered]@{
+            collectWithMc = "mc cors info <alias>/<bucket> > .\.osmu-run\minio-bucket-cors.xml"
+            verifyFromFile = "powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-minio-bucket-cors.ps1 -CorsXmlPath .\.osmu-run\minio-bucket-cors.xml -FailIfNotPassed"
+            collectAndVerify = "powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-minio-bucket-cors.ps1 -BucketName <bucket> -MinioAlias <alias> -Execute -FailIfNotPassed"
+        }
+    }
+}
+
 function New-PassedDataFlowStorageTransitionRunbookChecks {
     $ids = @(
         "environment-name",
@@ -872,6 +949,7 @@ $weakContainerSecuritySbomRoot = Join-Path $resolvedOutputDirectory "weak-contai
 $weakStorageBackendTelemetryRoot = Join-Path $resolvedOutputDirectory "weak-storage-backend-telemetry-source"
 $weakStorageBackendTelemetryChecksRoot = Join-Path $resolvedOutputDirectory "weak-storage-backend-telemetry-checks-source"
 $unsafeStorageBackendTelemetryRoot = Join-Path $resolvedOutputDirectory "unsafe-storage-backend-telemetry-source"
+$unsafeMinioBucketCorsRoot = Join-Path $resolvedOutputDirectory "unsafe-minio-bucket-cors-source"
 $weakKubernetesOperationsReportSyncRoot = Join-Path $resolvedOutputDirectory "weak-kubernetes-operations-report-sync-source"
 $stringCountKubernetesOperationsReportSyncRoot = Join-Path $resolvedOutputDirectory "string-count-kubernetes-operations-report-sync-source"
 $nonReadyKubernetesOperationsReportSyncRoot = Join-Path $resolvedOutputDirectory "non-ready-kubernetes-operations-report-sync-source"
@@ -909,6 +987,7 @@ $kubernetesDrSource = Join-Path $sourceRoot "kubernetes-dr"
 $iamSource = Join-Path $sourceRoot "iam-rbac"
 $securitySource = Join-Path $sourceRoot "security-evidence"
 $storageBackendTelemetrySource = Join-Path $sourceRoot "storage-backend-telemetry"
+$minioBucketCorsSource = Join-Path $sourceRoot "minio-bucket-cors"
 $monitoringThresholdSource = Join-Path $sourceRoot "monitoring-threshold"
 $secretRotationSource = Join-Path $sourceRoot "secret-rotation"
 $commercialIntegrationSource = Join-Path $sourceRoot "commercial-integration"
@@ -1037,6 +1116,8 @@ Write-JsonEvidence (Join-Path $storageBackendTelemetrySource "latest-storage-bac
     scopePolicy = "This evidence captures MinIO pool/node operations telemetry for OSMU storage readiness. It is not AWS S3 parity work, and it does not store raw admin info, credentials, bearer tokens, private keys, kubeconfig, MinIO root credentials, or object data."
 }
 Write-TextEvidence (Join-Path $storageBackendTelemetrySource "latest-storage-backend-telemetry.md") "# Storage backend telemetry"
+Write-JsonEvidence (Join-Path $minioBucketCorsSource "latest-minio-bucket-cors-verification.json") (New-MinioBucketCorsVerification)
+Write-TextEvidence (Join-Path $minioBucketCorsSource "latest-minio-bucket-cors-verification.md") "# OSMU MinIO Bucket CORS Verification`n`nThis evidence verifies MinIO bucket CORS needed by OSMU browser multipart upload and traceability. It is not AWS S3 parity work."
 $passedMonitoringThresholdChecks = New-PassedMonitoringThresholdChecks
 Write-JsonEvidence (Join-Path $monitoringThresholdSource "latest-monitoring-threshold-evidence.json") @{
     formatVersion = "osmu.monitoring-threshold-evidence.v1"
@@ -1492,6 +1573,7 @@ $importScript = Resolve-ProjectPath ".\scripts\import-operations-readiness-artif
     -IamRbacArtifactPath $iamSource `
     -SecurityEvidenceArtifactPath $securitySource `
     -StorageBackendTelemetryArtifactPath $storageBackendTelemetrySource `
+    -MinioBucketCorsArtifactPath $minioBucketCorsSource `
     -MonitoringThresholdArtifactPath $monitoringThresholdSource `
     -SecretRotationArtifactPath $secretRotationSource `
     -CommercialIntegrationArtifactPath $commercialIntegrationSource `
@@ -1524,6 +1606,8 @@ Assert-True (Test-Path -LiteralPath (Join-Path $promotedRoot "latest-image-signi
 Assert-True (Test-Path -LiteralPath (Join-Path $promotedRoot "latest-container-security-evidence.json")) "Promoted container security evidence missing."
 Assert-True (Test-Path -LiteralPath (Join-Path $promotedRoot "latest-storage-backend-telemetry.json")) "Promoted storage backend telemetry evidence missing."
 Assert-True (Test-Path -LiteralPath (Join-Path $promotedRoot "latest-storage-backend-telemetry.md")) "Promoted storage backend telemetry markdown missing."
+Assert-True (Test-Path -LiteralPath (Join-Path $promotedRoot "latest-minio-bucket-cors-verification.json")) "Promoted MinIO bucket CORS verification missing."
+Assert-True (Test-Path -LiteralPath (Join-Path $promotedRoot "latest-minio-bucket-cors-verification.md")) "Promoted MinIO bucket CORS verification markdown missing."
 Assert-True (Test-Path -LiteralPath (Join-Path $promotedRoot "latest-monitoring-threshold-evidence.json")) "Promoted monitoring threshold evidence missing."
 Assert-True (Test-Path -LiteralPath (Join-Path $promotedRoot "latest-monitoring-threshold-evidence.md")) "Promoted monitoring threshold markdown missing."
 Assert-True (Test-Path -LiteralPath (Join-Path $promotedRoot "latest-secret-rotation-evidence.json")) "Promoted secret rotation evidence missing."
@@ -1548,6 +1632,7 @@ $promotedKubernetesDrFinalize = Get-Content -Raw -LiteralPath (Join-Path $promot
 $promotedIamRbac = Get-Content -Raw -LiteralPath (Join-Path $promotedRoot "latest-iam-rbac-finalize.json") | ConvertFrom-Json
 $promotedCommercialApproval = Get-Content -Raw -LiteralPath (Join-Path $promotedRoot "latest-commercial-approval-evidence.json") | ConvertFrom-Json
 $promotedStorageBackendTelemetry = Get-Content -Raw -LiteralPath (Join-Path $promotedRoot "latest-storage-backend-telemetry.json") | ConvertFrom-Json
+$promotedMinioBucketCors = Get-Content -Raw -LiteralPath (Join-Path $promotedRoot "latest-minio-bucket-cors-verification.json") | ConvertFrom-Json
 $promotedMonitoringThreshold = Get-Content -Raw -LiteralPath (Join-Path $promotedRoot "latest-monitoring-threshold-evidence.json") | ConvertFrom-Json
 $promotedSecretRotation = Get-Content -Raw -LiteralPath (Join-Path $promotedRoot "latest-secret-rotation-evidence.json") | ConvertFrom-Json
 $promotedCommercialIntegration = Get-Content -Raw -LiteralPath (Join-Path $promotedRoot "latest-commercial-integration-evidence.json") | ConvertFrom-Json
@@ -1559,6 +1644,8 @@ Assert-True ($promotedKubernetesDrFinalize.confirmRestore -eq $true -and $promot
 Assert-True ($promotedIamRbac.status -eq "iam-rbac-static-passed" -and $promotedIamRbac.failedCount -eq 0) "Promoted IAM/RBAC finalizer should preserve strict status and failed count."
 Assert-True ($promotedStorageBackendTelemetry.result -eq "passed") "Promoted storage backend telemetry evidence should preserve result=passed."
 Assert-True ($promotedStorageBackendTelemetry.source.rawAdminInfoStored -eq $false) "Promoted storage backend telemetry evidence should preserve rawAdminInfoStored=false."
+Assert-True ($promotedMinioBucketCors.result -eq "passed") "Promoted MinIO bucket CORS evidence should preserve result=passed."
+Assert-True ($promotedMinioBucketCors.source.rawCorsXmlStored -eq $false) "Promoted MinIO bucket CORS evidence should preserve rawCorsXmlStored=false."
 $storageExpansionEntry = @($report.entries | Where-Object { $_.group -eq "storage-expansion" -and $_.fileName -eq "latest-storage-expansion-finalize.json" })
 Assert-True ($storageExpansionEntry.Count -eq 1) "Storage expansion finalizer import entry missing."
 Assert-True (([string] $storageExpansionEntry[0].detail).Contains("stepCount=2")) "Storage expansion finalizer import entry should include strict step validation detail."
@@ -1586,6 +1673,9 @@ Assert-True (([string] $containerSecurityEntry[0].detail).Contains("commitSha=12
 $storageBackendTelemetryEntry = @($report.entries | Where-Object { $_.group -eq "storage-backend-telemetry" -and $_.fileName -eq "latest-storage-backend-telemetry.json" })
 Assert-True ($storageBackendTelemetryEntry.Count -eq 1) "Storage backend telemetry import entry missing."
 Assert-True (([string] $storageBackendTelemetryEntry[0].detail).Contains("targetCluster=osmu-prod") -and ([string] $storageBackendTelemetryEntry[0].detail).Contains("servers=2/2") -and ([string] $storageBackendTelemetryEntry[0].detail).Contains("checkCount=11")) "Storage backend telemetry import entry should include strict target metadata and telemetry validation detail."
+$minioBucketCorsEntry = @($report.entries | Where-Object { $_.group -eq "minio-bucket-cors" -and $_.fileName -eq "latest-minio-bucket-cors-verification.json" })
+Assert-True ($minioBucketCorsEntry.Count -eq 1) "MinIO bucket CORS import entry missing."
+Assert-True (([string] $minioBucketCorsEntry[0].detail).Contains("bucket=uploads") -and ([string] $minioBucketCorsEntry[0].detail).Contains("rawCorsXmlStored=False")) "MinIO bucket CORS import entry should include bucket and no-raw-XML validation detail."
 Assert-True ($promotedMonitoringThreshold.result -eq "passed") "Promoted monitoring threshold evidence should preserve result=passed."
 Assert-True ($promotedMonitoringThreshold.confirmations.noSecretValues) "Promoted monitoring threshold evidence should preserve no-secret confirmation."
 $monitoringThresholdEntry = @($report.entries | Where-Object { $_.group -eq "monitoring-threshold" -and $_.fileName -eq "latest-monitoring-threshold-evidence.json" })
@@ -2210,6 +2300,33 @@ $unsafeStorageBackendTelemetryReport = Get-Content -Raw -LiteralPath $unsafeStor
 Assert-True ($unsafeStorageBackendTelemetryReport.result -eq "failed") "Unsafe storage backend telemetry import report should be failed."
 Assert-True (-not (Test-Path -LiteralPath (Join-Path $unsafeStorageBackendTelemetryOutput "latest-storage-backend-telemetry.json"))) "Unsafe storage backend telemetry evidence must not be promoted."
 Assert-True (($unsafeStorageBackendTelemetryReport.entries | ConvertTo-Json -Depth 8).Contains("credential-shaped content")) "Unsafe storage backend telemetry report should describe credential-shaped content."
+
+$unsafeMinioBucketCors = New-MinioBucketCorsVerification -RawCorsXmlStored $true
+$unsafeMinioBucketCors["rawCorsXml"] = "<CORSConfiguration><CORSRule><ExposeHeader>ETag</ExposeHeader></CORSRule></CORSConfiguration>"
+Write-JsonEvidence (Join-Path $unsafeMinioBucketCorsRoot "latest-minio-bucket-cors-verification.json") $unsafeMinioBucketCors
+Write-TextEvidence (Join-Path $unsafeMinioBucketCorsRoot "latest-minio-bucket-cors-verification.md") "# CORS`n`n<CORSConfiguration><CORSRule /></CORSConfiguration>"
+$unsafeMinioBucketCorsOutput = Join-Path $resolvedOutputDirectory "unsafe-minio-bucket-cors-promoted"
+$unsafeMinioBucketCorsJson = Join-Path $resolvedOutputDirectory "unsafe-minio-bucket-cors-import.json"
+$unsafeMinioBucketCorsMarkdown = Join-Path $resolvedOutputDirectory "unsafe-minio-bucket-cors-import.md"
+$previousErrorActionPreference = $ErrorActionPreference
+$ErrorActionPreference = "Continue"
+try {
+    $unsafeMinioBucketCorsOutputLines = & powershell -NoProfile -ExecutionPolicy Bypass -File $importScript `
+        -MinioBucketCorsArtifactPath $unsafeMinioBucketCorsRoot `
+        -OutputDirectory $unsafeMinioBucketCorsOutput `
+        -JsonOutputPath $unsafeMinioBucketCorsJson `
+        -MarkdownOutputPath $unsafeMinioBucketCorsMarkdown 2>&1
+    $unsafeMinioBucketCorsExitCode = $LASTEXITCODE
+}
+finally {
+    $ErrorActionPreference = $previousErrorActionPreference
+}
+Assert-True ($unsafeMinioBucketCorsExitCode -ne 0) "MinIO bucket CORS verification with raw XML content should fail import."
+Assert-True (Test-Path -LiteralPath $unsafeMinioBucketCorsJson) "Unsafe MinIO bucket CORS import report should still be written."
+$unsafeMinioBucketCorsReport = Get-Content -Raw -LiteralPath $unsafeMinioBucketCorsJson | ConvertFrom-Json
+Assert-True ($unsafeMinioBucketCorsReport.result -eq "failed") "Unsafe MinIO bucket CORS import report should be failed."
+Assert-True (-not (Test-Path -LiteralPath (Join-Path $unsafeMinioBucketCorsOutput "latest-minio-bucket-cors-verification.json"))) "Unsafe MinIO bucket CORS evidence must not be promoted."
+Assert-True (($unsafeMinioBucketCorsReport.entries | ConvertTo-Json -Depth 8).Contains("raw CORS XML")) "Unsafe MinIO bucket CORS report should describe raw CORS XML."
 
 Write-JsonEvidence (Join-Path $weakKubernetesOperationsReportSyncRoot "latest-kubernetes-operations-report-sync.json") @{
     formatVersion = "osmu.kubernetes-operations-report-sync.v1"

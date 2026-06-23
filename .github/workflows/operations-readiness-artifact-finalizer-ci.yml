@@ -51,6 +51,14 @@ on:
         description: Optional storage backend telemetry evidence artifact name
         required: false
         default: ""
+      minio_bucket_cors_run_id:
+        description: Optional MinIO bucket CORS verification run id
+        required: false
+        default: ""
+      minio_bucket_cors_artifact_name:
+        description: Optional MinIO bucket CORS verification artifact name
+        required: false
+        default: ""
       monitoring_threshold_run_id:
         description: Optional monitoring threshold evidence run id
         required: false
@@ -235,6 +243,15 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           path: .osmu-run/operations-readiness-artifacts/storage-backend-telemetry
 
+      - name: Download MinIO bucket CORS verification
+        if: ${{ inputs.minio_bucket_cors_run_id != '' && inputs.minio_bucket_cors_artifact_name != '' }}
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ inputs.minio_bucket_cors_artifact_name }}
+          run-id: ${{ inputs.minio_bucket_cors_run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: .osmu-run/operations-readiness-artifacts/minio-bucket-cors
+
       - name: Download monitoring threshold evidence
         if: ${{ inputs.monitoring_threshold_run_id != '' && inputs.monitoring_threshold_artifact_name != '' }}
         uses: actions/download-artifact@v4
@@ -331,6 +348,7 @@ jobs:
             @("IamRbacArtifactPath", ".osmu-run/operations-readiness-artifacts/iam-rbac"),
             @("SecurityEvidenceArtifactPath", ".osmu-run/operations-readiness-artifacts/security-evidence"),
             @("StorageBackendTelemetryArtifactPath", ".osmu-run/operations-readiness-artifacts/storage-backend-telemetry"),
+            @("MinioBucketCorsArtifactPath", ".osmu-run/operations-readiness-artifacts/minio-bucket-cors"),
             @("MonitoringThresholdArtifactPath", ".osmu-run/operations-readiness-artifacts/monitoring-threshold"),
             @("SecretRotationArtifactPath", ".osmu-run/operations-readiness-artifacts/secret-rotation"),
             @("CommercialIntegrationArtifactPath", ".osmu-run/operations-readiness-artifacts/commercial-integration"),
@@ -385,6 +403,8 @@ jobs:
             .osmu-run/latest-container-security-evidence.json
             .osmu-run/latest-storage-backend-telemetry.json
             .osmu-run/latest-storage-backend-telemetry.md
+            .osmu-run/latest-minio-bucket-cors-verification.json
+            .osmu-run/latest-minio-bucket-cors-verification.md
             .osmu-run/latest-monitoring-threshold-evidence.json
             .osmu-run/latest-monitoring-threshold-evidence.md
             .osmu-run/latest-secret-rotation-evidence.json

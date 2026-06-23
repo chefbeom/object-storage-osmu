@@ -5,6 +5,7 @@ param(
     [string] $IamRbacArtifactPath = "",
     [string] $SecurityEvidenceArtifactPath = "",
     [string] $StorageBackendTelemetryArtifactPath = "",
+    [string] $MinioBucketCorsArtifactPath = "",
     [string] $MonitoringThresholdArtifactPath = "",
     [string] $SecretRotationArtifactPath = "",
     [string] $CommercialIntegrationArtifactPath = "",
@@ -3566,6 +3567,206 @@ function Test-KubernetesOperationsReportSyncEvidenceJson([string] $Path) {
     }
 }
 
+function Test-MinioBucketCorsVerificationJson([string] $Path) {
+    try {
+        $raw = Get-Content -Raw -LiteralPath $Path
+        $json = $raw | ConvertFrom-Json
+    }
+    catch {
+        return [pscustomobject]@{
+            passed = $false
+            detail = "invalid JSON: $($_.Exception.Message)"
+        }
+    }
+
+    $rawValidation = Test-OperationsEvidenceRawContent $raw "MinIO bucket CORS"
+    if (-not $rawValidation.passed) {
+        return $rawValidation
+    }
+    if ($raw.Contains("<CORSConfiguration")) {
+        return [pscustomobject]@{
+            passed = $false
+            detail = "MinIO bucket CORS evidence must not store raw CORS XML"
+        }
+    }
+
+    $formatVersion = [string] (Get-JsonProperty $json "formatVersion")
+    if ($formatVersion -ne "osmu.minio-bucket-cors-verification.v1") {
+        return [pscustomobject]@{
+            passed = $false
+            detail = "formatVersion=$formatVersion expected osmu.minio-bucket-cors-verification.v1"
+        }
+    }
+
+    $result = [string] (Get-JsonProperty $json "result")
+    if ($result -notin @("passed", "failed")) {
+        return [pscustomobject]@{
+            passed = $false
+            detail = "result=$result expected passed|failed"
+        }
+    }
+
+    $source = Get-JsonProperty $json "source"
+    $summary = Get-JsonProperty $json "summary"
+    $cors = Get-JsonProperty $json "cors"
+    if ($null -eq $source -or $null -eq $summary -or $null -eq $cors) {
+        return [pscustomobject]@{
+            passed = $false
+            detail = "source, summary, and cors sections are required"
+        }
+    }
+
+    $rawCorsXmlStored = Get-RequiredJsonBool $source "rawCorsXmlStored"
+    if (-not $rawCorsXmlStored.valid -or $rawCorsXmlStored.value) {
+        return [pscustomobject]@{
+            passed = $false
+            detail = "source.rawCorsXmlStored=$($rawCorsXmlStored.raw) expected boolean false"
+        }
+    }
+
+    foreach ($field in @("bucketName", "minioAlias")) {
+        $value = [string] (Get-JsonProperty $source $field)
+        if ([string]::IsNullOrWhiteSpace($value)) {
+            return [pscustomobject]@{
+                passed = $false
+                detail = "source.$field missing"
+            }
+        }
+    }
+
+    $ruleCount = Get-RequiredJsonInt $summary "ruleCount"
+    $exposedHeaderCount = Get-RequiredJsonInt $summary "exposedHeaderCount"
+    $failureCount = Get-RequiredJsonInt $summary "failureCount"
+    $plannedCount = Get-RequiredJsonInt $summary "plannedCount"
+    foreach ($countResult in @(
+        @{ name = "summary.ruleCount"; value = $ruleCount },
+        @{ name = "summary.exposedHeaderCount"; value = $exposedHeaderCount },
+        @{ name = "summary.failureCount"; value = $failureCount },
+        @{ name = "summary.plannedCount"; value = $plannedCount }
+    )) {
+        if (-not $countResult.value.valid -or [int64] $countResult.value.value -lt 0) {
+            return [pscustomobject]@{
+                passed = $false
+                detail = "$($countResult.name)=$($countResult.value.raw)(valid=$($countResult.value.valid)) expected non-negative integer"
+            }
+        }
+    }
+
+    $corsRuleCount = Get-RequiredJsonInt $cors "ruleCount"
+    if (-not $corsRuleCount.valid -or [int64] $corsRuleCount.value -ne [int64] $ruleCount.value) {
+        return [pscustomobject]@{
+            passed = $false
+            detail = "cors.ruleCount=$($corsRuleCount.raw)(valid=$($corsRuleCount.valid)) summary.ruleCount=$($ruleCount.raw) expected matching integers"
+        }
+    }
+
+    $checksObject = Get-JsonProperty $json "checks"
+    $checks = if ($null -eq $checksObject) { @() } else { @($checksObject) }
+    if ($checks.Count -le 0) {
+        return [pscustomobject]@{
+            passed = $false
+            detail = "checks missing"
+        }
+    }
+
+    $actualFailureCount = 0
+    $actualPlannedCount = 0
+    foreach ($check in $checks) {
+        $status = [string] (Get-JsonProperty $check "status")
+        $checkPassed = Get-RequiredJsonBool $check "passed"
+        if ($status -notin @("PASS", "FAIL", "PLANNED") -or -not $checkPassed.valid) {
+            return [pscustomobject]@{
+                passed = $false
+                detail = "checks.$([string] (Get-JsonProperty $check "id")) status=$status passed=$($checkPassed.raw) expected status PASS|FAIL|PLANNED and typed boolean"
+            }
+        }
+        if ($status -eq "PASS" -and -not $checkPassed.value) {
+            return [pscustomobject]@{ passed = $false; detail = "checks.$([string] (Get-JsonProperty $check "id")) PASS row must have passed=true" }
+        }
+        if ($status -eq "FAIL" -and $checkPassed.value) {
+            return [pscustomobject]@{ passed = $false; detail = "checks.$([string] (Get-JsonProperty $check "id")) FAIL row must have passed=false" }
+        }
+        if ($status -eq "PLANNED" -and $checkPassed.value) {
+            return [pscustomobject]@{ passed = $false; detail = "checks.$([string] (Get-JsonProperty $check "id")) PLANNED row must have passed=false" }
+        }
+        if ($status -eq "FAIL") { $actualFailureCount++ }
+        if ($status -eq "PLANNED") { $actualPlannedCount++ }
+    }
+
+    if ([int64] $failureCount.value -ne $actualFailureCount -or [int64] $plannedCount.value -ne $actualPlannedCount) {
+        return [pscustomobject]@{
+            passed = $false
+            detail = "summary counts do not match checks: failureCount=$($failureCount.value)/$actualFailureCount plannedCount=$($plannedCount.value)/$actualPlannedCount"
+        }
+    }
+
+    if ($result -eq "passed") {
+        if ([int64] $failureCount.value -ne 0 -or [int64] $plannedCount.value -ne 0) {
+            return [pscustomobject]@{
+                passed = $false
+                detail = "passed CORS evidence requires zero failed and planned checks"
+            }
+        }
+        $exposeHeaders = @((Get-JsonProperty $cors "exposeHeaders") | ForEach-Object { [string] $_ })
+        foreach ($requiredHeader in @("ETag", "x-amz-request-id", "x-amz-id-2", "x-amz-version-id")) {
+            $matched = @($exposeHeaders | Where-Object { $_.Equals($requiredHeader, [System.StringComparison]::OrdinalIgnoreCase) })
+            if ($matched.Count -eq 0) {
+                return [pscustomobject]@{
+                    passed = $false
+                    detail = "passed CORS evidence missing expose header $requiredHeader"
+                }
+            }
+        }
+    }
+
+    $scopePolicy = [string] (Get-JsonProperty $json "scopePolicy")
+    if (-not $scopePolicy.Contains("not AWS S3 parity work")) {
+        return [pscustomobject]@{
+            passed = $false
+            detail = "scopePolicy must state this is not AWS S3 parity work"
+        }
+    }
+
+    return [pscustomobject]@{
+        passed = $true
+        detail = "formatVersion=$formatVersion result=$result bucket=$($source.bucketName) alias=$($source.minioAlias) rules=$($ruleCount.value) exposedHeaders=$($exposedHeaderCount.value) failures=$($failureCount.value) planned=$($plannedCount.value) rawCorsXmlStored=False"
+    }
+}
+
+function Test-MinioBucketCorsVerificationMarkdown([string] $Path) {
+    try {
+        $raw = Get-Content -Raw -LiteralPath $Path
+    }
+    catch {
+        return [pscustomobject]@{
+            passed = $false
+            detail = "could not read markdown: $($_.Exception.Message)"
+        }
+    }
+
+    $rawValidation = Test-OperationsEvidenceRawContent $raw "MinIO bucket CORS markdown"
+    if (-not $rawValidation.passed) {
+        return $rawValidation
+    }
+    if ($raw.Contains("<CORSConfiguration")) {
+        return [pscustomobject]@{
+            passed = $false
+            detail = "MinIO bucket CORS markdown must not store raw CORS XML"
+        }
+    }
+    if (-not $raw.Contains("not AWS S3 parity work")) {
+        return [pscustomobject]@{
+            passed = $false
+            detail = "MinIO bucket CORS markdown must preserve the S3 parity boundary"
+        }
+    }
+
+    return [pscustomobject]@{
+        passed = $true
+        detail = "markdown has no raw CORS XML and preserves S3 parity boundary"
+    }
+}
+
 function Test-MonitoringThresholdEvidenceJson([string] $Path) {
     try {
         $raw = Get-Content -Raw -LiteralPath $Path
@@ -4084,6 +4285,22 @@ function Import-EvidenceFile(
         }
         [void] $validationDetails.Add($validation.detail)
     }
+    elseif ($ValidationKind -eq "minio-bucket-cors") {
+        $validation = Test-MinioBucketCorsVerificationJson $sourcePath
+        if (-not $validation.passed) {
+            Add-Entry $Group $FileName "failed" $validation.detail $sourcePath ""
+            return
+        }
+        [void] $validationDetails.Add($validation.detail)
+    }
+    elseif ($ValidationKind -eq "minio-bucket-cors-markdown") {
+        $validation = Test-MinioBucketCorsVerificationMarkdown $sourcePath
+        if (-not $validation.passed) {
+            Add-Entry $Group $FileName "failed" $validation.detail $sourcePath ""
+            return
+        }
+        [void] $validationDetails.Add($validation.detail)
+    }
 
     $resolvedOutputDirectory = Resolve-ProjectPath $OutputDirectory
     New-Item -ItemType Directory -Force -Path $resolvedOutputDirectory | Out-Null
@@ -4120,6 +4337,9 @@ Import-EvidenceFile "security-evidence" $SecurityEvidenceArtifactPath "latest-co
 
 Import-EvidenceFile "storage-backend-telemetry" $StorageBackendTelemetryArtifactPath "latest-storage-backend-telemetry.json" $true "" "" "storage-backend-telemetry"
 Import-EvidenceFile "storage-backend-telemetry" $StorageBackendTelemetryArtifactPath "latest-storage-backend-telemetry.md" $false
+
+Import-EvidenceFile "minio-bucket-cors" $MinioBucketCorsArtifactPath "latest-minio-bucket-cors-verification.json" $true "" "" "minio-bucket-cors"
+Import-EvidenceFile "minio-bucket-cors" $MinioBucketCorsArtifactPath "latest-minio-bucket-cors-verification.md" $false "" "" "minio-bucket-cors-markdown"
 
 Import-EvidenceFile "monitoring-threshold" $MonitoringThresholdArtifactPath "latest-monitoring-threshold-evidence.json" $true "" "" "monitoring-threshold"
 Import-EvidenceFile "monitoring-threshold" $MonitoringThresholdArtifactPath "latest-monitoring-threshold-evidence.md" $false
@@ -4158,6 +4378,7 @@ $selectedGroupCandidates = @(
     [pscustomobject]@{ group = "iam-rbac"; path = $IamRbacArtifactPath },
     [pscustomobject]@{ group = "security-evidence"; path = $SecurityEvidenceArtifactPath },
     [pscustomobject]@{ group = "storage-backend-telemetry"; path = $StorageBackendTelemetryArtifactPath },
+    [pscustomobject]@{ group = "minio-bucket-cors"; path = $MinioBucketCorsArtifactPath },
     [pscustomobject]@{ group = "monitoring-threshold"; path = $MonitoringThresholdArtifactPath },
     [pscustomobject]@{ group = "secret-rotation"; path = $SecretRotationArtifactPath },
     [pscustomobject]@{ group = "commercial-integration"; path = $CommercialIntegrationArtifactPath },
