@@ -1601,7 +1601,7 @@
         data-testid="readiness-evidence-handoff-stages"
       >
         <li
-          v-for="stage in operationsEvidenceHandoffStages.slice(0, 3)"
+          v-for="stage in operationsEvidenceHandoffStages"
           :key="stage.name"
         >
           <span>
@@ -1682,7 +1682,7 @@
         data-testid="readiness-convergence-commands"
       >
         <li
-          v-for="command in operationsReadinessConvergenceCommands.slice(0, 3)"
+          v-for="command in operationsReadinessConvergenceCommands"
           :key="`${command.order}-${command.name}`"
         >
           <span>
