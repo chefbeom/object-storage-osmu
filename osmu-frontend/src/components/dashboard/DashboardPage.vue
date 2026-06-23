@@ -874,7 +874,7 @@
         data-testid="readiness-storage-expansion-finalize-gaps"
       >
         <li
-          v-for="gap in storageExpansionFinalizeGaps.slice(0, 3)"
+          v-for="gap in storageExpansionFinalizeGaps"
           :key="gap"
         >
           <span>
@@ -972,7 +972,7 @@
         data-testid="readiness-kubernetes-dr-finalize-gaps"
       >
         <li
-          v-for="gap in kubernetesDrFinalizeGaps.slice(0, 3)"
+          v-for="gap in kubernetesDrFinalizeGaps"
           :key="gap"
         >
           <span>
@@ -1035,7 +1035,7 @@
         data-testid="readiness-iam-rbac-evidence-gaps"
       >
         <li
-          v-for="gap in iamRbacEvidenceGaps.slice(0, 3)"
+          v-for="gap in iamRbacEvidenceGaps"
           :key="gap"
         >
           <span>
