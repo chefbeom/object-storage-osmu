@@ -352,6 +352,7 @@
         :is-logged-in="isLoggedIn"
         :new-secret-key="newSecretKey"
         :access-keys="accessKeys"
+        :audit-logs="auditLogs"
         :selected-bucket="selectedBucket"
         :can-show-bucket-permissions="canShowBucketPermissions"
         :bucket-permission-form="bucketPermissionForm"
@@ -4392,9 +4393,10 @@ async function handlePutBucketLifecycleXml() {
   const result = await runAction(() => putBucketLifecycleS3Xml(selectedBucket.value, bucketLifecycleXml.content))
   bucketLifecycleXml.pending = false
   if (result?.data) {
+    const savedRuleCount = result.data.savedCount ?? result.data.ruleCount ?? result.data.importedCount ?? null
     bucketLifecycleXml.content = result.data.xml || bucketLifecycleXml.content
-    bucketLifecycleXml.ruleCount = result.data.ruleCount ?? bucketLifecycleXml.ruleCount
-    bucketLifecycleXml.savedCount = result.data.savedCount ?? result.data.ruleCount ?? null
+    bucketLifecycleXml.ruleCount = result.data.ruleCount ?? result.data.importedCount ?? bucketLifecycleXml.ruleCount
+    bucketLifecycleXml.savedCount = savedRuleCount
     setStatusMessage(`${selectedBucket.value} bucket lifecycle 저장 완료`)
   }
 }

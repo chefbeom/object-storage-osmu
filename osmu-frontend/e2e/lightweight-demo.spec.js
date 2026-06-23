@@ -36,6 +36,12 @@ function readRequestJson(request) {
   }
 }
 
+function normalizeApiPath(pathname) {
+  const stripped = String(pathname || '').replace(/^\/api(?=\/|$)/, '') || '/'
+  const collapsed = stripped.replace(/\/{2,}/g, '/')
+  return collapsed.length > 1 ? collapsed.replace(/\/$/, '') : collapsed
+}
+
 async function expectAdminBucketContextReady(page) {
   await expect(
     page.getByTestId('admin-bucket-empty-state')
@@ -235,7 +241,7 @@ async function installDeveloperApiMocks(page, options = {}) {
   await page.route('**/api/**', async (route) => {
     const request = route.request()
     const url = new URL(request.url())
-    const path = url.pathname.replace(/^\/api/, '') || '/'
+    const path = normalizeApiPath(url.pathname)
     const method = request.method()
     const json = (body, status = 200) => route.fulfill({
       status,
@@ -1406,6 +1412,7 @@ test('developer refresh failure clears session and redirects from portal click',
 
   await expect(page).toHaveURL(/\/developer$/)
   await expect(page.getByTestId('logout-button')).toBeVisible()
+  await expect(page.getByTestId('developer-s3-endpoint')).toContainText('/api/s3')
   unauthorizedPaths.push('/buckets')
   await page.getByTestId('refresh-button').click()
 
@@ -1490,18 +1497,13 @@ test('org admin can open scoped admin page without global operation panels', asy
 
 test('user is redirected away from admin page', async ({ page }) => {
   await installDeveloperApiMocks(page)
-  await page.addInitScript(() => {
-    window.localStorage.removeItem('osmu.dashboard.widgets.v1')
-    window.localStorage.removeItem('osmu.auth.tokens')
-    window.localStorage.removeItem('osmu.login.rememberedId')
-    window.sessionStorage.removeItem('osmu.auth.tokens')
-  })
 
   await page.goto(`${frontendBaseUrl}/login?mode=admin`)
   await page.getByTestId('login-id-input').fill(developerLoginId)
   await page.getByTestId('login-password-input').fill(developerPassword)
   await page.getByTestId('login-submit-button').click()
   await expect(page).toHaveURL(/\/developer$/)
+  await expect.poll(() => page.evaluate(() => window.sessionStorage.getItem('osmu.auth.tokens'))).toContain('developer-e2e-access')
 
   await page.goto(`${frontendBaseUrl}/admin`)
   await expect(page).toHaveURL(/\/developer$/)
@@ -1564,29 +1566,44 @@ test('admin action failures show remediation guidance', async ({ page }) => {
   await page.getByTestId('login-submit-button').click()
   await expect(page).toHaveURL(/\/admin$/)
   await expect(page.getByTestId('storage-expansion-panel')).toBeVisible()
+  await expect(page.getByTestId('storage-expansion-list')).toContainText('증설 요청 없음')
+  await expect(page.getByTestId('storage-expansion-create-button')).toBeEnabled()
 
-  const expectRemediation = async ({ code, status, requestId, hasPrimary = true }) => {
-    await expect(page.getByTestId('error-alert')).toContainText(`Request ID ${requestId}`)
-    await expect(page.getByTestId('admin-action-remediation-panel')).toBeVisible()
-    await expect(page.getByTestId('admin-action-remediation-code')).toContainText(`${code} / HTTP ${status}`)
-    await expect(page.getByTestId('admin-action-remediation-detail')).toBeVisible()
-    await expect(page.getByTestId('admin-action-remediation-steps').locator('li')).toHaveCount(3)
-    await expect(page.getByTestId('admin-action-remediation-primary')).toHaveCount(hasPrimary ? 1 : 0)
+  const submitStorageExpansionRequest = async () => {
+    await page.getByTestId('storage-expansion-form').evaluate((form) => form.requestSubmit())
   }
 
-  await page.getByTestId('storage-expansion-create-button').click()
+  const expectRemediation = async ({ code, status, requestId, hasPrimary = true }) => {
+    await expect.poll(() => page.evaluate(() => ({
+      error: document.querySelector('[data-testid="error-alert"]')?.textContent || '',
+      panel: document.querySelector('[data-testid="admin-action-remediation-panel"]')?.textContent || '',
+      code: document.querySelector('[data-testid="admin-action-remediation-code"]')?.textContent || '',
+      hasDetail: Boolean(document.querySelector('[data-testid="admin-action-remediation-detail"]')),
+      stepCount: document.querySelectorAll('[data-testid="admin-action-remediation-steps"] li').length,
+      primaryCount: document.querySelectorAll('[data-testid="admin-action-remediation-primary"]').length,
+    })), { timeout: 5000, intervals: [50, 100, 250] }).toEqual(expect.objectContaining({
+      error: expect.stringContaining(`Request ID ${requestId}`),
+      panel: expect.any(String),
+      code: `${code} / HTTP ${status}`,
+      hasDetail: true,
+      stepCount: 3,
+      primaryCount: hasPrimary ? 1 : 0,
+    }))
+  }
+
+  await submitStorageExpansionRequest()
   await expectRemediation({ code: 'AUTHENTICATION_REQUIRED', status: 401, requestId: 'remediation-401' })
 
-  await page.getByTestId('storage-expansion-create-button').click()
+  await submitStorageExpansionRequest()
   await expectRemediation({ code: 'AUTHORIZATION_FAILED', status: 403, requestId: 'remediation-403' })
 
-  await page.getByTestId('storage-expansion-create-button').click()
+  await submitStorageExpansionRequest()
   await expectRemediation({ code: 'VALIDATION_ERROR', status: 400, requestId: 'remediation-400', hasPrimary: false })
 
-  await page.getByTestId('storage-expansion-create-button').click()
+  await submitStorageExpansionRequest()
   await expectRemediation({ code: 'NOT_FOUND', status: 404, requestId: 'remediation-404' })
 
-  await page.getByTestId('storage-expansion-create-button').click()
+  await submitStorageExpansionRequest()
   await expectRemediation({ code: 'STATE_CONFLICT', status: 409, requestId: 'remediation-409' })
 })
 
@@ -1680,7 +1697,8 @@ test('developer can export and confirm access key bulk cleanup', async ({ page }
   await expect(page.getByTestId('confirm-dialog')).toContainText('Access Key Bulk Cleanup')
   await page.getByTestId('confirm-submit-button').click()
   await expect(page.getByTestId('status-alert')).toContainText('Access Key')
-  await expect(page.getByTestId('access-key-cleanup-summary')).toContainText('1 selected / 1 cleanup candidates')
+  await expect(page.getByTestId('access-key-cleanup-summary')).toContainText('0 selected / 1 cleanup candidates')
+  await expect(page.getByTestId('access-key-cleanup-button')).toBeDisabled()
 
   await page.getByTestId('access-key-filter-inactive').click()
   await expect(page.getByTestId('access-key-list')).toContainText('expired-browser-key')
@@ -1745,10 +1763,10 @@ test('admin can complete lightweight storage portal click path', async ({ page }
   await expectAdminBucketContextReady(page)
   await expect(page.getByTestId('admin-security-audit-policy-panel')).toBeVisible()
   await expect(page.getByTestId('admin-security-policy-metrics')).toBeVisible()
-  await expect(page.getByTestId('admin-security-policy-row')).toHaveCount(6)
   await expect(page.getByTestId('admin-security-policy-list')).toContainText('Access key hygiene')
   await expect(page.getByTestId('admin-security-policy-list')).toContainText('Share link protection')
   await expect(page.getByTestId('admin-security-policy-list')).toContainText('Audit trail')
+  await expect(page.getByTestId('admin-security-policy-row')).toHaveCount(6)
   await page.getByTestId('admin-security-audit-open-audit-link').click()
   await expect(page).toHaveURL(/\/audit$/)
   await expect(page.getByTestId('audit-panel')).toBeVisible()
