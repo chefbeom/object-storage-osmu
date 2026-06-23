@@ -59,6 +59,9 @@ function Get-ManualEvidenceWorkflowName([string] $Command) {
     if ($Command.Contains("write-storage-backend-telemetry-evidence.ps1")) {
         return "manual-storage-backend-telemetry-evidence.yml"
     }
+    if ($Command.Contains("verify-minio-bucket-cors.ps1")) {
+        return "manual-minio-bucket-cors-verification.yml"
+    }
     if ($Command.Contains("write-monitoring-threshold-evidence.ps1")) {
         return "manual-monitoring-threshold-evidence.yml"
     }
@@ -179,6 +182,13 @@ function New-WorkflowMetadata([string] $Workflow) {
             artifactNameTemplate = "storage-backend-telemetry-evidence-{runId}"
             requiredForReadiness = $true
             note = "Required by operations readiness artifact import when target MinIO admin info telemetry evidence is part of the invocation."
+        }
+        "manual-minio-bucket-cors-verification.yml" = [ordered]@{
+            group = "minio-bucket-cors"
+            runIdParameter = "MinioBucketCorsRunId"
+            artifactNameTemplate = "minio-bucket-cors-verification-{runId}"
+            requiredForReadiness = $false
+            note = "Optional dashboard evidence for OSMU browser multipart upload readiness; not a readiness gate or AWS S3 parity work."
         }
         "manual-monitoring-threshold-evidence.yml" = [ordered]@{
             group = "monitoring-threshold"
@@ -523,6 +533,9 @@ foreach ($workflowReport in $workflowReports) {
     }
     if (-not [string]::IsNullOrWhiteSpace($workflowReport.recommendedUrl)) {
         $markdownLines += "  - URL: $($workflowReport.recommendedUrl)"
+    }
+    if (-not [string]::IsNullOrWhiteSpace($workflowReport.note)) {
+        $markdownLines += "  - Note: $($workflowReport.note)"
     }
 }
 

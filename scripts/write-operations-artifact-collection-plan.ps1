@@ -10,6 +10,7 @@ param(
     [string] $ContainerSecurityRunId = "",
     [string] $SecurityEvidenceRunId = "",
     [string] $StorageBackendTelemetryRunId = "",
+    [string] $MinioBucketCorsRunId = "",
     [string] $MonitoringThresholdRunId = "",
     [string] $SecretRotationRunId = "",
     [string] $CommercialIntegrationRunId = "",
@@ -129,6 +130,7 @@ if ($invocation.formatVersion -ne "osmu.operations-evidence-plan-invocation.v1")
 
 $workflows = New-Object System.Collections.Generic.HashSet[string]
 $hasStorageBackendTelemetryEvidence = $false
+$hasMinioBucketCorsVerification = $false
 $hasSecretRotationEvidence = $false
 $hasCommercialIntegrationEvidence = $false
 $hasCommercialApprovalEvidence = $false
@@ -145,6 +147,9 @@ foreach ($action in @($invocation.actions)) {
     }
     if (Test-CommandMentions $command "write-storage-backend-telemetry-evidence.ps1") {
         $hasStorageBackendTelemetryEvidence = $true
+    }
+    if (Test-CommandMentions $command "verify-minio-bucket-cors.ps1") {
+        $hasMinioBucketCorsVerification = $true
     }
     if (Test-CommandMentions $command "write-commercial-integration-evidence.ps1") {
         $hasCommercialIntegrationEvidence = $true
@@ -178,6 +183,7 @@ $imageSigningRun = Get-RunIdOrPlaceholder $ImageSigningRunId "image-signing-run-
 $containerSecurityRun = Get-RunIdOrPlaceholder $ContainerSecurityRunId "container-security-run-id"
 $securityEvidenceRun = Get-RunIdOrPlaceholder $SecurityEvidenceRunId "security-evidence-run-id"
 $storageBackendTelemetryRun = Get-RunIdOrPlaceholder $StorageBackendTelemetryRunId "storage-backend-telemetry-run-id"
+$minioBucketCorsRun = Get-RunIdOrPlaceholder $MinioBucketCorsRunId "minio-bucket-cors-run-id"
 $monitoringThresholdRun = Get-RunIdOrPlaceholder $MonitoringThresholdRunId "monitoring-threshold-run-id"
 $secretRotationRun = Get-RunIdOrPlaceholder $SecretRotationRunId "secret-rotation-run-id"
 $commercialIntegrationRun = Get-RunIdOrPlaceholder $CommercialIntegrationRunId "commercial-integration-run-id"
@@ -211,6 +217,9 @@ if ($workflows.Contains("security-evidence-finalizer-ci.yml")) {
 }
 if ($hasStorageBackendTelemetryEvidence -or $workflows.Contains("manual-storage-backend-telemetry-evidence.yml")) {
     Add-Artifact $artifacts "storage-backend-telemetry" "manual-storage-backend-telemetry-evidence.yml" $storageBackendTelemetryRun "storage_backend_telemetry_run_id" "storage-backend-telemetry-evidence-$storageBackendTelemetryRun" "storage_backend_telemetry_artifact_name" ".osmu-run/operations-readiness-artifacts/storage-backend-telemetry" $true "Imports latest-storage-backend-telemetry.json from target MinIO admin info telemetry evidence."
+}
+if ($hasMinioBucketCorsVerification -or $workflows.Contains("manual-minio-bucket-cors-verification.yml")) {
+    Add-Artifact $artifacts "minio-bucket-cors" "manual-minio-bucket-cors-verification.yml" $minioBucketCorsRun "minio_bucket_cors_run_id" "minio-bucket-cors-verification-$minioBucketCorsRun" "minio_bucket_cors_artifact_name" ".osmu-run/operations-readiness-artifacts/minio-bucket-cors" $false "Imports latest-minio-bucket-cors-verification.json for dashboard browser multipart upload readiness. This is not a readiness gate or AWS S3 parity work."
 }
 if ($hasMonitoringThresholdEvidence -or $workflows.Contains("manual-monitoring-threshold-evidence.yml")) {
     Add-Artifact $artifacts "monitoring-threshold" "manual-monitoring-threshold-evidence.yml" $monitoringThresholdRun "monitoring_threshold_run_id" "monitoring-threshold-evidence-$monitoringThresholdRun" "monitoring_threshold_artifact_name" ".osmu-run/operations-readiness-artifacts/monitoring-threshold" $true "Imports latest-monitoring-threshold-evidence.json from target Prometheus rule, Grafana dashboard, Alertmanager route, incident routing, and tenant baseline review evidence."
@@ -258,14 +267,27 @@ else {
 }
 $dataFlowStoragePlanInputNote = "Optional direct data-flow plan input: add -f data_flow_storage_plan_json_base64=<base64-latest-data-flow-storage-plan-json> to operations-readiness-artifact-finalizer-ci.yml when target data-flow storage transition evidence should be imported without waiting for a Kubernetes operations report sync artifact. MariaDB partition or dual-write plans must include the sanitized query-plan evidence summary."
 $dataFlowStorageTransitionRunbookInputNote = "Optional direct data-flow transition runbook input: add -f data_flow_storage_transition_runbook_json_base64=<base64-latest-data-flow-storage-transition-runbook-json> to operations-readiness-artifact-finalizer-ci.yml when target transition rehearsal evidence should be imported without waiting for a manual workflow artifact. The snapshot must be sanitized and result=passed."
+$minioBucketCorsInputNote = ""
+$minioBucketCorsArtifacts = @($artifactArray | Where-Object { $_.group -eq "minio-bucket-cors" })
+if ($minioBucketCorsArtifacts.Count -gt 0) {
+    $corsArtifact = $minioBucketCorsArtifacts[0]
+    $minioBucketCorsInputNote = "Optional MinIO bucket CORS input: add -f minio_bucket_cors_run_id=$($corsArtifact.runId) -f minio_bucket_cors_artifact_name=$($corsArtifact.artifactName) to operations-readiness-artifact-finalizer-ci.yml to promote browser multipart upload CORS verification for dashboard visibility. This is not a readiness gate or AWS S3 parity work."
+}
 
 $securityFinalizerCommand = ""
 if ($workflows.Contains("security-evidence-finalizer-ci.yml") -or $workflows.Contains("image-publish-sign-ci.yml") -or $workflows.Contains("container-security-ci.yml")) {
     $securityFinalizerCommand = "gh workflow run security-evidence-finalizer-ci.yml -f image_signing_run_id=$imageSigningRun -f image_signing_artifact_name=osmu-image-signing-$ImageSigningVersion-$CommitSha -f container_security_run_id=$containerSecurityRun -f container_security_artifact_name=osmu-container-security-$CommitSha -f fail_if_not_passed=true"
 }
 
-$localImportArgs = New-Object System.Collections.Generic.List[string]
+$localImportArtifacts = New-Object System.Collections.Generic.List[object]
 foreach ($artifact in $requiredArtifacts) {
+    $localImportArtifacts.Add($artifact) | Out-Null
+}
+foreach ($artifact in @($artifactArray | Where-Object { $_.group -eq "minio-bucket-cors" -and $_.ready })) {
+    $localImportArtifacts.Add($artifact) | Out-Null
+}
+$localImportArgs = New-Object System.Collections.Generic.List[string]
+foreach ($artifact in $localImportArtifacts) {
     $group = [string] $artifact["group"]
     $downloadPath = ".\" + ([string] $artifact["downloadPath"]).Replace("/", "\")
     if ($group -eq "storage-expansion") {
@@ -285,6 +307,9 @@ foreach ($artifact in $requiredArtifacts) {
     }
     elseif ($group -eq "storage-backend-telemetry") {
         $localImportArgs.Add("-StorageBackendTelemetryArtifactPath $downloadPath")
+    }
+    elseif ($group -eq "minio-bucket-cors") {
+        $localImportArgs.Add("-MinioBucketCorsArtifactPath $downloadPath")
     }
     elseif ($group -eq "monitoring-threshold") {
         $localImportArgs.Add("-MonitoringThresholdArtifactPath $downloadPath")
@@ -349,6 +374,7 @@ $report = [ordered]@{
     operationsArtifactFinalizerCommand = $operationsArtifactFinalizerCommand
     dataFlowStoragePlanInputNote = $dataFlowStoragePlanInputNote
     dataFlowStorageTransitionRunbookInputNote = $dataFlowStorageTransitionRunbookInputNote
+    minioBucketCorsInputNote = $minioBucketCorsInputNote
     localImportCommand = $localImportCommand
     decisionRule = "After evidence workflows finish, fill missing run ids, verify artifact names, then either dispatch operations-readiness-artifact-finalizer-ci.yml or download artifacts locally and run import-operations-readiness-artifacts.ps1."
     artifacts = $artifactArray
@@ -384,6 +410,9 @@ if (-not [string]::IsNullOrWhiteSpace($operationsArtifactFinalizerCommand)) {
     $markdownLines += "- Operations artifact finalizer: ``$operationsArtifactFinalizerCommand``"
     $markdownLines += "- $dataFlowStoragePlanInputNote"
     $markdownLines += "- $dataFlowStorageTransitionRunbookInputNote"
+}
+if (-not [string]::IsNullOrWhiteSpace($minioBucketCorsInputNote)) {
+    $markdownLines += "- $minioBucketCorsInputNote"
 }
 if (-not [string]::IsNullOrWhiteSpace($localImportCommand)) {
     $markdownLines += "- Local import after downloads: ``$localImportCommand``"
