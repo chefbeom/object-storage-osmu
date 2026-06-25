@@ -4346,7 +4346,13 @@ function formatWorkflowRunIdMeta(workflow) {
   const recommended = workflow?.recommendedRunId ? `recommended ${workflow.recommendedRunId}` : 'no successful run'
   const candidates = Number(workflow?.candidateCount || 0)
   const branch = operationsWorkflowRunIdPlan.value?.branch || 'branch unknown'
-  return `${workflow?.group || 'operations'} / ${branch} / ${candidates} candidates / ${recommended}`
+  const actionOrders = Array.isArray(workflow?.actionOrders) && workflow.actionOrders.length > 0
+    ? `actions ${workflow.actionOrders.slice(0, 8).join(', ')}${workflow.actionOrders.length > 8 ? ', ...' : ''}`
+    : (workflow?.primaryActionOrder ? `action ${workflow.primaryActionOrder}` : 'actions unknown')
+  const actionStatus = Array.isArray(workflow?.actionStatuses) && workflow.actionStatuses.length > 0
+    ? `statuses ${workflow.actionStatuses.join(', ')}`
+    : (workflow?.primaryActionStatus || 'status unknown')
+  return `${workflow?.group || 'operations'} / ${actionOrders} / ${actionStatus} / ${branch} / ${candidates} candidates / ${recommended}`
 }
 
 function formatArtifactCollectionMeta(artifact) {

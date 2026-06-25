@@ -16,6 +16,11 @@ function Assert-Equal($Actual, $Expected, [string] $Message) {
     }
 }
 
+function Assert-True([bool] $Condition, [string] $Message) {
+    if (-not $Condition) {
+        throw $Message
+    }
+}
 function Assert-Contains([string] $Text, [string] $Expected, [string] $Message) {
     if (-not $Text.Contains($Expected)) {
         throw "$Message. Missing '$Expected'."
@@ -191,6 +196,11 @@ Assert-Equal $planOnly.result "query-required" "plan-only result"
 Assert-Equal $planOnly.workflowCount 17 "plan-only workflow count"
 Assert-Equal $planOnly.missingWorkflowCount 17 "plan-only missing workflow count"
 Assert-Contains $planOnly.workflows[0].queryCommand "gh run list --workflow storage-expansion-finalizer-ci.yml" "plan-only query command"
+Assert-Equal $planOnly.workflows[0].sourceActionCount 1 "plan-only source action count"
+Assert-Equal $planOnly.workflows[0].primaryActionOrder 1 "plan-only primary action order"
+Assert-True (@($planOnly.workflows[0].actionOrders) -contains 1) "plan-only action orders should include source action"
+Assert-Contains $planOnly.workflows[0].primaryActionName "Storage expansion" "plan-only primary action name"
+Assert-Contains $planOnlyMarkdown "storage-expansion-finalizer-ci.yml (actions 1)" "plan-only markdown action order"
 Assert-Contains $planOnly.workflows[0].artifactName "storage-expansion-finalizer-<run-id>" "plan-only artifact placeholder"
 Assert-Contains ($planOnly.workflows | ConvertTo-Json -Depth 8) "manual-secret-rotation-evidence.yml" "plan-only manual secret rotation workflow"
 Assert-Contains ($planOnly.workflows | ConvertTo-Json -Depth 8) "manual-storage-backend-telemetry-evidence.yml" "plan-only manual storage backend telemetry workflow"
@@ -241,6 +251,9 @@ Assert-Contains $ready.securityEvidenceFinalizerCommand "container_security_run_
 Assert-Contains $ready.securityEvidenceFinalizerCommand "osmu-image-signing-v0.1.0-rc.1-$sha" "security finalizer image artifact"
 Assert-Contains $ready.securityEvidenceFinalizerCommand "osmu-container-security-$sha" "security finalizer container artifact"
 Assert-Contains $ready.workflows[0].artifactName "storage-expansion-finalizer-101" "ready storage artifact name"
+Assert-Equal $ready.workflows[0].primaryActionOrder 1 "ready primary action order"
+Assert-True (@($ready.workflows[4].actionOrders) -contains 5) "ready container security action order"
+Assert-Contains $readyMarkdown "Source action orders: 1" "ready markdown source action order"
 Assert-Contains $readyMarkdown "storage-backend-telemetry-evidence-107" "ready markdown storage backend telemetry artifact"
 Assert-Contains $readyMarkdown "minio-bucket-cors-verification-108" "ready markdown MinIO bucket CORS artifact"
 Assert-Contains $readyMarkdown "not a readiness gate or AWS S3 parity work" "ready markdown MinIO bucket CORS scope"

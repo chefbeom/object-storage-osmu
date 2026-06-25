@@ -2129,6 +2129,15 @@ public class AdminController {
             for (JsonNode workflow : workflowNodes) {
                 workflows.add(new DashboardOperationsWorkflowRunResponse(
                         jsonText(workflow, "workflow"),
+                        jsonInt(workflow, "sourceActionCount"),
+                        jsonInt(workflow, "primaryActionOrder"),
+                        jsonText(workflow, "primaryActionName"),
+                        jsonText(workflow, "primaryActionStatus"),
+                        jsonIntList(workflow, "actionOrders"),
+                        jsonTextList(workflow, "actionNames"),
+                        jsonTextList(workflow, "actionStatuses"),
+                        jsonTextList(workflow, "actionCategories"),
+                        jsonTextList(workflow, "actionTypes"),
                         jsonText(workflow, "group"),
                         jsonText(workflow, "queryCommand"),
                         jsonText(workflow, "queryMode"),

@@ -41,6 +41,18 @@ function Get-Text([object] $Object, [string] $Name) {
     return [string] $value
 }
 
+function Get-Int([object] $Object, [string] $Name) {
+    $value = Get-JsonProperty $Object $Name
+    if ($null -eq $value) {
+        return 0
+    }
+    try {
+        return [int] $value
+    }
+    catch {
+        return 0
+    }
+}
 function Get-WorkflowName([string] $Command) {
     if ([string]::IsNullOrWhiteSpace($Command)) {
         return ""
@@ -86,6 +98,23 @@ function Get-ManualEvidenceWorkflowName([string] $Command) {
     return ""
 }
 
+function Add-UniqueString([System.Collections.Generic.List[string]] $List, [string] $Value) {
+    if ([string]::IsNullOrWhiteSpace($Value)) {
+        return
+    }
+    if (-not $List.Contains($Value)) {
+        $List.Add($Value) | Out-Null
+    }
+}
+
+function Add-UniqueInt([System.Collections.Generic.List[int]] $List, [int] $Value) {
+    if ($Value -le 0) {
+        return
+    }
+    if (-not $List.Contains($Value)) {
+        $List.Add($Value) | Out-Null
+    }
+}
 function Add-UniqueWorkflow([System.Collections.Generic.List[string]] $Workflows, [string] $Workflow) {
     if ([string]::IsNullOrWhiteSpace($Workflow)) {
         return
@@ -323,6 +352,7 @@ function Expand-ArtifactName([string] $Template, [string] $RunId, [string] $Vers
 
 function Get-WorkflowReport(
     [string] $Workflow,
+    [object[]] $SourceActions,
     [string] $BranchName,
     [int] $RunLimit,
     [string] $QueryMode,
@@ -347,8 +377,30 @@ function Get-WorkflowReport(
     $artifactSha = if (-not [string]::IsNullOrWhiteSpace($recommendedHeadSha)) { $recommendedHeadSha } else { $Sha }
     $artifactName = Expand-ArtifactName ([string] $metadata.artifactNameTemplate) $recommendedRunId $Version $artifactSha
     $latestIsRecommended = -not [string]::IsNullOrWhiteSpace($latestRunId) -and $latestRunId -eq $recommendedRunId
+    $actionOrders = New-Object System.Collections.Generic.List[int]
+    $actionNames = New-Object System.Collections.Generic.List[string]
+    $actionStatuses = New-Object System.Collections.Generic.List[string]
+    $actionCategories = New-Object System.Collections.Generic.List[string]
+    $actionTypes = New-Object System.Collections.Generic.List[string]
+    foreach ($action in @($SourceActions)) {
+        Add-UniqueInt $actionOrders (Get-Int $action "order")
+        Add-UniqueString $actionNames (Get-Text $action "name")
+        Add-UniqueString $actionStatuses (Get-Text $action "status")
+        Add-UniqueString $actionCategories (Get-Text $action "category")
+        Add-UniqueString $actionTypes (Get-Text $action "actionType")
+    }
+    $primaryAction = if (@($SourceActions).Count -gt 0) { @($SourceActions)[0] } else { $null }
     return [ordered]@{
         workflow = $Workflow
+        sourceActionCount = @($SourceActions).Count
+        primaryActionOrder = Get-Int $primaryAction "order"
+        primaryActionName = Get-Text $primaryAction "name"
+        primaryActionStatus = Get-Text $primaryAction "status"
+        actionOrders = @($actionOrders | ForEach-Object { [int] $_ })
+        actionNames = @($actionNames | ForEach-Object { [string] $_ })
+        actionStatuses = @($actionStatuses | ForEach-Object { [string] $_ })
+        actionCategories = @($actionCategories | ForEach-Object { [string] $_ })
+        actionTypes = @($actionTypes | ForEach-Object { [string] $_ })
         group = $metadata.group
         queryCommand = $queryCommand
         queryMode = $QueryMode
@@ -385,6 +437,7 @@ if ($invocation.formatVersion -ne "osmu.operations-evidence-plan-invocation.v1")
 $branchName = Get-CurrentBranch
 $effectiveCommitSha = Get-CurrentCommitSha
 $workflows = New-Object System.Collections.Generic.List[string]
+$workflowActions = [ordered]@{}
 foreach ($action in @($invocation.actions)) {
     $command = Get-Text $action "command"
     $workflow = Get-WorkflowName $command
@@ -392,6 +445,12 @@ foreach ($action in @($invocation.actions)) {
         $workflow = Get-ManualEvidenceWorkflowName $command
     }
     Add-UniqueWorkflow $workflows $workflow
+    if (-not [string]::IsNullOrWhiteSpace($workflow)) {
+        if (-not $workflowActions.Contains($workflow)) {
+            $workflowActions[$workflow] = New-Object System.Collections.ArrayList
+        }
+        $workflowActions[$workflow].Add($action) | Out-Null
+    }
 }
 
 $queryMode = if ($Execute) { "execute" } elseif (-not [string]::IsNullOrWhiteSpace($RunListJsonDirectory)) { "fixture" } else { "plan-only" }
@@ -403,7 +462,15 @@ foreach ($workflow in $workflows) {
     else {
         Read-RunListJson $workflow $RunListJsonDirectory
     }
-    $workflowReports.Add((Get-WorkflowReport $workflow $branchName $Limit $queryMode @($runs) $ImageSigningVersion $effectiveCommitSha)) | Out-Null
+    $workflowReports.Add((Get-WorkflowReport `
+        -Workflow $workflow `
+        -SourceActions @($workflowActions[$workflow]) `
+        -BranchName $branchName `
+        -RunLimit $Limit `
+        -QueryMode $queryMode `
+        -Runs @($runs) `
+        -Version $ImageSigningVersion `
+        -Sha $effectiveCommitSha)) | Out-Null
 }
 
 $imageSigningReport = @($workflowReports | Where-Object { $_.workflow -eq "image-publish-sign-ci.yml" } | Select-Object -First 1)
@@ -519,12 +586,19 @@ $markdownLines = @(
     ""
 )
 foreach ($workflowReport in $workflowReports) {
-    $markdownLines += "- $($workflowReport.workflow): ``$($workflowReport.queryCommand)``"
+    $actionOrderText = if (@($workflowReport.actionOrders).Count -gt 0) { "actions $(@($workflowReport.actionOrders) -join ', ')" } else { "actions unknown" }
+    $markdownLines += "- $($workflowReport.workflow) ($actionOrderText): ``$($workflowReport.queryCommand)``"
 }
 $markdownLines += @("", "## Recommended Run IDs", "")
 foreach ($workflowReport in $workflowReports) {
     $status = if ($workflowReport.readyForArtifactDownload) { "ready" } else { "missing" }
     $markdownLines += "- [$status] $($workflowReport.workflow)"
+    if (@($workflowReport.actionOrders).Count -gt 0) {
+        $markdownLines += "  - Source action orders: $(@($workflowReport.actionOrders) -join ', ')"
+    }
+    if (-not [string]::IsNullOrWhiteSpace($workflowReport.primaryActionName)) {
+        $markdownLines += "  - Primary action: $($workflowReport.primaryActionOrder). $($workflowReport.primaryActionName) / $($workflowReport.primaryActionStatus)"
+    }
     $markdownLines += "  - Run id parameter: $($workflowReport.runIdParameter)"
     $markdownLines += "  - Recommended run id: $($workflowReport.recommendedRunId)"
     $markdownLines += "  - Latest run: $($workflowReport.latestRunId) / $($workflowReport.latestStatus) / $($workflowReport.latestConclusion)"

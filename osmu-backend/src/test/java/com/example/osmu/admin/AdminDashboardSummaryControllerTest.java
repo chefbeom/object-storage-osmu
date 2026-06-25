@@ -1911,6 +1911,15 @@ class AdminDashboardSummaryControllerTest {
                             {
                               "actionOrder": 1,
                               "workflow": "storage-expansion-finalizer-ci.yml",
+                              "sourceActionCount": 1,
+                              "primaryActionOrder": 1,
+                              "primaryActionName": "Storage expansion finalizer live evidence",
+                              "primaryActionStatus": "blocked",
+                              "actionOrders": [1],
+                              "actionNames": ["Storage expansion finalizer live evidence"],
+                              "actionStatuses": ["blocked"],
+                              "actionCategories": ["storage-expansion"],
+                              "actionTypes": ["kubernetes-live"],
                               "path": ".github/workflows/storage-expansion-finalizer-ci.yml",
                               "exists": true,
                               "requiredSecrets": ["OSMU_KUBECONFIG_BASE64", "OSMU_ADMIN_PASSWORD"]
@@ -2006,6 +2015,15 @@ class AdminDashboardSummaryControllerTest {
                           "workflows": [
                             {
                               "workflow": "storage-expansion-finalizer-ci.yml",
+                              "sourceActionCount": 1,
+                              "primaryActionOrder": 1,
+                              "primaryActionName": "Storage expansion finalizer live evidence",
+                              "primaryActionStatus": "blocked",
+                              "actionOrders": [1],
+                              "actionNames": ["Storage expansion finalizer live evidence"],
+                              "actionStatuses": ["blocked"],
+                              "actionCategories": ["storage-expansion"],
+                              "actionTypes": ["kubernetes-live"],
                               "group": "storage-expansion",
                               "queryCommand": "gh run list --workflow storage-expansion-finalizer-ci.yml --branch main --limit 20 --json databaseId,workflowName,status,conclusion,createdAt,headSha,url,displayTitle",
                               "queryMode": "plan-only",
@@ -2044,6 +2062,15 @@ class AdminDashboardSummaryControllerTest {
                             {
                               "group": "storage-expansion",
                               "workflow": "storage-expansion-finalizer-ci.yml",
+                              "sourceActionCount": 1,
+                              "primaryActionOrder": 1,
+                              "primaryActionName": "Storage expansion finalizer live evidence",
+                              "primaryActionStatus": "blocked",
+                              "actionOrders": [1],
+                              "actionNames": ["Storage expansion finalizer live evidence"],
+                              "actionStatuses": ["blocked"],
+                              "actionCategories": ["storage-expansion"],
+                              "actionTypes": ["kubernetes-live"],
                               "runId": "<storage-expansion-run-id>",
                               "runIdInput": "storage_expansion_run_id",
                               "artifactName": "storage-expansion-finalizer-<storage-expansion-run-id>",
@@ -2393,6 +2420,11 @@ class AdminDashboardSummaryControllerTest {
                 .andExpect(jsonPath("$.data.operationsWorkflowRunIdPlan.missingWorkflowCount").value(7))
                 .andExpect(jsonPath("$.data.operationsWorkflowRunIdPlan.artifactCollectionPlanCommand").value("powershell -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\write-operations-artifact-collection-plan.ps1 -ImageSigningVersion v0.1.0-rc.1 -CommitSha abc123"))
                 .andExpect(jsonPath("$.data.operationsWorkflowRunIdPlan.workflows[0].workflow").value("storage-expansion-finalizer-ci.yml"))
+                .andExpect(jsonPath("$.data.operationsWorkflowRunIdPlan.workflows[0].sourceActionCount").value(1))
+                .andExpect(jsonPath("$.data.operationsWorkflowRunIdPlan.workflows[0].primaryActionOrder").value(1))
+                .andExpect(jsonPath("$.data.operationsWorkflowRunIdPlan.workflows[0].primaryActionStatus").value("blocked"))
+                .andExpect(jsonPath("$.data.operationsWorkflowRunIdPlan.workflows[0].actionOrders").value(hasItem(1)))
+                .andExpect(jsonPath("$.data.operationsWorkflowRunIdPlan.workflows[0].actionStatuses").value(hasItem("blocked")))
                 .andExpect(jsonPath("$.data.operationsWorkflowRunIdPlan.workflows[0].queryCommand").value("gh run list --workflow storage-expansion-finalizer-ci.yml --branch main --limit 20 --json databaseId,workflowName,status,conclusion,createdAt,headSha,url,displayTitle"))
                 .andExpect(jsonPath("$.data.operationsWorkflowRunIdPlan.workflows[0].readyForArtifactDownload").value(false))
                 .andExpect(jsonPath("$.data.operationsArtifactCollectionPlan.result").value("action-required"))
