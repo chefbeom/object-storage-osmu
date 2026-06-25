@@ -209,6 +209,111 @@ Assert-Contains $blockedMarkdown "Plan ready dispatch subset" "blocked markdown 
 Assert-Contains $blockedMarkdown "ready action 2: container-security-ci.yml" "blocked markdown ready workflow"
 Assert-Contains $blockedMarkdown "blocked action 3: kubernetes-dr-finalizer-ci.yml" "blocked markdown blocked workflow"
 
+$preflightBlockReadinessPath = Join-Path $resolvedOutputDirectory "preflight-block-readiness.json"
+$preflightBlockPlanPath = Join-Path $resolvedOutputDirectory "preflight-block-plan.json"
+$preflightBlockInvocationPath = Join-Path $resolvedOutputDirectory "preflight-block-invocation.json"
+$preflightBlockDispatchPreflightPath = Join-Path $resolvedOutputDirectory "preflight-block-dispatch-preflight.json"
+$preflightBlockRunIdPath = Join-Path $resolvedOutputDirectory "preflight-block-run-ids.json"
+$preflightBlockCollectionPath = Join-Path $resolvedOutputDirectory "preflight-block-collection.json"
+$preflightBlockImportPath = Join-Path $resolvedOutputDirectory "preflight-block-import.json"
+$preflightBlockFinalizePath = Join-Path $resolvedOutputDirectory "preflight-block-finalize.json"
+$preflightBlockJsonPath = Join-Path $resolvedOutputDirectory "preflight-block-handoff.json"
+$preflightBlockMarkdownPath = Join-Path $resolvedOutputDirectory "preflight-block-handoff.md"
+
+Write-JsonFixture $preflightBlockReadinessPath ([ordered]@{
+    formatVersion = "osmu.operations-readiness.v1"
+    result = "pending"
+    summary = "passed=36 pending=1"
+})
+Write-JsonFixture $preflightBlockPlanPath ([ordered]@{
+    formatVersion = "osmu.operations-evidence-plan.v1"
+    result = "action-required"
+    pendingCount = 1
+    actionCount = 1
+    unplannedCount = 0
+})
+Write-JsonFixture $preflightBlockInvocationPath ([ordered]@{
+    formatVersion = "osmu.operations-evidence-plan-invocation.v1"
+    result = "planned"
+    selectedActionCount = 1
+    plannedCount = 1
+    blockedCount = 0
+    executedCount = 0
+    failedCount = 0
+})
+Write-JsonFixture $preflightBlockDispatchPreflightPath ([ordered]@{
+    formatVersion = "osmu.operations-dispatch-preflight.v1"
+    result = "action-required"
+    selectedActionCount = 1
+    selectedActionOrders = @(2)
+    readyActionCount = 1
+    readyActionOrders = @(2)
+    blockedActionCount = 0
+    blockedActionOrders = @()
+    missingInputCount = 0
+    failedCheckCount = 1
+    warningCheckCount = 0
+    checks = @(
+        [ordered]@{
+            code = "GITHUB_CLI_AVAILABLE"
+            status = "fail"
+            message = "GitHub CLI was not found on PATH."
+        }
+    )
+    inputTemplates = @(
+        [ordered]@{
+            actionOrder = 2
+            name = "Container scan/SBOM evidence"
+            workflow = "container-security-ci.yml"
+            readyToDispatch = $true
+            missingInputCount = 0
+            unsafeInputCount = 0
+            invalidInputCount = 0
+            workflowInputNames = @()
+            missingInputParameters = @()
+        }
+    )
+})
+Write-JsonFixture $preflightBlockRunIdPath ([ordered]@{
+    formatVersion = "osmu.operations-workflow-run-id-plan.v1"
+    result = "query-required"
+    workflowCount = 1
+    readyWorkflowCount = 0
+    missingWorkflowCount = 1
+    staleWorkflowCount = 0
+})
+Write-JsonFixture $preflightBlockCollectionPath ([ordered]@{
+    formatVersion = "osmu.operations-artifact-collection-plan.v1"
+    result = "action-required"
+    artifactCount = 1
+    readyArtifactCount = 0
+    missingRequiredArtifactCount = 1
+})
+
+& powershell -NoProfile -ExecutionPolicy Bypass -File $scriptPath `
+    -ReadinessReportPath $preflightBlockReadinessPath `
+    -EvidencePlanPath $preflightBlockPlanPath `
+    -InvocationReportPath $preflightBlockInvocationPath `
+    -DispatchPreflightReportPath $preflightBlockDispatchPreflightPath `
+    -WorkflowRunIdPlanPath $preflightBlockRunIdPath `
+    -ArtifactCollectionPlanPath $preflightBlockCollectionPath `
+    -ArtifactImportReportPath $preflightBlockImportPath `
+    -OperationsReadinessFinalizeReportPath $preflightBlockFinalizePath `
+    -JsonOutputPath $preflightBlockJsonPath `
+    -MarkdownOutputPath $preflightBlockMarkdownPath | Out-Host
+if ($LASTEXITCODE -ne 0) {
+    throw "write-operations-evidence-handoff.ps1 preflight-block check failed with exit code $LASTEXITCODE."
+}
+
+$preflightBlockReport = Get-Content -Raw -LiteralPath $preflightBlockJsonPath | ConvertFrom-Json
+$preflightBlockMarkdown = Get-Content -Raw -LiteralPath $preflightBlockMarkdownPath
+Assert-Equal $preflightBlockReport.result "action-required" "preflight-block result"
+Assert-Equal $preflightBlockReport.nextStep.code "fix-dispatch-preflight" "preflight-block next step"
+Assert-Contains $preflightBlockReport.nextStep.command "-ActionOrder 2" "preflight-block command action order"
+Assert-Contains $preflightBlockReport.nextStep.command "-CheckGitHubCli" "preflight-block command gh check"
+Assert-Contains $preflightBlockReport.nextStep.reason "dispatch preflight is action-required" "preflight-block reason"
+Assert-Contains $preflightBlockReport.nextStep.note "GITHUB_CLI_AVAILABLE" "preflight-block note"
+Assert-Contains $preflightBlockMarkdown "Fix dispatch preflight before execution" "preflight-block markdown next step"
 $finalizerReadinessPath = Join-Path $resolvedOutputDirectory "finalizer-readiness.json"
 $finalizerPlanPath = Join-Path $resolvedOutputDirectory "finalizer-plan.json"
 $finalizerInvocationPath = Join-Path $resolvedOutputDirectory "finalizer-invocation.json"

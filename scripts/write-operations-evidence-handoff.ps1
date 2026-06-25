@@ -146,6 +146,36 @@ function Is-ReadyResult([string] $Result) {
     return @("ready", "passed", "go") -contains $Result.ToLowerInvariant()
 }
 
+function New-DispatchPreflightCommand([object] $Report) {
+    $parts = New-Object System.Collections.Generic.List[string]
+    $parts.Add("powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\write-operations-dispatch-preflight.ps1")
+    $orders = @(Get-Array (Get-JsonProperty $Report "selectedActionOrders") | ForEach-Object {
+        try { [int] $_ } catch { 0 }
+    } | Where-Object { $_ -gt 0 })
+    if ($orders.Count -gt 0) {
+        $parts.Add("-ActionOrder $(Join-IntList $orders)")
+    }
+    $parts.Add("-CheckGitHubCli")
+    return $parts -join " "
+}
+
+function Get-DispatchPreflightFailureSummary([object] $Report) {
+    $failed = @(Get-Array (Get-JsonProperty $Report "checks") | Where-Object {
+        "fail".Equals((Get-Text $_ "status"), [System.StringComparison]::OrdinalIgnoreCase)
+    })
+    if ($failed.Count -eq 0) {
+        return "No failed dispatch preflight checks were listed."
+    }
+    return (@($failed | Select-Object -First 3 | ForEach-Object {
+        $code = Get-Text $_ "code"
+        $message = Get-Text $_ "message"
+        if ([string]::IsNullOrWhiteSpace($message)) {
+            return $code
+        }
+        return "$($code): $message"
+    })) -join " / "
+}
+
 function New-DispatchWorkflowSummary([object] $Template) {
     return [ordered]@{
         actionOrder = Get-Int $Template "actionOrder"
@@ -199,6 +229,10 @@ $readyDispatchTemplateCount = $readyDispatchTemplates.Count
 $blockedDispatchTemplateCount = $blockedDispatchTemplates.Count
 $readySubsetPlanCommand = Get-Text $dispatchPreflight.json "readySubsetPlanCommand"
 $readySubsetExecuteCommand = Get-Text $dispatchPreflight.json "readySubsetExecuteCommand"
+$dispatchPreflightFailedCheckCount = Get-Int $dispatchPreflight.json "failedCheckCount"
+$dispatchPreflightWarningCheckCount = Get-Int $dispatchPreflight.json "warningCheckCount"
+$dispatchPreflightFixCommand = New-DispatchPreflightCommand $dispatchPreflight.json
+$dispatchPreflightFailureSummary = Get-DispatchPreflightFailureSummary $dispatchPreflight.json
 
 $stages = @(
     (New-Stage "operations-readiness" $readiness.path $readiness.exists $readinessResult (Get-Text $readiness.json "summary") (Is-ReadyResult $readinessResult) "powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\write-operations-readiness.ps1" "Production/B2B readiness gate summary."),
@@ -250,7 +284,12 @@ elseif ((Get-Int $invocation.json "blockedCount") -gt 0 -or "blocked".Equals($in
     }
 }
 elseif ((Get-Int $invocation.json "plannedCount") -gt 0 -and (Get-Int $invocation.json "executedCount") -eq 0 -and "planned".Equals($invocationResult, [System.StringComparison]::OrdinalIgnoreCase)) {
-    $nextStep = New-NextStep "execute-invocation" "Execute guarded evidence invocation" "powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\invoke-operations-evidence-plan.ps1 -Execute" "The invocation is planned but has not executed workflows yet." "Use only after reviewing generated commands and approval requirements."
+    if ($dispatchPreflight.exists -and -not (Is-ReadyResult $dispatchPreflightResult)) {
+        $nextStep = New-NextStep "fix-dispatch-preflight" "Fix dispatch preflight before execution" $dispatchPreflightFixCommand "The invocation is planned, but dispatch preflight is ${dispatchPreflightResult}: failedChecks=$dispatchPreflightFailedCheckCount, warnings=$dispatchPreflightWarningCheckCount, missingInputs=$((Get-Int $dispatchPreflight.json "missingInputCount"))." "Fix failed preflight checks before live execution. $dispatchPreflightFailureSummary"
+    }
+    else {
+        $nextStep = New-NextStep "execute-invocation" "Execute guarded evidence invocation" "powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\invoke-operations-evidence-plan.ps1 -Execute" "The invocation is planned but has not executed workflows yet." "Use only after reviewing generated commands and approval requirements."
+    }
 }
 elseif (-not $runIds.exists) {
     $nextStep = New-NextStep "write-run-id-plan" "Generate workflow run id plan" "powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\write-operations-workflow-run-id-plan.ps1" "The workflow run id plan is missing." "Collect the GitHub run id handoff after workflow dispatch."
