@@ -137,6 +137,56 @@ Assert-Equal $actionReport.readyStageCount 5 "action ready stage count"
 Assert-Contains $actionReport.recommendedCommands[0].command "finalize-operations-readiness.ps1" "action recommended command"
 Assert-Contains $actionMarkdown "Run operations readiness finalizer" "action markdown command"
 
+$readySubsetHandoffPath = Join-Path $resolvedOutputDirectory "ready-subset-handoff.json"
+$readySubsetJsonPath = Join-Path $resolvedOutputDirectory "ready-subset-convergence.json"
+$readySubsetMarkdownPath = Join-Path $resolvedOutputDirectory "ready-subset-convergence.md"
+Write-JsonFixture $readySubsetHandoffPath ([ordered]@{
+    formatVersion = "osmu.operations-evidence-handoff.v1"
+    result = "blocked"
+    nextStep = [ordered]@{
+        code = "dispatch-ready-subset"
+        title = "Plan ready dispatch subset"
+        command = "powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\invoke-operations-evidence-plan.ps1 -ActionOrder 2"
+        reason = "The invocation report still has blocked actions, but 1 action(s) are ready to dispatch: 2."
+        note = "Run the ready subset plan command first without -Execute."
+    }
+    stageCount = 8
+    readyStageCount = 1
+    blockedActionCount = 5
+    missingWorkflowRunCount = 6
+    missingRequiredArtifactCount = 4
+    failedImportCount = 0
+    finalizerFailedCount = 0
+    finalizerGapCount = 1
+    stages = @(
+        [ordered]@{
+            name = "dispatch-preflight"
+            exists = $true
+            ready = $false
+            result = "action-required"
+            summary = "selected=6 readyTemplates=1 blockedTemplates=5"
+            command = "powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\write-operations-dispatch-preflight.ps1 -CheckGitHubCli"
+            note = "No-execute workflow dispatch preflight and input template readiness."
+        }
+    )
+})
+& powershell -NoProfile -ExecutionPolicy Bypass -File $scriptPath `
+    -HandoffReportPath $readySubsetHandoffPath `
+    -ReadinessReportPath $actionReadinessPath `
+    -OperationsReadinessFinalizeReportPath $actionFinalizePath `
+    -KubernetesOperationsReportSyncReportPath $actionSyncPath `
+    -JsonOutputPath $readySubsetJsonPath `
+    -MarkdownOutputPath $readySubsetMarkdownPath | Out-Host
+if ($LASTEXITCODE -ne 0) {
+    throw "write-operations-readiness-convergence.ps1 ready-subset check failed with exit code $LASTEXITCODE."
+}
+$readySubsetReport = Get-Content -Raw -LiteralPath $readySubsetJsonPath | ConvertFrom-Json
+$readySubsetMarkdown = Get-Content -Raw -LiteralPath $readySubsetMarkdownPath
+Assert-Equal $readySubsetReport.result "action-required" "ready subset result"
+Assert-Equal $readySubsetReport.currentBottleneck.code "dispatch-ready-subset" "ready subset bottleneck"
+Assert-Contains $readySubsetReport.recommendedCommands[0].command "-ActionOrder 2" "ready subset recommended command"
+Assert-Contains $readySubsetMarkdown "Plan ready dispatch subset" "ready subset markdown command"
+
 $readyHandoffPath = Join-Path $resolvedOutputDirectory "ready-handoff.json"
 $readyReadinessPath = Join-Path $resolvedOutputDirectory "ready-readiness.json"
 $readyFinalizePath = Join-Path $resolvedOutputDirectory "ready-finalize.json"

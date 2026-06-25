@@ -175,6 +175,8 @@ $readyDispatchActionOrders = @($readyDispatchTemplates | ForEach-Object { Get-In
 $blockedDispatchActionOrders = @($blockedDispatchTemplates | ForEach-Object { Get-Int $_ "actionOrder" } | Where-Object { $_ -gt 0 })
 $readyDispatchTemplateCount = $readyDispatchTemplates.Count
 $blockedDispatchTemplateCount = $blockedDispatchTemplates.Count
+$readySubsetPlanCommand = Get-Text $dispatchPreflight.json "readySubsetPlanCommand"
+$readySubsetExecuteCommand = Get-Text $dispatchPreflight.json "readySubsetExecuteCommand"
 
 $stages = @(
     (New-Stage "operations-readiness" $readiness.path $readiness.exists $readinessResult (Get-Text $readiness.json "summary") (Is-ReadyResult $readinessResult) "powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\write-operations-readiness.ps1" "Production/B2B readiness gate summary."),
@@ -211,7 +213,19 @@ elseif (-not $invocation.exists) {
 }
 elseif ((Get-Int $invocation.json "blockedCount") -gt 0 -or "blocked".Equals($invocationResult, [System.StringComparison]::OrdinalIgnoreCase)) {
     $handoffResult = "blocked"
-    $nextStep = New-NextStep "resolve-invocation-blockers" "Resolve invocation blockers" "powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\write-operations-invocation-unblock-plan.ps1" "The invocation report still has blocked actions." "Generate the unblock plan, fill placeholders, confirm operator approvals, and confirm kubeconfig-secret readiness before dispatch."
+    if ($readyDispatchTemplateCount -gt 0 -and -not [string]::IsNullOrWhiteSpace($readySubsetPlanCommand)) {
+        $readyOrdersText = Join-IntList $readyDispatchActionOrders
+        $executeHint = if (-not [string]::IsNullOrWhiteSpace($readySubsetExecuteCommand)) {
+            "Execute command is available after plan review: $readySubsetExecuteCommand"
+        }
+        else {
+            "Ready subset execute command is unavailable until GitHub CLI/auth checks pass; rerun dispatch preflight with -CheckGitHubCli before live execution."
+        }
+        $nextStep = New-NextStep "dispatch-ready-subset" "Plan ready dispatch subset" $readySubsetPlanCommand "The invocation report still has blocked actions, but $readyDispatchTemplateCount action(s) are ready to dispatch: $readyOrdersText." "Run the ready subset plan command first without -Execute, then dispatch only after review and continue resolving the remaining blocked actions. $executeHint"
+    }
+    else {
+        $nextStep = New-NextStep "resolve-invocation-blockers" "Resolve invocation blockers" "powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\write-operations-invocation-unblock-plan.ps1" "The invocation report still has blocked actions." "Generate the unblock plan, fill placeholders, confirm operator approvals, and confirm kubeconfig-secret readiness before dispatch."
+    }
 }
 elseif ((Get-Int $invocation.json "plannedCount") -gt 0 -and (Get-Int $invocation.json "executedCount") -eq 0 -and "planned".Equals($invocationResult, [System.StringComparison]::OrdinalIgnoreCase)) {
     $nextStep = New-NextStep "execute-invocation" "Execute guarded evidence invocation" "powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\invoke-operations-evidence-plan.ps1 -Execute" "The invocation is planned but has not executed workflows yet." "Use only after reviewing generated commands and approval requirements."

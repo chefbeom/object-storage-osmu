@@ -128,6 +128,8 @@ Write-JsonFixture $blockedDispatchPreflightPath ([ordered]@{
     result = "action-required"
     selectedActionCount = 3
     missingInputCount = 2
+    readySubsetPlanCommand = "powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\invoke-operations-evidence-plan.ps1 -ActionOrder 2"
+    readySubsetExecuteCommand = "powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\invoke-operations-evidence-plan.ps1 -ActionOrder 2 -Execute"
     inputTemplates = @(
         [ordered]@{
             actionOrder = 1
@@ -188,10 +190,13 @@ if ($LASTEXITCODE -ne 0) {
 $blockedReport = Get-Content -Raw -LiteralPath $blockedJsonPath | ConvertFrom-Json
 $blockedMarkdown = Get-Content -Raw -LiteralPath $blockedMarkdownPath
 Assert-Equal $blockedReport.result "blocked" "blocked result"
-Assert-Equal $blockedReport.nextStep.code "resolve-invocation-blockers" "blocked next step"
+Assert-Equal $blockedReport.nextStep.code "dispatch-ready-subset" "blocked next step"
+Assert-Contains $blockedReport.nextStep.command "-ActionOrder 2" "blocked ready subset command"
+Assert-Contains $blockedReport.nextStep.reason "1 action(s) are ready" "blocked ready subset reason"
+Assert-Contains $blockedReport.nextStep.note "remaining blocked actions" "blocked ready subset note"
 Assert-Equal $blockedReport.blockedActionCount 5 "blocked count"
 Assert-Equal $blockedReport.missingWorkflowRunCount 6 "blocked missing workflow run count"
-Assert-Contains $blockedMarkdown "Resolve invocation blockers" "blocked markdown next step"
+Assert-Contains $blockedMarkdown "Plan ready dispatch subset" "blocked markdown next step"
 
 $finalizerReadinessPath = Join-Path $resolvedOutputDirectory "finalizer-readiness.json"
 $finalizerPlanPath = Join-Path $resolvedOutputDirectory "finalizer-plan.json"
