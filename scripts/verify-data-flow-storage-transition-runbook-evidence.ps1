@@ -51,8 +51,17 @@ $plan = [ordered]@{
     pendingCount = 0
     checkCount = 10
     queryPlanEvidence = [ordered]@{
+        provided = $true
+        parsed = $true
+        formatVersion = "osmu.mariadb-query-plan-evidence.v1"
+        expectedFormatVersion = "osmu.mariadb-query-plan-evidence.v1"
+        validFormatVersion = $true
         result = "passed"
+        mode = "explain-input"
+        checkCount = 15
+        passedCount = 15
         failedCount = 0
+        detail = "formatVersion=osmu.mariadb-query-plan-evidence.v1; result=passed; mode=explain-input; passed=15; failed=0; checks=15"
     }
 }
 $plan | ConvertTo-Json -Depth 8 | Set-Content -Encoding UTF8 -LiteralPath $planPath
@@ -106,13 +115,19 @@ Assert-True ($report.summary.failureCount -eq 0) "Expected zero failed checks."
 Assert-True ($report.dataFlowStoragePlanSnapshot.result -eq "passed") "Expected passed storage plan snapshot."
 Assert-True ($report.dataFlowStoragePlanSnapshot.candidateStore -eq "DUAL_WRITE") "Expected candidate store."
 Assert-True ($report.dataFlowStoragePlanSnapshot.targetP95QueryLatencyMs -eq 500) "Expected target p95 query latency."
+Assert-True ($report.dataFlowStoragePlanSnapshot.queryPlanEvidence.result -eq "passed") "Expected query-plan evidence result."
+Assert-True ($report.dataFlowStoragePlanSnapshot.queryPlanEvidence.checkCount -eq 15) "Expected query-plan evidence check count."
+Assert-True ($report.dataFlowStoragePlanSnapshot.queryPlanEvidence.passedCount -eq 15) "Expected query-plan evidence passed count."
+Assert-True ($report.dataFlowStoragePlanSnapshot.queryPlanEvidence.failedCount -eq 0) "Expected query-plan evidence failed count."
 Assert-True ($report.confirmations.backfillRehearsed) "Expected backfill confirmation."
 Assert-True ($report.confirmations.rollbackRehearsed) "Expected rollback confirmation."
 Assert-True ($report.confirmations.reconciliationPassed) "Expected reconciliation confirmation."
 Assert-True ($report.confirmations.noObjectKeysInAggregates) "Expected no-object-key confirmation."
 Assert-True (@($checks | Where-Object { $_.id -eq "data-flow-storage-plan-passed" -and $_.passed }).Count -eq 1) "Expected storage plan pass check."
+Assert-True (@($checks | Where-Object { $_.id -eq "data-flow-storage-plan-query-plan-snapshot" -and $_.passed }).Count -eq 1) "Expected query-plan snapshot pass check."
 
 Assert-Contains $markdown "# OSMU Data-flow Storage Transition Runbook Evidence" "runbook evidence markdown"
+Assert-Contains $markdown "Query-plan evidence: result=passed" "runbook evidence markdown"
 Assert-Contains $markdown "Runbook Coverage" "runbook evidence markdown"
 Assert-Contains $markdown "Record passed target evidence" "runbook evidence markdown"
 Assert-Contains $report.scopePolicy "not AWS billing parity" "runbook evidence JSON"
