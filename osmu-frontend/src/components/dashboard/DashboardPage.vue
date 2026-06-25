@@ -1934,6 +1934,8 @@
         <strong>Dispatch preflight: {{ operationsDispatchPreflight.result }}</strong>
         <small>
           {{ operationsDispatchPreflight.selectedActionCount }} selected /
+          {{ operationsDispatchPreflight.readyActionCount || 0 }} ready /
+          {{ operationsDispatchPreflight.blockedActionCount || 0 }} blocked /
           {{ operationsDispatchPreflight.failedCheckCount }} failed /
           {{ operationsDispatchPreflight.missingInputCount }} missing inputs /
           {{ operationsDispatchPreflight.unsafeInputCount || 0 }} unsafe /
@@ -1956,6 +1958,18 @@
           data-testid="readiness-dispatch-preflight-selected-orders"
         >
           Selected actions: {{ operationsDispatchPreflightSelectedOrderSummary }}
+        </small>
+        <small
+          v-if="operationsDispatchPreflightReadyOrderSummary"
+          data-testid="readiness-dispatch-preflight-ready-orders"
+        >
+          Ready actions: {{ operationsDispatchPreflightReadyOrderSummary }}
+        </small>
+        <small
+          v-if="operationsDispatchPreflightBlockedOrderSummary"
+          data-testid="readiness-dispatch-preflight-blocked-orders"
+        >
+          Blocked actions: {{ operationsDispatchPreflightBlockedOrderSummary }}
         </small>
         <small v-if="formatDispatchPreflightSecrets()">
           {{ formatDispatchPreflightSecrets() }}
@@ -1980,6 +1994,26 @@
             @click="copyReadinessRemediationCommand(operationsDispatchPreflight.executeCommand)"
           >
             Execute
+          </button>
+          <button
+            v-if="operationsDispatchPreflight.readySubsetPlanCommand"
+            data-testid="readiness-dispatch-preflight-ready-subset-plan-command-copy-button"
+            type="button"
+            class="ghost"
+            title="Copy ready subset plan command"
+            @click="copyReadinessRemediationCommand(operationsDispatchPreflight.readySubsetPlanCommand)"
+          >
+            Ready Subset Plan
+          </button>
+          <button
+            v-if="operationsDispatchPreflight.readySubsetExecuteCommand"
+            data-testid="readiness-dispatch-preflight-ready-subset-execute-command-copy-button"
+            type="button"
+            class="ghost"
+            title="Copy ready subset execute command"
+            @click="copyReadinessRemediationCommand(operationsDispatchPreflight.readySubsetExecuteCommand)"
+          >
+            Ready Subset Execute
           </button>
         </div>
       </div>
@@ -3365,6 +3399,20 @@ const operationsDispatchPreflightWorkflowFiles = computed(() => {
 const operationsDispatchPreflightSelectedOrderSummary = computed(() => {
   const orders = operationsDispatchPreflight.value?.selectedActionOrders
   return Array.isArray(orders) && orders.length > 0 ? orders.slice(0, 8).join(', ') : ''
+})
+
+const operationsDispatchPreflightReadyOrderSummary = computed(() => {
+  const orders = operationsDispatchPreflight.value?.readyActionOrders
+  return Array.isArray(orders) && orders.length > 0 ? orders.slice(0, 8).join(', ') : ''
+})
+
+const operationsDispatchPreflightBlockedOrderSummary = computed(() => {
+  const orders = operationsDispatchPreflight.value?.blockedActionOrders
+  if (!Array.isArray(orders) || orders.length === 0) {
+    return ''
+  }
+  const suffix = orders.length > 8 ? ', ...' : ''
+  return `${orders.slice(0, 8).join(', ')}${suffix}`
 })
 
 const operationsDispatchPreflightSourceSummary = computed(() => {

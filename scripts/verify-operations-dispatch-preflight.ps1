@@ -64,8 +64,8 @@ Write-JsonFixture $unblockPlanPath ([ordered]@{
     sourceInvocationReport = ".osmu-run/latest-operations-evidence-plan-invocation.json"
     sourceResult = "blocked"
     sourceSummary = "passed=36 pending=6"
-    selectedActionCount = 3
-    plannedCount = 0
+    selectedActionCount = 4
+    plannedCount = 1
     blockedCount = 3
     failedCount = 0
     needsKubeconfigSecretConfirmation = $true
@@ -73,7 +73,7 @@ Write-JsonFixture $unblockPlanPath ([ordered]@{
     requiredPlaceholderCount = 1
     ambiguousRepeatedPlaceholderCount = 0
     blockedActionOrders = @(1, 2, 3)
-    plannedActionOrders = @()
+    plannedActionOrders = @(4)
     confirmedPlanCommand = "powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\invoke-operations-evidence-plan.ps1 -ActionOrder 1,2,3 -KubeconfigSecretConfirmed -ConfirmOperatorApproval -BackupTimestamp <YYYYMMDDTHHMMSSZ>"
     blockedOnlyPlanCommand = "powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\invoke-operations-evidence-plan.ps1 -ActionOrder 1,2 -KubeconfigSecretConfirmed -ConfirmOperatorApproval -BackupTimestamp <YYYYMMDDTHHMMSSZ>"
     plannedOnlyCommand = ""
@@ -145,6 +145,25 @@ Write-JsonFixture $unblockPlanPath ([ordered]@{
             requiredInputs = @()
             ambiguousRepeatedPlaceholders = $false
             planCommand = "powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\invoke-operations-evidence-plan.ps1 -ActionOrder 3 -ConfirmOperatorApproval"
+        },
+        [ordered]@{
+            order = 4
+            name = "Container scan/SBOM evidence"
+            category = "security-hardening"
+            actionType = "operator-remediation"
+            evidencePath = ".osmu-run/latest-container-security-evidence.json"
+            status = "planned"
+            commandMode = "Workflow"
+            command = "gh workflow run container-security-ci.yml"
+            blockReasons = @()
+            unresolvedPlaceholders = @()
+            requiresOperatorApproval = $false
+            requiresKubeconfigSecret = $false
+            needsOperatorApprovalConfirmation = $false
+            needsKubeconfigSecretConfirmation = $false
+            requiredInputs = @()
+            ambiguousRepeatedPlaceholders = $false
+            planCommand = "powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\invoke-operations-evidence-plan.ps1 -ActionOrder 4"
         }
     )
 })
@@ -161,13 +180,19 @@ $missingReport = Get-Content -Raw -LiteralPath $missingJsonPath | ConvertFrom-Js
 $missingMarkdown = Get-Content -Raw -LiteralPath $missingMarkdownPath
 Assert-Equal $missingReport.formatVersion "osmu.operations-dispatch-preflight.v1" "missing formatVersion"
 Assert-Equal $missingReport.result "action-required" "missing result"
-Assert-Equal $missingReport.selectedActionCount 3 "missing selected action count"
+Assert-Equal $missingReport.selectedActionCount 4 "missing selected action count"
+Assert-Equal $missingReport.readyActionCount 1 "missing ready action count"
+Assert-Equal $missingReport.blockedActionCount 3 "missing blocked action count"
+Assert-Equal $missingReport.readyActionOrders[0] 4 "missing ready action order"
+Assert-Equal $missingReport.blockedActionOrders[0] 1 "missing blocked action order"
+Assert-Contains $missingReport.readySubsetPlanCommand "-ActionOrder 4" "missing ready subset plan command"
+Assert-Contains $missingReport.readySubsetExecuteCommand "-Execute" "missing ready subset execute command"
 Assert-Equal $missingReport.missingInputCount 1 "missing input count"
 Assert-Equal $missingReport.unsafeInputCount 0 "missing unsafe input count"
 Assert-Equal $missingReport.invalidInputCount 0 "missing invalid input count"
 Assert-True ($missingReport.failedCheckCount -ge 3) "expected missing preflight failures"
 Assert-Contains ($missingReport.checks | ConvertTo-Json -Depth 8) "KUBECONFIG_SECRET_CONFIRMED" "missing checks"
-Assert-Equal @($missingReport.inputTemplates).Count 3 "missing input template count"
+Assert-Equal @($missingReport.inputTemplates).Count 4 "missing input template count"
 $missingDrTemplate = @($missingReport.inputTemplates | Where-Object { $_.actionOrder -eq 2 })[0]
 Assert-Equal $missingDrTemplate.workflow "kubernetes-dr-finalizer-ci.yml" "missing DR template workflow"
 Assert-Equal $missingDrTemplate.missingInputCount 1 "missing DR template missing input count"
@@ -182,8 +207,14 @@ Assert-Equal @($missingDrTemplate.invalidInputParameters).Count 0 "missing DR te
 Assert-Equal $missingDrTemplate.inputs[0].valueTemplate "<YYYYMMDDTHHMMSSZ>" "missing DR template input value template"
 Assert-True (@($missingDrTemplate.inputs[0].workflowInputs) -contains "backup_timestamp") "missing DR template workflow input mapping"
 Assert-True (-not $missingDrTemplate.inputs[0].supplied) "missing DR template input should be missing"
+$missingContainerTemplate = @($missingReport.inputTemplates | Where-Object { $_.actionOrder -eq 4 })[0]
+Assert-True $missingContainerTemplate.readyToDispatch "missing container template should be ready to dispatch"
+Assert-Equal @($missingContainerTemplate.requiredSecrets).Count 0 "missing container template should not carry blank required secrets"
+Assert-Equal @($missingContainerTemplate.operatorChecklist).Count 0 "missing container template should not carry blank checklist items"
 Assert-Contains $missingMarkdown "Result: action-required" "missing markdown"
 Assert-Contains $missingMarkdown "## Input Templates" "missing markdown input templates section"
+Assert-Contains $missingMarkdown "Ready actions: 1 (4)" "missing markdown ready action count"
+Assert-Contains $missingMarkdown "Ready subset plan command" "missing markdown ready subset command"
 Assert-Contains $missingMarkdown "action 2 - Kubernetes DR finalizer live evidence" "missing markdown DR template"
 
 & powershell -NoProfile -ExecutionPolicy Bypass -File $scriptPath `
@@ -201,6 +232,12 @@ $readyReport = Get-Content -Raw -LiteralPath $readyJsonPath | ConvertFrom-Json
 $readyMarkdown = Get-Content -Raw -LiteralPath $readyMarkdownPath
 Assert-Equal $readyReport.result "ready" "ready result"
 Assert-Equal $readyReport.failedCheckCount 0 "ready failed checks"
+Assert-Equal $readyReport.readyActionCount 4 "ready action count"
+Assert-Equal $readyReport.blockedActionCount 0 "ready blocked action count"
+Assert-Equal $readyReport.readyActionOrders[0] 1 "ready first action order"
+Assert-Equal $readyReport.readyActionOrders[3] 4 "ready last action order"
+Assert-Contains $readyReport.readySubsetPlanCommand "-ActionOrder 1,2,3,4" "ready subset plan command"
+Assert-Contains $readyReport.readySubsetExecuteCommand "-Execute" "ready subset execute command"
 Assert-Equal $readyReport.missingInputCount 0 "ready missing inputs"
 Assert-Equal $readyReport.unsafeInputCount 0 "ready unsafe inputs"
 Assert-Equal $readyReport.invalidInputCount 0 "ready invalid inputs"
@@ -239,6 +276,8 @@ Assert-True (@($drWorkflow.requiredSecrets) -contains "OSMU_ADMIN_PASSWORD") "co
 Assert-True (-not (@($enterpriseAuthWorkflow.requiredSecrets) -contains "OSMU_KUBECONFIG_BASE64")) "enterprise auth workflow should not require kubeconfig"
 Assert-True (@($enterpriseAuthWorkflow.requiredSecrets) -contains "OSMU_ENTERPRISE_AUTH_ADMIN_PASSWORD") "enterprise auth workflow should require admin password when run_live=true"
 Assert-Contains $readyMarkdown "Result: ready" "ready markdown"
+Assert-Contains $readyMarkdown "Ready actions: 4 (1,2,3,4)" "ready markdown action count"
+Assert-Contains $readyMarkdown "Ready subset execute command" "ready markdown ready subset execute command"
 Assert-Contains $readyMarkdown "readyToDispatch=True" "ready markdown template readiness"
 Assert-Contains $readyMarkdown "workflowInputs=backup_timestamp" "ready markdown workflow input summary"
 

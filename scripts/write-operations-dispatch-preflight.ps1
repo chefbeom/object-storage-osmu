@@ -423,7 +423,7 @@ foreach ($action in @($selectedActions)) {
     $workflowSecrets = @()
     if ($workflowFile) {
         $workflowName = [string] $workflowFile.workflow
-        $workflowSecrets = @($workflowFile.requiredSecrets | ForEach-Object { [string] $_ })
+        $workflowSecrets = @($workflowFile.requiredSecrets | Where-Object { -not [string]::IsNullOrWhiteSpace([string] $_) } | ForEach-Object { [string] $_ })
     }
 
     $actionInputs = New-Object System.Collections.ArrayList
@@ -455,7 +455,9 @@ foreach ($action in @($selectedActions)) {
         $operatorChecklist.Add("Confirm OSMU_KUBECONFIG_BASE64 secret readiness")
     }
     foreach ($secret in $workflowSecrets) {
-        $operatorChecklist.Add("Ensure GitHub secret $secret is configured")
+        if (-not [string]::IsNullOrWhiteSpace($secret)) {
+            $operatorChecklist.Add("Ensure GitHub secret $secret is configured")
+        }
     }
     if ($actionInputs.Count -gt 0) {
         $operatorChecklist.Add("Fill $($actionInputs.Count) required input value(s)")
@@ -510,6 +512,27 @@ foreach ($action in @($selectedActions)) {
         inputs = @($actionInputs)
         operatorChecklist = @($operatorChecklist)
     }) | Out-Null
+}
+
+$readyInputTemplates = @($inputTemplates | Where-Object { [bool] $_.readyToDispatch })
+$blockedInputTemplates = @($inputTemplates | Where-Object { -not [bool] $_.readyToDispatch })
+$readyActionOrders = @($readyInputTemplates | ForEach-Object { [int] $_.actionOrder } | Where-Object { $_ -gt 0 })
+$blockedActionOrders = @($blockedInputTemplates | ForEach-Object { [int] $_.actionOrder } | Where-Object { $_ -gt 0 })
+$readySubsetCommandParts = New-Object System.Collections.Generic.List[string]
+$readySubsetCommandParts.Add("powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\invoke-operations-evidence-plan.ps1")
+if ($readyActionOrders.Count -gt 0) {
+    $readySubsetCommandParts.Add("-ActionOrder $(Join-ActionOrders @($readyActionOrders))")
+}
+$readySubsetNeedsKubeconfig = @($readyInputTemplates | Where-Object { [bool] $_.needsKubeconfigSecretConfirmation }).Count -gt 0
+$readySubsetNeedsApproval = @($readyInputTemplates | Where-Object { [bool] $_.needsOperatorApprovalConfirmation }).Count -gt 0
+if ($readySubsetNeedsKubeconfig) {
+    $readySubsetCommandParts.Add("-KubeconfigSecretConfirmed")
+}
+if ($readySubsetNeedsApproval) {
+    $readySubsetCommandParts.Add("-ConfirmOperatorApproval")
+}
+foreach ($input in @($requiredInputs | Where-Object { ($readyActionOrders -contains [int] $_.actionOrder) -and [bool] $_.supplied })) {
+    $readySubsetCommandParts.Add((Get-InputCommandPart $input.parameter $input.placeholder $input.valuePreview))
 }
 
 if ($selectedOrders.Count -gt 0) {
@@ -602,6 +625,9 @@ $warningCheckCount = @($checks | Where-Object { $_.status -eq "warn" }).Count
 $result = if ($failedCheckCount -gt 0) { "action-required" } else { "ready" }
 $readyPlanCommand = if ($failedCheckCount -eq 0) { $commandParts -join " " } else { "" }
 $executeCommand = if ($failedCheckCount -eq 0) { "$readyPlanCommand -Execute" } else { "" }
+$readySubsetPlanCommand = if ($readyActionOrders.Count -gt 0) { $readySubsetCommandParts -join " " } else { "" }
+$githubCliUnavailable = @($checks | Where-Object { $_.code -eq "GITHUB_CLI_AVAILABLE" -and $_.status -eq "fail" }).Count -gt 0
+$readySubsetExecuteCommand = if (-not [string]::IsNullOrWhiteSpace($readySubsetPlanCommand) -and -not $githubCliUnavailable) { "$readySubsetPlanCommand -Execute" } else { "" }
 $generatedAt = [DateTimeOffset]::Now.ToString("o")
 
 $report = [ordered]@{
@@ -612,6 +638,10 @@ $report = [ordered]@{
     sourceResult = Get-Text $unblockPlan "result"
     selectedActionCount = $selectedActions.Count
     selectedActionOrders = @($selectedOrders | ForEach-Object { [int] $_ })
+    readyActionCount = $readyActionOrders.Count
+    readyActionOrders = @($readyActionOrders | ForEach-Object { [int] $_ })
+    blockedActionCount = $blockedActionOrders.Count
+    blockedActionOrders = @($blockedActionOrders | ForEach-Object { [int] $_ })
     needsKubeconfigSecretConfirmation = $needsKubeconfig
     needsOperatorApprovalConfirmation = $needsApproval
     requiredInputCount = $requiredInputs.Count
@@ -626,9 +656,11 @@ $report = [ordered]@{
     warningCheckCount = $warningCheckCount
     readyPlanCommand = $readyPlanCommand
     executeCommand = $executeCommand
+    readySubsetPlanCommand = $readySubsetPlanCommand
+    readySubsetExecuteCommand = $readySubsetExecuteCommand
     requiredInputs = @($requiredInputs)
     inputTemplates = @($inputTemplates)
-    decisionRule = "Run the ready plan command first without -Execute. Use the execute command only after this preflight is ready, GitHub CLI/auth is verified, and operator-approved live dispatch is intended."
+    decisionRule = "Run the ready plan command first without -Execute. Use the execute command only after this preflight is ready, GitHub CLI/auth is verified, and operator-approved live dispatch is intended. When readyActionCount is lower than selectedActionCount, the ready subset commands may be used to plan or execute only actions whose input templates are readyToDispatch=true."
 }
 
 $markdownLines = @(
@@ -641,6 +673,8 @@ $markdownLines = @(
     "## Summary",
     "",
     "- Selected actions: $($report.selectedActionCount)",
+    "- Ready actions: $($report.readyActionCount) ($(if ($readyActionOrders.Count -gt 0) { Join-ActionOrders @($readyActionOrders) } else { 'none' }))",
+    "- Blocked actions: $($report.blockedActionCount) ($(if ($blockedActionOrders.Count -gt 0) { Join-ActionOrders @($blockedActionOrders) } else { 'none' }))",
     "- Missing inputs: $missingInputCount",
     "- Unsafe inputs: $unsafeInputCount",
     "- Invalid inputs: $invalidInputCount",
@@ -654,6 +688,12 @@ if (-not [string]::IsNullOrWhiteSpace($readyPlanCommand)) {
 }
 if (-not [string]::IsNullOrWhiteSpace($executeCommand)) {
     $markdownLines += "- Execute command: ``$executeCommand``"
+}
+if (-not [string]::IsNullOrWhiteSpace($readySubsetPlanCommand)) {
+    $markdownLines += "- Ready subset plan command: ``$readySubsetPlanCommand``"
+}
+if (-not [string]::IsNullOrWhiteSpace($readySubsetExecuteCommand)) {
+    $markdownLines += "- Ready subset execute command: ``$readySubsetExecuteCommand``"
 }
 $markdownLines += @(
     "",

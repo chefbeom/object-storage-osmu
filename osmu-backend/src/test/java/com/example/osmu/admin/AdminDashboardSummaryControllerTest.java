@@ -1859,6 +1859,10 @@ class AdminDashboardSummaryControllerTest {
                           "sourceResult": "action-required",
                           "selectedActionCount": 6,
                           "selectedActionOrders": [1, 2, 3, 4, 5, 6],
+                          "readyActionCount": 1,
+                          "readyActionOrders": [6],
+                          "blockedActionCount": 5,
+                          "blockedActionOrders": [1, 2, 3, 4, 5],
                           "needsKubeconfigSecretConfirmation": true,
                           "needsOperatorApprovalConfirmation": true,
                           "requiredInputCount": 6,
@@ -1887,6 +1891,8 @@ class AdminDashboardSummaryControllerTest {
                           ],
                           "readyPlanCommand": "",
                           "executeCommand": "",
+                          "readySubsetPlanCommand": "powershell -NoProfile -ExecutionPolicy Bypass -File .\\\\scripts\\\\invoke-operations-evidence-plan.ps1 -ActionOrder 6",
+                          "readySubsetExecuteCommand": "powershell -NoProfile -ExecutionPolicy Bypass -File .\\\\scripts\\\\invoke-operations-evidence-plan.ps1 -ActionOrder 6 -Execute",
                           "requiredInputs": [
                             {
                               "actionOrder": 3,
@@ -2312,6 +2318,12 @@ class AdminDashboardSummaryControllerTest {
                 .andExpect(jsonPath("$.data.operationsDispatchPreflight.sourceResult").value("action-required"))
                 .andExpect(jsonPath("$.data.operationsDispatchPreflight.selectedActionCount").value(6))
                 .andExpect(jsonPath("$.data.operationsDispatchPreflight.selectedActionOrders").value(hasItem(1)))
+                .andExpect(jsonPath("$.data.operationsDispatchPreflight.readyActionCount").value(1))
+                .andExpect(jsonPath("$.data.operationsDispatchPreflight.readyActionOrders[0]").value(6))
+                .andExpect(jsonPath("$.data.operationsDispatchPreflight.blockedActionCount").value(5))
+                .andExpect(jsonPath("$.data.operationsDispatchPreflight.blockedActionOrders[0]").value(1))
+                .andExpect(jsonPath("$.data.operationsDispatchPreflight.readySubsetPlanCommand").value("powershell -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\invoke-operations-evidence-plan.ps1 -ActionOrder 6"))
+                .andExpect(jsonPath("$.data.operationsDispatchPreflight.readySubsetExecuteCommand").value("powershell -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\invoke-operations-evidence-plan.ps1 -ActionOrder 6 -Execute"))
                 .andExpect(jsonPath("$.data.operationsDispatchPreflight.requiredInputCount").value(6))
                 .andExpect(jsonPath("$.data.operationsDispatchPreflight.missingInputCount").value(6))
                 .andExpect(jsonPath("$.data.operationsDispatchPreflight.unsafeInputCount").value(1))
