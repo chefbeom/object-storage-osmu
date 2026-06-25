@@ -1584,6 +1584,7 @@
         <small>
           Next {{ operationsEvidenceHandoffNextStep.code || 'none' }} /
           {{ operationsEvidenceHandoff.readyStageCount }} of {{ operationsEvidenceHandoff.stageCount }} stages ready /
+          dispatch {{ operationsEvidenceHandoff.readyDispatchTemplateCount || 0 }} ready, {{ operationsEvidenceHandoff.blockedDispatchTemplateCount || 0 }} blocked /
           {{ operationsEvidenceHandoff.blockedActionCount }} blocked /
           {{ operationsEvidenceHandoff.missingWorkflowRunCount }} missing runs /
           {{ operationsEvidenceHandoff.missingRequiredArtifactCount }} missing artifacts /
@@ -1591,6 +1592,9 @@
         </small>
         <small v-if="operationsEvidenceHandoffNextStep.reason">
           {{ operationsEvidenceHandoffNextStep.reason }}
+        </small>
+        <small v-if="operationsEvidenceHandoffDispatchSummary">
+          {{ operationsEvidenceHandoffDispatchSummary }}
         </small>
         <div class="readiness-artifact-command-row">
           <button
@@ -3492,6 +3496,19 @@ const operationsEvidenceHandoffNextStep = computed(() => (
 const operationsEvidenceHandoffStages = computed(() => {
   const stages = operationsEvidenceHandoff.value?.stages
   return Array.isArray(stages) ? stages : []
+})
+
+const operationsEvidenceHandoffDispatchSummary = computed(() => {
+  const handoff = operationsEvidenceHandoff.value || {}
+  const readyOrders = Array.isArray(handoff.readyDispatchActionOrders) ? handoff.readyDispatchActionOrders : []
+  const blockedOrders = Array.isArray(handoff.blockedDispatchActionOrders) ? handoff.blockedDispatchActionOrders : []
+  if (!handoff.dispatchPreflightResult && readyOrders.length === 0 && blockedOrders.length === 0) {
+    return ''
+  }
+  const ready = readyOrders.length > 0 ? readyOrders.join(', ') : 'none'
+  const blocked = blockedOrders.length > 0 ? blockedOrders.slice(0, 8).join(', ') : 'none'
+  const blockedSuffix = blockedOrders.length > 8 ? ', ...' : ''
+  return `Dispatch preflight ${handoff.dispatchPreflightResult || 'unknown'} / ready actions ${ready} / blocked actions ${blocked}${blockedSuffix}`
 })
 
 const operationsHandoffPackage = computed(() => (

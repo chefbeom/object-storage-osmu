@@ -53,6 +53,7 @@ $missingMarkdownPath = Join-Path $resolvedOutputDirectory "missing-handoff.md"
 $missingReadinessPath = Join-Path $resolvedOutputDirectory "missing-readiness.json"
 $missingPlanPath = Join-Path $resolvedOutputDirectory "missing-plan.json"
 $missingInvocationPath = Join-Path $resolvedOutputDirectory "missing-invocation.json"
+$missingDispatchPreflightPath = Join-Path $resolvedOutputDirectory "missing-dispatch-preflight.json"
 $missingRunIdPath = Join-Path $resolvedOutputDirectory "missing-run-ids.json"
 $missingCollectionPath = Join-Path $resolvedOutputDirectory "missing-collection.json"
 $missingImportPath = Join-Path $resolvedOutputDirectory "missing-import.json"
@@ -62,6 +63,7 @@ $missingFinalizePath = Join-Path $resolvedOutputDirectory "missing-finalize.json
     -ReadinessReportPath $missingReadinessPath `
     -EvidencePlanPath $missingPlanPath `
     -InvocationReportPath $missingInvocationPath `
+    -DispatchPreflightReportPath $missingDispatchPreflightPath `
     -WorkflowRunIdPlanPath $missingRunIdPath `
     -ArtifactCollectionPlanPath $missingCollectionPath `
     -ArtifactImportReportPath $missingImportPath `
@@ -77,12 +79,13 @@ $missingMarkdown = Get-Content -Raw -LiteralPath $missingMarkdownPath
 Assert-Equal $missingReport.formatVersion "osmu.operations-evidence-handoff.v1" "missing formatVersion"
 Assert-Equal $missingReport.result "action-required" "missing result"
 Assert-Equal $missingReport.nextStep.code "write-readiness" "missing next step"
-Assert-Equal $missingReport.stageCount 7 "missing stage count"
+Assert-Equal $missingReport.stageCount 8 "missing stage count"
 Assert-Contains $missingMarkdown "Generate operations readiness report" "missing markdown next step"
 
 $blockedReadinessPath = Join-Path $resolvedOutputDirectory "blocked-readiness.json"
 $blockedPlanPath = Join-Path $resolvedOutputDirectory "blocked-plan.json"
 $blockedInvocationPath = Join-Path $resolvedOutputDirectory "blocked-invocation.json"
+$blockedDispatchPreflightPath = Join-Path $resolvedOutputDirectory "blocked-dispatch-preflight.json"
 $blockedRunIdPath = Join-Path $resolvedOutputDirectory "blocked-run-ids.json"
 $blockedCollectionPath = Join-Path $resolvedOutputDirectory "blocked-collection.json"
 $blockedImportPath = Join-Path $resolvedOutputDirectory "blocked-import.json"
@@ -120,6 +123,44 @@ Write-JsonFixture $blockedRunIdPath ([ordered]@{
     staleWorkflowCount = 0
     artifactCollectionPlanCommand = "powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\write-operations-artifact-collection-plan.ps1"
 })
+Write-JsonFixture $blockedDispatchPreflightPath ([ordered]@{
+    formatVersion = "osmu.operations-dispatch-preflight.v1"
+    result = "action-required"
+    selectedActionCount = 3
+    missingInputCount = 2
+    inputTemplates = @(
+        [ordered]@{
+            actionOrder = 1
+            workflow = "storage-expansion-finalizer-ci.yml"
+            readyToDispatch = $false
+            missingInputCount = 0
+            unsafeInputCount = 0
+            invalidInputCount = 0
+            workflowInputNames = @()
+            missingInputParameters = @()
+        },
+        [ordered]@{
+            actionOrder = 2
+            workflow = "container-security-ci.yml"
+            readyToDispatch = $true
+            missingInputCount = 0
+            unsafeInputCount = 0
+            invalidInputCount = 0
+            workflowInputNames = @()
+            missingInputParameters = @()
+        },
+        [ordered]@{
+            actionOrder = 3
+            workflow = "kubernetes-dr-finalizer-ci.yml"
+            readyToDispatch = $false
+            missingInputCount = 2
+            unsafeInputCount = 0
+            invalidInputCount = 0
+            workflowInputNames = @("backup_timestamp", "api_base")
+            missingInputParameters = @("BackupTimestamp", "RestoreApiBase")
+        }
+    )
+})
 Write-JsonFixture $blockedCollectionPath ([ordered]@{
     formatVersion = "osmu.operations-artifact-collection-plan.v1"
     result = "action-required"
@@ -133,6 +174,7 @@ Write-JsonFixture $blockedCollectionPath ([ordered]@{
     -ReadinessReportPath $blockedReadinessPath `
     -EvidencePlanPath $blockedPlanPath `
     -InvocationReportPath $blockedInvocationPath `
+    -DispatchPreflightReportPath $blockedDispatchPreflightPath `
     -WorkflowRunIdPlanPath $blockedRunIdPath `
     -ArtifactCollectionPlanPath $blockedCollectionPath `
     -ArtifactImportReportPath $blockedImportPath `
@@ -204,6 +246,7 @@ Write-JsonFixture $finalizerCollectionPath ([ordered]@{
     -ReadinessReportPath $finalizerReadinessPath `
     -EvidencePlanPath $finalizerPlanPath `
     -InvocationReportPath $finalizerInvocationPath `
+    -DispatchPreflightReportPath $missingDispatchPreflightPath `
     -WorkflowRunIdPlanPath $finalizerRunIdPath `
     -ArtifactCollectionPlanPath $finalizerCollectionPath `
     -ArtifactImportReportPath $finalizerImportPath `
@@ -283,6 +326,7 @@ Write-JsonFixture $operationsFinalizeImportPath ([ordered]@{
     -ReadinessReportPath $operationsFinalizeReadinessPath `
     -EvidencePlanPath $operationsFinalizePlanPath `
     -InvocationReportPath $operationsFinalizeInvocationPath `
+    -DispatchPreflightReportPath $missingDispatchPreflightPath `
     -WorkflowRunIdPlanPath $operationsFinalizeRunIdPath `
     -ArtifactCollectionPlanPath $operationsFinalizeCollectionPath `
     -ArtifactImportReportPath $operationsFinalizeImportPath `
@@ -297,7 +341,7 @@ $operationsFinalizeReport = Get-Content -Raw -LiteralPath $operationsFinalizeJso
 $operationsFinalizeMarkdown = Get-Content -Raw -LiteralPath $operationsFinalizeMarkdownPath
 Assert-Equal $operationsFinalizeReport.result "action-required" "operations finalizer result"
 Assert-Equal $operationsFinalizeReport.nextStep.code "run-operations-finalizer" "operations finalizer next step"
-Assert-Equal $operationsFinalizeReport.stageCount 7 "operations finalizer stage count"
+Assert-Equal $operationsFinalizeReport.stageCount 8 "operations finalizer stage count"
 Assert-Contains $operationsFinalizeReport.nextStep.command "finalize-operations-readiness.ps1" "operations finalizer command"
 Assert-Contains $operationsFinalizeMarkdown "Run operations readiness finalizer" "operations finalizer markdown next step"
 
@@ -317,6 +361,7 @@ Write-JsonFixture $pendingFinalizePath ([ordered]@{
     -ReadinessReportPath $operationsFinalizeReadinessPath `
     -EvidencePlanPath $operationsFinalizePlanPath `
     -InvocationReportPath $operationsFinalizeInvocationPath `
+    -DispatchPreflightReportPath $missingDispatchPreflightPath `
     -WorkflowRunIdPlanPath $operationsFinalizeRunIdPath `
     -ArtifactCollectionPlanPath $operationsFinalizeCollectionPath `
     -ArtifactImportReportPath $operationsFinalizeImportPath `
@@ -348,6 +393,7 @@ Write-JsonFixture $gapReadyFinalizePath ([ordered]@{
     -ReadinessReportPath $operationsFinalizeReadinessPath `
     -EvidencePlanPath $operationsFinalizePlanPath `
     -InvocationReportPath $operationsFinalizeInvocationPath `
+    -DispatchPreflightReportPath $missingDispatchPreflightPath `
     -WorkflowRunIdPlanPath $operationsFinalizeRunIdPath `
     -ArtifactCollectionPlanPath $operationsFinalizeCollectionPath `
     -ArtifactImportReportPath $operationsFinalizeImportPath `
@@ -388,6 +434,7 @@ Write-JsonFixture $readyReadinessPath ([ordered]@{
     -ReadinessReportPath $readyReadinessPath `
     -EvidencePlanPath $missingPlanPath `
     -InvocationReportPath $missingInvocationPath `
+    -DispatchPreflightReportPath $missingDispatchPreflightPath `
     -WorkflowRunIdPlanPath $missingRunIdPath `
     -ArtifactCollectionPlanPath $missingCollectionPath `
     -ArtifactImportReportPath $missingImportPath `
@@ -418,6 +465,7 @@ Write-JsonFixture $readyGapFinalizePath ([ordered]@{
     -ReadinessReportPath $readyReadinessPath `
     -EvidencePlanPath $missingPlanPath `
     -InvocationReportPath $missingInvocationPath `
+    -DispatchPreflightReportPath $missingDispatchPreflightPath `
     -WorkflowRunIdPlanPath $missingRunIdPath `
     -ArtifactCollectionPlanPath $missingCollectionPath `
     -ArtifactImportReportPath $missingImportPath `
@@ -450,6 +498,7 @@ Write-JsonFixture $readyFinalizePath ([ordered]@{
     -ReadinessReportPath $readyReadinessPath `
     -EvidencePlanPath $missingPlanPath `
     -InvocationReportPath $missingInvocationPath `
+    -DispatchPreflightReportPath $missingDispatchPreflightPath `
     -WorkflowRunIdPlanPath $missingRunIdPath `
     -ArtifactCollectionPlanPath $missingCollectionPath `
     -ArtifactImportReportPath $missingImportPath `

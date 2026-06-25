@@ -2058,8 +2058,13 @@ class AdminDashboardSummaryControllerTest {
                             "reason": "The invocation report still has blocked actions.",
                             "note": "Generate the unblock plan, fill placeholders, confirm operator approvals, and confirm kubeconfig-secret readiness before dispatch."
                           },
-                          "stageCount": 7,
+                          "stageCount": 8,
                           "readyStageCount": 1,
+                          "dispatchPreflightResult": "action-required",
+                          "readyDispatchTemplateCount": 1,
+                          "blockedDispatchTemplateCount": 5,
+                          "readyDispatchActionOrders": [6],
+                          "blockedDispatchActionOrders": [1, 2, 3, 4, 5],
                           "blockedActionCount": 5,
                           "missingWorkflowRunCount": 6,
                           "missingRequiredArtifactCount": 5,
@@ -2115,8 +2120,13 @@ class AdminDashboardSummaryControllerTest {
                           "kubernetesReportSyncWorkflowNote": "For GitHub Actions sync, include data_flow_storage_plan_json_base64 only when .osmu-run/latest-data-flow-storage-plan.json should be carried into the operations report ConfigMap, and include data_flow_storage_transition_runbook_json_base64 only when .osmu-run/latest-data-flow-storage-transition-runbook-evidence.json should be carried into the same ConfigMap. MariaDB partition or dual-write plans must include the sanitized query-plan evidence summary, and transition runbook evidence must be result=passed with no raw SQL, raw EXPLAIN, object keys, raw event messages, or credential-shaped content. Omit inputs when no target analytics-storage evidence is ready.",
                           "kubernetesReportSyncReady": false,
                           "finalizerGapCount": 1,
-                          "stageCount": 7,
+                          "stageCount": 8,
                           "readyStageCount": 1,
+                          "dispatchPreflightResult": "action-required",
+                          "readyDispatchTemplateCount": 1,
+                          "blockedDispatchTemplateCount": 5,
+                          "readyDispatchActionOrders": [6],
+                          "blockedDispatchActionOrders": [1, 2, 3, 4, 5],
                           "blockedActionCount": 5,
                           "missingWorkflowRunCount": 6,
                           "missingRequiredArtifactCount": 5,
@@ -2215,11 +2225,11 @@ class AdminDashboardSummaryControllerTest {
                 .andExpect(jsonPath("$.data.items[*].message").value(hasItem("Operations workflow run id plan is query-required: workflows=7, missingRuns=7.")))
                 .andExpect(jsonPath("$.data.items[*].message").value(hasItem("Operations artifact collection plan is action-required: artifacts=7, missingRequired=5.")))
                 .andExpect(jsonPath("$.data.items[*].message").value(hasItem("Operations readiness finalizer is pending: readinessResult=pending, failedCount=0.")))
-                .andExpect(jsonPath("$.data.items[*].message").value(hasItem("Operations evidence handoff is blocked: next=resolve-invocation-blockers, blockedActions=5, missingRuns=6, missingArtifacts=5, finalizerGaps=1.")))
+                .andExpect(jsonPath("$.data.items[*].message").value(hasItem("Operations evidence handoff is blocked: next=resolve-invocation-blockers, dispatchReady=1, dispatchBlocked=5, blockedActions=5, missingRuns=6, missingArtifacts=5, finalizerGaps=1.")))
                 .andExpect(jsonPath("$.data.items[*].message").value(hasItem("Data-flow storage plan is plan-ready-execute-required: store=MARIADB_PARTITION, pending=2/4.")))
                 .andExpect(jsonPath("$.data.items[*].message").value(hasItem("Data-flow transition runbook evidence is failed: store=MARIADB_PARTITION, failures=2/10.")))
                 .andExpect(jsonPath("$.data.items[*].message").value(hasItem("MinIO bucket CORS verification is failed: rules=1, exposedHeaders=2, failures=1, planned=0.")))
-                .andExpect(jsonPath("$.data.items[*].message").value(hasItem("Operations readiness convergence is action-required: bottleneck=resolve-invocation-blockers, stages=1/7, finalizerGaps=1.")))
+                .andExpect(jsonPath("$.data.items[*].message").value(hasItem("Operations readiness convergence is action-required: bottleneck=resolve-invocation-blockers, stages=1/8, finalizerGaps=1.")))
                 .andExpect(jsonPath("$.data.items[*].message").value(hasItem("Kubernetes operations report sync is planned: namespace=osmu, configMap=osmu-operations-reports, failedCount=0. sourceReportResult=action-required.")))
                 .andExpect(jsonPath("$.data.items[*].message").value(hasItem("Operations readiness artifact import is failed: status=artifact-import-failed, failedCount=2.")))
                 .andExpect(jsonPath("$.data.items[?(@.code == 'OPERATIONS_EVIDENCE_PLAN')].evidencePath").value(hasItem(".osmu-run/latest-operations-evidence-plan.json")))
@@ -2634,6 +2644,10 @@ class AdminDashboardSummaryControllerTest {
                 .andExpect(jsonPath("$.data.operationsEvidenceHandoff.result").value("blocked"))
                 .andExpect(jsonPath("$.data.operationsEvidenceHandoff.nextStep.code").value("resolve-invocation-blockers"))
                 .andExpect(jsonPath("$.data.operationsEvidenceHandoff.nextStep.command").value("powershell -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\write-operations-invocation-unblock-plan.ps1"))
+                .andExpect(jsonPath("$.data.operationsEvidenceHandoff.readyDispatchTemplateCount").value(1))
+                .andExpect(jsonPath("$.data.operationsEvidenceHandoff.blockedDispatchTemplateCount").value(5))
+                .andExpect(jsonPath("$.data.operationsEvidenceHandoff.readyDispatchActionOrders[0]").value(6))
+                .andExpect(jsonPath("$.data.operationsEvidenceHandoff.blockedDispatchActionOrders[0]").value(1))
                 .andExpect(jsonPath("$.data.operationsEvidenceHandoff.blockedActionCount").value(5))
                 .andExpect(jsonPath("$.data.operationsEvidenceHandoff.missingWorkflowRunCount").value(6))
                 .andExpect(jsonPath("$.data.operationsEvidenceHandoff.missingRequiredArtifactCount").value(5))
@@ -2648,7 +2662,7 @@ class AdminDashboardSummaryControllerTest {
                 .andExpect(jsonPath("$.data.operationsReadinessConvergence.currentBottleneck.code").value("resolve-invocation-blockers"))
                 .andExpect(jsonPath("$.data.operationsReadinessConvergence.currentBottleneck.command").value("powershell -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\write-operations-invocation-unblock-plan.ps1"))
                 .andExpect(jsonPath("$.data.operationsReadinessConvergence.recommendedCommands[0].name").value("Resolve invocation blockers"))
-                .andExpect(jsonPath("$.data.operationsReadinessConvergence.stageCount").value(7))
+                .andExpect(jsonPath("$.data.operationsReadinessConvergence.stageCount").value(8))
                 .andExpect(jsonPath("$.data.operationsReadinessConvergence.readyStageCount").value(1))
                 .andExpect(jsonPath("$.data.operationsReadinessConvergence.kubernetesReportSyncExists").value(true))
                 .andExpect(jsonPath("$.data.operationsReadinessConvergence.kubernetesReportSyncResult").value("planned"))

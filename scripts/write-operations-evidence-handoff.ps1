@@ -2,6 +2,7 @@ param(
     [string] $ReadinessReportPath = ".\.osmu-run\latest-operations-readiness.json",
     [string] $EvidencePlanPath = ".\.osmu-run\latest-operations-evidence-plan.json",
     [string] $InvocationReportPath = ".\.osmu-run\latest-operations-evidence-plan-invocation.json",
+    [string] $DispatchPreflightReportPath = ".\.osmu-run\latest-operations-dispatch-preflight.json",
     [string] $WorkflowRunIdPlanPath = ".\.osmu-run\latest-operations-workflow-run-ids.json",
     [string] $ArtifactCollectionPlanPath = ".\.osmu-run\latest-operations-artifact-collection-plan.json",
     [string] $ArtifactImportReportPath = ".\.osmu-run\latest-operations-readiness-artifact-import.json",
@@ -76,6 +77,39 @@ function Get-ArrayCount([object] $Value) {
     return @($Value).Count
 }
 
+function Get-Array([object] $Value) {
+    if ($null -eq $Value) {
+        return @()
+    }
+    if ($Value -is [System.Array]) {
+        return @($Value)
+    }
+    if ($Value -is [System.Collections.IEnumerable] -and $Value -isnot [string]) {
+        return @($Value)
+    }
+    return @($Value)
+}
+
+function Get-Bool([object] $Object, [string] $Name) {
+    $value = Get-JsonProperty $Object $Name
+    if ($null -eq $value) {
+        return $false
+    }
+    try {
+        return [System.Convert]::ToBoolean($value)
+    }
+    catch {
+        return $false
+    }
+}
+
+function Join-IntList([int[]] $Values) {
+    if ($null -eq $Values -or $Values.Count -eq 0) {
+        return "none"
+    }
+    return (@($Values) | ForEach-Object { [string] $_ }) -join ","
+}
+
 function New-Stage(
     [string] $Name,
     [string] $ReportPath,
@@ -115,6 +149,7 @@ function Is-ReadyResult([string] $Result) {
 $readiness = Read-OptionalJson $ReadinessReportPath
 $evidencePlan = Read-OptionalJson $EvidencePlanPath
 $invocation = Read-OptionalJson $InvocationReportPath
+$dispatchPreflight = Read-OptionalJson $DispatchPreflightReportPath
 $runIds = Read-OptionalJson $WorkflowRunIdPlanPath
 $collection = Read-OptionalJson $ArtifactCollectionPlanPath
 $import = Read-OptionalJson $ArtifactImportReportPath
@@ -123,6 +158,7 @@ $finalize = Read-OptionalJson $OperationsReadinessFinalizeReportPath
 $readinessResult = Get-Text $readiness.json "result"
 $evidencePlanResult = Get-Text $evidencePlan.json "result"
 $invocationResult = Get-Text $invocation.json "result"
+$dispatchPreflightResult = Get-Text $dispatchPreflight.json "result"
 $runIdResult = Get-Text $runIds.json "result"
 $collectionResult = Get-Text $collection.json "result"
 $importResult = Get-Text $import.json "result"
@@ -132,11 +168,19 @@ $finalizeFailedCount = Get-Int $finalize.json "failedCount"
 $finalizeGapCount = Get-ArrayCount (Get-JsonProperty $finalize.json "gaps")
 $readinessReady = $readiness.exists -and (Is-ReadyResult $readinessResult)
 $finalizerReady = $finalize.exists -and (Is-ReadyResult $finalizeResult) -and (Is-ReadyResult $finalizeReadinessResult) -and $finalizeFailedCount -eq 0 -and $finalizeGapCount -eq 0
+$dispatchTemplates = @(Get-Array (Get-JsonProperty $dispatchPreflight.json "inputTemplates"))
+$readyDispatchTemplates = @($dispatchTemplates | Where-Object { Get-Bool $_ "readyToDispatch" })
+$blockedDispatchTemplates = @($dispatchTemplates | Where-Object { -not (Get-Bool $_ "readyToDispatch") })
+$readyDispatchActionOrders = @($readyDispatchTemplates | ForEach-Object { Get-Int $_ "actionOrder" } | Where-Object { $_ -gt 0 })
+$blockedDispatchActionOrders = @($blockedDispatchTemplates | ForEach-Object { Get-Int $_ "actionOrder" } | Where-Object { $_ -gt 0 })
+$readyDispatchTemplateCount = $readyDispatchTemplates.Count
+$blockedDispatchTemplateCount = $blockedDispatchTemplates.Count
 
 $stages = @(
     (New-Stage "operations-readiness" $readiness.path $readiness.exists $readinessResult (Get-Text $readiness.json "summary") (Is-ReadyResult $readinessResult) "powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\write-operations-readiness.ps1" "Production/B2B readiness gate summary."),
     (New-Stage "evidence-plan" $evidencePlan.path $evidencePlan.exists $evidencePlanResult "pending=$((Get-Int $evidencePlan.json "pendingCount")) actions=$((Get-Int $evidencePlan.json "actionCount")) unplanned=$((Get-Int $evidencePlan.json "unplannedCount"))" ($evidencePlan.exists -and (Get-Int $evidencePlan.json "actionCount") -gt 0) "powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\write-operations-evidence-plan.ps1" "Ordered remediation plan."),
     (New-Stage "evidence-invocation" $invocation.path $invocation.exists $invocationResult "selected=$((Get-Int $invocation.json "selectedActionCount")) planned=$((Get-Int $invocation.json "plannedCount")) blocked=$((Get-Int $invocation.json "blockedCount")) failed=$((Get-Int $invocation.json "failedCount"))" ($invocation.exists -and (Get-Int $invocation.json "blockedCount") -eq 0 -and (Get-Int $invocation.json "failedCount") -eq 0 -and (Get-Int $invocation.json "selectedActionCount") -gt 0) "powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\invoke-operations-evidence-plan.ps1" "Guarded workflow/local command invocation report."),
+    (New-Stage "dispatch-preflight" $dispatchPreflight.path $dispatchPreflight.exists $dispatchPreflightResult "selected=$((Get-Int $dispatchPreflight.json "selectedActionCount")) readyTemplates=$readyDispatchTemplateCount blockedTemplates=$blockedDispatchTemplateCount missingInputs=$((Get-Int $dispatchPreflight.json "missingInputCount")) readyOrders=$(Join-IntList $readyDispatchActionOrders)" ($dispatchPreflight.exists -and (Is-ReadyResult $dispatchPreflightResult)) "powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\write-operations-dispatch-preflight.ps1 -CheckGitHubCli" "No-execute workflow dispatch preflight and input template readiness."),
     (New-Stage "workflow-run-ids" $runIds.path $runIds.exists $runIdResult "workflows=$((Get-Int $runIds.json "workflowCount")) ready=$((Get-Int $runIds.json "readyWorkflowCount")) missing=$((Get-Int $runIds.json "missingWorkflowCount")) stale=$((Get-Int $runIds.json "staleWorkflowCount"))" ($runIds.exists -and (Is-ReadyResult $runIdResult)) "powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\write-operations-workflow-run-id-plan.ps1 -Execute" "GitHub workflow run id handoff."),
     (New-Stage "artifact-collection" $collection.path $collection.exists $collectionResult "artifacts=$((Get-Int $collection.json "artifactCount")) ready=$((Get-Int $collection.json "readyArtifactCount")) missingRequired=$((Get-Int $collection.json "missingRequiredArtifactCount"))" ($collection.exists -and (Is-ReadyResult $collectionResult)) (Get-Text $collection.json "operationsArtifactFinalizerCommand") "Artifact download/import or finalizer plan."),
     (New-Stage "artifact-import" $import.path $import.exists $importResult "failed=$((Get-Int $import.json "failedCount"))" ($import.exists -and (Is-ReadyResult $importResult)) "powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\import-operations-readiness-artifacts.ps1" "Promotion of downloaded evidence artifacts into latest readiness paths."),
@@ -208,6 +252,11 @@ $report = [ordered]@{
     nextStep = $nextStep
     stageCount = $stages.Count
     readyStageCount = @($stages | Where-Object { $_.ready }).Count
+    dispatchPreflightResult = $dispatchPreflightResult
+    readyDispatchTemplateCount = $readyDispatchTemplateCount
+    blockedDispatchTemplateCount = $blockedDispatchTemplateCount
+    readyDispatchActionOrders = @($readyDispatchActionOrders)
+    blockedDispatchActionOrders = @($blockedDispatchActionOrders)
     blockedActionCount = Get-Int $invocation.json "blockedCount"
     missingWorkflowRunCount = Get-Int $runIds.json "missingWorkflowCount"
     missingRequiredArtifactCount = Get-Int $collection.json "missingRequiredArtifactCount"
@@ -230,6 +279,14 @@ $markdownLines = @(
     "- Reason: $($nextStep.reason)",
     "- Command: ``$($nextStep.command)``",
     "- Note: $($nextStep.note)",
+    "",
+    "## Dispatch Preflight",
+    "",
+    "- Result: $dispatchPreflightResult",
+    "- Ready templates: $readyDispatchTemplateCount",
+    "- Blocked templates: $blockedDispatchTemplateCount",
+    "- Ready action orders: $(Join-IntList $readyDispatchActionOrders)",
+    "- Blocked action orders: $(Join-IntList $blockedDispatchActionOrders)",
     "",
     "## Stage Summary",
     ""
