@@ -136,6 +136,11 @@ $routeMatches = Get-Matches $thresholdTargetsContent '^\s*-\s+route:\s+([A-Za-z0
 $routes = @($routeMatches | ForEach-Object { $_.Groups[1].Value })
 $grafanaPanelCount = (Get-Matches $thresholdTargetsContent '^\s*grafanaPanel:\s+(.+)$').Count
 $tuningEvidenceCount = (Get-Matches $thresholdTargetsContent '^\s*tuningEvidence:\s+(.+)$').Count
+$alertTargetCoverageComplete = $missingAlerts.Count -eq 0
+$routeCoverageComplete = ($routes -contains "osmu-backend") -and ($routes -contains "osmu-data-flow") -and ($routes -contains "osmu-backup")
+$grafanaPanelCoverageComplete = $grafanaPanelCount -ge $requiredAlerts.Count
+$tuningEvidenceCoverageComplete = $tuningEvidenceCount -ge $requiredAlerts.Count
+$thresholdMappingComplete = $alertTargetCoverageComplete -and $routeCoverageComplete -and $grafanaPanelCoverageComplete -and $tuningEvidenceCoverageComplete
 
 $reviewStartedAtParsed = Get-ParsedDateText $ReviewStartedAt
 $reviewCompletedAtParsed = Get-ParsedDateText $ReviewCompletedAt
@@ -151,10 +156,10 @@ Add-Check "review-window-order" "Review window order valid" $reviewWindowOrdered
 Add-Check "change-approval-ref" "Change approval reference recorded" (-not [string]::IsNullOrWhiteSpace($ChangeApprovalRef)) "changeApprovalRef=$ChangeApprovalRef"
 Add-Check "threshold-targets-file-exists" "Threshold target contract exists" $thresholdTargetsExists "thresholdTargetsPath=$resolvedThresholdTargetsPath"
 Add-Check "threshold-targets-format" "Threshold target format version recorded" ($thresholdTargetsContent.Contains("formatVersion: osmu.monitoring.threshold-targets.v1")) "formatVersion=osmu.monitoring.threshold-targets.v1"
-Add-Check "threshold-alert-targets-complete" "Required alert targets mapped" ($missingAlerts.Count -eq 0) "required=$($requiredAlerts.Count); found=$($targetAlerts.Count); missing=$($missingAlerts -join ',')"
-Add-Check "alertmanager-routes-mapped" "Alertmanager routes mapped" (($routes -contains "osmu-backend") -and ($routes -contains "osmu-data-flow") -and ($routes -contains "osmu-backup")) "routes=$($routes -join ',')"
-Add-Check "grafana-panels-mapped" "Grafana panels mapped" ($grafanaPanelCount -ge $requiredAlerts.Count) "grafanaPanelCount=$grafanaPanelCount"
-Add-Check "target-tuning-evidence-fields" "Target tuning evidence fields mapped" ($tuningEvidenceCount -ge $requiredAlerts.Count) "tuningEvidenceCount=$tuningEvidenceCount"
+Add-Check "threshold-alert-targets-complete" "Required alert targets mapped" $alertTargetCoverageComplete "required=$($requiredAlerts.Count); found=$($targetAlerts.Count); missing=$($missingAlerts -join ',')"
+Add-Check "alertmanager-routes-mapped" "Alertmanager routes mapped" $routeCoverageComplete "routes=$($routes -join ',')"
+Add-Check "grafana-panels-mapped" "Grafana panels mapped" $grafanaPanelCoverageComplete "grafanaPanelCount=$grafanaPanelCount"
+Add-Check "target-tuning-evidence-fields" "Target tuning evidence fields mapped" $tuningEvidenceCoverageComplete "tuningEvidenceCount=$tuningEvidenceCount"
 Add-Check "prometheus-rules-evidence-ref" "Prometheus rules evidence reference recorded" (-not [string]::IsNullOrWhiteSpace($PrometheusRulesEvidenceRef)) "prometheusRulesEvidenceRef=$PrometheusRulesEvidenceRef"
 Add-Check "grafana-dashboard-evidence-ref" "Grafana dashboard evidence reference recorded" (-not [string]::IsNullOrWhiteSpace($GrafanaDashboardEvidenceRef)) "grafanaDashboardEvidenceRef=$GrafanaDashboardEvidenceRef"
 Add-Check "alertmanager-route-evidence-ref" "Alertmanager route evidence reference recorded" (-not [string]::IsNullOrWhiteSpace($AlertmanagerRouteEvidenceRef)) "alertmanagerRouteEvidenceRef=$AlertmanagerRouteEvidenceRef"
@@ -204,6 +209,11 @@ $report = New-Object System.Collections.Specialized.OrderedDictionary
     routes = [object] $routes
     grafanaPanelCount = $grafanaPanelCount
     tuningEvidenceCount = $tuningEvidenceCount
+    alertTargetCoverageComplete = $alertTargetCoverageComplete
+    routeCoverageComplete = $routeCoverageComplete
+    grafanaPanelCoverageComplete = $grafanaPanelCoverageComplete
+    tuningEvidenceCoverageComplete = $tuningEvidenceCoverageComplete
+    thresholdMappingComplete = $thresholdMappingComplete
 })
 [void] $report.Add("evidenceRefs", [ordered]@{
     changeApproval = $ChangeApprovalRef
@@ -243,6 +253,7 @@ $markdownLines = @(
     "- Mapped alert targets: $($targetAlerts.Count)",
     "- Alertmanager routes: $($routes -join ', ')",
     "- Grafana panel mappings: $grafanaPanelCount",
+    "- Threshold mapping complete: $thresholdMappingComplete",
     "- Tuning evidence mappings: $tuningEvidenceCount",
     "",
     "## Checks"

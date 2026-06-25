@@ -5705,6 +5705,11 @@ Response:
         "routes": ["osmu-critical", "osmu-data-flow", "osmu-storage"],
         "grafanaPanelCount": 11,
         "tuningEvidenceCount": 11,
+        "alertTargetCoverageComplete": true,
+        "routeCoverageComplete": true,
+        "grafanaPanelCoverageComplete": true,
+        "tuningEvidenceCoverageComplete": true,
+        "thresholdMappingComplete": true,
         "failureCount": 0,
         "checkCount": 24,
         "confirmations": {
@@ -5956,6 +5961,11 @@ Response:
       "routes": ["osmu-backend", "osmu-data-flow", "osmu-backup"],
       "grafanaPanelCount": 11,
       "tuningEvidenceCount": 11,
+      "alertTargetCoverageComplete": true,
+      "routeCoverageComplete": true,
+      "grafanaPanelCoverageComplete": true,
+      "tuningEvidenceCoverageComplete": true,
+      "thresholdMappingComplete": true,
       "evidenceRefs": {
         "changeApproval": "CHG-2026-MONITORING",
         "prometheusRules": "prom-rules-run-20260621",

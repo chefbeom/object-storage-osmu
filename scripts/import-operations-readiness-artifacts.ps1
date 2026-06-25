@@ -2933,6 +2933,10 @@ function Test-OperationsHandoffPackageTargetSnapshots([object] $Json) {
     if (-not $base.passed) { return $base }
     $validation = Test-HandoffRequiredBoolTrue $monitoring "complete" "targetEvidenceSnapshots.monitoringThreshold"
     if (-not $validation.passed) { return $validation }
+    foreach ($field in @("alertTargetCoverageComplete", "routeCoverageComplete", "grafanaPanelCoverageComplete", "tuningEvidenceCoverageComplete", "thresholdMappingComplete")) {
+        $validation = Test-HandoffRequiredBoolTrue $monitoring $field "targetEvidenceSnapshots.monitoringThreshold"
+        if (-not $validation.passed) { return $validation }
+    }
     $requiredAlertCount = Get-RequiredJsonInt $monitoring "requiredAlertCount"
     $mappedAlertCount = Get-RequiredJsonInt $monitoring "mappedAlertCount"
     $grafanaPanelCount = Get-RequiredJsonInt $monitoring "grafanaPanelCount"
@@ -3817,6 +3821,11 @@ function Test-MonitoringThresholdEvidenceJson([string] $Path) {
     $routeCountResult = Get-RequiredJsonInt $summary "routeCount"
     $grafanaPanelCountResult = Get-RequiredJsonInt $summary "grafanaPanelCount"
     $tuningEvidenceCountResult = Get-RequiredJsonInt $summary "tuningEvidenceCount"
+    $alertTargetCoverageCompleteResult = Get-RequiredJsonBool $summary "alertTargetCoverageComplete"
+    $routeCoverageCompleteResult = Get-RequiredJsonBool $summary "routeCoverageComplete"
+    $grafanaPanelCoverageCompleteResult = Get-RequiredJsonBool $summary "grafanaPanelCoverageComplete"
+    $tuningEvidenceCoverageCompleteResult = Get-RequiredJsonBool $summary "tuningEvidenceCoverageComplete"
+    $thresholdMappingCompleteResult = Get-RequiredJsonBool $summary "thresholdMappingComplete"
     $failureCountResult = Get-RequiredJsonInt $reportSummary "failureCount"
     $checkCountResult = Get-RequiredJsonInt $reportSummary "checkCount"
     foreach ($countResult in @(
@@ -3834,6 +3843,23 @@ function Test-MonitoringThresholdEvidenceJson([string] $Path) {
             return [pscustomobject]@{
                 passed = $false
                 detail = "$name=$($value.raw)(valid=False) expected integer"
+            }
+        }
+    }
+
+    foreach ($boolResult in @(
+        @{ name = "alertTargetCoverageComplete"; value = $alertTargetCoverageCompleteResult },
+        @{ name = "routeCoverageComplete"; value = $routeCoverageCompleteResult },
+        @{ name = "grafanaPanelCoverageComplete"; value = $grafanaPanelCoverageCompleteResult },
+        @{ name = "tuningEvidenceCoverageComplete"; value = $tuningEvidenceCoverageCompleteResult },
+        @{ name = "thresholdMappingComplete"; value = $thresholdMappingCompleteResult }
+    )) {
+        $name = [string] $boolResult["name"]
+        $value = $boolResult["value"]
+        if (-not $value.valid -or -not $value.value) {
+            return [pscustomobject]@{
+                passed = $false
+                detail = "$name=$($value.raw)(valid=$($value.valid)) expected boolean true"
             }
         }
     }
@@ -3982,7 +4008,7 @@ function Test-MonitoringThresholdEvidenceJson([string] $Path) {
 
     return [pscustomobject]@{
         passed = $true
-        detail = "formatVersion=$formatVersion result=$result environmentName=$($json.environmentName) targetCluster=$($json.targetCluster) requiredAlerts=$requiredAlertCount mappedAlerts=$mappedAlertCount routes=$routeCount grafanaPanels=$grafanaPanelCount tuningEvidence=$tuningEvidenceCount failures=$failureCount checkRows=$($checks.Count)"
+        detail = "formatVersion=$formatVersion result=$result environmentName=$($json.environmentName) targetCluster=$($json.targetCluster) requiredAlerts=$requiredAlertCount mappedAlerts=$mappedAlertCount routes=$routeCount grafanaPanels=$grafanaPanelCount tuningEvidence=$tuningEvidenceCount mappingComplete=$($thresholdMappingCompleteResult.value) failures=$failureCount checkRows=$($checks.Count)"
     }
 }
 

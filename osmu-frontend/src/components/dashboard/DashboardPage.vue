@@ -575,6 +575,7 @@
           >
             Monitoring thresholds: {{ monitoringThresholdEvidence.result }} /
             alerts {{ monitoringThresholdEvidence.mappedAlertCount || 0 }}/{{ monitoringThresholdEvidence.requiredAlertCount || 0 }} /
+            mapping {{ monitoringThresholdEvidence.thresholdMappingComplete ? 'complete' : 'incomplete' }} /
             failures {{ monitoringThresholdEvidence.failureCount || 0 }}
           </small>
           <small
@@ -698,7 +699,16 @@
           routes {{ monitoringThresholdEvidence.routeCount || 0 }} /
           panels {{ monitoringThresholdEvidence.grafanaPanelCount || 0 }} /
           tuning refs {{ monitoringThresholdEvidence.tuningEvidenceCount || 0 }} /
+          mapping {{ monitoringThresholdEvidence.thresholdMappingComplete ? 'complete' : 'incomplete' }} /
           failures {{ monitoringThresholdEvidence.failureCount || 0 }} of {{ monitoringThresholdEvidence.checkCount || 0 }}
+        </small>
+        <small data-testid="readiness-monitoring-threshold-mapping-status">
+          Mapping coverage:
+          alerts {{ monitoringThresholdEvidence.alertTargetCoverageComplete ? 'complete' : 'incomplete' }} /
+          routes {{ monitoringThresholdEvidence.routeCoverageComplete ? 'complete' : 'incomplete' }} /
+          panels {{ monitoringThresholdEvidence.grafanaPanelCoverageComplete ? 'complete' : 'incomplete' }} /
+          tuning {{ monitoringThresholdEvidence.tuningEvidenceCoverageComplete ? 'complete' : 'incomplete' }} /
+          overall {{ monitoringThresholdEvidence.thresholdMappingComplete ? 'complete' : 'incomplete' }}
         </small>
         <small
           v-if="monitoringThresholdReviewWindowSummary"

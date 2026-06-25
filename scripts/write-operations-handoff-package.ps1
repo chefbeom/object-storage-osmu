@@ -1164,6 +1164,11 @@ function Read-MonitoringThresholdEvidenceSnapshot([string] $Path) {
         routes = @()
         grafanaPanelCount = 0
         tuningEvidenceCount = 0
+        alertTargetCoverageComplete = $false
+        routeCoverageComplete = $false
+        grafanaPanelCoverageComplete = $false
+        tuningEvidenceCoverageComplete = $false
+        thresholdMappingComplete = $false
         confirmations = [ordered]@{
             prometheusRulesLoaded = $false
             grafanaDashboardImported = $false
@@ -1227,6 +1232,11 @@ function Read-MonitoringThresholdEvidenceSnapshot([string] $Path) {
     $mappedAlertCount = Get-PropertyInt $thresholdSummary "mappedAlertCount"
     $grafanaPanelCount = Get-PropertyInt $thresholdSummary "grafanaPanelCount"
     $tuningEvidenceCount = Get-PropertyInt $thresholdSummary "tuningEvidenceCount"
+    $alertTargetCoverageComplete = Get-PropertyBool $thresholdSummary "alertTargetCoverageComplete"
+    $routeCoverageComplete = Get-PropertyBool $thresholdSummary "routeCoverageComplete"
+    $grafanaPanelCoverageComplete = Get-PropertyBool $thresholdSummary "grafanaPanelCoverageComplete"
+    $tuningEvidenceCoverageComplete = Get-PropertyBool $thresholdSummary "tuningEvidenceCoverageComplete"
+    $thresholdMappingComplete = Get-PropertyBool $thresholdSummary "thresholdMappingComplete"
     $failureCount = Get-PropertyInt $summary "failureCount"
     $confirmationResult = Get-RequiredBoolSetSnapshot $confirmations @(
         "prometheusRulesLoaded",
@@ -1242,6 +1252,11 @@ function Read-MonitoringThresholdEvidenceSnapshot([string] $Path) {
         -and $grafanaPanelCount -ge $requiredAlertCount `
         -and $tuningEvidenceCount -ge $requiredAlertCount `
         -and $missingAlerts.Count -eq 0 `
+        -and $alertTargetCoverageComplete `
+        -and $routeCoverageComplete `
+        -and $grafanaPanelCoverageComplete `
+        -and $tuningEvidenceCoverageComplete `
+        -and $thresholdMappingComplete `
         -and $allConfirmationsPassed `
         -and $failureCount -eq 0
 
@@ -1261,6 +1276,11 @@ function Read-MonitoringThresholdEvidenceSnapshot([string] $Path) {
     $snapshot["routes"] = $routes
     $snapshot["grafanaPanelCount"] = $grafanaPanelCount
     $snapshot["tuningEvidenceCount"] = $tuningEvidenceCount
+    $snapshot["alertTargetCoverageComplete"] = $alertTargetCoverageComplete
+    $snapshot["routeCoverageComplete"] = $routeCoverageComplete
+    $snapshot["grafanaPanelCoverageComplete"] = $grafanaPanelCoverageComplete
+    $snapshot["tuningEvidenceCoverageComplete"] = $tuningEvidenceCoverageComplete
+    $snapshot["thresholdMappingComplete"] = $thresholdMappingComplete
     $snapshot["confirmations"] = $confirmationResult.values
     $snapshot["confirmationsValid"] = [bool] $confirmationResult.allValidAndTrue
     $snapshot["confirmationValidation"] = $confirmationResult.validation
@@ -1271,7 +1291,7 @@ function Read-MonitoringThresholdEvidenceSnapshot([string] $Path) {
         $snapshot["checkCount"] = $checks.Count
     }
     $snapshot["topFailedChecks"] = @($failedRows.ToArray())
-    $snapshot["detail"] = "formatVersion=$formatVersion; result=$result; alerts=$mappedAlertCount/$requiredAlertCount; routes=$($snapshot["routeCount"]); failures=$failureCount; complete=$complete; confirmationsValid=$($snapshot["confirmationsValid"])"
+    $snapshot["detail"] = "formatVersion=$formatVersion; result=$result; alerts=$mappedAlertCount/$requiredAlertCount; routes=$($snapshot["routeCount"]); failures=$failureCount; mappingComplete=$thresholdMappingComplete; complete=$complete; confirmationsValid=$($snapshot["confirmationsValid"])"
     return $snapshot
 }
 
@@ -1603,7 +1623,7 @@ Add-EvidenceCheck "ha-dr-evidence" "HA/DR target evidence" ([bool] $RequireProdu
 Add-EvidenceCheck "monitoring-evidence" "Monitoring target evidence" ([bool] $RequireProductionEvidence) $MonitoringEvidenceRef "target Prometheus/Alertmanager/Grafana evidence"
 if ([bool] $RequireProductionEvidence -or [bool] $monitoringThresholdSnapshot["provided"]) {
     Add-Check "monitoring-threshold-snapshot-parsed" "Monitoring threshold snapshot parsed" $monitoringThresholdSnapshotValid $monitoringThresholdSnapshot["detail"] $MonitoringEvidenceRef
-    Add-Check "monitoring-threshold-snapshot-passed" "Monitoring threshold snapshot passed" $monitoringThresholdSnapshotPassed "result=$($monitoringThresholdSnapshot["result"]); alerts=$($monitoringThresholdSnapshot["mappedAlertCount"])/$($monitoringThresholdSnapshot["requiredAlertCount"]); failures=$($monitoringThresholdSnapshot["failureCount"]); complete=$($monitoringThresholdSnapshot["complete"])" $MonitoringEvidenceRef
+    Add-Check "monitoring-threshold-snapshot-passed" "Monitoring threshold snapshot passed" $monitoringThresholdSnapshotPassed "result=$($monitoringThresholdSnapshot["result"]); alerts=$($monitoringThresholdSnapshot["mappedAlertCount"])/$($monitoringThresholdSnapshot["requiredAlertCount"]); failures=$($monitoringThresholdSnapshot["failureCount"]); mappingComplete=$($monitoringThresholdSnapshot["thresholdMappingComplete"]); complete=$($monitoringThresholdSnapshot["complete"])" $MonitoringEvidenceRef
 }
 if ([bool] $RequireProductionEvidence -or [bool] $monitoringThresholdSnapshot["provided"] -or [bool] $ConfirmMonitoringThresholdReviewed) {
     Add-Check "monitoring-threshold-reviewed" "Monitoring threshold snapshot reviewed" ([bool] $ConfirmMonitoringThresholdReviewed -and $monitoringThresholdSnapshotValid) "confirmed=$([bool] $ConfirmMonitoringThresholdReviewed); snapshotValid=$monitoringThresholdSnapshotValid" $MonitoringEvidenceRef
@@ -1767,7 +1787,7 @@ $markdownLines += "- Secret rotation: provided=$($secretRotationSnapshot["provid
 $markdownLines += "- Commercial integration: provided=$($commercialIntegrationSnapshot["provided"]); parsed=$($commercialIntegrationSnapshot["parsed"]); result=$($commercialIntegrationSnapshot["result"]); requiredVerified=$($commercialIntegrationSnapshot["requiredVerifiedCount"])/$($commercialIntegrationSnapshot["requiredCount"]); failures=$($commercialIntegrationSnapshot["failureCount"]); planned=$($commercialIntegrationSnapshot["plannedCount"])"
 $markdownLines += "- Commercial approval: provided=$($commercialApprovalSnapshot["provided"]); parsed=$($commercialApprovalSnapshot["parsed"]); result=$($commercialApprovalSnapshot["result"]); failures=$($commercialApprovalSnapshot["failureCount"]); checks=$($commercialApprovalSnapshot["checkCount"]); priceListApproved=$($commercialApprovalSnapshot["pricingPolicyProposalApprovedPriceListCount"])"
 $markdownLines += "- Enterprise auth smoke: provided=$($enterpriseAuthSmokeSnapshot["provided"]); parsed=$($enterpriseAuthSmokeSnapshot["parsed"]); result=$($enterpriseAuthSmokeSnapshot["result"]); pass=$($enterpriseAuthSmokeSnapshot["passCount"]); fail=$($enterpriseAuthSmokeSnapshot["failCount"]); blocked=$($enterpriseAuthSmokeSnapshot["blockedCount"]); scopeOutAccepted=$($enterpriseAuthSmokeSnapshot["scopeOutAccepted"])"
-$markdownLines += "- Monitoring threshold: provided=$($monitoringThresholdSnapshot["provided"]); parsed=$($monitoringThresholdSnapshot["parsed"]); result=$($monitoringThresholdSnapshot["result"]); alerts=$($monitoringThresholdSnapshot["mappedAlertCount"])/$($monitoringThresholdSnapshot["requiredAlertCount"]); routes=$($monitoringThresholdSnapshot["routeCount"]); failures=$($monitoringThresholdSnapshot["failureCount"]); complete=$($monitoringThresholdSnapshot["complete"])"
+$markdownLines += "- Monitoring threshold: provided=$($monitoringThresholdSnapshot["provided"]); parsed=$($monitoringThresholdSnapshot["parsed"]); result=$($monitoringThresholdSnapshot["result"]); alerts=$($monitoringThresholdSnapshot["mappedAlertCount"])/$($monitoringThresholdSnapshot["requiredAlertCount"]); routes=$($monitoringThresholdSnapshot["routeCount"]); failures=$($monitoringThresholdSnapshot["failureCount"]); mappingComplete=$($monitoringThresholdSnapshot["thresholdMappingComplete"]); complete=$($monitoringThresholdSnapshot["complete"])"
 foreach ($pendingCheck in @($dataFlowStoragePlanSnapshot["topPendingChecks"])) {
     $markdownLines += "- Data-flow pending: [$($pendingCheck.status)] $($pendingCheck.id) / $($pendingCheck.title): $($pendingCheck.detail)"
 }

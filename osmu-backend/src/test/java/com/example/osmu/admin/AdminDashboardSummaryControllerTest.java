@@ -565,7 +565,12 @@ class AdminDashboardSummaryControllerTest {
                             "routeCount": 3,
                             "routes": ["osmu-backend", "osmu-data-flow", "osmu-backup"],
                             "grafanaPanelCount": 11,
-                            "tuningEvidenceCount": 11
+                            "tuningEvidenceCount": 11,
+                            "alertTargetCoverageComplete": true,
+                            "routeCoverageComplete": true,
+                            "grafanaPanelCoverageComplete": true,
+                            "tuningEvidenceCoverageComplete": true,
+                            "thresholdMappingComplete": true
                           },
                           "evidenceRefs": {
                             "changeApproval": "CHG-2026-MONITORING",
@@ -1358,6 +1363,11 @@ class AdminDashboardSummaryControllerTest {
                               "routes": ["osmu-backend", "osmu-data-flow", "osmu-backup"],
                               "grafanaPanelCount": 11,
                               "tuningEvidenceCount": 11,
+                              "alertTargetCoverageComplete": true,
+                              "routeCoverageComplete": true,
+                              "grafanaPanelCoverageComplete": true,
+                              "tuningEvidenceCoverageComplete": true,
+                              "thresholdMappingComplete": true,
                               "confirmations": {
                                 "prometheusRulesLoaded": true,
                                 "grafanaDashboardImported": true,
@@ -2545,6 +2555,11 @@ class AdminDashboardSummaryControllerTest {
                 .andExpect(jsonPath("$.data.monitoringThresholdEvidence.routes[1]").value("osmu-data-flow"))
                 .andExpect(jsonPath("$.data.monitoringThresholdEvidence.grafanaPanelCount").value(11))
                 .andExpect(jsonPath("$.data.monitoringThresholdEvidence.tuningEvidenceCount").value(11))
+                .andExpect(jsonPath("$.data.monitoringThresholdEvidence.alertTargetCoverageComplete").value(true))
+                .andExpect(jsonPath("$.data.monitoringThresholdEvidence.routeCoverageComplete").value(true))
+                .andExpect(jsonPath("$.data.monitoringThresholdEvidence.grafanaPanelCoverageComplete").value(true))
+                .andExpect(jsonPath("$.data.monitoringThresholdEvidence.tuningEvidenceCoverageComplete").value(true))
+                .andExpect(jsonPath("$.data.monitoringThresholdEvidence.thresholdMappingComplete").value(true))
                 .andExpect(jsonPath("$.data.monitoringThresholdEvidence.evidenceRefs.incidentRouting").value("incident-routing-review-20260621"))
                 .andExpect(jsonPath("$.data.monitoringThresholdEvidence.confirmations.noSecretValues").value(true))
                 .andExpect(jsonPath("$.data.monitoringThresholdEvidence.failureCount").value(0))

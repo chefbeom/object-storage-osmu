@@ -424,6 +424,11 @@ $monitoringThresholdPath = Join-Path $resolvedOutputDirectory "latest-monitoring
         routes = @("osmu-backend", "osmu-data-flow", "osmu-backup")
         grafanaPanelCount = 11
         tuningEvidenceCount = 11
+        alertTargetCoverageComplete = $true
+        routeCoverageComplete = $true
+        grafanaPanelCoverageComplete = $true
+        tuningEvidenceCoverageComplete = $true
+        thresholdMappingComplete = $true
     }
     confirmations = [ordered]@{
         prometheusRulesLoaded = $true
@@ -594,6 +599,11 @@ Assert-True ($report.targetEvidenceSnapshots.enterpriseAuthSmoke.result -eq "sco
 Assert-True ($report.targetEvidenceSnapshots.enterpriseAuthSmoke.scopeOutAccepted) "Expected enterprise auth scope-out accepted."
 Assert-True ($report.targetEvidenceSnapshots.monitoringThreshold.result -eq "passed") "Expected monitoring threshold snapshot result=passed."
 Assert-True ($report.targetEvidenceSnapshots.monitoringThreshold.mappedAlertCount -eq 11) "Expected monitoring threshold mapped alert count."
+Assert-True ($report.targetEvidenceSnapshots.monitoringThreshold.alertTargetCoverageComplete) "Expected monitoring threshold alert target coverage complete."
+Assert-True ($report.targetEvidenceSnapshots.monitoringThreshold.routeCoverageComplete) "Expected monitoring threshold route coverage complete."
+Assert-True ($report.targetEvidenceSnapshots.monitoringThreshold.grafanaPanelCoverageComplete) "Expected monitoring threshold Grafana coverage complete."
+Assert-True ($report.targetEvidenceSnapshots.monitoringThreshold.tuningEvidenceCoverageComplete) "Expected monitoring threshold tuning coverage complete."
+Assert-True ($report.targetEvidenceSnapshots.monitoringThreshold.thresholdMappingComplete) "Expected monitoring threshold mapping complete."
 Assert-True ($report.targetEvidenceSnapshots.monitoringThreshold.complete) "Expected monitoring threshold complete snapshot."
 Assert-True ($report.evidenceRefs.dataFlowStoragePlan -eq "latest-data-flow-storage-plan-passed-20260620") "Expected data-flow storage plan evidence reference."
 Assert-True ($report.evidenceRefs.dataFlowStorageTransitionRunbook -eq "latest-data-flow-storage-transition-runbook-passed-20260620") "Expected data-flow storage transition runbook evidence reference."

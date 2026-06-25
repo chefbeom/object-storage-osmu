@@ -202,6 +202,11 @@ function New-PassedOperationsHandoffPackageTargetSnapshots {
             routeCount = 2
             grafanaPanelCount = 4
             tuningEvidenceCount = 4
+            alertTargetCoverageComplete = $true
+            routeCoverageComplete = $true
+            grafanaPanelCoverageComplete = $true
+            tuningEvidenceCoverageComplete = $true
+            thresholdMappingComplete = $true
             failureCount = 0
             checkCount = 10
         }
@@ -1139,6 +1144,11 @@ Write-JsonEvidence (Join-Path $monitoringThresholdSource "latest-monitoring-thre
         routes = @("osmu-backend", "osmu-data-flow", "osmu-backup")
         grafanaPanelCount = 11
         tuningEvidenceCount = 11
+        alertTargetCoverageComplete = $true
+        routeCoverageComplete = $true
+        grafanaPanelCoverageComplete = $true
+        tuningEvidenceCoverageComplete = $true
+        thresholdMappingComplete = $true
     }
     evidenceRefs = @{
         changeApproval = "CHG-2026-MONITORING"
@@ -2757,6 +2767,11 @@ Write-JsonEvidence (Join-Path $stringBoolMonitoringThresholdRoot "latest-monitor
         routes = @("osmu-backend", "osmu-data-flow", "osmu-backup")
         grafanaPanelCount = 11
         tuningEvidenceCount = 11
+        alertTargetCoverageComplete = $true
+        routeCoverageComplete = $true
+        grafanaPanelCoverageComplete = $true
+        tuningEvidenceCoverageComplete = $true
+        thresholdMappingComplete = $true
     }
     summary = @{
         failureCount = 0
@@ -2805,6 +2820,11 @@ Write-JsonEvidence (Join-Path $stringCountMonitoringThresholdRoot "latest-monito
         routes = @("osmu-backend", "osmu-data-flow", "osmu-backup")
         grafanaPanelCount = 11
         tuningEvidenceCount = 11
+        alertTargetCoverageComplete = $true
+        routeCoverageComplete = $true
+        grafanaPanelCoverageComplete = $true
+        tuningEvidenceCoverageComplete = $true
+        thresholdMappingComplete = $true
     }
     summary = @{
         failureCount = 0
@@ -2912,6 +2932,11 @@ Write-JsonEvidence (Join-Path $weakMonitoringThresholdChecksRoot "latest-monitor
         routes = @("osmu-backend", "osmu-data-flow", "osmu-backup")
         grafanaPanelCount = 11
         tuningEvidenceCount = 11
+        alertTargetCoverageComplete = $true
+        routeCoverageComplete = $true
+        grafanaPanelCoverageComplete = $true
+        tuningEvidenceCoverageComplete = $true
+        thresholdMappingComplete = $true
     }
     evidenceRefs = @{
         changeApproval = "CHG-2026-MONITORING"
