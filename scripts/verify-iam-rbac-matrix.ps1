@@ -43,6 +43,10 @@ function Assert-True([bool] $condition, [string] $message) {
     }
 }
 
+function Decode-Utf8Base64([string] $Value) {
+    return [System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String($Value))
+}
+
 function Read-RequiredFile([string] $path, [string] $label) {
     $resolved = Resolve-ProjectPath $path
     Assert-True (Test-Path -LiteralPath $resolved) "$label not found: $resolved"
@@ -204,7 +208,7 @@ Assert-Contains $apiSpec 'osmu.billing.payment-provider.erp.webhook-url' "API sp
 Assert-Contains $apiSpec 'osmu.billing.payment-provider.signature-secret' "API spec"
 Assert-Contains $apiSpec 'osmu.billing.payment-provider.signature-header-name' "API spec"
 Assert-Contains $apiSpec 'osmu.billing.payment-provider.signature-timestamp-header-name' "API spec"
-Assert-Contains $apiSpec 't=<epochSeconds>,v1=<hex-hmac-sha256(timestamp + "." + payload)>' "API spec"
+Assert-Contains $apiSpec (Decode-Utf8Base64 "dD08ZXBvY2hTZWNvbmRzPix2MT08aGV4LWhtYWMtc2hhMjU2KHRpbWVzdGFtcCArICIuIiArIHBheWxvYWQpPg==") "API spec"
 Assert-Contains $apiSpec 'payload.providerProfile' "API spec"
 Assert-Contains $apiSpec 'Codes beginning with `CARD`, `BANK`, `TAX`, or `ERP`' "API spec"
 Assert-Contains $apiSpec 'Slack-compatible `text` JSON payload' "API spec"
