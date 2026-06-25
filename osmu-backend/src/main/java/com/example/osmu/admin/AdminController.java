@@ -1962,12 +1962,52 @@ public class AdminController {
                         jsonInt(input, "actionOrder"),
                         jsonText(input, "placeholder"),
                         jsonText(input, "parameter"),
+                        jsonText(input, "valueTemplate"),
                         jsonBoolean(input, "supplied"),
                         jsonBoolean(input, "safeValue"),
                         jsonBoolean(input, "validValue"),
                         jsonText(input, "valuePreview"),
                         jsonBoolean(input, "ambiguousRepeatedPlaceholder"),
                         jsonText(input, "note")
+                ));
+            }
+        }
+        java.util.ArrayList<DashboardOperationsDispatchPreflightInputTemplateResponse> inputTemplates = new java.util.ArrayList<>();
+        JsonNode templateNodes = preflightReport.path("inputTemplates");
+        if (templateNodes.isArray()) {
+            for (JsonNode template : templateNodes) {
+                java.util.ArrayList<DashboardOperationsDispatchPreflightInputResponse> templateInputs = new java.util.ArrayList<>();
+                JsonNode templateInputNodes = template.path("inputs");
+                if (templateInputNodes.isArray()) {
+                    for (JsonNode input : templateInputNodes) {
+                        templateInputs.add(new DashboardOperationsDispatchPreflightInputResponse(
+                                jsonInt(input, "actionOrder"),
+                                jsonText(input, "placeholder"),
+                                jsonText(input, "parameter"),
+                                jsonText(input, "valueTemplate"),
+                                jsonBoolean(input, "supplied"),
+                                jsonBoolean(input, "safeValue"),
+                                jsonBoolean(input, "validValue"),
+                                jsonText(input, "valuePreview"),
+                                jsonBoolean(input, "ambiguousRepeatedPlaceholder"),
+                                jsonText(input, "note")
+                        ));
+                    }
+                }
+                inputTemplates.add(new DashboardOperationsDispatchPreflightInputTemplateResponse(
+                        jsonInt(template, "actionOrder"),
+                        jsonText(template, "name"),
+                        jsonText(template, "category"),
+                        jsonText(template, "actionType"),
+                        jsonText(template, "commandMode"),
+                        jsonText(template, "workflow"),
+                        jsonBoolean(template, "needsOperatorApprovalConfirmation"),
+                        jsonBoolean(template, "needsKubeconfigSecretConfirmation"),
+                        jsonTextList(template, "requiredSecrets"),
+                        jsonInt(template, "missingInputCount"),
+                        jsonInt(template, "ambiguousInputCount"),
+                        List.copyOf(templateInputs),
+                        jsonTextList(template, "operatorChecklist")
                 ));
             }
         }
@@ -1992,6 +2032,7 @@ public class AdminController {
                 jsonText(preflightReport, "readyPlanCommand"),
                 jsonText(preflightReport, "executeCommand"),
                 List.copyOf(requiredInputs),
+                List.copyOf(inputTemplates),
                 jsonText(preflightReport, "decisionRule")
         );
     }

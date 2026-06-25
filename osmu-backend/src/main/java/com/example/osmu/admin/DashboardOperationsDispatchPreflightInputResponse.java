@@ -7,6 +7,7 @@ public record DashboardOperationsDispatchPreflightInputResponse(
         int actionOrder,
         String placeholder,
         String parameter,
+        String valueTemplate,
         boolean supplied,
         boolean safeValue,
         boolean validValue,

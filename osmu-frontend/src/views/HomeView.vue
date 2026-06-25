@@ -984,6 +984,7 @@ const dashboardReadiness = reactive({
     readyPlanCommand: '',
     executeCommand: '',
     requiredInputs: [],
+    inputTemplates: [],
     decisionRule: '',
   },
   operationsWorkflowRunIdPlan: {
@@ -5549,6 +5550,7 @@ function normalizeOperationsDispatchPreflight(preflight = {}) {
     readyPlanCommand: preflight?.readyPlanCommand || '',
     executeCommand: preflight?.executeCommand || '',
     requiredInputs: Array.isArray(preflight?.requiredInputs) ? preflight.requiredInputs : [],
+    inputTemplates: Array.isArray(preflight?.inputTemplates) ? preflight.inputTemplates : [],
     decisionRule: preflight?.decisionRule || '',
   }
 }

@@ -25,6 +25,7 @@ public record DashboardOperationsDispatchPreflightResponse(
         String readyPlanCommand,
         String executeCommand,
         List<DashboardOperationsDispatchPreflightInputResponse> requiredInputs,
+        List<DashboardOperationsDispatchPreflightInputTemplateResponse> inputTemplates,
         String decisionRule
 ) {
     public static DashboardOperationsDispatchPreflightResponse empty() {
@@ -48,6 +49,7 @@ public record DashboardOperationsDispatchPreflightResponse(
                 List.of(),
                 "",
                 "",
+                List.of(),
                 List.of(),
                 ""
         );

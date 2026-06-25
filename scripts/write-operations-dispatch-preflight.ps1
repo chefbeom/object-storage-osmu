@@ -403,6 +403,7 @@ foreach ($action in @($selectedActions)) {
             actionOrder = $order
             placeholder = $placeholderName
             parameter = $parameter
+            valueTemplate = Get-Text $input "valueTemplate"
             supplied = $supplied
             safeValue = $safeValue
             validValue = $validValue
@@ -411,6 +412,68 @@ foreach ($action in @($selectedActions)) {
             note = Get-Text $input "note"
         }) | Out-Null
     }
+}
+
+$inputTemplates = New-Object System.Collections.ArrayList
+foreach ($action in @($selectedActions)) {
+    $order = Get-Int $action "order"
+    $workflowFile = @($workflowFiles | Where-Object { $_.actionOrder -eq $order } | Select-Object -First 1)
+    $workflowName = ""
+    $workflowSecrets = @()
+    if ($workflowFile) {
+        $workflowName = [string] $workflowFile.workflow
+        $workflowSecrets = @($workflowFile.requiredSecrets | ForEach-Object { [string] $_ })
+    }
+
+    $actionInputs = New-Object System.Collections.ArrayList
+    foreach ($input in @($requiredInputs | Where-Object { $_.actionOrder -eq $order })) {
+        $template = [string] $input.valueTemplate
+        if ([string]::IsNullOrWhiteSpace($template)) {
+            $template = [string] $input.placeholder
+        }
+        $actionInputs.Add([ordered]@{
+            actionOrder = [int] $input.actionOrder
+            placeholder = [string] $input.placeholder
+            parameter = [string] $input.parameter
+            valueTemplate = $template
+            supplied = [bool] $input.supplied
+            safeValue = [bool] $input.safeValue
+            validValue = [bool] $input.validValue
+            valuePreview = [string] $input.valuePreview
+            ambiguousRepeatedPlaceholder = [bool] $input.ambiguousRepeatedPlaceholder
+            note = [string] $input.note
+        }) | Out-Null
+    }
+
+    $operatorChecklist = New-Object System.Collections.Generic.List[string]
+    if (Get-Bool $action "needsOperatorApprovalConfirmation") {
+        $operatorChecklist.Add("Confirm operator approval")
+    }
+    if (Get-Bool $action "needsKubeconfigSecretConfirmation") {
+        $operatorChecklist.Add("Confirm OSMU_KUBECONFIG_BASE64 secret readiness")
+    }
+    foreach ($secret in $workflowSecrets) {
+        $operatorChecklist.Add("Ensure GitHub secret $secret is configured")
+    }
+    if ($actionInputs.Count -gt 0) {
+        $operatorChecklist.Add("Fill $($actionInputs.Count) required input value(s)")
+    }
+
+    $inputTemplates.Add([ordered]@{
+        actionOrder = $order
+        name = Get-Text $action "name"
+        category = Get-Text $action "category"
+        actionType = Get-Text $action "actionType"
+        commandMode = Get-Text $action "commandMode"
+        workflow = $workflowName
+        needsOperatorApprovalConfirmation = Get-Bool $action "needsOperatorApprovalConfirmation"
+        needsKubeconfigSecretConfirmation = Get-Bool $action "needsKubeconfigSecretConfirmation"
+        requiredSecrets = @($workflowSecrets)
+        missingInputCount = @($actionInputs | Where-Object { -not $_.supplied }).Count
+        ambiguousInputCount = @($actionInputs | Where-Object { $_.ambiguousRepeatedPlaceholder }).Count
+        inputs = @($actionInputs)
+        operatorChecklist = @($operatorChecklist)
+    }) | Out-Null
 }
 
 if ($selectedOrders.Count -gt 0) {
@@ -528,6 +591,7 @@ $report = [ordered]@{
     readyPlanCommand = $readyPlanCommand
     executeCommand = $executeCommand
     requiredInputs = @($requiredInputs)
+    inputTemplates = @($inputTemplates)
     decisionRule = "Run the ready plan command first without -Execute. Use the execute command only after this preflight is ready, GitHub CLI/auth is verified, and operator-approved live dispatch is intended."
 }
 
@@ -574,6 +638,24 @@ if ($requiredInputs.Count -eq 0) {
 else {
     foreach ($input in $requiredInputs) {
         $markdownLines += "- action $($input.actionOrder): $($input.parameter) for $($input.placeholder) supplied=$($input.supplied) safe=$($input.safeValue) valid=$($input.validValue)"
+    }
+}
+$markdownLines += @(
+    "",
+    "## Input Templates",
+    ""
+)
+if ($inputTemplates.Count -eq 0) {
+    $markdownLines += "- none"
+}
+else {
+    foreach ($template in $inputTemplates) {
+        $workflowLabel = if ([string]::IsNullOrWhiteSpace($template.workflow)) { "local command" } else { $template.workflow }
+        $secretLabel = if (@($template.requiredSecrets).Count -gt 0) { @($template.requiredSecrets) -join ', ' } else { 'none' }
+        $markdownLines += "- action $($template.actionOrder) - $($template.name): workflow=$workflowLabel, missingInputs=$($template.missingInputCount), requiredSecrets=$secretLabel"
+        foreach ($input in @($template.inputs)) {
+            $markdownLines += "  - $($input.parameter) $($input.placeholder): template=$($input.valueTemplate), supplied=$($input.supplied)"
+        }
     }
 }
 

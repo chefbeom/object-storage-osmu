@@ -166,7 +166,16 @@ Assert-Equal $missingReport.unsafeInputCount 0 "missing unsafe input count"
 Assert-Equal $missingReport.invalidInputCount 0 "missing invalid input count"
 Assert-True ($missingReport.failedCheckCount -ge 3) "expected missing preflight failures"
 Assert-Contains ($missingReport.checks | ConvertTo-Json -Depth 8) "KUBECONFIG_SECRET_CONFIRMED" "missing checks"
+Assert-Equal @($missingReport.inputTemplates).Count 3 "missing input template count"
+$missingDrTemplate = @($missingReport.inputTemplates | Where-Object { $_.actionOrder -eq 2 })[0]
+Assert-Equal $missingDrTemplate.workflow "kubernetes-dr-finalizer-ci.yml" "missing DR template workflow"
+Assert-Equal $missingDrTemplate.missingInputCount 1 "missing DR template missing input count"
+Assert-True (@($missingDrTemplate.requiredSecrets) -contains "OSMU_ADMIN_PASSWORD") "missing DR template admin password secret"
+Assert-Equal $missingDrTemplate.inputs[0].valueTemplate "<YYYYMMDDTHHMMSSZ>" "missing DR template input value template"
+Assert-True (-not $missingDrTemplate.inputs[0].supplied) "missing DR template input should be missing"
 Assert-Contains $missingMarkdown "Result: action-required" "missing markdown"
+Assert-Contains $missingMarkdown "## Input Templates" "missing markdown input templates section"
+Assert-Contains $missingMarkdown "action 2 - Kubernetes DR finalizer live evidence" "missing markdown DR template"
 
 & powershell -NoProfile -ExecutionPolicy Bypass -File $scriptPath `
     -UnblockPlanPath $unblockPlanPath `
@@ -201,6 +210,11 @@ Assert-True (@($readyReport.requiredGitHubSecrets) -contains "OSMU_ENTERPRISE_AU
 Assert-True (@($readyReport.requiredGitHubSecrets) -contains "OSMU_ENTERPRISE_AUTH_LDAP_PASSWORD") "expected enterprise auth LDAP password secret"
 Assert-True (@($readyReport.requiredGitHubSecrets) -contains "OSMU_ENTERPRISE_AUTH_OIDC_CALLBACK_CODE") "expected enterprise auth OIDC code secret"
 Assert-True (@($readyReport.requiredGitHubSecrets) -contains "OSMU_ENTERPRISE_AUTH_OIDC_CALLBACK_STATE") "expected enterprise auth OIDC state secret"
+$readyDrTemplate = @($readyReport.inputTemplates | Where-Object { $_.actionOrder -eq 2 })[0]
+Assert-Equal $readyDrTemplate.missingInputCount 0 "ready DR template missing input count"
+Assert-True $readyDrTemplate.inputs[0].supplied "ready DR template input should be supplied"
+Assert-Equal $readyDrTemplate.inputs[0].valuePreview "20260616T010203Z" "ready DR template input preview"
+Assert-True (@($readyDrTemplate.operatorChecklist) -contains "Ensure GitHub secret OSMU_ADMIN_PASSWORD is configured") "ready DR template checklist should mention admin password secret"
 $storageWorkflow = @($readyReport.workflowFiles | Where-Object { $_.actionOrder -eq 1 })[0]
 $drWorkflow = @($readyReport.workflowFiles | Where-Object { $_.actionOrder -eq 2 })[0]
 $enterpriseAuthWorkflow = @($readyReport.workflowFiles | Where-Object { $_.actionOrder -eq 3 })[0]

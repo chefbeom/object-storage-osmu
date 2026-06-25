@@ -2000,6 +2000,21 @@
         </li>
       </ol>
       <ol
+        v-if="operationsDispatchPreflightInputTemplates.length > 0"
+        class="readiness-evidence-plan-actions readiness-dispatch-preflight-input-templates"
+        data-testid="readiness-dispatch-preflight-input-templates"
+      >
+        <li
+          v-for="template in operationsDispatchPreflightInputTemplates.slice(0, 3)"
+          :key="`dispatch-template-${template.actionOrder}-${template.workflow || template.name}`"
+        >
+          <span>
+            <strong>action {{ template.actionOrder || '?' }} - {{ template.name || template.workflow || 'Input template' }}</strong>
+            <small>{{ formatDispatchPreflightTemplateMeta(template) }}</small>
+          </span>
+        </li>
+      </ol>
+      <ol
         v-if="operationsDispatchPreflightWorkflowFiles.length > 0"
         class="readiness-evidence-plan-actions readiness-dispatch-preflight-workflows"
         data-testid="readiness-dispatch-preflight-workflows"
@@ -3323,6 +3338,11 @@ const operationsDispatchPreflightInputs = computed(() => {
   return Array.isArray(inputs) ? inputs : []
 })
 
+const operationsDispatchPreflightInputTemplates = computed(() => {
+  const templates = operationsDispatchPreflight.value?.inputTemplates
+  return Array.isArray(templates) ? templates : []
+})
+
 const operationsDispatchPreflightWorkflowFiles = computed(() => {
   const workflows = operationsDispatchPreflight.value?.workflowFiles
   return Array.isArray(workflows) ? workflows : []
@@ -4139,6 +4159,19 @@ function formatDispatchPreflightInputMeta(input) {
   const safety = input?.safeValue === false ? 'unsafe value' : 'safe value'
   const validity = input?.validValue === false ? 'invalid shape' : 'valid shape'
   return `${action} / ${placeholder} / ${preview} / ${ambiguous} / ${safety} / ${validity}`
+}
+
+function formatDispatchPreflightTemplateMeta(template) {
+  const workflow = template?.workflow || 'local command'
+  const missing = Number(template?.missingInputCount || 0)
+  const ambiguous = Number(template?.ambiguousInputCount || 0)
+  const secrets = Array.isArray(template?.requiredSecrets) && template.requiredSecrets.length > 0
+    ? `secrets ${template.requiredSecrets.join(', ')}`
+    : 'secrets none'
+  const checklist = Array.isArray(template?.operatorChecklist) && template.operatorChecklist.length > 0
+    ? `${template.operatorChecklist.length} checklist items`
+    : 'no checklist items'
+  return `${workflow} / ${missing} missing inputs / ${ambiguous} ambiguous / ${secrets} / ${checklist}`
 }
 
 function formatDispatchPreflightWorkflowMeta(workflow) {
