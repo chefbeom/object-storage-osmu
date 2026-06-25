@@ -5283,6 +5283,7 @@ Response:
               "placeholder": "<YYYYMMDDTHHMMSSZ>",
               "parameter": "BackupTimestamp",
               "valueTemplate": "<YYYYMMDDTHHMMSSZ>",
+              "workflowInputs": ["backup_timestamp"],
               "occurrenceCount": 1,
               "ambiguousRepeatedPlaceholder": false
             }
@@ -5329,6 +5330,7 @@ Response:
           "placeholder": "<YYYYMMDDTHHMMSSZ>",
           "parameter": "BackupTimestamp",
           "valueTemplate": "<YYYYMMDDTHHMMSSZ>",
+          "workflowInputs": ["backup_timestamp"],
           "supplied": false,
           "safeValue": true,
           "validValue": true,
@@ -5354,6 +5356,7 @@ Response:
               "placeholder": "<YYYYMMDDTHHMMSSZ>",
               "parameter": "BackupTimestamp",
               "valueTemplate": "<YYYYMMDDTHHMMSSZ>",
+              "workflowInputs": ["backup_timestamp"],
               "supplied": false,
               "safeValue": true,
               "validValue": true,

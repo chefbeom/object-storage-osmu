@@ -2005,7 +2005,7 @@
         data-testid="readiness-dispatch-preflight-input-templates"
       >
         <li
-          v-for="template in operationsDispatchPreflightInputTemplates.slice(0, 3)"
+          v-for="template in operationsDispatchPreflightInputTemplates"
           :key="`dispatch-template-${template.actionOrder}-${template.workflow || template.name}`"
         >
           <span>
@@ -4158,7 +4158,10 @@ function formatDispatchPreflightInputMeta(input) {
   const ambiguous = input?.ambiguousRepeatedPlaceholder ? 'ambiguous repeated placeholder' : 'single placeholder'
   const safety = input?.safeValue === false ? 'unsafe value' : 'safe value'
   const validity = input?.validValue === false ? 'invalid shape' : 'valid shape'
-  return `${action} / ${placeholder} / ${preview} / ${ambiguous} / ${safety} / ${validity}`
+  const workflowInputs = Array.isArray(input?.workflowInputs) && input.workflowInputs.length > 0
+    ? `workflow inputs ${input.workflowInputs.join(', ')}`
+    : 'workflow inputs unknown'
+  return `${action} / ${placeholder} / ${workflowInputs} / ${preview} / ${ambiguous} / ${safety} / ${validity}`
 }
 
 function formatDispatchPreflightTemplateMeta(template) {
@@ -4171,7 +4174,13 @@ function formatDispatchPreflightTemplateMeta(template) {
   const checklist = Array.isArray(template?.operatorChecklist) && template.operatorChecklist.length > 0
     ? `${template.operatorChecklist.length} checklist items`
     : 'no checklist items'
-  return `${workflow} / ${missing} missing inputs / ${ambiguous} ambiguous / ${secrets} / ${checklist}`
+  const inputNames = (Array.isArray(template?.inputs) ? template.inputs : [])
+    .flatMap((input) => (Array.isArray(input?.workflowInputs) ? input.workflowInputs : []))
+  const uniqueInputNames = Array.from(new Set(inputNames)).slice(0, 8)
+  const workflowInputSummary = uniqueInputNames.length > 0
+    ? `workflow inputs ${uniqueInputNames.join(', ')}${inputNames.length > uniqueInputNames.length ? ', ...' : ''}`
+    : 'workflow inputs unknown'
+  return `${workflow} / ${missing} missing inputs / ${ambiguous} ambiguous / ${workflowInputSummary} / ${secrets} / ${checklist}`
 }
 
 function formatDispatchPreflightWorkflowMeta(workflow) {

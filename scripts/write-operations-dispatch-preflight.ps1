@@ -404,6 +404,7 @@ foreach ($action in @($selectedActions)) {
             placeholder = $placeholderName
             parameter = $parameter
             valueTemplate = Get-Text $input "valueTemplate"
+            workflowInputs = @(Get-Array $input "workflowInputs" | ForEach-Object { [string] $_ })
             supplied = $supplied
             safeValue = $safeValue
             validValue = $validValue
@@ -436,6 +437,7 @@ foreach ($action in @($selectedActions)) {
             placeholder = [string] $input.placeholder
             parameter = [string] $input.parameter
             valueTemplate = $template
+            workflowInputs = @($input.workflowInputs | ForEach-Object { [string] $_ })
             supplied = [bool] $input.supplied
             safeValue = [bool] $input.safeValue
             validValue = [bool] $input.validValue
@@ -654,7 +656,8 @@ else {
         $secretLabel = if (@($template.requiredSecrets).Count -gt 0) { @($template.requiredSecrets) -join ', ' } else { 'none' }
         $markdownLines += "- action $($template.actionOrder) - $($template.name): workflow=$workflowLabel, missingInputs=$($template.missingInputCount), requiredSecrets=$secretLabel"
         foreach ($input in @($template.inputs)) {
-            $markdownLines += "  - $($input.parameter) $($input.placeholder): template=$($input.valueTemplate), supplied=$($input.supplied)"
+            $workflowInputLabel = if (@($input.workflowInputs).Count -gt 0) { ", workflowInputs=$((@($input.workflowInputs) | ForEach-Object { [string] $_ }) -join ', ')" } else { "" }
+            $markdownLines += "  - $($input.parameter) $($input.placeholder): template=$($input.valueTemplate), supplied=$($input.supplied)$workflowInputLabel"
         }
     }
 }

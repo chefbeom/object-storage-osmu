@@ -118,6 +118,7 @@ Write-JsonFixture $unblockPlanPath ([ordered]@{
                     placeholder = "<YYYYMMDDTHHMMSSZ>"
                     parameter = "BackupTimestamp"
                     valueTemplate = "<YYYYMMDDTHHMMSSZ>"
+                    workflowInputs = @("backup_timestamp")
                     occurrenceCount = 1
                     ambiguousRepeatedPlaceholder = $false
                     note = "Provide a concrete value before planning or executing this action."
@@ -172,6 +173,7 @@ Assert-Equal $missingDrTemplate.workflow "kubernetes-dr-finalizer-ci.yml" "missi
 Assert-Equal $missingDrTemplate.missingInputCount 1 "missing DR template missing input count"
 Assert-True (@($missingDrTemplate.requiredSecrets) -contains "OSMU_ADMIN_PASSWORD") "missing DR template admin password secret"
 Assert-Equal $missingDrTemplate.inputs[0].valueTemplate "<YYYYMMDDTHHMMSSZ>" "missing DR template input value template"
+Assert-True (@($missingDrTemplate.inputs[0].workflowInputs) -contains "backup_timestamp") "missing DR template workflow input mapping"
 Assert-True (-not $missingDrTemplate.inputs[0].supplied) "missing DR template input should be missing"
 Assert-Contains $missingMarkdown "Result: action-required" "missing markdown"
 Assert-Contains $missingMarkdown "## Input Templates" "missing markdown input templates section"
@@ -214,6 +216,7 @@ $readyDrTemplate = @($readyReport.inputTemplates | Where-Object { $_.actionOrder
 Assert-Equal $readyDrTemplate.missingInputCount 0 "ready DR template missing input count"
 Assert-True $readyDrTemplate.inputs[0].supplied "ready DR template input should be supplied"
 Assert-Equal $readyDrTemplate.inputs[0].valuePreview "20260616T010203Z" "ready DR template input preview"
+Assert-True (@($readyDrTemplate.inputs[0].workflowInputs) -contains "backup_timestamp") "ready DR template workflow input mapping"
 Assert-True (@($readyDrTemplate.operatorChecklist) -contains "Ensure GitHub secret OSMU_ADMIN_PASSWORD is configured") "ready DR template checklist should mention admin password secret"
 $storageWorkflow = @($readyReport.workflowFiles | Where-Object { $_.actionOrder -eq 1 })[0]
 $drWorkflow = @($readyReport.workflowFiles | Where-Object { $_.actionOrder -eq 2 })[0]

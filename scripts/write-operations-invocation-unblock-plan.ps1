@@ -100,20 +100,43 @@ function Count-PlaceholderOccurrences([string] $Command, [string] $Placeholder) 
     return ([regex]::Matches($Command, [regex]::Escape($Placeholder))).Count
 }
 
+function Get-PlaceholderWorkflowInputs([string] $Command, [string] $Placeholder) {
+    if ([string]::IsNullOrWhiteSpace($Command) -or [string]::IsNullOrWhiteSpace($Placeholder)) {
+        return @()
+    }
+    $names = New-Object System.Collections.Generic.List[string]
+    $pattern = '(?<!\S)-f\s+([A-Za-z0-9_-]+)=["'']?' + [regex]::Escape($Placeholder)
+    foreach ($match in [regex]::Matches($Command, $pattern)) {
+        $name = [string] $match.Groups[1].Value
+        if (-not [string]::IsNullOrWhiteSpace($name) -and -not $names.Contains($name)) {
+            $names.Add($name)
+        }
+    }
+    return @($names)
+}
+
 function New-RequiredInput([string] $Placeholder, [string] $Command, [string] $ActionName) {
     $parameter = Get-PlaceholderParameter $Placeholder
     $occurrenceCount = Count-PlaceholderOccurrences $Command $Placeholder
-    $ambiguous = $occurrenceCount -gt 1 -and $parameter -eq "Placeholder"
-    $note = if ($ambiguous) {
-        "This placeholder appears $occurrenceCount times in '$ActionName'. The invocation helper replaces identical placeholder names with one value; prefer workflow run id/artifact collection helpers when values differ."
+    $workflowInputs = @(Get-PlaceholderWorkflowInputs $Command $Placeholder)
+    $workflowInputNote = if ($workflowInputs.Count -gt 0) {
+        " Workflow inputs: $($workflowInputs -join ', ')."
     }
     else {
-        "Provide a concrete value before planning or executing this action."
+        ""
+    }
+    $ambiguous = $occurrenceCount -gt 1 -and $parameter -eq "Placeholder"
+    $note = if ($ambiguous) {
+        "This placeholder appears $occurrenceCount times in '$ActionName'. The invocation helper replaces identical placeholder names with one value; prefer workflow run id/artifact collection helpers when values differ.$workflowInputNote"
+    }
+    else {
+        "Provide a concrete value before planning or executing this action.$workflowInputNote"
     }
     return [ordered]@{
         placeholder = $Placeholder
         parameter = $parameter
         valueTemplate = (Get-PlaceholderValueTemplate $Placeholder)
+        workflowInputs = @($workflowInputs)
         occurrenceCount = $occurrenceCount
         ambiguousRepeatedPlaceholder = $ambiguous
         note = $note
@@ -354,7 +377,12 @@ foreach ($action in $actionPlans) {
         $markdownLines += "  - Blocked by: $(@($action.blockReasons) -join '; ')"
     }
     if (@($action.requiredInputs).Count -gt 0) {
-        $markdownLines += "  - Inputs: $((@($action.requiredInputs) | ForEach-Object { "$($_.placeholder) via $($_.parameter)" }) -join ', ')"
+        $inputSummaries = @($action.requiredInputs | ForEach-Object {
+            $workflowInputs = @($_.workflowInputs | ForEach-Object { [string] $_ })
+            $targets = if ($workflowInputs.Count -gt 0) { " [workflow inputs: $($workflowInputs -join ', ')]" } else { "" }
+            "$($_.placeholder) via $($_.parameter)$targets"
+        })
+        $markdownLines += "  - Inputs: $($inputSummaries -join ', ')"
     }
     if ($action.ambiguousRepeatedPlaceholders) {
         $markdownLines += "  - Note: repeated generic placeholders may need workflow run id/artifact collection helpers instead of one shared replacement value."

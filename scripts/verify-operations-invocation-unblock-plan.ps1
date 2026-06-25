@@ -159,7 +159,17 @@ Assert-Contains $blockedReport.confirmedPlanCommand "-RestoreApiBase <restore-ap
 Assert-Contains $blockedReport.confirmedPlanCommand "-Placeholder '<run-id>=<run-id>'" "confirmed command"
 Assert-Contains $blockedReport.plannedOnlyCommand "-ActionOrder 4" "planned-only command"
 Assert-True $blockedReport.actions[0].requiresOperatorApproval "storage expansion live action should require operator approval"
+$blockedDrInputs = @($blockedReport.actions[1].requiredInputs)
+$backupTimestampInput = @($blockedDrInputs | Where-Object { $_.placeholder -eq "<YYYYMMDDTHHMMSSZ>" })[0]
+$restoreApiInput = @($blockedDrInputs | Where-Object { $_.placeholder -eq "<restore-api-base>" })[0]
+Assert-True (@($backupTimestampInput.workflowInputs) -contains "backup_timestamp") "expected backup timestamp workflow input mapping"
+Assert-True (@($restoreApiInput.workflowInputs) -contains "api_base") "expected restore API workflow input mapping"
+Assert-Contains $backupTimestampInput.note "Workflow inputs: backup_timestamp" "backup timestamp note"
 Assert-True $blockedReport.actions[2].ambiguousRepeatedPlaceholders "expected repeated placeholders on security finalizer"
+$securityRunIdInput = @(@($blockedReport.actions[2].requiredInputs) | Where-Object { $_.placeholder -eq "<run-id>" })[0]
+Assert-True (@($securityRunIdInput.workflowInputs) -contains "image_signing_run_id") "expected image signing run id workflow input mapping"
+Assert-True (@($securityRunIdInput.workflowInputs) -contains "container_security_run_id") "expected container security run id workflow input mapping"
+Assert-Contains $blockedMarkdown "workflow inputs: image_signing_run_id, container_security_run_id" "blocked markdown workflow inputs"
 Assert-Contains $blockedMarkdown "repeated generic placeholders" "blocked markdown"
 
 Write-JsonFixture $readyInvocationPath ([ordered]@{
