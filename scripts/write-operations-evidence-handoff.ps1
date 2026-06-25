@@ -146,6 +146,26 @@ function Is-ReadyResult([string] $Result) {
     return @("ready", "passed", "go") -contains $Result.ToLowerInvariant()
 }
 
+function New-DispatchWorkflowSummary([object] $Template) {
+    return [ordered]@{
+        actionOrder = Get-Int $Template "actionOrder"
+        name = Get-Text $Template "name"
+        category = Get-Text $Template "category"
+        actionType = Get-Text $Template "actionType"
+        commandMode = Get-Text $Template "commandMode"
+        workflow = Get-Text $Template "workflow"
+        readyToDispatch = Get-Bool $Template "readyToDispatch"
+        missingInputCount = Get-Int $Template "missingInputCount"
+        unsafeInputCount = Get-Int $Template "unsafeInputCount"
+        invalidInputCount = Get-Int $Template "invalidInputCount"
+        ambiguousInputCount = Get-Int $Template "ambiguousInputCount"
+        requiredSecrets = @(Get-Array (Get-JsonProperty $Template "requiredSecrets") | ForEach-Object { [string] $_ })
+        workflowInputNames = @(Get-Array (Get-JsonProperty $Template "workflowInputNames") | ForEach-Object { [string] $_ })
+        missingInputParameters = @(Get-Array (Get-JsonProperty $Template "missingInputParameters") | ForEach-Object { [string] $_ })
+        operatorChecklist = @(Get-Array (Get-JsonProperty $Template "operatorChecklist") | ForEach-Object { [string] $_ })
+    }
+}
+
 $readiness = Read-OptionalJson $ReadinessReportPath
 $evidencePlan = Read-OptionalJson $EvidencePlanPath
 $invocation = Read-OptionalJson $InvocationReportPath
@@ -173,6 +193,8 @@ $readyDispatchTemplates = @($dispatchTemplates | Where-Object { Get-Bool $_ "rea
 $blockedDispatchTemplates = @($dispatchTemplates | Where-Object { -not (Get-Bool $_ "readyToDispatch") })
 $readyDispatchActionOrders = @($readyDispatchTemplates | ForEach-Object { Get-Int $_ "actionOrder" } | Where-Object { $_ -gt 0 })
 $blockedDispatchActionOrders = @($blockedDispatchTemplates | ForEach-Object { Get-Int $_ "actionOrder" } | Where-Object { $_ -gt 0 })
+$readyDispatchWorkflows = @($readyDispatchTemplates | ForEach-Object { New-DispatchWorkflowSummary $_ })
+$blockedDispatchWorkflows = @($blockedDispatchTemplates | ForEach-Object { New-DispatchWorkflowSummary $_ })
 $readyDispatchTemplateCount = $readyDispatchTemplates.Count
 $blockedDispatchTemplateCount = $blockedDispatchTemplates.Count
 $readySubsetPlanCommand = Get-Text $dispatchPreflight.json "readySubsetPlanCommand"
@@ -271,6 +293,8 @@ $report = [ordered]@{
     blockedDispatchTemplateCount = $blockedDispatchTemplateCount
     readyDispatchActionOrders = @($readyDispatchActionOrders)
     blockedDispatchActionOrders = @($blockedDispatchActionOrders)
+    readyDispatchWorkflows = @($readyDispatchWorkflows)
+    blockedDispatchWorkflows = @($blockedDispatchWorkflows)
     blockedActionCount = Get-Int $invocation.json "blockedCount"
     missingWorkflowRunCount = Get-Int $runIds.json "missingWorkflowCount"
     missingRequiredArtifactCount = Get-Int $collection.json "missingRequiredArtifactCount"
@@ -301,6 +325,29 @@ $markdownLines = @(
     "- Blocked templates: $blockedDispatchTemplateCount",
     "- Ready action orders: $(Join-IntList $readyDispatchActionOrders)",
     "- Blocked action orders: $(Join-IntList $blockedDispatchActionOrders)",
+    "",
+    "## Dispatch Workflow Handoff",
+    ""
+)
+if ($readyDispatchWorkflows.Count -eq 0) {
+    $markdownLines += "- Ready workflows: none"
+}
+else {
+    foreach ($workflow in $readyDispatchWorkflows) {
+        $workflowName = if ([string]::IsNullOrWhiteSpace($workflow.workflow)) { "local command" } else { $workflow.workflow }
+        $markdownLines += "- ready action $($workflow.actionOrder): $workflowName - $($workflow.name)"
+    }
+}
+if ($blockedDispatchWorkflows.Count -eq 0) {
+    $markdownLines += "- Blocked workflows: none"
+}
+else {
+    foreach ($workflow in $blockedDispatchWorkflows) {
+        $workflowName = if ([string]::IsNullOrWhiteSpace($workflow.workflow)) { "local command" } else { $workflow.workflow }
+        $markdownLines += "- blocked action $($workflow.actionOrder): $workflowName - missingInputs=$($workflow.missingInputCount), unsafeInputs=$($workflow.unsafeInputCount), invalidInputs=$($workflow.invalidInputCount)"
+    }
+}
+$markdownLines += @(
     "",
     "## Stage Summary",
     ""

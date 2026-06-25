@@ -1610,6 +1610,21 @@
         </div>
       </div>
       <ol
+        v-if="operationsEvidenceHandoffDispatchWorkflows.length > 0"
+        class="readiness-evidence-plan-actions readiness-evidence-handoff-workflows"
+        data-testid="readiness-evidence-handoff-workflows"
+      >
+        <li
+          v-for="workflow in operationsEvidenceHandoffDispatchWorkflows.slice(0, 6)"
+          :key="`handoff-dispatch-${workflow.dispatchState}-${workflow.actionOrder}-${workflow.workflow || workflow.name}`"
+        >
+          <span>
+            <strong>{{ workflow.dispatchState }} action {{ workflow.actionOrder || '?' }} - {{ workflow.workflow || workflow.name || 'workflow' }}</strong>
+            <small>{{ formatEvidenceHandoffDispatchWorkflowMeta(workflow) }}</small>
+          </span>
+        </li>
+      </ol>
+      <ol
         v-if="operationsEvidenceHandoffStages.length > 0"
         class="readiness-evidence-plan-actions readiness-evidence-handoff-stages"
         data-testid="readiness-evidence-handoff-stages"
@@ -3589,17 +3604,31 @@ const operationsEvidenceHandoffStages = computed(() => {
   return Array.isArray(stages) ? stages : []
 })
 
+const operationsEvidenceHandoffDispatchWorkflows = computed(() => {
+  const handoff = operationsEvidenceHandoff.value || {}
+  const ready = Array.isArray(handoff.readyDispatchWorkflows) ? handoff.readyDispatchWorkflows : []
+  const blocked = Array.isArray(handoff.blockedDispatchWorkflows) ? handoff.blockedDispatchWorkflows : []
+  return [
+    ...ready.map((workflow) => ({ ...workflow, dispatchState: 'ready' })),
+    ...blocked.map((workflow) => ({ ...workflow, dispatchState: 'blocked' })),
+  ]
+})
+
 const operationsEvidenceHandoffDispatchSummary = computed(() => {
   const handoff = operationsEvidenceHandoff.value || {}
   const readyOrders = Array.isArray(handoff.readyDispatchActionOrders) ? handoff.readyDispatchActionOrders : []
   const blockedOrders = Array.isArray(handoff.blockedDispatchActionOrders) ? handoff.blockedDispatchActionOrders : []
-  if (!handoff.dispatchPreflightResult && readyOrders.length === 0 && blockedOrders.length === 0) {
+  const readyWorkflows = Array.isArray(handoff.readyDispatchWorkflows) ? handoff.readyDispatchWorkflows : []
+  if (!handoff.dispatchPreflightResult && readyOrders.length === 0 && blockedOrders.length === 0 && readyWorkflows.length === 0) {
     return ''
   }
   const ready = readyOrders.length > 0 ? readyOrders.join(', ') : 'none'
   const blocked = blockedOrders.length > 0 ? blockedOrders.slice(0, 8).join(', ') : 'none'
   const blockedSuffix = blockedOrders.length > 8 ? ', ...' : ''
-  return `Dispatch preflight ${handoff.dispatchPreflightResult || 'unknown'} / ready actions ${ready} / blocked actions ${blocked}${blockedSuffix}`
+  const workflowSummary = readyWorkflows.length > 0
+    ? ` / ready workflows ${readyWorkflows.slice(0, 3).map((workflow) => workflow.workflow || workflow.name).filter(Boolean).join(', ')}`
+    : ''
+  return `Dispatch preflight ${handoff.dispatchPreflightResult || 'unknown'} / ready actions ${ready} / blocked actions ${blocked}${blockedSuffix}${workflowSummary}`
 })
 
 const operationsHandoffPackage = computed(() => (
@@ -4400,6 +4429,20 @@ function formatEvidenceHandoffStageMeta(stage) {
   const summary = stage?.summary || 'summary unavailable'
   const result = stage?.result || 'unknown'
   return `${result} / ${summary}`
+}
+
+function formatEvidenceHandoffDispatchWorkflowMeta(workflow) {
+  const name = workflow?.name || workflow?.category || 'action detail unavailable'
+  const inputs = Number(workflow?.missingInputCount || 0)
+  const unsafe = Number(workflow?.unsafeInputCount || 0)
+  const invalid = Number(workflow?.invalidInputCount || 0)
+  const workflowInputs = Array.isArray(workflow?.workflowInputNames) && workflow.workflowInputNames.length > 0
+    ? workflow.workflowInputNames.slice(0, 4).join(', ')
+    : 'none'
+  const secrets = Array.isArray(workflow?.requiredSecrets) && workflow.requiredSecrets.length > 0
+    ? workflow.requiredSecrets.slice(0, 3).join(', ')
+    : 'none'
+  return `${name} / missing ${inputs} / unsafe ${unsafe} / invalid ${invalid} / inputs ${workflowInputs} / secrets ${secrets}`
 }
 
 function formatKubernetesReportSyncCheckMeta(check) {

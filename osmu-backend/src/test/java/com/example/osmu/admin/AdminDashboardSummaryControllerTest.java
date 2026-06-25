@@ -2132,6 +2132,41 @@ class AdminDashboardSummaryControllerTest {
                           "blockedDispatchTemplateCount": 5,
                           "readyDispatchActionOrders": [6],
                           "blockedDispatchActionOrders": [1, 2, 3, 4, 5],
+                          "readyDispatchWorkflows": [
+                            {
+                              "actionOrder": 6,
+                              "name": "Container scan/SBOM evidence",
+                              "category": "security",
+                              "actionType": "github-workflow",
+                              "commandMode": "workflow",
+                              "workflow": "container-security-ci.yml",
+                              "readyToDispatch": true,
+                              "missingInputCount": 0,
+                              "unsafeInputCount": 0,
+                              "invalidInputCount": 0,
+                              "ambiguousInputCount": 0,
+                              "requiredSecrets": [],
+                              "workflowInputNames": []
+                            }
+                          ],
+                          "blockedDispatchWorkflows": [
+                            {
+                              "actionOrder": 1,
+                              "name": "Storage expansion finalizer live evidence",
+                              "category": "storage-expansion",
+                              "actionType": "kubernetes-live",
+                              "commandMode": "workflow",
+                              "workflow": "storage-expansion-finalizer-ci.yml",
+                              "readyToDispatch": false,
+                              "missingInputCount": 1,
+                              "unsafeInputCount": 0,
+                              "invalidInputCount": 0,
+                              "ambiguousInputCount": 0,
+                              "requiredSecrets": ["OSMU_KUBECONFIG_BASE64"],
+                              "workflowInputNames": ["namespace"],
+                              "missingInputParameters": ["Placeholder"]
+                            }
+                          ],
                           "blockedActionCount": 5,
                           "missingWorkflowRunCount": 6,
                           "missingRequiredArtifactCount": 5,
@@ -2733,6 +2768,12 @@ class AdminDashboardSummaryControllerTest {
                 .andExpect(jsonPath("$.data.operationsEvidenceHandoff.blockedDispatchTemplateCount").value(5))
                 .andExpect(jsonPath("$.data.operationsEvidenceHandoff.readyDispatchActionOrders[0]").value(6))
                 .andExpect(jsonPath("$.data.operationsEvidenceHandoff.blockedDispatchActionOrders[0]").value(1))
+                .andExpect(jsonPath("$.data.operationsEvidenceHandoff.readyDispatchWorkflows[0].actionOrder").value(6))
+                .andExpect(jsonPath("$.data.operationsEvidenceHandoff.readyDispatchWorkflows[0].workflow").value("container-security-ci.yml"))
+                .andExpect(jsonPath("$.data.operationsEvidenceHandoff.readyDispatchWorkflows[0].name").value("Container scan/SBOM evidence"))
+                .andExpect(jsonPath("$.data.operationsEvidenceHandoff.blockedDispatchWorkflows[0].actionOrder").value(1))
+                .andExpect(jsonPath("$.data.operationsEvidenceHandoff.blockedDispatchWorkflows[0].workflow").value("storage-expansion-finalizer-ci.yml"))
+                .andExpect(jsonPath("$.data.operationsEvidenceHandoff.blockedDispatchWorkflows[0].missingInputParameters[0]").value("Placeholder"))
                 .andExpect(jsonPath("$.data.operationsEvidenceHandoff.blockedActionCount").value(5))
                 .andExpect(jsonPath("$.data.operationsEvidenceHandoff.missingWorkflowRunCount").value(6))
                 .andExpect(jsonPath("$.data.operationsEvidenceHandoff.missingRequiredArtifactCount").value(5))

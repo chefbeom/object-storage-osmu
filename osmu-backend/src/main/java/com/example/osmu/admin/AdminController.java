@@ -3832,6 +3832,33 @@ public class AdminController {
         );
     }
 
+    private List<DashboardOperationsEvidenceHandoffDispatchWorkflowResponse> operationsEvidenceHandoffDispatchWorkflows(JsonNode handoffReport, String fieldName) {
+        java.util.ArrayList<DashboardOperationsEvidenceHandoffDispatchWorkflowResponse> workflows = new java.util.ArrayList<>();
+        JsonNode workflowNodes = handoffReport.path(fieldName);
+        if (workflowNodes.isArray()) {
+            for (JsonNode workflow : workflowNodes) {
+                workflows.add(new DashboardOperationsEvidenceHandoffDispatchWorkflowResponse(
+                        jsonInt(workflow, "actionOrder"),
+                        jsonText(workflow, "name"),
+                        jsonText(workflow, "category"),
+                        jsonText(workflow, "actionType"),
+                        jsonText(workflow, "commandMode"),
+                        jsonText(workflow, "workflow"),
+                        jsonBoolean(workflow, "readyToDispatch"),
+                        jsonInt(workflow, "missingInputCount"),
+                        jsonInt(workflow, "unsafeInputCount"),
+                        jsonInt(workflow, "invalidInputCount"),
+                        jsonInt(workflow, "ambiguousInputCount"),
+                        jsonTextList(workflow, "requiredSecrets"),
+                        jsonTextList(workflow, "workflowInputNames"),
+                        jsonTextList(workflow, "missingInputParameters"),
+                        jsonTextList(workflow, "operatorChecklist")
+                ));
+            }
+        }
+        return List.copyOf(workflows);
+    }
+
     private DashboardOperationsEvidenceHandoffResponse operationsEvidenceHandoffSnapshot() {
         JsonNode handoffReport = readOptionalJsonReport(operationsEvidenceHandoffReportPath);
         if (handoffReport == null) {
@@ -3853,6 +3880,8 @@ public class AdminController {
                 ));
             }
         }
+        List<DashboardOperationsEvidenceHandoffDispatchWorkflowResponse> readyDispatchWorkflows = operationsEvidenceHandoffDispatchWorkflows(handoffReport, "readyDispatchWorkflows");
+        List<DashboardOperationsEvidenceHandoffDispatchWorkflowResponse> blockedDispatchWorkflows = operationsEvidenceHandoffDispatchWorkflows(handoffReport, "blockedDispatchWorkflows");
         JsonNode nextStep = handoffReport.path("nextStep");
         return new DashboardOperationsEvidenceHandoffResponse(
                 jsonText(handoffReport, "result"),
@@ -3871,6 +3900,8 @@ public class AdminController {
                 jsonInt(handoffReport, "blockedDispatchTemplateCount"),
                 jsonIntList(handoffReport, "readyDispatchActionOrders"),
                 jsonIntList(handoffReport, "blockedDispatchActionOrders"),
+                readyDispatchWorkflows,
+                blockedDispatchWorkflows,
                 jsonInt(handoffReport, "blockedActionCount"),
                 jsonInt(handoffReport, "missingWorkflowRunCount"),
                 jsonInt(handoffReport, "missingRequiredArtifactCount"),

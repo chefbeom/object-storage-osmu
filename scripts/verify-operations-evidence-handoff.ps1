@@ -133,6 +133,7 @@ Write-JsonFixture $blockedDispatchPreflightPath ([ordered]@{
     inputTemplates = @(
         [ordered]@{
             actionOrder = 1
+            name = "Storage expansion finalizer live evidence"
             workflow = "storage-expansion-finalizer-ci.yml"
             readyToDispatch = $false
             missingInputCount = 0
@@ -143,6 +144,7 @@ Write-JsonFixture $blockedDispatchPreflightPath ([ordered]@{
         },
         [ordered]@{
             actionOrder = 2
+            name = "Container scan/SBOM evidence"
             workflow = "container-security-ci.yml"
             readyToDispatch = $true
             missingInputCount = 0
@@ -153,6 +155,7 @@ Write-JsonFixture $blockedDispatchPreflightPath ([ordered]@{
         },
         [ordered]@{
             actionOrder = 3
+            name = "Kubernetes DR finalizer live evidence"
             workflow = "kubernetes-dr-finalizer-ci.yml"
             readyToDispatch = $false
             missingInputCount = 2
@@ -196,7 +199,15 @@ Assert-Contains $blockedReport.nextStep.reason "1 action(s) are ready" "blocked 
 Assert-Contains $blockedReport.nextStep.note "remaining blocked actions" "blocked ready subset note"
 Assert-Equal $blockedReport.blockedActionCount 5 "blocked count"
 Assert-Equal $blockedReport.missingWorkflowRunCount 6 "blocked missing workflow run count"
+Assert-Equal @($blockedReport.readyDispatchWorkflows).Count 1 "blocked ready dispatch workflow count"
+Assert-Equal @($blockedReport.blockedDispatchWorkflows).Count 2 "blocked blocked dispatch workflow count"
+Assert-Equal @($blockedReport.readyDispatchWorkflows)[0].actionOrder 2 "blocked ready dispatch workflow action order"
+Assert-Equal @($blockedReport.readyDispatchWorkflows)[0].workflow "container-security-ci.yml" "blocked ready dispatch workflow name"
+Assert-Equal @($blockedReport.readyDispatchWorkflows)[0].name "Container scan/SBOM evidence" "blocked ready dispatch action name"
+Assert-Equal @($blockedReport.blockedDispatchWorkflows)[1].missingInputCount 2 "blocked workflow missing input count"
 Assert-Contains $blockedMarkdown "Plan ready dispatch subset" "blocked markdown next step"
+Assert-Contains $blockedMarkdown "ready action 2: container-security-ci.yml" "blocked markdown ready workflow"
+Assert-Contains $blockedMarkdown "blocked action 3: kubernetes-dr-finalizer-ci.yml" "blocked markdown blocked workflow"
 
 $finalizerReadinessPath = Join-Path $resolvedOutputDirectory "finalizer-readiness.json"
 $finalizerPlanPath = Join-Path $resolvedOutputDirectory "finalizer-plan.json"
