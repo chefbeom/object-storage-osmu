@@ -1873,6 +1873,10 @@
           {{ operationsInvocationUnblockPlan.requiredPlaceholderCount }} placeholders /
           {{ operationsInvocationUnblockPlan.ambiguousRepeatedPlaceholderCount }} ambiguous
         </small>
+        <small>
+          {{ operationsInvocationUnblockPlan.confirmationGroupCount || 0 }} confirmation groups /
+          {{ operationsInvocationUnblockPlan.requiredInputGroupCount || 0 }} input groups
+        </small>
         <small v-if="formatInvocationUnblockConfirmationMeta()">
           {{ formatInvocationUnblockConfirmationMeta() }}
         </small>
@@ -1899,6 +1903,21 @@
           </button>
         </div>
       </div>
+      <ol
+        v-if="operationsInvocationUnblockGroupRows.length > 0"
+        class="readiness-evidence-plan-actions readiness-invocation-unblock-actions"
+        data-testid="readiness-invocation-unblock-groups"
+      >
+        <li
+          v-for="group in operationsInvocationUnblockGroupRows"
+          :key="group.key"
+        >
+          <span>
+            <strong>{{ group.title }}</strong>
+            <small>{{ group.meta }}</small>
+          </span>
+        </li>
+      </ol>
       <ol
         v-if="operationsInvocationUnblockActions.length > 0"
         class="readiness-evidence-plan-actions readiness-invocation-unblock-actions"
@@ -3372,6 +3391,30 @@ const operationsInvocationUnblockActions = computed(() => {
   return Array.isArray(actions) ? actions : []
 })
 
+const operationsInvocationUnblockConfirmationGroups = computed(() => {
+  const groups = operationsInvocationUnblockPlan.value?.confirmationGroups
+  return Array.isArray(groups) ? groups : []
+})
+
+const operationsInvocationUnblockRequiredInputGroups = computed(() => {
+  const groups = operationsInvocationUnblockPlan.value?.requiredInputGroups
+  return Array.isArray(groups) ? groups : []
+})
+
+const operationsInvocationUnblockGroupRows = computed(() => {
+  const confirmationRows = operationsInvocationUnblockConfirmationGroups.value.slice(0, 2).map((group) => ({
+    key: `confirmation-${group.kind || group.label || 'unknown'}`,
+    title: group.label || group.kind || 'Confirmation required',
+    meta: formatInvocationUnblockConfirmationGroup(group),
+  }))
+  const inputRows = operationsInvocationUnblockRequiredInputGroups.value.slice(0, 4).map((group) => ({
+    key: `input-${group.parameter || 'placeholder'}-${group.placeholder || 'unknown'}`,
+    title: `${group.parameter || 'Placeholder'} ${group.placeholder || ''}`.trim(),
+    meta: formatInvocationUnblockRequiredInputGroup(group),
+  }))
+  return [...confirmationRows, ...inputRows]
+})
+
 const operationsDispatchPreflight = computed(() => (
   props.dashboardReadiness.operationsDispatchPreflight || {}
 ))
@@ -4198,6 +4241,31 @@ function formatInvocationUnblockConfirmationMeta() {
     needs.push(operationsInvocationUnblockPlan.value.decisionRule)
   }
   return needs.join(' / ')
+}
+
+function formatInvocationUnblockOrderList(orders) {
+  if (!Array.isArray(orders) || orders.length === 0) {
+    return 'none'
+  }
+  const suffix = orders.length > 8 ? ', ...' : ''
+  return `${orders.slice(0, 8).join(', ')}${suffix}`
+}
+
+function formatInvocationUnblockConfirmationGroup(group) {
+  const orders = formatInvocationUnblockOrderList(group?.actionOrders)
+  const flag = group?.flag || 'confirmation flag'
+  const count = Number(group?.actionCount || 0)
+  return `${count} actions / orders ${orders} / ${flag}`
+}
+
+function formatInvocationUnblockRequiredInputGroup(group) {
+  const orders = formatInvocationUnblockOrderList(group?.actionOrders)
+  const workflows = Array.isArray(group?.workflowInputs) && group.workflowInputs.length > 0
+    ? `workflow inputs ${group.workflowInputs.join(', ')}`
+    : 'workflow inputs unknown'
+  const ambiguous = group?.ambiguousRepeatedPlaceholder ? 'ambiguous repeated placeholder' : 'single value'
+  const count = Number(group?.actionCount || 0)
+  return `${count} actions / orders ${orders} / ${workflows} / ${ambiguous}`
 }
 
 function formatInvocationUnblockActionMeta(action) {

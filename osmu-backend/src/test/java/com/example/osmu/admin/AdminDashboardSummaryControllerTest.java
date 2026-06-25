@@ -1809,12 +1809,45 @@ class AdminDashboardSummaryControllerTest {
                           "needsOperatorApprovalConfirmation": true,
                           "requiredPlaceholderCount": 6,
                           "ambiguousRepeatedPlaceholderCount": 2,
+                          "confirmationGroupCount": 2,
+                          "requiredInputGroupCount": 6,
                           "blockedActionOrders": [1, 2, 3, 4, 5],
                           "plannedActionOrders": [6],
                           "confirmedPlanCommand": "powershell -NoProfile -ExecutionPolicy Bypass -File .\\\\scripts\\\\invoke-operations-evidence-plan.ps1 -ActionOrder 1,2,3,4,5,6 -KubeconfigSecretConfirmed -ConfirmOperatorApproval -BackupTimestamp <YYYYMMDDTHHMMSSZ>",
                           "blockedOnlyPlanCommand": "powershell -NoProfile -ExecutionPolicy Bypass -File .\\\\scripts\\\\invoke-operations-evidence-plan.ps1 -ActionOrder 1,2,3,4,5 -KubeconfigSecretConfirmed -ConfirmOperatorApproval -BackupTimestamp <YYYYMMDDTHHMMSSZ>",
                           "plannedOnlyCommand": "powershell -NoProfile -ExecutionPolicy Bypass -File .\\\\scripts\\\\invoke-operations-evidence-plan.ps1 -ActionOrder 6",
                           "decisionRule": "Resolve placeholders and confirmations before execution.",
+                          "confirmationGroups": [
+                            {
+                              "kind": "operator-approval",
+                              "label": "Operator approval",
+                              "flag": "-ConfirmOperatorApproval",
+                              "actionCount": 5,
+                              "actionOrders": [1, 2, 3, 4, 5],
+                              "note": "Review the action evidence target."
+                            },
+                            {
+                              "kind": "kubeconfig-secret",
+                              "label": "Kubeconfig secret confirmation",
+                              "flag": "-KubeconfigSecretConfirmed",
+                              "actionCount": 5,
+                              "actionOrders": [1, 2, 3, 4, 5],
+                              "note": "Confirm OSMU_KUBECONFIG_BASE64 is present."
+                            }
+                          ],
+                          "requiredInputGroups": [
+                            {
+                              "placeholder": "<YYYYMMDDTHHMMSSZ>",
+                              "parameter": "BackupTimestamp",
+                              "valueTemplate": "<YYYYMMDDTHHMMSSZ>",
+                              "actionCount": 1,
+                              "actionOrders": [1],
+                              "workflowInputs": ["backup_timestamp"],
+                              "occurrenceCount": 1,
+                              "ambiguousRepeatedPlaceholder": false,
+                              "note": "Provide this value once to cover the listed blocked action orders."
+                            }
+                          ],
                           "actions": [
                             {
                               "order": 1,
@@ -1837,6 +1870,7 @@ class AdminDashboardSummaryControllerTest {
                                   "placeholder": "<YYYYMMDDTHHMMSSZ>",
                                   "parameter": "BackupTimestamp",
                                   "valueTemplate": "<YYYYMMDDTHHMMSSZ>",
+                                  "workflowInputs": ["backup_timestamp"],
                                   "occurrenceCount": 1,
                                   "ambiguousRepeatedPlaceholder": false,
                                   "note": "Provide a concrete value before planning or executing this action."
@@ -2306,12 +2340,19 @@ class AdminDashboardSummaryControllerTest {
                 .andExpect(jsonPath("$.data.operationsInvocationUnblockPlan.blockedCount").value(5))
                 .andExpect(jsonPath("$.data.operationsInvocationUnblockPlan.requiredPlaceholderCount").value(6))
                 .andExpect(jsonPath("$.data.operationsInvocationUnblockPlan.ambiguousRepeatedPlaceholderCount").value(2))
+                .andExpect(jsonPath("$.data.operationsInvocationUnblockPlan.confirmationGroupCount").value(2))
+                .andExpect(jsonPath("$.data.operationsInvocationUnblockPlan.requiredInputGroupCount").value(6))
                 .andExpect(jsonPath("$.data.operationsInvocationUnblockPlan.needsKubeconfigSecretConfirmation").value(true))
                 .andExpect(jsonPath("$.data.operationsInvocationUnblockPlan.needsOperatorApprovalConfirmation").value(true))
                 .andExpect(jsonPath("$.data.operationsInvocationUnblockPlan.blockedActionOrders").value(hasItem(1)))
                 .andExpect(jsonPath("$.data.operationsInvocationUnblockPlan.plannedActionOrders").value(hasItem(6)))
                 .andExpect(jsonPath("$.data.operationsInvocationUnblockPlan.confirmedPlanCommand").value("powershell -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\invoke-operations-evidence-plan.ps1 -ActionOrder 1,2,3,4,5,6 -KubeconfigSecretConfirmed -ConfirmOperatorApproval -BackupTimestamp <YYYYMMDDTHHMMSSZ>"))
+                .andExpect(jsonPath("$.data.operationsInvocationUnblockPlan.confirmationGroups[0].flag").value("-ConfirmOperatorApproval"))
+                .andExpect(jsonPath("$.data.operationsInvocationUnblockPlan.confirmationGroups[0].actionOrders").value(hasItem(1)))
+                .andExpect(jsonPath("$.data.operationsInvocationUnblockPlan.requiredInputGroups[0].parameter").value("BackupTimestamp"))
+                .andExpect(jsonPath("$.data.operationsInvocationUnblockPlan.requiredInputGroups[0].workflowInputs").value(hasItem("backup_timestamp")))
                 .andExpect(jsonPath("$.data.operationsInvocationUnblockPlan.actions[0].requiredInputs[0].parameter").value("BackupTimestamp"))
+                .andExpect(jsonPath("$.data.operationsInvocationUnblockPlan.actions[0].requiredInputs[0].workflowInputs").value(hasItem("backup_timestamp")))
                 .andExpect(jsonPath("$.data.operationsInvocationUnblockPlan.actions[0].invalidPlaceholders").value(hasItem("<restore-api-base>")))
                 .andExpect(jsonPath("$.data.operationsInvocationUnblockPlan.actions[0].planCommand").value("powershell -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\invoke-operations-evidence-plan.ps1 -ActionOrder 1 -KubeconfigSecretConfirmed -ConfirmOperatorApproval -BackupTimestamp <YYYYMMDDTHHMMSSZ>"))
                 .andExpect(jsonPath("$.data.operationsDispatchPreflight.result").value("action-required"))

@@ -26,6 +26,15 @@ function Get-JsonProperty([object] $Object, [string] $Name) {
     return $property.Value
 }
 
+function Get-ObjectValue([object] $Object, [string] $Name) {
+    if ($null -eq $Object) {
+        return $null
+    }
+    if ($Object -is [System.Collections.IDictionary] -and $Object.Contains($Name)) {
+        return $Object[$Name]
+    }
+    return Get-JsonProperty $Object $Name
+}
 function Get-Text([object] $Object, [string] $Name) {
     $value = Get-JsonProperty $Object $Name
     if ($null -eq $value) {
@@ -159,6 +168,14 @@ function Add-UniqueString([System.Collections.Generic.List[string]] $List, [stri
     }
 }
 
+function Add-UniqueInt([System.Collections.Generic.List[int]] $List, [int] $Value) {
+    if ($Value -le 0) {
+        return
+    }
+    if (-not $List.Contains($Value)) {
+        $List.Add($Value)
+    }
+}
 function New-InvokeCommand([int[]] $Orders, [bool] $NeedKubeconfig, [bool] $NeedApproval, [string[]] $Placeholders) {
     if ($null -eq $Orders -or $Orders.Count -eq 0) {
         return ""
@@ -185,6 +202,100 @@ function New-InvokeCommand([int[]] $Orders, [bool] $NeedKubeconfig, [bool] $Need
     return ($parts -join " ")
 }
 
+function New-ConfirmationGroup(
+    [string] $Kind,
+    [string] $Label,
+    [string] $Flag,
+    [string] $FlagProperty,
+    [string] $Note,
+    [object[]] $Actions
+) {
+    $orders = New-Object System.Collections.Generic.List[int]
+    foreach ($action in @($Actions)) {
+        $neededValue = Get-ObjectValue $action $FlagProperty
+        $needed = $false
+        if ($null -ne $neededValue) {
+            $needed = [System.Convert]::ToBoolean($neededValue)
+        }
+        if (-not $needed) {
+            continue
+        }
+        Add-UniqueInt $orders ([int] (Get-ObjectValue $action "order"))
+    }
+    if ($orders.Count -eq 0) {
+        return $null
+    }
+    return [ordered]@{
+        kind = $Kind
+        label = $Label
+        flag = $Flag
+        actionCount = $orders.Count
+        actionOrders = @($orders | ForEach-Object { [int] $_ })
+        note = $Note
+    }
+}
+
+function New-RequiredInputGroups([object[]] $Actions) {
+    $groupsByKey = [ordered]@{}
+    foreach ($action in @($Actions)) {
+        $order = [int] (Get-ObjectValue $action "order")
+        $requiredInputs = @(Get-ObjectValue $action "requiredInputs")
+        foreach ($input in $requiredInputs) {
+            $placeholder = [string] (Get-ObjectValue $input "placeholder")
+            $parameter = [string] (Get-ObjectValue $input "parameter")
+            if ([string]::IsNullOrWhiteSpace($placeholder) -and [string]::IsNullOrWhiteSpace($parameter)) {
+                continue
+            }
+            $key = "$parameter|$placeholder"
+            if (-not $groupsByKey.Contains($key)) {
+                $groupsByKey[$key] = [ordered]@{
+                    placeholder = $placeholder
+                    parameter = $parameter
+                    valueTemplate = [string] (Get-ObjectValue $input "valueTemplate")
+                    actionOrders = (New-Object System.Collections.Generic.List[int])
+                    workflowInputs = (New-Object System.Collections.Generic.List[string])
+                    occurrenceCount = 0
+                    ambiguousRepeatedPlaceholder = $false
+                }
+            }
+            $group = $groupsByKey[$key]
+            Add-UniqueInt $group["actionOrders"] $order
+            foreach ($workflowInput in @(Get-ObjectValue $input "workflowInputs")) {
+                Add-UniqueString $group["workflowInputs"] ([string] $workflowInput)
+            }
+            $group["occurrenceCount"] = [int] $group["occurrenceCount"] + [int] (Get-ObjectValue $input "occurrenceCount")
+            $ambiguousValue = Get-ObjectValue $input "ambiguousRepeatedPlaceholder"
+            if ($null -ne $ambiguousValue -and [System.Convert]::ToBoolean($ambiguousValue)) {
+                $group["ambiguousRepeatedPlaceholder"] = $true
+            }
+        }
+    }
+
+    $groups = New-Object System.Collections.ArrayList
+    foreach ($group in $groupsByKey.Values) {
+        $orders = @($group["actionOrders"] | ForEach-Object { [int] $_ })
+        $workflowInputs = @($group["workflowInputs"] | ForEach-Object { [string] $_ })
+        $ambiguous = [System.Convert]::ToBoolean($group["ambiguousRepeatedPlaceholder"])
+        $note = if ($ambiguous) {
+            "Repeated generic placeholder may need workflow run id/artifact collection helpers instead of one shared replacement value."
+        }
+        else {
+            "Provide this value once to cover the listed blocked action orders."
+        }
+        $groups.Add([ordered]@{
+            placeholder = [string] $group["placeholder"]
+            parameter = [string] $group["parameter"]
+            valueTemplate = [string] $group["valueTemplate"]
+            actionCount = $orders.Count
+            actionOrders = $orders
+            workflowInputs = $workflowInputs
+            occurrenceCount = [int] $group["occurrenceCount"]
+            ambiguousRepeatedPlaceholder = $ambiguous
+            note = $note
+        }) | Out-Null
+    }
+    return @($groups)
+}
 $resolvedInvocationPath = Resolve-ProjectPath $InvocationReportPath
 if (-not (Test-Path -LiteralPath $resolvedInvocationPath)) {
     throw "Operations evidence invocation report not found: $resolvedInvocationPath"
@@ -312,6 +423,29 @@ $plannedOnlyCommand = New-InvokeCommand `
     -NeedApproval $false `
     -Placeholders @()
 
+$confirmationGroups = @()
+$operatorApprovalGroup = New-ConfirmationGroup `
+    -Kind "operator-approval" `
+    -Label "Operator approval" `
+    -Flag "-ConfirmOperatorApproval" `
+    -FlagProperty "needsOperatorApprovalConfirmation" `
+    -Note "Review the action evidence target and rerun the plan with -ConfirmOperatorApproval." `
+    -Actions @($actionPlans)
+if ($null -ne $operatorApprovalGroup) {
+    $confirmationGroups += $operatorApprovalGroup
+}
+$kubeconfigSecretGroup = New-ConfirmationGroup `
+    -Kind "kubeconfig-secret" `
+    -Label "Kubeconfig secret confirmation" `
+    -Flag "-KubeconfigSecretConfirmed" `
+    -FlagProperty "needsKubeconfigSecretConfirmation" `
+    -Note "Confirm OSMU_KUBECONFIG_BASE64 is present for live Kubernetes workflow dispatch." `
+    -Actions @($actionPlans)
+if ($null -ne $kubeconfigSecretGroup) {
+    $confirmationGroups += $kubeconfigSecretGroup
+}
+$requiredInputGroups = @(New-RequiredInputGroups -Actions @($actionPlans))
+
 $report = [ordered]@{
     formatVersion = "osmu.operations-invocation-unblock-plan.v1"
     generatedAt = $generatedAt
@@ -327,12 +461,16 @@ $report = [ordered]@{
     needsOperatorApprovalConfirmation = $needsApproval
     requiredPlaceholderCount = $allPlaceholdersArray.Count
     ambiguousRepeatedPlaceholderCount = $ambiguousRepeatedPlaceholderCount
+    confirmationGroupCount = $confirmationGroups.Count
+    requiredInputGroupCount = $requiredInputGroups.Count
     blockedActionOrders = $blockedOrdersArray
     plannedActionOrders = $plannedOrdersArray
     confirmedPlanCommand = $confirmedPlanCommand
     blockedOnlyPlanCommand = $blockedOnlyCommand
     plannedOnlyCommand = $plannedOnlyCommand
     decisionRule = "Resolve placeholders, confirm operator approval when required, confirm OSMU_KUBECONFIG_BASE64 readiness when required, then rerun invoke-operations-evidence-plan.ps1 in plan-only mode before using -Execute."
+    confirmationGroups = @($confirmationGroups)
+    requiredInputGroups = @($requiredInputGroups)
     actions = @($actionPlans)
 }
 
@@ -353,6 +491,30 @@ $markdownLines = @(
     "- Needs operator approval confirmation: $($report.needsOperatorApprovalConfirmation)",
     "- Required placeholder values: $($report.requiredPlaceholderCount)",
     "- Ambiguous repeated placeholders: $($report.ambiguousRepeatedPlaceholderCount)",
+    "- Confirmation groups: $($report.confirmationGroupCount)",
+    "- Required input groups: $($report.requiredInputGroupCount)",
+    "",
+    "## Unblock Groups",
+    ""
+)
+if (@($confirmationGroups).Count -eq 0 -and @($requiredInputGroups).Count -eq 0) {
+    $markdownLines += "- No grouped blockers detected."
+}
+foreach ($group in @($confirmationGroups)) {
+    $markdownLines += "- Confirmation: $($group.label) for actions $(@($group.actionOrders) -join ', ') via ``$($group.flag)``"
+    if (-not [string]::IsNullOrWhiteSpace($group.note)) {
+        $markdownLines += "  - Note: $($group.note)"
+    }
+}
+foreach ($group in @($requiredInputGroups)) {
+    $workflowInputText = if (@($group.workflowInputs).Count -gt 0) { " workflow inputs: $(@($group.workflowInputs) -join ', ')" } else { " workflow inputs: n/a" }
+    $ambiguityText = if ($group.ambiguousRepeatedPlaceholder) { " ambiguous" } else { "" }
+    $markdownLines += "- Input: $($group.parameter) $($group.placeholder) for actions $(@($group.actionOrders) -join ', ') ($($group.actionCount) actions,$workflowInputText,$ambiguityText occurrenceCount=$($group.occurrenceCount))"
+    if (-not [string]::IsNullOrWhiteSpace($group.note)) {
+        $markdownLines += "  - Note: $($group.note)"
+    }
+}
+$markdownLines += @(
     "",
     "## Suggested Commands",
     ""

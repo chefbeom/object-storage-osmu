@@ -150,6 +150,8 @@ Assert-Equal $blockedReport.blockedCount 3 "blocked count"
 Assert-Equal $blockedReport.plannedCount 1 "planned count"
 Assert-Equal $blockedReport.requiredPlaceholderCount 6 "placeholder count"
 Assert-Equal $blockedReport.ambiguousRepeatedPlaceholderCount 2 "ambiguous placeholder count"
+Assert-Equal $blockedReport.confirmationGroupCount 2 "confirmation group count"
+Assert-Equal $blockedReport.requiredInputGroupCount 6 "required input group count"
 Assert-True $blockedReport.needsKubeconfigSecretConfirmation "expected kubeconfig confirmation"
 Assert-True $blockedReport.needsOperatorApprovalConfirmation "expected operator approval"
 Assert-Contains $blockedReport.confirmedPlanCommand "-KubeconfigSecretConfirmed" "confirmed command"
@@ -159,17 +161,32 @@ Assert-Contains $blockedReport.confirmedPlanCommand "-RestoreApiBase <restore-ap
 Assert-Contains $blockedReport.confirmedPlanCommand "-Placeholder '<run-id>=<run-id>'" "confirmed command"
 Assert-Contains $blockedReport.plannedOnlyCommand "-ActionOrder 4" "planned-only command"
 Assert-True $blockedReport.actions[0].requiresOperatorApproval "storage expansion live action should require operator approval"
+$operatorApprovalGroup = @($blockedReport.confirmationGroups | Where-Object { $_.kind -eq "operator-approval" })[0]
+$kubeconfigGroup = @($blockedReport.confirmationGroups | Where-Object { $_.kind -eq "kubeconfig-secret" })[0]
+Assert-Equal $operatorApprovalGroup.actionCount 2 "operator approval group action count"
+Assert-True (@($operatorApprovalGroup.actionOrders) -contains 1) "operator approval group should include action 1"
+Assert-True (@($operatorApprovalGroup.actionOrders) -contains 2) "operator approval group should include action 2"
+Assert-Equal $operatorApprovalGroup.flag "-ConfirmOperatorApproval" "operator approval group flag"
+Assert-Equal $kubeconfigGroup.actionCount 2 "kubeconfig group action count"
+Assert-True (@($kubeconfigGroup.actionOrders) -contains 1) "kubeconfig group should include action 1"
 $blockedDrInputs = @($blockedReport.actions[1].requiredInputs)
 $backupTimestampInput = @($blockedDrInputs | Where-Object { $_.placeholder -eq "<YYYYMMDDTHHMMSSZ>" })[0]
 $restoreApiInput = @($blockedDrInputs | Where-Object { $_.placeholder -eq "<restore-api-base>" })[0]
 Assert-True (@($backupTimestampInput.workflowInputs) -contains "backup_timestamp") "expected backup timestamp workflow input mapping"
 Assert-True (@($restoreApiInput.workflowInputs) -contains "api_base") "expected restore API workflow input mapping"
 Assert-Contains $backupTimestampInput.note "Workflow inputs: backup_timestamp" "backup timestamp note"
+$backupTimestampGroup = @($blockedReport.requiredInputGroups | Where-Object { $_.placeholder -eq "<YYYYMMDDTHHMMSSZ>" })[0]
+Assert-Equal $backupTimestampGroup.parameter "BackupTimestamp" "backup timestamp group parameter"
+Assert-True (@($backupTimestampGroup.actionOrders) -contains 2) "backup timestamp group should include action 2"
+Assert-True (@($backupTimestampGroup.workflowInputs) -contains "backup_timestamp") "backup timestamp group workflow input"
 Assert-True $blockedReport.actions[2].ambiguousRepeatedPlaceholders "expected repeated placeholders on security finalizer"
 $securityRunIdInput = @(@($blockedReport.actions[2].requiredInputs) | Where-Object { $_.placeholder -eq "<run-id>" })[0]
 Assert-True (@($securityRunIdInput.workflowInputs) -contains "image_signing_run_id") "expected image signing run id workflow input mapping"
 Assert-True (@($securityRunIdInput.workflowInputs) -contains "container_security_run_id") "expected container security run id workflow input mapping"
 Assert-Contains $blockedMarkdown "workflow inputs: image_signing_run_id, container_security_run_id" "blocked markdown workflow inputs"
+Assert-Contains $blockedMarkdown "## Unblock Groups" "blocked markdown groups"
+Assert-Contains $blockedMarkdown "Confirmation: Operator approval" "blocked markdown confirmation group"
+Assert-Contains $blockedMarkdown "Input: BackupTimestamp <YYYYMMDDTHHMMSSZ>" "blocked markdown input group"
 Assert-Contains $blockedMarkdown "repeated generic placeholders" "blocked markdown"
 
 Write-JsonFixture $readyInvocationPath ([ordered]@{
@@ -217,6 +234,8 @@ $readyMarkdown = Get-Content -Raw -LiteralPath $readyMarkdownPath
 Assert-Equal $readyReport.result "ready" "ready result"
 Assert-Equal $readyReport.blockedCount 0 "ready blocked count"
 Assert-Equal $readyReport.requiredPlaceholderCount 0 "ready placeholder count"
+Assert-Equal $readyReport.confirmationGroupCount 0 "ready confirmation group count"
+Assert-Equal $readyReport.requiredInputGroupCount 0 "ready required input group count"
 Assert-Contains $readyReport.plannedOnlyCommand "-ActionOrder 1" "ready planned-only command"
 Assert-Contains $readyMarkdown "Result: ready" "ready markdown"
 
@@ -264,6 +283,8 @@ $invalidReport = Get-Content -Raw -LiteralPath $invalidJsonPath | ConvertFrom-Js
 $invalidMarkdown = Get-Content -Raw -LiteralPath $invalidMarkdownPath
 Assert-Equal $invalidReport.result "action-required" "invalid result"
 Assert-Equal $invalidReport.requiredPlaceholderCount 1 "invalid required placeholder count"
+Assert-Equal $invalidReport.confirmationGroupCount 0 "invalid confirmation group count"
+Assert-Equal $invalidReport.requiredInputGroupCount 1 "invalid required input group count"
 Assert-Contains $invalidReport.confirmedPlanCommand "-BackupTimestamp <YYYYMMDDTHHMMSSZ>" "invalid confirmed command"
 Assert-True (@($invalidReport.actions)[0].invalidPlaceholders -contains "<YYYYMMDDTHHMMSSZ>") "invalid action should carry invalid placeholder"
 Assert-Contains $invalidMarkdown "<YYYYMMDDTHHMMSSZ> via BackupTimestamp" "invalid markdown"

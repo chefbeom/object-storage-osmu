@@ -1830,6 +1830,37 @@ public class AdminController {
         if (unblockPlanReport == null) {
             return DashboardOperationsInvocationUnblockPlanResponse.empty();
         }
+        java.util.ArrayList<DashboardOperationsInvocationUnblockConfirmationGroupResponse> confirmationGroups = new java.util.ArrayList<>();
+        JsonNode confirmationGroupNodes = unblockPlanReport.path("confirmationGroups");
+        if (confirmationGroupNodes.isArray()) {
+            for (JsonNode group : confirmationGroupNodes) {
+                confirmationGroups.add(new DashboardOperationsInvocationUnblockConfirmationGroupResponse(
+                        jsonText(group, "kind"),
+                        jsonText(group, "label"),
+                        jsonText(group, "flag"),
+                        jsonInt(group, "actionCount"),
+                        jsonIntList(group, "actionOrders"),
+                        jsonText(group, "note")
+                ));
+            }
+        }
+        java.util.ArrayList<DashboardOperationsInvocationUnblockInputGroupResponse> requiredInputGroups = new java.util.ArrayList<>();
+        JsonNode requiredInputGroupNodes = unblockPlanReport.path("requiredInputGroups");
+        if (requiredInputGroupNodes.isArray()) {
+            for (JsonNode group : requiredInputGroupNodes) {
+                requiredInputGroups.add(new DashboardOperationsInvocationUnblockInputGroupResponse(
+                        jsonText(group, "placeholder"),
+                        jsonText(group, "parameter"),
+                        jsonText(group, "valueTemplate"),
+                        jsonInt(group, "actionCount"),
+                        jsonIntList(group, "actionOrders"),
+                        jsonTextList(group, "workflowInputs"),
+                        jsonInt(group, "occurrenceCount"),
+                        jsonBoolean(group, "ambiguousRepeatedPlaceholder"),
+                        jsonText(group, "note")
+                ));
+            }
+        }
         java.util.ArrayList<DashboardOperationsInvocationUnblockActionResponse> actions = new java.util.ArrayList<>();
         JsonNode actionNodes = unblockPlanReport.path("actions");
         if (actionNodes.isArray()) {
@@ -1842,6 +1873,7 @@ public class AdminController {
                                 jsonText(input, "placeholder"),
                                 jsonText(input, "parameter"),
                                 jsonText(input, "valueTemplate"),
+                                jsonTextList(input, "workflowInputs"),
                                 jsonInt(input, "occurrenceCount"),
                                 jsonBoolean(input, "ambiguousRepeatedPlaceholder"),
                                 jsonText(input, "note")
@@ -1883,12 +1915,16 @@ public class AdminController {
                 jsonBoolean(unblockPlanReport, "needsOperatorApprovalConfirmation"),
                 jsonInt(unblockPlanReport, "requiredPlaceholderCount"),
                 jsonInt(unblockPlanReport, "ambiguousRepeatedPlaceholderCount"),
+                jsonInt(unblockPlanReport, "confirmationGroupCount"),
+                jsonInt(unblockPlanReport, "requiredInputGroupCount"),
                 jsonIntList(unblockPlanReport, "blockedActionOrders"),
                 jsonIntList(unblockPlanReport, "plannedActionOrders"),
                 jsonText(unblockPlanReport, "confirmedPlanCommand"),
                 jsonText(unblockPlanReport, "blockedOnlyPlanCommand"),
                 jsonText(unblockPlanReport, "plannedOnlyCommand"),
                 jsonText(unblockPlanReport, "decisionRule"),
+                List.copyOf(confirmationGroups),
+                List.copyOf(requiredInputGroups),
                 List.copyOf(actions)
         );
     }

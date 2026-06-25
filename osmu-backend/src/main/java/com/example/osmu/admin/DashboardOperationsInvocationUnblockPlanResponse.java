@@ -17,12 +17,16 @@ public record DashboardOperationsInvocationUnblockPlanResponse(
         boolean needsOperatorApprovalConfirmation,
         int requiredPlaceholderCount,
         int ambiguousRepeatedPlaceholderCount,
+        int confirmationGroupCount,
+        int requiredInputGroupCount,
         List<Integer> blockedActionOrders,
         List<Integer> plannedActionOrders,
         String confirmedPlanCommand,
         String blockedOnlyPlanCommand,
         String plannedOnlyCommand,
         String decisionRule,
+        List<DashboardOperationsInvocationUnblockConfirmationGroupResponse> confirmationGroups,
+        List<DashboardOperationsInvocationUnblockInputGroupResponse> requiredInputGroups,
         List<DashboardOperationsInvocationUnblockActionResponse> actions
 ) {
     public static DashboardOperationsInvocationUnblockPlanResponse empty() {
@@ -39,12 +43,16 @@ public record DashboardOperationsInvocationUnblockPlanResponse(
                 false,
                 0,
                 0,
+                0,
+                0,
                 List.of(),
                 List.of(),
                 "",
                 "",
                 "",
                 "",
+                List.of(),
+                List.of(),
                 List.of()
         );
     }
