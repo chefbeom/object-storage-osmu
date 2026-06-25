@@ -72,11 +72,11 @@ if (-not (Test-Path -LiteralPath $resolvedPath)) {
     throw "Development roadmap missing: $resolvedPath"
 }
 
-$content = Get-Content -Raw -LiteralPath $resolvedPath
+$content = [System.IO.File]::ReadAllText($resolvedPath, [System.Text.Encoding]::UTF8)
 
 Assert-Contains $content "OSMU Development Roadmap" "Development roadmap"
-Assert-Contains $content "작성일: 2026-06-23 KST" "Development roadmap"
-Assert-Contains $content "기준 snapshot: 2026-06-23 KST." "Development roadmap"
+Assert-Contains $content (Decode-Utf8Base64 "7J6R7ISx7J28OiAyMDI2LTA2LTIzIEtTVA==") "Development roadmap"
+Assert-Contains $content (Decode-Utf8Base64 "6riw7KSAIHNuYXBzaG90OiAyMDI2LTA2LTIzIEtTVC4=") "Development roadmap"
 Assert-Contains $content "S3-compatible replacement layer" "Development roadmap"
 Assert-Contains $content 'docker-durable-demo-verified' "Development roadmap"
 Assert-Contains $content "MVP completion latest verification: result=ready, classification=local-durable-mvp-ready, localDurableMvpReady=true." "Development roadmap"
@@ -102,7 +102,7 @@ Assert-Contains $content "scope-out evidence" "Development roadmap"
 Assert-Contains $content "S3 client smoke" "Development roadmap"
 Assert-Contains $content "role scope" "Development roadmap"
 Assert-NotContains $content "edge parity" "Development roadmap"
-Assert-NotContains $content "작성일: 2026-06-21" "Development roadmap"
+Assert-NotContains $content (Decode-Utf8Base64 "7J6R7ISx7J28OiAyMDI2LTA2LTIx") "Development roadmap"
 
 $mvpCompletion = Read-OptionalJsonReport $MvpCompletionReportPath "MVP completion report"
 if ($null -ne $mvpCompletion) {
