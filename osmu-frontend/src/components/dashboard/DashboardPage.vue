@@ -4176,7 +4176,10 @@ function formatDispatchPreflightInputMeta(input) {
 
 function formatDispatchPreflightTemplateMeta(template) {
   const workflow = template?.workflow || 'local command'
+  const ready = template?.readyToDispatch ? 'ready' : 'blocked'
   const missing = Number(template?.missingInputCount || 0)
+  const unsafe = Number(template?.unsafeInputCount || 0)
+  const invalid = Number(template?.invalidInputCount || 0)
   const ambiguous = Number(template?.ambiguousInputCount || 0)
   const secrets = Array.isArray(template?.requiredSecrets) && template.requiredSecrets.length > 0
     ? `secrets ${template.requiredSecrets.join(', ')}`
@@ -4184,13 +4187,18 @@ function formatDispatchPreflightTemplateMeta(template) {
   const checklist = Array.isArray(template?.operatorChecklist) && template.operatorChecklist.length > 0
     ? `${template.operatorChecklist.length} checklist items`
     : 'no checklist items'
-  const inputNames = (Array.isArray(template?.inputs) ? template.inputs : [])
-    .flatMap((input) => (Array.isArray(input?.workflowInputs) ? input.workflowInputs : []))
+  const inputNames = Array.isArray(template?.workflowInputNames) && template.workflowInputNames.length > 0
+    ? template.workflowInputNames
+    : (Array.isArray(template?.inputs) ? template.inputs : [])
+      .flatMap((input) => (Array.isArray(input?.workflowInputs) ? input.workflowInputs : []))
   const uniqueInputNames = Array.from(new Set(inputNames)).slice(0, 8)
   const workflowInputSummary = uniqueInputNames.length > 0
     ? `workflow inputs ${uniqueInputNames.join(', ')}${inputNames.length > uniqueInputNames.length ? ', ...' : ''}`
     : 'workflow inputs unknown'
-  return `${workflow} / ${missing} missing inputs / ${ambiguous} ambiguous / ${workflowInputSummary} / ${secrets} / ${checklist}`
+  const missingParameters = Array.isArray(template?.missingInputParameters) && template.missingInputParameters.length > 0
+    ? `missing ${template.missingInputParameters.join(', ')}`
+    : 'missing none'
+  return `${workflow} / ${ready} / ${missing} missing inputs / ${unsafe} unsafe / ${invalid} invalid / ${ambiguous} ambiguous / ${missingParameters} / ${workflowInputSummary} / ${secrets} / ${checklist}`
 }
 
 function formatDispatchPreflightWorkflowMeta(workflow) {

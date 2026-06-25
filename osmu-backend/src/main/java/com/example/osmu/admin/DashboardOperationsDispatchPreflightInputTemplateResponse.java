@@ -14,8 +14,15 @@ public record DashboardOperationsDispatchPreflightInputTemplateResponse(
         boolean needsOperatorApprovalConfirmation,
         boolean needsKubeconfigSecretConfirmation,
         List<String> requiredSecrets,
+        List<String> workflowInputNames,
+        boolean readyToDispatch,
         int missingInputCount,
+        int unsafeInputCount,
+        int invalidInputCount,
         int ambiguousInputCount,
+        List<String> missingInputParameters,
+        List<String> unsafeInputParameters,
+        List<String> invalidInputParameters,
         List<DashboardOperationsDispatchPreflightInputResponse> inputs,
         List<String> operatorChecklist
 ) {

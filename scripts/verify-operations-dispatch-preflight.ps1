@@ -171,7 +171,14 @@ Assert-Equal @($missingReport.inputTemplates).Count 3 "missing input template co
 $missingDrTemplate = @($missingReport.inputTemplates | Where-Object { $_.actionOrder -eq 2 })[0]
 Assert-Equal $missingDrTemplate.workflow "kubernetes-dr-finalizer-ci.yml" "missing DR template workflow"
 Assert-Equal $missingDrTemplate.missingInputCount 1 "missing DR template missing input count"
+Assert-Equal $missingDrTemplate.unsafeInputCount 0 "missing DR template unsafe input count"
+Assert-Equal $missingDrTemplate.invalidInputCount 0 "missing DR template invalid input count"
+Assert-True (-not $missingDrTemplate.readyToDispatch) "missing DR template should not be ready to dispatch"
 Assert-True (@($missingDrTemplate.requiredSecrets) -contains "OSMU_ADMIN_PASSWORD") "missing DR template admin password secret"
+Assert-True (@($missingDrTemplate.workflowInputNames) -contains "backup_timestamp") "missing DR template workflow input summary"
+Assert-True (@($missingDrTemplate.missingInputParameters) -contains "BackupTimestamp") "missing DR template missing parameter summary"
+Assert-Equal @($missingDrTemplate.unsafeInputParameters).Count 0 "missing DR template unsafe parameter summary"
+Assert-Equal @($missingDrTemplate.invalidInputParameters).Count 0 "missing DR template invalid parameter summary"
 Assert-Equal $missingDrTemplate.inputs[0].valueTemplate "<YYYYMMDDTHHMMSSZ>" "missing DR template input value template"
 Assert-True (@($missingDrTemplate.inputs[0].workflowInputs) -contains "backup_timestamp") "missing DR template workflow input mapping"
 Assert-True (-not $missingDrTemplate.inputs[0].supplied) "missing DR template input should be missing"
@@ -214,6 +221,11 @@ Assert-True (@($readyReport.requiredGitHubSecrets) -contains "OSMU_ENTERPRISE_AU
 Assert-True (@($readyReport.requiredGitHubSecrets) -contains "OSMU_ENTERPRISE_AUTH_OIDC_CALLBACK_STATE") "expected enterprise auth OIDC state secret"
 $readyDrTemplate = @($readyReport.inputTemplates | Where-Object { $_.actionOrder -eq 2 })[0]
 Assert-Equal $readyDrTemplate.missingInputCount 0 "ready DR template missing input count"
+Assert-Equal $readyDrTemplate.unsafeInputCount 0 "ready DR template unsafe input count"
+Assert-Equal $readyDrTemplate.invalidInputCount 0 "ready DR template invalid input count"
+Assert-True $readyDrTemplate.readyToDispatch "ready DR template should be ready to dispatch"
+Assert-Equal @($readyDrTemplate.missingInputParameters).Count 0 "ready DR template missing parameter summary"
+Assert-True (@($readyDrTemplate.workflowInputNames) -contains "backup_timestamp") "ready DR template workflow input summary"
 Assert-True $readyDrTemplate.inputs[0].supplied "ready DR template input should be supplied"
 Assert-Equal $readyDrTemplate.inputs[0].valuePreview "20260616T010203Z" "ready DR template input preview"
 Assert-True (@($readyDrTemplate.inputs[0].workflowInputs) -contains "backup_timestamp") "ready DR template workflow input mapping"
@@ -227,6 +239,8 @@ Assert-True (@($drWorkflow.requiredSecrets) -contains "OSMU_ADMIN_PASSWORD") "co
 Assert-True (-not (@($enterpriseAuthWorkflow.requiredSecrets) -contains "OSMU_KUBECONFIG_BASE64")) "enterprise auth workflow should not require kubeconfig"
 Assert-True (@($enterpriseAuthWorkflow.requiredSecrets) -contains "OSMU_ENTERPRISE_AUTH_ADMIN_PASSWORD") "enterprise auth workflow should require admin password when run_live=true"
 Assert-Contains $readyMarkdown "Result: ready" "ready markdown"
+Assert-Contains $readyMarkdown "readyToDispatch=True" "ready markdown template readiness"
+Assert-Contains $readyMarkdown "workflowInputs=backup_timestamp" "ready markdown workflow input summary"
 
 & powershell -NoProfile -ExecutionPolicy Bypass -File $scriptPath `
     -UnblockPlanPath $unblockPlanPath `

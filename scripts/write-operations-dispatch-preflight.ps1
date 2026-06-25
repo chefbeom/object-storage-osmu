@@ -461,6 +461,33 @@ foreach ($action in @($selectedActions)) {
         $operatorChecklist.Add("Fill $($actionInputs.Count) required input value(s)")
     }
 
+    $workflowInputNames = New-Object System.Collections.Generic.List[string]
+    $missingInputParameters = New-Object System.Collections.Generic.List[string]
+    $unsafeInputParameters = New-Object System.Collections.Generic.List[string]
+    $invalidInputParameters = New-Object System.Collections.Generic.List[string]
+    foreach ($input in @($actionInputs)) {
+        foreach ($workflowInputName in @($input.workflowInputs)) {
+            Add-UniqueString $workflowInputNames ([string] $workflowInputName)
+        }
+        if (-not [bool] $input.supplied) {
+            Add-UniqueString $missingInputParameters ([string] $input.parameter)
+        }
+        if (-not [bool] $input.safeValue) {
+            Add-UniqueString $unsafeInputParameters ([string] $input.parameter)
+        }
+        if (-not [bool] $input.validValue) {
+            Add-UniqueString $invalidInputParameters ([string] $input.parameter)
+        }
+    }
+    $actionMissingInputCount = @($actionInputs | Where-Object { -not $_.supplied }).Count
+    $actionUnsafeInputCount = @($actionInputs | Where-Object { -not $_.safeValue }).Count
+    $actionInvalidInputCount = @($actionInputs | Where-Object { -not $_.validValue }).Count
+    $actionAmbiguousInputCount = @($actionInputs | Where-Object { $_.ambiguousRepeatedPlaceholder }).Count
+    $workflowReady = [string]::IsNullOrWhiteSpace($workflowName) -or ($workflowFile -and [bool] $workflowFile.exists)
+    $operatorApprovalReady = (-not (Get-Bool $action "needsOperatorApprovalConfirmation")) -or [bool] $ConfirmOperatorApproval
+    $kubeconfigReady = (-not (Get-Bool $action "needsKubeconfigSecretConfirmation")) -or [bool] $KubeconfigSecretConfirmed
+    $readyToDispatch = $workflowReady -and $operatorApprovalReady -and $kubeconfigReady -and ($actionMissingInputCount -eq 0) -and ($actionUnsafeInputCount -eq 0) -and ($actionInvalidInputCount -eq 0) -and ($actionAmbiguousInputCount -eq 0)
+
     $inputTemplates.Add([ordered]@{
         actionOrder = $order
         name = Get-Text $action "name"
@@ -471,8 +498,15 @@ foreach ($action in @($selectedActions)) {
         needsOperatorApprovalConfirmation = Get-Bool $action "needsOperatorApprovalConfirmation"
         needsKubeconfigSecretConfirmation = Get-Bool $action "needsKubeconfigSecretConfirmation"
         requiredSecrets = @($workflowSecrets)
-        missingInputCount = @($actionInputs | Where-Object { -not $_.supplied }).Count
-        ambiguousInputCount = @($actionInputs | Where-Object { $_.ambiguousRepeatedPlaceholder }).Count
+        workflowInputNames = @($workflowInputNames)
+        readyToDispatch = $readyToDispatch
+        missingInputCount = $actionMissingInputCount
+        unsafeInputCount = $actionUnsafeInputCount
+        invalidInputCount = $actionInvalidInputCount
+        ambiguousInputCount = $actionAmbiguousInputCount
+        missingInputParameters = @($missingInputParameters)
+        unsafeInputParameters = @($unsafeInputParameters)
+        invalidInputParameters = @($invalidInputParameters)
         inputs = @($actionInputs)
         operatorChecklist = @($operatorChecklist)
     }) | Out-Null
@@ -654,7 +688,8 @@ else {
     foreach ($template in $inputTemplates) {
         $workflowLabel = if ([string]::IsNullOrWhiteSpace($template.workflow)) { "local command" } else { $template.workflow }
         $secretLabel = if (@($template.requiredSecrets).Count -gt 0) { @($template.requiredSecrets) -join ', ' } else { 'none' }
-        $markdownLines += "- action $($template.actionOrder) - $($template.name): workflow=$workflowLabel, missingInputs=$($template.missingInputCount), requiredSecrets=$secretLabel"
+        $workflowInputLabel = if (@($template.workflowInputNames).Count -gt 0) { @($template.workflowInputNames) -join ', ' } else { 'none' }
+        $markdownLines += "- action $($template.actionOrder) - $($template.name): workflow=$workflowLabel, readyToDispatch=$($template.readyToDispatch), missingInputs=$($template.missingInputCount), unsafeInputs=$($template.unsafeInputCount), invalidInputs=$($template.invalidInputCount), workflowInputs=$workflowInputLabel, requiredSecrets=$secretLabel"
         foreach ($input in @($template.inputs)) {
             $workflowInputLabel = if (@($input.workflowInputs).Count -gt 0) { ", workflowInputs=$((@($input.workflowInputs) | ForEach-Object { [string] $_ }) -join ', ')" } else { "" }
             $markdownLines += "  - $($input.parameter) $($input.placeholder): template=$($input.valueTemplate), supplied=$($input.supplied)$workflowInputLabel"

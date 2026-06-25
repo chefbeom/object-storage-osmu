@@ -2006,8 +2006,15 @@ public class AdminController {
                         jsonBoolean(template, "needsOperatorApprovalConfirmation"),
                         jsonBoolean(template, "needsKubeconfigSecretConfirmation"),
                         jsonTextList(template, "requiredSecrets"),
+                        jsonTextList(template, "workflowInputNames"),
+                        jsonBoolean(template, "readyToDispatch"),
                         jsonInt(template, "missingInputCount"),
+                        jsonInt(template, "unsafeInputCount"),
+                        jsonInt(template, "invalidInputCount"),
                         jsonInt(template, "ambiguousInputCount"),
+                        jsonTextList(template, "missingInputParameters"),
+                        jsonTextList(template, "unsafeInputParameters"),
+                        jsonTextList(template, "invalidInputParameters"),
                         List.copyOf(templateInputs),
                         jsonTextList(template, "operatorChecklist")
                 ));

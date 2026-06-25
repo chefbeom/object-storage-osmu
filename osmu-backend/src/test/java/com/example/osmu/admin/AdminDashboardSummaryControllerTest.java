@@ -1892,12 +1892,52 @@ class AdminDashboardSummaryControllerTest {
                               "actionOrder": 3,
                               "placeholder": "<YYYYMMDDTHHMMSSZ>",
                               "parameter": "BackupTimestamp",
+                              "valueTemplate": "<YYYYMMDDTHHMMSSZ>",
+                              "workflowInputs": ["backup_timestamp"],
                               "supplied": false,
                               "safeValue": true,
                               "validValue": true,
                               "valuePreview": "",
                               "ambiguousRepeatedPlaceholder": false,
                               "note": "Provide a concrete value before planning or executing this action."
+                            }
+                          ],
+                          "inputTemplates": [
+                            {
+                              "actionOrder": 3,
+                              "name": "Kubernetes DR finalizer evidence",
+                              "category": "ha-dr",
+                              "actionType": "kubernetes-live",
+                              "commandMode": "Workflow",
+                              "workflow": "kubernetes-dr-finalizer-ci.yml",
+                              "needsOperatorApprovalConfirmation": true,
+                              "needsKubeconfigSecretConfirmation": true,
+                              "requiredSecrets": ["OSMU_KUBECONFIG_BASE64", "OSMU_ADMIN_PASSWORD"],
+                              "workflowInputNames": ["backup_timestamp"],
+                              "readyToDispatch": false,
+                              "missingInputCount": 1,
+                              "unsafeInputCount": 0,
+                              "invalidInputCount": 0,
+                              "ambiguousInputCount": 0,
+                              "missingInputParameters": ["BackupTimestamp"],
+                              "unsafeInputParameters": [],
+                              "invalidInputParameters": [],
+                              "inputs": [
+                                {
+                                  "actionOrder": 3,
+                                  "placeholder": "<YYYYMMDDTHHMMSSZ>",
+                                  "parameter": "BackupTimestamp",
+                                  "valueTemplate": "<YYYYMMDDTHHMMSSZ>",
+                                  "workflowInputs": ["backup_timestamp"],
+                                  "supplied": false,
+                                  "safeValue": true,
+                                  "validValue": true,
+                                  "valuePreview": "",
+                                  "ambiguousRepeatedPlaceholder": false,
+                                  "note": "Provide a concrete value before planning or executing this action."
+                                }
+                              ],
+                              "operatorChecklist": ["Confirm operator approval", "Confirm OSMU_KUBECONFIG_BASE64 secret readiness", "Ensure GitHub secret OSMU_ADMIN_PASSWORD is configured", "Fill 1 required input value(s)"]
                             }
                           ],
                           "decisionRule": "Run the ready plan command first without -Execute."
@@ -2277,6 +2317,12 @@ class AdminDashboardSummaryControllerTest {
                 .andExpect(jsonPath("$.data.operationsDispatchPreflight.requiredInputs[0].supplied").value(false))
                 .andExpect(jsonPath("$.data.operationsDispatchPreflight.requiredInputs[0].safeValue").value(true))
                 .andExpect(jsonPath("$.data.operationsDispatchPreflight.requiredInputs[0].validValue").value(true))
+                .andExpect(jsonPath("$.data.operationsDispatchPreflight.inputTemplates[0].workflowInputNames[0]").value("backup_timestamp"))
+                .andExpect(jsonPath("$.data.operationsDispatchPreflight.inputTemplates[0].readyToDispatch").value(false))
+                .andExpect(jsonPath("$.data.operationsDispatchPreflight.inputTemplates[0].missingInputParameters[0]").value("BackupTimestamp"))
+                .andExpect(jsonPath("$.data.operationsDispatchPreflight.inputTemplates[0].unsafeInputCount").value(0))
+                .andExpect(jsonPath("$.data.operationsDispatchPreflight.inputTemplates[0].invalidInputCount").value(0))
+                .andExpect(jsonPath("$.data.operationsDispatchPreflight.inputTemplates[0].operatorChecklist").value(hasItem("Ensure GitHub secret OSMU_ADMIN_PASSWORD is configured")))
                 .andExpect(jsonPath("$.data.operationsDispatchPreflight.executeCommand").doesNotExist())
                 .andExpect(jsonPath("$.data.operationsWorkflowRunIdPlan.result").value("query-required"))
                 .andExpect(jsonPath("$.data.operationsWorkflowRunIdPlan.branch").value("main"))
