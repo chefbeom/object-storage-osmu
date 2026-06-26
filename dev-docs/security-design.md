@@ -269,6 +269,8 @@ Enterprise auth plan:
 - MariaDB 외부 직접 노출 금지
 - MinIO Console 관리자 접근 제한
 
+Kubernetes/Helm 배포 기준에서는 `infra/k8s/networkpolicy.yaml`과 `infra/helm/osmu/templates/networkpolicy.yaml`이 backend/backup egress를 MariaDB 3306, MinIO 9000, cluster DNS 53으로 제한하고, MariaDB/MinIO ingress를 backend와 backup workload로 제한한다. `scripts/write-cluster-network-access-review-evidence.ps1`는 이 정적 통제의 파일 해시, Helm `networkPolicy.enabled=true` 상태, DNS/DB/MinIO/backup/public ingress/default-deny/observability scrape 검토 reference, operator confirmation을 `.osmu-run/latest-cluster-network-access-review-evidence.json`에 기록한다. 이 증빙은 `kubectl`을 실행하거나 live CNI enforcement를 증명하지 않으며 kubeconfig, token, password, private key 같은 비밀값은 reference에도 포함하지 않는다.
+
 ## 9.1 Kubernetes RBAC Hardening
 
 현재 Kubernetes/Helm draft는 backend, frontend, MariaDB, MinIO, backup workload에 전용 ServiceAccount를 사용하고 `automountServiceAccountToken: false`를 적용한다. 일반 애플리케이션 workload에는 Kubernetes `Role`, `ClusterRole`, `RoleBinding`, `ClusterRoleBinding`을 부여하지 않는다.

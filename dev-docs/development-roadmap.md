@@ -163,6 +163,7 @@ AWS 문서의 세부 checksum negotiation, 드문 header 조합, 정확한 오�
 - signed image evidence와 SBOM hash evidence
 - secret rotation runbook 실제 실행
 - cluster network access review
+- cluster network access review evidence writer/verifier (`scripts/write-cluster-network-access-review-evidence.ps1`)
 - storage expansion live evidence
 - Helm values hardening
 - runbook, troubleshooting, support escalation handoff

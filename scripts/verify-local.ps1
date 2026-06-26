@@ -94,6 +94,9 @@ Run "powershell -ExecutionPolicy Bypass -File .\scripts\verify-k8s-manifests.ps1
 Step "Helm chart draft check"
 Run "powershell -ExecutionPolicy Bypass -File .\scripts\verify-helm-chart.ps1"
 
+Step "Cluster network access review evidence check"
+Run "powershell -ExecutionPolicy Bypass -File .\scripts\verify-cluster-network-access-review-evidence.ps1"
+
 Step "Container hardening draft check"
 Run "powershell -ExecutionPolicy Bypass -File .\scripts\verify-container-hardening.ps1"
 
