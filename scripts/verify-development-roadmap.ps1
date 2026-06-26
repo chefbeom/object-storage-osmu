@@ -92,6 +92,8 @@ Assert-Contains $content 'operations readiness convergence `result=ready`' "Deve
 Assert-Contains $content 'Kubernetes operations report sync `result=applied`' "Development roadmap"
 Assert-Contains $content "Data-flow storage transition plan" "Development roadmap"
 Assert-Contains $content "target query latency" "Development roadmap"
+Assert-Contains $content "data-flow query/retention budget evidence writer" "Development roadmap"
+Assert-Contains $content "write-data-flow-query-retention-budget-evidence.ps1" "Development roadmap"
 Assert-Contains $content "target query-plan evidence" "Development roadmap"
 Assert-Contains $content "Alertmanager/Grafana threshold target contract" "Development roadmap"
 Assert-Contains $content "monitoring threshold evidence writer" "Development roadmap"

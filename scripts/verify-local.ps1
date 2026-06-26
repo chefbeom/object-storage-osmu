@@ -250,6 +250,9 @@ Run "powershell -ExecutionPolicy Bypass -File .\scripts\verify-object-list-query
 Step "Data-flow storage plan check"
 Run "powershell -ExecutionPolicy Bypass -File .\scripts\verify-data-flow-storage-plan.ps1"
 
+Step "Data-flow query and retention budget evidence check"
+Run "powershell -ExecutionPolicy Bypass -File .\scripts\verify-data-flow-query-retention-budget-evidence.ps1"
+
 Step "Data-flow storage transition runbook evidence check"
 Run "powershell -ExecutionPolicy Bypass -File .\scripts\verify-data-flow-storage-transition-runbook-evidence.ps1"
 

@@ -99,13 +99,13 @@ AWS 문서의 세부 checksum negotiation, 드문 header 조합, 정확한 오�
 - monthly rollup JSON/CSV
 - stored monthly aggregate refresh/read/export
 - event/daily/monthly retention job
-- MariaDB query-plan evidence, data-flow storage transition plan, data-flow storage transition runbook evidence writer/verifier, manual data-flow storage plan/runbook evidence workflows/artifact import paths, Alertmanager/Grafana threshold target contract, and monitoring threshold evidence writer/verifier plus manual workflow/artifact import path
+- MariaDB query-plan evidence, data-flow storage transition plan, data-flow query/retention budget evidence writer/verifier, data-flow storage transition runbook evidence writer/verifier, manual data-flow storage plan/runbook evidence workflows/artifact import paths, Alertmanager/Grafana threshold target contract, and monitoring threshold evidence writer/verifier plus manual workflow/artifact import path
 
 남은 범위:
 
 - target 규모 기준 table partitioning 또는 external time-series repository 선택
 - target backfill/dual-write/rollback runbook evidence `result=passed` run
-- target query latency와 retention budget evidence `result=passed` workflow artifact
+- target query latency와 retention budget evidence `result=passed` run/artifact using `scripts/write-data-flow-query-retention-budget-evidence.ps1`
 - target tenant baseline 기반 Alertmanager/Grafana threshold value/receiver tuning `result=passed` evidence run through the manual monitoring threshold workflow
 
 ## 6. Phase 4 - Commercial Readiness
