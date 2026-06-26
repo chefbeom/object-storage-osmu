@@ -18,8 +18,10 @@ param(
     [string] $SecretRotationJsonPath = "",
     [string] $CommercialIntegrationEvidenceRef = "",
     [string] $CommercialApprovalEvidenceRef = "",
+    [string] $ChargebackCloseoutEvidenceRef = "",
     [string] $CommercialIntegrationJsonPath = "",
     [string] $CommercialApprovalJsonPath = "",
+    [string] $ChargebackCloseoutJsonPath = "",
     [string] $EnterpriseAuthEvidenceRef = "",
     [string] $EnterpriseAuthJsonPath = "",
     [string] $EnterpriseAuthJitRollbackEvidenceRef = "",
@@ -49,6 +51,7 @@ param(
     [switch] $ConfirmSecretRotationSnapshotReviewed,
     [switch] $ConfirmCommercialIntegrationSnapshotReviewed,
     [switch] $ConfirmCommercialApprovalSnapshotReviewed,
+    [switch] $ConfirmChargebackCloseoutSnapshotReviewed,
     [switch] $ConfirmEnterpriseAuthSmokeSnapshotReviewed,
     [switch] $ConfirmEnterpriseAuthJitRollbackSnapshotReviewed,
     [switch] $ConfirmMonitoringThresholdReviewed,
@@ -105,8 +108,19 @@ function Assert-SanitizedOperationsSnapshotJson([string] $Value, [string] $Label
     }
 }
 
-function Assert-SanitizedEnterpriseAuthJitRollbackJson([string] $Value, [string] $Label) {
+function Assert-SanitizedChargebackCloseoutJson([string] $Value, [string] $Label) {
     if ([string]::IsNullOrWhiteSpace($Value)) {
+        return
+    }
+
+    $forbiddenPropertyPattern = '(?i)"(rawCustomer|rawCustomerData|raw_customer_data|rawPayment|raw_payment|customerPaymentData|customer_payment_data|paymentReference|payment_reference|paymentTarget|payment_target|paymentPayload|payment_payload|providerPayload|provider_payload|providerResponse|provider_response|rawProviderResponse|raw_provider_response|rawInvoice|raw_invoice|invoiceDocument|invoice_document|rawPriceTable|raw_price_table|priceTable|price_table|endpointUrl|endpoint_url|webhookUrl|webhook_url|password|passwd|secret|token|credential|apiKey|api_key|accessKey|access_key|privateKey|private_key)"\s*:'
+    $credentialPattern = '(?i)\b(password|passwd|secret|token|credential|api[_-]?key|access[_-]?key|private[_-]?key|webhook[_-]?secret|provider[_-]?secret)\s*[=:]\s*\S+'
+    if ($Value -match $forbiddenPropertyPattern -or $Value -match $credentialPattern) {
+        throw "$Label appears to contain raw chargeback, invoice, provider, endpoint, payment, or credential-shaped content. Store only sanitized chargeback closeout summary fields."
+    }
+}
+
+function Assert-SanitizedEnterpriseAuthJitRollbackJson([string] $Value, [string] $Label) {    if ([string]::IsNullOrWhiteSpace($Value)) {
         return
     }
 
@@ -438,8 +452,18 @@ function New-CommercialEvidenceCheckSnapshotRow([object] $Check) {
     }
 }
 
-function New-EnterpriseAuthSmokeCheckSnapshotRow([object] $Check) {
+function New-ChargebackCloseoutCheckSnapshotRow([object] $Check) {
     return [ordered]@{
+        id = Get-PropertyText $Check "id"
+        name = Get-PropertyText $Check "name"
+        status = Get-PropertyText $Check "status"
+        passed = Get-PropertyBool $Check "passed"
+        detail = Get-PropertyText $Check "detail"
+        evidenceRef = Get-PropertyText $Check "evidenceRef"
+    }
+}
+
+function New-EnterpriseAuthSmokeCheckSnapshotRow([object] $Check) {    return [ordered]@{
         id = Get-PropertyText $Check "id"
         name = Get-PropertyText $Check "name"
         category = Get-PropertyText $Check "category"
@@ -1045,8 +1069,248 @@ function Read-CommercialApprovalEvidenceSnapshot([string] $Path) {
     return $snapshot
 }
 
-function Read-EnterpriseAuthSmokeEvidenceSnapshot([string] $Path) {
+function Read-ChargebackCloseoutEvidenceSnapshot([string] $Path) {
     $snapshot = [ordered]@{
+        provided = $false
+        path = ""
+        parsed = $false
+        formatVersion = ""
+        expectedFormatVersion = "osmu.chargeback-closeout-evidence.v1"
+        validFormatVersion = $false
+        result = ""
+        passed = $false
+        environmentName = ""
+        targetCluster = ""
+        operatorName = ""
+        billingPeriod = ""
+        closeoutWindow = [ordered]@{
+            startedAt = ""
+            completedAt = ""
+        }
+        evidenceRefs = [ordered]@{}
+        confirmations = [ordered]@{}
+        confirmationsValid = $false
+        confirmationValidation = [ordered]@{}
+        chargebackCloseoutSnapshot = [ordered]@{
+            provided = $false
+            parsed = $false
+            valid = $false
+            billingPeriod = ""
+            result = ""
+            statusClosed = $false
+            billingPeriodMatches = $false
+            integersValid = $false
+            booleansValid = $false
+            failureCountZero = $false
+            noRawDataStored = $false
+            counts = [ordered]@{}
+            rawDataFlags = [ordered]@{}
+            detail = ""
+        }
+        paymentProviderAdapterReadiness = [ordered]@{
+            provided = $false
+            parsed = $false
+            valid = $false
+            mode = ""
+            status = ""
+            profileCount = 0
+            webhookReadyProfileCount = 0
+            nativeApiReadyProfileCount = 0
+            nativeApiSupported = $false
+            nativeApiReady = $false
+            detail = ""
+        }
+        checkCount = 0
+        passCount = 0
+        failureCount = 0
+        plannedCount = 0
+        summaryValid = $false
+        closeoutCountsValid = $false
+        rawDataFlagsValid = $false
+        noRawDataStored = $false
+        reconciliationDifferenceMinorUnits = 0
+        topChecks = @()
+        decisionRule = ""
+        scopePolicy = ""
+        secretPolicy = ""
+        detail = "No chargeback closeout evidence JSON supplied."
+    }
+
+    if ([string]::IsNullOrWhiteSpace($Path)) {
+        return $snapshot
+    }
+
+    $resolvedPath = Resolve-ProjectPath $Path
+    $snapshot["provided"] = $true
+    $snapshot["path"] = $resolvedPath
+    if (-not (Test-Path -LiteralPath $resolvedPath)) {
+        $snapshot["detail"] = "Chargeback closeout evidence JSON not found."
+        return $snapshot
+    }
+
+    $raw = Get-Content -Raw -LiteralPath $resolvedPath
+    Assert-SafeText $raw "ChargebackCloseoutJson"
+    Assert-SanitizedOperationsSnapshotJson $raw "ChargebackCloseoutJson"
+    Assert-SanitizedChargebackCloseoutJson $raw "ChargebackCloseoutJson"
+    try {
+        $payload = $raw | ConvertFrom-Json
+    }
+    catch {
+        $snapshot["detail"] = "Chargeback closeout evidence JSON parse failed: $($_.Exception.Message)"
+        return $snapshot
+    }
+
+    $target = Get-PropertyValue $payload "target"
+    $summary = Get-PropertyValue $payload "summary"
+    $evidenceRefs = Get-PropertyValue $payload "evidenceRefs"
+    $confirmations = Get-PropertyValue $payload "confirmations"
+    $closeoutSnapshot = Get-PropertyValue $payload "chargebackCloseoutSnapshot"
+    $closeoutCounts = Get-PropertyValue $closeoutSnapshot "counts"
+    $rawDataFlags = Get-PropertyValue $closeoutSnapshot "rawDataFlags"
+    $paymentSnapshot = Get-PropertyValue $payload "paymentProviderAdapterReadiness"
+    $checks = @(Get-PropertyArray $payload "checks")
+    $topRows = New-Object System.Collections.Generic.List[object]
+    foreach ($check in $checks) {
+        if (-not (Get-PropertyBool $check "passed")) {
+            [void] $topRows.Add((New-ChargebackCloseoutCheckSnapshotRow $check))
+        }
+        if ($topRows.Count -ge 5) {
+            break
+        }
+    }
+
+    $formatVersion = Get-PropertyText $payload "formatVersion"
+    $result = Get-PropertyText $payload "result"
+    $summaryCountResult = Get-RequiredIntSetSnapshot $summary @(
+        "checkCount",
+        "passCount",
+        "failureCount",
+        "plannedCount"
+    )
+    $closeoutCountResult = Get-RequiredIntSetSnapshot $closeoutCounts @(
+        "invoiceDraftCount",
+        "finalInvoiceCount",
+        "paymentRequestedCount",
+        "paymentHandoffCount",
+        "paidInvoiceCount",
+        "reconciliationDifferenceMinorUnits",
+        "failureCount"
+    )
+    $rawCustomerPaymentData = Get-RequiredPropertyBool $rawDataFlags "rawCustomerPaymentDataStored"
+    $rawProviderResponse = Get-RequiredPropertyBool $rawDataFlags "rawProviderResponseStored"
+    $rawSecretValues = Get-RequiredPropertyBool $rawDataFlags "rawSecretValuesStored"
+    $rawFlagsValid = [bool] $rawCustomerPaymentData.valid -and [bool] $rawProviderResponse.valid -and [bool] $rawSecretValues.valid
+    $noRawDataStored = $rawFlagsValid `
+        -and (-not [bool] $rawCustomerPaymentData.value) `
+        -and (-not [bool] $rawProviderResponse.value) `
+        -and (-not [bool] $rawSecretValues.value)
+    $confirmationResult = Get-RequiredBoolSetSnapshot $confirmations @(
+        "pricingPolicyReviewed",
+        "priceListApproved",
+        "usageWindowReviewed",
+        "chargebackPreviewReviewed",
+        "trendExportReviewed",
+        "invoiceDraftReviewed",
+        "invoiceFinalized",
+        "paymentRequestReviewed",
+        "paymentProviderHandoffReviewed",
+        "paymentProviderAdapterReadinessReviewed",
+        "notificationDeliveryReviewed",
+        "adapterRetryReviewed",
+        "reconciliationReviewed",
+        "commercialIntegrationReviewed",
+        "commercialApprovalReviewed",
+        "noRawCustomerPaymentData",
+        "noRawProviderResponses",
+        "noSecretValues"
+    )
+
+    $snapshot["parsed"] = $true
+    $snapshot["formatVersion"] = $formatVersion
+    $snapshot["validFormatVersion"] = $formatVersion -eq $snapshot["expectedFormatVersion"]
+    $snapshot["result"] = $result
+    $snapshot["passed"] = "passed".Equals($result, [System.StringComparison]::OrdinalIgnoreCase)
+    $snapshot["environmentName"] = Get-PropertyText $target "environmentName"
+    $snapshot["targetCluster"] = Get-PropertyText $target "targetCluster"
+    $snapshot["operatorName"] = Get-PropertyText $target "operator"
+    $snapshot["billingPeriod"] = Get-PropertyText $target "billingPeriod"
+    $snapshot["closeoutWindow"] = [ordered]@{
+        startedAt = Get-PropertyText $target "closeoutStartedAt"
+        completedAt = Get-PropertyText $target "closeoutCompletedAt"
+    }
+    $snapshot["evidenceRefs"] = [ordered]@{
+        pricingPolicy = Get-PropertyText $evidenceRefs "pricingPolicy"
+        pricingProposalApproval = Get-PropertyText $evidenceRefs "pricingProposalApproval"
+        chargebackPreview = Get-PropertyText $evidenceRefs "chargebackPreview"
+        chargebackTrendExport = Get-PropertyText $evidenceRefs "chargebackTrendExport"
+        invoiceDraft = Get-PropertyText $evidenceRefs "invoiceDraft"
+        invoiceFinalization = Get-PropertyText $evidenceRefs "invoiceFinalization"
+        paymentRequest = Get-PropertyText $evidenceRefs "paymentRequest"
+        paymentProviderHandoff = Get-PropertyText $evidenceRefs "paymentProviderHandoff"
+        paymentProviderAdapterReadiness = Get-PropertyText $evidenceRefs "paymentProviderAdapterReadiness"
+        notificationDelivery = Get-PropertyText $evidenceRefs "notificationDelivery"
+        adapterRetryWorker = Get-PropertyText $evidenceRefs "adapterRetryWorker"
+        reconciliation = Get-PropertyText $evidenceRefs "reconciliation"
+        commercialIntegration = Get-PropertyText $evidenceRefs "commercialIntegration"
+        commercialApproval = Get-PropertyText $evidenceRefs "commercialApproval"
+    }
+    $snapshot["confirmations"] = $confirmationResult.values
+    $snapshot["confirmationsValid"] = [bool] $confirmationResult.allValidAndTrue
+    $snapshot["confirmationValidation"] = $confirmationResult.validation
+    $snapshot["chargebackCloseoutSnapshot"] = [ordered]@{
+        provided = Get-PropertyBool $closeoutSnapshot "provided"
+        parsed = Get-PropertyBool $closeoutSnapshot "parsed"
+        valid = Get-PropertyBool $closeoutSnapshot "valid"
+        billingPeriod = Get-PropertyText $closeoutSnapshot "billingPeriod"
+        result = Get-PropertyText $closeoutSnapshot "result"
+        statusClosed = Get-PropertyBool $closeoutSnapshot "statusClosed"
+        billingPeriodMatches = Get-PropertyBool $closeoutSnapshot "billingPeriodMatches"
+        integersValid = Get-PropertyBool $closeoutSnapshot "integersValid"
+        booleansValid = Get-PropertyBool $closeoutSnapshot "booleansValid"
+        failureCountZero = Get-PropertyBool $closeoutSnapshot "failureCountZero"
+        noRawDataStored = Get-PropertyBool $closeoutSnapshot "noRawDataStored"
+        counts = $closeoutCountResult.values
+        rawDataFlags = [ordered]@{
+            rawCustomerPaymentDataStored = [bool] $rawCustomerPaymentData.value
+            rawProviderResponseStored = [bool] $rawProviderResponse.value
+            rawSecretValuesStored = [bool] $rawSecretValues.value
+        }
+        detail = Get-PropertyText $closeoutSnapshot "detail"
+    }
+    $snapshot["paymentProviderAdapterReadiness"] = [ordered]@{
+        provided = Get-PropertyBool $paymentSnapshot "provided"
+        parsed = Get-PropertyBool $paymentSnapshot "parsed"
+        valid = Get-PropertyBool $paymentSnapshot "valid"
+        mode = Get-PropertyText $paymentSnapshot "mode"
+        status = Get-PropertyText $paymentSnapshot "status"
+        profileCount = Get-PropertyInt $paymentSnapshot "profileCount"
+        webhookReadyProfileCount = Get-PropertyInt $paymentSnapshot "webhookReadyProfileCount"
+        nativeApiReadyProfileCount = Get-PropertyInt $paymentSnapshot "nativeApiReadyProfileCount"
+        nativeApiSupported = Get-PropertyBool $paymentSnapshot "nativeApiSupported"
+        nativeApiReady = Get-PropertyBool $paymentSnapshot "nativeApiReady"
+        detail = Get-PropertyText $paymentSnapshot "detail"
+    }
+    $snapshot["checkCount"] = $summaryCountResult.values["checkCount"]
+    if ($snapshot["checkCount"] -eq 0) {
+        $snapshot["checkCount"] = $checks.Count
+    }
+    $snapshot["passCount"] = $summaryCountResult.values["passCount"]
+    $snapshot["failureCount"] = $summaryCountResult.values["failureCount"]
+    $snapshot["plannedCount"] = $summaryCountResult.values["plannedCount"]
+    $snapshot["summaryValid"] = [bool] $summaryCountResult.allValid
+    $snapshot["closeoutCountsValid"] = [bool] $closeoutCountResult.allValid
+    $snapshot["rawDataFlagsValid"] = $rawFlagsValid
+    $snapshot["noRawDataStored"] = $noRawDataStored
+    $snapshot["reconciliationDifferenceMinorUnits"] = $closeoutCountResult.values["reconciliationDifferenceMinorUnits"]
+    $snapshot["topChecks"] = @($topRows.ToArray())
+    $snapshot["decisionRule"] = Get-PropertyText $payload "decisionRule"
+    $snapshot["scopePolicy"] = Get-PropertyText $payload "scopePolicy"
+    $snapshot["secretPolicy"] = Get-PropertyText $payload "secretPolicy"
+    $snapshot["detail"] = "formatVersion=$formatVersion; result=$result; billingPeriod=$($snapshot["billingPeriod"]); failures=$($snapshot["failureCount"]); planned=$($snapshot["plannedCount"]); reconciliationDifferenceMinorUnits=$($snapshot["reconciliationDifferenceMinorUnits"]); snapshotValid=$($snapshot["chargebackCloseoutSnapshot"]["valid"]); confirmationsValid=$($snapshot["confirmationsValid"]); noRawDataStored=$noRawDataStored"
+    return $snapshot
+}
+
+function Read-EnterpriseAuthSmokeEvidenceSnapshot([string] $Path) {    $snapshot = [ordered]@{
         provided = $false
         path = ""
         parsed = $false
@@ -1638,6 +1902,7 @@ foreach ($entry in @(
     @("SecretRotationEvidenceRef", $SecretRotationEvidenceRef),
     @("CommercialIntegrationEvidenceRef", $CommercialIntegrationEvidenceRef),
     @("CommercialApprovalEvidenceRef", $CommercialApprovalEvidenceRef),
+    @("ChargebackCloseoutEvidenceRef", $ChargebackCloseoutEvidenceRef),
     @("EnterpriseAuthEvidenceRef", $EnterpriseAuthEvidenceRef),
     @("EnterpriseAuthJitRollbackEvidenceRef", $EnterpriseAuthJitRollbackEvidenceRef),
     @("BackupRestoreEvidenceRef", $BackupRestoreEvidenceRef),
@@ -1661,6 +1926,7 @@ $dataFlowStorageTransitionRunbookSnapshot = Read-DataFlowStorageTransitionRunboo
 $secretRotationSnapshot = Read-SecretRotationEvidenceSnapshot $SecretRotationJsonPath
 $commercialIntegrationSnapshot = Read-CommercialIntegrationEvidenceSnapshot $CommercialIntegrationJsonPath
 $commercialApprovalSnapshot = Read-CommercialApprovalEvidenceSnapshot $CommercialApprovalJsonPath
+$chargebackCloseoutSnapshot = Read-ChargebackCloseoutEvidenceSnapshot $ChargebackCloseoutJsonPath
 $enterpriseAuthSmokeSnapshot = Read-EnterpriseAuthSmokeEvidenceSnapshot $EnterpriseAuthJsonPath
 $enterpriseAuthJitRollbackSnapshot = Read-EnterpriseAuthJitRollbackEvidenceSnapshot $EnterpriseAuthJitRollbackJsonPath
 $monitoringThresholdSnapshot = Read-MonitoringThresholdEvidenceSnapshot $MonitoringThresholdJsonPath
@@ -1671,6 +1937,7 @@ $dataFlowStorageTransitionRunbookSnapshotValid = [bool] $dataFlowStorageTransiti
 $secretRotationSnapshotValid = [bool] $secretRotationSnapshot["provided"] -and [bool] $secretRotationSnapshot["parsed"] -and [bool] $secretRotationSnapshot["validFormatVersion"]
 $commercialIntegrationSnapshotValid = [bool] $commercialIntegrationSnapshot["provided"] -and [bool] $commercialIntegrationSnapshot["parsed"] -and [bool] $commercialIntegrationSnapshot["validFormatVersion"]
 $commercialApprovalSnapshotValid = [bool] $commercialApprovalSnapshot["provided"] -and [bool] $commercialApprovalSnapshot["parsed"] -and [bool] $commercialApprovalSnapshot["validFormatVersion"]
+$chargebackCloseoutSnapshotValid = [bool] $chargebackCloseoutSnapshot["provided"] -and [bool] $chargebackCloseoutSnapshot["parsed"] -and [bool] $chargebackCloseoutSnapshot["validFormatVersion"]
 $enterpriseAuthSmokeSnapshotValid = [bool] $enterpriseAuthSmokeSnapshot["provided"] -and [bool] $enterpriseAuthSmokeSnapshot["parsed"] -and [bool] $enterpriseAuthSmokeSnapshot["validFormatVersion"]
 $enterpriseAuthJitRollbackSnapshotValid = [bool] $enterpriseAuthJitRollbackSnapshot["provided"] -and [bool] $enterpriseAuthJitRollbackSnapshot["parsed"] -and [bool] $enterpriseAuthJitRollbackSnapshot["validFormatVersion"]
 $monitoringThresholdSnapshotValid = [bool] $monitoringThresholdSnapshot["provided"] -and [bool] $monitoringThresholdSnapshot["parsed"] -and [bool] $monitoringThresholdSnapshot["validFormatVersion"]
@@ -1713,6 +1980,22 @@ $commercialApprovalSnapshotPassed = $commercialApprovalSnapshotValid `
     -and [bool] $commercialApprovalSnapshot["pricingPolicyProposalCommercialApproved"] `
     -and ([int64] $commercialApprovalSnapshot["pricingPolicyProposalCommercialApprovedCount"]) -gt 0 `
     -and ([int64] $commercialApprovalSnapshot["pricingPolicyProposalApprovedPriceListCount"]) -gt 0
+$chargebackCloseoutSnapshotPassed = $chargebackCloseoutSnapshotValid `
+    -and [bool] $chargebackCloseoutSnapshot["passed"] `
+    -and [bool] $chargebackCloseoutSnapshot["summaryValid"] `
+    -and [bool] $chargebackCloseoutSnapshot["confirmationsValid"] `
+    -and [bool] $chargebackCloseoutSnapshot["closeoutCountsValid"] `
+    -and [bool] $chargebackCloseoutSnapshot["rawDataFlagsValid"] `
+    -and [bool] $chargebackCloseoutSnapshot["noRawDataStored"] `
+    -and [bool] $chargebackCloseoutSnapshot["chargebackCloseoutSnapshot"]["valid"] `
+    -and [bool] $chargebackCloseoutSnapshot["chargebackCloseoutSnapshot"]["statusClosed"] `
+    -and [bool] $chargebackCloseoutSnapshot["chargebackCloseoutSnapshot"]["billingPeriodMatches"] `
+    -and [bool] $chargebackCloseoutSnapshot["chargebackCloseoutSnapshot"]["failureCountZero"] `
+    -and ([int64] $chargebackCloseoutSnapshot["failureCount"]) -eq 0 `
+    -and ([int64] $chargebackCloseoutSnapshot["plannedCount"]) -eq 0 `
+    -and ([int64] $chargebackCloseoutSnapshot["checkCount"]) -gt 0 `
+    -and ([int64] $chargebackCloseoutSnapshot["reconciliationDifferenceMinorUnits"]) -eq 0
+
 $enterpriseAuthSmokeSnapshotPassed = $enterpriseAuthSmokeSnapshotValid `
     -and [bool] $enterpriseAuthSmokeSnapshot["passed"] `
     -and [bool] $enterpriseAuthSmokeSnapshot["countsValid"] `
@@ -1735,8 +2018,8 @@ $enterpriseAuthJitRollbackSnapshotRequired = ([bool] $RequireProductionEvidence 
     -or [bool] $ConfirmEnterpriseAuthJitRollbackSnapshotReviewed
 $monitoringThresholdSnapshotPassed = $monitoringThresholdSnapshotValid -and [bool] $monitoringThresholdSnapshot["passed"] -and [bool] $monitoringThresholdSnapshot["complete"]
 
-$evidenceText = $DeploymentEvidenceRef + $OperationsReadinessRef + $OperationsConvergenceRef + $DataFlowStoragePlanEvidenceRef + $DataFlowStorageTransitionRunbookEvidenceRef + $SecretRotationEvidenceRef + $CommercialIntegrationEvidenceRef + $CommercialApprovalEvidenceRef + $EnterpriseAuthEvidenceRef + $EnterpriseAuthJitRollbackEvidenceRef + $BackupRestoreEvidenceRef + $HaDrEvidenceRef + $MonitoringEvidenceRef + $SecurityEvidenceRef + $IamRbacEvidenceRef + $RunbookReviewRef + $TroubleshootingReviewRef + $SupportEscalationRef + $SupportSlaRef + $KnownGapsRef
-$hasAnyInput = -not [string]::IsNullOrWhiteSpace($EnvironmentName + $TargetCluster + $Operator + $HandoffStartedAt + $HandoffCompletedAt + $ChangeApprovalRef + $evidenceText + $OperationsReadinessJsonPath + $OperationsConvergenceJsonPath + $DataFlowStoragePlanJsonPath + $DataFlowStorageTransitionRunbookJsonPath + $SecretRotationJsonPath + $CommercialIntegrationJsonPath + $CommercialApprovalJsonPath + $EnterpriseAuthJsonPath + $EnterpriseAuthJitRollbackJsonPath + $MonitoringThresholdJsonPath) -or $ConfirmRunbookReviewed -or $ConfirmTroubleshootingReviewed -or $ConfirmRollbackReviewed -or $ConfirmSupportEscalationReviewed -or $ConfirmKnownGapsAccepted -or $ConfirmOperationsReadinessSnapshotReviewed -or $ConfirmOperationsConvergenceSnapshotReviewed -or $ConfirmDataFlowStoragePlanReviewed -or $ConfirmDataFlowStorageTransitionRunbookReviewed -or $ConfirmSecretRotationSnapshotReviewed -or $ConfirmCommercialIntegrationSnapshotReviewed -or $ConfirmCommercialApprovalSnapshotReviewed -or $ConfirmEnterpriseAuthSmokeSnapshotReviewed -or $ConfirmEnterpriseAuthJitRollbackSnapshotReviewed -or $ConfirmMonitoringThresholdReviewed -or $ConfirmNoSecretValues -or $RequireOperationsSnapshotEvidence
+$evidenceText = $DeploymentEvidenceRef + $OperationsReadinessRef + $OperationsConvergenceRef + $DataFlowStoragePlanEvidenceRef + $DataFlowStorageTransitionRunbookEvidenceRef + $SecretRotationEvidenceRef + $CommercialIntegrationEvidenceRef + $CommercialApprovalEvidenceRef + $ChargebackCloseoutEvidenceRef + $EnterpriseAuthEvidenceRef + $EnterpriseAuthJitRollbackEvidenceRef + $BackupRestoreEvidenceRef + $HaDrEvidenceRef + $MonitoringEvidenceRef + $SecurityEvidenceRef + $IamRbacEvidenceRef + $RunbookReviewRef + $TroubleshootingReviewRef + $SupportEscalationRef + $SupportSlaRef + $KnownGapsRef
+$hasAnyInput = -not [string]::IsNullOrWhiteSpace($EnvironmentName + $TargetCluster + $Operator + $HandoffStartedAt + $HandoffCompletedAt + $ChangeApprovalRef + $evidenceText + $OperationsReadinessJsonPath + $OperationsConvergenceJsonPath + $DataFlowStoragePlanJsonPath + $DataFlowStorageTransitionRunbookJsonPath + $SecretRotationJsonPath + $CommercialIntegrationJsonPath + $CommercialApprovalJsonPath + $ChargebackCloseoutJsonPath + $EnterpriseAuthJsonPath + $EnterpriseAuthJitRollbackJsonPath + $MonitoringThresholdJsonPath) -or $ConfirmRunbookReviewed -or $ConfirmTroubleshootingReviewed -or $ConfirmRollbackReviewed -or $ConfirmSupportEscalationReviewed -or $ConfirmKnownGapsAccepted -or $ConfirmOperationsReadinessSnapshotReviewed -or $ConfirmOperationsConvergenceSnapshotReviewed -or $ConfirmDataFlowStoragePlanReviewed -or $ConfirmDataFlowStorageTransitionRunbookReviewed -or $ConfirmSecretRotationSnapshotReviewed -or $ConfirmCommercialIntegrationSnapshotReviewed -or $ConfirmCommercialApprovalSnapshotReviewed -or $ConfirmChargebackCloseoutSnapshotReviewed -or $ConfirmEnterpriseAuthSmokeSnapshotReviewed -or $ConfirmEnterpriseAuthJitRollbackSnapshotReviewed -or $ConfirmMonitoringThresholdReviewed -or $ConfirmNoSecretValues -or $RequireOperationsSnapshotEvidence
 $handoffStartedAtParsed = Get-ParsedDateText $HandoffStartedAt
 $handoffCompletedAtParsed = Get-ParsedDateText $HandoffCompletedAt
 $handoffWindowOrdered = $null -ne $handoffStartedAtParsed -and $null -ne $handoffCompletedAtParsed -and $handoffCompletedAtParsed -ge $handoffStartedAtParsed
@@ -1811,6 +2094,14 @@ if ([bool] $RequireProductionEvidence -or [bool] $commercialApprovalSnapshot["pr
 if ([bool] $RequireProductionEvidence -or [bool] $commercialApprovalSnapshot["provided"] -or [bool] $ConfirmCommercialApprovalSnapshotReviewed) {
     Add-Check "commercial-approval-snapshot-reviewed" "Commercial approval snapshot reviewed" ([bool] $ConfirmCommercialApprovalSnapshotReviewed -and $commercialApprovalSnapshotValid) "confirmed=$([bool] $ConfirmCommercialApprovalSnapshotReviewed); snapshotValid=$commercialApprovalSnapshotValid" $CommercialApprovalEvidenceRef
 }
+Add-EvidenceCheck "chargeback-closeout-evidence" "Chargeback closeout target evidence" ([bool] $RequireProductionEvidence) $ChargebackCloseoutEvidenceRef "target billing period chargeback closeout result=passed with sanitized invoice/payment/reconciliation summary"
+if ([bool] $RequireProductionEvidence -or [bool] $chargebackCloseoutSnapshot["provided"]) {
+    Add-Check "chargeback-closeout-snapshot-parsed" "Chargeback closeout snapshot parsed" $chargebackCloseoutSnapshotValid $chargebackCloseoutSnapshot["detail"] $ChargebackCloseoutEvidenceRef
+    Add-Check "chargeback-closeout-snapshot-passed" "Chargeback closeout snapshot passed" $chargebackCloseoutSnapshotPassed "result=$($chargebackCloseoutSnapshot["result"]); billingPeriod=$($chargebackCloseoutSnapshot["billingPeriod"]); failures=$($chargebackCloseoutSnapshot["failureCount"]); planned=$($chargebackCloseoutSnapshot["plannedCount"]); reconciliationDifferenceMinorUnits=$($chargebackCloseoutSnapshot["reconciliationDifferenceMinorUnits"]); snapshotValid=$($chargebackCloseoutSnapshot["chargebackCloseoutSnapshot"]["valid"]); confirmationsValid=$($chargebackCloseoutSnapshot["confirmationsValid"]); noRawDataStored=$($chargebackCloseoutSnapshot["noRawDataStored"])" $ChargebackCloseoutEvidenceRef
+}
+if ([bool] $RequireProductionEvidence -or [bool] $chargebackCloseoutSnapshot["provided"] -or [bool] $ConfirmChargebackCloseoutSnapshotReviewed) {
+    Add-Check "chargeback-closeout-snapshot-reviewed" "Chargeback closeout snapshot reviewed" ([bool] $ConfirmChargebackCloseoutSnapshotReviewed -and $chargebackCloseoutSnapshotValid) "confirmed=$([bool] $ConfirmChargebackCloseoutSnapshotReviewed); snapshotValid=$chargebackCloseoutSnapshotValid" $ChargebackCloseoutEvidenceRef
+}
 Add-EvidenceCheck "enterprise-auth-evidence" "Enterprise auth target evidence" ([bool] $RequireProductionEvidence) $EnterpriseAuthEvidenceRef "target IdP/directory smoke result=passed or contracted scope-out"
 if ([bool] $RequireProductionEvidence -or [bool] $enterpriseAuthSmokeSnapshot["provided"]) {
     Add-Check "enterprise-auth-smoke-snapshot-parsed" "Enterprise auth smoke snapshot parsed" $enterpriseAuthSmokeSnapshotValid $enterpriseAuthSmokeSnapshot["detail"] $EnterpriseAuthEvidenceRef
@@ -1866,6 +2157,7 @@ $evidenceRefs = [ordered]@{
     secretRotation = $SecretRotationEvidenceRef
     commercialIntegration = $CommercialIntegrationEvidenceRef
     commercialApproval = $CommercialApprovalEvidenceRef
+    chargebackCloseout = $ChargebackCloseoutEvidenceRef
     enterpriseAuth = $EnterpriseAuthEvidenceRef
     enterpriseAuthJitRollback = $EnterpriseAuthJitRollbackEvidenceRef
     backupRestore = $BackupRestoreEvidenceRef
@@ -1902,6 +2194,7 @@ $report = New-Object System.Collections.Specialized.OrderedDictionary
     secretRotation = $secretRotationSnapshot
     commercialIntegration = $commercialIntegrationSnapshot
     commercialApproval = $commercialApprovalSnapshot
+    chargebackCloseout = $chargebackCloseoutSnapshot
     enterpriseAuthSmoke = $enterpriseAuthSmokeSnapshot
     enterpriseAuthJitRollback = $enterpriseAuthJitRollbackSnapshot
     monitoringThreshold = $monitoringThresholdSnapshot
@@ -1920,6 +2213,7 @@ $report = New-Object System.Collections.Specialized.OrderedDictionary
     secretRotationSnapshotReviewed = [bool] $ConfirmSecretRotationSnapshotReviewed
     commercialIntegrationSnapshotReviewed = [bool] $ConfirmCommercialIntegrationSnapshotReviewed
     commercialApprovalSnapshotReviewed = [bool] $ConfirmCommercialApprovalSnapshotReviewed
+    chargebackCloseoutSnapshotReviewed = [bool] $ConfirmChargebackCloseoutSnapshotReviewed
     enterpriseAuthSmokeSnapshotReviewed = [bool] $ConfirmEnterpriseAuthSmokeSnapshotReviewed
     enterpriseAuthJitRollbackSnapshotReviewed = [bool] $ConfirmEnterpriseAuthJitRollbackSnapshotReviewed
     monitoringThresholdReviewed = [bool] $ConfirmMonitoringThresholdReviewed
@@ -1942,14 +2236,15 @@ $report = New-Object System.Collections.Specialized.OrderedDictionary
     secretRotationSnapshotResult = $secretRotationSnapshot["result"]
     commercialIntegrationSnapshotResult = $commercialIntegrationSnapshot["result"]
     commercialApprovalSnapshotResult = $commercialApprovalSnapshot["result"]
+    chargebackCloseoutSnapshotResult = $chargebackCloseoutSnapshot["result"]
     enterpriseAuthSmokeSnapshotResult = $enterpriseAuthSmokeSnapshot["result"]
     enterpriseAuthJitRollbackSnapshotResult = $enterpriseAuthJitRollbackSnapshot["result"]
     monitoringThresholdSnapshotResult = $monitoringThresholdSnapshot["result"]
 })
 [void] $report.Add("checks", [object] $checkArray)
-[void] $report.Add("decisionRule", "Production/B2B operations handoff package readiness requires result=passed from the target environment, reviewed runbook/troubleshooting/rollback/support paths, accepted known gaps, no-secret confirmation, and references to target readiness, convergence, data-flow storage transition, data-flow storage transition runbook, secret rotation, commercial integration, commercial approval, enterprise auth, backup/restore, HA/DR, monitoring, security, and IAM/RBAC evidence when production evidence is required. When operations snapshot evidence is required, the latest operations readiness snapshot must be result=ready and the latest operations readiness convergence snapshot must be result=ready with readinessResult=ready, finalizer result=ready, typed integer finalizer failed/gap counts at zero, typed boolean Kubernetes report sync ready=true, typed integer failedSyncChecks=0, and sourceReportResult=ready. When production evidence is required, the data-flow storage plan, data-flow storage transition runbook, secret rotation, commercial integration, commercial approval, and monitoring threshold snapshots must be result=passed; the enterprise auth smoke snapshot must be result=passed with typed integer summary counts, passCount>0, failCount=0, blockedCount=0, plannedCount=0, or result=scope-out with accepted=true; active enterprise auth production handoffs with smoke result=passed must include a passed enterprise auth JIT rollback snapshot with reviewed admin approval, rollback, fallback, audit, no-raw-claims, and no-secret confirmations; and the data-flow storage plan, data-flow storage transition runbook, secret rotation, commercial integration, commercial approval, enterprise auth smoke, required enterprise auth JIT rollback, and monitoring threshold snapshots must be reviewed.")
-[void] $report.Add("scopePolicy", "This package is a handoff wrapper for already-collected operations evidence. It can reduce sanitized operations readiness, convergence, data-flow storage plan, data-flow storage transition runbook, secret rotation, commercial integration, commercial approval, enterprise auth smoke, enterprise auth JIT rollback, and monitoring threshold JSON snapshots to summary fields, but it does not execute kubectl, gh, provider APIs, notification adapters, payment adapters, storage migrations, IdP/directory login flows, user/role/org/team rollback operations, Prometheus/Grafana/Alertmanager API calls, or native card/bank/tax/ERP processor calls.")
-[void] $report.Add("secretPolicy", "Evidence stores only environment labels, operator/change references, timestamps, booleans, external evidence references, reduced operations readiness/convergence snapshot summaries, reduced data-flow storage plan/runbook summaries, reduced secret rotation summaries, reduced commercial evidence summaries, reduced enterprise auth smoke and JIT rollback summaries, and reduced monitoring threshold summaries; it must not contain passwords, bearer tokens, kubeconfig values, private keys, SMTP credentials, webhook signing secrets, provider credentials, raw SQL, raw EXPLAIN JSON, object keys, raw event messages, raw provider responses, raw identity claims, raw identity provider or directory responses, OIDC codes/states/tokens, LDAP/admin passwords, raw remediation commands containing credentials, raw Alertmanager receiver secrets, raw price tables, raw contract text, or customer payment data.")
+[void] $report.Add("decisionRule", "Production/B2B operations handoff package readiness requires result=passed from the target environment, reviewed runbook/troubleshooting/rollback/support paths, accepted known gaps, no-secret confirmation, and references to target readiness, convergence, data-flow storage transition, data-flow storage transition runbook, secret rotation, commercial integration, commercial approval, enterprise auth, backup/restore, HA/DR, monitoring, security, and IAM/RBAC evidence when production evidence is required. When operations snapshot evidence is required, the latest operations readiness snapshot must be result=ready and the latest operations readiness convergence snapshot must be result=ready with readinessResult=ready, finalizer result=ready, typed integer finalizer failed/gap counts at zero, typed boolean Kubernetes report sync ready=true, typed integer failedSyncChecks=0, and sourceReportResult=ready. When production evidence is required, the data-flow storage plan, data-flow storage transition runbook, secret rotation, commercial integration, chargeback closeout, commercial approval, and monitoring threshold snapshots must be result=passed; the enterprise auth smoke snapshot must be result=passed with typed integer summary counts, passCount>0, failCount=0, blockedCount=0, plannedCount=0, or result=scope-out with accepted=true; active enterprise auth production handoffs with smoke result=passed must include a passed enterprise auth JIT rollback snapshot with reviewed admin approval, rollback, fallback, audit, no-raw-claims, and no-secret confirmations; and the data-flow storage plan, data-flow storage transition runbook, secret rotation, commercial integration, commercial approval, chargeback closeout, enterprise auth smoke, required enterprise auth JIT rollback, and monitoring threshold snapshots must be reviewed.")
+[void] $report.Add("scopePolicy", "This package is a handoff wrapper for already-collected operations evidence. It can reduce sanitized operations readiness, convergence, data-flow storage plan, data-flow storage transition runbook, secret rotation, commercial integration, chargeback closeout, commercial approval, enterprise auth smoke, enterprise auth JIT rollback, and monitoring threshold JSON snapshots to summary fields, but it does not execute kubectl, gh, provider APIs, notification adapters, payment adapters, storage migrations, IdP/directory login flows, user/role/org/team rollback operations, Prometheus/Grafana/Alertmanager API calls, or native card/bank/tax/ERP processor calls.")
+[void] $report.Add("secretPolicy", "Evidence stores only environment labels, operator/change references, timestamps, booleans, external evidence references, reduced operations readiness/convergence snapshot summaries, reduced data-flow storage plan/runbook summaries, reduced secret rotation summaries, reduced commercial and chargeback closeout evidence summaries, reduced enterprise auth smoke and JIT rollback summaries, and reduced monitoring threshold summaries; it must not contain passwords, bearer tokens, kubeconfig values, private keys, SMTP credentials, webhook signing secrets, provider credentials, raw SQL, raw EXPLAIN JSON, object keys, raw event messages, raw provider responses, raw identity claims, raw identity provider or directory responses, OIDC codes/states/tokens, LDAP/admin passwords, raw remediation commands containing credentials, raw Alertmanager receiver secrets, raw price tables, raw contract text, or customer payment data.")
 
 $markdownLines = @(
     "# OSMU Operations Handoff Package",
@@ -1997,6 +2292,7 @@ $markdownLines += "- Data-flow storage transition runbook: provided=$($dataFlowS
 $markdownLines += "- Secret rotation: provided=$($secretRotationSnapshot["provided"]); parsed=$($secretRotationSnapshot["parsed"]); result=$($secretRotationSnapshot["result"]); core=$($secretRotationSnapshot["coreRotatedCount"])/$($secretRotationSnapshot["coreRequiredCount"]); failures=$($secretRotationSnapshot["failureCount"]); planned=$($secretRotationSnapshot["plannedCount"])"
 $markdownLines += "- Commercial integration: provided=$($commercialIntegrationSnapshot["provided"]); parsed=$($commercialIntegrationSnapshot["parsed"]); result=$($commercialIntegrationSnapshot["result"]); requiredVerified=$($commercialIntegrationSnapshot["requiredVerifiedCount"])/$($commercialIntegrationSnapshot["requiredCount"]); failures=$($commercialIntegrationSnapshot["failureCount"]); planned=$($commercialIntegrationSnapshot["plannedCount"])"
 $markdownLines += "- Commercial approval: provided=$($commercialApprovalSnapshot["provided"]); parsed=$($commercialApprovalSnapshot["parsed"]); result=$($commercialApprovalSnapshot["result"]); failures=$($commercialApprovalSnapshot["failureCount"]); checks=$($commercialApprovalSnapshot["checkCount"]); priceListApproved=$($commercialApprovalSnapshot["pricingPolicyProposalApprovedPriceListCount"])"
+$markdownLines += "- Chargeback closeout: provided=$($chargebackCloseoutSnapshot["provided"]); parsed=$($chargebackCloseoutSnapshot["parsed"]); result=$($chargebackCloseoutSnapshot["result"]); billingPeriod=$($chargebackCloseoutSnapshot["billingPeriod"]); failures=$($chargebackCloseoutSnapshot["failureCount"]); planned=$($chargebackCloseoutSnapshot["plannedCount"]); reconciliationDifferenceMinorUnits=$($chargebackCloseoutSnapshot["reconciliationDifferenceMinorUnits"]); confirmationsValid=$($chargebackCloseoutSnapshot["confirmationsValid"]); noRawDataStored=$($chargebackCloseoutSnapshot["noRawDataStored"])"
 $markdownLines += "- Enterprise auth smoke: provided=$($enterpriseAuthSmokeSnapshot["provided"]); parsed=$($enterpriseAuthSmokeSnapshot["parsed"]); result=$($enterpriseAuthSmokeSnapshot["result"]); pass=$($enterpriseAuthSmokeSnapshot["passCount"]); fail=$($enterpriseAuthSmokeSnapshot["failCount"]); blocked=$($enterpriseAuthSmokeSnapshot["blockedCount"]); scopeOutAccepted=$($enterpriseAuthSmokeSnapshot["scopeOutAccepted"])"
 $markdownLines += "- Enterprise auth JIT rollback: required=$enterpriseAuthJitRollbackSnapshotRequired; provided=$($enterpriseAuthJitRollbackSnapshot["provided"]); parsed=$($enterpriseAuthJitRollbackSnapshot["parsed"]); result=$($enterpriseAuthJitRollbackSnapshot["result"]); failures=$($enterpriseAuthJitRollbackSnapshot["failureCount"]); checks=$($enterpriseAuthJitRollbackSnapshot["checkCount"]); smokeResult=$($enterpriseAuthJitRollbackSnapshot["enterpriseAuthSmokeSnapshot"]["result"]); confirmationsValid=$($enterpriseAuthJitRollbackSnapshot["confirmationsValid"])"
 $markdownLines += "- Monitoring threshold: provided=$($monitoringThresholdSnapshot["provided"]); parsed=$($monitoringThresholdSnapshot["parsed"]); result=$($monitoringThresholdSnapshot["result"]); alerts=$($monitoringThresholdSnapshot["mappedAlertCount"])/$($monitoringThresholdSnapshot["requiredAlertCount"]); routes=$($monitoringThresholdSnapshot["routeCount"]); failures=$($monitoringThresholdSnapshot["failureCount"]); mappingComplete=$($monitoringThresholdSnapshot["thresholdMappingComplete"]); complete=$($monitoringThresholdSnapshot["complete"])"
@@ -2014,6 +2310,9 @@ foreach ($pendingCheck in @($commercialIntegrationSnapshot["topChecks"])) {
 }
 foreach ($pendingCheck in @($commercialApprovalSnapshot["topChecks"])) {
     $markdownLines += "- Commercial approval pending: [$($pendingCheck.status)] $($pendingCheck.id) / $($pendingCheck.name): $($pendingCheck.detail)"
+}
+foreach ($pendingCheck in @($chargebackCloseoutSnapshot["topChecks"])) {
+    $markdownLines += "- Chargeback closeout pending: [$($pendingCheck.status)] $($pendingCheck.id) / $($pendingCheck.name): $($pendingCheck.detail)"
 }
 foreach ($pendingCheck in @($enterpriseAuthSmokeSnapshot["topChecks"])) {
     $markdownLines += "- Enterprise auth pending: [$($pendingCheck.status)] $($pendingCheck.id) / $($pendingCheck.name): $($pendingCheck.detail)"
@@ -2035,7 +2334,7 @@ foreach ($check in $checks) {
 $markdownLines += ""
 $markdownLines += "## Operator Command"
 $markdownLines += ""
-$markdownLines += "- Record passed target package: ``powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\write-operations-handoff-package.ps1 -EnvironmentName <env> -TargetCluster <cluster> -Operator <operator> -HandoffStartedAt <iso-time> -HandoffCompletedAt <iso-time> -ChangeApprovalRef <change-id> -DeploymentEvidenceRef <ref> -OperationsReadinessRef <ref> -OperationsConvergenceRef <ref> -DataFlowStoragePlanEvidenceRef <ref> -DataFlowStorageTransitionRunbookEvidenceRef <ref> -OperationsReadinessJsonPath .\.osmu-run\latest-operations-readiness.json -OperationsConvergenceJsonPath .\.osmu-run\latest-operations-readiness-convergence.json -DataFlowStoragePlanJsonPath .\.osmu-run\latest-data-flow-storage-plan.json -DataFlowStorageTransitionRunbookJsonPath .\.osmu-run\latest-data-flow-storage-transition-runbook-evidence.json -SecretRotationEvidenceRef <ref> -SecretRotationJsonPath .\.osmu-run\latest-secret-rotation-evidence.json -CommercialIntegrationEvidenceRef <ref> -CommercialApprovalEvidenceRef <ref> -CommercialIntegrationJsonPath .\.osmu-run\latest-commercial-integration-evidence.json -CommercialApprovalJsonPath .\.osmu-run\latest-commercial-approval-evidence.json -EnterpriseAuthEvidenceRef <ref> -EnterpriseAuthJsonPath .\.osmu-run\latest-enterprise-auth-smoke.json -EnterpriseAuthJitRollbackEvidenceRef <ref> -EnterpriseAuthJitRollbackJsonPath .\.osmu-run\latest-enterprise-auth-jit-rollback-evidence.json -BackupRestoreEvidenceRef <ref> -HaDrEvidenceRef <ref> -MonitoringEvidenceRef <ref> -MonitoringThresholdJsonPath .\.osmu-run\latest-monitoring-threshold-evidence.json -SecurityEvidenceRef <ref> -IamRbacEvidenceRef <ref> -RunbookReviewRef <ref> -TroubleshootingReviewRef <ref> -SupportEscalationRef <ref> -SupportSlaRef <ref> -KnownGapsRef <ref> -ConfirmRunbookReviewed -ConfirmTroubleshootingReviewed -ConfirmRollbackReviewed -ConfirmSupportEscalationReviewed -ConfirmKnownGapsAccepted -ConfirmOperationsReadinessSnapshotReviewed -ConfirmOperationsConvergenceSnapshotReviewed -ConfirmDataFlowStoragePlanReviewed -ConfirmDataFlowStorageTransitionRunbookReviewed -ConfirmSecretRotationSnapshotReviewed -ConfirmCommercialIntegrationSnapshotReviewed -ConfirmCommercialApprovalSnapshotReviewed -ConfirmEnterpriseAuthSmokeSnapshotReviewed -ConfirmEnterpriseAuthJitRollbackSnapshotReviewed -ConfirmMonitoringThresholdReviewed -ConfirmNoSecretValues -RequireProductionEvidence -RequireOperationsSnapshotEvidence -FailIfNotPassed``"
+$markdownLines += "- Record passed target package: ``powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\write-operations-handoff-package.ps1 -EnvironmentName <env> -TargetCluster <cluster> -Operator <operator> -HandoffStartedAt <iso-time> -HandoffCompletedAt <iso-time> -ChangeApprovalRef <change-id> -DeploymentEvidenceRef <ref> -OperationsReadinessRef <ref> -OperationsConvergenceRef <ref> -DataFlowStoragePlanEvidenceRef <ref> -DataFlowStorageTransitionRunbookEvidenceRef <ref> -OperationsReadinessJsonPath .\.osmu-run\latest-operations-readiness.json -OperationsConvergenceJsonPath .\.osmu-run\latest-operations-readiness-convergence.json -DataFlowStoragePlanJsonPath .\.osmu-run\latest-data-flow-storage-plan.json -DataFlowStorageTransitionRunbookJsonPath .\.osmu-run\latest-data-flow-storage-transition-runbook-evidence.json -SecretRotationEvidenceRef <ref> -SecretRotationJsonPath .\.osmu-run\latest-secret-rotation-evidence.json -CommercialIntegrationEvidenceRef <ref> -CommercialApprovalEvidenceRef <ref> -ChargebackCloseoutEvidenceRef <ref> -CommercialIntegrationJsonPath .\.osmu-run\latest-commercial-integration-evidence.json -CommercialApprovalJsonPath .\.osmu-run\latest-commercial-approval-evidence.json -ChargebackCloseoutJsonPath .\.osmu-run\latest-chargeback-closeout-evidence.json -EnterpriseAuthEvidenceRef <ref> -EnterpriseAuthJsonPath .\.osmu-run\latest-enterprise-auth-smoke.json -EnterpriseAuthJitRollbackEvidenceRef <ref> -EnterpriseAuthJitRollbackJsonPath .\.osmu-run\latest-enterprise-auth-jit-rollback-evidence.json -BackupRestoreEvidenceRef <ref> -HaDrEvidenceRef <ref> -MonitoringEvidenceRef <ref> -MonitoringThresholdJsonPath .\.osmu-run\latest-monitoring-threshold-evidence.json -SecurityEvidenceRef <ref> -IamRbacEvidenceRef <ref> -RunbookReviewRef <ref> -TroubleshootingReviewRef <ref> -SupportEscalationRef <ref> -SupportSlaRef <ref> -KnownGapsRef <ref> -ConfirmRunbookReviewed -ConfirmTroubleshootingReviewed -ConfirmRollbackReviewed -ConfirmSupportEscalationReviewed -ConfirmKnownGapsAccepted -ConfirmOperationsReadinessSnapshotReviewed -ConfirmOperationsConvergenceSnapshotReviewed -ConfirmDataFlowStoragePlanReviewed -ConfirmDataFlowStorageTransitionRunbookReviewed -ConfirmSecretRotationSnapshotReviewed -ConfirmCommercialIntegrationSnapshotReviewed -ConfirmCommercialApprovalSnapshotReviewed -ConfirmChargebackCloseoutSnapshotReviewed -ConfirmEnterpriseAuthSmokeSnapshotReviewed -ConfirmEnterpriseAuthJitRollbackSnapshotReviewed -ConfirmMonitoringThresholdReviewed -ConfirmNoSecretValues -RequireProductionEvidence -RequireOperationsSnapshotEvidence -FailIfNotPassed``"
 
 if (-not $NoWrite) {
     New-Item -ItemType Directory -Force -Path (Split-Path -Parent $resolvedJsonOutputPath) | Out-Null

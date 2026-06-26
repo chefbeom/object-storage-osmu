@@ -1596,6 +1596,18 @@
           failures {{ operationsHandoffPackageCommercialApprovalSnapshot.failureCount || 0 }}
         </small>
         <small
+          v-if="operationsHandoffPackageChargebackCloseoutSnapshot.result"
+          data-testid="readiness-handoff-package-chargeback-closeout-snapshot-summary"
+        >
+          Chargeback closeout snapshot:
+          {{ operationsHandoffPackageChargebackCloseoutSnapshot.result }} /
+          period {{ operationsHandoffPackageChargebackCloseoutSnapshot.billingPeriod || '-' }} /
+          invoices {{ operationsHandoffPackageChargebackCloseoutSnapshot.finalInvoiceCount || 0 }} /
+          paid {{ operationsHandoffPackageChargebackCloseoutSnapshot.paidInvoiceCount || 0 }} /
+          diff {{ operationsHandoffPackageChargebackCloseoutSnapshot.reconciliationDifferenceMinorUnits || 0 }} /
+          no-raw-data {{ operationsHandoffPackageChargebackCloseoutSnapshot.noRawDataStored ? 'yes' : 'no' }}
+        </small>
+        <small
           v-if="operationsHandoffPackageEnterpriseAuthSmokeSnapshot.result"
           data-testid="readiness-handoff-package-enterprise-auth-snapshot-summary"
         >
@@ -3760,6 +3772,10 @@ const operationsHandoffPackageCommercialIntegrationSnapshot = computed(() => (
 
 const operationsHandoffPackageCommercialApprovalSnapshot = computed(() => (
   operationsHandoffPackage.value?.commercialApprovalSnapshot || {}
+))
+
+const operationsHandoffPackageChargebackCloseoutSnapshot = computed(() => (
+  operationsHandoffPackage.value?.chargebackCloseoutSnapshot || {}
 ))
 
 const operationsHandoffPackageEnterpriseAuthSmokeSnapshot = computed(() => (

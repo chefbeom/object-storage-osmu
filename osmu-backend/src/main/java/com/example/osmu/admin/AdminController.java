@@ -2497,6 +2497,8 @@ public class AdminController {
                 commercialIntegrationEvidenceSnapshotFromNode(targetEvidenceSnapshots.path("commercialIntegration"), false);
         DashboardCommercialApprovalEvidenceResponse commercialApprovalSnapshot =
                 commercialApprovalEvidenceSnapshotFromNode(targetEvidenceSnapshots.path("commercialApproval"), false);
+        DashboardChargebackCloseoutEvidenceResponse chargebackCloseoutSnapshot =
+                chargebackCloseoutEvidenceSnapshotFromNode(targetEvidenceSnapshots.path("chargebackCloseout"), false);
         DashboardEnterpriseAuthSmokeEvidenceResponse enterpriseAuthSmokeSnapshot =
                 enterpriseAuthSmokeEvidenceSnapshotFromNode(targetEvidenceSnapshots.path("enterpriseAuthSmoke"), false);
         DashboardEnterpriseAuthJitRollbackEvidenceResponse enterpriseAuthJitRollbackSnapshot =
@@ -2522,6 +2524,7 @@ public class AdminController {
                 secretRotationSnapshot,
                 commercialIntegrationSnapshot,
                 commercialApprovalSnapshot,
+                chargebackCloseoutSnapshot,
                 enterpriseAuthSmokeSnapshot,
                 enterpriseAuthJitRollbackSnapshot,
                 monitoringThresholdSnapshot,
@@ -3310,6 +3313,23 @@ public class AdminController {
         return first.isArray() ? first : second;
     }
 
+    private Map<String, String> chargebackCloseoutWindow(JsonNode report, JsonNode target) {
+        JsonNode closeoutWindow = report.path("closeoutWindow");
+        if (closeoutWindow.isObject()) {
+            return Map.copyOf(jsonTextMap(closeoutWindow));
+        }
+        java.util.LinkedHashMap<String, String> window = new java.util.LinkedHashMap<>();
+        String startedAt = jsonText(target, "closeoutStartedAt");
+        String completedAt = jsonText(target, "closeoutCompletedAt");
+        if (!startedAt.isBlank()) {
+            window.put("startedAt", startedAt);
+        }
+        if (!completedAt.isBlank()) {
+            window.put("completedAt", completedAt);
+        }
+        return Map.copyOf(window);
+    }
+
     private List<DashboardCommercialEvidenceCheckResponse> commercialEvidenceChecks(JsonNode checkNodes) {
         if (!checkNodes.isArray()) {
             return List.of();
@@ -3361,6 +3381,59 @@ public class AdminController {
     private DashboardEnterpriseAuthSmokeEvidenceResponse enterpriseAuthSmokeEvidenceSnapshot() {
         JsonNode report = readOptionalJsonReport(enterpriseAuthSmokeEvidenceReportPath);
         return enterpriseAuthSmokeEvidenceSnapshotFromNode(report, true);
+    }
+
+    private DashboardChargebackCloseoutEvidenceResponse chargebackCloseoutEvidenceSnapshotFromNode(JsonNode report, boolean emptyWhenMissing) {
+        if (report == null || report.isMissingNode() || report.isNull() || !report.isObject()) {
+            if (!emptyWhenMissing) {
+                return null;
+            }
+            return DashboardChargebackCloseoutEvidenceResponse.empty();
+        }
+        JsonNode target = report.path("target");
+        JsonNode summary = summaryOrSelf(report);
+        JsonNode closeoutSnapshot = report.path("chargebackCloseoutSnapshot");
+        JsonNode closeoutCounts = closeoutSnapshot.path("counts");
+        JsonNode rawDataFlags = closeoutSnapshot.path("rawDataFlags");
+        JsonNode paymentProviderAdapterReadiness = report.path("paymentProviderAdapterReadiness");
+        return new DashboardChargebackCloseoutEvidenceResponse(
+                jsonText(report, "result"),
+                jsonText(report, "generatedAt"),
+                firstNonBlank(jsonText(report, "environmentName"), jsonText(target, "environmentName")),
+                firstNonBlank(jsonText(report, "targetCluster"), jsonText(target, "targetCluster")),
+                firstNonBlank(jsonText(report, "operatorName"), jsonText(target, "operator")),
+                firstNonBlank(jsonText(report, "billingPeriod"), jsonText(target, "billingPeriod")),
+                chargebackCloseoutWindow(report, target),
+                jsonInt(summary, "checkCount"),
+                jsonInt(summary, "passCount"),
+                jsonInt(summary, "failureCount"),
+                jsonInt(summary, "plannedCount"),
+                jsonBoolean(report, "summaryValid"),
+                jsonBoolean(report, "confirmationsValid"),
+                jsonBoolean(closeoutSnapshot, "valid"),
+                jsonBoolean(closeoutSnapshot, "statusClosed"),
+                jsonBoolean(closeoutSnapshot, "billingPeriodMatches"),
+                jsonBoolean(report, "noRawDataStored") || jsonBoolean(closeoutSnapshot, "noRawDataStored"),
+                Math.max(jsonLong(report, "reconciliationDifferenceMinorUnits"), jsonLong(closeoutCounts, "reconciliationDifferenceMinorUnits")),
+                jsonInt(closeoutCounts, "invoiceDraftCount"),
+                jsonInt(closeoutCounts, "finalInvoiceCount"),
+                jsonInt(closeoutCounts, "paymentRequestedCount"),
+                jsonInt(closeoutCounts, "paymentHandoffCount"),
+                jsonInt(closeoutCounts, "paidInvoiceCount"),
+                jsonBoolean(rawDataFlags, "rawCustomerPaymentDataStored"),
+                jsonBoolean(rawDataFlags, "rawProviderResponseStored"),
+                jsonBoolean(rawDataFlags, "rawSecretValuesStored"),
+                jsonText(paymentProviderAdapterReadiness, "status"),
+                jsonInt(paymentProviderAdapterReadiness, "profileCount"),
+                jsonInt(paymentProviderAdapterReadiness, "webhookReadyProfileCount"),
+                jsonInt(paymentProviderAdapterReadiness, "nativeApiReadyProfileCount"),
+                Map.copyOf(jsonBooleanMap(report.path("confirmations"))),
+                Map.copyOf(jsonTextMap(report.path("evidenceRefs"))),
+                commercialEvidenceChecks(firstArrayNode(report.path("checks"), report.path("topChecks"))),
+                jsonText(report, "decisionRule"),
+                jsonText(report, "scopePolicy"),
+                jsonText(report, "secretPolicy")
+        );
     }
 
     private DashboardEnterpriseAuthSmokeEvidenceResponse enterpriseAuthSmokeEvidenceSnapshotFromNode(JsonNode report, boolean emptyWhenMissing) {

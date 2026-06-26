@@ -50,6 +50,7 @@ $dataFlowStorageTransitionRunbookPath = Join-Path $resolvedOutputDirectory "late
 $secretRotationPath = Join-Path $resolvedOutputDirectory "latest-secret-rotation-evidence.json"
 $commercialIntegrationPath = Join-Path $resolvedOutputDirectory "latest-commercial-integration-evidence.json"
 $commercialApprovalPath = Join-Path $resolvedOutputDirectory "latest-commercial-approval-evidence.json"
+$chargebackCloseoutPath = Join-Path $resolvedOutputDirectory "latest-chargeback-closeout-evidence.json"
 $enterpriseAuthPath = Join-Path $resolvedOutputDirectory "latest-enterprise-auth-smoke.json"
 $enterpriseAuthJitRollbackPath = Join-Path $resolvedOutputDirectory "latest-enterprise-auth-jit-rollback-evidence.json"
 $monitoringThresholdPath = Join-Path $resolvedOutputDirectory "latest-monitoring-threshold-evidence.json"
@@ -362,6 +363,124 @@ $monitoringThresholdPath = Join-Path $resolvedOutputDirectory "latest-monitoring
 } | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath $commercialApprovalPath -Encoding UTF8
 
 [ordered]@{
+    formatVersion = "osmu.chargeback-closeout-evidence.v1"
+    generatedAt = "2026-06-20T02:24:00Z"
+    result = "passed"
+    target = [ordered]@{
+        environmentName = "pilot-prod-self-test"
+        targetCluster = "customer-cluster-a"
+        operator = "ops-self-test"
+        billingPeriod = "2026-06"
+        closeoutStartedAt = "2026-06-30T01:00:00Z"
+        closeoutCompletedAt = "2026-06-30T01:45:00Z"
+        changeApprovalRef = "CHG-2026-CHARGEBACK-CLOSEOUT"
+    }
+    summary = [ordered]@{
+        checkCount = 24
+        passCount = 24
+        failureCount = 0
+        plannedCount = 0
+        requiredEvidenceRefCount = 14
+        providedEvidenceRefCount = 14
+        chargebackCloseoutSnapshotValid = $true
+        paymentProviderAdapterReadinessSnapshotValid = $true
+        paymentProviderAdapterReadinessReviewed = $true
+        commercialEvidenceReviewed = $true
+    }
+    evidenceRefs = [ordered]@{
+        pricingPolicy = "pricing-policy-review-202606"
+        pricingProposalApproval = "pricing-proposal-price-list-approved-202606"
+        chargebackPreview = "chargeback-preview-export-202606"
+        chargebackTrendExport = "chargeback-trend-export-202606"
+        invoiceDraft = "invoice-draft-review-202606"
+        invoiceFinalization = "invoice-finalization-202606"
+        paymentRequest = "payment-request-review-202606"
+        paymentProviderHandoff = "payment-provider-handoff-202606"
+        paymentProviderAdapterReadiness = "payment-provider-adapter-readiness-202606"
+        notificationDelivery = "notification-delivery-202606"
+        adapterRetryWorker = "adapter-retry-worker-202606"
+        reconciliation = "reconciliation-review-202606"
+        commercialIntegration = "latest-commercial-integration-evidence-passed-20260620"
+        commercialApproval = "latest-commercial-approval-evidence-passed-20260620"
+    }
+    confirmations = [ordered]@{
+        pricingPolicyReviewed = $true
+        priceListApproved = $true
+        usageWindowReviewed = $true
+        chargebackPreviewReviewed = $true
+        trendExportReviewed = $true
+        invoiceDraftReviewed = $true
+        invoiceFinalized = $true
+        paymentRequestReviewed = $true
+        paymentProviderHandoffReviewed = $true
+        paymentProviderAdapterReadinessReviewed = $true
+        notificationDeliveryReviewed = $true
+        adapterRetryReviewed = $true
+        reconciliationReviewed = $true
+        commercialIntegrationReviewed = $true
+        commercialApprovalReviewed = $true
+        noRawCustomerPaymentData = $true
+        noRawProviderResponses = $true
+        noSecretValues = $true
+        requirePaymentProviderAdapterReadinessSnapshot = $true
+    }
+    chargebackCloseoutSnapshot = [ordered]@{
+        provided = $true
+        parsed = $true
+        valid = $true
+        billingPeriod = "2026-06"
+        result = "RECONCILED"
+        statusClosed = $true
+        billingPeriodMatches = $true
+        integersValid = $true
+        booleansValid = $true
+        failureCountZero = $true
+        noRawDataStored = $true
+        counts = [ordered]@{
+            invoiceDraftCount = 3
+            finalInvoiceCount = 3
+            paymentRequestedCount = 3
+            paymentHandoffCount = 3
+            paidInvoiceCount = 3
+            reconciliationDifferenceMinorUnits = 0
+            failureCount = 0
+        }
+        rawDataFlags = [ordered]@{
+            rawCustomerPaymentDataStored = $false
+            rawProviderResponseStored = $false
+            rawSecretValuesStored = $false
+        }
+        detail = "result=RECONCILED; billingPeriod=2026-06; failures=0; reconciliationDifferenceMinorUnits=0"
+    }
+    paymentProviderAdapterReadiness = [ordered]@{
+        provided = $true
+        parsed = $true
+        valid = $true
+        mode = "PAYMENT_PROVIDER_ADAPTER_READINESS"
+        status = "WEBHOOK_PROFILE_READY"
+        profileCount = 5
+        webhookReadyProfileCount = 5
+        nativeApiReadyProfileCount = 0
+        nativeApiSupported = $true
+        nativeApiReady = $false
+        detail = "mode=PAYMENT_PROVIDER_ADAPTER_READINESS; status=WEBHOOK_PROFILE_READY; profiles=GENERIC,CARD,BANK,TAX,ERP"
+    }
+    checks = @(
+        [ordered]@{
+            id = "chargeback-closeout-snapshot-valid"
+            name = "Sanitized chargeback closeout snapshot is valid"
+            status = "PASS"
+            passed = $true
+            detail = "result=RECONCILED; billingPeriod=2026-06; failures=0"
+            evidenceRef = "chargeback-closeout-summary-202606"
+        }
+    )
+    decisionRule = "Production/B2B chargeback closeout readiness requires result=passed."
+    scopePolicy = "OSMU tenant billing/chargeback closeout evidence only; it does not claim native card, bank, tax, ERP, or external payment processor implementation."
+    secretPolicy = "Evidence stores target labels, timestamps, references, booleans, typed counts, and reduced readiness metadata only."
+} | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath $chargebackCloseoutPath -Encoding UTF8
+
+[ordered]@{
     formatVersion = "osmu.enterprise-auth-smoke.v1"
     generatedAt = "2026-06-20T02:25:00Z"
     result = "passed"
@@ -540,8 +659,10 @@ $monitoringThresholdPath = Join-Path $resolvedOutputDirectory "latest-monitoring
     -SecretRotationJsonPath $secretRotationPath `
     -CommercialIntegrationEvidenceRef "latest-commercial-integration-evidence-passed-20260620" `
     -CommercialApprovalEvidenceRef "latest-commercial-approval-evidence-passed-20260620" `
+    -ChargebackCloseoutEvidenceRef "latest-chargeback-closeout-evidence-passed-20260620" `
     -CommercialIntegrationJsonPath $commercialIntegrationPath `
     -CommercialApprovalJsonPath $commercialApprovalPath `
+    -ChargebackCloseoutJsonPath $chargebackCloseoutPath `
     -EnterpriseAuthEvidenceRef "latest-enterprise-auth-smoke-passed-20260620" `
     -EnterpriseAuthJsonPath $enterpriseAuthPath `
     -EnterpriseAuthJitRollbackEvidenceRef "latest-enterprise-auth-jit-rollback-passed-20260620" `
@@ -571,6 +692,7 @@ $monitoringThresholdPath = Join-Path $resolvedOutputDirectory "latest-monitoring
     -ConfirmSecretRotationSnapshotReviewed `
     -ConfirmCommercialIntegrationSnapshotReviewed `
     -ConfirmCommercialApprovalSnapshotReviewed `
+    -ConfirmChargebackCloseoutSnapshotReviewed `
     -ConfirmEnterpriseAuthSmokeSnapshotReviewed `
     -ConfirmEnterpriseAuthJitRollbackSnapshotReviewed `
     -ConfirmMonitoringThresholdReviewed `
@@ -617,6 +739,10 @@ Assert-True (@($checks | Where-Object { $_.id -eq "commercial-integration-snapsh
 Assert-True (@($checks | Where-Object { $_.id -eq "commercial-approval-snapshot-parsed" -and $_.passed }).Count -eq 1) "Expected commercial approval snapshot parsed check to pass."
 Assert-True (@($checks | Where-Object { $_.id -eq "commercial-approval-snapshot-passed" -and $_.passed }).Count -eq 1) "Expected commercial approval snapshot passed check to pass."
 Assert-True (@($checks | Where-Object { $_.id -eq "commercial-approval-snapshot-reviewed" -and $_.passed }).Count -eq 1) "Expected commercial approval snapshot reviewed check to pass."
+Assert-True (@($checks | Where-Object { $_.id -eq "chargeback-closeout-evidence" -and $_.passed }).Count -eq 1) "Expected chargeback closeout evidence check to pass."
+Assert-True (@($checks | Where-Object { $_.id -eq "chargeback-closeout-snapshot-parsed" -and $_.passed }).Count -eq 1) "Expected chargeback closeout snapshot parsed check to pass."
+Assert-True (@($checks | Where-Object { $_.id -eq "chargeback-closeout-snapshot-passed" -and $_.passed }).Count -eq 1) "Expected chargeback closeout snapshot passed check to pass."
+Assert-True (@($checks | Where-Object { $_.id -eq "chargeback-closeout-snapshot-reviewed" -and $_.passed }).Count -eq 1) "Expected chargeback closeout snapshot reviewed check to pass."
 Assert-True (@($checks | Where-Object { $_.id -eq "enterprise-auth-smoke-snapshot-parsed" -and $_.passed }).Count -eq 1) "Expected enterprise auth smoke snapshot parsed check to pass."
 Assert-True (@($checks | Where-Object { $_.id -eq "enterprise-auth-smoke-snapshot-accepted" -and $_.passed }).Count -eq 1) "Expected enterprise auth smoke snapshot accepted check to pass."
 Assert-True (@($checks | Where-Object { $_.id -eq "enterprise-auth-smoke-snapshot-reviewed" -and $_.passed }).Count -eq 1) "Expected enterprise auth smoke snapshot reviewed check to pass."
@@ -640,6 +766,7 @@ Assert-True ($report.confirmations.dataFlowStorageTransitionRunbookReviewed) "Ex
 Assert-True ($report.confirmations.secretRotationSnapshotReviewed) "Expected secret rotation snapshot reviewed confirmation."
 Assert-True ($report.confirmations.commercialIntegrationSnapshotReviewed) "Expected commercial integration snapshot reviewed confirmation."
 Assert-True ($report.confirmations.commercialApprovalSnapshotReviewed) "Expected commercial approval snapshot reviewed confirmation."
+Assert-True ($report.confirmations.chargebackCloseoutSnapshotReviewed) "Expected chargeback closeout snapshot reviewed confirmation."
 Assert-True ($report.confirmations.enterpriseAuthSmokeSnapshotReviewed) "Expected enterprise auth smoke snapshot reviewed confirmation."
 Assert-True ($report.confirmations.enterpriseAuthJitRollbackSnapshotReviewed) "Expected enterprise auth JIT rollback snapshot reviewed confirmation."
 Assert-True ($report.confirmations.monitoringThresholdReviewed) "Expected monitoring threshold reviewed confirmation."
@@ -668,6 +795,12 @@ Assert-True ($report.targetEvidenceSnapshots.commercialIntegration.result -eq "p
 Assert-True ($report.targetEvidenceSnapshots.commercialIntegration.requiredVerifiedCount -eq 8) "Expected commercial integration requiredVerifiedCount=8."
 Assert-True ($report.targetEvidenceSnapshots.commercialApproval.result -eq "passed") "Expected commercial approval snapshot result=passed."
 Assert-True ($report.targetEvidenceSnapshots.commercialApproval.pricingPolicyProposalApprovedPriceListCount -eq 1) "Expected commercial approval price-list approval count."
+Assert-True ($report.targetEvidenceSnapshots.chargebackCloseout.result -eq "passed") "Expected chargeback closeout snapshot result=passed."
+Assert-True ($report.targetEvidenceSnapshots.chargebackCloseout.billingPeriod -eq "2026-06") "Expected chargeback closeout billing period."
+Assert-True ($report.targetEvidenceSnapshots.chargebackCloseout.chargebackCloseoutSnapshot.valid) "Expected chargeback closeout nested snapshot valid."
+Assert-True ($report.targetEvidenceSnapshots.chargebackCloseout.reconciliationDifferenceMinorUnits -eq 0) "Expected chargeback closeout reconciliation difference zero."
+Assert-True ($report.targetEvidenceSnapshots.chargebackCloseout.noRawDataStored) "Expected chargeback closeout no raw data flag."
+Assert-True ($report.summary.chargebackCloseoutSnapshotResult -eq "passed") "Expected chargeback closeout summary result=passed."
 Assert-True ($report.targetEvidenceSnapshots.enterpriseAuthSmoke.result -eq "passed") "Expected enterprise auth smoke snapshot result=passed."
 Assert-True ($report.targetEvidenceSnapshots.enterpriseAuthSmoke.passCount -eq 8) "Expected enterprise auth smoke passCount=8."
 Assert-True ($report.targetEvidenceSnapshots.enterpriseAuthJitRollback.result -eq "passed") "Expected enterprise auth JIT rollback snapshot result=passed."
@@ -686,6 +819,7 @@ Assert-True ($report.targetEvidenceSnapshots.monitoringThreshold.thresholdMappin
 Assert-True ($report.targetEvidenceSnapshots.monitoringThreshold.complete) "Expected monitoring threshold complete snapshot."
 Assert-True ($report.evidenceRefs.dataFlowStoragePlan -eq "latest-data-flow-storage-plan-passed-20260620") "Expected data-flow storage plan evidence reference."
 Assert-True ($report.evidenceRefs.dataFlowStorageTransitionRunbook -eq "latest-data-flow-storage-transition-runbook-passed-20260620") "Expected data-flow storage transition runbook evidence reference."
+Assert-True ($report.evidenceRefs.chargebackCloseout -eq "latest-chargeback-closeout-evidence-passed-20260620") "Expected chargeback closeout evidence reference."
 Assert-True ($report.evidenceRefs.enterpriseAuthJitRollback -eq "latest-enterprise-auth-jit-rollback-passed-20260620") "Expected enterprise auth JIT rollback evidence reference."
 
 Assert-Contains $markdown "# OSMU Operations Handoff Package" "operations handoff package markdown"
@@ -696,6 +830,7 @@ Assert-Contains $markdown "finalizerFailed=0" "operations handoff package markdo
 Assert-Contains $markdown "sourceReportResult=ready" "operations handoff package markdown"
 Assert-Contains $markdown "targetP95QueryLatencyMs=500" "operations handoff package markdown"
 Assert-Contains $markdown "Data-flow storage transition runbook" "operations handoff package markdown"
+Assert-Contains $markdown "Chargeback closeout" "operations handoff package markdown"
 Assert-Contains $markdown "Enterprise auth JIT rollback" "operations handoff package markdown"
 Assert-Contains $markdown "Monitoring threshold" "operations handoff package markdown"
 Assert-Contains $report.decisionRule "Production/B2B operations handoff package readiness requires result=passed" "operations handoff package JSON"
@@ -703,6 +838,7 @@ Assert-Contains $report.decisionRule "data-flow storage transition" "operations 
 Assert-Contains $report.decisionRule "data-flow storage transition runbook" "operations handoff package JSON"
 Assert-Contains $report.decisionRule "commercial approval" "operations handoff package JSON"
 Assert-Contains $report.decisionRule "commercial integration" "operations handoff package JSON"
+Assert-Contains $report.decisionRule "chargeback closeout" "operations handoff package JSON"
 Assert-Contains $report.decisionRule "enterprise auth smoke snapshot" "operations handoff package JSON"
 Assert-Contains $report.decisionRule "enterprise auth JIT rollback snapshot" "operations handoff package JSON"
 Assert-Contains $report.decisionRule "monitoring threshold snapshots" "operations handoff package JSON"
@@ -717,7 +853,7 @@ Assert-Contains $report.secretPolicy "raw identity claims" "operations handoff p
 Assert-Contains $report.secretPolicy "raw identity provider or directory responses" "operations handoff package JSON"
 Assert-Contains $report.secretPolicy "raw Alertmanager receiver secrets" "operations handoff package JSON"
 
-foreach ($unexpected in @("password=super-secret", "Bearer abcdefghijklmnop", "-----BEGIN PRIVATE KEY-----", "rawProviderResponse", "customer@example.com", "contractText", "rawClaimJson")) {
+foreach ($unexpected in @("password=super-secret", "Bearer abcdefghijklmnop", "-----BEGIN PRIVATE KEY-----", "rawProviderResponseBody", "customer@example.com", "contractText", "rawInvoice", "paymentReference", "rawClaimJson")) {
     Assert-NotContains $reportText $unexpected "operations handoff package JSON"
     Assert-NotContains $markdown $unexpected "operations handoff package markdown"
 }
@@ -1488,8 +1624,10 @@ try {
         -SecretRotationJsonPath $secretRotationPath `
         -CommercialIntegrationEvidenceRef "latest-commercial-integration-evidence-passed-20260620" `
         -CommercialApprovalEvidenceRef "latest-commercial-approval-evidence-passed-20260620" `
+        -ChargebackCloseoutEvidenceRef "latest-chargeback-closeout-evidence-passed-20260620" `
         -CommercialIntegrationJsonPath $commercialIntegrationPath `
         -CommercialApprovalJsonPath $commercialApprovalPath `
+        -ChargebackCloseoutJsonPath $chargebackCloseoutPath `
         -EnterpriseAuthEvidenceRef "latest-enterprise-auth-smoke-passed-20260620" `
         -EnterpriseAuthJsonPath $enterpriseAuthPath `
         -BackupRestoreEvidenceRef "latest-kubernetes-dr-finalize-ready-20260620" `
@@ -1513,6 +1651,7 @@ try {
         -ConfirmSecretRotationSnapshotReviewed `
         -ConfirmCommercialIntegrationSnapshotReviewed `
         -ConfirmCommercialApprovalSnapshotReviewed `
+        -ConfirmChargebackCloseoutSnapshotReviewed `
         -ConfirmEnterpriseAuthSmokeSnapshotReviewed `
         -ConfirmMonitoringThresholdReviewed `
         -ConfirmNoSecretValues `

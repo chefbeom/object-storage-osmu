@@ -1,0 +1,86 @@
+package com.example.osmu.admin;
+
+import com.fasterxml.jackson.annotation.JsonInclude;
+import java.util.List;
+import java.util.Map;
+
+@JsonInclude(JsonInclude.Include.NON_EMPTY)
+public record DashboardChargebackCloseoutEvidenceResponse(
+        String result,
+        String generatedAt,
+        String environmentName,
+        String targetCluster,
+        String operatorName,
+        String billingPeriod,
+        Map<String, String> closeoutWindow,
+        int checkCount,
+        int passCount,
+        int failureCount,
+        int plannedCount,
+        boolean summaryValid,
+        boolean confirmationsValid,
+        boolean closeoutSnapshotValid,
+        boolean closeoutStatusClosed,
+        boolean billingPeriodMatches,
+        boolean noRawDataStored,
+        long reconciliationDifferenceMinorUnits,
+        int invoiceDraftCount,
+        int finalInvoiceCount,
+        int paymentRequestedCount,
+        int paymentHandoffCount,
+        int paidInvoiceCount,
+        boolean rawCustomerPaymentDataStored,
+        boolean rawProviderResponseStored,
+        boolean rawSecretValuesStored,
+        String paymentProviderAdapterReadinessStatus,
+        int paymentProviderAdapterProfileCount,
+        int paymentProviderAdapterWebhookReadyProfileCount,
+        int paymentProviderAdapterNativeReadyProfileCount,
+        Map<String, Boolean> confirmations,
+        Map<String, String> evidenceRefs,
+        List<DashboardCommercialEvidenceCheckResponse> checks,
+        String decisionRule,
+        String scopePolicy,
+        String secretPolicy
+) {
+    public static DashboardChargebackCloseoutEvidenceResponse empty() {
+        return new DashboardChargebackCloseoutEvidenceResponse(
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                Map.of(),
+                0,
+                0,
+                0,
+                0,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                0L,
+                0,
+                0,
+                0,
+                0,
+                0,
+                false,
+                false,
+                false,
+                "",
+                0,
+                0,
+                0,
+                Map.of(),
+                Map.of(),
+                List.of(),
+                "",
+                "",
+                ""
+        );
+    }
+}

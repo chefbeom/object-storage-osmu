@@ -2788,6 +2788,7 @@ function Test-OperationsHandoffPackageEvidenceRefs([object] $Json) {
         "secretRotation",
         "commercialIntegration",
         "commercialApproval",
+        "chargebackCloseout",
         "enterpriseAuth",
         "backupRestore",
         "haDr",
@@ -2824,7 +2825,7 @@ function Test-OperationsHandoffPackageTargetSnapshots([object] $Json) {
             detail = "targetEvidenceSnapshots expected"
         }
     }
-    $validatedSnapshotCount = 7
+    $validatedSnapshotCount = 8
 
     $plan = Get-JsonProperty $targetSnapshots "dataFlowStoragePlan"
     $base = Test-HandoffSnapshotBase $plan "targetEvidenceSnapshots.dataFlowStoragePlan" @("passed") $true
@@ -2906,6 +2907,34 @@ function Test-OperationsHandoffPackageTargetSnapshots([object] $Json) {
     $validation = Test-HandoffRequiredIntEquals $commercialApproval "failureCount" 0 "targetEvidenceSnapshots.commercialApproval"
     if (-not $validation.passed) { return $validation }
 
+    $chargebackCloseout = Get-JsonProperty $targetSnapshots "chargebackCloseout"
+    $base = Test-HandoffSnapshotBase $chargebackCloseout "targetEvidenceSnapshots.chargebackCloseout" @("passed") $true
+    if (-not $base.passed) { return $base }
+    foreach ($field in @("summaryValid", "confirmationsValid", "closeoutCountsValid", "rawDataFlagsValid", "noRawDataStored")) {
+        $validation = Test-HandoffRequiredBoolTrue $chargebackCloseout $field "targetEvidenceSnapshots.chargebackCloseout"
+        if (-not $validation.passed) { return $validation }
+    }
+    foreach ($field in @("failureCount", "plannedCount", "reconciliationDifferenceMinorUnits")) {
+        $validation = Test-HandoffRequiredIntEquals $chargebackCloseout $field 0 "targetEvidenceSnapshots.chargebackCloseout"
+        if (-not $validation.passed) { return $validation }
+    }
+    foreach ($field in @("checkCount", "passCount")) {
+        $validation = Test-HandoffRequiredIntAtLeast $chargebackCloseout $field 1 "targetEvidenceSnapshots.chargebackCloseout"
+        if (-not $validation.passed) { return $validation }
+    }
+    $closeoutSnapshot = Get-JsonProperty $chargebackCloseout "chargebackCloseoutSnapshot"
+    foreach ($field in @("valid", "statusClosed", "billingPeriodMatches", "failureCountZero", "noRawDataStored")) {
+        $validation = Test-HandoffRequiredBoolTrue $closeoutSnapshot $field "targetEvidenceSnapshots.chargebackCloseout.chargebackCloseoutSnapshot"
+        if (-not $validation.passed) { return $validation }
+    }
+    $rawFlags = Get-JsonProperty $closeoutSnapshot "rawDataFlags"
+    foreach ($field in @("rawCustomerPaymentDataStored", "rawProviderResponseStored", "rawSecretValuesStored")) {
+        $flag = Get-RequiredJsonBool $rawFlags $field
+        if (-not $flag.valid -or $flag.value) {
+            return [pscustomobject]@{ passed = $false; detail = "targetEvidenceSnapshots.chargebackCloseout.chargebackCloseoutSnapshot.rawDataFlags.$field=$($flag.raw) expected boolean false" }
+        }
+    }
+
     $enterpriseAuth = Get-JsonProperty $targetSnapshots "enterpriseAuthSmoke"
     $base = Test-HandoffSnapshotBase $enterpriseAuth "targetEvidenceSnapshots.enterpriseAuthSmoke" @("passed", "scope-out") $false
     if (-not $base.passed) { return $base }
@@ -2937,7 +2966,7 @@ function Test-OperationsHandoffPackageTargetSnapshots([object] $Json) {
         $enterpriseAuthJitRollbackProvided = ($jitProvided.valid -and $jitProvided.value) -or -not [string]::IsNullOrWhiteSpace($jitResult)
     }
     if ($enterpriseAuthJitRollbackProvided) {
-        $validatedSnapshotCount = 8
+        $validatedSnapshotCount = 9
         $base = Test-HandoffSnapshotBase $enterpriseAuthJitRollback "targetEvidenceSnapshots.enterpriseAuthJitRollback" @("passed") $true
         if (-not $base.passed) { return $base }
         $validation = Test-HandoffRequiredBoolTrue $enterpriseAuthJitRollback "confirmationsValid" "targetEvidenceSnapshots.enterpriseAuthJitRollback"
@@ -3025,6 +3054,7 @@ function Test-OperationsHandoffPackageSummary([object] $Json) {
         "secretRotationSnapshotResult",
         "commercialIntegrationSnapshotResult",
         "commercialApprovalSnapshotResult",
+        "chargebackCloseoutSnapshotResult",
         "monitoringThresholdSnapshotResult"
     )) {
         $value = [string] (Get-JsonProperty $summary $field)
@@ -4094,6 +4124,7 @@ function Test-OperationsHandoffPackageEvidenceJson([string] $Path) {
         "secretRotationSnapshotReviewed",
         "commercialIntegrationSnapshotReviewed",
         "commercialApprovalSnapshotReviewed",
+        "chargebackCloseoutSnapshotReviewed",
         "enterpriseAuthSmokeSnapshotReviewed",
         "monitoringThresholdReviewed",
         "requireProductionEvidence",
@@ -4146,7 +4177,7 @@ function Test-OperationsHandoffPackageEvidenceJson([string] $Path) {
     }
 
     $patterns = @(
-        '(?i)"(rawClaimJson|raw_claim_json|idToken|id_token|accessToken|access_token|refreshToken|refresh_token|authorizationCode|authorization_code|oidcCode|oidc_code|oidcState|oidc_state|ldapPassword|ldap_password|adminPassword|admin_password|clientSecret|client_secret)"\s*:',
+        '(?i)"(rawClaimJson|raw_claim_json|idToken|id_token|accessToken|access_token|refreshToken|refresh_token|authorizationCode|authorization_code|oidcCode|oidc_code|oidcState|oidc_state|ldapPassword|ldap_password|adminPassword|admin_password|clientSecret|client_secret|rawCustomerPaymentData|raw_customer_payment_data|rawProviderResponse|raw_provider_response|rawInvoice|raw_invoice|paymentReference|payment_reference|paymentTarget|payment_target|providerPayload|provider_payload|endpointUrl|endpoint_url)"\s*:',
         '(?i)\b(password|passwd|credential|api[_-]?key|private[_-]?key|client[_-]?secret|ldap[_-]?password|admin[_-]?password)\s*=\s*\S+',
         '(?i)\bBearer\s+[A-Za-z0-9._~+/=-]{12,}',
         '-----BEGIN [A-Z ]*PRIVATE KEY-----'

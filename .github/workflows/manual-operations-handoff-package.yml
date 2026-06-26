@@ -55,6 +55,10 @@ on:
         description: Optional base64 latest commercial approval evidence JSON snapshot
         required: false
         default: ""
+      chargeback_closeout_json_base64:
+        description: Optional base64 latest chargeback closeout evidence JSON snapshot
+        required: false
+        default: ""
       enterprise_auth_json_base64:
         description: Optional base64 latest enterprise auth smoke JSON snapshot
         required: false
@@ -120,6 +124,7 @@ jobs:
           OSMU_SECRET_ROTATION_JSON_BASE64: ${{ inputs.secret_rotation_json_base64 }}
           OSMU_COMMERCIAL_INTEGRATION_JSON_BASE64: ${{ inputs.commercial_integration_json_base64 }}
           OSMU_COMMERCIAL_APPROVAL_JSON_BASE64: ${{ inputs.commercial_approval_json_base64 }}
+          OSMU_CHARGEBACK_CLOSEOUT_JSON_BASE64: ${{ inputs.chargeback_closeout_json_base64 }}
           OSMU_ENTERPRISE_AUTH_JSON_BASE64: ${{ inputs.enterprise_auth_json_base64 }}
           OSMU_ENTERPRISE_AUTH_JIT_ROLLBACK_JSON_BASE64: ${{ inputs.enterprise_auth_jit_rollback_json_base64 }}
           OSMU_MONITORING_THRESHOLD_JSON_BASE64: ${{ inputs.monitoring_threshold_json_base64 }}
@@ -179,6 +184,7 @@ jobs:
             "-SecretRotationEvidenceRef", (Get-DispatchString "secret_rotation_evidence_ref"),
             "-CommercialIntegrationEvidenceRef", (Get-DispatchString "commercial_integration_evidence_ref"),
             "-CommercialApprovalEvidenceRef", (Get-DispatchString "commercial_approval_evidence_ref"),
+            "-ChargebackCloseoutEvidenceRef", (Get-DispatchString "chargeback_closeout_evidence_ref"),
             "-EnterpriseAuthEvidenceRef", (Get-DispatchString "enterprise_auth_evidence_ref"),
             "-EnterpriseAuthJitRollbackEvidenceRef", (Get-DispatchString "enterprise_auth_jit_rollback_evidence_ref"),
             "-BackupRestoreEvidenceRef", (Get-DispatchString "backup_restore_evidence_ref"),
@@ -202,6 +208,7 @@ jobs:
           Add-Base64SnapshotArgument (Get-DispatchString "secret_rotation_json_base64" $env:OSMU_SECRET_ROTATION_JSON_BASE64) ".osmu-run/secret-rotation-handoff-snapshot.json" "-SecretRotationJsonPath"
           Add-Base64SnapshotArgument (Get-DispatchString "commercial_integration_json_base64" $env:OSMU_COMMERCIAL_INTEGRATION_JSON_BASE64) ".osmu-run/commercial-integration-handoff-snapshot.json" "-CommercialIntegrationJsonPath"
           Add-Base64SnapshotArgument (Get-DispatchString "commercial_approval_json_base64" $env:OSMU_COMMERCIAL_APPROVAL_JSON_BASE64) ".osmu-run/commercial-approval-handoff-snapshot.json" "-CommercialApprovalJsonPath"
+          Add-Base64SnapshotArgument (Get-DispatchString "chargeback_closeout_json_base64" $env:OSMU_CHARGEBACK_CLOSEOUT_JSON_BASE64) ".osmu-run/chargeback-closeout-handoff-snapshot.json" "-ChargebackCloseoutJsonPath"
           Add-Base64SnapshotArgument (Get-DispatchString "enterprise_auth_json_base64" $env:OSMU_ENTERPRISE_AUTH_JSON_BASE64) ".osmu-run/enterprise-auth-handoff-snapshot.json" "-EnterpriseAuthJsonPath"
           Add-Base64SnapshotArgument (Get-DispatchString "enterprise_auth_jit_rollback_json_base64" $env:OSMU_ENTERPRISE_AUTH_JIT_ROLLBACK_JSON_BASE64) ".osmu-run/enterprise-auth-jit-rollback-handoff-snapshot.json" "-EnterpriseAuthJitRollbackJsonPath"
           Add-Base64SnapshotArgument (Get-DispatchString "monitoring_threshold_json_base64" $env:OSMU_MONITORING_THRESHOLD_JSON_BASE64) ".osmu-run/monitoring-threshold-handoff-snapshot.json" "-MonitoringThresholdJsonPath"
@@ -218,6 +225,7 @@ jobs:
           if (Test-DispatchTrue "confirm_secret_rotation_snapshot_reviewed") { $packageArgs += "-ConfirmSecretRotationSnapshotReviewed" }
           if (Test-DispatchTrue "confirm_commercial_integration_snapshot_reviewed") { $packageArgs += "-ConfirmCommercialIntegrationSnapshotReviewed" }
           if (Test-DispatchTrue "confirm_commercial_approval_snapshot_reviewed") { $packageArgs += "-ConfirmCommercialApprovalSnapshotReviewed" }
+          if (Test-DispatchTrue "confirm_chargeback_closeout_snapshot_reviewed") { $packageArgs += "-ConfirmChargebackCloseoutSnapshotReviewed" }
           if (Test-DispatchTrue "confirm_enterprise_auth_smoke_snapshot_reviewed") { $packageArgs += "-ConfirmEnterpriseAuthSmokeSnapshotReviewed" }
           if (Test-DispatchTrue "confirm_enterprise_auth_jit_rollback_snapshot_reviewed") { $packageArgs += "-ConfirmEnterpriseAuthJitRollbackSnapshotReviewed" }
           if (Test-DispatchTrue "confirm_monitoring_threshold_reviewed") { $packageArgs += "-ConfirmMonitoringThresholdReviewed" }

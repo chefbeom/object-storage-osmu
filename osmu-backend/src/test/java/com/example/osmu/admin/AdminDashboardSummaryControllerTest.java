@@ -1108,6 +1108,7 @@ class AdminDashboardSummaryControllerTest {
                             "operationsConvergence": "latest-operations-readiness-convergence-ready",
                             "commercialIntegration": "latest-commercial-integration-evidence-passed",
                             "commercialApproval": "latest-commercial-approval-evidence-passed",
+                            "chargebackCloseout": "latest-chargeback-closeout-evidence-passed",
                             "enterpriseAuth": "latest-enterprise-auth-smoke-scope-out",
                             "knownGaps": "known-gaps-acceptance-20260620"
                           },
@@ -1300,6 +1301,74 @@ class AdminDashboardSummaryControllerTest {
                               "pricingPolicyProposalApprovedPriceListCount": 1,
                               "topChecks": []
                             },
+                            "chargebackCloseout": {
+                              "provided": true,
+                              "parsed": true,
+                              "validFormatVersion": true,
+                              "result": "passed",
+                              "passed": true,
+                              "environmentName": "pilot-prod",
+                              "targetCluster": "customer-cluster-a",
+                              "operatorName": "billing-ops",
+                              "billingPeriod": "2026-06",
+                              "closeoutWindow": {
+                                "startedAt": "2026-06-30T01:00:00Z",
+                                "completedAt": "2026-06-30T01:45:00Z"
+                              },
+                              "summaryValid": true,
+                              "confirmationsValid": true,
+                              "closeoutCountsValid": true,
+                              "rawDataFlagsValid": true,
+                              "noRawDataStored": true,
+                              "reconciliationDifferenceMinorUnits": 0,
+                              "checkCount": 24,
+                              "passCount": 24,
+                              "failureCount": 0,
+                              "plannedCount": 0,
+                              "chargebackCloseoutSnapshot": {
+                                "provided": true,
+                                "parsed": true,
+                                "valid": true,
+                                "billingPeriod": "2026-06",
+                                "result": "RECONCILED",
+                                "statusClosed": true,
+                                "billingPeriodMatches": true,
+                                "integersValid": true,
+                                "booleansValid": true,
+                                "failureCountZero": true,
+                                "noRawDataStored": true,
+                                "counts": {
+                                  "invoiceDraftCount": 3,
+                                  "finalInvoiceCount": 3,
+                                  "paymentRequestedCount": 3,
+                                  "paymentHandoffCount": 3,
+                                  "paidInvoiceCount": 3,
+                                  "reconciliationDifferenceMinorUnits": 0,
+                                  "failureCount": 0
+                                },
+                                "rawDataFlags": {
+                                  "rawCustomerPaymentDataStored": false,
+                                  "rawProviderResponseStored": false,
+                                  "rawSecretValuesStored": false
+                                }
+                              },
+                              "paymentProviderAdapterReadiness": {
+                                "status": "WEBHOOK_PROFILE_READY",
+                                "profileCount": 5,
+                                "webhookReadyProfileCount": 5,
+                                "nativeApiReadyProfileCount": 0
+                              },
+                              "confirmations": {
+                                "noRawCustomerPaymentData": true,
+                                "noRawProviderResponses": true,
+                                "noSecretValues": true
+                              },
+                              "evidenceRefs": {
+                                "chargebackPreview": "chargeback-preview-export-202606",
+                                "commercialApproval": "latest-commercial-approval-evidence-passed"
+                              },
+                              "topChecks": []
+                            },
                             "enterpriseAuthSmoke": {
                               "provided": true,
                               "path": ".osmu-run/latest-enterprise-auth-smoke.json",
@@ -1449,6 +1518,7 @@ class AdminDashboardSummaryControllerTest {
                             "secretRotationSnapshotReviewed": true,
                             "commercialIntegrationSnapshotReviewed": true,
                             "commercialApprovalSnapshotReviewed": true,
+                            "chargebackCloseoutSnapshotReviewed": true,
                             "enterpriseAuthSmokeSnapshotReviewed": true,
                             "enterpriseAuthJitRollbackSnapshotReviewed": true,
                             "monitoringThresholdReviewed": true,
@@ -2659,9 +2729,11 @@ class AdminDashboardSummaryControllerTest {
                 .andExpect(jsonPath("$.data.operationsHandoffPackage.confirmations.secretRotationSnapshotReviewed").value(true))
                 .andExpect(jsonPath("$.data.operationsHandoffPackage.confirmations.commercialIntegrationSnapshotReviewed").value(true))
                 .andExpect(jsonPath("$.data.operationsHandoffPackage.confirmations.commercialApprovalSnapshotReviewed").value(true))
+                .andExpect(jsonPath("$.data.operationsHandoffPackage.confirmations.chargebackCloseoutSnapshotReviewed").value(true))
                 .andExpect(jsonPath("$.data.operationsHandoffPackage.confirmations.enterpriseAuthSmokeSnapshotReviewed").value(true))
                 .andExpect(jsonPath("$.data.operationsHandoffPackage.confirmations.monitoringThresholdReviewed").value(true))
                 .andExpect(jsonPath("$.data.operationsHandoffPackage.evidenceRefs.commercialApproval").value("latest-commercial-approval-evidence-passed"))
+                .andExpect(jsonPath("$.data.operationsHandoffPackage.evidenceRefs.chargebackCloseout").value("latest-chargeback-closeout-evidence-passed"))
                 .andExpect(jsonPath("$.data.operationsHandoffPackage.operationsReadinessSnapshot.result").value("ready"))
                 .andExpect(jsonPath("$.data.operationsHandoffPackage.operationsReadinessSnapshot.pendingCount").value(0))
                 .andExpect(jsonPath("$.data.operationsHandoffPackage.operationsConvergenceSnapshot.kubernetesReportSyncReady").value(true))
@@ -2703,6 +2775,15 @@ class AdminDashboardSummaryControllerTest {
                 .andExpect(jsonPath("$.data.operationsHandoffPackage.commercialApprovalSnapshot.result").value("passed"))
                 .andExpect(jsonPath("$.data.operationsHandoffPackage.commercialApprovalSnapshot.productVersion").value("osmu-mvp-0.1"))
                 .andExpect(jsonPath("$.data.operationsHandoffPackage.commercialApprovalSnapshot.pricingPolicyProposalApprovedPriceListCount").value(1))
+                .andExpect(jsonPath("$.data.operationsHandoffPackage.chargebackCloseoutSnapshot.result").value("passed"))
+                .andExpect(jsonPath("$.data.operationsHandoffPackage.chargebackCloseoutSnapshot.billingPeriod").value("2026-06"))
+                .andExpect(jsonPath("$.data.operationsHandoffPackage.chargebackCloseoutSnapshot.closeoutSnapshotValid").value(true))
+                .andExpect(jsonPath("$.data.operationsHandoffPackage.chargebackCloseoutSnapshot.reconciliationDifferenceMinorUnits").value(0))
+                .andExpect(jsonPath("$.data.operationsHandoffPackage.chargebackCloseoutSnapshot.finalInvoiceCount").value(3))
+                .andExpect(jsonPath("$.data.operationsHandoffPackage.chargebackCloseoutSnapshot.paidInvoiceCount").value(3))
+                .andExpect(jsonPath("$.data.operationsHandoffPackage.chargebackCloseoutSnapshot.noRawDataStored").value(true))
+                .andExpect(jsonPath("$.data.operationsHandoffPackage.chargebackCloseoutSnapshot.rawCustomerPaymentDataStored").value(false))
+                .andExpect(jsonPath("$.data.operationsHandoffPackage.chargebackCloseoutSnapshot.paymentProviderAdapterReadinessStatus").value("WEBHOOK_PROFILE_READY"))
                 .andExpect(jsonPath("$.data.operationsHandoffPackage.enterpriseAuthSmokeSnapshot.result").value("scope-out"))
                 .andExpect(jsonPath("$.data.operationsHandoffPackage.enterpriseAuthSmokeSnapshot.executionMode").value("scope-out"))
                 .andExpect(jsonPath("$.data.operationsHandoffPackage.enterpriseAuthSmokeSnapshot.scopeOut.accepted").value("true"))
