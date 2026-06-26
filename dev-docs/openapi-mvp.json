@@ -1187,7 +1187,44 @@
         }
       }
     },
-    "/api/admin/billing/chargeback-invoice-drafts": {
+    "/api/admin/billing/chargeback-closeout-summary": {
+      "get": {
+        "tags": ["Billing", "Admin"],
+        "operationId": "getChargebackCloseoutSummary",
+        "summary": "Read an ADMIN-only sanitized chargeback closeout summary for evidence collection",
+        "parameters": [
+          {
+            "name": "billingPeriod",
+            "in": "query",
+            "required": true,
+            "schema": { "type": "string" }
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "string", "format": "date-time" }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "string", "format": "date-time" }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "integer", "default": 500, "maximum": 1000 }
+          }
+        ],
+        "responses": {
+          "200": { "$ref": "#/components/responses/JsonOk" },
+          "400": { "$ref": "#/components/responses/Error" },
+          "403": { "$ref": "#/components/responses/Error" }
+        }
+      }
+    },    "/api/admin/billing/chargeback-invoice-drafts": {
       "get": {
         "tags": ["Billing", "Admin"],
         "operationId": "getChargebackInvoiceDrafts",

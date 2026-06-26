@@ -1631,6 +1631,16 @@ export function getChargebackPaymentProviderAdapterReadiness() {
   return request('/admin/billing/payment-provider-adapter-readiness')
 }
 
+export function getChargebackCloseoutSummary(options = {}) {
+  const query = new URLSearchParams()
+  appendQuery(query, 'billingPeriod', options.billingPeriod)
+  appendQuery(query, 'from', options.from)
+  appendQuery(query, 'to', options.to)
+  appendQuery(query, 'limit', options.limit)
+  const suffix = query.toString() ? `?${query.toString()}` : ''
+  return request(`/admin/billing/chargeback-closeout-summary${suffix}`)
+}
+
 export function recordChargebackPaymentProviderHandoffAdapterResult(handoffId, options = {}) {
   const query = new URLSearchParams()
   appendQuery(query, 'result', options.result)

@@ -38,6 +38,7 @@ import {
   getChargebackAlertNotificationOutbox,
   getChargebackAdapterRetryWorkerStatus,
   getChargebackAlerts,
+  getChargebackCloseoutSummary,
   getChargebackFinalInvoices,
   getChargebackInvoiceDrafts,
   getChargebackPaymentProviderHandoffPreview,
@@ -1481,6 +1482,18 @@ test('chargeback final invoice wrappers finalize update payment status and queue
         invoice: { id: 9, paymentReference: 'PAY-2026-0001' },
       },
     }),
+    () => jsonResponse({
+      data: {
+        mode: 'CHARGEBACK_CLOSEOUT_SUMMARY',
+        billingPeriod: '2026-06',
+        result: 'RECONCILED',
+        failureCount: 0,
+        reconciliationDifferenceMinorUnits: 0,
+        rawCustomerPaymentDataStored: false,
+        rawProviderResponseStored: false,
+        rawSecretValuesStored: false,
+      },
+    }),
   ])
 
   try {
@@ -1508,6 +1521,12 @@ test('chargeback final invoice wrappers finalize update payment status and queue
     const paid = await recordChargebackInvoicePayment(9, {
       paymentReference: 'PAY-2026-0001',
       paymentNote: 'paid',
+    })
+    const closeout = await getChargebackCloseoutSummary({
+      billingPeriod: '2026-06',
+      from: '2026-06-01T00:00:00.000Z',
+      to: '2026-07-01T00:00:00.000Z',
+      limit: 100,
     })
 
     const finalizeUrl = new URL(fetchMock.calls[0].url)
@@ -1570,6 +1589,16 @@ test('chargeback final invoice wrappers finalize update payment status and queue
     assert.equal(recordUrl.searchParams.get('paymentNote'), 'paid')
     assert.equal(fetchMock.calls[8].options.method, 'POST')
     assert.equal(paid.data.paymentStatus, 'PAID')
+
+    const closeoutUrl = new URL(fetchMock.calls[9].url)
+    assert.equal(closeoutUrl.pathname, '/api/admin/billing/chargeback-closeout-summary')
+    assert.equal(closeoutUrl.searchParams.get('billingPeriod'), '2026-06')
+    assert.equal(closeoutUrl.searchParams.get('from'), '2026-06-01T00:00:00.000Z')
+    assert.equal(closeoutUrl.searchParams.get('to'), '2026-07-01T00:00:00.000Z')
+    assert.equal(closeoutUrl.searchParams.get('limit'), '100')
+    assert.equal(fetchMock.calls[9].options.method, undefined)
+    assert.equal(closeout.data.result, 'RECONCILED')
+    assert.equal(closeout.data.failureCount, 0)
   } finally {
     cleanupFetch(fetchMock)
   }

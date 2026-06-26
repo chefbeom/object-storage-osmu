@@ -449,6 +449,31 @@ class AdminBillingControllerTest {
                 .andExpect(jsonPath("$.data.paymentStatus").value("PAID"))
                 .andExpect(jsonPath("$.data.invoice.paymentRecordedBy").value("admin"))
                 .andExpect(jsonPath("$.data.invoice.paymentReference").value("PAY-2026-0001"));
+
+        mockMvc.perform(get("/api/admin/billing/chargeback-closeout-summary")
+                        .header("Authorization", "Bearer " + adminToken)
+                        .param("billingPeriod", "test-period")
+                        .param("from", billingFrom)
+                        .param("to", billingTo)
+                        .param("limit", "100"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.mode").value("CHARGEBACK_CLOSEOUT_SUMMARY"))
+                .andExpect(jsonPath("$.data.billingPeriod").value("test-period"))
+                .andExpect(jsonPath("$.data.closeoutStatus").value("RECONCILED"))
+                .andExpect(jsonPath("$.data.result").value("RECONCILED"))
+                .andExpect(jsonPath("$.data.invoiceDraftCount").value(greaterThanOrEqualTo(1)))
+                .andExpect(jsonPath("$.data.finalInvoiceCount").value(greaterThanOrEqualTo(1)))
+                .andExpect(jsonPath("$.data.paymentRequestedCount").value(greaterThanOrEqualTo(1)))
+                .andExpect(jsonPath("$.data.paymentHandoffCount").value(greaterThanOrEqualTo(1)))
+                .andExpect(jsonPath("$.data.paidInvoiceCount").value(greaterThanOrEqualTo(1)))
+                .andExpect(jsonPath("$.data.reconciliationDifferenceMinorUnits").value(0))
+                .andExpect(jsonPath("$.data.failureCount").value(0))
+                .andExpect(jsonPath("$.data.rawCustomerPaymentDataStored").value(false))
+                .andExpect(jsonPath("$.data.rawProviderResponseStored").value(false))
+                .andExpect(jsonPath("$.data.rawSecretValuesStored").value(false))
+                .andExpect(content().string(not(containsString("PAY-2026-0001"))))
+                .andExpect(content().string(not(containsString("finance-ap"))))
+                .andExpect(content().string(not(containsString("payloadJson"))));
     }
 
     @Test

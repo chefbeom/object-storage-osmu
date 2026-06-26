@@ -19,8 +19,10 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
+import java.time.YearMonth;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeParseException;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -531,6 +533,102 @@ public class ChargebackPreviewService {
                 records.size(),
                 records.stream().map(ChargebackPreviewService::finalInvoiceResponse).toList(),
                 OffsetDateTime.now()
+        );
+    }
+
+    public ChargebackCloseoutSummaryResponse closeoutSummary(
+            AuthenticatedUser actor,
+            String billingPeriod,
+            OffsetDateTime from,
+            OffsetDateTime to,
+            int limit
+    ) {
+        requireAdmin(actor, "Chargeback closeout summary requires ADMIN.");
+        String normalizedBillingPeriod = normalizeCloseoutBillingPeriod(billingPeriod);
+        CloseoutWindow window = closeoutWindow(normalizedBillingPeriod, from, to);
+        int safeLimit = normalizeCloseoutLimit(limit);
+        List<ChargebackInvoiceDraftRecord> drafts = invoiceDraftRepository.findAll(safeLimit).stream()
+                .filter(record -> invoiceWindowMatches(record.from(), record.to(), window))
+                .toList();
+        List<ChargebackFinalInvoiceRecord> finalInvoices = finalInvoiceRepository.findAll(safeLimit).stream()
+                .filter(record -> invoiceWindowMatches(record.from(), record.to(), window))
+                .toList();
+        List<Long> finalInvoiceIds = finalInvoices.stream()
+                .map(ChargebackFinalInvoiceRecord::id)
+                .filter(id -> id != null && id > 0)
+                .toList();
+        List<ChargebackPaymentProviderHandoffRecord> handoffs = paymentHandoffRepository.findAll(safeLimit).stream()
+                .filter(record -> finalInvoiceIds.contains(record.finalInvoiceId())
+                        || timestampWithinWindow(record.createdAt(), window))
+                .toList();
+        List<ChargebackAlertNotificationDeliveryRecord> notifications = notificationDeliveryRepository.findAll(safeLimit).stream()
+                .filter(record -> timestampWithinWindow(record.createdAt(), window))
+                .toList();
+
+        int paymentRequestedCount = (int) finalInvoices.stream()
+                .filter(ChargebackPreviewService::isPaymentRequested)
+                .count();
+        int paidInvoiceCount = (int) finalInvoices.stream()
+                .filter(ChargebackPreviewService::isPaidInvoice)
+                .count();
+        int unpaidInvoiceCount = Math.max(0, finalInvoices.size() - paidInvoiceCount);
+        int openHandoffCount = (int) handoffs.stream()
+                .filter(record -> !"PAYMENT_PROVIDER_ADAPTER_SUCCEEDED".equals(record.status()))
+                .count();
+        int openNotificationCount = (int) notifications.stream()
+                .filter(record -> !"DELIVERY_ADAPTER_SUCCEEDED".equals(record.status()))
+                .count();
+        int adapterRetryCount = (int) (handoffs.stream().filter(ChargebackPreviewService::hasAdapterRetryState).count()
+                + notifications.stream().filter(ChargebackPreviewService::hasAdapterRetryState).count());
+        long finalInvoiceTotalMinorUnits = finalInvoices.stream()
+                .mapToLong(record -> minorUnits(record.estimatedTotalCost()))
+                .sum();
+        long paidInvoiceTotalMinorUnits = finalInvoices.stream()
+                .filter(ChargebackPreviewService::isPaidInvoice)
+                .mapToLong(record -> minorUnits(record.estimatedTotalCost()))
+                .sum();
+        long paymentRequestedTotalMinorUnits = finalInvoices.stream()
+                .filter(ChargebackPreviewService::isPaymentRequested)
+                .mapToLong(record -> minorUnits(record.estimatedTotalCost()))
+                .sum();
+        long reconciliationDifferenceMinorUnits = finalInvoiceTotalMinorUnits - paidInvoiceTotalMinorUnits;
+        int failureCount = unpaidInvoiceCount;
+        String closeoutStatus = finalInvoices.isEmpty()
+                ? "PENDING"
+                : failureCount == 0 && reconciliationDifferenceMinorUnits == 0
+                ? "RECONCILED"
+                : "PENDING";
+        OffsetDateTime generatedAt = OffsetDateTime.now();
+        return new ChargebackCloseoutSummaryResponse(
+                "CHARGEBACK_CLOSEOUT_SUMMARY",
+                normalizedBillingPeriod,
+                closeoutStatus,
+                closeoutStatus,
+                closeoutCurrency(finalInvoices),
+                window.from(),
+                window.to(),
+                drafts.size(),
+                finalInvoices.size(),
+                paymentRequestedCount,
+                handoffs.size(),
+                paidInvoiceCount,
+                notifications.size(),
+                adapterRetryCount,
+                unpaidInvoiceCount,
+                openHandoffCount,
+                openNotificationCount,
+                finalInvoiceTotalMinorUnits,
+                paidInvoiceTotalMinorUnits,
+                paymentRequestedTotalMinorUnits,
+                reconciliationDifferenceMinorUnits,
+                failureCount,
+                false,
+                false,
+                false,
+                generatedAt,
+                "ADMIN-only reduced chargeback closeout snapshot for target billing evidence.",
+                "Response contains typed counts, reduced totals, and booleans only; it does not expose customer payment data, provider payloads/responses, endpoint URLs, credentials, price tables, or invoice documents.",
+                "Use this response as ChargebackCloseoutSnapshotJsonPath input for scripts/write-chargeback-closeout-evidence.ps1 after external evidence references have been reviewed."
         );
     }
 
@@ -1071,7 +1169,7 @@ public class ChargebackPreviewService {
         }
     }
 
-    private void validateWindow(OffsetDateTime from, OffsetDateTime to) {
+    private static void validateWindow(OffsetDateTime from, OffsetDateTime to) {
         if (from != null && to != null && from.isAfter(to)) {
             throw new ApiException(ApiErrorCode.VALIDATION_ERROR, "from must be earlier than or equal to to.");
         }
@@ -1197,6 +1295,114 @@ public class ChargebackPreviewService {
     ) {
         String date = preview.generatedAt().toLocalDate().format(DateTimeFormatter.BASIC_ISO_DATE);
         return "OSMU-DRAFT-" + date + "-" + organization.organizationId();
+    }
+
+    private static String normalizeCloseoutBillingPeriod(String value) {
+        if (value == null || value.isBlank()) {
+            throw new ApiException(ApiErrorCode.VALIDATION_ERROR, "billingPeriod is required for chargeback closeout summary.");
+        }
+        String period = value.trim();
+        if (period.length() > 64 || period.contains("\r") || period.contains("\n")) {
+            throw new ApiException(ApiErrorCode.VALIDATION_ERROR, "billingPeriod must be a single-line value up to 64 characters.");
+        }
+        return period;
+    }
+
+    private static int normalizeCloseoutLimit(int limit) {
+        if (limit <= 0) {
+            return 500;
+        }
+        return Math.min(limit, 1000);
+    }
+
+    private static CloseoutWindow closeoutWindow(String billingPeriod, OffsetDateTime from, OffsetDateTime to) {
+        validateWindow(from, to);
+        if (from != null || to != null) {
+            return new CloseoutWindow(from, to);
+        }
+        if (!billingPeriod.matches("\\d{4}-\\d{2}")) {
+            return new CloseoutWindow(null, null);
+        }
+        try {
+            YearMonth month = YearMonth.parse(billingPeriod);
+            OffsetDateTime start = month.atDay(1).atStartOfDay().atOffset(ZoneOffset.UTC);
+            OffsetDateTime end = month.plusMonths(1).atDay(1).atStartOfDay().atOffset(ZoneOffset.UTC);
+            return new CloseoutWindow(start, end);
+        } catch (DateTimeParseException exception) {
+            throw new ApiException(ApiErrorCode.VALIDATION_ERROR, "billingPeriod must be yyyy-MM when from/to are omitted.");
+        }
+    }
+
+    private static boolean invoiceWindowMatches(OffsetDateTime recordFrom, OffsetDateTime recordTo, CloseoutWindow window) {
+        if (window.from() == null && window.to() == null) {
+            return true;
+        }
+        OffsetDateTime recordStart = recordFrom == null ? recordTo : recordFrom;
+        OffsetDateTime recordEnd = recordTo == null ? recordFrom : recordTo;
+        if (recordStart == null && recordEnd == null) {
+            return true;
+        }
+        if (window.from() != null && recordEnd != null && recordEnd.isBefore(window.from())) {
+            return false;
+        }
+        return window.to() == null || recordStart == null || recordStart.isBefore(window.to());
+    }
+
+    private static boolean timestampWithinWindow(OffsetDateTime timestamp, CloseoutWindow window) {
+        if (window.from() == null && window.to() == null) {
+            return true;
+        }
+        if (timestamp == null) {
+            return true;
+        }
+        if (window.from() != null && timestamp.isBefore(window.from())) {
+            return false;
+        }
+        return window.to() == null || timestamp.isBefore(window.to());
+    }
+
+    private static boolean isPaymentRequested(ChargebackFinalInvoiceRecord record) {
+        return record.paymentRequestedAt() != null
+                || "REQUESTED".equals(record.paymentStatus())
+                || "PAID".equals(record.paymentStatus())
+                || "PAYMENT_REQUESTED".equals(record.status())
+                || "PAID".equals(record.status());
+    }
+
+    private static boolean isPaidInvoice(ChargebackFinalInvoiceRecord record) {
+        return "PAID".equals(record.paymentStatus()) || "PAID".equals(record.status()) || record.paidAt() != null;
+    }
+
+    private static boolean hasAdapterRetryState(ChargebackPaymentProviderHandoffRecord record) {
+        return record.attemptCount() > 0 || containsRetryState(record.status());
+    }
+
+    private static boolean hasAdapterRetryState(ChargebackAlertNotificationDeliveryRecord record) {
+        return record.attemptCount() > 0 || containsRetryState(record.status());
+    }
+
+    private static boolean containsRetryState(String status) {
+        return status != null && status.toUpperCase(Locale.ROOT).contains("RETRY");
+    }
+
+    private static long minorUnits(BigDecimal value) {
+        if (value == null) {
+            return 0L;
+        }
+        return money(value).movePointRight(2).setScale(0, RoundingMode.HALF_UP).longValue();
+    }
+
+    private static String closeoutCurrency(List<ChargebackFinalInvoiceRecord> finalInvoices) {
+        List<String> currencies = finalInvoices.stream()
+                .map(ChargebackFinalInvoiceRecord::currency)
+                .filter(value -> value != null && !value.isBlank())
+                .map(value -> value.trim().toUpperCase(Locale.ROOT))
+                .distinct()
+                .toList();
+        if (currencies.isEmpty()) {
+            return "N/A";
+        }
+        return currencies.size() == 1 ? currencies.get(0) : "MIXED";
     }
 
     private static String normalizeNotificationChannel(String value) {
@@ -1886,6 +2092,9 @@ public class ChargebackPreviewService {
                 warningAmount,
                 criticalAmount
         );
+    }
+
+    private record CloseoutWindow(OffsetDateTime from, OffsetDateTime to) {
     }
 
     private static final class OrganizationAccumulator {

@@ -3257,6 +3257,25 @@ Response:
 - `finalInvoice=true`, `paymentRequest=true`
 - `invoice`: updated final invoice row with `paymentReference` and payment timestamps.
 
+### GET /api/admin/billing/chargeback-closeout-summary
+
+Returns an `ADMIN`-only sanitized chargeback closeout summary for target billing evidence. This endpoint is designed as the `ChargebackCloseoutSnapshotJsonPath` source for `scripts/write-chargeback-closeout-evidence.ps1`: it reports typed counts, reduced totals, reconciliation status, and raw-data flags without returning customer payment data, provider payloads/responses, endpoint URLs, credentials, price tables, or invoice documents.
+
+Query parameters:
+
+- `billingPeriod` (required): target billing period label recorded in the evidence snapshot. When it is `yyyy-MM` and `from`/`to` are omitted, the endpoint filters that UTC month.
+- `from` / `to` (optional): ISO-8601 offset datetime window for custom closeout evidence windows.
+- `limit` (optional): repository scan limit, default `500`, max `1000`.
+
+Response:
+
+- `mode`: `CHARGEBACK_CLOSEOUT_SUMMARY`
+- `billingPeriod`, `from`, `to`, `currency`
+- `closeoutStatus` / `result`: `RECONCILED` only when at least one final invoice is present, every final invoice is paid, and the final-invoice total equals the paid-invoice total; otherwise `PENDING`.
+- `invoiceDraftCount`, `finalInvoiceCount`, `paymentRequestedCount`, `paymentHandoffCount`, `paidInvoiceCount`, `notificationDeliveryCount`, `adapterRetryCount`
+- `finalInvoiceTotalMinorUnits`, `paidInvoiceTotalMinorUnits`, `paymentRequestedTotalMinorUnits`, `reconciliationDifferenceMinorUnits`, `failureCount`
+- `rawCustomerPaymentDataStored=false`, `rawProviderResponseStored=false`, `rawSecretValuesStored=false`
+- `scopePolicy`, `secretPolicy`, and `note` explaining the reduced evidence boundary.
 ### GET /api/admin/security/enterprise-auth-plan
 
 Enterprise SSO/OIDC/LDAP 도입 전 현재 인증 경계와 claim mapping plan을 조회한다. 현재 활성 login mode는 `LOCAL_PASSWORD`이며, OIDC/LDAP는 plan/readiness 상태로만 노출한다. `ADMIN`은 조회 가능하고, `AUDITOR`도 보안 검토용 read-only route로 조회할 수 있다.

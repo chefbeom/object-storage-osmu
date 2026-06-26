@@ -350,6 +350,24 @@ public class AdminBillingController {
         return ApiResponse.of(chargebackPreviewService.paymentProviderAdapterReadiness(actor));
     }
 
+    @GetMapping("/chargeback-closeout-summary")
+    public ApiResponse<ChargebackCloseoutSummaryResponse> chargebackCloseoutSummary(
+            @RequestParam(name = "billingPeriod") String billingPeriod,
+            @RequestParam(name = "from", required = false) String from,
+            @RequestParam(name = "to", required = false) String to,
+            @RequestParam(name = "limit", required = false) Integer limit,
+            HttpServletRequest request
+    ) {
+        AuthenticatedUser actor = authContext.currentUser(request);
+        return ApiResponse.of(chargebackPreviewService.closeoutSummary(
+                actor,
+                billingPeriod,
+                parseOptionalOffsetDateTime(from, "from"),
+                parseOptionalOffsetDateTime(to, "to"),
+                limit == null ? 500 : limit
+        ));
+    }
+
     @PostMapping("/chargeback-alert-notifications/outbox/{deliveryId}/adapter-result")
     public ApiResponse<ChargebackAlertNotificationDeliveryAttemptResponse> recordChargebackAlertNotificationAdapterResult(
             @PathVariable long deliveryId,
