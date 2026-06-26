@@ -30,6 +30,7 @@ This checklist turns the current prototype evidence into a repeatable MVP releas
 - Latest storage expansion finalizer report: `.osmu-run/latest-storage-expansion-finalize.json` when live Kubernetes expansion evidence has been collected.
 - Latest storage backend telemetry evidence: `.osmu-run/latest-storage-backend-telemetry.json` when target MinIO `mc admin info --json` pool/node evidence has been summarized by the local writer, storage expansion finalizer, or `.github/workflows/manual-storage-backend-telemetry-evidence.yml`.
 - Latest data-flow query/retention budget evidence: `.osmu-run/latest-data-flow-query-retention-budget-evidence.json` and `.md` when target p95 query latency and retention dry-run durations have been captured by `scripts/write-data-flow-query-retention-budget-evidence.ps1`.
+- Latest enterprise auth JIT rollback evidence: `.osmu-run/latest-enterprise-auth-jit-rollback-evidence.json` and `.md` when admin-approved JIT rollback/runbook evidence has been captured by `scripts/write-enterprise-auth-jit-rollback-evidence.ps1`.
 - Latest Kubernetes DR finalizer report: `.osmu-run/latest-kubernetes-dr-finalize.json` when live Kubernetes DR evidence has been collected.
 - Latest security evidence finalizer report: `.osmu-run/latest-security-evidence-finalize.json` when signed image and container scan/SBOM CI evidence has been collected and promoted.
 - Latest durable demo gate report: `.osmu-run/latest-durable-demo-gate.json`
@@ -182,6 +183,7 @@ Required before calling the current prototype demo-ready:
 - [x] Test case evidence map separates PASS, PARTIAL, and PENDING items.
 - [x] S3 replacement boundary verifier passes and keeps English/Korean compatibility claims in README, API spec, feature inventory, status, and release-facing docs scoped to `dev-docs/s3-compatibility.md`.
 - [x] Data-flow query/retention budget evidence writer self-test passes.
+- [x] Enterprise auth JIT rollback evidence writer self-test passes.
 
 Command:
 

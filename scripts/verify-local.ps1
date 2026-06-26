@@ -184,6 +184,9 @@ Run "powershell -ExecutionPolicy Bypass -File .\scripts\verify-operations-eviden
 Step "Enterprise auth smoke plan check"
 Run "powershell -ExecutionPolicy Bypass -File .\scripts\verify-enterprise-auth-smoke-plan.ps1"
 
+Step "Enterprise auth JIT rollback evidence check"
+Run "powershell -ExecutionPolicy Bypass -File .\scripts\verify-enterprise-auth-jit-rollback-evidence.ps1"
+
 Step "Operations invocation unblock plan check"
 Run "powershell -ExecutionPolicy Bypass -File .\scripts\verify-operations-invocation-unblock-plan.ps1"
 

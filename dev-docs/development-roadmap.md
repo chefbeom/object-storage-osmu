@@ -144,12 +144,13 @@ AWS 문서의 세부 checksum negotiation, 드문 header 조합, 정확한 오�
 - OIDC claim preview and audit
 - admin-approved JIT provisioning
 - smoke evidence helper and CI workflow
+- JIT rollback/runbook evidence writer/verifier (`scripts/write-enterprise-auth-jit-rollback-evidence.ps1`)
 
 남은 범위:
 
 - target IdP OIDC callback smoke
 - target LDAP bind/search smoke
-- admin-approved JIT rollback/runbook evidence
+- target admin-approved JIT rollback/runbook evidence `result=passed` run
 - 계약상 enterprise auth 지연 시 `scope-out` evidence
 
 ## 8. Phase 6 - Product Hardening
