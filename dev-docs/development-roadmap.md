@@ -121,10 +121,12 @@ AWS 문서의 세부 checksum negotiation, 드문 header 조합, 정확한 오�
 - final invoice/payment state workflow
 - notification/payment adapter send boundary와 retry state
 - native payment provider adapter SPI/composite dispatch
+- chargeback closeout evidence writer/verifier (`scripts/write-chargeback-closeout-evidence.ps1`)
 - commercial integration/approval evidence writers and workflows
 - operations handoff package writer/workflow
 
 남은 범위:
+- target chargeback closeout evidence `result=passed`
 
 - target commercial integration evidence
 - target commercial approval evidence
@@ -174,10 +176,11 @@ AWS 문서의 세부 checksum negotiation, 드문 header 조합, 정확한 오�
 
 1. Production operations evidence chain 닫기
 2. Data-flow storage transition plan을 target query-plan evidence와 연결
-3. Commercial integration/approval target evidence 수집
-4. Enterprise auth target smoke 또는 명시적 scope-out evidence 수집
-5. Operations handoff package와 convergence를 finalizer-ready 상태로 유지
-6. 주요 S3 client smoke 실패가 확인될 때만 S3 replacement layer 보강
+3. Chargeback closeout target evidence 수집
+4. Commercial integration/approval target evidence 수집
+5. Enterprise auth target smoke 또는 명시적 scope-out evidence 수집
+6. Operations handoff package와 convergence를 finalizer-ready 상태로 유지
+7. 주요 S3 client smoke 실패가 확인될 때만 S3 replacement layer 보강
 
 ## 10. 변경 규칙
 

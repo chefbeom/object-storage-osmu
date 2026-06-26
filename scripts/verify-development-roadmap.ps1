@@ -99,6 +99,8 @@ Assert-Contains $content "Alertmanager/Grafana threshold target contract" "Devel
 Assert-Contains $content "monitoring threshold evidence writer" "Development roadmap"
 Assert-Contains $content "data-flow storage transition runbook evidence writer" "Development roadmap"
 Assert-Contains $content "threshold value/receiver" "Development roadmap"
+Assert-Contains $content "chargeback closeout evidence writer" "Development roadmap"
+Assert-Contains $content "write-chargeback-closeout-evidence.ps1" "Development roadmap"
 Assert-Contains $content "Enterprise auth target smoke" "Development roadmap"
 Assert-Contains $content "JIT rollback/runbook evidence writer" "Development roadmap"
 Assert-Contains $content "write-enterprise-auth-jit-rollback-evidence.ps1" "Development roadmap"

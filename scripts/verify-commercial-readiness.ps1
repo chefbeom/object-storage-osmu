@@ -1,4 +1,4 @@
-﻿param(
+param(
     [string] $CommercialReadinessPath = ".\dev-docs\commercial-readiness.md"
 )
 
@@ -65,6 +65,8 @@ Assert-Contains $content 'Operations readiness artifact import report is generat
 Assert-Contains $content 'monitoring threshold promotion requires target metadata, chronological review window, evidence refs, typed integer alert/route/Grafana/tuning/failure/check counts, typed boolean confirmations' "Commercial readiness draft"
 Assert-Contains $content 'Commercial integration evidence is generated as `.osmu-run/latest-commercial-integration-evidence.json` with `result=passed` from the target environment through `scripts/write-commercial-integration-evidence.ps1` or `.github/workflows/manual-commercial-integration-evidence.yml`' "Commercial readiness draft"
 Assert-Contains $content 'requires typed integer count fields and typed boolean readiness/profile fields' "Commercial readiness draft"
+Assert-Contains $content 'Chargeback closeout evidence is generated as `.osmu-run/latest-chargeback-closeout-evidence.json` with `result=passed` through `scripts/write-chargeback-closeout-evidence.ps1`' "Commercial readiness draft"
+Assert-Contains $content 'The sanitized closeout snapshot must include typed invoice/payment/reconciliation counts, zero failure count, typed false raw-customer-payment/raw-provider-response/raw-secret flags' "Commercial readiness draft"
 Assert-Contains $content 'Commercial approval evidence is generated as `.osmu-run/latest-commercial-approval-evidence.json` with `result=passed` through `scripts/write-commercial-approval-evidence.ps1` or `.github/workflows/manual-commercial-approval-evidence.yml`' "Commercial readiness draft"
 Assert-Contains $content 'snapshot showing product-side commercial price-list approval state with typed boolean approval flags' "Commercial readiness draft"
 Assert-Contains $content 'Operations handoff package evidence is generated as `.osmu-run/latest-operations-handoff-package.json` with `result=passed` from the target environment through `scripts/write-operations-handoff-package.ps1` or `.github/workflows/manual-operations-handoff-package.yml`' "Commercial readiness draft"
@@ -76,10 +78,11 @@ Assert-Contains $content '- Chargeback preview: API, persistent pricing policy' 
 Assert-Contains $content 'optional generic notification/payment webhook HMAC signature headers, adapter retry worker dry-run/run controls for notification/payment adapter retry' "Commercial readiness draft"
 Assert-Contains $content 'payment provider handoff outbox/history with configured generic/CARD/BANK/TAX/ERP webhook profile handoff send and adapter result retry state' "Commercial readiness draft"
 Assert-Contains $content 'commercial integration evidence writer' "Commercial readiness draft"
+Assert-Contains $content 'chargeback closeout evidence writer' "Commercial readiness draft"
 Assert-Contains $content 'commercial approval evidence writer' "Commercial readiness draft"
 Assert-Contains $content 'dashboard readiness visibility for commercial integration/approval evidence summaries' "Commercial readiness draft"
 Assert-Contains $content 'operations handoff package evidence writer/workflow implemented' "Commercial readiness draft"
-Assert-Contains $content 'concrete native card/bank/tax/ERP provider API adapters, target secret/certificate rotation `result=passed` evidence, target commercial integration `result=passed` evidence, target commercial approval `result=passed` evidence, and target operations handoff package `result=passed` evidence remain pending.' "Commercial readiness draft"
+Assert-Contains $content 'concrete native card/bank/tax/ERP provider API adapters, target secret/certificate rotation `result=passed` evidence, target chargeback closeout `result=passed` evidence, target commercial integration `result=passed` evidence, target commercial approval `result=passed` evidence, and target operations handoff package `result=passed` evidence remain pending.' "Commercial readiness draft"
 Assert-Contains $content 'Final legal/commercial approval: evidence writer implemented; target `result=passed` approval evidence pending.' "Commercial readiness draft"
 
 Write-Host "Commercial readiness draft verified."

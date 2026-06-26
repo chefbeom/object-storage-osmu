@@ -31,6 +31,7 @@ This checklist turns the current prototype evidence into a repeatable MVP releas
 - Latest storage backend telemetry evidence: `.osmu-run/latest-storage-backend-telemetry.json` when target MinIO `mc admin info --json` pool/node evidence has been summarized by the local writer, storage expansion finalizer, or `.github/workflows/manual-storage-backend-telemetry-evidence.yml`.
 - Latest data-flow query/retention budget evidence: `.osmu-run/latest-data-flow-query-retention-budget-evidence.json` and `.md` when target p95 query latency and retention dry-run durations have been captured by `scripts/write-data-flow-query-retention-budget-evidence.ps1`.
 - Latest enterprise auth JIT rollback evidence: `.osmu-run/latest-enterprise-auth-jit-rollback-evidence.json` and `.md` when admin-approved JIT rollback/runbook evidence has been captured by `scripts/write-enterprise-auth-jit-rollback-evidence.ps1`.
+- Latest chargeback closeout evidence: `.osmu-run/latest-chargeback-closeout-evidence.json` and `.md` when target billing period pricing, usage, invoice, payment handoff, notification, retry, reconciliation, commercial integration, and commercial approval references have been captured by `scripts/write-chargeback-closeout-evidence.ps1`.
 - Latest cluster network access review evidence: `.osmu-run/latest-cluster-network-access-review-evidence.json` and `.md` when Kubernetes/Helm NetworkPolicy hashes, access review references, and operator confirmations have been captured by `scripts/write-cluster-network-access-review-evidence.ps1`.
 - Latest Helm values hardening evidence: `.osmu-run/latest-helm-values-hardening-evidence.json` and `.md` when externalized secrets, HA/resource/security/network/TLS/read-only mount, and storage expansion RBAC defaults have been captured by `scripts/write-helm-values-hardening-evidence.ps1`.
 - Latest support escalation handoff evidence: `.osmu-run/latest-support-escalation-handoff-evidence.json` and `.md` when runbook, troubleshooting, rollback, support escalation, support SLA, known-gap, and operations handoff package references have been reviewed by `scripts/write-support-escalation-handoff-evidence.ps1`.
@@ -186,6 +187,7 @@ Required before calling the current prototype demo-ready:
 - [x] Test case evidence map separates PASS, PARTIAL, and PENDING items.
 - [x] S3 replacement boundary verifier passes and keeps English/Korean compatibility claims in README, API spec, feature inventory, status, and release-facing docs scoped to `dev-docs/s3-compatibility.md`.
 - [x] Data-flow query/retention budget evidence writer self-test passes.
+- [x] Chargeback closeout evidence writer self-test passes.
 - [x] Enterprise auth JIT rollback evidence writer self-test passes.
 - [x] Cluster network access review evidence writer self-test passes.
 - [x] Helm values hardening evidence writer self-test passes.
