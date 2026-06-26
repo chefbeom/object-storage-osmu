@@ -2499,6 +2499,8 @@ public class AdminController {
                 commercialApprovalEvidenceSnapshotFromNode(targetEvidenceSnapshots.path("commercialApproval"), false);
         DashboardEnterpriseAuthSmokeEvidenceResponse enterpriseAuthSmokeSnapshot =
                 enterpriseAuthSmokeEvidenceSnapshotFromNode(targetEvidenceSnapshots.path("enterpriseAuthSmoke"), false);
+        DashboardEnterpriseAuthJitRollbackEvidenceResponse enterpriseAuthJitRollbackSnapshot =
+                enterpriseAuthJitRollbackEvidenceSnapshotFromNode(targetEvidenceSnapshots.path("enterpriseAuthJitRollback"), false);
         DashboardMonitoringThresholdEvidenceResponse monitoringThresholdSnapshot =
                 monitoringThresholdEvidenceSnapshotFromNode(targetEvidenceSnapshots.path("monitoringThreshold"), false);
         return new DashboardOperationsHandoffPackageResponse(
@@ -2521,6 +2523,7 @@ public class AdminController {
                 commercialIntegrationSnapshot,
                 commercialApprovalSnapshot,
                 enterpriseAuthSmokeSnapshot,
+                enterpriseAuthJitRollbackSnapshot,
                 monitoringThresholdSnapshot,
                 List.copyOf(checks),
                 jsonText(packageReport, "decisionRule"),

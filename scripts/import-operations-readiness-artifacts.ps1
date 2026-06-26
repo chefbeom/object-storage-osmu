@@ -2824,6 +2824,7 @@ function Test-OperationsHandoffPackageTargetSnapshots([object] $Json) {
             detail = "targetEvidenceSnapshots expected"
         }
     }
+    $validatedSnapshotCount = 7
 
     $plan = Get-JsonProperty $targetSnapshots "dataFlowStoragePlan"
     $base = Test-HandoffSnapshotBase $plan "targetEvidenceSnapshots.dataFlowStoragePlan" @("passed") $true
@@ -2928,6 +2929,30 @@ function Test-OperationsHandoffPackageTargetSnapshots([object] $Json) {
         }
     }
 
+    $enterpriseAuthJitRollback = Get-JsonProperty $targetSnapshots "enterpriseAuthJitRollback"
+    $enterpriseAuthJitRollbackProvided = $false
+    if ($null -ne $enterpriseAuthJitRollback) {
+        $jitProvided = Get-RequiredJsonBool $enterpriseAuthJitRollback "provided"
+        $jitResult = [string] (Get-JsonProperty $enterpriseAuthJitRollback "result")
+        $enterpriseAuthJitRollbackProvided = ($jitProvided.valid -and $jitProvided.value) -or -not [string]::IsNullOrWhiteSpace($jitResult)
+    }
+    if ($enterpriseAuthJitRollbackProvided) {
+        $validatedSnapshotCount = 8
+        $base = Test-HandoffSnapshotBase $enterpriseAuthJitRollback "targetEvidenceSnapshots.enterpriseAuthJitRollback" @("passed") $true
+        if (-not $base.passed) { return $base }
+        $validation = Test-HandoffRequiredBoolTrue $enterpriseAuthJitRollback "confirmationsValid" "targetEvidenceSnapshots.enterpriseAuthJitRollback"
+        if (-not $validation.passed) { return $validation }
+        $validation = Test-HandoffRequiredIntEquals $enterpriseAuthJitRollback "failureCount" 0 "targetEvidenceSnapshots.enterpriseAuthJitRollback"
+        if (-not $validation.passed) { return $validation }
+        $validation = Test-HandoffRequiredIntAtLeast $enterpriseAuthJitRollback "checkCount" 1 "targetEvidenceSnapshots.enterpriseAuthJitRollback"
+        if (-not $validation.passed) { return $validation }
+        $jitSmoke = Get-JsonProperty $enterpriseAuthJitRollback "enterpriseAuthSmokeSnapshot"
+        $jitSmokeResult = [string] (Get-JsonProperty $jitSmoke "result")
+        if ([string]::IsNullOrWhiteSpace($jitSmokeResult)) {
+            return [pscustomobject]@{ passed = $false; detail = "targetEvidenceSnapshots.enterpriseAuthJitRollback.enterpriseAuthSmokeSnapshot.result expected" }
+        }
+    }
+
     $monitoring = Get-JsonProperty $targetSnapshots "monitoringThreshold"
     $base = Test-HandoffSnapshotBase $monitoring "targetEvidenceSnapshots.monitoringThreshold" @("passed") $true
     if (-not $base.passed) { return $base }
@@ -2951,7 +2976,7 @@ function Test-OperationsHandoffPackageTargetSnapshots([object] $Json) {
 
     return [pscustomobject]@{
         passed = $true
-        detail = "targetSnapshots=7/7"
+        detail = "targetSnapshots=$validatedSnapshotCount/$validatedSnapshotCount"
     }
 }
 
@@ -3011,6 +3036,21 @@ function Test-OperationsHandoffPackageSummary([object] $Json) {
     $enterpriseAuthResult = [string] (Get-JsonProperty $summary "enterpriseAuthSmokeSnapshotResult")
     if (-not ("passed".Equals($enterpriseAuthResult, [System.StringComparison]::OrdinalIgnoreCase) -or "scope-out".Equals($enterpriseAuthResult, [System.StringComparison]::OrdinalIgnoreCase))) {
         return [pscustomobject]@{ passed = $false; detail = "summary.enterpriseAuthSmokeSnapshotResult=$enterpriseAuthResult expected=passed|scope-out" }
+    }
+    $targetSnapshots = Get-JsonProperty $Json "targetEvidenceSnapshots"
+    $jitSnapshot = Get-JsonProperty $targetSnapshots "enterpriseAuthJitRollback"
+    $jitProvided = $false
+    if ($null -ne $jitSnapshot) {
+        $jitProvidedResult = Get-RequiredJsonBool $jitSnapshot "provided"
+        $jitSnapshotResult = [string] (Get-JsonProperty $jitSnapshot "result")
+        $jitProvided = ($jitProvidedResult.valid -and $jitProvidedResult.value) -or -not [string]::IsNullOrWhiteSpace($jitSnapshotResult)
+    }
+    $jitSummaryResult = [string] (Get-JsonProperty $summary "enterpriseAuthJitRollbackSnapshotResult")
+    if ($jitProvided -and -not "passed".Equals($jitSummaryResult, [System.StringComparison]::OrdinalIgnoreCase)) {
+        return [pscustomobject]@{ passed = $false; detail = "summary.enterpriseAuthJitRollbackSnapshotResult=$jitSummaryResult expected=passed" }
+    }
+    if (-not $jitProvided -and -not [string]::IsNullOrWhiteSpace($jitSummaryResult) -and -not "passed".Equals($jitSummaryResult, [System.StringComparison]::OrdinalIgnoreCase)) {
+        return [pscustomobject]@{ passed = $false; detail = "summary.enterpriseAuthJitRollbackSnapshotResult=$jitSummaryResult expected=passed or blank" }
     }
 
     return [pscustomobject]@{
@@ -4059,6 +4099,16 @@ function Test-OperationsHandoffPackageEvidenceJson([string] $Path) {
         "requireProductionEvidence",
         "requireOperationsSnapshotEvidence"
     )
+    $targetSnapshots = Get-JsonProperty $json "targetEvidenceSnapshots"
+    $jitSnapshot = Get-JsonProperty $targetSnapshots "enterpriseAuthJitRollback"
+    if ($null -ne $jitSnapshot) {
+        $jitProvided = Get-RequiredJsonBool $jitSnapshot "provided"
+        $jitResult = [string] (Get-JsonProperty $jitSnapshot "result")
+        if (($jitProvided.valid -and $jitProvided.value) -or -not [string]::IsNullOrWhiteSpace($jitResult)) {
+            $requiredConfirmations += "enterpriseAuthJitRollbackSnapshotReviewed"
+        }
+    }
+
     $confirmations = Get-JsonProperty $json "confirmations"
     foreach ($confirmationName in $requiredConfirmations) {
         $confirmation = Get-RequiredJsonBool $confirmations $confirmationName

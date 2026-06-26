@@ -606,6 +606,12 @@ if (-not ([string] $operationsHandoffPackageCheck[0].remediation.command).Contai
 if (-not ([string] $operationsHandoffPackageCheck[0].remediation.command).Contains("EnterpriseAuthJsonPath")) {
     throw "Operations handoff package target evidence remediation must include enterprise auth smoke JSON snapshot input."
 }
+if (-not ([string] $operationsHandoffPackageCheck[0].remediation.command).Contains("EnterpriseAuthJitRollbackEvidenceRef")) {
+    throw "Operations handoff package target evidence remediation must include enterprise auth JIT rollback evidence reference."
+}
+if (-not ([string] $operationsHandoffPackageCheck[0].remediation.command).Contains("EnterpriseAuthJitRollbackJsonPath")) {
+    throw "Operations handoff package target evidence remediation must include enterprise auth JIT rollback JSON snapshot input."
+}
 if (-not ([string] $operationsHandoffPackageCheck[0].remediation.command).Contains("MonitoringThresholdJsonPath")) {
     throw "Operations handoff package target evidence remediation must include monitoring threshold JSON snapshot input."
 }
@@ -617,6 +623,9 @@ if (-not ([string] $operationsHandoffPackageCheck[0].remediation.command).Contai
 }
 if (-not ([string] $operationsHandoffPackageCheck[0].remediation.command).Contains("ConfirmEnterpriseAuthSmokeSnapshotReviewed")) {
     throw "Operations handoff package target evidence remediation must confirm enterprise auth smoke snapshot review."
+}
+if (-not ([string] $operationsHandoffPackageCheck[0].remediation.command).Contains("ConfirmEnterpriseAuthJitRollbackSnapshotReviewed")) {
+    throw "Operations handoff package target evidence remediation must confirm enterprise auth JIT rollback snapshot review."
 }
 if (-not ([string] $operationsHandoffPackageCheck[0].remediation.command).Contains("ConfirmMonitoringThresholdReviewed")) {
     throw "Operations handoff package target evidence remediation must confirm monitoring threshold review."
@@ -678,6 +687,12 @@ if (-not ([string] $operationsHandoffPackageCheck[0].remediation.workflowCommand
 if (-not ([string] $operationsHandoffPackageCheck[0].remediation.workflowCommand).Contains("enterprise_auth_json_base64=<base64-latest-enterprise-auth-smoke-json>")) {
     throw "Operations handoff package target evidence workflow command must include enterprise auth smoke snapshot base64 input."
 }
+if (-not ([string] $operationsHandoffPackageCheck[0].remediation.workflowCommand).Contains("enterprise_auth_jit_rollback_evidence_ref=<ref>")) {
+    throw "Operations handoff package target evidence workflow command must include enterprise auth JIT rollback evidence reference input."
+}
+if (-not ([string] $operationsHandoffPackageCheck[0].remediation.workflowCommand).Contains("enterprise_auth_jit_rollback_json_base64=<base64-latest-enterprise-auth-jit-rollback-evidence-json>")) {
+    throw "Operations handoff package target evidence workflow command must include enterprise auth JIT rollback snapshot base64 input."
+}
 if (-not ([string] $operationsHandoffPackageCheck[0].remediation.workflowCommand).Contains("monitoring_threshold_json_base64=<base64-latest-monitoring-threshold-evidence-json>")) {
     throw "Operations handoff package target evidence workflow command must include monitoring threshold snapshot base64 input."
 }
@@ -705,6 +720,9 @@ if (-not ([string] $operationsHandoffPackageCheck[0].remediation.workflowCommand
 if (-not ([string] $operationsHandoffPackageCheck[0].remediation.workflowCommand).Contains("confirm_enterprise_auth_smoke_snapshot_reviewed=true")) {
     throw "Operations handoff package target evidence workflow command must confirm enterprise auth smoke snapshot review."
 }
+if (-not ([string] $operationsHandoffPackageCheck[0].remediation.workflowCommand).Contains("confirm_enterprise_auth_jit_rollback_snapshot_reviewed=true")) {
+    throw "Operations handoff package target evidence workflow command must confirm enterprise auth JIT rollback snapshot review."
+}
 if (-not ([string] $operationsHandoffPackageCheck[0].remediation.workflowCommand).Contains("confirm_monitoring_threshold_reviewed=true")) {
     throw "Operations handoff package target evidence workflow command must confirm monitoring threshold review."
 }
@@ -714,10 +732,13 @@ if (-not ([string] $operationsHandoffPackageCheck[0].remediation.workflowCommand
 if (-not ([string] $operationsHandoffPackageCheck[0].remediation.note).Contains("latest-operations-readiness.json") -or -not ([string] $operationsHandoffPackageCheck[0].remediation.note).Contains("latest-operations-readiness-convergence.json") -or -not ([string] $operationsHandoffPackageCheck[0].remediation.note).Contains("latest-data-flow-storage-plan.json") -or -not ([string] $operationsHandoffPackageCheck[0].remediation.note).Contains("latest-data-flow-storage-transition-runbook-evidence.json") -or -not ([string] $operationsHandoffPackageCheck[0].remediation.note).Contains("latest-secret-rotation-evidence.json") -or -not ([string] $operationsHandoffPackageCheck[0].remediation.note).Contains("latest-commercial-integration-evidence.json") -or -not ([string] $operationsHandoffPackageCheck[0].remediation.note).Contains("latest-commercial-approval-evidence.json") -or -not ([string] $operationsHandoffPackageCheck[0].remediation.note).Contains("latest-enterprise-auth-smoke.json") -or -not ([string] $operationsHandoffPackageCheck[0].remediation.note).Contains("latest-monitoring-threshold-evidence.json")) {
     throw "Operations handoff package target evidence remediation note must mention readiness/convergence/data-flow plan/data-flow runbook/secret rotation/commercial/enterprise auth/monitoring threshold snapshots."
 }
+if (-not ([string] $operationsHandoffPackageCheck[0].remediation.note).Contains("latest-enterprise-auth-jit-rollback-evidence.json")) {
+    throw "Operations handoff package target evidence remediation note must mention enterprise auth JIT rollback snapshot."
+}
 if (-not ([string] $operationsHandoffPackageCheck[0].remediation.note).Contains("enterprise auth smoke")) {
     throw "Operations handoff package target evidence remediation note must mention enterprise auth smoke review confirmation."
 }
-if (-not ([string] $operationsHandoffPackageCheck[0].remediation.note).Contains("reduced to sanitized result/count/sync/query-plan/runbook/secret-rotation/commercial/enterprise auth scope-out/monitoring threshold summary fields")) {
+if (-not ([string] $operationsHandoffPackageCheck[0].remediation.note).Contains("reduced to sanitized result/count/sync/query-plan/runbook/secret-rotation/commercial/enterprise auth smoke/JIT rollback/monitoring threshold summary fields")) {
     throw "Operations handoff package target evidence remediation note must describe sanitized snapshot reduction."
 }
 if (-not ([string] $operationsHandoffPackageCheck[0].remediation.note).Contains("object keys")) {

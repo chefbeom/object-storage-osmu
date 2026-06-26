@@ -51,6 +51,7 @@ $secretRotationPath = Join-Path $resolvedOutputDirectory "latest-secret-rotation
 $commercialIntegrationPath = Join-Path $resolvedOutputDirectory "latest-commercial-integration-evidence.json"
 $commercialApprovalPath = Join-Path $resolvedOutputDirectory "latest-commercial-approval-evidence.json"
 $enterpriseAuthPath = Join-Path $resolvedOutputDirectory "latest-enterprise-auth-smoke.json"
+$enterpriseAuthJitRollbackPath = Join-Path $resolvedOutputDirectory "latest-enterprise-auth-jit-rollback-evidence.json"
 $monitoringThresholdPath = Join-Path $resolvedOutputDirectory "latest-monitoring-threshold-evidence.json"
 
 [ordered]@{
@@ -363,50 +364,114 @@ $monitoringThresholdPath = Join-Path $resolvedOutputDirectory "latest-monitoring
 [ordered]@{
     formatVersion = "osmu.enterprise-auth-smoke.v1"
     generatedAt = "2026-06-20T02:25:00Z"
-    result = "scope-out"
-    executionMode = "scope-out"
+    result = "passed"
+    executionMode = "target-smoke"
     apiBase = "http://localhost:8080/api"
     requireOidc = $true
     requireLdap = $true
-    requireAuditEvents = $false
+    requireAuditEvents = $true
     scopeOut = [ordered]@{
-        confirmed = $true
-        reference = "enterprise-auth-contract-scope-out-20260620"
-        reason = "Pilot contract excludes SSO until customer IdP onboarding."
-        accepted = $true
+        confirmed = $false
+        reference = ""
+        reason = ""
+        accepted = $false
     }
     inputs = [ordered]@{
-        adminPasswordProvided = $false
-        oidcCallbackCodeProvided = $false
-        oidcCallbackStateProvided = $false
-        oidcClaimPreviewJsonPathProvided = $false
-        oidcJitProvisionJsonPathProvided = $false
-        confirmJitProvision = $false
-        ldapLoginIdProvided = $false
-        ldapPasswordProvided = $false
-        expectedEmailProvided = $false
+        adminPasswordProvided = $true
+        oidcCallbackCodeProvided = $true
+        oidcCallbackStateProvided = $true
+        oidcClaimPreviewJsonPathProvided = $true
+        oidcJitProvisionJsonPathProvided = $true
+        confirmJitProvision = $true
+        ldapLoginIdProvided = $true
+        ldapPasswordProvided = $true
+        expectedEmailProvided = $true
     }
     summary = [ordered]@{
-        passCount = 0
+        passCount = 8
         failCount = 0
         blockedCount = 0
         plannedCount = 0
-        skippedCount = 6
+        skippedCount = 0
     }
     checks = @(
         [ordered]@{
-            id = "enterprise-auth-scope-out"
-            name = "Enterprise auth commercial scope-out"
-            category = "scope-out"
-            endpoint = ""
-            status = "SKIPPED"
-            detail = "Accepted commercial scope-out reference recorded."
+            id = "enterprise-auth-target-smoke"
+            name = "Enterprise auth target smoke"
+            category = "target"
+            endpoint = "/api/auth/oidc/jit-provision"
+            status = "PASS"
+            detail = "Sanitized target IdP/directory smoke passed."
             requiredInputs = @()
         }
     )
     decisionRule = "Paid/production pilot requires result=passed from the target IdP/directory, or result=scope-out with an explicit non-secret commercial approval reference and reason."
     secretPolicy = "Admin password, LDAP password, access/refresh tokens, OIDC authorization code/state, client secrets, and raw OIDC claim JSON are never written to this evidence."
 } | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath $enterpriseAuthPath -Encoding UTF8
+
+[ordered]@{
+    formatVersion = "osmu.enterprise-auth-jit-rollback-evidence.v1"
+    generatedAt = "2026-06-20T02:27:00Z"
+    result = "passed"
+    environmentName = "pilot-prod-self-test"
+    targetCluster = "customer-cluster-a"
+    operatorName = "ops-self-test"
+    evidenceRef = "latest-enterprise-auth-jit-rollback-passed-20260620"
+    reviewWindow = [ordered]@{
+        startedAt = "2026-06-20T02:24:00Z"
+        completedAt = "2026-06-20T02:27:00Z"
+    }
+    enterpriseAuthSmokeSnapshot = [ordered]@{
+        provided = $true
+        parsed = $true
+        formatVersion = "osmu.enterprise-auth-smoke.v1"
+        result = "passed"
+        executionMode = "target-smoke"
+        passCount = 8
+        failCount = 0
+        blockedCount = 0
+        plannedCount = 0
+        skippedCount = 0
+        scopeOutAccepted = $false
+        detail = "formatVersion=osmu.enterprise-auth-smoke.v1; result=passed; pass=8; fail=0"
+    }
+    evidenceRefs = [ordered]@{
+        changeApproval = "CHG-2026-OPERATIONS-HANDOFF-SELF-TEST"
+        jitProvision = "jit-provision-admin-approval-20260620"
+        jitRollbackRunbook = "jit-rollback-runbook-review-20260620"
+        userDisableRollback = "jit-user-disable-rollback-20260620"
+        roleMappingRollback = "jit-role-org-team-rollback-20260620"
+        localLoginFallback = "local-login-fallback-20260620"
+        auditReview = "jit-audit-review-20260620"
+    }
+    confirmations = [ordered]@{
+        adminApprovalRequired = $true
+        callbackAutoJitDisabled = $true
+        jitUserDisableOrLockRollbackReviewed = $true
+        roleOrgTeamRollbackReviewed = $true
+        localPasswordFallbackValidated = $true
+        auditEventsReviewed = $true
+        noRawClaims = $true
+        noSecretValues = $true
+    }
+    summary = [ordered]@{
+        failureCount = 0
+        checkCount = 10
+    }
+    checks = @(
+        [ordered]@{
+            id = "jit-rollback-runbook-ref"
+            name = "JIT rollback runbook reference recorded"
+            status = "PASS"
+            passed = $true
+            detail = "jitRollbackRunbookRef=jit-rollback-runbook-review-20260620"
+            evidenceRef = "jit-rollback-runbook-review-20260620"
+        }
+    )
+    decisionRule = "Production/B2B enterprise auth JIT readiness requires result=passed after admin-approved JIT provisioning evidence and rollback review."
+    scopePolicy = "Enterprise auth JIT rollback/runbook evidence only; it does not execute IdP, LDAP, user, role, organization, or team changes."
+    secretPolicy = "Evidence stores only references and reduced smoke summary; it does not contain passwords, tokens, OIDC codes/states, client secrets, raw OIDC claims, or raw directory data."
+} | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath $enterpriseAuthJitRollbackPath -Encoding UTF8
 
 [ordered]@{
     formatVersion = "osmu.monitoring-threshold-evidence.v1"
@@ -479,6 +544,8 @@ $monitoringThresholdPath = Join-Path $resolvedOutputDirectory "latest-monitoring
     -CommercialApprovalJsonPath $commercialApprovalPath `
     -EnterpriseAuthEvidenceRef "latest-enterprise-auth-smoke-passed-20260620" `
     -EnterpriseAuthJsonPath $enterpriseAuthPath `
+    -EnterpriseAuthJitRollbackEvidenceRef "latest-enterprise-auth-jit-rollback-passed-20260620" `
+    -EnterpriseAuthJitRollbackJsonPath $enterpriseAuthJitRollbackPath `
     -BackupRestoreEvidenceRef "latest-kubernetes-dr-finalize-ready-20260620" `
     -HaDrEvidenceRef "latest-kubernetes-ha-dr-readiness-passed-20260620" `
     -MonitoringEvidenceRef "prometheus-alertmanager-grafana-review-20260620" `
@@ -505,6 +572,7 @@ $monitoringThresholdPath = Join-Path $resolvedOutputDirectory "latest-monitoring
     -ConfirmCommercialIntegrationSnapshotReviewed `
     -ConfirmCommercialApprovalSnapshotReviewed `
     -ConfirmEnterpriseAuthSmokeSnapshotReviewed `
+    -ConfirmEnterpriseAuthJitRollbackSnapshotReviewed `
     -ConfirmMonitoringThresholdReviewed `
     -ConfirmNoSecretValues `
     -RequireProductionEvidence `
@@ -552,6 +620,10 @@ Assert-True (@($checks | Where-Object { $_.id -eq "commercial-approval-snapshot-
 Assert-True (@($checks | Where-Object { $_.id -eq "enterprise-auth-smoke-snapshot-parsed" -and $_.passed }).Count -eq 1) "Expected enterprise auth smoke snapshot parsed check to pass."
 Assert-True (@($checks | Where-Object { $_.id -eq "enterprise-auth-smoke-snapshot-accepted" -and $_.passed }).Count -eq 1) "Expected enterprise auth smoke snapshot accepted check to pass."
 Assert-True (@($checks | Where-Object { $_.id -eq "enterprise-auth-smoke-snapshot-reviewed" -and $_.passed }).Count -eq 1) "Expected enterprise auth smoke snapshot reviewed check to pass."
+Assert-True (@($checks | Where-Object { $_.id -eq "enterprise-auth-jit-rollback-evidence" -and $_.passed }).Count -eq 1) "Expected enterprise auth JIT rollback evidence check to pass."
+Assert-True (@($checks | Where-Object { $_.id -eq "enterprise-auth-jit-rollback-snapshot-parsed" -and $_.passed }).Count -eq 1) "Expected enterprise auth JIT rollback snapshot parsed check to pass."
+Assert-True (@($checks | Where-Object { $_.id -eq "enterprise-auth-jit-rollback-snapshot-passed" -and $_.passed }).Count -eq 1) "Expected enterprise auth JIT rollback snapshot passed check to pass."
+Assert-True (@($checks | Where-Object { $_.id -eq "enterprise-auth-jit-rollback-snapshot-reviewed" -and $_.passed }).Count -eq 1) "Expected enterprise auth JIT rollback snapshot reviewed check to pass."
 Assert-True (@($checks | Where-Object { $_.id -eq "monitoring-threshold-snapshot-parsed" -and $_.passed }).Count -eq 1) "Expected monitoring threshold snapshot parsed check to pass."
 Assert-True (@($checks | Where-Object { $_.id -eq "monitoring-threshold-snapshot-passed" -and $_.passed }).Count -eq 1) "Expected monitoring threshold snapshot passed check to pass."
 Assert-True (@($checks | Where-Object { $_.id -eq "monitoring-threshold-reviewed" -and $_.passed }).Count -eq 1) "Expected monitoring threshold reviewed check to pass."
@@ -569,6 +641,7 @@ Assert-True ($report.confirmations.secretRotationSnapshotReviewed) "Expected sec
 Assert-True ($report.confirmations.commercialIntegrationSnapshotReviewed) "Expected commercial integration snapshot reviewed confirmation."
 Assert-True ($report.confirmations.commercialApprovalSnapshotReviewed) "Expected commercial approval snapshot reviewed confirmation."
 Assert-True ($report.confirmations.enterpriseAuthSmokeSnapshotReviewed) "Expected enterprise auth smoke snapshot reviewed confirmation."
+Assert-True ($report.confirmations.enterpriseAuthJitRollbackSnapshotReviewed) "Expected enterprise auth JIT rollback snapshot reviewed confirmation."
 Assert-True ($report.confirmations.monitoringThresholdReviewed) "Expected monitoring threshold reviewed confirmation."
 Assert-True ($report.confirmations.requireProductionEvidence) "Expected production evidence requirement."
 Assert-True ($report.confirmations.requireOperationsSnapshotEvidence) "Expected operations snapshot evidence requirement."
@@ -595,8 +668,14 @@ Assert-True ($report.targetEvidenceSnapshots.commercialIntegration.result -eq "p
 Assert-True ($report.targetEvidenceSnapshots.commercialIntegration.requiredVerifiedCount -eq 8) "Expected commercial integration requiredVerifiedCount=8."
 Assert-True ($report.targetEvidenceSnapshots.commercialApproval.result -eq "passed") "Expected commercial approval snapshot result=passed."
 Assert-True ($report.targetEvidenceSnapshots.commercialApproval.pricingPolicyProposalApprovedPriceListCount -eq 1) "Expected commercial approval price-list approval count."
-Assert-True ($report.targetEvidenceSnapshots.enterpriseAuthSmoke.result -eq "scope-out") "Expected enterprise auth smoke snapshot result=scope-out."
-Assert-True ($report.targetEvidenceSnapshots.enterpriseAuthSmoke.scopeOutAccepted) "Expected enterprise auth scope-out accepted."
+Assert-True ($report.targetEvidenceSnapshots.enterpriseAuthSmoke.result -eq "passed") "Expected enterprise auth smoke snapshot result=passed."
+Assert-True ($report.targetEvidenceSnapshots.enterpriseAuthSmoke.passCount -eq 8) "Expected enterprise auth smoke passCount=8."
+Assert-True ($report.targetEvidenceSnapshots.enterpriseAuthJitRollback.result -eq "passed") "Expected enterprise auth JIT rollback snapshot result=passed."
+Assert-True ($report.targetEvidenceSnapshots.enterpriseAuthJitRollback.failureCount -eq 0) "Expected enterprise auth JIT rollback failureCount=0."
+Assert-True ($report.targetEvidenceSnapshots.enterpriseAuthJitRollback.checkCount -eq 10) "Expected enterprise auth JIT rollback checkCount=10."
+Assert-True ($report.targetEvidenceSnapshots.enterpriseAuthJitRollback.confirmationsValid) "Expected enterprise auth JIT rollback confirmations to be valid."
+Assert-True ($report.targetEvidenceSnapshots.enterpriseAuthJitRollback.enterpriseAuthSmokeSnapshot.result -eq "passed") "Expected enterprise auth JIT rollback nested smoke result=passed."
+Assert-True ($report.summary.enterpriseAuthJitRollbackSnapshotResult -eq "passed") "Expected enterprise auth JIT rollback summary result=passed."
 Assert-True ($report.targetEvidenceSnapshots.monitoringThreshold.result -eq "passed") "Expected monitoring threshold snapshot result=passed."
 Assert-True ($report.targetEvidenceSnapshots.monitoringThreshold.mappedAlertCount -eq 11) "Expected monitoring threshold mapped alert count."
 Assert-True ($report.targetEvidenceSnapshots.monitoringThreshold.alertTargetCoverageComplete) "Expected monitoring threshold alert target coverage complete."
@@ -607,6 +686,7 @@ Assert-True ($report.targetEvidenceSnapshots.monitoringThreshold.thresholdMappin
 Assert-True ($report.targetEvidenceSnapshots.monitoringThreshold.complete) "Expected monitoring threshold complete snapshot."
 Assert-True ($report.evidenceRefs.dataFlowStoragePlan -eq "latest-data-flow-storage-plan-passed-20260620") "Expected data-flow storage plan evidence reference."
 Assert-True ($report.evidenceRefs.dataFlowStorageTransitionRunbook -eq "latest-data-flow-storage-transition-runbook-passed-20260620") "Expected data-flow storage transition runbook evidence reference."
+Assert-True ($report.evidenceRefs.enterpriseAuthJitRollback -eq "latest-enterprise-auth-jit-rollback-passed-20260620") "Expected enterprise auth JIT rollback evidence reference."
 
 Assert-Contains $markdown "# OSMU Operations Handoff Package" "operations handoff package markdown"
 Assert-Contains $markdown "Record passed target package" "operations handoff package markdown"
@@ -616,6 +696,7 @@ Assert-Contains $markdown "finalizerFailed=0" "operations handoff package markdo
 Assert-Contains $markdown "sourceReportResult=ready" "operations handoff package markdown"
 Assert-Contains $markdown "targetP95QueryLatencyMs=500" "operations handoff package markdown"
 Assert-Contains $markdown "Data-flow storage transition runbook" "operations handoff package markdown"
+Assert-Contains $markdown "Enterprise auth JIT rollback" "operations handoff package markdown"
 Assert-Contains $markdown "Monitoring threshold" "operations handoff package markdown"
 Assert-Contains $report.decisionRule "Production/B2B operations handoff package readiness requires result=passed" "operations handoff package JSON"
 Assert-Contains $report.decisionRule "data-flow storage transition" "operations handoff package JSON"
@@ -623,6 +704,7 @@ Assert-Contains $report.decisionRule "data-flow storage transition runbook" "ope
 Assert-Contains $report.decisionRule "commercial approval" "operations handoff package JSON"
 Assert-Contains $report.decisionRule "commercial integration" "operations handoff package JSON"
 Assert-Contains $report.decisionRule "enterprise auth smoke snapshot" "operations handoff package JSON"
+Assert-Contains $report.decisionRule "enterprise auth JIT rollback snapshot" "operations handoff package JSON"
 Assert-Contains $report.decisionRule "monitoring threshold snapshots" "operations handoff package JSON"
 Assert-Contains $report.decisionRule "typed boolean Kubernetes report sync ready=true" "operations handoff package JSON"
 Assert-Contains $report.decisionRule "typed integer finalizer failed/gap counts at zero" "operations handoff package JSON"
@@ -632,6 +714,7 @@ Assert-Contains $report.secretPolicy "must not contain passwords, bearer tokens,
 Assert-Contains $report.secretPolicy "raw SQL, raw EXPLAIN JSON" "operations handoff package JSON"
 Assert-Contains $report.secretPolicy "object keys, raw event messages" "operations handoff package JSON"
 Assert-Contains $report.secretPolicy "raw identity claims" "operations handoff package JSON"
+Assert-Contains $report.secretPolicy "raw identity provider or directory responses" "operations handoff package JSON"
 Assert-Contains $report.secretPolicy "raw Alertmanager receiver secrets" "operations handoff package JSON"
 
 foreach ($unexpected in @("password=super-secret", "Bearer abcdefghijklmnop", "-----BEGIN PRIVATE KEY-----", "rawProviderResponse", "customer@example.com", "contractText", "rawClaimJson")) {

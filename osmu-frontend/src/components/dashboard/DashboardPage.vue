@@ -1608,6 +1608,17 @@
           scope-out {{ operationsHandoffPackageEnterpriseAuthSmokeScopeOutSummary || '-' }}
         </small>
         <small
+          v-if="operationsHandoffPackageEnterpriseAuthJitRollbackSnapshot.result"
+          data-testid="readiness-handoff-package-enterprise-auth-jit-rollback-snapshot-summary"
+        >
+          Enterprise auth JIT rollback snapshot:
+          {{ operationsHandoffPackageEnterpriseAuthJitRollbackSnapshot.result }} /
+          failures {{ operationsHandoffPackageEnterpriseAuthJitRollbackSnapshot.failureCount || 0 }} /
+          checks {{ operationsHandoffPackageEnterpriseAuthJitRollbackSnapshot.checkCount || 0 }} /
+          smoke {{ operationsHandoffPackageEnterpriseAuthJitRollbackSmokeSnapshot.result || '-' }} /
+          no-raw-claims {{ operationsHandoffPackageEnterpriseAuthJitRollbackConfirmations.noRawClaims ? 'yes' : 'no' }}
+        </small>
+        <small
           v-if="operationsHandoffPackageMonitoringThresholdSnapshot.result"
           data-testid="readiness-handoff-package-monitoring-threshold-snapshot-summary"
         >
@@ -3753,6 +3764,18 @@ const operationsHandoffPackageCommercialApprovalSnapshot = computed(() => (
 
 const operationsHandoffPackageEnterpriseAuthSmokeSnapshot = computed(() => (
   operationsHandoffPackage.value?.enterpriseAuthSmokeSnapshot || {}
+))
+
+const operationsHandoffPackageEnterpriseAuthJitRollbackSnapshot = computed(() => (
+  operationsHandoffPackage.value?.enterpriseAuthJitRollbackSnapshot || {}
+))
+
+const operationsHandoffPackageEnterpriseAuthJitRollbackSmokeSnapshot = computed(() => (
+  operationsHandoffPackageEnterpriseAuthJitRollbackSnapshot.value?.enterpriseAuthSmokeSnapshot || {}
+))
+
+const operationsHandoffPackageEnterpriseAuthJitRollbackConfirmations = computed(() => (
+  operationsHandoffPackageEnterpriseAuthJitRollbackSnapshot.value?.confirmations || {}
 ))
 
 const operationsHandoffPackageMonitoringThresholdSnapshot = computed(() => (

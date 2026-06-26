@@ -100,6 +100,7 @@ function New-PassedOperationsHandoffPackageConfirmations {
         commercialIntegrationSnapshotReviewed = $true
         commercialApprovalSnapshotReviewed = $true
         enterpriseAuthSmokeSnapshotReviewed = $true
+        enterpriseAuthJitRollbackSnapshotReviewed = $true
         monitoringThresholdReviewed = $true
         requireProductionEvidence = $true
         requireOperationsSnapshotEvidence = $true
@@ -189,6 +190,28 @@ function New-PassedOperationsHandoffPackageTargetSnapshots {
             blockedCount = 0
             plannedCount = 0
         }
+        enterpriseAuthJitRollback = [ordered]@{
+            provided = $true
+            parsed = $true
+            validFormatVersion = $true
+            result = "passed"
+            passed = $true
+            confirmationsValid = $true
+            failureCount = 0
+            checkCount = 10
+            enterpriseAuthSmokeSnapshot = [ordered]@{
+                provided = $true
+                parsed = $true
+                formatVersion = "osmu.enterprise-auth-smoke.v1"
+                result = "passed"
+                executionMode = "target-smoke"
+                passCount = 8
+                failCount = 0
+                blockedCount = 0
+                plannedCount = 0
+                scopeOutAccepted = $false
+            }
+        }
         monitoringThreshold = [ordered]@{
             provided = $true
             parsed = $true
@@ -250,6 +273,9 @@ function New-PassedOperationsHandoffPackageChecks {
         "enterprise-auth-evidence",
         "enterprise-auth-smoke-snapshot-accepted",
         "enterprise-auth-smoke-snapshot-reviewed",
+        "enterprise-auth-jit-rollback-evidence",
+        "enterprise-auth-jit-rollback-snapshot-passed",
+        "enterprise-auth-jit-rollback-snapshot-reviewed",
         "backup-restore-evidence",
         "ha-dr-evidence",
         "monitoring-evidence",
@@ -288,6 +314,7 @@ function New-PassedOperationsHandoffPackageSummary([int] $CheckCount) {
         commercialIntegrationSnapshotResult = "passed"
         commercialApprovalSnapshotResult = "passed"
         enterpriseAuthSmokeSnapshotResult = "scope-out"
+        enterpriseAuthJitRollbackSnapshotResult = "passed"
         monitoringThresholdSnapshotResult = "passed"
     }
 }
@@ -1714,9 +1741,11 @@ Assert-True ($promotedOperationsHandoffPackage.confirmations.noSecretValues) "Pr
 Assert-True ($promotedOperationsHandoffPackage.confirmations.secretRotationSnapshotReviewed) "Promoted operations handoff package should preserve secret rotation snapshot review confirmation."
 Assert-True ($promotedOperationsHandoffPackage.confirmations.commercialApprovalSnapshotReviewed) "Promoted operations handoff package should preserve commercial approval snapshot review confirmation."
 Assert-True ($promotedOperationsHandoffPackage.confirmations.enterpriseAuthSmokeSnapshotReviewed) "Promoted operations handoff package should preserve enterprise auth smoke snapshot review confirmation."
+Assert-True ($promotedOperationsHandoffPackage.confirmations.enterpriseAuthJitRollbackSnapshotReviewed) "Promoted operations handoff package should preserve enterprise auth JIT rollback snapshot review confirmation."
+Assert-True ($promotedOperationsHandoffPackage.targetEvidenceSnapshots.enterpriseAuthJitRollback.result -eq "passed") "Promoted operations handoff package should preserve enterprise auth JIT rollback target snapshot."
 $operationsHandoffPackageEntry = @($report.entries | Where-Object { $_.group -eq "operations-handoff-package" -and $_.fileName -eq "latest-operations-handoff-package.json" })
 Assert-True ($operationsHandoffPackageEntry.Count -eq 1) "Operations handoff package import entry missing."
-Assert-True (([string] $operationsHandoffPackageEntry[0].detail).Contains("requiredConfirmations=17") -and ([string] $operationsHandoffPackageEntry[0].detail).Contains("sourceReportResult=ready") -and ([string] $operationsHandoffPackageEntry[0].detail).Contains("targetSnapshots=7/7")) "Operations handoff package import entry should include required confirmation, strict snapshot validation, and target snapshot validation detail."
+Assert-True (([string] $operationsHandoffPackageEntry[0].detail).Contains("requiredConfirmations=18") -and ([string] $operationsHandoffPackageEntry[0].detail).Contains("sourceReportResult=ready") -and ([string] $operationsHandoffPackageEntry[0].detail).Contains("targetSnapshots=8/8")) "Operations handoff package import entry should include required confirmation, strict snapshot validation, and target snapshot validation detail."
 $promotedDataFlowRunbook = Get-Content -Raw -LiteralPath (Join-Path $promotedRoot "latest-data-flow-storage-transition-runbook-evidence.json") | ConvertFrom-Json
 Assert-True ($promotedDataFlowRunbook.result -eq "passed") "Promoted data-flow storage transition runbook evidence should preserve result=passed."
 Assert-True ($promotedDataFlowRunbook.dataFlowStoragePlanSnapshot.result -eq "passed") "Promoted data-flow storage transition runbook evidence should preserve passed storage plan snapshot."
@@ -3493,6 +3522,7 @@ Write-JsonEvidence (Join-Path $badConvergenceOperationsHandoffPackageRoot "lates
         commercialIntegrationSnapshotReviewed = $true
         commercialApprovalSnapshotReviewed = $true
         enterpriseAuthSmokeSnapshotReviewed = $true
+        enterpriseAuthJitRollbackSnapshotReviewed = $true
         monitoringThresholdReviewed = $true
         requireProductionEvidence = $true
         requireOperationsSnapshotEvidence = $true
@@ -3540,6 +3570,7 @@ Write-JsonEvidence (Join-Path $stringBoolOperationsHandoffPackageRoot "latest-op
         commercialIntegrationSnapshotReviewed = $true
         commercialApprovalSnapshotReviewed = $true
         enterpriseAuthSmokeSnapshotReviewed = $true
+        enterpriseAuthJitRollbackSnapshotReviewed = $true
         monitoringThresholdReviewed = $true
         requireProductionEvidence = $true
         requireOperationsSnapshotEvidence = $true
@@ -3589,6 +3620,7 @@ Write-JsonEvidence (Join-Path $missingCountOperationsHandoffPackageRoot "latest-
         commercialIntegrationSnapshotReviewed = $true
         commercialApprovalSnapshotReviewed = $true
         enterpriseAuthSmokeSnapshotReviewed = $true
+        enterpriseAuthJitRollbackSnapshotReviewed = $true
         monitoringThresholdReviewed = $true
         requireProductionEvidence = $true
         requireOperationsSnapshotEvidence = $true

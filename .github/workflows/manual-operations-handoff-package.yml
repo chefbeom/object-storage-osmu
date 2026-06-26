@@ -59,6 +59,10 @@ on:
         description: Optional base64 latest enterprise auth smoke JSON snapshot
         required: false
         default: ""
+      enterprise_auth_jit_rollback_json_base64:
+        description: Optional base64 latest enterprise auth JIT rollback evidence JSON snapshot
+        required: false
+        default: ""
       monitoring_threshold_json_base64:
         description: Optional base64 latest monitoring threshold evidence JSON snapshot
         required: false
@@ -117,6 +121,7 @@ jobs:
           OSMU_COMMERCIAL_INTEGRATION_JSON_BASE64: ${{ inputs.commercial_integration_json_base64 }}
           OSMU_COMMERCIAL_APPROVAL_JSON_BASE64: ${{ inputs.commercial_approval_json_base64 }}
           OSMU_ENTERPRISE_AUTH_JSON_BASE64: ${{ inputs.enterprise_auth_json_base64 }}
+          OSMU_ENTERPRISE_AUTH_JIT_ROLLBACK_JSON_BASE64: ${{ inputs.enterprise_auth_jit_rollback_json_base64 }}
           OSMU_MONITORING_THRESHOLD_JSON_BASE64: ${{ inputs.monitoring_threshold_json_base64 }}
           OSMU_HANDOFF_EVIDENCE_PAYLOAD_JSON_BASE64: ${{ inputs.handoff_evidence_payload_json_base64 }}
           OSMU_REQUIRE_PRODUCTION_EVIDENCE: ${{ inputs.require_production_evidence }}
@@ -175,6 +180,7 @@ jobs:
             "-CommercialIntegrationEvidenceRef", (Get-DispatchString "commercial_integration_evidence_ref"),
             "-CommercialApprovalEvidenceRef", (Get-DispatchString "commercial_approval_evidence_ref"),
             "-EnterpriseAuthEvidenceRef", (Get-DispatchString "enterprise_auth_evidence_ref"),
+            "-EnterpriseAuthJitRollbackEvidenceRef", (Get-DispatchString "enterprise_auth_jit_rollback_evidence_ref"),
             "-BackupRestoreEvidenceRef", (Get-DispatchString "backup_restore_evidence_ref"),
             "-HaDrEvidenceRef", (Get-DispatchString "ha_dr_evidence_ref"),
             "-MonitoringEvidenceRef", (Get-DispatchString "monitoring_evidence_ref"),
@@ -197,6 +203,7 @@ jobs:
           Add-Base64SnapshotArgument (Get-DispatchString "commercial_integration_json_base64" $env:OSMU_COMMERCIAL_INTEGRATION_JSON_BASE64) ".osmu-run/commercial-integration-handoff-snapshot.json" "-CommercialIntegrationJsonPath"
           Add-Base64SnapshotArgument (Get-DispatchString "commercial_approval_json_base64" $env:OSMU_COMMERCIAL_APPROVAL_JSON_BASE64) ".osmu-run/commercial-approval-handoff-snapshot.json" "-CommercialApprovalJsonPath"
           Add-Base64SnapshotArgument (Get-DispatchString "enterprise_auth_json_base64" $env:OSMU_ENTERPRISE_AUTH_JSON_BASE64) ".osmu-run/enterprise-auth-handoff-snapshot.json" "-EnterpriseAuthJsonPath"
+          Add-Base64SnapshotArgument (Get-DispatchString "enterprise_auth_jit_rollback_json_base64" $env:OSMU_ENTERPRISE_AUTH_JIT_ROLLBACK_JSON_BASE64) ".osmu-run/enterprise-auth-jit-rollback-handoff-snapshot.json" "-EnterpriseAuthJitRollbackJsonPath"
           Add-Base64SnapshotArgument (Get-DispatchString "monitoring_threshold_json_base64" $env:OSMU_MONITORING_THRESHOLD_JSON_BASE64) ".osmu-run/monitoring-threshold-handoff-snapshot.json" "-MonitoringThresholdJsonPath"
 
           if (Test-DispatchTrue "confirm_runbook_reviewed") { $packageArgs += "-ConfirmRunbookReviewed" }
@@ -212,6 +219,7 @@ jobs:
           if (Test-DispatchTrue "confirm_commercial_integration_snapshot_reviewed") { $packageArgs += "-ConfirmCommercialIntegrationSnapshotReviewed" }
           if (Test-DispatchTrue "confirm_commercial_approval_snapshot_reviewed") { $packageArgs += "-ConfirmCommercialApprovalSnapshotReviewed" }
           if (Test-DispatchTrue "confirm_enterprise_auth_smoke_snapshot_reviewed") { $packageArgs += "-ConfirmEnterpriseAuthSmokeSnapshotReviewed" }
+          if (Test-DispatchTrue "confirm_enterprise_auth_jit_rollback_snapshot_reviewed") { $packageArgs += "-ConfirmEnterpriseAuthJitRollbackSnapshotReviewed" }
           if (Test-DispatchTrue "confirm_monitoring_threshold_reviewed") { $packageArgs += "-ConfirmMonitoringThresholdReviewed" }
           if (Test-DispatchTrue "confirm_no_secret_values") { $packageArgs += "-ConfirmNoSecretValues" }
           if (Test-DispatchTrue "require_production_evidence" ($env:OSMU_REQUIRE_PRODUCTION_EVIDENCE -eq "true")) { $packageArgs += "-RequireProductionEvidence" }

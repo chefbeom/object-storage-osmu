@@ -1343,6 +1343,63 @@ class AdminDashboardSummaryControllerTest {
                               "decisionRule": "Paid/production pilot requires result=passed from the target IdP/directory, or result=scope-out with an explicit non-secret commercial approval reference and reason.",
                               "secretPolicy": "Admin password, LDAP password, access/refresh tokens, OIDC authorization code/state, client secrets, and raw OIDC claim JSON are never written to this evidence."
                             },
+                            "enterpriseAuthJitRollback": {
+                              "provided": true,
+                              "path": ".osmu-run/latest-enterprise-auth-jit-rollback-evidence.json",
+                              "parsed": true,
+                              "formatVersion": "osmu.enterprise-auth-jit-rollback-evidence.v1",
+                              "expectedFormatVersion": "osmu.enterprise-auth-jit-rollback-evidence.v1",
+                              "validFormatVersion": true,
+                              "result": "passed",
+                              "passed": true,
+                              "environmentName": "pilot-prod",
+                              "targetCluster": "customer-cluster-a",
+                              "operatorName": "auth-ops",
+                              "evidenceRef": "enterprise-auth-jit-rollback-review-20260620",
+                              "reviewWindow": {
+                                "startedAt": "2026-06-20T03:20:00Z",
+                                "completedAt": "2026-06-20T03:35:00Z"
+                              },
+                              "enterpriseAuthSmokeSnapshot": {
+                                "provided": true,
+                                "parsed": true,
+                                "formatVersion": "osmu.enterprise-auth-smoke.v1",
+                                "result": "passed",
+                                "executionMode": "target-smoke",
+                                "passCount": 8,
+                                "failCount": 0,
+                                "blockedCount": 0,
+                                "plannedCount": 0,
+                                "scopeOutAccepted": false,
+                                "detail": "formatVersion=osmu.enterprise-auth-smoke.v1; result=passed"
+                              },
+                              "evidenceRefs": {
+                                "changeApproval": "CHG-2026-ENTERPRISE-AUTH-JIT",
+                                "jitProvision": "jit-provision-admin-approval-20260620",
+                                "jitRollbackRunbook": "jit-rollback-runbook-review-20260620",
+                                "userDisableRollback": "jit-user-disable-rollback-20260620",
+                                "roleMappingRollback": "jit-role-org-team-rollback-20260620",
+                                "localLoginFallback": "local-login-fallback-20260620",
+                                "auditReview": "jit-audit-review-20260620"
+                              },
+                              "confirmations": {
+                                "adminApprovalRequired": true,
+                                "callbackAutoJitDisabled": true,
+                                "jitUserDisableOrLockRollbackReviewed": true,
+                                "roleOrgTeamRollbackReviewed": true,
+                                "localPasswordFallbackValidated": true,
+                                "auditEventsReviewed": true,
+                                "noRawClaims": true,
+                                "noSecretValues": true
+                              },
+                              "confirmationsValid": true,
+                              "failureCount": 0,
+                              "checkCount": 10,
+                              "topChecks": [],
+                              "decisionRule": "Production/B2B enterprise auth JIT readiness requires result=passed.",
+                              "scopePolicy": "Enterprise auth JIT rollback evidence only.",
+                              "secretPolicy": "Evidence stores references and reduced smoke summary only."
+                            },
                             "monitoringThreshold": {
                               "provided": true,
                               "path": ".osmu-run/latest-monitoring-threshold-evidence.json",
@@ -1393,6 +1450,7 @@ class AdminDashboardSummaryControllerTest {
                             "commercialIntegrationSnapshotReviewed": true,
                             "commercialApprovalSnapshotReviewed": true,
                             "enterpriseAuthSmokeSnapshotReviewed": true,
+                            "enterpriseAuthJitRollbackSnapshotReviewed": true,
                             "monitoringThresholdReviewed": true,
                             "requireProductionEvidence": true
                           },
@@ -2649,6 +2707,12 @@ class AdminDashboardSummaryControllerTest {
                 .andExpect(jsonPath("$.data.operationsHandoffPackage.enterpriseAuthSmokeSnapshot.executionMode").value("scope-out"))
                 .andExpect(jsonPath("$.data.operationsHandoffPackage.enterpriseAuthSmokeSnapshot.scopeOut.accepted").value("true"))
                 .andExpect(jsonPath("$.data.operationsHandoffPackage.enterpriseAuthSmokeSnapshot.skippedCount").value(6))
+                .andExpect(jsonPath("$.data.operationsHandoffPackage.enterpriseAuthJitRollbackSnapshot.result").value("passed"))
+                .andExpect(jsonPath("$.data.operationsHandoffPackage.enterpriseAuthJitRollbackSnapshot.evidenceRef").value("enterprise-auth-jit-rollback-review-20260620"))
+                .andExpect(jsonPath("$.data.operationsHandoffPackage.enterpriseAuthJitRollbackSnapshot.enterpriseAuthSmokeSnapshot.result").value("passed"))
+                .andExpect(jsonPath("$.data.operationsHandoffPackage.enterpriseAuthJitRollbackSnapshot.enterpriseAuthSmokeSnapshot.passCount").value(8))
+                .andExpect(jsonPath("$.data.operationsHandoffPackage.enterpriseAuthJitRollbackSnapshot.confirmations.noRawClaims").value(true))
+                .andExpect(jsonPath("$.data.operationsHandoffPackage.enterpriseAuthJitRollbackSnapshot.failureCount").value(0))
                 .andExpect(jsonPath("$.data.operationsHandoffPackage.monitoringThresholdSnapshot.result").value("passed"))
                 .andExpect(jsonPath("$.data.operationsHandoffPackage.monitoringThresholdSnapshot.mappedAlertCount").value(11))
                 .andExpect(jsonPath("$.data.operationsHandoffPackage.monitoringThresholdSnapshot.requiredAlertCount").value(11))
