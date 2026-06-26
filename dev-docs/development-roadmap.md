@@ -168,6 +168,7 @@ AWS 문서의 세부 checksum negotiation, 드문 header 조합, 정확한 오�
 - Helm values hardening
 - Helm values hardening evidence writer/verifier (`scripts/write-helm-values-hardening-evidence.ps1`)
 - runbook, troubleshooting, support escalation handoff
+- support escalation handoff evidence writer/verifier (`scripts/write-support-escalation-handoff-evidence.ps1`)
 
 ## 9. 다음 구현 우선순위
 

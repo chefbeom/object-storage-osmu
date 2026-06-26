@@ -118,6 +118,9 @@ Run "powershell -ExecutionPolicy Bypass -File .\scripts\verify-commercial-integr
 Step "Operations handoff package writer self-test"
 Run "powershell -ExecutionPolicy Bypass -File .\scripts\verify-operations-handoff-package.ps1"
 
+Step "Support escalation handoff evidence check"
+Run "powershell -ExecutionPolicy Bypass -File .\scripts\verify-support-escalation-handoff-evidence.ps1"
+
 Step "IAM/RBAC matrix check"
 Run "powershell -ExecutionPolicy Bypass -File .\scripts\verify-iam-rbac-matrix.ps1"
 

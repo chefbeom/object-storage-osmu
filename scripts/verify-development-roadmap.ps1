@@ -107,6 +107,8 @@ Assert-Contains $content "cluster network access review evidence writer" "Develo
 Assert-Contains $content "write-cluster-network-access-review-evidence.ps1" "Development roadmap"
 Assert-Contains $content "Helm values hardening evidence writer" "Development roadmap"
 Assert-Contains $content "write-helm-values-hardening-evidence.ps1" "Development roadmap"
+Assert-Contains $content "support escalation handoff evidence writer" "Development roadmap"
+Assert-Contains $content "write-support-escalation-handoff-evidence.ps1" "Development roadmap"
 Assert-Contains $content "S3 client smoke" "Development roadmap"
 Assert-Contains $content "role scope" "Development roadmap"
 Assert-NotContains $content "edge parity" "Development roadmap"
