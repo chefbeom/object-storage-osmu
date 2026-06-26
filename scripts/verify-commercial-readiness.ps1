@@ -83,7 +83,7 @@ Assert-Contains $content 'payment provider handoff outbox/history with configure
 Assert-Contains $content 'commercial integration evidence writer' "Commercial readiness draft"
 Assert-Contains $content 'chargeback closeout evidence writer' "Commercial readiness draft"
 Assert-Contains $content 'commercial approval evidence writer' "Commercial readiness draft"
-Assert-Contains $content 'dashboard readiness visibility for commercial integration/approval evidence summaries' "Commercial readiness draft"
+Assert-Contains $content 'dashboard readiness visibility for commercial integration/approval and enterprise auth JIT rollback evidence summaries' "Commercial readiness draft"
 Assert-Contains $content 'operations handoff package evidence writer/workflow implemented' "Commercial readiness draft"
 Assert-Contains $content 'concrete native card/bank/tax/ERP provider API adapters, target secret/certificate rotation `result=passed` evidence, target chargeback closeout `result=passed` evidence, target commercial integration `result=passed` evidence, target commercial approval `result=passed` evidence, and target operations handoff package `result=passed` evidence remain pending.' "Commercial readiness draft"
 Assert-Contains $content 'Final legal/commercial approval: evidence writer implemented; target `result=passed` approval evidence pending.' "Commercial readiness draft"

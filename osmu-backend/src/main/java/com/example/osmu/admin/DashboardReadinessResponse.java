@@ -31,6 +31,7 @@ public record DashboardReadinessResponse(
         DashboardCommercialIntegrationEvidenceResponse commercialIntegrationEvidence,
         DashboardCommercialApprovalEvidenceResponse commercialApprovalEvidence,
         DashboardEnterpriseAuthSmokeEvidenceResponse enterpriseAuthSmokeEvidence,
+        DashboardEnterpriseAuthJitRollbackEvidenceResponse enterpriseAuthJitRollbackEvidence,
         DashboardDataFlowStoragePlanResponse dataFlowStoragePlan,
         DashboardDataFlowStorageTransitionRunbookResponse dataFlowStorageTransitionRunbook,
         DashboardStorageBackendTelemetryEvidenceResponse storageBackendTelemetryEvidence,

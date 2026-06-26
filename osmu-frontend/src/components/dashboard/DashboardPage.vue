@@ -1320,6 +1320,64 @@
         </li>
       </ol>
       <div
+        v-if="enterpriseAuthJitRollbackEvidence.result"
+        class="readiness-invocation-summary"
+        data-testid="readiness-enterprise-auth-jit-rollback-evidence-summary"
+      >
+        <strong>Enterprise auth JIT rollback: {{ enterpriseAuthJitRollbackEvidence.result }}</strong>
+        <small>
+          {{ enterpriseAuthJitRollbackEvidence.environmentName || 'unknown env' }} /
+          {{ enterpriseAuthJitRollbackEvidence.targetCluster || 'unknown cluster' }} /
+          operator {{ enterpriseAuthJitRollbackEvidence.operatorName || 'unknown' }} /
+          failures {{ enterpriseAuthJitRollbackEvidence.failureCount || 0 }} /
+          checks {{ enterpriseAuthJitRollbackEvidence.checkCount || 0 }}
+        </small>
+        <small
+          v-if="enterpriseAuthJitRollbackSmoke.result || enterpriseAuthJitRollbackSmoke.provided"
+          data-testid="readiness-enterprise-auth-jit-rollback-smoke"
+        >
+          Smoke snapshot:
+          {{ enterpriseAuthJitRollbackSmoke.result || 'missing' }} /
+          mode {{ enterpriseAuthJitRollbackSmoke.executionMode || '-' }} /
+          pass {{ enterpriseAuthJitRollbackSmoke.passCount || 0 }} /
+          fail {{ enterpriseAuthJitRollbackSmoke.failCount || 0 }} /
+          scope-out {{ enterpriseAuthJitRollbackSmoke.scopeOutAccepted ? 'accepted' : 'not accepted' }}
+        </small>
+        <small
+          v-if="enterpriseAuthJitRollbackRefSummary"
+          data-testid="readiness-enterprise-auth-jit-rollback-refs"
+        >
+          Evidence refs: {{ enterpriseAuthJitRollbackRefSummary }}
+        </small>
+        <small
+          v-if="enterpriseAuthJitRollbackConfirmationSummary"
+          data-testid="readiness-enterprise-auth-jit-rollback-confirmations"
+        >
+          Confirmations: {{ enterpriseAuthJitRollbackConfirmationSummary }}
+        </small>
+        <small v-if="enterpriseAuthJitRollbackEvidence.scopePolicy">
+          {{ enterpriseAuthJitRollbackEvidence.scopePolicy }}
+        </small>
+        <small v-if="enterpriseAuthJitRollbackEvidence.secretPolicy">
+          {{ enterpriseAuthJitRollbackEvidence.secretPolicy }}
+        </small>
+      </div>
+      <ol
+        v-if="enterpriseAuthJitRollbackChecks.length > 0"
+        class="readiness-evidence-plan-actions readiness-enterprise-auth-jit-rollback-evidence-checks"
+        data-testid="readiness-enterprise-auth-jit-rollback-evidence-checks"
+      >
+        <li
+          v-for="check in enterpriseAuthJitRollbackChecks"
+          :key="check.id || check.name"
+        >
+          <span>
+            <strong>{{ check.status || 'UNKNOWN' }} / {{ check.name || check.id }}</strong>
+            <small>{{ check.detail || check.evidenceRef || 'detail unavailable' }}</small>
+          </span>
+        </li>
+      </ol>
+      <div
         v-if="dataFlowStoragePlan.result"
         class="readiness-invocation-summary"
         data-testid="readiness-data-flow-storage-plan-summary"
@@ -4076,6 +4134,43 @@ const enterpriseAuthSmokeScopeOutSummary = computed(() => {
 
 const enterpriseAuthSmokeEvidenceChecks = computed(() => {
   const checks = enterpriseAuthSmokeEvidence.value?.checks
+  return Array.isArray(checks) ? checks : []
+})
+
+const enterpriseAuthJitRollbackEvidence = computed(() => (
+  props.dashboardReadiness.enterpriseAuthJitRollbackEvidence || {}
+))
+
+const enterpriseAuthJitRollbackSmoke = computed(() => (
+  enterpriseAuthJitRollbackEvidence.value?.enterpriseAuthSmokeSnapshot || {}
+))
+
+const enterpriseAuthJitRollbackRefSummary = computed(() => {
+  const refs = enterpriseAuthJitRollbackEvidence.value?.evidenceRefs
+  if (!refs || typeof refs !== 'object') {
+    return ''
+  }
+  return Object.entries(refs)
+    .filter(([, value]) => typeof value === 'string' && value.length > 0)
+    .slice(0, 6)
+    .map(([key, value]) => `${key}=${value}`)
+    .join(' / ')
+})
+
+const enterpriseAuthJitRollbackConfirmationSummary = computed(() => {
+  const confirmations = enterpriseAuthJitRollbackEvidence.value?.confirmations
+  if (!confirmations || typeof confirmations !== 'object') {
+    return ''
+  }
+  return Object.entries(confirmations)
+    .filter(([, value]) => typeof value === 'boolean')
+    .slice(0, 8)
+    .map(([key, value]) => `${key}=${value ? 'yes' : 'no'}`)
+    .join(' / ')
+})
+
+const enterpriseAuthJitRollbackChecks = computed(() => {
+  const checks = enterpriseAuthJitRollbackEvidence.value?.checks
   return Array.isArray(checks) ? checks : []
 })
 

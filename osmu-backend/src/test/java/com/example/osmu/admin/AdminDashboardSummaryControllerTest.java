@@ -1581,6 +1581,81 @@ class AdminDashboardSummaryControllerTest {
                         """
         );
         Files.writeString(
+                Path.of(".osmu-run/latest-enterprise-auth-jit-rollback-evidence.json"),
+                """
+                        {
+                          "formatVersion": "osmu.enterprise-auth-jit-rollback-evidence.v1",
+                          "generatedAt": "2026-06-20T04:30:00Z",
+                          "result": "failed",
+                          "environmentName": "pilot-prod",
+                          "targetCluster": "customer-cluster-a",
+                          "operatorName": "security-admin",
+                          "evidenceRef": "enterprise-auth-jit-rollback-review-20260620",
+                          "reviewWindow": {
+                            "startedAt": "2026-06-20T04:00:00Z",
+                            "completedAt": "2026-06-20T04:30:00Z"
+                          },
+                          "enterpriseAuthSmokeSnapshot": {
+                            "provided": true,
+                            "parsed": true,
+                            "formatVersion": "osmu.enterprise-auth-smoke.v1",
+                            "result": "passed",
+                            "executionMode": "execute",
+                            "passCount": 8,
+                            "failCount": 0,
+                            "blockedCount": 0,
+                            "plannedCount": 0,
+                            "scopeOutAccepted": false,
+                            "detail": "result=passed executionMode=execute pass=8 fail=0 blocked=0 planned=0 scopeOutAccepted=False"
+                          },
+                          "evidenceRefs": {
+                            "changeApproval": "CHG-2026-ENTERPRISE-AUTH-JIT",
+                            "jitProvision": "jit-provision-target-20260620",
+                            "jitRollbackRunbook": "jit-rollback-runbook-20260620",
+                            "userDisableRollback": "jit-user-disable-rollback-20260620",
+                            "roleMappingRollback": "jit-role-org-team-rollback-20260620",
+                            "localLoginFallback": "local-login-fallback-20260620",
+                            "auditReview": "oidc-jit-audit-review-20260620"
+                          },
+                          "confirmations": {
+                            "adminApprovalRequired": true,
+                            "callbackAutoJitDisabled": true,
+                            "jitUserDisableOrLockRollbackReviewed": true,
+                            "roleOrgTeamRollbackReviewed": true,
+                            "localPasswordFallbackValidated": false,
+                            "auditEventsReviewed": true,
+                            "noRawClaims": true,
+                            "noSecretValues": true
+                          },
+                          "summary": {
+                            "failureCount": 1,
+                            "checkCount": 9
+                          },
+                          "checks": [
+                            {
+                              "id": "local-password-fallback-confirmed",
+                              "name": "Local password fallback validated",
+                              "status": "FAIL",
+                              "passed": false,
+                              "detail": "ConfirmLocalPasswordFallbackValidated=False",
+                              "evidenceRef": "local-login-fallback-20260620"
+                            },
+                            {
+                              "id": "enterprise-auth-smoke-snapshot-accepted",
+                              "name": "Enterprise auth smoke or scope-out evidence snapshot accepted",
+                              "status": "PASS",
+                              "passed": true,
+                              "detail": "result=passed executionMode=execute pass=8 fail=0 blocked=0 planned=0 scopeOutAccepted=False",
+                              "evidenceRef": ""
+                            }
+                          ],
+                          "decisionRule": "Production/B2B enterprise auth JIT readiness requires result=passed after admin-approved JIT provisioning evidence, rollback runbook review, user disable/lock rollback evidence, role/org/team mapping rollback review, local password fallback validation, audit review, and no-raw-claim/no-secret confirmations.",
+                          "scopePolicy": "Enterprise auth JIT rollback/runbook evidence only. It does not execute IdP, LDAP, user, role, organization, or team changes; it records operator-reviewed target evidence references and reduced smoke summary only.",
+                          "secretPolicy": "Evidence stores only environment labels, operator/change references, timestamps, booleans, reduced enterprise auth smoke summary, and external evidence references; it does not contain passwords, bearer tokens, OIDC codes/states, access/refresh/id tokens, LDAP/admin passwords, client secrets, raw OIDC claims, raw identity provider responses, or raw directory data."
+                        }
+                        """
+        );
+        Files.writeString(
                 Path.of(".osmu-run/latest-minio-bucket-cors-verification.json"),
                 """
                         {
@@ -2313,6 +2388,7 @@ class AdminDashboardSummaryControllerTest {
                 .andExpect(jsonPath("$.data.items[*].code").value(hasItem("OPERATIONS_ARTIFACT_COLLECTION_PLAN")))
                 .andExpect(jsonPath("$.data.items[*].code").value(hasItem("OPERATIONS_READINESS_FINALIZER")))
                 .andExpect(jsonPath("$.data.items[*].code").value(hasItem("OPERATIONS_EVIDENCE_HANDOFF")))
+                .andExpect(jsonPath("$.data.items[*].code").value(hasItem("ENTERPRISE_AUTH_JIT_ROLLBACK_EVIDENCE")))
                 .andExpect(jsonPath("$.data.items[*].code").value(hasItem("DATA_FLOW_STORAGE_PLAN")))
                 .andExpect(jsonPath("$.data.items[*].code").value(hasItem("MINIO_BUCKET_CORS_VERIFICATION")))
                 .andExpect(jsonPath("$.data.items[*].code").value(hasItem("OPERATIONS_READINESS_CONVERGENCE")))
@@ -2354,6 +2430,8 @@ class AdminDashboardSummaryControllerTest {
                 .andExpect(jsonPath("$.data.items[?(@.code == 'OPERATIONS_EVIDENCE_HANDOFF')].evidencePath").value(hasItem(".osmu-run/latest-operations-evidence-handoff.json")))
                 .andExpect(jsonPath("$.data.items[?(@.code == 'OPERATIONS_EVIDENCE_HANDOFF')].remediationCommand").value(hasItem("powershell -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\invoke-operations-evidence-plan.ps1 -ActionOrder 6")))
                 .andExpect(jsonPath("$.data.items[?(@.code == 'OPERATIONS_EVIDENCE_HANDOFF')].remediationNote").value(hasItem("The invocation report still has blocked actions, but 1 action(s) are ready to dispatch: 6. Run the ready subset plan command first without -Execute, then dispatch only after review and continue resolving the remaining blocked actions. Execute command is available after plan review: powershell -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\invoke-operations-evidence-plan.ps1 -ActionOrder 6 -Execute")))
+                .andExpect(jsonPath("$.data.items[?(@.code == 'ENTERPRISE_AUTH_JIT_ROLLBACK_EVIDENCE')].evidencePath").value(hasItem(".osmu-run/latest-enterprise-auth-jit-rollback-evidence.json")))
+                .andExpect(jsonPath("$.data.items[?(@.code == 'ENTERPRISE_AUTH_JIT_ROLLBACK_EVIDENCE')].remediationCommand").value(hasItem("powershell -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\write-enterprise-auth-jit-rollback-evidence.ps1")))
                 .andExpect(jsonPath("$.data.items[?(@.code == 'DATA_FLOW_STORAGE_PLAN')].evidencePath").value(hasItem(".osmu-run/latest-data-flow-storage-plan.json")))
                 .andExpect(jsonPath("$.data.items[?(@.code == 'DATA_FLOW_STORAGE_PLAN')].remediationCommand").value(hasItem("powershell -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\write-data-flow-storage-plan.ps1 -CandidateStore <store> -ExpectedPeakEventsPerDay <n> -ExpectedQueryWindowDays <days> -TargetP95QueryLatencyMs <p95-ms> -ConfirmNoObjectKeyInAggregates -ConfirmBackfillPlan -ConfirmRollbackPlan -ConfirmDashboardCutoverPlan -ConfirmRetentionJobBudget -ConfirmExplainEvidence -QueryPlanEvidenceJsonPath .\\.osmu-run\\latest-mariadb-query-plan-evidence.json -RequireQueryPlanEvidence")))
                 .andExpect(jsonPath("$.data.items[?(@.code == 'DATA_FLOW_STORAGE_PLAN')].remediationNote").value(hasItem("OSMU operations analytics only. This plan is not AWS billing parity and aggregate stores must not include object keys or raw event messages.")))
@@ -2660,6 +2738,15 @@ class AdminDashboardSummaryControllerTest {
                 .andExpect(jsonPath("$.data.enterpriseAuthSmokeEvidence.scopeOut.accepted").value("false"))
                 .andExpect(jsonPath("$.data.enterpriseAuthSmokeEvidence.plannedCount").value(8))
                 .andExpect(jsonPath("$.data.enterpriseAuthSmokeEvidence.checks[0].endpoint").value("GET /api/admin/security/enterprise-auth-plan"))
+                .andExpect(jsonPath("$.data.enterpriseAuthJitRollbackEvidence.result").value("failed"))
+                .andExpect(jsonPath("$.data.enterpriseAuthJitRollbackEvidence.environmentName").value("pilot-prod"))
+                .andExpect(jsonPath("$.data.enterpriseAuthJitRollbackEvidence.reviewWindow.startedAt").value("2026-06-20T04:00:00Z"))
+                .andExpect(jsonPath("$.data.enterpriseAuthJitRollbackEvidence.enterpriseAuthSmokeSnapshot.result").value("passed"))
+                .andExpect(jsonPath("$.data.enterpriseAuthJitRollbackEvidence.enterpriseAuthSmokeSnapshot.passCount").value(8))
+                .andExpect(jsonPath("$.data.enterpriseAuthJitRollbackEvidence.evidenceRefs.jitRollbackRunbook").value("jit-rollback-runbook-20260620"))
+                .andExpect(jsonPath("$.data.enterpriseAuthJitRollbackEvidence.confirmations.localPasswordFallbackValidated").value(false))
+                .andExpect(jsonPath("$.data.enterpriseAuthJitRollbackEvidence.failureCount").value(1))
+                .andExpect(jsonPath("$.data.enterpriseAuthJitRollbackEvidence.checks[0].id").value("local-password-fallback-confirmed"))
                 .andExpect(jsonPath("$.data.minioBucketCorsVerification.result").value("failed"))
                 .andExpect(jsonPath("$.data.minioBucketCorsVerification.sourceMode").value("cors-xml-path"))
                 .andExpect(jsonPath("$.data.minioBucketCorsVerification.bucketName").value("uploads"))

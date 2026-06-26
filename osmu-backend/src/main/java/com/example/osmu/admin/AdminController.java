@@ -138,6 +138,7 @@ public class AdminController {
     private final String commercialIntegrationEvidenceReportPath;
     private final String commercialApprovalEvidenceReportPath;
     private final String enterpriseAuthSmokeEvidenceReportPath;
+    private final String enterpriseAuthJitRollbackEvidenceReportPath;
     private final String dataFlowStoragePlanReportPath;
     private final String dataFlowStorageTransitionRunbookReportPath;
     private final String storageBackendTelemetryReportPath;
@@ -202,6 +203,7 @@ public class AdminController {
             @Value("${osmu.operations.readiness.commercial-integration-evidence-report-path:.osmu-run/latest-commercial-integration-evidence.json}") String commercialIntegrationEvidenceReportPath,
             @Value("${osmu.operations.readiness.commercial-approval-evidence-report-path:.osmu-run/latest-commercial-approval-evidence.json}") String commercialApprovalEvidenceReportPath,
             @Value("${osmu.operations.readiness.enterprise-auth-smoke-evidence-report-path:.osmu-run/latest-enterprise-auth-smoke.json}") String enterpriseAuthSmokeEvidenceReportPath,
+            @Value("${osmu.operations.readiness.enterprise-auth-jit-rollback-evidence-report-path:.osmu-run/latest-enterprise-auth-jit-rollback-evidence.json}") String enterpriseAuthJitRollbackEvidenceReportPath,
             @Value("${osmu.operations.readiness.data-flow-storage-plan-report-path:.osmu-run/latest-data-flow-storage-plan.json}") String dataFlowStoragePlanReportPath,
             @Value("${osmu.operations.readiness.data-flow-storage-transition-runbook-report-path:.osmu-run/latest-data-flow-storage-transition-runbook-evidence.json}") String dataFlowStorageTransitionRunbookReportPath,
             @Value("${osmu.operations.readiness.storage-backend-telemetry-report-path:.osmu-run/latest-storage-backend-telemetry.json}") String storageBackendTelemetryReportPath,
@@ -265,6 +267,7 @@ public class AdminController {
         this.commercialIntegrationEvidenceReportPath = blankToNull(commercialIntegrationEvidenceReportPath);
         this.commercialApprovalEvidenceReportPath = blankToNull(commercialApprovalEvidenceReportPath);
         this.enterpriseAuthSmokeEvidenceReportPath = blankToNull(enterpriseAuthSmokeEvidenceReportPath);
+        this.enterpriseAuthJitRollbackEvidenceReportPath = blankToNull(enterpriseAuthJitRollbackEvidenceReportPath);
         this.dataFlowStoragePlanReportPath = blankToNull(dataFlowStoragePlanReportPath);
         this.dataFlowStorageTransitionRunbookReportPath = blankToNull(dataFlowStorageTransitionRunbookReportPath);
         this.storageBackendTelemetryReportPath = blankToNull(storageBackendTelemetryReportPath);
@@ -941,6 +944,7 @@ public class AdminController {
         DashboardCommercialIntegrationEvidenceResponse commercialIntegrationEvidence = commercialIntegrationEvidenceSnapshot();
         DashboardCommercialApprovalEvidenceResponse commercialApprovalEvidence = commercialApprovalEvidenceSnapshot();
         DashboardEnterpriseAuthSmokeEvidenceResponse enterpriseAuthSmokeEvidence = enterpriseAuthSmokeEvidenceSnapshot();
+        DashboardEnterpriseAuthJitRollbackEvidenceResponse enterpriseAuthJitRollbackEvidence = enterpriseAuthJitRollbackEvidenceSnapshot();
         DashboardDataFlowStoragePlanResponse dataFlowStoragePlan = dataFlowStoragePlanSnapshot();
         DashboardDataFlowStorageTransitionRunbookResponse dataFlowStorageTransitionRunbook =
                 dataFlowStorageTransitionRunbookSnapshot();
@@ -981,6 +985,7 @@ public class AdminController {
                 commercialIntegrationEvidence,
                 commercialApprovalEvidence,
                 enterpriseAuthSmokeEvidence,
+                enterpriseAuthJitRollbackEvidence,
                 dataFlowStoragePlan,
                 dataFlowStorageTransitionRunbook,
                 storageBackendTelemetryEvidence,
@@ -1640,6 +1645,7 @@ public class AdminController {
         addCommercialIntegrationEvidenceItem(items);
         addCommercialApprovalEvidenceItem(items);
         addEnterpriseAuthSmokeEvidenceItem(items);
+        addEnterpriseAuthJitRollbackEvidenceItem(items);
         addDataFlowStoragePlanItem(items);
         addDataFlowStorageTransitionRunbookItem(items);
         addStorageBackendTelemetryEvidenceItem(items);
@@ -3400,6 +3406,92 @@ public class AdminController {
             ));
         }
         return List.copyOf(checks);
+    }
+
+    private void addEnterpriseAuthJitRollbackEvidenceItem(java.util.ArrayList<DashboardReadinessItemResponse> items) {
+        DashboardEnterpriseAuthJitRollbackEvidenceResponse evidence = enterpriseAuthJitRollbackEvidenceSnapshot();
+        if (evidence.result().isBlank() || "passed".equalsIgnoreCase(evidence.result())) {
+            return;
+        }
+        String smokeResult = evidence.enterpriseAuthSmokeSnapshot() == null
+                ? "missing"
+                : evidence.enterpriseAuthSmokeSnapshot().result().isBlank()
+                        ? "missing"
+                        : evidence.enterpriseAuthSmokeSnapshot().result();
+        addReadinessItem(
+                items,
+                "WARNING",
+                "OPERATIONS",
+                "ENTERPRISE_AUTH_JIT_ROLLBACK_EVIDENCE",
+                "Enterprise auth JIT rollback evidence is %s: failures=%d, checks=%d, smoke=%s.".formatted(
+                        evidence.result(),
+                        evidence.failureCount(),
+                        evidence.checkCount(),
+                        smokeResult
+                ),
+                "dashboard",
+                "dashboard-readiness-panel",
+                "Enterprise auth JIT rollback",
+                enterpriseAuthJitRollbackEvidenceReportPath == null ? "" : enterpriseAuthJitRollbackEvidenceReportPath,
+                "powershell -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\write-enterprise-auth-jit-rollback-evidence.ps1",
+                "",
+                "",
+                evidence.secretPolicy().isBlank()
+                        ? "Collect target JIT rollback/runbook evidence when admin-approved JIT provisioning is in production scope."
+                        : evidence.secretPolicy()
+        );
+    }
+
+    private DashboardEnterpriseAuthJitRollbackEvidenceResponse enterpriseAuthJitRollbackEvidenceSnapshot() {
+        JsonNode report = readOptionalJsonReport(enterpriseAuthJitRollbackEvidenceReportPath);
+        return enterpriseAuthJitRollbackEvidenceSnapshotFromNode(report, true);
+    }
+
+    private DashboardEnterpriseAuthJitRollbackEvidenceResponse enterpriseAuthJitRollbackEvidenceSnapshotFromNode(JsonNode report, boolean emptyWhenMissing) {
+        if (report == null || report.isMissingNode() || report.isNull() || !report.isObject()) {
+            if (!emptyWhenMissing) {
+                return null;
+            }
+            return DashboardEnterpriseAuthJitRollbackEvidenceResponse.empty();
+        }
+        JsonNode summary = summaryOrSelf(report);
+        return new DashboardEnterpriseAuthJitRollbackEvidenceResponse(
+                jsonText(report, "result"),
+                jsonText(report, "generatedAt"),
+                jsonText(report, "environmentName"),
+                jsonText(report, "targetCluster"),
+                jsonText(report, "operatorName"),
+                jsonText(report, "evidenceRef"),
+                Map.copyOf(jsonTextMap(report.path("reviewWindow"))),
+                enterpriseAuthJitRollbackSmokeSummary(report.path("enterpriseAuthSmokeSnapshot")),
+                Map.copyOf(jsonTextMap(report.path("evidenceRefs"))),
+                Map.copyOf(jsonBooleanMap(report.path("confirmations"))),
+                jsonInt(summary, "failureCount"),
+                jsonInt(summary, "checkCount"),
+                commercialEvidenceChecks(firstArrayNode(report.path("checks"), report.path("topChecks"))),
+                jsonText(report, "decisionRule"),
+                jsonText(report, "scopePolicy"),
+                jsonText(report, "secretPolicy")
+        );
+    }
+
+    private DashboardEnterpriseAuthJitRollbackSmokeSummaryResponse enterpriseAuthJitRollbackSmokeSummary(JsonNode summary) {
+        if (summary == null || summary.isMissingNode() || summary.isNull() || !summary.isObject()) {
+            return DashboardEnterpriseAuthJitRollbackSmokeSummaryResponse.empty();
+        }
+        return new DashboardEnterpriseAuthJitRollbackSmokeSummaryResponse(
+                jsonBoolean(summary, "provided"),
+                jsonBoolean(summary, "parsed"),
+                jsonText(summary, "formatVersion"),
+                jsonText(summary, "result"),
+                jsonText(summary, "executionMode"),
+                jsonInt(summary, "passCount"),
+                jsonInt(summary, "failCount"),
+                jsonInt(summary, "blockedCount"),
+                jsonInt(summary, "plannedCount"),
+                jsonBoolean(summary, "scopeOutAccepted"),
+                jsonText(summary, "detail")
+        );
     }
 
     private void addDataFlowStoragePlanItem(java.util.ArrayList<DashboardReadinessItemResponse> items) {

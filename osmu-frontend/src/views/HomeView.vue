@@ -1256,6 +1256,24 @@ const dashboardReadiness = reactive({
     decisionRule: '',
     secretPolicy: '',
   },
+  enterpriseAuthJitRollbackEvidence: {
+    result: '',
+    generatedAt: '',
+    environmentName: '',
+    targetCluster: '',
+    operatorName: '',
+    evidenceRef: '',
+    reviewWindow: {},
+    enterpriseAuthSmokeSnapshot: {},
+    evidenceRefs: {},
+    confirmations: {},
+    failureCount: 0,
+    checkCount: 0,
+    checks: [],
+    decisionRule: '',
+    scopePolicy: '',
+    secretPolicy: '',
+  },
   dataFlowStoragePlan: {
     result: '',
     recordedAt: '',
@@ -5477,6 +5495,7 @@ function applyDashboardReadiness(data) {
     commercialIntegrationEvidence: normalizeCommercialIntegrationEvidence(data.commercialIntegrationEvidence),
     commercialApprovalEvidence: normalizeCommercialApprovalEvidence(data.commercialApprovalEvidence),
     enterpriseAuthSmokeEvidence: normalizeEnterpriseAuthSmokeEvidence(data.enterpriseAuthSmokeEvidence),
+    enterpriseAuthJitRollbackEvidence: normalizeEnterpriseAuthJitRollbackEvidence(data.enterpriseAuthJitRollbackEvidence),
     dataFlowStoragePlan: normalizeDataFlowStoragePlan(data.dataFlowStoragePlan),
     dataFlowStorageTransitionRunbook: normalizeDataFlowStorageTransitionRunbook(data.dataFlowStorageTransitionRunbook),
     storageBackendTelemetryEvidence: normalizeStorageBackendTelemetryEvidence(data.storageBackendTelemetryEvidence),
@@ -5891,6 +5910,40 @@ function normalizeEnterpriseAuthSmokeEvidence(report = {}) {
     skippedCount: Number(report?.skippedCount || 0),
     checks: Array.isArray(report?.checks) ? report.checks : [],
     decisionRule: report?.decisionRule || '',
+    secretPolicy: report?.secretPolicy || '',
+  }
+}
+
+function normalizeEnterpriseAuthJitRollbackEvidence(report = {}) {
+  const smokeSnapshot = report?.enterpriseAuthSmokeSnapshot || {}
+  return {
+    result: report?.result || '',
+    generatedAt: report?.generatedAt || '',
+    environmentName: report?.environmentName || '',
+    targetCluster: report?.targetCluster || '',
+    operatorName: report?.operatorName || '',
+    evidenceRef: report?.evidenceRef || '',
+    reviewWindow: report?.reviewWindow && typeof report.reviewWindow === 'object' ? report.reviewWindow : {},
+    enterpriseAuthSmokeSnapshot: {
+      provided: Boolean(smokeSnapshot?.provided),
+      parsed: Boolean(smokeSnapshot?.parsed),
+      formatVersion: smokeSnapshot?.formatVersion || '',
+      result: smokeSnapshot?.result || '',
+      executionMode: smokeSnapshot?.executionMode || '',
+      passCount: Number(smokeSnapshot?.passCount || 0),
+      failCount: Number(smokeSnapshot?.failCount || 0),
+      blockedCount: Number(smokeSnapshot?.blockedCount || 0),
+      plannedCount: Number(smokeSnapshot?.plannedCount || 0),
+      scopeOutAccepted: Boolean(smokeSnapshot?.scopeOutAccepted),
+      detail: smokeSnapshot?.detail || '',
+    },
+    evidenceRefs: report?.evidenceRefs && typeof report.evidenceRefs === 'object' ? report.evidenceRefs : {},
+    confirmations: report?.confirmations && typeof report.confirmations === 'object' ? report.confirmations : {},
+    failureCount: Number(report?.failureCount || 0),
+    checkCount: Number(report?.checkCount || 0),
+    checks: Array.isArray(report?.checks) ? report.checks : [],
+    decisionRule: report?.decisionRule || '',
+    scopePolicy: report?.scopePolicy || '',
     secretPolicy: report?.secretPolicy || '',
   }
 }
