@@ -17,7 +17,7 @@ Last updated: 2026-06-23 KST
 
 - Snapshot date: 2026-06-23 KST.
 - MVP completion latest verification: result=ready, classification=local-durable-mvp-ready, localDurableMvpReady=true.
-- Operations readiness latest verification: result=pending, passed=65, pending=15, total=80.
+- Operations readiness latest verification: result=pending, passed=67, pending=16, total=83.
 - S3 boundary latest verification: verify-s3-compatibility-boundary.ps1 passed.
 - B2B product estimate remains about 45% because the remaining work is target evidence, not local feature wiring.
 - Current direction: keep closing target operations evidence; do not expand AWS S3 parity unless a supported replacement-client smoke or migration blocker proves product impact.

@@ -80,7 +80,7 @@ Assert-Contains $content (Decode-Utf8Base64 "6riw7KSAIHNuYXBzaG90OiAyMDI2LTA2LTI
 Assert-Contains $content "S3-compatible replacement layer" "Development roadmap"
 Assert-Contains $content 'docker-durable-demo-verified' "Development roadmap"
 Assert-Contains $content "MVP completion latest verification: result=ready, classification=local-durable-mvp-ready, localDurableMvpReady=true." "Development roadmap"
-Assert-Contains $content "Operations readiness latest verification: result=pending, passed=65, pending=15, total=80." "Development roadmap"
+Assert-Contains $content "Operations readiness latest verification: result=pending, passed=67, pending=16, total=83." "Development roadmap"
 Assert-Contains $content "S3 boundary latest verification: verify-s3-compatibility-boundary.ps1 passed." "Development roadmap"
 Assert-Contains $content "Production Operations Evidence" "Development roadmap"
 Assert-Contains $content (Decode-Utf8Base64 "S3ViZXJuZXRlcyBEUiBmaW5hbGl6ZXIgYHJlc3VsdD1yZWFkeWA=") "Development roadmap"

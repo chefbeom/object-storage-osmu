@@ -34,7 +34,7 @@ AWS 문서의 세부 checksum negotiation, 드문 header 조합, 정확한 오�
 
 - 기준 snapshot: 2026-06-23 KST.
 - MVP completion latest verification: result=ready, classification=local-durable-mvp-ready, localDurableMvpReady=true.
-- Operations readiness latest verification: result=pending, passed=65, pending=15, total=80.
+- Operations readiness latest verification: result=pending, passed=67, pending=16, total=83.
 - S3 boundary latest verification: verify-s3-compatibility-boundary.ps1 passed.
 - 로컬 durable MVP demo는 Docker/MariaDB/MinIO/backend/frontend/Browser E2E/Dockerized MinIO Client 기준 `docker-durable-demo-verified` 상태다.
 - MVP demo 완성도는 `90-95%`이며, 로컬 demo GO와 production/B2B readiness는 분리한다.

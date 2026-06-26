@@ -12,6 +12,7 @@ param(
     [string] $SecretRotationEvidencePath = ".\.osmu-run\latest-secret-rotation-evidence.json",
     [string] $CommercialIntegrationEvidencePath = ".\.osmu-run\latest-commercial-integration-evidence.json",
     [string] $CommercialApprovalEvidencePath = ".\.osmu-run\latest-commercial-approval-evidence.json",
+    [string] $ChargebackCloseoutEvidencePath = ".\.osmu-run\latest-chargeback-closeout-evidence.json",
     [string] $EnterpriseAuthSmokeEvidencePath = ".\.osmu-run\latest-enterprise-auth-smoke.json",
     [string] $OperationsHandoffPackagePath = ".\.osmu-run\latest-operations-handoff-package.json",
     [string] $DataFlowStoragePlanPath = ".\.osmu-run\latest-data-flow-storage-plan.json",
@@ -590,6 +591,7 @@ $monitoringThresholdReport = Read-JsonReport $MonitoringThresholdEvidencePath "M
 $secretRotationReport = Read-JsonReport $SecretRotationEvidencePath "Secret rotation evidence"
 $commercialIntegrationReport = Read-JsonReport $CommercialIntegrationEvidencePath "Commercial integration evidence"
 $commercialApprovalReport = Read-JsonReport $CommercialApprovalEvidencePath "Commercial approval evidence"
+$chargebackCloseoutReport = Read-JsonReport $ChargebackCloseoutEvidencePath "Chargeback closeout evidence"
 $enterpriseAuthSmokeReport = Read-JsonReport $EnterpriseAuthSmokeEvidencePath "Enterprise auth smoke evidence"
 $operationsHandoffPackageReport = Read-JsonReport $OperationsHandoffPackagePath "Operations handoff package"
 $dataFlowStoragePlanReport = Read-JsonReport $DataFlowStoragePlanPath "Data-flow storage transition plan"
@@ -661,6 +663,11 @@ $commercialApprovalRemediation = New-Remediation `
     ".github/workflows/manual-commercial-approval-evidence.yml" `
     "gh workflow run manual-commercial-approval-evidence.yml -f product_version=<version> -f approval_ref=<approval-ref> -f approved_by=<approver> -f approved_at=<iso-time> -f pricing_approval_ref=<ref> -f terms_approval_ref=<ref> -f support_sla_approval_ref=<ref> -f license_agreement_ref=<ref> -f legal_approval_ref=<ref> -f pilot_contract_ref=<ref> -f pricing_policy_proposal_evidence_ref=<ref> -f pricing_policy_proposal_json_base64=<base64-json> -f confirm_pricing_approved=true -f confirm_terms_approved=true -f confirm_support_sla_approved=true -f confirm_license_approved=true -f confirm_legal_approved=true -f confirm_pricing_policy_proposal_commercial_approval=true -f confirm_no_secret_values=true -f fail_if_not_passed=true" `
     "Run after final pricing, terms, support SLA, license agreement, legal approval, pilot contract boundary, and GET /api/admin/billing/pricing-policy-proposals?status=PRICE_LIST_APPROVED review. The pricing proposal JSON can be passed as base64 to the manual workflow, is reduced to sanitized status/reference metadata, and the decoded workflow input is deleted before artifact upload. The evidence stores references and booleans only; do not pass raw prices, raw legal terms, contracts, customer payment data, passwords, tokens, private keys, license keys, or signing secrets."
+$chargebackCloseoutRemediation = New-Remediation `
+    "powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\write-chargeback-closeout-evidence.ps1 -EnvironmentName <env> -TargetCluster <cluster> -Operator <operator> -BillingPeriod <yyyy-mm> -CloseoutStartedAt <iso-time> -CloseoutCompletedAt <iso-time> -ChangeApprovalRef <change-id> -PricingPolicyEvidenceRef <ref> -PricingProposalApprovalRef <ref> -ChargebackPreviewEvidenceRef <ref> -ChargebackTrendExportEvidenceRef <ref> -InvoiceDraftEvidenceRef <ref> -InvoiceFinalizationEvidenceRef <ref> -PaymentRequestEvidenceRef <ref> -PaymentProviderHandoffEvidenceRef <ref> -PaymentProviderAdapterReadinessEvidenceRef <ref> -NotificationDeliveryEvidenceRef <ref> -AdapterRetryWorkerEvidenceRef <ref> -ReconciliationEvidenceRef <ref> -CommercialIntegrationEvidenceRef <ref> -CommercialApprovalEvidenceRef <ref> -ChargebackCloseoutSnapshotJsonPath .\.osmu-run\chargeback-closeout-summary.json -ConfirmPricingPolicyReviewed -ConfirmPriceListApproved -ConfirmUsageWindowReviewed -ConfirmChargebackPreviewReviewed -ConfirmTrendExportReviewed -ConfirmInvoiceDraftReviewed -ConfirmInvoiceFinalized -ConfirmPaymentRequestReviewed -ConfirmPaymentProviderHandoffReviewed -ConfirmPaymentProviderAdapterReadinessReviewed -ConfirmNotificationDeliveryReviewed -ConfirmAdapterRetryReviewed -ConfirmReconciliationReviewed -ConfirmCommercialIntegrationReviewed -ConfirmCommercialApprovalReviewed -ConfirmNoRawCustomerPaymentData -ConfirmNoRawProviderResponses -ConfirmNoSecretValues -FailIfNotPassed" `
+    "" `
+    "" `
+    "Run after the target billing period has been closed and pricing, usage, invoice, payment handoff, notification, retry, reconciliation, commercial integration, and commercial approval references have been reviewed. The sanitized closeout snapshot must be typed and must not include raw customer/payment/provider data, raw invoices, raw price tables, endpoint secrets, or credentials. This evidence does not claim native card/bank/tax/ERP provider implementation."
 $enterpriseAuthSmokeRemediation = New-Remediation `
     "powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\write-enterprise-auth-smoke-plan.ps1 -Execute -AdminLoginId <admin> -AdminPassword <secret> -RequireOidc -RequireLdap" `
     ".github/workflows/enterprise-auth-smoke-ci.yml" `
@@ -729,6 +736,8 @@ Add-FileCheck "Commercial integration evidence workflow" "commercial-integration
 Add-FileCheck "Commercial approval evidence writer" "commercial-approval" ".\scripts\write-commercial-approval-evidence.ps1" "commercial approval evidence writer committed"
 Add-FileCheck "Commercial approval evidence writer self-test" "commercial-approval" ".\scripts\verify-commercial-approval-evidence.ps1" "commercial approval evidence writer self-test committed"
 Add-FileCheck "Commercial approval evidence workflow" "commercial-approval" ".\.github\workflows\manual-commercial-approval-evidence.yml" "manual workflow for final commercial approval evidence"
+Add-FileCheck "Chargeback closeout evidence writer" "chargeback-closeout" ".\scripts\write-chargeback-closeout-evidence.ps1" "chargeback closeout evidence writer committed"
+Add-FileCheck "Chargeback closeout evidence writer self-test" "chargeback-closeout" ".\scripts\verify-chargeback-closeout-evidence.ps1" "chargeback closeout evidence writer self-test committed"
 Add-FileCheck "Operations handoff package writer" "operations-handoff-package" ".\scripts\write-operations-handoff-package.ps1" "operations handoff package writer committed"
 Add-FileCheck "Operations handoff package writer self-test" "operations-handoff-package" ".\scripts\verify-operations-handoff-package.ps1" "operations handoff package writer self-test committed"
 Add-FileCheck "Operations handoff package workflow" "operations-handoff-package" ".\.github\workflows\manual-operations-handoff-package.yml" "manual workflow for target operations handoff package evidence"
@@ -753,6 +762,7 @@ Add-Check "Monitoring threshold target evidence" "monitoring" ($monitoringThresh
 Add-Check "Secret/certificate rotation target evidence" "security-hardening" ($secretRotationReport.exists -and $secretRotationReport.parsed -and $secretRotationReport.data.result -eq "passed") (Get-GenericResultDetail $secretRotationReport) $secretRotationReport.path "secret/certificate rotation evidence result=passed from target environment" $secretRotationRemediation
 Add-Check "Commercial integration target evidence" "commercial-integration" ($commercialIntegrationReport.exists -and $commercialIntegrationReport.parsed -and $commercialIntegrationReport.data.result -eq "passed") (Get-GenericResultDetail $commercialIntegrationReport) $commercialIntegrationReport.path "commercial integration evidence result=passed from target environment" $commercialIntegrationRemediation
 Add-Check "Commercial approval target evidence" "commercial-approval" ($commercialApprovalReport.exists -and $commercialApprovalReport.parsed -and $commercialApprovalReport.data.result -eq "passed") (Get-GenericResultDetail $commercialApprovalReport) $commercialApprovalReport.path "commercial approval evidence result=passed for final pricing, terms, support SLA, license agreement, legal approval, and pilot contract boundary" $commercialApprovalRemediation
+Add-Check "Chargeback closeout target evidence" "chargeback-closeout" ($chargebackCloseoutReport.exists -and $chargebackCloseoutReport.parsed -and $chargebackCloseoutReport.data.result -eq "passed") (Get-GenericResultDetail $chargebackCloseoutReport) $chargebackCloseoutReport.path "chargeback closeout evidence result=passed for target billing period pricing, usage, invoice, payment handoff, notification, retry, reconciliation, commercial integration, and commercial approval review" $chargebackCloseoutRemediation
 Add-Check "Enterprise auth target smoke evidence" "enterprise-auth" (Test-EnterpriseAuthEvidenceAccepted $enterpriseAuthSmokeReport) (Get-EnterpriseAuthEvidenceDetail $enterpriseAuthSmokeReport) $enterpriseAuthSmokeReport.path "enterprise auth smoke result=passed from target IdP/directory, or result=scope-out with explicit commercial approval reference and reason" $enterpriseAuthSmokeRemediation
 Add-Check "Operations handoff package target evidence" "operations-handoff-package" $operationsHandoffPackageValidation.passed $operationsHandoffPackageValidation.detail $operationsHandoffPackageReport.path "operations handoff package result=passed from target environment with required handoff review/production/snapshot confirmations" $operationsHandoffPackageRemediation
 
@@ -786,11 +796,12 @@ $report = [ordered]@{
         secretRotationEvidence = $secretRotationReport.path
         commercialIntegrationEvidence = $commercialIntegrationReport.path
         commercialApprovalEvidence = $commercialApprovalReport.path
+        chargebackCloseoutEvidence = $chargebackCloseoutReport.path
         enterpriseAuthSmokeEvidence = $enterpriseAuthSmokeReport.path
         operationsHandoffPackage = $operationsHandoffPackageReport.path
     }
     checks = $checks
-    decisionRule = "Production/B2B operations readiness is ready only when every listed static, automation, live Kubernetes, storage expansion, storage backend telemetry, data-flow storage transition plan, data-flow storage transition runbook, monitoring threshold, HA/DR, security, secret rotation, commercial integration, commercial approval, enterprise auth, and operations handoff package evidence check is PASS."
+    decisionRule = "Production/B2B operations readiness is ready only when every listed static, automation, live Kubernetes, storage expansion, storage backend telemetry, data-flow storage transition plan, data-flow storage transition runbook, monitoring threshold, HA/DR, security, secret rotation, commercial integration, chargeback closeout, commercial approval, enterprise auth, and operations handoff package evidence check is PASS."
 }
 
 $markdownLines = @(

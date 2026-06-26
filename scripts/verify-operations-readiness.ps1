@@ -183,6 +183,9 @@ Assert-CheckExists $report "Commercial integration evidence workflow" "commercia
 Assert-CheckExists $report "Commercial approval evidence writer" "commercial-approval"
 Assert-CheckExists $report "Commercial approval evidence writer self-test" "commercial-approval"
 Assert-CheckExists $report "Commercial approval evidence workflow" "commercial-approval"
+Assert-CheckExists $report "Chargeback closeout evidence writer" "chargeback-closeout"
+Assert-CheckExists $report "Chargeback closeout evidence writer self-test" "chargeback-closeout"
+Assert-CheckExists $report "Chargeback closeout target evidence" "chargeback-closeout"
 Assert-CheckExists $report "Operations handoff package writer" "operations-handoff-package"
 Assert-CheckExists $report "Operations handoff package writer self-test" "operations-handoff-package"
 Assert-CheckExists $report "Operations handoff package workflow" "operations-handoff-package"
@@ -531,6 +534,34 @@ if (-not ([string] $commercialApprovalCheck[0].remediation.note).Contains("decod
 if (-not ([string] $commercialApprovalCheck[0].requiredEvidence).Contains("final pricing") -or -not ([string] $commercialApprovalCheck[0].requiredEvidence).Contains("legal approval")) {
     throw "Commercial approval target evidence must require final pricing and legal approval evidence."
 }
+$chargebackCloseoutCheck = @($report.checks | Where-Object { $_.name -eq "Chargeback closeout target evidence" })
+if ($chargebackCloseoutCheck.Count -ne 1) {
+    throw "Operations readiness report must contain one Chargeback closeout target evidence check."
+}
+if (-not ([string] $chargebackCloseoutCheck[0].remediation.command).Contains("write-chargeback-closeout-evidence.ps1")) {
+    throw "Chargeback closeout target evidence remediation must point to write-chargeback-closeout-evidence.ps1."
+}
+if (-not ([string] $chargebackCloseoutCheck[0].remediation.command).Contains("ChargebackCloseoutSnapshotJsonPath")) {
+    throw "Chargeback closeout target evidence remediation must include sanitized closeout snapshot JSON input."
+}
+if (-not ([string] $chargebackCloseoutCheck[0].remediation.command).Contains("ConfirmReconciliationReviewed")) {
+    throw "Chargeback closeout target evidence remediation must require reconciliation review confirmation."
+}
+if (-not [string]::IsNullOrWhiteSpace([string] $chargebackCloseoutCheck[0].remediation.workflow)) {
+    throw "Chargeback closeout target evidence remediation should stay local until a manual workflow is explicitly added."
+}
+if (-not ([string] $chargebackCloseoutCheck[0].remediation.note).Contains("sanitized closeout snapshot")) {
+    throw "Chargeback closeout target evidence remediation note must mention sanitized closeout snapshot."
+}
+if (-not ([string] $chargebackCloseoutCheck[0].remediation.note).Contains("raw customer/payment/provider data")) {
+    throw "Chargeback closeout target evidence remediation note must mention raw customer/payment/provider data exclusion."
+}
+if (-not ([string] $chargebackCloseoutCheck[0].remediation.note).Contains("does not claim native card/bank/tax/ERP provider implementation")) {
+    throw "Chargeback closeout target evidence remediation note must preserve native provider scope boundary."
+}
+if (-not ([string] $chargebackCloseoutCheck[0].requiredEvidence).Contains("target billing period")) {
+    throw "Chargeback closeout target evidence must require target billing period evidence."
+}
 $enterpriseAuthCheck = @($report.checks | Where-Object { $_.name -eq "Enterprise auth target smoke evidence" })
 if ($enterpriseAuthCheck.Count -ne 1) {
     throw "Operations readiness report must contain one Enterprise auth target smoke evidence check."
@@ -715,6 +746,7 @@ Assert-Contains $markdown "Monitoring threshold target evidence" "Operations rea
 Assert-Contains $markdown "Secret/certificate rotation target evidence" "Operations readiness markdown"
 Assert-Contains $markdown "Commercial integration target evidence" "Operations readiness markdown"
 Assert-Contains $markdown "Commercial approval target evidence" "Operations readiness markdown"
+Assert-Contains $markdown "Chargeback closeout target evidence" "Operations readiness markdown"
 Assert-Contains $markdown "Enterprise auth target smoke evidence" "Operations readiness markdown"
 Assert-Contains $markdown "Operations handoff package target evidence" "Operations readiness markdown"
 Assert-Contains $markdown "Required Next Evidence" "Operations readiness markdown"
