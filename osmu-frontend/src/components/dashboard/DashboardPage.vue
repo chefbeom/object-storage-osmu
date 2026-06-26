@@ -2008,6 +2008,12 @@
         <small v-if="formatDispatchPreflightSecrets()">
           {{ formatDispatchPreflightSecrets() }}
         </small>
+        <small
+          v-if="operationsDispatchPreflightGitHubCliSummary"
+          data-testid="readiness-dispatch-preflight-github-cli"
+        >
+          {{ operationsDispatchPreflightGitHubCliSummary }}
+        </small>
         <div class="readiness-artifact-command-row">
           <button
             v-if="operationsDispatchPreflight.readyPlanCommand"
@@ -3480,6 +3486,14 @@ const operationsDispatchPreflightSourceSummary = computed(() => {
     preflight.sourceUnblockPlan && `plan=${preflight.sourceUnblockPlan}`,
     preflight.requiredInputCount && `inputs=${preflight.requiredInputCount}`,
   ].filter(Boolean).join(' / ')
+})
+
+const operationsDispatchPreflightGitHubCliSummary = computed(() => {
+  const preflight = operationsDispatchPreflight.value || {}
+  if (!preflight.result) {
+    return ''
+  }
+  return preflight.githubCliPath ? `GitHub CLI: ${preflight.githubCliPath}` : 'GitHub CLI: PATH lookup'
 })
 
 const operationsWorkflowRunIdPlan = computed(() => (

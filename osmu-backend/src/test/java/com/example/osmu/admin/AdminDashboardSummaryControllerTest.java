@@ -1907,6 +1907,7 @@ class AdminDashboardSummaryControllerTest {
                           "failedCheckCount": 3,
                           "warningCheckCount": 2,
                           "requiredGitHubSecrets": ["OSMU_KUBECONFIG_BASE64", "OSMU_ADMIN_PASSWORD", "GITHUB_TOKEN"],
+                          "githubCliPath": "C:/tools/gh.exe",
                           "workflowFiles": [
                             {
                               "actionOrder": 1,
@@ -1934,8 +1935,8 @@ class AdminDashboardSummaryControllerTest {
                           ],
                           "readyPlanCommand": "",
                           "executeCommand": "",
-                          "readySubsetPlanCommand": "powershell -NoProfile -ExecutionPolicy Bypass -File .\\\\scripts\\\\invoke-operations-evidence-plan.ps1 -ActionOrder 6",
-                          "readySubsetExecuteCommand": "powershell -NoProfile -ExecutionPolicy Bypass -File .\\\\scripts\\\\invoke-operations-evidence-plan.ps1 -ActionOrder 6 -Execute",
+                          "readySubsetPlanCommand": "powershell -NoProfile -ExecutionPolicy Bypass -File .\\\\scripts\\\\invoke-operations-evidence-plan.ps1 -GitHubCliPath C:/tools/gh.exe -ActionOrder 6",
+                          "readySubsetExecuteCommand": "powershell -NoProfile -ExecutionPolicy Bypass -File .\\\\scripts\\\\invoke-operations-evidence-plan.ps1 -GitHubCliPath C:/tools/gh.exe -ActionOrder 6 -Execute",
                           "requiredInputs": [
                             {
                               "actionOrder": 3,
@@ -2425,8 +2426,8 @@ class AdminDashboardSummaryControllerTest {
                 .andExpect(jsonPath("$.data.operationsDispatchPreflight.readyActionOrders[0]").value(6))
                 .andExpect(jsonPath("$.data.operationsDispatchPreflight.blockedActionCount").value(5))
                 .andExpect(jsonPath("$.data.operationsDispatchPreflight.blockedActionOrders[0]").value(1))
-                .andExpect(jsonPath("$.data.operationsDispatchPreflight.readySubsetPlanCommand").value("powershell -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\invoke-operations-evidence-plan.ps1 -ActionOrder 6"))
-                .andExpect(jsonPath("$.data.operationsDispatchPreflight.readySubsetExecuteCommand").value("powershell -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\invoke-operations-evidence-plan.ps1 -ActionOrder 6 -Execute"))
+                .andExpect(jsonPath("$.data.operationsDispatchPreflight.readySubsetPlanCommand").value("powershell -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\invoke-operations-evidence-plan.ps1 -GitHubCliPath C:/tools/gh.exe -ActionOrder 6"))
+                .andExpect(jsonPath("$.data.operationsDispatchPreflight.readySubsetExecuteCommand").value("powershell -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\invoke-operations-evidence-plan.ps1 -GitHubCliPath C:/tools/gh.exe -ActionOrder 6 -Execute"))
                 .andExpect(jsonPath("$.data.operationsDispatchPreflight.requiredInputCount").value(6))
                 .andExpect(jsonPath("$.data.operationsDispatchPreflight.missingInputCount").value(6))
                 .andExpect(jsonPath("$.data.operationsDispatchPreflight.unsafeInputCount").value(1))
@@ -2434,6 +2435,7 @@ class AdminDashboardSummaryControllerTest {
                 .andExpect(jsonPath("$.data.operationsDispatchPreflight.failedCheckCount").value(3))
                 .andExpect(jsonPath("$.data.operationsDispatchPreflight.warningCheckCount").value(2))
                 .andExpect(jsonPath("$.data.operationsDispatchPreflight.requiredGitHubSecrets").value(hasItem("OSMU_KUBECONFIG_BASE64")))
+                .andExpect(jsonPath("$.data.operationsDispatchPreflight.githubCliPath").value("C:/tools/gh.exe"))
                 .andExpect(jsonPath("$.data.operationsDispatchPreflight.workflowFiles[0].workflow").value("storage-expansion-finalizer-ci.yml"))
                 .andExpect(jsonPath("$.data.operationsDispatchPreflight.workflowFiles[0].requiredSecrets").value(hasItem("OSMU_ADMIN_PASSWORD")))
                 .andExpect(jsonPath("$.data.operationsDispatchPreflight.checks[0].code").value("KUBECONFIG_SECRET_CONFIRMED"))

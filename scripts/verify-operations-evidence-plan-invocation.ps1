@@ -45,6 +45,12 @@ $invalidJsonOutputPath = Join-Path $resolvedOutputDirectory "invalid-operations-
 $invalidMarkdownOutputPath = Join-Path $resolvedOutputDirectory "invalid-operations-evidence-plan-invocation.md"
 $selectedJsonOutputPath = Join-Path $resolvedOutputDirectory "selected-operations-evidence-plan-invocation.json"
 $selectedMarkdownOutputPath = Join-Path $resolvedOutputDirectory "selected-operations-evidence-plan-invocation.md"
+$githubCliJsonOutputPath = Join-Path $resolvedOutputDirectory "github-cli-path-operations-evidence-plan-invocation.json"
+$githubCliMarkdownOutputPath = Join-Path $resolvedOutputDirectory "github-cli-path-operations-evidence-plan-invocation.md"
+$fakeGitHubCliDirectory = Join-Path $resolvedOutputDirectory "fake-github-cli"
+$fakeGitHubCliPath = Join-Path $fakeGitHubCliDirectory "gh.cmd"
+New-Item -ItemType Directory -Force -Path $fakeGitHubCliDirectory | Out-Null
+Set-Content -LiteralPath $fakeGitHubCliPath -Value "@echo off`r`necho fake gh %*`r`nexit /b 0`r`n" -Encoding ASCII
 
 $fixture = [ordered]@{
     formatVersion = "osmu.operations-evidence-plan.v1"
@@ -213,6 +219,30 @@ Assert-True ($selectedReport.result -eq "planned") "Expected selected action res
 Assert-True ($selectedReport.selectedActionCount -eq 1) "Expected one selected action."
 Assert-True (@($selectedReport.actions)[0].order -eq 2) "Expected action order 2 to be selected."
 
+& powershell -NoProfile -ExecutionPolicy Bypass -File $scriptPath `
+    -PlanPath $fixturePath `
+    -JsonOutputPath $githubCliJsonOutputPath `
+    -MarkdownOutputPath $githubCliMarkdownOutputPath `
+    -ActionOrder 2 `
+    -KubeconfigSecretConfirmed `
+    -ConfirmOperatorApproval `
+    -BackupTimestamp "20260615T010203Z" `
+    -GitHubCliPath $fakeGitHubCliPath `
+    -Execute | Out-Host
+if ($LASTEXITCODE -ne 0) {
+    throw "invoke-operations-evidence-plan.ps1 GitHubCliPath execute check failed with exit code $LASTEXITCODE."
+}
+
+$githubCliReport = Get-Content -Raw -LiteralPath $githubCliJsonOutputPath | ConvertFrom-Json
+$githubCliAction = @($githubCliReport.actions)[0]
+Assert-True ($githubCliReport.result -eq "executed") "Expected GitHubCliPath execution result."
+Assert-True ($githubCliReport.githubCliPath -eq $fakeGitHubCliPath) "Expected GitHubCliPath report path."
+Assert-True ($githubCliReport.githubCliExecutionSource -eq $fakeGitHubCliPath) "Expected GitHubCliPath execution source."
+Assert-True ($githubCliAction.status -eq "executed") "Expected GitHubCliPath action execution status."
+Assert-True ($githubCliAction.exitCode -eq 0) "Expected fake GitHub CLI exit code."
+Assert-Contains (($githubCliAction.output | ConvertTo-Json -Depth 4)) "fake gh workflow run kubernetes-dr-finalizer-ci.yml" "GitHubCliPath fake output"
+$githubCliMarkdown = Get-Content -Raw -LiteralPath $githubCliMarkdownOutputPath
+Assert-Contains $githubCliMarkdown "GitHub CLI path:" "GitHubCliPath markdown"
 Write-Host "Operations evidence plan invocation verified."
 Write-Host "Blocked report: $blockedJsonOutputPath"
 Write-Host "Planned report: $plannedJsonOutputPath"

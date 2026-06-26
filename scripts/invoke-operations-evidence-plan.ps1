@@ -18,7 +18,8 @@ param(
     [switch] $ContinueOnError,
     [switch] $AllowUnsafeCommand,
     [switch] $NoWrite,
-    [string] $PowerShellCommand = ""
+    [string] $PowerShellCommand = "",
+    [string] $GitHubCliPath = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -115,6 +116,37 @@ function Apply-Replacements([string] $Command, [hashtable] $Map) {
         $result = $result.Replace([string] $key, [string] $Map[$key])
     }
     return $result
+}
+
+function Resolve-GitHubCliCandidate([string] $PathValue) {
+    if ([string]::IsNullOrWhiteSpace($PathValue)) {
+        return ""
+    }
+    if ([System.IO.Path]::IsPathRooted($PathValue)) {
+        return [System.IO.Path]::GetFullPath($PathValue)
+    }
+    return [System.IO.Path]::GetFullPath((Join-Path (Get-Location) $PathValue))
+}
+
+function Test-GitHubWorkflowCommand([string] $Command) {
+    if ([string]::IsNullOrWhiteSpace($Command)) {
+        return $false
+    }
+    return $Command.Trim().ToLowerInvariant().StartsWith("gh workflow run ")
+}
+
+function Get-GitHubCliExecutionSource {
+    if (-not [string]::IsNullOrWhiteSpace($script:ResolvedGitHubCliPath)) {
+        if (Test-Path -LiteralPath $script:ResolvedGitHubCliPath) {
+            return $script:ResolvedGitHubCliPath
+        }
+        return ""
+    }
+    $command = Get-Command gh -ErrorAction SilentlyContinue
+    if ($null -eq $command) {
+        return ""
+    }
+    return [string] $command.Source
 }
 
 function Get-UnresolvedPlaceholders([string] $Command) {
@@ -228,6 +260,12 @@ function Test-SafeCommand([string] $Command) {
 }
 
 function Invoke-CommandString([string] $Command) {
+    $previousPath = $env:Path
+    if ((Test-GitHubWorkflowCommand $Command) -and -not [string]::IsNullOrWhiteSpace($script:ResolvedGitHubCliPath)) {
+        $githubCliDirectory = Split-Path -Parent $script:ResolvedGitHubCliPath
+        $env:Path = "$githubCliDirectory;$env:Path"
+    }
+
     $pwsh = $PowerShellCommand
     if ([string]::IsNullOrWhiteSpace($pwsh)) {
         if ($PSVersionTable.PSEdition -eq "Core") {
@@ -243,11 +281,16 @@ function Invoke-CommandString([string] $Command) {
         $arguments = @("-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", $Command)
     }
 
-    $output = & $pwsh @arguments 2>&1
-    $exitCode = if ($null -eq $global:LASTEXITCODE) { 0 } else { [int] $global:LASTEXITCODE }
-    return [ordered]@{
-        exitCode = $exitCode
-        output = @($output | ForEach-Object { [string] $_ })
+    try {
+        $output = & $pwsh @arguments 2>&1
+        $exitCode = if ($null -eq $global:LASTEXITCODE) { 0 } else { [int] $global:LASTEXITCODE }
+        return [ordered]@{
+            exitCode = $exitCode
+            output = @($output | ForEach-Object { [string] $_ })
+        }
+    }
+    finally {
+        $env:Path = $previousPath
     }
 }
 
@@ -262,6 +305,8 @@ if ($plan.formatVersion -ne "osmu.operations-evidence-plan.v1") {
 }
 
 $replacementMap = New-ReplacementMap
+$script:ResolvedGitHubCliPath = Resolve-GitHubCliCandidate $GitHubCliPath
+$githubCliExecutionSource = Get-GitHubCliExecutionSource
 $actionResults = New-Object System.Collections.Generic.List[object]
 $allActions = @($plan.actions)
 $selectedActions = @($allActions | Where-Object { Test-ActionSelected $_ })
@@ -293,6 +338,14 @@ foreach ($action in $selectedActions) {
     }
     if (-not $safeCommand -and -not $AllowUnsafeCommand) {
         $blockReasons.Add("command failed allowlist/shell metacharacter check")
+    }
+    if ($Execute -and (Test-GitHubWorkflowCommand $resolvedCommand) -and [string]::IsNullOrWhiteSpace($githubCliExecutionSource)) {
+        if ([string]::IsNullOrWhiteSpace($script:ResolvedGitHubCliPath)) {
+            $blockReasons.Add("GitHub CLI not found on PATH")
+        }
+        else {
+            $blockReasons.Add("GitHub CLI not found at explicit path: $script:ResolvedGitHubCliPath")
+        }
     }
 
     $status = "planned"
@@ -386,6 +439,8 @@ $report = [ordered]@{
     sourceSummary = Get-Text $plan "sourceSummary"
     commandMode = $CommandMode
     executionMode = if ($Execute) { "execute" } else { "plan-only" }
+    githubCliPath = $script:ResolvedGitHubCliPath
+    githubCliExecutionSource = $githubCliExecutionSource
     selectedActionCount = $selectedCount
     plannedCount = $plannedCount
     blockedCount = $blockedCount
@@ -405,6 +460,7 @@ $markdownLines = @(
     "Source summary: $($report.sourceSummary)",
     "Command mode: $CommandMode",
     "Execution mode: $($report.executionMode)",
+    "GitHub CLI path: $(if ([string]::IsNullOrWhiteSpace($script:ResolvedGitHubCliPath)) { 'PATH lookup' } else { $script:ResolvedGitHubCliPath })",
     "",
     "## Decision Rule",
     "",

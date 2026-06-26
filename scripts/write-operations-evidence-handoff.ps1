@@ -146,6 +146,16 @@ function Is-ReadyResult([string] $Result) {
     return @("ready", "passed", "go") -contains $Result.ToLowerInvariant()
 }
 
+function Quote-PowerShellArgument([string] $Value) {
+    if ([string]::IsNullOrWhiteSpace($Value)) {
+        return "''"
+    }
+    if ($Value -match '^[A-Za-z0-9_./:\\-]+$') {
+        return $Value
+    }
+    return "'" + $Value.Replace("'", "''") + "'"
+}
+
 function New-DispatchPreflightCommand([object] $Report) {
     $parts = New-Object System.Collections.Generic.List[string]
     $parts.Add("powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\write-operations-dispatch-preflight.ps1")
@@ -154,6 +164,10 @@ function New-DispatchPreflightCommand([object] $Report) {
     } | Where-Object { $_ -gt 0 })
     if ($orders.Count -gt 0) {
         $parts.Add("-ActionOrder $(Join-IntList $orders)")
+    }
+    $githubCliPath = Get-Text $Report "githubCliPath"
+    if (-not [string]::IsNullOrWhiteSpace($githubCliPath)) {
+        $parts.Add("-GitHubCliPath $(Quote-PowerShellArgument $githubCliPath)")
     }
     $parts.Add("-CheckGitHubCli")
     return $parts -join " "

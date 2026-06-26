@@ -12,6 +12,7 @@ param(
     [switch] $ConfirmOperatorApproval,
     [switch] $KubeconfigSecretConfirmed,
     [switch] $CheckGitHubCli,
+    [string] $GitHubCliPath = "",
     [switch] $NoWrite
 )
 
@@ -187,6 +188,38 @@ function Join-ActionOrders([int[]] $Orders) {
     return ($Orders | ForEach-Object { [string] $_ }) -join ","
 }
 
+function Quote-PowerShellArgument([string] $Value) {
+    if ([string]::IsNullOrWhiteSpace($Value)) {
+        return "''"
+    }
+    if ($Value -match '^[A-Za-z0-9_./:\\-]+$') {
+        return $Value
+    }
+    return "'" + $Value.Replace("'", "''") + "'"
+}
+
+function Resolve-GitHubCliCandidate([string] $PathValue) {
+    if ([string]::IsNullOrWhiteSpace($PathValue)) {
+        return ""
+    }
+    try {
+        if ([System.IO.Path]::IsPathRooted($PathValue)) {
+            return [System.IO.Path]::GetFullPath($PathValue)
+        }
+        return [System.IO.Path]::GetFullPath((Join-Path (Get-Location) $PathValue))
+    }
+    catch {
+        return $PathValue
+    }
+}
+
+function Add-GitHubCliPathArgument([System.Collections.Generic.List[string]] $Parts, [string] $ResolvedPath) {
+    if ([string]::IsNullOrWhiteSpace($ResolvedPath)) {
+        return
+    }
+    $Parts.Add("-GitHubCliPath $(Quote-PowerShellArgument $ResolvedPath)")
+}
+
 function Get-WorkflowName([string] $Command) {
     if ([string]::IsNullOrWhiteSpace($Command)) {
         return ""
@@ -324,6 +357,8 @@ $requiredInputs = New-Object System.Collections.ArrayList
 $workflowFiles = New-Object System.Collections.ArrayList
 $requiredSecrets = New-Object System.Collections.Generic.List[string]
 $placeholderMap = New-PlaceholderMap
+$resolvedGitHubCliPath = Resolve-GitHubCliCandidate $GitHubCliPath
+$hasExplicitGitHubCliPath = -not [string]::IsNullOrWhiteSpace($resolvedGitHubCliPath)
 $hasActionOrderFilter = $ActionOrder -and $ActionOrder.Count -gt 0
 
 foreach ($action in @(Get-Array $unblockPlan "actions")) {
@@ -350,6 +385,7 @@ $invalidInputCount = 0
 $selectedOrders = New-Object System.Collections.Generic.List[int]
 $commandParts = New-Object System.Collections.Generic.List[string]
 $commandParts.Add("powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\invoke-operations-evidence-plan.ps1")
+Add-GitHubCliPathArgument $commandParts $resolvedGitHubCliPath
 
 foreach ($action in @($selectedActions)) {
     $order = Get-Int $action "order"
@@ -520,6 +556,7 @@ $readyActionOrders = @($readyInputTemplates | ForEach-Object { [int] $_.actionOr
 $blockedActionOrders = @($blockedInputTemplates | ForEach-Object { [int] $_.actionOrder } | Where-Object { $_ -gt 0 })
 $readySubsetCommandParts = New-Object System.Collections.Generic.List[string]
 $readySubsetCommandParts.Add("powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\invoke-operations-evidence-plan.ps1")
+Add-GitHubCliPathArgument $readySubsetCommandParts $resolvedGitHubCliPath
 if ($readyActionOrders.Count -gt 0) {
     $readySubsetCommandParts.Add("-ActionOrder $(Join-ActionOrders @($readyActionOrders))")
 }
@@ -600,17 +637,27 @@ else {
     Add-Check $checks "WORKFLOW_FILES_PRESENT" "fail" "$($missingWorkflowFiles.Count) selected workflow file(s) are missing."
 }
 
-if ($CheckGitHubCli) {
-    $ghCommand = Get-Command gh -ErrorAction SilentlyContinue
-    if ($null -eq $ghCommand) {
-        Add-Check $checks "GITHUB_CLI_AVAILABLE" "fail" "GitHub CLI was not found on PATH."
+if ($CheckGitHubCli -or $hasExplicitGitHubCliPath) {
+    if ($hasExplicitGitHubCliPath) {
+        if (Test-Path -LiteralPath $resolvedGitHubCliPath) {
+            Add-Check $checks "GITHUB_CLI_AVAILABLE" "pass" "GitHub CLI found at explicit path $resolvedGitHubCliPath."
+        }
+        else {
+            Add-Check $checks "GITHUB_CLI_AVAILABLE" "fail" "GitHub CLI was not found at explicit path $resolvedGitHubCliPath."
+        }
     }
     else {
-        Add-Check $checks "GITHUB_CLI_AVAILABLE" "pass" "GitHub CLI found at $($ghCommand.Source)."
+        $ghCommand = Get-Command gh -ErrorAction SilentlyContinue
+        if ($null -eq $ghCommand) {
+            Add-Check $checks "GITHUB_CLI_AVAILABLE" "fail" "GitHub CLI was not found on PATH."
+        }
+        else {
+            Add-Check $checks "GITHUB_CLI_AVAILABLE" "pass" "GitHub CLI found at $($ghCommand.Source)."
+        }
     }
 }
 else {
-    Add-Check $checks "GITHUB_CLI_AVAILABLE" "warn" "GitHub CLI availability check skipped. Run with -CheckGitHubCli before live dispatch."
+    Add-Check $checks "GITHUB_CLI_AVAILABLE" "warn" "GitHub CLI availability check skipped. Run with -CheckGitHubCli or provide -GitHubCliPath before live dispatch."
 }
 
 if ($ambiguousInputCount -gt 0) {
@@ -650,6 +697,7 @@ $report = [ordered]@{
     unsafeInputCount = $unsafeInputCount
     invalidInputCount = $invalidInputCount
     requiredGitHubSecrets = @($requiredSecrets)
+    githubCliPath = $resolvedGitHubCliPath
     workflowFiles = @($workflowFiles)
     checks = @($checks)
     failedCheckCount = $failedCheckCount
@@ -681,6 +729,7 @@ $markdownLines = @(
     "- Failed checks: $failedCheckCount",
     "- Warning checks: $warningCheckCount",
     "- Required GitHub secrets: $(if ($requiredSecrets.Count -gt 0) { @($requiredSecrets) -join ', ' } else { 'none detected' })",
+    "- GitHub CLI path: $(if ([string]::IsNullOrWhiteSpace($resolvedGitHubCliPath)) { 'PATH lookup' } else { $resolvedGitHubCliPath })",
     ""
 )
 if (-not [string]::IsNullOrWhiteSpace($readyPlanCommand)) {

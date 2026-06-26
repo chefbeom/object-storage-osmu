@@ -773,6 +773,8 @@ test('HomeView exposes stable selectors for browser E2E flows', () => {
   assert.match(dashboardSource, /readySubsetPlanCommand/)
   assert.match(dashboardSource, /readySubsetExecuteCommand/)
   assert.match(dashboardSource, /operationsDispatchPreflightSourceSummary/)
+  assert.match(dashboardSource, /operationsDispatchPreflightGitHubCliSummary/)
+  assert.match(dashboardSource, /githubCliPath/)
   assert.match(dashboardSource, /operationsDispatchPreflightChecks/)
   assert.match(dashboardSource, /operationsDispatchPreflightInputs/)
   assert.match(dashboardSource, /operationsDispatchPreflightInputTemplates/)

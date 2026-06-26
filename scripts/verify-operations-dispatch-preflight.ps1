@@ -56,6 +56,12 @@ $unsafeJsonPath = Join-Path $resolvedOutputDirectory "unsafe-preflight.json"
 $unsafeMarkdownPath = Join-Path $resolvedOutputDirectory "unsafe-preflight.md"
 $invalidJsonPath = Join-Path $resolvedOutputDirectory "invalid-preflight.json"
 $invalidMarkdownPath = Join-Path $resolvedOutputDirectory "invalid-preflight.md"
+$githubCliJsonPath = Join-Path $resolvedOutputDirectory "github-cli-path-preflight.json"
+$githubCliMarkdownPath = Join-Path $resolvedOutputDirectory "github-cli-path-preflight.md"
+$fakeGitHubCliDirectory = Join-Path $resolvedOutputDirectory "fake-github-cli"
+$fakeGitHubCliPath = Join-Path $fakeGitHubCliDirectory "gh.cmd"
+New-Item -ItemType Directory -Force -Path $fakeGitHubCliDirectory | Out-Null
+Set-Content -LiteralPath $fakeGitHubCliPath -Value "@echo off`r`necho fake gh %*`r`nexit /b 0`r`n" -Encoding ASCII
 
 Write-JsonFixture $unblockPlanPath ([ordered]@{
     formatVersion = "osmu.operations-invocation-unblock-plan.v1"
@@ -217,6 +223,26 @@ Assert-Contains $missingMarkdown "Ready actions: 1 (4)" "missing markdown ready 
 Assert-Contains $missingMarkdown "Ready subset plan command" "missing markdown ready subset command"
 Assert-Contains $missingMarkdown "action 2 - Kubernetes DR finalizer live evidence" "missing markdown DR template"
 
+& powershell -NoProfile -ExecutionPolicy Bypass -File $scriptPath `
+    -UnblockPlanPath $unblockPlanPath `
+    -JsonOutputPath $githubCliJsonPath `
+    -MarkdownOutputPath $githubCliMarkdownPath `
+    -ActionOrder 4 `
+    -GitHubCliPath $fakeGitHubCliPath `
+    -CheckGitHubCli | Out-Host
+if ($LASTEXITCODE -ne 0) {
+    throw "write-operations-dispatch-preflight.ps1 GitHubCliPath fixture failed with exit code $LASTEXITCODE."
+}
+
+$githubCliReport = Get-Content -Raw -LiteralPath $githubCliJsonPath | ConvertFrom-Json
+$githubCliMarkdown = Get-Content -Raw -LiteralPath $githubCliMarkdownPath
+Assert-Equal $githubCliReport.result "ready" "GitHubCliPath result"
+Assert-Equal $githubCliReport.githubCliPath $fakeGitHubCliPath "GitHubCliPath report path"
+Assert-Contains $githubCliReport.readyPlanCommand "-GitHubCliPath" "GitHubCliPath ready plan command"
+Assert-Contains $githubCliReport.readySubsetPlanCommand "-GitHubCliPath" "GitHubCliPath ready subset plan command"
+Assert-Contains $githubCliReport.executeCommand "-GitHubCliPath" "GitHubCliPath execute command"
+Assert-Contains (($githubCliReport.checks | ConvertTo-Json -Depth 8)) "explicit path" "GitHubCliPath check message"
+Assert-Contains $githubCliMarkdown "GitHub CLI path:" "GitHubCliPath markdown"
 & powershell -NoProfile -ExecutionPolicy Bypass -File $scriptPath `
     -UnblockPlanPath $unblockPlanPath `
     -JsonOutputPath $readyJsonPath `

@@ -253,6 +253,7 @@ Write-JsonFixture $preflightBlockDispatchPreflightPath ([ordered]@{
     missingInputCount = 0
     failedCheckCount = 1
     warningCheckCount = 0
+    githubCliPath = "C:\tools\gh.exe"
     checks = @(
         [ordered]@{
             code = "GITHUB_CLI_AVAILABLE"
@@ -310,6 +311,7 @@ $preflightBlockMarkdown = Get-Content -Raw -LiteralPath $preflightBlockMarkdownP
 Assert-Equal $preflightBlockReport.result "action-required" "preflight-block result"
 Assert-Equal $preflightBlockReport.nextStep.code "fix-dispatch-preflight" "preflight-block next step"
 Assert-Contains $preflightBlockReport.nextStep.command "-ActionOrder 2" "preflight-block command action order"
+Assert-Contains $preflightBlockReport.nextStep.command "-GitHubCliPath C:\tools\gh.exe" "preflight-block command github cli path"
 Assert-Contains $preflightBlockReport.nextStep.command "-CheckGitHubCli" "preflight-block command gh check"
 Assert-Contains $preflightBlockReport.nextStep.reason "dispatch preflight is action-required" "preflight-block reason"
 Assert-Contains $preflightBlockReport.nextStep.note "GITHUB_CLI_AVAILABLE" "preflight-block note"

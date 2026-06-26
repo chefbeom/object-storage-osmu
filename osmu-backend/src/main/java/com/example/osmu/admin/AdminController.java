@@ -2076,6 +2076,7 @@ public class AdminController {
                 jsonInt(preflightReport, "failedCheckCount"),
                 jsonInt(preflightReport, "warningCheckCount"),
                 jsonTextList(preflightReport, "requiredGitHubSecrets"),
+                jsonText(preflightReport, "githubCliPath"),
                 List.copyOf(workflowFiles),
                 List.copyOf(checks),
                 jsonText(preflightReport, "readyPlanCommand"),
