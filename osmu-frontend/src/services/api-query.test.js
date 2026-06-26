@@ -32,6 +32,7 @@ import {
   getAuditLogs,
   getBackupRestoreDrillEvidence,
   getBillingPricingPolicy,
+  getBillingPricingPolicyCommercialApprovalSummary,
   getBillingPricingPolicyProposals,
   getBuckets,
   getChargebackAlertNotificationPreview,
@@ -1701,6 +1702,22 @@ test('billing pricing policy proposal wrappers create list and approve internal 
         appliedPolicy: { currency: 'KRW', storageGbMonthRate: 1.25 },
       },
     }),
+    () => jsonResponse({
+      data: {
+        mode: 'BILLING_PRICING_POLICY_COMMERCIAL_APPROVAL_SUMMARY',
+        proposalCount: 1,
+        approvedPriceListCount: 1,
+        commercialApprovedCount: 1,
+        proposals: [
+          {
+            id: 11,
+            status: 'PRICE_LIST_APPROVED',
+            approvedPriceList: true,
+            commercialApprovalReference: 'LEGAL-2026-0001',
+          },
+        ],
+      },
+    }),
   ])
 
   try {
@@ -1721,6 +1738,7 @@ test('billing pricing policy proposal wrappers create list and approve internal 
       approvalNote: 'commercial approved',
       effectiveFrom: '2026-06-20T00:00:00Z',
     })
+    const commercialSummary = await getBillingPricingPolicyCommercialApprovalSummary({ limit: 25 })
 
     assert.equal(new URL(fetchMock.calls[0].url).pathname, '/api/admin/billing/pricing-policy-proposals')
     assert.equal(fetchMock.calls[0].options.method, 'POST')
@@ -1760,6 +1778,13 @@ test('billing pricing policy proposal wrappers create list and approve internal 
     assert.equal(fetchMock.calls[3].options.method, 'POST')
     assert.equal(priceListApproved.data.status, 'PRICE_LIST_APPROVED')
     assert.equal(priceListApproved.data.approvedPriceList, true)
+
+    const commercialSummaryUrl = new URL(fetchMock.calls[4].url)
+    assert.equal(commercialSummaryUrl.pathname, '/api/admin/billing/pricing-policy-proposals/commercial-approval-summary')
+    assert.equal(commercialSummaryUrl.searchParams.get('limit'), '25')
+    assert.equal(fetchMock.calls[4].options.method, undefined)
+    assert.equal(commercialSummary.data.mode, 'BILLING_PRICING_POLICY_COMMERCIAL_APPROVAL_SUMMARY')
+    assert.equal(commercialSummary.data.commercialApprovedCount, 1)
   } finally {
     cleanupFetch(fetchMock)
   }

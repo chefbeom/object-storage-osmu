@@ -575,6 +575,24 @@
         }
       }
     },
+    "/api/admin/billing/pricing-policy-proposals/commercial-approval-summary": {
+      "get": {
+        "tags": ["Billing", "Admin"],
+        "operationId": "getBillingPricingPolicyCommercialApprovalSummary",
+        "summary": "Read reduced commercial approval pricing proposal snapshot for evidence collection",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": { "type": "integer", "default": 50, "maximum": 200 }
+          }
+        ],
+        "responses": {
+          "200": { "$ref": "#/components/responses/JsonOk" },
+          "403": { "$ref": "#/components/responses/Error" }
+        }
+      }
+    },
     "/api/admin/billing/pricing-policy-proposals/{proposalId}/approve": {
       "post": {
         "tags": ["Billing", "Admin"],

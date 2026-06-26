@@ -101,6 +101,12 @@ public class AdminBillingController {
         return ApiResponse.of(pricingPolicyService.proposals(status, limit == null ? 50 : limit));
     }
 
+    @GetMapping("/pricing-policy-proposals/commercial-approval-summary")
+    public ApiResponse<BillingPricingPolicyCommercialApprovalSummaryResponse> pricingPolicyCommercialApprovalSummary(
+            @RequestParam(name = "limit", required = false) Integer limit
+    ) {
+        return ApiResponse.of(pricingPolicyService.commercialApprovalSummary(limit == null ? 50 : limit));
+    }
     @PostMapping("/pricing-policy-proposals/{proposalId}/approve")
     public ApiResponse<BillingPricingPolicyProposalApprovalResponse> approvePricingPolicyProposal(
             @PathVariable long proposalId,

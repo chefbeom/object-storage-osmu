@@ -76,6 +76,7 @@ class AdminRbacPolicyTest {
         assertFalse(policy.isAllowed("GET", "/api/admin/billing/chargeback-closeout-summary", "ORG_ADMIN"));
         assertFalse(policy.isAllowed("POST", "/api/admin/billing/chargeback-invoices/123/payment-record", "ORG_ADMIN"));
         assertFalse(policy.isAllowed("GET", "/api/admin/billing/pricing-policy-proposals", "ORG_ADMIN"));
+        assertFalse(policy.isAllowed("GET", "/api/admin/billing/pricing-policy-proposals/commercial-approval-summary", "ORG_ADMIN"));
         assertFalse(policy.isAllowed("POST", "/api/admin/billing/pricing-policy-proposals", "ORG_ADMIN"));
         assertFalse(policy.isAllowed("POST", "/api/admin/billing/pricing-policy-proposals/123/approve", "ORG_ADMIN"));
         assertFalse(policy.isAllowed("POST", "/api/admin/billing/pricing-policy-proposals/123/commercial-approval", "ORG_ADMIN"));
@@ -146,6 +147,7 @@ class AdminRbacPolicyTest {
         assertFalse(policy.isAllowed("GET", "/api/admin/billing/chargeback-closeout-summary", "AUDITOR"));
         assertFalse(policy.isAllowed("POST", "/api/admin/billing/chargeback-invoices/123/payment-record", "AUDITOR"));
         assertFalse(policy.isAllowed("GET", "/api/admin/billing/pricing-policy-proposals", "AUDITOR"));
+        assertFalse(policy.isAllowed("GET", "/api/admin/billing/pricing-policy-proposals/commercial-approval-summary", "AUDITOR"));
         assertFalse(policy.isAllowed("POST", "/api/admin/billing/pricing-policy-proposals", "AUDITOR"));
         assertFalse(policy.isAllowed("POST", "/api/admin/billing/pricing-policy-proposals/123/approve", "AUDITOR"));
         assertFalse(policy.isAllowed("POST", "/api/admin/billing/pricing-policy-proposals/123/commercial-approval", "AUDITOR"));

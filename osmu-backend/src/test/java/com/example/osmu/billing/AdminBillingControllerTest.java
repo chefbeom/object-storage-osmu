@@ -200,6 +200,22 @@ class AdminBillingControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.proposals[*].id", hasItem(pricingPolicyProposalId)));
 
+        mockMvc.perform(get("/api/admin/billing/pricing-policy-proposals/commercial-approval-summary")
+                        .header("Authorization", "Bearer " + adminToken)
+                        .param("limit", "10"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.mode").value("BILLING_PRICING_POLICY_COMMERCIAL_APPROVAL_SUMMARY"))
+                .andExpect(jsonPath("$.data.proposalCount").value(greaterThanOrEqualTo(1)))
+                .andExpect(jsonPath("$.data.approvedPriceListCount").value(greaterThanOrEqualTo(1)))
+                .andExpect(jsonPath("$.data.commercialApprovedCount").value(greaterThanOrEqualTo(1)))
+                .andExpect(jsonPath("$.data.proposals[*].id", hasItem(pricingPolicyProposalId)))
+                .andExpect(jsonPath("$.data.proposals[?(@.id == " + pricingPolicyProposalId + ")].status", hasItem("PRICE_LIST_APPROVED")))
+                .andExpect(jsonPath("$.data.proposals[?(@.id == " + pricingPolicyProposalId + ")].approvedPriceList", hasItem(true)))
+                .andExpect(jsonPath("$.data.proposals[?(@.id == " + pricingPolicyProposalId + ")].commercialApprovalReference", hasItem("LEGAL-2026-0001")))
+                .andExpect(content().string(not(containsString("storageGbMonthRate"))))
+                .andExpect(content().string(not(containsString("criticalAmount"))))
+                .andExpect(content().string(not(containsString("commercial terms approved"))));
+
         mockMvc.perform(get("/api/admin/billing/chargeback-preview")
                         .header("Authorization", "Bearer " + adminToken)
                         .param("from", billingFrom)

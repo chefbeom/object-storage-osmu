@@ -2687,6 +2687,27 @@ Response:
 - `appliedPolicy`: unchanged active chargeback pricing policy.
 - `note`: commercial price-list approval reference notice.
 
+### GET /api/admin/billing/pricing-policy-proposals/commercial-approval-summary
+
+Returns a reduced commercial approval snapshot for evidence collection. `ADMIN` only. Use this response as `PricingPolicyProposalJsonPath` input for `scripts/write-commercial-approval-evidence.ps1` when collecting target commercial approval evidence.
+
+Query parameters:
+
+- `limit` (optional): number of approved proposal rows to return, clamped to 1..200.
+
+Response:
+
+- `mode`: `BILLING_PRICING_POLICY_COMMERCIAL_APPROVAL_SUMMARY`
+- `proposalCount`
+- `approvedPriceListCount`
+- `commercialApprovedCount`
+- `latestCommercialApprovedAt`
+- `proposals[]`: `id`, `status`, `approvedPriceList`, `currency`, approval actor ids, commercial approval reference, and approval/effective timestamps.
+- `generatedAt`
+- `scopePolicy`, `secretPolicy`, and `note`
+
+The response is intentionally evidence-only. It omits rates, thresholds, raw price tables, contract text, customer data, license keys, payment data, proposal reasons, approval notes, credential-shaped content, and secret values.
+
 ### GET /api/admin/billing/chargeback-preview
 
 Organization chargeback pre-model. `ADMIN` sees every organization. `ORG_ADMIN` sees only the caller's organization. This endpoint does not persist invoices or mutate billing policy; it projects costs from current organization-owned bucket usage and bounded data-flow events. Query pricing fields override `GET /api/admin/billing/pricing-policy`; omitted pricing fields use the saved policy.
@@ -3019,6 +3040,7 @@ Response:
 - `profiles[]`: profile rows with `providerProfile`, `sampleProvider`, `adapterMode`, `status`, `webhookProfileConfigured`, `nativeApiSupported`, `nativeApiReady`, `requiredConfiguration`, and `note`.
 - `scopePolicy`: read-only/no-external-call boundary.
 - `secretPolicy`: confirms webhook URLs, secret headers, HMAC secrets, certificates, provider credentials, raw provider responses, and customer payment data are not returned.
+
 
 ### GET /api/admin/billing/chargeback-preview/export.csv
 

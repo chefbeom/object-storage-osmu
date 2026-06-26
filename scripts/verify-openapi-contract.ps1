@@ -79,6 +79,7 @@ $requiredOperations = @(
     @("/api/admin/billing/pricing-policy", "put", "saveBillingPricingPolicy"),
     @("/api/admin/billing/pricing-policy-proposals", "get", "getBillingPricingPolicyProposals"),
     @("/api/admin/billing/pricing-policy-proposals", "post", "createBillingPricingPolicyProposal"),
+    @("/api/admin/billing/pricing-policy-proposals/commercial-approval-summary", "get", "getBillingPricingPolicyCommercialApprovalSummary"),
     @("/api/admin/billing/pricing-policy-proposals/{proposalId}/approve", "post", "approveBillingPricingPolicyProposal"),
     @("/api/admin/billing/pricing-policy-proposals/{proposalId}/commercial-approval", "post", "approveBillingPricingPolicyProposalPriceList"),
     @("/api/admin/billing/chargeback-preview", "get", "getChargebackPreview"),

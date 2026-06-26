@@ -1686,6 +1686,13 @@ export function getBillingPricingPolicyProposals(options = {}) {
   return request(`/admin/billing/pricing-policy-proposals${suffix}`)
 }
 
+export function getBillingPricingPolicyCommercialApprovalSummary(options = {}) {
+  const query = new URLSearchParams()
+  appendQuery(query, 'limit', options.limit)
+  const suffix = query.toString() ? `?${query.toString()}` : ''
+  return request(`/admin/billing/pricing-policy-proposals/commercial-approval-summary${suffix}`)
+}
+
 export function approveBillingPricingPolicyProposal(proposalId, options = {}) {
   const query = new URLSearchParams()
   appendQuery(query, 'approvalNote', options.approvalNote)

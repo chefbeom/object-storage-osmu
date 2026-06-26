@@ -99,6 +99,38 @@ public class BillingPricingPolicyService {
         );
     }
 
+    public BillingPricingPolicyCommercialApprovalSummaryResponse commercialApprovalSummary(int limit) {
+        int safeLimit = normalizeProposalLimit(limit);
+        List<BillingPricingPolicyProposalRecord> records = proposalRepository.findByStatus(
+                PROPOSAL_STATUS_PRICE_LIST_APPROVED,
+                safeLimit
+        );
+        List<BillingPricingPolicyCommercialApprovalProposalResponse> proposals = records.stream()
+                .map(BillingPricingPolicyService::commercialApprovalProposalResponse)
+                .toList();
+        OffsetDateTime latestCommercialApprovedAt = records.stream()
+                .map(BillingPricingPolicyProposalRecord::commercialApprovedAt)
+                .filter(value -> value != null)
+                .max(OffsetDateTime::compareTo)
+                .orElse(null);
+        return new BillingPricingPolicyCommercialApprovalSummaryResponse(
+                "BILLING_PRICING_POLICY_COMMERCIAL_APPROVAL_SUMMARY",
+                proposals.size(),
+                (int) proposals.stream().filter(BillingPricingPolicyCommercialApprovalProposalResponse::approvedPriceList).count(),
+                (int) proposals.stream()
+                        .filter(proposal -> PROPOSAL_STATUS_PRICE_LIST_APPROVED.equals(proposal.status())
+                                && proposal.approvedPriceList()
+                                && proposal.commercialApprovalReference() != null
+                                && !proposal.commercialApprovalReference().isBlank())
+                        .count(),
+                latestCommercialApprovedAt,
+                proposals,
+                OffsetDateTime.now(),
+                "ADMIN-only reduced commercial approval snapshot for pricing-policy proposal evidence.",
+                "Response contains status, typed approval booleans, approval references, actor ids, and timestamps only; it omits rates, thresholds, raw price tables, contract text, customer data, license keys, payment data, reasons, and approval notes.",
+                "Use this response as PricingPolicyProposalJsonPath input for scripts/write-commercial-approval-evidence.ps1."
+        );
+    }
     public BillingPricingPolicyProposalApprovalResponse approveProposal(
             long proposalId,
             String approvedBy,
@@ -237,6 +269,12 @@ public class BillingPricingPolicyService {
         return Math.min(MAX_EVENT_SCAN_LIMIT, normalized);
     }
 
+    private static int normalizeProposalLimit(int limit) {
+        if (limit <= 0) {
+            return 50;
+        }
+        return Math.min(limit, 200);
+    }
     private static BigDecimal money(BigDecimal value) {
         return value.setScale(6, RoundingMode.HALF_UP);
     }
@@ -313,6 +351,26 @@ public class BillingPricingPolicyService {
         }
     }
 
+    private static BillingPricingPolicyCommercialApprovalProposalResponse commercialApprovalProposalResponse(
+            BillingPricingPolicyProposalRecord record
+    ) {
+        return new BillingPricingPolicyCommercialApprovalProposalResponse(
+                record.id() == null ? 0L : record.id(),
+                record.status(),
+                record.approvedPriceList(),
+                record.currency(),
+                record.requestedBy(),
+                record.approvedBy() == null ? "" : record.approvedBy(),
+                record.commercialApprovedBy() == null ? "" : record.commercialApprovedBy(),
+                record.commercialApprovalReference() == null ? "" : record.commercialApprovalReference(),
+                record.createdAt(),
+                record.updatedAt(),
+                record.approvedAt(),
+                record.appliedAt(),
+                record.commercialApprovedAt(),
+                record.commercialEffectiveFrom()
+        );
+    }
     private static BillingPricingPolicyProposalResponse proposalResponse(BillingPricingPolicyProposalRecord record) {
         return new BillingPricingPolicyProposalResponse(
                 record.id() == null ? 0L : record.id(),
