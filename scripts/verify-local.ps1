@@ -631,6 +631,8 @@ Run "powershell -ExecutionPolicy Bypass -File .\scripts\write-operations-workflo
 Run "powershell -ExecutionPolicy Bypass -File .\scripts\write-operations-artifact-collection-plan.ps1$operationsImageSigningVersionArgument"
 Run "powershell -ExecutionPolicy Bypass -File .\scripts\write-operations-evidence-handoff.ps1"
 Run "powershell -ExecutionPolicy Bypass -File .\scripts\write-operations-readiness-convergence.ps1"
+Run "powershell -ExecutionPolicy Bypass -File .\scripts\sync-kubernetes-operations-reports.ps1 -PlanOnly -SkipDataFlowQueryRetentionBudgetConfigMapPublish"
+Run "powershell -ExecutionPolicy Bypass -File .\scripts\write-operations-readiness-convergence.ps1"
 Assert-OperationsLatestEvidenceFreshness $operationsSelectedActionOrders
 if (-not $SkipDocker) {
     Step "Docker Compose config check"

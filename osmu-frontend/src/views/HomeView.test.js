@@ -206,6 +206,7 @@ test('HomeView exposes stable selectors for browser E2E flows', () => {
     'readiness-evidence-handoff-command-copy-button',
     'readiness-evidence-handoff-next-note',
     'readiness-evidence-handoff-scope-summary',
+    'readiness-evidence-handoff-run-id-query',
     'readiness-evidence-handoff-post-dispatch-commands',
     'readiness-evidence-handoff-post-dispatch-command-copy-button',
     'readiness-evidence-handoff-dispatch-link',
@@ -230,6 +231,7 @@ test('HomeView exposes stable selectors for browser E2E flows', () => {
     'readiness-convergence-item-summary',
     'readiness-convergence-summary',
     'readiness-convergence-handoff-freshness',
+    'readiness-convergence-run-id-query',
     'readiness-convergence-command-copy-button',
     'readiness-convergence-commands',
     'readiness-convergence-command-list-copy-button',
@@ -950,6 +952,11 @@ test('HomeView exposes stable selectors for browser E2E flows', () => {
   assert.match(dashboardSource, /operationsEvidenceHandoffReadinessSummary/)
   assert.match(dashboardSource, /readiness-evidence-handoff-readiness-summary/)
   assert.match(dashboardSource, /operationsEvidenceHandoffScopeSummary/)
+  assert.match(dashboardSource, /operationsEvidenceHandoffRunIdQuerySummary/)
+  assert.match(dashboardSource, /readiness-evidence-handoff-run-id-query/)
+  assert.match(dashboardSource, /workflowRunIdPlanQueryExecutedCount/)
+  assert.match(dashboardSource, /workflowRunIdPlanQuerySucceededCount/)
+  assert.match(dashboardSource, /workflowRunIdPlanCandidateCount/)
   assert.match(dashboardSource, /invocationSelectedActionOrders/)
   assert.match(dashboardSource, /dispatchPreflightSelectedActionOrders/)
   assert.match(dashboardSource, /dispatchPreflightScopeMismatch/)
@@ -1251,6 +1258,11 @@ test('HomeView exposes stable selectors for browser E2E flows', () => {
   assert.match(dashboardSource, /operationsReadinessConvergenceReadinessSummary/)
   assert.match(dashboardSource, /readiness-convergence-readiness-summary/)
   assert.match(dashboardSource, /operationsReadinessConvergenceHandoffFreshness/)
+  assert.match(dashboardSource, /operationsReadinessConvergenceRunIdQuerySummary/)
+  assert.match(dashboardSource, /readiness-convergence-run-id-query/)
+  assert.match(dashboardSource, /handoffWorkflowRunIdPlanQueryExecutedCount/)
+  assert.match(dashboardSource, /handoffWorkflowRunIdPlanQuerySucceededCount/)
+  assert.match(dashboardSource, /handoffWorkflowRunIdPlanCandidateCount/)
   assert.match(dashboardSource, /handoffStale/)
   assert.match(dashboardSource, /handoffTimestamp/)
   assert.match(dashboardSource, /readinessTimestamp/)
@@ -1389,6 +1401,11 @@ test('HomeView exposes stable selectors for browser E2E flows', () => {
   assert.match(dashboardSource, /currentBottleneck: \{/)
   assert.match(dashboardSource, /currentBottleneck = handoff\?\.currentBottleneck \|\| nextStep/)
   assert.match(dashboardSource, /workflowRunIdPlanActionOrders: Array\.isArray\(handoff\?\.workflowRunIdPlanActionOrders\)/)
+  assert.match(dashboardSource, /workflowRunIdPlanQueryExecuted: Boolean\(handoff\?\.workflowRunIdPlanQueryExecuted\)/)
+  assert.match(dashboardSource, /workflowRunIdPlanQueryMode: handoff\?\.workflowRunIdPlanQueryMode/)
+  assert.match(dashboardSource, /workflowRunIdPlanGithubApiUnauthenticated: Boolean\(handoff\?\.workflowRunIdPlanGithubApiUnauthenticated\)/)
+  assert.match(dashboardSource, /workflowRunIdPlanScopeMismatch: Boolean\(handoff\?\.workflowRunIdPlanScopeMismatch\)/)
+  assert.match(dashboardSource, /artifactCollectionStale: Boolean\(handoff\?\.artifactCollectionStale\)/)
   assert.match(dashboardSource, /securityEvidenceFinalizerRunIdInputHints: normalizeOperationsWorkflowRunIdInputs\(handoff\?\.securityEvidenceFinalizerRunIdInputHints\)/)
   assert.match(dashboardSource, /readinessPassedCount: Number\(handoff\?\.readinessPassedCount \|\| 0\)/)
   assert.match(dashboardSource, /artifactCollectionScopeMismatch: Boolean\(handoff\?\.artifactCollectionScopeMismatch\)/)
@@ -1396,6 +1413,9 @@ test('HomeView exposes stable selectors for browser E2E flows', () => {
   assert.match(dashboardSource, /readinessPassedCount: Number\(report\?\.readinessPassedCount \|\| 0\)/)
   assert.match(dashboardSource, /handoffTimestampSource/)
   assert.match(dashboardSource, /handoffSecurityEvidenceFinalizerRunIdInputHints: normalizeOperationsWorkflowRunIdInputs\(report\?\.handoffSecurityEvidenceFinalizerRunIdInputHints\)/)
+  assert.match(dashboardSource, /handoffWorkflowRunIdPlanQueryExecuted: Boolean\(report\?\.handoffWorkflowRunIdPlanQueryExecuted\)/)
+  assert.match(dashboardSource, /handoffWorkflowRunIdPlanQueryMode: report\?\.handoffWorkflowRunIdPlanQueryMode/)
+  assert.match(dashboardSource, /handoffWorkflowRunIdPlanGithubApiUnauthenticated: Boolean\(report\?\.handoffWorkflowRunIdPlanGithubApiUnauthenticated\)/)
   assert.match(dashboardSource, /readinessTimestampSource/)
   assert.match(dashboardSource, /normalizeKubernetesOperationsReportSync/)
   assert.match(dashboardSource, /OPERATIONS_EVIDENCE_PLAN/)

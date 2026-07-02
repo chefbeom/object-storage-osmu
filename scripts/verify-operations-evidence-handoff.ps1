@@ -253,7 +253,15 @@ Write-JsonFixture $blockedRunIdPath ([ordered]@{
     readyWorkflowCount = 0
     missingWorkflowCount = 6
     staleWorkflowCount = 0
+    queryMode = "github-api"
+    githubApiTokenPresent = $false
+    githubApiUnauthenticated = $true
     artifactCollectionPlanCommand = "powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\write-operations-artifact-collection-plan.ps1"
+    workflows = @(
+        [ordered]@{ workflow = "storage-expansion-finalizer-ci.yml"; actionOrders = @(1); queryMode = "github-api"; querySucceeded = $true; queryError = ""; candidateCount = 0; runsUrl = "https://github.com/chefbeom/object-storage-osmu/actions/workflows/storage-expansion-finalizer-ci.yml" },
+        [ordered]@{ workflow = "container-security-ci.yml"; actionOrders = @(2); queryMode = "github-api"; querySucceeded = $true; queryError = ""; candidateCount = 2; runsUrl = "https://github.com/chefbeom/object-storage-osmu/actions/workflows/container-security-ci.yml" },
+        [ordered]@{ workflow = "kubernetes-dr-finalizer-ci.yml"; actionOrders = @(3); queryMode = "github-api"; querySucceeded = $false; queryError = "rate limited"; candidateCount = 0; runsUrl = "https://github.com/chefbeom/object-storage-osmu/actions/workflows/kubernetes-dr-finalizer-ci.yml" }
+    )
 })
 Write-JsonFixture $blockedDispatchPreflightPath ([ordered]@{
     formatVersion = "osmu.operations-dispatch-preflight.v1"
@@ -502,6 +510,15 @@ Assert-Contains @($blockedReport.inputFreeBlockedActions)[0].planCommand "-Kubec
 Assert-Equal @($blockedReport.defaultBranchMissingWorkflows)[0].workflow "manual-data-flow-query-retention-budget-evidence.yml" "blocked default branch missing workflow name"
 Assert-Equal $blockedReport.blockedActionCount 5 "blocked count"
 Assert-Equal $blockedReport.missingWorkflowRunCount 6 "blocked missing workflow run count"
+Assert-Equal $blockedReport.workflowRunIdPlanQueryMode "github-api" "blocked run-id query mode"
+Assert-Equal $blockedReport.workflowRunIdPlanGithubApiTokenPresent $false "blocked run-id token present"
+Assert-Equal $blockedReport.workflowRunIdPlanGithubApiUnauthenticated $true "blocked run-id unauthenticated"
+Assert-Equal $blockedReport.workflowRunIdPlanQueryExecuted $true "blocked run-id query executed"
+Assert-Equal $blockedReport.workflowRunIdPlanQueryExecutedCount 3 "blocked run-id query executed count"
+Assert-Equal $blockedReport.workflowRunIdPlanQueryWorkflowCount 3 "blocked run-id queried workflow count"
+Assert-Equal $blockedReport.workflowRunIdPlanQuerySucceededCount 2 "blocked run-id query succeeded count"
+Assert-Equal $blockedReport.workflowRunIdPlanQueryErrorCount 1 "blocked run-id query error count"
+Assert-Equal $blockedReport.workflowRunIdPlanCandidateCount 2 "blocked run-id candidate count"
 Assert-Equal $blockedReport.dispatchPreflightRequiredInputCount 2 "blocked dispatch required input count"
 Assert-Equal $blockedReport.dispatchPreflightMissingInputCount 2 "blocked dispatch missing input count"
 Assert-Equal $blockedReport.operatorInputWorksheetReportPath $blockedWorksheetPath "blocked worksheet report path"
@@ -551,6 +568,11 @@ Assert-Contains $blockedMarkdown "action 3: status=blocked blockers=2 inputs=2 s
 Assert-Contains $blockedMarkdown "ready action 2: container-security-ci.yml" "blocked markdown ready workflow"
 Assert-Contains $blockedMarkdown "dispatchUrl=https://github.com/chefbeom/object-storage-osmu/actions/workflows/container-security-ci.yml" "blocked markdown ready dispatch url"
 Assert-Contains $blockedMarkdown "blocked action 3: kubernetes-dr-finalizer-ci.yml" "blocked markdown blocked workflow"
+Assert-Contains $blockedMarkdown "## Workflow Run-id Query" "blocked markdown run-id query section"
+Assert-Contains $blockedMarkdown "Query executed: True" "blocked markdown run-id query executed"
+Assert-Contains $blockedMarkdown "Query executed workflows: 3" "blocked markdown run-id query executed count"
+Assert-Contains $blockedMarkdown "Query succeeded: 2/3" "blocked markdown run-id query succeeded"
+Assert-Contains $blockedMarkdown "Candidate runs: 2" "blocked markdown run-id candidate count"
 Assert-Contains $blockedMarkdown "Default Branch Workflow Readiness" "blocked markdown default branch section"
 Assert-Contains $blockedMarkdown "missing workflow: manual-data-flow-query-retention-budget-evidence.yml" "blocked markdown default branch workflow"
 

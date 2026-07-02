@@ -3165,6 +3165,15 @@ class AdminDashboardSummaryControllerTest {
                             "dispatchPreflightScopeMismatch":  false,
                             "workflowRunIdPlanStale":  false,
                             "workflowRunIdPlanScopeMismatch":  false,
+                            "workflowRunIdPlanQueryMode":  "github-api",
+                            "workflowRunIdPlanGithubApiTokenPresent":  false,
+                            "workflowRunIdPlanGithubApiUnauthenticated":  true,
+                            "workflowRunIdPlanQueryExecuted":  true,
+                            "workflowRunIdPlanQueryExecutedCount":  1,
+                            "workflowRunIdPlanQueryWorkflowCount":  1,
+                            "workflowRunIdPlanQuerySucceededCount":  1,
+                            "workflowRunIdPlanQueryErrorCount":  0,
+                            "workflowRunIdPlanCandidateCount":  0,
                             "artifactCollectionStale":  false,
                             "artifactCollectionScopeMismatch":  false,
                             "staleReportCount":  0,
@@ -3404,6 +3413,15 @@ class AdminDashboardSummaryControllerTest {
                             "stageCount":  8,
                             "readyStageCount":  2,
                             "blockedActionCount":  0,
+                            "handoffWorkflowRunIdPlanQueryMode":  "github-api",
+                            "handoffWorkflowRunIdPlanGithubApiTokenPresent":  false,
+                            "handoffWorkflowRunIdPlanGithubApiUnauthenticated":  true,
+                            "handoffWorkflowRunIdPlanQueryExecuted":  true,
+                            "handoffWorkflowRunIdPlanQueryExecutedCount":  1,
+                            "handoffWorkflowRunIdPlanQueryWorkflowCount":  1,
+                            "handoffWorkflowRunIdPlanQuerySucceededCount":  1,
+                            "handoffWorkflowRunIdPlanQueryErrorCount":  0,
+                            "handoffWorkflowRunIdPlanCandidateCount":  0,
                             "missingWorkflowRunCount":  1,
                             "missingRequiredArtifactCount":  0,
                             "failedImportCount":  0,
@@ -4322,6 +4340,15 @@ class AdminDashboardSummaryControllerTest {
         readiness.andExpect(jsonPath("$.data.operationsEvidenceHandoff.dispatchPreflightScopeMismatch").value(false));
         readiness.andExpect(jsonPath("$.data.operationsEvidenceHandoff.workflowRunIdPlanStale").value(false));
         readiness.andExpect(jsonPath("$.data.operationsEvidenceHandoff.workflowRunIdPlanScopeMismatch").value(false));
+        readiness.andExpect(jsonPath("$.data.operationsEvidenceHandoff.workflowRunIdPlanQueryMode").value("github-api"));
+        readiness.andExpect(jsonPath("$.data.operationsEvidenceHandoff.workflowRunIdPlanGithubApiTokenPresent").value(false));
+        readiness.andExpect(jsonPath("$.data.operationsEvidenceHandoff.workflowRunIdPlanGithubApiUnauthenticated").value(true));
+        readiness.andExpect(jsonPath("$.data.operationsEvidenceHandoff.workflowRunIdPlanQueryExecuted").value(true));
+        readiness.andExpect(jsonPath("$.data.operationsEvidenceHandoff.workflowRunIdPlanQueryExecutedCount").value(1));
+        readiness.andExpect(jsonPath("$.data.operationsEvidenceHandoff.workflowRunIdPlanQueryWorkflowCount").value(1));
+        readiness.andExpect(jsonPath("$.data.operationsEvidenceHandoff.workflowRunIdPlanQuerySucceededCount").value(1));
+        readiness.andExpect(jsonPath("$.data.operationsEvidenceHandoff.workflowRunIdPlanQueryErrorCount").value(0));
+        readiness.andExpect(jsonPath("$.data.operationsEvidenceHandoff.workflowRunIdPlanCandidateCount").value(0));
         readiness.andExpect(jsonPath("$.data.operationsEvidenceHandoff.artifactCollectionStale").value(false));
         readiness.andExpect(jsonPath("$.data.operationsEvidenceHandoff.artifactCollectionScopeMismatch").value(false));
         readiness.andExpect(jsonPath("$.data.operationsEvidenceHandoff.readyDispatchWorkflows[0].actionOrder").value(6));
@@ -4380,6 +4407,15 @@ class AdminDashboardSummaryControllerTest {
         readiness.andExpect(jsonPath("$.data.operationsReadinessConvergence.handoffSecurityEvidenceFinalizerRunIdInputHints[0].supplementalForSecurityFinalizer").value(true));
         readiness.andExpect(jsonPath("$.data.operationsReadinessConvergence.handoffSecurityEvidenceFinalizerRunIdInputHints[1].runIdParameter").value("ContainerSecurityRunId"));
         readiness.andExpect(jsonPath("$.data.operationsReadinessConvergence.handoffSecurityEvidenceFinalizerRunIdInputHints[1].sourceSelected").value(true));
+        readiness.andExpect(jsonPath("$.data.operationsReadinessConvergence.handoffWorkflowRunIdPlanQueryMode").value("github-api"));
+        readiness.andExpect(jsonPath("$.data.operationsReadinessConvergence.handoffWorkflowRunIdPlanGithubApiTokenPresent").value(false));
+        readiness.andExpect(jsonPath("$.data.operationsReadinessConvergence.handoffWorkflowRunIdPlanGithubApiUnauthenticated").value(true));
+        readiness.andExpect(jsonPath("$.data.operationsReadinessConvergence.handoffWorkflowRunIdPlanQueryExecuted").value(true));
+        readiness.andExpect(jsonPath("$.data.operationsReadinessConvergence.handoffWorkflowRunIdPlanQueryExecutedCount").value(1));
+        readiness.andExpect(jsonPath("$.data.operationsReadinessConvergence.handoffWorkflowRunIdPlanQueryWorkflowCount").value(1));
+        readiness.andExpect(jsonPath("$.data.operationsReadinessConvergence.handoffWorkflowRunIdPlanQuerySucceededCount").value(1));
+        readiness.andExpect(jsonPath("$.data.operationsReadinessConvergence.handoffWorkflowRunIdPlanQueryErrorCount").value(0));
+        readiness.andExpect(jsonPath("$.data.operationsReadinessConvergence.handoffWorkflowRunIdPlanCandidateCount").value(0));
         readiness.andExpect(jsonPath("$.data.operationsReadinessConvergence.currentBottleneck.dispatchUrls[0]").value("https://github.com/chefbeom/object-storage-osmu/actions/workflows/container-security-ci.yml"));
         readiness.andExpect(jsonPath("$.data.operationsReadinessConvergence.recommendedCommands[0].name").value("Open browser or API dispatch for ready subset"));
         readiness.andExpect(jsonPath("$.data.operationsReadinessConvergence.recommendedCommands[0].note").value(containsString("container-security-ci.yml")));

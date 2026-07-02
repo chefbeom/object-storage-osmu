@@ -214,6 +214,8 @@ if ($null -ne $operationsEvidenceHandoff) {
     Assert-True ($handoff.formatVersion -eq "osmu.operations-evidence-handoff.v1") "Unexpected operations evidence handoff formatVersion in $($operationsEvidenceHandoff.path)."
     $expectedEvidenceHandoffLine = "Operations evidence handoff latest verification: result=$($handoff.result), bottleneck=$($handoff.currentBottleneck.code), missingWorkflowRunCount=$($handoff.missingWorkflowRunCount)."
     Assert-Contains $content $expectedEvidenceHandoffLine "MVP release checklist"
+    $expectedEvidenceHandoffRunIdQueryLine = "Operations evidence handoff run-id query: mode=$($handoff.workflowRunIdPlanQueryMode), executed=$(Format-BoolLower $handoff.workflowRunIdPlanQueryExecuted), executedWorkflows=$($handoff.workflowRunIdPlanQueryExecutedCount), succeeded=$($handoff.workflowRunIdPlanQuerySucceededCount)/$($handoff.workflowRunIdPlanQueryWorkflowCount), errors=$($handoff.workflowRunIdPlanQueryErrorCount), candidates=$($handoff.workflowRunIdPlanCandidateCount)."
+    Assert-Contains $content $expectedEvidenceHandoffRunIdQueryLine "MVP release checklist"
     $browserDispatchChecklist = @($handoff.browserDispatchChecklist)
     Assert-True ([int] $handoff.browserDispatchChecklistCount -eq $browserDispatchChecklist.Count) "Operations evidence handoff browserDispatchChecklistCount does not match checklist length."
     $browserDispatchChecklistActionOrders = @($browserDispatchChecklist | ForEach-Object { $_.actionOrder })
@@ -229,6 +231,8 @@ if ($null -ne $operationsReadinessConvergence) {
     Assert-True ($convergence.formatVersion -eq "osmu.operations-readiness-convergence.v1") "Unexpected operations readiness convergence formatVersion in $($operationsReadinessConvergence.path)."
     $expectedConvergenceLine = "Operations readiness convergence latest verification: result=$($convergence.result), readinessResult=$($convergence.readinessResult), bottleneck=$($convergence.currentBottleneck.code), missingWorkflowRunCount=$($convergence.missingWorkflowRunCount), kubernetesReportSyncStale=$(Format-BoolLower $convergence.kubernetesReportSyncStale)."
     Assert-Contains $content $expectedConvergenceLine "MVP release checklist"
+    $expectedConvergenceRunIdQueryLine = "Operations readiness convergence run-id query: mode=$($convergence.handoffWorkflowRunIdPlanQueryMode), executed=$(Format-BoolLower $convergence.handoffWorkflowRunIdPlanQueryExecuted), executedWorkflows=$($convergence.handoffWorkflowRunIdPlanQueryExecutedCount), succeeded=$($convergence.handoffWorkflowRunIdPlanQuerySucceededCount)/$($convergence.handoffWorkflowRunIdPlanQueryWorkflowCount), errors=$($convergence.handoffWorkflowRunIdPlanQueryErrorCount), candidates=$($convergence.handoffWorkflowRunIdPlanCandidateCount)."
+    Assert-Contains $content $expectedConvergenceRunIdQueryLine "MVP release checklist"
 }
 
 Write-Host "MVP release checklist verified."

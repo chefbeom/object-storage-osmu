@@ -34,6 +34,11 @@ function Assert-Contains([string] $Text, [string] $Expected, [string] $Message) 
     }
 }
 
+function Assert-NotContains([string] $Text, [string] $Unexpected, [string] $Message) {
+    if ($Text.Contains($Unexpected)) {
+        throw "$Message. Unexpected '$Unexpected'."
+    }
+}
 function Write-JsonFixture([string] $PathValue, [object] $Value) {
     $directory = Split-Path -Parent $PathValue
     New-Item -ItemType Directory -Force -Path $directory | Out-Null
@@ -118,6 +123,15 @@ Write-JsonFixture $actionHandoffPath ([ordered]@{
         [ordered]@{ actionOrder = 1; name = "Storage expansion finalizer live evidence"; blockReasonCount = 2; blockReasons = @("operator approval not confirmed", "kubeconfig secret not confirmed"); requiredSecretCount = 1; requiredSecrets = @("OSMU_KUBECONFIG_BASE64"); needsOperatorApprovalConfirmation = $true; needsKubeconfigSecretConfirmation = $true; defaultBranchWorkflowMissing = $false; reviewCommand = "powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\invoke-operations-evidence-plan.ps1 -ActionOrder 1 -NoWrite"; confirmedPlanCommand = "powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\invoke-operations-evidence-plan.ps1 -ActionOrder 1 -KubeconfigSecretConfirmed -ConfirmOperatorApproval"; planCommand = "powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\invoke-operations-evidence-plan.ps1 -ActionOrder 1 -KubeconfigSecretConfirmed -ConfirmOperatorApproval" },
         [ordered]@{ actionOrder = 5; name = "Signed image evidence"; blockReasonCount = 1; blockReasons = @("operator approval not confirmed"); requiredSecretCount = 1; requiredSecrets = @("GITHUB_TOKEN"); needsOperatorApprovalConfirmation = $true; needsKubeconfigSecretConfirmation = $false; defaultBranchWorkflowMissing = $false; reviewCommand = "powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\invoke-operations-evidence-plan.ps1 -ActionOrder 5 -NoWrite"; confirmedPlanCommand = "powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\invoke-operations-evidence-plan.ps1 -ActionOrder 5 -ConfirmOperatorApproval"; planCommand = "powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\invoke-operations-evidence-plan.ps1 -ActionOrder 5 -ConfirmOperatorApproval" }
     )
+    workflowRunIdPlanQueryMode = "github-api"
+    workflowRunIdPlanGithubApiTokenPresent = $false
+    workflowRunIdPlanGithubApiUnauthenticated = $true
+    workflowRunIdPlanQueryExecuted = $true
+    workflowRunIdPlanQueryExecutedCount = 19
+    workflowRunIdPlanQueryWorkflowCount = 19
+    workflowRunIdPlanQuerySucceededCount = 19
+    workflowRunIdPlanQueryErrorCount = 0
+    workflowRunIdPlanCandidateCount = 0
     missingWorkflowRunCount = 0
     missingRequiredArtifactCount = 0
     failedImportCount = 0
@@ -154,6 +168,15 @@ Assert-Equal $actionReport.currentBottleneck.code "run-operations-finalizer" "ac
 Assert-Equal $actionReport.stageCount 7 "action stage count"
 Assert-Equal $actionReport.readyStageCount 5 "action ready stage count"
 Assert-Equal $actionReport.handoffInputFreeBlockedActionCount 2 "action input-free blocked action count"
+Assert-Equal $actionReport.handoffWorkflowRunIdPlanQueryMode "github-api" "action run-id query mode"
+Assert-Equal $actionReport.handoffWorkflowRunIdPlanGithubApiTokenPresent $false "action run-id token present"
+Assert-Equal $actionReport.handoffWorkflowRunIdPlanGithubApiUnauthenticated $true "action run-id unauthenticated"
+Assert-Equal $actionReport.handoffWorkflowRunIdPlanQueryExecuted $true "action run-id query executed"
+Assert-Equal $actionReport.handoffWorkflowRunIdPlanQueryExecutedCount 19 "action run-id query executed count"
+Assert-Equal $actionReport.handoffWorkflowRunIdPlanQueryWorkflowCount 19 "action run-id queried workflow count"
+Assert-Equal $actionReport.handoffWorkflowRunIdPlanQuerySucceededCount 19 "action run-id query succeeded count"
+Assert-Equal $actionReport.handoffWorkflowRunIdPlanQueryErrorCount 0 "action run-id query error count"
+Assert-Equal $actionReport.handoffWorkflowRunIdPlanCandidateCount 0 "action run-id candidate count"
 Assert-Equal (@($actionReport.handoffInputFreeBlockedActionOrders) -join ",") "1,5" "action input-free blocked action orders"
 Assert-Equal $actionReport.handoffInputFreeBlockedReviewCommand "powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\invoke-operations-evidence-plan.ps1 -ActionOrder 1,5 -NoWrite" "action input-free aggregate review command"
 Assert-Equal $actionReport.handoffInputFreeBlockedReviewReportCommand "powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\invoke-operations-evidence-plan.ps1 -ActionOrder 1,5 -JsonOutputPath .\.osmu-run\input-free-blocker-review\operations-evidence-plan-invocation.json -MarkdownOutputPath .\.osmu-run\input-free-blocker-review\operations-evidence-plan-invocation.md" "action input-free aggregate review report command"
@@ -171,6 +194,10 @@ Assert-Equal $actionReport.readinessPendingCount 6 "action readiness pending cou
 Assert-Equal $actionReport.readinessTotalCount 42 "action readiness total count"
 Assert-Equal $actionReport.readinessCheckCount 42 "action readiness check count"
 Assert-Contains $actionMarkdown "Readiness counts: passed=36 pending=6 total=42 checks=42" "action markdown readiness counts"
+Assert-Contains $actionMarkdown "Workflow run-id query executed: True" "action markdown run-id query executed"
+Assert-Contains $actionMarkdown "Workflow run-id query executed workflows: 19" "action markdown run-id query executed count"
+Assert-Contains $actionMarkdown "Workflow run-id query succeeded: 19/19" "action markdown run-id query succeeded"
+Assert-Contains $actionMarkdown "Workflow run-id candidate runs: 0" "action markdown run-id candidate count"
 Assert-Contains $actionMarkdown "Input-free blocked action orders: 1,5" "action markdown input-free action orders"
 Assert-Contains $actionMarkdown "Input-free review command: ``powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\invoke-operations-evidence-plan.ps1 -ActionOrder 1,5 -NoWrite``" "action markdown input-free aggregate review command"
 Assert-Contains $actionMarkdown "Input-free review report command: ``powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\invoke-operations-evidence-plan.ps1 -ActionOrder 1,5 -JsonOutputPath .\.osmu-run\input-free-blocker-review\operations-evidence-plan-invocation.json -MarkdownOutputPath .\.osmu-run\input-free-blocker-review\operations-evidence-plan-invocation.md``" "action markdown input-free aggregate review report command"
@@ -183,6 +210,39 @@ Assert-Contains $actionMarkdown "confirmedPlan=``powershell -NoProfile -Executio
 Assert-Contains $actionReport.recommendedCommands[0].command "finalize-operations-readiness.ps1" "action recommended command"
 Assert-Contains $actionMarkdown "Run operations readiness finalizer" "action markdown command"
 
+$publishSkippedSyncPath = Join-Path $resolvedOutputDirectory "publish-skipped-sync.json"
+$publishSkippedJsonPath = Join-Path $resolvedOutputDirectory "publish-skipped-convergence.json"
+$publishSkippedMarkdownPath = Join-Path $resolvedOutputDirectory "publish-skipped-convergence.md"
+Write-JsonFixture $publishSkippedSyncPath ([ordered]@{
+    formatVersion = "osmu.kubernetes-operations-report-sync.v1"
+    generatedAt = "2026-06-29T00:20:00+00:00"
+    result = "planned"
+    namespace = "osmu"
+    configMapName = "osmu-operations-reports"
+    configMapKey = "latest-operations-readiness-convergence.json"
+    sourceReportPath = ".\.osmu-run\latest-operations-readiness-convergence.json"
+    sourceReportResult = "action-required"
+    failedCount = 0
+    checkCount = 6
+    publishDataFlowStoragePlanToConfigMap = $false
+    publishDataFlowQueryRetentionBudgetToConfigMap = $false
+    publishDataFlowStorageTransitionRunbookToConfigMap = $false
+})
+& powershell -NoProfile -ExecutionPolicy Bypass -File $scriptPath `
+    -HandoffReportPath $actionHandoffPath `
+    -ReadinessReportPath $actionReadinessPath `
+    -OperationsReadinessFinalizeReportPath $actionFinalizePath `
+    -KubernetesOperationsReportSyncReportPath $publishSkippedSyncPath `
+    -JsonOutputPath $publishSkippedJsonPath `
+    -MarkdownOutputPath $publishSkippedMarkdownPath | Out-Host
+if ($LASTEXITCODE -ne 0) {
+    throw "write-operations-readiness-convergence.ps1 publish-skipped check failed with exit code $LASTEXITCODE."
+}
+$publishSkippedReport = Read-Utf8Text $publishSkippedJsonPath | ConvertFrom-Json
+Assert-Contains $publishSkippedReport.kubernetesReportSyncWorkflowCommand "kubernetes-operations-report-sync-ci.yml" "publish skipped workflow command"
+Assert-NotContains $publishSkippedReport.kubernetesReportSyncWorkflowCommand "data_flow_storage_plan_json_base64" "publish skipped storage plan input"
+Assert-NotContains $publishSkippedReport.kubernetesReportSyncWorkflowCommand "data_flow_query_retention_budget_json_base64" "publish skipped query/retention input"
+Assert-NotContains $publishSkippedReport.kubernetesReportSyncWorkflowCommand "data_flow_storage_transition_runbook_json_base64" "publish skipped runbook input"
 $staleHandoffPath = Join-Path $resolvedOutputDirectory "stale-handoff.json"
 $staleReadinessPath = Join-Path $resolvedOutputDirectory "stale-readiness.json"
 $staleJsonPath = Join-Path $resolvedOutputDirectory "stale-handoff-convergence.json"
@@ -425,6 +485,15 @@ Write-JsonFixture $readyHandoffPath ([ordered]@{
     stageCount = 7
     readyStageCount = 7
     blockedActionCount = 0
+    workflowRunIdPlanQueryMode = "github-api"
+    workflowRunIdPlanGithubApiTokenPresent = $false
+    workflowRunIdPlanGithubApiUnauthenticated = $true
+    workflowRunIdPlanQueryExecuted = $true
+    workflowRunIdPlanQueryExecutedCount = 19
+    workflowRunIdPlanQueryWorkflowCount = 19
+    workflowRunIdPlanQuerySucceededCount = 19
+    workflowRunIdPlanQueryErrorCount = 0
+    workflowRunIdPlanCandidateCount = 0
     missingWorkflowRunCount = 0
     missingRequiredArtifactCount = 0
     failedImportCount = 0

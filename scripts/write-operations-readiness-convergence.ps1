@@ -280,6 +280,18 @@ function New-KubernetesReportSyncCommand([object] $Report, [string] $Mode) {
     return ($arguments | ForEach-Object { Quote-PowerShellArgument $_ }) -join " "
 }
 
+function Test-ExplicitFalse([object] $Object, [string] $Name) {
+    $value = Get-JsonProperty $Object $Name
+    if ($null -eq $value) {
+        return $false
+    }
+    try {
+        return -not [System.Convert]::ToBoolean($value)
+    }
+    catch {
+        return $false
+    }
+}
 function Get-KubernetesReportSyncNextCommand([object] $Report, [bool] $Exists) {
     if (-not $Exists) {
         return "powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\sync-kubernetes-operations-reports.ps1 -PlanOnly"
@@ -317,7 +329,23 @@ function Get-KubernetesReportSyncWorkflowCommand([object] $Report, [bool] $Exist
         }
     }
 
-    return "gh workflow run kubernetes-operations-report-sync-ci.yml -f namespace=$namespace -f report_path=$reportPath -f run_live=$runLive -f apply=$apply -f data_flow_storage_plan_json_base64=<base64-latest-data-flow-storage-plan-json> -f data_flow_query_retention_budget_json_base64=<base64-latest-data-flow-query-retention-budget-json> -f data_flow_storage_transition_runbook_json_base64=<base64-latest-data-flow-storage-transition-runbook-json>"
+    $fields = @(
+        "namespace=$namespace",
+        "report_path=$reportPath",
+        "run_live=$runLive",
+        "apply=$apply"
+    )
+    if ((-not $Exists) -or (-not (Test-ExplicitFalse $Report "publishDataFlowStoragePlanToConfigMap"))) {
+        $fields += "data_flow_storage_plan_json_base64=<base64-latest-data-flow-storage-plan-json>"
+    }
+    if ((-not $Exists) -or (-not (Test-ExplicitFalse $Report "publishDataFlowQueryRetentionBudgetToConfigMap"))) {
+        $fields += "data_flow_query_retention_budget_json_base64=<base64-latest-data-flow-query-retention-budget-json>"
+    }
+    if ((-not $Exists) -or (-not (Test-ExplicitFalse $Report "publishDataFlowStorageTransitionRunbookToConfigMap"))) {
+        $fields += "data_flow_storage_transition_runbook_json_base64=<base64-latest-data-flow-storage-transition-runbook-json>"
+    }
+
+    return "gh workflow run kubernetes-operations-report-sync-ci.yml " + (($fields | ForEach-Object { "-f $_" }) -join " ")
 }
 
 $handoff = Read-OptionalJson $HandoffReportPath
@@ -390,6 +418,15 @@ $handoffInputFreeBlockedActions = @(Get-Array (Get-JsonProperty $handoff.json "i
 })
 $handoffBrowserDispatchDependencyNote = Join-NoteParts $handoffBrowserDispatchDependencyNotes
 $nextStepNote = Join-NoteParts @((Get-Text $nextStep "note"), $handoffBrowserDispatchDependencyNote)
+$handoffWorkflowRunIdPlanQueryMode = Get-Text $handoff.json "workflowRunIdPlanQueryMode"
+$handoffWorkflowRunIdPlanGithubApiTokenPresent = Get-Bool $handoff.json "workflowRunIdPlanGithubApiTokenPresent"
+$handoffWorkflowRunIdPlanGithubApiUnauthenticated = Get-Bool $handoff.json "workflowRunIdPlanGithubApiUnauthenticated"
+$handoffWorkflowRunIdPlanQueryExecuted = Get-Bool $handoff.json "workflowRunIdPlanQueryExecuted"
+$handoffWorkflowRunIdPlanQueryExecutedCount = Get-Int $handoff.json "workflowRunIdPlanQueryExecutedCount"
+$handoffWorkflowRunIdPlanQueryWorkflowCount = Get-Int $handoff.json "workflowRunIdPlanQueryWorkflowCount"
+$handoffWorkflowRunIdPlanQuerySucceededCount = Get-Int $handoff.json "workflowRunIdPlanQuerySucceededCount"
+$handoffWorkflowRunIdPlanQueryErrorCount = Get-Int $handoff.json "workflowRunIdPlanQueryErrorCount"
+$handoffWorkflowRunIdPlanCandidateCount = Get-Int $handoff.json "workflowRunIdPlanCandidateCount"
 $handoffPostDispatchCommands = @(Get-Array (Get-JsonProperty $handoff.json "postDispatchCommands") | ForEach-Object {
     [ordered]@{
         name = Get-Text $_ "name"
@@ -589,6 +626,15 @@ $report = [ordered]@{
     handoffInputFreeBlockedReviewReportMarkdownPath = $handoffInputFreeBlockedReviewReportMarkdownPath
     handoffInputFreeBlockedConfirmedPlanCommand = $handoffInputFreeBlockedConfirmedPlanCommand
     handoffInputFreeBlockedActions = @($handoffInputFreeBlockedActions)
+    handoffWorkflowRunIdPlanQueryMode = $handoffWorkflowRunIdPlanQueryMode
+    handoffWorkflowRunIdPlanGithubApiTokenPresent = $handoffWorkflowRunIdPlanGithubApiTokenPresent
+    handoffWorkflowRunIdPlanGithubApiUnauthenticated = $handoffWorkflowRunIdPlanGithubApiUnauthenticated
+    handoffWorkflowRunIdPlanQueryExecuted = $handoffWorkflowRunIdPlanQueryExecuted
+    handoffWorkflowRunIdPlanQueryExecutedCount = $handoffWorkflowRunIdPlanQueryExecutedCount
+    handoffWorkflowRunIdPlanQueryWorkflowCount = $handoffWorkflowRunIdPlanQueryWorkflowCount
+    handoffWorkflowRunIdPlanQuerySucceededCount = $handoffWorkflowRunIdPlanQuerySucceededCount
+    handoffWorkflowRunIdPlanQueryErrorCount = $handoffWorkflowRunIdPlanQueryErrorCount
+    handoffWorkflowRunIdPlanCandidateCount = $handoffWorkflowRunIdPlanCandidateCount
     missingWorkflowRunCount = Get-Int $handoff.json "missingWorkflowRunCount"
     missingRequiredArtifactCount = Get-Int $handoff.json "missingRequiredArtifactCount"
     failedImportCount = Get-Int $handoff.json "failedImportCount"
@@ -644,6 +690,15 @@ $markdownLines = @(
     "- Input-free review report JSON: $handoffInputFreeBlockedReviewReportJsonPath",
     "- Input-free review report Markdown: $handoffInputFreeBlockedReviewReportMarkdownPath",
     "- Input-free confirmed plan command: ``$handoffInputFreeBlockedConfirmedPlanCommand``",
+    "- Workflow run-id query mode: $($report.handoffWorkflowRunIdPlanQueryMode)",
+    "- Workflow run-id GitHub API token present: $($report.handoffWorkflowRunIdPlanGithubApiTokenPresent)",
+    "- Workflow run-id GitHub API unauthenticated: $($report.handoffWorkflowRunIdPlanGithubApiUnauthenticated)",
+    "- Workflow run-id query executed: $($report.handoffWorkflowRunIdPlanQueryExecuted)",
+    "- Workflow run-id query executed workflows: $($report.handoffWorkflowRunIdPlanQueryExecutedCount)",
+    "- Workflow run-id queried workflows: $($report.handoffWorkflowRunIdPlanQueryWorkflowCount)",
+    "- Workflow run-id query succeeded: $($report.handoffWorkflowRunIdPlanQuerySucceededCount)/$($report.handoffWorkflowRunIdPlanQueryWorkflowCount)",
+    "- Workflow run-id query errors: $($report.handoffWorkflowRunIdPlanQueryErrorCount)",
+    "- Workflow run-id candidate runs: $($report.handoffWorkflowRunIdPlanCandidateCount)",
     "- Missing workflow runs: $($report.missingWorkflowRunCount)",
     "- Handoff security finalizer run-id hints: $($report.handoffSecurityEvidenceFinalizerRunIdInputHintCount)",
     "- Missing required artifacts: $($report.missingRequiredArtifactCount)",

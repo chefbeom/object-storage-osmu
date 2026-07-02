@@ -2063,6 +2063,12 @@
           {{ operationsEvidenceHandoffScopeSummary }}
         </small>
         <small
+          v-if="operationsEvidenceHandoffRunIdQuerySummary"
+          data-testid="readiness-evidence-handoff-run-id-query"
+        >
+          {{ operationsEvidenceHandoffRunIdQuerySummary }}
+        </small>
+        <small
           v-if="operationsEvidenceHandoffNextStep.note"
           data-testid="readiness-evidence-handoff-next-note"
         >
@@ -2253,6 +2259,12 @@
           data-testid="readiness-convergence-handoff-freshness"
         >
           {{ operationsReadinessConvergenceHandoffFreshness }}
+        </small>
+        <small
+          v-if="operationsReadinessConvergenceRunIdQuerySummary"
+          data-testid="readiness-convergence-run-id-query"
+        >
+          {{ operationsReadinessConvergenceRunIdQuerySummary }}
         </small>
         <small v-if="operationsReadinessConvergence.kubernetesReportSyncConfigMapName">
           report sync {{ operationsReadinessConvergence.kubernetesReportSyncConfigMapName }} /
@@ -4747,6 +4759,21 @@ const operationsEvidenceHandoffScopeSummary = computed(() => {
   return `Selected actions invocation ${invocation} / dispatch preflight ${dispatch} / scope mismatch ${mismatch} / run ids ${runIds} (${runIdFreshness}) / artifacts ${artifacts} (${artifactFreshness})`
 })
 
+const operationsEvidenceHandoffRunIdQuerySummary = computed(() => {
+  const handoff = operationsEvidenceHandoff.value || {}
+  const mode = handoff.workflowRunIdPlanQueryMode || ''
+  const executed = Boolean(handoff.workflowRunIdPlanQueryExecuted)
+  const executedCount = Number(handoff.workflowRunIdPlanQueryExecutedCount || 0)
+  const queried = Number(handoff.workflowRunIdPlanQueryWorkflowCount || 0)
+  const succeeded = Number(handoff.workflowRunIdPlanQuerySucceededCount || 0)
+  const errors = Number(handoff.workflowRunIdPlanQueryErrorCount || 0)
+  const candidates = Number(handoff.workflowRunIdPlanCandidateCount || 0)
+  if (!mode && !executed && executedCount === 0 && queried === 0 && succeeded === 0 && errors === 0 && candidates === 0) return ''
+  const auth = handoff.workflowRunIdPlanGithubApiUnauthenticated ? 'unauthenticated' : 'authenticated'
+  const execution = executed ? `executed ${executedCount} of ${queried}` : 'not executed'
+  return `Run-id query ${mode || 'unknown'} / ${execution} / ${succeeded} of ${queried} rows OK / errors ${errors} / candidates ${candidates} / ${auth}`
+})
+
 const operationsEvidenceHandoffDispatchSummary = computed(() => {
   const handoff = operationsEvidenceHandoff.value || {}
   const readyOrders = Array.isArray(handoff.readyDispatchActionOrders) ? handoff.readyDispatchActionOrders : []
@@ -5612,6 +5639,21 @@ const operationsReadinessConvergenceHandoffFreshness = computed(() => {
   const handoff = convergence.handoffTimestamp || 'unknown'
   const readiness = convergence.readinessTimestamp || 'unknown'
   return `Handoff freshness ${status} / handoff ${handoff} / readiness ${readiness}`
+})
+
+const operationsReadinessConvergenceRunIdQuerySummary = computed(() => {
+  const convergence = operationsReadinessConvergence.value || {}
+  const mode = convergence.handoffWorkflowRunIdPlanQueryMode || ''
+  const executed = Boolean(convergence.handoffWorkflowRunIdPlanQueryExecuted)
+  const executedCount = Number(convergence.handoffWorkflowRunIdPlanQueryExecutedCount || 0)
+  const queried = Number(convergence.handoffWorkflowRunIdPlanQueryWorkflowCount || 0)
+  const succeeded = Number(convergence.handoffWorkflowRunIdPlanQuerySucceededCount || 0)
+  const errors = Number(convergence.handoffWorkflowRunIdPlanQueryErrorCount || 0)
+  const candidates = Number(convergence.handoffWorkflowRunIdPlanCandidateCount || 0)
+  if (!mode && !executed && executedCount === 0 && queried === 0 && succeeded === 0 && errors === 0 && candidates === 0) return ''
+  const auth = convergence.handoffWorkflowRunIdPlanGithubApiUnauthenticated ? 'unauthenticated' : 'authenticated'
+  const execution = executed ? `executed ${executedCount} of ${queried}` : 'not executed'
+  return `Run-id query ${mode || 'unknown'} / ${execution} / ${succeeded} of ${queried} rows OK / errors ${errors} / candidates ${candidates} / ${auth}`
 })
 
 const operationsReadinessConvergenceCommands = computed(() => {

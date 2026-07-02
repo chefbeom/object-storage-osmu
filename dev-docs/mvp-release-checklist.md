@@ -19,7 +19,7 @@ This checklist turns the current prototype evidence into a repeatable MVP releas
 - Latest demo package notes: `.osmu-run/latest-demo-package-notes.md`
 - Latest MVP completion report: `.osmu-run/latest-mvp-completion.json` and `.osmu-run/latest-mvp-completion.md`
 - Latest operations readiness report: `.osmu-run/latest-operations-readiness.json` and `.osmu-run/latest-operations-readiness.md`
-- Current operations bottleneck: `confirm-input-free-blockers`; confirm input-free blocked actions, fill required inputs, confirm operator/kubeconfig readiness, merge the default-branch workflow PR, then dispatch the selected operations evidence workflows.
+- Current operations bottleneck: `confirm-input-free-blockers`; confirm input-free blocked actions, fill required inputs, confirm operator/kubeconfig readiness, then dispatch the selected operations evidence workflows.
 - MVP completion latest verification: result=pending, classification=local-durable-mvp-pending, localDurableMvpReady=false.
 - Durable preflight latest handoff: result=pending, blockingActions=Docker daemon/Selected real S3 client path, nextAction=Start Docker Desktop and wait until docker info succeeds, then rerun durable preflight.
 - Operations readiness latest verification: result=pending, passed=83, pending=19, total=102.
@@ -30,8 +30,10 @@ This checklist turns the current prototype evidence into a repeatable MVP releas
 - Operations workflow run-id security finalizer hints: count=2, inputs=ImageSigningRunId/ContainerSecurityRunId, supplemental=ContainerSecurityRunId.
 - Operations artifact collection latest verification: result=action-required, selectedActions=1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19, securityEvidenceFinalizerReady=false, securityFinalizerInputRows=2, missingSecurityFinalizerInputs=ImageSigningRunId/ContainerSecurityRunId.
 - Operations evidence handoff latest verification: result=blocked, bottleneck=confirm-input-free-blockers, missingWorkflowRunCount=19.
+- Operations evidence handoff run-id query: mode=plan-only, executed=false, executedWorkflows=0, succeeded=19/19, errors=0, candidates=0.
 - Operations evidence handoff browser dispatch checklist: count=0, actionOrders=none, workflows=none, runIdParameters=none.
-- Operations readiness convergence latest verification: result=action-required, readinessResult=pending, bottleneck=confirm-input-free-blockers, missingWorkflowRunCount=19, kubernetesReportSyncStale=true.
+- Operations readiness convergence latest verification: result=action-required, readinessResult=pending, bottleneck=confirm-input-free-blockers, missingWorkflowRunCount=19, kubernetesReportSyncStale=false.
+- Operations readiness convergence run-id query: mode=plan-only, executed=false, executedWorkflows=0, succeeded=19/19, errors=0, candidates=0.
 - Latest operations evidence plan: `.osmu-run/latest-operations-evidence-plan.json` and `.osmu-run/latest-operations-evidence-plan.md`
 - Latest operations evidence plan invocation: `.osmu-run/latest-operations-evidence-plan-invocation.json` and `.osmu-run/latest-operations-evidence-plan-invocation.md`
 - Latest operations invocation unblock plan: `.osmu-run/latest-operations-invocation-unblock-plan.json` and `.osmu-run/latest-operations-invocation-unblock-plan.md`

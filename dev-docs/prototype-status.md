@@ -26,7 +26,7 @@ Last updated: 2026-06-30 KST
 - Operations artifact collection latest verification: result=action-required, selectedActions=1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19, securityEvidenceFinalizerReady=false, securityFinalizerInputRows=2, missingSecurityFinalizerInputs=ImageSigningRunId/ContainerSecurityRunId.
 - Operations evidence handoff latest verification: result=blocked, bottleneck=confirm-input-free-blockers, missingWorkflowRunCount=19.
 - Operations evidence handoff browser dispatch checklist: count=0, actionOrders=none, workflows=none, runIdParameters=none.
-- Operations readiness convergence latest verification: result=action-required, readinessResult=pending, bottleneck=confirm-input-free-blockers, missingWorkflowRunCount=19, kubernetesReportSyncStale=true.
+- Operations readiness convergence latest verification: result=action-required, readinessResult=pending, bottleneck=confirm-input-free-blockers, missingWorkflowRunCount=19, kubernetesReportSyncStale=false.
 - S3 boundary latest verification: verify-s3-compatibility-boundary.ps1 passed.
 - Prototype status verifier output: `.osmu-run/latest-prototype-status.json` records the reduced snapshot, durable preflight handoff, total/check counts, source readiness pending category summary/counts, pending remediation count, workflow run-id security finalizer hint summary, artifact collection security finalizer input checklist, handoff browser dispatch checklist, convergence, and evidence cross-check.
 - B2B product estimate remains about 45% because the remaining work is target evidence, not local feature wiring.
