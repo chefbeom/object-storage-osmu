@@ -4,6 +4,8 @@ param(
     [string] $JsonOutputPath = ".\.osmu-run\latest-operations-operator-input-worksheet.json",
     [string] $MarkdownOutputPath = ".\.osmu-run\latest-operations-operator-input-worksheet.md",
     [string] $CsvOutputPath = ".\.osmu-run\latest-operations-operator-input-worksheet.csv",
+    [string] $ValuesTemplateOutputPath = ".\.osmu-run\latest-operations-operator-input-values-template.json",
+    [string] $ValuesTemplateMarkdownOutputPath = ".\.osmu-run\latest-operations-operator-input-values-template.md",
     [switch] $NoWrite
 )
 
@@ -262,6 +264,28 @@ foreach ($action in @(Get-Array (Get-JsonProperty $unblock.json "actions"))) {
     }) | Out-Null
 }
 $actionWorklistArray = @($actionWorklist.ToArray())
+$valuesTemplateJsonPath = Resolve-ProjectPath $ValuesTemplateOutputPath
+$valuesTemplateMarkdownPath = Resolve-ProjectPath $ValuesTemplateMarkdownOutputPath
+$inputValueTemplateEntries = New-Object System.Collections.Generic.List[object]
+$inputValueTemplateValues = [ordered]@{}
+foreach ($row in $rowArray) {
+    $valueKey = [string] $row.valueKey
+    if ([string]::IsNullOrWhiteSpace($valueKey)) { continue }
+    if (-not $inputValueTemplateValues.Contains($valueKey)) { $inputValueTemplateValues[$valueKey] = "" }
+    $inputValueTemplateEntries.Add([pscustomobject][ordered]@{
+        valueKey = $valueKey
+        value = ""
+        actionOrder = [int] $row.actionOrder
+        actionName = [string] $row.actionName
+        category = [string] $row.category
+        workflow = [string] $row.workflow
+        workflowInput = [string] $row.workflowInput
+        placeholder = [string] $row.placeholder
+        ambiguousRepeatedPlaceholder = [bool] $row.ambiguousRepeatedPlaceholder
+        suggestedSource = [string] $row.suggestedSource
+    }) | Out-Null
+}
+$inputValueTemplateEntryArray = @($inputValueTemplateEntries.ToArray())
 $report = [ordered]@{
     formatVersion = "osmu.operations-operator-input-worksheet.v1"
     generatedAt = [DateTimeOffset]::Now.ToString("o")
@@ -274,6 +298,9 @@ $report = [ordered]@{
     sourceTotalCount = Get-Int $unblock.json "sourceTotalCount"
     selectedActionCount = Get-Int $unblock.json "selectedActionCount"
     actionWorklistCount = $actionWorklistArray.Count
+    inputValueTemplateCount = $inputValueTemplateEntryArray.Count
+    inputValuesTemplatePath = $valuesTemplateJsonPath
+    inputValuesTemplateMarkdownPath = $valuesTemplateMarkdownPath
     confirmationCount = $confirmationGroups.Count
     inputRowCount = $rows.Count
     ambiguousInputRowCount = $ambiguousInputRowCount
@@ -360,17 +387,57 @@ $markdown.Add("## Decision Rule") | Out-Null
 $markdown.Add("") | Out-Null
 $markdown.Add($report.decisionRule) | Out-Null
 
+$inputValuesTemplate = [ordered]@{
+    formatVersion = "osmu.operations-operator-input-values-template.v1"
+    generatedAt = $report.generatedAt
+    result = if ($inputValueTemplateEntryArray.Count -eq 0) { "ready" } else { "action-required" }
+    sourceOperatorInputWorksheet = Resolve-ProjectPath $JsonOutputPath
+    sourceUnblockPlan = $unblock.path
+    sourceDispatchPreflightReport = $dispatch.path
+    sourceSummary = $report.sourceSummary
+    selectedActionCount = $report.selectedActionCount
+    valueCount = $inputValueTemplateEntryArray.Count
+    values = $inputValueTemplateValues
+    entries = @($inputValueTemplateEntryArray)
+    decisionRule = "Fill non-secret values by stable valueKey, keep secrets in GitHub Secrets, then rerun dispatch preflight/invocation. This template is collection guidance only and does not mark readiness evidence as passed."
+}
+
+$inputValuesMarkdown = New-Object System.Collections.Generic.List[string]
+$inputValuesMarkdown.Add("# OSMU Operations Operator Input Values Template") | Out-Null
+$inputValuesMarkdown.Add("") | Out-Null
+$inputValuesMarkdown.Add("Generated at: $($inputValuesTemplate.generatedAt)") | Out-Null
+$inputValuesMarkdown.Add("Result: $($inputValuesTemplate.result)") | Out-Null
+$inputValuesMarkdown.Add("Source summary: $($inputValuesTemplate.sourceSummary)") | Out-Null
+$inputValuesMarkdown.Add("") | Out-Null
+$inputValuesMarkdown.Add("## Values") | Out-Null
+$inputValuesMarkdown.Add("") | Out-Null
+$inputValuesMarkdown.Add("| Value key | Action | Workflow input | Placeholder | Value | Suggested source |") | Out-Null
+$inputValuesMarkdown.Add("| --- | --- | --- | --- | --- | --- |") | Out-Null
+foreach ($entry in $inputValueTemplateEntryArray) {
+    $inputValuesMarkdown.Add("| ``$($entry.valueKey)`` | $($entry.actionOrder) | $($entry.workflowInput) | ``$($entry.placeholder)`` |  | $($entry.suggestedSource) |") | Out-Null
+}
+if ($inputValueTemplateEntryArray.Count -eq 0) { $inputValuesMarkdown.Add("| n/a | n/a | n/a | n/a | n/a | none |") | Out-Null }
+$inputValuesMarkdown.Add("") | Out-Null
+$inputValuesMarkdown.Add("## Decision Rule") | Out-Null
+$inputValuesMarkdown.Add("") | Out-Null
+$inputValuesMarkdown.Add($inputValuesTemplate.decisionRule) | Out-Null
+
 if (-not $NoWrite) {
     $jsonPath = Resolve-ProjectPath $JsonOutputPath
     $markdownPath = Resolve-ProjectPath $MarkdownOutputPath
     $csvPath = Resolve-ProjectPath $CsvOutputPath
     New-Item -ItemType Directory -Force -Path (Split-Path -Parent $jsonPath) | Out-Null
+    New-Item -ItemType Directory -Force -Path (Split-Path -Parent $valuesTemplateJsonPath) | Out-Null
     $report | ConvertTo-Json -Depth 18 | Set-Content -LiteralPath $jsonPath -Encoding UTF8
     $markdown | Set-Content -LiteralPath $markdownPath -Encoding UTF8
     $rows | ForEach-Object { [pscustomobject] $_ } | Export-Csv -LiteralPath $csvPath -NoTypeInformation -Encoding UTF8
+    $inputValuesTemplate | ConvertTo-Json -Depth 18 | Set-Content -LiteralPath $valuesTemplateJsonPath -Encoding UTF8
+    $inputValuesMarkdown | Set-Content -LiteralPath $valuesTemplateMarkdownPath -Encoding UTF8
     Write-Host "Operations operator input worksheet JSON: $jsonPath"
     Write-Host "Operations operator input worksheet markdown: $markdownPath"
     Write-Host "Operations operator input worksheet CSV: $csvPath"
+    Write-Host "Operations operator input values template JSON: $valuesTemplateJsonPath"
+    Write-Host "Operations operator input values template markdown: $valuesTemplateMarkdownPath"
 }
 
 $report | ConvertTo-Json -Depth 18

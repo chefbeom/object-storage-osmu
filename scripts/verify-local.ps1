@@ -223,23 +223,28 @@ function Assert-OperationsLatestEvidenceFreshness([int[]] $expectedActionOrders)
     $invocation = Get-JsonFile ".osmu-run\latest-operations-evidence-plan-invocation.json"
     $dispatchPreflight = Get-JsonFile ".osmu-run\latest-operations-dispatch-preflight.json"
     $operatorWorksheet = Get-JsonFile ".osmu-run\latest-operations-operator-input-worksheet.json"
+    $operatorValuesTemplate = Get-JsonFile ".osmu-run\latest-operations-operator-input-values-template.json"
     $workflowRunIds = Get-JsonFile ".osmu-run\latest-operations-workflow-run-ids.json"
     $artifactCollection = Get-JsonFile ".osmu-run\latest-operations-artifact-collection-plan.json"
     $handoff = Get-JsonFile ".osmu-run\latest-operations-evidence-handoff.json"
     $convergence = Get-JsonFile ".osmu-run\latest-operations-readiness-convergence.json"
 
-    if ($null -eq $readiness -or $null -eq $operatorWorksheet -or $null -eq $handoff -or $null -eq $convergence) {
-        throw "Operations latest evidence refresh did not write readiness, operator input worksheet, handoff, and convergence reports."
+    if ($null -eq $readiness -or $null -eq $operatorWorksheet -or $null -eq $operatorValuesTemplate -or $null -eq $handoff -or $null -eq $convergence) {
+        throw "Operations latest evidence refresh did not write readiness, operator input worksheet, operator input values template, handoff, and convergence reports."
     }
 
     $readinessTime = Convert-OperationsTimestamp ([string] (Get-JsonPropertyValue $readiness "generatedAt")) "readiness"
     $dispatchPreflightTime = Convert-OperationsTimestamp ([string] (Get-JsonPropertyValue $dispatchPreflight "generatedAt")) "dispatch preflight"
     $operatorWorksheetTime = Convert-OperationsTimestamp ([string] (Get-JsonPropertyValue $operatorWorksheet "generatedAt")) "operator input worksheet"
+    $operatorValuesTemplateTime = Convert-OperationsTimestamp ([string] (Get-JsonPropertyValue $operatorValuesTemplate "generatedAt")) "operator input values template"
     $handoffTime = Convert-OperationsTimestamp ([string] (Get-JsonPropertyValue $handoff "generatedAt")) "handoff"
     $convergenceTime = Convert-OperationsTimestamp ([string] (Get-JsonPropertyValue $convergence "generatedAt")) "convergence"
 
     if ($operatorWorksheetTime -lt $dispatchPreflightTime) {
         throw "Operations latest evidence operator input worksheet is older than dispatch preflight after refresh: worksheet=$operatorWorksheetTime dispatch=$dispatchPreflightTime"
+    }
+    if ($operatorValuesTemplateTime -lt $operatorWorksheetTime) {
+        throw "Operations latest evidence operator input values template is older than worksheet after refresh: valuesTemplate=$operatorValuesTemplateTime worksheet=$operatorWorksheetTime"
     }
     if ($handoffTime -lt $readinessTime) {
         throw "Operations latest evidence handoff is older than readiness after refresh: handoff=$handoffTime readiness=$readinessTime"
@@ -275,6 +280,12 @@ function Assert-OperationsLatestEvidenceFreshness([int[]] $expectedActionOrders)
     }
     if ($readinessSummary -ne $convergenceSummary) {
         throw "Operations latest evidence convergence readiness summary mismatch: readiness=$readinessSummary convergence=$convergenceSummary"
+    }
+    $worksheetInputRowCount = Get-OperationsIntProperty $operatorWorksheet "inputRowCount"
+    $worksheetInputValueTemplateCount = Get-OperationsIntProperty $operatorWorksheet "inputValueTemplateCount"
+    $operatorValuesTemplateCount = Get-OperationsIntProperty $operatorValuesTemplate "valueCount"
+    if ($worksheetInputRowCount -ne $worksheetInputValueTemplateCount -or $worksheetInputRowCount -ne $operatorValuesTemplateCount) {
+        throw "Operations latest evidence operator input values template count mismatch: inputRows=$worksheetInputRowCount worksheetTemplate=$worksheetInputValueTemplateCount valuesTemplate=$operatorValuesTemplateCount"
     }
     if (@($expectedActionOrders).Count -gt 0) {
         $worksheetSelectedActionCount = Get-OperationsIntProperty $operatorWorksheet "selectedActionCount"

@@ -55,6 +55,8 @@ $dispatchPreflightPath = Join-Path $resolvedOutputDirectory "dispatch-preflight.
 $jsonOutputPath = Join-Path $resolvedOutputDirectory "worksheet.json"
 $markdownOutputPath = Join-Path $resolvedOutputDirectory "worksheet.md"
 $csvOutputPath = Join-Path $resolvedOutputDirectory "worksheet.csv"
+$valuesTemplateOutputPath = Join-Path $resolvedOutputDirectory "input-values-template.json"
+$valuesTemplateMarkdownOutputPath = Join-Path $resolvedOutputDirectory "input-values-template.md"
 
 Write-JsonFixture $unblockPlanPath ([ordered]@{
     formatVersion = "osmu.operations-invocation-unblock-plan.v1"
@@ -151,7 +153,9 @@ Write-JsonFixture $dispatchPreflightPath ([ordered]@{
     -DispatchPreflightReportPath $dispatchPreflightPath `
     -JsonOutputPath $jsonOutputPath `
     -MarkdownOutputPath $markdownOutputPath `
-    -CsvOutputPath $csvOutputPath | Out-Host
+    -CsvOutputPath $csvOutputPath `
+    -ValuesTemplateOutputPath $valuesTemplateOutputPath `
+    -ValuesTemplateMarkdownOutputPath $valuesTemplateMarkdownOutputPath | Out-Host
 if ($LASTEXITCODE -ne 0) {
     throw "write-operations-operator-input-worksheet.ps1 fixture failed with exit code $LASTEXITCODE."
 }
@@ -159,11 +163,14 @@ if ($LASTEXITCODE -ne 0) {
 $report = Read-Utf8Text $jsonOutputPath | ConvertFrom-Json
 $markdown = Read-Utf8Text $markdownOutputPath
 $csv = Read-Utf8Text $csvOutputPath
+$valuesTemplate = Read-Utf8Text $valuesTemplateOutputPath | ConvertFrom-Json
+$valuesTemplateMarkdown = Read-Utf8Text $valuesTemplateMarkdownOutputPath
 
 Assert-Equal $report.formatVersion "osmu.operations-operator-input-worksheet.v1" "formatVersion"
 Assert-Equal $report.result "action-required" "result"
 Assert-Equal $report.sourceSummary "passed=83 pending=19" "source summary"
 Assert-Equal $report.actionWorklistCount 3 "action worklist count"
+Assert-Equal $report.inputValueTemplateCount 5 "input value template count"
 Assert-Equal $report.confirmationCount 1 "confirmation count"
 Assert-Equal $report.inputFreeActionCount 1 "input-free action count"
 Assert-Equal $report.inputRowCount 5 "input row count"
@@ -186,6 +193,12 @@ Assert-Contains $markdown "GitHub CLI is not available" "markdown dispatch unava
 Assert-Contains $csv "manual-data-flow-query-retention-budget-evidence.yml" "csv workflow"
 Assert-Contains $csv "action-02.observed_p99_query_latency_ms" "csv p99 value key"
 Assert-Contains $csv "observed_p99_query_latency_ms" "csv p99 input"
+Assert-Equal $valuesTemplate.formatVersion "osmu.operations-operator-input-values-template.v1" "values template formatVersion"
+Assert-Equal $valuesTemplate.valueCount 5 "values template count"
+Assert-Equal $valuesTemplate.values.PSObject.Properties["action-02.review_started_at"].Value "" "values template review start value"
+Assert-True (@($valuesTemplate.entries | Where-Object { $_.valueKey -eq "action-02.observed_p99_query_latency_ms" }).Count -eq 1) "values template p99 entry"
+Assert-Contains $valuesTemplateMarkdown "action-02.review_completed_at" "values markdown review completed key"
 
 Write-Host "Operations operator input worksheet verified."
 Write-Host "Worksheet report: $jsonOutputPath"
+Write-Host "Input values template: $valuesTemplateOutputPath"
