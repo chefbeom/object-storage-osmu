@@ -57,6 +57,14 @@ The remaining 19 actions are blocked by some combination of these requirements:
 
 The source of truth for exact placeholders is .osmu-run/latest-operations-invocation-unblock-plan.md.
 
+For operator data collection and manual workflow dispatch, generate the expanded worksheet:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\write-operations-operator-input-worksheet.ps1
+```
+
+The worksheet writes JSON, Markdown, and CSV to `.osmu-run/latest-operations-operator-input-worksheet.*`. It expands repeated placeholders such as `<iso-time>`, `<ref>`, `<ms>`, and `<n>` into workflow-input-level rows so operators can provide distinct start/end timestamps, evidence refs, p95/p99 values, and per-metric counts without reusing one placeholder value accidentally. It is collection guidance only; it does not mark readiness evidence as passed.
+
 ## Execution Order
 
 1. Confirm operator approval and GitHub secret readiness for the selected action subset.
