@@ -224,6 +224,36 @@ foreach ($row in $rowArray) {
         $ambiguousInputRowCount++
     }
 }
+
+$actionWorklist = New-Object System.Collections.Generic.List[object]
+foreach ($action in @(Get-Array (Get-JsonProperty $unblock.json "actions"))) {
+    $order = Get-Int $action "order"
+    $template = if ($dispatchTemplateByAction.ContainsKey($order)) { $dispatchTemplateByAction[$order] } else { $null }
+    $actionRows = @($rowArray | Where-Object { [int] $_.actionOrder -eq $order })
+    $actionRequiredSecrets = @(Get-Array (Get-JsonProperty $template "requiredSecrets") | ForEach-Object { [string] $_ } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+    $workflowInputs = @($actionRows | ForEach-Object { [string] $_.workflowInput } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Sort-Object -Unique)
+    $placeholders = @($actionRows | ForEach-Object { [string] $_.placeholder } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Sort-Object -Unique)
+    $ambiguousRows = @($actionRows | Where-Object { [bool] $_.ambiguousRepeatedPlaceholder })
+    $isInputFree = @($inputFreeActionArray | Where-Object { [int] $_.actionOrder -eq $order }).Count -gt 0
+    $actionWorklist.Add([pscustomobject][ordered]@{
+        actionOrder = $order
+        name = Get-Text $action "name"
+        category = Get-Text $action "category"
+        workflow = Get-WorkflowName (Get-Text $action "command")
+        inputFree = $isInputFree
+        inputRowCount = $actionRows.Count
+        ambiguousInputRowCount = $ambiguousRows.Count
+        workflowInputCount = $workflowInputs.Count
+        workflowInputs = @($workflowInputs)
+        placeholderCount = $placeholders.Count
+        placeholders = @($placeholders)
+        requiresOperatorApproval = Get-Bool $action "requiresOperatorApproval"
+        requiresKubeconfigSecret = Get-Bool $action "requiresKubeconfigSecret"
+        requiredSecretCount = $actionRequiredSecrets.Count
+        requiredSecrets = @($actionRequiredSecrets)
+    }) | Out-Null
+}
+$actionWorklistArray = @($actionWorklist.ToArray())
 $report = [ordered]@{
     formatVersion = "osmu.operations-operator-input-worksheet.v1"
     generatedAt = [DateTimeOffset]::Now.ToString("o")
@@ -235,6 +265,7 @@ $report = [ordered]@{
     sourcePendingCount = Get-Int $unblock.json "sourcePendingCount"
     sourceTotalCount = Get-Int $unblock.json "sourceTotalCount"
     selectedActionCount = Get-Int $unblock.json "selectedActionCount"
+    actionWorklistCount = $actionWorklistArray.Count
     confirmationCount = $confirmationGroups.Count
     inputRowCount = $rows.Count
     ambiguousInputRowCount = $ambiguousInputRowCount
@@ -242,6 +273,7 @@ $report = [ordered]@{
     requiredSecretCount = $requiredSecretArray.Count
     dispatchUnavailableReasonCount = $dispatchUnavailableReasonArray.Count
     confirmations = @($confirmationGroups)
+    actionWorklist = @($actionWorklistArray)
     requiredSecrets = @($requiredSecretArray)
     dispatchUnavailableReasons = @($dispatchUnavailableReasonArray)
     inputFreeActions = @($inputFreeActionArray)
@@ -265,6 +297,21 @@ $markdown.Add("- Ambiguous expanded rows: $($report.ambiguousInputRowCount)") | 
 $markdown.Add("- Input-free actions: $($report.inputFreeActionCount)") | Out-Null
 $markdown.Add("- Required GitHub secrets: $($report.requiredSecretCount)") | Out-Null
 $markdown.Add("- Dispatch unavailable reasons: $($report.dispatchUnavailableReasonCount)") | Out-Null
+$markdown.Add("") | Out-Null
+$markdown.Add("## Action Worklist") | Out-Null
+$markdown.Add("") | Out-Null
+$markdown.Add("| Action | Category | Workflow | Inputs | Ambiguous | Secrets | Confirmations |") | Out-Null
+$markdown.Add("| --- | --- | --- | --- | --- | --- | --- |") | Out-Null
+foreach ($action in $actionWorklistArray) {
+    $workflow = if ([string]::IsNullOrWhiteSpace($action.workflow)) { "local" } else { $action.workflow }
+    $secretsText = if ($action.requiredSecrets.Count -gt 0) { $action.requiredSecrets -join "," } else { "none" }
+    $confirmations = New-Object System.Collections.Generic.List[string]
+    if ([bool] $action.requiresOperatorApproval) { $confirmations.Add("operator") | Out-Null }
+    if ([bool] $action.requiresKubeconfigSecret) { $confirmations.Add("kubeconfig") | Out-Null }
+    $confirmationText = if ($confirmations.Count -gt 0) { $confirmations -join "," } else { "none" }
+    $markdown.Add("| $($action.actionOrder) | $($action.category) | $workflow | $($action.inputRowCount) | $($action.ambiguousInputRowCount) | $secretsText | $confirmationText |") | Out-Null
+}
+if ($actionWorklistArray.Count -eq 0) { $markdown.Add("| n/a | n/a | n/a | 0 | 0 | none | none |") | Out-Null }
 $markdown.Add("") | Out-Null
 $markdown.Add("## Confirmations") | Out-Null
 $markdown.Add("") | Out-Null
