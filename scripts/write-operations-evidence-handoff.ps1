@@ -2,6 +2,7 @@ param(
     [string] $ReadinessReportPath = ".\.osmu-run\latest-operations-readiness.json",
     [string] $EvidencePlanPath = ".\.osmu-run\latest-operations-evidence-plan.json",
     [string] $InvocationReportPath = ".\.osmu-run\latest-operations-evidence-plan-invocation.json",
+    [string] $InvocationUnblockPlanPath = ".\.osmu-run\latest-operations-invocation-unblock-plan.json",
     [string] $DispatchPreflightReportPath = ".\.osmu-run\latest-operations-dispatch-preflight.json",
     [string] $OperatorInputWorksheetReportPath = ".\.osmu-run\latest-operations-operator-input-worksheet.json",
     [string] $OperatorInputValuesCheckReportPath = ".\.osmu-run\latest-operations-operator-input-values-check.json",
@@ -132,6 +133,34 @@ function Get-ArtifactCollectionActionOrders([object] $CollectionPlan) {
         }
     }
     return @($orders | ForEach-Object { [int] $_ })
+}
+
+function Get-CountOrArrayCount([object] $Object, [string] $CountName, [string] $ArrayName) {
+    $countValue = Get-JsonProperty $Object $CountName
+    if ($null -ne $countValue) {
+        try { return [int] $countValue } catch { return 0 }
+    }
+    return @(Get-Array (Get-JsonProperty $Object $ArrayName)).Count
+}
+
+function New-UnblockActionSummary([object] $Action) {
+    return [ordered]@{
+        actionOrder = Get-Int $Action "order"
+        name = Get-Text $Action "name"
+        status = Get-Text $Action "status"
+        blockReasonCount = Get-CountOrArrayCount $Action "blockReasonCount" "blockReasons"
+        requiredInputCount = Get-CountOrArrayCount $Action "requiredInputCount" "requiredInputs"
+        requiredSecretCount = Get-CountOrArrayCount $Action "requiredSecretCount" "requiredSecrets"
+        needsOperatorApprovalConfirmation = Get-Bool $Action "needsOperatorApprovalConfirmation"
+        needsKubeconfigSecretConfirmation = Get-Bool $Action "needsKubeconfigSecretConfirmation"
+        defaultBranchWorkflowMissing = Get-Bool $Action "defaultBranchWorkflowMissing"
+    }
+}
+
+function Sum-IntProperty([object[]] $Items, [string] $Name) {
+    $sum = 0
+    foreach ($item in @($Items)) { $sum += Get-Int $item $Name }
+    return $sum
 }
 
 function Get-ArtifactCollectionStageCommand([object] $CollectionPlan) {
@@ -398,7 +427,23 @@ function New-BrowserDispatchChecklistItem([object] $Workflow, [object] $RunIdPla
 $readiness = Read-OptionalJson $ReadinessReportPath
 $evidencePlan = Read-OptionalJson $EvidencePlanPath
 $invocation = Read-OptionalJson $InvocationReportPath
+$invocationUnblockPlan = Read-OptionalJson $InvocationUnblockPlanPath
 $dispatchPreflight = Read-OptionalJson $DispatchPreflightReportPath
+if ($invocationUnblockPlan.exists) {
+    if (-not $invocation.exists) {
+        $invocationUnblockPlan = [ordered]@{ path = $invocationUnblockPlan.path; exists = $false; json = $null }
+    }
+    else {
+        $sourceInvocationReport = Get-Text $invocationUnblockPlan.json "sourceInvocationReport"
+        if (-not [string]::IsNullOrWhiteSpace($sourceInvocationReport)) {
+            $resolvedSourceInvocationReport = Resolve-ProjectPath $sourceInvocationReport
+            $resolvedInvocationReportPath = Resolve-ProjectPath $InvocationReportPath
+            if (-not $resolvedSourceInvocationReport.Equals($resolvedInvocationReportPath, [System.StringComparison]::OrdinalIgnoreCase)) {
+                $invocationUnblockPlan = [ordered]@{ path = $invocationUnblockPlan.path; exists = $false; json = $null }
+            }
+        }
+    }
+}
 $operatorWorksheet = Read-OptionalJson $OperatorInputWorksheetReportPath
 $operatorValuesCheck = Read-OptionalJson $OperatorInputValuesCheckReportPath
 $runIds = Read-OptionalJson $WorkflowRunIdPlanPath
@@ -444,6 +489,17 @@ $readinessTotalCount = Get-Int $readiness.json "totalCount"
 $readinessCheckCount = Get-Int $readiness.json "checkCount"
 $evidencePlanResult = Get-Text $evidencePlan.json "result"
 $invocationResult = Get-Text $invocation.json "result"
+$unblockActionSummaries = @()
+if ($invocationUnblockPlan.exists) {
+    $unblockActionSummaries = @(Get-Array (Get-JsonProperty $invocationUnblockPlan.json "actions") | ForEach-Object { New-UnblockActionSummary $_ })
+}
+$invocationUnblockPlanActionCount = $unblockActionSummaries.Count
+$invocationUnblockPlanBlockReasonCount = Sum-IntProperty $unblockActionSummaries "blockReasonCount"
+$invocationUnblockPlanRequiredInputCount = Sum-IntProperty $unblockActionSummaries "requiredInputCount"
+$invocationUnblockPlanRequiredSecretCount = Sum-IntProperty $unblockActionSummaries "requiredSecretCount"
+$invocationUnblockPlanOperatorApprovalActionCount = @($unblockActionSummaries | Where-Object { Get-Bool $_ "needsOperatorApprovalConfirmation" }).Count
+$invocationUnblockPlanKubeconfigSecretActionCount = @($unblockActionSummaries | Where-Object { Get-Bool $_ "needsKubeconfigSecretConfirmation" }).Count
+$invocationUnblockPlanDefaultBranchMissingActionCount = @($unblockActionSummaries | Where-Object { Get-Bool $_ "defaultBranchWorkflowMissing" }).Count
 $dispatchPreflightResult = Get-Text $dispatchPreflight.json "result"
 $operatorWorksheetResult = Get-Text $operatorWorksheet.json "result"
 $operatorWorksheetInputRowCount = Get-Int $operatorWorksheet.json "inputRowCount"
@@ -653,13 +709,23 @@ $generatedAt = [DateTimeOffset]::Now.ToString("o")
 $report = [ordered]@{
     formatVersion = "osmu.operations-evidence-handoff.v1"; generatedAt = $generatedAt; result = $handoffResult; nextStep = $nextStep; currentBottleneck = $nextStep; stageCount = $stages.Count; readyStageCount = @($stages | Where-Object { $_.ready }).Count; readinessSummary = $readinessSummary; readinessPassedCount = $readinessPassedCount; readinessPendingCount = $readinessPendingCount; readinessTotalCount = $readinessTotalCount; readinessCheckCount = $readinessCheckCount; dispatchPreflightResult = $dispatchPreflightResult; dispatchGithubRepository = $dispatchGithubRepository; readyDispatchTemplateCount = $readyDispatchTemplateCount; blockedDispatchTemplateCount = $blockedDispatchTemplateCount
     defaultBranchRef = $defaultBranchRef; defaultBranchMissingWorkflowCount = $defaultBranchMissingWorkflowCount; defaultBranchMissingActionOrders = @($defaultBranchMissingActionOrders); defaultBranchMissingWorkflows = @($defaultBranchMissingWorkflows)
+    invocationUnblockPlanExists = [bool] $invocationUnblockPlan.exists; invocationUnblockPlanPath = $invocationUnblockPlan.path; invocationUnblockPlanActionCount = $invocationUnblockPlanActionCount; invocationUnblockPlanBlockReasonCount = $invocationUnblockPlanBlockReasonCount; invocationUnblockPlanRequiredInputCount = $invocationUnblockPlanRequiredInputCount; invocationUnblockPlanRequiredSecretCount = $invocationUnblockPlanRequiredSecretCount; invocationUnblockPlanOperatorApprovalActionCount = $invocationUnblockPlanOperatorApprovalActionCount; invocationUnblockPlanKubeconfigSecretActionCount = $invocationUnblockPlanKubeconfigSecretActionCount; invocationUnblockPlanDefaultBranchMissingActionCount = $invocationUnblockPlanDefaultBranchMissingActionCount; invocationUnblockActions = @($unblockActionSummaries)
     readyDispatchActionOrders = @($readyDispatchActionOrders); blockedDispatchActionOrders = @($blockedDispatchActionOrders); invocationSelectedActionOrders = @($invocationSelectedActionOrders); dispatchPreflightSelectedActionOrders = @($dispatchPreflightSelectedActionOrders); workflowRunIdPlanActionOrders = @($workflowRunIdPlanActionOrders); artifactCollectionActionOrders = @($artifactCollectionActionOrders); readyDispatchWorkflows = @($readyDispatchWorkflows); blockedDispatchWorkflows = @($blockedDispatchWorkflows)
     invocationStale = $invocationStale; dispatchPreflightStale = $dispatchPreflightStale; dispatchPreflightScopeMismatch = $dispatchPreflightScopeMismatch; operatorInputWorksheetStale = $operatorWorksheetStale; operatorInputWorksheetResult = $operatorWorksheetResult; operatorInputWorksheetInputRowCount = $operatorWorksheetInputRowCount; operatorInputWorksheetAmbiguousInputRowCount = $operatorWorksheetAmbiguousInputRowCount; operatorInputValuesCheckStale = $operatorValuesCheckStale; operatorInputValuesCheckCountMismatch = $operatorValuesCheckCountMismatch; operatorInputValuesCheckResult = $operatorValuesCheckResult; operatorInputValuesCheckValueCount = $operatorValuesCheckValueCount; operatorInputValuesCheckReadyValueCount = $operatorValuesCheckReadyValueCount; operatorInputValuesCheckMissingValueCount = $operatorValuesCheckMissingValueCount; operatorInputValuesCheckUnsafeValueCount = $operatorValuesCheckUnsafeValueCount; operatorInputValuesCheckInvalidValueCount = $operatorValuesCheckInvalidValueCount; operatorInputValuesCheckValueReadyActionCount = $operatorValuesCheckValueReadyActionCount; operatorInputValuesCheckNonReadyActionCount = $operatorValuesCheckNonReadyActionCount; workflowRunIdPlanStale = $workflowRunIdPlanStale; workflowRunIdPlanScopeMismatch = $workflowRunIdPlanScopeMismatch; artifactCollectionStale = $artifactCollectionStale; artifactCollectionScopeMismatch = $artifactCollectionScopeMismatch; staleReportCount = $staleReportCount; blockedActionCount = Get-Int $invocation.json "blockedCount"; missingWorkflowRunCount = Get-Int $runIds.json "missingWorkflowCount"; missingRequiredArtifactCount = Get-Int $collection.json "missingRequiredArtifactCount"; failedImportCount = Get-Int $import.json "failedCount"; finalizerFailedCount = $finalizeFailedCount; finalizerGapCount = $finalizeGapCount; browserDispatchChecklistCount = $browserDispatchChecklist.Count; browserDispatchChecklist = @($browserDispatchChecklist); securityEvidenceFinalizerRunIdInputHintCount = $securityEvidenceFinalizerRunIdInputHints.Count; securityEvidenceFinalizerRunIdInputHints = @($securityEvidenceFinalizerRunIdInputHints); postDispatchCommands = @($postDispatchCommands); stages = $stages
 }
 
 $dispatchGithubRepositoryLabel = if ([string]::IsNullOrWhiteSpace($dispatchGithubRepository)) { "none" } else { $dispatchGithubRepository }
 $defaultBranchRefLabel = if ([string]::IsNullOrWhiteSpace($defaultBranchRef)) { "none" } else { $defaultBranchRef }
-$markdownLines = @("# OSMU Operations Evidence Handoff", "", "Generated at: $generatedAt", "Result: $handoffResult", "", "## Current Bottleneck", "", "- Code: $($nextStep.code)", "- Title: $($nextStep.title)", "- Reason: $($nextStep.reason)", "- Command: ``$($nextStep.command)``", "- Note: $($nextStep.note)", "", "## Readiness Source", "", "- Summary: $readinessSummary", "- Counts: passed=$readinessPassedCount pending=$readinessPendingCount total=$readinessTotalCount checks=$readinessCheckCount", "", "## Next Step", "", "- Code: $($nextStep.code)", "- Title: $($nextStep.title)", "- Reason: $($nextStep.reason)", "- Command: ``$($nextStep.command)``", "- Note: $($nextStep.note)", "", "## Dispatch Preflight", "", "- Result: $dispatchPreflightResult", "- GitHub repository: $dispatchGithubRepositoryLabel", "- Default branch ref: $defaultBranchRefLabel", "- Default-branch workflow files missing: $defaultBranchMissingWorkflowCount", "- Default-branch missing action orders: $(Join-IntList $defaultBranchMissingActionOrders)", "- Ready templates: $readyDispatchTemplateCount", "- Blocked templates: $blockedDispatchTemplateCount", "- Ready action orders: $(Join-IntList $readyDispatchActionOrders)", "- Blocked action orders: $(Join-IntList $blockedDispatchActionOrders)", "- Stale reports: $staleReportCount", "", "## Dispatch Workflow Handoff", "")
+$markdownLines = @("# OSMU Operations Evidence Handoff", "", "Generated at: $generatedAt", "Result: $handoffResult", "", "## Current Bottleneck", "", "- Code: $($nextStep.code)", "- Title: $($nextStep.title)", "- Reason: $($nextStep.reason)", "- Command: ``$($nextStep.command)``", "- Note: $($nextStep.note)", "", "## Readiness Source", "", "- Summary: $readinessSummary", "- Counts: passed=$readinessPassedCount pending=$readinessPendingCount total=$readinessTotalCount checks=$readinessCheckCount", "", "## Next Step", "", "- Code: $($nextStep.code)", "- Title: $($nextStep.title)", "- Reason: $($nextStep.reason)", "- Command: ``$($nextStep.command)``", "- Note: $($nextStep.note)", "", "## Invocation Unblock Summary", "", "- Plan exists: $([bool] $invocationUnblockPlan.exists)", "- Actions: $invocationUnblockPlanActionCount", "- Block reasons: $invocationUnblockPlanBlockReasonCount", "- Required inputs: $invocationUnblockPlanRequiredInputCount", "- Required secrets: $invocationUnblockPlanRequiredSecretCount", "- Operator approval actions: $invocationUnblockPlanOperatorApprovalActionCount", "- Kubeconfig secret actions: $invocationUnblockPlanKubeconfigSecretActionCount", "- Default-branch missing actions: $invocationUnblockPlanDefaultBranchMissingActionCount")
+if ($unblockActionSummaries.Count -eq 0) {
+    $markdownLines += "- Action summaries: none"
+}
+else {
+    foreach ($action in @($unblockActionSummaries | Sort-Object actionOrder)) {
+        $markdownLines += "- action $($action.actionOrder): status=$($action.status) blockers=$($action.blockReasonCount) inputs=$($action.requiredInputCount) secrets=$($action.requiredSecretCount) - $($action.name)"
+    }
+}
+$markdownLines += @("", "## Dispatch Preflight", "", "- Result: $dispatchPreflightResult", "- GitHub repository: $dispatchGithubRepositoryLabel", "- Default branch ref: $defaultBranchRefLabel", "- Default-branch workflow files missing: $defaultBranchMissingWorkflowCount", "- Default-branch missing action orders: $(Join-IntList $defaultBranchMissingActionOrders)", "- Ready templates: $readyDispatchTemplateCount", "- Blocked templates: $blockedDispatchTemplateCount", "- Ready action orders: $(Join-IntList $readyDispatchActionOrders)", "- Blocked action orders: $(Join-IntList $blockedDispatchActionOrders)", "- Stale reports: $staleReportCount", "", "## Dispatch Workflow Handoff", "")
 if ($readyDispatchWorkflows.Count -eq 0) { $markdownLines += "- Ready workflows: none" } else { foreach ($workflow in $readyDispatchWorkflows) { $workflowName = if ([string]::IsNullOrWhiteSpace($workflow.workflow)) { "local command" } else { $workflow.workflow }; $dispatchLabel = if ([string]::IsNullOrWhiteSpace($workflow.dispatchUrl)) { "" } else { " / dispatchUrl=$($workflow.dispatchUrl)" }; $markdownLines += "- ready action $($workflow.actionOrder): $workflowName - $($workflow.name)$dispatchLabel" } }
 if ($blockedDispatchWorkflows.Count -eq 0) { $markdownLines += "- Blocked workflows: none" } else { foreach ($workflow in $blockedDispatchWorkflows) { $workflowName = if ([string]::IsNullOrWhiteSpace($workflow.workflow)) { "local command" } else { $workflow.workflow }; $dispatchLabel = if ([string]::IsNullOrWhiteSpace($workflow.dispatchUrl)) { "" } else { " / dispatchUrl=$($workflow.dispatchUrl)" }; $markdownLines += "- blocked action $($workflow.actionOrder): $workflowName - missingInputs=$($workflow.missingInputCount), unsafeInputs=$($workflow.unsafeInputCount), invalidInputs=$($workflow.invalidInputCount)$dispatchLabel" } }
 $markdownLines += @("", "## Default Branch Workflow Readiness", "")

@@ -164,6 +164,7 @@ Assert-Contains $staleInvocationMarkdown "Stale reports: 1" "stale invocation ma
 $blockedReadinessPath = Join-Path $resolvedOutputDirectory "blocked-readiness.json"
 $blockedPlanPath = Join-Path $resolvedOutputDirectory "blocked-plan.json"
 $blockedInvocationPath = Join-Path $resolvedOutputDirectory "blocked-invocation.json"
+$blockedUnblockPath = Join-Path $resolvedOutputDirectory "blocked-unblock-plan.json"
 $blockedDispatchPreflightPath = Join-Path $resolvedOutputDirectory "blocked-dispatch-preflight.json"
 $blockedRunIdPath = Join-Path $resolvedOutputDirectory "blocked-run-ids.json"
 $blockedCollectionPath = Join-Path $resolvedOutputDirectory "blocked-collection.json"
@@ -192,6 +193,48 @@ Write-JsonFixture $blockedInvocationPath ([ordered]@{
     blockedCount = 5
     executedCount = 0
     failedCount = 0
+})
+Write-JsonFixture $blockedUnblockPath ([ordered]@{
+    formatVersion = "osmu.operations-invocation-unblock-plan.v1"
+    result = "action-required"
+    sourceInvocationReport = $blockedInvocationPath
+    selectedActionCount = 3
+    blockedCount = 2
+    actions = @(
+        [ordered]@{
+            order = 1
+            name = "Storage expansion finalizer live evidence"
+            status = "blocked"
+            blockReasonCount = 2
+            requiredInputCount = 0
+            requiredSecretCount = 1
+            needsOperatorApprovalConfirmation = $true
+            needsKubeconfigSecretConfirmation = $true
+            defaultBranchWorkflowMissing = $false
+        },
+        [ordered]@{
+            order = 2
+            name = "Container scan/SBOM evidence"
+            status = "planned"
+            blockReasonCount = 0
+            requiredInputCount = 0
+            requiredSecretCount = 0
+            needsOperatorApprovalConfirmation = $false
+            needsKubeconfigSecretConfirmation = $false
+            defaultBranchWorkflowMissing = $false
+        },
+        [ordered]@{
+            order = 3
+            name = "Kubernetes DR finalizer live evidence"
+            status = "blocked"
+            blockReasonCount = 2
+            requiredInputCount = 2
+            requiredSecretCount = 1
+            needsOperatorApprovalConfirmation = $true
+            needsKubeconfigSecretConfirmation = $true
+            defaultBranchWorkflowMissing = $true
+        }
+    )
 })
 Write-JsonFixture $blockedRunIdPath ([ordered]@{
     formatVersion = "osmu.operations-workflow-run-id-plan.v1"
@@ -286,6 +329,7 @@ Write-JsonFixture $blockedCollectionPath ([ordered]@{
     -ReadinessReportPath $blockedReadinessPath `
     -EvidencePlanPath $blockedPlanPath `
     -InvocationReportPath $blockedInvocationPath `
+    -InvocationUnblockPlanPath $blockedUnblockPath `
     -DispatchPreflightReportPath $blockedDispatchPreflightPath `
     -WorkflowRunIdPlanPath $blockedRunIdPath `
     -ArtifactCollectionPlanPath $blockedCollectionPath `
@@ -314,6 +358,16 @@ Assert-Equal $blockedReport.dispatchGithubRepository "chefbeom/object-storage-os
 Assert-Equal $blockedReport.defaultBranchRef "origin/main" "blocked default branch ref"
 Assert-Equal $blockedReport.defaultBranchMissingWorkflowCount 1 "blocked default branch missing workflow count"
 Assert-Equal @($blockedReport.defaultBranchMissingActionOrders)[0] 3 "blocked default branch missing action order"
+Assert-Equal $blockedReport.invocationUnblockPlanExists $true "blocked unblock plan exists"
+Assert-Equal $blockedReport.invocationUnblockPlanActionCount 3 "blocked unblock action count"
+Assert-Equal $blockedReport.invocationUnblockPlanBlockReasonCount 4 "blocked unblock reason count"
+Assert-Equal $blockedReport.invocationUnblockPlanRequiredInputCount 2 "blocked unblock required input count"
+Assert-Equal $blockedReport.invocationUnblockPlanRequiredSecretCount 2 "blocked unblock required secret count"
+Assert-Equal $blockedReport.invocationUnblockPlanOperatorApprovalActionCount 2 "blocked unblock operator approval count"
+Assert-Equal $blockedReport.invocationUnblockPlanKubeconfigSecretActionCount 2 "blocked unblock kubeconfig count"
+Assert-Equal $blockedReport.invocationUnblockPlanDefaultBranchMissingActionCount 1 "blocked unblock default branch action count"
+Assert-Equal @($blockedReport.invocationUnblockActions).Count 3 "blocked unblock action summary count"
+Assert-Equal @($blockedReport.invocationUnblockActions)[2].requiredInputCount 2 "blocked unblock action required inputs"
 Assert-Equal @($blockedReport.defaultBranchMissingWorkflows)[0].workflow "manual-data-flow-query-retention-budget-evidence.yml" "blocked default branch missing workflow name"
 Assert-Equal $blockedReport.blockedActionCount 5 "blocked count"
 Assert-Equal $blockedReport.missingWorkflowRunCount 6 "blocked missing workflow run count"
@@ -327,6 +381,9 @@ Assert-Equal @($blockedReport.blockedDispatchWorkflows)[1].missingInputCount 2 "
 Assert-Equal @($blockedReport.blockedDispatchWorkflows)[1].dispatchUrl "https://github.com/chefbeom/object-storage-osmu/actions/workflows/kubernetes-dr-finalizer-ci.yml" "blocked workflow dispatch url"
 Assert-Contains $blockedMarkdown "Plan ready dispatch subset" "blocked markdown next step"
 Assert-Contains $blockedMarkdown "GitHub repository: chefbeom/object-storage-osmu" "blocked markdown repository"
+Assert-Contains $blockedMarkdown "## Invocation Unblock Summary" "blocked markdown unblock summary"
+Assert-Contains $blockedMarkdown "Block reasons: 4" "blocked markdown unblock reason count"
+Assert-Contains $blockedMarkdown "action 3: status=blocked blockers=2 inputs=2 secrets=1" "blocked markdown unblock action summary"
 Assert-Contains $blockedMarkdown "ready action 2: container-security-ci.yml" "blocked markdown ready workflow"
 Assert-Contains $blockedMarkdown "dispatchUrl=https://github.com/chefbeom/object-storage-osmu/actions/workflows/container-security-ci.yml" "blocked markdown ready dispatch url"
 Assert-Contains $blockedMarkdown "blocked action 3: kubernetes-dr-finalizer-ci.yml" "blocked markdown blocked workflow"
