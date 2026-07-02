@@ -35,15 +35,15 @@ AWS 문서의 세부 checksum negotiation, 드문 header 조합, 정확한 오�
 - 기준 snapshot: 2026-06-30 KST.
 - MVP completion latest verification: result=pending, classification=local-durable-mvp-pending, localDurableMvpReady=false.
 - Durable preflight latest handoff: result=pending, blockingActions=Docker daemon/Selected real S3 client path, nextAction=Start Docker Desktop and wait until docker info succeeds, then rerun durable preflight.
-- Operations readiness latest verification: result=pending, passed=82, pending=20, total=102.
-- Operations readiness pending categories: chargeback-closeout=1, commercial-approval=1, commercial-integration=1, data-flow=3, enterprise-auth=2, ha-dr=2, monitoring=1, operations-handoff-package=1, security-hardening=6, storage-backend=1, storage-expansion=1.
-- Operations readiness pending remediation entries: 20.
-- Operations evidence plan remediation coverage: source=20, entries=20, actions=20, missing=0, ready=true.
-- Operations workflow run-id security finalizer hints: count=2, inputs=ImageSigningRunId/ContainerSecurityRunId, supplemental=ImageSigningRunId.
-- Operations artifact collection latest verification: result=security-source-action-required, selectedActions=6, securityEvidenceFinalizerReady=false, securityFinalizerInputRows=2, missingSecurityFinalizerInputs=ImageSigningRunId/ContainerSecurityRunId.
-- Operations evidence handoff latest verification: result=action-required, bottleneck=fix-dispatch-preflight, missingWorkflowRunCount=1.
-- Operations evidence handoff browser dispatch checklist: count=1, actionOrders=6, workflows=container-security-ci.yml, runIdParameters=ContainerSecurityRunId.
-- Operations readiness convergence latest verification: result=action-required, readinessResult=pending, bottleneck=fix-dispatch-preflight, missingWorkflowRunCount=1, kubernetesReportSyncStale=true.
+- Operations readiness latest verification: result=pending, passed=83, pending=19, total=102.
+- Operations readiness pending categories: chargeback-closeout=1, commercial-approval=1, commercial-integration=1, data-flow=3, enterprise-auth=2, ha-dr=2, monitoring=1, operations-handoff-package=1, security-hardening=5, storage-backend=1, storage-expansion=1.
+- Operations readiness pending remediation entries: 19.
+- Operations evidence plan remediation coverage: source=19, entries=19, actions=19, missing=0, ready=true.
+- Operations workflow run-id security finalizer hints: count=2, inputs=ImageSigningRunId/ContainerSecurityRunId, supplemental=ContainerSecurityRunId.
+- Operations artifact collection latest verification: result=action-required, selectedActions=1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19, securityEvidenceFinalizerReady=false, securityFinalizerInputRows=2, missingSecurityFinalizerInputs=ImageSigningRunId/ContainerSecurityRunId.
+- Operations evidence handoff latest verification: result=blocked, bottleneck=resolve-invocation-blockers, missingWorkflowRunCount=19.
+- Operations evidence handoff browser dispatch checklist: count=0, actionOrders=none, workflows=none, runIdParameters=none.
+- Operations readiness convergence latest verification: result=action-required, readinessResult=pending, bottleneck=resolve-invocation-blockers, missingWorkflowRunCount=19, kubernetesReportSyncStale=true.
 - S3 boundary latest verification: verify-s3-compatibility-boundary.ps1 passed.
 - 로컬 durable MVP demo는 Docker/MariaDB/MinIO/backend/frontend/Browser E2E/Dockerized MinIO Client 기준 `docker-durable-demo-verified` 상태다. 단, 현재 `.osmu-run/latest-durable-mvp-finalize.json`은 plan-only 실행으로 `result=planned`라서 최신 MVP completion report는 Docker-ready finalize 재실행 전까지 `pending`으로 남긴다.
 - MVP demo 완성도는 `90-95%`이며, 로컬 demo GO와 production/B2B readiness는 분리한다.

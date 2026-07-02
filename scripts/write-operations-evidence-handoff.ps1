@@ -172,7 +172,7 @@ function New-DispatchPreflightCommand([object] $Report, [int[]] $ActionOrders = 
     $parts.Add("powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\write-operations-dispatch-preflight.ps1")
     $orders = @($ActionOrders | Where-Object { $_ -gt 0 })
     if ($orders.Count -eq 0) { $orders = @(Get-DispatchSelectedActionOrders $Report) }
-    if ($orders.Count -gt 0) { $parts.Add("-ActionOrder $(Join-IntList $orders)") }
+    if ($orders.Count -gt 0) { $parts.Add("-ActionOrder $($orders -join ',')") }
     $githubCliPath = Get-Text $Report "githubCliPath"
     if (-not [string]::IsNullOrWhiteSpace($githubCliPath)) { $parts.Add("-GitHubCliPath $(Quote-PowerShellArgument $githubCliPath)") }
     $githubRepository = Get-Text $Report "githubRepository"

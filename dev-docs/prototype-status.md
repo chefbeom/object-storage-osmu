@@ -18,15 +18,15 @@ Last updated: 2026-06-30 KST
 - Snapshot date: 2026-06-30 KST.
 - MVP completion latest verification: result=pending, classification=local-durable-mvp-pending, localDurableMvpReady=false.
 - Durable preflight latest handoff: result=pending, blockingActions=Docker daemon/Selected real S3 client path, nextAction=Start Docker Desktop and wait until docker info succeeds, then rerun durable preflight.
-- Operations readiness latest verification: result=pending, passed=82, pending=20, total=102.
-- Operations readiness pending categories: chargeback-closeout=1, commercial-approval=1, commercial-integration=1, data-flow=3, enterprise-auth=2, ha-dr=2, monitoring=1, operations-handoff-package=1, security-hardening=6, storage-backend=1, storage-expansion=1.
-- Operations readiness pending remediation entries: 20.
-- Operations evidence plan remediation coverage: source=20, entries=20, actions=20, missing=0, ready=true.
-- Operations workflow run-id security finalizer hints: count=2, inputs=ImageSigningRunId/ContainerSecurityRunId, supplemental=ImageSigningRunId.
-- Operations artifact collection latest verification: result=security-source-action-required, selectedActions=6, securityEvidenceFinalizerReady=false, securityFinalizerInputRows=2, missingSecurityFinalizerInputs=ImageSigningRunId/ContainerSecurityRunId.
-- Operations evidence handoff latest verification: result=action-required, bottleneck=fix-dispatch-preflight, missingWorkflowRunCount=1.
-- Operations evidence handoff browser dispatch checklist: count=1, actionOrders=6, workflows=container-security-ci.yml, runIdParameters=ContainerSecurityRunId.
-- Operations readiness convergence latest verification: result=action-required, readinessResult=pending, bottleneck=fix-dispatch-preflight, missingWorkflowRunCount=1, kubernetesReportSyncStale=true.
+- Operations readiness latest verification: result=pending, passed=83, pending=19, total=102.
+- Operations readiness pending categories: chargeback-closeout=1, commercial-approval=1, commercial-integration=1, data-flow=3, enterprise-auth=2, ha-dr=2, monitoring=1, operations-handoff-package=1, security-hardening=5, storage-backend=1, storage-expansion=1.
+- Operations readiness pending remediation entries: 19.
+- Operations evidence plan remediation coverage: source=19, entries=19, actions=19, missing=0, ready=true.
+- Operations workflow run-id security finalizer hints: count=2, inputs=ImageSigningRunId/ContainerSecurityRunId, supplemental=ContainerSecurityRunId.
+- Operations artifact collection latest verification: result=action-required, selectedActions=1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19, securityEvidenceFinalizerReady=false, securityFinalizerInputRows=2, missingSecurityFinalizerInputs=ImageSigningRunId/ContainerSecurityRunId.
+- Operations evidence handoff latest verification: result=blocked, bottleneck=resolve-invocation-blockers, missingWorkflowRunCount=19.
+- Operations evidence handoff browser dispatch checklist: count=0, actionOrders=none, workflows=none, runIdParameters=none.
+- Operations readiness convergence latest verification: result=action-required, readinessResult=pending, bottleneck=resolve-invocation-blockers, missingWorkflowRunCount=19, kubernetesReportSyncStale=true.
 - S3 boundary latest verification: verify-s3-compatibility-boundary.ps1 passed.
 - Prototype status verifier output: `.osmu-run/latest-prototype-status.json` records the reduced snapshot, durable preflight handoff, total/check counts, source readiness pending category summary/counts, pending remediation count, workflow run-id security finalizer hint summary, artifact collection security finalizer input checklist, handoff browser dispatch checklist, convergence, and evidence cross-check.
 - B2B product estimate remains about 45% because the remaining work is target evidence, not local feature wiring.

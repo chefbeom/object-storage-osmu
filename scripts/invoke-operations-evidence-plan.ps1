@@ -4,7 +4,7 @@ param(
     [string] $MarkdownOutputPath = ".\.osmu-run\latest-operations-evidence-plan-invocation.md",
     [ValidateSet("Workflow", "Local", "Recommended")]
     [string] $CommandMode = "Workflow",
-    [int[]] $ActionOrder = @(),
+    [string[]] $ActionOrder = @(),
     [string[]] $Category = @(),
     [string[]] $Placeholder = @(),
     [string] $BackupTimestamp = "",
@@ -28,6 +28,30 @@ param(
 
 $ErrorActionPreference = "Stop"
 $root = Resolve-Path (Join-Path $PSScriptRoot "..")
+function ConvertTo-ActionOrderArray([object[]] $Values) {
+    $orders = New-Object System.Collections.Generic.List[int]
+    foreach ($value in @($Values)) {
+        if ($null -eq $value) {
+            continue
+        }
+        foreach ($part in ([string] $value -split '[,\s]+')) {
+            $trimmed = $part.Trim()
+            if ([string]::IsNullOrWhiteSpace($trimmed)) {
+                continue
+            }
+            $order = 0
+            if (-not [int]::TryParse($trimmed, [ref] $order) -or $order -le 0) {
+                throw "ActionOrder values must be positive integers. Invalid value: $trimmed"
+            }
+            if (-not $orders.Contains($order)) {
+                $orders.Add($order) | Out-Null
+            }
+        }
+    }
+    return @($orders | Sort-Object -Unique)
+}
+
+$ActionOrder = @(ConvertTo-ActionOrderArray $ActionOrder)
 
 function Resolve-ProjectPath([string] $path) {
     if ([System.IO.Path]::IsPathRooted($path)) {

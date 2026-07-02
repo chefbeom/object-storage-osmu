@@ -2,7 +2,7 @@ param(
     [string] $UnblockPlanPath = ".\.osmu-run\latest-operations-invocation-unblock-plan.json",
     [string] $JsonOutputPath = ".\.osmu-run\latest-operations-dispatch-preflight.json",
     [string] $MarkdownOutputPath = ".\.osmu-run\latest-operations-dispatch-preflight.md",
-    [int[]] $ActionOrder = @(),
+    [string[]] $ActionOrder = @(),
     [string[]] $Placeholder = @(),
     [string] $BackupTimestamp = "",
     [string] $RestoreApiBase = "",
@@ -22,6 +22,30 @@ param(
 
 $ErrorActionPreference = "Stop"
 $root = Resolve-Path (Join-Path $PSScriptRoot "..")
+function ConvertTo-ActionOrderArray([object[]] $Values) {
+    $orders = New-Object System.Collections.Generic.List[int]
+    foreach ($value in @($Values)) {
+        if ($null -eq $value) {
+            continue
+        }
+        foreach ($part in ([string] $value -split '[,\s]+')) {
+            $trimmed = $part.Trim()
+            if ([string]::IsNullOrWhiteSpace($trimmed)) {
+                continue
+            }
+            $order = 0
+            if (-not [int]::TryParse($trimmed, [ref] $order) -or $order -le 0) {
+                throw "ActionOrder values must be positive integers. Invalid value: $trimmed"
+            }
+            if (-not $orders.Contains($order)) {
+                $orders.Add($order) | Out-Null
+            }
+        }
+    }
+    return @($orders | Sort-Object -Unique)
+}
+
+$ActionOrder = @(ConvertTo-ActionOrderArray $ActionOrder)
 
 function Resolve-ProjectPath([string] $PathValue) {
     if ([System.IO.Path]::IsPathRooted($PathValue)) {
@@ -190,6 +214,13 @@ function Get-InputCommandPart([string] $Parameter, [string] $PlaceholderName, [s
 }
 
 function Join-ActionOrders([int[]] $Orders) {
+    if ($null -eq $Orders -or $Orders.Count -eq 0) {
+        return ""
+    }
+    return ($Orders | ForEach-Object { [string] $_ }) -join ","
+}
+
+function Join-ActionOrderArguments([int[]] $Orders) {
     if ($null -eq $Orders -or $Orders.Count -eq 0) {
         return ""
     }
@@ -792,7 +823,7 @@ $readySubsetCommandParts = New-Object System.Collections.Generic.List[string]
 $readySubsetCommandParts.Add("powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\invoke-operations-evidence-plan.ps1")
 Add-GitHubCliPathArgument $readySubsetCommandParts $resolvedGitHubCliPath
 if ($readyActionOrders.Count -gt 0) {
-    $readySubsetCommandParts.Add("-ActionOrder $(Join-ActionOrders @($readyActionOrders))")
+    $readySubsetCommandParts.Add("-ActionOrder $(Join-ActionOrderArguments @($readyActionOrders))")
 }
 $readySubsetNeedsKubeconfig = @($readyInputTemplates | Where-Object { [bool] $_.needsKubeconfigSecretConfirmation }).Count -gt 0
 $readySubsetNeedsApproval = @($readyInputTemplates | Where-Object { [bool] $_.needsOperatorApprovalConfirmation }).Count -gt 0
@@ -807,7 +838,7 @@ foreach ($input in @($requiredInputs | Where-Object { ($readyActionOrders -conta
 }
 
 if ($selectedOrders.Count -gt 0) {
-    $commandParts.Add("-ActionOrder $(Join-ActionOrders @($selectedOrders))")
+    $commandParts.Add("-ActionOrder $(Join-ActionOrderArguments @($selectedOrders))")
 }
 if ($needsKubeconfig) {
     if ($KubeconfigSecretConfirmed) {
