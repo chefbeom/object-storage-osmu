@@ -366,6 +366,9 @@ $handoffSecurityEvidenceFinalizerRunIdInputHints = @(Get-Array (Get-JsonProperty
 $handoffInputFreeBlockedActionCount = Get-Int $handoff.json "inputFreeBlockedActionCount"
 $handoffInputFreeBlockedActionOrders = @(Get-Array (Get-JsonProperty $handoff.json "inputFreeBlockedActionOrders") | ForEach-Object { try { [int] $_ } catch { 0 } } | Where-Object { $_ -gt 0 })
 $handoffInputFreeBlockedActionOrdersText = if ($handoffInputFreeBlockedActionOrders.Count -gt 0) { $handoffInputFreeBlockedActionOrders -join "," } else { "none" }
+$handoffInputFreeBlockedReviewCommand = Get-Text $handoff.json "inputFreeBlockedReviewCommand"
+$handoffInputFreeBlockedConfirmedPlanCommand = Get-Text $handoff.json "inputFreeBlockedConfirmedPlanCommand"
+if ([string]::IsNullOrWhiteSpace($handoffInputFreeBlockedConfirmedPlanCommand)) { $handoffInputFreeBlockedConfirmedPlanCommand = Get-Text $handoff.json "inputFreeBlockedPlanCommand" }
 $handoffInputFreeBlockedActions = @(Get-Array (Get-JsonProperty $handoff.json "inputFreeBlockedActions") | ForEach-Object {
     [ordered]@{
         actionOrder = Get-Int $_ "actionOrder"
@@ -378,6 +381,7 @@ $handoffInputFreeBlockedActions = @(Get-Array (Get-JsonProperty $handoff.json "i
         needsKubeconfigSecretConfirmation = Get-Bool $_ "needsKubeconfigSecretConfirmation"
         defaultBranchWorkflowMissing = Get-Bool $_ "defaultBranchWorkflowMissing"
         reviewCommand = Get-Text $_ "reviewCommand"
+        confirmedPlanCommand = if ([string]::IsNullOrWhiteSpace((Get-Text $_ "confirmedPlanCommand"))) { Get-Text $_ "planCommand" } else { Get-Text $_ "confirmedPlanCommand" }
         planCommand = Get-Text $_ "planCommand"
     }
 })
@@ -576,6 +580,8 @@ $report = [ordered]@{
     blockedActionCount = Get-Int $handoff.json "blockedActionCount"
     handoffInputFreeBlockedActionCount = $handoffInputFreeBlockedActionCount
     handoffInputFreeBlockedActionOrders = @($handoffInputFreeBlockedActionOrders)
+    handoffInputFreeBlockedReviewCommand = $handoffInputFreeBlockedReviewCommand
+    handoffInputFreeBlockedConfirmedPlanCommand = $handoffInputFreeBlockedConfirmedPlanCommand
     handoffInputFreeBlockedActions = @($handoffInputFreeBlockedActions)
     missingWorkflowRunCount = Get-Int $handoff.json "missingWorkflowRunCount"
     missingRequiredArtifactCount = Get-Int $handoff.json "missingRequiredArtifactCount"
@@ -627,6 +633,8 @@ $markdownLines = @(
     "- Blocked actions: $($report.blockedActionCount)",
     "- Input-free blocked actions: $($report.handoffInputFreeBlockedActionCount)",
     "- Input-free blocked action orders: $handoffInputFreeBlockedActionOrdersText",
+    "- Input-free review command: ``$handoffInputFreeBlockedReviewCommand``",
+    "- Input-free confirmed plan command: ``$handoffInputFreeBlockedConfirmedPlanCommand``",
     "- Missing workflow runs: $($report.missingWorkflowRunCount)",
     "- Handoff security finalizer run-id hints: $($report.handoffSecurityEvidenceFinalizerRunIdInputHintCount)",
     "- Missing required artifacts: $($report.missingRequiredArtifactCount)",
@@ -655,7 +663,7 @@ if ($handoffInputFreeBlockedActions.Count -gt 0) {
     foreach ($action in @($handoffInputFreeBlockedActions | Sort-Object { [int] $_.actionOrder })) {
         $secretText = if (@($action.requiredSecrets).Count -gt 0) { @($action.requiredSecrets) -join "," } else { "none" }
         $reasonText = if (@($action.blockReasons).Count -gt 0) { @($action.blockReasons) -join "; " } else { "none" }
-        $markdownLines += "- Action $($action.actionOrder): $($action.name); secrets=$secretText; operatorApproval=$($action.needsOperatorApprovalConfirmation); kubeconfig=$($action.needsKubeconfigSecretConfirmation); blockers=$reasonText; review=``$($action.reviewCommand)``; confirmedPlan=``$($action.planCommand)``"
+        $markdownLines += "- Action $($action.actionOrder): $($action.name); secrets=$secretText; operatorApproval=$($action.needsOperatorApprovalConfirmation); kubeconfig=$($action.needsKubeconfigSecretConfirmation); blockers=$reasonText; review=``$($action.reviewCommand)``; confirmedPlan=``$($action.confirmedPlanCommand)``"
     }
 }
 if ($recommendedCommands.Count -eq 0) {
