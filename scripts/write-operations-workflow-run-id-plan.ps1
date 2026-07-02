@@ -17,6 +17,7 @@ param(
 $ErrorActionPreference = "Stop"
 $root = Resolve-Path (Join-Path $PSScriptRoot "..")
 $jsonFields = "databaseId,workflowName,status,conclusion,createdAt,headSha,url,displayTitle"
+$script:GitHubApiRunListErrors = @{}
 
 function Resolve-ProjectPath([string] $PathValue) {
     if ([System.IO.Path]::IsPathRooted($PathValue)) {
@@ -494,7 +495,11 @@ function Invoke-GitHubApiRunList([string] $RepositorySlug, [string] $Workflow, [
         $response = Invoke-RestMethod -Uri $queryUrl -Headers $headers -Method Get
     }
     catch {
-        Write-Warning "GitHub API run list failed for ${Workflow}; treating it as no discoverable workflow_dispatch runs: $($_.Exception.Message)"
+        $queryError = "GitHub API run list failed for ${Workflow}; treating it as no discoverable workflow_dispatch runs: $($_.Exception.Message)"
+        if ($null -ne $script:GitHubApiRunListErrors) {
+            $script:GitHubApiRunListErrors[$Workflow] = $queryError
+        }
+        Write-Warning $queryError
         return @()
     }
 
@@ -578,6 +583,10 @@ function Get-WorkflowReport(
         $runListJsonExists = Test-Path -LiteralPath $resolvedRunListPath
     }
     $runListJsonNote = "Save a run-list JSON array or object with a runs array here when collecting run ids without GitHub CLI on this machine."
+    $queryError = ""
+    if ($null -ne $script:GitHubApiRunListErrors -and $script:GitHubApiRunListErrors.ContainsKey($Workflow)) {
+        $queryError = [string] $script:GitHubApiRunListErrors[$Workflow]
+    }
     $sortedRuns = @($Runs | Sort-Object -Property @{ Expression = { Get-DateSortValue (Get-Text $_ "createdAt") }; Descending = $true })
     $latestRun = if ($sortedRuns.Count -gt 0) { $sortedRuns[0] } else { $null }
     $latestSuccessfulRun = $null
@@ -626,6 +635,8 @@ function Get-WorkflowReport(
         runListJsonNote = $runListJsonNote
         runsUrl = Get-GitHubWorkflowRunsUrl $RepositorySlug $Workflow
         queryMode = $QueryMode
+        querySucceeded = [string]::IsNullOrWhiteSpace($queryError)
+        queryError = $queryError
         candidateCount = $sortedRuns.Count
         latestRunId = $latestRunId
         latestStatus = Get-Text $latestRun "status"
@@ -947,6 +958,7 @@ $reportObject = [ordered]@{
     readyWorkflowCount = @($workflowReports | Where-Object { $_.readyForArtifactDownload }).Count
     missingWorkflowCount = $missingRecommended.Count
     staleWorkflowCount = $staleRecommended.Count
+    workflowQueryErrorCount = @($workflowReports | Where-Object { -not [bool] $_.querySucceeded }).Count
     imageSigningVersion = $ImageSigningVersion
     commitSha = $effectiveCommitSha
     artifactCollectionPlanCommand = $artifactCollectionPlanCommand
@@ -987,6 +999,7 @@ $markdownLines = @(
     "- Ready workflows: $($reportObject.readyWorkflowCount)",
     "- Missing successful runs: $($reportObject.missingWorkflowCount)",
     "- Stale successful runs: $($reportObject.staleWorkflowCount)",
+    "- Workflow query errors: $($reportObject.workflowQueryErrorCount)",
     "- Source action orders: $(if ($sourceActionOrders.Count -gt 0) { $sourceActionOrders -join ', ' } else { 'none' })",
     "- Selected action orders: $(if ($sourceActionOrders.Count -gt 0) { $sourceActionOrders -join ', ' } else { 'none' })",
     "- Commit SHA for security artifacts: $effectiveCommitSha",
@@ -1058,6 +1071,9 @@ foreach ($workflowReport in $workflowReports) {
     }
     if (-not [string]::IsNullOrWhiteSpace($workflowReport.gitHubApiQueryUrl)) {
         $markdownLines += "  - GitHub API URL: $($workflowReport.gitHubApiQueryUrl)"
+        if (-not [string]::IsNullOrWhiteSpace($workflowReport.queryError)) {
+            $markdownLines += "  - Query error: $($workflowReport.queryError)"
+        }
     }
     if (-not [string]::IsNullOrWhiteSpace($workflowReport.runListJsonPath)) {
         $markdownLines += "  - Save run-list JSON as: $($workflowReport.runListJsonPath)"
@@ -1076,6 +1092,9 @@ foreach ($workflowReport in $workflowReports) {
     $markdownLines += "  - Run id parameter: $($workflowReport.runIdParameter)"
     $markdownLines += "  - Recommended run id: $($workflowReport.recommendedRunId)"
     $markdownLines += "  - Latest run: $($workflowReport.latestRunId) / $($workflowReport.latestStatus) / $($workflowReport.latestConclusion)"
+    if (-not [string]::IsNullOrWhiteSpace($workflowReport.queryError)) {
+        $markdownLines += "  - Query error: $($workflowReport.queryError)"
+    }
     if (-not [string]::IsNullOrWhiteSpace($workflowReport.runsUrl)) {
         $markdownLines += "  - Workflow runs URL: $($workflowReport.runsUrl)"
     }
