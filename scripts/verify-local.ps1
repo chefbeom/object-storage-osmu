@@ -578,18 +578,16 @@ $operationsRunIdContext = Get-JsonFile ".osmu-run\latest-operations-workflow-run
 $operationsGitHubRepository = [string] (Get-JsonPropertyValue $operationsRunIdContext "githubRepository")
 $operationsBranch = [string] (Get-JsonPropertyValue $operationsRunIdContext "branch")
 $operationsImageSigningVersion = [string] (Get-JsonPropertyValue $operationsRunIdContext "imageSigningVersion")
-$operationsCommitSha = [string] (Get-JsonPropertyValue $operationsRunIdContext "commitSha")
 $operationsGitHubRepositoryArgument = New-RunArgument "GitHubRepository" $operationsGitHubRepository
 $operationsBranchArgument = New-RunArgument "Branch" $operationsBranch
 $operationsImageSigningVersionArgument = New-RunArgument "ImageSigningVersion" $operationsImageSigningVersion
-$operationsCommitShaArgument = New-RunArgument "CommitSha" $operationsCommitSha
 Run "powershell -ExecutionPolicy Bypass -File .\scripts\write-operations-readiness.ps1"
 Run "powershell -ExecutionPolicy Bypass -File .\scripts\write-operations-evidence-plan.ps1$operationsGitHubRepositoryArgument"
 Run "powershell -ExecutionPolicy Bypass -File .\scripts\invoke-operations-evidence-plan.ps1$operationsActionOrderArgument"
 Run "powershell -ExecutionPolicy Bypass -File .\scripts\write-operations-invocation-unblock-plan.ps1"
 Run "powershell -ExecutionPolicy Bypass -File .\scripts\write-operations-dispatch-preflight.ps1$operationsActionOrderArgument -CheckGitHubCli$operationsGitHubRepositoryArgument"
-Run "powershell -ExecutionPolicy Bypass -File .\scripts\write-operations-workflow-run-id-plan.ps1$operationsBranchArgument$operationsGitHubRepositoryArgument$operationsImageSigningVersionArgument$operationsCommitShaArgument"
-Run "powershell -ExecutionPolicy Bypass -File .\scripts\write-operations-artifact-collection-plan.ps1$operationsImageSigningVersionArgument$operationsCommitShaArgument"
+Run "powershell -ExecutionPolicy Bypass -File .\scripts\write-operations-workflow-run-id-plan.ps1$operationsBranchArgument$operationsGitHubRepositoryArgument$operationsImageSigningVersionArgument"
+Run "powershell -ExecutionPolicy Bypass -File .\scripts\write-operations-artifact-collection-plan.ps1$operationsImageSigningVersionArgument"
 Run "powershell -ExecutionPolicy Bypass -File .\scripts\write-operations-evidence-handoff.ps1"
 Run "powershell -ExecutionPolicy Bypass -File .\scripts\write-operations-readiness-convergence.ps1"
 Assert-OperationsLatestEvidenceFreshness $operationsSelectedActionOrders
