@@ -144,8 +144,10 @@ function Get-CountOrArrayCount([object] $Object, [string] $CountName, [string] $
 }
 
 function New-UnblockActionSummary([object] $Action) {
+    $order = Get-Int $Action "order"
+    $reviewCommand = if ($order -gt 0) { "powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\invoke-operations-evidence-plan.ps1 -ActionOrder $order" } else { "" }
     return [ordered]@{
-        actionOrder = Get-Int $Action "order"
+        actionOrder = $order
         name = Get-Text $Action "name"
         status = Get-Text $Action "status"
         blockReasonCount = Get-CountOrArrayCount $Action "blockReasonCount" "blockReasons"
@@ -156,6 +158,7 @@ function New-UnblockActionSummary([object] $Action) {
         needsOperatorApprovalConfirmation = Get-Bool $Action "needsOperatorApprovalConfirmation"
         needsKubeconfigSecretConfirmation = Get-Bool $Action "needsKubeconfigSecretConfirmation"
         defaultBranchWorkflowMissing = Get-Bool $Action "defaultBranchWorkflowMissing"
+        reviewCommand = $reviewCommand
         planCommand = Get-Text $Action "planCommand"
     }
 }
@@ -255,7 +258,7 @@ function New-DispatchPreflightCommand([object] $Report, [int[]] $ActionOrders = 
     return $parts -join " "
 }
 
-function New-InputFreeBlockedInvokeCommand([object[]] $Actions, [bool] $Execute) {
+function New-InputFreeBlockedInvokeCommand([object[]] $Actions, [bool] $Execute, [bool] $IncludeConfirmations = $true) {
     $orders = New-Object System.Collections.Generic.List[int]
     $needsKubeconfigSecret = $false
     $needsOperatorApproval = $false
@@ -269,8 +272,8 @@ function New-InputFreeBlockedInvokeCommand([object[]] $Actions, [bool] $Execute)
     $parts = New-Object System.Collections.Generic.List[string]
     $parts.Add("powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\invoke-operations-evidence-plan.ps1")
     $parts.Add("-ActionOrder $(Join-IntList @($orders | Sort-Object -Unique))")
-    if ($needsKubeconfigSecret) { $parts.Add("-KubeconfigSecretConfirmed") }
-    if ($needsOperatorApproval) { $parts.Add("-ConfirmOperatorApproval") }
+    if ($IncludeConfirmations -and $needsKubeconfigSecret) { $parts.Add("-KubeconfigSecretConfirmed") }
+    if ($IncludeConfirmations -and $needsOperatorApproval) { $parts.Add("-ConfirmOperatorApproval") }
     if ($Execute) { $parts.Add("-Execute") }
     return $parts -join " "
 }
@@ -564,8 +567,9 @@ $inputFreeBlockedActionCount = $inputFreeBlockedActions.Count
 $inputFreeBlockedRequiredSecretCount = Sum-IntProperty $inputFreeBlockedActions "requiredSecretCount"
 $inputFreeBlockedOperatorApprovalActionCount = @($inputFreeBlockedActions | Where-Object { Get-Bool $_ "needsOperatorApprovalConfirmation" }).Count
 $inputFreeBlockedKubeconfigSecretActionCount = @($inputFreeBlockedActions | Where-Object { Get-Bool $_ "needsKubeconfigSecretConfirmation" }).Count
-$inputFreeBlockedPlanCommand = New-InputFreeBlockedInvokeCommand $inputFreeBlockedActions $false
-$inputFreeBlockedExecuteCommand = New-InputFreeBlockedInvokeCommand $inputFreeBlockedActions $true
+$inputFreeBlockedReviewCommand = New-InputFreeBlockedInvokeCommand $inputFreeBlockedActions $false $false
+$inputFreeBlockedPlanCommand = New-InputFreeBlockedInvokeCommand $inputFreeBlockedActions $false $true
+$inputFreeBlockedExecuteCommand = New-InputFreeBlockedInvokeCommand $inputFreeBlockedActions $true $true
 $dispatchPreflightResult = Get-Text $dispatchPreflight.json "result"
 $dispatchPreflightRequiredInputCount = Get-Int $dispatchPreflight.json "requiredInputCount"
 $dispatchPreflightMissingInputCount = Get-Int $dispatchPreflight.json "missingInputCount"
@@ -760,10 +764,11 @@ elseif ((Get-Int $invocation.json "blockedCount") -gt 0 -or "blocked".Equals($in
         $apiExecuteHint = if (-not [string]::IsNullOrWhiteSpace($readySubsetApiExecuteCommand)) { " API dispatch is also available after setting GH_TOKEN or GITHUB_TOKEN: $readySubsetApiExecuteCommand." } else { "" }
         $nextStep = New-NextStep "dispatch-ready-subset" "Plan ready dispatch subset" $readySubsetPlanCommand "The invocation report still has blocked actions, but $readyDispatchTemplateCount action(s) are ready to dispatch: $readyOrdersText." "Run the ready subset plan command first without -Execute, then dispatch only after review and continue resolving the remaining blocked actions. $executeHint$apiExecuteHint$readyDispatchUrlHint$defaultBranchWorkflowHint" $readyDispatchUrls
     }
-    elseif ($inputFreeBlockedActionCount -gt 0 -and -not [string]::IsNullOrWhiteSpace($inputFreeBlockedPlanCommand)) {
+    elseif ($inputFreeBlockedActionCount -gt 0 -and -not [string]::IsNullOrWhiteSpace($inputFreeBlockedReviewCommand)) {
         $inputFreeOrdersText = Join-IntList $inputFreeBlockedActionOrders
-        $executeHint = if (-not [string]::IsNullOrWhiteSpace($inputFreeBlockedExecuteCommand)) { " Execute after confirming operator approval and required secret readiness: $inputFreeBlockedExecuteCommand." } else { "" }
-        $nextStep = New-NextStep "confirm-input-free-blockers" "Confirm input-free blocked actions" $inputFreeBlockedPlanCommand "The invocation report still has blocked actions, and $inputFreeBlockedActionCount action(s) require no operator input values: $inputFreeOrdersText." "Run the input-free subset plan command first without -Execute, confirm operator approvals and secret readiness outside the report, then continue filling workflow-input-level values for the remaining blocked actions.$executeHint$defaultBranchWorkflowHint"
+        $confirmedPlanHint = if (-not [string]::IsNullOrWhiteSpace($inputFreeBlockedPlanCommand)) { " After external confirmation, run the confirmed plan command without -Execute: $inputFreeBlockedPlanCommand." } else { "" }
+        $executeHint = if (-not [string]::IsNullOrWhiteSpace($inputFreeBlockedExecuteCommand)) { " Execute only after the confirmed plan is reviewed: $inputFreeBlockedExecuteCommand." } else { "" }
+        $nextStep = New-NextStep "confirm-input-free-blockers" "Review input-free blocked confirmations" $inputFreeBlockedReviewCommand "The invocation report still has blocked actions, and $inputFreeBlockedActionCount action(s) require no operator input values: $inputFreeOrdersText." "Run the review command first without confirmation flags or -Execute, confirm operator approvals and secret readiness outside the report, then continue filling workflow-input-level values for the remaining blocked actions.$confirmedPlanHint$executeHint$defaultBranchWorkflowHint"
     }
     else { $nextStep = New-NextStep "resolve-invocation-blockers" "Resolve invocation blockers" "powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\write-operations-invocation-unblock-plan.ps1" "The invocation report still has blocked actions." "Generate the unblock plan and operator input worksheet, fill workflow-input-level placeholder rows, rerun the operator input values check, confirm operator approvals, confirm kubeconfig-secret readiness, and resolve default-branch workflow blockers before dispatch.$defaultBranchWorkflowHint" }
 }
@@ -798,7 +803,7 @@ $generatedAt = [DateTimeOffset]::Now.ToString("o")
 $report = [ordered]@{
     formatVersion = "osmu.operations-evidence-handoff.v1"; generatedAt = $generatedAt; result = $handoffResult; nextStep = $nextStep; currentBottleneck = $nextStep; stageCount = $stages.Count; readyStageCount = @($stages | Where-Object { $_.ready }).Count; readinessSummary = $readinessSummary; readinessPassedCount = $readinessPassedCount; readinessPendingCount = $readinessPendingCount; readinessTotalCount = $readinessTotalCount; readinessCheckCount = $readinessCheckCount; dispatchPreflightResult = $dispatchPreflightResult; dispatchGithubRepository = $dispatchGithubRepository; requiredGitHubSecretCount = $requiredGitHubSecretCount; requiredGitHubSecrets = @($requiredGitHubSecretNames); requiredGitHubSecretSummaries = @($requiredGitHubSecretSummaries); dispatchPreflightRequiredInputCount = $dispatchPreflightRequiredInputCount; dispatchPreflightMissingInputCount = $dispatchPreflightMissingInputCount; readyDispatchTemplateCount = $readyDispatchTemplateCount; blockedDispatchTemplateCount = $blockedDispatchTemplateCount
     defaultBranchRef = $defaultBranchRef; defaultBranchMissingWorkflowCount = $defaultBranchMissingWorkflowCount; defaultBranchMissingActionOrders = @($defaultBranchMissingActionOrders); defaultBranchMissingWorkflows = @($defaultBranchMissingWorkflows)
-    invocationUnblockPlanExists = [bool] $invocationUnblockPlan.exists; invocationUnblockPlanPath = $invocationUnblockPlan.path; invocationUnblockPlanActionCount = $invocationUnblockPlanActionCount; invocationUnblockPlanBlockReasonCount = $invocationUnblockPlanBlockReasonCount; invocationUnblockPlanRequiredInputCount = $invocationUnblockPlanRequiredInputCount; invocationUnblockPlanRequiredSecretCount = $invocationUnblockPlanRequiredSecretCount; invocationUnblockPlanOperatorApprovalActionCount = $invocationUnblockPlanOperatorApprovalActionCount; invocationUnblockPlanKubeconfigSecretActionCount = $invocationUnblockPlanKubeconfigSecretActionCount; invocationUnblockPlanDefaultBranchMissingActionCount = $invocationUnblockPlanDefaultBranchMissingActionCount; invocationUnblockActions = @($unblockActionSummaries); inputFreeBlockedActionCount = $inputFreeBlockedActionCount; inputFreeBlockedActionOrders = @($inputFreeBlockedActionOrders); inputFreeBlockedRequiredSecretCount = $inputFreeBlockedRequiredSecretCount; inputFreeBlockedOperatorApprovalActionCount = $inputFreeBlockedOperatorApprovalActionCount; inputFreeBlockedKubeconfigSecretActionCount = $inputFreeBlockedKubeconfigSecretActionCount; inputFreeBlockedPlanCommand = $inputFreeBlockedPlanCommand; inputFreeBlockedExecuteCommand = $inputFreeBlockedExecuteCommand; inputFreeBlockedActions = @($inputFreeBlockedActions)
+    invocationUnblockPlanExists = [bool] $invocationUnblockPlan.exists; invocationUnblockPlanPath = $invocationUnblockPlan.path; invocationUnblockPlanActionCount = $invocationUnblockPlanActionCount; invocationUnblockPlanBlockReasonCount = $invocationUnblockPlanBlockReasonCount; invocationUnblockPlanRequiredInputCount = $invocationUnblockPlanRequiredInputCount; invocationUnblockPlanRequiredSecretCount = $invocationUnblockPlanRequiredSecretCount; invocationUnblockPlanOperatorApprovalActionCount = $invocationUnblockPlanOperatorApprovalActionCount; invocationUnblockPlanKubeconfigSecretActionCount = $invocationUnblockPlanKubeconfigSecretActionCount; invocationUnblockPlanDefaultBranchMissingActionCount = $invocationUnblockPlanDefaultBranchMissingActionCount; invocationUnblockActions = @($unblockActionSummaries); inputFreeBlockedActionCount = $inputFreeBlockedActionCount; inputFreeBlockedActionOrders = @($inputFreeBlockedActionOrders); inputFreeBlockedReviewCommand = $inputFreeBlockedReviewCommand; inputFreeBlockedRequiredSecretCount = $inputFreeBlockedRequiredSecretCount; inputFreeBlockedOperatorApprovalActionCount = $inputFreeBlockedOperatorApprovalActionCount; inputFreeBlockedKubeconfigSecretActionCount = $inputFreeBlockedKubeconfigSecretActionCount; inputFreeBlockedPlanCommand = $inputFreeBlockedPlanCommand; inputFreeBlockedExecuteCommand = $inputFreeBlockedExecuteCommand; inputFreeBlockedActions = @($inputFreeBlockedActions)
     readyDispatchActionOrders = @($readyDispatchActionOrders); blockedDispatchActionOrders = @($blockedDispatchActionOrders); invocationSelectedActionOrders = @($invocationSelectedActionOrders); dispatchPreflightSelectedActionOrders = @($dispatchPreflightSelectedActionOrders); workflowRunIdPlanActionOrders = @($workflowRunIdPlanActionOrders); artifactCollectionActionOrders = @($artifactCollectionActionOrders); readyDispatchWorkflows = @($readyDispatchWorkflows); blockedDispatchWorkflows = @($blockedDispatchWorkflows)
     invocationStale = $invocationStale; dispatchPreflightStale = $dispatchPreflightStale; dispatchPreflightScopeMismatch = $dispatchPreflightScopeMismatch; operatorInputWorksheetStale = $operatorWorksheetStale; operatorInputWorksheetResult = $operatorWorksheetResult; operatorInputWorksheetReportPath = $operatorWorksheetReportPath; operatorInputWorksheetCsvPath = $operatorWorksheetCsvPath; operatorInputValuesTemplatePath = $operatorWorksheetValuesTemplatePath; operatorInputValuesTemplateMarkdownPath = $operatorWorksheetValuesTemplateMarkdownPath; operatorInputWorksheetInputRowCount = $operatorWorksheetInputRowCount; operatorInputWorksheetAmbiguousInputRowCount = $operatorWorksheetAmbiguousInputRowCount; operatorInputWorksheetExpandedInputRowDelta = $operatorInputWorksheetExpandedInputRowDelta; operatorInputValuesCheckStale = $operatorValuesCheckStale; operatorInputValuesCheckCountMismatch = $operatorValuesCheckCountMismatch; operatorInputValuesCheckResult = $operatorValuesCheckResult; operatorInputValuesCheckValueCount = $operatorValuesCheckValueCount; operatorInputValuesCheckReadyValueCount = $operatorValuesCheckReadyValueCount; operatorInputValuesCheckMissingValueCount = $operatorValuesCheckMissingValueCount; operatorInputValuesCheckUnsafeValueCount = $operatorValuesCheckUnsafeValueCount; operatorInputValuesCheckInvalidValueCount = $operatorValuesCheckInvalidValueCount; operatorInputValuesCheckValueReadyActionCount = $operatorValuesCheckValueReadyActionCount; operatorInputValuesCheckNonReadyActionCount = $operatorValuesCheckNonReadyActionCount; workflowRunIdPlanStale = $workflowRunIdPlanStale; workflowRunIdPlanScopeMismatch = $workflowRunIdPlanScopeMismatch; artifactCollectionStale = $artifactCollectionStale; artifactCollectionScopeMismatch = $artifactCollectionScopeMismatch; staleReportCount = $staleReportCount; blockedActionCount = Get-Int $invocation.json "blockedCount"; missingWorkflowRunCount = Get-Int $runIds.json "missingWorkflowCount"; missingRequiredArtifactCount = Get-Int $collection.json "missingRequiredArtifactCount"; failedImportCount = Get-Int $import.json "failedCount"; finalizerFailedCount = $finalizeFailedCount; finalizerGapCount = $finalizeGapCount; browserDispatchChecklistCount = $browserDispatchChecklist.Count; browserDispatchChecklist = @($browserDispatchChecklist); securityEvidenceFinalizerRunIdInputHintCount = $securityEvidenceFinalizerRunIdInputHints.Count; securityEvidenceFinalizerRunIdInputHints = @($securityEvidenceFinalizerRunIdInputHints); postDispatchCommands = @($postDispatchCommands); stages = $stages
 }
@@ -814,7 +819,7 @@ else {
         $markdownLines += "- action $($action.actionOrder): status=$($action.status) blockers=$($action.blockReasonCount) inputs=$($action.requiredInputCount) secrets=$($action.requiredSecretCount) - $($action.name)"
     }
 }
-$markdownLines += @("", "## Operator Input Expansion", "", "- Dispatch required inputs: $dispatchPreflightRequiredInputCount", "- Dispatch missing inputs: $dispatchPreflightMissingInputCount", "- Worksheet report: $operatorWorksheetReportPath", "- Worksheet CSV: $operatorWorksheetCsvPath", "- Values template JSON: $operatorWorksheetValuesTemplatePath", "- Values template Markdown: $operatorWorksheetValuesTemplateMarkdownPath", "- Worksheet input rows: $operatorWorksheetInputRowCount", "- Expanded worksheet row delta: $operatorInputWorksheetExpandedInputRowDelta", "- Ambiguous worksheet rows: $operatorWorksheetAmbiguousInputRowCount", "- Values check rows: $operatorValuesCheckValueCount", "- Missing values: $operatorValuesCheckMissingValueCount", "", "## Input-Free Blocked Actions", "", "- Actions: $inputFreeBlockedActionCount", "- Action orders: $inputFreeBlockedActionOrdersText", "- Required secrets: $inputFreeBlockedRequiredSecretCount", "- Operator approval actions: $inputFreeBlockedOperatorApprovalActionCount", "- Kubeconfig secret actions: $inputFreeBlockedKubeconfigSecretActionCount", "- Plan command: ``$inputFreeBlockedPlanCommand``", "- Execute command after confirmations: ``$inputFreeBlockedExecuteCommand``")
+$markdownLines += @("", "## Operator Input Expansion", "", "- Dispatch required inputs: $dispatchPreflightRequiredInputCount", "- Dispatch missing inputs: $dispatchPreflightMissingInputCount", "- Worksheet report: $operatorWorksheetReportPath", "- Worksheet CSV: $operatorWorksheetCsvPath", "- Values template JSON: $operatorWorksheetValuesTemplatePath", "- Values template Markdown: $operatorWorksheetValuesTemplateMarkdownPath", "- Worksheet input rows: $operatorWorksheetInputRowCount", "- Expanded worksheet row delta: $operatorInputWorksheetExpandedInputRowDelta", "- Ambiguous worksheet rows: $operatorWorksheetAmbiguousInputRowCount", "- Values check rows: $operatorValuesCheckValueCount", "- Missing values: $operatorValuesCheckMissingValueCount", "", "## Input-Free Blocked Actions", "", "- Actions: $inputFreeBlockedActionCount", "- Action orders: $inputFreeBlockedActionOrdersText", "- Review command before confirmations: ``$inputFreeBlockedReviewCommand``", "- Confirmed plan command: ``$inputFreeBlockedPlanCommand``", "- Required secrets: $inputFreeBlockedRequiredSecretCount", "- Operator approval actions: $inputFreeBlockedOperatorApprovalActionCount", "- Kubeconfig secret actions: $inputFreeBlockedKubeconfigSecretActionCount", "- Execute command after confirmations: ``$inputFreeBlockedExecuteCommand``")
 if ($inputFreeBlockedActions.Count -eq 0) {
     $markdownLines += "- Candidates: none"
 }
@@ -824,7 +829,8 @@ else {
         $blockerLabel = if (@($action.blockReasons).Count -eq 0) { "none" } else { @($action.blockReasons) -join "; " }
         $markdownLines += "- action $($action.actionOrder): blockers=$($action.blockReasonCount) secrets=$secretLabel - $($action.name)"
         $markdownLines += "  - Blockers: $blockerLabel"
-        if (-not [string]::IsNullOrWhiteSpace($action.planCommand)) { $markdownLines += "  - Plan command: ``$($action.planCommand)``" }
+        if (-not [string]::IsNullOrWhiteSpace($action.reviewCommand)) { $markdownLines += "  - Review command before confirmations: ``$($action.reviewCommand)``" }
+        if (-not [string]::IsNullOrWhiteSpace($action.planCommand)) { $markdownLines += "  - Confirmed plan command: ``$($action.planCommand)``" }
     }
 }
 $markdownLines += @("", "## Required GitHub Secrets", "", "- Secrets: $requiredGitHubSecretCount")

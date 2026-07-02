@@ -110,8 +110,8 @@ Write-JsonFixture $actionHandoffPath ([ordered]@{
     inputFreeBlockedActionCount = 2
     inputFreeBlockedActionOrders = @(1, 5)
     inputFreeBlockedActions = @(
-        [ordered]@{ actionOrder = 1; name = "Storage expansion finalizer live evidence"; blockReasonCount = 2; blockReasons = @("operator approval not confirmed", "kubeconfig secret not confirmed"); requiredSecretCount = 1; requiredSecrets = @("OSMU_KUBECONFIG_BASE64"); needsOperatorApprovalConfirmation = $true; needsKubeconfigSecretConfirmation = $true; defaultBranchWorkflowMissing = $false; planCommand = "powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\invoke-operations-evidence-plan.ps1 -ActionOrder 1 -KubeconfigSecretConfirmed -ConfirmOperatorApproval" },
-        [ordered]@{ actionOrder = 5; name = "Signed image evidence"; blockReasonCount = 1; blockReasons = @("operator approval not confirmed"); requiredSecretCount = 1; requiredSecrets = @("GITHUB_TOKEN"); needsOperatorApprovalConfirmation = $true; needsKubeconfigSecretConfirmation = $false; defaultBranchWorkflowMissing = $false; planCommand = "powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\invoke-operations-evidence-plan.ps1 -ActionOrder 5 -ConfirmOperatorApproval" }
+        [ordered]@{ actionOrder = 1; name = "Storage expansion finalizer live evidence"; blockReasonCount = 2; blockReasons = @("operator approval not confirmed", "kubeconfig secret not confirmed"); requiredSecretCount = 1; requiredSecrets = @("OSMU_KUBECONFIG_BASE64"); needsOperatorApprovalConfirmation = $true; needsKubeconfigSecretConfirmation = $true; defaultBranchWorkflowMissing = $false; reviewCommand = "powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\invoke-operations-evidence-plan.ps1 -ActionOrder 1"; planCommand = "powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\invoke-operations-evidence-plan.ps1 -ActionOrder 1 -KubeconfigSecretConfirmed -ConfirmOperatorApproval" },
+        [ordered]@{ actionOrder = 5; name = "Signed image evidence"; blockReasonCount = 1; blockReasons = @("operator approval not confirmed"); requiredSecretCount = 1; requiredSecrets = @("GITHUB_TOKEN"); needsOperatorApprovalConfirmation = $true; needsKubeconfigSecretConfirmation = $false; defaultBranchWorkflowMissing = $false; reviewCommand = "powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\invoke-operations-evidence-plan.ps1 -ActionOrder 5"; planCommand = "powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\invoke-operations-evidence-plan.ps1 -ActionOrder 5 -ConfirmOperatorApproval" }
     )
     missingWorkflowRunCount = 0
     missingRequiredArtifactCount = 0
@@ -153,7 +153,8 @@ Assert-Equal (@($actionReport.handoffInputFreeBlockedActionOrders) -join ",") "1
 Assert-Equal @($actionReport.handoffInputFreeBlockedActions).Count 2 "action input-free blocked action detail count"
 Assert-Equal @($actionReport.handoffInputFreeBlockedActions)[0].actionOrder 1 "action input-free blocked detail action order"
 Assert-True (@(@($actionReport.handoffInputFreeBlockedActions)[0].requiredSecrets) -contains "OSMU_KUBECONFIG_BASE64") "action input-free blocked detail required secret"
-Assert-Contains @($actionReport.handoffInputFreeBlockedActions)[1].planCommand "-ActionOrder 5" "action input-free blocked detail plan command"
+Assert-Contains @($actionReport.handoffInputFreeBlockedActions)[1].reviewCommand "-ActionOrder 5" "action input-free blocked detail review command"
+Assert-Contains @($actionReport.handoffInputFreeBlockedActions)[1].planCommand "-ConfirmOperatorApproval" "action input-free blocked detail confirmed plan command"
 Assert-Equal $actionReport.readinessSummary "passed=36 pending=6" "action readiness summary"
 Assert-Equal $actionReport.readinessPassedCount 36 "action readiness passed count"
 Assert-Equal $actionReport.readinessPendingCount 6 "action readiness pending count"
@@ -164,6 +165,8 @@ Assert-Contains $actionMarkdown "Input-free blocked action orders: 1,5" "action 
 Assert-Contains $actionMarkdown "## Handoff Input-Free Blocked Actions" "action markdown input-free detail section"
 Assert-Contains $actionMarkdown "Action 1: Storage expansion finalizer live evidence" "action markdown input-free action detail"
 Assert-Contains $actionMarkdown "secrets=OSMU_KUBECONFIG_BASE64" "action markdown input-free required secret"
+Assert-Contains $actionMarkdown "review=``powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\invoke-operations-evidence-plan.ps1 -ActionOrder 1``" "action markdown input-free review command"
+Assert-Contains $actionMarkdown "confirmedPlan=``powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\invoke-operations-evidence-plan.ps1 -ActionOrder 1 -KubeconfigSecretConfirmed -ConfirmOperatorApproval``" "action markdown input-free confirmed plan command"
 Assert-Contains $actionReport.recommendedCommands[0].command "finalize-operations-readiness.ps1" "action recommended command"
 Assert-Contains $actionMarkdown "Run operations readiness finalizer" "action markdown command"
 

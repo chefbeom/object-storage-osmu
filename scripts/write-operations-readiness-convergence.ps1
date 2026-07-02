@@ -377,6 +377,7 @@ $handoffInputFreeBlockedActions = @(Get-Array (Get-JsonProperty $handoff.json "i
         needsOperatorApprovalConfirmation = Get-Bool $_ "needsOperatorApprovalConfirmation"
         needsKubeconfigSecretConfirmation = Get-Bool $_ "needsKubeconfigSecretConfirmation"
         defaultBranchWorkflowMissing = Get-Bool $_ "defaultBranchWorkflowMissing"
+        reviewCommand = Get-Text $_ "reviewCommand"
         planCommand = Get-Text $_ "planCommand"
     }
 })
@@ -654,7 +655,7 @@ if ($handoffInputFreeBlockedActions.Count -gt 0) {
     foreach ($action in @($handoffInputFreeBlockedActions | Sort-Object { [int] $_.actionOrder })) {
         $secretText = if (@($action.requiredSecrets).Count -gt 0) { @($action.requiredSecrets) -join "," } else { "none" }
         $reasonText = if (@($action.blockReasons).Count -gt 0) { @($action.blockReasons) -join "; " } else { "none" }
-        $markdownLines += "- Action $($action.actionOrder): $($action.name); secrets=$secretText; operatorApproval=$($action.needsOperatorApprovalConfirmation); kubeconfig=$($action.needsKubeconfigSecretConfirmation); blockers=$reasonText; plan=``$($action.planCommand)``"
+        $markdownLines += "- Action $($action.actionOrder): $($action.name); secrets=$secretText; operatorApproval=$($action.needsOperatorApprovalConfirmation); kubeconfig=$($action.needsKubeconfigSecretConfirmation); blockers=$reasonText; review=``$($action.reviewCommand)``; confirmedPlan=``$($action.planCommand)``"
     }
 }
 if ($recommendedCommands.Count -eq 0) {
