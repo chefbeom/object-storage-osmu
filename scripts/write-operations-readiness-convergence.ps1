@@ -366,6 +366,20 @@ $handoffSecurityEvidenceFinalizerRunIdInputHints = @(Get-Array (Get-JsonProperty
 $handoffInputFreeBlockedActionCount = Get-Int $handoff.json "inputFreeBlockedActionCount"
 $handoffInputFreeBlockedActionOrders = @(Get-Array (Get-JsonProperty $handoff.json "inputFreeBlockedActionOrders") | ForEach-Object { try { [int] $_ } catch { 0 } } | Where-Object { $_ -gt 0 })
 $handoffInputFreeBlockedActionOrdersText = if ($handoffInputFreeBlockedActionOrders.Count -gt 0) { $handoffInputFreeBlockedActionOrders -join "," } else { "none" }
+$handoffInputFreeBlockedActions = @(Get-Array (Get-JsonProperty $handoff.json "inputFreeBlockedActions") | ForEach-Object {
+    [ordered]@{
+        actionOrder = Get-Int $_ "actionOrder"
+        name = Get-Text $_ "name"
+        blockReasonCount = Get-Int $_ "blockReasonCount"
+        blockReasons = @(Get-Array (Get-JsonProperty $_ "blockReasons") | ForEach-Object { [string] $_ } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+        requiredSecretCount = Get-Int $_ "requiredSecretCount"
+        requiredSecrets = @(Get-Array (Get-JsonProperty $_ "requiredSecrets") | ForEach-Object { [string] $_ } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+        needsOperatorApprovalConfirmation = Get-Bool $_ "needsOperatorApprovalConfirmation"
+        needsKubeconfigSecretConfirmation = Get-Bool $_ "needsKubeconfigSecretConfirmation"
+        defaultBranchWorkflowMissing = Get-Bool $_ "defaultBranchWorkflowMissing"
+        planCommand = Get-Text $_ "planCommand"
+    }
+})
 $handoffBrowserDispatchDependencyNote = Join-NoteParts $handoffBrowserDispatchDependencyNotes
 $nextStepNote = Join-NoteParts @((Get-Text $nextStep "note"), $handoffBrowserDispatchDependencyNote)
 $handoffPostDispatchCommands = @(Get-Array (Get-JsonProperty $handoff.json "postDispatchCommands") | ForEach-Object {
@@ -561,6 +575,7 @@ $report = [ordered]@{
     blockedActionCount = Get-Int $handoff.json "blockedActionCount"
     handoffInputFreeBlockedActionCount = $handoffInputFreeBlockedActionCount
     handoffInputFreeBlockedActionOrders = @($handoffInputFreeBlockedActionOrders)
+    handoffInputFreeBlockedActions = @($handoffInputFreeBlockedActions)
     missingWorkflowRunCount = Get-Int $handoff.json "missingWorkflowRunCount"
     missingRequiredArtifactCount = Get-Int $handoff.json "missingRequiredArtifactCount"
     failedImportCount = Get-Int $handoff.json "failedImportCount"
@@ -632,6 +647,14 @@ if ($bottleneckDispatchUrls.Count -gt 0) {
             $dispatchLines +
             $markdownLines[($statusIndex - 1)..($markdownLines.Count - 1)]
         )
+    }
+}
+if ($handoffInputFreeBlockedActions.Count -gt 0) {
+    $markdownLines += @("", "## Handoff Input-Free Blocked Actions", "")
+    foreach ($action in @($handoffInputFreeBlockedActions | Sort-Object { [int] $_.actionOrder })) {
+        $secretText = if (@($action.requiredSecrets).Count -gt 0) { @($action.requiredSecrets) -join "," } else { "none" }
+        $reasonText = if (@($action.blockReasons).Count -gt 0) { @($action.blockReasons) -join "; " } else { "none" }
+        $markdownLines += "- Action $($action.actionOrder): $($action.name); secrets=$secretText; operatorApproval=$($action.needsOperatorApprovalConfirmation); kubeconfig=$($action.needsKubeconfigSecretConfirmation); blockers=$reasonText; plan=``$($action.planCommand)``"
     }
 }
 if ($recommendedCommands.Count -eq 0) {
