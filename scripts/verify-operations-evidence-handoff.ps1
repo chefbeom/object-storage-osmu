@@ -84,7 +84,7 @@ Assert-Equal $missingReport.formatVersion "osmu.operations-evidence-handoff.v1" 
 Assert-Equal $missingReport.result "action-required" "missing result"
 Assert-Equal $missingReport.nextStep.code "write-readiness" "missing next step"
 Assert-Equal $missingReport.currentBottleneck.code "write-readiness" "missing current bottleneck"
-Assert-Equal $missingReport.stageCount 8 "missing stage count"
+Assert-Equal $missingReport.stageCount 9 "missing stage count"
 Assert-Contains $missingMarkdown "## Current Bottleneck" "missing markdown current bottleneck"
 Assert-Contains $missingMarkdown "Generate operations readiness report" "missing markdown next step"
 
@@ -1191,7 +1191,7 @@ $operationsFinalizeReport = Read-Utf8Text $operationsFinalizeJsonPath | ConvertF
 $operationsFinalizeMarkdown = Read-Utf8Text $operationsFinalizeMarkdownPath
 Assert-Equal $operationsFinalizeReport.result "action-required" "operations finalizer result"
 Assert-Equal $operationsFinalizeReport.nextStep.code "run-operations-finalizer" "operations finalizer next step"
-Assert-Equal $operationsFinalizeReport.stageCount 8 "operations finalizer stage count"
+Assert-Equal $operationsFinalizeReport.stageCount 9 "operations finalizer stage count"
 Assert-Contains $operationsFinalizeReport.nextStep.command "finalize-operations-readiness.ps1" "operations finalizer command"
 Assert-Contains $operationsFinalizeMarkdown "Run operations readiness finalizer" "operations finalizer markdown next step"
 
