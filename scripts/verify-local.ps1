@@ -35,17 +35,24 @@ function Step($message) {
 function Run($command, $workingDirectory = $root) {
     Write-Host "    $command"
     Push-Location $workingDirectory
+    $previousErrorActionPreference = $ErrorActionPreference
     try {
-        Invoke-Expression $command
-        if ($LASTEXITCODE -ne 0) {
-            throw "Command failed with exit code $LASTEXITCODE`: $command"
+        $ErrorActionPreference = "Continue"
+        $global:LASTEXITCODE = 0
+        $output = Invoke-Expression "$command 2>&1"
+        $exitCode = $LASTEXITCODE
+        if ($output) {
+            $output | ForEach-Object { Write-Host $_ }
+        }
+        if ($exitCode -ne 0) {
+            throw "Command failed with exit code $exitCode`: $command"
         }
     }
     finally {
+        $ErrorActionPreference = $previousErrorActionPreference
         Pop-Location
     }
 }
-
 function Run-GitDiffCheck() {
     $command = "git diff --check"
     Write-Host "    $command"

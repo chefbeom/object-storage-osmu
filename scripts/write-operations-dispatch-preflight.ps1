@@ -338,6 +338,13 @@ function Test-GitObjectExists([string] $ObjectSpec) {
     }
 }
 
+function Test-GitRefAvailable([string] $RefName) {
+    if ([string]::IsNullOrWhiteSpace($RefName)) {
+        return $false
+    }
+    return Test-GitObjectExists "$RefName^{commit}"
+}
+
 function Normalize-GitRefName([string] $Value) {
     if ([string]::IsNullOrWhiteSpace($Value)) {
         return ""
@@ -615,6 +622,7 @@ if ([string]::IsNullOrWhiteSpace($GitHubRef)) {
 }
 $githubApiDispatchAvailable = $githubApiDispatchUnavailableReasons.Count -eq 0
 $gitRefSafety = Get-GitRefSafetyReport $GitHubRef ([bool] $CheckGitRefSafety)
+$defaultBranchRefAvailable = if ([string]::IsNullOrWhiteSpace($DefaultBranchRef)) { $false } else { Test-GitRefAvailable $DefaultBranchRef }
 $hasActionOrderFilter = $ActionOrder -and $ActionOrder.Count -gt 0
 $githubCliAvailableForDispatch = $false
 
@@ -661,7 +669,7 @@ foreach ($action in @($selectedActions)) {
         $workflowPath = Resolve-ProjectPath ".\.github\workflows\$workflowName"
         $workflowExists = Test-Path -LiteralPath $workflowPath
         $workflowDefaultBranchSpec = if ([string]::IsNullOrWhiteSpace($DefaultBranchRef)) { "" } else { "$DefaultBranchRef`:.github/workflows/$workflowName" }
-        $workflowExistsOnDefaultBranch = (Test-GitObjectExists $workflowDefaultBranchSpec)
+        $workflowExistsOnDefaultBranch = if ([string]::IsNullOrWhiteSpace($DefaultBranchRef)) { $false } elseif ($defaultBranchRefAvailable) { Test-GitObjectExists $workflowDefaultBranchSpec } else { $workflowExists }
         $secrets = @(Get-RequiredWorkflowSecrets $workflowName (Get-Text $action "command") $action $workflowPath)
         $dispatchUrl = Get-GitHubWorkflowDispatchUrl $githubRepositorySlug $workflowName
         foreach ($secret in $secrets) {
@@ -673,6 +681,7 @@ foreach ($action in @($selectedActions)) {
             path = $workflowPath
             exists = $workflowExists
             defaultBranchRef = $DefaultBranchRef
+            defaultBranchRefAvailable = $defaultBranchRefAvailable
             existsOnDefaultBranch = $workflowExistsOnDefaultBranch
             dispatchUrl = $dispatchUrl
             requiredSecrets = $secrets
@@ -906,6 +915,9 @@ $missingDefaultBranchWorkflowFiles = @($workflowFiles | Where-Object { -not $_.e
 if ([string]::IsNullOrWhiteSpace($DefaultBranchRef)) {
     Add-Check $checks "DEFAULT_BRANCH_WORKFLOW_FILES_PRESENT" "warn" "Default branch ref check skipped because DefaultBranchRef is blank."
 }
+elseif (-not $defaultBranchRefAvailable) {
+    Add-Check $checks "DEFAULT_BRANCH_WORKFLOW_FILES_PRESENT" "warn" "Default branch ref $DefaultBranchRef is not available in this checkout; local workflow files were checked, but workflow_dispatch availability on the default branch still requires review before live dispatch."
+}
 elseif ($missingDefaultBranchWorkflowFiles.Count -eq 0) {
     Add-Check $checks "DEFAULT_BRANCH_WORKFLOW_FILES_PRESENT" "pass" "All selected workflow files exist on default branch ref $DefaultBranchRef."
 }
@@ -1010,6 +1022,7 @@ $report = [ordered]@{
     githubRepository = $githubRepositorySlug
     githubRef = $GitHubRef
     defaultBranchRef = $DefaultBranchRef
+    defaultBranchRefAvailable = $defaultBranchRefAvailable
     githubApiTokenPresent = [bool] $githubApiTokenPresent
     githubApiDispatchAvailable = [bool] $githubApiDispatchAvailable
     githubApiDispatchUnavailableReasons = @($githubApiDispatchUnavailableReasons | ForEach-Object { [string] $_ })

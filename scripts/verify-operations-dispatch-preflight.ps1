@@ -67,6 +67,8 @@ $apiFallbackMarkdownPath = Join-Path $resolvedOutputDirectory "api-fallback-pref
 $defaultBranchMissingUnblockPlanPath = Join-Path $resolvedOutputDirectory "default-branch-missing-unblock-plan.json"
 $defaultBranchMissingJsonPath = Join-Path $resolvedOutputDirectory "default-branch-missing-preflight.json"
 $defaultBranchMissingMarkdownPath = Join-Path $resolvedOutputDirectory "default-branch-missing-preflight.md"
+$defaultBranchUnavailableJsonPath = Join-Path $resolvedOutputDirectory "default-branch-unavailable-preflight.json"
+$defaultBranchUnavailableMarkdownPath = Join-Path $resolvedOutputDirectory "default-branch-unavailable-preflight.md"
 $gitRefJsonPath = Join-Path $resolvedOutputDirectory "git-ref-safety-preflight.json"
 $gitRefMarkdownPath = Join-Path $resolvedOutputDirectory "git-ref-safety-preflight.md"
 $fakeGitHubCliDirectory = Join-Path $resolvedOutputDirectory "fake-github-cli"
@@ -227,6 +229,7 @@ Assert-True (@($missingDrTemplate.workflowInputNames) -contains "backup_timestam
 Assert-Equal $missingDrTemplate.dispatchUrl "https://github.com/chefbeom/object-storage-osmu/actions/workflows/kubernetes-dr-finalizer-ci.yml" "missing DR template dispatch URL"
 $missingDrWorkflow = @($missingReport.workflowFiles | Where-Object { $_.actionOrder -eq 2 })[0]
 Assert-Equal $missingDrWorkflow.defaultBranchRef "origin/main" "missing DR workflow default branch ref"
+Assert-True $missingDrWorkflow.defaultBranchRefAvailable "missing DR workflow default branch ref should be available"
 Assert-True $missingDrWorkflow.existsOnDefaultBranch "missing DR workflow should exist on default branch"
 Assert-True (@($missingDrTemplate.missingInputParameters) -contains "BackupTimestamp") "missing DR template missing parameter summary"
 Assert-Equal @($missingDrTemplate.unsafeInputParameters).Count 0 "missing DR template unsafe parameter summary"
@@ -379,6 +382,28 @@ Assert-True (-not $defaultBranchMissingReport.workflowFiles[0].existsOnDefaultBr
 Assert-Contains (($defaultBranchMissingReport.checks | ConvertTo-Json -Depth 8)) "DEFAULT_BRANCH_WORKFLOW_FILES_PRESENT" "default branch check code"
 Assert-Contains (($defaultBranchMissingReport.checks | ConvertTo-Json -Depth 8)) "workflow_dispatch requires" "default branch check message"
 Assert-Contains $defaultBranchMissingMarkdown "defaultBranchFile=missing" "default branch markdown"
+
+& powershell -NoProfile -ExecutionPolicy Bypass -File $scriptPath `
+    -UnblockPlanPath $unblockPlanPath `
+    -JsonOutputPath $defaultBranchUnavailableJsonPath `
+    -MarkdownOutputPath $defaultBranchUnavailableMarkdownPath `
+    -ActionOrder 4 `
+    -GitHubRepository "chefbeom/object-storage-osmu" `
+    -DefaultBranchRef "refs/remotes/origin/__missing-default-branch-ref-for-ci-test" | Out-Host
+if ($LASTEXITCODE -ne 0) {
+    throw "write-operations-dispatch-preflight.ps1 default branch unavailable fixture failed with exit code $LASTEXITCODE."
+}
+
+$defaultBranchUnavailableReport = Read-Utf8Text $defaultBranchUnavailableJsonPath | ConvertFrom-Json
+$defaultBranchUnavailableMarkdown = Read-Utf8Text $defaultBranchUnavailableMarkdownPath
+Assert-Equal $defaultBranchUnavailableReport.result "ready" "default branch unavailable result"
+Assert-True (-not $defaultBranchUnavailableReport.defaultBranchRefAvailable) "default branch unavailable ref flag"
+Assert-Equal $defaultBranchUnavailableReport.workflowFiles[0].workflow "container-security-ci.yml" "default branch unavailable workflow"
+Assert-True $defaultBranchUnavailableReport.workflowFiles[0].exists "default branch unavailable workflow should exist locally"
+Assert-True (-not $defaultBranchUnavailableReport.workflowFiles[0].defaultBranchRefAvailable) "default branch unavailable workflow ref flag"
+Assert-True $defaultBranchUnavailableReport.workflowFiles[0].existsOnDefaultBranch "default branch unavailable should use local workflow presence"
+Assert-Contains (($defaultBranchUnavailableReport.checks | ConvertTo-Json -Depth 8)) "is not available in this checkout" "default branch unavailable check message"
+Assert-Contains $defaultBranchUnavailableMarkdown "defaultBranchFile=present" "default branch unavailable markdown"
 
 & powershell -NoProfile -ExecutionPolicy Bypass -File $scriptPath `
     -UnblockPlanPath $unblockPlanPath `
