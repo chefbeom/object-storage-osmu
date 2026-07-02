@@ -7,13 +7,13 @@ This handoff keeps the remaining operations-readiness work focused on object-sto
 - Latest readiness summary: passed=83 / pending=19 / total=102.
 - Latest handoff result: blocked.
 - Current bottleneck: resolve invocation blockers.
-- Latest PR branch: codex/operations-readiness-9dedd532.
-- Latest verified head before this handoff: f5c145770a47596d227711ff9e6ea65921dbe94d.
-- Latest CI evidence before this handoff: Prototype CI #52 passed for f5c145770a47596d227711ff9e6ea65921dbe94d.
+- Main merge commit: 81acaf4e3c44ee3dc2014f3429f585ac7defaedd.
+- PR #1 is merged into main.
+- Prototype CI #54 passed on 13a3402facf92349e409d91d66961b77622fe7fd before merge.
 
 ## Default-Branch Workflow Gate
 
-GitHub workflow_dispatch requires the workflow file to exist on the repository default branch before dispatch. The following selected evidence workflows exist on the PR branch but were missing from origin/main in the latest dispatch preflight:
+Resolved. The workflow_dispatch files that were previously missing from origin/main are now present on main:
 
 - action 8: manual-data-flow-query-retention-budget-evidence.yml
 - action 14: manual-chargeback-closeout-evidence.yml
@@ -21,7 +21,27 @@ GitHub workflow_dispatch requires the workflow file to exist on the repository d
 - action 18: manual-cluster-network-access-review-evidence.yml
 - action 19: manual-helm-values-hardening-evidence.yml
 
-Do not attempt to close those actions with local placeholder evidence. Merge or publish the workflow files to the default branch first, then rerun dispatch preflight.
+The latest dispatch preflight confirmed defaultBranchWorkflowMissingCount=0. Do not close these actions with local placeholder evidence; dispatch the workflows with concrete target evidence values and import their artifacts.
+
+## Ready Subset After Operator Confirmation
+
+With explicit operator approval, OSMU_KUBECONFIG_BASE64 readiness confirmation, and required GitHub secrets configured, actions 1, 2, and 5 have no remaining workflow input placeholders. A plan-only preflight for this subset produced result=ready.
+
+Plan-only command:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\invoke-operations-evidence-plan.ps1 -ActionOrder 1,2,5 -KubeconfigSecretConfirmed -ConfirmOperatorApproval
+```
+
+Planned workflow dispatch commands:
+
+```powershell
+gh workflow run storage-expansion-finalizer-ci.yml -f run_live=true -f namespace=osmu -f tenant_name=osmu-minio -f manifest_path=./infra/k8s/examples/minio-tenant-pool-expansion.example.yaml -f impersonate_runner=true
+gh workflow run kubernetes-ha-dr-readiness-ci.yml -f run_live=true -f namespace=osmu -f restore_manifest_path=./infra/k8s/examples/restore-from-backup.example.yaml
+gh workflow run image-publish-sign-ci.yml -f version=v0.1.0-rc.1 -f publish=true
+```
+
+Do not run this subset until the operator confirms live Kubernetes access, image publishing/signing approval, and the required GitHub secrets.
 
 ## Required Operator Inputs
 
@@ -37,31 +57,21 @@ The source of truth for exact placeholders is .osmu-run/latest-operations-invoca
 
 ## Execution Order
 
-1. Merge or publish the five missing workflow_dispatch files to the default branch.
-2. Regenerate readiness and evidence planning reports:
-
-   ```powershell
-   powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\write-operations-readiness.ps1
-   powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\write-operations-evidence-plan.ps1 -GitHubRepository chefbeom/object-storage-osmu
-   powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\invoke-operations-evidence-plan.ps1 -ActionOrder 1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19
-   powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\write-operations-invocation-unblock-plan.ps1
-   ```
-
-3. Fill all placeholders and confirmations from the unblock plan. Keep values concrete and operator-approved.
-4. Rerun dispatch preflight before any live dispatch:
+1. Confirm operator approval and GitHub secret readiness for the selected action subset.
+2. Rerun dispatch preflight before any live dispatch:
 
    ```powershell
    powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\write-operations-dispatch-preflight.ps1 -ActionOrder 1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19 -GitHubRepository chefbeom/object-storage-osmu -GitHubRef main -CheckGitHubCli
    ```
 
-5. Dispatch only actions that preflight marks ready.
-6. Collect run ids after workflow completion:
+3. Dispatch only actions that preflight marks ready.
+4. Collect run ids after workflow completion:
 
    ```powershell
-   powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\write-operations-workflow-run-id-plan.ps1 -UseGitHubApi -GitHubRepository chefbeom/object-storage-osmu -Branch codex/operations-readiness-9dedd532 -Limit 20 -ImageSigningVersion v0.1.0-rc.1
+   powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\write-operations-workflow-run-id-plan.ps1 -UseGitHubApi -GitHubRepository chefbeom/object-storage-osmu -Branch main -Limit 20 -ImageSigningVersion v0.1.0-rc.1
    ```
 
-7. Regenerate artifact collection, import artifacts, and finalize readiness:
+5. Regenerate artifact collection, import artifacts, and finalize readiness:
 
    ```powershell
    powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\write-operations-artifact-collection-plan.ps1 -ImageSigningVersion v0.1.0-rc.1
@@ -80,7 +90,7 @@ Run and collect these in order:
 4. operations-readiness-artifact-finalizer-ci.yml or local artifact import.
 5. finalize-operations-readiness.ps1.
 
-Expected artifact names must match the commit used by the workflow run. Recompute them from the latest workflow run-id and artifact collection plans after dispatch; do not reuse stale artifact names from older commits.
+Expected artifact names must match the commit used by the workflow run. Recompute them from the latest workflow run-id and artifact collection plans after dispatch; do not reuse stale artifact names from older commits. The current main merge commit is 81acaf4e3c44ee3dc2014f3429f585ac7defaedd.
 
 ## Completion Criteria
 
