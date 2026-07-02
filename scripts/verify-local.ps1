@@ -222,19 +222,25 @@ function Assert-OperationsLatestEvidenceFreshness([int[]] $expectedActionOrders)
     $readiness = Get-JsonFile ".osmu-run\latest-operations-readiness.json"
     $invocation = Get-JsonFile ".osmu-run\latest-operations-evidence-plan-invocation.json"
     $dispatchPreflight = Get-JsonFile ".osmu-run\latest-operations-dispatch-preflight.json"
+    $operatorWorksheet = Get-JsonFile ".osmu-run\latest-operations-operator-input-worksheet.json"
     $workflowRunIds = Get-JsonFile ".osmu-run\latest-operations-workflow-run-ids.json"
     $artifactCollection = Get-JsonFile ".osmu-run\latest-operations-artifact-collection-plan.json"
     $handoff = Get-JsonFile ".osmu-run\latest-operations-evidence-handoff.json"
     $convergence = Get-JsonFile ".osmu-run\latest-operations-readiness-convergence.json"
 
-    if ($null -eq $readiness -or $null -eq $handoff -or $null -eq $convergence) {
-        throw "Operations latest evidence refresh did not write readiness, handoff, and convergence reports."
+    if ($null -eq $readiness -or $null -eq $operatorWorksheet -or $null -eq $handoff -or $null -eq $convergence) {
+        throw "Operations latest evidence refresh did not write readiness, operator input worksheet, handoff, and convergence reports."
     }
 
     $readinessTime = Convert-OperationsTimestamp ([string] (Get-JsonPropertyValue $readiness "generatedAt")) "readiness"
+    $dispatchPreflightTime = Convert-OperationsTimestamp ([string] (Get-JsonPropertyValue $dispatchPreflight "generatedAt")) "dispatch preflight"
+    $operatorWorksheetTime = Convert-OperationsTimestamp ([string] (Get-JsonPropertyValue $operatorWorksheet "generatedAt")) "operator input worksheet"
     $handoffTime = Convert-OperationsTimestamp ([string] (Get-JsonPropertyValue $handoff "generatedAt")) "handoff"
     $convergenceTime = Convert-OperationsTimestamp ([string] (Get-JsonPropertyValue $convergence "generatedAt")) "convergence"
 
+    if ($operatorWorksheetTime -lt $dispatchPreflightTime) {
+        throw "Operations latest evidence operator input worksheet is older than dispatch preflight after refresh: worksheet=$operatorWorksheetTime dispatch=$dispatchPreflightTime"
+    }
     if ($handoffTime -lt $readinessTime) {
         throw "Operations latest evidence handoff is older than readiness after refresh: handoff=$handoffTime readiness=$readinessTime"
     }
@@ -262,9 +268,19 @@ function Assert-OperationsLatestEvidenceFreshness([int[]] $expectedActionOrders)
     }
 
     $readinessSummary = [string] (Get-JsonPropertyValue $readiness "summary")
+    $worksheetSummary = [string] (Get-JsonPropertyValue $operatorWorksheet "sourceSummary")
     $convergenceSummary = [string] (Get-JsonPropertyValue $convergence "readinessSummary")
+    if ($readinessSummary -ne $worksheetSummary) {
+        throw "Operations latest evidence operator worksheet source summary mismatch: readiness=$readinessSummary worksheet=$worksheetSummary"
+    }
     if ($readinessSummary -ne $convergenceSummary) {
         throw "Operations latest evidence convergence readiness summary mismatch: readiness=$readinessSummary convergence=$convergenceSummary"
+    }
+    if (@($expectedActionOrders).Count -gt 0) {
+        $worksheetSelectedActionCount = Get-OperationsIntProperty $operatorWorksheet "selectedActionCount"
+        if ($worksheetSelectedActionCount -ne @($expectedActionOrders).Count) {
+            throw "Operations latest evidence operator worksheet selected action count mismatch: expected=$(@($expectedActionOrders).Count) actual=$worksheetSelectedActionCount"
+        }
     }
 
     Assert-OperationsSelectedActionScope $expectedActionOrders $invocation "selectedActionOrders" "invocation.selectedActionOrders"
@@ -505,6 +521,9 @@ Run "powershell -ExecutionPolicy Bypass -File .\scripts\verify-operations-invoca
 Step "Operations dispatch preflight check"
 Run "powershell -ExecutionPolicy Bypass -File .\scripts\verify-operations-dispatch-preflight.ps1"
 
+Step "Operations operator input worksheet check"
+Run "powershell -ExecutionPolicy Bypass -File .\scripts\verify-operations-operator-input-worksheet.ps1"
+
 Step "Operations workflow run id plan check"
 Run "powershell -ExecutionPolicy Bypass -File .\scripts\verify-operations-workflow-run-id-plan.ps1"
 
@@ -586,6 +605,7 @@ Run "powershell -ExecutionPolicy Bypass -File .\scripts\write-operations-evidenc
 Run "powershell -ExecutionPolicy Bypass -File .\scripts\invoke-operations-evidence-plan.ps1$operationsActionOrderArgument"
 Run "powershell -ExecutionPolicy Bypass -File .\scripts\write-operations-invocation-unblock-plan.ps1"
 Run "powershell -ExecutionPolicy Bypass -File .\scripts\write-operations-dispatch-preflight.ps1$operationsActionOrderArgument -CheckGitHubCli$operationsGitHubRepositoryArgument"
+Run "powershell -ExecutionPolicy Bypass -File .\scripts\write-operations-operator-input-worksheet.ps1"
 Run "powershell -ExecutionPolicy Bypass -File .\scripts\write-operations-workflow-run-id-plan.ps1$operationsBranchArgument$operationsGitHubRepositoryArgument$operationsImageSigningVersionArgument"
 Run "powershell -ExecutionPolicy Bypass -File .\scripts\write-operations-artifact-collection-plan.ps1$operationsImageSigningVersionArgument"
 Run "powershell -ExecutionPolicy Bypass -File .\scripts\write-operations-evidence-handoff.ps1"
