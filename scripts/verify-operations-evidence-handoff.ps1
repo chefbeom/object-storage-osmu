@@ -166,6 +166,9 @@ $blockedPlanPath = Join-Path $resolvedOutputDirectory "blocked-plan.json"
 $blockedInvocationPath = Join-Path $resolvedOutputDirectory "blocked-invocation.json"
 $blockedUnblockPath = Join-Path $resolvedOutputDirectory "blocked-unblock-plan.json"
 $blockedDispatchPreflightPath = Join-Path $resolvedOutputDirectory "blocked-dispatch-preflight.json"
+$blockedWorksheetPath = Join-Path $resolvedOutputDirectory "blocked-operator-worksheet.json"
+$blockedTemplatePath = Join-Path $resolvedOutputDirectory "blocked-operator-values-template.json"
+$blockedCheckPath = Join-Path $resolvedOutputDirectory "blocked-operator-values-check.json"
 $blockedRunIdPath = Join-Path $resolvedOutputDirectory "blocked-run-ids.json"
 $blockedCollectionPath = Join-Path $resolvedOutputDirectory "blocked-collection.json"
 $blockedImportPath = Join-Path $resolvedOutputDirectory "blocked-import.json"
@@ -251,6 +254,7 @@ Write-JsonFixture $blockedDispatchPreflightPath ([ordered]@{
     githubRepository = "chefbeom/object-storage-osmu"
     selectedActionCount = 3
     missingInputCount = 2
+    requiredInputCount = 2
     defaultBranchRef = "origin/main"
     workflowFiles = @(
         [ordered]@{
@@ -316,6 +320,31 @@ Write-JsonFixture $blockedDispatchPreflightPath ([ordered]@{
         }
     )
 })
+Write-JsonFixture $blockedWorksheetPath ([ordered]@{
+    formatVersion = "osmu.operations-operator-input-worksheet.v1"
+    generatedAt = "2026-06-27T10:12:00+09:00"
+    result = "action-required"
+    sourceDispatchPreflightReport = $blockedDispatchPreflightPath
+    inputValuesTemplatePath = $blockedTemplatePath
+    inputRowCount = 4
+    ambiguousInputRowCount = 1
+    inputFreeActionCount = 1
+    requiredSecretCount = 2
+})
+Write-JsonFixture $blockedCheckPath ([ordered]@{
+    formatVersion = "osmu.operations-operator-input-values-check.v1"
+    generatedAt = "2026-06-27T10:15:00+09:00"
+    result = "action-required"
+    sourceValuesTemplate = $blockedTemplatePath
+    valueCount = 4
+    readyValueCount = 0
+    missingValueCount = 4
+    unsafeValueCount = 0
+    invalidValueCount = 0
+    actionSummaryCount = 3
+    valueReadyActionCount = 1
+    nonReadyActionCount = 2
+})
 Write-JsonFixture $blockedCollectionPath ([ordered]@{
     formatVersion = "osmu.operations-artifact-collection-plan.v1"
     result = "action-required"
@@ -331,6 +360,8 @@ Write-JsonFixture $blockedCollectionPath ([ordered]@{
     -InvocationReportPath $blockedInvocationPath `
     -InvocationUnblockPlanPath $blockedUnblockPath `
     -DispatchPreflightReportPath $blockedDispatchPreflightPath `
+    -OperatorInputWorksheetReportPath $blockedWorksheetPath `
+    -OperatorInputValuesCheckReportPath $blockedCheckPath `
     -WorkflowRunIdPlanPath $blockedRunIdPath `
     -ArtifactCollectionPlanPath $blockedCollectionPath `
     -ArtifactImportReportPath $blockedImportPath `
@@ -371,6 +402,12 @@ Assert-Equal @($blockedReport.invocationUnblockActions)[2].requiredInputCount 2 
 Assert-Equal @($blockedReport.defaultBranchMissingWorkflows)[0].workflow "manual-data-flow-query-retention-budget-evidence.yml" "blocked default branch missing workflow name"
 Assert-Equal $blockedReport.blockedActionCount 5 "blocked count"
 Assert-Equal $blockedReport.missingWorkflowRunCount 6 "blocked missing workflow run count"
+Assert-Equal $blockedReport.dispatchPreflightRequiredInputCount 2 "blocked dispatch required input count"
+Assert-Equal $blockedReport.dispatchPreflightMissingInputCount 2 "blocked dispatch missing input count"
+Assert-Equal $blockedReport.operatorInputWorksheetInputRowCount 4 "blocked worksheet input row count"
+Assert-Equal $blockedReport.operatorInputWorksheetExpandedInputRowDelta 2 "blocked worksheet expanded row delta"
+Assert-Equal $blockedReport.operatorInputValuesCheckValueCount 4 "blocked values check value count"
+Assert-Equal $blockedReport.operatorInputValuesCheckMissingValueCount 4 "blocked values check missing count"
 Assert-Equal @($blockedReport.readyDispatchWorkflows).Count 1 "blocked ready dispatch workflow count"
 Assert-Equal @($blockedReport.blockedDispatchWorkflows).Count 2 "blocked blocked dispatch workflow count"
 Assert-Equal @($blockedReport.readyDispatchWorkflows)[0].actionOrder 2 "blocked ready dispatch workflow action order"
@@ -379,9 +416,17 @@ Assert-Equal @($blockedReport.readyDispatchWorkflows)[0].name "Container scan/SB
 Assert-Equal @($blockedReport.readyDispatchWorkflows)[0].dispatchUrl "https://github.com/chefbeom/object-storage-osmu/actions/workflows/container-security-ci.yml" "blocked ready dispatch workflow url"
 Assert-Equal @($blockedReport.blockedDispatchWorkflows)[1].missingInputCount 2 "blocked workflow missing input count"
 Assert-Equal @($blockedReport.blockedDispatchWorkflows)[1].dispatchUrl "https://github.com/chefbeom/object-storage-osmu/actions/workflows/kubernetes-dr-finalizer-ci.yml" "blocked workflow dispatch url"
+$blockedDispatchStage = @($blockedReport.stages | Where-Object { $_.name -eq "dispatch-preflight" } | Select-Object -First 1)
+$blockedWorksheetStage = @($blockedReport.stages | Where-Object { $_.name -eq "operator-input-worksheet" } | Select-Object -First 1)
+Assert-Contains $blockedDispatchStage.summary "requiredInputs=2 missingInputs=2" "blocked dispatch stage input summary"
+Assert-Contains $blockedWorksheetStage.summary "inputs=4 expandedDelta=2" "blocked worksheet stage expansion summary"
 Assert-Contains $blockedMarkdown "Plan ready dispatch subset" "blocked markdown next step"
 Assert-Contains $blockedMarkdown "GitHub repository: chefbeom/object-storage-osmu" "blocked markdown repository"
 Assert-Contains $blockedMarkdown "## Invocation Unblock Summary" "blocked markdown unblock summary"
+Assert-Contains $blockedMarkdown "## Operator Input Expansion" "blocked markdown input expansion section"
+Assert-Contains $blockedMarkdown "Dispatch required inputs: 2" "blocked markdown dispatch required inputs"
+Assert-Contains $blockedMarkdown "Expanded worksheet row delta: 2" "blocked markdown worksheet expansion delta"
+Assert-Contains $blockedMarkdown "Values check rows: 4" "blocked markdown values check rows"
 Assert-Contains $blockedMarkdown "Block reasons: 4" "blocked markdown unblock reason count"
 Assert-Contains $blockedMarkdown "action 3: status=blocked blockers=2 inputs=2 secrets=1" "blocked markdown unblock action summary"
 Assert-Contains $blockedMarkdown "ready action 2: container-security-ci.yml" "blocked markdown ready workflow"
