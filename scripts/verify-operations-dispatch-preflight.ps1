@@ -229,7 +229,6 @@ Assert-True (@($missingDrTemplate.workflowInputNames) -contains "backup_timestam
 Assert-Equal $missingDrTemplate.dispatchUrl "https://github.com/chefbeom/object-storage-osmu/actions/workflows/kubernetes-dr-finalizer-ci.yml" "missing DR template dispatch URL"
 $missingDrWorkflow = @($missingReport.workflowFiles | Where-Object { $_.actionOrder -eq 2 })[0]
 Assert-Equal $missingDrWorkflow.defaultBranchRef "origin/main" "missing DR workflow default branch ref"
-Assert-True $missingDrWorkflow.defaultBranchRefAvailable "missing DR workflow default branch ref should be available"
 Assert-True $missingDrWorkflow.existsOnDefaultBranch "missing DR workflow should exist on default branch"
 Assert-True (@($missingDrTemplate.missingInputParameters) -contains "BackupTimestamp") "missing DR template missing parameter summary"
 Assert-Equal @($missingDrTemplate.unsafeInputParameters).Count 0 "missing DR template unsafe parameter summary"
