@@ -62,6 +62,8 @@ $invalidJsonPath = Join-Path $resolvedOutputDirectory "invalid-preflight.json"
 $invalidMarkdownPath = Join-Path $resolvedOutputDirectory "invalid-preflight.md"
 $githubCliJsonPath = Join-Path $resolvedOutputDirectory "github-cli-path-preflight.json"
 $githubCliMarkdownPath = Join-Path $resolvedOutputDirectory "github-cli-path-preflight.md"
+$apiFallbackJsonPath = Join-Path $resolvedOutputDirectory "api-fallback-preflight.json"
+$apiFallbackMarkdownPath = Join-Path $resolvedOutputDirectory "api-fallback-preflight.md"
 $gitRefJsonPath = Join-Path $resolvedOutputDirectory "git-ref-safety-preflight.json"
 $gitRefMarkdownPath = Join-Path $resolvedOutputDirectory "git-ref-safety-preflight.md"
 $fakeGitHubCliDirectory = Join-Path $resolvedOutputDirectory "fake-github-cli"
@@ -262,6 +264,44 @@ Assert-Equal $githubCliReport.githubRepository "chefbeom/object-storage-osmu" "G
 Assert-Contains $githubCliReport.executeCommand "-GitHubCliPath" "GitHubCliPath execute command"
 Assert-Contains (($githubCliReport.checks | ConvertTo-Json -Depth 8)) "explicit path" "GitHubCliPath check message"
 Assert-Contains $githubCliMarkdown "GitHub CLI path:" "GitHubCliPath markdown"
+
+$previousPath = $env:Path
+$previousGhToken = $env:GH_TOKEN
+try {
+    $env:Path = $resolvedOutputDirectory
+    $env:GH_TOKEN = "fixture-token"
+    & (Join-Path $PSHOME "powershell.exe") -NoProfile -ExecutionPolicy Bypass -File $scriptPath `
+        -UnblockPlanPath $unblockPlanPath `
+        -JsonOutputPath $apiFallbackJsonPath `
+        -MarkdownOutputPath $apiFallbackMarkdownPath `
+        -ActionOrder 4 `
+        -CheckGitHubCli | Out-Host
+    if ($LASTEXITCODE -ne 0) {
+        throw "write-operations-dispatch-preflight.ps1 API fallback fixture failed with exit code $LASTEXITCODE."
+    }
+}
+finally {
+    $env:Path = $previousPath
+    if ($null -eq $previousGhToken) {
+        Remove-Item Env:\GH_TOKEN -ErrorAction SilentlyContinue
+    }
+    else {
+        $env:GH_TOKEN = $previousGhToken
+    }
+}
+
+$apiFallbackReport = Read-Utf8Text $apiFallbackJsonPath | ConvertFrom-Json
+$apiFallbackMarkdown = Read-Utf8Text $apiFallbackMarkdownPath
+Assert-Equal $apiFallbackReport.result "ready" "API fallback result"
+Assert-True $apiFallbackReport.githubApiTokenPresent "API fallback should detect token"
+Assert-True $apiFallbackReport.githubApiDispatchAvailable "API fallback should be available"
+Assert-True (-not $apiFallbackReport.githubCliAvailableForDispatch) "API fallback should not mark GitHub CLI available"
+Assert-True ([string]::IsNullOrWhiteSpace($apiFallbackReport.executeCommand)) "API fallback should suppress gh execute command"
+Assert-Contains $apiFallbackReport.apiExecuteCommand "-UseGitHubApi" "API fallback execute command"
+Assert-Contains $apiFallbackReport.readySubsetApiExecuteCommand "-UseGitHubApi" "API fallback ready subset API command"
+Assert-Contains (($apiFallbackReport.checks | ConvertTo-Json -Depth 8)) "GITHUB_API_DISPATCH_AVAILABLE" "API fallback check code"
+Assert-Contains (($apiFallbackReport.checks | ConvertTo-Json -Depth 8)) "REST API dispatch is available" "API fallback CLI warning"
+Assert-Contains $apiFallbackMarkdown "GitHub API dispatch available: True" "API fallback markdown"
 
 & powershell -NoProfile -ExecutionPolicy Bypass -File $scriptPath `
     -UnblockPlanPath $unblockPlanPath `

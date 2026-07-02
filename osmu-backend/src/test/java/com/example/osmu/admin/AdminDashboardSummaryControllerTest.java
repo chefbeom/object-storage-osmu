@@ -2615,8 +2615,14 @@ class AdminDashboardSummaryControllerTest {
 
                                                       ],
                             "githubCliPath":  "",
+                            "githubCliAvailableForDispatch":  false,
                             "githubRepository":  "chefbeom/object-storage-osmu",
                             "githubRef":  "main",
+                            "githubApiTokenPresent":  false,
+                            "githubApiDispatchAvailable":  false,
+                            "githubApiDispatchUnavailableReasons":  [
+                                                                     "GH_TOKEN or GITHUB_TOKEN is not set"
+                                                                 ],
                             "workflowFiles":  [
                                                   {
                                                       "actionOrder":  6,
@@ -3788,8 +3794,12 @@ class AdminDashboardSummaryControllerTest {
         readiness.andExpect(jsonPath("$.data.operationsDispatchPreflight.warningCheckCount").value(0));
         readiness.andExpect(jsonPath("$.data.operationsDispatchPreflight.requiredGitHubSecrets").doesNotExist());
         readiness.andExpect(jsonPath("$.data.operationsDispatchPreflight.githubCliPath").doesNotExist());
+        readiness.andExpect(jsonPath("$.data.operationsDispatchPreflight.githubCliAvailableForDispatch").value(false));
         readiness.andExpect(jsonPath("$.data.operationsDispatchPreflight.githubRepository").value("chefbeom/object-storage-osmu"));
         readiness.andExpect(jsonPath("$.data.operationsDispatchPreflight.githubRef").value("main"));
+        readiness.andExpect(jsonPath("$.data.operationsDispatchPreflight.githubApiTokenPresent").value(false));
+        readiness.andExpect(jsonPath("$.data.operationsDispatchPreflight.githubApiDispatchAvailable").value(false));
+        readiness.andExpect(jsonPath("$.data.operationsDispatchPreflight.githubApiDispatchUnavailableReasons[0]").value("GH_TOKEN or GITHUB_TOKEN is not set"));
         readiness.andExpect(jsonPath("$.data.operationsDispatchPreflight.gitRefSafety.status").value("action-required"));
         readiness.andExpect(jsonPath("$.data.operationsDispatchPreflight.gitRefSafety.aheadCount").value(25));
         readiness.andExpect(jsonPath("$.data.operationsDispatchPreflight.gitRefSafety.githubRefLikelyContainsCommit").value(false));

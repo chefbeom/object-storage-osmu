@@ -557,8 +557,21 @@ $placeholderMap = New-PlaceholderMap
 $resolvedGitHubCliPath = Resolve-GitHubCliCandidate $GitHubCliPath
 $hasExplicitGitHubCliPath = -not [string]::IsNullOrWhiteSpace($resolvedGitHubCliPath)
 $githubRepositorySlug = Resolve-GitHubRepositorySlug $GitHubRepository
+$githubApiTokenPresent = (-not [string]::IsNullOrWhiteSpace($env:GH_TOKEN)) -or (-not [string]::IsNullOrWhiteSpace($env:GITHUB_TOKEN))
+$githubApiDispatchUnavailableReasons = New-Object System.Collections.Generic.List[string]
+if (-not $githubApiTokenPresent) {
+    Add-UniqueString $githubApiDispatchUnavailableReasons "GH_TOKEN or GITHUB_TOKEN is not set"
+}
+if ([string]::IsNullOrWhiteSpace($githubRepositorySlug)) {
+    Add-UniqueString $githubApiDispatchUnavailableReasons "GitHub repository could not be resolved"
+}
+if ([string]::IsNullOrWhiteSpace($GitHubRef)) {
+    Add-UniqueString $githubApiDispatchUnavailableReasons "GitHubRef is empty"
+}
+$githubApiDispatchAvailable = $githubApiDispatchUnavailableReasons.Count -eq 0
 $gitRefSafety = Get-GitRefSafetyReport $GitHubRef ([bool] $CheckGitRefSafety)
 $hasActionOrderFilter = $ActionOrder -and $ActionOrder.Count -gt 0
+$githubCliAvailableForDispatch = $false
 
 foreach ($action in @(Get-Array $unblockPlan "actions")) {
     $order = Get-Int $action "order"
@@ -843,6 +856,7 @@ else {
 if ($CheckGitHubCli -or $hasExplicitGitHubCliPath) {
     if ($hasExplicitGitHubCliPath) {
         if (Test-Path -LiteralPath $resolvedGitHubCliPath) {
+            $githubCliAvailableForDispatch = $true
             Add-Check $checks "GITHUB_CLI_AVAILABLE" "pass" "GitHub CLI found at explicit path $resolvedGitHubCliPath."
         }
         else {
@@ -852,15 +866,28 @@ if ($CheckGitHubCli -or $hasExplicitGitHubCliPath) {
     else {
         $ghCommand = Get-Command gh -ErrorAction SilentlyContinue
         if ($null -eq $ghCommand) {
-            Add-Check $checks "GITHUB_CLI_AVAILABLE" "fail" "GitHub CLI was not found on PATH."
+            if ($githubApiDispatchAvailable) {
+                Add-Check $checks "GITHUB_CLI_AVAILABLE" "warn" "GitHub CLI was not found on PATH; REST API dispatch is available through GH_TOKEN/GITHUB_TOKEN."
+            }
+            else {
+                Add-Check $checks "GITHUB_CLI_AVAILABLE" "fail" "GitHub CLI was not found on PATH and REST API dispatch is unavailable: $($githubApiDispatchUnavailableReasons -join '; ')."
+            }
         }
         else {
+            $githubCliAvailableForDispatch = $true
             Add-Check $checks "GITHUB_CLI_AVAILABLE" "pass" "GitHub CLI found at $($ghCommand.Source)."
         }
     }
 }
 else {
     Add-Check $checks "GITHUB_CLI_AVAILABLE" "warn" "GitHub CLI availability check skipped. Run with -CheckGitHubCli or provide -GitHubCliPath before live dispatch."
+}
+
+if ($githubApiDispatchAvailable) {
+    Add-Check $checks "GITHUB_API_DISPATCH_AVAILABLE" "pass" "REST API dispatch prerequisites are present for $githubRepositorySlug on ref $GitHubRef."
+}
+else {
+    Add-Check $checks "GITHUB_API_DISPATCH_AVAILABLE" "warn" "REST API dispatch is unavailable: $($githubApiDispatchUnavailableReasons -join '; ')."
 }
 
 if ($ambiguousInputCount -gt 0) {
@@ -886,9 +913,9 @@ $failedCheckCount = @($checks | Where-Object { $_.status -eq "fail" }).Count
 $warningCheckCount = @($checks | Where-Object { $_.status -eq "warn" }).Count
 $result = if ($failedCheckCount -gt 0) { "action-required" } else { "ready" }
 $readyPlanCommand = if ($failedCheckCount -eq 0) { $commandParts -join " " } else { "" }
-$executeCommand = if ($failedCheckCount -eq 0) { "$readyPlanCommand -Execute" } else { "" }
+$githubCliUnavailable = ($CheckGitHubCli -or $hasExplicitGitHubCliPath) -and -not $githubCliAvailableForDispatch
+$executeCommand = if ($failedCheckCount -eq 0 -and -not $githubCliUnavailable) { "$readyPlanCommand -Execute" } else { "" }
 $readySubsetPlanCommand = if ($readyActionOrders.Count -gt 0) { $readySubsetCommandParts -join " " } else { "" }
-$githubCliUnavailable = @($checks | Where-Object { $_.code -eq "GITHUB_CLI_AVAILABLE" -and $_.status -eq "fail" }).Count -gt 0
 $readySubsetExecuteCommand = if (-not [string]::IsNullOrWhiteSpace($readySubsetPlanCommand) -and -not $githubCliUnavailable) { "$readySubsetPlanCommand -Execute" } else { "" }
 $apiExecuteCommand = if (-not [string]::IsNullOrWhiteSpace($readyPlanCommand) -and -not [string]::IsNullOrWhiteSpace($githubRepositorySlug)) { "$readyPlanCommand -UseGitHubApi -GitHubRepository $githubRepositorySlug -GitHubRef $GitHubRef -Execute" } else { "" }
 $readySubsetApiExecuteCommand = if (-not [string]::IsNullOrWhiteSpace($readySubsetPlanCommand) -and -not [string]::IsNullOrWhiteSpace($githubRepositorySlug)) { "$readySubsetPlanCommand -UseGitHubApi -GitHubRepository $githubRepositorySlug -GitHubRef $GitHubRef -Execute" } else { "" }
@@ -919,8 +946,12 @@ $report = [ordered]@{
     invalidInputCount = $invalidInputCount
     requiredGitHubSecrets = @($requiredSecrets)
     githubCliPath = $resolvedGitHubCliPath
+    githubCliAvailableForDispatch = $githubCliAvailableForDispatch
     githubRepository = $githubRepositorySlug
     githubRef = $GitHubRef
+    githubApiTokenPresent = [bool] $githubApiTokenPresent
+    githubApiDispatchAvailable = [bool] $githubApiDispatchAvailable
+    githubApiDispatchUnavailableReasons = @($githubApiDispatchUnavailableReasons | ForEach-Object { [string] $_ })
     gitRefSafety = $gitRefSafety
     workflowFiles = @($workflowFiles)
     checks = @($checks)
@@ -958,8 +989,11 @@ $markdownLines = @(
     "- Warning checks: $warningCheckCount",
     "- Required GitHub secrets: $(if ($requiredSecrets.Count -gt 0) { @($requiredSecrets) -join ', ' } else { 'none detected' })",
     "- GitHub CLI path: $(if ([string]::IsNullOrWhiteSpace($resolvedGitHubCliPath)) { 'PATH lookup' } else { $resolvedGitHubCliPath })",
+    "- GitHub CLI available for dispatch: $githubCliAvailableForDispatch",
     "- GitHub repository: $(if ([string]::IsNullOrWhiteSpace($githubRepositorySlug)) { 'unknown' } else { $githubRepositorySlug })",
     "- GitHub ref: $GitHubRef",
+    "- GitHub API token present: $githubApiTokenPresent",
+    "- GitHub API dispatch available: $githubApiDispatchAvailable",
     ""
 )
 if ($gitRefSafety.checked) {
