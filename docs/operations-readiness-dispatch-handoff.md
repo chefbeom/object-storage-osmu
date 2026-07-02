@@ -63,7 +63,7 @@ For operator data collection and manual workflow dispatch, generate the expanded
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\write-operations-operator-input-worksheet.ps1
 ```
 
-The worksheet writes JSON, Markdown, and CSV to `.osmu-run/latest-operations-operator-input-worksheet.*`. It expands repeated placeholders such as `<iso-time>`, `<ref>`, `<ms>`, and `<n>` into workflow-input-level rows so operators can provide distinct start/end timestamps, evidence refs, p95/p99 values, and per-metric counts without reusing one placeholder value accidentally. It is collection guidance only; it does not mark readiness evidence as passed.
+The worksheet writes JSON, Markdown, and CSV to `.osmu-run/latest-operations-operator-input-worksheet.*`. It expands repeated placeholders such as `<iso-time>`, `<ref>`, `<ms>`, and `<n>` into workflow-input-level rows with stable value keys such as `action-08.review_started_at`, so operators can provide distinct start/end timestamps, evidence refs, p95/p99 values, and per-metric counts without reusing one placeholder value accidentally. It is collection guidance only; it does not mark readiness evidence as passed.
 
 ## Execution Order
 

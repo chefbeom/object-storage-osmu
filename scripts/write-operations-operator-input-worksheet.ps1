@@ -136,6 +136,13 @@ function Get-DispatchTemplateByAction([object] $DispatchReport) {
     return $map
 }
 
+function New-InputValueKey([int] $ActionOrder, [string] $WorkflowInput, [string] $Placeholder) {
+    $suffix = if ([string]::IsNullOrWhiteSpace($WorkflowInput)) { $Placeholder.Trim("<", ">") } else { $WorkflowInput }
+    $suffix = ([regex]::Replace($suffix.ToLowerInvariant(), "[^a-z0-9_.-]+", "-")).Trim("-", ".", "_")
+    if ([string]::IsNullOrWhiteSpace($suffix)) { $suffix = "input" }
+    return "action-{0:00}.{1}" -f $ActionOrder, $suffix
+}
+
 $unblock = Read-OptionalJson $UnblockPlanPath
 if (-not $unblock.exists) {
     throw "Unblock plan not found: $($unblock.path)"
@@ -181,6 +188,7 @@ foreach ($action in @(Get-Array (Get-JsonProperty $unblock.json "actions"))) {
                 category = $category
                 workflow = $workflow
                 workflowInput = $workflowInput
+                valueKey = New-InputValueKey $order $workflowInput $placeholder
                 placeholder = $placeholder
                 parameter = Get-Text $input "parameter"
                 valueTemplate = Get-Text $input "valueTemplate"
@@ -335,13 +343,13 @@ if ($requiredSecretArray.Count -eq 0) { $markdown.Add("- none") | Out-Null }
 $markdown.Add("") | Out-Null
 $markdown.Add("## Inputs") | Out-Null
 $markdown.Add("") | Out-Null
-$markdown.Add("| Action | Category | Workflow | Workflow input | Placeholder | Ambiguous | Suggested source |") | Out-Null
-$markdown.Add("| --- | --- | --- | --- | --- | --- | --- |") | Out-Null
+$markdown.Add("| Action | Value key | Category | Workflow | Workflow input | Placeholder | Ambiguous | Suggested source |") | Out-Null
+$markdown.Add("| --- | --- | --- | --- | --- | --- | --- | --- |") | Out-Null
 foreach ($row in $rowArray) {
     $workflowInput = if ([string]::IsNullOrWhiteSpace($row.workflowInput)) { "n/a" } else { $row.workflowInput }
-    $markdown.Add("| $($row.actionOrder) | $($row.category) | $($row.workflow) | $workflowInput | ``$($row.placeholder)`` | $($row.ambiguousRepeatedPlaceholder) | $($row.suggestedSource) |") | Out-Null
+    $markdown.Add("| $($row.actionOrder) | ``$($row.valueKey)`` | $($row.category) | $($row.workflow) | $workflowInput | ``$($row.placeholder)`` | $($row.ambiguousRepeatedPlaceholder) | $($row.suggestedSource) |") | Out-Null
 }
-if ($rowArray.Count -eq 0) { $markdown.Add("| n/a | n/a | n/a | n/a | n/a | n/a | none |") | Out-Null }
+if ($rowArray.Count -eq 0) { $markdown.Add("| n/a | n/a | n/a | n/a | n/a | n/a | n/a | none |") | Out-Null }
 $markdown.Add("") | Out-Null
 $markdown.Add("## Dispatch Availability") | Out-Null
 $markdown.Add("") | Out-Null
